@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Godot;
 
 public partial class HexMap : Node2D
@@ -16,7 +17,19 @@ public partial class HexMap : Node2D
         new Color("1abc9c"), // teal
     };
 
+    // Edge i of a pointy-top hex (vertex i -> vertex (i+1)%6) is shared with
+    // the neighbor in this HexCoord.Directions index:
+    //   edge 0 (right)       -> E  (dir 0)
+    //   edge 1 (lower-right) -> SE (dir 5)
+    //   edge 2 (lower-left)  -> SW (dir 4)
+    //   edge 3 (left)        -> W  (dir 3)
+    //   edge 4 (upper-left)  -> NW (dir 2)
+    //   edge 5 (upper-right) -> NE (dir 1)
+    private static readonly int[] EdgeToNeighborDirection = { 0, 5, 4, 3, 2, 1 };
+
     public HexGrid Grid { get; } = new HexGrid();
+
+    public IReadOnlyList<Territory> Territories { get; private set; } = new List<Territory>();
 
     /// <summary>Pixel bounding box of the rendered grid, for centering.</summary>
     public Vector2 PixelSize => new Vector2(
@@ -49,9 +62,14 @@ public partial class HexMap : Node2D
                 Grid.Add(tile);
             }
         }
+
+        Territories = TerritoryFinder.FindAll(Grid);
+        GD.Print($"HexMap: {Grid.Count} tiles partitioned into {Territories.Count} territories.");
+
+        DrawTerritoryBorders();
     }
 
-    private Polygon2D CreateHexVisual(Vector2 position, Color color)
+    private Vector2[] HexVertices()
     {
         var verts = new Vector2[6];
         for (int i = 0; i < 6; i++)
@@ -59,6 +77,12 @@ public partial class HexMap : Node2D
             float angle = Mathf.Pi / 180f * (60f * i - 30f);
             verts[i] = new Vector2(HexSize * Mathf.Cos(angle), HexSize * Mathf.Sin(angle));
         }
+        return verts;
+    }
+
+    private Polygon2D CreateHexVisual(Vector2 position, Color color)
+    {
+        Vector2[] verts = HexVertices();
 
         var fill = new Polygon2D
         {
@@ -80,5 +104,35 @@ public partial class HexMap : Node2D
         fill.AddChild(outline);
 
         return fill;
+    }
+
+    private void DrawTerritoryBorders()
+    {
+        Vector2[] verts = HexVertices();
+
+        foreach (HexTile tile in Grid.Tiles)
+        {
+            Vector2 center = FirstHexCenterOffset + tile.Coord.ToPixel(HexSize);
+
+            for (int edge = 0; edge < 6; edge++)
+            {
+                int dir = EdgeToNeighborDirection[edge];
+                HexCoord neighborCoord = tile.Coord.Neighbor(dir);
+                HexTile? neighbor = Grid.Get(neighborCoord);
+
+                // Draw a thick border when the neighbor doesn't exist (grid
+                // edge) or belongs to a different color (territory edge).
+                bool isBoundary = neighbor == null || neighbor.Color != tile.Color;
+                if (!isBoundary) continue;
+
+                var line = new Line2D
+                {
+                    Points = new[] { center + verts[edge], center + verts[(edge + 1) % 6] },
+                    Width = 4f,
+                    DefaultColor = new Color(0f, 0f, 0f, 1f),
+                };
+                AddChild(line);
+            }
+        }
     }
 }
