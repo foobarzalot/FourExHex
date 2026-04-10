@@ -6,17 +6,6 @@ public partial class HexMap : Node2D
     [Export] public int Rows { get; set; } = 13;
     [Export] public float HexSize { get; set; } = 48f;
 
-    // Pixel dimensions of the full grid, useful for centering in the viewport.
-    public Vector2 PixelSize => new Vector2(
-        (Cols + 0.5f) * Mathf.Sqrt(3f) * HexSize,
-        (1.5f * Rows + 0.5f) * HexSize);
-
-    // Offset from this node's Position to where the first hex's CENTER should be,
-    // so that the grid's bounding box starts at (0, 0) in local space.
-    public Vector2 FirstHexCenterOffset => new Vector2(
-        0.5f * Mathf.Sqrt(3f) * HexSize,
-        HexSize);
-
     private static readonly Color[] Palette =
     {
         new Color("e74c3c"), // red
@@ -27,6 +16,19 @@ public partial class HexMap : Node2D
         new Color("1abc9c"), // teal
     };
 
+    public HexGrid Grid { get; } = new HexGrid();
+
+    /// <summary>Pixel bounding box of the rendered grid, for centering.</summary>
+    public Vector2 PixelSize => new Vector2(
+        (Cols + 0.5f) * Mathf.Sqrt(3f) * HexSize,
+        (1.5f * Rows + 0.5f) * HexSize);
+
+    // The first hex (axial 0,0) is drawn at this offset from the HexMap origin
+    // so that the grid's visual bounding box starts at (0,0) in local space.
+    private Vector2 FirstHexCenterOffset => new Vector2(
+        0.5f * Mathf.Sqrt(3f) * HexSize,
+        HexSize);
+
     public override void _Ready()
     {
         var rng = new RandomNumberGenerator();
@@ -36,20 +38,21 @@ public partial class HexMap : Node2D
         {
             for (int col = 0; col < Cols; col++)
             {
+                HexCoord coord = HexCoord.FromOffset(col, row);
                 Color color = Palette[rng.RandiRange(0, Palette.Length - 1)];
-                AddChild(CreateHex(col, row, color));
+                var tile = new HexTile(coord, color);
+
+                Vector2 center = FirstHexCenterOffset + coord.ToPixel(HexSize);
+                tile.Visual = CreateHexVisual(center, color);
+                AddChild(tile.Visual);
+
+                Grid.Add(tile);
             }
         }
     }
 
-    private Node2D CreateHex(int col, int row, Color color)
+    private Polygon2D CreateHexVisual(Vector2 position, Color color)
     {
-        // Pointy-top hex layout with odd-row horizontal offset.
-        float width = Mathf.Sqrt(3f) * HexSize;
-        float height = 2f * HexSize;
-        float x = FirstHexCenterOffset.X + (col + 0.5f * (row & 1)) * width;
-        float y = FirstHexCenterOffset.Y + row * height * 0.75f;
-
         var verts = new Vector2[6];
         for (int i = 0; i < 6; i++)
         {
@@ -59,7 +62,7 @@ public partial class HexMap : Node2D
 
         var fill = new Polygon2D
         {
-            Position = new Vector2(x, y),
+            Position = position,
             Color = color,
             Polygon = verts,
         };

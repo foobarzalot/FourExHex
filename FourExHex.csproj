@@ -4,5 +4,7 @@
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <Nullable>enable</Nullable>
     <LangVersion>12</LangVersion>
+    <!-- Keep the test project's sources out of the main game assembly. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);tests/**/*</DefaultItemExcludes>
   </PropertyGroup>
 </Project>

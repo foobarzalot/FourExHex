@@ -17,9 +17,12 @@ FourExHex is a hex-based 4X strategy game built with Godot 4.6 and C#.
 
 - **Headless import / refresh asset cache**:
   `/Applications/Godot_mono.app/Contents/MacOS/Godot --headless --path . --import`
-- **Build C# assembly**: `dotnet build`
+- **Build C# assembly**: `dotnet build FourExHex.csproj` (or `dotnet build` to build the whole solution including tests)
+- **Run unit tests**: `dotnet test` — runs the xUnit tests in `tests/FourExHex.Tests.csproj`
 - **Run the game headless**: `/Applications/Godot_mono.app/Contents/MacOS/Godot --headless --path .`
 - **Open editor**: `open /Applications/Godot_mono.app --args --path $(pwd)`
+
+**Rebuild-before-launch rule**: Godot does NOT always rebuild the C# assembly when launching the game. After editing any `.cs` file, run `dotnet build FourExHex.csproj` before relaunching or you'll be running stale code.
 
 ## Code Style
 
@@ -34,6 +37,7 @@ FourExHex is a hex-based 4X strategy game built with Godot 4.6 and C#.
 
 - `scenes/` — `.tscn` scene files; `main.tscn` is the entry point
 - `scripts/` — C# scripts (one `partial class` per file, matching filename)
+- `tests/` — xUnit test project (`FourExHex.Tests.csproj`), standalone `Microsoft.NET.Sdk`, excluded from the main assembly via `DefaultItemExcludes` and from Godot's resource scanner via a `.gdignore`. Test files pull in production sources with `<Compile Include="..\scripts\*.cs">`. `HexMap.cs` and `Main.cs` are NOT testable here — they derive from `Node2D` and need the Godot source generator.
 - `.godot/` — engine cache and generated build artifacts (gitignored)
 - `bin/`, `obj/` — .NET build artifacts (gitignored)
 

@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>12</LangVersion>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>FourExHex.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
+    <PackageReference Include="xunit" Version="2.6.6" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.5.6" />
+    <PackageReference Include="GodotSharp" Version="4.6.1" />
+  </ItemGroup>
+
+  <!--
+    Pull in the production source files we want to test.
+    HexMap.cs and Main.cs are excluded because they derive from Node2D and
+    require the Godot.NET.Sdk source generator to compile.
+  -->
+  <ItemGroup>
+    <Compile Include="..\scripts\HexCoord.cs" Link="scripts\HexCoord.cs" />
+    <Compile Include="..\scripts\HexGrid.cs" Link="scripts\HexGrid.cs" />
+    <Compile Include="..\scripts\HexTile.cs" Link="scripts\HexTile.cs" />
+  </ItemGroup>
+
+</Project>
