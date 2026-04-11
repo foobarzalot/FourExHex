@@ -102,6 +102,7 @@ public class GameStateSnapshot
         Unit u => new Unit(u.Owner, u.Level) { HasMovedThisTurn = u.HasMovedThisTurn },
         Capital => new Capital(),
         Grave => new Grave(),
+        Tree => new Tree(),
         null => null,
         _ => throw new InvalidOperationException($"Unknown occupant type: {occupant.GetType()}"),
     };

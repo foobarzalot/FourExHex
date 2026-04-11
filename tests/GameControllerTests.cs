@@ -279,16 +279,89 @@ public class GameControllerTests
     }
 
     [Fact]
-    public void EndTurn_ClearsGravesFromBoard()
+    public void EndTurn_ConvertsGravesToTrees()
     {
         var g = new TestGame();
         // Drop a stray grave on a tile (as if left over from a previous
-        // bankruptcy).
+        // bankruptcy). End of turn should convert it into a tree rather
+        // than clearing it — trees are the "rotted corpse" legacy.
         g.Tile(3, 0).Occupant = new Grave();
 
         g.Hud.ClickEndTurn();
 
-        Assert.Null(g.Tile(3, 0).Occupant);
+        Assert.IsType<Tree>(g.Tile(3, 0).Occupant);
+    }
+
+    [Fact]
+    public void EndTurn_SpreadsTrees_OneStep()
+    {
+        // Two adjacent trees at end of turn seed a third in their
+        // common empty neighbor. Place the pair on Blue tiles so the
+        // fixture's Red territory is untouched by spreading.
+        var g = new TestGame();
+        g.Tile(2, 0).Occupant = new Tree();
+        g.Tile(3, 0).Occupant = new Tree();
+        int treesBefore = CountTrees(g.State.Grid);
+
+        g.Hud.ClickEndTurn();
+
+        int treesAfter = CountTrees(g.State.Grid);
+        Assert.Equal(treesBefore + 1, treesAfter);
+    }
+
+    [Fact]
+    public void EndTurn_IncomeSkipsTreeTiles_OnNextPlayerTurn()
+    {
+        // Before end-of-turn Blue's income would be blueSize; with a
+        // tree planted on one Blue tile the collected income should be
+        // blueSize - 1. Use a fresh tree (not one that just converted)
+        // by placing it before any end-of-turn so it's already there
+        // when Blue collects.
+        var g = new TestGame();
+        g.Tile(3, 0).Occupant = new Tree();
+        int blueSize = g.State.Territories
+            .First(t => t.Owner == g.Blue.Color).Size;
+        HexCoord blueCapital = g.State.Territories
+            .First(t => t.Owner == g.Blue.Color).Capital!.Value;
+        g.State.Treasury.SetGold(blueCapital, 0);
+
+        g.Hud.ClickEndTurn(); // Red -> Blue: collect income, pay upkeep (0)
+
+        // Blue has no units so upkeep is 0. Collected income is the
+        // size minus the one tree tile.
+        Assert.Equal(blueSize - 1, g.State.Treasury.GetGold(blueCapital));
+    }
+
+    [Fact]
+    public void EndTurn_BankruptGraves_BecomeTreesOnNextEndTurn()
+    {
+        // Full feedback loop: Blue can't afford its knight → knight
+        // dies and leaves a grave this turn → next end-of-turn the
+        // grave converts into a tree → the tree permanently reduces
+        // Blue's income.
+        var g = new TestGame();
+        g.Tile(3, 0).Occupant = new Unit(g.Blue.Color, UnitLevel.Knight);
+        HexCoord blueCapital = g.State.Territories
+            .First(t => t.Owner == g.Blue.Color).Capital!.Value;
+        g.State.Treasury.SetGold(blueCapital, 0);
+
+        // End Red's turn: Blue's turn begins, knight goes bankrupt.
+        g.Hud.ClickEndTurn();
+        Assert.IsType<Grave>(g.Tile(3, 0).Occupant);
+
+        // End Blue's turn: the bankruptcy grave converts into a tree.
+        g.Hud.ClickEndTurn();
+        Assert.IsType<Tree>(g.Tile(3, 0).Occupant);
+    }
+
+    private static int CountTrees(HexGrid grid)
+    {
+        int n = 0;
+        foreach (HexTile tile in grid.Tiles)
+        {
+            if (tile.Occupant is Tree) n++;
+        }
+        return n;
     }
 
     [Fact]

@@ -573,6 +573,71 @@ public class MovementRulesTests
         Assert.True(combined.HasMovedThisTurn);
     }
 
+    // --- Tree tiles: clearable, consume action ---------------------------
+
+    [Fact]
+    public void ValidTargets_IncludesOwnTreeTile_AsReposition()
+    {
+        HexGrid grid = BuildGrid(5, 1, Blue);
+        foreach (var c in new[] { HexCoord.FromOffset(0, 0), HexCoord.FromOffset(1, 0), HexCoord.FromOffset(2, 0) })
+        {
+            SetTile(grid, c, Red);
+        }
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Tree();
+
+        var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        Territory red = territories.First(t => t.Owner == Red);
+
+        var targets = MovementRules.ValidTargets(UnitLevel.Peasant, red, grid, territories);
+
+        Assert.Contains(HexCoord.FromOffset(1, 0), targets);
+    }
+
+    [Fact]
+    public void Move_OntoOwnTree_ClearsTreeAndConsumesAction()
+    {
+        // Chopping a tree costs the unit its turn (unlike burying a
+        // grave, which is free).
+        HexGrid grid = BuildGrid(5, 1, Blue);
+        foreach (var c in new[] { HexCoord.FromOffset(0, 0), HexCoord.FromOffset(1, 0), HexCoord.FromOffset(2, 0) })
+        {
+            SetTile(grid, c, Red);
+        }
+        var unit = new Unit(Red);
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = unit;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Tree();
+
+        var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        Territory red = territories.First(t => t.Owner == Red);
+
+        MoveResult result = MovementRules.Move(
+            HexCoord.FromOffset(2, 0), HexCoord.FromOffset(1, 0), grid, red);
+
+        Assert.False(result.WasCapture);
+        Assert.Same(unit, grid.Get(HexCoord.FromOffset(1, 0))!.Unit);
+        Assert.True(unit.HasMovedThisTurn);
+    }
+
+    [Fact]
+    public void PlaceNew_OntoOwnTree_ClearsTreeAndConsumesAction()
+    {
+        HexGrid grid = BuildGrid(5, 1, Blue);
+        foreach (var c in new[] { HexCoord.FromOffset(0, 0), HexCoord.FromOffset(1, 0) })
+        {
+            SetTile(grid, c, Red);
+        }
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Tree();
+
+        var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        Territory red = territories.First(t => t.Owner == Red);
+        var fresh = new Unit(Red);
+
+        MovementRules.PlaceNew(fresh, HexCoord.FromOffset(1, 0), grid, red);
+
+        Assert.Same(fresh, grid.Get(HexCoord.FromOffset(1, 0))!.Unit);
+        Assert.True(fresh.HasMovedThisTurn);
+    }
+
     [Fact]
     public void PlaceNew_OnOwnEmptyTile_DoesNotConsumeAction()
     {

@@ -39,6 +39,8 @@
     <Compile Include="..\scripts\Unit.cs" Link="scripts\Unit.cs" />
     <Compile Include="..\scripts\Capital.cs" Link="scripts\Capital.cs" />
     <Compile Include="..\scripts\Grave.cs" Link="scripts\Grave.cs" />
+    <Compile Include="..\scripts\Tree.cs" Link="scripts\Tree.cs" />
+    <Compile Include="..\scripts\TreeRules.cs" Link="scripts\TreeRules.cs" />
     <Compile Include="..\scripts\PurchaseRules.cs" Link="scripts\PurchaseRules.cs" />
     <Compile Include="..\scripts\DefenseRules.cs" Link="scripts\DefenseRules.cs" />
     <Compile Include="..\scripts\MovementRules.cs" Link="scripts\MovementRules.cs" />

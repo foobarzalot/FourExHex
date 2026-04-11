@@ -73,6 +73,25 @@ public partial class Main : Node2D
                 grid.Add(new HexTile(coord, color));
             }
         }
+
+        // Seed a handful of initial trees — roughly 5% of tiles — so
+        // the board has visible forest at game start (Slay does this).
+        // CapitalPlacer already skips tree-occupied tiles, so capital
+        // assignment on the downstream pipeline handles this correctly.
+        int treeTarget = (cols * rows) / 20;
+        var allCoords = new List<HexCoord>();
+        foreach (HexTile tile in grid.Tiles) allCoords.Add(tile.Coord);
+        for (int i = 0; i < treeTarget; i++)
+        {
+            int idx = rng.RandiRange(0, allCoords.Count - 1);
+            HexCoord pick = allCoords[idx];
+            allCoords.RemoveAt(idx);
+            HexTile? t = grid.Get(pick);
+            if (t != null && t.Occupant == null)
+            {
+                t.Occupant = new Tree();
+            }
+        }
         return grid;
     }
 

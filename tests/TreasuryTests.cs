@@ -144,6 +144,45 @@ public class TreasuryTests
         Assert.Equal(99, treasury.GetGold(blueCapital));
     }
 
+    [Fact]
+    public void CollectIncomeFor_WithGrid_SkipsTreeTiles()
+    {
+        // 4-tile territory with two trees. Income should be 2 not 4.
+        var capital = new HexCoord(0, 0);
+        Territory t = MakeTerritory(
+            Red, capital,
+            new HexCoord(0, 0), new HexCoord(1, 0),
+            new HexCoord(2, 0), new HexCoord(3, 0));
+        var grid = new HexGrid();
+        grid.Add(new HexTile(new HexCoord(0, 0), Red));
+        grid.Add(new HexTile(new HexCoord(1, 0), Red));
+        grid.Add(new HexTile(new HexCoord(2, 0), Red));
+        grid.Add(new HexTile(new HexCoord(3, 0), Red));
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Tree();
+        grid.Get(new HexCoord(2, 0))!.Occupant = new Tree();
+
+        var treasury = new Treasury();
+        treasury.CollectIncomeFor(RedPlayer, new[] { t }, grid);
+
+        Assert.Equal(2, treasury.GetGold(capital));
+    }
+
+    [Fact]
+    public void CollectIncomeFor_WithoutGrid_UsesTerritorySize()
+    {
+        // Back-compat: no grid → fall back to Size. This matches the
+        // existing test expectations for the other CollectIncomeFor tests.
+        var capital = new HexCoord(0, 0);
+        Territory t = MakeTerritory(
+            Red, capital,
+            new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(2, 0));
+        var treasury = new Treasury();
+
+        treasury.CollectIncomeFor(RedPlayer, new[] { t });
+
+        Assert.Equal(3, treasury.GetGold(capital));
+    }
+
     // --- ReconcileAfterCapture -------------------------------------------
 
     [Fact]

@@ -255,7 +255,75 @@ public partial class HexMapView : Node2D, IHexMapView
                 visual.Position = center;
                 _unitsLayer?.AddChild(visual);
             }
+            else if (tile.Occupant is Tree)
+            {
+                Node2D visual = CreateTreeVisual();
+                visual.Position = center;
+                _unitsLayer?.AddChild(visual);
+            }
         }
+    }
+
+    private Node2D CreateTreeVisual()
+    {
+        // Stylized conifer: dark green triangle with a small brown trunk.
+        // Sized like the grave (~0.275 * HexSize) so it reads clearly
+        // against the tile and distinguishes from unit discs.
+        float r = HexSize * 0.3f;
+        var canopyVerts = new[]
+        {
+            new Vector2(0f, -r),
+            new Vector2(r * 0.85f, r * 0.4f),
+            new Vector2(-r * 0.85f, r * 0.4f),
+        };
+        var canopy = new Polygon2D
+        {
+            Color = new Color(0.16f, 0.48f, 0.18f, 1f),
+            Polygon = canopyVerts,
+        };
+
+        var outline = new Line2D
+        {
+            Points = new[]
+            {
+                canopyVerts[0], canopyVerts[1], canopyVerts[2], canopyVerts[0],
+            },
+            Width = 2f,
+            DefaultColor = new Color(0f, 0f, 0f, 1f),
+        };
+        canopy.AddChild(outline);
+
+        float tw = r * 0.18f;
+        float ttop = r * 0.4f;
+        float tbot = r * 0.75f;
+        var trunk = new Polygon2D
+        {
+            Color = new Color(0.36f, 0.22f, 0.1f, 1f),
+            Polygon = new[]
+            {
+                new Vector2(-tw, ttop),
+                new Vector2(tw, ttop),
+                new Vector2(tw, tbot),
+                new Vector2(-tw, tbot),
+            },
+        };
+        var trunkOutline = new Line2D
+        {
+            Points = new[]
+            {
+                new Vector2(-tw, ttop),
+                new Vector2(tw, ttop),
+                new Vector2(tw, tbot),
+                new Vector2(-tw, tbot),
+                new Vector2(-tw, ttop),
+            },
+            Width = 1.5f,
+            DefaultColor = new Color(0f, 0f, 0f, 1f),
+        };
+        trunk.AddChild(trunkOutline);
+        canopy.AddChild(trunk);
+
+        return canopy;
     }
 
     private Node2D CreateUnitVisual(Color interiorColor, UnitLevel level)

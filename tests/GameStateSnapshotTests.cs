@@ -41,6 +41,24 @@ public class GameStateSnapshotTests
     }
 
     [Fact]
+    public void Capture_PreservesTreeOccupants()
+    {
+        // Undo must be able to restore a tree that was on a tile —
+        // e.g., undoing a unit move that cleared a tree should put
+        // the tree back.
+        HexGrid grid = BuildTwoTileRedGrid();
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Tree();
+        var treasury = new Treasury();
+        var territories = TerritoriesFor(grid);
+
+        GameStateSnapshot snap = GameStateSnapshot.Capture(grid, treasury, territories);
+        grid.Get(new HexCoord(0, 0))!.Occupant = null;
+        snap.ApplyTo(grid, treasury);
+
+        Assert.IsType<Tree>(grid.Get(new HexCoord(0, 0))!.Occupant);
+    }
+
+    [Fact]
     public void Capture_PreservesGraveOccupants()
     {
         HexGrid grid = BuildTwoTileRedGrid();

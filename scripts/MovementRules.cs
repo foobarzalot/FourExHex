@@ -33,8 +33,10 @@ public static class MovementRules
         // potential capture targets.
         Dictionary<HexCoord, Territory> tileToTerritory = allTerritories.BuildTileIndex();
 
-        // 1. Repositions inside own territory: empty tiles or graves
-        //    (graves don't block placement — a unit buries them).
+        // 1. Repositions inside own territory: empty tiles, graves, or
+        //    trees. Graves don't block placement (a unit buries them);
+        //    trees don't block placement either but clearing a tree
+        //    consumes the unit's action (handled in ResolveArrival).
         // 2. Combine targets: own-territory tiles whose occupant is a
         //    Unit the attacker can merge with.
         foreach (HexCoord coord in own)
@@ -42,7 +44,7 @@ public static class MovementRules
             HexTile? tile = grid.Get(coord);
             if (tile == null) continue;
 
-            if (tile.Occupant == null || tile.Occupant is Grave)
+            if (tile.Occupant == null || tile.Occupant is Grave || tile.Occupant is Tree)
             {
                 results.Add(coord);
                 continue;
@@ -132,6 +134,9 @@ public static class MovementRules
     ///     there; action not consumed.
     ///   - Capture: destination is different color → transfer ownership,
     ///     drop the unit, mark it as moved.
+    /// Clearing a tree (same-color destination occupied by a Tree) also
+    /// consumes the unit's action — chopping wood is a turn's work.
+    /// Burying a grave does not.
     /// </summary>
     private static MoveResult ResolveArrival(
         Unit arrivingUnit,
@@ -156,17 +161,17 @@ public static class MovementRules
             return new MoveResult(wasCapture: false);
         }
 
-        // Case: normal reposition or capture.
+        // Case: normal reposition, tree clearing, or capture.
         bool wasCapture = dstTile.Color != attackerTerritory.Owner;
+        bool clearedTree = !wasCapture && dstTile.Occupant is Tree;
         if (wasCapture)
         {
             dstTile.Color = attackerTerritory.Owner;
         }
         dstTile.Occupant = arrivingUnit;
-        // Only captures (and, later, tree/grave destruction) consume the
-        // unit's single action per turn. Repositioning within own
-        // territory leaves the unit free to act again.
-        if (wasCapture)
+        // Captures and tree destruction consume the unit's single action
+        // per turn. Empty repositions and grave burial don't.
+        if (wasCapture || clearedTree)
         {
             arrivingUnit.HasMovedThisTurn = true;
         }

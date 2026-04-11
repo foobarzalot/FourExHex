@@ -26,11 +26,17 @@ public class Treasury
     public void Clear() => _gold.Clear();
 
     /// <summary>
-    /// Add <c>territory.Size</c> gold to each multi-hex territory owned by
+    /// Add income gold to each multi-hex territory owned by
     /// <paramref name="player"/>. Territories without capitals (singletons)
-    /// are silently skipped.
+    /// are silently skipped. When <paramref name="grid"/> is supplied,
+    /// income excludes tiles occupied by <see cref="Tree"/> occupants
+    /// (trees block income on their tile); when it is null, income is
+    /// <see cref="Territory.Size"/>.
     /// </summary>
-    public void CollectIncomeFor(Player player, IEnumerable<Territory> territories)
+    public void CollectIncomeFor(
+        Player player,
+        IEnumerable<Territory> territories,
+        HexGrid? grid = null)
     {
         foreach (Territory territory in territories)
         {
@@ -38,8 +44,11 @@ public class Treasury
             if (!territory.HasCapital) continue;
 
             HexCoord capital = territory.Capital!.Value;
+            int income = grid != null
+                ? TreeRules.CountNonTreeTiles(territory, grid)
+                : territory.Size;
             int current = GetGold(capital);
-            _gold[capital] = current + territory.Size;
+            _gold[capital] = current + income;
         }
     }
 
