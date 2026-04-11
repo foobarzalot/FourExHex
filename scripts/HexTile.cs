@@ -10,6 +10,9 @@ public class HexTile
     public Color Color { get; set; }
     public Polygon2D? Visual { get; set; }
 
+    /// <summary>The unit occupying this tile, if any.</summary>
+    public Unit? Unit { get; set; }
+
     public HexTile(HexCoord coord, Color color)
     {
         Coord = coord;

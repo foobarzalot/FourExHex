@@ -30,6 +30,8 @@
     <Compile Include="..\scripts\Player.cs" Link="scripts\Player.cs" />
     <Compile Include="..\scripts\TurnState.cs" Link="scripts\TurnState.cs" />
     <Compile Include="..\scripts\Treasury.cs" Link="scripts\Treasury.cs" />
+    <Compile Include="..\scripts\Unit.cs" Link="scripts\Unit.cs" />
+    <Compile Include="..\scripts\PurchaseRules.cs" Link="scripts\PurchaseRules.cs" />
   </ItemGroup>
 
 </Project>

@@ -6,12 +6,11 @@ public partial class HexMap : Node2D
 {
     /// <summary>
     /// Raised whenever the player left-clicks on the map. The argument is the
-    /// territory containing the clicked hex, or null if they clicked outside
-    /// the grid. HexMap does NOT apply any "whose turn is it" policy — it
-    /// just reports the raw click; callers decide whether to call
-    /// <see cref="SelectTerritory"/> in response.
+    /// tile they clicked, or null if the click was outside the grid. HexMap
+    /// does NOT apply any "whose turn is it" or "placement mode" policy —
+    /// it just reports the raw click; callers decide what to do with it.
     /// </summary>
-    public event Action<Territory?>? TileClicked;
+    public event Action<HexTile?>? TileClicked;
 
     /// <summary>
     /// Raised whenever the selection actually changes (via code or input).
@@ -55,6 +54,11 @@ public partial class HexMap : Node2D
     // outline drawn around the currently selected territory.
     private Node2D? _highlightLayer;
 
+    // Layer for unit sprites. Rendered above territory borders so units
+    // are visible against the hex fills.
+    private Node2D? _unitsLayer;
+    private readonly Dictionary<HexCoord, Node2D> _unitVisuals = new();
+
     // Null when nothing is selected.
     private Territory? _selected;
 
@@ -97,9 +101,77 @@ public partial class HexMap : Node2D
         DrawTerritoryBorders();
         DrawCapitals();
 
-        // Highlight layer is added last so it draws on top of tiles + borders.
+        // Units layer: above borders and capitals, below highlights.
+        _unitsLayer = new Node2D { Name = "UnitsLayer" };
+        AddChild(_unitsLayer);
+
+        // Highlight layer is added last so it draws on top of everything.
         _highlightLayer = new Node2D { Name = "HighlightLayer" };
         AddChild(_highlightLayer);
+    }
+
+    /// <summary>
+    /// Look up the territory containing <paramref name="coord"/>, or null if
+    /// the coord is outside the grid.
+    /// </summary>
+    public Territory? TerritoryAt(HexCoord coord) =>
+        _tileToTerritory.TryGetValue(coord, out Territory? t) ? t : null;
+
+    /// <summary>
+    /// Rebuild the unit visual for the tile at <paramref name="coord"/>.
+    /// Deletes any existing sprite and re-creates it from the tile's current
+    /// <see cref="HexTile.Unit"/>. Safe to call even if there's no unit.
+    /// </summary>
+    public void RefreshUnitVisual(HexCoord coord)
+    {
+        if (_unitVisuals.TryGetValue(coord, out Node2D? existing))
+        {
+            existing.QueueFree();
+            _unitVisuals.Remove(coord);
+        }
+
+        HexTile? tile = Grid.Get(coord);
+        if (tile?.Unit == null || _unitsLayer == null) return;
+
+        Vector2 center = FirstHexCenterOffset + coord.ToPixel(HexSize);
+        Node2D visual = CreateUnitVisual(tile.Unit);
+        visual.Position = center;
+        _unitsLayer.AddChild(visual);
+        _unitVisuals[coord] = visual;
+    }
+
+    private Node2D CreateUnitVisual(Unit unit)
+    {
+        // Peasant glyph: black filled circle with a white outline. Later
+        // levels can add pips or swap to a richer shape.
+        float radius = HexSize * 0.22f;
+        const int segments = 16;
+        var verts = new Vector2[segments];
+        for (int i = 0; i < segments; i++)
+        {
+            float angle = Mathf.Tau * i / segments;
+            verts[i] = new Vector2(radius * Mathf.Cos(angle), radius * Mathf.Sin(angle));
+        }
+
+        var body = new Polygon2D
+        {
+            Color = new Color(0.08f, 0.08f, 0.08f, 1f),
+            Polygon = verts,
+        };
+
+        var outlinePoints = new Vector2[segments + 1];
+        for (int i = 0; i < segments; i++) outlinePoints[i] = verts[i];
+        outlinePoints[segments] = verts[0];
+
+        var outline = new Line2D
+        {
+            Points = outlinePoints,
+            Width = 2f,
+            DefaultColor = new Color(1f, 1f, 1f, 1f),
+        };
+        body.AddChild(outline);
+
+        return body;
     }
 
     private void DrawCapitals()
@@ -173,8 +245,7 @@ public partial class HexMap : Node2D
             return;
         }
 
-        _tileToTerritory.TryGetValue(coord, out Territory? territory);
-        TileClicked?.Invoke(territory);
+        TileClicked?.Invoke(Grid.Get(coord));
     }
 
     /// <summary>
