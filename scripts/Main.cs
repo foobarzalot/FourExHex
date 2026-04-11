@@ -2,6 +2,12 @@ using System.Collections.Generic;
 using System.Linq;
 using Godot;
 
+/// <summary>
+/// Scene root + game controller. Owns the model (<see cref="GameState"/>)
+/// and session state (<see cref="SessionState"/>), wires the two views
+/// (<see cref="HexMapView"/>, <see cref="HudView"/>), handles input and
+/// button events, applies rules, mutates state, and refreshes the views.
+/// </summary>
 public partial class Main : Node2D
 {
     private static readonly (string Name, string Hex)[] PlayerConfig =
@@ -14,21 +20,10 @@ public partial class Main : Node2D
         ("Orange", "fb8c00"),
     };
 
-    private const float HudHeight = 60f;
-
     private HexMapView _map = null!;
+    private HudView _hud = null!;
     private GameState _state = null!;
     private SessionState _session = null!;
-
-    private Label _turnLabel = null!;
-    private Label _playerLabel = null!;
-    private Label _goldLabel = null!;
-    private Button _buyPeasantButton = null!;
-    private Button _undoLastButton = null!;
-    private Button _undoTurnButton = null!;
-    private Button _redoLastButton = null!;
-    private Button _redoAllButton = null!;
-    private Button _endTurnButton = null!;
 
     public override void _Ready()
     {
@@ -55,10 +50,17 @@ public partial class Main : Node2D
 
         Vector2 viewport = GetViewportRect().Size;
         float x = (viewport.X - _map.PixelSize.X) * 0.5f;
-        float y = HudHeight + (viewport.Y - HudHeight - _map.PixelSize.Y) * 0.5f;
+        float y = HudView.HudHeight + (viewport.Y - HudView.HudHeight - _map.PixelSize.Y) * 0.5f;
         _map.Position = new Vector2(x, y);
 
-        BuildHud();
+        _hud = new HudView();
+        _hud.BuyPeasantClicked += OnBuyPeasantPressed;
+        _hud.UndoLastClicked += OnUndoLastPressed;
+        _hud.UndoTurnClicked += OnUndoTurnPressed;
+        _hud.RedoLastClicked += OnRedoLastPressed;
+        _hud.RedoAllClicked += OnRedoAllPressed;
+        _hud.EndTurnClicked += OnEndTurnPressed;
+        AddChild(_hud);
 
         _map.TileClicked += OnTileClicked;
 
@@ -125,97 +127,8 @@ public partial class Main : Node2D
         return players;
     }
 
-    private void BuildHud()
-    {
-        var layer = new CanvasLayer();
-        AddChild(layer);
-
-        Vector2 viewport = GetViewportRect().Size;
-
-        var background = new ColorRect
-        {
-            Color = new Color(0f, 0f, 0f, 0.8f),
-            Position = Vector2.Zero,
-            Size = new Vector2(viewport.X, HudHeight),
-        };
-        layer.AddChild(background);
-
-        var leftHbox = new HBoxContainer
-        {
-            Position = new Vector2(16, 12),
-        };
-        leftHbox.AddThemeConstantOverride("separation", 24);
-        layer.AddChild(leftHbox);
-
-        _turnLabel = new Label { Text = "Turn: 1" };
-        _turnLabel.AddThemeFontSizeOverride("font_size", 24);
-        leftHbox.AddChild(_turnLabel);
-
-        _playerLabel = new Label { Text = "Current: Red" };
-        _playerLabel.AddThemeFontSizeOverride("font_size", 24);
-        leftHbox.AddChild(_playerLabel);
-
-        _goldLabel = new Label { Text = "" };
-        _goldLabel.AddThemeFontSizeOverride("font_size", 24);
-        leftHbox.AddChild(_goldLabel);
-
-        _buyPeasantButton = new Button { Text = "Buy Peasant (10g)", Visible = false };
-        _buyPeasantButton.AddThemeFontSizeOverride("font_size", 20);
-        _buyPeasantButton.Pressed += OnBuyPeasantPressed;
-        leftHbox.AddChild(_buyPeasantButton);
-
-        // Right-anchored action row: Undo Turn / Undo Last / Redo Last /
-        // Redo All / End Turn. The HBoxContainer spans the HUD width with
-        // End-alignment so children pack to the right edge.
-        var rightHbox = new HBoxContainer
-        {
-            AnchorLeft = 0f,
-            AnchorRight = 1f,
-            AnchorTop = 0f,
-            AnchorBottom = 0f,
-            OffsetLeft = 0f,
-            OffsetRight = -16f,
-            OffsetTop = 12f,
-            OffsetBottom = 48f,
-            Alignment = BoxContainer.AlignmentMode.End,
-            // The container spans the full width but its children only fill
-            // the right side. Ignore mouse events on the container itself so
-            // it doesn't steal clicks destined for siblings underneath
-            // (e.g., the Buy Peasant button in leftHbox). Buttons have their
-            // own MouseFilter.Stop and still receive clicks normally.
-            MouseFilter = Control.MouseFilterEnum.Ignore,
-        };
-        rightHbox.AddThemeConstantOverride("separation", 8);
-        layer.AddChild(rightHbox);
-
-        _undoTurnButton = new Button { Text = "Undo Turn", Disabled = true };
-        _undoTurnButton.AddThemeFontSizeOverride("font_size", 18);
-        _undoTurnButton.Pressed += OnUndoTurnPressed;
-        rightHbox.AddChild(_undoTurnButton);
-
-        _undoLastButton = new Button { Text = "Undo Last", Disabled = true };
-        _undoLastButton.AddThemeFontSizeOverride("font_size", 18);
-        _undoLastButton.Pressed += OnUndoLastPressed;
-        rightHbox.AddChild(_undoLastButton);
-
-        _redoLastButton = new Button { Text = "Redo Last", Disabled = true };
-        _redoLastButton.AddThemeFontSizeOverride("font_size", 18);
-        _redoLastButton.Pressed += OnRedoLastPressed;
-        rightHbox.AddChild(_redoLastButton);
-
-        _redoAllButton = new Button { Text = "Redo All", Disabled = true };
-        _redoAllButton.AddThemeFontSizeOverride("font_size", 18);
-        _redoAllButton.Pressed += OnRedoAllPressed;
-        rightHbox.AddChild(_redoAllButton);
-
-        _endTurnButton = new Button { Text = "End Turn" };
-        _endTurnButton.AddThemeFontSizeOverride("font_size", 18);
-        _endTurnButton.Pressed += OnEndTurnPressed;
-        rightHbox.AddChild(_endTurnButton);
-    }
-
     private GameStateSnapshot CaptureCurrentSnapshot() =>
-        GameStateSnapshot.Capture(_map.Grid, _state.Treasury, _map.Territories);
+        GameStateSnapshot.Capture(_state.Grid, _state.Treasury, _state.Territories);
 
     private void OnTileClicked(HexTile? tile)
     {
@@ -271,15 +184,13 @@ public partial class Main : Node2D
 
     /// <summary>
     /// Update <see cref="SessionState.SelectedTerritory"/>, redraw the
-    /// view's highlight outline, and refresh the HUD fields that depend
-    /// on the selection. The view no longer owns selection state — the
-    /// controller is the single driver.
+    /// view's highlight outline, and refresh the HUD.
     /// </summary>
     private void SetSelection(Territory? territory)
     {
         _session.SelectedTerritory = territory;
         _map.ShowHighlight(territory);
-        RefreshSelectionUi();
+        RefreshHud();
     }
 
     /// <summary>
@@ -291,9 +202,9 @@ public partial class Main : Node2D
     private IEnumerable<HexCoord> CaptureTargetsOnly(Territory territory)
     {
         Color owner = territory.Owner;
-        foreach (HexCoord coord in MovementRules.ValidTargets(territory, _map.Grid, _map.Territories))
+        foreach (HexCoord coord in MovementRules.ValidTargets(territory, _state.Grid, _state.Territories))
         {
-            HexTile? tile = _map.Grid.Get(coord);
+            HexTile? tile = _state.Grid.Get(coord);
             if (tile != null && tile.Color != owner)
             {
                 yield return coord;
@@ -305,7 +216,7 @@ public partial class Main : Node2D
     {
         if (_session.SelectedTerritory == null) return false;
         var targets = MovementRules.ValidTargets(
-            _session.SelectedTerritory, _map.Grid, _map.Territories);
+            _session.SelectedTerritory, _state.Grid, _state.Territories);
         return targets.Contains(coord);
     }
 
@@ -318,7 +229,7 @@ public partial class Main : Node2D
         HexCoord capital = _session.SelectedTerritory.Capital!.Value;
         _state.Treasury.SetGold(capital, _state.Treasury.GetGold(capital) - PurchaseRules.PeasantCost);
         var unit = new Unit(_session.SelectedTerritory.Owner);
-        MoveResult result = MovementRules.PlaceNew(unit, destination, _map.Grid, _session.SelectedTerritory);
+        MoveResult result = MovementRules.PlaceNew(unit, destination, _state.Grid, _session.SelectedTerritory);
 
         if (result.WasCapture)
         {
@@ -334,7 +245,7 @@ public partial class Main : Node2D
 
         _session.Undo.PushBefore(CaptureCurrentSnapshot());
 
-        MoveResult result = MovementRules.Move(source, destination, _map.Grid, _session.SelectedTerritory);
+        MoveResult result = MovementRules.Move(source, destination, _state.Grid, _session.SelectedTerritory);
 
         if (result.WasCapture)
         {
@@ -411,10 +322,6 @@ public partial class Main : Node2D
     {
         _session.ClearPendingAction();
         _map.ShowMoveTargets(System.Array.Empty<HexCoord>());
-        if (_buyPeasantButton != null)
-        {
-            _buyPeasantButton.Text = "Buy Peasant (10g)";
-        }
     }
 
     private void OnBuyPeasantPressed()
@@ -424,8 +331,8 @@ public partial class Main : Node2D
 
         _session.Mode = SessionState.ActionMode.BuyingPeasant;
         _session.MoveSource = null;
-        _buyPeasantButton.Text = "Click a tile...";
         _map.ShowMoveTargets(CaptureTargetsOnly(_session.SelectedTerritory));
+        RefreshHud();
     }
 
     private void OnEndTurnPressed()
@@ -441,57 +348,22 @@ public partial class Main : Node2D
         RefreshHud();
     }
 
-    private void RefreshSelectionUi()
-    {
-        if (_session.SelectedTerritory == null || !_session.SelectedTerritory.HasCapital)
-        {
-            _goldLabel.Text = "";
-            _buyPeasantButton.Visible = false;
-            _buyPeasantButton.Text = "Buy Peasant (10g)";
-            return;
-        }
-
-        int gold = _state.Treasury.GetGold(_session.SelectedTerritory.Capital!.Value);
-        _goldLabel.Text = $"Gold: {gold} (size {_session.SelectedTerritory.Size})";
-
-        _buyPeasantButton.Visible = PurchaseRules.CanAffordPeasant(_session.SelectedTerritory, _state.Treasury);
-        if (_session.Mode != SessionState.ActionMode.BuyingPeasant)
-        {
-            _buyPeasantButton.Text = "Buy Peasant (10g)";
-        }
-    }
-
     private void RefreshHud()
     {
-        _turnLabel.Text = $"Turn: {_state.Turns.TurnNumber}";
-        Player current = _state.Turns.CurrentPlayer;
-        _playerLabel.Text = $"Current: {current.Name}";
-        _playerLabel.AddThemeColorOverride("font_color", current.Color);
-        RefreshSelectionUi();
-
-        bool canUndo = _session.Undo.CanUndo;
-        bool canRedo = _session.Undo.CanRedo;
-        _undoLastButton.Disabled = !canUndo;
-        _undoTurnButton.Disabled = !canUndo;
-        _redoLastButton.Disabled = !canRedo;
-        _redoAllButton.Disabled = !canRedo;
+        bool hasActionable = HasAnyActionableForCurrentPlayer();
+        _hud.Refresh(_state, _session, hasActionable);
 
         // Recolor occupant icons so capitals/units with a CTA (affordable
         // buy, move available) show a white interior and non-actionable
         // ones show a solid black interior.
-        _map.RefreshOccupantVisuals(current.Color, _state.Treasury);
-
-        // When the current player has nothing left to do, the End Turn
-        // button becomes the CTA and gets the white-fill treatment.
-        bool anyActionRemaining = HasAnyActionableForCurrentPlayer();
-        SetEndTurnCta(!anyActionRemaining);
+        _map.RefreshOccupantVisuals(_state.Turns.CurrentPlayer.Color, _state.Treasury);
     }
 
     private bool HasAnyActionableForCurrentPlayer()
     {
         Color color = _state.Turns.CurrentPlayer.Color;
 
-        foreach (HexTile tile in _map.Grid.Tiles)
+        foreach (HexTile tile in _state.Grid.Tiles)
         {
             if (tile.Occupant is Unit unit
                 && unit.Owner == color
@@ -501,7 +373,7 @@ public partial class Main : Node2D
             }
         }
 
-        foreach (Territory territory in _map.Territories)
+        foreach (Territory territory in _state.Territories)
         {
             if (territory.Owner != color) continue;
             if (PurchaseRules.CanAffordPeasant(territory, _state.Treasury))
@@ -511,44 +383,5 @@ public partial class Main : Node2D
         }
 
         return false;
-    }
-
-    private void SetEndTurnCta(bool isCta)
-    {
-        if (isCta)
-        {
-            var style = new StyleBoxFlat
-            {
-                BgColor = new Color(1f, 1f, 1f, 1f),
-                BorderColor = new Color(0f, 0f, 0f, 1f),
-                BorderWidthLeft = 2,
-                BorderWidthRight = 2,
-                BorderWidthTop = 2,
-                BorderWidthBottom = 2,
-                CornerRadiusTopLeft = 4,
-                CornerRadiusTopRight = 4,
-                CornerRadiusBottomLeft = 4,
-                CornerRadiusBottomRight = 4,
-                ContentMarginLeft = 12,
-                ContentMarginRight = 12,
-                ContentMarginTop = 6,
-                ContentMarginBottom = 6,
-            };
-            _endTurnButton.AddThemeStyleboxOverride("normal", style);
-            _endTurnButton.AddThemeStyleboxOverride("hover", style);
-            _endTurnButton.AddThemeStyleboxOverride("pressed", style);
-            _endTurnButton.AddThemeColorOverride("font_color", new Color(0f, 0f, 0f));
-            _endTurnButton.AddThemeColorOverride("font_hover_color", new Color(0f, 0f, 0f));
-            _endTurnButton.AddThemeColorOverride("font_pressed_color", new Color(0f, 0f, 0f));
-        }
-        else
-        {
-            _endTurnButton.RemoveThemeStyleboxOverride("normal");
-            _endTurnButton.RemoveThemeStyleboxOverride("hover");
-            _endTurnButton.RemoveThemeStyleboxOverride("pressed");
-            _endTurnButton.RemoveThemeColorOverride("font_color");
-            _endTurnButton.RemoveThemeColorOverride("font_hover_color");
-            _endTurnButton.RemoveThemeColorOverride("font_pressed_color");
-        }
     }
 }
