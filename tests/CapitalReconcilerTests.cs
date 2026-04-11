@@ -132,6 +132,64 @@ public class CapitalReconcilerTests
     }
 
     [Fact]
+    public void Reconcile_Merge_SecondCandidateLarger_ReplacesWinner()
+    {
+        // Old A (size 2, first in list) has capital (5, 5).
+        // Old B (size 5, second in list) has capital (0, 0).
+        // The loop starts winner = (5, 5) and must replace it with (0, 0)
+        // when it sees the bigger size on the second iteration. Exercises
+        // the "candidate size > winner size → replace" branch.
+        HexGrid grid = BuildGrid(
+            new HexCoord(5, 5), new HexCoord(6, 5),
+            new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(2, 0),
+            new HexCoord(3, 0), new HexCoord(4, 0));
+        grid.Get(new HexCoord(5, 5))!.Occupant = new Capital();
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Capital();
+
+        var old = new[]
+        {
+            T(new HexCoord(5, 5), new HexCoord(5, 5), new HexCoord(6, 5)),
+            T(new HexCoord(0, 0),
+                new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(2, 0),
+                new HexCoord(3, 0), new HexCoord(4, 0)),
+        };
+        var raw = new[] { T(null,
+            new HexCoord(5, 5), new HexCoord(6, 5),
+            new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(2, 0),
+            new HexCoord(3, 0), new HexCoord(4, 0)) };
+
+        var result = CapitalReconciler.Reconcile(raw, old, grid);
+
+        Assert.Equal(new HexCoord(0, 0), result[0].Capital);
+    }
+
+    [Fact]
+    public void Reconcile_Merge_EqualSize_TiebreaksOnLexMin()
+    {
+        // Two old territories of equal size (3 each). The loop should use
+        // the lex-min tiebreaker to pick (0, 0) over (5, 5). Exercises the
+        // "equal size AND candidate < winner → replace" branch.
+        HexGrid grid = BuildGrid(
+            new HexCoord(5, 5), new HexCoord(6, 5), new HexCoord(7, 5),
+            new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(2, 0));
+        grid.Get(new HexCoord(5, 5))!.Occupant = new Capital();
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Capital();
+
+        var old = new[]
+        {
+            T(new HexCoord(5, 5), new HexCoord(5, 5), new HexCoord(6, 5), new HexCoord(7, 5)),
+            T(new HexCoord(0, 0), new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(2, 0)),
+        };
+        var raw = new[] { T(null,
+            new HexCoord(5, 5), new HexCoord(6, 5), new HexCoord(7, 5),
+            new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(2, 0)) };
+
+        var result = CapitalReconciler.Reconcile(raw, old, grid);
+
+        Assert.Equal(new HexCoord(0, 0), result[0].Capital);
+    }
+
+    [Fact]
     public void Reconcile_Merge_OneOldHasCapitalOtherIsSingleton_KeepsCapitalized()
     {
         // Old A (size 2) with capital (5,0). Old B is a singleton (0,0), no capital.

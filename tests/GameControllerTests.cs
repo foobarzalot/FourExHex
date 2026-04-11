@@ -300,6 +300,88 @@ public class GameControllerTests
     }
 
     [Fact]
+    public void Click_InvalidTargetDuringBuyingMode_CancelsAndFallsThrough()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        g.Hud.ClickBuyPeasant();
+        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+
+        // (3, 0) is Blue, not adjacent to Red's territory, so not a valid
+        // target. The buy should cancel, then the click falls through to
+        // the normal handler which sees an enemy tile and clears selection.
+        g.Map.SimulateClick(g.Tile(3, 0));
+
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+        Assert.Null(g.Session.SelectedTerritory);
+    }
+
+    [Fact]
+    public void Click_InvalidTargetDuringMovingMode_CancelsAndFallsThrough()
+    {
+        var g = new TestGame();
+        var unit = new Unit(g.Red.Color);
+        g.Tile(1, 1).Occupant = unit;
+        g.Map.SimulateClick(g.Tile(1, 1));
+        Assert.Equal(SessionState.ActionMode.MovingUnit, g.Session.Mode);
+
+        // Click a non-adjacent Blue tile — invalid move target.
+        g.Map.SimulateClick(g.Tile(4, 0));
+
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+    }
+
+    [Fact]
+    public void BuyPeasant_OntoCapturableEnemyTile_CapturesImmediately()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        g.Hud.ClickBuyPeasant();
+
+        // (2, 1) is Blue, not its capital, adjacent to Red's (1, 1).
+        // Capturable by a new peasant.
+        g.Map.SimulateClick(g.Tile(2, 1));
+
+        Assert.Equal(g.Red.Color, g.Tile(2, 1).Color);
+        Assert.NotNull(g.Tile(2, 1).Unit);
+        Assert.True(g.Tile(2, 1).Unit!.HasMovedThisTurn);
+        Assert.True(g.Map.RebuildCount >= 1);
+    }
+
+    [Fact]
+    public void UndoTurn_AfterBuy_RestoresToStartOfTurn()
+    {
+        var g = new TestGame();
+        HexCoord redCapital = g.RedTerritory.Capital!.Value;
+        int goldBefore = g.State.Treasury.GetGold(redCapital);
+
+        g.Map.SimulateClick(g.Tile(0, 1));
+        g.Hud.ClickBuyPeasant();
+        g.Map.SimulateClick(g.Tile(1, 1));
+        Assert.NotNull(g.Tile(1, 1).Unit);
+
+        g.Hud.ClickUndoTurn();
+
+        Assert.Null(g.Tile(1, 1).Unit);
+        Assert.Equal(goldBefore, g.State.Treasury.GetGold(redCapital));
+    }
+
+    [Fact]
+    public void RedoAll_AfterUndoTurn_RestoresAllActions()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        g.Hud.ClickBuyPeasant();
+        g.Map.SimulateClick(g.Tile(1, 1));
+        g.Hud.ClickUndoTurn();
+        Assert.Null(g.Tile(1, 1).Unit);
+
+        g.Hud.ClickRedoAll();
+
+        Assert.NotNull(g.Tile(1, 1).Unit);
+    }
+
+    [Fact]
     public void RefreshViews_ReportsNoActionable_WhenCapitalCantAffordAndNoUnits()
     {
         var g = new TestGame();

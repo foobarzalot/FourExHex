@@ -8,6 +8,9 @@ bin/
 obj/
 *.user
 
+# Test output / coverage
+TestResults/
+
 # System files
 .DS_Store
 Thumbs.db
