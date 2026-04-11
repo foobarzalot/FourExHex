@@ -16,11 +16,9 @@ public partial class Main : Node2D
 
     private const float HudHeight = 60f;
 
-    private enum ActionMode { None, BuyingPeasant, MovingUnit }
-
     private HexMap _map = null!;
     private GameState _state = null!;
-    private UndoStack _undo = null!;
+    private SessionState _session = null!;
 
     private Label _turnLabel = null!;
     private Label _playerLabel = null!;
@@ -31,10 +29,6 @@ public partial class Main : Node2D
     private Button _redoLastButton = null!;
     private Button _redoAllButton = null!;
     private Button _endTurnButton = null!;
-
-    private Territory? _selected;
-    private ActionMode _mode = ActionMode.None;
-    private HexCoord? _moveSource;
 
     public override void _Ready()
     {
@@ -53,7 +47,7 @@ public partial class Main : Node2D
             raw, new List<Territory>(), grid);
 
         _state = new GameState(grid, territories, players, turnState, treasury);
-        _undo = new UndoStack();
+        _session = new SessionState();
 
         // --- View initialization -----------------------------------------
         _map.Init(_state);
@@ -212,7 +206,7 @@ public partial class Main : Node2D
     private void OnTileClicked(HexTile? tile)
     {
         // Handle any pending action mode first.
-        if (_mode == ActionMode.BuyingPeasant && tile != null && _selected != null)
+        if (_session.Mode == SessionState.ActionMode.BuyingPeasant && tile != null && _session.SelectedTerritory != null)
         {
             if (IsValidMoveOrPlacementTarget(tile.Coord))
             {
@@ -223,11 +217,11 @@ public partial class Main : Node2D
             CancelPendingAction();
             // Fall through to treat this as a fresh click.
         }
-        else if (_mode == ActionMode.MovingUnit && tile != null && _selected != null && _moveSource.HasValue)
+        else if (_session.Mode == SessionState.ActionMode.MovingUnit && tile != null && _session.SelectedTerritory != null && _session.MoveSource.HasValue)
         {
             if (IsValidMoveOrPlacementTarget(tile.Coord))
             {
-                ExecuteMove(_moveSource.Value, tile.Coord);
+                ExecuteMove(_session.MoveSource.Value, tile.Coord);
                 return;
             }
             CancelPendingAction();
@@ -255,8 +249,8 @@ public partial class Main : Node2D
             && tile.Unit.Owner == _state.Turns.CurrentPlayer.Color
             && !tile.Unit.HasMovedThisTurn)
         {
-            _mode = ActionMode.MovingUnit;
-            _moveSource = tile.Coord;
+            _session.Mode = SessionState.ActionMode.MovingUnit;
+            _session.MoveSource = tile.Coord;
             _map.ShowMoveTargets(CaptureTargetsOnly(territory));
         }
     }
@@ -282,22 +276,22 @@ public partial class Main : Node2D
 
     private bool IsValidMoveOrPlacementTarget(HexCoord coord)
     {
-        if (_selected == null) return false;
+        if (_session.SelectedTerritory == null) return false;
         var targets = MovementRules.ValidTargets(
-            _selected, _map.Grid, _map.Territories);
+            _session.SelectedTerritory, _map.Grid, _map.Territories);
         return targets.Contains(coord);
     }
 
     private void ExecuteBuyAndPlace(HexCoord destination)
     {
-        if (_selected == null) return;
+        if (_session.SelectedTerritory == null) return;
 
-        _undo.PushBefore(CaptureCurrentSnapshot());
+        _session.Undo.PushBefore(CaptureCurrentSnapshot());
 
-        HexCoord capital = _selected.Capital!.Value;
+        HexCoord capital = _session.SelectedTerritory.Capital!.Value;
         _state.Treasury.SetGold(capital, _state.Treasury.GetGold(capital) - PurchaseRules.PeasantCost);
-        var unit = new Unit(_selected.Owner);
-        MoveResult result = MovementRules.PlaceNew(unit, destination, _map.Grid, _selected);
+        var unit = new Unit(_session.SelectedTerritory.Owner);
+        MoveResult result = MovementRules.PlaceNew(unit, destination, _map.Grid, _session.SelectedTerritory);
 
         if (result.WasCapture)
         {
@@ -309,11 +303,11 @@ public partial class Main : Node2D
 
     private void ExecuteMove(HexCoord source, HexCoord destination)
     {
-        if (_selected == null) return;
+        if (_session.SelectedTerritory == null) return;
 
-        _undo.PushBefore(CaptureCurrentSnapshot());
+        _session.Undo.PushBefore(CaptureCurrentSnapshot());
 
-        MoveResult result = MovementRules.Move(source, destination, _map.Grid, _selected);
+        MoveResult result = MovementRules.Move(source, destination, _map.Grid, _session.SelectedTerritory);
 
         if (result.WasCapture)
         {
@@ -325,8 +319,8 @@ public partial class Main : Node2D
 
     private void OnUndoLastPressed()
     {
-        if (!_undo.CanUndo) return;
-        GameStateSnapshot snap = _undo.UndoLast(CaptureCurrentSnapshot());
+        if (!_session.Undo.CanUndo) return;
+        GameStateSnapshot snap = _session.Undo.UndoLast(CaptureCurrentSnapshot());
         _map.RestoreFromSnapshot(snap, _state.Treasury);
         CancelPendingAction();
         RefreshHud();
@@ -334,8 +328,8 @@ public partial class Main : Node2D
 
     private void OnUndoTurnPressed()
     {
-        if (!_undo.CanUndo) return;
-        GameStateSnapshot snap = _undo.UndoTurn(CaptureCurrentSnapshot());
+        if (!_session.Undo.CanUndo) return;
+        GameStateSnapshot snap = _session.Undo.UndoTurn(CaptureCurrentSnapshot());
         _map.RestoreFromSnapshot(snap, _state.Treasury);
         CancelPendingAction();
         RefreshHud();
@@ -343,8 +337,8 @@ public partial class Main : Node2D
 
     private void OnRedoLastPressed()
     {
-        if (!_undo.CanRedo) return;
-        GameStateSnapshot snap = _undo.RedoLast(CaptureCurrentSnapshot());
+        if (!_session.Undo.CanRedo) return;
+        GameStateSnapshot snap = _session.Undo.RedoLast(CaptureCurrentSnapshot());
         _map.RestoreFromSnapshot(snap, _state.Treasury);
         CancelPendingAction();
         RefreshHud();
@@ -352,8 +346,8 @@ public partial class Main : Node2D
 
     private void OnRedoAllPressed()
     {
-        if (!_undo.CanRedo) return;
-        GameStateSnapshot snap = _undo.RedoAll(CaptureCurrentSnapshot());
+        if (!_session.Undo.CanRedo) return;
+        GameStateSnapshot snap = _session.Undo.RedoAll(CaptureCurrentSnapshot());
         _map.RestoreFromSnapshot(snap, _state.Treasury);
         CancelPendingAction();
         RefreshHud();
@@ -367,8 +361,7 @@ public partial class Main : Node2D
 
     private void FinishPendingAction(bool clearSelection = true)
     {
-        _mode = ActionMode.None;
-        _moveSource = null;
+        _session.ClearPendingAction();
         _map.ShowMoveTargets(System.Array.Empty<HexCoord>());
 
         // After a capture, the territory list is rebuilt so the old
@@ -384,8 +377,7 @@ public partial class Main : Node2D
 
     private void CancelPendingAction()
     {
-        _mode = ActionMode.None;
-        _moveSource = null;
+        _session.ClearPendingAction();
         _map.ShowMoveTargets(System.Array.Empty<HexCoord>());
         if (_buyPeasantButton != null)
         {
@@ -395,25 +387,25 @@ public partial class Main : Node2D
 
     private void OnSelectionChanged(Territory? territory)
     {
-        _selected = territory;
+        _session.SelectedTerritory = territory;
         RefreshSelectionUi();
     }
 
     private void OnBuyPeasantPressed()
     {
-        if (_selected == null) return;
-        if (!PurchaseRules.CanAffordPeasant(_selected, _state.Treasury)) return;
+        if (_session.SelectedTerritory == null) return;
+        if (!PurchaseRules.CanAffordPeasant(_session.SelectedTerritory, _state.Treasury)) return;
 
-        _mode = ActionMode.BuyingPeasant;
-        _moveSource = null;
+        _session.Mode = SessionState.ActionMode.BuyingPeasant;
+        _session.MoveSource = null;
         _buyPeasantButton.Text = "Click a tile...";
-        _map.ShowMoveTargets(CaptureTargetsOnly(_selected));
+        _map.ShowMoveTargets(CaptureTargetsOnly(_session.SelectedTerritory));
     }
 
     private void OnEndTurnPressed()
     {
         // Ending the turn commits everything; no further undo.
-        _undo.Clear();
+        _session.Undo.Clear();
 
         _state.Turns.EndTurn();
         _map.ResetMovementFor(_state.Turns.CurrentPlayer);
@@ -425,7 +417,7 @@ public partial class Main : Node2D
 
     private void RefreshSelectionUi()
     {
-        if (_selected == null || !_selected.HasCapital)
+        if (_session.SelectedTerritory == null || !_session.SelectedTerritory.HasCapital)
         {
             _goldLabel.Text = "";
             _buyPeasantButton.Visible = false;
@@ -433,11 +425,11 @@ public partial class Main : Node2D
             return;
         }
 
-        int gold = _state.Treasury.GetGold(_selected.Capital!.Value);
-        _goldLabel.Text = $"Gold: {gold} (size {_selected.Size})";
+        int gold = _state.Treasury.GetGold(_session.SelectedTerritory.Capital!.Value);
+        _goldLabel.Text = $"Gold: {gold} (size {_session.SelectedTerritory.Size})";
 
-        _buyPeasantButton.Visible = PurchaseRules.CanAffordPeasant(_selected, _state.Treasury);
-        if (_mode != ActionMode.BuyingPeasant)
+        _buyPeasantButton.Visible = PurchaseRules.CanAffordPeasant(_session.SelectedTerritory, _state.Treasury);
+        if (_session.Mode != SessionState.ActionMode.BuyingPeasant)
         {
             _buyPeasantButton.Text = "Buy Peasant (10g)";
         }
@@ -451,8 +443,8 @@ public partial class Main : Node2D
         _playerLabel.AddThemeColorOverride("font_color", current.Color);
         RefreshSelectionUi();
 
-        bool canUndo = _undo.CanUndo;
-        bool canRedo = _undo.CanRedo;
+        bool canUndo = _session.Undo.CanUndo;
+        bool canRedo = _session.Undo.CanRedo;
         _undoLastButton.Disabled = !canUndo;
         _undoTurnButton.Disabled = !canUndo;
         _redoLastButton.Disabled = !canRedo;
