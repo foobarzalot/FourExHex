@@ -18,18 +18,8 @@ public class TerritoryFinderTests
 
     // --- Helpers -----------------------------------------------------------
 
-    private static HexGrid BuildUniformGrid(int cols, int rows, Color color)
-    {
-        var grid = new HexGrid();
-        for (int r = 0; r < rows; r++)
-        {
-            for (int c = 0; c < cols; c++)
-            {
-                grid.Add(new HexTile(HexCoord.FromOffset(c, r), color));
-            }
-        }
-        return grid;
-    }
+    private static HexGrid BuildUniformGrid(int cols, int rows, Color color) =>
+        TestHelpers.BuildRectGrid(cols, rows, color);
 
     private static HexGrid BuildRandomColoredGrid(int cols, int rows, int seed)
     {

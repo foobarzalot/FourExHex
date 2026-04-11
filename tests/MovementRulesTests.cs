@@ -14,18 +14,8 @@ public class MovementRulesTests
     /// Build a grid where every tile in a rectangular shape exists, and all
     /// tiles default to a neutral color. Tests override specific tiles.
     /// </summary>
-    private static HexGrid BuildGrid(int cols, int rows, Color fillColor)
-    {
-        var grid = new HexGrid();
-        for (int r = 0; r < rows; r++)
-        {
-            for (int c = 0; c < cols; c++)
-            {
-                grid.Add(new HexTile(HexCoord.FromOffset(c, r), fillColor));
-            }
-        }
-        return grid;
-    }
+    private static HexGrid BuildGrid(int cols, int rows, Color fillColor) =>
+        TestHelpers.BuildRectGrid(cols, rows, fillColor);
 
     private static void SetTile(HexGrid grid, HexCoord coord, Color color)
     {

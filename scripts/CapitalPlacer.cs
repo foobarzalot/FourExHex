@@ -29,14 +29,14 @@ public static class CapitalPlacer
 
             if (tile.Occupant == null)
             {
-                if (!bestEmpty.HasValue || IsLessThan(c, bestEmpty.Value))
+                if (!bestEmpty.HasValue || c.CompareTo(bestEmpty.Value) < 0)
                 {
                     bestEmpty = c;
                 }
             }
             else if (tile.Occupant is Unit)
             {
-                if (!bestUnit.HasValue || IsLessThan(c, bestUnit.Value))
+                if (!bestUnit.HasValue || c.CompareTo(bestUnit.Value) < 0)
                 {
                     bestUnit = c;
                 }
@@ -47,7 +47,4 @@ public static class CapitalPlacer
 
         return bestEmpty ?? bestUnit;
     }
-
-    private static bool IsLessThan(HexCoord a, HexCoord b) =>
-        a.R < b.R || (a.R == b.R && a.Q < b.Q);
 }

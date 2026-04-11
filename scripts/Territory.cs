@@ -22,3 +22,25 @@ public class Territory
         Capital = capital;
     }
 }
+
+public static class TerritoryExtensions
+{
+    /// <summary>
+    /// Build a <c>coord -&gt; containing territory</c> lookup table from a
+    /// list of territories. Each coord maps to exactly one territory (the
+    /// partition is disjoint by construction).
+    /// </summary>
+    public static Dictionary<HexCoord, Territory> BuildTileIndex(
+        this IEnumerable<Territory> territories)
+    {
+        var index = new Dictionary<HexCoord, Territory>();
+        foreach (Territory territory in territories)
+        {
+            foreach (HexCoord coord in territory.Coords)
+            {
+                index[coord] = territory;
+            }
+        }
+        return index;
+    }
+}

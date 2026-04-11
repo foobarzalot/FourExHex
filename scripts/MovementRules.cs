@@ -28,14 +28,7 @@ public static class MovementRules
 
         // tile -> territory lookup, for computing radiated defense on
         // potential capture targets.
-        var tileToTerritory = new Dictionary<HexCoord, Territory>();
-        foreach (Territory t in allTerritories)
-        {
-            foreach (HexCoord c in t.Coords)
-            {
-                tileToTerritory[c] = t;
-            }
-        }
+        Dictionary<HexCoord, Territory> tileToTerritory = allTerritories.BuildTileIndex();
 
         // 1. Repositions inside the own territory: any empty tile. (An empty
         //    tile means Occupant == null, which excludes capitals and units

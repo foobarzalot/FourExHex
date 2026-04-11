@@ -6,7 +6,7 @@ using Godot;
 /// Axial coordinate for a pointy-top hex. Q runs roughly east, R runs roughly
 /// south-east. The six neighbors live at Q±1, R±1, and (Q+1,R-1)/(Q-1,R+1).
 /// </summary>
-public readonly struct HexCoord : IEquatable<HexCoord>
+public readonly struct HexCoord : IEquatable<HexCoord>, IComparable<HexCoord>
 {
     public int Q { get; }
     public int R { get; }
@@ -119,6 +119,17 @@ public readonly struct HexCoord : IEquatable<HexCoord>
     public override bool Equals(object? obj) => obj is HexCoord h && Equals(h);
     public override int GetHashCode() => HashCode.Combine(Q, R);
     public override string ToString() => $"({Q},{R})";
+
+    /// <summary>
+    /// Lex-min ordering on (R, Q) — row-major, so "top-left" comes first.
+    /// Used as a deterministic tiebreaker in capital placement and merge
+    /// reconciliation.
+    /// </summary>
+    public int CompareTo(HexCoord other)
+    {
+        int rCompare = R.CompareTo(other.R);
+        return rCompare != 0 ? rCompare : Q.CompareTo(other.Q);
+    }
 
     public static bool operator ==(HexCoord a, HexCoord b) => a.Equals(b);
     public static bool operator !=(HexCoord a, HexCoord b) => !a.Equals(b);

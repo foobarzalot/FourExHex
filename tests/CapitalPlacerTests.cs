@@ -8,15 +8,8 @@ public class CapitalPlacerTests
 {
     private static readonly Color Red = new Color(1f, 0f, 0f);
 
-    private static HexGrid BuildGrid(params HexCoord[] coords)
-    {
-        var grid = new HexGrid();
-        foreach (HexCoord c in coords)
-        {
-            grid.Add(new HexTile(c, Red));
-        }
-        return grid;
-    }
+    private static HexGrid BuildGrid(params HexCoord[] coords) =>
+        TestHelpers.BuildSpotGrid(Red, coords);
 
     [Fact]
     public void Choose_SingletonCoords_ReturnsNull()

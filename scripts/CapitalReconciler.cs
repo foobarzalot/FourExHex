@@ -79,7 +79,7 @@ public static class CapitalReconciler
                         winner = candidate;
                     }
                     else if (oldCapitalSize[candidate] == oldCapitalSize[winner]
-                             && IsLessThan(candidate, winner))
+                             && candidate.CompareTo(winner) < 0)
                     {
                         winner = candidate;
                     }
@@ -106,7 +106,4 @@ public static class CapitalReconciler
 
         return result;
     }
-
-    private static bool IsLessThan(HexCoord a, HexCoord b) =>
-        a.R < b.R || (a.R == b.R && a.Q < b.Q);
 }

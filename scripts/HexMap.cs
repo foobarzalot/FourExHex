@@ -361,12 +361,9 @@ public partial class HexMap : Node2D
     private void RebuildTileToTerritoryIndex()
     {
         _tileToTerritory.Clear();
-        foreach (Territory territory in Territories)
+        foreach (KeyValuePair<HexCoord, Territory> kvp in Territories.BuildTileIndex())
         {
-            foreach (HexCoord coord in territory.Coords)
-            {
-                _tileToTerritory[coord] = territory;
-            }
+            _tileToTerritory[kvp.Key] = kvp.Value;
         }
     }
 
