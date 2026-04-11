@@ -2,21 +2,23 @@ using System;
 using System.Collections.Generic;
 using Godot;
 
-public partial class HexMap : Node2D
+/// <summary>
+/// Pure rendering + input view over a <see cref="GameState"/>. Owns no
+/// game data of its own — all grid/territory state lives in the injected
+/// GameState. Responsibilities: draw tile fills, territory borders,
+/// capitals, units, move-target rings, and selection highlights; emit
+/// <see cref="TileClicked"/> for raw left-clicks. Does NOT mutate the
+/// model — the controller owns all state changes.
+/// </summary>
+public partial class HexMapView : Node2D
 {
     /// <summary>
     /// Raised whenever the player left-clicks on the map. The argument is the
-    /// tile they clicked, or null if the click was outside the grid. HexMap
-    /// does NOT apply any "whose turn is it" or "placement mode" policy —
-    /// it just reports the raw click; callers decide what to do with it.
+    /// tile they clicked, or null if the click was outside the grid. The
+    /// view does not apply any "whose turn is it" or "placement mode"
+    /// policy — it just reports the raw click; the controller decides.
     /// </summary>
     public event Action<HexTile?>? TileClicked;
-
-    /// <summary>
-    /// Raised whenever the selection actually changes (via code or input).
-    /// The argument is the new selection, or null if selection was cleared.
-    /// </summary>
-    public event Action<Territory?>? SelectionChanged;
 
     [Export] public int Cols { get; set; } = 18;
     [Export] public int Rows { get; set; } = 13;
@@ -37,23 +39,23 @@ public partial class HexMap : Node2D
     //   edge 5 (upper-right) -> NE (dir 1)
     private static readonly int[] EdgeToNeighborDirection = { 0, 5, 4, 3, 2, 1 };
 
-    // Injected by Main before AddChild so _Ready has a populated grid
-    // and a fresh territory list to render.
+    // Injected by the controller before AddChild so _Ready has a populated
+    // grid and a fresh territory list to render.
     private GameState _state = null!;
 
-    /// <summary>Pass-through to the game state's grid — the single source of truth.</summary>
+    /// <summary>Pass-through to the game state's grid.</summary>
     public HexGrid Grid => _state.Grid;
 
     /// <summary>Pass-through to the game state's territory partition.</summary>
     public IReadOnlyList<Territory> Territories => _state.Territories;
 
     // Tile coord -> the territory that contains it. Rebuilt whenever
-    // Territories is recomputed. Used for O(1) selection lookups.
+    // Territories is recomputed. Used for O(1) TerritoryAt lookups.
     private readonly Dictionary<HexCoord, Territory> _tileToTerritory = new();
 
     /// <summary>
     /// Wire this view to a <see cref="GameState"/>. Must be called before
-    /// adding the HexMap to the scene tree so <see cref="_Ready"/> can
+    /// adding the HexMapView to the scene tree so <see cref="_Ready"/> can
     /// read the state to build visuals.
     /// </summary>
     public void Init(GameState state)
@@ -70,16 +72,18 @@ public partial class HexMap : Node2D
     private Node2D? _highlightLayer;
     private readonly Dictionary<HexCoord, Node2D> _unitVisuals = new();
 
-    // Null when nothing is selected.
-    private Territory? _selected;
+    // The territory currently drawn as highlighted. Pure view state — the
+    // single source of truth lives in SessionState, but we cache it here
+    // so RedrawHighlight doesn't need to take a parameter.
+    private Territory? _highlightedTerritory;
 
     /// <summary>Pixel bounding box of the rendered grid, for centering.</summary>
     public Vector2 PixelSize => new Vector2(
         (Cols + 0.5f) * Mathf.Sqrt(3f) * HexSize,
         (1.5f * Rows + 0.5f) * HexSize);
 
-    // The first hex (axial 0,0) is drawn at this offset from the HexMap origin
-    // so that the grid's visual bounding box starts at (0,0) in local space.
+    // The first hex (axial 0,0) is drawn at this offset from the view's
+    // origin so the grid's visual bounding box starts at (0,0) local.
     private Vector2 FirstHexCenterOffset => new Vector2(
         0.5f * Mathf.Sqrt(3f) * HexSize,
         HexSize);
@@ -97,7 +101,7 @@ public partial class HexMap : Node2D
             AddChild(tile.Visual);
         }
 
-        GD.Print($"HexMap: rendering {_state.Grid.Count} tiles across {_state.Territories.Count} territories.");
+        GD.Print($"HexMapView: rendering {_state.Grid.Count} tiles across {_state.Territories.Count} territories.");
 
         RebuildTileToTerritoryIndex();
 
@@ -113,70 +117,36 @@ public partial class HexMap : Node2D
         AddChild(_highlightLayer);
 
         DrawTerritoryBorders();
-        // Occupant visuals are drawn by Main via RefreshOccupantVisuals
-        // once it knows the current player and treasury. We don't draw
-        // them here because they'd all be non-CTA by default and Main
-        // would immediately overwrite them.
+        // Occupant visuals are drawn by the controller via
+        // RefreshOccupantVisuals once it knows the current player and
+        // treasury. We don't draw them here because they'd all be non-CTA
+        // by default and the controller would immediately overwrite them.
     }
 
     /// <summary>
-    /// Restore full game state from <paramref name="snapshot"/>, rebuild
-    /// visuals to match, and clear any selection. Used by undo.
+    /// Rebuild derived view state after the territory list has changed
+    /// (capture, undo, redo). Clears and redraws borders + resets the
+    /// move-target overlay. Callers should also refresh the highlight
+    /// (via <see cref="ShowHighlight"/>) and the occupant visuals (via
+    /// <see cref="RefreshOccupantVisuals"/>) as part of the same pass.
     /// </summary>
-    public void RestoreFromSnapshot(GameStateSnapshot snapshot, Treasury treasury)
+    public void RebuildAfterTerritoryChange()
     {
-        _state.Territories = snapshot.ApplyTo(_state.Grid, treasury);
         RebuildTileToTerritoryIndex();
-
         ClearLayer(_bordersLayer);
         ClearLayer(_targetsLayer);
         DrawTerritoryBorders();
-
-        // Occupant visuals will be redrawn by the caller via
-        // RefreshOccupantVisuals (it needs the current player color).
-        SelectTerritory(null);
     }
 
     /// <summary>
-    /// Re-run flood-fill after the grid's tile colors have changed (e.g.,
-    /// after a capture), rebuild the tile-to-territory index, and redraw
-    /// the borders/capitals. Returns the previous territory list so the
-    /// caller can reconcile the treasury.
+    /// Draw a bright perimeter around <paramref name="selected"/>, or
+    /// clear the highlight if null. The view does not own selection
+    /// state — the controller calls this on every change.
     /// </summary>
-    public IReadOnlyList<Territory> RecomputeTerritoriesAfterCapture()
+    public void ShowHighlight(Territory? selected)
     {
-        IReadOnlyList<Territory> previous = _state.Territories;
-        IReadOnlyList<Territory> raw = TerritoryFinder.FindAll(_state.Grid);
-        // Reconcile capitals: keep inherited, demote losers in merges,
-        // place fresh ones for split pieces without an old capital. May
-        // stomp units if a split piece has no empty tile.
-        _state.Territories = CapitalReconciler.Reconcile(raw, previous, _state.Grid);
-        RebuildTileToTerritoryIndex();
-
-        _selected = null;
-        ClearLayer(_highlightLayer);
-        ClearLayer(_targetsLayer);
-        ClearLayer(_bordersLayer);
-        DrawTerritoryBorders();
-
-        // Occupant visuals will be redrawn by the caller via
-        // RefreshOccupantVisuals (it needs the current player color).
-        return previous;
-    }
-
-    /// <summary>
-    /// Reset HasMovedThisTurn on every unit owned by <paramref name="player"/>.
-    /// Called at the start of that player's turn.
-    /// </summary>
-    public void ResetMovementFor(Player player)
-    {
-        foreach (HexTile tile in Grid.Tiles)
-        {
-            if (tile.Unit != null && tile.Unit.Owner == player.Color)
-            {
-                tile.Unit.HasMovedThisTurn = false;
-            }
-        }
+        _highlightedTerritory = selected;
+        RedrawHighlight();
     }
 
     /// <summary>
@@ -221,8 +191,8 @@ public partial class HexMap : Node2D
     }
 
     /// <summary>
-    /// Look up the territory containing <paramref name="coord"/>, or null if
-    /// the coord is outside the grid.
+    /// Look up the territory containing <paramref name="coord"/>, or null
+    /// if the coord is outside the grid.
     /// </summary>
     public Territory? TerritoryAt(HexCoord coord) =>
         _tileToTerritory.TryGetValue(coord, out Territory? t) ? t : null;
@@ -230,19 +200,16 @@ public partial class HexMap : Node2D
     /// <summary>
     /// Rebuild every occupant visual (units + capitals) using the CTA
     /// coloring rules: the current player's actionable things get a
-    /// player-color interior, everything else gets a black interior. All
-    /// shapes have a black border. Pass <paramref name="currentPlayerColor"/>
-    /// = null to render everything non-CTA (e.g., while no turn is active).
+    /// white interior, everything else gets black. All shapes have a
+    /// black border. Pass <paramref name="currentPlayerColor"/> = null to
+    /// render everything non-CTA (e.g., while no turn is active).
     /// </summary>
     public void RefreshOccupantVisuals(Color? currentPlayerColor, Treasury treasury)
     {
-        // Wipe the layers and rebuild from scratch. Cheap for 234 tiles.
         ClearLayer(_unitsLayer);
         ClearLayer(_capitalsLayer);
         _unitVisuals.Clear();
 
-        // Precompute the set of capital coords belonging to the current
-        // player that can afford a peasant, for the per-tile draw pass.
         var actionableCapitals = new HashSet<HexCoord>();
         if (currentPlayerColor.HasValue)
         {
@@ -287,8 +254,6 @@ public partial class HexMap : Node2D
 
     private Node2D CreateUnitVisual(Color interiorColor)
     {
-        // Filled circle with a black border. Interior is either the player
-        // color (CTA: "this unit can still move") or black (non-CTA).
         float radius = HexSize * 0.22f;
         const int segments = 16;
         var verts = new Vector2[segments];
@@ -321,8 +286,6 @@ public partial class HexMap : Node2D
 
     private Node2D CreateCapitalVisual(Color interiorColor)
     {
-        // Diamond glyph with a black border. Interior is either the player
-        // color (CTA: treasury has enough for a peasant) or black (non-CTA).
         float r = HexSize * 0.35f;
         var verts = new[]
         {
@@ -340,10 +303,7 @@ public partial class HexMap : Node2D
 
         var outline = new Line2D
         {
-            Points = new[]
-            {
-                verts[0], verts[1], verts[2], verts[3], verts[0],
-            },
+            Points = new[] { verts[0], verts[1], verts[2], verts[3], verts[0] },
             Width = 2f,
             DefaultColor = new Color(0f, 0f, 0f, 1f),
         };
@@ -378,56 +338,6 @@ public partial class HexMap : Node2D
         }
 
         TileClicked?.Invoke(Grid.Get(coord));
-    }
-
-    /// <summary>
-    /// Make <paramref name="territory"/> the currently selected territory
-    /// (or pass null to clear). Updates the highlight outline and raises
-    /// <see cref="SelectionChanged"/>.
-    /// </summary>
-    public void SelectTerritory(Territory? territory)
-    {
-        _selected = territory;
-        RedrawHighlight();
-        SelectionChanged?.Invoke(territory);
-    }
-
-    private void RedrawHighlight()
-    {
-        if (_highlightLayer == null) return;
-
-        foreach (Node child in _highlightLayer.GetChildren())
-        {
-            child.QueueFree();
-        }
-
-        if (_selected == null) return;
-
-        Vector2[] verts = HexVertices();
-        var inside = new HashSet<HexCoord>(_selected.Coords);
-
-        foreach (HexCoord coord in _selected.Coords)
-        {
-            Vector2 center = FirstHexCenterOffset + coord.ToPixel(HexSize);
-
-            for (int edge = 0; edge < 6; edge++)
-            {
-                int dir = EdgeToNeighborDirection[edge];
-                HexCoord neighborCoord = coord.Neighbor(dir);
-
-                // The perimeter of the selected territory is the edges where
-                // the neighbor is not itself in the selected territory.
-                if (inside.Contains(neighborCoord)) continue;
-
-                var line = new Line2D
-                {
-                    Points = new[] { center + verts[edge], center + verts[(edge + 1) % 6] },
-                    Width = 7f,
-                    DefaultColor = new Color(1f, 1f, 1f, 1f),
-                };
-                _highlightLayer.AddChild(line);
-            }
-        }
     }
 
     private Vector2[] HexVertices()
@@ -482,8 +392,6 @@ public partial class HexMap : Node2D
                 HexCoord neighborCoord = tile.Coord.Neighbor(dir);
                 HexTile? neighbor = Grid.Get(neighborCoord);
 
-                // Draw a thick border when the neighbor doesn't exist (grid
-                // edge) or belongs to a different color (territory edge).
                 bool isBoundary = neighbor == null || neighbor.Color != tile.Color;
                 if (!isBoundary) continue;
 
@@ -494,6 +402,39 @@ public partial class HexMap : Node2D
                     DefaultColor = new Color(0f, 0f, 0f, 1f),
                 };
                 _bordersLayer.AddChild(line);
+            }
+        }
+    }
+
+    private void RedrawHighlight()
+    {
+        if (_highlightLayer == null) return;
+
+        ClearLayer(_highlightLayer);
+
+        if (_highlightedTerritory == null) return;
+
+        Vector2[] verts = HexVertices();
+        var inside = new HashSet<HexCoord>(_highlightedTerritory.Coords);
+
+        foreach (HexCoord coord in _highlightedTerritory.Coords)
+        {
+            Vector2 center = FirstHexCenterOffset + coord.ToPixel(HexSize);
+
+            for (int edge = 0; edge < 6; edge++)
+            {
+                int dir = EdgeToNeighborDirection[edge];
+                HexCoord neighborCoord = coord.Neighbor(dir);
+
+                if (inside.Contains(neighborCoord)) continue;
+
+                var line = new Line2D
+                {
+                    Points = new[] { center + verts[edge], center + verts[(edge + 1) % 6] },
+                    Width = 7f,
+                    DefaultColor = new Color(1f, 1f, 1f, 1f),
+                };
+                _highlightLayer.AddChild(line);
             }
         }
     }

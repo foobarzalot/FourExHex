@@ -16,7 +16,7 @@ public partial class Main : Node2D
 
     private const float HudHeight = 60f;
 
-    private HexMap _map = null!;
+    private HexMapView _map = null!;
     private GameState _state = null!;
     private SessionState _session = null!;
 
@@ -34,7 +34,7 @@ public partial class Main : Node2D
     {
         // Build the view shell first so we can read its layout dimensions,
         // but don't add it to the tree until its GameState is prepared.
-        _map = new HexMap();
+        _map = new HexMapView();
 
         // --- Model construction ------------------------------------------
         List<Player> players = BuildPlayers();
@@ -61,7 +61,6 @@ public partial class Main : Node2D
         BuildHud();
 
         _map.TileClicked += OnTileClicked;
-        _map.SelectionChanged += OnSelectionChanged;
 
         SeedStartingGold();
         _state.Treasury.CollectIncomeFor(_state.Turns.CurrentPlayer, _state.Territories);
@@ -87,6 +86,21 @@ public partial class Main : Node2D
             }
         }
         return grid;
+    }
+
+    /// <summary>
+    /// Reset HasMovedThisTurn on every unit owned by <paramref name="player"/>.
+    /// Called at the start of that player's turn.
+    /// </summary>
+    private static void ResetMovementFor(Player player, HexGrid grid)
+    {
+        foreach (HexTile tile in grid.Tiles)
+        {
+            if (tile.Unit != null && tile.Unit.Owner == player.Color)
+            {
+                tile.Unit.HasMovedThisTurn = false;
+            }
+        }
     }
 
     private void SeedStartingGold()
@@ -230,20 +244,20 @@ public partial class Main : Node2D
         // Normal click handling.
         if (tile == null)
         {
-            _map.SelectTerritory(null);
+            SetSelection(null);
             return;
         }
 
         Territory? territory = _map.TerritoryAt(tile.Coord);
         if (territory == null || territory.Owner != _state.Turns.CurrentPlayer.Color)
         {
-            _map.SelectTerritory(null);
+            SetSelection(null);
             return;
         }
 
         // Select the territory; if the clicked tile has one of our own
         // unused units, also pick it up for movement.
-        _map.SelectTerritory(territory);
+        SetSelection(territory);
 
         if (tile.Unit != null
             && tile.Unit.Owner == _state.Turns.CurrentPlayer.Color
@@ -253,6 +267,19 @@ public partial class Main : Node2D
             _session.MoveSource = tile.Coord;
             _map.ShowMoveTargets(CaptureTargetsOnly(territory));
         }
+    }
+
+    /// <summary>
+    /// Update <see cref="SessionState.SelectedTerritory"/>, redraw the
+    /// view's highlight outline, and refresh the HUD fields that depend
+    /// on the selection. The view no longer owns selection state — the
+    /// controller is the single driver.
+    /// </summary>
+    private void SetSelection(Territory? territory)
+    {
+        _session.SelectedTerritory = territory;
+        _map.ShowHighlight(territory);
+        RefreshSelectionUi();
     }
 
     /// <summary>
@@ -320,43 +347,48 @@ public partial class Main : Node2D
     private void OnUndoLastPressed()
     {
         if (!_session.Undo.CanUndo) return;
-        GameStateSnapshot snap = _session.Undo.UndoLast(CaptureCurrentSnapshot());
-        _map.RestoreFromSnapshot(snap, _state.Treasury);
-        CancelPendingAction();
-        RefreshHud();
+        ApplySnapshot(_session.Undo.UndoLast(CaptureCurrentSnapshot()));
     }
 
     private void OnUndoTurnPressed()
     {
         if (!_session.Undo.CanUndo) return;
-        GameStateSnapshot snap = _session.Undo.UndoTurn(CaptureCurrentSnapshot());
-        _map.RestoreFromSnapshot(snap, _state.Treasury);
-        CancelPendingAction();
-        RefreshHud();
+        ApplySnapshot(_session.Undo.UndoTurn(CaptureCurrentSnapshot()));
     }
 
     private void OnRedoLastPressed()
     {
         if (!_session.Undo.CanRedo) return;
-        GameStateSnapshot snap = _session.Undo.RedoLast(CaptureCurrentSnapshot());
-        _map.RestoreFromSnapshot(snap, _state.Treasury);
-        CancelPendingAction();
-        RefreshHud();
+        ApplySnapshot(_session.Undo.RedoLast(CaptureCurrentSnapshot()));
     }
 
     private void OnRedoAllPressed()
     {
         if (!_session.Undo.CanRedo) return;
-        GameStateSnapshot snap = _session.Undo.RedoAll(CaptureCurrentSnapshot());
-        _map.RestoreFromSnapshot(snap, _state.Treasury);
+        ApplySnapshot(_session.Undo.RedoAll(CaptureCurrentSnapshot()));
+    }
+
+    /// <summary>
+    /// Restore game state from <paramref name="snapshot"/>, rebuild the
+    /// view's derived state, and refresh the HUD. Shared by both undo
+    /// and redo.
+    /// </summary>
+    private void ApplySnapshot(GameStateSnapshot snapshot)
+    {
+        _state.Territories = snapshot.ApplyTo(_state.Grid, _state.Treasury);
+        _map.RebuildAfterTerritoryChange();
+        SetSelection(null);
         CancelPendingAction();
         RefreshHud();
     }
 
     private void HandleCapture()
     {
-        IReadOnlyList<Territory> old = _map.RecomputeTerritoriesAfterCapture();
-        _state.Treasury.ReconcileAfterCapture(old, _map.Territories);
+        IReadOnlyList<Territory> previous = _state.Territories;
+        IReadOnlyList<Territory> raw = TerritoryFinder.FindAll(_state.Grid);
+        _state.Territories = CapitalReconciler.Reconcile(raw, previous, _state.Grid);
+        _state.Treasury.ReconcileAfterCapture(previous, _state.Territories);
+        _map.RebuildAfterTerritoryChange();
     }
 
     private void FinishPendingAction(bool clearSelection = true)
@@ -370,7 +402,7 @@ public partial class Main : Node2D
         // immediately see their territory + still-actionable units.
         if (clearSelection)
         {
-            _map.SelectTerritory(null);
+            SetSelection(null);
         }
         RefreshHud();
     }
@@ -383,12 +415,6 @@ public partial class Main : Node2D
         {
             _buyPeasantButton.Text = "Buy Peasant (10g)";
         }
-    }
-
-    private void OnSelectionChanged(Territory? territory)
-    {
-        _session.SelectedTerritory = territory;
-        RefreshSelectionUi();
     }
 
     private void OnBuyPeasantPressed()
@@ -408,10 +434,10 @@ public partial class Main : Node2D
         _session.Undo.Clear();
 
         _state.Turns.EndTurn();
-        _map.ResetMovementFor(_state.Turns.CurrentPlayer);
-        _state.Treasury.CollectIncomeFor(_state.Turns.CurrentPlayer, _map.Territories);
+        ResetMovementFor(_state.Turns.CurrentPlayer, _state.Grid);
+        _state.Treasury.CollectIncomeFor(_state.Turns.CurrentPlayer, _state.Territories);
         CancelPendingAction();
-        _map.SelectTerritory(null);
+        SetSelection(null);
         RefreshHud();
     }
 
