@@ -41,6 +41,25 @@ public class GameStateSnapshotTests
     }
 
     [Fact]
+    public void Capture_IncludesUnitLevel()
+    {
+        // Regression: the clone used to drop Unit.Level, turning higher-
+        // level units into peasants after undo.
+        HexGrid grid = BuildTwoTileRedGrid();
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Unit(Red, UnitLevel.Knight);
+        var treasury = new Treasury();
+        var territories = TerritoriesFor(grid);
+
+        GameStateSnapshot snap = GameStateSnapshot.Capture(grid, treasury, territories);
+        grid.Get(new HexCoord(0, 0))!.Occupant = null;
+        snap.ApplyTo(grid, treasury);
+
+        Unit? restored = grid.Get(new HexCoord(0, 0))!.Unit;
+        Assert.NotNull(restored);
+        Assert.Equal(UnitLevel.Knight, restored!.Level);
+    }
+
+    [Fact]
     public void Capture_IncludesUnitOwnerAndMovedFlag()
     {
         HexGrid grid = BuildTwoTileRedGrid();

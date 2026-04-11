@@ -83,7 +83,9 @@ public class GameController
         // Handle any pending action mode first.
         if (_session.Mode == SessionState.ActionMode.BuyingPeasant && tile != null && _session.SelectedTerritory != null)
         {
-            if (IsValidMoveOrPlacementTarget(tile.Coord))
+            // A fresh-bought unit is always a peasant (direct purchase
+            // of higher levels is not implemented).
+            if (IsValidTarget(UnitLevel.Peasant, tile.Coord))
             {
                 ExecuteBuyAndPlace(tile.Coord);
                 return;
@@ -94,7 +96,8 @@ public class GameController
         }
         else if (_session.Mode == SessionState.ActionMode.MovingUnit && tile != null && _session.SelectedTerritory != null && _session.MoveSource.HasValue)
         {
-            if (IsValidMoveOrPlacementTarget(tile.Coord))
+            Unit? sourceUnit = _state.Grid.Get(_session.MoveSource.Value)?.Unit;
+            if (sourceUnit != null && IsValidTarget(sourceUnit.Level, tile.Coord))
             {
                 ExecuteMove(_session.MoveSource.Value, tile.Coord);
                 return;
@@ -126,7 +129,7 @@ public class GameController
         {
             _session.Mode = SessionState.ActionMode.MovingUnit;
             _session.MoveSource = tile.Coord;
-            _map.ShowMoveTargets(CaptureTargetsOnly(territory));
+            _map.ShowMoveTargets(CaptureTargetsOnly(tile.Unit.Level, territory));
         }
     }
 
@@ -142,15 +145,17 @@ public class GameController
     }
 
     /// <summary>
-    /// Returns only the capture targets (adjacent enemy tiles we can take).
-    /// Repositions to empty own-territory tiles are legal but not
-    /// highlighted — they don't consume the unit's action, so the green
-    /// rings only advertise action-consuming moves.
+    /// Returns only the capture targets (adjacent enemy tiles we can take)
+    /// for a would-be attacker of level <paramref name="attackerLevel"/>.
+    /// Repositions to empty own-territory tiles and combines onto friendly
+    /// units are legal but not highlighted — they don't consume the
+    /// unit's action, so the green rings only advertise action-consuming
+    /// moves.
     /// </summary>
-    private IEnumerable<HexCoord> CaptureTargetsOnly(Territory territory)
+    private IEnumerable<HexCoord> CaptureTargetsOnly(UnitLevel attackerLevel, Territory territory)
     {
         Color owner = territory.Owner;
-        foreach (HexCoord coord in MovementRules.ValidTargets(territory, _state.Grid, _state.Territories))
+        foreach (HexCoord coord in MovementRules.ValidTargets(attackerLevel, territory, _state.Grid, _state.Territories))
         {
             HexTile? tile = _state.Grid.Get(coord);
             if (tile != null && tile.Color != owner)
@@ -160,11 +165,11 @@ public class GameController
         }
     }
 
-    private bool IsValidMoveOrPlacementTarget(HexCoord coord)
+    private bool IsValidTarget(UnitLevel attackerLevel, HexCoord coord)
     {
         if (_session.SelectedTerritory == null) return false;
         var targets = MovementRules.ValidTargets(
-            _session.SelectedTerritory, _state.Grid, _state.Territories);
+            attackerLevel, _session.SelectedTerritory, _state.Grid, _state.Territories);
         return targets.Contains(coord);
     }
 
@@ -284,7 +289,7 @@ public class GameController
 
         _session.Mode = SessionState.ActionMode.BuyingPeasant;
         _session.MoveSource = null;
-        _map.ShowMoveTargets(CaptureTargetsOnly(_session.SelectedTerritory));
+        _map.ShowMoveTargets(CaptureTargetsOnly(UnitLevel.Peasant, _session.SelectedTerritory));
         RefreshViews();
     }
 

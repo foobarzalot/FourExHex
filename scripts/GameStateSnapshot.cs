@@ -99,7 +99,7 @@ public class GameStateSnapshot
 
     private static HexOccupant? CloneOccupant(HexOccupant? occupant) => occupant switch
     {
-        Unit u => new Unit(u.Owner) { HasMovedThisTurn = u.HasMovedThisTurn },
+        Unit u => new Unit(u.Owner, u.Level) { HasMovedThisTurn = u.HasMovedThisTurn },
         Capital => new Capital(),
         null => null,
         _ => throw new InvalidOperationException($"Unknown occupant type: {occupant.GetType()}"),

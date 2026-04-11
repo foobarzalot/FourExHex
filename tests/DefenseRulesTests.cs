@@ -60,6 +60,28 @@ public class DefenseRulesTests
         Assert.Equal(1, DefenseRules.Defense(new HexCoord(0, 0), grid, territory));
     }
 
+    [Fact]
+    public void Defense_TileWithOwnSpearman_IsTwo()
+    {
+        (HexGrid grid, Territory territory) = BuildBlob(
+            Red, null,
+            new HexCoord(0, 0), new HexCoord(1, 0));
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Unit(Red, UnitLevel.Spearman);
+
+        Assert.Equal(2, DefenseRules.Defense(new HexCoord(0, 0), grid, territory));
+    }
+
+    [Fact]
+    public void Defense_TileWithOwnBaron_IsFour()
+    {
+        (HexGrid grid, Territory territory) = BuildBlob(
+            Red, null,
+            new HexCoord(0, 0), new HexCoord(1, 0));
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Unit(Red, UnitLevel.Baron);
+
+        Assert.Equal(4, DefenseRules.Defense(new HexCoord(0, 0), grid, territory));
+    }
+
     // --- Radiation -------------------------------------------------------
 
     [Fact]
@@ -84,6 +106,35 @@ public class DefenseRulesTests
         grid.Get(new HexCoord(0, 0))!.Occupant = new Unit(Red);
 
         Assert.Equal(1, DefenseRules.Defense(new HexCoord(1, 0), grid, territory));
+    }
+
+    [Fact]
+    public void Defense_TileAdjacentToOwnKnight_RadiatesThree()
+    {
+        (HexGrid grid, Territory territory) = BuildBlob(
+            Red, null,
+            new HexCoord(0, 0), new HexCoord(1, 0));
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Unit(Red, UnitLevel.Knight);
+
+        Assert.Equal(3, DefenseRules.Defense(new HexCoord(1, 0), grid, territory));
+    }
+
+    [Fact]
+    public void Defense_MaxOverPeasantAndBaron_IsFour()
+    {
+        // Three-tile territory where (1,0) is between a peasant-held and
+        // a baron-held tile. Defense of (1,0) = max(1, 4) = 4.
+        var coords = new[]
+        {
+            new HexCoord(0, 0),   // W neighbor
+            new HexCoord(1, 0),   // target
+            new HexCoord(2, -1),  // NE neighbor
+        };
+        (HexGrid grid, Territory territory) = BuildBlob(Red, null, coords);
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Unit(Red);
+        grid.Get(new HexCoord(2, -1))!.Occupant = new Unit(Red, UnitLevel.Baron);
+
+        Assert.Equal(4, DefenseRules.Defense(new HexCoord(1, 0), grid, territory));
     }
 
     [Fact]

@@ -236,7 +236,7 @@ public partial class HexMapView : Node2D, IHexMapView
                     && unit.Owner == currentPlayerColor.Value
                     && !unit.HasMovedThisTurn;
                 Color interior = cta ? CtaFill : NonCtaFill;
-                Node2D visual = CreateUnitVisual(interior);
+                Node2D visual = CreateUnitVisual(interior, unit.Level);
                 visual.Position = center;
                 _unitsLayer?.AddChild(visual);
                 _unitVisuals[tile.Coord] = visual;
@@ -252,7 +252,7 @@ public partial class HexMapView : Node2D, IHexMapView
         }
     }
 
-    private Node2D CreateUnitVisual(Color interiorColor)
+    private Node2D CreateUnitVisual(Color interiorColor, UnitLevel level)
     {
         float radius = HexSize * 0.22f;
         const int segments = 16;
@@ -281,7 +281,70 @@ public partial class HexMapView : Node2D, IHexMapView
         };
         body.AddChild(outline);
 
+        // Level decoration: spear for spearman, sword for knight, chevron
+        // for baron. Peasant has no decoration. Drawn in the opposite of
+        // the interior color so the icon shows on both CTA (white) and
+        // non-CTA (black) discs.
+        Color iconColor = new Color(1f - interiorColor.R, 1f - interiorColor.G, 1f - interiorColor.B);
+        Node? icon = level switch
+        {
+            UnitLevel.Spearman => CreateSpearIcon(radius, iconColor),
+            UnitLevel.Knight => CreateSwordIcon(radius, iconColor),
+            UnitLevel.Baron => CreateChevronIcon(radius, iconColor),
+            _ => null,
+        };
+        if (icon != null)
+        {
+            body.AddChild(icon);
+        }
+
         return body;
+    }
+
+    private static Node2D CreateSpearIcon(float r, Color color)
+    {
+        // Vertical shaft from top to bottom of the disc.
+        return new Line2D
+        {
+            Points = new[] { new Vector2(0f, -r * 0.7f), new Vector2(0f, r * 0.7f) },
+            Width = 3f,
+            DefaultColor = color,
+        };
+    }
+
+    private static Node2D CreateSwordIcon(float r, Color color)
+    {
+        // Vertical shaft + short horizontal crossguard near the top.
+        var node = new Node2D();
+        node.AddChild(new Line2D
+        {
+            Points = new[] { new Vector2(0f, -r * 0.7f), new Vector2(0f, r * 0.7f) },
+            Width = 3f,
+            DefaultColor = color,
+        });
+        node.AddChild(new Line2D
+        {
+            Points = new[] { new Vector2(-r * 0.5f, -r * 0.35f), new Vector2(r * 0.5f, -r * 0.35f) },
+            Width = 3f,
+            DefaultColor = color,
+        });
+        return node;
+    }
+
+    private static Node2D CreateChevronIcon(float r, Color color)
+    {
+        // Inverted V pointing up, like a rank stripe.
+        return new Line2D
+        {
+            Points = new[]
+            {
+                new Vector2(-r * 0.6f, r * 0.3f),
+                new Vector2(0f, -r * 0.5f),
+                new Vector2(r * 0.6f, r * 0.3f),
+            },
+            Width = 3f,
+            DefaultColor = color,
+        };
     }
 
     private Node2D CreateCapitalVisual(Color interiorColor)

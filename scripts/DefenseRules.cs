@@ -4,7 +4,7 @@ using System.Linq;
 /// Pure calculation of the defense value covering a hex. Defense is the
 /// max contribution over the tile's own occupant and the occupants of
 /// every adjacent tile in the same territory. Occupant contributions:
-///   - <see cref="Unit"/>     -> 1 (only peasants exist for now)
+///   - <see cref="Unit"/>     -> (int)unit.Level
 ///   - <see cref="Capital"/>  -> 1
 ///   - null / other occupants -> 0
 /// Both units and capitals radiate their contribution to adjacent
@@ -43,7 +43,7 @@ public static class DefenseRules
     /// </summary>
     public static int ContributionOf(HexOccupant? occupant) => occupant switch
     {
-        Unit => 1,
+        Unit u => (int)u.Level,
         Capital => 1,
         _ => 0,
     };
