@@ -32,6 +32,11 @@ public partial class HexMap : Node2D
         new Color("fb8c00"), // orange
     };
 
+    // Occupant icon fills: white = "this is actionable for you right now",
+    // black = "dormant / not actionable". The border is always black.
+    private static readonly Color CtaFill = new Color(1f, 1f, 1f, 1f);
+    private static readonly Color NonCtaFill = new Color(0f, 0f, 0f, 1f);
+
     // Edge i of a pointy-top hex (vertex i -> vertex (i+1)%6) is shared with
     // the neighbor in this HexCoord.Directions index:
     //   edge 0 (right)       -> E  (dir 0)
@@ -114,7 +119,10 @@ public partial class HexMap : Node2D
         AddChild(_highlightLayer);
 
         DrawTerritoryBorders();
-        DrawCapitals();
+        // Occupant visuals are drawn by Main via RefreshOccupantVisuals
+        // once it knows the current player and treasury. We don't draw
+        // them here because they'd all be non-CTA by default and Main
+        // would immediately overwrite them.
     }
 
     /// <summary>
@@ -127,18 +135,11 @@ public partial class HexMap : Node2D
         RebuildTileToTerritoryIndex();
 
         ClearLayer(_bordersLayer);
-        ClearLayer(_capitalsLayer);
         ClearLayer(_targetsLayer);
         DrawTerritoryBorders();
-        DrawCapitals();
 
-        // Every tile's unit visual may have changed (added, removed, or
-        // updated); refresh them all.
-        foreach (HexTile tile in Grid.Tiles)
-        {
-            RefreshUnitVisual(tile.Coord);
-        }
-
+        // Occupant visuals will be redrawn by the caller via
+        // RefreshOccupantVisuals (it needs the current player color).
         SelectTerritory(null);
     }
 
@@ -158,23 +159,14 @@ public partial class HexMap : Node2D
         Territories = CapitalReconciler.Reconcile(raw, previous, Grid);
         RebuildTileToTerritoryIndex();
 
-        // Selected territory may no longer exist as an object — caller must
-        // re-query via TerritoryAt if they want to keep the selection.
         _selected = null;
         ClearLayer(_highlightLayer);
         ClearLayer(_targetsLayer);
         ClearLayer(_bordersLayer);
-        ClearLayer(_capitalsLayer);
         DrawTerritoryBorders();
-        DrawCapitals();
 
-        // Capitals may have moved and/or stomped units; refresh every unit
-        // visual so nothing stale lingers.
-        foreach (HexTile tile in Grid.Tiles)
-        {
-            RefreshUnitVisual(tile.Coord);
-        }
-
+        // Occupant visuals will be redrawn by the caller via
+        // RefreshOccupantVisuals (it needs the current player color).
         return previous;
     }
 
@@ -242,32 +234,67 @@ public partial class HexMap : Node2D
         _tileToTerritory.TryGetValue(coord, out Territory? t) ? t : null;
 
     /// <summary>
-    /// Rebuild the unit visual for the tile at <paramref name="coord"/>.
-    /// Deletes any existing sprite and re-creates it from the tile's current
-    /// <see cref="HexTile.Unit"/>. Safe to call even if there's no unit.
+    /// Rebuild every occupant visual (units + capitals) using the CTA
+    /// coloring rules: the current player's actionable things get a
+    /// player-color interior, everything else gets a black interior. All
+    /// shapes have a black border. Pass <paramref name="currentPlayerColor"/>
+    /// = null to render everything non-CTA (e.g., while no turn is active).
     /// </summary>
-    public void RefreshUnitVisual(HexCoord coord)
+    public void RefreshOccupantVisuals(Color? currentPlayerColor, Treasury treasury)
     {
-        if (_unitVisuals.TryGetValue(coord, out Node2D? existing))
+        // Wipe the layers and rebuild from scratch. Cheap for 234 tiles.
+        ClearLayer(_unitsLayer);
+        ClearLayer(_capitalsLayer);
+        _unitVisuals.Clear();
+
+        // Precompute the set of capital coords belonging to the current
+        // player that can afford a peasant, for the per-tile draw pass.
+        var actionableCapitals = new HashSet<HexCoord>();
+        if (currentPlayerColor.HasValue)
         {
-            existing.QueueFree();
-            _unitVisuals.Remove(coord);
+            foreach (Territory territory in Territories)
+            {
+                if (territory.Owner != currentPlayerColor.Value) continue;
+                if (!territory.HasCapital) continue;
+                if (PurchaseRules.CanAffordPeasant(territory, treasury))
+                {
+                    actionableCapitals.Add(territory.Capital!.Value);
+                }
+            }
         }
 
-        HexTile? tile = Grid.Get(coord);
-        if (tile?.Unit == null || _unitsLayer == null) return;
+        foreach (HexTile tile in Grid.Tiles)
+        {
+            if (tile.Occupant == null) continue;
 
-        Vector2 center = FirstHexCenterOffset + coord.ToPixel(HexSize);
-        Node2D visual = CreateUnitVisual(tile.Unit);
-        visual.Position = center;
-        _unitsLayer.AddChild(visual);
-        _unitVisuals[coord] = visual;
+            Vector2 center = FirstHexCenterOffset + tile.Coord.ToPixel(HexSize);
+
+            if (tile.Occupant is Unit unit)
+            {
+                bool cta = currentPlayerColor.HasValue
+                    && unit.Owner == currentPlayerColor.Value
+                    && !unit.HasMovedThisTurn;
+                Color interior = cta ? CtaFill : NonCtaFill;
+                Node2D visual = CreateUnitVisual(interior);
+                visual.Position = center;
+                _unitsLayer?.AddChild(visual);
+                _unitVisuals[tile.Coord] = visual;
+            }
+            else if (tile.Occupant is Capital)
+            {
+                bool cta = actionableCapitals.Contains(tile.Coord);
+                Color interior = cta ? CtaFill : NonCtaFill;
+                Node2D visual = CreateCapitalVisual(interior);
+                visual.Position = center;
+                _capitalsLayer?.AddChild(visual);
+            }
+        }
     }
 
-    private Node2D CreateUnitVisual(Unit unit)
+    private Node2D CreateUnitVisual(Color interiorColor)
     {
-        // Peasant glyph: black filled circle with a white outline. Later
-        // levels can add pips or swap to a richer shape.
+        // Filled circle with a black border. Interior is either the player
+        // color (CTA: "this unit can still move") or black (non-CTA).
         float radius = HexSize * 0.22f;
         const int segments = 16;
         var verts = new Vector2[segments];
@@ -279,7 +306,7 @@ public partial class HexMap : Node2D
 
         var body = new Polygon2D
         {
-            Color = new Color(0.08f, 0.08f, 0.08f, 1f),
+            Color = interiorColor,
             Polygon = verts,
         };
 
@@ -291,56 +318,44 @@ public partial class HexMap : Node2D
         {
             Points = outlinePoints,
             Width = 2f,
-            DefaultColor = new Color(1f, 1f, 1f, 1f),
+            DefaultColor = new Color(0f, 0f, 0f, 1f),
         };
         body.AddChild(outline);
 
         return body;
     }
 
-    private void DrawCapitals()
+    private Node2D CreateCapitalVisual(Color interiorColor)
     {
-        if (_capitalsLayer == null) return;
-
-        foreach (Territory territory in Territories)
+        // Diamond glyph with a black border. Interior is either the player
+        // color (CTA: treasury has enough for a peasant) or black (non-CTA).
+        float r = HexSize * 0.35f;
+        var verts = new[]
         {
-            if (!territory.HasCapital) continue;
+            new Vector2(0f, -r),
+            new Vector2(r, 0f),
+            new Vector2(0f, r),
+            new Vector2(-r, 0f),
+        };
 
-            Vector2 center = FirstHexCenterOffset + territory.Capital!.Value.ToPixel(HexSize);
+        var diamond = new Polygon2D
+        {
+            Color = interiorColor,
+            Polygon = verts,
+        };
 
-            // Simple glyph: a white outlined diamond (rotated square) inside
-            // the hex, sized to about 1/3 of the hex radius.
-            float r = HexSize * 0.35f;
-            var diamond = new Polygon2D
+        var outline = new Line2D
+        {
+            Points = new[]
             {
-                Position = center,
-                Color = new Color(1f, 1f, 1f, 1f),
-                Polygon = new[]
-                {
-                    new Vector2(0f, -r),
-                    new Vector2(r, 0f),
-                    new Vector2(0f, r),
-                    new Vector2(-r, 0f),
-                },
-            };
+                verts[0], verts[1], verts[2], verts[3], verts[0],
+            },
+            Width = 2f,
+            DefaultColor = new Color(0f, 0f, 0f, 1f),
+        };
+        diamond.AddChild(outline);
 
-            var outline = new Line2D
-            {
-                Points = new[]
-                {
-                    new Vector2(0f, -r),
-                    new Vector2(r, 0f),
-                    new Vector2(0f, r),
-                    new Vector2(-r, 0f),
-                    new Vector2(0f, -r),
-                },
-                Width = 2f,
-                DefaultColor = new Color(0f, 0f, 0f, 1f),
-            };
-            diamond.AddChild(outline);
-
-            _capitalsLayer.AddChild(diamond);
-        }
+        return diamond;
     }
 
     private void RebuildTileToTerritoryIndex()

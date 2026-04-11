@@ -51,13 +51,16 @@ public partial class Main : Node2D
         _undo = new UndoStack();
 
         BuildHud();
-        RefreshHud();
 
         _map.TileClicked += OnTileClicked;
         _map.SelectionChanged += OnSelectionChanged;
 
         SeedStartingGold();
         _treasury.CollectIncomeFor(_turnState.CurrentPlayer, _map.Territories);
+
+        // Final HUD refresh AFTER the treasury is seeded so the CTA
+        // coloring on capitals reflects the actual starting gold.
+        RefreshHud();
     }
 
     private void SeedStartingGold()
@@ -246,8 +249,6 @@ public partial class Main : Node2D
         var unit = new Unit(_selected.Owner);
         MoveResult result = MovementRules.PlaceNew(unit, destination, _map.Grid, _selected);
 
-        _map.RefreshUnitVisual(destination);
-
         if (result.WasCapture)
         {
             HandleCapture();
@@ -263,8 +264,6 @@ public partial class Main : Node2D
         _undo.PushBefore(CaptureCurrentSnapshot());
 
         MoveResult result = MovementRules.Move(source, destination, _map.Grid, _selected);
-        _map.RefreshUnitVisual(source);
-        _map.RefreshUnitVisual(destination);
 
         if (result.WasCapture)
         {
@@ -403,5 +402,10 @@ public partial class Main : Node2D
         _undoTurnButton.Disabled = !canUndo;
         _redoLastButton.Disabled = !canRedo;
         _redoAllButton.Disabled = !canRedo;
+
+        // Recolor occupant icons so capitals/units with a CTA (affordable
+        // buy, move available) show the player color interior and
+        // non-actionable ones show a solid black interior.
+        _map.RefreshOccupantVisuals(current.Color, _treasury);
     }
 }
