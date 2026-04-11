@@ -26,6 +26,8 @@
     <Compile Include="..\scripts\HexTile.cs" Link="scripts\HexTile.cs" />
     <Compile Include="..\scripts\Territory.cs" Link="scripts\Territory.cs" />
     <Compile Include="..\scripts\TerritoryFinder.cs" Link="scripts\TerritoryFinder.cs" />
+    <Compile Include="..\scripts\Player.cs" Link="scripts\Player.cs" />
+    <Compile Include="..\scripts\TurnState.cs" Link="scripts\TurnState.cs" />
   </ItemGroup>
 
 </Project>
