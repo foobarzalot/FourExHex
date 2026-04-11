@@ -19,8 +19,7 @@ public partial class Main : Node2D
     private enum ActionMode { None, BuyingPeasant, MovingUnit }
 
     private HexMap _map = null!;
-    private TurnState _turnState = null!;
-    private Treasury _treasury = null!;
+    private GameState _state = null!;
     private UndoStack _undo = null!;
 
     private Label _turnLabel = null!;
@@ -39,7 +38,25 @@ public partial class Main : Node2D
 
     public override void _Ready()
     {
+        // Build the view shell first so we can read its layout dimensions,
+        // but don't add it to the tree until its GameState is prepared.
         _map = new HexMap();
+
+        // --- Model construction ------------------------------------------
+        List<Player> players = BuildPlayers();
+        var turnState = new TurnState(players);
+        var treasury = new Treasury();
+
+        HexGrid grid = BuildInitialGrid(_map.Cols, _map.Rows, players);
+        IReadOnlyList<Territory> raw = TerritoryFinder.FindAll(grid);
+        IReadOnlyList<Territory> territories = CapitalReconciler.Reconcile(
+            raw, new List<Territory>(), grid);
+
+        _state = new GameState(grid, territories, players, turnState, treasury);
+        _undo = new UndoStack();
+
+        // --- View initialization -----------------------------------------
+        _map.Init(_state);
         AddChild(_map);
 
         Vector2 viewport = GetViewportRect().Size;
@@ -47,31 +64,45 @@ public partial class Main : Node2D
         float y = HudHeight + (viewport.Y - HudHeight - _map.PixelSize.Y) * 0.5f;
         _map.Position = new Vector2(x, y);
 
-        _turnState = new TurnState(BuildPlayers());
-        _treasury = new Treasury();
-        _undo = new UndoStack();
-
         BuildHud();
 
         _map.TileClicked += OnTileClicked;
         _map.SelectionChanged += OnSelectionChanged;
 
         SeedStartingGold();
-        _treasury.CollectIncomeFor(_turnState.CurrentPlayer, _map.Territories);
+        _state.Treasury.CollectIncomeFor(_state.Turns.CurrentPlayer, _state.Territories);
 
         // Final HUD refresh AFTER the treasury is seeded so the CTA
         // coloring on capitals reflects the actual starting gold.
         RefreshHud();
     }
 
+    private static HexGrid BuildInitialGrid(int cols, int rows, IReadOnlyList<Player> players)
+    {
+        var rng = new RandomNumberGenerator();
+        rng.Randomize();
+
+        var grid = new HexGrid();
+        for (int row = 0; row < rows; row++)
+        {
+            for (int col = 0; col < cols; col++)
+            {
+                HexCoord coord = HexCoord.FromOffset(col, row);
+                Color color = players[rng.RandiRange(0, players.Count - 1)].Color;
+                grid.Add(new HexTile(coord, color));
+            }
+        }
+        return grid;
+    }
+
     private void SeedStartingGold()
     {
         const int startingGoldPerTerritory = 10;
-        foreach (Territory territory in _map.Territories)
+        foreach (Territory territory in _state.Territories)
         {
             if (territory.HasCapital)
             {
-                _treasury.SetGold(territory.Capital!.Value, startingGoldPerTerritory);
+                _state.Treasury.SetGold(territory.Capital!.Value, startingGoldPerTerritory);
             }
         }
     }
@@ -176,7 +207,7 @@ public partial class Main : Node2D
     }
 
     private GameStateSnapshot CaptureCurrentSnapshot() =>
-        GameStateSnapshot.Capture(_map.Grid, _treasury, _map.Territories);
+        GameStateSnapshot.Capture(_map.Grid, _state.Treasury, _map.Territories);
 
     private void OnTileClicked(HexTile? tile)
     {
@@ -210,7 +241,7 @@ public partial class Main : Node2D
         }
 
         Territory? territory = _map.TerritoryAt(tile.Coord);
-        if (territory == null || territory.Owner != _turnState.CurrentPlayer.Color)
+        if (territory == null || territory.Owner != _state.Turns.CurrentPlayer.Color)
         {
             _map.SelectTerritory(null);
             return;
@@ -221,7 +252,7 @@ public partial class Main : Node2D
         _map.SelectTerritory(territory);
 
         if (tile.Unit != null
-            && tile.Unit.Owner == _turnState.CurrentPlayer.Color
+            && tile.Unit.Owner == _state.Turns.CurrentPlayer.Color
             && !tile.Unit.HasMovedThisTurn)
         {
             _mode = ActionMode.MovingUnit;
@@ -264,7 +295,7 @@ public partial class Main : Node2D
         _undo.PushBefore(CaptureCurrentSnapshot());
 
         HexCoord capital = _selected.Capital!.Value;
-        _treasury.SetGold(capital, _treasury.GetGold(capital) - PurchaseRules.PeasantCost);
+        _state.Treasury.SetGold(capital, _state.Treasury.GetGold(capital) - PurchaseRules.PeasantCost);
         var unit = new Unit(_selected.Owner);
         MoveResult result = MovementRules.PlaceNew(unit, destination, _map.Grid, _selected);
 
@@ -296,7 +327,7 @@ public partial class Main : Node2D
     {
         if (!_undo.CanUndo) return;
         GameStateSnapshot snap = _undo.UndoLast(CaptureCurrentSnapshot());
-        _map.RestoreFromSnapshot(snap, _treasury);
+        _map.RestoreFromSnapshot(snap, _state.Treasury);
         CancelPendingAction();
         RefreshHud();
     }
@@ -305,7 +336,7 @@ public partial class Main : Node2D
     {
         if (!_undo.CanUndo) return;
         GameStateSnapshot snap = _undo.UndoTurn(CaptureCurrentSnapshot());
-        _map.RestoreFromSnapshot(snap, _treasury);
+        _map.RestoreFromSnapshot(snap, _state.Treasury);
         CancelPendingAction();
         RefreshHud();
     }
@@ -314,7 +345,7 @@ public partial class Main : Node2D
     {
         if (!_undo.CanRedo) return;
         GameStateSnapshot snap = _undo.RedoLast(CaptureCurrentSnapshot());
-        _map.RestoreFromSnapshot(snap, _treasury);
+        _map.RestoreFromSnapshot(snap, _state.Treasury);
         CancelPendingAction();
         RefreshHud();
     }
@@ -323,7 +354,7 @@ public partial class Main : Node2D
     {
         if (!_undo.CanRedo) return;
         GameStateSnapshot snap = _undo.RedoAll(CaptureCurrentSnapshot());
-        _map.RestoreFromSnapshot(snap, _treasury);
+        _map.RestoreFromSnapshot(snap, _state.Treasury);
         CancelPendingAction();
         RefreshHud();
     }
@@ -331,7 +362,7 @@ public partial class Main : Node2D
     private void HandleCapture()
     {
         IReadOnlyList<Territory> old = _map.RecomputeTerritoriesAfterCapture();
-        _treasury.ReconcileAfterCapture(old, _map.Territories);
+        _state.Treasury.ReconcileAfterCapture(old, _map.Territories);
     }
 
     private void FinishPendingAction(bool clearSelection = true)
@@ -371,7 +402,7 @@ public partial class Main : Node2D
     private void OnBuyPeasantPressed()
     {
         if (_selected == null) return;
-        if (!PurchaseRules.CanAffordPeasant(_selected, _treasury)) return;
+        if (!PurchaseRules.CanAffordPeasant(_selected, _state.Treasury)) return;
 
         _mode = ActionMode.BuyingPeasant;
         _moveSource = null;
@@ -384,9 +415,9 @@ public partial class Main : Node2D
         // Ending the turn commits everything; no further undo.
         _undo.Clear();
 
-        _turnState.EndTurn();
-        _map.ResetMovementFor(_turnState.CurrentPlayer);
-        _treasury.CollectIncomeFor(_turnState.CurrentPlayer, _map.Territories);
+        _state.Turns.EndTurn();
+        _map.ResetMovementFor(_state.Turns.CurrentPlayer);
+        _state.Treasury.CollectIncomeFor(_state.Turns.CurrentPlayer, _map.Territories);
         CancelPendingAction();
         _map.SelectTerritory(null);
         RefreshHud();
@@ -402,10 +433,10 @@ public partial class Main : Node2D
             return;
         }
 
-        int gold = _treasury.GetGold(_selected.Capital!.Value);
+        int gold = _state.Treasury.GetGold(_selected.Capital!.Value);
         _goldLabel.Text = $"Gold: {gold} (size {_selected.Size})";
 
-        _buyPeasantButton.Visible = PurchaseRules.CanAffordPeasant(_selected, _treasury);
+        _buyPeasantButton.Visible = PurchaseRules.CanAffordPeasant(_selected, _state.Treasury);
         if (_mode != ActionMode.BuyingPeasant)
         {
             _buyPeasantButton.Text = "Buy Peasant (10g)";
@@ -414,8 +445,8 @@ public partial class Main : Node2D
 
     private void RefreshHud()
     {
-        _turnLabel.Text = $"Turn: {_turnState.TurnNumber}";
-        Player current = _turnState.CurrentPlayer;
+        _turnLabel.Text = $"Turn: {_state.Turns.TurnNumber}";
+        Player current = _state.Turns.CurrentPlayer;
         _playerLabel.Text = $"Current: {current.Name}";
         _playerLabel.AddThemeColorOverride("font_color", current.Color);
         RefreshSelectionUi();
@@ -430,7 +461,7 @@ public partial class Main : Node2D
         // Recolor occupant icons so capitals/units with a CTA (affordable
         // buy, move available) show a white interior and non-actionable
         // ones show a solid black interior.
-        _map.RefreshOccupantVisuals(current.Color, _treasury);
+        _map.RefreshOccupantVisuals(current.Color, _state.Treasury);
 
         // When the current player has nothing left to do, the End Turn
         // button becomes the CTA and gets the white-fill treatment.
@@ -440,7 +471,7 @@ public partial class Main : Node2D
 
     private bool HasAnyActionableForCurrentPlayer()
     {
-        Color color = _turnState.CurrentPlayer.Color;
+        Color color = _state.Turns.CurrentPlayer.Color;
 
         foreach (HexTile tile in _map.Grid.Tiles)
         {
@@ -455,7 +486,7 @@ public partial class Main : Node2D
         foreach (Territory territory in _map.Territories)
         {
             if (territory.Owner != color) continue;
-            if (PurchaseRules.CanAffordPeasant(territory, _treasury))
+            if (PurchaseRules.CanAffordPeasant(territory, _state.Treasury))
             {
                 return true;
             }

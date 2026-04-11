@@ -22,16 +22,6 @@ public partial class HexMap : Node2D
     [Export] public int Rows { get; set; } = 13;
     [Export] public float HexSize { get; set; } = 48f;
 
-    private static readonly Color[] Palette =
-    {
-        new Color("e53935"), // red
-        new Color("1e88e5"), // blue
-        new Color("43a047"), // green
-        new Color("fdd835"), // yellow
-        new Color("8e24aa"), // purple
-        new Color("fb8c00"), // orange
-    };
-
     // Occupant icon fills: white = "this is actionable for you right now",
     // black = "dormant / not actionable". The border is always black.
     private static readonly Color CtaFill = new Color(1f, 1f, 1f, 1f);
@@ -47,13 +37,29 @@ public partial class HexMap : Node2D
     //   edge 5 (upper-right) -> NE (dir 1)
     private static readonly int[] EdgeToNeighborDirection = { 0, 5, 4, 3, 2, 1 };
 
-    public HexGrid Grid { get; } = new HexGrid();
+    // Injected by Main before AddChild so _Ready has a populated grid
+    // and a fresh territory list to render.
+    private GameState _state = null!;
 
-    public IReadOnlyList<Territory> Territories { get; private set; } = new List<Territory>();
+    /// <summary>Pass-through to the game state's grid — the single source of truth.</summary>
+    public HexGrid Grid => _state.Grid;
+
+    /// <summary>Pass-through to the game state's territory partition.</summary>
+    public IReadOnlyList<Territory> Territories => _state.Territories;
 
     // Tile coord -> the territory that contains it. Rebuilt whenever
     // Territories is recomputed. Used for O(1) selection lookups.
     private readonly Dictionary<HexCoord, Territory> _tileToTerritory = new();
+
+    /// <summary>
+    /// Wire this view to a <see cref="GameState"/>. Must be called before
+    /// adding the HexMap to the scene tree so <see cref="_Ready"/> can
+    /// read the state to build visuals.
+    /// </summary>
+    public void Init(GameState state)
+    {
+        _state = state;
+    }
 
     // Layered overlay children (added in this order so draw order is
     // fills -> borders -> capitals -> units -> targets -> highlight).
@@ -80,30 +86,18 @@ public partial class HexMap : Node2D
 
     public override void _Ready()
     {
-        var rng = new RandomNumberGenerator();
-        rng.Randomize();
-
-        for (int row = 0; row < Rows; row++)
+        // Tiles already exist in _state.Grid (populated by the controller
+        // before AddChild). Create one Polygon2D fill per tile and link
+        // it back to the tile so future recolors stay in sync via the
+        // HexTile.Color setter.
+        foreach (HexTile tile in _state.Grid.Tiles)
         {
-            for (int col = 0; col < Cols; col++)
-            {
-                HexCoord coord = HexCoord.FromOffset(col, row);
-                Color color = Palette[rng.RandiRange(0, Palette.Length - 1)];
-                var tile = new HexTile(coord, color);
-
-                Vector2 center = FirstHexCenterOffset + coord.ToPixel(HexSize);
-                tile.Visual = CreateHexVisual(center, color);
-                AddChild(tile.Visual);
-
-                Grid.Add(tile);
-            }
+            Vector2 center = FirstHexCenterOffset + tile.Coord.ToPixel(HexSize);
+            tile.Visual = CreateHexVisual(center, tile.Color);
+            AddChild(tile.Visual);
         }
 
-        // Flood-fill + capital placement (which adds Capital occupants to
-        // the grid at each multi-hex territory's chosen tile).
-        IReadOnlyList<Territory> raw = TerritoryFinder.FindAll(Grid);
-        Territories = CapitalReconciler.Reconcile(raw, new List<Territory>(), Grid);
-        GD.Print($"HexMap: {Grid.Count} tiles partitioned into {Territories.Count} territories.");
+        GD.Print($"HexMap: rendering {_state.Grid.Count} tiles across {_state.Territories.Count} territories.");
 
         RebuildTileToTerritoryIndex();
 
@@ -131,7 +125,7 @@ public partial class HexMap : Node2D
     /// </summary>
     public void RestoreFromSnapshot(GameStateSnapshot snapshot, Treasury treasury)
     {
-        Territories = snapshot.ApplyTo(Grid, treasury);
+        _state.Territories = snapshot.ApplyTo(_state.Grid, treasury);
         RebuildTileToTerritoryIndex();
 
         ClearLayer(_bordersLayer);
@@ -151,12 +145,12 @@ public partial class HexMap : Node2D
     /// </summary>
     public IReadOnlyList<Territory> RecomputeTerritoriesAfterCapture()
     {
-        IReadOnlyList<Territory> previous = Territories;
-        IReadOnlyList<Territory> raw = TerritoryFinder.FindAll(Grid);
+        IReadOnlyList<Territory> previous = _state.Territories;
+        IReadOnlyList<Territory> raw = TerritoryFinder.FindAll(_state.Grid);
         // Reconcile capitals: keep inherited, demote losers in merges,
         // place fresh ones for split pieces without an old capital. May
         // stomp units if a split piece has no empty tile.
-        Territories = CapitalReconciler.Reconcile(raw, previous, Grid);
+        _state.Territories = CapitalReconciler.Reconcile(raw, previous, _state.Grid);
         RebuildTileToTerritoryIndex();
 
         _selected = null;
