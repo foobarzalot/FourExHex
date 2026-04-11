@@ -298,12 +298,34 @@ public class GameController
         // Ending the turn commits everything; no further undo.
         _session.Undo.Clear();
 
+        // Clear any graves on the board from the turn that just ended
+        // (temporary Step 12 rule — in Step 13 graves will become pines
+        // instead). This runs before advancing so the new player starts
+        // with a fresh board.
+        ClearAllGraves(_state.Grid);
+
         _state.Turns.EndTurn();
         ResetMovementFor(_state.Turns.CurrentPlayer, _state.Grid);
         _state.Treasury.CollectIncomeFor(_state.Turns.CurrentPlayer, _state.Territories);
+        // Upkeep is deducted AFTER income. A territory that can't afford
+        // its total upkeep goes bankrupt: every unit in it dies and
+        // leaves a grave behind; the remaining gold stays put.
+        UpkeepRules.ApplyUpkeepFor(
+            _state.Turns.CurrentPlayer, _state.Territories, _state.Grid, _state.Treasury);
         CancelPendingAction();
         SetSelection(null);
         RefreshViews();
+    }
+
+    private static void ClearAllGraves(HexGrid grid)
+    {
+        foreach (HexTile tile in grid.Tiles)
+        {
+            if (tile.Occupant is Grave)
+            {
+                tile.Occupant = null;
+            }
+        }
     }
 
     // --- View refresh -----------------------------------------------------

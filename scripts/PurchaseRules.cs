@@ -17,8 +17,9 @@ public static class PurchaseRules
 
     public static bool IsValidPeasantTarget(HexTile tile, Territory territory)
     {
-        // Must be empty (no unit, no capital, no tree/grave/tower).
-        if (tile.Occupant != null) return false;
+        // Must be placeable: empty or a grave (graves don't block
+        // placement — a new peasant buries the grave).
+        if (tile.Occupant != null && tile.Occupant is not Grave) return false;
         return territory.Coords.Contains(tile.Coord);
     }
 

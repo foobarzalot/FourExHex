@@ -33,15 +33,16 @@ public static class MovementRules
         // potential capture targets.
         Dictionary<HexCoord, Territory> tileToTerritory = allTerritories.BuildTileIndex();
 
-        // 1. Repositions inside own territory: empty non-capital tiles.
-        //    2. Combine targets: own-territory tiles whose occupant is a
-        //       Unit the attacker can merge with.
+        // 1. Repositions inside own territory: empty tiles or graves
+        //    (graves don't block placement — a unit buries them).
+        // 2. Combine targets: own-territory tiles whose occupant is a
+        //    Unit the attacker can merge with.
         foreach (HexCoord coord in own)
         {
             HexTile? tile = grid.Get(coord);
             if (tile == null) continue;
 
-            if (tile.Occupant == null)
+            if (tile.Occupant == null || tile.Occupant is Grave)
             {
                 results.Add(coord);
                 continue;

@@ -249,6 +249,12 @@ public partial class HexMapView : Node2D, IHexMapView
                 visual.Position = center;
                 _capitalsLayer?.AddChild(visual);
             }
+            else if (tile.Occupant is Grave)
+            {
+                Node2D visual = CreateGraveVisual();
+                visual.Position = center;
+                _unitsLayer?.AddChild(visual);
+            }
         }
     }
 
@@ -329,6 +335,50 @@ public partial class HexMapView : Node2D, IHexMapView
             DefaultColor = color,
         });
         return node;
+    }
+
+    private Node2D CreateGraveVisual()
+    {
+        // Symmetrical grey plus sign (cross) — symmetric in both axes.
+        // Visually distinct from units (circles) and capitals (diamonds).
+        // Drawn 25% larger than the unit disc for legibility.
+        float r = HexSize * 0.275f;
+        float w = r * 0.32f; // half-width of each arm
+        var verts = new[]
+        {
+            new Vector2(-w, -r),
+            new Vector2( w, -r),
+            new Vector2( w, -w),
+            new Vector2( r, -w),
+            new Vector2( r,  w),
+            new Vector2( w,  w),
+            new Vector2( w,  r),
+            new Vector2(-w,  r),
+            new Vector2(-w,  w),
+            new Vector2(-r,  w),
+            new Vector2(-r, -w),
+            new Vector2(-w, -w),
+        };
+
+        var body = new Polygon2D
+        {
+            Color = new Color(0.55f, 0.55f, 0.55f, 1f),
+            Polygon = verts,
+        };
+
+        var outlinePoints = new Vector2[verts.Length + 1];
+        for (int i = 0; i < verts.Length; i++) outlinePoints[i] = verts[i];
+        outlinePoints[verts.Length] = verts[0];
+
+        var outline = new Line2D
+        {
+            Points = outlinePoints,
+            Width = 2f,
+            DefaultColor = new Color(0f, 0f, 0f, 1f),
+        };
+        body.AddChild(outline);
+
+        return body;
     }
 
     private static Node2D CreateChevronIcon(float r, Color color)

@@ -41,6 +41,21 @@ public class GameStateSnapshotTests
     }
 
     [Fact]
+    public void Capture_PreservesGraveOccupants()
+    {
+        HexGrid grid = BuildTwoTileRedGrid();
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Grave();
+        var treasury = new Treasury();
+        var territories = TerritoriesFor(grid);
+
+        GameStateSnapshot snap = GameStateSnapshot.Capture(grid, treasury, territories);
+        grid.Get(new HexCoord(0, 0))!.Occupant = null;
+        snap.ApplyTo(grid, treasury);
+
+        Assert.IsType<Grave>(grid.Get(new HexCoord(0, 0))!.Occupant);
+    }
+
+    [Fact]
     public void Capture_IncludesUnitLevel()
     {
         // Regression: the clone used to drop Unit.Level, turning higher-

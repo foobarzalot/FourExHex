@@ -38,9 +38,11 @@
     <Compile Include="..\scripts\HexOccupant.cs" Link="scripts\HexOccupant.cs" />
     <Compile Include="..\scripts\Unit.cs" Link="scripts\Unit.cs" />
     <Compile Include="..\scripts\Capital.cs" Link="scripts\Capital.cs" />
+    <Compile Include="..\scripts\Grave.cs" Link="scripts\Grave.cs" />
     <Compile Include="..\scripts\PurchaseRules.cs" Link="scripts\PurchaseRules.cs" />
     <Compile Include="..\scripts\DefenseRules.cs" Link="scripts\DefenseRules.cs" />
     <Compile Include="..\scripts\MovementRules.cs" Link="scripts\MovementRules.cs" />
+    <Compile Include="..\scripts\UpkeepRules.cs" Link="scripts\UpkeepRules.cs" />
     <Compile Include="..\scripts\GameStateSnapshot.cs" Link="scripts\GameStateSnapshot.cs" />
     <Compile Include="..\scripts\UndoStack.cs" Link="scripts\UndoStack.cs" />
     <Compile Include="..\scripts\GameState.cs" Link="scripts\GameState.cs" />

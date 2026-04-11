@@ -138,7 +138,10 @@ public partial class HudView : CanvasLayer, IHudView
         else
         {
             int gold = state.Treasury.GetGold(selected.Capital!.Value);
-            _goldLabel.Text = $"Gold: {gold} (size {selected.Size})";
+            int upkeep = UpkeepRules.TotalUpkeepFor(selected, state.Grid);
+            int net = selected.Size - upkeep;
+            string sign = net >= 0 ? "+" : "";
+            _goldLabel.Text = $"Gold: {gold}  (size {selected.Size}, upkeep {upkeep}, net {sign}{net})";
             _buyPeasantButton.Visible = PurchaseRules.CanAffordPeasant(selected, state.Treasury);
             _buyPeasantButton.Text = session.Mode == SessionState.ActionMode.BuyingPeasant
                 ? "Click a tile..."

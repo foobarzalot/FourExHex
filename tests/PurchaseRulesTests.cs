@@ -112,6 +112,23 @@ public class PurchaseRulesTests
     }
 
     [Fact]
+    public void IsValidPeasantTarget_OnOwnGrave_ReturnsTrue()
+    {
+        // Graves don't block placement — a new peasant can be dropped
+        // onto a grave tile and bury it.
+        var capital = new HexCoord(0, 0);
+        Territory territory = MakeTerritory(
+            Red, capital,
+            new HexCoord(0, 0), new HexCoord(1, 0));
+        var graveTile = new HexTile(new HexCoord(1, 0), Red)
+        {
+            Occupant = new Grave(),
+        };
+
+        Assert.True(PurchaseRules.IsValidPeasantTarget(graveTile, territory));
+    }
+
+    [Fact]
     public void IsValidPeasantTarget_OnOwnCapital_ReturnsFalse()
     {
         // Can't stand on top of your own capital. With the occupant model,

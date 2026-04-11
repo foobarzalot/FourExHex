@@ -238,6 +238,60 @@ public class GameControllerTests
     }
 
     [Fact]
+    public void EndTurn_PaysUpkeep_FromNewPlayerTerritories()
+    {
+        var g = new TestGame();
+        // Put a Blue peasant on a non-capital Blue tile so Blue has
+        // upkeep to pay when it becomes their turn.
+        g.Tile(3, 0).Occupant = new Unit(g.Blue.Color);
+        // Blue's territory has a capital; give it plenty of gold.
+        HexCoord blueCapital = g.State.Territories
+            .First(t => t.Owner == g.Blue.Color).Capital!.Value;
+        g.State.Treasury.SetGold(blueCapital, 20);
+
+        g.Hud.ClickEndTurn(); // Red -> Blue: Blue collects income + pays upkeep
+
+        // Blue paid 2 for the peasant, plus gained income = 8 (blue's
+        // territory has 8 tiles). Net: 20 + 8 - 2 = 26.
+        // (We don't hardcode 26 — just assert it's 20 + income - 2.)
+        int blueSize = g.State.Territories
+            .First(t => t.Owner == g.Blue.Color).Size;
+        Assert.Equal(20 + blueSize - 2, g.State.Treasury.GetGold(blueCapital));
+        // Peasant survived because Blue could afford it.
+        Assert.NotNull(g.Tile(3, 0).Unit);
+    }
+
+    [Fact]
+    public void EndTurn_BankruptTerritory_LeavesGraves()
+    {
+        var g = new TestGame();
+        // Give Blue a knight (upkeep 18) it can't pay.
+        g.Tile(3, 0).Occupant = new Unit(g.Blue.Color, UnitLevel.Knight);
+        HexCoord blueCapital = g.State.Territories
+            .First(t => t.Owner == g.Blue.Color).Capital!.Value;
+        g.State.Treasury.SetGold(blueCapital, 0);
+
+        g.Hud.ClickEndTurn(); // advance to Blue
+
+        // Blue collected income (8) < upkeep (18). Bankrupt. Knight dies
+        // and leaves a grave behind (not a null tile).
+        Assert.IsType<Grave>(g.Tile(3, 0).Occupant);
+    }
+
+    [Fact]
+    public void EndTurn_ClearsGravesFromBoard()
+    {
+        var g = new TestGame();
+        // Drop a stray grave on a tile (as if left over from a previous
+        // bankruptcy).
+        g.Tile(3, 0).Occupant = new Grave();
+
+        g.Hud.ClickEndTurn();
+
+        Assert.Null(g.Tile(3, 0).Occupant);
+    }
+
+    [Fact]
     public void EndTurn_ClearsUndoStack()
     {
         var g = new TestGame();
