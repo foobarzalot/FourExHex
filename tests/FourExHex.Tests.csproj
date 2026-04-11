@@ -29,6 +29,7 @@
     <Compile Include="..\scripts\CapitalAssigner.cs" Link="scripts\CapitalAssigner.cs" />
     <Compile Include="..\scripts\Player.cs" Link="scripts\Player.cs" />
     <Compile Include="..\scripts\TurnState.cs" Link="scripts\TurnState.cs" />
+    <Compile Include="..\scripts\Treasury.cs" Link="scripts\Treasury.cs" />
   </ItemGroup>
 
 </Project>

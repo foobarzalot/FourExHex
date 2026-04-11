@@ -1,8 +1,24 @@
+using System;
 using System.Collections.Generic;
 using Godot;
 
 public partial class HexMap : Node2D
 {
+    /// <summary>
+    /// Raised whenever the player left-clicks on the map. The argument is the
+    /// territory containing the clicked hex, or null if they clicked outside
+    /// the grid. HexMap does NOT apply any "whose turn is it" policy — it
+    /// just reports the raw click; callers decide whether to call
+    /// <see cref="SelectTerritory"/> in response.
+    /// </summary>
+    public event Action<Territory?>? TileClicked;
+
+    /// <summary>
+    /// Raised whenever the selection actually changes (via code or input).
+    /// The argument is the new selection, or null if selection was cleared.
+    /// </summary>
+    public event Action<Territory?>? SelectionChanged;
+
     [Export] public int Cols { get; set; } = 18;
     [Export] public int Rows { get; set; } = 13;
     [Export] public float HexSize { get; set; } = 48f;
@@ -153,20 +169,24 @@ public partial class HexMap : Node2D
 
         if (!Grid.Contains(coord))
         {
-            SelectTerritory(null);
+            TileClicked?.Invoke(null);
             return;
         }
 
-        if (_tileToTerritory.TryGetValue(coord, out Territory? territory))
-        {
-            SelectTerritory(territory);
-        }
+        _tileToTerritory.TryGetValue(coord, out Territory? territory);
+        TileClicked?.Invoke(territory);
     }
 
-    private void SelectTerritory(Territory? territory)
+    /// <summary>
+    /// Make <paramref name="territory"/> the currently selected territory
+    /// (or pass null to clear). Updates the highlight outline and raises
+    /// <see cref="SelectionChanged"/>.
+    /// </summary>
+    public void SelectTerritory(Territory? territory)
     {
         _selected = territory;
         RedrawHighlight();
+        SelectionChanged?.Invoke(territory);
     }
 
     private void RedrawHighlight()

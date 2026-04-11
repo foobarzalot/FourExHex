@@ -15,25 +15,52 @@ public partial class Main : Node2D
 
     private const float HudHeight = 60f;
 
+    private HexMap _map = null!;
     private TurnState _turnState = null!;
+    private Treasury _treasury = null!;
     private Label _turnLabel = null!;
     private Label _playerLabel = null!;
+    private Label _goldLabel = null!;
 
     public override void _Ready()
     {
-        var map = new HexMap();
-        AddChild(map);
+        _map = new HexMap();
+        AddChild(_map);
 
         // Center the map horizontally and vertically in the area below the
         // reserved HUD strip at the top of the viewport.
         Vector2 viewport = GetViewportRect().Size;
-        float x = (viewport.X - map.PixelSize.X) * 0.5f;
-        float y = HudHeight + (viewport.Y - HudHeight - map.PixelSize.Y) * 0.5f;
-        map.Position = new Vector2(x, y);
+        float x = (viewport.X - _map.PixelSize.X) * 0.5f;
+        float y = HudHeight + (viewport.Y - HudHeight - _map.PixelSize.Y) * 0.5f;
+        _map.Position = new Vector2(x, y);
 
         _turnState = new TurnState(BuildPlayers());
+        _treasury = new Treasury();
+
         BuildHud();
         RefreshHud();
+
+        _map.TileClicked += OnTileClicked;
+        _map.SelectionChanged += OnSelectionChanged;
+
+        // Seed income for player 1 at the start of the game so their first
+        // turn doesn't begin with empty treasuries.
+        _treasury.CollectIncomeFor(_turnState.CurrentPlayer, _map.Territories);
+    }
+
+    private void OnTileClicked(Territory? clicked)
+    {
+        // Only the current player may select their own territories. Clicking
+        // on an enemy territory (or outside the grid) clears any existing
+        // selection so the HUD doesn't keep showing stale gold.
+        if (clicked != null && clicked.Owner == _turnState.CurrentPlayer.Color)
+        {
+            _map.SelectTerritory(clicked);
+        }
+        else
+        {
+            _map.SelectTerritory(null);
+        }
     }
 
     private static List<Player> BuildPlayers()
@@ -78,6 +105,10 @@ public partial class Main : Node2D
         _playerLabel.AddThemeFontSizeOverride("font_size", 24);
         leftHbox.AddChild(_playerLabel);
 
+        _goldLabel = new Label { Text = "" };
+        _goldLabel.AddThemeFontSizeOverride("font_size", 24);
+        leftHbox.AddChild(_goldLabel);
+
         // Right-anchored End Turn button.
         var button = new Button { Text = "End Turn" };
         button.AddThemeFontSizeOverride("font_size", 20);
@@ -94,7 +125,23 @@ public partial class Main : Node2D
     private void OnEndTurnPressed()
     {
         _turnState.EndTurn();
+        // The new current player collects income at the start of their turn.
+        _treasury.CollectIncomeFor(_turnState.CurrentPlayer, _map.Territories);
+        // Drop the previous player's selection so the HUD starts fresh.
+        _map.SelectTerritory(null);
         RefreshHud();
+    }
+
+    private void OnSelectionChanged(Territory? territory)
+    {
+        if (territory == null || !territory.HasCapital)
+        {
+            _goldLabel.Text = "";
+            return;
+        }
+
+        int gold = _treasury.GetGold(territory.Capital!.Value);
+        _goldLabel.Text = $"Gold: {gold} (size {territory.Size})";
     }
 
     private void RefreshHud()
