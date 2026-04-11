@@ -115,6 +115,31 @@ public partial class HexMap : Node2D
     }
 
     /// <summary>
+    /// Restore full game state from <paramref name="snapshot"/>, rebuild
+    /// visuals to match, and clear any selection. Used by undo.
+    /// </summary>
+    public void RestoreFromSnapshot(GameStateSnapshot snapshot, Treasury treasury)
+    {
+        Territories = snapshot.ApplyTo(Grid, treasury);
+        RebuildTileToTerritoryIndex();
+
+        ClearLayer(_bordersLayer);
+        ClearLayer(_capitalsLayer);
+        ClearLayer(_targetsLayer);
+        DrawTerritoryBorders();
+        DrawCapitals();
+
+        // Every tile's unit visual may have changed (added, removed, or
+        // updated); refresh them all.
+        foreach (HexTile tile in Grid.Tiles)
+        {
+            RefreshUnitVisual(tile.Coord);
+        }
+
+        SelectTerritory(null);
+    }
+
+    /// <summary>
     /// Re-run flood-fill after the grid's tile colors have changed (e.g.,
     /// after a capture), rebuild the tile-to-territory index, and redraw
     /// the borders/capitals. Returns the previous territory list so the

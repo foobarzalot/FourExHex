@@ -35,6 +35,8 @@
     <Compile Include="..\scripts\DefenseRules.cs" Link="scripts\DefenseRules.cs" />
     <Compile Include="..\scripts\MovementRules.cs" Link="scripts\MovementRules.cs" />
     <Compile Include="..\scripts\TerritoryReconciler.cs" Link="scripts\TerritoryReconciler.cs" />
+    <Compile Include="..\scripts\GameStateSnapshot.cs" Link="scripts\GameStateSnapshot.cs" />
+    <Compile Include="..\scripts\UndoStack.cs" Link="scripts\UndoStack.cs" />
   </ItemGroup>
 
 </Project>

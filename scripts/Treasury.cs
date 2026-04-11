@@ -22,6 +22,9 @@ public class Treasury
     public void SetGold(HexCoord capital, int amount) =>
         _gold[capital] = amount;
 
+    /// <summary>Drop every entry. Used by undo/restore.</summary>
+    public void Clear() => _gold.Clear();
+
     /// <summary>
     /// Add <c>territory.Size</c> gold to each multi-hex territory owned by
     /// <paramref name="player"/>. Territories without capitals (singletons)

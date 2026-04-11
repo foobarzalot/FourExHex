@@ -22,11 +22,16 @@ public partial class Main : Node2D
     private HexMap _map = null!;
     private TurnState _turnState = null!;
     private Treasury _treasury = null!;
+    private UndoStack _undo = null!;
 
     private Label _turnLabel = null!;
     private Label _playerLabel = null!;
     private Label _goldLabel = null!;
     private Button _buyPeasantButton = null!;
+    private Button _undoLastButton = null!;
+    private Button _undoTurnButton = null!;
+    private Button _redoLastButton = null!;
+    private Button _redoAllButton = null!;
 
     private Territory? _selected;
     private ActionMode _mode = ActionMode.None;
@@ -44,6 +49,7 @@ public partial class Main : Node2D
 
         _turnState = new TurnState(BuildPlayers());
         _treasury = new Treasury();
+        _undo = new UndoStack();
 
         BuildHud();
         RefreshHud();
@@ -116,17 +122,58 @@ public partial class Main : Node2D
         _buyPeasantButton.Pressed += OnBuyPeasantPressed;
         leftHbox.AddChild(_buyPeasantButton);
 
+        // Right-anchored action row: Undo Turn / Undo Last / Redo Last /
+        // Redo All / End Turn. The HBoxContainer spans the HUD width with
+        // End-alignment so children pack to the right edge.
+        var rightHbox = new HBoxContainer
+        {
+            AnchorLeft = 0f,
+            AnchorRight = 1f,
+            AnchorTop = 0f,
+            AnchorBottom = 0f,
+            OffsetLeft = 0f,
+            OffsetRight = -16f,
+            OffsetTop = 12f,
+            OffsetBottom = 48f,
+            Alignment = BoxContainer.AlignmentMode.End,
+            // The container spans the full width but its children only fill
+            // the right side. Ignore mouse events on the container itself so
+            // it doesn't steal clicks destined for siblings underneath
+            // (e.g., the Buy Peasant button in leftHbox). Buttons have their
+            // own MouseFilter.Stop and still receive clicks normally.
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        rightHbox.AddThemeConstantOverride("separation", 8);
+        layer.AddChild(rightHbox);
+
+        _undoTurnButton = new Button { Text = "Undo Turn", Disabled = true };
+        _undoTurnButton.AddThemeFontSizeOverride("font_size", 18);
+        _undoTurnButton.Pressed += OnUndoTurnPressed;
+        rightHbox.AddChild(_undoTurnButton);
+
+        _undoLastButton = new Button { Text = "Undo Last", Disabled = true };
+        _undoLastButton.AddThemeFontSizeOverride("font_size", 18);
+        _undoLastButton.Pressed += OnUndoLastPressed;
+        rightHbox.AddChild(_undoLastButton);
+
+        _redoLastButton = new Button { Text = "Redo Last", Disabled = true };
+        _redoLastButton.AddThemeFontSizeOverride("font_size", 18);
+        _redoLastButton.Pressed += OnRedoLastPressed;
+        rightHbox.AddChild(_redoLastButton);
+
+        _redoAllButton = new Button { Text = "Redo All", Disabled = true };
+        _redoAllButton.AddThemeFontSizeOverride("font_size", 18);
+        _redoAllButton.Pressed += OnRedoAllPressed;
+        rightHbox.AddChild(_redoAllButton);
+
         var endTurnButton = new Button { Text = "End Turn" };
-        endTurnButton.AddThemeFontSizeOverride("font_size", 20);
-        endTurnButton.AnchorLeft = 1f;
-        endTurnButton.AnchorRight = 1f;
-        endTurnButton.OffsetLeft = -136f;
-        endTurnButton.OffsetRight = -16f;
-        endTurnButton.OffsetTop = 12f;
-        endTurnButton.OffsetBottom = 48f;
+        endTurnButton.AddThemeFontSizeOverride("font_size", 18);
         endTurnButton.Pressed += OnEndTurnPressed;
-        layer.AddChild(endTurnButton);
+        rightHbox.AddChild(endTurnButton);
     }
+
+    private GameStateSnapshot CaptureCurrentSnapshot() =>
+        GameStateSnapshot.Capture(_map.Grid, _treasury, _map.Territories);
 
     private void OnTileClicked(HexTile? tile)
     {
@@ -193,6 +240,8 @@ public partial class Main : Node2D
     {
         if (_selected == null) return;
 
+        _undo.PushBefore(CaptureCurrentSnapshot());
+
         HexCoord capital = _selected.Capital!.Value;
         _treasury.SetGold(capital, _treasury.GetGold(capital) - PurchaseRules.PeasantCost);
         var unit = new Unit(UnitLevel.Peasant, _selected.Owner);
@@ -212,6 +261,8 @@ public partial class Main : Node2D
     {
         if (_selected == null) return;
 
+        _undo.PushBefore(CaptureCurrentSnapshot());
+
         MoveResult result = MovementRules.Move(source, destination, _map.Grid, _selected);
         _map.RefreshUnitVisual(source);
         _map.RefreshUnitVisual(destination);
@@ -222,6 +273,42 @@ public partial class Main : Node2D
         }
 
         FinishPendingAction();
+    }
+
+    private void OnUndoLastPressed()
+    {
+        if (!_undo.CanUndo) return;
+        GameStateSnapshot snap = _undo.UndoLast(CaptureCurrentSnapshot());
+        _map.RestoreFromSnapshot(snap, _treasury);
+        CancelPendingAction();
+        RefreshHud();
+    }
+
+    private void OnUndoTurnPressed()
+    {
+        if (!_undo.CanUndo) return;
+        GameStateSnapshot snap = _undo.UndoTurn(CaptureCurrentSnapshot());
+        _map.RestoreFromSnapshot(snap, _treasury);
+        CancelPendingAction();
+        RefreshHud();
+    }
+
+    private void OnRedoLastPressed()
+    {
+        if (!_undo.CanRedo) return;
+        GameStateSnapshot snap = _undo.RedoLast(CaptureCurrentSnapshot());
+        _map.RestoreFromSnapshot(snap, _treasury);
+        CancelPendingAction();
+        RefreshHud();
+    }
+
+    private void OnRedoAllPressed()
+    {
+        if (!_undo.CanRedo) return;
+        GameStateSnapshot snap = _undo.RedoAll(CaptureCurrentSnapshot());
+        _map.RestoreFromSnapshot(snap, _treasury);
+        CancelPendingAction();
+        RefreshHud();
     }
 
     private void HandleCapture()
@@ -272,6 +359,9 @@ public partial class Main : Node2D
 
     private void OnEndTurnPressed()
     {
+        // Ending the turn commits everything; no further undo.
+        _undo.Clear();
+
         _turnState.EndTurn();
         _map.ResetMovementFor(_turnState.CurrentPlayer);
         _treasury.CollectIncomeFor(_turnState.CurrentPlayer, _map.Territories);
@@ -307,5 +397,12 @@ public partial class Main : Node2D
         _playerLabel.Text = $"Current: {current.Name}";
         _playerLabel.AddThemeColorOverride("font_color", current.Color);
         RefreshSelectionUi();
+
+        bool canUndo = _undo.CanUndo;
+        bool canRedo = _undo.CanRedo;
+        _undoLastButton.Disabled = !canUndo;
+        _undoTurnButton.Disabled = !canUndo;
+        _redoLastButton.Disabled = !canRedo;
+        _redoAllButton.Disabled = !canRedo;
     }
 }
