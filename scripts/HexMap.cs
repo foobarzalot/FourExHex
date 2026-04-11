@@ -79,10 +79,54 @@ public partial class HexMap : Node2D
 
         RebuildTileToTerritoryIndex();
         DrawTerritoryBorders();
+        DrawCapitals();
 
         // Highlight layer is added last so it draws on top of tiles + borders.
         _highlightLayer = new Node2D { Name = "HighlightLayer" };
         AddChild(_highlightLayer);
+    }
+
+    private void DrawCapitals()
+    {
+        foreach (Territory territory in Territories)
+        {
+            if (!territory.HasCapital) continue;
+
+            Vector2 center = FirstHexCenterOffset + territory.Capital!.Value.ToPixel(HexSize);
+
+            // Simple glyph: a white outlined diamond (rotated square) inside
+            // the hex, sized to about 1/3 of the hex radius.
+            float r = HexSize * 0.35f;
+            var diamond = new Polygon2D
+            {
+                Position = center,
+                Color = new Color(1f, 1f, 1f, 1f),
+                Polygon = new[]
+                {
+                    new Vector2(0f, -r),
+                    new Vector2(r, 0f),
+                    new Vector2(0f, r),
+                    new Vector2(-r, 0f),
+                },
+            };
+
+            var outline = new Line2D
+            {
+                Points = new[]
+                {
+                    new Vector2(0f, -r),
+                    new Vector2(r, 0f),
+                    new Vector2(0f, r),
+                    new Vector2(-r, 0f),
+                    new Vector2(0f, -r),
+                },
+                Width = 2f,
+                DefaultColor = new Color(0f, 0f, 0f, 1f),
+            };
+            diamond.AddChild(outline);
+
+            AddChild(diamond);
+        }
     }
 
     private void RebuildTileToTerritoryIndex()

@@ -45,7 +45,7 @@ public static class TerritoryFinder
                 }
             }
 
-            territories.Add(new Territory(color, coords));
+            territories.Add(new Territory(color, coords, CapitalAssigner.Choose(coords)));
         }
 
         return territories;
