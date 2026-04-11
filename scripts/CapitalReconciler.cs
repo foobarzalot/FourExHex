@@ -36,6 +36,24 @@ public static class CapitalReconciler
         var result = new List<Territory>(rawNewTerritories.Count);
         foreach (Territory newT in rawNewTerritories)
         {
+            // Singletons never have a capital. If the new territory
+            // shrank to one tile (e.g. a split stranded the old capital
+            // alone), strip any lingering Capital occupant so the grid
+            // state matches the Territory record.
+            if (newT.Coords.Count < 2)
+            {
+                foreach (HexCoord c in newT.Coords)
+                {
+                    HexTile? tile = grid.Get(c);
+                    if (tile?.Occupant is Capital)
+                    {
+                        tile.Occupant = null;
+                    }
+                }
+                result.Add(new Territory(newT.Owner, newT.Coords, capital: null));
+                continue;
+            }
+
             // Find every coord in this new territory that currently holds
             // a Capital occupant AND was a capital in the old layout.
             var inheritedOldCaps = new List<HexCoord>();

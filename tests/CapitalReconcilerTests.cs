@@ -251,4 +251,56 @@ public class CapitalReconcilerTests
         Assert.IsType<Unit>(grid.Get(new HexCoord(0, 0))!.Occupant);
         Assert.IsType<Capital>(grid.Get(new HexCoord(1, 0))!.Occupant);
     }
+
+    // --- Singleton stranding ---------------------------------------------
+
+    [Fact]
+    public void Reconcile_Split_StrandedSingletonWithOldCapital_RemovesCapital()
+    {
+        // Old territory: three coords with capital (0,0). After the split
+        // the piece containing (0,0) is a singleton — no capital allowed.
+        // The reconciler must strip both the Territory-level capital
+        // record and the Capital occupant sitting on the tile.
+        HexGrid grid = BuildGrid(
+            new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(5, 5));
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Capital();
+        var old = new[] { T(new HexCoord(0, 0),
+            new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(5, 5)) };
+
+        // Split result: {(0,0)} singleton, {(1,0)} singleton, {(5,5)} singleton.
+        var raw = new[]
+        {
+            T(null, new HexCoord(0, 0)),
+            T(null, new HexCoord(1, 0)),
+            T(null, new HexCoord(5, 5)),
+        };
+
+        var result = CapitalReconciler.Reconcile(raw, old, grid);
+
+        Assert.All(result, terr => Assert.False(terr.HasCapital));
+        Assert.Null(grid.Get(new HexCoord(0, 0))!.Occupant);
+    }
+
+    [Fact]
+    public void Reconcile_MultiHexTerritoryAllTrees_PlacesCapitalStompingTree()
+    {
+        // Two-tile territory where every tile holds a tree. Previously
+        // CapitalPlacer skipped tree tiles entirely, leaving a 2+ hex
+        // territory with no capital (invariant violation). The fallback
+        // tier should now stomp a tree to honor the invariant.
+        HexGrid grid = BuildGrid(new HexCoord(0, 0), new HexCoord(1, 0));
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Tree();
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Tree();
+
+        var raw = new[] { T(null, new HexCoord(0, 0), new HexCoord(1, 0)) };
+
+        var result = CapitalReconciler.Reconcile(raw, new List<Territory>(), grid);
+
+        Assert.True(result[0].HasCapital);
+        Assert.Equal(new HexCoord(0, 0), result[0].Capital);
+        // The tree on the chosen tile was replaced by the Capital occupant;
+        // the other tile's tree is untouched.
+        Assert.IsType<Capital>(grid.Get(new HexCoord(0, 0))!.Occupant);
+        Assert.IsType<Tree>(grid.Get(new HexCoord(1, 0))!.Occupant);
+    }
 }

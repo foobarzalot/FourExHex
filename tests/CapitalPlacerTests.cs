@@ -58,6 +58,79 @@ public class CapitalPlacerTests
         Assert.Equal(new HexCoord(0, 0), result);
     }
 
+    // --- Tree / grave fallback tiers -------------------------------------
+
+    [Fact]
+    public void Choose_AllTreesNoEmptyOrUnit_StompsLexMinTree()
+    {
+        // No empty or unit tiles left — the placer must stomp a tree
+        // so the 2+ contiguous-same-color invariant is preserved.
+        HexGrid grid = BuildGrid(new HexCoord(0, 0), new HexCoord(1, 0));
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Tree();
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Tree();
+
+        HexCoord? result = CapitalPlacer.Choose(
+            new[] { new HexCoord(0, 0), new HexCoord(1, 0) }, grid);
+
+        Assert.Equal(new HexCoord(0, 0), result);
+    }
+
+    [Fact]
+    public void Choose_AllGravesNoEmptyOrUnit_StompsLexMinGrave()
+    {
+        HexGrid grid = BuildGrid(new HexCoord(0, 0), new HexCoord(1, 0));
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Grave();
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Grave();
+
+        HexCoord? result = CapitalPlacer.Choose(
+            new[] { new HexCoord(0, 0), new HexCoord(1, 0) }, grid);
+
+        Assert.Equal(new HexCoord(0, 0), result);
+    }
+
+    [Fact]
+    public void Choose_MixedTreeAndUnit_PrefersUnitOverTree()
+    {
+        // Unit (tier 2) beats tree (tier 4) even if the tree is lex-min.
+        HexGrid grid = BuildGrid(new HexCoord(0, 0), new HexCoord(1, 0));
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Tree();
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red);
+
+        HexCoord? result = CapitalPlacer.Choose(
+            new[] { new HexCoord(0, 0), new HexCoord(1, 0) }, grid);
+
+        Assert.Equal(new HexCoord(1, 0), result);
+    }
+
+    [Fact]
+    public void Choose_MixedGraveAndTree_PrefersGraveOverTree()
+    {
+        // Grave (tier 3) beats tree (tier 4): graves are already ephemeral
+        // and would have become trees next turn anyway, so stomping a
+        // grave is cheaper than destroying a real tree.
+        HexGrid grid = BuildGrid(new HexCoord(0, 0), new HexCoord(1, 0));
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Tree();
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Grave();
+
+        HexCoord? result = CapitalPlacer.Choose(
+            new[] { new HexCoord(0, 0), new HexCoord(1, 0) }, grid);
+
+        Assert.Equal(new HexCoord(1, 0), result);
+    }
+
+    [Fact]
+    public void Choose_MixedEmptyAndTree_PrefersEmpty()
+    {
+        HexGrid grid = BuildGrid(new HexCoord(0, 0), new HexCoord(1, 0));
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Tree();
+        // (1,0) stays empty.
+
+        HexCoord? result = CapitalPlacer.Choose(
+            new[] { new HexCoord(0, 0), new HexCoord(1, 0) }, grid);
+
+        Assert.Equal(new HexCoord(1, 0), result);
+    }
+
     [Fact]
     public void Choose_ExistingCapitalOccupant_IsIgnored()
     {
