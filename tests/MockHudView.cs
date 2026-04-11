@@ -10,6 +10,7 @@ namespace FourExHex.Tests;
 public class MockHudView : IHudView
 {
     public event Action? BuyPeasantClicked;
+    public event Action? BuildTowerClicked;
     public event Action? UndoLastClicked;
     public event Action? UndoTurnClicked;
     public event Action? RedoLastClicked;
@@ -31,6 +32,7 @@ public class MockHudView : IHudView
     }
 
     public void ClickBuyPeasant() => BuyPeasantClicked?.Invoke();
+    public void ClickBuildTower() => BuildTowerClicked?.Invoke();
     public void ClickUndoLast() => UndoLastClicked?.Invoke();
     public void ClickUndoTurn() => UndoTurnClicked?.Invoke();
     public void ClickRedoLast() => RedoLastClicked?.Invoke();

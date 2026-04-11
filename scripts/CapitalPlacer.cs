@@ -11,7 +11,10 @@ using System.Collections.Generic;
 ///   1. Empty tile (no cost)
 ///   2. Unit-occupied tile (stomps the unit — lost without refund)
 ///   3. Grave-occupied tile (stomps the grave — about to die anyway)
-///   4. Tree-occupied tile (stomps the tree — last resort)
+///   4. Tree-occupied tile (stomps the tree)
+///   5. Tower-occupied tile (stomps the tower — last resort; towers
+///      are a 15g investment so we destroy them only when nothing
+///      else is available)
 ///
 /// Existing <see cref="Capital"/> occupants are never considered.
 /// Within each tier the placer picks the lex-min (R, Q) coord so the
@@ -23,8 +26,8 @@ public static class CapitalPlacer
     /// Returns the coord where a new capital should be placed, or null if
     /// the territory is too small (&lt; 2) to deserve one. A
     /// non-null return is guaranteed whenever <paramref name="coords"/>
-    /// has &gt;= 2 entries that are Empty/Unit/Grave/Tree — only an
-    /// all-Capital territory (impossible in normal play) returns null.
+    /// has &gt;= 2 entries that are Empty/Unit/Grave/Tree/Tower — only
+    /// an all-Capital territory (impossible in normal play) returns null.
     /// </summary>
     public static HexCoord? Choose(IReadOnlyCollection<HexCoord> coords, HexGrid grid)
     {
@@ -34,6 +37,7 @@ public static class CapitalPlacer
         HexCoord? bestUnit = null;
         HexCoord? bestGrave = null;
         HexCoord? bestTree = null;
+        HexCoord? bestTower = null;
 
         foreach (HexCoord c in coords)
         {
@@ -68,10 +72,17 @@ public static class CapitalPlacer
                     bestTree = c;
                 }
             }
+            else if (tile.Occupant is Tower)
+            {
+                if (!bestTower.HasValue || c.CompareTo(bestTower.Value) < 0)
+                {
+                    bestTower = c;
+                }
+            }
             // Existing Capital occupants are ignored — placing a capital
             // on top of an existing one is never useful.
         }
 
-        return bestEmpty ?? bestUnit ?? bestGrave ?? bestTree;
+        return bestEmpty ?? bestUnit ?? bestGrave ?? bestTree ?? bestTower;
     }
 }

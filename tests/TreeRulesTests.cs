@@ -199,6 +199,24 @@ public class TreeRulesTests
     }
 
     [Fact]
+    public void SpreadTrees_DoesNotSpawnOntoTower()
+    {
+        // Regression lock: SpreadTrees picks the lex-min EMPTY common
+        // neighbor. A tower occupies the lex-min spot; the other common
+        // neighbor is empty and should be chosen. Trees must NEVER
+        // overwrite a tower.
+        HexGrid grid = BuildAxialGrid(-1, 2, -1, 2);
+        PlantTree(grid, new HexCoord(0, 0));
+        PlantTree(grid, new HexCoord(1, 0));
+        grid.Get(new HexCoord(1, -1))!.Occupant = new Tower();
+
+        TreeRules.SpreadTrees(grid);
+
+        Assert.IsType<Tower>(grid.Get(new HexCoord(1, -1))!.Occupant);
+        Assert.True(IsTree(grid, new HexCoord(0, 1)));
+    }
+
+    [Fact]
     public void SpreadTrees_DoesNotReplaceOccupiedCommonNeighbor()
     {
         // Common neighbor (1,-1) holds a unit; lex-min pick must fall

@@ -13,6 +13,7 @@ public partial class HudView : CanvasLayer, IHudView
     public const float HudHeight = 60f;
 
     public event Action? BuyPeasantClicked;
+    public event Action? BuildTowerClicked;
     public event Action? UndoLastClicked;
     public event Action? UndoTurnClicked;
     public event Action? RedoLastClicked;
@@ -24,6 +25,7 @@ public partial class HudView : CanvasLayer, IHudView
     private Label _playerLabel = null!;
     private Label _goldLabel = null!;
     private Button _buyPeasantButton = null!;
+    private Button _buildTowerButton = null!;
     private Button _undoLastButton = null!;
     private Button _undoTurnButton = null!;
     private Button _redoLastButton = null!;
@@ -69,6 +71,11 @@ public partial class HudView : CanvasLayer, IHudView
         _buyPeasantButton.AddThemeFontSizeOverride("font_size", 20);
         _buyPeasantButton.Pressed += () => BuyPeasantClicked?.Invoke();
         leftHbox.AddChild(_buyPeasantButton);
+
+        _buildTowerButton = new Button { Text = "Build Tower (15g)", Visible = false };
+        _buildTowerButton.AddThemeFontSizeOverride("font_size", 20);
+        _buildTowerButton.Pressed += () => BuildTowerClicked?.Invoke();
+        leftHbox.AddChild(_buildTowerButton);
 
         // Right-anchored action row: Undo Turn / Undo Last / Redo Last /
         // Redo All / End Turn. The HBoxContainer spans the HUD width with
@@ -191,25 +198,32 @@ public partial class HudView : CanvasLayer, IHudView
         _playerLabel.Text = $"Current: {current.Name}";
         _playerLabel.AddThemeColorOverride("font_color", current.Color);
 
-        // Gold label + buy button depend on the selection.
+        // Gold label + buy/build buttons depend on the selection.
         Territory? selected = session.SelectedTerritory;
         if (selected == null || !selected.HasCapital)
         {
             _goldLabel.Text = "";
             _buyPeasantButton.Visible = false;
             _buyPeasantButton.Text = "Buy Peasant (10g)";
+            _buildTowerButton.Visible = false;
+            _buildTowerButton.Text = "Build Tower (15g)";
         }
         else
         {
             int gold = state.Treasury.GetGold(selected.Capital!.Value);
+            int income = TreeRules.CountNonTreeTiles(selected, state.Grid);
             int upkeep = UpkeepRules.TotalUpkeepFor(selected, state.Grid);
-            int net = selected.Size - upkeep;
+            int net = income - upkeep;
             string sign = net >= 0 ? "+" : "";
-            _goldLabel.Text = $"Gold: {gold}  (size {selected.Size}, upkeep {upkeep}, net {sign}{net})";
+            _goldLabel.Text = $"Gold: {gold}  (income {income}, upkeep {upkeep}, net {sign}{net})";
             _buyPeasantButton.Visible = PurchaseRules.CanAffordPeasant(selected, state.Treasury);
             _buyPeasantButton.Text = session.Mode == SessionState.ActionMode.BuyingPeasant
                 ? "Click a tile..."
                 : "Buy Peasant (10g)";
+            _buildTowerButton.Visible = PurchaseRules.CanAffordTower(selected, state.Treasury);
+            _buildTowerButton.Text = session.Mode == SessionState.ActionMode.BuildingTower
+                ? "Click a tile..."
+                : "Build Tower (15g)";
         }
 
         _undoLastButton.Disabled = !session.Undo.CanUndo;

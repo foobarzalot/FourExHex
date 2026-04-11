@@ -9,6 +9,7 @@ using System;
 public interface IHudView
 {
     event Action? BuyPeasantClicked;
+    event Action? BuildTowerClicked;
     event Action? UndoLastClicked;
     event Action? UndoTurnClicked;
     event Action? RedoLastClicked;

@@ -132,6 +132,46 @@ public class CapitalPlacerTests
     }
 
     [Fact]
+    public void Choose_AllTowersNoOtherOptions_StompsLexMinTower()
+    {
+        HexGrid grid = BuildGrid(new HexCoord(0, 0), new HexCoord(1, 0));
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Tower();
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Tower();
+
+        HexCoord? result = CapitalPlacer.Choose(
+            new[] { new HexCoord(0, 0), new HexCoord(1, 0) }, grid);
+
+        Assert.Equal(new HexCoord(0, 0), result);
+    }
+
+    [Fact]
+    public void Choose_MixedTreeAndTower_PrefersTreeOverTower()
+    {
+        // Tree (tier 4) beats tower (tier 5). Tower is the last resort.
+        HexGrid grid = BuildGrid(new HexCoord(0, 0), new HexCoord(1, 0));
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Tower();
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Tree();
+
+        HexCoord? result = CapitalPlacer.Choose(
+            new[] { new HexCoord(0, 0), new HexCoord(1, 0) }, grid);
+
+        Assert.Equal(new HexCoord(1, 0), result);
+    }
+
+    [Fact]
+    public void Choose_MixedTowerAndUnit_PrefersUnitOverTower()
+    {
+        HexGrid grid = BuildGrid(new HexCoord(0, 0), new HexCoord(1, 0));
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Tower();
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red);
+
+        HexCoord? result = CapitalPlacer.Choose(
+            new[] { new HexCoord(0, 0), new HexCoord(1, 0) }, grid);
+
+        Assert.Equal(new HexCoord(1, 0), result);
+    }
+
+    [Fact]
     public void Choose_ExistingCapitalOccupant_IsIgnored()
     {
         // If a tile already has a Capital occupant, CapitalPlacer must not

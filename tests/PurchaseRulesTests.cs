@@ -70,6 +70,32 @@ public class PurchaseRulesTests
         Assert.False(result);
     }
 
+    // --- CanAffordTower ---------------------------------------------------
+
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(14, false)]
+    [InlineData(15, true)]
+    [InlineData(30, true)]
+    public void CanAffordTower_GoldThreshold(int gold, bool expected)
+    {
+        var capital = new HexCoord(0, 0);
+        Territory territory = MakeTerritory(Red, capital, new HexCoord(0, 0), new HexCoord(1, 0));
+        var treasury = new Treasury();
+        treasury.SetGold(capital, gold);
+
+        Assert.Equal(expected, PurchaseRules.CanAffordTower(territory, treasury));
+    }
+
+    [Fact]
+    public void CanAffordTower_SingletonTerritory_ReturnsFalse()
+    {
+        var singleton = new Territory(Red, new[] { new HexCoord(0, 0) }, capital: null);
+        var treasury = new Treasury();
+
+        Assert.False(PurchaseRules.CanAffordTower(singleton, treasury));
+    }
+
     // --- IsValidPeasantTarget ---------------------------------------------
 
     [Fact]

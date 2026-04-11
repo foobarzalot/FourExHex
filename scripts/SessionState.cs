@@ -25,6 +25,7 @@ public class SessionState
     {
         None,
         BuyingPeasant,
+        BuildingTower,
         MovingUnit,
     }
 

@@ -354,6 +354,166 @@ public class GameControllerTests
         Assert.IsType<Tree>(g.Tile(3, 0).Occupant);
     }
 
+    // --- Build tower ------------------------------------------------------
+
+    [Fact]
+    public void BuildTower_OnOwnEmptyTile_DeductsFifteenGoldAndPlacesTower()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1)); // select Red
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        // Red starts with 12g; give it enough to build.
+        g.State.Treasury.SetGold(redCapital, 20);
+        int before = g.State.Treasury.GetGold(redCapital);
+
+        g.Hud.ClickBuildTower();
+        Assert.Equal(SessionState.ActionMode.BuildingTower, g.Session.Mode);
+
+        // (1,1) is an empty tile in Red's territory ((0,1) is capital).
+        g.Map.SimulateClick(g.Tile(1, 1));
+
+        Assert.IsType<Tower>(g.Tile(1, 1).Occupant);
+        Assert.Equal(before - PurchaseRules.TowerCost, g.State.Treasury.GetGold(redCapital));
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+    }
+
+    [Fact]
+    public void BuildTower_CantAfford_ButtonIsNoOp()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 5); // not enough for 15g tower
+
+        g.Hud.ClickBuildTower();
+
+        // Should not have entered BuildingTower mode.
+        Assert.NotEqual(SessionState.ActionMode.BuildingTower, g.Session.Mode);
+    }
+
+    [Fact]
+    public void BuildTower_OnOccupiedTile_CancelsMode()
+    {
+        // Click an invalid target (occupied tile or foreign tile) during
+        // BuildingTower mode: the mode cancels and falls through to a
+        // normal click.
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 20);
+
+        g.Hud.ClickBuildTower();
+        Assert.Equal(SessionState.ActionMode.BuildingTower, g.Session.Mode);
+
+        // (0,1) is Red's capital — occupied by a Capital — not a valid
+        // tower target. The click cancels the mode.
+        g.Map.SimulateClick(g.Tile(0, 1));
+
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+        // Red's gold is unchanged.
+        Assert.Equal(20, g.State.Treasury.GetGold(redCapital));
+    }
+
+    [Fact]
+    public void BuildTower_OnEnemyTile_CancelsMode_AndSelectsNothing()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 20);
+
+        g.Hud.ClickBuildTower();
+
+        // (3,0) is Blue. Can't build a tower on enemy territory.
+        g.Map.SimulateClick(g.Tile(3, 0));
+
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+        Assert.Null(g.Session.SelectedTerritory);
+        // Red's gold is unchanged.
+        Assert.Equal(20, g.State.Treasury.GetGold(redCapital));
+    }
+
+    [Fact]
+    public void Undo_AfterBuildTower_RemovesTowerAndRefundsGold()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 20);
+        int before = g.State.Treasury.GetGold(redCapital);
+
+        g.Hud.ClickBuildTower();
+        g.Map.SimulateClick(g.Tile(1, 1));
+        Assert.IsType<Tower>(g.Tile(1, 1).Occupant);
+
+        g.Hud.ClickUndoLast();
+
+        Assert.Null(g.Tile(1, 1).Occupant);
+        Assert.Equal(before, g.State.Treasury.GetGold(redCapital));
+    }
+
+    [Fact]
+    public void BuildTower_AfterPlacement_RadiatesDefenseToAdjacentOwnTile()
+    {
+        // Build a tower on (1,1). Its adjacent same-territory tile
+        // (0,1) should now have defense 2 — even though (0,1) has the
+        // Capital which would otherwise only contribute 1. Verify via
+        // DefenseRules directly.
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 20);
+
+        g.Hud.ClickBuildTower();
+        g.Map.SimulateClick(g.Tile(1, 1));
+
+        // The selection was preserved (ExecuteBuildTower passes
+        // clearSelection: false), so SelectedTerritory is still Red.
+        Territory red = g.RedTerritory;
+        // (0,1) is Red's capital, adjacent to (1,1)'s tower: defense 2.
+        Assert.Equal(2, DefenseRules.Defense(HexCoord.FromOffset(0, 1), g.State.Grid, red));
+    }
+
+    [Fact]
+    public void Bankruptcy_KillsUnits_ButNotTower()
+    {
+        // A bankrupt territory's UNITS become graves, but its TOWER
+        // survives — towers have no upkeep.
+        var g = new TestGame();
+        g.Tile(3, 0).Occupant = new Unit(g.Blue.Color, UnitLevel.Knight);
+        g.Tile(4, 0).Occupant = new Tower();
+        HexCoord blueCapital = g.State.Territories
+            .First(t => t.Owner == g.Blue.Color).Capital!.Value;
+        g.State.Treasury.SetGold(blueCapital, 0);
+
+        g.Hud.ClickEndTurn(); // advance to Blue: income then upkeep
+
+        // Knight went bankrupt → grave.
+        Assert.IsType<Grave>(g.Tile(3, 0).Occupant);
+        // Tower untouched.
+        Assert.IsType<Tower>(g.Tile(4, 0).Occupant);
+    }
+
+    [Fact]
+    public void Tower_SurvivesEndTurn_AndTreeConversionPass()
+    {
+        // Build a tower, end turn twice, tower should still be there.
+        // Confirms that ConvertGravesToTrees + SpreadTrees don't mutate
+        // tower tiles.
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 20);
+
+        g.Hud.ClickBuildTower();
+        g.Map.SimulateClick(g.Tile(1, 1));
+
+        g.Hud.ClickEndTurn(); // Red → Blue
+        g.Hud.ClickEndTurn(); // Blue → Red
+
+        Assert.IsType<Tower>(g.Tile(1, 1).Occupant);
+    }
+
     // --- Win condition ---------------------------------------------------
 
     [Fact]

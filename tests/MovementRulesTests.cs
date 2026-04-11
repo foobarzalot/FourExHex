@@ -573,6 +573,107 @@ public class MovementRulesTests
         Assert.True(combined.HasMovedThisTurn);
     }
 
+    // --- Tower tiles: block own placement, blockable-by-defense capture --
+
+    [Fact]
+    public void ValidTargets_ExcludesOwnTowerTile()
+    {
+        // Own tower tile is NEVER a valid target: can't reposition,
+        // can't combine onto it, can't buy onto it.
+        HexGrid grid = BuildGrid(5, 1, Blue);
+        foreach (var c in new[] { HexCoord.FromOffset(0, 0), HexCoord.FromOffset(1, 0), HexCoord.FromOffset(2, 0) })
+        {
+            SetTile(grid, c, Red);
+        }
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Tower();
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(Red);
+
+        var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        Territory red = territories.First(t => t.Owner == Red);
+
+        var targets = MovementRules.ValidTargets(UnitLevel.Peasant, red, grid, territories);
+
+        Assert.DoesNotContain(HexCoord.FromOffset(1, 0), targets);
+    }
+
+    [Fact]
+    public void ValidTargets_Knight_CanCaptureEnemyTowerTile()
+    {
+        // Tower defends at 2; knight (3) is strictly greater → capturable.
+        HexGrid grid = BuildGrid(5, 2, Blue);
+        SetTile(grid, HexCoord.FromOffset(0, 1), Red);
+        SetTile(grid, HexCoord.FromOffset(1, 1), Red);
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Tower();
+
+        var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        Territory red = territories.First(t => t.Owner == Red);
+
+        var targets = MovementRules.ValidTargets(UnitLevel.Knight, red, grid, territories);
+
+        Assert.Contains(HexCoord.FromOffset(2, 0), targets);
+    }
+
+    [Fact]
+    public void ValidTargets_Spearman_CannotCaptureEnemyTowerTile()
+    {
+        // Tower defense 2 vs spearman level 2 — strict-less rule says no.
+        HexGrid grid = BuildGrid(5, 2, Blue);
+        SetTile(grid, HexCoord.FromOffset(0, 1), Red);
+        SetTile(grid, HexCoord.FromOffset(1, 1), Red);
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Tower();
+
+        var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        Territory red = territories.First(t => t.Owner == Red);
+
+        var targets = MovementRules.ValidTargets(UnitLevel.Spearman, red, grid, territories);
+
+        Assert.DoesNotContain(HexCoord.FromOffset(2, 0), targets);
+    }
+
+    [Fact]
+    public void ValidTargets_Spearman_CannotCaptureTileAdjacentToEnemyTower()
+    {
+        // (2,0) is empty but adjacent to a tower on (3,0) — radiation
+        // gives it defense 2, blocking a spearman.
+        HexGrid grid = BuildGrid(5, 2, Blue);
+        SetTile(grid, HexCoord.FromOffset(0, 1), Red);
+        SetTile(grid, HexCoord.FromOffset(1, 1), Red);
+        grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = new Tower();
+
+        var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        Territory red = territories.First(t => t.Owner == Red);
+
+        var targets = MovementRules.ValidTargets(UnitLevel.Spearman, red, grid, territories);
+
+        Assert.DoesNotContain(HexCoord.FromOffset(2, 0), targets);
+    }
+
+    [Fact]
+    public void Move_Capture_OntoEnemyTower_DestroysTowerAndPlacesUnit()
+    {
+        HexGrid grid = BuildGrid(5, 1, Blue);
+        SetTile(grid, HexCoord.FromOffset(0, 0), Red);
+        SetTile(grid, HexCoord.FromOffset(1, 0), Red);
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Tower();
+
+        var knight = new Unit(Red, UnitLevel.Knight);
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = knight;
+
+        var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        Territory red = territories.First(t => t.Owner == Red);
+
+        MoveResult result = MovementRules.Move(
+            HexCoord.FromOffset(1, 0), HexCoord.FromOffset(2, 0), grid, red);
+
+        Assert.True(result.WasCapture);
+        HexTile captured = grid.Get(HexCoord.FromOffset(2, 0))!;
+        Assert.Equal(Red, captured.Color);
+        Assert.Same(knight, captured.Unit);
+        // Tower is gone — overwritten by the arriving unit.
+        Assert.IsNotType<Tower>(captured.Occupant);
+        Assert.True(knight.HasMovedThisTurn);
+    }
+
     // --- Tree tiles: clearable, consume action ---------------------------
 
     [Fact]

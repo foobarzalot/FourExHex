@@ -39,6 +39,8 @@ public static class MovementRules
         //    consumes the unit's action (handled in ResolveArrival).
         // 2. Combine targets: own-territory tiles whose occupant is a
         //    Unit the attacker can merge with.
+        // Capital and Tower occupants in own territory are skipped
+        // entirely — you can't land a friendly unit on either.
         foreach (HexCoord coord in own)
         {
             HexTile? tile = grid.Get(coord);
@@ -55,7 +57,6 @@ public static class MovementRules
             {
                 results.Add(coord);
             }
-            // Capital occupants are skipped — can't land on your own capital.
         }
 
         // 3. Captures: each distinct tile adjacent to our territory.

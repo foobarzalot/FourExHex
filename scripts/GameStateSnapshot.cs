@@ -103,6 +103,7 @@ public class GameStateSnapshot
         Capital => new Capital(),
         Grave => new Grave(),
         Tree => new Tree(),
+        Tower => new Tower(),
         null => null,
         _ => throw new InvalidOperationException($"Unknown occupant type: {occupant.GetType()}"),
     };

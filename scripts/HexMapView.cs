@@ -261,7 +261,71 @@ public partial class HexMapView : Node2D, IHexMapView
                 visual.Position = center;
                 _unitsLayer?.AddChild(visual);
             }
+            else if (tile.Occupant is Tower)
+            {
+                Node2D visual = CreateTowerVisual();
+                visual.Position = center;
+                _capitalsLayer?.AddChild(visual);
+            }
         }
+    }
+
+    private Node2D CreateTowerVisual()
+    {
+        // Stylized stone rook: a light-gray crenellated body. Sized like
+        // a capital (~0.35 * HexSize) so it reads as a structural
+        // element distinct from the round unit discs.
+        float r = HexSize * 0.32f;
+        // Base rectangle with three crenellations on top.
+        float halfW = r;
+        float top = -r;
+        float bot = r * 0.85f;
+        float merlonH = r * 0.35f;
+        float merlonW = halfW * 0.4f;
+
+        var verts = new[]
+        {
+            // bottom-left corner
+            new Vector2(-halfW, bot),
+            new Vector2(-halfW, top + merlonH),
+            // left merlon
+            new Vector2(-halfW, top),
+            new Vector2(-halfW + merlonW, top),
+            new Vector2(-halfW + merlonW, top + merlonH),
+            // middle gap
+            new Vector2(-merlonW * 0.5f, top + merlonH),
+            // center merlon
+            new Vector2(-merlonW * 0.5f, top),
+            new Vector2(merlonW * 0.5f, top),
+            new Vector2(merlonW * 0.5f, top + merlonH),
+            // right gap
+            new Vector2(halfW - merlonW, top + merlonH),
+            // right merlon
+            new Vector2(halfW - merlonW, top),
+            new Vector2(halfW, top),
+            new Vector2(halfW, top + merlonH),
+            // bottom-right corner
+            new Vector2(halfW, bot),
+        };
+
+        var body = new Polygon2D
+        {
+            Color = new Color(0.72f, 0.72f, 0.76f, 1f),
+            Polygon = verts,
+        };
+
+        var outlinePoints = new Vector2[verts.Length + 1];
+        for (int i = 0; i < verts.Length; i++) outlinePoints[i] = verts[i];
+        outlinePoints[verts.Length] = verts[0];
+        var outline = new Line2D
+        {
+            Points = outlinePoints,
+            Width = 2f,
+            DefaultColor = new Color(0f, 0f, 0f, 1f),
+        };
+        body.AddChild(outline);
+
+        return body;
     }
 
     private Node2D CreateTreeVisual()

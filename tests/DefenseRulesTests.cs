@@ -190,4 +190,90 @@ public class DefenseRulesTests
 
         Assert.Equal(0, DefenseRules.Defense(new HexCoord(0, 0), grid, leftRed));
     }
+
+    // --- Towers ----------------------------------------------------------
+
+    [Fact]
+    public void Defense_TileWithOwnTower_IsTwo()
+    {
+        (HexGrid grid, Territory territory) = BuildBlob(
+            Red, null,
+            new HexCoord(0, 0), new HexCoord(1, 0));
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Tower();
+
+        Assert.Equal(2, DefenseRules.Defense(new HexCoord(0, 0), grid, territory));
+    }
+
+    [Fact]
+    public void Defense_TileAdjacentToOwnTower_IsTwo_ViaRadiation()
+    {
+        // Tower at (0,0) radiates to same-territory neighbors, so the
+        // empty (1,0) tile inherits defense 2 from its neighbor.
+        (HexGrid grid, Territory territory) = BuildBlob(
+            Red, null,
+            new HexCoord(0, 0), new HexCoord(1, 0));
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Tower();
+
+        Assert.Equal(2, DefenseRules.Defense(new HexCoord(1, 0), grid, territory));
+    }
+
+    [Fact]
+    public void Defense_AdjacentEnemyTower_DoesNotRadiateAcrossTerritories()
+    {
+        // Red at (0,0). Blue at (1,0) (adjacent, enemy). Blue tile has a
+        // tower. A capture target computation treats (0,0)'s defense from
+        // Red's perspective — the enemy tower on (1,0) MUST NOT radiate
+        // into Red's territory, so Red's (0,0) is defense 0.
+        var grid = new HexGrid();
+        grid.Add(new HexTile(new HexCoord(0, 0), Red));
+        grid.Add(new HexTile(new HexCoord(1, 0), Blue));
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Tower();
+
+        var redTerritory = new Territory(Red, new[] { new HexCoord(0, 0) }, capital: null);
+
+        Assert.Equal(0, DefenseRules.Defense(new HexCoord(0, 0), grid, redTerritory));
+    }
+
+    [Fact]
+    public void Defense_TowerPlusPeasantOnSameTile_IsTwo_NotThree()
+    {
+        // Contributions don't stack — the max wins. A peasant (1) plus a
+        // tower (2) on overlapping coverage is still 2.
+        (HexGrid grid, Territory territory) = BuildBlob(
+            Red, null,
+            new HexCoord(0, 0), new HexCoord(1, 0));
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Tower();
+        // Adjacent peasant that radiates 1 into (0,0) — tower already
+        // gives 2 so we expect 2, not 3.
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red);
+
+        Assert.Equal(2, DefenseRules.Defense(new HexCoord(0, 0), grid, territory));
+    }
+
+    [Fact]
+    public void Defense_KnightNextToTower_TileIsThree_ViaKnightMaxWins()
+    {
+        // A knight (3) on an adjacent same-territory tile beats the
+        // tower's radiated 2 on the subject tile.
+        (HexGrid grid, Territory territory) = BuildBlob(
+            Red, null,
+            new HexCoord(0, 0), new HexCoord(1, 0));
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Tower();
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red, UnitLevel.Knight);
+
+        Assert.Equal(3, DefenseRules.Defense(new HexCoord(0, 0), grid, territory));
+    }
+
+    [Fact]
+    public void Defense_TwoAdjacentTowers_DoNotStackBeyondTwo()
+    {
+        (HexGrid grid, Territory territory) = BuildBlob(
+            Red, null,
+            new HexCoord(0, 0), new HexCoord(1, 0));
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Tower();
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Tower();
+
+        Assert.Equal(2, DefenseRules.Defense(new HexCoord(0, 0), grid, territory));
+        Assert.Equal(2, DefenseRules.Defense(new HexCoord(1, 0), grid, territory));
+    }
 }

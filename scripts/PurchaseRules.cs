@@ -8,11 +8,22 @@ using System.Linq;
 public static class PurchaseRules
 {
     public const int PeasantCost = 10;
+    public const int TowerCost = 15;
 
     public static bool CanAffordPeasant(Territory territory, Treasury treasury)
     {
         if (!territory.HasCapital) return false;
         return treasury.GetGold(territory.Capital!.Value) >= PeasantCost;
+    }
+
+    /// <summary>
+    /// True iff <paramref name="territory"/> has a capital and enough
+    /// gold to build a tower (15g, one-time, no upkeep).
+    /// </summary>
+    public static bool CanAffordTower(Territory territory, Treasury treasury)
+    {
+        if (!territory.HasCapital) return false;
+        return treasury.GetGold(territory.Capital!.Value) >= TowerCost;
     }
 
     public static bool IsValidPeasantTarget(HexTile tile, Territory territory)

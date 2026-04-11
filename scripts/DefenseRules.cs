@@ -5,10 +5,12 @@ using System.Linq;
 /// max contribution over the tile's own occupant and the occupants of
 /// every adjacent tile in the same territory. Occupant contributions:
 ///   - <see cref="Unit"/>     -> (int)unit.Level
+///   - <see cref="Tower"/>    -> 2  (spearman-equivalent)
 ///   - <see cref="Capital"/>  -> 1
 ///   - null / other occupants -> 0
-/// Both units and capitals radiate their contribution to adjacent
-/// same-territory tiles.
+/// Units, towers, and capitals all radiate their contribution to
+/// adjacent same-territory tiles. Contributions don't stack — the
+/// max single value wins.
 /// </summary>
 public static class DefenseRules
 {
@@ -44,6 +46,7 @@ public static class DefenseRules
     public static int ContributionOf(HexOccupant? occupant) => occupant switch
     {
         Unit u => (int)u.Level,
+        Tower => 2,
         Capital => 1,
         _ => 0,
     };

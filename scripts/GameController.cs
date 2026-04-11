@@ -26,6 +26,7 @@ public class GameController
 
         _map.TileClicked += OnTileClicked;
         _hud.BuyPeasantClicked += OnBuyPeasantPressed;
+        _hud.BuildTowerClicked += OnBuildTowerPressed;
         _hud.UndoLastClicked += OnUndoLastPressed;
         _hud.UndoTurnClicked += OnUndoTurnPressed;
         _hud.RedoLastClicked += OnRedoLastPressed;
@@ -94,6 +95,16 @@ public class GameController
                 return;
             }
             // Clicking somewhere invalid cancels the buy.
+            CancelPendingAction();
+            // Fall through to treat this as a fresh click.
+        }
+        else if (_session.Mode == SessionState.ActionMode.BuildingTower && tile != null && _session.SelectedTerritory != null)
+        {
+            if (IsValidTowerTarget(tile.Coord))
+            {
+                ExecuteBuildTower(tile.Coord);
+                return;
+            }
             CancelPendingAction();
             // Fall through to treat this as a fresh click.
         }
@@ -176,6 +187,19 @@ public class GameController
         return targets.Contains(coord);
     }
 
+    /// <summary>
+    /// Tower placement target: an empty tile inside the currently
+    /// selected territory. The tile's Occupant must be null — graves,
+    /// trees, units, and capitals all block tower construction.
+    /// </summary>
+    private bool IsValidTowerTarget(HexCoord coord)
+    {
+        if (_session.SelectedTerritory == null) return false;
+        if (!_session.SelectedTerritory.Coords.Contains(coord)) return false;
+        HexTile? tile = _state.Grid.Get(coord);
+        return tile != null && tile.Occupant == null;
+    }
+
     // --- Buy / move / capture --------------------------------------------
 
     private void ExecuteBuyAndPlace(HexCoord destination)
@@ -211,6 +235,28 @@ public class GameController
         }
 
         FinishPendingAction(clearSelection: result.WasCapture);
+    }
+
+    /// <summary>
+    /// Deduct <see cref="PurchaseRules.TowerCost"/> from the selected
+    /// territory's capital and drop a fresh <see cref="Tower"/> on the
+    /// destination tile. Towers always build in own territory, so there
+    /// is no capture path and the selection stays put.
+    /// </summary>
+    private void ExecuteBuildTower(HexCoord destination)
+    {
+        if (_session.SelectedTerritory == null) return;
+
+        _session.Undo.PushBefore(CaptureCurrentSnapshot());
+
+        HexCoord capital = _session.SelectedTerritory.Capital!.Value;
+        _state.Treasury.SetGold(
+            capital, _state.Treasury.GetGold(capital) - PurchaseRules.TowerCost);
+
+        HexTile dst = _state.Grid.Get(destination)!;
+        dst.Occupant = new Tower();
+
+        FinishPendingAction(clearSelection: false);
     }
 
     private void HandleCapture()
@@ -309,6 +355,20 @@ public class GameController
         _session.Mode = SessionState.ActionMode.BuyingPeasant;
         _session.MoveSource = null;
         _map.ShowMoveTargets(CaptureTargetsOnly(UnitLevel.Peasant, _session.SelectedTerritory));
+        RefreshViews();
+    }
+
+    private void OnBuildTowerPressed()
+    {
+        if (_session.IsGameOver) return;
+        if (_session.SelectedTerritory == null) return;
+        if (!PurchaseRules.CanAffordTower(_session.SelectedTerritory, _state.Treasury)) return;
+
+        _session.Mode = SessionState.ActionMode.BuildingTower;
+        _session.MoveSource = null;
+        // Towers only build on empty own-territory tiles — no enemy
+        // capture targets to highlight.
+        _map.ShowMoveTargets(System.Array.Empty<HexCoord>());
         RefreshViews();
     }
 

@@ -59,6 +59,21 @@ public class GameStateSnapshotTests
     }
 
     [Fact]
+    public void Capture_PreservesTowerOccupants()
+    {
+        HexGrid grid = BuildTwoTileRedGrid();
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Tower();
+        var treasury = new Treasury();
+        var territories = TerritoriesFor(grid);
+
+        GameStateSnapshot snap = GameStateSnapshot.Capture(grid, treasury, territories);
+        grid.Get(new HexCoord(0, 0))!.Occupant = null;
+        snap.ApplyTo(grid, treasury);
+
+        Assert.IsType<Tower>(grid.Get(new HexCoord(0, 0))!.Occupant);
+    }
+
+    [Fact]
     public void Capture_PreservesGraveOccupants()
     {
         HexGrid grid = BuildTwoTileRedGrid();

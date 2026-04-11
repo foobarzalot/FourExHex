@@ -282,6 +282,27 @@ public class CapitalReconcilerTests
     }
 
     [Fact]
+    public void Reconcile_MultiHexTerritoryAllTowers_PlacesCapitalStompingTower()
+    {
+        // Most extreme invariant case: every tile in the territory holds
+        // a Tower. Since the invariant "2+ contiguous cells must have a
+        // capital" is hard, the reconciler must stomp a tower (the last
+        // fallback tier).
+        HexGrid grid = BuildGrid(new HexCoord(0, 0), new HexCoord(1, 0));
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Tower();
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Tower();
+
+        var raw = new[] { T(null, new HexCoord(0, 0), new HexCoord(1, 0)) };
+
+        var result = CapitalReconciler.Reconcile(raw, new List<Territory>(), grid);
+
+        Assert.True(result[0].HasCapital);
+        Assert.Equal(new HexCoord(0, 0), result[0].Capital);
+        Assert.IsType<Capital>(grid.Get(new HexCoord(0, 0))!.Occupant);
+        Assert.IsType<Tower>(grid.Get(new HexCoord(1, 0))!.Occupant);
+    }
+
+    [Fact]
     public void Reconcile_MultiHexTerritoryAllTrees_PlacesCapitalStompingTree()
     {
         // Two-tile territory where every tile holds a tree. Previously
