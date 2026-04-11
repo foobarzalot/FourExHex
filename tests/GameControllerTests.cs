@@ -354,6 +354,168 @@ public class GameControllerTests
         Assert.IsType<Tree>(g.Tile(3, 0).Occupant);
     }
 
+    // --- Win condition ---------------------------------------------------
+
+    [Fact]
+    public void Capture_LastEnemyHex_DeclaresWinner()
+    {
+        // Build a minimal fixture: all tiles Red except one Blue tile
+        // adjacent to Red. Capturing that tile wipes Blue out and Red
+        // should be declared the winner.
+        var red = new Player("Red", new Color(1f, 0f, 0f));
+        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var players = new List<Player> { red, blue };
+
+        var grid = TestHelpers.BuildRectGrid(4, 1, red.Color);
+        grid.Get(HexCoord.FromOffset(3, 0))!.Color = blue.Color;
+        // Park a Red peasant adjacent to the Blue hex.
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(red.Color);
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        var map = new MockHexMapView();
+        var hud = new MockHudView();
+        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+        {
+            map.TileIndex[kvp.Key] = kvp.Value;
+        }
+        var controller = new GameController(state, session, map, hud);
+        controller.StartGame();
+
+        // Select Red, pick up the unit, capture the last Blue hex.
+        map.SimulateClick(grid.Get(HexCoord.FromOffset(2, 0)));
+        map.SimulateClick(grid.Get(HexCoord.FromOffset(3, 0)));
+
+        Assert.True(session.IsGameOver);
+        Assert.Equal(red.Color, session.Winner);
+    }
+
+    [Fact]
+    public void Capture_NonFinalHex_DoesNotDeclareWinner()
+    {
+        var g = new TestGame();
+        var unit = new Unit(g.Red.Color);
+        g.Tile(1, 1).Occupant = unit;
+
+        g.Map.SimulateClick(g.Tile(1, 1));
+        g.Map.SimulateClick(g.Tile(2, 1)); // capture (2,1) — Blue still has tiles
+
+        Assert.False(g.Session.IsGameOver);
+        Assert.Null(g.Session.Winner);
+    }
+
+    [Fact]
+    public void BuyPeasant_AfterWin_IsNoOp()
+    {
+        var g = new TestGame();
+        g.Session.Winner = g.Red.Color; // simulate already-won state
+
+        g.Map.SimulateClick(g.Tile(0, 1));
+        g.Hud.ClickBuyPeasant();
+
+        // Mode should still be None because the controller short-
+        // circuits. Selection also does not happen.
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+    }
+
+    [Fact]
+    public void EndTurn_AfterWin_IsNoOp()
+    {
+        var g = new TestGame();
+        Color initialPlayer = g.State.Turns.CurrentPlayer.Color;
+        g.Session.Winner = g.Red.Color;
+
+        g.Hud.ClickEndTurn();
+
+        Assert.Equal(initialPlayer, g.State.Turns.CurrentPlayer.Color);
+    }
+
+    [Fact]
+    public void UndoLast_AfterWin_IsNoOp()
+    {
+        var g = new TestGame();
+        // Do an action so undo is available, then simulate a win.
+        g.Map.SimulateClick(g.Tile(0, 1));
+        g.Hud.ClickBuyPeasant();
+        g.Map.SimulateClick(g.Tile(1, 1));
+        Assert.NotNull(g.Tile(1, 1).Unit);
+
+        g.Session.Winner = g.Red.Color;
+        g.Hud.ClickUndoLast();
+
+        // Unit should still be present; undo was frozen.
+        Assert.NotNull(g.Tile(1, 1).Unit);
+    }
+
+    [Fact]
+    public void Capture_WinningCapture_ClearsUndoStack()
+    {
+        // Once the game is won, we don't want players rewinding past
+        // the killing blow. HandleCapture should clear the undo stack.
+        var red = new Player("Red", new Color(1f, 0f, 0f));
+        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var players = new List<Player> { red, blue };
+
+        var grid = TestHelpers.BuildRectGrid(4, 1, red.Color);
+        grid.Get(HexCoord.FromOffset(3, 0))!.Color = blue.Color;
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(red.Color);
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        var map = new MockHexMapView();
+        var hud = new MockHudView();
+        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+        {
+            map.TileIndex[kvp.Key] = kvp.Value;
+        }
+        var controller = new GameController(state, session, map, hud);
+        controller.StartGame();
+
+        map.SimulateClick(grid.Get(HexCoord.FromOffset(2, 0)));
+        map.SimulateClick(grid.Get(HexCoord.FromOffset(3, 0)));
+
+        Assert.False(session.Undo.CanUndo);
+    }
+
+    [Fact]
+    public void EndTurn_SkipsEliminatedPlayer()
+    {
+        // Three-player fixture where the middle player (Blue) has zero
+        // tiles. Ending Red's turn should jump straight to Green,
+        // skipping Blue entirely.
+        var red = new Player("Red", new Color(1f, 0f, 0f));
+        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var green = new Player("Green", new Color(0f, 1f, 0f));
+        var players = new List<Player> { red, blue, green };
+
+        // Grid has only Red and Green tiles — no Blue.
+        var grid = new HexGrid();
+        grid.Add(new HexTile(HexCoord.FromOffset(0, 0), red.Color));
+        grid.Add(new HexTile(HexCoord.FromOffset(1, 0), red.Color));
+        grid.Add(new HexTile(HexCoord.FromOffset(3, 0), green.Color));
+        grid.Add(new HexTile(HexCoord.FromOffset(4, 0), green.Color));
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        var map = new MockHexMapView();
+        var hud = new MockHudView();
+        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+        {
+            map.TileIndex[kvp.Key] = kvp.Value;
+        }
+        var controller = new GameController(state, session, map, hud);
+        controller.StartGame();
+
+        Assert.Equal(red.Color, state.Turns.CurrentPlayer.Color);
+        hud.ClickEndTurn();
+
+        // Should skip Blue (eliminated) and land on Green.
+        Assert.Equal(green.Color, state.Turns.CurrentPlayer.Color);
+    }
+
     private static int CountTrees(HexGrid grid)
     {
         int n = 0;

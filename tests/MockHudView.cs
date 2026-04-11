@@ -15,6 +15,7 @@ public class MockHudView : IHudView
     public event Action? RedoLastClicked;
     public event Action? RedoAllClicked;
     public event Action? EndTurnClicked;
+    public event Action? NewGameClicked;
 
     public int RefreshCount { get; private set; }
     public GameState? LastState { get; private set; }
@@ -35,4 +36,5 @@ public class MockHudView : IHudView
     public void ClickRedoLast() => RedoLastClicked?.Invoke();
     public void ClickRedoAll() => RedoAllClicked?.Invoke();
     public void ClickEndTurn() => EndTurnClicked?.Invoke();
+    public void ClickNewGame() => NewGameClicked?.Invoke();
 }

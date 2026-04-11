@@ -1,3 +1,5 @@
+using Godot;
+
 /// <summary>
 /// UI-scoped state for the current game session: which territory the
 /// player has selected, whether they're in the middle of buying a peasant
@@ -8,6 +10,17 @@
 /// </summary>
 public class SessionState
 {
+    /// <summary>
+    /// The winning player's color, or null if the game is still in
+    /// progress. Set by <see cref="GameController"/> when a capture
+    /// leaves only one color on the board. Once set, the controller
+    /// short-circuits every player action until a new game is started.
+    /// </summary>
+    public Color? Winner { get; set; }
+
+    /// <summary>True iff the game is over (a winner has been declared).</summary>
+    public bool IsGameOver => Winner.HasValue;
+
     public enum ActionMode
     {
         None,

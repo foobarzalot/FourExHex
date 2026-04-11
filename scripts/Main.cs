@@ -53,6 +53,12 @@ public partial class Main : Node2D
         var hud = new HudView();
         AddChild(hud);
 
+        // Scene-level action: New Game reloads the whole scene so
+        // _Ready runs from scratch. This is simpler than resetting
+        // GameState in place and guarantees we don't leak any stale
+        // references across games.
+        hud.NewGameClicked += () => GetTree().ReloadCurrentScene();
+
         // --- Controller takes over from here -----------------------------
         _controller = new GameController(state, session, map, hud);
         _controller.StartGame();

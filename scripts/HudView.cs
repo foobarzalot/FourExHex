@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using Godot;
 
 /// <summary>
@@ -17,6 +18,7 @@ public partial class HudView : CanvasLayer, IHudView
     public event Action? RedoLastClicked;
     public event Action? RedoAllClicked;
     public event Action? EndTurnClicked;
+    public event Action? NewGameClicked;
 
     private Label _turnLabel = null!;
     private Label _playerLabel = null!;
@@ -27,6 +29,8 @@ public partial class HudView : CanvasLayer, IHudView
     private Button _redoLastButton = null!;
     private Button _redoAllButton = null!;
     private Button _endTurnButton = null!;
+    private Control _victoryOverlay = null!;
+    private Label _victoryLabel = null!;
 
     public override void _Ready()
     {
@@ -111,6 +115,66 @@ public partial class HudView : CanvasLayer, IHudView
         _endTurnButton.AddThemeFontSizeOverride("font_size", 18);
         _endTurnButton.Pressed += () => EndTurnClicked?.Invoke();
         rightHbox.AddChild(_endTurnButton);
+
+        BuildVictoryOverlay(viewport);
+    }
+
+    /// <summary>
+    /// Build a centered, click-blocking panel with "Player wins!" and a
+    /// New Game button. Hidden by default; <see cref="Refresh"/> toggles
+    /// visibility based on <see cref="SessionState.Winner"/>.
+    /// </summary>
+    private void BuildVictoryOverlay(Vector2 viewport)
+    {
+        // Full-screen semi-transparent scrim that blocks clicks through
+        // to the map.
+        _victoryOverlay = new Control
+        {
+            AnchorLeft = 0f,
+            AnchorRight = 1f,
+            AnchorTop = 0f,
+            AnchorBottom = 1f,
+            MouseFilter = Control.MouseFilterEnum.Stop,
+            Visible = false,
+        };
+        AddChild(_victoryOverlay);
+
+        var scrim = new ColorRect
+        {
+            Color = new Color(0f, 0f, 0f, 0.6f),
+            AnchorLeft = 0f,
+            AnchorRight = 1f,
+            AnchorTop = 0f,
+            AnchorBottom = 1f,
+        };
+        _victoryOverlay.AddChild(scrim);
+
+        // Centered panel with the win text and a New Game button.
+        const float panelW = 420f;
+        const float panelH = 200f;
+        var panel = new Panel
+        {
+            Position = new Vector2((viewport.X - panelW) * 0.5f, (viewport.Y - panelH) * 0.5f),
+            Size = new Vector2(panelW, panelH),
+        };
+        _victoryOverlay.AddChild(panel);
+
+        _victoryLabel = new Label
+        {
+            Text = "Victory!",
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Position = new Vector2(0, 40),
+            Size = new Vector2(panelW, 48),
+        };
+        _victoryLabel.AddThemeFontSizeOverride("font_size", 36);
+        panel.AddChild(_victoryLabel);
+
+        var newGameButton = new Button { Text = "New Game" };
+        newGameButton.AddThemeFontSizeOverride("font_size", 22);
+        newGameButton.Position = new Vector2((panelW - 180f) * 0.5f, 120f);
+        newGameButton.Size = new Vector2(180f, 44f);
+        newGameButton.Pressed += () => NewGameClicked?.Invoke();
+        panel.AddChild(newGameButton);
     }
 
     /// <summary>
@@ -154,6 +218,22 @@ public partial class HudView : CanvasLayer, IHudView
         _redoAllButton.Disabled = !session.Undo.CanRedo;
 
         SetEndTurnCta(!hasActionableRemaining);
+
+        // Victory overlay: show iff a winner has been declared.
+        if (session.Winner.HasValue)
+        {
+            Color winColor = session.Winner.Value;
+            Player? winner = state.Turns.Players
+                .FirstOrDefault(p => p.Color == winColor);
+            string name = winner?.Name ?? "Unknown";
+            _victoryLabel.Text = $"{name} wins!";
+            _victoryLabel.AddThemeColorOverride("font_color", winColor);
+            _victoryOverlay.Visible = true;
+        }
+        else
+        {
+            _victoryOverlay.Visible = false;
+        }
     }
 
     private void SetEndTurnCta(bool isCta)

@@ -81,6 +81,8 @@ public class GameController
 
     private void OnTileClicked(HexTile? tile)
     {
+        if (_session.IsGameOver) return;
+
         // Handle any pending action mode first.
         if (_session.Mode == SessionState.ActionMode.BuyingPeasant && tile != null && _session.SelectedTerritory != null)
         {
@@ -218,6 +220,17 @@ public class GameController
         _state.Territories = CapitalReconciler.Reconcile(raw, previous, _state.Grid);
         _state.Treasury.ReconcileAfterCapture(previous, _state.Territories);
         _map.RebuildAfterTerritoryChange();
+
+        // After every capture, check whether one color now owns the
+        // entire board. If so, the game is over — freeze input until
+        // a new game is started. Undo is disabled so players can't
+        // rewind past the killing blow.
+        Color? winner = WinConditionRules.Winner(_state.Grid);
+        if (winner.HasValue)
+        {
+            _session.Winner = winner;
+            _session.Undo.Clear();
+        }
     }
 
     private void FinishPendingAction(bool clearSelection = true)
@@ -246,24 +259,28 @@ public class GameController
 
     private void OnUndoLastPressed()
     {
+        if (_session.IsGameOver) return;
         if (!_session.Undo.CanUndo) return;
         ApplySnapshot(_session.Undo.UndoLast(CaptureCurrentSnapshot()));
     }
 
     private void OnUndoTurnPressed()
     {
+        if (_session.IsGameOver) return;
         if (!_session.Undo.CanUndo) return;
         ApplySnapshot(_session.Undo.UndoTurn(CaptureCurrentSnapshot()));
     }
 
     private void OnRedoLastPressed()
     {
+        if (_session.IsGameOver) return;
         if (!_session.Undo.CanRedo) return;
         ApplySnapshot(_session.Undo.RedoLast(CaptureCurrentSnapshot()));
     }
 
     private void OnRedoAllPressed()
     {
+        if (_session.IsGameOver) return;
         if (!_session.Undo.CanRedo) return;
         ApplySnapshot(_session.Undo.RedoAll(CaptureCurrentSnapshot()));
     }
@@ -285,6 +302,7 @@ public class GameController
 
     private void OnBuyPeasantPressed()
     {
+        if (_session.IsGameOver) return;
         if (_session.SelectedTerritory == null) return;
         if (!PurchaseRules.CanAffordPeasant(_session.SelectedTerritory, _state.Treasury)) return;
 
@@ -296,6 +314,8 @@ public class GameController
 
     private void OnEndTurnPressed()
     {
+        if (_session.IsGameOver) return;
+
         // Ending the turn commits everything; no further undo.
         _session.Undo.Clear();
 
@@ -306,7 +326,16 @@ public class GameController
         TreeRules.ConvertGravesToTrees(_state.Grid);
         TreeRules.SpreadTrees(_state.Grid);
 
+        // Advance to the next non-eliminated player. A player with zero
+        // tiles left is skipped entirely — they don't get a phantom
+        // turn just to see they can't act. HandleCapture's winner check
+        // guarantees at least one player still has tiles, so this loop
+        // always terminates.
         _state.Turns.EndTurn();
+        while (WinConditionRules.IsEliminated(_state.Turns.CurrentPlayer.Color, _state.Grid))
+        {
+            _state.Turns.EndTurn();
+        }
         ResetMovementFor(_state.Turns.CurrentPlayer, _state.Grid);
         _state.Treasury.CollectIncomeFor(
             _state.Turns.CurrentPlayer, _state.Territories, _state.Grid);
