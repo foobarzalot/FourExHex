@@ -31,6 +31,17 @@ public partial class HexMap : Node2D
 
     public IReadOnlyList<Territory> Territories { get; private set; } = new List<Territory>();
 
+    // Tile coord -> the territory that contains it. Rebuilt whenever
+    // Territories is recomputed. Used for O(1) selection lookups.
+    private readonly Dictionary<HexCoord, Territory> _tileToTerritory = new();
+
+    // A child Node2D that sits above the map/borders and holds the bright
+    // outline drawn around the currently selected territory.
+    private Node2D? _highlightLayer;
+
+    // Null when nothing is selected.
+    private Territory? _selected;
+
     /// <summary>Pixel bounding box of the rendered grid, for centering.</summary>
     public Vector2 PixelSize => new Vector2(
         (Cols + 0.5f) * Mathf.Sqrt(3f) * HexSize,
@@ -66,7 +77,90 @@ public partial class HexMap : Node2D
         Territories = TerritoryFinder.FindAll(Grid);
         GD.Print($"HexMap: {Grid.Count} tiles partitioned into {Territories.Count} territories.");
 
+        RebuildTileToTerritoryIndex();
         DrawTerritoryBorders();
+
+        // Highlight layer is added last so it draws on top of tiles + borders.
+        _highlightLayer = new Node2D { Name = "HighlightLayer" };
+        AddChild(_highlightLayer);
+    }
+
+    private void RebuildTileToTerritoryIndex()
+    {
+        _tileToTerritory.Clear();
+        foreach (Territory territory in Territories)
+        {
+            foreach (HexCoord coord in territory.Coords)
+            {
+                _tileToTerritory[coord] = territory;
+            }
+        }
+    }
+
+    public override void _UnhandledInput(InputEvent @event)
+    {
+        if (@event is not InputEventMouseButton mouse) return;
+        if (!mouse.Pressed || mouse.ButtonIndex != MouseButton.Left) return;
+
+        // Convert viewport position into our local space, then remove the
+        // centering offset so the result is in axial-origin coordinates.
+        Vector2 local = ToLocal(mouse.Position) - FirstHexCenterOffset;
+        HexCoord coord = HexCoord.FromPixel(local, HexSize);
+
+        if (!Grid.Contains(coord))
+        {
+            SelectTerritory(null);
+            return;
+        }
+
+        if (_tileToTerritory.TryGetValue(coord, out Territory? territory))
+        {
+            SelectTerritory(territory);
+        }
+    }
+
+    private void SelectTerritory(Territory? territory)
+    {
+        _selected = territory;
+        RedrawHighlight();
+    }
+
+    private void RedrawHighlight()
+    {
+        if (_highlightLayer == null) return;
+
+        foreach (Node child in _highlightLayer.GetChildren())
+        {
+            child.QueueFree();
+        }
+
+        if (_selected == null) return;
+
+        Vector2[] verts = HexVertices();
+        var inside = new HashSet<HexCoord>(_selected.Coords);
+
+        foreach (HexCoord coord in _selected.Coords)
+        {
+            Vector2 center = FirstHexCenterOffset + coord.ToPixel(HexSize);
+
+            for (int edge = 0; edge < 6; edge++)
+            {
+                int dir = EdgeToNeighborDirection[edge];
+                HexCoord neighborCoord = coord.Neighbor(dir);
+
+                // The perimeter of the selected territory is the edges where
+                // the neighbor is not itself in the selected territory.
+                if (inside.Contains(neighborCoord)) continue;
+
+                var line = new Line2D
+                {
+                    Points = new[] { center + verts[edge], center + verts[(edge + 1) % 6] },
+                    Width = 7f,
+                    DefaultColor = new Color(1f, 1f, 1f, 1f),
+                };
+                _highlightLayer.AddChild(line);
+            }
+        }
     }
 
     private Vector2[] HexVertices()

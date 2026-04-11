@@ -71,6 +71,50 @@ public readonly struct HexCoord : IEquatable<HexCoord>
         return new Vector2(x, y);
     }
 
+    /// <summary>
+    /// Inverse of <see cref="ToPixel"/>: find the hex whose footprint contains
+    /// <paramref name="pixel"/>. Uses cube-coordinate rounding to pick the
+    /// correct hex for points near an edge.
+    /// </summary>
+    public static HexCoord FromPixel(Vector2 pixel, float size)
+    {
+        float qFrac = (pixel.X * Mathf.Sqrt(3f) / 3f - pixel.Y / 3f) / size;
+        float rFrac = (pixel.Y * 2f / 3f) / size;
+        return Round(qFrac, rFrac);
+    }
+
+    /// <summary>
+    /// Round fractional axial coordinates to the nearest integer hex. The
+    /// naive approach (round Q and R independently) can produce wrong
+    /// results near hex corners; the cube-coordinate invariant
+    /// <c>x + y + z == 0</c> fixes it by re-deriving the axis with the
+    /// largest rounding error.
+    /// </summary>
+    public static HexCoord Round(float qFrac, float rFrac)
+    {
+        float sFrac = -qFrac - rFrac;
+
+        int q = Mathf.RoundToInt(qFrac);
+        int r = Mathf.RoundToInt(rFrac);
+        int s = Mathf.RoundToInt(sFrac);
+
+        float qDiff = Mathf.Abs(q - qFrac);
+        float rDiff = Mathf.Abs(r - rFrac);
+        float sDiff = Mathf.Abs(s - sFrac);
+
+        if (qDiff > rDiff && qDiff > sDiff)
+        {
+            q = -r - s;
+        }
+        else if (rDiff > sDiff)
+        {
+            r = -q - s;
+        }
+        // else: s had the largest error; q and r are already correct.
+
+        return new HexCoord(q, r);
+    }
+
     public bool Equals(HexCoord other) => Q == other.Q && R == other.R;
     public override bool Equals(object? obj) => obj is HexCoord h && Equals(h);
     public override int GetHashCode() => HashCode.Combine(Q, R);
