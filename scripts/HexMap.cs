@@ -50,13 +50,13 @@ public partial class HexMap : Node2D
     // Territories is recomputed. Used for O(1) selection lookups.
     private readonly Dictionary<HexCoord, Territory> _tileToTerritory = new();
 
-    // A child Node2D that sits above the map/borders and holds the bright
-    // outline drawn around the currently selected territory.
-    private Node2D? _highlightLayer;
-
-    // Layer for unit sprites. Rendered above territory borders so units
-    // are visible against the hex fills.
+    // Layered overlay children (added in this order so draw order is
+    // fills -> borders -> capitals -> units -> targets -> highlight).
+    private Node2D? _bordersLayer;
+    private Node2D? _capitalsLayer;
     private Node2D? _unitsLayer;
+    private Node2D? _targetsLayer;
+    private Node2D? _highlightLayer;
     private readonly Dictionary<HexCoord, Node2D> _unitVisuals = new();
 
     // Null when nothing is selected.
@@ -98,16 +98,104 @@ public partial class HexMap : Node2D
         GD.Print($"HexMap: {Grid.Count} tiles partitioned into {Territories.Count} territories.");
 
         RebuildTileToTerritoryIndex();
+
+        _bordersLayer = new Node2D { Name = "BordersLayer" };
+        AddChild(_bordersLayer);
+        _capitalsLayer = new Node2D { Name = "CapitalsLayer" };
+        AddChild(_capitalsLayer);
+        _unitsLayer = new Node2D { Name = "UnitsLayer" };
+        AddChild(_unitsLayer);
+        _targetsLayer = new Node2D { Name = "TargetsLayer" };
+        AddChild(_targetsLayer);
+        _highlightLayer = new Node2D { Name = "HighlightLayer" };
+        AddChild(_highlightLayer);
+
+        DrawTerritoryBorders();
+        DrawCapitals();
+    }
+
+    /// <summary>
+    /// Re-run flood-fill after the grid's tile colors have changed (e.g.,
+    /// after a capture), rebuild the tile-to-territory index, and redraw
+    /// the borders/capitals. Returns the previous territory list so the
+    /// caller can reconcile the treasury.
+    /// </summary>
+    public IReadOnlyList<Territory> RecomputeTerritoriesAfterCapture()
+    {
+        IReadOnlyList<Territory> previous = Territories;
+        IReadOnlyList<Territory> raw = TerritoryFinder.FindAll(Grid);
+        // Override the capital for merged territories: the biggest old
+        // territory's capital wins (tiebreaker: lex-min).
+        Territories = TerritoryReconciler.OverrideMergeWinners(raw, previous);
+        RebuildTileToTerritoryIndex();
+
+        // Selected territory may no longer exist as an object — caller must
+        // re-query via TerritoryAt if they want to keep the selection.
+        _selected = null;
+        ClearLayer(_highlightLayer);
+        ClearLayer(_targetsLayer);
+        ClearLayer(_bordersLayer);
+        ClearLayer(_capitalsLayer);
         DrawTerritoryBorders();
         DrawCapitals();
 
-        // Units layer: above borders and capitals, below highlights.
-        _unitsLayer = new Node2D { Name = "UnitsLayer" };
-        AddChild(_unitsLayer);
+        return previous;
+    }
 
-        // Highlight layer is added last so it draws on top of everything.
-        _highlightLayer = new Node2D { Name = "HighlightLayer" };
-        AddChild(_highlightLayer);
+    /// <summary>
+    /// Reset HasMovedThisTurn on every unit owned by <paramref name="player"/>.
+    /// Called at the start of that player's turn.
+    /// </summary>
+    public void ResetMovementFor(Player player)
+    {
+        foreach (HexTile tile in Grid.Tiles)
+        {
+            if (tile.Unit != null && tile.Unit.Owner == player.Color)
+            {
+                tile.Unit.HasMovedThisTurn = false;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Highlight the given coords as valid move/placement targets with
+    /// green rings. Pass an empty list to clear.
+    /// </summary>
+    public void ShowMoveTargets(IEnumerable<HexCoord> coords)
+    {
+        ClearLayer(_targetsLayer);
+        if (_targetsLayer == null) return;
+
+        foreach (HexCoord coord in coords)
+        {
+            Vector2 center = FirstHexCenterOffset + coord.ToPixel(HexSize);
+
+            float radius = HexSize * 0.55f;
+            const int segments = 20;
+            var points = new Vector2[segments + 1];
+            for (int i = 0; i <= segments; i++)
+            {
+                float angle = Mathf.Tau * i / segments;
+                points[i] = center + new Vector2(radius * Mathf.Cos(angle), radius * Mathf.Sin(angle));
+            }
+
+            var ring = new Line2D
+            {
+                Points = points,
+                Width = 4f,
+                DefaultColor = new Color(0.2f, 1f, 0.3f, 0.9f),
+            };
+            _targetsLayer.AddChild(ring);
+        }
+    }
+
+    private static void ClearLayer(Node2D? layer)
+    {
+        if (layer == null) return;
+        foreach (Node child in layer.GetChildren())
+        {
+            child.QueueFree();
+        }
     }
 
     /// <summary>
@@ -176,6 +264,8 @@ public partial class HexMap : Node2D
 
     private void DrawCapitals()
     {
+        if (_capitalsLayer == null) return;
+
         foreach (Territory territory in Territories)
         {
             if (!territory.HasCapital) continue;
@@ -213,7 +303,7 @@ public partial class HexMap : Node2D
             };
             diamond.AddChild(outline);
 
-            AddChild(diamond);
+            _capitalsLayer.AddChild(diamond);
         }
     }
 
@@ -337,6 +427,7 @@ public partial class HexMap : Node2D
 
     private void DrawTerritoryBorders()
     {
+        if (_bordersLayer == null) return;
         Vector2[] verts = HexVertices();
 
         foreach (HexTile tile in Grid.Tiles)
@@ -360,7 +451,7 @@ public partial class HexMap : Node2D
                     Width = 4f,
                     DefaultColor = new Color(0f, 0f, 0f, 1f),
                 };
-                AddChild(line);
+                _bordersLayer.AddChild(line);
             }
         }
     }

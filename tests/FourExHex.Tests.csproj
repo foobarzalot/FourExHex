@@ -32,6 +32,9 @@
     <Compile Include="..\scripts\Treasury.cs" Link="scripts\Treasury.cs" />
     <Compile Include="..\scripts\Unit.cs" Link="scripts\Unit.cs" />
     <Compile Include="..\scripts\PurchaseRules.cs" Link="scripts\PurchaseRules.cs" />
+    <Compile Include="..\scripts\DefenseRules.cs" Link="scripts\DefenseRules.cs" />
+    <Compile Include="..\scripts\MovementRules.cs" Link="scripts\MovementRules.cs" />
+    <Compile Include="..\scripts\TerritoryReconciler.cs" Link="scripts\TerritoryReconciler.cs" />
   </ItemGroup>
 
 </Project>

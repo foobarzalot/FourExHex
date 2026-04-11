@@ -143,4 +143,98 @@ public class TreasuryTests
 
         Assert.Equal(99, treasury.GetGold(blueCapital));
     }
+
+    // --- ReconcileAfterCapture -------------------------------------------
+
+    [Fact]
+    public void Reconcile_UnchangedTerritory_KeepsGold()
+    {
+        var capital = new HexCoord(0, 0);
+        Territory before = MakeTerritory(Red, capital, new HexCoord(0, 0), new HexCoord(1, 0));
+        Territory after = MakeTerritory(Red, capital, new HexCoord(0, 0), new HexCoord(1, 0));
+        var treasury = new Treasury();
+        treasury.SetGold(capital, 50);
+
+        treasury.ReconcileAfterCapture(new[] { before }, new[] { after });
+
+        Assert.Equal(50, treasury.GetGold(capital));
+    }
+
+    [Fact]
+    public void Reconcile_Split_PieceWithOldCapital_KeepsGold()
+    {
+        // Old: one territory with capital (0,0), size 3.
+        // New: split into two pieces. Piece A contains the old capital and
+        // gets it back; piece B is a new territory with its own capital
+        // that starts at 0.
+        var oldCap = new HexCoord(0, 0);
+        Territory before = MakeTerritory(Red, oldCap,
+            new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(5, 5));
+        var treasury = new Treasury();
+        treasury.SetGold(oldCap, 30);
+
+        // After the split, two new territories. Piece A still contains
+        // (0,0) so its capital is (0,0); piece B has capital (5,5).
+        var pieceA = MakeTerritory(Red, oldCap, new HexCoord(0, 0), new HexCoord(1, 0));
+        var pieceB = MakeTerritory(Red, new HexCoord(5, 5), new HexCoord(5, 5), new HexCoord(5, 6));
+
+        treasury.ReconcileAfterCapture(new[] { before }, new[] { pieceA, pieceB });
+
+        Assert.Equal(30, treasury.GetGold(oldCap));
+        Assert.Equal(0, treasury.GetGold(new HexCoord(5, 5)));
+    }
+
+    [Fact]
+    public void Reconcile_Merge_TwoOldCapitals_SumGoldIntoNewCapital()
+    {
+        // Old: two red territories with capitals (0,0) and (5,5), 20g and
+        // 30g respectively.
+        // New: they're merged (by a bridging capture). One new territory
+        // with its capital wherever CapitalAssigner picks — say (0,0).
+        var before1 = MakeTerritory(Red, new HexCoord(0, 0),
+            new HexCoord(0, 0), new HexCoord(1, 0));
+        var before2 = MakeTerritory(Red, new HexCoord(5, 5),
+            new HexCoord(5, 5), new HexCoord(5, 6));
+        var treasury = new Treasury();
+        treasury.SetGold(new HexCoord(0, 0), 20);
+        treasury.SetGold(new HexCoord(5, 5), 30);
+
+        // New merged territory contains all five coords; capital is (0,0).
+        var merged = MakeTerritory(Red, new HexCoord(0, 0),
+            new HexCoord(0, 0), new HexCoord(1, 0),
+            new HexCoord(2, 0),  // the bridging capture
+            new HexCoord(5, 5), new HexCoord(5, 6));
+
+        treasury.ReconcileAfterCapture(new[] { before1, before2 }, new[] { merged });
+
+        Assert.Equal(50, treasury.GetGold(new HexCoord(0, 0)));
+        // The old (5,5) capital's key is gone from the treasury.
+        Assert.Equal(0, treasury.GetGold(new HexCoord(5, 5)));
+    }
+
+    [Fact]
+    public void Reconcile_OldCapitalCapturedByEnemy_GoldIsForfeit()
+    {
+        // Old: red territory with capital (0,0) and 100g.
+        // New: red territory shrunk (no longer includes (0,0) — enemy took
+        // it). The remaining red piece gets a fresh capital at 0g.
+        var before = MakeTerritory(Red, new HexCoord(0, 0),
+            new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(2, 0));
+        var treasury = new Treasury();
+        treasury.SetGold(new HexCoord(0, 0), 100);
+
+        // After: (0,0) is now owned by blue (not in this new-territory list
+        // as a red territory). Red's remaining piece has a new capital at
+        // (1,0).
+        var afterRed = MakeTerritory(Red, new HexCoord(1, 0),
+            new HexCoord(1, 0), new HexCoord(2, 0));
+
+        treasury.ReconcileAfterCapture(new[] { before }, new[] { afterRed });
+
+        // Red's new capital starts at 0 gold because the old one is gone
+        // from the new partition entirely.
+        Assert.Equal(0, treasury.GetGold(new HexCoord(1, 0)));
+        // The old capital key no longer holds any gold.
+        Assert.Equal(0, treasury.GetGold(new HexCoord(0, 0)));
+    }
 }

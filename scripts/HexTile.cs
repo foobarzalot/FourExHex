@@ -7,7 +7,24 @@ using Godot;
 public class HexTile
 {
     public HexCoord Coord { get; }
-    public Color Color { get; set; }
+
+    private Color _color;
+    /// <summary>
+    /// The tile's owner color. Setting this also pushes the value to
+    /// <see cref="Visual"/> if a visual is attached, so the rendered fill
+    /// is always in sync with the logical ownership — no separate "refresh"
+    /// step required.
+    /// </summary>
+    public Color Color
+    {
+        get => _color;
+        set
+        {
+            _color = value;
+            if (Visual != null) Visual.Color = value;
+        }
+    }
+
     public Polygon2D? Visual { get; set; }
 
     /// <summary>The unit occupying this tile, if any.</summary>
@@ -16,6 +33,6 @@ public class HexTile
     public HexTile(HexCoord coord, Color color)
     {
         Coord = coord;
-        Color = color;
+        _color = color;
     }
 }

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Godot;
 
 public partial class Main : Node2D
@@ -14,6 +15,9 @@ public partial class Main : Node2D
     };
 
     private const float HudHeight = 60f;
+    private const int PeasantLevel = (int)UnitLevel.Peasant;
+
+    private enum ActionMode { None, BuyingPeasant, MovingUnit }
 
     private HexMap _map = null!;
     private TurnState _turnState = null!;
@@ -25,7 +29,8 @@ public partial class Main : Node2D
     private Button _buyPeasantButton = null!;
 
     private Territory? _selected;
-    private bool _placementMode;
+    private ActionMode _mode = ActionMode.None;
+    private HexCoord? _moveSource;
 
     public override void _Ready()
     {
@@ -46,12 +51,6 @@ public partial class Main : Node2D
         _map.TileClicked += OnTileClicked;
         _map.SelectionChanged += OnSelectionChanged;
 
-        // Starting gold: every multi-hex territory begins with exactly one
-        // peasant's worth (10), regardless of size. Not documented in the
-        // official rules but matches the feel of the original game per
-        // empirical testing. Player 1 then also collects their turn-1 income
-        // right now so they're on the same footing as later players, who
-        // collect when End Turn advances to them.
         SeedStartingGold();
         _treasury.CollectIncomeFor(_turnState.CurrentPlayer, _map.Territories);
     }
@@ -131,19 +130,29 @@ public partial class Main : Node2D
 
     private void OnTileClicked(HexTile? tile)
     {
-        // Placement mode: next valid click drops a peasant and exits mode.
-        if (_placementMode && _selected != null && tile != null)
+        // Handle any pending action mode first.
+        if (_mode == ActionMode.BuyingPeasant && tile != null && _selected != null)
         {
-            if (PurchaseRules.IsValidPeasantTarget(tile, _selected))
+            if (IsValidMoveOrPlacementTarget(tile.Coord))
             {
-                PurchaseRules.BuyPeasant(tile, _selected, _treasury);
-                _map.RefreshUnitVisual(tile.Coord);
+                ExecuteBuyAndPlace(tile.Coord);
+                return;
             }
-            _placementMode = false;
-            RefreshSelectionUi();
-            return;
+            // Clicking somewhere invalid cancels the buy.
+            CancelPendingAction();
+            // Fall through to treat this as a fresh click.
+        }
+        else if (_mode == ActionMode.MovingUnit && tile != null && _selected != null && _moveSource.HasValue)
+        {
+            if (IsValidMoveOrPlacementTarget(tile.Coord))
+            {
+                ExecuteMove(_moveSource.Value, tile.Coord);
+                return;
+            }
+            CancelPendingAction();
         }
 
+        // Normal click handling.
         if (tile == null)
         {
             _map.SelectTerritory(null);
@@ -151,23 +160,101 @@ public partial class Main : Node2D
         }
 
         Territory? territory = _map.TerritoryAt(tile.Coord);
-
-        // Only the current player may select their own territories.
-        if (territory != null && territory.Owner == _turnState.CurrentPlayer.Color)
-        {
-            _map.SelectTerritory(territory);
-        }
-        else
+        if (territory == null || territory.Owner != _turnState.CurrentPlayer.Color)
         {
             _map.SelectTerritory(null);
+            return;
+        }
+
+        // Select the territory; if the clicked tile has one of our own
+        // unused units, also pick it up for movement.
+        _map.SelectTerritory(territory);
+
+        if (tile.Unit != null
+            && tile.Unit.Owner == _turnState.CurrentPlayer.Color
+            && !tile.Unit.HasMovedThisTurn)
+        {
+            _mode = ActionMode.MovingUnit;
+            _moveSource = tile.Coord;
+            _map.ShowMoveTargets(
+                MovementRules.ValidTargets(PeasantLevel, territory, _map.Grid, _map.Territories));
+        }
+    }
+
+    private bool IsValidMoveOrPlacementTarget(HexCoord coord)
+    {
+        if (_selected == null) return false;
+        var targets = MovementRules.ValidTargets(
+            PeasantLevel, _selected, _map.Grid, _map.Territories);
+        return targets.Contains(coord);
+    }
+
+    private void ExecuteBuyAndPlace(HexCoord destination)
+    {
+        if (_selected == null) return;
+
+        HexCoord capital = _selected.Capital!.Value;
+        _treasury.SetGold(capital, _treasury.GetGold(capital) - PurchaseRules.PeasantCost);
+        var unit = new Unit(UnitLevel.Peasant, _selected.Owner);
+        MoveResult result = MovementRules.PlaceNew(unit, destination, _map.Grid, _selected);
+
+        _map.RefreshUnitVisual(destination);
+
+        if (result.WasCapture)
+        {
+            HandleCapture();
+        }
+
+        FinishPendingAction();
+    }
+
+    private void ExecuteMove(HexCoord source, HexCoord destination)
+    {
+        if (_selected == null) return;
+
+        MoveResult result = MovementRules.Move(source, destination, _map.Grid, _selected);
+        _map.RefreshUnitVisual(source);
+        _map.RefreshUnitVisual(destination);
+
+        if (result.WasCapture)
+        {
+            HandleCapture();
+        }
+
+        FinishPendingAction();
+    }
+
+    private void HandleCapture()
+    {
+        IReadOnlyList<Territory> old = _map.RecomputeTerritoriesAfterCapture();
+        _treasury.ReconcileAfterCapture(old, _map.Territories);
+    }
+
+    private void FinishPendingAction()
+    {
+        _mode = ActionMode.None;
+        _moveSource = null;
+        _map.ShowMoveTargets(System.Array.Empty<HexCoord>());
+        // Selection may have been invalidated by a capture's TerritoryFinder
+        // rerun — clear it so the HUD doesn't show stale info.
+        _map.SelectTerritory(null);
+        RefreshHud();
+    }
+
+    private void CancelPendingAction()
+    {
+        _mode = ActionMode.None;
+        _moveSource = null;
+        _map.ShowMoveTargets(System.Array.Empty<HexCoord>());
+        if (_buyPeasantButton != null)
+        {
+            _buyPeasantButton.Text = "Buy Peasant (10g)";
         }
     }
 
     private void OnSelectionChanged(Territory? territory)
     {
         _selected = territory;
-        // Any selection change cancels placement mode.
-        _placementMode = false;
         RefreshSelectionUi();
     }
 
@@ -175,14 +262,20 @@ public partial class Main : Node2D
     {
         if (_selected == null) return;
         if (!PurchaseRules.CanAffordPeasant(_selected, _treasury)) return;
-        _placementMode = true;
+
+        _mode = ActionMode.BuyingPeasant;
+        _moveSource = null;
         _buyPeasantButton.Text = "Click a tile...";
+        _map.ShowMoveTargets(
+            MovementRules.ValidTargets(PeasantLevel, _selected, _map.Grid, _map.Territories));
     }
 
     private void OnEndTurnPressed()
     {
         _turnState.EndTurn();
+        _map.ResetMovementFor(_turnState.CurrentPlayer);
         _treasury.CollectIncomeFor(_turnState.CurrentPlayer, _map.Territories);
+        CancelPendingAction();
         _map.SelectTerritory(null);
         RefreshHud();
     }
@@ -201,7 +294,7 @@ public partial class Main : Node2D
         _goldLabel.Text = $"Gold: {gold} (size {_selected.Size})";
 
         _buyPeasantButton.Visible = PurchaseRules.CanAffordPeasant(_selected, _treasury);
-        if (!_placementMode)
+        if (_mode != ActionMode.BuyingPeasant)
         {
             _buyPeasantButton.Text = "Buy Peasant (10g)";
         }

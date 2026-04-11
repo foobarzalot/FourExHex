@@ -18,6 +18,13 @@ public class Unit
     public UnitLevel Level { get; }
     public Color Owner { get; }
 
+    /// <summary>
+    /// True if this unit has already spent its one movement action this turn.
+    /// Reset at the start of its owner's next turn. Newly bought units start
+    /// at true because buy-and-place consumes the purchase's single action.
+    /// </summary>
+    public bool HasMovedThisTurn { get; set; }
+
     public Unit(UnitLevel level, Color owner)
     {
         Level = level;

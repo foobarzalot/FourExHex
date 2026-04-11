@@ -18,6 +18,7 @@ public static class PurchaseRules
     public static bool IsValidPeasantTarget(HexTile tile, Territory territory)
     {
         if (tile.Unit != null) return false;
+        if (territory.Capital == tile.Coord) return false;
         return territory.Coords.Contains(tile.Coord);
     }
 

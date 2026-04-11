@@ -22,6 +22,14 @@ public class PurchaseRulesTests
     }
 
     [Fact]
+    public void Unit_HasMovedThisTurn_DefaultsFalse()
+    {
+        var unit = new Unit(UnitLevel.Peasant, Red);
+
+        Assert.False(unit.HasMovedThisTurn);
+    }
+
+    [Fact]
     public void HexTile_Unit_DefaultsToNull()
     {
         var tile = new HexTile(new HexCoord(0, 0), Red);
@@ -102,6 +110,19 @@ public class PurchaseRulesTests
         var tile = new HexTile(new HexCoord(5, 5), Red);
 
         Assert.False(PurchaseRules.IsValidPeasantTarget(tile, territory));
+    }
+
+    [Fact]
+    public void IsValidPeasantTarget_OnOwnCapital_ReturnsFalse()
+    {
+        // Can't stand on top of your own capital in Slay.
+        var capital = new HexCoord(0, 0);
+        Territory territory = MakeTerritory(
+            Red, capital,
+            new HexCoord(0, 0), new HexCoord(1, 0));
+        var capitalTile = new HexTile(new HexCoord(0, 0), Red);
+
+        Assert.False(PurchaseRules.IsValidPeasantTarget(capitalTile, territory));
     }
 
     // --- BuyPeasant --------------------------------------------------------

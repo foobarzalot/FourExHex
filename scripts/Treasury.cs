@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 /// <summary>
@@ -36,6 +37,66 @@ public class Treasury
             HexCoord capital = territory.Capital!.Value;
             int current = GetGold(capital);
             _gold[capital] = current + territory.Size;
+        }
+    }
+
+    /// <summary>
+    /// Rebuild the treasury after a capture re-ran <see cref="TerritoryFinder"/>.
+    /// Rules:
+    ///   - For each NEW territory, look at the OLD capitals still inside it
+    ///     (possibly 0, 1, or many).
+    ///   - 0 inherited: the new capital starts at 0 gold.
+    ///   - 1 or more inherited: sum the inherited gold and credit it to the
+    ///     new capital's coord (which may be different from any of the old
+    ///     capital coords, because <see cref="CapitalAssigner"/> picks
+    ///     deterministically).
+    ///   - Old capitals not inherited by any new territory (captured by
+    ///     enemy, or the capital hex itself got demoted) have their gold
+    ///     forfeited.
+    /// After this call the treasury's keys are exactly the current capital
+    /// coords of <paramref name="newTerritories"/>.
+    /// </summary>
+    public void ReconcileAfterCapture(
+        IReadOnlyList<Territory> oldTerritories,
+        IReadOnlyList<Territory> newTerritories)
+    {
+        // Snapshot the gold that was attached to each old capital.
+        var oldCapitalGold = new Dictionary<HexCoord, int>();
+        foreach (Territory old in oldTerritories)
+        {
+            if (old.HasCapital)
+            {
+                HexCoord oldCap = old.Capital!.Value;
+                oldCapitalGold[oldCap] = GetGold(oldCap);
+            }
+        }
+
+        // Build the new gold map by inheriting each new territory's treasury
+        // from whatever old capitals still lie inside it.
+        var newGold = new Dictionary<HexCoord, int>();
+        foreach (Territory newT in newTerritories)
+        {
+            if (!newT.HasCapital) continue;
+            HexCoord newCap = newT.Capital!.Value;
+
+            int inheritedTotal = 0;
+            foreach (HexCoord coord in newT.Coords)
+            {
+                if (oldCapitalGold.TryGetValue(coord, out int oldGold))
+                {
+                    inheritedTotal += oldGold;
+                }
+            }
+
+            newGold[newCap] = inheritedTotal;
+        }
+
+        // Replace the treasury atomically. Any old-capital entries that
+        // didn't survive into a new territory are dropped (gold forfeit).
+        _gold.Clear();
+        foreach (KeyValuePair<HexCoord, int> kvp in newGold)
+        {
+            _gold[kvp.Key] = kvp.Value;
         }
     }
 }
