@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Godot;
 using Xunit;
 
@@ -6,44 +7,136 @@ namespace FourExHex.Tests;
 public class DefenseRulesTests
 {
     private static readonly Color Red = new Color(1f, 0f, 0f);
+    private static readonly Color Blue = new Color(0f, 0f, 1f);
 
-    [Fact]
-    public void Defense_EmptyNonCapitalTile_IsZero()
+    /// <summary>
+    /// Build a small grid consisting of the given coords, all colored
+    /// <paramref name="color"/>. Returns the grid and the single territory
+    /// covering all of them.
+    /// </summary>
+    private static (HexGrid grid, Territory territory) BuildBlob(
+        Color color,
+        HexCoord? capital,
+        params HexCoord[] coords)
     {
-        var tile = new HexTile(new HexCoord(0, 0), Red);
-
-        Assert.Equal(0, DefenseRules.Defense(tile, isCapital: false));
-    }
-
-    [Fact]
-    public void Defense_CapitalTile_IsOne()
-    {
-        var tile = new HexTile(new HexCoord(0, 0), Red);
-
-        Assert.Equal(1, DefenseRules.Defense(tile, isCapital: true));
-    }
-
-    [Fact]
-    public void Defense_TileWithPeasant_IsOne()
-    {
-        var tile = new HexTile(new HexCoord(0, 0), Red)
+        var grid = new HexGrid();
+        foreach (HexCoord c in coords)
         {
-            Unit = new Unit(UnitLevel.Peasant, Red),
-        };
+            grid.Add(new HexTile(c, color));
+        }
+        var territory = new Territory(color, coords, capital);
+        return (grid, territory);
+    }
 
-        Assert.Equal(1, DefenseRules.Defense(tile, isCapital: false));
+    // --- Baseline --------------------------------------------------------
+
+    [Fact]
+    public void Defense_SingleEmptyTile_IsZero()
+    {
+        (HexGrid grid, Territory territory) = BuildBlob(Red, null, new HexCoord(0, 0));
+
+        Assert.Equal(0, DefenseRules.Defense(new HexCoord(0, 0), grid, territory));
     }
 
     [Fact]
-    public void Defense_TileWithSpearman_IsTwo()
+    public void Defense_TileWithOwnCapital_IsOne()
     {
-        // Locks in that the defense function honors unit level, not just
-        // "there's a unit here".
-        var tile = new HexTile(new HexCoord(0, 0), Red)
-        {
-            Unit = new Unit(UnitLevel.Spearman, Red),
-        };
+        (HexGrid grid, Territory territory) = BuildBlob(
+            Red, new HexCoord(0, 0),
+            new HexCoord(0, 0), new HexCoord(1, 0));
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Capital();
 
-        Assert.Equal(2, DefenseRules.Defense(tile, isCapital: false));
+        Assert.Equal(1, DefenseRules.Defense(new HexCoord(0, 0), grid, territory));
+    }
+
+    [Fact]
+    public void Defense_TileWithOwnPeasant_IsOne()
+    {
+        (HexGrid grid, Territory territory) = BuildBlob(
+            Red, null,
+            new HexCoord(0, 0), new HexCoord(1, 0));
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Unit(Red);
+
+        Assert.Equal(1, DefenseRules.Defense(new HexCoord(0, 0), grid, territory));
+    }
+
+    // --- Radiation -------------------------------------------------------
+
+    [Fact]
+    public void Defense_TileAdjacentToOwnCapital_RadiatesOne()
+    {
+        // Two-tile red territory; capital on (0,0). Defense of (1,0) should
+        // be 1 (radiated from the capital), even though (1,0) is empty.
+        (HexGrid grid, Territory territory) = BuildBlob(
+            Red, new HexCoord(0, 0),
+            new HexCoord(0, 0), new HexCoord(1, 0));
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Capital();
+
+        Assert.Equal(1, DefenseRules.Defense(new HexCoord(1, 0), grid, territory));
+    }
+
+    [Fact]
+    public void Defense_TileAdjacentToOwnPeasant_RadiatesOne()
+    {
+        (HexGrid grid, Territory territory) = BuildBlob(
+            Red, null,
+            new HexCoord(0, 0), new HexCoord(1, 0));
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Unit(Red);
+
+        Assert.Equal(1, DefenseRules.Defense(new HexCoord(1, 0), grid, territory));
+    }
+
+    [Fact]
+    public void Defense_AdjacentPeasantAndCapital_Max_IsOne()
+    {
+        // Every contributor is level 1 right now, so max(1, 1) = 1. The
+        // point of this test is that the max function is applied at all
+        // (and not, e.g., summed to 2).
+        var coords = new[]
+        {
+            new HexCoord(0, 0),   // W neighbor of (1, 0)
+            new HexCoord(1, 0),   // target
+            new HexCoord(2, -1),  // NE neighbor of (1, 0)
+        };
+        (HexGrid grid, Territory territory) = BuildBlob(Red, new HexCoord(0, 0), coords);
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Capital();
+        grid.Get(new HexCoord(2, -1))!.Occupant = new Unit(Red);
+
+        Assert.Equal(1, DefenseRules.Defense(new HexCoord(1, 0), grid, territory));
+    }
+
+    // --- Territory scope -------------------------------------------------
+
+    [Fact]
+    public void Defense_AdjacentEnemyUnit_IsIgnored()
+    {
+        // Red tile at (0,0), Blue peasant at (1,0). The Blue unit does not
+        // contribute to Red's defense of (0,0) because it's not in Red's
+        // territory.
+        var grid = new HexGrid();
+        grid.Add(new HexTile(new HexCoord(0, 0), Red));
+        grid.Add(new HexTile(new HexCoord(1, 0), Blue));
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Blue);
+
+        var redTerritory = new Territory(Red, new[] { new HexCoord(0, 0) }, capital: null);
+
+        Assert.Equal(0, DefenseRules.Defense(new HexCoord(0, 0), grid, redTerritory));
+    }
+
+    [Fact]
+    public void Defense_AdjacentSameColorSiblingTerritory_IsIgnored()
+    {
+        // Same color, different territory. The sibling's unit doesn't
+        // radiate because it isn't in leftRed.Coords.
+        var grid = new HexGrid();
+        grid.Add(new HexTile(new HexCoord(0, 0), Red));
+        grid.Add(new HexTile(new HexCoord(1, 0), Blue));
+        grid.Add(new HexTile(new HexCoord(2, 0), Red));
+        grid.Add(new HexTile(new HexCoord(3, 0), Red));
+        grid.Get(new HexCoord(2, 0))!.Occupant = new Unit(Red);
+
+        var leftRed = new Territory(Red, new[] { new HexCoord(0, 0) }, capital: null);
+
+        Assert.Equal(0, DefenseRules.Defense(new HexCoord(0, 0), grid, leftRed));
     }
 }

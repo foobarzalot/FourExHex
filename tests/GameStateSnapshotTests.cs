@@ -19,7 +19,7 @@ public class GameStateSnapshotTests
     }
 
     private static IReadOnlyList<Territory> TerritoriesFor(HexGrid grid) =>
-        TerritoryFinder.FindAll(grid);
+        TestHelpers.BuildTerritoriesFromGrid(grid);
 
     // --- Capture ----------------------------------------------------------
 
@@ -41,10 +41,10 @@ public class GameStateSnapshotTests
     }
 
     [Fact]
-    public void Capture_IncludesUnitLevelAndMovedFlag()
+    public void Capture_IncludesUnitOwnerAndMovedFlag()
     {
         HexGrid grid = BuildTwoTileRedGrid();
-        grid.Get(new HexCoord(0, 0))!.Unit = new Unit(UnitLevel.Peasant, Red)
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Unit(Red)
         {
             HasMovedThisTurn = true,
         };
@@ -55,14 +55,13 @@ public class GameStateSnapshotTests
 
         // Corrupt the live unit state.
         grid.Get(new HexCoord(0, 0))!.Unit!.HasMovedThisTurn = false;
-        grid.Get(new HexCoord(0, 0))!.Unit = null;
+        grid.Get(new HexCoord(0, 0))!.Occupant = null;
 
         snap.ApplyTo(grid, treasury);
 
         Unit? restored = grid.Get(new HexCoord(0, 0))!.Unit;
         Assert.NotNull(restored);
-        Assert.Equal(UnitLevel.Peasant, restored!.Level);
-        Assert.Equal(Red, restored.Owner);
+        Assert.Equal(Red, restored!.Owner);
         Assert.True(restored.HasMovedThisTurn);
     }
 
@@ -129,7 +128,7 @@ public class GameStateSnapshotTests
         GameStateSnapshot snap = GameStateSnapshot.Capture(grid, treasury, territories);
 
         // Buy a peasant after the snapshot was taken.
-        grid.Get(new HexCoord(1, 0))!.Unit = new Unit(UnitLevel.Peasant, Red);
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red);
 
         snap.ApplyTo(grid, treasury);
 
@@ -140,19 +139,19 @@ public class GameStateSnapshotTests
     public void Apply_RestoresUnits_ReaddsOnesRemovedSinceSnapshot()
     {
         HexGrid grid = BuildTwoTileRedGrid();
-        grid.Get(new HexCoord(0, 0))!.Unit = new Unit(UnitLevel.Peasant, Red);
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Unit(Red);
         var treasury = new Treasury();
         var territories = TerritoriesFor(grid);
 
         GameStateSnapshot snap = GameStateSnapshot.Capture(grid, treasury, territories);
 
         // Remove the unit after the snapshot.
-        grid.Get(new HexCoord(0, 0))!.Unit = null;
+        grid.Get(new HexCoord(0, 0))!.Occupant = null;
 
         snap.ApplyTo(grid, treasury);
 
         Assert.NotNull(grid.Get(new HexCoord(0, 0))!.Unit);
-        Assert.Equal(UnitLevel.Peasant, grid.Get(new HexCoord(0, 0))!.Unit!.Level);
+        Assert.Equal(Red, grid.Get(new HexCoord(0, 0))!.Unit!.Owner);
     }
 
     [Fact]

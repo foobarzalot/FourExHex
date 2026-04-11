@@ -2,9 +2,12 @@ using System.Collections.Generic;
 using Godot;
 
 /// <summary>
-/// Partitions a HexGrid into Territories by flood-fill: two tiles belong to
-/// the same territory iff they are connected in the grid through an unbroken
-/// chain of same-color neighbors.
+/// Partitions a HexGrid into Territories by flood-fill: two tiles belong
+/// to the same territory iff they are connected in the grid through an
+/// unbroken chain of same-color neighbors. Does NOT assign capitals — the
+/// returned territories all have <see cref="Territory.Capital"/> equal to
+/// null. Callers that need capitals should run
+/// <see cref="CapitalReconciler.Reconcile"/> on the output.
 /// </summary>
 public static class TerritoryFinder
 {
@@ -45,7 +48,7 @@ public static class TerritoryFinder
                 }
             }
 
-            territories.Add(new Territory(color, coords, CapitalAssigner.Choose(coords)));
+            territories.Add(new Territory(color, coords, capital: null));
         }
 
         return territories;

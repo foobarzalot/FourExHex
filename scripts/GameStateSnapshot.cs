@@ -1,26 +1,24 @@
+using System;
 using System.Collections.Generic;
 using Godot;
 
 /// <summary>
 /// Immutable deep copy of everything a turn can mutate: tile colors and
-/// units, treasury gold balances, and the list of territories. Used by the
-/// undo stack to roll back to earlier in the current turn.
+/// occupants (units, capitals, eventually towers/trees/graves), treasury
+/// gold balances, and the list of territories. Used by the undo stack to
+/// roll back to earlier in the current turn.
 /// </summary>
 public class GameStateSnapshot
 {
     private readonly struct TileState
     {
         public Color Color { get; }
-        public UnitLevel? UnitLevel { get; }
-        public Color UnitOwner { get; }
-        public bool UnitHasMoved { get; }
+        public HexOccupant? Occupant { get; }
 
-        public TileState(Color color, UnitLevel? level, Color unitOwner, bool hasMoved)
+        public TileState(Color color, HexOccupant? occupant)
         {
             Color = color;
-            UnitLevel = level;
-            UnitOwner = unitOwner;
-            UnitHasMoved = hasMoved;
+            Occupant = occupant;
         }
     }
 
@@ -50,12 +48,9 @@ public class GameStateSnapshot
         var tiles = new Dictionary<HexCoord, TileState>();
         foreach (HexTile tile in grid.Tiles)
         {
-            Unit? unit = tile.Unit;
             tiles[tile.Coord] = new TileState(
                 color: tile.Color,
-                level: unit?.Level,
-                unitOwner: unit?.Owner ?? default,
-                hasMoved: unit?.HasMovedThisTurn ?? false);
+                occupant: CloneOccupant(tile.Occupant));
         }
 
         var gold = new Dictionary<HexCoord, int>();
@@ -88,18 +83,9 @@ public class GameStateSnapshot
             if (tile == null) continue;
 
             tile.Color = kvp.Value.Color;
-
-            if (kvp.Value.UnitLevel.HasValue)
-            {
-                tile.Unit = new Unit(kvp.Value.UnitLevel.Value, kvp.Value.UnitOwner)
-                {
-                    HasMovedThisTurn = kvp.Value.UnitHasMoved,
-                };
-            }
-            else
-            {
-                tile.Unit = null;
-            }
+            // Clone again on apply so the snapshot remains independent and
+            // restores remain idempotent across multiple calls.
+            tile.Occupant = CloneOccupant(kvp.Value.Occupant);
         }
 
         treasury.Clear();
@@ -110,4 +96,12 @@ public class GameStateSnapshot
 
         return _territories;
     }
+
+    private static HexOccupant? CloneOccupant(HexOccupant? occupant) => occupant switch
+    {
+        Unit u => new Unit(u.Owner) { HasMovedThisTurn = u.HasMovedThisTurn },
+        Capital => new Capital(),
+        null => null,
+        _ => throw new InvalidOperationException($"Unknown occupant type: {occupant.GetType()}"),
+    };
 }

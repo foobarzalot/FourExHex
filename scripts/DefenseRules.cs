@@ -1,22 +1,50 @@
+using System.Linq;
+
 /// <summary>
-/// Pure calculation of the defense value covering a hex. For Step 9 there's
-/// no defense radiation — a unit only defends its own tile. Higher-level
-/// defense (adjacent same-territory units contributing to a tile's defense)
-/// is Step 11 work.
+/// Pure calculation of the defense value covering a hex. Defense is the
+/// max contribution over the tile's own occupant and the occupants of
+/// every adjacent tile in the same territory. Occupant contributions:
+///   - <see cref="Unit"/>     -> 1 (only peasants exist for now)
+///   - <see cref="Capital"/>  -> 1
+///   - null / other occupants -> 0
+/// Both units and capitals radiate their contribution to adjacent
+/// same-territory tiles.
 /// </summary>
 public static class DefenseRules
 {
     /// <summary>
-    /// Defense value of <paramref name="tile"/>. To capture a tile, the
-    /// attacker's level must be strictly greater than this value.
+    /// Defense value covering the tile at <paramref name="coord"/>. To
+    /// capture this tile, the attacker's level must be strictly greater.
     /// </summary>
-    /// <param name="isCapital">Whether this tile is the capital of its
-    /// containing territory. Capitals can never hold a unit, so their
-    /// defense is simply the capital's static contribution of 1.</param>
-    public static int Defense(HexTile tile, bool isCapital)
+    public static int Defense(HexCoord coord, HexGrid grid, Territory territory)
     {
-        if (isCapital) return 1;
-        if (tile.Unit != null) return (int)tile.Unit.Level;
-        return 0;
+        int max = 0;
+
+        HexTile? tile = grid.Get(coord);
+        if (tile != null)
+        {
+            max = System.Math.Max(max, ContributionOf(tile.Occupant));
+        }
+
+        foreach (HexCoord neighbor in coord.Neighbors())
+        {
+            if (!territory.Coords.Contains(neighbor)) continue;
+            HexTile? neighborTile = grid.Get(neighbor);
+            if (neighborTile == null) continue;
+            max = System.Math.Max(max, ContributionOf(neighborTile.Occupant));
+        }
+
+        return max;
     }
+
+    /// <summary>
+    /// How much defense a single occupant contributes to its own tile (and,
+    /// via radiation, to adjacent same-territory tiles).
+    /// </summary>
+    public static int ContributionOf(HexOccupant? occupant) => occupant switch
+    {
+        Unit => 1,
+        Capital => 1,
+        _ => 0,
+    };
 }

@@ -17,8 +17,8 @@ public static class PurchaseRules
 
     public static bool IsValidPeasantTarget(HexTile tile, Territory territory)
     {
-        if (tile.Unit != null) return false;
-        if (territory.Capital == tile.Coord) return false;
+        // Must be empty (no unit, no capital, no tree/grave/tower).
+        if (tile.Occupant != null) return false;
         return territory.Coords.Contains(tile.Coord);
     }
 
@@ -26,6 +26,6 @@ public static class PurchaseRules
     {
         HexCoord capital = territory.Capital!.Value;
         treasury.SetGold(capital, treasury.GetGold(capital) - PeasantCost);
-        tile.Unit = new Unit(UnitLevel.Peasant, territory.Owner);
+        tile.Occupant = new Unit(territory.Owner);
     }
 }

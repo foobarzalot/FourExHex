@@ -12,7 +12,7 @@ public class UndoStackTests
         grid.Add(new HexTile(new HexCoord(0, 0), new Color(1f, 0f, 0f)));
         grid.Add(new HexTile(new HexCoord(1, 0), new Color(1f, 0f, 0f)));
         var treasury = new Treasury();
-        var territories = TerritoryFinder.FindAll(grid);
+        var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         treasury.SetGold(territories[0].Capital!.Value, goldValue);
         return GameStateSnapshot.Capture(grid, treasury, territories);
     }

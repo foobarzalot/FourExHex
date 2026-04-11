@@ -15,7 +15,6 @@ public partial class Main : Node2D
     };
 
     private const float HudHeight = 60f;
-    private const int PeasantLevel = (int)UnitLevel.Peasant;
 
     private enum ActionMode { None, BuyingPeasant, MovingUnit }
 
@@ -224,7 +223,7 @@ public partial class Main : Node2D
             _mode = ActionMode.MovingUnit;
             _moveSource = tile.Coord;
             _map.ShowMoveTargets(
-                MovementRules.ValidTargets(PeasantLevel, territory, _map.Grid, _map.Territories));
+                MovementRules.ValidTargets(territory, _map.Grid, _map.Territories));
         }
     }
 
@@ -232,7 +231,7 @@ public partial class Main : Node2D
     {
         if (_selected == null) return false;
         var targets = MovementRules.ValidTargets(
-            PeasantLevel, _selected, _map.Grid, _map.Territories);
+            _selected, _map.Grid, _map.Territories);
         return targets.Contains(coord);
     }
 
@@ -244,7 +243,7 @@ public partial class Main : Node2D
 
         HexCoord capital = _selected.Capital!.Value;
         _treasury.SetGold(capital, _treasury.GetGold(capital) - PurchaseRules.PeasantCost);
-        var unit = new Unit(UnitLevel.Peasant, _selected.Owner);
+        var unit = new Unit(_selected.Owner);
         MoveResult result = MovementRules.PlaceNew(unit, destination, _map.Grid, _selected);
 
         _map.RefreshUnitVisual(destination);
@@ -354,7 +353,7 @@ public partial class Main : Node2D
         _moveSource = null;
         _buyPeasantButton.Text = "Click a tile...";
         _map.ShowMoveTargets(
-            MovementRules.ValidTargets(PeasantLevel, _selected, _map.Grid, _map.Territories));
+            MovementRules.ValidTargets(_selected, _map.Grid, _map.Territories));
     }
 
     private void OnEndTurnPressed()

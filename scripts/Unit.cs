@@ -1,21 +1,12 @@
 using Godot;
 
-public enum UnitLevel
-{
-    Peasant = 1,
-    Spearman = 2,
-    Knight = 3,
-    Baron = 4,
-}
-
 /// <summary>
-/// A unit occupying a single hex. Level determines offensive strength,
-/// defensive contribution, and (later) upkeep cost. Owner is the color
-/// of the player that controls it — matches <see cref="Player.Color"/>.
+/// A unit occupying a single hex. For now all units are "peasants" —
+/// level distinctions (spearman/knight/baron) will be reintroduced when
+/// combining lands in Step 11.
 /// </summary>
-public class Unit
+public class Unit : HexOccupant
 {
-    public UnitLevel Level { get; }
     public Color Owner { get; }
 
     /// <summary>
@@ -25,9 +16,8 @@ public class Unit
     /// </summary>
     public bool HasMovedThisTurn { get; set; }
 
-    public Unit(UnitLevel level, Color owner)
+    public Unit(Color owner)
     {
-        Level = level;
         Owner = owner;
     }
 }

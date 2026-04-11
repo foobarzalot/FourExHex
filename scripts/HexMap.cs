@@ -94,7 +94,10 @@ public partial class HexMap : Node2D
             }
         }
 
-        Territories = TerritoryFinder.FindAll(Grid);
+        // Flood-fill + capital placement (which adds Capital occupants to
+        // the grid at each multi-hex territory's chosen tile).
+        IReadOnlyList<Territory> raw = TerritoryFinder.FindAll(Grid);
+        Territories = CapitalReconciler.Reconcile(raw, new List<Territory>(), Grid);
         GD.Print($"HexMap: {Grid.Count} tiles partitioned into {Territories.Count} territories.");
 
         RebuildTileToTerritoryIndex();
@@ -149,9 +152,10 @@ public partial class HexMap : Node2D
     {
         IReadOnlyList<Territory> previous = Territories;
         IReadOnlyList<Territory> raw = TerritoryFinder.FindAll(Grid);
-        // Override the capital for merged territories: the biggest old
-        // territory's capital wins (tiebreaker: lex-min).
-        Territories = TerritoryReconciler.OverrideMergeWinners(raw, previous);
+        // Reconcile capitals: keep inherited, demote losers in merges,
+        // place fresh ones for split pieces without an old capital. May
+        // stomp units if a split piece has no empty tile.
+        Territories = CapitalReconciler.Reconcile(raw, previous, Grid);
         RebuildTileToTerritoryIndex();
 
         // Selected territory may no longer exist as an object — caller must
@@ -163,6 +167,13 @@ public partial class HexMap : Node2D
         ClearLayer(_capitalsLayer);
         DrawTerritoryBorders();
         DrawCapitals();
+
+        // Capitals may have moved and/or stomped units; refresh every unit
+        // visual so nothing stale lingers.
+        foreach (HexTile tile in Grid.Tiles)
+        {
+            RefreshUnitVisual(tile.Coord);
+        }
 
         return previous;
     }

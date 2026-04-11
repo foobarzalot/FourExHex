@@ -2,7 +2,7 @@ using System.Collections.Generic;
 
 /// <summary>
 /// Pure rules for unit movement and capture. A unit in territory T can:
-///   1. Reposition to any empty non-capital tile within T.
+///   1. Reposition to any empty tile within T (can't land on a capital).
 ///   2. Capture any tile adjacent to T (different color) whose defense is
 ///      strictly less than the attacker's level.
 /// Both kinds of action consume the unit's single movement for the turn.
@@ -10,34 +10,41 @@ using System.Collections.Generic;
 public static class MovementRules
 {
     /// <summary>
-    /// Returns every coord a level-<paramref name="attackerLevel"/> unit in
-    /// <paramref name="attackerTerritory"/> could legally move to. The
-    /// <paramref name="allTerritories"/> list is used to identify capitals
-    /// (for the defense check).
+    /// Returns every coord a peasant in <paramref name="attackerTerritory"/>
+    /// could legally move to. The <paramref name="allTerritories"/> list is
+    /// used to determine which territory each neighbor coord belongs to
+    /// (needed for defense radiation). For now all attackers are peasants
+    /// (level 1), so capturable enemy tiles are those with defense 0.
     /// </summary>
     public static List<HexCoord> ValidTargets(
-        int attackerLevel,
         Territory attackerTerritory,
         HexGrid grid,
         IReadOnlyList<Territory> allTerritories)
     {
+        const int attackerLevel = 1;
+
         var results = new List<HexCoord>();
         var own = new HashSet<HexCoord>(attackerTerritory.Coords);
 
-        // Collect every coord that's a capital of ANY territory, for the
-        // defense check when evaluating capture targets.
-        var capitals = new HashSet<HexCoord>();
+        // tile -> territory lookup, for computing radiated defense on
+        // potential capture targets.
+        var tileToTerritory = new Dictionary<HexCoord, Territory>();
         foreach (Territory t in allTerritories)
         {
-            if (t.HasCapital) capitals.Add(t.Capital!.Value);
+            foreach (HexCoord c in t.Coords)
+            {
+                tileToTerritory[c] = t;
+            }
         }
 
-        // 1. Repositions inside the own territory: any empty non-capital tile.
+        // 1. Repositions inside the own territory: any empty tile. (An empty
+        //    tile means Occupant == null, which excludes capitals and units
+        //    alike.)
         foreach (HexCoord coord in own)
         {
-            if (capitals.Contains(coord)) continue;
             HexTile? tile = grid.Get(coord);
-            if (tile == null || tile.Unit != null) continue;
+            if (tile == null) continue;
+            if (tile.Occupant != null) continue;
             results.Add(coord);
         }
 
@@ -57,8 +64,12 @@ public static class MovementRules
                 // off-limits; repositions would have been caught above).
                 if (tile.Color == attackerTerritory.Owner) continue;
 
-                bool isCapital = capitals.Contains(neighborCoord);
-                int defense = DefenseRules.Defense(tile, isCapital);
+                if (!tileToTerritory.TryGetValue(neighborCoord, out Territory? targetTerritory))
+                {
+                    continue;
+                }
+
+                int defense = DefenseRules.Defense(neighborCoord, grid, targetTerritory);
                 if (defense < attackerLevel)
                 {
                     results.Add(neighborCoord);
@@ -72,9 +83,7 @@ public static class MovementRules
     /// <summary>
     /// Execute a move or capture. Preconditions: source tile has a unit,
     /// destination is in the result of <see cref="ValidTargets"/> for that
-    /// unit's territory and level. Returns a <see cref="MoveResult"/>
-    /// describing whether the move captured a tile (so the caller knows to
-    /// re-run <see cref="TerritoryFinder"/> and reconcile the treasury).
+    /// unit's territory and level.
     /// </summary>
     public static MoveResult Move(
         HexCoord source,
@@ -84,16 +93,16 @@ public static class MovementRules
     {
         HexTile srcTile = grid.Get(source)!;
         HexTile dstTile = grid.Get(destination)!;
-        Unit unit = srcTile.Unit!;
+        Unit unit = (Unit)srcTile.Occupant!;
 
-        srcTile.Unit = null;
+        srcTile.Occupant = null;
 
         bool wasCapture = dstTile.Color != attackerTerritory.Owner;
         if (wasCapture)
         {
             dstTile.Color = attackerTerritory.Owner;
         }
-        dstTile.Unit = unit;
+        dstTile.Occupant = unit;
         unit.HasMovedThisTurn = true;
 
         return new MoveResult(wasCapture);
@@ -116,7 +125,7 @@ public static class MovementRules
         {
             dstTile.Color = attackerTerritory.Owner;
         }
-        dstTile.Unit = unit;
+        dstTile.Occupant = unit;
         unit.HasMovedThisTurn = true;
 
         return new MoveResult(wasCapture);

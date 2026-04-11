@@ -26,15 +26,17 @@
     <Compile Include="..\scripts\HexTile.cs" Link="scripts\HexTile.cs" />
     <Compile Include="..\scripts\Territory.cs" Link="scripts\Territory.cs" />
     <Compile Include="..\scripts\TerritoryFinder.cs" Link="scripts\TerritoryFinder.cs" />
-    <Compile Include="..\scripts\CapitalAssigner.cs" Link="scripts\CapitalAssigner.cs" />
+    <Compile Include="..\scripts\CapitalPlacer.cs" Link="scripts\CapitalPlacer.cs" />
+    <Compile Include="..\scripts\CapitalReconciler.cs" Link="scripts\CapitalReconciler.cs" />
     <Compile Include="..\scripts\Player.cs" Link="scripts\Player.cs" />
     <Compile Include="..\scripts\TurnState.cs" Link="scripts\TurnState.cs" />
     <Compile Include="..\scripts\Treasury.cs" Link="scripts\Treasury.cs" />
+    <Compile Include="..\scripts\HexOccupant.cs" Link="scripts\HexOccupant.cs" />
     <Compile Include="..\scripts\Unit.cs" Link="scripts\Unit.cs" />
+    <Compile Include="..\scripts\Capital.cs" Link="scripts\Capital.cs" />
     <Compile Include="..\scripts\PurchaseRules.cs" Link="scripts\PurchaseRules.cs" />
     <Compile Include="..\scripts\DefenseRules.cs" Link="scripts\DefenseRules.cs" />
     <Compile Include="..\scripts\MovementRules.cs" Link="scripts\MovementRules.cs" />
-    <Compile Include="..\scripts\TerritoryReconciler.cs" Link="scripts\TerritoryReconciler.cs" />
     <Compile Include="..\scripts\GameStateSnapshot.cs" Link="scripts\GameStateSnapshot.cs" />
     <Compile Include="..\scripts\UndoStack.cs" Link="scripts\UndoStack.cs" />
   </ItemGroup>

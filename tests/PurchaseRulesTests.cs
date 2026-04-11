@@ -13,18 +13,17 @@ public class PurchaseRulesTests
     // --- Unit + HexTile basics --------------------------------------------
 
     [Fact]
-    public void Unit_Constructor_StoresLevelAndOwner()
+    public void Unit_Constructor_StoresOwner()
     {
-        var unit = new Unit(UnitLevel.Peasant, Red);
+        var unit = new Unit(Red);
 
-        Assert.Equal(UnitLevel.Peasant, unit.Level);
         Assert.Equal(Red, unit.Owner);
     }
 
     [Fact]
     public void Unit_HasMovedThisTurn_DefaultsFalse()
     {
-        var unit = new Unit(UnitLevel.Peasant, Red);
+        var unit = new Unit(Red);
 
         Assert.False(unit.HasMovedThisTurn);
     }
@@ -94,7 +93,7 @@ public class PurchaseRulesTests
             new HexCoord(0, 0), new HexCoord(1, 0));
         var tile = new HexTile(new HexCoord(1, 0), Red)
         {
-            Unit = new Unit(UnitLevel.Peasant, Red),
+            Occupant = new Unit(Red),
         };
 
         Assert.False(PurchaseRules.IsValidPeasantTarget(tile, territory));
@@ -115,12 +114,17 @@ public class PurchaseRulesTests
     [Fact]
     public void IsValidPeasantTarget_OnOwnCapital_ReturnsFalse()
     {
-        // Can't stand on top of your own capital in Slay.
+        // Can't stand on top of your own capital. With the occupant model,
+        // the capital hex has a Capital occupant, so the tile is "occupied"
+        // by the same general check that excludes unit-held tiles.
         var capital = new HexCoord(0, 0);
         Territory territory = MakeTerritory(
             Red, capital,
             new HexCoord(0, 0), new HexCoord(1, 0));
-        var capitalTile = new HexTile(new HexCoord(0, 0), Red);
+        var capitalTile = new HexTile(new HexCoord(0, 0), Red)
+        {
+            Occupant = new Capital(),
+        };
 
         Assert.False(PurchaseRules.IsValidPeasantTarget(capitalTile, territory));
     }
@@ -157,7 +161,6 @@ public class PurchaseRulesTests
         PurchaseRules.BuyPeasant(tile, territory, treasury);
 
         Assert.NotNull(tile.Unit);
-        Assert.Equal(UnitLevel.Peasant, tile.Unit!.Level);
-        Assert.Equal(Red, tile.Unit.Owner);
+        Assert.Equal(Red, tile.Unit!.Owner);
     }
 }

@@ -10,8 +10,6 @@ public class MovementRulesTests
     private static readonly Color Red = new Color(1f, 0f, 0f);
     private static readonly Color Blue = new Color(0f, 0f, 1f);
 
-    private const int PeasantLevel = (int)UnitLevel.Peasant; // 1
-
     /// <summary>
     /// Build a grid where every tile in a rectangular shape exists, and all
     /// tiles default to a neutral color. Tests override specific tiles.
@@ -45,10 +43,10 @@ public class MovementRulesTests
         HexGrid grid = BuildGrid(5, 1, Blue);
         var coords = new[] { HexCoord.FromOffset(0, 0), HexCoord.FromOffset(1, 0), HexCoord.FromOffset(2, 0) };
         foreach (var c in coords) SetTile(grid, c, Red);
-        var territories = TerritoryFinder.FindAll(grid);
+        var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         Territory red = territories.First(t => t.Owner == Red);
 
-        var targets = MovementRules.ValidTargets(PeasantLevel, red, grid, territories);
+        var targets = MovementRules.ValidTargets(red, grid, territories);
 
         Assert.Contains(red.Coords, c => targets.Contains(c) && c != red.Capital);
         Assert.DoesNotContain(red.Capital!.Value, targets);
@@ -60,10 +58,10 @@ public class MovementRulesTests
         HexGrid grid = BuildGrid(5, 1, Blue);
         var coords = new[] { HexCoord.FromOffset(0, 0), HexCoord.FromOffset(1, 0), HexCoord.FromOffset(2, 0) };
         foreach (var c in coords) SetTile(grid, c, Red);
-        var territories = TerritoryFinder.FindAll(grid);
+        var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         Territory red = territories.First(t => t.Owner == Red);
 
-        var targets = MovementRules.ValidTargets(PeasantLevel, red, grid, territories);
+        var targets = MovementRules.ValidTargets(red, grid, territories);
 
         Assert.DoesNotContain(red.Capital!.Value, targets);
     }
@@ -77,12 +75,12 @@ public class MovementRulesTests
 
         // Put a peasant on tile (1,0); it should no longer be a valid target.
         HexTile? occupied = grid.Get(HexCoord.FromOffset(1, 0));
-        occupied!.Unit = new Unit(UnitLevel.Peasant, Red);
+        occupied!.Occupant = new Unit(Red);
 
-        var territories = TerritoryFinder.FindAll(grid);
+        var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         Territory red = territories.First(t => t.Owner == Red);
 
-        var targets = MovementRules.ValidTargets(PeasantLevel, red, grid, territories);
+        var targets = MovementRules.ValidTargets(red, grid, territories);
 
         Assert.DoesNotContain(HexCoord.FromOffset(1, 0), targets);
     }
@@ -96,10 +94,10 @@ public class MovementRulesTests
         HexGrid grid = BuildGrid(5, 2, Blue);
         SetTile(grid, HexCoord.FromOffset(0, 1), Red);
         SetTile(grid, HexCoord.FromOffset(1, 1), Red);
-        var territories = TerritoryFinder.FindAll(grid);
+        var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         Territory red = territories.First(t => t.Owner == Red);
 
-        var targets = MovementRules.ValidTargets(PeasantLevel, red, grid, territories);
+        var targets = MovementRules.ValidTargets(red, grid, territories);
 
         Assert.Contains(HexCoord.FromOffset(2, 0), targets);
     }
@@ -119,11 +117,11 @@ public class MovementRulesTests
         // second red tile above (0,0).
         grid.Add(new HexTile(HexCoord.FromOffset(0, 1), Red));
 
-        var territories = TerritoryFinder.FindAll(grid);
+        var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         Territory red = territories.First(t => t.Owner == Red);
         Territory blue = territories.First(t => t.Owner == Blue);
 
-        var targets = MovementRules.ValidTargets(PeasantLevel, red, grid, territories);
+        var targets = MovementRules.ValidTargets(red, grid, territories);
 
         // Confirm the test fixture: (1,0) really is Blue's capital.
         Assert.Equal(HexCoord.FromOffset(1, 0), blue.Capital);
@@ -139,12 +137,12 @@ public class MovementRulesTests
         HexGrid grid = BuildGrid(5, 2, Blue);
         SetTile(grid, HexCoord.FromOffset(0, 1), Red);
         SetTile(grid, HexCoord.FromOffset(1, 1), Red);
-        grid.Get(HexCoord.FromOffset(2, 0))!.Unit = new Unit(UnitLevel.Peasant, Blue);
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(Blue);
 
-        var territories = TerritoryFinder.FindAll(grid);
+        var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         Territory red = territories.First(t => t.Owner == Red);
 
-        var targets = MovementRules.ValidTargets(PeasantLevel, red, grid, territories);
+        var targets = MovementRules.ValidTargets(red, grid, territories);
 
         // Sanity: confirm (2,0) is not Blue's capital in this fixture.
         Territory blue = territories.First(t => t.Coords.Contains(HexCoord.FromOffset(2, 0)));
@@ -162,10 +160,10 @@ public class MovementRulesTests
         grid.Add(new HexTile(HexCoord.FromOffset(5, 5), Blue));
         grid.Add(new HexTile(HexCoord.FromOffset(6, 5), Blue));
 
-        var territories = TerritoryFinder.FindAll(grid);
+        var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         Territory red = territories.First(t => t.Owner == Red);
 
-        var targets = MovementRules.ValidTargets(PeasantLevel, red, grid, territories);
+        var targets = MovementRules.ValidTargets(red, grid, territories);
 
         Assert.DoesNotContain(HexCoord.FromOffset(5, 5), targets);
         Assert.DoesNotContain(HexCoord.FromOffset(6, 5), targets);
@@ -182,10 +180,10 @@ public class MovementRulesTests
         SetTile(grid, HexCoord.FromOffset(8, 0), Red);
         SetTile(grid, HexCoord.FromOffset(9, 0), Red);
 
-        var territories = TerritoryFinder.FindAll(grid);
+        var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         Territory leftRed = territories.First(t => t.Owner == Red && t.Coords.Contains(HexCoord.FromOffset(0, 0)));
 
-        var targets = MovementRules.ValidTargets(PeasantLevel, leftRed, grid, territories);
+        var targets = MovementRules.ValidTargets(leftRed, grid, territories);
 
         Assert.DoesNotContain(HexCoord.FromOffset(8, 0), targets);
         Assert.DoesNotContain(HexCoord.FromOffset(9, 0), targets);
@@ -202,11 +200,11 @@ public class MovementRulesTests
             SetTile(grid, c, Red);
         }
 
-        var unit = new Unit(UnitLevel.Peasant, Red);
+        var unit = new Unit(Red);
         HexTile? srcTile = grid.Get(HexCoord.FromOffset(1, 0));
-        srcTile!.Unit = unit;
+        srcTile!.Occupant = unit;
 
-        var territories = TerritoryFinder.FindAll(grid);
+        var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         Territory red = territories.First(t => t.Owner == Red);
 
         MoveResult result = MovementRules.Move(
@@ -229,10 +227,10 @@ public class MovementRulesTests
         SetTile(grid, HexCoord.FromOffset(1, 0), Red);
         // (2,0) is Blue — the capture target.
 
-        var unit = new Unit(UnitLevel.Peasant, Red);
-        grid.Get(HexCoord.FromOffset(1, 0))!.Unit = unit;
+        var unit = new Unit(Red);
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = unit;
 
-        var territories = TerritoryFinder.FindAll(grid);
+        var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         Territory red = territories.First(t => t.Owner == Red);
 
         MoveResult result = MovementRules.Move(
@@ -257,9 +255,9 @@ public class MovementRulesTests
         HexGrid grid = BuildGrid(5, 1, Blue);
         SetTile(grid, HexCoord.FromOffset(0, 0), Red);
         SetTile(grid, HexCoord.FromOffset(1, 0), Red);
-        var territories = TerritoryFinder.FindAll(grid);
+        var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         Territory red = territories.First(t => t.Owner == Red);
-        var unit = new Unit(UnitLevel.Peasant, Red);
+        var unit = new Unit(Red);
 
         MoveResult result = MovementRules.PlaceNew(
             unit: unit,

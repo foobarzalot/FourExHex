@@ -27,8 +27,19 @@ public class HexTile
 
     public Polygon2D? Visual { get; set; }
 
-    /// <summary>The unit occupying this tile, if any.</summary>
-    public Unit? Unit { get; set; }
+    /// <summary>
+    /// The thing occupying this tile (unit, capital, later tower/tree/grave),
+    /// or null if the tile is empty. A tile may hold at most one occupant.
+    /// </summary>
+    public HexOccupant? Occupant { get; set; }
+
+    /// <summary>
+    /// Convenience read-only accessor: the tile's occupant cast to
+    /// <see cref="global::Unit"/>, or null if the occupant is something
+    /// else (capital, tower, etc.) or the tile is empty. For setting, use
+    /// <see cref="Occupant"/>.
+    /// </summary>
+    public Unit? Unit => Occupant as Unit;
 
     public HexTile(HexCoord coord, Color color)
     {

@@ -310,90 +310,18 @@ public class TerritoryFinderTests
         Assert.Equal(chosen, t.Capital);
     }
 
-    // --- Capital assignment via TerritoryFinder ---------------------------
+    // TerritoryFinder no longer assigns capitals — all returned territories
+    // have Capital == null. Capital placement is the job of
+    // CapitalReconciler and is tested in CapitalReconcilerTests.cs.
 
     [Fact]
-    public void FindAll_SingletonTerritory_HasNoCapital()
-    {
-        var grid = new HexGrid();
-        grid.Add(new HexTile(new HexCoord(0, 0), Red));
-        grid.Add(new HexTile(new HexCoord(5, 5), Blue)); // disconnected, different color
-
-        var territories = TerritoryFinder.FindAll(grid);
-
-        Assert.Equal(2, territories.Count);
-        Assert.All(territories, t => Assert.False(t.HasCapital));
-    }
-
-    [Fact]
-    public void FindAll_MultiHexTerritory_HasCapital()
-    {
-        var grid = new HexGrid();
-        grid.Add(new HexTile(new HexCoord(0, 0), Red));
-        grid.Add(new HexTile(new HexCoord(1, 0), Red));
-
-        var territories = TerritoryFinder.FindAll(grid);
-
-        Assert.Single(territories);
-        Assert.True(territories[0].HasCapital);
-    }
-
-    [Fact]
-    public void FindAll_CapitalIsOneOfItsTerritoryCoords()
+    public void FindAll_AllTerritoriesHaveNullCapital()
     {
         HexGrid grid = BuildRandomColoredGrid(18, 13, seed: 42);
+
         var territories = TerritoryFinder.FindAll(grid);
 
-        foreach (Territory t in territories.Where(t => t.HasCapital))
-        {
-            Assert.Contains(t.Capital!.Value, t.Coords);
-        }
-    }
-
-    [Fact]
-    public void FindAll_CapitalCountMatchesMultiHexTerritoryCount()
-    {
-        HexGrid grid = BuildRandomColoredGrid(18, 13, seed: 7);
-        var territories = TerritoryFinder.FindAll(grid);
-
-        int capitalCount = territories.Count(t => t.HasCapital);
-        int multiHexCount = territories.Count(t => t.Size >= 2);
-
-        Assert.Equal(multiHexCount, capitalCount);
-    }
-
-    [Fact]
-    public void FindAll_AllCapitalsAreDistinct()
-    {
-        HexGrid grid = BuildRandomColoredGrid(18, 13, seed: 123);
-        var territories = TerritoryFinder.FindAll(grid);
-
-        var capitals = territories
-            .Where(t => t.HasCapital)
-            .Select(t => t.Capital!.Value)
-            .ToList();
-
-        Assert.Equal(capitals.Count, capitals.Distinct().Count());
-    }
-
-    [Fact]
-    public void FindAll_DeterministicCapitals_RunTwice()
-    {
-        HexGrid grid1 = BuildRandomColoredGrid(18, 13, seed: 99);
-        HexGrid grid2 = BuildRandomColoredGrid(18, 13, seed: 99);
-
-        var first = TerritoryFinder.FindAll(grid1);
-        var second = TerritoryFinder.FindAll(grid2);
-
-        // Map each territory (identified by its coord set) to its capital.
-        var firstMap = first.ToDictionary(
-            t => string.Join(",", t.Coords.OrderBy(c => c.R).ThenBy(c => c.Q)),
-            t => t.Capital);
-        var secondMap = second.ToDictionary(
-            t => string.Join(",", t.Coords.OrderBy(c => c.R).ThenBy(c => c.Q)),
-            t => t.Capital);
-
-        Assert.Equal(firstMap, secondMap);
+        Assert.All(territories, t => Assert.False(t.HasCapital));
     }
 
     [Fact]
