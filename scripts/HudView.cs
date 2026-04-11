@@ -7,7 +7,7 @@ using Godot;
 /// updates label text / button disabled state when the controller calls
 /// <see cref="Refresh"/>. Owns no game data.
 /// </summary>
-public partial class HudView : CanvasLayer
+public partial class HudView : CanvasLayer, IHudView
 {
     public const float HudHeight = 60f;
 

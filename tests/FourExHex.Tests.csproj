@@ -39,6 +39,11 @@
     <Compile Include="..\scripts\MovementRules.cs" Link="scripts\MovementRules.cs" />
     <Compile Include="..\scripts\GameStateSnapshot.cs" Link="scripts\GameStateSnapshot.cs" />
     <Compile Include="..\scripts\UndoStack.cs" Link="scripts\UndoStack.cs" />
+    <Compile Include="..\scripts\GameState.cs" Link="scripts\GameState.cs" />
+    <Compile Include="..\scripts\SessionState.cs" Link="scripts\SessionState.cs" />
+    <Compile Include="..\scripts\IHexMapView.cs" Link="scripts\IHexMapView.cs" />
+    <Compile Include="..\scripts\IHudView.cs" Link="scripts\IHudView.cs" />
+    <Compile Include="..\scripts\GameController.cs" Link="scripts\GameController.cs" />
   </ItemGroup>
 
 </Project>

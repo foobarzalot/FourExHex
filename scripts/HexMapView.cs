@@ -10,7 +10,7 @@ using Godot;
 /// <see cref="TileClicked"/> for raw left-clicks. Does NOT mutate the
 /// model — the controller owns all state changes.
 /// </summary>
-public partial class HexMapView : Node2D
+public partial class HexMapView : Node2D, IHexMapView
 {
     /// <summary>
     /// Raised whenever the player left-clicks on the map. The argument is the

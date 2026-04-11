@@ -14,10 +14,10 @@ public class GameController
 {
     private readonly GameState _state;
     private readonly SessionState _session;
-    private readonly HexMapView _map;
-    private readonly HudView _hud;
+    private readonly IHexMapView _map;
+    private readonly IHudView _hud;
 
-    public GameController(GameState state, SessionState session, HexMapView map, HudView hud)
+    public GameController(GameState state, SessionState session, IHexMapView map, IHudView hud)
     {
         _state = state;
         _session = session;
