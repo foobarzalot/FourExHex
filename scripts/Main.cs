@@ -31,6 +31,7 @@ public partial class Main : Node2D
     private Button _undoTurnButton = null!;
     private Button _redoLastButton = null!;
     private Button _redoAllButton = null!;
+    private Button _endTurnButton = null!;
 
     private Territory? _selected;
     private ActionMode _mode = ActionMode.None;
@@ -168,10 +169,10 @@ public partial class Main : Node2D
         _redoAllButton.Pressed += OnRedoAllPressed;
         rightHbox.AddChild(_redoAllButton);
 
-        var endTurnButton = new Button { Text = "End Turn" };
-        endTurnButton.AddThemeFontSizeOverride("font_size", 18);
-        endTurnButton.Pressed += OnEndTurnPressed;
-        rightHbox.AddChild(endTurnButton);
+        _endTurnButton = new Button { Text = "End Turn" };
+        _endTurnButton.AddThemeFontSizeOverride("font_size", 18);
+        _endTurnButton.Pressed += OnEndTurnPressed;
+        rightHbox.AddChild(_endTurnButton);
     }
 
     private GameStateSnapshot CaptureCurrentSnapshot() =>
@@ -225,8 +226,26 @@ public partial class Main : Node2D
         {
             _mode = ActionMode.MovingUnit;
             _moveSource = tile.Coord;
-            _map.ShowMoveTargets(
-                MovementRules.ValidTargets(territory, _map.Grid, _map.Territories));
+            _map.ShowMoveTargets(CaptureTargetsOnly(territory));
+        }
+    }
+
+    /// <summary>
+    /// Returns only the capture targets (adjacent enemy tiles we can take).
+    /// Repositions to empty own-territory tiles are legal but not
+    /// highlighted — they don't consume the unit's action, so the green
+    /// rings only advertise action-consuming moves.
+    /// </summary>
+    private IEnumerable<HexCoord> CaptureTargetsOnly(Territory territory)
+    {
+        Color owner = territory.Owner;
+        foreach (HexCoord coord in MovementRules.ValidTargets(territory, _map.Grid, _map.Territories))
+        {
+            HexTile? tile = _map.Grid.Get(coord);
+            if (tile != null && tile.Color != owner)
+            {
+                yield return coord;
+            }
         }
     }
 
@@ -254,7 +273,7 @@ public partial class Main : Node2D
             HandleCapture();
         }
 
-        FinishPendingAction();
+        FinishPendingAction(clearSelection: result.WasCapture);
     }
 
     private void ExecuteMove(HexCoord source, HexCoord destination)
@@ -270,7 +289,7 @@ public partial class Main : Node2D
             HandleCapture();
         }
 
-        FinishPendingAction();
+        FinishPendingAction(clearSelection: result.WasCapture);
     }
 
     private void OnUndoLastPressed()
@@ -315,14 +334,20 @@ public partial class Main : Node2D
         _treasury.ReconcileAfterCapture(old, _map.Territories);
     }
 
-    private void FinishPendingAction()
+    private void FinishPendingAction(bool clearSelection = true)
     {
         _mode = ActionMode.None;
         _moveSource = null;
         _map.ShowMoveTargets(System.Array.Empty<HexCoord>());
-        // Selection may have been invalidated by a capture's TerritoryFinder
-        // rerun — clear it so the HUD doesn't show stale info.
-        _map.SelectTerritory(null);
+
+        // After a capture, the territory list is rebuilt so the old
+        // selection object is stale — clear it. After a non-consuming
+        // reposition/placement, keep the selection so the user can
+        // immediately see their territory + still-actionable units.
+        if (clearSelection)
+        {
+            _map.SelectTerritory(null);
+        }
         RefreshHud();
     }
 
@@ -351,8 +376,7 @@ public partial class Main : Node2D
         _mode = ActionMode.BuyingPeasant;
         _moveSource = null;
         _buyPeasantButton.Text = "Click a tile...";
-        _map.ShowMoveTargets(
-            MovementRules.ValidTargets(_selected, _map.Grid, _map.Territories));
+        _map.ShowMoveTargets(CaptureTargetsOnly(_selected));
     }
 
     private void OnEndTurnPressed()
@@ -404,8 +428,78 @@ public partial class Main : Node2D
         _redoAllButton.Disabled = !canRedo;
 
         // Recolor occupant icons so capitals/units with a CTA (affordable
-        // buy, move available) show the player color interior and
-        // non-actionable ones show a solid black interior.
+        // buy, move available) show a white interior and non-actionable
+        // ones show a solid black interior.
         _map.RefreshOccupantVisuals(current.Color, _treasury);
+
+        // When the current player has nothing left to do, the End Turn
+        // button becomes the CTA and gets the white-fill treatment.
+        bool anyActionRemaining = HasAnyActionableForCurrentPlayer();
+        SetEndTurnCta(!anyActionRemaining);
+    }
+
+    private bool HasAnyActionableForCurrentPlayer()
+    {
+        Color color = _turnState.CurrentPlayer.Color;
+
+        foreach (HexTile tile in _map.Grid.Tiles)
+        {
+            if (tile.Occupant is Unit unit
+                && unit.Owner == color
+                && !unit.HasMovedThisTurn)
+            {
+                return true;
+            }
+        }
+
+        foreach (Territory territory in _map.Territories)
+        {
+            if (territory.Owner != color) continue;
+            if (PurchaseRules.CanAffordPeasant(territory, _treasury))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void SetEndTurnCta(bool isCta)
+    {
+        if (isCta)
+        {
+            var style = new StyleBoxFlat
+            {
+                BgColor = new Color(1f, 1f, 1f, 1f),
+                BorderColor = new Color(0f, 0f, 0f, 1f),
+                BorderWidthLeft = 2,
+                BorderWidthRight = 2,
+                BorderWidthTop = 2,
+                BorderWidthBottom = 2,
+                CornerRadiusTopLeft = 4,
+                CornerRadiusTopRight = 4,
+                CornerRadiusBottomLeft = 4,
+                CornerRadiusBottomRight = 4,
+                ContentMarginLeft = 12,
+                ContentMarginRight = 12,
+                ContentMarginTop = 6,
+                ContentMarginBottom = 6,
+            };
+            _endTurnButton.AddThemeStyleboxOverride("normal", style);
+            _endTurnButton.AddThemeStyleboxOverride("hover", style);
+            _endTurnButton.AddThemeStyleboxOverride("pressed", style);
+            _endTurnButton.AddThemeColorOverride("font_color", new Color(0f, 0f, 0f));
+            _endTurnButton.AddThemeColorOverride("font_hover_color", new Color(0f, 0f, 0f));
+            _endTurnButton.AddThemeColorOverride("font_pressed_color", new Color(0f, 0f, 0f));
+        }
+        else
+        {
+            _endTurnButton.RemoveThemeStyleboxOverride("normal");
+            _endTurnButton.RemoveThemeStyleboxOverride("hover");
+            _endTurnButton.RemoveThemeStyleboxOverride("pressed");
+            _endTurnButton.RemoveThemeColorOverride("font_color");
+            _endTurnButton.RemoveThemeColorOverride("font_hover_color");
+            _endTurnButton.RemoveThemeColorOverride("font_pressed_color");
+        }
     }
 }

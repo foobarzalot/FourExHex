@@ -192,8 +192,11 @@ public class MovementRulesTests
     // --- Move + PlaceNew execution ----------------------------------------
 
     [Fact]
-    public void Move_WithinTerritory_RelocatesUnitAndMarksMoved()
+    public void Move_WithinTerritory_Relocates_ButDoesNotConsumeAction()
     {
+        // Repositioning within your own territory does not mark the unit
+        // as moved — only captures (or destroying trees/graves) consume
+        // the unit's single action per turn.
         HexGrid grid = BuildGrid(5, 1, Blue);
         foreach (var c in new[] { HexCoord.FromOffset(0, 0), HexCoord.FromOffset(1, 0), HexCoord.FromOffset(2, 0) })
         {
@@ -216,7 +219,32 @@ public class MovementRulesTests
         Assert.False(result.WasCapture);
         Assert.Null(grid.Get(HexCoord.FromOffset(1, 0))!.Unit);
         Assert.Same(unit, grid.Get(HexCoord.FromOffset(2, 0))!.Unit);
-        Assert.True(unit.HasMovedThisTurn);
+        Assert.False(unit.HasMovedThisTurn);
+    }
+
+    [Fact]
+    public void Move_WithinTerritoryTwice_InSameTurn_Works()
+    {
+        // Since reposition doesn't consume the action, a unit can be
+        // repositioned repeatedly in the same turn.
+        HexGrid grid = BuildGrid(5, 1, Blue);
+        foreach (var c in new[] { HexCoord.FromOffset(0, 0), HexCoord.FromOffset(1, 0), HexCoord.FromOffset(2, 0), HexCoord.FromOffset(3, 0) })
+        {
+            SetTile(grid, c, Red);
+        }
+
+        var unit = new Unit(Red);
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = unit;
+
+        var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        Territory red = territories.First(t => t.Owner == Red);
+
+        MovementRules.Move(HexCoord.FromOffset(1, 0), HexCoord.FromOffset(2, 0), grid, red);
+        Assert.False(unit.HasMovedThisTurn);
+
+        MovementRules.Move(HexCoord.FromOffset(2, 0), HexCoord.FromOffset(3, 0), grid, red);
+        Assert.False(unit.HasMovedThisTurn);
+        Assert.Same(unit, grid.Get(HexCoord.FromOffset(3, 0))!.Unit);
     }
 
     [Fact]
@@ -270,5 +298,30 @@ public class MovementRulesTests
         Assert.Equal(Red, captured.Color);
         Assert.Same(unit, captured.Unit);
         Assert.True(unit.HasMovedThisTurn);
+    }
+
+    [Fact]
+    public void PlaceNew_OnOwnEmptyTile_DoesNotConsumeAction()
+    {
+        // Buying a peasant and placing it on an empty own-territory tile
+        // doesn't consume its action — the fresh peasant can still move
+        // and capture this turn.
+        HexGrid grid = BuildGrid(5, 1, Blue);
+        SetTile(grid, HexCoord.FromOffset(0, 0), Red);
+        SetTile(grid, HexCoord.FromOffset(1, 0), Red);
+        SetTile(grid, HexCoord.FromOffset(2, 0), Red);
+        var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        Territory red = territories.First(t => t.Owner == Red);
+        var unit = new Unit(Red);
+
+        MoveResult result = MovementRules.PlaceNew(
+            unit: unit,
+            destination: HexCoord.FromOffset(2, 0),
+            grid: grid,
+            attackerTerritory: red);
+
+        Assert.False(result.WasCapture);
+        Assert.Same(unit, grid.Get(HexCoord.FromOffset(2, 0))!.Unit);
+        Assert.False(unit.HasMovedThisTurn);
     }
 }

@@ -103,7 +103,13 @@ public static class MovementRules
             dstTile.Color = attackerTerritory.Owner;
         }
         dstTile.Occupant = unit;
-        unit.HasMovedThisTurn = true;
+        // Only captures (and, later, tree/grave destruction) consume the
+        // unit's single action per turn. Repositioning within own
+        // territory leaves the unit free to act again.
+        if (wasCapture)
+        {
+            unit.HasMovedThisTurn = true;
+        }
 
         return new MoveResult(wasCapture);
     }
@@ -126,7 +132,10 @@ public static class MovementRules
             dstTile.Color = attackerTerritory.Owner;
         }
         dstTile.Occupant = unit;
-        unit.HasMovedThisTurn = true;
+        if (wasCapture)
+        {
+            unit.HasMovedThisTurn = true;
+        }
 
         return new MoveResult(wasCapture);
     }
