@@ -9,12 +9,12 @@ public partial class HexMap : Node2D
 
     private static readonly Color[] Palette =
     {
-        new Color("e74c3c"), // red
-        new Color("3498db"), // blue
-        new Color("2ecc71"), // green
-        new Color("f1c40f"), // yellow
-        new Color("9b59b6"), // purple
-        new Color("1abc9c"), // teal
+        new Color("e53935"), // red
+        new Color("1e88e5"), // blue
+        new Color("43a047"), // green
+        new Color("fdd835"), // yellow
+        new Color("8e24aa"), // purple
+        new Color("fb8c00"), // orange
     };
 
     // Edge i of a pointy-top hex (vertex i -> vertex (i+1)%6) is shared with
