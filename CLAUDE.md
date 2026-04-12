@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 FourExHex is a hex-based 4X strategy game built with Godot 4.6 and C#.
 
+**Start here**: `ARCHITECTURE.md` has the current layered view (Main → GameController → views/model/rules), key contracts (`IHexMapView`, `IHudView`), invariants, and call flows (click→select, click→capture, undo, end turn). Read it before making non-trivial changes.
+
 ## Tech Stack
 
 - **Engine**: Godot 4.6.1 (.NET / mono build) — installed at `/Applications/Godot_mono.app`
@@ -30,14 +32,22 @@ FourExHex is a hex-based 4X strategy game built with Godot 4.6 and C#.
 - `camelCase` for local variables and parameters
 - `_camelCase` for private fields
 - Nullable reference types enabled — annotate intent explicitly
-- Prefer signals (`[Signal]` delegates) over direct cross-node references
+- Views expose plain C# `event Action<...>` (see `IHexMapView` / `IHudView`), NOT Godot `[Signal]` delegates. This keeps `GameController` pure C# and unit-testable with mocks.
 - Type everything; avoid `var` when the type isn't obvious from the right-hand side
+
+## Architecture rules (do not violate)
+
+- **Views never mutate the model.** `HexMapView` / `HudView` only read `GameState` and render; they don't write to it.
+- **`GameController` never touches Godot `Node`s directly.** It talks to views through `IHexMapView` / `IHudView` only. This is what makes `GameControllerTests` possible.
+- **Every state change funnels through `RefreshViews()`** at the end of the handler — one UI update path, no drift.
+- **`SessionState` never enters a snapshot.** Only `GameState` does, so undo/redo can't resurrect UI artifacts.
+- Pure rules (`MovementRules`, `PurchaseRules`, `TerritoryFinder`, `CapitalReconciler`, `DefenseRules`, `TreeRules`, `UpkeepRules`, `WinConditionRules`) are static and Godot-free. Keep them that way.
 
 ## Project Structure
 
 - `scenes/` — `.tscn` scene files; `main.tscn` is the entry point
-- `scripts/` — C# scripts (one `partial class` per file, matching filename)
-- `tests/` — xUnit test project (`FourExHex.Tests.csproj`), standalone `Microsoft.NET.Sdk`, excluded from the main assembly via `DefaultItemExcludes` and from Godot's resource scanner via a `.gdignore`. Test files pull in production sources with `<Compile Include="..\scripts\*.cs">`. `HexMap.cs` and `Main.cs` are NOT testable here — they derive from `Node2D` and need the Godot source generator.
+- `scripts/` — C# sources. Godot `Node` subclasses (`Main`, `HexMapView`, `HudView`) are `partial` so the Godot source generator can extend them; everything else is plain C# (structs, static rule classes, POCOs, `GameController`).
+- `tests/` — xUnit test project (`FourExHex.Tests.csproj`), standalone `Microsoft.NET.Sdk`, excluded from the main assembly via `DefaultItemExcludes` and from Godot's resource scanner via a `.gdignore`. Test files pull in production sources with `<Compile Include="..\scripts\*.cs">`. `Main.cs`, `HexMapView.cs`, and `HudView.cs` are NOT compiled into the test assembly — they derive from Godot nodes and need the Godot source generator. Use `MockHexMapView` / `MockHudView` to test controller flows.
 - `.godot/` — engine cache and generated build artifacts (gitignored)
 - `bin/`, `obj/` — .NET build artifacts (gitignored)
 
