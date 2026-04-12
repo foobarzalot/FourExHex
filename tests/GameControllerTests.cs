@@ -135,6 +135,61 @@ public class GameControllerTests
     }
 
     [Fact]
+    public void Click_OwnUnit_SetsMoveSource_OnMapView()
+    {
+        var g = new TestGame();
+        g.Tile(1, 1).Occupant = new Unit(g.Red.Color);
+
+        g.Map.SimulateClick(g.Tile(1, 1));
+
+        Assert.Equal(HexCoord.FromOffset(1, 1), g.Map.LastMoveSource);
+    }
+
+    [Fact]
+    public void Move_AfterCapture_ClearsMoveSource_OnMapView()
+    {
+        var g = new TestGame();
+        g.Tile(1, 1).Occupant = new Unit(g.Red.Color);
+
+        g.Map.SimulateClick(g.Tile(1, 1)); // pick up
+        Assert.NotNull(g.Map.LastMoveSource);
+
+        g.Map.SimulateClick(g.Tile(2, 1)); // capture
+
+        Assert.Null(g.Map.LastMoveSource);
+    }
+
+    [Fact]
+    public void Click_InvalidTargetDuringMovingMode_ClearsMoveSource()
+    {
+        var g = new TestGame();
+        g.Tile(1, 1).Occupant = new Unit(g.Red.Color);
+
+        g.Map.SimulateClick(g.Tile(1, 1)); // pick up
+        Assert.NotNull(g.Map.LastMoveSource);
+
+        g.Map.SimulateClick(g.Tile(4, 0)); // invalid (non-adjacent enemy)
+
+        Assert.Null(g.Map.LastMoveSource);
+    }
+
+    [Fact]
+    public void BuyPeasant_WhileUnitPickedUp_ClearsMoveSource()
+    {
+        // If the user picked up a unit and then presses U/click Buy,
+        // the pulse should clear — we're no longer in MovingUnit mode.
+        var g = new TestGame();
+        g.Tile(1, 1).Occupant = new Unit(g.Red.Color);
+
+        g.Map.SimulateClick(g.Tile(1, 1));
+        Assert.NotNull(g.Map.LastMoveSource);
+
+        g.Hud.ClickBuyPeasant();
+
+        Assert.Null(g.Map.LastMoveSource);
+    }
+
+    [Fact]
     public void Click_OwnAlreadyMovedUnit_DoesNotEnterMoveMode()
     {
         var g = new TestGame();

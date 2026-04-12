@@ -26,6 +26,14 @@ public interface IHexMapView
     void ShowMoveTargets(IEnumerable<HexCoord> coords);
 
     /// <summary>
+    /// Mark the unit at <paramref name="coord"/> as "picked up" — the
+    /// view may animate it (e.g. a scale pulse) to give the player
+    /// visual feedback that their click registered. Pass null to
+    /// clear the effect.
+    /// </summary>
+    void ShowMoveSource(HexCoord? coord);
+
+    /// <summary>
     /// Draw a bright perimeter around the selected territory, or clear
     /// it if null.
     /// </summary>

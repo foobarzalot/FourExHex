@@ -145,6 +145,7 @@ public class GameController
             _session.Mode = SessionState.ActionMode.MovingUnit;
             _session.MoveSource = tile.Coord;
             _map.ShowMoveTargets(CaptureTargetsOnly(tile.Unit.Level, territory));
+            _map.ShowMoveSource(tile.Coord);
         }
     }
 
@@ -229,6 +230,7 @@ public class GameController
             _session.Mode = SessionState.ActionMode.BuyingPeasant;
             _session.MoveSource = null;
             _map.ShowMoveTargets(CaptureTargetsOnly(UnitLevel.Peasant, _session.SelectedTerritory));
+            _map.ShowMoveSource(null);
             RefreshViews();
         }
         else
@@ -304,6 +306,7 @@ public class GameController
             _session.Mode = SessionState.ActionMode.BuildingTower;
             _session.MoveSource = null;
             _map.ShowMoveTargets(System.Array.Empty<HexCoord>());
+            _map.ShowMoveSource(null);
             RefreshViews();
         }
         else
@@ -336,6 +339,7 @@ public class GameController
     {
         _session.ClearPendingAction();
         _map.ShowMoveTargets(System.Array.Empty<HexCoord>());
+        _map.ShowMoveSource(null);
         // Selection is maintained by the caller: a non-capturing
         // reposition leaves it alone; a capture re-binds it via
         // RebindSelectionToContaining; a tower build leaves it alone.
@@ -346,6 +350,7 @@ public class GameController
     {
         _session.ClearPendingAction();
         _map.ShowMoveTargets(System.Array.Empty<HexCoord>());
+        _map.ShowMoveSource(null);
     }
 
     // --- Undo / redo ------------------------------------------------------
@@ -402,6 +407,7 @@ public class GameController
         _session.Mode = SessionState.ActionMode.BuyingPeasant;
         _session.MoveSource = null;
         _map.ShowMoveTargets(CaptureTargetsOnly(UnitLevel.Peasant, _session.SelectedTerritory));
+        _map.ShowMoveSource(null);
         RefreshViews();
     }
 
@@ -416,6 +422,7 @@ public class GameController
         // Towers only build on empty own-territory tiles — no enemy
         // capture targets to highlight.
         _map.ShowMoveTargets(System.Array.Empty<HexCoord>());
+        _map.ShowMoveSource(null);
         RefreshViews();
     }
 

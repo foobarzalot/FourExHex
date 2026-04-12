@@ -27,6 +27,9 @@ public class MockHexMapView : IHexMapView
     public void ShowMoveTargets(IEnumerable<HexCoord> coords) =>
         LastMoveTargets = coords.ToList();
 
+    public HexCoord? LastMoveSource { get; private set; }
+    public void ShowMoveSource(HexCoord? coord) => LastMoveSource = coord;
+
     public Territory? LastHighlight { get; private set; }
     public bool HighlightWasCleared { get; private set; }
     public void ShowHighlight(Territory? selected)

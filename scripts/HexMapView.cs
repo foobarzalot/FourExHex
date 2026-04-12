@@ -77,6 +77,15 @@ public partial class HexMapView : Node2D, IHexMapView
     // so RedrawHighlight doesn't need to take a parameter.
     private Territory? _highlightedTerritory;
 
+    // The coord of the currently "picked up" unit whose visual should
+    // be pulsing. Null when nothing is picked up. Driven by the
+    // controller via ShowMoveSource; the pulse is applied each frame
+    // in _Process.
+    private HexCoord? _pulseSource;
+    private double _pulseTime;
+    private const float PulseAmplitude = 0.18f;
+    private const float PulseRate = 8.0f; // rad/sec; ~1.3 Hz
+
     /// <summary>Pixel bounding box of the rendered grid, for centering.</summary>
     public Vector2 PixelSize => new Vector2(
         (Cols + 0.5f) * Mathf.Sqrt(3f) * HexSize,
@@ -179,6 +188,43 @@ public partial class HexMapView : Node2D, IHexMapView
             };
             _targetsLayer.AddChild(ring);
         }
+    }
+
+    /// <summary>
+    /// Tell the view which unit is "picked up" so it can animate.
+    /// Passing the same coord twice is a no-op; passing null clears
+    /// the effect and restores any previously-pulsed visual to its
+    /// neutral scale.
+    /// </summary>
+    public void ShowMoveSource(HexCoord? coord)
+    {
+        if (Equals(_pulseSource, coord)) return;
+
+        // Reset the previously pulsed visual so it doesn't freeze
+        // mid-pulse at some arbitrary scale.
+        if (_pulseSource.HasValue
+            && _unitVisuals.TryGetValue(_pulseSource.Value, out Node2D? prev)
+            && prev != null)
+        {
+            prev.Scale = Vector2.One;
+        }
+
+        _pulseSource = coord;
+        _pulseTime = 0.0;
+    }
+
+    public override void _Process(double delta)
+    {
+        if (!_pulseSource.HasValue) return;
+        if (!_unitVisuals.TryGetValue(_pulseSource.Value, out Node2D? visual)) return;
+        if (visual == null) return;
+
+        _pulseTime += delta;
+        // sin returns [-1,1]; shift to [0,1] and map to scale
+        // [1, 1 + amplitude] so the pulse only grows outward.
+        float phase = (float)System.Math.Sin(_pulseTime * PulseRate) * 0.5f + 0.5f;
+        float scale = 1f + PulseAmplitude * phase;
+        visual.Scale = new Vector2(scale, scale);
     }
 
     private static void ClearLayer(Node2D? layer)
