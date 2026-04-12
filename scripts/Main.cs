@@ -60,7 +60,10 @@ public partial class Main : Node2D
         hud.NewGameClicked += () => GetTree().ReloadCurrentScene();
 
         // --- Controller takes over from here -----------------------------
-        _controller = new GameController(state, session, map, hud);
+        // Use a Godot-backed pacer so AI turns visibly play out over
+        // time instead of resolving in one synchronous burst.
+        var pacer = new GodotAiPacer(GetTree());
+        _controller = new GameController(state, session, map, hud, aiPacer: pacer);
         _controller.StartGame();
     }
 

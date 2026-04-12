@@ -26,6 +26,8 @@ FourExHex is a hex-based 4X strategy game built with Godot 4.6 and C#.
 
 **Rebuild-before-launch rule**: Godot does NOT always rebuild the C# assembly when launching the game. After editing any `.cs` file, run `dotnet build FourExHex.csproj` before relaunching or you'll be running stale code.
 
+**Manual-test-after-every-change rule**: The user is not running the Godot editor. After any change whose unit tests pass, rebuild and launch the game yourself (`/Applications/Godot_mono.app/Contents/MacOS/Godot --path . res://scenes/main.tscn` in the background), then wait for the user to confirm the feature works before moving on or pushing. Unit tests don't cover the view layer (`Main`, `HexMapView`, `HudView` are excluded), so passing tests aren't enough evidence that a visual/interaction change actually works.
+
 ## Code Style
 
 - `PascalCase` for C# classes, methods, properties, and Godot node names

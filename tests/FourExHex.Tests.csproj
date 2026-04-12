@@ -55,6 +55,7 @@
     <Compile Include="..\scripts\SessionState.cs" Link="scripts\SessionState.cs" />
     <Compile Include="..\scripts\IHexMapView.cs" Link="scripts\IHexMapView.cs" />
     <Compile Include="..\scripts\IHudView.cs" Link="scripts\IHudView.cs" />
+    <Compile Include="..\scripts\AiPacer.cs" Link="scripts\AiPacer.cs" />
     <Compile Include="..\scripts\GameController.cs" Link="scripts\GameController.cs" />
   </ItemGroup>
 

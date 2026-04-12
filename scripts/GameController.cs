@@ -19,6 +19,34 @@ public class GameController
     private readonly IHudView _hud;
     private readonly Random _rng;
     private readonly Func<GameState, Color, HashSet<HexCoord>, Random, AiAction?> _aiChooser;
+    private readonly IAiPacer _aiPacer;
+
+    // Per-AI-turn scratch state for the step machine. Persists across
+    // paced StepAi invocations and resets whenever control advances
+    // to a new player.
+    private readonly HashSet<HexCoord> _aiVisited = new();
+    private int _aiStepsThisPlayer;
+
+    // The action chosen during the "preview" beat and carried into
+    // the "execute" beat that follows. Lets us highlight the acting
+    // territory first, pause, then actually run the action.
+    private AiAction? _pendingAiAction;
+
+    // Delay (milliseconds) between AI step beats. Each AI action is
+    // split into a preview (highlight the acting territory) and an
+    // execute (run the action, re-highlight the resulting territory)
+    // so the player can see who is doing what.
+    //   AiPreviewDelayMs      — pause BEFORE executing a previewed action
+    //   AiActionDelayMs       — pause AFTER executing, before the next preview
+    //   AiBetweenPlayersDelayMs — longer pause on player change
+    private const int AiPreviewDelayMs = 350;
+    private const int AiActionDelayMs = 300;
+    private const int AiBetweenPlayersDelayMs = 600;
+
+    // Safety cap on AI actions per player turn — the visited set
+    // guarantees termination in practice, but this keeps a buggy
+    // chooser from pacing forever.
+    private const int MaxAiStepsPerPlayer = 64;
 
     public GameController(
         GameState state,
@@ -26,7 +54,8 @@ public class GameController
         IHexMapView map,
         IHudView hud,
         Random? rng = null,
-        Func<GameState, Color, HashSet<HexCoord>, Random, AiAction?>? aiChooser = null)
+        Func<GameState, Color, HashSet<HexCoord>, Random, AiAction?>? aiChooser = null,
+        IAiPacer? aiPacer = null)
     {
         _state = state;
         _session = session;
@@ -34,6 +63,7 @@ public class GameController
         _hud = hud;
         _rng = rng ?? new Random();
         _aiChooser = aiChooser ?? RandomAi.ChooseNextAction;
+        _aiPacer = aiPacer ?? new SynchronousAiPacer();
 
         _map.TileClicked += OnTileClicked;
         _hud.BuyPeasantClicked += OnBuyPeasantPressed;
@@ -547,59 +577,146 @@ public class GameController
     }
 
     /// <summary>
-    /// If the current player is an AI, run their entire turn and
-    /// automatically transition to the next player. Keeps chaining
-    /// while consecutive players are AIs, so human input is only
-    /// needed when a human's turn begins. Terminates immediately if
-    /// the game ends mid-chain (winning capture).
+    /// If the current player is an AI, begin paced execution of their
+    /// turn via the <see cref="IAiPacer"/>. With the default
+    /// synchronous pacer the entire AI chain runs inline (existing
+    /// behavior and what the unit tests rely on). With the Godot
+    /// pacer each step is deferred so the player can see individual
+    /// AI actions.
     /// </summary>
     private void RunAiTurnsUntilHumanOrDone()
     {
-        while (!_session.IsGameOver && _state.Turns.CurrentPlayer.IsAi)
-        {
-            RunAiTurn();
-            if (_session.IsGameOver) break;
-            EndOfTurnProcessing();
-            AdvanceToNextActivePlayer();
-            StartPlayerTurn();
-        }
+        if (_session.IsGameOver) return;
+        if (!_state.Turns.CurrentPlayer.IsAi) return;
+
+        _aiVisited.Clear();
+        _aiStepsThisPlayer = 0;
+        _pendingAiAction = null;
+        _aiPacer.Schedule(StepAiPreview, AiBetweenPlayersDelayMs);
     }
 
     /// <summary>
-    /// Drive <see cref="RandomAi"/> to completion for the current
-    /// player: repeatedly ask for the next action and execute it
-    /// until the AI returns null (all its territories visited) or
-    /// the game ends mid-turn.
+    /// Preview beat: pick the next AI action, highlight the territory
+    /// that will perform it, and schedule <see cref="StepAiExecute"/>
+    /// to run that action after a short pause. If the chooser has
+    /// nothing left, instead transition to the next player.
     /// </summary>
-    private void RunAiTurn()
+    private void StepAiPreview()
     {
-        Color color = _state.Turns.CurrentPlayer.Color;
-        var visited = new HashSet<HexCoord>();
-
-        // Safety cap: at most one action per owned territory plus a
-        // generous margin. The visited set guarantees termination in
-        // practice; this bound just prevents a runaway if a bug
-        // breaks that invariant.
-        const int maxIterations = 64;
-        for (int i = 0; i < maxIterations; i++)
+        if (_session.IsGameOver)
         {
-            AiAction? action = _aiChooser(_state, color, visited, _rng);
-            if (action == null) return;
-            if (_session.IsGameOver) return;
-
-            switch (action)
-            {
-                case AiMoveAction mv:
-                    ExecuteAiMove(mv.Source, mv.Destination);
-                    break;
-                case AiBuyUnitAction bu:
-                    ExecuteAiBuyUnit(bu.Capital, bu.Destination);
-                    break;
-                case AiBuildTowerAction bt:
-                    ExecuteAiBuildTower(bt.Capital, bt.Destination);
-                    break;
-            }
+            _map.ShowHighlight(null);
+            RefreshViews();
+            return;
         }
+        if (!_state.Turns.CurrentPlayer.IsAi)
+        {
+            // Control changed out from under a scheduled callback
+            // (scene reload, test teardown). Just stop.
+            return;
+        }
+
+        Color color = _state.Turns.CurrentPlayer.Color;
+        AiAction? action = _aiChooser(_state, color, _aiVisited, _rng);
+
+        if (action == null || _aiStepsThisPlayer >= MaxAiStepsPerPlayer)
+        {
+            // Current AI player is done. Run end-of-turn processing,
+            // clear the lingering highlight, advance, and either stop
+            // (human next) or schedule the next preview beat.
+            EndOfTurnProcessing();
+            AdvanceToNextActivePlayer();
+            StartPlayerTurn();
+            _aiVisited.Clear();
+            _aiStepsThisPlayer = 0;
+            _pendingAiAction = null;
+            _map.ShowHighlight(null);
+            RefreshViews();
+
+            if (_session.IsGameOver) return;
+            if (_state.Turns.CurrentPlayer.IsAi)
+            {
+                _aiPacer.Schedule(StepAiPreview, AiBetweenPlayersDelayMs);
+            }
+            return;
+        }
+
+        _pendingAiAction = action;
+        Territory? acting = ResolveAiActingTerritory(action);
+        _map.ShowHighlight(acting);
+        RefreshViews();
+        _aiPacer.Schedule(StepAiExecute, AiPreviewDelayMs);
+    }
+
+    /// <summary>
+    /// Execute beat: run the previewed action, re-highlight the
+    /// (possibly expanded) resulting territory so the player can see
+    /// the outcome, then schedule the next preview beat.
+    /// </summary>
+    private void StepAiExecute()
+    {
+        if (_session.IsGameOver)
+        {
+            _map.ShowHighlight(null);
+            RefreshViews();
+            return;
+        }
+        AiAction? action = _pendingAiAction;
+        _pendingAiAction = null;
+        if (action == null) return; // defensive; shouldn't happen
+
+        _aiStepsThisPlayer++;
+        HexCoord resultCoord;
+        switch (action)
+        {
+            case AiMoveAction mv:
+                ExecuteAiMove(mv.Source, mv.Destination);
+                resultCoord = mv.Destination;
+                break;
+            case AiBuyUnitAction bu:
+                ExecuteAiBuyUnit(bu.Capital, bu.Destination);
+                resultCoord = bu.Destination;
+                break;
+            case AiBuildTowerAction bt:
+                ExecuteAiBuildTower(bt.Capital, bt.Destination);
+                resultCoord = bt.Destination;
+                break;
+            default:
+                return;
+        }
+
+        // After a capture the old territory object is stale; find the
+        // AI's territory now containing the result coord and
+        // re-highlight so the outline matches the post-action board.
+        Territory? resulting = FindOwnedTerritoryContaining(resultCoord);
+        _map.ShowHighlight(resulting);
+        RefreshViews();
+
+        if (_session.IsGameOver)
+        {
+            _map.ShowHighlight(null);
+            return;
+        }
+        _aiPacer.Schedule(StepAiPreview, AiActionDelayMs);
+    }
+
+    /// <summary>
+    /// Resolve the AI's acting territory for the preview highlight:
+    /// the attacker territory for a move, the buying territory for a
+    /// buy, the building territory for a tower build. Returns null if
+    /// the lookup fails — the preview is purely cosmetic, so missing
+    /// the highlight is preferable to throwing out of a scheduled
+    /// callback.
+    /// </summary>
+    private Territory? ResolveAiActingTerritory(AiAction action)
+    {
+        return action switch
+        {
+            AiMoveAction mv => FindOwnedTerritoryContaining(mv.Source),
+            AiBuyUnitAction bu => FindOwnedTerritoryContaining(bu.Capital),
+            AiBuildTowerAction bt => FindOwnedTerritoryContaining(bt.Capital),
+            _ => null
+        };
     }
 
     // --- AI action execution --------------------------------------------
