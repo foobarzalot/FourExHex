@@ -195,6 +195,148 @@ public class GameControllerTests
     }
 
     [Fact]
+    public void Move_Capture_KeepsSelection_OnAttackerNewTerritory()
+    {
+        // QoL: after a capture the selection should track over to
+        // whichever new territory contains the captured tile, instead
+        // of being cleared. The user clicked on a Red territory, moved
+        // a unit into Blue space, and should still see Red selected.
+        var g = new TestGame();
+        var unit = new Unit(g.Red.Color);
+        g.Tile(1, 1).Occupant = unit;
+
+        g.Map.SimulateClick(g.Tile(1, 1));
+        g.Map.SimulateClick(g.Tile(2, 1)); // capture Blue hex
+
+        Assert.NotNull(g.Session.SelectedTerritory);
+        Assert.Equal(g.Red.Color, g.Session.SelectedTerritory!.Owner);
+        // The new territory should contain the captured tile.
+        Assert.Contains(HexCoord.FromOffset(2, 1), g.Session.SelectedTerritory.Coords);
+        // And the highlight on the map should point to the same territory.
+        Assert.Same(g.Session.SelectedTerritory, g.Map.LastHighlight);
+    }
+
+    [Fact]
+    public void BuyPeasant_OnOwnTile_StaysInBuyingMode_IfStillAffordable()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        // Give Red enough to buy two peasants in a row.
+        g.State.Treasury.SetGold(redCapital, 25);
+
+        g.Hud.ClickBuyPeasant();
+        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+
+        // (1,1) is an empty Red non-capital tile — valid placement.
+        g.Map.SimulateClick(g.Tile(1, 1));
+
+        // Bought: 25 - 10 = 15 remaining, still ≥ 10 → stay in mode.
+        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+        Assert.Equal(15, g.State.Treasury.GetGold(redCapital));
+    }
+
+    [Fact]
+    public void BuyPeasant_OnOwnTile_ExitsBuyingMode_IfNoLongerAffordable()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 10); // exactly one peasant
+
+        g.Hud.ClickBuyPeasant();
+        g.Map.SimulateClick(g.Tile(1, 1));
+
+        // Bought: 10 - 10 = 0 < 10 → exit mode.
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+    }
+
+    [Fact]
+    public void BuyPeasant_Capture_StaysInBuyingMode_IfMergedTerritoryStillAffordable()
+    {
+        // Capture rebinds the selection to the new territory; the
+        // affordability check runs against that new selection. The
+        // Red territory in TestGame merges with the captured tile
+        // (trivially — (2,1) becomes part of Red). Red's gold is 25-10=15,
+        // enough for another peasant.
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 25);
+
+        g.Hud.ClickBuyPeasant();
+        g.Map.SimulateClick(g.Tile(2, 1)); // capture Blue adjacent
+
+        // Still in mode; selection rebound; treasury 15.
+        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+        Assert.NotNull(g.Session.SelectedTerritory);
+        Assert.Contains(HexCoord.FromOffset(2, 1), g.Session.SelectedTerritory!.Coords);
+    }
+
+    [Fact]
+    public void BuildTower_StaysInBuildingMode_IfStillAffordable()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 35);
+
+        g.Hud.ClickBuildTower();
+        g.Map.SimulateClick(g.Tile(1, 1));
+
+        // 35 - 15 = 20 ≥ 15 → stay in mode.
+        Assert.Equal(SessionState.ActionMode.BuildingTower, g.Session.Mode);
+        Assert.Equal(20, g.State.Treasury.GetGold(redCapital));
+    }
+
+    [Fact]
+    public void BuildTower_ExitsBuildingMode_IfNoLongerAffordable()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 15);
+
+        g.Hud.ClickBuildTower();
+        g.Map.SimulateClick(g.Tile(1, 1));
+
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+    }
+
+    [Fact]
+    public void BuildTower_WhileInBuyingPeasantMode_SwitchesToBuildingMode()
+    {
+        // Clicking a different placement button while in a placement
+        // mode should switch cleanly to the new mode. Regression lock
+        // for the sticky-mode QoL feature.
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 30);
+
+        g.Hud.ClickBuyPeasant();
+        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+
+        g.Hud.ClickBuildTower();
+        Assert.Equal(SessionState.ActionMode.BuildingTower, g.Session.Mode);
+    }
+
+    [Fact]
+    public void BuyPeasant_Capture_KeepsSelection_OnAttackerNewTerritory()
+    {
+        // Same QoL guarantee for the buy-and-capture path.
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        g.Hud.ClickBuyPeasant();
+        // (2,1) is Blue, adjacent to Red's (1,1). Capturable by a fresh peasant.
+        g.Map.SimulateClick(g.Tile(2, 1));
+
+        Assert.NotNull(g.Session.SelectedTerritory);
+        Assert.Equal(g.Red.Color, g.Session.SelectedTerritory!.Owner);
+        Assert.Contains(HexCoord.FromOffset(2, 1), g.Session.SelectedTerritory.Coords);
+    }
+
+    [Fact]
     public void Move_WithinOwnTerritory_DoesNotConsumeAction()
     {
         var g = new TestGame();

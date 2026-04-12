@@ -216,9 +216,24 @@ public class GameController
         if (result.WasCapture)
         {
             HandleCapture();
+            RebindSelectionToContaining(destination);
         }
 
-        FinishPendingAction(clearSelection: result.WasCapture);
+        // QoL: if the (possibly rebound) territory can still afford
+        // another peasant, keep the user in BuyingPeasant mode so they
+        // can queue further purchases without re-clicking the button.
+        if (_session.SelectedTerritory != null
+            && PurchaseRules.CanAffordPeasant(_session.SelectedTerritory, _state.Treasury))
+        {
+            _session.Mode = SessionState.ActionMode.BuyingPeasant;
+            _session.MoveSource = null;
+            _map.ShowMoveTargets(CaptureTargetsOnly(UnitLevel.Peasant, _session.SelectedTerritory));
+            RefreshViews();
+        }
+        else
+        {
+            FinishPendingAction();
+        }
     }
 
     private void ExecuteMove(HexCoord source, HexCoord destination)
@@ -232,9 +247,34 @@ public class GameController
         if (result.WasCapture)
         {
             HandleCapture();
+            RebindSelectionToContaining(destination);
         }
 
-        FinishPendingAction(clearSelection: result.WasCapture);
+        FinishPendingAction();
+    }
+
+    /// <summary>
+    /// After a capture rebuilds the territory list, the previously
+    /// selected <see cref="Territory"/> object is stale. Rebind the
+    /// selection to whichever new territory now contains
+    /// <paramref name="coord"/> (the tile the attacker just landed on),
+    /// so the player's selection survives the capture. Safe to call
+    /// after any capture — the attacker always ends up in a territory
+    /// they own that contains the destination.
+    /// </summary>
+    private void RebindSelectionToContaining(HexCoord coord)
+    {
+        Territory? match = null;
+        foreach (Territory t in _state.Territories)
+        {
+            if (t.Coords.Contains(coord))
+            {
+                match = t;
+                break;
+            }
+        }
+        _session.SelectedTerritory = match;
+        _map.ShowHighlight(match);
     }
 
     /// <summary>
@@ -256,7 +296,19 @@ public class GameController
         HexTile dst = _state.Grid.Get(destination)!;
         dst.Occupant = new Tower();
 
-        FinishPendingAction(clearSelection: false);
+        // QoL: stay in BuildingTower mode if the territory can still
+        // afford another tower.
+        if (PurchaseRules.CanAffordTower(_session.SelectedTerritory, _state.Treasury))
+        {
+            _session.Mode = SessionState.ActionMode.BuildingTower;
+            _session.MoveSource = null;
+            _map.ShowMoveTargets(System.Array.Empty<HexCoord>());
+            RefreshViews();
+        }
+        else
+        {
+            FinishPendingAction();
+        }
     }
 
     private void HandleCapture()
@@ -279,19 +331,13 @@ public class GameController
         }
     }
 
-    private void FinishPendingAction(bool clearSelection = true)
+    private void FinishPendingAction()
     {
         _session.ClearPendingAction();
         _map.ShowMoveTargets(System.Array.Empty<HexCoord>());
-
-        // After a capture, the territory list is rebuilt so the old
-        // selection object is stale — clear it. After a non-consuming
-        // reposition/placement, keep the selection so the user can
-        // immediately see their territory + still-actionable units.
-        if (clearSelection)
-        {
-            SetSelection(null);
-        }
+        // Selection is maintained by the caller: a non-capturing
+        // reposition leaves it alone; a capture re-binds it via
+        // RebindSelectionToContaining; a tower build leaves it alone.
         RefreshViews();
     }
 
