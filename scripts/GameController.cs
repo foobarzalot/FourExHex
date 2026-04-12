@@ -18,19 +18,22 @@ public class GameController
     private readonly IHexMapView _map;
     private readonly IHudView _hud;
     private readonly Random _rng;
+    private readonly Func<GameState, Color, HashSet<HexCoord>, Random, AiAction?> _aiChooser;
 
     public GameController(
         GameState state,
         SessionState session,
         IHexMapView map,
         IHudView hud,
-        Random? rng = null)
+        Random? rng = null,
+        Func<GameState, Color, HashSet<HexCoord>, Random, AiAction?>? aiChooser = null)
     {
         _state = state;
         _session = session;
         _map = map;
         _hud = hud;
         _rng = rng ?? new Random();
+        _aiChooser = aiChooser ?? RandomAi.ChooseNextAction;
 
         _map.TileClicked += OnTileClicked;
         _hud.BuyPeasantClicked += OnBuyPeasantPressed;
@@ -580,7 +583,7 @@ public class GameController
         const int maxIterations = 64;
         for (int i = 0; i < maxIterations; i++)
         {
-            AiAction? action = RandomAi.ChooseNextAction(_state, color, visited, _rng);
+            AiAction? action = _aiChooser(_state, color, visited, _rng);
             if (action == null) return;
             if (_session.IsGameOver) return;
 
@@ -604,11 +607,46 @@ public class GameController
     // but bypass session state (no selection, no pending-action mode,
     // no undo push — AI actions are not undoable by the human player
     // since undo is cleared at end of turn anyway).
+    //
+    // Each execute method validates its preconditions before mutating
+    // state. An AI that returns an illegal action (e.g. moving an
+    // already-moved unit, buying without gold, building on an occupied
+    // tile) triggers an InvalidOperationException that unwinds the
+    // AI turn loop and halts the game in an obvious error state. This
+    // is defense in depth: RandomAi only produces legal actions by
+    // construction, but any future AI with a bug will surface the
+    // failure loudly rather than corrupting game state.
 
     private void ExecuteAiMove(HexCoord source, HexCoord destination)
     {
         Territory? attacker = FindOwnedTerritoryContaining(source);
-        if (attacker == null) return;
+        if (attacker == null)
+        {
+            throw new InvalidOperationException(
+                $"AI Move from {source}: that coord is not in a territory owned by " +
+                $"{_state.Turns.CurrentPlayer.Name}.");
+        }
+
+        HexTile? srcTile = _state.Grid.Get(source);
+        if (srcTile?.Unit == null)
+        {
+            throw new InvalidOperationException(
+                $"AI Move from {source}: no unit on the source tile.");
+        }
+        if (srcTile.Unit.HasMovedThisTurn)
+        {
+            throw new InvalidOperationException(
+                $"AI Move from {source}: unit has already moved this turn.");
+        }
+
+        List<HexCoord> legalTargets = MovementRules.ValidTargets(
+            srcTile.Unit.Level, attacker, _state.Grid, _state.Territories);
+        if (!legalTargets.Contains(destination))
+        {
+            throw new InvalidOperationException(
+                $"AI Move from {source} to {destination}: destination is not a " +
+                $"legal target for a {srcTile.Unit.Level}.");
+        }
 
         MoveResult result = MovementRules.Move(source, destination, _state.Grid, attacker);
         if (result.WasCapture)
@@ -620,7 +658,26 @@ public class GameController
     private void ExecuteAiBuyUnit(HexCoord capital, HexCoord destination)
     {
         Territory? attacker = FindTerritoryByCapital(capital);
-        if (attacker == null) return;
+        if (attacker == null)
+        {
+            throw new InvalidOperationException(
+                $"AI BuyUnit with capital {capital}: no territory has that capital.");
+        }
+        if (!PurchaseRules.CanAffordPeasant(attacker, _state.Treasury))
+        {
+            throw new InvalidOperationException(
+                $"AI BuyUnit from capital {capital}: territory cannot afford a peasant " +
+                $"(treasury = {_state.Treasury.GetGold(capital)}g).");
+        }
+
+        List<HexCoord> legalTargets = MovementRules.ValidTargets(
+            UnitLevel.Peasant, attacker, _state.Grid, _state.Territories);
+        if (!legalTargets.Contains(destination))
+        {
+            throw new InvalidOperationException(
+                $"AI BuyUnit to {destination} from capital {capital}: destination is " +
+                $"not a legal peasant placement target.");
+        }
 
         _state.Treasury.SetGold(
             capital, _state.Treasury.GetGold(capital) - PurchaseRules.PeasantCost);
@@ -635,15 +692,39 @@ public class GameController
     private void ExecuteAiBuildTower(HexCoord capital, HexCoord destination)
     {
         Territory? territory = FindTerritoryByCapital(capital);
-        if (territory == null) return;
+        if (territory == null)
+        {
+            throw new InvalidOperationException(
+                $"AI BuildTower with capital {capital}: no territory has that capital.");
+        }
+        if (!PurchaseRules.CanAffordTower(territory, _state.Treasury))
+        {
+            throw new InvalidOperationException(
+                $"AI BuildTower from capital {capital}: territory cannot afford a tower " +
+                $"(treasury = {_state.Treasury.GetGold(capital)}g).");
+        }
+        if (!territory.Coords.Contains(destination))
+        {
+            throw new InvalidOperationException(
+                $"AI BuildTower at {destination} from capital {capital}: destination is " +
+                $"not in that territory.");
+        }
+        HexTile? dst = _state.Grid.Get(destination);
+        if (dst == null)
+        {
+            throw new InvalidOperationException(
+                $"AI BuildTower at {destination}: coord is off-map.");
+        }
+        if (dst.Occupant != null)
+        {
+            throw new InvalidOperationException(
+                $"AI BuildTower at {destination}: tile is occupied by a " +
+                $"{dst.Occupant.GetType().Name}.");
+        }
 
         _state.Treasury.SetGold(
             capital, _state.Treasury.GetGold(capital) - PurchaseRules.TowerCost);
-        HexTile? dst = _state.Grid.Get(destination);
-        if (dst != null)
-        {
-            dst.Occupant = new Tower();
-        }
+        dst.Occupant = new Tower();
     }
 
     private Territory? FindOwnedTerritoryContaining(HexCoord coord)

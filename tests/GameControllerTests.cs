@@ -552,6 +552,207 @@ public class GameControllerTests
         Assert.IsType<Tree>(g.Tile(3, 0).Occupant);
     }
 
+    // --- AI action validation (harness defense) --------------------------
+
+    /// <summary>
+    /// Build a controller wired to a stub AI that returns the given
+    /// sequence of actions, one per call to ChooseNextAction. Used
+    /// to feed deliberately-invalid actions and verify the harness
+    /// rejects them with an exception.
+    /// </summary>
+    private static GameController BuildHarnessWithStubAi(
+        GameState state,
+        MockHexMapView map,
+        MockHudView hud,
+        params AiAction?[] actions)
+    {
+        foreach (KeyValuePair<HexCoord, Territory> kvp in state.Territories.BuildTileIndex())
+        {
+            map.TileIndex[kvp.Key] = kvp.Value;
+        }
+        int index = 0;
+        AiAction? Chooser(GameState s, Color c, HashSet<HexCoord> visited, Random rng)
+        {
+            if (index >= actions.Length) return null;
+            return actions[index++];
+        }
+        return new GameController(state, new SessionState(), map, hud, rng: new Random(1), aiChooser: Chooser);
+    }
+
+    /// <summary>
+    /// Minimal 2-player harness fixture mirroring the TestGame shape:
+    /// a 5x2 Blue grid with Red owning (0,0), (0,1), (1,1) so there's
+    /// a capturable non-capital Blue tile at (2,1) for a peasant
+    /// placed at (1,1). Red's capital lands at (0,0), leaving (0,1)
+    /// as the only empty Red tile for tower builds.
+    /// </summary>
+    private static (GameState state, MockHexMapView map, MockHudView hud) BuildAiFixture()
+    {
+        var red = new Player("Red", new Color(1f, 0f, 0f), isAi: true);
+        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var players = new List<Player> { red, blue };
+        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Color);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(0, 1))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(1, 1))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = new Unit(red.Color);
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        return (state, new MockHexMapView(), new MockHudView());
+    }
+
+    private static HexCoord RedCapital(GameState state) =>
+        state.Territories.First(t => t.Owner == state.Players[0].Color).Capital!.Value;
+
+    [Fact]
+    public void ExecuteAiMove_SourceNotInOwnedTerritory_Throws()
+    {
+        (GameState state, MockHexMapView map, MockHudView hud) = BuildAiFixture();
+        // Source (4,0) is Blue — not owned by Red.
+        var bad = new AiMoveAction(HexCoord.FromOffset(4, 0), HexCoord.FromOffset(3, 0));
+        GameController c = BuildHarnessWithStubAi(state, map, hud, bad);
+
+        Assert.Throws<InvalidOperationException>(() => c.StartGame());
+    }
+
+    [Fact]
+    public void ExecuteAiMove_SourceHasNoUnit_Throws()
+    {
+        (GameState state, MockHexMapView map, MockHudView hud) = BuildAiFixture();
+        // Source = Red capital tile, which holds a Capital occupant
+        // but no Unit. The "no unit" precondition check fires.
+        HexCoord cap = RedCapital(state);
+        var bad = new AiMoveAction(cap, HexCoord.FromOffset(2, 1));
+        GameController c = BuildHarnessWithStubAi(state, map, hud, bad);
+
+        Assert.Throws<InvalidOperationException>(() => c.StartGame());
+    }
+
+    [Fact]
+    public void ExecuteAiMove_UnitAlreadyMoved_Throws()
+    {
+        (GameState state, MockHexMapView map, MockHudView hud) = BuildAiFixture();
+        state.Grid.Get(HexCoord.FromOffset(1, 1))!.Unit!.HasMovedThisTurn = true;
+        var bad = new AiMoveAction(HexCoord.FromOffset(1, 1), HexCoord.FromOffset(2, 1));
+        GameController c = BuildHarnessWithStubAi(state, map, hud, bad);
+
+        Assert.Throws<InvalidOperationException>(() => c.StartGame());
+    }
+
+    [Fact]
+    public void ExecuteAiMove_DestinationNotAValidTarget_Throws()
+    {
+        (GameState state, MockHexMapView map, MockHudView hud) = BuildAiFixture();
+        // (4,1) is far from the peasant at (1,1), not adjacent.
+        var bad = new AiMoveAction(HexCoord.FromOffset(1, 1), HexCoord.FromOffset(4, 1));
+        GameController c = BuildHarnessWithStubAi(state, map, hud, bad);
+
+        Assert.Throws<InvalidOperationException>(() => c.StartGame());
+    }
+
+    [Fact]
+    public void ExecuteAiBuyUnit_CapitalNotFound_Throws()
+    {
+        (GameState state, MockHexMapView map, MockHudView hud) = BuildAiFixture();
+        // (4,0) is Blue — no territory has that capital.
+        var bad = new AiBuyUnitAction(HexCoord.FromOffset(4, 0), HexCoord.FromOffset(2, 1));
+        GameController c = BuildHarnessWithStubAi(state, map, hud, bad);
+
+        Assert.Throws<InvalidOperationException>(() => c.StartGame());
+    }
+
+    [Fact]
+    public void ExecuteAiBuyUnit_Unaffordable_Throws()
+    {
+        // StartGame re-seeds treasury to 10 and collects income (+3)
+        // → 13g, above the 10g peasant cost. To exercise the
+        // affordability precondition we chain two actions: the first
+        // is a legal buy-capture that drains the treasury to 3g, and
+        // the second is a bad buy whose affordability check now fails.
+        (GameState state, MockHexMapView map, MockHudView hud) = BuildAiFixture();
+        HexCoord cap = RedCapital(state);
+        var first = new AiBuyUnitAction(cap, HexCoord.FromOffset(2, 1));
+        var second = new AiBuyUnitAction(cap, HexCoord.FromOffset(2, 1));
+        GameController c = BuildHarnessWithStubAi(state, map, hud, first, second);
+
+        Assert.Throws<InvalidOperationException>(() => c.StartGame());
+    }
+
+    [Fact]
+    public void ExecuteAiBuyUnit_InvalidDestination_Throws()
+    {
+        (GameState state, MockHexMapView map, MockHudView hud) = BuildAiFixture();
+        HexCoord cap = RedCapital(state);
+        state.Treasury.SetGold(cap, 20);
+        // (4,1) is Blue and not adjacent to any Red tile.
+        var bad = new AiBuyUnitAction(cap, HexCoord.FromOffset(4, 1));
+        GameController c = BuildHarnessWithStubAi(state, map, hud, bad);
+
+        Assert.Throws<InvalidOperationException>(() => c.StartGame());
+    }
+
+    [Fact]
+    public void ExecuteAiBuildTower_CapitalNotFound_Throws()
+    {
+        (GameState state, MockHexMapView map, MockHudView hud) = BuildAiFixture();
+        var bad = new AiBuildTowerAction(HexCoord.FromOffset(4, 0), HexCoord.FromOffset(0, 1));
+        GameController c = BuildHarnessWithStubAi(state, map, hud, bad);
+
+        Assert.Throws<InvalidOperationException>(() => c.StartGame());
+    }
+
+    [Fact]
+    public void ExecuteAiBuildTower_Unaffordable_Throws()
+    {
+        (GameState state, MockHexMapView map, MockHudView hud) = BuildAiFixture();
+        HexCoord cap = RedCapital(state);
+        state.Treasury.SetGold(cap, 0);
+        var bad = new AiBuildTowerAction(cap, HexCoord.FromOffset(0, 1));
+        GameController c = BuildHarnessWithStubAi(state, map, hud, bad);
+
+        Assert.Throws<InvalidOperationException>(() => c.StartGame());
+    }
+
+    [Fact]
+    public void ExecuteAiBuildTower_DestinationNotInTerritory_Throws()
+    {
+        (GameState state, MockHexMapView map, MockHudView hud) = BuildAiFixture();
+        HexCoord cap = RedCapital(state);
+        state.Treasury.SetGold(cap, 20);
+        // (4,0) is Blue — not in Red's territory.
+        var bad = new AiBuildTowerAction(cap, HexCoord.FromOffset(4, 0));
+        GameController c = BuildHarnessWithStubAi(state, map, hud, bad);
+
+        Assert.Throws<InvalidOperationException>(() => c.StartGame());
+    }
+
+    [Fact]
+    public void ExecuteAiBuildTower_DestinationOccupied_Throws()
+    {
+        (GameState state, MockHexMapView map, MockHudView hud) = BuildAiFixture();
+        HexCoord cap = RedCapital(state);
+        state.Treasury.SetGold(cap, 20);
+        // (1,1) has the peasant — occupied.
+        var bad = new AiBuildTowerAction(cap, HexCoord.FromOffset(1, 1));
+        GameController c = BuildHarnessWithStubAi(state, map, hud, bad);
+
+        Assert.Throws<InvalidOperationException>(() => c.StartGame());
+    }
+
+    [Fact]
+    public void ExecuteAi_LegalActionViaStubChooser_ExecutesNormally()
+    {
+        // Regression lock: the stub-chooser injection path doesn't
+        // break legal execution. Peasant at (1,1) captures (2,1).
+        (GameState state, MockHexMapView map, MockHudView hud) = BuildAiFixture();
+        var good = new AiMoveAction(HexCoord.FromOffset(1, 1), HexCoord.FromOffset(2, 1));
+        GameController c = BuildHarnessWithStubAi(state, map, hud, good, null);
+
+        c.StartGame(); // should NOT throw
+
+        Assert.Equal(state.Players[0].Color, state.Grid.Get(HexCoord.FromOffset(2, 1))!.Color);
+    }
+
     // --- AI turn integration ---------------------------------------------
 
     /// <summary>
