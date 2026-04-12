@@ -480,8 +480,11 @@ public class MovementRulesTests
     }
 
     [Fact]
-    public void Move_OntoOwnGrave_ReplacesGraveWithUnit()
+    public void Move_OntoOwnGrave_ClearsGraveAndConsumesAction()
     {
+        // Burying a grave with a living unit takes real work — the
+        // unit spends its action for the turn, same as chopping a
+        // tree. This prevents a "free reposition onto a grave" loophole.
         HexGrid grid = BuildGrid(5, 1, Blue);
         foreach (var c in new[] { HexCoord.FromOffset(0, 0), HexCoord.FromOffset(1, 0), HexCoord.FromOffset(2, 0) })
         {
@@ -499,13 +502,14 @@ public class MovementRulesTests
 
         Assert.False(result.WasCapture);
         Assert.Same(unit, grid.Get(HexCoord.FromOffset(1, 0))!.Unit);
-        // Reposition doesn't consume the action.
-        Assert.False(unit.HasMovedThisTurn);
+        Assert.True(unit.HasMovedThisTurn);
     }
 
     [Fact]
-    public void PlaceNew_OntoOwnGrave_ReplacesGraveWithUnit()
+    public void PlaceNew_OntoOwnGrave_ClearsGraveAndConsumesAction()
     {
+        // Buy-and-place onto a grave tile: the fresh peasant buries the
+        // grave and spends its action. Matches PlaceNew-onto-tree.
         HexGrid grid = BuildGrid(5, 1, Blue);
         foreach (var c in new[] { HexCoord.FromOffset(0, 0), HexCoord.FromOffset(1, 0) })
         {
@@ -520,6 +524,7 @@ public class MovementRulesTests
         MovementRules.PlaceNew(fresh, HexCoord.FromOffset(1, 0), grid, red);
 
         Assert.Same(fresh, grid.Get(HexCoord.FromOffset(1, 0))!.Unit);
+        Assert.True(fresh.HasMovedThisTurn);
     }
 
     [Fact]

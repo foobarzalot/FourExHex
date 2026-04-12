@@ -135,9 +135,9 @@ public static class MovementRules
     ///     there; action not consumed.
     ///   - Capture: destination is different color → transfer ownership,
     ///     drop the unit, mark it as moved.
-    /// Clearing a tree (same-color destination occupied by a Tree) also
-    /// consumes the unit's action — chopping wood is a turn's work.
-    /// Burying a grave does not.
+    /// Clearing a tree OR burying a grave (same-color destination with
+    /// a Tree or Grave occupant) also consumes the unit's action —
+    /// both are considered a turn's work.
     /// </summary>
     private static MoveResult ResolveArrival(
         Unit arrivingUnit,
@@ -162,17 +162,19 @@ public static class MovementRules
             return new MoveResult(wasCapture: false);
         }
 
-        // Case: normal reposition, tree clearing, or capture.
+        // Case: normal reposition, tree/grave clearing, or capture.
         bool wasCapture = dstTile.Color != attackerTerritory.Owner;
-        bool clearedTree = !wasCapture && dstTile.Occupant is Tree;
+        bool clearedObstacle = !wasCapture
+            && (dstTile.Occupant is Tree || dstTile.Occupant is Grave);
         if (wasCapture)
         {
             dstTile.Color = attackerTerritory.Owner;
         }
         dstTile.Occupant = arrivingUnit;
-        // Captures and tree destruction consume the unit's single action
-        // per turn. Empty repositions and grave burial don't.
-        if (wasCapture || clearedTree)
+        // Captures, tree destruction, and grave burial consume the
+        // unit's single action per turn. Empty own-territory
+        // repositions leave the unit free.
+        if (wasCapture || clearedObstacle)
         {
             arrivingUnit.HasMovedThisTurn = true;
         }
