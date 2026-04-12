@@ -20,6 +20,7 @@ public partial class HudView : CanvasLayer, IHudView
     public event Action? RedoAllClicked;
     public event Action? EndTurnClicked;
     public event Action? NewGameClicked;
+    public event Action? NextTerritoryClicked;
 
     private Label _turnLabel = null!;
     private Label _playerLabel = null!;
@@ -67,12 +68,25 @@ public partial class HudView : CanvasLayer, IHudView
         _goldLabel.AddThemeFontSizeOverride("font_size", 24);
         leftHbox.AddChild(_goldLabel);
 
-        _buyPeasantButton = new Button { Text = "Buy Peasant (10g)", Visible = false };
+        _buyPeasantButton = new Button
+        {
+            Text = "Buy Peasant (10g)",
+            Visible = false,
+            // Non-focusable: keyboard shortcuts like Tab/Enter must
+            // reach _UnhandledInput rather than being consumed by a
+            // focused Button's default key handlers.
+            FocusMode = Control.FocusModeEnum.None,
+        };
         _buyPeasantButton.AddThemeFontSizeOverride("font_size", 20);
         _buyPeasantButton.Pressed += () => BuyPeasantClicked?.Invoke();
         leftHbox.AddChild(_buyPeasantButton);
 
-        _buildTowerButton = new Button { Text = "Build Tower (15g)", Visible = false };
+        _buildTowerButton = new Button
+        {
+            Text = "Build Tower (15g)",
+            Visible = false,
+            FocusMode = Control.FocusModeEnum.None,
+        };
         _buildTowerButton.AddThemeFontSizeOverride("font_size", 20);
         _buildTowerButton.Pressed += () => BuildTowerClicked?.Invoke();
         leftHbox.AddChild(_buildTowerButton);
@@ -98,27 +112,51 @@ public partial class HudView : CanvasLayer, IHudView
         rightHbox.AddThemeConstantOverride("separation", 8);
         AddChild(rightHbox);
 
-        _undoTurnButton = new Button { Text = "Undo Turn", Disabled = true };
+        _undoTurnButton = new Button
+        {
+            Text = "Undo Turn",
+            Disabled = true,
+            FocusMode = Control.FocusModeEnum.None,
+        };
         _undoTurnButton.AddThemeFontSizeOverride("font_size", 18);
         _undoTurnButton.Pressed += () => UndoTurnClicked?.Invoke();
         rightHbox.AddChild(_undoTurnButton);
 
-        _undoLastButton = new Button { Text = "Undo Last", Disabled = true };
+        _undoLastButton = new Button
+        {
+            Text = "Undo Last",
+            Disabled = true,
+            FocusMode = Control.FocusModeEnum.None,
+        };
         _undoLastButton.AddThemeFontSizeOverride("font_size", 18);
         _undoLastButton.Pressed += () => UndoLastClicked?.Invoke();
         rightHbox.AddChild(_undoLastButton);
 
-        _redoLastButton = new Button { Text = "Redo Last", Disabled = true };
+        _redoLastButton = new Button
+        {
+            Text = "Redo Last",
+            Disabled = true,
+            FocusMode = Control.FocusModeEnum.None,
+        };
         _redoLastButton.AddThemeFontSizeOverride("font_size", 18);
         _redoLastButton.Pressed += () => RedoLastClicked?.Invoke();
         rightHbox.AddChild(_redoLastButton);
 
-        _redoAllButton = new Button { Text = "Redo All", Disabled = true };
+        _redoAllButton = new Button
+        {
+            Text = "Redo All",
+            Disabled = true,
+            FocusMode = Control.FocusModeEnum.None,
+        };
         _redoAllButton.AddThemeFontSizeOverride("font_size", 18);
         _redoAllButton.Pressed += () => RedoAllClicked?.Invoke();
         rightHbox.AddChild(_redoAllButton);
 
-        _endTurnButton = new Button { Text = "End Turn" };
+        _endTurnButton = new Button
+        {
+            Text = "End Turn",
+            FocusMode = Control.FocusModeEnum.None,
+        };
         _endTurnButton.AddThemeFontSizeOverride("font_size", 18);
         _endTurnButton.Pressed += () => EndTurnClicked?.Invoke();
         rightHbox.AddChild(_endTurnButton);
@@ -182,6 +220,63 @@ public partial class HudView : CanvasLayer, IHudView
         newGameButton.Size = new Vector2(180f, 44f);
         newGameButton.Pressed += () => NewGameClicked?.Invoke();
         panel.AddChild(newGameButton);
+    }
+
+    /// <summary>
+    /// Global keyboard shortcuts. The HUD's buttons have
+    /// <c>FocusMode = None</c> so keyboard events flow past them into
+    /// <see cref="Node._UnhandledInput"/>. <c>!keyEvent.Echo</c>
+    /// prevents held-down keys from repeating. Each shortcut raises
+    /// the matching click event so the controller doesn't need a
+    /// separate code path for keyboard vs. mouse triggers.
+    /// </summary>
+    public override void _UnhandledInput(InputEvent @event)
+    {
+        if (@event is not InputEventKey keyEvent) return;
+        if (!keyEvent.Pressed || keyEvent.Echo) return;
+
+        switch (keyEvent.Keycode)
+        {
+            case Key.Enter:
+            case Key.KpEnter:
+                EndTurnClicked?.Invoke();
+                GetViewport().SetInputAsHandled();
+                break;
+            case Key.Tab:
+                NextTerritoryClicked?.Invoke();
+                GetViewport().SetInputAsHandled();
+                break;
+            case Key.U:
+                BuyPeasantClicked?.Invoke();
+                GetViewport().SetInputAsHandled();
+                break;
+            case Key.T:
+                BuildTowerClicked?.Invoke();
+                GetViewport().SetInputAsHandled();
+                break;
+            case Key.Z:
+                if (keyEvent.ShiftPressed)
+                {
+                    UndoTurnClicked?.Invoke();
+                }
+                else
+                {
+                    UndoLastClicked?.Invoke();
+                }
+                GetViewport().SetInputAsHandled();
+                break;
+            case Key.Y:
+                if (keyEvent.ShiftPressed)
+                {
+                    RedoAllClicked?.Invoke();
+                }
+                else
+                {
+                    RedoLastClicked?.Invoke();
+                }
+                GetViewport().SetInputAsHandled();
+                break;
+        }
     }
 
     /// <summary>

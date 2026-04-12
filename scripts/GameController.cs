@@ -32,6 +32,7 @@ public class GameController
         _hud.RedoLastClicked += OnRedoLastPressed;
         _hud.RedoAllClicked += OnRedoAllPressed;
         _hud.EndTurnClicked += OnEndTurnPressed;
+        _hud.NextTerritoryClicked += OnNextTerritoryPressed;
     }
 
     /// <summary>
@@ -416,6 +417,48 @@ public class GameController
         // capture targets to highlight.
         _map.ShowMoveTargets(System.Array.Empty<HexCoord>());
         RefreshViews();
+    }
+
+    /// <summary>
+    /// Advance the selection to the next current-player multi-hex
+    /// territory in lex-min-capital order, wrapping around. Used by
+    /// the Tab hotkey. Singletons are excluded because you can't do
+    /// anything with them anyway. Cancels any pending buy/build/move
+    /// action so the user isn't stuck in a stale action mode on a
+    /// different territory.
+    /// </summary>
+    private void OnNextTerritoryPressed()
+    {
+        if (_session.IsGameOver) return;
+
+        Color color = _state.Turns.CurrentPlayer.Color;
+        var owned = new List<Territory>();
+        foreach (Territory t in _state.Territories)
+        {
+            if (t.Owner == color && t.HasCapital)
+            {
+                owned.Add(t);
+            }
+        }
+        if (owned.Count == 0) return;
+        owned.Sort((a, b) => a.Capital!.Value.CompareTo(b.Capital!.Value));
+
+        int currentIndex = -1;
+        if (_session.SelectedTerritory != null)
+        {
+            for (int i = 0; i < owned.Count; i++)
+            {
+                if (ReferenceEquals(owned[i], _session.SelectedTerritory))
+                {
+                    currentIndex = i;
+                    break;
+                }
+            }
+        }
+        int nextIndex = (currentIndex + 1) % owned.Count;
+
+        CancelPendingAction();
+        SetSelection(owned[nextIndex]);
     }
 
     private void OnEndTurnPressed()

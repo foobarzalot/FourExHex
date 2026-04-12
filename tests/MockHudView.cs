@@ -17,6 +17,7 @@ public class MockHudView : IHudView
     public event Action? RedoAllClicked;
     public event Action? EndTurnClicked;
     public event Action? NewGameClicked;
+    public event Action? NextTerritoryClicked;
 
     public int RefreshCount { get; private set; }
     public GameState? LastState { get; private set; }
@@ -33,6 +34,7 @@ public class MockHudView : IHudView
 
     public void ClickBuyPeasant() => BuyPeasantClicked?.Invoke();
     public void ClickBuildTower() => BuildTowerClicked?.Invoke();
+    public void PressNextTerritory() => NextTerritoryClicked?.Invoke();
     public void ClickUndoLast() => UndoLastClicked?.Invoke();
     public void ClickUndoTurn() => UndoTurnClicked?.Invoke();
     public void ClickRedoLast() => RedoLastClicked?.Invoke();

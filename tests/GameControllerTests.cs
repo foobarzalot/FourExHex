@@ -496,6 +496,170 @@ public class GameControllerTests
         Assert.IsType<Tree>(g.Tile(3, 0).Occupant);
     }
 
+    // --- Next territory hotkey -------------------------------------------
+
+    /// <summary>
+    /// Build a two-player, two-Red-territory fixture so we can exercise
+    /// territory cycling. Red has a capital in each of two disjoint
+    /// multi-hex blobs; Blue has one blob. Red is the starting player.
+    /// </summary>
+    private class TwoRedTerritoriesGame
+    {
+        public GameState State { get; }
+        public SessionState Session { get; }
+        public MockHexMapView Map { get; }
+        public MockHudView Hud { get; }
+        public GameController Controller { get; }
+        public Player Red { get; }
+        public Player Blue { get; }
+
+        public TwoRedTerritoriesGame()
+        {
+            Red = new Player("Red", new Color(1f, 0f, 0f));
+            Blue = new Player("Blue", new Color(0f, 0f, 1f));
+            var players = new List<Player> { Red, Blue };
+
+            // 10x1 Blue grid. Overlay two disjoint 2-tile Red blobs:
+            // A at columns 0-1, B at columns 5-6.
+            var grid = TestHelpers.BuildRectGrid(10, 1, Blue.Color);
+            grid.Get(HexCoord.FromOffset(0, 0))!.Color = Red.Color;
+            grid.Get(HexCoord.FromOffset(1, 0))!.Color = Red.Color;
+            grid.Get(HexCoord.FromOffset(5, 0))!.Color = Red.Color;
+            grid.Get(HexCoord.FromOffset(6, 0))!.Color = Red.Color;
+
+            IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+
+            State = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+            Session = new SessionState();
+            Map = new MockHexMapView();
+            Hud = new MockHudView();
+            foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+            {
+                Map.TileIndex[kvp.Key] = kvp.Value;
+            }
+            Controller = new GameController(State, Session, Map, Hud);
+            Controller.StartGame();
+        }
+
+        public IEnumerable<Territory> RedTerritories =>
+            State.Territories.Where(t => t.Owner == Red.Color);
+    }
+
+    [Fact]
+    public void NextTerritory_NoneSelected_SelectsLexMinCapital()
+    {
+        var g = new TwoRedTerritoriesGame();
+        Assert.Null(g.Session.SelectedTerritory);
+
+        g.Hud.PressNextTerritory();
+
+        // Two Red territories: {(0,0),(1,0)} and {(5,0),(6,0)}. Sorted
+        // by capital coord → the blob with capital (0,0) wins.
+        Assert.NotNull(g.Session.SelectedTerritory);
+        Assert.Contains(HexCoord.FromOffset(0, 0), g.Session.SelectedTerritory!.Coords);
+    }
+
+    [Fact]
+    public void NextTerritory_CyclesToNextInSortedOrder()
+    {
+        var g = new TwoRedTerritoriesGame();
+        g.Hud.PressNextTerritory(); // selects first
+        Territory first = g.Session.SelectedTerritory!;
+
+        g.Hud.PressNextTerritory(); // advances to second
+
+        Assert.NotNull(g.Session.SelectedTerritory);
+        Assert.NotSame(first, g.Session.SelectedTerritory);
+        Assert.Contains(HexCoord.FromOffset(5, 0), g.Session.SelectedTerritory!.Coords);
+    }
+
+    [Fact]
+    public void NextTerritory_OnLastTerritory_WrapsToFirst()
+    {
+        var g = new TwoRedTerritoriesGame();
+        g.Hud.PressNextTerritory(); // first
+        g.Hud.PressNextTerritory(); // second
+        g.Hud.PressNextTerritory(); // wraps back to first
+
+        Assert.NotNull(g.Session.SelectedTerritory);
+        Assert.Contains(HexCoord.FromOffset(0, 0), g.Session.SelectedTerritory!.Coords);
+    }
+
+    [Fact]
+    public void NextTerritory_WithSingleTerritory_StaysOnIt()
+    {
+        var g = new TestGame(); // single Red 2-hex territory
+        g.Hud.PressNextTerritory(); // selects it
+        Territory first = g.Session.SelectedTerritory!;
+
+        g.Hud.PressNextTerritory(); // wraps — same one
+
+        Assert.Same(first, g.Session.SelectedTerritory);
+    }
+
+    [Fact]
+    public void NextTerritory_CancelsPendingBuyMode()
+    {
+        // If the player is mid-buy, pressing Tab should cancel the
+        // pending action so they're not stuck in BuyingPeasant mode
+        // on a different territory.
+        var g = new TwoRedTerritoriesGame();
+        g.Hud.PressNextTerritory(); // select first Red territory
+        HexCoord cap = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(cap, 20);
+        g.Hud.ClickBuyPeasant();
+        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+
+        g.Hud.PressNextTerritory(); // Tab
+
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+    }
+
+    [Fact]
+    public void NextTerritory_AfterWin_IsNoOp()
+    {
+        var g = new TwoRedTerritoriesGame();
+        g.Session.Winner = g.Red.Color;
+
+        g.Hud.PressNextTerritory();
+
+        Assert.Null(g.Session.SelectedTerritory);
+    }
+
+    [Fact]
+    public void NextTerritory_SkipsSingletons()
+    {
+        // Build a fixture where Red has a 2-hex territory and also a
+        // lone singleton tile. Tab should only cycle the multi-hex one.
+        var red = new Player("Red", new Color(1f, 0f, 0f));
+        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var players = new List<Player> { red, blue };
+
+        var grid = TestHelpers.BuildRectGrid(6, 2, blue.Color);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(5, 1))!.Color = red.Color; // singleton
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        var map = new MockHexMapView();
+        var hud = new MockHudView();
+        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+        {
+            map.TileIndex[kvp.Key] = kvp.Value;
+        }
+        var controller = new GameController(state, session, map, hud);
+        controller.StartGame();
+
+        hud.PressNextTerritory(); // first (and only) multi-hex
+        Territory first = session.SelectedTerritory!;
+        Assert.True(first.HasCapital);
+
+        hud.PressNextTerritory(); // wraps — same one, not the singleton
+        Assert.Same(first, session.SelectedTerritory);
+    }
+
     // --- Build tower ------------------------------------------------------
 
     [Fact]
