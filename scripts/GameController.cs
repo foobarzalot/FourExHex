@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Godot;
@@ -16,13 +17,20 @@ public class GameController
     private readonly SessionState _session;
     private readonly IHexMapView _map;
     private readonly IHudView _hud;
+    private readonly Random _rng;
 
-    public GameController(GameState state, SessionState session, IHexMapView map, IHudView hud)
+    public GameController(
+        GameState state,
+        SessionState session,
+        IHexMapView map,
+        IHudView hud,
+        Random? rng = null)
     {
         _state = state;
         _session = session;
         _map = map;
         _hud = hud;
+        _rng = rng ?? new Random();
 
         _map.TileClicked += OnTileClicked;
         _hud.BuyPeasantClicked += OnBuyPeasantPressed;
@@ -44,8 +52,17 @@ public class GameController
     public void StartGame()
     {
         SeedStartingGold();
+        // First player gets their income but NOT upkeep at game start
+        // — pre-placed units in test/scenario fixtures may not be
+        // covered by seed gold yet, and we don't want to bankrupt
+        // them before anyone has played. Subsequent turns run the
+        // full start-of-turn sequence (see StartPlayerTurn).
         _state.Treasury.CollectIncomeFor(
             _state.Turns.CurrentPlayer, _state.Territories, _state.Grid);
+        // If the starting player is an AI, auto-drive its turn (and
+        // any subsequent consecutive AI players) so human input only
+        // happens on a human's turn.
+        RunAiTurnsUntilHumanOrDone();
         RefreshViews();
     }
 
@@ -475,34 +492,183 @@ public class GameController
         // Ending the turn commits everything; no further undo.
         _session.Undo.Clear();
 
-        // Convert graves left on the board (from combat this turn or
-        // bankruptcy at the start of this turn) into trees, then run
-        // one step of tree spreading. Income collected on the next
-        // player's turn will be tree-aware.
+        EndOfTurnProcessing();
+        AdvanceToNextActivePlayer();
+        StartPlayerTurn();
+        RunAiTurnsUntilHumanOrDone();
+
+        CancelPendingAction();
+        SetSelection(null);
+        RefreshViews();
+    }
+
+    /// <summary>
+    /// Convert graves left on the board (from combat this turn or
+    /// bankruptcy at the start of this turn) into trees, then run one
+    /// step of tree spreading. Called after any player's turn ends.
+    /// </summary>
+    private void EndOfTurnProcessing()
+    {
         TreeRules.ConvertGravesToTrees(_state.Grid);
         TreeRules.SpreadTrees(_state.Grid);
+    }
 
-        // Advance to the next non-eliminated player. A player with zero
-        // tiles left is skipped entirely — they don't get a phantom
-        // turn just to see they can't act. HandleCapture's winner check
-        // guarantees at least one player still has tiles, so this loop
-        // always terminates.
+    /// <summary>
+    /// Advance to the next non-eliminated player. A player with zero
+    /// tiles left is skipped entirely — they don't get a phantom turn
+    /// just to see they can't act. HandleCapture's winner check
+    /// guarantees at least one player still has tiles, so this loop
+    /// always terminates.
+    /// </summary>
+    private void AdvanceToNextActivePlayer()
+    {
         _state.Turns.EndTurn();
         while (WinConditionRules.IsEliminated(_state.Turns.CurrentPlayer.Color, _state.Grid))
         {
             _state.Turns.EndTurn();
         }
+    }
+
+    /// <summary>
+    /// Start-of-turn bookkeeping for the now-current player: reset
+    /// unit move flags, collect income, apply upkeep (which may
+    /// bankrupt territories and turn their units into graves).
+    /// </summary>
+    private void StartPlayerTurn()
+    {
         ResetMovementFor(_state.Turns.CurrentPlayer, _state.Grid);
         _state.Treasury.CollectIncomeFor(
             _state.Turns.CurrentPlayer, _state.Territories, _state.Grid);
-        // Upkeep is deducted AFTER income. A territory that can't afford
-        // its total upkeep goes bankrupt: every unit in it dies and
-        // leaves a grave behind; the remaining gold stays put.
         UpkeepRules.ApplyUpkeepFor(
             _state.Turns.CurrentPlayer, _state.Territories, _state.Grid, _state.Treasury);
-        CancelPendingAction();
-        SetSelection(null);
-        RefreshViews();
+    }
+
+    /// <summary>
+    /// If the current player is an AI, run their entire turn and
+    /// automatically transition to the next player. Keeps chaining
+    /// while consecutive players are AIs, so human input is only
+    /// needed when a human's turn begins. Terminates immediately if
+    /// the game ends mid-chain (winning capture).
+    /// </summary>
+    private void RunAiTurnsUntilHumanOrDone()
+    {
+        while (!_session.IsGameOver && _state.Turns.CurrentPlayer.IsAi)
+        {
+            RunAiTurn();
+            if (_session.IsGameOver) break;
+            EndOfTurnProcessing();
+            AdvanceToNextActivePlayer();
+            StartPlayerTurn();
+        }
+    }
+
+    /// <summary>
+    /// Drive <see cref="RandomAi"/> to completion for the current
+    /// player: repeatedly ask for the next action and execute it
+    /// until the AI returns null (all its territories visited) or
+    /// the game ends mid-turn.
+    /// </summary>
+    private void RunAiTurn()
+    {
+        Color color = _state.Turns.CurrentPlayer.Color;
+        var visited = new HashSet<HexCoord>();
+
+        // Safety cap: at most one action per owned territory plus a
+        // generous margin. The visited set guarantees termination in
+        // practice; this bound just prevents a runaway if a bug
+        // breaks that invariant.
+        const int maxIterations = 64;
+        for (int i = 0; i < maxIterations; i++)
+        {
+            AiAction? action = RandomAi.ChooseNextAction(_state, color, visited, _rng);
+            if (action == null) return;
+            if (_session.IsGameOver) return;
+
+            switch (action)
+            {
+                case AiMoveAction mv:
+                    ExecuteAiMove(mv.Source, mv.Destination);
+                    break;
+                case AiBuyUnitAction bu:
+                    ExecuteAiBuyUnit(bu.Capital, bu.Destination);
+                    break;
+                case AiBuildTowerAction bt:
+                    ExecuteAiBuildTower(bt.Capital, bt.Destination);
+                    break;
+            }
+        }
+    }
+
+    // --- AI action execution --------------------------------------------
+    // These mirror ExecuteMove / ExecuteBuyAndPlace / ExecuteBuildTower
+    // but bypass session state (no selection, no pending-action mode,
+    // no undo push — AI actions are not undoable by the human player
+    // since undo is cleared at end of turn anyway).
+
+    private void ExecuteAiMove(HexCoord source, HexCoord destination)
+    {
+        Territory? attacker = FindOwnedTerritoryContaining(source);
+        if (attacker == null) return;
+
+        MoveResult result = MovementRules.Move(source, destination, _state.Grid, attacker);
+        if (result.WasCapture)
+        {
+            HandleCapture();
+        }
+    }
+
+    private void ExecuteAiBuyUnit(HexCoord capital, HexCoord destination)
+    {
+        Territory? attacker = FindTerritoryByCapital(capital);
+        if (attacker == null) return;
+
+        _state.Treasury.SetGold(
+            capital, _state.Treasury.GetGold(capital) - PurchaseRules.PeasantCost);
+        var unit = new Unit(attacker.Owner);
+        MoveResult result = MovementRules.PlaceNew(unit, destination, _state.Grid, attacker);
+        if (result.WasCapture)
+        {
+            HandleCapture();
+        }
+    }
+
+    private void ExecuteAiBuildTower(HexCoord capital, HexCoord destination)
+    {
+        Territory? territory = FindTerritoryByCapital(capital);
+        if (territory == null) return;
+
+        _state.Treasury.SetGold(
+            capital, _state.Treasury.GetGold(capital) - PurchaseRules.TowerCost);
+        HexTile? dst = _state.Grid.Get(destination);
+        if (dst != null)
+        {
+            dst.Occupant = new Tower();
+        }
+    }
+
+    private Territory? FindOwnedTerritoryContaining(HexCoord coord)
+    {
+        Color color = _state.Turns.CurrentPlayer.Color;
+        foreach (Territory t in _state.Territories)
+        {
+            if (t.Owner == color && t.Coords.Contains(coord))
+            {
+                return t;
+            }
+        }
+        return null;
+    }
+
+    private Territory? FindTerritoryByCapital(HexCoord capital)
+    {
+        foreach (Territory t in _state.Territories)
+        {
+            if (t.HasCapital && t.Capital!.Value == capital)
+            {
+                return t;
+            }
+        }
+        return null;
     }
 
     // --- View refresh -----------------------------------------------------

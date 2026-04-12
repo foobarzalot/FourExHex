@@ -42,6 +42,8 @@
     <Compile Include="..\scripts\Tree.cs" Link="scripts\Tree.cs" />
     <Compile Include="..\scripts\TreeRules.cs" Link="scripts\TreeRules.cs" />
     <Compile Include="..\scripts\Tower.cs" Link="scripts\Tower.cs" />
+    <Compile Include="..\scripts\AiAction.cs" Link="scripts\AiAction.cs" />
+    <Compile Include="..\scripts\RandomAi.cs" Link="scripts\RandomAi.cs" />
     <Compile Include="..\scripts\PurchaseRules.cs" Link="scripts\PurchaseRules.cs" />
     <Compile Include="..\scripts\DefenseRules.cs" Link="scripts\DefenseRules.cs" />
     <Compile Include="..\scripts\MovementRules.cs" Link="scripts\MovementRules.cs" />

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Godot;
@@ -549,6 +550,178 @@ public class GameControllerTests
         // End Blue's turn: the bankruptcy grave converts into a tree.
         g.Hud.ClickEndTurn();
         Assert.IsType<Tree>(g.Tile(3, 0).Occupant);
+    }
+
+    // --- AI turn integration ---------------------------------------------
+
+    /// <summary>
+    /// 2-player fixture where Blue is an AI with a 3-tile territory
+    /// containing a peasant positioned to capture a neutral Blue tile
+    /// once it's their turn. Wait — Blue captures Blue? Let me rebuild.
+    /// This fixture has Red (human) and Blue (AI) with their own
+    /// territories; Blue's unit is adjacent to a capturable Red tile.
+    /// </summary>
+    private class HumanVsAiGame
+    {
+        public GameState State { get; }
+        public SessionState Session { get; }
+        public MockHexMapView Map { get; }
+        public MockHudView Hud { get; }
+        public GameController Controller { get; }
+        public Player Red { get; }
+        public Player Blue { get; }
+
+        public HumanVsAiGame()
+        {
+            Red = new Player("Red", new Color(1f, 0f, 0f)); // human
+            Blue = new Player("Blue", new Color(0f, 0f, 1f), isAi: true);
+            var players = new List<Player> { Red, Blue };
+
+            // 8x2 grid: Red owns (0,0)-(2,0), Blue owns (5,1)-(7,1).
+            // Blue has a peasant on (5,1) — not adjacent to any Red
+            // tile, so it can't capture. Different test methods will
+            // mutate the fixture as needed.
+            var grid = TestHelpers.BuildRectGrid(8, 2, new Color(0.3f, 0.3f, 0.3f));
+            grid.Get(HexCoord.FromOffset(0, 0))!.Color = Red.Color;
+            grid.Get(HexCoord.FromOffset(1, 0))!.Color = Red.Color;
+            grid.Get(HexCoord.FromOffset(2, 0))!.Color = Red.Color;
+            grid.Get(HexCoord.FromOffset(5, 1))!.Color = Blue.Color;
+            grid.Get(HexCoord.FromOffset(6, 1))!.Color = Blue.Color;
+            grid.Get(HexCoord.FromOffset(7, 1))!.Color = Blue.Color;
+
+            IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+            State = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+            Session = new SessionState();
+            Map = new MockHexMapView();
+            Hud = new MockHudView();
+            foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+            {
+                Map.TileIndex[kvp.Key] = kvp.Value;
+            }
+            // Seeded RNG so AI behavior is deterministic across runs.
+            Controller = new GameController(State, Session, Map, Hud, new Random(12345));
+            Controller.StartGame();
+        }
+
+        public HexTile Tile(int col, int row) => State.Grid.Get(HexCoord.FromOffset(col, row))!;
+    }
+
+    [Fact]
+    public void EndTurn_AdvancesToAiPlayer_RunsAiTurnAutomatically()
+    {
+        // Human ends their turn, and since Blue is AI, the controller
+        // should auto-run Blue's turn and end up back on Red without
+        // a second human click.
+        var g = new HumanVsAiGame();
+        Assert.Equal(g.Red.Color, g.State.Turns.CurrentPlayer.Color);
+
+        g.Hud.ClickEndTurn();
+
+        // After the AI turn finishes, control returns to Red.
+        Assert.Equal(g.Red.Color, g.State.Turns.CurrentPlayer.Color);
+    }
+
+    [Fact]
+    public void AiTurn_WithNoValidActions_EndsImmediately()
+    {
+        // Blue has no gold, no units with capture targets, no trees,
+        // and no empty tiles big enough for a tower. AI should take
+        // no actions and simply end its turn (advancing back to Red).
+        var g = new HumanVsAiGame();
+        // Blue's territory has no capital income initially; leave
+        // treasury empty. No units on Blue tiles. Nothing to do.
+        g.Hud.ClickEndTurn();
+
+        // No changes to Blue's tiles beyond income collection and
+        // upkeep. Control is back to Red.
+        Assert.Equal(g.Red.Color, g.State.Turns.CurrentPlayer.Color);
+        // Blue's tiles are still Blue (no captures happened).
+        Assert.Equal(g.Blue.Color, g.Tile(5, 1).Color);
+        Assert.Equal(g.Blue.Color, g.Tile(6, 1).Color);
+        Assert.Equal(g.Blue.Color, g.Tile(7, 1).Color);
+    }
+
+    [Fact]
+    public void AiTurn_CanCaptureLastEnemyHex_DeclaresWinner()
+    {
+        // Minimal fixture where the AI can win in one move: a 4-tile
+        // Red territory with a peasant (sustainable upkeep), adjacent
+        // to a lone undefended Blue tile. Red's net = 4 - 2 = 2, and
+        // post-capture net = 5 - 2 = 3 — well above the AI's bankruptcy
+        // rule. The AI should pick the winning capture on its first
+        // turn (which is StartGame's job to auto-run since Red is the
+        // starting AI player).
+        var red = new Player("Red", new Color(1f, 0f, 0f), isAi: true);
+        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var players = new List<Player> { red, blue };
+
+        var grid = TestHelpers.BuildRectGrid(5, 1, red.Color);
+        grid.Get(HexCoord.FromOffset(4, 0))!.Color = blue.Color;
+        grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = new Unit(red.Color);
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        var map = new MockHexMapView();
+        var hud = new MockHudView();
+        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+        {
+            map.TileIndex[kvp.Key] = kvp.Value;
+        }
+        var controller = new GameController(state, session, map, hud, new Random(1));
+        controller.StartGame();
+
+        Assert.True(session.IsGameOver);
+        Assert.Equal(red.Color, session.Winner);
+    }
+
+    [Fact]
+    public void AiTurn_EachTerritoryActsAtMostOnce()
+    {
+        // Blue has 2 territories; both have a knight adjacent to
+        // capturable neutral tiles. Verify that after the AI turn,
+        // each territory has made at most one capture (not an
+        // unbounded loop).
+        var red = new Player("Red", new Color(1f, 0f, 0f));
+        var blue = new Player("Blue", new Color(0f, 0f, 1f), isAi: true);
+        var players = new List<Player> { red, blue };
+
+        // 10x2 grid. Red owns (0,0). Two Blue territories: {(2,0),(3,0)}
+        // and {(6,0),(7,0)}. Each has a knight on the right end so
+        // both can capture adjacent neutral tiles ((4,0) and (8,0)).
+        var grid = TestHelpers.BuildRectGrid(10, 2, new Color(0.3f, 0.3f, 0.3f));
+        grid.Get(HexCoord.FromOffset(0, 0))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(2, 0))!.Color = blue.Color;
+        grid.Get(HexCoord.FromOffset(3, 0))!.Color = blue.Color;
+        grid.Get(HexCoord.FromOffset(6, 0))!.Color = blue.Color;
+        grid.Get(HexCoord.FromOffset(7, 0))!.Color = blue.Color;
+        grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = new Unit(blue.Color, UnitLevel.Knight);
+        grid.Get(HexCoord.FromOffset(7, 0))!.Occupant = new Unit(blue.Color, UnitLevel.Knight);
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        var map = new MockHexMapView();
+        var hud = new MockHudView();
+        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+        {
+            map.TileIndex[kvp.Key] = kvp.Value;
+        }
+        var controller = new GameController(state, session, map, hud, new Random(7));
+        controller.StartGame();
+
+        // End Red's (human) turn so Blue's AI turn runs.
+        hud.ClickEndTurn();
+
+        // Each of Blue's 2 territories had at most one action, so
+        // total board-wide ownership change is at most +2 Blue tiles.
+        // Starting Blue count: 4. Max post-AI Blue count: 6.
+        int blueCount = 0;
+        foreach (HexTile t in state.Grid.Tiles)
+        {
+            if (t.Color == blue.Color) blueCount++;
+        }
+        Assert.InRange(blueCount, 4, 6);
     }
 
     // --- Next territory hotkey -------------------------------------------

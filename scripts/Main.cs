@@ -104,9 +104,14 @@ public partial class Main : Node2D
     private static List<Player> BuildPlayers()
     {
         var players = new List<Player>();
-        foreach ((string name, string hex) in PlayerConfig)
+        // Player 0 is the human; everyone else is an AI driven by
+        // RandomAi. StartGame auto-drives any AI players at the front
+        // of the turn order so the human never has to wait on a
+        // literal "click End Turn to skip" step.
+        for (int i = 0; i < PlayerConfig.Length; i++)
         {
-            players.Add(new Player(name, new Color(hex)));
+            (string name, string hex) = PlayerConfig[i];
+            players.Add(new Player(name, new Color(hex), isAi: i != 0));
         }
         return players;
     }
