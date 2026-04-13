@@ -289,12 +289,21 @@ public class RandomAiTests
     [Fact]
     public void ChooseNextAction_BuildTower_AffordableAndProfitable_Returned()
     {
-        // Red 3-tile isolated island, 20g, no units, no enemies.
-        // Only available action: build tower on an empty tile.
+        // Red 3-tile territory with an adjacent Blue tile so at
+        // least one Red tile is on the border (required for a tower
+        // build under the border-only rule). Red has 20g, no units,
+        // and the only capturable Blue tile is defended by a Blue
+        // knight elsewhere on the map — wait, simpler: Red has no
+        // units, so move/buy captures are impossible, and the only
+        // remaining valid action is a tower build on the border tile.
         var grid = new HexGrid();
         grid.Add(new HexTile(HexCoord.FromOffset(0, 0), Red));
         grid.Add(new HexTile(HexCoord.FromOffset(1, 0), Red));
         grid.Add(new HexTile(HexCoord.FromOffset(2, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(3, 0), Blue));
+        // Defender on the Blue tile so a freshly bought peasant
+        // couldn't capture it (peasant vs defense 1 fails).
+        grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = new Unit(Blue);
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var players = new List<Player> { new("Red", Red), new("Blue", Blue) };
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -304,6 +313,36 @@ public class RandomAiTests
         AiAction? result = RandomAi.ChooseNextAction(state, Red, EmptyVisited(), Seed());
 
         Assert.IsType<AiBuildTowerAction>(result);
+    }
+
+    [Fact]
+    public void ChooseNextAction_BuildTower_InteriorTile_NotReturned()
+    {
+        // Red strip of 4 tiles at columns 0..3 in row 0 with a Blue
+        // tile at (-1,0). The Blue tile's defender makes it
+        // non-capturable by a peasant, so buy/move captures are
+        // unavailable. Lex-min empty Red tile is (0,0) → capital
+        // lands there, which is also the ONLY border-adjacent Red
+        // tile. Remaining empty Red tiles (1,0), (2,0), (3,0) are
+        // all interior (none of their neighbors are Blue). Under
+        // the border-only rule the AI must NOT emit any tower
+        // action here, so the result should be null.
+        var grid = new HexGrid();
+        grid.Add(new HexTile(HexCoord.FromOffset(-1, 0), Blue));
+        grid.Add(new HexTile(HexCoord.FromOffset(0, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(1, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(2, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(3, 0), Red));
+        grid.Get(HexCoord.FromOffset(-1, 0))!.Occupant = new Unit(Blue);
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var players = new List<Player> { new("Red", Red), new("Blue", Blue) };
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        HexCoord cap = state.Territories.First(t => t.Owner == Red).Capital!.Value;
+        state.Treasury.SetGold(cap, 100);
+
+        AiAction? result = RandomAi.ChooseNextAction(state, Red, EmptyVisited(), Seed());
+
+        Assert.Null(result);
     }
 
     [Fact]
@@ -540,8 +579,13 @@ public class RandomAiTests
     // --- Visited tracking ------------------------------------------------
 
     [Fact]
-    public void ChooseNextAction_MarksTerritoryVisited_WhenActionReturned()
+    public void ChooseNextAction_DoesNotMarkTerritoryVisited_WhenActionReturned()
     {
+        // Under multi-action-turn semantics a territory is only
+        // marked visited when it has NO valid actions left. Returning
+        // an action keeps the territory eligible for additional
+        // actions later in the turn (e.g. a capture now, a combine
+        // after with the just-moved unit).
         GameState state = BuildState(5, 2, HexCoord.FromOffset(0, 1), HexCoord.FromOffset(1, 1));
         state.Grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = new Unit(Red);
         var visited = EmptyVisited();
@@ -550,7 +594,7 @@ public class RandomAiTests
         AiAction? first = RandomAi.ChooseNextAction(state, Red, visited, Seed());
 
         Assert.NotNull(first);
-        Assert.Contains(cap, visited);
+        Assert.DoesNotContain(cap, visited);
     }
 
     [Fact]
@@ -586,6 +630,155 @@ public class RandomAiTests
         // Even though result is null, the territory was looked at and
         // should be marked visited so the caller knows not to retry.
         Assert.Contains(cap, visited);
+    }
+
+    // --- Priority buckets ------------------------------------------------
+
+    [Fact]
+    public void ChooseNextAction_CaptureAvailableWithCombine_PrefersCapture()
+    {
+        // 6-tile isolated Red island (income=6, upkeep=4, net=2 — a
+        // P+P→S combine would be solvent) with two peasants adjacent
+        // to each other AND adjacent to an undefended Blue tile. The
+        // combine is bucket 3, the capture is bucket 1 — the AI must
+        // always prefer the capture regardless of RNG seed.
+        var grid = new HexGrid();
+        for (int col = 0; col < 6; col++)
+        {
+            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        }
+        // Adjacent Blue capturable tile just past the strip.
+        grid.Add(new HexTile(HexCoord.FromOffset(6, 0), Blue));
+        grid.Get(HexCoord.FromOffset(4, 0))!.Occupant = new Unit(Red);
+        grid.Get(HexCoord.FromOffset(5, 0))!.Occupant = new Unit(Red);
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var players = new List<Player> { new("Red", Red), new("Blue", Blue) };
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+
+        // Try several seeds — a random pick within bucket 1 is fine,
+        // but the action must be a capture, not a combine.
+        for (int s = 0; s < 8; s++)
+        {
+            AiAction? result = RandomAi.ChooseNextAction(state, Red, EmptyVisited(), new Random(s));
+            AiMoveAction move = Assert.IsType<AiMoveAction>(result);
+            HexTile? dst = state.Grid.Get(move.Destination);
+            Assert.NotNull(dst);
+            Assert.NotEqual(Red, dst!.Color); // capture target is enemy-colored
+        }
+    }
+
+    [Fact]
+    public void ChooseNextAction_ChopAvailableWithCombine_PrefersChop()
+    {
+        // Same 6-tile Red island with two adjacent peasants, but
+        // instead of a neighboring Blue tile we plant a tree on one
+        // of the empty own-territory tiles. Chop (bucket 2) should
+        // beat combine (bucket 3).
+        var grid = new HexGrid();
+        for (int col = 0; col < 6; col++)
+        {
+            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        }
+        grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = new Tree();
+        grid.Get(HexCoord.FromOffset(4, 0))!.Occupant = new Unit(Red);
+        grid.Get(HexCoord.FromOffset(5, 0))!.Occupant = new Unit(Red);
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var players = new List<Player> { new("Red", Red), new("Blue", Blue) };
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+
+        for (int s = 0; s < 8; s++)
+        {
+            AiAction? result = RandomAi.ChooseNextAction(state, Red, EmptyVisited(), new Random(s));
+            AiMoveAction move = Assert.IsType<AiMoveAction>(result);
+            HexTile? dst = state.Grid.Get(move.Destination);
+            Assert.NotNull(dst);
+            // Chop target is a tree-occupied own tile, not a
+            // friendly unit tile (which would indicate a combine).
+            Assert.IsType<Tree>(dst!.Occupant);
+        }
+    }
+
+    [Fact]
+    public void ChooseNextAction_CombineAvailableWithTower_PrefersCombine()
+    {
+        // Red has two peasants + enough gold for a tower, with no
+        // captures or chops available. Combine is bucket 3, tower is
+        // bucket 4 — combine must be picked over tower. Ensure the
+        // territory has at least one border tile so tower placement
+        // wouldn't be filtered out by the border-only rule (we want
+        // the test to exercise priority, not legality).
+        var grid = new HexGrid();
+        for (int col = 0; col < 6; col++)
+        {
+            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        }
+        grid.Add(new HexTile(HexCoord.FromOffset(6, 0), Blue));
+        // Blue tile defended so Red's peasants can't capture it
+        // (peasant vs defense 1). No chops, no buy-captures.
+        grid.Get(HexCoord.FromOffset(6, 0))!.Occupant = new Unit(Blue);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Occupant = new Unit(Red);
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(Red);
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var players = new List<Player> { new("Red", Red), new("Blue", Blue) };
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        HexCoord cap = state.Territories.First(t => t.Owner == Red).Capital!.Value;
+        state.Treasury.SetGold(cap, 100);
+
+        for (int s = 0; s < 8; s++)
+        {
+            AiAction? result = RandomAi.ChooseNextAction(state, Red, EmptyVisited(), new Random(s));
+            AiMoveAction move = Assert.IsType<AiMoveAction>(result);
+            HexTile? dst = state.Grid.Get(move.Destination);
+            Assert.NotNull(dst);
+            Assert.IsType<Unit>(dst!.Occupant);
+            Assert.Equal(Red, ((Unit)dst.Occupant).Owner);
+        }
+    }
+
+    // --- Multi-action turns ---------------------------------------------
+
+    [Fact]
+    public void ChooseNextAction_MultiActionTurn_SecondCallReturnsAnotherAction()
+    {
+        // A single 6-tile Red territory with two trees on own tiles
+        // and two peasants positioned to reach them. Chops don't
+        // change territory boundaries (unlike captures), so the
+        // territory object remains valid across calls and we can
+        // verify multi-action semantics without rebuilding
+        // territories manually.
+        //
+        // Income starts at 6 - 2 = 4 (trees don't count), upkeep is
+        // 4 (two peasants), net = 0. A chop adds +1 income with no
+        // upkeep change, so the first chop is solvent (post-net +1)
+        // and the second chop is still solvent (post-net +2).
+        var grid = new HexGrid();
+        for (int col = 0; col < 6; col++)
+        {
+            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        }
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Tree();
+        grid.Get(HexCoord.FromOffset(4, 0))!.Occupant = new Tree();
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(Red);
+        grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = new Unit(Red);
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var players = new List<Player> { new("Red", Red), new("Blue", Blue) };
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+
+        var visited = EmptyVisited();
+        Random rng = Seed();
+
+        AiAction? first = RandomAi.ChooseNextAction(state, Red, visited, rng);
+        AiMoveAction firstMove = Assert.IsType<AiMoveAction>(first);
+        // Execute the chop: the source unit walks onto the tree
+        // tile, the tree is cleared, and HasMovedThisTurn is set.
+        Territory redTerr = state.Territories.First(t => t.Owner == Red);
+        MovementRules.Move(firstMove.Source, firstMove.Destination, state.Grid, redTerr);
+
+        // Territory boundaries unchanged → the same territory still
+        // has the other tree and the other peasant, so a second
+        // call must yield another chop rather than null.
+        AiAction? second = RandomAi.ChooseNextAction(state, Red, visited, rng);
+        Assert.NotNull(second);
     }
 
     // --- Determinism -----------------------------------------------------
