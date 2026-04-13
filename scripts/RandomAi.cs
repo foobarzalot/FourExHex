@@ -13,10 +13,12 @@ using Godot;
 ///
 /// Valid actions:
 ///   - Move an existing unit to a capture or to a tree-chop target.
+///   - Move an existing unit onto a friendly unit to combine them,
+///     subject to a per-combine upkeep-delta solvency check.
 ///   - Buy a peasant and place it for a capture or a tree chop.
 ///   - Build a tower on an empty own-territory tile.
-/// Never: pure reposition, combine without downstream capture, or
-/// anything in a territory it has already visited this turn.
+/// Never: pure reposition, or anything in a territory it has already
+/// visited this turn.
 /// </summary>
 public static class RandomAi
 {
@@ -80,30 +82,59 @@ public static class RandomAi
         int upkeep = UpkeepRules.TotalUpkeepFor(territory, state.Grid);
         int netBefore = income - upkeep;
 
-        // --- Move actions: capture or tree chop ------------------------
-        // A move-capture adds +1 tile of income; a move-chop converts a
-        // tree tile to a non-tree tile (also +1 income). Both leave
-        // upkeep unchanged, so the post-net requirement is
-        // netBefore + 1 >= 0, i.e., netBefore >= -1.
-        bool moveActionsSolvent = netBefore + 1 >= 0;
-        if (moveActionsSolvent)
+        // --- Move actions: capture, tree chop, or combine --------------
+        // Capture / chop: +1 income, 0 upkeep change. Post-net is
+        // netBefore + 1, requirement netBefore >= -1.
+        // Combine: 0 income change, upkeep delta = upkeep(combined)
+        // - upkeep(source) - upkeep(destination). Requirement
+        // netBefore - upkeepDelta >= 0 (i.e. netBefore >= upkeepDelta).
+        // Each candidate target is evaluated against the appropriate
+        // solvency gate — the AI won't combine itself into
+        // bankruptcy and won't attempt a capture from an already
+        // too-deep hole.
+        foreach (HexCoord coord in territory.Coords)
         {
-            foreach (HexCoord coord in territory.Coords)
+            HexTile? tile = state.Grid.Get(coord);
+            if (tile?.Unit == null) continue;
+            if (tile.Unit.HasMovedThisTurn) continue;
+
+            Unit sourceUnit = tile.Unit;
+            List<HexCoord> targets = MovementRules.ValidTargets(
+                sourceUnit.Level, territory, state.Grid, state.Territories);
+
+            foreach (HexCoord target in targets)
             {
-                HexTile? tile = state.Grid.Get(coord);
-                if (tile?.Unit == null) continue;
-                if (tile.Unit.HasMovedThisTurn) continue;
+                // ValidTargets lists the source's own tile among its
+                // combine targets (P.CanCombineWith(P) is trivially
+                // true for the unit against itself). Skip self so we
+                // don't emit a bogus self-combine AiMoveAction.
+                if (target.Equals(coord)) continue;
 
-                List<HexCoord> targets = MovementRules.ValidTargets(
-                    tile.Unit.Level, territory, state.Grid, state.Territories);
+                HexTile? targetTile = state.Grid.Get(target);
+                if (targetTile == null) continue;
 
-                foreach (HexCoord target in targets)
+                if (IsCaptureOrChopTarget(target, owner, state.Grid))
                 {
-                    if (IsCaptureOrChopTarget(target, owner, state.Grid))
+                    if (netBefore + 1 >= 0)
                     {
                         actions.Add(new AiMoveAction(coord, target));
                     }
                 }
+                else if (targetTile.Occupant is Unit destUnit && destUnit.Owner == owner)
+                {
+                    // Combine. MovementRules.ValidTargets already
+                    // filtered to combine-legal pairs (sum <= Baron),
+                    // so CombinedWith is safe to call.
+                    UnitLevel combinedLevel = sourceUnit.Level.CombinedWith(destUnit.Level);
+                    int upkeepDelta = UpkeepRules.UpkeepFor(combinedLevel)
+                                      - UpkeepRules.UpkeepFor(sourceUnit.Level)
+                                      - UpkeepRules.UpkeepFor(destUnit.Level);
+                    if (netBefore - upkeepDelta >= 0)
+                    {
+                        actions.Add(new AiMoveAction(coord, target));
+                    }
+                }
+                // Pure reposition (empty own tile, no tree) is skipped.
             }
         }
 

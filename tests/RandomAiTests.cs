@@ -401,10 +401,13 @@ public class RandomAiTests
     }
 
     [Fact]
-    public void ChooseNextAction_CombineWithFriendly_NotReturned()
+    public void ChooseNextAction_CombineWithFriendly_NetInsufficient_NotReturned()
     {
-        // Two adjacent peasants on an isolated island. Combining isn't
-        // a capture or a chop, so the AI doesn't consider it.
+        // Two adjacent peasants on a 3-tile island. Income = 3,
+        // upkeep = 4, net = -1. A P+P→Spearman combine bumps upkeep
+        // by +2 (4 → 6), so it needs net >= 2 to stay solvent. Not
+        // satisfied → combine is blocked. No captures/chops either,
+        // so the AI returns null.
         var grid = new HexGrid();
         grid.Add(new HexTile(HexCoord.FromOffset(0, 0), Red));
         grid.Add(new HexTile(HexCoord.FromOffset(1, 0), Red));
@@ -415,9 +418,104 @@ public class RandomAiTests
         var players = new List<Player> { new("Red", Red), new("Blue", Blue) };
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
 
-        // Peasants: net = 3 - 4 = -1. Any move-capture would need
-        // current_net >= -1 (allowed), but there's no adjacent enemy
-        // and no tree. Combining is filtered. Null expected.
+        AiAction? result = RandomAi.ChooseNextAction(state, Red, EmptyVisited(), Seed());
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void ChooseNextAction_CombineWithFriendly_NetSufficient_Returned()
+    {
+        // 6-tile isolated Red island with two adjacent peasants.
+        // Income = 6, upkeep = 4, net = 2 — exactly the requirement
+        // for a P+P→Spearman combine (+2 upkeep). No enemies, no
+        // trees, no empty tiles to tower (empty tiles exist but no
+        // gold for a tower), so the only valid action is a combine
+        // move between the two peasants.
+        var grid = new HexGrid();
+        for (int col = 0; col < 6; col++)
+        {
+            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        }
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(Red);
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(Red);
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var players = new List<Player> { new("Red", Red), new("Blue", Blue) };
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+
+        AiAction? result = RandomAi.ChooseNextAction(state, Red, EmptyVisited(), Seed());
+
+        AiMoveAction move = Assert.IsType<AiMoveAction>(result);
+        // Both endpoints are Red-owned units (i.e. a combine, not a capture).
+        HexTile? src = state.Grid.Get(move.Source);
+        HexTile? dst = state.Grid.Get(move.Destination);
+        Assert.NotNull(src?.Unit);
+        Assert.Equal(Red, src!.Unit!.Owner);
+        Assert.NotNull(dst?.Unit);
+        Assert.Equal(Red, dst!.Unit!.Owner);
+    }
+
+    [Fact]
+    public void ChooseNextAction_CombinePeasantIntoSpearman_NetSufficient_Returned()
+    {
+        // Isolated Red island with a Peasant and a Spearman adjacent
+        // to each other. A P+S→Knight combine changes upkeep from
+        // (2 + 6) = 8 to 18, delta = +10. Net must be >= 10, so
+        // income - 8 >= 10 → income >= 18 → need an 18-tile island.
+        // Build a 9x2 block (18 tiles) of Red, drop the units in the
+        // middle, and assert the AI returns a combine.
+        var grid = new HexGrid();
+        for (int row = 0; row < 2; row++)
+        {
+            for (int col = 0; col < 9; col++)
+            {
+                grid.Add(new HexTile(HexCoord.FromOffset(col, row), Red));
+            }
+        }
+        grid.Get(HexCoord.FromOffset(0, 0))!.Occupant = new Unit(Red, UnitLevel.Peasant);
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(Red, UnitLevel.Spearman);
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var players = new List<Player> { new("Red", Red), new("Blue", Blue) };
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+
+        AiAction? result = RandomAi.ChooseNextAction(state, Red, EmptyVisited(), Seed());
+
+        // With only the two friendly units and no enemies/trees, the
+        // only move action available is a combine. (The AI may also
+        // pick a tower build if it had gold — treasury is empty, so
+        // it doesn't.) Expect a move action whose endpoints are both
+        // Red-owned units.
+        AiMoveAction move = Assert.IsType<AiMoveAction>(result);
+        HexTile? src = state.Grid.Get(move.Source);
+        HexTile? dst = state.Grid.Get(move.Destination);
+        Assert.NotNull(src?.Unit);
+        Assert.Equal(Red, src!.Unit!.Owner);
+        Assert.NotNull(dst?.Unit);
+        Assert.Equal(Red, dst!.Unit!.Owner);
+    }
+
+    [Fact]
+    public void ChooseNextAction_CombinePeasantIntoSpearman_NetInsufficient_NotReturned()
+    {
+        // Same P + Spearman pair on a 17-tile island → net = 17 - 8
+        // = 9 < 10 = required delta. Combine blocked by solvency,
+        // no other valid actions → null.
+        var grid = new HexGrid();
+        int placed = 0;
+        for (int row = 0; row < 2 && placed < 17; row++)
+        {
+            for (int col = 0; col < 9 && placed < 17; col++)
+            {
+                grid.Add(new HexTile(HexCoord.FromOffset(col, row), Red));
+                placed++;
+            }
+        }
+        grid.Get(HexCoord.FromOffset(0, 0))!.Occupant = new Unit(Red, UnitLevel.Peasant);
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(Red, UnitLevel.Spearman);
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var players = new List<Player> { new("Red", Red), new("Blue", Blue) };
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+
         AiAction? result = RandomAi.ChooseNextAction(state, Red, EmptyVisited(), Seed());
 
         Assert.Null(result);
