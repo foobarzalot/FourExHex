@@ -10,16 +10,6 @@ using Godot;
 /// </summary>
 public partial class Main : Node2D
 {
-    private static readonly (string Name, string Hex)[] PlayerConfig =
-    {
-        ("Red",    "e53935"),
-        ("Blue",   "1e88e5"),
-        ("Green",  "43a047"),
-        ("Yellow", "fdd835"),
-        ("Purple", "8e24aa"),
-        ("Orange", "fb8c00"),
-    };
-
     private GameController _controller = null!;
 
     public override void _Ready()
@@ -53,11 +43,14 @@ public partial class Main : Node2D
         var hud = new HudView();
         AddChild(hud);
 
-        // Scene-level action: New Game reloads the whole scene so
-        // _Ready runs from scratch. This is simpler than resetting
-        // GameState in place and guarantees we don't leak any stale
-        // references across games.
+        // Scene-level actions: Play Again reloads the whole scene
+        // (keeping the current GameSettings.PlayerIsAi config), and
+        // Main Menu swaps back to the menu scene so the player can
+        // reassign roles. Both are simpler than resetting GameState
+        // in place and guarantee we don't leak stale references
+        // across games.
         hud.NewGameClicked += () => GetTree().ReloadCurrentScene();
+        hud.MainMenuClicked += () => GetTree().ChangeSceneToFile("res://scenes/main_menu.tscn");
 
         // --- Controller takes over from here -----------------------------
         // Use a Godot-backed pacer so AI turns visibly play out over
@@ -107,14 +100,15 @@ public partial class Main : Node2D
     private static List<Player> BuildPlayers()
     {
         var players = new List<Player>();
-        // Player 0 is the human; everyone else is an AI driven by
-        // RandomAi. StartGame auto-drives any AI players at the front
-        // of the turn order so the human never has to wait on a
-        // literal "click End Turn to skip" step.
-        for (int i = 0; i < PlayerConfig.Length; i++)
+        // Player roles come from GameSettings, which the main menu
+        // writes before switching to this scene. StartGame
+        // auto-drives any AI players at the front of the turn order
+        // so human input is only needed on a human's turn.
+        for (int i = 0; i < GameSettings.PlayerConfig.Length; i++)
         {
-            (string name, string hex) = PlayerConfig[i];
-            players.Add(new Player(name, new Color(hex), isAi: i != 0));
+            (string name, string hex) = GameSettings.PlayerConfig[i];
+            bool isAi = i < GameSettings.PlayerIsAi.Length && GameSettings.PlayerIsAi[i];
+            players.Add(new Player(name, new Color(hex), isAi: isAi));
         }
         return players;
     }

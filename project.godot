@@ -12,7 +12,7 @@ config_version=5
 
 config/name="FourExHex"
 config/description="Hexagon Strategy Game"
-run/main_scene="res://scenes/main.tscn"
+run/main_scene="res://scenes/main_menu.tscn"
 config/features=PackedStringArray("4.6", "C#", "Forward Plus")
 config/icon="res://icon.svg"
 

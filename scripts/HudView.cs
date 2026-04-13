@@ -20,6 +20,7 @@ public partial class HudView : CanvasLayer, IHudView
     public event Action? RedoAllClicked;
     public event Action? EndTurnClicked;
     public event Action? NewGameClicked;
+    public event Action? MainMenuClicked;
     public event Action? NextTerritoryClicked;
 
     private Label _turnLabel = null!;
@@ -194,9 +195,11 @@ public partial class HudView : CanvasLayer, IHudView
         };
         _victoryOverlay.AddChild(scrim);
 
-        // Centered panel with the win text and a New Game button.
-        const float panelW = 420f;
-        const float panelH = 200f;
+        // Centered panel with the win text and two buttons: Play
+        // Again (reload scene with same GameSettings) and Main Menu
+        // (swap back to the menu scene to reassign roles).
+        const float panelW = 460f;
+        const float panelH = 220f;
         var panel = new Panel
         {
             Position = new Vector2((viewport.X - panelW) * 0.5f, (viewport.Y - panelH) * 0.5f),
@@ -214,12 +217,25 @@ public partial class HudView : CanvasLayer, IHudView
         _victoryLabel.AddThemeFontSizeOverride("font_size", 36);
         panel.AddChild(_victoryLabel);
 
-        var newGameButton = new Button { Text = "New Game" };
-        newGameButton.AddThemeFontSizeOverride("font_size", 22);
-        newGameButton.Position = new Vector2((panelW - 180f) * 0.5f, 120f);
-        newGameButton.Size = new Vector2(180f, 44f);
-        newGameButton.Pressed += () => NewGameClicked?.Invoke();
-        panel.AddChild(newGameButton);
+        const float buttonW = 180f;
+        const float buttonH = 44f;
+        const float gap = 20f;
+        float rowY = 130f;
+        float rowX = (panelW - (buttonW * 2f + gap)) * 0.5f;
+
+        var playAgainButton = new Button { Text = "Play Again" };
+        playAgainButton.AddThemeFontSizeOverride("font_size", 22);
+        playAgainButton.Position = new Vector2(rowX, rowY);
+        playAgainButton.Size = new Vector2(buttonW, buttonH);
+        playAgainButton.Pressed += () => NewGameClicked?.Invoke();
+        panel.AddChild(playAgainButton);
+
+        var mainMenuButton = new Button { Text = "Main Menu" };
+        mainMenuButton.AddThemeFontSizeOverride("font_size", 22);
+        mainMenuButton.Position = new Vector2(rowX + buttonW + gap, rowY);
+        mainMenuButton.Size = new Vector2(buttonW, buttonH);
+        mainMenuButton.Pressed += () => MainMenuClicked?.Invoke();
+        panel.AddChild(mainMenuButton);
     }
 
     /// <summary>

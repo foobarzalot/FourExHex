@@ -16,6 +16,7 @@ public interface IHudView
     event Action? RedoAllClicked;
     event Action? EndTurnClicked;
     event Action? NewGameClicked;
+    event Action? MainMenuClicked;
     event Action? NextTerritoryClicked;
 
     /// <summary>
