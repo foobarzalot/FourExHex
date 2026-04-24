@@ -84,48 +84,15 @@ public class WinConditionRulesTests
     }
 
     [Fact]
-    public void Winner_RunawayLeader_WinsViaDominance()
+    public void Winner_LargerLeader_DoesNotWin()
     {
-        // Red has 12 tiles in a capital-bearing territory (above
-        // the 10-tile runaway minimum). Blue has 4 tiles in
-        // another capital-bearing territory. 12 > 2*4 and 12 >= 10
-        // → Red wins via runaway.
+        // Red has 12 capital-bearing tiles, Blue has 4. As long as
+        // Blue still holds a capital-bearing territory the game
+        // continues — size advantage alone does not end the game.
         var grid = new HexGrid();
         for (int col = 0; col < 12; col++)
             grid.Add(new HexTile(new HexCoord(col, 0), Red));
         for (int col = 0; col < 4; col++)
-            grid.Add(new HexTile(new HexCoord(col, 5), Blue));
-        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
-
-        Assert.Equal(Red, WinConditionRules.Winner(grid, territories));
-    }
-
-    [Fact]
-    public void Winner_RunawayLeaderBelowMinTiles_DoesNotWin()
-    {
-        // Red has 6 tiles (below the runaway minimum of 10) and
-        // Blue has 2. Red is more than 2x Blue but the floor
-        // isn't met, so the game continues.
-        var grid = new HexGrid();
-        for (int col = 0; col < 6; col++)
-            grid.Add(new HexTile(new HexCoord(col, 0), Red));
-        grid.Add(new HexTile(new HexCoord(0, 5), Blue));
-        grid.Add(new HexTile(new HexCoord(1, 5), Blue));
-        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
-
-        Assert.Null(WinConditionRules.Winner(grid, territories));
-    }
-
-    [Fact]
-    public void Winner_TwoCloseLeaders_ReturnsNull()
-    {
-        // Red has 12 capital-bearing tiles, Blue has 8. Red is
-        // above the runaway minimum but only 1.5x Blue, not 2x.
-        // Game continues.
-        var grid = new HexGrid();
-        for (int col = 0; col < 12; col++)
-            grid.Add(new HexTile(new HexCoord(col, 0), Red));
-        for (int col = 0; col < 8; col++)
             grid.Add(new HexTile(new HexCoord(col, 5), Blue));
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
 

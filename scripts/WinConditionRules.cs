@@ -33,61 +33,15 @@ public static class WinConditionRules
     /// </summary>
     public static Color? Winner(HexGrid grid, IReadOnlyList<Territory> territories)
     {
-        // Tally capital-bearing tile counts per player.
-        var counts = new Dictionary<Color, int>();
+        Color? only = null;
         foreach (Territory t in territories)
         {
             if (!t.HasCapital) continue;
-            counts.TryGetValue(t.Owner, out int c);
-            counts[t.Owner] = c + t.Coords.Count;
+            if (only == null) { only = t.Owner; continue; }
+            if (t.Owner != only.Value) return null;
         }
-
-        if (counts.Count == 0) return null;
-
-        // 1. Sole capital-bearing player — uncontested winner.
-        if (counts.Count == 1)
-        {
-            foreach (Color c in counts.Keys) return c;
-        }
-
-        // 2. Runaway leader — the leader has strictly more than
-        // twice the runner-up's capital-bearing tile count AND
-        // holds at least RunawayMinLeaderTiles. The minimum-tile
-        // floor keeps the rule from triggering on trivially small
-        // test fixtures where a 7-vs-3 imbalance isn't actually a
-        // decisive game state.
-        int best = 0;
-        int second = 0;
-        Color bestColor = default;
-        foreach (KeyValuePair<Color, int> kvp in counts)
-        {
-            if (kvp.Value > best)
-            {
-                second = best;
-                best = kvp.Value;
-                bestColor = kvp.Key;
-            }
-            else if (kvp.Value > second)
-            {
-                second = kvp.Value;
-            }
-        }
-        if (best >= RunawayMinLeaderTiles && best > 2 * second)
-        {
-            return bestColor;
-        }
-
-        return null;
+        return only;
     }
-
-    /// <summary>
-    /// Minimum capital-bearing tile count the leader must hold
-    /// before the runaway-leader win check can fire. Trivially
-    /// small games (test fixtures, early-game states) shouldn't
-    /// resolve via runaway just because one player happens to
-    /// have twice the tiles of the other.
-    /// </summary>
-    private const int RunawayMinLeaderTiles = 10;
 
     /// <summary>
     /// Legacy strict winner check: returns the sole color only if
