@@ -26,7 +26,14 @@ FourExHex is a hex-based 4X strategy game built with Godot 4.6 and C#.
 - **Run the game headless**: add `--headless` to the above.
 - **Open editor**: `open /Applications/Godot_mono.app --args --path $(pwd)`
 
-**Test-first rule**: For changes to pure-logic classes (rules, `GameController`, `Treasury`, AI, snapshot/undo), write the failing test(s) first, then make the implementation change. Show the diff and get buy-in on the plan when rule changes have test fallout (e.g., existing assertions need to flip). Don't silently rewrite tests to match new behavior without flagging what's changing and why. The view-layer exclusions mean tests are the main safety net for logic changes; TDD keeps that net honest.
+**Test-first rule (strict TDD)**: For changes to pure-logic classes (rules, `GameController`, `Treasury`, AI, snapshot/undo), follow the full red-green loop:
+
+1. **Write the test(s) first** — expressing the new intended behavior.
+2. **Run them and see them fail** — `dotnet test --filter ...` and confirm the failure is for the expected reason (not a compile error, not a typo). A test that was never seen red proves nothing.
+3. **Then change the implementation** to make them pass.
+4. **Re-run the full suite** to confirm no regressions.
+
+Show the diff and get buy-in on the plan when rule changes have test fallout (e.g., existing assertions need to flip). Don't silently rewrite tests to match new behavior without flagging what's changing and why. The view-layer exclusions mean tests are the main safety net for logic changes; strict TDD keeps that net honest.
 
 **Rebuild-before-launch rule**: Godot does NOT always rebuild the C# assembly when launching the game. After editing any `.cs` file, run `dotnet build FourExHex.csproj` before relaunching or you'll be running stale code.
 
