@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Session start
+
+At the very start of a new session — before exploring code, running commands, or making assumptions about what to do — ask the user what they'd like to work on. Keep the prompt to a single line (e.g. "What would you like to work on?"). Skip this only if the user's first message already contains a concrete task.
+
 ## Project Overview
 
 FourExHex is a hex-based 4X strategy game built with Godot 4.6 and C#.
