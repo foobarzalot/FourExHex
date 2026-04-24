@@ -10,8 +10,8 @@ public class GameControllerTests
 {
     /// <summary>
     /// Test fixture: a 5x2 grid with a 2-tile Red territory at (0,1)/(1,1)
-    /// and Blue everywhere else. After StartGame, Red has 12 gold at its
-    /// capital (10 seed + 2 income) and it's Red's turn.
+    /// and Blue everywhere else. After StartGame, Red has 10 gold at its
+    /// capital (5 × 2 tree-free cells) and it's Red's turn.
     /// </summary>
     private class TestGame
     {
@@ -60,13 +60,67 @@ public class GameControllerTests
     // --- Startup ----------------------------------------------------------
 
     [Fact]
-    public void StartGame_SeedsTenGoldPlusIncomeForCurrentPlayer()
+    public void StartGame_SeedsFiveTimesGoldEarningCellsPerTerritory()
     {
         var g = new TestGame();
 
         HexCoord redCapital = g.RedTerritory.Capital!.Value;
-        // 2-hex Red territory: 10 seed + 2 income (one per hex).
-        Assert.Equal(12, g.State.Treasury.GetGold(redCapital));
+        // 2-hex Red territory, no trees: 5 × 2 = 10.
+        Assert.Equal(10, g.State.Treasury.GetGold(redCapital));
+
+        // Blue also seeded at 5 × (tree-free cells). Fixture has no trees.
+        Territory blue = g.State.Territories.First(t => t.Owner == g.Blue.Color);
+        Assert.Equal(5 * blue.Size, g.State.Treasury.GetGold(blue.Capital!.Value));
+    }
+
+    [Fact]
+    public void StartGame_SeedExcludesTreeTilesFromGoldEarningCount()
+    {
+        // Plant a tree on one Blue tile BEFORE StartGame runs. That tile
+        // stops earning income, so Blue's seed drops by 5 (one tree × 5
+        // gold/earning-cell).
+        var red = new Player("Red", new Color(1f, 0f, 0f));
+        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var players = new List<Player> { red, blue };
+
+        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Color);
+        grid.Get(HexCoord.FromOffset(0, 1))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(1, 1))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = new Tree();
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var map = new MockHexMapView();
+        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+        {
+            map.TileIndex[kvp.Key] = kvp.Value;
+        }
+        var controller = new GameController(state, new SessionState(), map, new MockHudView());
+        controller.StartGame();
+
+        Territory blueT = state.Territories.First(t => t.Owner == blue.Color);
+        // Blue has 8 tiles total, 1 tree → 7 earning → 35 gold.
+        Assert.Equal(5 * (blueT.Size - 1), state.Treasury.GetGold(blueT.Capital!.Value));
+    }
+
+    [Fact]
+    public void EndTurn_CreditsIncomeToEndingPlayer_NotStartingPlayer()
+    {
+        var g = new TestGame();
+        HexCoord redCapital = g.RedTerritory.Capital!.Value;
+        HexCoord blueCapital = g.State.Territories
+            .First(t => t.Owner == g.Blue.Color).Capital!.Value;
+        int redBefore = g.State.Treasury.GetGold(redCapital);
+        int blueBefore = g.State.Treasury.GetGold(blueCapital);
+
+        g.Hud.ClickEndTurn(); // Red ends; Blue now current.
+
+        // Red (the ending player) collected income this turn.
+        int redIncome = g.RedTerritory.Size;
+        Assert.Equal(redBefore + redIncome, g.State.Treasury.GetGold(redCapital));
+        // Blue (starting a new turn) has NOT been credited income yet.
+        // No units → no upkeep either, so Blue's treasury is unchanged.
+        Assert.Equal(blueBefore, g.State.Treasury.GetGold(blueCapital));
     }
 
     [Fact]
@@ -440,21 +494,19 @@ public class GameControllerTests
     {
         var g = new TestGame();
         // Put a Blue peasant on a non-capital Blue tile so Blue has
-        // upkeep to pay when it becomes their turn.
+        // upkeep to pay when Blue's turn begins. Income is now credited
+        // at END of turn, so Blue's only treasury change at the start
+        // of its turn is upkeep.
         g.Tile(3, 0).Occupant = new Unit(g.Blue.Color);
-        // Blue's territory has a capital; give it plenty of gold.
         HexCoord blueCapital = g.State.Territories
             .First(t => t.Owner == g.Blue.Color).Capital!.Value;
         g.State.Treasury.SetGold(blueCapital, 20);
 
-        g.Hud.ClickEndTurn(); // Red -> Blue: Blue collects income + pays upkeep
+        g.Hud.ClickEndTurn(); // Red -> Blue: Blue pays upkeep, no income yet.
 
-        // Blue paid 2 for the peasant, plus gained income = 8 (blue's
-        // territory has 8 tiles). Net: 20 + 8 - 2 = 26.
-        // (We don't hardcode 26 — just assert it's 20 + income - 2.)
-        int blueSize = g.State.Territories
-            .First(t => t.Owner == g.Blue.Color).Size;
-        Assert.Equal(20 + blueSize - 2, g.State.Treasury.GetGold(blueCapital));
+        // Blue paid 2 for the peasant. No income credited on Blue's
+        // turn-start (that happens at end of Blue's turn).
+        Assert.Equal(20 - 2, g.State.Treasury.GetGold(blueCapital));
         // Peasant survived because Blue could afford it.
         Assert.NotNull(g.Tile(3, 0).Unit);
     }
@@ -463,7 +515,9 @@ public class GameControllerTests
     public void EndTurn_BankruptTerritory_LeavesGraves()
     {
         var g = new TestGame();
-        // Give Blue a knight (upkeep 18) it can't pay.
+        // Give Blue a knight (upkeep 18) it can't pay. Blue has 0 gold
+        // and no income is credited at turn-start under the new rule,
+        // so upkeep goes straight to bankruptcy.
         g.Tile(3, 0).Occupant = new Unit(g.Blue.Color, UnitLevel.Knight);
         HexCoord blueCapital = g.State.Territories
             .First(t => t.Owner == g.Blue.Color).Capital!.Value;
@@ -471,8 +525,8 @@ public class GameControllerTests
 
         g.Hud.ClickEndTurn(); // advance to Blue
 
-        // Blue collected income (8) < upkeep (18). Bankrupt. Knight dies
-        // and leaves a grave behind (not a null tile).
+        // Blue has 0g and owes 18 upkeep → bankrupt. Knight dies and
+        // leaves a grave behind (not a null tile).
         Assert.IsType<Grave>(g.Tile(3, 0).Occupant);
     }
 
@@ -508,13 +562,10 @@ public class GameControllerTests
     }
 
     [Fact]
-    public void EndTurn_IncomeSkipsTreeTiles_OnNextPlayerTurn()
+    public void EndTurn_IncomeSkipsTreeTiles_WhenEndingPlayerCollects()
     {
-        // Before end-of-turn Blue's income would be blueSize; with a
-        // tree planted on one Blue tile the collected income should be
-        // blueSize - 1. Use a fresh tree (not one that just converted)
-        // by placing it before any end-of-turn so it's already there
-        // when Blue collects.
+        // Plant a tree on one Blue tile. When Blue ends their turn,
+        // Blue collects income based on tree-free cells only.
         var g = new TestGame();
         g.Tile(3, 0).Occupant = new Tree();
         int blueSize = g.State.Territories
@@ -523,10 +574,13 @@ public class GameControllerTests
             .First(t => t.Owner == g.Blue.Color).Capital!.Value;
         g.State.Treasury.SetGold(blueCapital, 0);
 
-        g.Hud.ClickEndTurn(); // Red -> Blue: collect income, pay upkeep (0)
+        g.Hud.ClickEndTurn(); // Red ends their turn → Red collects income, not Blue.
+        Assert.Equal(0, g.State.Treasury.GetGold(blueCapital));
 
-        // Blue has no units so upkeep is 0. Collected income is the
-        // size minus the one tree tile.
+        g.Hud.ClickEndTurn(); // Blue ends their turn → Blue collects income now.
+
+        // Blue has no units so upkeep is 0. Income is size minus the
+        // one tree tile.
         Assert.Equal(blueSize - 1, g.State.Treasury.GetGold(blueCapital));
     }
 
@@ -706,7 +760,9 @@ public class GameControllerTests
     {
         (GameState state, MockHexMapView map, MockHudView hud) = BuildAiFixture();
         HexCoord cap = RedCapital(state);
-        state.Treasury.SetGold(cap, 0);
+        // Red has 3 tiles; a tree on one of them drops earning cells to
+        // 2 → seed = 5 × 2 = 10 gold, less than the tower cost of 15.
+        state.Grid.Get(HexCoord.FromOffset(0, 1))!.Occupant = new Tree();
         var bad = new AiBuildTowerAction(cap, HexCoord.FromOffset(0, 1));
         GameController c = BuildHarnessWithStubAi(state, map, hud, bad);
 
@@ -1097,7 +1153,7 @@ public class GameControllerTests
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1)); // select Red
         HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
-        // Red starts with 12g; give it enough to build.
+        // Red starts with 10g; give it enough to build.
         g.State.Treasury.SetGold(redCapital, 20);
         int before = g.State.Treasury.GetGold(redCapital);
 
@@ -1478,8 +1534,8 @@ public class GameControllerTests
     public void RefreshViews_ReportsHasActionable_WhenPlayerHasUnmovedUnit()
     {
         var g = new TestGame();
-        // Red has an affordable capital (12 gold), so actionable is already
-        // true right after StartGame.
+        // Red has an affordable capital (10 gold, exactly peasant cost),
+        // so actionable is already true right after StartGame.
         Assert.True(g.Hud.LastHasActionableRemaining);
     }
 

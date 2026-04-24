@@ -94,37 +94,36 @@ public class GameController
     }
 
     /// <summary>
-    /// Finish initial game setup: seed starting gold, collect the first
-    /// player's income, and do the first view refresh. Main calls this
-    /// once after constructing the controller and adding the views to
-    /// the scene tree.
+    /// Finish initial game setup: seed starting gold and do the first
+    /// view refresh. Main calls this once after constructing the
+    /// controller and adding the views to the scene tree.
     /// </summary>
     public void StartGame()
     {
         SeedStartingGold();
-        // First player gets their income but NOT upkeep at game start
-        // — pre-placed units in test/scenario fixtures may not be
-        // covered by seed gold yet, and we don't want to bankrupt
-        // them before anyone has played. Subsequent turns run the
-        // full start-of-turn sequence (see StartPlayerTurn).
-        _state.Treasury.CollectIncomeFor(
-            _state.Turns.CurrentPlayer, _state.Territories, _state.Grid);
-        // If the starting player is an AI, auto-drive its turn (and
-        // any subsequent consecutive AI players) so human input only
-        // happens on a human's turn.
+        // No start-of-game income collection: the seed already equals
+        // 5 × tree-free cells per territory, which is exactly what each
+        // player sees on their first turn. Subsequent turns credit
+        // income at the END of the turn (see OnEndTurnPressed and the
+        // AI turn-end path).
         RunAiTurnsUntilHumanOrDone();
         RefreshViews();
     }
 
+    /// <summary>
+    /// Seed every territory's treasury to 5 × its gold-earning-cell
+    /// count. Tree-occupied cells don't earn gold, so they don't
+    /// contribute to the seed.
+    /// </summary>
     private void SeedStartingGold()
     {
-        const int startingGoldPerTerritory = 10;
+        const int startingGoldPerEarningCell = 5;
         foreach (Territory territory in _state.Territories)
         {
-            if (territory.HasCapital)
-            {
-                _state.Treasury.SetGold(territory.Capital!.Value, startingGoldPerTerritory);
-            }
+            if (!territory.HasCapital) continue;
+            int earningCells = TreeRules.CountNonTreeTiles(territory, _state.Grid);
+            _state.Treasury.SetGold(
+                territory.Capital!.Value, earningCells * startingGoldPerEarningCell);
         }
     }
 
@@ -554,12 +553,16 @@ public class GameController
     }
 
     /// <summary>
-    /// Convert graves left on the board (from combat this turn or
-    /// bankruptcy at the start of this turn) into trees, then run one
-    /// step of tree spreading. Called after any player's turn ends.
+    /// End-of-turn bookkeeping for the now-ending player: credit their
+    /// income (based on gold-earning cells in their current territories),
+    /// convert graves into trees, then run one step of tree spreading.
+    /// Called on the ending player while they are still the current
+    /// player — <see cref="AdvanceToNextActivePlayer"/> runs after.
     /// </summary>
     private void EndOfTurnProcessing()
     {
+        _state.Treasury.CollectIncomeFor(
+            _state.Turns.CurrentPlayer, _state.Territories, _state.Grid);
         TreeRules.ConvertGravesToTrees(_state.Grid);
         TreeRules.SpreadTrees(_state.Grid);
     }
@@ -582,14 +585,14 @@ public class GameController
 
     /// <summary>
     /// Start-of-turn bookkeeping for the now-current player: reset
-    /// unit move flags, collect income, apply upkeep (which may
-    /// bankrupt territories and turn their units into graves).
+    /// unit move flags and apply upkeep (which may bankrupt
+    /// territories and turn their units into graves). Income is NOT
+    /// collected here — it's credited at the end of the turn that
+    /// earned it (see <see cref="EndOfTurnProcessing"/>).
     /// </summary>
     private void StartPlayerTurn()
     {
         ResetMovementFor(_state.Turns.CurrentPlayer, _state.Grid);
-        _state.Treasury.CollectIncomeFor(
-            _state.Turns.CurrentPlayer, _state.Territories, _state.Grid);
         UpkeepRules.ApplyUpkeepFor(
             _state.Turns.CurrentPlayer, _state.Territories, _state.Grid, _state.Treasury);
 
