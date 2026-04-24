@@ -48,6 +48,21 @@ public class GameController
     // chooser from pacing forever.
     private const int MaxAiStepsPerPlayer = 64;
 
+    // Hard cap on TurnState.TurnNumber. Default is unlimited; the
+    // diagnostic launch path in Main sets a smaller value so
+    // stasis runs terminate instead of looping forever.
+    private readonly int _maxTurnNumber;
+    private bool _gameEndedFired;
+
+    /// <summary>
+    /// Fired exactly once when the game ends — either naturally
+    /// (<see cref="SessionState.IsGameOver"/> becomes true) or by
+    /// hitting the turn cap passed to the constructor. The
+    /// diagnostic launch path subscribes to this so headless runs
+    /// can exit on completion.
+    /// </summary>
+    public event Action? GameEnded;
+
     public GameController(
         GameState state,
         SessionState session,
@@ -55,7 +70,8 @@ public class GameController
         IHudView hud,
         Random? rng = null,
         Func<GameState, Color, HashSet<HexCoord>, Random, AiAction?>? aiChooser = null,
-        IAiPacer? aiPacer = null)
+        IAiPacer? aiPacer = null,
+        int maxTurnNumber = int.MaxValue)
     {
         _state = state;
         _session = session;
@@ -64,6 +80,7 @@ public class GameController
         _rng = rng ?? new Random();
         _aiChooser = aiChooser ?? RandomAi.ChooseNextAction;
         _aiPacer = aiPacer ?? new SynchronousAiPacer();
+        _maxTurnNumber = maxTurnNumber;
 
         _map.TileClicked += OnTileClicked;
         _hud.BuyPeasantClicked += OnBuyPeasantPressed;
@@ -373,11 +390,12 @@ public class GameController
         _state.Treasury.ReconcileAfterCapture(previous, _state.Territories);
         _map.RebuildAfterTerritoryChange();
 
-        // After every capture, check whether one color now owns the
-        // entire board. If so, the game is over — freeze input until
-        // a new game is started. Undo is disabled so players can't
-        // rewind past the killing blow.
-        Color? winner = WinConditionRules.Winner(_state.Grid);
+        // After every capture, check whether only one player still
+        // has a capital-bearing territory. If so, the game is over
+        // even if some orphan tiles of other colors remain on the
+        // map — they can't come back. Undo is disabled so players
+        // can't rewind past the killing blow.
+        Color? winner = WinConditionRules.Winner(_state.Grid, _state.Territories);
         if (winner.HasValue)
         {
             _session.Winner = winner;
@@ -574,6 +592,75 @@ public class GameController
             _state.Turns.CurrentPlayer, _state.Territories, _state.Grid);
         UpkeepRules.ApplyUpkeepFor(
             _state.Turns.CurrentPlayer, _state.Territories, _state.Grid, _state.Treasury);
+
+        LogTurnStart();
+        CheckGameEndConditions();
+    }
+
+    private void LogTurnStart()
+    {
+        if (!AiLog.Enabled) return;
+        Player p = _state.Turns.CurrentPlayer;
+        int tiles = 0;
+        int ownedTerritories = 0;
+        int totalGold = 0;
+        int totalNet = 0;
+        foreach (Territory t in _state.Territories)
+        {
+            if (t.Owner != p.Color) continue;
+            ownedTerritories++;
+            tiles += t.Coords.Count;
+            int income = TreeRules.CountNonTreeTiles(t, _state.Grid);
+            int upkeep = UpkeepRules.TotalUpkeepFor(t, _state.Grid);
+            totalNet += income - upkeep;
+            if (t.HasCapital)
+            {
+                totalGold += _state.Treasury.GetGold(t.Capital!.Value);
+            }
+        }
+        AiLog.Print(
+            $"[T{_state.Turns.TurnNumber}] {p.Name} ({p.Kind}) turn begins — " +
+            $"{tiles} tiles, {ownedTerritories} territories, " +
+            $"{totalNet:+#;-#;0} net income, {totalGold}g total");
+    }
+
+    /// <summary>
+    /// Check for terminal game conditions — natural game over via
+    /// <see cref="SessionState.IsGameOver"/>, or exceeding the
+    /// constructor-provided turn cap — and fire the
+    /// <see cref="GameEnded"/> event exactly once if either holds.
+    /// </summary>
+    private void CheckGameEndConditions()
+    {
+        if (_gameEndedFired) return;
+
+        if (_session.IsGameOver)
+        {
+            Player? winner = null;
+            foreach (Player p in _state.Turns.Players)
+            {
+                if (p.Color == _session.Winner)
+                {
+                    winner = p;
+                    break;
+                }
+            }
+            AiLog.Print(
+                $"[T{_state.Turns.TurnNumber}] GAME OVER — " +
+                $"winner: {winner?.Name ?? "(none)"}");
+            _gameEndedFired = true;
+            GameEnded?.Invoke();
+            return;
+        }
+
+        if (_state.Turns.TurnNumber > _maxTurnNumber)
+        {
+            AiLog.Print(
+                $"[T{_state.Turns.TurnNumber}] GAME OVER — " +
+                $"turn cap {_maxTurnNumber} exceeded (stasis)");
+            _gameEndedFired = true;
+            GameEnded?.Invoke();
+        }
     }
 
     /// <summary>
@@ -586,6 +673,7 @@ public class GameController
     /// </summary>
     private void RunAiTurnsUntilHumanOrDone()
     {
+        if (_gameEndedFired) return;
         if (_session.IsGameOver) return;
         if (!_state.Turns.CurrentPlayer.IsAi) return;
 
@@ -603,6 +691,7 @@ public class GameController
     /// </summary>
     private void StepAiPreview()
     {
+        if (_gameEndedFired) return;
         if (_session.IsGameOver)
         {
             _map.ShowHighlight(null);
@@ -621,6 +710,15 @@ public class GameController
 
         if (action == null || _aiStepsThisPlayer >= MaxAiStepsPerPlayer)
         {
+            if (AiLog.Enabled)
+            {
+                Player p = _state.Turns.CurrentPlayer;
+                string reason = action == null ? "no positive-delta actions" : "step cap reached";
+                AiLog.Print(
+                    $"[T{_state.Turns.TurnNumber}] {p.Name} ends turn after " +
+                    $"{_aiStepsThisPlayer} actions ({reason})");
+            }
+
             // Current AI player is done. Run end-of-turn processing,
             // clear the lingering highlight, advance, and either stop
             // (human next) or schedule the next preview beat.
@@ -633,6 +731,7 @@ public class GameController
             _map.ShowHighlight(null);
             RefreshViews();
 
+            if (_gameEndedFired) return;
             if (_session.IsGameOver) return;
             if (_state.Turns.CurrentPlayer.IsAi)
             {
@@ -655,6 +754,7 @@ public class GameController
     /// </summary>
     private void StepAiExecute()
     {
+        if (_gameEndedFired) return;
         if (_session.IsGameOver)
         {
             _map.ShowHighlight(null);
@@ -666,6 +766,8 @@ public class GameController
         if (action == null) return; // defensive; shouldn't happen
 
         _aiStepsThisPlayer++;
+        LogAction(action);
+
         HexCoord resultCoord;
         switch (action)
         {
@@ -685,6 +787,9 @@ public class GameController
                 return;
         }
 
+        CheckGameEndConditions();
+        if (_gameEndedFired) return;
+
         // After a capture the old territory object is stale; find the
         // AI's territory now containing the result coord and
         // re-highlight so the outline matches the post-action board.
@@ -698,6 +803,20 @@ public class GameController
             return;
         }
         _aiPacer.Schedule(StepAiPreview, AiActionDelayMs);
+    }
+
+    private void LogAction(AiAction action)
+    {
+        if (!AiLog.Enabled) return;
+        Player p = _state.Turns.CurrentPlayer;
+        string desc = action switch
+        {
+            AiMoveAction mv => $"Move {mv.Source}→{mv.Destination}",
+            AiBuyUnitAction bu => $"Buy@{bu.Capital} → {bu.Destination}",
+            AiBuildTowerAction bt => $"Tower@{bt.Capital} → {bt.Destination}",
+            _ => "?",
+        };
+        AiLog.Print($"[T{_state.Turns.TurnNumber}]   {p.Name}: {desc}");
     }
 
     /// <summary>

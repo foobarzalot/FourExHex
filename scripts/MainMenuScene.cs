@@ -10,13 +10,32 @@ using Godot;
 /// </summary>
 public partial class MainMenuScene : Control
 {
-    private const int HumanIndex = 0;
-    private const int AiIndex = 1;
+    // Indices into the OptionButton item list; values are stored as
+    // the OptionButton's item ID so the selection round-trips via
+    // GetSelectedId() regardless of reordering.
+    private const int HumanId = 0;
+    private const int RandomAiId = 1;
+    private const int HeuristicAiId = 2;
 
     private readonly OptionButton[] _roleButtons = new OptionButton[GameSettings.PlayerConfig.Length];
 
     public override void _Ready()
     {
+        // Diagnostic launch: if FOUREXHEX_6AI is set we skip the
+        // menu entirely and jump straight into the game scene with
+        // all slots pre-configured as Heuristic. Main.cs handles the
+        // rest (sync pacer, logging, turn cap, auto-quit). Deferred
+        // so the scene change happens after _Ready completes.
+        if (OS.GetEnvironment("FOUREXHEX_6AI").Length > 0)
+        {
+            for (int i = 0; i < GameSettings.PlayerKinds.Length; i++)
+            {
+                GameSettings.PlayerKinds[i] = AiKind.Heuristic;
+            }
+            CallDeferred(nameof(LaunchGameScene));
+            return;
+        }
+
         // Stretch to fill the viewport so the scrim/background and
         // centered content behave predictably.
         AnchorLeft = 0f;
@@ -104,10 +123,29 @@ public partial class MainMenuScene : Control
                 Position = new Vector2(panelW - rowInset - dropdownWidth, rowY + 10f),
                 Size = new Vector2(dropdownWidth, 32f),
             };
-            dropdown.AddItem("Human", HumanIndex);
-            dropdown.AddItem("AI", AiIndex);
-            bool isAi = i < GameSettings.PlayerIsAi.Length && GameSettings.PlayerIsAi[i];
-            dropdown.Selected = isAi ? AiIndex : HumanIndex;
+            dropdown.AddItem("Human", HumanId);
+            dropdown.AddItem("Random AI", RandomAiId);
+            dropdown.AddItem("Heuristic AI", HeuristicAiId);
+            AiKind currentKind = i < GameSettings.PlayerKinds.Length
+                ? GameSettings.PlayerKinds[i]
+                : AiKind.Random;
+            int initialId = currentKind switch
+            {
+                AiKind.Human => HumanId,
+                AiKind.Random => RandomAiId,
+                AiKind.Heuristic => HeuristicAiId,
+                _ => HumanId,
+            };
+            // Selected is an index; find the entry that matches the
+            // ID we want and select that index.
+            for (int item = 0; item < dropdown.ItemCount; item++)
+            {
+                if (dropdown.GetItemId(item) == initialId)
+                {
+                    dropdown.Selected = item;
+                    break;
+                }
+            }
             panel.AddChild(dropdown);
             _roleButtons[i] = dropdown;
         }
@@ -122,11 +160,23 @@ public partial class MainMenuScene : Control
         panel.AddChild(startButton);
     }
 
+    private void LaunchGameScene()
+    {
+        GetTree().ChangeSceneToFile("res://scenes/main.tscn");
+    }
+
     private void OnStartPressed()
     {
         for (int i = 0; i < _roleButtons.Length; i++)
         {
-            GameSettings.PlayerIsAi[i] = _roleButtons[i].Selected == AiIndex;
+            int selectedId = _roleButtons[i].GetSelectedId();
+            GameSettings.PlayerKinds[i] = selectedId switch
+            {
+                HumanId => AiKind.Human,
+                RandomAiId => AiKind.Random,
+                HeuristicAiId => AiKind.Heuristic,
+                _ => AiKind.Human,
+            };
         }
         GetTree().ChangeSceneToFile("res://scenes/main.tscn");
     }

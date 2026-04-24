@@ -43,6 +43,11 @@
     <Compile Include="..\scripts\TreeRules.cs" Link="scripts\TreeRules.cs" />
     <Compile Include="..\scripts\Tower.cs" Link="scripts\Tower.cs" />
     <Compile Include="..\scripts\AiAction.cs" Link="scripts\AiAction.cs" />
+    <Compile Include="..\scripts\AiLog.cs" Link="scripts\AiLog.cs" />
+    <Compile Include="..\scripts\AiCommon.cs" Link="scripts\AiCommon.cs" />
+    <Compile Include="..\scripts\AiSimulator.cs" Link="scripts\AiSimulator.cs" />
+    <Compile Include="..\scripts\AiStateScorer.cs" Link="scripts\AiStateScorer.cs" />
+    <Compile Include="..\scripts\HeuristicAi.cs" Link="scripts\HeuristicAi.cs" />
     <Compile Include="..\scripts\RandomAi.cs" Link="scripts\RandomAi.cs" />
     <Compile Include="..\scripts\PurchaseRules.cs" Link="scripts\PurchaseRules.cs" />
     <Compile Include="..\scripts\DefenseRules.cs" Link="scripts\DefenseRules.cs" />
