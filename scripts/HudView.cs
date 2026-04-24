@@ -354,7 +354,7 @@ public partial class HudView : CanvasLayer, IHudView
             int upkeep = UpkeepRules.TotalUpkeepFor(selected, state.Grid);
             int net = income - upkeep;
             string sign = net >= 0 ? "+" : "";
-            _goldLabel.Text = $"Gold: {gold}  (income {income}, upkeep {upkeep}, net {sign}{net})";
+            _goldLabel.Text = $"{gold}g ({income}-{upkeep}={sign}{net})";
             _buyPeasantButton.Visible = PurchaseRules.CanAffordPeasant(selected, state.Treasury);
             _buyPeasantButton.Text = session.Mode == SessionState.ActionMode.BuyingPeasant
                 ? "Click a tile..."
