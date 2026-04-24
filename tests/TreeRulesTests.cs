@@ -8,6 +8,7 @@ namespace FourExHex.Tests;
 public class TreeRulesTests
 {
     private static readonly Color Red = new Color(1f, 0f, 0f);
+    private static readonly Color Blue = new Color(0f, 0f, 1f);
 
     private static HexGrid BuildAxialGrid(int qMin, int qMax, int rMin, int rMax)
     {
@@ -33,13 +34,13 @@ public class TreeRulesTests
     // --- ConvertGravesToTrees --------------------------------------------
 
     [Fact]
-    public void ConvertGravesToTrees_ReplacesEveryGraveWithTree()
+    public void ConvertGravesToTrees_ReplacesOwnerColorGravesWithTree()
     {
         HexGrid grid = BuildAxialGrid(-1, 2, -1, 2);
         grid.Get(new HexCoord(0, 0))!.Occupant = new Grave();
         grid.Get(new HexCoord(1, 0))!.Occupant = new Grave();
 
-        TreeRules.ConvertGravesToTrees(grid);
+        TreeRules.ConvertGravesToTrees(grid, Red);
 
         Assert.IsType<Tree>(grid.Get(new HexCoord(0, 0))!.Occupant);
         Assert.IsType<Tree>(grid.Get(new HexCoord(1, 0))!.Occupant);
@@ -52,10 +53,38 @@ public class TreeRulesTests
         grid.Get(new HexCoord(0, 0))!.Occupant = new Unit(Red);
         grid.Get(new HexCoord(1, 0))!.Occupant = new Capital();
 
-        TreeRules.ConvertGravesToTrees(grid);
+        TreeRules.ConvertGravesToTrees(grid, Red);
 
         Assert.IsType<Unit>(grid.Get(new HexCoord(0, 0))!.Occupant);
         Assert.IsType<Capital>(grid.Get(new HexCoord(1, 0))!.Occupant);
+    }
+
+    [Fact]
+    public void ConvertGravesToTrees_IgnoresGravesOnOtherPlayersTiles()
+    {
+        // Red-tile grave converts, Blue-tile grave stays when we end
+        // Red's turn.
+        HexGrid grid = BuildAxialGrid(-1, 2, -1, 2);
+        grid.Get(new HexCoord(0, 0))!.Color = Blue;
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Grave();
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Grave(); // Red tile
+
+        TreeRules.ConvertGravesToTrees(grid, Red);
+
+        Assert.IsType<Grave>(grid.Get(new HexCoord(0, 0))!.Occupant);
+        Assert.IsType<Tree>(grid.Get(new HexCoord(1, 0))!.Occupant);
+    }
+
+    [Fact]
+    public void ConvertGravesToTrees_NoGravesOfOwnerColor_NoOp()
+    {
+        HexGrid grid = BuildAxialGrid(-1, 2, -1, 2);
+        grid.Get(new HexCoord(0, 0))!.Color = Blue;
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Grave();
+
+        TreeRules.ConvertGravesToTrees(grid, Red);
+
+        Assert.IsType<Grave>(grid.Get(new HexCoord(0, 0))!.Occupant);
     }
 
     // --- SpreadTrees: no-op cases -----------------------------------------

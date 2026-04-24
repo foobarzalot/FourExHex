@@ -534,14 +534,15 @@ public class GameControllerTests
     public void EndTurn_ConvertsGravesToTrees()
     {
         var g = new TestGame();
-        // Drop a stray grave on a tile (as if left over from a previous
-        // bankruptcy). End of turn should convert it into a tree rather
-        // than clearing it — trees are the "rotted corpse" legacy.
-        g.Tile(3, 0).Occupant = new Grave();
+        // Drop a stray grave on the ending player's tile (as if left
+        // over from a previous bankruptcy). End of turn should convert
+        // it into a tree rather than clearing it — trees are the
+        // "rotted corpse" legacy.
+        g.Tile(0, 1).Occupant = new Grave(); // Red tile; Red ends below.
 
         g.Hud.ClickEndTurn();
 
-        Assert.IsType<Tree>(g.Tile(3, 0).Occupant);
+        Assert.IsType<Tree>(g.Tile(0, 1).Occupant);
     }
 
     [Fact]
@@ -603,6 +604,70 @@ public class GameControllerTests
 
         // End Blue's turn: the bankruptcy grave converts into a tree.
         g.Hud.ClickEndTurn();
+        Assert.IsType<Tree>(g.Tile(3, 0).Occupant);
+    }
+
+    // --- Grave-to-tree: owner-specific timing ----------------------------
+    // A grave on a given player's tile should only convert into a tree at
+    // the end of THAT player's turn, not at the end of any other player's
+    // turn. The grave's "owner" is the tile's color.
+
+    [Fact]
+    public void EndTurn_GraveOnNonEndingPlayersTile_Survives()
+    {
+        // Grave sits on a Blue tile. Red's turn ends. Only Blue's turn-end
+        // should convert it — so right now the grave must survive.
+        var g = new TestGame();
+        g.Tile(3, 0).Occupant = new Grave();
+        Assert.Equal(g.Blue.Color, g.Tile(3, 0).Color); // sanity: grave is on Blue
+
+        g.Hud.ClickEndTurn(); // Red ends; Blue now current.
+
+        Assert.IsType<Grave>(g.Tile(3, 0).Occupant);
+    }
+
+    [Fact]
+    public void EndTurn_GraveOnEndingPlayersTile_ConvertsToTree()
+    {
+        // Grave on a Red tile. Red's turn ends. It must convert.
+        var g = new TestGame();
+        g.Tile(0, 1).Occupant = new Grave();
+        Assert.Equal(g.Red.Color, g.Tile(0, 1).Color);
+
+        g.Hud.ClickEndTurn(); // Red ends.
+
+        Assert.IsType<Tree>(g.Tile(0, 1).Occupant);
+    }
+
+    [Fact]
+    public void EndTurn_MixedGraves_OnlyEndingPlayersColorConverts()
+    {
+        // Two graves: one on a Red tile, one on a Blue tile. When Red
+        // ends their turn, only the Red-tile grave converts. The Blue-
+        // tile grave must wait for Blue's own end-of-turn.
+        var g = new TestGame();
+        g.Tile(0, 1).Occupant = new Grave(); // Red tile
+        g.Tile(3, 0).Occupant = new Grave(); // Blue tile
+
+        g.Hud.ClickEndTurn(); // Red ends.
+
+        Assert.IsType<Tree>(g.Tile(0, 1).Occupant);
+        Assert.IsType<Grave>(g.Tile(3, 0).Occupant);
+    }
+
+    [Fact]
+    public void EndTurn_GraveOnBlueTile_ConvertsOnlyAfterBlueEndsTurn()
+    {
+        // End-to-end statement of the rule: a grave on a Blue tile
+        // persists through Red's end-of-turn, and only becomes a tree
+        // when Blue's own turn ends.
+        var g = new TestGame();
+        g.Tile(3, 0).Occupant = new Grave();
+
+        g.Hud.ClickEndTurn(); // Red ends → Blue's turn begins.
+        Assert.IsType<Grave>(g.Tile(3, 0).Occupant);
+
+        g.Hud.ClickEndTurn(); // Blue ends → now it converts.
         Assert.IsType<Tree>(g.Tile(3, 0).Occupant);
     }
 

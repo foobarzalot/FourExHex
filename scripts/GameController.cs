@@ -563,7 +563,7 @@ public class GameController
     {
         _state.Treasury.CollectIncomeFor(
             _state.Turns.CurrentPlayer, _state.Territories, _state.Grid);
-        TreeRules.ConvertGravesToTrees(_state.Grid);
+        TreeRules.ConvertGravesToTrees(_state.Grid, _state.Turns.CurrentPlayer.Color);
         TreeRules.SpreadTrees(_state.Grid);
     }
 

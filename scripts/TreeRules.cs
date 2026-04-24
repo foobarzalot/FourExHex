@@ -1,9 +1,11 @@
 using System.Collections.Generic;
 using System.Linq;
+using Godot;
 
 /// <summary>
 /// Pure rules for tree behavior on the board:
-///   - <see cref="ConvertGravesToTrees"/>: turn every grave into a tree.
+///   - <see cref="ConvertGravesToTrees"/>: turn graves owned by a given
+///     player into trees (tile color identifies the owner).
 ///   - <see cref="SpreadTrees"/>: each pair of adjacent trees spawns a
 ///     third tree in an empty cell they both touch. Only ONE new tree is
 ///     created per pair, chosen deterministically as the lex-min candidate
@@ -19,14 +21,17 @@ using System.Linq;
 public static class TreeRules
 {
     /// <summary>
-    /// Replace every <see cref="Grave"/> on the grid with a <see cref="Tree"/>.
-    /// Called at the end of a turn before <see cref="SpreadTrees"/>.
+    /// Replace each <see cref="Grave"/> on a tile owned by
+    /// <paramref name="owner"/> (i.e. <c>tile.Color == owner</c>) with a
+    /// <see cref="Tree"/>. Graves on other players' tiles are left in
+    /// place — they only rot into trees at the end of their own owner's
+    /// turn. Called at the end of a turn before <see cref="SpreadTrees"/>.
     /// </summary>
-    public static void ConvertGravesToTrees(HexGrid grid)
+    public static void ConvertGravesToTrees(HexGrid grid, Color owner)
     {
         foreach (HexTile tile in grid.Tiles)
         {
-            if (tile.Occupant is Grave)
+            if (tile.Occupant is Grave && tile.Color == owner)
             {
                 tile.Occupant = new Tree();
             }
