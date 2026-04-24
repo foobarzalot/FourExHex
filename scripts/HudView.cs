@@ -33,6 +33,8 @@ public partial class HudView : CanvasLayer, IHudView
     private Button _redoLastButton = null!;
     private Button _redoAllButton = null!;
     private Button _endTurnButton = null!;
+    private Button _endGameButton = null!;
+    private ConfirmationDialog _endGameDialog = null!;
     private Control _victoryOverlay = null!;
     private Label _victoryLabel = null!;
 
@@ -161,6 +163,32 @@ public partial class HudView : CanvasLayer, IHudView
         _endTurnButton.AddThemeFontSizeOverride("font_size", 18);
         _endTurnButton.Pressed += () => EndTurnClicked?.Invoke();
         rightHbox.AddChild(_endTurnButton);
+
+        // Abandon-game button in the top-right corner. Always available;
+        // prompts a confirmation dialog before returning to the main
+        // menu (which rerandomizes the grid next time Start Game is
+        // pressed because Main._Ready rebuilds the grid every scene
+        // load).
+        _endGameButton = new Button
+        {
+            Text = "End Game",
+            FocusMode = Control.FocusModeEnum.None,
+        };
+        _endGameButton.AddThemeFontSizeOverride("font_size", 18);
+        _endGameButton.Pressed += () => _endGameDialog.PopupCentered();
+        rightHbox.AddChild(_endGameButton);
+
+        _endGameDialog = new ConfirmationDialog
+        {
+            Title = "End Game",
+            DialogText = "Return to the main menu? The current game will be lost.",
+            OkButtonText = "End Game",
+            // Exclusive so it can't be dismissed by clicking outside —
+            // the user must pick End Game or Cancel.
+            Exclusive = true,
+        };
+        _endGameDialog.Confirmed += () => MainMenuClicked?.Invoke();
+        AddChild(_endGameDialog);
 
         BuildVictoryOverlay(viewport);
     }
