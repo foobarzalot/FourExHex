@@ -19,6 +19,7 @@ public class MockHudView : IHudView
     public event Action? NewGameClicked;
     public event Action? MainMenuClicked;
     public event Action? NextTerritoryClicked;
+    public event Action? CancelActionPressed;
 
     public int RefreshCount { get; private set; }
     public GameState? LastState { get; private set; }
@@ -43,4 +44,5 @@ public class MockHudView : IHudView
     public void ClickEndTurn() => EndTurnClicked?.Invoke();
     public void ClickNewGame() => NewGameClicked?.Invoke();
     public void ClickMainMenu() => MainMenuClicked?.Invoke();
+    public void PressCancelAction() => CancelActionPressed?.Invoke();
 }

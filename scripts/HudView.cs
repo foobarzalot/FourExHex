@@ -22,6 +22,7 @@ public partial class HudView : CanvasLayer, IHudView
     public event Action? NewGameClicked;
     public event Action? MainMenuClicked;
     public event Action? NextTerritoryClicked;
+    public event Action? CancelActionPressed;
 
     private Label _turnLabel = null!;
     private Label _playerLabel = null!;
@@ -288,6 +289,10 @@ public partial class HudView : CanvasLayer, IHudView
                 break;
             case Key.Tab:
                 NextTerritoryClicked?.Invoke();
+                GetViewport().SetInputAsHandled();
+                break;
+            case Key.Escape:
+                CancelActionPressed?.Invoke();
                 GetViewport().SetInputAsHandled();
                 break;
             case Key.U:

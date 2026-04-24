@@ -18,6 +18,7 @@ public interface IHudView
     event Action? NewGameClicked;
     event Action? MainMenuClicked;
     event Action? NextTerritoryClicked;
+    event Action? CancelActionPressed;
 
     /// <summary>
     /// Update every label, button disabled state, and the End Turn CTA

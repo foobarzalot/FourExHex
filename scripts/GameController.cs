@@ -91,6 +91,7 @@ public class GameController
         _hud.RedoAllClicked += OnRedoAllPressed;
         _hud.EndTurnClicked += OnEndTurnPressed;
         _hud.NextTerritoryClicked += OnNextTerritoryPressed;
+        _hud.CancelActionPressed += OnCancelActionPressed;
     }
 
     /// <summary>
@@ -418,6 +419,13 @@ public class GameController
         _session.ClearPendingAction();
         _map.ShowMoveTargets(System.Array.Empty<HexCoord>());
         _map.ShowMoveSource(null);
+    }
+
+    private void OnCancelActionPressed()
+    {
+        if (_session.IsGameOver) return;
+        CancelPendingAction();
+        RefreshViews();
     }
 
     // --- Undo / redo ------------------------------------------------------

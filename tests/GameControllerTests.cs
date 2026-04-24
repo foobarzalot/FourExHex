@@ -1700,4 +1700,53 @@ public class GameControllerTests
 
         Assert.False(g.Hud.LastHasActionableRemaining);
     }
+
+    // --- Cancel pending action (Escape) ----------------------------------
+
+    [Fact]
+    public void CancelAction_WhileBuyingPeasant_ClearsMode()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 25);
+        g.Hud.ClickBuyPeasant();
+        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+
+        g.Hud.PressCancelAction();
+
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+    }
+
+    [Fact]
+    public void CancelAction_WhileBuildingTower_ClearsMode()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 25);
+        g.Hud.ClickBuildTower();
+        Assert.Equal(SessionState.ActionMode.BuildingTower, g.Session.Mode);
+
+        g.Hud.PressCancelAction();
+
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+    }
+
+    [Fact]
+    public void CancelAction_WhileMovingUnit_ClearsModeAndMapOverlays()
+    {
+        var g = new TestGame();
+        g.Tile(1, 1).Occupant = new Unit(g.Red.Color);
+        g.Map.SimulateClick(g.Tile(1, 1));
+        Assert.Equal(SessionState.ActionMode.MovingUnit, g.Session.Mode);
+        Assert.NotEmpty(g.Map.LastMoveTargets);
+        Assert.NotNull(g.Map.LastMoveSource);
+
+        g.Hud.PressCancelAction();
+
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+        Assert.Empty(g.Map.LastMoveTargets);
+        Assert.Null(g.Map.LastMoveSource);
+    }
 }
