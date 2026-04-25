@@ -299,4 +299,42 @@ public class TreasuryTests
         // The old capital key no longer holds any gold.
         Assert.Equal(0, treasury.GetGold(new HexCoord(0, 0)));
     }
+
+    [Fact]
+    public void Reconcile_AttackerCapturesEnemyCapitalTile_DoesNotInheritEnemyGold()
+    {
+        // Real-world capture: TerritoryFinder returns BOTH sides, so the
+        // attacker's expanded territory is in the new-territory list AND
+        // contains the enemy capital coord. The attacker must NOT inherit
+        // the enemy's treasury — taking an enemy capital destroys it
+        // (Slay's rule), it doesn't transfer. Regression test for a bug
+        // where ReconcileAfterCapture inherited gold by coord without
+        // checking owner, so capturing an enemy capital tile credited
+        // that enemy's gold to the attacker.
+        var redCap = new HexCoord(0, 0);
+        var blueCap = new HexCoord(1, 0);
+
+        Territory redBefore = MakeTerritory(Red, redCap,
+            new HexCoord(0, 0), new HexCoord(0, 1));
+        Territory blueBefore = MakeTerritory(Blue, blueCap,
+            new HexCoord(1, 0), new HexCoord(2, 0));
+
+        var treasury = new Treasury();
+        treasury.SetGold(redCap, 3);
+        treasury.SetGold(blueCap, 12);
+
+        // After: red expanded into (1,0); blue shrank to a singleton at (2,0).
+        Territory redAfter = MakeTerritory(Red, redCap,
+            new HexCoord(0, 0), new HexCoord(0, 1), new HexCoord(1, 0));
+        Territory blueAfter = Singleton(Blue, new HexCoord(2, 0));
+
+        treasury.ReconcileAfterCapture(
+            new[] { redBefore, blueBefore },
+            new[] { redAfter, blueAfter });
+
+        // Red keeps exactly its own pre-capture gold — no transfer from blue.
+        Assert.Equal(3, treasury.GetGold(redCap));
+        // Blue's old capital coord no longer holds any gold.
+        Assert.Equal(0, treasury.GetGold(blueCap));
+    }
 }

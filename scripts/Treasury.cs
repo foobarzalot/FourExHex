@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Godot;
 
 /// <summary>
 /// Holds the gold balance for every capital hex on the map, keyed by capital
@@ -72,19 +73,22 @@ public class Treasury
         IReadOnlyList<Territory> oldTerritories,
         IReadOnlyList<Territory> newTerritories)
     {
-        // Snapshot the gold that was attached to each old capital.
-        var oldCapitalGold = new Dictionary<HexCoord, int>();
+        // Snapshot each old capital's owner + gold. Owner is needed so a
+        // captured enemy capital tile doesn't bleed gold into the
+        // attacker's treasury (Slay's rule: taking an enemy capital
+        // destroys their gold, it doesn't transfer).
+        var oldCapitalInfo = new Dictionary<HexCoord, (Color Owner, int Gold)>();
         foreach (Territory old in oldTerritories)
         {
             if (old.HasCapital)
             {
                 HexCoord oldCap = old.Capital!.Value;
-                oldCapitalGold[oldCap] = GetGold(oldCap);
+                oldCapitalInfo[oldCap] = (old.Owner, GetGold(oldCap));
             }
         }
 
         // Build the new gold map by inheriting each new territory's treasury
-        // from whatever old capitals still lie inside it.
+        // from whatever same-owner old capitals still lie inside it.
         var newGold = new Dictionary<HexCoord, int>();
         foreach (Territory newT in newTerritories)
         {
@@ -94,9 +98,10 @@ public class Treasury
             int inheritedTotal = 0;
             foreach (HexCoord coord in newT.Coords)
             {
-                if (oldCapitalGold.TryGetValue(coord, out int oldGold))
+                if (oldCapitalInfo.TryGetValue(coord, out (Color Owner, int Gold) info)
+                    && info.Owner == newT.Owner)
                 {
-                    inheritedTotal += oldGold;
+                    inheritedTotal += info.Gold;
                 }
             }
 

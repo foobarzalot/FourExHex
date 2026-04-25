@@ -283,7 +283,7 @@ public class GameController
 
         if (result.WasCapture)
         {
-            HandleCapture();
+            HandleCapture($"Buy {level} → {destination}");
             RebindSelectionToContaining(destination);
         }
 
@@ -340,7 +340,7 @@ public class GameController
 
         if (result.WasCapture)
         {
-            HandleCapture();
+            HandleCapture($"Move {source}→{destination}");
             RebindSelectionToContaining(destination);
         }
 
@@ -406,12 +406,18 @@ public class GameController
         }
     }
 
-    private void HandleCapture()
+    private void HandleCapture(string actionDesc)
     {
         IReadOnlyList<Territory> previous = _state.Territories;
+        Dictionary<HexCoord, (Color Owner, int Gold)> oldCaps = SnapshotCapitals(previous);
+
         IReadOnlyList<Territory> raw = TerritoryFinder.FindAll(_state.Grid);
         _state.Territories = CapitalReconciler.Reconcile(raw, previous, _state.Grid);
         _state.Treasury.ReconcileAfterCapture(previous, _state.Territories);
+
+        Dictionary<HexCoord, (Color Owner, int Gold)> newCaps = SnapshotCapitals(_state.Territories);
+        LogCaptureDiff(actionDesc, oldCaps, newCaps);
+
         _map.RebuildAfterTerritoryChange();
 
         // After every capture, check whether only one player still
@@ -981,7 +987,7 @@ public class GameController
         MoveResult result = MovementRules.Move(source, destination, _state.Grid, attacker);
         if (result.WasCapture)
         {
-            HandleCapture();
+            HandleCapture($"Move {source}→{destination}");
         }
     }
 
@@ -1015,7 +1021,7 @@ public class GameController
         MoveResult result = MovementRules.PlaceNew(unit, destination, _state.Grid, attacker);
         if (result.WasCapture)
         {
-            HandleCapture();
+            HandleCapture($"Buy {level} → {destination}");
         }
     }
 
@@ -1080,6 +1086,67 @@ public class GameController
             }
         }
         return null;
+    }
+
+    /// <summary>
+    /// Snapshot every capital-bearing territory's (owner, gold) keyed by
+    /// capital coord. Used by the [Capture] trace to diff before/after
+    /// reconcile so the log records only what actually changed.
+    /// </summary>
+    private Dictionary<HexCoord, (Color Owner, int Gold)> SnapshotCapitals(
+        IReadOnlyList<Territory> territories)
+    {
+        var snap = new Dictionary<HexCoord, (Color Owner, int Gold)>();
+        foreach (Territory t in territories)
+        {
+            if (!t.HasCapital) continue;
+            HexCoord cap = t.Capital!.Value;
+            snap[cap] = (t.Owner, _state.Treasury.GetGold(cap));
+        }
+        return snap;
+    }
+
+    /// <summary>
+    /// Print the [Capture] trace: header + one body line per
+    /// capital-coord whose existence, owner, or gold changed across the
+    /// reconcile. Untouched capitals are omitted so the log stays
+    /// readable even on large multi-player maps.
+    /// </summary>
+    private void LogCaptureDiff(
+        string actionDesc,
+        Dictionary<HexCoord, (Color Owner, int Gold)> oldCaps,
+        Dictionary<HexCoord, (Color Owner, int Gold)> newCaps)
+    {
+        Console.WriteLine(
+            $"[Capture T{_state.Turns.TurnNumber} {_state.Turns.CurrentPlayer.Name}] {actionDesc}");
+
+        var coords = new HashSet<HexCoord>(oldCaps.Keys);
+        coords.UnionWith(newCaps.Keys);
+        var sorted = new List<HexCoord>(coords);
+        sorted.Sort();
+
+        bool any = false;
+        foreach (HexCoord c in sorted)
+        {
+            bool inOld = oldCaps.TryGetValue(c, out (Color Owner, int Gold) o);
+            bool inNew = newCaps.TryGetValue(c, out (Color Owner, int Gold) n);
+            if (inOld && inNew && o.Owner == n.Owner && o.Gold == n.Gold) continue;
+
+            string oldStr = inOld ? $"{PlayerNameFor(o.Owner)}={o.Gold}g" : "—";
+            string newStr = inNew ? $"{PlayerNameFor(n.Owner)}={n.Gold}g" : "gone";
+            Console.WriteLine($"  {c}: {oldStr} → {newStr}");
+            any = true;
+        }
+        if (!any) Console.WriteLine("  (no capital/gold changes)");
+    }
+
+    private string PlayerNameFor(Color c)
+    {
+        foreach (Player p in _state.Turns.Players)
+        {
+            if (p.Color == c) return p.Name;
+        }
+        return c.ToString();
     }
 
     // --- View refresh -----------------------------------------------------
