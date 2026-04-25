@@ -65,7 +65,7 @@ public static class AiSimulator
                 ApplyMove(mv.Source, mv.Destination, state);
                 break;
             case AiBuyUnitAction bu:
-                ApplyBuy(bu.Capital, bu.Destination, state);
+                ApplyBuy(bu.Capital, bu.Destination, bu.Level, state);
                 break;
             case AiBuildTowerAction bt:
                 ApplyBuildTower(bt.Capital, bt.Destination, state);
@@ -85,14 +85,14 @@ public static class AiSimulator
         }
     }
 
-    private static void ApplyBuy(HexCoord capital, HexCoord destination, GameState state)
+    private static void ApplyBuy(HexCoord capital, HexCoord destination, UnitLevel level, GameState state)
     {
         Territory? territory = FindByCapital(capital, state);
         if (territory == null) return;
 
         state.Treasury.SetGold(
-            capital, state.Treasury.GetGold(capital) - PurchaseRules.PeasantCost);
-        var unit = new Unit(territory.Owner);
+            capital, state.Treasury.GetGold(capital) - PurchaseRules.CostFor(level));
+        var unit = new Unit(territory.Owner, level);
         MoveResult result = MovementRules.PlaceNew(unit, destination, state.Grid, territory);
         if (result.WasCapture)
         {

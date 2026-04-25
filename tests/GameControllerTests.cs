@@ -774,7 +774,7 @@ public class GameControllerTests
     {
         (GameState state, MockHexMapView map, MockHudView hud) = BuildAiFixture();
         // (4,0) is Blue — no territory has that capital.
-        var bad = new AiBuyUnitAction(HexCoord.FromOffset(4, 0), HexCoord.FromOffset(2, 1));
+        var bad = new AiBuyUnitAction(HexCoord.FromOffset(4, 0), HexCoord.FromOffset(2, 1), UnitLevel.Peasant);
         GameController c = BuildHarnessWithStubAi(state, map, hud, bad);
 
         Assert.Throws<InvalidOperationException>(() => c.StartGame());
@@ -790,8 +790,8 @@ public class GameControllerTests
         // the second is a bad buy whose affordability check now fails.
         (GameState state, MockHexMapView map, MockHudView hud) = BuildAiFixture();
         HexCoord cap = RedCapital(state);
-        var first = new AiBuyUnitAction(cap, HexCoord.FromOffset(2, 1));
-        var second = new AiBuyUnitAction(cap, HexCoord.FromOffset(2, 1));
+        var first = new AiBuyUnitAction(cap, HexCoord.FromOffset(2, 1), UnitLevel.Peasant);
+        var second = new AiBuyUnitAction(cap, HexCoord.FromOffset(2, 1), UnitLevel.Peasant);
         GameController c = BuildHarnessWithStubAi(state, map, hud, first, second);
 
         Assert.Throws<InvalidOperationException>(() => c.StartGame());
@@ -804,7 +804,7 @@ public class GameControllerTests
         HexCoord cap = RedCapital(state);
         state.Treasury.SetGold(cap, 20);
         // (4,1) is Blue and not adjacent to any Red tile.
-        var bad = new AiBuyUnitAction(cap, HexCoord.FromOffset(4, 1));
+        var bad = new AiBuyUnitAction(cap, HexCoord.FromOffset(4, 1), UnitLevel.Peasant);
         GameController c = BuildHarnessWithStubAi(state, map, hud, bad);
 
         Assert.Throws<InvalidOperationException>(() => c.StartGame());
@@ -1748,5 +1748,282 @@ public class GameControllerTests
         Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
         Assert.Empty(g.Map.LastMoveTargets);
         Assert.Null(g.Map.LastMoveSource);
+    }
+
+    // --- Buy button cycle (Peasant → Spearman → Knight → Baron → Peasant) ---
+
+    [Fact]
+    public void BuyPressed_FromNoneMode_EntersBuyingPeasant_WhenAllAffordable()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 100);
+
+        g.Hud.ClickBuyPeasant();
+
+        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+    }
+
+    [Fact]
+    public void BuyPressed_WhileBuyingPeasant_CyclesToBuyingSpearman()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 100);
+
+        g.Hud.ClickBuyPeasant();
+        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+
+        g.Hud.ClickBuyPeasant();
+
+        Assert.Equal(SessionState.ActionMode.BuyingSpearman, g.Session.Mode);
+    }
+
+    [Fact]
+    public void BuyPressed_WhileBuyingSpearman_CyclesToBuyingKnight()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 100);
+
+        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyPeasant();
+        Assert.Equal(SessionState.ActionMode.BuyingSpearman, g.Session.Mode);
+
+        g.Hud.ClickBuyPeasant();
+
+        Assert.Equal(SessionState.ActionMode.BuyingKnight, g.Session.Mode);
+    }
+
+    [Fact]
+    public void BuyPressed_WhileBuyingKnight_CyclesToBuyingBaron()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 100);
+
+        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyPeasant();
+        Assert.Equal(SessionState.ActionMode.BuyingKnight, g.Session.Mode);
+
+        g.Hud.ClickBuyPeasant();
+
+        Assert.Equal(SessionState.ActionMode.BuyingBaron, g.Session.Mode);
+    }
+
+    [Fact]
+    public void BuyPressed_WhileBuyingBaron_CyclesBackToBuyingPeasant()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 100);
+
+        // Cycle 4 times to reach Baron.
+        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyPeasant();
+        Assert.Equal(SessionState.ActionMode.BuyingBaron, g.Session.Mode);
+
+        g.Hud.ClickBuyPeasant();
+
+        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+    }
+
+    [Fact]
+    public void BuyPressed_SkipsUnaffordableLevels()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        // 25g: Peasant (10) ✓, Spearman (20) ✓, Knight (30) ✗, Baron (40) ✗.
+        g.State.Treasury.SetGold(redCapital, 25);
+
+        g.Hud.ClickBuyPeasant();
+        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+
+        g.Hud.ClickBuyPeasant();
+        Assert.Equal(SessionState.ActionMode.BuyingSpearman, g.Session.Mode);
+
+        // Knight and Baron unaffordable → wraps back to Peasant.
+        g.Hud.ClickBuyPeasant();
+        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+    }
+
+    [Fact]
+    public void BuyPressed_OnlyPeasantAffordable_IsNoOp_WhenAlreadyBuyingPeasant()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 15); // only Peasant affordable
+
+        g.Hud.ClickBuyPeasant();
+        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+
+        g.Hud.ClickBuyPeasant();
+
+        // Only Peasant affordable → cycle has nowhere else to go → stay put.
+        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+    }
+
+    [Fact]
+    public void BuyPressed_NothingAffordable_IsNoOp()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 5);
+
+        g.Hud.ClickBuyPeasant();
+
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+    }
+
+    [Fact]
+    public void BuySpearman_OnOwnEmptyTile_DeductsTwentyGoldAndPlacesSpearman()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 30);
+
+        // Cycle to Spearman.
+        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyPeasant();
+        Assert.Equal(SessionState.ActionMode.BuyingSpearman, g.Session.Mode);
+
+        g.Map.SimulateClick(g.Tile(1, 1));
+
+        Assert.NotNull(g.Tile(1, 1).Unit);
+        Assert.Equal(UnitLevel.Spearman, g.Tile(1, 1).Unit!.Level);
+        Assert.Equal(g.Red.Color, g.Tile(1, 1).Unit!.Owner);
+        // 30 - 20 = 10. Cannot afford another Spearman, but CAN afford
+        // a Peasant → drop down to BuyingPeasant.
+        Assert.Equal(10, g.State.Treasury.GetGold(redCapital));
+        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+    }
+
+    [Fact]
+    public void BuyKnight_OntoCapturableEnemySpearmanTile_CapturesImmediately()
+    {
+        var g = new TestGame();
+        // Plant an enemy Spearman on (2,1) — Blue, adjacent to Red's (1,1).
+        // Defense = 2 (the spearman itself); a Knight (3) > 2 → captures.
+        g.Tile(2, 1).Occupant = new Unit(g.Blue.Color, UnitLevel.Spearman);
+
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 50);
+
+        // Cycle to Knight.
+        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyPeasant();
+        Assert.Equal(SessionState.ActionMode.BuyingKnight, g.Session.Mode);
+
+        g.Map.SimulateClick(g.Tile(2, 1));
+
+        Assert.Equal(g.Red.Color, g.Tile(2, 1).Color);
+        Assert.NotNull(g.Tile(2, 1).Unit);
+        Assert.Equal(UnitLevel.Knight, g.Tile(2, 1).Unit!.Level);
+        Assert.True(g.Tile(2, 1).Unit!.HasMovedThisTurn);
+        // 50 - 30 = 20.
+        Assert.Equal(20, g.State.Treasury.GetGold(g.Session.SelectedTerritory!.Capital!.Value));
+    }
+
+    [Fact]
+    public void BuyKnight_AfterPurchase_FallsBackToSpearman_IfKnightUnaffordableButSpearmanIs()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 50);
+
+        // Cycle to Knight.
+        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyPeasant();
+        Assert.Equal(SessionState.ActionMode.BuyingKnight, g.Session.Mode);
+
+        g.Map.SimulateClick(g.Tile(1, 1));
+
+        // 50 - 30 = 20. Can't afford another Knight (need 30), but CAN
+        // afford a Spearman (20) → drop down to BuyingSpearman.
+        Assert.Equal(20, g.State.Treasury.GetGold(redCapital));
+        Assert.Equal(SessionState.ActionMode.BuyingSpearman, g.Session.Mode);
+    }
+
+    [Fact]
+    public void BuyBaron_AfterPurchase_FallsBackToPeasant_IfOnlyPeasantStillAffordable()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 55);
+
+        // Cycle to Baron.
+        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyPeasant();
+        Assert.Equal(SessionState.ActionMode.BuyingBaron, g.Session.Mode);
+
+        g.Map.SimulateClick(g.Tile(1, 1));
+
+        // 55 - 40 = 15. Knight (30) and Spearman (20) unaffordable; only
+        // Peasant (10) affordable → drop to BuyingPeasant.
+        Assert.Equal(15, g.State.Treasury.GetGold(redCapital));
+        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+    }
+
+    [Fact]
+    public void BuyKnight_AfterPurchase_ExitsMode_IfNothingAffordable()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 35);
+
+        // Cycle to Knight.
+        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyPeasant();
+        Assert.Equal(SessionState.ActionMode.BuyingKnight, g.Session.Mode);
+
+        g.Map.SimulateClick(g.Tile(1, 1));
+
+        // 35 - 30 = 5. Nothing affordable → exit to None.
+        Assert.Equal(5, g.State.Treasury.GetGold(redCapital));
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+    }
+
+    [Fact]
+    public void BuyBaron_StaysInBuyingBaronMode_IfStillAffordable()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 80);
+
+        // Cycle to Baron.
+        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyPeasant();
+        Assert.Equal(SessionState.ActionMode.BuyingBaron, g.Session.Mode);
+
+        g.Map.SimulateClick(g.Tile(1, 1));
+
+        // 80 - 40 = 40, still ≥ 40 → stay in BuyingBaron (does NOT cycle).
+        Assert.Equal(UnitLevel.Baron, g.Tile(1, 1).Unit!.Level);
+        Assert.Equal(SessionState.ActionMode.BuyingBaron, g.Session.Mode);
+        Assert.Equal(40, g.State.Treasury.GetGold(redCapital));
     }
 }

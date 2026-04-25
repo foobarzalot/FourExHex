@@ -25,9 +25,38 @@ public class SessionState
     {
         None,
         BuyingPeasant,
+        BuyingSpearman,
+        BuyingKnight,
+        BuyingBaron,
         BuildingTower,
         MovingUnit,
     }
+
+    /// <summary>
+    /// If <paramref name="mode"/> is one of the four buy modes, return
+    /// the corresponding <see cref="UnitLevel"/>; otherwise null.
+    /// </summary>
+    public static UnitLevel? BuyModeLevel(ActionMode mode) => mode switch
+    {
+        ActionMode.BuyingPeasant => UnitLevel.Peasant,
+        ActionMode.BuyingSpearman => UnitLevel.Spearman,
+        ActionMode.BuyingKnight => UnitLevel.Knight,
+        ActionMode.BuyingBaron => UnitLevel.Baron,
+        _ => null,
+    };
+
+    /// <summary>
+    /// Inverse of <see cref="BuyModeLevel"/>: returns the buy mode for a
+    /// given unit level.
+    /// </summary>
+    public static ActionMode BuyModeFor(UnitLevel level) => level switch
+    {
+        UnitLevel.Peasant => ActionMode.BuyingPeasant,
+        UnitLevel.Spearman => ActionMode.BuyingSpearman,
+        UnitLevel.Knight => ActionMode.BuyingKnight,
+        UnitLevel.Baron => ActionMode.BuyingBaron,
+        _ => ActionMode.None,
+    };
 
     /// <summary>The currently highlighted territory, or null if none.</summary>
     public Territory? SelectedTerritory { get; set; }

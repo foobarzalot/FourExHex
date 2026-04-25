@@ -361,8 +361,9 @@ public partial class HudView : CanvasLayer, IHudView
             string sign = net >= 0 ? "+" : "";
             _goldLabel.Text = $"{gold}g ({income}-{upkeep}={sign}{net})";
             _buyPeasantButton.Visible = PurchaseRules.CanAffordPeasant(selected, state.Treasury);
-            _buyPeasantButton.Text = session.Mode == SessionState.ActionMode.BuyingPeasant
-                ? "Click a tile..."
+            UnitLevel? buyLevel = SessionState.BuyModeLevel(session.Mode);
+            _buyPeasantButton.Text = buyLevel.HasValue
+                ? $"Click a tile ({buyLevel.Value} {PurchaseRules.CostFor(buyLevel.Value)}g)"
                 : "Buy Peasant (10g)";
             _buildTowerButton.Visible = PurchaseRules.CanAffordTower(selected, state.Treasury);
             _buildTowerButton.Text = session.Mode == SessionState.ActionMode.BuildingTower

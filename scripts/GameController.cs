@@ -83,7 +83,7 @@ public class GameController
         _maxTurnNumber = maxTurnNumber;
 
         _map.TileClicked += OnTileClicked;
-        _hud.BuyPeasantClicked += OnBuyPeasantPressed;
+        _hud.BuyPeasantClicked += OnBuyPressed;
         _hud.BuildTowerClicked += OnBuildTowerPressed;
         _hud.UndoLastClicked += OnUndoLastPressed;
         _hud.UndoTurnClicked += OnUndoTurnPressed;
@@ -153,13 +153,12 @@ public class GameController
         if (_session.IsGameOver) return;
 
         // Handle any pending action mode first.
-        if (_session.Mode == SessionState.ActionMode.BuyingPeasant && tile != null && _session.SelectedTerritory != null)
+        UnitLevel? buyLevel = SessionState.BuyModeLevel(_session.Mode);
+        if (buyLevel.HasValue && tile != null && _session.SelectedTerritory != null)
         {
-            // A fresh-bought unit is always a peasant (direct purchase
-            // of higher levels is not implemented).
-            if (IsValidTarget(UnitLevel.Peasant, tile.Coord))
+            if (IsValidTarget(buyLevel.Value, tile.Coord))
             {
-                ExecuteBuyAndPlace(tile.Coord);
+                ExecuteBuyAndPlace(buyLevel.Value, tile.Coord);
                 return;
             }
             // Clicking somewhere invalid cancels the buy.
@@ -271,15 +270,15 @@ public class GameController
 
     // --- Buy / move / capture --------------------------------------------
 
-    private void ExecuteBuyAndPlace(HexCoord destination)
+    private void ExecuteBuyAndPlace(UnitLevel level, HexCoord destination)
     {
         if (_session.SelectedTerritory == null) return;
 
         _session.Undo.PushBefore(CaptureCurrentSnapshot());
 
         HexCoord capital = _session.SelectedTerritory.Capital!.Value;
-        _state.Treasury.SetGold(capital, _state.Treasury.GetGold(capital) - PurchaseRules.PeasantCost);
-        var unit = new Unit(_session.SelectedTerritory.Owner);
+        _state.Treasury.SetGold(capital, _state.Treasury.GetGold(capital) - PurchaseRules.CostFor(level));
+        var unit = new Unit(_session.SelectedTerritory.Owner, level);
         MoveResult result = MovementRules.PlaceNew(unit, destination, _state.Grid, _session.SelectedTerritory);
 
         if (result.WasCapture)
@@ -288,15 +287,20 @@ public class GameController
             RebindSelectionToContaining(destination);
         }
 
-        // QoL: if the (possibly rebound) territory can still afford
-        // another peasant, keep the user in BuyingPeasant mode so they
-        // can queue further purchases without re-clicking the button.
-        if (_session.SelectedTerritory != null
-            && PurchaseRules.CanAffordPeasant(_session.SelectedTerritory, _state.Treasury))
+        // QoL: stay in a buy mode for the highest level the (possibly
+        // rebound) territory can still afford that is at most the level
+        // just bought. Stay-at-same-level if still affordable; otherwise
+        // degrade downward through Knight → Spearman → Peasant. If no
+        // level is affordable, exit. Completion does NOT auto-cycle
+        // upward — re-pressing the buy button is what cycles.
+        UnitLevel? next = _session.SelectedTerritory == null
+            ? null
+            : HighestAffordableAtOrBelow(_session.SelectedTerritory, level);
+        if (next.HasValue && _session.SelectedTerritory != null)
         {
-            _session.Mode = SessionState.ActionMode.BuyingPeasant;
+            _session.Mode = SessionState.BuyModeFor(next.Value);
             _session.MoveSource = null;
-            _map.ShowMoveTargets(CaptureTargetsOnly(UnitLevel.Peasant, _session.SelectedTerritory));
+            _map.ShowMoveTargets(CaptureTargetsOnly(next.Value, _session.SelectedTerritory));
             _map.ShowMoveSource(null);
             RefreshViews();
         }
@@ -304,6 +308,26 @@ public class GameController
         {
             FinishPendingAction();
         }
+    }
+
+    /// <summary>
+    /// Highest level ≤ <paramref name="ceiling"/> that
+    /// <paramref name="territory"/> can currently afford, or null if
+    /// none. Used by the post-buy fallback so a player who just spent
+    /// down past their current level keeps buying at the next-lower
+    /// affordable tier instead of being kicked out of buy mode.
+    /// </summary>
+    private UnitLevel? HighestAffordableAtOrBelow(Territory territory, UnitLevel ceiling)
+    {
+        for (int i = (int)ceiling; i >= (int)UnitLevel.Peasant; i--)
+        {
+            UnitLevel candidate = (UnitLevel)i;
+            if (PurchaseRules.CanAfford(territory, _state.Treasury, candidate))
+            {
+                return candidate;
+            }
+        }
+        return null;
     }
 
     private void ExecuteMove(HexCoord source, HexCoord destination)
@@ -473,17 +497,76 @@ public class GameController
 
     // --- HUD buttons ------------------------------------------------------
 
-    private void OnBuyPeasantPressed()
+    /// <summary>
+    /// The unit levels considered by the buy-button cycle, in cycle
+    /// order (Peasant→Spearman→Knight→Baron→Peasant).
+    /// </summary>
+    private static readonly UnitLevel[] BuyCycleOrder =
+    {
+        UnitLevel.Peasant,
+        UnitLevel.Spearman,
+        UnitLevel.Knight,
+        UnitLevel.Baron,
+    };
+
+    /// <summary>
+    /// Buy-button handler: enters the lowest affordable buy mode, or
+    /// cycles to the next affordable level if already in a buy mode.
+    /// If the only affordable level is the one already active, the
+    /// press is a no-op. Same handler is invoked by the `u` hotkey.
+    /// </summary>
+    private void OnBuyPressed()
     {
         if (_session.IsGameOver) return;
         if (_session.SelectedTerritory == null) return;
-        if (!PurchaseRules.CanAffordPeasant(_session.SelectedTerritory, _state.Treasury)) return;
 
-        _session.Mode = SessionState.ActionMode.BuyingPeasant;
+        UnitLevel? next = NextAffordableBuyLevel();
+        if (next == null) return;
+
+        _session.Mode = SessionState.BuyModeFor(next.Value);
         _session.MoveSource = null;
-        _map.ShowMoveTargets(CaptureTargetsOnly(UnitLevel.Peasant, _session.SelectedTerritory));
+        _map.ShowMoveTargets(CaptureTargetsOnly(next.Value, _session.SelectedTerritory));
         _map.ShowMoveSource(null);
         RefreshViews();
+    }
+
+    /// <summary>
+    /// Pick the next buy level for the cycle: if not currently in a
+    /// buy mode, return the lowest affordable level; if already in a
+    /// buy mode, return the next affordable level after it (cyclically),
+    /// or null if no other level is affordable. Returns null when
+    /// nothing is affordable at all.
+    /// </summary>
+    private UnitLevel? NextAffordableBuyLevel()
+    {
+        if (_session.SelectedTerritory == null) return null;
+        Territory selected = _session.SelectedTerritory;
+
+        UnitLevel? current = SessionState.BuyModeLevel(_session.Mode);
+        int startIndex = 0;
+        if (current.HasValue)
+        {
+            // Start one past the current level so re-pressing advances.
+            for (int i = 0; i < BuyCycleOrder.Length; i++)
+            {
+                if (BuyCycleOrder[i] == current.Value)
+                {
+                    startIndex = i + 1;
+                    break;
+                }
+            }
+        }
+
+        for (int offset = 0; offset < BuyCycleOrder.Length; offset++)
+        {
+            UnitLevel candidate = BuyCycleOrder[(startIndex + offset) % BuyCycleOrder.Length];
+            if (current.HasValue && candidate == current.Value) continue;
+            if (PurchaseRules.CanAfford(selected, _state.Treasury, candidate))
+            {
+                return candidate;
+            }
+        }
+        return null;
     }
 
     private void OnBuildTowerPressed()
@@ -787,7 +870,7 @@ public class GameController
                 resultCoord = mv.Destination;
                 break;
             case AiBuyUnitAction bu:
-                ExecuteAiBuyUnit(bu.Capital, bu.Destination);
+                ExecuteAiBuyUnit(bu.Capital, bu.Destination, bu.Level);
                 resultCoord = bu.Destination;
                 break;
             case AiBuildTowerAction bt:
@@ -823,7 +906,7 @@ public class GameController
         string desc = action switch
         {
             AiMoveAction mv => $"Move {mv.Source}→{mv.Destination}",
-            AiBuyUnitAction bu => $"Buy@{bu.Capital} → {bu.Destination}",
+            AiBuyUnitAction bu => $"Buy {bu.Level}@{bu.Capital} → {bu.Destination}",
             AiBuildTowerAction bt => $"Tower@{bt.Capital} → {bt.Destination}",
             _ => "?",
         };
@@ -902,7 +985,7 @@ public class GameController
         }
     }
 
-    private void ExecuteAiBuyUnit(HexCoord capital, HexCoord destination)
+    private void ExecuteAiBuyUnit(HexCoord capital, HexCoord destination, UnitLevel level)
     {
         Territory? attacker = FindTerritoryByCapital(capital);
         if (attacker == null)
@@ -910,25 +993,25 @@ public class GameController
             throw new InvalidOperationException(
                 $"AI BuyUnit with capital {capital}: no territory has that capital.");
         }
-        if (!PurchaseRules.CanAffordPeasant(attacker, _state.Treasury))
+        if (!PurchaseRules.CanAfford(attacker, _state.Treasury, level))
         {
             throw new InvalidOperationException(
-                $"AI BuyUnit from capital {capital}: territory cannot afford a peasant " +
-                $"(treasury = {_state.Treasury.GetGold(capital)}g).");
+                $"AI BuyUnit from capital {capital}: territory cannot afford a {level} " +
+                $"(treasury = {_state.Treasury.GetGold(capital)}g, cost = {PurchaseRules.CostFor(level)}g).");
         }
 
         List<HexCoord> legalTargets = MovementRules.ValidTargets(
-            UnitLevel.Peasant, attacker, _state.Grid, _state.Territories);
+            level, attacker, _state.Grid, _state.Territories);
         if (!legalTargets.Contains(destination))
         {
             throw new InvalidOperationException(
                 $"AI BuyUnit to {destination} from capital {capital}: destination is " +
-                $"not a legal peasant placement target.");
+                $"not a legal {level} placement target.");
         }
 
         _state.Treasury.SetGold(
-            capital, _state.Treasury.GetGold(capital) - PurchaseRules.PeasantCost);
-        var unit = new Unit(attacker.Owner);
+            capital, _state.Treasury.GetGold(capital) - PurchaseRules.CostFor(level));
+        var unit = new Unit(attacker.Owner, level);
         MoveResult result = MovementRules.PlaceNew(unit, destination, _state.Grid, attacker);
         if (result.WasCapture)
         {

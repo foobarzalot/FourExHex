@@ -113,15 +113,19 @@ public static class AiCommon
         }
 
         // --- Buy actions: buy-capture or buy-chop ---
-        // A fresh peasant adds +1 income and +2 upkeep, so post-net
-        // = netBefore - 1. Requirement: netBefore >= 1. Also
-        // requires 10g. Buy-to-combine and buy-to-empty aren't
-        // considered.
-        if (PurchaseRules.CanAffordPeasant(territory, state.Treasury)
-            && netBefore - 1 >= 0)
+        // A fresh unit adds +1 income and +upkeep(level) to the
+        // territory's books, so post-net = netBefore + 1 - upkeep(level).
+        // Requirement: post-net >= 0. Also requires the gold cost.
+        // Buy-to-combine and buy-to-empty aren't considered.
+        UnitLevel[] buyLevels = { UnitLevel.Peasant, UnitLevel.Spearman, UnitLevel.Knight, UnitLevel.Baron };
+        foreach (UnitLevel level in buyLevels)
         {
+            if (!PurchaseRules.CanAfford(territory, state.Treasury, level)) continue;
+            int upkeep_ = UpkeepRules.UpkeepFor(level);
+            if (netBefore + 1 - upkeep_ < 0) continue;
+
             List<HexCoord> buyTargets = MovementRules.ValidTargets(
-                UnitLevel.Peasant, territory, state.Grid, state.Territories);
+                level, territory, state.Grid, state.Territories);
             foreach (HexCoord target in buyTargets)
             {
                 HexTile? targetTile = state.Grid.Get(target);
@@ -131,13 +135,13 @@ public static class AiCommon
                 if (kind == TargetKind.Capture)
                 {
                     yield return new AiCandidate(
-                        new AiBuyUnitAction(territory.Capital!.Value, target),
+                        new AiBuyUnitAction(territory.Capital!.Value, target, level),
                         AiActionKind.Capture);
                 }
                 else if (kind == TargetKind.Chop)
                 {
                     yield return new AiCandidate(
-                        new AiBuyUnitAction(territory.Capital!.Value, target),
+                        new AiBuyUnitAction(territory.Capital!.Value, target, level),
                         AiActionKind.Chop);
                 }
             }

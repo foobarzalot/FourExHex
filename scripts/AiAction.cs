@@ -14,11 +14,14 @@ public abstract record AiAction;
 public sealed record AiMoveAction(HexCoord Source, HexCoord Destination) : AiAction;
 
 /// <summary>
-/// Buy a peasant from the territory whose capital is
-/// <see cref="Capital"/> and place it at <see cref="Destination"/>.
+/// Buy a unit of <see cref="Level"/> from the territory whose capital
+/// is <see cref="Capital"/> and place it at <see cref="Destination"/>.
 /// May be a direct capture (enemy tile) or a tree chop (own tile).
 /// </summary>
-public sealed record AiBuyUnitAction(HexCoord Capital, HexCoord Destination) : AiAction;
+public sealed record AiBuyUnitAction(
+    HexCoord Capital,
+    HexCoord Destination,
+    UnitLevel Level) : AiAction;
 
 /// <summary>
 /// Build a tower from the territory whose capital is
