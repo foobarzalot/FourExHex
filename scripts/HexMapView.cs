@@ -64,13 +64,30 @@ public partial class HexMapView : Node2D, IHexMapView
     }
 
     // Layered overlay children (added in this order so draw order is
-    // fills -> borders -> capitals -> units -> targets -> highlight).
+    // fills -> borders -> capitals -> trees -> units -> targets -> highlight).
+    // Trees draw under units/graves so the rare unit-on-tree-tile transient
+    // (e.g. mid-chop) reads correctly.
     private Node2D? _bordersLayer;
     private Node2D? _capitalsLayer;
+    private Node2D? _treesLayer;
     private Node2D? _unitsLayer;
     private Node2D? _targetsLayer;
     private Node2D? _highlightLayer;
     private readonly Dictionary<HexCoord, Node2D> _unitVisuals = new();
+
+    // Tree visuals persist across RefreshOccupantVisuals calls (units,
+    // capitals, graves, towers all rebuild every refresh; trees don't
+    // depend on per-refresh state, so we keep their nodes alive). This
+    // also means a grow-in tween started on a freshly-planted tree is
+    // not interrupted by a subsequent refresh from an unrelated action.
+    private readonly Dictionary<HexCoord, Node2D> _treeVisuals = new();
+
+    // True except for one refresh after RebuildAfterTerritoryChange,
+    // where we want trees to reappear instantly (capture chops removed
+    // them; undo/redo restored a possibly different set). Defaulting
+    // to true means seeded trees on a fresh game DO animate in on the
+    // first refresh, which is the desired feel.
+    private bool _animateNewTrees = true;
 
     // The territory currently drawn as highlighted. Pure view state — the
     // single source of truth lives in SessionState, but we cache it here
@@ -118,6 +135,8 @@ public partial class HexMapView : Node2D, IHexMapView
         AddChild(_bordersLayer);
         _capitalsLayer = new Node2D { Name = "CapitalsLayer" };
         AddChild(_capitalsLayer);
+        _treesLayer = new Node2D { Name = "TreesLayer" };
+        AddChild(_treesLayer);
         _unitsLayer = new Node2D { Name = "UnitsLayer" };
         AddChild(_unitsLayer);
         _targetsLayer = new Node2D { Name = "TargetsLayer" };
@@ -145,6 +164,19 @@ public partial class HexMapView : Node2D, IHexMapView
         ClearLayer(_bordersLayer);
         ClearLayer(_targetsLayer);
         DrawTerritoryBorders();
+
+        // Tear down all tree visuals and force the next refresh to rebuild
+        // them without the grow-in animation. Captures and undo/redo are
+        // the only callers, and neither should make existing trees appear
+        // to "grow." A capture-chop has already removed its tree from the
+        // model; an undo restoring a chopped tree should resurrect it
+        // instantly.
+        foreach (Node2D visual in _treeVisuals.Values)
+        {
+            visual?.QueueFree();
+        }
+        _treeVisuals.Clear();
+        _animateNewTrees = false;
     }
 
     /// <summary>
@@ -270,6 +302,25 @@ public partial class HexMapView : Node2D, IHexMapView
             }
         }
 
+        // Diff trees against the previous refresh so we only animate
+        // newly-planted ones. Trees are removed lazily here when they
+        // disappear from the model (e.g., chopped via movement).
+        var currentTreeCoords = new HashSet<HexCoord>();
+        foreach (HexTile tile in Grid.Tiles)
+        {
+            if (tile.Occupant is Tree) currentTreeCoords.Add(tile.Coord);
+        }
+        var staleTreeCoords = new List<HexCoord>();
+        foreach (HexCoord c in _treeVisuals.Keys)
+        {
+            if (!currentTreeCoords.Contains(c)) staleTreeCoords.Add(c);
+        }
+        foreach (HexCoord c in staleTreeCoords)
+        {
+            _treeVisuals[c]?.QueueFree();
+            _treeVisuals.Remove(c);
+        }
+
         foreach (HexTile tile in Grid.Tiles)
         {
             if (tile.Occupant == null) continue;
@@ -303,9 +354,14 @@ public partial class HexMapView : Node2D, IHexMapView
             }
             else if (tile.Occupant is Tree)
             {
-                Node2D visual = CreateTreeVisual();
-                visual.Position = center;
-                _unitsLayer?.AddChild(visual);
+                if (!_treeVisuals.ContainsKey(tile.Coord))
+                {
+                    Node2D anchor = BuildTreeAnchor(center);
+                    _treesLayer?.AddChild(anchor);
+                    _treeVisuals[tile.Coord] = anchor;
+                    if (_animateNewTrees) StartTreeGrowAnimation(anchor);
+                }
+                // Existing tree visuals are left in place.
             }
             else if (tile.Occupant is Tower)
             {
@@ -314,6 +370,53 @@ public partial class HexMapView : Node2D, IHexMapView
                 _capitalsLayer?.AddChild(visual);
             }
         }
+
+        _animateNewTrees = true;
+    }
+
+    /// <summary>
+    /// Build a tree visual at <paramref name="center"/> with its pivot
+    /// at the trunk bottom so a subsequent scale-up animation reads as
+    /// "rising out of the ground." Returns the anchor (parent) Node2D —
+    /// the caller is expected to AddChild it before invoking
+    /// <see cref="StartTreeGrowAnimation"/>, since Godot tweens require
+    /// the target node to already be inside the scene tree.
+    /// </summary>
+    private Node2D BuildTreeAnchor(Vector2 center)
+    {
+        // Trunk bottom in CreateTreeVisual's local coords sits at
+        // y = +0.225 * HexSize (r * 0.75 where r = 0.3 * HexSize).
+        // Place an anchor there and shift the tree up by the same
+        // amount so it draws unchanged but its (0,0) pivot is the
+        // trunk base.
+        float trunkBottomOffset = HexSize * 0.225f;
+        var anchor = new Node2D
+        {
+            Position = center + new Vector2(0f, trunkBottomOffset),
+        };
+        Node2D tree = CreateTreeVisual();
+        tree.Position = new Vector2(0f, -trunkBottomOffset);
+        anchor.AddChild(tree);
+        return anchor;
+    }
+
+    /// <summary>
+    /// Kick off the grow-in tween on a tree anchor that is already in
+    /// the scene tree. Uniform pop-in scale with a small Back overshoot
+    /// plus a quick alpha fade to mask the abrupt origin appearance.
+    /// </summary>
+    private static void StartTreeGrowAnimation(Node2D anchor)
+    {
+        anchor.Scale = new Vector2(0.05f, 0.05f);
+        anchor.Modulate = new Color(1f, 1f, 1f, 0.3f);
+        Tween tween = anchor.CreateTween();
+        tween.SetParallel(true);
+        tween.TweenProperty(anchor, "scale", Vector2.One, 0.7)
+            .SetTrans(Tween.TransitionType.Back)
+            .SetEase(Tween.EaseType.Out);
+        tween.TweenProperty(anchor, "modulate", new Color(1f, 1f, 1f, 1f), 0.5)
+            .SetTrans(Tween.TransitionType.Sine)
+            .SetEase(Tween.EaseType.Out);
     }
 
     private Node2D CreateTowerVisual()
