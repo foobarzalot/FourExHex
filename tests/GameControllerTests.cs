@@ -1534,6 +1534,97 @@ public class GameControllerTests
     }
 
     [Fact]
+    public void Capture_LeavesOpponentWithOrphanSingleton_DoesNotEndMidTurn()
+    {
+        // 5x1 grid: Red Red Red Blue Blue, spearman on Red(2,0).
+        // (Blue's 2-tile territory has a capital, so a peasant
+        // couldn't beat its defense — we need a spearman.)
+        // Red captures Blue(3,0). Blue is left with (4,0) — a
+        // singleton with no capital. Mid-turn check requires the
+        // current player to own EVERY cell, so the game does NOT
+        // end yet (Blue still has 1 tile).
+        var red = new Player("Red", new Color(1f, 0f, 0f));
+        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var players = new List<Player> { red, blue };
+
+        var grid = TestHelpers.BuildRectGrid(5, 1, red.Color);
+        grid.Get(HexCoord.FromOffset(3, 0))!.Color = blue.Color;
+        grid.Get(HexCoord.FromOffset(4, 0))!.Color = blue.Color;
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(red.Color, UnitLevel.Spearman);
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        var map = new MockHexMapView();
+        var hud = new MockHudView();
+        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+        {
+            map.TileIndex[kvp.Key] = kvp.Value;
+        }
+        var controller = new GameController(state, session, map, hud);
+        controller.StartGame();
+
+        map.SimulateClick(grid.Get(HexCoord.FromOffset(2, 0)));
+        map.SimulateClick(grid.Get(HexCoord.FromOffset(3, 0))); // capture
+
+        Assert.False(session.IsGameOver);
+        Assert.Null(session.Winner);
+        // Blue's last tile is still there, just orphaned.
+        Assert.Equal(blue.Color, grid.Get(HexCoord.FromOffset(4, 0))!.Color);
+    }
+
+    [Fact]
+    public void EndTurn_AfterReducingOpponentToSingleton_DeclaresWinner()
+    {
+        // Same fixture as above. After the capture the game continues
+        // mid-turn. Ending Red's turn should now declare Red the winner
+        // because Blue holds only an orphan singleton — no
+        // capital-bearing territory.
+        var red = new Player("Red", new Color(1f, 0f, 0f));
+        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var players = new List<Player> { red, blue };
+
+        var grid = TestHelpers.BuildRectGrid(5, 1, red.Color);
+        grid.Get(HexCoord.FromOffset(3, 0))!.Color = blue.Color;
+        grid.Get(HexCoord.FromOffset(4, 0))!.Color = blue.Color;
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(red.Color, UnitLevel.Spearman);
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        var map = new MockHexMapView();
+        var hud = new MockHudView();
+        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+        {
+            map.TileIndex[kvp.Key] = kvp.Value;
+        }
+        var controller = new GameController(state, session, map, hud);
+        controller.StartGame();
+
+        map.SimulateClick(grid.Get(HexCoord.FromOffset(2, 0)));
+        map.SimulateClick(grid.Get(HexCoord.FromOffset(3, 0))); // capture
+        Assert.False(session.IsGameOver);
+
+        hud.ClickEndTurn();
+
+        Assert.True(session.IsGameOver);
+        Assert.Equal(red.Color, session.Winner);
+    }
+
+    [Fact]
+    public void EndTurn_OpponentStillHasCapitalBearingTerritory_GameContinues()
+    {
+        // Sanity check: ending the turn while another player still
+        // owns a capital-bearing territory must NOT declare a winner.
+        var g = new TestGame();
+
+        g.Hud.ClickEndTurn();
+
+        Assert.False(g.Session.IsGameOver);
+        Assert.Null(g.Session.Winner);
+    }
+
+    [Fact]
     public void BuyPeasant_AfterWin_IsNoOp()
     {
         var g = new TestGame();

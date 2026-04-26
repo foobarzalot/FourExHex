@@ -2,54 +2,26 @@ using System.Collections.Generic;
 using Godot;
 
 /// <summary>
-/// Pure rules for detecting game-end conditions.
-///   - <see cref="Winner(HexGrid, IReadOnlyList{Territory})"/>:
-///     returns the sole color whose player still has a
-///     capital-bearing territory, or null otherwise. This is the
-///     canonical win check — orphaned tiles (singletons / no-capital
-///     fragments left behind by a collapsed enemy) can't fight back,
-///     so the game is decided the moment one player is the only one
-///     with any live territory.
-///   - <see cref="Winner(HexGrid)"/>: legacy stricter check — "one
-///     color owns EVERY tile." Kept for the existing unit tests and
-///     as a hard backstop; the live game uses the territory-aware
-///     overload.
+/// Pure rules for detecting game-end conditions. Two distinct checks:
+///   - <see cref="WinnerByDomination"/>: mid-turn check. Returns the
+///     sole color iff one color owns every tile on the grid. Used by
+///     <see cref="GameController"/> after every capture so a sweep of
+///     the board ends the game immediately.
+///   - <see cref="WinnerAtEndOfTurn"/>: end-of-turn check. Returns the
+///     ending player's color iff they are the only player with a
+///     capital-bearing territory (≥2 adjacent same-color cells).
+///     Orphan singletons of other colors don't keep the game alive.
 ///   - <see cref="IsEliminated"/>: is a given player's color absent
 ///     from the grid entirely?
-/// Called by <see cref="GameController"/> after every capture to
-/// check if the game is over.
 /// </summary>
 public static class WinConditionRules
 {
     /// <summary>
-    /// Territory-aware winner check. Returns the sole color whose
-    /// player owns at least one capital-bearing territory when no
-    /// other player does. If two or more players have live
-    /// territories, or none do, returns null. This is the correct
-    /// game-end criterion: orphaned tiles (colored but part of a
-    /// no-capital fragment) retain their color forever after the
-    /// owning player's economy collapses, so waiting for a
-    /// sole-color board never terminates a decided game.
+    /// Mid-turn winner check: returns the sole color iff it owns
+    /// every tile on the grid. Strictest check — any non-current-color
+    /// tile (even an orphan singleton) blocks declaring a winner.
     /// </summary>
-    public static Color? Winner(HexGrid grid, IReadOnlyList<Territory> territories)
-    {
-        Color? only = null;
-        foreach (Territory t in territories)
-        {
-            if (!t.HasCapital) continue;
-            if (only == null) { only = t.Owner; continue; }
-            if (t.Owner != only.Value) return null;
-        }
-        return only;
-    }
-
-    /// <summary>
-    /// Legacy strict winner check: returns the sole color only if
-    /// it owns every tile on the grid. The live game prefers the
-    /// territory-aware overload; this one survives for its existing
-    /// unit tests and as a defensive backstop.
-    /// </summary>
-    public static Color? Winner(HexGrid grid)
+    public static Color? WinnerByDomination(HexGrid grid)
     {
         Color? only = null;
         foreach (HexTile tile in grid.Tiles)
@@ -65,6 +37,34 @@ public static class WinConditionRules
             }
         }
         return only;
+    }
+
+    /// <summary>
+    /// End-of-turn winner check: returns <paramref name="currentPlayer"/>
+    /// iff that color is the only one with a capital-bearing territory.
+    /// A capital-bearing territory is ≥2 adjacent same-color cells (the
+    /// only kind that gets a capital — see <see cref="CapitalPlacer"/>).
+    /// Returns null if any other player still has one, or if the
+    /// current player themselves has none (no winner is declared in
+    /// degenerate "everyone is singletons" states).
+    /// </summary>
+    public static Color? WinnerAtEndOfTurn(
+        Color currentPlayer, IReadOnlyList<Territory> territories)
+    {
+        bool currentHasOne = false;
+        foreach (Territory t in territories)
+        {
+            if (!t.HasCapital) continue;
+            if (t.Owner == currentPlayer)
+            {
+                currentHasOne = true;
+            }
+            else
+            {
+                return null;
+            }
+        }
+        return currentHasOne ? currentPlayer : (Color?)null;
     }
 
     /// <summary>

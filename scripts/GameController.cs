@@ -420,12 +420,12 @@ public class GameController
 
         _map.RebuildAfterTerritoryChange();
 
-        // After every capture, check whether only one player still
-        // has a capital-bearing territory. If so, the game is over
-        // even if some orphan tiles of other colors remain on the
-        // map — they can't come back. Undo is disabled so players
+        // Mid-turn win check: only ends the game if the current
+        // player owns every cell. The "opponent reduced to orphan
+        // singletons" win path is handled at end-of-turn instead
+        // (see EndOfTurnProcessing). Undo is cleared so the player
         // can't rewind past the killing blow.
-        Color? winner = WinConditionRules.Winner(_state.Grid, _state.Territories);
+        Color? winner = WinConditionRules.WinnerByDomination(_state.Grid);
         if (winner.HasValue)
         {
             _session.Winner = winner;
@@ -640,9 +640,18 @@ public class GameController
         _session.Undo.Clear();
 
         EndOfTurnProcessing();
-        AdvanceToNextActivePlayer();
-        StartPlayerTurn();
-        RunAiTurnsUntilHumanOrDone();
+        if (_session.IsGameOver)
+        {
+            // End-of-turn win check fired. Don't advance to a player
+            // who shouldn't get a turn — just announce the result.
+            CheckGameEndConditions();
+        }
+        else
+        {
+            AdvanceToNextActivePlayer();
+            StartPlayerTurn();
+            RunAiTurnsUntilHumanOrDone();
+        }
 
         CancelPendingAction();
         SetSelection(null);
@@ -651,9 +660,10 @@ public class GameController
 
     /// <summary>
     /// End-of-turn bookkeeping for the now-ending player: credit their
-    /// income (based on gold-earning cells in their current territories).
-    /// Called on the ending player while they are still the current
-    /// player — <see cref="AdvanceToNextActivePlayer"/> runs after.
+    /// income (based on gold-earning cells in their current territories),
+    /// then check the end-of-turn win condition. The current player wins
+    /// iff no other player still owns a capital-bearing territory —
+    /// orphan singletons of other colors don't keep the game alive.
     /// Tree growth is no longer part of end-of-turn — it now runs as
     /// the very first phase of the NEXT player's turn (see
     /// <see cref="StartPlayerTurn"/>).
@@ -662,6 +672,13 @@ public class GameController
     {
         _state.Treasury.CollectIncomeFor(
             _state.Turns.CurrentPlayer, _state.Territories, _state.Grid);
+
+        Color? winner = WinConditionRules.WinnerAtEndOfTurn(
+            _state.Turns.CurrentPlayer.Color, _state.Territories);
+        if (winner.HasValue)
+        {
+            _session.Winner = winner;
+        }
     }
 
     /// <summary>
@@ -835,10 +852,19 @@ public class GameController
 
             // Current AI player is done. Run end-of-turn processing,
             // clear the lingering highlight, advance, and either stop
-            // (human next) or schedule the next preview beat.
+            // (human next) or schedule the next preview beat. If the
+            // end-of-turn win check fires we skip the advance and just
+            // announce — there's no next turn to start.
             EndOfTurnProcessing();
-            AdvanceToNextActivePlayer();
-            StartPlayerTurn();
+            if (_session.IsGameOver)
+            {
+                CheckGameEndConditions();
+            }
+            else
+            {
+                AdvanceToNextActivePlayer();
+                StartPlayerTurn();
+            }
             _aiVisited.Clear();
             _aiStepsThisPlayer = 0;
             _pendingAiAction = null;
