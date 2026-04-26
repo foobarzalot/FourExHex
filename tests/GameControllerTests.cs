@@ -2345,4 +2345,287 @@ public class GameControllerTests
         Assert.Equal(SessionState.ActionMode.BuyingBaron, g.Session.Mode);
         Assert.Equal(40, g.State.Treasury.GetGold(redCapital));
     }
+
+    // --- Per-UI-change undo: restore selection + mode ---------------------
+
+    [Fact]
+    public void UndoLast_AfterBuy_RestoresSelectedTerritoryAndBuyMode()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        Territory redBefore = g.Session.SelectedTerritory!;
+        g.Hud.ClickBuyPeasant();
+        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+
+        g.Map.SimulateClick(g.Tile(1, 1));  // place peasant
+
+        g.Hud.ClickUndoLast();
+
+        Assert.NotNull(g.Session.SelectedTerritory);
+        Assert.Equal(redBefore.Capital, g.Session.SelectedTerritory!.Capital);
+        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+    }
+
+    [Fact]
+    public void UndoLast_AfterBuildTower_RestoresBuildingTowerMode()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 30);  // afford two towers
+        g.Hud.ClickBuildTower();
+        Assert.Equal(SessionState.ActionMode.BuildingTower, g.Session.Mode);
+
+        // (0, 1) holds the capital; (1, 1) is empty own territory.
+        g.Map.SimulateClick(g.Tile(1, 1));
+
+        g.Hud.ClickUndoLast();
+
+        Assert.NotNull(g.Session.SelectedTerritory);
+        Assert.Equal(SessionState.ActionMode.BuildingTower, g.Session.Mode);
+    }
+
+    [Fact]
+    public void UndoLast_AfterMove_RestoresMovingModeAndMoveSource()
+    {
+        var g = new TestGame();
+        g.Tile(1, 1).Occupant = new Unit(g.Red.Color);
+        g.Map.SimulateClick(g.Tile(1, 1));  // selects + enters MovingUnit
+        Assert.Equal(SessionState.ActionMode.MovingUnit, g.Session.Mode);
+        Assert.Equal(HexCoord.FromOffset(1, 1), g.Session.MoveSource);
+
+        // Move the unit onto an adjacent Blue tile — captures it.
+        g.Map.SimulateClick(g.Tile(2, 1));
+
+        g.Hud.ClickUndoLast();
+
+        Assert.Equal(SessionState.ActionMode.MovingUnit, g.Session.Mode);
+        Assert.Equal(HexCoord.FromOffset(1, 1), g.Session.MoveSource);
+    }
+
+    [Fact]
+    public void UndoLast_AfterSelectingTerritory_RestoresPreviousSelection()
+    {
+        // Select Red, then click an enemy tile (clears selection). Undo
+        // should put selection back to Red.
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        Territory red = g.Session.SelectedTerritory!;
+        Assert.NotNull(red);
+
+        g.Map.SimulateClick(g.Tile(3, 0));  // Blue tile → clears selection
+        Assert.Null(g.Session.SelectedTerritory);
+
+        g.Hud.ClickUndoLast();
+
+        Assert.NotNull(g.Session.SelectedTerritory);
+        Assert.Equal(red.Capital, g.Session.SelectedTerritory!.Capital);
+    }
+
+    [Fact]
+    public void UndoLast_AfterEnteringBuyMode_ClearsMode()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+        g.Hud.ClickBuyPeasant();
+        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+
+        g.Hud.ClickUndoLast();
+
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+        // Selection is preserved — we only undid the mode entry.
+        Assert.NotNull(g.Session.SelectedTerritory);
+    }
+
+    [Fact]
+    public void UndoLast_AfterCancelingMode_RestoresMode()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        g.Hud.ClickBuyPeasant();
+        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+        g.Hud.PressCancelAction();
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+
+        g.Hud.ClickUndoLast();
+
+        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+    }
+
+    [Fact]
+    public void UndoLast_AfterCaptureBuy_RestoresPreCaptureSelection()
+    {
+        // Buy a peasant onto an enemy tile (capture), then undo.
+        // Selection should snap back to the pre-capture Red territory.
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapitalBefore = g.Session.SelectedTerritory!.Capital!.Value;
+        g.Hud.ClickBuyPeasant();
+        g.Map.SimulateClick(g.Tile(2, 1));  // Blue, adjacent → captures
+
+        g.Hud.ClickUndoLast();
+
+        Assert.NotNull(g.Session.SelectedTerritory);
+        Assert.Equal(redCapitalBefore, g.Session.SelectedTerritory!.Capital);
+    }
+
+    [Fact]
+    public void UndoLast_RestoresMapOverlays_HighlightAndTargets()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        Territory red = g.Session.SelectedTerritory!;
+        g.Hud.ClickBuyPeasant();
+        // Place to advance state and push undo entry.
+        g.Map.SimulateClick(g.Tile(1, 1));
+
+        g.Hud.ClickUndoLast();
+
+        // Highlight and move-target overlays should reflect the restored
+        // BuyingPeasant + Red selection.
+        Assert.NotNull(g.Map.LastHighlight);
+        Assert.Equal(red.Capital, g.Map.LastHighlight!.Capital);
+        Assert.NotEmpty(g.Map.LastMoveTargets);
+    }
+
+    [Fact]
+    public void UndoLast_OnClickThatSelectsAndPicksUnit_RevertsBothInOneStep()
+    {
+        // Click an own-unit on a previously-unselected territory: a
+        // single click both selects and enters MovingUnit. Undo once
+        // should revert both.
+        var g = new TestGame();
+        g.Tile(1, 1).Occupant = new Unit(g.Red.Color);
+        Assert.Null(g.Session.SelectedTerritory);
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+
+        g.Map.SimulateClick(g.Tile(1, 1));
+        Assert.NotNull(g.Session.SelectedTerritory);
+        Assert.Equal(SessionState.ActionMode.MovingUnit, g.Session.Mode);
+
+        g.Hud.ClickUndoLast();
+
+        Assert.Null(g.Session.SelectedTerritory);
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+    }
+
+    [Fact]
+    public void RedoLast_AfterSelectionUndo_RestoresPostUndoState()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        Territory red = g.Session.SelectedTerritory!;
+        g.Map.SimulateClick(g.Tile(3, 0));  // clears
+        Assert.Null(g.Session.SelectedTerritory);
+
+        g.Hud.ClickUndoLast();
+        Assert.NotNull(g.Session.SelectedTerritory);
+
+        g.Hud.ClickRedoLast();
+        Assert.Null(g.Session.SelectedTerritory);
+    }
+
+    [Fact]
+    public void UndoTurn_RestoresStartOfTurnSelectionAndMode()
+    {
+        var g = new TestGame();
+        // Pre-condition: turn just started, nothing selected.
+        Assert.Null(g.Session.SelectedTerritory);
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+
+        g.Map.SimulateClick(g.Tile(0, 1));
+        g.Hud.ClickBuyPeasant();
+        g.Map.SimulateClick(g.Tile(1, 1));
+
+        g.Hud.ClickUndoTurn();
+
+        Assert.Null(g.Session.SelectedTerritory);
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+    }
+
+    // --- Per-UI-change undo: de-dup no-op handlers ------------------------
+
+    [Fact]
+    public void OnBuyPressed_WhenOnlyPeasantAffordable_AndAlreadyInBuyingPeasant_DoesNotPushUndo()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 10);  // exactly one peasant
+        g.Hud.ClickBuyPeasant();  // None → BuyingPeasant: should push (1 entry)
+        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+        int countAfterFirst = g.Session.Undo.UndoCount;
+
+        g.Hud.ClickBuyPeasant();  // BuyingPeasant → BuyingPeasant: NO push
+        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyPeasant();
+
+        Assert.Equal(countAfterFirst, g.Session.Undo.UndoCount);
+        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+    }
+
+    [Fact]
+    public void OnTileClicked_OnAlreadySelectedTerritory_DoesNotPushUndo()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));  // first click: selects (push)
+        int countAfterFirst = g.Session.Undo.UndoCount;
+
+        g.Map.SimulateClick(g.Tile(0, 1));  // re-click same tile: no-op
+
+        Assert.Equal(countAfterFirst, g.Session.Undo.UndoCount);
+    }
+
+    [Fact]
+    public void OnCancelActionPressed_WhenAlreadyNoPendingAction_DoesNotPushUndo()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        int baseline = g.Session.Undo.UndoCount;
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+
+        g.Hud.PressCancelAction();
+        g.Hud.PressCancelAction();
+
+        Assert.Equal(baseline, g.Session.Undo.UndoCount);
+    }
+
+    [Fact]
+    public void OnNextTerritoryPressed_WithOneOwnedTerritory_DoesNotPushUndoIfSelectionUnchanged()
+    {
+        // Red owns exactly one territory in the test fixture, so pressing
+        // Next Territory while it's selected wraps back to itself —
+        // selection unchanged, no push.
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        Territory before = g.Session.SelectedTerritory!;
+        int baseline = g.Session.Undo.UndoCount;
+
+        g.Hud.PressNextTerritory();
+
+        Assert.Same(before, g.Session.SelectedTerritory);
+        Assert.Equal(baseline, g.Session.Undo.UndoCount);
+    }
+
+    // --- Per-UI-change undo: exception propagation ------------------------
+
+    [Fact]
+    public void Handler_WhenWorkThrows_DoesNotPushUndo_AndExceptionPropagates()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        int baseline = g.Session.Undo.UndoCount;
+
+        // Configure the map to throw on the next ShowMoveTargets call.
+        // OnBuyPressed calls ShowMoveTargets right after setting Mode,
+        // so the throw happens after the session mutation but before
+        // the push code in TrackHandler can run.
+        g.Map.ThrowOnNextShowMoveTargets =
+            () => throw new InvalidOperationException("boom");
+
+        Assert.Throws<InvalidOperationException>(() => g.Hud.ClickBuyPeasant());
+
+        Assert.Equal(baseline, g.Session.Undo.UndoCount);
+    }
 }

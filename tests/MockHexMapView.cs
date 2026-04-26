@@ -24,8 +24,17 @@ public class MockHexMapView : IHexMapView
         TileIndex.TryGetValue(coord, out Territory? t) ? t : null;
 
     public List<HexCoord> LastMoveTargets { get; private set; } = new();
-    public void ShowMoveTargets(IEnumerable<HexCoord> coords) =>
+    /// <summary>Test hook: invoked-and-cleared at the top of the next
+    /// <see cref="ShowMoveTargets"/> call. Used to simulate a mid-handler
+    /// failure and verify the controller doesn't push a recovery snapshot.</summary>
+    public Action? ThrowOnNextShowMoveTargets { get; set; }
+    public void ShowMoveTargets(IEnumerable<HexCoord> coords)
+    {
+        Action? hook = ThrowOnNextShowMoveTargets;
+        ThrowOnNextShowMoveTargets = null;
+        hook?.Invoke();
         LastMoveTargets = coords.ToList();
+    }
 
     public HexCoord? LastMoveSource { get; private set; }
     public void ShowMoveSource(HexCoord? coord) => LastMoveSource = coord;

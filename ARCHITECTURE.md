@@ -76,7 +76,8 @@ off it.
 │   │                  → WinConditionRules.WinnerByDomination (mid-turn)   │
 │   │                                                                      │
 │   ├─ undo/redo:                                                          │
-│   │    Each human action: _session.Undo.PushBefore(snapshot)             │
+│   │    Each human handler wrapped in TrackHandler — pushes UndoEntry     │
+│   │    (game + session snapshot) iff state actually changed (de-dup).    │
 │   │    AI actions are NOT undoable (undo cleared at end-of-turn)         │
 │   │    OnUndoLast / OnUndoTurn / OnRedoLast / OnRedoAll → ApplySnapshot  │
 │   │                                                                      │
@@ -221,8 +222,14 @@ void Schedule(Action callback, int delayMs);
   unit-testable with mocks (see `tests/GameControllerTests.cs`).
 - **Every state change funnels through `RefreshViews()`** at the end
   of the handler. One path, no drift.
-- **`SessionState` never ends up in a snapshot.** Only `GameState`
-  does, so undo/redo can't resurrect UI artifacts.
+- **Snapshots capture `GameState` plus the player-intent slice of
+  `SessionState`** (`SelectedTerritory` anchor, `Mode`, `MoveSource`)
+  via `UndoEntry` (a `(GameStateSnapshot, SessionStateSnapshot)` pair).
+  `Winner` and the `Undo` stack itself stay out. Top-level human event
+  handlers are wrapped in `TrackHandler`, which captures pre-state,
+  runs the body, and pushes one `UndoEntry` iff state actually changed
+  — automatic de-dup of no-op clicks. Exceptions inside a handler
+  propagate without pushing.
 - **`HexTile.Color` is the single source of truth for tile
   ownership.** Its setter pushes the new color into the attached
   `Polygon2D`, so the logical color and rendered fill can't drift.

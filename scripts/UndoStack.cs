@@ -2,61 +2,65 @@ using System;
 using System.Collections.Generic;
 
 /// <summary>
-/// Two-sided history for the current turn. Callers push a snapshot of the
-/// state BEFORE each action. Undo pops the most recent pre-action snapshot
-/// and shoves the current state onto the redo stack. Redo is the symmetric
-/// operation. Doing a new action (PushBefore) invalidates the redo history,
-/// matching standard undo/redo semantics. Both pop methods throw on an
-/// empty stack — the HUD is responsible for gating the buttons.
+/// Two-sided history for the current turn. Callers push an
+/// <see cref="UndoEntry"/> (game + session snapshot) representing the
+/// state BEFORE each action. Undo pops the most recent pre-action entry
+/// and shoves the current state onto the redo stack. Redo is the
+/// symmetric operation. Doing a new action (PushBefore) invalidates the
+/// redo history, matching standard undo/redo semantics. Both pop methods
+/// throw on an empty stack — the HUD is responsible for gating the
+/// buttons.
 /// </summary>
 public class UndoStack
 {
-    private readonly List<GameStateSnapshot> _undo = new();
-    private readonly List<GameStateSnapshot> _redo = new();
+    private readonly List<UndoEntry> _undo = new();
+    private readonly List<UndoEntry> _redo = new();
 
     public bool CanUndo => _undo.Count > 0;
     public bool CanRedo => _redo.Count > 0;
+    public int UndoCount => _undo.Count;
+    public int RedoCount => _redo.Count;
 
     /// <summary>
-    /// Record <paramref name="snapshot"/> as the state to return to on
+    /// Record <paramref name="entry"/> as the state to return to on
     /// <see cref="UndoLast"/>. Call before executing an action. Clears the
     /// redo stack — a new action invalidates forward history.
     /// </summary>
-    public void PushBefore(GameStateSnapshot snapshot)
+    public void PushBefore(UndoEntry entry)
     {
-        _undo.Add(snapshot);
+        _undo.Add(entry);
         _redo.Clear();
     }
 
     /// <summary>
-    /// Pop and return the most recent pre-action snapshot. The given
+    /// Pop and return the most recent pre-action entry. The given
     /// <paramref name="currentState"/> is pushed to the redo stack so the
     /// action can be redone later. Throws if there's nothing to undo.
     /// </summary>
-    public GameStateSnapshot UndoLast(GameStateSnapshot currentState)
+    public UndoEntry UndoLast(UndoEntry currentState)
     {
         if (_undo.Count == 0)
         {
             throw new InvalidOperationException("UndoLast called on empty undo stack");
         }
         _redo.Add(currentState);
-        GameStateSnapshot top = _undo[_undo.Count - 1];
+        UndoEntry top = _undo[_undo.Count - 1];
         _undo.RemoveAt(_undo.Count - 1);
         return top;
     }
 
     /// <summary>
     /// Repeatedly undo until the undo stack is empty. Returns the oldest
-    /// pre-action snapshot (the state at the start of the turn). Throws if
+    /// pre-action entry (the state at the start of the turn). Throws if
     /// there's nothing to undo.
     /// </summary>
-    public GameStateSnapshot UndoTurn(GameStateSnapshot currentState)
+    public UndoEntry UndoTurn(UndoEntry currentState)
     {
         if (_undo.Count == 0)
         {
             throw new InvalidOperationException("UndoTurn called on empty undo stack");
         }
-        GameStateSnapshot restored = UndoLast(currentState);
+        UndoEntry restored = UndoLast(currentState);
         while (_undo.Count > 0)
         {
             restored = UndoLast(restored);
@@ -69,14 +73,14 @@ public class UndoStack
     /// <paramref name="currentState"/> is pushed to the undo stack so the
     /// redo can be undone later. Throws if there's nothing to redo.
     /// </summary>
-    public GameStateSnapshot RedoLast(GameStateSnapshot currentState)
+    public UndoEntry RedoLast(UndoEntry currentState)
     {
         if (_redo.Count == 0)
         {
             throw new InvalidOperationException("RedoLast called on empty redo stack");
         }
         _undo.Add(currentState);
-        GameStateSnapshot top = _redo[_redo.Count - 1];
+        UndoEntry top = _redo[_redo.Count - 1];
         _redo.RemoveAt(_redo.Count - 1);
         return top;
     }
@@ -86,13 +90,13 @@ public class UndoStack
     /// state (the one we were at before the first undo). Throws if there's
     /// nothing to redo.
     /// </summary>
-    public GameStateSnapshot RedoAll(GameStateSnapshot currentState)
+    public UndoEntry RedoAll(UndoEntry currentState)
     {
         if (_redo.Count == 0)
         {
             throw new InvalidOperationException("RedoAll called on empty redo stack");
         }
-        GameStateSnapshot restored = RedoLast(currentState);
+        UndoEntry restored = RedoLast(currentState);
         while (_redo.Count > 0)
         {
             restored = RedoLast(restored);

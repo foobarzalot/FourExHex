@@ -143,12 +143,57 @@ public class GameController
         }
     }
 
-    private GameStateSnapshot CaptureCurrentSnapshot() =>
-        GameStateSnapshot.Capture(_state.Grid, _state.Treasury, _state.Territories);
+    private UndoEntry CaptureCurrentSnapshot() => new UndoEntry(
+        GameStateSnapshot.Capture(_state.Grid, _state.Treasury, _state.Territories),
+        SessionStateSnapshot.Capture(_session));
+
+    // Set inside Execute* helpers right before the first game-state
+    // mutation. Read by TrackHandler at handler exit to decide whether
+    // to push an UndoEntry. Replaces the previous inline PushBefore
+    // pattern: now the wrapping handler captures and pushes once,
+    // covering both game and session state changes in a single entry.
+    private bool _handlerMutatedGame;
+
+    /// <summary>
+    /// Per-event-handler push policy. Captures pre-handler state, runs
+    /// <paramref name="work"/>, and pushes that pre-state onto the undo
+    /// stack iff the handler actually changed something — either game
+    /// state (signaled by <see cref="_handlerMutatedGame"/>) or session
+    /// state (selection / mode / move source). De-dup is automatic: a
+    /// no-op handler (e.g. Buy Peasant when already in BuyingPeasant
+    /// and only peasant is affordable) leaves both signals false and
+    /// no entry is pushed.
+    ///
+    /// Exceptions thrown by <paramref name="work"/> propagate; the push
+    /// code below is intentionally skipped. An exception in a handler
+    /// means the controller's invariants are broken — we want the
+    /// application to crash, not to leave a fake "press Undo to
+    /// recover" path that would mask the bug.
+    /// </summary>
+    private void TrackHandler(System.Action work)
+    {
+        UndoEntry pre = CaptureCurrentSnapshot();
+        _handlerMutatedGame = false;
+        work();
+        // If the handler triggered a game-over (e.g., a winning capture
+        // calls Undo.Clear()), don't push — there's nothing to undo past
+        // game-end, and the pre-state would otherwise resurrect the
+        // just-cleared stack.
+        if (_session.IsGameOver) return;
+        SessionStateSnapshot postSession = SessionStateSnapshot.Capture(_session);
+        bool sessionChanged = !pre.Session.Equals(postSession);
+        if (_handlerMutatedGame || sessionChanged)
+        {
+            _session.Undo.PushBefore(pre);
+        }
+    }
 
     // --- Click handling ---------------------------------------------------
 
-    private void OnTileClicked(HexTile? tile)
+    private void OnTileClicked(HexTile? tile) =>
+        TrackHandler(() => OnTileClickedBody(tile));
+
+    private void OnTileClickedBody(HexTile? tile)
     {
         if (_session.IsGameOver) return;
 
@@ -274,7 +319,7 @@ public class GameController
     {
         if (_session.SelectedTerritory == null) return;
 
-        _session.Undo.PushBefore(CaptureCurrentSnapshot());
+        _handlerMutatedGame = true;
 
         HexCoord capital = _session.SelectedTerritory.Capital!.Value;
         _state.Treasury.SetGold(capital, _state.Treasury.GetGold(capital) - PurchaseRules.CostFor(level));
@@ -334,7 +379,7 @@ public class GameController
     {
         if (_session.SelectedTerritory == null) return;
 
-        _session.Undo.PushBefore(CaptureCurrentSnapshot());
+        _handlerMutatedGame = true;
 
         MoveResult result = MovementRules.Move(source, destination, _state.Grid, _session.SelectedTerritory);
 
@@ -381,7 +426,7 @@ public class GameController
     {
         if (_session.SelectedTerritory == null) return;
 
-        _session.Undo.PushBefore(CaptureCurrentSnapshot());
+        _handlerMutatedGame = true;
 
         HexCoord capital = _session.SelectedTerritory.Capital!.Value;
         _state.Treasury.SetGold(
@@ -451,7 +496,9 @@ public class GameController
         _map.ShowMoveSource(null);
     }
 
-    private void OnCancelActionPressed()
+    private void OnCancelActionPressed() => TrackHandler(OnCancelActionPressedBody);
+
+    private void OnCancelActionPressedBody()
     {
         if (_session.IsGameOver) return;
         CancelPendingAction();
@@ -489,16 +536,54 @@ public class GameController
     }
 
     /// <summary>
-    /// Restore game state from <paramref name="snapshot"/>, rebuild the
-    /// view's derived state, and refresh. Shared by undo and redo.
+    /// Restore game and session state from <paramref name="entry"/>,
+    /// rebuild the view's derived state, re-emit the overlays implied by
+    /// the restored mode, and refresh. Shared by undo and redo.
     /// </summary>
-    private void ApplySnapshot(GameStateSnapshot snapshot)
+    private void ApplySnapshot(UndoEntry entry)
     {
-        _state.Territories = snapshot.ApplyTo(_state.Grid, _state.Treasury);
+        _state.Territories = entry.Game.ApplyTo(_state.Grid, _state.Treasury);
         _map.RebuildAfterTerritoryChange();
-        SetSelection(null);
-        CancelPendingAction();
+        entry.Session.ApplyTo(_session, _state.Territories);
+        RestoreOverlaysForCurrentMode();
         RefreshViews();
+    }
+
+    /// <summary>
+    /// Re-emit the map overlays implied by the current
+    /// <see cref="SessionState"/>: highlight ring on the selected
+    /// territory, plus move-target rings and move-source ring for the
+    /// pending action mode (if any). Called after undo/redo restores
+    /// session state, so the view matches the restored intent.
+    /// </summary>
+    private void RestoreOverlaysForCurrentMode()
+    {
+        _map.ShowHighlight(_session.SelectedTerritory);
+
+        UnitLevel? buyLevel = SessionState.BuyModeLevel(_session.Mode);
+        if (buyLevel.HasValue && _session.SelectedTerritory != null)
+        {
+            _map.ShowMoveTargets(ActionConsumingTargets(buyLevel.Value, _session.SelectedTerritory));
+            _map.ShowMoveSource(null);
+            return;
+        }
+        if (_session.Mode == SessionState.ActionMode.MovingUnit
+            && _session.MoveSource.HasValue
+            && _session.SelectedTerritory != null)
+        {
+            HexTile? src = _state.Grid.Get(_session.MoveSource.Value);
+            if (src?.Unit != null)
+            {
+                _map.ShowMoveTargets(ActionConsumingTargets(src.Unit.Level, _session.SelectedTerritory));
+                _map.ShowMoveSource(_session.MoveSource);
+                return;
+            }
+            // Defensive fallback: source unit no longer exists.
+            _session.Mode = SessionState.ActionMode.None;
+            _session.MoveSource = null;
+        }
+        _map.ShowMoveTargets(System.Array.Empty<HexCoord>());
+        _map.ShowMoveSource(null);
     }
 
     // --- HUD buttons ------------------------------------------------------
@@ -521,7 +606,9 @@ public class GameController
     /// If the only affordable level is the one already active, the
     /// press is a no-op. Same handler is invoked by the `u` hotkey.
     /// </summary>
-    private void OnBuyPressed()
+    private void OnBuyPressed() => TrackHandler(OnBuyPressedBody);
+
+    private void OnBuyPressedBody()
     {
         if (_session.IsGameOver) return;
         if (_session.SelectedTerritory == null) return;
@@ -575,7 +662,9 @@ public class GameController
         return null;
     }
 
-    private void OnBuildTowerPressed()
+    private void OnBuildTowerPressed() => TrackHandler(OnBuildTowerPressedBody);
+
+    private void OnBuildTowerPressedBody()
     {
         if (_session.IsGameOver) return;
         if (_session.SelectedTerritory == null) return;
@@ -598,7 +687,9 @@ public class GameController
     /// action so the user isn't stuck in a stale action mode on a
     /// different territory.
     /// </summary>
-    private void OnNextTerritoryPressed()
+    private void OnNextTerritoryPressed() => TrackHandler(OnNextTerritoryPressedBody);
+
+    private void OnNextTerritoryPressedBody()
     {
         if (_session.IsGameOver) return;
 

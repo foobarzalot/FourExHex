@@ -70,7 +70,7 @@ Typical invocation: `FOUREXHEX_6AI=1 /Applications/Godot_mono.app/Contents/MacOS
 - **Views never mutate the model.** `HexMapView` / `HudView` only read `GameState` and render; they don't write to it.
 - **`GameController` never touches Godot `Node`s directly.** It talks to views through `IHexMapView` / `IHudView`, and to the event loop through `IAiPacer`. This is what makes `GameControllerTests` possible.
 - **Every state change funnels through `RefreshViews()`** at the end of the handler — one UI update path, no drift.
-- **`SessionState` never enters a snapshot.** Only `GameState` does, so undo/redo can't resurrect UI artifacts.
+- **Snapshots capture `GameState` plus the player-intent slice of `SessionState`** (`SelectedTerritory` anchor, `Mode`, `MoveSource`). `Winner` and the `Undo` stack itself stay out. Top-level human event handlers (`OnTileClicked`, `OnBuyPressed`, `OnBuildTowerPressed`, `OnCancelActionPressed`, `OnNextTerritoryPressed`) are wrapped in `TrackHandler` which captures pre-state, runs the body, and pushes a single `UndoEntry` iff state actually changed — de-dups no-op clicks (e.g. Buy Peasant when already in BuyingPeasant and only peasant is affordable). Exceptions inside a handler propagate; no push happens (a half-mutated state means the controller's invariants are broken — crash, don't paper over).
 - Pure rules (`MovementRules`, `PurchaseRules`, `TerritoryFinder`, `CapitalPlacer`, `CapitalReconciler`, `DefenseRules`, `TreeRules`, `UpkeepRules`, `WinConditionRules`) are static and Godot-free. Keep them that way.
 
 ## AI subsystem
