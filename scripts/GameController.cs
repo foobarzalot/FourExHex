@@ -122,7 +122,7 @@ public class GameController
         foreach (Territory territory in _state.Territories)
         {
             if (!territory.HasCapital) continue;
-            int earningCells = TreeRules.CountNonTreeTiles(territory, _state.Grid);
+            int earningCells = TreeRules.CountIncomeProducingTiles(territory, _state.Grid);
             _state.Treasury.SetGold(
                 territory.Capital!.Value, earningCells * startingGoldPerEarningCell);
         }
@@ -651,17 +651,17 @@ public class GameController
 
     /// <summary>
     /// End-of-turn bookkeeping for the now-ending player: credit their
-    /// income (based on gold-earning cells in their current territories),
-    /// convert graves into trees, then run one step of tree spreading.
+    /// income (based on gold-earning cells in their current territories).
     /// Called on the ending player while they are still the current
     /// player — <see cref="AdvanceToNextActivePlayer"/> runs after.
+    /// Tree growth is no longer part of end-of-turn — it now runs as
+    /// the very first phase of the NEXT player's turn (see
+    /// <see cref="StartPlayerTurn"/>).
     /// </summary>
     private void EndOfTurnProcessing()
     {
         _state.Treasury.CollectIncomeFor(
             _state.Turns.CurrentPlayer, _state.Territories, _state.Grid);
-        TreeRules.ConvertGravesToTrees(_state.Grid, _state.Turns.CurrentPlayer.Color);
-        TreeRules.SpreadTrees(_state.Grid);
     }
 
     /// <summary>
@@ -681,14 +681,28 @@ public class GameController
     }
 
     /// <summary>
-    /// Start-of-turn bookkeeping for the now-current player: reset
-    /// unit move flags and apply upkeep (which may bankrupt
-    /// territories and turn their units into graves). Income is NOT
-    /// collected here — it's credited at the end of the turn that
-    /// earned it (see <see cref="EndOfTurnProcessing"/>).
+    /// Start-of-turn bookkeeping for the now-current player. Order:
+    ///   1. Tree-growth phase — graves on the player's tiles convert
+    ///      to trees, and empty cells of their color with >= 2
+    ///      neighboring trees become trees. Skipped on every player's
+    ///      first turn (i.e. while <see cref="TurnState.TurnNumber"/>
+    ///      is still 1), so the very first round of play has no
+    ///      surprise growth.
+    ///   2. Reset unit move flags.
+    ///   3. Apply upkeep (which may bankrupt territories and turn
+    ///      their units into fresh graves; those graves wait until
+    ///      this player's NEXT turn to mature).
+    /// Income is NOT collected here — it's credited at the end of
+    /// the turn that earned it (see <see cref="EndOfTurnProcessing"/>).
     /// </summary>
     private void StartPlayerTurn()
     {
+        if (_state.Turns.TurnNumber > 1)
+        {
+            TreeRules.RunStartOfTurnGrowth(
+                _state.Grid, _state.Turns.CurrentPlayer.Color);
+        }
+
         ResetMovementFor(_state.Turns.CurrentPlayer, _state.Grid);
         UpkeepRules.ApplyUpkeepFor(
             _state.Turns.CurrentPlayer, _state.Territories, _state.Grid, _state.Treasury);
@@ -710,7 +724,7 @@ public class GameController
             if (t.Owner != p.Color) continue;
             ownedTerritories++;
             tiles += t.Coords.Count;
-            int income = TreeRules.CountNonTreeTiles(t, _state.Grid);
+            int income = TreeRules.CountIncomeProducingTiles(t, _state.Grid);
             int upkeep = UpkeepRules.TotalUpkeepFor(t, _state.Grid);
             totalNet += income - upkeep;
             if (t.HasCapital)

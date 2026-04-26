@@ -170,10 +170,10 @@ public class TreasuryTests
     [Fact]
     public void CollectIncomeFor_WithGrid_TowerTileStillCountsAsIncome()
     {
-        // Only trees block income. Capital, unit, grave, and tower
-        // tiles still pay out. This test locks the tower behavior in
-        // against a possible future regression where trees and towers
-        // get lumped together.
+        // Trees and graves block income; capital, unit, and tower tiles
+        // still pay out. This test locks the tower behavior in against
+        // a possible future regression where trees and towers get
+        // lumped together.
         var capital = new HexCoord(0, 0);
         Territory t = MakeTerritory(
             Red, capital,
@@ -188,6 +188,30 @@ public class TreasuryTests
         treasury.CollectIncomeFor(RedPlayer, new[] { t }, grid);
 
         Assert.Equal(3, treasury.GetGold(capital));
+    }
+
+    [Fact]
+    public void CollectIncomeFor_WithGrid_SkipsGraveTiles()
+    {
+        // Graves block income just like trees. 4-tile territory with
+        // two graves → 2 gold credited.
+        var capital = new HexCoord(0, 0);
+        Territory t = MakeTerritory(
+            Red, capital,
+            new HexCoord(0, 0), new HexCoord(1, 0),
+            new HexCoord(2, 0), new HexCoord(3, 0));
+        var grid = new HexGrid();
+        grid.Add(new HexTile(new HexCoord(0, 0), Red));
+        grid.Add(new HexTile(new HexCoord(1, 0), Red));
+        grid.Add(new HexTile(new HexCoord(2, 0), Red));
+        grid.Add(new HexTile(new HexCoord(3, 0), Red));
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Grave();
+        grid.Get(new HexCoord(2, 0))!.Occupant = new Grave();
+
+        var treasury = new Treasury();
+        treasury.CollectIncomeFor(RedPlayer, new[] { t }, grid);
+
+        Assert.Equal(2, treasury.GetGold(capital));
     }
 
     [Fact]

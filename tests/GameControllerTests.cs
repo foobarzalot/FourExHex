@@ -531,35 +531,44 @@ public class GameControllerTests
     }
 
     [Fact]
-    public void EndTurn_ConvertsGravesToTrees()
+    public void StartTurn_ConvertsGravesOnStartingPlayersTiles_OnTheirNextOwnTurn()
     {
+        // Trees are now created at the START of a player's turn, on
+        // tiles of that player's color, and the very first turn of
+        // each player skips the phase entirely. So a grave dropped on
+        // a Red tile during Red's first turn doesn't convert when
+        // Red ends — it converts on Red's NEXT start-of-turn (turn 2).
         var g = new TestGame();
-        // Drop a stray grave on the ending player's tile (as if left
-        // over from a previous bankruptcy). End of turn should convert
-        // it into a tree rather than clearing it — trees are the
-        // "rotted corpse" legacy.
-        g.Tile(0, 1).Occupant = new Grave(); // Red tile; Red ends below.
+        g.Tile(0, 1).Occupant = new Grave(); // Red tile
 
-        g.Hud.ClickEndTurn();
+        g.Hud.ClickEndTurn();           // Red -> Blue (turn 1, phase skipped)
+        Assert.IsType<Grave>(g.Tile(0, 1).Occupant);
 
+        g.Hud.ClickEndTurn();           // Blue -> Red (turn 2, phase runs)
         Assert.IsType<Tree>(g.Tile(0, 1).Occupant);
     }
 
     [Fact]
-    public void EndTurn_SpreadsTrees_OneStep()
+    public void StartTurn_SpreadsTrees_AtStartOfOwningPlayersTurn()
     {
-        // Two adjacent trees at end of turn seed a third in their
-        // common empty neighbor. Place the pair on Blue tiles so the
-        // fixture's Red territory is untouched by spreading.
+        // New spread rule: an empty tile on the starting player's
+        // color with >= 2 neighboring trees (per snapshot) becomes a
+        // tree. Place a Blue-tile pair so spreading flips the empty
+        // Blue tile (2,1) — which is adjacent to BOTH (2,0) and (3,0).
+        // Skip + advance until Blue's second turn starts so the phase
+        // actually runs on Blue tiles.
         var g = new TestGame();
         g.Tile(2, 0).Occupant = new Tree();
         g.Tile(3, 0).Occupant = new Tree();
-        int treesBefore = CountTrees(g.State.Grid);
 
-        g.Hud.ClickEndTurn();
+        g.Hud.ClickEndTurn(); // Red -> Blue (turn 1, skip)
+        Assert.Null(g.Tile(2, 1).Occupant);
 
-        int treesAfter = CountTrees(g.State.Grid);
-        Assert.Equal(treesBefore + 1, treesAfter);
+        g.Hud.ClickEndTurn(); // Blue -> Red (turn 2, runs on Red tiles only)
+        Assert.Null(g.Tile(2, 1).Occupant);
+
+        g.Hud.ClickEndTurn(); // Red -> Blue (turn 2, runs on Blue tiles)
+        Assert.IsType<Tree>(g.Tile(2, 1).Occupant);
     }
 
     [Fact]
@@ -586,89 +595,192 @@ public class GameControllerTests
     }
 
     [Fact]
-    public void EndTurn_BankruptGraves_BecomeTreesOnNextEndTurn()
+    public void EndTurn_IncomeSkipsGraveTiles_WhenEndingPlayerCollects()
     {
-        // Full feedback loop: Blue can't afford its knight → knight
-        // dies and leaves a grave this turn → next end-of-turn the
-        // grave converts into a tree → the tree permanently reduces
-        // Blue's income.
+        // End-to-end check: Blue has a knight it cannot afford. On
+        // Blue's start-of-turn upkeep bankrupts the knight into a
+        // grave. Blue then plays out the turn (no other actions) and
+        // ends — its income credit must EXCLUDE the grave tile, just
+        // like trees are excluded.
+        var g = new TestGame();
+        g.Tile(3, 0).Occupant = new Unit(g.Blue.Color, UnitLevel.Knight);
+        int blueSize = g.State.Territories
+            .First(t => t.Owner == g.Blue.Color).Size;
+        HexCoord blueCapital = g.State.Territories
+            .First(t => t.Owner == g.Blue.Color).Capital!.Value;
+        g.State.Treasury.SetGold(blueCapital, 0);
+
+        g.Hud.ClickEndTurn(); // Red -> Blue: knight goes bankrupt → grave on (3,0)
+        Assert.IsType<Grave>(g.Tile(3, 0).Occupant);
+        Assert.Equal(0, g.State.Treasury.GetGold(blueCapital));
+
+        g.Hud.ClickEndTurn(); // Blue ends turn → income credited
+
+        // Blue's income excludes the grave tile.
+        Assert.Equal(blueSize - 1, g.State.Treasury.GetGold(blueCapital));
+    }
+
+    [Fact]
+    public void StartTurn_BankruptGraves_BecomeTreesOnPlayersNextOwnTurn()
+    {
+        // Full feedback loop under the new rule:
+        //   1. Blue can't afford its knight; on Blue's turn-1 START
+        //      the tree-growth phase is skipped (first-turn rule),
+        //      then upkeep bankrupts the knight → grave.
+        //   2. Red's turn 2 starts: phase runs but only on Red tiles,
+        //      so the Blue grave is unaffected.
+        //   3. Blue's turn 2 starts: phase runs on Blue tiles, so
+        //      the bankruptcy grave converts into a tree.
         var g = new TestGame();
         g.Tile(3, 0).Occupant = new Unit(g.Blue.Color, UnitLevel.Knight);
         HexCoord blueCapital = g.State.Territories
             .First(t => t.Owner == g.Blue.Color).Capital!.Value;
         g.State.Treasury.SetGold(blueCapital, 0);
 
-        // End Red's turn: Blue's turn begins, knight goes bankrupt.
-        g.Hud.ClickEndTurn();
+        g.Hud.ClickEndTurn(); // Red -> Blue (turn 1): skip phase, upkeep bankrupts.
         Assert.IsType<Grave>(g.Tile(3, 0).Occupant);
 
-        // End Blue's turn: the bankruptcy grave converts into a tree.
-        g.Hud.ClickEndTurn();
+        g.Hud.ClickEndTurn(); // Blue -> Red (turn 2): phase on Red tiles only.
+        Assert.IsType<Grave>(g.Tile(3, 0).Occupant);
+
+        g.Hud.ClickEndTurn(); // Red -> Blue (turn 2): phase on Blue tiles.
         Assert.IsType<Tree>(g.Tile(3, 0).Occupant);
     }
 
     // --- Grave-to-tree: owner-specific timing ----------------------------
-    // A grave on a given player's tile should only convert into a tree at
-    // the end of THAT player's turn, not at the end of any other player's
-    // turn. The grave's "owner" is the tile's color.
+    // A grave on a given player's tile only converts into a tree at the
+    // START of THAT player's next turn (the grave's "owner" is the tile's
+    // color). The phase is skipped on every player's first turn, so the
+    // earliest possible conversion is on the owning player's turn 2.
 
     [Fact]
-    public void EndTurn_GraveOnNonEndingPlayersTile_Survives()
+    public void StartTurn_GraveOnNonStartingPlayersTile_Survives()
     {
-        // Grave sits on a Blue tile. Red's turn ends. Only Blue's turn-end
-        // should convert it — so right now the grave must survive.
+        // Grave on Blue tile. Phase doesn't fire for Blue's first turn
+        // and never converts non-Red graves on Red's turn, so even
+        // after advancing into Red's turn 2 the Blue grave persists.
         var g = new TestGame();
         g.Tile(3, 0).Occupant = new Grave();
-        Assert.Equal(g.Blue.Color, g.Tile(3, 0).Color); // sanity: grave is on Blue
+        Assert.Equal(g.Blue.Color, g.Tile(3, 0).Color); // sanity: Blue tile
 
-        g.Hud.ClickEndTurn(); // Red ends; Blue now current.
+        g.Hud.ClickEndTurn(); // Red -> Blue (turn 1, skip)
+        Assert.IsType<Grave>(g.Tile(3, 0).Occupant);
 
+        g.Hud.ClickEndTurn(); // Blue -> Red (turn 2, runs on Red tiles only)
         Assert.IsType<Grave>(g.Tile(3, 0).Occupant);
     }
 
     [Fact]
-    public void EndTurn_GraveOnEndingPlayersTile_ConvertsToTree()
+    public void StartTurn_GraveOnStartingPlayersTile_ConvertsToTree()
     {
-        // Grave on a Red tile. Red's turn ends. It must convert.
+        // Grave on Red tile. After advancing into Red's turn 2 (skip
+        // their first turn, then return), the grave converts.
         var g = new TestGame();
         g.Tile(0, 1).Occupant = new Grave();
         Assert.Equal(g.Red.Color, g.Tile(0, 1).Color);
 
-        g.Hud.ClickEndTurn(); // Red ends.
+        g.Hud.ClickEndTurn(); // Red -> Blue
+        g.Hud.ClickEndTurn(); // Blue -> Red (turn 2, phase runs)
 
         Assert.IsType<Tree>(g.Tile(0, 1).Occupant);
     }
 
     [Fact]
-    public void EndTurn_MixedGraves_OnlyEndingPlayersColorConverts()
+    public void StartTurn_MixedGraves_OnlyStartingPlayersColorConverts()
     {
-        // Two graves: one on a Red tile, one on a Blue tile. When Red
-        // ends their turn, only the Red-tile grave converts. The Blue-
-        // tile grave must wait for Blue's own end-of-turn.
+        // Two graves: one on a Red tile, one on a Blue tile. When
+        // Red's turn 2 starts, only the Red-tile grave converts. The
+        // Blue-tile grave waits for Blue's turn 2.
         var g = new TestGame();
         g.Tile(0, 1).Occupant = new Grave(); // Red tile
         g.Tile(3, 0).Occupant = new Grave(); // Blue tile
 
-        g.Hud.ClickEndTurn(); // Red ends.
+        g.Hud.ClickEndTurn(); // Red -> Blue (turn 1, skip)
+        g.Hud.ClickEndTurn(); // Blue -> Red (turn 2, runs on Red tiles)
 
         Assert.IsType<Tree>(g.Tile(0, 1).Occupant);
         Assert.IsType<Grave>(g.Tile(3, 0).Occupant);
     }
 
     [Fact]
-    public void EndTurn_GraveOnBlueTile_ConvertsOnlyAfterBlueEndsTurn()
+    public void StartTurn_GraveOnBlueTile_ConvertsOnlyAtBlueStartOfTurn()
     {
         // End-to-end statement of the rule: a grave on a Blue tile
-        // persists through Red's end-of-turn, and only becomes a tree
-        // when Blue's own turn ends.
+        // persists until Blue's NEXT turn starts (turn 2 here), then
+        // converts. It must NOT convert on Red's turn 2 start.
         var g = new TestGame();
         g.Tile(3, 0).Occupant = new Grave();
 
-        g.Hud.ClickEndTurn(); // Red ends → Blue's turn begins.
+        g.Hud.ClickEndTurn(); // Red -> Blue (turn 1, skip)
         Assert.IsType<Grave>(g.Tile(3, 0).Occupant);
 
-        g.Hud.ClickEndTurn(); // Blue ends → now it converts.
+        g.Hud.ClickEndTurn(); // Blue -> Red (turn 2, Red tiles only)
+        Assert.IsType<Grave>(g.Tile(3, 0).Occupant);
+
+        g.Hud.ClickEndTurn(); // Red -> Blue (turn 2, runs on Blue tiles)
         Assert.IsType<Tree>(g.Tile(3, 0).Occupant);
+    }
+
+    [Fact]
+    public void StartTurn_FirstTurn_PhaseIsSkipped()
+    {
+        // First-turn rule: the tree-growth phase MUST NOT fire on
+        // any player's first turn. Set up a Blue grave + a tree pair
+        // on Blue tiles that would otherwise spread, end Red's turn
+        // (Blue's first turn begins). Both rules must be no-ops.
+        var g = new TestGame();
+        g.Tile(3, 0).Occupant = new Grave(); // Blue tile
+        g.Tile(2, 0).Occupant = new Tree();  // would seed (2,1) spread
+        g.Tile(3, 1).Occupant = new Tree();  // would seed (2,1) spread
+
+        g.Hud.ClickEndTurn(); // Red -> Blue (turn 1, skip)
+
+        // Grave still there.
+        Assert.IsType<Grave>(g.Tile(3, 0).Occupant);
+        // Spread did NOT happen: (2,1) still empty.
+        Assert.Null(g.Tile(2, 1).Occupant);
+    }
+
+    [Fact]
+    public void StartTurn_PhaseRunsBeforeUpkeep_FreshGravesDoNotConvertSameTurn()
+    {
+        // Order rule: tree growth runs BEFORE upkeep on a player's
+        // start of turn. If upkeep ran first, the unit it bankrupts
+        // would become a grave, then the tree-growth phase would
+        // immediately convert that grave into a tree this turn.
+        // Correct order leaves the freshly-bankrupted unit as a grave.
+        var g = new TestGame();
+        // Knight on Blue tile that Blue cannot afford.
+        g.Tile(3, 0).Occupant = new Unit(g.Blue.Color, UnitLevel.Knight);
+        HexCoord blueCapital = g.State.Territories
+            .First(t => t.Owner == g.Blue.Color).Capital!.Value;
+        g.State.Treasury.SetGold(blueCapital, 0);
+
+        // Skip Blue's first turn so the phase actually fires the
+        // next time Blue starts a turn. We re-place the unbankrupted
+        // knight afterward to drive bankruptcy on Blue's turn 2 with
+        // the phase running first.
+        g.Hud.ClickEndTurn(); // Red -> Blue (turn 1, skip; knight goes bankrupt → grave)
+        Assert.IsType<Grave>(g.Tile(3, 0).Occupant);
+
+        // Plant a fresh knight that will bankrupt on Blue's turn 2.
+        // The previous bankruptcy grave is still there; on Blue's
+        // turn 2 it should convert to a tree (rule 1) BEFORE upkeep
+        // bankrupts the new knight. We can't put a knight directly
+        // on the grave tile, so use (4,0).
+        g.Tile(4, 0).Occupant = new Unit(g.Blue.Color, UnitLevel.Knight);
+        g.State.Treasury.SetGold(blueCapital, 0);
+
+        g.Hud.ClickEndTurn(); // Blue -> Red (turn 2, Red tiles only)
+        // Grave still there (Red's phase doesn't touch Blue tiles).
+        Assert.IsType<Grave>(g.Tile(3, 0).Occupant);
+
+        g.Hud.ClickEndTurn(); // Red -> Blue (turn 2, runs on Blue tiles)
+        // Old grave became a tree (growth ran first).
+        Assert.IsType<Tree>(g.Tile(3, 0).Occupant);
+        // Fresh knight became a grave (upkeep ran AFTER growth, so
+        // the new grave does not get converted this turn).
+        Assert.IsType<Grave>(g.Tile(4, 0).Occupant);
     }
 
     // --- AI action validation (harness defense) --------------------------
@@ -1354,8 +1466,8 @@ public class GameControllerTests
     public void Tower_SurvivesEndTurn_AndTreeConversionPass()
     {
         // Build a tower, end turn twice, tower should still be there.
-        // Confirms that ConvertGravesToTrees + SpreadTrees don't mutate
-        // tower tiles.
+        // Confirms that the start-of-turn tree-growth phase does not
+        // mutate tower tiles.
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
         HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;

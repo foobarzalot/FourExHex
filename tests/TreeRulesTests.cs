@@ -87,133 +87,223 @@ public class TreeRulesTests
         Assert.IsType<Grave>(grid.Get(new HexCoord(0, 0))!.Occupant);
     }
 
-    // --- SpreadTrees: no-op cases -----------------------------------------
+    // --- RunStartOfTurnGrowth: no-op cases --------------------------------
 
     [Fact]
-    public void SpreadTrees_NoTrees_NoChange()
+    public void RunStartOfTurnGrowth_EmptyBoard_NoChange()
     {
         HexGrid grid = BuildAxialGrid(-1, 2, -1, 2);
 
-        TreeRules.SpreadTrees(grid);
+        TreeRules.RunStartOfTurnGrowth(grid, Red);
 
         Assert.Empty(grid.Tiles.Where(t => t.Occupant is Tree));
     }
 
     [Fact]
-    public void SpreadTrees_IsolatedTrees_NoSpread()
+    public void RunStartOfTurnGrowth_IsolatedTrees_NoSpread()
     {
-        // Trees far enough apart to share no neighbors.
+        // Two trees with no common neighbor — neither contributes a 2nd
+        // tree-neighbor anywhere, so no empty cell qualifies.
         HexGrid grid = BuildAxialGrid(-2, 3, -2, 3);
         PlantTree(grid, new HexCoord(-2, 0));
         PlantTree(grid, new HexCoord(3, 0));
 
-        TreeRules.SpreadTrees(grid);
+        TreeRules.RunStartOfTurnGrowth(grid, Red);
 
         Assert.Equal(2, grid.Tiles.Count(t => t.Occupant is Tree));
     }
 
     [Fact]
-    public void SpreadTrees_AdjacentPair_NoEmptyCommonNeighbor_NoSpread()
+    public void RunStartOfTurnGrowth_OneTreeNeighbor_DoesNotSpread()
     {
-        // (0,0) and (1,0) are neighbors. Their common neighbors are
-        // (1,-1) and (0,1). Fill both with units so no candidate is empty.
+        // Single tree at (0,0). All its neighbors have only 1 tree
+        // neighbor in the snapshot, so none of them flip.
+        HexGrid grid = BuildAxialGrid(-1, 2, -1, 2);
+        PlantTree(grid, new HexCoord(0, 0));
+
+        TreeRules.RunStartOfTurnGrowth(grid, Red);
+
+        Assert.Equal(1, grid.Tiles.Count(t => t.Occupant is Tree));
+    }
+
+    // --- RunStartOfTurnGrowth: spread basics ------------------------------
+
+    [Fact]
+    public void RunStartOfTurnGrowth_TwoTreeNeighbors_BecomesTree()
+    {
+        // Trees at (0,0) and (1,0). Cells (1,-1) and (0,1) are each
+        // adjacent to BOTH trees, so under the new rule BOTH flip.
+        HexGrid grid = BuildAxialGrid(-1, 2, -1, 2);
+        PlantTree(grid, new HexCoord(0, 0));
+        PlantTree(grid, new HexCoord(1, 0));
+
+        TreeRules.RunStartOfTurnGrowth(grid, Red);
+
+        Assert.True(IsTree(grid, new HexCoord(1, -1)));
+        Assert.True(IsTree(grid, new HexCoord(0, 1)));
+        // Originals + both common-neighbors.
+        Assert.Equal(4, grid.Tiles.Count(t => t.Occupant is Tree));
+    }
+
+    [Fact]
+    public void RunStartOfTurnGrowth_ThreeTreeNeighbors_BecomesTree()
+    {
+        // (0,0) is adjacent to (1,0), (0,1), and (-1,1). Three tree
+        // neighbors, well above the threshold of 2 — (0,0) flips.
+        HexGrid grid = BuildAxialGrid(-2, 2, -2, 2);
+        PlantTree(grid, new HexCoord(1, 0));
+        PlantTree(grid, new HexCoord(0, 1));
+        PlantTree(grid, new HexCoord(-1, 1));
+
+        TreeRules.RunStartOfTurnGrowth(grid, Red);
+
+        Assert.True(IsTree(grid, new HexCoord(0, 0)));
+    }
+
+    // --- RunStartOfTurnGrowth: color isolation ----------------------------
+
+    [Fact]
+    public void RunStartOfTurnGrowth_OtherColorCell_DoesNotBecomeTree()
+    {
+        // Empty cell (1,-1) has Blue color. Trees at (0,0) and (1,0)
+        // make it a candidate by neighbor count, but the color filter
+        // keeps it as-is when Red's turn starts.
+        HexGrid grid = BuildAxialGrid(-1, 2, -1, 2);
+        grid.Get(new HexCoord(1, -1))!.Color = Blue;
+        PlantTree(grid, new HexCoord(0, 0));
+        PlantTree(grid, new HexCoord(1, 0));
+
+        TreeRules.RunStartOfTurnGrowth(grid, Red);
+
+        Assert.Null(grid.Get(new HexCoord(1, -1))!.Occupant);
+        // (0,1) is still Red and still flips.
+        Assert.True(IsTree(grid, new HexCoord(0, 1)));
+    }
+
+    [Fact]
+    public void RunStartOfTurnGrowth_OnlyConvertsGravesOnOwnerColor()
+    {
+        // Two graves: one on Red tile, one on Blue tile. Only the Red
+        // grave converts when Red's turn starts; Blue's grave persists.
+        HexGrid grid = BuildAxialGrid(-1, 2, -1, 2);
+        grid.Get(new HexCoord(0, 0))!.Color = Blue;
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Grave();
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Grave(); // Red tile
+
+        TreeRules.RunStartOfTurnGrowth(grid, Red);
+
+        Assert.IsType<Grave>(grid.Get(new HexCoord(0, 0))!.Occupant);
+        Assert.IsType<Tree>(grid.Get(new HexCoord(1, 0))!.Occupant);
+    }
+
+    // --- RunStartOfTurnGrowth: occupied cells are skipped -----------------
+
+    [Fact]
+    public void RunStartOfTurnGrowth_DoesNotOverwriteUnit()
+    {
+        // (1,-1) holds a friendly unit and has 2 tree neighbors. The
+        // spread rule MUST NOT replace the unit.
         HexGrid grid = BuildAxialGrid(-1, 2, -1, 2);
         PlantTree(grid, new HexCoord(0, 0));
         PlantTree(grid, new HexCoord(1, 0));
         grid.Get(new HexCoord(1, -1))!.Occupant = new Unit(Red);
-        grid.Get(new HexCoord(0, 1))!.Occupant = new Unit(Red);
 
-        TreeRules.SpreadTrees(grid);
+        TreeRules.RunStartOfTurnGrowth(grid, Red);
 
-        // Still exactly the two original trees.
-        Assert.Equal(2, grid.Tiles.Count(t => t.Occupant is Tree));
-    }
-
-    // --- SpreadTrees: basic spread ---------------------------------------
-
-    [Fact]
-    public void SpreadTrees_AdjacentPair_SpawnsOneTreeInCommonEmpty()
-    {
-        // (0,0) and (1,0) share common neighbors (1,-1) and (0,1).
-        // Both empty. Lex-min ordering on (R, Q) picks (1,-1) first
-        // because it has the smaller R.
-        HexGrid grid = BuildAxialGrid(-1, 2, -1, 2);
-        PlantTree(grid, new HexCoord(0, 0));
-        PlantTree(grid, new HexCoord(1, 0));
-
-        TreeRules.SpreadTrees(grid);
-
-        Assert.True(IsTree(grid, new HexCoord(1, -1)));
-        Assert.False(IsTree(grid, new HexCoord(0, 1)));
-        // Exactly one new tree added (two originals + one spawn).
-        Assert.Equal(3, grid.Tiles.Count(t => t.Occupant is Tree));
+        Assert.IsType<Unit>(grid.Get(new HexCoord(1, -1))!.Occupant);
     }
 
     [Fact]
-    public void SpreadTrees_PairWithSingleCommonEmpty_SpawnsThere()
+    public void RunStartOfTurnGrowth_DoesNotOverwriteCapital()
     {
-        // Block the lex-min candidate so only (0,1) remains.
         HexGrid grid = BuildAxialGrid(-1, 2, -1, 2);
         PlantTree(grid, new HexCoord(0, 0));
         PlantTree(grid, new HexCoord(1, 0));
         grid.Get(new HexCoord(1, -1))!.Occupant = new Capital();
 
-        TreeRules.SpreadTrees(grid);
+        TreeRules.RunStartOfTurnGrowth(grid, Red);
 
-        Assert.True(IsTree(grid, new HexCoord(0, 1)));
+        Assert.IsType<Capital>(grid.Get(new HexCoord(1, -1))!.Occupant);
+    }
+
+    [Fact]
+    public void RunStartOfTurnGrowth_DoesNotOverwriteTower()
+    {
+        HexGrid grid = BuildAxialGrid(-1, 2, -1, 2);
+        PlantTree(grid, new HexCoord(0, 0));
+        PlantTree(grid, new HexCoord(1, 0));
+        grid.Get(new HexCoord(1, -1))!.Occupant = new Tower();
+
+        TreeRules.RunStartOfTurnGrowth(grid, Red);
+
+        Assert.IsType<Tower>(grid.Get(new HexCoord(1, -1))!.Occupant);
+    }
+
+    [Fact]
+    public void RunStartOfTurnGrowth_DoesNotDoubleSetExistingTree()
+    {
+        // Existing tree at (1,-1). It stays a tree (and only one tree
+        // is counted there in the after-state). Sanity check that
+        // re-spawning over a tree isn't silently happening.
+        HexGrid grid = BuildAxialGrid(-1, 2, -1, 2);
+        PlantTree(grid, new HexCoord(0, 0));
+        PlantTree(grid, new HexCoord(1, 0));
+        PlantTree(grid, new HexCoord(1, -1));
+
+        TreeRules.RunStartOfTurnGrowth(grid, Red);
+
+        Assert.IsType<Tree>(grid.Get(new HexCoord(1, -1))!.Occupant);
+    }
+
+    // --- RunStartOfTurnGrowth: snapshot semantics (no cascade) ------------
+
+    [Fact]
+    public void RunStartOfTurnGrowth_NewlyConvertedGraveDoesNotSeedSpread()
+    {
+        // Snapshot semantics: a grave that becomes a tree via rule 1
+        // does NOT count toward another cell's "2+ tree neighbors"
+        // tally. Setup: tree at (0,0), grave at (1,0) (Red), empty
+        // cell (1,-1) adjacent to both. After rule 1 the grave is now
+        // a tree, but the snapshot only contains (0,0). (1,-1) sees
+        // 1 tree neighbor in snapshot → stays empty.
+        HexGrid grid = BuildAxialGrid(-1, 2, -1, 2);
+        PlantTree(grid, new HexCoord(0, 0));
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Grave();
+
+        TreeRules.RunStartOfTurnGrowth(grid, Red);
+
+        Assert.IsType<Tree>(grid.Get(new HexCoord(1, 0))!.Occupant); // grave converted
+        Assert.Null(grid.Get(new HexCoord(1, -1))!.Occupant);        // no cascade
+    }
+
+    [Fact]
+    public void RunStartOfTurnGrowth_NewlySpreadTreeDoesNotSeedSpread()
+    {
+        // Snapshot semantics: a tree that appears via rule 2 does NOT
+        // count for another rule-2 conversion in the same call.
+        // Setup: trees at (-1,0) and (1,0). Their common neighbor (0,0)
+        // is the only cell with 2 tree neighbors in the snapshot — it
+        // flips. (1,-1) has only (1,0) in the snapshot. With cascade,
+        // the new (0,0) tree would push it over the threshold; without
+        // cascade, it stays empty.
+        HexGrid grid = BuildAxialGrid(-2, 3, -2, 3);
+        PlantTree(grid, new HexCoord(-1, 0));
+        PlantTree(grid, new HexCoord(1, 0));
+
+        TreeRules.RunStartOfTurnGrowth(grid, Red);
+
+        Assert.True(IsTree(grid, new HexCoord(0, 0)));
+        Assert.False(IsTree(grid, new HexCoord(1, -1)));
+        Assert.False(IsTree(grid, new HexCoord(-1, 1)));
+        // Originals + just (0,0).
         Assert.Equal(3, grid.Tiles.Count(t => t.Occupant is Tree));
     }
 
-    // --- SpreadTrees: simultaneous, non-cascading ------------------------
-
     [Fact]
-    public void SpreadTrees_NewlySpawnedTree_DoesNotFeedFurtherSpreadThisCall()
+    public void RunStartOfTurnGrowth_DoesNotSpawnOffMap()
     {
-        // Trees at (0,0) and (0,1). Their common empty neighbors are
-        // (1,0) and (-1,1); lex-min on (R, Q) picks (1,0) (R=0 beats R=1).
-        // (2,0) is an existing tree but NOT adjacent to (0,0) or (0,1).
-        // If spawning cascaded, the new tree at (1,0) would pair with
-        // (2,0) and add another spawn. With simultaneous application we
-        // expect exactly one new tree this call.
-        HexGrid grid = BuildAxialGrid(-2, 3, -2, 3);
-        PlantTree(grid, new HexCoord(0, 0));
-        PlantTree(grid, new HexCoord(0, 1));
-        PlantTree(grid, new HexCoord(2, 0));
-
-        int before = grid.Tiles.Count(t => t.Occupant is Tree);
-        TreeRules.SpreadTrees(grid);
-        int after = grid.Tiles.Count(t => t.Occupant is Tree);
-
-        Assert.Equal(before + 1, after);
-        Assert.True(IsTree(grid, new HexCoord(1, 0)));
-    }
-
-    [Fact]
-    public void SpreadTrees_SpawnsAreDeterministic_LexMinWins()
-    {
-        // Verify determinism: running twice from identical setup picks
-        // the same cell.
-        HexGrid g1 = BuildAxialGrid(-1, 2, -1, 2);
-        PlantTree(g1, new HexCoord(0, 0));
-        PlantTree(g1, new HexCoord(1, 0));
-        TreeRules.SpreadTrees(g1);
-
-        HexGrid g2 = BuildAxialGrid(-1, 2, -1, 2);
-        PlantTree(g2, new HexCoord(0, 0));
-        PlantTree(g2, new HexCoord(1, 0));
-        TreeRules.SpreadTrees(g2);
-
-        var coords1 = g1.Tiles.Where(t => t.Occupant is Tree).Select(t => t.Coord).OrderBy(c => c).ToList();
-        var coords2 = g2.Tiles.Where(t => t.Occupant is Tree).Select(t => t.Coord).OrderBy(c => c).ToList();
-        Assert.Equal(coords1, coords2);
-    }
-
-    [Fact]
-    public void SpreadTrees_DoesNotSpawnOffMap()
-    {
-        // Only three tiles exist: (0,0), (1,0), and (0,1). Trees at
-        // (0,0) and (1,0) — their other common neighbor (1,-1) is off-map.
-        // Only (0,1) is a candidate.
+        // Only three tiles exist. With trees at (0,0) and (1,0) the
+        // only on-map common neighbor is (0,1).
         var grid = new HexGrid();
         grid.Add(new HexTile(new HexCoord(0, 0), Red));
         grid.Add(new HexTile(new HexCoord(1, 0), Red));
@@ -221,52 +311,16 @@ public class TreeRulesTests
         PlantTree(grid, new HexCoord(0, 0));
         PlantTree(grid, new HexCoord(1, 0));
 
-        TreeRules.SpreadTrees(grid);
+        TreeRules.RunStartOfTurnGrowth(grid, Red);
 
         Assert.True(IsTree(grid, new HexCoord(0, 1)));
         Assert.Equal(3, grid.Tiles.Count(t => t.Occupant is Tree));
     }
 
-    [Fact]
-    public void SpreadTrees_DoesNotSpawnOntoTower()
-    {
-        // Regression lock: SpreadTrees picks the lex-min EMPTY common
-        // neighbor. A tower occupies the lex-min spot; the other common
-        // neighbor is empty and should be chosen. Trees must NEVER
-        // overwrite a tower.
-        HexGrid grid = BuildAxialGrid(-1, 2, -1, 2);
-        PlantTree(grid, new HexCoord(0, 0));
-        PlantTree(grid, new HexCoord(1, 0));
-        grid.Get(new HexCoord(1, -1))!.Occupant = new Tower();
-
-        TreeRules.SpreadTrees(grid);
-
-        Assert.IsType<Tower>(grid.Get(new HexCoord(1, -1))!.Occupant);
-        Assert.True(IsTree(grid, new HexCoord(0, 1)));
-    }
+    // --- CountIncomeProducingTiles ---------------------------------------
 
     [Fact]
-    public void SpreadTrees_DoesNotReplaceOccupiedCommonNeighbor()
-    {
-        // Common neighbor (1,-1) holds a unit; lex-min pick must fall
-        // through to (0,1).
-        HexGrid grid = BuildAxialGrid(-1, 2, -1, 2);
-        PlantTree(grid, new HexCoord(0, 0));
-        PlantTree(grid, new HexCoord(1, 0));
-        grid.Get(new HexCoord(1, -1))!.Occupant = new Unit(Red);
-
-        TreeRules.SpreadTrees(grid);
-
-        // Unit still there.
-        Assert.IsType<Unit>(grid.Get(new HexCoord(1, -1))!.Occupant);
-        // Tree added at the other candidate.
-        Assert.True(IsTree(grid, new HexCoord(0, 1)));
-    }
-
-    // --- CountNonTreeTiles -----------------------------------------------
-
-    [Fact]
-    public void CountNonTreeTiles_IgnoresTreeTilesInTerritory()
+    public void CountIncomeProducingTiles_IgnoresTreeTilesInTerritory()
     {
         HexGrid grid = BuildAxialGrid(0, 3, 0, 0);
         PlantTree(grid, new HexCoord(1, 0));
@@ -277,24 +331,54 @@ public class TreeRulesTests
             new[] { new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(2, 0), new HexCoord(3, 0) },
             capital: new HexCoord(0, 0));
 
-        Assert.Equal(2, TreeRules.CountNonTreeTiles(territory, grid));
+        Assert.Equal(2, TreeRules.CountIncomeProducingTiles(territory, grid));
     }
 
     [Fact]
-    public void CountNonTreeTiles_CountsUnitAndCapitalTilesAsIncome()
+    public void CountIncomeProducingTiles_IgnoresGraveTilesInTerritory()
     {
-        // Only Tree tiles are excluded; units, capitals, graves still
-        // count as income-producing.
-        HexGrid grid = BuildAxialGrid(0, 3, 0, 0);
-        grid.Get(new HexCoord(0, 0))!.Occupant = new Capital();
-        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red);
+        // 7-tile territory with two graves should report 5 (the user's
+        // worked example for the new rule).
+        HexGrid grid = BuildAxialGrid(0, 6, 0, 0);
         grid.Get(new HexCoord(2, 0))!.Occupant = new Grave();
+        grid.Get(new HexCoord(4, 0))!.Occupant = new Grave();
 
         var territory = new Territory(
             Red,
-            new[] { new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(2, 0), new HexCoord(3, 0) },
+            new[]
+            {
+                new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(2, 0),
+                new HexCoord(3, 0), new HexCoord(4, 0), new HexCoord(5, 0),
+                new HexCoord(6, 0),
+            },
             capital: new HexCoord(0, 0));
 
-        Assert.Equal(4, TreeRules.CountNonTreeTiles(territory, grid));
+        Assert.Equal(5, TreeRules.CountIncomeProducingTiles(territory, grid));
+    }
+
+    [Fact]
+    public void CountIncomeProducingTiles_OnlyTreesAndGravesAreExcluded()
+    {
+        // Mix of every occupant type. Trees and graves are the ONLY
+        // income-blockers; units, capitals, and towers continue to pay
+        // out. 6 tiles, 1 tree + 1 grave excluded → 4.
+        HexGrid grid = BuildAxialGrid(0, 5, 0, 0);
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Capital();
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red);
+        grid.Get(new HexCoord(2, 0))!.Occupant = new Tower();
+        grid.Get(new HexCoord(3, 0))!.Occupant = new Tree();
+        grid.Get(new HexCoord(4, 0))!.Occupant = new Grave();
+        // (5, 0) left empty.
+
+        var territory = new Territory(
+            Red,
+            new[]
+            {
+                new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(2, 0),
+                new HexCoord(3, 0), new HexCoord(4, 0), new HexCoord(5, 0),
+            },
+            capital: new HexCoord(0, 0));
+
+        Assert.Equal(4, TreeRules.CountIncomeProducingTiles(territory, grid));
     }
 }

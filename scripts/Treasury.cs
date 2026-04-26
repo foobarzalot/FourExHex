@@ -46,7 +46,7 @@ public class Treasury
 
             HexCoord capital = territory.Capital!.Value;
             int income = grid != null
-                ? TreeRules.CountNonTreeTiles(territory, grid)
+                ? TreeRules.CountIncomeProducingTiles(territory, grid)
                 : territory.Size;
             int current = GetGold(capital);
             _gold[capital] = current + income;

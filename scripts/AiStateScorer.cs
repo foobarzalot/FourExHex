@@ -53,15 +53,15 @@ public static class AiStateScorer
     private const double GoldWeight = 0.3;
 
     // Flat penalty per tree in an OWN territory. Trees both block
-    // income on their tile (already accounted for) and spread into
-    // empty neighbors via TreeRules.SpreadTrees. A cluster of trees
-    // grows quadratically, so once bankruptcy cascades drop a pile
-    // of graves the board floods with forest unless the AI
-    // actively chops. Applied in Score() rather than
-    // TerritoryValue() so it's one-sided — penalizing only our
-    // own trees, not rewarding us for enemy trees (which would
-    // mean capturing an enemy tree-tile is worth less than capturing
-    // a bare tile, the opposite of what we want).
+    // income on their tile (already accounted for) and seed further
+    // growth via TreeRules.RunStartOfTurnGrowth at the start of the
+    // owner's next turn. A cluster of trees grows quickly, so once
+    // bankruptcy cascades drop a pile of graves the board floods
+    // with forest unless the AI actively chops. Applied in Score()
+    // rather than TerritoryValue() so it's one-sided — penalizing
+    // only our own trees, not rewarding us for enemy trees (which
+    // would mean capturing an enemy tree-tile is worth less than
+    // capturing a bare tile, the opposite of what we want).
     private const double OwnTreePenalty = 6.0;
 
     // Flat penalty per edge on our territories that faces an
@@ -187,7 +187,7 @@ public static class AiStateScorer
     private static double TerritoryValue(Territory territory, GameState state)
     {
         int tiles = territory.Coords.Count;
-        int income = TreeRules.CountNonTreeTiles(territory, state.Grid);
+        int income = TreeRules.CountIncomeProducingTiles(territory, state.Grid);
         int upkeep = UpkeepRules.TotalUpkeepFor(territory, state.Grid);
         int netIncome = income - upkeep;
 

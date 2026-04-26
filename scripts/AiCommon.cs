@@ -45,7 +45,7 @@ public static class AiCommon
     public static IEnumerable<AiCandidate> Enumerate(Territory territory, GameState state)
     {
         Color owner = territory.Owner;
-        int income = TreeRules.CountNonTreeTiles(territory, state.Grid);
+        int income = TreeRules.CountIncomeProducingTiles(territory, state.Grid);
         int upkeep = UpkeepRules.TotalUpkeepFor(territory, state.Grid);
         int netBefore = income - upkeep;
 

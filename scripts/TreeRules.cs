@@ -1,19 +1,20 @@
 using System.Collections.Generic;
-using System.Linq;
 using Godot;
 
 /// <summary>
 /// Pure rules for tree behavior on the board:
 ///   - <see cref="ConvertGravesToTrees"/>: turn graves owned by a given
 ///     player into trees (tile color identifies the owner).
-///   - <see cref="SpreadTrees"/>: each pair of adjacent trees spawns a
-///     third tree in an empty cell they both touch. Only ONE new tree is
-///     created per pair, chosen deterministically as the lex-min candidate
-///     when several common empty neighbors exist. Spawns from a single
-///     call are applied simultaneously, so trees created this turn do
-///     NOT seed further spreads within the same call.
-///   - <see cref="CountNonTreeTiles"/>: how many tiles in a territory
-///     actually produce income (trees block income on their tile).
+///   - <see cref="RunStartOfTurnGrowth"/>: the full start-of-turn tree
+///     phase for a single player. Graves on the player's tiles convert
+///     to trees, and any empty cell on their tiles with at least two
+///     neighboring trees becomes a tree. Both rules evaluate against
+///     a single snapshot taken at the start of the call, so newly-
+///     converted graves and newly-spread trees do NOT seed further
+///     conversions within the same call.
+///   - <see cref="CountIncomeProducingTiles"/>: how many tiles in a
+///     territory actually produce income (trees and graves both block
+///     income on their tile).
 /// Trees do not block unit placement: moving a unit onto a tree clears
 /// it and consumes the unit's action — that rule lives in
 /// <see cref="MovementRules"/>.
@@ -24,8 +25,10 @@ public static class TreeRules
     /// Replace each <see cref="Grave"/> on a tile owned by
     /// <paramref name="owner"/> (i.e. <c>tile.Color == owner</c>) with a
     /// <see cref="Tree"/>. Graves on other players' tiles are left in
-    /// place — they only rot into trees at the end of their own owner's
-    /// turn. Called at the end of a turn before <see cref="SpreadTrees"/>.
+    /// place — they only rot into trees at the start of their own
+    /// owner's turn. Used internally by
+    /// <see cref="RunStartOfTurnGrowth"/>; exposed so unit tests can
+    /// exercise the rule in isolation.
     /// </summary>
     public static void ConvertGravesToTrees(HexGrid grid, Color owner)
     {
@@ -39,51 +42,61 @@ public static class TreeRules
     }
 
     /// <summary>
-    /// Spread trees by one step. For every unordered pair of adjacent trees
-    /// we find their common empty neighbors; if any, we schedule a new
-    /// tree on the lex-min candidate. All scheduled spawns are then
-    /// applied together — trees created during this call do not themselves
-    /// participate in further spreading during the same call.
+    /// The start-of-turn tree-growth phase for the player whose turn is
+    /// beginning. Both sub-rules below operate only on tiles whose color
+    /// matches <paramref name="owner"/>:
+    ///
+    ///   1. Every <see cref="Grave"/> becomes a <see cref="Tree"/>.
+    ///   2. Every empty cell with two or more neighboring trees becomes
+    ///      a tree. "Empty" means no occupant at all (units, capitals,
+    ///      towers, existing trees, and graves are not overwritten).
+    ///
+    /// Both rules evaluate against a single tree-snapshot captured at
+    /// the start of the call, so neither newly-converted graves nor
+    /// newly-spawned trees count toward another cell's neighbor tally
+    /// in the same call. All conversions are then applied together.
     /// </summary>
-    public static void SpreadTrees(HexGrid grid)
+    public static void RunStartOfTurnGrowth(HexGrid grid, Color owner)
     {
-        // Deterministic iteration: sort all existing tree coords lex-min.
-        List<HexCoord> treeCoords = grid.Tiles
-            .Where(t => t.Occupant is Tree)
-            .Select(t => t.Coord)
-            .OrderBy(c => c)
-            .ToList();
-        var treeSet = new HashSet<HexCoord>(treeCoords);
-
-        var spawnTargets = new HashSet<HexCoord>();
-
-        foreach (HexCoord a in treeCoords)
+        // Snapshot trees BEFORE either rule fires. Trees produced by
+        // this call do not seed further conversions within the same
+        // call — both grave-conversions and spread spawns evaluate
+        // against the original tree positions.
+        var treeSnapshot = new HashSet<HexCoord>();
+        foreach (HexTile tile in grid.Tiles)
         {
-            var aNeighbors = new HashSet<HexCoord>(a.Neighbors());
-            foreach (HexCoord b in a.Neighbors())
+            if (tile.Occupant is Tree)
             {
-                if (!treeSet.Contains(b)) continue;
-                // Each pair processed once: only consider pairs with a < b.
-                if (b.CompareTo(a) <= 0) continue;
-
-                // Common empty neighbors of a and b.
-                List<HexCoord> candidates = new();
-                foreach (HexCoord bn in b.Neighbors())
-                {
-                    if (!aNeighbors.Contains(bn)) continue;
-                    HexTile? tile = grid.Get(bn);
-                    if (tile == null) continue;
-                    if (tile.Occupant != null) continue;
-                    candidates.Add(bn);
-                }
-
-                if (candidates.Count == 0) continue;
-                candidates.Sort();
-                spawnTargets.Add(candidates[0]);
+                treeSnapshot.Add(tile.Coord);
             }
         }
 
-        foreach (HexCoord coord in spawnTargets)
+        // Rule 1: graves on owner's tiles become trees.
+        ConvertGravesToTrees(grid, owner);
+
+        // Rule 2: collect every empty owner-color tile with >= 2
+        // tree neighbors per snapshot. Apply simultaneously so that
+        // a new tree from this rule does not affect another cell's
+        // count in the same call.
+        var newTrees = new List<HexCoord>();
+        foreach (HexTile tile in grid.Tiles)
+        {
+            if (tile.Color != owner) continue;
+            if (tile.Occupant != null) continue;
+
+            int count = 0;
+            foreach (HexCoord nbr in tile.Coord.Neighbors())
+            {
+                if (treeSnapshot.Contains(nbr))
+                {
+                    count++;
+                    if (count >= 2) break;
+                }
+            }
+            if (count >= 2) newTrees.Add(tile.Coord);
+        }
+
+        foreach (HexCoord coord in newTrees)
         {
             HexTile? tile = grid.Get(coord);
             if (tile != null && tile.Occupant == null)
@@ -93,19 +106,21 @@ public static class TreeRules
         }
     }
 
+
     /// <summary>
-    /// Number of tiles in <paramref name="territory"/> that are NOT
-    /// occupied by a tree. Used by income collection so tree tiles
-    /// don't pay out.
+    /// Number of tiles in <paramref name="territory"/> that produce
+    /// income for their owner. Tree and grave tiles are excluded —
+    /// they are dead ground and pay nothing. Units, capitals, towers,
+    /// and empty tiles all count as one income each.
     /// </summary>
-    public static int CountNonTreeTiles(Territory territory, HexGrid grid)
+    public static int CountIncomeProducingTiles(Territory territory, HexGrid grid)
     {
         int count = 0;
         foreach (HexCoord coord in territory.Coords)
         {
             HexTile? tile = grid.Get(coord);
             if (tile == null) continue;
-            if (tile.Occupant is Tree) continue;
+            if (tile.Occupant is Tree || tile.Occupant is Grave) continue;
             count++;
         }
         return count;

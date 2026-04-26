@@ -355,7 +355,7 @@ public partial class HudView : CanvasLayer, IHudView
         else
         {
             int gold = state.Treasury.GetGold(selected.Capital!.Value);
-            int income = TreeRules.CountNonTreeTiles(selected, state.Grid);
+            int income = TreeRules.CountIncomeProducingTiles(selected, state.Grid);
             int upkeep = UpkeepRules.TotalUpkeepFor(selected, state.Grid);
             int net = income - upkeep;
             string sign = net >= 0 ? "+" : "";
