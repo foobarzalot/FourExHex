@@ -225,6 +225,62 @@ public class GameControllerTests
     }
 
     [Fact]
+    public void Click_OwnUnit_HighlightsTreeInOwnTerritory_AsTarget()
+    {
+        // Trees in own territory consume the unit's action when cleared,
+        // so they get the same green ring as captures.
+        var red = new Player("Red", new Color(1f, 0f, 0f));
+        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var players = new List<Player> { red, blue };
+
+        // 5x2 grid, Red owns (0,1)/(1,1)/(2,1) so we have room for both
+        // a unit and a tree on non-capital own-territory tiles.
+        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Color);
+        grid.Get(HexCoord.FromOffset(0, 1))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(1, 1))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(2, 1))!.Color = red.Color;
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        var map = new MockHexMapView();
+        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+        {
+            map.TileIndex[kvp.Key] = kvp.Value;
+        }
+        var controller = new GameController(state, session, map, new MockHudView());
+        controller.StartGame();
+
+        // Capital is on (0,1) (lex-min empty). Drop a tree on (1,1) and
+        // a unit on (2,1), then pick up the unit.
+        Territory redT = state.Territories.First(t => t.Owner == red.Color);
+        HexCoord treeCoord = redT.Coords.First(
+            c => c != redT.Capital!.Value && c != HexCoord.FromOffset(2, 1));
+        grid.Get(treeCoord)!.Occupant = new Tree();
+        grid.Get(HexCoord.FromOffset(2, 1))!.Occupant = new Unit(red.Color);
+
+        map.SimulateClick(grid.Get(HexCoord.FromOffset(2, 1)));
+
+        Assert.Contains(treeCoord, map.LastMoveTargets);
+    }
+
+    [Fact]
+    public void BuyPeasant_HighlightsTreeInOwnTerritory_AsTarget()
+    {
+        // The buy-and-place flow uses the same target ring logic — a
+        // tree in own territory is a legal placement that consumes the
+        // unit's action, so it should ring up alongside captures.
+        var g = new TestGame();
+        // Drop a tree on (1,1) (Red's empty non-capital tile).
+        g.Tile(1, 1).Occupant = new Tree();
+        g.Map.SimulateClick(g.Tile(0, 1));
+
+        g.Hud.ClickBuyPeasant();
+
+        Assert.Contains(HexCoord.FromOffset(1, 1), g.Map.LastMoveTargets);
+    }
+
+    [Fact]
     public void Move_AfterCapture_ClearsMoveSource_OnMapView()
     {
         var g = new TestGame();

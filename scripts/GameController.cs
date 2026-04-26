@@ -210,7 +210,7 @@ public class GameController
         {
             _session.Mode = SessionState.ActionMode.MovingUnit;
             _session.MoveSource = tile.Coord;
-            _map.ShowMoveTargets(CaptureTargetsOnly(tile.Unit.Level, territory));
+            _map.ShowMoveTargets(ActionConsumingTargets(tile.Unit.Level, territory));
             _map.ShowMoveSource(tile.Coord);
         }
     }
@@ -227,20 +227,20 @@ public class GameController
     }
 
     /// <summary>
-    /// Returns only the capture targets (adjacent enemy tiles we can take)
-    /// for a would-be attacker of level <paramref name="attackerLevel"/>.
-    /// Repositions to empty own-territory tiles and combines onto friendly
-    /// units are legal but not highlighted — they don't consume the
-    /// unit's action, so the green rings only advertise action-consuming
-    /// moves.
+    /// Returns the action-consuming targets for a would-be attacker of
+    /// level <paramref name="attackerLevel"/>: enemy tiles we can capture,
+    /// plus own-territory tiles whose tree the unit would clear. Empty
+    /// own-territory repositions and friendly combines are legal but not
+    /// highlighted — they don't consume the unit's action.
     /// </summary>
-    private IEnumerable<HexCoord> CaptureTargetsOnly(UnitLevel attackerLevel, Territory territory)
+    private IEnumerable<HexCoord> ActionConsumingTargets(UnitLevel attackerLevel, Territory territory)
     {
         Color owner = territory.Owner;
         foreach (HexCoord coord in MovementRules.ValidTargets(attackerLevel, territory, _state.Grid, _state.Territories))
         {
             HexTile? tile = _state.Grid.Get(coord);
-            if (tile != null && tile.Color != owner)
+            if (tile == null) continue;
+            if (tile.Color != owner || tile.Occupant is Tree)
             {
                 yield return coord;
             }
@@ -300,7 +300,7 @@ public class GameController
         {
             _session.Mode = SessionState.BuyModeFor(next.Value);
             _session.MoveSource = null;
-            _map.ShowMoveTargets(CaptureTargetsOnly(next.Value, _session.SelectedTerritory));
+            _map.ShowMoveTargets(ActionConsumingTargets(next.Value, _session.SelectedTerritory));
             _map.ShowMoveSource(null);
             RefreshViews();
         }
@@ -531,7 +531,7 @@ public class GameController
 
         _session.Mode = SessionState.BuyModeFor(next.Value);
         _session.MoveSource = null;
-        _map.ShowMoveTargets(CaptureTargetsOnly(next.Value, _session.SelectedTerritory));
+        _map.ShowMoveTargets(ActionConsumingTargets(next.Value, _session.SelectedTerritory));
         _map.ShowMoveSource(null);
         RefreshViews();
     }
