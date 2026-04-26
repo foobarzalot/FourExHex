@@ -104,23 +104,47 @@ public class GameControllerTests
     }
 
     [Fact]
-    public void EndTurn_CreditsIncomeToEndingPlayer_NotStartingPlayer()
+    public void StartTurn_CreditsIncomeToStartingPlayer_NotEndingPlayer()
     {
+        // Income is credited at the START of a player's turn (after
+        // tree growth, before upkeep), not at the END of the turn that
+        // earned it. Round 1 is the exception — see
+        // StartTurn_NoIncomeCreditedDuringFirstRound below — so we
+        // need to advance into round 2 to observe the credit.
         var g = new TestGame();
         HexCoord redCapital = g.RedTerritory.Capital!.Value;
         HexCoord blueCapital = g.State.Territories
             .First(t => t.Owner == g.Blue.Color).Capital!.Value;
-        int redBefore = g.State.Treasury.GetGold(redCapital);
-        int blueBefore = g.State.Treasury.GetGold(blueCapital);
+        int redSeed = g.State.Treasury.GetGold(redCapital);
+        int blueSeed = g.State.Treasury.GetGold(blueCapital);
 
-        g.Hud.ClickEndTurn(); // Red ends; Blue now current.
+        g.Hud.ClickEndTurn(); // Red T1 → Blue T1 (no income, first round).
+        g.Hud.ClickEndTurn(); // Blue T1 → Red T2 (Red's start-of-turn credits income).
 
-        // Red (the ending player) collected income this turn.
+        // Red just started turn 2 → income credited.
         int redIncome = g.RedTerritory.Size;
-        Assert.Equal(redBefore + redIncome, g.State.Treasury.GetGold(redCapital));
-        // Blue (starting a new turn) has NOT been credited income yet.
-        // No units → no upkeep either, so Blue's treasury is unchanged.
-        Assert.Equal(blueBefore, g.State.Treasury.GetGold(blueCapital));
+        Assert.Equal(redSeed + redIncome, g.State.Treasury.GetGold(redCapital));
+        // Blue has not yet started turn 2 → no income for Blue yet.
+        Assert.Equal(blueSeed, g.State.Treasury.GetGold(blueCapital));
+    }
+
+    [Fact]
+    public void StartTurn_NoIncomeCreditedDuringFirstRound()
+    {
+        // No money is earned on the first turn for each player. After
+        // Red ends T1 and Blue's T1 starts, neither treasury changes
+        // from income (Blue has no units, so no upkeep either).
+        var g = new TestGame();
+        HexCoord redCapital = g.RedTerritory.Capital!.Value;
+        HexCoord blueCapital = g.State.Territories
+            .First(t => t.Owner == g.Blue.Color).Capital!.Value;
+        int redSeed = g.State.Treasury.GetGold(redCapital);
+        int blueSeed = g.State.Treasury.GetGold(blueCapital);
+
+        g.Hud.ClickEndTurn(); // Red T1 ends; Blue T1 begins.
+
+        Assert.Equal(redSeed, g.State.Treasury.GetGold(redCapital));
+        Assert.Equal(blueSeed, g.State.Treasury.GetGold(blueCapital));
     }
 
     [Fact]
@@ -494,18 +518,16 @@ public class GameControllerTests
     {
         var g = new TestGame();
         // Put a Blue peasant on a non-capital Blue tile so Blue has
-        // upkeep to pay when Blue's turn begins. Income is now credited
-        // at END of turn, so Blue's only treasury change at the start
-        // of its turn is upkeep.
+        // upkeep to pay when Blue's turn begins. Round 1 has no income
+        // (every player's first turn skips income), so Blue's only
+        // treasury change at the start of its first turn is upkeep.
         g.Tile(3, 0).Occupant = new Unit(g.Blue.Color);
         HexCoord blueCapital = g.State.Territories
             .First(t => t.Owner == g.Blue.Color).Capital!.Value;
         g.State.Treasury.SetGold(blueCapital, 20);
 
-        g.Hud.ClickEndTurn(); // Red -> Blue: Blue pays upkeep, no income yet.
+        g.Hud.ClickEndTurn(); // Red -> Blue: Blue pays upkeep, no income (round 1).
 
-        // Blue paid 2 for the peasant. No income credited on Blue's
-        // turn-start (that happens at end of Blue's turn).
         Assert.Equal(20 - 2, g.State.Treasury.GetGold(blueCapital));
         // Peasant survived because Blue could afford it.
         Assert.NotNull(g.Tile(3, 0).Unit);
@@ -516,8 +538,8 @@ public class GameControllerTests
     {
         var g = new TestGame();
         // Give Blue a knight (upkeep 18) it can't pay. Blue has 0 gold
-        // and no income is credited at turn-start under the new rule,
-        // so upkeep goes straight to bankruptcy.
+        // and round 1 skips the income credit, so upkeep goes straight
+        // to bankruptcy.
         g.Tile(3, 0).Occupant = new Unit(g.Blue.Color, UnitLevel.Knight);
         HexCoord blueCapital = g.State.Territories
             .First(t => t.Owner == g.Blue.Color).Capital!.Value;
@@ -572,10 +594,10 @@ public class GameControllerTests
     }
 
     [Fact]
-    public void EndTurn_IncomeSkipsTreeTiles_WhenEndingPlayerCollects()
+    public void StartTurn_IncomeSkipsTreeTiles_WhenStartingPlayerCollects()
     {
-        // Plant a tree on one Blue tile. When Blue ends their turn,
-        // Blue collects income based on tree-free cells only.
+        // Plant a tree on one Blue tile. When Blue's turn 2 begins,
+        // Blue's start-of-turn income credit excludes the tree tile.
         var g = new TestGame();
         g.Tile(3, 0).Occupant = new Tree();
         int blueSize = g.State.Territories
@@ -584,10 +606,13 @@ public class GameControllerTests
             .First(t => t.Owner == g.Blue.Color).Capital!.Value;
         g.State.Treasury.SetGold(blueCapital, 0);
 
-        g.Hud.ClickEndTurn(); // Red ends their turn → Red collects income, not Blue.
+        g.Hud.ClickEndTurn(); // Red T1 → Blue T1 (first round: no income).
         Assert.Equal(0, g.State.Treasury.GetGold(blueCapital));
 
-        g.Hud.ClickEndTurn(); // Blue ends their turn → Blue collects income now.
+        g.Hud.ClickEndTurn(); // Blue T1 → Red T2 (Red collects income, not Blue).
+        Assert.Equal(0, g.State.Treasury.GetGold(blueCapital));
+
+        g.Hud.ClickEndTurn(); // Red T2 → Blue T2 (Blue collects income now).
 
         // Blue has no units so upkeep is 0. Income is size minus the
         // one tree tile.
@@ -595,13 +620,13 @@ public class GameControllerTests
     }
 
     [Fact]
-    public void EndTurn_IncomeSkipsGraveTiles_WhenEndingPlayerCollects()
+    public void StartTurn_BankruptcyGraveBecomesTreeBeforeIncomeCredit()
     {
-        // End-to-end check: Blue has a knight it cannot afford. On
-        // Blue's start-of-turn upkeep bankrupts the knight into a
-        // grave. Blue then plays out the turn (no other actions) and
-        // ends — its income credit must EXCLUDE the grave tile, just
-        // like trees are excluded.
+        // End-to-end ordering check: a bankruptcy grave from Blue T1
+        // is converted to a tree by tree-growth at Blue T2 start, and
+        // the same turn's income credit then excludes that (now-tree)
+        // tile. This pins the start-of-turn order: tree-growth →
+        // income → upkeep.
         var g = new TestGame();
         g.Tile(3, 0).Occupant = new Unit(g.Blue.Color, UnitLevel.Knight);
         int blueSize = g.State.Territories
@@ -610,14 +635,49 @@ public class GameControllerTests
             .First(t => t.Owner == g.Blue.Color).Capital!.Value;
         g.State.Treasury.SetGold(blueCapital, 0);
 
-        g.Hud.ClickEndTurn(); // Red -> Blue: knight goes bankrupt → grave on (3,0)
+        g.Hud.ClickEndTurn(); // Red T1 → Blue T1: knight bankrupts → grave on (3,0)
         Assert.IsType<Grave>(g.Tile(3, 0).Occupant);
         Assert.Equal(0, g.State.Treasury.GetGold(blueCapital));
 
-        g.Hud.ClickEndTurn(); // Blue ends turn → income credited
+        g.Hud.ClickEndTurn(); // Blue T1 → Red T2 (Red collects income, not Blue).
+        Assert.Equal(0, g.State.Treasury.GetGold(blueCapital));
+        Assert.IsType<Grave>(g.Tile(3, 0).Occupant);
 
-        // Blue's income excludes the grave tile.
+        g.Hud.ClickEndTurn(); // Red T2 → Blue T2: growth converts grave→tree, then income.
+
+        Assert.IsType<Tree>(g.Tile(3, 0).Occupant);
+        // Income excludes the (now-tree) tile. No remaining units → no upkeep.
         Assert.Equal(blueSize - 1, g.State.Treasury.GetGold(blueCapital));
+    }
+
+    [Fact]
+    public void StartTurn_IncomeRunsBeforeUpkeep()
+    {
+        // Pin the income-vs-upkeep order. On Blue T2 start, Blue has
+        // 10g and a knight (upkeep 18). Blue's territory is 8 tiles,
+        // no trees → income = 8. Correct order (income before upkeep)
+        // gives 10 + 8 - 18 = 0g and the knight survives. If upkeep
+        // ran first the knight would bankrupt at 10 < 18 → grave.
+        var g = new TestGame();
+        g.Tile(3, 0).Occupant = new Unit(g.Blue.Color, UnitLevel.Knight);
+        HexCoord blueCapital = g.State.Territories
+            .First(t => t.Owner == g.Blue.Color).Capital!.Value;
+
+        // Make Blue solvent through T1 (which has no income), then
+        // jump to Blue T2 with the treasury exactly at 10g so the
+        // ordering is what's being measured.
+        g.State.Treasury.SetGold(blueCapital, 100); // survives T1 upkeep -18 fine
+        g.Hud.ClickEndTurn(); // Red T1 → Blue T1: -18 upkeep, knight survives
+        Assert.IsType<Unit>(g.Tile(3, 0).Occupant);
+        g.Hud.ClickEndTurn(); // Blue T1 → Red T2
+
+        // Now set Blue to exactly 10g for the differentiating turn.
+        g.State.Treasury.SetGold(blueCapital, 10);
+
+        g.Hud.ClickEndTurn(); // Red T2 → Blue T2: tree growth, +8 income, -18 upkeep.
+
+        Assert.IsType<Unit>(g.Tile(3, 0).Occupant);
+        Assert.Equal(0, g.State.Treasury.GetGold(blueCapital));
     }
 
     [Fact]

@@ -659,20 +659,15 @@ public class GameController
     }
 
     /// <summary>
-    /// End-of-turn bookkeeping for the now-ending player: credit their
-    /// income (based on gold-earning cells in their current territories),
-    /// then check the end-of-turn win condition. The current player wins
-    /// iff no other player still owns a capital-bearing territory —
-    /// orphan singletons of other colors don't keep the game alive.
-    /// Tree growth is no longer part of end-of-turn — it now runs as
-    /// the very first phase of the NEXT player's turn (see
-    /// <see cref="StartPlayerTurn"/>).
+    /// End-of-turn bookkeeping for the now-ending player: just the
+    /// end-of-turn win check. The current player wins iff no other
+    /// player still owns a capital-bearing territory — orphan
+    /// singletons of other colors don't keep the game alive. Income
+    /// and tree growth both run at the START of the NEXT player's
+    /// turn (see <see cref="StartPlayerTurn"/>).
     /// </summary>
     private void EndOfTurnProcessing()
     {
-        _state.Treasury.CollectIncomeFor(
-            _state.Turns.CurrentPlayer, _state.Territories, _state.Grid);
-
         Color? winner = WinConditionRules.WinnerAtEndOfTurn(
             _state.Turns.CurrentPlayer.Color, _state.Territories);
         if (winner.HasValue)
@@ -701,16 +696,21 @@ public class GameController
     /// Start-of-turn bookkeeping for the now-current player. Order:
     ///   1. Tree-growth phase — graves on the player's tiles convert
     ///      to trees, and empty cells of their color with >= 2
-    ///      neighboring trees become trees. Skipped on every player's
-    ///      first turn (i.e. while <see cref="TurnState.TurnNumber"/>
-    ///      is still 1), so the very first round of play has no
-    ///      surprise growth.
+    ///      neighboring trees become trees. Skipped during round 1
+    ///      (every player's first turn).
     ///   2. Reset unit move flags.
-    ///   3. Apply upkeep (which may bankrupt territories and turn
+    ///   3. Collect income from the player's territories (excludes
+    ///      tree and grave tiles; see
+    ///      <see cref="TreeRules.CountIncomeProducingTiles"/>).
+    ///      Skipped during round 1 — no money is earned on each
+    ///      player's first turn; the seed from
+    ///      <see cref="SeedStartingGold"/> is the round-1 bankroll.
+    ///   4. Apply upkeep (which may bankrupt territories and turn
     ///      their units into fresh graves; those graves wait until
     ///      this player's NEXT turn to mature).
-    /// Income is NOT collected here — it's credited at the end of
-    /// the turn that earned it (see <see cref="EndOfTurnProcessing"/>).
+    /// The income → upkeep ordering matters: it lets a territory's
+    /// freshly-credited income subsidize that same turn's upkeep
+    /// before bankruptcy is checked.
     /// </summary>
     private void StartPlayerTurn()
     {
@@ -721,6 +721,13 @@ public class GameController
         }
 
         ResetMovementFor(_state.Turns.CurrentPlayer, _state.Grid);
+
+        if (_state.Turns.TurnNumber > 1)
+        {
+            _state.Treasury.CollectIncomeFor(
+                _state.Turns.CurrentPlayer, _state.Territories, _state.Grid);
+        }
+
         UpkeepRules.ApplyUpkeepFor(
             _state.Turns.CurrentPlayer, _state.Territories, _state.Grid, _state.Treasury);
 
