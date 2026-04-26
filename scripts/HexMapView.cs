@@ -24,16 +24,12 @@ public partial class HexMapView : Node2D, IHexMapView
     [Export] public int Rows { get; set; } = 13;
     [Export] public float HexSize { get; set; } = 48f;
 
-    // Capital fill colors: white = "this capital can afford a peasant
-    // right now", black = otherwise. The border is always black.
-    private static readonly Color CtaFill = new Color(1f, 1f, 1f, 1f);
-    private static readonly Color NonCtaFill = new Color(0f, 0f, 0f, 1f);
-
-    // Unit ring stroke color: white when this unit is the one the player
-    // has picked up to move, black for every other unit (own or enemy).
-    // Pulse animation, not color, signals "actionable" for units now.
-    private static readonly Color UnitSelectedColor = new Color(1f, 1f, 1f, 1f);
-    private static readonly Color UnitDefaultColor = new Color(0f, 0f, 0f, 1f);
+    // Unit + capital fill/stroke colors. White = "selected by the
+    // player" (move-source unit, or the capital of the selected
+    // territory). Black = everything else. Pulse animation, not color,
+    // signals "actionable".
+    private static readonly Color OccupantSelectedColor = new Color(1f, 1f, 1f, 1f);
+    private static readonly Color OccupantDefaultColor = new Color(0f, 0f, 0f, 1f);
 
     // Edge i of a pointy-top hex (vertex i -> vertex (i+1)%6) is shared with
     // the neighbor in this HexCoord.Directions index:
@@ -80,6 +76,7 @@ public partial class HexMapView : Node2D, IHexMapView
     private Node2D? _targetsLayer;
     private Node2D? _highlightLayer;
     private readonly Dictionary<HexCoord, Node2D> _unitVisuals = new();
+    private readonly Dictionary<HexCoord, Node2D> _capitalVisuals = new();
 
     // Tree visuals persist across RefreshOccupantVisuals calls (units,
     // capitals, graves, towers all rebuild every refresh; trees don't
@@ -110,6 +107,13 @@ public partial class HexMapView : Node2D, IHexMapView
     // player can see at a glance which units are actionable. Rebuilt in
     // RefreshOccupantVisuals.
     private readonly HashSet<HexCoord> _pulsingUnits = new();
+
+    // Every current-player capital whose territory can afford to buy
+    // anything (a peasant is the cheapest purchase, so peasant
+    // affordability subsumes tower affordability). Pulses in sync with
+    // the actionable units so the player sees at a glance where they
+    // can spend gold.
+    private readonly HashSet<HexCoord> _pulsingCapitals = new();
     private double _pulseTime;
     private const float PulseAmplitude = 0.18f;
     private const float PulseRate = 8.0f; // rad/sec; ~1.3 Hz
@@ -251,18 +255,25 @@ public partial class HexMapView : Node2D, IHexMapView
 
     public override void _Process(double delta)
     {
-        if (_pulsingUnits.Count == 0) return;
+        if (_pulsingUnits.Count == 0 && _pulsingCapitals.Count == 0) return;
 
         _pulseTime += delta;
         // sin returns [-1,1]; shift to [0,1] and map to scale
         // [1, 1 + amplitude] so the pulse only grows outward, in
-        // sync across every actionable unit.
+        // sync across every actionable occupant.
         float phase = (float)System.Math.Sin(_pulseTime * PulseRate) * 0.5f + 0.5f;
         float scale = 1f + PulseAmplitude * phase;
         var pulsedScale = new Vector2(scale, scale);
         foreach (HexCoord coord in _pulsingUnits)
         {
             if (_unitVisuals.TryGetValue(coord, out Node2D? visual) && visual != null)
+            {
+                visual.Scale = pulsedScale;
+            }
+        }
+        foreach (HexCoord coord in _pulsingCapitals)
+        {
+            if (_capitalVisuals.TryGetValue(coord, out Node2D? visual) && visual != null)
             {
                 visual.Scale = pulsedScale;
             }
@@ -320,7 +331,15 @@ public partial class HexMapView : Node2D, IHexMapView
         ClearLayer(_unitsLayer);
         ClearLayer(_capitalsLayer);
         _unitVisuals.Clear();
+        _capitalVisuals.Clear();
         _pulsingUnits.Clear();
+        _pulsingCapitals.Clear();
+
+        // Capital that gets the white "selected" color: the one in the
+        // currently highlighted territory, if any. Controllers always
+        // call ShowHighlight before RefreshOccupantVisuals on selection
+        // changes, so reading _highlightedTerritory here is current.
+        HexCoord? selectedCapital = _highlightedTerritory?.Capital;
 
         var actionableCapitals = new HashSet<HexCoord>();
         if (currentPlayerColor.HasValue)
@@ -329,6 +348,9 @@ public partial class HexMapView : Node2D, IHexMapView
             {
                 if (territory.Owner != currentPlayerColor.Value) continue;
                 if (!territory.HasCapital) continue;
+                // Peasant is the cheapest purchase (10g) and is cheaper
+                // than a tower (15g), so peasant-affordability is a
+                // sufficient proxy for "this territory can spend gold".
                 if (PurchaseRules.CanAffordPeasant(territory, treasury))
                 {
                     actionableCapitals.Add(territory.Capital!.Value);
@@ -376,11 +398,16 @@ public partial class HexMapView : Node2D, IHexMapView
             }
             else if (tile.Occupant is Capital)
             {
-                bool cta = actionableCapitals.Contains(tile.Coord);
-                Color interior = cta ? CtaFill : NonCtaFill;
-                Node2D visual = CreateCapitalVisual(interior);
+                bool selected = selectedCapital.HasValue && selectedCapital.Value == tile.Coord;
+                Node2D visual = CreateCapitalVisual(selected);
                 visual.Position = center;
                 _capitalsLayer?.AddChild(visual);
+                _capitalVisuals[tile.Coord] = visual;
+
+                if (actionableCapitals.Contains(tile.Coord))
+                {
+                    _pulsingCapitals.Add(tile.Coord);
+                }
             }
             else if (tile.Occupant is Grave)
             {
@@ -588,7 +615,7 @@ public partial class HexMapView : Node2D, IHexMapView
 
     private Node2D CreateUnitVisual(bool selected, UnitLevel level)
     {
-        Color color = selected ? UnitSelectedColor : UnitDefaultColor;
+        Color color = selected ? OccupantSelectedColor : OccupantDefaultColor;
         var node = new Node2D();
 
         int rings = level switch
@@ -689,32 +716,34 @@ public partial class HexMapView : Node2D, IHexMapView
         return body;
     }
 
-    private Node2D CreateCapitalVisual(Color interiorColor)
-    {
-        float r = HexSize * 0.35f;
-        var verts = new[]
-        {
-            new Vector2(0f, -r),
-            new Vector2(r, 0f),
-            new Vector2(0f, r),
-            new Vector2(-r, 0f),
-        };
+    // Capital star: outer point sized between the old diamond
+    // (0.35 * HexSize) and the move-target ring (0.55 * HexSize), with
+    // the inner radius set near the geometric pentagram ratio
+    // (~0.382 * outer) for a clean five-point silhouette.
+    private const float CapitalStarOuterRadius = 0.48f;
+    private const float CapitalStarInnerRadius = 0.20f;
 
-        var diamond = new Polygon2D
+    private Node2D CreateCapitalVisual(bool selected)
+    {
+        Color color = selected ? OccupantSelectedColor : OccupantDefaultColor;
+        float outer = HexSize * CapitalStarOuterRadius;
+        float inner = HexSize * CapitalStarInnerRadius;
+
+        var verts = new Vector2[10];
+        for (int i = 0; i < 10; i++)
         {
-            Color = interiorColor,
+            // Start at the top point and walk clockwise alternating
+            // outer/inner vertices around the center.
+            float angle = -Mathf.Pi / 2f + i * Mathf.Pi / 5f;
+            float r = (i % 2 == 0) ? outer : inner;
+            verts[i] = new Vector2(r * Mathf.Cos(angle), r * Mathf.Sin(angle));
+        }
+
+        return new Polygon2D
+        {
+            Color = color,
             Polygon = verts,
         };
-
-        var outline = new Line2D
-        {
-            Points = new[] { verts[0], verts[1], verts[2], verts[3], verts[0] },
-            Width = 2f,
-            DefaultColor = new Color(0f, 0f, 0f, 1f),
-        };
-        diamond.AddChild(outline);
-
-        return diamond;
     }
 
     private void RebuildTileToTerritoryIndex()
