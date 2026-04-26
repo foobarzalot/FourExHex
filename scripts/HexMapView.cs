@@ -24,10 +24,16 @@ public partial class HexMapView : Node2D, IHexMapView
     [Export] public int Rows { get; set; } = 13;
     [Export] public float HexSize { get; set; } = 48f;
 
-    // Occupant icon fills: white = "this is actionable for you right now",
-    // black = "dormant / not actionable". The border is always black.
+    // Capital fill colors: white = "this capital can afford a peasant
+    // right now", black = otherwise. The border is always black.
     private static readonly Color CtaFill = new Color(1f, 1f, 1f, 1f);
     private static readonly Color NonCtaFill = new Color(0f, 0f, 0f, 1f);
+
+    // Unit ring stroke color: white when this unit is the one the player
+    // has picked up to move, black for every other unit (own or enemy).
+    // Pulse animation, not color, signals "actionable" for units now.
+    private static readonly Color UnitSelectedColor = new Color(1f, 1f, 1f, 1f);
+    private static readonly Color UnitDefaultColor = new Color(0f, 0f, 0f, 1f);
 
     // Edge i of a pointy-top hex (vertex i -> vertex (i+1)%6) is shared with
     // the neighbor in this HexCoord.Directions index:
@@ -94,11 +100,16 @@ public partial class HexMapView : Node2D, IHexMapView
     // so RedrawHighlight doesn't need to take a parameter.
     private Territory? _highlightedTerritory;
 
-    // The coord of the currently "picked up" unit whose visual should
-    // be pulsing. Null when nothing is picked up. Driven by the
-    // controller via ShowMoveSource; the pulse is applied each frame
-    // in _Process.
-    private HexCoord? _pulseSource;
+    // The coord of the currently "picked up" unit (move source). Drives
+    // the white ring color on that one visual; everything else is black.
+    // Driven by the controller via ShowMoveSource.
+    private HexCoord? _selectedUnit;
+
+    // Every current-player unit that still has its move available this
+    // turn. Each one pulses (scales up and back) in _Process so the
+    // player can see at a glance which units are actionable. Rebuilt in
+    // RefreshOccupantVisuals.
+    private readonly HashSet<HexCoord> _pulsingUnits = new();
     private double _pulseTime;
     private const float PulseAmplitude = 0.18f;
     private const float PulseRate = 8.0f; // rad/sec; ~1.3 Hz
@@ -223,40 +234,62 @@ public partial class HexMapView : Node2D, IHexMapView
     }
 
     /// <summary>
-    /// Tell the view which unit is "picked up" so it can animate.
-    /// Passing the same coord twice is a no-op; passing null clears
-    /// the effect and restores any previously-pulsed visual to its
-    /// neutral scale.
+    /// Tell the view which unit the player has picked up to move.
+    /// Recolors that unit's rings white (and the previous selection's
+    /// rings back to black). Pass null to clear the selection.
     /// </summary>
     public void ShowMoveSource(HexCoord? coord)
     {
-        if (Equals(_pulseSource, coord)) return;
+        if (Equals(_selectedUnit, coord)) return;
 
-        // Reset the previously pulsed visual so it doesn't freeze
-        // mid-pulse at some arbitrary scale.
-        if (_pulseSource.HasValue
-            && _unitVisuals.TryGetValue(_pulseSource.Value, out Node2D? prev)
-            && prev != null)
-        {
-            prev.Scale = Vector2.One;
-        }
+        HexCoord? previous = _selectedUnit;
+        _selectedUnit = coord;
 
-        _pulseSource = coord;
-        _pulseTime = 0.0;
+        if (previous.HasValue) RebuildUnitVisualAt(previous.Value);
+        if (coord.HasValue) RebuildUnitVisualAt(coord.Value);
     }
 
     public override void _Process(double delta)
     {
-        if (!_pulseSource.HasValue) return;
-        if (!_unitVisuals.TryGetValue(_pulseSource.Value, out Node2D? visual)) return;
-        if (visual == null) return;
+        if (_pulsingUnits.Count == 0) return;
 
         _pulseTime += delta;
         // sin returns [-1,1]; shift to [0,1] and map to scale
-        // [1, 1 + amplitude] so the pulse only grows outward.
+        // [1, 1 + amplitude] so the pulse only grows outward, in
+        // sync across every actionable unit.
         float phase = (float)System.Math.Sin(_pulseTime * PulseRate) * 0.5f + 0.5f;
         float scale = 1f + PulseAmplitude * phase;
-        visual.Scale = new Vector2(scale, scale);
+        var pulsedScale = new Vector2(scale, scale);
+        foreach (HexCoord coord in _pulsingUnits)
+        {
+            if (_unitVisuals.TryGetValue(coord, out Node2D? visual) && visual != null)
+            {
+                visual.Scale = pulsedScale;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Rebuild a single unit's visual in place — used by
+    /// <see cref="ShowMoveSource"/> when the selection toggles between
+    /// refreshes (the controller sets selection AFTER calling
+    /// RefreshOccupantVisuals, so the freshly-built visual doesn't yet
+    /// know about it). No-op if the coord has no live unit visual.
+    /// </summary>
+    private void RebuildUnitVisualAt(HexCoord coord)
+    {
+        if (!_unitVisuals.TryGetValue(coord, out Node2D? old) || old == null) return;
+        HexTile? tile = _state.Grid.Get(coord);
+        if (tile?.Unit == null) return;
+
+        Vector2 center = old.Position;
+        bool selected = _selectedUnit.HasValue && _selectedUnit.Value == coord;
+
+        old.QueueFree();
+        Node2D fresh = CreateUnitVisual(selected, tile.Unit.Level);
+        fresh.Position = center;
+        _unitsLayer?.AddChild(fresh);
+        _unitVisuals[coord] = fresh;
     }
 
     private static void ClearLayer(Node2D? layer)
@@ -287,6 +320,7 @@ public partial class HexMapView : Node2D, IHexMapView
         ClearLayer(_unitsLayer);
         ClearLayer(_capitalsLayer);
         _unitVisuals.Clear();
+        _pulsingUnits.Clear();
 
         var actionableCapitals = new HashSet<HexCoord>();
         if (currentPlayerColor.HasValue)
@@ -329,14 +363,16 @@ public partial class HexMapView : Node2D, IHexMapView
 
             if (tile.Occupant is Unit unit)
             {
-                bool cta = currentPlayerColor.HasValue
-                    && unit.Owner == currentPlayerColor.Value
-                    && !unit.HasMovedThisTurn;
-                Color interior = cta ? CtaFill : NonCtaFill;
-                Node2D visual = CreateUnitVisual(interior, unit.Level);
+                bool selected = _selectedUnit.HasValue && _selectedUnit.Value == tile.Coord;
+                Node2D visual = CreateUnitVisual(selected, unit.Level);
                 visual.Position = center;
                 _unitsLayer?.AddChild(visual);
                 _unitVisuals[tile.Coord] = visual;
+
+                bool actionable = currentPlayerColor.HasValue
+                    && unit.Owner == currentPlayerColor.Value
+                    && !unit.HasMovedThisTurn;
+                if (actionable) _pulsingUnits.Add(tile.Coord);
             }
             else if (tile.Occupant is Capital)
             {
@@ -539,9 +575,62 @@ public partial class HexMapView : Node2D, IHexMapView
         return canopy;
     }
 
-    private Node2D CreateUnitVisual(Color interiorColor, UnitLevel level)
+    // Unit ring radii, ordered outer → inner. The peasant gets just the
+    // outer ring; spearman adds the middle ring; knight adds the inner;
+    // baron adds a filled center dot on top of the knight's three rings.
+    // The outer ring matches the move-target ring radius (0.55 * HexSize)
+    // so a unit reads as the same on-tile footprint as the capture/chop
+    // target indicator.
+    private static readonly float[] UnitRingRadii = { 0.55f, 0.37f, 0.20f };
+    private const float UnitRingWidth = 3f;
+    private const float UnitDotRadius = 0.075f;
+    private const int UnitRingSegments = 28;
+
+    private Node2D CreateUnitVisual(bool selected, UnitLevel level)
     {
-        float radius = HexSize * 0.22f;
+        Color color = selected ? UnitSelectedColor : UnitDefaultColor;
+        var node = new Node2D();
+
+        int rings = level switch
+        {
+            UnitLevel.Peasant => 1,
+            UnitLevel.Spearman => 2,
+            UnitLevel.Knight => 3,
+            UnitLevel.Baron => 3,
+            _ => 1,
+        };
+
+        for (int i = 0; i < rings; i++)
+        {
+            node.AddChild(CreateCircleOutline(HexSize * UnitRingRadii[i], color, UnitRingWidth));
+        }
+
+        if (level == UnitLevel.Baron)
+        {
+            node.AddChild(CreateFilledDisc(HexSize * UnitDotRadius, color));
+        }
+
+        return node;
+    }
+
+    private static Line2D CreateCircleOutline(float radius, Color color, float width)
+    {
+        var points = new Vector2[UnitRingSegments + 1];
+        for (int i = 0; i <= UnitRingSegments; i++)
+        {
+            float angle = Mathf.Tau * i / UnitRingSegments;
+            points[i] = new Vector2(radius * Mathf.Cos(angle), radius * Mathf.Sin(angle));
+        }
+        return new Line2D
+        {
+            Points = points,
+            Width = width,
+            DefaultColor = color,
+        };
+    }
+
+    private static Polygon2D CreateFilledDisc(float radius, Color color)
+    {
         const int segments = 16;
         var verts = new Vector2[segments];
         for (int i = 0; i < segments; i++)
@@ -549,73 +638,11 @@ public partial class HexMapView : Node2D, IHexMapView
             float angle = Mathf.Tau * i / segments;
             verts[i] = new Vector2(radius * Mathf.Cos(angle), radius * Mathf.Sin(angle));
         }
-
-        var body = new Polygon2D
+        return new Polygon2D
         {
-            Color = interiorColor,
+            Color = color,
             Polygon = verts,
         };
-
-        var outlinePoints = new Vector2[segments + 1];
-        for (int i = 0; i < segments; i++) outlinePoints[i] = verts[i];
-        outlinePoints[segments] = verts[0];
-
-        var outline = new Line2D
-        {
-            Points = outlinePoints,
-            Width = 2f,
-            DefaultColor = new Color(0f, 0f, 0f, 1f),
-        };
-        body.AddChild(outline);
-
-        // Level decoration: spear for spearman, sword for knight, chevron
-        // for baron. Peasant has no decoration. Drawn in the opposite of
-        // the interior color so the icon shows on both CTA (white) and
-        // non-CTA (black) discs.
-        Color iconColor = new Color(1f - interiorColor.R, 1f - interiorColor.G, 1f - interiorColor.B);
-        Node? icon = level switch
-        {
-            UnitLevel.Spearman => CreateSpearIcon(radius, iconColor),
-            UnitLevel.Knight => CreateSwordIcon(radius, iconColor),
-            UnitLevel.Baron => CreateChevronIcon(radius, iconColor),
-            _ => null,
-        };
-        if (icon != null)
-        {
-            body.AddChild(icon);
-        }
-
-        return body;
-    }
-
-    private static Node2D CreateSpearIcon(float r, Color color)
-    {
-        // Vertical shaft from top to bottom of the disc.
-        return new Line2D
-        {
-            Points = new[] { new Vector2(0f, -r * 0.7f), new Vector2(0f, r * 0.7f) },
-            Width = 3f,
-            DefaultColor = color,
-        };
-    }
-
-    private static Node2D CreateSwordIcon(float r, Color color)
-    {
-        // Vertical shaft + short horizontal crossguard near the top.
-        var node = new Node2D();
-        node.AddChild(new Line2D
-        {
-            Points = new[] { new Vector2(0f, -r * 0.7f), new Vector2(0f, r * 0.7f) },
-            Width = 3f,
-            DefaultColor = color,
-        });
-        node.AddChild(new Line2D
-        {
-            Points = new[] { new Vector2(-r * 0.5f, -r * 0.35f), new Vector2(r * 0.5f, -r * 0.35f) },
-            Width = 3f,
-            DefaultColor = color,
-        });
-        return node;
     }
 
     private Node2D CreateGraveVisual()
@@ -660,22 +687,6 @@ public partial class HexMapView : Node2D, IHexMapView
         body.AddChild(outline);
 
         return body;
-    }
-
-    private static Node2D CreateChevronIcon(float r, Color color)
-    {
-        // Inverted V pointing up, like a rank stripe.
-        return new Line2D
-        {
-            Points = new[]
-            {
-                new Vector2(-r * 0.6f, r * 0.3f),
-                new Vector2(0f, -r * 0.5f),
-                new Vector2(r * 0.6f, r * 0.3f),
-            },
-            Width = 3f,
-            DefaultColor = color,
-        };
     }
 
     private Node2D CreateCapitalVisual(Color interiorColor)
