@@ -214,21 +214,23 @@ public partial class HexMapView : Node2D, IHexMapView
         ClearLayer(_targetsLayer);
         if (_targetsLayer == null) return;
 
+        const float radius = 0.55f;
+        const int segments = 20;
+        var points = new Vector2[segments + 1];
+        for (int i = 0; i <= segments; i++)
+        {
+            float angle = Mathf.Tau * i / segments;
+            points[i] = new Vector2(radius * HexSize * Mathf.Cos(angle), radius * HexSize * Mathf.Sin(angle));
+        }
+
         foreach (HexCoord coord in coords)
         {
-            Vector2 center = FirstHexCenterOffset + coord.ToPixel(HexSize);
-
-            float radius = HexSize * 0.55f;
-            const int segments = 20;
-            var points = new Vector2[segments + 1];
-            for (int i = 0; i <= segments; i++)
-            {
-                float angle = Mathf.Tau * i / segments;
-                points[i] = center + new Vector2(radius * Mathf.Cos(angle), radius * Mathf.Sin(angle));
-            }
-
+            // Points are around (0,0); ring's Position is the tile center
+            // so a scale on the Line2D node pulses around the ring's
+            // geometric center (same trick as units/capitals).
             var ring = new Line2D
             {
+                Position = FirstHexCenterOffset + coord.ToPixel(HexSize),
                 Points = points,
                 Width = 4f,
                 DefaultColor = new Color(0.2f, 1f, 0.3f, 0.9f),
@@ -255,12 +257,13 @@ public partial class HexMapView : Node2D, IHexMapView
 
     public override void _Process(double delta)
     {
-        if (_pulsingUnits.Count == 0 && _pulsingCapitals.Count == 0) return;
+        int targetCount = _targetsLayer?.GetChildCount() ?? 0;
+        if (_pulsingUnits.Count == 0 && _pulsingCapitals.Count == 0 && targetCount == 0) return;
 
         _pulseTime += delta;
         // sin returns [-1,1]; shift to [0,1] and map to scale
         // [1, 1 + amplitude] so the pulse only grows outward, in
-        // sync across every actionable occupant.
+        // sync across every actionable occupant and target ring.
         float phase = (float)System.Math.Sin(_pulseTime * PulseRate) * 0.5f + 0.5f;
         float scale = 1f + PulseAmplitude * phase;
         var pulsedScale = new Vector2(scale, scale);
@@ -276,6 +279,13 @@ public partial class HexMapView : Node2D, IHexMapView
             if (_capitalVisuals.TryGetValue(coord, out Node2D? visual) && visual != null)
             {
                 visual.Scale = pulsedScale;
+            }
+        }
+        if (_targetsLayer != null)
+        {
+            foreach (Node child in _targetsLayer.GetChildren())
+            {
+                if (child is Node2D ring) ring.Scale = pulsedScale;
             }
         }
     }
