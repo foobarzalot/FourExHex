@@ -125,6 +125,20 @@ public class GameController
     /// view refresh. Main calls this once after constructing the
     /// controller and adding the views to the scene tree.
     /// </summary>
+    /// <summary>
+    /// Abandon the current game: drop any pending AI step callbacks
+    /// the pacer has queued. Called from <c>Main</c> before swapping
+    /// back to the menu scene, so a timer that was already in flight
+    /// can't fire <c>StepAiExecute</c> after the scene's tile
+    /// polygons have been disposed (which would throw
+    /// <c>ObjectDisposedException</c> from the <c>HexTile.Color</c>
+    /// setter mid-capture).
+    /// </summary>
+    public void AbandonGame()
+    {
+        _aiPacer.Cancel();
+    }
+
     public void StartGame()
     {
         SeedStartingGold();

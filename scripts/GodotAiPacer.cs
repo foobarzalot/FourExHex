@@ -11,6 +11,7 @@ using Godot;
 public sealed class GodotAiPacer : IAiPacer
 {
     private readonly SceneTree _tree;
+    private bool _cancelled;
 
     public GodotAiPacer(SceneTree tree)
     {
@@ -21,6 +22,12 @@ public sealed class GodotAiPacer : IAiPacer
     {
         double seconds = delayMs / 1000.0;
         SceneTreeTimer timer = _tree.CreateTimer(seconds);
-        timer.Timeout += () => callback();
+        // Capture _cancelled by reference via the closure on `this`.
+        // A Timeout already in flight when Cancel() runs will see the
+        // flag set and no-op, so a callback can't reach the
+        // GameController after the scene starts tearing down.
+        timer.Timeout += () => { if (!_cancelled) callback(); };
     }
+
+    public void Cancel() => _cancelled = true;
 }

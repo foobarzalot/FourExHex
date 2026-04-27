@@ -18,6 +18,14 @@ public interface IAiPacer
     /// callback inline.
     /// </summary>
     void Schedule(Action callback, int delayMs);
+
+    /// <summary>
+    /// Drop any pending callbacks and ignore future deliveries from
+    /// already-scheduled timers. Called when the game is being
+    /// abandoned (End Game button) so a stale AI step doesn't fire
+    /// after the scene has been torn down.
+    /// </summary>
+    void Cancel();
 }
 
 /// <summary>
@@ -29,4 +37,5 @@ public interface IAiPacer
 public sealed class SynchronousAiPacer : IAiPacer
 {
     public void Schedule(Action callback, int delayMs) => callback();
+    public void Cancel() { /* nothing queued; runs are inline */ }
 }

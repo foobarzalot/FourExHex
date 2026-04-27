@@ -114,7 +114,14 @@ public partial class Main : Node2D
             // config), and Main Menu swaps back to the menu scene
             // so the player can reassign roles.
             visibleHud.NewGameClicked += () => GetTree().ReloadCurrentScene();
-            visibleHud.MainMenuClicked += () => GetTree().ChangeSceneToFile("res://scenes/main_menu.tscn");
+            visibleHud.MainMenuClicked += () =>
+            {
+                // Drop any pending AI step before tearing down the scene
+                // so an in-flight SceneTreeTimer can't fire StepAiExecute
+                // against disposed Polygon2D nodes after the swap.
+                _controller?.AbandonGame();
+                GetTree().ChangeSceneToFile("res://scenes/main_menu.tscn");
+            };
 
             map = visibleMap;
             hud = visibleHud;
