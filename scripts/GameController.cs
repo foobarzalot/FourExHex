@@ -1263,10 +1263,23 @@ public class GameController
                 $"legal target for a {srcTile.Unit.Level}.");
         }
 
+        // Reposition (own empty destination) is detected before the
+        // move so the AI-side "consumes the move" rule can apply
+        // afterward — see AiSimulator.MarkAiUnitMoved for why.
+        HexTile? dstTile = _state.Grid.Get(destination);
+        bool wasReposition = dstTile != null
+            && dstTile.Color == attacker.Owner
+            && dstTile.Occupant == null;
+
         MoveResult result = MovementRules.Move(source, destination, _state.Grid, attacker);
         if (result.WasCapture)
         {
             HandleCapture($"Move {source}→{destination}");
+        }
+        if (wasReposition)
+        {
+            Unit? movedUnit = _state.Grid.Get(destination)?.Unit;
+            if (movedUnit != null) movedUnit.HasMovedThisTurn = true;
         }
     }
 
@@ -1294,6 +1307,14 @@ public class GameController
                 $"not a legal {level} placement target.");
         }
 
+        // Same AI semantic as ExecuteAiMove: a buy onto an own empty
+        // tile is treated as consuming the fresh unit's move so the
+        // AI doesn't immediately move it again next call.
+        HexTile? dstTile = _state.Grid.Get(destination);
+        bool wasReposition = dstTile != null
+            && dstTile.Color == attacker.Owner
+            && dstTile.Occupant == null;
+
         _state.Treasury.SetGold(
             capital, _state.Treasury.GetGold(capital) - PurchaseRules.CostFor(level));
         var unit = new Unit(attacker.Owner, level);
@@ -1301,6 +1322,11 @@ public class GameController
         if (result.WasCapture)
         {
             HandleCapture($"Buy {level} → {destination}");
+        }
+        if (wasReposition)
+        {
+            Unit? placed = _state.Grid.Get(destination)?.Unit;
+            if (placed != null) placed.HasMovedThisTurn = true;
         }
     }
 

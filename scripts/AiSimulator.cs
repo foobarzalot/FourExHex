@@ -81,10 +81,17 @@ public static class AiSimulator
             state.Territories, srcTile.Color, source);
         if (attacker == null) return;
 
+        bool wasReposition = IsRepositionTarget(destination, attacker.Owner, state);
+
         MoveResult result = MovementRules.Move(source, destination, state.Grid, attacker);
         if (result.WasCapture)
         {
             Reconcile(state);
+        }
+
+        if (wasReposition)
+        {
+            MarkAiUnitMoved(destination, state);
         }
     }
 
@@ -92,6 +99,8 @@ public static class AiSimulator
     {
         Territory? territory = TerritoryLookup.FindByCapital(state.Territories, capital);
         if (territory == null) return;
+
+        bool wasReposition = IsRepositionTarget(destination, territory.Owner, state);
 
         state.Treasury.SetGold(
             capital, state.Treasury.GetGold(capital) - PurchaseRules.CostFor(level));
@@ -101,6 +110,38 @@ public static class AiSimulator
         {
             Reconcile(state);
         }
+
+        if (wasReposition)
+        {
+            MarkAiUnitMoved(destination, state);
+        }
+    }
+
+    /// <summary>
+    /// True iff <paramref name="destination"/> is a same-owner empty
+    /// tile — the signature of a pure reposition that
+    /// <see cref="MovementRules.ResolveArrival"/> leaves unmarked.
+    /// Must be evaluated BEFORE the move is applied.
+    /// </summary>
+    private static bool IsRepositionTarget(HexCoord destination, Color owner, GameState state)
+    {
+        HexTile? dst = state.Grid.Get(destination);
+        return dst != null && dst.Color == owner && dst.Occupant == null;
+    }
+
+    /// <summary>
+    /// AI-side rule: once the AI commits a unit to a reposition,
+    /// that unit is done for the turn. The game's underlying
+    /// movement rule leaves repositioned units actionable (so a
+    /// human can micromanage), but the AI would otherwise re-enumerate
+    /// the same unit each call and ping-pong it between border
+    /// tiles. <see cref="GameController.ExecuteAiMove"/> mirrors this
+    /// so the live state matches what the simulator predicts.
+    /// </summary>
+    private static void MarkAiUnitMoved(HexCoord destination, GameState state)
+    {
+        Unit? unit = state.Grid.Get(destination)?.Unit;
+        if (unit != null) unit.HasMovedThisTurn = true;
     }
 
     private static void ApplyBuildTower(HexCoord capital, HexCoord destination, GameState state)

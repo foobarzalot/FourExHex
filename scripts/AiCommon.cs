@@ -13,6 +13,7 @@ public enum AiActionKind
     Chop,
     Combine,
     Tower,
+    Reposition,
 }
 
 /// <summary>
@@ -107,22 +108,43 @@ public static class AiCommon
                                 AiActionKind.Combine);
                         }
                         break;
-                    // Reposition: skip.
+                    case TargetKind.Reposition:
+                        // Repositioning a unit within friendly tiles
+                        // doesn't change income or upkeep. Only worth
+                        // enumerating for border destinations — moving
+                        // to an interior tile gains nothing the scorer
+                        // can see. Empty target only (capitals/towers/
+                        // graves are filtered to Reposition by
+                        // ClassifyTarget but aren't legal placement
+                        // tiles for a moving unit, and ValidTargets
+                        // already excludes them).
+                        if (targetTile.Occupant == null
+                            && IsBorderTile(target, state.Grid, owner))
+                        {
+                            yield return new AiCandidate(
+                                new AiMoveAction(coord, target),
+                                AiActionKind.Reposition);
+                        }
+                        break;
                 }
             }
         }
 
-        // --- Buy actions: buy-capture or buy-chop ---
-        // A fresh unit adds +1 income and +upkeep(level) to the
-        // territory's books, so post-net = netBefore + 1 - upkeep(level).
-        // Requirement: post-net >= 0. Also requires the gold cost.
-        // Buy-to-combine and buy-to-empty aren't considered.
+        // --- Buy actions: buy-capture, buy-chop, or buy-reposition ---
+        // Capture/chop add +1 income and +upkeep(level): post-net =
+        // netBefore + 1 - upkeep(level), requires >= 0.
+        // Reposition (placing onto an empty own border tile) gains no
+        // tile, so post-net = netBefore - upkeep(level), requires >= 0
+        // — strictly tighter than capture/chop. Buy-to-combine isn't
+        // considered.
         UnitLevel[] buyLevels = { UnitLevel.Peasant, UnitLevel.Spearman, UnitLevel.Knight, UnitLevel.Baron };
         foreach (UnitLevel level in buyLevels)
         {
             if (!PurchaseRules.CanAfford(territory, state.Treasury, level)) continue;
             int upkeep_ = UpkeepRules.UpkeepFor(level);
-            if (netBefore + 1 - upkeep_ < 0) continue;
+            bool captureSolvent = netBefore + 1 - upkeep_ >= 0;
+            bool repositionSolvent = netBefore - upkeep_ >= 0;
+            if (!captureSolvent && !repositionSolvent) continue;
 
             List<HexCoord> buyTargets = MovementRules.ValidTargets(
                 level, territory, state.Grid, state.Territories);
@@ -132,17 +154,26 @@ public static class AiCommon
                 if (targetTile == null) continue;
 
                 TargetKind kind = ClassifyTarget(targetTile, owner);
-                if (kind == TargetKind.Capture)
+                if (kind == TargetKind.Capture && captureSolvent)
                 {
                     yield return new AiCandidate(
                         new AiBuyUnitAction(territory.Capital!.Value, target, level),
                         AiActionKind.Capture);
                 }
-                else if (kind == TargetKind.Chop)
+                else if (kind == TargetKind.Chop && captureSolvent)
                 {
                     yield return new AiCandidate(
                         new AiBuyUnitAction(territory.Capital!.Value, target, level),
                         AiActionKind.Chop);
+                }
+                else if (kind == TargetKind.Reposition
+                         && repositionSolvent
+                         && targetTile.Occupant == null
+                         && IsBorderTile(target, state.Grid, owner))
+                {
+                    yield return new AiCandidate(
+                        new AiBuyUnitAction(territory.Capital!.Value, target, level),
+                        AiActionKind.Reposition);
                 }
             }
         }

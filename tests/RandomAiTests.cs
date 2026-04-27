@@ -134,7 +134,11 @@ public class RandomAiTests
     public void ChooseNextAction_MoveCaptureFromMinusTwoNet_Blocked()
     {
         // Red: 4 tiles, one spearman (upkeep 6). Net = 4 - 6 = -2.
-        // Post-capture net = -2 + 1 = -1. Rule "post_net >= 0" blocks.
+        // Post-capture net = -2 + 1 = -1. Rule "post_net >= 0" blocks
+        // any move-capture. After Phase 1's reposition support the AI
+        // may instead return a border-to-border reposition (which has
+        // no income/upkeep impact and is therefore unaffected by net),
+        // so the assertion is "no move-capture", not "no action".
         GameState state = BuildState(
             8, 2,
             HexCoord.FromOffset(0, 1),
@@ -146,7 +150,12 @@ public class RandomAiTests
 
         AiAction? result = RandomAi.ChooseNextAction(state, Red, EmptyVisited(), Seed());
 
-        Assert.Null(result);
+        if (result is AiMoveAction move)
+        {
+            HexTile? dst = state.Grid.Get(move.Destination);
+            Assert.NotNull(dst);
+            Assert.Equal(Red, dst!.Color); // not a capture
+        }
     }
 
     // --- Buy-capture -----------------------------------------------------
@@ -808,5 +817,65 @@ public class RandomAiTests
         AiAction? b = RandomAi.ChooseNextAction(state2, Red, EmptyVisited(), new Random(123));
 
         Assert.Equal(a, b);
+    }
+
+    // --- Reposition bucket (lowest priority) ----------------------------
+
+    [Fact]
+    public void ChooseNextAction_OnlyReposition_PicksReposition()
+    {
+        // Red 4-strip cols 0..3 + Blue col 4 with a Knight defending
+        // (defense 3 > peasant attack 1, so the peasant cannot capture
+        // col 4). Treasury empty (no buys/towers). No tree, no other
+        // friendly units (no combine). Border: col 3.
+        // The only legal action is move-reposition col 0 → col 3.
+        var grid = new HexGrid();
+        for (int col = 0; col <= 3; col++)
+            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(4, 0), Blue));
+        grid.Get(HexCoord.FromOffset(0, 0))!.Occupant = new Unit(Red);
+        grid.Get(HexCoord.FromOffset(4, 0))!.Occupant = new Unit(Blue, UnitLevel.Knight);
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var players = new List<Player> { new("Red", Red), new("Blue", Blue) };
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+
+        AiAction? result = RandomAi.ChooseNextAction(state, Red, EmptyVisited(), Seed());
+
+        AiMoveAction move = Assert.IsType<AiMoveAction>(result);
+        Assert.Equal(HexCoord.FromOffset(0, 0), move.Source);
+        Assert.Equal(HexCoord.FromOffset(3, 0), move.Destination);
+    }
+
+    [Fact]
+    public void ChooseNextAction_RepositionAvailableWithCombine_PrefersCombine()
+    {
+        // Reposition is lowest priority — it must lose to every other
+        // bucket including Combine. Setup: 6-tile Red strip with two
+        // adjacent peasants (combine candidate), adjacent Blue tile
+        // defended (no capture available). Border at col 5. Net 6 - 4
+        // = 2 → P+P→Spearman combine costs upkeep delta +2 → solvent.
+        var grid = new HexGrid();
+        for (int col = 0; col <= 5; col++)
+            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(6, 0), Blue));
+        grid.Get(HexCoord.FromOffset(0, 0))!.Occupant = new Unit(Red);
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(Red);
+        grid.Get(HexCoord.FromOffset(6, 0))!.Occupant = new Unit(Blue, UnitLevel.Knight);
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var players = new List<Player> { new("Red", Red), new("Blue", Blue) };
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+
+        // Multiple seeds to confirm priority, not luck.
+        for (int s = 0; s < 8; s++)
+        {
+            AiAction? result = RandomAi.ChooseNextAction(state, Red, EmptyVisited(), new Random(s));
+            AiMoveAction move = Assert.IsType<AiMoveAction>(result);
+            HexTile? dst = state.Grid.Get(move.Destination);
+            Assert.NotNull(dst);
+            // Combine destination is a friendly unit tile — NOT an
+            // empty border tile (which would be a reposition).
+            Assert.IsType<Unit>(dst!.Occupant);
+            Assert.Equal(Red, ((Unit)dst.Occupant).Owner);
+        }
     }
 }

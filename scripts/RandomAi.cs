@@ -11,12 +11,12 @@ using Godot;
 ///
 /// Two design rules keep it from doing nothing useful:
 ///
-/// 1. <b>Priority.</b> Valid actions are sorted into four buckets —
-///    captures &gt; chops &gt; combines &gt; towers. The AI picks
-///    uniformly at random from the highest non-empty bucket, so it
-///    always commits to aggression when it has any, falls back to
-///    leveling up (combining) when it's stuck, and only builds
-///    towers when there's nothing else to do.
+/// 1. <b>Priority.</b> Valid actions are sorted into five buckets —
+///    captures &gt; chops &gt; combines &gt; towers &gt; repositions.
+///    The AI picks uniformly at random from the highest non-empty
+///    bucket, so it always commits to aggression when it has any,
+///    falls back to leveling up (combining) when it's stuck, and only
+///    repositions when nothing else is productive.
 /// 2. <b>Multi-action turns.</b> A territory stays eligible ("not
 ///    visited") until a call finds zero valid actions in it, so a
 ///    single territory can execute many actions across consecutive
@@ -86,6 +86,7 @@ public static class RandomAi
                 case AiActionKind.Chop: bucket.Chops.Add(c.Action); break;
                 case AiActionKind.Combine: bucket.Combines.Add(c.Action); break;
                 case AiActionKind.Tower: bucket.Towers.Add(c.Action); break;
+                case AiActionKind.Reposition: bucket.Repositions.Add(c.Action); break;
             }
         }
         return bucket;
@@ -102,17 +103,20 @@ public static class RandomAi
         public readonly List<AiAction> Chops = new();
         public readonly List<AiAction> Combines = new();
         public readonly List<AiAction> Towers = new();
+        public readonly List<AiAction> Repositions = new();
 
         public bool IsEmpty =>
             Captures.Count == 0 && Chops.Count == 0
-            && Combines.Count == 0 && Towers.Count == 0;
+            && Combines.Count == 0 && Towers.Count == 0
+            && Repositions.Count == 0;
 
         public AiAction Pick(Random rng)
         {
             if (Captures.Count > 0) return Captures[rng.Next(Captures.Count)];
             if (Chops.Count > 0) return Chops[rng.Next(Chops.Count)];
             if (Combines.Count > 0) return Combines[rng.Next(Combines.Count)];
-            return Towers[rng.Next(Towers.Count)];
+            if (Towers.Count > 0) return Towers[rng.Next(Towers.Count)];
+            return Repositions[rng.Next(Repositions.Count)];
         }
     }
 

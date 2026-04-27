@@ -1,0 +1,130 @@
+using System.Collections.Generic;
+using System.Linq;
+using Godot;
+using Xunit;
+
+namespace FourExHex.Tests;
+
+public class AiCommonTests
+{
+    private static readonly Color Red = new(1f, 0f, 0f);
+    private static readonly Color Blue = new(0f, 0f, 1f);
+
+    private static GameState BuildState(HexGrid grid, params Player[] players)
+    {
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var list = players.ToList();
+        return new GameState(grid, territories, list, new TurnState(list), new Treasury());
+    }
+
+    [Fact]
+    public void Enumerate_Yields_Move_Reposition_To_Border_Tile()
+    {
+        // 4-tile Red strip cols 0..3 + Blue tile col 4. Red border
+        // tile is col 3 (adjacent to Blue at col 4); cols 0..2 are
+        // interior. Peasant on col 0 with no prior moves — its
+        // valid in-territory targets include col 3 (border).
+        var grid = new HexGrid();
+        for (int col = 0; col <= 3; col++)
+            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(4, 0), Blue));
+        grid.Get(HexCoord.FromOffset(0, 0))!.Occupant = new Unit(Red);
+        GameState state = BuildState(grid, new Player("Red", Red), new Player("Blue", Blue));
+
+        Territory red = state.Territories.First(t => t.Owner == Red);
+        List<AiCandidate> candidates = AiCommon.Enumerate(red, state).ToList();
+
+        AiCandidate reposition = candidates.First(c =>
+            c.Kind == AiActionKind.Reposition && c.Action is AiMoveAction);
+        AiMoveAction move = Assert.IsType<AiMoveAction>(reposition.Action);
+        Assert.Equal(HexCoord.FromOffset(0, 0), move.Source);
+        Assert.Equal(HexCoord.FromOffset(3, 0), move.Destination);
+    }
+
+    [Fact]
+    public void Enumerate_Skips_Move_Reposition_To_Interior_Tile()
+    {
+        // Same 4-tile strip + Blue. Cols 1 and 2 are interior Red
+        // tiles (no enemy neighbor) — they must NOT be reposition
+        // targets. Only col 3 (border) is allowed.
+        var grid = new HexGrid();
+        for (int col = 0; col <= 3; col++)
+            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(4, 0), Blue));
+        grid.Get(HexCoord.FromOffset(0, 0))!.Occupant = new Unit(Red);
+        GameState state = BuildState(grid, new Player("Red", Red), new Player("Blue", Blue));
+
+        Territory red = state.Territories.First(t => t.Owner == Red);
+        List<AiCandidate> candidates = AiCommon.Enumerate(red, state).ToList();
+
+        foreach (AiCandidate c in candidates.Where(c => c.Kind == AiActionKind.Reposition))
+        {
+            switch (c.Action)
+            {
+                case AiMoveAction mv:
+                    Assert.True(AiCommon.IsBorderTile(mv.Destination, state.Grid, Red),
+                        $"reposition move target {mv.Destination} should be a border tile");
+                    break;
+                case AiBuyUnitAction bu:
+                    Assert.True(AiCommon.IsBorderTile(bu.Destination, state.Grid, Red),
+                        $"reposition buy target {bu.Destination} should be a border tile");
+                    break;
+            }
+        }
+    }
+
+    [Fact]
+    public void Enumerate_Yields_Buy_Reposition_To_Border_Tile()
+    {
+        // 4-tile Red strip cols 0..3 + Blue col 4 with a Spearman
+        // (defense 2) — a fresh peasant cannot buy-capture col 4.
+        // Treasury has enough for a peasant. Border tile is col 3,
+        // empty. Net income 4, upkeep 0 → buy-reposition post-net
+        // = 4 - 2 = 2 ≥ 0, solvent.
+        var grid = new HexGrid();
+        for (int col = 0; col <= 3; col++)
+            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(4, 0), Blue));
+        grid.Get(HexCoord.FromOffset(4, 0))!.Occupant = new Unit(Blue, UnitLevel.Spearman);
+        GameState state = BuildState(grid, new Player("Red", Red), new Player("Blue", Blue));
+        HexCoord cap = state.Territories.First(t => t.Owner == Red).Capital!.Value;
+        state.Treasury.SetGold(cap, 10);
+
+        Territory red = state.Territories.First(t => t.Owner == Red);
+        List<AiCandidate> candidates = AiCommon.Enumerate(red, state).ToList();
+
+        AiCandidate buyReposition = candidates.First(c =>
+            c.Kind == AiActionKind.Reposition && c.Action is AiBuyUnitAction);
+        AiBuyUnitAction buy = Assert.IsType<AiBuyUnitAction>(buyReposition.Action);
+        Assert.Equal(HexCoord.FromOffset(3, 0), buy.Destination);
+        Assert.Equal(UnitLevel.Peasant, buy.Level);
+    }
+
+    [Fact]
+    public void Enumerate_Skips_Buy_Reposition_When_Insolvent()
+    {
+        // 5-tile Red strip cols 0..4 + Blue col 5. Two existing
+        // peasants on cols 0, 1 (upkeep 4). Income 5, net = 1.
+        // Buy-peasant-capture: post-net = 1 + 1 - 2 = 0 → solvent.
+        // Buy-peasant-reposition: post-net = 1 - 2 = -1 → insolvent.
+        // Confirm the test scenario actually has a buy-capture
+        // available (sanity), then assert no buy-reposition.
+        var grid = new HexGrid();
+        for (int col = 0; col <= 4; col++)
+            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(5, 0), Blue));
+        grid.Get(HexCoord.FromOffset(0, 0))!.Occupant = new Unit(Red);
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(Red);
+        GameState state = BuildState(grid, new Player("Red", Red), new Player("Blue", Blue));
+        HexCoord cap = state.Territories.First(t => t.Owner == Red).Capital!.Value;
+        state.Treasury.SetGold(cap, 10);
+
+        Territory red = state.Territories.First(t => t.Owner == Red);
+        List<AiCandidate> candidates = AiCommon.Enumerate(red, state).ToList();
+
+        Assert.Contains(candidates, c =>
+            c.Kind == AiActionKind.Capture && c.Action is AiBuyUnitAction);
+        Assert.DoesNotContain(candidates, c =>
+            c.Kind == AiActionKind.Reposition && c.Action is AiBuyUnitAction);
+    }
+}

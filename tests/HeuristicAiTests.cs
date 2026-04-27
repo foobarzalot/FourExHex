@@ -292,4 +292,117 @@ public class HeuristicAiTests
 
         Assert.Null(result);
     }
+
+    // --- Reposition: defensive moves into undefended border tiles -------
+
+    [Fact]
+    public void ChooseNextAction_PicksDefensiveReposition_ToCoverUndefendedBorder()
+    {
+        // Red 2x3 blob in a Blue field, no captures available
+        // (peasant adjacent only to friendly tiles). Place the
+        // peasant on an interior Red tile, leaving the border tiles
+        // undefended. The heuristic must pick a reposition that
+        // moves the peasant onto a border tile, reducing the
+        // undefended-border penalty and improving its score.
+        var grid = TestHelpers.BuildRectGrid(6, 3, Blue);
+        for (int col = 0; col < 2; col++)
+            for (int row = 0; row < 3; row++)
+                grid.Get(HexCoord.FromOffset(col, row))!.Color = Red;
+        // Peasant on interior Red tile (0,1) — its enemy-color
+        // neighbors all sit OUTSIDE its current tile, so it gains
+        // no defense by staying put.
+        grid.Get(HexCoord.FromOffset(0, 1))!.Occupant = new Unit(Red);
+        GameState state = BuildState(grid, new Player("Red", Red), new Player("Blue", Blue));
+
+        AiAction? result = HeuristicAi.ChooseNextAction(
+            state, Red, new HashSet<HexCoord>(), new Random(0));
+
+        AiMoveAction move = Assert.IsType<AiMoveAction>(result);
+        Assert.Equal(HexCoord.FromOffset(0, 1), move.Source);
+        Assert.True(AiCommon.IsBorderTile(move.Destination, state.Grid, Red),
+            $"peasant should reposition onto a border tile (got {move.Destination})");
+    }
+
+    // --- Simulator: reposition apply --------------------------------------
+
+    [Fact]
+    public void Simulator_ApplyMoveReposition_MarksUnitMoved_ToPreventAiPingPong()
+    {
+        // MovementRules.ResolveArrival leaves HasMovedThisTurn = false
+        // for a pure reposition (empty own destination) so a human
+        // can stack micro-actions on a single unit. The AI applies a
+        // stricter rule: a reposition consumes the unit's action,
+        // otherwise the AI would re-enumerate the same unit and
+        // ping-pong it between border tiles. AiSimulator.Apply (and
+        // GameController.ExecuteAiMove) explicitly mark the unit as
+        // moved after a reposition.
+        var grid = new HexGrid();
+        for (int col = 0; col <= 3; col++)
+            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(4, 0), Blue));
+        grid.Get(HexCoord.FromOffset(0, 0))!.Occupant = new Unit(Red);
+        GameState state = BuildState(grid, new Player("Red", Red), new Player("Blue", Blue));
+        IReadOnlyList<Territory> beforeTerritories = state.Territories;
+
+        var move = new AiMoveAction(HexCoord.FromOffset(0, 0), HexCoord.FromOffset(3, 0));
+        AiSimulator.Apply(move, state);
+
+        Assert.Null(state.Grid.Get(HexCoord.FromOffset(0, 0))!.Occupant);
+        Unit moved = Assert.IsType<Unit>(state.Grid.Get(HexCoord.FromOffset(3, 0))!.Occupant);
+        Assert.True(moved.HasMovedThisTurn);
+        Assert.Same(beforeTerritories, state.Territories);
+    }
+
+    [Fact]
+    public void Simulator_ApplyBuyReposition_MarksUnitMoved()
+    {
+        var grid = new HexGrid();
+        for (int col = 0; col <= 3; col++)
+            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(4, 0), Blue));
+        grid.Get(HexCoord.FromOffset(4, 0))!.Occupant = new Unit(Blue, UnitLevel.Spearman);
+        GameState state = BuildState(grid, new Player("Red", Red), new Player("Blue", Blue));
+        HexCoord cap = state.Territories.First(t => t.Owner == Red).Capital!.Value;
+        state.Treasury.SetGold(cap, 10);
+        IReadOnlyList<Territory> beforeTerritories = state.Territories;
+
+        var buy = new AiBuyUnitAction(cap, HexCoord.FromOffset(3, 0), UnitLevel.Peasant);
+        AiSimulator.Apply(buy, state);
+
+        Assert.Equal(10 - PurchaseRules.CostFor(UnitLevel.Peasant), state.Treasury.GetGold(cap));
+        Unit placed = Assert.IsType<Unit>(state.Grid.Get(HexCoord.FromOffset(3, 0))!.Occupant);
+        Assert.Equal(Red, placed.Owner);
+        Assert.Equal(UnitLevel.Peasant, placed.Level);
+        Assert.True(placed.HasMovedThisTurn);
+        Assert.Same(beforeTerritories, state.Territories);
+    }
+
+    [Fact]
+    public void HeuristicAi_DoesNotPingPongRepositions()
+    {
+        // After repositioning a unit once, calling the chooser again
+        // must not return another move whose source is where that
+        // unit ended up — that would be the ping-pong the user
+        // surfaced in playtest. Apply via AiSimulator (the live
+        // controller path mirrors it) and confirm the second call
+        // either picks a different action or returns null.
+        var grid = TestHelpers.BuildRectGrid(6, 3, Blue);
+        for (int col = 0; col < 2; col++)
+            for (int row = 0; row < 3; row++)
+                grid.Get(HexCoord.FromOffset(col, row))!.Color = Red;
+        grid.Get(HexCoord.FromOffset(0, 1))!.Occupant = new Unit(Red);
+        GameState state = BuildState(grid, new Player("Red", Red), new Player("Blue", Blue));
+
+        AiAction? first = HeuristicAi.ChooseNextAction(
+            state, Red, new HashSet<HexCoord>(), new Random(0));
+        AiMoveAction firstMove = Assert.IsType<AiMoveAction>(first);
+        AiSimulator.Apply(firstMove, state);
+
+        AiAction? second = HeuristicAi.ChooseNextAction(
+            state, Red, new HashSet<HexCoord>(), new Random(0));
+        if (second is AiMoveAction secondMove)
+        {
+            Assert.NotEqual(firstMove.Destination, secondMove.Source);
+        }
+    }
 }
