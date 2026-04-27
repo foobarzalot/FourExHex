@@ -195,6 +195,59 @@ public class HeuristicAiTests
     }
 
     [Fact]
+    public void Score_PenalizesOwnGraves_SameAsOwnTrees()
+    {
+        // A grave on an own tile is guaranteed to become a tree
+        // on the next start-of-turn (TreeRules.ConvertGravesToTrees
+        // runs unconditionally). The scorer should treat graves and
+        // trees on own tiles identically so the AI prioritizes
+        // burying graves with the same urgency as chopping trees.
+        var gridTree = new HexGrid();
+        for (int col = 0; col < 4; col++)
+            gridTree.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        gridTree.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Tree();
+        GameState treeState = BuildState(gridTree, new Player("Red", Red), new Player("Blue", Blue));
+
+        var gridGrave = new HexGrid();
+        for (int col = 0; col < 4; col++)
+            gridGrave.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        gridGrave.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Grave();
+        GameState graveState = BuildState(gridGrave, new Player("Red", Red), new Player("Blue", Blue));
+
+        double treeScore = AiStateScorer.Score(treeState, Red);
+        double graveScore = AiStateScorer.Score(graveState, Red);
+
+        Assert.Equal(treeScore, graveScore);
+    }
+
+    [Fact]
+    public void Score_DoesNotApplyTreePenaltyToEnemyGraves()
+    {
+        // Penalty must remain own-side only. Two states with one
+        // grave each: one on a Red tile, one on an equivalent Blue
+        // tile. From Red's perspective, a Red grave should be worse
+        // (own penalty + own income loss) than a Blue grave (which
+        // just hurts Blue's territory value, slightly helping Red).
+        var gridRedGrave = TestHelpers.BuildRectGrid(6, 1, Blue);
+        for (int col = 0; col < 3; col++)
+            gridRedGrave.Get(HexCoord.FromOffset(col, 0))!.Color = Red;
+        gridRedGrave.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Grave();
+        GameState redGraveState = BuildState(gridRedGrave, new Player("Red", Red), new Player("Blue", Blue));
+
+        var gridBlueGrave = TestHelpers.BuildRectGrid(6, 1, Blue);
+        for (int col = 0; col < 3; col++)
+            gridBlueGrave.Get(HexCoord.FromOffset(col, 0))!.Color = Red;
+        gridBlueGrave.Get(HexCoord.FromOffset(4, 0))!.Occupant = new Grave();
+        GameState blueGraveState = BuildState(gridBlueGrave, new Player("Red", Red), new Player("Blue", Blue));
+
+        double redGraveScore = AiStateScorer.Score(redGraveState, Red);
+        double blueGraveScore = AiStateScorer.Score(blueGraveState, Red);
+
+        Assert.True(redGraveScore < blueGraveScore,
+            $"expected Red grave ({redGraveScore}) to score below Blue grave ({blueGraveScore})");
+    }
+
+    [Fact]
     public void ChooseNextAction_PrefersChopOverCombine()
     {
         // 10-tile Red territory with two adjacent peasants and a

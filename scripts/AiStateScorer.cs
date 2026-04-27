@@ -52,17 +52,18 @@ public static class AiStateScorer
     // turn). Not too high or the AI hoards instead of acting.
     private const double GoldWeight = 0.3;
 
-    // Flat penalty per tree in an OWN territory. Trees both block
-    // income on their tile (already accounted for) and seed further
-    // growth via TreeRules.RunStartOfTurnGrowth at the start of the
-    // owner's next turn. A cluster of trees grows quickly, so once
-    // bankruptcy cascades drop a pile of graves the board floods
-    // with forest unless the AI actively chops. Applied in Score()
+    // Flat penalty per tree (or grave) in an OWN territory. Trees
+    // block income on their tile (already accounted for) and seed
+    // further growth via TreeRules.RunStartOfTurnGrowth at the
+    // start of the owner's next turn. Graves on own tiles convert
+    // unconditionally to trees on the same start-of-turn step, so
+    // they're treated as already-trees by this penalty — burying a
+    // grave is as urgent as chopping a tree. Applied in Score()
     // rather than TerritoryValue() so it's one-sided — penalizing
-    // only our own trees, not rewarding us for enemy trees (which
-    // would mean capturing an enemy tree-tile is worth less than
-    // capturing a bare tile, the opposite of what we want).
-    private const double OwnTreePenalty = 6.0;
+    // only our own trees/graves, not rewarding us for enemy ones
+    // (which would mean capturing an enemy tree-tile is worth less
+    // than capturing a bare tile, the opposite of what we want).
+    private const double OwnTreePenalty = 20.0;
 
     // Flat penalty per edge on our territories that faces an
     // enemy-colored tile. "Edges" are counted from our side only
@@ -98,7 +99,7 @@ public static class AiStateScorer
             if (t.Owner == forPlayer)
             {
                 total += value;
-                total -= OwnTreePenalty * CountTreesIn(t, state.Grid);
+                total -= OwnTreePenalty * CountTreesAndGravesIn(t, state.Grid);
                 total -= EnemyEdgePenalty * CountEnemyEdges(t, state.Grid, forPlayer);
                 total -= UndefendedBorderPenalty * CountUndefendedBorderTiles(t, state.Grid, forPlayer);
             }
@@ -110,13 +111,13 @@ public static class AiStateScorer
         return total;
     }
 
-    private static int CountTreesIn(Territory territory, HexGrid grid)
+    private static int CountTreesAndGravesIn(Territory territory, HexGrid grid)
     {
         int count = 0;
         foreach (HexCoord coord in territory.Coords)
         {
             HexTile? tile = grid.Get(coord);
-            if (tile?.Occupant is Tree) count++;
+            if (tile?.Occupant is Tree || tile?.Occupant is Grave) count++;
         }
         return count;
     }
