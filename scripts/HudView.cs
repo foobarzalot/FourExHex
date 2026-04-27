@@ -23,6 +23,7 @@ public partial class HudView : CanvasLayer, IHudView
     public event Action? MainMenuClicked;
     public event Action? NextTerritoryClicked;
     public event Action? CancelActionPressed;
+    public event Action? SaveGameClicked;
 
     private Label _turnLabel = null!;
     private Label _playerLabel = null!;
@@ -34,6 +35,7 @@ public partial class HudView : CanvasLayer, IHudView
     private Button _redoLastButton = null!;
     private Button _redoAllButton = null!;
     private Button _endTurnButton = null!;
+    private Button _saveGameButton = null!;
     private Button _endGameButton = null!;
     private ConfirmationDialog _endGameDialog = null!;
     private Control _victoryOverlay = null!;
@@ -164,6 +166,15 @@ public partial class HudView : CanvasLayer, IHudView
         _endTurnButton.AddThemeFontSizeOverride("font_size", 18);
         _endTurnButton.Pressed += () => EndTurnClicked?.Invoke();
         rightHbox.AddChild(_endTurnButton);
+
+        _saveGameButton = new Button
+        {
+            Text = "Save",
+            FocusMode = Control.FocusModeEnum.None,
+        };
+        _saveGameButton.AddThemeFontSizeOverride("font_size", 18);
+        _saveGameButton.Pressed += () => SaveGameClicked?.Invoke();
+        rightHbox.AddChild(_saveGameButton);
 
         // Abandon-game button in the top-right corner. Always available;
         // prompts a confirmation dialog before returning to the main

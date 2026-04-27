@@ -18,6 +18,11 @@ public partial class MainMenuScene : Control
     private const int HeuristicAiId = 2;
 
     private readonly OptionButton[] _roleButtons = new OptionButton[GameSettings.PlayerConfig.Length];
+    private SaveStore _saveStore = null!;
+    private Window? _loadDialog;
+    private VBoxContainer? _loadDialogList;
+    private AcceptDialog? _loadErrorDialog;
+    private Button? _loadButton;
 
     public override void _Ready()
     {
@@ -150,14 +155,145 @@ public partial class MainMenuScene : Control
             _roleButtons[i] = dropdown;
         }
 
+        _saveStore = new SaveStore();
+
+        const float buttonH = 52f;
+        const float buttonW = 220f;
+        const float buttonGap = 16f;
+        float buttonRowY = panelH - buttonH - 36f;
+        float buttonRowX = (panelW - (buttonW * 2f + buttonGap)) * 0.5f;
+
         var startButton = new Button { Text = "Start Game" };
         startButton.AddThemeFontSizeOverride("font_size", 24);
-        const float startW = 220f;
-        const float startH = 52f;
-        startButton.Position = new Vector2((panelW - startW) * 0.5f, panelH - startH - 36f);
-        startButton.Size = new Vector2(startW, startH);
+        startButton.Position = new Vector2(buttonRowX, buttonRowY);
+        startButton.Size = new Vector2(buttonW, buttonH);
         startButton.Pressed += OnStartPressed;
         panel.AddChild(startButton);
+
+        _loadButton = new Button { Text = "Load Game" };
+        _loadButton.AddThemeFontSizeOverride("font_size", 24);
+        _loadButton.Position = new Vector2(buttonRowX + buttonW + buttonGap, buttonRowY);
+        _loadButton.Size = new Vector2(buttonW, buttonH);
+        _loadButton.Pressed += OnLoadPressed;
+        panel.AddChild(_loadButton);
+        // Disable Load Game when no saves exist so the user gets
+        // immediate visual feedback rather than an empty popup.
+        _loadButton.Disabled = _saveStore.ListSlots().Count == 0;
+
+        BuildLoadDialog();
+    }
+
+    private void BuildLoadDialog()
+    {
+        _loadDialog = new Window
+        {
+            Title = "Load Game",
+            Size = new Vector2I(440, 360),
+            Visible = false,
+            Exclusive = true,
+        };
+        _loadDialog.CloseRequested += () => _loadDialog!.Hide();
+        AddChild(_loadDialog);
+
+        var scroll = new ScrollContainer
+        {
+            AnchorLeft = 0f,
+            AnchorTop = 0f,
+            AnchorRight = 1f,
+            AnchorBottom = 1f,
+            OffsetLeft = 16f,
+            OffsetTop = 16f,
+            OffsetRight = -16f,
+            OffsetBottom = -16f,
+        };
+        _loadDialog.AddChild(scroll);
+
+        _loadDialogList = new VBoxContainer
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+        };
+        _loadDialogList.AddThemeConstantOverride("separation", 8);
+        scroll.AddChild(_loadDialogList);
+
+        _loadErrorDialog = new AcceptDialog
+        {
+            Title = "Load failed",
+            OkButtonText = "OK",
+        };
+        AddChild(_loadErrorDialog);
+    }
+
+    private void OnLoadPressed()
+    {
+        if (_loadDialog == null || _loadDialogList == null) return;
+
+        // Rebuild the list each time so newly-saved slots show up.
+        foreach (Node child in _loadDialogList.GetChildren())
+        {
+            child.QueueFree();
+        }
+        System.Collections.Generic.IReadOnlyList<SaveSlotInfo> slots = _saveStore.ListSlots();
+        if (slots.Count == 0)
+        {
+            var emptyLabel = new Label { Text = "No save files found." };
+            emptyLabel.AddThemeFontSizeOverride("font_size", 18);
+            _loadDialogList.AddChild(emptyLabel);
+        }
+        foreach (SaveSlotInfo info in slots)
+        {
+            string capturedName = info.SlotName;
+            string label = info.IsAutosave
+                ? $"[Autosave] turn {info.TurnNumber} — {FormatTimestamp(info.SavedAtUnix)}"
+                : $"{info.SlotName} — turn {info.TurnNumber} — {FormatTimestamp(info.SavedAtUnix)}";
+            var btn = new Button
+            {
+                Text = label,
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                Alignment = HorizontalAlignment.Left,
+            };
+            btn.AddThemeFontSizeOverride("font_size", 18);
+            btn.Pressed += () => OnLoadSlotPressed(capturedName);
+            _loadDialogList.AddChild(btn);
+        }
+        _loadDialog.PopupCentered();
+    }
+
+    private void OnLoadSlotPressed(string slotName)
+    {
+        try
+        {
+            LoadedSave loaded = _saveStore.LoadSlot(slotName);
+            LoadRequest.Pending = loaded;
+            // Mirror the saved player roster into GameSettings so the
+            // menu reflects them next time it opens (and so re-launches
+            // from a Play-Again button preserve the saved kinds).
+            for (int i = 0; i < loaded.Players.Count && i < GameSettings.PlayerKinds.Length; i++)
+            {
+                GameSettings.PlayerKinds[i] = loaded.Players[i].Kind;
+            }
+            GetTree().ChangeSceneToFile("res://scenes/main.tscn");
+        }
+        catch (System.Exception ex)
+        {
+            ShowLoadError($"Could not load '{slotName}': {ex.Message}");
+        }
+    }
+
+    private void ShowLoadError(string message)
+    {
+        if (_loadErrorDialog == null)
+        {
+            GD.PushError(message);
+            return;
+        }
+        _loadErrorDialog.DialogText = message;
+        _loadErrorDialog.PopupCentered();
+    }
+
+    private static string FormatTimestamp(long unixSeconds)
+    {
+        var dt = System.DateTimeOffset.FromUnixTimeSeconds(unixSeconds).LocalDateTime;
+        return dt.ToString("yyyy-MM-dd HH:mm");
     }
 
     private void LaunchGameScene()

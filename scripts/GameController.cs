@@ -17,7 +17,17 @@ public class GameController
     private readonly SessionState _session;
     private readonly IHexMapView _map;
     private readonly IHudView _hud;
-    private readonly Random _rng;
+
+    // The save/load contract requires deterministic-on-reload AI: a saved
+    // master seed plus the (turn, player) tuple uniquely determines the
+    // RNG sequence used during that player's turn. The per-turn reseed
+    // happens at the top of StartPlayerTurn — it lets a save capture
+    // just the seed (no RNG-consumption count) and still replay
+    // identically on load.
+    private readonly int _masterSeed;
+    private Random _rng;
+    public int MasterSeed => _masterSeed;
+
     private readonly Func<GameState, Color, HashSet<HexCoord>, Random, AiAction?> _aiChooser;
     private readonly IAiPacer _aiPacer;
 
@@ -63,12 +73,21 @@ public class GameController
     /// </summary>
     public event Action? GameEnded;
 
+    /// <summary>
+    /// Fired at the start of every human player's turn, after start-of-turn
+    /// bookkeeping (tree growth, income, upkeep) and after
+    /// <see cref="RefreshViews"/>. Save/load wires the autosave path to
+    /// this event — the saved state matches what the player sees.
+    /// Never fires for AI turns.
+    /// </summary>
+    public event Action? HumanTurnStarted;
+
     public GameController(
         GameState state,
         SessionState session,
         IHexMapView map,
         IHudView hud,
-        Random? rng = null,
+        int? seed = null,
         Func<GameState, Color, HashSet<HexCoord>, Random, AiAction?>? aiChooser = null,
         IAiPacer? aiPacer = null,
         int maxTurnNumber = int.MaxValue)
@@ -77,7 +96,14 @@ public class GameController
         _session = session;
         _map = map;
         _hud = hud;
-        _rng = rng ?? new Random();
+        _masterSeed = seed ?? Random.Shared.Next();
+        // Initial _rng is set from the seed alone; StartPlayerTurn
+        // replaces it with a per-turn reseed before any gameplay RNG
+        // consumption begins. The non-null assignment here keeps the
+        // field non-nullable and prevents a NRE if anything reads
+        // _rng before the first StartPlayerTurn (currently nothing
+        // does, but the contract should be safe).
+        _rng = new Random(_masterSeed);
         _aiChooser = aiChooser ?? RandomAi.ChooseNextAction;
         _aiPacer = aiPacer ?? new SynchronousAiPacer();
         _maxTurnNumber = maxTurnNumber;
@@ -107,8 +133,86 @@ public class GameController
         // player sees on their first turn. Subsequent turns credit
         // income at the END of the turn (see OnEndTurnPressed and the
         // AI turn-end path).
+        Resume();
+    }
+
+    /// <summary>
+    /// Pick up where a previously running game left off. Used by both
+    /// fresh-game startup (after <see cref="SeedStartingGold"/>) and
+    /// the load-game path, where <see cref="GameState"/> already holds
+    /// the saved gold and turn state — re-seeding starting gold would
+    /// overwrite the saved economy.
+    ///
+    /// Reseeds the per-turn RNG for the current (turn, player), runs
+    /// any leading AI turns until control reaches a human (or game
+    /// ends), pushes the latest state into the views, then fires
+    /// <see cref="HumanTurnStarted"/> if the resumed player is human.
+    /// </summary>
+    public void Resume()
+    {
+        ReseedRngForCurrentTurn();
         RunAiTurnsUntilHumanOrDone();
         RefreshViews();
+        // Initial player is human → StartPlayerTurn is never called
+        // for them (it only runs at transitions), so fire the autosave
+        // hook here. If a human turn was reached via AI hand-off
+        // inside RunAiTurnsUntilHumanOrDone, the event already fired
+        // from inside StartPlayerTurn.
+        MaybeFireHumanTurnStartedFromStartGame();
+    }
+
+    // Tracks whether HumanTurnStarted has fired for the current player's
+    // turn so StartGame doesn't double-fire when the AI hand-off path
+    // already raised it from inside StartPlayerTurn.
+    private bool _humanTurnFiredForCurrentTurn;
+
+    private void MaybeFireHumanTurnStartedFromStartGame()
+    {
+        if (_humanTurnFiredForCurrentTurn) return;
+        if (_session.IsGameOver || _gameEndedFired) return;
+        if (_state.Turns.CurrentPlayer.IsAi) return;
+        _humanTurnFiredForCurrentTurn = true;
+        HumanTurnStarted?.Invoke();
+    }
+
+    /// <summary>
+    /// Reset <see cref="_rng"/> to a fresh <see cref="Random"/> derived
+    /// solely from <see cref="_masterSeed"/> and the current
+    /// (turn, player) pair. This is the per-turn reseed that makes
+    /// save/load deterministic: a save records only the master seed,
+    /// and load reproduces identical RNG sequences regardless of how
+    /// many random numbers the prior turns consumed.
+    /// </summary>
+    private void ReseedRngForCurrentTurn()
+    {
+        int subSeed = MixSeed(
+            _masterSeed,
+            _state.Turns.TurnNumber,
+            _state.Turns.CurrentPlayerIndex);
+        _rng = new Random(subSeed);
+    }
+
+    /// <summary>
+    /// Deterministic 32-bit mixer over (masterSeed, turn, player).
+    /// XOR-of-small-ints would correlate adjacent (turn, player) pairs;
+    /// this uses three rounds of xorshift-multiply (the
+    /// "splitmix32" pattern) so adjacent inputs hash to uncorrelated
+    /// outputs.
+    /// </summary>
+    private static int MixSeed(int masterSeed, int turn, int playerIndex)
+    {
+        unchecked
+        {
+            uint x = (uint)masterSeed;
+            x ^= (uint)turn * 0x9E3779B1u;
+            x ^= (uint)playerIndex * 0x85EBCA77u;
+            x ^= x >> 16;
+            x *= 0x7feb352du;
+            x ^= x >> 15;
+            x *= 0x846ca68bu;
+            x ^= x >> 16;
+            return (int)x;
+        }
     }
 
     /// <summary>
@@ -805,6 +909,13 @@ public class GameController
     /// </summary>
     private void StartPlayerTurn()
     {
+        // Reseed first, before any RNG consumption this turn. Tree
+        // growth (currently deterministic), AI dispatch, and any future
+        // start-of-turn random effects all draw from the per-turn RNG
+        // derived here.
+        ReseedRngForCurrentTurn();
+        _humanTurnFiredForCurrentTurn = false;
+
         if (_state.Turns.TurnNumber > 1)
         {
             TreeRules.RunStartOfTurnGrowth(
@@ -824,6 +935,19 @@ public class GameController
 
         LogTurnStart();
         CheckGameEndConditions();
+
+        // Fire the autosave hook for human turns. Skipped for AI
+        // (autosave is keyed to human turn-start, not AI). Skipped on
+        // game-over (no point saving a finished game). The flag is
+        // reset at the top of StartPlayerTurn so each turn re-arms.
+        if (!_session.IsGameOver
+            && !_gameEndedFired
+            && !_state.Turns.CurrentPlayer.IsAi
+            && !_humanTurnFiredForCurrentTurn)
+        {
+            _humanTurnFiredForCurrentTurn = true;
+            HumanTurnStarted?.Invoke();
+        }
     }
 
     private void LogTurnStart()

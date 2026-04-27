@@ -923,7 +923,7 @@ public class GameControllerTests
             if (index >= actions.Length) return null;
             return actions[index++];
         }
-        return new GameController(state, new SessionState(), map, hud, rng: new Random(1), aiChooser: Chooser);
+        return new GameController(state, new SessionState(), map, hud, seed: 1, aiChooser: Chooser);
     }
 
     /// <summary>
@@ -1149,7 +1149,7 @@ public class GameControllerTests
                 Map.TileIndex[kvp.Key] = kvp.Value;
             }
             // Seeded RNG so AI behavior is deterministic across runs.
-            Controller = new GameController(State, Session, Map, Hud, new Random(12345));
+            Controller = new GameController(State, Session, Map, Hud, seed: 12345);
             Controller.StartGame();
         }
 
@@ -1218,7 +1218,7 @@ public class GameControllerTests
         {
             map.TileIndex[kvp.Key] = kvp.Value;
         }
-        var controller = new GameController(state, session, map, hud, new Random(1));
+        var controller = new GameController(state, session, map, hud, seed: 1);
         controller.StartGame();
 
         Assert.True(session.IsGameOver);
@@ -1257,7 +1257,7 @@ public class GameControllerTests
         {
             map.TileIndex[kvp.Key] = kvp.Value;
         }
-        var controller = new GameController(state, session, map, hud, new Random(7));
+        var controller = new GameController(state, session, map, hud, seed: 7);
         controller.StartGame();
 
         // End Red's (human) turn so Blue's AI turn runs.

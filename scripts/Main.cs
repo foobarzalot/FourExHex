@@ -11,6 +11,13 @@ using Godot;
 public partial class Main : Node2D
 {
     private GameController _controller = null!;
+    private SaveStore _saveStore = null!;
+    private IReadOnlyList<Player> _players = null!;
+    private GameState _state = null!;
+    private int _maxTurnNumber;
+    private AcceptDialog? _saveDialog;
+    private LineEdit? _saveDialogLineEdit;
+    private AcceptDialog? _saveErrorDialog;
 
     public override void _Ready()
     {
@@ -30,6 +37,12 @@ public partial class Main : Node2D
             AiLog.Enabled = true;
             GD.Print("=== FOUREXHEX_6AI diagnostic mode ===");
         }
+
+        // Consume any pending load request from the menu. Clear it
+        // immediately so a subsequent menu→game transition starts
+        // a fresh game.
+        LoadedSave? pendingLoad = LoadRequest.Pending;
+        LoadRequest.Pending = null;
 
         // --- Model construction ------------------------------------------
         // In normal mode we read grid dimensions off a HexMapView
@@ -52,29 +65,40 @@ public partial class Main : Node2D
             rows = visibleMap.Rows;
         }
 
-        List<Player> players = BuildPlayers();
-        var turnState = new TurnState(players);
-        var treasury = new Treasury();
-
-        HexGrid grid = BuildInitialGrid(cols, rows, players);
-        IReadOnlyList<Territory> raw = TerritoryFinder.FindAll(grid);
-        IReadOnlyList<Territory> territories = CapitalReconciler.Reconcile(
-            raw, new List<Territory>(), grid);
-
-        var state = new GameState(grid, territories, players, turnState, treasury);
+        if (pendingLoad != null)
+        {
+            // Load path: state, players, seed, max-turn cap all come
+            // from the save. Skip fresh grid/territory construction.
+            _state = pendingLoad.State;
+            _players = pendingLoad.Players;
+            _maxTurnNumber = pendingLoad.MaxTurnNumber;
+        }
+        else
+        {
+            _players = BuildPlayers();
+            var turnState = new TurnState(_players);
+            var treasury = new Treasury();
+            HexGrid grid = BuildInitialGrid(cols, rows, _players);
+            IReadOnlyList<Territory> raw = TerritoryFinder.FindAll(grid);
+            IReadOnlyList<Territory> territories = CapitalReconciler.Reconcile(
+                raw, new List<Territory>(), grid);
+            _state = new GameState(grid, territories, _players, turnState, treasury);
+            _maxTurnNumber = diagnosticMode ? 500 : int.MaxValue;
+        }
         var session = new SessionState();
 
         // --- Views --------------------------------------------------------
         IHexMapView map;
         IHudView hud;
+        HudView? visibleHud = null;
         if (diagnosticMode)
         {
-            map = new HeadlessHexMapView(state);
+            map = new HeadlessHexMapView(_state);
             hud = new HeadlessHudView();
         }
         else
         {
-            visibleMap!.Init(state);
+            visibleMap!.Init(_state);
             AddChild(visibleMap);
 
             Vector2 viewport = GetViewportRect().Size;
@@ -82,7 +106,7 @@ public partial class Main : Node2D
             float y = HudView.HudHeight + (viewport.Y - HudView.HudHeight - visibleMap.PixelSize.Y) * 0.5f;
             visibleMap.Position = new Vector2(x, y);
 
-            var visibleHud = new HudView();
+            visibleHud = new HudView();
             AddChild(visibleHud);
 
             // Scene-level actions: Play Again reloads the whole
@@ -105,12 +129,13 @@ public partial class Main : Node2D
         IAiPacer pacer = diagnosticMode
             ? new SynchronousAiPacer()
             : new GodotAiPacer(GetTree());
-        int maxTurns = diagnosticMode ? 500 : int.MaxValue;
+        int? seed = pendingLoad?.MasterSeed;
         _controller = new GameController(
-            state, session, map, hud,
+            _state, session, map, hud,
+            seed: seed,
             aiPacer: pacer,
             aiChooser: AiDispatcher.ChooseForCurrentPlayer,
-            maxTurnNumber: maxTurns);
+            maxTurnNumber: _maxTurnNumber);
 
         if (diagnosticMode)
         {
@@ -121,7 +146,128 @@ public partial class Main : Node2D
             _controller.GameEnded += () => GetTree().CallDeferred("quit");
         }
 
-        _controller.StartGame();
+        // Save/load wiring (skipped in diagnostic mode — no UI to
+        // drive saves, and the controller's HumanTurnStarted never
+        // fires when all players are AI).
+        _saveStore = new SaveStore();
+        if (!diagnosticMode)
+        {
+            BuildSaveDialog();
+            _controller.HumanTurnStarted += OnHumanTurnStartedAutosave;
+            if (visibleHud != null)
+            {
+                visibleHud.SaveGameClicked += OpenSaveDialog;
+            }
+        }
+
+        if (pendingLoad != null)
+        {
+            _controller.Resume();
+        }
+        else
+        {
+            _controller.StartGame();
+        }
+    }
+
+    /// <summary>
+    /// Autosave handler. Captures the current game state into the
+    /// "autosave" slot every time a human turn begins, so closing the
+    /// game between turns never loses progress.
+    /// </summary>
+    private void OnHumanTurnStartedAutosave()
+    {
+        try
+        {
+            _saveStore.WriteAutosave(_state, _controller.MasterSeed, _players, _maxTurnNumber);
+        }
+        catch (System.Exception ex)
+        {
+            GD.PushError($"Autosave failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Build (once) the AcceptDialog used by the HUD's Save button.
+    /// Reused across every save action.
+    /// </summary>
+    private void BuildSaveDialog()
+    {
+        _saveDialog = new AcceptDialog
+        {
+            Title = "Save Game",
+            OkButtonText = "Save",
+            // Allow the user to dismiss with the OS close button.
+            Exclusive = false,
+        };
+
+        // AcceptDialog's built-in DialogText label and any added child
+        // nodes share the same content area; setting both causes them
+        // to overlap. Build a VBox with our own label + LineEdit
+        // instead, leaving DialogText empty.
+        var content = new VBoxContainer { CustomMinimumSize = new Vector2(280, 0) };
+        content.AddThemeConstantOverride("separation", 8);
+        var label = new Label { Text = "Slot name:" };
+        content.AddChild(label);
+        _saveDialogLineEdit = new LineEdit
+        {
+            Text = "save",
+            CustomMinimumSize = new Vector2(260, 30),
+        };
+        content.AddChild(_saveDialogLineEdit);
+        _saveDialog.AddChild(content);
+        _saveDialog.RegisterTextEnter(_saveDialogLineEdit);
+        _saveDialog.Confirmed += OnSaveDialogConfirmed;
+
+        AddChild(_saveDialog);
+
+        _saveErrorDialog = new AcceptDialog
+        {
+            Title = "Save failed",
+            OkButtonText = "OK",
+        };
+        AddChild(_saveErrorDialog);
+    }
+
+    private void OpenSaveDialog()
+    {
+        if (_saveDialog == null || _saveDialogLineEdit == null) return;
+        _saveDialogLineEdit.Text = $"save_t{_state.Turns.TurnNumber}";
+        _saveDialog.PopupCentered();
+        _saveDialogLineEdit.GrabFocus();
+        _saveDialogLineEdit.SelectAll();
+    }
+
+    private void OnSaveDialogConfirmed()
+    {
+        if (_saveDialogLineEdit == null) return;
+        string name = SaveStore.SanitizeSlotName(_saveDialogLineEdit.Text);
+        if (name == SaveStore.AutosaveSlotName)
+        {
+            // Don't let the user manually overwrite the autosave slot
+            // — its purpose is to stay an automated checkpoint.
+            ShowSaveError("'autosave' is reserved. Please pick a different name.");
+            return;
+        }
+        try
+        {
+            _saveStore.WriteSlot(name, _state, _controller.MasterSeed, _players, _maxTurnNumber);
+        }
+        catch (System.Exception ex)
+        {
+            ShowSaveError($"Could not save: {ex.Message}");
+        }
+    }
+
+    private void ShowSaveError(string message)
+    {
+        if (_saveErrorDialog == null)
+        {
+            GD.PushError(message);
+            return;
+        }
+        _saveErrorDialog.DialogText = message;
+        _saveErrorDialog.PopupCentered();
     }
 
     private static HexGrid BuildInitialGrid(int cols, int rows, IReadOnlyList<Player> players)

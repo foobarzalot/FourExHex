@@ -64,6 +64,9 @@
     <Compile Include="..\scripts\IHudView.cs" Link="scripts\IHudView.cs" />
     <Compile Include="..\scripts\AiPacer.cs" Link="scripts\AiPacer.cs" />
     <Compile Include="..\scripts\GameController.cs" Link="scripts\GameController.cs" />
+    <Compile Include="..\scripts\SaveSerializer.cs" Link="scripts\SaveSerializer.cs" />
+    <Compile Include="..\scripts\LoadRequest.cs" Link="scripts\LoadRequest.cs" />
+    <Compile Include="..\scripts\SaveSlotInfo.cs" Link="scripts\SaveSlotInfo.cs" />
   </ItemGroup>
 
 </Project>
