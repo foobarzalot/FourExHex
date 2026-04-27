@@ -75,7 +75,10 @@ public static class AiSimulator
 
     private static void ApplyMove(HexCoord source, HexCoord destination, GameState state)
     {
-        Territory? attacker = FindOwnedTerritoryContaining(source, state);
+        HexTile? srcTile = state.Grid.Get(source);
+        if (srcTile == null) return;
+        Territory? attacker = TerritoryLookup.FindOwnedContaining(
+            state.Territories, srcTile.Color, source);
         if (attacker == null) return;
 
         MoveResult result = MovementRules.Move(source, destination, state.Grid, attacker);
@@ -87,7 +90,7 @@ public static class AiSimulator
 
     private static void ApplyBuy(HexCoord capital, HexCoord destination, UnitLevel level, GameState state)
     {
-        Territory? territory = FindByCapital(capital, state);
+        Territory? territory = TerritoryLookup.FindByCapital(state.Territories, capital);
         if (territory == null) return;
 
         state.Treasury.SetGold(
@@ -102,7 +105,7 @@ public static class AiSimulator
 
     private static void ApplyBuildTower(HexCoord capital, HexCoord destination, GameState state)
     {
-        Territory? territory = FindByCapital(capital, state);
+        Territory? territory = TerritoryLookup.FindByCapital(state.Territories, capital);
         if (territory == null) return;
         HexTile? dst = state.Grid.Get(destination);
         if (dst == null) return;
@@ -126,30 +129,4 @@ public static class AiSimulator
         state.Territories = reconciled;
     }
 
-    private static Territory? FindOwnedTerritoryContaining(HexCoord coord, GameState state)
-    {
-        HexTile? tile = state.Grid.Get(coord);
-        if (tile == null) return null;
-        Color color = tile.Color;
-        foreach (Territory t in state.Territories)
-        {
-            if (t.Owner == color && t.Coords.Contains(coord))
-            {
-                return t;
-            }
-        }
-        return null;
-    }
-
-    private static Territory? FindByCapital(HexCoord capital, GameState state)
-    {
-        foreach (Territory t in state.Territories)
-        {
-            if (t.HasCapital && t.Capital!.Value == capital)
-            {
-                return t;
-            }
-        }
-        return null;
-    }
 }

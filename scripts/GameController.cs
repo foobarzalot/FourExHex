@@ -1155,7 +1155,8 @@ public class GameController
         // After a capture the old territory object is stale; find the
         // AI's territory now containing the result coord and
         // re-highlight so the outline matches the post-action board.
-        Territory? resulting = FindOwnedTerritoryContaining(resultCoord);
+        Territory? resulting = TerritoryLookup.FindOwnedContaining(
+            _state.Territories, _state.Turns.CurrentPlayer.Color, resultCoord);
         _map.ShowHighlight(resulting);
         RefreshViews();
 
@@ -1191,11 +1192,12 @@ public class GameController
     /// </summary>
     private Territory? ResolveAiActingTerritory(AiAction action)
     {
+        Color owner = _state.Turns.CurrentPlayer.Color;
         return action switch
         {
-            AiMoveAction mv => FindOwnedTerritoryContaining(mv.Source),
-            AiBuyUnitAction bu => FindOwnedTerritoryContaining(bu.Capital),
-            AiBuildTowerAction bt => FindOwnedTerritoryContaining(bt.Capital),
+            AiMoveAction mv => TerritoryLookup.FindOwnedContaining(_state.Territories, owner, mv.Source),
+            AiBuyUnitAction bu => TerritoryLookup.FindOwnedContaining(_state.Territories, owner, bu.Capital),
+            AiBuildTowerAction bt => TerritoryLookup.FindOwnedContaining(_state.Territories, owner, bt.Capital),
             _ => null
         };
     }
@@ -1217,7 +1219,8 @@ public class GameController
 
     private void ExecuteAiMove(HexCoord source, HexCoord destination)
     {
-        Territory? attacker = FindOwnedTerritoryContaining(source);
+        Territory? attacker = TerritoryLookup.FindOwnedContaining(
+            _state.Territories, _state.Turns.CurrentPlayer.Color, source);
         if (attacker == null)
         {
             throw new InvalidOperationException(
@@ -1255,7 +1258,7 @@ public class GameController
 
     private void ExecuteAiBuyUnit(HexCoord capital, HexCoord destination, UnitLevel level)
     {
-        Territory? attacker = FindTerritoryByCapital(capital);
+        Territory? attacker = TerritoryLookup.FindByCapital(_state.Territories, capital);
         if (attacker == null)
         {
             throw new InvalidOperationException(
@@ -1289,7 +1292,7 @@ public class GameController
 
     private void ExecuteAiBuildTower(HexCoord capital, HexCoord destination)
     {
-        Territory? territory = FindTerritoryByCapital(capital);
+        Territory? territory = TerritoryLookup.FindByCapital(_state.Territories, capital);
         if (territory == null)
         {
             throw new InvalidOperationException(
@@ -1323,31 +1326,6 @@ public class GameController
         _state.Treasury.SetGold(
             capital, _state.Treasury.GetGold(capital) - PurchaseRules.TowerCost);
         dst.Occupant = new Tower();
-    }
-
-    private Territory? FindOwnedTerritoryContaining(HexCoord coord)
-    {
-        Color color = _state.Turns.CurrentPlayer.Color;
-        foreach (Territory t in _state.Territories)
-        {
-            if (t.Owner == color && t.Coords.Contains(coord))
-            {
-                return t;
-            }
-        }
-        return null;
-    }
-
-    private Territory? FindTerritoryByCapital(HexCoord capital)
-    {
-        foreach (Territory t in _state.Territories)
-        {
-            if (t.HasCapital && t.Capital!.Value == capital)
-            {
-                return t;
-            }
-        }
-        return null;
     }
 
     /// <summary>

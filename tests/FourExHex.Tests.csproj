@@ -30,6 +30,7 @@
     <Compile Include="..\scripts\HexTile.cs" Link="scripts\HexTile.cs" />
     <Compile Include="..\scripts\Territory.cs" Link="scripts\Territory.cs" />
     <Compile Include="..\scripts\TerritoryFinder.cs" Link="scripts\TerritoryFinder.cs" />
+    <Compile Include="..\scripts\TerritoryLookup.cs" Link="scripts\TerritoryLookup.cs" />
     <Compile Include="..\scripts\CapitalPlacer.cs" Link="scripts\CapitalPlacer.cs" />
     <Compile Include="..\scripts\CapitalReconciler.cs" Link="scripts\CapitalReconciler.cs" />
     <Compile Include="..\scripts\Player.cs" Link="scripts\Player.cs" />
