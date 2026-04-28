@@ -64,6 +64,7 @@ Typical invocation: `FOUREXHEX_6AI=1 /Applications/Godot_mono.app/Contents/MacOS
 - Nullable reference types enabled — annotate intent explicitly
 - Views expose plain C# `event Action<...>` (see `IHexMapView` / `IHudView`), NOT Godot `[Signal]` delegates. This keeps `GameController` pure C# and unit-testable with mocks.
 - Type everything; avoid `var` when the type isn't obvious from the right-hand side
+- Prefer DRY: if you find yourself writing the same logic twice, extract a helper (static method on the relevant rules class, or a private method on the controller). The codebase has plenty of small reusable helpers already — `AiCommon.IsBorderTile`, `TerritoryLookup.FindOwnedContaining`, `TestHelpers.BuildRectGrid`, `MockHudView.LastSeenWinner`. Reuse before re-deriving. Watch for it especially when adding new tests, AI scoring terms, or rule predicates — those are where copy-paste creeps in fastest.
 
 ## Architecture rules (do not violate)
 
