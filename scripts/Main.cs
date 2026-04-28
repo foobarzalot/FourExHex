@@ -326,7 +326,7 @@ public partial class Main : Node2D
             (string name, string hex) = GameSettings.PlayerConfig[i];
             AiKind kind = i < GameSettings.PlayerKinds.Length
                 ? GameSettings.PlayerKinds[i]
-                : AiKind.Random;
+                : AiKind.Heuristic;
             players.Add(new Player(name, new Color(hex), kind));
         }
         return players;

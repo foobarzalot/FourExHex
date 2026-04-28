@@ -133,7 +133,7 @@ public partial class MainMenuScene : Control
             dropdown.AddItem("Heuristic AI", HeuristicAiId);
             AiKind currentKind = i < GameSettings.PlayerKinds.Length
                 ? GameSettings.PlayerKinds[i]
-                : AiKind.Random;
+                : AiKind.Heuristic;
             int initialId = currentKind switch
             {
                 AiKind.Human => HumanId,
