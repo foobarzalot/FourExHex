@@ -182,7 +182,9 @@ public static class AiCommon
         // Towers have no upkeep and don't change income, so post-net
         // equals netBefore: requires netBefore >= 0 and 15g. Only
         // considered for border tiles — an interior tower defends
-        // nothing.
+        // nothing — and the spacing rule in
+        // <see cref="PurchaseRules.IsValidTowerLocation"/> prevents
+        // redundant towers clustered on the same border.
         if (PurchaseRules.CanAffordTower(territory, state.Treasury)
             && netBefore >= 0)
         {
@@ -190,8 +192,8 @@ public static class AiCommon
             {
                 HexTile? tile = state.Grid.Get(coord);
                 if (tile == null) continue;
-                if (tile.Occupant != null) continue;
                 if (!IsBorderTile(coord, state.Grid, owner)) continue;
+                if (!PurchaseRules.IsValidTowerLocation(tile, territory, state.Grid)) continue;
                 yield return new AiCandidate(
                     new AiBuildTowerAction(territory.Capital!.Value, coord),
                     AiActionKind.Tower);

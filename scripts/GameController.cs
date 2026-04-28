@@ -420,15 +420,17 @@ public class GameController
 
     /// <summary>
     /// Tower placement target: an empty tile inside the currently
-    /// selected territory. The tile's Occupant must be null — graves,
-    /// trees, units, and capitals all block tower construction.
+    /// selected territory, at least
+    /// <see cref="PurchaseRules.MinTowerSpacing"/> hexes from any
+    /// existing same-territory tower. Delegates to
+    /// <see cref="PurchaseRules.IsValidTowerLocation"/>.
     /// </summary>
     private bool IsValidTowerTarget(HexCoord coord)
     {
         if (_session.SelectedTerritory == null) return false;
-        if (!_session.SelectedTerritory.Coords.Contains(coord)) return false;
         HexTile? tile = _state.Grid.Get(coord);
-        return tile != null && tile.Occupant == null;
+        if (tile == null) return false;
+        return PurchaseRules.IsValidTowerLocation(tile, _session.SelectedTerritory, _state.Grid);
     }
 
     // --- Buy / move / capture --------------------------------------------
@@ -1356,11 +1358,12 @@ public class GameController
             throw new InvalidOperationException(
                 $"AI BuildTower at {destination}: coord is off-map.");
         }
-        if (dst.Occupant != null)
+        if (!PurchaseRules.IsValidTowerLocation(dst, territory, _state.Grid))
         {
             throw new InvalidOperationException(
-                $"AI BuildTower at {destination}: tile is occupied by a " +
-                $"{dst.Occupant.GetType().Name}.");
+                $"AI BuildTower at {destination} from capital {capital}: " +
+                $"location is invalid (occupied, out-of-territory, or within " +
+                $"{PurchaseRules.MinTowerSpacing} hexes of an existing tower).");
         }
 
         _state.Treasury.SetGold(

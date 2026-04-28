@@ -248,6 +248,69 @@ public class HeuristicAiTests
     }
 
     [Fact]
+    public void Score_AddsBonusForTowerDefendedBorderTile()
+    {
+        // 6 Red tiles cols 0-5 plus a Blue tile at col 6. Border
+        // tile = col 5 (only Red tile adjacent to enemy). Without a
+        // tower the border is undefended (penalty applies). Placing
+        // a tower at col 4 covers col 5 via radiation, removes the
+        // undefended-border penalty AND adds the new
+        // tower-defense bonus on top — so the score gap must exceed
+        // the bare penalty alone.
+        var gridNoTower = new HexGrid();
+        for (int col = 0; col <= 5; col++)
+            gridNoTower.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        gridNoTower.Add(new HexTile(HexCoord.FromOffset(6, 0), Blue));
+        GameState noTower = BuildState(gridNoTower, new Player("Red", Red), new Player("Blue", Blue));
+
+        var gridWithTower = new HexGrid();
+        for (int col = 0; col <= 5; col++)
+            gridWithTower.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        gridWithTower.Add(new HexTile(HexCoord.FromOffset(6, 0), Blue));
+        gridWithTower.Get(HexCoord.FromOffset(4, 0))!.Occupant = new Tower();
+        GameState withTower = BuildState(gridWithTower, new Player("Red", Red), new Player("Blue", Blue));
+
+        double scoreNoTower = AiStateScorer.Score(noTower, Red);
+        double scoreWithTower = AiStateScorer.Score(withTower, Red);
+
+        // UndefendedBorderPenalty alone is 10. Without a tower
+        // bonus, the gap is exactly 10. With the bonus, it must be
+        // strictly greater. Threshold 12 leaves room for the
+        // constant to be tuned without false-failing this test.
+        Assert.True(scoreWithTower - scoreNoTower > 12.0,
+            $"expected tower-defense bonus on top of penalty avoidance; gap was {scoreWithTower - scoreNoTower}");
+    }
+
+    [Fact]
+    public void Score_TowerDefenseBonus_DoesNotStack()
+    {
+        // Same Red strip + Blue. State A: one tower at col 4
+        // covering the single border tile (col 5). State B: towers
+        // at col 4 AND col 5 — both cover col 5. The bonus is per
+        // border tile, not per tower, so the score must be
+        // identical. Capital placement is forced to col 0 in both
+        // cases (lex-min empty by (R, Q)) so no other terms drift.
+        var gridA = new HexGrid();
+        for (int col = 0; col <= 5; col++)
+            gridA.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        gridA.Add(new HexTile(HexCoord.FromOffset(6, 0), Blue));
+        gridA.Get(HexCoord.FromOffset(4, 0))!.Occupant = new Tower();
+        GameState stateA = BuildState(gridA, new Player("Red", Red), new Player("Blue", Blue));
+
+        var gridB = new HexGrid();
+        for (int col = 0; col <= 5; col++)
+            gridB.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        gridB.Add(new HexTile(HexCoord.FromOffset(6, 0), Blue));
+        gridB.Get(HexCoord.FromOffset(4, 0))!.Occupant = new Tower();
+        gridB.Get(HexCoord.FromOffset(5, 0))!.Occupant = new Tower();
+        GameState stateB = BuildState(gridB, new Player("Red", Red), new Player("Blue", Blue));
+
+        Assert.Equal(
+            AiStateScorer.Score(stateA, Red),
+            AiStateScorer.Score(stateB, Red));
+    }
+
+    [Fact]
     public void ChooseNextAction_PrefersChopOverCombine()
     {
         // 10-tile Red territory with two adjacent peasants and a

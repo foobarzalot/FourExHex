@@ -115,6 +115,18 @@ public readonly struct HexCoord : IEquatable<HexCoord>, IComparable<HexCoord>
         return new HexCoord(q, r);
     }
 
+    /// <summary>
+    /// Hex distance (minimum number of single-step moves) between two
+    /// axial coords. Equivalent to the cube-coordinate Chebyshev
+    /// formula: distance = (|dq| + |dr| + |dq + dr|) / 2.
+    /// </summary>
+    public static int Distance(HexCoord a, HexCoord b)
+    {
+        int dq = a.Q - b.Q;
+        int dr = a.R - b.R;
+        return (Math.Abs(dq) + Math.Abs(dr) + Math.Abs(dq + dr)) / 2;
+    }
+
     public bool Equals(HexCoord other) => Q == other.Q && R == other.R;
     public override bool Equals(object? obj) => obj is HexCoord h && Equals(h);
     public override int GetHashCode() => HashCode.Combine(Q, R);

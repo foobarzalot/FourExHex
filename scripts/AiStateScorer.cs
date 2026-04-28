@@ -1,3 +1,4 @@
+using System.Linq;
 using Godot;
 
 /// <summary>
@@ -83,7 +84,20 @@ public static class AiStateScorer
     // risk. This rewards covering borders with units / towers,
     // building towers on contested frontiers, and capturing an
     // enemy tile that brings a defender into range.
-    private const double UndefendedBorderPenalty = 4.0;
+    private const double UndefendedBorderPenalty = 10.0;
+
+    // Flat bonus per OWN border tile that has at least one tower
+    // covering it (self-occupied or radiating from a same-territory
+    // adjacent tile). Counted per-tile, not per-tower — two towers
+    // covering the same border tile yield the same bonus as one.
+    // Distinct from the UndefendedBorderPenalty avoidance: a
+    // peasant or capital also defends a border, but towers carry
+    // an extra bonus because they raise the capture threshold from
+    // level 1 (peasant-attackable) to level 3 (knight-attackable),
+    // have no upkeep, and persist forever. Without this term the
+    // scorer can't see what towers are actually for and the AI
+    // never builds them.
+    private const double TowerDefendedBorderBonus = 10.0;
 
     /// <summary>
     /// Score the board from <paramref name="forPlayer"/>'s
@@ -102,6 +116,7 @@ public static class AiStateScorer
                 total -= OwnTreePenalty * CountTreesAndGravesIn(t, state.Grid);
                 total -= EnemyEdgePenalty * CountEnemyEdges(t, state.Grid, forPlayer);
                 total -= UndefendedBorderPenalty * CountUndefendedBorderTiles(t, state.Grid, forPlayer);
+                total += TowerDefendedBorderBonus * CountTowerDefendedBorderTiles(t, state.Grid, forPlayer);
             }
             else
             {
@@ -171,6 +186,53 @@ public static class AiStateScorer
             {
                 count++;
             }
+        }
+        return count;
+    }
+
+    /// <summary>
+    /// Count own tiles in this territory that are border tiles
+    /// AND have at least one tower covering them. A tile is
+    /// "tower-covered" if its own occupant is a Tower or any of
+    /// its same-territory neighbors hosts a Tower (defense
+    /// radiates one hex). Counted per border tile, so two towers
+    /// covering the same tile yield 1, not 2 — matching the
+    /// "max-defense-wins" rule in <see cref="DefenseRules"/> and
+    /// preventing the AI from doubling up redundant towers.
+    /// </summary>
+    private static int CountTowerDefendedBorderTiles(Territory territory, HexGrid grid, Color forPlayer)
+    {
+        int count = 0;
+        foreach (HexCoord coord in territory.Coords)
+        {
+            bool bordersEnemy = false;
+            foreach (HexCoord neighbor in coord.Neighbors())
+            {
+                HexTile? nt = grid.Get(neighbor);
+                if (nt != null && nt.Color != forPlayer)
+                {
+                    bordersEnemy = true;
+                    break;
+                }
+            }
+            if (!bordersEnemy) continue;
+
+            HexTile? selfTile = grid.Get(coord);
+            bool covered = selfTile?.Occupant is Tower;
+            if (!covered)
+            {
+                foreach (HexCoord neighbor in coord.Neighbors())
+                {
+                    if (!territory.Coords.Contains(neighbor)) continue;
+                    HexTile? nt = grid.Get(neighbor);
+                    if (nt?.Occupant is Tower)
+                    {
+                        covered = true;
+                        break;
+                    }
+                }
+            }
+            if (covered) count++;
         }
         return count;
     }
