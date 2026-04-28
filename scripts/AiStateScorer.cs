@@ -76,7 +76,17 @@ public static class AiStateScorer
     // two neighboring own territories turns their shared edges
     // from internal into... still internal, but any enemy-facing
     // edges that were previously mid-front become back-of-blob.
-    private const double EnemyEdgePenalty = 1.0;
+    //
+    // At weight 1 this term was dominated by everything else and
+    // the AI consistently failed to capture enclosed enemy tiles
+    // or fill obvious concavities. Bumped to 3 so a fully-enclosed
+    // singleton capture (-6 edges) is worth +18 from this term
+    // alone, comparable to two tiles' worth of TileWeight, which
+    // is enough to outrun the spurious tower-defended-border-bonus
+    // loss when interior tiles stop being borders. Tuned not to go
+    // higher: at 5+ the AI starts contorting territory shape at
+    // the expense of captures that actually grow it.
+    private const double EnemyEdgePenalty = 3.0;
 
     // Flat penalty per own tile that (a) has at least one
     // enemy-colored neighbor and (b) has defense 0 (no unit,

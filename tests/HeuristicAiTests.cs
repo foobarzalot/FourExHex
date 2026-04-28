@@ -101,43 +101,46 @@ public class HeuristicAiTests
     [Fact]
     public void Score_RewardsOrphanedEnemyTerritory()
     {
-        // Scenario A: Red has 3 tiles, Blue has a healthy 4-tile
-        // territory with a capital and zero upkeep (no units).
+        // Both scenarios isolate Red from Blue (gap of one empty
+        // column between them) so no enemy-edge / undefended-border
+        // terms apply to Red — the test stays a clean read on the
+        // bankruptcy lookahead alone.
+        //
+        // Scenario A: Red 3-tile strip + healthy Blue 3-tile strip
+        // with a capital.
         var gridA = new HexGrid();
         gridA.Add(new HexTile(HexCoord.FromOffset(0, 0), Red));
         gridA.Add(new HexTile(HexCoord.FromOffset(1, 0), Red));
         gridA.Add(new HexTile(HexCoord.FromOffset(2, 0), Red));
-        for (int col = 4; col < 8; col++)
-        {
-            gridA.Add(new HexTile(HexCoord.FromOffset(col, 0), Blue));
-        }
+        gridA.Add(new HexTile(HexCoord.FromOffset(4, 0), Blue));
+        gridA.Add(new HexTile(HexCoord.FromOffset(5, 0), Blue));
+        gridA.Add(new HexTile(HexCoord.FromOffset(6, 0), Blue));
         GameState stateA = BuildState(gridA, new Player("Red", Red), new Player("Blue", Blue));
 
-        // Scenario B: same Red 3-tile territory, but Blue is
-        // fragmented into two singletons plus one larger
-        // territory. Singletons have no capital → TerritoryFinder
-        // won't give them one → CapitalReconciler won't either →
-        // they're effectively dead tiles.
+        // Scenario B: same Red, but Blue is three disconnected
+        // singletons (placed two columns apart so no Blue neighbors
+        // any other Blue). Singletons have no capital → bankruptcy
+        // lookahead zeros their unit value, and they each pay the
+        // FragmentationPenalty. Same total Blue tile count as A.
         var gridB = new HexGrid();
         gridB.Add(new HexTile(HexCoord.FromOffset(0, 0), Red));
         gridB.Add(new HexTile(HexCoord.FromOffset(1, 0), Red));
         gridB.Add(new HexTile(HexCoord.FromOffset(2, 0), Red));
-        // Isolated Blue singleton with no Blue neighbors — red
-        // tiles all around it.
         gridB.Add(new HexTile(HexCoord.FromOffset(4, 0), Blue));
-        gridB.Add(new HexTile(HexCoord.FromOffset(5, 0), Red));
         gridB.Add(new HexTile(HexCoord.FromOffset(6, 0), Blue));
-        gridB.Add(new HexTile(HexCoord.FromOffset(7, 0), Red));
+        gridB.Add(new HexTile(HexCoord.FromOffset(8, 0), Blue));
         GameState stateB = BuildState(gridB, new Player("Red", Red), new Player("Blue", Blue));
 
         double scoreA = AiStateScorer.Score(stateA, Red);
         double scoreB = AiStateScorer.Score(stateB, Red);
 
-        // Red gained tiles in B (6 vs 3) AND Blue's remaining 2
-        // tiles are orphaned (singletons, no capital → bankrupt).
-        // Both effects push B's score above A's.
+        // Identical Red contribution in both. Blue side: A is one
+        // healthy 3-tile territory worth 18 to Blue; B is three
+        // capital-less singletons each worth -4 to Blue (10 tile +
+        // 1 income - 15 fragmentation). B's enemy total is therefore
+        // strictly lower → B's score for Red is strictly higher.
         Assert.True(scoreB > scoreA,
-            $"expected fragmented-enemy (B={scoreB}) to beat healthy-enemy (A={scoreA})");
+            $"expected orphaned-enemy (B={scoreB}) to beat healthy-enemy (A={scoreA})");
     }
 
     // --- HeuristicAi: action selection ------------------------------------
@@ -362,6 +365,46 @@ public class HeuristicAiTests
 
         Assert.True(compactScore > stripScore,
             $"expected compact blob ({compactScore}) to outscore strip ({stripScore})");
+    }
+
+    [Fact]
+    public void Score_EnemyEdgePenalty_DominatesShapeQuality()
+    {
+        // Tightens Score_PenalizesLongerEnemyBorder: not just
+        // "compact > strip" but compact wins by a margin large enough
+        // that EnemyEdgePenalty has to weigh meaningfully against
+        // TileWeight (10) for the AI to value enclosure / concavity-
+        // fill captures.
+        //
+        // Layout: compact 2x3 Red blob vs strip 1x6 Red blob, both in
+        // a 6x3 Blue field. Both have 6 Red tiles, 12 Blue tiles,
+        // identical TerritoryValue (no units, no trees, no gold).
+        // Capitals land at HexCoord(0,0) by lex-min in both. Counted:
+        //   compact: 5 enemy-facing edges, 2 undefended border tiles
+        //            (capital covers (1,0); (1,1) and (1,2) exposed).
+        //   strip:   11 enemy-facing edges, 4 undefended border tiles
+        //            (capital covers (1,0); (2..5,0) exposed).
+        // Score gap = 10 * (4 - 2) + W * (11 - 5) = 20 + 6W.
+        // At W=1 (the original weight) the gap is only 26, indicating
+        // surface area is comparable to ~half a tile — too weak to
+        // motivate enclosure captures. The threshold below requires
+        // W > ~2.5, forcing the constant well above 1.
+        var gridCompact = TestHelpers.BuildRectGrid(6, 3, Blue);
+        for (int col = 0; col < 2; col++)
+            for (int row = 0; row < 3; row++)
+                gridCompact.Get(HexCoord.FromOffset(col, row))!.Color = Red;
+        GameState compact = BuildState(gridCompact, new Player("Red", Red), new Player("Blue", Blue));
+
+        var gridStrip = TestHelpers.BuildRectGrid(6, 3, Blue);
+        for (int col = 0; col < 6; col++)
+            gridStrip.Get(HexCoord.FromOffset(col, 0))!.Color = Red;
+        GameState strip = BuildState(gridStrip, new Player("Red", Red), new Player("Blue", Blue));
+
+        double gap = AiStateScorer.Score(compact, Red) - AiStateScorer.Score(strip, Red);
+
+        Assert.True(gap >= 35,
+            $"shape-quality gap {gap} too small; surface-area term must " +
+            "outweigh ~half a tile for the AI to value enclosure captures");
     }
 
     [Fact]
