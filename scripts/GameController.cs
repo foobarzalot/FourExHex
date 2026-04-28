@@ -593,6 +593,10 @@ public class GameController
         Color? winner = WinConditionRules.WinnerByDomination(_state.Grid);
         if (winner.HasValue)
         {
+            Player? winP = _state.Turns.Players
+                .FirstOrDefault(p => p.Color == winner.Value);
+            System.Console.WriteLine($"[T{_state.Turns.TurnNumber}] " +
+                $"post-capture domination winner: {winP?.Name ?? "?"}");
             _session.Winner = winner;
             _session.Undo.Clear();
         }
@@ -879,12 +883,54 @@ public class GameController
     /// </summary>
     private void EndOfTurnProcessing()
     {
+        LogGameEndDiagnostics(
+            $"end-of-turn check for {_state.Turns.CurrentPlayer.Name}");
         Color? winner = WinConditionRules.WinnerAtEndOfTurn(
             _state.Turns.CurrentPlayer.Color, _state.Territories);
         if (winner.HasValue)
         {
+            Player? winP = _state.Turns.Players
+                .FirstOrDefault(p => p.Color == winner.Value);
+            System.Console.WriteLine($"[T{_state.Turns.TurnNumber}] " +
+                $"end-of-turn winner declared: {winP?.Name ?? "?"}");
             _session.Winner = winner;
         }
+    }
+
+    /// <summary>
+    /// One-line dump of per-player tile count and capital-bearing
+    /// territory count, plus context. Always-on diagnostic for
+    /// debugging stuck game-end conditions; emit volume is one
+    /// line per turn-end + a few extras, so it's safe to leave on
+    /// in normal play.
+    /// </summary>
+    private void LogGameEndDiagnostics(string context)
+    {
+        var tiles = new Dictionary<Color, int>();
+        foreach (HexTile tile in _state.Grid.Tiles)
+        {
+            tiles.TryGetValue(tile.Color, out int n);
+            tiles[tile.Color] = n + 1;
+        }
+
+        var caps = new Dictionary<Color, int>();
+        foreach (Territory t in _state.Territories)
+        {
+            if (!t.HasCapital) continue;
+            caps.TryGetValue(t.Owner, out int n);
+            caps[t.Owner] = n + 1;
+        }
+
+        var parts = new List<string>();
+        foreach (Player p in _state.Turns.Players)
+        {
+            tiles.TryGetValue(p.Color, out int t);
+            caps.TryGetValue(p.Color, out int c);
+            parts.Add($"{p.Name}:{t}t/{c}c");
+        }
+
+        System.Console.WriteLine($"[T{_state.Turns.TurnNumber}] {context} — " +
+            string.Join(", ", parts));
     }
 
     /// <summary>
@@ -899,6 +945,8 @@ public class GameController
         _state.Turns.EndTurn();
         while (WinConditionRules.IsEliminated(_state.Turns.CurrentPlayer.Color, _state.Grid))
         {
+            System.Console.WriteLine($"[T{_state.Turns.TurnNumber}] skipping eliminated " +
+                $"player {_state.Turns.CurrentPlayer.Name}");
             _state.Turns.EndTurn();
         }
     }
@@ -1014,7 +1062,7 @@ public class GameController
                     break;
                 }
             }
-            AiLog.Print(
+            System.Console.WriteLine(
                 $"[T{_state.Turns.TurnNumber}] GAME OVER — " +
                 $"winner: {winner?.Name ?? "(none)"}");
             _gameEndedFired = true;
@@ -1024,7 +1072,7 @@ public class GameController
 
         if (_state.Turns.TurnNumber > _maxTurnNumber)
         {
-            AiLog.Print(
+            System.Console.WriteLine(
                 $"[T{_state.Turns.TurnNumber}] GAME OVER — " +
                 $"turn cap {_maxTurnNumber} exceeded (stasis)");
             _gameEndedFired = true;
@@ -1166,7 +1214,17 @@ public class GameController
         }
 
         CheckGameEndConditions();
-        if (_gameEndedFired) return;
+        if (_gameEndedFired)
+        {
+            // Domination fired inside the action we just executed
+            // (HandleCapture set _session.Winner). The HUD's victory
+            // overlay is gated on session.Winner inside RefreshViews,
+            // so without this final refresh the dialog never appears
+            // and the game looks frozen mid-board.
+            _map.ShowHighlight(null);
+            RefreshViews();
+            return;
+        }
 
         // After a capture the old territory object is stale; find the
         // AI's territory now containing the result coord and

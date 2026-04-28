@@ -1,4 +1,5 @@
 using System;
+using Godot;
 
 namespace FourExHex.Tests;
 
@@ -27,12 +28,25 @@ public class MockHudView : IHudView
     public SessionState? LastSession { get; private set; }
     public bool LastHasActionableRemaining { get; private set; }
 
+    /// <summary>
+    /// Snapshot of <see cref="SessionState.Winner"/> as observed at
+    /// the most recent Refresh call. Tracking the value at refresh
+    /// time (not the live SessionState reference) lets tests detect
+    /// "winner was set but no view refresh followed" bugs — under
+    /// the real HudView, the victory overlay is gated on this value
+    /// during Refresh, so a missing post-winner refresh is what
+    /// makes the on-screen dialog stay hidden even though session
+    /// state thinks the game is over.
+    /// </summary>
+    public Color? LastSeenWinner { get; private set; }
+
     public void Refresh(GameState state, SessionState session, bool hasActionableRemaining)
     {
         RefreshCount++;
         LastState = state;
         LastSession = session;
         LastHasActionableRemaining = hasActionableRemaining;
+        LastSeenWinner = session.Winner;
     }
 
     public void ClickBuyPeasant() => BuyPeasantClicked?.Invoke();

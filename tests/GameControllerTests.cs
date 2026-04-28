@@ -1226,6 +1226,47 @@ public class GameControllerTests
     }
 
     [Fact]
+    public void AiTurn_DominationWin_RefreshesHudAfterWinnerSet()
+    {
+        // Regression: when the AI's capture triggered a domination
+        // win mid-action, StepAiExecute early-returned on
+        // _gameEndedFired without calling RefreshViews — so the HUD
+        // never re-rendered after Winner became non-null and the
+        // real victory overlay (gated on session.Winner inside
+        // HudView.Refresh) stayed hidden, leaving the game looking
+        // frozen. MockHudView.LastSeenWinner snapshots the value at
+        // refresh time. Uses QueuedAiPacer (not the default
+        // synchronous one) so the AI step machine doesn't collapse
+        // into Resume's call stack — the synchronous case has
+        // Resume's trailing RefreshViews after RunAi returns, which
+        // masks the bug.
+        var red = new Player("Red", new Color(1f, 0f, 0f), isAi: true);
+        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var players = new List<Player> { red, blue };
+
+        var grid = TestHelpers.BuildRectGrid(5, 1, red.Color);
+        grid.Get(HexCoord.FromOffset(4, 0))!.Color = blue.Color;
+        grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = new Unit(red.Color);
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        var map = new MockHexMapView();
+        var hud = new MockHudView();
+        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+        {
+            map.TileIndex[kvp.Key] = kvp.Value;
+        }
+        var pacer = new QueuedAiPacer();
+        var controller = new GameController(state, session, map, hud,
+            seed: 1, aiPacer: pacer);
+        controller.StartGame();
+        pacer.DrainAll();
+
+        Assert.Equal(red.Color, hud.LastSeenWinner);
+    }
+
+    [Fact]
     public void AiTurn_EachTerritoryActsAtMostOnce()
     {
         // Blue has 2 territories; both have a knight adjacent to
