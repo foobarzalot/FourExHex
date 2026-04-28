@@ -70,6 +70,17 @@ public static class HeuristicAi
                 double afterScore = AiStateScorer.Score(clone, forPlayer);
                 double delta = afterScore - baseScore;
 
+                // Tower placement is the one action whose value
+                // doesn't show up in Score: a fresh tower has no
+                // upkeep, no income effect, and (post the move to
+                // a per-action bonus) no static term. Add the
+                // BuildTowerBonus on top of the score delta so the
+                // AI sees a reason to spend gold on towers.
+                if (candidate.Action is AiBuildTowerAction bt)
+                {
+                    delta += AiStateScorer.BuildTowerBonus(bt.Destination, state, forPlayer);
+                }
+
                 if (delta > 0) positiveCandidates++;
                 if (delta > observedBestDelta)
                 {

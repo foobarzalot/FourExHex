@@ -250,67 +250,118 @@ public class HeuristicAiTests
             $"expected Red grave ({redGraveScore}) to score below Blue grave ({blueGraveScore})");
     }
 
+    // --- BuildTowerBonus: per-action tower-defense incentive -------------
+
     [Fact]
-    public void Score_AddsBonusForTowerDefendedBorderTile()
+    public void BuildTowerBonus_CountsAllBorderTilesInCoverage_WhenNonePreviouslyTowered()
     {
-        // 6 Red tiles cols 0-5 plus a Blue tile at col 6. Border
-        // tile = col 5 (only Red tile adjacent to enemy). Without a
-        // tower the border is undefended (penalty applies). Placing
-        // a tower at col 4 covers col 5 via radiation, removes the
-        // undefended-border penalty AND adds the new
-        // tower-defense bonus on top — so the score gap must exceed
-        // the bare penalty alone.
-        var gridNoTower = new HexGrid();
-        for (int col = 0; col <= 5; col++)
-            gridNoTower.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
-        gridNoTower.Add(new HexTile(HexCoord.FromOffset(6, 0), Blue));
-        GameState noTower = BuildState(gridNoTower, new Player("Red", Red), new Player("Blue", Blue));
+        // 6-tile Red strip in a Blue field, no existing towers.
+        // A new tower at (2,0) covers itself + same-territory
+        // neighbors (1,0) and (3,0). All three are border tiles
+        // (each has Blue neighbors in row 1). None pre-defended by
+        // another tower → bonus = 3 × 10 = 30.
+        var grid = TestHelpers.BuildRectGrid(6, 3, Blue);
+        for (int col = 0; col < 6; col++)
+            grid.Get(HexCoord.FromOffset(col, 0))!.Color = Red;
+        GameState state = BuildState(grid, new Player("Red", Red), new Player("Blue", Blue));
 
-        var gridWithTower = new HexGrid();
-        for (int col = 0; col <= 5; col++)
-            gridWithTower.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
-        gridWithTower.Add(new HexTile(HexCoord.FromOffset(6, 0), Blue));
-        gridWithTower.Get(HexCoord.FromOffset(4, 0))!.Occupant = new Tower();
-        GameState withTower = BuildState(gridWithTower, new Player("Red", Red), new Player("Blue", Blue));
+        double bonus = AiStateScorer.BuildTowerBonus(HexCoord.FromOffset(2, 0), state, Red);
 
-        double scoreNoTower = AiStateScorer.Score(noTower, Red);
-        double scoreWithTower = AiStateScorer.Score(withTower, Red);
-
-        // UndefendedBorderPenalty alone is 10. Without a tower
-        // bonus, the gap is exactly 10. With the bonus, it must be
-        // strictly greater. Threshold 12 leaves room for the
-        // constant to be tuned without false-failing this test.
-        Assert.True(scoreWithTower - scoreNoTower > 12.0,
-            $"expected tower-defense bonus on top of penalty avoidance; gap was {scoreWithTower - scoreNoTower}");
+        Assert.Equal(30.0, bonus);
     }
 
     [Fact]
-    public void Score_TowerDefenseBonus_DoesNotStack()
+    public void BuildTowerBonus_ExcludesBorderTilesAlreadyCoveredByAnotherTower()
     {
-        // Same Red strip + Blue. State A: one tower at col 4
-        // covering the single border tile (col 5). State B: towers
-        // at col 4 AND col 5 — both cover col 5. The bonus is per
-        // border tile, not per tower, so the score must be
-        // identical. Capital placement is forced to col 0 in both
-        // cases (lex-min empty by (R, Q)) so no other terms drift.
-        var gridA = new HexGrid();
-        for (int col = 0; col <= 5; col++)
-            gridA.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
-        gridA.Add(new HexTile(HexCoord.FromOffset(6, 0), Blue));
-        gridA.Get(HexCoord.FromOffset(4, 0))!.Occupant = new Tower();
-        GameState stateA = BuildState(gridA, new Player("Red", Red), new Player("Blue", Blue));
+        // Same 6-tile Red strip with an existing tower at (5,0). A
+        // would-be new placement at (4,0) covers {(3,0), (4,0),
+        // (5,0)}. (5,0) has its own Tower (≠ placement), and (4,0)
+        // has neighbor (5,0) hosting a Tower (≠ placement) — both
+        // already tower-defended, so they don't contribute. (3,0)
+        // has no other tower covering it → counts. Bonus = 10.
+        var grid = TestHelpers.BuildRectGrid(6, 3, Blue);
+        for (int col = 0; col < 6; col++)
+            grid.Get(HexCoord.FromOffset(col, 0))!.Color = Red;
+        grid.Get(HexCoord.FromOffset(5, 0))!.Occupant = new Tower();
+        GameState state = BuildState(grid, new Player("Red", Red), new Player("Blue", Blue));
 
-        var gridB = new HexGrid();
-        for (int col = 0; col <= 5; col++)
-            gridB.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
-        gridB.Add(new HexTile(HexCoord.FromOffset(6, 0), Blue));
-        gridB.Get(HexCoord.FromOffset(4, 0))!.Occupant = new Tower();
-        gridB.Get(HexCoord.FromOffset(5, 0))!.Occupant = new Tower();
-        GameState stateB = BuildState(gridB, new Player("Red", Red), new Player("Blue", Blue));
+        double bonus = AiStateScorer.BuildTowerBonus(HexCoord.FromOffset(4, 0), state, Red);
 
-        Assert.Equal(
-            AiStateScorer.Score(stateA, Red),
-            AiStateScorer.Score(stateB, Red));
+        Assert.Equal(10.0, bonus);
+    }
+
+    [Fact]
+    public void BuildTowerBonus_ZeroWhenNoBorderTilesInCoverage()
+    {
+        // Isolated 3x3 Red island with no Blue anywhere on the
+        // grid. Every tile is interior (off-map neighbors don't
+        // count as enemy). Placing a tower in the middle covers 7
+        // tiles, none of which are borders → bonus = 0.
+        var grid = TestHelpers.BuildRectGrid(3, 3, Red);
+        GameState state = BuildState(grid, new Player("Red", Red), new Player("Blue", Blue));
+
+        double bonus = AiStateScorer.BuildTowerBonus(HexCoord.FromOffset(1, 1), state, Red);
+
+        Assert.Equal(0.0, bonus);
+    }
+
+    [Fact]
+    public void ChooseNextAction_BuildsTower_OnContestedBorderWithSpareGold()
+    {
+        // 3x3 Red blob facing 3x3 Blue blob in a 6x3 field, no
+        // units anywhere, capital lands at (1,0) by lex-min so the
+        // three Red border tiles ((2,0), (2,1), (2,2)) are all
+        // undefended. With exactly TowerCost gold and no units the
+        // AI's only candidates are buy-reposition and build-tower;
+        // build-tower's combined undefended-border savings + action
+        // bonus must beat the buy-reposition alternative.
+        var grid = TestHelpers.BuildRectGrid(6, 3, Blue);
+        for (int col = 0; col < 3; col++)
+            for (int row = 0; row < 3; row++)
+                grid.Get(HexCoord.FromOffset(col, row))!.Color = Red;
+        GameState state = BuildState(grid, new Player("Red", Red), new Player("Blue", Blue));
+        HexCoord cap = state.Territories.First(t => t.Owner == Red).Capital!.Value;
+        state.Treasury.SetGold(cap, PurchaseRules.TowerCost);
+
+        AiAction? result = HeuristicAi.ChooseNextAction(
+            state, Red, new HashSet<HexCoord>(), new Random(0));
+
+        Assert.IsType<AiBuildTowerAction>(result);
+    }
+
+    [Fact]
+    public void ChooseNextAction_TakesEnclosedEnemyCapture_DespiteSurroundingTowers()
+    {
+        // Regression test for the static-tower-bonus bug: the AI
+        // used to refuse captures that turned own border tiles into
+        // interior because each such tile lost its static tower-
+        // defense bonus (~10/tile). Six Red tiles ringing a Blue
+        // singleton, with one Red tile holding a Tower covering 3
+        // borders, plus a Red peasant adjacent to the enclave.
+        // Under the old static-bonus model the capture's delta
+        // came out negative (~−5) and the AI passed; under the
+        // action-bonus model it scores ~+25 and the capture goes
+        // through.
+        var grid = new HexGrid();
+        grid.Add(new HexTile(HexCoord.FromOffset(1, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(2, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(0, 1), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(2, 1), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(1, 2), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(2, 2), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(1, 1), Blue));
+        grid.Get(HexCoord.FromOffset(2, 1))!.Occupant = new Tower();
+        GameState state = BuildState(grid, new Player("Red", Red), new Player("Blue", Blue));
+        // Capital lands at (1,0) by lex-min over the empty Red
+        // tiles, so a peasant at (0,1) is the adjacent attacker.
+        grid.Get(HexCoord.FromOffset(0, 1))!.Occupant = new Unit(Red);
+
+        AiAction? result = HeuristicAi.ChooseNextAction(
+            state, Red, new HashSet<HexCoord>(), new Random(0));
+
+        AiMoveAction move = Assert.IsType<AiMoveAction>(result);
+        Assert.Equal(HexCoord.FromOffset(0, 1), move.Source);
+        Assert.Equal(HexCoord.FromOffset(1, 1), move.Destination);
     }
 
     [Fact]

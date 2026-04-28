@@ -96,18 +96,81 @@ public static class AiStateScorer
     // enemy tile that brings a defender into range.
     private const double UndefendedBorderPenalty = 10.0;
 
-    // Flat bonus per OWN border tile that has at least one tower
-    // covering it (self-occupied or radiating from a same-territory
-    // adjacent tile). Counted per-tile, not per-tower — two towers
-    // covering the same border tile yield the same bonus as one.
-    // Distinct from the UndefendedBorderPenalty avoidance: a
-    // peasant or capital also defends a border, but towers carry
-    // an extra bonus because they raise the capture threshold from
-    // level 1 (peasant-attackable) to level 3 (knight-attackable),
-    // have no upkeep, and persist forever. Without this term the
-    // scorer can't see what towers are actually for and the AI
-    // never builds them.
-    private const double TowerDefendedBorderBonus = 10.0;
+    // Bonus awarded per border tile that a newly-placed tower
+    // covers, counted only at the moment of the BuildTower action.
+    // Pre-existing towers contribute zero — the bonus is a one-shot
+    // incentive for the act of placing the tower, not a standing
+    // reward for owning towers. Without this term the scorer can't
+    // see what towers are actually for and the AI never builds them.
+    // Per-action rather than static because the static form created
+    // a perverse penalty on captures that turned own border tiles
+    // into interior tiles: each such tile lost its bonus, often
+    // enough to push otherwise-good captures into negative-delta
+    // territory.
+    private const double BuildTowerCoverageBonus = 10.0;
+
+    /// <summary>
+    /// One-shot scoring delta awarded for the act of placing a
+    /// tower at <paramref name="placement"/>. Counts border tiles
+    /// in the new tower's coverage area (the placement tile + its
+    /// same-territory neighbors that border an enemy) and skips
+    /// any that are already tower-defended by some pre-existing
+    /// tower. Returns count × <see cref="BuildTowerCoverageBonus"/>.
+    /// Returns 0 if <paramref name="placement"/> is not in an own
+    /// territory (defensive — callers should only invoke for valid
+    /// BuildTower candidates).
+    /// </summary>
+    public static double BuildTowerBonus(HexCoord placement, GameState state, Color owner)
+    {
+        Territory? territory = TerritoryLookup.FindOwnedContaining(
+            state.Territories, owner, placement);
+        if (territory == null) return 0.0;
+
+        int count = 0;
+        if (CoverageTileQualifies(placement, placement, territory, state.Grid, owner))
+        {
+            count++;
+        }
+        foreach (HexCoord neighbor in placement.Neighbors())
+        {
+            if (!territory.Coords.Contains(neighbor)) continue;
+            if (CoverageTileQualifies(neighbor, placement, territory, state.Grid, owner))
+            {
+                count++;
+            }
+        }
+        return count * BuildTowerCoverageBonus;
+    }
+
+    /// <summary>
+    /// True iff <paramref name="tile"/> is a border tile (has at
+    /// least one enemy-colored neighbor) that the tower at
+    /// <paramref name="placement"/> would be the first/only tower
+    /// to cover. We exclude any tower that lives at
+    /// <paramref name="placement"/> itself (the new tower we're
+    /// scoring) so the new tower never disqualifies its own tiles.
+    /// </summary>
+    private static bool CoverageTileQualifies(
+        HexCoord tile,
+        HexCoord placement,
+        Territory territory,
+        HexGrid grid,
+        Color owner)
+    {
+        if (!AiCommon.IsBorderTile(tile, grid, owner)) return false;
+
+        HexTile? selfTile = grid.Get(tile);
+        if (!tile.Equals(placement) && selfTile?.Occupant is Tower) return false;
+
+        foreach (HexCoord neighbor in tile.Neighbors())
+        {
+            if (neighbor.Equals(placement)) continue;
+            if (!territory.Coords.Contains(neighbor)) continue;
+            HexTile? nt = grid.Get(neighbor);
+            if (nt?.Occupant is Tower) return false;
+        }
+        return true;
+    }
 
     /// <summary>
     /// Score the board from <paramref name="forPlayer"/>'s
@@ -126,7 +189,6 @@ public static class AiStateScorer
                 total -= OwnTreePenalty * CountTreesAndGravesIn(t, state.Grid);
                 total -= EnemyEdgePenalty * CountEnemyEdges(t, state.Grid, forPlayer);
                 total -= UndefendedBorderPenalty * CountUndefendedBorderTiles(t, state.Grid, forPlayer);
-                total += TowerDefendedBorderBonus * CountTowerDefendedBorderTiles(t, state.Grid, forPlayer);
             }
             else
             {
@@ -196,53 +258,6 @@ public static class AiStateScorer
             {
                 count++;
             }
-        }
-        return count;
-    }
-
-    /// <summary>
-    /// Count own tiles in this territory that are border tiles
-    /// AND have at least one tower covering them. A tile is
-    /// "tower-covered" if its own occupant is a Tower or any of
-    /// its same-territory neighbors hosts a Tower (defense
-    /// radiates one hex). Counted per border tile, so two towers
-    /// covering the same tile yield 1, not 2 — matching the
-    /// "max-defense-wins" rule in <see cref="DefenseRules"/> and
-    /// preventing the AI from doubling up redundant towers.
-    /// </summary>
-    private static int CountTowerDefendedBorderTiles(Territory territory, HexGrid grid, Color forPlayer)
-    {
-        int count = 0;
-        foreach (HexCoord coord in territory.Coords)
-        {
-            bool bordersEnemy = false;
-            foreach (HexCoord neighbor in coord.Neighbors())
-            {
-                HexTile? nt = grid.Get(neighbor);
-                if (nt != null && nt.Color != forPlayer)
-                {
-                    bordersEnemy = true;
-                    break;
-                }
-            }
-            if (!bordersEnemy) continue;
-
-            HexTile? selfTile = grid.Get(coord);
-            bool covered = selfTile?.Occupant is Tower;
-            if (!covered)
-            {
-                foreach (HexCoord neighbor in coord.Neighbors())
-                {
-                    if (!territory.Coords.Contains(neighbor)) continue;
-                    HexTile? nt = grid.Get(neighbor);
-                    if (nt?.Occupant is Tower)
-                    {
-                        covered = true;
-                        break;
-                    }
-                }
-            }
-            if (covered) count++;
         }
         return count;
     }
