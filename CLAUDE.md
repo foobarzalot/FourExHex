@@ -93,3 +93,4 @@ Typical invocation: `FOUREXHEX_6AI=1 /Applications/Godot_mono.app/Contents/MacOS
 
 - `project.godot` pins the main scene to `res://scenes/main_menu.tscn`. If that scene is deleted or renamed, update `application/run/main_scene` or Godot will fail to launch. The in-game scene (`main.tscn`) is reached via `GetTree().ChangeSceneToFile` from the menu — `Main.cs` is its root.
 - The Godot editor may rewrite `FourExHex.csproj` and `FourExHex.sln` on first open to match its exact SDK version — this is expected; commit the changes.
+- `.cs.uid` files (sibling to each `.cs` script) are Godot's stable resource IDs — they ARE tracked in git and must be staged/committed alongside new or moved C# scripts. They are not build artifacts; deleting them breaks scene/script references.
