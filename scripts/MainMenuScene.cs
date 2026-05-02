@@ -158,24 +158,31 @@ public partial class MainMenuScene : Control
         _saveStore = new SaveStore();
 
         const float buttonH = 52f;
-        const float buttonW = 220f;
-        const float buttonGap = 16f;
         float buttonRowY = panelH - buttonH - 36f;
-        float buttonRowX = (panelW - (buttonW * 2f + buttonGap)) * 0.5f;
 
-        var startButton = new Button { Text = "Start Game" };
-        startButton.AddThemeFontSizeOverride("font_size", 24);
-        startButton.Position = new Vector2(buttonRowX, buttonRowY);
-        startButton.Size = new Vector2(buttonW, buttonH);
-        startButton.Pressed += OnStartPressed;
-        panel.AddChild(startButton);
+        // Each button stretches under its column above so the action
+        // visually attaches to the content it relates to: Load Game
+        // sits under the swatch+name pair, Start Game under the
+        // dropdown. Enter is bound to Start Game (see _UnhandledInput)
+        // so the action key falls on the rightmost button.
+        float leftColX = rowInset;
+        float leftColW = swatchSize + 16f + nameWidth;
+        float rightColX = panelW - rowInset - dropdownWidth;
+        float rightColW = dropdownWidth;
 
         _loadButton = new Button { Text = "Load Game" };
         _loadButton.AddThemeFontSizeOverride("font_size", 24);
-        _loadButton.Position = new Vector2(buttonRowX + buttonW + buttonGap, buttonRowY);
-        _loadButton.Size = new Vector2(buttonW, buttonH);
+        _loadButton.Position = new Vector2(leftColX, buttonRowY);
+        _loadButton.Size = new Vector2(leftColW, buttonH);
         _loadButton.Pressed += OnLoadPressed;
         panel.AddChild(_loadButton);
+
+        var startButton = new Button { Text = "Start Game" };
+        startButton.AddThemeFontSizeOverride("font_size", 24);
+        startButton.Position = new Vector2(rightColX, buttonRowY);
+        startButton.Size = new Vector2(rightColW, buttonH);
+        startButton.Pressed += OnStartPressed;
+        panel.AddChild(startButton);
         // Disable Load Game when no saves exist so the user gets
         // immediate visual feedback rather than an empty popup.
         _loadButton.Disabled = _saveStore.ListSlots().Count == 0;
@@ -299,6 +306,19 @@ public partial class MainMenuScene : Control
     private void LaunchGameScene()
     {
         GetTree().ChangeSceneToFile("res://scenes/main.tscn");
+    }
+
+    public override void _UnhandledInput(InputEvent @event)
+    {
+        if (@event is not InputEventKey keyEvent) return;
+        if (!keyEvent.Pressed || keyEvent.Echo) return;
+        if (keyEvent.Keycode != Key.Enter && keyEvent.Keycode != Key.KpEnter) return;
+
+        // The Load Game dialog handles its own input via the Window
+        // focus chain, so when it's open _UnhandledInput won't see the
+        // key — Enter dismisses or activates the dialog as expected.
+        OnStartPressed();
+        GetViewport().SetInputAsHandled();
     }
 
     private void OnStartPressed()
