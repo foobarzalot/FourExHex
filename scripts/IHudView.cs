@@ -27,4 +27,12 @@ public interface IHudView
     /// styling from the current game + session state.
     /// </summary>
     void Refresh(GameState state, SessionState session, bool hasActionableRemaining);
+
+    /// <summary>
+    /// One-time announcement of the master map seed used to generate this
+    /// game. The HUD displays it as a small read-only label so a player
+    /// can recall (or share) the seed mid-game. Invariant per game; called
+    /// once after game setup.
+    /// </summary>
+    void SetMapSeed(int seed);
 }

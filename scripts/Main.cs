@@ -181,6 +181,8 @@ public partial class Main : Node2D
         {
             _controller.StartGame();
         }
+
+        hud.SetMapSeed(_controller.MasterSeed);
     }
 
     /// <summary>

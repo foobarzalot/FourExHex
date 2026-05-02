@@ -29,6 +29,7 @@ public partial class HudView : CanvasLayer, IHudView
     private Label _turnLabel = null!;
     private Label _playerLabel = null!;
     private Label _goldLabel = null!;
+    private Label _seedLabel = null!;
     private Button _buyPeasantButton = null!;
     private Button _buildTowerButton = null!;
     private Button _undoLastButton = null!;
@@ -203,7 +204,32 @@ public partial class HudView : CanvasLayer, IHudView
         _endGameDialog.Confirmed += () => MainMenuClicked?.Invoke();
         AddChild(_endGameDialog);
 
+        // Read-only seed display anchored to the bottom-left so a player
+        // can recall or share the seed mid-game without crowding the
+        // top-bar action UI. Small font + dim color so it sits in the
+        // visual background.
+        _seedLabel = new Label
+        {
+            Text = "",
+            AnchorLeft = 0f,
+            AnchorRight = 0f,
+            AnchorTop = 1f,
+            AnchorBottom = 1f,
+            OffsetLeft = 12f,
+            OffsetRight = 280f,
+            OffsetTop = -48f,
+            OffsetBottom = -8f,
+        };
+        _seedLabel.AddThemeFontSizeOverride("font_size", 28);
+        _seedLabel.AddThemeColorOverride("font_color", new Color(0f, 0f, 0f, 1f));
+        AddChild(_seedLabel);
+
         BuildVictoryOverlay(viewport);
+    }
+
+    public void SetMapSeed(int seed)
+    {
+        _seedLabel.Text = $"Seed: {seed}";
     }
 
     /// <summary>
