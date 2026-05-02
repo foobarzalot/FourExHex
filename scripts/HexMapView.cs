@@ -66,31 +66,37 @@ public partial class HexMapView : Node2D, IHexMapView
     }
 
     // Layered overlay children (added in this order so draw order is
-    // fills -> borders -> capitals -> trees -> units -> targets -> highlight).
-    // Trees draw under units/graves so the rare unit-on-tree-tile transient
-    // (e.g. mid-chop) reads correctly.
+    // fills -> borders -> capitals -> trees -> graves -> units -> deaths
+    // -> targets -> highlight). Trees draw under units so the rare
+    // unit-on-tree-tile transient (e.g. mid-chop) reads correctly.
+    // Deaths draws above units so a freshly-spawned grave grow-in reads
+    // underneath the still-shrinking corpse it replaces.
     private Node2D? _bordersLayer;
     private Node2D? _capitalsLayer;
     private Node2D? _treesLayer;
+    private Node2D? _gravesLayer;
     private Node2D? _unitsLayer;
+    private Node2D? _deathsLayer;
     private Node2D? _targetsLayer;
     private Node2D? _highlightLayer;
     private readonly Dictionary<HexCoord, Node2D> _unitVisuals = new();
     private readonly Dictionary<HexCoord, Node2D> _capitalVisuals = new();
 
-    // Tree visuals persist across RefreshOccupantVisuals calls (units,
-    // capitals, graves, towers all rebuild every refresh; trees don't
-    // depend on per-refresh state, so we keep their nodes alive). This
-    // also means a grow-in tween started on a freshly-planted tree is
-    // not interrupted by a subsequent refresh from an unrelated action.
+    // Tree and grave visuals persist across RefreshOccupantVisuals calls
+    // (units, capitals, towers all rebuild every refresh; trees and
+    // graves don't depend on per-refresh state, so we keep their nodes
+    // alive). This also means a grow-in tween started on a freshly-
+    // planted tree or grave is not interrupted by a subsequent refresh.
     private readonly Dictionary<HexCoord, Node2D> _treeVisuals = new();
+    private readonly Dictionary<HexCoord, Node2D> _graveVisuals = new();
 
     // True except for one refresh after RebuildAfterTerritoryChange,
-    // where we want trees to reappear instantly (capture chops removed
-    // them; undo/redo restored a possibly different set). Defaulting
-    // to true means seeded trees on a fresh game DO animate in on the
-    // first refresh, which is the desired feel.
+    // where we want trees and graves to reappear instantly (capture
+    // chops removed trees; undo/redo restored a possibly different set
+    // of either). Defaulting to true means seeded trees on a fresh game
+    // DO animate in on the first refresh, which is the desired feel.
     private bool _animateNewTrees = true;
+    private bool _animateNewGraves = true;
 
     // The territory currently drawn as highlighted. Pure view state — the
     // single source of truth lives in SessionState, but we cache it here
@@ -152,8 +158,12 @@ public partial class HexMapView : Node2D, IHexMapView
         AddChild(_capitalsLayer);
         _treesLayer = new Node2D { Name = "TreesLayer" };
         AddChild(_treesLayer);
+        _gravesLayer = new Node2D { Name = "GravesLayer" };
+        AddChild(_gravesLayer);
         _unitsLayer = new Node2D { Name = "UnitsLayer" };
         AddChild(_unitsLayer);
+        _deathsLayer = new Node2D { Name = "DeathsLayer" };
+        AddChild(_deathsLayer);
         _targetsLayer = new Node2D { Name = "TargetsLayer" };
         AddChild(_targetsLayer);
         _highlightLayer = new Node2D { Name = "HighlightLayer" };
@@ -180,18 +190,29 @@ public partial class HexMapView : Node2D, IHexMapView
         ClearLayer(_targetsLayer);
         DrawTerritoryBorders();
 
-        // Tear down all tree visuals and force the next refresh to rebuild
-        // them without the grow-in animation. Captures and undo/redo are
-        // the only callers, and neither should make existing trees appear
-        // to "grow." A capture-chop has already removed its tree from the
-        // model; an undo restoring a chopped tree should resurrect it
-        // instantly.
+        // Tear down all tree and grave visuals and force the next refresh
+        // to rebuild them without the grow-in animation. Captures and
+        // undo/redo are the only callers, and neither should make existing
+        // trees or graves appear to "grow." A capture-chop has already
+        // removed its tree from the model; an undo restoring a chopped
+        // tree (or a pre-bankruptcy state) should resurrect it instantly.
         foreach (Node2D visual in _treeVisuals.Values)
         {
             visual?.QueueFree();
         }
         _treeVisuals.Clear();
         _animateNewTrees = false;
+
+        foreach (Node2D visual in _graveVisuals.Values)
+        {
+            visual?.QueueFree();
+        }
+        _graveVisuals.Clear();
+        _animateNewGraves = false;
+
+        // Cancel any in-flight death animations — the corpses they show
+        // belonged to a state that no longer applies.
+        ClearLayer(_deathsLayer);
     }
 
     /// <summary>
@@ -338,6 +359,26 @@ public partial class HexMapView : Node2D, IHexMapView
     /// </summary>
     public void RefreshOccupantVisuals(Color? currentPlayerColor, Treasury treasury)
     {
+        // Detect Unit→Grave transitions BEFORE the units layer is cleared.
+        // Each dying unit's visual is reparented to _deathsLayer and
+        // tweened out so the grave underneath can grow into view. The
+        // coords are passed to the grave-spawn loop below so the matching
+        // grave's grow tween can stagger after the corpse's shrink.
+        var dyingCoords = new HashSet<HexCoord>();
+        foreach (KeyValuePair<HexCoord, Node2D> kvp in _unitVisuals)
+        {
+            HexTile? t = _state.Grid.Get(kvp.Key);
+            if (t?.Occupant is Grave)
+            {
+                Node2D corpse = kvp.Value;
+                _unitsLayer?.RemoveChild(corpse);
+                _deathsLayer?.AddChild(corpse);
+                StartShrinkAndFreeAnimation(corpse);
+                dyingCoords.Add(kvp.Key);
+            }
+        }
+        foreach (HexCoord c in dyingCoords) _unitVisuals.Remove(c);
+
         ClearLayer(_unitsLayer);
         ClearLayer(_capitalsLayer);
         _unitVisuals.Clear();
@@ -368,13 +409,17 @@ public partial class HexMapView : Node2D, IHexMapView
             }
         }
 
-        // Diff trees against the previous refresh so we only animate
-        // newly-planted ones. Trees are removed lazily here when they
-        // disappear from the model (e.g., chopped via movement).
+        // Diff trees and graves against the previous refresh so we only
+        // animate newly-planted/dug ones. Both are removed lazily here
+        // when they disappear from the model (trees: chopped via movement
+        // or grown into; graves: stomped by a moving unit, or upgraded
+        // into a tree at start-of-turn).
         var currentTreeCoords = new HashSet<HexCoord>();
+        var currentGraveCoords = new HashSet<HexCoord>();
         foreach (HexTile tile in Grid.Tiles)
         {
             if (tile.Occupant is Tree) currentTreeCoords.Add(tile.Coord);
+            else if (tile.Occupant is Grave) currentGraveCoords.Add(tile.Coord);
         }
         var staleTreeCoords = new List<HexCoord>();
         foreach (HexCoord c in _treeVisuals.Keys)
@@ -385,6 +430,34 @@ public partial class HexMapView : Node2D, IHexMapView
         {
             _treeVisuals[c]?.QueueFree();
             _treeVisuals.Remove(c);
+        }
+        // Graves that disappeared this refresh: if the new occupant at
+        // that coord is a Tree (start-of-turn grave→tree promotion),
+        // animate the grave shrinking away just like a dying unit, and
+        // tell the tree branch to delay its grow-in tween. Otherwise
+        // (undo, capture-stomp), free instantly.
+        var staleGraveCoords = new List<HexCoord>();
+        var graveToTreeCoords = new HashSet<HexCoord>();
+        foreach (HexCoord c in _graveVisuals.Keys)
+        {
+            if (!currentGraveCoords.Contains(c)) staleGraveCoords.Add(c);
+        }
+        foreach (HexCoord c in staleGraveCoords)
+        {
+            Node2D? graveVisual = _graveVisuals[c];
+            HexTile? newTile = _state.Grid.Get(c);
+            if (graveVisual != null && _animateNewTrees && newTile?.Occupant is Tree)
+            {
+                _gravesLayer?.RemoveChild(graveVisual);
+                _deathsLayer?.AddChild(graveVisual);
+                StartShrinkAndFreeAnimation(graveVisual);
+                graveToTreeCoords.Add(c);
+            }
+            else
+            {
+                graveVisual?.QueueFree();
+            }
+            _graveVisuals.Remove(c);
         }
 
         foreach (HexTile tile in Grid.Tiles)
@@ -421,9 +494,18 @@ public partial class HexMapView : Node2D, IHexMapView
             }
             else if (tile.Occupant is Grave)
             {
-                Node2D visual = CreateGraveVisual();
-                visual.Position = center;
-                _unitsLayer?.AddChild(visual);
+                if (!_graveVisuals.ContainsKey(tile.Coord))
+                {
+                    Node2D visual = CreateGraveVisual();
+                    visual.Position = center;
+                    _gravesLayer?.AddChild(visual);
+                    _graveVisuals[tile.Coord] = visual;
+                    if (_animateNewGraves)
+                    {
+                        StartGraveGrowAnimation(visual, dyingCoords.Contains(tile.Coord));
+                    }
+                }
+                // Existing grave visuals are left in place.
             }
             else if (tile.Occupant is Tree)
             {
@@ -432,7 +514,10 @@ public partial class HexMapView : Node2D, IHexMapView
                     Node2D anchor = BuildTreeAnchor(center);
                     _treesLayer?.AddChild(anchor);
                     _treeVisuals[tile.Coord] = anchor;
-                    if (_animateNewTrees) StartTreeGrowAnimation(anchor);
+                    if (_animateNewTrees)
+                    {
+                        StartTreeGrowAnimation(anchor, graveToTreeCoords.Contains(tile.Coord));
+                    }
                 }
                 // Existing tree visuals are left in place.
             }
@@ -445,6 +530,7 @@ public partial class HexMapView : Node2D, IHexMapView
         }
 
         _animateNewTrees = true;
+        _animateNewGraves = true;
     }
 
     /// <summary>
@@ -473,21 +559,75 @@ public partial class HexMapView : Node2D, IHexMapView
         return anchor;
     }
 
+    // Shrink/grow timings for the bankruptcy death and the start-of-turn
+    // grave→tree promotion. ShrinkDuration is shared by the unit-death
+    // and grave-shrink tweens so the two transitions feel kin. The grave
+    // grow and tree grow stagger after a preceding shrink by exactly
+    // ShrinkDuration so the player reads "old thing dies, new thing
+    // appears" rather than a crossfade.
+    private const double ShrinkDurationSeconds = 0.25;
+    private const double GraveGrowDurationSeconds = 0.35;
+    private const double TreeGrowDurationSeconds = 0.7;
+    private const double TreeFadeDurationSeconds = 0.5;
+
     /// <summary>
     /// Kick off the grow-in tween on a tree anchor that is already in
-    /// the scene tree. Uniform pop-in scale with a small Back overshoot
-    /// plus a quick alpha fade to mask the abrupt origin appearance.
+    /// the scene tree. If <paramref name="afterShrink"/> is true, the
+    /// tween waits for a preceding grave-shrink to finish before
+    /// starting, so the grave→tree promotion reads as sequential.
     /// </summary>
-    private static void StartTreeGrowAnimation(Node2D anchor)
+    private static void StartTreeGrowAnimation(Node2D anchor, bool afterShrink = false)
     {
         anchor.Scale = new Vector2(0.05f, 0.05f);
-        anchor.Modulate = new Color(1f, 1f, 1f, 0.3f);
+        anchor.Modulate = new Color(1f, 1f, 1f, afterShrink ? 0f : 0.3f);
         Tween tween = anchor.CreateTween();
-        tween.SetParallel(true);
-        tween.TweenProperty(anchor, "scale", Vector2.One, 0.7)
+        if (afterShrink)
+        {
+            tween.TweenInterval(ShrinkDurationSeconds);
+        }
+        tween.TweenProperty(anchor, "scale", Vector2.One, TreeGrowDurationSeconds)
             .SetTrans(Tween.TransitionType.Back)
             .SetEase(Tween.EaseType.Out);
-        tween.TweenProperty(anchor, "modulate", new Color(1f, 1f, 1f, 1f), 0.5)
+        tween.Parallel().TweenProperty(anchor, "modulate", new Color(1f, 1f, 1f, 1f), TreeFadeDurationSeconds)
+            .SetTrans(Tween.TransitionType.Sine)
+            .SetEase(Tween.EaseType.Out);
+    }
+
+    /// <summary>
+    /// Shrink a visual to nothing and free it. Used for unit corpses on
+    /// bankruptcy and for graves being promoted into trees.
+    /// </summary>
+    private static void StartShrinkAndFreeAnimation(Node2D visual)
+    {
+        Tween tween = visual.CreateTween();
+        tween.TweenProperty(visual, "scale", Vector2.Zero, ShrinkDurationSeconds)
+            .SetTrans(Tween.TransitionType.Sine)
+            .SetEase(Tween.EaseType.In);
+        tween.Parallel().TweenProperty(visual, "modulate", new Color(1f, 1f, 1f, 0f), ShrinkDurationSeconds)
+            .SetTrans(Tween.TransitionType.Sine)
+            .SetEase(Tween.EaseType.In);
+        tween.Finished += visual.QueueFree;
+    }
+
+    /// <summary>
+    /// Pop a freshly-spawned grave visual in. If <paramref name="afterDeath"/>
+    /// is true, the grave waits for the corpse on top to finish shrinking
+    /// before growing in — so the two read as a single death-then-burial
+    /// sequence rather than a crossfade.
+    /// </summary>
+    private static void StartGraveGrowAnimation(Node2D visual, bool afterDeath)
+    {
+        visual.Scale = new Vector2(0.05f, 0.05f);
+        visual.Modulate = new Color(1f, 1f, 1f, 0f);
+        Tween tween = visual.CreateTween();
+        if (afterDeath)
+        {
+            tween.TweenInterval(ShrinkDurationSeconds);
+        }
+        tween.TweenProperty(visual, "scale", Vector2.One, GraveGrowDurationSeconds)
+            .SetTrans(Tween.TransitionType.Back)
+            .SetEase(Tween.EaseType.Out);
+        tween.Parallel().TweenProperty(visual, "modulate", new Color(1f, 1f, 1f, 1f), GraveGrowDurationSeconds * 0.7)
             .SetTrans(Tween.TransitionType.Sine)
             .SetEase(Tween.EaseType.Out);
     }
@@ -686,8 +826,7 @@ public partial class HexMapView : Node2D, IHexMapView
     {
         // Symmetrical grey plus sign (cross) — symmetric in both axes.
         // Visually distinct from units (circles) and capitals (diamonds).
-        // Drawn 25% larger than the unit disc for legibility.
-        float r = HexSize * 0.275f;
+        float r = HexSize * 0.38f;
         float w = r * 0.32f; // half-width of each arm
         var verts = new[]
         {
