@@ -1453,6 +1453,34 @@ public class GameControllerTests
     }
 
     [Fact]
+    public void BuildTower_OverlappingCoverage_PublishedAsSingleEntryPerCoord()
+    {
+        // Two towers in the same 4-strip overlap on (2,0) — covered
+        // by both (1,0) (neighbor) and (3,0) (neighbor). The published
+        // coverage list must dedupe so the view doesn't render two
+        // overlays on top of each other and the tile doesn't darken
+        // twice as much as a single-tower-covered tile.
+        var g = new FourStripGame(preExistingTowerAt: HexCoord.FromOffset(1, 0));
+        g.Map.SimulateClick(g.Tile(0, 0));
+        g.State.Treasury.SetGold(g.RedTerritory.Capital!.Value, 30);
+        g.Hud.ClickBuildTower();
+        g.Map.SimulateClick(g.Tile(3, 0));
+
+        Assert.Equal(
+            g.Map.LastTowerCoverage.Count,
+            g.Map.LastTowerCoverage.Distinct().Count());
+        Assert.Equal(
+            new HashSet<HexCoord>
+            {
+                HexCoord.FromOffset(0, 0),
+                HexCoord.FromOffset(1, 0),
+                HexCoord.FromOffset(2, 0),
+                HexCoord.FromOffset(3, 0),
+            },
+            new HashSet<HexCoord>(g.Map.LastTowerCoverage));
+    }
+
+    [Fact]
     public void BuildTower_AfterPlace_RefreshesCoverage()
     {
         // No pre-existing tower; build one at (3,0) mid-mode and stay

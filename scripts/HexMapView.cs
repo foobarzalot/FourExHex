@@ -298,7 +298,11 @@ public partial class HexMapView : Node2D, IHexMapView
         if (_towerCoverageLayer == null) return;
 
         Vector2[] verts = HexVertices();
-        var tint = new Color(1f, 1f, 1f, 0.22f);
+        // Black-alpha overlay darkens the territory color, reading as
+        // "in shadow" / "already protected". The controller hands us a
+        // deduplicated coord set, so each tile gets exactly one overlay
+        // even when two towers cover it — no double-darkening.
+        var tint = new Color(0f, 0f, 0f, 0.22f);
         foreach (HexCoord coord in coords)
         {
             var overlay = new Polygon2D
