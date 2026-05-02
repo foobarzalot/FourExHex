@@ -1080,9 +1080,7 @@ public partial class HexMapView : Node2D, IHexMapView
     private Node2D CreateTreeVisual()
     {
         // Stylized conifer: dark green triangle with a small brown trunk.
-        // Sized like the grave (~0.275 * HexSize) so it reads clearly
-        // against the tile and distinguishes from unit discs.
-        float r = HexSize * 0.3f;
+        float r = HexSize * 0.45f;
         var canopyVerts = new[]
         {
             new Vector2(0f, -r),
