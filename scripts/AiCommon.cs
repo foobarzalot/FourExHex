@@ -35,13 +35,40 @@ public readonly record struct AiCandidate(AiAction Action, AiActionKind Kind);
 public static class AiCommon
 {
     /// <summary>
+    /// Minimum hex distance between two AI-built towers in the same
+    /// territory. 3 means a gap of two tiles must lie between any two
+    /// friendly towers — purely an AI heuristic to prevent redundant
+    /// clustering on the same border. Humans aren't bound by it.
+    /// </summary>
+    public const int MinTowerSpacing = 3;
+
+    /// <summary>
+    /// True iff <paramref name="coord"/> is at least
+    /// <see cref="MinTowerSpacing"/> hex distance from every existing
+    /// same-territory tower. Used to filter AI tower-placement
+    /// candidates so the AI doesn't cluster towers redundantly.
+    /// </summary>
+    public static bool MeetsAiTowerSpacing(HexCoord coord, Territory territory, HexGrid grid)
+    {
+        foreach (HexCoord c in territory.Coords)
+        {
+            if (c.Equals(coord)) continue;
+            HexTile? other = grid.Get(c);
+            if (other?.Occupant is not Tower) continue;
+            if (HexCoord.Distance(coord, c) < MinTowerSpacing) return false;
+        }
+        return true;
+    }
+
+    /// <summary>
     /// Every legal, solvent AI action in <paramref name="territory"/>
     /// for the current game state. Results are tagged with an
     /// <see cref="AiActionKind"/> so callers can group / score
     /// without re-classifying. Self-combine moves (source == dest,
     /// which <see cref="MovementRules.ValidTargets"/> trivially
     /// includes because a unit can "combine with itself") are
-    /// filtered out. Tower builds are restricted to border tiles.
+    /// filtered out. Tower builds are restricted to border tiles
+    /// AND spacing-checked via <see cref="MeetsAiTowerSpacing"/>.
     /// </summary>
     public static IEnumerable<AiCandidate> Enumerate(Territory territory, GameState state)
     {
@@ -182,8 +209,7 @@ public static class AiCommon
         // Towers have no upkeep and don't change income, so post-net
         // equals netBefore: requires netBefore >= 0 and 15g. Only
         // considered for border tiles — an interior tower defends
-        // nothing — and the spacing rule in
-        // <see cref="PurchaseRules.IsValidTowerLocation"/> prevents
+        // nothing — and AI-only spacing (MeetsAiTowerSpacing) prevents
         // redundant towers clustered on the same border.
         if (PurchaseRules.CanAffordTower(territory, state.Treasury)
             && netBefore >= 0)
@@ -194,6 +220,7 @@ public static class AiCommon
                 if (tile == null) continue;
                 if (!IsBorderTile(coord, state.Grid, owner)) continue;
                 if (!PurchaseRules.IsValidTowerLocation(tile, territory, state.Grid)) continue;
+                if (!MeetsAiTowerSpacing(coord, territory, state.Grid)) continue;
                 yield return new AiCandidate(
                     new AiBuildTowerAction(territory.Capital!.Value, coord),
                     AiActionKind.Tower);

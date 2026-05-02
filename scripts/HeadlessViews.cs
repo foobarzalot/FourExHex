@@ -40,6 +40,7 @@ public sealed class HeadlessHexMapView : IHexMapView
     }
 
     public void ShowMoveTargets(IEnumerable<HexCoord> coords) { }
+    public void ShowTowerTargets(IEnumerable<HexCoord> coords) { }
     public void ShowMoveSource(HexCoord? coord) { }
     public void ShowHighlight(Territory? selected) { }
     public void RebuildAfterTerritoryChange() { }

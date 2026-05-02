@@ -26,6 +26,14 @@ public interface IHexMapView
     void ShowMoveTargets(IEnumerable<HexCoord> coords);
 
     /// <summary>
+    /// Highlight the given coords as valid tower-placement targets,
+    /// rendered with a tower-shaped preview in the move-target green.
+    /// Driven by the controller while in BuildingTower mode. Pass an
+    /// empty sequence to clear.
+    /// </summary>
+    void ShowTowerTargets(IEnumerable<HexCoord> coords);
+
+    /// <summary>
     /// Mark the unit at <paramref name="coord"/> as "picked up" — the
     /// view may animate it (e.g. a scale pulse) to give the player
     /// visual feedback that their click registered. Pass null to

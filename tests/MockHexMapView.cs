@@ -36,6 +36,10 @@ public class MockHexMapView : IHexMapView
         LastMoveTargets = coords.ToList();
     }
 
+    public List<HexCoord> LastTowerTargets { get; private set; } = new();
+    public void ShowTowerTargets(IEnumerable<HexCoord> coords) =>
+        LastTowerTargets = coords.ToList();
+
     public HexCoord? LastMoveSource { get; private set; }
     public void ShowMoveSource(HexCoord? coord) => LastMoveSource = coord;
 

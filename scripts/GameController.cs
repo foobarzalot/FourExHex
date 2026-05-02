@@ -335,6 +335,8 @@ public class GameController
                 ExecuteBuildTower(tile.Coord);
                 return;
             }
+            System.Console.WriteLine(
+                $"[BuildTower] click at {tile.Coord} rejected: {DescribeInvalidTowerReason(tile.Coord)}");
             CancelPendingAction();
             // Fall through to treat this as a fresh click.
         }
@@ -431,6 +433,43 @@ public class GameController
         HexTile? tile = _state.Grid.Get(coord);
         if (tile == null) return false;
         return PurchaseRules.IsValidTowerLocation(tile, _session.SelectedTerritory, _state.Grid);
+    }
+
+    /// <summary>
+    /// Every coord inside <paramref name="territory"/> on which a tower
+    /// can legally be placed right now. Drives the tower-target preview
+    /// shown in BuildingTower mode.
+    /// </summary>
+    private IEnumerable<HexCoord> ValidTowerTargets(Territory territory)
+    {
+        foreach (HexCoord coord in territory.Coords)
+        {
+            HexTile? tile = _state.Grid.Get(coord);
+            if (tile == null) continue;
+            if (PurchaseRules.IsValidTowerLocation(tile, territory, _state.Grid))
+            {
+                yield return coord;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Diagnostic for the BuildTower-rejection log line: walk the same
+    /// checks as <see cref="PurchaseRules.IsValidTowerLocation"/> and
+    /// describe whichever first one fails. Strictly debug — never read
+    /// by gameplay logic.
+    /// </summary>
+    private string DescribeInvalidTowerReason(HexCoord coord)
+    {
+        HexTile? tile = _state.Grid.Get(coord);
+        if (tile == null) return "off-map";
+        Territory? sel = _session.SelectedTerritory;
+        if (sel == null) return "no selected territory";
+        if (!sel.Coords.Contains(coord))
+            return $"tile not in selected territory (tile color={tile.Color}, sel owner={sel.Owner})";
+        if (tile.Occupant != null)
+            return $"tile occupied by {tile.Occupant.GetType().Name}";
+        return "(would have been valid — diagnostic stale?)";
     }
 
     // --- Buy / move / capture --------------------------------------------
@@ -556,12 +595,15 @@ public class GameController
         dst.Occupant = new Tower();
 
         // QoL: stay in BuildingTower mode if the territory can still
-        // afford another tower.
+        // afford another tower. Refresh the tower-target preview to
+        // reflect the just-placed tower (the new occupant means at
+        // minimum the tile we just built on drops out of the set).
         if (PurchaseRules.CanAffordTower(_session.SelectedTerritory, _state.Treasury))
         {
             _session.Mode = SessionState.ActionMode.BuildingTower;
             _session.MoveSource = null;
             _map.ShowMoveTargets(System.Array.Empty<HexCoord>());
+            _map.ShowTowerTargets(ValidTowerTargets(_session.SelectedTerritory));
             _map.ShowMoveSource(null);
             RefreshViews();
         }
@@ -606,6 +648,7 @@ public class GameController
     {
         _session.ClearPendingAction();
         _map.ShowMoveTargets(System.Array.Empty<HexCoord>());
+        _map.ShowTowerTargets(System.Array.Empty<HexCoord>());
         _map.ShowMoveSource(null);
         // Selection is maintained by the caller: a non-capturing
         // reposition leaves it alone; a capture re-binds it via
@@ -617,6 +660,7 @@ public class GameController
     {
         _session.ClearPendingAction();
         _map.ShowMoveTargets(System.Array.Empty<HexCoord>());
+        _map.ShowTowerTargets(System.Array.Empty<HexCoord>());
         _map.ShowMoveSource(null);
     }
 
@@ -743,6 +787,9 @@ public class GameController
         _session.Mode = SessionState.BuyModeFor(next.Value);
         _session.MoveSource = null;
         _map.ShowMoveTargets(ActionConsumingTargets(next.Value, _session.SelectedTerritory));
+        // Switching into a buy mode from BuildingTower leaves the tower
+        // preview stale; clear it so the player only sees relevant CTAs.
+        _map.ShowTowerTargets(System.Array.Empty<HexCoord>());
         _map.ShowMoveSource(null);
         RefreshViews();
     }
@@ -797,8 +844,10 @@ public class GameController
         _session.Mode = SessionState.ActionMode.BuildingTower;
         _session.MoveSource = null;
         // Towers only build on empty own-territory tiles — no enemy
-        // capture targets to highlight.
+        // capture targets to highlight. The legal-tower preview goes
+        // through ShowTowerTargets so the player sees where to click.
         _map.ShowMoveTargets(System.Array.Empty<HexCoord>());
+        _map.ShowTowerTargets(ValidTowerTargets(_session.SelectedTerritory));
         _map.ShowMoveSource(null);
         RefreshViews();
     }
@@ -1416,12 +1465,13 @@ public class GameController
             throw new InvalidOperationException(
                 $"AI BuildTower at {destination}: coord is off-map.");
         }
-        if (!PurchaseRules.IsValidTowerLocation(dst, territory, _state.Grid))
+        if (!PurchaseRules.IsValidTowerLocation(dst, territory, _state.Grid)
+            || !AiCommon.MeetsAiTowerSpacing(destination, territory, _state.Grid))
         {
             throw new InvalidOperationException(
                 $"AI BuildTower at {destination} from capital {capital}: " +
                 $"location is invalid (occupied, out-of-territory, or within " +
-                $"{PurchaseRules.MinTowerSpacing} hexes of an existing tower).");
+                $"{AiCommon.MinTowerSpacing} hexes of an existing tower).");
         }
 
         _state.Treasury.SetGold(

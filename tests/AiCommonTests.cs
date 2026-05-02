@@ -101,6 +101,42 @@ public class AiCommonTests
     }
 
     [Fact]
+    public void Enumerate_Skips_Tower_Within_MinSpacing_Of_Friendly_Tower()
+    {
+        // 6-tile Red strip cols 0..5 + Blue col 6 so every Red tile
+        // except (0,0) is on a path toward the border. An existing
+        // Red tower sits at (1,0). With ample gold and a peasant on
+        // (5,0) (so net income is non-negative), the tower-build
+        // candidates should NOT include any coord at distance < 3
+        // from (1,0) — i.e., (0,0), (2,0), and (3,0) must be absent.
+        // (4,0) and (5,0) are at distance >= 3 and may appear (if
+        // they're border tiles and pass the other checks).
+        var grid = new HexGrid();
+        for (int col = 0; col <= 5; col++)
+            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(6, 0), Blue));
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Tower();
+        grid.Get(HexCoord.FromOffset(5, 0))!.Occupant = new Unit(Red);
+        GameState state = BuildState(grid, new Player("Red", Red), new Player("Blue", Blue));
+        HexCoord cap = state.Territories.First(t => t.Owner == Red).Capital!.Value;
+        state.Treasury.SetGold(cap, 100);
+
+        Territory red = state.Territories.First(t => t.Owner == Red);
+        List<AiBuildTowerAction> towers = AiCommon.Enumerate(red, state)
+            .Where(c => c.Action is AiBuildTowerAction)
+            .Select(c => (AiBuildTowerAction)c.Action)
+            .ToList();
+
+        foreach (AiBuildTowerAction t in towers)
+        {
+            int dist = HexCoord.Distance(t.Destination, HexCoord.FromOffset(1, 0));
+            Assert.True(dist >= AiCommon.MinTowerSpacing,
+                $"AI tower candidate at {t.Destination} is distance {dist} from existing tower at (1,0); " +
+                $"must be >= {AiCommon.MinTowerSpacing}.");
+        }
+    }
+
+    [Fact]
     public void Enumerate_Skips_Buy_Reposition_When_Insolvent()
     {
         // 5-tile Red strip cols 0..4 + Blue col 5. Two existing

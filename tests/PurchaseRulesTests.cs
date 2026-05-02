@@ -218,56 +218,38 @@ public class PurchaseRulesTests
     }
 
     [Fact]
-    public void IsValidTowerLocation_RejectsAdjacentToFriendlyTower()
+    public void IsValidTowerLocation_AcceptsAdjacentToFriendlyTower()
     {
-        // Tower at (0,0). Proposed at (1,0). Distance 1.
+        // Tower at (0,0). Proposed at (1,0). Humans can cluster towers
+        // freely — the spacing rule is an AI-only heuristic, not a
+        // gameplay constraint.
         (HexGrid grid, Territory territory) = BuildLinearStrip(5, new HexCoord(4, 0));
         grid.Get(new HexCoord(0, 0))!.Occupant = new Tower();
         HexTile tile = grid.Get(new HexCoord(1, 0))!;
-
-        Assert.False(PurchaseRules.IsValidTowerLocation(tile, territory, grid));
-    }
-
-    [Fact]
-    public void IsValidTowerLocation_RejectsTileAtDistance2FromFriendlyTower()
-    {
-        // Tower at (0,0). Proposed at (2,0). Distance 2 — still too close
-        // because the rule requires a gap of two tiles (distance >= 3).
-        (HexGrid grid, Territory territory) = BuildLinearStrip(5, new HexCoord(4, 0));
-        grid.Get(new HexCoord(0, 0))!.Occupant = new Tower();
-        HexTile tile = grid.Get(new HexCoord(2, 0))!;
-
-        Assert.False(PurchaseRules.IsValidTowerLocation(tile, territory, grid));
-    }
-
-    [Fact]
-    public void IsValidTowerLocation_AcceptsTileAtDistance3FromFriendlyTower()
-    {
-        // Tower at (0,0). Proposed at (3,0). Distance 3 — gap of two
-        // tiles between, so the placement is allowed.
-        (HexGrid grid, Territory territory) = BuildLinearStrip(5, new HexCoord(4, 0));
-        grid.Get(new HexCoord(0, 0))!.Occupant = new Tower();
-        HexTile tile = grid.Get(new HexCoord(3, 0))!;
 
         Assert.True(PurchaseRules.IsValidTowerLocation(tile, territory, grid));
     }
 
     [Fact]
-    public void IsValidTowerLocation_IgnoresTowerOutsideTerritory()
+    public void IsValidTowerLocation_AcceptsTileAtDistance2FromFriendlyTower()
     {
-        // 5-tile strip belongs to Red. A tower exists at (0,0) but is
-        // OUTSIDE the supplied territory (territory is (1,0)..(4,0)).
-        // The proposed placement at (1,0) is distance 1 from that
-        // off-territory tower but should still be accepted because
-        // the rule only considers same-territory towers.
-        var grid = new HexGrid();
-        for (int i = 0; i < 5; i++)
-            grid.Add(new HexTile(new HexCoord(i, 0), Red));
+        // Tower at (0,0). Proposed at (2,0). Same as the adjacent case —
+        // humans aren't bound by the AI's spacing heuristic.
+        (HexGrid grid, Territory territory) = BuildLinearStrip(5, new HexCoord(4, 0));
         grid.Get(new HexCoord(0, 0))!.Occupant = new Tower();
-        Territory territory = MakeTerritory(Red, new HexCoord(4, 0),
-            new HexCoord(1, 0), new HexCoord(2, 0), new HexCoord(3, 0), new HexCoord(4, 0));
+        HexTile tile = grid.Get(new HexCoord(2, 0))!;
 
-        HexTile tile = grid.Get(new HexCoord(1, 0))!;
+        Assert.True(PurchaseRules.IsValidTowerLocation(tile, territory, grid));
+    }
+
+    [Fact]
+    public void IsValidTowerLocation_AcceptsTileAtDistance3FromFriendlyTower()
+    {
+        // Sanity: a comfortably distant placement is still accepted.
+        (HexGrid grid, Territory territory) = BuildLinearStrip(5, new HexCoord(4, 0));
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Tower();
+        HexTile tile = grid.Get(new HexCoord(3, 0))!;
+
         Assert.True(PurchaseRules.IsValidTowerLocation(tile, territory, grid));
     }
 

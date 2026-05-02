@@ -78,6 +78,7 @@ public partial class HexMapView : Node2D, IHexMapView
     private Node2D? _unitsLayer;
     private Node2D? _deathsLayer;
     private Node2D? _targetsLayer;
+    private Node2D? _towerTargetsLayer;
     private Node2D? _highlightLayer;
     private readonly Dictionary<HexCoord, Node2D> _unitVisuals = new();
     private readonly Dictionary<HexCoord, Node2D> _capitalVisuals = new();
@@ -166,6 +167,8 @@ public partial class HexMapView : Node2D, IHexMapView
         AddChild(_deathsLayer);
         _targetsLayer = new Node2D { Name = "TargetsLayer" };
         AddChild(_targetsLayer);
+        _towerTargetsLayer = new Node2D { Name = "TowerTargetsLayer" };
+        AddChild(_towerTargetsLayer);
         _highlightLayer = new Node2D { Name = "HighlightLayer" };
         AddChild(_highlightLayer);
 
@@ -261,6 +264,24 @@ public partial class HexMapView : Node2D, IHexMapView
     }
 
     /// <summary>
+    /// Highlight valid tower-placement coords with a tower-shaped preview
+    /// in the move-target green. Called by the controller while in
+    /// BuildingTower mode. Pass an empty sequence to clear.
+    /// </summary>
+    public void ShowTowerTargets(IEnumerable<HexCoord> coords)
+    {
+        ClearLayer(_towerTargetsLayer);
+        if (_towerTargetsLayer == null) return;
+
+        foreach (HexCoord coord in coords)
+        {
+            Node2D preview = CreateTowerPreviewVisual();
+            preview.Position = FirstHexCenterOffset + coord.ToPixel(HexSize);
+            _towerTargetsLayer.AddChild(preview);
+        }
+    }
+
+    /// <summary>
     /// Tell the view which unit the player has picked up to move.
     /// Recolors that unit's rings white (and the previous selection's
     /// rings back to black). Pass null to clear the selection.
@@ -279,7 +300,11 @@ public partial class HexMapView : Node2D, IHexMapView
     public override void _Process(double delta)
     {
         int targetCount = _targetsLayer?.GetChildCount() ?? 0;
-        if (_pulsingUnits.Count == 0 && _pulsingCapitals.Count == 0 && targetCount == 0) return;
+        int towerTargetCount = _towerTargetsLayer?.GetChildCount() ?? 0;
+        if (_pulsingUnits.Count == 0
+            && _pulsingCapitals.Count == 0
+            && targetCount == 0
+            && towerTargetCount == 0) return;
 
         _pulseTime += delta;
         // sin returns [-1,1]; shift to [0,1] and map to scale
@@ -307,6 +332,13 @@ public partial class HexMapView : Node2D, IHexMapView
             foreach (Node child in _targetsLayer.GetChildren())
             {
                 if (child is Node2D ring) ring.Scale = pulsedScale;
+            }
+        }
+        if (_towerTargetsLayer != null)
+        {
+            foreach (Node child in _towerTargetsLayer.GetChildren())
+            {
+                if (child is Node2D preview) preview.Scale = pulsedScale;
             }
         }
     }
@@ -632,13 +664,27 @@ public partial class HexMapView : Node2D, IHexMapView
             .SetEase(Tween.EaseType.Out);
     }
 
-    private Node2D CreateTowerVisual()
+    private Node2D CreateTowerVisual() =>
+        CreateTowerShape(
+            fillColor: new Color(0.72f, 0.72f, 0.76f, 1f),
+            outlineColor: new Color(0f, 0f, 0f, 1f));
+
+    /// <summary>
+    /// Tower preview rendered in the same green as the move-target rings
+    /// (slightly translucent), used to show the player which tiles are
+    /// legal tower placements while in BuildingTower mode.
+    /// </summary>
+    private Node2D CreateTowerPreviewVisual() =>
+        CreateTowerShape(
+            fillColor: new Color(0.2f, 1f, 0.3f, 0.55f),
+            outlineColor: new Color(0.05f, 0.4f, 0.1f, 0.85f));
+
+    private Node2D CreateTowerShape(Color fillColor, Color outlineColor)
     {
-        // Stylized stone rook: a light-gray crenellated body. Sized like
-        // a capital (~0.35 * HexSize) so it reads as a structural
-        // element distinct from the round unit discs.
+        // Stylized stone rook: a crenellated body. Sized like a capital
+        // (~0.35 * HexSize) so it reads as a structural element distinct
+        // from the round unit discs.
         float r = HexSize * 0.32f;
-        // Base rectangle with three crenellations on top.
         float halfW = r;
         float top = -r;
         float bot = r * 0.85f;
@@ -647,32 +693,25 @@ public partial class HexMapView : Node2D, IHexMapView
 
         var verts = new[]
         {
-            // bottom-left corner
             new Vector2(-halfW, bot),
             new Vector2(-halfW, top + merlonH),
-            // left merlon
             new Vector2(-halfW, top),
             new Vector2(-halfW + merlonW, top),
             new Vector2(-halfW + merlonW, top + merlonH),
-            // middle gap
             new Vector2(-merlonW * 0.5f, top + merlonH),
-            // center merlon
             new Vector2(-merlonW * 0.5f, top),
             new Vector2(merlonW * 0.5f, top),
             new Vector2(merlonW * 0.5f, top + merlonH),
-            // right gap
             new Vector2(halfW - merlonW, top + merlonH),
-            // right merlon
             new Vector2(halfW - merlonW, top),
             new Vector2(halfW, top),
             new Vector2(halfW, top + merlonH),
-            // bottom-right corner
             new Vector2(halfW, bot),
         };
 
         var body = new Polygon2D
         {
-            Color = new Color(0.72f, 0.72f, 0.76f, 1f),
+            Color = fillColor,
             Polygon = verts,
         };
 
@@ -683,7 +722,7 @@ public partial class HexMapView : Node2D, IHexMapView
         {
             Points = outlinePoints,
             Width = 2f,
-            DefaultColor = new Color(0f, 0f, 0f, 1f),
+            DefaultColor = outlineColor,
         };
         body.AddChild(outline);
 

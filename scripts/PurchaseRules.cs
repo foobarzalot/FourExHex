@@ -13,14 +13,6 @@ public static class PurchaseRules
     public const int BaronCost = 40;
     public const int TowerCost = 15;
 
-    /// <summary>
-    /// Minimum hex distance between two towers in the same territory.
-    /// 3 means a gap of two empty (or non-tower) tiles must lie
-    /// between any two friendly towers. Prevents the AI (and humans)
-    /// from clustering towers redundantly on the same border.
-    /// </summary>
-    public const int MinTowerSpacing = 3;
-
     /// <summary>Gold cost to directly buy a unit of the given level.</summary>
     public static int CostFor(UnitLevel level) => level switch
     {
@@ -64,24 +56,15 @@ public static class PurchaseRules
 
     /// <summary>
     /// True iff a tower can be placed on <paramref name="tile"/>:
-    /// the tile must be empty, in <paramref name="territory"/>, AND
-    /// at least <see cref="MinTowerSpacing"/> hex distance from
-    /// every existing tower in the same territory. The spacing rule
-    /// prevents redundant towers covering the same border tiles.
+    /// the tile must be empty and inside <paramref name="territory"/>.
+    /// The AI imposes an additional spacing rule of its own (see
+    /// <c>AiCommon.MinTowerSpacing</c>) to avoid redundant clustering;
+    /// human players are not bound by it.
     /// </summary>
     public static bool IsValidTowerLocation(HexTile tile, Territory territory, HexGrid grid)
     {
         if (tile.Occupant != null) return false;
-        if (!territory.Coords.Contains(tile.Coord)) return false;
-
-        foreach (HexCoord coord in territory.Coords)
-        {
-            if (coord.Equals(tile.Coord)) continue;
-            HexTile? other = grid.Get(coord);
-            if (other?.Occupant is not Tower) continue;
-            if (HexCoord.Distance(tile.Coord, coord) < MinTowerSpacing) return false;
-        }
-        return true;
+        return territory.Coords.Contains(tile.Coord);
     }
 
     public static void BuyPeasant(HexTile tile, Territory territory, Treasury treasury)

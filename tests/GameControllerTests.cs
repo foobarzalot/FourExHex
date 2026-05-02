@@ -464,6 +464,76 @@ public class GameControllerTests
     }
 
     [Fact]
+    public void BuildTower_EnteringMode_ShowsValidTowerTargets()
+    {
+        // Red territory is (0,1) capital + (1,1). Pressing Build Tower
+        // with enough gold should publish (1,1) as a valid tower-target
+        // preview — (0,1) is occupied by the capital so it's not legal.
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 20);
+
+        g.Hud.ClickBuildTower();
+
+        Assert.Equal(new[] { HexCoord.FromOffset(1, 1) }, g.Map.LastTowerTargets);
+    }
+
+    [Fact]
+    public void BuildTower_AfterPlace_RefreshesTowerTargets()
+    {
+        // 35g lets Red build a tower at (1,1) and stay in BuildingTower
+        // mode, but with (0,1) being the capital and (1,1) now a tower
+        // there are no legal placements left — the preview should clear
+        // so the player isn't staring at stale highlights.
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 35);
+
+        g.Hud.ClickBuildTower();
+        g.Map.SimulateClick(g.Tile(1, 1));
+
+        Assert.Empty(g.Map.LastTowerTargets);
+    }
+
+    [Fact]
+    public void BuildTower_ThenBuyPeasant_ClearsTowerTargets()
+    {
+        // Switching from BuildingTower mode into a buy mode must wipe
+        // the tower-target preview — otherwise the player picks a unit
+        // and still sees green tower icons floating around.
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 25); // 15 tower + 10 peasant
+
+        g.Hud.ClickBuildTower();
+        Assert.NotEmpty(g.Map.LastTowerTargets); // sanity
+
+        g.Hud.ClickBuyPeasant();
+
+        Assert.Empty(g.Map.LastTowerTargets);
+    }
+
+    [Fact]
+    public void BuildTower_OnInvalidTarget_ClearsTowerTargets()
+    {
+        // Clicking somewhere that isn't a legal tower target cancels
+        // BuildingTower mode (existing behavior) AND clears the preview.
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 20);
+
+        g.Hud.ClickBuildTower();
+        Assert.NotEmpty(g.Map.LastTowerTargets); // sanity: targets were shown
+        g.Map.SimulateClick(g.Tile(0, 1));       // capital — invalid
+
+        Assert.Empty(g.Map.LastTowerTargets);
+    }
+
+    [Fact]
     public void BuildTower_StaysInBuildingMode_IfStillAffordable()
     {
         var g = new TestGame();
