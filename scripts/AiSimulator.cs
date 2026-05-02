@@ -47,7 +47,8 @@ public static class AiSimulator
             territories,
             original.Players,
             original.Turns,
-            newTreasury);
+            newTreasury,
+            original.WaterCoords);
     }
 
     /// <summary>

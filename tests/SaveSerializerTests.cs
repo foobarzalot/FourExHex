@@ -58,6 +58,33 @@ public class SaveSerializerTests
     }
 
     [Fact]
+    public void Serialize_RoundTripsWaterCoords()
+    {
+        var red = new Player("Red", new Color("e53935"), AiKind.Human);
+        var blue = new Player("Blue", new Color("1e88e5"), AiKind.Heuristic);
+        var players = new List<Player> { red, blue };
+        HexGrid grid = TestHelpers.BuildRectGrid(2, 2, red.Color);
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var water = new HashSet<HexCoord>
+        {
+            HexCoord.FromOffset(5, 5),
+            HexCoord.FromOffset(7, 8),
+            HexCoord.FromOffset(0, 9),
+        };
+        var state = new GameState(
+            grid, territories, players, new TurnState(players), new Treasury(), water);
+
+        string json = SaveSerializer.Serialize(state, 42, players, "w", 100);
+        LoadedSave loaded = SaveSerializer.Deserialize(json);
+
+        Assert.Equal(water.Count, loaded.State.WaterCoords.Count);
+        foreach (HexCoord c in water)
+        {
+            Assert.Contains(c, loaded.State.WaterCoords);
+        }
+    }
+
+    [Fact]
     public void Serialize_ThenDeserialize_PreservesAllGameState()
     {
         (GameState original, IReadOnlyList<Player> originalPlayers) = BuildRichState();

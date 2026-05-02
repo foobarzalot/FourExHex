@@ -53,7 +53,7 @@ public static class SaveSerializer
     /// Bump on any breaking schema change. <see cref="Deserialize"/>
     /// rejects mismatched values rather than attempting migration.
     /// </summary>
-    public const int CurrentFormatVersion = 1;
+    public const int CurrentFormatVersion = 2;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -88,6 +88,7 @@ public static class SaveSerializer
             Tiles = SerializeTiles(state.Grid, indexByColor),
             Territories = SerializeTerritories(state.Territories, indexByColor),
             Gold = SerializeGold(state.Territories, state.Treasury),
+            Water = SerializeWater(state.WaterCoords),
         };
         return JsonSerializer.Serialize(data, JsonOptions);
     }
@@ -131,9 +132,33 @@ public static class SaveSerializer
             treasury.SetGold(new HexCoord(g.Q, g.R), g.Gold);
         }
 
-        var state = new GameState(grid, territories, players, turnState, treasury);
+        IReadOnlySet<HexCoord> waterCoords = DeserializeWater(data.Water);
+        var state = new GameState(grid, territories, players, turnState, treasury, waterCoords);
         return new LoadedSave(
             state, players, data.MasterSeed, data.MaxTurnNumber, data.SlotName);
+    }
+
+    // --- Water -----------------------------------------------------------
+
+    private static List<CoordDto> SerializeWater(IReadOnlySet<HexCoord> water)
+    {
+        var dtos = new List<CoordDto>(water.Count);
+        foreach (HexCoord c in water)
+        {
+            dtos.Add(new CoordDto { Q = c.Q, R = c.R });
+        }
+        return dtos;
+    }
+
+    private static IReadOnlySet<HexCoord> DeserializeWater(List<CoordDto>? dtos)
+    {
+        var set = new HashSet<HexCoord>();
+        if (dtos == null) return set;
+        foreach (CoordDto c in dtos)
+        {
+            set.Add(new HexCoord(c.Q, c.R));
+        }
+        return set;
     }
 
     // --- Players ---------------------------------------------------------
@@ -332,6 +357,7 @@ public sealed class SaveData
     public List<TileDto> Tiles { get; set; } = new();
     public List<TerritoryDto> Territories { get; set; } = new();
     public List<CapitalGoldDto> Gold { get; set; } = new();
+    public List<CoordDto> Water { get; set; } = new();
 }
 
 public sealed class PlayerDto

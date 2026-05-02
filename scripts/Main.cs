@@ -87,11 +87,12 @@ public partial class Main : Node2D
             _players = BuildPlayers();
             var turnState = new TurnState(_players);
             var treasury = new Treasury();
-            HexGrid grid = MapGenerator.BuildInitialGrid(cols, rows, _players, seed);
+            MapGenResult mapGen = MapGenerator.BuildInitialGrid(cols, rows, _players, seed);
+            HexGrid grid = mapGen.Grid;
             IReadOnlyList<Territory> raw = TerritoryFinder.FindAll(grid);
             IReadOnlyList<Territory> territories = CapitalReconciler.Reconcile(
                 raw, new List<Territory>(), grid);
-            _state = new GameState(grid, territories, _players, turnState, treasury);
+            _state = new GameState(grid, territories, _players, turnState, treasury, mapGen.WaterCoords);
             _maxTurnNumber = diagnosticMode ? 500 : int.MaxValue;
         }
         var session = new SessionState();

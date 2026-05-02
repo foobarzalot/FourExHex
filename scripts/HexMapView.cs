@@ -165,6 +165,15 @@ public partial class HexMapView : Node2D, IHexMapView
 
     public override void _Ready()
     {
+        // Water cells render first so they sit behind everything else. They
+        // are off-map for gameplay (not in _state.Grid) — only the renderer
+        // sees them, as static black hexes.
+        foreach (HexCoord waterCoord in _state.WaterCoords)
+        {
+            Vector2 center = FirstHexCenterOffset + waterCoord.ToPixel(HexSize);
+            AddChild(CreateHexVisual(center, Colors.Black));
+        }
+
         // Tiles already exist in _state.Grid (populated by the controller
         // before AddChild). Create one Polygon2D fill per tile and link
         // it back to the tile so future recolors stay in sync via the
