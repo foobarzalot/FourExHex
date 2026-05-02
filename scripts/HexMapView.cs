@@ -136,6 +136,22 @@ public partial class HexMapView : Node2D, IHexMapView
     private Vector2 _dragStartScreen;
     private Vector2 _dragStartMapPosition;
 
+    // Zoom state. _zoom is the active scale multiplier on this Node2D,
+    // continuous in [_zoomMin, 1.0]. Wheel and +/- keys snap through
+    // _zoomLevels (5 discrete stops); trackpad pinch and two-finger
+    // scroll move _zoom continuously and re-sync the level index after.
+    private const int ZoomLevelCount = 5;
+    private float _zoom = 1f;
+    private float _zoomMin = 1f;
+    private float[] _zoomLevels = new[] { 1f, 1f, 1f, 1f, 1f };
+    private int _zoomLevelIndex = ZoomLevelCount - 1;
+
+    // Sensitivity for InputEventPanGesture (two-finger trackpad scroll).
+    // Per-event delta is small and dimensionless (~0.03–1.1 in Godot 4.6
+    // on macOS); exp() of the negated cumulative delta makes a brisk
+    // swipe traverse the full zoom range in roughly one full gesture.
+    private const float TrackpadScrollSensitivity = 0.04f;
+
     /// <summary>Pixel bounding box of the rendered grid, for centering.</summary>
     public Vector2 PixelSize => new Vector2(
         (Cols + 0.5f) * Mathf.Sqrt(3f) * HexSize,
@@ -194,11 +210,17 @@ public partial class HexMapView : Node2D, IHexMapView
         // treasury. We don't draw them here because they'd all be non-CTA
         // by default and the controller would immediately overwrite them.
 
+        // Compute zoom levels for the current viewport before the initial
+        // pan so ClampPan/VisualCenter use the right effective extent. The
+        // resize hook re-runs both whenever the OS window changes size.
+        RecomputeZoomLevels();
+        GetViewport().SizeChanged += OnViewportResized;
+
         // Initial pan: geometric center of the map, clamped to bounds.
         // If the map fits in the viewport, ClampPan locks each axis to
         // its centered value (matches the previous one-shot centering
         // that lived in Main.cs).
-        Position = ClampPan(VisualCenter() - PixelSize * 0.5f);
+        Position = ClampPan(VisualCenter() - PixelSize * 0.5f * _zoom);
     }
 
     /// <summary>
@@ -1028,7 +1050,56 @@ public partial class HexMapView : Node2D, IHexMapView
             return;
         }
 
+        if (@event is InputEventKey key && key.Pressed && !key.Echo)
+        {
+            int keyDelta = key.Keycode switch
+            {
+                Key.Equal or Key.KpAdd => +1,
+                Key.Minus or Key.KpSubtract => -1,
+                _ => 0,
+            };
+            if (keyDelta != 0)
+            {
+                StepZoom(keyDelta, VisualCenter());
+                GetViewport().SetInputAsHandled();
+                return;
+            }
+        }
+
+        // macOS trackpad two-finger scroll: smooth continuous zoom.
+        // Negative delta.Y (swipe up) zooms in. exp() gives an
+        // equal-feeling multiplicative change at any zoom level;
+        // anchoring on the gesture position keeps the hex under the
+        // cursor put.
+        if (@event is InputEventPanGesture pan)
+        {
+            ApplyZoom(_zoom * Mathf.Exp(-pan.Delta.Y * TrackpadScrollSensitivity), pan.Position);
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+
+        // macOS trackpad pinch: scale _zoom by the gesture's per-event
+        // factor directly so the on-screen size tracks the fingers 1:1.
+        if (@event is InputEventMagnifyGesture magnify)
+        {
+            ApplyZoom(_zoom * magnify.Factor, magnify.Position);
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+
         if (@event is not InputEventMouseButton mouse) return;
+
+        // Wheel zoom must be checked before the Left-button filter below
+        // or wheel events would be silently dropped. Anchor on the cursor
+        // so the hex under the pointer stays under the pointer.
+        if (mouse.Pressed && (mouse.ButtonIndex == MouseButton.WheelUp || mouse.ButtonIndex == MouseButton.WheelDown))
+        {
+            int wheelDelta = mouse.ButtonIndex == MouseButton.WheelUp ? +1 : -1;
+            StepZoom(wheelDelta, mouse.Position);
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+
         if (mouse.ButtonIndex != MouseButton.Left) return;
 
         if (mouse.Pressed)
@@ -1070,25 +1141,98 @@ public partial class HexMapView : Node2D, IHexMapView
 
     /// <summary>Clamp the proposed Position so the map can't be dragged off-
     /// screen. If the map is smaller than the available area on an axis,
-    /// that axis is locked to its centered value.</summary>
+    /// that axis is locked to its centered value. The grid's effective
+    /// pixel extent is PixelSize × _zoom because we apply zoom via
+    /// Node2D.Scale.</summary>
     private Vector2 ClampPan(Vector2 desired)
     {
         Vector2 vp = GetViewportRect().Size;
         float availY = vp.Y - HudView.HudHeight;
-        float x = PixelSize.X <= vp.X
-            ? (vp.X - PixelSize.X) * 0.5f
-            : Mathf.Clamp(desired.X, vp.X - PixelSize.X, 0f);
-        float y = PixelSize.Y <= availY
-            ? HudView.HudHeight + (availY - PixelSize.Y) * 0.5f
-            : Mathf.Clamp(desired.Y, HudView.HudHeight + availY - PixelSize.Y, HudView.HudHeight);
+        float w = PixelSize.X * _zoom;
+        float h = PixelSize.Y * _zoom;
+        float x = w <= vp.X
+            ? (vp.X - w) * 0.5f
+            : Mathf.Clamp(desired.X, vp.X - w, 0f);
+        float y = h <= availY
+            ? HudView.HudHeight + (availY - h) * 0.5f
+            : Mathf.Clamp(desired.Y, HudView.HudHeight + availY - h, HudView.HudHeight);
         return new Vector2(x, y);
     }
 
     public void CenterOnTerritory(Territory territory)
     {
         if (!territory.HasCapital) return;
-        Vector2 worldCenter = FirstHexCenterOffset + territory.Capital!.Value.ToPixel(HexSize);
-        Position = ClampPan(VisualCenter() - worldCenter);
+        // The capital's pixel position is in unscaled local space; scale
+        // it to world space before subtracting from VisualCenter.
+        Vector2 localCenter = FirstHexCenterOffset + territory.Capital!.Value.ToPixel(HexSize);
+        Position = ClampPan(VisualCenter() - localCenter * _zoom);
+    }
+
+    /// <summary>Recompute zoom range and discrete levels for the current
+    /// viewport size and snap _zoom into range. Called on _Ready and
+    /// whenever the OS window resizes.</summary>
+    private void RecomputeZoomLevels()
+    {
+        _zoomMin = ZoomMath.ComputeZoomMin(GetViewportRect().Size, HudView.HudHeight, PixelSize);
+        _zoomLevels = ZoomMath.BuildLevels(_zoomMin, ZoomLevelCount);
+
+        _zoom = Mathf.Clamp(_zoom, _zoomMin, 1f);
+        _zoomLevelIndex = ClosestLevelIndex(_zoom);
+        Scale = new Vector2(_zoom, _zoom);
+    }
+
+    private int ClosestLevelIndex(float zoom)
+    {
+        int best = 0;
+        float bestDelta = Mathf.Abs(_zoomLevels[0] - zoom);
+        for (int i = 1; i < _zoomLevels.Length; i++)
+        {
+            float d = Mathf.Abs(_zoomLevels[i] - zoom);
+            if (d < bestDelta)
+            {
+                bestDelta = d;
+                best = i;
+            }
+        }
+        return best;
+    }
+
+    private void OnViewportResized()
+    {
+        RecomputeZoomLevels();
+        Position = ClampPan(Position);
+    }
+
+    /// <summary>Apply a new zoom factor while keeping the map point
+    /// currently under <paramref name="anchorVp"/> (in viewport space)
+    /// fixed under that same screen position. Clamps to the allowed
+    /// range and re-syncs the discrete level index so subsequent
+    /// wheel/key steps pick up from the right place.</summary>
+    private void ApplyZoom(float newZoom, Vector2 anchorVp)
+    {
+        newZoom = Mathf.Clamp(newZoom, _zoomMin, 1f);
+        if (Mathf.IsEqualApprox(newZoom, _zoom)) return;
+
+        // ToLocal uses the current Position+Scale, so localUnderAnchor is
+        // in the unscaled local frame. After we change Scale, we want
+        // anchorVp == Position + localUnderAnchor * newZoom.
+        Vector2 localUnderAnchor = ToLocal(anchorVp);
+        Scale = new Vector2(newZoom, newZoom);
+        _zoom = newZoom;
+        Position = ClampPan(anchorVp - localUnderAnchor * newZoom);
+        _zoomLevelIndex = ClosestLevelIndex(_zoom);
+    }
+
+    /// <summary>Discrete zoom step from wheel ticks or +/- keys. After a
+    /// continuous gesture (pinch / two-finger scroll) the current _zoom
+    /// may sit between levels; we step from the nearest level so a
+    /// keypress always moves a visible step.</summary>
+    private void StepZoom(int delta, Vector2 anchorVp)
+    {
+        int from = ClosestLevelIndex(_zoom);
+        int next = Mathf.Clamp(from + delta, 0, _zoomLevels.Length - 1);
+        if (next == from && Mathf.IsEqualApprox(_zoom, _zoomLevels[from])) return;
+        ApplyZoom(_zoomLevels[next], anchorVp);
     }
 
     private Vector2[] HexVertices()

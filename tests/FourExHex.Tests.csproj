@@ -26,6 +26,7 @@
   -->
   <ItemGroup>
     <Compile Include="..\scripts\HexCoord.cs" Link="scripts\HexCoord.cs" />
+    <Compile Include="..\scripts\ZoomMath.cs" Link="scripts\ZoomMath.cs" />
     <Compile Include="..\scripts\HexGrid.cs" Link="scripts\HexGrid.cs" />
     <Compile Include="..\scripts\HexTile.cs" Link="scripts\HexTile.cs" />
     <Compile Include="..\scripts\Territory.cs" Link="scripts\Territory.cs" />
