@@ -664,26 +664,38 @@ public partial class HexMapView : Node2D, IHexMapView
             .SetEase(Tween.EaseType.Out);
     }
 
-    private Node2D CreateTowerVisual() =>
-        CreateTowerShape(
-            fillColor: new Color(0.72f, 0.72f, 0.76f, 1f),
-            outlineColor: new Color(0f, 0f, 0f, 1f));
+    private Node2D CreateTowerVisual()
+    {
+        Vector2[] verts = TowerShapeVertices();
+        var body = new Polygon2D
+        {
+            Color = new Color(0.72f, 0.72f, 0.76f, 1f),
+            Polygon = verts,
+        };
+        body.AddChild(BuildClosedOutline(verts, 2f, new Color(0f, 0f, 0f, 1f)));
+        return body;
+    }
 
     /// <summary>
-    /// Tower preview rendered in the same green as the move-target rings
-    /// (slightly translucent), used to show the player which tiles are
-    /// legal tower placements while in BuildingTower mode.
+    /// Tower preview drawn as just the outline (no fill) in the
+    /// move-target green. Marks which tiles are legal tower placements
+    /// while in BuildingTower mode.
     /// </summary>
-    private Node2D CreateTowerPreviewVisual() =>
-        CreateTowerShape(
-            fillColor: new Color(0.2f, 1f, 0.3f, 0.55f),
-            outlineColor: new Color(0.05f, 0.4f, 0.1f, 0.85f));
-
-    private Node2D CreateTowerShape(Color fillColor, Color outlineColor)
+    private Node2D CreateTowerPreviewVisual()
     {
-        // Stylized stone rook: a crenellated body. Sized like a capital
-        // (~0.35 * HexSize) so it reads as a structural element distinct
-        // from the round unit discs.
+        var node = new Node2D();
+        Vector2[] verts = TowerShapeVertices();
+        node.AddChild(BuildClosedOutline(verts, 3f, new Color(0.2f, 1f, 0.3f, 0.9f)));
+        return node;
+    }
+
+    /// <summary>
+    /// Vertices of the stylized stone-rook tower silhouette: a
+    /// crenellated body sized ~0.32 * HexSize so it reads as a
+    /// structural element distinct from the round unit discs.
+    /// </summary>
+    private Vector2[] TowerShapeVertices()
+    {
         float r = HexSize * 0.32f;
         float halfW = r;
         float top = -r;
@@ -691,7 +703,7 @@ public partial class HexMapView : Node2D, IHexMapView
         float merlonH = r * 0.35f;
         float merlonW = halfW * 0.4f;
 
-        var verts = new[]
+        return new[]
         {
             new Vector2(-halfW, bot),
             new Vector2(-halfW, top + merlonH),
@@ -708,25 +720,19 @@ public partial class HexMapView : Node2D, IHexMapView
             new Vector2(halfW, top + merlonH),
             new Vector2(halfW, bot),
         };
+    }
 
-        var body = new Polygon2D
+    private static Line2D BuildClosedOutline(Vector2[] verts, float width, Color color)
+    {
+        var points = new Vector2[verts.Length + 1];
+        for (int i = 0; i < verts.Length; i++) points[i] = verts[i];
+        points[verts.Length] = verts[0];
+        return new Line2D
         {
-            Color = fillColor,
-            Polygon = verts,
+            Points = points,
+            Width = width,
+            DefaultColor = color,
         };
-
-        var outlinePoints = new Vector2[verts.Length + 1];
-        for (int i = 0; i < verts.Length; i++) outlinePoints[i] = verts[i];
-        outlinePoints[verts.Length] = verts[0];
-        var outline = new Line2D
-        {
-            Points = outlinePoints,
-            Width = 2f,
-            DefaultColor = outlineColor,
-        };
-        body.AddChild(outline);
-
-        return body;
     }
 
     private Node2D CreateTreeVisual()
