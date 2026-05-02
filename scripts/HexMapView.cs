@@ -20,8 +20,8 @@ public partial class HexMapView : Node2D, IHexMapView
     /// </summary>
     public event Action<HexTile?>? TileClicked;
 
-    [Export] public int Cols { get; set; } = 18;
-    [Export] public int Rows { get; set; } = 13;
+    [Export] public int Cols { get; set; } = 30;
+    [Export] public int Rows { get; set; } = 20;
     [Export] public float HexSize { get; set; } = 48f;
 
     // Unit + capital fill/stroke colors. White = "selected by the
@@ -126,6 +126,16 @@ public partial class HexMapView : Node2D, IHexMapView
     private const float PulseAmplitude = 0.18f;
     private const float PulseRate = 8.0f; // rad/sec; ~1.3 Hz
 
+    // Pan/drag state. The map renders in this Node2D's local space, so
+    // panning is just translating Position. ToLocal() in mouse-to-hex
+    // already accounts for this transform — no other math changes.
+    private const float KeyboardPanPxPerSec = 600f;
+    private const float DragThresholdPx = 5f;
+    private bool _dragCandidate;
+    private bool _isDragging;
+    private Vector2 _dragStartScreen;
+    private Vector2 _dragStartMapPosition;
+
     /// <summary>Pixel bounding box of the rendered grid, for centering.</summary>
     public Vector2 PixelSize => new Vector2(
         (Cols + 0.5f) * Mathf.Sqrt(3f) * HexSize,
@@ -183,6 +193,12 @@ public partial class HexMapView : Node2D, IHexMapView
         // RefreshOccupantVisuals once it knows the current player and
         // treasury. We don't draw them here because they'd all be non-CTA
         // by default and the controller would immediately overwrite them.
+
+        // Initial pan: geometric center of the map, clamped to bounds.
+        // If the map fits in the viewport, ClampPan locks each axis to
+        // its centered value (matches the previous one-shot centering
+        // that lived in Main.cs).
+        Position = ClampPan(VisualCenter() - PixelSize * 0.5f);
     }
 
     /// <summary>
@@ -333,6 +349,20 @@ public partial class HexMapView : Node2D, IHexMapView
 
     public override void _Process(double delta)
     {
+        // Keyboard pan runs every frame regardless of pulse state — held
+        // arrow / WASD keys must produce smooth motion.
+        Vector2 dir = Vector2.Zero;
+        if (Input.IsPhysicalKeyPressed(Key.W) || Input.IsPhysicalKeyPressed(Key.Up))    dir.Y -= 1f;
+        if (Input.IsPhysicalKeyPressed(Key.S) || Input.IsPhysicalKeyPressed(Key.Down))  dir.Y += 1f;
+        if (Input.IsPhysicalKeyPressed(Key.A) || Input.IsPhysicalKeyPressed(Key.Left))  dir.X -= 1f;
+        if (Input.IsPhysicalKeyPressed(Key.D) || Input.IsPhysicalKeyPressed(Key.Right)) dir.X += 1f;
+        if (dir != Vector2.Zero)
+        {
+            // Right/Down keys move the world view in that direction, which
+            // means translating the map node in the OPPOSITE direction.
+            Position = ClampPan(Position - dir.Normalized() * KeyboardPanPxPerSec * (float)delta);
+        }
+
         int targetCount = _targetsLayer?.GetChildCount() ?? 0;
         int towerTargetCount = _towerTargetsLayer?.GetChildCount() ?? 0;
         if (_pulsingUnits.Count == 0
@@ -985,8 +1015,36 @@ public partial class HexMapView : Node2D, IHexMapView
 
     public override void _UnhandledInput(InputEvent @event)
     {
+        if (@event is InputEventMouseMotion motion)
+        {
+            if (!_dragCandidate) return;
+            Vector2 delta = motion.Position - _dragStartScreen;
+            if (!_isDragging && delta.Length() > DragThresholdPx) _isDragging = true;
+            if (_isDragging)
+            {
+                Position = ClampPan(_dragStartMapPosition + delta);
+                GetViewport().SetInputAsHandled();
+            }
+            return;
+        }
+
         if (@event is not InputEventMouseButton mouse) return;
-        if (!mouse.Pressed || mouse.ButtonIndex != MouseButton.Left) return;
+        if (mouse.ButtonIndex != MouseButton.Left) return;
+
+        if (mouse.Pressed)
+        {
+            _dragCandidate = true;
+            _isDragging = false;
+            _dragStartScreen = mouse.Position;
+            _dragStartMapPosition = Position;
+            return;
+        }
+
+        // Button released. If a drag actually happened, swallow the click.
+        bool wasDragging = _isDragging;
+        _dragCandidate = false;
+        _isDragging = false;
+        if (wasDragging) return;
 
         // Convert viewport position into our local space, then remove the
         // centering offset so the result is in axial-origin coordinates.
@@ -1000,6 +1058,37 @@ public partial class HexMapView : Node2D, IHexMapView
         }
 
         TileClicked?.Invoke(Grid.Get(coord));
+    }
+
+    /// <summary>Visible center of the play area in viewport space — accounts
+    /// for the HUD's reserved strip at the top.</summary>
+    private Vector2 VisualCenter()
+    {
+        Vector2 vp = GetViewportRect().Size;
+        return new Vector2(vp.X * 0.5f, HudView.HudHeight + (vp.Y - HudView.HudHeight) * 0.5f);
+    }
+
+    /// <summary>Clamp the proposed Position so the map can't be dragged off-
+    /// screen. If the map is smaller than the available area on an axis,
+    /// that axis is locked to its centered value.</summary>
+    private Vector2 ClampPan(Vector2 desired)
+    {
+        Vector2 vp = GetViewportRect().Size;
+        float availY = vp.Y - HudView.HudHeight;
+        float x = PixelSize.X <= vp.X
+            ? (vp.X - PixelSize.X) * 0.5f
+            : Mathf.Clamp(desired.X, vp.X - PixelSize.X, 0f);
+        float y = PixelSize.Y <= availY
+            ? HudView.HudHeight + (availY - PixelSize.Y) * 0.5f
+            : Mathf.Clamp(desired.Y, HudView.HudHeight + availY - PixelSize.Y, HudView.HudHeight);
+        return new Vector2(x, y);
+    }
+
+    public void CenterOnTerritory(Territory territory)
+    {
+        if (!territory.HasCapital) return;
+        Vector2 worldCenter = FirstHexCenterOffset + territory.Capital!.Value.ToPixel(HexSize);
+        Position = ClampPan(VisualCenter() - worldCenter);
     }
 
     private Vector2[] HexVertices()

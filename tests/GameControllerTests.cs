@@ -1857,6 +1857,115 @@ public class GameControllerTests
         Assert.Same(first, session.SelectedTerritory);
     }
 
+    [Fact]
+    public void NextTerritory_CentersViewOnNewSelection()
+    {
+        // Pan position is view-state, not snapshotted, but the controller
+        // is responsible for telling the view to recenter when the player
+        // cycles selection — otherwise Tab on a large map sends focus to
+        // a territory that may be off-screen.
+        var g = new TwoRedTerritoriesGame();
+
+        g.Hud.PressNextTerritory();
+
+        Assert.Equal(1, g.Map.CenterCount);
+        Assert.Same(g.Session.SelectedTerritory, g.Map.LastCenteredTerritory);
+    }
+
+    [Fact]
+    public void PreviousTerritory_CentersViewOnNewSelection()
+    {
+        var g = new TwoRedTerritoriesGame();
+
+        g.Hud.PressPreviousTerritory();
+
+        Assert.Equal(1, g.Map.CenterCount);
+        Assert.Same(g.Session.SelectedTerritory, g.Map.LastCenteredTerritory);
+    }
+
+    [Fact]
+    public void UndoLast_RestoresDifferentSelection_CentersView()
+    {
+        // Tab twice (center 1 + 2), then undo-last reverts selection from
+        // second→first. The view must follow the selection so the player
+        // sees what they just rolled back to.
+        var g = new TwoRedTerritoriesGame();
+        g.Hud.PressNextTerritory(); // → first
+        g.Hud.PressNextTerritory(); // → second
+        Assert.Equal(2, g.Map.CenterCount);
+
+        g.Hud.ClickUndoLast();
+
+        Assert.Equal(3, g.Map.CenterCount);
+        Assert.Same(g.Session.SelectedTerritory, g.Map.LastCenteredTerritory);
+    }
+
+    [Fact]
+    public void RedoLast_RestoresDifferentSelection_CentersView()
+    {
+        var g = new TwoRedTerritoriesGame();
+        g.Hud.PressNextTerritory(); // → first
+        g.Hud.PressNextTerritory(); // → second
+        g.Hud.ClickUndoLast();      // → first  (CenterCount=3)
+        Assert.Equal(3, g.Map.CenterCount);
+
+        g.Hud.ClickRedoLast();      // → second
+
+        Assert.Equal(4, g.Map.CenterCount);
+        Assert.Same(g.Session.SelectedTerritory, g.Map.LastCenteredTerritory);
+    }
+
+    [Fact]
+    public void UndoLast_NoSelectionChange_DoesNotCenter()
+    {
+        // Undoing a non-selection change (e.g. exiting BuyingPeasant mode)
+        // must not pan the view — pan is reserved for selection moves.
+        var g = new TwoRedTerritoriesGame();
+        g.Hud.PressNextTerritory();                                  // → first; center=1
+        HexCoord cap = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(cap, 20);
+        g.Hud.ClickBuyPeasant();                                     // mode=BuyingPeasant
+        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+        int before = g.Map.CenterCount;
+
+        g.Hud.ClickUndoLast();                                       // mode→None; selection unchanged
+
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+        Assert.Equal(before, g.Map.CenterCount);
+    }
+
+    [Fact]
+    public void UndoTurn_DoesNotCenter()
+    {
+        // Undo-all (whole-turn rewind) is explicitly excluded from the
+        // recenter rule — the player asked for a global rewind, not a
+        // guided tour of the selection chain.
+        var g = new TwoRedTerritoriesGame();
+        g.Hud.PressNextTerritory();
+        g.Hud.PressNextTerritory();
+        int before = g.Map.CenterCount;
+
+        g.Hud.ClickUndoTurn();
+
+        Assert.Equal(before, g.Map.CenterCount);
+    }
+
+    [Fact]
+    public void RedoAll_DoesNotCenter()
+    {
+        // Mirror exception for redo-all: even though selection changes
+        // from null to second, the view must not auto-pan.
+        var g = new TwoRedTerritoriesGame();
+        g.Hud.PressNextTerritory();
+        g.Hud.PressNextTerritory();
+        g.Hud.ClickUndoTurn();      // selection=null
+        int before = g.Map.CenterCount;
+
+        g.Hud.ClickRedoAll();       // selection=second again
+
+        Assert.Equal(before, g.Map.CenterCount);
+    }
+
     // --- Build tower ------------------------------------------------------
 
     [Fact]

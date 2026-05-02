@@ -55,6 +55,14 @@ public class MockHexMapView : IHexMapView
         HighlightWasCleared = selected == null;
     }
 
+    public Territory? LastCenteredTerritory { get; private set; }
+    public int CenterCount { get; private set; }
+    public void CenterOnTerritory(Territory territory)
+    {
+        LastCenteredTerritory = territory;
+        CenterCount++;
+    }
+
     public int RebuildCount { get; private set; }
     public void RebuildAfterTerritoryChange() => RebuildCount++;
 

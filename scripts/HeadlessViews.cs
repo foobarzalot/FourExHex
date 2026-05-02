@@ -44,6 +44,7 @@ public sealed class HeadlessHexMapView : IHexMapView
     public void ShowTowerCoverage(IEnumerable<HexCoord> coords) { }
     public void ShowMoveSource(HexCoord? coord) { }
     public void ShowHighlight(Territory? selected) { }
+    public void CenterOnTerritory(Territory territory) { }
     public void RebuildAfterTerritoryChange() { }
     public void RefreshOccupantVisuals(Color? currentPlayerColor, Treasury treasury) { }
 }

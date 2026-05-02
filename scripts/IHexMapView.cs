@@ -57,6 +57,13 @@ public interface IHexMapView
     void ShowHighlight(Territory? selected);
 
     /// <summary>
+    /// Pan the map view so the territory's capital is centered in the
+    /// visible area (clamped to map bounds). Driven by the controller
+    /// when the player cycles selection via Tab / Shift+Tab.
+    /// </summary>
+    void CenterOnTerritory(Territory territory);
+
+    /// <summary>
     /// Rebuild derived view state after a territory-list change
     /// (capture, undo, redo).
     /// </summary>

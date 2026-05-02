@@ -707,7 +707,9 @@ public class GameController
     {
         if (_session.IsGameOver) return;
         if (!_session.Undo.CanUndo) return;
+        HexCoord? before = _session.SelectedTerritory?.Capital;
         ApplySnapshot(_session.Undo.UndoLast(CaptureCurrentSnapshot()));
+        CenterIfSelectionChanged(before);
     }
 
     private void OnUndoTurnPressed()
@@ -721,7 +723,9 @@ public class GameController
     {
         if (_session.IsGameOver) return;
         if (!_session.Undo.CanRedo) return;
+        HexCoord? before = _session.SelectedTerritory?.Capital;
         ApplySnapshot(_session.Undo.RedoLast(CaptureCurrentSnapshot()));
+        CenterIfSelectionChanged(before);
     }
 
     private void OnRedoAllPressed()
@@ -729,6 +733,23 @@ public class GameController
         if (_session.IsGameOver) return;
         if (!_session.Undo.CanRedo) return;
         ApplySnapshot(_session.Undo.RedoAll(CaptureCurrentSnapshot()));
+    }
+
+    /// <summary>
+    /// Single-step undo / redo centers the view on the new selection when
+    /// it differs from the pre-step selection — so the player follows the
+    /// territory they're rolling back to. Compared by capital coord, not
+    /// reference, because <see cref="SessionStateSnapshot.ApplyTo"/>
+    /// resolves the territory anew from the restored list.
+    /// Undo-all and redo-all deliberately skip this — those are global
+    /// rewinds, not selection navigation.
+    /// </summary>
+    private void CenterIfSelectionChanged(HexCoord? beforeCapital)
+    {
+        Territory? after = _session.SelectedTerritory;
+        if (after == null || !after.HasCapital) return;
+        if (after.Capital == beforeCapital) return;
+        _map.CenterOnTerritory(after);
     }
 
     /// <summary>
@@ -952,6 +973,7 @@ public class GameController
 
         CancelPendingAction();
         SetSelection(owned[nextIndex]);
+        _map.CenterOnTerritory(owned[nextIndex]);
     }
 
     private void OnEndTurnPressed()

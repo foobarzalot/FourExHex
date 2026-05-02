@@ -100,11 +100,8 @@ public partial class Main : Node2D
         {
             visibleMap!.Init(_state);
             AddChild(visibleMap);
-
-            Vector2 viewport = GetViewportRect().Size;
-            float x = (viewport.X - visibleMap.PixelSize.X) * 0.5f;
-            float y = HudView.HudHeight + (viewport.Y - HudView.HudHeight - visibleMap.PixelSize.Y) * 0.5f;
-            visibleMap.Position = new Vector2(x, y);
+            // HexMapView._Ready owns its initial Position now (clamped
+            // pan, supports maps larger than the viewport).
 
             visibleHud = new HudView();
             AddChild(visibleHud);
