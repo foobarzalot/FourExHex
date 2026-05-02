@@ -126,6 +126,16 @@ public partial class HexMapView : Node2D, IHexMapView
     private const float PulseAmplitude = 0.18f;
     private const float PulseRate = 8.0f; // rad/sec; ~1.3 Hz
 
+    // Shared by every water polygon. The shader uses a u_time uniform for
+    // animation (zoom-independent rate, driven from _Process) and the
+    // polygon's per-vertex UV array (set to map-local coords in
+    // CreateWaterHexVisual) for spatial continuity across hex seams. The
+    // 1×1 white texture is required for Polygon2D to forward its UV
+    // array to the shader at all — without it, UV arrives constant.
+    private ShaderMaterial? _waterMaterial;
+    private ImageTexture? _waterTexture;
+    private double _waterTime;
+
     // Pan/drag state. The map renders in this Node2D's local space, so
     // panning is just translating Position. ToLocal() in mouse-to-hex
     // already accounts for this transform — no other math changes.
@@ -167,11 +177,72 @@ public partial class HexMapView : Node2D, IHexMapView
     {
         // Water cells render first so they sit behind everything else. They
         // are off-map for gameplay (not in _state.Grid) — only the renderer
-        // sees them, as static black hexes.
+        // sees them, animated via a shared canvas_item shader.
+        var waterShader = GD.Load<Shader>("res://shaders/water.gdshader");
+        _waterMaterial = new ShaderMaterial { Shader = waterShader };
+        var whiteImage = Image.CreateEmpty(1, 1, false, Image.Format.Rgba8);
+        whiteImage.Fill(Colors.White);
+        _waterTexture = ImageTexture.CreateFromImage(whiteImage);
+
         foreach (HexCoord waterCoord in _state.WaterCoords)
         {
             Vector2 center = FirstHexCenterOffset + waterCoord.ToPixel(HexSize);
-            AddChild(CreateHexVisual(center, Colors.Black));
+            AddChild(CreateWaterHexVisual(center));
+        }
+
+        // Render-only extension: a ring of extra water hexes surrounding
+        // the playable rectangle. Hides the half-hex rim at default zoom
+        // and pushes the visible map edge further off-screen when zoomed.
+        // These are not in _state.WaterCoords — they're presentation-only
+        // and never reach gameplay rules or save state.
+        const int WaterRimMargin = 4;
+        for (int row = -WaterRimMargin; row < Rows + WaterRimMargin; row++)
+        {
+            for (int col = -WaterRimMargin; col < Cols + WaterRimMargin; col++)
+            {
+                if (row >= 0 && row < Rows && col >= 0 && col < Cols) continue;
+                HexCoord coord = HexCoord.FromOffset(col, row);
+                Vector2 center = FirstHexCenterOffset + coord.ToPixel(HexSize);
+                AddChild(CreateWaterHexVisual(center));
+            }
+        }
+
+        // Per-edge shoreline foam, drawn after all water polygons so it
+        // composites on top of the water shader. Each shore edge gets one
+        // independent quad — concave shorelines render cleanly because no
+        // interpolation crosses between edges.
+        var shoreLayer = new Node2D { Name = "ShoreFoamLayer" };
+        AddChild(shoreLayer);
+        foreach (HexCoord waterCoord in _state.WaterCoords)
+        {
+            Vector2 center = FirstHexCenterOffset + waterCoord.ToPixel(HexSize);
+            AddShoreFoamStrips(shoreLayer, center, waterCoord);
+        }
+        for (int row = -WaterRimMargin; row < Rows + WaterRimMargin; row++)
+        {
+            for (int col = -WaterRimMargin; col < Cols + WaterRimMargin; col++)
+            {
+                if (row >= 0 && row < Rows && col >= 0 && col < Cols) continue;
+                HexCoord coord = HexCoord.FromOffset(col, row);
+                Vector2 center = FirstHexCenterOffset + coord.ToPixel(HexSize);
+                AddShoreFoamStrips(shoreLayer, center, coord);
+            }
+        }
+        // Bridge the gap between strips on adjacent water hexes around a
+        // protruding land corner. At each land vertex shared with two
+        // non-land hexes, place a small foam disk centered on the vertex.
+        Vector2[] hexVerts = HexVertices();
+        foreach (HexTile tile in _state.Grid.Tiles)
+        {
+            Vector2 landCenter = FirstHexCenterOffset + tile.Coord.ToPixel(HexSize);
+            for (int i = 0; i < 6; i++)
+            {
+                int dirA = EdgeToDirection[(i + 5) % 6];
+                int dirB = EdgeToDirection[i];
+                if (_state.Grid.Get(tile.Coord.Neighbor(dirA)) != null) continue;
+                if (_state.Grid.Get(tile.Coord.Neighbor(dirB)) != null) continue;
+                AddCornerFoamDisk(shoreLayer, landCenter + hexVerts[i]);
+            }
         }
 
         // Tiles already exist in _state.Grid (populated by the controller
@@ -380,6 +451,14 @@ public partial class HexMapView : Node2D, IHexMapView
 
     public override void _Process(double delta)
     {
+        // Drive the water shader's time uniform every frame. Done up front
+        // so it ticks regardless of the pulse-related early return below.
+        if (_waterMaterial != null)
+        {
+            _waterTime += delta;
+            _waterMaterial.SetShaderParameter("u_time", (float)_waterTime);
+        }
+
         // Keyboard pan runs every frame regardless of pulse state — held
         // arrow / WASD keys must produce smooth motion.
         Vector2 dir = Vector2.Zero;
@@ -1279,6 +1358,179 @@ public partial class HexMapView : Node2D, IHexMapView
         fill.AddChild(outline);
 
         return fill;
+    }
+
+    // Edge i of a hex (between vertex i and vertex (i+1)%6) maps to one
+    // of HexCoord's 6 neighbor directions. Order derived from the vertex
+    // angles in HexVertices() (60i-30 degrees, +Y down) and the direction
+    // table in HexCoord.Directions (E, NE, NW, W, SW, SE).
+    private static readonly int[] EdgeToDirection = { 0, 5, 4, 3, 2, 1 };
+
+    // Foam strip width as a fraction of HexSize, measured perpendicular
+    // to the shore edge into the water hex.
+    private const float ShoreFoamInset = 0.30f;
+    private static readonly Color ShoreFoamColor = new Color(0.95f, 1.0f, 1.0f);
+
+    private Polygon2D CreateWaterHexVisual(Vector2 center)
+    {
+        Vector2[] verts = HexVertices();
+
+        // Map-local UVs (vertex + center) so the shader's noise pattern
+        // is continuous across the seam between adjacent water hexes and
+        // anchored independent of pan/zoom.
+        Vector2[] uvs = new Vector2[6];
+        for (int i = 0; i < 6; i++) uvs[i] = verts[i] + center;
+
+        // No Line2D outline — adjacent land hexes still draw their own
+        // outlines on the water/land seam, but water/water seams should
+        // read as one continuous body of water.
+        return new Polygon2D
+        {
+            Position = center,
+            Color = Colors.White,
+            Polygon = verts,
+            UV = uvs,
+            Texture = _waterTexture,
+            Material = _waterMaterial,
+        };
+    }
+
+    // For each water hex, group consecutive shore edges (edges whose
+    // neighbor is land) into runs and emit one polygon per run. A run
+    // covers edges runStart..runStart+runLen-1 and uses outer vertices
+    // v[runStart..runStart+runLen] forward + inner vertices in reverse,
+    // giving a single polygon with a continuous inner contour. This
+    // smooths external corners of land into rounded foam wraps instead
+    // of two strips meeting at a hard seam.
+    //
+    // The 6-shore-edge case (water hex fully enclosed by land) would
+    // need a polygon-with-hole to handle in one piece, so we fall back
+    // to emitting 6 quads — rare enough that the corner artifacts
+    // there don't matter.
+    private void AddShoreFoamStrips(Node2D parent, Vector2 center, HexCoord coord)
+    {
+        Vector2[] verts = HexVertices();
+        bool[] isShore = new bool[6];
+        int shoreCount = 0;
+        for (int edge = 0; edge < 6; edge++)
+        {
+            int dir = EdgeToDirection[edge];
+            if (_state.Grid.Get(coord.Neighbor(dir)) != null)
+            {
+                isShore[edge] = true;
+                shoreCount++;
+            }
+        }
+        if (shoreCount == 0) return;
+
+        Vector2[] inner = new Vector2[6];
+        for (int i = 0; i < 6; i++)
+        {
+            inner[i] = verts[i] - verts[i].Normalized() * (HexSize * ShoreFoamInset);
+        }
+
+        if (shoreCount == 6)
+        {
+            for (int edge = 0; edge < 6; edge++)
+            {
+                EmitFoamStrip(parent, center,
+                    verts[edge], verts[(edge + 1) % 6],
+                    inner[(edge + 1) % 6], inner[edge]);
+            }
+            return;
+        }
+
+        // Start at a non-shore edge so we don't split a wrap-around run.
+        int startEdge = 0;
+        while (isShore[startEdge]) startEdge++;
+
+        int processed = 0;
+        int e = startEdge;
+        while (processed < 6)
+        {
+            if (!isShore[e])
+            {
+                e = (e + 1) % 6;
+                processed++;
+                continue;
+            }
+
+            int runStart = e;
+            int runLen = 0;
+            while (runLen < 6 && isShore[e])
+            {
+                runLen++;
+                processed++;
+                e = (e + 1) % 6;
+            }
+
+            int outerCount = runLen + 1;
+            var poly = new Vector2[outerCount * 2];
+            var colors = new Color[outerCount * 2];
+            for (int k = 0; k < outerCount; k++)
+            {
+                poly[k] = verts[(runStart + k) % 6];
+                colors[k] = new Color(1f, 1f, 1f, 1f);
+            }
+            for (int k = 0; k < outerCount; k++)
+            {
+                poly[outerCount + k] = inner[(runStart + outerCount - 1 - k) % 6];
+                colors[outerCount + k] = new Color(1f, 1f, 1f, 0f);
+            }
+
+            parent.AddChild(new Polygon2D
+            {
+                Position = center,
+                Color = ShoreFoamColor,
+                Polygon = poly,
+                VertexColors = colors,
+            });
+        }
+    }
+
+    // Bridge polygon for the gap between strips on two water hexes that
+    // meet at a protruding land vertex. Drawn as N independent triangles
+    // (rather than a single fan polygon) because Polygon2D's auto
+    // triangulation of a star-shaped vertex list isn't a fan and would
+    // mis-interpolate the per-vertex alpha.
+    private void AddCornerFoamDisk(Node2D parent, Vector2 worldCenter)
+    {
+        const int Segments = 8;
+        float radius = HexSize * ShoreFoamInset * 1.1f;
+        Color centerColor = new Color(1f, 1f, 1f, 1f);
+        Color rimColor = new Color(1f, 1f, 1f, 0f);
+        for (int i = 0; i < Segments; i++)
+        {
+            float a0 = i * Mathf.Tau / Segments;
+            float a1 = (i + 1) * Mathf.Tau / Segments;
+            Vector2 p0 = new Vector2(Mathf.Cos(a0), Mathf.Sin(a0)) * radius;
+            Vector2 p1 = new Vector2(Mathf.Cos(a1), Mathf.Sin(a1)) * radius;
+            parent.AddChild(new Polygon2D
+            {
+                Position = worldCenter,
+                Color = ShoreFoamColor,
+                Polygon = new[] { Vector2.Zero, p0, p1 },
+                VertexColors = new[] { centerColor, rimColor, rimColor },
+            });
+        }
+    }
+
+    private void EmitFoamStrip(Node2D parent, Vector2 center,
+        Vector2 outerA, Vector2 outerB, Vector2 innerB, Vector2 innerA)
+    {
+        parent.AddChild(new Polygon2D
+        {
+            Position = center,
+            Color = ShoreFoamColor,
+            Polygon = new[] { outerA, outerB, innerB, innerA },
+            VertexColors = new[]
+            {
+                new Color(1f, 1f, 1f, 1f),
+                new Color(1f, 1f, 1f, 1f),
+                new Color(1f, 1f, 1f, 0f),
+                new Color(1f, 1f, 1f, 0f),
+            },
+        });
     }
 
     private void DrawTerritoryBorders()

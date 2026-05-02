@@ -28,3 +28,4 @@ project/assembly_name="FourExHex"
 [rendering]
 
 renderer/rendering_method="forward_plus"
+environment/defaults/default_clear_color=Color(0.08, 0.22, 0.45, 1)
