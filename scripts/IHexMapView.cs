@@ -34,6 +34,15 @@ public interface IHexMapView
     void ShowTowerTargets(IEnumerable<HexCoord> coords);
 
     /// <summary>
+    /// Tint the given coords as already-tower-defended (subtle overlay)
+    /// while the player is planning a tower placement. The controller
+    /// scopes these to the selected territory only — coverage from
+    /// other players' towers is not displayed. Pass an empty sequence
+    /// to clear.
+    /// </summary>
+    void ShowTowerCoverage(IEnumerable<HexCoord> coords);
+
+    /// <summary>
     /// Mark the unit at <paramref name="coord"/> as "picked up" — the
     /// view may animate it (e.g. a scale pulse) to give the player
     /// visual feedback that their click registered. Pass null to

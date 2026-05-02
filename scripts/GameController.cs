@@ -455,6 +455,30 @@ public class GameController
     }
 
     /// <summary>
+    /// Coords inside <paramref name="territory"/> that are currently
+    /// covered by a same-territory tower (the tower's own tile and any
+    /// of its neighbors that also belong to the territory). Drives the
+    /// subtle "already defended" tint shown in BuildingTower mode so the
+    /// player can plan placements without doubling up coverage.
+    /// </summary>
+    private IEnumerable<HexCoord> TowerCoverageCoords(Territory territory)
+    {
+        var covered = new HashSet<HexCoord>();
+        var inTerritory = new HashSet<HexCoord>(territory.Coords);
+        foreach (HexCoord coord in territory.Coords)
+        {
+            HexTile? tile = _state.Grid.Get(coord);
+            if (tile?.Occupant is not Tower) continue;
+            covered.Add(coord);
+            foreach (HexCoord neighbor in coord.Neighbors())
+            {
+                if (inTerritory.Contains(neighbor)) covered.Add(neighbor);
+            }
+        }
+        return covered;
+    }
+
+    /// <summary>
     /// Diagnostic for the BuildTower-rejection log line: walk the same
     /// checks as <see cref="PurchaseRules.IsValidTowerLocation"/> and
     /// describe whichever first one fails. Strictly debug — never read
@@ -596,15 +620,16 @@ public class GameController
         dst.Occupant = new Tower();
 
         // QoL: stay in BuildingTower mode if the territory can still
-        // afford another tower. Refresh the tower-target preview to
-        // reflect the just-placed tower (the new occupant means at
-        // minimum the tile we just built on drops out of the set).
+        // afford another tower. Refresh both the tower-target preview
+        // and the coverage tint — the just-placed tower expands the
+        // covered set and removes its own tile from the legal set.
         if (PurchaseRules.CanAffordTower(_session.SelectedTerritory, _state.Treasury))
         {
             _session.Mode = SessionState.ActionMode.BuildingTower;
             _session.MoveSource = null;
             _map.ShowMoveTargets(System.Array.Empty<HexCoord>());
             _map.ShowTowerTargets(ValidTowerTargets(_session.SelectedTerritory));
+            _map.ShowTowerCoverage(TowerCoverageCoords(_session.SelectedTerritory));
             _map.ShowMoveSource(null);
             RefreshViews();
         }
@@ -650,6 +675,7 @@ public class GameController
         _session.ClearPendingAction();
         _map.ShowMoveTargets(System.Array.Empty<HexCoord>());
         _map.ShowTowerTargets(System.Array.Empty<HexCoord>());
+        _map.ShowTowerCoverage(System.Array.Empty<HexCoord>());
         _map.ShowMoveSource(null);
         // Selection is maintained by the caller: a non-capturing
         // reposition leaves it alone; a capture re-binds it via
@@ -662,6 +688,7 @@ public class GameController
         _session.ClearPendingAction();
         _map.ShowMoveTargets(System.Array.Empty<HexCoord>());
         _map.ShowTowerTargets(System.Array.Empty<HexCoord>());
+        _map.ShowTowerCoverage(System.Array.Empty<HexCoord>());
         _map.ShowMoveSource(null);
     }
 
@@ -789,8 +816,10 @@ public class GameController
         _session.MoveSource = null;
         _map.ShowMoveTargets(ActionConsumingTargets(next.Value, _session.SelectedTerritory));
         // Switching into a buy mode from BuildingTower leaves the tower
-        // preview stale; clear it so the player only sees relevant CTAs.
+        // preview + coverage tint stale; clear both so the player only
+        // sees relevant CTAs.
         _map.ShowTowerTargets(System.Array.Empty<HexCoord>());
+        _map.ShowTowerCoverage(System.Array.Empty<HexCoord>());
         _map.ShowMoveSource(null);
         RefreshViews();
     }
@@ -846,9 +875,12 @@ public class GameController
         _session.MoveSource = null;
         // Towers only build on empty own-territory tiles — no enemy
         // capture targets to highlight. The legal-tower preview goes
-        // through ShowTowerTargets so the player sees where to click.
+        // through ShowTowerTargets so the player sees where to click,
+        // and ShowTowerCoverage tints already-defended cells so the
+        // player can avoid stacking coverage.
         _map.ShowMoveTargets(System.Array.Empty<HexCoord>());
         _map.ShowTowerTargets(ValidTowerTargets(_session.SelectedTerritory));
+        _map.ShowTowerCoverage(TowerCoverageCoords(_session.SelectedTerritory));
         _map.ShowMoveSource(null);
         RefreshViews();
     }

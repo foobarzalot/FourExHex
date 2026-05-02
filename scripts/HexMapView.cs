@@ -71,6 +71,7 @@ public partial class HexMapView : Node2D, IHexMapView
     // unit-on-tree-tile transient (e.g. mid-chop) reads correctly.
     // Deaths draws above units so a freshly-spawned grave grow-in reads
     // underneath the still-shrinking corpse it replaces.
+    private Node2D? _towerCoverageLayer;
     private Node2D? _bordersLayer;
     private Node2D? _capitalsLayer;
     private Node2D? _treesLayer;
@@ -153,6 +154,11 @@ public partial class HexMapView : Node2D, IHexMapView
 
         RebuildTileToTerritoryIndex();
 
+        // The tower-coverage tint sits above tile fills but below
+        // borders, so the lift is subtle: the underlying territory
+        // color shows through and crisp border lines stay on top.
+        _towerCoverageLayer = new Node2D { Name = "TowerCoverageLayer" };
+        AddChild(_towerCoverageLayer);
         _bordersLayer = new Node2D { Name = "BordersLayer" };
         AddChild(_bordersLayer);
         _capitalsLayer = new Node2D { Name = "CapitalsLayer" };
@@ -278,6 +284,30 @@ public partial class HexMapView : Node2D, IHexMapView
             Node2D preview = CreateTowerPreviewVisual();
             preview.Position = FirstHexCenterOffset + coord.ToPixel(HexSize);
             _towerTargetsLayer.AddChild(preview);
+        }
+    }
+
+    /// <summary>
+    /// Subtle white tint over already-tower-defended coords in the
+    /// selected territory, shown only while the player is planning a
+    /// tower placement. See <see cref="IHexMapView.ShowTowerCoverage"/>.
+    /// </summary>
+    public void ShowTowerCoverage(IEnumerable<HexCoord> coords)
+    {
+        ClearLayer(_towerCoverageLayer);
+        if (_towerCoverageLayer == null) return;
+
+        Vector2[] verts = HexVertices();
+        var tint = new Color(1f, 1f, 1f, 0.22f);
+        foreach (HexCoord coord in coords)
+        {
+            var overlay = new Polygon2D
+            {
+                Position = FirstHexCenterOffset + coord.ToPixel(HexSize),
+                Color = tint,
+                Polygon = verts,
+            };
+            _towerCoverageLayer.AddChild(overlay);
         }
     }
 

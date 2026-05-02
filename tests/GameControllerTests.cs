@@ -1388,6 +1388,121 @@ public class GameControllerTests
     // --- Next territory hotkey -------------------------------------------
 
     /// <summary>
+    /// 4-hex Red strip at (0,0)..(3,0) with Blue elsewhere. Wide enough
+    /// to put a tower in the middle and exercise tower-coverage logic
+    /// (covered set = tower coord + same-territory neighbors).
+    /// </summary>
+    private class FourStripGame
+    {
+        public GameState State { get; }
+        public SessionState Session { get; }
+        public MockHexMapView Map { get; }
+        public MockHudView Hud { get; }
+        public GameController Controller { get; }
+        public Player Red { get; }
+        public Player Blue { get; }
+
+        public FourStripGame(HexCoord? preExistingTowerAt = null)
+        {
+            Red = new Player("Red", new Color(1f, 0f, 0f));
+            Blue = new Player("Blue", new Color(0f, 0f, 1f));
+            var players = new List<Player> { Red, Blue };
+            var grid = TestHelpers.BuildRectGrid(8, 1, Blue.Color);
+            for (int col = 0; col < 4; col++)
+                grid.Get(HexCoord.FromOffset(col, 0))!.Color = Red.Color;
+            if (preExistingTowerAt.HasValue)
+                grid.Get(preExistingTowerAt.Value)!.Occupant = new Tower();
+
+            IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+            State = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+            Session = new SessionState();
+            Map = new MockHexMapView();
+            Hud = new MockHudView();
+            foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+                Map.TileIndex[kvp.Key] = kvp.Value;
+            Controller = new GameController(State, Session, Map, Hud);
+            Controller.StartGame();
+        }
+
+        public HexTile Tile(int col, int row) =>
+            State.Grid.Get(HexCoord.FromOffset(col, row))!;
+        public Territory RedTerritory =>
+            State.Territories.First(t => t.Owner == Red.Color);
+    }
+
+    [Fact]
+    public void BuildTower_EnteringMode_ShowsCoverageOfExistingTowers()
+    {
+        // Red strip (0,0)..(3,0) with a pre-existing tower at (1,0).
+        // Coverage = tower coord + same-territory neighbors of (1,0)
+        // = { (0,0), (1,0), (2,0) }. (3,0) is at distance 2, uncovered.
+        var g = new FourStripGame(preExistingTowerAt: HexCoord.FromOffset(1, 0));
+        g.Map.SimulateClick(g.Tile(0, 0));
+        g.State.Treasury.SetGold(g.RedTerritory.Capital!.Value, 20);
+
+        g.Hud.ClickBuildTower();
+
+        Assert.Equal(
+            new HashSet<HexCoord>
+            {
+                HexCoord.FromOffset(0, 0),
+                HexCoord.FromOffset(1, 0),
+                HexCoord.FromOffset(2, 0),
+            },
+            new HashSet<HexCoord>(g.Map.LastTowerCoverage));
+    }
+
+    [Fact]
+    public void BuildTower_AfterPlace_RefreshesCoverage()
+    {
+        // No pre-existing tower; build one at (3,0) mid-mode and stay
+        // in mode (15g remains, exactly the tower cost). Coverage should
+        // now reflect the just-placed tower: { (2,0), (3,0) }.
+        var g = new FourStripGame();
+        g.Map.SimulateClick(g.Tile(0, 0));
+        g.State.Treasury.SetGold(g.RedTerritory.Capital!.Value, 30);
+
+        g.Hud.ClickBuildTower();
+        g.Map.SimulateClick(g.Tile(3, 0));
+
+        Assert.Equal(
+            new HashSet<HexCoord>
+            {
+                HexCoord.FromOffset(2, 0),
+                HexCoord.FromOffset(3, 0),
+            },
+            new HashSet<HexCoord>(g.Map.LastTowerCoverage));
+    }
+
+    [Fact]
+    public void BuildTower_OnInvalidTarget_ClearsCoverage()
+    {
+        var g = new FourStripGame(preExistingTowerAt: HexCoord.FromOffset(1, 0));
+        g.Map.SimulateClick(g.Tile(0, 0));
+        g.State.Treasury.SetGold(g.RedTerritory.Capital!.Value, 20);
+        g.Hud.ClickBuildTower();
+        Assert.NotEmpty(g.Map.LastTowerCoverage); // sanity
+
+        g.Map.SimulateClick(g.Tile(1, 0)); // tower-occupied → invalid
+
+        Assert.Empty(g.Map.LastTowerCoverage);
+    }
+
+    [Fact]
+    public void BuildTower_ThenBuyPeasant_ClearsCoverage()
+    {
+        var g = new FourStripGame(preExistingTowerAt: HexCoord.FromOffset(1, 0));
+        g.Map.SimulateClick(g.Tile(0, 0));
+        g.State.Treasury.SetGold(g.RedTerritory.Capital!.Value, 25);
+        g.Hud.ClickBuildTower();
+        Assert.NotEmpty(g.Map.LastTowerCoverage);
+
+        g.Hud.ClickBuyPeasant();
+
+        Assert.Empty(g.Map.LastTowerCoverage);
+    }
+
+    /// <summary>
     /// Build a two-player, two-Red-territory fixture so we can exercise
     /// territory cycling. Red has a capital in each of two disjoint
     /// multi-hex blobs; Blue has one blob. Red is the starting player.
