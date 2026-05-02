@@ -318,7 +318,11 @@ public partial class MainMenuScene : Control
         // focus chain, so when it's open _UnhandledInput won't see the
         // key — Enter dismisses or activates the dialog as expected.
         OnStartPressed();
-        GetViewport().SetInputAsHandled();
+        // OnStartPressed queues a scene change; if the input event is
+        // delivered after Godot has already orphaned this node from the
+        // tree, GetViewport() returns null. Null-conditional keeps the
+        // handler quiet — the scene swap proceeds either way.
+        GetViewport()?.SetInputAsHandled();
     }
 
     private void OnStartPressed()
