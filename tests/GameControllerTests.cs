@@ -23,7 +23,7 @@ public class GameControllerTests
         public Player Red { get; }
         public Player Blue { get; }
 
-        public TestGame()
+        public TestGame(IReadOnlySet<HexCoord>? waterCoords = null)
         {
             Red = new Player("Red", new Color(1f, 0f, 0f));
             Blue = new Player("Blue", new Color(0f, 0f, 1f));
@@ -35,7 +35,7 @@ public class GameControllerTests
 
             IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
 
-            State = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+            State = new GameState(grid, territories, players, new TurnState(players), new Treasury(), waterCoords);
             Session = new SessionState();
             Map = new MockHexMapView();
             Hud = new MockHudView();

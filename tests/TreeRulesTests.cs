@@ -9,6 +9,7 @@ public class TreeRulesTests
 {
     private static readonly Color Red = new Color(1f, 0f, 0f);
     private static readonly Color Blue = new Color(0f, 0f, 1f);
+    private static readonly IReadOnlySet<HexCoord> NoWater = new HashSet<HexCoord>();
 
     private static HexGrid BuildAxialGrid(int qMin, int qMax, int rMin, int rMax)
     {
@@ -94,7 +95,7 @@ public class TreeRulesTests
     {
         HexGrid grid = BuildAxialGrid(-1, 2, -1, 2);
 
-        TreeRules.RunStartOfTurnGrowth(grid, Red);
+        TreeRules.RunStartOfTurnGrowth(grid, Red, NoWater);
 
         Assert.Empty(grid.Tiles.Where(t => t.Occupant is Tree));
     }
@@ -108,7 +109,7 @@ public class TreeRulesTests
         PlantTree(grid, new HexCoord(-2, 0));
         PlantTree(grid, new HexCoord(3, 0));
 
-        TreeRules.RunStartOfTurnGrowth(grid, Red);
+        TreeRules.RunStartOfTurnGrowth(grid, Red, NoWater);
 
         Assert.Equal(2, grid.Tiles.Count(t => t.Occupant is Tree));
     }
@@ -121,9 +122,72 @@ public class TreeRulesTests
         HexGrid grid = BuildAxialGrid(-1, 2, -1, 2);
         PlantTree(grid, new HexCoord(0, 0));
 
-        TreeRules.RunStartOfTurnGrowth(grid, Red);
+        TreeRules.RunStartOfTurnGrowth(grid, Red, NoWater);
 
         Assert.Equal(1, grid.Tiles.Count(t => t.Occupant is Tree));
+    }
+
+    // --- RunStartOfTurnGrowth: coastal spread (1 tree + 1 water) ----------
+
+    [Fact]
+    public void RunStartOfTurnGrowth_OneTreeNeighborWithWater_Spreads()
+    {
+        // Single tree at (0,0). (1,-1) has just that one tree neighbor —
+        // not enough for the inland >= 2 rule. Mark (2,-1) as water,
+        // adjacent to (1,-1). Coastal rule (1+ tree AND 1+ water) fires.
+        HexGrid grid = BuildAxialGrid(-1, 2, -1, 2);
+        PlantTree(grid, new HexCoord(0, 0));
+        var water = new HashSet<HexCoord> { new HexCoord(2, -1) };
+
+        TreeRules.RunStartOfTurnGrowth(grid, Red, water);
+
+        Assert.True(IsTree(grid, new HexCoord(1, -1)));
+    }
+
+    [Fact]
+    public void RunStartOfTurnGrowth_OneTreeNeighborNoWater_DoesNotSpread()
+    {
+        // Single tree at (0,0). (1,-1) has 1 tree neighbor and no
+        // adjacent water — neither rule fires.
+        HexGrid grid = BuildAxialGrid(-1, 2, -1, 2);
+        PlantTree(grid, new HexCoord(0, 0));
+
+        TreeRules.RunStartOfTurnGrowth(grid, Red, NoWater);
+
+        Assert.Null(grid.Get(new HexCoord(1, -1))!.Occupant);
+        Assert.Equal(1, grid.Tiles.Count(t => t.Occupant is Tree));
+    }
+
+    [Fact]
+    public void RunStartOfTurnGrowth_WaterButNoTreeNeighbor_DoesNotSpread()
+    {
+        // Water around (0,0) but no tree neighbors anywhere on the
+        // board. Water alone never seeds a tree.
+        HexGrid grid = BuildAxialGrid(-1, 2, -1, 2);
+        var water = new HashSet<HexCoord>
+        {
+            new HexCoord(1, 0), new HexCoord(-1, 1), new HexCoord(0, -1),
+        };
+
+        TreeRules.RunStartOfTurnGrowth(grid, Red, water);
+
+        Assert.Empty(grid.Tiles.Where(t => t.Occupant is Tree));
+    }
+
+    [Fact]
+    public void RunStartOfTurnGrowth_OtherColorCellWithTreeAndWater_DoesNotSpread()
+    {
+        // (1,-1) has 1 tree neighbor (0,0) and 1 water neighbor (2,-1)
+        // but is colored Blue — color filter still blocks the spread
+        // when Red's turn starts.
+        HexGrid grid = BuildAxialGrid(-1, 2, -1, 2);
+        grid.Get(new HexCoord(1, -1))!.Color = Blue;
+        PlantTree(grid, new HexCoord(0, 0));
+        var water = new HashSet<HexCoord> { new HexCoord(2, -1) };
+
+        TreeRules.RunStartOfTurnGrowth(grid, Red, water);
+
+        Assert.Null(grid.Get(new HexCoord(1, -1))!.Occupant);
     }
 
     // --- RunStartOfTurnGrowth: spread basics ------------------------------
@@ -137,7 +201,7 @@ public class TreeRulesTests
         PlantTree(grid, new HexCoord(0, 0));
         PlantTree(grid, new HexCoord(1, 0));
 
-        TreeRules.RunStartOfTurnGrowth(grid, Red);
+        TreeRules.RunStartOfTurnGrowth(grid, Red, NoWater);
 
         Assert.True(IsTree(grid, new HexCoord(1, -1)));
         Assert.True(IsTree(grid, new HexCoord(0, 1)));
@@ -155,7 +219,7 @@ public class TreeRulesTests
         PlantTree(grid, new HexCoord(0, 1));
         PlantTree(grid, new HexCoord(-1, 1));
 
-        TreeRules.RunStartOfTurnGrowth(grid, Red);
+        TreeRules.RunStartOfTurnGrowth(grid, Red, NoWater);
 
         Assert.True(IsTree(grid, new HexCoord(0, 0)));
     }
@@ -173,7 +237,7 @@ public class TreeRulesTests
         PlantTree(grid, new HexCoord(0, 0));
         PlantTree(grid, new HexCoord(1, 0));
 
-        TreeRules.RunStartOfTurnGrowth(grid, Red);
+        TreeRules.RunStartOfTurnGrowth(grid, Red, NoWater);
 
         Assert.Null(grid.Get(new HexCoord(1, -1))!.Occupant);
         // (0,1) is still Red and still flips.
@@ -190,7 +254,7 @@ public class TreeRulesTests
         grid.Get(new HexCoord(0, 0))!.Occupant = new Grave();
         grid.Get(new HexCoord(1, 0))!.Occupant = new Grave(); // Red tile
 
-        TreeRules.RunStartOfTurnGrowth(grid, Red);
+        TreeRules.RunStartOfTurnGrowth(grid, Red, NoWater);
 
         Assert.IsType<Grave>(grid.Get(new HexCoord(0, 0))!.Occupant);
         Assert.IsType<Tree>(grid.Get(new HexCoord(1, 0))!.Occupant);
@@ -208,7 +272,7 @@ public class TreeRulesTests
         PlantTree(grid, new HexCoord(1, 0));
         grid.Get(new HexCoord(1, -1))!.Occupant = new Unit(Red);
 
-        TreeRules.RunStartOfTurnGrowth(grid, Red);
+        TreeRules.RunStartOfTurnGrowth(grid, Red, NoWater);
 
         Assert.IsType<Unit>(grid.Get(new HexCoord(1, -1))!.Occupant);
     }
@@ -221,7 +285,7 @@ public class TreeRulesTests
         PlantTree(grid, new HexCoord(1, 0));
         grid.Get(new HexCoord(1, -1))!.Occupant = new Capital();
 
-        TreeRules.RunStartOfTurnGrowth(grid, Red);
+        TreeRules.RunStartOfTurnGrowth(grid, Red, NoWater);
 
         Assert.IsType<Capital>(grid.Get(new HexCoord(1, -1))!.Occupant);
     }
@@ -234,7 +298,7 @@ public class TreeRulesTests
         PlantTree(grid, new HexCoord(1, 0));
         grid.Get(new HexCoord(1, -1))!.Occupant = new Tower();
 
-        TreeRules.RunStartOfTurnGrowth(grid, Red);
+        TreeRules.RunStartOfTurnGrowth(grid, Red, NoWater);
 
         Assert.IsType<Tower>(grid.Get(new HexCoord(1, -1))!.Occupant);
     }
@@ -250,7 +314,7 @@ public class TreeRulesTests
         PlantTree(grid, new HexCoord(1, 0));
         PlantTree(grid, new HexCoord(1, -1));
 
-        TreeRules.RunStartOfTurnGrowth(grid, Red);
+        TreeRules.RunStartOfTurnGrowth(grid, Red, NoWater);
 
         Assert.IsType<Tree>(grid.Get(new HexCoord(1, -1))!.Occupant);
     }
@@ -270,7 +334,7 @@ public class TreeRulesTests
         PlantTree(grid, new HexCoord(0, 0));
         grid.Get(new HexCoord(1, 0))!.Occupant = new Grave();
 
-        TreeRules.RunStartOfTurnGrowth(grid, Red);
+        TreeRules.RunStartOfTurnGrowth(grid, Red, NoWater);
 
         Assert.IsType<Tree>(grid.Get(new HexCoord(1, 0))!.Occupant); // grave converted
         Assert.Null(grid.Get(new HexCoord(1, -1))!.Occupant);        // no cascade
@@ -290,7 +354,7 @@ public class TreeRulesTests
         PlantTree(grid, new HexCoord(-1, 0));
         PlantTree(grid, new HexCoord(1, 0));
 
-        TreeRules.RunStartOfTurnGrowth(grid, Red);
+        TreeRules.RunStartOfTurnGrowth(grid, Red, NoWater);
 
         Assert.True(IsTree(grid, new HexCoord(0, 0)));
         Assert.False(IsTree(grid, new HexCoord(1, -1)));
@@ -311,7 +375,7 @@ public class TreeRulesTests
         PlantTree(grid, new HexCoord(0, 0));
         PlantTree(grid, new HexCoord(1, 0));
 
-        TreeRules.RunStartOfTurnGrowth(grid, Red);
+        TreeRules.RunStartOfTurnGrowth(grid, Red, NoWater);
 
         Assert.True(IsTree(grid, new HexCoord(0, 1)));
         Assert.Equal(3, grid.Tiles.Count(t => t.Occupant is Tree));

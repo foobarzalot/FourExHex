@@ -1126,7 +1126,7 @@ public class GameController
         if (_state.Turns.TurnNumber > 1)
         {
             TreeRules.RunStartOfTurnGrowth(
-                _state.Grid, _state.Turns.CurrentPlayer.Color);
+                _state.Grid, _state.Turns.CurrentPlayer.Color, _state.WaterCoords);
         }
 
         ResetMovementFor(_state.Turns.CurrentPlayer, _state.Grid);

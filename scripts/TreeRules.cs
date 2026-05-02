@@ -47,16 +47,21 @@ public static class TreeRules
     /// matches <paramref name="owner"/>:
     ///
     ///   1. Every <see cref="Grave"/> becomes a <see cref="Tree"/>.
-    ///   2. Every empty cell with two or more neighboring trees becomes
-    ///      a tree. "Empty" means no occupant at all (units, capitals,
-    ///      towers, existing trees, and graves are not overwritten).
+    ///   2. An empty cell becomes a tree if EITHER:
+    ///        - it has two or more neighboring trees (inland spread,
+    ///          original behavior), OR
+    ///        - it has at least one neighboring tree AND at least one
+    ///          neighboring water tile (coastal spread — a single
+    ///          tree neighbor next to water is enough).
+    ///      "Empty" means no occupant at all (units, capitals, towers,
+    ///      existing trees, and graves are not overwritten).
     ///
     /// Both rules evaluate against a single tree-snapshot captured at
     /// the start of the call, so neither newly-converted graves nor
     /// newly-spawned trees count toward another cell's neighbor tally
     /// in the same call. All conversions are then applied together.
     /// </summary>
-    public static void RunStartOfTurnGrowth(HexGrid grid, Color owner)
+    public static void RunStartOfTurnGrowth(HexGrid grid, Color owner, IReadOnlySet<HexCoord> waterCoords)
     {
         // Snapshot trees BEFORE either rule fires. Trees produced by
         // this call do not seed further conversions within the same
@@ -74,9 +79,10 @@ public static class TreeRules
         // Rule 1: graves on owner's tiles become trees.
         ConvertGravesToTrees(grid, owner);
 
-        // Rule 2: collect every empty owner-color tile with >= 2
-        // tree neighbors per snapshot. Apply simultaneously so that
-        // a new tree from this rule does not affect another cell's
+        // Rule 2: collect every empty owner-color tile that either
+        // has >= 2 tree neighbors (inland) or >= 1 tree neighbor and
+        // >= 1 water neighbor (coastal). Apply simultaneously so a
+        // new tree from this rule does not affect another cell's
         // count in the same call.
         var newTrees = new List<HexCoord>();
         foreach (HexTile tile in grid.Tiles)
@@ -84,16 +90,15 @@ public static class TreeRules
             if (tile.Color != owner) continue;
             if (tile.Occupant != null) continue;
 
-            int count = 0;
+            int treeNeighbors = 0;
+            bool hasWaterNeighbor = false;
             foreach (HexCoord nbr in tile.Coord.Neighbors())
             {
-                if (treeSnapshot.Contains(nbr))
-                {
-                    count++;
-                    if (count >= 2) break;
-                }
+                if (treeSnapshot.Contains(nbr)) treeNeighbors++;
+                if (waterCoords.Contains(nbr)) hasWaterNeighbor = true;
             }
-            if (count >= 2) newTrees.Add(tile.Coord);
+            bool spreads = treeNeighbors >= 2 || (treeNeighbors >= 1 && hasWaterNeighbor);
+            if (spreads) newTrees.Add(tile.Coord);
         }
 
         foreach (HexCoord coord in newTrees)
