@@ -1489,6 +1489,101 @@ public class GameControllerTests
     }
 
     [Fact]
+    public void Undo_FromTowerBuild_RefreshesOverlaysForRestoredBuildingTowerMode()
+    {
+        // Pre-existing tower at (1,0). Build a second tower at (3,0)
+        // (stays in BuildingTower mode — 15g remains, valid spots
+        // remain). Undo should restore the pre-build snapshot AND
+        // re-emit the targets/coverage that match it. Without a
+        // BuildingTower branch in RestoreOverlaysForCurrentMode the
+        // overlays remain stuck on the post-build values.
+        var g = new FourStripGame(preExistingTowerAt: HexCoord.FromOffset(1, 0));
+        g.Map.SimulateClick(g.Tile(0, 0));
+        g.State.Treasury.SetGold(g.RedTerritory.Capital!.Value, 30);
+        g.Hud.ClickBuildTower();
+        g.Map.SimulateClick(g.Tile(3, 0));
+
+        g.Hud.ClickUndoLast();
+
+        // Capital lands on (0,0), so it's never a legal tower target;
+        // (1,0) is the pre-existing tower; pre-build legal placements
+        // are the remaining two empty cells.
+        Assert.Equal(SessionState.ActionMode.BuildingTower, g.Session.Mode);
+        Assert.Equal(
+            new HashSet<HexCoord>
+            {
+                HexCoord.FromOffset(2, 0),
+                HexCoord.FromOffset(3, 0),
+            },
+            new HashSet<HexCoord>(g.Map.LastTowerTargets));
+        Assert.Equal(
+            new HashSet<HexCoord>
+            {
+                HexCoord.FromOffset(0, 0),
+                HexCoord.FromOffset(1, 0),
+                HexCoord.FromOffset(2, 0),
+            },
+            new HashSet<HexCoord>(g.Map.LastTowerCoverage));
+    }
+
+    [Fact]
+    public void Undo_OutOfBuildingTowerMode_ClearsTowerOverlays()
+    {
+        // Two undos walk back: first to BuildingTower-with-1-tower,
+        // then to Mode=None. With Mode=None the tower preview and
+        // coverage tint must both be empty — otherwise leftover
+        // overlays bleed into normal click handling.
+        var g = new FourStripGame(preExistingTowerAt: HexCoord.FromOffset(1, 0));
+        g.Map.SimulateClick(g.Tile(0, 0));
+        g.State.Treasury.SetGold(g.RedTerritory.Capital!.Value, 30);
+        g.Hud.ClickBuildTower();
+        g.Map.SimulateClick(g.Tile(3, 0));
+
+        g.Hud.ClickUndoLast(); // back to BuildingTower with 1 tower
+        g.Hud.ClickUndoLast(); // back to Mode=None
+
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+        Assert.Empty(g.Map.LastTowerTargets);
+        Assert.Empty(g.Map.LastTowerCoverage);
+    }
+
+    [Fact]
+    public void Redo_BackIntoBuildingTowerMode_RefreshesTowerOverlays()
+    {
+        // build → undo → undo (to None) → redo (back to BuildingTower
+        // with 1 tower). Mock state right before the redo is empty
+        // (Mode=None cleared everything), so the redo must actively
+        // re-emit BuildingTower's targets+coverage. Bug repro: redo
+        // currently leaves the overlays empty.
+        var g = new FourStripGame(preExistingTowerAt: HexCoord.FromOffset(1, 0));
+        g.Map.SimulateClick(g.Tile(0, 0));
+        g.State.Treasury.SetGold(g.RedTerritory.Capital!.Value, 30);
+        g.Hud.ClickBuildTower();
+        g.Map.SimulateClick(g.Tile(3, 0));
+        g.Hud.ClickUndoLast();
+        g.Hud.ClickUndoLast();
+
+        g.Hud.ClickRedoLast();
+
+        Assert.Equal(SessionState.ActionMode.BuildingTower, g.Session.Mode);
+        Assert.Equal(
+            new HashSet<HexCoord>
+            {
+                HexCoord.FromOffset(2, 0),
+                HexCoord.FromOffset(3, 0),
+            },
+            new HashSet<HexCoord>(g.Map.LastTowerTargets));
+        Assert.Equal(
+            new HashSet<HexCoord>
+            {
+                HexCoord.FromOffset(0, 0),
+                HexCoord.FromOffset(1, 0),
+                HexCoord.FromOffset(2, 0),
+            },
+            new HashSet<HexCoord>(g.Map.LastTowerCoverage));
+    }
+
+    [Fact]
     public void BuildTower_ThenBuyPeasant_ClearsCoverage()
     {
         var g = new FourStripGame(preExistingTowerAt: HexCoord.FromOffset(1, 0));

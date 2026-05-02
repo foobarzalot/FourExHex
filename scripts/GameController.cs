@@ -746,11 +746,14 @@ public class GameController
     }
 
     /// <summary>
-    /// Re-emit the map overlays implied by the current
+    /// Re-emit every map overlay implied by the current
     /// <see cref="SessionState"/>: highlight ring on the selected
-    /// territory, plus move-target rings and move-source ring for the
-    /// pending action mode (if any). Called after undo/redo restores
-    /// session state, so the view matches the restored intent.
+    /// territory, plus move-target rings, move-source ring, tower-target
+    /// previews, and tower-coverage tint for the pending action mode (if
+    /// any). Called after undo/redo restores session state, so the view
+    /// matches the restored intent. Every branch must drive each overlay
+    /// sink to either the right set or empty — otherwise stale visuals
+    /// from the pre-undo state survive the restore.
     /// </summary>
     private void RestoreOverlaysForCurrentMode()
     {
@@ -760,6 +763,17 @@ public class GameController
         if (buyLevel.HasValue && _session.SelectedTerritory != null)
         {
             _map.ShowMoveTargets(ActionConsumingTargets(buyLevel.Value, _session.SelectedTerritory));
+            _map.ShowTowerTargets(System.Array.Empty<HexCoord>());
+            _map.ShowTowerCoverage(System.Array.Empty<HexCoord>());
+            _map.ShowMoveSource(null);
+            return;
+        }
+        if (_session.Mode == SessionState.ActionMode.BuildingTower
+            && _session.SelectedTerritory != null)
+        {
+            _map.ShowMoveTargets(System.Array.Empty<HexCoord>());
+            _map.ShowTowerTargets(ValidTowerTargets(_session.SelectedTerritory));
+            _map.ShowTowerCoverage(TowerCoverageCoords(_session.SelectedTerritory));
             _map.ShowMoveSource(null);
             return;
         }
@@ -771,6 +785,8 @@ public class GameController
             if (src?.Unit != null)
             {
                 _map.ShowMoveTargets(ActionConsumingTargets(src.Unit.Level, _session.SelectedTerritory));
+                _map.ShowTowerTargets(System.Array.Empty<HexCoord>());
+                _map.ShowTowerCoverage(System.Array.Empty<HexCoord>());
                 _map.ShowMoveSource(_session.MoveSource);
                 return;
             }
@@ -779,6 +795,8 @@ public class GameController
             _session.MoveSource = null;
         }
         _map.ShowMoveTargets(System.Array.Empty<HexCoord>());
+        _map.ShowTowerTargets(System.Array.Empty<HexCoord>());
+        _map.ShowTowerCoverage(System.Array.Empty<HexCoord>());
         _map.ShowMoveSource(null);
     }
 
