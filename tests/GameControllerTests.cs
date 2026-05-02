@@ -1505,6 +1505,76 @@ public class GameControllerTests
     }
 
     [Fact]
+    public void PreviousTerritory_NoneSelected_SelectsLexMaxCapital()
+    {
+        // Mirrors NextTerritory_NoneSelected: from no selection,
+        // Shift+Tab should land on the LAST territory in lex-min-capital
+        // order (the lex-max), so a single press lets the player jump
+        // to the bottom of the cycle.
+        var g = new TwoRedTerritoriesGame();
+        Assert.Null(g.Session.SelectedTerritory);
+
+        g.Hud.PressPreviousTerritory();
+
+        Assert.NotNull(g.Session.SelectedTerritory);
+        Assert.Contains(HexCoord.FromOffset(5, 0), g.Session.SelectedTerritory!.Coords);
+    }
+
+    [Fact]
+    public void PreviousTerritory_CyclesToPrevInSortedOrder()
+    {
+        var g = new TwoRedTerritoriesGame();
+        g.Hud.PressNextTerritory(); // first
+        g.Hud.PressNextTerritory(); // second
+        Territory second = g.Session.SelectedTerritory!;
+
+        g.Hud.PressPreviousTerritory(); // back to first
+
+        Assert.NotNull(g.Session.SelectedTerritory);
+        Assert.NotSame(second, g.Session.SelectedTerritory);
+        Assert.Contains(HexCoord.FromOffset(0, 0), g.Session.SelectedTerritory!.Coords);
+    }
+
+    [Fact]
+    public void PreviousTerritory_OnFirstTerritory_WrapsToLast()
+    {
+        var g = new TwoRedTerritoriesGame();
+        g.Hud.PressNextTerritory(); // first
+
+        g.Hud.PressPreviousTerritory(); // wraps to last
+
+        Assert.NotNull(g.Session.SelectedTerritory);
+        Assert.Contains(HexCoord.FromOffset(5, 0), g.Session.SelectedTerritory!.Coords);
+    }
+
+    [Fact]
+    public void PreviousTerritory_WithSingleTerritory_StaysOnIt()
+    {
+        var g = new TestGame();
+        g.Hud.PressNextTerritory();
+        Territory first = g.Session.SelectedTerritory!;
+
+        g.Hud.PressPreviousTerritory();
+
+        Assert.Same(first, g.Session.SelectedTerritory);
+    }
+
+    [Fact]
+    public void PreviousTerritory_CancelsPendingBuyMode()
+    {
+        var g = new TwoRedTerritoriesGame();
+        g.Hud.PressNextTerritory();
+        HexCoord cap = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(cap, 20);
+        g.Hud.ClickBuyPeasant();
+        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+
+        g.Hud.PressPreviousTerritory();
+
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+    }
+
+    [Fact]
     public void NextTerritory_AfterWin_IsNoOp()
     {
         var g = new TwoRedTerritoriesGame();

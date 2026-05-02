@@ -18,6 +18,7 @@ public interface IHudView
     event Action? NewGameClicked;
     event Action? MainMenuClicked;
     event Action? NextTerritoryClicked;
+    event Action? PreviousTerritoryClicked;
     event Action? CancelActionPressed;
     event Action? SaveGameClicked;
 

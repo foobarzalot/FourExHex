@@ -60,6 +60,7 @@ public sealed class HeadlessHudView : IHudView
     public event Action? NewGameClicked;
     public event Action? MainMenuClicked;
     public event Action? NextTerritoryClicked;
+    public event Action? PreviousTerritoryClicked;
     public event Action? CancelActionPressed;
     public event Action? SaveGameClicked;
 #pragma warning restore CS0067

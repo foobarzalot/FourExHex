@@ -117,6 +117,7 @@ public class GameController
         _hud.RedoAllClicked += OnRedoAllPressed;
         _hud.EndTurnClicked += OnEndTurnPressed;
         _hud.NextTerritoryClicked += OnNextTerritoryPressed;
+        _hud.PreviousTerritoryClicked += OnPreviousTerritoryPressed;
         _hud.CancelActionPressed += OnCancelActionPressed;
     }
 
@@ -853,16 +854,20 @@ public class GameController
     }
 
     /// <summary>
-    /// Advance the selection to the next current-player multi-hex
-    /// territory in lex-min-capital order, wrapping around. Used by
-    /// the Tab hotkey. Singletons are excluded because you can't do
-    /// anything with them anyway. Cancels any pending buy/build/move
-    /// action so the user isn't stuck in a stale action mode on a
-    /// different territory.
+    /// Advance the selection to the next or previous current-player
+    /// multi-hex territory in lex-min-capital order, wrapping around.
+    /// Used by Tab (forward) and Shift+Tab (backward). Singletons are
+    /// excluded because you can't do anything with them. Cancels any
+    /// pending buy/build/move action so the user isn't stuck in a
+    /// stale action mode on a different territory.
     /// </summary>
-    private void OnNextTerritoryPressed() => TrackHandler(OnNextTerritoryPressedBody);
+    private void OnNextTerritoryPressed() =>
+        TrackHandler(() => StepTerritorySelection(forward: true));
 
-    private void OnNextTerritoryPressedBody()
+    private void OnPreviousTerritoryPressed() =>
+        TrackHandler(() => StepTerritorySelection(forward: false));
+
+    private void StepTerritorySelection(bool forward)
     {
         if (_session.IsGameOver) return;
 
@@ -890,7 +895,10 @@ public class GameController
                 }
             }
         }
-        int nextIndex = (currentIndex + 1) % owned.Count;
+        // null selection → forward lands on first, backward lands on last.
+        int nextIndex = forward
+            ? (currentIndex + 1) % owned.Count
+            : (currentIndex == -1 ? owned.Count - 1 : (currentIndex - 1 + owned.Count) % owned.Count);
 
         CancelPendingAction();
         SetSelection(owned[nextIndex]);
