@@ -159,13 +159,14 @@ public static class MovementRules
                 HasMovedThisTurn = destUnit.HasMovedThisTurn,
             };
             dstTile.Occupant = combined;
-            return new MoveResult(wasCapture: false);
+            return new MoveResult(wasCapture: false, destroyed: null);
         }
 
         // Case: normal reposition, tree/grave clearing, or capture.
         bool wasCapture = dstTile.Color != attackerTerritory.Owner;
         bool clearedObstacle = !wasCapture
             && (dstTile.Occupant is Tree || dstTile.Occupant is Grave);
+        HexOccupant? displaced = dstTile.Occupant;
         if (wasCapture)
         {
             dstTile.Color = attackerTerritory.Owner;
@@ -179,7 +180,7 @@ public static class MovementRules
             arrivingUnit.HasMovedThisTurn = true;
         }
 
-        return new MoveResult(wasCapture);
+        return new MoveResult(wasCapture, destroyed: displaced);
     }
 }
 
@@ -187,8 +188,18 @@ public readonly struct MoveResult
 {
     public bool WasCapture { get; }
 
-    public MoveResult(bool wasCapture)
+    /// <summary>
+    /// The occupant displaced from the destination tile, if any. Captures
+    /// onto an enemy unit or tower, and same-color moves onto a tree or
+    /// grave, populate this. The view uses it to play a destruction effect
+    /// at the destination before the next refresh paints the arriving unit.
+    /// Null for empty captures, plain repositions, and combines.
+    /// </summary>
+    public HexOccupant? Destroyed { get; }
+
+    public MoveResult(bool wasCapture, HexOccupant? destroyed)
     {
         WasCapture = wasCapture;
+        Destroyed = destroyed;
     }
 }

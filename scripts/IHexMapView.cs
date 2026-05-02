@@ -74,4 +74,15 @@ public interface IHexMapView
     /// coloring rules.
     /// </summary>
     void RefreshOccupantVisuals(Color? currentPlayerColor, Treasury treasury);
+
+    /// <summary>
+    /// Play a one-shot destruction effect at <paramref name="coord"/> for
+    /// the displaced occupant. Called by the controller after a
+    /// movement-rule-driven capture, tree chop, or grave burial — once
+    /// the model has been mutated, before <see cref="RefreshOccupantVisuals"/>
+    /// repaints. The view chooses what (if anything) to render based on
+    /// the occupant type. Pure visual side effect; not invoked during
+    /// undo/redo.
+    /// </summary>
+    void PlayDestructionEffect(HexCoord coord, HexOccupant destroyed);
 }

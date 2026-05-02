@@ -815,6 +815,174 @@ public partial class HexMapView : Node2D, IHexMapView
         tween.Finished += visual.QueueFree;
     }
 
+    // Destruction-effect tuning. Three layered elements: a tile-shaped
+    // flash for "something happened here", an expanding shockwave ring
+    // that draws the eye outward, and a radial burst of shard polygons
+    // colored to identify what was destroyed. Total lifetime ~0.55s —
+    // long enough to register, short enough not to back up turn pacing.
+    private const double DestructionFlashDuration = 0.35;
+    private const double DestructionShockwaveDuration = 0.45;
+    private const double DestructionShardDuration = 0.55;
+    private const int UnitShardCount = 14;
+    private const int TowerShardCount = 20;
+    private const int TreeShardCount = 16;
+    private static readonly Random DestructionRng = new Random();
+
+    /// <summary>
+    /// One-shot capture/chop visual. Spawns a tile-shaped white flash, an
+    /// expanding shockwave ring, and a radial burst of shard polygons
+    /// colored to match what was destroyed (unit owner color, stone for
+    /// towers, green for trees). Graves are silent — burying isn't a
+    /// destruction the player needs to see. All transient nodes free
+    /// themselves when their tweens finish.
+    /// </summary>
+    public void PlayDestructionEffect(HexCoord coord, HexOccupant destroyed)
+    {
+        if (destroyed is Grave) return;
+        if (_deathsLayer == null) return;
+
+        Vector2 center = FirstHexCenterOffset + coord.ToPixel(HexSize);
+
+        Color shardColor = destroyed switch
+        {
+            Unit u => u.Owner,
+            Tower => new Color(0.72f, 0.72f, 0.76f, 1f),
+            Tree => new Color(0.16f, 0.48f, 0.18f, 1f),
+            _ => new Color(1f, 1f, 1f, 1f),
+        };
+        int shardCount = destroyed switch
+        {
+            Tower => TowerShardCount,
+            Tree => TreeShardCount,
+            _ => UnitShardCount,
+        };
+
+        SpawnDestructionFlash(center);
+        SpawnDestructionShockwave(center, shardColor);
+        for (int i = 0; i < shardCount; i++)
+        {
+            SpawnDestructionShard(center, shardColor, i, shardCount);
+        }
+    }
+
+    private void SpawnDestructionFlash(Vector2 center)
+    {
+        Vector2[] verts = HexVertices();
+        // Inset slightly so the flash sits inside the tile borders rather
+        // than spilling over neighbors.
+        var inset = new Vector2[6];
+        for (int i = 0; i < 6; i++) inset[i] = verts[i] * 0.95f;
+
+        var flash = new Polygon2D
+        {
+            Position = center,
+            Polygon = inset,
+            Color = new Color(1f, 1f, 1f, 0.95f),
+        };
+        _deathsLayer!.AddChild(flash);
+
+        Tween tween = flash.CreateTween();
+        tween.TweenProperty(flash, "modulate", new Color(1f, 1f, 1f, 0f), DestructionFlashDuration)
+            .SetTrans(Tween.TransitionType.Sine)
+            .SetEase(Tween.EaseType.Out);
+        tween.Finished += flash.QueueFree;
+    }
+
+    /// <summary>
+    /// Bright ring that starts at the tile center and expands to ~1.7x
+    /// the hex radius while fading. Tinted toward the destroyed thing's
+    /// color so unit / tower captures still feel distinct from each other.
+    /// </summary>
+    private void SpawnDestructionShockwave(Vector2 center, Color tint)
+    {
+        const int segments = 36;
+        float startRadius = HexSize * 0.25f;
+        var points = new Vector2[segments + 1];
+        for (int i = 0; i <= segments; i++)
+        {
+            float a = Mathf.Tau * i / segments;
+            points[i] = new Vector2(startRadius * Mathf.Cos(a), startRadius * Mathf.Sin(a));
+        }
+        // Lerp the tint toward white so the ring stays bright on dark tiles.
+        Color ringColor = new Color(
+            (tint.R + 1f) * 0.5f,
+            (tint.G + 1f) * 0.5f,
+            (tint.B + 1f) * 0.5f,
+            1f);
+
+        var ring = new Line2D
+        {
+            Position = center,
+            Points = points,
+            Width = 5f,
+            DefaultColor = ringColor,
+        };
+        _deathsLayer!.AddChild(ring);
+
+        const float endScale = 1.7f * 1f / 0.25f; // expand 0.25 → 1.7 hex radii
+        Tween tween = ring.CreateTween();
+        tween.TweenProperty(ring, "scale", new Vector2(endScale, endScale), DestructionShockwaveDuration)
+            .SetTrans(Tween.TransitionType.Cubic)
+            .SetEase(Tween.EaseType.Out);
+        tween.Parallel().TweenProperty(ring, "modulate", new Color(1f, 1f, 1f, 0f), DestructionShockwaveDuration)
+            .SetTrans(Tween.TransitionType.Sine)
+            .SetEase(Tween.EaseType.In);
+        tween.Finished += ring.QueueFree;
+    }
+
+    private void SpawnDestructionShard(Vector2 center, Color color, int index, int total)
+    {
+        // Even radial spread plus a small jitter so bursts look organic
+        // rather than mechanical.
+        float baseAngle = Mathf.Tau * index / total;
+        float jitter = (float)(DestructionRng.NextDouble() - 0.5) * 0.4f;
+        float angle = baseAngle + jitter;
+        Vector2 dir = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
+
+        // Shard geometry: small irregular triangle. Roughly 2x what was
+        // there before so individual shards read against tile fills.
+        float r = HexSize * (0.11f + 0.06f * (float)DestructionRng.NextDouble());
+        var verts = new[]
+        {
+            new Vector2(r, 0f),
+            new Vector2(-r * 0.6f, r * 0.7f),
+            new Vector2(-r * 0.5f, -r * 0.6f),
+        };
+        var shard = new Polygon2D
+        {
+            Position = center,
+            Polygon = verts,
+            Color = color,
+            Rotation = (float)(DestructionRng.NextDouble() * Mathf.Tau),
+        };
+        // Black outline so colored shards stay legible against same-color
+        // tile fills (e.g., red shards from a Red unit on a now-Red tile).
+        var outlineVerts = new[] { verts[0], verts[1], verts[2], verts[0] };
+        shard.AddChild(new Line2D
+        {
+            Points = outlineVerts,
+            Width = 1.5f,
+            DefaultColor = new Color(0f, 0f, 0f, 0.85f),
+        });
+        _deathsLayer!.AddChild(shard);
+
+        // Travel distance: about a full hex outward, with variance.
+        float travel = HexSize * (0.7f + 0.4f * (float)DestructionRng.NextDouble());
+        Vector2 endPos = center + dir * travel;
+        float endRotation = shard.Rotation + (float)(DestructionRng.NextDouble() * Mathf.Tau - Mathf.Pi);
+
+        Tween tween = shard.CreateTween();
+        tween.TweenProperty(shard, "position", endPos, DestructionShardDuration)
+            .SetTrans(Tween.TransitionType.Cubic)
+            .SetEase(Tween.EaseType.Out);
+        tween.Parallel().TweenProperty(shard, "rotation", endRotation, DestructionShardDuration)
+            .SetTrans(Tween.TransitionType.Linear);
+        tween.Parallel().TweenProperty(shard, "modulate", new Color(1f, 1f, 1f, 0f), DestructionShardDuration)
+            .SetTrans(Tween.TransitionType.Sine)
+            .SetEase(Tween.EaseType.In);
+        tween.Finished += shard.QueueFree;
+    }
+
     /// <summary>
     /// Pop a freshly-spawned grave visual in. If <paramref name="afterDeath"/>
     /// is true, the grave waits for the corpse on top to finish shrinking

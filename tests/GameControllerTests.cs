@@ -407,6 +407,137 @@ public class GameControllerTests
     }
 
     [Fact]
+    public void Move_CaptureEnemyUnit_FiresDestructionEffectOnView()
+    {
+        // Move-capture onto an enemy unit dispatches a single
+        // PlayDestructionEffect for the displaced defender.
+        var g = new TestGame();
+        var attacker = new Unit(g.Red.Color, UnitLevel.Spearman);
+        g.Tile(1, 1).Occupant = attacker;
+        var defender = new Unit(g.Blue.Color, UnitLevel.Peasant);
+        g.Tile(2, 1).Occupant = defender;
+
+        g.Map.SimulateClick(g.Tile(1, 1));
+        g.Map.SimulateClick(g.Tile(2, 1));
+
+        Assert.Single(g.Map.DestructionEffects);
+        Assert.Equal(HexCoord.FromOffset(2, 1), g.Map.DestructionEffects[0].Coord);
+        Assert.Same(defender, g.Map.DestructionEffects[0].Destroyed);
+    }
+
+    [Fact]
+    public void Move_CaptureEmptyEnemyTile_DoesNotFireDestructionEffect()
+    {
+        // Capturing an empty enemy tile flips its color but destroys
+        // nothing — no FX should fire.
+        var g = new TestGame();
+        g.Tile(1, 1).Occupant = new Unit(g.Red.Color);
+
+        g.Map.SimulateClick(g.Tile(1, 1));
+        g.Map.SimulateClick(g.Tile(2, 1));
+
+        Assert.Empty(g.Map.DestructionEffects);
+    }
+
+    [Fact]
+    public void BuyPeasant_CaptureEmptyEnemyTile_DoesNotFireDestructionEffect()
+    {
+        var g = new TestGame();
+        HexCoord redCapital = g.RedTerritory.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 25);
+        g.Map.SimulateClick(g.Tile(0, 1));
+        g.Hud.ClickBuyPeasant();
+        g.Map.SimulateClick(g.Tile(2, 1));
+
+        Assert.Empty(g.Map.DestructionEffects);
+    }
+
+    [Fact]
+    public void Move_CaptureEnemyTower_FiresDestructionEffectWithTower()
+    {
+        // Knight captures an enemy tower — the displaced Tower is
+        // reported in the destruction effect so the view can render
+        // tower-shaped FX.
+        var g = new TestGame();
+        var knight = new Unit(g.Red.Color, UnitLevel.Knight);
+        g.Tile(1, 1).Occupant = knight;
+        var tower = new Tower();
+        g.Tile(2, 1).Occupant = tower;
+
+        g.Map.SimulateClick(g.Tile(1, 1));
+        g.Map.SimulateClick(g.Tile(2, 1));
+
+        Assert.Single(g.Map.DestructionEffects);
+        Assert.Same(tower, g.Map.DestructionEffects[0].Destroyed);
+    }
+
+    [Fact]
+    public void Move_OntoOwnTree_FiresDestructionEffectWithTree()
+    {
+        // Chopping a tree fires a destruction effect for the Tree.
+        // Plant a tree on (1,1) — Red's own tile. Red's unit on (0,1)
+        // is the capital, which can't be moved; we need a fresh unit
+        // on a movable Red tile. (0,1) IS the capital. Move a unit
+        // from (1,1)... but the tree is there. So plant on a different
+        // tile: use a 5×3 fixture? Let's use what TestGame provides.
+        // Place a unit on (1,1) and a tree elsewhere — there's no
+        // other Red tile. Build a custom fixture inline.
+        var red = new Player("Red", new Color(1f, 0f, 0f));
+        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var players = new List<Player> { red, blue };
+
+        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Color);
+        grid.Get(HexCoord.FromOffset(0, 1))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(1, 1))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(2, 1))!.Color = red.Color;
+        var unit = new Unit(red.Color);
+        grid.Get(HexCoord.FromOffset(2, 1))!.Occupant = unit;
+        var tree = new Tree();
+        grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = tree;
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        var map = new MockHexMapView();
+        var hud = new MockHudView();
+        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+        {
+            map.TileIndex[kvp.Key] = kvp.Value;
+        }
+        var controller = new GameController(state, session, map, hud);
+        controller.StartGame();
+
+        map.SimulateClick(grid.Get(HexCoord.FromOffset(2, 1)));
+        map.SimulateClick(grid.Get(HexCoord.FromOffset(1, 1)));
+
+        Assert.Single(map.DestructionEffects);
+        Assert.Equal(HexCoord.FromOffset(1, 1), map.DestructionEffects[0].Coord);
+        Assert.Same(tree, map.DestructionEffects[0].Destroyed);
+    }
+
+    [Fact]
+    public void Undo_DoesNotReplayDestructionEffect()
+    {
+        // Capture fires FX, undo restores the prior state but should
+        // NOT replay or fire any new destruction effects — only
+        // forward play does.
+        var g = new TestGame();
+        var attacker = new Unit(g.Red.Color, UnitLevel.Spearman);
+        g.Tile(1, 1).Occupant = attacker;
+        var defender = new Unit(g.Blue.Color, UnitLevel.Peasant);
+        g.Tile(2, 1).Occupant = defender;
+
+        g.Map.SimulateClick(g.Tile(1, 1));
+        g.Map.SimulateClick(g.Tile(2, 1));
+        Assert.Single(g.Map.DestructionEffects);
+
+        g.Hud.ClickUndoLast();
+
+        // Still exactly the one FX from forward play; no new entries.
+        Assert.Single(g.Map.DestructionEffects);
+    }
+
+    [Fact]
     public void BuyPeasant_OnOwnTile_StaysInBuyingMode_IfStillAffordable()
     {
         var g = new TestGame();
@@ -1293,6 +1424,34 @@ public class GameControllerTests
 
         Assert.True(session.IsGameOver);
         Assert.Equal(red.Color, session.Winner);
+    }
+
+    [Fact]
+    public void AiTurn_CaptureEnemyUnit_FiresDestructionEffectOnView()
+    {
+        // AI captures a defended enemy tile — destruction effect fires
+        // for the displaced defender, same as the human path. Uses the
+        // stub-chooser harness so the test pins the action regardless
+        // of how the heuristic would score the move.
+        (GameState state, MockHexMapView map, MockHudView hud) = BuildAiFixture();
+        // Replace the default peasant attacker with a spearman so it
+        // can capture a defender at (2,1).
+        state.Grid.Get(HexCoord.FromOffset(1, 1))!.Occupant =
+            new Unit(state.Players[0].Color, UnitLevel.Spearman);
+        var defender = new Unit(state.Players[1].Color, UnitLevel.Peasant);
+        state.Grid.Get(HexCoord.FromOffset(2, 1))!.Occupant = defender;
+
+        var move = new AiMoveAction(HexCoord.FromOffset(1, 1), HexCoord.FromOffset(2, 1));
+        GameController c = BuildHarnessWithStubAi(state, map, hud, move);
+
+        c.StartGame();
+
+        // Sanity: capture happened.
+        Assert.Equal(state.Players[0].Color, state.Grid.Get(HexCoord.FromOffset(2, 1))!.Color);
+
+        Assert.Single(map.DestructionEffects);
+        Assert.Equal(HexCoord.FromOffset(2, 1), map.DestructionEffects[0].Coord);
+        Assert.Same(defender, map.DestructionEffects[0].Destroyed);
     }
 
     [Fact]

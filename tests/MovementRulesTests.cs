@@ -289,6 +289,143 @@ public class MovementRulesTests
     }
 
     [Fact]
+    public void Move_CaptureEmptyEnemyTile_ReportsNullDestroyed()
+    {
+        // Capturing an empty enemy tile is a flag-flip — nothing was
+        // displaced, so MoveResult.Destroyed is null. Target (2,1) is
+        // a non-capital Blue tile (Blue's capital is lex-min (0,0)).
+        HexGrid grid = BuildGrid(5, 2, Blue);
+        SetTile(grid, HexCoord.FromOffset(0, 1), Red);
+        SetTile(grid, HexCoord.FromOffset(1, 1), Red);
+
+        grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = new Unit(Red);
+
+        var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        Territory red = territories.First(t => t.Owner == Red);
+
+        MoveResult result = MovementRules.Move(
+            HexCoord.FromOffset(1, 1), HexCoord.FromOffset(2, 1), grid, red);
+
+        Assert.True(result.WasCapture);
+        Assert.Null(result.Destroyed);
+    }
+
+    [Fact]
+    public void Move_CaptureEnemyUnit_ReportsDestroyedUnit()
+    {
+        // Capturing a tile occupied by an enemy unit reports the displaced
+        // unit so the view can play a destruction effect.
+        HexGrid grid = BuildGrid(5, 2, Blue);
+        SetTile(grid, HexCoord.FromOffset(0, 1), Red);
+        SetTile(grid, HexCoord.FromOffset(1, 1), Red);
+        var defender = new Unit(Blue, UnitLevel.Peasant);
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = defender;
+
+        grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = new Unit(Red, UnitLevel.Spearman);
+
+        var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        Territory red = territories.First(t => t.Owner == Red);
+
+        MoveResult result = MovementRules.Move(
+            HexCoord.FromOffset(1, 1), HexCoord.FromOffset(2, 0), grid, red);
+
+        Assert.True(result.WasCapture);
+        Assert.Same(defender, result.Destroyed);
+    }
+
+    [Fact]
+    public void Move_CaptureEnemyTower_ReportsDestroyedTower()
+    {
+        // Capturing a tile occupied by an enemy tower reports the
+        // displaced tower so the FX can be tower-shaped.
+        HexGrid grid = BuildGrid(5, 1, Blue);
+        SetTile(grid, HexCoord.FromOffset(0, 0), Red);
+        SetTile(grid, HexCoord.FromOffset(1, 0), Red);
+        var tower = new Tower();
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = tower;
+
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(Red, UnitLevel.Knight);
+
+        var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        Territory red = territories.First(t => t.Owner == Red);
+
+        MoveResult result = MovementRules.Move(
+            HexCoord.FromOffset(1, 0), HexCoord.FromOffset(2, 0), grid, red);
+
+        Assert.True(result.WasCapture);
+        Assert.Same(tower, result.Destroyed);
+    }
+
+    [Fact]
+    public void Move_Reposition_ReportsNullDestroyed()
+    {
+        HexGrid grid = BuildGrid(5, 1, Blue);
+        foreach (var c in new[] { HexCoord.FromOffset(0, 0), HexCoord.FromOffset(1, 0), HexCoord.FromOffset(2, 0) })
+        {
+            SetTile(grid, c, Red);
+        }
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(Red);
+
+        var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        Territory red = territories.First(t => t.Owner == Red);
+
+        MoveResult result = MovementRules.Move(
+            HexCoord.FromOffset(1, 0), HexCoord.FromOffset(2, 0), grid, red);
+
+        Assert.False(result.WasCapture);
+        Assert.Null(result.Destroyed);
+    }
+
+    [Fact]
+    public void Move_OntoOwnTree_ReportsDestroyedTree()
+    {
+        // Chopping a tree displaces the Tree occupant — reported so the
+        // view can play a tree-fall effect.
+        HexGrid grid = BuildGrid(5, 1, Blue);
+        foreach (var c in new[] { HexCoord.FromOffset(0, 0), HexCoord.FromOffset(1, 0), HexCoord.FromOffset(2, 0) })
+        {
+            SetTile(grid, c, Red);
+        }
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(Red);
+        var tree = new Tree();
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = tree;
+
+        var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        Territory red = territories.First(t => t.Owner == Red);
+
+        MoveResult result = MovementRules.Move(
+            HexCoord.FromOffset(2, 0), HexCoord.FromOffset(1, 0), grid, red);
+
+        Assert.False(result.WasCapture);
+        Assert.Same(tree, result.Destroyed);
+    }
+
+    [Fact]
+    public void Move_OntoOwnGrave_ReportsDestroyedGrave()
+    {
+        // Burying a grave displaces it. The rule layer reports it; the
+        // view layer decides whether to render anything (currently no
+        // FX for graves — the unit's footprint covers them).
+        HexGrid grid = BuildGrid(5, 1, Blue);
+        foreach (var c in new[] { HexCoord.FromOffset(0, 0), HexCoord.FromOffset(1, 0), HexCoord.FromOffset(2, 0) })
+        {
+            SetTile(grid, c, Red);
+        }
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(Red);
+        var grave = new Grave();
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = grave;
+
+        var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        Territory red = territories.First(t => t.Owner == Red);
+
+        MoveResult result = MovementRules.Move(
+            HexCoord.FromOffset(2, 0), HexCoord.FromOffset(1, 0), grid, red);
+
+        Assert.False(result.WasCapture);
+        Assert.Same(grave, result.Destroyed);
+    }
+
+    [Fact]
     public void PlaceNew_Capture_TransfersOwnershipAndPlacesUnit()
     {
         HexGrid grid = BuildGrid(5, 1, Blue);

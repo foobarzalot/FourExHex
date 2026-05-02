@@ -516,6 +516,15 @@ public class GameController
             RebindSelectionToContaining(destination);
         }
 
+        // Dispatch destruction FX after HandleCapture: that path's
+        // RebuildAfterTerritoryChange clears the deaths layer to cancel
+        // stale corpse animations, which would also wipe a freshly-
+        // spawned capture burst if we played it before.
+        if (result.Destroyed != null)
+        {
+            _map.PlayDestructionEffect(destination, result.Destroyed);
+        }
+
         // QoL: stay in a buy mode for the highest level the (possibly
         // rebound) territory can still afford that is at most the level
         // just bought. Stay-at-same-level if still affordable; otherwise
@@ -571,6 +580,11 @@ public class GameController
         {
             HandleCapture($"Move {source}→{destination}");
             RebindSelectionToContaining(destination);
+        }
+
+        if (result.Destroyed != null)
+        {
+            _map.PlayDestructionEffect(destination, result.Destroyed);
         }
 
         FinishPendingAction();
@@ -1465,6 +1479,10 @@ public class GameController
         {
             HandleCapture($"Move {source}→{destination}");
         }
+        if (result.Destroyed != null)
+        {
+            _map.PlayDestructionEffect(destination, result.Destroyed);
+        }
         if (wasReposition)
         {
             Unit? movedUnit = _state.Grid.Get(destination)?.Unit;
@@ -1511,6 +1529,10 @@ public class GameController
         if (result.WasCapture)
         {
             HandleCapture($"Buy {level} → {destination}");
+        }
+        if (result.Destroyed != null)
+        {
+            _map.PlayDestructionEffect(destination, result.Destroyed);
         }
         if (wasReposition)
         {

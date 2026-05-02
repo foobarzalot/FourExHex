@@ -74,6 +74,10 @@ public class MockHexMapView : IHexMapView
         LastOccupantRefreshPlayer = currentPlayerColor;
     }
 
+    public List<(HexCoord Coord, HexOccupant Destroyed)> DestructionEffects { get; } = new();
+    public void PlayDestructionEffect(HexCoord coord, HexOccupant destroyed) =>
+        DestructionEffects.Add((coord, destroyed));
+
     /// <summary>Raise the TileClicked event, as if the user clicked.</summary>
     public void SimulateClick(HexTile? tile) => TileClicked?.Invoke(tile);
 }
