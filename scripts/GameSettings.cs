@@ -39,4 +39,12 @@ public static class GameSettings
         AiKind.Heuristic, // Purple
         AiKind.Heuristic, // Orange
     };
+
+    /// <summary>
+    /// Master seed for grid generation and per-turn RNG. Written by
+    /// the main menu's "Map Seed" field before scene change; null
+    /// means "auto-pick" (used by the FOUREXHEX_6AI diagnostic path
+    /// which skips the menu entirely).
+    /// </summary>
+    public static int? MasterSeed = null;
 }

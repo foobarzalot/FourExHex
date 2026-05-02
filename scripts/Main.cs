@@ -65,6 +65,15 @@ public partial class Main : Node2D
             rows = visibleMap.Rows;
         }
 
+        // One seed drives both the initial grid and the GameController's
+        // per-turn RNG, so the menu's "Map Seed" field is reproducible
+        // end-to-end. Load wins (replays the saved game), then the menu's
+        // selection, and finally a fresh random seed for the diagnostic
+        // path (FOUREXHEX_6AI never visits the menu so MasterSeed is null).
+        int seed = pendingLoad?.MasterSeed
+                ?? GameSettings.MasterSeed
+                ?? System.Random.Shared.Next();
+
         if (pendingLoad != null)
         {
             // Load path: state, players, seed, max-turn cap all come
@@ -78,7 +87,7 @@ public partial class Main : Node2D
             _players = BuildPlayers();
             var turnState = new TurnState(_players);
             var treasury = new Treasury();
-            HexGrid grid = BuildInitialGrid(cols, rows, _players);
+            HexGrid grid = MapGenerator.BuildInitialGrid(cols, rows, _players, seed);
             IReadOnlyList<Territory> raw = TerritoryFinder.FindAll(grid);
             IReadOnlyList<Territory> territories = CapitalReconciler.Reconcile(
                 raw, new List<Territory>(), grid);
@@ -133,7 +142,6 @@ public partial class Main : Node2D
         IAiPacer pacer = diagnosticMode
             ? new SynchronousAiPacer()
             : new GodotAiPacer(GetTree());
-        int? seed = pendingLoad?.MasterSeed;
         _controller = new GameController(
             _state, session, map, hud,
             seed: seed,
@@ -272,43 +280,6 @@ public partial class Main : Node2D
         }
         _saveErrorDialog.DialogText = message;
         _saveErrorDialog.PopupCentered();
-    }
-
-    private static HexGrid BuildInitialGrid(int cols, int rows, IReadOnlyList<Player> players)
-    {
-        var rng = new RandomNumberGenerator();
-        rng.Randomize();
-
-        var grid = new HexGrid();
-        for (int row = 0; row < rows; row++)
-        {
-            for (int col = 0; col < cols; col++)
-            {
-                HexCoord coord = HexCoord.FromOffset(col, row);
-                Color color = players[rng.RandiRange(0, players.Count - 1)].Color;
-                grid.Add(new HexTile(coord, color));
-            }
-        }
-
-        // Seed a handful of initial trees — roughly 5% of tiles — so
-        // the board has visible forest at game start (Slay does this).
-        // CapitalPlacer already skips tree-occupied tiles, so capital
-        // assignment on the downstream pipeline handles this correctly.
-        int treeTarget = (cols * rows) / 20;
-        var allCoords = new List<HexCoord>();
-        foreach (HexTile tile in grid.Tiles) allCoords.Add(tile.Coord);
-        for (int i = 0; i < treeTarget; i++)
-        {
-            int idx = rng.RandiRange(0, allCoords.Count - 1);
-            HexCoord pick = allCoords[idx];
-            allCoords.RemoveAt(idx);
-            HexTile? t = grid.Get(pick);
-            if (t != null && t.Occupant == null)
-            {
-                t.Occupant = new Tree();
-            }
-        }
-        return grid;
     }
 
     private static List<Player> BuildPlayers()

@@ -69,6 +69,8 @@
     <Compile Include="..\scripts\SaveSerializer.cs" Link="scripts\SaveSerializer.cs" />
     <Compile Include="..\scripts\LoadRequest.cs" Link="scripts\LoadRequest.cs" />
     <Compile Include="..\scripts\SaveSlotInfo.cs" Link="scripts\SaveSlotInfo.cs" />
+    <Compile Include="..\scripts\GameSettings.cs" Link="scripts\GameSettings.cs" />
+    <Compile Include="..\scripts\MapGenerator.cs" Link="scripts\MapGenerator.cs" />
   </ItemGroup>
 
 </Project>

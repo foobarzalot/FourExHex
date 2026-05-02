@@ -1,3 +1,4 @@
+using System.Linq;
 using Godot;
 
 /// <summary>
@@ -17,12 +18,17 @@ public partial class MainMenuScene : Control
     private const int RandomAiId = 1;
     private const int HeuristicAiId = 2;
 
+    private const int SeedMin = 1;
+    private const int SeedMax = 9999;
+
     private readonly OptionButton[] _roleButtons = new OptionButton[GameSettings.PlayerConfig.Length];
     private SaveStore _saveStore = null!;
     private Window? _loadDialog;
     private VBoxContainer? _loadDialogList;
     private AcceptDialog? _loadErrorDialog;
     private Button? _loadButton;
+    private LineEdit? _seedField;
+    private Button? _startButton;
 
     public override void _Ready()
     {
@@ -62,10 +68,10 @@ public partial class MainMenuScene : Control
 
         Vector2 viewport = GetViewportRect().Size;
 
-        // Centered panel containing the title, player-role grid, and
-        // Start Game button.
+        // Centered panel containing the title, player-role grid, the
+        // Map Seed entry, and the Load / Start Game buttons.
         const float panelW = 520f;
-        const float panelH = 560f;
+        const float panelH = 612f;
         var panel = new Panel
         {
             Position = new Vector2((viewport.X - panelW) * 0.5f, (viewport.Y - panelH) * 0.5f),
@@ -170,6 +176,34 @@ public partial class MainMenuScene : Control
         float rightColX = panelW - rowInset - dropdownWidth;
         float rightColW = dropdownWidth;
 
+        // Map Seed row sits just below the last player row, aligned
+        // with the dropdown column so the input lines up with the AI
+        // selectors above it.
+        float seedRowY = rowStartY + rowHeight * GameSettings.PlayerConfig.Length;
+        var seedLabel = new Label
+        {
+            Text = "Map Seed",
+            Position = new Vector2(leftColX + swatchSize + 16f, seedRowY + 14f),
+            Size = new Vector2(nameWidth, 24f),
+        };
+        seedLabel.AddThemeFontSizeOverride("font_size", 20);
+        panel.AddChild(seedLabel);
+
+        _seedField = new LineEdit
+        {
+            Position = new Vector2(rightColX, seedRowY + 10f),
+            Size = new Vector2(rightColW, 32f),
+            MaxLength = 4,
+            Alignment = HorizontalAlignment.Right,
+            Text = new System.Random().Next(SeedMin, SeedMax + 1).ToString(),
+        };
+        _seedField.TextChanged += OnSeedTextChanged;
+        // Intercept = / - even when the LineEdit has focus so the hotkey
+        // is focus-agnostic. Without GuiInput here, the LineEdit would
+        // consume printable-key events before _UnhandledInput sees them.
+        _seedField.GuiInput += OnSeedFieldGuiInput;
+        panel.AddChild(_seedField);
+
         _loadButton = new Button { Text = "Load Game" };
         _loadButton.AddThemeFontSizeOverride("font_size", 24);
         _loadButton.Position = new Vector2(leftColX, buttonRowY);
@@ -177,18 +211,80 @@ public partial class MainMenuScene : Control
         _loadButton.Pressed += OnLoadPressed;
         panel.AddChild(_loadButton);
 
-        var startButton = new Button { Text = "Start Game" };
-        startButton.AddThemeFontSizeOverride("font_size", 24);
-        startButton.Position = new Vector2(rightColX, buttonRowY);
-        startButton.Size = new Vector2(rightColW, buttonH);
-        startButton.Pressed += OnStartPressed;
-        panel.AddChild(startButton);
+        _startButton = new Button { Text = "Start Game" };
+        _startButton.AddThemeFontSizeOverride("font_size", 24);
+        _startButton.Position = new Vector2(rightColX, buttonRowY);
+        _startButton.Size = new Vector2(rightColW, buttonH);
+        _startButton.Pressed += OnStartPressed;
+        panel.AddChild(_startButton);
+
         // Disable Load Game when no saves exist so the user gets
         // immediate visual feedback rather than an empty popup.
         _loadButton.Disabled = _saveStore.ListSlots().Count == 0;
+        // Start Game is gated on the seed field being non-empty.
+        _startButton.Disabled = string.IsNullOrEmpty(_seedField.Text);
 
         BuildLoadDialog();
     }
+
+    private void OnSeedTextChanged(string newText)
+    {
+        if (_seedField == null) return;
+        // Strip any non-digit characters that slipped past MaxLength
+        // (paste, IME, etc.) and keep the caret at the same logical
+        // position so typing isn't disrupted.
+        string filtered = new string(newText.Where(char.IsAsciiDigit).ToArray());
+        if (filtered != newText)
+        {
+            int caret = _seedField.CaretColumn;
+            _seedField.Text = filtered;
+            _seedField.CaretColumn = System.Math.Min(caret, filtered.Length);
+        }
+        if (_startButton != null)
+        {
+            _startButton.Disabled = string.IsNullOrEmpty(_seedField.Text);
+        }
+    }
+
+    private void OnSeedFieldGuiInput(InputEvent @event)
+    {
+        if (@event is not InputEventKey keyEvent || !keyEvent.Pressed) return;
+        if (IsIncrementKey(keyEvent.Keycode))
+        {
+            NudgeSeed(+1);
+            _seedField?.AcceptEvent();
+        }
+        else if (IsDecrementKey(keyEvent.Keycode))
+        {
+            NudgeSeed(-1);
+            _seedField?.AcceptEvent();
+        }
+        else if (!keyEvent.Echo
+            && (keyEvent.Keycode == Key.Enter || keyEvent.Keycode == Key.KpEnter))
+        {
+            // LineEdit consumes Enter by default, so without this hook
+            // _UnhandledInput would never see it while the seed field
+            // is focused. Mirror the unfocused behavior: start the game.
+            _seedField?.AcceptEvent();
+            OnStartPressed();
+        }
+    }
+
+    private void NudgeSeed(int delta)
+    {
+        if (_seedField == null) return;
+        int.TryParse(_seedField.Text, out int current);
+        int next = System.Math.Clamp(current + delta, SeedMin, SeedMax);
+        _seedField.Text = next.ToString();
+        _seedField.CaretColumn = _seedField.Text.Length;
+        if (_startButton != null) _startButton.Disabled = false;
+    }
+
+    private static bool IsIncrementKey(Key k) =>
+        k == Key.Equal || k == Key.Plus || k == Key.KpAdd;
+
+    private static bool IsDecrementKey(Key k) =>
+        k == Key.Minus || k == Key.KpSubtract;
 
     private void BuildLoadDialog()
     {
@@ -310,8 +406,25 @@ public partial class MainMenuScene : Control
 
     public override void _UnhandledInput(InputEvent @event)
     {
-        if (@event is not InputEventKey keyEvent) return;
-        if (!keyEvent.Pressed || keyEvent.Echo) return;
+        if (@event is not InputEventKey keyEvent || !keyEvent.Pressed) return;
+
+        // Allow auto-repeat (Echo == true) for = / - so holding the key
+        // smoothly scrolls the seed value. Enter still rejects echoes
+        // below so a held Return doesn't double-launch the game.
+        if (IsIncrementKey(keyEvent.Keycode))
+        {
+            NudgeSeed(+1);
+            GetViewport()?.SetInputAsHandled();
+            return;
+        }
+        if (IsDecrementKey(keyEvent.Keycode))
+        {
+            NudgeSeed(-1);
+            GetViewport()?.SetInputAsHandled();
+            return;
+        }
+
+        if (keyEvent.Echo) return;
         if (keyEvent.Keycode != Key.Enter && keyEvent.Keycode != Key.KpEnter) return;
 
         // The Load Game dialog handles its own input via the Window
@@ -327,6 +440,13 @@ public partial class MainMenuScene : Control
 
     private void OnStartPressed()
     {
+        // Defensive: the Start button is disabled while the seed field
+        // is empty, but Enter could still bypass the disabled-button
+        // check, so re-validate here.
+        if (_seedField == null || string.IsNullOrEmpty(_seedField.Text)) return;
+        int.TryParse(_seedField.Text, out int seed);
+        GameSettings.MasterSeed = System.Math.Clamp(seed, SeedMin, SeedMax);
+
         for (int i = 0; i < _roleButtons.Length; i++)
         {
             int selectedId = _roleButtons[i].GetSelectedId();
