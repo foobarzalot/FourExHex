@@ -66,11 +66,17 @@ public partial class HexMapView : Node2D, IHexMapView
     }
 
     // Layered overlay children (added in this order so draw order is
-    // fills -> borders -> capitals -> trees -> graves -> units -> deaths
-    // -> targets -> highlight). Trees draw under units so the rare
-    // unit-on-tree-tile transient (e.g. mid-chop) reads correctly.
+    // fills -> outlines -> borders -> capitals -> trees -> graves -> units
+    // -> deaths -> targets -> highlight). Trees draw under units so the
+    // rare unit-on-tree-tile transient (e.g. mid-chop) reads correctly.
     // Deaths draws above units so a freshly-spawned grave grow-in reads
     // underneath the still-shrinking corpse it replaces.
+    // Outlines live in their own layer (not as children of each fill) so
+    // adjacent same-color tiles don't have one tile's fill overdraw the
+    // other tile's outline along the shared edge — that overdraw left
+    // the line asymmetric (one half ~0.4 alpha, the other ~0.64) and
+    // could read as faint or missing on interior seams.
+    private Node2D? _outlinesLayer;
     private Node2D? _towerCoverageLayer;
     private Node2D? _bordersLayer;
     private Node2D? _capitalsLayer;
@@ -260,12 +266,19 @@ public partial class HexMapView : Node2D, IHexMapView
             AddChild(tile.Visual);
         }
 
+        // All per-tile outlines go in one layer drawn after every fill,
+        // so neighbor fills can never overdraw an outline. Each unique
+        // edge is drawn exactly once for uniform thickness.
+        _outlinesLayer = new Node2D { Name = "OutlinesLayer" };
+        AddChild(_outlinesLayer);
+        PopulateOutlinesLayer();
+
         GD.Print($"HexMapView: rendering {_state.Grid.Count} tiles across {_state.Territories.Count} territories.");
 
         RebuildTileToTerritoryIndex();
 
-        // The tower-coverage tint sits above tile fills but below
-        // borders, so the lift is subtle: the underlying territory
+        // The tower-coverage tint sits above tile fills + outlines but
+        // below borders, so the lift is subtle: the underlying territory
         // color shows through and crisp border lines stay on top.
         _towerCoverageLayer = new Node2D { Name = "TowerCoverageLayer" };
         AddChild(_towerCoverageLayer);
@@ -1516,28 +1529,55 @@ public partial class HexMapView : Node2D, IHexMapView
 
     private Polygon2D CreateHexVisual(Vector2 position, Color color)
     {
-        Vector2[] verts = HexVertices();
-
-        var fill = new Polygon2D
+        return new Polygon2D
         {
             Position = position,
             Color = color,
-            Polygon = verts,
+            Polygon = HexVertices(),
         };
+    }
 
-        var outlinePoints = new Vector2[7];
-        for (int i = 0; i < 6; i++) outlinePoints[i] = verts[i];
-        outlinePoints[6] = verts[0];
+    private static readonly Color HexOutlineColor = new Color(0f, 0f, 0f, 0.4f);
+    private const float HexOutlineWidth = 1.5f;
 
-        var outline = new Line2D
+    // Draw each shared land/land edge exactly once (using a coord
+    // tie-break for ownership) and each land/water edge exactly once.
+    // Drawing each tile's full perimeter would double the line weight
+    // on interior same-color seams while leaving coastal seams single,
+    // which reads as uneven thickness.
+    private void PopulateOutlinesLayer()
+    {
+        if (_outlinesLayer == null) return;
+        Vector2[] verts = HexVertices();
+
+        foreach (HexTile tile in _state.Grid.Tiles)
         {
-            Points = outlinePoints,
-            Width = 1.5f,
-            DefaultColor = new Color(0f, 0f, 0f, 0.4f),
-        };
-        fill.AddChild(outline);
+            Vector2 center = FirstHexCenterOffset + tile.Coord.ToPixel(HexSize);
+            for (int edge = 0; edge < 6; edge++)
+            {
+                int dir = EdgeToNeighborDirection[edge];
+                HexCoord neighborCoord = tile.Coord.Neighbor(dir);
+                HexTile? neighbor = _state.Grid.Get(neighborCoord);
+                if (neighbor != null && CompareCoord(neighborCoord, tile.Coord) < 0)
+                {
+                    // Neighbor land tile is the canonical owner of this edge.
+                    continue;
+                }
 
-        return fill;
+                _outlinesLayer.AddChild(new Line2D
+                {
+                    Points = new[] { center + verts[edge], center + verts[(edge + 1) % 6] },
+                    Width = HexOutlineWidth,
+                    DefaultColor = HexOutlineColor,
+                });
+            }
+        }
+    }
+
+    private static int CompareCoord(HexCoord a, HexCoord b)
+    {
+        if (a.Q != b.Q) return a.Q.CompareTo(b.Q);
+        return a.R.CompareTo(b.R);
     }
 
     // Edge i of a hex (between vertex i and vertex (i+1)%6) maps to one
