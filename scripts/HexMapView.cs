@@ -132,21 +132,32 @@ public partial class HexMapView : Node2D, IHexMapView
     private const float PulseAmplitude = 0.18f;
     private const float PulseRate = 8.0f; // rad/sec; ~1.3 Hz
 
-    // Sparse tilde-shaped ripple marks scattered across water hexes.
-    // Each tilde is fixed at its hex center; phase offsets are derived
-    // from each hex's x-position so peak alpha sweeps eastward through
-    // the field — a tilde fades down just as the next column to the
-    // east brightens. East-west matches pointy-top hex flat edges so
-    // the wavefront crosses cleanly between tiles instead of running
-    // through vertex-to-vertex corners. The list is built once in
-    // _Ready and never resized.
-    private readonly List<RippleVisual> _ripples = new();
-    private double _rippleTime;
-    private const float RippleCyclePeriod = 5.0f;
+    // Tilde-shaped ripple marks rendered through a fixed-size pool so
+    // the visible count is hard-capped regardless of map size. A small
+    // number of "wave generators" stream ignitions across full rows
+    // west-to-east at a fixed cadence; each ignition consumes a free
+    // slot from the pool. When the pool is full, the generator stalls
+    // until a slot frees (guaranteeing the visible cap). When a wave
+    // exits the eastern edge, it recycles to a new y-row.
+    private const int MaxConcurrentRipples = 20;
+    private const int ActiveWaveCount = 3;
+    private const int MaxIgnitionsPerWave = 8;       // cap per wave so a single rim assignment can't lock a wave off-screen for ~26s
+    private const float RippleLifetimeSeconds = 4.0f;
+    private const float WaveStaggerSeconds = 0.7f;   // seconds between consecutive ignitions in a wave (~6 alive per wave)
     private const float RippleMaxAlpha = 0.55f;
-    private const float RippleWavelengthHexes = 20.0f; // x-distance (in HexSize units) between consecutive wavefronts
-    private const float RipplePhaseJitter = 0.5f;      // ±jitter as a fraction of the cycle period; 0 = perfect wall
-    private const float RippleBandHeightHexes = 6.0f; // y-pixel height of each independent wavefront band, in HexSize units
+
+    private RippleSlot[] _slots = null!;
+    private WaveGenerator[] _waves = null!;
+    private double _now;
+    private readonly HashSet<HexCoord> _deepWaterCoordSet = new();
+    private readonly Dictionary<int, (int MinQ, int MaxQ)> _waterRowRanges = new();
+    private readonly Dictionary<int, List<int>> _waterRowQs = new(); // deep-water Qs per row, for random initial placement
+    private int[] _waterRowKeys = Array.Empty<int>();
+    private int[] _waterRowWeights = Array.Empty<int>();             // visible-water count per row (rim rows clamped to 1)
+    private int _totalRowWeight;
+    private readonly Random _waveRng = new(0x4F4845);
+    private Vector2[] _tildePoints = null!;
+    private double _lastRippleStatLog;
 
     // Pan/drag state. The map renders in this Node2D's local space, so
     // panning is just translating Position. ToLocal() in mouse-to-hex
@@ -198,7 +209,7 @@ public partial class HexMapView : Node2D, IHexMapView
         {
             Vector2 center = FirstHexCenterOffset + waterCoord.ToPixel(HexSize);
             AddChild(CreateWaterHexVisual(center));
-            MaybeSpawnRipple(rippleLayer, waterCoord, center);
+            TryAddDeepWater(waterCoord, center);
         }
 
         // Render-only extension: a ring of extra water hexes surrounding
@@ -215,9 +226,12 @@ public partial class HexMapView : Node2D, IHexMapView
                 HexCoord coord = HexCoord.FromOffset(col, row);
                 Vector2 center = FirstHexCenterOffset + coord.ToPixel(HexSize);
                 AddChild(CreateWaterHexVisual(center));
-                MaybeSpawnRipple(rippleLayer, coord, center);
+                TryAddDeepWater(coord, center);
             }
         }
+
+        // Build the ripple pool now that the deep-water set is populated.
+        InitRipplePool(rippleLayer);
 
         // Ripples sit on top of the flat water polygons but below the
         // shoreline foam, so foam wins at the water/land seam.
@@ -475,21 +489,10 @@ public partial class HexMapView : Node2D, IHexMapView
     {
         // Drive the ripple-mark fade cycle every frame. Done up front so it
         // ticks regardless of the pulse-related early return below. Each
-        // ripple uses sin²(πx) on its own phase so it eases in and out
-        // smoothly (no hard pop at alpha 0).
-        if (_ripples.Count > 0)
-        {
-            _rippleTime += delta;
-            float t = (float)_rippleTime;
-            foreach (RippleVisual r in _ripples)
-            {
-                float cycle = Mathf.PosMod(t + r.PhaseOffset, RippleCyclePeriod) / RippleCyclePeriod;
-                float s = Mathf.Sin(cycle * Mathf.Pi);
-                Color c = r.Node.DefaultColor;
-                c.A = s * s * RippleMaxAlpha;
-                r.Node.DefaultColor = c;
-            }
-        }
+        // slot uses sin²(πx) over its lifetime so it eases in and out
+        // smoothly (no hard pop at alpha 0). Packets recycle when their
+        // last slot has retired.
+        TickRipples(delta);
 
         // Keyboard pan runs every frame regardless of pulse state — held
         // arrow / WASD keys must produce smooth motion.
@@ -1611,29 +1614,131 @@ public partial class HexMapView : Node2D, IHexMapView
         };
     }
 
-    private sealed record RippleVisual(Line2D Node, float PhaseOffset);
+    private sealed class RippleSlot
+    {
+        public Line2D Node = null!;
+        public double IgniteTime;
+        public Vector2 HexCenter;
+        public bool Active;
+    }
+
+    private sealed class WaveGenerator
+    {
+        public int YRow;
+        public int[] QsToVisit = Array.Empty<int>(); // sorted ascending; one entry per deep-water hex in the row
+        public int NextIndex;
+        public double NextIgniteTime;
+    }
 
     private static readonly Color RippleStrokeColor = new Color(0.92f, 0.97f, 1f, 0f);
 
-    // Place a vertical tilde-shaped Line2D at the hex center. Skipped
-    // for hexes that touch any land tile — keeps tildes off coastal
-    // hexes where the shore foam lives. Phase offset is a function of
-    // the hex x-position so the brightening wavefront travels east
-    // through the field at a fixed rate, hitting every consecutive
-    // water hex it crosses.
-    private void MaybeSpawnRipple(Node2D parent, HexCoord coord, Vector2 hexCenter)
+    // Coastal-skip is applied here so deep-water positions never include
+    // hexes adjacent to land — keeps tildes off the shore-foam zone.
+    // Per-row Q range is tracked so a wave generator can sweep west→east
+    // across the full row without iterating all hexes each time.
+    private void TryAddDeepWater(HexCoord coord, Vector2 center)
     {
         for (int dir = 0; dir < 6; dir++)
         {
             if (_state.Grid.Get(coord.Neighbor(dir)) != null) return;
         }
+        _deepWaterCoordSet.Add(coord);
+        if (_waterRowRanges.TryGetValue(coord.R, out var range))
+        {
+            _waterRowRanges[coord.R] = (Math.Min(range.MinQ, coord.Q), Math.Max(range.MaxQ, coord.Q));
+        }
+        else
+        {
+            _waterRowRanges[coord.R] = (coord.Q, coord.Q);
+        }
+        if (!_waterRowQs.TryGetValue(coord.R, out var qList))
+        {
+            qList = new List<int>();
+            _waterRowQs[coord.R] = qList;
+        }
+        qList.Add(coord.Q);
+    }
 
-        // Tilde curve: one full cycle of a sine wave, sampled densely so
-        // Line2D's segment caps round out cleanly. Sized to read at the
-        // same visual weight as trees and towers.
+    // Build the fixed-size pool of Line2D nodes (one per slot) and the
+    // wave generators, staggering their initial start times so the
+    // generators' wavefronts don't all enter from the west edge at
+    // once.
+    private void InitRipplePool(Node2D rippleLayer)
+    {
+        _tildePoints = BuildTildePoints();
+        _slots = new RippleSlot[MaxConcurrentRipples];
+        for (int s = 0; s < MaxConcurrentRipples; s++)
+        {
+            var line = new Line2D
+            {
+                // Vertical orientation so wavefronts cross flat hex edges
+                // instead of vertex-to-vertex along the y-axis.
+                Rotation = Mathf.Pi / 2f,
+                Width = 4.5f,
+                DefaultColor = RippleStrokeColor,
+                Points = _tildePoints,
+                BeginCapMode = Line2D.LineCapMode.Round,
+                EndCapMode = Line2D.LineCapMode.Round,
+                JointMode = Line2D.LineJointMode.Round,
+                Visible = false,
+            };
+            rippleLayer.AddChild(line);
+            _slots[s] = new RippleSlot { Node = line };
+        }
+
+        _waterRowKeys = new int[_waterRowRanges.Count];
+        int rowIdx = 0;
+        foreach (int rowKey in _waterRowRanges.Keys) _waterRowKeys[rowIdx++] = rowKey;
+
+        // Sort each row's Qs ascending so wave generators can step
+        // through them west→east, hitting only real water hexes.
+        foreach (var qList in _waterRowQs.Values) qList.Sort();
+
+        // Weight each row by its count of *visible* water hexes (both
+        // R in [0, Rows) AND col in [0, Cols)). Rim rows are entirely
+        // off-screen y-wise — clamp them to weight 1 so they're still
+        // rarely selected. This biases waves toward rows the player
+        // can actually see while preserving rim possibility.
+        _waterRowWeights = new int[_waterRowKeys.Length];
+        _totalRowWeight = 0;
+        for (int i = 0; i < _waterRowKeys.Length; i++)
+        {
+            int r = _waterRowKeys[i];
+            int visibleCount = 0;
+            if (r >= 0 && r < Rows)
+            {
+                int rowOffset = (r - (r & 1)) / 2;
+                foreach (int q in _waterRowQs[r])
+                {
+                    int col = q + rowOffset;
+                    if (col >= 0 && col < Cols) visibleCount++;
+                }
+            }
+            _waterRowWeights[i] = Math.Max(1, visibleCount);
+            _totalRowWeight += _waterRowWeights[i];
+        }
+
+        GD.Print($"HexMapView: ripple pool sized at {MaxConcurrentRipples}; {_deepWaterCoordSet.Count} deep-water hexes across {_waterRowKeys.Length} rows; total row weight={_totalRowWeight}.");
+
+        _waves = new WaveGenerator[ActiveWaveCount];
+        for (int w = 0; w < ActiveWaveCount; w++)
+        {
+            _waves[w] = new WaveGenerator();
+            // Initial placement scatters waves across the map: random
+            // row AND random starting Q within that row. Subsequent
+            // recycles always re-enter from the row's MinQ.
+            RecycleWave(w, 0.0, randomizeStartQ: true);
+        }
+    }
+
+    // Tilde curve: one full cycle of a sine wave, sampled densely so
+    // Line2D's segment caps round out cleanly. Sized to read at the
+    // same visual weight as trees and towers.
+    private Vector2[] BuildTildePoints()
+    {
         const int Samples = 17;
-        const float HalfWidth = 0.55f;   // fraction of HexSize
-        const float Amplitude = 0.20f;   // fraction of HexSize
+        const float HalfWidth = 0.55f;
+        const float Amplitude = 0.20f;
         var points = new Vector2[Samples];
         for (int i = 0; i < Samples; i++)
         {
@@ -1642,42 +1747,118 @@ public partial class HexMapView : Node2D, IHexMapView
             float y = Mathf.Sin(t * Mathf.Tau) * Amplitude * HexSize;
             points[i] = new Vector2(x, y);
         }
+        return points;
+    }
 
-        var line = new Line2D
+    // Drive each wave's ignition stream and update slot alphas. Waves
+    // emit at WaveStaggerSeconds cadence, consuming free slots from the
+    // pool. When the pool is full the wave stalls (preserving the cap).
+    // When a wave's NextQ passes EndQ, it recycles to a new row.
+    private void TickRipples(double delta)
+    {
+        if (_slots == null || _waves == null) return;
+        _now += delta;
+
+        for (int w = 0; w < _waves.Length; w++)
         {
-            Position = hexCenter,
-            // Rotate 90° so the tilde stands vertically and the
-            // wavefront travels east through hex flat edges instead
-            // of vertex-to-vertex along the y-axis.
-            Rotation = Mathf.Pi / 2f,
-            Width = 4.5f,
-            DefaultColor = RippleStrokeColor,
-            Points = points,
-            BeginCapMode = Line2D.LineCapMode.Round,
-            EndCapMode = Line2D.LineCapMode.Round,
-            JointMode = Line2D.LineJointMode.Round,
-        };
-        parent.AddChild(line);
+            WaveGenerator wave = _waves[w];
+            while (wave.NextIndex < wave.QsToVisit.Length && wave.NextIgniteTime <= _now)
+            {
+                int slotIdx = FindFreeSlot();
+                if (slotIdx < 0) break; // pool full, retry next frame
 
-        // Phase has three components:
-        //   - eastward sweep: -x/wavelength * period (later peak for
-        //     higher x).
-        //   - per-band offset: hash(yBand) → fixed phase per horizontal
-        //     band so each band runs as an independent wavefront with
-        //     finite y-extent instead of one map-spanning wall.
-        //   - per-hex jitter: hash(coord) → small offset so adjacent
-        //     hexes within a band don't peak in perfect lock.
-        // _Process uses Mathf.PosMod so the negative phase wraps
-        // cleanly into the cycle.
-        int hexHash = unchecked(coord.Q * 73856093 ^ coord.R * 19349663);
-        int yBand = Mathf.FloorToInt(hexCenter.Y / (RippleBandHeightHexes * HexSize));
-        int bandHash = unchecked(yBand * (int)2654435761);
-        float jitter = ((hexHash & 0xFFF) / 4096f - 0.5f) * RippleCyclePeriod * RipplePhaseJitter;
-        float bandPhase = ((bandHash & 0xFFF) / 4096f) * RippleCyclePeriod;
-        float phase = -hexCenter.X / (RippleWavelengthHexes * HexSize) * RippleCyclePeriod
-                    + bandPhase
-                    + jitter;
-        _ripples.Add(new RippleVisual(line, phase));
+                int q = wave.QsToVisit[wave.NextIndex];
+                var targetCoord = new HexCoord(q, wave.YRow);
+                RippleSlot slot = _slots[slotIdx];
+                slot.IgniteTime = wave.NextIgniteTime;
+                slot.HexCenter = FirstHexCenterOffset + targetCoord.ToPixel(HexSize);
+                slot.Node.Position = slot.HexCenter;
+                Color c = slot.Node.DefaultColor;
+                c.A = 0;
+                slot.Node.DefaultColor = c;
+                slot.Node.Visible = true;
+                slot.Active = true;
+
+                wave.NextIndex++;
+                wave.NextIgniteTime += WaveStaggerSeconds;
+            }
+            if (wave.NextIndex >= wave.QsToVisit.Length)
+            {
+                RecycleWave(w, 0, randomizeStartQ: false);
+            }
+        }
+
+        int activeCount = 0;
+        for (int s = 0; s < _slots.Length; s++)
+        {
+            RippleSlot slot = _slots[s];
+            if (!slot.Active) continue;
+            double age = _now - slot.IgniteTime;
+            if (age >= RippleLifetimeSeconds)
+            {
+                slot.Active = false;
+                slot.Node.Visible = false;
+                continue;
+            }
+            if (age < 0) { activeCount++; continue; }
+            float frac = (float)(age / RippleLifetimeSeconds);
+            float sinFrac = Mathf.Sin(frac * Mathf.Pi);
+            Color c = slot.Node.DefaultColor;
+            c.A = sinFrac * sinFrac * RippleMaxAlpha;
+            slot.Node.DefaultColor = c;
+            activeCount++;
+        }
+
+        if (_now - _lastRippleStatLog >= 3.0)
+        {
+            _lastRippleStatLog = _now;
+            GD.Print($"HexMapView: t={_now:F1}s active slots={activeCount}/{MaxConcurrentRipples}, waves: " +
+                string.Join(", ", System.Array.ConvertAll(_waves, w => $"row={w.YRow} idx={w.NextIndex}/{w.QsToVisit.Length}")));
+        }
+    }
+
+    private int FindFreeSlot()
+    {
+        for (int s = 0; s < _slots.Length; s++)
+        {
+            if (!_slots[s].Active) return s;
+        }
+        return -1;
+    }
+
+    // Pick a new row and reset the wave's ignition stream to sweep
+    // west→east across that row. `startDelay` >= 0 schedules the first
+    // ignition at _now + startDelay. When `randomizeStartQ` is true,
+    // the wave's NextQ is offset to a random column within the row
+    // (used at startup so the initial placements are scattered across
+    // the map instead of all entering from the western rim edge).
+    private void RecycleWave(int w, double startDelay, bool randomizeStartQ)
+    {
+        if (_waterRowKeys.Length == 0) return;
+
+        int chosenRow = PickWeightedRow();
+        var qList = _waterRowQs[chosenRow];
+        int startIdx = randomizeStartQ ? _waveRng.Next(qList.Count) : 0;
+        int count = Math.Min(MaxIgnitionsPerWave, qList.Count - startIdx);
+        WaveGenerator wave = _waves[w];
+        wave.YRow = chosenRow;
+        wave.QsToVisit = new int[count];
+        for (int i = 0; i < count; i++) wave.QsToVisit[i] = qList[startIdx + i];
+        wave.NextIndex = 0;
+        wave.NextIgniteTime = _now + startDelay;
+        GD.Print($"HexMapView: wave {w} → row {chosenRow}, visiting {count} hexes from idx {startIdx} (Q={qList[startIdx]}), at t={wave.NextIgniteTime:F2}s");
+    }
+
+    private int PickWeightedRow()
+    {
+        int r = _waveRng.Next(_totalRowWeight);
+        int sum = 0;
+        for (int i = 0; i < _waterRowKeys.Length; i++)
+        {
+            sum += _waterRowWeights[i];
+            if (r < sum) return _waterRowKeys[i];
+        }
+        return _waterRowKeys[_waterRowKeys.Length - 1];
     }
 
     // For each water hex, group consecutive shore edges (edges whose
