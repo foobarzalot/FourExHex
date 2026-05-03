@@ -21,6 +21,8 @@ public class MockHudView : IHudView
     public event Action? MainMenuClicked;
     public event Action? NextTerritoryClicked;
     public event Action? PreviousTerritoryClicked;
+    public event Action? NextUnitClicked;
+    public event Action? PreviousUnitClicked;
     public event Action? CancelActionPressed;
     public event Action? SaveGameClicked;
 
@@ -57,6 +59,8 @@ public class MockHudView : IHudView
     public void ClickBuildTower() => BuildTowerClicked?.Invoke();
     public void PressNextTerritory() => NextTerritoryClicked?.Invoke();
     public void PressPreviousTerritory() => PreviousTerritoryClicked?.Invoke();
+    public void PressNextUnit() => NextUnitClicked?.Invoke();
+    public void PressPreviousUnit() => PreviousUnitClicked?.Invoke();
     public void ClickUndoLast() => UndoLastClicked?.Invoke();
     public void ClickUndoTurn() => UndoTurnClicked?.Invoke();
     public void ClickRedoLast() => RedoLastClicked?.Invoke();

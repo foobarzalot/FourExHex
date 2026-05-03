@@ -2125,6 +2125,257 @@ public class GameControllerTests
         Assert.Equal(before, g.Map.CenterCount);
     }
 
+    // --- Cycle movable units in selection (N / Shift+N) -------------------
+
+    /// <summary>
+    /// 6x2 grid, Blue everywhere, Red overlay on row 1 cols 0-4 (5 tiles
+    /// → capital lands on (0,1), the lex-min empty tile). Three unmoved
+    /// Red peasants on (1,1), (2,1), (3,1) so cycling has somewhere to go;
+    /// (4,1) is left empty so the BuildTower-mode test has a valid tower
+    /// target. Lex order on row 1 is by Q ascending: UnitA &lt; UnitB &lt; UnitC.
+    /// </summary>
+    private class ThreeUnitsRedGame
+    {
+        public GameState State { get; }
+        public SessionState Session { get; }
+        public MockHexMapView Map { get; }
+        public MockHudView Hud { get; }
+        public GameController Controller { get; }
+        public Player Red { get; }
+        public Player Blue { get; }
+
+        public HexCoord UnitA { get; } = HexCoord.FromOffset(1, 1);
+        public HexCoord UnitB { get; } = HexCoord.FromOffset(2, 1);
+        public HexCoord UnitC { get; } = HexCoord.FromOffset(3, 1);
+
+        public Territory RedTerritory =>
+            State.Territories.First(t => t.Owner == Red.Color);
+
+        public ThreeUnitsRedGame()
+        {
+            Red = new Player("Red", new Color(1f, 0f, 0f));
+            Blue = new Player("Blue", new Color(0f, 0f, 1f));
+            var players = new List<Player> { Red, Blue };
+
+            var grid = TestHelpers.BuildRectGrid(6, 2, Blue.Color);
+            for (int col = 0; col <= 4; col++)
+            {
+                grid.Get(HexCoord.FromOffset(col, 1))!.Color = Red.Color;
+            }
+
+            IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+            State = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+            Session = new SessionState();
+            Map = new MockHexMapView();
+            Hud = new MockHudView();
+            foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+            {
+                Map.TileIndex[kvp.Key] = kvp.Value;
+            }
+            Controller = new GameController(State, Session, Map, Hud);
+            Controller.StartGame();
+
+            // Place the units AFTER StartGame so their HasMovedThisTurn
+            // isn't reset by the start-of-turn pass (and so the capital
+            // — placed by CapitalReconciler on the lex-min empty tile —
+            // ends up on (0,1) before any unit can occupy it).
+            grid.Get(UnitA)!.Occupant = new Unit(Red.Color);
+            grid.Get(UnitB)!.Occupant = new Unit(Red.Color);
+            grid.Get(UnitC)!.Occupant = new Unit(Red.Color);
+        }
+
+        public void SelectRed() => Map.SimulateClick(State.Grid.Get(RedTerritory.Capital!.Value));
+    }
+
+    [Fact]
+    public void NextUnit_NoSelection_IsNoOp()
+    {
+        var g = new ThreeUnitsRedGame();
+        Assert.Null(g.Session.SelectedTerritory);
+        int baseline = g.Session.Undo.UndoCount;
+
+        g.Hud.PressNextUnit();
+
+        Assert.Null(g.Session.MoveSource);
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+        Assert.Equal(baseline, g.Session.Undo.UndoCount);
+    }
+
+    [Fact]
+    public void NextUnit_SelectedTerritoryHasNoMovableUnits_IsNoOp()
+    {
+        // Select Red on the empty 2-hex fixture (no units anywhere).
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        Assert.NotNull(g.Session.SelectedTerritory);
+        int baseline = g.Session.Undo.UndoCount;
+
+        g.Hud.PressNextUnit();
+
+        Assert.Null(g.Session.MoveSource);
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+        Assert.Equal(baseline, g.Session.Undo.UndoCount);
+    }
+
+    [Fact]
+    public void NextUnit_NoSourcePickedYet_PicksLexMinMovableUnit()
+    {
+        var g = new ThreeUnitsRedGame();
+        g.SelectRed();
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+
+        g.Hud.PressNextUnit();
+
+        Assert.Equal(SessionState.ActionMode.MovingUnit, g.Session.Mode);
+        Assert.Equal(g.UnitA, g.Session.MoveSource);
+        Assert.Equal(g.UnitA, g.Map.LastMoveSource);
+        Assert.NotEmpty(g.Map.LastMoveTargets);
+    }
+
+    [Fact]
+    public void PreviousUnit_NoSourcePickedYet_PicksLexMaxMovableUnit()
+    {
+        var g = new ThreeUnitsRedGame();
+        g.SelectRed();
+
+        g.Hud.PressPreviousUnit();
+
+        Assert.Equal(SessionState.ActionMode.MovingUnit, g.Session.Mode);
+        Assert.Equal(g.UnitC, g.Session.MoveSource);
+    }
+
+    [Fact]
+    public void NextUnit_CyclesForwardThroughUnits_AndWraps()
+    {
+        var g = new ThreeUnitsRedGame();
+        g.SelectRed();
+
+        g.Hud.PressNextUnit();
+        Assert.Equal(g.UnitA, g.Session.MoveSource);
+        g.Hud.PressNextUnit();
+        Assert.Equal(g.UnitB, g.Session.MoveSource);
+        g.Hud.PressNextUnit();
+        Assert.Equal(g.UnitC, g.Session.MoveSource);
+        g.Hud.PressNextUnit();
+        Assert.Equal(g.UnitA, g.Session.MoveSource);
+    }
+
+    [Fact]
+    public void PreviousUnit_CyclesBackwardThroughUnits_AndWraps()
+    {
+        var g = new ThreeUnitsRedGame();
+        g.SelectRed();
+
+        g.Hud.PressPreviousUnit();
+        Assert.Equal(g.UnitC, g.Session.MoveSource);
+        g.Hud.PressPreviousUnit();
+        Assert.Equal(g.UnitB, g.Session.MoveSource);
+        g.Hud.PressPreviousUnit();
+        Assert.Equal(g.UnitA, g.Session.MoveSource);
+        g.Hud.PressPreviousUnit();
+        Assert.Equal(g.UnitC, g.Session.MoveSource);
+    }
+
+    [Fact]
+    public void NextUnit_SkipsAlreadyMovedUnits()
+    {
+        var g = new ThreeUnitsRedGame();
+        // Mark the middle unit as already moved this turn — N must skip it.
+        g.State.Grid.Get(g.UnitB)!.Unit!.HasMovedThisTurn = true;
+        g.SelectRed();
+
+        g.Hud.PressNextUnit();
+        Assert.Equal(g.UnitA, g.Session.MoveSource);
+        g.Hud.PressNextUnit();
+        Assert.Equal(g.UnitC, g.Session.MoveSource);
+        g.Hud.PressNextUnit();
+        Assert.Equal(g.UnitA, g.Session.MoveSource);
+    }
+
+    [Fact]
+    public void NextUnit_FromBuildingTower_EntersMovingUnit_AndClearsTowerOverlays()
+    {
+        var g = new ThreeUnitsRedGame();
+        g.SelectRed();
+        HexCoord cap = g.RedTerritory.Capital!.Value;
+        g.State.Treasury.SetGold(cap, 20);
+        g.Hud.ClickBuildTower();
+        Assert.Equal(SessionState.ActionMode.BuildingTower, g.Session.Mode);
+        Assert.NotEmpty(g.Map.LastTowerTargets);
+
+        g.Hud.PressNextUnit();
+
+        Assert.Equal(SessionState.ActionMode.MovingUnit, g.Session.Mode);
+        Assert.Equal(g.UnitA, g.Session.MoveSource);
+        Assert.Empty(g.Map.LastTowerTargets);
+        Assert.Empty(g.Map.LastTowerCoverage);
+    }
+
+    [Fact]
+    public void NextUnit_OneMovableUnitAlreadyTheSource_DoesNotPushUndo()
+    {
+        var g = new TestGame();
+        g.Tile(1, 1).Occupant = new Unit(g.Red.Color);
+        g.Map.SimulateClick(g.Tile(1, 1)); // enters MovingUnit on (1,1)
+        Assert.Equal(SessionState.ActionMode.MovingUnit, g.Session.Mode);
+        Assert.Equal(HexCoord.FromOffset(1, 1), g.Session.MoveSource);
+        int baseline = g.Session.Undo.UndoCount;
+
+        g.Hud.PressNextUnit();
+
+        // Single movable unit, already the source: nothing changes.
+        Assert.Equal(HexCoord.FromOffset(1, 1), g.Session.MoveSource);
+        Assert.Equal(baseline, g.Session.Undo.UndoCount);
+    }
+
+    [Fact]
+    public void NextUnit_AfterWin_IsNoOp()
+    {
+        var g = new ThreeUnitsRedGame();
+        g.SelectRed();
+        g.Session.Winner = g.Red.Color;
+
+        g.Hud.PressNextUnit();
+
+        Assert.Null(g.Session.MoveSource);
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+    }
+
+    [Fact]
+    public void NextUnit_PushesUndo_AndIsReversible()
+    {
+        var g = new ThreeUnitsRedGame();
+        g.SelectRed();
+        int baseline = g.Session.Undo.UndoCount;
+
+        g.Hud.PressNextUnit();
+        Assert.Equal(baseline + 1, g.Session.Undo.UndoCount);
+        Assert.Equal(SessionState.ActionMode.MovingUnit, g.Session.Mode);
+        Assert.Equal(g.UnitA, g.Session.MoveSource);
+
+        g.Hud.ClickUndoLast();
+
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+        Assert.Null(g.Session.MoveSource);
+    }
+
+    [Fact]
+    public void NextUnit_ChangingFromOneSourceToAnother_PushesUndo_AndIsReversible()
+    {
+        var g = new ThreeUnitsRedGame();
+        g.SelectRed();
+
+        g.Hud.PressNextUnit(); // → UnitA
+        Assert.Equal(g.UnitA, g.Session.MoveSource);
+        g.Hud.PressNextUnit(); // → UnitB
+        Assert.Equal(g.UnitB, g.Session.MoveSource);
+
+        g.Hud.ClickUndoLast(); // restores MoveSource = UnitA
+
+        Assert.Equal(g.UnitA, g.Session.MoveSource);
+        Assert.Equal(SessionState.ActionMode.MovingUnit, g.Session.Mode);
+    }
+
     // --- Build tower ------------------------------------------------------
 
     [Fact]

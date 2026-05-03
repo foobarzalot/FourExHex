@@ -118,6 +118,8 @@ public class GameController
         _hud.EndTurnClicked += OnEndTurnPressed;
         _hud.NextTerritoryClicked += OnNextTerritoryPressed;
         _hud.PreviousTerritoryClicked += OnPreviousTerritoryPressed;
+        _hud.NextUnitClicked += OnNextUnitPressed;
+        _hud.PreviousUnitClicked += OnPreviousUnitPressed;
         _hud.CancelActionPressed += OnCancelActionPressed;
     }
 
@@ -988,6 +990,64 @@ public class GameController
         CancelPendingAction();
         SetSelection(owned[nextIndex]);
         _map.CenterOnTerritory(owned[nextIndex]);
+    }
+
+    /// <summary>
+    /// Cycle the move-source through the current player's unmoved units
+    /// inside <see cref="SessionState.SelectedTerritory"/>. N goes forward
+    /// (lex-min first when nothing is picked up); Shift+N goes backward
+    /// (lex-max first). Acts exactly like clicking the next unit: enters
+    /// MovingUnit mode and re-emits the move-target ring. Does not pan
+    /// the camera — the territory is already in view.
+    /// </summary>
+    private void OnNextUnitPressed() =>
+        TrackHandler(() => StepUnitSelection(forward: true));
+
+    private void OnPreviousUnitPressed() =>
+        TrackHandler(() => StepUnitSelection(forward: false));
+
+    private void StepUnitSelection(bool forward)
+    {
+        if (_session.IsGameOver) return;
+        Territory? selected = _session.SelectedTerritory;
+        if (selected == null) return;
+
+        Color color = _state.Turns.CurrentPlayer.Color;
+        var movable = new List<HexCoord>();
+        foreach (HexCoord coord in selected.Coords)
+        {
+            HexTile? tile = _state.Grid.Get(coord);
+            Unit? unit = tile?.Unit;
+            if (unit != null && unit.Owner == color && !unit.HasMovedThisTurn)
+            {
+                movable.Add(coord);
+            }
+        }
+        if (movable.Count == 0) return;
+        movable.Sort();
+
+        int currentIndex = -1;
+        if (_session.Mode == SessionState.ActionMode.MovingUnit
+            && _session.MoveSource.HasValue)
+        {
+            currentIndex = movable.IndexOf(_session.MoveSource.Value);
+        }
+        int nextIndex = forward
+            ? (currentIndex + 1) % movable.Count
+            : (currentIndex == -1 ? movable.Count - 1 : (currentIndex - 1 + movable.Count) % movable.Count);
+        if (nextIndex == currentIndex) return;
+
+        HexCoord target = movable[nextIndex];
+        Unit chosen = _state.Grid.Get(target)!.Unit!;
+        _session.Mode = SessionState.ActionMode.MovingUnit;
+        _session.MoveSource = target;
+        _map.ShowMoveTargets(ActionConsumingTargets(chosen.Level, selected));
+        // Defensive: clear tower overlays in case we're transitioning out
+        // of BuildingTower mode.
+        _map.ShowTowerTargets(System.Array.Empty<HexCoord>());
+        _map.ShowTowerCoverage(System.Array.Empty<HexCoord>());
+        _map.ShowMoveSource(target);
+        RefreshViews();
     }
 
     private void OnEndTurnPressed()

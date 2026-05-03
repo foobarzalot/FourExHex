@@ -23,6 +23,8 @@ public partial class HudView : CanvasLayer, IHudView
     public event Action? MainMenuClicked;
     public event Action? NextTerritoryClicked;
     public event Action? PreviousTerritoryClicked;
+    public event Action? NextUnitClicked;
+    public event Action? PreviousUnitClicked;
     public event Action? CancelActionPressed;
     public event Action? SaveGameClicked;
 
@@ -334,6 +336,11 @@ public partial class HudView : CanvasLayer, IHudView
                 // Some platforms send Shift+Tab as Key.Backtab instead of
                 // Key.Tab + Shift; handle both so the binding is reliable.
                 PreviousTerritoryClicked?.Invoke();
+                GetViewport().SetInputAsHandled();
+                break;
+            case Key.N:
+                if (keyEvent.ShiftPressed) PreviousUnitClicked?.Invoke();
+                else NextUnitClicked?.Invoke();
                 GetViewport().SetInputAsHandled();
                 break;
             case Key.Escape:
