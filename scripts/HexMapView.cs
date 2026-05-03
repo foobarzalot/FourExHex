@@ -133,14 +133,19 @@ public partial class HexMapView : Node2D, IHexMapView
     private const float PulseRate = 8.0f; // rad/sec; ~1.3 Hz
 
     // Sparse tilde-shaped ripple marks scattered across water hexes.
-    // Each one fades in and out on its own phase offset; the time
-    // accumulator is driven from _Process so the rate is independent
-    // of zoom/pan. The list is built once in _Ready and never resized.
+    // Each tilde is fixed at its hex center; phase offsets are derived
+    // from each hex's x-position so peak alpha sweeps eastward through
+    // the field — a tilde fades down just as the next column to the
+    // east brightens. East-west matches pointy-top hex flat edges so
+    // the wavefront crosses cleanly between tiles instead of running
+    // through vertex-to-vertex corners. The list is built once in
+    // _Ready and never resized.
     private readonly List<RippleVisual> _ripples = new();
     private double _rippleTime;
-    private const float RippleCyclePeriod = 9.0f;
+    private const float RippleCyclePeriod = 5.0f;
     private const float RippleMaxAlpha = 0.55f;
-    private const float RippleSpawnChance = 1f / 3f;
+    private const float RippleWavelengthHexes = 10.0f; // x-distance (in HexSize units) between consecutive wavefronts
+    private const float RipplePhaseJitter = 0.5f;      // ±jitter as a fraction of the cycle period; 0 = perfect wall
 
     // Pan/drag state. The map renders in this Node2D's local space, so
     // panning is just translating Position. ToLocal() in mouse-to-hex
@@ -186,14 +191,13 @@ public partial class HexMapView : Node2D, IHexMapView
         // sees them. Each is a flat-colored polygon to match the rest of
         // the game's geometric style; motion is added by sparse ripple
         // marks in a layer above.
-        var rippleRng = new Random(0x4F4845);
         var rippleLayer = new Node2D { Name = "RipplesLayer" };
 
         foreach (HexCoord waterCoord in _state.WaterCoords)
         {
             Vector2 center = FirstHexCenterOffset + waterCoord.ToPixel(HexSize);
             AddChild(CreateWaterHexVisual(center));
-            MaybeSpawnRipple(rippleLayer, waterCoord, center, rippleRng);
+            MaybeSpawnRipple(rippleLayer, waterCoord, center);
         }
 
         // Render-only extension: a ring of extra water hexes surrounding
@@ -210,7 +214,7 @@ public partial class HexMapView : Node2D, IHexMapView
                 HexCoord coord = HexCoord.FromOffset(col, row);
                 Vector2 center = FirstHexCenterOffset + coord.ToPixel(HexSize);
                 AddChild(CreateWaterHexVisual(center));
-                MaybeSpawnRipple(rippleLayer, coord, center, rippleRng);
+                MaybeSpawnRipple(rippleLayer, coord, center);
             }
         }
 
@@ -478,7 +482,7 @@ public partial class HexMapView : Node2D, IHexMapView
             float t = (float)_rippleTime;
             foreach (RippleVisual r in _ripples)
             {
-                float cycle = ((t + r.PhaseOffset) % RippleCyclePeriod) / RippleCyclePeriod;
+                float cycle = Mathf.PosMod(t + r.PhaseOffset, RippleCyclePeriod) / RippleCyclePeriod;
                 float s = Mathf.Sin(cycle * Mathf.Pi);
                 Color c = r.Node.DefaultColor;
                 c.A = s * s * RippleMaxAlpha;
@@ -1610,28 +1614,25 @@ public partial class HexMapView : Node2D, IHexMapView
 
     private static readonly Color RippleStrokeColor = new Color(0.92f, 0.97f, 1f, 0f);
 
-    // Roll once per water hex; on a hit, place a small tilde-shaped
-    // Line2D somewhere within the hex. Skipped for hexes that touch any
-    // land tile — the tilde + jitter together can reach near the hex
-    // edge, and we don't want it bleeding past the shore foam. Phase
-    // offset is randomized so neighbors don't fade in lockstep.
-    private void MaybeSpawnRipple(Node2D parent, HexCoord coord, Vector2 hexCenter, Random rng)
+    // Place a vertical tilde-shaped Line2D at the hex center. Skipped
+    // for hexes that touch any land tile — keeps tildes off coastal
+    // hexes where the shore foam lives. Phase offset is a function of
+    // the hex x-position so the brightening wavefront travels east
+    // through the field at a fixed rate, hitting every consecutive
+    // water hex it crosses.
+    private void MaybeSpawnRipple(Node2D parent, HexCoord coord, Vector2 hexCenter)
     {
         for (int dir = 0; dir < 6; dir++)
         {
             if (_state.Grid.Get(coord.Neighbor(dir)) != null) return;
         }
-        if (rng.NextDouble() >= RippleSpawnChance) return;
 
-        const float JitterRadius = 0.40f;
-        float jx = ((float)rng.NextDouble() * 2f - 1f) * JitterRadius * HexSize;
-        float jy = ((float)rng.NextDouble() * 2f - 1f) * JitterRadius * HexSize;
-
-        // Tilde curve: one-and-a-bit cycles of a sine wave, sampled
-        // densely so Line2D's segment caps round out cleanly.
-        const int Samples = 13;
-        const float HalfWidth = 0.44f;   // fraction of HexSize
-        const float Amplitude = 0.09f;   // fraction of HexSize
+        // Tilde curve: one full cycle of a sine wave, sampled densely so
+        // Line2D's segment caps round out cleanly. Sized to read at the
+        // same visual weight as trees and towers.
+        const int Samples = 17;
+        const float HalfWidth = 0.55f;   // fraction of HexSize
+        const float Amplitude = 0.20f;   // fraction of HexSize
         var points = new Vector2[Samples];
         for (int i = 0; i < Samples; i++)
         {
@@ -1643,8 +1644,12 @@ public partial class HexMapView : Node2D, IHexMapView
 
         var line = new Line2D
         {
-            Position = hexCenter + new Vector2(jx, jy),
-            Width = 1.5f,
+            Position = hexCenter,
+            // Rotate 90° so the tilde stands vertically and the
+            // wavefront travels east through hex flat edges instead
+            // of vertex-to-vertex along the y-axis.
+            Rotation = Mathf.Pi / 2f,
+            Width = 4.5f,
             DefaultColor = RippleStrokeColor,
             Points = points,
             BeginCapMode = Line2D.LineCapMode.Round,
@@ -1653,7 +1658,16 @@ public partial class HexMapView : Node2D, IHexMapView
         };
         parent.AddChild(line);
 
-        float phase = (float)(rng.NextDouble() * RippleCyclePeriod);
+        // Eastward sweep (negative-x phase) plus a small deterministic
+        // per-hex jitter so adjacent hexes don't peak in perfect lock.
+        // Without the jitter, every hex sharing an x-coordinate peaks
+        // simultaneously and the field reads as one continent-sized
+        // wall rather than many independent wavelets. _Process uses
+        // Mathf.PosMod so the negative phase wraps cleanly into the
+        // cycle.
+        int hash = unchecked(coord.Q * 73856093 ^ coord.R * 19349663);
+        float jitter = ((hash & 0xFFF) / 4096f - 0.5f) * RippleCyclePeriod * RipplePhaseJitter;
+        float phase = -hexCenter.X / (RippleWavelengthHexes * HexSize) * RippleCyclePeriod + jitter;
         _ripples.Add(new RippleVisual(line, phase));
     }
 
