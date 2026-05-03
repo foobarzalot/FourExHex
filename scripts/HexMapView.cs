@@ -126,15 +126,15 @@ public partial class HexMapView : Node2D, IHexMapView
     private const float PulseAmplitude = 0.18f;
     private const float PulseRate = 8.0f; // rad/sec; ~1.3 Hz
 
-    // Shared by every water polygon. The shader uses a u_time uniform for
-    // animation (zoom-independent rate, driven from _Process) and the
-    // polygon's per-vertex UV array (set to map-local coords in
-    // CreateWaterHexVisual) for spatial continuity across hex seams. The
-    // 1×1 white texture is required for Polygon2D to forward its UV
-    // array to the shader at all — without it, UV arrives constant.
-    private ShaderMaterial? _waterMaterial;
-    private ImageTexture? _waterTexture;
-    private double _waterTime;
+    // Sparse tilde-shaped ripple marks scattered across water hexes.
+    // Each one fades in and out on its own phase offset; the time
+    // accumulator is driven from _Process so the rate is independent
+    // of zoom/pan. The list is built once in _Ready and never resized.
+    private readonly List<RippleVisual> _ripples = new();
+    private double _rippleTime;
+    private const float RippleCyclePeriod = 9.0f;
+    private const float RippleMaxAlpha = 0.55f;
+    private const float RippleSpawnChance = 1f / 3f;
 
     // Pan/drag state. The map renders in this Node2D's local space, so
     // panning is just translating Position. ToLocal() in mouse-to-hex
@@ -177,17 +177,17 @@ public partial class HexMapView : Node2D, IHexMapView
     {
         // Water cells render first so they sit behind everything else. They
         // are off-map for gameplay (not in _state.Grid) — only the renderer
-        // sees them, animated via a shared canvas_item shader.
-        var waterShader = GD.Load<Shader>("res://shaders/water.gdshader");
-        _waterMaterial = new ShaderMaterial { Shader = waterShader };
-        var whiteImage = Image.CreateEmpty(1, 1, false, Image.Format.Rgba8);
-        whiteImage.Fill(Colors.White);
-        _waterTexture = ImageTexture.CreateFromImage(whiteImage);
+        // sees them. Each is a flat-colored polygon to match the rest of
+        // the game's geometric style; motion is added by sparse ripple
+        // marks in a layer above.
+        var rippleRng = new Random(0x4F4845);
+        var rippleLayer = new Node2D { Name = "RipplesLayer" };
 
         foreach (HexCoord waterCoord in _state.WaterCoords)
         {
             Vector2 center = FirstHexCenterOffset + waterCoord.ToPixel(HexSize);
             AddChild(CreateWaterHexVisual(center));
+            MaybeSpawnRipple(rippleLayer, waterCoord, center, rippleRng);
         }
 
         // Render-only extension: a ring of extra water hexes surrounding
@@ -204,12 +204,16 @@ public partial class HexMapView : Node2D, IHexMapView
                 HexCoord coord = HexCoord.FromOffset(col, row);
                 Vector2 center = FirstHexCenterOffset + coord.ToPixel(HexSize);
                 AddChild(CreateWaterHexVisual(center));
+                MaybeSpawnRipple(rippleLayer, coord, center, rippleRng);
             }
         }
 
-        // Per-edge shoreline foam, drawn after all water polygons so it
-        // composites on top of the water shader. Each shore edge gets one
-        // independent quad — concave shorelines render cleanly because no
+        // Ripples sit on top of the flat water polygons but below the
+        // shoreline foam, so foam wins at the water/land seam.
+        AddChild(rippleLayer);
+
+        // Per-edge shoreline foam. Each shore edge gets one independent
+        // quad — concave shorelines render cleanly because no
         // interpolation crosses between edges.
         var shoreLayer = new Node2D { Name = "ShoreFoamLayer" };
         AddChild(shoreLayer);
@@ -451,12 +455,22 @@ public partial class HexMapView : Node2D, IHexMapView
 
     public override void _Process(double delta)
     {
-        // Drive the water shader's time uniform every frame. Done up front
-        // so it ticks regardless of the pulse-related early return below.
-        if (_waterMaterial != null)
+        // Drive the ripple-mark fade cycle every frame. Done up front so it
+        // ticks regardless of the pulse-related early return below. Each
+        // ripple uses sin²(πx) on its own phase so it eases in and out
+        // smoothly (no hard pop at alpha 0).
+        if (_ripples.Count > 0)
         {
-            _waterTime += delta;
-            _waterMaterial.SetShaderParameter("u_time", (float)_waterTime);
+            _rippleTime += delta;
+            float t = (float)_rippleTime;
+            foreach (RippleVisual r in _ripples)
+            {
+                float cycle = ((t + r.PhaseOffset) % RippleCyclePeriod) / RippleCyclePeriod;
+                float s = Mathf.Sin(cycle * Mathf.Pi);
+                Color c = r.Node.DefaultColor;
+                c.A = s * s * RippleMaxAlpha;
+                r.Node.DefaultColor = c;
+            }
         }
 
         // Keyboard pan runs every frame regardless of pulse state — held
@@ -1537,28 +1551,70 @@ public partial class HexMapView : Node2D, IHexMapView
     private const float ShoreFoamInset = 0.30f;
     private static readonly Color ShoreFoamColor = new Color(0.95f, 1.0f, 1.0f);
 
+    private static readonly Color WaterColor = new Color(0.20f, 0.42f, 0.65f, 1f);
+
     private Polygon2D CreateWaterHexVisual(Vector2 center)
     {
-        Vector2[] verts = HexVertices();
-
-        // Map-local UVs (vertex + center) so the shader's noise pattern
-        // is continuous across the seam between adjacent water hexes and
-        // anchored independent of pan/zoom.
-        Vector2[] uvs = new Vector2[6];
-        for (int i = 0; i < 6; i++) uvs[i] = verts[i] + center;
-
         // No Line2D outline — adjacent land hexes still draw their own
         // outlines on the water/land seam, but water/water seams should
         // read as one continuous body of water.
         return new Polygon2D
         {
             Position = center,
-            Color = Colors.White,
-            Polygon = verts,
-            UV = uvs,
-            Texture = _waterTexture,
-            Material = _waterMaterial,
+            Color = WaterColor,
+            Polygon = HexVertices(),
         };
+    }
+
+    private sealed record RippleVisual(Line2D Node, float PhaseOffset);
+
+    private static readonly Color RippleStrokeColor = new Color(0.92f, 0.97f, 1f, 0f);
+
+    // Roll once per water hex; on a hit, place a small tilde-shaped
+    // Line2D somewhere within the hex. Skipped for hexes that touch any
+    // land tile — the tilde + jitter together can reach near the hex
+    // edge, and we don't want it bleeding past the shore foam. Phase
+    // offset is randomized so neighbors don't fade in lockstep.
+    private void MaybeSpawnRipple(Node2D parent, HexCoord coord, Vector2 hexCenter, Random rng)
+    {
+        for (int dir = 0; dir < 6; dir++)
+        {
+            if (_state.Grid.Get(coord.Neighbor(dir)) != null) return;
+        }
+        if (rng.NextDouble() >= RippleSpawnChance) return;
+
+        const float JitterRadius = 0.40f;
+        float jx = ((float)rng.NextDouble() * 2f - 1f) * JitterRadius * HexSize;
+        float jy = ((float)rng.NextDouble() * 2f - 1f) * JitterRadius * HexSize;
+
+        // Tilde curve: one-and-a-bit cycles of a sine wave, sampled
+        // densely so Line2D's segment caps round out cleanly.
+        const int Samples = 13;
+        const float HalfWidth = 0.44f;   // fraction of HexSize
+        const float Amplitude = 0.09f;   // fraction of HexSize
+        var points = new Vector2[Samples];
+        for (int i = 0; i < Samples; i++)
+        {
+            float t = (float)i / (Samples - 1);
+            float x = (t - 0.5f) * 2f * HalfWidth * HexSize;
+            float y = Mathf.Sin(t * Mathf.Tau) * Amplitude * HexSize;
+            points[i] = new Vector2(x, y);
+        }
+
+        var line = new Line2D
+        {
+            Position = hexCenter + new Vector2(jx, jy),
+            Width = 1.5f,
+            DefaultColor = RippleStrokeColor,
+            Points = points,
+            BeginCapMode = Line2D.LineCapMode.Round,
+            EndCapMode = Line2D.LineCapMode.Round,
+            JointMode = Line2D.LineJointMode.Round,
+        };
+        parent.AddChild(line);
+
+        float phase = (float)(rng.NextDouble() * RippleCyclePeriod);
+        _ripples.Add(new RippleVisual(line, phase));
     }
 
     // For each water hex, group consecutive shore edges (edges whose
