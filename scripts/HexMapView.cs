@@ -144,8 +144,9 @@ public partial class HexMapView : Node2D, IHexMapView
     private double _rippleTime;
     private const float RippleCyclePeriod = 5.0f;
     private const float RippleMaxAlpha = 0.55f;
-    private const float RippleWavelengthHexes = 10.0f; // x-distance (in HexSize units) between consecutive wavefronts
+    private const float RippleWavelengthHexes = 20.0f; // x-distance (in HexSize units) between consecutive wavefronts
     private const float RipplePhaseJitter = 0.5f;      // ±jitter as a fraction of the cycle period; 0 = perfect wall
+    private const float RippleBandHeightHexes = 6.0f; // y-pixel height of each independent wavefront band, in HexSize units
 
     // Pan/drag state. The map renders in this Node2D's local space, so
     // panning is just translating Position. ToLocal() in mouse-to-hex
@@ -1658,16 +1659,24 @@ public partial class HexMapView : Node2D, IHexMapView
         };
         parent.AddChild(line);
 
-        // Eastward sweep (negative-x phase) plus a small deterministic
-        // per-hex jitter so adjacent hexes don't peak in perfect lock.
-        // Without the jitter, every hex sharing an x-coordinate peaks
-        // simultaneously and the field reads as one continent-sized
-        // wall rather than many independent wavelets. _Process uses
-        // Mathf.PosMod so the negative phase wraps cleanly into the
-        // cycle.
-        int hash = unchecked(coord.Q * 73856093 ^ coord.R * 19349663);
-        float jitter = ((hash & 0xFFF) / 4096f - 0.5f) * RippleCyclePeriod * RipplePhaseJitter;
-        float phase = -hexCenter.X / (RippleWavelengthHexes * HexSize) * RippleCyclePeriod + jitter;
+        // Phase has three components:
+        //   - eastward sweep: -x/wavelength * period (later peak for
+        //     higher x).
+        //   - per-band offset: hash(yBand) → fixed phase per horizontal
+        //     band so each band runs as an independent wavefront with
+        //     finite y-extent instead of one map-spanning wall.
+        //   - per-hex jitter: hash(coord) → small offset so adjacent
+        //     hexes within a band don't peak in perfect lock.
+        // _Process uses Mathf.PosMod so the negative phase wraps
+        // cleanly into the cycle.
+        int hexHash = unchecked(coord.Q * 73856093 ^ coord.R * 19349663);
+        int yBand = Mathf.FloorToInt(hexCenter.Y / (RippleBandHeightHexes * HexSize));
+        int bandHash = unchecked(yBand * (int)2654435761);
+        float jitter = ((hexHash & 0xFFF) / 4096f - 0.5f) * RippleCyclePeriod * RipplePhaseJitter;
+        float bandPhase = ((bandHash & 0xFFF) / 4096f) * RippleCyclePeriod;
+        float phase = -hexCenter.X / (RippleWavelengthHexes * HexSize) * RippleCyclePeriod
+                    + bandPhase
+                    + jitter;
         _ripples.Add(new RippleVisual(line, phase));
     }
 
