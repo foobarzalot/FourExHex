@@ -544,6 +544,42 @@ public class GameControllerTests
     }
 
     [Fact]
+    public void BuildTower_FiresTowerPlacedSound()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 35); // enough for one tower
+
+        g.Hud.ClickBuildTower();
+        g.Map.SimulateClick(g.Tile(1, 1));
+
+        Assert.IsType<Tower>(g.Tile(1, 1).Occupant);
+        Assert.Single(g.Map.TowerPlacedSounds);
+        Assert.Equal(HexCoord.FromOffset(1, 1), g.Map.TowerPlacedSounds[0]);
+        // The tower path must NOT also fire the unit-placed sound.
+        Assert.Empty(g.Map.UnitPlacedSounds);
+    }
+
+    [Fact]
+    public void ExecuteAiBuildTower_FiresTowerPlacedSound()
+    {
+        (GameState state, MockHexMapView map, MockHudView hud) = BuildAiFixture();
+        HexCoord cap = RedCapital(state);
+        state.Treasury.SetGold(cap, 20);
+        // (0,1) is Red, non-capital (capital is (0,0)), and empty — a
+        // legal tower site.
+        var act = new AiBuildTowerAction(cap, HexCoord.FromOffset(0, 1));
+        GameController c = BuildHarnessWithStubAi(state, map, hud, act, null);
+
+        c.StartGame();
+
+        Assert.IsType<Tower>(state.Grid.Get(HexCoord.FromOffset(0, 1))!.Occupant);
+        Assert.Single(map.TowerPlacedSounds);
+        Assert.Equal(HexCoord.FromOffset(0, 1), map.TowerPlacedSounds[0]);
+    }
+
+    [Fact]
     public void Move_CaptureEnemyTower_FiresDestructionEffectWithTower()
     {
         // Knight captures an enemy tower — the displaced Tower is

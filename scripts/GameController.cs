@@ -649,6 +649,7 @@ public class GameController
 
         HexTile dst = _state.Grid.Get(destination)!;
         dst.Occupant = new Tower();
+        _map.PlayTowerPlaced(destination);
 
         // QoL: stay in BuildingTower mode if the territory can still
         // afford another tower. Refresh both the tower-target preview
@@ -1666,6 +1667,7 @@ public class GameController
         _state.Treasury.SetGold(
             capital, _state.Treasury.GetGold(capital) - PurchaseRules.TowerCost);
         dst.Occupant = new Tower();
+        _map.PlayTowerPlaced(destination);
     }
 
     /// <summary>

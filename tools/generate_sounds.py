@@ -184,11 +184,106 @@ def generate_unit_place() -> List[float]:
     return out
 
 
+def generate_tower_place() -> List[float]:
+    """
+    Stone-on-stone clack for placing a tower.
+
+    Compared to the unit-place thud, this sound:
+      * has a heavier transient with longer-tail noise (the 'rubble'
+        of stone scraping against stone),
+      * sits lower in the spectrum (130 Hz fundamental, 360 Hz mid),
+      * lasts a bit longer (~190 ms),
+      * exposes more high-frequency grit through a *separately filtered*
+        bright noise component during the first ~25 ms — that's what
+        sells 'stone' over 'wood'.
+
+    The pitch droop on the body partial is a touch deeper than the
+    unit sound's, so the tower sits noticeably heavier on the ear even
+    if you can't articulate why.
+    """
+    duration_s = 0.190
+    n = int(SAMPLE_RATE * duration_s)
+
+    # Transient: 9 ms of low-passed noise for the impact body, plus
+    # 25 ms of higher-passed grit for the stone scrape.
+    impact_len = int(SAMPLE_RATE * 0.009)
+    grit_len = int(SAMPLE_RATE * 0.025)
+
+    f_low = 130.0
+    f_mid = 360.0
+    tau_low = 0.075
+    tau_mid = 0.030
+
+    rng = random.Random(20260505 ^ 0xCAFE)
+
+    out: List[float] = []
+
+    # Two parallel noise filters: a heavy LPF for the impact body, and
+    # a high-passed-by-subtraction noise for the grit. We approximate
+    # high-pass as (raw - lp_state) so we get a brighter band without
+    # writing a real biquad.
+    lp_state = 0.0
+    lp_alpha = 0.14
+    grit_lp_state = 0.0
+    grit_lp_alpha = 0.55  # follows the input fast → most energy stays high
+
+    droop_amount = 0.09  # 9% droop — a touch heavier than the unit sound
+    droop_tau = 0.035
+
+    phase_low = 0.0
+    phase_mid = 0.0
+
+    for i in range(n):
+        t = i / SAMPLE_RATE
+
+        # Impact: low-passed noise burst.
+        impact_amp = 0.0
+        if i < impact_len:
+            n1 = rng.uniform(-1.0, 1.0)
+            lp_state = lp_state + lp_alpha * (n1 - lp_state)
+            ramp = 1.0 - (i / impact_len)
+            impact_amp = lp_state * ramp * 0.62
+        else:
+            lp_state *= 0.85
+
+        # Grit: high-passed noise that decays exponentially over ~25ms.
+        grit_amp = 0.0
+        if i < grit_len:
+            n2 = rng.uniform(-1.0, 1.0)
+            grit_lp_state = grit_lp_state + grit_lp_alpha * (n2 - grit_lp_state)
+            high_passed = n2 - grit_lp_state
+            env = math.exp(-i / (grit_len * 0.5))
+            grit_amp = high_passed * env * 0.22
+
+        # Body partials.
+        f_low_now = f_low * (1.0 + droop_amount * math.exp(-t / droop_tau))
+        phase_low += 2.0 * math.pi * f_low_now / SAMPLE_RATE
+        phase_mid += 2.0 * math.pi * f_mid / SAMPLE_RATE
+
+        env_low = math.exp(-t / tau_low)
+        env_mid = math.exp(-t / tau_mid)
+        tone = (
+            0.55 * env_low * math.sin(phase_low)
+            + 0.16 * env_mid * math.sin(phase_mid)
+        )
+
+        sample = impact_amp + grit_amp + tone
+
+        if i < 16:
+            sample *= i / 16.0
+
+        out.append(sample)
+
+    return out
+
+
 def main() -> None:
     write_wav(os.path.normpath(os.path.join(ASSETS_DIR, "click.wav")),
               generate_button_click())
     write_wav(os.path.normpath(os.path.join(ASSETS_DIR, "place.wav")),
               generate_unit_place())
+    write_wav(os.path.normpath(os.path.join(ASSETS_DIR, "tower_place.wav")),
+              generate_tower_place())
 
 
 if __name__ == "__main__":

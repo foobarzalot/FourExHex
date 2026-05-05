@@ -928,6 +928,11 @@ public partial class HexMapView : Node2D, IHexMapView
         AudioBus.Instance.PlayUnitPlaced();
     }
 
+    public void PlayTowerPlaced(HexCoord coord)
+    {
+        AudioBus.Instance.PlayTowerPlaced();
+    }
+
     private void SpawnDestructionFlash(Vector2 center)
     {
         Vector2[] verts = HexVertices();

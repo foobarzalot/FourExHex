@@ -96,4 +96,12 @@ public interface IHexMapView
     /// in case the view chooses to attach a positional cue later.
     /// </summary>
     void PlayUnitPlaced(HexCoord coord);
+
+    /// <summary>
+    /// Play the tower-placed sound (stone-on-stone) for a tower
+    /// just built at <paramref name="coord"/>. Distinct from
+    /// <see cref="PlayUnitPlaced"/> so the player can audibly
+    /// distinguish a tower placement from a unit move.
+    /// </summary>
+    void PlayTowerPlaced(HexCoord coord);
 }

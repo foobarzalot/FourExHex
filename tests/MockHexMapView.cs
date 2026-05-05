@@ -81,6 +81,9 @@ public class MockHexMapView : IHexMapView
     public List<HexCoord> UnitPlacedSounds { get; } = new();
     public void PlayUnitPlaced(HexCoord coord) => UnitPlacedSounds.Add(coord);
 
+    public List<HexCoord> TowerPlacedSounds { get; } = new();
+    public void PlayTowerPlaced(HexCoord coord) => TowerPlacedSounds.Add(coord);
+
     /// <summary>Raise the TileClicked event, as if the user clicked.</summary>
     public void SimulateClick(HexTile? tile) => TileClicked?.Invoke(tile);
 }

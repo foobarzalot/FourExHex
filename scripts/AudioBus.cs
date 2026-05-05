@@ -18,6 +18,7 @@ public partial class AudioBus : Node
 
     private AudioStreamPlayer _clickPlayer = null!;
     private AudioStreamPlayer _unitPlacedPlayer = null!;
+    private AudioStreamPlayer _towerPlacedPlayer = null!;
 
     public override void _EnterTree()
     {
@@ -39,6 +40,13 @@ public partial class AudioBus : Node
             VolumeDb = -4f,
         };
         AddChild(_unitPlacedPlayer);
+
+        _towerPlacedPlayer = new AudioStreamPlayer
+        {
+            Stream = GD.Load<AudioStream>("res://assets/audio/tower_place.wav"),
+            VolumeDb = -4f,
+        };
+        AddChild(_towerPlacedPlayer);
     }
 
     /// <summary>
@@ -60,6 +68,16 @@ public partial class AudioBus : Node
     {
         _unitPlacedPlayer.Stop();
         _unitPlacedPlayer.Play();
+    }
+
+    /// <summary>
+    /// Stone-on-stone clack played when a tower is built. Heavier and
+    /// grittier than the unit-place thud so the two are audibly distinct.
+    /// </summary>
+    public void PlayTowerPlaced()
+    {
+        _towerPlacedPlayer.Stop();
+        _towerPlacedPlayer.Play();
     }
 
     /// <summary>
