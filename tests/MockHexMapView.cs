@@ -78,6 +78,9 @@ public class MockHexMapView : IHexMapView
     public void PlayDestructionEffect(HexCoord coord, HexOccupant destroyed) =>
         DestructionEffects.Add((coord, destroyed));
 
+    public List<HexCoord> UnitPlacedSounds { get; } = new();
+    public void PlayUnitPlaced(HexCoord coord) => UnitPlacedSounds.Add(coord);
+
     /// <summary>Raise the TileClicked event, as if the user clicked.</summary>
     public void SimulateClick(HexTile? tile) => TileClicked?.Invoke(tile);
 }

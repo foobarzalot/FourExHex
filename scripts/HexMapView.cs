@@ -917,6 +917,17 @@ public partial class HexMapView : Node2D, IHexMapView
         }
     }
 
+    /// <summary>
+    /// Play the place/move sound. Coord is currently unused — the
+    /// AudioBus plays through a single shared 2D player so there's no
+    /// pan or spatial offset — but the parameter keeps room for a
+    /// later positional implementation without touching every caller.
+    /// </summary>
+    public void PlayUnitPlaced(HexCoord coord)
+    {
+        AudioBus.Instance.PlayUnitPlaced();
+    }
+
     private void SpawnDestructionFlash(Vector2 center)
     {
         Vector2[] verts = HexVertices();

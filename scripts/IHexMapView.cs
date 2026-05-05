@@ -85,4 +85,15 @@ public interface IHexMapView
     /// undo/redo.
     /// </summary>
     void PlayDestructionEffect(HexCoord coord, HexOccupant destroyed);
+
+    /// <summary>
+    /// Play the unit-placed/moved sound for the unit now at
+    /// <paramref name="coord"/>. Called by the controller after a
+    /// successful move or buy-and-place that consumes the unit's
+    /// move action — i.e., captures, tree/grave clearing, and any
+    /// purchase. NOT called for free repositions onto own-empty
+    /// tiles (which leave the unit actionable). Coord is supplied
+    /// in case the view chooses to attach a positional cue later.
+    /// </summary>
+    void PlayUnitPlaced(HexCoord coord);
 }

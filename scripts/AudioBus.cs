@@ -17,6 +17,7 @@ public partial class AudioBus : Node
     public static AudioBus Instance { get; private set; } = null!;
 
     private AudioStreamPlayer _clickPlayer = null!;
+    private AudioStreamPlayer _unitPlacedPlayer = null!;
 
     public override void _EnterTree()
     {
@@ -31,6 +32,13 @@ public partial class AudioBus : Node
             VolumeDb = -6f,
         };
         AddChild(_clickPlayer);
+
+        _unitPlacedPlayer = new AudioStreamPlayer
+        {
+            Stream = GD.Load<AudioStream>("res://assets/audio/place.wav"),
+            VolumeDb = -4f,
+        };
+        AddChild(_unitPlacedPlayer);
     }
 
     /// <summary>
@@ -41,6 +49,17 @@ public partial class AudioBus : Node
     {
         _clickPlayer.Stop();
         _clickPlayer.Play();
+    }
+
+    /// <summary>
+    /// Soft thud played when a unit is moved or bought-and-placed in a
+    /// way that consumes its move action. Same Stop()+Play() retrigger
+    /// pattern as PlayClick.
+    /// </summary>
+    public void PlayUnitPlaced()
+    {
+        _unitPlacedPlayer.Stop();
+        _unitPlacedPlayer.Play();
     }
 
     /// <summary>

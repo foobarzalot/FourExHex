@@ -106,9 +106,89 @@ def generate_button_click() -> List[float]:
     return out
 
 
+def generate_unit_place() -> List[float]:
+    """
+    Soft thud for moving or buying-and-placing a unit on a tile.
+
+    Layered components:
+      * Brief filtered noise transient — the 'impact' of contact with
+        the board.
+      * A low fundamental (~180 Hz) for body / weight, decaying over
+        ~120 ms.
+      * A higher partial (~440 Hz) shorter-decay so the attack reads
+        as "wood/stone" rather than pure bass.
+
+    Total length ~150 ms — long enough to feel substantial, short
+    enough to fire on every action without becoming fatiguing.
+    """
+    duration_s = 0.150
+    n = int(SAMPLE_RATE * duration_s)
+
+    # 5 ms transient — thicker than the click's 2 ms because we want
+    # 'thump' rather than 'tick'.
+    transient_len = int(SAMPLE_RATE * 0.005)
+
+    f_low = 180.0   # body / weight
+    f_mid = 440.0   # contact tone
+    tau_low = 0.060
+    tau_mid = 0.025
+
+    rng = random.Random(20260505 ^ 0xBEEF)
+    out: List[float] = []
+    # Heavier low-pass on the noise so it reads as 'thud' not 'pop'.
+    lp_state = 0.0
+    lp_alpha = 0.18
+
+    # Tiny pitch droop on the low partial: pitch falls a few percent
+    # over the first ~30 ms, the way a struck object's ringing settles.
+    droop_amount = 0.06   # 6% drop
+    droop_tau = 0.030
+
+    phase_low = 0.0
+    phase_mid = 0.0
+
+    for i in range(n):
+        t = i / SAMPLE_RATE
+
+        # Transient: filtered noise burst.
+        noise_amp = 0.0
+        if i < transient_len:
+            noise = rng.uniform(-1.0, 1.0)
+            lp_state = lp_state + lp_alpha * (noise - lp_state)
+            ramp = 1.0 - (i / transient_len)
+            noise_amp = lp_state * ramp * 0.55
+        else:
+            lp_state *= 0.85
+
+        # Pitch droop: f_low_now = f_low * (1 + droop * exp(-t/droop_tau))
+        f_low_now = f_low * (1.0 + droop_amount * math.exp(-t / droop_tau))
+
+        # Phase accumulation so the droop doesn't introduce phase jumps.
+        phase_low += 2.0 * math.pi * f_low_now / SAMPLE_RATE
+        phase_mid += 2.0 * math.pi * f_mid / SAMPLE_RATE
+
+        env_low = math.exp(-t / tau_low)
+        env_mid = math.exp(-t / tau_mid)
+        tone = (
+            0.55 * env_low * math.sin(phase_low)
+            + 0.18 * env_mid * math.sin(phase_mid)
+        )
+
+        sample = noise_amp + tone
+
+        if i < 16:
+            sample *= i / 16.0
+
+        out.append(sample)
+
+    return out
+
+
 def main() -> None:
     write_wav(os.path.normpath(os.path.join(ASSETS_DIR, "click.wav")),
               generate_button_click())
+    write_wav(os.path.normpath(os.path.join(ASSETS_DIR, "place.wav")),
+              generate_unit_place())
 
 
 if __name__ == "__main__":

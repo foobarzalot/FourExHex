@@ -452,6 +452,97 @@ public class GameControllerTests
         Assert.Empty(g.Map.DestructionEffects);
     }
 
+    // --- Place-unit sound -------------------------------------------------
+    //
+    // The view's PlayUnitPlaced hook fires only on actions that consume
+    // the unit's move (captures, tree/grave clears, and any new-unit
+    // placement that lands on a non-own-empty tile). Free repositions
+    // onto own empty tiles leave the unit actionable and must NOT fire.
+
+    [Fact]
+    public void Move_CaptureEnemyTile_FiresUnitPlacedSound()
+    {
+        var g = new TestGame();
+        g.Tile(1, 1).Occupant = new Unit(g.Red.Color);
+
+        g.Map.SimulateClick(g.Tile(1, 1));
+        g.Map.SimulateClick(g.Tile(2, 1)); // capture empty Blue tile
+
+        Assert.Single(g.Map.UnitPlacedSounds);
+        Assert.Equal(HexCoord.FromOffset(2, 1), g.Map.UnitPlacedSounds[0]);
+    }
+
+    [Fact]
+    public void Move_RepositionOntoOwnEmptyTile_DoesNotFireUnitPlacedSound()
+    {
+        // Reposition needs a third Red tile so the unit has somewhere
+        // empty to land within its own territory. Build a fresh 3-Red
+        // grid here rather than retrofitting TestGame.
+        var red = new Player("Red", new Color(1f, 0f, 0f));
+        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var players = new System.Collections.Generic.List<Player> { red, blue };
+
+        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Color);
+        grid.Get(HexCoord.FromOffset(0, 1))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(1, 1))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(2, 1))!.Color = red.Color;
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        var map = new MockHexMapView();
+        foreach (System.Collections.Generic.KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+        {
+            map.TileIndex[kvp.Key] = kvp.Value;
+        }
+        var controller = new GameController(state, session, map, new MockHudView());
+        controller.StartGame();
+
+        // Place the unit on the middle Red tile (non-capital). The
+        // capital placer picks lex-min — (0,1) — so (1,1) and (2,1)
+        // are both empty and within range.
+        var unit = new Unit(red.Color);
+        grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = unit;
+
+        map.SimulateClick(grid.Get(HexCoord.FromOffset(1, 1))); // pick up
+        map.SimulateClick(grid.Get(HexCoord.FromOffset(2, 1))); // reposition
+
+        // Sanity: the unit physically moved.
+        Assert.Null(grid.Get(HexCoord.FromOffset(1, 1))!.Unit);
+        Assert.Same(unit, grid.Get(HexCoord.FromOffset(2, 1))!.Unit);
+        // …but reposition leaves it actionable, so no place-sound fires.
+        Assert.False(unit.HasMovedThisTurn);
+        Assert.Empty(map.UnitPlacedSounds);
+    }
+
+    [Fact]
+    public void BuyPeasant_CaptureEmptyEnemyTile_FiresUnitPlacedSound()
+    {
+        var g = new TestGame();
+        HexCoord redCapital = g.RedTerritory.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 25);
+        g.Map.SimulateClick(g.Tile(0, 1));
+        g.Hud.ClickBuyPeasant();
+        g.Map.SimulateClick(g.Tile(2, 1));
+
+        Assert.Single(g.Map.UnitPlacedSounds);
+        Assert.Equal(HexCoord.FromOffset(2, 1), g.Map.UnitPlacedSounds[0]);
+    }
+
+    [Fact]
+    public void BuyPeasant_OnOwnEmptyTile_DoesNotFireUnitPlacedSound()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        g.Hud.ClickBuyPeasant();
+        // (1,1) is Red and empty — placement leaves the new unit
+        // actionable.
+        g.Map.SimulateClick(g.Tile(1, 1));
+
+        Assert.False(g.Tile(1, 1).Unit!.HasMovedThisTurn);
+        Assert.Empty(g.Map.UnitPlacedSounds);
+    }
+
     [Fact]
     public void Move_CaptureEnemyTower_FiresDestructionEffectWithTower()
     {

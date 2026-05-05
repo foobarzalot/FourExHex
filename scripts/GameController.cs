@@ -527,6 +527,14 @@ public class GameController
             _map.PlayDestructionEffect(destination, result.Destroyed);
         }
 
+        // Place sound fires only when the placement consumed the new
+        // unit's move (capture, tree/grave clear). Free placements onto
+        // own empty tiles leave the unit actionable and stay silent.
+        if (_state.Grid.Get(destination)?.Unit?.HasMovedThisTurn == true)
+        {
+            _map.PlayUnitPlaced(destination);
+        }
+
         // QoL: stay in a buy mode for the highest level the (possibly
         // rebound) territory can still afford that is at most the level
         // just bought. Stay-at-same-level if still affordable; otherwise
@@ -587,6 +595,13 @@ public class GameController
         if (result.Destroyed != null)
         {
             _map.PlayDestructionEffect(destination, result.Destroyed);
+        }
+
+        // See ExecuteBuyAndPlace: same gate — only fire when the move
+        // was consumed (capture / tree / grave). Repositions are silent.
+        if (_state.Grid.Get(destination)?.Unit?.HasMovedThisTurn == true)
+        {
+            _map.PlayUnitPlaced(destination);
         }
 
         FinishPendingAction();
@@ -1548,6 +1563,13 @@ public class GameController
             Unit? movedUnit = _state.Grid.Get(destination)?.Unit;
             if (movedUnit != null) movedUnit.HasMovedThisTurn = true;
         }
+
+        // Sound after the AI's reposition fixup so AI repositions —
+        // which the AI loop forces to consume the move — also play.
+        if (_state.Grid.Get(destination)?.Unit?.HasMovedThisTurn == true)
+        {
+            _map.PlayUnitPlaced(destination);
+        }
     }
 
     private void ExecuteAiBuyUnit(HexCoord capital, HexCoord destination, UnitLevel level)
@@ -1598,6 +1620,11 @@ public class GameController
         {
             Unit? placed = _state.Grid.Get(destination)?.Unit;
             if (placed != null) placed.HasMovedThisTurn = true;
+        }
+
+        if (_state.Grid.Get(destination)?.Unit?.HasMovedThisTurn == true)
+        {
+            _map.PlayUnitPlaced(destination);
         }
     }
 
