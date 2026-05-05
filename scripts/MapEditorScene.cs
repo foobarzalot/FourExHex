@@ -82,7 +82,12 @@ public partial class MapEditorScene : Node2D
         EditorSnapshot pre = EditorSnapshot.Capture(_grid, _water, _territories);
         IReadOnlyList<Territory> beforeRef = _territories;
 
-        if (idx == MapEditorHudView.TreePaletteIndex)
+        if (idx == MapEditorHudView.CapitalPaletteIndex)
+        {
+            _territories = MapEditPaint.PaintCapital(
+                _grid, _water, _territories, _map.Cols, _map.Rows, coord);
+        }
+        else if (idx == MapEditorHudView.TreePaletteIndex)
         {
             _territories = MapEditPaint.PaintTreeToggle(
                 _grid, _water, _territories, _map.Cols, _map.Rows, coord);

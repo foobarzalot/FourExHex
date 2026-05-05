@@ -17,6 +17,7 @@ public enum HexPaletteIcon
 {
     None,
     Tree,
+    Capital,
 }
 
 public partial class HexPaletteButton : Control
@@ -75,9 +76,10 @@ public partial class HexPaletteButton : Control
 
         DrawColoredPolygon(verts, _fillColor);
 
-        if (_icon == HexPaletteIcon.Tree)
+        switch (_icon)
         {
-            DrawTreeIcon(center, radius);
+            case HexPaletteIcon.Tree: DrawTreeIcon(center, radius); break;
+            case HexPaletteIcon.Capital: DrawCapitalIcon(center, radius); break;
         }
 
         Color outlineColor = _isSelected ? new Color(1f, 1f, 1f) : new Color(0f, 0f, 0f);
@@ -117,5 +119,21 @@ public partial class HexPaletteButton : Control
             center + new Vector2(-tw, tbot),
         };
         DrawColoredPolygon(trunk, new Color(0.36f, 0.22f, 0.1f, 1f));
+    }
+
+    private void DrawCapitalIcon(Vector2 center, float hexRadius)
+    {
+        // Five-point star matching HexMapView.CreateCapitalVisual's shape.
+        // Black fill so the icon reads against the light hex background.
+        float outer = hexRadius * 0.65f;
+        float inner = outer * 0.4f;
+        var verts = new Vector2[10];
+        for (int i = 0; i < 10; i++)
+        {
+            float angle = -Mathf.Pi / 2f + i * Mathf.Pi / 5f;
+            float r = (i % 2 == 0) ? outer : inner;
+            verts[i] = center + new Vector2(r * Mathf.Cos(angle), r * Mathf.Sin(angle));
+        }
+        DrawColoredPolygon(verts, new Color(0f, 0f, 0f, 1f));
     }
 }

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Godot;
 
 /// <summary>
@@ -47,6 +48,70 @@ public static class MapEditPaint
         }
 
         return Reconcile(grid, previousTerritories);
+    }
+
+    /// <summary>
+    /// Move the capital of the territory containing <paramref name="coord"/>
+    /// to that coord. No-ops if the coord is out of bounds, water,
+    /// already a capital, or in a singleton territory (singletons can't
+    /// have capitals). The previous capital's <see cref="Capital"/>
+    /// occupant is cleared from its tile, and any non-capital occupant
+    /// (typically a <see cref="Tree"/>) on the target coord is replaced
+    /// by the new <see cref="Capital"/>. Returns a fresh territory list
+    /// with this territory's <see cref="Territory.Capital"/> updated; the
+    /// other territories are passed through unchanged.
+    ///
+    /// Doesn't run <see cref="CapitalReconciler"/> because that placer
+    /// uses its own tier-list to pick a capital coord — we want to honor
+    /// the user's exact pick instead.
+    /// </summary>
+    public static IReadOnlyList<Territory> PaintCapital(
+        HexGrid grid,
+        HashSet<HexCoord> water,
+        IReadOnlyList<Territory> previousTerritories,
+        int cols,
+        int rows,
+        HexCoord coord)
+    {
+        if (!InBounds(coord, cols, rows)) return previousTerritories;
+        HexTile? tile = grid.Get(coord);
+        if (tile == null) return previousTerritories;
+        if (tile.Occupant is Capital) return previousTerritories;
+
+        int territoryIdx = -1;
+        for (int i = 0; i < previousTerritories.Count; i++)
+        {
+            if (previousTerritories[i].Coords.Contains(coord))
+            {
+                territoryIdx = i;
+                break;
+            }
+        }
+        if (territoryIdx < 0) return previousTerritories;
+
+        Territory t = previousTerritories[territoryIdx];
+        if (t.Coords.Count < 2) return previousTerritories;
+
+        if (t.HasCapital)
+        {
+            HexTile? oldCapTile = grid.Get(t.Capital!.Value);
+            if (oldCapTile?.Occupant is Capital) oldCapTile.Occupant = null;
+        }
+        tile.Occupant = new Capital();
+
+        var result = new List<Territory>(previousTerritories.Count);
+        for (int i = 0; i < previousTerritories.Count; i++)
+        {
+            if (i == territoryIdx)
+            {
+                result.Add(new Territory(t.Owner, t.Coords, capital: coord));
+            }
+            else
+            {
+                result.Add(previousTerritories[i]);
+            }
+        }
+        return result;
     }
 
     /// <summary>

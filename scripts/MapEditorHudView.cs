@@ -22,6 +22,8 @@ public partial class MapEditorHudView : CanvasLayer
     public static int WaterPaletteIndex => GameSettings.PlayerConfig.Length;
     /// <summary>Palette index reserved for the tree-toggle swatch.</summary>
     public static int TreePaletteIndex => GameSettings.PlayerConfig.Length + 1;
+    /// <summary>Palette index reserved for the capital-placement swatch.</summary>
+    public static int CapitalPaletteIndex => GameSettings.PlayerConfig.Length + 2;
 
     public event Action? ExitClicked;
     public event Action<int>? GenerateRequested;
@@ -117,7 +119,7 @@ public partial class MapEditorHudView : CanvasLayer
         paletteHbox.AddThemeConstantOverride("separation", 6);
         AddChild(paletteHbox);
 
-        _palette = new HexPaletteButton[GameSettings.PlayerConfig.Length + 2];
+        _palette = new HexPaletteButton[GameSettings.PlayerConfig.Length + 3];
         for (int i = 0; i < GameSettings.PlayerConfig.Length; i++)
         {
             (_, string hex) = GameSettings.PlayerConfig[i];
@@ -143,6 +145,15 @@ public partial class MapEditorHudView : CanvasLayer
         treeButton.Pressed += _ => SelectPalette(treeIndex);
         paletteHbox.AddChild(treeButton);
         _palette[treeIndex] = treeButton;
+        // Capital swatch — light slate background with the star icon
+        // overlaid. The background is distinct from the tree's tan so the
+        // two action-icon buttons read as different at a glance.
+        int capitalIndex = CapitalPaletteIndex;
+        var capitalButton = new HexPaletteButton(
+            new Color(0.72f, 0.72f, 0.78f, 1f), HexPaletteIcon.Capital);
+        capitalButton.Pressed += _ => SelectPalette(capitalIndex);
+        paletteHbox.AddChild(capitalButton);
+        _palette[capitalIndex] = capitalButton;
 
         // Default selection: first land color (Red). Visual is set via
         // SelectPalette so the IsSelected outline draws from the start.
