@@ -50,6 +50,41 @@ public static class MapEditPaint
     }
 
     /// <summary>
+    /// Toggle a tree on the tile at <paramref name="coord"/>. Empty land
+    /// gets a fresh <see cref="Tree"/> occupant; an existing tree is
+    /// cleared. No-op on water and on tiles that already hold something
+    /// other than a tree (capital, unit, tower, grave) — the tree palette
+    /// must not stomp gameplay occupants placed by other paints.
+    /// </summary>
+    public static IReadOnlyList<Territory> PaintTreeToggle(
+        HexGrid grid,
+        HashSet<HexCoord> water,
+        IReadOnlyList<Territory> previousTerritories,
+        int cols,
+        int rows,
+        HexCoord coord)
+    {
+        if (!InBounds(coord, cols, rows)) return previousTerritories;
+        HexTile? tile = grid.Get(coord);
+        if (tile == null) return previousTerritories;
+
+        if (tile.Occupant is Tree)
+        {
+            tile.Occupant = null;
+        }
+        else if (tile.Occupant == null)
+        {
+            tile.Occupant = new Tree();
+        }
+        else
+        {
+            return previousTerritories;
+        }
+
+        return Reconcile(grid, previousTerritories);
+    }
+
+    /// <summary>
     /// Convert the tile at <paramref name="coord"/> back to water. No-op if
     /// the coord is out of bounds or already water. Returns the up-to-date
     /// territory list.

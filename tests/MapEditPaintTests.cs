@@ -73,6 +73,77 @@ public class MapEditPaintTests
     }
 
     [Fact]
+    public void PaintTreeToggle_OnEmptyLand_PlacesTree()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = new Color(1f, 0f, 0f);
+        var coord = HexCoord.FromOffset(2, 2);
+        IReadOnlyList<Territory> territories = MapEditPaint.PaintLand(
+            grid, water, new List<Territory>(), Cols, Rows, coord, color);
+
+        territories = MapEditPaint.PaintTreeToggle(
+            grid, water, territories, Cols, Rows, coord);
+
+        Assert.IsType<Tree>(grid.Get(coord)!.Occupant);
+    }
+
+    [Fact]
+    public void PaintTreeToggle_OnExistingTree_RemovesTree()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = new Color(1f, 0f, 0f);
+        var coord = HexCoord.FromOffset(2, 2);
+        IReadOnlyList<Territory> territories = MapEditPaint.PaintLand(
+            grid, water, new List<Territory>(), Cols, Rows, coord, color);
+        territories = MapEditPaint.PaintTreeToggle(
+            grid, water, territories, Cols, Rows, coord);
+
+        territories = MapEditPaint.PaintTreeToggle(
+            grid, water, territories, Cols, Rows, coord);
+
+        Assert.Null(grid.Get(coord)!.Occupant);
+    }
+
+    [Fact]
+    public void PaintTreeToggle_OnWater_IsNoop()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        IReadOnlyList<Territory> territories = new List<Territory>();
+        var coord = HexCoord.FromOffset(2, 2);
+
+        IReadOnlyList<Territory> after = MapEditPaint.PaintTreeToggle(
+            grid, water, territories, Cols, Rows, coord);
+
+        Assert.Same(territories, after);
+        Assert.False(grid.Contains(coord));
+    }
+
+    [Fact]
+    public void PaintTreeToggle_OnTileWithCapital_DoesNotReplaceCapital()
+    {
+        // A capital is gameplay state placed by CapitalReconciler. The tree
+        // palette mustn't trash it — only empty land or existing trees.
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = new Color(1f, 0f, 0f);
+        IReadOnlyList<Territory> territories = new List<Territory>();
+        for (int col = 0; col < 3; col++)
+        {
+            territories = MapEditPaint.PaintLand(
+                grid, water, territories, Cols, Rows,
+                HexCoord.FromOffset(col, 0), color);
+        }
+        // After three adjacent same-color paints we have one capital
+        // somewhere in the row.
+        HexCoord capitalCoord = territories[0].Capital!.Value;
+
+        IReadOnlyList<Territory> after = MapEditPaint.PaintTreeToggle(
+            grid, water, territories, Cols, Rows, capitalCoord);
+
+        Assert.Same(territories, after);
+        Assert.IsType<Capital>(grid.Get(capitalCoord)!.Occupant);
+    }
+
+    [Fact]
     public void PaintLand_FourAdjacentSameColorTiles_LeavesExactlyOneCapital()
     {
         // Reproduces the editor's duplicate-capital bug: each paint

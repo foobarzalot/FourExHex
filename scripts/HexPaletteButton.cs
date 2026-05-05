@@ -13,11 +13,18 @@ using Godot;
 /// enough at the 36x40 size we use in the HUD — the inside of the rect
 /// never extends much past the hex itself.
 /// </summary>
+public enum HexPaletteIcon
+{
+    None,
+    Tree,
+}
+
 public partial class HexPaletteButton : Control
 {
     public event Action<HexPaletteButton>? Pressed;
 
     private readonly Color _fillColor;
+    private readonly HexPaletteIcon _icon;
     private bool _isSelected;
 
     public bool IsSelected
@@ -31,9 +38,10 @@ public partial class HexPaletteButton : Control
         }
     }
 
-    public HexPaletteButton(Color fillColor)
+    public HexPaletteButton(Color fillColor, HexPaletteIcon icon = HexPaletteIcon.None)
     {
         _fillColor = fillColor;
+        _icon = icon;
         CustomMinimumSize = new Vector2(36, 40);
         MouseFilter = MouseFilterEnum.Stop;
     }
@@ -67,11 +75,47 @@ public partial class HexPaletteButton : Control
 
         DrawColoredPolygon(verts, _fillColor);
 
+        if (_icon == HexPaletteIcon.Tree)
+        {
+            DrawTreeIcon(center, radius);
+        }
+
         Color outlineColor = _isSelected ? new Color(1f, 1f, 1f) : new Color(0f, 0f, 0f);
         float outlineWidth = _isSelected ? 3f : 1f;
         for (int i = 0; i < 6; i++)
         {
             DrawLine(verts[i], verts[(i + 1) % 6], outlineColor, outlineWidth);
         }
+    }
+
+    private void DrawTreeIcon(Vector2 center, float hexRadius)
+    {
+        // Stylized conifer scaled to fit inside the hex. Mirrors the colors
+        // and proportions of HexMapView.CreateTreeVisual so the button's
+        // tree reads as the same thing the user will see on the map.
+        float r = hexRadius * 0.65f;
+        var canopy = new Vector2[]
+        {
+            center + new Vector2(0f, -r),
+            center + new Vector2(r * 0.85f, r * 0.4f),
+            center + new Vector2(-r * 0.85f, r * 0.4f),
+        };
+        DrawColoredPolygon(canopy, new Color(0.16f, 0.48f, 0.18f, 1f));
+        for (int i = 0; i < 3; i++)
+        {
+            DrawLine(canopy[i], canopy[(i + 1) % 3], new Color(0f, 0f, 0f, 1f), 1.5f);
+        }
+
+        float tw = r * 0.18f;
+        float ttop = r * 0.4f;
+        float tbot = r * 0.75f;
+        var trunk = new Vector2[]
+        {
+            center + new Vector2(-tw, ttop),
+            center + new Vector2(tw, ttop),
+            center + new Vector2(tw, tbot),
+            center + new Vector2(-tw, tbot),
+        };
+        DrawColoredPolygon(trunk, new Color(0.36f, 0.22f, 0.1f, 1f));
     }
 }

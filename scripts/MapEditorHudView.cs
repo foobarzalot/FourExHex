@@ -18,6 +18,11 @@ public partial class MapEditorHudView : CanvasLayer
     public const int SeedMin = 1;
     public const int SeedMax = 1000;
 
+    /// <summary>Palette index reserved for the water swatch.</summary>
+    public static int WaterPaletteIndex => GameSettings.PlayerConfig.Length;
+    /// <summary>Palette index reserved for the tree-toggle swatch.</summary>
+    public static int TreePaletteIndex => GameSettings.PlayerConfig.Length + 1;
+
     public event Action? ExitClicked;
     public event Action<int>? GenerateRequested;
     public event Action<int>? PaletteSelectionChanged;
@@ -112,7 +117,7 @@ public partial class MapEditorHudView : CanvasLayer
         paletteHbox.AddThemeConstantOverride("separation", 6);
         AddChild(paletteHbox);
 
-        _palette = new HexPaletteButton[GameSettings.PlayerConfig.Length + 1];
+        _palette = new HexPaletteButton[GameSettings.PlayerConfig.Length + 2];
         for (int i = 0; i < GameSettings.PlayerConfig.Length; i++)
         {
             (_, string hex) = GameSettings.PlayerConfig[i];
@@ -123,11 +128,21 @@ public partial class MapEditorHudView : CanvasLayer
             _palette[i] = button;
         }
         // Water swatch — same blue HexMapView.CreateWaterHexVisual uses.
-        int waterIndex = GameSettings.PlayerConfig.Length;
+        int waterIndex = WaterPaletteIndex;
         var waterButton = new HexPaletteButton(new Color(0.20f, 0.42f, 0.65f, 1f));
         waterButton.Pressed += _ => SelectPalette(waterIndex);
         paletteHbox.AddChild(waterButton);
         _palette[waterIndex] = waterButton;
+        // Tree swatch — empty-land background with the tree icon overlaid.
+        // The background color is a soft earthy tan that doesn't collide
+        // with any of the player colors so the button reads as "tree on
+        // generic land" rather than a seventh player color.
+        int treeIndex = TreePaletteIndex;
+        var treeButton = new HexPaletteButton(
+            new Color(0.82f, 0.74f, 0.55f, 1f), HexPaletteIcon.Tree);
+        treeButton.Pressed += _ => SelectPalette(treeIndex);
+        paletteHbox.AddChild(treeButton);
+        _palette[treeIndex] = treeButton;
 
         // Default selection: first land color (Red). Visual is set via
         // SelectPalette so the IsSelected outline draws from the start.

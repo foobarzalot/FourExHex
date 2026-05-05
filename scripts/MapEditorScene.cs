@@ -74,16 +74,20 @@ public partial class MapEditorScene : Node2D
     private void OnCoordClicked(HexCoord coord)
     {
         int idx = _hud.SelectedPaletteIndex;
-        bool isWaterPalette = idx >= GameSettings.PlayerConfig.Length;
 
         // Capture pre-paint state. If the paint turns out to be a no-op
-        // (out of bounds, same color), MapEditPaint returns the SAME
-        // territory list reference and we drop the snapshot rather than
-        // pollute the stack with phantom entries.
+        // (out of bounds, same color, water-on-water, etc.), MapEditPaint
+        // returns the SAME territory list reference and we drop the
+        // snapshot rather than pollute the stack with phantom entries.
         EditorSnapshot pre = EditorSnapshot.Capture(_grid, _water, _territories);
         IReadOnlyList<Territory> beforeRef = _territories;
 
-        if (isWaterPalette)
+        if (idx == MapEditorHudView.TreePaletteIndex)
+        {
+            _territories = MapEditPaint.PaintTreeToggle(
+                _grid, _water, _territories, _map.Cols, _map.Rows, coord);
+        }
+        else if (idx == MapEditorHudView.WaterPaletteIndex)
         {
             _territories = MapEditPaint.PaintWater(
                 _grid, _water, _territories, _map.Cols, _map.Rows, coord);
