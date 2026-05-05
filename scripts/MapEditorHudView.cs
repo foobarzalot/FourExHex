@@ -20,9 +20,13 @@ public partial class MapEditorHudView : CanvasLayer
 
     public event Action? ExitClicked;
     public event Action<int>? GenerateRequested;
+    public event Action<int>? PaletteSelectionChanged;
+
+    public int SelectedPaletteIndex { get; private set; }
 
     private LineEdit _seedField = null!;
     private Button _generateButton = null!;
+    private HexPaletteButton[] _palette = null!;
 
     public override void _Ready()
     {
@@ -75,6 +79,51 @@ public partial class MapEditorHudView : CanvasLayer
         _generateButton.AddThemeFontSizeOverride("font_size", 18);
         _generateButton.Pressed += OnGeneratePressed;
         leftHbox.AddChild(_generateButton);
+
+        // Palette: six land-color hex buttons in PlayerConfig order, plus a
+        // seventh in the water blue used by HexMapView.CreateWaterHexVisual.
+        // Centered in the HUD strip between the seed cluster on the left
+        // and the Exit container on the right. Center alignment is achieved
+        // by anchoring this HBox to the full width and letting its own
+        // Center alignment + ignored mouse filter pack children to the
+        // middle without intercepting clicks meant for the surrounding
+        // controls.
+        var paletteHbox = new HBoxContainer
+        {
+            AnchorLeft = 0f,
+            AnchorRight = 1f,
+            AnchorTop = 0f,
+            AnchorBottom = 0f,
+            OffsetLeft = 0f,
+            OffsetRight = 0f,
+            OffsetTop = 8f,
+            OffsetBottom = 52f,
+            Alignment = BoxContainer.AlignmentMode.Center,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        paletteHbox.AddThemeConstantOverride("separation", 6);
+        AddChild(paletteHbox);
+
+        _palette = new HexPaletteButton[GameSettings.PlayerConfig.Length + 1];
+        for (int i = 0; i < GameSettings.PlayerConfig.Length; i++)
+        {
+            (_, string hex) = GameSettings.PlayerConfig[i];
+            var button = new HexPaletteButton(new Color(hex));
+            int captured = i;
+            button.Pressed += _ => SelectPalette(captured);
+            paletteHbox.AddChild(button);
+            _palette[i] = button;
+        }
+        // Water swatch — same blue HexMapView.CreateWaterHexVisual uses.
+        int waterIndex = GameSettings.PlayerConfig.Length;
+        var waterButton = new HexPaletteButton(new Color(0.20f, 0.42f, 0.65f, 1f));
+        waterButton.Pressed += _ => SelectPalette(waterIndex);
+        paletteHbox.AddChild(waterButton);
+        _palette[waterIndex] = waterButton;
+
+        // Default selection: first land color (Red). Visual is set via
+        // SelectPalette so the IsSelected outline draws from the start.
+        SelectPalette(0, fireEvent: false);
 
         var rightHbox = new HBoxContainer
         {
@@ -135,5 +184,16 @@ public partial class MapEditorHudView : CanvasLayer
         if (keyEvent.Keycode != Key.Enter && keyEvent.Keycode != Key.KpEnter) return;
         _seedField.AcceptEvent();
         OnGeneratePressed();
+    }
+
+    private void SelectPalette(int index, bool fireEvent = true)
+    {
+        if (index < 0 || index >= _palette.Length) return;
+        if (index == SelectedPaletteIndex && _palette[index].IsSelected) return;
+
+        _palette[SelectedPaletteIndex].IsSelected = false;
+        SelectedPaletteIndex = index;
+        _palette[index].IsSelected = true;
+        if (fireEvent) PaletteSelectionChanged?.Invoke(index);
     }
 }
