@@ -74,13 +74,37 @@ public partial class Main : Node2D
                 ?? GameSettings.MasterSeed
                 ?? System.Random.Shared.Next();
 
-        if (pendingLoad != null)
+        // A loaded "starting map" is distinguished by TurnNumber == 0 on
+        // disk — the editor never advances the turn counter, while in-
+        // progress saves are always at turn 1+. We branch on this so the
+        // play scene can do the right thing for each case.
+        bool isStartingMap = pendingLoad != null && pendingLoad.State.Turns.TurnNumber == 0;
+
+        if (pendingLoad != null && !isStartingMap)
         {
-            // Load path: state, players, seed, max-turn cap all come
-            // from the save. Skip fresh grid/territory construction.
+            // Resume in-progress save: state, players, seed, max-turn cap
+            // all come from the save. Skip fresh grid/territory construction.
             _state = pendingLoad.State;
             _players = pendingLoad.Players;
             _maxTurnNumber = pendingLoad.MaxTurnNumber;
+        }
+        else if (pendingLoad != null && isStartingMap)
+        {
+            // Starting-map flow: terrain (grid, water, territories,
+            // pre-placed trees/towers/capitals) comes from the saved
+            // map, but everything player-ish is fresh. Players come
+            // from the menu's role config — the saved map intentionally
+            // doesn't carry kinds. Turn state starts at turn 1, player 0
+            // (red goes first) and the treasury is empty.
+            _players = BuildPlayers();
+            _state = new GameState(
+                pendingLoad.State.Grid,
+                pendingLoad.State.Territories,
+                _players,
+                new TurnState(_players),
+                new Treasury(),
+                pendingLoad.State.WaterCoords);
+            _maxTurnNumber = diagnosticMode ? 500 : int.MaxValue;
         }
         else
         {
@@ -173,7 +197,10 @@ public partial class Main : Node2D
             }
         }
 
-        if (pendingLoad != null)
+        // Resume only on actual in-progress loads. Starting maps need a
+        // fresh game flow (turn 1, full income/upkeep cycle) on top of
+        // the saved terrain.
+        if (pendingLoad != null && !isStartingMap)
         {
             _controller.Resume();
         }

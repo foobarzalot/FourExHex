@@ -34,6 +34,11 @@ public partial class MainMenuScene : Control
 
     private LineEdit? _seedField;
     private Button? _startButton;
+    private OptionButton? _mapSelector;
+    // Slot name of the selected starting map, or null when "Random Map"
+    // is chosen — that's the dropdown's first/default entry, which keeps
+    // the seed field active and triggers the procedural-generation flow.
+    private string? _selectedMapName;
 
     public override void _Ready()
     {
@@ -145,7 +150,7 @@ public partial class MainMenuScene : Control
         // Centered panel containing the title, player-role grid, the
         // Map Seed entry, and the Back / Start Game buttons.
         const float panelW = 520f;
-        const float panelH = 612f;
+        const float panelH = 664f;
         var panel = new Panel
         {
             Position = new Vector2((viewport.X - panelW) * 0.5f, (viewport.Y - panelH) * 0.5f),
@@ -247,10 +252,42 @@ public partial class MainMenuScene : Control
         float rightColX = panelW - rowInset - dropdownWidth;
         float rightColW = dropdownWidth;
 
-        // Map Seed row sits just below the last player row, aligned
-        // with the dropdown column so the input lines up with the AI
-        // selectors above it.
-        float seedRowY = rowStartY + rowHeight * GameSettings.PlayerConfig.Length;
+        // Map row sits just below the last player row. The dropdown lists
+        // "Random Map" (the default) plus every saved starting map. Picking
+        // a map disables the seed field below — the map's terrain replaces
+        // procedural generation.
+        float mapRowY = rowStartY + rowHeight * GameSettings.PlayerConfig.Length;
+        var mapLabel = new Label
+        {
+            Text = "Map",
+            Position = new Vector2(leftColX + swatchSize + 16f, mapRowY + 14f),
+            Size = new Vector2(nameWidth, 24f),
+        };
+        mapLabel.AddThemeFontSizeOverride("font_size", 20);
+        panel.AddChild(mapLabel);
+
+        _mapSelector = new OptionButton
+        {
+            Position = new Vector2(rightColX, mapRowY + 10f),
+            Size = new Vector2(rightColW, 32f),
+        };
+        // Item 0 is the default — generates a fresh procedural map from
+        // the seed below. Subsequent items (id == index in ListMaps) are
+        // the user's saved starting maps.
+        _mapSelector.AddItem("Random Map", 0);
+        System.Collections.Generic.IReadOnlyList<SaveSlotInfo> mapSlots = _saveStore.ListMaps();
+        for (int i = 0; i < mapSlots.Count; i++)
+        {
+            _mapSelector.AddItem(mapSlots[i].SlotName, i + 1);
+        }
+        _mapSelector.Selected = 0;
+        _mapSelector.ItemSelected += OnMapSelectorChanged;
+        panel.AddChild(_mapSelector);
+
+        // Map Seed row sits just below the Map row, aligned with the
+        // dropdown column so the input lines up with the AI selectors
+        // above it.
+        float seedRowY = rowStartY + rowHeight * (GameSettings.PlayerConfig.Length + 1);
         var seedLabel = new Label
         {
             Text = "Map Seed",
@@ -289,10 +326,52 @@ public partial class MainMenuScene : Control
         _startButton.Pressed += OnStartPressed;
         panel.AddChild(_startButton);
 
-        // Start Game is gated on the seed field being non-empty.
-        _startButton.Disabled = string.IsNullOrEmpty(_seedField.Text);
+        RefreshStartButtonGating();
 
         return panel;
+    }
+
+    private void OnMapSelectorChanged(long index)
+    {
+        if (_mapSelector == null) return;
+        if (index == 0)
+        {
+            _selectedMapName = null;
+            SetSeedFieldEnabled(true);
+        }
+        else
+        {
+            _selectedMapName = _mapSelector.GetItemText((int)index);
+            SetSeedFieldEnabled(false);
+        }
+        RefreshStartButtonGating();
+    }
+
+    /// <summary>
+    /// Enable/disable the seed field. When disabled, the field also drops
+    /// focus and refuses click-to-focus — Editable=false alone leaves the
+    /// LineEdit clickable and able to capture keystrokes (which the field
+    /// would just swallow), confusing the user.
+    /// </summary>
+    private void SetSeedFieldEnabled(bool enabled)
+    {
+        if (_seedField == null) return;
+        _seedField.Editable = enabled;
+        _seedField.FocusMode = enabled ? Control.FocusModeEnum.All : Control.FocusModeEnum.None;
+        if (!enabled && _seedField.HasFocus()) _seedField.ReleaseFocus();
+    }
+
+    /// <summary>
+    /// Start Game is enabled when EITHER a starting map is selected
+    /// (terrain comes from disk) OR the seed field has digits (we'll
+    /// generate procedurally). Disabled only when both are absent.
+    /// </summary>
+    private void RefreshStartButtonGating()
+    {
+        if (_startButton == null) return;
+        bool seedEmpty = string.IsNullOrEmpty(_seedField?.Text);
+        bool mapSelected = _selectedMapName != null;
+        _startButton.Disabled = seedEmpty && !mapSelected;
     }
 
     private void ShowLanding()
@@ -341,10 +420,7 @@ public partial class MainMenuScene : Control
             _seedField.Text = filtered;
             _seedField.CaretColumn = System.Math.Min(caret, filtered.Length);
         }
-        if (_startButton != null)
-        {
-            _startButton.Disabled = string.IsNullOrEmpty(_seedField.Text);
-        }
+        RefreshStartButtonGating();
     }
 
     private void OnSeedFieldGuiInput(InputEvent @event)
@@ -588,13 +664,8 @@ public partial class MainMenuScene : Control
 
     private void OnStartPressed()
     {
-        // Defensive: the Start button is disabled while the seed field
-        // is empty, but Enter could still bypass the disabled-button
-        // check, so re-validate here.
-        if (_seedField == null || string.IsNullOrEmpty(_seedField.Text)) return;
-        int.TryParse(_seedField.Text, out int seed);
-        GameSettings.MasterSeed = System.Math.Clamp(seed, SeedMin, SeedMax);
-
+        // Persist the dropdown selections — kinds always come from this
+        // panel (saved maps don't carry per-color roles).
         for (int i = 0; i < _roleButtons.Length; i++)
         {
             int selectedId = _roleButtons[i].GetSelectedId();
@@ -606,6 +677,31 @@ public partial class MainMenuScene : Control
                 _ => AiKind.Human,
             };
         }
+
+        if (_selectedMapName != null)
+        {
+            // Starting-map flow: load the saved map and hand it to the
+            // game scene. Main detects TurnNumber == 0 and treats it as
+            // a fresh game (turn 1, red first) over that terrain.
+            try
+            {
+                LoadedSave loaded = _saveStore.LoadMap(_selectedMapName);
+                LoadRequest.Pending = loaded;
+                GameSettings.MasterSeed = loaded.MasterSeed;
+            }
+            catch (System.Exception ex)
+            {
+                ShowLoadError($"Could not load map '{_selectedMapName}': {ex.Message}");
+                return;
+            }
+            GetTree().ChangeSceneToFile("res://scenes/main.tscn");
+            return;
+        }
+
+        // Random-map flow: needs a seed.
+        if (_seedField == null || string.IsNullOrEmpty(_seedField.Text)) return;
+        int.TryParse(_seedField.Text, out int seed);
+        GameSettings.MasterSeed = System.Math.Clamp(seed, SeedMin, SeedMax);
         GetTree().ChangeSceneToFile("res://scenes/main.tscn");
     }
 }
