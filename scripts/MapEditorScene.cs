@@ -18,6 +18,7 @@ public partial class MapEditorScene : Node2D
     private HexGrid _grid = new HexGrid();
     private HashSet<HexCoord> _water = new HashSet<HexCoord>();
     private IReadOnlyList<Territory> _territories = new List<Territory>();
+    private readonly UndoStack<EditorSnapshot> _undoStack = new UndoStack<EditorSnapshot>();
 
     public override void _Ready()
     {
@@ -33,6 +34,16 @@ public partial class MapEditorScene : Node2D
         AddChild(_hud);
         _hud.ExitClicked += ReturnToMainMenu;
         _hud.GenerateRequested += OnGenerateRequested;
+        _hud.UndoLastClicked += OnUndoLastClicked;
+        _hud.UndoAllClicked += OnUndoAllClicked;
+        _hud.RedoLastClicked += OnRedoLastClicked;
+        _hud.RedoAllClicked += OnRedoAllClicked;
+        // SetUndoState is called inside _Ready after the HUD's own _Ready
+        // has run (Godot guarantees parent _Ready completes after children
+        // are added/Ready'd, and we just AddChild'd it). The buttons start
+        // disabled by construction so this call is also defensive against
+        // any future change to ordering.
+        _hud.SetUndoState(canUndo: false, canRedo: false);
     }
 
     public override void _UnhandledInput(InputEvent @event)
@@ -53,6 +64,9 @@ public partial class MapEditorScene : Node2D
         _territories = new List<Territory>();
         IReadOnlyList<Territory> raw = TerritoryFinder.FindAll(_grid);
         _territories = CapitalReconciler.Reconcile(raw, _territories, _grid);
+        // Generate is not undoable — drop any prior history so the new map
+        // is a fresh starting point.
+        _undoStack.Clear();
         // Animate seeded trees in on a fresh map.
         PushState(animateNewOccupants: true);
     }
@@ -61,6 +75,13 @@ public partial class MapEditorScene : Node2D
     {
         int idx = _hud.SelectedPaletteIndex;
         bool isWaterPalette = idx >= GameSettings.PlayerConfig.Length;
+
+        // Capture pre-paint state. If the paint turns out to be a no-op
+        // (out of bounds, same color), MapEditPaint returns the SAME
+        // territory list reference and we drop the snapshot rather than
+        // pollute the stack with phantom entries.
+        EditorSnapshot pre = EditorSnapshot.Capture(_grid, _water, _territories);
+        IReadOnlyList<Territory> beforeRef = _territories;
 
         if (isWaterPalette)
         {
@@ -73,8 +94,34 @@ public partial class MapEditorScene : Node2D
             _territories = MapEditPaint.PaintLand(
                 _grid, _water, _territories, _map.Cols, _map.Rows, coord, color);
         }
+
+        if (!ReferenceEquals(_territories, beforeRef))
+        {
+            _undoStack.PushBefore(pre);
+        }
+
         // Per-paint rebuild: existing trees + graves should appear instantly,
         // not re-grow on every click.
+        PushState(animateNewOccupants: false);
+    }
+
+    private void OnUndoLastClicked() => RunHistory(_undoStack.CanUndo, _undoStack.UndoLast);
+    private void OnUndoAllClicked() => RunHistory(_undoStack.CanUndo, _undoStack.UndoAll);
+    private void OnRedoLastClicked() => RunHistory(_undoStack.CanRedo, _undoStack.RedoLast);
+    private void OnRedoAllClicked() => RunHistory(_undoStack.CanRedo, _undoStack.RedoAll);
+
+    private void RunHistory(bool gate, System.Func<EditorSnapshot, EditorSnapshot> op)
+    {
+        if (!gate) return;
+        EditorSnapshot current = EditorSnapshot.Capture(_grid, _water, _territories);
+        ApplySnapshot(op(current));
+    }
+
+    private void ApplySnapshot(EditorSnapshot snap)
+    {
+        _territories = snap.ApplyTo(_grid, _water);
+        // Don't animate trees/graves on undo or redo — restored occupants
+        // were already there, they shouldn't reappear with a grow tween.
         PushState(animateNewOccupants: false);
     }
 
@@ -105,6 +152,7 @@ public partial class MapEditorScene : Node2D
         // driven by GameController. Pass null currentPlayerColor so no
         // CTA pulsing fires (no "current player" exists in the editor).
         _map.RefreshOccupantVisuals(currentPlayerColor: null, state.Treasury);
+        _hud.SetUndoState(_undoStack.CanUndo, _undoStack.CanRedo);
     }
 
     private static List<Player> BuildPlayers()

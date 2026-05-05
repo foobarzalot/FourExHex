@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using Godot;
 
@@ -50,7 +49,7 @@ public class GameStateSnapshot
         {
             tiles[tile.Coord] = new TileState(
                 color: tile.Color,
-                occupant: CloneOccupant(tile.Occupant));
+                occupant: HexOccupant.Clone(tile.Occupant));
         }
 
         var gold = new Dictionary<HexCoord, int>();
@@ -85,7 +84,7 @@ public class GameStateSnapshot
             tile.Color = kvp.Value.Color;
             // Clone again on apply so the snapshot remains independent and
             // restores remain idempotent across multiple calls.
-            tile.Occupant = CloneOccupant(kvp.Value.Occupant);
+            tile.Occupant = HexOccupant.Clone(kvp.Value.Occupant);
         }
 
         treasury.Clear();
@@ -97,14 +96,4 @@ public class GameStateSnapshot
         return _territories;
     }
 
-    private static HexOccupant? CloneOccupant(HexOccupant? occupant) => occupant switch
-    {
-        Unit u => new Unit(u.Owner, u.Level) { HasMovedThisTurn = u.HasMovedThisTurn },
-        Capital => new Capital(),
-        Grave => new Grave(),
-        Tree => new Tree(),
-        Tower => new Tower(),
-        null => null,
-        _ => throw new InvalidOperationException($"Unknown occupant type: {occupant.GetType()}"),
-    };
 }

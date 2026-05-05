@@ -21,12 +21,20 @@ public partial class MapEditorHudView : CanvasLayer
     public event Action? ExitClicked;
     public event Action<int>? GenerateRequested;
     public event Action<int>? PaletteSelectionChanged;
+    public event Action? UndoLastClicked;
+    public event Action? UndoAllClicked;
+    public event Action? RedoLastClicked;
+    public event Action? RedoAllClicked;
 
     public int SelectedPaletteIndex { get; private set; }
 
     private LineEdit _seedField = null!;
     private Button _generateButton = null!;
     private HexPaletteButton[] _palette = null!;
+    private Button _undoAllButton = null!;
+    private Button _undoLastButton = null!;
+    private Button _redoLastButton = null!;
+    private Button _redoAllButton = null!;
 
     public override void _Ready()
     {
@@ -141,6 +149,17 @@ public partial class MapEditorHudView : CanvasLayer
         rightHbox.AddThemeConstantOverride("separation", 8);
         AddChild(rightHbox);
 
+        // Undo / redo cluster — same order and labels as the play HUD's
+        // right strip so the muscle memory carries over.
+        _undoAllButton = MakeUndoButton("Undo All", () => UndoAllClicked?.Invoke());
+        rightHbox.AddChild(_undoAllButton);
+        _undoLastButton = MakeUndoButton("Undo Last", () => UndoLastClicked?.Invoke());
+        rightHbox.AddChild(_undoLastButton);
+        _redoLastButton = MakeUndoButton("Redo Last", () => RedoLastClicked?.Invoke());
+        rightHbox.AddChild(_redoLastButton);
+        _redoAllButton = MakeUndoButton("Redo All", () => RedoAllClicked?.Invoke());
+        rightHbox.AddChild(_redoAllButton);
+
         var exitButton = new Button
         {
             Text = "Exit",
@@ -149,6 +168,62 @@ public partial class MapEditorHudView : CanvasLayer
         exitButton.AddThemeFontSizeOverride("font_size", 18);
         exitButton.Pressed += () => ExitClicked?.Invoke();
         rightHbox.AddChild(exitButton);
+    }
+
+    private static Button MakeUndoButton(string text, Action onPressed)
+    {
+        var b = new Button
+        {
+            Text = text,
+            Disabled = true,
+            FocusMode = Control.FocusModeEnum.None,
+        };
+        b.AddThemeFontSizeOverride("font_size", 18);
+        b.Pressed += () => onPressed();
+        return b;
+    }
+
+    /// <summary>
+    /// Refresh the disabled state of the four undo/redo buttons. Called by
+    /// <see cref="MapEditorScene"/> after every state change.
+    /// </summary>
+    public void SetUndoState(bool canUndo, bool canRedo)
+    {
+        _undoAllButton.Disabled = !canUndo;
+        _undoLastButton.Disabled = !canUndo;
+        _redoLastButton.Disabled = !canRedo;
+        _redoAllButton.Disabled = !canRedo;
+    }
+
+    public override void _UnhandledInput(InputEvent @event)
+    {
+        if (@event is not InputEventKey keyEvent || !keyEvent.Pressed || keyEvent.Echo) return;
+
+        switch (keyEvent.Keycode)
+        {
+            case Key.Z:
+                if (keyEvent.ShiftPressed)
+                {
+                    if (!_undoAllButton.Disabled) UndoAllClicked?.Invoke();
+                }
+                else
+                {
+                    if (!_undoLastButton.Disabled) UndoLastClicked?.Invoke();
+                }
+                GetViewport().SetInputAsHandled();
+                break;
+            case Key.Y:
+                if (keyEvent.ShiftPressed)
+                {
+                    if (!_redoAllButton.Disabled) RedoAllClicked?.Invoke();
+                }
+                else
+                {
+                    if (!_redoLastButton.Disabled) RedoLastClicked?.Invoke();
+                }
+                GetViewport().SetInputAsHandled();
+                break;
+        }
     }
 
     private void OnSeedTextChanged(string newText)

@@ -74,7 +74,7 @@ public class SessionState
     public HexCoord? MoveSource { get; set; }
 
     /// <summary>Turn-scoped undo history. Cleared at EndTurn.</summary>
-    public UndoStack Undo { get; } = new UndoStack();
+    public UndoStack<UndoEntry> Undo { get; } = new UndoStack<UndoEntry>();
 
     /// <summary>
     /// Reset all pending-action fields to "nothing in progress". Does

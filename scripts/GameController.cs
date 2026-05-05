@@ -732,7 +732,7 @@ public class GameController
     {
         if (_session.IsGameOver) return;
         if (!_session.Undo.CanUndo) return;
-        ApplySnapshot(_session.Undo.UndoTurn(CaptureCurrentSnapshot()));
+        ApplySnapshot(_session.Undo.UndoAll(CaptureCurrentSnapshot()));
     }
 
     private void OnRedoLastPressed()

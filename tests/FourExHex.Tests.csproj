@@ -72,6 +72,7 @@
     <Compile Include="..\scripts\GameSettings.cs" Link="scripts\GameSettings.cs" />
     <Compile Include="..\scripts\MapGenerator.cs" Link="scripts\MapGenerator.cs" />
     <Compile Include="..\scripts\MapEditPaint.cs" Link="scripts\MapEditPaint.cs" />
+    <Compile Include="..\scripts\EditorSnapshot.cs" Link="scripts\EditorSnapshot.cs" />
   </ItemGroup>
 
 </Project>
