@@ -171,6 +171,56 @@ public partial class HexMapView : Node2D, IHexMapView
 
     public override void _Ready()
     {
+        BuildStateVisuals();
+
+        // Compute zoom levels for the current viewport before the initial
+        // pan so ClampPan/VisualCenter use the right effective extent. The
+        // resize hook re-runs both whenever the OS window changes size.
+        RecomputeZoomLevels();
+        GetViewport().SizeChanged += OnViewportResized;
+
+        // Initial pan: geometric center of the map, clamped to bounds.
+        // If the map fits in the viewport, ClampPan locks each axis to
+        // its centered value (matches the previous one-shot centering
+        // that lived in Main.cs).
+        Position = ClampPan(VisualCenter() - PixelSize * 0.5f * _zoom);
+    }
+
+    /// <summary>
+    /// Replace the live <see cref="GameState"/> and rebuild every visual
+    /// derived from it (water, foam, tile fills, outlines, layer scaffolds,
+    /// borders). Zoom and pan are preserved. Editor-only: gameplay code
+    /// drives visual updates through the controller's per-event refresh
+    /// paths instead of swapping the entire grid out from under the view.
+    /// </summary>
+    public void ReloadState(GameState state)
+    {
+        _state = state;
+        BuildStateVisuals();
+    }
+
+    /// <summary>
+    /// Build (or rebuild) every child node and per-coord cache that derives
+    /// from <see cref="_state"/>. Idempotent — on a reload, every prior
+    /// child is queued for free first so we don't double-stack visuals.
+    /// Does NOT touch zoom/pan — those are camera state, not map state.
+    /// </summary>
+    private void BuildStateVisuals()
+    {
+        // Free every prior child (no-op on the initial _Ready call since
+        // no children exist yet). Same QueueFree-during-rebuild pattern as
+        // RebuildAfterTerritoryChange / ClearLayer.
+        foreach (Node child in GetChildren()) child.QueueFree();
+        _unitVisuals.Clear();
+        _capitalVisuals.Clear();
+        _treeVisuals.Clear();
+        _graveVisuals.Clear();
+        _pulsingUnits.Clear();
+        _pulsingCapitals.Clear();
+        _tileToTerritory.Clear();
+        _highlightedTerritory = null;
+        _selectedUnit = null;
+
         // Water cells render first so they sit behind everything else. They
         // are off-map for gameplay (not in _state.Grid) — only the renderer
         // sees them. Each is a flat-colored polygon to match the rest of
@@ -286,18 +336,6 @@ public partial class HexMapView : Node2D, IHexMapView
         // RefreshOccupantVisuals once it knows the current player and
         // treasury. We don't draw them here because they'd all be non-CTA
         // by default and the controller would immediately overwrite them.
-
-        // Compute zoom levels for the current viewport before the initial
-        // pan so ClampPan/VisualCenter use the right effective extent. The
-        // resize hook re-runs both whenever the OS window changes size.
-        RecomputeZoomLevels();
-        GetViewport().SizeChanged += OnViewportResized;
-
-        // Initial pan: geometric center of the map, clamped to bounds.
-        // If the map fits in the viewport, ClampPan locks each axis to
-        // its centered value (matches the previous one-shot centering
-        // that lived in Main.cs).
-        Position = ClampPan(VisualCenter() - PixelSize * 0.5f * _zoom);
     }
 
     /// <summary>

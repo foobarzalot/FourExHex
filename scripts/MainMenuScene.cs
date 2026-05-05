@@ -128,15 +128,11 @@ public partial class MainMenuScene : Control
         _landingLoadButton.Disabled = _saveStore.ListSlots().Count == 0;
         panel.AddChild(_landingLoadButton);
 
-        var mapEditorButton = new Button
-        {
-            Text = "Map Editor",
-            Disabled = true,
-            TooltipText = "Coming soon",
-        };
+        var mapEditorButton = new Button { Text = "Map Editor" };
         mapEditorButton.AddThemeFontSizeOverride("font_size", 26);
         mapEditorButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 2);
         mapEditorButton.Size = new Vector2(buttonW, buttonH);
+        mapEditorButton.Pressed += OnMapEditorPressed;
         panel.AddChild(mapEditorButton);
 
         return panel;
@@ -320,6 +316,11 @@ public partial class MainMenuScene : Control
     private void OnPlayPressed()
     {
         ShowPlayConfig();
+    }
+
+    private void OnMapEditorPressed()
+    {
+        GetTree().ChangeSceneToFile("res://scenes/map_editor.tscn");
     }
 
     private void OnBackPressed()
