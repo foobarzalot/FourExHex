@@ -15,6 +15,7 @@ using Godot;
 public sealed class SaveStore
 {
     public const string SaveDirectory = "user://saves/";
+    public const string MapsDirectory = "user://maps/";
     public const string AutosaveSlotName = "autosave";
     private const string SaveExtension = ".json";
     private const string TempExtension = ".json.tmp";
@@ -45,15 +46,44 @@ public sealed class SaveStore
         IReadOnlyList<Player> players,
         int maxTurnNumber)
     {
-        EnsureSaveDirectory();
+        WriteSlotIn(SaveDirectory, slotName, state, masterSeed, players, maxTurnNumber);
+    }
+
+    /// <summary>
+    /// Persist a "starting map" from the editor. Same JSON format as a
+    /// regular save but written to <see cref="MapsDirectory"/> so it
+    /// shows up separately, and the caller is expected to construct
+    /// <paramref name="state"/> with TurnNumber == 0 — the on-disk
+    /// marker that distinguishes a starting map from an in-progress
+    /// game when we add a "Load Map" entry point.
+    /// </summary>
+    public void WriteMapSlot(
+        string slotName,
+        GameState state,
+        int masterSeed,
+        IReadOnlyList<Player> players)
+    {
+        WriteSlotIn(MapsDirectory, slotName, state, masterSeed, players,
+            maxTurnNumber: int.MaxValue);
+    }
+
+    private static void WriteSlotIn(
+        string directory,
+        string slotName,
+        GameState state,
+        int masterSeed,
+        IReadOnlyList<Player> players,
+        int maxTurnNumber)
+    {
+        EnsureDirectory(directory);
         string sanitized = SanitizeSlotName(slotName);
         string json = SaveSerializer.Serialize(
             state, masterSeed, players, sanitized, maxTurnNumber);
 
         // Atomic write: produce <name>.json.tmp first, then rename to
         // <name>.json. A crash mid-write leaves the prior save intact.
-        string tempPath = SaveDirectory + sanitized + TempExtension;
-        string finalPath = SaveDirectory + sanitized + SaveExtension;
+        string tempPath = directory + sanitized + TempExtension;
+        string finalPath = directory + sanitized + SaveExtension;
 
         using (FileAccess f = FileAccess.Open(tempPath, FileAccess.ModeFlags.Write))
         {
@@ -86,22 +116,27 @@ public sealed class SaveStore
     /// descending (most recent first), with the autosave slot
     /// always at the top regardless of timestamp.
     /// </summary>
-    public IReadOnlyList<SaveSlotInfo> ListSlots()
+    public IReadOnlyList<SaveSlotInfo> ListSlots() => ListSlotsIn(SaveDirectory);
+
+    /// <summary>List every starting map in <see cref="MapsDirectory"/>.</summary>
+    public IReadOnlyList<SaveSlotInfo> ListMaps() => ListSlotsIn(MapsDirectory);
+
+    private IReadOnlyList<SaveSlotInfo> ListSlotsIn(string directory)
     {
         var infos = new List<SaveSlotInfo>();
-        if (!DirAccess.DirExistsAbsolute(SaveDirectory))
+        if (!DirAccess.DirExistsAbsolute(directory))
         {
             return infos;
         }
 
-        using DirAccess dir = DirAccess.Open(SaveDirectory)!;
+        using DirAccess dir = DirAccess.Open(directory)!;
         dir.ListDirBegin();
         for (string name = dir.GetNext(); name.Length > 0; name = dir.GetNext())
         {
             if (dir.CurrentIsDir()) continue;
             if (!name.EndsWith(SaveExtension)) continue;
             string slot = name.Substring(0, name.Length - SaveExtension.Length);
-            SaveSlotInfo? info = TryReadHeader(slot);
+            SaveSlotInfo? info = TryReadHeader(directory, slot);
             if (info != null) infos.Add(info);
         }
         dir.ListDirEnd();
@@ -119,14 +154,19 @@ public sealed class SaveStore
     /// Load a slot by sanitized name. Throws if the file is missing or
     /// the format version doesn't match.
     /// </summary>
-    public LoadedSave LoadSlot(string slotName)
+    public LoadedSave LoadSlot(string slotName) => LoadSlotIn(SaveDirectory, slotName);
+
+    /// <summary>Load a starting map by sanitized name from <see cref="MapsDirectory"/>.</summary>
+    public LoadedSave LoadMap(string slotName) => LoadSlotIn(MapsDirectory, slotName);
+
+    private LoadedSave LoadSlotIn(string directory, string slotName)
     {
         string sanitized = SanitizeSlotName(slotName);
-        string path = SaveDirectory + sanitized + SaveExtension;
+        string path = directory + sanitized + SaveExtension;
         if (!FileAccess.FileExists(path))
         {
             throw new System.IO.FileNotFoundException(
-                $"Save slot '{sanitized}' not found at {path}.");
+                $"Slot '{sanitized}' not found at {path}.");
         }
         using FileAccess f = FileAccess.Open(path, FileAccess.ModeFlags.Read)!;
         if (f == null)
@@ -138,9 +178,9 @@ public sealed class SaveStore
         return SaveSerializer.Deserialize(json);
     }
 
-    private SaveSlotInfo? TryReadHeader(string slotName)
+    private SaveSlotInfo? TryReadHeader(string directory, string slotName)
     {
-        string path = SaveDirectory + slotName + SaveExtension;
+        string path = directory + slotName + SaveExtension;
         try
         {
             using FileAccess f = FileAccess.Open(path, FileAccess.ModeFlags.Read);
@@ -167,14 +207,14 @@ public sealed class SaveStore
         }
     }
 
-    private static void EnsureSaveDirectory()
+    private static void EnsureDirectory(string directory)
     {
-        if (DirAccess.DirExistsAbsolute(SaveDirectory)) return;
-        Error err = DirAccess.MakeDirRecursiveAbsolute(SaveDirectory);
+        if (DirAccess.DirExistsAbsolute(directory)) return;
+        Error err = DirAccess.MakeDirRecursiveAbsolute(directory);
         if (err != Error.Ok)
         {
             throw new System.IO.IOException(
-                $"Could not create save directory {SaveDirectory}: {err}");
+                $"Could not create directory {directory}: {err}");
         }
     }
 

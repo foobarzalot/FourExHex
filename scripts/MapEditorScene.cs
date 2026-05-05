@@ -19,6 +19,14 @@ public partial class MapEditorScene : Node2D
     private HashSet<HexCoord> _water = new HashSet<HexCoord>();
     private IReadOnlyList<Territory> _territories = new List<Territory>();
     private readonly UndoStack<EditorSnapshot> _undoStack = new UndoStack<EditorSnapshot>();
+    private SaveStore _saveStore = null!;
+    private AcceptDialog? _saveDialog;
+    private LineEdit? _saveDialogLineEdit;
+    private AcceptDialog? _saveErrorDialog;
+    private Window? _loadDialog;
+    private VBoxContainer? _loadDialogList;
+    private AcceptDialog? _loadErrorDialog;
+    private int _mapSeed = 0;
 
     public override void _Ready()
     {
@@ -44,6 +52,12 @@ public partial class MapEditorScene : Node2D
         // disabled by construction so this call is also defensive against
         // any future change to ordering.
         _hud.SetUndoState(canUndo: false, canRedo: false);
+        _hud.SaveMapClicked += OpenSaveDialog;
+        _hud.LoadMapClicked += OpenLoadDialog;
+
+        _saveStore = new SaveStore();
+        BuildSaveDialog();
+        BuildLoadDialog();
     }
 
     public override void _UnhandledInput(InputEvent @event)
@@ -56,6 +70,7 @@ public partial class MapEditorScene : Node2D
 
     private void OnGenerateRequested(int seed)
     {
+        _mapSeed = seed;
         MapGenResult mapGen = MapGenerator.BuildInitialGrid(_map.Cols, _map.Rows, _players, seed);
         _grid = mapGen.Grid;
         _water = new HashSet<HexCoord>(mapGen.WaterCoords);
@@ -156,6 +171,217 @@ public partial class MapEditorScene : Node2D
     private GameState BuildState() =>
         new GameState(
             _grid, _territories, _players, new TurnState(_players), new Treasury(), _water);
+
+    /// <summary>
+    /// Build a GameState whose TurnState starts at turn 0. That zero
+    /// counter is the on-disk marker for "starting map" — the SaveStore
+    /// drops it into the maps directory so a Load Map entry point (when
+    /// added) can tell it apart from an in-progress game.
+    /// </summary>
+    private GameState BuildSaveState() =>
+        new GameState(
+            _grid,
+            _territories,
+            _players,
+            new TurnState(_players, currentPlayerIndex: 0, turnNumber: 0),
+            new Treasury(),
+            _water);
+
+    private void BuildSaveDialog()
+    {
+        _saveDialog = new AcceptDialog
+        {
+            Title = "Save Map",
+            OkButtonText = "Save",
+            Exclusive = false,
+        };
+        var content = new VBoxContainer { CustomMinimumSize = new Vector2(280, 0) };
+        content.AddThemeConstantOverride("separation", 8);
+        content.AddChild(new Label { Text = "Map name:" });
+        _saveDialogLineEdit = new LineEdit
+        {
+            Text = "map",
+            CustomMinimumSize = new Vector2(260, 30),
+        };
+        content.AddChild(_saveDialogLineEdit);
+        _saveDialog.AddChild(content);
+        _saveDialog.RegisterTextEnter(_saveDialogLineEdit);
+        _saveDialog.Confirmed += OnSaveDialogConfirmed;
+        AddChild(_saveDialog);
+
+        _saveErrorDialog = new AcceptDialog
+        {
+            Title = "Save failed",
+            OkButtonText = "OK",
+        };
+        AddChild(_saveErrorDialog);
+    }
+
+    private void OpenSaveDialog()
+    {
+        if (_saveDialog == null || _saveDialogLineEdit == null) return;
+        _saveDialogLineEdit.Text = _mapSeed > 0 ? $"map_seed{_mapSeed}" : "map";
+        _saveDialog.PopupCentered();
+        _saveDialogLineEdit.GrabFocus();
+        _saveDialogLineEdit.SelectAll();
+    }
+
+    private void OnSaveDialogConfirmed()
+    {
+        if (_saveDialogLineEdit == null) return;
+        string name = SaveStore.SanitizeSlotName(_saveDialogLineEdit.Text);
+        try
+        {
+            _saveStore.WriteMapSlot(name, BuildSaveState(), _mapSeed, _players);
+        }
+        catch (System.Exception ex)
+        {
+            ShowSaveError($"Could not save: {ex.Message}");
+        }
+    }
+
+    private void ShowSaveError(string message)
+    {
+        if (_saveErrorDialog == null)
+        {
+            GD.PushError(message);
+            return;
+        }
+        _saveErrorDialog.DialogText = message;
+        _saveErrorDialog.PopupCentered();
+    }
+
+    private void BuildLoadDialog()
+    {
+        // Mirrors MainMenuScene.BuildLoadDialog — same Window-based modal,
+        // just listing maps from MapsDirectory instead of saves from
+        // SaveDirectory.
+        _loadDialog = new Window
+        {
+            Title = "Load Map",
+            Size = new Vector2I(440, 360),
+            Visible = false,
+            Exclusive = true,
+        };
+        _loadDialog.CloseRequested += () => _loadDialog!.Hide();
+        _loadDialog.WindowInput += OnLoadDialogInput;
+        AddChild(_loadDialog);
+
+        var scroll = new ScrollContainer
+        {
+            AnchorLeft = 0f,
+            AnchorTop = 0f,
+            AnchorRight = 1f,
+            AnchorBottom = 1f,
+            OffsetLeft = 16f,
+            OffsetTop = 16f,
+            OffsetRight = -16f,
+            OffsetBottom = -16f,
+        };
+        _loadDialog.AddChild(scroll);
+
+        _loadDialogList = new VBoxContainer
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+        };
+        _loadDialogList.AddThemeConstantOverride("separation", 8);
+        scroll.AddChild(_loadDialogList);
+
+        _loadErrorDialog = new AcceptDialog
+        {
+            Title = "Load failed",
+            OkButtonText = "OK",
+        };
+        AddChild(_loadErrorDialog);
+    }
+
+    private void OnLoadDialogInput(InputEvent @event)
+    {
+        if (@event is not InputEventKey keyEvent || !keyEvent.Pressed || keyEvent.Echo) return;
+        if (keyEvent.Keycode != Key.Escape) return;
+        _loadDialog?.Hide();
+    }
+
+    private void OpenLoadDialog()
+    {
+        if (_loadDialog == null || _loadDialogList == null) return;
+
+        foreach (Node child in _loadDialogList.GetChildren())
+        {
+            child.QueueFree();
+        }
+        IReadOnlyList<SaveSlotInfo> slots = _saveStore.ListMaps();
+        if (slots.Count == 0)
+        {
+            var emptyLabel = new Label { Text = "No maps found." };
+            emptyLabel.AddThemeFontSizeOverride("font_size", 18);
+            _loadDialogList.AddChild(emptyLabel);
+        }
+        foreach (SaveSlotInfo info in slots)
+        {
+            string capturedName = info.SlotName;
+            string label = $"{info.SlotName} — {FormatTimestamp(info.SavedAtUnix)}";
+            var btn = new Button
+            {
+                Text = label,
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                Alignment = HorizontalAlignment.Left,
+            };
+            btn.AddThemeFontSizeOverride("font_size", 18);
+            btn.Pressed += () => OnLoadSlotPressed(capturedName);
+            _loadDialogList.AddChild(btn);
+        }
+        _loadDialog.PopupCentered();
+    }
+
+    private void OnLoadSlotPressed(string slotName)
+    {
+        try
+        {
+            LoadedSave loaded = _saveStore.LoadMap(slotName);
+            ApplyLoadedMap(loaded);
+            _loadDialog?.Hide();
+        }
+        catch (System.Exception ex)
+        {
+            ShowLoadError($"Could not load '{slotName}': {ex.Message}");
+        }
+    }
+
+    private void ApplyLoadedMap(LoadedSave loaded)
+    {
+        // Hand the loaded grid + water set to the editor's draft. The
+        // territory list comes from the save unchanged. Treasury/turn
+        // state are discarded — the editor doesn't track them.
+        _grid = loaded.State.Grid;
+        _water = new HashSet<HexCoord>(loaded.State.WaterCoords);
+        _territories = loaded.State.Territories;
+        _mapSeed = loaded.MasterSeed;
+
+        // Loading is a fresh starting point, like Generate — drop the
+        // undo history so subsequent paints stack cleanly on top.
+        _undoStack.Clear();
+
+        // Animate seeded trees in like a fresh generate.
+        PushState(animateNewOccupants: true);
+    }
+
+    private void ShowLoadError(string message)
+    {
+        if (_loadErrorDialog == null)
+        {
+            GD.PushError(message);
+            return;
+        }
+        _loadErrorDialog.DialogText = message;
+        _loadErrorDialog.PopupCentered();
+    }
+
+    private static string FormatTimestamp(long unixSeconds)
+    {
+        var dt = System.DateTimeOffset.FromUnixTimeSeconds(unixSeconds).LocalDateTime;
+        return dt.ToString("yyyy-MM-dd HH:mm");
+    }
 
     private void PushState(bool animateNewOccupants)
     {

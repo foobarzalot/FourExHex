@@ -34,6 +34,8 @@ public partial class MapEditorHudView : CanvasLayer
     public event Action? UndoAllClicked;
     public event Action? RedoLastClicked;
     public event Action? RedoAllClicked;
+    public event Action? SaveMapClicked;
+    public event Action? LoadMapClicked;
 
     public int SelectedPaletteIndex { get; private set; }
 
@@ -64,10 +66,6 @@ public partial class MapEditorHudView : CanvasLayer
         leftHbox.AddThemeConstantOverride("separation", 12);
         AddChild(leftHbox);
 
-        var titleLabel = new Label { Text = "Map Editor" };
-        titleLabel.AddThemeFontSizeOverride("font_size", 24);
-        leftHbox.AddChild(titleLabel);
-
         var seedLabel = new Label { Text = "Seed" };
         seedLabel.AddThemeFontSizeOverride("font_size", 20);
         leftHbox.AddChild(seedLabel);
@@ -97,29 +95,11 @@ public partial class MapEditorHudView : CanvasLayer
         _generateButton.Pressed += OnGeneratePressed;
         leftHbox.AddChild(_generateButton);
 
-        // Palette: six land-color hex buttons in PlayerConfig order, plus a
-        // seventh in the water blue used by HexMapView.CreateWaterHexVisual.
-        // Centered in the HUD strip between the seed cluster on the left
-        // and the Exit container on the right. Center alignment is achieved
-        // by anchoring this HBox to the full width and letting its own
-        // Center alignment + ignored mouse filter pack children to the
-        // middle without intercepting clicks meant for the surrounding
-        // controls.
-        var paletteHbox = new HBoxContainer
-        {
-            AnchorLeft = 0f,
-            AnchorRight = 1f,
-            AnchorTop = 0f,
-            AnchorBottom = 0f,
-            OffsetLeft = 0f,
-            OffsetRight = 0f,
-            OffsetTop = 8f,
-            OffsetBottom = 52f,
-            Alignment = BoxContainer.AlignmentMode.Center,
-            MouseFilter = Control.MouseFilterEnum.Ignore,
-        };
+        // Palette sits in the same left HBox as the seed/Generate cluster
+        // so all the editor controls flow left-to-right without overlap.
+        var paletteHbox = new HBoxContainer();
         paletteHbox.AddThemeConstantOverride("separation", 6);
-        AddChild(paletteHbox);
+        leftHbox.AddChild(paletteHbox);
 
         _palette = new HexPaletteButton[GameSettings.PlayerConfig.Length + 4];
         for (int i = 0; i < GameSettings.PlayerConfig.Length; i++)
@@ -196,6 +176,24 @@ public partial class MapEditorHudView : CanvasLayer
         rightHbox.AddChild(_redoLastButton);
         _redoAllButton = MakeUndoButton("Redo All", () => RedoAllClicked?.Invoke());
         rightHbox.AddChild(_redoAllButton);
+
+        var saveMapButton = new Button
+        {
+            Text = "Save Map",
+            FocusMode = Control.FocusModeEnum.None,
+        };
+        saveMapButton.AddThemeFontSizeOverride("font_size", 18);
+        saveMapButton.Pressed += () => SaveMapClicked?.Invoke();
+        rightHbox.AddChild(saveMapButton);
+
+        var loadMapButton = new Button
+        {
+            Text = "Load Map",
+            FocusMode = Control.FocusModeEnum.None,
+        };
+        loadMapButton.AddThemeFontSizeOverride("font_size", 18);
+        loadMapButton.Pressed += () => LoadMapClicked?.Invoke();
+        rightHbox.AddChild(loadMapButton);
 
         var exitButton = new Button
         {
