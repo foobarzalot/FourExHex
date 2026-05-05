@@ -44,7 +44,10 @@ public partial class AudioBus : Node
         _towerPlacedPlayer = new AudioStreamPlayer
         {
             Stream = GD.Load<AudioStream>("res://assets/audio/tower_place.wav"),
-            VolumeDb = -4f,
+            // Stone material is naturally bright and the source clip
+            // tends to come back hot, so we sit a touch under the
+            // unit-place gain.
+            VolumeDb = -8f,
         };
         AddChild(_towerPlacedPlayer);
     }
