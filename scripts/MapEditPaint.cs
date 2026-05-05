@@ -115,11 +115,47 @@ public static class MapEditPaint
     }
 
     /// <summary>
+    /// Toggle a tower on the tile at <paramref name="coord"/>. Empty land
+    /// gets a fresh <see cref="Tower"/>; an existing tower is cleared;
+    /// a <see cref="Tree"/> on the tile is replaced by the tower (the
+    /// inverse of <see cref="PaintTreeToggle"/>'s tower→tree path).
+    /// No-op on water and on tiles holding a <see cref="Capital"/> —
+    /// capitals are owned by territory state and the tower palette must
+    /// not stomp them.
+    /// </summary>
+    public static IReadOnlyList<Territory> PaintTowerToggle(
+        HexGrid grid,
+        HashSet<HexCoord> water,
+        IReadOnlyList<Territory> previousTerritories,
+        int cols,
+        int rows,
+        HexCoord coord)
+    {
+        if (!InBounds(coord, cols, rows)) return previousTerritories;
+        HexTile? tile = grid.Get(coord);
+        if (tile == null) return previousTerritories;
+
+        if (tile.Occupant is Capital) return previousTerritories;
+        if (tile.Occupant is Tower)
+        {
+            tile.Occupant = null;
+        }
+        else
+        {
+            // Empty or Tree (or anything else non-Capital): replace with a
+            // tower. Tree → Tower is the cross-type swap; empty → Tower
+            // is the place case.
+            tile.Occupant = new Tower();
+        }
+        return Reconcile(grid, previousTerritories);
+    }
+
+    /// <summary>
     /// Toggle a tree on the tile at <paramref name="coord"/>. Empty land
-    /// gets a fresh <see cref="Tree"/> occupant; an existing tree is
-    /// cleared. No-op on water and on tiles that already hold something
-    /// other than a tree (capital, unit, tower, grave) — the tree palette
-    /// must not stomp gameplay occupants placed by other paints.
+    /// gets a fresh <see cref="Tree"/>; an existing tree is cleared; a
+    /// <see cref="Tower"/> on the tile is replaced by the tree (mirror of
+    /// <see cref="PaintTowerToggle"/>'s tree→tower path). No-op on water
+    /// and on tiles holding a <see cref="Capital"/>.
     /// </summary>
     public static IReadOnlyList<Territory> PaintTreeToggle(
         HexGrid grid,
@@ -133,19 +169,18 @@ public static class MapEditPaint
         HexTile? tile = grid.Get(coord);
         if (tile == null) return previousTerritories;
 
+        if (tile.Occupant is Capital) return previousTerritories;
         if (tile.Occupant is Tree)
         {
             tile.Occupant = null;
         }
-        else if (tile.Occupant == null)
-        {
-            tile.Occupant = new Tree();
-        }
         else
         {
-            return previousTerritories;
+            // Empty or Tower (or any other non-Capital): replace with a
+            // tree. Tower → Tree is the cross-type swap; empty → Tree is
+            // the place case.
+            tile.Occupant = new Tree();
         }
-
         return Reconcile(grid, previousTerritories);
     }
 

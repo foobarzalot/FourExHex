@@ -261,6 +261,186 @@ public class MapEditPaintTests
         Assert.Equal(treeCoord, after[0].Capital);
     }
 
+    // -- Tower toggle --
+
+    [Fact]
+    public void PaintTowerToggle_OutOfBounds_IsNoop()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        IReadOnlyList<Territory> territories = new List<Territory>();
+
+        IReadOnlyList<Territory> after = MapEditPaint.PaintTowerToggle(
+            grid, water, territories, Cols, Rows, HexCoord.FromOffset(-1, 0));
+
+        Assert.Same(territories, after);
+    }
+
+    [Fact]
+    public void PaintTowerToggle_OnWater_IsNoop()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        IReadOnlyList<Territory> territories = new List<Territory>();
+        var coord = HexCoord.FromOffset(2, 2);
+
+        IReadOnlyList<Territory> after = MapEditPaint.PaintTowerToggle(
+            grid, water, territories, Cols, Rows, coord);
+
+        Assert.Same(territories, after);
+        Assert.False(grid.Contains(coord));
+    }
+
+    [Fact]
+    public void PaintTowerToggle_OnEmptyLand_PlacesTower()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = new Color(1f, 0f, 0f);
+        var coord = HexCoord.FromOffset(2, 2);
+        IReadOnlyList<Territory> territories = MapEditPaint.PaintLand(
+            grid, water, new List<Territory>(), Cols, Rows, coord, color);
+
+        territories = MapEditPaint.PaintTowerToggle(
+            grid, water, territories, Cols, Rows, coord);
+
+        Assert.IsType<Tower>(grid.Get(coord)!.Occupant);
+    }
+
+    [Fact]
+    public void PaintTowerToggle_OnSingletonLand_PlacesTower()
+    {
+        // Towers can sit on a 1-tile territory (unlike capitals).
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = new Color(1f, 0f, 0f);
+        var coord = HexCoord.FromOffset(5, 5);
+        IReadOnlyList<Territory> territories = MapEditPaint.PaintLand(
+            grid, water, new List<Territory>(), Cols, Rows, coord, color);
+
+        territories = MapEditPaint.PaintTowerToggle(
+            grid, water, territories, Cols, Rows, coord);
+
+        Assert.IsType<Tower>(grid.Get(coord)!.Occupant);
+    }
+
+    [Fact]
+    public void PaintTowerToggle_OnExistingTower_RemovesTower()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = new Color(1f, 0f, 0f);
+        var coord = HexCoord.FromOffset(2, 2);
+        IReadOnlyList<Territory> territories = MapEditPaint.PaintLand(
+            grid, water, new List<Territory>(), Cols, Rows, coord, color);
+        territories = MapEditPaint.PaintTowerToggle(
+            grid, water, territories, Cols, Rows, coord);
+
+        territories = MapEditPaint.PaintTowerToggle(
+            grid, water, territories, Cols, Rows, coord);
+
+        Assert.Null(grid.Get(coord)!.Occupant);
+    }
+
+    [Fact]
+    public void PaintTowerToggle_OnTree_ReplacesTreeWithTower()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = new Color(1f, 0f, 0f);
+        var coord = HexCoord.FromOffset(2, 2);
+        IReadOnlyList<Territory> territories = MapEditPaint.PaintLand(
+            grid, water, new List<Territory>(), Cols, Rows, coord, color);
+        territories = MapEditPaint.PaintTreeToggle(
+            grid, water, territories, Cols, Rows, coord);
+        Assert.IsType<Tree>(grid.Get(coord)!.Occupant);
+
+        territories = MapEditPaint.PaintTowerToggle(
+            grid, water, territories, Cols, Rows, coord);
+
+        Assert.IsType<Tower>(grid.Get(coord)!.Occupant);
+    }
+
+    [Fact]
+    public void PaintTowerToggle_OnCapital_IsNoop()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = new Color(1f, 0f, 0f);
+        IReadOnlyList<Territory> territories = new List<Territory>();
+        for (int col = 0; col < 3; col++)
+        {
+            territories = MapEditPaint.PaintLand(
+                grid, water, territories, Cols, Rows,
+                HexCoord.FromOffset(col, 0), color);
+        }
+        HexCoord capitalCoord = territories[0].Capital!.Value;
+
+        IReadOnlyList<Territory> after = MapEditPaint.PaintTowerToggle(
+            grid, water, territories, Cols, Rows, capitalCoord);
+
+        Assert.Same(territories, after);
+        Assert.IsType<Capital>(grid.Get(capitalCoord)!.Occupant);
+    }
+
+    // -- Tree toggle additions for tower interaction + singleton --
+
+    [Fact]
+    public void PaintTreeToggle_OnTower_ReplacesTowerWithTree()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = new Color(1f, 0f, 0f);
+        var coord = HexCoord.FromOffset(2, 2);
+        IReadOnlyList<Territory> territories = MapEditPaint.PaintLand(
+            grid, water, new List<Territory>(), Cols, Rows, coord, color);
+        territories = MapEditPaint.PaintTowerToggle(
+            grid, water, territories, Cols, Rows, coord);
+        Assert.IsType<Tower>(grid.Get(coord)!.Occupant);
+
+        territories = MapEditPaint.PaintTreeToggle(
+            grid, water, territories, Cols, Rows, coord);
+
+        Assert.IsType<Tree>(grid.Get(coord)!.Occupant);
+    }
+
+    [Fact]
+    public void PaintTreeToggle_OnSingletonLand_PlacesTree()
+    {
+        // Trees can sit on a 1-tile territory (unlike capitals).
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = new Color(1f, 0f, 0f);
+        var coord = HexCoord.FromOffset(5, 5);
+        IReadOnlyList<Territory> territories = MapEditPaint.PaintLand(
+            grid, water, new List<Territory>(), Cols, Rows, coord, color);
+
+        territories = MapEditPaint.PaintTreeToggle(
+            grid, water, territories, Cols, Rows, coord);
+
+        Assert.IsType<Tree>(grid.Get(coord)!.Occupant);
+    }
+
+    // -- Capital placement on tower --
+
+    [Fact]
+    public void PaintCapital_OnTower_RemovesTowerAndPlacesCapital()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = new Color(1f, 0f, 0f);
+        IReadOnlyList<Territory> territories = new List<Territory>();
+        for (int col = 0; col < 3; col++)
+        {
+            territories = MapEditPaint.PaintLand(
+                grid, water, territories, Cols, Rows,
+                HexCoord.FromOffset(col, 0), color);
+        }
+        HexCoord oldCapital = territories[0].Capital!.Value;
+        HexCoord towerCoord = HexCoord.FromOffset(0, 0);
+        if (towerCoord == oldCapital) towerCoord = HexCoord.FromOffset(2, 0);
+        territories = MapEditPaint.PaintTowerToggle(
+            grid, water, territories, Cols, Rows, towerCoord);
+        Assert.IsType<Tower>(grid.Get(towerCoord)!.Occupant);
+
+        IReadOnlyList<Territory> after = MapEditPaint.PaintCapital(
+            grid, water, territories, Cols, Rows, towerCoord);
+
+        Assert.IsType<Capital>(grid.Get(towerCoord)!.Occupant);
+        Assert.Null(grid.Get(oldCapital)!.Occupant);
+        Assert.Equal(towerCoord, after[0].Capital);
+    }
+
     [Fact]
     public void PaintLand_FourAdjacentSameColorTiles_LeavesExactlyOneCapital()
     {

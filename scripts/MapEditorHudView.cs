@@ -24,6 +24,8 @@ public partial class MapEditorHudView : CanvasLayer
     public static int TreePaletteIndex => GameSettings.PlayerConfig.Length + 1;
     /// <summary>Palette index reserved for the capital-placement swatch.</summary>
     public static int CapitalPaletteIndex => GameSettings.PlayerConfig.Length + 2;
+    /// <summary>Palette index reserved for the tower-toggle swatch.</summary>
+    public static int TowerPaletteIndex => GameSettings.PlayerConfig.Length + 3;
 
     public event Action? ExitClicked;
     public event Action<int>? GenerateRequested;
@@ -119,7 +121,7 @@ public partial class MapEditorHudView : CanvasLayer
         paletteHbox.AddThemeConstantOverride("separation", 6);
         AddChild(paletteHbox);
 
-        _palette = new HexPaletteButton[GameSettings.PlayerConfig.Length + 3];
+        _palette = new HexPaletteButton[GameSettings.PlayerConfig.Length + 4];
         for (int i = 0; i < GameSettings.PlayerConfig.Length; i++)
         {
             (_, string hex) = GameSettings.PlayerConfig[i];
@@ -154,6 +156,15 @@ public partial class MapEditorHudView : CanvasLayer
         capitalButton.Pressed += _ => SelectPalette(capitalIndex);
         paletteHbox.AddChild(capitalButton);
         _palette[capitalIndex] = capitalButton;
+        // Tower swatch — dark stone-grey background with the rook icon
+        // overlaid. Distinct from the lighter capital slate so the two
+        // grey-ish buttons read as different at a glance.
+        int towerIndex = TowerPaletteIndex;
+        var towerButton = new HexPaletteButton(
+            new Color(0.45f, 0.45f, 0.50f, 1f), HexPaletteIcon.Tower);
+        towerButton.Pressed += _ => SelectPalette(towerIndex);
+        paletteHbox.AddChild(towerButton);
+        _palette[towerIndex] = towerButton;
 
         // Default selection: first land color (Red). Visual is set via
         // SelectPalette so the IsSelected outline draws from the start.

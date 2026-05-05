@@ -87,6 +87,11 @@ public partial class MapEditorScene : Node2D
             _territories = MapEditPaint.PaintCapital(
                 _grid, _water, _territories, _map.Cols, _map.Rows, coord);
         }
+        else if (idx == MapEditorHudView.TowerPaletteIndex)
+        {
+            _territories = MapEditPaint.PaintTowerToggle(
+                _grid, _water, _territories, _map.Cols, _map.Rows, coord);
+        }
         else if (idx == MapEditorHudView.TreePaletteIndex)
         {
             _territories = MapEditPaint.PaintTreeToggle(

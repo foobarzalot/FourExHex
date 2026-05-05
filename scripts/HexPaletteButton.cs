@@ -18,6 +18,7 @@ public enum HexPaletteIcon
     None,
     Tree,
     Capital,
+    Tower,
 }
 
 public partial class HexPaletteButton : Control
@@ -80,6 +81,7 @@ public partial class HexPaletteButton : Control
         {
             case HexPaletteIcon.Tree: DrawTreeIcon(center, radius); break;
             case HexPaletteIcon.Capital: DrawCapitalIcon(center, radius); break;
+            case HexPaletteIcon.Tower: DrawTowerIcon(center, radius); break;
         }
 
         Color outlineColor = _isSelected ? new Color(1f, 1f, 1f) : new Color(0f, 0f, 0f);
@@ -135,5 +137,39 @@ public partial class HexPaletteButton : Control
             verts[i] = center + new Vector2(r * Mathf.Cos(angle), r * Mathf.Sin(angle));
         }
         DrawColoredPolygon(verts, new Color(0f, 0f, 0f, 1f));
+    }
+
+    private void DrawTowerIcon(Vector2 center, float hexRadius)
+    {
+        // Stylized crenellated rook, scaled down from
+        // HexMapView.TowerShapeVertices's proportions to fit the button.
+        float r = hexRadius * 0.55f;
+        float halfW = r;
+        float top = -r;
+        float bot = r * 0.85f;
+        float merlonH = r * 0.35f;
+        float merlonW = halfW * 0.4f;
+        var verts = new Vector2[]
+        {
+            center + new Vector2(-halfW, bot),
+            center + new Vector2(-halfW, top + merlonH),
+            center + new Vector2(-halfW, top),
+            center + new Vector2(-halfW + merlonW, top),
+            center + new Vector2(-halfW + merlonW, top + merlonH),
+            center + new Vector2(-merlonW * 0.5f, top + merlonH),
+            center + new Vector2(-merlonW * 0.5f, top),
+            center + new Vector2(merlonW * 0.5f, top),
+            center + new Vector2(merlonW * 0.5f, top + merlonH),
+            center + new Vector2(halfW - merlonW, top + merlonH),
+            center + new Vector2(halfW - merlonW, top),
+            center + new Vector2(halfW, top),
+            center + new Vector2(halfW, top + merlonH),
+            center + new Vector2(halfW, bot),
+        };
+        DrawColoredPolygon(verts, new Color(0.72f, 0.72f, 0.76f, 1f));
+        for (int i = 0; i < verts.Length; i++)
+        {
+            DrawLine(verts[i], verts[(i + 1) % verts.Length], new Color(0f, 0f, 0f, 1f), 1.5f);
+        }
     }
 }
