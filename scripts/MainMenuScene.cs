@@ -2,12 +2,12 @@ using System.Linq;
 using Godot;
 
 /// <summary>
-/// Main menu scene root. Shows a row per player slot where each slot
-/// can be toggled between Human and AI, then launches the game by
-/// writing the choices into <see cref="GameSettings.PlayerIsAi"/> and
-/// changing to <c>main.tscn</c>. Purely UI wiring — owns no game
-/// logic and is excluded from the test project for the same reason as
-/// <see cref="HudView"/>.
+/// Main menu scene root. Hosts two child panels — a landing page with
+/// Play / Load / Map Editor buttons and a play-config page with the
+/// player-kind dropdowns + map seed + Start Game button — and toggles
+/// between them via <see cref="Control.Visible"/>. The Load Game modal
+/// is a free-floating <see cref="Window"/> child that pops over the
+/// landing page.
 /// </summary>
 public partial class MainMenuScene : Control
 {
@@ -26,7 +26,12 @@ public partial class MainMenuScene : Control
     private Window? _loadDialog;
     private VBoxContainer? _loadDialogList;
     private AcceptDialog? _loadErrorDialog;
-    private Button? _loadButton;
+
+    private Control? _landingPanel;
+    private Control? _playConfigPanel;
+    private Button? _landingPlayButton;
+    private Button? _landingLoadButton;
+
     private LineEdit? _seedField;
     private Button? _startButton;
 
@@ -66,10 +71,83 @@ public partial class MainMenuScene : Control
         };
         AddChild(background);
 
+        _saveStore = new SaveStore();
+
+        _landingPanel = BuildLandingPanel();
+        AddChild(_landingPanel);
+
+        _playConfigPanel = BuildPlayConfigPanel();
+        AddChild(_playConfigPanel);
+
+        BuildLoadDialog();
+
+        ShowLanding();
+    }
+
+    private Control BuildLandingPanel()
+    {
+        Vector2 viewport = GetViewportRect().Size;
+        const float panelW = 520f;
+        const float panelH = 420f;
+        var panel = new Panel
+        {
+            Position = new Vector2((viewport.X - panelW) * 0.5f, (viewport.Y - panelH) * 0.5f),
+            Size = new Vector2(panelW, panelH),
+        };
+
+        var title = new Label
+        {
+            Text = "FourExHex",
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Position = new Vector2(0, 36),
+            Size = new Vector2(panelW, 56),
+        };
+        title.AddThemeFontSizeOverride("font_size", 44);
+        panel.AddChild(title);
+
+        const float buttonH = 64f;
+        const float buttonGap = 16f;
+        const float buttonInset = 80f;
+        const float buttonW = panelW - buttonInset * 2f;
+        const float firstButtonY = 132f;
+
+        _landingPlayButton = new Button { Text = "Play Game" };
+        _landingPlayButton.AddThemeFontSizeOverride("font_size", 26);
+        _landingPlayButton.Position = new Vector2(buttonInset, firstButtonY);
+        _landingPlayButton.Size = new Vector2(buttonW, buttonH);
+        _landingPlayButton.Pressed += OnPlayPressed;
+        panel.AddChild(_landingPlayButton);
+
+        _landingLoadButton = new Button { Text = "Load Game" };
+        _landingLoadButton.AddThemeFontSizeOverride("font_size", 26);
+        _landingLoadButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap));
+        _landingLoadButton.Size = new Vector2(buttonW, buttonH);
+        _landingLoadButton.Pressed += OnLoadPressed;
+        // Disable when no saves exist so the user gets immediate visual
+        // feedback rather than an empty popup.
+        _landingLoadButton.Disabled = _saveStore.ListSlots().Count == 0;
+        panel.AddChild(_landingLoadButton);
+
+        var mapEditorButton = new Button
+        {
+            Text = "Map Editor",
+            Disabled = true,
+            TooltipText = "Coming soon",
+        };
+        mapEditorButton.AddThemeFontSizeOverride("font_size", 26);
+        mapEditorButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 2);
+        mapEditorButton.Size = new Vector2(buttonW, buttonH);
+        panel.AddChild(mapEditorButton);
+
+        return panel;
+    }
+
+    private Control BuildPlayConfigPanel()
+    {
         Vector2 viewport = GetViewportRect().Size;
 
         // Centered panel containing the title, player-role grid, the
-        // Map Seed entry, and the Load / Start Game buttons.
+        // Map Seed entry, and the Back / Start Game buttons.
         const float panelW = 520f;
         const float panelH = 612f;
         var panel = new Panel
@@ -77,7 +155,6 @@ public partial class MainMenuScene : Control
             Position = new Vector2((viewport.X - panelW) * 0.5f, (viewport.Y - panelH) * 0.5f),
             Size = new Vector2(panelW, panelH),
         };
-        AddChild(panel);
 
         var title = new Label
         {
@@ -161,16 +238,14 @@ public partial class MainMenuScene : Control
             _roleButtons[i] = dropdown;
         }
 
-        _saveStore = new SaveStore();
-
         const float buttonH = 52f;
         float buttonRowY = panelH - buttonH - 36f;
 
         // Each button stretches under its column above so the action
-        // visually attaches to the content it relates to: Load Game
-        // sits under the swatch+name pair, Start Game under the
-        // dropdown. Enter is bound to Start Game (see _UnhandledInput)
-        // so the action key falls on the rightmost button.
+        // visually attaches to the content it relates to: Back sits
+        // under the swatch+name pair, Start Game under the dropdown.
+        // Enter is bound to Start Game (see _UnhandledInput) so the
+        // action key falls on the rightmost button.
         float leftColX = rowInset;
         float leftColW = swatchSize + 16f + nameWidth;
         float rightColX = panelW - rowInset - dropdownWidth;
@@ -204,12 +279,12 @@ public partial class MainMenuScene : Control
         _seedField.GuiInput += OnSeedFieldGuiInput;
         panel.AddChild(_seedField);
 
-        _loadButton = new Button { Text = "Load Game" };
-        _loadButton.AddThemeFontSizeOverride("font_size", 24);
-        _loadButton.Position = new Vector2(leftColX, buttonRowY);
-        _loadButton.Size = new Vector2(leftColW, buttonH);
-        _loadButton.Pressed += OnLoadPressed;
-        panel.AddChild(_loadButton);
+        var backButton = new Button { Text = "Back" };
+        backButton.AddThemeFontSizeOverride("font_size", 24);
+        backButton.Position = new Vector2(leftColX, buttonRowY);
+        backButton.Size = new Vector2(leftColW, buttonH);
+        backButton.Pressed += OnBackPressed;
+        panel.AddChild(backButton);
 
         _startButton = new Button { Text = "Start Game" };
         _startButton.AddThemeFontSizeOverride("font_size", 24);
@@ -218,13 +293,38 @@ public partial class MainMenuScene : Control
         _startButton.Pressed += OnStartPressed;
         panel.AddChild(_startButton);
 
-        // Disable Load Game when no saves exist so the user gets
-        // immediate visual feedback rather than an empty popup.
-        _loadButton.Disabled = _saveStore.ListSlots().Count == 0;
         // Start Game is gated on the seed field being non-empty.
         _startButton.Disabled = string.IsNullOrEmpty(_seedField.Text);
 
-        BuildLoadDialog();
+        return panel;
+    }
+
+    private void ShowLanding()
+    {
+        if (_landingPanel != null) _landingPanel.Visible = true;
+        if (_playConfigPanel != null) _playConfigPanel.Visible = false;
+        // Re-check Load Game enabled state on every return to landing
+        // so a save that landed in the meantime would unblock the button.
+        if (_landingLoadButton != null)
+        {
+            _landingLoadButton.Disabled = _saveStore.ListSlots().Count == 0;
+        }
+    }
+
+    private void ShowPlayConfig()
+    {
+        if (_landingPanel != null) _landingPanel.Visible = false;
+        if (_playConfigPanel != null) _playConfigPanel.Visible = true;
+    }
+
+    private void OnPlayPressed()
+    {
+        ShowPlayConfig();
+    }
+
+    private void OnBackPressed()
+    {
+        ShowLanding();
     }
 
     private void OnSeedTextChanged(string newText)
@@ -296,6 +396,11 @@ public partial class MainMenuScene : Control
             Exclusive = true,
         };
         _loadDialog.CloseRequested += () => _loadDialog!.Hide();
+        // Escape closes the modal. Window doesn't dismiss on Escape by
+        // default, and the focused VBoxContainer/buttons swallow the key
+        // before _UnhandledInput would see it, so subscribe directly to
+        // the dialog's input stream.
+        _loadDialog.WindowInput += OnLoadDialogInput;
         AddChild(_loadDialog);
 
         var scroll = new ScrollContainer
@@ -324,6 +429,13 @@ public partial class MainMenuScene : Control
             OkButtonText = "OK",
         };
         AddChild(_loadErrorDialog);
+    }
+
+    private void OnLoadDialogInput(InputEvent @event)
+    {
+        if (@event is not InputEventKey keyEvent || !keyEvent.Pressed || keyEvent.Echo) return;
+        if (keyEvent.Keycode != Key.Escape) return;
+        _loadDialog?.Hide();
     }
 
     private void OnLoadPressed()
@@ -408,6 +520,21 @@ public partial class MainMenuScene : Control
     {
         if (@event is not InputEventKey keyEvent || !keyEvent.Pressed) return;
 
+        // Per-panel input dispatch: each panel only sees the keys that
+        // make sense while it's the visible one.
+        if (_playConfigPanel != null && _playConfigPanel.Visible)
+        {
+            HandlePlayConfigKey(keyEvent);
+            return;
+        }
+        if (_landingPanel != null && _landingPanel.Visible)
+        {
+            HandleLandingKey(keyEvent);
+        }
+    }
+
+    private void HandlePlayConfigKey(InputEventKey keyEvent)
+    {
         // Allow auto-repeat (Echo == true) for = / - so holding the key
         // smoothly scrolls the seed value. Enter still rejects echoes
         // below so a held Return doesn't double-launch the game.
@@ -425,6 +552,14 @@ public partial class MainMenuScene : Control
         }
 
         if (keyEvent.Echo) return;
+
+        if (keyEvent.Keycode == Key.Escape)
+        {
+            OnBackPressed();
+            GetViewport()?.SetInputAsHandled();
+            return;
+        }
+
         if (keyEvent.Keycode != Key.Enter && keyEvent.Keycode != Key.KpEnter) return;
 
         // The Load Game dialog handles its own input via the Window
@@ -436,6 +571,18 @@ public partial class MainMenuScene : Control
         // tree, GetViewport() returns null. Null-conditional keeps the
         // handler quiet — the scene swap proceeds either way.
         GetViewport()?.SetInputAsHandled();
+    }
+
+    private void HandleLandingKey(InputEventKey keyEvent)
+    {
+        if (keyEvent.Echo) return;
+        if (keyEvent.Keycode != Key.Enter && keyEvent.Keycode != Key.KpEnter) return;
+        // Mirror button state: only fire if Play is actually clickable.
+        if (_landingPlayButton != null && !_landingPlayButton.Disabled)
+        {
+            OnPlayPressed();
+            GetViewport()?.SetInputAsHandled();
+        }
     }
 
     private void OnStartPressed()

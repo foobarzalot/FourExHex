@@ -45,6 +45,11 @@ public partial class HudView : CanvasLayer, IHudView
     private Control _victoryOverlay = null!;
     private Label _victoryLabel = null!;
 
+    // Snapshot of session.Mode != None at the last Refresh, so the Escape
+    // handler can decide between cancel-action (pending) and End Game (idle)
+    // without holding a SessionState reference.
+    private bool _hasPendingAction;
+
     public override void _Ready()
     {
         Vector2 viewport = GetViewport().GetVisibleRect().Size;
@@ -344,7 +349,18 @@ public partial class HudView : CanvasLayer, IHudView
                 GetViewport().SetInputAsHandled();
                 break;
             case Key.Escape:
-                CancelActionPressed?.Invoke();
+                // Layered: if a Buy/Build/Move is pending, Escape cancels it
+                // (preserves the existing keyboard shortcut). Otherwise Escape
+                // pops the End Game confirmation — the keyboard equivalent of
+                // clicking the End Game button.
+                if (_hasPendingAction)
+                {
+                    CancelActionPressed?.Invoke();
+                }
+                else
+                {
+                    _endGameDialog.PopupCentered();
+                }
                 GetViewport().SetInputAsHandled();
                 break;
             case Key.U:
@@ -389,6 +405,7 @@ public partial class HudView : CanvasLayer, IHudView
     /// </summary>
     public void Refresh(GameState state, SessionState session, bool hasActionableRemaining)
     {
+        _hasPendingAction = session.Mode != SessionState.ActionMode.None;
         _turnLabel.Text = $"Turn: {state.Turns.TurnNumber}";
         Player current = state.Turns.CurrentPlayer;
         _playerLabel.Text = $"Current: {current.Name}";
