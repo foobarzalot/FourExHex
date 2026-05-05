@@ -104,4 +104,14 @@ public interface IHexMapView
     /// distinguish a tower placement from a unit move.
     /// </summary>
     void PlayTowerPlaced(HexCoord coord);
+
+    /// <summary>
+    /// Play the unit-combined "level-up" chime when an arriving unit
+    /// merges with a same-color unit at <paramref name="coord"/>,
+    /// producing a higher-level unit. Replaces (does NOT layer with)
+    /// <see cref="PlayUnitPlaced"/> for that action — the controller
+    /// chooses one based on whether the destination held a friendly
+    /// unit before the move.
+    /// </summary>
+    void PlayUnitCombined(HexCoord coord);
 }

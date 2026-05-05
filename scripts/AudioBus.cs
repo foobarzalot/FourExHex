@@ -19,6 +19,7 @@ public partial class AudioBus : Node
     private AudioStreamPlayer _clickPlayer = null!;
     private AudioStreamPlayer _unitPlacedPlayer = null!;
     private AudioStreamPlayer _towerPlacedPlayer = null!;
+    private AudioStreamPlayer _unitCombinedPlayer = null!;
 
     public override void _EnterTree()
     {
@@ -50,6 +51,16 @@ public partial class AudioBus : Node
             VolumeDb = -8f,
         };
         AddChild(_towerPlacedPlayer);
+
+        _unitCombinedPlayer = new AudioStreamPlayer
+        {
+            Stream = GD.Load<AudioStream>("res://assets/audio/unit_combine.wav"),
+            // Combine fires on a routine action, so the chime sits
+            // below the place/tower hits — it should feel like a small
+            // reward, not an event.
+            VolumeDb = -8f,
+        };
+        AddChild(_unitCombinedPlayer);
     }
 
     /// <summary>
@@ -81,6 +92,16 @@ public partial class AudioBus : Node
     {
         _towerPlacedPlayer.Stop();
         _towerPlacedPlayer.Play();
+    }
+
+    /// <summary>
+    /// Bright "level-up" chime played when two same-color units merge
+    /// into a higher-level one. Replaces the place-thud for that action.
+    /// </summary>
+    public void PlayUnitCombined()
+    {
+        _unitCombinedPlayer.Stop();
+        _unitCombinedPlayer.Play();
     }
 
     /// <summary>

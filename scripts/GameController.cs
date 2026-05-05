@@ -510,6 +510,11 @@ public class GameController
         HexCoord capital = _session.SelectedTerritory.Capital!.Value;
         _state.Treasury.SetGold(capital, _state.Treasury.GetGold(capital) - PurchaseRules.CostFor(level));
         var unit = new Unit(_session.SelectedTerritory.Owner, level);
+        // Detect combine before the rule mutates the destination — a
+        // friendly Unit at the dst tile means MovementRules will merge
+        // them, and we want to fire the level-up chime instead of the
+        // place thud.
+        bool wasCombine = WasFriendlyUnitAt(destination, _session.SelectedTerritory.Owner);
         MoveResult result = MovementRules.PlaceNew(unit, destination, _state.Grid, _session.SelectedTerritory);
 
         if (result.WasCapture)
@@ -527,10 +532,13 @@ public class GameController
             _map.PlayDestructionEffect(destination, result.Destroyed);
         }
 
-        // Place sound fires only when the placement consumed the new
-        // unit's move (capture, tree/grave clear). Free placements onto
-        // own empty tiles leave the unit actionable and stay silent.
-        if (_state.Grid.Get(destination)?.Unit?.HasMovedThisTurn == true)
+        // Audio gate: combine wins (level-up chime); else place wins
+        // only if the unit's move was consumed; reposition is silent.
+        if (wasCombine)
+        {
+            _map.PlayUnitCombined(destination);
+        }
+        else if (_state.Grid.Get(destination)?.Unit?.HasMovedThisTurn == true)
         {
             _map.PlayUnitPlaced(destination);
         }
@@ -584,6 +592,7 @@ public class GameController
 
         _handlerMutatedGame = true;
 
+        bool wasCombine = WasFriendlyUnitAt(destination, _session.SelectedTerritory.Owner);
         MoveResult result = MovementRules.Move(source, destination, _state.Grid, _session.SelectedTerritory);
 
         if (result.WasCapture)
@@ -597,14 +606,30 @@ public class GameController
             _map.PlayDestructionEffect(destination, result.Destroyed);
         }
 
-        // See ExecuteBuyAndPlace: same gate — only fire when the move
-        // was consumed (capture / tree / grave). Repositions are silent.
-        if (_state.Grid.Get(destination)?.Unit?.HasMovedThisTurn == true)
+        // See ExecuteBuyAndPlace for the audio gate.
+        if (wasCombine)
+        {
+            _map.PlayUnitCombined(destination);
+        }
+        else if (_state.Grid.Get(destination)?.Unit?.HasMovedThisTurn == true)
         {
             _map.PlayUnitPlaced(destination);
         }
 
         FinishPendingAction();
+    }
+
+    /// <summary>
+    /// True iff <paramref name="coord"/>'s tile is colored
+    /// <paramref name="owner"/> AND occupied by a Unit. The destination
+    /// state right before a Move/PlaceNew that triggers MovementRules'
+    /// combine branch — pulled out so all four Execute paths share the
+    /// same predicate.
+    /// </summary>
+    private bool WasFriendlyUnitAt(HexCoord coord, Color owner)
+    {
+        HexTile? tile = _state.Grid.Get(coord);
+        return tile != null && tile.Color == owner && tile.Occupant is Unit;
     }
 
     /// <summary>
@@ -1549,6 +1574,7 @@ public class GameController
         bool wasReposition = dstTile != null
             && dstTile.Color == attacker.Owner
             && dstTile.Occupant == null;
+        bool wasCombine = WasFriendlyUnitAt(destination, attacker.Owner);
 
         MoveResult result = MovementRules.Move(source, destination, _state.Grid, attacker);
         if (result.WasCapture)
@@ -1567,7 +1593,12 @@ public class GameController
 
         // Sound after the AI's reposition fixup so AI repositions —
         // which the AI loop forces to consume the move — also play.
-        if (_state.Grid.Get(destination)?.Unit?.HasMovedThisTurn == true)
+        // Combine takes precedence over place.
+        if (wasCombine)
+        {
+            _map.PlayUnitCombined(destination);
+        }
+        else if (_state.Grid.Get(destination)?.Unit?.HasMovedThisTurn == true)
         {
             _map.PlayUnitPlaced(destination);
         }
@@ -1604,6 +1635,7 @@ public class GameController
         bool wasReposition = dstTile != null
             && dstTile.Color == attacker.Owner
             && dstTile.Occupant == null;
+        bool wasCombine = WasFriendlyUnitAt(destination, attacker.Owner);
 
         _state.Treasury.SetGold(
             capital, _state.Treasury.GetGold(capital) - PurchaseRules.CostFor(level));
@@ -1623,7 +1655,11 @@ public class GameController
             if (placed != null) placed.HasMovedThisTurn = true;
         }
 
-        if (_state.Grid.Get(destination)?.Unit?.HasMovedThisTurn == true)
+        if (wasCombine)
+        {
+            _map.PlayUnitCombined(destination);
+        }
+        else if (_state.Grid.Get(destination)?.Unit?.HasMovedThisTurn == true)
         {
             _map.PlayUnitPlaced(destination);
         }

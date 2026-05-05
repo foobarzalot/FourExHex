@@ -63,6 +63,15 @@ MANIFEST: List[Entry] = [
         0.6,
         0.75,
     ),
+    (
+        "unit_combine.wav",
+        "A short, bright video-game upgrade chime: three bell-like "
+        "notes ascending quickly, sparkling and rewarding, satisfying "
+        "with a small flourish, not overly triumphant, dry, no music "
+        "bed, no voice, minimal reverb tail.",
+        0.6,
+        0.7,
+    ),
 ]
 
 

@@ -562,6 +562,74 @@ public class GameControllerTests
     }
 
     [Fact]
+    public void Move_CombineWithFriendlyUnit_FiresCombineSoundOnly()
+    {
+        // 3-Red-tile setup so we can put two friendly units on
+        // adjacent non-capital tiles and combine them.
+        var red = new Player("Red", new Color(1f, 0f, 0f));
+        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var players = new System.Collections.Generic.List<Player> { red, blue };
+        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Color);
+        grid.Get(HexCoord.FromOffset(0, 1))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(1, 1))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(2, 1))!.Color = red.Color;
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        var map = new MockHexMapView();
+        foreach (System.Collections.Generic.KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+        {
+            map.TileIndex[kvp.Key] = kvp.Value;
+        }
+        var controller = new GameController(state, session, map, new MockHudView());
+        controller.StartGame();
+
+        var moving = new Unit(red.Color, UnitLevel.Peasant);
+        var stationary = new Unit(red.Color, UnitLevel.Peasant);
+        grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = moving;
+        grid.Get(HexCoord.FromOffset(2, 1))!.Occupant = stationary;
+
+        map.SimulateClick(grid.Get(HexCoord.FromOffset(1, 1))); // pick up
+        map.SimulateClick(grid.Get(HexCoord.FromOffset(2, 1))); // combine
+
+        // The two peasants merged into a Spearman.
+        Unit? combined = grid.Get(HexCoord.FromOffset(2, 1))!.Unit;
+        Assert.NotNull(combined);
+        Assert.Equal(UnitLevel.Spearman, combined!.Level);
+        Assert.Null(grid.Get(HexCoord.FromOffset(1, 1))!.Unit);
+
+        Assert.Single(map.UnitCombinedSounds);
+        Assert.Equal(HexCoord.FromOffset(2, 1), map.UnitCombinedSounds[0]);
+        // Combine path must NOT also fire the unit-place thud.
+        Assert.Empty(map.UnitPlacedSounds);
+    }
+
+    [Fact]
+    public void BuyPeasant_CombineOntoFriendlyUnit_FiresCombineSoundOnly()
+    {
+        var g = new TestGame();
+        // Stationary peasant on (1,1) for the bought peasant to merge into.
+        var stationary = new Unit(g.Red.Color, UnitLevel.Peasant);
+        g.Tile(1, 1).Occupant = stationary;
+
+        HexCoord redCapital = g.RedTerritory.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 25);
+
+        g.Map.SimulateClick(g.Tile(0, 1));
+        g.Hud.ClickBuyPeasant();
+        g.Map.SimulateClick(g.Tile(1, 1)); // combine — bought peasant onto stationary peasant
+
+        Unit? combined = g.Tile(1, 1).Unit;
+        Assert.NotNull(combined);
+        Assert.Equal(UnitLevel.Spearman, combined!.Level);
+
+        Assert.Single(g.Map.UnitCombinedSounds);
+        Assert.Equal(HexCoord.FromOffset(1, 1), g.Map.UnitCombinedSounds[0]);
+        Assert.Empty(g.Map.UnitPlacedSounds);
+    }
+
+    [Fact]
     public void ExecuteAiBuildTower_FiresTowerPlacedSound()
     {
         (GameState state, MockHexMapView map, MockHudView hud) = BuildAiFixture();

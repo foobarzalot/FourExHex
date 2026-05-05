@@ -50,6 +50,7 @@ public sealed class HeadlessHexMapView : IHexMapView
     public void PlayDestructionEffect(HexCoord coord, HexOccupant destroyed) { }
     public void PlayUnitPlaced(HexCoord coord) { }
     public void PlayTowerPlaced(HexCoord coord) { }
+    public void PlayUnitCombined(HexCoord coord) { }
 }
 
 public sealed class HeadlessHudView : IHudView
