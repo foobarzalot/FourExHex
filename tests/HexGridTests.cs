@@ -71,6 +71,48 @@ public class HexGridTests
     }
 
     [Fact]
+    public void Remove_ExistingCoord_DropsTile()
+    {
+        var grid = new HexGrid();
+        grid.Add(MakeTile(2, 3));
+
+        bool removed = grid.Remove(new HexCoord(2, 3));
+
+        Assert.True(removed);
+        Assert.False(grid.Contains(new HexCoord(2, 3)));
+        Assert.Null(grid.Get(new HexCoord(2, 3)));
+        Assert.Equal(0, grid.Count);
+    }
+
+    [Fact]
+    public void Remove_MissingCoord_ReturnsFalseAndIsNoop()
+    {
+        var grid = new HexGrid();
+        grid.Add(MakeTile(0, 0));
+
+        bool removed = grid.Remove(new HexCoord(5, 5));
+
+        Assert.False(removed);
+        Assert.Equal(1, grid.Count);
+        Assert.True(grid.Contains(new HexCoord(0, 0)));
+    }
+
+    [Fact]
+    public void Remove_ThenAddSameCoord_ReplacesEntry()
+    {
+        var grid = new HexGrid();
+        HexTile first = MakeTile(0, 0);
+        HexTile second = MakeTile(0, 0);
+        grid.Add(first);
+
+        grid.Remove(new HexCoord(0, 0));
+        grid.Add(second);
+
+        Assert.Equal(1, grid.Count);
+        Assert.Same(second, grid.Get(new HexCoord(0, 0)));
+    }
+
+    [Fact]
     public void NeighborsOf_InteriorTile_ReturnsAllSix()
     {
         var grid = new HexGrid();

@@ -20,6 +20,15 @@ public partial class HexMapView : Node2D, IHexMapView
     /// </summary>
     public event Action<HexTile?>? TileClicked;
 
+    /// <summary>
+    /// Raised on the same left-click as <see cref="TileClicked"/>, but with
+    /// the raw <see cref="HexCoord"/> under the cursor — including water /
+    /// off-grid coords that have no <see cref="HexTile"/>. Editor-only:
+    /// the play scene's controller subscribes to TileClicked and ignores
+    /// this; the map editor uses it to paint water cells back into land.
+    /// </summary>
+    public event Action<HexCoord>? CoordClicked;
+
     [Export] public int Cols { get; set; } = 30;
     [Export] public int Rows { get; set; } = 20;
     [Export] public float HexSize { get; set; } = 48f;
@@ -192,11 +201,27 @@ public partial class HexMapView : Node2D, IHexMapView
     /// borders). Zoom and pan are preserved. Editor-only: gameplay code
     /// drives visual updates through the controller's per-event refresh
     /// paths instead of swapping the entire grid out from under the view.
+    ///
+    /// <paramref name="animateNewOccupants"/> controls whether the next
+    /// <see cref="RefreshOccupantVisuals"/> applies the grow-in animation
+    /// to trees and graves. Pass false for incremental edits (paint
+    /// strokes) where existing occupants haven't actually changed and
+    /// shouldn't re-grow each time the visuals are rebuilt; true (the
+    /// default) for full-map loads where the seeded trees should animate
+    /// in.
     /// </summary>
-    public void ReloadState(GameState state)
+    public void ReloadState(GameState state, bool animateNewOccupants = true)
     {
         _state = state;
         BuildStateVisuals();
+        if (!animateNewOccupants)
+        {
+            // Mirrors RebuildAfterTerritoryChange: the suppressed flags
+            // get re-armed at the end of the next RefreshOccupantVisuals,
+            // so future model-driven tree/grave placements still animate.
+            _animateNewTrees = false;
+            _animateNewGraves = false;
+        }
     }
 
     /// <summary>
@@ -1402,6 +1427,11 @@ public partial class HexMapView : Node2D, IHexMapView
         // centering offset so the result is in axial-origin coordinates.
         Vector2 local = ToLocal(mouse.Position) - FirstHexCenterOffset;
         HexCoord coord = HexCoord.FromPixel(local, HexSize);
+
+        // CoordClicked fires on every click that wasn't a drag, regardless
+        // of whether the coord is in the grid — the editor needs to know
+        // about water clicks too so it can paint over them.
+        CoordClicked?.Invoke(coord);
 
         if (!Grid.Contains(coord))
         {

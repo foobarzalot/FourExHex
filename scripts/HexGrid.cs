@@ -13,6 +13,14 @@ public class HexGrid
 
     public void Add(HexTile tile) => _tiles[tile.Coord] = tile;
 
+    /// <summary>
+    /// Drop the tile at <paramref name="coord"/>. Returns true if a tile was
+    /// actually removed; false if no tile existed there. Used by the map
+    /// editor to convert land tiles back to water; gameplay paths never
+    /// remove tiles.
+    /// </summary>
+    public bool Remove(HexCoord coord) => _tiles.Remove(coord);
+
     public bool Contains(HexCoord coord) => _tiles.ContainsKey(coord);
 
     public HexTile? Get(HexCoord coord) =>
