@@ -94,6 +94,7 @@ public partial class HudView : CanvasLayer, IHudView
         };
         _buyPeasantButton.AddThemeFontSizeOverride("font_size", 20);
         _buyPeasantButton.Pressed += () => BuyPeasantClicked?.Invoke();
+        AudioBus.AttachClick(_buyPeasantButton);
         leftHbox.AddChild(_buyPeasantButton);
 
         _buildTowerButton = new Button
@@ -104,6 +105,7 @@ public partial class HudView : CanvasLayer, IHudView
         };
         _buildTowerButton.AddThemeFontSizeOverride("font_size", 20);
         _buildTowerButton.Pressed += () => BuildTowerClicked?.Invoke();
+        AudioBus.AttachClick(_buildTowerButton);
         leftHbox.AddChild(_buildTowerButton);
 
         // Right-anchored action row: Undo Turn / Undo Last / Redo Last /
@@ -135,6 +137,7 @@ public partial class HudView : CanvasLayer, IHudView
         };
         _undoTurnButton.AddThemeFontSizeOverride("font_size", 18);
         _undoTurnButton.Pressed += () => UndoTurnClicked?.Invoke();
+        AudioBus.AttachClick(_undoTurnButton);
         rightHbox.AddChild(_undoTurnButton);
 
         _undoLastButton = new Button
@@ -145,6 +148,7 @@ public partial class HudView : CanvasLayer, IHudView
         };
         _undoLastButton.AddThemeFontSizeOverride("font_size", 18);
         _undoLastButton.Pressed += () => UndoLastClicked?.Invoke();
+        AudioBus.AttachClick(_undoLastButton);
         rightHbox.AddChild(_undoLastButton);
 
         _redoLastButton = new Button
@@ -155,6 +159,7 @@ public partial class HudView : CanvasLayer, IHudView
         };
         _redoLastButton.AddThemeFontSizeOverride("font_size", 18);
         _redoLastButton.Pressed += () => RedoLastClicked?.Invoke();
+        AudioBus.AttachClick(_redoLastButton);
         rightHbox.AddChild(_redoLastButton);
 
         _redoAllButton = new Button
@@ -165,6 +170,7 @@ public partial class HudView : CanvasLayer, IHudView
         };
         _redoAllButton.AddThemeFontSizeOverride("font_size", 18);
         _redoAllButton.Pressed += () => RedoAllClicked?.Invoke();
+        AudioBus.AttachClick(_redoAllButton);
         rightHbox.AddChild(_redoAllButton);
 
         _endTurnButton = new Button
@@ -174,6 +180,7 @@ public partial class HudView : CanvasLayer, IHudView
         };
         _endTurnButton.AddThemeFontSizeOverride("font_size", 18);
         _endTurnButton.Pressed += () => EndTurnClicked?.Invoke();
+        AudioBus.AttachClick(_endTurnButton);
         rightHbox.AddChild(_endTurnButton);
 
         _saveGameButton = new Button
@@ -183,6 +190,7 @@ public partial class HudView : CanvasLayer, IHudView
         };
         _saveGameButton.AddThemeFontSizeOverride("font_size", 18);
         _saveGameButton.Pressed += () => SaveGameClicked?.Invoke();
+        AudioBus.AttachClick(_saveGameButton);
         rightHbox.AddChild(_saveGameButton);
 
         // Abandon-game button in the top-right corner. Always available;
@@ -197,6 +205,7 @@ public partial class HudView : CanvasLayer, IHudView
         };
         _endGameButton.AddThemeFontSizeOverride("font_size", 18);
         _endGameButton.Pressed += () => _endGameDialog.PopupCentered();
+        AudioBus.AttachClick(_endGameButton);
         rightHbox.AddChild(_endGameButton);
 
         _endGameDialog = new ConfirmationDialog
@@ -210,6 +219,11 @@ public partial class HudView : CanvasLayer, IHudView
         };
         _endGameDialog.Confirmed += () => MainMenuClicked?.Invoke();
         AddChild(_endGameDialog);
+        // ConfirmationDialog auto-builds its OK/Cancel buttons. They
+        // only become real Button instances after the dialog enters
+        // the tree (AddChild above), so attach the click sound after.
+        AudioBus.AttachClick(_endGameDialog.GetOkButton());
+        AudioBus.AttachClick(_endGameDialog.GetCancelButton());
 
         // Read-only seed display anchored to the bottom-left so a player
         // can recall or share the seed mid-game without crowding the
@@ -302,6 +316,7 @@ public partial class HudView : CanvasLayer, IHudView
         playAgainButton.Position = new Vector2(rowX, rowY);
         playAgainButton.Size = new Vector2(buttonW, buttonH);
         playAgainButton.Pressed += () => NewGameClicked?.Invoke();
+        AudioBus.AttachClick(playAgainButton);
         panel.AddChild(playAgainButton);
 
         var mainMenuButton = new Button { Text = "Main Menu" };
@@ -309,6 +324,7 @@ public partial class HudView : CanvasLayer, IHudView
         mainMenuButton.Position = new Vector2(rowX + buttonW + gap, rowY);
         mainMenuButton.Size = new Vector2(buttonW, buttonH);
         mainMenuButton.Pressed += () => MainMenuClicked?.Invoke();
+        AudioBus.AttachClick(mainMenuButton);
         panel.AddChild(mainMenuButton);
     }
 

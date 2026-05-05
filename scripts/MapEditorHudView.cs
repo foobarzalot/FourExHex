@@ -93,6 +93,7 @@ public partial class MapEditorHudView : CanvasLayer
         };
         _generateButton.AddThemeFontSizeOverride("font_size", 18);
         _generateButton.Pressed += OnGeneratePressed;
+        AudioBus.AttachClick(_generateButton);
         leftHbox.AddChild(_generateButton);
 
         // Palette sits in the same left HBox as the seed/Generate cluster
@@ -108,6 +109,7 @@ public partial class MapEditorHudView : CanvasLayer
             var button = new HexPaletteButton(new Color(hex));
             int captured = i;
             button.Pressed += _ => SelectPalette(captured);
+            AudioBus.AttachClick(button);
             paletteHbox.AddChild(button);
             _palette[i] = button;
         }
@@ -115,6 +117,7 @@ public partial class MapEditorHudView : CanvasLayer
         int waterIndex = WaterPaletteIndex;
         var waterButton = new HexPaletteButton(new Color(0.20f, 0.42f, 0.65f, 1f));
         waterButton.Pressed += _ => SelectPalette(waterIndex);
+        AudioBus.AttachClick(waterButton);
         paletteHbox.AddChild(waterButton);
         _palette[waterIndex] = waterButton;
         // Tree swatch — empty-land background with the tree icon overlaid.
@@ -125,6 +128,7 @@ public partial class MapEditorHudView : CanvasLayer
         var treeButton = new HexPaletteButton(
             new Color(0.82f, 0.74f, 0.55f, 1f), HexPaletteIcon.Tree);
         treeButton.Pressed += _ => SelectPalette(treeIndex);
+        AudioBus.AttachClick(treeButton);
         paletteHbox.AddChild(treeButton);
         _palette[treeIndex] = treeButton;
         // Capital swatch — light slate background with the star icon
@@ -134,6 +138,7 @@ public partial class MapEditorHudView : CanvasLayer
         var capitalButton = new HexPaletteButton(
             new Color(0.72f, 0.72f, 0.78f, 1f), HexPaletteIcon.Capital);
         capitalButton.Pressed += _ => SelectPalette(capitalIndex);
+        AudioBus.AttachClick(capitalButton);
         paletteHbox.AddChild(capitalButton);
         _palette[capitalIndex] = capitalButton;
         // Tower swatch — dark stone-grey background with the rook icon
@@ -143,6 +148,7 @@ public partial class MapEditorHudView : CanvasLayer
         var towerButton = new HexPaletteButton(
             new Color(0.45f, 0.45f, 0.50f, 1f), HexPaletteIcon.Tower);
         towerButton.Pressed += _ => SelectPalette(towerIndex);
+        AudioBus.AttachClick(towerButton);
         paletteHbox.AddChild(towerButton);
         _palette[towerIndex] = towerButton;
 
@@ -184,6 +190,7 @@ public partial class MapEditorHudView : CanvasLayer
         };
         saveMapButton.AddThemeFontSizeOverride("font_size", 18);
         saveMapButton.Pressed += () => SaveMapClicked?.Invoke();
+        AudioBus.AttachClick(saveMapButton);
         rightHbox.AddChild(saveMapButton);
 
         var loadMapButton = new Button
@@ -193,6 +200,7 @@ public partial class MapEditorHudView : CanvasLayer
         };
         loadMapButton.AddThemeFontSizeOverride("font_size", 18);
         loadMapButton.Pressed += () => LoadMapClicked?.Invoke();
+        AudioBus.AttachClick(loadMapButton);
         rightHbox.AddChild(loadMapButton);
 
         var exitButton = new Button
@@ -202,6 +210,7 @@ public partial class MapEditorHudView : CanvasLayer
         };
         exitButton.AddThemeFontSizeOverride("font_size", 18);
         exitButton.Pressed += () => ExitClicked?.Invoke();
+        AudioBus.AttachClick(exitButton);
         rightHbox.AddChild(exitButton);
     }
 
@@ -215,6 +224,7 @@ public partial class MapEditorHudView : CanvasLayer
         };
         b.AddThemeFontSizeOverride("font_size", 18);
         b.Pressed += () => onPressed();
+        AudioBus.AttachClick(b);
         return b;
     }
 

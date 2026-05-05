@@ -208,6 +208,10 @@ public partial class MapEditorScene : Node2D
         _saveDialog.RegisterTextEnter(_saveDialogLineEdit);
         _saveDialog.Confirmed += OnSaveDialogConfirmed;
         AddChild(_saveDialog);
+        // GetOkButton() requires the dialog be in the scene tree (the
+        // button is auto-built lazily); attach the click sound after
+        // AddChild, not before.
+        AudioBus.AttachClick(_saveDialog.GetOkButton());
 
         _saveErrorDialog = new AcceptDialog
         {
@@ -215,6 +219,7 @@ public partial class MapEditorScene : Node2D
             OkButtonText = "OK",
         };
         AddChild(_saveErrorDialog);
+        AudioBus.AttachClick(_saveErrorDialog.GetOkButton());
     }
 
     private void OpenSaveDialog()
@@ -293,6 +298,7 @@ public partial class MapEditorScene : Node2D
             OkButtonText = "OK",
         };
         AddChild(_loadErrorDialog);
+        AudioBus.AttachClick(_loadErrorDialog.GetOkButton());
     }
 
     private void OnLoadDialogInput(InputEvent @event)
@@ -329,6 +335,7 @@ public partial class MapEditorScene : Node2D
             };
             btn.AddThemeFontSizeOverride("font_size", 18);
             btn.Pressed += () => OnLoadSlotPressed(capturedName);
+            AudioBus.AttachClick(btn);
             _loadDialogList.AddChild(btn);
         }
         _loadDialog.PopupCentered();

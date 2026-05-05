@@ -121,6 +121,7 @@ public partial class MainMenuScene : Control
         _landingPlayButton.Position = new Vector2(buttonInset, firstButtonY);
         _landingPlayButton.Size = new Vector2(buttonW, buttonH);
         _landingPlayButton.Pressed += OnPlayPressed;
+        AudioBus.AttachClick(_landingPlayButton);
         panel.AddChild(_landingPlayButton);
 
         _landingLoadButton = new Button { Text = "Load Game" };
@@ -128,6 +129,7 @@ public partial class MainMenuScene : Control
         _landingLoadButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap));
         _landingLoadButton.Size = new Vector2(buttonW, buttonH);
         _landingLoadButton.Pressed += OnLoadPressed;
+        AudioBus.AttachClick(_landingLoadButton);
         // Disable when no saves exist so the user gets immediate visual
         // feedback rather than an empty popup.
         _landingLoadButton.Disabled = _saveStore.ListSlots().Count == 0;
@@ -138,6 +140,7 @@ public partial class MainMenuScene : Control
         mapEditorButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 2);
         mapEditorButton.Size = new Vector2(buttonW, buttonH);
         mapEditorButton.Pressed += OnMapEditorPressed;
+        AudioBus.AttachClick(mapEditorButton);
         panel.AddChild(mapEditorButton);
 
         return panel;
@@ -317,6 +320,7 @@ public partial class MainMenuScene : Control
         backButton.Position = new Vector2(leftColX, buttonRowY);
         backButton.Size = new Vector2(leftColW, buttonH);
         backButton.Pressed += OnBackPressed;
+        AudioBus.AttachClick(backButton);
         panel.AddChild(backButton);
 
         _startButton = new Button { Text = "Start Game" };
@@ -324,6 +328,7 @@ public partial class MainMenuScene : Control
         _startButton.Position = new Vector2(rightColX, buttonRowY);
         _startButton.Size = new Vector2(rightColW, buttonH);
         _startButton.Pressed += OnStartPressed;
+        AudioBus.AttachClick(_startButton);
         panel.AddChild(_startButton);
 
         RefreshStartButtonGating();
@@ -545,6 +550,7 @@ public partial class MainMenuScene : Control
             };
             btn.AddThemeFontSizeOverride("font_size", 18);
             btn.Pressed += () => OnLoadSlotPressed(capturedName);
+            AudioBus.AttachClick(btn);
             _loadDialogList.AddChild(btn);
         }
         _loadDialog.PopupCentered();
@@ -592,6 +598,7 @@ public partial class MainMenuScene : Control
     {
         GetTree().ChangeSceneToFile("res://scenes/main.tscn");
     }
+
 
     public override void _UnhandledInput(InputEvent @event)
     {
