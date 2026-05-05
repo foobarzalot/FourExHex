@@ -58,6 +58,63 @@ public class SaveSerializerTests
     }
 
     [Fact]
+    public void SerializeMap_OmitsKindFieldFromJson()
+    {
+        // Starting maps must not record per-color roles — those are set
+        // at play time via the Play Game config menu.
+        (GameState state, IReadOnlyList<Player> players) = BuildRichState();
+
+        string json = SaveSerializer.SerializeMap(state, 42, players, "m");
+
+        Assert.DoesNotContain("\"Kind\"", json);
+    }
+
+    [Fact]
+    public void SerializeMap_RoundTripPreservesNamesAndColors()
+    {
+        (GameState state, IReadOnlyList<Player> players) = BuildRichState();
+
+        string json = SaveSerializer.SerializeMap(state, 42, players, "m");
+        LoadedSave loaded = SaveSerializer.Deserialize(json);
+
+        Assert.Equal(players.Count, loaded.Players.Count);
+        for (int i = 0; i < players.Count; i++)
+        {
+            Assert.Equal(players[i].Name, loaded.Players[i].Name);
+            Assert.Equal(players[i].Color, loaded.Players[i].Color);
+        }
+    }
+
+    [Fact]
+    public void Deserialize_PlayerWithMissingKind_DefaultsToHuman()
+    {
+        // A starting map's JSON has no "Kind" field per player. The
+        // loader must not throw — it should treat missing kind as a
+        // "needs assignment" placeholder, which we represent as Human.
+        (GameState state, IReadOnlyList<Player> players) = BuildRichState();
+        string json = SaveSerializer.SerializeMap(state, 42, players, "m");
+
+        LoadedSave loaded = SaveSerializer.Deserialize(json);
+
+        foreach (Player p in loaded.Players)
+        {
+            Assert.Equal(AiKind.Human, p.Kind);
+        }
+    }
+
+    [Fact]
+    public void Serialize_StillIncludesKindForInProgressSaves()
+    {
+        // Regression guard: regular Serialize (used for play-scene saves)
+        // must keep recording each player's role so resume works.
+        (GameState state, IReadOnlyList<Player> players) = BuildRichState();
+
+        string json = SaveSerializer.Serialize(state, 42, players, "s", 100);
+
+        Assert.Contains("\"Kind\"", json);
+    }
+
+    [Fact]
     public void Serialize_RoundTripsWaterCoords()
     {
         var red = new Player("Red", new Color("e53935"), AiKind.Human);

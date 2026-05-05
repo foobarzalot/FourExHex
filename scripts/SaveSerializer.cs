@@ -67,6 +67,29 @@ public static class SaveSerializer
         IReadOnlyList<Player> players,
         string slotName,
         int maxTurnNumber)
+        => SerializeInternal(state, masterSeed, players, slotName, maxTurnNumber, includeKind: true);
+
+    /// <summary>
+    /// Serialize a starting map — same JSON format as <see cref="Serialize"/>,
+    /// but the per-player <c>Kind</c> field is omitted. Editor maps don't
+    /// commit to a roster; the Play Game config menu assigns roles at play
+    /// time.
+    /// </summary>
+    public static string SerializeMap(
+        GameState state,
+        int masterSeed,
+        IReadOnlyList<Player> players,
+        string slotName)
+        => SerializeInternal(state, masterSeed, players, slotName,
+            maxTurnNumber: int.MaxValue, includeKind: false);
+
+    private static string SerializeInternal(
+        GameState state,
+        int masterSeed,
+        IReadOnlyList<Player> players,
+        string slotName,
+        int maxTurnNumber,
+        bool includeKind)
     {
         // Player index by color for fast tile/unit owner lookup.
         var indexByColor = new Dictionary<Color, int>();
@@ -84,7 +107,7 @@ public static class SaveSerializer
             TurnNumber = state.Turns.TurnNumber,
             CurrentPlayerIndex = state.Turns.CurrentPlayerIndex,
             MaxTurnNumber = maxTurnNumber,
-            Players = SerializePlayers(players),
+            Players = SerializePlayers(players, includeKind),
             Tiles = SerializeTiles(state.Grid, indexByColor),
             Territories = SerializeTerritories(state.Territories, indexByColor),
             Gold = SerializeGold(state.Territories, state.Treasury),
@@ -163,7 +186,7 @@ public static class SaveSerializer
 
     // --- Players ---------------------------------------------------------
 
-    private static List<PlayerDto> SerializePlayers(IReadOnlyList<Player> players)
+    private static List<PlayerDto> SerializePlayers(IReadOnlyList<Player> players, bool includeKind)
     {
         var dtos = new List<PlayerDto>(players.Count);
         for (int i = 0; i < players.Count; i++)
@@ -174,7 +197,9 @@ public static class SaveSerializer
                 Index = i,
                 Name = p.Name,
                 ColorHex = p.Color.ToHtml(includeAlpha: false),
-                Kind = p.Kind.ToString(),
+                // Null is omitted from JSON via JsonOptions, so starting
+                // maps have no per-color role baked into the file.
+                Kind = includeKind ? p.Kind.ToString() : null,
             });
         }
         return dtos;
@@ -185,7 +210,11 @@ public static class SaveSerializer
         var list = new List<Player>(dtos.Count);
         foreach (PlayerDto dto in dtos)
         {
-            AiKind kind = Enum.Parse<AiKind>(dto.Kind);
+            // Missing Kind = starting map. Use Human as a placeholder;
+            // the play-scene load path overrides from GameSettings.
+            AiKind kind = string.IsNullOrEmpty(dto.Kind)
+                ? AiKind.Human
+                : Enum.Parse<AiKind>(dto.Kind);
             list.Add(new Player(dto.Name, new Color(dto.ColorHex), kind));
         }
         return list;
@@ -365,7 +394,13 @@ public sealed class PlayerDto
     public int Index { get; set; }
     public string Name { get; set; } = "";
     public string ColorHex { get; set; } = "";
-    public string Kind { get; set; } = "";
+    /// <summary>
+    /// AI kind name (one of <see cref="AiKind"/>). Null/missing in
+    /// "starting map" exports from the editor — the role for each color
+    /// is assigned at play time via the Play Game config menu, not
+    /// baked into the map. Present in regular in-progress saves.
+    /// </summary>
+    public string? Kind { get; set; }
 }
 
 public sealed class TileDto

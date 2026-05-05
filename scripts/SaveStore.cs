@@ -63,8 +63,10 @@ public sealed class SaveStore
         int masterSeed,
         IReadOnlyList<Player> players)
     {
-        WriteSlotIn(MapsDirectory, slotName, state, masterSeed, players,
-            maxTurnNumber: int.MaxValue);
+        EnsureDirectory(MapsDirectory);
+        string sanitized = SanitizeSlotName(slotName);
+        string json = SaveSerializer.SerializeMap(state, masterSeed, players, sanitized);
+        AtomicWrite(MapsDirectory, sanitized, json);
     }
 
     private static void WriteSlotIn(
@@ -79,7 +81,11 @@ public sealed class SaveStore
         string sanitized = SanitizeSlotName(slotName);
         string json = SaveSerializer.Serialize(
             state, masterSeed, players, sanitized, maxTurnNumber);
+        AtomicWrite(directory, sanitized, json);
+    }
 
+    private static void AtomicWrite(string directory, string sanitized, string json)
+    {
         // Atomic write: produce <name>.json.tmp first, then rename to
         // <name>.json. A crash mid-write leaves the prior save intact.
         string tempPath = directory + sanitized + TempExtension;
