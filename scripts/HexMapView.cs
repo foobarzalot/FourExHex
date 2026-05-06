@@ -538,12 +538,19 @@ public partial class HexMapView : Node2D, IHexMapView
     public override void _Process(double delta)
     {
         // Keyboard pan runs every frame regardless of pulse state — held
-        // arrow / WASD keys must produce smooth motion.
-        Vector2 dir = Vector2.Zero;
-        if (Input.IsPhysicalKeyPressed(Key.W) || Input.IsPhysicalKeyPressed(Key.Up))    dir.Y -= 1f;
-        if (Input.IsPhysicalKeyPressed(Key.S) || Input.IsPhysicalKeyPressed(Key.Down))  dir.Y += 1f;
-        if (Input.IsPhysicalKeyPressed(Key.A) || Input.IsPhysicalKeyPressed(Key.Left))  dir.X -= 1f;
-        if (Input.IsPhysicalKeyPressed(Key.D) || Input.IsPhysicalKeyPressed(Key.Right)) dir.X += 1f;
+        // arrow / WASD keys must produce smooth motion. Suppressed while
+        // any popup dialog is open so typing in its LineEdit (e.g. the
+        // save-name field) doesn't double as a pan.
+        //
+        // Why not check GetViewport().GuiGetFocusOwner() for a LineEdit?
+        // AcceptDialog is a Godot Window with its own sub-viewport, so a
+        // focused LineEdit inside the popup belongs to the dialog's
+        // viewport — the main viewport's focus owner is unaffected.
+        // GetEmbeddedSubwindows returns the currently visible popups, so
+        // a non-empty array means some dialog has the user's attention.
+        bool popupOpen = GetViewport().GetEmbeddedSubwindows().Count > 0;
+        Vector2 dir = KeyboardPanInput.ComputeDirection(
+            Input.IsPhysicalKeyPressed, suppressPan: popupOpen);
         if (dir != Vector2.Zero)
         {
             // Right/Down keys move the world view in that direction, which
