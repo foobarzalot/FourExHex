@@ -25,6 +25,7 @@ public partial class AudioBus : Node
     private AudioStreamPlayer _treeClearedPlayer = null!;
     private AudioStreamPlayer _capitalDestroyedPlayer = null!;
     private AudioStreamPlayer _bankruptcyPlayer = null!;
+    private AudioStreamPlayer _gameWonPlayer = null!;
 
     public override void _EnterTree()
     {
@@ -113,6 +114,17 @@ public partial class AudioBus : Node
             VolumeDb = -10f,
         };
         AddChild(_bankruptcyPlayer);
+
+        _gameWonPlayer = new AudioStreamPlayer
+        {
+            Stream = GD.Load<AudioStream>("res://assets/audio/game_won.wav"),
+            // Terminal moment — the player just won, the screen is
+            // showing the game-over panel and they're absorbing the
+            // result. Sits a touch above bankruptcy so the win lands
+            // bigger than the loss bell, but not so hot that it startles.
+            VolumeDb = -6f,
+        };
+        AddChild(_gameWonPlayer);
     }
 
     /// <summary>
@@ -194,6 +206,17 @@ public partial class AudioBus : Node
     {
         _bankruptcyPlayer.Stop();
         _bankruptcyPlayer.Play();
+    }
+
+    /// <summary>
+    /// Joyful peal of bells when a human wins the game. The longest
+    /// SFX in the library — game-over is one of the few places a
+    /// 1.5s sound is appropriate.
+    /// </summary>
+    public void PlayGameWon()
+    {
+        _gameWonPlayer.Stop();
+        _gameWonPlayer.Play();
     }
 
     /// <summary>

@@ -963,6 +963,11 @@ public partial class HexMapView : Node2D, IHexMapView
         AudioBus.Instance.PlayBankruptcy();
     }
 
+    public void PlayGameWon()
+    {
+        AudioBus.Instance.PlayGameWon();
+    }
+
     private void SpawnDestructionFlash(Vector2 center)
     {
         Vector2[] verts = HexVertices();

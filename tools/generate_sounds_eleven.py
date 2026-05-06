@@ -114,6 +114,16 @@ MANIFEST: List[Entry] = [
         0.9,
         0.75,
     ),
+    (
+        "game_won.wav",
+        "A short joyful peal of medieval church bells in an ascending "
+        "pattern, several bells ringing together rising in pitch, "
+        "resolving to a sustained high bell, celebratory and "
+        "triumphant, dry, no music underneath, no voice, brief "
+        "reverb tail.",
+        1.6,
+        0.75,
+    ),
 ]
 
 

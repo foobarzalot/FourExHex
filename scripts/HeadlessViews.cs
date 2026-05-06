@@ -56,6 +56,7 @@ public sealed class HeadlessHexMapView : IHexMapView
     public void PlayTreeCleared(HexCoord coord) { }
     public void PlayCapitalDestroyed(HexCoord coord) { }
     public void PlayBankruptcy() { }
+    public void PlayGameWon() { }
 }
 
 public sealed class HeadlessHudView : IHudView

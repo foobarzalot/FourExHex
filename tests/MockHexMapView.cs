@@ -102,6 +102,9 @@ public class MockHexMapView : IHexMapView
     public int BankruptcySoundCount { get; private set; }
     public void PlayBankruptcy() => BankruptcySoundCount++;
 
+    public int GameWonSoundCount { get; private set; }
+    public void PlayGameWon() => GameWonSoundCount++;
+
     /// <summary>Raise the TileClicked event, as if the user clicked.</summary>
     public void SimulateClick(HexTile? tile) => TileClicked?.Invoke(tile);
 }

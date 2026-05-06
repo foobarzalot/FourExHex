@@ -155,4 +155,11 @@ public interface IHexMapView
     /// once regardless of how many territories went bankrupt.
     /// </summary>
     void PlayBankruptcy();
+
+    /// <summary>
+    /// Play the game-won fanfare (joyful bell peal) when a human
+    /// player wins. AI wins stay silent — that maps to a future
+    /// "game lost" cue from the human's perspective.
+    /// </summary>
+    void PlayGameWon();
 }

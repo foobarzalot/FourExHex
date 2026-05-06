@@ -740,8 +740,28 @@ public class GameController
                 .FirstOrDefault(p => p.Color == winner.Value);
             System.Console.WriteLine($"[T{_state.Turns.TurnNumber}] " +
                 $"post-capture domination winner: {winP?.Name ?? "?"}");
-            _session.Winner = winner;
+            DeclareWinner(winner.Value);
             _session.Undo.Clear();
+        }
+    }
+
+    /// <summary>
+    /// Set <see cref="SessionState.Winner"/> and fire the game-won
+    /// fanfare if the winner is human. Centralized here because Winner
+    /// is set from two places (mid-turn domination capture in
+    /// HandleCapture, end-of-turn orphan-singleton check in
+    /// EndOfTurnProcessing) and CheckGameEndConditions doesn't run
+    /// after every Execute path — the sound has to fire at the
+    /// Winner-set point or it'd miss the mid-turn human win.
+    /// </summary>
+    private void DeclareWinner(Color winnerColor)
+    {
+        _session.Winner = winnerColor;
+        Player? winnerPlayer = _state.Turns.Players
+            .FirstOrDefault(p => p.Color == winnerColor);
+        if (winnerPlayer != null && !winnerPlayer.IsAi)
+        {
+            _map.PlayGameWon();
         }
     }
 
@@ -1155,7 +1175,7 @@ public class GameController
                 .FirstOrDefault(p => p.Color == winner.Value);
             System.Console.WriteLine($"[T{_state.Turns.TurnNumber}] " +
                 $"end-of-turn winner declared: {winP?.Name ?? "?"}");
-            _session.Winner = winner;
+            DeclareWinner(winner.Value);
         }
     }
 

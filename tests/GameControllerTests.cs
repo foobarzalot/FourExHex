@@ -2860,6 +2860,71 @@ public class GameControllerTests
     // --- Win condition ---------------------------------------------------
 
     [Fact]
+    public void HumanWin_FiresGameWonSound()
+    {
+        // Mirror the Capture_LastEnemyHex_DeclaresWinner setup: Red is
+        // a human with a peasant adjacent to the last Blue tile;
+        // capturing it ends the game with a human winner.
+        var red = new Player("Red", new Color(1f, 0f, 0f));
+        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var players = new List<Player> { red, blue };
+
+        var grid = TestHelpers.BuildRectGrid(4, 1, red.Color);
+        grid.Get(HexCoord.FromOffset(3, 0))!.Color = blue.Color;
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(red.Color);
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        var map = new MockHexMapView();
+        var hud = new MockHudView();
+        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+        {
+            map.TileIndex[kvp.Key] = kvp.Value;
+        }
+        var controller = new GameController(state, session, map, hud);
+        controller.StartGame();
+
+        map.SimulateClick(grid.Get(HexCoord.FromOffset(2, 0)));
+        map.SimulateClick(grid.Get(HexCoord.FromOffset(3, 0)));
+
+        Assert.True(session.IsGameOver);
+        Assert.Equal(red.Color, session.Winner);
+        Assert.Equal(1, map.GameWonSoundCount);
+    }
+
+    [Fact]
+    public void AiWin_DoesNotFireGameWonSound()
+    {
+        // Mirror AiTurn_CanCaptureLastEnemyHex_DeclaresWinner. From the
+        // human's perspective an AI win is a loss, so the won-sound
+        // must stay silent — the future game-lost cue handles this case.
+        var red = new Player("Red", new Color(1f, 0f, 0f), isAi: true);
+        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var players = new List<Player> { red, blue };
+
+        var grid = TestHelpers.BuildRectGrid(5, 1, red.Color);
+        grid.Get(HexCoord.FromOffset(4, 0))!.Color = blue.Color;
+        grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = new Unit(red.Color);
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        var map = new MockHexMapView();
+        var hud = new MockHudView();
+        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+        {
+            map.TileIndex[kvp.Key] = kvp.Value;
+        }
+        var controller = new GameController(state, session, map, hud, seed: 1);
+        controller.StartGame();
+
+        Assert.True(session.IsGameOver);
+        Assert.Equal(red.Color, session.Winner);
+        Assert.Equal(0, map.GameWonSoundCount);
+    }
+
+    [Fact]
     public void Capture_LastEnemyHex_DeclaresWinner()
     {
         // Build a minimal fixture: all tiles Red except one Blue tile
