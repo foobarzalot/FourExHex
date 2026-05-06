@@ -87,6 +87,18 @@ public class MockHexMapView : IHexMapView
     public List<HexCoord> UnitCombinedSounds { get; } = new();
     public void PlayUnitCombined(HexCoord coord) => UnitCombinedSounds.Add(coord);
 
+    public List<HexCoord> UnitDestroyedSounds { get; } = new();
+    public void PlayUnitDestroyed(HexCoord coord) => UnitDestroyedSounds.Add(coord);
+
+    public List<HexCoord> TowerDestroyedSounds { get; } = new();
+    public void PlayTowerDestroyed(HexCoord coord) => TowerDestroyedSounds.Add(coord);
+
+    public List<HexCoord> TreeClearedSounds { get; } = new();
+    public void PlayTreeCleared(HexCoord coord) => TreeClearedSounds.Add(coord);
+
+    public List<HexCoord> CapitalDestroyedSounds { get; } = new();
+    public void PlayCapitalDestroyed(HexCoord coord) => CapitalDestroyedSounds.Add(coord);
+
     /// <summary>Raise the TileClicked event, as if the user clicked.</summary>
     public void SimulateClick(HexTile? tile) => TileClicked?.Invoke(tile);
 }

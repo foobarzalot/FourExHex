@@ -114,4 +114,36 @@ public interface IHexMapView
     /// unit before the move.
     /// </summary>
     void PlayUnitCombined(HexCoord coord);
+
+    /// <summary>
+    /// Play the "smoosh" sound when an enemy unit is crushed at
+    /// <paramref name="coord"/>. Replaces <see cref="PlayUnitPlaced"/>
+    /// for the action — the controller chooses one based on what
+    /// (if anything) was destroyed.
+    /// </summary>
+    void PlayUnitDestroyed(HexCoord coord);
+
+    /// <summary>
+    /// Play the "bursting stone" sound when an enemy tower is
+    /// captured/destroyed at <paramref name="coord"/>. Replaces
+    /// <see cref="PlayUnitPlaced"/> for the action.
+    /// </summary>
+    void PlayTowerDestroyed(HexCoord coord);
+
+    /// <summary>
+    /// Play the "chop" sound when a tree (cleared) or grave (buried)
+    /// is removed from <paramref name="coord"/>. Replaces
+    /// <see cref="PlayUnitPlaced"/> for the action — both events
+    /// share the same audio because the audible character is similar
+    /// (a single sharp impact), even though the visual is different.
+    /// </summary>
+    void PlayTreeCleared(HexCoord coord);
+
+    /// <summary>
+    /// Play the dramatic capital-falling sound when an enemy capital
+    /// is destroyed at <paramref name="coord"/>. The heaviest of the
+    /// destruction sounds — capital loss permanently fragments the
+    /// defender's territory, so the audio marks a strategic milestone.
+    /// </summary>
+    void PlayCapitalDestroyed(HexCoord coord);
 }

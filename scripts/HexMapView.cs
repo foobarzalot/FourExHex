@@ -938,6 +938,26 @@ public partial class HexMapView : Node2D, IHexMapView
         AudioBus.Instance.PlayUnitCombined();
     }
 
+    public void PlayUnitDestroyed(HexCoord coord)
+    {
+        AudioBus.Instance.PlayUnitDestroyed();
+    }
+
+    public void PlayTowerDestroyed(HexCoord coord)
+    {
+        AudioBus.Instance.PlayTowerDestroyed();
+    }
+
+    public void PlayTreeCleared(HexCoord coord)
+    {
+        AudioBus.Instance.PlayTreeCleared();
+    }
+
+    public void PlayCapitalDestroyed(HexCoord coord)
+    {
+        AudioBus.Instance.PlayCapitalDestroyed();
+    }
+
     private void SpawnDestructionFlash(Vector2 center)
     {
         Vector2[] verts = HexVertices();

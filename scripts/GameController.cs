@@ -532,16 +532,7 @@ public class GameController
             _map.PlayDestructionEffect(destination, result.Destroyed);
         }
 
-        // Audio gate: combine wins (level-up chime); else place wins
-        // only if the unit's move was consumed; reposition is silent.
-        if (wasCombine)
-        {
-            _map.PlayUnitCombined(destination);
-        }
-        else if (_state.Grid.Get(destination)?.Unit?.HasMovedThisTurn == true)
-        {
-            _map.PlayUnitPlaced(destination);
-        }
+        DispatchActionSound(destination, result, wasCombine);
 
         // QoL: stay in a buy mode for the highest level the (possibly
         // rebound) territory can still afford that is at most the level
@@ -606,15 +597,7 @@ public class GameController
             _map.PlayDestructionEffect(destination, result.Destroyed);
         }
 
-        // See ExecuteBuyAndPlace for the audio gate.
-        if (wasCombine)
-        {
-            _map.PlayUnitCombined(destination);
-        }
-        else if (_state.Grid.Get(destination)?.Unit?.HasMovedThisTurn == true)
-        {
-            _map.PlayUnitPlaced(destination);
-        }
+        DispatchActionSound(destination, result, wasCombine);
 
         FinishPendingAction();
     }
@@ -630,6 +613,41 @@ public class GameController
     {
         HexTile? tile = _state.Grid.Get(coord);
         return tile != null && tile.Color == owner && tile.Occupant is Unit;
+    }
+
+    /// <summary>
+    /// Decide and fire the single audio cue for a just-resolved
+    /// Move/PlaceNew. Priority: combine > destruction (by destroyed
+    /// occupant type) > generic place (only if the move was consumed).
+    /// Reposition onto own-empty stays silent.
+    /// </summary>
+    private void DispatchActionSound(HexCoord destination, MoveResult result, bool wasCombine)
+    {
+        if (wasCombine)
+        {
+            _map.PlayUnitCombined(destination);
+            return;
+        }
+        switch (result.Destroyed)
+        {
+            case Unit:
+                _map.PlayUnitDestroyed(destination);
+                return;
+            case Tower:
+                _map.PlayTowerDestroyed(destination);
+                return;
+            case Tree:
+            case Grave:
+                _map.PlayTreeCleared(destination);
+                return;
+            case Capital:
+                _map.PlayCapitalDestroyed(destination);
+                return;
+        }
+        if (_state.Grid.Get(destination)?.Unit?.HasMovedThisTurn == true)
+        {
+            _map.PlayUnitPlaced(destination);
+        }
     }
 
     /// <summary>
@@ -1593,15 +1611,7 @@ public class GameController
 
         // Sound after the AI's reposition fixup so AI repositions —
         // which the AI loop forces to consume the move — also play.
-        // Combine takes precedence over place.
-        if (wasCombine)
-        {
-            _map.PlayUnitCombined(destination);
-        }
-        else if (_state.Grid.Get(destination)?.Unit?.HasMovedThisTurn == true)
-        {
-            _map.PlayUnitPlaced(destination);
-        }
+        DispatchActionSound(destination, result, wasCombine);
     }
 
     private void ExecuteAiBuyUnit(HexCoord capital, HexCoord destination, UnitLevel level)
@@ -1655,14 +1665,7 @@ public class GameController
             if (placed != null) placed.HasMovedThisTurn = true;
         }
 
-        if (wasCombine)
-        {
-            _map.PlayUnitCombined(destination);
-        }
-        else if (_state.Grid.Get(destination)?.Unit?.HasMovedThisTurn == true)
-        {
-            _map.PlayUnitPlaced(destination);
-        }
+        DispatchActionSound(destination, result, wasCombine);
     }
 
     private void ExecuteAiBuildTower(HexCoord capital, HexCoord destination)

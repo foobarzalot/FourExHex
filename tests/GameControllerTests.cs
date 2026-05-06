@@ -629,6 +629,101 @@ public class GameControllerTests
         Assert.Empty(g.Map.UnitPlacedSounds);
     }
 
+    // --- Destruction sounds: smoosh / burst / chop ----------------------
+    //
+    // When a Move/PlaceNew destroys an occupant (enemy unit, enemy tower,
+    // own-territory tree or grave), the audio gate routes to the matching
+    // destruction sound INSTEAD of the generic place thud. Empty-tile
+    // captures still play the place sound (no occupant destroyed).
+
+    [Fact]
+    public void Move_CaptureEnemyUnit_FiresUnitDestroyedSound_NotPlace()
+    {
+        var g = new TestGame();
+        var attacker = new Unit(g.Red.Color, UnitLevel.Spearman);
+        g.Tile(1, 1).Occupant = attacker;
+        var defender = new Unit(g.Blue.Color, UnitLevel.Peasant);
+        g.Tile(2, 1).Occupant = defender;
+
+        g.Map.SimulateClick(g.Tile(1, 1));
+        g.Map.SimulateClick(g.Tile(2, 1));
+
+        Assert.Single(g.Map.UnitDestroyedSounds);
+        Assert.Equal(HexCoord.FromOffset(2, 1), g.Map.UnitDestroyedSounds[0]);
+        Assert.Empty(g.Map.UnitPlacedSounds);
+    }
+
+    [Fact]
+    public void Move_CaptureEnemyTower_FiresTowerDestroyedSound_NotPlace()
+    {
+        var g = new TestGame();
+        var knight = new Unit(g.Red.Color, UnitLevel.Knight);
+        g.Tile(1, 1).Occupant = knight;
+        g.Tile(2, 1).Occupant = new Tower();
+
+        g.Map.SimulateClick(g.Tile(1, 1));
+        g.Map.SimulateClick(g.Tile(2, 1));
+
+        Assert.Single(g.Map.TowerDestroyedSounds);
+        Assert.Equal(HexCoord.FromOffset(2, 1), g.Map.TowerDestroyedSounds[0]);
+        Assert.Empty(g.Map.UnitPlacedSounds);
+    }
+
+    [Fact]
+    public void Move_CaptureEnemyCapital_FiresCapitalDestroyedSound_NotPlace()
+    {
+        // Capital provides 1 defense, so a Spearman (level 2) beats it.
+        // We plant a Capital on a regular Blue tile rather than fight
+        // the territory layout: the audio dispatcher routes purely on
+        // result.Destroyed's runtime type.
+        var g = new TestGame();
+        g.Tile(1, 1).Occupant = new Unit(g.Red.Color, UnitLevel.Spearman);
+        g.Tile(2, 1).Occupant = new Capital();
+
+        g.Map.SimulateClick(g.Tile(1, 1));
+        g.Map.SimulateClick(g.Tile(2, 1));
+
+        Assert.Single(g.Map.CapitalDestroyedSounds);
+        Assert.Equal(HexCoord.FromOffset(2, 1), g.Map.CapitalDestroyedSounds[0]);
+        Assert.Empty(g.Map.UnitPlacedSounds);
+    }
+
+    [Fact]
+    public void Move_ClearTreeInOwnTerritory_FiresTreeClearedSound_NotPlace()
+    {
+        // Same 3-Red-tile fixture as the existing tree-FX test: capital
+        // at (0,1), unit at (2,1), tree at (1,1). Move (2,1) → (1,1)
+        // chops the tree.
+        var red = new Player("Red", new Color(1f, 0f, 0f));
+        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var players = new System.Collections.Generic.List<Player> { red, blue };
+
+        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Color);
+        grid.Get(HexCoord.FromOffset(0, 1))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(1, 1))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(2, 1))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(2, 1))!.Occupant = new Unit(red.Color);
+        grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = new Tree();
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        var map = new MockHexMapView();
+        foreach (System.Collections.Generic.KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+        {
+            map.TileIndex[kvp.Key] = kvp.Value;
+        }
+        var controller = new GameController(state, session, map, new MockHudView());
+        controller.StartGame();
+
+        map.SimulateClick(grid.Get(HexCoord.FromOffset(2, 1))); // pick up
+        map.SimulateClick(grid.Get(HexCoord.FromOffset(1, 1))); // chop tree
+
+        Assert.Single(map.TreeClearedSounds);
+        Assert.Equal(HexCoord.FromOffset(1, 1), map.TreeClearedSounds[0]);
+        Assert.Empty(map.UnitPlacedSounds);
+    }
+
     [Fact]
     public void ExecuteAiBuildTower_FiresTowerPlacedSound()
     {

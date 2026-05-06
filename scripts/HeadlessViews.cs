@@ -51,6 +51,10 @@ public sealed class HeadlessHexMapView : IHexMapView
     public void PlayUnitPlaced(HexCoord coord) { }
     public void PlayTowerPlaced(HexCoord coord) { }
     public void PlayUnitCombined(HexCoord coord) { }
+    public void PlayUnitDestroyed(HexCoord coord) { }
+    public void PlayTowerDestroyed(HexCoord coord) { }
+    public void PlayTreeCleared(HexCoord coord) { }
+    public void PlayCapitalDestroyed(HexCoord coord) { }
 }
 
 public sealed class HeadlessHudView : IHudView

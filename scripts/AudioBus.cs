@@ -20,6 +20,10 @@ public partial class AudioBus : Node
     private AudioStreamPlayer _unitPlacedPlayer = null!;
     private AudioStreamPlayer _towerPlacedPlayer = null!;
     private AudioStreamPlayer _unitCombinedPlayer = null!;
+    private AudioStreamPlayer _unitDestroyedPlayer = null!;
+    private AudioStreamPlayer _towerDestroyedPlayer = null!;
+    private AudioStreamPlayer _treeClearedPlayer = null!;
+    private AudioStreamPlayer _capitalDestroyedPlayer = null!;
 
     public override void _EnterTree()
     {
@@ -61,6 +65,43 @@ public partial class AudioBus : Node
             VolumeDb = -8f,
         };
         AddChild(_unitCombinedPlayer);
+
+        _unitDestroyedPlayer = new AudioStreamPlayer
+        {
+            Stream = GD.Load<AudioStream>("res://assets/audio/unit_destroyed.wav"),
+            VolumeDb = -6f,
+        };
+        AddChild(_unitDestroyedPlayer);
+
+        _towerDestroyedPlayer = new AudioStreamPlayer
+        {
+            Stream = GD.Load<AudioStream>("res://assets/audio/tower_destroyed.wav"),
+            // Stone sources tend to be hot — keep parity with the
+            // tower-place gain so the destroy/place pair sit at a
+            // matched perceived loudness.
+            VolumeDb = -8f,
+        };
+        AddChild(_towerDestroyedPlayer);
+
+        _treeClearedPlayer = new AudioStreamPlayer
+        {
+            Stream = GD.Load<AudioStream>("res://assets/audio/tree_cleared.wav"),
+            // Source clip's transient is hot — sit well under the
+            // unit-place thud so the chop doesn't dominate.
+            VolumeDb = -18f,
+        };
+        AddChild(_treeClearedPlayer);
+
+        _capitalDestroyedPlayer = new AudioStreamPlayer
+        {
+            Stream = GD.Load<AudioStream>("res://assets/audio/capital_destroyed.wav"),
+            // Capital "destruction" is really a relocation — the
+            // territory shrinks and CapitalReconciler picks a new
+            // capital tile. Sound sits at routine-event level, not
+            // milestone level.
+            VolumeDb = -10f,
+        };
+        AddChild(_capitalDestroyedPlayer);
     }
 
     /// <summary>
@@ -102,6 +143,37 @@ public partial class AudioBus : Node
     {
         _unitCombinedPlayer.Stop();
         _unitCombinedPlayer.Play();
+    }
+
+    /// <summary>Soft squelch for crushing an enemy unit.</summary>
+    public void PlayUnitDestroyed()
+    {
+        _unitDestroyedPlayer.Stop();
+        _unitDestroyedPlayer.Play();
+    }
+
+    /// <summary>Bursting stone for capturing/destroying an enemy tower.</summary>
+    public void PlayTowerDestroyed()
+    {
+        _towerDestroyedPlayer.Stop();
+        _towerDestroyedPlayer.Play();
+    }
+
+    /// <summary>Single axe chop for clearing a tree or burying a grave.</summary>
+    public void PlayTreeCleared()
+    {
+        _treeClearedPlayer.Stop();
+        _treeClearedPlayer.Play();
+    }
+
+    /// <summary>
+    /// Heavy collapse + bell for capturing/destroying an enemy capital.
+    /// The heaviest cue in the library; reserved for the rarest event.
+    /// </summary>
+    public void PlayCapitalDestroyed()
+    {
+        _capitalDestroyedPlayer.Stop();
+        _capitalDestroyedPlayer.Play();
     }
 
     /// <summary>

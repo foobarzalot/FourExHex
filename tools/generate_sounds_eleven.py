@@ -72,6 +72,40 @@ MANIFEST: List[Entry] = [
         0.6,
         0.7,
     ),
+    (
+        "unit_destroyed.wav",
+        "A short cartoonish smoosh sound for crushing a small enemy "
+        "in a fantasy strategy game, soft squelch with a low thud "
+        "underneath, satisfying and brief, not gory, dry, no music, "
+        "no voice, no reverb.",
+        0.5,
+        0.75,
+    ),
+    (
+        "tower_destroyed.wav",
+        "A short stone tower bursting and collapsing, dense rocky "
+        "impact with brief debris and a small dust puff, satisfying "
+        "destruction, dry, no music, no voice, no reverb tail.",
+        0.7,
+        0.75,
+    ),
+    (
+        "tree_cleared.wav",
+        "A short single axe chop into a wooden tree trunk, sharp "
+        "wood-on-wood impact with brief splintering, dry, no music, "
+        "no voice, no reverb tail.",
+        0.5,
+        0.75,
+    ),
+    (
+        "capital_destroyed.wav",
+        "A small wooden flagpole tipping over and clattering onto the "
+        "ground, with a cloth banner fluttering down briefly, "
+        "lightweight and modest, no stone, dry, no music, no voice, "
+        "no reverb tail.",
+        0.6,
+        0.75,
+    ),
 ]
 
 
