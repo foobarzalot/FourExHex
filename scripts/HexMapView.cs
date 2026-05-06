@@ -17,8 +17,19 @@ public partial class HexMapView : Node2D, IHexMapView
     /// tile they clicked, or null if the click was outside the grid. The
     /// view does not apply any "whose turn is it" or "placement mode"
     /// policy — it just reports the raw click; the controller decides.
+    /// Suppressed when the same gesture exceeded the long-press threshold —
+    /// in that case <see cref="TileLongClicked"/> fires instead.
     /// </summary>
     public event Action<HexTile?>? TileClicked;
+
+    /// <summary>
+    /// Raised on release of a left-press that was held at least
+    /// <see cref="LongPressMs"/> milliseconds without exceeding the drag
+    /// threshold. Mutually exclusive with <see cref="TileClicked"/> for
+    /// a given gesture. The controller uses this for the "rally every
+    /// movable unit toward this hex" action.
+    /// </summary>
+    public event Action<HexTile?>? TileLongClicked;
 
     /// <summary>
     /// Raised on the same left-click as <see cref="TileClicked"/>, but with
@@ -150,6 +161,11 @@ public partial class HexMapView : Node2D, IHexMapView
     private bool _isDragging;
     private Vector2 _dragStartScreen;
     private Vector2 _dragStartMapPosition;
+
+    // Long-press = press held at least this long without dragging. Picks
+    // the rally action instead of the normal click on release.
+    private const ulong LongPressMs = 400UL;
+    private ulong _pressStartMsec;
 
     // Zoom state. _zoom is the active scale multiplier on this Node2D,
     // continuous in [_zoomMin, 1.0]. Wheel and +/- keys snap through
@@ -978,6 +994,11 @@ public partial class HexMapView : Node2D, IHexMapView
         AudioBus.Instance.PlayGameWon();
     }
 
+    public void PlayRally()
+    {
+        AudioBus.Instance.PlayRally();
+    }
+
     private void SpawnDestructionFlash(Vector2 center)
     {
         Vector2[] verts = HexVertices();
@@ -1475,11 +1496,14 @@ public partial class HexMapView : Node2D, IHexMapView
             _isDragging = false;
             _dragStartScreen = mouse.Position;
             _dragStartMapPosition = Position;
+            _pressStartMsec = Time.GetTicksMsec();
             return;
         }
 
         // Button released. If a drag actually happened, swallow the click.
         bool wasDragging = _isDragging;
+        bool wasLongPress = !wasDragging
+            && Time.GetTicksMsec() - _pressStartMsec >= LongPressMs;
         _dragCandidate = false;
         _isDragging = false;
         if (wasDragging) return;
@@ -1491,16 +1515,20 @@ public partial class HexMapView : Node2D, IHexMapView
 
         // CoordClicked fires on every click that wasn't a drag, regardless
         // of whether the coord is in the grid — the editor needs to know
-        // about water clicks too so it can paint over them.
+        // about water clicks too so it can paint over them. Long-press
+        // is a play-scene rally gesture; the editor doesn't care about
+        // the distinction.
         CoordClicked?.Invoke(coord);
 
-        if (!Grid.Contains(coord))
+        HexTile? hit = Grid.Contains(coord) ? Grid.Get(coord) : null;
+        if (wasLongPress)
         {
-            TileClicked?.Invoke(null);
-            return;
+            TileLongClicked?.Invoke(hit);
         }
-
-        TileClicked?.Invoke(Grid.Get(coord));
+        else
+        {
+            TileClicked?.Invoke(hit);
+        }
     }
 
     /// <summary>Visible center of the play area in viewport space — accounts

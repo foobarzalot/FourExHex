@@ -14,6 +14,7 @@ namespace FourExHex.Tests;
 public class MockHexMapView : IHexMapView
 {
     public event Action<HexTile?>? TileClicked;
+    public event Action<HexTile?>? TileLongClicked;
 
     // Index wired up by the test fixture so TerritoryAt returns the right
     // territory for each coord — mirrors what the real HexMapView caches
@@ -112,6 +113,12 @@ public class MockHexMapView : IHexMapView
     public int GameWonSoundCount { get; private set; }
     public void PlayGameWon() => GameWonSoundCount++;
 
+    public int RallySoundCount { get; private set; }
+    public void PlayRally() => RallySoundCount++;
+
     /// <summary>Raise the TileClicked event, as if the user clicked.</summary>
     public void SimulateClick(HexTile? tile) => TileClicked?.Invoke(tile);
+
+    /// <summary>Raise the TileLongClicked event, as if the user long-pressed.</summary>
+    public void SimulateLongClick(HexTile? tile) => TileLongClicked?.Invoke(tile);
 }

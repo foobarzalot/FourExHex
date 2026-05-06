@@ -26,6 +26,7 @@ public partial class AudioBus : Node
     private AudioStreamPlayer _capitalDestroyedPlayer = null!;
     private AudioStreamPlayer _bankruptcyPlayer = null!;
     private AudioStreamPlayer _gameWonPlayer = null!;
+    private AudioStreamPlayer _rallyPlayer = null!;
 
     public override void _EnterTree()
     {
@@ -125,6 +126,17 @@ public partial class AudioBus : Node
             VolumeDb = -6f,
         };
         AddChild(_gameWonPlayer);
+
+        _rallyPlayer = new AudioStreamPlayer
+        {
+            Stream = GD.Load<AudioStream>("res://assets/audio/rally.wav"),
+            // Whoosh is naturally airy and a bit broad — sit it well
+            // under the unit-place thud so a rally doesn't dominate the
+            // mix when it bundles several units' worth of motion.
+            // (-6 dB from the previous -8 dB = roughly half amplitude.)
+            VolumeDb = -14f,
+        };
+        AddChild(_rallyPlayer);
     }
 
     /// <summary>
@@ -217,6 +229,17 @@ public partial class AudioBus : Node
     {
         _gameWonPlayer.Stop();
         _gameWonPlayer.Play();
+    }
+
+    /// <summary>
+    /// Short whoosh played once per long-press rally that actually
+    /// shifted at least one unit. One sound per gesture, not per unit
+    /// — many small movements should read as one swept rally.
+    /// </summary>
+    public void PlayRally()
+    {
+        _rallyPlayer.Stop();
+        _rallyPlayer.Play();
     }
 
     /// <summary>

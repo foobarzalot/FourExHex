@@ -19,6 +19,7 @@ public sealed class HeadlessHexMapView : IHexMapView
     // a human clicking anything.
 #pragma warning disable CS0067 // Event never used
     public event Action<HexTile?>? TileClicked;
+    public event Action<HexTile?>? TileLongClicked;
 #pragma warning restore CS0067
 
     private readonly GameState _state;
@@ -57,6 +58,7 @@ public sealed class HeadlessHexMapView : IHexMapView
     public void PlayCapitalDestroyed(HexCoord coord) { }
     public void PlayBankruptcy() { }
     public void PlayGameWon() { }
+    public void PlayRally() { }
 }
 
 public sealed class HeadlessHudView : IHudView

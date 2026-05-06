@@ -109,6 +109,7 @@ public class GameController
         _maxTurnNumber = maxTurnNumber;
 
         _map.TileClicked += OnTileClicked;
+        _map.TileLongClicked += OnTileLongClicked;
         _hud.BuyPeasantClicked += OnBuyPressed;
         _hud.BuildTowerClicked += OnBuildTowerPressed;
         _hud.UndoLastClicked += OnUndoLastPressed;
@@ -381,6 +382,107 @@ public class GameController
             _map.ShowMoveTargets(ActionConsumingTargets(tile.Unit.Level, territory), tile.Unit.Level);
             _map.ShowMoveSource(tile.Coord);
         }
+    }
+
+    private void OnTileLongClicked(HexTile? tile) =>
+        TrackHandler(() => OnTileLongClickedBody(tile));
+
+    /// <summary>
+    /// Long-press rally: move every still-unmoved unit in the territory
+    /// containing <paramref name="tile"/> as close as possible to the
+    /// target, using only legal free-reposition destinations (empty
+    /// friendly hexes in the territory). Ignored when a buy / build /
+    /// move action is pending — the player would otherwise lose their
+    /// in-progress context. The whole rally is a single undo step.
+    ///
+    /// The target hex itself doesn't have to be a legal destination
+    /// (e.g., a friendly tower is fine) — units rally to the closest
+    /// empty cell to it. Greedy by distance: the unit currently closest
+    /// to the target gets first pick of the closest empty cell, so a
+    /// far unit can't leapfrog a near one.
+    /// </summary>
+    private void OnTileLongClickedBody(HexTile? tile)
+    {
+        if (_session.IsGameOver) return;
+        if (tile == null) return;
+        if (_session.Mode != SessionState.ActionMode.None) return;
+
+        Color currentColor = _state.Turns.CurrentPlayer.Color;
+        if (tile.Color != currentColor) return;
+
+        Territory? territory = _map.TerritoryAt(tile.Coord);
+        if (territory == null || territory.Owner != currentColor) return;
+
+        HexCoord target = tile.Coord;
+
+        var unmoved = new List<HexCoord>();
+        foreach (HexCoord coord in territory.Coords)
+        {
+            Unit? u = _state.Grid.Get(coord)?.Unit;
+            if (u != null && u.Owner == currentColor && !u.HasMovedThisTurn)
+            {
+                unmoved.Add(coord);
+            }
+        }
+        if (unmoved.Count == 0) return;
+
+        // Process closest-to-target first so a far unit can't claim
+        // a near cell that a closer unit could have used. Lex-min
+        // tiebreak keeps the order deterministic.
+        unmoved.Sort((a, b) =>
+        {
+            int da = HexCoord.Distance(a, target);
+            int db = HexCoord.Distance(b, target);
+            int cmp = da.CompareTo(db);
+            return cmp != 0 ? cmp : a.CompareTo(b);
+        });
+
+        bool anyMoved = false;
+        foreach (HexCoord src in unmoved)
+        {
+            HexCoord? dst = FindClosestEmptyCellInTerritory(territory, src, target);
+            if (!dst.HasValue) continue;
+            // MovementRules.Move on an empty own-color destination is a
+            // free reposition: it does NOT set HasMovedThisTurn.
+            MovementRules.Move(src, dst.Value, _state.Grid, territory);
+            anyMoved = true;
+        }
+
+        if (anyMoved)
+        {
+            _handlerMutatedGame = true;
+            _map.PlayRally();
+            SetSelection(territory);
+        }
+        RefreshViews();
+    }
+
+    /// <summary>
+    /// Find the empty non-occupant tile in <paramref name="territory"/>
+    /// strictly closer to <paramref name="target"/> than
+    /// <paramref name="src"/>'s current distance, minimizing distance
+    /// to the target. Lex-min tiebreak. Returns null if no strictly
+    /// closer empty cell exists — the unit stays put.
+    /// </summary>
+    private HexCoord? FindClosestEmptyCellInTerritory(Territory territory, HexCoord src, HexCoord target)
+    {
+        int currentDist = HexCoord.Distance(src, target);
+        HexCoord? best = null;
+        int bestDist = int.MaxValue;
+        foreach (HexCoord coord in territory.Coords)
+        {
+            if (coord.Equals(src)) continue;
+            HexTile? t = _state.Grid.Get(coord);
+            if (t == null || t.Occupant != null) continue;
+            int d = HexCoord.Distance(coord, target);
+            if (d >= currentDist) continue;
+            if (best == null || d < bestDist || (d == bestDist && coord.CompareTo(best.Value) < 0))
+            {
+                best = coord;
+                bestDist = d;
+            }
+        }
+        return best;
     }
 
     /// <summary>

@@ -16,6 +16,15 @@ public interface IHexMapView
     /// </summary>
     event Action<HexTile?>? TileClicked;
 
+    /// <summary>
+    /// Raised when the player long-presses (≥ long-press threshold) on
+    /// the map without dragging. Suppresses the normal
+    /// <see cref="TileClicked"/> for that gesture so the controller can
+    /// treat it as a distinct rally action. Argument is the tile under
+    /// the cursor at release, or null if outside the grid.
+    /// </summary>
+    event Action<HexTile?>? TileLongClicked;
+
     /// <summary>Look up the territory containing a coord.</summary>
     Territory? TerritoryAt(HexCoord coord);
 
@@ -166,4 +175,11 @@ public interface IHexMapView
     /// "game lost" cue from the human's perspective.
     /// </summary>
     void PlayGameWon();
+
+    /// <summary>
+    /// Play the rally whoosh once per long-press rally that actually
+    /// moved at least one unit. A single cue per gesture, not per unit
+    /// — multiple units rallying read as one swept gesture.
+    /// </summary>
+    void PlayRally();
 }

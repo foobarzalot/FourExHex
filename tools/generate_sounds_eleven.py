@@ -124,6 +124,15 @@ MANIFEST: List[Entry] = [
         1.6,
         0.75,
     ),
+    (
+        "rally.wav",
+        "A short crisp whoosh of moving air, like several cloth banners "
+        "or capes being swept forward in unison, soft airy attack with "
+        "a quick decay and a hint of fabric rustle, no impact at the "
+        "end, dry, no music, no voice, no reverb tail.",
+        0.7,
+        0.75,
+    ),
 ]
 
 
