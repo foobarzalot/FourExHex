@@ -415,35 +415,45 @@ public partial class HexMapView : Node2D, IHexMapView
 
     /// <summary>
     /// Highlight the given coords as valid move/placement targets with
-    /// green rings. Pass an empty list to clear.
+    /// green concentric rings sized to <paramref name="level"/> — the
+    /// preview matches the unit shape (peasant=1 ring, spearman=2,
+    /// knight=3, baron=3+dot) so the player sees what the destination
+    /// will hold. Pass an empty list to clear.
     /// </summary>
-    public void ShowMoveTargets(IEnumerable<HexCoord> coords)
+    public void ShowMoveTargets(IEnumerable<HexCoord> coords, UnitLevel level)
     {
         ClearLayer(_targetsLayer);
         if (_targetsLayer == null) return;
 
-        const float radius = 0.55f;
-        const int segments = 20;
-        var points = new Vector2[segments + 1];
-        for (int i = 0; i <= segments; i++)
+        var color = new Color(0.2f, 1f, 0.3f, 0.9f);
+        const float ringWidth = 4f;
+        int rings = level switch
         {
-            float angle = Mathf.Tau * i / segments;
-            points[i] = new Vector2(radius * HexSize * Mathf.Cos(angle), radius * HexSize * Mathf.Sin(angle));
-        }
+            UnitLevel.Peasant => 1,
+            UnitLevel.Spearman => 2,
+            UnitLevel.Knight => 3,
+            UnitLevel.Baron => 3,
+            _ => 1,
+        };
 
         foreach (HexCoord coord in coords)
         {
-            // Points are around (0,0); ring's Position is the tile center
-            // so a scale on the Line2D node pulses around the ring's
-            // geometric center (same trick as units/capitals).
-            var ring = new Line2D
+            // Wrap rings in a Node2D so the pulse loop in _Process can
+            // scale the whole preview together (children are positioned
+            // around (0,0); the parent's Position is the tile center).
+            var preview = new Node2D
             {
                 Position = FirstHexCenterOffset + coord.ToPixel(HexSize),
-                Points = points,
-                Width = 4f,
-                DefaultColor = new Color(0.2f, 1f, 0.3f, 0.9f),
             };
-            _targetsLayer.AddChild(ring);
+            for (int i = 0; i < rings; i++)
+            {
+                preview.AddChild(CreateCircleOutline(HexSize * UnitRingRadii[i], color, ringWidth));
+            }
+            if (level == UnitLevel.Baron)
+            {
+                preview.AddChild(CreateFilledDisc(HexSize * UnitDotRadius, color));
+            }
+            _targetsLayer.AddChild(preview);
         }
     }
 

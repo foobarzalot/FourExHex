@@ -378,7 +378,7 @@ public class GameController
         {
             _session.Mode = SessionState.ActionMode.MovingUnit;
             _session.MoveSource = tile.Coord;
-            _map.ShowMoveTargets(ActionConsumingTargets(tile.Unit.Level, territory));
+            _map.ShowMoveTargets(ActionConsumingTargets(tile.Unit.Level, territory), tile.Unit.Level);
             _map.ShowMoveSource(tile.Coord);
         }
     }
@@ -547,7 +547,7 @@ public class GameController
         {
             _session.Mode = SessionState.BuyModeFor(next.Value);
             _session.MoveSource = null;
-            _map.ShowMoveTargets(ActionConsumingTargets(next.Value, _session.SelectedTerritory));
+            _map.ShowMoveTargets(ActionConsumingTargets(next.Value, _session.SelectedTerritory), next.Value);
             _map.ShowMoveSource(null);
             RefreshViews();
         }
@@ -702,7 +702,7 @@ public class GameController
         {
             _session.Mode = SessionState.ActionMode.BuildingTower;
             _session.MoveSource = null;
-            _map.ShowMoveTargets(System.Array.Empty<HexCoord>());
+            _map.ShowMoveTargets(System.Array.Empty<HexCoord>(), UnitLevel.Peasant);
             _map.ShowTowerTargets(ValidTowerTargets(_session.SelectedTerritory));
             _map.ShowTowerCoverage(TowerCoverageCoords(_session.SelectedTerritory));
             _map.ShowMoveSource(null);
@@ -768,7 +768,7 @@ public class GameController
     private void FinishPendingAction()
     {
         _session.ClearPendingAction();
-        _map.ShowMoveTargets(System.Array.Empty<HexCoord>());
+        _map.ShowMoveTargets(System.Array.Empty<HexCoord>(), UnitLevel.Peasant);
         _map.ShowTowerTargets(System.Array.Empty<HexCoord>());
         _map.ShowTowerCoverage(System.Array.Empty<HexCoord>());
         _map.ShowMoveSource(null);
@@ -781,7 +781,7 @@ public class GameController
     private void CancelPendingAction()
     {
         _session.ClearPendingAction();
-        _map.ShowMoveTargets(System.Array.Empty<HexCoord>());
+        _map.ShowMoveTargets(System.Array.Empty<HexCoord>(), UnitLevel.Peasant);
         _map.ShowTowerTargets(System.Array.Empty<HexCoord>());
         _map.ShowTowerCoverage(System.Array.Empty<HexCoord>());
         _map.ShowMoveSource(null);
@@ -878,7 +878,7 @@ public class GameController
         UnitLevel? buyLevel = SessionState.BuyModeLevel(_session.Mode);
         if (buyLevel.HasValue && _session.SelectedTerritory != null)
         {
-            _map.ShowMoveTargets(ActionConsumingTargets(buyLevel.Value, _session.SelectedTerritory));
+            _map.ShowMoveTargets(ActionConsumingTargets(buyLevel.Value, _session.SelectedTerritory), buyLevel.Value);
             _map.ShowTowerTargets(System.Array.Empty<HexCoord>());
             _map.ShowTowerCoverage(System.Array.Empty<HexCoord>());
             _map.ShowMoveSource(null);
@@ -887,7 +887,7 @@ public class GameController
         if (_session.Mode == SessionState.ActionMode.BuildingTower
             && _session.SelectedTerritory != null)
         {
-            _map.ShowMoveTargets(System.Array.Empty<HexCoord>());
+            _map.ShowMoveTargets(System.Array.Empty<HexCoord>(), UnitLevel.Peasant);
             _map.ShowTowerTargets(ValidTowerTargets(_session.SelectedTerritory));
             _map.ShowTowerCoverage(TowerCoverageCoords(_session.SelectedTerritory));
             _map.ShowMoveSource(null);
@@ -900,7 +900,7 @@ public class GameController
             HexTile? src = _state.Grid.Get(_session.MoveSource.Value);
             if (src?.Unit != null)
             {
-                _map.ShowMoveTargets(ActionConsumingTargets(src.Unit.Level, _session.SelectedTerritory));
+                _map.ShowMoveTargets(ActionConsumingTargets(src.Unit.Level, _session.SelectedTerritory), src.Unit.Level);
                 _map.ShowTowerTargets(System.Array.Empty<HexCoord>());
                 _map.ShowTowerCoverage(System.Array.Empty<HexCoord>());
                 _map.ShowMoveSource(_session.MoveSource);
@@ -910,7 +910,7 @@ public class GameController
             _session.Mode = SessionState.ActionMode.None;
             _session.MoveSource = null;
         }
-        _map.ShowMoveTargets(System.Array.Empty<HexCoord>());
+        _map.ShowMoveTargets(System.Array.Empty<HexCoord>(), UnitLevel.Peasant);
         _map.ShowTowerTargets(System.Array.Empty<HexCoord>());
         _map.ShowTowerCoverage(System.Array.Empty<HexCoord>());
         _map.ShowMoveSource(null);
@@ -948,7 +948,7 @@ public class GameController
 
         _session.Mode = SessionState.BuyModeFor(next.Value);
         _session.MoveSource = null;
-        _map.ShowMoveTargets(ActionConsumingTargets(next.Value, _session.SelectedTerritory));
+        _map.ShowMoveTargets(ActionConsumingTargets(next.Value, _session.SelectedTerritory), next.Value);
         // Switching into a buy mode from BuildingTower leaves the tower
         // preview + coverage tint stale; clear both so the player only
         // sees relevant CTAs.
@@ -1012,7 +1012,7 @@ public class GameController
         // through ShowTowerTargets so the player sees where to click,
         // and ShowTowerCoverage tints already-defended cells so the
         // player can avoid stacking coverage.
-        _map.ShowMoveTargets(System.Array.Empty<HexCoord>());
+        _map.ShowMoveTargets(System.Array.Empty<HexCoord>(), UnitLevel.Peasant);
         _map.ShowTowerTargets(ValidTowerTargets(_session.SelectedTerritory));
         _map.ShowTowerCoverage(TowerCoverageCoords(_session.SelectedTerritory));
         _map.ShowMoveSource(null);
@@ -1120,7 +1120,7 @@ public class GameController
         Unit chosen = _state.Grid.Get(target)!.Unit!;
         _session.Mode = SessionState.ActionMode.MovingUnit;
         _session.MoveSource = target;
-        _map.ShowMoveTargets(ActionConsumingTargets(chosen.Level, selected));
+        _map.ShowMoveTargets(ActionConsumingTargets(chosen.Level, selected), chosen.Level);
         // Defensive: clear tower overlays in case we're transitioning out
         // of BuildingTower mode.
         _map.ShowTowerTargets(System.Array.Empty<HexCoord>());

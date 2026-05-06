@@ -225,6 +225,21 @@ public class GameControllerTests
     }
 
     [Fact]
+    public void Click_OwnUnit_PassesUnitLevelToMoveTargetPreview()
+    {
+        // The destination preview rings need to know the source unit's
+        // level so the view can render a Spearman/Knight/Baron preview
+        // with the correct number of concentric rings (and Baron dot)
+        // instead of always drawing a peasant-sized single ring.
+        var g = new TestGame();
+        g.Tile(1, 1).Occupant = new Unit(g.Red.Color, UnitLevel.Spearman);
+
+        g.Map.SimulateClick(g.Tile(1, 1));
+
+        Assert.Equal(UnitLevel.Spearman, g.Map.LastMoveTargetsLevel);
+    }
+
+    [Fact]
     public void Click_OwnUnit_HighlightsTreeInOwnTerritory_AsTarget()
     {
         // Trees in own territory consume the unit's action when cleared,

@@ -20,10 +20,14 @@ public interface IHexMapView
     Territory? TerritoryAt(HexCoord coord);
 
     /// <summary>
-    /// Highlight the given coords as valid move/placement targets.
-    /// Pass an empty sequence to clear.
+    /// Highlight the given coords as valid move/placement targets for a
+    /// would-be unit of <paramref name="level"/>. The view sizes the
+    /// preview to match the unit's visual (peasant=1 ring, spearman=2,
+    /// knight=3, baron=3+dot) so the player sees what the destination
+    /// will hold. Pass an empty sequence to clear; <paramref name="level"/>
+    /// is ignored when there's nothing to draw.
     /// </summary>
-    void ShowMoveTargets(IEnumerable<HexCoord> coords);
+    void ShowMoveTargets(IEnumerable<HexCoord> coords, UnitLevel level);
 
     /// <summary>
     /// Highlight the given coords as valid tower-placement targets,

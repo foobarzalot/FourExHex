@@ -24,16 +24,23 @@ public class MockHexMapView : IHexMapView
         TileIndex.TryGetValue(coord, out Territory? t) ? t : null;
 
     public List<HexCoord> LastMoveTargets { get; private set; } = new();
+    /// <summary>The <see cref="UnitLevel"/> the controller most recently
+    /// passed to <see cref="ShowMoveTargets"/>, or null if it has never
+    /// been called. Used to verify the destination preview is sized for
+    /// the source unit's level (e.g., a Spearman's preview should render
+    /// two rings, not one).</summary>
+    public UnitLevel? LastMoveTargetsLevel { get; private set; }
     /// <summary>Test hook: invoked-and-cleared at the top of the next
     /// <see cref="ShowMoveTargets"/> call. Used to simulate a mid-handler
     /// failure and verify the controller doesn't push a recovery snapshot.</summary>
     public Action? ThrowOnNextShowMoveTargets { get; set; }
-    public void ShowMoveTargets(IEnumerable<HexCoord> coords)
+    public void ShowMoveTargets(IEnumerable<HexCoord> coords, UnitLevel level)
     {
         Action? hook = ThrowOnNextShowMoveTargets;
         ThrowOnNextShowMoveTargets = null;
         hook?.Invoke();
         LastMoveTargets = coords.ToList();
+        LastMoveTargetsLevel = level;
     }
 
     public List<HexCoord> LastTowerTargets { get; private set; } = new();

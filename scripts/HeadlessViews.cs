@@ -39,7 +39,7 @@ public sealed class HeadlessHexMapView : IHexMapView
         return null;
     }
 
-    public void ShowMoveTargets(IEnumerable<HexCoord> coords) { }
+    public void ShowMoveTargets(IEnumerable<HexCoord> coords, UnitLevel level) { }
     public void ShowTowerTargets(IEnumerable<HexCoord> coords) { }
     public void ShowTowerCoverage(IEnumerable<HexCoord> coords) { }
     public void ShowMoveSource(HexCoord? coord) { }
