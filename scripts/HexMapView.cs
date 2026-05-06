@@ -155,7 +155,7 @@ public partial class HexMapView : Node2D, IHexMapView
     // Pan/drag state. The map renders in this Node2D's local space, so
     // panning is just translating Position. ToLocal() in mouse-to-hex
     // already accounts for this transform — no other math changes.
-    private const float KeyboardPanPxPerSec = 600f;
+    private const float KeyboardPanStepPx = 75f;
     private const float DragThresholdPx = 5f;
     private bool _dragCandidate;
     private bool _isDragging;
@@ -537,27 +537,6 @@ public partial class HexMapView : Node2D, IHexMapView
 
     public override void _Process(double delta)
     {
-        // Keyboard pan runs every frame regardless of pulse state — held
-        // arrow / WASD keys must produce smooth motion. Suppressed while
-        // any popup dialog is open so typing in its LineEdit (e.g. the
-        // save-name field) doesn't double as a pan.
-        //
-        // Why not check GetViewport().GuiGetFocusOwner() for a LineEdit?
-        // AcceptDialog is a Godot Window with its own sub-viewport, so a
-        // focused LineEdit inside the popup belongs to the dialog's
-        // viewport — the main viewport's focus owner is unaffected.
-        // GetEmbeddedSubwindows returns the currently visible popups, so
-        // a non-empty array means some dialog has the user's attention.
-        bool popupOpen = GetViewport().GetEmbeddedSubwindows().Count > 0;
-        Vector2 dir = KeyboardPanInput.ComputeDirection(
-            Input.IsPhysicalKeyPressed, suppressPan: popupOpen);
-        if (dir != Vector2.Zero)
-        {
-            // Right/Down keys move the world view in that direction, which
-            // means translating the map node in the OPPOSITE direction.
-            Position = ClampPan(Position - dir.Normalized() * KeyboardPanPxPerSec * (float)delta);
-        }
-
         int targetCount = _targetsLayer?.GetChildCount() ?? 0;
         int towerTargetCount = _towerTargetsLayer?.GetChildCount() ?? 0;
         if (_pulsingUnits.Count == 0
@@ -1456,6 +1435,27 @@ public partial class HexMapView : Node2D, IHexMapView
             if (keyDelta != 0)
             {
                 StepZoom(keyDelta, VisualCenter());
+                GetViewport().SetInputAsHandled();
+                return;
+            }
+
+            // Discrete pan: one tap = one fixed step. Modeled on zoom
+            // (event-driven, ignore echo) so a focused LineEdit / open
+            // popup gates the input via Godot's input chain, no manual
+            // check needed.
+            Vector2 panDir = key.Keycode switch
+            {
+                Key.W or Key.Up    => new Vector2(0f, -1f),
+                Key.S or Key.Down  => new Vector2(0f, +1f),
+                Key.A or Key.Left  => new Vector2(-1f, 0f),
+                Key.D or Key.Right => new Vector2(+1f, 0f),
+                _ => Vector2.Zero,
+            };
+            if (panDir != Vector2.Zero)
+            {
+                // Right/Down keys move the world view in that direction,
+                // which means translating the map node OPPOSITE.
+                Position = ClampPan(Position - panDir * KeyboardPanStepPx);
                 GetViewport().SetInputAsHandled();
                 return;
             }
