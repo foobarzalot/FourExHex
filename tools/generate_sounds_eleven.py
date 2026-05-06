@@ -106,6 +106,14 @@ MANIFEST: List[Entry] = [
         0.6,
         0.75,
     ),
+    (
+        "bankruptcy.wav",
+        "A single low somber bell toll, slow and mournful, signaling "
+        "loss without being dramatic, brief sustain, dry, no music "
+        "underneath, no voice, minimal reverb tail.",
+        0.9,
+        0.75,
+    ),
 ]
 
 

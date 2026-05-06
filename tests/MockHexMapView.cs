@@ -99,6 +99,9 @@ public class MockHexMapView : IHexMapView
     public List<HexCoord> CapitalDestroyedSounds { get; } = new();
     public void PlayCapitalDestroyed(HexCoord coord) => CapitalDestroyedSounds.Add(coord);
 
+    public int BankruptcySoundCount { get; private set; }
+    public void PlayBankruptcy() => BankruptcySoundCount++;
+
     /// <summary>Raise the TileClicked event, as if the user clicked.</summary>
     public void SimulateClick(HexTile? tile) => TileClicked?.Invoke(tile);
 }

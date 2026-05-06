@@ -146,4 +146,13 @@ public interface IHexMapView
     /// defender's territory, so the audio marks a strategic milestone.
     /// </summary>
     void PlayCapitalDestroyed(HexCoord coord);
+
+    /// <summary>
+    /// Play the bankruptcy bell once per player turn-start, when at
+    /// least one of the player's territories failed to pay upkeep and
+    /// converted its units to graves. No coord arg — the event is
+    /// player-scoped, not tile-scoped, and the sound fires exactly
+    /// once regardless of how many territories went bankrupt.
+    /// </summary>
+    void PlayBankruptcy();
 }

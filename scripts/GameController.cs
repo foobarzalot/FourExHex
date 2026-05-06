@@ -1256,8 +1256,14 @@ public class GameController
                 _state.Turns.CurrentPlayer, _state.Territories, _state.Grid);
         }
 
-        UpkeepRules.ApplyUpkeepFor(
+        bool anyBankrupt = UpkeepRules.ApplyUpkeepFor(
             _state.Turns.CurrentPlayer, _state.Territories, _state.Grid, _state.Treasury);
+        if (anyBankrupt)
+        {
+            // One toll per turn-start regardless of how many of the
+            // player's territories went bankrupt — see IHexMapView.
+            _map.PlayBankruptcy();
+        }
 
         LogTurnStart();
         CheckGameEndConditions();

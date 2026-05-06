@@ -75,14 +75,23 @@ public static class UpkeepRules
 
     /// <summary>
     /// Apply upkeep to every territory owned by <paramref name="player"/>.
-    /// Parallels <see cref="Treasury.CollectIncomeFor"/>.
+    /// Parallels <see cref="Treasury.CollectIncomeFor"/>. Returns true
+    /// if at least one territory failed to pay (units became graves);
+    /// false if every territory paid in full or had nothing to pay.
+    /// The controller uses the return value to fire a single-shot
+    /// audio cue at turn-start.
     /// </summary>
-    public static void ApplyUpkeepFor(Player player, IEnumerable<Territory> territories, HexGrid grid, Treasury treasury)
+    public static bool ApplyUpkeepFor(Player player, IEnumerable<Territory> territories, HexGrid grid, Treasury treasury)
     {
+        bool anyBankrupt = false;
         foreach (Territory territory in territories)
         {
             if (territory.Owner != player.Color) continue;
-            ApplyUpkeep(territory, grid, treasury);
+            if (!ApplyUpkeep(territory, grid, treasury))
+            {
+                anyBankrupt = true;
+            }
         }
+        return anyBankrupt;
     }
 }

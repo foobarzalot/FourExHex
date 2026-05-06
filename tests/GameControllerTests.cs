@@ -669,6 +669,37 @@ public class GameControllerTests
         Assert.Empty(g.Map.UnitPlacedSounds);
     }
 
+    // --- Bankruptcy sound -------------------------------------------------
+
+    [Fact]
+    public void StartPlayerTurn_BankruptcyOccurs_FiresBankruptcySoundOnce()
+    {
+        // StartGame doesn't run StartPlayerTurn for the initial human
+        // player — upkeep first applies on the *next* turn-start. Set
+        // up a Knight on a Blue tile, zero the Blue treasury, then end
+        // Red's turn so Blue's StartPlayerTurn runs and bankrupts.
+        var g = new TestGame();
+        g.Tile(3, 0).Occupant = new Unit(g.Blue.Color, UnitLevel.Knight);
+        Territory blueT = g.State.Territories.First(t => t.Owner == g.Blue.Color);
+        HexCoord blueCapital = blueT.Capital!.Value;
+        g.State.Treasury.SetGold(blueCapital, 0);
+
+        g.Hud.ClickEndTurn();
+
+        Assert.Equal(1, g.Map.BankruptcySoundCount);
+        Assert.IsType<Grave>(g.Tile(3, 0).Occupant);
+    }
+
+    [Fact]
+    public void StartPlayerTurn_NoBankruptcy_DoesNotFireBankruptcySound()
+    {
+        // Default TestGame has no units anywhere → no upkeep owed →
+        // Blue's turn-start runs cleanly with no bankruptcy bell.
+        var g = new TestGame();
+        g.Hud.ClickEndTurn();
+        Assert.Equal(0, g.Map.BankruptcySoundCount);
+    }
+
     [Fact]
     public void Move_CaptureEnemyCapital_FiresCapitalDestroyedSound_NotPlace()
     {

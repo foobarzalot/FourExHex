@@ -154,6 +154,44 @@ public class UpkeepRulesTests
     // --- ApplyUpkeepFor ---------------------------------------------------
 
     [Fact]
+    public void ApplyUpkeepFor_ReturnsTrueWhenAnyTerritoryWentBankrupt()
+    {
+        var redPlayer = new Player("Red", Red);
+        HexGrid grid = new HexGrid();
+        grid.Add(new HexTile(new HexCoord(0, 0), Red));
+        grid.Add(new HexTile(new HexCoord(1, 0), Red));
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red);
+
+        Territory redT = new Territory(Red, new[] { new HexCoord(0, 0), new HexCoord(1, 0) }, new HexCoord(0, 0));
+        var treasury = new Treasury();
+        treasury.SetGold(new HexCoord(0, 0), 0); // can't pay upkeep
+
+        bool anyBankrupt = UpkeepRules.ApplyUpkeepFor(redPlayer, new[] { redT }, grid, treasury);
+
+        Assert.True(anyBankrupt);
+        Assert.IsType<Grave>(grid.Get(new HexCoord(1, 0))!.Occupant);
+    }
+
+    [Fact]
+    public void ApplyUpkeepFor_ReturnsFalseWhenAllTerritoriesAffordUpkeep()
+    {
+        var redPlayer = new Player("Red", Red);
+        HexGrid grid = new HexGrid();
+        grid.Add(new HexTile(new HexCoord(0, 0), Red));
+        grid.Add(new HexTile(new HexCoord(1, 0), Red));
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red);
+
+        Territory redT = new Territory(Red, new[] { new HexCoord(0, 0), new HexCoord(1, 0) }, new HexCoord(0, 0));
+        var treasury = new Treasury();
+        treasury.SetGold(new HexCoord(0, 0), 100); // plenty
+
+        bool anyBankrupt = UpkeepRules.ApplyUpkeepFor(redPlayer, new[] { redT }, grid, treasury);
+
+        Assert.False(anyBankrupt);
+        Assert.IsType<Unit>(grid.Get(new HexCoord(1, 0))!.Occupant);
+    }
+
+    [Fact]
     public void ApplyUpkeepFor_OnlyAffectsMatchingPlayer()
     {
         var blue = new Color(0f, 0f, 1f);

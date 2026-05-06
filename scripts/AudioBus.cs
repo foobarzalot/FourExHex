@@ -24,6 +24,7 @@ public partial class AudioBus : Node
     private AudioStreamPlayer _towerDestroyedPlayer = null!;
     private AudioStreamPlayer _treeClearedPlayer = null!;
     private AudioStreamPlayer _capitalDestroyedPlayer = null!;
+    private AudioStreamPlayer _bankruptcyPlayer = null!;
 
     public override void _EnterTree()
     {
@@ -102,6 +103,16 @@ public partial class AudioBus : Node
             VolumeDb = -10f,
         };
         AddChild(_capitalDestroyedPlayer);
+
+        _bankruptcyPlayer = new AudioStreamPlayer
+        {
+            Stream = GD.Load<AudioStream>("res://assets/audio/bankruptcy.wav"),
+            // Somber, not loud — the player should hear it but it
+            // shouldn't startle. Bell tolls have long natural sustain
+            // so a moderate gain reads as substantial without dominating.
+            VolumeDb = -10f,
+        };
+        AddChild(_bankruptcyPlayer);
     }
 
     /// <summary>
@@ -174,6 +185,15 @@ public partial class AudioBus : Node
     {
         _capitalDestroyedPlayer.Stop();
         _capitalDestroyedPlayer.Play();
+    }
+
+    /// <summary>
+    /// Single low somber bell toll for upkeep bankruptcy at turn-start.
+    /// </summary>
+    public void PlayBankruptcy()
+    {
+        _bankruptcyPlayer.Stop();
+        _bankruptcyPlayer.Play();
     }
 
     /// <summary>
