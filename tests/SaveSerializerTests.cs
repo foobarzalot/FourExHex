@@ -236,6 +236,66 @@ public class SaveSerializerTests
         Assert.False(unmovedTile!.Unit!.HasMovedThisTurn);
     }
 
+    [Fact]
+    public void Serialize_RoundTripsOriginMapName()
+    {
+        // Games launched from a starting map record the map's name so
+        // resumed saves can keep showing "Map: foo" in the bottom-left
+        // label instead of falling back to the seed.
+        (GameState state, IReadOnlyList<Player> players) = BuildRichState();
+
+        string json = SaveSerializer.Serialize(
+            state, 42, players, slotName: "s", maxTurnNumber: 100, originMapName: "alpha");
+        LoadedSave loaded = SaveSerializer.Deserialize(json);
+
+        Assert.Equal("alpha", loaded.OriginMapName);
+    }
+
+    [Fact]
+    public void Serialize_NullOriginMapName_RoundTripsAsNull()
+    {
+        // Procedural (Random Map) games leave the field unset so the
+        // bottom-left label falls back to the seed.
+        (GameState state, IReadOnlyList<Player> players) = BuildRichState();
+
+        string json = SaveSerializer.Serialize(
+            state, 42, players, slotName: "s", maxTurnNumber: 100, originMapName: null);
+        LoadedSave loaded = SaveSerializer.Deserialize(json);
+
+        Assert.Null(loaded.OriginMapName);
+    }
+
+    [Fact]
+    public void Deserialize_OldSaveMissingOriginMapName_LoadsAsNull()
+    {
+        // Backward compat: saves written before the OriginMapName field
+        // was added must still load (with the field defaulting to null),
+        // since users have v2 autosaves on disk.
+        (GameState state, IReadOnlyList<Player> players) = BuildRichState();
+        string json = SaveSerializer.Serialize(state, 42, players, "s", 100);
+        // Sanity: the freshly serialized form does include the field.
+        // To simulate an older save, strip it out before deserializing.
+        string legacyJson = System.Text.RegularExpressions.Regex.Replace(
+            json, "\\s*\"OriginMapName\":\\s*(\"[^\"]*\"|null),?", "");
+
+        LoadedSave loaded = SaveSerializer.Deserialize(legacyJson);
+
+        Assert.Null(loaded.OriginMapName);
+    }
+
+    [Fact]
+    public void SerializeMap_DoesNotRecordOriginMapName()
+    {
+        // Editor-saved maps ARE the origin — they shouldn't carry an
+        // OriginMapName field of their own.
+        (GameState state, IReadOnlyList<Player> players) = BuildRichState();
+
+        string json = SaveSerializer.SerializeMap(state, 42, players, "m");
+        LoadedSave loaded = SaveSerializer.Deserialize(json);
+
+        Assert.Null(loaded.OriginMapName);
+    }
+
     private static void AssertOccupantsEqual(HexOccupant? a, HexOccupant? b)
     {
         if (a == null && b == null) return;

@@ -248,9 +248,9 @@ public partial class HudView : CanvasLayer, IHudView
         BuildVictoryOverlay(viewport);
     }
 
-    public void SetMapSeed(int seed)
+    public void SetMapLabel(string text)
     {
-        _seedLabel.Text = $"Seed: {seed}";
+        _seedLabel.Text = text;
     }
 
     /// <summary>

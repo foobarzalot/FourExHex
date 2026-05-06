@@ -82,5 +82,5 @@ public sealed class HeadlessHudView : IHudView
 #pragma warning restore CS0067
 
     public void Refresh(GameState state, SessionState session, bool hasActionableRemaining) { }
-    public void SetMapSeed(int seed) { }
+    public void SetMapLabel(string text) { }
 }

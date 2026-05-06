@@ -18,18 +18,27 @@ public sealed class LoadedSave
     public int MaxTurnNumber { get; }
     public string SlotName { get; }
 
+    /// <summary>
+    /// Name of the starting map this game was launched from, or null if
+    /// it was a procedural (Random Map) game. Carried across save/load so
+    /// the in-game label can keep showing "Map: foo" after a reload.
+    /// </summary>
+    public string? OriginMapName { get; }
+
     public LoadedSave(
         GameState state,
         IReadOnlyList<Player> players,
         int masterSeed,
         int maxTurnNumber,
-        string slotName)
+        string slotName,
+        string? originMapName = null)
     {
         State = state;
         Players = players;
         MasterSeed = masterSeed;
         MaxTurnNumber = maxTurnNumber;
         SlotName = slotName;
+        OriginMapName = originMapName;
     }
 }
 
@@ -66,8 +75,11 @@ public static class SaveSerializer
         int masterSeed,
         IReadOnlyList<Player> players,
         string slotName,
-        int maxTurnNumber)
-        => SerializeInternal(state, masterSeed, players, slotName, maxTurnNumber, includeKind: true);
+        int maxTurnNumber,
+        string? originMapName = null)
+        => SerializeInternal(
+            state, masterSeed, players, slotName, maxTurnNumber,
+            includeKind: true, originMapName: originMapName);
 
     /// <summary>
     /// Serialize a starting map — same JSON format as <see cref="Serialize"/>,
@@ -81,7 +93,7 @@ public static class SaveSerializer
         IReadOnlyList<Player> players,
         string slotName)
         => SerializeInternal(state, masterSeed, players, slotName,
-            maxTurnNumber: int.MaxValue, includeKind: false);
+            maxTurnNumber: int.MaxValue, includeKind: false, originMapName: null);
 
     private static string SerializeInternal(
         GameState state,
@@ -89,7 +101,8 @@ public static class SaveSerializer
         IReadOnlyList<Player> players,
         string slotName,
         int maxTurnNumber,
-        bool includeKind)
+        bool includeKind,
+        string? originMapName)
     {
         // Player index by color for fast tile/unit owner lookup.
         var indexByColor = new Dictionary<Color, int>();
@@ -103,6 +116,7 @@ public static class SaveSerializer
             FormatVersion = CurrentFormatVersion,
             SavedAtUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
             SlotName = slotName,
+            OriginMapName = originMapName,
             MasterSeed = masterSeed,
             TurnNumber = state.Turns.TurnNumber,
             CurrentPlayerIndex = state.Turns.CurrentPlayerIndex,
@@ -158,7 +172,8 @@ public static class SaveSerializer
         IReadOnlySet<HexCoord> waterCoords = DeserializeWater(data.Water);
         var state = new GameState(grid, territories, players, turnState, treasury, waterCoords);
         return new LoadedSave(
-            state, players, data.MasterSeed, data.MaxTurnNumber, data.SlotName);
+            state, players, data.MasterSeed, data.MaxTurnNumber, data.SlotName,
+            originMapName: data.OriginMapName);
     }
 
     // --- Water -----------------------------------------------------------
@@ -378,6 +393,14 @@ public sealed class SaveData
     public int FormatVersion { get; set; }
     public long SavedAtUnix { get; set; }
     public string SlotName { get; set; } = "";
+
+    /// <summary>
+    /// Name of the starting map this game descended from. Null for
+    /// procedural (Random Map) games and absent in saves written
+    /// before this field was added.
+    /// </summary>
+    public string? OriginMapName { get; set; }
+
     public int MasterSeed { get; set; }
     public int TurnNumber { get; set; }
     public int CurrentPlayerIndex { get; set; }

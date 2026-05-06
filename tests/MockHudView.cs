@@ -52,8 +52,8 @@ public class MockHudView : IHudView
         LastSeenWinner = session.Winner;
     }
 
-    public int? LastSetMapSeed { get; private set; }
-    public void SetMapSeed(int seed) => LastSetMapSeed = seed;
+    public string? LastSetMapLabel { get; private set; }
+    public void SetMapLabel(string text) => LastSetMapLabel = text;
 
     public void ClickBuyPeasant() => BuyPeasantClicked?.Invoke();
     public void ClickBuildTower() => BuildTowerClicked?.Invoke();

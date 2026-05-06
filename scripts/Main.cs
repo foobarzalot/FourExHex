@@ -15,6 +15,13 @@ public partial class Main : Node2D
     private IReadOnlyList<Player> _players = null!;
     private GameState _state = null!;
     private int _maxTurnNumber;
+
+    /// <summary>
+    /// Name of the starting map this game descended from, or null for
+    /// procedural (Random Map) games. Carried into every save so a
+    /// resumed game can keep showing "Map: foo" in the bottom-left.
+    /// </summary>
+    private string? _originMapName;
     private AcceptDialog? _saveDialog;
     private LineEdit? _saveDialogLineEdit;
     private AcceptDialog? _saveErrorDialog;
@@ -87,6 +94,9 @@ public partial class Main : Node2D
             _state = pendingLoad.State;
             _players = pendingLoad.Players;
             _maxTurnNumber = pendingLoad.MaxTurnNumber;
+            // Carry the origin map name forward so the bottom-left label
+            // and future autosaves keep identifying the map of origin.
+            _originMapName = pendingLoad.OriginMapName;
         }
         else if (pendingLoad != null && isStartingMap)
         {
@@ -105,6 +115,7 @@ public partial class Main : Node2D
                 new Treasury(),
                 pendingLoad.State.WaterCoords);
             _maxTurnNumber = diagnosticMode ? 500 : int.MaxValue;
+            _originMapName = pendingLoad.SlotName;
         }
         else
         {
@@ -118,6 +129,7 @@ public partial class Main : Node2D
                 raw, new List<Territory>(), grid);
             _state = new GameState(grid, territories, _players, turnState, treasury, mapGen.WaterCoords);
             _maxTurnNumber = diagnosticMode ? 500 : int.MaxValue;
+            _originMapName = null;
         }
         var session = new SessionState();
 
@@ -209,7 +221,12 @@ public partial class Main : Node2D
             _controller.StartGame();
         }
 
-        hud.SetMapSeed(_controller.MasterSeed);
+        // Games descended from a starting map identify by name; procedural
+        // games show the seed driving the per-turn RNG.
+        string mapLabel = _originMapName != null
+            ? $"Map: {_originMapName}"
+            : $"Seed: {_controller.MasterSeed}";
+        hud.SetMapLabel(mapLabel);
     }
 
     /// <summary>
@@ -221,7 +238,7 @@ public partial class Main : Node2D
     {
         try
         {
-            _saveStore.WriteAutosave(_state, _controller.MasterSeed, _players, _maxTurnNumber);
+            _saveStore.WriteAutosave(_state, _controller.MasterSeed, _players, _maxTurnNumber, _originMapName);
         }
         catch (System.Exception ex)
         {
@@ -293,7 +310,7 @@ public partial class Main : Node2D
         }
         try
         {
-            _saveStore.WriteSlot(name, _state, _controller.MasterSeed, _players, _maxTurnNumber);
+            _saveStore.WriteSlot(name, _state, _controller.MasterSeed, _players, _maxTurnNumber, _originMapName);
         }
         catch (System.Exception ex)
         {

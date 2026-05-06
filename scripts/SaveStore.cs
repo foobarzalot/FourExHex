@@ -28,9 +28,10 @@ public sealed class SaveStore
         GameState state,
         int masterSeed,
         IReadOnlyList<Player> players,
-        int maxTurnNumber)
+        int maxTurnNumber,
+        string? originMapName = null)
     {
-        WriteSlot(AutosaveSlotName, state, masterSeed, players, maxTurnNumber);
+        WriteSlot(AutosaveSlotName, state, masterSeed, players, maxTurnNumber, originMapName);
     }
 
     /// <summary>
@@ -44,9 +45,10 @@ public sealed class SaveStore
         GameState state,
         int masterSeed,
         IReadOnlyList<Player> players,
-        int maxTurnNumber)
+        int maxTurnNumber,
+        string? originMapName = null)
     {
-        WriteSlotIn(SaveDirectory, slotName, state, masterSeed, players, maxTurnNumber);
+        WriteSlotIn(SaveDirectory, slotName, state, masterSeed, players, maxTurnNumber, originMapName);
     }
 
     /// <summary>
@@ -75,12 +77,13 @@ public sealed class SaveStore
         GameState state,
         int masterSeed,
         IReadOnlyList<Player> players,
-        int maxTurnNumber)
+        int maxTurnNumber,
+        string? originMapName)
     {
         EnsureDirectory(directory);
         string sanitized = SanitizeSlotName(slotName);
         string json = SaveSerializer.Serialize(
-            state, masterSeed, players, sanitized, maxTurnNumber);
+            state, masterSeed, players, sanitized, maxTurnNumber, originMapName);
         AtomicWrite(directory, sanitized, json);
     }
 
