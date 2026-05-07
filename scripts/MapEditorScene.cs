@@ -14,6 +14,7 @@ public partial class MapEditorScene : Node2D
 {
     private MapEditorHudView _hud = null!;
     private HexMapView _map = null!;
+    private HexHoverTooltip _hoverTooltip = null!;
     private List<Player> _players = null!;
     private HexGrid _grid = new HexGrid();
     private HashSet<HexCoord> _water = new HashSet<HexCoord>();
@@ -37,6 +38,7 @@ public partial class MapEditorScene : Node2D
         _map.Init(BuildState());
         AddChild(_map);
         _map.CoordClicked += OnCoordClicked;
+        _map.CoordHovered += OnCoordHovered;
 
         _hud = new MapEditorHudView();
         AddChild(_hud);
@@ -58,6 +60,17 @@ public partial class MapEditorScene : Node2D
         _saveStore = new SaveStore();
         BuildSaveDialog();
         BuildLoadDialog();
+
+        // Hover tooltip — added last so its CanvasLayer sits on top of
+        // the HUD and dialogs. Editor-only by design; the play scene
+        // does not subscribe to CoordHovered.
+        _hoverTooltip = new HexHoverTooltip();
+        AddChild(_hoverTooltip);
+    }
+
+    private void OnCoordHovered(HexCoord? coord)
+    {
+        _hoverTooltip.NotifyHover(coord, _map.Cols);
     }
 
     public override void _UnhandledInput(InputEvent @event)

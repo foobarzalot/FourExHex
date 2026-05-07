@@ -40,6 +40,17 @@ public partial class HexMapView : Node2D, IHexMapView
     /// </summary>
     public event Action<HexCoord>? CoordClicked;
 
+    /// <summary>
+    /// Raised on mouse motion with the hex coord currently under the
+    /// cursor, or null when the cursor is off the (Cols × Rows) grid
+    /// rectangle or over the HUD strip. Editor-only — the map editor
+    /// uses this to drive a hover tooltip (see
+    /// <see cref="HexHoverTooltip"/>). The play scene does not
+    /// subscribe. Future hover-driven UI (palette previews, territory
+    /// info popups) can hang off the same event.
+    /// </summary>
+    public event Action<HexCoord?>? CoordHovered;
+
     [Export] public int Cols { get; set; } = 30;
     [Export] public int Rows { get; set; } = 20;
     [Export] public float HexSize { get; set; } = 48f;
@@ -1418,6 +1429,7 @@ public partial class HexMapView : Node2D, IHexMapView
     {
         if (@event is InputEventMouseMotion motion)
         {
+            EmitCoordHovered(motion.Position);
             if (!_dragCandidate) return;
             Vector2 delta = motion.Position - _dragStartScreen;
             if (!_isDragging && delta.Length() > DragThresholdPx) _isDragging = true;
@@ -1541,6 +1553,29 @@ public partial class HexMapView : Node2D, IHexMapView
         {
             TileClicked?.Invoke(hit);
         }
+    }
+
+    /// <summary>
+    /// Emit <see cref="CoordHovered"/> with the hex under the cursor, or
+    /// null when the cursor is over the HUD strip or outside the
+    /// (Cols × Rows) offset rectangle. Skips the work entirely when no
+    /// listener is attached — the play scene doesn't subscribe.
+    /// </summary>
+    private void EmitCoordHovered(Vector2 viewportPos)
+    {
+        if (CoordHovered is null) return;
+
+        if (viewportPos.Y < HudView.HudHeight)
+        {
+            CoordHovered.Invoke(null);
+            return;
+        }
+
+        Vector2 local = ToLocal(viewportPos) - FirstHexCenterOffset;
+        HexCoord coord = HexCoord.FromPixel(local, HexSize);
+        (int col, int row) = coord.ToOffset();
+        bool inBounds = col >= 0 && col < Cols && row >= 0 && row < Rows;
+        CoordHovered.Invoke(inBounds ? coord : (HexCoord?)null);
     }
 
     /// <summary>Visible center of the play area in viewport space — accounts
