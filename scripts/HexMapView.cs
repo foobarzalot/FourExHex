@@ -51,6 +51,39 @@ public partial class HexMapView : Node2D, IHexMapView
     /// </summary>
     public event Action<HexCoord?>? CoordHovered;
 
+    /// <summary>
+    /// Raised once per unique hex visited during a paint gesture in
+    /// <see cref="HexDragMode.Paint"/>. Fires on mouse-press with the
+    /// initial cell and again whenever the cursor crosses into a new
+    /// in-grid cell while the button is held. Editor-only — the play
+    /// scene leaves the view in <see cref="HexDragMode.Pan"/> and
+    /// never sees these.
+    /// </summary>
+    public event Action<HexCoord>? PaintCellEntered;
+
+    /// <summary>
+    /// Raised on mouse-release at the end of a paint gesture in
+    /// <see cref="HexDragMode.Paint"/>. Fires exactly once per
+    /// <see cref="PaintCellEntered"/>-bracketed stroke and is the
+    /// signal for editor code to commit a single undo entry covering
+    /// the whole stroke.
+    /// </summary>
+    public event Action? PaintStrokeEnded;
+
+    /// <summary>
+    /// Drag mode. <see cref="HexDragMode.Pan"/> (default) preserves the
+    /// existing left-drag-pans / left-click-fires-CoordClicked behavior
+    /// the play scene relies on. <see cref="HexDragMode.Paint"/> turns
+    /// the left button into a paint gesture: the press fires
+    /// <see cref="PaintCellEntered"/> immediately, motion fires it for
+    /// each new cell crossed, release fires <see cref="PaintStrokeEnded"/>;
+    /// no panning happens and <see cref="CoordClicked"/> /
+    /// <see cref="TileClicked"/> / <see cref="TileLongClicked"/> are
+    /// suppressed for that gesture. Set by the map editor based on the
+    /// selected palette swatch.
+    /// </summary>
+    public HexDragMode DragMode { get; set; } = HexDragMode.Pan;
+
     [Export] public int Cols { get; set; } = 30;
     [Export] public int Rows { get; set; } = 20;
     [Export] public float HexSize { get; set; } = 48f;
@@ -177,6 +210,12 @@ public partial class HexMapView : Node2D, IHexMapView
     // the rally action instead of the normal click on release.
     private const ulong LongPressMs = 400UL;
     private ulong _pressStartMsec;
+
+    // Paint-gesture state, used only when DragMode == Paint. _paintActive
+    // is set on press and cleared on release; _lastPaintedCoord de-dups
+    // the per-cell event when the cursor moves within the same hex.
+    private bool _paintActive;
+    private HexCoord _lastPaintedCoord;
 
     // Zoom state. _zoom is the active scale multiplier on this Node2D,
     // continuous in [_zoomMin, 1.0]. Wheel and +/- keys snap through
@@ -1430,6 +1469,12 @@ public partial class HexMapView : Node2D, IHexMapView
         if (@event is InputEventMouseMotion motion)
         {
             EmitCoordHovered(motion.Position);
+            if (_paintActive)
+            {
+                EmitPaintCellIfChanged(motion.Position);
+                GetViewport().SetInputAsHandled();
+                return;
+            }
             if (!_dragCandidate) return;
             Vector2 delta = motion.Position - _dragStartScreen;
             if (!_isDragging && delta.Length() > DragThresholdPx) _isDragging = true;
@@ -1516,6 +1561,14 @@ public partial class HexMapView : Node2D, IHexMapView
 
         if (mouse.Pressed)
         {
+            if (DragMode == HexDragMode.Paint)
+            {
+                _paintActive = true;
+                _lastPaintedCoord = default;
+                EmitPaintCellIfChanged(mouse.Position, force: true);
+                GetViewport().SetInputAsHandled();
+                return;
+            }
             _dragCandidate = true;
             _isDragging = false;
             _dragStartScreen = mouse.Position;
@@ -1524,7 +1577,17 @@ public partial class HexMapView : Node2D, IHexMapView
             return;
         }
 
-        // Button released. If a drag actually happened, swallow the click.
+        // Button released. Paint stroke ends here in Paint mode and
+        // suppresses the click events. In Pan mode, a drag swallows the
+        // click; otherwise it falls through to the click dispatch below.
+        if (_paintActive)
+        {
+            _paintActive = false;
+            PaintStrokeEnded?.Invoke();
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+
         bool wasDragging = _isDragging;
         bool wasLongPress = !wasDragging
             && Time.GetTicksMsec() - _pressStartMsec >= LongPressMs;
@@ -1576,6 +1639,25 @@ public partial class HexMapView : Node2D, IHexMapView
         (int col, int row) = coord.ToOffset();
         bool inBounds = col >= 0 && col < Cols && row >= 0 && row < Rows;
         CoordHovered.Invoke(inBounds ? coord : (HexCoord?)null);
+    }
+
+    /// <summary>
+    /// Emit <see cref="PaintCellEntered"/> when the cursor's current hex
+    /// differs from the last one painted in this stroke (or always, when
+    /// <paramref name="force"/> is set, used at stroke start). Coords
+    /// outside the (Cols × Rows) offset rectangle are dropped — the
+    /// editor's paint helpers no-op on out-of-bounds anyway, and this
+    /// keeps the event clean.
+    /// </summary>
+    private void EmitPaintCellIfChanged(Vector2 viewportPos, bool force = false)
+    {
+        Vector2 local = ToLocal(viewportPos) - FirstHexCenterOffset;
+        HexCoord coord = HexCoord.FromPixel(local, HexSize);
+        (int col, int row) = coord.ToOffset();
+        if (col < 0 || col >= Cols || row < 0 || row >= Rows) return;
+        if (!force && coord.Equals(_lastPaintedCoord)) return;
+        _lastPaintedCoord = coord;
+        PaintCellEntered?.Invoke(coord);
     }
 
     /// <summary>Visible center of the play area in viewport space — accounts

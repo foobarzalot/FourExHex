@@ -153,6 +153,14 @@ off it.
 │       renderer-only)      │  │   ├─ event CoordHovered(HexCoord?) — mouse │
 │                           │  │   │    motion; null off-grid/HUD; editor-  │
 │                           │  │   │    only (drives HexHoverTooltip)        │
+│                           │  │   ├─ event PaintCellEntered(HexCoord) +    │
+│                           │  │   │    PaintStrokeEnded — drag-paint       │
+│                           │  │   │    channel; editor-only                 │
+│                           │  │   ├─ DragMode (Pan | Paint) — Pan = today's│
+│                           │  │   │    click+drag-pan; Paint = press fires │
+│                           │  │   │    PaintCellEntered, motion fires per  │
+│                           │  │   │    new cell, release fires Stroke-     │
+│                           │  │   │    Ended; suppresses pan + click events│
 │                           │  │   ├─ TerritoryAt(coord)                    │
 │                           │  │   ├─ ShowHighlight(territory)              │
 │   SessionState            │  │   ├─ ShowMoveTargets(coords, level)        │
@@ -699,11 +707,37 @@ edits look identical to in-game terrain.
   `HexMapView.ReloadState` (preserving zoom/pan), and reapplies
   occupant visuals. This is why `HexMapView` exposes both `Init` and
   `ReloadState`.
-- **Click routing.** `HexMapView.CoordClicked` (every non-drag
-  click, regardless of long-press status) is the editor's input
-  channel — the play scene uses `TileClicked` / `TileLongClicked`
-  on the same view, but the editor's flow is single-click-paint, so
-  `CoordClicked` is the right signal.
+- **Input model.** Each palette swatch flips
+  `HexMapView.DragMode` to one of two channels:
+  - **Pan mode** (hand, capital): drag pans the camera; releases
+    without drag fire `CoordClicked`. The hand swatch ignores the
+    click; the capital swatch handles it via
+    `MapEditPaint.PaintCapital`.
+  - **Paint mode** (colors, water, tree, tower): drag paints a
+    stroke. The view fires `PaintCellEntered` on press for the
+    initial cell, again for every new cell the cursor crosses
+    while held, and `PaintStrokeEnded` on release. No panning, no
+    `CoordClicked` for that gesture. A sub-threshold press-release
+    still produces a one-cell stroke, so single-click painting is
+    just a degenerate drag.
+
+  The editor wraps a stroke in a single undo entry: the first
+  `PaintCellEntered` captures an `EditorSnapshot.Capture`,
+  per-cell paints reuse it, and `PaintStrokeEnded` pushes once iff
+  any cell mutated state.
+- **Hand swatch.** Palette index 0, the default selection on scene
+  entry. Pan-mode, no paint. Escape ladders out: a first press
+  with any non-hand swatch active reselects the hand (canceling
+  the paint mode); a second press with the hand already active
+  exits the editor.
+- **Toggle stroke locking.** Tree and tower drag-paints have an
+  explicit "Add" or "Erase" mode locked at the first cell of the
+  stroke. If the first cell already carries the matching occupant
+  → Erase (subsequent cells skip everything except matching
+  removals); else → Add (subsequent cells skip cells that already
+  have the occupant). This prevents a single drag from both
+  placing and clearing — a long stroke that wanders over varied
+  terrain is consistent end-to-end.
 - **Hover tooltip.** `HexMapView.CoordHovered` fires on mouse
   motion with the hex under the cursor (null when off the
   `Cols × Rows` rectangle or over the HUD strip). The editor wires
@@ -770,6 +804,8 @@ scripts/
 ├─ HexPaletteButton.cs    ─ hex-shaped palette swatch Control
 ├─ HexHoverTooltip.cs     ─ editor-only floating tooltip showing the
 │                           hovered hex's lex index + (col, row)
+├─ HexDragMode.cs         ─ Pan | Paint enum gating HexMapView's
+│                           left-button gesture interpretation
 ├─ GameSettings.cs        ─ global player config (PlayerConfig, PlayerKinds,
 │                           optional MasterSeed)
 ├─ LoadRequest.cs         ─ static one-shot handoff: menu Load → Main

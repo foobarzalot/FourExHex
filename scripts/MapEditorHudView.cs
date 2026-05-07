@@ -18,14 +18,20 @@ public partial class MapEditorHudView : CanvasLayer
     public const int SeedMin = 1;
     public const int SeedMax = 1000;
 
+    /// <summary>
+    /// Palette index reserved for the hand (no-op / pan-only) swatch.
+    /// Always 0 — the hand sits first in the palette and is the default
+    /// selection on scene entry.
+    /// </summary>
+    public const int HandPaletteIndex = 0;
     /// <summary>Palette index reserved for the water swatch.</summary>
-    public static int WaterPaletteIndex => GameSettings.PlayerConfig.Length;
+    public static int WaterPaletteIndex => 1 + GameSettings.PlayerConfig.Length;
     /// <summary>Palette index reserved for the tree-toggle swatch.</summary>
-    public static int TreePaletteIndex => GameSettings.PlayerConfig.Length + 1;
+    public static int TreePaletteIndex => 2 + GameSettings.PlayerConfig.Length;
     /// <summary>Palette index reserved for the capital-placement swatch.</summary>
-    public static int CapitalPaletteIndex => GameSettings.PlayerConfig.Length + 2;
+    public static int CapitalPaletteIndex => 3 + GameSettings.PlayerConfig.Length;
     /// <summary>Palette index reserved for the tower-toggle swatch.</summary>
-    public static int TowerPaletteIndex => GameSettings.PlayerConfig.Length + 3;
+    public static int TowerPaletteIndex => 4 + GameSettings.PlayerConfig.Length;
 
     public event Action? ExitClicked;
     public event Action<int>? GenerateRequested;
@@ -102,16 +108,28 @@ public partial class MapEditorHudView : CanvasLayer
         paletteHbox.AddThemeConstantOverride("separation", 6);
         leftHbox.AddChild(paletteHbox);
 
-        _palette = new HexPaletteButton[GameSettings.PlayerConfig.Length + 4];
+        _palette = new HexPaletteButton[GameSettings.PlayerConfig.Length + 5];
+
+        // Hand swatch — pan/no-paint mode. Default selection on scene
+        // entry. Dark neutral grey: gives the white selection outline
+        // enough contrast and lets the skin-tone hand silhouette read
+        // against the background.
+        var handButton = new HexPaletteButton(
+            new Color(0.32f, 0.34f, 0.38f, 1f), HexPaletteIcon.Hand);
+        handButton.Pressed += _ => SelectPalette(HandPaletteIndex);
+        AudioBus.AttachClick(handButton);
+        paletteHbox.AddChild(handButton);
+        _palette[HandPaletteIndex] = handButton;
+
         for (int i = 0; i < GameSettings.PlayerConfig.Length; i++)
         {
             (_, string hex) = GameSettings.PlayerConfig[i];
             var button = new HexPaletteButton(new Color(hex));
-            int captured = i;
-            button.Pressed += _ => SelectPalette(captured);
+            int paletteIndex = i + 1;
+            button.Pressed += _ => SelectPalette(paletteIndex);
             AudioBus.AttachClick(button);
             paletteHbox.AddChild(button);
-            _palette[i] = button;
+            _palette[paletteIndex] = button;
         }
         // Water swatch — same blue HexMapView.CreateWaterHexVisual uses.
         int waterIndex = WaterPaletteIndex;
@@ -120,23 +138,23 @@ public partial class MapEditorHudView : CanvasLayer
         AudioBus.AttachClick(waterButton);
         paletteHbox.AddChild(waterButton);
         _palette[waterIndex] = waterButton;
-        // Tree swatch — empty-land background with the tree icon overlaid.
-        // The background color is a soft earthy tan that doesn't collide
-        // with any of the player colors so the button reads as "tree on
-        // generic land" rather than a seventh player color.
+        // Tree swatch — earthy brown background with the tree icon
+        // overlaid. Reads as "tree on dirt" rather than a seventh
+        // player color, and dark enough that the white selection
+        // outline reads at a glance.
         int treeIndex = TreePaletteIndex;
         var treeButton = new HexPaletteButton(
-            new Color(0.82f, 0.74f, 0.55f, 1f), HexPaletteIcon.Tree);
+            new Color(0.42f, 0.30f, 0.18f, 1f), HexPaletteIcon.Tree);
         treeButton.Pressed += _ => SelectPalette(treeIndex);
         AudioBus.AttachClick(treeButton);
         paletteHbox.AddChild(treeButton);
         _palette[treeIndex] = treeButton;
-        // Capital swatch — light slate background with the star icon
-        // overlaid. The background is distinct from the tree's tan so the
-        // two action-icon buttons read as different at a glance.
+        // Capital swatch — deep slate-violet so the white selection
+        // outline reads, and so it's visually distinct from the
+        // similarly grey-toned hand and tower swatches.
         int capitalIndex = CapitalPaletteIndex;
         var capitalButton = new HexPaletteButton(
-            new Color(0.72f, 0.72f, 0.78f, 1f), HexPaletteIcon.Capital);
+            new Color(0.36f, 0.32f, 0.50f, 1f), HexPaletteIcon.Capital);
         capitalButton.Pressed += _ => SelectPalette(capitalIndex);
         AudioBus.AttachClick(capitalButton);
         paletteHbox.AddChild(capitalButton);
@@ -152,9 +170,10 @@ public partial class MapEditorHudView : CanvasLayer
         paletteHbox.AddChild(towerButton);
         _palette[towerIndex] = towerButton;
 
-        // Default selection: first land color (Red). Visual is set via
-        // SelectPalette so the IsSelected outline draws from the start.
-        SelectPalette(0, fireEvent: false);
+        // Default selection: the hand (no-paint, pan-only) swatch. Visual
+        // is set via SelectPalette so the IsSelected outline draws from
+        // the start.
+        SelectPalette(HandPaletteIndex, fireEvent: false);
 
         var rightHbox = new HBoxContainer
         {
@@ -305,6 +324,14 @@ public partial class MapEditorHudView : CanvasLayer
         _seedField.AcceptEvent();
         OnGeneratePressed();
     }
+
+    /// <summary>
+    /// Programmatically reselect the hand swatch. Used by the Escape
+    /// key handler to drop out of paint mode without exiting the
+    /// editor. Fires <see cref="PaletteSelectionChanged"/> if the hand
+    /// wasn't already selected.
+    /// </summary>
+    public void SelectHand() => SelectPalette(HandPaletteIndex);
 
     private void SelectPalette(int index, bool fireEvent = true)
     {

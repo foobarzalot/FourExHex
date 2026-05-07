@@ -19,6 +19,7 @@ public enum HexPaletteIcon
     Tree,
     Capital,
     Tower,
+    Hand,
 }
 
 public partial class HexPaletteButton : Control
@@ -82,6 +83,7 @@ public partial class HexPaletteButton : Control
             case HexPaletteIcon.Tree: DrawTreeIcon(center, radius); break;
             case HexPaletteIcon.Capital: DrawCapitalIcon(center, radius); break;
             case HexPaletteIcon.Tower: DrawTowerIcon(center, radius); break;
+            case HexPaletteIcon.Hand: DrawHandIcon(center, radius); break;
         }
 
         Color outlineColor = _isSelected ? new Color(1f, 1f, 1f) : new Color(0f, 0f, 0f);
@@ -121,12 +123,21 @@ public partial class HexPaletteButton : Control
             center + new Vector2(-tw, tbot),
         };
         DrawColoredPolygon(trunk, new Color(0.36f, 0.22f, 0.1f, 1f));
+        // Black outline so the trunk separates from the earth-brown
+        // swatch background (the trunk fill is intentionally close to
+        // it, mirroring the map's tree visual).
+        for (int i = 0; i < 4; i++)
+        {
+            DrawLine(trunk[i], trunk[(i + 1) % 4], new Color(0f, 0f, 0f, 1f), 1.5f);
+        }
     }
 
     private void DrawCapitalIcon(Vector2 center, float hexRadius)
     {
-        // Five-point star matching HexMapView.CreateCapitalVisual's shape.
-        // Black fill so the icon reads against the light hex background.
+        // Five-point star matching HexMapView.CreateCapitalVisual's
+        // shape. Gold fill (capital = royalty) reads cleanly against
+        // the deep slate-violet swatch background; a black outline
+        // crisps the silhouette regardless of background.
         float outer = hexRadius * 0.65f;
         float inner = outer * 0.4f;
         var verts = new Vector2[10];
@@ -136,7 +147,85 @@ public partial class HexPaletteButton : Control
             float r = (i % 2 == 0) ? outer : inner;
             verts[i] = center + new Vector2(r * Mathf.Cos(angle), r * Mathf.Sin(angle));
         }
-        DrawColoredPolygon(verts, new Color(0f, 0f, 0f, 1f));
+        DrawColoredPolygon(verts, new Color(0.97f, 0.80f, 0.22f, 1f));
+        for (int i = 0; i < 10; i++)
+        {
+            DrawLine(verts[i], verts[(i + 1) % 10], new Color(0f, 0f, 0f, 1f), 1.5f);
+        }
+    }
+
+    private void DrawHandIcon(Vector2 center, float hexRadius)
+    {
+        // Stylized open palm: a rounded palm rectangle, four fingers
+        // sprouting up, and a thumb angled out to the left. Filled in a
+        // neutral skin-tone with a black outline so it reads against any
+        // hex background. Composed of simple rectangles to keep the
+        // shape recognizable at the 36×40 button size.
+        Color fill = new Color(0.93f, 0.78f, 0.62f, 1f);
+        Color outline = new Color(0f, 0f, 0f, 1f);
+        float r = hexRadius * 0.55f;
+
+        float palmHalfW = r * 0.55f;
+        float palmTop = -r * 0.05f;
+        float palmBot = r * 0.85f;
+        Vector2[] palm =
+        {
+            center + new Vector2(-palmHalfW, palmTop),
+            center + new Vector2(palmHalfW, palmTop),
+            center + new Vector2(palmHalfW, palmBot),
+            center + new Vector2(-palmHalfW, palmBot),
+        };
+        DrawColoredPolygon(palm, fill);
+        for (int i = 0; i < 4; i++)
+        {
+            DrawLine(palm[i], palm[(i + 1) % 4], outline, 1.5f);
+        }
+
+        float fingerW = r * 0.22f;
+        float fingerTop = -r * 0.95f;
+        float fingerBot = palmTop + r * 0.02f;
+        float[] fingerCenters =
+        {
+            -palmHalfW + fingerW * 0.6f,
+            -fingerW * 0.6f,
+            fingerW * 0.6f,
+            palmHalfW - fingerW * 0.6f,
+        };
+        foreach (float fx in fingerCenters)
+        {
+            Vector2[] finger =
+            {
+                center + new Vector2(fx - fingerW * 0.5f, fingerTop),
+                center + new Vector2(fx + fingerW * 0.5f, fingerTop),
+                center + new Vector2(fx + fingerW * 0.5f, fingerBot),
+                center + new Vector2(fx - fingerW * 0.5f, fingerBot),
+            };
+            DrawColoredPolygon(finger, fill);
+            for (int i = 0; i < 4; i++)
+            {
+                DrawLine(finger[i], finger[(i + 1) % 4], outline, 1.5f);
+            }
+        }
+
+        // Thumb: an angled rounded-rectangle that juts out the left side
+        // of the palm at roughly 30° below horizontal. Built as a quad
+        // by extruding a short segment in a perpendicular direction.
+        Vector2 thumbBase = center + new Vector2(-palmHalfW, palmTop + r * 0.25f);
+        Vector2 thumbTip = thumbBase + new Vector2(-r * 0.55f, -r * 0.32f);
+        Vector2 thumbDir = (thumbTip - thumbBase).Normalized();
+        Vector2 thumbPerp = new Vector2(-thumbDir.Y, thumbDir.X) * (r * 0.18f);
+        Vector2[] thumb =
+        {
+            thumbBase + thumbPerp,
+            thumbTip + thumbPerp,
+            thumbTip - thumbPerp,
+            thumbBase - thumbPerp,
+        };
+        DrawColoredPolygon(thumb, fill);
+        for (int i = 0; i < 4; i++)
+        {
+            DrawLine(thumb[i], thumb[(i + 1) % 4], outline, 1.5f);
+        }
     }
 
     private void DrawTowerIcon(Vector2 center, float hexRadius)

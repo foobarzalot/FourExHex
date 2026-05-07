@@ -20,6 +20,18 @@ public partial class MapEditorScene : Node2D
     private HashSet<HexCoord> _water = new HashSet<HexCoord>();
     private IReadOnlyList<Territory> _territories = new List<Territory>();
     private readonly UndoStack<EditorSnapshot> _undoStack = new UndoStack<EditorSnapshot>();
+
+    // Paint-stroke state. Captured at the first PaintCellEntered of a
+    // stroke and consumed at PaintStrokeEnded so a whole drag becomes
+    // exactly one undo entry (or zero, if nothing actually changed).
+    // _toggleStrokeMode is non-null only for the tree/tower palettes:
+    // it locks the stroke to "Add" or "Erase" after the first cell so
+    // a single drag never both places and clears.
+    private EditorSnapshot? _paintStrokePre;
+    private bool _paintStrokeChanged;
+    private ToggleStrokeMode? _toggleStrokeMode;
+
+    private enum ToggleStrokeMode { Add, Erase }
     private SaveStore _saveStore = null!;
     private AcceptDialog? _saveDialog;
     private LineEdit? _saveDialogLineEdit;
@@ -37,17 +49,26 @@ public partial class MapEditorScene : Node2D
         InitWaterOnly(_map.Cols, _map.Rows);
         _map.Init(BuildState());
         AddChild(_map);
+        // CoordClicked is the click channel for Pan-mode palettes (hand,
+        // capital). Color/water/tree/tower palettes flip the view into
+        // Paint mode, where input arrives via PaintCellEntered/Ended.
         _map.CoordClicked += OnCoordClicked;
         _map.CoordHovered += OnCoordHovered;
+        _map.PaintCellEntered += OnPaintCellEntered;
+        _map.PaintStrokeEnded += OnPaintStrokeEnded;
 
         _hud = new MapEditorHudView();
         AddChild(_hud);
         _hud.ExitClicked += ReturnToMainMenu;
         _hud.GenerateRequested += OnGenerateRequested;
+        _hud.PaletteSelectionChanged += OnPaletteSelectionChanged;
         _hud.UndoLastClicked += OnUndoLastClicked;
         _hud.UndoAllClicked += OnUndoAllClicked;
         _hud.RedoLastClicked += OnRedoLastClicked;
         _hud.RedoAllClicked += OnRedoAllClicked;
+        // Sync DragMode to the HUD's initial selection (the hand swatch).
+        // Pan keeps current click+drag-pan behavior.
+        _map.DragMode = DragModeFor(_hud.SelectedPaletteIndex);
         // SetUndoState is called inside _Ready after the HUD's own _Ready
         // has run (Godot guarantees parent _Ready completes after children
         // are added/Ready'd, and we just AddChild'd it). The buttons start
@@ -78,6 +99,14 @@ public partial class MapEditorScene : Node2D
         if (@event is not InputEventKey keyEvent || !keyEvent.Pressed || keyEvent.Echo) return;
         if (keyEvent.Keycode != Key.Escape) return;
         GetViewport()?.SetInputAsHandled();
+        // Escape ladders out: first press drops back to the hand
+        // (canceling whatever paint mode is selected); a second press
+        // with the hand already active exits the editor.
+        if (_hud.SelectedPaletteIndex != MapEditorHudView.HandPaletteIndex)
+        {
+            _hud.SelectHand();
+            return;
+        }
         ReturnToMainMenu();
     }
 
@@ -101,51 +130,142 @@ public partial class MapEditorScene : Node2D
 
     private void OnCoordClicked(HexCoord coord)
     {
+        // Only fires under Pan-mode palettes (hand, capital). Color /
+        // water / tree / tower clicks come through OnPaintCellEntered.
         int idx = _hud.SelectedPaletteIndex;
+        if (idx == MapEditorHudView.HandPaletteIndex) return;
+        if (idx != MapEditorHudView.CapitalPaletteIndex) return;
 
-        // Capture pre-paint state. If the paint turns out to be a no-op
-        // (out of bounds, same color, water-on-water, etc.), MapEditPaint
-        // returns the SAME territory list reference and we drop the
-        // snapshot rather than pollute the stack with phantom entries.
         EditorSnapshot pre = EditorSnapshot.Capture(_grid, _water, _territories);
         IReadOnlyList<Territory> beforeRef = _territories;
-
-        if (idx == MapEditorHudView.CapitalPaletteIndex)
-        {
-            _territories = MapEditPaint.PaintCapital(
-                _grid, _water, _territories, _map.Cols, _map.Rows, coord);
-        }
-        else if (idx == MapEditorHudView.TowerPaletteIndex)
-        {
-            _territories = MapEditPaint.PaintTowerToggle(
-                _grid, _water, _territories, _map.Cols, _map.Rows, coord);
-        }
-        else if (idx == MapEditorHudView.TreePaletteIndex)
-        {
-            _territories = MapEditPaint.PaintTreeToggle(
-                _grid, _water, _territories, _map.Cols, _map.Rows, coord);
-        }
-        else if (idx == MapEditorHudView.WaterPaletteIndex)
-        {
-            _territories = MapEditPaint.PaintWater(
-                _grid, _water, _territories, _map.Cols, _map.Rows, coord);
-        }
-        else
-        {
-            Color color = new Color(GameSettings.PlayerConfig[idx].Hex);
-            _territories = MapEditPaint.PaintLand(
-                _grid, _water, _territories, _map.Cols, _map.Rows, coord, color);
-        }
-
+        _territories = MapEditPaint.PaintCapital(
+            _grid, _water, _territories, _map.Cols, _map.Rows, coord);
         if (!ReferenceEquals(_territories, beforeRef))
         {
             _undoStack.PushBefore(pre);
         }
-
-        // Per-paint rebuild: existing trees + graves should appear instantly,
-        // not re-grow on every click.
         PushState(animateNewOccupants: false);
     }
+
+    private void OnPaintCellEntered(HexCoord coord)
+    {
+        // First cell of a stroke captures the rollback snapshot and (for
+        // tree/tower) locks the toggle direction so a single drag never
+        // both places and clears. Subsequent cells reuse both.
+        if (_paintStrokePre is null)
+        {
+            _paintStrokePre = EditorSnapshot.Capture(_grid, _water, _territories);
+            _paintStrokeChanged = false;
+            _toggleStrokeMode = ResolveToggleStrokeMode(_hud.SelectedPaletteIndex, coord);
+        }
+
+        IReadOnlyList<Territory> beforeRef = _territories;
+        ApplyPaintAt(_hud.SelectedPaletteIndex, coord);
+        if (!ReferenceEquals(_territories, beforeRef))
+        {
+            _paintStrokeChanged = true;
+        }
+        PushState(animateNewOccupants: false);
+    }
+
+    private void OnPaintStrokeEnded()
+    {
+        if (_paintStrokePre is not null && _paintStrokeChanged)
+        {
+            _undoStack.PushBefore(_paintStrokePre);
+            // SetUndoState was running per-cell via PushState already, so
+            // the bar is current; just refresh once more to reflect the
+            // committed entry.
+            _hud.SetUndoState(_undoStack.CanUndo, _undoStack.CanRedo);
+        }
+        _paintStrokePre = null;
+        _paintStrokeChanged = false;
+        _toggleStrokeMode = null;
+    }
+
+    private void ApplyPaintAt(int idx, HexCoord coord)
+    {
+        if (idx == MapEditorHudView.WaterPaletteIndex)
+        {
+            _territories = MapEditPaint.PaintWater(
+                _grid, _water, _territories, _map.Cols, _map.Rows, coord);
+            return;
+        }
+        if (idx == MapEditorHudView.TreePaletteIndex)
+        {
+            if (!ToggleCellAllowed(coord, isTree: true)) return;
+            _territories = MapEditPaint.PaintTreeToggle(
+                _grid, _water, _territories, _map.Cols, _map.Rows, coord);
+            return;
+        }
+        if (idx == MapEditorHudView.TowerPaletteIndex)
+        {
+            if (!ToggleCellAllowed(coord, isTree: false)) return;
+            _territories = MapEditPaint.PaintTowerToggle(
+                _grid, _water, _territories, _map.Cols, _map.Rows, coord);
+            return;
+        }
+        // Color swatch: idx 1..PlayerConfig.Length. Index 0 is the hand
+        // (Pan mode, never reaches here).
+        Color color = new Color(GameSettings.PlayerConfig[idx - 1].Hex);
+        _territories = MapEditPaint.PaintLand(
+            _grid, _water, _territories, _map.Cols, _map.Rows, coord, color);
+    }
+
+    /// <summary>
+    /// Decide the locked direction for a tree/tower drag stroke based on
+    /// what's at the first cell. Tree/tower of the matching kind already
+    /// present → Erase; anything else (empty, water, capital, opposite
+    /// occupant) → Add. Returns null for non-toggle palettes.
+    /// </summary>
+    private ToggleStrokeMode? ResolveToggleStrokeMode(int idx, HexCoord firstCoord)
+    {
+        if (idx != MapEditorHudView.TreePaletteIndex
+            && idx != MapEditorHudView.TowerPaletteIndex)
+        {
+            return null;
+        }
+        HexTile? tile = _grid.Get(firstCoord);
+        if (tile == null) return ToggleStrokeMode.Add;
+        bool isTree = idx == MapEditorHudView.TreePaletteIndex;
+        bool present = isTree ? tile.Occupant is Tree : tile.Occupant is Tower;
+        return present ? ToggleStrokeMode.Erase : ToggleStrokeMode.Add;
+    }
+
+    /// <summary>
+    /// Gate a per-cell tree/tower toggle by the locked stroke direction.
+    /// Add-mode skips cells that already carry the matching occupant
+    /// (so a tree-add stroke doesn't accidentally erase trees it
+    /// crosses); Erase-mode skips cells without it (so a tree-erase
+    /// stroke doesn't drop trees onto bare ground or swap towers in).
+    /// </summary>
+    private bool ToggleCellAllowed(HexCoord coord, bool isTree)
+    {
+        HexTile? tile = _grid.Get(coord);
+        bool present = tile != null
+            && (isTree ? tile.Occupant is Tree : tile.Occupant is Tower);
+        return _toggleStrokeMode switch
+        {
+            ToggleStrokeMode.Add => !present,
+            ToggleStrokeMode.Erase => present,
+            _ => true,
+        };
+    }
+
+    private void OnPaletteSelectionChanged(int idx)
+    {
+        _map.DragMode = DragModeFor(idx);
+    }
+
+    /// <summary>
+    /// Hand and capital are click-only (drag pans the camera as before);
+    /// every other swatch (colors, water, tree, tower) is drag-paint.
+    /// </summary>
+    private static HexDragMode DragModeFor(int idx) =>
+        (idx == MapEditorHudView.HandPaletteIndex
+         || idx == MapEditorHudView.CapitalPaletteIndex)
+            ? HexDragMode.Pan
+            : HexDragMode.Paint;
 
     private void OnUndoLastClicked() => RunHistory(_undoStack.CanUndo, _undoStack.UndoLast);
     private void OnUndoAllClicked() => RunHistory(_undoStack.CanUndo, _undoStack.UndoAll);
