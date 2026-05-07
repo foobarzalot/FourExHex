@@ -43,6 +43,8 @@ Show the diff and get buy-in on the plan when rule changes have test fallout (e.
 
 **Manual-test-after-every-change rule**: The user is not running the Godot editor. After any change whose unit tests pass, rebuild and launch the game yourself, then wait for the user to confirm the feature works before moving on or pushing. Unit tests don't cover the view layer (`Main`, `HexMapView`, `HudView`, `MainMenuScene` are excluded), so passing tests aren't enough evidence that a visual/interaction change actually works.
 
+**Architecture-doc-before-push rule**: When the user asks to push code changes to the remote, ask first whether they want `ARCHITECTURE.md` updated to reflect those changes — and wait for an answer before pushing. Triggers on any push whose diff (committed or about-to-commit) touches code: `.cs`, `.tscn`, `.csproj`, `project.godot`, etc. Skip the question if the push is documentation-only (`*.md` and similar) — there's no code drift to capture. Don't ask on plain commits, only when the push itself is requested.
+
 ## Diagnostic AI-stress mode (`FOUREXHEX_6AI`)
 
 Setting the env var `FOUREXHEX_6AI` before launching Godot reconfigures the session for a fully headless regression run:

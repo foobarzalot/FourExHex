@@ -11,7 +11,7 @@ off it.
 ┌──────────────────────────────────────────────────────────────────────────┐
 │                            SCENE ROOT (Godot)                            │
 │                                                                          │
-│   Main (Node2D)                                                          │
+│   Main (Node2D)  — play scene root (res://scenes/main.tscn)              │
 │   └─ _Ready:                                                             │
 │      1. Read GameSettings (player kinds + optional MasterSeed set by     │
 │         the main menu; forced to all-Heuristic when FOUREXHEX_6AI set).  │
@@ -20,11 +20,17 @@ off it.
 │      3. Pick the master seed: load wins, then GameSettings.MasterSeed,   │
 │         then Random.Shared.Next(). One seed drives both map gen and      │
 │         the controller's per-turn RNG.                                   │
-│      4. Build the model:                                                 │
-│           • Load path: state, players, max-turn cap come from the save. │
-│           • Fresh path: BuildPlayers + MapGenerator.BuildInitialGrid    │
+│      4. Build the model. Three branches:                                 │
+│           • In-progress save (TurnNumber > 0): state, players, max-turn │
+│             cap, OriginMapName all come from the save.                  │
+│           • Starting map (TurnNumber == 0 on disk): terrain (grid,      │
+│             water, territories, pre-placed trees/towers/capitals)       │
+│             comes from the saved map; players from GameSettings; turn   │
+│             starts at 1, treasury empty. _originMapName = slot name.    │
+│           • Procedural: BuildPlayers + MapGenerator.BuildInitialGrid    │
 │             (CA carve → land/water + ~5% trees) → TerritoryFinder       │
 │             → CapitalReconciler → new GameState (incl. WaterCoords).    │
+│             _originMapName = null.                                      │
 │         Then a fresh SessionState.                                       │
 │      5. Pick views: real HexMapView/HudView, or HeadlessHexMapView/      │
 │         HeadlessHudView when in diagnostic mode                          │
@@ -37,11 +43,13 @@ off it.
 │           maxTurnNumber: load ? saved : (diagnostic ? 500 : int.MaxVal)) │
 │      8. Wire save/load:                                                  │
 │           • new SaveStore + (non-diagnostic) build the Save dialog.     │
-│           • Subscribe controller.HumanTurnStarted → autosave write.    │
+│           • Subscribe controller.HumanTurnStarted → autosave write,    │
+│             passing _originMapName so resumed games keep their map      │
+│             identity.                                                   │
 │           • Subscribe HUD SaveGameClicked → open the dialog.           │
-│      9. controller.Resume() (load path) or controller.StartGame()       │
-│         (fresh). Then hud.SetMapSeed(controller.MasterSeed) for HUD     │
-│         display.                                                         │
+│      9. controller.Resume() (in-progress load) or controller.StartGame()│
+│         (fresh / starting map). Then hud.SetMapLabel("Map: <name>") for │
+│         starting-map games or "Seed: <n>" for procedural.               │
 │   Owns no game logic, no state.                                          │
 └─────────────────────────────┬────────────────────────────────────────────┘
                               │
@@ -59,6 +67,7 @@ off it.
 │   │                                                                      │
 │   ├─ subscribes in ctor:                                                 │
 │   │    map.TileClicked              → OnTileClicked                      │
+│   │    map.TileLongClicked          → OnTileLongClicked (rally)          │
 │   │    hud.BuyPeasantClicked        → OnBuyPressed (cycles unit level)   │
 │   │    hud.BuildTowerClicked        → OnBuildTowerPressed                │
 │   │    hud.UndoLastClicked          → OnUndoLastPressed                  │
@@ -71,29 +80,41 @@ off it.
 │   │    hud.NextUnitClicked          → OnNextUnitPressed                  │
 │   │    hud.PreviousUnitClicked      → OnPreviousUnitPressed              │
 │   │    hud.CancelActionPressed      → OnCancelActionPressed              │
+│   │    hud.DefeatContinueClicked    → OnDefeatContinuePressed            │
 │   │   (NewGameClicked / MainMenuClicked / SaveGameClicked are handled    │
 │   │    in Main, not here)                                                │
 │   │                                                                      │
 │   ├─ click policy state machine:                                         │
-│   │    OnTileClicked → pending-mode branch (buy/build/move)              │
-│   │                  → SetSelection branch                               │
+│   │    OnTileClicked     → pending-mode branch (buy/build/move)          │
+│   │                      → SetSelection branch                           │
+│   │    OnTileLongClicked → rally: free-reposition every unmoved unit     │
+│   │                        in the territory toward the long-pressed     │
+│   │                        target (single undo step, fires PlayRally    │
+│   │                        once if any unit moved)                       │
 │   │                                                                      │
 │   ├─ action handlers:                                                    │
 │   │    ExecuteBuyAndPlace → debit gold + MovementRules.PlaceNew          │
 │   │                       → if capture: HandleCapture                    │
+│   │                       → DispatchActionSound (combine/destroy/place)  │
 │   │    ExecuteMove        → MovementRules.Move                           │
 │   │                       → if capture: HandleCapture                    │
-│   │    ExecuteBuildTower  → debit gold + drop Tower (no capture path)    │
+│   │                       → DispatchActionSound                          │
+│   │    ExecuteBuildTower  → debit gold + drop Tower + PlayTowerPlaced    │
 │   │                                                                      │
 │   ├─ AI loop (paced via IAiPacer):                                       │
 │   │    RunAiTurnsUntilHumanOrDone → preview → execute beats              │
 │   │    ExecuteAiMove / ExecuteAiBuyUnit / ExecuteAiBuildTower —          │
 │   │      validate then mutate (illegal AI action throws)                 │
+│   │    Pauses when SessionState.PendingDefeatScreen is set; resumes      │
+│   │      from OnDefeatContinuePressed                                    │
 │   │                                                                      │
 │   ├─ capture reconciliation:                                             │
 │   │    HandleCapture → TerritoryFinder.FindAll                           │
 │   │                  → CapitalReconciler.Reconcile                       │
 │   │                  → Treasury.ReconcileAfterCapture                    │
+│   │                  → detect freshly-eliminated colors (had a capital   │
+│   │                    before, none after) → PlayPlayerDefeated;         │
+│   │                    set PendingDefeatScreen for human eliminations    │
 │   │                  → _map.RebuildAfterTerritoryChange                  │
 │   │                  → WinConditionRules.WinnerByDomination (mid-turn)   │
 │   │                                                                      │
@@ -106,9 +127,10 @@ off it.
 │   ├─ turn rotation:                                                      │
 │   │    OnEndTurnPressed → undo.Clear                                     │
 │   │                     → EndOfTurnProcessing (win check only)           │
-│   │                     → AdvanceToNextActivePlayer (skip eliminated)    │
-│   │                     → StartPlayerTurn (growth → reset → income →     │
-│   │                                        upkeep)                       │
+│   │                     → AdvanceToNextActivePlayer (skip players with   │
+│   │                                                  no capital)         │
+│   │                     → StartPlayerTurn (reseed RNG → growth → reset → │
+│   │                                        income → upkeep)              │
 │   │                     → RunAiTurnsUntilHumanOrDone                     │
 │   │                                                                      │
 │   └─ single UI update path:                                              │
@@ -122,30 +144,45 @@ off it.
 │                           │  │                                            │
 │   GameState               │  │   HexMapView : Node2D, IHexMapView         │
 │   ├─ Grid                 │  │   ├─ Init(state) — injected before _Ready  │
-│   ├─ Territories          │  │   ├─ event TileClicked(HexTile?)           │
-│   ├─ Players              │  │   ├─ TerritoryAt(coord)                    │
-│   ├─ Turns                │  │   ├─ ShowHighlight(territory)              │
-│   ├─ Treasury             │  │   ├─ ShowMoveTargets(coords)               │
-│   └─ WaterCoords          │  │   ├─ ShowTowerTargets(coords)              │
-│      (off-map blockers,   │  │   ├─ ShowTowerCoverage(coords)             │
-│       renderer-only)      │  │   ├─ ShowMoveSource(coord?)                │
-│                           │  │   ├─ CenterOnTerritory(territory)          │
-│   SessionState            │  │   ├─ RebuildAfterTerritoryChange()         │
-│   ├─ Winner (Color?)      │  │   ├─ RefreshOccupantVisuals(color, tr.)    │
-│   ├─ SelectedTerritory    │  │   ├─ PlayDestructionEffect(coord, occ.)    │
-│   ├─ Mode (enum)          │  │   └─ layers: borders / capitals / units /  │
-│   ├─ MoveSource           │  │             towers / trees / graves /     │
-│   └─ Undo (UndoStack of   │  │             targets / highlight            │
-│      UndoEntry =          │  │                                            │
-│      GameStateSnapshot +  │  │   HudView : CanvasLayer, IHudView          │
-│      SessionStateSnapshot)│  │   ├─ events: BuyPeasant / BuildTower /     │
+│   ├─ Territories          │  │   ├─ ReloadState(state, anim) — used by    │
+│   ├─ Players              │  │   │    the editor to swap terrain in place │
+│   ├─ Turns                │  │   ├─ event TileClicked(HexTile?)           │
+│   ├─ Treasury             │  │   ├─ event TileLongClicked(HexTile?)       │
+│   └─ WaterCoords          │  │   ├─ event CoordClicked(HexCoord) — every  │
+│      (off-map blockers,   │  │   │    non-drag click; editor consumes it  │
+│       renderer-only)      │  │   ├─ TerritoryAt(coord)                    │
+│                           │  │   ├─ ShowHighlight(territory)              │
+│   SessionState            │  │   ├─ ShowMoveTargets(coords, level)        │
+│   ├─ Winner (Color?)      │  │   ├─ ShowTowerTargets(coords)              │
+│   ├─ PendingDefeatScreen  │  │   ├─ ShowTowerCoverage(coords)             │
+│   │   (Color? — drives    │  │   ├─ ShowMoveSource(coord?)                │
+│   │   the defeat overlay) │  │   ├─ CenterOnTerritory(territory)          │
+│   ├─ SelectedTerritory    │  │   ├─ RebuildAfterTerritoryChange()         │
+│   ├─ Mode (enum)          │  │   ├─ RefreshOccupantVisuals(color, tr.)    │
+│   ├─ MoveSource           │  │   ├─ PlayDestructionEffect(coord, occ.)    │
+│   └─ Undo (UndoStack of   │  │   ├─ Play{UnitPlaced, TowerPlaced,         │
+│      UndoEntry =          │  │   │    UnitCombined, UnitDestroyed,        │
+│      GameStateSnapshot +  │  │   │    TowerDestroyed, TreeCleared,        │
+│      SessionStateSnapshot)│  │   │    CapitalDestroyed, Bankruptcy,       │
+│                           │  │   │    GameWon, Rally, PlayerDefeated}     │
+│                           │  │   │    — audio sinks routed to AudioBus    │
+│                           │  │   └─ layers: borders / capitals / units /  │
+│                           │  │             towers / trees / graves /     │
+│                           │  │             targets / highlight            │
+│                           │  │                                            │
+│                           │  │   HudView : CanvasLayer, IHudView          │
+│                           │  │   ├─ events: BuyPeasant / BuildTower /     │
 │                           │  │     UndoLast / UndoTurn / RedoLast /       │
 │                           │  │     RedoAll / EndTurn / NewGame /          │
 │                           │  │     MainMenu / NextTerritory /             │
 │                           │  │     PreviousTerritory / NextUnit /         │
 │                           │  │     PreviousUnit / SaveGame / CancelAction │
+│                           │  │     / DefeatContinue                       │
 │                           │  │   ├─ Refresh(state, session, hasAct.)      │
-│                           │  │   └─ SetMapSeed(seed)                      │
+│                           │  │   │    (drives the defeat overlay from     │
+│                           │  │   │    session.PendingDefeatScreen)        │
+│                           │  │   └─ SetMapLabel(text)  // "Map: foo" or   │
+│                           │  │                          "Seed: 1234"      │
 │                           │  │                                            │
 │                           │  │   HeadlessHexMapView / HeadlessHudView —   │
 │                           │  │   no-op stubs for diagnostic mode          │
@@ -195,7 +232,8 @@ off it.
 │   GameStateSnapshot — deep-copy (tiles + gold + territories)             │
 │   SessionStateSnapshot — selection anchor + Mode + MoveSource            │
 │   UndoEntry — pair of (GameStateSnapshot, SessionStateSnapshot)          │
-│   UndoStack — two-sided history of UndoEntry                             │
+│   UndoStack<T> — two-sided history of T (UndoEntry for play, also reused │
+│                  by the editor with EditorSnapshot)                      │
 │   TerritoryLookup — FindOwnedContaining / FindByCapital helpers          │
 │   MapGenerator — CA-driven land/water carve + tree scatter, seeded       │
 │   GameSettings — global PlayerConfig (name, color hex) + PlayerKinds     │
@@ -203,10 +241,34 @@ off it.
 │                  read by Main                                            │
 │   LoadRequest — static one-shot handoff from menu's Load button to       │
 │                 Main (consumed and cleared in _Ready)                    │
-│   SaveStore — user://saves/ slot CRUD: WriteAutosave / WriteSlot /       │
-│                ListSlots / LoadSlot, with reserved "autosave" slot       │
-│   SaveSerializer — JSON (de)serializer for the full game state          │
-│   SaveSlotInfo — slot listing metadata (name, time, turn, isAutosave)   │
+│   SaveStore — user://saves/ slot CRUD + user://maps/ for starting        │
+│                maps: WriteAutosave / WriteSlot / ListSlots / LoadSlot,   │
+│                WriteMapSlot / ListMaps / LoadMap; reserved "autosave"    │
+│                slot                                                      │
+│   SaveSerializer — JSON (de)serializer for the full game state +         │
+│                    starting maps (Kind omitted; OriginMapName carried)   │
+│   LoadedSave — bundle of (state, players, master seed, max-turn cap,     │
+│                slot name, optional OriginMapName)                        │
+│   SaveSlotInfo — slot listing metadata (name, time, turn, isAutosave)    │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│                         AUDIO (autoload)                                 │
+│                                                                          │
+│   AudioBus — autoload-registered Node singleton (project.godot           │
+│   [autoload] entry "AudioBus"). Owns AudioStreamPlayer instances for     │
+│   every shared SFX — click, place/move (units, towers, combine,          │
+│   destroy variants), tree/grave clear, capital fall, bankruptcy bell,    │
+│   game-won fanfare, rally whoosh, player-defeated gong. Survives scene  │
+│   changes so a button press that triggers ChangeSceneToFile still hears │
+│   its click on the way out. The static AttachClick(BaseButton) /        │
+│   AttachClick(HexPaletteButton) helpers wire any button's Pressed       │
+│   signal to the shared click player.                                    │
+│                                                                          │
+│   HexMapView's Play* methods (PlayUnitPlaced, PlayBankruptcy, …)         │
+│   forward to AudioBus.Instance. The interface lets controllers fire     │
+│   audio without knowing about the autoload, and lets HeadlessHexMapView │
+│   (test/diagnostic) stub them out.                                      │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -216,8 +278,9 @@ off it.
 
 ```csharp
 event Action<HexTile?>? TileClicked;
+event Action<HexTile?>? TileLongClicked;     // rally
 Territory? TerritoryAt(HexCoord coord);
-void ShowMoveTargets(IEnumerable<HexCoord> coords);
+void ShowMoveTargets(IEnumerable<HexCoord> coords, UnitLevel level);
 void ShowTowerTargets(IEnumerable<HexCoord> coords);
 void ShowTowerCoverage(IEnumerable<HexCoord> coords);
 void ShowMoveSource(HexCoord? coord);
@@ -226,7 +289,26 @@ void CenterOnTerritory(Territory territory);
 void RebuildAfterTerritoryChange();
 void RefreshOccupantVisuals(Color? currentPlayerColor, Treasury treasury);
 void PlayDestructionEffect(HexCoord coord, HexOccupant destroyed);
+
+// Audio sinks — forwarded to AudioBus.
+void PlayUnitPlaced(HexCoord coord);
+void PlayTowerPlaced(HexCoord coord);
+void PlayUnitCombined(HexCoord coord);
+void PlayUnitDestroyed(HexCoord coord);
+void PlayTowerDestroyed(HexCoord coord);
+void PlayTreeCleared(HexCoord coord);
+void PlayCapitalDestroyed(HexCoord coord);
+void PlayBankruptcy();
+void PlayGameWon();
+void PlayRally();
+void PlayPlayerDefeated();
 ```
+
+`ShowMoveTargets` takes the unit level so the preview can render at
+the correct visual size (peasant=1 ring, spearman=2, knight=3,
+baron=3+dot). Audio is fired from the controller right after the
+mutation that produced it; `DispatchActionSound` picks one cue per
+move/buy resolution (combine > destruction-by-type > generic place).
 
 **`IHudView`** — everything the controller asks the HUD to do:
 
@@ -246,9 +328,19 @@ event Action? NextUnitClicked;         // N hotkey: cycle units in selection
 event Action? PreviousUnitClicked;     // Shift+N hotkey
 event Action? CancelActionPressed;     // Escape hotkey equivalent
 event Action? SaveGameClicked;         // handled in Main (opens save dialog)
+event Action? DefeatContinueClicked;   // dismiss defeat overlay; resume AI
+
 void Refresh(GameState state, SessionState session, bool hasActionableRemaining);
-void SetMapSeed(int seed);             // one-time announcement after setup
+void SetMapLabel(string text);         // one-time after setup; "Map: foo"
+                                       // for starting-map games, "Seed: N"
+                                       // for procedural
 ```
+
+The defeat overlay is part of the HUD: `Refresh` reads
+`session.PendingDefeatScreen` and shows/hides a click-blocking panel
+naming the eliminated player. Continue raises
+`DefeatContinueClicked`; the overlay's "Main Menu" button reuses
+`MainMenuClicked`.
 
 **`IAiPacer`** — schedules deferred continuations for the AI step
 machine. `GodotAiPacer` schedules via the `SceneTree`; the default
@@ -278,11 +370,11 @@ void Cancel();
 - **Snapshots capture `GameState` plus the player-intent slice of
   `SessionState`** (`SelectedTerritory` anchor, `Mode`, `MoveSource`)
   via `UndoEntry` (a `(GameStateSnapshot, SessionStateSnapshot)` pair).
-  `Winner` and the `Undo` stack itself stay out. Top-level human event
-  handlers are wrapped in `TrackHandler`, which captures pre-state,
-  runs the body, and pushes one `UndoEntry` iff state actually changed
-  — automatic de-dup of no-op clicks. Exceptions inside a handler
-  propagate without pushing.
+  `Winner`, `PendingDefeatScreen`, and the `Undo` stack itself stay
+  out. Top-level human event handlers are wrapped in `TrackHandler`,
+  which captures pre-state, runs the body, and pushes one `UndoEntry`
+  iff state actually changed — automatic de-dup of no-op clicks.
+  Exceptions inside a handler propagate without pushing.
 - **`HexTile.Color` is the single source of truth for tile
   ownership.** Its setter pushes the new color into the attached
   `Polygon2D`, so the logical color and rendered fill can't drift.
@@ -292,6 +384,10 @@ void Cancel();
   anyway), and the AI execute methods validate preconditions before
   mutating — an illegal AI action throws and halts the game in an
   obvious error state rather than corrupting state silently.
+- **Players with no capital-bearing territory are skipped.**
+  `AdvanceToNextActivePlayer` calls `TurnState.EndTurn` until it lands
+  on a player whose territory list contains a capital — eliminated
+  players never get a phantom turn.
 
 ## Turn structure
 
@@ -301,20 +397,27 @@ A turn is sandwiched between two phases:
 
 Runs in this fixed order for the now-current player:
 
-1. **Tree growth** — `TreeRules.RunStartOfTurnGrowth` (skipped during
+1. **Reseed RNG** — `ReseedRngForCurrentTurn` derives `_rng` from
+   `(masterSeed, turnNumber, currentPlayerIndex)` so all subsequent
+   RNG draws this turn are reproducible from the seed alone.
+2. **Tree growth** — `TreeRules.RunStartOfTurnGrowth` (skipped during
    round 1, i.e. while `TurnNumber == 1`). Graves on the current
    player's tiles become trees; empty cells of their color with ≥2
    neighboring trees become trees.
-2. **Reset movement** — `HasMovedThisTurn` cleared on the current
+3. **Reset movement** — `HasMovedThisTurn` cleared on the current
    player's units.
-3. **Collect income** — `Treasury.CollectIncomeFor` (skipped during
+4. **Collect income** — `Treasury.CollectIncomeFor` (skipped during
    round 1; the seed from `SeedStartingGold` is the round-1 bankroll).
    Tree and grave tiles don't pay; everything else (empty, units,
    capitals, towers) pays 1 gold.
-4. **Apply upkeep** — `UpkeepRules.ApplyUpkeepFor`. Per-unit costs:
+5. **Apply upkeep** — `UpkeepRules.ApplyUpkeepFor`. Per-unit costs:
    Peasant 2, Spearman 6, Knight 18, Baron 54. A territory that
    can't pay total upkeep goes bankrupt: every unit in it becomes a
-   `Grave`, remaining gold stays.
+   `Grave`, remaining gold stays. `PlayBankruptcy` fires once if any
+   territory of this player went bankrupt (player-scoped, not
+   tile-scoped).
+6. **Fire `HumanTurnStarted`** if the now-current player is human and
+   the game isn't over. Save/load wires the autosave path here.
 
 The income → upkeep ordering matters: it lets the same turn's income
 subsidize that turn's upkeep before bankruptcy is checked.
@@ -339,12 +442,26 @@ Two independent checks fire from different places:
   wins if no other player still has a capital-bearing territory.
   This is the typical victory path.
 
+`DeclareWinner` is the centralized setter for `SessionState.Winner`;
+it fires `PlayGameWon` iff the winner is human.
+
+### Player elimination
+
+`HandleCapture` diffs the set of colors with capitals before vs after
+the reconcile. A color that had at least one capital before and none
+after has been eliminated by this capture: `PlayPlayerDefeated`
+fires; if the eliminated color is human,
+`SessionState.PendingDefeatScreen` is set so the HUD shows a defeat
+overlay. The AI loop pauses at the next `StepAiExecute` while the
+overlay is up so the human can read the result before play resumes.
+`OnDefeatContinuePressed` clears the flag and re-arms the pacer.
+
 ### Rotation
 
 `AdvanceToNextActivePlayer()` calls `TurnState.EndTurn()` (which
 increments `TurnNumber` on wrap) then loops while
-`WinConditionRules.IsEliminated(nextPlayer, grid)` is true — wiped-out
-players are skipped entirely.
+`WinConditionRules.IsEliminated(currentPlayer.Color, grid)` is true
+— wiped-out players are skipped entirely.
 
 ## Call flows
 
@@ -364,7 +481,7 @@ GameController.OnTileClicked
   └─ tile has unmoved own unit → enter MovingUnit mode
         ├─ session.Mode = MovingUnit
         ├─ session.MoveSource = tile.Coord
-        ├─ _map.ShowMoveTargets(CaptureTargetsOnly(level, territory))
+        ├─ _map.ShowMoveTargets(ActionConsumingTargets(level, terr.), level)
         └─ _map.ShowMoveSource(tile.Coord)
 ```
 
@@ -379,6 +496,7 @@ GameController.OnTileClicked  ── wrapped in TrackHandler:
         ├─ IsValidTarget(level, coord) == true
         └─ ExecuteMove(source, destination)
               ├─ _handlerMutatedGame = true
+              ├─ wasCombine = WasFriendlyUnitAt(dst, owner)
               ├─ MovementRules.Move → dst.Color = attacker; dst.Occupant = unit
               │                      → unit.HasMovedThisTurn = true
               ├─ if WasCapture:
@@ -387,18 +505,41 @@ GameController.OnTileClicked  ── wrapped in TrackHandler:
               │     │     ├─ state.Territories = CapitalReconciler.Reconcile(raw, old, grid)
               │     │     ├─ state.Treasury.ReconcileAfterCapture(old, new)
               │     │     │     (enemy gold on captured capital tiles is forfeited)
+              │     │     ├─ if a color lost its last capital:
+              │     │     │     PlayPlayerDefeated; for human, set PendingDefeatScreen
               │     │     ├─ _map.RebuildAfterTerritoryChange()
-              │     │     └─ if WinConditionRules.WinnerByDomination → set Winner, clear undo
+              │     │     └─ if WinConditionRules.WinnerByDomination → DeclareWinner, clear undo
               │     └─ RebindSelectionToContaining(destination)
               ├─ if MoveResult.Destroyed != null: _map.PlayDestructionEffect(dst, occ.)
+              ├─ DispatchActionSound(dst, result, wasCombine)
+              │     (combine > destroyed-by-type > generic place)
               └─ FinishPendingAction()
                     ├─ session.ClearPendingAction()
-                    ├─ _map.ShowMoveTargets([])
+                    ├─ _map.ShowMoveTargets([], …)
                     ├─ _map.ShowMoveSource(null)
                     └─ RefreshViews()
   // Back inside TrackHandler, after the body runs:
   if !session.IsGameOver && (_handlerMutatedGame || sessionChanged):
       session.Undo.PushBefore(pre)     // single push per handler, auto-deduped
+```
+
+### Long-press → rally
+
+```
+HexMapView → TileLongClicked(target tile)
+GameController.OnTileLongClicked  ── wrapped in TrackHandler:
+  └─ OnTileLongClickedBody(tile)
+        ├─ ignored if game over, no tile, or any pending mode
+        ├─ ignored unless tile color == current player's color
+        ├─ collect every unmoved current-color unit in the territory
+        ├─ sort closest-to-target first (lex-min tiebreak) so far units
+        │   can't leapfrog near ones
+        └─ for each src: greedy free-reposition to the strictly closer
+            empty in-territory cell (MovementRules.Move on own-empty
+            does NOT consume the move action)
+        ├─ if any moved: _handlerMutatedGame = true; PlayRally;
+        │   re-select the territory
+        └─ RefreshViews()
 ```
 
 ### End turn
@@ -409,12 +550,12 @@ GameController.OnEndTurnPressed
   ├─ if session.IsGameOver → return            // game already over, ignore
   ├─ session.Undo.Clear()                      // commit: no going back
   ├─ EndOfTurnProcessing()                     // end-of-turn win check
-  │     └─ WinConditionRules.WinnerAtEndOfTurn → set Winner if sole capital-bearer
+  │     └─ WinConditionRules.WinnerAtEndOfTurn → DeclareWinner if sole capital-bearer
   ├─ if session.IsGameOver:                    // win check just fired
   │     └─ CheckGameEndConditions()            // fire GameEnded once
   │ else:
   │     ├─ AdvanceToNextActivePlayer()         // skip eliminated players
-  │     ├─ StartPlayerTurn()                   // growth → reset → income → upkeep
+  │     ├─ StartPlayerTurn()                   // reseed → growth → reset → income → upkeep
   │     │     (growth + income skipped during round 1; fires HumanTurnStarted
   │     │      if the new current player is human)
   │     └─ RunAiTurnsUntilHumanOrDone()        // paced AI loop if next is AI
@@ -430,11 +571,12 @@ GameController.OnUndoLastPressed
   ├─ if !session.Undo.CanUndo → no-op
   ├─ snap = session.Undo.UndoLast(CaptureCurrentSnapshot())
   └─ ApplySnapshot(snap)
-        ├─ state.Territories = snap.ApplyTo(state.Grid, state.Treasury)
+        ├─ state.Territories = snap.Game.ApplyTo(state.Grid, state.Treasury)
         ├─ _map.RebuildAfterTerritoryChange()
-        ├─ SetSelection(null)
-        ├─ CancelPendingAction()
+        ├─ snap.Session.ApplyTo(session, state.Territories)
+        ├─ RestoreOverlaysForCurrentMode()    // re-emits highlight + targets
         └─ RefreshViews()
+  └─ CenterIfSelectionChanged(...)            // pan to the restored selection
 ```
 
 ### AI turn (paced)
@@ -457,6 +599,8 @@ StepAiExecute:
   ├─ run ExecuteAiMove / ExecuteAiBuyUnit / ExecuteAiBuildTower
   │     (each validates preconditions; throws on illegal action)
   ├─ re-highlight resulting territory (post-capture)
+  ├─ if PendingDefeatScreen: pause — return without scheduling next
+  │     (resumes from OnDefeatContinuePressed)
   └─ schedule next StepAiPreview after AiActionDelayMs
 ```
 
@@ -492,39 +636,95 @@ sequences.
 - **Master seed.** `GameController` takes a `seed:` constructor arg
   and exposes `MasterSeed`. Inside the controller, `_rng` is reseeded
   from `(masterSeed, turnNumber, currentPlayerIndex)` at the top of
-  every `StartPlayerTurn` and on every `Resume` (`ReseedRngForCurrentTurn`).
-  Map generation (`MapGenerator.BuildInitialGrid`) uses the same seed,
-  so the menu's "Map Seed" field is reproducible end-to-end.
+  every `StartPlayerTurn` and on every `Resume`
+  (`ReseedRngForCurrentTurn`). Map generation
+  (`MapGenerator.BuildInitialGrid`) uses the same seed, so the menu's
+  "Map Seed" field is reproducible end-to-end.
 - **Autosave.** `Main` subscribes `controller.HumanTurnStarted` to a
-  handler that writes the `autosave` slot via `SaveStore.WriteAutosave`.
-  Fires once at the start of every human turn, after start-of-turn
-  bookkeeping (tree growth, income, upkeep) so the saved state matches
-  what the player sees. AI turns and game-over states are skipped.
+  handler that writes the `autosave` slot via
+  `SaveStore.WriteAutosave`. Fires once at the start of every human
+  turn, after start-of-turn bookkeeping (tree growth, income, upkeep)
+  so the saved state matches what the player sees. AI turns and
+  game-over states are skipped.
 - **Named saves.** The HUD's Save button raises `SaveGameClicked`,
   which `Main` (not the controller) handles by opening an
   `AcceptDialog` for a slot name and calling `SaveStore.WriteSlot`.
   The literal `autosave` slot name is reserved.
+- **Origin map name.** Saves carry an optional `OriginMapName` field
+  identifying the starting map a game descended from (or null for
+  procedural games). It rides through autosave so reloads keep the
+  bottom-left "Map: foo" label correct.
 - **Load.** The main menu's Load button populates `LoadRequest.Pending`
-  with a `LoadedSave` (state + players + master seed + max-turn cap)
-  and changes scene to `main.tscn`. `Main._Ready` consumes and clears
-  the request. On the load path, fresh grid construction is skipped
-  and `controller.Resume()` is called instead of `StartGame()`.
+  with a `LoadedSave` (state + players + master seed + max-turn cap +
+  optional OriginMapName) and changes scene to `main.tscn`.
+  `Main._Ready` consumes and clears the request. On the in-progress
+  load path, fresh grid construction is skipped and
+  `controller.Resume()` is called instead of `StartGame()`.
 - **`Resume()`** reseeds the RNG for the current turn, runs any
   leading AI turns until control reaches a human (or game ends),
   refreshes the views, then fires `HumanTurnStarted` if the resumed
   player is human (so the autosave hook still runs after a load).
 
-`SaveStore` lives at `user://saves/` and exposes `WriteAutosave`,
-`WriteSlot`, `ListSlots`, `LoadSlot`, plus `SanitizeSlotName` for
-filesystem-safe slot names. `SaveSerializer` is the JSON layer and
-`SaveSlotInfo` is the slot listing record.
+`SaveStore` lives at `user://saves/` (in-progress games) and
+`user://maps/` (starting maps from the editor) and exposes
+`WriteAutosave`, `WriteSlot`, `WriteMapSlot`, `ListSlots`,
+`ListMaps`, `LoadSlot`, `LoadMap`, plus `SanitizeSlotName` for
+filesystem-safe slot names. `SaveSerializer` is the JSON layer
+(format version 2); `Serialize` writes the player roster's `Kind`
+field, `SerializeMap` omits it (the editor's saved maps don't bake
+a player-kind config — roles are assigned at play time from the
+menu). `SaveSlotInfo` is the slot listing record.
+
+## Map editor
+
+`MapEditorScene` (root of `res://scenes/map_editor.tscn`, reached
+from the main menu's "Map Editor" button) is a separate scene that
+lets the user paint a starting map by hand and save it to
+`user://maps/`. It deliberately doesn't reuse `GameController` —
+nothing about it is turn- or rules-driven — but it does reuse the
+view layer (`HexMapView` + a sibling `MapEditorHudView`) so map
+edits look identical to in-game terrain.
+
+- **Draft state.** The scene owns a mutable `HexGrid`, water set,
+  and territory list, plus an `UndoStack<EditorSnapshot>` for
+  undo/redo. `EditorSnapshot.Capture` deep-copies all three; its
+  `ApplyTo` rebuilds the grid from scratch (paints can both add and
+  remove tiles, so `GameStateSnapshot`'s in-place tile updates aren't
+  enough).
+- **Push cycle.** Every paint or generate calls `PushState` which
+  rebuilds a fresh `GameState`, hands it to
+  `HexMapView.ReloadState` (preserving zoom/pan), and reapplies
+  occupant visuals. This is why `HexMapView` exposes both `Init` and
+  `ReloadState`.
+- **Click routing.** `HexMapView.CoordClicked` (every non-drag
+  click, regardless of long-press status) is the editor's input
+  channel — the play scene uses `TileClicked` / `TileLongClicked`
+  on the same view, but the editor's flow is single-click-paint, so
+  `CoordClicked` is the right signal.
+- **Palette.** `MapEditorHudView` builds a palette of
+  `HexPaletteButton` swatches: one per player color, plus water,
+  tree, capital, and tower toggles. The selected index is read by
+  `OnCoordClicked` and dispatched to one of `MapEditPaint`'s pure
+  functions (`PaintLand`, `PaintCapital`, `PaintTowerToggle`,
+  `PaintTreeToggle`, `PaintWater`). Each helper mutates the grid
+  in place, then re-runs `TerritoryFinder` + `CapitalReconciler`
+  (except `PaintCapital`, which honors the user's exact pick rather
+  than letting the placer second-guess them).
+- **Save format.** Editor maps are written with `SaveSerializer.SerializeMap`
+  (no `Kind` per player, `TurnNumber == 0`). At play time, `Main`
+  detects `TurnNumber == 0` to branch into the "starting map" flow:
+  fresh players from `GameSettings`, fresh `TurnState`, empty
+  `Treasury`, but the saved grid + territories + pre-placed
+  trees/towers/capitals all stick.
 
 ## Diagnostic mode (`FOUREXHEX_6AI`)
 
 Setting the env var before launching Godot reconfigures the session
 for a fully headless regression run:
 
-- All six player slots forced to `AiKind.Heuristic`.
+- All six player slots forced to `AiKind.Heuristic` (the menu also
+  detects the env var and skips itself, so the launch jumps straight
+  into `Main`).
 - `AiLog.Enabled = true`.
 - `SynchronousAiPacer` replaces `GodotAiPacer` — turns execute inline.
 - `HeadlessHexMapView` / `HeadlessHudView` replace the real views.
@@ -543,9 +743,18 @@ FOUREXHEX_6AI=1 /Applications/Godot_mono.app/Contents/MacOS/Godot \
 
 ```
 scripts/
-├─ Main.cs                ─ scene root; wires model + views + controller
-├─ MainMenuScene.cs       ─ player-kind picker + map seed; writes
-│                           GameSettings; load button populates LoadRequest
+├─ Main.cs                ─ play scene root; wires model + views + controller
+├─ MainMenuScene.cs       ─ landing (Play/Load/Map Editor) + play-config
+│                           panels; Load Game modal; writes GameSettings
+│                           + LoadRequest
+├─ MapEditorScene.cs      ─ editor scene root; owns the draft grid/water/
+│                           territories + UndoStack<EditorSnapshot>
+├─ MapEditorHudView.cs    ─ editor HUD (seed entry + palette + undo/redo
+│                           + Save Map / Load Map / Exit)
+├─ MapEditPaint.cs        ─ pure paint helpers (Land / Capital / Tower /
+│                           Tree / Water)
+├─ EditorSnapshot.cs      ─ deep copy of editor draft (grid + water + terr.)
+├─ HexPaletteButton.cs    ─ hex-shaped palette swatch Control
 ├─ GameSettings.cs        ─ global player config (PlayerConfig, PlayerKinds,
 │                           optional MasterSeed)
 ├─ LoadRequest.cs         ─ static one-shot handoff: menu Load → Main
@@ -553,15 +762,19 @@ scripts/
 │
 ├─ GameState.cs           ─ Grid, Territories, Players, Turns, Treasury,
 │                           WaterCoords (off-map renderer-only set)
-├─ SessionState.cs        ─ Winner, Selected, Mode, MoveSource, Undo
+├─ SessionState.cs        ─ Winner, PendingDefeatScreen, Selected, Mode,
+│                           MoveSource, Undo
 ├─ SessionStateSnapshot.cs─ player-intent slice for undo/redo
 ├─ UndoEntry.cs           ─ (GameStateSnapshot, SessionStateSnapshot) pair
 │
-├─ IHexMapView.cs         ─ map view contract
+├─ IHexMapView.cs         ─ map view contract (input + overlays + audio)
 ├─ IHudView.cs            ─ HUD view contract
 ├─ HexMapView.cs          ─ concrete map: rendering + input + camera pan
-├─ HudView.cs             ─ concrete HUD: labels + buttons
+│                           + audio forwarding
+├─ HudView.cs             ─ concrete HUD: labels + buttons + defeat overlay
 ├─ HeadlessViews.cs       ─ no-op view stubs for diagnostic mode
+├─ AudioBus.cs            ─ autoload Node singleton: shared SFX players
+│                           that survive scene changes
 │
 ├─ AiPacer.cs             ─ IAiPacer + SynchronousAiPacer
 ├─ GodotAiPacer.cs        ─ SceneTree-backed pacer (with Cancel)
@@ -586,8 +799,8 @@ scripts/
 ├─ UpkeepRules.cs         ─
 ├─ WinConditionRules.cs   ─
 │
-├─ SaveStore.cs           ─ user://saves/ slot CRUD (autosave + named)
-├─ SaveSerializer.cs      ─ JSON (de)serializer for the full game state
+├─ SaveStore.cs           ─ user://saves/ + user://maps/ slot CRUD
+├─ SaveSerializer.cs      ─ JSON (de)serializer for game state + maps
 ├─ SaveSlotInfo.cs        ─ slot listing metadata
 │
 ├─ HexCoord.cs            ─ model primitives
@@ -605,7 +818,13 @@ scripts/
 ├─ Treasury.cs            ─
 ├─ ZoomMath.cs            ─ pixel↔hex helpers used by HexMapView
 ├─ GameStateSnapshot.cs   ─
-└─ UndoStack.cs           ─
+└─ UndoStack.cs           ─ generic two-sided history (used by both play
+                            and editor)
+
+scenes/
+├─ main_menu.tscn         ─ initial scene (pinned in project.godot)
+├─ main.tscn              ─ play scene
+└─ map_editor.tscn        ─ editor scene
 
 tests/
 ├─ TestHelpers.cs         ─ shared fixtures
@@ -616,14 +835,17 @@ tests/
 │                           intermediate AI step state
 └─ *Tests.cs              ─ xUnit tests covering controller flows,
                             rules, AI, snapshot/undo, primitives,
-                            save/load, autosave, abandon
+                            save/load round-trip, autosave, abandon,
+                            RNG determinism, editor paint + snapshot/undo
 ```
 
-`Main.cs`, `HexMapView.cs`, `HudView.cs`, `MainMenuScene.cs`,
-`GodotAiPacer.cs`, `HeadlessViews.cs`, and `SaveStore.cs` are NOT
-compiled into the test assembly — they derive from Godot nodes or
-depend on `SceneTree` / Godot `FileAccess`. The test csproj explicitly
-lists each production source file it includes, so when you add a new
+`Main.cs`, `MainMenuScene.cs`, `MapEditorScene.cs`,
+`MapEditorHudView.cs`, `HexPaletteButton.cs`, `HexMapView.cs`,
+`HudView.cs`, `GodotAiPacer.cs`, `HeadlessViews.cs`, `SaveStore.cs`,
+and `AudioBus.cs` are NOT compiled into the test assembly — they
+derive from Godot nodes or depend on `SceneTree` / Godot
+`FileAccess` / autoload lifecycle. The test csproj explicitly lists
+each production source file it includes, so when you add a new
 testable source file you must add a matching `<Compile Include>`
 entry or tests won't see it.
 
@@ -632,7 +854,9 @@ entry or tests won't see it.
 Run with `dotnet test`. The suite covers every static rule class,
 the `GameController` click + turn state machine (with mock views and
 the synchronous pacer), `Treasury`, `UndoStack`, `GameStateSnapshot`,
-both AI flavors, and all the primitive structs. The view layer is
+both AI flavors, the editor's paint helpers + `EditorSnapshot`
+round-trip, save/serialize/deserialize equivalence, RNG determinism
+across save/load, and all the primitive structs. The view layer is
 deliberately uncovered — it depends on Godot's `Node` lifecycle, so
 pin behavior in the controller and rules instead.
 
