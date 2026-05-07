@@ -253,9 +253,10 @@ off it.
 │   LoadRequest — static one-shot handoff from menu's Load button to       │
 │                 Main (consumed and cleared in _Ready)                    │
 │   SaveStore — user://saves/ slot CRUD + user://maps/ for starting        │
-│                maps: WriteAutosave / WriteSlot / ListSlots / LoadSlot,   │
-│                WriteMapSlot / ListMaps / LoadMap; reserved "autosave"    │
-│                slot                                                      │
+│                maps + res://tutorials/ for bundled (read-only) maps:     │
+│                WriteAutosave / WriteSlot / ListSlots / LoadSlot,         │
+│                WriteMapSlot / ListMaps / LoadMap / LoadBundledMap;       │
+│                reserved "autosave" slot                                  │
 │   SaveSerializer — JSON (de)serializer for the full game state +         │
 │                    starting maps (Kind omitted; OriginMapName carried)   │
 │   LoadedSave — bundle of (state, players, master seed, max-turn cap,     │
@@ -676,10 +677,12 @@ sequences.
   refreshes the views, then fires `HumanTurnStarted` if the resumed
   player is human (so the autosave hook still runs after a load).
 
-`SaveStore` lives at `user://saves/` (in-progress games) and
-`user://maps/` (starting maps from the editor) and exposes
-`WriteAutosave`, `WriteSlot`, `WriteMapSlot`, `ListSlots`,
-`ListMaps`, `LoadSlot`, `LoadMap`, plus `SanitizeSlotName` for
+`SaveStore` reads/writes `user://saves/` (in-progress games) and
+`user://maps/` (starting maps from the editor), and reads from
+`res://tutorials/` (bundled maps shipped with the game — currently
+just `Tutorial.json`, loaded via `LoadBundledMap`). It exposes
+`WriteAutosave`, `WriteSlot`, `WriteMapSlot`, `ListSlots`, `ListMaps`,
+`LoadSlot`, `LoadMap`, `LoadBundledMap`, plus `SanitizeSlotName` for
 filesystem-safe slot names. `SaveSerializer` is the JSON layer
 (format version 2); `Serialize` writes the player roster's `Kind`
 field, `SerializeMap` omits it (the editor's saved maps don't bake
@@ -791,9 +794,11 @@ FOUREXHEX_6AI=1 /Applications/Godot_mono.app/Contents/MacOS/Godot \
 ```
 scripts/
 ├─ Main.cs                ─ play scene root; wires model + views + controller
-├─ MainMenuScene.cs       ─ landing (Play/Load/Map Editor) + play-config
-│                           panels; Load Game modal; writes GameSettings
-│                           + LoadRequest
+├─ MainMenuScene.cs       ─ landing (Play/Tutorial/Load/Map Editor) +
+│                           play-config panels; Load Game modal; Play
+│                           Tutorial bypasses config (Red=Human, others
+│                           Heuristic, loads bundled Tutorial map);
+│                           writes GameSettings + LoadRequest
 ├─ MapEditorScene.cs      ─ editor scene root; owns the draft grid/water/
 │                           territories + UndoStack<EditorSnapshot>
 ├─ MapEditorHudView.cs    ─ editor HUD (seed entry + palette + undo/redo
@@ -850,7 +855,8 @@ scripts/
 ├─ UpkeepRules.cs         ─
 ├─ WinConditionRules.cs   ─
 │
-├─ SaveStore.cs           ─ user://saves/ + user://maps/ slot CRUD
+├─ SaveStore.cs           ─ user://saves/ + user://maps/ slot CRUD;
+│                           res://tutorials/ read-only bundled maps
 ├─ SaveSerializer.cs      ─ JSON (de)serializer for game state + maps
 ├─ SaveSlotInfo.cs        ─ slot listing metadata
 │

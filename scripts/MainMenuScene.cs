@@ -30,6 +30,7 @@ public partial class MainMenuScene : Control
     private Control? _landingPanel;
     private Control? _playConfigPanel;
     private Button? _landingPlayButton;
+    private Button? _landingTutorialButton;
     private Button? _landingLoadButton;
 
     private LineEdit? _seedField;
@@ -93,7 +94,7 @@ public partial class MainMenuScene : Control
     {
         Vector2 viewport = GetViewportRect().Size;
         const float panelW = 520f;
-        const float panelH = 420f;
+        const float panelH = 500f;
         var panel = new Panel
         {
             Position = new Vector2((viewport.X - panelW) * 0.5f, (viewport.Y - panelH) * 0.5f),
@@ -124,9 +125,17 @@ public partial class MainMenuScene : Control
         AudioBus.AttachClick(_landingPlayButton);
         panel.AddChild(_landingPlayButton);
 
+        _landingTutorialButton = new Button { Text = "Play Tutorial" };
+        _landingTutorialButton.AddThemeFontSizeOverride("font_size", 26);
+        _landingTutorialButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap));
+        _landingTutorialButton.Size = new Vector2(buttonW, buttonH);
+        _landingTutorialButton.Pressed += OnPlayTutorialPressed;
+        AudioBus.AttachClick(_landingTutorialButton);
+        panel.AddChild(_landingTutorialButton);
+
         _landingLoadButton = new Button { Text = "Load Game" };
         _landingLoadButton.AddThemeFontSizeOverride("font_size", 26);
-        _landingLoadButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap));
+        _landingLoadButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 2);
         _landingLoadButton.Size = new Vector2(buttonW, buttonH);
         _landingLoadButton.Pressed += OnLoadPressed;
         AudioBus.AttachClick(_landingLoadButton);
@@ -137,7 +146,7 @@ public partial class MainMenuScene : Control
 
         var mapEditorButton = new Button { Text = "Map Editor" };
         mapEditorButton.AddThemeFontSizeOverride("font_size", 26);
-        mapEditorButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 2);
+        mapEditorButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 3);
         mapEditorButton.Size = new Vector2(buttonW, buttonH);
         mapEditorButton.Pressed += OnMapEditorPressed;
         AudioBus.AttachClick(mapEditorButton);
@@ -400,6 +409,30 @@ public partial class MainMenuScene : Control
     private void OnPlayPressed()
     {
         ShowPlayConfig();
+    }
+
+    private void OnPlayTutorialPressed()
+    {
+        // Fixed roster: red is the human, everyone else is Heuristic.
+        // Bypasses the play-config panel entirely.
+        GameSettings.PlayerKinds[0] = AiKind.Human;
+        for (int i = 1; i < GameSettings.PlayerKinds.Length; i++)
+        {
+            GameSettings.PlayerKinds[i] = AiKind.Heuristic;
+        }
+
+        try
+        {
+            LoadedSave loaded = _saveStore.LoadBundledMap("Tutorial");
+            LoadRequest.Pending = loaded;
+            GameSettings.MasterSeed = loaded.MasterSeed;
+        }
+        catch (System.Exception ex)
+        {
+            ShowLoadError($"Could not load tutorial map: {ex.Message}");
+            return;
+        }
+        GetTree().ChangeSceneToFile("res://scenes/main.tscn");
     }
 
     private void OnMapEditorPressed()

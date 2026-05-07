@@ -16,6 +16,10 @@ public sealed class SaveStore
 {
     public const string SaveDirectory = "user://saves/";
     public const string MapsDirectory = "user://maps/";
+    // Read-only directory shipped with the game (e.g. tutorial map).
+    // res:// resolves into the PCK in exported builds and into the
+    // project tree in the editor — FileAccess handles both transparently.
+    public const string BundledMapsDirectory = "res://tutorials/";
     public const string AutosaveSlotName = "autosave";
     private const string SaveExtension = ".json";
     private const string TempExtension = ".json.tmp";
@@ -167,6 +171,9 @@ public sealed class SaveStore
 
     /// <summary>Load a starting map by sanitized name from <see cref="MapsDirectory"/>.</summary>
     public LoadedSave LoadMap(string slotName) => LoadSlotIn(MapsDirectory, slotName);
+
+    /// <summary>Load a map shipped with the game from <see cref="BundledMapsDirectory"/>.</summary>
+    public LoadedSave LoadBundledMap(string slotName) => LoadSlotIn(BundledMapsDirectory, slotName);
 
     private LoadedSave LoadSlotIn(string directory, string slotName)
     {
