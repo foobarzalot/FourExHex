@@ -150,7 +150,10 @@ off it.
 │   ├─ Treasury             │  │   ├─ event TileLongClicked(HexTile?)       │
 │   └─ WaterCoords          │  │   ├─ event CoordClicked(HexCoord) — every  │
 │      (off-map blockers,   │  │   │    non-drag click; editor consumes it  │
-│       renderer-only)      │  │   ├─ TerritoryAt(coord)                    │
+│       renderer-only)      │  │   ├─ event CoordHovered(HexCoord?) — mouse │
+│                           │  │   │    motion; null off-grid/HUD; editor-  │
+│                           │  │   │    only (drives HexHoverTooltip)        │
+│                           │  │   ├─ TerritoryAt(coord)                    │
 │                           │  │   ├─ ShowHighlight(territory)              │
 │   SessionState            │  │   ├─ ShowMoveTargets(coords, level)        │
 │   ├─ Winner (Color?)      │  │   ├─ ShowTowerTargets(coords)              │
@@ -701,6 +704,16 @@ edits look identical to in-game terrain.
   channel — the play scene uses `TileClicked` / `TileLongClicked`
   on the same view, but the editor's flow is single-click-paint, so
   `CoordClicked` is the right signal.
+- **Hover tooltip.** `HexMapView.CoordHovered` fires on mouse
+  motion with the hex under the cursor (null when off the
+  `Cols × Rows` rectangle or over the HUD strip). The editor wires
+  it to `HexHoverTooltip`, a floating `CanvasLayer + Label` that
+  appears after a ~500ms dwell and hides on motion. The label shows
+  the row-major lex index (`row * Cols + col`) plus `(col, row)` —
+  the lex index is the single-int handle intended for future
+  tutorial scripting that refers to specific cells by number. Both
+  the event and the tooltip class are editor-only; the play scene
+  doesn't subscribe.
 - **Palette.** `MapEditorHudView` builds a palette of
   `HexPaletteButton` swatches: one per player color, plus water,
   tree, capital, and tower toggles. The selected index is read by
@@ -755,6 +768,8 @@ scripts/
 │                           Tree / Water)
 ├─ EditorSnapshot.cs      ─ deep copy of editor draft (grid + water + terr.)
 ├─ HexPaletteButton.cs    ─ hex-shaped palette swatch Control
+├─ HexHoverTooltip.cs     ─ editor-only floating tooltip showing the
+│                           hovered hex's lex index + (col, row)
 ├─ GameSettings.cs        ─ global player config (PlayerConfig, PlayerKinds,
 │                           optional MasterSeed)
 ├─ LoadRequest.cs         ─ static one-shot handoff: menu Load → Main
@@ -840,9 +855,9 @@ tests/
 ```
 
 `Main.cs`, `MainMenuScene.cs`, `MapEditorScene.cs`,
-`MapEditorHudView.cs`, `HexPaletteButton.cs`, `HexMapView.cs`,
-`HudView.cs`, `GodotAiPacer.cs`, `HeadlessViews.cs`, `SaveStore.cs`,
-and `AudioBus.cs` are NOT compiled into the test assembly — they
+`MapEditorHudView.cs`, `HexPaletteButton.cs`, `HexHoverTooltip.cs`,
+`HexMapView.cs`, `HudView.cs`, `GodotAiPacer.cs`, `HeadlessViews.cs`,
+`SaveStore.cs`, and `AudioBus.cs` are NOT compiled into the test assembly — they
 derive from Godot nodes or depend on `SceneTree` / Godot
 `FileAccess` / autoload lifecycle. The test csproj explicitly lists
 each production source file it includes, so when you add a new
