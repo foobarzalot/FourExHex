@@ -27,6 +27,7 @@ public partial class AudioBus : Node
     private AudioStreamPlayer _bankruptcyPlayer = null!;
     private AudioStreamPlayer _gameWonPlayer = null!;
     private AudioStreamPlayer _rallyPlayer = null!;
+    private AudioStreamPlayer _playerDefeatedPlayer = null!;
 
     public override void _EnterTree()
     {
@@ -137,6 +138,17 @@ public partial class AudioBus : Node
             VolumeDb = -14f,
         };
         AddChild(_rallyPlayer);
+
+        _playerDefeatedPlayer = new AudioStreamPlayer
+        {
+            Stream = GD.Load<AudioStream>("res://assets/audio/player_defeated.wav"),
+            // Heavy gong — naturally hot transient and long sustain.
+            // Sits at game-won level so the elimination of an enemy
+            // reads as a major moment, but not louder than the win
+            // fanfare.
+            VolumeDb = -10f,
+        };
+        AddChild(_playerDefeatedPlayer);
     }
 
     /// <summary>
@@ -240,6 +252,17 @@ public partial class AudioBus : Node
     {
         _rallyPlayer.Stop();
         _rallyPlayer.Play();
+    }
+
+    /// <summary>
+    /// Single deep gong played when a capture eliminates a player —
+    /// their last capital just fell. Marks the strategic finality of
+    /// kicking someone out of the game.
+    /// </summary>
+    public void PlayPlayerDefeated()
+    {
+        _playerDefeatedPlayer.Stop();
+        _playerDefeatedPlayer.Play();
     }
 
     /// <summary>

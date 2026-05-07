@@ -735,6 +735,115 @@ public class GameControllerTests
     }
 
     [Fact]
+    public void Capture_EliminatingEnemyLastCapital_FiresPlayerDefeatedSound()
+    {
+        // 4x1: Red {(0,0),(1,0)} with Spearman on (1,0); Blue {(2,0),(3,0)}.
+        // Spearman captures (2,0) — Blue's capital tile. Blue's remaining
+        // tile (3,0) becomes a singleton, capital-less → eliminated.
+        var red = new Player("Red", new Color(1f, 0f, 0f));
+        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var players = new List<Player> { red, blue };
+
+        var grid = TestHelpers.BuildRectGrid(4, 1, blue.Color);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(red.Color, UnitLevel.Spearman);
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        var map = new MockHexMapView();
+        var hud = new MockHudView();
+        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+        {
+            map.TileIndex[kvp.Key] = kvp.Value;
+        }
+        var controller = new GameController(state, session, map, hud);
+        controller.StartGame();
+
+        map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(1, 0)));
+        map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(2, 0)));
+
+        Assert.Equal(1, map.PlayerDefeatedSoundCount);
+    }
+
+    [Fact]
+    public void Buy_PlacingSpearmanOnEnemyLastCapital_FiresPlayerDefeatedSound()
+    {
+        // User's repro: enemy has ONE 2-hex territory, total. Player
+        // selects own territory, buys a Spearman, places it on the
+        // enemy's capital tile. Capture eliminates the enemy.
+        //
+        // 4x1: Red {(0,0),(1,0)} adjacent to Blue {(2,0),(3,0)}.
+        var red = new Player("Red", new Color(1f, 0f, 0f));
+        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var players = new List<Player> { red, blue };
+
+        var grid = TestHelpers.BuildRectGrid(4, 1, blue.Color);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Color = red.Color;
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        var map = new MockHexMapView();
+        var hud = new MockHudView();
+        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+        {
+            map.TileIndex[kvp.Key] = kvp.Value;
+        }
+        var controller = new GameController(state, session, map, hud);
+        controller.StartGame();
+
+        // Boost Red's treasury so we can afford a Spearman (cost 20).
+        HexCoord redCapital = state.Territories.First(t => t.Owner == red.Color).Capital!.Value;
+        state.Treasury.SetGold(redCapital, 100);
+
+        // Select Red's territory, cycle buy-mode to Spearman, place on
+        // Blue's capital tile (lex-min in Blue's 2-hex territory = (2,0)).
+        map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(0, 0)));
+        hud.ClickBuyPeasant();             // Peasant
+        hud.ClickBuyPeasant();             // Spearman
+        map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(2, 0)));
+
+        Assert.Equal(1, map.PlayerDefeatedSoundCount);
+    }
+
+    [Fact]
+    public void Capture_EnemyStillHasCapital_DoesNotFirePlayerDefeatedSound()
+    {
+        // 5x1: Red {(0,0),(1,0)} with Spearman on (1,0); Blue {(2,0),(3,0),(4,0)}.
+        // Spearman captures (2,0) — Blue's capital. Blue's remaining
+        // {(3,0),(4,0)} is still a 2-tile territory → fresh capital
+        // placed → Blue is NOT eliminated.
+        var red = new Player("Red", new Color(1f, 0f, 0f));
+        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var players = new List<Player> { red, blue };
+
+        var grid = TestHelpers.BuildRectGrid(5, 1, blue.Color);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(red.Color, UnitLevel.Spearman);
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        var map = new MockHexMapView();
+        var hud = new MockHudView();
+        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+        {
+            map.TileIndex[kvp.Key] = kvp.Value;
+        }
+        var controller = new GameController(state, session, map, hud);
+        controller.StartGame();
+
+        map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(1, 0)));
+        map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(2, 0)));
+
+        Assert.Equal(0, map.PlayerDefeatedSoundCount);
+    }
+
+    [Fact]
     public void Move_ClearTreeInOwnTerritory_FiresTreeClearedSound_NotPlace()
     {
         // Same 3-Red-tile fixture as the existing tree-FX test: capital

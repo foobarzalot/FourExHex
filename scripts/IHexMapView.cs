@@ -182,4 +182,12 @@ public interface IHexMapView
     /// — multiple units rallying read as one swept gesture.
     /// </summary>
     void PlayRally();
+
+    /// <summary>
+    /// Play the defeat bong when a capture eliminates a player —
+    /// i.e. the captured tile was their last capital and no other
+    /// capital-bearing territory of theirs survived the reconcile.
+    /// Fires once per eliminated player, after CapitalReconciler runs.
+    /// </summary>
+    void PlayPlayerDefeated();
 }

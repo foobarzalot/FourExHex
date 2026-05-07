@@ -133,6 +133,15 @@ MANIFEST: List[Entry] = [
         0.7,
         0.75,
     ),
+    (
+        "player_defeated.wav",
+        "A single deep heavy temple gong struck once, very low pitched "
+        "with a long booming resonant tail slowly fading, weighty and "
+        "final, somber and ominous, dry attack with a full natural "
+        "sustain, no music underneath, no voice, no extra reverb.",
+        1.5,
+        0.75,
+    ),
 ]
 
 

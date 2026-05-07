@@ -59,6 +59,7 @@ public sealed class HeadlessHexMapView : IHexMapView
     public void PlayBankruptcy() { }
     public void PlayGameWon() { }
     public void PlayRally() { }
+    public void PlayPlayerDefeated() { }
 }
 
 public sealed class HeadlessHudView : IHudView

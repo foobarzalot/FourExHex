@@ -116,6 +116,9 @@ public class MockHexMapView : IHexMapView
     public int RallySoundCount { get; private set; }
     public void PlayRally() => RallySoundCount++;
 
+    public int PlayerDefeatedSoundCount { get; private set; }
+    public void PlayPlayerDefeated() => PlayerDefeatedSoundCount++;
+
     /// <summary>Raise the TileClicked event, as if the user clicked.</summary>
     public void SimulateClick(HexTile? tile) => TileClicked?.Invoke(tile);
 

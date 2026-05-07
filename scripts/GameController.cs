@@ -820,6 +820,7 @@ public class GameController
     {
         IReadOnlyList<Territory> previous = _state.Territories;
         Dictionary<HexCoord, (Color Owner, int Gold)> oldCaps = SnapshotCapitals(previous);
+        HashSet<Color> colorsWithCapitalBefore = ColorsWithCapital(previous);
 
         IReadOnlyList<Territory> raw = TerritoryFinder.FindAll(_state.Grid);
         _state.Territories = CapitalReconciler.Reconcile(raw, previous, _state.Grid);
@@ -827,6 +828,19 @@ public class GameController
 
         Dictionary<HexCoord, (Color Owner, int Gold)> newCaps = SnapshotCapitals(_state.Territories);
         LogCaptureDiff(actionDesc, oldCaps, newCaps);
+
+        // A player whose set of capital-bearing territories drops to
+        // empty is freshly defeated by this capture. At most one color
+        // can transition per capture (a single move/place captures one
+        // tile from one color).
+        HashSet<Color> colorsWithCapitalAfter = ColorsWithCapital(_state.Territories);
+        foreach (Color c in colorsWithCapitalBefore)
+        {
+            if (!colorsWithCapitalAfter.Contains(c))
+            {
+                _map.PlayPlayerDefeated();
+            }
+        }
 
         _map.RebuildAfterTerritoryChange();
 
@@ -1855,6 +1869,22 @@ public class GameController
             snap[cap] = (t.Owner, _state.Treasury.GetGold(cap));
         }
         return snap;
+    }
+
+    /// <summary>
+    /// Set of colors that own at least one capital-bearing territory
+    /// in <paramref name="territories"/>. Used by HandleCapture to
+    /// detect freshly-eliminated players (had a capital before, none
+    /// after).
+    /// </summary>
+    private static HashSet<Color> ColorsWithCapital(IReadOnlyList<Territory> territories)
+    {
+        var set = new HashSet<Color>();
+        foreach (Territory t in territories)
+        {
+            if (t.HasCapital) set.Add(t.Owner);
+        }
+        return set;
     }
 
     /// <summary>

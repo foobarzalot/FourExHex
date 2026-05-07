@@ -985,6 +985,11 @@ public partial class HexMapView : Node2D, IHexMapView
         AudioBus.Instance.PlayRally();
     }
 
+    public void PlayPlayerDefeated()
+    {
+        AudioBus.Instance.PlayPlayerDefeated();
+    }
+
     private void SpawnDestructionFlash(Vector2 center)
     {
         Vector2[] verts = HexVertices();
