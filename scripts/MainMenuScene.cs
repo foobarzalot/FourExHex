@@ -235,6 +235,11 @@ public partial class MainMenuScene : Control
                 AiKind.Human => HumanId,
                 AiKind.Random => RandomAiId,
                 AiKind.Heuristic => HeuristicAiId,
+                // Tutorial isn't selectable here — coming back to the
+                // menu after a tutorial run, show Heuristic in the
+                // dropdown so the user sees a sensible AI default
+                // rather than silently flipping to Human.
+                AiKind.Tutorial => HeuristicAiId,
                 _ => HumanId,
             };
             // Selected is an index; find the entry that matches the
@@ -413,12 +418,13 @@ public partial class MainMenuScene : Control
 
     private void OnPlayTutorialPressed()
     {
-        // Fixed roster: red is the human, everyone else is Heuristic.
+        // Fixed roster: red is the human, everyone else is the
+        // scripted TutorialAi (currently passive — just ends turn).
         // Bypasses the play-config panel entirely.
         GameSettings.PlayerKinds[0] = AiKind.Human;
         for (int i = 1; i < GameSettings.PlayerKinds.Length; i++)
         {
-            GameSettings.PlayerKinds[i] = AiKind.Heuristic;
+            GameSettings.PlayerKinds[i] = AiKind.Tutorial;
         }
 
         try

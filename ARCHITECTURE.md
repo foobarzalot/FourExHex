@@ -236,7 +236,7 @@ off it.
 │   Territory — Owner, Coords, Capital (immutable)                         │
 │   TerritoryExtensions — BuildTileIndex                                   │
 │   Player — Name, Color, Kind (AiKind), IsAi                              │
-│   AiKind — Human, Random, Heuristic                                      │
+│   AiKind — Human, Random, Heuristic, Tutorial (tutorial-only)            │
 │   TurnState — Players[], CurrentPlayerIndex, TurnNumber                  │
 │   Treasury — Dictionary<HexCoord, int>; CollectIncomeFor;                │
 │              ReconcileAfterCapture (forfeits enemy gold on capture)      │
@@ -630,6 +630,10 @@ Tests use `SynchronousAiPacer` so the whole AI chain runs inline.
   `GameController`'s `ExecuteAi*` paths; if you add a new AI-capable
   action you must update both in lockstep, or simulated scoring will
   drift from real play.
+- **`TutorialAi`** — scripted opponent used only by the tutorial
+  scenario. Currently fully passive: `ChooseNextAction` always returns
+  null, which the controller's step machine reads as "this player is
+  done; advance". Not selectable from the play-config menu.
 - **`AiDispatcher.ChooseForCurrentPlayer`** — routes to the per-player
   AI flavor based on `Player.Kind`. Wired into `GameController` as
   the single `aiChooser` delegate.
@@ -797,7 +801,7 @@ scripts/
 ├─ MainMenuScene.cs       ─ landing (Play/Tutorial/Load/Map Editor) +
 │                           play-config panels; Load Game modal; Play
 │                           Tutorial bypasses config (Red=Human, others
-│                           Heuristic, loads bundled Tutorial map);
+│                           AiKind.Tutorial, loads bundled Tutorial map);
 │                           writes GameSettings + LoadRequest
 ├─ MapEditorScene.cs      ─ editor scene root; owns the draft grid/water/
 │                           territories + UndoStack<EditorSnapshot>
@@ -841,6 +845,8 @@ scripts/
 ├─ AiStateScorer.cs       ─ scoring function for HeuristicAi
 ├─ RandomAi.cs            ─ uniform-random chooser
 ├─ HeuristicAi.cs         ─ 1-ply best-score chooser
+├─ TutorialAi.cs          ─ scripted tutorial opponent (currently
+│                           always returns null → passes turn)
 ├─ AiLog.cs               ─ gated stdout logging
 │
 ├─ MapGenerator.cs        ─ CA-driven land/water carve + tree scatter

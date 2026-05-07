@@ -51,6 +51,7 @@
     <Compile Include="..\scripts\AiStateScorer.cs" Link="scripts\AiStateScorer.cs" />
     <Compile Include="..\scripts\HeuristicAi.cs" Link="scripts\HeuristicAi.cs" />
     <Compile Include="..\scripts\RandomAi.cs" Link="scripts\RandomAi.cs" />
+    <Compile Include="..\scripts\TutorialAi.cs" Link="scripts\TutorialAi.cs" />
     <Compile Include="..\scripts\PurchaseRules.cs" Link="scripts\PurchaseRules.cs" />
     <Compile Include="..\scripts\DefenseRules.cs" Link="scripts\DefenseRules.cs" />
     <Compile Include="..\scripts\MovementRules.cs" Link="scripts\MovementRules.cs" />

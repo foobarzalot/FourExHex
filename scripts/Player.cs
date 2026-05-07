@@ -10,6 +10,9 @@ public enum AiKind
     Human,
     Random,
     Heuristic,
+    // Scripted opponent used by the tutorial scene only — never
+    // selectable from the play-config menu.
+    Tutorial,
 }
 
 /// <summary>
