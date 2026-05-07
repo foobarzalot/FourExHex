@@ -1153,14 +1153,17 @@ public class GameControllerTests
         // each player skips the phase entirely. So a grave dropped on
         // a Red tile during Red's first turn doesn't convert when
         // Red ends — it converts on Red's NEXT start-of-turn (turn 2).
+        // Use (1,1) — Red's non-capital tile (CapitalPlacer puts the
+        // capital on lex-min (0,1)), so we don't stomp the Capital
+        // occupant.
         var g = new TestGame();
-        g.Tile(0, 1).Occupant = new Grave(); // Red tile
+        g.Tile(1, 1).Occupant = new Grave(); // Red tile (non-capital)
 
         g.Hud.ClickEndTurn();           // Red -> Blue (turn 1, phase skipped)
-        Assert.IsType<Grave>(g.Tile(0, 1).Occupant);
+        Assert.IsType<Grave>(g.Tile(1, 1).Occupant);
 
         g.Hud.ClickEndTurn();           // Blue -> Red (turn 2, phase runs)
-        Assert.IsType<Tree>(g.Tile(0, 1).Occupant);
+        Assert.IsType<Tree>(g.Tile(1, 1).Occupant);
     }
 
     [Fact]
@@ -1326,16 +1329,17 @@ public class GameControllerTests
     [Fact]
     public void StartTurn_GraveOnStartingPlayersTile_ConvertsToTree()
     {
-        // Grave on Red tile. After advancing into Red's turn 2 (skip
-        // their first turn, then return), the grave converts.
+        // Grave on Red tile (1,1) — the non-capital Red tile. After
+        // advancing into Red's turn 2 (skip their first turn, then
+        // return), the grave converts.
         var g = new TestGame();
-        g.Tile(0, 1).Occupant = new Grave();
-        Assert.Equal(g.Red.Color, g.Tile(0, 1).Color);
+        g.Tile(1, 1).Occupant = new Grave();
+        Assert.Equal(g.Red.Color, g.Tile(1, 1).Color);
 
         g.Hud.ClickEndTurn(); // Red -> Blue
         g.Hud.ClickEndTurn(); // Blue -> Red (turn 2, phase runs)
 
-        Assert.IsType<Tree>(g.Tile(0, 1).Occupant);
+        Assert.IsType<Tree>(g.Tile(1, 1).Occupant);
     }
 
     [Fact]
@@ -1343,15 +1347,16 @@ public class GameControllerTests
     {
         // Two graves: one on a Red tile, one on a Blue tile. When
         // Red's turn 2 starts, only the Red-tile grave converts. The
-        // Blue-tile grave waits for Blue's turn 2.
+        // Blue-tile grave waits for Blue's turn 2. Both target tiles
+        // are non-capital (Red's capital is (0,1); Blue's is (0,0)).
         var g = new TestGame();
-        g.Tile(0, 1).Occupant = new Grave(); // Red tile
-        g.Tile(3, 0).Occupant = new Grave(); // Blue tile
+        g.Tile(1, 1).Occupant = new Grave(); // Red tile (non-capital)
+        g.Tile(3, 0).Occupant = new Grave(); // Blue tile (non-capital)
 
         g.Hud.ClickEndTurn(); // Red -> Blue (turn 1, skip)
         g.Hud.ClickEndTurn(); // Blue -> Red (turn 2, runs on Red tiles)
 
-        Assert.IsType<Tree>(g.Tile(0, 1).Occupant);
+        Assert.IsType<Tree>(g.Tile(1, 1).Occupant);
         Assert.IsType<Grave>(g.Tile(3, 0).Occupant);
     }
 
@@ -1842,11 +1847,14 @@ public class GameControllerTests
         var blue = new Player("Blue", new Color(0f, 0f, 1f), isAi: true);
         var players = new List<Player> { red, blue };
 
-        // 10x2 grid. Red owns (0,0). Two Blue territories: {(2,0),(3,0)}
-        // and {(6,0),(7,0)}. Each has a knight on the right end so
-        // both can capture adjacent neutral tiles ((4,0) and (8,0)).
+        // 10x2 grid. Red owns (0,0)+(0,1) — a 2-tile territory so Red
+        // has a real capital and stays in rotation. Two Blue
+        // territories: {(2,0),(3,0)} and {(6,0),(7,0)}. Each has a
+        // knight on the right end so both can capture adjacent
+        // neutral tiles ((4,0) and (8,0)).
         var grid = TestHelpers.BuildRectGrid(10, 2, new Color(0.3f, 0.3f, 0.3f));
         grid.Get(HexCoord.FromOffset(0, 0))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(0, 1))!.Color = red.Color;
         grid.Get(HexCoord.FromOffset(2, 0))!.Color = blue.Color;
         grid.Get(HexCoord.FromOffset(3, 0))!.Color = blue.Color;
         grid.Get(HexCoord.FromOffset(6, 0))!.Color = blue.Color;

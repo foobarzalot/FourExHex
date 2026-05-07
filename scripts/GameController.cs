@@ -1318,11 +1318,13 @@ public class GameController
     }
 
     /// <summary>
-    /// Advance to the next non-eliminated player. A player with zero
-    /// tiles left is skipped entirely — they don't get a phantom turn
-    /// just to see they can't act. HandleCapture's winner check
-    /// guarantees at least one player still has tiles, so this loop
-    /// always terminates.
+    /// Advance to the next non-eliminated player. A player with no
+    /// capital-bearing territory is skipped entirely — they own
+    /// nothing they can act on (no income, no purchases, no upkeep,
+    /// no AI candidates), so a turn for them would be a phantom turn.
+    /// The end-of-turn win check guarantees the current player has a
+    /// capital when this is called, so at least one player remains in
+    /// the rotation and the loop always terminates.
     /// </summary>
     private void AdvanceToNextActivePlayer()
     {

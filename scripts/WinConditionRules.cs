@@ -11,8 +11,8 @@ using Godot;
 ///     ending player's color iff they are the only player with a
 ///     capital-bearing territory (≥2 adjacent same-color cells).
 ///     Orphan singletons of other colors don't keep the game alive.
-///   - <see cref="IsEliminated"/>: is a given player's color absent
-///     from the grid entirely?
+///   - <see cref="IsEliminated"/>: does a given player have no
+///     capital-bearing territory (and thus nothing they can act on)?
 /// </summary>
 public static class WinConditionRules
 {
@@ -68,14 +68,20 @@ public static class WinConditionRules
     }
 
     /// <summary>
-    /// True if <paramref name="color"/> owns zero tiles on the grid.
-    /// Used by turn rotation to skip players who've been wiped out.
+    /// True if <paramref name="color"/> has no capital-bearing
+    /// territory on the grid — they own no tile holding a
+    /// <see cref="Capital"/> occupant. Used by turn rotation to skip
+    /// players who can't act (no capital → no income, no purchases,
+    /// no upkeep, no AI candidates). Capital occupants are kept in
+    /// sync with the territory list by <see cref="CapitalReconciler"/>,
+    /// so this and <see cref="WinnerAtEndOfTurn"/> agree on what
+    /// "still in the game" means.
     /// </summary>
     public static bool IsEliminated(Color color, HexGrid grid)
     {
         foreach (HexTile tile in grid.Tiles)
         {
-            if (tile.Color == color) return false;
+            if (tile.Color == color && tile.Occupant is Capital) return false;
         }
         return true;
     }

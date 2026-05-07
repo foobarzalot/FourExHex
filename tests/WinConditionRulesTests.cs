@@ -23,15 +23,47 @@ public class WinConditionRulesTests
     }
 
     [Fact]
-    public void IsEliminated_PlayerWithOneTile_False()
+    public void IsEliminated_PlayerWithOneTile_True()
     {
-        // A singleton territory (1 hex, no capital, no income) still
-        // keeps the player alive. They can only lose by having that
-        // tile captured.
+        // A singleton (1 hex, no capital) is functionally dead: no
+        // income, no purchases, no upkeep, nothing the AI or player
+        // can do. Treat them as eliminated for rotation purposes —
+        // they don't get a phantom turn.
         var grid = new HexGrid();
         grid.Add(new HexTile(new HexCoord(0, 0), Red));
         grid.Add(new HexTile(new HexCoord(1, 0), Red));
         grid.Add(new HexTile(new HexCoord(5, 5), Blue)); // lone Blue hex
+        TestHelpers.BuildTerritoriesFromGrid(grid); // place capitals
+
+        Assert.True(WinConditionRules.IsEliminated(Blue, grid));
+    }
+
+    [Fact]
+    public void IsEliminated_PlayerWithOnlySingletonTiles_True()
+    {
+        // Multiple scattered singletons are still all capital-less,
+        // so the player has nothing to act on.
+        var grid = new HexGrid();
+        grid.Add(new HexTile(new HexCoord(0, 0), Red));
+        grid.Add(new HexTile(new HexCoord(1, 0), Red));
+        grid.Add(new HexTile(new HexCoord(5, 5), Blue));
+        grid.Add(new HexTile(new HexCoord(8, 8), Blue));
+        TestHelpers.BuildTerritoriesFromGrid(grid);
+
+        Assert.True(WinConditionRules.IsEliminated(Blue, grid));
+    }
+
+    [Fact]
+    public void IsEliminated_PlayerWithCapitalBearingTerritory_False()
+    {
+        // A 2-hex same-color cluster gets a capital from the
+        // reconciler — the player is in the rotation.
+        var grid = new HexGrid();
+        grid.Add(new HexTile(new HexCoord(0, 0), Red));
+        grid.Add(new HexTile(new HexCoord(1, 0), Red));
+        grid.Add(new HexTile(new HexCoord(5, 5), Blue));
+        grid.Add(new HexTile(new HexCoord(6, 5), Blue));
+        TestHelpers.BuildTerritoriesFromGrid(grid);
 
         Assert.False(WinConditionRules.IsEliminated(Blue, grid));
     }
