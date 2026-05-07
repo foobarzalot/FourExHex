@@ -27,6 +27,7 @@ public partial class HudView : CanvasLayer, IHudView
     public event Action? PreviousUnitClicked;
     public event Action? CancelActionPressed;
     public event Action? SaveGameClicked;
+    public event Action? DefeatContinueClicked;
 
     private Label _turnLabel = null!;
     private Label _playerLabel = null!;
@@ -44,6 +45,8 @@ public partial class HudView : CanvasLayer, IHudView
     private ConfirmationDialog _endGameDialog = null!;
     private Control _victoryOverlay = null!;
     private Label _victoryLabel = null!;
+    private Control _defeatOverlay = null!;
+    private Label _defeatLabel = null!;
 
     // Snapshot of session.Mode != None at the last Refresh, so the Escape
     // handler can decide between cancel-action (pending) and End Game (idle)
@@ -246,6 +249,7 @@ public partial class HudView : CanvasLayer, IHudView
         AddChild(_seedLabel);
 
         BuildVictoryOverlay(viewport);
+        BuildDefeatOverlay(viewport);
     }
 
     public void SetMapLabel(string text)
@@ -318,6 +322,79 @@ public partial class HudView : CanvasLayer, IHudView
         playAgainButton.Pressed += () => NewGameClicked?.Invoke();
         AudioBus.AttachClick(playAgainButton);
         panel.AddChild(playAgainButton);
+
+        var mainMenuButton = new Button { Text = "Main Menu" };
+        mainMenuButton.AddThemeFontSizeOverride("font_size", 22);
+        mainMenuButton.Position = new Vector2(rowX + buttonW + gap, rowY);
+        mainMenuButton.Size = new Vector2(buttonW, buttonH);
+        mainMenuButton.Pressed += () => MainMenuClicked?.Invoke();
+        AudioBus.AttachClick(mainMenuButton);
+        panel.AddChild(mainMenuButton);
+    }
+
+    /// <summary>
+    /// Build a centered, click-blocking panel with "<Player> defeated"
+    /// and Continue / Main Menu buttons. Hidden by default;
+    /// <see cref="Refresh"/> toggles visibility based on
+    /// <see cref="SessionState.PendingDefeatScreen"/>. Continue dismisses
+    /// the overlay (controller resumes the paused AI loop); Main Menu
+    /// reuses the existing <see cref="MainMenuClicked"/> event.
+    /// </summary>
+    private void BuildDefeatOverlay(Vector2 viewport)
+    {
+        _defeatOverlay = new Control
+        {
+            AnchorLeft = 0f,
+            AnchorRight = 1f,
+            AnchorTop = 0f,
+            AnchorBottom = 1f,
+            MouseFilter = Control.MouseFilterEnum.Stop,
+            Visible = false,
+        };
+        AddChild(_defeatOverlay);
+
+        var scrim = new ColorRect
+        {
+            Color = new Color(0f, 0f, 0f, 0.6f),
+            AnchorLeft = 0f,
+            AnchorRight = 1f,
+            AnchorTop = 0f,
+            AnchorBottom = 1f,
+        };
+        _defeatOverlay.AddChild(scrim);
+
+        const float panelW = 460f;
+        const float panelH = 220f;
+        var panel = new Panel
+        {
+            Position = new Vector2((viewport.X - panelW) * 0.5f, (viewport.Y - panelH) * 0.5f),
+            Size = new Vector2(panelW, panelH),
+        };
+        _defeatOverlay.AddChild(panel);
+
+        _defeatLabel = new Label
+        {
+            Text = "Defeated",
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Position = new Vector2(0, 40),
+            Size = new Vector2(panelW, 48),
+        };
+        _defeatLabel.AddThemeFontSizeOverride("font_size", 36);
+        panel.AddChild(_defeatLabel);
+
+        const float buttonW = 180f;
+        const float buttonH = 44f;
+        const float gap = 20f;
+        float rowY = 130f;
+        float rowX = (panelW - (buttonW * 2f + gap)) * 0.5f;
+
+        var continueButton = new Button { Text = "Continue" };
+        continueButton.AddThemeFontSizeOverride("font_size", 22);
+        continueButton.Position = new Vector2(rowX, rowY);
+        continueButton.Size = new Vector2(buttonW, buttonH);
+        continueButton.Pressed += () => DefeatContinueClicked?.Invoke();
+        AudioBus.AttachClick(continueButton);
+        panel.AddChild(continueButton);
 
         var mainMenuButton = new Button { Text = "Main Menu" };
         mainMenuButton.AddThemeFontSizeOverride("font_size", 22);
@@ -477,6 +554,24 @@ public partial class HudView : CanvasLayer, IHudView
         else
         {
             _victoryOverlay.Visible = false;
+        }
+
+        // Defeat overlay: show iff a human just lost their last capital
+        // and hasn't dismissed the screen yet. Suppressed when Winner
+        // is set so the game-over screen takes precedence.
+        if (session.PendingDefeatScreen.HasValue && !session.Winner.HasValue)
+        {
+            Color loseColor = session.PendingDefeatScreen.Value;
+            Player? loser = state.Turns.Players
+                .FirstOrDefault(p => p.Color == loseColor);
+            string name = loser?.Name ?? "Unknown";
+            _defeatLabel.Text = $"{name} defeated";
+            _defeatLabel.AddThemeColorOverride("font_color", loseColor);
+            _defeatOverlay.Visible = true;
+        }
+        else
+        {
+            _defeatOverlay.Visible = false;
         }
     }
 

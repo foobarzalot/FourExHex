@@ -21,6 +21,17 @@ public class SessionState
     /// <summary>True iff the game is over (a winner has been declared).</summary>
     public bool IsGameOver => Winner.HasValue;
 
+    /// <summary>
+    /// Color of a human player whose last capital was just captured —
+    /// the HUD shows the defeat overlay while this is non-null. Set
+    /// inside <see cref="GameController.HandleCapture"/> when the
+    /// eliminated color belongs to a non-AI player. Cleared when the
+    /// human dismisses the overlay (Continue), at which point the
+    /// AI loop resumes. Never set for AI eliminations — the gong
+    /// fires but no popup appears.
+    /// </summary>
+    public Color? PendingDefeatScreen { get; set; }
+
     public enum ActionMode
     {
         None,

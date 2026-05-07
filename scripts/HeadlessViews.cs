@@ -80,6 +80,7 @@ public sealed class HeadlessHudView : IHudView
     public event Action? PreviousUnitClicked;
     public event Action? CancelActionPressed;
     public event Action? SaveGameClicked;
+    public event Action? DefeatContinueClicked;
 #pragma warning restore CS0067
 
     public void Refresh(GameState state, SessionState session, bool hasActionableRemaining) { }

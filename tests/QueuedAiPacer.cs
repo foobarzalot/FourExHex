@@ -20,6 +20,9 @@ public sealed class QueuedAiPacer : IAiPacer
 
     public void Cancel() => _queue.Clear();
 
+    /// <summary>True iff there's at least one pending callback.</summary>
+    public bool HasPending => _queue.Count > 0;
+
     /// <summary>
     /// Run every queued callback in FIFO order, including any new
     /// ones scheduled by callbacks already running. Returns when

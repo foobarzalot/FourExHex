@@ -768,6 +768,178 @@ public class GameControllerTests
     }
 
     [Fact]
+    public void Capture_EliminatingHumanPlayer_SetsPendingDefeatScreen()
+    {
+        // Same shape as the elimination test, but assert that
+        // SessionState.PendingDefeatScreen is set to the human's color
+        // — the HUD reads this to show the defeat overlay.
+        var red = new Player("Red", new Color(1f, 0f, 0f));
+        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var players = new List<Player> { red, blue };
+
+        var grid = TestHelpers.BuildRectGrid(4, 1, blue.Color);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(red.Color, UnitLevel.Spearman);
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        var map = new MockHexMapView();
+        var hud = new MockHudView();
+        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+        {
+            map.TileIndex[kvp.Key] = kvp.Value;
+        }
+        var controller = new GameController(state, session, map, hud);
+        controller.StartGame();
+
+        map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(1, 0)));
+        map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(2, 0)));
+
+        Assert.Equal(blue.Color, session.PendingDefeatScreen);
+    }
+
+    [Fact]
+    public void Capture_EliminatingAiPlayer_DoesNotSetPendingDefeatScreen()
+    {
+        // AI defeats are silent (sound only, no popup). The Continue
+        // overlay would be meaningless for a player no one is at the
+        // keyboard for.
+        var red = new Player("Red", new Color(1f, 0f, 0f));
+        var blue = new Player("Blue", new Color(0f, 0f, 1f), isAi: true);
+        var players = new List<Player> { red, blue };
+
+        var grid = TestHelpers.BuildRectGrid(4, 1, blue.Color);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(red.Color, UnitLevel.Spearman);
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        var map = new MockHexMapView();
+        var hud = new MockHudView();
+        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+        {
+            map.TileIndex[kvp.Key] = kvp.Value;
+        }
+        var controller = new GameController(state, session, map, hud);
+        controller.StartGame();
+
+        map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(1, 0)));
+        map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(2, 0)));
+
+        Assert.Null(session.PendingDefeatScreen);
+    }
+
+    [Fact]
+    public void DismissDefeatScreen_ClearsPendingDefeatScreen()
+    {
+        var red = new Player("Red", new Color(1f, 0f, 0f));
+        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var players = new List<Player> { red, blue };
+
+        var grid = TestHelpers.BuildRectGrid(4, 1, blue.Color);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(red.Color, UnitLevel.Spearman);
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        var map = new MockHexMapView();
+        var hud = new MockHudView();
+        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+        {
+            map.TileIndex[kvp.Key] = kvp.Value;
+        }
+        var controller = new GameController(state, session, map, hud);
+        controller.StartGame();
+        map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(1, 0)));
+        map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(2, 0)));
+        Assert.Equal(blue.Color, session.PendingDefeatScreen);
+
+        hud.ClickDefeatContinue();
+
+        Assert.Null(session.PendingDefeatScreen);
+    }
+
+    [Fact]
+    public void AiTurn_PausesWhilePendingDefeatScreen()
+    {
+        // AI is mid-turn capturing a human. Defeat sets PendingDefeatScreen,
+        // and the AI loop should NOT schedule its next step until the
+        // human dismisses the overlay.
+        //
+        // 5x1: Red (human) {(0,0)} singleton + Blue (AI) {(1,0),(2,0),(3,0),(4,0)}
+        // with a Knight at (1,0) (level 3, beats capital). Wait — Red singleton
+        // means Red is "eliminated" at start under our rotation rule. Use a
+        // 5x2 layout instead so Red has a 2-hex territory + a one-hex
+        // outpost the AI can capture for the kill.
+        var red = new Player("Red", new Color(1f, 0f, 0f));
+        var blue = new Player("Blue", new Color(0f, 0f, 1f), isAi: true);
+        var players = new List<Player> { red, blue };
+
+        // 5x1: Red {(3,0),(4,0)} (capital at lex-min (3,0)), Blue
+        // {(0,0),(1,0),(2,0)} with a Spearman at (2,0). Spearman at
+        // (2,0) is adjacent to Red's capital (3,0); Spearman (atk 2)
+        // beats capital (def 1), so the heuristic captures it on
+        // first beat, eliminating Red. (Spearman upkeep = 6g vs
+        // Blue's 15g seed, so it survives the start-of-turn upkeep
+        // pass.)
+        var grid = TestHelpers.BuildRectGrid(5, 1, new Color(0.3f, 0.3f, 0.3f));
+        grid.Get(HexCoord.FromOffset(0, 0))!.Color = blue.Color;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Color = blue.Color;
+        grid.Get(HexCoord.FromOffset(2, 0))!.Color = blue.Color;
+        grid.Get(HexCoord.FromOffset(3, 0))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(4, 0))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(blue.Color, UnitLevel.Spearman);
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        var map = new MockHexMapView();
+        var hud = new MockHudView();
+        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+        {
+            map.TileIndex[kvp.Key] = kvp.Value;
+        }
+        // Deterministic chooser: first call returns the killing-blow
+        // move, subsequent calls return null (end of AI turn). Removes
+        // dependence on the heuristic's scoring behavior.
+        AiAction? scriptedKill = new AiMoveAction(
+            HexCoord.FromOffset(2, 0), HexCoord.FromOffset(3, 0));
+        AiAction? Chooser(GameState s, Color c, HashSet<HexCoord> v, Random r)
+        {
+            AiAction? next = scriptedKill;
+            scriptedKill = null;
+            return next;
+        }
+
+        var pacer = new QueuedAiPacer();
+        var controller = new GameController(
+            state, session, map, hud, seed: 0,
+            aiChooser: Chooser,
+            aiPacer: pacer);
+        controller.StartGame();
+
+        // End Red's (human) turn so Blue's (AI) turn begins.
+        hud.ClickEndTurn();
+
+        // Drain the AI loop. The AI's first capture should hit Red's
+        // (1,0) tile, then capture Red's capital (0,0) — eliminating Red.
+        // After elimination fires PendingDefeatScreen, the AI loop must
+        // stop scheduling further steps.
+        pacer.DrainAll();
+
+        // PendingDefeatScreen is set, AI is paused. There should be no
+        // pending callback queued.
+        Assert.Equal(red.Color, session.PendingDefeatScreen);
+        Assert.False(pacer.HasPending);
+    }
+
+    [Fact]
     public void Buy_PlacingSpearmanOnEnemyLastCapital_FiresPlayerDefeatedSound()
     {
         // User's repro: enemy has ONE 2-hex territory, total. Player

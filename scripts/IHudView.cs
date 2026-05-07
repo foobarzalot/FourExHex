@@ -23,6 +23,13 @@ public interface IHudView
     event Action? PreviousUnitClicked;
     event Action? CancelActionPressed;
     event Action? SaveGameClicked;
+    /// <summary>
+    /// Continue button on the defeat overlay. Dismisses the overlay
+    /// and resumes play (paused AI loop picks up where it left off).
+    /// The "Main Menu" button on the same overlay reuses the existing
+    /// <see cref="MainMenuClicked"/> event.
+    /// </summary>
+    event Action? DefeatContinueClicked;
 
     /// <summary>
     /// Update every label, button disabled state, and the End Turn CTA

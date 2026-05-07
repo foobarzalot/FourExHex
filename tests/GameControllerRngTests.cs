@@ -58,6 +58,14 @@ public class GameControllerRngTests
         for (int i = 0; i < turns; i++)
         {
             if (session.IsGameOver) break;
+            // Auto-dismiss the human-defeat overlay so the AI loop
+            // (paused on first human elimination) keeps running and
+            // the per-seed RNG stream stays observable for the full
+            // span of `turns`. This test isn't exercising defeat UX.
+            if (session.PendingDefeatScreen.HasValue)
+            {
+                hud.ClickDefeatContinue();
+            }
             hud.ClickEndTurn();
         }
         return log;

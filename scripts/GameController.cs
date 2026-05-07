@@ -122,6 +122,7 @@ public class GameController
         _hud.NextUnitClicked += OnNextUnitPressed;
         _hud.PreviousUnitClicked += OnPreviousUnitPressed;
         _hud.CancelActionPressed += OnCancelActionPressed;
+        _hud.DefeatContinueClicked += OnDefeatContinuePressed;
     }
 
     /// <summary>
@@ -839,6 +840,11 @@ public class GameController
             if (!colorsWithCapitalAfter.Contains(c))
             {
                 _map.PlayPlayerDefeated();
+                Player? defeated = _state.Turns.Players.FirstOrDefault(p => p.Color == c);
+                if (defeated != null && !defeated.IsAi)
+                {
+                    _session.PendingDefeatScreen = c;
+                }
             }
         }
 
@@ -910,6 +916,24 @@ public class GameController
         if (_session.IsGameOver) return;
         CancelPendingAction();
         RefreshViews();
+    }
+
+    /// <summary>
+    /// Defeat-overlay Continue handler. Clears the overlay flag and
+    /// re-arms the AI loop so it picks up where it left off (defeat
+    /// fires inside StepAiExecute, which then skipped scheduling the
+    /// next preview while the flag was set).
+    /// </summary>
+    private void OnDefeatContinuePressed()
+    {
+        if (!_session.PendingDefeatScreen.HasValue) return;
+        _session.PendingDefeatScreen = null;
+        RefreshViews();
+        if (_session.IsGameOver) return;
+        if (_state.Turns.CurrentPlayer.IsAi)
+        {
+            _aiPacer.Schedule(StepAiPreview, AiActionDelayMs);
+        }
     }
 
     // --- Undo / redo ------------------------------------------------------
@@ -1645,6 +1669,11 @@ public class GameController
             _map.ShowHighlight(null);
             return;
         }
+        // Paused: defeat-overlay handler will re-schedule when the
+        // human dismisses it. Without this, the AI keeps running
+        // behind the modal scrim and the user clicks Continue into a
+        // game state several turns past their elimination.
+        if (_session.PendingDefeatScreen.HasValue) return;
         _aiPacer.Schedule(StepAiPreview, AiActionDelayMs);
     }
 
