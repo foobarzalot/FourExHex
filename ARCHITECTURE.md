@@ -81,6 +81,8 @@ off it.
 │   │    hud.PreviousUnitClicked      → OnPreviousUnitPressed              │
 │   │    hud.CancelActionPressed      → OnCancelActionPressed              │
 │   │    hud.DefeatContinueClicked    → OnDefeatContinuePressed            │
+│   │    hud.ClaimVictoryWinNowClicked    → OnClaimVictoryWinNowPressed    │
+│   │    hud.ClaimVictoryContinueClicked  → OnClaimVictoryContinuePressed  │
 │   │   (NewGameClicked / MainMenuClicked / SaveGameClicked are handled    │
 │   │    in Main, not here)                                                │
 │   │                                                                      │
@@ -168,18 +170,22 @@ off it.
 │   ├─ PendingDefeatScreen  │  │   ├─ ShowTowerCoverage(coords)             │
 │   │   (Color? — drives    │  │   ├─ ShowMoveSource(coord?)                │
 │   │   the defeat overlay) │  │   ├─ CenterOnTerritory(territory)          │
-│   ├─ SelectedTerritory    │  │   ├─ RebuildAfterTerritoryChange()         │
-│   ├─ Mode (enum)          │  │   ├─ RefreshOccupantVisuals(color, tr.)    │
-│   ├─ MoveSource           │  │   ├─ PlayDestructionEffect(coord, occ.)    │
-│   └─ Undo (UndoStack of   │  │   ├─ Play{UnitPlaced, TowerPlaced,         │
-│      UndoEntry =          │  │   │    UnitCombined, UnitDestroyed,        │
-│      GameStateSnapshot +  │  │   │    TowerDestroyed, TreeCleared,        │
-│      SessionStateSnapshot)│  │   │    CapitalDestroyed, Bankruptcy,       │
-│                           │  │   │    GameWon, Rally, PlayerDefeated}     │
-│                           │  │   │    — audio sinks routed to AudioBus    │
-│                           │  │   └─ layers: borders / capitals / units /  │
-│                           │  │             towers / trees / graves /     │
-│                           │  │             targets / highlight            │
+│   ├─ PendingClaimVictory  │  │   ├─ RebuildAfterTerritoryChange()         │
+│   │   (Color? — drives    │  │   ├─ RefreshOccupantVisuals(color, tr.)    │
+│   │   the claim-victory   │  │   ├─ PlayDestructionEffect(coord, occ.)    │
+│   │   overlay; human-only)│  │   ├─ Play{UnitPlaced, TowerPlaced,         │
+│   ├─ ClaimVictoryPrompted │  │   │    UnitCombined, UnitDestroyed,        │
+│   │   Colors (HashSet —   │  │   │    TowerDestroyed, TreeCleared,        │
+│   │   one-prompt-per-     │  │   │    CapitalDestroyed, Bankruptcy,       │
+│   │   game gate; persists │  │   │    GameWon, Rally, PlayerDefeated}     │
+│   │   across save/load)   │  │   │    — audio sinks routed to AudioBus    │
+│   ├─ SelectedTerritory    │  │   └─ layers: borders / capitals / units /  │
+│   ├─ Mode (enum)          │  │             towers / trees / graves /     │
+│   ├─ MoveSource           │  │             targets / highlight            │
+│   └─ Undo (UndoStack of   │  │                                            │
+│      UndoEntry =          │  │                                            │
+│      GameStateSnapshot +  │  │                                            │
+│      SessionStateSnapshot)│  │                                            │
 │                           │  │                                            │
 │                           │  │   HudView : CanvasLayer, IHudView          │
 │                           │  │   ├─ events: BuyPeasant / BuildTower /     │
@@ -188,10 +194,13 @@ off it.
 │                           │  │     MainMenu / NextTerritory /             │
 │                           │  │     PreviousTerritory / NextUnit /         │
 │                           │  │     PreviousUnit / SaveGame / CancelAction │
-│                           │  │     / DefeatContinue                       │
+│                           │  │     / DefeatContinue /                     │
+│                           │  │     ClaimVictoryWinNow /                   │
+│                           │  │     ClaimVictoryContinue                   │
 │                           │  │   ├─ Refresh(state, session, hasAct.)      │
-│                           │  │   │    (drives the defeat overlay from     │
-│                           │  │   │    session.PendingDefeatScreen)        │
+│                           │  │   │    (overlay priority: Winner >         │
+│                           │  │   │     PendingDefeatScreen >              │
+│                           │  │   │     PendingClaimVictory)               │
 │                           │  │   ├─ SetMapLabel(text)  // "Map: foo" or   │
 │                           │  │   │                       "Seed: 1234"     │
 │                           │  │   └─ ShowTutorialMessage(text) /           │
@@ -219,6 +228,7 @@ off it.
 │   WinConditionRules.WinnerByDomination (mid-turn)                        │
 │                    .WinnerAtEndOfTurn (sole capital-bearer)              │
 │                    .IsEliminated                                         │
+│                    .MeetsClaimVictoryThreshold (>50%, claim-victory)     │
 └──────────────────────────────────────────────────────────────────────────┘
 
 ┌──────────────────────────────────────────────────────────────────────────┐
@@ -344,6 +354,8 @@ event Action? PreviousUnitClicked;     // Shift+N hotkey
 event Action? CancelActionPressed;     // Escape hotkey equivalent
 event Action? SaveGameClicked;         // handled in Main (opens save dialog)
 event Action? DefeatContinueClicked;   // dismiss defeat overlay; resume AI
+event Action? ClaimVictoryWinNowClicked;   // declare win now from prompt
+event Action? ClaimVictoryContinueClicked; // dismiss prompt, proceed End Turn
 
 void Refresh(GameState state, SessionState session, bool hasActionableRemaining);
 void SetMapLabel(string text);         // one-time after setup; "Map: foo"
@@ -360,6 +372,13 @@ The defeat overlay is part of the HUD: `Refresh` reads
 naming the eliminated player. Continue raises
 `DefeatContinueClicked`; the overlay's "Main Menu" button reuses
 `MainMenuClicked`.
+
+The claim-victory overlay is the third HUD overlay: `Refresh` shows
+it iff `session.PendingClaimVictory.HasValue` and neither `Winner`
+nor `PendingDefeatScreen` is set (Winner > Defeat > ClaimVictory).
+**Win Now** raises `ClaimVictoryWinNowClicked`; **Continue Playing**
+raises `ClaimVictoryContinueClicked`. See the "Claim victory prompt"
+subsection under Win conditions.
 
 The tutorial popup is a separate non-interactive panel managed via
 `ShowTutorialMessage` / `HideTutorialMessage` (no `Refresh`-driven
@@ -471,6 +490,30 @@ Two independent checks fire from different places:
 
 `DeclareWinner` is the centralized setter for `SessionState.Winner`;
 it fires `PlayGameWon` iff the winner is human.
+
+### Claim victory prompt
+
+When a **human** presses End Turn while owning strictly more than
+half of all land tiles (`WinConditionRules.MeetsClaimVictoryThreshold`,
+counting `state.Grid.Tiles` only — water is excluded),
+`OnEndTurnPressed` short-circuits before `EndTurnNow()` runs. It sets
+`SessionState.PendingClaimVictory = currentColor` and refreshes the
+view; the HUD shows a centered overlay with **Win Now** and **Continue
+Playing** buttons. The pending End Turn is held until the user picks:
+
+- **Win Now** (`OnClaimVictoryWinNowPressed`) records the color in
+  `SessionState.ClaimVictoryPromptedColors`, calls `DeclareWinner`,
+  clears undo, and fires `GameEnded`.
+- **Continue Playing** (`OnClaimVictoryContinuePressed`) records the
+  color and runs `EndTurnNow()` — exactly the original End Turn flow.
+
+The prompt fires at most **once per human per game**: the color is
+added to `ClaimVictoryPromptedColors` only on dismissal (not on show),
+so a save+reload while the overlay is up still re-presents the prompt.
+The prompted-colors set is persisted via `SaveSerializer` (optional
+`ClaimVictoryPromptedColorHexes` field — null/missing in older saves
+loads as empty) so reload cannot reset the once-per-game invariant.
+AI players never trigger the prompt.
 
 ### Player elimination
 
@@ -685,9 +728,16 @@ sequences.
   identifying the starting map a game descended from (or null for
   procedural games). It rides through autosave so reloads keep the
   bottom-left "Map: foo" label correct.
+- **Claim-victory prompted set.** Saves carry an optional
+  `ClaimVictoryPromptedColorHexes` field — the colors that have
+  already dismissed the End-Turn claim-victory prompt this game.
+  Empty/missing in older saves and starting maps. `Main` seeds
+  `SessionState.ClaimVictoryPromptedColors` from this on load so the
+  once-per-game invariant survives reloads.
 - **Load.** The main menu's Load button populates `LoadRequest.Pending`
   with a `LoadedSave` (state + players + master seed + max-turn cap +
-  optional OriginMapName) and changes scene to `main.tscn`.
+  optional OriginMapName + optional claim-victory prompted set) and
+  changes scene to `main.tscn`.
   `Main._Ready` consumes and clears the request. On the in-progress
   load path, fresh grid construction is skipped and
   `controller.Resume()` is called instead of `StartGame()`.
