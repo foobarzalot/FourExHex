@@ -32,6 +32,20 @@ public interface IHudView
     event Action? DefeatContinueClicked;
 
     /// <summary>
+    /// Win Now button on the claim-victory overlay (shown when a human
+    /// presses End Turn while owning >50% of all tiles). Declares the
+    /// human as the winner and transitions to the victory screen.
+    /// </summary>
+    event Action? ClaimVictoryWinNowClicked;
+
+    /// <summary>
+    /// Continue Playing button on the claim-victory overlay. Dismisses
+    /// the overlay and proceeds with the End Turn the player just
+    /// pressed (advance + AI loop, exactly as if no prompt appeared).
+    /// </summary>
+    event Action? ClaimVictoryContinueClicked;
+
+    /// <summary>
     /// Update every label, button disabled state, and the End Turn CTA
     /// styling from the current game + session state.
     /// </summary>

@@ -25,13 +25,21 @@ public sealed class LoadedSave
     /// </summary>
     public string? OriginMapName { get; }
 
+    /// <summary>
+    /// Set of human colors that have already dismissed the End-Turn
+    /// claim-victory prompt this game. Empty for fresh games and for
+    /// older saves that pre-date the prompt feature.
+    /// </summary>
+    public IReadOnlyCollection<Color> ClaimVictoryPromptedColors { get; }
+
     public LoadedSave(
         GameState state,
         IReadOnlyList<Player> players,
         int masterSeed,
         int maxTurnNumber,
         string slotName,
-        string? originMapName = null)
+        string? originMapName = null,
+        IReadOnlyCollection<Color>? claimVictoryPromptedColors = null)
     {
         State = state;
         Players = players;
@@ -39,6 +47,8 @@ public sealed class LoadedSave
         MaxTurnNumber = maxTurnNumber;
         SlotName = slotName;
         OriginMapName = originMapName;
+        ClaimVictoryPromptedColors = claimVictoryPromptedColors
+            ?? System.Array.Empty<Color>();
     }
 }
 
@@ -76,10 +86,12 @@ public static class SaveSerializer
         IReadOnlyList<Player> players,
         string slotName,
         int maxTurnNumber,
-        string? originMapName = null)
+        string? originMapName = null,
+        IReadOnlyCollection<Color>? claimVictoryPromptedColors = null)
         => SerializeInternal(
             state, masterSeed, players, slotName, maxTurnNumber,
-            includeKind: true, originMapName: originMapName);
+            includeKind: true, originMapName: originMapName,
+            claimVictoryPromptedColors: claimVictoryPromptedColors);
 
     /// <summary>
     /// Serialize a starting map — same JSON format as <see cref="Serialize"/>,
@@ -93,7 +105,8 @@ public static class SaveSerializer
         IReadOnlyList<Player> players,
         string slotName)
         => SerializeInternal(state, masterSeed, players, slotName,
-            maxTurnNumber: int.MaxValue, includeKind: false, originMapName: null);
+            maxTurnNumber: int.MaxValue, includeKind: false,
+            originMapName: null, claimVictoryPromptedColors: null);
 
     private static string SerializeInternal(
         GameState state,
@@ -102,7 +115,8 @@ public static class SaveSerializer
         string slotName,
         int maxTurnNumber,
         bool includeKind,
-        string? originMapName)
+        string? originMapName,
+        IReadOnlyCollection<Color>? claimVictoryPromptedColors)
     {
         // Player index by color for fast tile/unit owner lookup.
         var indexByColor = new Dictionary<Color, int>();
@@ -126,8 +140,28 @@ public static class SaveSerializer
             Territories = SerializeTerritories(state.Territories, indexByColor),
             Gold = SerializeGold(state.Territories, state.Treasury),
             Water = SerializeWater(state.WaterCoords),
+            ClaimVictoryPromptedColorHexes =
+                SerializeClaimVictoryPrompted(claimVictoryPromptedColors),
         };
         return JsonSerializer.Serialize(data, JsonOptions);
+    }
+
+    /// <summary>
+    /// Encode the prompted-colors set as a list of hex strings (matching
+    /// the format used elsewhere for player colors). Returns null when
+    /// empty so the field is omitted from JSON entirely (kept clean for
+    /// fresh games and starting maps).
+    /// </summary>
+    private static List<string>? SerializeClaimVictoryPrompted(
+        IReadOnlyCollection<Color>? colors)
+    {
+        if (colors == null || colors.Count == 0) return null;
+        var hexes = new List<string>(colors.Count);
+        foreach (Color c in colors)
+        {
+            hexes.Add(c.ToHtml(includeAlpha: false));
+        }
+        return hexes;
     }
 
     public static LoadedSave Deserialize(string json)
@@ -171,9 +205,24 @@ public static class SaveSerializer
 
         IReadOnlySet<HexCoord> waterCoords = DeserializeWater(data.Water);
         var state = new GameState(grid, territories, players, turnState, treasury, waterCoords);
+        IReadOnlyCollection<Color> prompted = DeserializeClaimVictoryPrompted(
+            data.ClaimVictoryPromptedColorHexes);
         return new LoadedSave(
             state, players, data.MasterSeed, data.MaxTurnNumber, data.SlotName,
-            originMapName: data.OriginMapName);
+            originMapName: data.OriginMapName,
+            claimVictoryPromptedColors: prompted);
+    }
+
+    private static IReadOnlyCollection<Color> DeserializeClaimVictoryPrompted(
+        List<string>? hexes)
+    {
+        if (hexes == null || hexes.Count == 0) return System.Array.Empty<Color>();
+        var set = new HashSet<Color>();
+        foreach (string hex in hexes)
+        {
+            set.Add(new Color(hex));
+        }
+        return set;
     }
 
     // --- Water -----------------------------------------------------------
@@ -410,6 +459,14 @@ public sealed class SaveData
     public List<TerritoryDto> Territories { get; set; } = new();
     public List<CapitalGoldDto> Gold { get; set; } = new();
     public List<CoordDto> Water { get; set; } = new();
+
+    /// <summary>
+    /// Hex strings for the human colors that have already dismissed the
+    /// End-Turn claim-victory prompt this game. Null/missing in saves
+    /// written before the feature was added; null on serialize when the
+    /// set is empty (kept clean for fresh games).
+    /// </summary>
+    public List<string>? ClaimVictoryPromptedColorHexes { get; set; }
 }
 
 public sealed class PlayerDto

@@ -33,9 +33,11 @@ public sealed class SaveStore
         int masterSeed,
         IReadOnlyList<Player> players,
         int maxTurnNumber,
-        string? originMapName = null)
+        string? originMapName = null,
+        IReadOnlyCollection<Color>? claimVictoryPromptedColors = null)
     {
-        WriteSlot(AutosaveSlotName, state, masterSeed, players, maxTurnNumber, originMapName);
+        WriteSlot(AutosaveSlotName, state, masterSeed, players, maxTurnNumber,
+            originMapName, claimVictoryPromptedColors);
     }
 
     /// <summary>
@@ -50,9 +52,11 @@ public sealed class SaveStore
         int masterSeed,
         IReadOnlyList<Player> players,
         int maxTurnNumber,
-        string? originMapName = null)
+        string? originMapName = null,
+        IReadOnlyCollection<Color>? claimVictoryPromptedColors = null)
     {
-        WriteSlotIn(SaveDirectory, slotName, state, masterSeed, players, maxTurnNumber, originMapName);
+        WriteSlotIn(SaveDirectory, slotName, state, masterSeed, players,
+            maxTurnNumber, originMapName, claimVictoryPromptedColors);
     }
 
     /// <summary>
@@ -82,12 +86,14 @@ public sealed class SaveStore
         int masterSeed,
         IReadOnlyList<Player> players,
         int maxTurnNumber,
-        string? originMapName)
+        string? originMapName,
+        IReadOnlyCollection<Color>? claimVictoryPromptedColors)
     {
         EnsureDirectory(directory);
         string sanitized = SanitizeSlotName(slotName);
         string json = SaveSerializer.Serialize(
-            state, masterSeed, players, sanitized, maxTurnNumber, originMapName);
+            state, masterSeed, players, sanitized, maxTurnNumber,
+            originMapName, claimVictoryPromptedColors);
         AtomicWrite(directory, sanitized, json);
     }
 

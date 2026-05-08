@@ -37,6 +37,13 @@ public class GameControllerTests
 
             State = new GameState(grid, territories, players, new TurnState(players), new Treasury(), waterCoords);
             Session = new SessionState();
+            // Suppress the End-Turn claim-victory prompt for both colors:
+            // Blue starts the fixture owning 80% of the board, which would
+            // otherwise interrupt every test that cycles turns via End
+            // Turn. Tests specifically about the prompt build their own
+            // fixture (see ClaimVictoryTests).
+            Session.ClaimVictoryPromptedColors.Add(Red.Color);
+            Session.ClaimVictoryPromptedColors.Add(Blue.Color);
             Map = new MockHexMapView();
             Hud = new MockHudView();
 
@@ -3336,6 +3343,10 @@ public class GameControllerTests
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
         var session = new SessionState();
+        // Suppress the End-Turn claim-victory prompt: this test exercises
+        // the end-of-turn sole-capital-bearer winner path, not the new
+        // human-at->50% prompt that would otherwise interject.
+        session.ClaimVictoryPromptedColors.Add(red.Color);
         var map = new MockHexMapView();
         var hud = new MockHudView();
         foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())

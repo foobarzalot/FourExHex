@@ -186,4 +186,60 @@ public class WinConditionRulesTests
 
         Assert.Null(WinConditionRules.WinnerAtEndOfTurn(Red, territories));
     }
+
+    // --- MeetsClaimVictoryThreshold (claim-victory prompt gate) ----------
+
+    [Fact]
+    public void MeetsClaimVictoryThreshold_StrictlyAboveHalf_True()
+    {
+        // 5 of 9 tiles is > 50%.
+        var grid = new HexGrid();
+        for (int i = 0; i < 5; i++) grid.Add(new HexTile(new HexCoord(i, 0), Red));
+        for (int i = 0; i < 4; i++) grid.Add(new HexTile(new HexCoord(i, 1), Blue));
+
+        Assert.True(WinConditionRules.MeetsClaimVictoryThreshold(Red, grid));
+        Assert.False(WinConditionRules.MeetsClaimVictoryThreshold(Blue, grid));
+    }
+
+    [Fact]
+    public void MeetsClaimVictoryThreshold_ExactlyHalf_False()
+    {
+        // 4 of 8 tiles is exactly 50%, NOT strictly above.
+        var grid = new HexGrid();
+        for (int i = 0; i < 4; i++) grid.Add(new HexTile(new HexCoord(i, 0), Red));
+        for (int i = 0; i < 4; i++) grid.Add(new HexTile(new HexCoord(i, 1), Blue));
+
+        Assert.False(WinConditionRules.MeetsClaimVictoryThreshold(Red, grid));
+        Assert.False(WinConditionRules.MeetsClaimVictoryThreshold(Blue, grid));
+    }
+
+    [Fact]
+    public void MeetsClaimVictoryThreshold_BelowHalf_False()
+    {
+        // 3 of 9.
+        var grid = new HexGrid();
+        for (int i = 0; i < 3; i++) grid.Add(new HexTile(new HexCoord(i, 0), Red));
+        for (int i = 0; i < 6; i++) grid.Add(new HexTile(new HexCoord(i, 1), Blue));
+
+        Assert.False(WinConditionRules.MeetsClaimVictoryThreshold(Red, grid));
+        Assert.True(WinConditionRules.MeetsClaimVictoryThreshold(Blue, grid));
+    }
+
+    [Fact]
+    public void MeetsClaimVictoryThreshold_SingleTileOwner_True()
+    {
+        // 1 of 1 is unambiguously >50%.
+        var grid = new HexGrid();
+        grid.Add(new HexTile(new HexCoord(0, 0), Red));
+
+        Assert.True(WinConditionRules.MeetsClaimVictoryThreshold(Red, grid));
+        Assert.False(WinConditionRules.MeetsClaimVictoryThreshold(Blue, grid));
+    }
+
+    [Fact]
+    public void MeetsClaimVictoryThreshold_EmptyGrid_False()
+    {
+        var grid = new HexGrid();
+        Assert.False(WinConditionRules.MeetsClaimVictoryThreshold(Red, grid));
+    }
 }

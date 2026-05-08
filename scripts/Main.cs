@@ -14,6 +14,7 @@ public partial class Main : Node2D
     private SaveStore _saveStore = null!;
     private IReadOnlyList<Player> _players = null!;
     private GameState _state = null!;
+    private SessionState _session = null!;
     private int _maxTurnNumber;
 
     // Whether a tutorial popup is currently up. While true, the next
@@ -136,7 +137,17 @@ public partial class Main : Node2D
             _maxTurnNumber = diagnosticMode ? 500 : int.MaxValue;
             _originMapName = null;
         }
-        var session = new SessionState();
+        _session = new SessionState();
+        // Resumed games carry the set of human colors that already
+        // dismissed the End-Turn claim-victory prompt — persist that
+        // across save/load so the prompt won't re-appear after reload.
+        if (pendingLoad != null)
+        {
+            foreach (Color c in pendingLoad.ClaimVictoryPromptedColors)
+            {
+                _session.ClaimVictoryPromptedColors.Add(c);
+            }
+        }
 
         // --- Views --------------------------------------------------------
         IHexMapView map;
@@ -185,7 +196,7 @@ public partial class Main : Node2D
             ? new SynchronousAiPacer()
             : new GodotAiPacer(GetTree());
         _controller = new GameController(
-            _state, session, map, hud,
+            _state, _session, map, hud,
             seed: seed,
             aiPacer: pacer,
             aiChooser: AiDispatcher.ChooseForCurrentPlayer,
@@ -283,7 +294,8 @@ public partial class Main : Node2D
     {
         try
         {
-            _saveStore.WriteAutosave(_state, _controller.MasterSeed, _players, _maxTurnNumber, _originMapName);
+            _saveStore.WriteAutosave(_state, _controller.MasterSeed, _players,
+                _maxTurnNumber, _originMapName, _session.ClaimVictoryPromptedColors);
         }
         catch (System.Exception ex)
         {
@@ -355,7 +367,8 @@ public partial class Main : Node2D
         }
         try
         {
-            _saveStore.WriteSlot(name, _state, _controller.MasterSeed, _players, _maxTurnNumber, _originMapName);
+            _saveStore.WriteSlot(name, _state, _controller.MasterSeed, _players,
+                _maxTurnNumber, _originMapName, _session.ClaimVictoryPromptedColors);
         }
         catch (System.Exception ex)
         {

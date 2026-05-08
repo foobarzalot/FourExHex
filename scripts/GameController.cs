@@ -123,6 +123,8 @@ public class GameController
         _hud.PreviousUnitClicked += OnPreviousUnitPressed;
         _hud.CancelActionPressed += OnCancelActionPressed;
         _hud.DefeatContinueClicked += OnDefeatContinuePressed;
+        _hud.ClaimVictoryWinNowClicked += OnClaimVictoryWinNowPressed;
+        _hud.ClaimVictoryContinueClicked += OnClaimVictoryContinuePressed;
     }
 
     /// <summary>
@@ -1273,6 +1275,31 @@ public class GameController
     {
         if (_session.IsGameOver) return;
 
+        // Claim-victory prompt: a human pressing End Turn while owning
+        // strictly more than 50% of all tiles is offered an early win.
+        // Suppressed for AI players, and for any human color already
+        // dismissed in this game (set persists across save/load).
+        Player current = _state.Turns.CurrentPlayer;
+        if (!current.IsAi
+            && !_session.ClaimVictoryPromptedColors.Contains(current.Color)
+            && WinConditionRules.MeetsClaimVictoryThreshold(current.Color, _state.Grid))
+        {
+            _session.PendingClaimVictory = current.Color;
+            RefreshViews();
+            return;
+        }
+
+        EndTurnNow();
+    }
+
+    /// <summary>
+    /// The body of End Turn after any optional pre-prompts have been
+    /// resolved. Splits out so <see cref="OnClaimVictoryContinuePressed"/>
+    /// can run the same end-of-turn flow after the user dismisses the
+    /// claim-victory overlay with "Continue Playing".
+    /// </summary>
+    private void EndTurnNow()
+    {
         // Ending the turn commits everything; no further undo.
         _session.Undo.Clear();
 
@@ -1293,6 +1320,38 @@ public class GameController
         CancelPendingAction();
         SetSelection(null);
         RefreshViews();
+    }
+
+    /// <summary>
+    /// Win Now button on the claim-victory overlay: declare the prompted
+    /// human as the winner immediately, fire <see cref="GameEnded"/>, and
+    /// record the color so the prompt won't re-appear (defensive — the
+    /// game is over anyway).
+    /// </summary>
+    private void OnClaimVictoryWinNowPressed()
+    {
+        if (!_session.PendingClaimVictory.HasValue) return;
+        Color winner = _session.PendingClaimVictory.Value;
+        _session.PendingClaimVictory = null;
+        _session.ClaimVictoryPromptedColors.Add(winner);
+        DeclareWinner(winner);
+        _session.Undo.Clear();
+        CheckGameEndConditions();
+        RefreshViews();
+    }
+
+    /// <summary>
+    /// Continue Playing button on the claim-victory overlay: clear the
+    /// flag, record the color so the prompt won't fire again this game,
+    /// and run the deferred End Turn body.
+    /// </summary>
+    private void OnClaimVictoryContinuePressed()
+    {
+        if (!_session.PendingClaimVictory.HasValue) return;
+        Color color = _session.PendingClaimVictory.Value;
+        _session.PendingClaimVictory = null;
+        _session.ClaimVictoryPromptedColors.Add(color);
+        EndTurnNow();
     }
 
     /// <summary>

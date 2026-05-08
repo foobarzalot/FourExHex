@@ -85,4 +85,23 @@ public static class WinConditionRules
         }
         return true;
     }
+
+    /// <summary>
+    /// True iff <paramref name="color"/> owns strictly more than half
+    /// of the tiles in <paramref name="grid"/>. Water (off-map blockers)
+    /// is not counted because it isn't part of the grid. Used to gate
+    /// the human-only "claim victory" prompt on End Turn — strict ">"
+    /// (not ">=") so exactly 50% does NOT trigger.
+    /// </summary>
+    public static bool MeetsClaimVictoryThreshold(Color color, HexGrid grid)
+    {
+        int owned = 0;
+        int total = 0;
+        foreach (HexTile tile in grid.Tiles)
+        {
+            total++;
+            if (tile.Color == color) owned++;
+        }
+        return owned * 2 > total;
+    }
 }

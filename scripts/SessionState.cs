@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Godot;
 
 /// <summary>
@@ -31,6 +32,27 @@ public class SessionState
     /// fires but no popup appears.
     /// </summary>
     public Color? PendingDefeatScreen { get; set; }
+
+    /// <summary>
+    /// Color of a human player who just pressed End Turn while owning
+    /// strictly more than 50% of all land tiles — the HUD shows the
+    /// claim-victory overlay while this is non-null. The pending End
+    /// Turn is held until the human picks Win Now (declares victory)
+    /// or Continue Playing (proceeds with the End Turn). Suppressed by
+    /// <see cref="ClaimVictoryPromptedColors"/> on subsequent turns so
+    /// the prompt fires at most once per human per game.
+    /// </summary>
+    public Color? PendingClaimVictory { get; set; }
+
+    /// <summary>
+    /// Set of human colors that have already dismissed the claim-victory
+    /// prompt this game (via Win Now or Continue Playing). A color in
+    /// this set never triggers the prompt again — even if they drop
+    /// below 50% and re-cross the threshold. Persisted across save/load
+    /// (see <see cref="SaveSerializer"/>) so the once-per-game invariant
+    /// survives reloads.
+    /// </summary>
+    public HashSet<Color> ClaimVictoryPromptedColors { get; } = new HashSet<Color>();
 
     public enum ActionMode
     {

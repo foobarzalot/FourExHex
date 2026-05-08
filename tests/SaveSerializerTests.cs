@@ -296,6 +296,56 @@ public class SaveSerializerTests
         Assert.Null(loaded.OriginMapName);
     }
 
+    [Fact]
+    public void Serialize_RoundTripsClaimVictoryPromptedColors()
+    {
+        // The set of human colors that have already dismissed the
+        // claim-victory prompt is per-game, persists across save/load,
+        // and survives reload so the prompt won't re-appear after a
+        // save+load cycle.
+        (GameState state, IReadOnlyList<Player> players) = BuildRichState();
+        var prompted = new HashSet<Color> { players[0].Color };
+
+        string json = SaveSerializer.Serialize(
+            state, 42, players, slotName: "s", maxTurnNumber: 100,
+            originMapName: null, claimVictoryPromptedColors: prompted);
+        LoadedSave loaded = SaveSerializer.Deserialize(json);
+
+        Assert.Single(loaded.ClaimVictoryPromptedColors);
+        Assert.Contains(players[0].Color, loaded.ClaimVictoryPromptedColors);
+    }
+
+    [Fact]
+    public void Serialize_EmptyClaimVictoryPromptedColors_RoundTripsAsEmpty()
+    {
+        (GameState state, IReadOnlyList<Player> players) = BuildRichState();
+
+        string json = SaveSerializer.Serialize(
+            state, 42, players, slotName: "s", maxTurnNumber: 100);
+        LoadedSave loaded = SaveSerializer.Deserialize(json);
+
+        Assert.Empty(loaded.ClaimVictoryPromptedColors);
+    }
+
+    [Fact]
+    public void Deserialize_OldSaveMissingClaimVictoryField_LoadsAsEmpty()
+    {
+        // Backward compat: saves written before this field was added
+        // must still load with an empty prompted set.
+        (GameState state, IReadOnlyList<Player> players) = BuildRichState();
+        string json = SaveSerializer.Serialize(state, 42, players, "s", 100);
+        // Strip the field if present (Serialize omits it when empty,
+        // but be defensive — match either ":[..]," or absent).
+        string legacyJson = System.Text.RegularExpressions.Regex.Replace(
+            json,
+            "\\s*\"ClaimVictoryPromptedColorHexes\":\\s*(\\[[^\\]]*\\]|null),?",
+            "");
+
+        LoadedSave loaded = SaveSerializer.Deserialize(legacyJson);
+
+        Assert.Empty(loaded.ClaimVictoryPromptedColors);
+    }
+
     private static void AssertOccupantsEqual(HexOccupant? a, HexOccupant? b)
     {
         if (a == null && b == null) return;

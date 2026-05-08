@@ -81,6 +81,8 @@ public sealed class HeadlessHudView : IHudView
     public event Action? CancelActionPressed;
     public event Action? SaveGameClicked;
     public event Action? DefeatContinueClicked;
+    public event Action? ClaimVictoryWinNowClicked;
+    public event Action? ClaimVictoryContinueClicked;
 #pragma warning restore CS0067
 
     public void Refresh(GameState state, SessionState session, bool hasActionableRemaining) { }

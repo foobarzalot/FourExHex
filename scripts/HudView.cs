@@ -28,6 +28,8 @@ public partial class HudView : CanvasLayer, IHudView
     public event Action? CancelActionPressed;
     public event Action? SaveGameClicked;
     public event Action? DefeatContinueClicked;
+    public event Action? ClaimVictoryWinNowClicked;
+    public event Action? ClaimVictoryContinueClicked;
 
     private Label _turnLabel = null!;
     private Label _playerLabel = null!;
@@ -47,6 +49,8 @@ public partial class HudView : CanvasLayer, IHudView
     private Label _victoryLabel = null!;
     private Control _defeatOverlay = null!;
     private Label _defeatLabel = null!;
+    private Control _claimVictoryOverlay = null!;
+    private Label _claimVictoryNameLabel = null!;
     private Panel _tutorialPanel = null!;
     private Label _tutorialLabel = null!;
 
@@ -252,6 +256,7 @@ public partial class HudView : CanvasLayer, IHudView
 
         BuildVictoryOverlay(viewport);
         BuildDefeatOverlay(viewport);
+        BuildClaimVictoryOverlay(viewport);
         BuildTutorialOverlay();
     }
 
@@ -463,6 +468,89 @@ public partial class HudView : CanvasLayer, IHudView
     }
 
     /// <summary>
+    /// Build a centered, click-blocking panel offering an early win when
+    /// a human ends their turn while owning >50% of the map. Two buttons:
+    /// Win Now (declare victory immediately) and Continue Playing (proceed
+    /// with the End Turn). Hidden by default; <see cref="Refresh"/>
+    /// toggles visibility based on
+    /// <see cref="SessionState.PendingClaimVictory"/>.
+    /// </summary>
+    private void BuildClaimVictoryOverlay(Vector2 viewport)
+    {
+        _claimVictoryOverlay = new Control
+        {
+            AnchorLeft = 0f,
+            AnchorRight = 1f,
+            AnchorTop = 0f,
+            AnchorBottom = 1f,
+            MouseFilter = Control.MouseFilterEnum.Stop,
+            Visible = false,
+        };
+        AddChild(_claimVictoryOverlay);
+
+        var scrim = new ColorRect
+        {
+            Color = new Color(0f, 0f, 0f, 0.6f),
+            AnchorLeft = 0f,
+            AnchorRight = 1f,
+            AnchorTop = 0f,
+            AnchorBottom = 1f,
+        };
+        _claimVictoryOverlay.AddChild(scrim);
+
+        const float panelW = 520f;
+        const float panelH = 260f;
+        var panel = new Panel
+        {
+            Position = new Vector2((viewport.X - panelW) * 0.5f, (viewport.Y - panelH) * 0.5f),
+            Size = new Vector2(panelW, panelH),
+        };
+        _claimVictoryOverlay.AddChild(panel);
+
+        var headerLabel = new Label
+        {
+            Text = "You control most of the map!",
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Position = new Vector2(0, 32),
+            Size = new Vector2(panelW, 40),
+        };
+        headerLabel.AddThemeFontSizeOverride("font_size", 28);
+        panel.AddChild(headerLabel);
+
+        _claimVictoryNameLabel = new Label
+        {
+            Text = "",
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Position = new Vector2(0, 80),
+            Size = new Vector2(panelW, 40),
+        };
+        _claimVictoryNameLabel.AddThemeFontSizeOverride("font_size", 28);
+        panel.AddChild(_claimVictoryNameLabel);
+
+        const float buttonW = 200f;
+        const float buttonH = 48f;
+        const float gap = 20f;
+        float rowY = 170f;
+        float rowX = (panelW - (buttonW * 2f + gap)) * 0.5f;
+
+        var winNowButton = new Button { Text = "Win Now" };
+        winNowButton.AddThemeFontSizeOverride("font_size", 22);
+        winNowButton.Position = new Vector2(rowX, rowY);
+        winNowButton.Size = new Vector2(buttonW, buttonH);
+        winNowButton.Pressed += () => ClaimVictoryWinNowClicked?.Invoke();
+        AudioBus.AttachClick(winNowButton);
+        panel.AddChild(winNowButton);
+
+        var continueButton = new Button { Text = "Continue Playing" };
+        continueButton.AddThemeFontSizeOverride("font_size", 22);
+        continueButton.Position = new Vector2(rowX + buttonW + gap, rowY);
+        continueButton.Size = new Vector2(buttonW, buttonH);
+        continueButton.Pressed += () => ClaimVictoryContinueClicked?.Invoke();
+        AudioBus.AttachClick(continueButton);
+        panel.AddChild(continueButton);
+    }
+
+    /// <summary>
     /// Global keyboard shortcuts. The HUD's buttons have
     /// <c>FocusMode = None</c> so keyboard events flow past them into
     /// <see cref="Node._UnhandledInput"/>. <c>!keyEvent.Echo</c>
@@ -629,6 +717,27 @@ public partial class HudView : CanvasLayer, IHudView
         else
         {
             _defeatOverlay.Visible = false;
+        }
+
+        // Claim-victory overlay: show iff a human pressed End Turn while
+        // owning >50% of the map and hasn't dismissed the prompt yet.
+        // Suppressed when Winner OR PendingDefeatScreen is set so the
+        // higher-priority overlays take precedence.
+        if (session.PendingClaimVictory.HasValue
+            && !session.Winner.HasValue
+            && !session.PendingDefeatScreen.HasValue)
+        {
+            Color color = session.PendingClaimVictory.Value;
+            Player? player = state.Turns.Players
+                .FirstOrDefault(p => p.Color == color);
+            string name = player?.Name ?? "Unknown";
+            _claimVictoryNameLabel.Text = $"Claim victory as {name}?";
+            _claimVictoryNameLabel.AddThemeColorOverride("font_color", color);
+            _claimVictoryOverlay.Visible = true;
+        }
+        else
+        {
+            _claimVictoryOverlay.Visible = false;
         }
     }
 
