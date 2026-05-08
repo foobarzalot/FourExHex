@@ -85,4 +85,6 @@ public sealed class HeadlessHudView : IHudView
 
     public void Refresh(GameState state, SessionState session, bool hasActionableRemaining) { }
     public void SetMapLabel(string text) { }
+    public void ShowTutorialMessage(string text) { }
+    public void HideTutorialMessage() { }
 }

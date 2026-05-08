@@ -56,6 +56,10 @@ public class MockHudView : IHudView
     public string? LastSetMapLabel { get; private set; }
     public void SetMapLabel(string text) => LastSetMapLabel = text;
 
+    public string? CurrentTutorialMessage { get; private set; }
+    public void ShowTutorialMessage(string text) => CurrentTutorialMessage = text;
+    public void HideTutorialMessage() => CurrentTutorialMessage = null;
+
     public void ClickBuyPeasant() => BuyPeasantClicked?.Invoke();
     public void ClickBuildTower() => BuildTowerClicked?.Invoke();
     public void PressNextTerritory() => NextTerritoryClicked?.Invoke();

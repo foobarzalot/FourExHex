@@ -44,4 +44,16 @@ public interface IHudView
     /// Invariant per game; called once after game setup.
     /// </summary>
     void SetMapLabel(string text);
+
+    /// <summary>
+    /// Show a non-interactive informational popup at the bottom of the
+    /// screen with the given text. Used by tutorial scripting to display
+    /// instructions / narration. The HUD does not auto-dismiss; the
+    /// scene root drives <see cref="HideTutorialMessage"/> in response
+    /// to whatever input it considers acknowledgement.
+    /// </summary>
+    void ShowTutorialMessage(string text);
+
+    /// <summary>Hide the tutorial popup if it's currently showing.</summary>
+    void HideTutorialMessage();
 }

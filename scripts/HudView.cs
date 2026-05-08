@@ -47,6 +47,8 @@ public partial class HudView : CanvasLayer, IHudView
     private Label _victoryLabel = null!;
     private Control _defeatOverlay = null!;
     private Label _defeatLabel = null!;
+    private Panel _tutorialPanel = null!;
+    private Label _tutorialLabel = null!;
 
     // Snapshot of session.Mode != None at the last Refresh, so the Escape
     // handler can decide between cancel-action (pending) and End Game (idle)
@@ -250,11 +252,66 @@ public partial class HudView : CanvasLayer, IHudView
 
         BuildVictoryOverlay(viewport);
         BuildDefeatOverlay(viewport);
+        BuildTutorialOverlay();
     }
 
     public void SetMapLabel(string text)
     {
         _seedLabel.Text = text;
+    }
+
+    public void ShowTutorialMessage(string text)
+    {
+        _tutorialLabel.Text = text;
+        _tutorialPanel.Visible = true;
+    }
+
+    public void HideTutorialMessage()
+    {
+        _tutorialPanel.Visible = false;
+    }
+
+    /// <summary>
+    /// Bottom-anchored, click-through informational panel for tutorial
+    /// narration. Not interactive — MouseFilter=Ignore on both the
+    /// panel and label so a click anywhere on it falls through to the
+    /// map underneath. Sized as a fixed strip horizontally centered
+    /// near the bottom of the viewport.
+    /// </summary>
+    private void BuildTutorialOverlay()
+    {
+        const float panelW = 600f;
+        const float panelH = 80f;
+        const float marginBottom = 60f;
+
+        _tutorialPanel = new Panel
+        {
+            AnchorLeft = 0.5f,
+            AnchorRight = 0.5f,
+            AnchorTop = 1f,
+            AnchorBottom = 1f,
+            OffsetLeft = -panelW * 0.5f,
+            OffsetRight = panelW * 0.5f,
+            OffsetTop = -marginBottom - panelH,
+            OffsetBottom = -marginBottom,
+            Visible = false,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        AddChild(_tutorialPanel);
+
+        _tutorialLabel = new Label
+        {
+            Text = "",
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            AnchorLeft = 0f,
+            AnchorRight = 1f,
+            AnchorTop = 0f,
+            AnchorBottom = 1f,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        _tutorialLabel.AddThemeFontSizeOverride("font_size", 22);
+        _tutorialPanel.AddChild(_tutorialLabel);
     }
 
     /// <summary>

@@ -192,8 +192,11 @@ off it.
 │                           │  │   ├─ Refresh(state, session, hasAct.)      │
 │                           │  │   │    (drives the defeat overlay from     │
 │                           │  │   │    session.PendingDefeatScreen)        │
-│                           │  │   └─ SetMapLabel(text)  // "Map: foo" or   │
-│                           │  │                          "Seed: 1234"      │
+│                           │  │   ├─ SetMapLabel(text)  // "Map: foo" or   │
+│                           │  │   │                       "Seed: 1234"     │
+│                           │  │   └─ ShowTutorialMessage(text) /           │
+│                           │  │      HideTutorialMessage() — bottom-       │
+│                           │  │      anchored click-through info popup    │
 │                           │  │                                            │
 │                           │  │   HeadlessHexMapView / HeadlessHudView —   │
 │                           │  │   no-op stubs for diagnostic mode          │
@@ -346,6 +349,10 @@ void Refresh(GameState state, SessionState session, bool hasActionableRemaining)
 void SetMapLabel(string text);         // one-time after setup; "Map: foo"
                                        // for starting-map games, "Seed: N"
                                        // for procedural
+void ShowTutorialMessage(string text); // bottom-anchored info popup;
+                                       // click-through (MouseFilter=Ignore)
+void HideTutorialMessage();            // dismiss it — Main drives this
+                                       // off the first user input
 ```
 
 The defeat overlay is part of the HUD: `Refresh` reads
@@ -353,6 +360,14 @@ The defeat overlay is part of the HUD: `Refresh` reads
 naming the eliminated player. Continue raises
 `DefeatContinueClicked`; the overlay's "Main Menu" button reuses
 `MainMenuClicked`.
+
+The tutorial popup is a separate non-interactive panel managed via
+`ShowTutorialMessage` / `HideTutorialMessage` (no `Refresh`-driven
+state). `Main` decides when to show it (currently: once at game
+start when any player has `AiKind.Tutorial`) and dismisses it on
+the first mouse-button-down or non-echo key press via its `_Input`
+override. The panel itself ignores mouse input so that first click
+still reaches the map / HUD as normal.
 
 **`IAiPacer`** — schedules deferred continuations for the AI step
 machine. `GodotAiPacer` schedules via the `SceneTree`; the default
@@ -832,6 +847,7 @@ scripts/
 ├─ HexMapView.cs          ─ concrete map: rendering + input + camera pan
 │                           + audio forwarding
 ├─ HudView.cs             ─ concrete HUD: labels + buttons + defeat overlay
+│                           + bottom-anchored tutorial-message popup
 ├─ HeadlessViews.cs       ─ no-op view stubs for diagnostic mode
 ├─ AudioBus.cs            ─ autoload Node singleton: shared SFX players
 │                           that survive scene changes
