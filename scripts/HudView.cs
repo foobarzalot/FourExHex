@@ -50,7 +50,6 @@ public partial class HudView : CanvasLayer, IHudView
     private Control _defeatOverlay = null!;
     private Label _defeatLabel = null!;
     private Control _claimVictoryOverlay = null!;
-    private Label _claimVictoryNameLabel = null!;
     private Panel _tutorialPanel = null!;
     private Label _tutorialLabel = null!;
 
@@ -509,23 +508,13 @@ public partial class HudView : CanvasLayer, IHudView
 
         var headerLabel = new Label
         {
-            Text = "You control most of the map!",
+            Text = "Claim Victory?",
             HorizontalAlignment = HorizontalAlignment.Center,
-            Position = new Vector2(0, 32),
-            Size = new Vector2(panelW, 40),
+            Position = new Vector2(0, 64),
+            Size = new Vector2(panelW, 48),
         };
-        headerLabel.AddThemeFontSizeOverride("font_size", 28);
+        headerLabel.AddThemeFontSizeOverride("font_size", 32);
         panel.AddChild(headerLabel);
-
-        _claimVictoryNameLabel = new Label
-        {
-            Text = "",
-            HorizontalAlignment = HorizontalAlignment.Center,
-            Position = new Vector2(0, 80),
-            Size = new Vector2(panelW, 40),
-        };
-        _claimVictoryNameLabel.AddThemeFontSizeOverride("font_size", 28);
-        panel.AddChild(_claimVictoryNameLabel);
 
         const float buttonW = 200f;
         const float buttonH = 48f;
@@ -719,26 +708,16 @@ public partial class HudView : CanvasLayer, IHudView
             _defeatOverlay.Visible = false;
         }
 
-        // Claim-victory overlay: show iff a human pressed End Turn while
-        // owning >50% of the map and hasn't dismissed the prompt yet.
+        // Claim-victory overlay: show iff a human pressed End Turn and
+        // crossed an unseen tier (50/75/90) and hasn't dismissed yet.
         // Suppressed when Winner OR PendingDefeatScreen is set so the
-        // higher-priority overlays take precedence.
-        if (session.PendingClaimVictory.HasValue
+        // higher-priority overlays take precedence. The threshold tier
+        // is intentionally not surfaced in the wording — every tier
+        // shows the same prompt.
+        _claimVictoryOverlay.Visible =
+            session.PendingClaimVictory.HasValue
             && !session.Winner.HasValue
-            && !session.PendingDefeatScreen.HasValue)
-        {
-            Color color = session.PendingClaimVictory.Value;
-            Player? player = state.Turns.Players
-                .FirstOrDefault(p => p.Color == color);
-            string name = player?.Name ?? "Unknown";
-            _claimVictoryNameLabel.Text = $"Claim victory as {name}?";
-            _claimVictoryNameLabel.AddThemeColorOverride("font_color", color);
-            _claimVictoryOverlay.Visible = true;
-        }
-        else
-        {
-            _claimVictoryOverlay.Visible = false;
-        }
+            && !session.PendingDefeatScreen.HasValue;
     }
 
     private void SetEndTurnCta(bool isCta)

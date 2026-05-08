@@ -34,25 +34,28 @@ public class SessionState
     public Color? PendingDefeatScreen { get; set; }
 
     /// <summary>
-    /// Color of a human player who just pressed End Turn while owning
-    /// strictly more than 50% of all land tiles — the HUD shows the
-    /// claim-victory overlay while this is non-null. The pending End
-    /// Turn is held until the human picks Win Now (declares victory)
-    /// or Continue Playing (proceeds with the End Turn). Suppressed by
-    /// <see cref="ClaimVictoryPromptedColors"/> on subsequent turns so
-    /// the prompt fires at most once per human per game.
+    /// Color of a human player who just pressed End Turn while crossing
+    /// a claim-victory tier in
+    /// <see cref="WinConditionRules.ClaimVictoryThresholdsPercent"/>,
+    /// paired with the threshold percent (50, 75, or 90) being prompted.
+    /// The HUD shows the claim-victory overlay while this is non-null.
+    /// The pending End Turn is held until the human picks Win Now or
+    /// Continue Playing. Suppressed by
+    /// <see cref="ClaimVictoryPromptedHighestThreshold"/> on subsequent
+    /// turns so each tier fires at most once per human per game.
     /// </summary>
-    public Color? PendingClaimVictory { get; set; }
+    public (Color Color, int ThresholdPercent)? PendingClaimVictory { get; set; }
 
     /// <summary>
-    /// Set of human colors that have already dismissed the claim-victory
-    /// prompt this game (via Win Now or Continue Playing). A color in
-    /// this set never triggers the prompt again — even if they drop
-    /// below 50% and re-cross the threshold. Persisted across save/load
-    /// (see <see cref="SaveSerializer"/>) so the once-per-game invariant
-    /// survives reloads.
+    /// Highest claim-victory tier each human color has already
+    /// dismissed (via Win Now or Continue Playing). Absence means
+    /// "never prompted". A color whose entry is 90 has seen all three
+    /// tiers and won't be prompted again this game. Persisted across
+    /// save/load (see <see cref="SaveSerializer"/>) so the
+    /// once-per-tier-per-game invariant survives reloads.
     /// </summary>
-    public HashSet<Color> ClaimVictoryPromptedColors { get; } = new HashSet<Color>();
+    public Dictionary<Color, int> ClaimVictoryPromptedHighestThreshold { get; }
+        = new Dictionary<Color, int>();
 
     public enum ActionMode
     {

@@ -42,8 +42,8 @@ public class GameControllerTests
             // otherwise interrupt every test that cycles turns via End
             // Turn. Tests specifically about the prompt build their own
             // fixture (see ClaimVictoryTests).
-            Session.ClaimVictoryPromptedColors.Add(Red.Color);
-            Session.ClaimVictoryPromptedColors.Add(Blue.Color);
+            Session.ClaimVictoryPromptedHighestThreshold[Red.Color] = 90;
+            Session.ClaimVictoryPromptedHighestThreshold[Blue.Color] = 90;
             Map = new MockHexMapView();
             Hud = new MockHudView();
 
@@ -3346,7 +3346,7 @@ public class GameControllerTests
         // Suppress the End-Turn claim-victory prompt: this test exercises
         // the end-of-turn sole-capital-bearer winner path, not the new
         // human-at->50% prompt that would otherwise interject.
-        session.ClaimVictoryPromptedColors.Add(red.Color);
+        session.ClaimVictoryPromptedHighestThreshold[red.Color] = 90;
         var map = new MockHexMapView();
         var hud = new MockHudView();
         foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())

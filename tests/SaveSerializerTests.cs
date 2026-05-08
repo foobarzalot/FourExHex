@@ -297,26 +297,31 @@ public class SaveSerializerTests
     }
 
     [Fact]
-    public void Serialize_RoundTripsClaimVictoryPromptedColors()
+    public void Serialize_RoundTripsClaimVictoryPromptedTiers()
     {
-        // The set of human colors that have already dismissed the
-        // claim-victory prompt is per-game, persists across save/load,
-        // and survives reload so the prompt won't re-appear after a
-        // save+load cycle.
+        // The per-color highest-tier dictionary is per-game, persists
+        // across save/load, and survives reload so each tier's prompt
+        // won't re-fire.
         (GameState state, IReadOnlyList<Player> players) = BuildRichState();
-        var prompted = new HashSet<Color> { players[0].Color };
+        var prompted = new Dictionary<Color, int>
+        {
+            [players[0].Color] = 75,
+            [players[1].Color] = 90,
+        };
 
         string json = SaveSerializer.Serialize(
             state, 42, players, slotName: "s", maxTurnNumber: 100,
-            originMapName: null, claimVictoryPromptedColors: prompted);
+            originMapName: null,
+            claimVictoryPromptedHighestThreshold: prompted);
         LoadedSave loaded = SaveSerializer.Deserialize(json);
 
-        Assert.Single(loaded.ClaimVictoryPromptedColors);
-        Assert.Contains(players[0].Color, loaded.ClaimVictoryPromptedColors);
+        Assert.Equal(2, loaded.ClaimVictoryPromptedHighestThreshold.Count);
+        Assert.Equal(75, loaded.ClaimVictoryPromptedHighestThreshold[players[0].Color]);
+        Assert.Equal(90, loaded.ClaimVictoryPromptedHighestThreshold[players[1].Color]);
     }
 
     [Fact]
-    public void Serialize_EmptyClaimVictoryPromptedColors_RoundTripsAsEmpty()
+    public void Serialize_EmptyClaimVictoryPromptedTiers_RoundTripsAsEmpty()
     {
         (GameState state, IReadOnlyList<Player> players) = BuildRichState();
 
@@ -324,26 +329,50 @@ public class SaveSerializerTests
             state, 42, players, slotName: "s", maxTurnNumber: 100);
         LoadedSave loaded = SaveSerializer.Deserialize(json);
 
-        Assert.Empty(loaded.ClaimVictoryPromptedColors);
+        Assert.Empty(loaded.ClaimVictoryPromptedHighestThreshold);
     }
 
     [Fact]
-    public void Deserialize_OldSaveMissingClaimVictoryField_LoadsAsEmpty()
+    public void Deserialize_LegacyColorListField_LoadsEachColorAtFiftyPercent()
     {
-        // Backward compat: saves written before this field was added
-        // must still load with an empty prompted set.
+        // Backward compat: saves written by the single-tier (50%-only)
+        // version of the feature stored a flat color hex list. On load,
+        // each color is treated as "prompted at 50%" so the new 75% and
+        // 90% prompts can still fire after reload.
         (GameState state, IReadOnlyList<Player> players) = BuildRichState();
-        string json = SaveSerializer.Serialize(state, 42, players, "s", 100);
-        // Strip the field if present (Serialize omits it when empty,
-        // but be defensive — match either ":[..]," or absent).
-        string legacyJson = System.Text.RegularExpressions.Regex.Replace(
-            json,
-            "\\s*\"ClaimVictoryPromptedColorHexes\":\\s*(\\[[^\\]]*\\]|null),?",
-            "");
+        string baseJson = SaveSerializer.Serialize(state, 42, players, "s", 100);
 
-        LoadedSave loaded = SaveSerializer.Deserialize(legacyJson);
+        // Inject the legacy field into otherwise-current JSON.
+        string legacyHex = players[0].Color.ToHtml(includeAlpha: false);
+        string injected = baseJson.Replace(
+            "\"FormatVersion\": 2,",
+            $"\"FormatVersion\": 2,\n  \"ClaimVictoryPromptedColorHexes\": [\"{legacyHex}\"],");
 
-        Assert.Empty(loaded.ClaimVictoryPromptedColors);
+        LoadedSave loaded = SaveSerializer.Deserialize(injected);
+
+        Assert.Single(loaded.ClaimVictoryPromptedHighestThreshold);
+        Assert.Equal(50, loaded.ClaimVictoryPromptedHighestThreshold[players[0].Color]);
+    }
+
+    [Fact]
+    public void Serialize_NewSaves_OmitLegacyColorListField()
+    {
+        // The multi-tier serializer should write only the new dict
+        // field — never the legacy flat list — even when a color is
+        // recorded only at 50%. Keeps new saves clean.
+        (GameState state, IReadOnlyList<Player> players) = BuildRichState();
+        var prompted = new Dictionary<Color, int>
+        {
+            [players[0].Color] = 50,
+        };
+
+        string json = SaveSerializer.Serialize(
+            state, 42, players, slotName: "s", maxTurnNumber: 100,
+            originMapName: null,
+            claimVictoryPromptedHighestThreshold: prompted);
+
+        Assert.DoesNotContain("ClaimVictoryPromptedColorHexes", json);
+        Assert.Contains("ClaimVictoryPromptedHighestByColorHex", json);
     }
 
     private static void AssertOccupantsEqual(HexOccupant? a, HexOccupant? b)

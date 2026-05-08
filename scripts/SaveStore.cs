@@ -34,10 +34,10 @@ public sealed class SaveStore
         IReadOnlyList<Player> players,
         int maxTurnNumber,
         string? originMapName = null,
-        IReadOnlyCollection<Color>? claimVictoryPromptedColors = null)
+        IReadOnlyDictionary<Color, int>? claimVictoryPromptedHighestThreshold = null)
     {
         WriteSlot(AutosaveSlotName, state, masterSeed, players, maxTurnNumber,
-            originMapName, claimVictoryPromptedColors);
+            originMapName, claimVictoryPromptedHighestThreshold);
     }
 
     /// <summary>
@@ -53,10 +53,10 @@ public sealed class SaveStore
         IReadOnlyList<Player> players,
         int maxTurnNumber,
         string? originMapName = null,
-        IReadOnlyCollection<Color>? claimVictoryPromptedColors = null)
+        IReadOnlyDictionary<Color, int>? claimVictoryPromptedHighestThreshold = null)
     {
         WriteSlotIn(SaveDirectory, slotName, state, masterSeed, players,
-            maxTurnNumber, originMapName, claimVictoryPromptedColors);
+            maxTurnNumber, originMapName, claimVictoryPromptedHighestThreshold);
     }
 
     /// <summary>
@@ -87,13 +87,13 @@ public sealed class SaveStore
         IReadOnlyList<Player> players,
         int maxTurnNumber,
         string? originMapName,
-        IReadOnlyCollection<Color>? claimVictoryPromptedColors)
+        IReadOnlyDictionary<Color, int>? claimVictoryPromptedHighestThreshold)
     {
         EnsureDirectory(directory);
         string sanitized = SanitizeSlotName(slotName);
         string json = SaveSerializer.Serialize(
             state, masterSeed, players, sanitized, maxTurnNumber,
-            originMapName, claimVictoryPromptedColors);
+            originMapName, claimVictoryPromptedHighestThreshold);
         AtomicWrite(directory, sanitized, json);
     }
 

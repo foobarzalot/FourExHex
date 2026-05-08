@@ -7,8 +7,11 @@ namespace FourExHex.Tests;
 
 /// <summary>
 /// Tests for the End-Turn-time "claim victory" prompt. Triggers when a
-/// human player presses End Turn while owning strictly more than 50% of
-/// all land tiles. Fires at most once per human per game.
+/// human player presses End Turn while crossing one of the
+/// <see cref="WinConditionRules.ClaimVictoryThresholdsPercent"/> tiers
+/// (50/75/90). Each tier fires at most once per human per game; "show
+/// only highest unseen" means a single End Turn that crosses multiple
+/// tiers shows just the topmost not-yet-dismissed one.
 /// </summary>
 public class ClaimVictoryTests
 {
@@ -16,27 +19,32 @@ public class ClaimVictoryTests
     private static readonly Color Blue = new Color(0f, 0f, 1f);
 
     /// <summary>
-    /// Build a 5x2 grid (10 tiles) with the given Red ownership count.
-    /// Red occupies the first <paramref name="redCount"/> tiles in row-
-    /// major order; Blue owns the rest. Both colors retain at least one
-    /// capital-bearing territory so neither is auto-eliminated.
+    /// Build a <paramref name="cols"/>x<paramref name="rows"/> grid with
+    /// the given Red ownership count. Red occupies the first
+    /// <paramref name="redCount"/> tiles in row-major order; Blue owns
+    /// the rest. Both colors retain at least one capital-bearing
+    /// territory so neither is auto-eliminated (provided redCount is in
+    /// the open range (0, cols*rows)).
     /// </summary>
     private static (GameState State, SessionState Session, MockHexMapView Map,
                     MockHudView Hud, GameController Controller, Player RedP,
                     Player BlueP)
-        BuildGame(int redCount, AiKind redKind = AiKind.Human, AiKind blueKind = AiKind.Human)
+        BuildGame(
+            int redCount,
+            int cols = 5,
+            int rows = 2,
+            AiKind redKind = AiKind.Human,
+            AiKind blueKind = AiKind.Human)
     {
         var redP = new Player("Red", Red, redKind);
         var blueP = new Player("Blue", Blue, blueKind);
         var players = new List<Player> { redP, blueP };
 
-        // Start with everything Blue, then flip the first redCount in
-        // row-major lex order to Red.
-        var grid = TestHelpers.BuildRectGrid(5, 2, Blue);
+        var grid = TestHelpers.BuildRectGrid(cols, rows, Blue);
         int flipped = 0;
-        for (int row = 0; row < 2 && flipped < redCount; row++)
+        for (int row = 0; row < rows && flipped < redCount; row++)
         {
-            for (int col = 0; col < 5 && flipped < redCount; col++)
+            for (int col = 0; col < cols && flipped < redCount; col++)
             {
                 grid.Get(HexCoord.FromOffset(col, row))!.Color = Red;
                 flipped++;
@@ -68,15 +76,15 @@ public class ClaimVictoryTests
         g.Hud.ClickEndTurn();
 
         Assert.False(g.Session.PendingClaimVictory.HasValue);
-        // Turn advanced normally (Red → Blue, Blue (AI) plays, back to Red T2).
+        // Turn advanced normally (Red → Blue).
         Assert.True(g.State.Turns.TurnNumber > turnBefore
             || g.State.Turns.CurrentPlayerIndex != 0);
     }
 
     [Fact]
-    public void EndTurn_HumanAboveHalf_FirstTime_TriggersPrompt()
+    public void EndTurn_HumanAtSixtyPercent_FirstTime_PromptsAtFiftyTier()
     {
-        // 6 of 10 = 60%.
+        // 6 of 10 = 60% — meets only the 50% tier.
         var g = BuildGame(redCount: 6);
         int turnBefore = g.State.Turns.TurnNumber;
         int currentBefore = g.State.Turns.CurrentPlayerIndex;
@@ -84,13 +92,67 @@ public class ClaimVictoryTests
         g.Hud.ClickEndTurn();
 
         Assert.True(g.Session.PendingClaimVictory.HasValue);
-        Assert.Equal(Red, g.Session.PendingClaimVictory!.Value);
-        // Turn did NOT advance; AI did NOT run; no end-of-turn processing.
+        Assert.Equal(Red, g.Session.PendingClaimVictory!.Value.Color);
+        Assert.Equal(50, g.Session.PendingClaimVictory!.Value.ThresholdPercent);
+        // Turn did NOT advance.
         Assert.Equal(turnBefore, g.State.Turns.TurnNumber);
         Assert.Equal(currentBefore, g.State.Turns.CurrentPlayerIndex);
         Assert.False(g.Session.IsGameOver);
         // Color is NOT yet recorded — only on dismissal.
-        Assert.DoesNotContain(Red, g.Session.ClaimVictoryPromptedColors);
+        Assert.False(g.Session.ClaimVictoryPromptedHighestThreshold.ContainsKey(Red));
+    }
+
+    [Fact]
+    public void EndTurn_HumanAtEightyPercent_NoPriors_PromptsAtSeventyFiveTier()
+    {
+        // 8 of 10 = 80% — meets 50 and 75; "show only highest unseen"
+        // makes this a 75% prompt, not 50%.
+        var g = BuildGame(redCount: 8);
+
+        g.Hud.ClickEndTurn();
+
+        Assert.True(g.Session.PendingClaimVictory.HasValue);
+        Assert.Equal(Red, g.Session.PendingClaimVictory!.Value.Color);
+        Assert.Equal(75, g.Session.PendingClaimVictory!.Value.ThresholdPercent);
+    }
+
+    [Fact]
+    public void EndTurn_HumanAtNinetyFivePercent_NoPriors_PromptsAtNinetyTier()
+    {
+        // 95 of 100 = 95% — skipping straight to the 90% tier.
+        var g = BuildGame(redCount: 95, cols: 10, rows: 10);
+
+        g.Hud.ClickEndTurn();
+
+        Assert.True(g.Session.PendingClaimVictory.HasValue);
+        Assert.Equal(90, g.Session.PendingClaimVictory!.Value.ThresholdPercent);
+    }
+
+    [Fact]
+    public void EndTurn_AfterDismissingFifty_NextPromptIsAtSeventyFiveWhenReached()
+    {
+        // Stage Red at 80% with prior dismissal at 50%. Next End Turn
+        // should fire the 75% prompt (not skip — since 80 > 75 > 50).
+        var g = BuildGame(redCount: 8);
+        g.Session.ClaimVictoryPromptedHighestThreshold[Red] = 50;
+
+        g.Hud.ClickEndTurn();
+
+        Assert.True(g.Session.PendingClaimVictory.HasValue);
+        Assert.Equal(75, g.Session.PendingClaimVictory!.Value.ThresholdPercent);
+    }
+
+    [Fact]
+    public void EndTurn_AllThreeTiersDismissed_NoMorePrompts()
+    {
+        // Even at 95% ownership, the prompt is suppressed once the
+        // highest-prompted entry is at 90.
+        var g = BuildGame(redCount: 95, cols: 10, rows: 10);
+        g.Session.ClaimVictoryPromptedHighestThreshold[Red] = 90;
+
+        g.Hud.ClickEndTurn();
+
+        Assert.False(g.Session.PendingClaimVictory.HasValue);
     }
 
     [Fact]
@@ -98,8 +160,7 @@ public class ClaimVictoryTests
     {
         // Red is AI here. Even at 60% it should not see a prompt.
         var g = BuildGame(redCount: 6, redKind: AiKind.Random);
-        // Red's AI turn already ran via StartGame. Whatever state it left
-        // us in, no prompt should ever have been raised.
+        // Red's AI turn already ran via StartGame.
         Assert.False(g.Session.PendingClaimVictory.HasValue);
     }
 
@@ -119,7 +180,22 @@ public class ClaimVictoryTests
         Assert.True(g.Session.IsGameOver);
         Assert.Equal(Red, g.Session.Winner);
         Assert.True(gameEnded);
-        Assert.Contains(Red, g.Session.ClaimVictoryPromptedColors);
+        // Threshold recorded so a (vacuous) re-show couldn't fire.
+        Assert.Equal(50, g.Session.ClaimVictoryPromptedHighestThreshold[Red]);
+    }
+
+    [Fact]
+    public void ClaimVictoryWinNow_AtSeventyFiveTier_RecordsCorrectThreshold()
+    {
+        // Dismissing the 75% prompt (not 50%) should record 75.
+        var g = BuildGame(redCount: 8);
+
+        g.Hud.ClickEndTurn();
+        Assert.Equal(75, g.Session.PendingClaimVictory!.Value.ThresholdPercent);
+
+        g.Hud.ClickClaimVictoryWinNow();
+
+        Assert.Equal(75, g.Session.ClaimVictoryPromptedHighestThreshold[Red]);
     }
 
     [Fact]
@@ -137,9 +213,8 @@ public class ClaimVictoryTests
         g.Hud.ClickClaimVictoryContinue();
 
         Assert.False(g.Session.PendingClaimVictory.HasValue);
-        Assert.Contains(Red, g.Session.ClaimVictoryPromptedColors);
-        // Turn advanced (Red → Blue, Blue (AI) plays, back to Red T2 OR
-        // sole-capital end-of-turn win for Red).
+        Assert.Equal(50, g.Session.ClaimVictoryPromptedHighestThreshold[Red]);
+        // Turn advanced (Red → Blue), or the end-of-turn win check fired.
         bool advanced = g.State.Turns.TurnNumber > turnBefore
             || g.State.Turns.CurrentPlayerIndex != 0
             || g.Session.IsGameOver;
@@ -147,19 +222,18 @@ public class ClaimVictoryTests
     }
 
     [Fact]
-    public void EndTurn_AfterContinueDismissal_DoesNotRePrompt()
+    public void EndTurn_AfterContinueDismissalAtFifty_DoesNotRePromptAtFifty()
     {
-        // 6 of 10 → prompt → Continue → record Red. On a subsequent
-        // human End Turn at >50%, no re-prompt.
+        // 6 of 10 → prompt at 50% → Continue → record 50. On a
+        // subsequent human End Turn at 60% (still below 75%), no prompt
+        // should fire.
         var g = BuildGame(redCount: 6);
 
         g.Hud.ClickEndTurn();
         g.Hud.ClickClaimVictoryContinue();
-        Assert.Contains(Red, g.Session.ClaimVictoryPromptedColors);
+        Assert.Equal(50, g.Session.ClaimVictoryPromptedHighestThreshold[Red]);
 
-        // Cycle back to Red somehow. Easiest: if Red is current after
-        // the previous cycle, just End Turn again. Otherwise advance
-        // by ending turns until we're back to Red.
+        // Cycle back to Red.
         int safety = 10;
         while (!g.Session.IsGameOver
                && g.State.Turns.CurrentPlayer.Color != Red
@@ -168,12 +242,9 @@ public class ClaimVictoryTests
             g.Hud.ClickEndTurn();
         }
 
-        if (g.Session.IsGameOver) return; // Red already won outright; vacuous
+        if (g.Session.IsGameOver) return; // Red won outright; vacuous
 
-        Assert.False(g.Session.PendingClaimVictory.HasValue);
-        int turnBefore = g.State.Turns.TurnNumber;
         g.Hud.ClickEndTurn();
-        // No prompt; turn moves on (advance, AI, game-over, etc.).
         Assert.False(g.Session.PendingClaimVictory.HasValue);
     }
 
@@ -198,9 +269,8 @@ public class ClaimVictoryTests
 
         g.Hud.ClickClaimVictoryContinue();
 
-        // Should not have advanced the turn.
         Assert.Equal(turnBefore, g.State.Turns.TurnNumber);
         Assert.Equal(currentBefore, g.State.Turns.CurrentPlayerIndex);
-        Assert.Empty(g.Session.ClaimVictoryPromptedColors);
+        Assert.Empty(g.Session.ClaimVictoryPromptedHighestThreshold);
     }
 }

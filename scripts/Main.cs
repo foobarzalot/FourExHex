@@ -138,14 +138,14 @@ public partial class Main : Node2D
             _originMapName = null;
         }
         _session = new SessionState();
-        // Resumed games carry the set of human colors that already
-        // dismissed the End-Turn claim-victory prompt — persist that
-        // across save/load so the prompt won't re-appear after reload.
+        // Resumed games carry the per-color highest claim-victory tier
+        // already dismissed — persist across save/load so the prompt
+        // won't re-fire on a tier the player has already seen.
         if (pendingLoad != null)
         {
-            foreach (Color c in pendingLoad.ClaimVictoryPromptedColors)
+            foreach (KeyValuePair<Color, int> kvp in pendingLoad.ClaimVictoryPromptedHighestThreshold)
             {
-                _session.ClaimVictoryPromptedColors.Add(c);
+                _session.ClaimVictoryPromptedHighestThreshold[kvp.Key] = kvp.Value;
             }
         }
 
@@ -295,7 +295,7 @@ public partial class Main : Node2D
         try
         {
             _saveStore.WriteAutosave(_state, _controller.MasterSeed, _players,
-                _maxTurnNumber, _originMapName, _session.ClaimVictoryPromptedColors);
+                _maxTurnNumber, _originMapName, _session.ClaimVictoryPromptedHighestThreshold);
         }
         catch (System.Exception ex)
         {
@@ -368,7 +368,7 @@ public partial class Main : Node2D
         try
         {
             _saveStore.WriteSlot(name, _state, _controller.MasterSeed, _players,
-                _maxTurnNumber, _originMapName, _session.ClaimVictoryPromptedColors);
+                _maxTurnNumber, _originMapName, _session.ClaimVictoryPromptedHighestThreshold);
         }
         catch (System.Exception ex)
         {

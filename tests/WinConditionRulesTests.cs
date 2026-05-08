@@ -187,59 +187,139 @@ public class WinConditionRulesTests
         Assert.Null(WinConditionRules.WinnerAtEndOfTurn(Red, territories));
     }
 
-    // --- MeetsClaimVictoryThreshold (claim-victory prompt gate) ----------
+    // --- MeetsClaimVictoryThreshold (parameterized predicate) ------------
 
     [Fact]
-    public void MeetsClaimVictoryThreshold_StrictlyAboveHalf_True()
+    public void MeetsClaimVictoryThreshold_StrictlyAbovePercent_True()
     {
         // 5 of 9 tiles is > 50%.
         var grid = new HexGrid();
         for (int i = 0; i < 5; i++) grid.Add(new HexTile(new HexCoord(i, 0), Red));
         for (int i = 0; i < 4; i++) grid.Add(new HexTile(new HexCoord(i, 1), Blue));
 
-        Assert.True(WinConditionRules.MeetsClaimVictoryThreshold(Red, grid));
-        Assert.False(WinConditionRules.MeetsClaimVictoryThreshold(Blue, grid));
+        Assert.True(WinConditionRules.MeetsClaimVictoryThreshold(Red, grid, 50));
+        Assert.False(WinConditionRules.MeetsClaimVictoryThreshold(Blue, grid, 50));
     }
 
     [Fact]
-    public void MeetsClaimVictoryThreshold_ExactlyHalf_False()
+    public void MeetsClaimVictoryThreshold_ExactlyAtPercent_False()
     {
         // 4 of 8 tiles is exactly 50%, NOT strictly above.
         var grid = new HexGrid();
         for (int i = 0; i < 4; i++) grid.Add(new HexTile(new HexCoord(i, 0), Red));
         for (int i = 0; i < 4; i++) grid.Add(new HexTile(new HexCoord(i, 1), Blue));
 
-        Assert.False(WinConditionRules.MeetsClaimVictoryThreshold(Red, grid));
-        Assert.False(WinConditionRules.MeetsClaimVictoryThreshold(Blue, grid));
+        Assert.False(WinConditionRules.MeetsClaimVictoryThreshold(Red, grid, 50));
+        Assert.False(WinConditionRules.MeetsClaimVictoryThreshold(Blue, grid, 50));
     }
 
     [Fact]
-    public void MeetsClaimVictoryThreshold_BelowHalf_False()
+    public void MeetsClaimVictoryThreshold_AbovePercent_AtSeventyFive_True()
     {
-        // 3 of 9.
+        // 8 of 10 = 80% > 75%.
         var grid = new HexGrid();
-        for (int i = 0; i < 3; i++) grid.Add(new HexTile(new HexCoord(i, 0), Red));
-        for (int i = 0; i < 6; i++) grid.Add(new HexTile(new HexCoord(i, 1), Blue));
+        for (int i = 0; i < 8; i++) grid.Add(new HexTile(new HexCoord(i, 0), Red));
+        for (int i = 0; i < 2; i++) grid.Add(new HexTile(new HexCoord(i, 1), Blue));
 
-        Assert.False(WinConditionRules.MeetsClaimVictoryThreshold(Red, grid));
-        Assert.True(WinConditionRules.MeetsClaimVictoryThreshold(Blue, grid));
+        Assert.True(WinConditionRules.MeetsClaimVictoryThreshold(Red, grid, 75));
+        Assert.False(WinConditionRules.MeetsClaimVictoryThreshold(Red, grid, 90));
     }
 
     [Fact]
-    public void MeetsClaimVictoryThreshold_SingleTileOwner_True()
+    public void MeetsClaimVictoryThreshold_AbovePercent_AtNinety_True()
     {
-        // 1 of 1 is unambiguously >50%.
+        // 19 of 20 = 95% > 90%.
         var grid = new HexGrid();
-        grid.Add(new HexTile(new HexCoord(0, 0), Red));
+        for (int i = 0; i < 19; i++) grid.Add(new HexTile(new HexCoord(i, 0), Red));
+        grid.Add(new HexTile(new HexCoord(19, 0), Blue));
 
-        Assert.True(WinConditionRules.MeetsClaimVictoryThreshold(Red, grid));
-        Assert.False(WinConditionRules.MeetsClaimVictoryThreshold(Blue, grid));
+        Assert.True(WinConditionRules.MeetsClaimVictoryThreshold(Red, grid, 50));
+        Assert.True(WinConditionRules.MeetsClaimVictoryThreshold(Red, grid, 75));
+        Assert.True(WinConditionRules.MeetsClaimVictoryThreshold(Red, grid, 90));
     }
 
     [Fact]
     public void MeetsClaimVictoryThreshold_EmptyGrid_False()
     {
         var grid = new HexGrid();
-        Assert.False(WinConditionRules.MeetsClaimVictoryThreshold(Red, grid));
+        Assert.False(WinConditionRules.MeetsClaimVictoryThreshold(Red, grid, 50));
+        Assert.False(WinConditionRules.MeetsClaimVictoryThreshold(Red, grid, 75));
+        Assert.False(WinConditionRules.MeetsClaimVictoryThreshold(Red, grid, 90));
+    }
+
+    // --- NextClaimVictoryThreshold (highest-unseen helper) ---------------
+
+    /// <summary>
+    /// Build a grid with the given count of Red tiles out of 100 total
+    /// (rest Blue), so percentages map cleanly: redCount = ownership %.
+    /// </summary>
+    private static HexGrid Build100TileGrid(int redCount)
+    {
+        var grid = new HexGrid();
+        for (int i = 0; i < 100; i++)
+        {
+            Color c = i < redCount ? Red : Blue;
+            grid.Add(new HexTile(new HexCoord(i, 0), c));
+        }
+        return grid;
+    }
+
+    [Fact]
+    public void NextClaimVictoryThreshold_BelowAllTiers_ReturnsNull()
+    {
+        HexGrid grid = Build100TileGrid(40);
+        Assert.Null(WinConditionRules.NextClaimVictoryThreshold(Red, grid, 0));
+    }
+
+    [Fact]
+    public void NextClaimVictoryThreshold_AtSixty_NoPriors_Returns50()
+    {
+        HexGrid grid = Build100TileGrid(60);
+        Assert.Equal(50, WinConditionRules.NextClaimVictoryThreshold(Red, grid, 0));
+    }
+
+    [Fact]
+    public void NextClaimVictoryThreshold_AtEighty_NoPriors_Returns75()
+    {
+        // Show only highest unseen — jumping past 50% lands on 75%.
+        HexGrid grid = Build100TileGrid(80);
+        Assert.Equal(75, WinConditionRules.NextClaimVictoryThreshold(Red, grid, 0));
+    }
+
+    [Fact]
+    public void NextClaimVictoryThreshold_AtNinetyFive_NoPriors_Returns90()
+    {
+        HexGrid grid = Build100TileGrid(95);
+        Assert.Equal(90, WinConditionRules.NextClaimVictoryThreshold(Red, grid, 0));
+    }
+
+    [Fact]
+    public void NextClaimVictoryThreshold_AtSixty_Prior50_ReturnsNull()
+    {
+        // Already prompted at 50; doesn't meet 75 or 90.
+        HexGrid grid = Build100TileGrid(60);
+        Assert.Null(WinConditionRules.NextClaimVictoryThreshold(Red, grid, 50));
+    }
+
+    [Fact]
+    public void NextClaimVictoryThreshold_AtEighty_Prior50_Returns75()
+    {
+        HexGrid grid = Build100TileGrid(80);
+        Assert.Equal(75, WinConditionRules.NextClaimVictoryThreshold(Red, grid, 50));
+    }
+
+    [Fact]
+    public void NextClaimVictoryThreshold_AtNinetyFive_Prior75_Returns90()
+    {
+        HexGrid grid = Build100TileGrid(95);
+        Assert.Equal(90, WinConditionRules.NextClaimVictoryThreshold(Red, grid, 75));
+    }
+
+    [Fact]
+    public void NextClaimVictoryThreshold_AtNinetyFive_Prior90_ReturnsNull()
+    {
+        // All three tiers seen, no further prompts.
+        HexGrid grid = Build100TileGrid(95);
+        Assert.Null(WinConditionRules.NextClaimVictoryThreshold(Red, grid, 90));
     }
 }

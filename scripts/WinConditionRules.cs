@@ -87,13 +87,23 @@ public static class WinConditionRules
     }
 
     /// <summary>
-    /// True iff <paramref name="color"/> owns strictly more than half
-    /// of the tiles in <paramref name="grid"/>. Water (off-map blockers)
-    /// is not counted because it isn't part of the grid. Used to gate
-    /// the human-only "claim victory" prompt on End Turn — strict ">"
-    /// (not ">=") so exactly 50% does NOT trigger.
+    /// Tiers at which the End-Turn claim-victory prompt fires for a
+    /// human owning strictly more than that fraction of land tiles.
+    /// Each tier prompts at most once per human per game; "show only
+    /// highest unseen" means a single End Turn that crosses multiple
+    /// tiers shows just the topmost not-yet-dismissed one.
     /// </summary>
-    public static bool MeetsClaimVictoryThreshold(Color color, HexGrid grid)
+    public static readonly int[] ClaimVictoryThresholdsPercent = { 50, 75, 90 };
+
+    /// <summary>
+    /// True iff <paramref name="color"/> owns strictly more than
+    /// <paramref name="thresholdPercent"/> percent of the tiles in
+    /// <paramref name="grid"/>. Water (off-map blockers) is not counted
+    /// because it isn't part of the grid. Strict ">" (not ">=") so
+    /// exactly the threshold does NOT trigger.
+    /// </summary>
+    public static bool MeetsClaimVictoryThreshold(
+        Color color, HexGrid grid, int thresholdPercent)
     {
         int owned = 0;
         int total = 0;
@@ -102,6 +112,36 @@ public static class WinConditionRules
             total++;
             if (tile.Color == color) owned++;
         }
-        return owned * 2 > total;
+        return owned * 100 > total * thresholdPercent;
+    }
+
+    /// <summary>
+    /// Among <see cref="ClaimVictoryThresholdsPercent"/>, return the
+    /// highest tier <paramref name="color"/> meets that is strictly
+    /// greater than <paramref name="highestPromptedPercent"/>, or null
+    /// if none. Drives the "show only highest unseen" semantics: if a
+    /// player jumps from 40% to 80% in one turn, this returns 75 (the
+    /// highest unseen tier they meet), not 50.
+    /// </summary>
+    public static int? NextClaimVictoryThreshold(
+        Color color, HexGrid grid, int highestPromptedPercent)
+    {
+        int owned = 0;
+        int total = 0;
+        foreach (HexTile tile in grid.Tiles)
+        {
+            total++;
+            if (tile.Color == color) owned++;
+        }
+        int? best = null;
+        foreach (int t in ClaimVictoryThresholdsPercent)
+        {
+            if (t <= highestPromptedPercent) continue;
+            if (owned * 100 > total * t)
+            {
+                if (best == null || t > best.Value) best = t;
+            }
+        }
+        return best;
     }
 }

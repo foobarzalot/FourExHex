@@ -1275,18 +1275,24 @@ public class GameController
     {
         if (_session.IsGameOver) return;
 
-        // Claim-victory prompt: a human pressing End Turn while owning
-        // strictly more than 50% of all tiles is offered an early win.
-        // Suppressed for AI players, and for any human color already
-        // dismissed in this game (set persists across save/load).
+        // Claim-victory prompt: a human pressing End Turn while crossing
+        // a tier in WinConditionRules.ClaimVictoryThresholdsPercent
+        // (50/75/90) is offered an early win. Each tier fires at most
+        // once per human per game; "show only highest unseen" picks the
+        // topmost unseen tier the player meets. AI players are skipped.
         Player current = _state.Turns.CurrentPlayer;
-        if (!current.IsAi
-            && !_session.ClaimVictoryPromptedColors.Contains(current.Color)
-            && WinConditionRules.MeetsClaimVictoryThreshold(current.Color, _state.Grid))
+        if (!current.IsAi)
         {
-            _session.PendingClaimVictory = current.Color;
-            RefreshViews();
-            return;
+            int seen = _session.ClaimVictoryPromptedHighestThreshold
+                .TryGetValue(current.Color, out int s) ? s : 0;
+            int? next = WinConditionRules.NextClaimVictoryThreshold(
+                current.Color, _state.Grid, seen);
+            if (next.HasValue)
+            {
+                _session.PendingClaimVictory = (current.Color, next.Value);
+                RefreshViews();
+                return;
+            }
         }
 
         EndTurnNow();
@@ -1331,26 +1337,26 @@ public class GameController
     private void OnClaimVictoryWinNowPressed()
     {
         if (!_session.PendingClaimVictory.HasValue) return;
-        Color winner = _session.PendingClaimVictory.Value;
+        (Color color, int threshold) = _session.PendingClaimVictory.Value;
         _session.PendingClaimVictory = null;
-        _session.ClaimVictoryPromptedColors.Add(winner);
-        DeclareWinner(winner);
+        _session.ClaimVictoryPromptedHighestThreshold[color] = threshold;
+        DeclareWinner(color);
         _session.Undo.Clear();
         CheckGameEndConditions();
         RefreshViews();
     }
 
     /// <summary>
-    /// Continue Playing button on the claim-victory overlay: clear the
-    /// flag, record the color so the prompt won't fire again this game,
-    /// and run the deferred End Turn body.
+    /// Continue Playing button on the claim-victory overlay: record the
+    /// dismissed tier (so this tier won't re-fire, but a higher tier
+    /// can later) and run the deferred End Turn body.
     /// </summary>
     private void OnClaimVictoryContinuePressed()
     {
         if (!_session.PendingClaimVictory.HasValue) return;
-        Color color = _session.PendingClaimVictory.Value;
+        (Color color, int threshold) = _session.PendingClaimVictory.Value;
         _session.PendingClaimVictory = null;
-        _session.ClaimVictoryPromptedColors.Add(color);
+        _session.ClaimVictoryPromptedHighestThreshold[color] = threshold;
         EndTurnNow();
     }
 

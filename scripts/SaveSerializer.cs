@@ -26,11 +26,13 @@ public sealed class LoadedSave
     public string? OriginMapName { get; }
 
     /// <summary>
-    /// Set of human colors that have already dismissed the End-Turn
-    /// claim-victory prompt this game. Empty for fresh games and for
-    /// older saves that pre-date the prompt feature.
+    /// Highest claim-victory threshold (50/75/90) each human color has
+    /// already dismissed this game. Empty for fresh games and for
+    /// saves written before any tier was added. Saves written before
+    /// the multi-tier change carried only a flat color list; those
+    /// load with each color mapped to 50.
     /// </summary>
-    public IReadOnlyCollection<Color> ClaimVictoryPromptedColors { get; }
+    public IReadOnlyDictionary<Color, int> ClaimVictoryPromptedHighestThreshold { get; }
 
     public LoadedSave(
         GameState state,
@@ -39,7 +41,7 @@ public sealed class LoadedSave
         int maxTurnNumber,
         string slotName,
         string? originMapName = null,
-        IReadOnlyCollection<Color>? claimVictoryPromptedColors = null)
+        IReadOnlyDictionary<Color, int>? claimVictoryPromptedHighestThreshold = null)
     {
         State = state;
         Players = players;
@@ -47,8 +49,8 @@ public sealed class LoadedSave
         MaxTurnNumber = maxTurnNumber;
         SlotName = slotName;
         OriginMapName = originMapName;
-        ClaimVictoryPromptedColors = claimVictoryPromptedColors
-            ?? System.Array.Empty<Color>();
+        ClaimVictoryPromptedHighestThreshold = claimVictoryPromptedHighestThreshold
+            ?? new Dictionary<Color, int>();
     }
 }
 
@@ -87,11 +89,11 @@ public static class SaveSerializer
         string slotName,
         int maxTurnNumber,
         string? originMapName = null,
-        IReadOnlyCollection<Color>? claimVictoryPromptedColors = null)
+        IReadOnlyDictionary<Color, int>? claimVictoryPromptedHighestThreshold = null)
         => SerializeInternal(
             state, masterSeed, players, slotName, maxTurnNumber,
             includeKind: true, originMapName: originMapName,
-            claimVictoryPromptedColors: claimVictoryPromptedColors);
+            claimVictoryPromptedHighestThreshold: claimVictoryPromptedHighestThreshold);
 
     /// <summary>
     /// Serialize a starting map — same JSON format as <see cref="Serialize"/>,
@@ -106,7 +108,7 @@ public static class SaveSerializer
         string slotName)
         => SerializeInternal(state, masterSeed, players, slotName,
             maxTurnNumber: int.MaxValue, includeKind: false,
-            originMapName: null, claimVictoryPromptedColors: null);
+            originMapName: null, claimVictoryPromptedHighestThreshold: null);
 
     private static string SerializeInternal(
         GameState state,
@@ -116,7 +118,7 @@ public static class SaveSerializer
         int maxTurnNumber,
         bool includeKind,
         string? originMapName,
-        IReadOnlyCollection<Color>? claimVictoryPromptedColors)
+        IReadOnlyDictionary<Color, int>? claimVictoryPromptedHighestThreshold)
     {
         // Player index by color for fast tile/unit owner lookup.
         var indexByColor = new Dictionary<Color, int>();
@@ -140,28 +142,29 @@ public static class SaveSerializer
             Territories = SerializeTerritories(state.Territories, indexByColor),
             Gold = SerializeGold(state.Territories, state.Treasury),
             Water = SerializeWater(state.WaterCoords),
-            ClaimVictoryPromptedColorHexes =
-                SerializeClaimVictoryPrompted(claimVictoryPromptedColors),
+            ClaimVictoryPromptedHighestByColorHex =
+                SerializeClaimVictoryPrompted(claimVictoryPromptedHighestThreshold),
         };
         return JsonSerializer.Serialize(data, JsonOptions);
     }
 
     /// <summary>
-    /// Encode the prompted-colors set as a list of hex strings (matching
-    /// the format used elsewhere for player colors). Returns null when
-    /// empty so the field is omitted from JSON entirely (kept clean for
-    /// fresh games and starting maps).
+    /// Encode the prompted-tier dictionary as a hex→percent map. Returns
+    /// null when empty so the field is omitted from JSON entirely (kept
+    /// clean for fresh games and starting maps). New saves never write
+    /// the legacy <c>ClaimVictoryPromptedColorHexes</c> field — it is
+    /// read-only on the deserialize path for backward compatibility.
     /// </summary>
-    private static List<string>? SerializeClaimVictoryPrompted(
-        IReadOnlyCollection<Color>? colors)
+    private static Dictionary<string, int>? SerializeClaimVictoryPrompted(
+        IReadOnlyDictionary<Color, int>? prompted)
     {
-        if (colors == null || colors.Count == 0) return null;
-        var hexes = new List<string>(colors.Count);
-        foreach (Color c in colors)
+        if (prompted == null || prompted.Count == 0) return null;
+        var dict = new Dictionary<string, int>(prompted.Count);
+        foreach (KeyValuePair<Color, int> kvp in prompted)
         {
-            hexes.Add(c.ToHtml(includeAlpha: false));
+            dict[kvp.Key.ToHtml(includeAlpha: false)] = kvp.Value;
         }
-        return hexes;
+        return dict;
     }
 
     public static LoadedSave Deserialize(string json)
@@ -205,24 +208,43 @@ public static class SaveSerializer
 
         IReadOnlySet<HexCoord> waterCoords = DeserializeWater(data.Water);
         var state = new GameState(grid, territories, players, turnState, treasury, waterCoords);
-        IReadOnlyCollection<Color> prompted = DeserializeClaimVictoryPrompted(
+        IReadOnlyDictionary<Color, int> prompted = DeserializeClaimVictoryPrompted(
+            data.ClaimVictoryPromptedHighestByColorHex,
             data.ClaimVictoryPromptedColorHexes);
         return new LoadedSave(
             state, players, data.MasterSeed, data.MaxTurnNumber, data.SlotName,
             originMapName: data.OriginMapName,
-            claimVictoryPromptedColors: prompted);
+            claimVictoryPromptedHighestThreshold: prompted);
     }
 
-    private static IReadOnlyCollection<Color> DeserializeClaimVictoryPrompted(
-        List<string>? hexes)
+    /// <summary>
+    /// Read precedence: prefer the per-color threshold map; fall back to
+    /// the legacy flat color list (treating each entry as
+    /// "prompted at 50% only"); empty if neither is present. The two
+    /// fields are NOT additive — a save written by the multi-tier code
+    /// only populates the new field, and we ignore the legacy field if
+    /// the new one is present.
+    /// </summary>
+    private static IReadOnlyDictionary<Color, int> DeserializeClaimVictoryPrompted(
+        Dictionary<string, int>? perColor, List<string>? legacyHexes)
     {
-        if (hexes == null || hexes.Count == 0) return System.Array.Empty<Color>();
-        var set = new HashSet<Color>();
-        foreach (string hex in hexes)
+        var dict = new Dictionary<Color, int>();
+        if (perColor != null && perColor.Count > 0)
         {
-            set.Add(new Color(hex));
+            foreach (KeyValuePair<string, int> kvp in perColor)
+            {
+                dict[new Color(kvp.Key)] = kvp.Value;
+            }
+            return dict;
         }
-        return set;
+        if (legacyHexes != null && legacyHexes.Count > 0)
+        {
+            foreach (string hex in legacyHexes)
+            {
+                dict[new Color(hex)] = 50;
+            }
+        }
+        return dict;
     }
 
     // --- Water -----------------------------------------------------------
@@ -461,12 +483,21 @@ public sealed class SaveData
     public List<CoordDto> Water { get; set; } = new();
 
     /// <summary>
-    /// Hex strings for the human colors that have already dismissed the
-    /// End-Turn claim-victory prompt this game. Null/missing in saves
-    /// written before the feature was added; null on serialize when the
-    /// set is empty (kept clean for fresh games).
+    /// Legacy field: flat list of human color hex strings that dismissed
+    /// the End-Turn claim-victory prompt back when there was a single
+    /// 50% threshold. Read-only — new saves never populate it. Loaders
+    /// fall back to this when the per-tier field below is absent and
+    /// treat each entry as "prompted at 50%".
     /// </summary>
     public List<string>? ClaimVictoryPromptedColorHexes { get; set; }
+
+    /// <summary>
+    /// Highest claim-victory tier (50/75/90) each human color hex has
+    /// already dismissed this game. Null/missing in older saves and
+    /// when the dictionary is empty (kept clean for fresh games).
+    /// Supersedes <see cref="ClaimVictoryPromptedColorHexes"/>.
+    /// </summary>
+    public Dictionary<string, int>? ClaimVictoryPromptedHighestByColorHex { get; set; }
 }
 
 public sealed class PlayerDto
