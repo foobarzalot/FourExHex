@@ -443,11 +443,11 @@ public partial class HudView : CanvasLayer, IHudView
         _defeatLabel.AddThemeFontSizeOverride("font_size", 36);
         panel.AddChild(_defeatLabel);
 
-        const float buttonW = 180f;
+        const float buttonW = 130f;
         const float buttonH = 44f;
         const float gap = 20f;
         float rowY = 130f;
-        float rowX = (panelW - (buttonW * 2f + gap)) * 0.5f;
+        float rowX = (panelW - (buttonW * 3f + gap * 2f)) * 0.5f;
 
         var continueButton = new Button { Text = "Continue" };
         continueButton.AddThemeFontSizeOverride("font_size", 22);
@@ -457,9 +457,17 @@ public partial class HudView : CanvasLayer, IHudView
         AudioBus.AttachClick(continueButton);
         panel.AddChild(continueButton);
 
+        var playAgainButton = new Button { Text = "Play Again" };
+        playAgainButton.AddThemeFontSizeOverride("font_size", 22);
+        playAgainButton.Position = new Vector2(rowX + buttonW + gap, rowY);
+        playAgainButton.Size = new Vector2(buttonW, buttonH);
+        playAgainButton.Pressed += () => NewGameClicked?.Invoke();
+        AudioBus.AttachClick(playAgainButton);
+        panel.AddChild(playAgainButton);
+
         var mainMenuButton = new Button { Text = "Main Menu" };
         mainMenuButton.AddThemeFontSizeOverride("font_size", 22);
-        mainMenuButton.Position = new Vector2(rowX + buttonW + gap, rowY);
+        mainMenuButton.Position = new Vector2(rowX + (buttonW + gap) * 2f, rowY);
         mainMenuButton.Size = new Vector2(buttonW, buttonH);
         mainMenuButton.Pressed += () => MainMenuClicked?.Invoke();
         AudioBus.AttachClick(mainMenuButton);

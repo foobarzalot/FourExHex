@@ -181,6 +181,21 @@ public sealed class SaveStore
     /// <summary>Load a map shipped with the game from <see cref="BundledMapsDirectory"/>.</summary>
     public LoadedSave LoadBundledMap(string slotName) => LoadSlotIn(BundledMapsDirectory, slotName);
 
+    /// <summary>
+    /// Load a starting map by name regardless of whether it lives in the
+    /// user maps directory or the bundled tutorials directory. User maps
+    /// win on name collision; falls through to bundled if not found in
+    /// <see cref="MapsDirectory"/>.
+    /// </summary>
+    public LoadedSave LoadStartingMap(string slotName)
+    {
+        string sanitized = SanitizeSlotName(slotName);
+        string userPath = MapsDirectory + sanitized + SaveExtension;
+        return FileAccess.FileExists(userPath)
+            ? LoadMap(slotName)
+            : LoadBundledMap(slotName);
+    }
+
     private LoadedSave LoadSlotIn(string directory, string slotName)
     {
         string sanitized = SanitizeSlotName(slotName);

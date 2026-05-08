@@ -169,10 +169,12 @@ public partial class Main : Node2D
             AddChild(visibleHud);
 
             // Scene-level actions: Play Again reloads the whole
-            // scene (keeping the current GameSettings.PlayerKinds
-            // config), and Main Menu swaps back to the menu scene
-            // so the player can reassign roles.
-            visibleHud.NewGameClicked += () => GetTree().ReloadCurrentScene();
+            // scene with the same play config — same player roster,
+            // same master seed (so a procedural map regenerates
+            // identically), and for starting-map games the same
+            // map. Main Menu swaps back to the menu scene so the
+            // player can reassign roles.
+            visibleHud.NewGameClicked += RestartCurrentGame;
             visibleHud.MainMenuClicked += () =>
             {
                 // Drop any pending AI step before tearing down the scene
@@ -253,6 +255,34 @@ public partial class Main : Node2D
             _tutorialPopupVisible = true;
             hud.ShowTutorialMessage("Welcome to FourExHex!");
         }
+    }
+
+    /// <summary>
+    /// Play Again handler. Reloads the play scene preserving the
+    /// just-finished game's master seed (so a procedural map
+    /// regenerates identically) and, for starting-map games,
+    /// re-populates <see cref="LoadRequest.Pending"/> with a fresh
+    /// load of the original map so <c>_Ready</c>'s starting-map
+    /// branch fires again instead of falling back to procedural.
+    /// </summary>
+    private void RestartCurrentGame()
+    {
+        GameSettings.MasterSeed = _controller.MasterSeed;
+        if (_originMapName != null)
+        {
+            try
+            {
+                LoadRequest.Pending = _saveStore.LoadStartingMap(_originMapName);
+            }
+            catch (System.Exception ex)
+            {
+                // If the map file vanished between play and restart,
+                // fall through to procedural with the preserved seed
+                // rather than crashing the reload.
+                GD.PushWarning($"Could not reload starting map '{_originMapName}': {ex.Message}");
+            }
+        }
+        GetTree().ReloadCurrentScene();
     }
 
     private bool IsTutorialGame()

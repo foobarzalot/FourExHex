@@ -374,9 +374,11 @@ void HideTutorialMessage();            // dismiss it — Main drives this
 
 The defeat overlay is part of the HUD: `Refresh` reads
 `session.PendingDefeatScreen` and shows/hides a click-blocking panel
-naming the eliminated player. Continue raises
-`DefeatContinueClicked`; the overlay's "Main Menu" button reuses
-`MainMenuClicked`.
+naming the eliminated player. Three buttons: **Continue** raises
+`DefeatContinueClicked` (resumes the paused AI loop so the human can
+watch the rest play out); **Play Again** raises `NewGameClicked`
+(handled by `Main.RestartCurrentGame` — same as the Victory
+overlay); **Main Menu** reuses `MainMenuClicked`.
 
 The claim-victory overlay is the third HUD overlay: `Refresh` shows
 it iff `session.PendingClaimVictory.HasValue` and neither `Winner`
@@ -772,13 +774,27 @@ sequences.
   leading AI turns until control reaches a human (or game ends),
   refreshes the views, then fires `HumanTurnStarted` if the resumed
   player is human (so the autosave hook still runs after a load).
+- **Play Again.** The Victory and Defeat overlays both raise
+  `NewGameClicked`, which `Main` handles via `RestartCurrentGame`:
+  write `GameSettings.MasterSeed = _controller.MasterSeed` (so a
+  procedural map regenerates with the identical seed even if the
+  menu never ran or chose at random), and if `_originMapName != null`
+  re-populate `LoadRequest.Pending` with `SaveStore.LoadStartingMap`
+  (so starting-map games reload the same hand-painted or bundled
+  map instead of falling through to procedural). Finally
+  `GetTree().ReloadCurrentScene()`. Failures to reload the origin
+  map (e.g., file deleted between play and restart) log a warning
+  and fall through to procedural with the preserved seed rather
+  than crashing.
 
 `SaveStore` reads/writes `user://saves/` (in-progress games) and
 `user://maps/` (starting maps from the editor), and reads from
 `res://tutorials/` (bundled maps shipped with the game — currently
 just `Tutorial.json`, loaded via `LoadBundledMap`). It exposes
 `WriteAutosave`, `WriteSlot`, `WriteMapSlot`, `ListSlots`, `ListMaps`,
-`LoadSlot`, `LoadMap`, `LoadBundledMap`, plus `SanitizeSlotName` for
+`LoadSlot`, `LoadMap`, `LoadBundledMap`, `LoadStartingMap` (tries
+`user://maps/` then falls back to `res://tutorials/` — used by the
+Play Again restart flow), plus `SanitizeSlotName` for
 filesystem-safe slot names. `SaveSerializer` is the JSON layer
 (format version 2); `Serialize` writes the player roster's `Kind`
 field, `SerializeMap` omits it (the editor's saved maps don't bake
