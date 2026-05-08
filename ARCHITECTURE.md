@@ -171,17 +171,20 @@ off it.
 │   │   (Color? — drives    │  │   ├─ ShowMoveSource(coord?)                │
 │   │   the defeat overlay) │  │   ├─ CenterOnTerritory(territory)          │
 │   ├─ PendingClaimVictory  │  │   ├─ RebuildAfterTerritoryChange()         │
-│   │   (Color? — drives    │  │   ├─ RefreshOccupantVisuals(color, tr.)    │
-│   │   the claim-victory   │  │   ├─ PlayDestructionEffect(coord, occ.)    │
-│   │   overlay; human-only)│  │   ├─ Play{UnitPlaced, TowerPlaced,         │
-│   ├─ ClaimVictoryPrompted │  │   │    UnitCombined, UnitDestroyed,        │
-│   │   Colors (HashSet —   │  │   │    TowerDestroyed, TreeCleared,        │
-│   │   one-prompt-per-     │  │   │    CapitalDestroyed, Bankruptcy,       │
-│   │   game gate; persists │  │   │    GameWon, Rally, PlayerDefeated}     │
-│   │   across save/load)   │  │   │    — audio sinks routed to AudioBus    │
-│   ├─ SelectedTerritory    │  │   └─ layers: borders / capitals / units /  │
-│   ├─ Mode (enum)          │  │             towers / trees / graves /     │
-│   ├─ MoveSource           │  │             targets / highlight            │
+│   │   ((Color, percent)?  │  │   ├─ RefreshOccupantVisuals(color, tr.)    │
+│   │   — drives the claim- │  │   ├─ PlayDestructionEffect(coord, occ.)    │
+│   │   victory overlay;    │  │   ├─ Play{UnitPlaced, TowerPlaced,         │
+│   │   percent ∈ {50,75,90}│  │   │    UnitCombined, UnitDestroyed,        │
+│   │   — human-only)       │  │   │    TowerDestroyed, TreeCleared,        │
+│   ├─ ClaimVictoryPrompted │  │   │    CapitalDestroyed, Bankruptcy,       │
+│   │   HighestThreshold    │  │   │    GameWon, Rally, PlayerDefeated}     │
+│   │   (Dict<Color,int> —  │  │   │    — audio sinks routed to AudioBus    │
+│   │   color→highest tier  │  │   └─ layers: borders / capitals / units /  │
+│   │   dismissed; persists │  │             towers / trees / graves /     │
+│   │   across save/load)   │  │             targets / highlight            │
+│   ├─ SelectedTerritory    │  │                                            │
+│   ├─ Mode (enum)          │  │                                            │
+│   ├─ MoveSource           │  │                                            │
 │   └─ Undo (UndoStack of   │  │                                            │
 │      UndoEntry =          │  │                                            │
 │      GameStateSnapshot +  │  │                                            │
@@ -228,7 +231,9 @@ off it.
 │   WinConditionRules.WinnerByDomination (mid-turn)                        │
 │                    .WinnerAtEndOfTurn (sole capital-bearer)              │
 │                    .IsEliminated                                         │
-│                    .MeetsClaimVictoryThreshold (>50%, claim-victory)     │
+│                    .MeetsClaimVictoryThreshold (>X%, parameterized)      │
+│                    .NextClaimVictoryThreshold (50/75/90 tiers)           │
+│                    .ClaimVictoryThresholdsPercent (constant: {50,75,90}) │
 └──────────────────────────────────────────────────────────────────────────┘
 
 ┌──────────────────────────────────────────────────────────────────────────┐
@@ -493,27 +498,42 @@ it fires `PlayGameWon` iff the winner is human.
 
 ### Claim victory prompt
 
-When a **human** presses End Turn while owning strictly more than
-half of all land tiles (`WinConditionRules.MeetsClaimVictoryThreshold`,
-counting `state.Grid.Tiles` only — water is excluded),
-`OnEndTurnPressed` short-circuits before `EndTurnNow()` runs. It sets
-`SessionState.PendingClaimVictory = currentColor` and refreshes the
-view; the HUD shows a centered overlay with **Win Now** and **Continue
-Playing** buttons. The pending End Turn is held until the user picks:
+Three independent tiers, defined by the constant
+`WinConditionRules.ClaimVictoryThresholdsPercent = {50, 75, 90}`. When a
+**human** presses End Turn, `OnEndTurnPressed` consults
+`WinConditionRules.NextClaimVictoryThreshold(color, grid, highestSeen)`,
+which returns the **highest** tier the player meets that is strictly
+greater than the highest tier they've already dismissed (or null).
+Strict `>` semantics; water (off-map) is excluded because it isn't part
+of `state.Grid.Tiles`.
 
-- **Win Now** (`OnClaimVictoryWinNowPressed`) records the color in
-  `SessionState.ClaimVictoryPromptedColors`, calls `DeclareWinner`,
-  clears undo, and fires `GameEnded`.
+If a tier is returned, `OnEndTurnPressed` sets
+`SessionState.PendingClaimVictory = (color, threshold)` and refreshes
+the view; the HUD shows a centered "Claim Victory?" overlay with
+**Win Now** and **Continue Playing** buttons. The wording is
+intentionally identical at every tier — the threshold is internal-
+only — though "show only highest unseen" means a single End Turn that
+crosses multiple tiers (e.g., 40% → 80%) skips straight to the topmost
+unseen one (75% in that example).
+
+The pending End Turn is held until the user picks:
+
+- **Win Now** (`OnClaimVictoryWinNowPressed`) records
+  `ClaimVictoryPromptedHighestThreshold[color] = threshold`, calls
+  `DeclareWinner`, clears undo, and fires `GameEnded`.
 - **Continue Playing** (`OnClaimVictoryContinuePressed`) records the
-  color and runs `EndTurnNow()` — exactly the original End Turn flow.
+  same dismissal entry and runs `EndTurnNow()` — exactly the original
+  End Turn flow. The recording is a max-update: a higher tier
+  dismissed later overwrites a lower one, so each tier fires at most
+  once but later tiers can still appear after lower ones are seen.
 
-The prompt fires at most **once per human per game**: the color is
-added to `ClaimVictoryPromptedColors` only on dismissal (not on show),
-so a save+reload while the overlay is up still re-presents the prompt.
-The prompted-colors set is persisted via `SaveSerializer` (optional
-`ClaimVictoryPromptedColorHexes` field — null/missing in older saves
-loads as empty) so reload cannot reset the once-per-game invariant.
-AI players never trigger the prompt.
+The dismissal is recorded **only on user action** (not on show), so a
+save+reload while the overlay is up still re-presents the prompt at
+that tier. The dictionary is persisted via `SaveSerializer` so reload
+cannot reset the per-tier invariant. Older saves carrying the legacy
+flat-color list (single 50% tier from the original implementation) load
+with each color migrated to `→ 50`, so the new 75% and 90% prompts can
+still appear after upgrade. AI players never trigger any tier.
 
 ### Player elimination
 
@@ -728,15 +748,22 @@ sequences.
   identifying the starting map a game descended from (or null for
   procedural games). It rides through autosave so reloads keep the
   bottom-left "Map: foo" label correct.
-- **Claim-victory prompted set.** Saves carry an optional
-  `ClaimVictoryPromptedColorHexes` field — the colors that have
-  already dismissed the End-Turn claim-victory prompt this game.
-  Empty/missing in older saves and starting maps. `Main` seeds
-  `SessionState.ClaimVictoryPromptedColors` from this on load so the
-  once-per-game invariant survives reloads.
+- **Claim-victory prompted tiers.** Saves carry an optional
+  `ClaimVictoryPromptedHighestByColorHex` field — a hex→percent map of
+  the highest claim-victory tier (50/75/90) each human color has
+  already dismissed this game. Empty/missing in fresh games and
+  starting maps. `Main` seeds
+  `SessionState.ClaimVictoryPromptedHighestThreshold` from this on
+  load so the per-tier once-per-game invariant survives reloads.
+
+  The legacy `ClaimVictoryPromptedColorHexes` field (flat color list
+  written by the single-tier 50%-only version of this feature) is
+  still **read** by the deserializer — each entry maps to `→ 50` —
+  but new saves never **write** it. Read precedence: the new dict
+  wins if non-empty.
 - **Load.** The main menu's Load button populates `LoadRequest.Pending`
   with a `LoadedSave` (state + players + master seed + max-turn cap +
-  optional OriginMapName + optional claim-victory prompted set) and
+  optional OriginMapName + optional claim-victory prompted tiers) and
   changes scene to `main.tscn`.
   `Main._Ready` consumes and clears the request. On the in-progress
   load path, fresh grid construction is skipped and
