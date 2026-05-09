@@ -2463,6 +2463,57 @@ public class GameControllerTests
             State.Territories.Where(t => t.Owner == Red.Color);
     }
 
+    /// <summary>
+    /// Three-blob variant of <see cref="TwoRedTerritoriesGame"/> for tests
+    /// that need to verify Tab skips a middle territory. Red owns three
+    /// disjoint 2-tile blobs at columns 0-1, 5-6, and 10-11; Blue owns
+    /// the rest of a 12x1 strip. After StartGame each Red capital holds
+    /// 10 gold (5 × 2 earning cells), so by default every blob is
+    /// actionable; tests flip individual ones actionless by zeroing gold.
+    /// </summary>
+    private class ThreeRedTerritoriesGame
+    {
+        public GameState State { get; }
+        public SessionState Session { get; }
+        public MockHexMapView Map { get; }
+        public MockHudView Hud { get; }
+        public GameController Controller { get; }
+        public Player Red { get; }
+        public Player Blue { get; }
+
+        public ThreeRedTerritoriesGame()
+        {
+            Red = new Player("Red", new Color(1f, 0f, 0f));
+            Blue = new Player("Blue", new Color(0f, 0f, 1f));
+            var players = new List<Player> { Red, Blue };
+
+            var grid = TestHelpers.BuildRectGrid(12, 1, Blue.Color);
+            grid.Get(HexCoord.FromOffset(0, 0))!.Color = Red.Color;
+            grid.Get(HexCoord.FromOffset(1, 0))!.Color = Red.Color;
+            grid.Get(HexCoord.FromOffset(5, 0))!.Color = Red.Color;
+            grid.Get(HexCoord.FromOffset(6, 0))!.Color = Red.Color;
+            grid.Get(HexCoord.FromOffset(10, 0))!.Color = Red.Color;
+            grid.Get(HexCoord.FromOffset(11, 0))!.Color = Red.Color;
+
+            IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+
+            State = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+            Session = new SessionState();
+            Map = new MockHexMapView();
+            Hud = new MockHudView();
+            foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+            {
+                Map.TileIndex[kvp.Key] = kvp.Value;
+            }
+            Controller = new GameController(State, Session, Map, Hud);
+            Controller.StartGame();
+        }
+
+        public Territory RedTerritoryAt(int col, int row) =>
+            State.Territories.First(t =>
+                t.Owner == Red.Color && t.Coords.Contains(HexCoord.FromOffset(col, row)));
+    }
+
     [Fact]
     public void NextTerritory_NoneSelected_SelectsLexMinCapital()
     {
@@ -2672,6 +2723,118 @@ public class GameControllerTests
 
         Assert.Equal(1, g.Map.CenterCount);
         Assert.Same(g.Session.SelectedTerritory, g.Map.LastCenteredTerritory);
+    }
+
+    [Fact]
+    public void NextTerritory_SkipsTerritoryWithNoUnmovedUnitsAndNoGold()
+    {
+        // A (cap (0,0)) and C (cap (10,0)) are actionable via their default
+        // 10g of starting gold; B (cap (5,0)) has its gold zeroed and no
+        // units, so it has nothing the player can do. Tab from A should
+        // skip B and land directly on C.
+        var g = new ThreeRedTerritoriesGame();
+        Territory b = g.RedTerritoryAt(5, 0);
+        Territory c = g.RedTerritoryAt(10, 0);
+        g.State.Treasury.SetGold(b.Capital!.Value, 0);
+
+        g.Hud.PressNextTerritory(); // → A
+        g.Hud.PressNextTerritory(); // → should skip B → C
+
+        Assert.Same(c, g.Session.SelectedTerritory);
+    }
+
+    [Fact]
+    public void NextTerritory_StopsOnTerritoryWithUnmovedUnitEvenWithoutGold()
+    {
+        // B is broke but contains a fresh peasant — still actionable.
+        var g = new ThreeRedTerritoriesGame();
+        Territory b = g.RedTerritoryAt(5, 0);
+        g.State.Treasury.SetGold(b.Capital!.Value, 0);
+        g.State.Grid.Get(HexCoord.FromOffset(6, 0))!.Occupant =
+            new Unit(g.Red.Color);
+
+        g.Hud.PressNextTerritory(); // → A
+        g.Hud.PressNextTerritory(); // → B (peasant makes it actionable)
+
+        Assert.Same(b, g.Session.SelectedTerritory);
+    }
+
+    [Fact]
+    public void NextTerritory_SkipsTerritoryWhereUnitsHaveAllMoved()
+    {
+        // B has no gold and a unit that already moved this turn — same
+        // as having no movable units. Tab should skip B → C.
+        var g = new ThreeRedTerritoriesGame();
+        Territory b = g.RedTerritoryAt(5, 0);
+        Territory c = g.RedTerritoryAt(10, 0);
+        g.State.Treasury.SetGold(b.Capital!.Value, 0);
+        g.State.Grid.Get(HexCoord.FromOffset(6, 0))!.Occupant =
+            new Unit(g.Red.Color) { HasMovedThisTurn = true };
+
+        g.Hud.PressNextTerritory(); // → A
+        g.Hud.PressNextTerritory(); // → should skip B → C
+
+        Assert.Same(c, g.Session.SelectedTerritory);
+    }
+
+    [Fact]
+    public void NextTerritory_NoOpWhenNoTerritoryHasAction()
+    {
+        // Drain every Red capital and place no units → nothing actionable.
+        // Tab should leave the selection alone (and not call CenterOnTerritory).
+        var g = new ThreeRedTerritoriesGame();
+        foreach (Territory t in g.State.Territories)
+        {
+            if (t.Owner == g.Red.Color)
+            {
+                g.State.Treasury.SetGold(t.Capital!.Value, 0);
+            }
+        }
+        Assert.Null(g.Session.SelectedTerritory);
+        int centerBaseline = g.Map.CenterCount;
+
+        g.Hud.PressNextTerritory();
+
+        Assert.Null(g.Session.SelectedTerritory);
+        Assert.Equal(centerBaseline, g.Map.CenterCount);
+    }
+
+    [Fact]
+    public void PreviousTerritory_SkipsTerritoryWithNoActionAvailable()
+    {
+        // Mirror of the forward skip test: Shift+Tab from C should skip B
+        // (gold drained, no units) and land on A.
+        var g = new ThreeRedTerritoriesGame();
+        Territory a = g.RedTerritoryAt(0, 0);
+        Territory b = g.RedTerritoryAt(5, 0);
+        g.State.Treasury.SetGold(b.Capital!.Value, 0);
+
+        g.Hud.PressPreviousTerritory(); // → C (lex max)
+        g.Hud.PressPreviousTerritory(); // → should skip B → A
+
+        Assert.Same(a, g.Session.SelectedTerritory);
+    }
+
+    [Fact]
+    public void NextTerritory_OnlyActionableIsCurrentSelection_IsNoOp()
+    {
+        // A is the sole actionable territory. With it selected, Tab has
+        // nowhere else to go — selection stays put and no extra center
+        // call fires.
+        var g = new ThreeRedTerritoriesGame();
+        Territory b = g.RedTerritoryAt(5, 0);
+        Territory c = g.RedTerritoryAt(10, 0);
+        g.State.Treasury.SetGold(b.Capital!.Value, 0);
+        g.State.Treasury.SetGold(c.Capital!.Value, 0);
+
+        g.Hud.PressNextTerritory(); // → A (only actionable)
+        Territory a = g.Session.SelectedTerritory!;
+        int centerAfterFirst = g.Map.CenterCount;
+
+        g.Hud.PressNextTerritory(); // no-op
+
+        Assert.Same(a, g.Session.SelectedTerritory);
+        Assert.Equal(centerAfterFirst, g.Map.CenterCount);
     }
 
     [Fact]

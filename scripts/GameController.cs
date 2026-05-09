@@ -1165,7 +1165,14 @@ public class GameController
     /// Advance the selection to the next or previous current-player
     /// multi-hex territory in lex-min-capital order, wrapping around.
     /// Used by Tab (forward) and Shift+Tab (backward). Singletons are
-    /// excluded because you can't do anything with them. Cancels any
+    /// excluded because you can't do anything with them, and territories
+    /// with no available action (no unmoved unit and not enough gold for
+    /// the cheapest purchase) are skipped over so a quick Tab-cycle only
+    /// stops on territories where the player can act. If no territory
+    /// in the cycle is actionable the press is a no-op — the End Turn
+    /// CTA is highlighted in that case (see
+    /// <see cref="HasAnyActionableForCurrentPlayer"/>) and stepping
+    /// further would just churn through useless selections. Cancels any
     /// pending buy/build/move action so the user isn't stuck in a
     /// stale action mode on a different territory.
     /// </summary>
@@ -1203,14 +1210,29 @@ public class GameController
                 }
             }
         }
-        // null selection → forward lands on first, backward lands on last.
-        int nextIndex = forward
-            ? (currentIndex + 1) % owned.Count
-            : (currentIndex == -1 ? owned.Count - 1 : (currentIndex - 1 + owned.Count) % owned.Count);
 
-        CancelPendingAction();
-        SetSelection(owned[nextIndex]);
-        _map.CenterOnTerritory(owned[nextIndex]);
+        // Walk forward/backward from the current index, stopping on the
+        // first actionable territory. With a null selection the walk
+        // visits every territory once; with one selected it visits every
+        // OTHER territory exactly once and never revisits the current
+        // one — so if the current selection is the sole actionable
+        // territory the press is a no-op.
+        int step = forward ? 1 : -1;
+        int startIndex = currentIndex == -1
+            ? (forward ? -1 : owned.Count)
+            : currentIndex;
+        int maxOffset = currentIndex == -1 ? owned.Count : owned.Count - 1;
+        for (int offset = 1; offset <= maxOffset; offset++)
+        {
+            int idx = ((startIndex + step * offset) % owned.Count + owned.Count) % owned.Count;
+            if (TerritoryHasAvailableAction(owned[idx]))
+            {
+                CancelPendingAction();
+                SetSelection(owned[idx]);
+                _map.CenterOnTerritory(owned[idx]);
+                return;
+            }
+        }
     }
 
     /// <summary>
@@ -2061,6 +2083,36 @@ public class GameController
             }
         }
 
+        return false;
+    }
+
+    /// <summary>
+    /// Per-territory variant of <see cref="HasAnyActionableForCurrentPlayer"/>:
+    /// true iff the current player could do anything in
+    /// <paramref name="territory"/> right now — either it contains an
+    /// unmoved current-player unit, or the capital has enough gold to
+    /// buy the cheapest unit (a peasant). Tower cost (15g) is a strict
+    /// superset of peasant cost (10g), so checking peasant alone covers
+    /// every purchase. Used by <see cref="StepTerritorySelection"/> to
+    /// skip past territories where the player has nothing to do.
+    /// </summary>
+    private bool TerritoryHasAvailableAction(Territory territory)
+    {
+        if (PurchaseRules.CanAffordPeasant(territory, _state.Treasury))
+        {
+            return true;
+        }
+        Color color = _state.Turns.CurrentPlayer.Color;
+        foreach (HexCoord coord in territory.Coords)
+        {
+            HexTile? tile = _state.Grid.Get(coord);
+            if (tile?.Occupant is Unit unit
+                && unit.Owner == color
+                && !unit.HasMovedThisTurn)
+            {
+                return true;
+            }
+        }
         return false;
     }
 }

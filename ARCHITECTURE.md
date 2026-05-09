@@ -352,8 +352,14 @@ event Action? RedoAllClicked;
 event Action? EndTurnClicked;
 event Action? NewGameClicked;          // handled in Main (scene reload)
 event Action? MainMenuClicked;         // handled in Main (scene change)
-event Action? NextTerritoryClicked;    // Tab hotkey equivalent
-event Action? PreviousTerritoryClicked;// Shift+Tab hotkey equivalent
+event Action? NextTerritoryClicked;    // Tab hotkey equivalent;
+                                       // skips singletons and any
+                                       // territory with no available
+                                       // action (no unmoved unit and
+                                       // can't afford a peasant);
+                                       // no-op if none qualify
+event Action? PreviousTerritoryClicked;// Shift+Tab hotkey equivalent;
+                                       // same skip rules
 event Action? NextUnitClicked;         // N hotkey: cycle units in selection
 event Action? PreviousUnitClicked;     // Shift+N hotkey
 event Action? CancelActionPressed;     // Escape hotkey equivalent
