@@ -43,7 +43,7 @@
 
 ### Phase 2 — `tutorial_builder.tscn` scene + 3-mode topbar
 
-- **Status:** 📝 Plan written
+- **Status:** ✅ Complete
 - **Plan file:** [`2026-05-09-tutorial-builder-phase-02-scene-and-topbar.md`](2026-05-09-tutorial-builder-phase-02-scene-and-topbar.md)
 - **Goal:** New scene with `TutorialBuilderScene : Node2D` root, 3-mode topbar (Map Edit / Build / Preview, kbd 1/2/3), Save Tutorial / Load Tutorial / Exit chrome (Save/Load disabled until Phase 3). Map Edit mode hosts `MapEditorPanel` (from Phase 1). Build/Preview show "Coming soon" placeholders. `MainMenuScene` adds a debug-only "Tutorial Builder" button.
 - **Key files:** `scenes/tutorial_builder.tscn` (new), `scripts/TutorialBuilderScene.cs` (new), `scripts/TutorialBuilderTopBar.cs` (new), `scripts/MainMenuScene.cs` (add button).
