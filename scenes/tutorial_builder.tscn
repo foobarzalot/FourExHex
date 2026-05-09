@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://b0fourexhextutbuild"]
+
+[ext_resource type="Script" path="res://scripts/TutorialBuilderScene.cs" id="1_tb"]
+
+[node name="TutorialBuilder" type="Node2D"]
+script = ExtResource("1_tb")

@@ -43,6 +43,26 @@ public partial class MapEditorHudView : CanvasLayer
     public event Action? SaveMapClicked;
     public event Action? LoadMapClicked;
 
+    /// <summary>
+    /// When false, the right-side Save Map / Load Map / Exit buttons are
+    /// not built. Hosts that supply their own scene-root chrome (e.g.
+    /// TutorialBuilderScene's topbar) set this to false. The standalone
+    /// Map Editor scene leaves it at the default true.
+    ///
+    /// Must be set before <see cref="_Ready"/> runs (i.e. before the
+    /// host calls <c>AddChild(hud)</c>).
+    /// </summary>
+    public bool ShowSceneRootChrome { get; set; } = true;
+
+    /// <summary>
+    /// Vertical offset (in pixels) for the entire HUD strip. Default 0
+    /// (the standalone editor sits at the top). TutorialBuilderScene
+    /// sets this to 60 so the strip renders below its topbar.
+    ///
+    /// Must be set before <see cref="_Ready"/> runs.
+    /// </summary>
+    public int TopOffsetPx { get; set; } = 0;
+
     public int SelectedPaletteIndex { get; private set; }
 
     private LineEdit _seedField = null!;
@@ -60,14 +80,14 @@ public partial class MapEditorHudView : CanvasLayer
         var background = new ColorRect
         {
             Color = new Color(0f, 0f, 0f, 0.8f),
-            Position = Vector2.Zero,
+            Position = new Vector2(0, TopOffsetPx),
             Size = new Vector2(viewport.X, HudView.HudHeight),
         };
         AddChild(background);
 
         var leftHbox = new HBoxContainer
         {
-            Position = new Vector2(16, 12),
+            Position = new Vector2(16, 12 + TopOffsetPx),
         };
         leftHbox.AddThemeConstantOverride("separation", 12);
         AddChild(leftHbox);
@@ -183,8 +203,8 @@ public partial class MapEditorHudView : CanvasLayer
             AnchorBottom = 0f,
             OffsetLeft = 0f,
             OffsetRight = -16f,
-            OffsetTop = 12f,
-            OffsetBottom = 48f,
+            OffsetTop = 12f + TopOffsetPx,
+            OffsetBottom = 48f + TopOffsetPx,
             Alignment = BoxContainer.AlignmentMode.End,
             MouseFilter = Control.MouseFilterEnum.Ignore,
         };
@@ -202,35 +222,38 @@ public partial class MapEditorHudView : CanvasLayer
         _redoAllButton = MakeUndoButton("Redo All", () => RedoAllClicked?.Invoke());
         rightHbox.AddChild(_redoAllButton);
 
-        var saveMapButton = new Button
+        if (ShowSceneRootChrome)
         {
-            Text = "Save Map",
-            FocusMode = Control.FocusModeEnum.None,
-        };
-        saveMapButton.AddThemeFontSizeOverride("font_size", 18);
-        saveMapButton.Pressed += () => SaveMapClicked?.Invoke();
-        AudioBus.AttachClick(saveMapButton);
-        rightHbox.AddChild(saveMapButton);
+            var saveMapButton = new Button
+            {
+                Text = "Save Map",
+                FocusMode = Control.FocusModeEnum.None,
+            };
+            saveMapButton.AddThemeFontSizeOverride("font_size", 18);
+            saveMapButton.Pressed += () => SaveMapClicked?.Invoke();
+            AudioBus.AttachClick(saveMapButton);
+            rightHbox.AddChild(saveMapButton);
 
-        var loadMapButton = new Button
-        {
-            Text = "Load Map",
-            FocusMode = Control.FocusModeEnum.None,
-        };
-        loadMapButton.AddThemeFontSizeOverride("font_size", 18);
-        loadMapButton.Pressed += () => LoadMapClicked?.Invoke();
-        AudioBus.AttachClick(loadMapButton);
-        rightHbox.AddChild(loadMapButton);
+            var loadMapButton = new Button
+            {
+                Text = "Load Map",
+                FocusMode = Control.FocusModeEnum.None,
+            };
+            loadMapButton.AddThemeFontSizeOverride("font_size", 18);
+            loadMapButton.Pressed += () => LoadMapClicked?.Invoke();
+            AudioBus.AttachClick(loadMapButton);
+            rightHbox.AddChild(loadMapButton);
 
-        var exitButton = new Button
-        {
-            Text = "Exit",
-            FocusMode = Control.FocusModeEnum.None,
-        };
-        exitButton.AddThemeFontSizeOverride("font_size", 18);
-        exitButton.Pressed += () => ExitClicked?.Invoke();
-        AudioBus.AttachClick(exitButton);
-        rightHbox.AddChild(exitButton);
+            var exitButton = new Button
+            {
+                Text = "Exit",
+                FocusMode = Control.FocusModeEnum.None,
+            };
+            exitButton.AddThemeFontSizeOverride("font_size", 18);
+            exitButton.Pressed += () => ExitClicked?.Invoke();
+            AudioBus.AttachClick(exitButton);
+            rightHbox.AddChild(exitButton);
+        }
     }
 
     private static Button MakeUndoButton(string text, Action onPressed)

@@ -94,7 +94,13 @@ public partial class MainMenuScene : Control
     {
         Vector2 viewport = GetViewportRect().Size;
         const float panelW = 520f;
-        const float panelH = 500f;
+        // 580f instead of 500f to accommodate the debug-only Tutorial
+        // Builder button below Map Editor (debug builds only — release
+        // builds render the same 4-button stack against a panel that's
+        // 80px taller than necessary; not enough to be worth a runtime
+        // resize since OS.IsDebugBuild() is compile-time-stable for any
+        // given binary).
+        const float panelH = 580f;
         var panel = new Panel
         {
             Position = new Vector2((viewport.X - panelW) * 0.5f, (viewport.Y - panelH) * 0.5f),
@@ -151,6 +157,21 @@ public partial class MainMenuScene : Control
         mapEditorButton.Pressed += OnMapEditorPressed;
         AudioBus.AttachClick(mapEditorButton);
         panel.AddChild(mapEditorButton);
+
+        // Debug-only entry point into the new authoring tool. Per spec
+        // §"Dev-mode gating", this button is gated on OS.IsDebugBuild()
+        // — release exports never see it.
+        if (OS.IsDebugBuild())
+        {
+            var tutorialBuilderButton = new Button { Text = "Tutorial Builder" };
+            tutorialBuilderButton.AddThemeFontSizeOverride("font_size", 26);
+            tutorialBuilderButton.Position = new Vector2(
+                buttonInset, firstButtonY + (buttonH + buttonGap) * 4);
+            tutorialBuilderButton.Size = new Vector2(buttonW, buttonH);
+            tutorialBuilderButton.Pressed += OnTutorialBuilderPressed;
+            AudioBus.AttachClick(tutorialBuilderButton);
+            panel.AddChild(tutorialBuilderButton);
+        }
 
         return panel;
     }
@@ -444,6 +465,11 @@ public partial class MainMenuScene : Control
     private void OnMapEditorPressed()
     {
         GetTree().ChangeSceneToFile("res://scenes/map_editor.tscn");
+    }
+
+    private void OnTutorialBuilderPressed()
+    {
+        GetTree().ChangeSceneToFile("res://scenes/tutorial_builder.tscn");
     }
 
     private void OnBackPressed()
