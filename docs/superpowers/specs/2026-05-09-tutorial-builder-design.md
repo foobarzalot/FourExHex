@@ -351,8 +351,8 @@ public static class TutorialValidator
 
 ### Beat pointer advancement
 
-`TutorialPlayer` owns a single `int _nextBeatIndex`. Two paths advance it,
-one per beat actor type:
+`TutorialPlayer` owns a single `int _nextBeatIndex`. Three paths advance
+it, one per beat-source category (human action, AI action, overlay):
 
 **Human player-action beats** — the gated view wrapper observes the click,
 calls `TutorialValidator.Matches(currentBeat, attempt)`, and on a true
@@ -375,15 +375,13 @@ to surface, not paper over).
 1. Looks at the next beat. If `Actor == forPlayer`'s index and kind is a
    player-action, converts it to an `AiAction`, increments
    `_nextBeatIndex`, and returns the action.
-2. After return, `GameController` runs `StepAiExecute` which mutates
-   state. `TutorialPlayer` subscribes to `IAiPacer` (no — there's no
-   such hook). Cleanest path: the wrapper view's audio sinks
-   (`PlayUnitPlaced` / `PlayUnitCombined` / etc.) are forwarded calls
-   from `GameController` after the mutation completes; intercept any
-   one of them as a "beat just applied" trigger to push the snapshot
-   and fire `BeatApplied`. This works because `GameController` always
-   fires at least one Play* event per executed AiAction (verified
-   against `DispatchActionSound` in the existing call flow).
+2. `GameController` runs `StepAiExecute` after the chooser returns,
+   mutating state. The "AI beat completed" trigger is the wrapper's
+   `Play*` audio sinks: `GameController` always fires at least one
+   `Play*` event per executed `AiAction` via `DispatchActionSound`. The
+   wrapper intercepts the first `Play*` call following an AI chooser
+   return, pushes `GameStateSnapshot.Capture(state)` onto `Snapshots`,
+   and fires `BeatApplied(_nextBeatIndex - 1)`.
 3. If no scripted beat matches the current AI player, return
    `AiDispatcher.ChooseForCurrentPlayer(state, color, visited, rng)` —
    the AI plays the rest of their turn under their normal `AiKind`
@@ -549,18 +547,14 @@ On exit: dispose the transient controller, restore `panel.PaintingEnabled
 ### State-after-beat-N (Build inspector)
 
 When the dev selects beat N in the timeline, BuildPane shows the map
-state after beats `0..N` have been applied to the starting state. Two
-implementation choices:
+state after beats `0..N` have been applied to the starting state.
 
-- **Cached**: BuildPane keeps `Dictionary<int, GameStateSnapshot>` and
-  recomputes lazily from the starting state. Each beat-add appends one
-  snapshot; each beat-edit invalidates everything from that index on.
-- **On-demand recompute**: walk from beat 0 each time the selection
-  changes. Simpler but quadratic for large tutorials.
-
-Use cached. Reuse `AiSimulator.Apply` patterns to apply a single beat to
-a cloned `GameState` (the simulator already knows how to mutate state
-without a GameController).
+BuildPane keeps a `Dictionary<int, GameStateSnapshot>` keyed by beat
+index, populated lazily from the starting state. Each beat-add appends
+one snapshot. Each beat-edit invalidates every entry from that index
+onward — they recompute on next selection. Single-beat application
+reuses `AiSimulator.Apply`, which already knows how to mutate a cloned
+`GameState` without a `GameController`.
 
 ## Save / load
 
@@ -569,10 +563,10 @@ without a GameController).
 - Bump `FormatVersion = 3`.
 - Add optional top-level `"Tutorial"` field (the JSON shape under "Data
   model" above).
-- Backwards compat: v2 file → load with `Tutorial = null` (treated as
-  empty). v1 unchanged. v3-only readers crash on a v2 file? No — the
-  format-version check accepts v2 (no Tutorial) and v3 (optional
-  Tutorial). Bump to v4 only if a future change is *non-additive*.
+- Backwards compat: the deserializer accepts both v2 and v3.
+  v2 files load with `Tutorial = null`. v3 files without a `Tutorial`
+  block load identically. The next bump (v4) is reserved for a
+  non-additive change.
 
 ### `SaveStore`
 
@@ -656,9 +650,8 @@ the current position, with undone beats at 0.45 opacity.
 - `MainMenuScene` adds a `TutorialBuilderClicked` button visible iff
   `OS.IsDebugBuild()`. Clicked → `ChangeSceneToFile("res://scenes/tutorial_builder.tscn")`.
 - `PreviewPane` checks `OS.IsDebugBuild()` before mounting the scrubber.
-  If false, Preview still works — it just runs the tutorial straight
-  through with no rewind affordance. (Not a likely production scenario,
-  but the guard is cheap.)
+  Production builds run the tutorial straight through with no rewind
+  affordance.
 - `Tutorial.json` is shipped via `res://tutorials/`. The Play Tutorial
   menu entry is unchanged and works in production builds.
 
