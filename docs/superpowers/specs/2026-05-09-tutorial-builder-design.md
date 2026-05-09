@@ -740,20 +740,52 @@ implementation-plan run by a future agent).
 
 ### Phase 3 — Beat schema v3 + EndTurn beat (author + preview)
 
-- Beat / Tutorial / AnchorRef / DismissOn POCOs.
-- `SaveSerializer` v2 → v3, optional Tutorial block.
-- `SaveStore.WriteTutorial` / `LoadTutorial` / `ListTutorials`.
+> Originally a single load-bearing phase. Split into 3a / 3b / 3c so each
+> sub-phase ends with a real, manually-testable change. `AnchorRef` /
+> `DismissOn` POCOs are deferred to **Phase 7** (their first consumer —
+> `PromptBeat`).
+
+#### Phase 3a — Empty-tutorial save / load
+
+- `Tutorial` POCO only (no `Beat` type yet).
+- `SaveSerializer` v2 → v3 bump with **optional** top-level `Tutorial`
+  block. Deserializer accepts both v2 and v3 (current code rejects any
+  mismatch — softens here).
+- `LoadedSave.Tutorial` nullable field.
+- `SaveStore.WriteTutorial` / `LoadTutorial` / `ListTutorials` against
+  `user://tutorials/`.
 - TopBar Save / Load Tutorial enabled; lists from `user://tutorials/`.
-- BuildPane minimal: empty timeline + "Add EndTurn" button + inspector
-  showing only `(Turn, Actor)`.
-- PreviewPane minimal: instantiates transient `GameController` +
-  `TutorialPlayer`; `EndTurn` click gated.
+  Save writes the panel's draft + an empty `Tutorial`; Load restores
+  the draft.
+- New tests: `TutorialSerializerTests` (empty-tutorial round-trip,
+  v2 → null fallback, v3 without Tutorial → null).
+- **Manual**: paint a few hexes, Save Tutorial "test1", Load Tutorial →
+  "test1" in list, pick → painted hexes restored.
+
+#### Phase 3b — Author an EndTurn beat in Build
+
+- `Beat` abstract record + `BeatKind` enum + `EndTurnBeat` (no other
+  concrete beats yet).
+- `SaveSerializer` learns `Kind`-discriminated beat (de)serialization
+  (extension of 3a's Tutorial block).
+- `BuildPane` real chrome: empty timeline + "Add EndTurn" button
+  (creates beat for actor 0 turn 1) + inspector showing `(Turn, Actor)`.
+- Tests extended: round-trip a Tutorial with one EndTurnBeat.
+- **Manual**: Build mode → "Add EndTurn" → beat appears in timeline;
+  Save + reload → beat restored; click beat → inspector shows
+  `Turn 1, Actor 0`.
+
+#### Phase 3c — Preview the EndTurn beat
+
 - `TutorialPlayer` (no AI scripting yet — AI chooser falls through to
   `AiDispatcher` always).
-- New tests: `TutorialSerializerTests` (round-trip + v2 fallback),
-  `TutorialPlayerTests` (EndTurn match/mismatch).
-- **Manual**: in Build, add EndTurn beat for actor 0 turn 1, save,
-  reload, switch to Preview, click End Turn → accepted; tutorial ends.
+- `TutorialGatedHexMapView` + `TutorialGatedHudView` wrapper views.
+- `TutorialValidator.MatchesEndTurn`.
+- `PreviewPane` real chrome: instantiates transient `GameController` +
+  gated views; `EndTurn` click gated.
+- New tests: `TutorialPlayerTests` (EndTurn match/mismatch).
+- **Manual**: author EndTurn beat (3b) → save → switch to Preview →
+  click End Turn → tutorial ends; click any tile first → soft-reject toast.
 
 ### Phase 4 — `BuyPeasant` beat (author + preview)
 

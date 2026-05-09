@@ -53,12 +53,47 @@
 
 ### Phase 3 — Beat schema v3 + `EndTurn` beat (author + preview)
 
+> Phase 3 was originally a single load-bearing phase. It's now split into 3a / 3b / 3c so each sub-phase ends with a real, manually-testable user-facing change. `AnchorRef` / `DismissOn` POCOs are deferred to **Phase 7** (their first consumer — `PromptBeat`).
+
+#### Phase 3a — Empty-tutorial save / load
+
 - **Status:** ⏳ Not yet expanded
-- **Goal:** The load-bearing phase. Adds: `Beat` / `Tutorial` / `AnchorRef` / `DismissOn` POCOs; `SaveSerializer` v2→v3 with optional Tutorial block; `SaveStore.WriteTutorial`/`LoadTutorial`/`ListTutorials`; minimal Build pane (empty timeline + "Add EndTurn" button + inspector); minimal Preview pane (transient `GameController` + `TutorialPlayer`); `TutorialPlayer` and gated view wrappers (without scripted-AI logic — falls through to `AiDispatcher`); `TutorialValidator.MatchesEndTurn`.
-- **Key files:** `scripts/Tutorial/Beat.cs`, `scripts/Tutorial/Tutorial.cs`, `scripts/Tutorial/AnchorRef.cs`, `scripts/Tutorial/DismissOn.cs`, `scripts/Tutorial/TutorialPlayer.cs`, `scripts/Tutorial/TutorialValidator.cs`, `scripts/Tutorial/TutorialGatedHexMapView.cs`, `scripts/Tutorial/TutorialGatedHudView.cs`, `scripts/BuildPane.cs` (new, partial Control), `scripts/PreviewPane.cs` (new, partial Control), `scripts/SaveSerializer.cs` (v3 bump), `scripts/SaveStore.cs` (tutorial CRUD), `scripts/LoadedSave.cs` (add Tutorial field), `tests/TutorialSerializerTests.cs` (new), `tests/TutorialPlayerTests.cs` (new).
-- **Manual test:** In TutorialBuilder Build mode, click "Add EndTurn" (creates beat for actor 0 turn 1); click Save Tutorial, name "test1"; reload (Load Tutorial → test1); switch to Preview; click End Turn → toast "tutorial complete" or auto-advance; click any other tile → soft-reject toast.
+- **Goal:** Stand up the tutorial save format and the topbar Save / Load buttons end-to-end, with an *empty* tutorial (no beats yet). Lays the v3 format compatibility foundation everything else relies on.
+  - New `Tutorial` POCO under `scripts/Tutorial/` (`Title`, `StartTurn`, `StartPlayer`, empty `Beats` list — no `Beat` type yet).
+  - `SaveSerializer` v2 → v3 bump with **optional** top-level `Tutorial` block. Critically, the deserializer must **accept both v2 and v3** (the current code rejects any mismatch — that has to soften).
+  - `LoadedSave.Tutorial` nullable field.
+  - `SaveStore.WriteTutorial` / `LoadTutorial` / `ListTutorials` against `user://tutorials/`.
+  - `TutorialBuilderScene` enables `_topBar.SaveEnabled = _topBar.LoadEnabled = true` and wires `SaveTutorialPressed` / `LoadTutorialPressed` to in-scene save/load dialogs (reusing the `MapEditorScene` pattern). Saves the panel's current map draft + an empty `Tutorial`; load restores the draft into the panel.
+- **Key files:** `scripts/Tutorial/Tutorial.cs` (new), `scripts/SaveSerializer.cs` (v3 bump + dual-version read), `scripts/SaveStore.cs` (tutorial CRUD), `scripts/LoadedSave.cs` (Tutorial field), `scripts/TutorialBuilderScene.cs` (enable + wire buttons), `tests/TutorialSerializerTests.cs` (new).
+- **Manual test:** Open Tutorial Builder → paint a few hexes → Save Tutorial (name "test1") → Load Tutorial → see "test1" in list → pick it → painted hexes restored.
 - **Depends on:** Phase 2.
-- **Spec reference:** Spec §"Data model", §"Runtime: TutorialPlayer", §"Save/load", §"Build mode" (EndTurn paragraph), §"Preview mode".
+- **Spec reference:** Spec §"Data model" (`Tutorial` only), §"Save/load", §"JSON v3 schema".
+
+#### Phase 3b — Author an `EndTurn` beat in Build
+
+- **Status:** ⏳ Not yet expanded
+- **Goal:** The author side of the EndTurn loop. Introduces `Beat` discriminator + `EndTurnBeat` POCO, grows the BuildPane into a minimal timeline + "Add EndTurn" + inspector, and round-trips the beat through 3a's serializer.
+  - `Beat` abstract record + `BeatKind` enum + `EndTurnBeat` (no other concrete beats yet).
+  - `SaveSerializer` learns to (de)serialize `Beats` with `Kind` discriminator (extension of 3a's Tutorial block).
+  - `BuildPane` real chrome: empty timeline, "Add EndTurn" button (creates beat for actor 0 turn 1), inspector showing `(Turn, Actor)`.
+  - Tests extended for beat round-trip.
+- **Key files:** `scripts/Tutorial/Beat.cs` (new), `scripts/Tutorial/Tutorial.cs` (extend), `scripts/SaveSerializer.cs` (extend Tutorial DTOs), `scripts/BuildPane.cs` (real chrome), `tests/TutorialSerializerTests.cs` (extend).
+- **Manual test:** In TutorialBuilder Build mode, click "Add EndTurn" → beat appears in timeline; Save → reload → beat is back; click the beat → inspector shows `Turn 1, Actor 0`.
+- **Depends on:** Phase 3a.
+- **Spec reference:** Spec §"Data model" (`Beat`, `EndTurnBeat`), §"Build mode" (EndTurn paragraph).
+
+#### Phase 3c — Preview the `EndTurn` beat
+
+- **Status:** ⏳ Not yet expanded
+- **Goal:** The preview side. Brings up `TutorialPlayer` + gated view wrappers + `TutorialValidator.MatchesEndTurn` + `PreviewPane` real chrome, reaching the original Phase 3 end-to-end manual test.
+  - `TutorialPlayer` (no scripted-AI logic — `AiChooser` falls through to `AiDispatcher` always).
+  - `TutorialGatedHexMapView` + `TutorialGatedHudView` wrapper views.
+  - `TutorialValidator.MatchesEndTurn`.
+  - `PreviewPane` real chrome: instantiates a transient `GameController` with the gated views + the panel's current draft as starting state.
+- **Key files:** `scripts/Tutorial/TutorialPlayer.cs` (new), `scripts/Tutorial/TutorialValidator.cs` (new), `scripts/Tutorial/TutorialGatedHexMapView.cs` (new), `scripts/Tutorial/TutorialGatedHudView.cs` (new), `scripts/PreviewPane.cs` (real chrome), `tests/TutorialPlayerTests.cs` (new).
+- **Manual test:** Author an EndTurn beat (3b), Save, switch to Preview → click End Turn → toast "tutorial complete" / auto-advance; click a tile → soft-reject toast.
+- **Depends on:** Phase 3b.
+- **Spec reference:** Spec §"Runtime: TutorialPlayer", §"Preview mode".
 
 ### Phase 4 — `BuyPeasant` beat (author + preview)
 
