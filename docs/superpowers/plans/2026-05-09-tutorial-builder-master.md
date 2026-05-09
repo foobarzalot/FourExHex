@@ -34,7 +34,7 @@
 
 ### Phase 1 — Refactor `MapEditorScene` → `MapEditorPanel`
 
-- **Status:** 📝 Plan written
+- **Status:** ✅ Complete
 - **Plan file:** [`2026-05-09-tutorial-builder-phase-01-mapeditorpanel-refactor.md`](2026-05-09-tutorial-builder-phase-01-mapeditorpanel-refactor.md)
 - **Goal:** Pure refactor. Extract draft state, paint logic, view ownership, undo stack, and hover tooltip into a reusable `MapEditorPanel : Node2D`. `MapEditorScene` becomes a thin host that wires its existing HUD to the panel. No behavior change.
 - **Key files:** `scripts/MapEditorScene.cs` (slim down), `scripts/MapEditorPanel.cs` (new).
