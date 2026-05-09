@@ -16,6 +16,7 @@ public sealed class SaveStore
 {
     public const string SaveDirectory = "user://saves/";
     public const string MapsDirectory = "user://maps/";
+    public const string TutorialsDirectory = "user://tutorials/";
     // Read-only directory shipped with the game (e.g. tutorial map).
     // res:// resolves into the PCK in exported builds and into the
     // project tree in the editor — FileAccess handles both transparently.
@@ -77,6 +78,26 @@ public sealed class SaveStore
         string sanitized = SanitizeSlotName(slotName);
         string json = SaveSerializer.SerializeMap(state, masterSeed, players, sanitized);
         AtomicWrite(MapsDirectory, sanitized, json);
+    }
+
+    /// <summary>
+    /// Persist a tutorial to <see cref="TutorialsDirectory"/>. Mirrors
+    /// <see cref="WriteMapSlot"/>'s shape — same JSON format (turn 0
+    /// marker via <see cref="SaveSerializer.SerializeMap"/>) plus the
+    /// optional Tutorial block. The map state is the *starting* map
+    /// the tutorial plays out on; the dev paints it in Map Edit mode.
+    /// </summary>
+    public void WriteTutorial(
+        string slotName,
+        GameState mapState,
+        int masterSeed,
+        IReadOnlyList<Player> players,
+        Tutorial tutorial)
+    {
+        EnsureDirectory(TutorialsDirectory);
+        string sanitized = SanitizeSlotName(slotName);
+        string json = SaveSerializer.SerializeMap(mapState, masterSeed, players, sanitized, tutorial);
+        AtomicWrite(TutorialsDirectory, sanitized, json);
     }
 
     private static void WriteSlotIn(
@@ -180,6 +201,12 @@ public sealed class SaveStore
 
     /// <summary>Load a map shipped with the game from <see cref="BundledMapsDirectory"/>.</summary>
     public LoadedSave LoadBundledMap(string slotName) => LoadSlotIn(BundledMapsDirectory, slotName);
+
+    /// <summary>Load a tutorial by sanitized name from <see cref="TutorialsDirectory"/>.</summary>
+    public LoadedSave LoadTutorial(string slotName) => LoadSlotIn(TutorialsDirectory, slotName);
+
+    /// <summary>List every tutorial in <see cref="TutorialsDirectory"/>.</summary>
+    public IReadOnlyList<SaveSlotInfo> ListTutorials() => ListSlotsIn(TutorialsDirectory);
 
     /// <summary>
     /// Load a starting map by name regardless of whether it lives in the
