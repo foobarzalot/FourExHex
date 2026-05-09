@@ -818,17 +818,40 @@ nothing about it is turn- or rules-driven — but it does reuse the
 view layer (`HexMapView` + a sibling `MapEditorHudView`) so map
 edits look identical to in-game terrain.
 
-- **Draft state.** The scene owns a mutable `HexGrid`, water set,
+- **Scene/panel split.** `MapEditorScene` is a thin chrome host: it
+  owns the `MapEditorHudView`, the `SaveStore`, the Save / Load
+  dialogs, the Escape→hand→exit ladder, and `ReturnToMainMenu`. The
+  editor body lives in `MapEditorPanel : Node2D` — a reusable Node
+  that owns the `HexMapView` instance, the draft grid/water/territory
+  state, the paint-stroke state machine, the undo stack, and the
+  hover tooltip. The scene wires HUD events
+  (`PaletteSelectionChanged`, `GenerateRequested`, `UndoLast/All`,
+  `RedoLast/All`, `SaveMapClicked`, `LoadMapClicked`) to panel
+  methods (`SetSelectedPalette`, `GenerateMap`, `UndoLast/All`,
+  `OpenSaveDialog`, `OpenLoadDialog`) and listens to
+  `panel.UndoStateChanged` to refresh the HUD's undo-bar enable
+  state. The split exists so `tutorial_builder.tscn` (Phase 2 of the
+  TutorialBuilder feature) can host the same panel under different
+  chrome (Save Tutorial / Load Tutorial; Build / Preview modes)
+  without forking the editor logic.
+
+  The panel exposes `PaintingEnabled` (gates all paint events; flipped
+  off by Build/Preview hosts), `SnapshotDraft` / `RestoreDraft` (used
+  by Preview cloning in later phases), and `BuildLiveState` /
+  `BuildSaveState` so the chrome host can serialize without poking
+  panel internals.
+- **Draft state.** The panel owns a mutable `HexGrid`, water set,
   and territory list, plus an `UndoStack<EditorSnapshot>` for
   undo/redo. `EditorSnapshot.Capture` deep-copies all three; its
   `ApplyTo` rebuilds the grid from scratch (paints can both add and
   remove tiles, so `GameStateSnapshot`'s in-place tile updates aren't
   enough).
-- **Push cycle.** Every paint or generate calls `PushState` which
-  rebuilds a fresh `GameState`, hands it to
+- **Push cycle.** Every paint or generate calls the panel's
+  `PushState` which rebuilds a fresh `GameState`, hands it to
   `HexMapView.ReloadState` (preserving zoom/pan), and reapplies
-  occupant visuals. This is why `HexMapView` exposes both `Init` and
-  `ReloadState`.
+  occupant visuals, then fires `DraftChanged` and `UndoStateChanged`
+  for the host to react to. This is why `HexMapView` exposes both
+  `Init` and `ReloadState`.
 - **Input model.** Each palette swatch flips
   `HexMapView.DragMode` to one of two channels:
   - **Pan mode** (hand, capital): drag pans the camera; releases
@@ -918,8 +941,11 @@ scripts/
 │                           Tutorial bypasses config (Red=Human, others
 │                           AiKind.Tutorial, loads bundled Tutorial map);
 │                           writes GameSettings + LoadRequest
-├─ MapEditorScene.cs      ─ editor scene root; owns the draft grid/water/
-│                           territories + UndoStack<EditorSnapshot>
+├─ MapEditorScene.cs      ─ editor scene root; chrome host (HUD, Save/Load
+│                           dialogs, Escape→hand→exit ladder)
+├─ MapEditorPanel.cs      ─ reusable editor body; owns HexMapView + draft
+│                           grid/water/territories + UndoStack<EditorSnapshot>
+│                           + paint stroke state + hover tooltip
 ├─ MapEditorHudView.cs    ─ editor HUD (seed entry + palette + undo/redo
 │                           + Save Map / Load Map / Exit)
 ├─ MapEditPaint.cs        ─ pure paint helpers (Land / Capital / Tower /
@@ -1019,9 +1045,10 @@ tests/
 ```
 
 `Main.cs`, `MainMenuScene.cs`, `MapEditorScene.cs`,
-`MapEditorHudView.cs`, `HexPaletteButton.cs`, `HexHoverTooltip.cs`,
-`HexMapView.cs`, `HudView.cs`, `GodotAiPacer.cs`, `HeadlessViews.cs`,
-`SaveStore.cs`, and `AudioBus.cs` are NOT compiled into the test assembly — they
+`MapEditorPanel.cs`, `MapEditorHudView.cs`, `HexPaletteButton.cs`,
+`HexHoverTooltip.cs`, `HexMapView.cs`, `HudView.cs`,
+`GodotAiPacer.cs`, `HeadlessViews.cs`, `SaveStore.cs`, and
+`AudioBus.cs` are NOT compiled into the test assembly — they
 derive from Godot nodes or depend on `SceneTree` / Godot
 `FileAccess` / autoload lifecycle. The test csproj explicitly lists
 each production source file it includes, so when you add a new
