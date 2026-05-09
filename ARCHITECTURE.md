@@ -830,9 +830,8 @@ edits look identical to in-game terrain.
   methods (`SetSelectedPalette`, `GenerateMap`, `UndoLast/All`,
   `OpenSaveDialog`, `OpenLoadDialog`) and listens to
   `panel.UndoStateChanged` to refresh the HUD's undo-bar enable
-  state. The split exists so `tutorial_builder.tscn` (Phase 2 of the
-  TutorialBuilder feature) can host the same panel under different
-  chrome (Save Tutorial / Load Tutorial; Build / Preview modes)
+  state. The split exists so `tutorial_builder.tscn` can host the
+  same panel under different chrome (see "Tutorial builder" below)
   without forking the editor logic.
 
   The panel exposes `PaintingEnabled` (gates all paint events; flipped
@@ -840,6 +839,15 @@ edits look identical to in-game terrain.
   by Preview cloning in later phases), and `BuildLiveState` /
   `BuildSaveState` so the chrome host can serialize without poking
   panel internals.
+- **HUD configurability.** `MapEditorHudView` exposes two configuration
+  knobs that hosts set before `AddChild`:
+  - `ShowSceneRootChrome` (default `true`) — controls whether the
+    Save Map / Load Map / Exit buttons are built. The standalone
+    `MapEditorScene` keeps them; `TutorialBuilderScene` sets it
+    `false` and supplies its own equivalents on the topbar.
+  - `TopOffsetPx` (default `0`) — vertical offset of the entire HUD
+    strip. Standalone editor uses `0` (HUD at y=0..60); TutorialBuilder
+    uses `60` so the strip sits below its 60px topbar.
 - **Draft state.** The panel owns a mutable `HexGrid`, water set,
   and territory list, plus an `UndoStack<EditorSnapshot>` for
   undo/redo. `EditorSnapshot.Capture` deep-copies all three; its
@@ -909,6 +917,51 @@ edits look identical to in-game terrain.
   `Treasury`, but the saved grid + territories + pre-placed
   trees/towers/capitals all stick.
 
+## Tutorial builder
+
+`TutorialBuilderScene` (root of `res://scenes/tutorial_builder.tscn`,
+reached from the main menu's debug-only "Tutorial Builder" button) is
+a 3-mode authoring tool for hand-crafted on-rails tutorials. The
+button is gated on `OS.IsDebugBuild()`, so release exports never see
+the entry point.
+
+The scene composes the existing Map Editor body. It instantiates
+`MapEditorPanel` once at `_Ready` and never tears it down — mode
+switching only flips `panel.PaintingEnabled` and the per-mode chrome's
+`Visible` flag, so the painted draft survives every transition.
+
+- **Modes** are an enum `TutorialMode { MapEdit, Build, Preview }`.
+  - **Map Edit** — `panel.PaintingEnabled = true`; the chrome-trimmed
+    `MapEditorHudView` (palette + seed + Generate + undo bar, no
+    Save Map / Load Map / Exit) is visible at y=60..120.
+  - **Build** — `panel.PaintingEnabled = false`; `BuildPane`
+    placeholder visible. Phase 3 grows this into the timeline +
+    inspector + add-beat palette.
+  - **Preview** — `panel.PaintingEnabled = false`; `PreviewPane`
+    placeholder visible. Phase 3 grows this into a transient
+    `GameController` + `TutorialPlayer` host; later phases add a
+    scrubber.
+- **Topbar** (`TutorialBuilderTopBar : CanvasLayer`, y=0..60). Three
+  mode buttons on the left (Map Edit / Build / Preview, kbd 1/2/3 —
+  the current mode's button is `Disabled = true` for visual
+  selection); Save Tutorial / Load Tutorial / Exit on the right
+  (Save/Load disabled until Phase 3 wires them up). Emits
+  `ModeRequested` / `SaveTutorialPressed` / `LoadTutorialPressed` /
+  `ExitPressed`. `SaveEnabled` / `LoadEnabled` setters re-enable the
+  buttons when later phases land.
+- **ESC ladder.** First press in Build or Preview drops to Map Edit.
+  In Map Edit with a non-hand palette selected, drops to hand. With
+  the hand already selected, exits to the main menu. Keyboard 1/2/3
+  reach `_UnhandledInput` only when no focused Control consumed the
+  keypress (LineEdit consumes digits via its `GuiInput`), so typing
+  in the seed field doesn't trigger mode switches.
+- **Phase 2 scope** is scaffolding only. `BuildPane` and
+  `PreviewPane` are stubs whose `_Ready` mounts a bottom-anchored
+  "Coming soon" label; both expose `SetPanel(MapEditorPanel)` and
+  `Pause()` (PreviewPane) so Phase 3+ only have to fill in the
+  bodies. No `Tutorial` POCO, no `TutorialPlayer`, no JSON v3 yet —
+  Phase 3 lands those.
+
 ## Diagnostic mode (`FOUREXHEX_6AI`)
 
 Setting the env var before launching Godot reconfigures the session
@@ -936,9 +989,10 @@ FOUREXHEX_6AI=1 /Applications/Godot_mono.app/Contents/MacOS/Godot \
 ```
 scripts/
 ├─ Main.cs                ─ play scene root; wires model + views + controller
-├─ MainMenuScene.cs       ─ landing (Play/Tutorial/Load/Map Editor) +
-│                           play-config panels; Load Game modal; Play
-│                           Tutorial bypasses config (Red=Human, others
+├─ MainMenuScene.cs       ─ landing (Play/Tutorial/Load/Map Editor +
+│                           debug-only Tutorial Builder) + play-config
+│                           panels; Load Game modal; Play Tutorial
+│                           bypasses config (Red=Human, others
 │                           AiKind.Tutorial, loads bundled Tutorial map);
 │                           writes GameSettings + LoadRequest
 ├─ MapEditorScene.cs      ─ editor scene root; chrome host (HUD, Save/Load
@@ -947,7 +1001,18 @@ scripts/
 │                           grid/water/territories + UndoStack<EditorSnapshot>
 │                           + paint stroke state + hover tooltip
 ├─ MapEditorHudView.cs    ─ editor HUD (seed entry + palette + undo/redo
-│                           + Save Map / Load Map / Exit)
+│                           + Save Map / Load Map / Exit). Configurable
+│                           via ShowSceneRootChrome (gate Save/Load/Exit)
+│                           and TopOffsetPx (offset entire strip)
+├─ TutorialBuilderScene.cs─ tutorial builder scene root; TutorialMode
+│                           state machine; hosts MapEditorPanel + a
+│                           chrome-trimmed MapEditorHudView + topbar +
+│                           BuildPane + PreviewPane
+├─ TutorialBuilderTopBar.cs ─ tutorial builder topbar (CanvasLayer):
+│                             3 mode buttons (kbd 1/2/3) + Save/Load
+│                             Tutorial + Exit
+├─ BuildPane.cs           ─ Build mode chrome (Phase 2 placeholder)
+├─ PreviewPane.cs         ─ Preview mode chrome (Phase 2 placeholder)
 ├─ MapEditPaint.cs        ─ pure paint helpers (Land / Capital / Tower /
 │                           Tree / Water)
 ├─ EditorSnapshot.cs      ─ deep copy of editor draft (grid + water + terr.)
@@ -1029,7 +1094,8 @@ scripts/
 scenes/
 ├─ main_menu.tscn         ─ initial scene (pinned in project.godot)
 ├─ main.tscn              ─ play scene
-└─ map_editor.tscn        ─ editor scene
+├─ map_editor.tscn        ─ editor scene
+└─ tutorial_builder.tscn  ─ tutorial builder scene (debug-only entry)
 
 tests/
 ├─ TestHelpers.cs         ─ shared fixtures
@@ -1045,10 +1111,11 @@ tests/
 ```
 
 `Main.cs`, `MainMenuScene.cs`, `MapEditorScene.cs`,
-`MapEditorPanel.cs`, `MapEditorHudView.cs`, `HexPaletteButton.cs`,
-`HexHoverTooltip.cs`, `HexMapView.cs`, `HudView.cs`,
-`GodotAiPacer.cs`, `HeadlessViews.cs`, `SaveStore.cs`, and
-`AudioBus.cs` are NOT compiled into the test assembly — they
+`MapEditorPanel.cs`, `MapEditorHudView.cs`, `TutorialBuilderScene.cs`,
+`TutorialBuilderTopBar.cs`, `BuildPane.cs`, `PreviewPane.cs`,
+`HexPaletteButton.cs`, `HexHoverTooltip.cs`, `HexMapView.cs`,
+`HudView.cs`, `GodotAiPacer.cs`, `HeadlessViews.cs`, `SaveStore.cs`,
+and `AudioBus.cs` are NOT compiled into the test assembly — they
 derive from Godot nodes or depend on `SceneTree` / Godot
 `FileAccess` / autoload lifecycle. The test csproj explicitly lists
 each production source file it includes, so when you add a new
