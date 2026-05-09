@@ -127,6 +127,24 @@ public static class MovementRules
     }
 
     /// <summary>
+    /// True iff a unit arriving at <paramref name="destTile"/> from a
+    /// territory owned by <paramref name="attackerTerritory"/>.Owner
+    /// would consume its single per-turn action. Captures (different
+    /// color), tree-clears, and grave-burials all do; empty same-color
+    /// repositions and friendly combines do not. Single source of truth
+    /// for the action-consumption rule, used by
+    /// <see cref="ResolveArrival"/> to set HasMovedThisTurn and by the
+    /// controller's preview code (GameController.ActionConsumingTargets)
+    /// to ring up the matching destinations. Must be called BEFORE any
+    /// mutation of <paramref name="destTile"/>.
+    /// </summary>
+    public static bool ArrivalConsumesAction(HexTile destTile, Territory attackerTerritory)
+    {
+        if (destTile.Color != attackerTerritory.Owner) return true;
+        return destTile.Occupant is Tree || destTile.Occupant is Grave;
+    }
+
+    /// <summary>
     /// Shared logic for "a unit arrives at a destination tile". Handles
     /// three cases:
     ///   - Combine: destination has a friendly unit → produce a higher
@@ -163,19 +181,17 @@ public static class MovementRules
         }
 
         // Case: normal reposition, tree/grave clearing, or capture.
+        // ArrivalConsumesAction must be evaluated before the mutations
+        // below — they overwrite the fields it reads.
+        bool consumesAction = ArrivalConsumesAction(dstTile, attackerTerritory);
         bool wasCapture = dstTile.Color != attackerTerritory.Owner;
-        bool clearedObstacle = !wasCapture
-            && (dstTile.Occupant is Tree || dstTile.Occupant is Grave);
         HexOccupant? displaced = dstTile.Occupant;
         if (wasCapture)
         {
             dstTile.Color = attackerTerritory.Owner;
         }
         dstTile.Occupant = arrivingUnit;
-        // Captures, tree destruction, and grave burial consume the
-        // unit's single action per turn. Empty own-territory
-        // repositions leave the unit free.
-        if (wasCapture || clearedObstacle)
+        if (consumesAction)
         {
             arrivingUnit.HasMovedThisTurn = true;
         }

@@ -303,6 +303,61 @@ public class GameControllerTests
     }
 
     [Fact]
+    public void Click_OwnUnit_HighlightsGraveInOwnTerritory_AsTarget()
+    {
+        // Same logic as the tree test: burying a grave in own territory
+        // consumes the unit's action (see MovementRules.ResolveArrival's
+        // clearedObstacle branch), so the grave tile must ring up as a
+        // valid move target alongside captures and tree-chops.
+        var red = new Player("Red", new Color(1f, 0f, 0f));
+        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var players = new List<Player> { red, blue };
+
+        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Color);
+        grid.Get(HexCoord.FromOffset(0, 1))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(1, 1))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(2, 1))!.Color = red.Color;
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        var map = new MockHexMapView();
+        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+        {
+            map.TileIndex[kvp.Key] = kvp.Value;
+        }
+        var controller = new GameController(state, session, map, new MockHudView());
+        controller.StartGame();
+
+        // Capital is on (0,1). Drop a grave on the other non-capital tile
+        // and a unit on (2,1), then pick up the unit.
+        Territory redT = state.Territories.First(t => t.Owner == red.Color);
+        HexCoord graveCoord = redT.Coords.First(
+            c => c != redT.Capital!.Value && c != HexCoord.FromOffset(2, 1));
+        grid.Get(graveCoord)!.Occupant = new Grave();
+        grid.Get(HexCoord.FromOffset(2, 1))!.Occupant = new Unit(red.Color);
+
+        map.SimulateClick(grid.Get(HexCoord.FromOffset(2, 1)));
+
+        Assert.Contains(graveCoord, map.LastMoveTargets);
+    }
+
+    [Fact]
+    public void BuyPeasant_HighlightsGraveInOwnTerritory_AsTarget()
+    {
+        // Buying a peasant onto a grave is already legal (PurchaseRules
+        // accepts grave tiles) and consumes the action — so the grave
+        // must show up in the placement preview ring.
+        var g = new TestGame();
+        g.Tile(1, 1).Occupant = new Grave();
+        g.Map.SimulateClick(g.Tile(0, 1));
+
+        g.Hud.ClickBuyPeasant();
+
+        Assert.Contains(HexCoord.FromOffset(1, 1), g.Map.LastMoveTargets);
+    }
+
+    [Fact]
     public void Move_AfterCapture_ClearsMoveSource_OnMapView()
     {
         var g = new TestGame();

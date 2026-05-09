@@ -508,12 +508,11 @@ public class GameController
     /// </summary>
     private IEnumerable<HexCoord> ActionConsumingTargets(UnitLevel attackerLevel, Territory territory)
     {
-        Color owner = territory.Owner;
         foreach (HexCoord coord in MovementRules.ValidTargets(attackerLevel, territory, _state.Grid, _state.Territories))
         {
             HexTile? tile = _state.Grid.Get(coord);
             if (tile == null) continue;
-            if (tile.Color != owner || tile.Occupant is Tree)
+            if (MovementRules.ArrivalConsumesAction(tile, territory))
             {
                 yield return coord;
             }

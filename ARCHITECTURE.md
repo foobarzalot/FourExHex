@@ -223,7 +223,8 @@ off it.
 │   CapitalReconciler.Reconcile(raw, old, grid)                            │
 │                                            ─ split/merge + stomping      │
 │   PurchaseRules.CostFor / CanAfford / CanAffordTower / IsValidPeasant…   │
-│   MovementRules.ValidTargets / Move / PlaceNew                           │
+│   MovementRules.ValidTargets / Move / PlaceNew /                         │
+│                  ArrivalConsumesAction (capture/tree/grave → true)        │
 │   DefenseRules.Defense(coord, grid, territory)                           │
 │   TreeRules.RunStartOfTurnGrowth / ConvertGravesToTrees /                │
 │             CountIncomeProducingTiles                                    │
