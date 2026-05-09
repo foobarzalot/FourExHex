@@ -34,6 +34,15 @@ public sealed class LoadedSave
     /// </summary>
     public IReadOnlyDictionary<Color, int> ClaimVictoryPromptedHighestThreshold { get; }
 
+    /// <summary>
+    /// Authored tutorial accompanying this save, if any. Null for plain
+    /// in-progress saves and starting maps; non-null when the file came
+    /// from <c>user://tutorials/</c> or any v3 file that included the
+    /// optional <c>"Tutorial"</c> block. v2 files always load with
+    /// Tutorial = null.
+    /// </summary>
+    public Tutorial? Tutorial { get; }
+
     public LoadedSave(
         GameState state,
         IReadOnlyList<Player> players,
@@ -41,7 +50,8 @@ public sealed class LoadedSave
         int maxTurnNumber,
         string slotName,
         string? originMapName = null,
-        IReadOnlyDictionary<Color, int>? claimVictoryPromptedHighestThreshold = null)
+        IReadOnlyDictionary<Color, int>? claimVictoryPromptedHighestThreshold = null,
+        Tutorial? tutorial = null)
     {
         State = state;
         Players = players;
@@ -51,6 +61,7 @@ public sealed class LoadedSave
         OriginMapName = originMapName;
         ClaimVictoryPromptedHighestThreshold = claimVictoryPromptedHighestThreshold
             ?? new Dictionary<Color, int>();
+        Tutorial = tutorial;
     }
 }
 
@@ -89,26 +100,32 @@ public static class SaveSerializer
         string slotName,
         int maxTurnNumber,
         string? originMapName = null,
-        IReadOnlyDictionary<Color, int>? claimVictoryPromptedHighestThreshold = null)
+        IReadOnlyDictionary<Color, int>? claimVictoryPromptedHighestThreshold = null,
+        Tutorial? tutorial = null)
         => SerializeInternal(
             state, masterSeed, players, slotName, maxTurnNumber,
             includeKind: true, originMapName: originMapName,
-            claimVictoryPromptedHighestThreshold: claimVictoryPromptedHighestThreshold);
+            claimVictoryPromptedHighestThreshold: claimVictoryPromptedHighestThreshold,
+            tutorial: tutorial);
 
     /// <summary>
     /// Serialize a starting map — same JSON format as <see cref="Serialize"/>,
     /// but the per-player <c>Kind</c> field is omitted. Editor maps don't
     /// commit to a roster; the Play Game config menu assigns roles at play
-    /// time.
+    /// time. Optional <paramref name="tutorial"/> attaches an authored
+    /// tutorial to the file (used by <see cref="SaveStore.WriteTutorial"/>);
+    /// regular starting maps pass null.
     /// </summary>
     public static string SerializeMap(
         GameState state,
         int masterSeed,
         IReadOnlyList<Player> players,
-        string slotName)
+        string slotName,
+        Tutorial? tutorial = null)
         => SerializeInternal(state, masterSeed, players, slotName,
             maxTurnNumber: int.MaxValue, includeKind: false,
-            originMapName: null, claimVictoryPromptedHighestThreshold: null);
+            originMapName: null, claimVictoryPromptedHighestThreshold: null,
+            tutorial: tutorial);
 
     private static string SerializeInternal(
         GameState state,
@@ -118,7 +135,8 @@ public static class SaveSerializer
         int maxTurnNumber,
         bool includeKind,
         string? originMapName,
-        IReadOnlyDictionary<Color, int>? claimVictoryPromptedHighestThreshold)
+        IReadOnlyDictionary<Color, int>? claimVictoryPromptedHighestThreshold,
+        Tutorial? tutorial)
     {
         // Player index by color for fast tile/unit owner lookup.
         var indexByColor = new Dictionary<Color, int>();
@@ -144,6 +162,12 @@ public static class SaveSerializer
             Water = SerializeWater(state.WaterCoords),
             ClaimVictoryPromptedHighestByColorHex =
                 SerializeClaimVictoryPrompted(claimVictoryPromptedHighestThreshold),
+            Tutorial = tutorial == null ? null : new TutorialDto
+            {
+                Title = tutorial.Title,
+                StartTurn = tutorial.StartTurn,
+                StartPlayer = tutorial.StartPlayer,
+            },
         };
         return JsonSerializer.Serialize(data, JsonOptions);
     }
@@ -215,10 +239,19 @@ public static class SaveSerializer
         IReadOnlyDictionary<Color, int> prompted = DeserializeClaimVictoryPrompted(
             data.ClaimVictoryPromptedHighestByColorHex,
             data.ClaimVictoryPromptedColorHexes);
+        Tutorial? tutorial = data.Tutorial == null
+            ? null
+            : new Tutorial
+            {
+                Title = data.Tutorial.Title,
+                StartTurn = data.Tutorial.StartTurn,
+                StartPlayer = data.Tutorial.StartPlayer,
+            };
         return new LoadedSave(
             state, players, data.MasterSeed, data.MaxTurnNumber, data.SlotName,
             originMapName: data.OriginMapName,
-            claimVictoryPromptedHighestThreshold: prompted);
+            claimVictoryPromptedHighestThreshold: prompted,
+            tutorial: tutorial);
     }
 
     /// <summary>
@@ -502,6 +535,13 @@ public sealed class SaveData
     /// Supersedes <see cref="ClaimVictoryPromptedColorHexes"/>.
     /// </summary>
     public Dictionary<string, int>? ClaimVictoryPromptedHighestByColorHex { get; set; }
+
+    /// <summary>
+    /// Authored tutorial accompanying this save. Null/missing in v2
+    /// files and in v3 saves that aren't tutorials. Present when the
+    /// file lives under <c>user://tutorials/</c>.
+    /// </summary>
+    public TutorialDto? Tutorial { get; set; }
 }
 
 public sealed class PlayerDto
@@ -553,4 +593,11 @@ public sealed class CapitalGoldDto
     public int Q { get; set; }
     public int R { get; set; }
     public int Gold { get; set; }
+}
+
+public sealed class TutorialDto
+{
+    public string Title { get; set; } = "";
+    public int StartTurn { get; set; } = 1;
+    public int StartPlayer { get; set; } = 0;
 }

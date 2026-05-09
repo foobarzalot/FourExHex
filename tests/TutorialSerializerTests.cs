@@ -46,4 +46,47 @@ public class TutorialSerializerTests
 
         Assert.Equal(7, loaded.MasterSeed);
     }
+
+    [Fact]
+    public void SerializeMap_RoundTripsEmptyTutorial()
+    {
+        (GameState state, IReadOnlyList<Player> players) = BuildMinimalState();
+        var tutorial = new Tutorial
+        {
+            Title = "Intro · The Basics",
+            StartTurn = 1,
+            StartPlayer = 0,
+        };
+
+        string json = SaveSerializer.SerializeMap(state, masterSeed: 7, players, "m", tutorial);
+        LoadedSave loaded = SaveSerializer.Deserialize(json);
+
+        Assert.NotNull(loaded.Tutorial);
+        Assert.Equal("Intro · The Basics", loaded.Tutorial!.Title);
+        Assert.Equal(1, loaded.Tutorial.StartTurn);
+        Assert.Equal(0, loaded.Tutorial.StartPlayer);
+    }
+
+    [Fact]
+    public void SerializeMap_WithoutTutorial_DeserializesToNull()
+    {
+        (GameState state, IReadOnlyList<Player> players) = BuildMinimalState();
+
+        string json = SaveSerializer.SerializeMap(state, masterSeed: 7, players, "m");
+        LoadedSave loaded = SaveSerializer.Deserialize(json);
+
+        Assert.Null(loaded.Tutorial);
+    }
+
+    [Fact]
+    public void Deserialize_LegacyV2Json_HasNullTutorial()
+    {
+        (GameState state, IReadOnlyList<Player> players) = BuildMinimalState();
+        string json = SaveSerializer.SerializeMap(state, masterSeed: 7, players, "m");
+        string v2Json = json.Replace("\"FormatVersion\": 3", "\"FormatVersion\": 2");
+
+        LoadedSave loaded = SaveSerializer.Deserialize(v2Json);
+
+        Assert.Null(loaded.Tutorial);
+    }
 }
