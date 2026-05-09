@@ -74,7 +74,7 @@ public static class SaveSerializer
     /// Bump on any breaking schema change. <see cref="Deserialize"/>
     /// rejects mismatched values rather than attempting migration.
     /// </summary>
-    public const int CurrentFormatVersion = 2;
+    public const int CurrentFormatVersion = 3;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -174,11 +174,15 @@ public static class SaveSerializer
         {
             throw new InvalidOperationException("Save file is empty or malformed.");
         }
-        if (data.FormatVersion != CurrentFormatVersion)
+        // Accept v2 and v3. v2 files predate the optional Tutorial
+        // block; they deserialize identically. The next breaking bump
+        // (v4, reserved for a non-additive change) will need an
+        // explicit migration here.
+        if (data.FormatVersion != 2 && data.FormatVersion != CurrentFormatVersion)
         {
             throw new InvalidOperationException(
                 $"Unsupported save format version {data.FormatVersion} " +
-                $"(expected {CurrentFormatVersion}).");
+                $"(expected 2 or {CurrentFormatVersion}).");
         }
 
         IReadOnlyList<Player> players = DeserializePlayers(data.Players);

@@ -342,11 +342,13 @@ public class SaveSerializerTests
         (GameState state, IReadOnlyList<Player> players) = BuildRichState();
         string baseJson = SaveSerializer.Serialize(state, 42, players, "s", 100);
 
-        // Inject the legacy field into otherwise-current JSON.
+        // Inject the legacy field into otherwise-current JSON. Track
+        // CurrentFormatVersion so the test survives format bumps.
         string legacyHex = players[0].Color.ToHtml(includeAlpha: false);
+        string versionLine = $"\"FormatVersion\": {SaveSerializer.CurrentFormatVersion},";
         string injected = baseJson.Replace(
-            "\"FormatVersion\": 2,",
-            $"\"FormatVersion\": 2,\n  \"ClaimVictoryPromptedColorHexes\": [\"{legacyHex}\"],");
+            versionLine,
+            $"{versionLine}\n  \"ClaimVictoryPromptedColorHexes\": [\"{legacyHex}\"],");
 
         LoadedSave loaded = SaveSerializer.Deserialize(injected);
 
