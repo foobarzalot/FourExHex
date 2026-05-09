@@ -31,6 +31,14 @@ public partial class TutorialBuilderScene : Node2D
     private PreviewPane _previewPane = null!;
     private List<Player> _players = null!;
 
+    private SaveStore _saveStore = null!;
+    private AcceptDialog? _saveDialog;
+    private LineEdit? _saveDialogLineEdit;
+    private AcceptDialog? _saveErrorDialog;
+    private Window? _loadDialog;
+    private VBoxContainer? _loadDialogList;
+    private AcceptDialog? _loadErrorDialog;
+
     private TutorialMode _currentMode = TutorialMode.MapEdit;
 
     public override void _Ready()
@@ -66,15 +74,20 @@ public partial class TutorialBuilderScene : Node2D
         _mapEditHud.SetUndoState(canUndo: false, canRedo: false);
 
         // 3. The 3-mode topbar. Owns its own visual current-mode
-        //    indication; Save / Load Tutorial start disabled and stay
-        //    disabled until Phase 3 wires them up.
+        //    indication. Phase 3a enables Save / Load Tutorial and wires
+        //    them to the in-scene save/load dialogs (built below).
         _topBar = new TutorialBuilderTopBar();
         AddChild(_topBar);
         _topBar.ModeRequested += SetMode;
         _topBar.ExitPressed += ReturnToMainMenu;
-        // SaveTutorialPressed / LoadTutorialPressed are wired in Phase 3.
-        // Their buttons are Disabled = true in Phase 2 so they can't fire
-        // — the events will simply have no subscriber.
+        _topBar.SaveTutorialPressed += OpenSaveDialog;
+        _topBar.LoadTutorialPressed += OpenLoadDialog;
+        _topBar.SaveEnabled = true;
+        _topBar.LoadEnabled = true;
+
+        _saveStore = new SaveStore();
+        BuildSaveDialog();
+        BuildLoadDialog();
 
         // 4. Per-mode placeholder chrome. Both start Visible = false;
         //    SetMode flips visibility on transitions.
@@ -193,5 +206,192 @@ public partial class TutorialBuilderScene : Node2D
     private void ReturnToMainMenu()
     {
         GetTree().ChangeSceneToFile("res://scenes/main_menu.tscn");
+    }
+
+    private void BuildSaveDialog()
+    {
+        _saveDialog = new AcceptDialog
+        {
+            Title = "Save Tutorial",
+            OkButtonText = "Save",
+            DialogHideOnOk = true,
+        };
+        var content = new VBoxContainer();
+        _saveDialogLineEdit = new LineEdit
+        {
+            CustomMinimumSize = new Vector2(320, 0),
+            PlaceholderText = "tutorial name",
+        };
+        content.AddChild(_saveDialogLineEdit);
+        _saveDialog.AddChild(content);
+        _saveDialog.RegisterTextEnter(_saveDialogLineEdit);
+        _saveDialog.Confirmed += OnSaveDialogConfirmed;
+        AddChild(_saveDialog);
+        AudioBus.AttachClick(_saveDialog.GetOkButton());
+
+        _saveErrorDialog = new AcceptDialog
+        {
+            Title = "Save failed",
+        };
+        AddChild(_saveErrorDialog);
+        AudioBus.AttachClick(_saveErrorDialog.GetOkButton());
+    }
+
+    private void OpenSaveDialog()
+    {
+        if (_saveDialog == null || _saveDialogLineEdit == null) return;
+        int seed = _panel.CurrentSeed;
+        _saveDialogLineEdit.Text = seed > 0 ? $"tutorial_seed{seed}" : "tutorial";
+        _saveDialog.PopupCentered();
+        _saveDialogLineEdit.GrabFocus();
+        _saveDialogLineEdit.SelectAll();
+    }
+
+    private void OnSaveDialogConfirmed()
+    {
+        if (_saveDialogLineEdit == null) return;
+        string name = SaveStore.SanitizeSlotName(_saveDialogLineEdit.Text);
+        try
+        {
+            // Phase 3a writes an *empty* Tutorial — the POCO carries
+            // only the header (Title/StartTurn/StartPlayer). 3b adds
+            // beats; the BuildPane will populate them then.
+            _saveStore.WriteTutorial(
+                name,
+                _panel.BuildSaveState(),
+                _panel.CurrentSeed,
+                _players,
+                new Tutorial());
+        }
+        catch (System.Exception ex)
+        {
+            ShowSaveError($"Could not save: {ex.Message}");
+        }
+    }
+
+    private void ShowSaveError(string message)
+    {
+        if (_saveErrorDialog == null)
+        {
+            GD.PushError(message);
+            return;
+        }
+        _saveErrorDialog.DialogText = message;
+        _saveErrorDialog.PopupCentered();
+    }
+
+    private void BuildLoadDialog()
+    {
+        // Mirrors MapEditorScene.BuildLoadDialog — same Window-based
+        // modal, populated on open from SaveStore.ListTutorials() against
+        // TutorialsDirectory.
+        _loadDialog = new Window
+        {
+            Title = "Load Tutorial",
+            Size = new Vector2I(420, 360),
+            Transient = true,
+            Exclusive = true,
+        };
+        _loadDialog.CloseRequested += () => _loadDialog!.Hide();
+        _loadDialog.WindowInput += OnLoadDialogInput;
+        AddChild(_loadDialog);
+
+        var scroll = new ScrollContainer
+        {
+            AnchorLeft = 0f,
+            AnchorTop = 0f,
+            AnchorRight = 1f,
+            AnchorBottom = 1f,
+            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+        };
+        _loadDialog.AddChild(scroll);
+
+        _loadDialogList = new VBoxContainer
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+        };
+        _loadDialogList.AddThemeConstantOverride("separation", 8);
+        scroll.AddChild(_loadDialogList);
+
+        _loadErrorDialog = new AcceptDialog
+        {
+            Title = "Load failed",
+        };
+        AddChild(_loadErrorDialog);
+        AudioBus.AttachClick(_loadErrorDialog.GetOkButton());
+    }
+
+    private void OnLoadDialogInput(InputEvent @event)
+    {
+        if (@event is not InputEventKey keyEvent || !keyEvent.Pressed || keyEvent.Echo) return;
+        if (keyEvent.Keycode != Key.Escape) return;
+        _loadDialog?.Hide();
+    }
+
+    private void OpenLoadDialog()
+    {
+        if (_loadDialog == null || _loadDialogList == null) return;
+
+        foreach (Node child in _loadDialogList.GetChildren())
+        {
+            child.QueueFree();
+        }
+        IReadOnlyList<SaveSlotInfo> slots = _saveStore.ListTutorials();
+        if (slots.Count == 0)
+        {
+            var emptyLabel = new Label { Text = "No tutorials found." };
+            emptyLabel.AddThemeFontSizeOverride("font_size", 18);
+            _loadDialogList.AddChild(emptyLabel);
+        }
+        foreach (SaveSlotInfo info in slots)
+        {
+            string capturedName = info.SlotName;
+            string label = $"{info.SlotName} — {FormatTimestamp(info.SavedAtUnix)}";
+            var btn = new Button
+            {
+                Text = label,
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                Alignment = HorizontalAlignment.Left,
+            };
+            btn.AddThemeFontSizeOverride("font_size", 18);
+            btn.Pressed += () => OnLoadSlotPressed(capturedName);
+            AudioBus.AttachClick(btn);
+            _loadDialogList.AddChild(btn);
+        }
+        _loadDialog.PopupCentered();
+    }
+
+    private void OnLoadSlotPressed(string slotName)
+    {
+        try
+        {
+            LoadedSave loaded = _saveStore.LoadTutorial(slotName);
+            // 3a only round-trips the *map* portion through the panel.
+            // The Tutorial body is empty in 3a; 3b will start consuming
+            // loaded.Tutorial via the BuildPane.
+            _panel.LoadFromMap(loaded);
+            _loadDialog?.Hide();
+        }
+        catch (System.Exception ex)
+        {
+            ShowLoadError($"Could not load '{slotName}': {ex.Message}");
+        }
+    }
+
+    private void ShowLoadError(string message)
+    {
+        if (_loadErrorDialog == null)
+        {
+            GD.PushError(message);
+            return;
+        }
+        _loadErrorDialog.DialogText = message;
+        _loadErrorDialog.PopupCentered();
+    }
+
+    private static string FormatTimestamp(long unixSeconds)
+    {
+        var dt = System.DateTimeOffset.FromUnixTimeSeconds(unixSeconds).LocalDateTime;
+        return dt.ToString("yyyy-MM-dd HH:mm");
     }
 }
