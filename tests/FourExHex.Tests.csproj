@@ -75,6 +75,7 @@
     <Compile Include="..\scripts\MapEditPaint.cs" Link="scripts\MapEditPaint.cs" />
     <Compile Include="..\scripts\EditorSnapshot.cs" Link="scripts\EditorSnapshot.cs" />
     <Compile Include="..\scripts\Tutorial\Tutorial.cs" Link="scripts\Tutorial\Tutorial.cs" />
+    <Compile Include="..\scripts\Tutorial\Beat.cs" Link="scripts\Tutorial\Beat.cs" />
   </ItemGroup>
 
 </Project>
