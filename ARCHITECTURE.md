@@ -810,7 +810,8 @@ loading after the cutover); `Serialize` writes the player roster's
 `Kind` field, `SerializeMap` omits it (the editor's saved maps
 don't bake a player-kind config — roles are assigned at play time
 from the menu). Both accept an optional `Tutorial` POCO that
-round-trips as the v3-only top-level `"Tutorial"` block; absent on
+round-trips as the v3-only top-level `"Tutorial"` block (header
+fields + `Beats` list of kind-discriminated `BeatDto`s); absent on
 regular saves and starting maps. `SaveSlotInfo` is the slot listing
 record.
 
@@ -963,15 +964,17 @@ switching only flips `panel.PaintingEnabled` and the per-mode chrome's
   reach `_UnhandledInput` only when no focused Control consumed the
   keypress (LineEdit consumes digits via its `GuiInput`), so typing
   in the seed field doesn't trigger mode switches.
-- **Phase 3a scope.** Save / load round-trips an *empty* `Tutorial`
-  POCO (header-only — `Title` / `StartTurn` / `StartPlayer`) plus
-  the painted map draft. `BuildPane` and `PreviewPane` are still
-  stubs whose `_Ready` mounts a bottom-anchored "Coming soon" label;
-  both expose `SetPanel(MapEditorPanel)` and `Pause()` (PreviewPane)
-  so Phase 3b/3c can fill in the bodies. No `Beat` types yet, no
-  `TutorialPlayer` yet — Phase 3b adds the `Beat` discriminator +
-  `EndTurnBeat` POCO + the BuildPane real chrome; Phase 3c adds
-  `TutorialPlayer` + gated views + the PreviewPane chrome.
+- **Phase 3b scope.** `BuildPane` is now real chrome — right strip
+  with "Add EndTurn" button + selected-beat inspector + bottom
+  timeline of beat chips; clicks in the centre still pass through to
+  `HexMapView`. The Build pane owns the in-memory `Tutorial` for the
+  session (`CurrentTutorial` getter, `SetTutorial` setter); save uses
+  the getter, load feeds the loaded Tutorial back via the setter.
+  Adds always create `(Turn=1, Actor=0)` — Phase 10 introduces the
+  multi-turn lane state machine. `PreviewPane` is still a stub —
+  Phase 3c lands `TutorialPlayer` + gated views + the PreviewPane
+  chrome. Only `EndTurnBeat` exists today; Phase 4 adds
+  `BuyPeasantBeat`, Phase 5 adds `MoveBeat`, etc.
 
 ## Diagnostic mode (`FOUREXHEX_6AI`)
 
@@ -1087,8 +1090,9 @@ scripts/
 │                           still reads v2)
 ├─ SaveSlotInfo.cs        ─ slot listing metadata
 ├─ Tutorial/Tutorial.cs   ─ tutorial header POCO (Title / StartTurn /
-│                           StartPlayer); empty in 3a, Phase 3b
-│                           extends with Beats list
+│                           StartPlayer / Beats)
+├─ Tutorial/Beat.cs       ─ Beat abstract record + BeatKind enum +
+│                           EndTurnBeat (3c+ adds more concrete kinds)
 │
 ├─ HexCoord.cs            ─ model primitives
 ├─ HexGrid.cs             ─
