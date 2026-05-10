@@ -89,4 +89,71 @@ public class TutorialSerializerTests
 
         Assert.Null(loaded.Tutorial);
     }
+
+    [Fact]
+    public void SerializeMap_RoundTripsTutorialWithSingleEndTurnBeat()
+    {
+        (GameState state, IReadOnlyList<Player> players) = BuildMinimalState();
+        var tutorial = new Tutorial
+        {
+            Title = "EndTurn smoke",
+            Beats = new List<Beat>
+            {
+                new EndTurnBeat { Index = 0, Turn = 1, Actor = 0 },
+            },
+        };
+
+        string json = SaveSerializer.SerializeMap(state, masterSeed: 7, players, "m", tutorial);
+        LoadedSave loaded = SaveSerializer.Deserialize(json);
+
+        Assert.NotNull(loaded.Tutorial);
+        Assert.Single(loaded.Tutorial!.Beats);
+        Beat beat = loaded.Tutorial.Beats[0];
+        Assert.IsType<EndTurnBeat>(beat);
+        Assert.Equal(0, beat.Index);
+        Assert.Equal(1, beat.Turn);
+        Assert.Equal(0, beat.Actor);
+        Assert.Equal(BeatKind.EndTurn, beat.Kind);
+    }
+
+    [Fact]
+    public void SerializeMap_RoundTripsMultipleEndTurnBeats()
+    {
+        (GameState state, IReadOnlyList<Player> players) = BuildMinimalState();
+        var tutorial = new Tutorial
+        {
+            Beats = new List<Beat>
+            {
+                new EndTurnBeat { Index = 0, Turn = 1, Actor = 0, Narration = "first" },
+                new EndTurnBeat { Index = 1, Turn = 1, Actor = 1 },
+                new EndTurnBeat { Index = 2, Turn = 2, Actor = 0 },
+            },
+        };
+
+        string json = SaveSerializer.SerializeMap(state, masterSeed: 7, players, "m", tutorial);
+        LoadedSave loaded = SaveSerializer.Deserialize(json);
+
+        Assert.NotNull(loaded.Tutorial);
+        Assert.Equal(3, loaded.Tutorial!.Beats.Count);
+        Assert.Equal("first", loaded.Tutorial.Beats[0].Narration);
+        Assert.Null(loaded.Tutorial.Beats[1].Narration);
+        Assert.Equal(2, loaded.Tutorial.Beats[2].Turn);
+    }
+
+    [Fact]
+    public void Deserialize_TutorialWithoutBeatsField_GivesEmptyBeats()
+    {
+        // 3a-shape JSON: TutorialDto without a "Beats" field at all.
+        // Synthesized by serializing an empty-Beats Tutorial — which the
+        // serializer omits via WhenWritingNull — so the JSON has no
+        // "Beats" property under "Tutorial".
+        (GameState state, IReadOnlyList<Player> players) = BuildMinimalState();
+        string json = SaveSerializer.SerializeMap(state, masterSeed: 7, players, "m", new Tutorial());
+
+        Assert.DoesNotContain("\"Beats\"", json);
+
+        LoadedSave loaded = SaveSerializer.Deserialize(json);
+        Assert.NotNull(loaded.Tutorial);
+        Assert.Empty(loaded.Tutorial!.Beats);
+    }
 }
