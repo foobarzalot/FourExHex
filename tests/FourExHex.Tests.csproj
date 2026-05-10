@@ -79,6 +79,8 @@
     <Compile Include="..\scripts\Tutorial\Beat.cs" Link="scripts\Tutorial\Beat.cs" />
     <Compile Include="..\scripts\Tutorial\TutorialValidator.cs" Link="scripts\Tutorial\TutorialValidator.cs" />
     <Compile Include="..\scripts\Tutorial\TutorialPlayer.cs" Link="scripts\Tutorial\TutorialPlayer.cs" />
+    <Compile Include="..\scripts\Tutorial\TutorialGatedHexMapView.cs" Link="scripts\Tutorial\TutorialGatedHexMapView.cs" />
+    <Compile Include="..\scripts\Tutorial\TutorialGatedHudView.cs" Link="scripts\Tutorial\TutorialGatedHudView.cs" />
   </ItemGroup>
 
 </Project>
