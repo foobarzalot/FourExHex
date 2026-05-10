@@ -237,7 +237,7 @@ public sealed partial class BuildPane : Control
             Beat beat = _tutorial.Beats[i];
             string label = beat switch
             {
-                BuyPeasantBeat bpb => $"#{beat.Index} T{beat.Turn} A{beat.Actor} BuyPeasant ({bpb.At.Q},{bpb.At.R})",
+                BuyPeasantBeat bpb => FormatBuyPeasantChip(bpb),
                 _                  => $"#{beat.Index} T{beat.Turn} A{beat.Actor} {beat.Kind}",
             };
             var chip = new Button
@@ -294,6 +294,16 @@ public sealed partial class BuildPane : Control
     {
         _selectedBeatIndex = (index == _selectedBeatIndex) ? -1 : index;
         RefreshUI();
+    }
+
+    private static string FormatBuyPeasantChip(BuyPeasantBeat bpb)
+    {
+        // Display offset (col, row) coords to match the hex hover
+        // tooltip's format ("#lex (col C, row R)" — see HexHoverTooltip).
+        // The on-disk JSON still uses axial Q/R; this is a UI-only
+        // re-projection.
+        (int col, int row) = bpb.At.ToOffset();
+        return $"#{bpb.Index} T{bpb.Turn} A{bpb.Actor} BuyPeasant (col {col}, row {row})";
     }
 
     private void OnAddBuyPeasantPressed()
