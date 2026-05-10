@@ -72,7 +72,8 @@
 
 #### Phase 3b — Author an `EndTurn` beat in Build
 
-- **Status:** ⏳ Not yet expanded
+- **Status:** ✅ Complete
+- **Plan file:** [`2026-05-09-tutorial-builder-phase-03b-endturn-beat-author.md`](2026-05-09-tutorial-builder-phase-03b-endturn-beat-author.md)
 - **Goal:** The author side of the EndTurn loop. Introduces `Beat` discriminator + `EndTurnBeat` POCO, grows the BuildPane into a minimal timeline + "Add EndTurn" + inspector, and round-trips the beat through 3a's serializer.
   - `Beat` abstract record + `BeatKind` enum + `EndTurnBeat` (no other concrete beats yet).
   - `SaveSerializer` learns to (de)serialize `Beats` with `Kind` discriminator (extension of 3a's Tutorial block).
