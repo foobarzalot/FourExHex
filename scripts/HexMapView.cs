@@ -1620,19 +1620,21 @@ public partial class HexMapView : Node2D, IHexMapView
 
     /// <summary>
     /// Emit <see cref="CoordHovered"/> with the hex under the cursor, or
-    /// null when the cursor is over the HUD strip or outside the
-    /// (Cols × Rows) offset rectangle. Skips the work entirely when no
-    /// listener is attached — the play scene doesn't subscribe.
+    /// null when the cursor is outside the (Cols × Rows) offset rectangle.
+    /// Skips the work entirely when no listener is attached — the play
+    /// scene doesn't subscribe.
+    ///
+    /// Chrome (HUD strip, TutorialBuilder topbar, BuildPane strips) is
+    /// handled by the natural input chain: chrome Controls have
+    /// MouseFilter=Stop, so the underlying motion event is consumed
+    /// before <see cref="_UnhandledInput"/> fires — this method is
+    /// never called for cursors over chrome. The tooltip's own sensor
+    /// Control catches the resulting <c>MouseExited</c> and clears any
+    /// stale dwell state (see <see cref="HexHoverTooltip"/>).
     /// </summary>
     private void EmitCoordHovered(Vector2 viewportPos)
     {
         if (CoordHovered is null) return;
-
-        if (viewportPos.Y < HudView.HudHeight)
-        {
-            CoordHovered.Invoke(null);
-            return;
-        }
 
         Vector2 local = ToLocal(viewportPos) - FirstHexCenterOffset;
         HexCoord coord = HexCoord.FromPixel(local, HexSize);

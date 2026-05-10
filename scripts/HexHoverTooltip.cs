@@ -34,6 +34,7 @@ public partial class HexHoverTooltip : CanvasLayer
     private const ulong DwellMsec = 500UL;
 
     private Label _label = null!;
+    private Control _sensor = null!;
 
     // Coord under the cursor as of the most recent NotifyHover call,
     // and the cols value to use when formatting the lex index. Null
@@ -48,6 +49,14 @@ public partial class HexHoverTooltip : CanvasLayer
 
     public override void _Ready()
     {
+        // Sit in the default canvas (layer 0) so BuildPane's right-strip
+        // and bottom-timeline Controls — also at layer 0 (Control direct
+        // child of Node2D) — block the sensor and trigger MouseExited.
+        // CanvasLayer chrome (HudView, TutorialBuilderTopBar — both at
+        // the default Layer = 1) still naturally overrides this layer 0,
+        // so HUD-strip blocking continues to work.
+        Layer = 0;
+
         _label = new Label
         {
             Visible = false,
@@ -69,6 +78,38 @@ public partial class HexHoverTooltip : CanvasLayer
         };
         _label.AddThemeStyleboxOverride("normal", bg);
         AddChild(_label);
+
+        // Viewport-sized sensor that fires MouseExited when chrome
+        // (with MouseFilter=Stop, in CanvasLayers added later in the
+        // scene tree — i.e., on top of this CanvasLayer) captures
+        // the cursor. The sensor's own MouseFilter=Pass lets motion
+        // events propagate to HexMapView's _UnhandledInput. This is
+        // the natural-Godot-input-chain way to hide the tooltip when
+        // the cursor moves over chrome — no polling, no per-chrome
+        // wiring, no GuiGetHoveredControl querying.
+        _sensor = new Control
+        {
+            AnchorLeft = 0f,
+            AnchorTop = 0f,
+            AnchorRight = 1f,
+            AnchorBottom = 1f,
+            MouseFilter = Control.MouseFilterEnum.Pass,
+        };
+        _sensor.MouseExited += OnSensorExited;
+        AddChild(_sensor);
+    }
+
+    private void OnSensorExited()
+    {
+        // Cursor left our viewport-sized sensor — chrome (or off-screen)
+        // is now over the cursor. Hide the tooltip and reset dwell state
+        // so a fresh dwell starts when the cursor returns to a tile.
+        if (_shown)
+        {
+            _label.Visible = false;
+            _shown = false;
+        }
+        _pendingCoord = null;
     }
 
     public override void _Process(double delta)
