@@ -86,7 +86,8 @@
 
 #### Phase 3c — Preview the `EndTurn` beat
 
-- **Status:** ⏳ Not yet expanded
+- **Status:** ✅ Complete
+- **Plan file:** [`2026-05-09-tutorial-builder-phase-03c-preview-endturn-beat.md`](2026-05-09-tutorial-builder-phase-03c-preview-endturn-beat.md)
 - **Goal:** The preview side. Brings up `TutorialPlayer` + gated view wrappers + `TutorialValidator.MatchesEndTurn` + `PreviewPane` real chrome, reaching the original Phase 3 end-to-end manual test.
   - `TutorialPlayer` (no scripted-AI logic — `AiChooser` falls through to `AiDispatcher` always).
   - `TutorialGatedHexMapView` + `TutorialGatedHudView` wrapper views.
