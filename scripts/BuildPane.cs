@@ -53,19 +53,34 @@ public sealed partial class BuildPane : Control
     {
         // Root: full-viewport, click-pass-through (children opt in to
         // clicks via MouseFilter = Stop on the strip / timeline).
+        // A Control direct child of a Node2D does NOT auto-fill the
+        // viewport (parent has no rect size to anchor against), so we
+        // set Size explicitly. Subscribe to viewport resize so the
+        // layout reflows when the window changes.
         AnchorLeft = 0f;
         AnchorTop = 0f;
         AnchorRight = 1f;
         AnchorBottom = 1f;
         MouseFilter = MouseFilterEnum.Ignore;
+        Size = GetViewport().GetVisibleRect().Size;
+        GetViewport().SizeChanged += OnViewportResized;
 
         BuildRightStrip();
         BuildTimeline();
         RefreshUI();
     }
 
+    private void OnViewportResized()
+    {
+        Size = GetViewport().GetVisibleRect().Size;
+    }
+
     private void BuildRightStrip()
     {
+        // Strip extends full height to the viewport bottom (not stopping
+        // above the timeline) so the bottom-right corner is covered. The
+        // timeline's OffsetRight = -RightPanelWidth keeps it from
+        // overlapping the strip.
         var strip = new Control
         {
             AnchorLeft = 1f,
@@ -75,7 +90,7 @@ public sealed partial class BuildPane : Control
             OffsetLeft = -RightPanelWidth,
             OffsetRight = 0f,
             OffsetTop = TopbarHeight,
-            OffsetBottom = -TimelineHeight,
+            OffsetBottom = 0f,
             MouseFilter = MouseFilterEnum.Stop,
         };
         AddChild(strip);
