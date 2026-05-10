@@ -794,19 +794,25 @@ sequences.
   and fall through to procedural with the preserved seed rather
   than crashing.
 
-`SaveStore` reads/writes `user://saves/` (in-progress games) and
-`user://maps/` (starting maps from the editor), and reads from
+`SaveStore` reads/writes `user://saves/` (in-progress games),
+`user://maps/` (starting maps from the editor), and `user://tutorials/`
+(authored tutorials from the TutorialBuilder), and reads from
 `res://tutorials/` (bundled maps shipped with the game — currently
 just `Tutorial.json`, loaded via `LoadBundledMap`). It exposes
-`WriteAutosave`, `WriteSlot`, `WriteMapSlot`, `ListSlots`, `ListMaps`,
-`LoadSlot`, `LoadMap`, `LoadBundledMap`, `LoadStartingMap` (tries
+`WriteAutosave`, `WriteSlot`, `WriteMapSlot`, `WriteTutorial`,
+`ListSlots`, `ListMaps`, `ListTutorials`, `LoadSlot`, `LoadMap`,
+`LoadTutorial`, `LoadBundledMap`, `LoadStartingMap` (tries
 `user://maps/` then falls back to `res://tutorials/` — used by the
 Play Again restart flow), plus `SanitizeSlotName` for
 filesystem-safe slot names. `SaveSerializer` is the JSON layer
-(format version 2); `Serialize` writes the player roster's `Kind`
-field, `SerializeMap` omits it (the editor's saved maps don't bake
-a player-kind config — roles are assigned at play time from the
-menu). `SaveSlotInfo` is the slot listing record.
+(format version 3; accepts v2 on read so existing autosaves keep
+loading after the cutover); `Serialize` writes the player roster's
+`Kind` field, `SerializeMap` omits it (the editor's saved maps
+don't bake a player-kind config — roles are assigned at play time
+from the menu). Both accept an optional `Tutorial` POCO that
+round-trips as the v3-only top-level `"Tutorial"` block; absent on
+regular saves and starting maps. `SaveSlotInfo` is the slot listing
+record.
 
 ## Map editor
 
@@ -944,23 +950,28 @@ switching only flips `panel.PaintingEnabled` and the per-mode chrome's
 - **Topbar** (`TutorialBuilderTopBar : CanvasLayer`, y=0..60). Three
   mode buttons on the left (Map Edit / Build / Preview, kbd 1/2/3 —
   the current mode's button is `Disabled = true` for visual
-  selection); Save Tutorial / Load Tutorial / Exit on the right
-  (Save/Load disabled until Phase 3 wires them up). Emits
-  `ModeRequested` / `SaveTutorialPressed` / `LoadTutorialPressed` /
-  `ExitPressed`. `SaveEnabled` / `LoadEnabled` setters re-enable the
-  buttons when later phases land.
+  selection); Save Tutorial / Load Tutorial / Exit on the right.
+  Emits `ModeRequested` / `SaveTutorialPressed` /
+  `LoadTutorialPressed` / `ExitPressed`. `TutorialBuilderScene`
+  builds in-scene save/load dialogs (mirrors `MapEditorScene`'s
+  pattern) and wires them to the topbar events; the dialogs read /
+  write `user://tutorials/` via `SaveStore.WriteTutorial` /
+  `LoadTutorial` / `ListTutorials`.
 - **ESC ladder.** First press in Build or Preview drops to Map Edit.
   In Map Edit with a non-hand palette selected, drops to hand. With
   the hand already selected, exits to the main menu. Keyboard 1/2/3
   reach `_UnhandledInput` only when no focused Control consumed the
   keypress (LineEdit consumes digits via its `GuiInput`), so typing
   in the seed field doesn't trigger mode switches.
-- **Phase 2 scope** is scaffolding only. `BuildPane` and
-  `PreviewPane` are stubs whose `_Ready` mounts a bottom-anchored
-  "Coming soon" label; both expose `SetPanel(MapEditorPanel)` and
-  `Pause()` (PreviewPane) so Phase 3+ only have to fill in the
-  bodies. No `Tutorial` POCO, no `TutorialPlayer`, no JSON v3 yet —
-  Phase 3 lands those.
+- **Phase 3a scope.** Save / load round-trips an *empty* `Tutorial`
+  POCO (header-only — `Title` / `StartTurn` / `StartPlayer`) plus
+  the painted map draft. `BuildPane` and `PreviewPane` are still
+  stubs whose `_Ready` mounts a bottom-anchored "Coming soon" label;
+  both expose `SetPanel(MapEditorPanel)` and `Pause()` (PreviewPane)
+  so Phase 3b/3c can fill in the bodies. No `Beat` types yet, no
+  `TutorialPlayer` yet — Phase 3b adds the `Beat` discriminator +
+  `EndTurnBeat` POCO + the BuildPane real chrome; Phase 3c adds
+  `TutorialPlayer` + gated views + the PreviewPane chrome.
 
 ## Diagnostic mode (`FOUREXHEX_6AI`)
 
@@ -1068,10 +1079,16 @@ scripts/
 ├─ UpkeepRules.cs         ─
 ├─ WinConditionRules.cs   ─
 │
-├─ SaveStore.cs           ─ user://saves/ + user://maps/ slot CRUD;
+├─ SaveStore.cs           ─ user://saves/ + user://maps/ +
+│                           user://tutorials/ slot CRUD;
 │                           res://tutorials/ read-only bundled maps
-├─ SaveSerializer.cs      ─ JSON (de)serializer for game state + maps
+├─ SaveSerializer.cs      ─ JSON (de)serializer for game state +
+│                           maps + optional Tutorial block (v3;
+│                           still reads v2)
 ├─ SaveSlotInfo.cs        ─ slot listing metadata
+├─ Tutorial/Tutorial.cs   ─ tutorial header POCO (Title / StartTurn /
+│                           StartPlayer); empty in 3a, Phase 3b
+│                           extends with Beats list
 │
 ├─ HexCoord.cs            ─ model primitives
 ├─ HexGrid.cs             ─
