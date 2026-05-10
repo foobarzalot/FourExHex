@@ -22,6 +22,7 @@ public sealed partial class PreviewPane : Control
     private TutorialGatedHudView? _gatedHud;
     private GameController? _controller;
     private GameState? _previewState;
+    private HexDragMode _savedDragMode;
     private bool _running;
 
     public override void _Ready()
@@ -103,7 +104,15 @@ public sealed partial class PreviewPane : Control
             aiChooser: _player.AiChooser,
             aiPacer: new SynchronousAiPacer());
 
-        // 6. Re-point the shared HexMapView at the preview state and
+        // 6. Force HexMapView's DragMode to Pan so tile clicks fire
+        //    TileClicked (Paint mode would route them into the paint-
+        //    stroke path, which never raises TileClicked — so the
+        //    gated wrapper would never see the click and no soft-
+        //    reject toast would appear). Restored on Pause.
+        _savedDragMode = _panel.Map.DragMode;
+        _panel.Map.DragMode = HexDragMode.Pan;
+
+        // 7. Re-point the shared HexMapView at the preview state and
         //    fire StartGame. The controller's RefreshViews call inside
         //    StartGame repaints everything from the new state.
         _panel.Map.Init(_previewState);
@@ -145,6 +154,9 @@ public sealed partial class PreviewPane : Control
         // view is back on screen.
         EditorSnapshot snap = _panel.SnapshotDraft();
         _panel.RestoreDraft(snap);
+
+        // Restore the DragMode that was active before Preview started.
+        _panel.Map.DragMode = _savedDragMode;
 
         _controller = null;
         _gatedMap = null;

@@ -4,14 +4,19 @@ using Godot;
 
 /// <summary>
 /// IHexMapView wrapper for tutorial Preview. Subscribes to a "real"
-/// IHexMapView; for input events (TileClicked, TileLongClicked) decides
-/// whether to forward to GameController based on the next expected
-/// scripted beat (via <see cref="TutorialPlayer"/>); for output methods,
-/// delegates to the real view unchanged.
+/// IHexMapView; for input events (TileClicked, TileLongClicked)
+/// decides whether the click matches the next expected scripted beat
+/// (via <see cref="TutorialPlayer"/>) and forwards to the controller
+/// accordingly. Output methods delegate to the real view unchanged.
 ///
-/// Phase 3c: no tile-action beats exist (Move/BuyPeasant/BuildTower
-/// land in Phase 4-6), so any tile click is a rejection. Phase 4+
-/// extends the OnRealTileClicked handler to actually try matches.
+/// Phase 3c: no tile-action beats exist (Move / BuyPeasant /
+/// BuildTower land in Phase 4-6), so every tile click is forwarded
+/// to the controller as a passive selection click — selection
+/// doesn't advance the tutorial, just lets the dev inspect the map
+/// (consistent with Tab / Undo passing through via
+/// <see cref="TutorialGatedHudView"/>). Phase 4+ extends
+/// <c>OnRealTileClicked</c> to validate the click against the next
+/// tile-action beat and reject mismatches.
 ///
 /// Call <see cref="Unbind"/> on Preview teardown to release the
 /// subscription to the real view (otherwise the real view holds a
@@ -42,16 +47,20 @@ public sealed class TutorialGatedHexMapView : IHexMapView
 
     private void OnRealTileClicked(HexTile? tile)
     {
-        // Phase 3c: no tile-action beats exist. Reject every tile click.
-        // Phase 4+ replaces this with a TutorialValidator call against
-        // MoveBeat / BuyPeasantBeat / BuildTowerBeat.
-        _player.NotifyRejected("tile click");
+        // Phase 3c: no tile-action beats exist. Forward all clicks to
+        // the controller as passive selection — selection doesn't
+        // advance the tutorial, so it's safe to let the dev poke the
+        // map. Phase 4+ adds the TutorialValidator gate against
+        // Move / BuyPeasant / BuildTower beats.
+        TileClicked?.Invoke(tile);
     }
 
     private void OnRealTileLongClicked(HexTile? tile)
     {
-        // Same gating policy: rejected in 3c.
-        _player.NotifyRejected("tile long-press");
+        // Same passive-forward policy as TileClicked. Long-press is
+        // the rally gesture; in 3c it's a no-op selection-style
+        // gesture (no rally beat yet).
+        TileLongClicked?.Invoke(tile);
     }
 
     // --- Output methods: pure delegation ---

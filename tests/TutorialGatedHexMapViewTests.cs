@@ -20,18 +20,39 @@ public class TutorialGatedHexMapViewTests
     }
 
     [Fact]
-    public void TileClick_DoesNotForward_AndFiresRejected()
+    public void TileClick_Forwards_AndDoesNotReject()
     {
+        // Phase 3c: tile clicks always forward to the controller as
+        // passive selection — selection doesn't advance the tutorial.
+        // Phase 4+ adds gating against Move / BuyPeasant / BuildTower
+        // beats; for now any tile click is benign.
         (TutorialGatedHexMapView gated, MockHexMapView real, TutorialPlayer player) = Setup();
-        bool forwarded = false;
-        Beat? rejected = null;
-        gated.TileClicked += _ => forwarded = true;
-        player.PlayerActionRejected += (b, _) => rejected = b;
+        HexTile? forwarded = null;
+        bool forwardedFired = false;
+        bool rejected = false;
+        gated.TileClicked += t => { forwarded = t; forwardedFired = true; };
+        player.PlayerActionRejected += (_, _) => rejected = true;
 
         real.SimulateClick(null);
 
-        Assert.False(forwarded);
-        Assert.NotNull(rejected);
+        Assert.True(forwardedFired);
+        Assert.Null(forwarded);   // null tile is the input
+        Assert.False(rejected);
+    }
+
+    [Fact]
+    public void TileLongClick_Forwards_AndDoesNotReject()
+    {
+        (TutorialGatedHexMapView gated, MockHexMapView real, TutorialPlayer player) = Setup();
+        bool forwarded = false;
+        bool rejected = false;
+        gated.TileLongClicked += _ => forwarded = true;
+        player.PlayerActionRejected += (_, _) => rejected = true;
+
+        real.SimulateLongClick(null);
+
+        Assert.True(forwarded);
+        Assert.False(rejected);
     }
 
     [Fact]
@@ -51,13 +72,13 @@ public class TutorialGatedHexMapViewTests
     [Fact]
     public void Unbind_StopsForwardingClicks()
     {
-        (TutorialGatedHexMapView gated, MockHexMapView real, TutorialPlayer player) = Setup();
-        bool rejected = false;
-        player.PlayerActionRejected += (_, _) => rejected = true;
+        (TutorialGatedHexMapView gated, MockHexMapView real, _) = Setup();
+        bool forwarded = false;
+        gated.TileClicked += _ => forwarded = true;
 
         gated.Unbind();
         real.SimulateClick(null);
 
-        Assert.False(rejected);
+        Assert.False(forwarded);
     }
 }
