@@ -483,6 +483,12 @@ public static class SaveSerializer
             BeatDto dto = beat switch
             {
                 EndTurnBeat _ => new BeatDto { Kind = "EndTurn" },
+                BuyPeasantBeat bpb => new BeatDto
+                {
+                    Kind = "BuyPeasant",
+                    AtQ = bpb.At.Q,
+                    AtR = bpb.At.R,
+                },
                 _ => throw new InvalidOperationException(
                     $"Unknown beat kind for serialization: {beat.GetType()}"),
             };
@@ -509,6 +515,18 @@ public static class SaveSerializer
                     Turn = dto.Turn,
                     Actor = dto.Actor,
                     Narration = dto.Narration,
+                },
+                "BuyPeasant" => new BuyPeasantBeat
+                {
+                    Index = dto.Index,
+                    Turn = dto.Turn,
+                    Actor = dto.Actor,
+                    Narration = dto.Narration,
+                    At = new HexCoord(
+                        dto.AtQ ?? throw new InvalidOperationException(
+                            "BuyPeasant beat missing AtQ"),
+                        dto.AtR ?? throw new InvalidOperationException(
+                            "BuyPeasant beat missing AtR")),
                 },
                 _ => throw new InvalidOperationException(
                     $"Unknown beat kind in save: {dto.Kind}"),
@@ -670,6 +688,12 @@ public sealed class BeatDto
     public int Actor { get; set; }
     public string? Narration { get; set; }
 
-    /// <summary>One of <see cref="BeatKind"/>: "EndTurn" today; later phases add more.</summary>
+    /// <summary>One of <see cref="BeatKind"/>: "EndTurn", "BuyPeasant"; later phases add more.</summary>
     public string Kind { get; set; } = "";
+
+    // --- Kind-specific fields (nullable; populated only for matching Kind) ---
+    /// <summary>Q-coord for tile-anchored beats (BuyPeasant; later BuildTower / Move's Src).</summary>
+    public int? AtQ { get; set; }
+    /// <summary>R-coord for tile-anchored beats (BuyPeasant; later BuildTower / Move's Src).</summary>
+    public int? AtR { get; set; }
 }

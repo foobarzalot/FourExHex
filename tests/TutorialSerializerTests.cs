@@ -156,4 +156,37 @@ public class TutorialSerializerTests
         Assert.NotNull(loaded.Tutorial);
         Assert.Empty(loaded.Tutorial!.Beats);
     }
+
+    [Fact]
+    public void SerializeMap_RoundTripsTutorialWithBuyPeasantBeat()
+    {
+        (GameState state, IReadOnlyList<Player> players) = BuildMinimalState();
+        var tutorial = new Tutorial
+        {
+            Title = "BuyPeasant smoke",
+            Beats = new List<Beat>
+            {
+                new BuyPeasantBeat
+                {
+                    Index = 0,
+                    Turn = 1,
+                    Actor = 0,
+                    At = new HexCoord(3, 5),
+                },
+            },
+        };
+
+        string json = SaveSerializer.SerializeMap(state, masterSeed: 7, players, "m", tutorial);
+        LoadedSave loaded = SaveSerializer.Deserialize(json);
+
+        Assert.NotNull(loaded.Tutorial);
+        Assert.Single(loaded.Tutorial!.Beats);
+        Beat beat = loaded.Tutorial.Beats[0];
+        BuyPeasantBeat bpb = Assert.IsType<BuyPeasantBeat>(beat);
+        Assert.Equal(0, bpb.Index);
+        Assert.Equal(1, bpb.Turn);
+        Assert.Equal(0, bpb.Actor);
+        Assert.Equal(BeatKind.BuyPeasant, bpb.Kind);
+        Assert.Equal(new HexCoord(3, 5), bpb.At);
+    }
 }
