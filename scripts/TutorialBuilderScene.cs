@@ -288,8 +288,8 @@ public partial class TutorialBuilderScene : Node2D
         _loadDialog = new Window
         {
             Title = "Load Tutorial",
-            Size = new Vector2I(420, 360),
-            Transient = true,
+            Size = new Vector2I(440, 360),
+            Visible = false,
             Exclusive = true,
         };
         _loadDialog.CloseRequested += () => _loadDialog!.Hide();
@@ -302,6 +302,10 @@ public partial class TutorialBuilderScene : Node2D
             AnchorTop = 0f,
             AnchorRight = 1f,
             AnchorBottom = 1f,
+            OffsetLeft = 16f,
+            OffsetTop = 16f,
+            OffsetRight = -16f,
+            OffsetBottom = -16f,
             HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
         };
         _loadDialog.AddChild(scroll);
