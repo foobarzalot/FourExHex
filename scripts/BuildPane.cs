@@ -130,6 +130,15 @@ public sealed partial class BuildPane : Control
         AudioBus.AttachClick(addEndTurnBtn);
         content.AddChild(addEndTurnBtn);
 
+        // Spacer expands to fill the gap so the inspector pins to the
+        // bottom of the strip — separates the "add a beat" action area
+        // (top) from the "selected-beat data" area (bottom).
+        var spacer = new Control
+        {
+            SizeFlagsVertical = SizeFlags.ExpandFill,
+        };
+        content.AddChild(spacer);
+
         // Inspector: shown only when a beat is selected.
         _inspectorBox = new VBoxContainer { Visible = false };
         _inspectorBox.AddThemeConstantOverride("separation", 4);
