@@ -119,23 +119,27 @@ public partial class TutorialBuilderScene : Node2D
         TutorialMode previous = _currentMode;
         _currentMode = mode;
 
-        // Painting is only enabled in Map Edit. The panel's
-        // PaintingEnabled flag gates every paint event at the source.
         _panel.PaintingEnabled = mode == TutorialMode.MapEdit;
-
-        // Show/hide each mode's chrome. The panel's HexMapView is shared
-        // across modes and stays visible; the painted draft persists
-        // because we never tear down the panel.
         _mapEditHud.Visible = mode == TutorialMode.MapEdit;
         _buildPane.Visible = mode == TutorialMode.Build;
         _previewPane.Visible = mode == TutorialMode.Preview;
 
-        // Phase 3+ uses Pause() to dispose the transient controller when
-        // leaving Preview. Phase 2's Pause is a no-op but the call site
-        // is wired now.
+        // Phase 3c: hide the topbar in Preview so the in-Preview
+        // HudView (at y=0..60) doesn't fight the topbar for the same
+        // strip. ESC and kbd 1/2/3 still switch modes; the topbar
+        // re-shows on exit.
+        _topBar.Visible = mode != TutorialMode.Preview;
+
         if (previous == TutorialMode.Preview)
         {
             _previewPane.Pause();
+        }
+        if (mode == TutorialMode.Preview)
+        {
+            // Hand the BuildPane's authored Tutorial to PreviewPane.
+            // BuildPane owns the in-memory Tutorial for the session;
+            // PreviewPane builds its transient controller around it.
+            _previewPane.Start(_buildPane.CurrentTutorial);
         }
 
         _topBar.SetCurrentMode(mode);
