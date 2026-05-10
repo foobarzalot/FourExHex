@@ -57,7 +57,8 @@
 
 #### Phase 3a — Empty-tutorial save / load
 
-- **Status:** ⏳ Not yet expanded
+- **Status:** ✅ Complete
+- **Plan file:** [`2026-05-09-tutorial-builder-phase-03a-empty-tutorial-save-load.md`](2026-05-09-tutorial-builder-phase-03a-empty-tutorial-save-load.md)
 - **Goal:** Stand up the tutorial save format and the topbar Save / Load buttons end-to-end, with an *empty* tutorial (no beats yet). Lays the v3 format compatibility foundation everything else relies on.
   - New `Tutorial` POCO under `scripts/Tutorial/` (`Title`, `StartTurn`, `StartPlayer`, empty `Beats` list — no `Beat` type yet).
   - `SaveSerializer` v2 → v3 bump with **optional** top-level `Tutorial` block. Critically, the deserializer must **accept both v2 and v3** (the current code rejects any mismatch — that has to soften).
