@@ -8,10 +8,13 @@ using System;
 /// passes through other inputs (Undo/Territory cycling/etc. — dev
 /// affordances during Preview), and delegates output methods.
 ///
-/// Phase 3c: only EndTurnClicked has a corresponding beat type
-/// (EndTurnBeat). BuyPeasant / BuildTower are gated to "always
-/// reject" since no matching beats exist yet. Phase 4 / 6 swap the
-/// rejection paths for real TutorialValidator calls.
+/// Phase 4 adds the BuyPeasant arm-or-reject path (the matching tile
+/// click is gated by <see cref="TutorialGatedHexMapView"/>).
+/// BuildTowerClicked stays "always reject" until Phase 6.
+///
+/// CancelActionPressed pass-through also calls
+/// <see cref="TutorialPlayer.DisarmIfAny"/> so the player's arm state
+/// stays in sync with the controller's pending-action mode.
 ///
 /// Output methods (Refresh / SetMapLabel / ShowTutorialMessage /
 /// HideTutorialMessage) delegate transparently — the controller's
@@ -32,6 +35,10 @@ public sealed class TutorialGatedHudView : IHudView
         _real.BuyPeasantClicked += OnRealBuyPeasantClicked;
         _real.BuildTowerClicked += OnRealBuildTowerClicked;
 
+        // Cancel disarms the BuyPeasant arm in addition to passing through.
+        // Out-of-order disarm (no current arm) is a no-op via DisarmIfAny.
+        _real.CancelActionPressed += OnRealCancelActionPressed;
+
         // Pass-through input events: re-raise whatever the real fires.
         _real.UndoLastClicked += () => UndoLastClicked?.Invoke();
         _real.UndoTurnClicked += () => UndoTurnClicked?.Invoke();
@@ -43,7 +50,6 @@ public sealed class TutorialGatedHudView : IHudView
         _real.PreviousTerritoryClicked += () => PreviousTerritoryClicked?.Invoke();
         _real.NextUnitClicked += () => NextUnitClicked?.Invoke();
         _real.PreviousUnitClicked += () => PreviousUnitClicked?.Invoke();
-        _real.CancelActionPressed += () => CancelActionPressed?.Invoke();
         _real.SaveGameClicked += () => SaveGameClicked?.Invoke();
         _real.DefeatContinueClicked += () => DefeatContinueClicked?.Invoke();
         _real.ClaimVictoryWinNowClicked += () => ClaimVictoryWinNowClicked?.Invoke();
@@ -55,6 +61,7 @@ public sealed class TutorialGatedHudView : IHudView
         _real.EndTurnClicked -= OnRealEndTurnClicked;
         _real.BuyPeasantClicked -= OnRealBuyPeasantClicked;
         _real.BuildTowerClicked -= OnRealBuildTowerClicked;
+        _real.CancelActionPressed -= OnRealCancelActionPressed;
         // Pass-through lambdas can't be unsubscribed (closures don't
         // compare equal); they keep the real view alive until the
         // real view itself is freed. PreviewPane drops both the real
@@ -96,14 +103,29 @@ public sealed class TutorialGatedHudView : IHudView
 
     private void OnRealBuyPeasantClicked()
     {
-        // Phase 3c: no BuyPeasantBeat exists. Always reject.
-        _player.NotifyRejected("Buy Peasant");
+        // Phase 4: arm if the next beat is BuyPeasantBeat (and we're
+        // not already armed); the matching tile click is gated by
+        // TutorialGatedHexMapView. TryArmBuyPeasant fires
+        // PlayerActionRejected on its own when refusing.
+        if (_player.TryArmBuyPeasant())
+        {
+            BuyPeasantClicked?.Invoke();   // forward — controller enters BuyingPeasant mode
+        }
     }
 
     private void OnRealBuildTowerClicked()
     {
-        // Phase 3c: no BuildTowerBeat exists. Always reject.
+        // Phase 6 will add the BuildTowerBeat arm path. Until then, reject.
         _player.NotifyRejected("Build Tower");
+    }
+
+    private void OnRealCancelActionPressed()
+    {
+        // Cancel exits the controller's pending action mode (whether or
+        // not the user was armed); make sure our arm state matches so
+        // the next BuyPeasant click can re-arm.
+        _player.DisarmIfAny();
+        CancelActionPressed?.Invoke();
     }
 
     // --- Output methods: pure delegation ---

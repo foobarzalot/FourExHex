@@ -48,8 +48,10 @@ public class TutorialGatedHudViewTests
     }
 
     [Fact]
-    public void BuyPeasantClick_AlwaysRejects_InPhase3c()
+    public void BuyPeasantClick_RejectsWhenNextBeatIsEndTurn()
     {
+        // Setup() builds a tutorial of EndTurnBeat(s); BuyPeasant is the
+        // wrong action for that next beat → reject + don't forward.
         (TutorialGatedHudView gated, MockHudView real, TutorialPlayer player) = Setup();
         bool forwarded = false;
         bool rejected = false;
@@ -60,6 +62,7 @@ public class TutorialGatedHudViewTests
 
         Assert.False(forwarded);
         Assert.True(rejected);
+        Assert.False(player.IsArmedForBuyPeasant);
     }
 
     [Fact]
@@ -84,5 +87,70 @@ public class TutorialGatedHudViewTests
 
         Assert.Equal("hello", real.LastSetMapLabel);
         Assert.Equal("toast", real.CurrentTutorialMessage);
+    }
+
+    private static (TutorialGatedHudView gated, MockHudView real, TutorialPlayer player)
+        SetupBuyPeasant(HexCoord at)
+    {
+        var tutorial = new Tutorial
+        {
+            Beats = new List<Beat>
+            {
+                new BuyPeasantBeat { Index = 0, Turn = 1, Actor = 0, At = at },
+            },
+        };
+        var player = new TutorialPlayer(tutorial);
+        var real = new MockHudView();
+        var gated = new TutorialGatedHudView(real, player);
+        return (gated, real, player);
+    }
+
+    [Fact]
+    public void BuyPeasantClick_Forwards_AndArms_WhenNextBeatIsBuyPeasant()
+    {
+        (TutorialGatedHudView gated, MockHudView real, TutorialPlayer player) =
+            SetupBuyPeasant(new HexCoord(2, 3));
+        bool forwarded = false;
+        gated.BuyPeasantClicked += () => forwarded = true;
+
+        real.ClickBuyPeasant();
+
+        Assert.True(forwarded);
+        Assert.True(player.IsArmedForBuyPeasant);
+        Assert.Equal(-1, player.CurrentBeatIndex);
+    }
+
+    [Fact]
+    public void BuyPeasantClick_SecondClick_RejectsAndDoesNotForward()
+    {
+        (TutorialGatedHudView gated, MockHudView real, TutorialPlayer player) =
+            SetupBuyPeasant(new HexCoord(2, 3));
+        real.ClickBuyPeasant();
+        int forwardedCount = 0;
+        gated.BuyPeasantClicked += () => forwardedCount++;
+        bool rejected = false;
+        player.PlayerActionRejected += (_, _) => rejected = true;
+
+        real.ClickBuyPeasant();
+
+        Assert.Equal(0, forwardedCount);
+        Assert.True(rejected);
+        Assert.True(player.IsArmedForBuyPeasant);
+    }
+
+    [Fact]
+    public void CancelAction_Disarms_AndForwardsCancel()
+    {
+        (TutorialGatedHudView gated, MockHudView real, TutorialPlayer player) =
+            SetupBuyPeasant(new HexCoord(2, 3));
+        real.ClickBuyPeasant();
+        Assert.True(player.IsArmedForBuyPeasant);
+        bool forwardedCancel = false;
+        gated.CancelActionPressed += () => forwardedCancel = true;
+
+        real.PressCancelAction();
+
+        Assert.True(forwardedCancel);
+        Assert.False(player.IsArmedForBuyPeasant);
     }
 }

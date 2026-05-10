@@ -9,14 +9,16 @@ using Godot;
 /// (via <see cref="TutorialPlayer"/>) and forwards to the controller
 /// accordingly. Output methods delegate to the real view unchanged.
 ///
-/// Phase 3c: no tile-action beats exist (Move / BuyPeasant /
-/// BuildTower land in Phase 4-6), so every tile click is forwarded
-/// to the controller as a passive selection click — selection
-/// doesn't advance the tutorial, just lets the dev inspect the map
-/// (consistent with Tab / Undo passing through via
-/// <see cref="TutorialGatedHudView"/>). Phase 4+ extends
-/// <c>OnRealTileClicked</c> to validate the click against the next
-/// tile-action beat and reject mismatches.
+/// Phase 4: when <see cref="TutorialPlayer.IsArmedForBuyPeasant"/> is
+/// true, tile clicks route through
+/// <see cref="TutorialPlayer.TryAdvanceForBuyPeasantTile"/> — match
+/// advances the beat + forwards; mismatch rejects + doesn't forward
+/// (controller stays in BuyingPeasant mode for retry). All other
+/// tile clicks pass through as passive selection. Phase 5 adds the
+/// MoveBeat Src/Dst two-click sequence on top of this.
+///
+/// Long-press (rally) stays a passive forward in Phase 4 (no rally
+/// beat exists; rally is dev affordance during Preview).
 ///
 /// Call <see cref="Unbind"/> on Preview teardown to release the
 /// subscription to the real view (otherwise the real view holds a
@@ -47,11 +49,25 @@ public sealed class TutorialGatedHexMapView : IHexMapView
 
     private void OnRealTileClicked(HexTile? tile)
     {
-        // Phase 3c: no tile-action beats exist. Forward all clicks to
-        // the controller as passive selection — selection doesn't
-        // advance the tutorial, so it's safe to let the dev poke the
-        // map. Phase 4+ adds the TutorialValidator gate against
-        // Move / BuyPeasant / BuildTower beats.
+        // Phase 4: if the player is armed for BuyPeasant (HUD wrapper
+        // forwarded the Buy Peasant click), this tile click is the
+        // follow-up that completes the BuyPeasantBeat. Validate the
+        // coord; on match, advance + forward (controller fires
+        // ExecuteBuyAndPlace); on miss, reject + don't forward
+        // (controller stays in BuyingPeasant mode for the dev to retry).
+        if (_player.IsArmedForBuyPeasant && tile != null)
+        {
+            if (_player.TryAdvanceForBuyPeasantTile(tile.Coord))
+            {
+                TileClicked?.Invoke(tile);
+            }
+            // else: rejected; PlayerActionRejected already fired with reason.
+            return;
+        }
+
+        // Phase 4: not armed for any tile-action beat (and BuyPeasant
+        // is the only one that exists). Forward as passive selection.
+        // Phase 5 (Move) extends this with a Src/Dst two-click sequence.
         TileClicked?.Invoke(tile);
     }
 

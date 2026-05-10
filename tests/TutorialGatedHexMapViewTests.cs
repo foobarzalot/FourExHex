@@ -81,4 +81,57 @@ public class TutorialGatedHexMapViewTests
 
         Assert.False(forwarded);
     }
+
+    private static (TutorialGatedHexMapView gated, MockHexMapView real, TutorialPlayer player)
+        SetupBuyPeasantArmed(HexCoord at)
+    {
+        var tutorial = new Tutorial
+        {
+            Beats = new List<Beat>
+            {
+                new BuyPeasantBeat { Index = 0, Turn = 1, Actor = 0, At = at },
+            },
+        };
+        var player = new TutorialPlayer(tutorial);
+        var real = new MockHexMapView();
+        var gated = new TutorialGatedHexMapView(real, player);
+        player.TryArmBuyPeasant();   // simulate the HUD-wrapper having armed
+        return (gated, real, player);
+    }
+
+    [Fact]
+    public void TileClick_WhenArmed_AndMatches_Forwards_AndAdvances()
+    {
+        HexCoord at = new HexCoord(4, 5);
+        (TutorialGatedHexMapView gated, MockHexMapView real, TutorialPlayer player) =
+            SetupBuyPeasantArmed(at);
+        var hex = new HexTile(at, new Color(1, 0, 0));
+        HexTile? forwarded = null;
+        gated.TileClicked += t => forwarded = t;
+
+        real.SimulateClick(hex);
+
+        Assert.Same(hex, forwarded);
+        Assert.False(player.IsArmedForBuyPeasant);
+        Assert.Equal(0, player.CurrentBeatIndex);
+    }
+
+    [Fact]
+    public void TileClick_WhenArmed_AndMismatches_DoesNotForward_AndKeepsArm()
+    {
+        (TutorialGatedHexMapView gated, MockHexMapView real, TutorialPlayer player) =
+            SetupBuyPeasantArmed(new HexCoord(4, 5));
+        var wrong = new HexTile(new HexCoord(4, 4), new Color(1, 0, 0));
+        bool forwarded = false;
+        bool rejected = false;
+        gated.TileClicked += _ => forwarded = true;
+        player.PlayerActionRejected += (_, _) => rejected = true;
+
+        real.SimulateClick(wrong);
+
+        Assert.False(forwarded);
+        Assert.True(rejected);
+        Assert.True(player.IsArmedForBuyPeasant);
+        Assert.Equal(-1, player.CurrentBeatIndex);
+    }
 }
