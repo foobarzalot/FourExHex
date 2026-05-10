@@ -30,4 +30,19 @@ public class TutorialValidatorTests
         Assert.Contains("EndTurn", msg);
         Assert.Contains("tile click", msg);
     }
+
+    [Fact]
+    public void MatchesBuyPeasant_TrueWhenCoordEqualsAt()
+    {
+        var beat = new BuyPeasantBeat { Index = 0, Turn = 1, Actor = 0, At = new HexCoord(2, 3) };
+        Assert.True(TutorialValidator.MatchesBuyPeasant(beat, new HexCoord(2, 3)));
+    }
+
+    [Fact]
+    public void MatchesBuyPeasant_FalseWhenCoordDiffers()
+    {
+        var beat = new BuyPeasantBeat { Index = 0, Turn = 1, Actor = 0, At = new HexCoord(2, 3) };
+        Assert.False(TutorialValidator.MatchesBuyPeasant(beat, new HexCoord(2, 4)));
+        Assert.False(TutorialValidator.MatchesBuyPeasant(beat, new HexCoord(3, 3)));
+    }
 }

@@ -1,8 +1,8 @@
 /// <summary>
 /// Decides whether a player input matches the next expected
-/// scripted beat. Static — no per-instance state. Phase 3c ships
-/// only <see cref="MatchesEndTurn"/>; Phase 4 adds MatchesBuyPeasant /
-/// MatchesBuildTower, Phase 5 adds MatchesMove.
+/// scripted beat. Static — no per-instance state. Phase 3c shipped
+/// only <see cref="MatchesEndTurn"/>; Phase 4 adds <see cref="MatchesBuyPeasant"/>.
+/// Phase 5 adds MatchesMove, Phase 6 adds MatchesBuildTower.
 /// </summary>
 public static class TutorialValidator
 {
@@ -14,6 +14,15 @@ public static class TutorialValidator
     /// MatchesMove / MatchesBuyPeasant / MatchesBuildTower triplet.
     /// </summary>
     public static bool MatchesEndTurn(EndTurnBeat beat) => true;
+
+    /// <summary>
+    /// Exact-coord match per scope decision #4: the click's tile coord
+    /// must equal the beat's <see cref="BuyPeasantBeat.At"/>. No fuzzy
+    /// matching (e.g., "any tile in the same territory" — that would
+    /// silently turn the tutorial into a hint engine).
+    /// </summary>
+    public static bool MatchesBuyPeasant(BuyPeasantBeat beat, HexCoord at) =>
+        beat.At == at;
 
     /// <summary>
     /// Build the soft-reject message shown via
