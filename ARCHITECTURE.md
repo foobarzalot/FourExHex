@@ -964,17 +964,37 @@ switching only flips `panel.PaintingEnabled` and the per-mode chrome's
   reach `_UnhandledInput` only when no focused Control consumed the
   keypress (LineEdit consumes digits via its `GuiInput`), so typing
   in the seed field doesn't trigger mode switches.
-- **Phase 3b scope.** `BuildPane` is now real chrome — right strip
-  with "Add EndTurn" button + selected-beat inspector + bottom
-  timeline of beat chips; clicks in the centre still pass through to
-  `HexMapView`. The Build pane owns the in-memory `Tutorial` for the
-  session (`CurrentTutorial` getter, `SetTutorial` setter); save uses
-  the getter, load feeds the loaded Tutorial back via the setter.
-  Adds always create `(Turn=1, Actor=0)` — Phase 10 introduces the
-  multi-turn lane state machine. `PreviewPane` is still a stub —
-  Phase 3c lands `TutorialPlayer` + gated views + the PreviewPane
-  chrome. Only `EndTurnBeat` exists today; Phase 4 adds
-  `BuyPeasantBeat`, Phase 5 adds `MoveBeat`, etc.
+- **Phase 3c scope.** `PreviewPane` is now real chrome — on entering
+  Preview mode it builds a transient `GameController` + a fresh
+  `HudView` + gated wrapper views (`TutorialGatedHexMapView` /
+  `TutorialGatedHudView`) around the panel's shared HexMapView,
+  re-points the HexMapView at a cloned `GameState` via
+  `HexMapView.Init`, and calls `controller.StartGame()`. The
+  topbar is hidden during Preview to avoid overlap with the
+  in-Preview HudView (kbd 1/2/3 + ESC still switch modes). On exit
+  the wrappers unbind, the HudView is freed, and the panel re-pushes
+  its draft to repaint the map back to authored view. `DragMode`
+  is forced to Pan during Preview (saved + restored) so tile clicks
+  fire `TileClicked` (Paint mode would route them into the paint-
+  stroke path that never raises the click event).
+
+  `TutorialPlayer` (pure C#) holds the next-expected-beat pointer,
+  exposes `BeatApplied` / `PlayerActionRejected` / `TutorialFinished`
+  events that PreviewPane subscribes to, and provides the `AiChooser`
+  delegate handed to GameController (Phase 3c always falls through
+  to `AiDispatcher`; Phase 10 adds scripted-AI beats). The HUD
+  wrapper consults `TutorialPlayer.TryAdvanceForEndTurn` /
+  `NotifyRejected` to decide whether to forward each gated input
+  event (End Turn / Buy Peasant / Build Tower); other HUD events
+  (Undo / Territory cycling / etc.) pass through unchanged as dev
+  affordances. The map wrapper forwards tile clicks (and long
+  clicks) to the controller as passive selection — selection
+  doesn't advance the tutorial, matching the dev-affordance shape
+  Tab already had. Phase 4+ adds the tile-action gating against
+  Move / BuyPeasant / BuildTower beats. Output methods (Refresh /
+  Show* / Play* / etc.) delegate transparently.
+  `TutorialValidator.MatchesEndTurn` is the symbolic match function
+  (Phase 4+ adds MatchesMove / MatchesBuyPeasant / MatchesBuildTower).
 
 ## Diagnostic mode (`FOUREXHEX_6AI`)
 
@@ -1093,6 +1113,18 @@ scripts/
 │                           StartPlayer / Beats)
 ├─ Tutorial/Beat.cs       ─ Beat abstract record + BeatKind enum +
 │                           EndTurnBeat (3c+ adds more concrete kinds)
+├─ Tutorial/TutorialGatedHexMapView.cs ─ IHexMapView wrapper that
+│                           gates tile clicks against the next expected
+│                           scripted beat; delegates output methods
+├─ Tutorial/TutorialGatedHudView.cs ─ IHudView wrapper that gates
+│                           End Turn / Buy / Build clicks; passes
+│                           through Undo / Territory / etc.
+├─ Tutorial/TutorialPlayer.cs ─ runtime gating state for Preview
+│                           (next-expected-beat pointer, AiChooser
+│                           delegate, BeatApplied / TutorialFinished /
+│                           PlayerActionRejected events)
+├─ Tutorial/TutorialValidator.cs ─ symbolic Matches*(beat, attempt)
+│                           predicates + ReasonMismatch reason strings
 │
 ├─ HexCoord.cs            ─ model primitives
 ├─ HexGrid.cs             ─
