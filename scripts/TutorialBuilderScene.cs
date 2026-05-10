@@ -96,7 +96,7 @@ public partial class TutorialBuilderScene : Node2D
         AddChild(_buildPane);
 
         _previewPane = new PreviewPane { Visible = false };
-        _previewPane.SetPanel(_panel);
+        _previewPane.Configure(_panel);
         AddChild(_previewPane);
 
         // 5. Topbar starts on MapEdit; field _currentMode already matches.
