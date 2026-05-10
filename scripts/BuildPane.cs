@@ -2,12 +2,15 @@ using System.Collections.Generic;
 using Godot;
 
 /// <summary>
-/// Build mode chrome. Phase 3b: right strip with "Add EndTurn" button +
-/// selected-beat inspector, plus bottom timeline of beat chips.
-/// Phase 4+ extends with more beat-add buttons (BuyPeasant / Move /
-/// BuildTower); Phase 7+ adds overlay-beat editors (Prompt / Highlight
-/// / CameraFocus); Phase 11 adds editing / reorder / delete; Phase 12
-/// adds validation banners.
+/// Build mode chrome. Phase 3b shipped right strip with "Add EndTurn" +
+/// inspector + bottom timeline. Phase 4 adds "Add BuyPeasant" with a
+/// tile-pick state (`_pendingPick`); next Map.CoordClicked while in
+/// pick mode appends a BuyPeasantBeat at that coord. Phase 5 adds
+/// MoveBeat (Src/Dst two-click pick), Phase 6 adds BuildTower; Phase
+/// 7+ adds overlay-beat editors (Prompt / Highlight / CameraFocus);
+/// Phase 11 adds editing / reorder / delete + the kind-specific
+/// inspector + the post-beat state cache; Phase 12 adds validation
+/// banners; Phase 14 adds keyboard shortcuts + ESC ladder.
 ///
 /// In-memory <see cref="Tutorial"/> ownership lives here for the
 /// session. <see cref="TutorialBuilderScene"/> reads it via
@@ -29,6 +32,9 @@ public sealed partial class BuildPane : Control
     private Label _inspectorTurn = null!;
     private Label _inspectorActor = null!;
 
+    private enum PickMode { None, BuyPeasantAt }
+    private PickMode _pendingPick = PickMode.None;
+
     /// <summary>Current authored Tutorial. Read by save flow.</summary>
     public Tutorial CurrentTutorial => _tutorial;
 
@@ -40,13 +46,13 @@ public sealed partial class BuildPane : Control
         if (IsInsideTree()) RefreshUI();
     }
 
-    /// <summary>Called once by TutorialBuilderScene before AddChild. Phase 3b
-    /// stores the reference for future use (Phase 11 state-after-beat-N
-    /// cache); doesn't read it yet.</summary>
+    /// <summary>Called once by TutorialBuilderScene before AddChild.
+    /// Phase 4 consumes the panel reference for the "Add BuyPeasant"
+    /// tile-pick flow (subscribes to the panel's HexMapView click event).
+    /// Phase 11 will additionally use it for the state-after-beat-N cache.</summary>
     public void SetPanel(MapEditorPanel panel)
     {
         _panel = panel;
-        _ = _panel; // suppress "unused" until Phase 11 consumes it
     }
 
     public override void _Ready()
@@ -129,6 +135,16 @@ public sealed partial class BuildPane : Control
         addEndTurnBtn.Pressed += OnAddEndTurnPressed;
         AudioBus.AttachClick(addEndTurnBtn);
         content.AddChild(addEndTurnBtn);
+
+        var addBuyPeasantBtn = new Button
+        {
+            Text = "Add BuyPeasant",
+            FocusMode = FocusModeEnum.None,
+        };
+        addBuyPeasantBtn.AddThemeFontSizeOverride("font_size", 18);
+        addBuyPeasantBtn.Pressed += OnAddBuyPeasantPressed;
+        AudioBus.AttachClick(addBuyPeasantBtn);
+        content.AddChild(addBuyPeasantBtn);
 
         // Spacer expands to fill the gap so the inspector pins to the
         // bottom of the strip — separates the "add a beat" action area
@@ -219,7 +235,11 @@ public sealed partial class BuildPane : Control
         {
             int captured = i;
             Beat beat = _tutorial.Beats[i];
-            string label = $"#{beat.Index} T{beat.Turn} A{beat.Actor} {beat.Kind}";
+            string label = beat switch
+            {
+                BuyPeasantBeat bpb => $"#{beat.Index} T{beat.Turn} A{beat.Actor} BuyPeasant ({bpb.At.Q},{bpb.At.R})",
+                _                  => $"#{beat.Index} T{beat.Turn} A{beat.Actor} {beat.Kind}",
+            };
             var chip = new Button
             {
                 Text = label,
@@ -273,6 +293,50 @@ public sealed partial class BuildPane : Control
     private void OnBeatChipPressed(int index)
     {
         _selectedBeatIndex = (index == _selectedBeatIndex) ? -1 : index;
+        RefreshUI();
+    }
+
+    private void OnAddBuyPeasantPressed()
+    {
+        // Idempotent: re-pressing while already in pick mode is a no-op
+        // (the existing subscription remains active). Cancelling pick
+        // mode (ESC, switch mode) is a Phase 14 polish item; for Phase
+        // 4 the dev commits the pick by clicking a tile.
+        if (_pendingPick == PickMode.BuyPeasantAt) return;
+        _pendingPick = PickMode.BuyPeasantAt;
+        _panel.Map.CoordClicked += OnPickCoordClicked;
+    }
+
+    private void OnPickCoordClicked(HexCoord coord)
+    {
+        if (_pendingPick != PickMode.BuyPeasantAt) return;
+
+        // Phase 4 accepts any coord (no friendly-territory validation
+        // here — Phase 12 surfaces invalid At as a warning). Trust the
+        // dev to click a tile they own.
+        var beats = new List<Beat>(_tutorial.Beats)
+        {
+            new BuyPeasantBeat
+            {
+                Index = _tutorial.Beats.Count,
+                Turn = 1,
+                Actor = 0,
+                At = coord,
+            },
+        };
+        _tutorial = new Tutorial
+        {
+            Title = _tutorial.Title,
+            StartTurn = _tutorial.StartTurn,
+            StartPlayer = _tutorial.StartPlayer,
+            Beats = beats,
+        };
+
+        // Exit pick mode + unsubscribe so subsequent map clicks pass
+        // through to whatever owns selection in Build (currently nobody).
+        _pendingPick = PickMode.None;
+        _panel.Map.CoordClicked -= OnPickCoordClicked;
+
         RefreshUI();
     }
 }
