@@ -253,15 +253,15 @@ public partial class TutorialBuilderScene : Node2D
         string name = SaveStore.SanitizeSlotName(_saveDialogLineEdit.Text);
         try
         {
-            // Phase 3a writes an *empty* Tutorial — the POCO carries
-            // only the header (Title/StartTurn/StartPlayer). 3b adds
-            // beats; the BuildPane will populate them then.
+            // Phase 3b reads the authored Tutorial off the BuildPane
+            // (which owns the in-memory beat list for the session).
+            // 3a wrote an empty Tutorial here unconditionally.
             _saveStore.WriteTutorial(
                 name,
                 _panel.BuildSaveState(),
                 _panel.CurrentSeed,
                 _players,
-                new Tutorial());
+                _buildPane.CurrentTutorial);
         }
         catch (System.Exception ex)
         {
@@ -370,10 +370,13 @@ public partial class TutorialBuilderScene : Node2D
         try
         {
             LoadedSave loaded = _saveStore.LoadTutorial(slotName);
-            // 3a only round-trips the *map* portion through the panel.
-            // The Tutorial body is empty in 3a; 3b will start consuming
-            // loaded.Tutorial via the BuildPane.
             _panel.LoadFromMap(loaded);
+            // 3b: also restore the authored beats into the BuildPane.
+            // A v3 file without a Tutorial block (e.g., a regular
+            // user://maps/ map opened by mistake) yields loaded.Tutorial
+            // == null; reset BuildPane to an empty Tutorial in that
+            // case so a stale beat list doesn't bleed across loads.
+            _buildPane.SetTutorial(loaded.Tutorial ?? new Tutorial());
             _loadDialog?.Hide();
         }
         catch (System.Exception ex)
