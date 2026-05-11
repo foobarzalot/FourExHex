@@ -100,7 +100,8 @@
 
 ### Phase 4 — `BuyPeasant` beat (author + preview)
 
-- **Status:** ⏳ Not yet expanded
+- **Status:** ✅ Complete
+- **Plan file:** [`2026-05-09-tutorial-builder-phase-04-buypeasant-beat.md`](2026-05-09-tutorial-builder-phase-04-buypeasant-beat.md)
 - **Goal:** Add `BuyPeasantBeat` POCO + serializer support; BuildPane "Add BuyPeasant" enters "pick At" tile mode; gated views accept matching BuyPeasant clicks; `AiSimulator.Apply` already handles BuyPeasant (verify), reuse for the BuildPane state-after-beat-N cache; `TutorialValidator.MatchesBuyPeasant`.
 - **Key files:** `scripts/Tutorial/Beat.cs` (extend), `scripts/BuildPane.cs` (extend), `scripts/Tutorial/TutorialPlayer.cs` (extend), `scripts/Tutorial/TutorialGatedHudView.cs` (extend `BuyPeasantClicked` gating), `tests/TutorialPlayerTests.cs` (extend), `tests/TutorialBeatSimulatorTests.cs` (new).
 - **Manual test:** In TutorialBuilder, paint a 5-tile territory with a capital in Map Edit; switch to Build, click "Add BuyPeasant", click a friendly tile → beat created; save, switch to Preview, click designated tile → peasant placed; click a wrong tile → soft-reject toast.
