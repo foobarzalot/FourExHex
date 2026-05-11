@@ -130,8 +130,19 @@ public sealed class TutorialGatedHudView : IHudView
 
     // --- Output methods: pure delegation ---
 
-    public void Refresh(GameState state, SessionState session, bool hasActionableRemaining) =>
+    public void Refresh(GameState state, SessionState session, bool hasActionableRemaining)
+    {
+        // When the next scripted beat is EndTurn, force the End Turn CTA
+        // styling — same visual cue ordinary play uses when the player
+        // has nothing left actionable. Driven through the existing
+        // hasActionableRemaining lever so we reuse HudView's
+        // SetEndTurnCta path with no new HUD API.
+        if (_player.NextExpectedPlayerBeat is EndTurnBeat)
+        {
+            hasActionableRemaining = false;
+        }
         _real.Refresh(state, session, hasActionableRemaining);
+    }
     public void SetMapLabel(string text) => _real.SetMapLabel(text);
     public void ShowTutorialMessage(string text) => _real.ShowTutorialMessage(text);
     public void HideTutorialMessage() => _real.HideTutorialMessage();
