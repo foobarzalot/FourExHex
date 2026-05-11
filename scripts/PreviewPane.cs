@@ -87,9 +87,11 @@ public sealed partial class PreviewPane : Control
         _gatedMap = new TutorialGatedHexMapView(_panel.Map, _player);
         _gatedHud = new TutorialGatedHudView(_hud, _player);
 
-        // 4. Toast on rejection / completion.
+        // 4. Toast on rejection / completion. Also auto-orient the dev
+        //    after each beat advance — see ApplyAutoOrientForNextBeat.
         _player.PlayerActionRejected += OnPlayerActionRejected;
         _player.TutorialFinished += OnTutorialFinished;
+        _player.BeatApplied += OnBeatApplied;
 
         // 5. Construct the transient GameController. AiChooser is the
         //    player's (3c always falls through to AiDispatcher).
@@ -118,6 +120,11 @@ public sealed partial class PreviewPane : Control
         _panel.Map.Init(_previewState);
         _controller.StartGame();
 
+        // 8. Initial orient: if the very first beat is a tile-action,
+        //    pre-select its territory so the dev sees the relevant CTA
+        //    immediately (no "click capital first" friction).
+        ApplyAutoOrientForNextBeat();
+
         _running = true;
     }
 
@@ -138,6 +145,7 @@ public sealed partial class PreviewPane : Control
         {
             _player.PlayerActionRejected -= OnPlayerActionRejected;
             _player.TutorialFinished -= OnTutorialFinished;
+            _player.BeatApplied -= OnBeatApplied;
         }
 
         if (_hud != null)
@@ -177,5 +185,37 @@ public sealed partial class PreviewPane : Control
     private void OnTutorialFinished()
     {
         _hud?.ShowTutorialMessage("Tutorial complete.");
+    }
+
+    private void OnBeatApplied(int beatIndex)
+    {
+        // Each beat advance can change which territory is the focus of
+        // the next action; re-orient the dev.
+        ApplyAutoOrientForNextBeat();
+    }
+
+    /// <summary>
+    /// If the next expected beat is a tile-action (currently only
+    /// BuyPeasantBeat — Phase 5/6 add Move/BuildTower), pre-select the
+    /// territory containing the beat's anchor so the relevant HUD
+    /// buttons (Buy Peasant, etc.) become visible without the dev
+    /// needing to click the capital first. Idempotent and silent when
+    /// the next beat doesn't anchor on a tile.
+    /// </summary>
+    private void ApplyAutoOrientForNextBeat()
+    {
+        if (_controller == null || _previewState == null || _player == null) return;
+
+        if (_player.NextExpectedPlayerBeat is BuyPeasantBeat bpb)
+        {
+            if (bpb.Actor < 0 || bpb.Actor >= _previewState.Players.Count) return;
+            Color actorColor = _previewState.Players[bpb.Actor].Color;
+            Territory? owning = TerritoryLookup.FindOwnedContaining(
+                _previewState.Territories, actorColor, bpb.At);
+            if (owning != null)
+            {
+                _controller.SelectTerritoryForTutorial(owning);
+            }
+        }
     }
 }

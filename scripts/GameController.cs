@@ -500,6 +500,16 @@ public class GameController
     }
 
     /// <summary>
+    /// Public selection entry point for tutorial Preview orchestration —
+    /// drives the same path a tile click would (private SetSelection +
+    /// view highlight + RefreshViews) without going through TrackHandler
+    /// (no undo entry: tutorial Preview isn't undoable). Ordinary play
+    /// reaches selection via OnTileClicked / OnNextTerritoryPressed and
+    /// shouldn't call this.
+    /// </summary>
+    public void SelectTerritoryForTutorial(Territory? territory) => SetSelection(territory);
+
+    /// <summary>
     /// Returns the action-consuming targets for a would-be attacker of
     /// level <paramref name="attackerLevel"/>: enemy tiles we can capture,
     /// plus own-territory tiles whose tree the unit would clear. Empty

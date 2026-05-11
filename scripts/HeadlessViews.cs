@@ -89,4 +89,5 @@ public sealed class HeadlessHudView : IHudView
     public void SetMapLabel(string text) { }
     public void ShowTutorialMessage(string text) { }
     public void HideTutorialMessage() { }
+    public void SetBuyPeasantCta(bool isCta) { }
 }

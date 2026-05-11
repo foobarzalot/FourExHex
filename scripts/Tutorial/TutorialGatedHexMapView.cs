@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Godot;
 
 /// <summary>
@@ -82,8 +83,27 @@ public sealed class TutorialGatedHexMapView : IHexMapView
     // --- Output methods: pure delegation ---
 
     public Territory? TerritoryAt(HexCoord coord) => _real.TerritoryAt(coord);
-    public void ShowMoveTargets(IEnumerable<HexCoord> coords, UnitLevel level) =>
+    public void ShowMoveTargets(IEnumerable<HexCoord> coords, UnitLevel level)
+    {
+        // When armed for BuyPeasant, the controller's coord set is
+        // <see cref="GameController.ActionConsumingTargets"/> — only
+        // captures + tree-clears, not friendly empty placements. The
+        // scripted <c>At</c> may be a perfectly legal friendly empty
+        // tile that just isn't action-consuming, in which case the
+        // controller would draw nothing and the dev wouldn't see where
+        // to click. Force-show the scripted At as the single ring so
+        // the cue is unambiguous and visible regardless of capture
+        // status. The actual click is gated by
+        // <see cref="GameController.IsValidTarget"/>; if the dev
+        // authored an illegal At they'll discover it on the buy
+        // attempt (Phase 12 surfaces it as a validation warning).
+        if (_player.ArmedBeat is BuyPeasantBeat bpb)
+        {
+            _real.ShowMoveTargets(new[] { bpb.At }, level);
+            return;
+        }
         _real.ShowMoveTargets(coords, level);
+    }
     public void ShowTowerTargets(IEnumerable<HexCoord> coords) =>
         _real.ShowTowerTargets(coords);
     public void ShowTowerCoverage(IEnumerable<HexCoord> coords) =>

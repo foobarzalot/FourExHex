@@ -728,7 +728,11 @@ public partial class HudView : CanvasLayer, IHudView
             && !session.PendingDefeatScreen.HasValue;
     }
 
-    private void SetEndTurnCta(bool isCta)
+    private void SetEndTurnCta(bool isCta) => ApplyCtaStyle(_endTurnButton, isCta);
+
+    public void SetBuyPeasantCta(bool isCta) => ApplyCtaStyle(_buyPeasantButton, isCta);
+
+    private static void ApplyCtaStyle(Button button, bool isCta)
     {
         if (isCta)
         {
@@ -749,21 +753,21 @@ public partial class HudView : CanvasLayer, IHudView
                 ContentMarginTop = 6,
                 ContentMarginBottom = 6,
             };
-            _endTurnButton.AddThemeStyleboxOverride("normal", style);
-            _endTurnButton.AddThemeStyleboxOverride("hover", style);
-            _endTurnButton.AddThemeStyleboxOverride("pressed", style);
-            _endTurnButton.AddThemeColorOverride("font_color", new Color(0f, 0f, 0f));
-            _endTurnButton.AddThemeColorOverride("font_hover_color", new Color(0f, 0f, 0f));
-            _endTurnButton.AddThemeColorOverride("font_pressed_color", new Color(0f, 0f, 0f));
+            button.AddThemeStyleboxOverride("normal", style);
+            button.AddThemeStyleboxOverride("hover", style);
+            button.AddThemeStyleboxOverride("pressed", style);
+            button.AddThemeColorOverride("font_color", new Color(0f, 0f, 0f));
+            button.AddThemeColorOverride("font_hover_color", new Color(0f, 0f, 0f));
+            button.AddThemeColorOverride("font_pressed_color", new Color(0f, 0f, 0f));
         }
         else
         {
-            _endTurnButton.RemoveThemeStyleboxOverride("normal");
-            _endTurnButton.RemoveThemeStyleboxOverride("hover");
-            _endTurnButton.RemoveThemeStyleboxOverride("pressed");
-            _endTurnButton.RemoveThemeColorOverride("font_color");
-            _endTurnButton.RemoveThemeColorOverride("font_hover_color");
-            _endTurnButton.RemoveThemeColorOverride("font_pressed_color");
+            button.RemoveThemeStyleboxOverride("normal");
+            button.RemoveThemeStyleboxOverride("hover");
+            button.RemoveThemeStyleboxOverride("pressed");
+            button.RemoveThemeColorOverride("font_color");
+            button.RemoveThemeColorOverride("font_hover_color");
+            button.RemoveThemeColorOverride("font_pressed_color");
         }
     }
 }

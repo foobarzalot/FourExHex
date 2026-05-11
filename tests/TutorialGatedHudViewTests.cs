@@ -211,4 +211,43 @@ public class TutorialGatedHudViewTests
         Assert.True(real.LastHasActionableRemaining);
         Assert.Null(player.NextExpectedPlayerBeat);
     }
+
+    [Fact]
+    public void Refresh_NextBeatIsBuyPeasant_NotArmed_SetsBuyPeasantCta()
+    {
+        (TutorialGatedHudView gated, MockHudView real, _) =
+            SetupBuyPeasant(new HexCoord(2, 3));
+        (GameState state, SessionState session) = BuildState();
+
+        gated.Refresh(state, session, hasActionableRemaining: true);
+
+        Assert.True(real.BuyPeasantCtaActive);
+        // hasActionableRemaining stays true — End Turn isn't the cue here.
+        Assert.True(real.LastHasActionableRemaining);
+    }
+
+    [Fact]
+    public void Refresh_ArmedForBuyPeasant_ClearsBuyPeasantCta()
+    {
+        (TutorialGatedHudView gated, MockHudView real, TutorialPlayer player) =
+            SetupBuyPeasant(new HexCoord(2, 3));
+        real.ClickBuyPeasant();              // arm
+        Assert.True(player.IsArmedForBuyPeasant);
+        (GameState state, SessionState session) = BuildState();
+
+        gated.Refresh(state, session, hasActionableRemaining: true);
+
+        Assert.False(real.BuyPeasantCtaActive);
+    }
+
+    [Fact]
+    public void Refresh_NextBeatIsEndTurn_DoesNotSetBuyPeasantCta()
+    {
+        (TutorialGatedHudView gated, MockHudView real, _) = Setup();
+        (GameState state, SessionState session) = BuildState();
+
+        gated.Refresh(state, session, hasActionableRemaining: true);
+
+        Assert.False(real.BuyPeasantCtaActive);
+    }
 }

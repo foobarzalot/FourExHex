@@ -141,9 +141,19 @@ public sealed class TutorialGatedHudView : IHudView
         {
             hasActionableRemaining = false;
         }
+
+        // When the next scripted beat is BuyPeasant and the dev hasn't
+        // armed it yet, light up the Buy Peasant button as the next
+        // action. Once they click Buy (we go armed), drop the CTA —
+        // the in-mode "Click a tile..." text becomes the active cue.
+        bool buyPeasantCta = _player.NextExpectedPlayerBeat is BuyPeasantBeat
+                              && !_player.IsArmedForBuyPeasant;
+        _real.SetBuyPeasantCta(buyPeasantCta);
+
         _real.Refresh(state, session, hasActionableRemaining);
     }
     public void SetMapLabel(string text) => _real.SetMapLabel(text);
     public void ShowTutorialMessage(string text) => _real.ShowTutorialMessage(text);
     public void HideTutorialMessage() => _real.HideTutorialMessage();
+    public void SetBuyPeasantCta(bool isCta) => _real.SetBuyPeasantCta(isCta);
 }

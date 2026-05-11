@@ -70,4 +70,14 @@ public interface IHudView
 
     /// <summary>Hide the tutorial popup if it's currently showing.</summary>
     void HideTutorialMessage();
+
+    /// <summary>
+    /// Apply (or clear) tutorial-driven CTA styling to the Buy Peasant
+    /// button — same white-bg + black-text + border the End Turn button
+    /// already uses when no actions remain. Tutorial Preview only;
+    /// ordinary play never calls this and the styling clears
+    /// automatically when the player commits the buy (via the wrapper
+    /// dropping back to <c>SetBuyPeasantCta(false)</c>).
+    /// </summary>
+    void SetBuyPeasantCta(bool isCta);
 }

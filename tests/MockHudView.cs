@@ -62,6 +62,9 @@ public class MockHudView : IHudView
     public void ShowTutorialMessage(string text) => CurrentTutorialMessage = text;
     public void HideTutorialMessage() => CurrentTutorialMessage = null;
 
+    public bool BuyPeasantCtaActive { get; private set; }
+    public void SetBuyPeasantCta(bool isCta) => BuyPeasantCtaActive = isCta;
+
     public void ClickBuyPeasant() => BuyPeasantClicked?.Invoke();
     public void ClickBuildTower() => BuildTowerClicked?.Invoke();
     public void PressNextTerritory() => NextTerritoryClicked?.Invoke();
