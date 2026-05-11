@@ -1015,6 +1015,32 @@ switching only flips `panel.PaintingEnabled` and the per-mode chrome's
   `AiBuyUnitAction` equivalence so Phase 11's state-after-beat-N
   cache can build on `AiSimulator.Apply` without re-deriving the
   invariants.
+- **Preview cues (post-Phase-4 polish).** The gated wrappers use the
+  next-expected-beat as a hint to make Preview self-orienting:
+  - `TutorialGatedHudView.Refresh` overrides `hasActionableRemaining`
+    to `false` when the next beat is `EndTurnBeat` — reusing
+    `HudView.SetEndTurnCta` (now refactored to share `ApplyCtaStyle`
+    with the new `SetBuyPeasantCta`). Same white-bg + black-text +
+    border treatment ordinary play uses when the turn is "done."
+  - `IHudView.SetBuyPeasantCta(bool)` is the new HUD-API lever for
+    tutorial-driven Buy Peasant button highlighting; the wrapper
+    drives it on every `Refresh` based on whether the next beat is
+    `BuyPeasantBeat` and the dev hasn't armed yet (clears once
+    armed, since the in-mode "Click a tile..." text takes over).
+  - `TutorialGatedHexMapView.ShowMoveTargets` force-shows
+    `[bpb.At]` whenever armed for `BuyPeasantBeat`, regardless of
+    the controller's coord set. Necessary because the controller's
+    set is `ActionConsumingTargets` (captures + tree-clears only),
+    not friendly empty placements — so without the override, a
+    legal-but-non-action-consuming `At` would draw nothing.
+  - `PreviewPane` subscribes to `TutorialPlayer.BeatApplied` and
+    runs `ApplyAutoOrientForNextBeat` after `StartGame` and after
+    each beat: when the next beat is `BuyPeasantBeat`, it calls
+    `GameController.SelectTerritoryForTutorial` (a new public
+    selection entry that bypasses `TrackHandler` since Preview
+    isn't undoable) so the territory containing `bpb.At` is
+    selected and the relevant HUD chrome is visible without the
+    dev needing to click the capital first.
 
 ## Diagnostic mode (`FOUREXHEX_6AI`)
 
