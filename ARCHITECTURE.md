@@ -995,6 +995,26 @@ switching only flips `panel.PaintingEnabled` and the per-mode chrome's
   Show* / Play* / etc.) delegate transparently.
   `TutorialValidator.MatchesEndTurn` is the symbolic match function
   (Phase 4+ adds MatchesMove / MatchesBuyPeasant / MatchesBuildTower).
+- **Phase 4 scope.** Adds the first tile-action beat: `BuyPeasantBeat`
+  (with `HexCoord At`). Authoring: `BuildPane` grows an "Add BuyPeasant"
+  button + a `_pendingPick` tile-pick mode that consumes the next
+  `Map.CoordClicked` to materialize the beat; the beat chip renders
+  the coord in offset (col, row) form so it agrees with the hex
+  hover tooltip. Preview: the gating uses a single-slot `_armedBeat`
+  on `TutorialPlayer` to mirror the real game's two-event sequence —
+  `TutorialGatedHudView`'s `OnRealBuyPeasantClicked` calls
+  `TryArmBuyPeasant` (forwards on success, controller enters
+  BuyingPeasant mode), and `TutorialGatedHexMapView`'s
+  `OnRealTileClicked` short-circuits to `TryAdvanceForBuyPeasantTile`
+  when armed (forwards on coord match, rejects on miss while keeping
+  the arm so the dev can retry). `CancelActionPressed` pass-through
+  also disarms so arm state stays in sync with the controller's
+  pending-action mode. New JSON fields on `BeatDto`: `AtQ` / `AtR`
+  (nullable, populated only for tile-anchored beats — Phase 5/6 reuse
+  them). `TutorialBeatSimulatorTests` documents the BuyPeasant-beat ≡
+  `AiBuyUnitAction` equivalence so Phase 11's state-after-beat-N
+  cache can build on `AiSimulator.Apply` without re-deriving the
+  invariants.
 
 ## Diagnostic mode (`FOUREXHEX_6AI`)
 
@@ -1112,7 +1132,8 @@ scripts/
 ├─ Tutorial/Tutorial.cs   ─ tutorial header POCO (Title / StartTurn /
 │                           StartPlayer / Beats)
 ├─ Tutorial/Beat.cs       ─ Beat abstract record + BeatKind enum +
-│                           EndTurnBeat (3c+ adds more concrete kinds)
+│                           EndTurnBeat + BuyPeasantBeat (Phase 5+
+│                           adds more concrete kinds)
 ├─ Tutorial/TutorialGatedHexMapView.cs ─ IHexMapView wrapper that
 │                           gates tile clicks against the next expected
 │                           scripted beat; delegates output methods
