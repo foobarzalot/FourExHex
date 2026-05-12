@@ -1321,6 +1321,8 @@ scripts/
 ├─ Treasury.cs            ─
 ├─ ZoomMath.cs            ─ pixel↔hex helpers used by HexMapView
 ├─ GameStateSnapshot.cs   ─
+├─ GameStateChecksum.cs   ─ SHA-256 digest over tiles/gold/territories/
+│                           turn state; used by replay-fidelity tests
 └─ UndoStack.cs           ─ generic two-sided history (used by both play
                             and editor)
 
@@ -1340,7 +1342,8 @@ tests/
 └─ *Tests.cs              ─ xUnit tests covering controller flows,
                             rules, AI, snapshot/undo, primitives,
                             save/load round-trip, autosave, abandon,
-                            RNG determinism, editor paint + snapshot/undo
+                            RNG determinism, editor paint + snapshot/undo,
+                            replay recording / playback / fidelity
 ```
 
 `Main.cs`, `MainMenuScene.cs`, `MapEditorScene.cs`,
@@ -1362,7 +1365,10 @@ the `GameController` click + turn state machine (with mock views and
 the synchronous pacer), `Treasury`, `UndoStack`, `GameStateSnapshot`,
 both AI flavors, the editor's paint helpers + `EditorSnapshot`
 round-trip, save/serialize/deserialize equivalence, RNG determinism
-across save/load, and all the primitive structs. The view layer is
+across save/load, replay recording + playback contracts, and a
+6-heuristic-AI replay-fidelity test that hashes the live final
+state, round-trips it through SaveSerializer, and asserts the
+replayed state matches digest-for-digest. The view layer is
 deliberately uncovered — it depends on Godot's `Node` lifecycle, so
 pin behavior in the controller and rules instead.
 
