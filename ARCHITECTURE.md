@@ -368,6 +368,8 @@ event Action? SaveGameClicked;         // handled in Main (opens save dialog)
 event Action? DefeatContinueClicked;   // dismiss defeat overlay; resume AI
 event Action? ClaimVictoryWinNowClicked;   // declare win now from prompt
 event Action? ClaimVictoryContinueClicked; // dismiss prompt, proceed End Turn
+event Action? ReplayClicked;           // Replay button on victory overlay;
+                                       // handled in Main → controller.BeginReplay
 
 void Refresh(GameState state, SessionState session, bool hasActionableRemaining);
 void SetMapLabel(string text);         // one-time after setup; "Map: foo"
@@ -377,6 +379,10 @@ void ShowTutorialMessage(string text); // bottom-anchored info popup;
                                        // click-through (MouseFilter=Ignore)
 void HideTutorialMessage();            // dismiss it — Main drives this
                                        // off the first user input
+void SetReplayAvailable(bool available); // toggle the victory-overlay
+                                       // Replay button; Main flips it on
+                                       // GameEnded iff the controller has
+                                       // replay history from game start
 ```
 
 The defeat overlay is part of the HUD: `Refresh` reads
@@ -402,18 +408,33 @@ the first mouse-button-down or non-echo key press via its `_Input`
 override. The panel itself ignores mouse input so that first click
 still reaches the map / HUD as normal.
 
-**`IAiPacer`** — schedules deferred continuations for the AI step
-machine. `GodotAiPacer` schedules via the `SceneTree`; the default
-`SynchronousAiPacer` runs the callback inline (used by tests and
-diagnostic mode). `Cancel` drops any pending callbacks and ignores
-future deliveries from already-scheduled timers — `Main` calls it
-via `GameController.AbandonGame()` before swapping back to the menu
-so an in-flight `StepAiExecute` can't fire against disposed
+**`IAiPacer`** — schedules deferred continuations for both the AI
+step machine and the replay step machine. `GodotAiPacer` schedules
+via an injected `ITimerFactory` (production wires
+`SceneTreeTimerFactory`, which wraps `SceneTree.CreateTimer`; tests
+wire `ManualTimerFactory`, which stores callbacks for the test to
+fire on demand). `SynchronousAiPacer` runs the callback inline (used
+by tests and diagnostic mode). `Cancel` drops any pending callbacks
+but does **NOT** poison future `Schedule` calls — the same pacer
+instance must survive Cancel-then-reuse cycles because
+`BeginReplay` cancels any straggling AI step before scheduling its
+first replay step. `GodotAiPacer` implements this via a generation
+counter (each `Cancel` bumps the gen; each `Schedule` captures the
+current gen; the timer-fired callback checks the captured gen still
+matches before invoking). `Main` also calls Cancel via
+`GameController.AbandonGame()` before swapping back to the menu so
+an in-flight `StepAiExecute` can't fire against disposed
 `Polygon2D` nodes after the scene swap.
 
 ```csharp
 void Schedule(Action callback, int delayMs);
 void Cancel();
+```
+
+```csharp
+// Split out for testability — production = SceneTreeTimerFactory,
+// tests = ManualTimerFactory.
+public interface ITimerFactory { void After(int delayMs, Action callback); }
 ```
 
 ## Invariants (enforced by design)
@@ -444,6 +465,12 @@ void Cancel();
   anyway), and the AI execute methods validate preconditions before
   mutating — an illegal AI action throws and halts the game in an
   obvious error state rather than corrupting state silently.
+- **Replay log is honest about what actually happened.** Recording
+  appends a `ReplayBeat` at execute time, but the undo/redo handlers
+  pop matching beats off (or push them back on redo) so an undone
+  move never appears in the saved replay. The log grows monotonically
+  across `EndTurn` (unlike the undo stack, which is per-turn and
+  cleared at `EndTurnNow`).
 - **Players with no capital-bearing territory are skipped.**
   `AdvanceToNextActivePlayer` calls `TurnState.EndTurn` until it lands
   on a player whose territory list contains a capital — eliminated
@@ -705,6 +732,75 @@ StepAiExecute:
 
 Tests use `SynchronousAiPacer` so the whole AI chain runs inline.
 
+### Replay turn (paced)
+
+Mirrors the AI step machine, but consumes a recorded `ReplayBeat`
+log instead of asking the AI for the next action:
+
+```
+BeginReplay (public, called from victory-overlay Replay button):
+  ├─ _aiPacer.Cancel  (drop any stragglers; Cancel-then-reuse is OK)
+  ├─ _replayMode = true, _replayIndex = 0, _gameEndedFired = false
+  ├─ _initialSnapshot.ApplyTo(grid, treasury) → territories
+  ├─ _state.Turns.Reset(initialPlayerIndex, initialTurnNumber)
+  ├─ clear session: Winner, PendingDefeat, PendingClaim, pending action
+  ├─ ClearUndoAndReplayBookkeeping
+  ├─ map.RebuildAfterTerritoryChange + overlay clears + RefreshViews
+  └─ schedule StepReplayPreview after AiBetweenPlayersDelayMs
+
+StepReplayPreview:
+  ├─ if _replayIndex >= _replayBeats.Count → EndReplay
+  ├─ resolve acting territory (TerritoryLookup.FindOwnedContaining
+  │     on the beat's source/capital coord)
+  ├─ _map.ShowHighlight(acting); RefreshViews
+  └─ schedule StepReplayExecute after AiPreviewDelayMs
+       (or AiActionDelayMs if the next beat is ReplayEndTurnBeat)
+
+StepReplayExecute:
+  ├─ dispatch by ReplayBeatKind:
+  │    ReplayMoveBeat        → ExecuteAiMove(From, To)
+  │    ReplayBuyBeat         → ExecuteAiBuyUnit(Capital, To, Level)
+  │    ReplayBuildTowerBeat  → ExecuteAiBuildTower(Capital, To)
+  │    ReplayEndTurnBeat     → ReplayApplyEndTurn (EndOfTurnProcessing
+  │                            + AdvanceToNextActivePlayer + StartPlayerTurn)
+  │    ReplayClaimVictoryBeat → DeclareWinner (silent — no overlay)
+  │    ReplayDismissClaim    → record threshold, no advance (the
+  │                            next EndTurn beat handles it)
+  │    ReplayDismissDefeat   → clear PendingDefeatScreen flag (silent)
+  │    ReplayLongPressRallyBeat → ApplyLongPressRally (re-derives
+  │                            unit moves deterministically from state)
+  ├─ CheckGameEndConditions; RefreshViews
+  ├─ if IsGameOver → EndReplay (the recorded game-ending beat just
+  │     re-fired GameEnded; Main re-runs SetReplayAvailable)
+  └─ schedule next StepReplayPreview after
+       AiBetweenPlayersDelayMs (if beat was EndTurn) else AiActionDelayMs
+```
+
+Replay reuses the live `ExecuteAi*` helpers — same captures, same
+FX, same `HandleCapture` reconciliation — so replay fidelity comes
+"for free" from converging on the live mutation paths. The actor on
+each beat doesn't need to be passed through: `BeginReplay` restored
+`CurrentPlayerIndex` from the initial snapshot, and every
+`ReplayEndTurnBeat` steps it forward, so `_state.Turns.CurrentPlayer`
+is the right player when each `ExecuteAi*` call fires.
+
+**Recording vs. playback.** Every state-mutation site that records a
+beat is gated on `!_replayMode` so replay execution doesn't
+re-record the beats it's replaying. Human input handlers (all
+`TrackHandler`-wrapped, plus the non-wrapped overlay handlers) all
+early-return on `_replayMode`. The `StartPlayerTurn` autosave gate
+also adds `&& !_replayMode` so autosave doesn't fire during
+playback.
+
+**Long-press rally** is a special case: the recorded beat carries
+only the target coord, not the per-unit move list. Replay re-runs
+`ApplyLongPressRally(target)` against the restored state. The rally
+algorithm explicitly sorts units and destinations by
+`(distance, lex-min coord)`, so the re-derivation is deterministic.
+This matches the existing trust model for `EndOfTurnProcessing`
+(tree growth, grave aging, upkeep — also deterministic from state,
+triggered by a single beat).
+
 ## AI subsystem
 
 - **`AiAction`** — discriminated union: `AiMoveAction`, `AiBuyUnitAction`,
@@ -805,15 +901,38 @@ just `Tutorial.json`, loaded via `LoadBundledMap`). It exposes
 `user://maps/` then falls back to `res://tutorials/` — used by the
 Play Again restart flow), plus `SanitizeSlotName` for
 filesystem-safe slot names. `SaveSerializer` is the JSON layer
-(format version 3; accepts v2 on read so existing autosaves keep
-loading after the cutover); `Serialize` writes the player roster's
+(format version 4; accepts v2/v3 on read so existing autosaves keep
+loading after each cutover); `Serialize` writes the player roster's
 `Kind` field, `SerializeMap` omits it (the editor's saved maps
 don't bake a player-kind config — roles are assigned at play time
 from the menu). Both accept an optional `Tutorial` POCO that
-round-trips as the v3-only top-level `"Tutorial"` block (header
-fields + `Beats` list of kind-discriminated `BeatDto`s); absent on
-regular saves and starting maps. `SaveSlotInfo` is the slot listing
-record.
+round-trips as the top-level `"Tutorial"` block (header fields +
+`Beats` list of kind-discriminated `BeatDto`s); absent on regular
+saves and starting maps. `SaveSlotInfo` is the slot listing record.
+
+**Replay block (v4+).** `Serialize` and `WriteSlot` / `WriteAutosave`
+accept an optional `Replay` POCO that round-trips as the v4-only
+top-level `"Replay"` block. It carries:
+
+- `InitialState` — the per-game-start `GameStateSnapshot` (tiles +
+  occupants + capital gold + territories) plus the starting
+  `TurnNumber` / `CurrentPlayerIndex`. Captured by
+  `GameController.StartGame` after `SeedStartingGold` and before
+  `Resume`, so it represents "turn 1 as the player first saw it"
+  — the same anchor `BeginReplay` rewinds to.
+- `Beats` — the ordered list of recorded `ReplayBeat`s. Same
+  kind-discriminated DTO pattern as tutorial beats; switches in
+  `SerializeReplayBeats` / `DeserializeReplayBeats` handle each
+  concrete kind (Move / BuyUnit / BuildTower / EndTurn /
+  LongPressRally / ClaimVictory / DismissClaim / DismissDefeat).
+
+The block is absent from `Map` and `Tutorial` save flavors (those
+don't have player history), and null/missing in v2/v3 saves on
+load. v3-save load captures a `_initialSnapshot` at load time so
+future autosaves of that game can carry replay data; the controller
+sets `_replayDataIsCompleteFromStart = false` so the
+victory-overlay Replay button stays disabled — the recorded log
+starts after the load, not at game start.
 
 ## Map editor
 
@@ -1123,8 +1242,14 @@ scripts/
 ├─ AudioBus.cs            ─ autoload Node singleton: shared SFX players
 │                           that survive scene changes
 │
-├─ AiPacer.cs             ─ IAiPacer + SynchronousAiPacer
-├─ GodotAiPacer.cs        ─ SceneTree-backed pacer (with Cancel)
+├─ AiPacer.cs             ─ IAiPacer + SynchronousAiPacer +
+│                           ITimerFactory abstraction
+├─ GodotAiPacer.cs        ─ Default production pacer; uses
+│                           ITimerFactory + generation counter for
+│                           Cancel-then-reuse safety (testable via
+│                           ManualTimerFactory)
+├─ SceneTreeTimerFactory.cs ─ Production ITimerFactory wrapping
+│                           SceneTree.CreateTimer (test-excluded)
 ├─ AiAction.cs            ─ AiMoveAction / AiBuyUnitAction / …
 ├─ AiCommon.cs            ─ shared candidate-action enumeration
 ├─ AiDispatcher.cs        ─ routes by Player.Kind
@@ -1152,9 +1277,17 @@ scripts/
 │                           user://tutorials/ slot CRUD;
 │                           res://tutorials/ read-only bundled maps
 ├─ SaveSerializer.cs      ─ JSON (de)serializer for game state +
-│                           maps + optional Tutorial block (v3;
-│                           still reads v2)
+│                           maps + optional Tutorial block + optional
+│                           Replay block (v4; still reads v2/v3)
 ├─ SaveSlotInfo.cs        ─ slot listing metadata
+├─ Replay.cs              ─ POCO bundling InitialSnapshot + beat list,
+│                           round-tripped through the v4 Replay block
+├─ ReplayBeat.cs          ─ Discriminated record family:
+│                           ReplayMoveBeat / ReplayBuyBeat /
+│                           ReplayBuildTowerBeat / ReplayEndTurnBeat /
+│                           ReplayLongPressRallyBeat /
+│                           ReplayClaimVictoryBeat / ReplayDismissClaim /
+│                           ReplayDismissDefeat
 ├─ Tutorial/Tutorial.cs   ─ tutorial header POCO (Title / StartTurn /
 │                           StartPlayer / Beats)
 ├─ Tutorial/Beat.cs       ─ Beat abstract record + BeatKind enum +
@@ -1214,8 +1347,8 @@ tests/
 `MapEditorPanel.cs`, `MapEditorHudView.cs`, `TutorialBuilderScene.cs`,
 `TutorialBuilderTopBar.cs`, `BuildPane.cs`, `PreviewPane.cs`,
 `HexPaletteButton.cs`, `HexHoverTooltip.cs`, `HexMapView.cs`,
-`HudView.cs`, `GodotAiPacer.cs`, `HeadlessViews.cs`, `SaveStore.cs`,
-and `AudioBus.cs` are NOT compiled into the test assembly — they
+`HudView.cs`, `SceneTreeTimerFactory.cs`, `HeadlessViews.cs`,
+`SaveStore.cs`, and `AudioBus.cs` are NOT compiled into the test assembly — they
 derive from Godot nodes or depend on `SceneTree` / Godot
 `FileAccess` / autoload lifecycle. The test csproj explicitly lists
 each production source file it includes, so when you add a new
