@@ -61,6 +61,7 @@
     <Compile Include="..\scripts\UpkeepRules.cs" Link="scripts\UpkeepRules.cs" />
     <Compile Include="..\scripts\WinConditionRules.cs" Link="scripts\WinConditionRules.cs" />
     <Compile Include="..\scripts\GameStateSnapshot.cs" Link="scripts\GameStateSnapshot.cs" />
+    <Compile Include="..\scripts\GameStateChecksum.cs" Link="scripts\GameStateChecksum.cs" />
     <Compile Include="..\scripts\SessionStateSnapshot.cs" Link="scripts\SessionStateSnapshot.cs" />
     <Compile Include="..\scripts\UndoEntry.cs" Link="scripts\UndoEntry.cs" />
     <Compile Include="..\scripts\UndoStack.cs" Link="scripts\UndoStack.cs" />
