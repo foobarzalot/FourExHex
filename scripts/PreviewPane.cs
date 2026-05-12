@@ -1,60 +1,143 @@
+using System.Collections.Generic;
 using Godot;
 
 /// <summary>
 /// Preview-mode chrome. The dev plays as player 0 (Red); a
-/// <c>ReplayDrivenAi</c> chooser plays the other five players'
-/// recorded moves through the standard AI step machine. Mismatched
-/// inputs are rejected by a <c>humanActionValidator</c> hook on
-/// the <see cref="GameController"/>.
+/// <see cref="ReplayDrivenAi"/> chooser plays the other five players'
+/// recorded moves through the standard AI step machine. A
+/// <see cref="TutorialPreview"/> validates every player-0 input
+/// against the next expected scripted beat — mismatches surface a
+/// tutorial-message toast and the action is aborted.
 ///
-/// Pre-rewrite this class wrapped the real views in
-/// <c>TutorialGatedHexMapView</c> / <c>TutorialGatedHudView</c> and
-/// drove a hand-authored Beat list through <c>TutorialPlayer</c>.
-/// That whole approach is gone — see plan: replay-driven tutorial
-/// system.
+/// <para>
+/// On <see cref="Start"/>: applies the tutorial's <c>InitialSnapshot</c>
+/// to the panel's grid so playback begins from the recorded start
+/// state; builds a real <see cref="HudView"/> + <see cref="GameController"/>
+/// with the validator hook wired in; forces drag-mode to Pan; calls
+/// <c>StartGame</c>. The controller's <c>_previewMode</c> flag
+/// suppresses every <c>RecordBeat</c> call so the script isn't
+/// polluted by the dev's playthrough.
+/// </para>
 /// </summary>
 public sealed partial class PreviewPane : Control
 {
-    private MapEditorPanel? _panel;
+    private MapEditorPanel _panel = null!;
+    private HudView? _hud;
+    private TutorialPreview? _preview;
+    private ReplayDrivenAi? _replayAi;
+    private GameController? _controller;
+    private GameState? _previewState;
+    private HexDragMode _savedDragMode;
+    private bool _running;
+
+    public override void _Ready()
+    {
+        AnchorLeft = 0f;
+        AnchorTop = 0f;
+        AnchorRight = 1f;
+        AnchorBottom = 1f;
+        MouseFilter = MouseFilterEnum.Ignore;
+        Size = GetViewport().GetVisibleRect().Size;
+        GetViewport().SizeChanged += () => Size = GetViewport().GetVisibleRect().Size;
+    }
 
     public void SetPanel(MapEditorPanel panel)
     {
         _panel = panel;
     }
 
+    /// <summary>
+    /// Enter Preview mode with <paramref name="tutorial"/>. Idempotent
+    /// — a second Start without an intervening Pause tears down the
+    /// prior session first.
+    /// </summary>
     public void Start(Tutorial tutorial)
     {
-        // Preview wiring: instantiate ReplayDrivenAi + TutorialPreview
-        // + a GameController with player 0 as Human and players 1-5
-        // as Heuristic (chooser overridden to the replay-driven one).
-        // To be implemented.
+        if (_running) Pause();
+
+        // Player roster: player 0 Human (the dev plays Red);
+        // players 1-5 Heuristic so the AI step machine schedules
+        // their turns. The actual action choice comes from
+        // ReplayDrivenAi (overrides the chooser delegate).
+        var roster = new List<Player>(_panel.Players.Count);
+        for (int i = 0; i < _panel.Players.Count; i++)
+        {
+            Player src = _panel.Players[i];
+            AiKind kind = i == 0 ? AiKind.Human : AiKind.Heuristic;
+            roster.Add(new Player(src.Name, src.Color, kind));
+        }
+
+        _previewState = _panel.BuildLiveStateWith(roster);
+        // Apply the recorded InitialSnapshot so playback starts from
+        // the same board the recording started on.
+        IReadOnlyList<Territory> restored =
+            tutorial.Replay.InitialSnapshot.ApplyTo(_previewState.Grid, _previewState.Treasury);
+        _previewState.Territories = restored;
+        _previewState.Turns.Reset(
+            tutorial.Replay.InitialCurrentPlayerIndex,
+            tutorial.Replay.InitialTurnNumber);
+
+        _hud = new HudView();
+        AddChild(_hud);
+
+        _replayAi = new ReplayDrivenAi(tutorial.Replay.Beats, roster);
+        _preview = new TutorialPreview(tutorial.Replay.Beats, _previewState);
+        _preview.PlayerActionRejected += OnRejected;
+        _preview.TutorialFinished += OnFinished;
+
+        _controller = new GameController(
+            _previewState,
+            new SessionState(),
+            _panel.Map,
+            _hud,
+            seed: _panel.CurrentSeed,
+            aiChooser: _replayAi.ChooseNextAction,
+            aiPacer: new GodotAiPacer(new SceneTreeTimerFactory(GetTree())),
+            humanActionValidator: _preview.TryAccept,
+            previewMode: true);
+
+        _savedDragMode = _panel.Map.DragMode;
+        _panel.Map.DragMode = HexDragMode.Pan;
+        _panel.Map.Init(_previewState);
+        _controller.StartGame();
+
+        _running = true;
     }
 
     public void Pause()
     {
-        // Tear down the preview controller and restore the panel's
-        // draft view. To be implemented.
+        if (!_running) return;
+
+        _controller?.AbandonGame();
+        if (_preview != null)
+        {
+            _preview.PlayerActionRejected -= OnRejected;
+            _preview.TutorialFinished -= OnFinished;
+        }
+        if (_hud != null)
+        {
+            RemoveChild(_hud);
+            _hud.QueueFree();
+            _hud = null;
+        }
+
+        _panel.Map.DragMode = _savedDragMode;
+        _panel.Map.Init(_panel.BuildLiveState());
+
+        _controller = null;
+        _previewState = null;
+        _replayAi = null;
+        _preview = null;
+        _running = false;
     }
 
-    public override void _Ready()
+    private void OnRejected(ReplayBeat? expected, string reason)
     {
-        CustomMinimumSize = new Vector2(220, 0);
+        _hud?.ShowTutorialMessage(reason);
+    }
 
-        var heading = new Label
-        {
-            Text = "Preview Mode",
-            Position = new Vector2(12, 8),
-        };
-        heading.AddThemeFontSizeOverride("font_size", 18);
-        AddChild(heading);
-
-        var placeholder = new Label
-        {
-            Text = "Preview wiring is being\nimplemented. You will play\nas Red; the AI will replay\nthe other recorded moves.",
-            AutowrapMode = TextServer.AutowrapMode.WordSmart,
-            Position = new Vector2(12, 40),
-            Size = new Vector2(200, 200),
-        };
-        AddChild(placeholder);
+    private void OnFinished()
+    {
+        _hud?.ShowTutorialMessage("Tutorial complete.");
     }
 }

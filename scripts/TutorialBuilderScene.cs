@@ -134,15 +134,29 @@ public partial class TutorialBuilderScene : Node2D
         {
             _previewPane.Pause();
         }
+        if (previous == TutorialMode.Build)
+        {
+            _buildPane.StopRecording();
+        }
+        if (mode == TutorialMode.Build)
+        {
+            _buildPane.StartRecording();
+        }
         if (mode == TutorialMode.Preview)
         {
             // Hand the BuildPane's authored Tutorial to PreviewPane.
             // BuildPane owns the in-memory Tutorial for the session;
             // PreviewPane builds its transient controller around it.
             Tutorial? authored = _buildPane.CurrentTutorial;
-            if (authored != null)
+            if (authored != null && authored.Replay.Beats.Count > 0)
             {
                 _previewPane.Start(authored);
+            }
+            else
+            {
+                // No recording yet — flash a hint via the topbar's
+                // status surface (or just print). Defer richer UX.
+                GD.PushWarning("No recorded tutorial to preview. Switch to Record mode first.");
             }
         }
 

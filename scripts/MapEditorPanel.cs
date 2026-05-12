@@ -134,6 +134,20 @@ public sealed partial class MapEditorPanel : Node2D
             _grid, _territories, Players, new TurnState(Players), new Treasury(), _water);
 
     /// <summary>
+    /// Build a live <see cref="GameState"/> whose player roster is
+    /// <paramref name="roster"/> rather than the panel's
+    /// <see cref="Players"/>. Used by the TutorialBuilder: Record mode
+    /// uses an all-Human override roster so the dev plays hot-seat;
+    /// Preview mode uses a player-0-Human / players-1-5-Heuristic
+    /// override so the AI step machine kicks in for non-main players.
+    /// The grid and tile-color partition are reused unchanged — the
+    /// override roster must declare the same colors.
+    /// </summary>
+    public GameState BuildLiveStateWith(IReadOnlyList<Player> roster) =>
+        new GameState(
+            _grid, _territories, roster, new TurnState(roster), new Treasury(), _water);
+
+    /// <summary>
     /// Build a GameState whose TurnState starts at turn 0. That zero
     /// counter is the on-disk marker for "starting map" — the SaveStore
     /// drops it into the maps directory so a Load Map entry point can
