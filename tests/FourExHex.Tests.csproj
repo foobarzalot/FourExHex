@@ -53,7 +53,6 @@
     <Compile Include="..\scripts\AiStateScorer.cs" Link="scripts\AiStateScorer.cs" />
     <Compile Include="..\scripts\HeuristicAi.cs" Link="scripts\HeuristicAi.cs" />
     <Compile Include="..\scripts\RandomAi.cs" Link="scripts\RandomAi.cs" />
-    <Compile Include="..\scripts\TutorialAi.cs" Link="scripts\TutorialAi.cs" />
     <Compile Include="..\scripts\AiDispatcher.cs" Link="scripts\AiDispatcher.cs" />
     <Compile Include="..\scripts\PurchaseRules.cs" Link="scripts\PurchaseRules.cs" />
     <Compile Include="..\scripts\DefenseRules.cs" Link="scripts\DefenseRules.cs" />
@@ -80,11 +79,8 @@
     <Compile Include="..\scripts\MapEditPaint.cs" Link="scripts\MapEditPaint.cs" />
     <Compile Include="..\scripts\EditorSnapshot.cs" Link="scripts\EditorSnapshot.cs" />
     <Compile Include="..\scripts\Tutorial\Tutorial.cs" Link="scripts\Tutorial\Tutorial.cs" />
-    <Compile Include="..\scripts\Tutorial\Beat.cs" Link="scripts\Tutorial\Beat.cs" />
-    <Compile Include="..\scripts\Tutorial\TutorialValidator.cs" Link="scripts\Tutorial\TutorialValidator.cs" />
-    <Compile Include="..\scripts\Tutorial\TutorialPlayer.cs" Link="scripts\Tutorial\TutorialPlayer.cs" />
-    <Compile Include="..\scripts\Tutorial\TutorialGatedHexMapView.cs" Link="scripts\Tutorial\TutorialGatedHexMapView.cs" />
-    <Compile Include="..\scripts\Tutorial\TutorialGatedHudView.cs" Link="scripts\Tutorial\TutorialGatedHudView.cs" />
+    <Compile Include="..\scripts\Tutorial\ReplayDrivenAi.cs" Link="scripts\Tutorial\ReplayDrivenAi.cs" />
+    <Compile Include="..\scripts\Tutorial\TutorialPreview.cs" Link="scripts\Tutorial\TutorialPreview.cs" />
   </ItemGroup>
 
 </Project>

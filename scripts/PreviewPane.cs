@@ -1,221 +1,60 @@
-using System.Collections.Generic;
 using Godot;
 
 /// <summary>
-/// Preview mode chrome. Phase 3c: builds a transient GameController +
-/// fresh HudView + gated view wrappers when entered (<see cref="Start"/>),
-/// tears it all down when exited (<see cref="Pause"/>). The panel's
-/// HexMapView is shared but re-pointed at a cloned GameState via
-/// <c>HexMapView.Init</c> so the controller's mutations don't touch
-/// the editor's draft. On Pause the panel re-pushes its draft state
-/// to repaint the map back to authored view.
+/// Preview-mode chrome. The dev plays as player 0 (Red); a
+/// <c>ReplayDrivenAi</c> chooser plays the other five players'
+/// recorded moves through the standard AI step machine. Mismatched
+/// inputs are rejected by a <c>humanActionValidator</c> hook on
+/// the <see cref="GameController"/>.
 ///
-/// Phase 13 adds the scrubber chrome on top of this.
+/// Pre-rewrite this class wrapped the real views in
+/// <c>TutorialGatedHexMapView</c> / <c>TutorialGatedHudView</c> and
+/// drove a hand-authored Beat list through <c>TutorialPlayer</c>.
+/// That whole approach is gone — see plan: replay-driven tutorial
+/// system.
 /// </summary>
 public sealed partial class PreviewPane : Control
 {
-    private MapEditorPanel _panel = null!;
+    private MapEditorPanel? _panel;
 
-    private TutorialPlayer? _player;
-    private HudView? _hud;
-    private TutorialGatedHexMapView? _gatedMap;
-    private TutorialGatedHudView? _gatedHud;
-    private GameController? _controller;
-    private GameState? _previewState;
-    private HexDragMode _savedDragMode;
-    private bool _running;
-
-    public override void _Ready()
-    {
-        AnchorLeft = 0f;
-        AnchorTop = 0f;
-        AnchorRight = 1f;
-        AnchorBottom = 1f;
-        MouseFilter = MouseFilterEnum.Ignore;
-        Size = GetViewport().GetVisibleRect().Size;
-        GetViewport().SizeChanged += OnViewportResized;
-    }
-
-    private void OnViewportResized()
-    {
-        Size = GetViewport().GetVisibleRect().Size;
-    }
-
-    /// <summary>
-    /// Called once by <see cref="TutorialBuilderScene._Ready"/> to hand
-    /// the pane the panel it should bind to. The panel exposes its
-    /// own <c>Players</c> roster — PreviewPane uses
-    /// <c>_panel.BuildLiveState()</c> which threads them in.
-    /// </summary>
-    public void Configure(MapEditorPanel panel)
+    public void SetPanel(MapEditorPanel panel)
     {
         _panel = panel;
     }
 
-    /// <summary>
-    /// Enter Preview mode with the given Tutorial. Builds the transient
-    /// controller graph, repaints the shared HexMapView from the cloned
-    /// state, and calls <c>controller.StartGame()</c>. Idempotent — a
-    /// second Start without a Pause in between tears down the previous
-    /// session first.
-    /// </summary>
     public void Start(Tutorial tutorial)
     {
-        if (_running) Pause();
-
-        // 1. Build a fresh GameState from the panel's draft. Cloning
-        //    happens implicitly: BuildLiveState wraps the panel's grid
-        //    in a new GameState pointing at the same HexGrid object.
-        //    For 3c minimal scope we accept that the controller mutates
-        //    the panel's grid directly during Preview; on Pause we
-        //    re-init HexMapView with the panel's draft re-pushed to
-        //    snap visuals back. (Mutations are limited to End Turn,
-        //    which only advances TurnState — no tile changes — so
-        //    nothing actually needs reverting in 3c. Phase 4+ will
-        //    revisit cloning when Move/BuyPeasant beats land.)
-        _previewState = _panel.BuildLiveState();
-        var session = new SessionState();
-
-        // 2. Build the transient HudView. Position at the default
-        //    y=0..60 strip; TutorialBuilderScene hides the topbar
-        //    while in Preview to avoid overlap.
-        _hud = new HudView();
-        AddChild(_hud);
-
-        // 3. Build TutorialPlayer + gated wrappers.
-        _player = new TutorialPlayer(tutorial);
-        _gatedMap = new TutorialGatedHexMapView(_panel.Map, _player);
-        _gatedHud = new TutorialGatedHudView(_hud, _player);
-
-        // 4. Toast on rejection / completion. Also auto-orient the dev
-        //    after each beat advance — see ApplyAutoOrientForNextBeat.
-        _player.PlayerActionRejected += OnPlayerActionRejected;
-        _player.TutorialFinished += OnTutorialFinished;
-        _player.BeatApplied += OnBeatApplied;
-
-        // 5. Construct the transient GameController. AiChooser is the
-        //    player's (3c always falls through to AiDispatcher).
-        //    SynchronousAiPacer per spec — Preview wants snappy
-        //    step-by-step.
-        _controller = new GameController(
-            _previewState,
-            session,
-            _gatedMap,
-            _gatedHud,
-            seed: _panel.CurrentSeed,
-            aiChooser: _player.AiChooser,
-            aiPacer: new SynchronousAiPacer());
-
-        // 6. Force HexMapView's DragMode to Pan so tile clicks fire
-        //    TileClicked (Paint mode would route them into the paint-
-        //    stroke path, which never raises TileClicked — so the
-        //    gated wrapper would never see the click and no soft-
-        //    reject toast would appear). Restored on Pause.
-        _savedDragMode = _panel.Map.DragMode;
-        _panel.Map.DragMode = HexDragMode.Pan;
-
-        // 7. Re-point the shared HexMapView at the preview state and
-        //    fire StartGame. The controller's RefreshViews call inside
-        //    StartGame repaints everything from the new state.
-        _panel.Map.Init(_previewState);
-        _controller.StartGame();
-
-        // 8. Initial orient: if the very first beat is a tile-action,
-        //    pre-select its territory so the dev sees the relevant CTA
-        //    immediately (no "click capital first" friction).
-        ApplyAutoOrientForNextBeat();
-
-        _running = true;
+        // Preview wiring: instantiate ReplayDrivenAi + TutorialPreview
+        // + a GameController with player 0 as Human and players 1-5
+        // as Heuristic (chooser overridden to the replay-driven one).
+        // To be implemented.
     }
 
-    /// <summary>
-    /// Exit Preview mode. Unsubscribes the wrappers from the panel's
-    /// real HexMapView (so stale handlers don't fire when the dev
-    /// clicks during Map Edit / Build), removes the transient HudView
-    /// from the scene, and restores the panel's view of its draft.
-    /// </summary>
     public void Pause()
     {
-        if (!_running) return;
+        // Tear down the preview controller and restore the panel's
+        // draft view. To be implemented.
+    }
 
-        _gatedMap?.Unbind();
-        _gatedHud?.Unbind();
+    public override void _Ready()
+    {
+        CustomMinimumSize = new Vector2(220, 0);
 
-        if (_player != null)
+        var heading = new Label
         {
-            _player.PlayerActionRejected -= OnPlayerActionRejected;
-            _player.TutorialFinished -= OnTutorialFinished;
-            _player.BeatApplied -= OnBeatApplied;
-        }
+            Text = "Preview Mode",
+            Position = new Vector2(12, 8),
+        };
+        heading.AddThemeFontSizeOverride("font_size", 18);
+        AddChild(heading);
 
-        if (_hud != null)
+        var placeholder = new Label
         {
-            RemoveChild(_hud);
-            _hud.QueueFree();
-            _hud = null;
-        }
-
-        // Restore the panel's view of its draft. SnapshotDraft +
-        // RestoreDraft round-trips the panel's grid/water/territories
-        // and re-pushes them to HexMapView via PushState — so even if
-        // the controller mutated tile state, the panel's authored
-        // view is back on screen.
-        EditorSnapshot snap = _panel.SnapshotDraft();
-        _panel.RestoreDraft(snap);
-
-        // Restore the DragMode that was active before Preview started.
-        _panel.Map.DragMode = _savedDragMode;
-
-        _controller = null;
-        _gatedMap = null;
-        _gatedHud = null;
-        _player = null;
-        _previewState = null;
-        _running = false;
-    }
-
-    private void OnPlayerActionRejected(Beat? expected, string reason)
-    {
-        // The HUD shows the toast. PlayerActionRejected may also fire
-        // when the gated wrapper rejects a HUD click — the wrapper's
-        // ShowTutorialMessage path calls back into _hud anyway.
-        _hud?.ShowTutorialMessage(reason);
-    }
-
-    private void OnTutorialFinished()
-    {
-        _hud?.ShowTutorialMessage("Tutorial complete.");
-    }
-
-    private void OnBeatApplied(int beatIndex)
-    {
-        // Each beat advance can change which territory is the focus of
-        // the next action; re-orient the dev.
-        ApplyAutoOrientForNextBeat();
-    }
-
-    /// <summary>
-    /// If the next expected beat is a tile-action (currently only
-    /// BuyPeasantBeat — Phase 5/6 add Move/BuildTower), pre-select the
-    /// territory containing the beat's anchor so the relevant HUD
-    /// buttons (Buy Peasant, etc.) become visible without the dev
-    /// needing to click the capital first. Idempotent and silent when
-    /// the next beat doesn't anchor on a tile.
-    /// </summary>
-    private void ApplyAutoOrientForNextBeat()
-    {
-        if (_controller == null || _previewState == null || _player == null) return;
-
-        if (_player.NextExpectedPlayerBeat is BuyPeasantBeat bpb)
-        {
-            if (bpb.Actor < 0 || bpb.Actor >= _previewState.Players.Count) return;
-            Color actorColor = _previewState.Players[bpb.Actor].Color;
-            Territory? owning = TerritoryLookup.FindOwnedContaining(
-                _previewState.Territories, actorColor, bpb.At);
-            if (owning != null)
-            {
-                _controller.SelectTerritoryForTutorial(owning);
-            }
-        }
+            Text = "Preview wiring is being\nimplemented. You will play\nas Red; the AI will replay\nthe other recorded moves.",
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            Position = new Vector2(12, 40),
+            Size = new Vector2(200, 200),
+        };
+        AddChild(placeholder);
     }
 }

@@ -1,352 +1,52 @@
-using System.Collections.Generic;
 using Godot;
 
 /// <summary>
-/// Build mode chrome. Phase 3b shipped right strip with "Add EndTurn" +
-/// inspector + bottom timeline. Phase 4 adds "Add BuyPeasant" with a
-/// tile-pick state (`_pendingPick`); next Map.CoordClicked while in
-/// pick mode appends a BuyPeasantBeat at that coord. Phase 5 adds
-/// MoveBeat (Src/Dst two-click pick), Phase 6 adds BuildTower; Phase
-/// 7+ adds overlay-beat editors (Prompt / Highlight / CameraFocus);
-/// Phase 11 adds editing / reorder / delete + the kind-specific
-/// inspector + the post-beat state cache; Phase 12 adds validation
-/// banners; Phase 14 adds keyboard shortcuts + ESC ladder.
+/// Record-mode chrome. The dev plays the game as all six humans;
+/// every state-mutating action is captured automatically into the
+/// controller's replay log via the normal recording pipeline. This
+/// pane is a thin sidebar with Stop / Save / Discard buttons.
 ///
-/// In-memory <see cref="Tutorial"/> ownership lives here for the
-/// session. <see cref="TutorialBuilderScene"/> reads it via
-/// <see cref="CurrentTutorial"/> on save and writes it via
-/// <see cref="SetTutorial"/> on load.
+/// Pre-rewrite this class authored individual <c>Beat</c> records
+/// from a palette UI. That whole approach is gone — the Record mode
+/// now spins up a real <see cref="GameController"/> with six Human
+/// players and lets the controller's <c>_replayBeats</c> capture
+/// the script. See plan: replay-driven tutorial system.
 /// </summary>
-public sealed partial class BuildPane : Control
+public partial class BuildPane : VBoxContainer
 {
-    private const float TopbarHeight = 60f;          // matches HudView.HudHeight
-    private const float TimelineHeight = 80f;
-    private const float RightPanelWidth = 240f;
+    private MapEditorPanel? _panel;
 
-    private MapEditorPanel _panel = null!;
-    private Tutorial _tutorial = new Tutorial();
-    private int _selectedBeatIndex = -1;             // -1 = none
-
-    private HBoxContainer _timelineHbox = null!;
-    private VBoxContainer _inspectorBox = null!;
-    private Label _inspectorTurn = null!;
-    private Label _inspectorActor = null!;
-
-    private enum PickMode { None, BuyPeasantAt }
-    private PickMode _pendingPick = PickMode.None;
-
-    /// <summary>Current authored Tutorial. Read by save flow.</summary>
-    public Tutorial CurrentTutorial => _tutorial;
-
-    /// <summary>Replace the in-memory Tutorial (used by load flow).</summary>
-    public void SetTutorial(Tutorial tutorial)
-    {
-        _tutorial = tutorial;
-        _selectedBeatIndex = -1;
-        if (IsInsideTree()) RefreshUI();
-    }
-
-    /// <summary>Called once by TutorialBuilderScene before AddChild.
-    /// Phase 4 consumes the panel reference for the "Add BuyPeasant"
-    /// tile-pick flow (subscribes to the panel's HexMapView click event).
-    /// Phase 11 will additionally use it for the state-after-beat-N cache.</summary>
+    /// <summary>
+    /// Wire to the shared <see cref="MapEditorPanel"/> instance so
+    /// Record mode can build a live <see cref="GameState"/> from the
+    /// painted draft when the dev starts recording.
+    /// </summary>
     public void SetPanel(MapEditorPanel panel)
     {
         _panel = panel;
     }
 
+    /// <summary>
+    /// In-memory tutorial captured by the most recent recording session,
+    /// or null if recording hasn't happened yet. Consumed by Preview
+    /// mode and by the Save Tutorial path.
+    /// </summary>
+    public Tutorial? CurrentTutorial { get; private set; }
+
     public override void _Ready()
     {
-        // Root: full-viewport, click-pass-through (children opt in to
-        // clicks via MouseFilter = Stop on the strip / timeline).
-        // A Control direct child of a Node2D does NOT auto-fill the
-        // viewport (parent has no rect size to anchor against), so we
-        // set Size explicitly. Subscribe to viewport resize so the
-        // layout reflows when the window changes.
-        AnchorLeft = 0f;
-        AnchorTop = 0f;
-        AnchorRight = 1f;
-        AnchorBottom = 1f;
-        MouseFilter = MouseFilterEnum.Ignore;
-        Size = GetViewport().GetVisibleRect().Size;
-        GetViewport().SizeChanged += OnViewportResized;
+        CustomMinimumSize = new Vector2(220, 0);
+        AddThemeConstantOverride("separation", 8);
 
-        BuildRightStrip();
-        BuildTimeline();
-        RefreshUI();
-    }
+        var heading = new Label { Text = "Record Mode" };
+        heading.AddThemeFontSizeOverride("font_size", 18);
+        AddChild(heading);
 
-    private void OnViewportResized()
-    {
-        Size = GetViewport().GetVisibleRect().Size;
-    }
-
-    private void BuildRightStrip()
-    {
-        // Strip extends full height to the viewport bottom (not stopping
-        // above the timeline) so the bottom-right corner is covered. The
-        // timeline's OffsetRight = -RightPanelWidth keeps it from
-        // overlapping the strip.
-        var strip = new Control
+        var placeholder = new Label
         {
-            AnchorLeft = 1f,
-            AnchorRight = 1f,
-            AnchorTop = 0f,
-            AnchorBottom = 1f,
-            OffsetLeft = -RightPanelWidth,
-            OffsetRight = 0f,
-            OffsetTop = TopbarHeight,
-            OffsetBottom = 0f,
-            MouseFilter = MouseFilterEnum.Stop,
+            Text = "Recording wiring is being\nimplemented. Play the game\nas all six humans;\nevery action is captured.",
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
         };
-        AddChild(strip);
-
-        var bg = new ColorRect
-        {
-            Color = new Color(0f, 0f, 0f, 0.85f),
-            AnchorLeft = 0f,
-            AnchorRight = 1f,
-            AnchorTop = 0f,
-            AnchorBottom = 1f,
-            MouseFilter = MouseFilterEnum.Ignore,
-        };
-        strip.AddChild(bg);
-
-        var content = new VBoxContainer
-        {
-            AnchorLeft = 0f,
-            AnchorRight = 1f,
-            AnchorTop = 0f,
-            AnchorBottom = 1f,
-            OffsetLeft = 12f,
-            OffsetRight = -12f,
-            OffsetTop = 12f,
-            OffsetBottom = -12f,
-        };
-        content.AddThemeConstantOverride("separation", 12);
-        strip.AddChild(content);
-
-        var addEndTurnBtn = new Button
-        {
-            Text = "Add EndTurn",
-            FocusMode = FocusModeEnum.None,
-        };
-        addEndTurnBtn.AddThemeFontSizeOverride("font_size", 18);
-        addEndTurnBtn.Pressed += OnAddEndTurnPressed;
-        AudioBus.AttachClick(addEndTurnBtn);
-        content.AddChild(addEndTurnBtn);
-
-        var addBuyPeasantBtn = new Button
-        {
-            Text = "Add BuyPeasant",
-            FocusMode = FocusModeEnum.None,
-        };
-        addBuyPeasantBtn.AddThemeFontSizeOverride("font_size", 18);
-        addBuyPeasantBtn.Pressed += OnAddBuyPeasantPressed;
-        AudioBus.AttachClick(addBuyPeasantBtn);
-        content.AddChild(addBuyPeasantBtn);
-
-        // Spacer expands to fill the gap so the inspector pins to the
-        // bottom of the strip — separates the "add a beat" action area
-        // (top) from the "selected-beat data" area (bottom).
-        var spacer = new Control
-        {
-            SizeFlagsVertical = SizeFlags.ExpandFill,
-        };
-        content.AddChild(spacer);
-
-        // Inspector: shown only when a beat is selected.
-        _inspectorBox = new VBoxContainer { Visible = false };
-        _inspectorBox.AddThemeConstantOverride("separation", 4);
-        content.AddChild(_inspectorBox);
-
-        var inspectorTitle = new Label
-        {
-            Text = "Selected beat",
-        };
-        inspectorTitle.AddThemeFontSizeOverride("font_size", 16);
-        inspectorTitle.AddThemeColorOverride("font_color", new Color(1f, 1f, 1f, 0.7f));
-        _inspectorBox.AddChild(inspectorTitle);
-
-        _inspectorTurn = new Label();
-        _inspectorTurn.AddThemeFontSizeOverride("font_size", 14);
-        _inspectorBox.AddChild(_inspectorTurn);
-
-        _inspectorActor = new Label();
-        _inspectorActor.AddThemeFontSizeOverride("font_size", 14);
-        _inspectorBox.AddChild(_inspectorActor);
-    }
-
-    private void BuildTimeline()
-    {
-        var strip = new Control
-        {
-            AnchorLeft = 0f,
-            AnchorRight = 1f,
-            AnchorTop = 1f,
-            AnchorBottom = 1f,
-            OffsetLeft = 0f,
-            OffsetRight = -RightPanelWidth,
-            OffsetTop = -TimelineHeight,
-            OffsetBottom = 0f,
-            MouseFilter = MouseFilterEnum.Stop,
-        };
-        AddChild(strip);
-
-        var bg = new ColorRect
-        {
-            Color = new Color(0f, 0f, 0f, 0.85f),
-            AnchorLeft = 0f,
-            AnchorRight = 1f,
-            AnchorTop = 0f,
-            AnchorBottom = 1f,
-            MouseFilter = MouseFilterEnum.Ignore,
-        };
-        strip.AddChild(bg);
-
-        var scroll = new ScrollContainer
-        {
-            AnchorLeft = 0f,
-            AnchorRight = 1f,
-            AnchorTop = 0f,
-            AnchorBottom = 1f,
-            OffsetLeft = 12f,
-            OffsetRight = -12f,
-            OffsetTop = 12f,
-            OffsetBottom = -12f,
-            HorizontalScrollMode = ScrollContainer.ScrollMode.Auto,
-            VerticalScrollMode = ScrollContainer.ScrollMode.Disabled,
-        };
-        strip.AddChild(scroll);
-
-        _timelineHbox = new HBoxContainer();
-        _timelineHbox.AddThemeConstantOverride("separation", 8);
-        scroll.AddChild(_timelineHbox);
-    }
-
-    private void RefreshUI()
-    {
-        // Repopulate timeline.
-        foreach (Node child in _timelineHbox.GetChildren())
-        {
-            child.QueueFree();
-        }
-        for (int i = 0; i < _tutorial.Beats.Count; i++)
-        {
-            int captured = i;
-            Beat beat = _tutorial.Beats[i];
-            string label = beat switch
-            {
-                BuyPeasantBeat bpb => FormatBuyPeasantChip(bpb),
-                _                  => $"#{beat.Index} T{beat.Turn} A{beat.Actor} {beat.Kind}",
-            };
-            var chip = new Button
-            {
-                Text = label,
-                FocusMode = FocusModeEnum.None,
-                Disabled = (i == _selectedBeatIndex),  // visual selection
-            };
-            chip.AddThemeFontSizeOverride("font_size", 14);
-            chip.Pressed += () => OnBeatChipPressed(captured);
-            AudioBus.AttachClick(chip);
-            _timelineHbox.AddChild(chip);
-        }
-
-        // Update inspector.
-        if (_selectedBeatIndex >= 0 && _selectedBeatIndex < _tutorial.Beats.Count)
-        {
-            Beat beat = _tutorial.Beats[_selectedBeatIndex];
-            _inspectorTurn.Text = $"Turn: {beat.Turn}";
-            _inspectorActor.Text = $"Actor: {beat.Actor}";
-            _inspectorBox.Visible = true;
-        }
-        else
-        {
-            _inspectorBox.Visible = false;
-        }
-    }
-
-    private void OnAddEndTurnPressed()
-    {
-        // Phase 3b hardcodes (Turn=1, Actor=0). Phase 10 introduces
-        // the multi-turn lane state machine that picks the right
-        // (Turn, Actor) based on the current authoring lane.
-        var beats = new List<Beat>(_tutorial.Beats)
-        {
-            new EndTurnBeat
-            {
-                Index = _tutorial.Beats.Count,
-                Turn = 1,
-                Actor = 0,
-            },
-        };
-        _tutorial = new Tutorial
-        {
-            Title = _tutorial.Title,
-            StartTurn = _tutorial.StartTurn,
-            StartPlayer = _tutorial.StartPlayer,
-            Beats = beats,
-        };
-        RefreshUI();
-    }
-
-    private void OnBeatChipPressed(int index)
-    {
-        _selectedBeatIndex = (index == _selectedBeatIndex) ? -1 : index;
-        RefreshUI();
-    }
-
-    private static string FormatBuyPeasantChip(BuyPeasantBeat bpb)
-    {
-        // Display offset (col, row) coords to match the hex hover
-        // tooltip's format ("#lex (col C, row R)" — see HexHoverTooltip).
-        // The on-disk JSON still uses axial Q/R; this is a UI-only
-        // re-projection.
-        (int col, int row) = bpb.At.ToOffset();
-        return $"#{bpb.Index} T{bpb.Turn} A{bpb.Actor} BuyPeasant (col {col}, row {row})";
-    }
-
-    private void OnAddBuyPeasantPressed()
-    {
-        // Idempotent: re-pressing while already in pick mode is a no-op
-        // (the existing subscription remains active). Cancelling pick
-        // mode (ESC, switch mode) is a Phase 14 polish item; for Phase
-        // 4 the dev commits the pick by clicking a tile.
-        if (_pendingPick == PickMode.BuyPeasantAt) return;
-        _pendingPick = PickMode.BuyPeasantAt;
-        _panel.Map.CoordClicked += OnPickCoordClicked;
-    }
-
-    private void OnPickCoordClicked(HexCoord coord)
-    {
-        if (_pendingPick != PickMode.BuyPeasantAt) return;
-
-        // Phase 4 accepts any coord (no friendly-territory validation
-        // here — Phase 12 surfaces invalid At as a warning). Trust the
-        // dev to click a tile they own.
-        var beats = new List<Beat>(_tutorial.Beats)
-        {
-            new BuyPeasantBeat
-            {
-                Index = _tutorial.Beats.Count,
-                Turn = 1,
-                Actor = 0,
-                At = coord,
-            },
-        };
-        _tutorial = new Tutorial
-        {
-            Title = _tutorial.Title,
-            StartTurn = _tutorial.StartTurn,
-            StartPlayer = _tutorial.StartPlayer,
-            Beats = beats,
-        };
-
-        // Exit pick mode + unsubscribe so subsequent map clicks pass
-        // through to whatever owns selection in Build (currently nobody).
-        _pendingPick = PickMode.None;
-        _panel.Map.CoordClicked -= OnPickCoordClicked;
-
-        RefreshUI();
+        AddChild(placeholder);
     }
 }

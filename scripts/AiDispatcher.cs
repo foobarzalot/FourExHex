@@ -38,7 +38,6 @@ public static class AiDispatcher
         {
             AiKind.Random => RandomAi.ChooseNextAction(state, forPlayer, visitedCapitals, rng),
             AiKind.Heuristic => HeuristicAi.ChooseNextAction(state, forPlayer, visitedCapitals, rng),
-            AiKind.Tutorial => TutorialAi.ChooseNextAction(state, forPlayer, visitedCapitals, rng),
             _ => null,
         };
     }

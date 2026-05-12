@@ -30,7 +30,6 @@ public partial class MainMenuScene : Control
     private Control? _landingPanel;
     private Control? _playConfigPanel;
     private Button? _landingPlayButton;
-    private Button? _landingTutorialButton;
     private Button? _landingLoadButton;
 
     private LineEdit? _seedField;
@@ -131,17 +130,9 @@ public partial class MainMenuScene : Control
         AudioBus.AttachClick(_landingPlayButton);
         panel.AddChild(_landingPlayButton);
 
-        _landingTutorialButton = new Button { Text = "Play Tutorial" };
-        _landingTutorialButton.AddThemeFontSizeOverride("font_size", 26);
-        _landingTutorialButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap));
-        _landingTutorialButton.Size = new Vector2(buttonW, buttonH);
-        _landingTutorialButton.Pressed += OnPlayTutorialPressed;
-        AudioBus.AttachClick(_landingTutorialButton);
-        panel.AddChild(_landingTutorialButton);
-
         _landingLoadButton = new Button { Text = "Load Game" };
         _landingLoadButton.AddThemeFontSizeOverride("font_size", 26);
-        _landingLoadButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 2);
+        _landingLoadButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap));
         _landingLoadButton.Size = new Vector2(buttonW, buttonH);
         _landingLoadButton.Pressed += OnLoadPressed;
         AudioBus.AttachClick(_landingLoadButton);
@@ -152,7 +143,7 @@ public partial class MainMenuScene : Control
 
         var mapEditorButton = new Button { Text = "Map Editor" };
         mapEditorButton.AddThemeFontSizeOverride("font_size", 26);
-        mapEditorButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 3);
+        mapEditorButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 2);
         mapEditorButton.Size = new Vector2(buttonW, buttonH);
         mapEditorButton.Pressed += OnMapEditorPressed;
         AudioBus.AttachClick(mapEditorButton);
@@ -166,7 +157,7 @@ public partial class MainMenuScene : Control
             var tutorialBuilderButton = new Button { Text = "Tutorial Builder" };
             tutorialBuilderButton.AddThemeFontSizeOverride("font_size", 26);
             tutorialBuilderButton.Position = new Vector2(
-                buttonInset, firstButtonY + (buttonH + buttonGap) * 4);
+                buttonInset, firstButtonY + (buttonH + buttonGap) * 3);
             tutorialBuilderButton.Size = new Vector2(buttonW, buttonH);
             tutorialBuilderButton.Pressed += OnTutorialBuilderPressed;
             AudioBus.AttachClick(tutorialBuilderButton);
@@ -256,11 +247,6 @@ public partial class MainMenuScene : Control
                 AiKind.Human => HumanId,
                 AiKind.Random => RandomAiId,
                 AiKind.Heuristic => HeuristicAiId,
-                // Tutorial isn't selectable here — coming back to the
-                // menu after a tutorial run, show Heuristic in the
-                // dropdown so the user sees a sensible AI default
-                // rather than silently flipping to Human.
-                AiKind.Tutorial => HeuristicAiId,
                 _ => HumanId,
             };
             // Selected is an index; find the entry that matches the
@@ -435,31 +421,6 @@ public partial class MainMenuScene : Control
     private void OnPlayPressed()
     {
         ShowPlayConfig();
-    }
-
-    private void OnPlayTutorialPressed()
-    {
-        // Fixed roster: red is the human, everyone else is the
-        // scripted TutorialAi (currently passive — just ends turn).
-        // Bypasses the play-config panel entirely.
-        GameSettings.PlayerKinds[0] = AiKind.Human;
-        for (int i = 1; i < GameSettings.PlayerKinds.Length; i++)
-        {
-            GameSettings.PlayerKinds[i] = AiKind.Tutorial;
-        }
-
-        try
-        {
-            LoadedSave loaded = _saveStore.LoadBundledMap("Tutorial");
-            LoadRequest.Pending = loaded;
-            GameSettings.MasterSeed = loaded.MasterSeed;
-        }
-        catch (System.Exception ex)
-        {
-            ShowLoadError($"Could not load tutorial map: {ex.Message}");
-            return;
-        }
-        GetTree().ChangeSceneToFile("res://scenes/main.tscn");
     }
 
     private void OnMapEditorPressed()

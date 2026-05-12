@@ -17,11 +17,6 @@ public partial class Main : Node2D
     private SessionState _session = null!;
     private int _maxTurnNumber;
 
-    // Whether a tutorial popup is currently up. While true, the next
-    // mouse-button or key press dismisses it and clears the flag.
-    private IHudView? _hudForTutorialDismiss;
-    private bool _tutorialPopupVisible;
-
     /// <summary>
     /// Name of the starting map this game descended from, or null for
     /// procedural (Random Map) games. Carried into every save so a
@@ -265,16 +260,6 @@ public partial class Main : Node2D
             ? $"Map: {_originMapName}"
             : $"Seed: {_controller.MasterSeed}";
         hud.SetMapLabel(mapLabel);
-
-        // Tutorial intro popup. We treat "any TutorialAi player" as the
-        // signal that this is a tutorial run — MainMenuScene's Play
-        // Tutorial button is the only writer of that kind.
-        if (!diagnosticMode && IsTutorialGame())
-        {
-            _hudForTutorialDismiss = hud;
-            _tutorialPopupVisible = true;
-            hud.ShowTutorialMessage("Welcome to FourExHex!");
-        }
     }
 
     /// <summary>
@@ -305,35 +290,6 @@ public partial class Main : Node2D
         GetTree().ReloadCurrentScene();
     }
 
-    private bool IsTutorialGame()
-    {
-        foreach (Player p in _players)
-        {
-            if (p.Kind == AiKind.Tutorial) return true;
-        }
-        return false;
-    }
-
-    /// <summary>
-    /// While the tutorial popup is up, any mouse-button press or key
-    /// press counts as acknowledgement and dismisses it. The popup
-    /// itself is MouseFilter=Ignore, so the underlying click still
-    /// flows through to the map / HUD as normal.
-    /// </summary>
-    public override void _Input(InputEvent @event)
-    {
-        if (!_tutorialPopupVisible) return;
-        bool dismiss = @event switch
-        {
-            InputEventMouseButton mb => mb.Pressed,
-            InputEventKey k => k.Pressed && !k.Echo,
-            _ => false,
-        };
-        if (!dismiss) return;
-        _tutorialPopupVisible = false;
-        _hudForTutorialDismiss?.HideTutorialMessage();
-        _hudForTutorialDismiss = null;
-    }
 
     /// <summary>
     /// Autosave handler. Captures the current game state into the

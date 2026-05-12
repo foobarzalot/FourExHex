@@ -91,8 +91,12 @@ public class GameController
         Func<GameState, Color, HashSet<HexCoord>, Random, AiAction?>? aiChooser = null,
         IAiPacer? aiPacer = null,
         int maxTurnNumber = int.MaxValue,
-        Replay? loadedReplay = null)
+        Replay? loadedReplay = null,
+        Func<ReplayBeat, bool>? humanActionValidator = null,
+        bool previewMode = false)
     {
+        _humanActionValidator = humanActionValidator;
+        _previewMode = previewMode;
         _state = state;
         _session = session;
         _map = map;
@@ -314,6 +318,17 @@ public class GameController
     // covering both game and session state changes in a single entry.
     private bool _handlerMutatedGame;
 
+    // Tutorial Preview hooks. _humanActionValidator (set via the
+    // constructor's humanActionValidator param) gates every
+    // state-mutating human input: input handlers build the proposed
+    // ReplayBeat and call this BEFORE mutating; false → abort.
+    // _previewMode (set via the previewMode param) parallels
+    // _replayMode for the RecordBeat gate but does NOT block input
+    // handlers — Preview wants player-0 clicks to flow through.
+    private readonly Func<ReplayBeat, bool>? _humanActionValidator;
+    private readonly bool _previewMode;
+    public bool IsPreviewMode => _previewMode;
+
     // --- Replay recording / playback ------------------------------------
     // The replay log lives parallel to the per-turn undo stack: every
     // state-mutating action by every player (human and AI) appends a
@@ -380,6 +395,12 @@ public class GameController
     /// </summary>
     private void RecordBeat(ReplayBeat beat)
     {
+        // Preview mode also suppresses recording — the script lives
+        // in ReplayDrivenAi + TutorialPreview, not in _replayBeats.
+        // Leaving this guard inside the method (rather than at every
+        // call site) means new RecordBeat callers don't need to
+        // remember the gate.
+        if (_previewMode) return;
         ReplayBeat stamped = beat with
         {
             Index = _replayBeats.Count,
@@ -536,6 +557,12 @@ public class GameController
 
         Color currentColor = _state.Turns.CurrentPlayer.Color;
         if (tile.Color != currentColor) return;
+
+        if (_humanActionValidator != null && !_humanActionValidator(
+            new ReplayLongPressRallyBeat { Target = tile.Coord }))
+        {
+            return;
+        }
 
         Territory? territory = _map.TerritoryAt(tile.Coord);
         if (territory == null || territory.Owner != currentColor) return;
@@ -744,9 +771,16 @@ public class GameController
     {
         if (_session.SelectedTerritory == null) return;
 
-        _handlerMutatedGame = true;
-
         HexCoord capital = _session.SelectedTerritory.Capital!.Value;
+        if (_humanActionValidator != null && !_humanActionValidator(
+            new ReplayBuyBeat { Capital = capital, To = destination, Level = level }))
+        {
+            CancelPendingAction();
+            RefreshViews();
+            return;
+        }
+
+        _handlerMutatedGame = true;
         _pendingHumanBeat = new ReplayBuyBeat
         {
             Capital = capital,
@@ -825,6 +859,14 @@ public class GameController
     private void ExecuteMove(HexCoord source, HexCoord destination)
     {
         if (_session.SelectedTerritory == null) return;
+
+        if (_humanActionValidator != null && !_humanActionValidator(
+            new ReplayMoveBeat { From = source, To = destination }))
+        {
+            CancelPendingAction();
+            RefreshViews();
+            return;
+        }
 
         _handlerMutatedGame = true;
         _pendingHumanBeat = new ReplayMoveBeat { From = source, To = destination };
@@ -930,9 +972,16 @@ public class GameController
     {
         if (_session.SelectedTerritory == null) return;
 
-        _handlerMutatedGame = true;
-
         HexCoord capital = _session.SelectedTerritory.Capital!.Value;
+        if (_humanActionValidator != null && !_humanActionValidator(
+            new ReplayBuildTowerBeat { Capital = capital, To = destination }))
+        {
+            CancelPendingAction();
+            RefreshViews();
+            return;
+        }
+
+        _handlerMutatedGame = true;
         _pendingHumanBeat = new ReplayBuildTowerBeat
         {
             Capital = capital,
@@ -1076,6 +1125,10 @@ public class GameController
     {
         if (_replayMode) return;
         if (!_session.PendingDefeatScreen.HasValue) return;
+        if (_humanActionValidator != null && !_humanActionValidator(new ReplayDismissDefeatBeat()))
+        {
+            return;
+        }
         RecordBeat(new ReplayDismissDefeatBeat());
         _session.PendingDefeatScreen = null;
         RefreshViews();
@@ -1511,6 +1564,10 @@ public class GameController
     {
         if (_replayMode) return;
         if (_session.IsGameOver) return;
+        if (_humanActionValidator != null && !_humanActionValidator(new ReplayEndTurnBeat()))
+        {
+            return;
+        }
 
         // Claim-victory prompt: a human pressing End Turn while crossing
         // a tier in WinConditionRules.ClaimVictoryThresholdsPercent
@@ -1582,6 +1639,11 @@ public class GameController
         if (_replayMode) return;
         if (!_session.PendingClaimVictory.HasValue) return;
         (Color color, int threshold) = _session.PendingClaimVictory.Value;
+        if (_humanActionValidator != null && !_humanActionValidator(
+            new ReplayClaimVictoryBeat { ThresholdPercent = threshold }))
+        {
+            return;
+        }
         RecordBeat(new ReplayClaimVictoryBeat { ThresholdPercent = threshold });
         _session.PendingClaimVictory = null;
         _session.ClaimVictoryPromptedHighestThreshold[color] = threshold;
@@ -1601,6 +1663,11 @@ public class GameController
         if (_replayMode) return;
         if (!_session.PendingClaimVictory.HasValue) return;
         (Color color, int threshold) = _session.PendingClaimVictory.Value;
+        if (_humanActionValidator != null && !_humanActionValidator(
+            new ReplayDismissClaimBeat { ThresholdPercent = threshold }))
+        {
+            return;
+        }
         RecordBeat(new ReplayDismissClaimBeat { ThresholdPercent = threshold });
         _session.PendingClaimVictory = null;
         _session.ClaimVictoryPromptedHighestThreshold[color] = threshold;
@@ -1975,6 +2042,50 @@ public class GameController
                 }
                 ExecuteAiBuildTower(bt.Capital, bt.Destination);
                 resultCoord = bt.Destination;
+                break;
+            case AiLongPressRallyAction rl:
+                if (!_replayMode)
+                {
+                    RecordBeat(new ReplayLongPressRallyBeat { Target = rl.Target });
+                }
+                ApplyLongPressRally(rl.Target);
+                resultCoord = rl.Target;
+                break;
+            case AiClaimVictoryAction cv:
+            {
+                Color cvColor = _state.Turns.CurrentPlayer.Color;
+                if (!_replayMode)
+                {
+                    RecordBeat(new ReplayClaimVictoryBeat { ThresholdPercent = cv.ThresholdPercent });
+                }
+                _session.ClaimVictoryPromptedHighestThreshold[cvColor] = cv.ThresholdPercent;
+                DeclareWinner(cvColor);
+                ClearUndoAndReplayBookkeeping();
+                resultCoord = _state.Territories
+                    .FirstOrDefault(t => t.Owner == cvColor && t.HasCapital)?.Capital
+                    ?? new HexCoord(0, 0);
+                break;
+            }
+            case AiDismissClaimAction dc:
+            {
+                Color dcColor = _state.Turns.CurrentPlayer.Color;
+                if (!_replayMode)
+                {
+                    RecordBeat(new ReplayDismissClaimBeat { ThresholdPercent = dc.ThresholdPercent });
+                }
+                _session.ClaimVictoryPromptedHighestThreshold[dcColor] = dc.ThresholdPercent;
+                resultCoord = _state.Territories
+                    .FirstOrDefault(t => t.Owner == dcColor && t.HasCapital)?.Capital
+                    ?? new HexCoord(0, 0);
+                break;
+            }
+            case AiDismissDefeatAction _:
+                if (!_replayMode)
+                {
+                    RecordBeat(new ReplayDismissDefeatBeat());
+                }
+                _session.PendingDefeatScreen = null;
+                resultCoord = new HexCoord(0, 0);
                 break;
             default:
                 return;

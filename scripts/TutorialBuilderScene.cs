@@ -96,7 +96,7 @@ public partial class TutorialBuilderScene : Node2D
         AddChild(_buildPane);
 
         _previewPane = new PreviewPane { Visible = false };
-        _previewPane.Configure(_panel);
+        _previewPane.SetPanel(_panel);
         AddChild(_previewPane);
 
         // 5. Topbar starts on MapEdit; field _currentMode already matches.
@@ -139,7 +139,11 @@ public partial class TutorialBuilderScene : Node2D
             // Hand the BuildPane's authored Tutorial to PreviewPane.
             // BuildPane owns the in-memory Tutorial for the session;
             // PreviewPane builds its transient controller around it.
-            _previewPane.Start(_buildPane.CurrentTutorial);
+            Tutorial? authored = _buildPane.CurrentTutorial;
+            if (authored != null)
+            {
+                _previewPane.Start(authored);
+            }
         }
 
         _topBar.SetCurrentMode(mode);
@@ -257,15 +261,22 @@ public partial class TutorialBuilderScene : Node2D
         string name = SaveStore.SanitizeSlotName(_saveDialogLineEdit.Text);
         try
         {
-            // Phase 3b reads the authored Tutorial off the BuildPane
-            // (which owns the in-memory beat list for the session).
-            // 3a wrote an empty Tutorial here unconditionally.
+            // Read the authored Tutorial off the BuildPane (which owns
+            // the in-memory Replay for the session). Bail with a clearer
+            // error if recording hasn't run yet — the new schema
+            // requires a non-null Replay on every saved Tutorial.
+            Tutorial? authored = _buildPane.CurrentTutorial;
+            if (authored == null)
+            {
+                ShowSaveError("Nothing recorded yet. Switch to Record and play a turn first.");
+                return;
+            }
             _saveStore.WriteTutorial(
                 name,
                 _panel.BuildSaveState(),
                 _panel.CurrentSeed,
                 _players,
-                _buildPane.CurrentTutorial);
+                authored);
         }
         catch (System.Exception ex)
         {
@@ -375,12 +386,11 @@ public partial class TutorialBuilderScene : Node2D
         {
             LoadedSave loaded = _saveStore.LoadTutorial(slotName);
             _panel.LoadFromMap(loaded);
-            // 3b: also restore the authored beats into the BuildPane.
-            // A v3 file without a Tutorial block (e.g., a regular
-            // user://maps/ map opened by mistake) yields loaded.Tutorial
-            // == null; reset BuildPane to an empty Tutorial in that
-            // case so a stale beat list doesn't bleed across loads.
-            _buildPane.SetTutorial(loaded.Tutorial ?? new Tutorial());
+            // BuildPane keeps the loaded Tutorial so Preview can play it
+            // back. A v3 file without a Tutorial block leaves the
+            // BuildPane's CurrentTutorial as-is (loaded as a plain map).
+            // Restoring authored beats into a "Record again" workflow is
+            // out of scope for the rewrite — Record mode is start-fresh.
             _loadDialog?.Hide();
         }
         catch (System.Exception ex)

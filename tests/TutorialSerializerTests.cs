@@ -5,11 +5,11 @@ using Xunit;
 namespace FourExHex.Tests;
 
 /// <summary>
-/// Tests for the v2 → v3 format bump and the optional <c>Tutorial</c>
-/// block that JSON v3 introduced (TutorialBuilder Phase 3a).
-/// Existing v2-format save round-tripping is covered by
-/// <see cref="SaveSerializerTests"/>; this class focuses on the v3
-/// additions and the dual-version read path.
+/// Format-bump regression tests + tutorial round-trip for the v4
+/// schema. The v3 Tutorial-Beats system was torn down; tutorials are
+/// now <c>{ Title, Replay }</c> with the Replay block carrying every
+/// recorded action. v2/v3 saves still load (both Tutorial and Replay
+/// null on those).
 /// </summary>
 public class TutorialSerializerTests
 {
@@ -27,19 +27,12 @@ public class TutorialSerializerTests
     [Fact]
     public void CurrentFormatVersion_IsFour()
     {
-        // Bumped to 4 when the replay-recording feature added the
-        // optional `Replay` block. Older saves (v2/v3) still load.
         Assert.Equal(4, SaveSerializer.CurrentFormatVersion);
     }
 
     [Fact]
     public void Deserialize_AcceptsLegacyV2Json()
     {
-        // Synthesize a "v2" JSON by serializing at v3 and rewriting the
-        // version field. v2 → v3 is purely additive (the only difference
-        // is the optional Tutorial block, which v2 files lack); the v3
-        // deserializer must accept v2 input unchanged so existing
-        // user://saves/ autosaves keep loading after the bump.
         (GameState state, IReadOnlyList<Player> players) = BuildMinimalState();
         string json = SaveSerializer.SerializeMap(state, masterSeed: 7, players, "m");
         string v2Json = json.Replace("\"FormatVersion\": 4", "\"FormatVersion\": 2");
@@ -47,30 +40,12 @@ public class TutorialSerializerTests
         LoadedSave loaded = SaveSerializer.Deserialize(v2Json);
 
         Assert.Equal(7, loaded.MasterSeed);
+        Assert.Null(loaded.Tutorial);
+        Assert.Null(loaded.Replay);
     }
 
     [Fact]
-    public void SerializeMap_RoundTripsEmptyTutorial()
-    {
-        (GameState state, IReadOnlyList<Player> players) = BuildMinimalState();
-        var tutorial = new Tutorial
-        {
-            Title = "Intro · The Basics",
-            StartTurn = 1,
-            StartPlayer = 0,
-        };
-
-        string json = SaveSerializer.SerializeMap(state, masterSeed: 7, players, "m", tutorial);
-        LoadedSave loaded = SaveSerializer.Deserialize(json);
-
-        Assert.NotNull(loaded.Tutorial);
-        Assert.Equal("Intro · The Basics", loaded.Tutorial!.Title);
-        Assert.Equal(1, loaded.Tutorial.StartTurn);
-        Assert.Equal(0, loaded.Tutorial.StartPlayer);
-    }
-
-    [Fact]
-    public void SerializeMap_WithoutTutorial_DeserializesToNull()
+    public void SerializeMap_WithoutTutorial_DeserializesToNullTutorial()
     {
         (GameState state, IReadOnlyList<Player> players) = BuildMinimalState();
 
@@ -81,114 +56,59 @@ public class TutorialSerializerTests
     }
 
     [Fact]
-    public void Deserialize_LegacyV2Json_HasNullTutorial()
+    public void SerializeMap_WithTutorialAndReplay_RoundTripsTitleAndReplay()
     {
         (GameState state, IReadOnlyList<Player> players) = BuildMinimalState();
-        string json = SaveSerializer.SerializeMap(state, masterSeed: 7, players, "m");
-        string v2Json = json.Replace("\"FormatVersion\": 4", "\"FormatVersion\": 2");
-
-        LoadedSave loaded = SaveSerializer.Deserialize(v2Json);
-
-        Assert.Null(loaded.Tutorial);
-    }
-
-    [Fact]
-    public void SerializeMap_RoundTripsTutorialWithSingleEndTurnBeat()
-    {
-        (GameState state, IReadOnlyList<Player> players) = BuildMinimalState();
-        var tutorial = new Tutorial
+        GameStateSnapshot snapshot = GameStateSnapshot.Capture(
+            state.Grid, state.Treasury, state.Territories);
+        var beats = new List<ReplayBeat>
         {
-            Title = "EndTurn smoke",
-            Beats = new List<Beat>
-            {
-                new EndTurnBeat { Index = 0, Turn = 1, Actor = 0 },
-            },
+            new ReplayEndTurnBeat { Index = 0, Turn = 1, Actor = 0 },
         };
+        var replay = new Replay(snapshot, 1, 0, beats);
+        var tutorial = new Tutorial { Title = "Intro", Replay = replay };
 
         string json = SaveSerializer.SerializeMap(state, masterSeed: 7, players, "m", tutorial);
         LoadedSave loaded = SaveSerializer.Deserialize(json);
 
         Assert.NotNull(loaded.Tutorial);
-        Assert.Single(loaded.Tutorial!.Beats);
-        Beat beat = loaded.Tutorial.Beats[0];
-        Assert.IsType<EndTurnBeat>(beat);
-        Assert.Equal(0, beat.Index);
-        Assert.Equal(1, beat.Turn);
-        Assert.Equal(0, beat.Actor);
-        Assert.Equal(BeatKind.EndTurn, beat.Kind);
+        Assert.Equal("Intro", loaded.Tutorial!.Title);
+        Assert.NotNull(loaded.Tutorial.Replay);
+        Assert.Single(loaded.Tutorial.Replay.Beats);
+        Assert.Equal(1, loaded.Tutorial.Replay.InitialTurnNumber);
+        Assert.Equal(0, loaded.Tutorial.Replay.InitialCurrentPlayerIndex);
     }
 
     [Fact]
-    public void SerializeMap_RoundTripsMultipleEndTurnBeats()
+    public void Deserialize_TutorialBlockWithoutReplayBlock_Throws()
     {
+        // Hand-craft a malformed JSON: Tutorial { Title = "X" } but no
+        // Replay block. Deserialize must reject it — a tutorial without
+        // a replay is meaningless under the new schema.
         (GameState state, IReadOnlyList<Player> players) = BuildMinimalState();
-        var tutorial = new Tutorial
+        string json = SaveSerializer.SerializeMap(state, masterSeed: 7, players, "m",
+            new Tutorial { Title = "X", Replay = new Replay(
+                GameStateSnapshot.Capture(state.Grid, state.Treasury, state.Territories),
+                0, 0, new List<ReplayBeat>()) });
+
+        // Strip the Replay block to simulate a malformed file.
+        int replayStart = json.IndexOf("\"Replay\":");
+        int replayBlockStart = json.LastIndexOf(',', replayStart);
+        int replayBlockEnd = json.IndexOf('}', replayStart);
+        // Walk forward through nested braces to find the matching close.
+        int depth = 0;
+        for (int i = replayStart; i < json.Length; i++)
         {
-            Beats = new List<Beat>
+            if (json[i] == '{') depth++;
+            else if (json[i] == '}')
             {
-                new EndTurnBeat { Index = 0, Turn = 1, Actor = 0, Narration = "first" },
-                new EndTurnBeat { Index = 1, Turn = 1, Actor = 1 },
-                new EndTurnBeat { Index = 2, Turn = 2, Actor = 0 },
-            },
-        };
+                depth--;
+                if (depth == 0) { replayBlockEnd = i; break; }
+            }
+        }
+        string malformed = json.Substring(0, replayBlockStart) + json.Substring(replayBlockEnd + 1);
 
-        string json = SaveSerializer.SerializeMap(state, masterSeed: 7, players, "m", tutorial);
-        LoadedSave loaded = SaveSerializer.Deserialize(json);
-
-        Assert.NotNull(loaded.Tutorial);
-        Assert.Equal(3, loaded.Tutorial!.Beats.Count);
-        Assert.Equal("first", loaded.Tutorial.Beats[0].Narration);
-        Assert.Null(loaded.Tutorial.Beats[1].Narration);
-        Assert.Equal(2, loaded.Tutorial.Beats[2].Turn);
-    }
-
-    [Fact]
-    public void Deserialize_TutorialWithoutBeatsField_GivesEmptyBeats()
-    {
-        // 3a-shape JSON: TutorialDto without a "Beats" field at all.
-        // Synthesized by serializing an empty-Beats Tutorial — which the
-        // serializer omits via WhenWritingNull — so the JSON has no
-        // "Beats" property under "Tutorial".
-        (GameState state, IReadOnlyList<Player> players) = BuildMinimalState();
-        string json = SaveSerializer.SerializeMap(state, masterSeed: 7, players, "m", new Tutorial());
-
-        Assert.DoesNotContain("\"Beats\"", json);
-
-        LoadedSave loaded = SaveSerializer.Deserialize(json);
-        Assert.NotNull(loaded.Tutorial);
-        Assert.Empty(loaded.Tutorial!.Beats);
-    }
-
-    [Fact]
-    public void SerializeMap_RoundTripsTutorialWithBuyPeasantBeat()
-    {
-        (GameState state, IReadOnlyList<Player> players) = BuildMinimalState();
-        var tutorial = new Tutorial
-        {
-            Title = "BuyPeasant smoke",
-            Beats = new List<Beat>
-            {
-                new BuyPeasantBeat
-                {
-                    Index = 0,
-                    Turn = 1,
-                    Actor = 0,
-                    At = new HexCoord(3, 5),
-                },
-            },
-        };
-
-        string json = SaveSerializer.SerializeMap(state, masterSeed: 7, players, "m", tutorial);
-        LoadedSave loaded = SaveSerializer.Deserialize(json);
-
-        Assert.NotNull(loaded.Tutorial);
-        Assert.Single(loaded.Tutorial!.Beats);
-        Beat beat = loaded.Tutorial.Beats[0];
-        BuyPeasantBeat bpb = Assert.IsType<BuyPeasantBeat>(beat);
-        Assert.Equal(0, bpb.Index);
-        Assert.Equal(1, bpb.Turn);
-        Assert.Equal(0, bpb.Actor);
-        Assert.Equal(BeatKind.BuyPeasant, bpb.Kind);
-        Assert.Equal(new HexCoord(3, 5), bpb.At);
+        Assert.Throws<System.InvalidOperationException>(() =>
+            SaveSerializer.Deserialize(malformed));
     }
 }

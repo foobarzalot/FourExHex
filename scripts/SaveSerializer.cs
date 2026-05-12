@@ -179,11 +179,11 @@ public static class SaveSerializer
             Tutorial = tutorial == null ? null : new TutorialDto
             {
                 Title = tutorial.Title,
-                StartTurn = tutorial.StartTurn,
-                StartPlayer = tutorial.StartPlayer,
-                Beats = tutorial.Beats.Count == 0 ? null : SerializeBeats(tutorial.Beats),
             },
-            Replay = SerializeReplay(replay, indexByColor),
+            // A tutorial carries its own Replay; if the caller passed
+            // a tutorial, write that Replay block. Otherwise honor an
+            // explicit `replay` arg (regular in-progress saves).
+            Replay = SerializeReplay(tutorial?.Replay ?? replay, indexByColor),
         };
         return JsonSerializer.Serialize(data, JsonOptions);
     }
@@ -255,16 +255,21 @@ public static class SaveSerializer
         IReadOnlyDictionary<Color, int> prompted = DeserializeClaimVictoryPrompted(
             data.ClaimVictoryPromptedHighestByColorHex,
             data.ClaimVictoryPromptedColorHexes);
-        Tutorial? tutorial = data.Tutorial == null
-            ? null
-            : new Tutorial
-            {
-                Title = data.Tutorial.Title,
-                StartTurn = data.Tutorial.StartTurn,
-                StartPlayer = data.Tutorial.StartPlayer,
-                Beats = DeserializeBeats(data.Tutorial.Beats),
-            };
         Replay? replay = DeserializeReplay(data.Replay, players);
+        Tutorial? tutorial;
+        if (data.Tutorial == null)
+        {
+            tutorial = null;
+        }
+        else
+        {
+            if (replay == null)
+            {
+                throw new InvalidOperationException(
+                    "Tutorial block present without a Replay block — malformed save.");
+            }
+            tutorial = new Tutorial { Title = data.Tutorial.Title, Replay = replay };
+        }
         return new LoadedSave(
             state, players, data.MasterSeed, data.MaxTurnNumber, data.SlotName,
             originMapName: data.OriginMapName,
@@ -488,69 +493,6 @@ public static class SaveSerializer
             });
         }
         return dtos;
-    }
-
-    // --- Beats ----------------------------------------------------------
-
-    private static List<BeatDto> SerializeBeats(IReadOnlyList<Beat> beats)
-    {
-        var dtos = new List<BeatDto>(beats.Count);
-        foreach (Beat beat in beats)
-        {
-            BeatDto dto = beat switch
-            {
-                EndTurnBeat _ => new BeatDto { Kind = "EndTurn" },
-                BuyPeasantBeat bpb => new BeatDto
-                {
-                    Kind = "BuyPeasant",
-                    AtQ = bpb.At.Q,
-                    AtR = bpb.At.R,
-                },
-                _ => throw new InvalidOperationException(
-                    $"Unknown beat kind for serialization: {beat.GetType()}"),
-            };
-            dto.Index = beat.Index;
-            dto.Turn = beat.Turn;
-            dto.Actor = beat.Actor;
-            dto.Narration = beat.Narration;
-            dtos.Add(dto);
-        }
-        return dtos;
-    }
-
-    private static IReadOnlyList<Beat> DeserializeBeats(List<BeatDto>? dtos)
-    {
-        if (dtos == null) return Array.Empty<Beat>();
-        var beats = new List<Beat>(dtos.Count);
-        foreach (BeatDto dto in dtos)
-        {
-            Beat beat = dto.Kind switch
-            {
-                "EndTurn" => new EndTurnBeat
-                {
-                    Index = dto.Index,
-                    Turn = dto.Turn,
-                    Actor = dto.Actor,
-                    Narration = dto.Narration,
-                },
-                "BuyPeasant" => new BuyPeasantBeat
-                {
-                    Index = dto.Index,
-                    Turn = dto.Turn,
-                    Actor = dto.Actor,
-                    Narration = dto.Narration,
-                    At = new HexCoord(
-                        dto.AtQ ?? throw new InvalidOperationException(
-                            "BuyPeasant beat missing AtQ"),
-                        dto.AtR ?? throw new InvalidOperationException(
-                            "BuyPeasant beat missing AtR")),
-                },
-                _ => throw new InvalidOperationException(
-                    $"Unknown beat kind in save: {dto.Kind}"),
-            };
-            beats.Add(beat);
-        }
-        return beats;
     }
 
     // --- Replay ---------------------------------------------------------
@@ -910,39 +852,6 @@ public sealed class CapitalGoldDto
 public sealed class TutorialDto
 {
     public string Title { get; set; } = "";
-    public int StartTurn { get; set; } = 1;
-    public int StartPlayer { get; set; } = 0;
-
-    /// <summary>
-    /// Beat list. Null/missing in 3a-shape files (no Beats field
-    /// existed); deserialized as empty.
-    /// </summary>
-    public List<BeatDto>? Beats { get; set; }
-}
-
-/// <summary>
-/// Kind-discriminated DTO for a single tutorial beat. Mirrors the
-/// OccupantDto pattern: every possible kind-specific field is
-/// declared nullable on the DTO; the SerializeBeats / DeserializeBeats
-/// switches map between concrete <see cref="Beat"/> records and these.
-/// New kinds (added in Phase 4+) extend this DTO with additional
-/// nullable fields and add cases to both switches.
-/// </summary>
-public sealed class BeatDto
-{
-    public int Index { get; set; }
-    public int Turn { get; set; }
-    public int Actor { get; set; }
-    public string? Narration { get; set; }
-
-    /// <summary>One of <see cref="BeatKind"/>: "EndTurn", "BuyPeasant"; later phases add more.</summary>
-    public string Kind { get; set; } = "";
-
-    // --- Kind-specific fields (nullable; populated only for matching Kind) ---
-    /// <summary>Q-coord for tile-anchored beats (BuyPeasant; later BuildTower / Move's Src).</summary>
-    public int? AtQ { get; set; }
-    /// <summary>R-coord for tile-anchored beats (BuyPeasant; later BuildTower / Move's Src).</summary>
-    public int? AtR { get; set; }
 }
 
 /// <summary>

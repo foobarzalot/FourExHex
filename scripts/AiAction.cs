@@ -29,3 +29,29 @@ public sealed record AiBuyUnitAction(
 /// <see cref="Destination"/>.
 /// </summary>
 public sealed record AiBuildTowerAction(HexCoord Capital, HexCoord Destination) : AiAction;
+
+/// <summary>
+/// Replay-script-only: a long-press rally targeting <see cref="Target"/>.
+/// Heuristic/Random AIs never produce this; it exists so the
+/// <c>ReplayDrivenAi</c> chooser can drive recorded human rallies on
+/// non-player-0 turns during tutorial Preview through the same
+/// <c>StepAiExecute</c> dispatch as ordinary AI moves.
+/// </summary>
+public sealed record AiLongPressRallyAction(HexCoord Target) : AiAction;
+
+/// <summary>
+/// Replay-script-only: claim victory at <see cref="ThresholdPercent"/>.
+/// Game-ending. Same rationale as <see cref="AiLongPressRallyAction"/>.
+/// </summary>
+public sealed record AiClaimVictoryAction(int ThresholdPercent) : AiAction;
+
+/// <summary>
+/// Replay-script-only: dismiss the claim-victory prompt at
+/// <see cref="ThresholdPercent"/> without claiming.
+/// </summary>
+public sealed record AiDismissClaimAction(int ThresholdPercent) : AiAction;
+
+/// <summary>
+/// Replay-script-only: dismiss a pending defeat overlay.
+/// </summary>
+public sealed record AiDismissDefeatAction : AiAction;
