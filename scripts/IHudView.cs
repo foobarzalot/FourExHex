@@ -46,6 +46,21 @@ public interface IHudView
     event Action? ClaimVictoryContinueClicked;
 
     /// <summary>
+    /// Replay button on the victory overlay. Rewinds the controller to
+    /// its captured initial snapshot and steps through the recorded
+    /// beats; player input is ignored during playback. Visible only
+    /// when there is replay data available — see <see cref="SetReplayAvailable"/>.
+    /// </summary>
+    event Action? ReplayClicked;
+
+    /// <summary>
+    /// Toggle visibility/enablement of the victory overlay's Replay
+    /// button. Disabled when the current game has no replay data
+    /// (e.g., loaded from a pre-feature save).
+    /// </summary>
+    void SetReplayAvailable(bool available);
+
+    /// <summary>
     /// Update every label, button disabled state, and the End Turn CTA
     /// styling from the current game + session state.
     /// </summary>

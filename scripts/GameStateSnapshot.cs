@@ -70,6 +70,39 @@ public class GameStateSnapshot
     }
 
     /// <summary>
+    /// Captured (color, occupant) for every tile, in the iteration order
+    /// of the underlying dictionary. The save serializer iterates this to
+    /// persist the snapshot inside a <c>ReplayDto.InitialState</c> without
+    /// having to re-apply the snapshot to a throwaway grid first.
+    /// </summary>
+    public IEnumerable<(HexCoord Coord, Color Color, HexOccupant? Occupant)> EnumerateTiles()
+    {
+        foreach (KeyValuePair<HexCoord, TileState> kvp in _tiles)
+        {
+            yield return (kvp.Key, kvp.Value.Color, kvp.Value.Occupant);
+        }
+    }
+
+    /// <summary>
+    /// Captured (capital, gold) for every territory that had a capital
+    /// at snapshot time. Empty entries are not present.
+    /// </summary>
+    public IEnumerable<(HexCoord Capital, int Gold)> EnumerateGold()
+    {
+        foreach (KeyValuePair<HexCoord, int> kvp in _gold)
+        {
+            yield return (kvp.Key, kvp.Value);
+        }
+    }
+
+    /// <summary>
+    /// Captured territory list (by reference, since <see cref="Territory"/>
+    /// is immutable). The save serializer maps these into
+    /// <c>TerritoryDto</c>s when persisting the snapshot.
+    /// </summary>
+    public IReadOnlyList<Territory> Territories => _territories;
+
+    /// <summary>
     /// Restore this snapshot's state back into <paramref name="grid"/> and
     /// <paramref name="treasury"/>. Returns the territory list from when
     /// the snapshot was captured (so the caller can assign it to the map).

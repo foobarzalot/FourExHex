@@ -390,4 +390,141 @@ public class SaveSerializerTests
             Assert.Equal(ua.HasMovedThisTurn, ub.HasMovedThisTurn);
         }
     }
+
+    // --- Replay round-trip -------------------------------------------------
+
+    [Fact]
+    public void Serialize_WithoutReplay_DoesNotEmitReplayField()
+    {
+        (GameState state, IReadOnlyList<Player> players) = BuildRichState();
+        string json = SaveSerializer.Serialize(state, 42, players, "s", 100);
+        Assert.DoesNotContain("\"Replay\"", json);
+    }
+
+    [Fact]
+    public void SaveRoundTrip_PreservesAllReplayBeatKinds()
+    {
+        (GameState state, IReadOnlyList<Player> players) = BuildRichState();
+        GameStateSnapshot snapshot = GameStateSnapshot.Capture(
+            state.Grid, state.Treasury, state.Territories);
+
+        var beats = new List<ReplayBeat>
+        {
+            new ReplayMoveBeat
+            {
+                Index = 0, Turn = 1, Actor = 0,
+                From = new HexCoord(1, 0), To = new HexCoord(2, 0),
+            },
+            new ReplayBuyBeat
+            {
+                Index = 1, Turn = 1, Actor = 0,
+                Capital = new HexCoord(0, 0), To = new HexCoord(0, 1),
+                Level = UnitLevel.Spearman,
+            },
+            new ReplayBuildTowerBeat
+            {
+                Index = 2, Turn = 1, Actor = 0,
+                Capital = new HexCoord(0, 0), To = new HexCoord(1, 1),
+            },
+            new ReplayEndTurnBeat { Index = 3, Turn = 1, Actor = 0 },
+            new ReplayLongPressRallyBeat
+            {
+                Index = 4, Turn = 2, Actor = 1,
+                Target = new HexCoord(3, 1),
+            },
+            new ReplayClaimVictoryBeat
+            {
+                Index = 5, Turn = 3, Actor = 0, ThresholdPercent = 75,
+            },
+            new ReplayDismissClaimBeat
+            {
+                Index = 6, Turn = 3, Actor = 0, ThresholdPercent = 50,
+            },
+            new ReplayDismissDefeatBeat { Index = 7, Turn = 4, Actor = 1 },
+        };
+        var replay = new Replay(snapshot, initialTurnNumber: 1,
+            initialCurrentPlayerIndex: 0, beats: beats);
+
+        string json = SaveSerializer.Serialize(state, 42, players, "s", 100,
+            replay: replay);
+        LoadedSave loaded = SaveSerializer.Deserialize(json);
+
+        Assert.NotNull(loaded.Replay);
+        Assert.Equal(beats.Count, loaded.Replay!.Beats.Count);
+        for (int i = 0; i < beats.Count; i++)
+        {
+            Assert.Equal(beats[i], loaded.Replay.Beats[i]);
+        }
+        Assert.Equal(1, loaded.Replay.InitialTurnNumber);
+        Assert.Equal(0, loaded.Replay.InitialCurrentPlayerIndex);
+    }
+
+    [Fact]
+    public void SaveRoundTrip_PreservesInitialSnapshotTilesAndGold()
+    {
+        (GameState state, IReadOnlyList<Player> players) = BuildRichState();
+        GameStateSnapshot snapshot = GameStateSnapshot.Capture(
+            state.Grid, state.Treasury, state.Territories);
+        var replay = new Replay(snapshot, 1, 0, new List<ReplayBeat>());
+
+        string json = SaveSerializer.Serialize(state, 42, players, "s", 100,
+            replay: replay);
+        LoadedSave loaded = SaveSerializer.Deserialize(json);
+
+        Assert.NotNull(loaded.Replay);
+        // Apply both snapshots to fresh grids and compare tile-by-tile.
+        HexGrid liveGrid = state.Grid;
+        var freshGrid = new HexGrid();
+        foreach (HexTile t in liveGrid.Tiles)
+        {
+            freshGrid.Add(new HexTile(t.Coord, t.Color));
+        }
+        var freshTreasury = new Treasury();
+        loaded.Replay!.InitialSnapshot.ApplyTo(freshGrid, freshTreasury);
+
+        foreach (HexTile original in liveGrid.Tiles)
+        {
+            HexTile? restored = freshGrid.Get(original.Coord);
+            Assert.NotNull(restored);
+            Assert.Equal(original.Color, restored!.Color);
+            AssertOccupantsEqual(original.Occupant, restored.Occupant);
+        }
+        foreach (Territory t in state.Territories)
+        {
+            if (!t.HasCapital) continue;
+            Assert.Equal(state.Treasury.GetGold(t.Capital!.Value),
+                freshTreasury.GetGold(t.Capital!.Value));
+        }
+    }
+
+    [Fact]
+    public void Deserialize_V3SaveWithoutReplayField_LeavesReplayNull()
+    {
+        // Write a v3 save (current pre-feature format) via the public
+        // API without passing a replay argument.
+        (GameState state, IReadOnlyList<Player> players) = BuildRichState();
+        string json = SaveSerializer.Serialize(state, 42, players, "s", 100);
+
+        // The serializer bumps to v4 once the replay feature ships;
+        // tweak the JSON to look like a v3 save (FormatVersion = 3,
+        // no Replay block) and verify it still loads with Replay=null.
+        string v3Json = json.Replace("\"FormatVersion\": 4", "\"FormatVersion\": 3");
+        LoadedSave loaded = SaveSerializer.Deserialize(v3Json);
+
+        Assert.Null(loaded.Replay);
+    }
+
+    [Fact]
+    public void Deserialize_V4SaveWithoutReplayField_LeavesReplayNull()
+    {
+        // A v4 save written without replay data (player chose not to
+        // include it / fresh game with no actions yet) must load with
+        // Replay = null, not throw.
+        (GameState state, IReadOnlyList<Player> players) = BuildRichState();
+        string json = SaveSerializer.Serialize(state, 42, players, "s", 100);
+
+        LoadedSave loaded = SaveSerializer.Deserialize(json);
+
+        Assert.Null(loaded.Replay);
+    }
 }

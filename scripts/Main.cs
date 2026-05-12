@@ -196,13 +196,33 @@ public partial class Main : Node2D
         // looping forever.
         IAiPacer pacer = diagnosticMode
             ? new SynchronousAiPacer()
-            : new GodotAiPacer(GetTree());
+            : new GodotAiPacer(new SceneTreeTimerFactory(GetTree()));
+        // If we're resuming an in-progress save that carries a replay,
+        // hand it to the controller so recording continues against the
+        // same beat log (and BeginReplay can rewind to the original
+        // game-start snapshot). Starting maps and fresh games pass null.
+        Replay? loadedReplay = (pendingLoad != null && !isStartingMap)
+            ? pendingLoad.Replay
+            : null;
         _controller = new GameController(
             _state, _session, map, hud,
             seed: seed,
             aiPacer: pacer,
             aiChooser: AiDispatcher.ChooseForCurrentPlayer,
-            maxTurnNumber: _maxTurnNumber);
+            maxTurnNumber: _maxTurnNumber,
+            loadedReplay: loadedReplay);
+
+        if (!diagnosticMode)
+        {
+            // Wire the Replay button. Replay availability flips on
+            // GameEnded so the button enables only after the game
+            // finishes, and only when we have history from game start.
+            // BeginReplay re-fires GameEnded at the end of playback,
+            // which re-runs this handler harmlessly (button stays on).
+            hud.ReplayClicked += () => _controller.BeginReplay();
+            _controller.GameEnded += () =>
+                hud.SetReplayAvailable(_controller.ReplayDataIsCompleteFromStart);
+        }
 
         if (diagnosticMode)
         {
@@ -325,12 +345,29 @@ public partial class Main : Node2D
         try
         {
             _saveStore.WriteAutosave(_state, _controller.MasterSeed, _players,
-                _maxTurnNumber, _originMapName, _session.ClaimVictoryPromptedHighestThreshold);
+                _maxTurnNumber, _originMapName, _session.ClaimVictoryPromptedHighestThreshold,
+                replay: BuildReplaySnapshot());
         }
         catch (System.Exception ex)
         {
             GD.PushError($"Autosave failed: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Build a <see cref="Replay"/> payload from the controller's
+    /// current state for embedding in a save. Returns null if the
+    /// controller doesn't yet have a captured initial snapshot
+    /// (shouldn't happen post-StartGame, but defensive).
+    /// </summary>
+    private Replay? BuildReplaySnapshot()
+    {
+        GameStateSnapshot? init = _controller.InitialReplaySnapshot;
+        if (init == null) return null;
+        return new Replay(init,
+            _controller.InitialReplayTurnNumber,
+            _controller.InitialReplayCurrentPlayerIndex,
+            _controller.ReplayBeats);
     }
 
     /// <summary>
@@ -398,7 +435,8 @@ public partial class Main : Node2D
         try
         {
             _saveStore.WriteSlot(name, _state, _controller.MasterSeed, _players,
-                _maxTurnNumber, _originMapName, _session.ClaimVictoryPromptedHighestThreshold);
+                _maxTurnNumber, _originMapName, _session.ClaimVictoryPromptedHighestThreshold,
+                replay: BuildReplaySnapshot());
         }
         catch (System.Exception ex)
         {

@@ -43,6 +43,14 @@ public sealed class LoadedSave
     /// </summary>
     public Tutorial? Tutorial { get; }
 
+    /// <summary>
+    /// Recorded replay payload from when this game was saved. Null for
+    /// v2/v3 saves (pre-feature), starting maps, and v4 saves whose
+    /// controller had no replay data. Non-null v4 saves carry the
+    /// game-start snapshot plus every recorded beat up to save time.
+    /// </summary>
+    public Replay? Replay { get; }
+
     public LoadedSave(
         GameState state,
         IReadOnlyList<Player> players,
@@ -51,7 +59,8 @@ public sealed class LoadedSave
         string slotName,
         string? originMapName = null,
         IReadOnlyDictionary<Color, int>? claimVictoryPromptedHighestThreshold = null,
-        Tutorial? tutorial = null)
+        Tutorial? tutorial = null,
+        Replay? replay = null)
     {
         State = state;
         Players = players;
@@ -62,6 +71,7 @@ public sealed class LoadedSave
         ClaimVictoryPromptedHighestThreshold = claimVictoryPromptedHighestThreshold
             ?? new Dictionary<Color, int>();
         Tutorial = tutorial;
+        Replay = replay;
     }
 }
 
@@ -85,7 +95,7 @@ public static class SaveSerializer
     /// Bump on any breaking schema change. <see cref="Deserialize"/>
     /// rejects mismatched values rather than attempting migration.
     /// </summary>
-    public const int CurrentFormatVersion = 3;
+    public const int CurrentFormatVersion = 4;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -101,12 +111,14 @@ public static class SaveSerializer
         int maxTurnNumber,
         string? originMapName = null,
         IReadOnlyDictionary<Color, int>? claimVictoryPromptedHighestThreshold = null,
-        Tutorial? tutorial = null)
+        Tutorial? tutorial = null,
+        Replay? replay = null)
         => SerializeInternal(
             state, masterSeed, players, slotName, maxTurnNumber,
             includeKind: true, originMapName: originMapName,
             claimVictoryPromptedHighestThreshold: claimVictoryPromptedHighestThreshold,
-            tutorial: tutorial);
+            tutorial: tutorial,
+            replay: replay);
 
     /// <summary>
     /// Serialize a starting map — same JSON format as <see cref="Serialize"/>,
@@ -125,7 +137,8 @@ public static class SaveSerializer
         => SerializeInternal(state, masterSeed, players, slotName,
             maxTurnNumber: int.MaxValue, includeKind: false,
             originMapName: null, claimVictoryPromptedHighestThreshold: null,
-            tutorial: tutorial);
+            tutorial: tutorial,
+            replay: null);
 
     private static string SerializeInternal(
         GameState state,
@@ -136,7 +149,8 @@ public static class SaveSerializer
         bool includeKind,
         string? originMapName,
         IReadOnlyDictionary<Color, int>? claimVictoryPromptedHighestThreshold,
-        Tutorial? tutorial)
+        Tutorial? tutorial,
+        Replay? replay)
     {
         // Player index by color for fast tile/unit owner lookup.
         var indexByColor = new Dictionary<Color, int>();
@@ -169,6 +183,7 @@ public static class SaveSerializer
                 StartPlayer = tutorial.StartPlayer,
                 Beats = tutorial.Beats.Count == 0 ? null : SerializeBeats(tutorial.Beats),
             },
+            Replay = SerializeReplay(replay, indexByColor),
         };
         return JsonSerializer.Serialize(data, JsonOptions);
     }
@@ -199,15 +214,15 @@ public static class SaveSerializer
         {
             throw new InvalidOperationException("Save file is empty or malformed.");
         }
-        // Accept v2 and v3. v2 files predate the optional Tutorial
-        // block; they deserialize identically. The next breaking bump
-        // (v4, reserved for a non-additive change) will need an
-        // explicit migration here.
-        if (data.FormatVersion != 2 && data.FormatVersion != CurrentFormatVersion)
+        // Accept v2, v3, v4. v2 predates the Tutorial block; v3 predates
+        // the Replay block. Both load with the missing field as null.
+        // The next breaking bump (v5, reserved for a non-additive
+        // change) will need an explicit migration here.
+        if (data.FormatVersion != 2 && data.FormatVersion != 3 && data.FormatVersion != CurrentFormatVersion)
         {
             throw new InvalidOperationException(
                 $"Unsupported save format version {data.FormatVersion} " +
-                $"(expected 2 or {CurrentFormatVersion}).");
+                $"(expected 2, 3, or {CurrentFormatVersion}).");
         }
 
         IReadOnlyList<Player> players = DeserializePlayers(data.Players);
@@ -249,11 +264,13 @@ public static class SaveSerializer
                 StartPlayer = data.Tutorial.StartPlayer,
                 Beats = DeserializeBeats(data.Tutorial.Beats),
             };
+        Replay? replay = DeserializeReplay(data.Replay, players);
         return new LoadedSave(
             state, players, data.MasterSeed, data.MaxTurnNumber, data.SlotName,
             originMapName: data.OriginMapName,
             claimVictoryPromptedHighestThreshold: prompted,
-            tutorial: tutorial);
+            tutorial: tutorial,
+            replay: replay);
     }
 
     /// <summary>
@@ -536,6 +553,228 @@ public static class SaveSerializer
         return beats;
     }
 
+    // --- Replay ---------------------------------------------------------
+
+    private static ReplayDto? SerializeReplay(Replay? replay, Dictionary<Color, int> indexByColor)
+    {
+        if (replay == null) return null;
+        var tileDtos = new List<TileDto>();
+        foreach ((HexCoord coord, Color color, HexOccupant? occupant) in replay.InitialSnapshot.EnumerateTiles())
+        {
+            tileDtos.Add(new TileDto
+            {
+                Q = coord.Q,
+                R = coord.R,
+                OwnerIndex = ColorToOwnerIndex(color, indexByColor),
+                Occupant = SerializeOccupant(occupant, indexByColor),
+            });
+        }
+        var goldDtos = new List<CapitalGoldDto>();
+        foreach ((HexCoord cap, int gold) in replay.InitialSnapshot.EnumerateGold())
+        {
+            goldDtos.Add(new CapitalGoldDto { Q = cap.Q, R = cap.R, Gold = gold });
+        }
+        var territoryDtos = new List<TerritoryDto>();
+        foreach (Territory t in replay.InitialSnapshot.Territories)
+        {
+            var coordDtos = new List<CoordDto>(t.Coords.Count);
+            foreach (HexCoord c in t.Coords)
+            {
+                coordDtos.Add(new CoordDto { Q = c.Q, R = c.R });
+            }
+            territoryDtos.Add(new TerritoryDto
+            {
+                OwnerIndex = ColorToOwnerIndex(t.Owner, indexByColor),
+                Coords = coordDtos,
+                CapitalQ = t.Capital?.Q,
+                CapitalR = t.Capital?.R,
+            });
+        }
+        return new ReplayDto
+        {
+            InitialState = new InitialStateDto
+            {
+                TurnNumber = replay.InitialTurnNumber,
+                CurrentPlayerIndex = replay.InitialCurrentPlayerIndex,
+                Tiles = tileDtos,
+                Territories = territoryDtos,
+                Gold = goldDtos,
+            },
+            Beats = SerializeReplayBeats(replay.Beats),
+        };
+    }
+
+    private static Replay? DeserializeReplay(ReplayDto? dto, IReadOnlyList<Player> players)
+    {
+        if (dto == null) return null;
+        var grid = new HexGrid();
+        foreach (TileDto t in dto.InitialState.Tiles)
+        {
+            Color color = OwnerIndexToColor(t.OwnerIndex, players);
+            grid.Add(new HexTile(new HexCoord(t.Q, t.R), color)
+            {
+                Occupant = DeserializeOccupant(t.Occupant, players),
+            });
+        }
+        var territories = new List<Territory>(dto.InitialState.Territories.Count);
+        foreach (TerritoryDto td in dto.InitialState.Territories)
+        {
+            Color owner = OwnerIndexToColor(td.OwnerIndex, players);
+            var coords = new List<HexCoord>(td.Coords.Count);
+            foreach (CoordDto c in td.Coords) coords.Add(new HexCoord(c.Q, c.R));
+            HexCoord? capital = td.CapitalQ.HasValue && td.CapitalR.HasValue
+                ? new HexCoord(td.CapitalQ.Value, td.CapitalR.Value)
+                : (HexCoord?)null;
+            territories.Add(new Territory(owner, coords, capital));
+        }
+        var treasury = new Treasury();
+        foreach (CapitalGoldDto g in dto.InitialState.Gold)
+        {
+            treasury.SetGold(new HexCoord(g.Q, g.R), g.Gold);
+        }
+        GameStateSnapshot snapshot = GameStateSnapshot.Capture(grid, treasury, territories);
+        IReadOnlyList<ReplayBeat> beats = DeserializeReplayBeats(dto.Beats);
+        return new Replay(snapshot,
+            initialTurnNumber: dto.InitialState.TurnNumber,
+            initialCurrentPlayerIndex: dto.InitialState.CurrentPlayerIndex,
+            beats: beats);
+    }
+
+    private static List<ReplayBeatDto> SerializeReplayBeats(IReadOnlyList<ReplayBeat> beats)
+    {
+        var dtos = new List<ReplayBeatDto>(beats.Count);
+        foreach (ReplayBeat beat in beats)
+        {
+            ReplayBeatDto dto = beat switch
+            {
+                ReplayMoveBeat mv => new ReplayBeatDto
+                {
+                    Kind = "Move",
+                    FromQ = mv.From.Q,
+                    FromR = mv.From.R,
+                    ToQ = mv.To.Q,
+                    ToR = mv.To.R,
+                },
+                ReplayBuyBeat bu => new ReplayBeatDto
+                {
+                    Kind = "BuyUnit",
+                    CapitalQ = bu.Capital.Q,
+                    CapitalR = bu.Capital.R,
+                    ToQ = bu.To.Q,
+                    ToR = bu.To.R,
+                    Level = bu.Level.ToString(),
+                },
+                ReplayBuildTowerBeat bt => new ReplayBeatDto
+                {
+                    Kind = "BuildTower",
+                    CapitalQ = bt.Capital.Q,
+                    CapitalR = bt.Capital.R,
+                    ToQ = bt.To.Q,
+                    ToR = bt.To.R,
+                },
+                ReplayEndTurnBeat _ => new ReplayBeatDto { Kind = "EndTurn" },
+                ReplayLongPressRallyBeat rally => new ReplayBeatDto
+                {
+                    Kind = "LongPressRally",
+                    ToQ = rally.Target.Q,
+                    ToR = rally.Target.R,
+                },
+                ReplayClaimVictoryBeat cv => new ReplayBeatDto
+                {
+                    Kind = "ClaimVictory",
+                    ThresholdPercent = cv.ThresholdPercent,
+                },
+                ReplayDismissClaimBeat dcv => new ReplayBeatDto
+                {
+                    Kind = "DismissClaim",
+                    ThresholdPercent = dcv.ThresholdPercent,
+                },
+                ReplayDismissDefeatBeat _ => new ReplayBeatDto { Kind = "DismissDefeat" },
+                _ => throw new InvalidOperationException(
+                    $"Unknown replay beat kind for serialization: {beat.GetType()}"),
+            };
+            dto.Index = beat.Index;
+            dto.Turn = beat.Turn;
+            dto.Actor = beat.Actor;
+            dtos.Add(dto);
+        }
+        return dtos;
+    }
+
+    private static IReadOnlyList<ReplayBeat> DeserializeReplayBeats(List<ReplayBeatDto>? dtos)
+    {
+        if (dtos == null) return Array.Empty<ReplayBeat>();
+        var beats = new List<ReplayBeat>(dtos.Count);
+        foreach (ReplayBeatDto dto in dtos)
+        {
+            ReplayBeat beat = dto.Kind switch
+            {
+                "Move" => new ReplayMoveBeat
+                {
+                    Index = dto.Index, Turn = dto.Turn, Actor = dto.Actor,
+                    From = new HexCoord(
+                        dto.FromQ ?? throw new InvalidOperationException("Move beat missing FromQ"),
+                        dto.FromR ?? throw new InvalidOperationException("Move beat missing FromR")),
+                    To = new HexCoord(
+                        dto.ToQ ?? throw new InvalidOperationException("Move beat missing ToQ"),
+                        dto.ToR ?? throw new InvalidOperationException("Move beat missing ToR")),
+                },
+                "BuyUnit" => new ReplayBuyBeat
+                {
+                    Index = dto.Index, Turn = dto.Turn, Actor = dto.Actor,
+                    Capital = new HexCoord(
+                        dto.CapitalQ ?? throw new InvalidOperationException("BuyUnit beat missing CapitalQ"),
+                        dto.CapitalR ?? throw new InvalidOperationException("BuyUnit beat missing CapitalR")),
+                    To = new HexCoord(
+                        dto.ToQ ?? throw new InvalidOperationException("BuyUnit beat missing ToQ"),
+                        dto.ToR ?? throw new InvalidOperationException("BuyUnit beat missing ToR")),
+                    Level = Enum.Parse<UnitLevel>(dto.Level ?? throw new InvalidOperationException("BuyUnit beat missing Level")),
+                },
+                "BuildTower" => new ReplayBuildTowerBeat
+                {
+                    Index = dto.Index, Turn = dto.Turn, Actor = dto.Actor,
+                    Capital = new HexCoord(
+                        dto.CapitalQ ?? throw new InvalidOperationException("BuildTower beat missing CapitalQ"),
+                        dto.CapitalR ?? throw new InvalidOperationException("BuildTower beat missing CapitalR")),
+                    To = new HexCoord(
+                        dto.ToQ ?? throw new InvalidOperationException("BuildTower beat missing ToQ"),
+                        dto.ToR ?? throw new InvalidOperationException("BuildTower beat missing ToR")),
+                },
+                "EndTurn" => new ReplayEndTurnBeat
+                {
+                    Index = dto.Index, Turn = dto.Turn, Actor = dto.Actor,
+                },
+                "LongPressRally" => new ReplayLongPressRallyBeat
+                {
+                    Index = dto.Index, Turn = dto.Turn, Actor = dto.Actor,
+                    Target = new HexCoord(
+                        dto.ToQ ?? throw new InvalidOperationException("LongPressRally beat missing ToQ"),
+                        dto.ToR ?? throw new InvalidOperationException("LongPressRally beat missing ToR")),
+                },
+                "ClaimVictory" => new ReplayClaimVictoryBeat
+                {
+                    Index = dto.Index, Turn = dto.Turn, Actor = dto.Actor,
+                    ThresholdPercent = dto.ThresholdPercent
+                        ?? throw new InvalidOperationException("ClaimVictory beat missing ThresholdPercent"),
+                },
+                "DismissClaim" => new ReplayDismissClaimBeat
+                {
+                    Index = dto.Index, Turn = dto.Turn, Actor = dto.Actor,
+                    ThresholdPercent = dto.ThresholdPercent
+                        ?? throw new InvalidOperationException("DismissClaim beat missing ThresholdPercent"),
+                },
+                "DismissDefeat" => new ReplayDismissDefeatBeat
+                {
+                    Index = dto.Index, Turn = dto.Turn, Actor = dto.Actor,
+                },
+                _ => throw new InvalidOperationException(
+                    $"Unknown replay beat kind in save: {dto.Kind}"),
+            };
+            beats.Add(beat);
+        }
+        return beats;
+    }
+
     // --- Color/index helpers --------------------------------------------
 
     private static int ColorToOwnerIndex(Color color, Dictionary<Color, int> indexByColor)
@@ -607,6 +846,14 @@ public sealed class SaveData
     /// file lives under <c>user://tutorials/</c>.
     /// </summary>
     public TutorialDto? Tutorial { get; set; }
+
+    /// <summary>
+    /// Recorded replay payload (initial snapshot + beat log) saved
+    /// alongside the in-progress game state in v4+. Null/missing in
+    /// v2/v3 saves and in v4 saves whose controller had no replay
+    /// data. Starting maps and tutorials never include it.
+    /// </summary>
+    public ReplayDto? Replay { get; set; }
 }
 
 public sealed class PlayerDto
@@ -696,4 +943,49 @@ public sealed class BeatDto
     public int? AtQ { get; set; }
     /// <summary>R-coord for tile-anchored beats (BuyPeasant; later BuildTower / Move's Src).</summary>
     public int? AtR { get; set; }
+}
+
+/// <summary>
+/// Replay payload DTO: the captured game-start snapshot plus every
+/// recorded beat. Embedded inside <see cref="SaveData.Replay"/> on
+/// v4+ saves. Mirrors the tutorial-<c>Beats</c> shape — kind-
+/// discriminated DTOs round-trip through hand-written switches in
+/// <see cref="SaveSerializer"/>.
+/// </summary>
+public sealed class ReplayDto
+{
+    public InitialStateDto InitialState { get; set; } = new();
+    public List<ReplayBeatDto> Beats { get; set; } = new();
+}
+
+public sealed class InitialStateDto
+{
+    public int TurnNumber { get; set; }
+    public int CurrentPlayerIndex { get; set; }
+    public List<TileDto> Tiles { get; set; } = new();
+    public List<TerritoryDto> Territories { get; set; } = new();
+    public List<CapitalGoldDto> Gold { get; set; } = new();
+}
+
+/// <summary>
+/// Kind-discriminated DTO for a single recorded <see cref="ReplayBeat"/>.
+/// Every kind-specific field is nullable on the DTO; the
+/// SerializeReplayBeats / DeserializeReplayBeats switches map between
+/// these and the typed records.
+/// </summary>
+public sealed class ReplayBeatDto
+{
+    public int Index { get; set; }
+    public int Turn { get; set; }
+    public int Actor { get; set; }
+    public string Kind { get; set; } = "";
+
+    public int? FromQ { get; set; }
+    public int? FromR { get; set; }
+    public int? ToQ { get; set; }
+    public int? ToR { get; set; }
+    public int? CapitalQ { get; set; }
+    public int? CapitalR { get; set; }
+    public string? Level { get; set; }
+    public int? ThresholdPercent { get; set; }
 }

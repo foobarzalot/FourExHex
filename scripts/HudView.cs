@@ -30,6 +30,7 @@ public partial class HudView : CanvasLayer, IHudView
     public event Action? DefeatContinueClicked;
     public event Action? ClaimVictoryWinNowClicked;
     public event Action? ClaimVictoryContinueClicked;
+    public event Action? ReplayClicked;
 
     private Label _turnLabel = null!;
     private Label _playerLabel = null!;
@@ -323,6 +324,9 @@ public partial class HudView : CanvasLayer, IHudView
     /// New Game button. Hidden by default; <see cref="Refresh"/> toggles
     /// visibility based on <see cref="SessionState.Winner"/>.
     /// </summary>
+    private Button _replayButton = null!;
+    private bool _replayAvailable;
+
     private void BuildVictoryOverlay(Vector2 viewport)
     {
         // Full-screen semi-transparent scrim that blocks clicks through
@@ -348,10 +352,11 @@ public partial class HudView : CanvasLayer, IHudView
         };
         _victoryOverlay.AddChild(scrim);
 
-        // Centered panel with the win text and two buttons: Play
-        // Again (reload scene with same GameSettings) and Main Menu
-        // (swap back to the menu scene to reassign roles).
-        const float panelW = 460f;
+        // Centered panel with the win text and three buttons: Play
+        // Again, Replay, and Main Menu. Bumped from 460→540 wide when
+        // the Replay button was added to fit three 150-wide buttons
+        // with 12px gaps.
+        const float panelW = 540f;
         const float panelH = 220f;
         var panel = new Panel
         {
@@ -370,11 +375,11 @@ public partial class HudView : CanvasLayer, IHudView
         _victoryLabel.AddThemeFontSizeOverride("font_size", 36);
         panel.AddChild(_victoryLabel);
 
-        const float buttonW = 180f;
+        const float buttonW = 150f;
         const float buttonH = 44f;
-        const float gap = 20f;
+        const float gap = 12f;
         float rowY = 130f;
-        float rowX = (panelW - (buttonW * 2f + gap)) * 0.5f;
+        float rowX = (panelW - (buttonW * 3f + gap * 2f)) * 0.5f;
 
         var playAgainButton = new Button { Text = "Play Again" };
         playAgainButton.AddThemeFontSizeOverride("font_size", 22);
@@ -384,13 +389,28 @@ public partial class HudView : CanvasLayer, IHudView
         AudioBus.AttachClick(playAgainButton);
         panel.AddChild(playAgainButton);
 
+        _replayButton = new Button { Text = "Replay" };
+        _replayButton.AddThemeFontSizeOverride("font_size", 22);
+        _replayButton.Position = new Vector2(rowX + buttonW + gap, rowY);
+        _replayButton.Size = new Vector2(buttonW, buttonH);
+        _replayButton.Pressed += () => ReplayClicked?.Invoke();
+        _replayButton.Disabled = true;  // gated by SetReplayAvailable
+        AudioBus.AttachClick(_replayButton);
+        panel.AddChild(_replayButton);
+
         var mainMenuButton = new Button { Text = "Main Menu" };
         mainMenuButton.AddThemeFontSizeOverride("font_size", 22);
-        mainMenuButton.Position = new Vector2(rowX + buttonW + gap, rowY);
+        mainMenuButton.Position = new Vector2(rowX + (buttonW + gap) * 2f, rowY);
         mainMenuButton.Size = new Vector2(buttonW, buttonH);
         mainMenuButton.Pressed += () => MainMenuClicked?.Invoke();
         AudioBus.AttachClick(mainMenuButton);
         panel.AddChild(mainMenuButton);
+    }
+
+    public void SetReplayAvailable(bool available)
+    {
+        _replayAvailable = available;
+        if (_replayButton != null) _replayButton.Disabled = !available;
     }
 
     /// <summary>

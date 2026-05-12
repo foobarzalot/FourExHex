@@ -42,4 +42,18 @@ public class TurnState
             TurnNumber++;
         }
     }
+
+    /// <summary>
+    /// Force the turn counter and current-player index back to specific
+    /// values. Used by <c>GameController.BeginReplay</c> to rewind to the
+    /// game's initial state without replacing the <c>TurnState</c>
+    /// reference (which any view caching the original would miss). Not
+    /// part of normal gameplay — every other code path mutates only via
+    /// <see cref="EndTurn"/>.
+    /// </summary>
+    public void Reset(int currentPlayerIndex, int turnNumber)
+    {
+        CurrentPlayerIndex = currentPlayerIndex;
+        TurnNumber = turnNumber;
+    }
 }

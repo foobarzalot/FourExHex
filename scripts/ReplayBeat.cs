@@ -1,0 +1,148 @@
+/// <summary>
+/// Discriminator for <see cref="ReplayBeat"/> subclasses. Mirrors the
+/// kind-discriminated DTO pattern used by tutorial <c>BeatDto</c> — the
+/// save serializer round-trips beats by switching on this enum.
+/// </summary>
+public enum ReplayBeatKind
+{
+    Move,
+    BuyUnit,
+    BuildTower,
+    EndTurn,
+    LongPressRally,
+    ClaimVictory,
+    DismissClaim,
+    DismissDefeat,
+}
+
+/// <summary>
+/// One recorded state-mutating action in a game's replay log. Each beat
+/// describes what an actor (player) did — a typed outcome, never a raw
+/// input — so replay can re-execute through the same controller paths
+/// the live game used. Recorded into <c>GameController._replayBeats</c>
+/// at the moment the action is applied; serialized into the save's
+/// <c>ReplayDto</c> and replayed via <c>GameController.BeginReplay</c>.
+///
+/// <para>
+/// Selection-only clicks, mode-entry presses, undo/redo, and territory/
+/// unit cycling are <b>not</b> recorded — they don't mutate game state.
+/// AI actions and human actions use the same beat kinds with different
+/// <see cref="Actor"/> values; only <see cref="LongPressRally"/>,
+/// <see cref="ClaimVictory"/>, <see cref="DismissClaim"/>, and
+/// <see cref="DismissDefeat"/> are human-only because the corresponding
+/// gestures and overlays have no AI counterpart.
+/// </para>
+/// </summary>
+public abstract record ReplayBeat
+{
+    /// <summary>Zero-based position in the replay log; stamped by
+    /// <c>GameController.RecordBeat</c> at append time so deserialized
+    /// beats round-trip identically.</summary>
+    public int Index { get; init; }
+
+    /// <summary>1-based <see cref="TurnState.TurnNumber"/> at the moment
+    /// the beat was recorded. Captured before the beat is applied — an
+    /// EndTurn beat carries the turn number of the player whose turn is
+    /// ending, not the next player's.</summary>
+    public int Turn { get; init; }
+
+    /// <summary>Index into <see cref="GameState.Turns"/>'s player list
+    /// for the player who took the action.</summary>
+    public int Actor { get; init; }
+
+    public abstract ReplayBeatKind Kind { get; }
+}
+
+/// <summary>
+/// Move an existing unit from <see cref="From"/> to <see cref="To"/>.
+/// Replay dispatches via <c>GameController.ExecuteAiMove</c>, which is
+/// actor-agnostic — the live human and AI paths converge on the same
+/// helper for captures, FX, and reconciliation.
+/// </summary>
+public sealed record ReplayMoveBeat : ReplayBeat
+{
+    public override ReplayBeatKind Kind => ReplayBeatKind.Move;
+    public HexCoord From { get; init; }
+    public HexCoord To { get; init; }
+}
+
+/// <summary>
+/// Buy a unit of <see cref="Level"/> from the territory whose capital
+/// is <see cref="Capital"/> and place it at <see cref="To"/>. Replay
+/// dispatches via <c>GameController.ExecuteAiBuyUnit</c>.
+/// </summary>
+public sealed record ReplayBuyBeat : ReplayBeat
+{
+    public override ReplayBeatKind Kind => ReplayBeatKind.BuyUnit;
+    public HexCoord Capital { get; init; }
+    public HexCoord To { get; init; }
+    public UnitLevel Level { get; init; }
+}
+
+/// <summary>
+/// Build a tower on <see cref="To"/> from the territory whose capital
+/// is <see cref="Capital"/>. Replay dispatches via
+/// <c>GameController.ExecuteAiBuildTower</c>.
+/// </summary>
+public sealed record ReplayBuildTowerBeat : ReplayBeat
+{
+    public override ReplayBeatKind Kind => ReplayBeatKind.BuildTower;
+    public HexCoord Capital { get; init; }
+    public HexCoord To { get; init; }
+}
+
+/// <summary>
+/// End the current player's turn. Human End-Turn and the AI's implicit
+/// end-of-turn (chooser returned null or step cap hit) both produce
+/// this beat. Replay drives the same EndOfTurnProcessing →
+/// AdvanceToNextActivePlayer → StartPlayerTurn chain.
+/// </summary>
+public sealed record ReplayEndTurnBeat : ReplayBeat
+{
+    public override ReplayBeatKind Kind => ReplayBeatKind.EndTurn;
+}
+
+/// <summary>
+/// Human-only: long-press rally at <see cref="Target"/>. Replay
+/// re-invokes the rally body, which is deterministic from current
+/// state (explicit lex-min tiebreaks in unit selection and destination
+/// choice). One beat per rally regardless of how many units moved.
+/// </summary>
+public sealed record ReplayLongPressRallyBeat : ReplayBeat
+{
+    public override ReplayBeatKind Kind => ReplayBeatKind.LongPressRally;
+    public HexCoord Target { get; init; }
+}
+
+/// <summary>
+/// Human-only: Win Now press on the claim-victory overlay at
+/// <see cref="ThresholdPercent"/>. Game-ending. Replay applies it
+/// silently (no overlay during playback).
+/// </summary>
+public sealed record ReplayClaimVictoryBeat : ReplayBeat
+{
+    public override ReplayBeatKind Kind => ReplayBeatKind.ClaimVictory;
+    public int ThresholdPercent { get; init; }
+}
+
+/// <summary>
+/// Human-only: Continue Playing press on the claim-victory overlay at
+/// <see cref="ThresholdPercent"/>. Followed in the log by an
+/// <see cref="ReplayEndTurnBeat"/> that performs the deferred turn
+/// advance. Replay applies it silently.
+/// </summary>
+public sealed record ReplayDismissClaimBeat : ReplayBeat
+{
+    public override ReplayBeatKind Kind => ReplayBeatKind.DismissClaim;
+    public int ThresholdPercent { get; init; }
+}
+
+/// <summary>
+/// Human-only: Continue press on the defeat overlay. Re-arms the AI
+/// loop in live play; replay clears the flag silently to keep playback
+/// flowing.
+/// </summary>
+public sealed record ReplayDismissDefeatBeat : ReplayBeat
+{
+    public override ReplayBeatKind Kind => ReplayBeatKind.DismissDefeat;
+}

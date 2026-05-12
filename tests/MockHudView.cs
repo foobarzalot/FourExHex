@@ -28,6 +28,7 @@ public class MockHudView : IHudView
     public event Action? DefeatContinueClicked;
     public event Action? ClaimVictoryWinNowClicked;
     public event Action? ClaimVictoryContinueClicked;
+    public event Action? ReplayClicked;
 
     public int RefreshCount { get; private set; }
     public GameState? LastState { get; private set; }
@@ -64,6 +65,11 @@ public class MockHudView : IHudView
 
     public bool BuyPeasantCtaActive { get; private set; }
     public void SetBuyPeasantCta(bool isCta) => BuyPeasantCtaActive = isCta;
+
+    public bool ReplayAvailable { get; private set; }
+    public void SetReplayAvailable(bool available) => ReplayAvailable = available;
+
+    public void ClickReplay() => ReplayClicked?.Invoke();
 
     public void ClickBuyPeasant() => BuyPeasantClicked?.Invoke();
     public void ClickBuildTower() => BuildTowerClicked?.Invoke();

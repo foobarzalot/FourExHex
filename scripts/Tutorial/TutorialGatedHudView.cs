@@ -54,6 +54,7 @@ public sealed class TutorialGatedHudView : IHudView
         _real.DefeatContinueClicked += () => DefeatContinueClicked?.Invoke();
         _real.ClaimVictoryWinNowClicked += () => ClaimVictoryWinNowClicked?.Invoke();
         _real.ClaimVictoryContinueClicked += () => ClaimVictoryContinueClicked?.Invoke();
+        _real.ReplayClicked += () => ReplayClicked?.Invoke();
     }
 
     public void Unbind()
@@ -89,6 +90,7 @@ public sealed class TutorialGatedHudView : IHudView
     public event Action? DefeatContinueClicked;
     public event Action? ClaimVictoryWinNowClicked;
     public event Action? ClaimVictoryContinueClicked;
+    public event Action? ReplayClicked;
 
     private void OnRealEndTurnClicked()
     {
@@ -156,4 +158,5 @@ public sealed class TutorialGatedHudView : IHudView
     public void ShowTutorialMessage(string text) => _real.ShowTutorialMessage(text);
     public void HideTutorialMessage() => _real.HideTutorialMessage();
     public void SetBuyPeasantCta(bool isCta) => _real.SetBuyPeasantCta(isCta);
+    public void SetReplayAvailable(bool available) => _real.SetReplayAvailable(available);
 }

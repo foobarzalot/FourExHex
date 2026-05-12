@@ -35,10 +35,11 @@ public sealed class SaveStore
         IReadOnlyList<Player> players,
         int maxTurnNumber,
         string? originMapName = null,
-        IReadOnlyDictionary<Color, int>? claimVictoryPromptedHighestThreshold = null)
+        IReadOnlyDictionary<Color, int>? claimVictoryPromptedHighestThreshold = null,
+        Replay? replay = null)
     {
         WriteSlot(AutosaveSlotName, state, masterSeed, players, maxTurnNumber,
-            originMapName, claimVictoryPromptedHighestThreshold);
+            originMapName, claimVictoryPromptedHighestThreshold, replay);
     }
 
     /// <summary>
@@ -54,10 +55,11 @@ public sealed class SaveStore
         IReadOnlyList<Player> players,
         int maxTurnNumber,
         string? originMapName = null,
-        IReadOnlyDictionary<Color, int>? claimVictoryPromptedHighestThreshold = null)
+        IReadOnlyDictionary<Color, int>? claimVictoryPromptedHighestThreshold = null,
+        Replay? replay = null)
     {
         WriteSlotIn(SaveDirectory, slotName, state, masterSeed, players,
-            maxTurnNumber, originMapName, claimVictoryPromptedHighestThreshold);
+            maxTurnNumber, originMapName, claimVictoryPromptedHighestThreshold, replay);
     }
 
     /// <summary>
@@ -108,13 +110,16 @@ public sealed class SaveStore
         IReadOnlyList<Player> players,
         int maxTurnNumber,
         string? originMapName,
-        IReadOnlyDictionary<Color, int>? claimVictoryPromptedHighestThreshold)
+        IReadOnlyDictionary<Color, int>? claimVictoryPromptedHighestThreshold,
+        Replay? replay)
     {
         EnsureDirectory(directory);
         string sanitized = SanitizeSlotName(slotName);
         string json = SaveSerializer.Serialize(
             state, masterSeed, players, sanitized, maxTurnNumber,
-            originMapName, claimVictoryPromptedHighestThreshold);
+            originMapName, claimVictoryPromptedHighestThreshold,
+            tutorial: null,
+            replay: replay);
         AtomicWrite(directory, sanitized, json);
     }
 

@@ -83,6 +83,7 @@ public sealed class HeadlessHudView : IHudView
     public event Action? DefeatContinueClicked;
     public event Action? ClaimVictoryWinNowClicked;
     public event Action? ClaimVictoryContinueClicked;
+    public event Action? ReplayClicked;
 #pragma warning restore CS0067
 
     public void Refresh(GameState state, SessionState session, bool hasActionableRemaining) { }
@@ -90,4 +91,5 @@ public sealed class HeadlessHudView : IHudView
     public void ShowTutorialMessage(string text) { }
     public void HideTutorialMessage() { }
     public void SetBuyPeasantCta(bool isCta) { }
+    public void SetReplayAvailable(bool available) { }
 }

@@ -25,9 +25,11 @@ public class TutorialSerializerTests
     }
 
     [Fact]
-    public void CurrentFormatVersion_IsThree()
+    public void CurrentFormatVersion_IsFour()
     {
-        Assert.Equal(3, SaveSerializer.CurrentFormatVersion);
+        // Bumped to 4 when the replay-recording feature added the
+        // optional `Replay` block. Older saves (v2/v3) still load.
+        Assert.Equal(4, SaveSerializer.CurrentFormatVersion);
     }
 
     [Fact]
@@ -40,7 +42,7 @@ public class TutorialSerializerTests
         // user://saves/ autosaves keep loading after the bump.
         (GameState state, IReadOnlyList<Player> players) = BuildMinimalState();
         string json = SaveSerializer.SerializeMap(state, masterSeed: 7, players, "m");
-        string v2Json = json.Replace("\"FormatVersion\": 3", "\"FormatVersion\": 2");
+        string v2Json = json.Replace("\"FormatVersion\": 4", "\"FormatVersion\": 2");
 
         LoadedSave loaded = SaveSerializer.Deserialize(v2Json);
 
@@ -83,7 +85,7 @@ public class TutorialSerializerTests
     {
         (GameState state, IReadOnlyList<Player> players) = BuildMinimalState();
         string json = SaveSerializer.SerializeMap(state, masterSeed: 7, players, "m");
-        string v2Json = json.Replace("\"FormatVersion\": 3", "\"FormatVersion\": 2");
+        string v2Json = json.Replace("\"FormatVersion\": 4", "\"FormatVersion\": 2");
 
         LoadedSave loaded = SaveSerializer.Deserialize(v2Json);
 

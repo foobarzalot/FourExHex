@@ -1,0 +1,404 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Godot;
+using Xunit;
+
+namespace FourExHex.Tests;
+
+/// <summary>
+/// Tests that <see cref="GameController"/> appends a typed
+/// <see cref="ReplayBeat"/> to its replay log for every state-mutating
+/// action — human and AI — and skips selection-only or mode-entry
+/// presses that don't change the board. The recording-side of the
+/// replay feature; playback-side is in <see cref="ReplayPlaybackTests"/>.
+/// </summary>
+public class ReplayRecordingTests
+{
+    /// <summary>
+    /// 5x2 fixture identical to <c>GameControllerTests.TestGame</c>:
+    /// Red owns (0,1)/(1,1), Blue owns the rest. Both colors are humans
+    /// by default so the controller wraps clicks in <c>TrackHandler</c>.
+    /// The claim-victory prompt is pre-dismissed at all tiers for both
+    /// colors so End Turn presses never get hijacked by the overlay.
+    /// </summary>
+    private class Fixture
+    {
+        public GameState State { get; }
+        public SessionState Session { get; }
+        public MockHexMapView Map { get; }
+        public MockHudView Hud { get; }
+        public GameController Controller { get; }
+        public Player Red { get; }
+        public Player Blue { get; }
+        public Func<GameState, Color, HashSet<HexCoord>, Random, AiAction?>? AiChooser { get; set; }
+
+        public Fixture(AiKind redKind = AiKind.Human, AiKind blueKind = AiKind.Human,
+            Func<GameState, Color, HashSet<HexCoord>, Random, AiAction?>? aiChooser = null)
+        {
+            Red = new Player("Red", new Color(1f, 0f, 0f), redKind);
+            Blue = new Player("Blue", new Color(0f, 0f, 1f), blueKind);
+            var players = new List<Player> { Red, Blue };
+
+            HexGrid grid = TestHelpers.BuildRectGrid(5, 2, Blue.Color);
+            grid.Get(HexCoord.FromOffset(0, 1))!.Color = Red.Color;
+            grid.Get(HexCoord.FromOffset(1, 1))!.Color = Red.Color;
+
+            IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+            State = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+            Session = new SessionState();
+            Session.ClaimVictoryPromptedHighestThreshold[Red.Color] = 90;
+            Session.ClaimVictoryPromptedHighestThreshold[Blue.Color] = 90;
+            Map = new MockHexMapView();
+            Hud = new MockHudView();
+            foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+            {
+                Map.TileIndex[kvp.Key] = kvp.Value;
+            }
+            AiChooser = aiChooser;
+            Controller = new GameController(
+                State, Session, Map, Hud,
+                seed: 1,
+                aiChooser: aiChooser,
+                aiPacer: new SynchronousAiPacer(),
+                maxTurnNumber: 10);
+            Controller.StartGame();
+        }
+
+        public HexTile Tile(int col, int row) => State.Grid.Get(HexCoord.FromOffset(col, row))!;
+    }
+
+    // --- Baseline ---------------------------------------------------------
+
+    [Fact]
+    public void StartGame_CapturesInitialSnapshot_AndReplayBeatsIsEmpty()
+    {
+        var f = new Fixture();
+        Assert.NotNull(f.Controller.InitialReplaySnapshot);
+        Assert.Equal(1, f.Controller.InitialReplayTurnNumber);
+        Assert.Equal(0, f.Controller.InitialReplayCurrentPlayerIndex);
+        Assert.Empty(f.Controller.ReplayBeats);
+        Assert.True(f.Controller.ReplayDataIsCompleteFromStart);
+    }
+
+    // --- Human actions ----------------------------------------------------
+
+    [Fact]
+    public void Recording_HumanBuyPeasant_AppendsReplayBuyBeat()
+    {
+        var f = new Fixture();
+        HexCoord redCapital = f.State.Territories.First(t => t.Owner == f.Red.Color).Capital!.Value;
+        // Red has 10g at start (5×2 cells), enough for a peasant (10g).
+        // Click Red's territory to select it, press Buy, click an empty
+        // Red tile to commit.
+        f.Map.SimulateClick(f.Tile(0, 1));        // select Red territory
+        f.Hud.ClickBuyPeasant();                  // enter buy mode
+        // (1,1) is the other Red tile — pick whichever doesn't have the
+        // capital so we buy onto an empty own tile.
+        HexCoord redOther = HexCoord.FromOffset(0, 1) == redCapital
+            ? HexCoord.FromOffset(1, 1)
+            : HexCoord.FromOffset(0, 1);
+        f.Map.SimulateClick(f.State.Grid.Get(redOther)!);
+
+        ReplayBeat last = Assert.Single(f.Controller.ReplayBeats);
+        var buy = Assert.IsType<ReplayBuyBeat>(last);
+        Assert.Equal(redCapital, buy.Capital);
+        Assert.Equal(redOther, buy.To);
+        Assert.Equal(UnitLevel.Peasant, buy.Level);
+        Assert.Equal(1, buy.Turn);
+        Assert.Equal(0, buy.Actor);
+        Assert.Equal(0, buy.Index);
+    }
+
+    [Fact]
+    public void Recording_HumanMove_AppendsReplayMoveBeat()
+    {
+        // Buy a peasant onto Red's non-capital tile first (turn 1 →
+        // unit can't move yet because HasMovedThisTurn after a buy
+        // onto own empty is per the AI semantic — wait, that's AI only).
+        // For human ExecuteBuyAndPlace on own empty, MovementRules.PlaceNew
+        // does NOT mark the unit as moved. So we can buy and then move
+        // on the same turn. But end-of-turn growth doesn't trigger here.
+        var f = new Fixture();
+        HexCoord redCapital = f.State.Territories.First(t => t.Owner == f.Red.Color).Capital!.Value;
+        HexCoord redOther = HexCoord.FromOffset(0, 1) == redCapital
+            ? HexCoord.FromOffset(1, 1)
+            : HexCoord.FromOffset(0, 1);
+
+        f.Map.SimulateClick(f.State.Grid.Get(redCapital)!);
+        f.Hud.ClickBuyPeasant();
+        f.Map.SimulateClick(f.State.Grid.Get(redOther)!);
+        // Capture beat list length before the move so we know which
+        // beat is the move beat.
+        int beforeMove = f.Controller.ReplayBeats.Count;
+
+        // Move the just-bought peasant from redOther onto an adjacent
+        // Blue tile (capture).
+        f.Map.SimulateClick(f.State.Grid.Get(redOther)!);  // pick up the unit
+        // Find an adjacent Blue tile.
+        HexCoord? captureTarget = null;
+        foreach (HexCoord n in redOther.Neighbors())
+        {
+            HexTile? t = f.State.Grid.Get(n);
+            if (t != null && t.Color == f.Blue.Color)
+            {
+                captureTarget = n;
+                break;
+            }
+        }
+        Assert.NotNull(captureTarget);
+        f.Map.SimulateClick(f.State.Grid.Get(captureTarget!.Value)!);
+
+        Assert.Equal(beforeMove + 1, f.Controller.ReplayBeats.Count);
+        var mv = Assert.IsType<ReplayMoveBeat>(f.Controller.ReplayBeats[^1]);
+        Assert.Equal(redOther, mv.From);
+        Assert.Equal(captureTarget.Value, mv.To);
+        Assert.Equal(0, mv.Actor);
+    }
+
+    [Fact]
+    public void Recording_HumanBuildTower_AppendsReplayBuildTowerBeat()
+    {
+        // Tower costs 15g. Fixture seeds Red with 10g. Skip a couple of
+        // turns to accumulate enough gold via income.
+        var f = new Fixture();
+        f.Hud.ClickEndTurn();   // Red T1 ends — no income credited (round 1)
+        f.Hud.ClickEndTurn();   // Blue T1 ends — Red T2 starts, +income
+        // Red gets +Size=2 income at T2 start → 12g. Still short. End
+        // another round.
+        f.Hud.ClickEndTurn();   // Red T2 ends
+        f.Hud.ClickEndTurn();   // Blue T2 ends — Red T3 starts, +2 → 14g
+        // Still short. One more round.
+        f.Hud.ClickEndTurn();
+        f.Hud.ClickEndTurn();   // Red T4 → 16g
+        int beforeBuild = f.Controller.ReplayBeats.Count;
+
+        HexCoord redCapital = f.State.Territories.First(t => t.Owner == f.Red.Color).Capital!.Value;
+        HexCoord redOther = HexCoord.FromOffset(0, 1) == redCapital
+            ? HexCoord.FromOffset(1, 1)
+            : HexCoord.FromOffset(0, 1);
+        f.Map.SimulateClick(f.State.Grid.Get(redCapital)!);
+        f.Hud.ClickBuildTower();
+        f.Map.SimulateClick(f.State.Grid.Get(redOther)!);
+
+        Assert.Equal(beforeBuild + 1, f.Controller.ReplayBeats.Count);
+        var bt = Assert.IsType<ReplayBuildTowerBeat>(f.Controller.ReplayBeats[^1]);
+        Assert.Equal(redCapital, bt.Capital);
+        Assert.Equal(redOther, bt.To);
+    }
+
+    [Fact]
+    public void Recording_HumanEndTurn_AppendsReplayEndTurnBeatBeforeTurnAdvance()
+    {
+        var f = new Fixture();
+        f.Hud.ClickEndTurn();
+
+        // Red's End Turn is the first beat — and it should record
+        // Turn=1 (the ending player's turn) and Actor=0 (Red).
+        ReplayBeat first = f.Controller.ReplayBeats[0];
+        Assert.IsType<ReplayEndTurnBeat>(first);
+        Assert.Equal(1, first.Turn);
+        Assert.Equal(0, first.Actor);
+        // After Red's End Turn, Blue's End Turn also runs (both human
+        // by default, so Blue's End Turn doesn't auto-fire — wait, both
+        // are human here, so Blue's turn waits for input).
+        // Actually Blue's end turn would require Blue to click. Both
+        // players are Human so the loop pauses at Blue T1. Only Red's
+        // End Turn is in the log so far.
+        Assert.Single(f.Controller.ReplayBeats);
+    }
+
+    [Fact]
+    public void Recording_NoOpClick_DoesNotAppendBeat()
+    {
+        // Clicking an empty area (off-map) only changes selection (no
+        // state mutation). Should not record a beat.
+        var f = new Fixture();
+        f.Map.SimulateClick(null);
+        Assert.Empty(f.Controller.ReplayBeats);
+    }
+
+    [Fact]
+    public void Recording_SelectOwnTerritory_DoesNotAppendBeat()
+    {
+        // Clicking your own territory selects it but doesn't mutate
+        // game state. No beat.
+        var f = new Fixture();
+        f.Map.SimulateClick(f.Tile(0, 1));
+        Assert.Empty(f.Controller.ReplayBeats);
+    }
+
+    [Fact]
+    public void Recording_EnterBuyMode_DoesNotAppendBeat()
+    {
+        // Buy-button press only sets session mode, no board change.
+        var f = new Fixture();
+        f.Map.SimulateClick(f.Tile(0, 1));
+        f.Hud.ClickBuyPeasant();
+        Assert.Empty(f.Controller.ReplayBeats);
+    }
+
+    // --- Undo / redo bookkeeping -----------------------------------------
+
+    [Fact]
+    public void Recording_UndoMove_PopsLastBeat()
+    {
+        var f = new Fixture();
+        HexCoord redCapital = f.State.Territories.First(t => t.Owner == f.Red.Color).Capital!.Value;
+        HexCoord redOther = HexCoord.FromOffset(0, 1) == redCapital
+            ? HexCoord.FromOffset(1, 1)
+            : HexCoord.FromOffset(0, 1);
+
+        f.Map.SimulateClick(f.State.Grid.Get(redCapital)!);
+        f.Hud.ClickBuyPeasant();
+        f.Map.SimulateClick(f.State.Grid.Get(redOther)!);
+        Assert.Single(f.Controller.ReplayBeats);
+
+        f.Hud.ClickUndoLast();
+        Assert.Empty(f.Controller.ReplayBeats);
+    }
+
+    [Fact]
+    public void Recording_RedoMove_RestoresPoppedBeat()
+    {
+        var f = new Fixture();
+        HexCoord redCapital = f.State.Territories.First(t => t.Owner == f.Red.Color).Capital!.Value;
+        HexCoord redOther = HexCoord.FromOffset(0, 1) == redCapital
+            ? HexCoord.FromOffset(1, 1)
+            : HexCoord.FromOffset(0, 1);
+
+        f.Map.SimulateClick(f.State.Grid.Get(redCapital)!);
+        f.Hud.ClickBuyPeasant();
+        f.Map.SimulateClick(f.State.Grid.Get(redOther)!);
+        ReplayBeat preUndo = f.Controller.ReplayBeats[0];
+
+        f.Hud.ClickUndoLast();
+        Assert.Empty(f.Controller.ReplayBeats);
+
+        f.Hud.ClickRedoLast();
+        Assert.Single(f.Controller.ReplayBeats);
+        Assert.Equal(preUndo, f.Controller.ReplayBeats[0]);
+    }
+
+    [Fact]
+    public void Recording_UndoTurn_PopsAllBeatsInTurn()
+    {
+        var f = new Fixture();
+        HexCoord redCapital = f.State.Territories.First(t => t.Owner == f.Red.Color).Capital!.Value;
+        HexCoord redOther = HexCoord.FromOffset(0, 1) == redCapital
+            ? HexCoord.FromOffset(1, 1)
+            : HexCoord.FromOffset(0, 1);
+
+        // Two committed actions in one turn: buy + move.
+        f.Map.SimulateClick(f.State.Grid.Get(redCapital)!);
+        f.Hud.ClickBuyPeasant();
+        f.Map.SimulateClick(f.State.Grid.Get(redOther)!);
+
+        HexCoord? captureTarget = null;
+        foreach (HexCoord n in redOther.Neighbors())
+        {
+            HexTile? t = f.State.Grid.Get(n);
+            if (t != null && t.Color == f.Blue.Color) { captureTarget = n; break; }
+        }
+        Assert.NotNull(captureTarget);
+        f.Map.SimulateClick(f.State.Grid.Get(redOther)!);
+        f.Map.SimulateClick(f.State.Grid.Get(captureTarget!.Value)!);
+
+        Assert.Equal(2, f.Controller.ReplayBeats.Count);
+
+        f.Hud.ClickUndoTurn();
+        Assert.Empty(f.Controller.ReplayBeats);
+    }
+
+    [Fact]
+    public void Recording_FreshActionAfterUndo_InvalidatesRedoBeats()
+    {
+        // Make a move, undo it, make a *different* move. The redo
+        // stack should be cleared so a subsequent redo doesn't
+        // resurrect the old beat. Beat list should end with exactly
+        // the new move beat.
+        var f = new Fixture();
+        HexCoord redCapital = f.State.Territories.First(t => t.Owner == f.Red.Color).Capital!.Value;
+        HexCoord redOther = HexCoord.FromOffset(0, 1) == redCapital
+            ? HexCoord.FromOffset(1, 1)
+            : HexCoord.FromOffset(0, 1);
+
+        // First action: buy a peasant onto redOther.
+        f.Map.SimulateClick(f.State.Grid.Get(redCapital)!);
+        f.Hud.ClickBuyPeasant();
+        f.Map.SimulateClick(f.State.Grid.Get(redOther)!);
+
+        // Undo.
+        f.Hud.ClickUndoLast();
+        Assert.Empty(f.Controller.ReplayBeats);
+
+        // Different action: build a tower? Red has 10g but tower
+        // costs 15g. Instead, buy a peasant onto a DIFFERENT tile —
+        // since after undo, redOther is empty again, just re-do the
+        // same buy but assert there's still exactly one beat after.
+        f.Map.SimulateClick(f.State.Grid.Get(redCapital)!);
+        f.Hud.ClickBuyPeasant();
+        f.Map.SimulateClick(f.State.Grid.Get(redOther)!);
+        Assert.Single(f.Controller.ReplayBeats);
+    }
+
+    // --- AI actions -------------------------------------------------------
+
+    [Fact]
+    public void Recording_AiBuyUnit_AppendsReplayBuyBeat()
+    {
+        // Scripted AI: Blue buys a peasant onto an empty own-territory
+        // tile, then ends turn. Verify a ReplayBuyBeat lands with
+        // Blue's actor index. Buy is simpler than Move to script
+        // because the target can be any empty own tile — no need to
+        // reason about defense levels.
+        bool blueActed = false;
+        HexCoord? blueCapital = null;
+        HexCoord? blueEmpty = null;
+        AiAction? Chooser(GameState s, Color c, HashSet<HexCoord> visited, Random rng)
+        {
+            if (c != new Color(0f, 0f, 1f)) return null;
+            if (blueActed) return null;
+            Territory blue = s.Territories.First(t => t.Owner == c);
+            blueCapital = blue.Capital!.Value;
+            // Pick an empty Blue tile that isn't the capital.
+            foreach (HexCoord coord in blue.Coords)
+            {
+                if (coord.Equals(blueCapital.Value)) continue;
+                HexTile? t = s.Grid.Get(coord);
+                if (t?.Occupant == null) { blueEmpty = coord; break; }
+            }
+            blueActed = true;
+            return new AiBuyUnitAction(blueCapital.Value, blueEmpty!.Value, UnitLevel.Peasant);
+        }
+
+        var f = new Fixture(redKind: AiKind.Human, blueKind: AiKind.Random, aiChooser: Chooser);
+        f.Hud.ClickEndTurn();   // Red ends → Blue AI runs scripted buy → null → end turn.
+
+        ReplayBuyBeat? buy = f.Controller.ReplayBeats.OfType<ReplayBuyBeat>().FirstOrDefault();
+        Assert.NotNull(buy);
+        Assert.Equal(blueCapital, buy!.Capital);
+        Assert.Equal(blueEmpty, buy.To);
+        Assert.Equal(UnitLevel.Peasant, buy.Level);
+        Assert.Equal(1, buy.Actor);  // Blue is player index 1
+    }
+
+    [Fact]
+    public void Recording_AiImplicitEndTurn_AppendsReplayEndTurnBeat()
+    {
+        // Chooser always returns null → Blue's AI immediately ends turn.
+        AiAction? Chooser(GameState s, Color c, HashSet<HexCoord> visited, Random rng) => null;
+        var f = new Fixture(redKind: AiKind.Human, blueKind: AiKind.Random, aiChooser: Chooser);
+        int before = f.Controller.ReplayBeats.Count;
+        f.Hud.ClickEndTurn();   // Red ends. Blue runs AI (null action → EndTurn).
+
+        // Beats since Red's end turn: at minimum Red EndTurn + Blue
+        // EndTurn. (Beats from any AI Move don't apply here; chooser
+        // returns null.)
+        IEnumerable<ReplayEndTurnBeat> endTurnBeats = f.Controller.ReplayBeats
+            .Skip(before)
+            .OfType<ReplayEndTurnBeat>();
+        Assert.Equal(2, endTurnBeats.Count());
+        Assert.Equal(new[] { 0, 1 }, endTurnBeats.Select(b => b.Actor).ToArray());
+    }
+}

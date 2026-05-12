@@ -45,6 +45,8 @@
     <Compile Include="..\scripts\TreeRules.cs" Link="scripts\TreeRules.cs" />
     <Compile Include="..\scripts\Tower.cs" Link="scripts\Tower.cs" />
     <Compile Include="..\scripts\AiAction.cs" Link="scripts\AiAction.cs" />
+    <Compile Include="..\scripts\ReplayBeat.cs" Link="scripts\ReplayBeat.cs" />
+    <Compile Include="..\scripts\Replay.cs" Link="scripts\Replay.cs" />
     <Compile Include="..\scripts\AiLog.cs" Link="scripts\AiLog.cs" />
     <Compile Include="..\scripts\AiCommon.cs" Link="scripts\AiCommon.cs" />
     <Compile Include="..\scripts\AiSimulator.cs" Link="scripts\AiSimulator.cs" />
@@ -67,6 +69,7 @@
     <Compile Include="..\scripts\IHexMapView.cs" Link="scripts\IHexMapView.cs" />
     <Compile Include="..\scripts\IHudView.cs" Link="scripts\IHudView.cs" />
     <Compile Include="..\scripts\AiPacer.cs" Link="scripts\AiPacer.cs" />
+    <Compile Include="..\scripts\GodotAiPacer.cs" Link="scripts\GodotAiPacer.cs" />
     <Compile Include="..\scripts\GameController.cs" Link="scripts\GameController.cs" />
     <Compile Include="..\scripts\SaveSerializer.cs" Link="scripts\SaveSerializer.cs" />
     <Compile Include="..\scripts\LoadRequest.cs" Link="scripts\LoadRequest.cs" />
