@@ -66,6 +66,21 @@ public class MockHudView : IHudView
     public bool BuyPeasantCtaActive { get; private set; }
     public void SetBuyPeasantCta(bool isCta) => BuyPeasantCtaActive = isCta;
 
+    public bool EndTurnCtaActive { get; private set; }
+    public void SetEndTurnCta(bool isCta) => EndTurnCtaActive = isCta;
+
+    public bool BuildTowerCtaActive { get; private set; }
+    public void SetBuildTowerCta(bool isCta) => BuildTowerCtaActive = isCta;
+
+    public bool ClaimVictoryWinNowCtaActive { get; private set; }
+    public void SetClaimVictoryWinNowCta(bool isCta) => ClaimVictoryWinNowCtaActive = isCta;
+
+    public bool ClaimVictoryContinueCtaActive { get; private set; }
+    public void SetClaimVictoryContinueCta(bool isCta) => ClaimVictoryContinueCtaActive = isCta;
+
+    public bool DefeatContinueCtaActive { get; private set; }
+    public void SetDefeatContinueCta(bool isCta) => DefeatContinueCtaActive = isCta;
+
     public bool ReplayAvailable { get; private set; }
     public void SetReplayAvailable(bool available) => ReplayAvailable = available;
 

@@ -112,6 +112,22 @@ public sealed partial class RecordPane : Control
     }
 
     /// <summary>
+    /// Pre-populate <see cref="CurrentTutorial"/> from a loaded Tutorial
+    /// without starting a recording session. Used by the TutorialBuilder
+    /// after Load Tutorial so the subsequent SetMode(Record) sees the
+    /// loaded beats and continues recording instead of starting fresh.
+    /// </summary>
+    public void PrimeForContinue(Tutorial loaded)
+    {
+        if (_running) StopRecording();
+        _capture.Begin(
+            loaded.Replay.InitialSnapshot,
+            loaded.Replay.InitialTurnNumber,
+            loaded.Replay.InitialCurrentPlayerIndex);
+        _capture.SetBeats(new System.Collections.Generic.List<ReplayBeat>(loaded.Replay.Beats));
+    }
+
+    /// <summary>
     /// Enter Record mode. Builds the transient controller + HUD over
     /// the panel's draft with all six slots forced Human. Idempotent —
     /// a second call without StopRecording first tears down the prior

@@ -182,12 +182,13 @@ public partial class TutorialBuilderScene : Node2D
         }
         if (mode == TutorialMode.Record)
         {
-            // Preview → Record preserves the recording and continues
-            // appending beats. Any other entry into Record (including
-            // MapEdit → Record after a discard) starts fresh.
-            Tutorial? carry = previous == TutorialMode.Preview
-                ? _recordPane.CurrentTutorial
-                : null;
+            // Continue any non-empty pre-populated tutorial — covers
+            // Preview → Record (preserve recording) and MapEdit → Record
+            // after Load (continue authoring the loaded tutorial).
+            // A fresh MapEdit → Record (no prior recording) or a
+            // MapEdit → Record after a discard sees CurrentTutorial=null
+            // and starts fresh.
+            Tutorial? carry = _recordPane.CurrentTutorial;
             if (carry != null && carry.Replay.Beats.Count > 0)
             {
                 _recordPane.ContinueRecording(carry);
@@ -474,12 +475,17 @@ public partial class TutorialBuilderScene : Node2D
         {
             LoadedSave loaded = _saveStore.LoadTutorial(slotName);
             _panel.LoadFromMap(loaded);
-            // RecordPane keeps the loaded Tutorial so Preview can play it
-            // back. A v3 file without a Tutorial block leaves the
-            // RecordPane's CurrentTutorial as-is (loaded as a plain map).
-            // Restoring authored beats into a "Record again" workflow is
-            // out of scope for the rewrite — Record mode is start-fresh.
             _loadDialog?.Hide();
+            // Prime RecordPane with the loaded Tutorial so the
+            // subsequent SetMode(Record) carries it forward via
+            // ContinueRecording. Empty / null tutorial → ApplyModeSwitch
+            // falls through to StartRecording (a fresh recording on
+            // the loaded map).
+            if (loaded.Tutorial != null && loaded.Tutorial.Replay.Beats.Count > 0)
+            {
+                _recordPane.PrimeForContinue(loaded.Tutorial);
+            }
+            SetMode(TutorialMode.Record);
         }
         catch (System.Exception ex)
         {

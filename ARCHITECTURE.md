@@ -138,6 +138,9 @@ off it.
 │   └─ single UI update path:                                              │
 │        RefreshViews() → _hud.Refresh(state, session, hasActionable)      │
 │                       → _map.RefreshOccupantVisuals(playerColor, tr.)    │
+│                       → _hud.SetEndTurnCta(!hasActionable)               │
+│                       → _onAfterRefresh?.Invoke()  (Preview cue hook;    │
+│                         null in ordinary play)                           │
 └──────┬──────────────────────────────────┬────────────────────────────────┘
        │                                  │
        ▼                                  ▼
@@ -383,6 +386,17 @@ void SetReplayAvailable(bool available); // toggle the victory-overlay
                                        // Replay button; Main flips it on
                                        // GameEnded iff the controller has
                                        // replay history from game start
+
+// CTA-styled button highlights (white bg + black border + black text).
+// SetEndTurnCta is driven by GameController.RefreshViews based on
+// hasActionable (the auto "out of moves" highlight); the other four
+// are tutorial-Preview-only and surface the next required action.
+void SetEndTurnCta(bool isCta);
+void SetBuyPeasantCta(bool isCta);
+void SetBuildTowerCta(bool isCta);
+void SetClaimVictoryWinNowCta(bool isCta);
+void SetClaimVictoryContinueCta(bool isCta);
+void SetDefeatContinueCta(bool isCta);
 ```
 
 The defeat overlay is part of the HUD: `Refresh` reads
@@ -652,6 +666,9 @@ GameController.OnTileClicked  ── wrapped in TrackHandler:
   // Back inside TrackHandler, after the body runs:
   if !session.IsGameOver && (_handlerMutatedGame || sessionChanged):
       session.Undo.PushBefore(pre)     // single push per handler, auto-deduped
+  _onAfterRefresh?.Invoke()            // Preview cue paints last; safe
+                                       // re-entry — TutorialPreviewCues
+                                       // guards with an _applying bool
 ```
 
 ### Long-press → rally
@@ -1151,6 +1168,15 @@ captured tutorial — the TutorialBuilder reads it both to gate the
 discard-confirm dialog and to decide between `StartRecording` /
 `ContinueRecording`.
 
+`RecordPane.PrimeForContinue(Tutorial)` pre-populates the capture
+from a loaded Tutorial without starting a recording session. Used
+by `OnLoadSlotPressed`: after a Load Tutorial the scene calls
+`PrimeForContinue` (if the loaded file has beats) and then
+`SetMode(TutorialMode.Record)`. `ApplyModeSwitch`'s Record branch
+inspects `CurrentTutorial` (regardless of previous mode); a
+non-empty tutorial triggers `ContinueRecording` so the dev resumes
+authoring the loaded script, otherwise `StartRecording` runs fresh.
+
 `RecordPane.StopRecording` (on `SetMode(out of Record)`):
 
 - Snapshots the captured tutorial into a `RecordingCapture` helper
@@ -1197,7 +1223,14 @@ discard-confirm dialog and to decide between `StartRecording` /
      NOT block input handlers — Preview wants player-0 clicks
      through)
    - `aiPacer: new GodotAiPacer(new SceneTreeTimerFactory(GetTree()))`
-6. Drag mode = Pan; `controller.StartGame()`.
+   - `onAfterRefresh: () => cues.Apply()` (see Preview cues below)
+6. `TutorialPreviewCues` built and wired into the controller via the
+   `onAfterRefresh` callback. Forward-reference dance: the controller
+   takes the callback at construction, but `TutorialPreviewCues`
+   needs a reference to the controller (for `SelectTerritoryForTutorial`
+   / `CancelActionForTutorial`). PreviewPane captures a local `cuesRef`
+   in the callback closure and assigns it post-construction.
+7. Drag mode = Pan; `controller.StartGame()`.
 
 While the dev plays:
 
@@ -1214,6 +1247,51 @@ While the dev plays:
 
 When the final player-0 beat is consumed, `TutorialPreview`
 fires `TutorialFinished` and the HUD shows "Tutorial complete."
+
+### Preview cues
+
+`TutorialPreviewCues` is a pure-C# helper that paints visual hints
+for the one-and-only-legal-move on player 0's turn. Wired into
+`GameController` via the `onAfterRefresh` callback so `Apply()` runs
+at the tail of every `RefreshViews()` and again at the tail of every
+human `TrackHandler` invocation (handler bodies sometimes paint
+`ShowMoveTargets` AFTER their mid-body refresh — e.g.,
+`OnTileClickedBody` enters MovingUnit mode and paints all valid
+targets after `SetSelection` already refreshed; the tail invocation
+ensures the cue paints last and wins).
+
+`Apply()` reads `TutorialPreview.NextPlayer0Beat` and dispatches:
+
+- **`ReplayEndTurnBeat`** → `SetEndTurnCta(true)`.
+- **`ReplayBuyBeat`** → auto-select capital's territory (via
+  `GameController.SelectTerritoryForTutorial`), `SetBuyPeasantCta(true)`,
+  and if `_session.Mode` matches the recorded `Level`, overwrite
+  `ShowMoveTargets([To], level)` with the single recorded tile. The
+  player cycles freely between BuyingXxx modes; the single-tile
+  highlight appears only once mode matches the recorded level.
+- **`ReplayBuildTowerBeat`** → analogous; CTA on Build Tower button
+  and single-tile `ShowTowerTargets([To])` once `Mode == BuildingTower`.
+- **`ReplayMoveBeat`** → auto-select source territory; if
+  `Mode == MovingUnit && MoveSource == mv.From`, overwrite
+  `ShowMoveTargets([To], level)`; otherwise overwrite with `[From]`
+  (single ring on the source) to direct the player to pick it up.
+- **`ReplayLongPressRallyBeat`** → auto-select containing territory;
+  `ShowMoveTargets([Target], Peasant)`.
+- **`ReplayClaimVictoryBeat` / `ReplayDismissClaimBeat` /
+  `ReplayDismissDefeatBeat`** → CTA on the matching overlay button.
+
+Before dispatching, `Apply` checks mode compatibility with the next
+beat. If the player is in a mode the beat can't be executed from
+(e.g., still in BuyingPeasant when the next beat is End Turn,
+BuildingTower when the next beat is Buy, MovingUnit with the wrong
+MoveSource when the next beat is Move), `Apply` calls
+`GameController.CancelActionForTutorial()` to clear `Mode` /
+`MoveSource` and the associated overlays so the new cue is unambiguous.
+A `_applying` re-entrancy guard short-circuits the recursive `Apply`
+triggered by `CancelActionForTutorial`'s own `RefreshViews`.
+
+Both `SelectTerritoryForTutorial` and `CancelActionForTutorial`
+bypass `TrackHandler` — Tutorial Preview isn't undoable.
 
 ### Why no parallel gating layer
 
@@ -1388,6 +1466,12 @@ scripts/
 │                           tutorial's InitialSnapshot back to the
 │                           live state + clears overlays + rebuilds
 │                           border/capital layers (used by PreviewPane)
+├─ Tutorial/TutorialPreviewCues.cs ─ pure-C# helper that paints the
+│                           visual cue for the next required beat
+│                           (CTA-styled button + auto-selected
+│                           territory + single-tile map highlight);
+│                           wired in via the controller's
+│                           onAfterRefresh callback
 │
 ├─ HexCoord.cs            ─ model primitives
 ├─ HexGrid.cs             ─

@@ -51,6 +51,9 @@ public partial class HudView : CanvasLayer, IHudView
     private Control _defeatOverlay = null!;
     private Label _defeatLabel = null!;
     private Control _claimVictoryOverlay = null!;
+    private Button _defeatContinueButton = null!;
+    private Button _claimWinNowButton = null!;
+    private Button _claimContinueButton = null!;
     private Panel _tutorialPanel = null!;
     private Label _tutorialLabel = null!;
 
@@ -450,13 +453,13 @@ public partial class HudView : CanvasLayer, IHudView
         float rowY = 130f;
         float rowX = (panelW - (buttonW * 3f + gap * 2f)) * 0.5f;
 
-        var continueButton = new Button { Text = "Continue" };
-        continueButton.AddThemeFontSizeOverride("font_size", 22);
-        continueButton.Position = new Vector2(rowX, rowY);
-        continueButton.Size = new Vector2(buttonW, buttonH);
-        continueButton.Pressed += () => DefeatContinueClicked?.Invoke();
-        AudioBus.AttachClick(continueButton);
-        panel.AddChild(continueButton);
+        _defeatContinueButton = new Button { Text = "Continue" };
+        _defeatContinueButton.AddThemeFontSizeOverride("font_size", 22);
+        _defeatContinueButton.Position = new Vector2(rowX, rowY);
+        _defeatContinueButton.Size = new Vector2(buttonW, buttonH);
+        _defeatContinueButton.Pressed += () => DefeatContinueClicked?.Invoke();
+        AudioBus.AttachClick(_defeatContinueButton);
+        panel.AddChild(_defeatContinueButton);
 
         var playAgainButton = new Button { Text = "Play Again" };
         playAgainButton.AddThemeFontSizeOverride("font_size", 22);
@@ -531,21 +534,21 @@ public partial class HudView : CanvasLayer, IHudView
         float rowY = 170f;
         float rowX = (panelW - (buttonW * 2f + gap)) * 0.5f;
 
-        var winNowButton = new Button { Text = "Win Now" };
-        winNowButton.AddThemeFontSizeOverride("font_size", 22);
-        winNowButton.Position = new Vector2(rowX, rowY);
-        winNowButton.Size = new Vector2(buttonW, buttonH);
-        winNowButton.Pressed += () => ClaimVictoryWinNowClicked?.Invoke();
-        AudioBus.AttachClick(winNowButton);
-        panel.AddChild(winNowButton);
+        _claimWinNowButton = new Button { Text = "Win Now" };
+        _claimWinNowButton.AddThemeFontSizeOverride("font_size", 22);
+        _claimWinNowButton.Position = new Vector2(rowX, rowY);
+        _claimWinNowButton.Size = new Vector2(buttonW, buttonH);
+        _claimWinNowButton.Pressed += () => ClaimVictoryWinNowClicked?.Invoke();
+        AudioBus.AttachClick(_claimWinNowButton);
+        panel.AddChild(_claimWinNowButton);
 
-        var continueButton = new Button { Text = "Continue Playing" };
-        continueButton.AddThemeFontSizeOverride("font_size", 22);
-        continueButton.Position = new Vector2(rowX + buttonW + gap, rowY);
-        continueButton.Size = new Vector2(buttonW, buttonH);
-        continueButton.Pressed += () => ClaimVictoryContinueClicked?.Invoke();
-        AudioBus.AttachClick(continueButton);
-        panel.AddChild(continueButton);
+        _claimContinueButton = new Button { Text = "Continue Playing" };
+        _claimContinueButton.AddThemeFontSizeOverride("font_size", 22);
+        _claimContinueButton.Position = new Vector2(rowX + buttonW + gap, rowY);
+        _claimContinueButton.Size = new Vector2(buttonW, buttonH);
+        _claimContinueButton.Pressed += () => ClaimVictoryContinueClicked?.Invoke();
+        AudioBus.AttachClick(_claimContinueButton);
+        panel.AddChild(_claimContinueButton);
     }
 
     /// <summary>
@@ -679,8 +682,10 @@ public partial class HudView : CanvasLayer, IHudView
         _undoTurnButton.Disabled = !session.Undo.CanUndo;
         _redoLastButton.Disabled = !session.Undo.CanRedo;
         _redoAllButton.Disabled = !session.Undo.CanRedo;
-
-        SetEndTurnCta(!hasActionableRemaining);
+        // End Turn CTA styling is driven by GameController.RefreshViews
+        // post-Refresh so Tutorial Preview's onAfterRefresh callback can
+        // overwrite it (e.g. light it for an EndTurn scripted beat even
+        // when the player still has actionable territories).
 
         // Victory overlay: show iff a winner has been declared.
         if (session.Winner.HasValue)
@@ -728,9 +733,17 @@ public partial class HudView : CanvasLayer, IHudView
             && !session.PendingDefeatScreen.HasValue;
     }
 
-    private void SetEndTurnCta(bool isCta) => ApplyCtaStyle(_endTurnButton, isCta);
+    public void SetEndTurnCta(bool isCta) => ApplyCtaStyle(_endTurnButton, isCta);
 
     public void SetBuyPeasantCta(bool isCta) => ApplyCtaStyle(_buyPeasantButton, isCta);
+
+    public void SetBuildTowerCta(bool isCta) => ApplyCtaStyle(_buildTowerButton, isCta);
+
+    public void SetClaimVictoryWinNowCta(bool isCta) => ApplyCtaStyle(_claimWinNowButton, isCta);
+
+    public void SetClaimVictoryContinueCta(bool isCta) => ApplyCtaStyle(_claimContinueButton, isCta);
+
+    public void SetDefeatContinueCta(bool isCta) => ApplyCtaStyle(_defeatContinueButton, isCta);
 
     private static void ApplyCtaStyle(Button button, bool isCta)
     {

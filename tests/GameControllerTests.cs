@@ -4714,4 +4714,116 @@ public class GameControllerTests
 
         Assert.Equal(baseline, session.Undo.UndoCount);
     }
+
+    // --- RefreshViews tail: End Turn auto-CTA + onAfterRefresh callback ---
+
+    [Fact]
+    public void RefreshViews_SetsEndTurnCtaFalse_WhenPlayerHasActionable()
+    {
+        var g = new TestGame();
+        // Red is starting fresh — unmoved units? No, but they can afford
+        // a peasant (10g). HasAnyActionableForCurrentPlayer therefore
+        // returns true → End Turn CTA cleared.
+        Assert.False(g.Hud.EndTurnCtaActive);
+    }
+
+    [Fact]
+    public void RefreshViews_SetsEndTurnCtaTrue_WhenPlayerHasNothingActionable()
+    {
+        var g = new TestGame();
+        // Drain Red's treasury so they can't afford a peasant. They
+        // also own no unmoved units (none built yet).
+        HexCoord redCapital = g.RedTerritory.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 0);
+        // Trigger a refresh by clicking the capital tile (selection).
+        g.Map.SimulateClick(g.Tile(g.RedTerritory.Capital!.Value.ToOffset().Col,
+                                    g.RedTerritory.Capital!.Value.ToOffset().Row));
+
+        Assert.True(g.Hud.EndTurnCtaActive);
+    }
+
+    [Fact]
+    public void OnAfterRefresh_FiresAtHandlerTail_AfterBodyOverwritesViewSinks()
+    {
+        // Regression: OnTileClickedBody calls SetSelection (which fires
+        // RefreshViews → onAfterRefresh) and THEN paints
+        // ShowMoveTargets with all valid targets. A Tutorial Preview
+        // cue applied during the mid-body RefreshViews gets clobbered.
+        // The handler tail must fire onAfterRefresh again so the cue
+        // (or any post-handler observer) sees the final state with the
+        // body's overwrites applied.
+        var red = new Player("Red", new Color(1f, 0f, 0f));
+        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var players = new List<Player> { red, blue };
+        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Color);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(0, 1))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(1, 1))!.Color = red.Color;
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players,
+            new TurnState(players), new Treasury());
+        var map = new MockHexMapView();
+        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+        {
+            map.TileIndex[kvp.Key] = kvp.Value;
+        }
+        var session = new SessionState();
+        // Suppress claim-victory prompt.
+        session.ClaimVictoryPromptedHighestThreshold[red.Color] = 90;
+        session.ClaimVictoryPromptedHighestThreshold[blue.Color] = 90;
+        // Place an actionable unit on Red's territory so clicking it
+        // puts the controller in MovingUnit mode and paints all valid
+        // targets.
+        grid.Get(HexCoord.FromOffset(0, 0))!.Occupant = new Unit(red.Color);
+
+        var snapshotCalls = new List<int>(); // record map.LastMoveTargets.Count at each onAfterRefresh
+        GameController? controllerRef = null;
+        var controller = new GameController(state, session, map, new MockHudView(),
+            onAfterRefresh: () => snapshotCalls.Add(map.LastMoveTargets.Count));
+        controllerRef = controller;
+        controller.StartGame();
+        snapshotCalls.Clear();
+
+        // Click the unit → OnTileClickedBody enters MovingUnit mode and
+        // paints ShowMoveTargets with multiple valid attack tiles.
+        map.SimulateClick(grid.Get(HexCoord.FromOffset(0, 0)));
+
+        // We must observe at least one onAfterRefresh call AFTER the
+        // body painted its full-target set (snapshotCalls.Last() should
+        // be > 0). Without the tail invocation, the last call records 0
+        // (the SetSelection-induced RefreshViews fires before
+        // ShowMoveTargets paints).
+        Assert.NotEmpty(snapshotCalls);
+        Assert.True(snapshotCalls[snapshotCalls.Count - 1] > 0,
+            $"Expected last onAfterRefresh to see body's targets, "
+            + $"but saw {snapshotCalls[snapshotCalls.Count - 1]} targets.");
+    }
+
+    [Fact]
+    public void RefreshViews_InvokesOnAfterRefreshCallback()
+    {
+        var red = new Player("Red", new Color(1f, 0f, 0f));
+        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var players = new List<Player> { red, blue };
+        var grid = TestHelpers.BuildRectGrid(2, 2, red.Color);
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var map = new MockHexMapView();
+        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+        {
+            map.TileIndex[kvp.Key] = kvp.Value;
+        }
+        int callbackCount = 0;
+        var controller = new GameController(
+            state, new SessionState(), map, new MockHudView(),
+            onAfterRefresh: () => callbackCount++);
+        controller.StartGame();
+        int afterStart = callbackCount;
+
+        // Click a tile to force another refresh.
+        map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(0, 0)));
+
+        Assert.True(afterStart > 0); // StartGame triggered at least one refresh.
+        Assert.True(callbackCount > afterStart);
+    }
 }

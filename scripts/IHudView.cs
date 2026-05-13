@@ -95,4 +95,36 @@ public interface IHudView
     /// dropping back to <c>SetBuyPeasantCta(false)</c>).
     /// </summary>
     void SetBuyPeasantCta(bool isCta);
+
+    /// <summary>
+    /// Apply (or clear) CTA styling to the End Turn button. Called from
+    /// <see cref="GameController.RefreshViews"/> to indicate the human
+    /// has no actionable territories left, and from Tutorial Preview to
+    /// indicate the next scripted beat is End Turn.
+    /// </summary>
+    void SetEndTurnCta(bool isCta);
+
+    /// <summary>
+    /// Apply (or clear) tutorial-driven CTA styling to the Build Tower
+    /// button. Tutorial Preview only.
+    /// </summary>
+    void SetBuildTowerCta(bool isCta);
+
+    /// <summary>
+    /// Apply (or clear) CTA styling to the claim-victory overlay's
+    /// "Win Now" button. Tutorial Preview only.
+    /// </summary>
+    void SetClaimVictoryWinNowCta(bool isCta);
+
+    /// <summary>
+    /// Apply (or clear) CTA styling to the claim-victory overlay's
+    /// "Continue Playing" button. Tutorial Preview only.
+    /// </summary>
+    void SetClaimVictoryContinueCta(bool isCta);
+
+    /// <summary>
+    /// Apply (or clear) CTA styling to the defeat overlay's "Continue"
+    /// button. Tutorial Preview only.
+    /// </summary>
+    void SetDefeatContinueCta(bool isCta);
 }

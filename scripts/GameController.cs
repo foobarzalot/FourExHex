@@ -93,10 +93,12 @@ public class GameController
         int maxTurnNumber = int.MaxValue,
         Replay? loadedReplay = null,
         Func<ReplayBeat, bool>? humanActionValidator = null,
-        bool previewMode = false)
+        bool previewMode = false,
+        Action? onAfterRefresh = null)
     {
         _humanActionValidator = humanActionValidator;
         _previewMode = previewMode;
+        _onAfterRefresh = onAfterRefresh;
         _state = state;
         _session = session;
         _map = map;
@@ -352,6 +354,12 @@ public class GameController
     private readonly bool _previewMode;
     public bool IsPreviewMode => _previewMode;
 
+    // Optional callback fired at the tail of every RefreshViews(). Used
+    // by Tutorial Preview to repaint visual cues (auto-selection,
+    // single-tile highlights, CTA-styled buttons) after every state
+    // change — both human-driven and AI-driven. Null in ordinary play.
+    private Action? _onAfterRefresh;
+
     // --- Replay recording / playback ------------------------------------
     // The replay log lives parallel to the per-turn undo stack: every
     // state-mutating action by every player (human and AI) appends a
@@ -479,6 +487,15 @@ public class GameController
             _redoBeatLists.Clear();
         }
         if (_pendingHumanBeat != null) RecordBeat(_pendingHumanBeat);
+        // Tutorial Preview cue update: handler bodies sometimes paint
+        // ShowMoveTargets / ShowTowerTargets AFTER their mid-body
+        // RefreshViews call (e.g., OnTileClickedBody enters MovingUnit
+        // mode and paints all valid targets AFTER SetSelection
+        // refreshed). Re-fire onAfterRefresh at the tail so the cue
+        // paints last and wins over the body's full-target sets.
+        // Re-entrancy in TutorialPreviewCues.Apply is guarded
+        // separately, so the extra invocation is safe.
+        _onAfterRefresh?.Invoke();
     }
 
     // --- Click handling ---------------------------------------------------
@@ -683,6 +700,20 @@ public class GameController
     /// shouldn't call this.
     /// </summary>
     public void SelectTerritoryForTutorial(Territory? territory) => SetSelection(territory);
+
+    /// <summary>
+    /// Public cancel-pending-action entry point for tutorial Preview
+    /// orchestration. Clears <see cref="SessionState.Mode"/> / MoveSource
+    /// and the associated map overlays, then refreshes views. Bypasses
+    /// TrackHandler so no undo entry is pushed (tutorial Preview isn't
+    /// undoable). Ordinary play reaches this path via the Cancel button
+    /// / Escape key.
+    /// </summary>
+    public void CancelActionForTutorial()
+    {
+        CancelPendingAction();
+        RefreshViews();
+    }
 
     /// <summary>
     /// Returns the action-consuming targets for a would-be attacker of
@@ -2636,6 +2667,12 @@ public class GameController
         bool hasActionable = HasAnyActionableForCurrentPlayer();
         _hud.Refresh(_state, _session, hasActionable);
         _map.RefreshOccupantVisuals(_state.Turns.CurrentPlayer.Color, _state.Treasury);
+        // End Turn CTA when the current player has nothing actionable
+        // left. Lives here (not inside _hud.Refresh) so Tutorial Preview's
+        // onAfterRefresh callback can overwrite it when the next scripted
+        // beat is End Turn — "last write wins" with the preview cue.
+        _hud.SetEndTurnCta(!hasActionable);
+        _onAfterRefresh?.Invoke();
     }
 
     private bool HasAnyActionableForCurrentPlayer()

@@ -91,5 +91,10 @@ public sealed class HeadlessHudView : IHudView
     public void ShowTutorialMessage(string text) { }
     public void HideTutorialMessage() { }
     public void SetBuyPeasantCta(bool isCta) { }
+    public void SetEndTurnCta(bool isCta) { }
+    public void SetBuildTowerCta(bool isCta) { }
+    public void SetClaimVictoryWinNowCta(bool isCta) { }
+    public void SetClaimVictoryContinueCta(bool isCta) { }
+    public void SetDefeatContinueCta(bool isCta) { }
     public void SetReplayAvailable(bool available) { }
 }

@@ -35,6 +35,7 @@ public sealed partial class PreviewPane : Control
     private ReplayDrivenAi? _replayAi;
     private GameController? _controller;
     private GameState? _previewState;
+    private TutorialPreviewCues? _cues;
     private HexDragMode _savedDragMode;
     private bool _running;
 
@@ -97,16 +98,37 @@ public sealed partial class PreviewPane : Control
         _preview.PlayerActionRejected += OnRejected;
         _preview.TutorialFinished += OnFinished;
 
+        var previewSession = new SessionState();
+
+        // Forward-reference: the controller takes onAfterRefresh as a
+        // constructor arg, but TutorialPreviewCues needs the controller
+        // (for SelectTerritoryForTutorial). We close over a local that
+        // is assigned after both are constructed; the controller's
+        // StartGame call then triggers the first onAfterRefresh, by
+        // which time the local points at the real cues object.
+        TutorialPreviewCues? cuesRef = null;
         _controller = new GameController(
             _previewState,
-            new SessionState(),
+            previewSession,
             _panel.Map,
             _hud,
             seed: _panel.CurrentSeed,
             aiChooser: _replayAi.ChooseNextAction,
             aiPacer: new GodotAiPacer(new SceneTreeTimerFactory(GetTree())),
             humanActionValidator: _preview.TryAccept,
-            previewMode: true);
+            previewMode: true,
+            onAfterRefresh: () => cuesRef?.Apply());
+
+        _cues = new TutorialPreviewCues(
+            _preview,
+            _previewState,
+            previewSession,
+            _hud,
+            _panel.Map,
+            roster[0].Color,
+            t => _controller!.SelectTerritoryForTutorial(t),
+            () => _controller!.CancelActionForTutorial());
+        cuesRef = _cues;
 
         _savedDragMode = _panel.Map.DragMode;
         _panel.Map.DragMode = HexDragMode.Pan;
@@ -141,6 +163,7 @@ public sealed partial class PreviewPane : Control
         _previewState = null;
         _replayAi = null;
         _preview = null;
+        _cues = null;
         _running = false;
     }
 
