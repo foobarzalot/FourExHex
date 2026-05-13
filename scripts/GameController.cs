@@ -158,6 +158,29 @@ public class GameController
     public void AbandonGame()
     {
         _aiPacer.Cancel();
+        // Unsubscribe from view events so a downstream click can't
+        // re-enter this stale controller's handlers — relevant when
+        // the view is shared between sessions (TutorialBuilder's
+        // Record ↔ Preview transitions reuse the same HexMapView).
+        // Without this, the stale handler's RefreshViews call hits
+        // a disposed HudView and throws ObjectDisposedException.
+        _map.TileClicked -= OnTileClicked;
+        _map.TileLongClicked -= OnTileLongClicked;
+        _hud.BuyPeasantClicked -= OnBuyPressed;
+        _hud.BuildTowerClicked -= OnBuildTowerPressed;
+        _hud.UndoLastClicked -= OnUndoLastPressed;
+        _hud.UndoTurnClicked -= OnUndoTurnPressed;
+        _hud.RedoLastClicked -= OnRedoLastPressed;
+        _hud.RedoAllClicked -= OnRedoAllPressed;
+        _hud.EndTurnClicked -= OnEndTurnPressed;
+        _hud.NextTerritoryClicked -= OnNextTerritoryPressed;
+        _hud.PreviousTerritoryClicked -= OnPreviousTerritoryPressed;
+        _hud.NextUnitClicked -= OnNextUnitPressed;
+        _hud.PreviousUnitClicked -= OnPreviousUnitPressed;
+        _hud.CancelActionPressed -= OnCancelActionPressed;
+        _hud.DefeatContinueClicked -= OnDefeatContinuePressed;
+        _hud.ClaimVictoryWinNowClicked -= OnClaimVictoryWinNowPressed;
+        _hud.ClaimVictoryContinueClicked -= OnClaimVictoryContinuePressed;
     }
 
     public void StartGame()

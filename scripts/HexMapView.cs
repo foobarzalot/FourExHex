@@ -1624,7 +1624,7 @@ public partial class HexMapView : Node2D, IHexMapView
     /// Skips the work entirely when no listener is attached — the play
     /// scene doesn't subscribe.
     ///
-    /// Chrome (HUD strip, TutorialBuilder topbar, BuildPane strips) is
+    /// Chrome (HUD strip, TutorialBuilder topbar, RecordPane strips) is
     /// handled by the natural input chain: chrome Controls have
     /// MouseFilter=Stop, so the underlying motion event is consumed
     /// before <see cref="_UnhandledInput"/> fires — this method is

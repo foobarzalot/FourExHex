@@ -23,7 +23,7 @@ using Godot;
 /// topbar.
 /// </para>
 /// </summary>
-public sealed partial class BuildPane : Control
+public sealed partial class RecordPane : Control
 {
     private MapEditorPanel _panel = null!;
     private HudView? _hud;
@@ -35,7 +35,7 @@ public sealed partial class BuildPane : Control
     // _controller so the snapshot survives StopRecording (which nulls
     // the controller). Without this the live bug was: SetMode runs
     // StopRecording then reads CurrentTutorial → null → Preview
-    // never starts. See RecordingCapture + BuildPaneCaptureTests.
+    // never starts. See RecordingCapture + RecordPaneCaptureTests.
     private readonly RecordingCapture _capture = new();
 
     public override void _Ready()
@@ -85,6 +85,7 @@ public sealed partial class BuildPane : Control
     /// </summary>
     public void StartRecording()
     {
+        GD.Print($"[RecordPane] StartRecording (was running={_running})");
         if (_running) StopRecording();
 
         // All-Human roster: keep the panel's colors/names so the grid
@@ -124,6 +125,11 @@ public sealed partial class BuildPane : Control
                 _controller.InitialReplayTurnNumber,
                 _controller.InitialReplayCurrentPlayerIndex);
             _capture.SetBeats(new List<ReplayBeat>(_controller.ReplayBeats));
+            GD.Print($"[RecordPane] Capture.Begin: turn={_controller.InitialReplayTurnNumber}, player={_controller.InitialReplayCurrentPlayerIndex}");
+        }
+        else
+        {
+            GD.Print("[RecordPane] WARNING: controller has no initial snapshot after StartGame");
         }
 
         _running = true;
@@ -138,6 +144,7 @@ public sealed partial class BuildPane : Control
     /// </summary>
     public void StopRecording()
     {
+        GD.Print($"[RecordPane] StopRecording (running={_running}, beats={_controller?.ReplayBeats.Count ?? -1})");
         if (!_running) return;
 
         // Snapshot the final beat list into the capture before nulling

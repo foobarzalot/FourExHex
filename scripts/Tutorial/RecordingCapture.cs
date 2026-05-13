@@ -2,9 +2,9 @@ using System.Collections.Generic;
 
 /// <summary>
 /// Pure-C# captor for a Record-mode session's Tutorial payload.
-/// Extracted from <see cref="BuildPane"/> so the post-Stop survival
+/// Extracted from <see cref="RecordPane"/> so the post-Stop survival
 /// of the captured data is reachable from xUnit (the Godot-derived
-/// BuildPane itself is test-excluded).
+/// RecordPane itself is test-excluded).
 ///
 /// <para>
 /// Lifecycle: <c>Begin</c> at the start of a recording session,

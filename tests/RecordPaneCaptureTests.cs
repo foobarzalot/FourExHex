@@ -5,18 +5,18 @@ using Xunit;
 namespace FourExHex.Tests;
 
 /// <summary>
-/// Regression: BuildPane snapshots its captured tutorial when
+/// Regression: RecordPane snapshots its captured tutorial when
 /// recording stops so it survives the controller teardown. Without
 /// this the live bug was: dev records, switches to Preview,
 /// TutorialBuilderScene calls StopRecording (nulls the controller)
-/// then reads BuildPane.CurrentTutorial (returns null because
+/// then reads RecordPane.CurrentTutorial (returns null because
 /// _controller is gone) and PreviewPane.Start never runs — the dev
 /// sees the post-recording state, not the reset-to-initial state.
 ///
 /// Logic extracted into <see cref="RecordingCapture"/> so this is
-/// reachable from xUnit (BuildPane itself is test-excluded).
+/// reachable from xUnit (RecordPane itself is test-excluded).
 /// </summary>
-public class BuildPaneCaptureTests
+public class RecordPaneCaptureTests
 {
     private static GameStateSnapshot DummySnapshot()
     {

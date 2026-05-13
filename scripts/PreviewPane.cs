@@ -53,6 +53,7 @@ public sealed partial class PreviewPane : Control
     /// </summary>
     public void Start(Tutorial tutorial)
     {
+        GD.Print($"[PreviewPane] Start: beats={tutorial.Replay.Beats.Count}, initialTurn={tutorial.Replay.InitialTurnNumber}, initialPlayer={tutorial.Replay.InitialCurrentPlayerIndex}");
         if (_running) Pause();
 
         // Player roster: player 0 Human (the dev plays Red);
@@ -68,14 +69,11 @@ public sealed partial class PreviewPane : Control
         }
 
         _previewState = _panel.BuildLiveStateWith(roster);
-        // Apply the recorded InitialSnapshot so playback starts from
-        // the same board the recording started on.
-        IReadOnlyList<Territory> restored =
-            tutorial.Replay.InitialSnapshot.ApplyTo(_previewState.Grid, _previewState.Treasury);
-        _previewState.Territories = restored;
-        _previewState.Turns.Reset(
-            tutorial.Replay.InitialCurrentPlayerIndex,
-            tutorial.Replay.InitialTurnNumber);
+        // Snapshot restore + turn reset + view-overlay clears live
+        // in a pure-C# helper so xUnit can verify the visual reset
+        // (PreviewPane itself is Godot-coupled and test-excluded).
+        // See PreviewSetupTests for the regression coverage.
+        PreviewSetup.Apply(_panel.Map, _previewState, tutorial);
 
         _hud = new HudView();
         AddChild(_hud);
@@ -105,6 +103,7 @@ public sealed partial class PreviewPane : Control
         _panel.Map.DragMode = HexDragMode.Pan;
         _panel.Map.Init(_previewState);
         _controller.StartGame();
+        GD.Print($"[PreviewPane] post-StartGame: turn={_previewState.Turns.TurnNumber}, currentPlayer={_previewState.Turns.CurrentPlayerIndex} ({_previewState.Turns.CurrentPlayer.Name})");
 
         _running = true;
     }

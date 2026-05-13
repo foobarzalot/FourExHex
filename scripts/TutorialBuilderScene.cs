@@ -6,28 +6,28 @@ using Godot;
 /// switches between these; the scene's <see cref="TutorialBuilderScene"/>
 /// owns the state machine.
 /// </summary>
-public enum TutorialMode { MapEdit, Build, Preview }
+public enum TutorialMode { MapEdit, Record, Preview }
 
 /// <summary>
 /// TutorialBuilder scene root. Mirrors <see cref="MapEditorScene"/>'s
 /// shape — instantiates the reusable <see cref="MapEditorPanel"/> from
 /// Phase 1 plus its palette HUD — and adds a top-level mode switcher
 /// (<see cref="TutorialBuilderTopBar"/>) and per-mode chrome
-/// (<see cref="BuildPane"/> placeholder, <see cref="PreviewPane"/>
+/// (<see cref="RecordPane"/> placeholder, <see cref="PreviewPane"/>
 /// placeholder). The panel is created once and never torn down; mode
 /// switching toggles <see cref="MapEditorPanel.PaintingEnabled"/> and
 /// the per-mode chrome's Visible flag, so the painted draft survives
 /// every mode transition.
 ///
 /// Phase 2 ships only the scaffolding. Phase 3 wires Save Tutorial /
-/// Load Tutorial and grows BuildPane / PreviewPane into real chrome.
+/// Load Tutorial and grows RecordPane / PreviewPane into real chrome.
 /// </summary>
 public partial class TutorialBuilderScene : Node2D
 {
     private MapEditorPanel _panel = null!;
     private MapEditorHudView _mapEditHud = null!;
     private TutorialBuilderTopBar _topBar = null!;
-    private BuildPane _buildPane = null!;
+    private RecordPane _recordPane = null!;
     private PreviewPane _previewPane = null!;
     private List<Player> _players = null!;
 
@@ -91,9 +91,9 @@ public partial class TutorialBuilderScene : Node2D
 
         // 4. Per-mode placeholder chrome. Both start Visible = false;
         //    SetMode flips visibility on transitions.
-        _buildPane = new BuildPane { Visible = false };
-        _buildPane.SetPanel(_panel);
-        AddChild(_buildPane);
+        _recordPane = new RecordPane { Visible = false };
+        _recordPane.SetPanel(_panel);
+        AddChild(_recordPane);
 
         _previewPane = new PreviewPane { Visible = false };
         _previewPane.SetPanel(_panel);
@@ -119,43 +119,44 @@ public partial class TutorialBuilderScene : Node2D
         TutorialMode previous = _currentMode;
         _currentMode = mode;
 
+        GD.Print($"[TutorialBuilder] SetMode: {previous} → {mode}");
+
         _panel.PaintingEnabled = mode == TutorialMode.MapEdit;
         _mapEditHud.Visible = mode == TutorialMode.MapEdit;
-        _buildPane.Visible = mode == TutorialMode.Build;
+        _recordPane.Visible = mode == TutorialMode.Record;
         _previewPane.Visible = mode == TutorialMode.Preview;
 
-        // Phase 3c: hide the topbar in Preview so the in-Preview
-        // HudView (at y=0..60) doesn't fight the topbar for the same
-        // strip. ESC and kbd 1/2/3 still switch modes; the topbar
-        // re-shows on exit.
-        _topBar.Visible = mode != TutorialMode.Preview;
+        // Hide the topbar in Record and Preview so the live HudView
+        // (at y=0..60) doesn't fight the topbar for the same strip.
+        // ESC and kbd 1/2/3 still switch modes; the topbar re-shows
+        // when returning to Map Edit.
+        _topBar.Visible = mode == TutorialMode.MapEdit;
 
         if (previous == TutorialMode.Preview)
         {
             _previewPane.Pause();
         }
-        if (previous == TutorialMode.Build)
+        if (previous == TutorialMode.Record)
         {
-            _buildPane.StopRecording();
+            _recordPane.StopRecording();
         }
-        if (mode == TutorialMode.Build)
+        if (mode == TutorialMode.Record)
         {
-            _buildPane.StartRecording();
+            _recordPane.StartRecording();
         }
         if (mode == TutorialMode.Preview)
         {
-            // Hand the BuildPane's authored Tutorial to PreviewPane.
-            // BuildPane owns the in-memory Tutorial for the session;
+            // Hand the RecordPane's authored Tutorial to PreviewPane.
+            // RecordPane owns the in-memory Tutorial for the session;
             // PreviewPane builds its transient controller around it.
-            Tutorial? authored = _buildPane.CurrentTutorial;
+            Tutorial? authored = _recordPane.CurrentTutorial;
+            GD.Print($"[TutorialBuilder] Entering Preview. authored={(authored == null ? "null" : "non-null")}, beats={authored?.Replay.Beats.Count ?? -1}");
             if (authored != null && authored.Replay.Beats.Count > 0)
             {
                 _previewPane.Start(authored);
             }
             else
             {
-                // No recording yet — flash a hint via the topbar's
-                // status surface (or just print). Defer richer UX.
                 GD.PushWarning("No recorded tutorial to preview. Switch to Record mode first.");
             }
         }
@@ -174,7 +175,7 @@ public partial class TutorialBuilderScene : Node2D
                 GetViewport().SetInputAsHandled();
                 break;
             case Key.Key2:
-                SetMode(TutorialMode.Build);
+                SetMode(TutorialMode.Record);
                 GetViewport().SetInputAsHandled();
                 break;
             case Key.Key3:
@@ -275,11 +276,11 @@ public partial class TutorialBuilderScene : Node2D
         string name = SaveStore.SanitizeSlotName(_saveDialogLineEdit.Text);
         try
         {
-            // Read the authored Tutorial off the BuildPane (which owns
+            // Read the authored Tutorial off the RecordPane (which owns
             // the in-memory Replay for the session). Bail with a clearer
             // error if recording hasn't run yet — the new schema
             // requires a non-null Replay on every saved Tutorial.
-            Tutorial? authored = _buildPane.CurrentTutorial;
+            Tutorial? authored = _recordPane.CurrentTutorial;
             if (authored == null)
             {
                 ShowSaveError("Nothing recorded yet. Switch to Record and play a turn first.");
@@ -400,9 +401,9 @@ public partial class TutorialBuilderScene : Node2D
         {
             LoadedSave loaded = _saveStore.LoadTutorial(slotName);
             _panel.LoadFromMap(loaded);
-            // BuildPane keeps the loaded Tutorial so Preview can play it
+            // RecordPane keeps the loaded Tutorial so Preview can play it
             // back. A v3 file without a Tutorial block leaves the
-            // BuildPane's CurrentTutorial as-is (loaded as a plain map).
+            // RecordPane's CurrentTutorial as-is (loaded as a plain map).
             // Restoring authored beats into a "Record again" workflow is
             // out of scope for the rewrite — Record mode is start-fresh.
             _loadDialog?.Hide();

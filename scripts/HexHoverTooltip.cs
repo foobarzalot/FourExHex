@@ -49,7 +49,7 @@ public partial class HexHoverTooltip : CanvasLayer
 
     public override void _Ready()
     {
-        // Sit in the default canvas (layer 0) so BuildPane's right-strip
+        // Sit in the default canvas (layer 0) so RecordPane's right-strip
         // and bottom-timeline Controls — also at layer 0 (Control direct
         // child of Node2D) — block the sensor and trigger MouseExited.
         // CanvasLayer chrome (HudView, TutorialBuilderTopBar — both at

@@ -75,7 +75,7 @@ public sealed partial class TutorialBuilderTopBar : CanvasLayer
 
         _mapEditButton = MakeModeButton("Map Edit  (1)", TutorialMode.MapEdit);
         leftHbox.AddChild(_mapEditButton);
-        _buildButton = MakeModeButton("Build  (2)", TutorialMode.Build);
+        _buildButton = MakeModeButton("Record  (2)", TutorialMode.Record);
         leftHbox.AddChild(_buildButton);
         _previewButton = MakeModeButton("Preview  (3)", TutorialMode.Preview);
         leftHbox.AddChild(_previewButton);
@@ -143,7 +143,7 @@ public sealed partial class TutorialBuilderTopBar : CanvasLayer
         _currentMode = mode;
         if (_mapEditButton == null) return;
         _mapEditButton.Disabled = mode == TutorialMode.MapEdit;
-        _buildButton.Disabled   = mode == TutorialMode.Build;
+        _buildButton.Disabled   = mode == TutorialMode.Record;
         _previewButton.Disabled = mode == TutorialMode.Preview;
     }
 

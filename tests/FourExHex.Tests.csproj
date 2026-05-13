@@ -82,6 +82,7 @@
     <Compile Include="..\scripts\Tutorial\ReplayDrivenAi.cs" Link="scripts\Tutorial\ReplayDrivenAi.cs" />
     <Compile Include="..\scripts\Tutorial\TutorialPreview.cs" Link="scripts\Tutorial\TutorialPreview.cs" />
     <Compile Include="..\scripts\Tutorial\RecordingCapture.cs" Link="scripts\Tutorial\RecordingCapture.cs" />
+    <Compile Include="..\scripts\Tutorial\PreviewSetup.cs" Link="scripts\Tutorial\PreviewSetup.cs" />
   </ItemGroup>
 
 </Project>
