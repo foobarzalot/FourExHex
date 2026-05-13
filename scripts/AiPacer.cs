@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 /// <summary>
 /// Schedules deferred continuations for the AI turn step machine so
@@ -33,15 +34,46 @@ public interface IAiPacer
 }
 
 /// <summary>
-/// Default pacer: runs the callback immediately on the current call
-/// stack. Used in tests so existing AI-turn assertions can call
-/// <c>StartGame</c> / <c>ClickEndTurn</c> and inspect state as soon
-/// as the method returns.
+/// Default pacer: drains all scheduled callbacks before the outermost
+/// <see cref="Schedule"/> call returns. Used in tests so existing
+/// AI-turn assertions can call <c>StartGame</c> / <c>ClickEndTurn</c>
+/// and inspect state as soon as the method returns.
+///
+/// Internally a trampoline: the first <see cref="Schedule"/> call
+/// enqueues its callback and runs a drain loop that pumps every
+/// callback the loop enqueues (including from within callbacks).
+/// Inner Schedule calls just enqueue and return immediately. This
+/// keeps the stack flat across long AI chains — without it, a full
+/// six-AI game runs <c>StepAiPreview</c> ↔ <c>StepAiExecute</c> on
+/// the call stack and overflows on long runs.
+///
+/// Equivalent to the prior "<c>Schedule => callback()</c>" version
+/// because every <c>_aiPacer.Schedule</c> call site in
+/// <see cref="GameController"/> is a tail call; no callback does
+/// work after its Schedule call, so FIFO drain order matches
+/// recursive order.
 /// </summary>
 public sealed class SynchronousAiPacer : IAiPacer
 {
-    public void Schedule(Action callback, int delayMs) => callback();
-    public void Cancel() { /* nothing queued; runs are inline */ }
+    private readonly Queue<Action> _queue = new();
+    private bool _draining;
+
+    public void Schedule(Action callback, int delayMs)
+    {
+        _queue.Enqueue(callback);
+        if (_draining) return;
+        _draining = true;
+        try
+        {
+            while (_queue.Count > 0) _queue.Dequeue()();
+        }
+        finally
+        {
+            _draining = false;
+        }
+    }
+
+    public void Cancel() => _queue.Clear();
 }
 
 /// <summary>
