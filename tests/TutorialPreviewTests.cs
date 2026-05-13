@@ -105,8 +105,43 @@ public class TutorialPreviewTests
     }
 
     [Fact]
-    public void TryAccept_SkipsOverNonPlayer0Beats_ToFindNextPlayer0Beat()
+    public void TryAccept_OnPlayer0TurnButCursorOnNonPlayer0Beat_RejectsAsDesync()
     {
+        // Strict shared-cursor contract: when control is on player 0,
+        // the cursor MUST point at a player-0 beat (the AI side
+        // consumes its own beats before transitioning back). If the
+        // cursor still points at a non-player-0 beat when player 0
+        // attempts an action, that's a sync bug — reject with a
+        // clear "desync" reason rather than silently scanning forward
+        // (which would mask the bug).
+        var script = new List<ReplayBeat>
+        {
+            new ReplayMoveBeat { Index = 0, Turn = 1, Actor = 1,
+                                  From = new HexCoord(2, 2), To = new HexCoord(2, 1) },
+            new ReplayBuyBeat { Index = 1, Turn = 1, Actor = 0,
+                                 Capital = new HexCoord(0, 0), To = new HexCoord(1, 0),
+                                 Level = UnitLevel.Peasant },
+        };
+        var preview = new TutorialPreview(script, PlayerZeroTurnState());
+        ReplayBeat? rejectedExpected = null;
+        preview.PlayerActionRejected += (e, _) => rejectedExpected = e;
+
+        bool ok = preview.TryAccept(new ReplayBuyBeat
+        {
+            Capital = new HexCoord(0, 0), To = new HexCoord(1, 0),
+            Level = UnitLevel.Peasant,
+        });
+
+        Assert.False(ok);
+        Assert.NotNull(rejectedExpected);
+    }
+
+    [Fact]
+    public void TryAccept_WithSharedCursorAdvancedPastBlueBeats_AcceptsRedAction()
+    {
+        // Realistic flow: AI consumed Blue's beats and the cursor is
+        // now positioned at Red's beat. TutorialPreview should accept
+        // when the dev plays the expected Red action.
         var script = new List<ReplayBeat>
         {
             new ReplayMoveBeat { Index = 0, Turn = 1, Actor = 1,
@@ -116,7 +151,11 @@ public class TutorialPreviewTests
                                  Capital = new HexCoord(0, 0), To = new HexCoord(1, 0),
                                  Level = UnitLevel.Peasant },
         };
-        var preview = new TutorialPreview(script, PlayerZeroTurnState());
+        var cursor = new ScriptCursor();
+        // Simulate the AI side having consumed Blue's two beats.
+        cursor.Advance();
+        cursor.Advance();
+        var preview = new TutorialPreview(script, PlayerZeroTurnState(), cursor);
 
         bool ok = preview.TryAccept(new ReplayBuyBeat
         {

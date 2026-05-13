@@ -3,6 +3,28 @@ using System.Collections.Generic;
 using Godot;
 
 /// <summary>
+/// Shared cursor over a recorded <see cref="ReplayBeat"/> script.
+/// Both <see cref="ReplayDrivenAi"/> (AI side) and
+/// <see cref="TutorialPreview"/> (human side) reference the same
+/// instance so that beats consumed by one advance the other — the
+/// script is one totally-ordered log, not two parallel streams.
+///
+/// <para>
+/// An earlier two-class design with separate internal cursors caused
+/// the AI side to stay stuck on the human's already-consumed beats
+/// after the dev finished a turn: ChooseNextAction kept seeing
+/// script[0] (a player-0 beat), returning null for every non-player-0
+/// actor, and every AI turn no-op'd in Preview.
+/// </para>
+/// </summary>
+public sealed class ScriptCursor
+{
+    public int Index { get; private set; }
+    public void Advance() => Index++;
+    public void Reset() => Index = 0;
+}
+
+/// <summary>
 /// AI chooser that replays a recorded <see cref="ReplayBeat"/> script
 /// for players other than the human (player 0). Plugged into
 /// <see cref="GameController"/>'s <c>aiChooser</c> delegate slot
@@ -11,12 +33,14 @@ using Godot;
 /// manually.
 ///
 /// <para>
-/// Cursor semantics: a single global <c>_cursor</c> tracks the next
-/// script beat. When the controller asks for actor X and the next
-/// beat's <see cref="ReplayBeat.Actor"/> is some other player, this
-/// chooser returns <c>null</c> WITHOUT advancing — the controller
-/// reads null as "X is done; end turn," advances to the next player,
-/// and the chooser then finds the matching beat on the next call.
+/// Cursor semantics: a shared <see cref="ScriptCursor"/> tracks the
+/// next script beat. When the controller asks for actor X and the
+/// next beat's <see cref="ReplayBeat.Actor"/> is some other player,
+/// this chooser returns <c>null</c> WITHOUT advancing — the
+/// controller reads null as "X is done; end turn," advances to the
+/// next player, and the chooser then finds the matching beat on the
+/// next call. <see cref="TutorialPreview"/> shares the same cursor
+/// so beats consumed by the human side advance the AI side too.
 /// </para>
 ///
 /// <para>
@@ -34,11 +58,13 @@ public sealed class ReplayDrivenAi
 {
     private readonly IReadOnlyList<ReplayBeat> _script;
     private readonly Dictionary<Color, int> _indexByColor;
-    private int _cursor;
+    private readonly ScriptCursor _cursor;
 
-    public ReplayDrivenAi(IReadOnlyList<ReplayBeat> script, IReadOnlyList<Player> roster)
+    public ReplayDrivenAi(IReadOnlyList<ReplayBeat> script,
+        IReadOnlyList<Player> roster, ScriptCursor? cursor = null)
     {
         _script = script;
+        _cursor = cursor ?? new ScriptCursor();
         _indexByColor = new Dictionary<Color, int>(roster.Count);
         for (int i = 0; i < roster.Count; i++)
         {
@@ -55,21 +81,21 @@ public sealed class ReplayDrivenAi
     public AiAction? ChooseNextAction(GameState state, Color forPlayer,
         HashSet<HexCoord> visitedCapitals, Random rng)
     {
-        if (_cursor >= _script.Count) return null;
-        ReplayBeat next = _script[_cursor];
+        if (_cursor.Index >= _script.Count) return null;
+        ReplayBeat next = _script[_cursor.Index];
         if (!_indexByColor.TryGetValue(forPlayer, out int actorIndex)) return null;
         if (next.Actor != actorIndex) return null;
         if (next is ReplayEndTurnBeat)
         {
-            _cursor++;
+            _cursor.Advance();
             return null;
         }
-        _cursor++;
+        _cursor.Advance();
         return ToAiAction(next);
     }
 
     /// <summary>Reset the cursor to the start. Used when restarting Preview.</summary>
-    public void Reset() => _cursor = 0;
+    public void Reset() => _cursor.Reset();
 
     private static AiAction ToAiAction(ReplayBeat beat) => beat switch
     {

@@ -80,8 +80,13 @@ public sealed partial class PreviewPane : Control
         _hud = new HudView();
         AddChild(_hud);
 
-        _replayAi = new ReplayDrivenAi(tutorial.Replay.Beats, roster);
-        _preview = new TutorialPreview(tutorial.Replay.Beats, _previewState);
+        // Shared cursor so the human-side TutorialPreview and AI-side
+        // ReplayDrivenAi consume from the same totally-ordered log.
+        // Without this the AI never sees the cursor advance past the
+        // beats the dev plays as Red, and every non-Red turn no-ops.
+        var cursor = new ScriptCursor();
+        _replayAi = new ReplayDrivenAi(tutorial.Replay.Beats, roster, cursor);
+        _preview = new TutorialPreview(tutorial.Replay.Beats, _previewState, cursor);
         _preview.PlayerActionRejected += OnRejected;
         _preview.TutorialFinished += OnFinished;
 

@@ -26,12 +26,14 @@ public sealed class TutorialPreview
 {
     private readonly IReadOnlyList<ReplayBeat> _script;
     private readonly GameState _state;
-    private int _cursor;
+    private readonly ScriptCursor _cursor;
 
-    public TutorialPreview(IReadOnlyList<ReplayBeat> script, GameState state)
+    public TutorialPreview(IReadOnlyList<ReplayBeat> script, GameState state,
+        ScriptCursor? cursor = null)
     {
         _script = script;
         _state = state;
+        _cursor = cursor ?? new ScriptCursor();
     }
 
     /// <summary>Fires when the dev attempts an action that doesn't
@@ -52,7 +54,7 @@ public sealed class TutorialPreview
     {
         get
         {
-            for (int i = _cursor; i < _script.Count; i++)
+            for (int i = _cursor.Index; i < _script.Count; i++)
             {
                 if (_script[i].Actor == 0) return _script[i];
             }
@@ -69,22 +71,23 @@ public sealed class TutorialPreview
             return false;
         }
 
-        // Scan to the next player-0 beat, treating off-actor beats
-        // as already-applied background context (the AI driver
-        // handles them).
-        int scan = _cursor;
-        while (scan < _script.Count && _script[scan].Actor != 0)
-        {
-            scan++;
-        }
-        if (scan >= _script.Count)
+        // The shared cursor points to the next un-consumed script
+        // beat. Control is on player 0, so the next beat MUST be
+        // player-0-owned for the script to stay in sync.
+        if (_cursor.Index >= _script.Count)
         {
             PlayerActionRejected?.Invoke(null,
                 "Tutorial already complete — no further moves expected.");
             return false;
         }
-
-        ReplayBeat expected = _script[scan];
+        ReplayBeat expected = _script[_cursor.Index];
+        if (expected.Actor != 0)
+        {
+            PlayerActionRejected?.Invoke(expected,
+                "Cursor desync: expected a player-0 beat next but the script "
+                + $"points to actor {expected.Actor}.");
+            return false;
+        }
         if (!BeatsMatch(expected, attempted))
         {
             PlayerActionRejected?.Invoke(expected,
@@ -92,8 +95,9 @@ public sealed class TutorialPreview
             return false;
         }
 
-        // Match — advance the cursor past the matched beat.
-        _cursor = scan + 1;
+        // Match — advance the shared cursor. The AI side picks up
+        // from the new index on its next call.
+        _cursor.Advance();
         if (NextPlayer0Beat == null)
         {
             TutorialFinished?.Invoke();

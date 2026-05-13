@@ -204,4 +204,65 @@ public class ReplayDrivenAiTests
         AiAction? result = ai.ChooseNextAction(TrivialState(roster), Blue, new HashSet<HexCoord>(), new Random(1));
         Assert.IsType<AiDismissDefeatAction>(result);
     }
+
+    // --- Cursor-sync integration (regression for the live bug) -----------
+
+    /// <summary>
+    /// Regression: in Tutorial Preview, the human plays player 0 via
+    /// <see cref="TutorialPreview"/> while non-player-0 actions come
+    /// from <see cref="ReplayDrivenAi"/>. Both consume beats from the
+    /// same totally-ordered script; their cursors MUST stay in sync.
+    ///
+    /// Symptom of de-sync (caught here): the dev plays Red's full
+    /// turn (TutorialPreview consumes Red's beats), then the
+    /// controller transitions to Blue. The AI step machine asks
+    /// ReplayDrivenAi.ChooseNextAction for Blue. Without sync, AI's
+    /// cursor still points at script[0] (Red's move) — actor 0, not
+    /// the requested Blue (actor 1) — so it returns null. Controller
+    /// reads "Blue is done; end turn." Every AI turn no-ops; only
+    /// Red ever moves.
+    ///
+    /// Expected behavior: after TutorialPreview consumes Red's beats,
+    /// ReplayDrivenAi must see the cursor advanced past them and
+    /// deliver Blue's recorded move.
+    /// </summary>
+    [Fact]
+    public void HumanConsumesRedBeats_AiThenSeesBlueBeats()
+    {
+        var roster = TwoPlayerRoster();
+        // Script: Red move, Red EndTurn, Blue move, Blue EndTurn.
+        var script = new List<ReplayBeat>
+        {
+            new ReplayMoveBeat { Index = 0, Turn = 1, Actor = 0,
+                                  From = new HexCoord(0, 0), To = new HexCoord(1, 0) },
+            new ReplayEndTurnBeat { Index = 1, Turn = 1, Actor = 0 },
+            new ReplayMoveBeat { Index = 2, Turn = 1, Actor = 1,
+                                  From = new HexCoord(3, 3), To = new HexCoord(2, 3) },
+            new ReplayEndTurnBeat { Index = 3, Turn = 1, Actor = 1 },
+        };
+
+        var cursor = new ScriptCursor();
+        var ai = new ReplayDrivenAi(script, roster, cursor);
+        GameState state = TrivialState(roster);
+        var preview = new TutorialPreview(script, state, cursor);
+
+        // Red plays their move + ends turn — both consumed via TutorialPreview.
+        Assert.True(preview.TryAccept(new ReplayMoveBeat
+        {
+            From = new HexCoord(0, 0), To = new HexCoord(1, 0),
+        }));
+        Assert.True(preview.TryAccept(new ReplayEndTurnBeat()));
+
+        // Controller transitions to Blue's turn and asks the AI.
+        // Bug: AI returns null because its cursor still points at
+        // script[0] (Red's beat) — TutorialPreview's separate cursor
+        // advance didn't reach the AI.
+        AiAction? blueAction = ai.ChooseNextAction(
+            state, Blue, new HashSet<HexCoord>(), new Random(1));
+
+        Assert.IsType<AiMoveAction>(blueAction);
+        var mv = (AiMoveAction)blueAction!;
+        Assert.Equal(new HexCoord(3, 3), mv.Source);
+        Assert.Equal(new HexCoord(2, 3), mv.Destination);
+    }
 }
