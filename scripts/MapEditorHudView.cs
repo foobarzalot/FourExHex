@@ -33,7 +33,7 @@ public partial class MapEditorHudView : CanvasLayer
     /// <summary>Palette index reserved for the tower-toggle swatch.</summary>
     public static int TowerPaletteIndex => 4 + GameSettings.PlayerConfig.Length;
 
-    public event Action? ExitClicked;
+    public event Action? EscRequested;
     public event Action<int>? GenerateRequested;
     public event Action<int>? PaletteSelectionChanged;
     public event Action? UndoLastClicked;
@@ -250,7 +250,7 @@ public partial class MapEditorHudView : CanvasLayer
                 FocusMode = Control.FocusModeEnum.None,
             };
             exitButton.AddThemeFontSizeOverride("font_size", 18);
-            exitButton.Pressed += () => ExitClicked?.Invoke();
+            exitButton.Pressed += () => EscRequested?.Invoke();
             AudioBus.AttachClick(exitButton);
             rightHbox.AddChild(exitButton);
         }

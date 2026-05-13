@@ -39,6 +39,19 @@ public sealed class RecordingCapture
         _beats = beats;
     }
 
+    /// <summary>Discard the captured recording entirely. After
+    /// <see cref="Reset"/>, <see cref="Snapshot"/> returns null until
+    /// <see cref="Begin"/> is called again. Used by the
+    /// TutorialBuilder when the dev confirms "switch to Map Edit and
+    /// clear the recording" — distinct from <see cref="Stop"/>, which
+    /// is the non-destructive "exit Record mode but keep the data"
+    /// path.</summary>
+    public void Reset()
+    {
+        _initialSnapshot = null;
+        _beats = null;
+    }
+
     /// <summary>End the recording session. <see cref="Snapshot"/>
     /// continues returning the captured Tutorial until
     /// <see cref="Begin"/> is called again — the data must survive

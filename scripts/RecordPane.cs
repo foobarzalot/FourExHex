@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Godot;
 
@@ -25,6 +26,13 @@ using Godot;
 /// </summary>
 public sealed partial class RecordPane : Control
 {
+    /// <summary>
+    /// Forwarded from the inner HudView. Fires whenever the player asks
+    /// for the pause modal (ESC with no pending action, or the End Game
+    /// button). The scene root subscribes and shows its EscMenu.
+    /// </summary>
+    public event Action? EscRequested;
+
     private MapEditorPanel _panel = null!;
     private HudView? _hud;
     private GameController? _controller;
@@ -78,6 +86,32 @@ public sealed partial class RecordPane : Control
     }
 
     /// <summary>
+    /// True iff there's a non-empty recording the dev would lose by
+    /// switching back to Map Edit. Drives the TutorialBuilder's
+    /// "Discard recording?" confirm path.
+    /// </summary>
+    public bool HasRecording
+    {
+        get
+        {
+            Tutorial? t = CurrentTutorial;
+            return t != null && t.Replay.Beats.Count > 0;
+        }
+    }
+
+    /// <summary>
+    /// Erase the captured recording. Caller must already have torn
+    /// down the live recording session (call <see cref="StopRecording"/>
+    /// before this, or invoke from a state where no controller is
+    /// live). Used by the TutorialBuilder after the dev confirms
+    /// "switch to Map Edit and clear the recording".
+    /// </summary>
+    public void DiscardRecording()
+    {
+        _capture.Reset();
+    }
+
+    /// <summary>
     /// Enter Record mode. Builds the transient controller + HUD over
     /// the panel's draft with all six slots forced Human. Idempotent —
     /// a second call without StopRecording first tears down the prior
@@ -100,6 +134,7 @@ public sealed partial class RecordPane : Control
         _recordState = _panel.BuildLiveStateWith(roster);
         _hud = new HudView();
         AddChild(_hud);
+        _hud.EscRequested += () => EscRequested?.Invoke();
 
         _controller = new GameController(
             _recordState,
@@ -130,6 +165,64 @@ public sealed partial class RecordPane : Control
         else
         {
             GD.Print("[RecordPane] WARNING: controller has no initial snapshot after StartGame");
+        }
+
+        _running = true;
+    }
+
+    /// <summary>
+    /// Re-enter Record mode atop an existing recording. Builds a
+    /// transient controller seeded with the captured Replay, calls
+    /// <see cref="GameController.BeginReplay"/> so the synchronous
+    /// pacer drains every recorded beat inline and leaves the state
+    /// at the recording's end — and <c>_replayMode = false</c>, so the
+    /// dev's subsequent inputs append new beats to the existing list.
+    /// Used when the dev returns to Record after Preview.
+    /// </summary>
+    public void ContinueRecording(Tutorial previous)
+    {
+        GD.Print($"[RecordPane] ContinueRecording (was running={_running}, beats={previous.Replay.Beats.Count})");
+        if (_running) StopRecording();
+
+        var roster = new List<Player>(_panel.Players.Count);
+        foreach (Player p in _panel.Players)
+        {
+            roster.Add(new Player(p.Name, p.Color, AiKind.Human));
+        }
+
+        _recordState = _panel.BuildLiveStateWith(roster);
+        _hud = new HudView();
+        AddChild(_hud);
+        _hud.EscRequested += () => EscRequested?.Invoke();
+
+        _controller = new GameController(
+            _recordState,
+            new SessionState(),
+            _panel.Map,
+            _hud,
+            seed: _panel.CurrentSeed,
+            aiChooser: null,
+            aiPacer: new SynchronousAiPacer(),
+            loadedReplay: previous.Replay);
+
+        _savedDragMode = _panel.Map.DragMode;
+        _panel.Map.DragMode = HexDragMode.Pan;
+        _panel.Map.Init(_recordState);
+
+        // BeginReplay rewinds _recordState to the snapshot, replays
+        // every recorded beat under the synchronous pacer (drains
+        // inline thanks to the SynchronousAiPacer trampoline), and
+        // calls EndReplay so _replayMode is false on exit. The beat
+        // list is preserved; further user inputs append.
+        _controller.BeginReplay();
+
+        if (_controller.InitialReplaySnapshot != null)
+        {
+            _capture.Begin(
+                _controller.InitialReplaySnapshot,
+                _controller.InitialReplayTurnNumber,
+                _controller.InitialReplayCurrentPlayerIndex);
+            _capture.SetBeats(new List<ReplayBeat>(_controller.ReplayBeats));
         }
 
         _running = true;

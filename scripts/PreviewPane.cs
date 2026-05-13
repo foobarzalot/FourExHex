@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Godot;
 
@@ -21,6 +22,13 @@ using Godot;
 /// </summary>
 public sealed partial class PreviewPane : Control
 {
+    /// <summary>
+    /// Forwarded from the inner HudView. Fires whenever the player asks
+    /// for the pause modal (ESC with no pending action, or the End Game
+    /// button). The scene root subscribes and shows its EscMenu.
+    /// </summary>
+    public event Action? EscRequested;
+
     private MapEditorPanel _panel = null!;
     private HudView? _hud;
     private TutorialPreview? _preview;
@@ -77,6 +85,7 @@ public sealed partial class PreviewPane : Control
 
         _hud = new HudView();
         AddChild(_hud);
+        _hud.EscRequested += () => EscRequested?.Invoke();
 
         // Shared cursor so the human-side TutorialPreview and AI-side
         // ReplayDrivenAi consume from the same totally-ordered log.

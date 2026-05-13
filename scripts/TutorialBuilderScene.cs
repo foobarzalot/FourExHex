@@ -10,23 +10,22 @@ public enum TutorialMode { MapEdit, Record, Preview }
 
 /// <summary>
 /// TutorialBuilder scene root. Mirrors <see cref="MapEditorScene"/>'s
-/// shape — instantiates the reusable <see cref="MapEditorPanel"/> from
-/// Phase 1 plus its palette HUD — and adds a top-level mode switcher
-/// (<see cref="TutorialBuilderTopBar"/>) and per-mode chrome
-/// (<see cref="RecordPane"/> placeholder, <see cref="PreviewPane"/>
-/// placeholder). The panel is created once and never torn down; mode
-/// switching toggles <see cref="MapEditorPanel.PaintingEnabled"/> and
-/// the per-mode chrome's Visible flag, so the painted draft survives
+/// shape — instantiates the reusable <see cref="MapEditorPanel"/> plus
+/// its palette HUD — and adds per-mode chrome (<see cref="RecordPane"/>,
+/// <see cref="PreviewPane"/>). The panel is created once and never torn
+/// down; mode switching toggles <see cref="MapEditorPanel.PaintingEnabled"/>
+/// and the per-mode chrome's Visible flag, so the painted draft survives
 /// every mode transition.
 ///
-/// Phase 2 ships only the scaffolding. Phase 3 wires Save Tutorial /
-/// Load Tutorial and grows RecordPane / PreviewPane into real chrome.
+/// Mode switching and Save / Load Tutorial / Exit all flow through the
+/// shared <see cref="EscMenu"/> (opened on ESC or via the map editor
+/// HUD's Exit button). There is no dedicated top strip.
 /// </summary>
 public partial class TutorialBuilderScene : Node2D
 {
     private MapEditorPanel _panel = null!;
     private MapEditorHudView _mapEditHud = null!;
-    private TutorialBuilderTopBar _topBar = null!;
+    private EscMenu _escMenu = null!;
     private RecordPane _recordPane = null!;
     private PreviewPane _previewPane = null!;
     private List<Player> _players = null!;
@@ -38,6 +37,14 @@ public partial class TutorialBuilderScene : Node2D
     private Window? _loadDialog;
     private VBoxContainer? _loadDialogList;
     private AcceptDialog? _loadErrorDialog;
+    private ConfirmationDialog? _discardConfirmDialog;
+    private System.Action? _onDiscardConfirmed;
+
+    // Captured when leaving Map Edit (the panel's _grid is shared with
+    // the play state — Record / Preview mutate tile occupants in
+    // place). Restored when returning to Map Edit so the draft visuals
+    // and underlying tile occupants snap back to the painted state.
+    private EditorSnapshot? _draftSnapshot;
 
     private TutorialMode _currentMode = TutorialMode.MapEdit;
 
@@ -45,21 +52,23 @@ public partial class TutorialBuilderScene : Node2D
     {
         _players = BuildPlayers();
 
-        // 1. The reusable Map Editor panel (Phase 1). Owns the map +
-        //    draft state + paint stroke machine + undo. Painting starts
-        //    enabled because Phase 2 lands in Map Edit mode.
+        // 1. The reusable Map Editor panel. Owns the map + draft state +
+        //    paint stroke machine + undo. Painting starts enabled because
+        //    the scene lands in Map Edit mode.
         _panel = new MapEditorPanel { Players = _players };
         AddChild(_panel);
 
-        // 2. The Map Edit palette HUD. TopOffsetPx = 60 puts it below
-        //    the topbar; ShowSceneRootChrome = false hides Save Map /
-        //    Load Map / Exit (those are TutorialBuilder-level concerns
-        //    and live on the topbar instead). The scene wires its
-        //    palette/seed/undo events to panel methods exactly the way
-        //    MapEditorScene does.
+        // 2. The Map Edit palette HUD at the top of the screen
+        //    (TopOffsetPx defaults to 0). ShowSceneRootChrome = false
+        //    hides Save Map / Load Map / Exit — those are
+        //    TutorialBuilder-level concerns and live in the EscMenu
+        //    instead. The HUD's own Exit button raises EscRequested,
+        //    which opens the EscMenu (see below); when the HUD is
+        //    hidden (Record / Preview submodes), HudView's End Game
+        //    button is the entry point and raises its own
+        //    EscRequested.
         _mapEditHud = new MapEditorHudView
         {
-            TopOffsetPx = (int)HudView.HudHeight,
             ShowSceneRootChrome = false,
         };
         AddChild(_mapEditHud);
@@ -73,47 +82,62 @@ public partial class TutorialBuilderScene : Node2D
             _mapEditHud.SetUndoState(_panel.CanUndo, _panel.CanRedo);
         _mapEditHud.SetUndoState(canUndo: false, canRedo: false);
 
-        // 3. The 3-mode topbar. Owns its own visual current-mode
-        //    indication. Phase 3a enables Save / Load Tutorial and wires
-        //    them to the in-scene save/load dialogs (built below).
-        _topBar = new TutorialBuilderTopBar();
-        AddChild(_topBar);
-        _topBar.ModeRequested += SetMode;
-        _topBar.ExitPressed += ReturnToMainMenu;
-        _topBar.SaveTutorialPressed += OpenSaveDialog;
-        _topBar.LoadTutorialPressed += OpenLoadDialog;
-        _topBar.SaveEnabled = true;
-        _topBar.LoadEnabled = true;
-
         _saveStore = new SaveStore();
         BuildSaveDialog();
         BuildLoadDialog();
+        BuildDiscardConfirmDialog();
 
-        // 4. Per-mode placeholder chrome. Both start Visible = false;
-        //    SetMode flips visibility on transitions.
+        // 3. Per-mode placeholder chrome. Both start Visible = false;
+        //    SetMode flips visibility on transitions. Each pane builds
+        //    its own HudView when it starts; that HudView's ESC handler
+        //    is forwarded here so ESC in Record / Preview opens the
+        //    same modal as ESC in Map Edit.
         _recordPane = new RecordPane { Visible = false };
         _recordPane.SetPanel(_panel);
+        _recordPane.EscRequested += OpenEscMenu;
         AddChild(_recordPane);
 
         _previewPane = new PreviewPane { Visible = false };
         _previewPane.SetPanel(_panel);
+        _previewPane.EscRequested += OpenEscMenu;
         AddChild(_previewPane);
 
-        // 5. Topbar starts on MapEdit; field _currentMode already matches.
-        //    Sync the topbar's visual indicator without going through
-        //    SetMode (which short-circuits on no-op transitions).
-        _topBar.SetCurrentMode(_currentMode);
+        // 4. Shared modal — opened on ESC, populated per call with
+        //    mode-switch buttons + Save / Load Tutorial + Exit.
+        _escMenu = new EscMenu();
+        AddChild(_escMenu);
+
         _mapEditHud.Visible = true;
         _panel.PaintingEnabled = true;
     }
 
     /// <summary>
-    /// Mode-switch state machine. Toggles painting on the panel,
-    /// shows/hides each mode's chrome, and updates the topbar's visual
-    /// indicator. Idempotent — calling SetMode(currentMode) is a no-op
-    /// (returns early).
+    /// Mode-switch entry point. Idempotent on no-op. When the target
+    /// is Map Edit and a recording exists, defer the switch behind a
+    /// "Discard recording?" confirmation — the recorded beats only
+    /// make sense against the painted draft they were recorded over,
+    /// and Map Edit is the only mode that can mutate that draft.
     /// </summary>
     private void SetMode(TutorialMode mode)
+    {
+        if (mode == _currentMode) return;
+        if (mode == TutorialMode.MapEdit && _recordPane.HasRecording)
+        {
+            ShowDiscardConfirm(() => ApplyModeSwitch(mode));
+            return;
+        }
+        ApplyModeSwitch(mode);
+    }
+
+    /// <summary>
+    /// Mode-switch state machine proper. Toggles painting on the panel,
+    /// shows/hides each mode's chrome, and tears down / brings up the
+    /// per-mode transient state. Preview → Record preserves the
+    /// captured Replay and continues recording from the recorded end
+    /// state; every other Record entry starts fresh against the
+    /// current draft.
+    /// </summary>
+    private void ApplyModeSwitch(TutorialMode mode)
     {
         if (mode == _currentMode) return;
         TutorialMode previous = _currentMode;
@@ -121,16 +145,19 @@ public partial class TutorialBuilderScene : Node2D
 
         GD.Print($"[TutorialBuilder] SetMode: {previous} → {mode}");
 
+        // Capture the draft on every exit from Map Edit so we can
+        // restore tile occupants when we come back. Record / Preview
+        // share the panel's _grid, so without this peasants built
+        // during a recording stay drawn on tiles after the switch.
+        if (previous == TutorialMode.MapEdit)
+        {
+            _draftSnapshot = _panel.SnapshotDraft();
+        }
+
         _panel.PaintingEnabled = mode == TutorialMode.MapEdit;
         _mapEditHud.Visible = mode == TutorialMode.MapEdit;
         _recordPane.Visible = mode == TutorialMode.Record;
         _previewPane.Visible = mode == TutorialMode.Preview;
-
-        // Hide the topbar in Record and Preview so the live HudView
-        // (at y=0..60) doesn't fight the topbar for the same strip.
-        // ESC and kbd 1/2/3 still switch modes; the topbar re-shows
-        // when returning to Map Edit.
-        _topBar.Visible = mode == TutorialMode.MapEdit;
 
         if (previous == TutorialMode.Preview)
         {
@@ -140,9 +167,35 @@ public partial class TutorialBuilderScene : Node2D
         {
             _recordPane.StopRecording();
         }
+        if (mode == TutorialMode.MapEdit)
+        {
+            _recordPane.DiscardRecording();
+            // RestoreDraft mutates the panel's _grid back to the
+            // captured tile occupants (clearing peasants / towers /
+            // graves placed during Record / Preview) and calls
+            // PushState internally to redraw the map.
+            if (_draftSnapshot != null)
+            {
+                _panel.RestoreDraft(_draftSnapshot);
+                _draftSnapshot = null;
+            }
+        }
         if (mode == TutorialMode.Record)
         {
-            _recordPane.StartRecording();
+            // Preview → Record preserves the recording and continues
+            // appending beats. Any other entry into Record (including
+            // MapEdit → Record after a discard) starts fresh.
+            Tutorial? carry = previous == TutorialMode.Preview
+                ? _recordPane.CurrentTutorial
+                : null;
+            if (carry != null && carry.Replay.Beats.Count > 0)
+            {
+                _recordPane.ContinueRecording(carry);
+            }
+            else
+            {
+                _recordPane.StartRecording();
+            }
         }
         if (mode == TutorialMode.Preview)
         {
@@ -160,59 +213,79 @@ public partial class TutorialBuilderScene : Node2D
                 GD.PushWarning("No recorded tutorial to preview. Switch to Record mode first.");
             }
         }
+    }
 
-        _topBar.SetCurrentMode(mode);
+    private void BuildDiscardConfirmDialog()
+    {
+        _discardConfirmDialog = new ConfirmationDialog
+        {
+            Title = "Discard recording?",
+            DialogText = "Switching to Map Edit will clear the current tutorial recording. Continue?",
+            OkButtonText = "Discard",
+            Exclusive = true,
+        };
+        _discardConfirmDialog.Confirmed += () =>
+        {
+            System.Action? a = _onDiscardConfirmed;
+            _onDiscardConfirmed = null;
+            a?.Invoke();
+        };
+        _discardConfirmDialog.Canceled += () => _onDiscardConfirmed = null;
+        AddChild(_discardConfirmDialog);
+        AudioBus.AttachClick(_discardConfirmDialog.GetOkButton());
+        AudioBus.AttachClick(_discardConfirmDialog.GetCancelButton());
+    }
+
+    private void ShowDiscardConfirm(System.Action onConfirmed)
+    {
+        if (_discardConfirmDialog == null) return;
+        _onDiscardConfirmed = onConfirmed;
+        _discardConfirmDialog.PopupCentered();
     }
 
     public override void _UnhandledInput(InputEvent @event)
     {
         if (@event is not InputEventKey keyEvent || !keyEvent.Pressed || keyEvent.Echo) return;
-
-        switch (keyEvent.Keycode)
-        {
-            case Key.Key1:
-                SetMode(TutorialMode.MapEdit);
-                GetViewport().SetInputAsHandled();
-                break;
-            case Key.Key2:
-                SetMode(TutorialMode.Record);
-                GetViewport().SetInputAsHandled();
-                break;
-            case Key.Key3:
-                SetMode(TutorialMode.Preview);
-                GetViewport().SetInputAsHandled();
-                break;
-            case Key.Escape:
-                HandleEscape();
-                GetViewport().SetInputAsHandled();
-                break;
-        }
-        // Note: 1 / 2 / 3 reach _UnhandledInput only when no focused
-        // Control consumed the keypress first — LineEdit (the seed
-        // field in MapEditorHudView) consumes digit keys via its
-        // GuiInput, so typing in the seed field doesn't trigger mode
-        // switches. That's the desired behavior.
-    }
-
-    /// <summary>
-    /// ESC ladders out:
-    ///   1. If in Build or Preview → drop to Map Edit.
-    ///   2. Else if a non-hand palette is selected → drop to hand.
-    ///   3. Else exit to the main menu.
-    /// </summary>
-    private void HandleEscape()
-    {
-        if (_currentMode != TutorialMode.MapEdit)
-        {
-            SetMode(TutorialMode.MapEdit);
-            return;
-        }
-        if (_mapEditHud.SelectedPaletteIndex != MapEditorHudView.HandPaletteIndex)
+        if (keyEvent.Keycode != Key.Escape) return;
+        // The modal handles its own ESC-to-close.
+        if (_escMenu.IsOpen) return;
+        GetViewport().SetInputAsHandled();
+        // In Map Edit submode, ESC first drops a non-hand palette back
+        // to Hand (mirrors the standalone Map Editor). The palette HUD
+        // is hidden in Record / Preview, so this preempt only matters
+        // here. Record / Preview never reach this branch because their
+        // inner HudView consumes ESC and forwards EscRequested through
+        // the pane (see RecordPane / PreviewPane wiring above).
+        if (_currentMode == TutorialMode.MapEdit
+            && _mapEditHud.SelectedPaletteIndex != MapEditorHudView.HandPaletteIndex)
         {
             _mapEditHud.SelectHand();
             return;
         }
-        ReturnToMainMenu();
+        OpenEscMenu();
+    }
+
+    /// <summary>
+    /// Show the shared menu modal. Options vary by submode: every
+    /// submode offers Resume / mode switches (current submode disabled)
+    /// / Save Tutorial / Load Tutorial / Exit.
+    /// </summary>
+    private void OpenEscMenu()
+    {
+        var options = new List<EscMenu.Option>
+        {
+            new("Resume", () => { }),
+            new("Map Edit", () => SetMode(TutorialMode.MapEdit),
+                Disabled: _currentMode == TutorialMode.MapEdit),
+            new("Record", () => SetMode(TutorialMode.Record),
+                Disabled: _currentMode == TutorialMode.Record),
+            new("Preview", () => SetMode(TutorialMode.Preview),
+                Disabled: _currentMode == TutorialMode.Preview),
+            new("Save Tutorial", OpenSaveDialog),
+            new("Load Tutorial", OpenLoadDialog),
+            new("Exit", ReturnToMainMenu),
+        };
+        _escMenu.Show("Menu", options);
     }
 
     private static List<Player> BuildPlayers()

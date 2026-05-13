@@ -13,6 +13,7 @@ public partial class MapEditorScene : Node2D
     private MapEditorHudView _hud = null!;
     private MapEditorPanel _panel = null!;
     private List<Player> _players = null!;
+    private EscMenu _escMenu = null!;
 
     private SaveStore _saveStore = null!;
     private AcceptDialog? _saveDialog;
@@ -31,7 +32,7 @@ public partial class MapEditorScene : Node2D
 
         _hud = new MapEditorHudView();
         AddChild(_hud);
-        _hud.ExitClicked += ReturnToMainMenu;
+        _hud.EscRequested += OpenEscMenu;
         _hud.GenerateRequested += _panel.GenerateMap;
         _hud.PaletteSelectionChanged += _panel.SetSelectedPalette;
         _hud.UndoLastClicked += _panel.UndoLast;
@@ -49,22 +50,36 @@ public partial class MapEditorScene : Node2D
         _saveStore = new SaveStore();
         BuildSaveDialog();
         BuildLoadDialog();
+
+        _escMenu = new EscMenu();
+        AddChild(_escMenu);
     }
 
     public override void _UnhandledInput(InputEvent @event)
     {
         if (@event is not InputEventKey keyEvent || !keyEvent.Pressed || keyEvent.Echo) return;
         if (keyEvent.Keycode != Key.Escape) return;
+        // Modal already handles its own ESC-to-close.
+        if (_escMenu.IsOpen) return;
         GetViewport()?.SetInputAsHandled();
-        // Escape ladders out: first press drops back to the hand
-        // (canceling whatever paint mode is selected); a second press
-        // with the hand already active exits the editor.
+        // Escape ladders out: a non-hand palette drops to hand first
+        // (canceling whatever paint mode is selected); ESC with hand
+        // already active opens the menu modal.
         if (_hud.SelectedPaletteIndex != MapEditorHudView.HandPaletteIndex)
         {
             _hud.SelectHand();
             return;
         }
-        ReturnToMainMenu();
+        OpenEscMenu();
+    }
+
+    private void OpenEscMenu()
+    {
+        _escMenu.Show("Menu", new[]
+        {
+            new EscMenu.Option("Resume", () => { }),
+            new EscMenu.Option("Exit", ReturnToMainMenu),
+        });
     }
 
     private void BuildSaveDialog()

@@ -64,6 +64,23 @@ public class RecordPaneCaptureTests
     }
 
     [Fact]
+    public void Snapshot_AfterReset_ReturnsNull()
+    {
+        // Reset is the discard path the TutorialBuilder uses when the
+        // dev confirms "switch to Map Edit and clear the recording".
+        // Different from Stop (which preserves Snapshot) — Reset is a
+        // true erase.
+        var capture = new RecordingCapture();
+        capture.Begin(DummySnapshot(), 1, 0);
+        capture.SetBeats(new List<ReplayBeat>
+        {
+            new ReplayEndTurnBeat { Index = 0, Turn = 1, Actor = 0 },
+        });
+        capture.Reset();
+        Assert.Null(capture.Snapshot());
+    }
+
+    [Fact]
     public void Snapshot_AfterRestart_ReturnsFreshTutorial()
     {
         // Begin a recording, stop it (snapshot exists), then begin a

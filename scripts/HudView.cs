@@ -26,6 +26,7 @@ public partial class HudView : CanvasLayer, IHudView
     public event Action? NextUnitClicked;
     public event Action? PreviousUnitClicked;
     public event Action? CancelActionPressed;
+    public event Action? EscRequested;
     public event Action? SaveGameClicked;
     public event Action? DefeatContinueClicked;
     public event Action? ClaimVictoryWinNowClicked;
@@ -45,7 +46,6 @@ public partial class HudView : CanvasLayer, IHudView
     private Button _endTurnButton = null!;
     private Button _saveGameButton = null!;
     private Button _endGameButton = null!;
-    private ConfirmationDialog _endGameDialog = null!;
     private Control _victoryOverlay = null!;
     private Label _victoryLabel = null!;
     private Control _defeatOverlay = null!;
@@ -202,37 +202,18 @@ public partial class HudView : CanvasLayer, IHudView
         AudioBus.AttachClick(_saveGameButton);
         rightHbox.AddChild(_saveGameButton);
 
-        // Abandon-game button in the top-right corner. Always available;
-        // prompts a confirmation dialog before returning to the main
-        // menu (which rerandomizes the grid next time Start Game is
-        // pressed because Main._Ready rebuilds the grid every scene
-        // load).
+        // Top-right End Game button. Opens the scene's EscMenu (same
+        // modal ESC raises) rather than its own ConfirmationDialog — the
+        // host scene owns the modal and decides what Exit does.
         _endGameButton = new Button
         {
             Text = "End Game",
             FocusMode = Control.FocusModeEnum.None,
         };
         _endGameButton.AddThemeFontSizeOverride("font_size", 18);
-        _endGameButton.Pressed += () => _endGameDialog.PopupCentered();
+        _endGameButton.Pressed += () => EscRequested?.Invoke();
         AudioBus.AttachClick(_endGameButton);
         rightHbox.AddChild(_endGameButton);
-
-        _endGameDialog = new ConfirmationDialog
-        {
-            Title = "End Game",
-            DialogText = "Return to the main menu? The current game will be lost.",
-            OkButtonText = "End Game",
-            // Exclusive so it can't be dismissed by clicking outside —
-            // the user must pick End Game or Cancel.
-            Exclusive = true,
-        };
-        _endGameDialog.Confirmed += () => MainMenuClicked?.Invoke();
-        AddChild(_endGameDialog);
-        // ConfirmationDialog auto-builds its OK/Cancel buttons. They
-        // only become real Button instances after the dialog enters
-        // the tree (AddChild above), so attach the click sound after.
-        AudioBus.AttachClick(_endGameDialog.GetOkButton());
-        AudioBus.AttachClick(_endGameDialog.GetCancelButton());
 
         // Read-only seed display anchored to the bottom-left so a player
         // can recall or share the seed mid-game without crowding the
@@ -606,15 +587,14 @@ public partial class HudView : CanvasLayer, IHudView
             case Key.Escape:
                 // Layered: if a Buy/Build/Move is pending, Escape cancels it
                 // (preserves the existing keyboard shortcut). Otherwise Escape
-                // pops the End Game confirmation — the keyboard equivalent of
-                // clicking the End Game button.
+                // raises EscRequested so the scene root pops its EscMenu.
                 if (_hasPendingAction)
                 {
                     CancelActionPressed?.Invoke();
                 }
                 else
                 {
-                    _endGameDialog.PopupCentered();
+                    EscRequested?.Invoke();
                 }
                 GetViewport().SetInputAsHandled();
                 break;

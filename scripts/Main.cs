@@ -167,17 +167,21 @@ public partial class Main : Node2D
             // scene with the same play config — same player roster,
             // same master seed (so a procedural map regenerates
             // identically), and for starting-map games the same
-            // map. Main Menu swaps back to the menu scene so the
-            // player can reassign roles.
+            // map. MainMenuClicked still fires from the Victory and
+            // Defeat overlays' "Main Menu" buttons.
             visibleHud.NewGameClicked += RestartCurrentGame;
-            visibleHud.MainMenuClicked += () =>
+            visibleHud.MainMenuClicked += AbandonAndReturnToMenu;
+
+            // ESC and the End Game HUD button both raise EscRequested.
+            // The pause modal lives at the scene root so its options
+            // can reach the controller / scene tree directly.
+            var escMenu = new EscMenu();
+            AddChild(escMenu);
+            visibleHud.EscRequested += () => escMenu.Show("Pause", new[]
             {
-                // Drop any pending AI step before tearing down the scene
-                // so an in-flight SceneTreeTimer can't fire StepAiExecute
-                // against disposed Polygon2D nodes after the swap.
-                _controller?.AbandonGame();
-                GetTree().ChangeSceneToFile("res://scenes/main_menu.tscn");
-            };
+                new EscMenu.Option("Resume", () => { }),
+                new EscMenu.Option("Exit Game", AbandonAndReturnToMenu),
+            });
 
             map = visibleMap;
             hud = visibleHud;
@@ -290,6 +294,18 @@ public partial class Main : Node2D
         GetTree().ReloadCurrentScene();
     }
 
+    /// <summary>
+    /// Drop any pending AI step before tearing down the scene so an in-
+    /// flight SceneTreeTimer can't fire StepAiExecute against disposed
+    /// Polygon2D nodes after the swap, then return to the main menu.
+    /// Invoked by the EscMenu's Exit Game option and by HudView's
+    /// MainMenuClicked event (Victory / Defeat overlay buttons).
+    /// </summary>
+    private void AbandonAndReturnToMenu()
+    {
+        _controller?.AbandonGame();
+        GetTree().ChangeSceneToFile("res://scenes/main_menu.tscn");
+    }
 
     /// <summary>
     /// Autosave handler. Captures the current game state into the
