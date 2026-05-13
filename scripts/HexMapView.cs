@@ -952,6 +952,7 @@ public partial class HexMapView : Node2D, IHexMapView
     /// </summary>
     public void PlayDestructionEffect(HexCoord coord, HexOccupant destroyed)
     {
+        if (!UserSettings.VfxEnabled) return;
         if (destroyed is Grave) return;
         if (_deathsLayer == null) return;
 

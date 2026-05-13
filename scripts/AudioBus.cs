@@ -157,6 +157,7 @@ public partial class AudioBus : Node
     /// </summary>
     public void PlayClick()
     {
+        if (!UserSettings.SfxEnabled) return;
         _clickPlayer.Stop();
         _clickPlayer.Play();
     }
@@ -168,6 +169,7 @@ public partial class AudioBus : Node
     /// </summary>
     public void PlayUnitPlaced()
     {
+        if (!UserSettings.SfxEnabled) return;
         _unitPlacedPlayer.Stop();
         _unitPlacedPlayer.Play();
     }
@@ -178,6 +180,7 @@ public partial class AudioBus : Node
     /// </summary>
     public void PlayTowerPlaced()
     {
+        if (!UserSettings.SfxEnabled) return;
         _towerPlacedPlayer.Stop();
         _towerPlacedPlayer.Play();
     }
@@ -188,6 +191,7 @@ public partial class AudioBus : Node
     /// </summary>
     public void PlayUnitCombined()
     {
+        if (!UserSettings.SfxEnabled) return;
         _unitCombinedPlayer.Stop();
         _unitCombinedPlayer.Play();
     }
@@ -195,6 +199,7 @@ public partial class AudioBus : Node
     /// <summary>Soft squelch for crushing an enemy unit.</summary>
     public void PlayUnitDestroyed()
     {
+        if (!UserSettings.SfxEnabled) return;
         _unitDestroyedPlayer.Stop();
         _unitDestroyedPlayer.Play();
     }
@@ -202,6 +207,7 @@ public partial class AudioBus : Node
     /// <summary>Bursting stone for capturing/destroying an enemy tower.</summary>
     public void PlayTowerDestroyed()
     {
+        if (!UserSettings.SfxEnabled) return;
         _towerDestroyedPlayer.Stop();
         _towerDestroyedPlayer.Play();
     }
@@ -209,6 +215,7 @@ public partial class AudioBus : Node
     /// <summary>Single axe chop for clearing a tree or burying a grave.</summary>
     public void PlayTreeCleared()
     {
+        if (!UserSettings.SfxEnabled) return;
         _treeClearedPlayer.Stop();
         _treeClearedPlayer.Play();
     }
@@ -219,6 +226,7 @@ public partial class AudioBus : Node
     /// </summary>
     public void PlayCapitalDestroyed()
     {
+        if (!UserSettings.SfxEnabled) return;
         _capitalDestroyedPlayer.Stop();
         _capitalDestroyedPlayer.Play();
     }
@@ -228,6 +236,7 @@ public partial class AudioBus : Node
     /// </summary>
     public void PlayBankruptcy()
     {
+        if (!UserSettings.SfxEnabled) return;
         _bankruptcyPlayer.Stop();
         _bankruptcyPlayer.Play();
     }
@@ -239,6 +248,7 @@ public partial class AudioBus : Node
     /// </summary>
     public void PlayGameWon()
     {
+        if (!UserSettings.SfxEnabled) return;
         _gameWonPlayer.Stop();
         _gameWonPlayer.Play();
     }
@@ -250,6 +260,7 @@ public partial class AudioBus : Node
     /// </summary>
     public void PlayRally()
     {
+        if (!UserSettings.SfxEnabled) return;
         _rallyPlayer.Stop();
         _rallyPlayer.Play();
     }
@@ -261,6 +272,7 @@ public partial class AudioBus : Node
     /// </summary>
     public void PlayPlayerDefeated()
     {
+        if (!UserSettings.SfxEnabled) return;
         _playerDefeatedPlayer.Stop();
         _playerDefeatedPlayer.Play();
     }

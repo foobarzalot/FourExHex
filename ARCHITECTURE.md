@@ -284,6 +284,10 @@ off it.
 │   LoadedSave — bundle of (state, players, master seed, max-turn cap,     │
 │                slot name, optional OriginMapName)                        │
 │   SaveSlotInfo — slot listing metadata (name, time, turn, isAutosave)    │
+│   UserSettings — static class; SfxEnabled / VfxEnabled toggles           │
+│                  persisted to user://settings.json (lazy load,           │
+│                  atomic tmp+rename save); read by AudioBus +             │
+│                  HexMapView, written by MainMenuScene's settings panel   │
 └──────────────────────────────────────────────────────────────────────────┘
 
 ┌──────────────────────────────────────────────────────────────────────────┐
@@ -303,6 +307,14 @@ off it.
 │   forward to AudioBus.Instance. The interface lets controllers fire     │
 │   audio without knowing about the autoload, and lets HeadlessHexMapView │
 │   (test/diagnostic) stub them out.                                      │
+│                                                                          │
+│   Each AudioBus.Play* method early-returns when                          │
+│   UserSettings.SfxEnabled is false — a single chokepoint that gates     │
+│   both gameplay sounds and AttachClick-wired UI clicks. Destruction VFX │
+│   (HexMapView.PlayDestructionEffect: flash + shockwave + shards) gates  │
+│   on UserSettings.VfxEnabled. Pulse / shrink / grow-in animations are   │
+│   always on — they communicate game state and disabling them would     │
+│   hurt readability.                                                     │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -1404,7 +1416,11 @@ scripts/
 │                           + bottom-anchored tutorial-message popup
 ├─ HeadlessViews.cs       ─ no-op view stubs for diagnostic mode
 ├─ AudioBus.cs            ─ autoload Node singleton: shared SFX players
-│                           that survive scene changes
+│                           that survive scene changes; each Play* gates
+│                           on UserSettings.SfxEnabled
+├─ UserSettings.cs        ─ static class; SfxEnabled / VfxEnabled
+│                           toggles persisted to user://settings.json
+│                           (lazy load, atomic tmp+rename save)
 │
 ├─ AiPacer.cs             ─ IAiPacer + SynchronousAiPacer +
 │                           ITimerFactory abstraction
@@ -1518,9 +1534,9 @@ tests/
 `EscMenu.cs`, `RecordPane.cs`, `PreviewPane.cs`,
 `HexPaletteButton.cs`, `HexHoverTooltip.cs`, `HexMapView.cs`,
 `HudView.cs`, `SceneTreeTimerFactory.cs`, `HeadlessViews.cs`,
-`SaveStore.cs`, and `AudioBus.cs` are NOT compiled into the test assembly — they
-derive from Godot nodes or depend on `SceneTree` / Godot
-`FileAccess` / autoload lifecycle. The test csproj explicitly lists
+`SaveStore.cs`, `AudioBus.cs`, and `UserSettings.cs` are NOT compiled into
+the test assembly — they derive from Godot nodes or depend on `SceneTree`
+/ Godot `FileAccess` / autoload lifecycle. The test csproj explicitly lists
 each production source file it includes, so when you add a new
 testable source file you must add a matching `<Compile Include>`
 entry or tests won't see it.

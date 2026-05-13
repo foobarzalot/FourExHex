@@ -29,8 +29,11 @@ public partial class MainMenuScene : Control
 
     private Control? _landingPanel;
     private Control? _playConfigPanel;
+    private Control? _settingsPanel;
     private Button? _landingPlayButton;
     private Button? _landingLoadButton;
+    private CheckBox? _sfxCheckBox;
+    private CheckBox? _vfxCheckBox;
 
     private LineEdit? _seedField;
     private Button? _startButton;
@@ -84,6 +87,9 @@ public partial class MainMenuScene : Control
         _playConfigPanel = BuildPlayConfigPanel();
         AddChild(_playConfigPanel);
 
+        _settingsPanel = BuildSettingsPanel();
+        AddChild(_settingsPanel);
+
         BuildLoadDialog();
 
         ShowLanding();
@@ -93,13 +99,13 @@ public partial class MainMenuScene : Control
     {
         Vector2 viewport = GetViewportRect().Size;
         const float panelW = 520f;
-        // 580f instead of 500f to accommodate the debug-only Tutorial
-        // Builder button below Map Editor (debug builds only — release
+        // 660f instead of 580f to accommodate a 5-button stack: Play, Load,
+        // Map Editor, Settings, and the debug-only Tutorial Builder. Release
         // builds render the same 4-button stack against a panel that's
         // 80px taller than necessary; not enough to be worth a runtime
         // resize since OS.IsDebugBuild() is compile-time-stable for any
-        // given binary).
-        const float panelH = 580f;
+        // given binary.
+        const float panelH = 660f;
         var panel = new Panel
         {
             Position = new Vector2((viewport.X - panelW) * 0.5f, (viewport.Y - panelH) * 0.5f),
@@ -149,6 +155,14 @@ public partial class MainMenuScene : Control
         AudioBus.AttachClick(mapEditorButton);
         panel.AddChild(mapEditorButton);
 
+        var settingsButton = new Button { Text = "Settings" };
+        settingsButton.AddThemeFontSizeOverride("font_size", 26);
+        settingsButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 3);
+        settingsButton.Size = new Vector2(buttonW, buttonH);
+        settingsButton.Pressed += OnSettingsPressed;
+        AudioBus.AttachClick(settingsButton);
+        panel.AddChild(settingsButton);
+
         // Debug-only entry point into the new authoring tool. Per spec
         // §"Dev-mode gating", this button is gated on OS.IsDebugBuild()
         // — release exports never see it.
@@ -157,7 +171,7 @@ public partial class MainMenuScene : Control
             var tutorialBuilderButton = new Button { Text = "Tutorial Builder" };
             tutorialBuilderButton.AddThemeFontSizeOverride("font_size", 26);
             tutorialBuilderButton.Position = new Vector2(
-                buttonInset, firstButtonY + (buttonH + buttonGap) * 3);
+                buttonInset, firstButtonY + (buttonH + buttonGap) * 4);
             tutorialBuilderButton.Size = new Vector2(buttonW, buttonH);
             tutorialBuilderButton.Pressed += OnTutorialBuilderPressed;
             AudioBus.AttachClick(tutorialBuilderButton);
@@ -400,10 +414,82 @@ public partial class MainMenuScene : Control
         _startButton.Disabled = seedEmpty && !mapSelected;
     }
 
+    private Control BuildSettingsPanel()
+    {
+        Vector2 viewport = GetViewportRect().Size;
+        const float panelW = 520f;
+        const float panelH = 360f;
+        var panel = new Panel
+        {
+            Position = new Vector2((viewport.X - panelW) * 0.5f, (viewport.Y - panelH) * 0.5f),
+            Size = new Vector2(panelW, panelH),
+        };
+
+        var title = new Label
+        {
+            Text = "Settings",
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Position = new Vector2(0, 32),
+            Size = new Vector2(panelW, 48),
+        };
+        title.AddThemeFontSizeOverride("font_size", 36);
+        panel.AddChild(title);
+
+        const float rowInset = 80f;
+        const float rowStartY = 120f;
+        const float rowHeight = 52f;
+
+        _sfxCheckBox = new CheckBox
+        {
+            Text = "Sound Effects",
+            Position = new Vector2(rowInset, rowStartY),
+            Size = new Vector2(panelW - rowInset * 2f, rowHeight),
+            ButtonPressed = UserSettings.SfxEnabled,
+        };
+        _sfxCheckBox.AddThemeFontSizeOverride("font_size", 22);
+        _sfxCheckBox.Toggled += OnSfxToggled;
+        AudioBus.AttachClick(_sfxCheckBox);
+        panel.AddChild(_sfxCheckBox);
+
+        _vfxCheckBox = new CheckBox
+        {
+            Text = "Visual Effects",
+            Position = new Vector2(rowInset, rowStartY + rowHeight),
+            Size = new Vector2(panelW - rowInset * 2f, rowHeight),
+            ButtonPressed = UserSettings.VfxEnabled,
+        };
+        _vfxCheckBox.AddThemeFontSizeOverride("font_size", 22);
+        _vfxCheckBox.Toggled += OnVfxToggled;
+        AudioBus.AttachClick(_vfxCheckBox);
+        panel.AddChild(_vfxCheckBox);
+
+        const float backButtonH = 52f;
+        var backButton = new Button { Text = "Back" };
+        backButton.AddThemeFontSizeOverride("font_size", 24);
+        backButton.Position = new Vector2(rowInset, panelH - backButtonH - 36f);
+        backButton.Size = new Vector2(panelW - rowInset * 2f, backButtonH);
+        backButton.Pressed += OnSettingsBackPressed;
+        AudioBus.AttachClick(backButton);
+        panel.AddChild(backButton);
+
+        return panel;
+    }
+
+    private void OnSfxToggled(bool pressed)
+    {
+        UserSettings.SfxEnabled = pressed;
+    }
+
+    private void OnVfxToggled(bool pressed)
+    {
+        UserSettings.VfxEnabled = pressed;
+    }
+
     private void ShowLanding()
     {
         if (_landingPanel != null) _landingPanel.Visible = true;
         if (_playConfigPanel != null) _playConfigPanel.Visible = false;
+        if (_settingsPanel != null) _settingsPanel.Visible = false;
         // Re-check Load Game enabled state on every return to landing
         // so a save that landed in the meantime would unblock the button.
         if (_landingLoadButton != null)
@@ -416,6 +502,14 @@ public partial class MainMenuScene : Control
     {
         if (_landingPanel != null) _landingPanel.Visible = false;
         if (_playConfigPanel != null) _playConfigPanel.Visible = true;
+        if (_settingsPanel != null) _settingsPanel.Visible = false;
+    }
+
+    private void ShowSettings()
+    {
+        if (_landingPanel != null) _landingPanel.Visible = false;
+        if (_playConfigPanel != null) _playConfigPanel.Visible = false;
+        if (_settingsPanel != null) _settingsPanel.Visible = true;
     }
 
     private void OnPlayPressed()
@@ -426,6 +520,16 @@ public partial class MainMenuScene : Control
     private void OnMapEditorPressed()
     {
         GetTree().ChangeSceneToFile("res://scenes/map_editor.tscn");
+    }
+
+    private void OnSettingsPressed()
+    {
+        ShowSettings();
+    }
+
+    private void OnSettingsBackPressed()
+    {
+        ShowLanding();
     }
 
     private void OnTutorialBuilderPressed()
@@ -632,6 +736,11 @@ public partial class MainMenuScene : Control
 
         // Per-panel input dispatch: each panel only sees the keys that
         // make sense while it's the visible one.
+        if (_settingsPanel != null && _settingsPanel.Visible)
+        {
+            HandleSettingsKey(keyEvent);
+            return;
+        }
         if (_playConfigPanel != null && _playConfigPanel.Visible)
         {
             HandlePlayConfigKey(keyEvent);
@@ -641,6 +750,14 @@ public partial class MainMenuScene : Control
         {
             HandleLandingKey(keyEvent);
         }
+    }
+
+    private void HandleSettingsKey(InputEventKey keyEvent)
+    {
+        if (keyEvent.Echo) return;
+        if (keyEvent.Keycode != Key.Escape) return;
+        OnSettingsBackPressed();
+        GetViewport()?.SetInputAsHandled();
     }
 
     private void HandlePlayConfigKey(InputEventKey keyEvent)
