@@ -400,13 +400,12 @@ nor `PendingDefeatScreen` is set (Winner > Defeat > ClaimVictory).
 raises `ClaimVictoryContinueClicked`. See the "Claim victory prompt"
 subsection under Win conditions.
 
-The tutorial popup is a separate non-interactive panel managed via
+The tutorial popup is a non-interactive panel managed via
 `ShowTutorialMessage` / `HideTutorialMessage` (no `Refresh`-driven
-state). `Main` decides when to show it (currently: once at game
-start when any player has `AiKind.Tutorial`) and dismisses it on
-the first mouse-button-down or non-echo key press via its `_Input`
-override. The panel itself ignores mouse input so that first click
-still reaches the map / HUD as normal.
+state). In the TutorialBuilder's Preview mode the `PreviewPane`
+subscribes to `TutorialPreview.PlayerActionRejected` and
+`TutorialFinished` events and uses the popup to surface "Expected
+X; got Y" hints and the "Tutorial complete." toast.
 
 **`IAiPacer`** — schedules deferred continuations for both the AI
 step machine and the replay step machine. `GodotAiPacer` schedules
@@ -813,13 +812,16 @@ triggered by a single beat).
   `GameController`'s `ExecuteAi*` paths; if you add a new AI-capable
   action you must update both in lockstep, or simulated scoring will
   drift from real play.
-- **`TutorialAi`** — scripted opponent used only by the tutorial
-  scenario. Currently fully passive: `ChooseNextAction` always returns
-  null, which the controller's step machine reads as "this player is
-  done; advance". Not selectable from the play-config menu.
+- **`ReplayDrivenAi`** — script-driven chooser used only by the
+  TutorialBuilder's Preview mode. Replays recorded non-player-0
+  `ReplayBeat`s through the standard AI step machine via a shared
+  `ScriptCursor` (also referenced by `TutorialPreview` on the human
+  side, so beats consumed by either advance the other). Lives in
+  `scripts/Tutorial/`; plugged into `GameController` directly as
+  the `aiChooser` delegate, bypassing `AiDispatcher`.
 - **`AiDispatcher.ChooseForCurrentPlayer`** — routes to the per-player
   AI flavor based on `Player.Kind`. Wired into `GameController` as
-  the single `aiChooser` delegate.
+  the single `aiChooser` delegate for normal play.
 - **`AiLog`** — `AiLog.Print` is off by default; flip
   `AiLog.Enabled = true` (or use `FOUREXHEX_6AI`) to trace every
   AI decision plus per-turn header lines and capture diffs.
@@ -906,8 +908,10 @@ loading after each cutover); `Serialize` writes the player roster's
 `Kind` field, `SerializeMap` omits it (the editor's saved maps
 don't bake a player-kind config — roles are assigned at play time
 from the menu). Both accept an optional `Tutorial` POCO that
-round-trips as the top-level `"Tutorial"` block (header fields +
-`Beats` list of kind-discriminated `BeatDto`s); absent on regular
+round-trips as the top-level `"Tutorial"` block carrying just
+`{ Title }` — the recorded gameplay lives in the sibling `"Replay"`
+block; `Tutorial` and `Replay` must both be present on a tutorial
+save (Deserialize throws otherwise). Absent on regular in-progress
 saves and starting maps. `SaveSlotInfo` is the slot listing record.
 
 **Replay block (v4+).** `Serialize` and `WriteSlot` / `WriteAutosave`
@@ -1046,120 +1050,142 @@ edits look identical to in-game terrain.
 ## Tutorial builder
 
 `TutorialBuilderScene` (root of `res://scenes/tutorial_builder.tscn`,
-reached from the main menu's debug-only "Tutorial Builder" button) is
-a 3-mode authoring tool for hand-crafted on-rails tutorials. The
-button is gated on `OS.IsDebugBuild()`, so release exports never see
-the entry point.
+reached from the main menu's debug-only "Tutorial Builder" button —
+gated on `OS.IsDebugBuild()` so release exports never see it) is a
+3-mode authoring tool for tutorials. Tutorials are stored as v4 save
+files in `user://tutorials/` carrying both a `Tutorial { Title }`
+block and a `Replay { InitialState, Beats }` block — the same Replay
+format that ships with every in-progress save.
 
-The scene composes the existing Map Editor body. It instantiates
-`MapEditorPanel` once at `_Ready` and never tears it down — mode
-switching only flips `panel.PaintingEnabled` and the per-mode chrome's
-`Visible` flag, so the painted draft survives every transition.
+The scene reuses the Map Editor body: a single `MapEditorPanel`
+instance constructed in `_Ready` and never torn down. Mode switching
+only flips `panel.PaintingEnabled` and the per-mode chrome's
+`Visible`, so the painted draft survives every transition.
 
-- **Modes** are an enum `TutorialMode { MapEdit, Build, Preview }`.
-  - **Map Edit** — `panel.PaintingEnabled = true`; the chrome-trimmed
-    `MapEditorHudView` (palette + seed + Generate + undo bar, no
-    Save Map / Load Map / Exit) is visible at y=60..120.
-  - **Build** — `panel.PaintingEnabled = false`; `BuildPane`
-    placeholder visible. Phase 3 grows this into the timeline +
-    inspector + add-beat palette.
-  - **Preview** — `panel.PaintingEnabled = false`; `PreviewPane`
-    placeholder visible. Phase 3 grows this into a transient
-    `GameController` + `TutorialPlayer` host; later phases add a
-    scrubber.
-- **Topbar** (`TutorialBuilderTopBar : CanvasLayer`, y=0..60). Three
-  mode buttons on the left (Map Edit / Build / Preview, kbd 1/2/3 —
-  the current mode's button is `Disabled = true` for visual
-  selection); Save Tutorial / Load Tutorial / Exit on the right.
-  Emits `ModeRequested` / `SaveTutorialPressed` /
-  `LoadTutorialPressed` / `ExitPressed`. `TutorialBuilderScene`
-  builds in-scene save/load dialogs (mirrors `MapEditorScene`'s
-  pattern) and wires them to the topbar events; the dialogs read /
-  write `user://tutorials/` via `SaveStore.WriteTutorial` /
-  `LoadTutorial` / `ListTutorials`.
-- **ESC ladder.** First press in Build or Preview drops to Map Edit.
-  In Map Edit with a non-hand palette selected, drops to hand. With
-  the hand already selected, exits to the main menu. Keyboard 1/2/3
-  reach `_UnhandledInput` only when no focused Control consumed the
-  keypress (LineEdit consumes digits via its `GuiInput`), so typing
-  in the seed field doesn't trigger mode switches.
-- **Phase 3c scope.** `PreviewPane` is now real chrome — on entering
-  Preview mode it builds a transient `GameController` + a fresh
-  `HudView` + gated wrapper views (`TutorialGatedHexMapView` /
-  `TutorialGatedHudView`) around the panel's shared HexMapView,
-  re-points the HexMapView at a cloned `GameState` via
-  `HexMapView.Init`, and calls `controller.StartGame()`. The
-  topbar is hidden during Preview to avoid overlap with the
-  in-Preview HudView (kbd 1/2/3 + ESC still switch modes). On exit
-  the wrappers unbind, the HudView is freed, and the panel re-pushes
-  its draft to repaint the map back to authored view. `DragMode`
-  is forced to Pan during Preview (saved + restored) so tile clicks
-  fire `TileClicked` (Paint mode would route them into the paint-
-  stroke path that never raises the click event).
+### Modes
 
-  `TutorialPlayer` (pure C#) holds the next-expected-beat pointer,
-  exposes `BeatApplied` / `PlayerActionRejected` / `TutorialFinished`
-  events that PreviewPane subscribes to, and provides the `AiChooser`
-  delegate handed to GameController (Phase 3c always falls through
-  to `AiDispatcher`; Phase 10 adds scripted-AI beats). The HUD
-  wrapper consults `TutorialPlayer.TryAdvanceForEndTurn` /
-  `NotifyRejected` to decide whether to forward each gated input
-  event (End Turn / Buy Peasant / Build Tower); other HUD events
-  (Undo / Territory cycling / etc.) pass through unchanged as dev
-  affordances. The map wrapper forwards tile clicks (and long
-  clicks) to the controller as passive selection — selection
-  doesn't advance the tutorial, matching the dev-affordance shape
-  Tab already had. Phase 4+ adds the tile-action gating against
-  Move / BuyPeasant / BuildTower beats. Output methods (Refresh /
-  Show* / Play* / etc.) delegate transparently.
-  `TutorialValidator.MatchesEndTurn` is the symbolic match function
-  (Phase 4+ adds MatchesMove / MatchesBuyPeasant / MatchesBuildTower).
-- **Phase 4 scope.** Adds the first tile-action beat: `BuyPeasantBeat`
-  (with `HexCoord At`). Authoring: `BuildPane` grows an "Add BuyPeasant"
-  button + a `_pendingPick` tile-pick mode that consumes the next
-  `Map.CoordClicked` to materialize the beat; the beat chip renders
-  the coord in offset (col, row) form so it agrees with the hex
-  hover tooltip. Preview: the gating uses a single-slot `_armedBeat`
-  on `TutorialPlayer` to mirror the real game's two-event sequence —
-  `TutorialGatedHudView`'s `OnRealBuyPeasantClicked` calls
-  `TryArmBuyPeasant` (forwards on success, controller enters
-  BuyingPeasant mode), and `TutorialGatedHexMapView`'s
-  `OnRealTileClicked` short-circuits to `TryAdvanceForBuyPeasantTile`
-  when armed (forwards on coord match, rejects on miss while keeping
-  the arm so the dev can retry). `CancelActionPressed` pass-through
-  also disarms so arm state stays in sync with the controller's
-  pending-action mode. New JSON fields on `BeatDto`: `AtQ` / `AtR`
-  (nullable, populated only for tile-anchored beats — Phase 5/6 reuse
-  them). `TutorialBeatSimulatorTests` documents the BuyPeasant-beat ≡
-  `AiBuyUnitAction` equivalence so Phase 11's state-after-beat-N
-  cache can build on `AiSimulator.Apply` without re-deriving the
-  invariants.
-- **Preview cues (post-Phase-4 polish).** The gated wrappers use the
-  next-expected-beat as a hint to make Preview self-orienting:
-  - `TutorialGatedHudView.Refresh` overrides `hasActionableRemaining`
-    to `false` when the next beat is `EndTurnBeat` — reusing
-    `HudView.SetEndTurnCta` (now refactored to share `ApplyCtaStyle`
-    with the new `SetBuyPeasantCta`). Same white-bg + black-text +
-    border treatment ordinary play uses when the turn is "done."
-  - `IHudView.SetBuyPeasantCta(bool)` is the new HUD-API lever for
-    tutorial-driven Buy Peasant button highlighting; the wrapper
-    drives it on every `Refresh` based on whether the next beat is
-    `BuyPeasantBeat` and the dev hasn't armed yet (clears once
-    armed, since the in-mode "Click a tile..." text takes over).
-  - `TutorialGatedHexMapView.ShowMoveTargets` force-shows
-    `[bpb.At]` whenever armed for `BuyPeasantBeat`, regardless of
-    the controller's coord set. Necessary because the controller's
-    set is `ActionConsumingTargets` (captures + tree-clears only),
-    not friendly empty placements — so without the override, a
-    legal-but-non-action-consuming `At` would draw nothing.
-  - `PreviewPane` subscribes to `TutorialPlayer.BeatApplied` and
-    runs `ApplyAutoOrientForNextBeat` after `StartGame` and after
-    each beat: when the next beat is `BuyPeasantBeat`, it calls
-    `GameController.SelectTerritoryForTutorial` (a new public
-    selection entry that bypasses `TrackHandler` since Preview
-    isn't undoable) so the territory containing `bpb.At` is
-    selected and the relevant HUD chrome is visible without the
-    dev needing to click the capital first.
+`TutorialMode { MapEdit, Record, Preview }` (the topbar button for
+the current mode is `Disabled = true` for visual selection).
+
+- **Map Edit** — `panel.PaintingEnabled = true`; chrome-trimmed
+  `MapEditorHudView` (palette + seed + Generate + undo bar) visible
+  at y=60..120. Topbar visible.
+- **Record** — `panel.PaintingEnabled = false`; `RecordPane` builds
+  a transient `GameController` over the painted draft with all six
+  players forced `AiKind.Human`. Topbar hidden so the live `HudView`
+  has its full y=0..60 strip. The dev plays hot-seat for all six
+  players; the controller's normal recording pipeline (`_replayBeats`
+  via `TrackHandler` / `StepAiExecute`) captures the script
+  automatically — no per-beat authoring UI is needed.
+- **Preview** — `panel.PaintingEnabled = false`; `PreviewPane` builds
+  a transient `GameController` where player 0 is Human (the dev plays
+  Red) and players 1-5 are AI driven by a `ReplayDrivenAi` chooser
+  that replays the recorded non-player-0 beats. Topbar hidden.
+
+ESC ladder: first press in Record or Preview drops to Map Edit; in
+Map Edit with a non-hand palette, drops to hand; with hand selected,
+exits to the main menu. Keyboard 1/2/3 reach `_UnhandledInput` only
+when no focused Control consumed the keypress.
+
+### Record-mode flow
+
+`RecordPane.StartRecording` (fired on `SetMode(Record)`):
+
+1. Build an all-Human roster from the panel's colors/names.
+2. `state = panel.BuildLiveStateWith(roster)` — same grid/territories
+   as the panel's draft.
+3. Spin up a real `HudView` + `GameController` with
+   `aiChooser: null`, `aiPacer: new SynchronousAiPacer()` (no AI ever
+   runs, so the pacer is unused).
+4. `panel.Map.DragMode = HexDragMode.Pan` so tile clicks fire.
+5. `controller.StartGame()` — captures `_initialSnapshot` post-
+   `SeedStartingGold`.
+6. The dev plays normally. Every action goes through `TrackHandler`
+   / `StepAiExecute` which record `ReplayBeat`s into `_replayBeats`.
+
+`RecordPane.StopRecording` (on `SetMode(out of Record)`):
+
+- Snapshots the captured tutorial into a `RecordingCapture` helper
+  BEFORE nulling the controller — the snapshot survives the
+  controller teardown so `Save Tutorial` and `Preview` can read it
+  after the mode switch. The captured tuple is
+  `(InitialSnapshot, InitialTurn, InitialPlayer, Beats[])`.
+- `controller.AbandonGame()` unsubscribes the controller from
+  `panel.Map`'s `TileClicked` and every `_hud` event (the pacer
+  cancel was already there). Without the unsubscribe, the abandoned
+  record controller would still route shared `panel.Map` clicks into
+  itself during Preview and then hit `ObjectDisposedException` on the
+  freed record `HudView`.
+- Drag mode restored; the panel re-`Init`s its draft view.
+
+### Preview-mode flow
+
+`PreviewPane.Start(tutorial)` (fired on `SetMode(Preview)`):
+
+1. Roster: player 0 Human (the dev), players 1-5 Heuristic (any AI
+   kind works — the chooser is overridden).
+2. `state = panel.BuildLiveStateWith(roster)`.
+3. `PreviewSetup.Apply(panel.Map, state, tutorial)` — pure-C# helper
+   that:
+   - Applies `tutorial.Replay.InitialSnapshot` back to the grid +
+     treasury.
+   - `state.Turns.Reset(initialPlayer, initialTurn)`.
+   - `map.RebuildAfterTerritoryChange()` — refreshes border /
+     capital / tree / grave layers that don't auto-update on
+     per-tile color writes.
+   - Clears highlight + every overlay (`ShowMoveTargets` empty,
+     `ShowTowerTargets` empty, etc.) so prior-session leftovers
+     don't bleed in.
+4. A single shared `ScriptCursor` is constructed and passed to BOTH
+   `ReplayDrivenAi` (AI side) and `TutorialPreview` (human side).
+   Beats consumed by either side advance the other — without this,
+   the AI side stayed stuck on the human's already-consumed beats
+   and every AI turn no-op'd.
+5. `GameController` built with:
+   - `aiChooser: replayAi.ChooseNextAction`
+   - `humanActionValidator: tutorialPreview.TryAccept`
+   - `previewMode: true` (suppresses every `RecordBeat` call so the
+     loaded script isn't polluted by the dev's playthrough; does
+     NOT block input handlers — Preview wants player-0 clicks
+     through)
+   - `aiPacer: new GodotAiPacer(new SceneTreeTimerFactory(GetTree()))`
+6. Drag mode = Pan; `controller.StartGame()`.
+
+While the dev plays:
+
+- Player-0 clicks hit the controller's `ExecuteMove` /
+  `ExecuteBuyAndPlace` / `ExecuteBuildTower` / End-Turn / etc.
+  Each builds the prospective `ReplayBeat` and calls
+  `humanActionValidator` BEFORE mutating state. On mismatch the
+  action aborts and `TutorialPreview.PlayerActionRejected` fires;
+  `PreviewPane` surfaces the reason via `hud.ShowTutorialMessage(...)`.
+- AI turns: the controller's `StepAi*` loop asks
+  `ReplayDrivenAi.ChooseNextAction`. The chooser yields the next
+  beat for the current actor or null (= "this player done"), and
+  the shared cursor advances.
+
+When the final player-0 beat is consumed, `TutorialPreview`
+fires `TutorialFinished` and the HUD shows "Tutorial complete."
+
+### Why no parallel gating layer
+
+Before the rewrite, Preview wrapped the real views in
+`TutorialGatedHexMapView` / `TutorialGatedHudView` and routed every
+input through a `TutorialPlayer` state machine that mirrored a tiny
+subset of `GameController`'s click/buy/end-turn logic. That layer
+was ~300 LOC of duplicated invariants and only covered two beat
+kinds (EndTurn, BuyPeasant). The new design pushes gating into
+`GameController` itself via the single `humanActionValidator` hook
+and reuses `_replayBeats` for the script — one source of truth for
+both recording and validation.
+
+### Tutorial file format
+
+Same v4 schema as in-progress saves. A tutorial file is just a v4
+save with BOTH a `Tutorial { Title }` block AND a `Replay { ... }`
+block. Deserialize throws if the Tutorial block is present without
+a Replay block. The `Tutorial` class is `{ Title, Replay }` — no
+`StartTurn` / `StartPlayer` / `Beats` (the Replay carries those).
 
 ## Diagnostic mode (`FOUREXHEX_6AI`)
 
@@ -1188,12 +1214,10 @@ FOUREXHEX_6AI=1 /Applications/Godot_mono.app/Contents/MacOS/Godot \
 ```
 scripts/
 ├─ Main.cs                ─ play scene root; wires model + views + controller
-├─ MainMenuScene.cs       ─ landing (Play/Tutorial/Load/Map Editor +
+├─ MainMenuScene.cs       ─ landing (Play / Load / Map Editor +
 │                           debug-only Tutorial Builder) + play-config
-│                           panels; Load Game modal; Play Tutorial
-│                           bypasses config (Red=Human, others
-│                           AiKind.Tutorial, loads bundled Tutorial map);
-│                           writes GameSettings + LoadRequest
+│                           panels; Load Game modal; writes
+│                           GameSettings + LoadRequest
 ├─ MapEditorScene.cs      ─ editor scene root; chrome host (HUD, Save/Load
 │                           dialogs, Escape→hand→exit ladder)
 ├─ MapEditorPanel.cs      ─ reusable editor body; owns HexMapView + draft
@@ -1204,14 +1228,21 @@ scripts/
 │                           via ShowSceneRootChrome (gate Save/Load/Exit)
 │                           and TopOffsetPx (offset entire strip)
 ├─ TutorialBuilderScene.cs─ tutorial builder scene root; TutorialMode
-│                           state machine; hosts MapEditorPanel + a
-│                           chrome-trimmed MapEditorHudView + topbar +
-│                           BuildPane + PreviewPane
+│                           { MapEdit, Record, Preview } state machine;
+│                           hosts MapEditorPanel + a chrome-trimmed
+│                           MapEditorHudView + topbar + RecordPane +
+│                           PreviewPane
 ├─ TutorialBuilderTopBar.cs ─ tutorial builder topbar (CanvasLayer):
 │                             3 mode buttons (kbd 1/2/3) + Save/Load
 │                             Tutorial + Exit
-├─ BuildPane.cs           ─ Build mode chrome (Phase 2 placeholder)
-├─ PreviewPane.cs         ─ Preview mode chrome (Phase 2 placeholder)
+├─ RecordPane.cs          ─ Record-mode chrome: spins up a real
+│                           GameController over the panel's draft
+│                           with all six players Human; captures the
+│                           recorded tutorial via RecordingCapture
+├─ PreviewPane.cs         ─ Preview-mode chrome: spins up a real
+│                           GameController with ReplayDrivenAi +
+│                           TutorialPreview + humanActionValidator;
+│                           uses PreviewSetup to reset board state
 ├─ MapEditPaint.cs        ─ pure paint helpers (Land / Capital / Tower /
 │                           Tree / Water)
 ├─ EditorSnapshot.cs      ─ deep copy of editor draft (grid + water + terr.)
@@ -1257,8 +1288,6 @@ scripts/
 ├─ AiStateScorer.cs       ─ scoring function for HeuristicAi
 ├─ RandomAi.cs            ─ uniform-random chooser
 ├─ HeuristicAi.cs         ─ 1-ply best-score chooser
-├─ TutorialAi.cs          ─ scripted tutorial opponent (currently
-│                           always returns null → passes turn)
 ├─ AiLog.cs               ─ gated stdout logging
 │
 ├─ MapGenerator.cs        ─ CA-driven land/water carve + tree scatter
@@ -1288,23 +1317,22 @@ scripts/
 │                           ReplayLongPressRallyBeat /
 │                           ReplayClaimVictoryBeat / ReplayDismissClaim /
 │                           ReplayDismissDefeat
-├─ Tutorial/Tutorial.cs   ─ tutorial header POCO (Title / StartTurn /
-│                           StartPlayer / Beats)
-├─ Tutorial/Beat.cs       ─ Beat abstract record + BeatKind enum +
-│                           EndTurnBeat + BuyPeasantBeat (Phase 5+
-│                           adds more concrete kinds)
-├─ Tutorial/TutorialGatedHexMapView.cs ─ IHexMapView wrapper that
-│                           gates tile clicks against the next expected
-│                           scripted beat; delegates output methods
-├─ Tutorial/TutorialGatedHudView.cs ─ IHudView wrapper that gates
-│                           End Turn / Buy / Build clicks; passes
-│                           through Undo / Territory / etc.
-├─ Tutorial/TutorialPlayer.cs ─ runtime gating state for Preview
-│                           (next-expected-beat pointer, AiChooser
-│                           delegate, BeatApplied / TutorialFinished /
-│                           PlayerActionRejected events)
-├─ Tutorial/TutorialValidator.cs ─ symbolic Matches*(beat, attempt)
-│                           predicates + ReasonMismatch reason strings
+├─ Tutorial/Tutorial.cs   ─ tutorial POCO { Title, Replay }
+├─ Tutorial/ReplayDrivenAi.cs ─ AI chooser that replays recorded
+│                           non-player-0 beats through the AI step
+│                           machine; shares a ScriptCursor with
+│                           TutorialPreview
+├─ Tutorial/TutorialPreview.cs ─ player-0 input validator; matches
+│                           attempted actions against next expected
+│                           beat; fires PlayerActionRejected /
+│                           TutorialFinished events
+├─ Tutorial/RecordingCapture.cs ─ pure-C# captor that lets the
+│                           recorded tutorial survive the record
+│                           controller's teardown (used by RecordPane)
+├─ Tutorial/PreviewSetup.cs ─ pure-C# helper that applies the
+│                           tutorial's InitialSnapshot back to the
+│                           live state + clears overlays + rebuilds
+│                           border/capital layers (used by PreviewPane)
 │
 ├─ HexCoord.cs            ─ model primitives
 ├─ HexGrid.cs             ─
@@ -1348,7 +1376,7 @@ tests/
 
 `Main.cs`, `MainMenuScene.cs`, `MapEditorScene.cs`,
 `MapEditorPanel.cs`, `MapEditorHudView.cs`, `TutorialBuilderScene.cs`,
-`TutorialBuilderTopBar.cs`, `BuildPane.cs`, `PreviewPane.cs`,
+`TutorialBuilderTopBar.cs`, `RecordPane.cs`, `PreviewPane.cs`,
 `HexPaletteButton.cs`, `HexHoverTooltip.cs`, `HexMapView.cs`,
 `HudView.cs`, `SceneTreeTimerFactory.cs`, `HeadlessViews.cs`,
 `SaveStore.cs`, and `AudioBus.cs` are NOT compiled into the test assembly — they
