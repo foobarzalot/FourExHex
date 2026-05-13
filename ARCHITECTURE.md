@@ -412,8 +412,14 @@ step machine and the replay step machine. `GodotAiPacer` schedules
 via an injected `ITimerFactory` (production wires
 `SceneTreeTimerFactory`, which wraps `SceneTree.CreateTimer`; tests
 wire `ManualTimerFactory`, which stores callbacks for the test to
-fire on demand). `SynchronousAiPacer` runs the callback inline (used
-by tests and diagnostic mode). `Cancel` drops any pending callbacks
+fire on demand). `SynchronousAiPacer` drains scheduled callbacks via
+a FIFO trampoline (the outermost `Schedule` runs the drain loop until
+empty; nested `Schedule` calls from within callbacks just enqueue and
+return). The trampoline keeps the contract — every queued callback
+fires before the outermost `Schedule` returns — but flattens the
+stack so long AI chains under all-AI tests don't recurse
+`StepAiPreview` ↔ `StepAiExecute` into a stack overflow. Used by
+tests and diagnostic mode. `Cancel` drops any pending callbacks
 but does **NOT** poison future `Schedule` calls — the same pacer
 instance must survive Cancel-then-reuse cycles because
 `BeginReplay` cancels any straggling AI step before scheduling its
@@ -950,7 +956,8 @@ edits look identical to in-game terrain.
 
 - **Scene/panel split.** `MapEditorScene` is a thin chrome host: it
   owns the `MapEditorHudView`, the `SaveStore`, the Save / Load
-  dialogs, the Escape→hand→exit ladder, and `ReturnToMainMenu`. The
+  dialogs, the `EscMenu` modal, the Escape→hand→modal ladder, and
+  `ReturnToMainMenu`. The
   editor body lives in `MapEditorPanel : Node2D` — a reusable Node
   that owns the `HexMapView` instance, the draft grid/water/territory
   state, the paint-stroke state machine, the undo stack, and the
@@ -974,10 +981,13 @@ edits look identical to in-game terrain.
   - `ShowSceneRootChrome` (default `true`) — controls whether the
     Save Map / Load Map / Exit buttons are built. The standalone
     `MapEditorScene` keeps them; `TutorialBuilderScene` sets it
-    `false` and supplies its own equivalents on the topbar.
+    `false` and exposes Save Tutorial / Load Tutorial / Exit through
+    the shared `EscMenu` modal instead. The standalone editor's
+    Exit button raises `EscRequested` to open the same modal.
   - `TopOffsetPx` (default `0`) — vertical offset of the entire HUD
-    strip. Standalone editor uses `0` (HUD at y=0..60); TutorialBuilder
-    uses `60` so the strip sits below its 60px topbar.
+    strip. Both the standalone editor and TutorialBuilder use `0`
+    (HUD at y=0..60); the knob remains for future hosts that want a
+    stacked layout.
 - **Draft state.** The panel owns a mutable `HexGrid`, water set,
   and territory list, plus an `UndoStack<EditorSnapshot>` for
   undo/redo. `EditorSnapshot.Capture` deep-copies all three; its
@@ -1009,10 +1019,10 @@ edits look identical to in-game terrain.
   per-cell paints reuse it, and `PaintStrokeEnded` pushes once iff
   any cell mutated state.
 - **Hand swatch.** Palette index 0, the default selection on scene
-  entry. Pan-mode, no paint. Escape ladders out: a first press
-  with any non-hand swatch active reselects the hand (canceling
-  the paint mode); a second press with the hand already active
-  exits the editor.
+  entry. Pan-mode, no paint. Escape ladders out: a first press with
+  any non-hand swatch active reselects the hand (canceling the
+  paint mode); a second press with the hand already active opens
+  the `EscMenu` modal (Resume / Exit).
 - **Toggle stroke locking.** Tree and tower drag-paints have an
   explicit "Add" or "Erase" mode locked at the first cell of the
   stroke. If the first cell already carries the matching occupant
@@ -1064,44 +1074,82 @@ only flips `panel.PaintingEnabled` and the per-mode chrome's
 
 ### Modes
 
-`TutorialMode { MapEdit, Record, Preview }` (the topbar button for
-the current mode is `Disabled = true` for visual selection).
+`TutorialMode { MapEdit, Record, Preview }`. Mode switching, Save /
+Load Tutorial, and Exit all flow through the shared `EscMenu`
+modal — there is no dedicated top strip and there are no 1/2/3
+hotkeys. The modal's button for the current mode is rendered
+`Disabled = true`.
 
 - **Map Edit** — `panel.PaintingEnabled = true`; chrome-trimmed
   `MapEditorHudView` (palette + seed + Generate + undo bar) visible
-  at y=60..120. Topbar visible.
+  at y=0..60.
 - **Record** — `panel.PaintingEnabled = false`; `RecordPane` builds
   a transient `GameController` over the painted draft with all six
-  players forced `AiKind.Human`. Topbar hidden so the live `HudView`
-  has its full y=0..60 strip. The dev plays hot-seat for all six
-  players; the controller's normal recording pipeline (`_replayBeats`
-  via `TrackHandler` / `StepAiExecute`) captures the script
+  players forced `AiKind.Human`. The pane's own `HudView` occupies
+  y=0..60. The dev plays hot-seat for all six players; the
+  controller's normal recording pipeline (`_replayBeats` via
+  `TrackHandler` / `StepAiExecute`) captures the script
   automatically — no per-beat authoring UI is needed.
 - **Preview** — `panel.PaintingEnabled = false`; `PreviewPane` builds
   a transient `GameController` where player 0 is Human (the dev plays
   Red) and players 1-5 are AI driven by a `ReplayDrivenAi` chooser
-  that replays the recorded non-player-0 beats. Topbar hidden.
+  that replays the recorded non-player-0 beats.
 
-ESC ladder: first press in Record or Preview drops to Map Edit; in
-Map Edit with a non-hand palette, drops to hand; with hand selected,
-exits to the main menu. Keyboard 1/2/3 reach `_UnhandledInput` only
-when no focused Control consumed the keypress.
+ESC opens the shared `EscMenu` modal in every submode. In Map Edit
+submode ESC first drops a non-hand palette back to hand (mirrors the
+standalone Map Editor); the second press with hand selected opens
+the modal. `RecordPane` / `PreviewPane` forward their inner
+`HudView`'s `EscRequested` event up to the scene so ESC inside
+Record / Preview opens the same modal.
+
+**Draft preservation across mode switches.** The panel's `_grid` is
+shared with the play state Record / Preview build atop, so peasants /
+towers placed during a recording mutate the same tile occupants the
+panel later reads. `TutorialBuilderScene` captures an
+`EditorSnapshot` of the draft on every exit from Map Edit and
+restores it (`MapEditorPanel.RestoreDraft`) on every return so the
+visuals snap back to the painted state. Switching to Map Edit while
+a non-empty recording exists pops a "Discard recording?" confirm
+dialog; on confirm, the scene calls `RecordPane.DiscardRecording`
+(which calls `RecordingCapture.Reset`) before applying the switch.
 
 ### Record-mode flow
 
-`RecordPane.StartRecording` (fired on `SetMode(Record)`):
+`SetMode(Record)` dispatches to one of two entry points on
+`RecordPane`:
 
-1. Build an all-Human roster from the panel's colors/names.
+- **Fresh entry** (`StartRecording`) — called whenever the previous
+  mode was Map Edit (or the recording was already empty). Builds a
+  controller from `panel.BuildLiveStateWith(roster)` against the
+  painted draft, calls `StartGame` to capture
+  `_initialSnapshot` post-`SeedStartingGold`, and starts the
+  recording from beat 0.
+- **Resume from Preview** (`ContinueRecording(previous)`) — called on
+  `Preview → Record` when a recording already exists. Builds a
+  controller with `loadedReplay: previous.Replay` (so
+  `_initialSnapshot` and `_replayBeats` are seeded from the existing
+  Tutorial) and calls `BeginReplay`. Under `SynchronousAiPacer`'s
+  trampoline the entire replay drains inline, leaving the state at
+  the recorded end-state with `_replayMode = false` and the beats
+  list intact. The dev's subsequent inputs append new beats to the
+  same list.
+
+Both paths share the rest of the setup:
+
+1. All-Human roster from the panel's colors/names.
 2. `state = panel.BuildLiveStateWith(roster)` — same grid/territories
    as the panel's draft.
 3. Spin up a real `HudView` + `GameController` with
    `aiChooser: null`, `aiPacer: new SynchronousAiPacer()` (no AI ever
-   runs, so the pacer is unused).
+   runs, so the pacer is unused outside the resume path's replay).
 4. `panel.Map.DragMode = HexDragMode.Pan` so tile clicks fire.
-5. `controller.StartGame()` — captures `_initialSnapshot` post-
-   `SeedStartingGold`.
-6. The dev plays normally. Every action goes through `TrackHandler`
+5. The dev plays normally. Every action goes through `TrackHandler`
    / `StepAiExecute` which record `ReplayBeat`s into `_replayBeats`.
+
+`RecordPane.HasRecording` returns true iff there's a non-empty
+captured tutorial — the TutorialBuilder reads it both to gate the
+discard-confirm dialog and to decide between `StartRecording` /
+`ContinueRecording`.
 
 `RecordPane.StopRecording` (on `SetMode(out of Record)`):
 
@@ -1219,7 +1267,7 @@ scripts/
 │                           panels; Load Game modal; writes
 │                           GameSettings + LoadRequest
 ├─ MapEditorScene.cs      ─ editor scene root; chrome host (HUD, Save/Load
-│                           dialogs, Escape→hand→exit ladder)
+│                           dialogs, EscMenu modal, Escape→hand→modal ladder)
 ├─ MapEditorPanel.cs      ─ reusable editor body; owns HexMapView + draft
 │                           grid/water/territories + UndoStack<EditorSnapshot>
 │                           + paint stroke state + hover tooltip
@@ -1230,15 +1278,22 @@ scripts/
 ├─ TutorialBuilderScene.cs─ tutorial builder scene root; TutorialMode
 │                           { MapEdit, Record, Preview } state machine;
 │                           hosts MapEditorPanel + a chrome-trimmed
-│                           MapEditorHudView + topbar + RecordPane +
-│                           PreviewPane
-├─ TutorialBuilderTopBar.cs ─ tutorial builder topbar (CanvasLayer):
-│                             3 mode buttons (kbd 1/2/3) + Save/Load
-│                             Tutorial + Exit
+│                           MapEditorHudView + RecordPane + PreviewPane
+│                           + EscMenu modal (mode switches + Save/Load
+│                           Tutorial + Exit); captures/restores the
+│                           draft EditorSnapshot around play sessions
+├─ EscMenu.cs             ─ shared pause/exit modal (CanvasLayer +
+│                           centered panel); host scenes call Show with
+│                           a mode-aware option list. ESC closes when
+│                           open. Used by Main, MapEditorScene,
+│                           TutorialBuilderScene
 ├─ RecordPane.cs          ─ Record-mode chrome: spins up a real
 │                           GameController over the panel's draft
 │                           with all six players Human; captures the
-│                           recorded tutorial via RecordingCapture
+│                           recorded tutorial via RecordingCapture.
+│                           ContinueRecording resumes a Preview→Record
+│                           handoff by passing the captured Replay to
+│                           the controller and calling BeginReplay
 ├─ PreviewPane.cs         ─ Preview-mode chrome: spins up a real
 │                           GameController with ReplayDrivenAi +
 │                           TutorialPreview + humanActionValidator;
@@ -1376,7 +1431,7 @@ tests/
 
 `Main.cs`, `MainMenuScene.cs`, `MapEditorScene.cs`,
 `MapEditorPanel.cs`, `MapEditorHudView.cs`, `TutorialBuilderScene.cs`,
-`TutorialBuilderTopBar.cs`, `RecordPane.cs`, `PreviewPane.cs`,
+`EscMenu.cs`, `RecordPane.cs`, `PreviewPane.cs`,
 `HexPaletteButton.cs`, `HexHoverTooltip.cs`, `HexMapView.cs`,
 `HudView.cs`, `SceneTreeTimerFactory.cs`, `HeadlessViews.cs`,
 `SaveStore.cs`, and `AudioBus.cs` are NOT compiled into the test assembly — they
