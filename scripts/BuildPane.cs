@@ -31,6 +31,12 @@ public sealed partial class BuildPane : Control
     private GameState? _recordState;
     private HexDragMode _savedDragMode;
     private bool _running;
+    // Pure-C# captor for the captured tutorial. Lives separately from
+    // _controller so the snapshot survives StopRecording (which nulls
+    // the controller). Without this the live bug was: SetMode runs
+    // StopRecording then reads CurrentTutorial → null → Preview
+    // never starts. See RecordingCapture + BuildPaneCaptureTests.
+    private readonly RecordingCapture _capture = new();
 
     public override void _Ready()
     {
@@ -50,26 +56,24 @@ public sealed partial class BuildPane : Control
     }
 
     /// <summary>
-    /// In-memory tutorial captured by the most recent recording. Null
-    /// before any recording has started. The Tutorial's
-    /// <c>Replay</c> is a fresh snapshot+beat-list view of the
-    /// controller's state — safe to capture mid-recording.
+    /// In-memory tutorial captured by the most recent (or current)
+    /// recording session. Null only before any recording has begun.
+    /// Survives <see cref="StopRecording"/> — the underlying
+    /// <see cref="RecordingCapture"/> preserves the snapshot + beat
+    /// list after the controller is torn down.
     /// </summary>
     public Tutorial? CurrentTutorial
     {
         get
         {
-            if (_controller == null) return null;
-            if (_controller.InitialReplaySnapshot == null) return null;
-            return new Tutorial
+            // Refresh the beat list snapshot from the live controller
+            // while recording is in progress, so a mid-recording Save
+            // sees the latest beats.
+            if (_running && _controller != null)
             {
-                Title = "",  // Title is set at save-dialog time by the scene root.
-                Replay = new Replay(
-                    _controller.InitialReplaySnapshot,
-                    _controller.InitialReplayTurnNumber,
-                    _controller.InitialReplayCurrentPlayerIndex,
-                    new List<ReplayBeat>(_controller.ReplayBeats)),
-            };
+                _capture.SetBeats(new List<ReplayBeat>(_controller.ReplayBeats));
+            }
+            return _capture.Snapshot();
         }
     }
 
@@ -110,6 +114,18 @@ public sealed partial class BuildPane : Control
         _panel.Map.Init(_recordState);
         _controller.StartGame();
 
+        // After StartGame the controller has captured its initial
+        // snapshot. Begin the capture session with those values so
+        // CurrentTutorial works from this point forward.
+        if (_controller.InitialReplaySnapshot != null)
+        {
+            _capture.Begin(
+                _controller.InitialReplaySnapshot,
+                _controller.InitialReplayTurnNumber,
+                _controller.InitialReplayCurrentPlayerIndex);
+            _capture.SetBeats(new List<ReplayBeat>(_controller.ReplayBeats));
+        }
+
         _running = true;
     }
 
@@ -123,6 +139,15 @@ public sealed partial class BuildPane : Control
     public void StopRecording()
     {
         if (!_running) return;
+
+        // Snapshot the final beat list into the capture before nulling
+        // the controller — Stop() itself doesn't touch the existing
+        // snapshot fields.
+        if (_controller != null)
+        {
+            _capture.SetBeats(new List<ReplayBeat>(_controller.ReplayBeats));
+            _capture.Stop();
+        }
 
         _controller?.AbandonGame();
         if (_hud != null)
