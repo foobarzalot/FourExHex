@@ -159,7 +159,8 @@ public sealed partial class RecordPane : Control
             _hud,
             seed: _panel.CurrentSeed,
             aiChooser: null,
-            aiPacer: new SynchronousAiPacer());
+            aiPacer: new SynchronousAiPacer(),
+            recordingMode: true);
 
         _savedDragMode = _panel.Map.DragMode;
         _panel.Map.DragMode = HexDragMode.Pan;
@@ -219,7 +220,8 @@ public sealed partial class RecordPane : Control
             seed: _panel.CurrentSeed,
             aiChooser: null,
             aiPacer: new SynchronousAiPacer(),
-            loadedReplay: previous.Replay);
+            loadedReplay: previous.Replay,
+            recordingMode: true);
 
         _savedDragMode = _panel.Map.DragMode;
         _panel.Map.DragMode = HexDragMode.Pan;

@@ -62,6 +62,15 @@ public sealed class TutorialPreviewCues
         if (_state.Turns.CurrentPlayerIndex != 0)
         {
             ClearAllCtas();
+            // Mid-tutorial AI turns: wipe the stale player-0 instruction
+            // so e.g. "Press End Turn." doesn't linger while the opponent
+            // acts. When the script is exhausted (NextPlayer0Beat null),
+            // leave the panel alone so PreviewPane's "Tutorial complete."
+            // toast survives.
+            if (_preview.NextPlayer0Beat != null)
+            {
+                _hud.HideTutorialMessage();
+            }
             return;
         }
 
@@ -111,6 +120,13 @@ public sealed class TutorialPreviewCues
                 _hud.SetDefeatContinueCta(true);
                 break;
         }
+
+        // Drive the bottom-center message panel from the same beat +
+        // post-cancel session state. Sub-step-aware (e.g. Buy beat
+        // switches text once the player enters the matching Buying
+        // mode). Early-return branches above intentionally don't touch
+        // the panel so PreviewPane's rejection/completion text persists.
+        _hud.ShowTutorialMessage(TutorialInstructionText.For(next, _state, _session));
     }
 
     private void ClearAllCtas()

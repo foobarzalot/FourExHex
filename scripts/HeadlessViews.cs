@@ -97,4 +97,5 @@ public sealed class HeadlessHudView : IHudView
     public void SetClaimVictoryContinueCta(bool isCta) { }
     public void SetDefeatContinueCta(bool isCta) { }
     public void SetReplayAvailable(bool available) { }
+    public void SetUndoRedoLocked(bool locked) { }
 }

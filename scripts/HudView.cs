@@ -43,6 +43,7 @@ public partial class HudView : CanvasLayer, IHudView
     private Button _undoTurnButton = null!;
     private Button _redoLastButton = null!;
     private Button _redoAllButton = null!;
+    private bool _undoRedoLocked;
     private Button _endTurnButton = null!;
     private Button _saveGameButton = null!;
     private Button _endGameButton = null!;
@@ -269,8 +270,12 @@ public partial class HudView : CanvasLayer, IHudView
     /// </summary>
     private void BuildTutorialOverlay()
     {
-        const float panelW = 600f;
-        const float panelH = 80f;
+        // Width and height grew to fit the longer instruction strings
+        // ("Move the selected X onto the highlighted tile to destroy
+        // the tower and capture it.") and to give the autowrapped label
+        // room for two or three lines without bleeding out the panel.
+        const float panelW = 720f;
+        const float panelH = 120f;
         const float marginBottom = 60f;
 
         _tutorialPanel = new Panel
@@ -293,10 +298,17 @@ public partial class HudView : CanvasLayer, IHudView
             Text = "",
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            // Small horizontal inset so wrapped lines don't kiss the
+            // panel's left/right border.
             AnchorLeft = 0f,
             AnchorRight = 1f,
             AnchorTop = 0f,
             AnchorBottom = 1f,
+            OffsetLeft = 12f,
+            OffsetRight = -12f,
+            OffsetTop = 8f,
+            OffsetBottom = -8f,
             MouseFilter = Control.MouseFilterEnum.Ignore,
         };
         _tutorialLabel.AddThemeFontSizeOverride("font_size", 22);
@@ -678,10 +690,10 @@ public partial class HudView : CanvasLayer, IHudView
                 : "Build Tower (15g)";
         }
 
-        _undoLastButton.Disabled = !session.Undo.CanUndo;
-        _undoTurnButton.Disabled = !session.Undo.CanUndo;
-        _redoLastButton.Disabled = !session.Undo.CanRedo;
-        _redoAllButton.Disabled = !session.Undo.CanRedo;
+        _undoLastButton.Disabled = _undoRedoLocked || !session.Undo.CanUndo;
+        _undoTurnButton.Disabled = _undoRedoLocked || !session.Undo.CanUndo;
+        _redoLastButton.Disabled = _undoRedoLocked || !session.Undo.CanRedo;
+        _redoAllButton.Disabled = _undoRedoLocked || !session.Undo.CanRedo;
         // End Turn CTA styling is driven by GameController.RefreshViews
         // post-Refresh so Tutorial Preview's onAfterRefresh callback can
         // overwrite it (e.g. light it for an EndTurn scripted beat even
@@ -744,6 +756,21 @@ public partial class HudView : CanvasLayer, IHudView
     public void SetClaimVictoryContinueCta(bool isCta) => ApplyCtaStyle(_claimContinueButton, isCta);
 
     public void SetDefeatContinueCta(bool isCta) => ApplyCtaStyle(_defeatContinueButton, isCta);
+
+    public void SetUndoRedoLocked(bool locked)
+    {
+        _undoRedoLocked = locked;
+        if (locked)
+        {
+            // Refresh() may not be imminent (Tutorial Preview calls this
+            // before the first refresh) — disable immediately so the
+            // first frame doesn't paint them clickable.
+            _undoLastButton.Disabled = true;
+            _undoTurnButton.Disabled = true;
+            _redoLastButton.Disabled = true;
+            _redoAllButton.Disabled = true;
+        }
+    }
 
     private static void ApplyCtaStyle(Button button, bool isCta)
     {

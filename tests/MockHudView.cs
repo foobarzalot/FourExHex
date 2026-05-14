@@ -81,6 +81,9 @@ public class MockHudView : IHudView
     public bool DefeatContinueCtaActive { get; private set; }
     public void SetDefeatContinueCta(bool isCta) => DefeatContinueCtaActive = isCta;
 
+    public bool UndoRedoLocked { get; private set; }
+    public void SetUndoRedoLocked(bool locked) => UndoRedoLocked = locked;
+
     public bool ReplayAvailable { get; private set; }
     public void SetReplayAvailable(bool available) => ReplayAvailable = available;
 

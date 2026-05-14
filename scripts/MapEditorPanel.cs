@@ -124,6 +124,23 @@ public sealed partial class MapEditorPanel : Node2D
         PushState(animateNewOccupants: false);
     }
 
+    /// <summary>
+    /// Overwrite the draft's tile colors + occupants + territories from
+    /// a tutorial's <see cref="Replay.InitialSnapshot"/>. Called by the
+    /// TutorialBuilder right after <see cref="LoadFromMap"/> so the
+    /// panel's <c>_grid</c> reflects the painted starting map regardless
+    /// of what state the save happened to capture — saves made
+    /// mid-recording carry the post-replay state in <c>loaded.State</c>,
+    /// which would otherwise become the discard-fallback when the dev
+    /// switches back to Map Edit.
+    /// </summary>
+    public void ResetToTutorialStart(GameStateSnapshot snapshot)
+    {
+        var throwaway = new Treasury();
+        _territories = snapshot.ApplyTo(_grid, throwaway);
+        PushState(animateNewOccupants: false);
+    }
+
     public void UndoLast() => RunHistory(_undoStack.CanUndo, _undoStack.UndoLast);
     public void UndoAll()  => RunHistory(_undoStack.CanUndo, _undoStack.UndoAll);
     public void RedoLast() => RunHistory(_undoStack.CanRedo, _undoStack.RedoLast);

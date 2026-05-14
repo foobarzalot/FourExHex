@@ -896,6 +896,76 @@ public class GameControllerTests
     }
 
     [Fact]
+    public void Capture_RecordingMode_DoesNotSetPendingDefeatScreenForNonZeroPlayer()
+    {
+        // In Tutorial Builder's Record mode, every slot is forced Human
+        // so the dev can play all six. Defeats for non-player-0 colors
+        // should be silent because those colors will be AI in the
+        // eventual Preview playback (where the overlay wouldn't fire).
+        var red = new Player("Red", new Color(1f, 0f, 0f));
+        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var players = new List<Player> { red, blue };
+
+        var grid = TestHelpers.BuildRectGrid(4, 1, blue.Color);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(red.Color, UnitLevel.Spearman);
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        var map = new MockHexMapView();
+        var hud = new MockHudView();
+        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+        {
+            map.TileIndex[kvp.Key] = kvp.Value;
+        }
+        var controller = new GameController(state, session, map, hud, recordingMode: true);
+        controller.StartGame();
+
+        map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(1, 0)));
+        map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(2, 0)));
+
+        Assert.Null(session.PendingDefeatScreen);
+    }
+
+    [Fact]
+    public void Capture_RecordingMode_StillSetsPendingDefeatScreenForPlayer0()
+    {
+        // Player 0 (Red here) is the slot that becomes the actual human
+        // in playback, so a defeat of player 0 during recording should
+        // still raise the overlay — the dev needs it visible to record
+        // the matching dismiss beat.
+        var red = new Player("Red", new Color(1f, 0f, 0f));
+        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var players = new List<Player> { red, blue };
+
+        var grid = TestHelpers.BuildRectGrid(4, 1, red.Color);
+        grid.Get(HexCoord.FromOffset(2, 0))!.Color = blue.Color;
+        grid.Get(HexCoord.FromOffset(3, 0))!.Color = blue.Color;
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(blue.Color, UnitLevel.Spearman);
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players,
+            new TurnState(players, currentPlayerIndex: 1, turnNumber: 1),
+            new Treasury());
+        var session = new SessionState();
+        var map = new MockHexMapView();
+        var hud = new MockHudView();
+        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+        {
+            map.TileIndex[kvp.Key] = kvp.Value;
+        }
+        var controller = new GameController(state, session, map, hud, recordingMode: true);
+        controller.StartGame();
+
+        map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(2, 0)));
+        map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(1, 0)));
+
+        Assert.Equal(red.Color, session.PendingDefeatScreen);
+    }
+
+    [Fact]
     public void DismissDefeatScreen_ClearsPendingDefeatScreen()
     {
         var red = new Player("Red", new Color(1f, 0f, 0f));

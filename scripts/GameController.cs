@@ -94,10 +94,12 @@ public class GameController
         Replay? loadedReplay = null,
         Func<ReplayBeat, bool>? humanActionValidator = null,
         bool previewMode = false,
+        bool recordingMode = false,
         Action? onAfterRefresh = null)
     {
         _humanActionValidator = humanActionValidator;
         _previewMode = previewMode;
+        _recordingMode = recordingMode;
         _onAfterRefresh = onAfterRefresh;
         _state = state;
         _session = session;
@@ -353,6 +355,16 @@ public class GameController
     private readonly Func<ReplayBeat, bool>? _humanActionValidator;
     private readonly bool _previewMode;
     public bool IsPreviewMode => _previewMode;
+
+    // _recordingMode (set via the recordingMode param) is true when the
+    // controller is hosting the Tutorial Builder's Record session. All
+    // six slots are forced Human in that mode so the dev can play every
+    // color, which would otherwise fire the defeat overlay (and similar
+    // human-only UI) for non-player-0 eliminations even though those
+    // slots will be AI in the eventual Preview playback. Used by
+    // HandleCapture to gate PendingDefeatScreen to player 0 only.
+    private readonly bool _recordingMode;
+    public bool IsRecordingMode => _recordingMode;
 
     // Optional callback fired at the tail of every RefreshViews(). Used
     // by Tutorial Preview to repaint visual cues (auto-selection,
@@ -1091,8 +1103,14 @@ public class GameController
             if (!colorsWithCapitalAfter.Contains(c))
             {
                 _map.PlayPlayerDefeated();
-                Player? defeated = _state.Turns.Players.FirstOrDefault(p => p.Color == c);
-                if (defeated != null && !defeated.IsAi)
+                int defeatedIndex = -1;
+                for (int i = 0; i < _state.Turns.Players.Count; i++)
+                {
+                    if (_state.Turns.Players[i].Color == c) { defeatedIndex = i; break; }
+                }
+                if (defeatedIndex >= 0
+                    && !_state.Turns.Players[defeatedIndex].IsAi
+                    && (!_recordingMode || defeatedIndex == 0))
                 {
                     _session.PendingDefeatScreen = c;
                 }

@@ -475,6 +475,15 @@ public partial class TutorialBuilderScene : Node2D
         {
             LoadedSave loaded = _saveStore.LoadTutorial(slotName);
             _panel.LoadFromMap(loaded);
+            // Tutorial saves made mid-recording carry the post-replay
+            // grid in loaded.State (the panel's _grid is shared with the
+            // recording controller and mutates as beats execute). Reset
+            // it back to the recording's starting frame so the painted
+            // map is what the dev sees on a subsequent MapEdit-Discard.
+            if (loaded.Tutorial?.Replay != null)
+            {
+                _panel.ResetToTutorialStart(loaded.Tutorial.Replay.InitialSnapshot);
+            }
             _loadDialog?.Hide();
             // Prime RecordPane with the loaded Tutorial so the
             // subsequent SetMode(Record) carries it forward via

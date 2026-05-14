@@ -87,6 +87,10 @@ public sealed partial class PreviewPane : Control
         _hud = new HudView();
         AddChild(_hud);
         _hud.EscRequested += () => EscRequested?.Invoke();
+        // Undo/Redo aren't recorded as beats and would desync the
+        // tutorial cursor from player actions — keep them disabled
+        // throughout the preview session.
+        _hud.SetUndoRedoLocked(true);
 
         // Shared cursor so the human-side TutorialPreview and AI-side
         // ReplayDrivenAi consume from the same totally-ordered log.

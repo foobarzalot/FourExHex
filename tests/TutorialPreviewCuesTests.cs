@@ -111,12 +111,34 @@ public class TutorialPreviewCuesTests
             new ReplayEndTurnBeat { Index = 0, Turn = 1, Actor = 0 },
         };
         var f = new Fixture(script, currentPlayerIndex: 1);
+        // Simulate a stale player-0 instruction left over from the
+        // previous turn — the cue must wipe it when an opponent takes
+        // over.
+        f.Hud.ShowTutorialMessage("Press End Turn.");
 
         f.Cues.Apply();
 
         Assert.False(f.Hud.EndTurnCtaActive);
         Assert.Empty(f.Map.LastMoveTargets);
         Assert.Equal(0, f.SelectTerritoryCalls);
+        // Not player 0's turn, but a future player-0 beat still pending
+        // (the EndTurn beat the fixture set up) — clear the stale
+        // instruction so it doesn't linger through opponent turns.
+        Assert.Null(f.Hud.CurrentTutorialMessage);
+    }
+
+    [Fact]
+    public void NotPlayer0Turn_NoFurtherBeats_LeavesTutorialMessageAlone()
+    {
+        // When the script is exhausted, PreviewPane sets
+        // "Tutorial complete." via OnFinished. The cues' AI-turn branch
+        // must NOT wipe it.
+        var f = new Fixture(new List<ReplayBeat>(), currentPlayerIndex: 1);
+        f.Hud.ShowTutorialMessage("Tutorial complete.");
+
+        f.Cues.Apply();
+
+        Assert.Equal("Tutorial complete.", f.Hud.CurrentTutorialMessage);
     }
 
     [Fact]
@@ -139,6 +161,9 @@ public class TutorialPreviewCuesTests
         Assert.False(f.Hud.ClaimVictoryWinNowCtaActive);
         Assert.False(f.Hud.ClaimVictoryContinueCtaActive);
         Assert.False(f.Hud.DefeatContinueCtaActive);
+        // No further player-0 beats → cues leave the panel alone so the
+        // "Tutorial complete." message set by PreviewPane.OnFinished stays.
+        Assert.Null(f.Hud.CurrentTutorialMessage);
     }
 
     [Fact]
@@ -154,6 +179,7 @@ public class TutorialPreviewCuesTests
 
         Assert.True(f.Hud.EndTurnCtaActive);
         Assert.False(f.Hud.BuyPeasantCtaActive);
+        Assert.Equal("Press End Turn.", f.Hud.CurrentTutorialMessage);
     }
 
     [Fact]
@@ -176,6 +202,7 @@ public class TutorialPreviewCuesTests
         Assert.Equal(1, f.SelectTerritoryCalls);
         // Mode is None → target tile NOT highlighted yet.
         Assert.Empty(f.Map.LastMoveTargets);
+        Assert.Equal("Press the Buy Peasant button.", f.Hud.CurrentTutorialMessage);
     }
 
     [Fact]
@@ -218,6 +245,7 @@ public class TutorialPreviewCuesTests
         Assert.Single(f.Map.LastMoveTargets);
         Assert.Equal(destination, f.Map.LastMoveTargets[0]);
         Assert.Equal(UnitLevel.Knight, f.Map.LastMoveTargetsLevel);
+        Assert.Equal("Place the Knight at the highlighted tile.", f.Hud.CurrentTutorialMessage);
     }
 
     [Fact]
@@ -264,6 +292,7 @@ public class TutorialPreviewCuesTests
         Assert.Equal(f.RedTerritory, f.Session.SelectedTerritory);
         // Mode is None — tower target NOT highlighted yet.
         Assert.Empty(f.Map.LastTowerTargets);
+        Assert.Equal("Press the Build Tower button.", f.Hud.CurrentTutorialMessage);
     }
 
     [Fact]
@@ -289,6 +318,7 @@ public class TutorialPreviewCuesTests
         Assert.True(f.Hud.BuildTowerCtaActive);
         Assert.Single(f.Map.LastTowerTargets);
         Assert.Equal(destination, f.Map.LastTowerTargets[0]);
+        Assert.Equal("Place the tower at the highlighted tile.", f.Hud.CurrentTutorialMessage);
     }
 
     [Fact]
@@ -318,6 +348,7 @@ public class TutorialPreviewCuesTests
         Assert.Single(f.Map.LastMoveTargets);
         Assert.Equal(from, f.Map.LastMoveTargets[0]);
         Assert.Equal(UnitLevel.Spearman, f.Map.LastMoveTargetsLevel);
+        Assert.Equal("Tap the highlighted unit to pick it up.", f.Hud.CurrentTutorialMessage);
     }
 
     [Fact]
@@ -346,6 +377,7 @@ public class TutorialPreviewCuesTests
         Assert.Single(f.Map.LastMoveTargets);
         Assert.Equal(to, f.Map.LastMoveTargets[0]);
         Assert.Equal(UnitLevel.Knight, f.Map.LastMoveTargetsLevel);
+        Assert.Equal("Move the unit to the highlighted tile.", f.Hud.CurrentTutorialMessage);
     }
 
     [Fact]
@@ -370,6 +402,8 @@ public class TutorialPreviewCuesTests
         Assert.Single(f.Map.LastMoveTargets);
         Assert.Equal(target, f.Map.LastMoveTargets[0]);
         Assert.Equal(UnitLevel.Peasant, f.Map.LastMoveTargetsLevel);
+        Assert.Equal("Long-press the highlighted tile to rally peasants there.",
+            f.Hud.CurrentTutorialMessage);
     }
 
     [Fact]
@@ -385,6 +419,7 @@ public class TutorialPreviewCuesTests
 
         Assert.True(f.Hud.ClaimVictoryWinNowCtaActive);
         Assert.False(f.Hud.ClaimVictoryContinueCtaActive);
+        Assert.Equal("Press Win Now to claim victory.", f.Hud.CurrentTutorialMessage);
     }
 
     [Fact]
@@ -400,6 +435,7 @@ public class TutorialPreviewCuesTests
 
         Assert.True(f.Hud.ClaimVictoryContinueCtaActive);
         Assert.False(f.Hud.ClaimVictoryWinNowCtaActive);
+        Assert.Equal("Press Continue Playing to keep going.", f.Hud.CurrentTutorialMessage);
     }
 
     [Fact]
@@ -414,6 +450,7 @@ public class TutorialPreviewCuesTests
         f.Cues.Apply();
 
         Assert.True(f.Hud.DefeatContinueCtaActive);
+        Assert.Equal("Press Continue.", f.Hud.CurrentTutorialMessage);
     }
 
     [Fact]

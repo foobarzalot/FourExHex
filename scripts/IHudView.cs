@@ -127,4 +127,13 @@ public interface IHudView
     /// button. Tutorial Preview only.
     /// </summary>
     void SetDefeatContinueCta(bool isCta);
+
+    /// <summary>
+    /// Lock (force-disable) the Undo / Redo button row. While locked,
+    /// the four undo/redo buttons stay disabled regardless of
+    /// <see cref="SessionState.Undo"/> state — Tutorial Preview uses
+    /// this because undo/redo would desync the script cursor from the
+    /// player's actions (those operations aren't recorded as beats).
+    /// </summary>
+    void SetUndoRedoLocked(bool locked);
 }
