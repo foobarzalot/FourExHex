@@ -400,10 +400,12 @@ void SetReplayAvailable(bool available); // toggle the victory-overlay
                                        // replay history from game start
 
 // CTA-styled button highlights (white bg + black border + black text).
-// SetEndTurnCta is driven by GameController.RefreshViews based on
-// hasActionable (the auto "out of moves" highlight); the other four
-// are tutorial-Preview-only and surface the next required action.
-void SetEndTurnCta(bool isCta);
+// SetEndTurnCta takes an extra pulse flag: game-side "out of moves"
+// is steady (pulse: false), Tutorial Preview's scripted End Turn beat
+// pulses (pulse: true) — a looping Tween on Modulate.a (1.0 ↔ 0.55).
+// The other five tutorial CTAs are Tutorial-Preview-only and always
+// pulse internally.
+void SetEndTurnCta(bool isCta, bool pulse);
 void SetBuyPeasantCta(bool isCta);
 void SetBuildTowerCta(bool isCta);
 void SetClaimVictoryWinNowCta(bool isCta);
@@ -415,6 +417,14 @@ void SetDefeatContinueCta(bool isCta);
 // undo/redo isn't recorded as beats and would desync the script
 // cursor from the player's actions.
 void SetUndoRedoLocked(bool locked);
+
+// Suppress the full-win "X wins!" overlay even when session.Winner
+// is set. GameController latches this true in its constructor when
+// previewMode or recordingMode is on — game-over signaling in
+// tutorial modes flows through the bottom-center tutorial-message
+// panel, not a click-blocking modal that would freeze the
+// scripted / recording flow.
+void SetVictoryOverlaySuppressed(bool suppressed);
 ```
 
 The defeat overlay is part of the HUD: `Refresh` reads
@@ -620,7 +630,10 @@ that tier. The dictionary is persisted via `SaveSerializer` so reload
 cannot reset the per-tier invariant. Older saves carrying the legacy
 flat-color list (single 50% tier from the original implementation) load
 with each color migrated to `→ 50`, so the new 75% and 90% prompts can
-still appear after upgrade. AI players never trigger any tier.
+still appear after upgrade. AI players never trigger any tier;
+Tutorial Preview and Record likewise suppress the prompt entirely (the
+modal would interrupt the scripted / recording flow with author input
+that can't be pre-recorded).
 
 ### Player elimination
 
@@ -637,8 +650,17 @@ overlay is up so the human can read the result before play resumes.
 
 `AdvanceToNextActivePlayer()` calls `TurnState.EndTurn()` (which
 increments `TurnNumber` on wrap) then loops while
-`WinConditionRules.IsEliminated(currentPlayer.Color, grid)` is true
-— wiped-out players are skipped entirely.
+`WinConditionRules.IsEliminated(currentPlayer.Color, grid)` is true.
+The eliminated player can't take any input or AI action, but they're
+not silently skipped: each loop iteration runs a "phantom turn" that
+ticks the tile-bound rules — `TreeRules.RunStartOfTurnGrowth` (turn >
+1; graves on their color → trees, empty same-color cells with ≥2
+neighbor trees or a tree-and-water pair spread) then
+`UpkeepRules.ApplyUpkeepFor` (orphan units bankrupt into graves
+because there's no capital to fund them). Income, view refresh, AI
+dispatch and turn logging are skipped — a silent pass-through. Without
+this, an eliminated player's lone unit on a singleton would linger
+forever on a rotation that always skipped them.
 
 ## Call flows
 
@@ -1206,7 +1228,10 @@ Both paths share the rest of the setup:
    only — without it, every defeat in the all-Human roster pops the
    defeat overlay (Blue, Green, … all look like humans), interrupting
    the recording with toasts for slots that will be AI in the
-   eventual Preview playback.
+   eventual Preview playback. It also suppresses the End-Turn
+   claim-victory prompt and tells the HUD to hide the full-win
+   overlay, for the same scripted-flow-can't-eat-a-modal reason as
+   Preview.
 4. `panel.Map.DragMode = HexDragMode.Pan` so tile clicks fire.
 5. The dev plays normally. Every action goes through `TrackHandler`
    / `StepAiExecute` which record `ReplayBeat`s into `_replayBeats`.
@@ -1267,9 +1292,10 @@ authoring the loaded script, otherwise `StartRecording` runs fresh.
    - `aiChooser: replayAi.ChooseNextAction`
    - `humanActionValidator: tutorialPreview.TryAccept`
    - `previewMode: true` (suppresses every `RecordBeat` call so the
-     loaded script isn't polluted by the dev's playthrough; does
-     NOT block input handlers — Preview wants player-0 clicks
-     through)
+     loaded script isn't polluted by the dev's playthrough; also
+     skips the End-Turn claim-victory prompt and tells the HUD to
+     hide the full-win overlay; does NOT block input handlers —
+     Preview wants player-0 clicks through)
    - `aiPacer: new GodotAiPacer(new SceneTreeTimerFactory(GetTree()))`
    - `onAfterRefresh: () => cues.Apply()` (see Preview cues below)
 6. `TutorialPreviewCues` built and wired into the controller via the
@@ -1314,15 +1340,17 @@ ensures the cue paints last and wins).
 
 `Apply()` reads `TutorialPreview.NextPlayer0Beat` and dispatches:
 
-- **`ReplayEndTurnBeat`** → `SetEndTurnCta(true)`.
+- **`ReplayEndTurnBeat`** → `SetEndTurnCta(true, pulse: true)`.
 - **`ReplayBuyBeat`** → auto-select capital's territory (via
-  `GameController.SelectTerritoryForTutorial`), `SetBuyPeasantCta(true)`,
-  and if `_session.Mode` matches the recorded `Level`, overwrite
-  `ShowMoveTargets([To], level)` with the single recorded tile. The
-  player cycles freely between BuyingXxx modes; the single-tile
-  highlight appears only once mode matches the recorded level.
-- **`ReplayBuildTowerBeat`** → analogous; CTA on Build Tower button
-  and single-tile `ShowTowerTargets([To])` once `Mode == BuildingTower`.
+  `GameController.SelectTerritoryForTutorial`). The Buy button CTA is
+  on iff the player is not yet in the matching Buying mode
+  (`BuyModeLevel(Mode) != bu.Level`): while they're still cycling
+  presses to reach the target level, the button pulses; once they
+  match, the CTA drops and `ShowMoveTargets([To], level)` highlights
+  the single target tile instead.
+- **`ReplayBuildTowerBeat`** → analogous; CTA pulses on Build Tower
+  while `Mode != BuildingTower`, then drops in favor of single-tile
+  `ShowTowerTargets([To])` once the player enters BuildingTower mode.
 - **`ReplayMoveBeat`** → auto-select source territory; if
   `Mode == MovingUnit && MoveSource == mv.From`, overwrite
   `ShowMoveTargets([To], level)`; otherwise overwrite with `[From]`
