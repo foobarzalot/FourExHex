@@ -733,6 +733,38 @@ public class GameController
     }
 
     /// <summary>
+    /// Public refresh-views passthrough for tutorial Preview wiring —
+    /// invoked by <c>TutorialNarrationDriver</c> after the player taps
+    /// to dismiss a tutorial-only beat, so <c>TutorialPreviewCues</c>
+    /// re-paints the next action's cue (the cues run at the tail of
+    /// every RefreshViews via onAfterRefresh). Ordinary play and tests
+    /// drive refreshes through the normal handler paths and shouldn't
+    /// call this.
+    /// </summary>
+    public void RefreshViewsForTutorial() => RefreshViews();
+
+    /// <summary>
+    /// Append an authored tutorial-only beat to the recording log. Used
+    /// by RecordPane's "+ Text" authoring path. Stamps Index + Turn
+    /// from current state and forces <see cref="ReplayBeat.Actor"/> =
+    /// -1 (no player owns these). Gated on recording mode: silently
+    /// no-ops outside of an active recording (replay playback, preview
+    /// mode, or before StartGame). Crashes if a non-<see cref="TutorialOnlyBeat"/>
+    /// subclass is passed — only tutorial-only beats are authorable.
+    /// </summary>
+    public void RecordTutorialOnlyBeat(TutorialOnlyBeat beat)
+    {
+        if (_replayMode || _previewMode) return;
+        ReplayBeat stamped = beat with
+        {
+            Index = _replayBeats.Count,
+            Turn = _state.Turns.TurnNumber,
+            Actor = -1,
+        };
+        _replayBeats.Add(stamped);
+    }
+
+    /// <summary>
     /// Returns the action-consuming targets for a would-be attacker of
     /// level <paramref name="attackerLevel"/>: enemy tiles we can capture,
     /// plus own-territory tiles whose tree the unit would clear. Empty
@@ -2353,6 +2385,12 @@ public class GameController
                 break;
             case ReplayLongPressRallyBeat rally:
                 ApplyLongPressRally(rally.Target);
+                break;
+            case TutorialOnlyBeat _:
+                // Tutorial-only beats (e.g., narration text) are
+                // authoring-only — the in-game Replay button silently
+                // skips them. Tutorial Preview consumes them through
+                // TutorialNarrationDriver instead.
                 break;
         }
 

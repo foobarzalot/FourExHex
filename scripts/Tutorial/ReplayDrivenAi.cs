@@ -83,6 +83,10 @@ public sealed class ReplayDrivenAi
     {
         if (_cursor.Index >= _script.Count) return null;
         ReplayBeat next = _script[_cursor.Index];
+        // Tutorial-only beats (e.g., narration text) are not actions
+        // any player takes. The narration driver consumes them; the AI
+        // chooser must not advance past them.
+        if (next is TutorialOnlyBeat) return null;
         if (!_indexByColor.TryGetValue(forPlayer, out int actorIndex)) return null;
         if (next.Actor != actorIndex) return null;
         if (next is ReplayEndTurnBeat)

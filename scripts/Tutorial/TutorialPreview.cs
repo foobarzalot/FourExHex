@@ -48,7 +48,12 @@ public sealed class TutorialPreview
     /// <summary>
     /// The next expected player-0 beat, or null if no further player-0
     /// beats remain in the script. Skip-scans past beats for other
-    /// actors. Used by the UI to surface "next expected" hint text.
+    /// actors. Returns null if a <see cref="TutorialOnlyBeat"/> sits
+    /// between the cursor and the next player-0 beat — that beat must
+    /// be consumed by <c>TutorialNarrationDriver</c> first, and the
+    /// gate keeps <c>TutorialPreviewCues</c> from painting a cue for
+    /// the action beat behind the narration. Used by the UI to surface
+    /// "next expected" hint text.
     /// </summary>
     public ReplayBeat? NextPlayer0Beat
     {
@@ -56,6 +61,7 @@ public sealed class TutorialPreview
         {
             for (int i = _cursor.Index; i < _script.Count; i++)
             {
+                if (_script[i] is TutorialOnlyBeat) return null;
                 if (_script[i].Actor == 0) return _script[i];
             }
             return null;

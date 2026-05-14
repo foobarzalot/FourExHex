@@ -251,15 +251,77 @@ public partial class HudView : CanvasLayer, IHudView
         _seedLabel.Text = text;
     }
 
+    public event Action? TutorialMessageTapped;
+
+    /// <summary>
+    /// Full-viewport invisible overlay used while a tappable tutorial
+    /// message is showing. Built lazily on first tappable-show. Sits
+    /// above every other HudView child so a click anywhere on the
+    /// screen (HUD buttons, map tiles, the panel itself) is intercepted
+    /// and advances the tutorial — the player can't accidentally hit
+    /// Buy / End Turn / select a tile while a narration beat is gated.
+    /// </summary>
+    private Control? _tutorialTapCatcher;
+
     public void ShowTutorialMessage(string text)
     {
         _tutorialLabel.Text = text;
         _tutorialPanel.Visible = true;
+        SetTutorialTapCatcherEnabled(false);
+    }
+
+    public void ShowTappableTutorialMessage(string text)
+    {
+        _tutorialLabel.Text = text;
+        _tutorialPanel.Visible = true;
+        SetTutorialTapCatcherEnabled(true);
     }
 
     public void HideTutorialMessage()
     {
         _tutorialPanel.Visible = false;
+        SetTutorialTapCatcherEnabled(false);
+    }
+
+    private void SetTutorialTapCatcherEnabled(bool enabled)
+    {
+        if (enabled)
+        {
+            if (_tutorialTapCatcher == null)
+            {
+                Vector2 viewport = GetViewport().GetVisibleRect().Size;
+                _tutorialTapCatcher = new Control
+                {
+                    Position = Vector2.Zero,
+                    Size = viewport,
+                    AnchorLeft = 0f, AnchorRight = 1f,
+                    AnchorTop = 0f, AnchorBottom = 1f,
+                    MouseFilter = Control.MouseFilterEnum.Stop,
+                };
+                _tutorialTapCatcher.GuiInput += OnTutorialTapCatcherInput;
+                AddChild(_tutorialTapCatcher);
+            }
+            // Re-parent so the catcher is the topmost child of HudView,
+            // guaranteeing it receives clicks ahead of HUD buttons, the
+            // map below, and the tutorial panel.
+            MoveChild(_tutorialTapCatcher, GetChildCount() - 1);
+            _tutorialTapCatcher.Visible = true;
+            _tutorialTapCatcher.MouseFilter = Control.MouseFilterEnum.Stop;
+        }
+        else if (_tutorialTapCatcher != null)
+        {
+            _tutorialTapCatcher.Visible = false;
+            _tutorialTapCatcher.MouseFilter = Control.MouseFilterEnum.Ignore;
+        }
+    }
+
+    private void OnTutorialTapCatcherInput(InputEvent ev)
+    {
+        if (ev is InputEventMouseButton mb && mb.Pressed && mb.ButtonIndex == MouseButton.Left)
+        {
+            _tutorialTapCatcher!.AcceptEvent();
+            TutorialMessageTapped?.Invoke();
+        }
     }
 
     /// <summary>

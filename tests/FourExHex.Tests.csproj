@@ -85,6 +85,7 @@
     <Compile Include="..\scripts\Tutorial\PreviewSetup.cs" Link="scripts\Tutorial\PreviewSetup.cs" />
     <Compile Include="..\scripts\Tutorial\TutorialPreviewCues.cs" Link="scripts\Tutorial\TutorialPreviewCues.cs" />
     <Compile Include="..\scripts\Tutorial\TutorialInstructionText.cs" Link="scripts\Tutorial\TutorialInstructionText.cs" />
+    <Compile Include="..\scripts\Tutorial\TutorialNarrationDriver.cs" Link="scripts\Tutorial\TutorialNarrationDriver.cs" />
   </ItemGroup>
 
 </Project>

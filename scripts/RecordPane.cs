@@ -39,6 +39,8 @@ public sealed partial class RecordPane : Control
     private GameState? _recordState;
     private HexDragMode _savedDragMode;
     private bool _running;
+    private Button? _addTextButton;
+    private Control? _addTextDialog;
     // Pure-C# captor for the captured tutorial. Lives separately from
     // _controller so the snapshot survives StopRecording (which nulls
     // the controller). Without this the live bug was: SetMode runs
@@ -184,6 +186,7 @@ public sealed partial class RecordPane : Control
             GD.Print("[RecordPane] WARNING: controller has no initial snapshot after StartGame");
         }
 
+        BuildAddTextButton();
         _running = true;
     }
 
@@ -243,6 +246,7 @@ public sealed partial class RecordPane : Control
             _capture.SetBeats(new List<ReplayBeat>(_controller.ReplayBeats));
         }
 
+        BuildAddTextButton();
         _running = true;
     }
 
@@ -275,11 +279,147 @@ public sealed partial class RecordPane : Control
             _hud = null;
         }
 
+        TearDownAddTextButton();
+
         _panel.Map.DragMode = _savedDragMode;
         _panel.Map.Init(_panel.BuildLiveState());
 
         _controller = null;
         _recordState = null;
         _running = false;
+    }
+
+    /// <summary>
+    /// Add the "+ Text" authoring affordance to RecordPane's chrome.
+    /// Positioned at the top-right just below the HUD strip; click
+    /// opens a small modal dialog with a LineEdit. Submit appends a
+    /// <see cref="ReplayDisplayTextBeat"/> to the recording via
+    /// <see cref="GameController.RecordTutorialOnlyBeat"/>.
+    /// </summary>
+    private void BuildAddTextButton()
+    {
+        if (_addTextButton != null) return;
+        var btn = new Button
+        {
+            Text = "+ Text",
+            AnchorLeft = 1f,
+            AnchorRight = 1f,
+            AnchorTop = 0f,
+            AnchorBottom = 0f,
+            OffsetLeft = -110f,
+            OffsetRight = -10f,
+            OffsetTop = 70f,
+            OffsetBottom = 100f,
+            TooltipText = "Insert a tutorial-only display-text beat at the current position.",
+        };
+        btn.Pressed += OpenAddTextDialog;
+        AddChild(btn);
+        _addTextButton = btn;
+    }
+
+    private void TearDownAddTextButton()
+    {
+        if (_addTextButton != null)
+        {
+            RemoveChild(_addTextButton);
+            _addTextButton.QueueFree();
+            _addTextButton = null;
+        }
+        if (_addTextDialog != null)
+        {
+            RemoveChild(_addTextDialog);
+            _addTextDialog.QueueFree();
+            _addTextDialog = null;
+        }
+    }
+
+    private void OpenAddTextDialog()
+    {
+        if (_addTextDialog != null) return;
+        if (_controller == null) return;
+
+        // Translucent backdrop that captures clicks so the map below
+        // is inert while the dialog is open.
+        var backdrop = new ColorRect
+        {
+            Color = new Color(0f, 0f, 0f, 0.45f),
+            AnchorLeft = 0f, AnchorRight = 1f, AnchorTop = 0f, AnchorBottom = 1f,
+            MouseFilter = MouseFilterEnum.Stop,
+        };
+
+        const float panelW = 460f;
+        const float panelH = 180f;
+        var panel = new Panel
+        {
+            AnchorLeft = 0.5f, AnchorRight = 0.5f,
+            AnchorTop = 0.5f, AnchorBottom = 0.5f,
+            OffsetLeft = -panelW * 0.5f, OffsetRight = panelW * 0.5f,
+            OffsetTop = -panelH * 0.5f, OffsetBottom = panelH * 0.5f,
+            MouseFilter = MouseFilterEnum.Stop,
+        };
+        backdrop.AddChild(panel);
+
+        var titleLabel = new Label
+        {
+            Text = "Narration text for this tutorial beat:",
+            AnchorLeft = 0f, AnchorRight = 1f, AnchorTop = 0f, AnchorBottom = 0f,
+            OffsetLeft = 16f, OffsetRight = -16f, OffsetTop = 16f, OffsetBottom = 44f,
+        };
+        panel.AddChild(titleLabel);
+
+        var lineEdit = new LineEdit
+        {
+            PlaceholderText = "e.g., Move your peasant to the highlighted tile.",
+            AnchorLeft = 0f, AnchorRight = 1f, AnchorTop = 0f, AnchorBottom = 0f,
+            OffsetLeft = 16f, OffsetRight = -16f, OffsetTop = 50f, OffsetBottom = 90f,
+        };
+        panel.AddChild(lineEdit);
+
+        var insertButton = new Button
+        {
+            Text = "Insert",
+            AnchorLeft = 1f, AnchorRight = 1f, AnchorTop = 1f, AnchorBottom = 1f,
+            OffsetLeft = -110f, OffsetRight = -16f, OffsetTop = -50f, OffsetBottom = -16f,
+        };
+        panel.AddChild(insertButton);
+
+        var cancelButton = new Button
+        {
+            Text = "Cancel",
+            AnchorLeft = 1f, AnchorRight = 1f, AnchorTop = 1f, AnchorBottom = 1f,
+            OffsetLeft = -220f, OffsetRight = -120f, OffsetTop = -50f, OffsetBottom = -16f,
+        };
+        panel.AddChild(cancelButton);
+
+        void Close()
+        {
+            if (_addTextDialog != null)
+            {
+                RemoveChild(_addTextDialog);
+                _addTextDialog.QueueFree();
+                _addTextDialog = null;
+            }
+        }
+
+        void Submit()
+        {
+            string text = lineEdit.Text;
+            if (!string.IsNullOrEmpty(text) && _controller != null)
+            {
+                _controller.RecordTutorialOnlyBeat(
+                    new ReplayDisplayTextBeat { Text = text });
+                _capture.SetBeats(new List<ReplayBeat>(_controller.ReplayBeats));
+                GD.Print($"[RecordPane] Authored DisplayText beat: \"{text}\"");
+            }
+            Close();
+        }
+
+        insertButton.Pressed += Submit;
+        cancelButton.Pressed += Close;
+        lineEdit.TextSubmitted += _ => Submit();
+
+        AddChild(backdrop);
+        _addTextDialog = backdrop;
+        lineEdit.GrabFocus();
     }
 }

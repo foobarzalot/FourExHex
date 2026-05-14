@@ -20,6 +20,7 @@ public sealed class TutorialPreviewCues
     private readonly Color _humanColor;
     private readonly Action<Territory?> _selectTerritory;
     private readonly Action _cancelAction;
+    private TutorialNarrationDriver? _narration;
     private bool _applying;
 
     public TutorialPreviewCues(
@@ -43,6 +44,19 @@ public sealed class TutorialPreviewCues
     }
 
     /// <summary>
+    /// Wire the narration driver after construction (two-step because
+    /// the driver needs a refresh callback that talks back to the
+    /// controller, while cues only need to query its
+    /// <see cref="TutorialNarrationDriver.IsPresenting"/>). When the
+    /// driver is presenting a tutorial-only beat, <see cref="Apply"/>
+    /// is a no-op so the narration message isn't overwritten.
+    /// </summary>
+    public void SetNarrationDriver(TutorialNarrationDriver narration)
+    {
+        _narration = narration;
+    }
+
+    /// <summary>
     /// Update CTA + map highlights from the next expected player-0 beat.
     /// Safe to call recursively: re-entry from <c>selectTerritory</c> →
     /// <see cref="GameController.RefreshViews"/> → onAfterRefresh →
@@ -59,6 +73,12 @@ public sealed class TutorialPreviewCues
 
     private void ApplyCore()
     {
+        // Narration takes priority: while a tutorial-only beat is
+        // presenting (e.g., display-text awaiting tap), don't paint
+        // cues or touch the tutorial-message panel — the narration
+        // driver owns those surfaces until the player acknowledges.
+        if (_narration?.IsPresenting == true) return;
+
         if (_state.Turns.CurrentPlayerIndex != 0)
         {
             ClearAllCtas();

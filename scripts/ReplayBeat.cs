@@ -13,15 +13,19 @@ public enum ReplayBeatKind
     ClaimVictory,
     DismissClaim,
     DismissDefeat,
+    // Tutorial-only beats (see TutorialOnlyBeat). Not captured from
+    // gameplay; authored explicitly during Record mode. Actor is -1.
+    DisplayText,
 }
 
 /// <summary>
-/// One recorded state-mutating action in a game's replay log. Each beat
-/// describes what an actor (player) did — a typed outcome, never a raw
-/// input — so replay can re-execute through the same controller paths
-/// the live game used. Recorded into <c>GameController._replayBeats</c>
-/// at the moment the action is applied; serialized into the save's
-/// <c>ReplayDto</c> and replayed via <c>GameController.BeginReplay</c>.
+/// One recorded entry in a game's replay log. Most beats describe a
+/// state-mutating action an actor (player) took — a typed outcome,
+/// never a raw input — so replay can re-execute through the same
+/// controller paths the live game used. Recorded into
+/// <c>GameController._replayBeats</c> at the moment the action is
+/// applied; serialized into the save's <c>ReplayDto</c> and replayed
+/// via <c>GameController.BeginReplay</c>.
 ///
 /// <para>
 /// Selection-only clicks, mode-entry presses, undo/redo, and territory/
@@ -31,6 +35,15 @@ public enum ReplayBeatKind
 /// <see cref="ClaimVictory"/>, <see cref="DismissClaim"/>, and
 /// <see cref="DismissDefeat"/> are human-only because the corresponding
 /// gestures and overlays have no AI counterpart.
+/// </para>
+///
+/// <para>
+/// Tutorial-only beats (<see cref="TutorialOnlyBeat"/> and subclasses)
+/// are NOT captured from gameplay; they are authored explicitly during
+/// Record mode (e.g. narration text). They carry <see cref="Actor"/> ==
+/// -1 and are consumed only by <c>TutorialNarrationDriver</c> during
+/// Tutorial Preview — never by <c>TutorialPreview.TryAccept</c> or
+/// <c>ReplayDrivenAi.ChooseNextAction</c>.
 /// </para>
 /// </summary>
 public abstract record ReplayBeat
@@ -145,4 +158,29 @@ public sealed record ReplayDismissClaimBeat : ReplayBeat
 public sealed record ReplayDismissDefeatBeat : ReplayBeat
 {
     public override ReplayBeatKind Kind => ReplayBeatKind.DismissDefeat;
+}
+
+/// <summary>
+/// Tutorial-only beats: not captured from gameplay, authored explicitly
+/// during Record mode (e.g., narration text inserted between game-action
+/// beats). <see cref="ReplayBeat.Actor"/> is always -1 (sentinel — no
+/// player owns these). During Tutorial Preview, they are consumed by
+/// <c>TutorialNarrationDriver</c> via the shared <c>ScriptCursor</c>;
+/// <c>TutorialPreview</c> and <c>ReplayDrivenAi</c> skip past them
+/// without advancing the cursor. The in-game Replay button silently
+/// skips them — they exist only for the authored Preview experience.
+/// </summary>
+public abstract record TutorialOnlyBeat : ReplayBeat
+{
+}
+
+/// <summary>
+/// Tutorial-only: show authored narration text in the tutorial-message
+/// panel and block until the player taps to continue. Authored from
+/// RecordPane's "+ Text" button. Presented by <c>TutorialNarrationDriver</c>.
+/// </summary>
+public sealed record ReplayDisplayTextBeat : TutorialOnlyBeat
+{
+    public override ReplayBeatKind Kind => ReplayBeatKind.DisplayText;
+    public string Text { get; init; } = "";
 }

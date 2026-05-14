@@ -29,6 +29,7 @@ public class MockHudView : IHudView
     public event Action? ClaimVictoryWinNowClicked;
     public event Action? ClaimVictoryContinueClicked;
     public event Action? ReplayClicked;
+    public event Action? TutorialMessageTapped;
 
     public int RefreshCount { get; private set; }
     public GameState? LastState { get; private set; }
@@ -60,8 +61,27 @@ public class MockHudView : IHudView
     public void SetMapLabel(string text) => LastSetMapLabel = text;
 
     public string? CurrentTutorialMessage { get; private set; }
-    public void ShowTutorialMessage(string text) => CurrentTutorialMessage = text;
-    public void HideTutorialMessage() => CurrentTutorialMessage = null;
+    public bool TutorialMessageTappable { get; private set; }
+    public int ShowTappableTutorialMessageCount { get; private set; }
+    public int HideTutorialMessageCount { get; private set; }
+    public void ShowTutorialMessage(string text)
+    {
+        CurrentTutorialMessage = text;
+        TutorialMessageTappable = false;
+    }
+    public void ShowTappableTutorialMessage(string text)
+    {
+        CurrentTutorialMessage = text;
+        TutorialMessageTappable = true;
+        ShowTappableTutorialMessageCount++;
+    }
+    public void HideTutorialMessage()
+    {
+        CurrentTutorialMessage = null;
+        TutorialMessageTappable = false;
+        HideTutorialMessageCount++;
+    }
+    public void RaiseTutorialMessageTapped() => TutorialMessageTapped?.Invoke();
 
     public bool BuyPeasantCtaActive { get; private set; }
     public void SetBuyPeasantCta(bool isCta) => BuyPeasantCtaActive = isCta;

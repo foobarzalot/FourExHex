@@ -80,11 +80,35 @@ public interface IHudView
     /// instructions / narration. The HUD does not auto-dismiss; the
     /// scene root drives <see cref="HideTutorialMessage"/> in response
     /// to whatever input it considers acknowledgement.
+    /// MouseFilter on the panel is left as Ignore so clicks pass through
+    /// to the map below — use <see cref="ShowTappableTutorialMessage"/>
+    /// for a tap-to-dismiss variant.
     /// </summary>
     void ShowTutorialMessage(string text);
 
-    /// <summary>Hide the tutorial popup if it's currently showing.</summary>
+    /// <summary>Hide the tutorial popup if it's currently showing.
+    /// Also resets the panel's MouseFilter to Ignore so any prior
+    /// tappable-mode capture is cleared.</summary>
     void HideTutorialMessage();
+
+    /// <summary>
+    /// Show the same bottom-anchored tutorial popup as
+    /// <see cref="ShowTutorialMessage"/>, but with the panel set to
+    /// capture clicks (MouseFilter = Stop). Tapping the panel fires
+    /// <see cref="TutorialMessageTapped"/>. Used by
+    /// <c>TutorialNarrationDriver</c> for display-text beats that
+    /// block until the player acknowledges. The HUD does not auto-hide
+    /// after the tap — the caller (driver) is expected to advance state
+    /// and call <see cref="HideTutorialMessage"/>.
+    /// </summary>
+    void ShowTappableTutorialMessage(string text);
+
+    /// <summary>
+    /// Fires when the player taps the tutorial-message panel while it's
+    /// in tappable mode (most recent call was <see cref="ShowTappableTutorialMessage"/>
+    /// and <see cref="HideTutorialMessage"/> hasn't been called since).
+    /// </summary>
+    event Action? TutorialMessageTapped;
 
     /// <summary>
     /// Apply (or clear) tutorial-driven CTA styling to the Buy Peasant

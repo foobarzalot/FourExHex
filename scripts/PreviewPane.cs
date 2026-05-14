@@ -36,6 +36,7 @@ public sealed partial class PreviewPane : Control
     private GameController? _controller;
     private GameState? _previewState;
     private TutorialPreviewCues? _cues;
+    private TutorialNarrationDriver? _narration;
     private HexDragMode _savedDragMode;
     private bool _running;
 
@@ -105,11 +106,15 @@ public sealed partial class PreviewPane : Control
         var previewSession = new SessionState();
 
         // Forward-reference: the controller takes onAfterRefresh as a
-        // constructor arg, but TutorialPreviewCues needs the controller
-        // (for SelectTerritoryForTutorial). We close over a local that
-        // is assigned after both are constructed; the controller's
+        // constructor arg, but TutorialPreviewCues + TutorialNarrationDriver
+        // need the controller (for SelectTerritoryForTutorial /
+        // RefreshViewsForTutorial). We close over locals that are
+        // assigned after all three are constructed; the controller's
         // StartGame call then triggers the first onAfterRefresh, by
-        // which time the local points at the real cues object.
+        // which time the locals point at the real objects. The driver
+        // ticks first so its IsPresenting flag is set before cues
+        // check it (cues short-circuit while narration is showing).
+        TutorialNarrationDriver? narrationRef = null;
         TutorialPreviewCues? cuesRef = null;
         _controller = new GameController(
             _previewState,
@@ -121,7 +126,18 @@ public sealed partial class PreviewPane : Control
             aiPacer: new GodotAiPacer(new SceneTreeTimerFactory(GetTree())),
             humanActionValidator: _preview.TryAccept,
             previewMode: true,
-            onAfterRefresh: () => cuesRef?.Apply());
+            onAfterRefresh: () =>
+            {
+                narrationRef?.Tick();
+                cuesRef?.Apply();
+            });
+
+        _narration = new TutorialNarrationDriver(
+            tutorial.Replay.Beats,
+            cursor,
+            _hud,
+            () => _controller!.RefreshViewsForTutorial());
+        narrationRef = _narration;
 
         _cues = new TutorialPreviewCues(
             _preview,
@@ -132,6 +148,7 @@ public sealed partial class PreviewPane : Control
             roster[0].Color,
             t => _controller!.SelectTerritoryForTutorial(t),
             () => _controller!.CancelActionForTutorial());
+        _cues.SetNarrationDriver(_narration);
         cuesRef = _cues;
 
         _savedDragMode = _panel.Map.DragMode;
@@ -168,6 +185,7 @@ public sealed partial class PreviewPane : Control
         _replayAi = null;
         _preview = null;
         _cues = null;
+        _narration = null;
         _running = false;
     }
 

@@ -632,6 +632,11 @@ public static class SaveSerializer
                     ThresholdPercent = dcv.ThresholdPercent,
                 },
                 ReplayDismissDefeatBeat _ => new ReplayBeatDto { Kind = "DismissDefeat" },
+                ReplayDisplayTextBeat dt => new ReplayBeatDto
+                {
+                    Kind = "DisplayText",
+                    Text = dt.Text,
+                },
                 _ => throw new InvalidOperationException(
                     $"Unknown replay beat kind for serialization: {beat.GetType()}"),
             };
@@ -708,6 +713,11 @@ public static class SaveSerializer
                 "DismissDefeat" => new ReplayDismissDefeatBeat
                 {
                     Index = dto.Index, Turn = dto.Turn, Actor = dto.Actor,
+                },
+                "DisplayText" => new ReplayDisplayTextBeat
+                {
+                    Index = dto.Index, Turn = dto.Turn, Actor = dto.Actor,
+                    Text = dto.Text ?? "",
                 },
                 _ => throw new InvalidOperationException(
                     $"Unknown replay beat kind in save: {dto.Kind}"),
@@ -897,4 +907,6 @@ public sealed class ReplayBeatDto
     public int? CapitalR { get; set; }
     public string? Level { get; set; }
     public int? ThresholdPercent { get; set; }
+    /// <summary>Authored narration for <see cref="ReplayDisplayTextBeat"/>.</summary>
+    public string? Text { get; set; }
 }
