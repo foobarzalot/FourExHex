@@ -4810,6 +4810,9 @@ public class GameControllerTests
                                     g.RedTerritory.Capital!.Value.ToOffset().Row));
 
         Assert.True(g.Hud.EndTurnCtaActive);
+        // Game-side auto CTA is steady, not pulsing — only Tutorial
+        // Preview's scripted End Turn beat passes pulse: true.
+        Assert.False(g.Hud.EndTurnCtaPulse);
     }
 
     [Fact]

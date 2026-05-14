@@ -67,7 +67,12 @@ public class MockHudView : IHudView
     public void SetBuyPeasantCta(bool isCta) => BuyPeasantCtaActive = isCta;
 
     public bool EndTurnCtaActive { get; private set; }
-    public void SetEndTurnCta(bool isCta) => EndTurnCtaActive = isCta;
+    public bool EndTurnCtaPulse { get; private set; }
+    public void SetEndTurnCta(bool isCta, bool pulse)
+    {
+        EndTurnCtaActive = isCta;
+        EndTurnCtaPulse = pulse;
+    }
 
     public bool BuildTowerCtaActive { get; private set; }
     public void SetBuildTowerCta(bool isCta) => BuildTowerCtaActive = isCta;

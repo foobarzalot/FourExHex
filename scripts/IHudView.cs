@@ -98,11 +98,14 @@ public interface IHudView
 
     /// <summary>
     /// Apply (or clear) CTA styling to the End Turn button. Called from
-    /// <see cref="GameController.RefreshViews"/> to indicate the human
-    /// has no actionable territories left, and from Tutorial Preview to
-    /// indicate the next scripted beat is End Turn.
+    /// <see cref="GameController.RefreshViews"/> with <paramref name="pulse"/>
+    /// = false to indicate the human has no actionable territories
+    /// left (steady glow), and from Tutorial Preview with
+    /// <paramref name="pulse"/> = true to indicate the next scripted
+    /// beat is End Turn (animated to draw the eye and visually
+    /// distinguish from the game-side auto-CTA).
     /// </summary>
-    void SetEndTurnCta(bool isCta);
+    void SetEndTurnCta(bool isCta, bool pulse);
 
     /// <summary>
     /// Apply (or clear) tutorial-driven CTA styling to the Build Tower

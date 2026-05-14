@@ -146,7 +146,7 @@ public class TutorialPreviewCuesTests
     {
         var f = new Fixture(new List<ReplayBeat>());
         // Pre-set all CTAs to true to verify they all get cleared.
-        f.Hud.SetEndTurnCta(true);
+        f.Hud.SetEndTurnCta(true, pulse: true);
         f.Hud.SetBuyPeasantCta(true);
         f.Hud.SetBuildTowerCta(true);
         f.Hud.SetClaimVictoryWinNowCta(true);
@@ -178,6 +178,9 @@ public class TutorialPreviewCuesTests
         f.Cues.Apply();
 
         Assert.True(f.Hud.EndTurnCtaActive);
+        // Tutorial-driven End Turn CTA pulses, distinct from the
+        // game-side auto-out-of-moves CTA which sets pulse=false.
+        Assert.True(f.Hud.EndTurnCtaPulse);
         Assert.False(f.Hud.BuyPeasantCtaActive);
         Assert.Equal("Press End Turn.", f.Hud.CurrentTutorialMessage);
     }
@@ -241,7 +244,10 @@ public class TutorialPreviewCuesTests
 
         f.Cues.Apply();
 
-        Assert.True(f.Hud.BuyPeasantCtaActive);
+        // Mode matches the target level → the player has moved past
+        // the button-press step. Drop the button CTA so attention
+        // shifts to the highlighted target tile.
+        Assert.False(f.Hud.BuyPeasantCtaActive);
         Assert.Single(f.Map.LastMoveTargets);
         Assert.Equal(destination, f.Map.LastMoveTargets[0]);
         Assert.Equal(UnitLevel.Knight, f.Map.LastMoveTargetsLevel);
@@ -315,7 +321,10 @@ public class TutorialPreviewCuesTests
 
         f.Cues.Apply();
 
-        Assert.True(f.Hud.BuildTowerCtaActive);
+        // Mode is BuildingTower → the player has moved past the
+        // button-press step. Drop the CTA in favor of the
+        // highlighted target tile.
+        Assert.False(f.Hud.BuildTowerCtaActive);
         Assert.Single(f.Map.LastTowerTargets);
         Assert.Equal(destination, f.Map.LastTowerTargets[0]);
         Assert.Equal("Place the tower at the highlighted tile.", f.Hud.CurrentTutorialMessage);

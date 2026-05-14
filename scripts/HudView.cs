@@ -745,17 +745,26 @@ public partial class HudView : CanvasLayer, IHudView
             && !session.PendingDefeatScreen.HasValue;
     }
 
-    public void SetEndTurnCta(bool isCta) => ApplyCtaStyle(_endTurnButton, isCta);
+    public void SetEndTurnCta(bool isCta, bool pulse) =>
+        ApplyCtaStyle(_endTurnButton, isCta, pulse);
 
-    public void SetBuyPeasantCta(bool isCta) => ApplyCtaStyle(_buyPeasantButton, isCta);
+    // Buy / BuildTower / Claim / Defeat CTAs are only ever fired by
+    // Tutorial Preview — they always pulse so the dev can tell the
+    // tutorial highlight apart from any incidental button styling.
+    public void SetBuyPeasantCta(bool isCta) =>
+        ApplyCtaStyle(_buyPeasantButton, isCta, pulse: true);
 
-    public void SetBuildTowerCta(bool isCta) => ApplyCtaStyle(_buildTowerButton, isCta);
+    public void SetBuildTowerCta(bool isCta) =>
+        ApplyCtaStyle(_buildTowerButton, isCta, pulse: true);
 
-    public void SetClaimVictoryWinNowCta(bool isCta) => ApplyCtaStyle(_claimWinNowButton, isCta);
+    public void SetClaimVictoryWinNowCta(bool isCta) =>
+        ApplyCtaStyle(_claimWinNowButton, isCta, pulse: true);
 
-    public void SetClaimVictoryContinueCta(bool isCta) => ApplyCtaStyle(_claimContinueButton, isCta);
+    public void SetClaimVictoryContinueCta(bool isCta) =>
+        ApplyCtaStyle(_claimContinueButton, isCta, pulse: true);
 
-    public void SetDefeatContinueCta(bool isCta) => ApplyCtaStyle(_defeatContinueButton, isCta);
+    public void SetDefeatContinueCta(bool isCta) =>
+        ApplyCtaStyle(_defeatContinueButton, isCta, pulse: true);
 
     public void SetUndoRedoLocked(bool locked)
     {
@@ -772,7 +781,12 @@ public partial class HudView : CanvasLayer, IHudView
         }
     }
 
-    private static void ApplyCtaStyle(Button button, bool isCta)
+    // Active CTA pulse animations, keyed by their target button. The
+    // Tween instances loop until StopPulse kills them; we hold the
+    // reference so we can stop them on CTA-off transitions.
+    private readonly System.Collections.Generic.Dictionary<Button, Tween> _ctaPulseTweens = new();
+
+    private void ApplyCtaStyle(Button button, bool isCta, bool pulse)
     {
         if (isCta)
         {
@@ -799,6 +813,14 @@ public partial class HudView : CanvasLayer, IHudView
             button.AddThemeColorOverride("font_color", new Color(0f, 0f, 0f));
             button.AddThemeColorOverride("font_hover_color", new Color(0f, 0f, 0f));
             button.AddThemeColorOverride("font_pressed_color", new Color(0f, 0f, 0f));
+            if (pulse)
+            {
+                StartCtaPulse(button);
+            }
+            else
+            {
+                StopCtaPulse(button);
+            }
         }
         else
         {
@@ -808,6 +830,32 @@ public partial class HudView : CanvasLayer, IHudView
             button.RemoveThemeColorOverride("font_color");
             button.RemoveThemeColorOverride("font_hover_color");
             button.RemoveThemeColorOverride("font_pressed_color");
+            StopCtaPulse(button);
         }
+    }
+
+    private void StartCtaPulse(Button button)
+    {
+        if (_ctaPulseTweens.TryGetValue(button, out Tween? existing)
+            && existing != null && existing.IsValid())
+        {
+            return; // already pulsing — leave the animation running
+        }
+        Tween tween = button.CreateTween();
+        tween.SetLoops();
+        tween.TweenProperty(button, "modulate:a", 0.55f, 0.55).SetTrans(Tween.TransitionType.Sine);
+        tween.TweenProperty(button, "modulate:a", 1.0f, 0.55).SetTrans(Tween.TransitionType.Sine);
+        _ctaPulseTweens[button] = tween;
+    }
+
+    private void StopCtaPulse(Button button)
+    {
+        if (_ctaPulseTweens.TryGetValue(button, out Tween? tween)
+            && tween != null && tween.IsValid())
+        {
+            tween.Kill();
+        }
+        _ctaPulseTweens.Remove(button);
+        button.Modulate = new Color(1f, 1f, 1f, 1f);
     }
 }

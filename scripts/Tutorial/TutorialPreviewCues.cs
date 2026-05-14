@@ -96,7 +96,7 @@ public sealed class TutorialPreviewCues
         switch (next)
         {
             case ReplayEndTurnBeat _:
-                _hud.SetEndTurnCta(true);
+                _hud.SetEndTurnCta(true, pulse: true);
                 break;
             case ReplayBuyBeat bu:
                 ApplyBuyCue(bu);
@@ -131,7 +131,7 @@ public sealed class TutorialPreviewCues
 
     private void ClearAllCtas()
     {
-        _hud.SetEndTurnCta(false);
+        _hud.SetEndTurnCta(false, pulse: false);
         _hud.SetBuyPeasantCta(false);
         _hud.SetBuildTowerCta(false);
         _hud.SetClaimVictoryWinNowCta(false);
@@ -147,8 +147,14 @@ public sealed class TutorialPreviewCues
         {
             _selectTerritory(territory);
         }
-        _hud.SetBuyPeasantCta(true);
-        if (SessionState.BuyModeLevel(_session.Mode) == bu.Level)
+        // Keep the CTA up while the player still needs to press Buy
+        // (Mode None or a Buying-X-below-target mode that wants further
+        // escalation presses). Once they're in the matching Buying mode,
+        // drop the CTA so attention shifts to the single-tile target
+        // highlight.
+        bool inPlaceMode = SessionState.BuyModeLevel(_session.Mode) == bu.Level;
+        _hud.SetBuyPeasantCta(!inPlaceMode);
+        if (inPlaceMode)
         {
             _map.ShowMoveTargets(new[] { bu.To }, bu.Level);
         }
@@ -162,8 +168,9 @@ public sealed class TutorialPreviewCues
         {
             _selectTerritory(territory);
         }
-        _hud.SetBuildTowerCta(true);
-        if (_session.Mode == SessionState.ActionMode.BuildingTower)
+        bool inPlaceMode = _session.Mode == SessionState.ActionMode.BuildingTower;
+        _hud.SetBuildTowerCta(!inPlaceMode);
+        if (inPlaceMode)
         {
             _map.ShowTowerTargets(new[] { bt.To });
         }

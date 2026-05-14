@@ -2689,7 +2689,7 @@ public class GameController
         // left. Lives here (not inside _hud.Refresh) so Tutorial Preview's
         // onAfterRefresh callback can overwrite it when the next scripted
         // beat is End Turn — "last write wins" with the preview cue.
-        _hud.SetEndTurnCta(!hasActionable);
+        _hud.SetEndTurnCta(!hasActionable, pulse: false);
         _onAfterRefresh?.Invoke();
     }
 
