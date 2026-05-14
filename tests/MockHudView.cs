@@ -89,6 +89,9 @@ public class MockHudView : IHudView
     public bool UndoRedoLocked { get; private set; }
     public void SetUndoRedoLocked(bool locked) => UndoRedoLocked = locked;
 
+    public bool VictoryOverlaySuppressed { get; private set; }
+    public void SetVictoryOverlaySuppressed(bool suppressed) => VictoryOverlaySuppressed = suppressed;
+
     public bool ReplayAvailable { get; private set; }
     public void SetReplayAvailable(bool available) => ReplayAvailable = available;
 

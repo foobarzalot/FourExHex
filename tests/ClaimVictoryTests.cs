@@ -103,6 +103,87 @@ public class ClaimVictoryTests
     }
 
     [Fact]
+    public void EndTurn_PreviewMode_HumanCrossingTier_DoesNotPrompt()
+    {
+        // In Tutorial Preview the claim-victory modal would interrupt
+        // the scripted flow with a prompt the tutorial author can't
+        // pre-record. Building a controller with previewMode: true must
+        // suppress every PendingClaimVictory assignment regardless of
+        // how much of the map the human player controls.
+        var redP = new Player("Red", Red, AiKind.Human);
+        var blueP = new Player("Blue", Blue, AiKind.Human);
+        var players = new List<Player> { redP, blueP };
+
+        var grid = TestHelpers.BuildRectGrid(5, 2, Blue);
+        // 6/10 tiles = 60% (50 tier), 8/10 = 80% (75 tier), 10/10 = 100%
+        // (90 tier — actually domination, but the 50/75/90 path would
+        // fire first). 8/10 picks the 75% tier — the most likely tier a
+        // mid-tutorial dev would cross.
+        for (int i = 0; i < 8; i++)
+        {
+            grid.Get(HexCoord.FromOffset(i % 5, i / 5))!.Color = Red;
+        }
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        var map = new MockHexMapView();
+        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+        {
+            map.TileIndex[kvp.Key] = kvp.Value;
+        }
+        var hud = new MockHudView();
+        var controller = new GameController(state, session, map, hud, previewMode: true);
+        controller.StartGame();
+        int turnBefore = state.Turns.TurnNumber;
+        int currentBefore = state.Turns.CurrentPlayerIndex;
+
+        hud.ClickEndTurn();
+
+        Assert.False(session.PendingClaimVictory.HasValue);
+        // Turn advanced normally — preview mode lets End Turn through
+        // the way it does for AI players.
+        Assert.True(state.Turns.TurnNumber > turnBefore
+            || state.Turns.CurrentPlayerIndex != currentBefore);
+    }
+
+    [Fact]
+    public void EndTurn_RecordingMode_HumanCrossingTier_DoesNotPrompt()
+    {
+        // In Tutorial Builder's Record mode every slot is forced Human
+        // so the dev plays all six. The same scripted-flow concern as
+        // Preview applies: a claim-victory modal would interrupt the
+        // recording session. recordingMode: true suppresses it.
+        var redP = new Player("Red", Red, AiKind.Human);
+        var blueP = new Player("Blue", Blue, AiKind.Human);
+        var players = new List<Player> { redP, blueP };
+
+        var grid = TestHelpers.BuildRectGrid(5, 2, Blue);
+        for (int i = 0; i < 8; i++)
+        {
+            grid.Get(HexCoord.FromOffset(i % 5, i / 5))!.Color = Red;
+        }
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        var map = new MockHexMapView();
+        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+        {
+            map.TileIndex[kvp.Key] = kvp.Value;
+        }
+        var hud = new MockHudView();
+        var controller = new GameController(state, session, map, hud, recordingMode: true);
+        controller.StartGame();
+        int turnBefore = state.Turns.TurnNumber;
+        int currentBefore = state.Turns.CurrentPlayerIndex;
+
+        hud.ClickEndTurn();
+
+        Assert.False(session.PendingClaimVictory.HasValue);
+        Assert.True(state.Turns.TurnNumber > turnBefore
+            || state.Turns.CurrentPlayerIndex != currentBefore);
+    }
+
+    [Fact]
     public void EndTurn_HumanAtEightyPercent_NoPriors_PromptsAtSeventyFiveTier()
     {
         // 8 of 10 = 80% — meets 50 and 75; "show only highest unseen"

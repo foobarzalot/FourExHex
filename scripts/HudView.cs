@@ -44,6 +44,7 @@ public partial class HudView : CanvasLayer, IHudView
     private Button _redoLastButton = null!;
     private Button _redoAllButton = null!;
     private bool _undoRedoLocked;
+    private bool _victoryOverlaySuppressed;
     private Button _endTurnButton = null!;
     private Button _saveGameButton = null!;
     private Button _endGameButton = null!;
@@ -699,8 +700,11 @@ public partial class HudView : CanvasLayer, IHudView
         // overwrite it (e.g. light it for an EndTurn scripted beat even
         // when the player still has actionable territories).
 
-        // Victory overlay: show iff a winner has been declared.
-        if (session.Winner.HasValue)
+        // Victory overlay: show iff a winner has been declared and the
+        // overlay isn't suppressed (Tutorial Preview / Record set the
+        // suppress flag; the tutorial-message panel handles game-over
+        // signaling in those modes).
+        if (session.Winner.HasValue && !_victoryOverlaySuppressed)
         {
             Color winColor = session.Winner.Value;
             Player? winner = state.Turns.Players
@@ -765,6 +769,17 @@ public partial class HudView : CanvasLayer, IHudView
 
     public void SetDefeatContinueCta(bool isCta) =>
         ApplyCtaStyle(_defeatContinueButton, isCta, pulse: true);
+
+    public void SetVictoryOverlaySuppressed(bool suppressed)
+    {
+        _victoryOverlaySuppressed = suppressed;
+        if (suppressed)
+        {
+            // Refresh() may have already painted the overlay before the
+            // caller flipped this; force the hide immediately.
+            _victoryOverlay.Visible = false;
+        }
+    }
 
     public void SetUndoRedoLocked(bool locked)
     {

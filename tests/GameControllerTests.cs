@@ -830,6 +830,111 @@ public class GameControllerTests
     }
 
     [Fact]
+    public void EliminatedPlayer_PhantomTurnRunsUpkeep_OrphanUnitBecomesGrave()
+    {
+        // 3-player setup: Red and Green still in the game, Blue is
+        // eliminated (no capital on the board) with a single orphan
+        // Peasant on a one-tile territory. After Red ends turn → Green
+        // ends turn → Blue's skipped turn must still run upkeep so the
+        // stranded Peasant bankrupts into a Grave (no capital, no gold,
+        // owed > 0). Without the phantom-turn processing,
+        // AdvanceToNextActivePlayer skips Blue entirely and the unit
+        // would survive indefinitely.
+        var red = new Player("Red", new Color(1f, 0f, 0f));
+        var green = new Player("Green", new Color(0f, 1f, 0f));
+        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var players = new List<Player> { red, green, blue };
+
+        var grid = TestHelpers.BuildRectGrid(6, 2, red.Color);
+        // Green territory: a 2-tile strip so they have a capital and
+        // pass IsEliminated.
+        grid.Get(HexCoord.FromOffset(0, 1))!.Color = green.Color;
+        grid.Get(HexCoord.FromOffset(1, 1))!.Color = green.Color;
+        // Blue orphan singleton with a Peasant — no Blue capital on
+        // the board.
+        HexCoord orphanCoord = HexCoord.FromOffset(5, 1);
+        grid.Get(orphanCoord)!.Color = blue.Color;
+        grid.Get(orphanCoord)!.Occupant = new Unit(blue.Color, UnitLevel.Peasant);
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        // Red owns >50% of the map; pre-dismiss every claim-victory
+        // tier so End Turn doesn't open the modal and stall the test.
+        session.ClaimVictoryPromptedHighestThreshold[red.Color] = 90;
+        session.ClaimVictoryPromptedHighestThreshold[green.Color] = 90;
+        var map = new MockHexMapView();
+        var hud = new MockHudView();
+        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+        {
+            map.TileIndex[kvp.Key] = kvp.Value;
+        }
+        var controller = new GameController(state, session, map, hud);
+        controller.StartGame();
+
+        hud.ClickEndTurn(); // Red → Green
+        hud.ClickEndTurn(); // Green → Blue phantom → Red
+
+        HexTile orphan = state.Grid.Get(orphanCoord)!;
+        Assert.Equal(blue.Color, orphan.Color);
+        Assert.IsType<Grave>(orphan.Occupant);
+    }
+
+    [Fact]
+    public void EliminatedPlayer_PhantomTurnRunsTreeGrowth_SpreadsOntoOrphanSingleton()
+    {
+        // Blue is eliminated with a single empty singleton at offset
+        // (3,1). Two neighbouring tiles — (4,0) NE and (3,2) SW — are
+        // Red and each holds a Tree. Tree-growth iterates the
+        // eliminated player's empty tiles and counts ANY tree neighbour
+        // regardless of color (TreeRules.RunStartOfTurnGrowth), so
+        // (3,1) sees two tree neighbours and converts. Bumping
+        // TurnNumber > 1 lifts the round-1 tree-growth guard.
+        var red = new Player("Red", new Color(1f, 0f, 0f));
+        var green = new Player("Green", new Color(0f, 1f, 0f));
+        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var players = new List<Player> { red, green, blue };
+
+        var grid = TestHelpers.BuildRectGrid(6, 3, red.Color);
+        // Green's 2-tile territory (so it has a capital and the
+        // end-of-turn win check doesn't fire).
+        grid.Get(HexCoord.FromOffset(0, 2))!.Color = green.Color;
+        grid.Get(HexCoord.FromOffset(1, 2))!.Color = green.Color;
+        // Two Red tiles flanking the Blue singleton, each with a Tree.
+        grid.Get(HexCoord.FromOffset(4, 0))!.Occupant = new Tree();
+        grid.Get(HexCoord.FromOffset(3, 2))!.Occupant = new Tree();
+        // Blue empty singleton (neighbour of both tree-holding red
+        // tiles, but not adjacent to any other blue tile).
+        HexCoord emptyCoord = HexCoord.FromOffset(3, 1);
+        grid.Get(emptyCoord)!.Color = blue.Color;
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players,
+            new TurnState(players, currentPlayerIndex: 0, turnNumber: 2),
+            new Treasury());
+        var session = new SessionState();
+        // Red owns >50% of the map; pre-dismiss every claim-victory
+        // tier so End Turn doesn't open the modal and stall the test.
+        session.ClaimVictoryPromptedHighestThreshold[red.Color] = 90;
+        session.ClaimVictoryPromptedHighestThreshold[green.Color] = 90;
+        var map = new MockHexMapView();
+        var hud = new MockHudView();
+        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+        {
+            map.TileIndex[kvp.Key] = kvp.Value;
+        }
+        var controller = new GameController(state, session, map, hud);
+        controller.StartGame();
+
+        hud.ClickEndTurn(); // Red → Green
+        hud.ClickEndTurn(); // Green → Blue phantom → Red
+
+        HexTile filled = state.Grid.Get(emptyCoord)!;
+        Assert.Equal(blue.Color, filled.Color);
+        Assert.IsType<Tree>(filled.Occupant);
+    }
+
+    [Fact]
     public void Capture_EliminatingHumanPlayer_SetsPendingDefeatScreen()
     {
         // Same shape as the elimination test, but assert that
@@ -963,6 +1068,67 @@ public class GameControllerTests
         map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(1, 0)));
 
         Assert.Equal(red.Color, session.PendingDefeatScreen);
+    }
+
+    [Fact]
+    public void Construct_PreviewMode_TellsHudToSuppressVictoryOverlay()
+    {
+        // Tutorial Preview must not let the click-blocking "X wins!"
+        // modal pop on top of the scripted flow — the tutorial-message
+        // panel signals completion instead.
+        var players = new List<Player>
+        {
+            new("Red", new Color(1f, 0f, 0f)),
+            new("Blue", new Color(0f, 0f, 1f), isAi: true),
+        };
+        var grid = TestHelpers.BuildRectGrid(2, 1, players[0].Color);
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        var hud = new MockHudView();
+        _ = new GameController(state, session, new MockHexMapView(), hud, previewMode: true);
+
+        Assert.True(hud.VictoryOverlaySuppressed);
+    }
+
+    [Fact]
+    public void Construct_RecordingMode_TellsHudToSuppressVictoryOverlay()
+    {
+        // Same reasoning for Record: a domination mid-recording would
+        // otherwise interrupt the dev with a victory modal they can't
+        // record around.
+        var players = new List<Player>
+        {
+            new("Red", new Color(1f, 0f, 0f)),
+            new("Blue", new Color(0f, 0f, 1f)),
+        };
+        var grid = TestHelpers.BuildRectGrid(2, 1, players[0].Color);
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        var hud = new MockHudView();
+        _ = new GameController(state, session, new MockHexMapView(), hud, recordingMode: true);
+
+        Assert.True(hud.VictoryOverlaySuppressed);
+    }
+
+    [Fact]
+    public void Construct_DefaultMode_DoesNotSuppressVictoryOverlay()
+    {
+        // Regular game lets the full-win modal fire normally.
+        var players = new List<Player>
+        {
+            new("Red", new Color(1f, 0f, 0f)),
+            new("Blue", new Color(0f, 0f, 1f), isAi: true),
+        };
+        var grid = TestHelpers.BuildRectGrid(2, 1, players[0].Color);
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        var hud = new MockHudView();
+        _ = new GameController(state, session, new MockHexMapView(), hud);
+
+        Assert.False(hud.VictoryOverlaySuppressed);
     }
 
     [Fact]

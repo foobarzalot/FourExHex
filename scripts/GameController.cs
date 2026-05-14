@@ -143,6 +143,11 @@ public class GameController
         _hud.DefeatContinueClicked += OnDefeatContinuePressed;
         _hud.ClaimVictoryWinNowClicked += OnClaimVictoryWinNowPressed;
         _hud.ClaimVictoryContinueClicked += OnClaimVictoryContinuePressed;
+
+        // Tutorial Preview / Record use the bottom-center tutorial
+        // message panel for game-over signaling; the click-blocking
+        // victory modal would otherwise freeze further author input.
+        _hud.SetVictoryOverlaySuppressed(_previewMode || _recordingMode);
     }
 
     /// <summary>
@@ -1645,9 +1650,12 @@ public class GameController
         // a tier in WinConditionRules.ClaimVictoryThresholdsPercent
         // (50/75/90) is offered an early win. Each tier fires at most
         // once per human per game; "show only highest unseen" picks the
-        // topmost unseen tier the player meets. AI players are skipped.
+        // topmost unseen tier the player meets. AI players are skipped;
+        // Tutorial Preview and Record modes also suppress the prompt
+        // (it would interrupt the scripted / recording flow with a
+        // modal the tutorial author can't pre-record).
         Player current = _state.Turns.CurrentPlayer;
-        if (!current.IsAi)
+        if (!current.IsAi && !_previewMode && !_recordingMode)
         {
             int seen = _session.ClaimVictoryPromptedHighestThreshold
                 .TryGetValue(current.Color, out int s) ? s : 0;
@@ -1820,8 +1828,27 @@ public class GameController
         _state.Turns.EndTurn();
         while (WinConditionRules.IsEliminated(_state.Turns.CurrentPlayer.Color, _state.Grid))
         {
-            System.Console.WriteLine($"[T{_state.Turns.TurnNumber}] skipping eliminated " +
-                $"player {_state.Turns.CurrentPlayer.Name}");
+            // Phantom turn for an eliminated player: they can't take any
+            // input or AI action, but their tile-bound state still
+            // ticks. Order mirrors StartPlayerTurn — tree growth (graves
+            // on their color → trees; empty same-color cells with
+            // enough neighbor trees spread), then upkeep (orphan units
+            // bankrupt into graves because there's no capital to fund
+            // them). Income / view refresh / AI dispatch are skipped:
+            // there's nothing for them to act on. Without this, orphan
+            // units stranded on the eliminated player's tiles would
+            // linger forever on a turn rotation that always skipped
+            // them.
+            Player ghost = _state.Turns.CurrentPlayer;
+            if (_state.Turns.TurnNumber > 1)
+            {
+                TreeRules.RunStartOfTurnGrowth(
+                    _state.Grid, ghost.Color, _state.WaterCoords);
+            }
+            UpkeepRules.ApplyUpkeepFor(
+                ghost, _state.Territories, _state.Grid, _state.Treasury);
+            System.Console.WriteLine($"[T{_state.Turns.TurnNumber}] phantom turn for eliminated " +
+                $"player {ghost.Name} (tree growth + upkeep)");
             _state.Turns.EndTurn();
         }
     }

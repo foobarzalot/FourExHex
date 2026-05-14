@@ -139,4 +139,14 @@ public interface IHudView
     /// player's actions (those operations aren't recorded as beats).
     /// </summary>
     void SetUndoRedoLocked(bool locked);
+
+    /// <summary>
+    /// Suppress the full-win victory overlay even when
+    /// <see cref="SessionState.Winner"/> is set. Tutorial Preview and
+    /// Record latch this true — the scripted / recorded flow handles
+    /// game-over through the tutorial-message panel ("Tutorial
+    /// complete.") instead of a click-blocking modal that would freeze
+    /// further author input.
+    /// </summary>
+    void SetVictoryOverlaySuppressed(bool suppressed);
 }
