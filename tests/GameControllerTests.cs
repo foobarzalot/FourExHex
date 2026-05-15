@@ -2416,6 +2416,61 @@ public class GameControllerTests
     }
 
     [Fact]
+    public void HumanCapture_DominationWin_FiresGameEnded()
+    {
+        // Regression: when a HUMAN player's mid-turn capture triggers
+        // domination, HandleCapture sets Winner via DeclareWinner +
+        // ClearUndoAndReplayBookkeeping but never calls
+        // CheckGameEndConditions. TrackHandler then sees IsGameOver
+        // and early-returns without firing GameEnded. Result: Main's
+        // GameEnded → SetReplayAvailable(true) never runs, so the
+        // Replay button on the victory overlay stays disabled even
+        // though replay history is complete from game start. The
+        // End-Turn win path runs CheckGameEndConditions explicitly
+        // (line ~1729 in OnEndTurnPressed) and works correctly —
+        // hence the discrepancy the user observed.
+        var red = new Player("Red", new Color(1f, 0f, 0f));   // human
+        var blue = new Player("Blue", new Color(0f, 0f, 1f)); // human (irrelevant)
+        var players = new List<Player> { red, blue };
+
+        // 5x1 grid. Red owns (0..3); Blue owns the single (4,0)
+        // capital tile. A red Knight at (3,0) captures (4,0) → all-red
+        // → domination win.
+        var grid = TestHelpers.BuildRectGrid(5, 1, red.Color);
+        grid.Get(HexCoord.FromOffset(4, 0))!.Color = blue.Color;
+        grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = new Unit(red.Color, UnitLevel.Knight);
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        var map = new MockHexMapView();
+        var hud = new MockHudView();
+        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+        {
+            map.TileIndex[kvp.Key] = kvp.Value;
+        }
+        var controller = new GameController(state, session, map, hud, seed: 1);
+        controller.StartGame();
+
+        bool gameEnded = false;
+        controller.GameEnded += () => gameEnded = true;
+
+        // Two clicks: pick up the knight, then drop onto Blue's tile
+        // to capture it. The capture triggers WinConditionRules
+        // domination → DeclareWinner.
+        map.SimulateClick(grid.Get(HexCoord.FromOffset(3, 0)));
+        map.SimulateClick(grid.Get(HexCoord.FromOffset(4, 0)));
+
+        Assert.True(session.IsGameOver);
+        Assert.Equal(red.Color, session.Winner);
+        // Without the fix, GameEnded never fires on the human mid-turn
+        // capture path — Main can't enable the Replay button.
+        Assert.True(gameEnded,
+            "GameEnded did not fire after mid-turn human domination win.");
+        Assert.True(controller.ReplayDataIsCompleteFromStart);
+    }
+
+    [Fact]
     public void AiTurn_EachTerritoryActsAtMostOnce()
     {
         // Blue has 2 territories; both have a knight adjacent to

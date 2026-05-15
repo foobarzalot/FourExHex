@@ -1170,6 +1170,14 @@ public class GameController
                 $"post-capture domination winner: {winP?.Name ?? "?"}");
             DeclareWinner(winner.Value);
             ClearUndoAndReplayBookkeeping();
+            // Fire GameEnded for the mid-turn capture-win path. The
+            // End-Turn and claim-victory paths call CheckGameEndConditions
+            // themselves; without this, TrackHandler sees IsGameOver and
+            // early-returns, leaving GameEnded never raised — so Main
+            // never enables the victory-overlay Replay button. The
+            // _gameEndedFired guard inside CheckGameEndConditions keeps
+            // this idempotent if a subsequent caller fires it again.
+            CheckGameEndConditions();
         }
     }
 
