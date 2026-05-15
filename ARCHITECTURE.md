@@ -35,13 +35,15 @@ off it.
 │         Then a fresh SessionState.                                       │
 │      5. Pick views: real HexMapView/HudView, or HeadlessHexMapView/      │
 │         HeadlessHudView when in diagnostic mode                          │
-│      6. Pick pacer: GodotAiPacer (visible delays) or                     │
-│         SynchronousAiPacer (diagnostic — runs inline)                    │
+│      6. Pick pacer: GodotAiPacer (visible delays, scaled by              │
+│         UserSettings.AiSpeedMultiplier) or SynchronousAiPacer            │
+│         (diagnostic — runs inline)                                       │
 │      7. new GameController(state, session, map, hud,                     │
 │           seed: <chosen master seed>,                                    │
 │           aiChooser: AiDispatcher.ChooseForCurrentPlayer,                │
 │           aiPacer:  pacer,                                               │
-│           maxTurnNumber: load ? saved : (diagnostic ? 500 : int.MaxVal)) │
+│           maxTurnNumber: load ? saved : (diagnostic ? 500 : int.MaxVal), │
+│           aiSilentMode: () => UserSettings.AiSpeed == AiSpeed.Instant)   │
 │      8. Wire save/load + pause coordinator:                              │
 │           • new SaveStore + (non-diagnostic) build the Save +           │
 │             Load dialogs and a shared SettingsPanel.                    │
@@ -67,7 +69,10 @@ off it.
 │   GameController                                                         │
 │   ├─ refs: IHexMapView _map, IHudView _hud                               │
 │   ├─ refs: GameState _state, SessionState _session                       │
-│   ├─ injected: master seed, aiChooser delegate, IAiPacer, maxTurnNumber  │
+│   ├─ injected: master seed, aiChooser delegate, IAiPacer, maxTurnNumber, │
+│   │             aiSilentMode (Func<bool>; true → tells the view to mute  │
+│   │             per-action AI effects/sounds and lets the controller     │
+│   │             skip per-beat highlight/RefreshViews calls)              │
 │   ├─ exposes: MasterSeed, StartGame(), Resume(), AbandonGame()           │
 │   ├─ events: GameEnded (fires once on natural game-over or turn cap),    │
 │   │          HumanTurnStarted (start-of-each human turn — autosave seam) │
@@ -300,10 +305,13 @@ off it.
 │   LoadedSave — bundle of (state, players, master seed, max-turn cap,     │
 │                slot name, optional OriginMapName)                        │
 │   SaveSlotInfo — slot listing metadata (name, time, turn, isAutosave)    │
-│   UserSettings — static class; SfxEnabled / VfxEnabled toggles           │
-│                  persisted to user://settings.json (lazy load,           │
-│                  atomic tmp+rename save); read by AudioBus +             │
-│                  HexMapView, written by MainMenuScene's settings panel   │
+│   UserSettings — static class; SfxEnabled / VfxEnabled / AiSpeed         │
+│                  preferences persisted to user://settings.json (lazy     │
+│                  load, atomic tmp+rename save); read by AudioBus +       │
+│                  HexMapView + GodotAiPacer + GameController, written     │
+│                  by SettingsPanel. AiSpeedMultiplier converts the        │
+│                  AiSpeed enum (Slow/Normal/Fast/Instant) into a delay    │
+│                  scalar (2/1/0.5/0) the pacer applies per Schedule.      │
 └──────────────────────────────────────────────────────────────────────────┘
 
 ┌──────────────────────────────────────────────────────────────────────────┐
@@ -331,6 +339,16 @@ off it.
 │   on UserSettings.VfxEnabled. Pulse / shrink / grow-in animations are   │
 │   always on — they communicate game state and disabling them would     │
 │   hurt readability.                                                     │
+│                                                                          │
+│   HexMapView also carries a _silentMode flag (toggled by                 │
+│   GameController via IHexMapView.SetSilentMode when an AI player runs   │
+│   under AiSpeed.Instant). Silent mode is a second gate that suppresses  │
+│   per-action Play* methods AND the tree/grave grow/shrink tweens in     │
+│   RefreshOccupantVisuals, so an Instant AI batch produces zero visible  │
+│   or audible per-action feedback. PlayBankruptcy and PlayGameWon stay   │
+│   ungated — those are turn-/game-boundary events the user asked to     │
+│   still hear under Instant. The same gating is mirrored in              │
+│   MockHexMapView so integration tests can verify end-to-end silence.   │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -558,6 +576,17 @@ matches before invoking). `Main` also calls Cancel via
 `GameController.AbandonGame()` before swapping back to the menu so
 an in-flight `StepAiExecute` can't fire against disposed
 `Polygon2D` nodes after the scene swap.
+
+`GodotAiPacer` additionally takes an optional `Func<float>`
+`delayMultiplier` (`Main` wires `() => UserSettings.AiSpeedMultiplier`).
+The multiplier is read on every `Schedule` call so a mid-game speed
+change takes effect on the next beat — Slow doubles delays, Fast
+halves them, Normal passes through. Instant returns `0`, which the
+pacer interprets as "run inline now": it borrows the same FIFO
+trampoline `SynchronousAiPacer` uses so nested `Schedule` calls
+flatten and `Cancel` mid-drain clears the inline queue. With Instant
+selected, the entire AI batch unwinds within a single
+`OnEndTurnPressed` call — no Godot frame paints between beats.
 
 ```csharp
 void Schedule(Action callback, int delayMs);
@@ -910,19 +939,44 @@ StepAiPreview:
   ├─ if action == null OR step cap reached:
   │     ├─ EndOfTurnProcessing
   │     ├─ AdvanceToNextActivePlayer + StartPlayerTurn
+  │     │     (StartPlayerTurn calls RefreshSilentMode → toggles the
+  │     │     view's silent flag for the new player)
+  │     ├─ if !InSilentAiBatch(): _map.ShowHighlight(null) + RefreshViews
+  │     │     (the human-takeover refresh; skipped while still
+  │     │      handing off AI → AI in a silent batch)
   │     └─ if next is AI: schedule next StepAiPreview
   ├─ _pendingAiAction = action
-  ├─ _map.ShowHighlight(acting territory)
+  ├─ if !InSilentAiBatch():
+  │     ├─ _map.ShowHighlight(acting territory)
+  │     └─ RefreshViews
   └─ schedule StepAiExecute after AiPreviewDelayMs
 
 StepAiExecute:
   ├─ run ExecuteAiMove / ExecuteAiBuyUnit / ExecuteAiBuildTower
-  │     (each validates preconditions; throws on illegal action)
-  ├─ re-highlight resulting territory (post-capture)
+  │     (each validates preconditions; throws on illegal action;
+  │     calls _map.Play* — silent mode no-ops these in the view)
+  ├─ if !InSilentAiBatch(): re-highlight resulting territory +
+  │     RefreshViews  (skipped during silent batch)
   ├─ if PendingDefeatScreen: pause — return without scheduling next
   │     (resumes from OnDefeatContinuePressed)
   └─ schedule next StepAiPreview after AiActionDelayMs
 ```
+
+`InSilentAiBatch()` = `aiSilentMode() && currentPlayer.IsAi`. The
+`aiSilentMode` func is injected (production wires
+`() => UserSettings.AiSpeed == AiSpeed.Instant`). Silent mode does
+two things in lockstep:
+
+1. **Pacer**: `GodotAiPacer`'s `delayMultiplier` returns 0 so the
+   whole chain runs inline via the FIFO trampoline.
+2. **Controller + view**: GameController skips per-beat
+   `ShowHighlight`/`RefreshViews` calls and the view drops per-action
+   `Play*` + tween-spawning calls. The single `RefreshViews` that
+   happens once control returns to a human is what the human sees.
+
+Game-end branches (game over, defeat overlay pending, `_gameEndedFired`)
+ignore the silent flag and always refresh — the victory/defeat UI
+must surface even mid-batch.
 
 Tests use `SynchronousAiPacer` so the whole AI chain runs inline.
 
@@ -1191,14 +1245,23 @@ nothing else in the codebase listens to it for the pause flow.
 ### Reusable `SettingsPanel`
 
 `SettingsPanel` (CanvasLayer modal — backdrop + centered panel +
-SFX/VFX `CheckBox` rows + Back button) is the single Settings UI
-for both the main menu and the in-game pause flow. Toggles bind
-directly to `UserSettings.SfxEnabled` / `UserSettings.VfxEnabled`
-via `Toggled`; `Open()` re-syncs from `UserSettings` so external
-writes are reflected. Back or Escape calls `Close`, which fires
-`Closed`. The previous inline `MainMenuScene.BuildSettingsPanel`
-has been deleted — main menu instantiates the same component and
-opens it as a modal overlay on top of the landing page.
+SFX/VFX `CheckBox` rows + AI Turn Speed radio row + Back button) is
+the single Settings UI for both the main menu and the in-game pause
+flow. SFX/VFX toggles bind directly to `UserSettings.SfxEnabled` /
+`UserSettings.VfxEnabled` via `Toggled`. The AI Turn Speed row is
+four `Button`s (`Slow`/`Normal`/`Fast`/`Instant`) in `ToggleMode`
+sharing a `ButtonGroup` (radio semantics) and writes to
+`UserSettings.AiSpeed` from each `Pressed` handler. Godot's default
+toggle visuals are subtle, so `ApplySpeedButtonStyle` paints a solid
+white + dark-text stylebox on the pressed button and a dim
+dark-background + light-text stylebox on the others; `Toggled` fires
+on both the just-pressed and just-unpressed siblings, so a single
+handler restyle keeps every button in sync. `Open()` re-syncs every
+control from `UserSettings` so external writes are reflected. Back
+or Escape calls `Close`, which fires `Closed`. The previous inline
+`MainMenuScene.BuildSettingsPanel` has been deleted — main menu
+instantiates the same component and opens it as a modal overlay on
+top of the landing page.
 
 ### ProcessMode rules
 
@@ -1877,16 +1940,22 @@ scripts/
 ├─ AudioBus.cs            ─ autoload Node singleton: shared SFX players
 │                           that survive scene changes; each Play* gates
 │                           on UserSettings.SfxEnabled
-├─ UserSettings.cs        ─ static class; SfxEnabled / VfxEnabled
-│                           toggles persisted to user://settings.json
-│                           (lazy load, atomic tmp+rename save)
+├─ UserSettings.cs        ─ static class; SfxEnabled / VfxEnabled /
+│                           AiSpeed preferences persisted to
+│                           user://settings.json (lazy load, atomic
+│                           tmp+rename save). AiSpeedMultiplier maps
+│                           the enum to the GodotAiPacer scalar.
 │
 ├─ AiPacer.cs             ─ IAiPacer + SynchronousAiPacer +
 │                           ITimerFactory abstraction
 ├─ GodotAiPacer.cs        ─ Default production pacer; uses
 │                           ITimerFactory + generation counter for
 │                           Cancel-then-reuse safety (testable via
-│                           ManualTimerFactory)
+│                           ManualTimerFactory). Optional
+│                           Func<float> delayMultiplier scales every
+│                           delay (Slow/Normal/Fast); a multiplier of
+│                           0 (Instant) drops into a FIFO trampoline
+│                           that runs callbacks inline.
 ├─ SceneTreeTimerFactory.cs ─ Production ITimerFactory wrapping
 │                           SceneTree.CreateTimer (test-excluded).
 │                           Passes processAlways: false so AI pacing
