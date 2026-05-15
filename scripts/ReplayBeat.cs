@@ -1,24 +1,4 @@
 /// <summary>
-/// Discriminator for <see cref="ReplayBeat"/> subclasses. Mirrors the
-/// kind-discriminated DTO pattern used by tutorial <c>BeatDto</c> — the
-/// save serializer round-trips beats by switching on this enum.
-/// </summary>
-public enum ReplayBeatKind
-{
-    Move,
-    BuyUnit,
-    BuildTower,
-    EndTurn,
-    LongPressRally,
-    ClaimVictory,
-    DismissClaim,
-    DismissDefeat,
-    // Tutorial-only beats (see TutorialOnlyBeat). Not captured from
-    // gameplay; authored explicitly during Record mode. Actor is -1.
-    DisplayText,
-}
-
-/// <summary>
 /// One recorded entry in a game's replay log. Most beats describe a
 /// state-mutating action an actor (player) took — a typed outcome,
 /// never a raw input — so replay can re-execute through the same
@@ -62,8 +42,6 @@ public abstract record ReplayBeat
     /// <summary>Index into <see cref="GameState.Turns"/>'s player list
     /// for the player who took the action.</summary>
     public int Actor { get; init; }
-
-    public abstract ReplayBeatKind Kind { get; }
 }
 
 /// <summary>
@@ -74,7 +52,6 @@ public abstract record ReplayBeat
 /// </summary>
 public sealed record ReplayMoveBeat : ReplayBeat
 {
-    public override ReplayBeatKind Kind => ReplayBeatKind.Move;
     public HexCoord From { get; init; }
     public HexCoord To { get; init; }
 }
@@ -86,7 +63,6 @@ public sealed record ReplayMoveBeat : ReplayBeat
 /// </summary>
 public sealed record ReplayBuyBeat : ReplayBeat
 {
-    public override ReplayBeatKind Kind => ReplayBeatKind.BuyUnit;
     public HexCoord Capital { get; init; }
     public HexCoord To { get; init; }
     public UnitLevel Level { get; init; }
@@ -99,7 +75,6 @@ public sealed record ReplayBuyBeat : ReplayBeat
 /// </summary>
 public sealed record ReplayBuildTowerBeat : ReplayBeat
 {
-    public override ReplayBeatKind Kind => ReplayBeatKind.BuildTower;
     public HexCoord Capital { get; init; }
     public HexCoord To { get; init; }
 }
@@ -112,7 +87,6 @@ public sealed record ReplayBuildTowerBeat : ReplayBeat
 /// </summary>
 public sealed record ReplayEndTurnBeat : ReplayBeat
 {
-    public override ReplayBeatKind Kind => ReplayBeatKind.EndTurn;
 }
 
 /// <summary>
@@ -123,7 +97,6 @@ public sealed record ReplayEndTurnBeat : ReplayBeat
 /// </summary>
 public sealed record ReplayLongPressRallyBeat : ReplayBeat
 {
-    public override ReplayBeatKind Kind => ReplayBeatKind.LongPressRally;
     public HexCoord Target { get; init; }
 }
 
@@ -134,7 +107,6 @@ public sealed record ReplayLongPressRallyBeat : ReplayBeat
 /// </summary>
 public sealed record ReplayClaimVictoryBeat : ReplayBeat
 {
-    public override ReplayBeatKind Kind => ReplayBeatKind.ClaimVictory;
     public int ThresholdPercent { get; init; }
 }
 
@@ -146,7 +118,6 @@ public sealed record ReplayClaimVictoryBeat : ReplayBeat
 /// </summary>
 public sealed record ReplayDismissClaimBeat : ReplayBeat
 {
-    public override ReplayBeatKind Kind => ReplayBeatKind.DismissClaim;
     public int ThresholdPercent { get; init; }
 }
 
@@ -157,7 +128,6 @@ public sealed record ReplayDismissClaimBeat : ReplayBeat
 /// </summary>
 public sealed record ReplayDismissDefeatBeat : ReplayBeat
 {
-    public override ReplayBeatKind Kind => ReplayBeatKind.DismissDefeat;
 }
 
 /// <summary>
@@ -181,6 +151,5 @@ public abstract record TutorialOnlyBeat : ReplayBeat
 /// </summary>
 public sealed record ReplayDisplayTextBeat : TutorialOnlyBeat
 {
-    public override ReplayBeatKind Kind => ReplayBeatKind.DisplayText;
     public string Text { get; init; } = "";
 }

@@ -2300,7 +2300,7 @@ public class GameController
 
     // --- Replay playback ------------------------------------------------
     // Mirrors the AI step machine: preview (highlight acting territory)
-    // → pace → execute → pace → loop. Dispatches by ReplayBeatKind, but
+    // → pace → execute → pace → loop. Dispatches by record type, but
     // every concrete execute path calls into the same ExecuteAi* helpers
     // the live game uses — so replay fidelity comes "for free" from
     // converging on the live mutation paths.
