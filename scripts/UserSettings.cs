@@ -17,6 +17,19 @@ public enum AiSpeed
 }
 
 /// <summary>
+/// Discrete pacing presets for replay playback — separate from
+/// <see cref="AiSpeed"/> because watching a recorded game is the
+/// point of replay; Instant (silent batch) would defeat that.
+/// Maxes at <see cref="Fast"/>.
+/// </summary>
+public enum ReplaySpeed
+{
+    Slow,
+    Normal,
+    Fast,
+}
+
+/// <summary>
 /// Process-wide user preferences (SFX + VFX toggles, AI speed). Persisted
 /// to <c>user://settings.json</c> so the choice survives quitting and
 /// relaunching the game. Mirrors <see cref="SaveStore"/>'s atomic-write
@@ -39,6 +52,7 @@ public static class UserSettings
     private static bool _sfxEnabled = true;
     private static bool _vfxEnabled = true;
     private static AiSpeed _aiSpeed = AiSpeed.Normal;
+    private static ReplaySpeed _replaySpeed = ReplaySpeed.Normal;
 
     public static bool SfxEnabled
     {
@@ -88,6 +102,22 @@ public static class UserSettings
         }
     }
 
+    public static ReplaySpeed ReplaySpeed
+    {
+        get
+        {
+            EnsureLoaded();
+            return _replaySpeed;
+        }
+        set
+        {
+            EnsureLoaded();
+            if (_replaySpeed == value) return;
+            _replaySpeed = value;
+            Save();
+        }
+    }
+
     /// <summary>
     /// Multiplier applied to AI step delays. Slow doubles them, Fast
     /// halves them, Instant returns 0 (which the pacer interprets as
@@ -103,11 +133,23 @@ public static class UserSettings
         _ => 1f,
     };
 
+    /// <summary>Same shape as <see cref="AiSpeedMultiplier"/> but for
+    /// replay playback, capped at Fast — Instant would silently snap
+    /// past the whole recording and there'd be nothing to watch.</summary>
+    public static float ReplaySpeedMultiplier => ReplaySpeed switch
+    {
+        ReplaySpeed.Slow => 2f,
+        ReplaySpeed.Normal => 1f,
+        ReplaySpeed.Fast => 0.5f,
+        _ => 1f,
+    };
+
     private sealed class SettingsDto
     {
         public bool SfxEnabled { get; set; } = true;
         public bool VfxEnabled { get; set; } = true;
         public AiSpeed AiSpeed { get; set; } = AiSpeed.Normal;
+        public ReplaySpeed ReplaySpeed { get; set; } = ReplaySpeed.Normal;
     }
 
     private static void EnsureLoaded()
@@ -130,6 +172,7 @@ public static class UserSettings
             _sfxEnabled = dto.SfxEnabled;
             _vfxEnabled = dto.VfxEnabled;
             _aiSpeed = dto.AiSpeed;
+            _replaySpeed = dto.ReplaySpeed;
         }
         catch (System.Exception ex)
         {
@@ -152,6 +195,7 @@ public static class UserSettings
                     SfxEnabled = _sfxEnabled,
                     VfxEnabled = _vfxEnabled,
                     AiSpeed = _aiSpeed,
+                    ReplaySpeed = _replaySpeed,
                 },
                 new JsonSerializerOptions { WriteIndented = true });
 

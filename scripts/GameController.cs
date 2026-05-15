@@ -83,6 +83,7 @@ public class GameController
     public event Action? HumanTurnStarted;
 
     private readonly Func<bool> _aiSilentMode;
+    private readonly IAiBackgroundRunner _aiBackgroundRunner;
 
     /// <summary>
     /// Tell the view to enter (or leave) silent mode based on whether
@@ -92,11 +93,32 @@ public class GameController
     /// <see cref="StartPlayerTurn"/> for the live AI→AI and AI→human
     /// hand-offs — so the flag tracks the active actor without leaking
     /// any UserSettings dependency into pure controller code.
+    /// Also drives the "Opponents are taking their turns…" HUD overlay
+    /// so the human knows their input is intentionally inert while the
+    /// background chooser runs (the alternative is a silent freeze).
     /// </summary>
     private void RefreshSilentMode()
     {
-        _map.SetSilentMode(InSilentAiBatch());
+        bool silent = InSilentAiBatch();
+        _map.SetSilentMode(silent);
+        // Tutorial Preview / Record use the tutorial-message slot for
+        // their own scripted text; don't clobber it. Outside those
+        // modes the slot is free, so reuse it as a passive "AI is
+        // working" indicator.
+        if (_previewMode || _recordingMode) return;
+        if (silent && !_silentBatchOverlayShown)
+        {
+            _hud.ShowTutorialMessage("Opponents are taking their turns…");
+            _silentBatchOverlayShown = true;
+        }
+        else if (!silent && _silentBatchOverlayShown)
+        {
+            _hud.HideTutorialMessage();
+            _silentBatchOverlayShown = false;
+        }
     }
+
+    private bool _silentBatchOverlayShown;
 
     /// <summary>
     /// True while an AI player is acting under the Instant speed setting.
@@ -107,9 +129,18 @@ public class GameController
     /// per AI player on a six-AI map. The final <c>RefreshViews</c> when
     /// control returns to a human (i.e. when this returns false again)
     /// is what the human actually sees.
+    ///
+    /// Returns false while <see cref="SessionState.PendingDefeatScreen"/>
+    /// is set: the AI batch is paused waiting for the human to dismiss
+    /// the overlay, so input gates should lift, the view should accept
+    /// feedback, and the defeat HUD should render. The batch resumes
+    /// when <see cref="OnDefeatContinuePressed"/> clears the flag and
+    /// calls <see cref="RefreshSilentMode"/>.
     /// </summary>
     private bool InSilentAiBatch() =>
-        _aiSilentMode() && _state.Turns.CurrentPlayer.IsAi;
+        _aiSilentMode()
+        && _state.Turns.CurrentPlayer.IsAi
+        && !_session.PendingDefeatScreen.HasValue;
 
     public GameController(
         GameState state,
@@ -125,9 +156,11 @@ public class GameController
         bool previewMode = false,
         bool recordingMode = false,
         Action? onAfterRefresh = null,
-        Func<bool>? aiSilentMode = null)
+        Func<bool>? aiSilentMode = null,
+        IAiBackgroundRunner? aiBackgroundRunner = null)
     {
         _aiSilentMode = aiSilentMode ?? (() => false);
+        _aiBackgroundRunner = aiBackgroundRunner ?? new SynchronousAiBackgroundRunner();
         _humanActionValidator = humanActionValidator;
         _previewMode = previewMode;
         _recordingMode = recordingMode;
@@ -199,6 +232,10 @@ public class GameController
     public void AbandonGame()
     {
         _aiPacer.Cancel();
+        // Drop any chooser worker in flight under silent batch — its
+        // CallDeferred-marshaled onMain would otherwise wake against a
+        // controller whose views have been disposed.
+        _aiBackgroundRunner.Cancel();
         // Unsubscribe from view events so a downstream click can't
         // re-enter this stale controller's handlers — relevant when
         // the view is shared between sessions (TutorialBuilder's
@@ -511,6 +548,14 @@ public class GameController
     private void TrackHandler(System.Action work)
     {
         if (_replayMode) return;
+        // Drop the input outright while an AI player is acting under
+        // Instant — the main thread is free between worker yields, so
+        // a tile click or Tab press could otherwise race the chooser
+        // and mutate SessionState behind it. The gate also covers the
+        // mid-mutation window inside the synchronous trampoline (a
+        // belt-and-braces guarantee: even if Godot's input ordering
+        // ever changed, the controller's invariants are protected).
+        if (InSilentAiBatch()) return;
         int beatsBefore = _replayBeats.Count;
         UndoEntry pre = CaptureCurrentSnapshot();
         _handlerMutatedGame = false;
@@ -1276,6 +1321,7 @@ public class GameController
     private void OnDefeatContinuePressed()
     {
         if (_replayMode) return;
+        if (InSilentAiBatch()) return;
         if (!_session.PendingDefeatScreen.HasValue) return;
         if (_humanActionValidator != null && !_humanActionValidator(new ReplayDismissDefeatBeat()))
         {
@@ -1283,6 +1329,11 @@ public class GameController
         }
         RecordBeat(new ReplayDismissDefeatBeat());
         _session.PendingDefeatScreen = null;
+        // Re-arm silent mode if we were in a silent batch — clearing
+        // PendingDefeatScreen makes InSilentAiBatch() flip back to
+        // true, so push that change to the view BEFORE the refresh
+        // (otherwise tweens for the post-dismiss state would leak).
+        RefreshSilentMode();
         RefreshViews();
         if (_session.IsGameOver) return;
         if (_state.Turns.CurrentPlayer.IsAi)
@@ -1296,6 +1347,7 @@ public class GameController
     private void OnUndoLastPressed()
     {
         if (_replayMode) return;
+        if (InSilentAiBatch()) return;
         if (_session.IsGameOver) return;
         if (!_session.Undo.CanUndo) return;
         HexCoord? before = _session.SelectedTerritory?.Capital;
@@ -1307,6 +1359,7 @@ public class GameController
     private void OnUndoTurnPressed()
     {
         if (_replayMode) return;
+        if (InSilentAiBatch()) return;
         if (_session.IsGameOver) return;
         if (!_session.Undo.CanUndo) return;
         // Inline the UndoAll loop so each pop's beat bookkeeping fires.
@@ -1323,6 +1376,7 @@ public class GameController
     private void OnRedoLastPressed()
     {
         if (_replayMode) return;
+        if (InSilentAiBatch()) return;
         if (_session.IsGameOver) return;
         if (!_session.Undo.CanRedo) return;
         HexCoord? before = _session.SelectedTerritory?.Capital;
@@ -1334,6 +1388,7 @@ public class GameController
     private void OnRedoAllPressed()
     {
         if (_replayMode) return;
+        if (InSilentAiBatch()) return;
         if (_session.IsGameOver) return;
         if (!_session.Undo.CanRedo) return;
         PushOneBeatBatchForRedo();
@@ -1712,6 +1767,7 @@ public class GameController
     private void OnEndTurnPressed()
     {
         if (_replayMode) return;
+        if (InSilentAiBatch()) return;
         if (_session.IsGameOver) return;
         if (_humanActionValidator != null && !_humanActionValidator(new ReplayEndTurnBeat()))
         {
@@ -1789,6 +1845,7 @@ public class GameController
     private void OnClaimVictoryWinNowPressed()
     {
         if (_replayMode) return;
+        if (InSilentAiBatch()) return;
         if (!_session.PendingClaimVictory.HasValue) return;
         (Color color, int threshold) = _session.PendingClaimVictory.Value;
         if (_humanActionValidator != null && !_humanActionValidator(
@@ -1813,6 +1870,7 @@ public class GameController
     private void OnClaimVictoryContinuePressed()
     {
         if (_replayMode) return;
+        if (InSilentAiBatch()) return;
         if (!_session.PendingClaimVictory.HasValue) return;
         (Color color, int threshold) = _session.PendingClaimVictory.Value;
         if (_humanActionValidator != null && !_humanActionValidator(
@@ -2108,7 +2166,39 @@ public class GameController
         }
 
         Color color = _state.Turns.CurrentPlayer.Color;
-        AiAction? action = _aiChooser(_state, color, _aiVisited, _rng);
+
+        // Under Instant the chooser is the dominant per-beat cost —
+        // running it on the main thread freezes the renderer for
+        // hundreds of ms per AI on a busy six-AI map. Hand it to the
+        // background runner so the main thread can paint between
+        // beats. The continuation re-checks game state because the
+        // controller could have been abandoned mid-await (Main scene
+        // swap, or BeginReplay). Input gating during the await window
+        // is handled by InSilentAiBatch() checks on every human input
+        // handler — see TrackHandler and the OnEndTurnPressed /
+        // OnUndoLastPressed / OnDefeatContinuePressed / OnClaimVictory*
+        // family.
+        if (InSilentAiBatch())
+        {
+            _aiBackgroundRunner.Run(
+                work: () => _aiChooser(_state, color, _aiVisited, _rng),
+                onMain: a => StepAiPreviewAfterChoose(a, color));
+            return;
+        }
+
+        StepAiPreviewAfterChoose(_aiChooser(_state, color, _aiVisited, _rng), color);
+    }
+
+    private void StepAiPreviewAfterChoose(AiAction? action, Color color)
+    {
+        // Defensive re-checks: the game may have ended or the player
+        // changed (BeginReplay, AbandonGame mid-await) between the
+        // chooser dispatch and this continuation. Mirrors the gates
+        // at the top of StepAiPreview.
+        if (_gameEndedFired) return;
+        if (_session.IsGameOver) return;
+        if (!_state.Turns.CurrentPlayer.IsAi) return;
+        if (_state.Turns.CurrentPlayer.Color != color) return;
 
         if (action == null || _aiStepsThisPlayer >= MaxAiStepsPerPlayer)
         {
@@ -2315,7 +2405,18 @@ public class GameController
         // human dismisses it. Without this, the AI keeps running
         // behind the modal scrim and the user clicks Continue into a
         // game state several turns past their elimination.
-        if (_session.PendingDefeatScreen.HasValue) return;
+        if (_session.PendingDefeatScreen.HasValue)
+        {
+            // Silent-batch handoff: InSilentAiBatch() now returns
+            // false (PendingDefeatScreen unfreezes it) but the view's
+            // silent flag is still on from the start of the batch.
+            // RefreshSilentMode reconciles, lifting the map gate, and
+            // the final RefreshViews paints the defeat overlay so the
+            // human can dismiss it via the Continue button.
+            RefreshSilentMode();
+            RefreshViews();
+            return;
+        }
         _aiPacer.Schedule(StepAiPreview, AiActionDelayMs);
     }
 

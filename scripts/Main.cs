@@ -214,11 +214,20 @@ public partial class Main : Node2D
         // whole game runs inline and we can read the full log, plus
         // a hard turn cap so stasis runs terminate instead of
         // looping forever.
+        // Replay playback reuses the same pacer/runner as live AI, but
+        // the user's Replay Speed setting is what should govern its
+        // delays — not Ai Speed. A captured local on the controller
+        // (set after construction) lets the pacer multiplier and the
+        // silent-mode predicate both consult IsReplayMode at call
+        // time without a forward-reference cycle.
+        GameController? controllerRef = null;
         IAiPacer pacer = diagnosticMode
             ? new SynchronousAiPacer()
             : new GodotAiPacer(
                 new SceneTreeTimerFactory(GetTree()),
-                () => UserSettings.AiSpeedMultiplier);
+                () => controllerRef?.IsReplayMode == true
+                    ? UserSettings.ReplaySpeedMultiplier
+                    : UserSettings.AiSpeedMultiplier);
         // If we're resuming an in-progress save that carries a replay,
         // hand it to the controller so recording continues against the
         // same beat log (and BeginReplay can rewind to the original
@@ -226,6 +235,15 @@ public partial class Main : Node2D
         Replay? loadedReplay = (pendingLoad != null && !isStartingMap)
             ? pendingLoad.Replay
             : null;
+        // Background runner only matters under silent batch (Instant).
+        // Diagnostic mode runs the whole game through SynchronousAiPacer
+        // so a real worker thread would just add hops for no payoff;
+        // wire the synchronous runner there. Normal launch wires the
+        // production Godot runner: Task.Run + Callable.CallDeferred
+        // so the main thread can paint between AI beats.
+        IAiBackgroundRunner bgRunner = diagnosticMode
+            ? new SynchronousAiBackgroundRunner()
+            : new GodotAiBackgroundRunner();
         _controller = new GameController(
             _state, _session, map, hud,
             seed: seed,
@@ -233,7 +251,10 @@ public partial class Main : Node2D
             aiChooser: AiDispatcher.ChooseForCurrentPlayer,
             maxTurnNumber: _maxTurnNumber,
             loadedReplay: loadedReplay,
-            aiSilentMode: () => UserSettings.AiSpeed == AiSpeed.Instant);
+            aiSilentMode: () => controllerRef?.IsReplayMode != true
+                && UserSettings.AiSpeed == AiSpeed.Instant,
+            aiBackgroundRunner: bgRunner);
+        controllerRef = _controller;
 
         if (!diagnosticMode)
         {

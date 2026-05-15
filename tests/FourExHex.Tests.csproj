@@ -71,6 +71,7 @@
     <Compile Include="..\scripts\IHudView.cs" Link="scripts\IHudView.cs" />
     <Compile Include="..\scripts\AiPacer.cs" Link="scripts\AiPacer.cs" />
     <Compile Include="..\scripts\GodotAiPacer.cs" Link="scripts\GodotAiPacer.cs" />
+    <Compile Include="..\scripts\AiBackgroundRunner.cs" Link="scripts\AiBackgroundRunner.cs" />
     <Compile Include="..\scripts\GameController.cs" Link="scripts\GameController.cs" />
     <Compile Include="..\scripts\SaveSerializer.cs" Link="scripts\SaveSerializer.cs" />
     <Compile Include="..\scripts\LoadRequest.cs" Link="scripts\LoadRequest.cs" />

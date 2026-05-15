@@ -458,6 +458,15 @@ public partial class HexMapView : Node2D, IHexMapView
         ClearLayer(_targetsLayer);
         DrawTerritoryBorders();
 
+        // Silent batch (AI under Instant): leave tree and grave visuals
+        // in place. The controller skips the per-capture RefreshOccupant-
+        // Visuals that would otherwise rebuild them, so tearing them
+        // down here would make trees vanish for several frames until the
+        // end-of-batch refresh recreates them. The final refresh diffs
+        // _treeVisuals against the current model state and only frees
+        // trees that were actually chopped — correct outcome, no flicker.
+        if (_silentMode) return;
+
         // Tear down all tree and grave visuals and force the next refresh
         // to rebuild them without the grow-in animation. Captures and
         // undo/redo are the only callers, and neither should make existing

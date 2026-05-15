@@ -31,6 +31,13 @@ public sealed partial class SettingsPanel : CanvasLayer
         { AiSpeed.Slow, AiSpeed.Normal, AiSpeed.Fast, AiSpeed.Instant };
     private Button[] _aiSpeedButtons = null!;
 
+    // Replay playback speed; separate from AiSpeed because watching a
+    // replay at "Instant" would skip past the recording with nothing
+    // to watch. Capped at Fast.
+    private static readonly ReplaySpeed[] ReplaySpeedOrder =
+        { ReplaySpeed.Slow, ReplaySpeed.Normal, ReplaySpeed.Fast };
+    private Button[] _replaySpeedButtons = null!;
+
     public override void _Ready()
     {
         Layer = 100;
@@ -151,6 +158,37 @@ public sealed partial class SettingsPanel : CanvasLayer
         }
         vbox.AddChild(aiSpeedRow);
 
+        var replaySpeedLabel = new Label { Text = "Replay Speed" };
+        replaySpeedLabel.AddThemeFontSizeOverride("font_size", 22);
+        vbox.AddChild(replaySpeedLabel);
+
+        var replaySpeedRow = new HBoxContainer();
+        replaySpeedRow.AddThemeConstantOverride("separation", 8);
+        var replaySpeedGroup = new ButtonGroup();
+        ReplaySpeed currentReplaySpeed = UserSettings.ReplaySpeed;
+        _replaySpeedButtons = new Button[ReplaySpeedOrder.Length];
+        for (int i = 0; i < ReplaySpeedOrder.Length; i++)
+        {
+            ReplaySpeed speed = ReplaySpeedOrder[i];
+            var btn = new Button
+            {
+                Text = ReplaySpeedLabel(speed),
+                ToggleMode = true,
+                ButtonGroup = replaySpeedGroup,
+                ButtonPressed = speed == currentReplaySpeed,
+                FocusMode = Control.FocusModeEnum.None,
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            };
+            btn.AddThemeFontSizeOverride("font_size", 18);
+            btn.Pressed += () => OnReplaySpeedPressed(speed);
+            btn.Toggled += pressed => ApplySpeedButtonStyle(btn, pressed);
+            AudioBus.AttachClick(btn);
+            replaySpeedRow.AddChild(btn);
+            _replaySpeedButtons[i] = btn;
+            ApplySpeedButtonStyle(btn, btn.ButtonPressed);
+        }
+        vbox.AddChild(replaySpeedRow);
+
         var backButton = new Button
         {
             Text = "Back",
@@ -178,6 +216,14 @@ public sealed partial class SettingsPanel : CanvasLayer
             btn.ButtonPressed = pressed;
             // Setting ButtonPressed programmatically does NOT raise
             // Toggled, so refresh the stylebox by hand.
+            ApplySpeedButtonStyle(btn, pressed);
+        }
+        ReplaySpeed currentReplaySpeed = UserSettings.ReplaySpeed;
+        for (int i = 0; i < ReplaySpeedOrder.Length; i++)
+        {
+            Button btn = _replaySpeedButtons[i];
+            bool pressed = ReplaySpeedOrder[i] == currentReplaySpeed;
+            btn.ButtonPressed = pressed;
             ApplySpeedButtonStyle(btn, pressed);
         }
         IsOpen = true;
@@ -216,12 +262,25 @@ public sealed partial class SettingsPanel : CanvasLayer
         UserSettings.AiSpeed = speed;
     }
 
+    private void OnReplaySpeedPressed(ReplaySpeed speed)
+    {
+        UserSettings.ReplaySpeed = speed;
+    }
+
     private static string SpeedLabel(AiSpeed speed) => speed switch
     {
         AiSpeed.Slow => "Slow",
         AiSpeed.Normal => "Normal",
         AiSpeed.Fast => "Fast",
         AiSpeed.Instant => "Instant",
+        _ => speed.ToString(),
+    };
+
+    private static string ReplaySpeedLabel(ReplaySpeed speed) => speed switch
+    {
+        ReplaySpeed.Slow => "Slow",
+        ReplaySpeed.Normal => "Normal",
+        ReplaySpeed.Fast => "Fast",
         _ => speed.ToString(),
     };
 
