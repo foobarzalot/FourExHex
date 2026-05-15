@@ -27,9 +27,10 @@ off it.
 │             water, territories, pre-placed trees/towers/capitals)       │
 │             comes from the saved map; players from GameSettings; turn   │
 │             starts at 1, treasury empty. _originMapName = slot name.    │
-│           • Procedural: BuildPlayers + MapGenerator.BuildInitialGrid    │
-│             (CA carve → land/water + ~5% trees) → TerritoryFinder       │
-│             → CapitalReconciler → new GameState (incl. WaterCoords).    │
+│           • Procedural: Player.BuildRoster + MapGenerator.BuildInitial- │
+│             Grid (CA carve → land/water + ~5% trees) →                  │
+│             TerritoryFinder.Recompute → new GameState (incl. Water-     │
+│             Coords).                                                    │
 │             _originMapName = null.                                      │
 │         Then a fresh SessionState.                                       │
 │      5. Pick views: real HexMapView/HudView, or HeadlessHexMapView/      │
@@ -111,9 +112,9 @@ off it.
 │   │      from OnDefeatContinuePressed                                    │
 │   │                                                                      │
 │   ├─ capture reconciliation:                                             │
-│   │    HandleCapture → TerritoryFinder.FindAll                           │
-│   │                  → CapitalReconciler.Reconcile                       │
-│   │                  → Treasury.ReconcileAfterCapture                    │
+│   │    HandleCapture → TerritoryFinder.Recompute(grid, prev, treasury)   │
+│   │                    (= FindAll → CapitalReconciler.Reconcile →        │
+│   │                       Treasury.ReconcileAfterCapture)                │
 │   │                  → detect freshly-eliminated colors (had a capital   │
 │   │                    before, none after) → PlayPlayerDefeated;         │
 │   │                    set PendingDefeatScreen for human eliminations    │
@@ -222,6 +223,13 @@ off it.
 │                         PURE RULES (static)                              │
 │                                                                          │
 │   TerritoryFinder.FindAll(grid)            ─ flood-fill, no capitals     │
+│   TerritoryFinder.Recompute(grid, prev, treasury?)                       │
+│                                            ─ FindAll → CapitalReconciler │
+│                                              .Reconcile → optional       │
+│                                              Treasury.ReconcileAfter-    │
+│                                              Capture. Single entry for   │
+│                                              post-mutation rebuilds      │
+│                                              (capture, edit paint, init) │
 │   CapitalPlacer.Choose(coords, grid)       ─ empty > unit, lex-min       │
 │   CapitalReconciler.Reconcile(raw, old, grid)                            │
 │                                            ─ split/merge + stomping      │
@@ -724,10 +732,11 @@ GameController.OnTileClicked  ── wrapped in TrackHandler:
               │                      → unit.HasMovedThisTurn = true
               ├─ if WasCapture:
               │     ├─ HandleCapture(...)
-              │     │     ├─ raw = TerritoryFinder.FindAll(state.Grid)
-              │     │     ├─ state.Territories = CapitalReconciler.Reconcile(raw, old, grid)
-              │     │     ├─ state.Treasury.ReconcileAfterCapture(old, new)
-              │     │     │     (enemy gold on captured capital tiles is forfeited)
+              │     │     ├─ state.Territories = TerritoryFinder.Recompute(
+              │     │     │       state.Grid, prev, state.Treasury)
+              │     │     │     (= FindAll + CapitalReconciler.Reconcile +
+              │     │     │       Treasury.ReconcileAfterCapture; enemy gold
+              │     │     │       on captured capital tiles is forfeited)
               │     │     ├─ if a color lost its last capital:
               │     │     │     PlayPlayerDefeated; for human, set PendingDefeatScreen
               │     │     ├─ _map.RebuildAfterTerritoryChange()
@@ -757,13 +766,13 @@ GameController.OnTileLongClicked  ── wrapped in TrackHandler:
   └─ OnTileLongClickedBody(tile)
         ├─ ignored if game over, no tile, or any pending mode
         ├─ ignored unless tile color == current player's color
-        ├─ collect every unmoved current-color unit in the territory
-        ├─ sort closest-to-target first (lex-min tiebreak) so far units
-        │   can't leapfrog near ones
-        └─ for each src: greedy free-reposition to the strictly closer
-            empty in-territory cell (MovementRules.Move on own-empty
-            does NOT consume the move action)
-        ├─ if any moved: _handlerMutatedGame = true; PlayRally;
+        ├─ anyMoved = RallyRules.ResolveRally(grid, territory, target, color)
+        │     (collects unmoved units in the territory, sorts closest-to-
+        │      target first with lex-min tiebreak, greedy-repositions each
+        │      to the strictly closer empty in-territory cell via
+        │      MovementRules.Move on own-empty — does NOT consume the
+        │      move action; shared with replay's ApplyLongPressRally)
+        ├─ if anyMoved: _handlerMutatedGame = true; PlayRally;
         │   re-select the territory
         └─ RefreshViews()
 ```
@@ -899,12 +908,14 @@ playback.
 
 **Long-press rally** is a special case: the recorded beat carries
 only the target coord, not the per-unit move list. Replay re-runs
-`ApplyLongPressRally(target)` against the restored state. The rally
-algorithm explicitly sorts units and destinations by
-`(distance, lex-min coord)`, so the re-derivation is deterministic.
-This matches the existing trust model for `EndOfTurnProcessing`
-(tree growth, grave aging, upkeep — also deterministic from state,
-triggered by a single beat).
+`ApplyLongPressRally(target)` against the restored state, which
+delegates to `RallyRules.ResolveRally` — the same body the live
+handler calls, so live and replay rally cannot drift. The algorithm
+explicitly sorts units and destinations by `(distance, lex-min
+coord)`, so the re-derivation is deterministic. This matches the
+existing trust model for `EndOfTurnProcessing` (tree growth, grave
+aging, upkeep — also deterministic from state, triggered by a
+single beat).
 
 ## AI subsystem
 
@@ -917,7 +928,10 @@ triggered by a single beat).
   `AiStateScorer.Score`. `AiSimulator` mirrors the mutation logic in
   `GameController`'s `ExecuteAi*` paths; if you add a new AI-capable
   action you must update both in lockstep, or simulated scoring will
-  drift from real play.
+  drift from real play. `AiSimulator.Apply` throws
+  `NotSupportedException` on action kinds it doesn't model (Rally,
+  ClaimVictory, Dismiss*) so future drift surfaces loudly rather than
+  as a silent no-op.
 - **`ReplayDrivenAi`** — script-driven chooser used only by the
   TutorialBuilder's Preview mode. Replays recorded non-player-0
   `ReplayBeat`s through the standard AI step machine via a shared
@@ -1613,6 +1627,10 @@ scripts/
 │                           a mode-aware option list. ESC closes when
 │                           open. Used by Main, MapEditorScene,
 │                           TutorialBuilderScene
+├─ SlotPickerDialog.cs    ─ reusable Window-based load-slot picker;
+│                           ShowSlots(slots, emptyMsg, labelFor,
+│                           onPicked) + ShowError. Used by MainMenu-
+│                           Scene, MapEditorScene, TutorialBuilderScene
 ├─ RecordPane.cs          ─ Record-mode chrome: spins up a real
 │                           GameController over the panel's draft
 │                           with all six players Human; captures the
@@ -1669,7 +1687,8 @@ scripts/
 ├─ AiAction.cs            ─ AiMoveAction / AiBuyUnitAction / …
 ├─ AiCommon.cs            ─ shared candidate-action enumeration
 ├─ AiDispatcher.cs        ─ routes by Player.Kind
-├─ AiSimulator.cs         ─ Clone + apply for 1-ply lookahead
+├─ AiSimulator.cs         ─ Clone + apply for 1-ply lookahead;
+│                           throws on unsupported AiAction kinds
 ├─ AiStateScorer.cs       ─ scoring function for HeuristicAi
 ├─ RandomAi.cs            ─ uniform-random chooser
 ├─ HeuristicAi.cs         ─ 1-ply best-score chooser
@@ -1682,6 +1701,9 @@ scripts/
 ├─ CapitalReconciler.cs   ─
 ├─ DefenseRules.cs        ─
 ├─ MovementRules.cs       ─
+├─ RallyRules.cs          ─ long-press rally: shared between live
+│                           OnTileLongClickedBody and replay's
+│                           ApplyLongPressRally
 ├─ PurchaseRules.cs       ─
 ├─ TreeRules.cs           ─
 ├─ UpkeepRules.cs         ─
