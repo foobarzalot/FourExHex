@@ -25,6 +25,18 @@ public interface IHexMapView
     /// </summary>
     event Action<HexTile?>? TileLongClicked;
 
+    /// <summary>
+    /// Raised on a left-click whose coord falls outside the land grid —
+    /// water, the render-only water rim, or far past the map. Carries
+    /// the raw <see cref="HexCoord"/> the player clicked so the
+    /// controller can anchor rejection feedback there. Fires INSTEAD OF
+    /// <see cref="TileClicked"/> for off-grid clicks (TileClicked only
+    /// fires for in-grid clicks); the editor's separate CoordClicked
+    /// event continues to fire for every click regardless of grid
+    /// membership.
+    /// </summary>
+    event Action<HexCoord>? OffGridClicked;
+
     /// <summary>Look up the territory containing a coord.</summary>
     Territory? TerritoryAt(HexCoord coord);
 
@@ -207,4 +219,42 @@ public interface IHexMapView
     /// Fires once per eliminated player, after CapitalReconciler runs.
     /// </summary>
     void PlayPlayerDefeated();
+
+    /// <summary>
+    /// Visual + audio feedback when a player's place/move/build-tower
+    /// click is rejected. The view renders a short red-pulsing ghost
+    /// shaped like <paramref name="shape"/> over <paramref name="target"/>,
+    /// pulses a matching red ghost over each defender coord, and plays
+    /// the defended-rejection sound iff <paramref name="blockingDefenders"/>
+    /// is non-empty (else the generic-rejection sound). Pass an empty
+    /// defender sequence for non-defense rejections (water, distance,
+    /// own-territory occupied, BuildTower invalidity).
+    /// </summary>
+    void FlashRejection(HexCoord target, RejectionShape shape, IEnumerable<HexCoord> blockingDefenders);
+}
+
+/// <summary>
+/// Which silhouette the rejection-feedback overlay should draw over the
+/// target hex. Maps 1:1 to <see cref="UnitLevel"/> for buy/move rejections,
+/// with <see cref="Tower"/> added for BuildTower rejections.
+/// </summary>
+public enum RejectionShape
+{
+    Peasant,
+    Spearman,
+    Knight,
+    Baron,
+    Tower,
+}
+
+public static class RejectionShapeExtensions
+{
+    public static RejectionShape FromUnitLevel(UnitLevel level) => level switch
+    {
+        UnitLevel.Peasant => RejectionShape.Peasant,
+        UnitLevel.Spearman => RejectionShape.Spearman,
+        UnitLevel.Knight => RejectionShape.Knight,
+        UnitLevel.Baron => RejectionShape.Baron,
+        _ => RejectionShape.Peasant,
+    };
 }

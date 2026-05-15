@@ -28,6 +28,8 @@ public partial class AudioBus : Node
     private AudioStreamPlayer _gameWonPlayer = null!;
     private AudioStreamPlayer _rallyPlayer = null!;
     private AudioStreamPlayer _playerDefeatedPlayer = null!;
+    private AudioStreamPlayer _rejectGenericPlayer = null!;
+    private AudioStreamPlayer _rejectDefendedPlayer = null!;
 
     public override void _EnterTree()
     {
@@ -149,6 +151,27 @@ public partial class AudioBus : Node
             VolumeDb = -10f,
         };
         AddChild(_playerDefeatedPlayer);
+
+        _rejectGenericPlayer = new AudioStreamPlayer
+        {
+            Stream = GD.Load<AudioStream>("res://assets/audio/reject_generic.wav"),
+            // Generic SFX is normalized to ~-3 dB peak, well above the
+            // defended clang's natural -12 dB. Attenuate harder here so
+            // the misclick thunk sits at roughly the same perceived
+            // loudness as the metallic clang and doesn't dominate.
+            VolumeDb = -17f,
+        };
+        AddChild(_rejectGenericPlayer);
+
+        _rejectDefendedPlayer = new AudioStreamPlayer
+        {
+            Stream = GD.Load<AudioStream>("res://assets/audio/reject_defended.wav"),
+            // Distinct from generic — the metallic clang carries more
+            // information ("a defender blocked you"), so it's a touch
+            // hotter so the difference is audible without being loud.
+            VolumeDb = -8f,
+        };
+        AddChild(_rejectDefendedPlayer);
     }
 
     /// <summary>
@@ -275,6 +298,31 @@ public partial class AudioBus : Node
         if (!UserSettings.SfxEnabled) return;
         _playerDefeatedPlayer.Stop();
         _playerDefeatedPlayer.Play();
+    }
+
+    /// <summary>
+    /// Soft wooden thunk played when the player tries to place a unit
+    /// or tower somewhere it's not allowed, and no enemy defender is
+    /// the reason (water, distance, occupied own tile, etc.).
+    /// </summary>
+    public void PlayRejectGeneric()
+    {
+        if (!UserSettings.SfxEnabled) return;
+        _rejectGenericPlayer.Stop();
+        _rejectGenericPlayer.Play();
+    }
+
+    /// <summary>
+    /// Metallic shield/sword clang played when a placement or movement
+    /// is rejected specifically because an enemy defender blocks it.
+    /// Distinct from PlayRejectGeneric so the player can audibly tell
+    /// "I'm being blocked by a defender" from "I clicked the wrong spot."
+    /// </summary>
+    public void PlayRejectDefended()
+    {
+        if (!UserSettings.SfxEnabled) return;
+        _rejectDefendedPlayer.Stop();
+        _rejectDefendedPlayer.Play();
     }
 
     /// <summary>

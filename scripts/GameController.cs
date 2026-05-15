@@ -128,6 +128,7 @@ public class GameController
 
         _map.TileClicked += OnTileClicked;
         _map.TileLongClicked += OnTileLongClicked;
+        _map.OffGridClicked += OnOffGridClicked;
         _hud.BuyPeasantClicked += OnBuyPressed;
         _hud.BuildTowerClicked += OnBuildTowerPressed;
         _hud.UndoLastClicked += OnUndoLastPressed;
@@ -175,6 +176,7 @@ public class GameController
         // a disposed HudView and throws ObjectDisposedException.
         _map.TileClicked -= OnTileClicked;
         _map.TileLongClicked -= OnTileLongClicked;
+        _map.OffGridClicked -= OnOffGridClicked;
         _hud.BuyPeasantClicked -= OnBuyPressed;
         _hud.BuildTowerClicked -= OnBuildTowerPressed;
         _hud.UndoLastClicked -= OnUndoLastPressed;
@@ -520,6 +522,44 @@ public class GameController
     private void OnTileClicked(HexTile? tile) =>
         TrackHandler(() => OnTileClickedBody(tile));
 
+    private void OnOffGridClicked(HexCoord coord) =>
+        TrackHandler(() => OnOffGridClickedBody(coord));
+
+    /// <summary>
+    /// Handle a click whose coord is outside the land grid (water, etc.).
+    /// In a pending placement mode (buy/move/tower) it's a rejected click
+    /// just like a far in-grid click: flash + sound, stay in mode, keep
+    /// selection. Outside of placement mode the click clears selection —
+    /// preserves the long-standing "click off-grid to deselect" UX.
+    /// </summary>
+    private void OnOffGridClickedBody(HexCoord coord)
+    {
+        if (_session.IsGameOver) return;
+
+        UnitLevel? buyLevel = SessionState.BuyModeLevel(_session.Mode);
+        if (buyLevel.HasValue && _session.SelectedTerritory != null)
+        {
+            EmitRejection(buyLevel.Value, coord);
+            return;
+        }
+        if (_session.Mode == SessionState.ActionMode.BuildingTower && _session.SelectedTerritory != null)
+        {
+            _map.FlashRejection(coord, RejectionShape.Tower, System.Array.Empty<HexCoord>());
+            return;
+        }
+        if (_session.Mode == SessionState.ActionMode.MovingUnit && _session.MoveSource.HasValue)
+        {
+            Unit? sourceUnit = _state.Grid.Get(_session.MoveSource.Value)?.Unit;
+            if (sourceUnit != null)
+            {
+                EmitRejection(sourceUnit.Level, coord);
+            }
+            return;
+        }
+
+        SetSelection(null);
+    }
+
     private void OnTileClickedBody(HexTile? tile)
     {
         if (_session.IsGameOver) return;
@@ -533,9 +573,10 @@ public class GameController
                 ExecuteBuyAndPlace(buyLevel.Value, tile.Coord);
                 return;
             }
-            // Clicking somewhere invalid cancels the buy.
-            CancelPendingAction();
-            // Fall through to treat this as a fresh click.
+            // Stay in buy mode so the player can re-aim without
+            // re-clicking the buy button. Feedback is the only response.
+            EmitRejection(buyLevel.Value, tile.Coord);
+            return;
         }
         else if (_session.Mode == SessionState.ActionMode.BuildingTower && tile != null && _session.SelectedTerritory != null)
         {
@@ -546,8 +587,8 @@ public class GameController
             }
             System.Console.WriteLine(
                 $"[BuildTower] click at {tile.Coord} rejected: {DescribeInvalidTowerReason(tile.Coord)}");
-            CancelPendingAction();
-            // Fall through to treat this as a fresh click.
+            _map.FlashRejection(tile.Coord, RejectionShape.Tower, System.Array.Empty<HexCoord>());
+            return;
         }
         else if (_session.Mode == SessionState.ActionMode.MovingUnit && tile != null && _session.SelectedTerritory != null && _session.MoveSource.HasValue)
         {
@@ -557,7 +598,11 @@ public class GameController
                 ExecuteMove(_session.MoveSource.Value, tile.Coord);
                 return;
             }
-            CancelPendingAction();
+            if (sourceUnit != null)
+            {
+                EmitRejection(sourceUnit.Level, tile.Coord);
+            }
+            return;
         }
 
         // Normal click handling.
@@ -730,6 +775,32 @@ public class GameController
         var targets = MovementRules.ValidTargets(
             attackerLevel, _session.SelectedTerritory, _state.Grid, _state.Territories);
         return targets.Contains(coord);
+    }
+
+    /// <summary>
+    /// Tell the view to red-flash the rejected target. Only enemy
+    /// territory clicks compute defenders — clicks on water / own
+    /// territory / non-adjacent tiles pass an empty defender set so the
+    /// view plays the generic-rejection sound instead of the defended one.
+    /// </summary>
+    private void EmitRejection(UnitLevel attackerLevel, HexCoord coord)
+    {
+        Territory? targetTerritory = _map.TerritoryAt(coord);
+        Color currentColor = _state.Turns.CurrentPlayer.Color;
+
+        // Only surface defenders when the click was actually reachable —
+        // i.e. the target is in the selected territory or touches it.
+        // A non-adjacent click is a "too far" rejection regardless of
+        // what's defending the far hex.
+        bool inFrontier = _session.SelectedTerritory != null
+            && (_session.SelectedTerritory.Coords.Contains(coord)
+                || coord.Neighbors().Any(n => _session.SelectedTerritory.Coords.Contains(n)));
+
+        System.Collections.Generic.IEnumerable<HexCoord> defenders =
+            inFrontier && targetTerritory != null && targetTerritory.Owner != currentColor
+                ? DefenseRules.BlockingDefenders(coord, attackerLevel, _state.Grid, targetTerritory)
+                : System.Array.Empty<HexCoord>();
+        _map.FlashRejection(coord, RejectionShapeExtensions.FromUnitLevel(attackerLevel), defenders);
     }
 
     /// <summary>

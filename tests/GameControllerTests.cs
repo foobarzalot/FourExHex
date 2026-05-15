@@ -372,8 +372,11 @@ public class GameControllerTests
     }
 
     [Fact]
-    public void Click_InvalidTargetDuringMovingMode_ClearsMoveSource()
+    public void Click_InvalidTargetDuringMovingMode_KeepsMoveSource()
     {
+        // A rejected move click should NOT drop the unit — the player
+        // stays in MovingUnit mode so they can immediately try another
+        // tile. (See rejection-feedback feature.)
         var g = new TestGame();
         g.Tile(1, 1).Occupant = new Unit(g.Red.Color);
 
@@ -382,7 +385,8 @@ public class GameControllerTests
 
         g.Map.SimulateClick(g.Tile(4, 0)); // invalid (non-adjacent enemy)
 
-        Assert.Null(g.Map.LastMoveSource);
+        Assert.Equal(HexCoord.FromOffset(1, 1), g.Map.LastMoveSource);
+        Assert.Equal(SessionState.ActionMode.MovingUnit, g.Session.Mode);
     }
 
     [Fact]
@@ -1563,10 +1567,11 @@ public class GameControllerTests
     }
 
     [Fact]
-    public void BuildTower_OnInvalidTarget_ClearsTowerTargets()
+    public void BuildTower_OnInvalidTarget_KeepsTowerTargets()
     {
-        // Clicking somewhere that isn't a legal tower target cancels
-        // BuildingTower mode (existing behavior) AND clears the preview.
+        // Rejected tower placement stays in BuildingTower mode and
+        // keeps showing the legal target preview so the player can
+        // immediately retry on a valid hex.
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
         HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
@@ -1576,7 +1581,8 @@ public class GameControllerTests
         Assert.NotEmpty(g.Map.LastTowerTargets); // sanity: targets were shown
         g.Map.SimulateClick(g.Tile(0, 1));       // capital — invalid
 
-        Assert.Empty(g.Map.LastTowerTargets);
+        Assert.NotEmpty(g.Map.LastTowerTargets);
+        Assert.Equal(SessionState.ActionMode.BuildingTower, g.Session.Mode);
     }
 
     [Fact]
@@ -2640,8 +2646,11 @@ public class GameControllerTests
     }
 
     [Fact]
-    public void BuildTower_OnInvalidTarget_ClearsCoverage()
+    public void BuildTower_OnInvalidTarget_KeepsCoverage()
     {
+        // Rejected tower placement stays in BuildingTower mode and the
+        // coverage tint stays on so the player keeps the visual context
+        // for their next attempt.
         var g = new FourStripGame(preExistingTowerAt: HexCoord.FromOffset(1, 0));
         g.Map.SimulateClick(g.Tile(0, 0));
         g.State.Treasury.SetGold(g.RedTerritory.Capital!.Value, 20);
@@ -2650,7 +2659,8 @@ public class GameControllerTests
 
         g.Map.SimulateClick(g.Tile(1, 0)); // tower-occupied → invalid
 
-        Assert.Empty(g.Map.LastTowerCoverage);
+        Assert.NotEmpty(g.Map.LastTowerCoverage);
+        Assert.Equal(SessionState.ActionMode.BuildingTower, g.Session.Mode);
     }
 
     [Fact]
@@ -3555,11 +3565,10 @@ public class GameControllerTests
     }
 
     [Fact]
-    public void BuildTower_OnOccupiedTile_CancelsMode()
+    public void BuildTower_OnOccupiedTile_KeepsMode()
     {
-        // Click an invalid target (occupied tile or foreign tile) during
-        // BuildingTower mode: the mode cancels and falls through to a
-        // normal click.
+        // Rejected tower placement keeps the player in BuildingTower
+        // mode so they can immediately try another tile. Gold unchanged.
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
         HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
@@ -3568,18 +3577,19 @@ public class GameControllerTests
         g.Hud.ClickBuildTower();
         Assert.Equal(SessionState.ActionMode.BuildingTower, g.Session.Mode);
 
-        // (0,1) is Red's capital — occupied by a Capital — not a valid
-        // tower target. The click cancels the mode.
+        // (0,1) is Red's capital — occupied — not a valid tower target.
         g.Map.SimulateClick(g.Tile(0, 1));
 
-        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
-        // Red's gold is unchanged.
+        Assert.Equal(SessionState.ActionMode.BuildingTower, g.Session.Mode);
         Assert.Equal(20, g.State.Treasury.GetGold(redCapital));
     }
 
     [Fact]
-    public void BuildTower_OnEnemyTile_CancelsMode_AndSelectsNothing()
+    public void BuildTower_OnEnemyTile_KeepsModeAndSelection()
     {
+        // Rejected tower placement on enemy territory keeps BuildingTower
+        // mode and preserves selection (so the targets/coverage overlay
+        // stay onscreen for the next try). Gold unchanged.
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
         HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
@@ -3590,9 +3600,8 @@ public class GameControllerTests
         // (3,0) is Blue. Can't build a tower on enemy territory.
         g.Map.SimulateClick(g.Tile(3, 0));
 
-        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
-        Assert.Null(g.Session.SelectedTerritory);
-        // Red's gold is unchanged.
+        Assert.Equal(SessionState.ActionMode.BuildingTower, g.Session.Mode);
+        Assert.NotNull(g.Session.SelectedTerritory);
         Assert.Equal(20, g.State.Treasury.GetGold(redCapital));
     }
 
@@ -4072,25 +4081,29 @@ public class GameControllerTests
     }
 
     [Fact]
-    public void Click_InvalidTargetDuringBuyingMode_CancelsAndFallsThrough()
+    public void Click_InvalidTargetDuringBuyingMode_KeepsModeAndSelection()
     {
+        // Rejected buy click stays in BuyingPeasant mode and preserves
+        // territory selection — the player can immediately re-aim
+        // without re-clicking Buy or re-selecting their territory.
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
         g.Hud.ClickBuyPeasant();
         Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
 
         // (3, 0) is Blue, not adjacent to Red's territory, so not a valid
-        // target. The buy should cancel, then the click falls through to
-        // the normal handler which sees an enemy tile and clears selection.
+        // target. The buy should NOT cancel; rejection feedback fires.
         g.Map.SimulateClick(g.Tile(3, 0));
 
-        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
-        Assert.Null(g.Session.SelectedTerritory);
+        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+        Assert.NotNull(g.Session.SelectedTerritory);
     }
 
     [Fact]
-    public void Click_InvalidTargetDuringMovingMode_CancelsAndFallsThrough()
+    public void Click_InvalidTargetDuringMovingMode_KeepsMovingMode()
     {
+        // Rejected move click stays in MovingUnit mode and keeps the
+        // unit picked up.
         var g = new TestGame();
         var unit = new Unit(g.Red.Color);
         g.Tile(1, 1).Occupant = unit;
@@ -4100,7 +4113,8 @@ public class GameControllerTests
         // Click a non-adjacent Blue tile — invalid move target.
         g.Map.SimulateClick(g.Tile(4, 0));
 
-        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+        Assert.Equal(SessionState.ActionMode.MovingUnit, g.Session.Mode);
+        Assert.Equal(HexCoord.FromOffset(1, 1), g.Session.MoveSource);
     }
 
     [Fact]
@@ -5120,4 +5134,235 @@ public class GameControllerTests
         Assert.True(afterStart > 0); // StartGame triggered at least one refresh.
         Assert.True(callbackCount > afterStart);
     }
+
+    // --- Rejection feedback (red-pulse + sound) -------------------------
+
+    [Fact]
+    public void BuyPeasantRejected_OnNonAdjacentEnemy_FlashesGenericPeasantShape_NoDefenders()
+    {
+        // Non-adjacent enemy hex: invalid placement (out of placement
+        // frontier) but no defending tower. Defender set should be empty
+        // → generic sound, peasant-shaped overlay.
+        var g = new TestGame();
+        HexCoord redCapital = g.RedTerritory.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 20);
+        g.Map.SimulateClick(g.Tile(0, 1));   // select Red
+        g.Hud.ClickBuyPeasant();
+        Assert.Empty(g.Map.Rejections);
+
+        // (4,0) is Blue and non-adjacent to Red — fails the frontier check,
+        // not a defense block.
+        g.Map.SimulateClick(g.Tile(4, 0));
+
+        Assert.Single(g.Map.Rejections);
+        Assert.Equal(HexCoord.FromOffset(4, 0), g.Map.LastRejection!.Value.Target);
+        Assert.Equal(RejectionShape.Peasant, g.Map.LastRejection.Value.Shape);
+        Assert.Empty(g.Map.LastRejection.Value.Defenders);
+    }
+
+    [Fact]
+    public void BuySpearmanRejected_OnDefendedTile_FlashesWithDefenders_ExcludesWeakerOccupant()
+    {
+        // The exact user-spec scenario: Spearman buy aimed at an enemy
+        // tile that holds a peasant AND is adjacent to a Blue tower.
+        // The peasant alone wouldn't block (1 < 2), but the tower (2)
+        // does — only the tower coord should appear in Defenders.
+        var red = new Player("Red", new Color(1f, 0f, 0f));
+        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var players = new List<Player> { red, blue };
+
+        // 5x2 grid; Red owns (0,0),(0,1); Blue owns the rest. Target the
+        // (1,0) Blue tile (peasant on it); plant a Blue tower on (2,0) so
+        // it radiates into (1,0). Confirm only the tower flashes.
+        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Color);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(0, 1))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(blue.Color); // peasant
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Tower();          // blue tower
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        session.ClaimVictoryPromptedHighestThreshold[red.Color] = 90;
+        session.ClaimVictoryPromptedHighestThreshold[blue.Color] = 90;
+        var map = new MockHexMapView();
+        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+        {
+            map.TileIndex[kvp.Key] = kvp.Value;
+        }
+        var controller = new GameController(state, session, map, new MockHudView());
+        controller.StartGame();
+
+        Territory redT = state.Territories.First(t => t.Owner == red.Color);
+        state.Treasury.SetGold(redT.Capital!.Value, 50); // afford a Spearman (20)
+        map.SimulateClick(grid.Get(HexCoord.FromOffset(0, 0)));   // select Red
+
+        // BuyingSpearman: enter the mode via session mutation since there's
+        // no dedicated Hud button for spearman (peasants combine up).
+        // Click Buy Peasant and verify mode; then forcibly switch into
+        // BuyingSpearman via the documented mode enum used in other tests.
+        session.Mode = SessionState.ActionMode.BuyingSpearman;
+
+        map.SimulateClick(grid.Get(HexCoord.FromOffset(1, 0))); // click the defended Blue tile
+
+        Assert.Single(map.Rejections);
+        var rejection = map.LastRejection!.Value;
+        Assert.Equal(HexCoord.FromOffset(1, 0), rejection.Target);
+        Assert.Equal(RejectionShape.Spearman, rejection.Shape);
+        Assert.Equal(new[] { HexCoord.FromOffset(2, 0) }, rejection.Defenders);
+    }
+
+    [Fact]
+    public void MoveRejected_OnDefendedTile_FlashesWithDefenders_ShapeMatchesSourceLevel()
+    {
+        // Pick up a Red Spearman, click an enemy hex defended by an
+        // adjacent Blue tower. Rejection shape = Spearman; defenders =
+        // [tower coord].
+        var red = new Player("Red", new Color(1f, 0f, 0f));
+        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var players = new List<Player> { red, blue };
+
+        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Color);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(0, 1))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(0, 1))!.Occupant = new Unit(red.Color, UnitLevel.Spearman);
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Tower(); // Blue tower radiates into (1,0)/(1,1)
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        session.ClaimVictoryPromptedHighestThreshold[red.Color] = 90;
+        session.ClaimVictoryPromptedHighestThreshold[blue.Color] = 90;
+        var map = new MockHexMapView();
+        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+        {
+            map.TileIndex[kvp.Key] = kvp.Value;
+        }
+        var controller = new GameController(state, session, map, new MockHudView());
+        controller.StartGame();
+
+        map.SimulateClick(grid.Get(HexCoord.FromOffset(0, 1))); // pick up spearman
+        Assert.Equal(SessionState.ActionMode.MovingUnit, session.Mode);
+
+        map.SimulateClick(grid.Get(HexCoord.FromOffset(1, 1))); // adjacent Blue tile defended by tower
+
+        Assert.Single(map.Rejections);
+        var rejection = map.LastRejection!.Value;
+        Assert.Equal(HexCoord.FromOffset(1, 1), rejection.Target);
+        Assert.Equal(RejectionShape.Spearman, rejection.Shape);
+        Assert.Equal(new[] { HexCoord.FromOffset(2, 0) }, rejection.Defenders);
+    }
+
+    [Fact]
+    public void BuyRejected_OnNonAdjacentDefendedTile_TreatsAsTooFar_NoDefenders()
+    {
+        // A non-adjacent click — even if that tile happens to have or be
+        // adjacent to a strong defender — should be reported as "too far"
+        // (empty defenders, generic sound) rather than "blocked by
+        // defenders". The defender list shouldn't surface for tiles the
+        // player couldn't reach at all.
+        var red = new Player("Red", new Color(1f, 0f, 0f));
+        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var players = new List<Player> { red, blue };
+
+        // 5x2 grid; Red owns (0,0) + (0,1). A Blue tower sits on (4,0) —
+        // far from Red's territory. Clicking (4,0) is invalid because
+        // it's non-adjacent to Red, not because of defense.
+        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Color);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(0, 1))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(4, 0))!.Occupant = new Tower();
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        session.ClaimVictoryPromptedHighestThreshold[red.Color] = 90;
+        session.ClaimVictoryPromptedHighestThreshold[blue.Color] = 90;
+        var map = new MockHexMapView();
+        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+        {
+            map.TileIndex[kvp.Key] = kvp.Value;
+        }
+        var controller = new GameController(state, session, map, new MockHudView());
+        controller.StartGame();
+
+        Territory redT = state.Territories.First(t => t.Owner == red.Color);
+        state.Treasury.SetGold(redT.Capital!.Value, 50);
+        map.SimulateClick(grid.Get(HexCoord.FromOffset(0, 0)));   // select Red
+        session.Mode = SessionState.ActionMode.BuyingPeasant;
+
+        map.SimulateClick(grid.Get(HexCoord.FromOffset(4, 0))); // too-far + defended
+
+        Assert.Single(map.Rejections);
+        var rejection = map.LastRejection!.Value;
+        Assert.Equal(HexCoord.FromOffset(4, 0), rejection.Target);
+        Assert.Empty(rejection.Defenders);
+    }
+
+    [Fact]
+    public void BuyRejected_OnOffGridWaterCoord_FlashesGenericPeasantShape_KeepsModeAndSelection()
+    {
+        // Off-grid clicks (water, edge of viewport) during placement
+        // mode should behave like far-tile clicks: stay in mode, keep
+        // selection, play generic-rejection sound, flash a peasant ghost
+        // on the off-grid coord. Previously water clicks fell into the
+        // null-tile branch which cleared selection.
+        var g = new TestGame();
+        HexCoord redCapital = g.RedTerritory.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 20);
+        g.Map.SimulateClick(g.Tile(0, 1));
+        g.Hud.ClickBuyPeasant();
+        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+
+        // Pick an off-grid coord (far outside the 5x2 test grid).
+        HexCoord offGrid = new HexCoord(20, 20);
+        g.Map.SimulateOffGridClick(offGrid);
+
+        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+        Assert.NotNull(g.Session.SelectedTerritory);
+        Assert.Single(g.Map.Rejections);
+        var rejection = g.Map.LastRejection!.Value;
+        Assert.Equal(offGrid, rejection.Target);
+        Assert.Equal(RejectionShape.Peasant, rejection.Shape);
+        Assert.Empty(rejection.Defenders);
+    }
+
+    [Fact]
+    public void OffGridClick_OutsidePlacementMode_DeselectsAsToday()
+    {
+        // No placement mode → clicking off-grid still clears selection
+        // (existing UX: a place to "click to deselect"). No rejection
+        // flash since the player wasn't trying to place anything.
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        Assert.NotNull(g.Session.SelectedTerritory);
+
+        g.Map.SimulateOffGridClick(new HexCoord(20, 20));
+
+        Assert.Null(g.Session.SelectedTerritory);
+        Assert.Empty(g.Map.Rejections);
+    }
+
+    [Fact]
+    public void BuildTowerRejected_FlashesGenericTowerShape_NoDefenders()
+    {
+        // Enter BuildingTower mode, click the capital tile (invalid — capital
+        // already occupies it). Should record a Tower-shaped rejection with
+        // no defenders.
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 20);
+        g.Hud.ClickBuildTower();
+        Assert.Empty(g.Map.Rejections);
+
+        g.Map.SimulateClick(g.Tile(0, 1)); // click the capital tile — invalid for tower
+
+        Assert.Single(g.Map.Rejections);
+        var rejection = g.Map.LastRejection!.Value;
+        Assert.Equal(HexCoord.FromOffset(0, 1), rejection.Target);
+        Assert.Equal(RejectionShape.Tower, rejection.Shape);
+        Assert.Empty(rejection.Defenders);
+    }
+
 }

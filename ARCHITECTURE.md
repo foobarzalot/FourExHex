@@ -331,8 +331,11 @@ off it.
 **`IHexMapView`** — everything the controller asks the map to do:
 
 ```csharp
-event Action<HexTile?>? TileClicked;
-event Action<HexTile?>? TileLongClicked;     // rally
+event Action<HexTile?>? TileClicked;          // fires only for in-grid clicks
+event Action<HexTile?>? TileLongClicked;      // rally
+event Action<HexCoord>? OffGridClicked;       // water / map-edge clicks; carries
+                                              // the raw coord so the controller
+                                              // can anchor rejection feedback
 Territory? TerritoryAt(HexCoord coord);
 void ShowMoveTargets(IEnumerable<HexCoord> coords, UnitLevel level);
 void ShowTowerTargets(IEnumerable<HexCoord> coords);
@@ -343,6 +346,10 @@ void CenterOnTerritory(Territory territory);
 void RebuildAfterTerritoryChange();
 void RefreshOccupantVisuals(Color? currentPlayerColor, Treasury treasury);
 void PlayDestructionEffect(HexCoord coord, HexOccupant destroyed);
+
+// Rejection feedback (forbidden-slash on target + animated arrows
+// from each blocking defender; defended-clang or generic-thunk sound).
+void FlashRejection(HexCoord target, RejectionShape shape, IEnumerable<HexCoord> blockingDefenders);
 
 // Audio sinks — forwarded to AudioBus.
 void PlayUnitPlaced(HexCoord coord);
@@ -357,6 +364,28 @@ void PlayGameWon();
 void PlayRally();
 void PlayPlayerDefeated();
 ```
+
+`HexMapView._UnhandledInput` routes a left-click to exactly one of
+the three click events: an in-grid hit fires `TileClicked(tile)`; an
+off-grid coord (water, render-only water rim, past the map) fires
+`OffGridClicked(coord)`; a long-press fires `TileLongClicked` instead
+of either. The split means the controller never receives
+`TileClicked(null)` from real input, so it can give rejection
+feedback anchored to the raw coord on water clicks instead of falling
+into the legacy "click outside grid → deselect" branch.
+
+`FlashRejection` is the single sink for rejected-click feedback. The
+view draws the forbidden-slash overlay (the unit/tower silhouette in
+red, with a black-outlined red circle + diagonal slash on top so the
+"no" symbol stays legible on red tiles), animates a black arrow from
+each blocking defender to the target, and plays either
+`AudioBus.PlayRejectDefended()` or `PlayRejectGeneric()` depending on
+whether the defender set is non-empty. Overlays live in a persistent
+`_rejectionsLayer` that `RefreshOccupantVisuals` does not clear, so
+mid-pulse tweens survive subsequent refreshes; each ghost / arrow
+`QueueFree`s itself on its tween's `Finished` signal. The audio
+assets are `assets/audio/reject_generic.wav` (soft wooden thunk) and
+`assets/audio/reject_defended.wav` (metallic sword-on-shield clang).
 
 `ShowMoveTargets` takes the unit level so the preview can render at
 the correct visual size (peasant=1 ring, spearman=2, knight=3,
@@ -757,6 +786,51 @@ GameController.OnTileClicked  ── wrapped in TrackHandler:
                                        // re-entry — TutorialPreviewCues
                                        // guards with an _applying bool
 ```
+
+### Click → rejection feedback
+
+```
+HexMapView → TileClicked(tile)  OR  OffGridClicked(coord)
+GameController  ── wrapped in TrackHandler:
+  pre = CaptureCurrentSnapshot()
+  └─ body (one of):
+        OnTileClickedBody(tile)  — in-grid click
+          ├─ session.Mode == BuyingX/MovingUnit/BuildingTower
+          ├─ rule check fails (IsValidTarget / IsValidTowerTarget)
+          └─ EmitRejection(level, tile.Coord) → return  // STAY in mode
+        OnOffGridClickedBody(coord)  — water / off-grid click
+          ├─ session.Mode != None
+          └─ EmitRejection(level, coord) → return       // STAY in mode
+                (no mode → SetSelection(null) instead, preserving the
+                 long-standing "click outside to deselect" UX)
+  EmitRejection(level, coord):
+    ├─ targetTerritory = _map.TerritoryAt(coord)
+    ├─ inFrontier = coord is in or neighbors SelectedTerritory.Coords
+    ├─ defenders = (inFrontier && targetTerritory is enemy's)
+    │     ? DefenseRules.BlockingDefenders(coord, level, grid, targetTerritory)
+    │     : []
+    │   // "too far" wins over "defended": a non-adjacent click never
+    │   // reports defenders, even if the far hex happens to be defended.
+    └─ _map.FlashRejection(coord, shape, defenders)
+          ├─ forbidden-slash overlay at target (silhouette + red circle/slash,
+          │   black-outlined, two-pulse fade over ~1.3 s)
+          ├─ for each defender ≠ target: black arrow defender→target
+          │   (grow 0.4 s → hold 0.18 s → fade 0.32 s, then QueueFree)
+          └─ defenders.Any() ? PlayRejectDefended() : PlayRejectGeneric()
+  // TrackHandler: no mutation, no undo push.
+```
+
+`DefenseRules.BlockingDefenders` is the static helper backing the
+defender set: it walks the target tile itself plus every adjacent
+same-territory tile and yields every coord whose `ContributionOf`
+meets or exceeds the attacker level. Mirrors the iteration in
+`Defense(...)` but collects coords instead of taking a max.
+
+Rejected clicks deliberately keep the player in their pending mode
+(buy / move / build-tower), preserve `SelectedTerritory`, keep
+`MoveSource` set, and leave move-target / tower-target / tower-coverage
+previews onscreen — so the next click is just another attempt without
+re-pressing Buy or re-picking up the unit.
 
 ### Long-press → rally
 

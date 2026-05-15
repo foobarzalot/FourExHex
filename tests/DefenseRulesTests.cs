@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Godot;
 using Xunit;
 
@@ -275,5 +276,144 @@ public class DefenseRulesTests
 
         Assert.Equal(2, DefenseRules.Defense(new HexCoord(0, 0), grid, territory));
         Assert.Equal(2, DefenseRules.Defense(new HexCoord(1, 0), grid, territory));
+    }
+
+    // --- BlockingDefenders ----------------------------------------------
+    //
+    // Identifies the specific defender coords whose contribution >= attacker
+    // level, so the view layer can red-flash only those occupants when a
+    // placement/movement is rejected for defense reasons. Mirrors the
+    // iteration in Defense(...) but collects coords instead of taking a max.
+
+    [Fact]
+    public void BlockingDefenders_EmptyEnemyTile_NoDefenders_ReturnsEmpty()
+    {
+        (HexGrid grid, Territory territory) = BuildBlob(
+            Red, null,
+            new HexCoord(0, 0), new HexCoord(1, 0));
+
+        IReadOnlyList<HexCoord> blockers = DefenseRules
+            .BlockingDefenders(new HexCoord(0, 0), UnitLevel.Peasant, grid, territory)
+            .ToList();
+
+        Assert.Empty(blockers);
+    }
+
+    [Fact]
+    public void BlockingDefenders_TargetOccupiedByMatchingTower_IncludesTarget()
+    {
+        // Spearman (2) attacking a tile that itself holds a tower (2): the
+        // tower's own contribution meets the attacker level, so it's the
+        // blocker.
+        (HexGrid grid, Territory territory) = BuildBlob(
+            Red, null,
+            new HexCoord(0, 0), new HexCoord(1, 0));
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Tower();
+
+        IReadOnlyList<HexCoord> blockers = DefenseRules
+            .BlockingDefenders(new HexCoord(0, 0), UnitLevel.Spearman, grid, territory)
+            .ToList();
+
+        Assert.Equal(new[] { new HexCoord(0, 0) }, blockers);
+    }
+
+    [Fact]
+    public void BlockingDefenders_SpearmanVsPeasantPlusAdjacentTower_OnlyTowerBlocks()
+    {
+        // The exact user-spec example. Target hex has a peasant; adjacent
+        // same-territory hex has a tower; attacker is a Spearman (2). The
+        // peasant contributes 1 — below the attacker level, so it does NOT
+        // block. The tower contributes 2 — meets the attacker level, so it
+        // blocks. Only the tower flashes.
+        (HexGrid grid, Territory territory) = BuildBlob(
+            Red, null,
+            new HexCoord(0, 0), new HexCoord(1, 0));
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Unit(Red); // peasant on target
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Tower();   // adjacent tower
+
+        IReadOnlyList<HexCoord> blockers = DefenseRules
+            .BlockingDefenders(new HexCoord(0, 0), UnitLevel.Spearman, grid, territory)
+            .ToList();
+
+        Assert.Equal(new[] { new HexCoord(1, 0) }, blockers);
+    }
+
+    [Fact]
+    public void BlockingDefenders_MultipleQualifyingDefenders_ReturnsAll()
+    {
+        // Peasant (1) attacking; target is between two same-territory
+        // towers, each contributing 2. Both are blockers.
+        var coords = new[]
+        {
+            new HexCoord(0, 0),   // W neighbor
+            new HexCoord(1, 0),   // target
+            new HexCoord(2, -1),  // NE neighbor
+        };
+        (HexGrid grid, Territory territory) = BuildBlob(Red, null, coords);
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Tower();
+        grid.Get(new HexCoord(2, -1))!.Occupant = new Tower();
+
+        IReadOnlyList<HexCoord> blockers = DefenseRules
+            .BlockingDefenders(new HexCoord(1, 0), UnitLevel.Peasant, grid, territory)
+            .ToList();
+
+        Assert.Equal(2, blockers.Count);
+        Assert.Contains(new HexCoord(0, 0), blockers);
+        Assert.Contains(new HexCoord(2, -1), blockers);
+    }
+
+    [Fact]
+    public void BlockingDefenders_DefenderInDifferentTerritory_Ignored()
+    {
+        // Red tile at (0,0). Blue tower at (1,0) (adjacent, enemy). When
+        // computing blockers FOR Red's territory at (0,0), the Blue tower
+        // does not contribute — different territory.
+        var grid = new HexGrid();
+        grid.Add(new HexTile(new HexCoord(0, 0), Red));
+        grid.Add(new HexTile(new HexCoord(1, 0), Blue));
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Tower();
+
+        var redTerritory = new Territory(Red, new[] { new HexCoord(0, 0) }, capital: null);
+
+        IReadOnlyList<HexCoord> blockers = DefenseRules
+            .BlockingDefenders(new HexCoord(0, 0), UnitLevel.Spearman, grid, redTerritory)
+            .ToList();
+
+        Assert.Empty(blockers);
+    }
+
+    [Fact]
+    public void BlockingDefenders_DefenderBelowAttackerLevel_Excluded()
+    {
+        // Adjacent peasant contributes 1; Spearman attacker (2) overpowers
+        // it — peasant is NOT a blocker.
+        (HexGrid grid, Territory territory) = BuildBlob(
+            Red, null,
+            new HexCoord(0, 0), new HexCoord(1, 0));
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red);
+
+        IReadOnlyList<HexCoord> blockers = DefenseRules
+            .BlockingDefenders(new HexCoord(0, 0), UnitLevel.Spearman, grid, territory)
+            .ToList();
+
+        Assert.Empty(blockers);
+    }
+
+    [Fact]
+    public void BlockingDefenders_TargetCapitalVsPeasantAttacker_Blocks()
+    {
+        // Capital contributes 1. Peasant attacker (level 1) needs strictly
+        // greater than the defense, so 1 >= 1 means capital blocks. The
+        // capital itself flashes.
+        (HexGrid grid, Territory territory) = BuildBlob(
+            Red, new HexCoord(0, 0),
+            new HexCoord(0, 0), new HexCoord(1, 0));
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Capital();
+
+        IReadOnlyList<HexCoord> blockers = DefenseRules
+            .BlockingDefenders(new HexCoord(0, 0), UnitLevel.Peasant, grid, territory)
+            .ToList();
+
+        Assert.Equal(new[] { new HexCoord(0, 0) }, blockers);
     }
 }

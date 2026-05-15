@@ -20,6 +20,7 @@ public sealed class HeadlessHexMapView : IHexMapView
 #pragma warning disable CS0067 // Event never used
     public event Action<HexTile?>? TileClicked;
     public event Action<HexTile?>? TileLongClicked;
+    public event Action<HexCoord>? OffGridClicked;
 #pragma warning restore CS0067
 
     private readonly GameState _state;
@@ -60,6 +61,7 @@ public sealed class HeadlessHexMapView : IHexMapView
     public void PlayGameWon() { }
     public void PlayRally() { }
     public void PlayPlayerDefeated() { }
+    public void FlashRejection(HexCoord target, RejectionShape shape, IEnumerable<HexCoord> blockingDefenders) { }
 }
 
 public sealed class HeadlessHudView : IHudView

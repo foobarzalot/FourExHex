@@ -32,6 +32,15 @@ public partial class HexMapView : Node2D, IHexMapView
     public event Action<HexTile?>? TileLongClicked;
 
     /// <summary>
+    /// Raised on a left-click whose coord is OUTSIDE the land grid
+    /// (water, render-only water rim, or past the map). Replaces a
+    /// would-be <see cref="TileClicked"/>(null) for that gesture so the
+    /// controller can give rejection feedback anchored to the coord
+    /// rather than treating it as "click outside" with no information.
+    /// </summary>
+    public event Action<HexCoord>? OffGridClicked;
+
+    /// <summary>
     /// Raised on the same left-click as <see cref="TileClicked"/>, but with
     /// the raw <see cref="HexCoord"/> under the cursor — including water /
     /// off-grid coords that have no <see cref="HexTile"/>. Editor-only:
@@ -144,6 +153,7 @@ public partial class HexMapView : Node2D, IHexMapView
     private Node2D? _towerCoverageLayer;
     private Node2D? _bordersLayer;
     private Node2D? _capitalsLayer;
+    private Node2D? _rejectionsLayer;
     private Node2D? _treesLayer;
     private Node2D? _gravesLayer;
     private Node2D? _unitsLayer;
@@ -421,6 +431,11 @@ public partial class HexMapView : Node2D, IHexMapView
         AddChild(_towerTargetsLayer);
         _highlightLayer = new Node2D { Name = "HighlightLayer" };
         AddChild(_highlightLayer);
+        // Rejection overlays sit on top of everything so a red flash is
+        // unambiguous. Persistent — never cleared by RefreshOccupantVisuals
+        // — so an in-flight tween doesn't get QueueFree'd mid-pulse.
+        _rejectionsLayer = new Node2D { Name = "RejectionsLayer" };
+        AddChild(_rejectionsLayer);
 
         DrawTerritoryBorders();
         // Occupant visuals are drawn by the controller via
@@ -1041,6 +1056,253 @@ public partial class HexMapView : Node2D, IHexMapView
         AudioBus.Instance.PlayPlayerDefeated();
     }
 
+    public void FlashRejection(HexCoord target, RejectionShape shape, IEnumerable<HexCoord> blockingDefenders)
+    {
+        HexCoord[] defenders = blockingDefenders is HexCoord[] arr
+            ? arr
+            : System.Linq.Enumerable.ToArray(blockingDefenders);
+
+        SpawnRejectionPulse(target, BuildShapeForRejection(shape));
+        foreach (HexCoord coord in defenders)
+        {
+            if (coord == target) continue; // zero-length arrow; the target flash covers it
+            SpawnDefenderArrow(coord, target);
+        }
+
+        if (defenders.Length > 0)
+        {
+            AudioBus.Instance.PlayRejectDefended();
+        }
+        else
+        {
+            AudioBus.Instance.PlayRejectGeneric();
+        }
+    }
+
+    /// <summary>
+    /// Target overlay: the silhouette of what the player tried to place
+    /// (in red), with a black-outlined red "forbidden" circle + slash
+    /// drawn over it. The outline guarantees visibility on red tiles
+    /// where a pure-red ghost would disappear.
+    /// </summary>
+    private Node2D BuildShapeForRejection(RejectionShape shape)
+    {
+        var root = new Node2D();
+
+        // Silhouette underneath — keeps the "what was being placed" cue.
+        if (shape == RejectionShape.Tower)
+        {
+            root.AddChild(BuildRedTowerGhost());
+        }
+        else
+        {
+            UnitLevel level = shape switch
+            {
+                RejectionShape.Peasant => UnitLevel.Peasant,
+                RejectionShape.Spearman => UnitLevel.Spearman,
+                RejectionShape.Knight => UnitLevel.Knight,
+                RejectionShape.Baron => UnitLevel.Baron,
+                _ => UnitLevel.Peasant,
+            };
+            root.AddChild(BuildRedUnitGhost(level));
+        }
+
+        root.AddChild(BuildForbiddenSlash());
+        return root;
+    }
+
+    private Node2D BuildRedUnitGhost(UnitLevel level)
+    {
+        Color red = new Color(1f, 0.15f, 0.15f, 1f);
+        var node = new Node2D();
+        int rings = level switch
+        {
+            UnitLevel.Peasant => 1,
+            UnitLevel.Spearman => 2,
+            UnitLevel.Knight => 3,
+            UnitLevel.Baron => 3,
+            _ => 1,
+        };
+        for (int i = 0; i < rings; i++)
+        {
+            node.AddChild(CreateCircleOutline(HexSize * UnitRingRadii[i], red, UnitRingWidth));
+        }
+        if (level == UnitLevel.Baron)
+        {
+            node.AddChild(CreateFilledDisc(HexSize * UnitDotRadius, red));
+        }
+        return node;
+    }
+
+    private Node2D BuildRedTowerGhost()
+    {
+        Color red = new Color(1f, 0.15f, 0.15f, 1f);
+        Vector2[] verts = TowerShapeVertices();
+        var body = new Polygon2D
+        {
+            Color = red,
+            Polygon = verts,
+        };
+        body.AddChild(BuildClosedOutline(verts, 2f, new Color(0f, 0f, 0f, 1f)));
+        return body;
+    }
+
+    /// <summary>
+    /// International "no" sign: a red circle with a diagonal slash, both
+    /// wrapped in black outlines so the symbol stays legible on red
+    /// territory tiles where a pure-red glyph would vanish.
+    /// </summary>
+    private Node2D BuildForbiddenSlash()
+    {
+        Color red = new Color(0.95f, 0.1f, 0.1f, 1f);
+        Color black = new Color(0f, 0f, 0f, 1f);
+        const float ringWidth = 5f;
+        const float blackPad = 3f; // how much wider the black underline is
+        float radius = HexSize * 0.6f;
+
+        var node = new Node2D();
+
+        // Ring: black thicker underline + red on top.
+        node.AddChild(CreateCircleOutline(radius, black, ringWidth + blackPad));
+        node.AddChild(CreateCircleOutline(radius, red, ringWidth));
+
+        // Diagonal slash from upper-left to lower-right (\ on screen — Y is
+        // down in Godot 2D). Reach slightly outside the ring so it visually
+        // crosses the boundary.
+        float reach = radius * 0.74f; // sqrt(2)/2 ≈ 0.707 lands on the ring
+        Vector2 a = new Vector2(-reach, -reach);
+        Vector2 b = new Vector2(reach, reach);
+
+        var slashBlack = new Line2D
+        {
+            Points = new[] { a, b },
+            DefaultColor = black,
+            Width = ringWidth + blackPad,
+            BeginCapMode = Line2D.LineCapMode.Round,
+            EndCapMode = Line2D.LineCapMode.Round,
+        };
+        var slashRed = new Line2D
+        {
+            Points = new[] { a, b },
+            DefaultColor = red,
+            Width = ringWidth,
+            BeginCapMode = Line2D.LineCapMode.Round,
+            EndCapMode = Line2D.LineCapMode.Round,
+        };
+        node.AddChild(slashBlack);
+        node.AddChild(slashRed);
+
+        return node;
+    }
+
+    /// <summary>
+    /// Black arrow that grows from the defender's tile to the target,
+    /// holds briefly, then fades out. Communicates causality — "this
+    /// specific defender is what stopped you" — independently of any
+    /// color contrast on the underlying tiles.
+    /// </summary>
+    private void SpawnDefenderArrow(HexCoord defenderCoord, HexCoord targetCoord)
+    {
+        if (_rejectionsLayer == null) return;
+
+        Vector2 defenderPos = FirstHexCenterOffset + defenderCoord.ToPixel(HexSize);
+        Vector2 targetPos = FirstHexCenterOffset + targetCoord.ToPixel(HexSize);
+        if (defenderPos == targetPos) return;
+
+        Color black = new Color(0f, 0f, 0f, 1f);
+        const float shaftWidth = 6f;
+        const float headSize = 13f;
+        const double growSeconds = 0.40;
+        const double holdSeconds = 0.18;
+        const double fadeSeconds = 0.32;
+
+        var line = new Line2D
+        {
+            Points = new[] { defenderPos, defenderPos },
+            DefaultColor = black,
+            Width = shaftWidth,
+            BeginCapMode = Line2D.LineCapMode.Round,
+            EndCapMode = Line2D.LineCapMode.Round,
+        };
+        _rejectionsLayer.AddChild(line);
+
+        var head = new Polygon2D
+        {
+            Color = black,
+            Polygon = ArrowheadVertices(headSize),
+            Position = defenderPos,
+            Rotation = (targetPos - defenderPos).Angle(),
+            Visible = false,
+        };
+        _rejectionsLayer.AddChild(head);
+
+        Tween tween = line.CreateTween();
+        tween.TweenMethod(
+            Callable.From<float>(t =>
+            {
+                Vector2 currentEnd = defenderPos.Lerp(targetPos, t);
+                line.Points = new[] { defenderPos, currentEnd };
+                head.Position = currentEnd;
+                if (t > 0.05f) head.Visible = true;
+            }),
+            0f, 1f, growSeconds)
+            .SetTrans(Tween.TransitionType.Quad).SetEase(Tween.EaseType.Out);
+        tween.TweenInterval(holdSeconds);
+        tween.TweenProperty(line, "modulate", new Color(1f, 1f, 1f, 0f), fadeSeconds)
+            .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.Out);
+        tween.Parallel().TweenProperty(head, "modulate", new Color(1f, 1f, 1f, 0f), fadeSeconds)
+            .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.Out);
+        tween.Finished += () =>
+        {
+            line.QueueFree();
+            head.QueueFree();
+        };
+    }
+
+    private static Vector2[] ArrowheadVertices(float size)
+    {
+        // Tip at origin, body trailing toward -X. Position the head at
+        // the line's moving endpoint so the tip lands on that endpoint.
+        return new[]
+        {
+            new Vector2(0f, 0f),
+            new Vector2(-size * 1.6f, -size * 0.85f),
+            new Vector2(-size * 1.0f, 0f),
+            new Vector2(-size * 1.6f, size * 0.85f),
+        };
+    }
+
+    /// <summary>
+    /// Drop <paramref name="ghost"/> at <paramref name="coord"/>'s center
+    /// in the persistent <see cref="_rejectionsLayer"/> and run a two-pulse
+    /// fade tween. QueueFree on completion so we don't accumulate stale
+    /// nodes when the player rapid-clicks invalid hexes.
+    /// </summary>
+    private void SpawnRejectionPulse(HexCoord coord, Node2D ghost)
+    {
+        if (_rejectionsLayer == null) return;
+        ghost.Position = FirstHexCenterOffset + coord.ToPixel(HexSize);
+        ghost.Modulate = new Color(1f, 1f, 1f, 0.9f);
+        _rejectionsLayer.AddChild(ghost);
+
+        // Two pulses over ~1.3s, with a slow final fade so the ghost
+        // lingers long enough to read at a glance:
+        //   0.30s   dip to 0.3 alpha
+        //   0.20s   rise back to 0.95
+        //   0.30s   dip to 0.3 alpha
+        //   0.50s   slow fade to fully transparent
+        Tween tween = ghost.CreateTween();
+        tween.TweenProperty(ghost, "modulate", new Color(1f, 1f, 1f, 0.3f), 0.30)
+            .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.InOut);
+        tween.TweenProperty(ghost, "modulate", new Color(1f, 1f, 1f, 0.95f), 0.20)
+            .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.InOut);
+        tween.TweenProperty(ghost, "modulate", new Color(1f, 1f, 1f, 0.3f), 0.30)
+            .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.InOut);
+        tween.TweenProperty(ghost, "modulate", new Color(1f, 1f, 1f, 0f), 0.50)
+            .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.Out);
+        tween.Finished += ghost.QueueFree;
+    }
+
     private void SpawnDestructionFlash(Vector2 center)
     {
         Vector2[] verts = HexVertices();
@@ -1613,9 +1875,13 @@ public partial class HexMapView : Node2D, IHexMapView
         {
             TileLongClicked?.Invoke(hit);
         }
-        else
+        else if (hit != null)
         {
             TileClicked?.Invoke(hit);
+        }
+        else
+        {
+            OffGridClicked?.Invoke(coord);
         }
     }
 

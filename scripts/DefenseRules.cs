@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 
 /// <summary>
@@ -50,4 +51,38 @@ public static class DefenseRules
         Capital => 1,
         _ => 0,
     };
+
+    /// <summary>
+    /// Coords of every occupant in <paramref name="targetTerritory"/> whose
+    /// contribution is at least <paramref name="attackerLevel"/> — i.e. the
+    /// defenders that actually block the would-be attacker. Considers the
+    /// target tile's own occupant plus every adjacent same-territory tile.
+    /// Returns empty when nothing blocks (open path, target not in a
+    /// defending territory, etc.). Used by the view layer to red-flash
+    /// only the relevant defenders on a rejected placement/movement.
+    /// </summary>
+    public static IEnumerable<HexCoord> BlockingDefenders(
+        HexCoord target, UnitLevel attackerLevel, HexGrid grid, Territory targetTerritory)
+    {
+        int threshold = (int)attackerLevel;
+
+        HexTile? targetTile = grid.Get(target);
+        if (targetTile != null
+            && targetTerritory.Coords.Contains(target)
+            && ContributionOf(targetTile.Occupant) >= threshold)
+        {
+            yield return target;
+        }
+
+        foreach (HexCoord neighbor in target.Neighbors())
+        {
+            if (!targetTerritory.Coords.Contains(neighbor)) continue;
+            HexTile? neighborTile = grid.Get(neighbor);
+            if (neighborTile == null) continue;
+            if (ContributionOf(neighborTile.Occupant) >= threshold)
+            {
+                yield return neighbor;
+            }
+        }
+    }
 }

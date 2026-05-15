@@ -15,6 +15,7 @@ public class MockHexMapView : IHexMapView
 {
     public event Action<HexTile?>? TileClicked;
     public event Action<HexTile?>? TileLongClicked;
+    public event Action<HexCoord>? OffGridClicked;
 
     // Index wired up by the test fixture so TerritoryAt returns the right
     // territory for each coord — mirrors what the real HexMapView caches
@@ -119,9 +120,26 @@ public class MockHexMapView : IHexMapView
     public int PlayerDefeatedSoundCount { get; private set; }
     public void PlayPlayerDefeated() => PlayerDefeatedSoundCount++;
 
+    /// <summary>
+    /// Records every rejection feedback event the controller raised. Each
+    /// entry holds the target hex, the shape the player was trying to
+    /// place, and the coords of defenders (empty for non-defense rejections).
+    /// Tests assert against the last entry to verify the controller routed
+    /// the right shape + defender set for each rejection site.
+    /// </summary>
+    public List<(HexCoord Target, RejectionShape Shape, HexCoord[] Defenders)> Rejections { get; } = new();
+    public (HexCoord Target, RejectionShape Shape, HexCoord[] Defenders)? LastRejection =>
+        Rejections.Count == 0 ? null : Rejections[Rejections.Count - 1];
+    public void FlashRejection(HexCoord target, RejectionShape shape, IEnumerable<HexCoord> blockingDefenders) =>
+        Rejections.Add((target, shape, blockingDefenders.ToArray()));
+
     /// <summary>Raise the TileClicked event, as if the user clicked.</summary>
     public void SimulateClick(HexTile? tile) => TileClicked?.Invoke(tile);
 
     /// <summary>Raise the TileLongClicked event, as if the user long-pressed.</summary>
     public void SimulateLongClick(HexTile? tile) => TileLongClicked?.Invoke(tile);
+
+    /// <summary>Raise the OffGridClicked event, as if the user clicked a water or
+    /// off-grid coord.</summary>
+    public void SimulateOffGridClick(HexCoord coord) => OffGridClicked?.Invoke(coord);
 }
