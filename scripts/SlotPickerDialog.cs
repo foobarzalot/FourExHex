@@ -72,7 +72,13 @@ public partial class SlotPickerDialog : Window
         {
             Title = errorTitle,
             OkButtonText = "OK",
+            // Always — Main's in-game Load Game flow opens this while
+            // GetTree().Paused is true; default Inherit would freeze
+            // the dialog. Safe for the unpaused main-menu / map-editor
+            // hosts (Always is a superset of their normal behavior).
+            ProcessMode = ProcessModeEnum.Always,
         };
+        ProcessMode = ProcessModeEnum.Always;
     }
 
     /// <summary>

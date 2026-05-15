@@ -27,11 +27,9 @@ public partial class MainMenuScene : Control
 
     private Control? _landingPanel;
     private Control? _playConfigPanel;
-    private Control? _settingsPanel;
+    private SettingsPanel? _settingsPanel;
     private Button? _landingPlayButton;
     private Button? _landingLoadButton;
-    private CheckBox? _sfxCheckBox;
-    private CheckBox? _vfxCheckBox;
 
     private LineEdit? _seedField;
     private Button? _startButton;
@@ -85,7 +83,7 @@ public partial class MainMenuScene : Control
         _playConfigPanel = BuildPlayConfigPanel();
         AddChild(_playConfigPanel);
 
-        _settingsPanel = BuildSettingsPanel();
+        _settingsPanel = new SettingsPanel();
         AddChild(_settingsPanel);
 
         BuildLoadDialog();
@@ -412,82 +410,10 @@ public partial class MainMenuScene : Control
         _startButton.Disabled = seedEmpty && !mapSelected;
     }
 
-    private Control BuildSettingsPanel()
-    {
-        Vector2 viewport = GetViewportRect().Size;
-        const float panelW = 520f;
-        const float panelH = 360f;
-        var panel = new Panel
-        {
-            Position = new Vector2((viewport.X - panelW) * 0.5f, (viewport.Y - panelH) * 0.5f),
-            Size = new Vector2(panelW, panelH),
-        };
-
-        var title = new Label
-        {
-            Text = "Settings",
-            HorizontalAlignment = HorizontalAlignment.Center,
-            Position = new Vector2(0, 32),
-            Size = new Vector2(panelW, 48),
-        };
-        title.AddThemeFontSizeOverride("font_size", 36);
-        panel.AddChild(title);
-
-        const float rowInset = 80f;
-        const float rowStartY = 120f;
-        const float rowHeight = 52f;
-
-        _sfxCheckBox = new CheckBox
-        {
-            Text = "Sound Effects",
-            Position = new Vector2(rowInset, rowStartY),
-            Size = new Vector2(panelW - rowInset * 2f, rowHeight),
-            ButtonPressed = UserSettings.SfxEnabled,
-        };
-        _sfxCheckBox.AddThemeFontSizeOverride("font_size", 22);
-        _sfxCheckBox.Toggled += OnSfxToggled;
-        AudioBus.AttachClick(_sfxCheckBox);
-        panel.AddChild(_sfxCheckBox);
-
-        _vfxCheckBox = new CheckBox
-        {
-            Text = "Visual Effects",
-            Position = new Vector2(rowInset, rowStartY + rowHeight),
-            Size = new Vector2(panelW - rowInset * 2f, rowHeight),
-            ButtonPressed = UserSettings.VfxEnabled,
-        };
-        _vfxCheckBox.AddThemeFontSizeOverride("font_size", 22);
-        _vfxCheckBox.Toggled += OnVfxToggled;
-        AudioBus.AttachClick(_vfxCheckBox);
-        panel.AddChild(_vfxCheckBox);
-
-        const float backButtonH = 52f;
-        var backButton = new Button { Text = "Back" };
-        backButton.AddThemeFontSizeOverride("font_size", 24);
-        backButton.Position = new Vector2(rowInset, panelH - backButtonH - 36f);
-        backButton.Size = new Vector2(panelW - rowInset * 2f, backButtonH);
-        backButton.Pressed += OnSettingsBackPressed;
-        AudioBus.AttachClick(backButton);
-        panel.AddChild(backButton);
-
-        return panel;
-    }
-
-    private void OnSfxToggled(bool pressed)
-    {
-        UserSettings.SfxEnabled = pressed;
-    }
-
-    private void OnVfxToggled(bool pressed)
-    {
-        UserSettings.VfxEnabled = pressed;
-    }
-
     private void ShowLanding()
     {
         if (_landingPanel != null) _landingPanel.Visible = true;
         if (_playConfigPanel != null) _playConfigPanel.Visible = false;
-        if (_settingsPanel != null) _settingsPanel.Visible = false;
         // Re-check Load Game enabled state on every return to landing
         // so a save that landed in the meantime would unblock the button.
         if (_landingLoadButton != null)
@@ -500,14 +426,6 @@ public partial class MainMenuScene : Control
     {
         if (_landingPanel != null) _landingPanel.Visible = false;
         if (_playConfigPanel != null) _playConfigPanel.Visible = true;
-        if (_settingsPanel != null) _settingsPanel.Visible = false;
-    }
-
-    private void ShowSettings()
-    {
-        if (_landingPanel != null) _landingPanel.Visible = false;
-        if (_playConfigPanel != null) _playConfigPanel.Visible = false;
-        if (_settingsPanel != null) _settingsPanel.Visible = true;
     }
 
     private void OnPlayPressed()
@@ -522,12 +440,9 @@ public partial class MainMenuScene : Control
 
     private void OnSettingsPressed()
     {
-        ShowSettings();
-    }
-
-    private void OnSettingsBackPressed()
-    {
-        ShowLanding();
+        // Settings is a modal layered over the landing page now — leaves
+        // the landing buttons visible underneath the backdrop.
+        _settingsPanel?.Open();
     }
 
     private void OnTutorialBuilderPressed()
@@ -645,13 +560,15 @@ public partial class MainMenuScene : Control
     {
         if (@event is not InputEventKey keyEvent || !keyEvent.Pressed) return;
 
+        // Settings modal is a CanvasLayer with its own input handler —
+        // when it's open, it consumes Escape itself, so any other key
+        // that bubbles up here while it's open is meant to be ignored
+        // (the player shouldn't trigger landing shortcuts under the
+        // backdrop).
+        if (_settingsPanel != null && _settingsPanel.IsOpen) return;
+
         // Per-panel input dispatch: each panel only sees the keys that
         // make sense while it's the visible one.
-        if (_settingsPanel != null && _settingsPanel.Visible)
-        {
-            HandleSettingsKey(keyEvent);
-            return;
-        }
         if (_playConfigPanel != null && _playConfigPanel.Visible)
         {
             HandlePlayConfigKey(keyEvent);
@@ -661,14 +578,6 @@ public partial class MainMenuScene : Control
         {
             HandleLandingKey(keyEvent);
         }
-    }
-
-    private void HandleSettingsKey(InputEventKey keyEvent)
-    {
-        if (keyEvent.Echo) return;
-        if (keyEvent.Keycode != Key.Escape) return;
-        OnSettingsBackPressed();
-        GetViewport()?.SetInputAsHandled();
     }
 
     private void HandlePlayConfigKey(InputEventKey keyEvent)

@@ -26,6 +26,21 @@ public partial class Main : Node2D
     private AcceptDialog? _saveDialog;
     private LineEdit? _saveDialogLineEdit;
     private AcceptDialog? _saveErrorDialog;
+    private SlotPickerDialog? _loadDialog;
+    // True between "user picked a slot" and the deferred scene swap —
+    // signals OnLoadDialogClosedDuringPause to skip re-showing the
+    // pause menu because the whole scene is about to be torn down.
+    private bool _loadDialogPicked;
+
+    // Pause coordination. _isPaused tracks our own GetTree().Paused
+    // toggle so submenu transitions (save dialog, settings panel) can
+    // stay paused across an EscMenu hide-and-reshow without us
+    // misinterpreting the close as "user wants to unpause." _escMenu
+    // and _settingsPanel are only constructed in non-diagnostic mode —
+    // FOUREXHEX_6AI runs headless with no HUD to raise EscRequested.
+    private bool _isPaused;
+    private EscMenu _escMenu = null!;
+    private SettingsPanel _settingsPanel = null!;
 
     public override void _Ready()
     {
@@ -171,16 +186,23 @@ public partial class Main : Node2D
             visibleHud.NewGameClicked += RestartCurrentGame;
             visibleHud.MainMenuClicked += AbandonAndReturnToMenu;
 
-            // ESC and the End Game HUD button both raise EscRequested.
+            // ESC and the Pause HUD button both raise EscRequested.
             // The pause modal lives at the scene root so its options
-            // can reach the controller / scene tree directly.
-            var escMenu = new EscMenu();
-            AddChild(escMenu);
-            visibleHud.EscRequested += () => escMenu.Show("Pause", new[]
-            {
-                new EscMenu.Option("Resume", () => { }),
-                new EscMenu.Option("Exit Game", AbandonAndReturnToMenu),
-            });
+            // can reach the controller / scene tree directly, and the
+            // settings panel sits alongside it so the pause menu's
+            // Settings entry can hand off to a real component.
+            _escMenu = new EscMenu();
+            AddChild(_escMenu);
+            // Escape-key dismissal of the pause menu unpauses; button
+            // clicks manage pause state themselves (Resume / Exit
+            // unpause explicitly, Save / Settings stay paused while a
+            // sub-screen takes over).
+            _escMenu.EscapeClosed += ExitPause;
+
+            _settingsPanel = new SettingsPanel();
+            AddChild(_settingsPanel);
+
+            visibleHud.EscRequested += EnterPause;
 
             map = visibleMap;
             hud = visibleHud;
@@ -238,11 +260,10 @@ public partial class Main : Node2D
         if (!diagnosticMode)
         {
             BuildSaveDialog();
+            BuildLoadDialog();
             _controller.HumanTurnStarted += OnHumanTurnStartedAutosave;
-            if (visibleHud != null)
-            {
-                visibleHud.SaveGameClicked += OpenSaveDialog;
-            }
+            // Save / Load are invoked from the pause-menu callbacks
+            // now — no standalone HUD buttons to wire up.
         }
 
         // Resume only on actual in-progress loads. Starting maps need a
@@ -353,6 +374,10 @@ public partial class Main : Node2D
             OkButtonText = "Save",
             // Allow the user to dismiss with the OS close button.
             Exclusive = false,
+            // Always — Save Game is reached from the pause menu where
+            // GetTree().Paused is true, so the default Inherit would
+            // freeze the dialog. Always works in both states.
+            ProcessMode = ProcessModeEnum.Always,
         };
 
         // AcceptDialog's built-in DialogText label and any added child
@@ -379,6 +404,7 @@ public partial class Main : Node2D
         {
             Title = "Save failed",
             OkButtonText = "OK",
+            ProcessMode = ProcessModeEnum.Always,
         };
         AddChild(_saveErrorDialog);
     }
@@ -426,4 +452,163 @@ public partial class Main : Node2D
         _saveErrorDialog.PopupCentered();
     }
 
+    // --- Pause coordinator -----------------------------------------------
+    //
+    // EnterPause is the single entry point for Pause: both the HUD's
+    // Pause button and Escape (when no buy/move action is pending)
+    // route here via visibleHud.EscRequested. GetTree().Paused = true
+    // halts SceneTreeTimer-based AI pacing — the EscMenu and
+    // SettingsPanel both set ProcessMode.WhenPaused so they stay
+    // interactive while the rest of the tree is frozen.
+    //
+    // Save Game and Settings act as sub-screens of pause: they close
+    // the EscMenu (which calls Hide() before invoking the option
+    // callback) but leave _isPaused true, then re-show the pause menu
+    // when the sub-screen closes. Resume and Exit Game explicitly call
+    // ExitPause so the tree unpauses cleanly. The EscMenu.EscapeClosed
+    // hook covers the "user pressed Escape on the pause menu" path.
+
+    private void EnterPause()
+    {
+        if (_isPaused) return;
+        _isPaused = true;
+        GetTree().Paused = true;
+        ShowPauseMenu();
+    }
+
+    private void ExitPause()
+    {
+        if (!_isPaused) return;
+        _isPaused = false;
+        GetTree().Paused = false;
+    }
+
+    private void ShowPauseMenu()
+    {
+        _escMenu.Show("Paused", new[]
+        {
+            new EscMenu.Option("Resume", ExitPause),
+            new EscMenu.Option("Save Game", OpenSaveDialogFromPause),
+            new EscMenu.Option("Load Game", OpenLoadDialogFromPause),
+            new EscMenu.Option("Settings", OpenSettingsFromPause),
+            new EscMenu.Option("Exit Game", ExitGameFromPause),
+        });
+    }
+
+    private void OpenSaveDialogFromPause()
+    {
+        if (_saveDialog == null)
+        {
+            // No dialog available (shouldn't happen post-BuildSaveDialog).
+            // Re-show the pause menu so the user isn't stranded with no UI.
+            ShowPauseMenu();
+            return;
+        }
+        // Both Confirmed and Canceled bring the user back to the pause
+        // menu. Existing OnSaveDialogConfirmed runs the actual save via
+        // its own (already-wired) Confirmed subscription from
+        // BuildSaveDialog — we just chain a return-to-pause hop.
+        _saveDialog.Confirmed += OnSaveDialogClosedDuringPause;
+        _saveDialog.Canceled += OnSaveDialogClosedDuringPause;
+        OpenSaveDialog();
+    }
+
+    private void OnSaveDialogClosedDuringPause()
+    {
+        if (_saveDialog != null)
+        {
+            _saveDialog.Confirmed -= OnSaveDialogClosedDuringPause;
+            _saveDialog.Canceled -= OnSaveDialogClosedDuringPause;
+        }
+        ShowPauseMenu();
+    }
+
+    private void OpenLoadDialogFromPause()
+    {
+        if (_loadDialog == null)
+        {
+            ShowPauseMenu();
+            return;
+        }
+        _loadDialogPicked = false;
+        // VisibilityChanged fires both on show and on hide. The
+        // handler filters to the hide transition, then re-shows the
+        // pause menu unless a slot was picked (in which case the
+        // scene swap takes over).
+        _loadDialog.VisibilityChanged += OnLoadDialogClosedDuringPause;
+        _loadDialog.ShowSlots(
+            _saveStore.ListSlots(),
+            "No save files found.",
+            info => info.IsAutosave
+                ? $"[Autosave] turn {info.TurnNumber} — {SlotPickerDialog.FormatTimestamp(info.SavedAtUnix)}"
+                : $"{info.SlotName} — turn {info.TurnNumber} — {SlotPickerDialog.FormatTimestamp(info.SavedAtUnix)}",
+            OnLoadSlotPressedFromPause);
+    }
+
+    private void OnLoadDialogClosedDuringPause()
+    {
+        if (_loadDialog == null) return;
+        // VisibilityChanged fires on both show and hide; only react to
+        // the close transition.
+        if (_loadDialog.Visible) return;
+        _loadDialog.VisibilityChanged -= OnLoadDialogClosedDuringPause;
+        if (_loadDialogPicked) return;
+        ShowPauseMenu();
+    }
+
+    private void OnLoadSlotPressedFromPause(string slotName)
+    {
+        try
+        {
+            LoadedSave loaded = _saveStore.LoadSlot(slotName);
+            LoadRequest.Pending = loaded;
+            // Mirror the saved roster into GameSettings so a subsequent
+            // Play Again preserves kinds — same pattern the main menu's
+            // load uses.
+            for (int i = 0; i < loaded.Players.Count && i < GameSettings.PlayerKinds.Length; i++)
+            {
+                GameSettings.PlayerKinds[i] = loaded.Players[i].Kind;
+            }
+            _loadDialogPicked = true;
+            // Drop any in-flight AI step so a stale SceneTreeTimer can't
+            // fire against disposed nodes after the scene swap (same
+            // rationale as AbandonAndReturnToMenu), then unpause before
+            // the swap since GetTree().Paused persists across scenes.
+            _controller?.AbandonGame();
+            ExitPause();
+            GetTree().ChangeSceneToFile("res://scenes/main.tscn");
+        }
+        catch (System.Exception ex)
+        {
+            _loadDialog?.ShowError($"Could not load '{slotName}': {ex.Message}");
+            // Picker stays open; user can retry or close to return to
+            // the pause menu via OnLoadDialogClosedDuringPause.
+        }
+    }
+
+    private void BuildLoadDialog()
+    {
+        _loadDialog = new SlotPickerDialog("Load Game", "Load failed");
+        _loadDialog.Attach(this);
+    }
+
+    private void OpenSettingsFromPause()
+    {
+        _settingsPanel.Closed += OnSettingsClosedDuringPause;
+        _settingsPanel.Open();
+    }
+
+    private void OnSettingsClosedDuringPause()
+    {
+        _settingsPanel.Closed -= OnSettingsClosedDuringPause;
+        ShowPauseMenu();
+    }
+
+    private void ExitGameFromPause()
+    {
+        // Unpause before the scene swap — GetTree().Paused is
+        // process-wide, so leaving it true would freeze the next scene.
+        ExitPause();
+        AbandonAndReturnToMenu();
+    }
 }

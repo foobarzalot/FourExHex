@@ -22,7 +22,6 @@ public interface IHudView
     event Action? NextUnitClicked;
     event Action? PreviousUnitClicked;
     event Action? CancelActionPressed;
-    event Action? SaveGameClicked;
     /// <summary>
     /// Continue button on the defeat overlay. Dismisses the overlay
     /// and resumes play (paused AI loop picks up where it left off).

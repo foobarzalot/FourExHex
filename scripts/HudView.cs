@@ -27,7 +27,6 @@ public partial class HudView : CanvasLayer, IHudView
     public event Action? PreviousUnitClicked;
     public event Action? CancelActionPressed;
     public event Action? EscRequested;
-    public event Action? SaveGameClicked;
     public event Action? DefeatContinueClicked;
     public event Action? ClaimVictoryWinNowClicked;
     public event Action? ClaimVictoryContinueClicked;
@@ -46,8 +45,7 @@ public partial class HudView : CanvasLayer, IHudView
     private bool _undoRedoLocked;
     private bool _victoryOverlaySuppressed;
     private Button _endTurnButton = null!;
-    private Button _saveGameButton = null!;
-    private Button _endGameButton = null!;
+    private Button _optionsButton = null!;
     private Control _victoryOverlay = null!;
     private Label _victoryLabel = null!;
     private Control _defeatOverlay = null!;
@@ -197,28 +195,19 @@ public partial class HudView : CanvasLayer, IHudView
         AudioBus.AttachClick(_endTurnButton);
         rightHbox.AddChild(_endTurnButton);
 
-        _saveGameButton = new Button
+        // Single Options button — raises the same EscRequested event
+        // the Escape key fires, so the scene root's pause coordinator
+        // drives both paths. Save Game and Settings live inside that
+        // pause menu now rather than as standalone HUD buttons.
+        _optionsButton = new Button
         {
-            Text = "Save",
+            Text = "Options",
             FocusMode = Control.FocusModeEnum.None,
         };
-        _saveGameButton.AddThemeFontSizeOverride("font_size", 18);
-        _saveGameButton.Pressed += () => SaveGameClicked?.Invoke();
-        AudioBus.AttachClick(_saveGameButton);
-        rightHbox.AddChild(_saveGameButton);
-
-        // Top-right End Game button. Opens the scene's EscMenu (same
-        // modal ESC raises) rather than its own ConfirmationDialog — the
-        // host scene owns the modal and decides what Exit does.
-        _endGameButton = new Button
-        {
-            Text = "End Game",
-            FocusMode = Control.FocusModeEnum.None,
-        };
-        _endGameButton.AddThemeFontSizeOverride("font_size", 18);
-        _endGameButton.Pressed += () => EscRequested?.Invoke();
-        AudioBus.AttachClick(_endGameButton);
-        rightHbox.AddChild(_endGameButton);
+        _optionsButton.AddThemeFontSizeOverride("font_size", 18);
+        _optionsButton.Pressed += () => EscRequested?.Invoke();
+        AudioBus.AttachClick(_optionsButton);
+        rightHbox.AddChild(_optionsButton);
 
         // Read-only seed display anchored to the bottom-left so a player
         // can recall or share the seed mid-game without crowding the

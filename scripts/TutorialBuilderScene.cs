@@ -57,19 +57,20 @@ public partial class TutorialBuilderScene : Node2D
         AddChild(_panel);
 
         // 2. The Map Edit palette HUD at the top of the screen
-        //    (TopOffsetPx defaults to 0). ShowSceneRootChrome = false
-        //    hides Save Map / Load Map / Exit — those are
-        //    TutorialBuilder-level concerns and live in the EscMenu
-        //    instead. The HUD's own Exit button raises EscRequested,
-        //    which opens the EscMenu (see below); when the HUD is
-        //    hidden (Record / Preview submodes), HudView's End Game
-        //    button is the entry point and raises its own
-        //    EscRequested.
+        //    (TopOffsetPx defaults to 0). ShowSceneRootChrome = true
+        //    surfaces the right-side Options button, which raises
+        //    EscRequested → OpenEscMenu. The menu populated by
+        //    OpenEscMenu (mode switches + Save / Load Tutorial + Exit)
+        //    is TutorialBuilder-specific; Save Map / Load Map (Map
+        //    Editor's menu items) don't apply here. When this HUD is
+        //    hidden (Record / Preview submodes), HudView's own Options
+        //    button takes over and raises its own EscRequested.
         _mapEditHud = new MapEditorHudView
         {
-            ShowSceneRootChrome = false,
+            ShowSceneRootChrome = true,
         };
         AddChild(_mapEditHud);
+        _mapEditHud.EscRequested += OpenEscMenu;
         _mapEditHud.GenerateRequested += _panel.GenerateMap;
         _mapEditHud.PaletteSelectionChanged += _panel.SetSelectedPalette;
         _mapEditHud.UndoLastClicked += _panel.UndoLast;

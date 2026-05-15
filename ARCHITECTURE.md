@@ -42,12 +42,18 @@ off it.
 │           aiChooser: AiDispatcher.ChooseForCurrentPlayer,                │
 │           aiPacer:  pacer,                                               │
 │           maxTurnNumber: load ? saved : (diagnostic ? 500 : int.MaxVal)) │
-│      8. Wire save/load:                                                  │
-│           • new SaveStore + (non-diagnostic) build the Save dialog.     │
+│      8. Wire save/load + pause coordinator:                              │
+│           • new SaveStore + (non-diagnostic) build the Save +           │
+│             Load dialogs and a shared SettingsPanel.                    │
 │           • Subscribe controller.HumanTurnStarted → autosave write,    │
 │             passing _originMapName so resumed games keep their map      │
 │             identity.                                                   │
-│           • Subscribe HUD SaveGameClicked → open the dialog.           │
+│           • Subscribe HUD EscRequested → EnterPause (sets               │
+│             GetTree().Paused = true, shows EscMenu with                 │
+│             Resume / Save / Load / Settings / Exit options).            │
+│           • Subscribe EscMenu.EscapeClosed → ExitPause (Escape-key      │
+│             dismissal unpauses; button callbacks manage pause state    │
+│             themselves).                                                │
 │      9. controller.Resume() (in-progress load) or controller.StartGame()│
 │         (fresh / starting map). Then hud.SetMapLabel("Map: <name>") for │
 │         starting-map games or "Seed: <n>" for procedural.               │
@@ -84,8 +90,9 @@ off it.
 │   │    hud.DefeatContinueClicked    → OnDefeatContinuePressed            │
 │   │    hud.ClaimVictoryWinNowClicked    → OnClaimVictoryWinNowPressed    │
 │   │    hud.ClaimVictoryContinueClicked  → OnClaimVictoryContinuePressed  │
-│   │   (NewGameClicked / MainMenuClicked / SaveGameClicked are handled    │
-│   │    in Main, not here)                                                │
+│   │   (NewGameClicked / MainMenuClicked / EscRequested are handled       │
+│   │    in Main, not here — Main's pause coordinator drives Save /        │
+│   │    Load / Settings from the EscMenu's option callbacks)              │
 │   │                                                                      │
 │   ├─ click policy state machine:                                         │
 │   │    OnTileClicked     → pending-mode branch (buy/build/move)          │
@@ -200,8 +207,9 @@ off it.
 │                           │  │     RedoAll / EndTurn / NewGame /          │
 │                           │  │     MainMenu / NextTerritory /             │
 │                           │  │     PreviousTerritory / NextUnit /         │
-│                           │  │     PreviousUnit / SaveGame / CancelAction │
-│                           │  │     / DefeatContinue /                     │
+│                           │  │     PreviousUnit / CancelAction /          │
+│                           │  │     EscRequested (Options button + ESC) / │
+│                           │  │     DefeatContinue /                       │
 │                           │  │     ClaimVictoryWinNow /                   │
 │                           │  │     ClaimVictoryContinue                   │
 │                           │  │   ├─ Refresh(state, session, hasAct.)      │
@@ -415,8 +423,11 @@ event Action? PreviousTerritoryClicked;// Shift+Tab hotkey equivalent;
                                        // same skip rules
 event Action? NextUnitClicked;         // N hotkey: cycle units in selection
 event Action? PreviousUnitClicked;     // Shift+N hotkey
-event Action? CancelActionPressed;     // Escape hotkey equivalent
-event Action? SaveGameClicked;         // handled in Main (opens save dialog)
+event Action? CancelActionPressed;     // Escape hotkey while a Buy/
+                                       // Build/Move action is pending
+event Action? EscRequested;            // Options button OR Escape with
+                                       // no pending action; handled in
+                                       // Main → EnterPause → EscMenu
 event Action? DefeatContinueClicked;   // dismiss defeat overlay; resume AI
 event Action? ClaimVictoryWinNowClicked;   // declare win now from prompt
 event Action? ClaimVictoryContinueClicked; // dismiss prompt, proceed End Turn
@@ -1041,10 +1052,17 @@ sequences.
   turn, after start-of-turn bookkeeping (tree growth, income, upkeep)
   so the saved state matches what the player sees. AI turns and
   game-over states are skipped.
-- **Named saves.** The HUD's Save button raises `SaveGameClicked`,
-  which `Main` (not the controller) handles by opening an
-  `AcceptDialog` for a slot name and calling `SaveStore.WriteSlot`.
-  The literal `autosave` slot name is reserved.
+- **Named saves.** The pause menu's **Save Game** option (see
+  "Pause / Options menu" below) opens an `AcceptDialog` for a slot
+  name and calls `SaveStore.WriteSlot`. The literal `autosave` slot
+  name is reserved.
+- **In-game load.** The pause menu's **Load Game** option opens the
+  shared `SlotPickerDialog` populated from `SaveStore.ListSlots`.
+  Picking a slot sets `LoadRequest.Pending`, cancels in-flight AI
+  timers via `_controller.AbandonGame`, unpauses (since
+  `GetTree().Paused` persists across scenes), and changes scene to
+  `main.tscn` — same final-step path the main menu's Load button
+  uses.
 - **Origin map name.** Saves carry an optional `OriginMapName` field
   identifying the starting map a game descended from (or null for
   procedural games). It rides through autosave so reloads keep the
@@ -1132,6 +1150,95 @@ sets `_replayDataIsCompleteFromStart = false` so the
 victory-overlay Replay button stays disabled — the recorded log
 starts after the load, not at game start.
 
+## Pause / Options menu
+
+A single **Options** button on each scene's HUD (and the Escape key
+when no Buy/Build/Move is pending) opens that scene's `EscMenu`
+populated with the scene's own option list. Three scenes use this
+pattern: gameplay (`Main`), map editor (`MapEditorScene`), and
+tutorial builder (`TutorialBuilderScene`).
+
+### Gameplay pause coordinator (`Main`)
+
+`Main` owns `_isPaused` plus three helpers — `EnterPause`,
+`ExitPause`, `ShowPauseMenu`. Entering pause sets
+`GetTree().Paused = true`, which halts every `SceneTreeTimer` (the
+heartbeat of `GodotAiPacer`) so the AI loop freezes mid-step. The
+pause menu offers:
+
+- **Resume** — `ExitPause`.
+- **Save Game** — `OpenSaveDialogFromPause`: opens the same
+  `AcceptDialog` the autosave path uses; on Confirmed/Canceled
+  re-calls `ShowPauseMenu`. Pause stays on throughout.
+- **Load Game** — `OpenLoadDialogFromPause`: opens `SlotPickerDialog`.
+  Cancelling re-shows the pause menu (`VisibilityChanged → Visible=false`
+  unless a slot was just picked); picking a slot sets
+  `LoadRequest.Pending`, `_controller.AbandonGame`s the in-flight
+  AI step, `ExitPause`s (since `GetTree().Paused` persists across
+  scenes), then `ChangeSceneToFile("res://scenes/main.tscn")`.
+- **Settings** — opens the shared `SettingsPanel`; on `Closed`
+  re-shows the pause menu.
+- **Exit Game** — `ExitPause` then `AbandonAndReturnToMenu`.
+
+`EscMenu.EscapeClosed` is a sibling event added next to `Closed`
+that fires immediately before `Hide` when the user presses Escape
+on an open menu. `Main` hooks it to `ExitPause` — the button-click
+path already manages pause state from inside each option callback,
+so `EscapeClosed` is the only path that needs the unpause hook.
+`Closed` still fires on every close (button-click or Escape);
+nothing else in the codebase listens to it for the pause flow.
+
+### Reusable `SettingsPanel`
+
+`SettingsPanel` (CanvasLayer modal — backdrop + centered panel +
+SFX/VFX `CheckBox` rows + Back button) is the single Settings UI
+for both the main menu and the in-game pause flow. Toggles bind
+directly to `UserSettings.SfxEnabled` / `UserSettings.VfxEnabled`
+via `Toggled`; `Open()` re-syncs from `UserSettings` so external
+writes are reflected. Back or Escape calls `Close`, which fires
+`Closed`. The previous inline `MainMenuScene.BuildSettingsPanel`
+has been deleted — main menu instantiates the same component and
+opens it as a modal overlay on top of the landing page.
+
+### ProcessMode rules
+
+The pause modal must stay interactive while
+`GetTree().Paused == true`, so each modal node opts out of the
+freeze: `EscMenu`, `SettingsPanel`, `SlotPickerDialog` (and its
+sibling error dialog), and `Main`'s `_saveDialog` /
+`_saveErrorDialog` all set `ProcessMode = ProcessModeEnum.Always`.
+`Always` is a superset of the unpaused-host scenes' needs (map
+editor / tutorial builder / main menu), so the same setting works
+in every host — earlier `WhenPaused` attempts broke the unpaused
+hosts because `WhenPaused` *only* processes while paused.
+
+Conversely, `SceneTreeTimerFactory.After` passes
+`processAlways: false` to `SceneTree.CreateTimer`. Without that
+override, Godot's default keeps the timer firing during pause; the
+AI loop wouldn't actually freeze under an earlier iteration of the
+pause coordinator until this was added.
+
+### Map editor / Tutorial builder
+
+Map editor's `EscMenu` carries **Resume / Save Map / Load Map /
+Exit** — Save Map and Load Map were previously HUD buttons and are
+now menu options invoked through `OpenSaveDialog` / `OpenLoadDialog`
+in `MapEditorScene`. Tutorial builder's `EscMenu` carries the
+mode-switch buttons + Save Tutorial / Load Tutorial / Exit; the
+target mode's button is rendered `Disabled = true`. Neither scene
+calls `GetTree().Paused` — they have no AI loop running in the
+background, so cosmetic-only "pause" is fine.
+
+`MapEditorHudView.ShowSceneRootChrome` now gates a single button:
+when `true` (the default and used by both `MapEditorScene` and
+`TutorialBuilderScene`'s Map Edit mode), the HUD's right strip
+ends with an **Options** button that raises `EscRequested`. The
+host scene's `OpenEscMenu` decides what the menu contains. Record
+and Preview submodes of the tutorial builder hide the
+`MapEditorHudView` and rely on the nested `HudView`'s own Options
+button (it raises `EscRequested` too, forwarded to the same
+`OpenEscMenu`).
+
 ## Map editor
 
 `MapEditorScene` (root of `res://scenes/map_editor.tscn`, reached
@@ -1151,11 +1258,12 @@ edits look identical to in-game terrain.
   state, the paint-stroke state machine, the undo stack, and the
   hover tooltip. The scene wires HUD events
   (`PaletteSelectionChanged`, `GenerateRequested`, `UndoLast/All`,
-  `RedoLast/All`, `SaveMapClicked`, `LoadMapClicked`) to panel
-  methods (`SetSelectedPalette`, `GenerateMap`, `UndoLast/All`,
-  `OpenSaveDialog`, `OpenLoadDialog`) and listens to
-  `panel.UndoStateChanged` to refresh the HUD's undo-bar enable
-  state. The split exists so `tutorial_builder.tscn` can host the
+  `RedoLast/All`, `EscRequested`) to panel methods
+  (`SetSelectedPalette`, `GenerateMap`, `UndoLast/All`) and to
+  `OpenEscMenu` (which lists Resume / Save Map / Load Map / Exit
+  and dispatches to `OpenSaveDialog` / `OpenLoadDialog`
+  internally), then listens to `panel.UndoStateChanged` to refresh
+  the HUD's undo-bar enable state. The split exists so `tutorial_builder.tscn` can host the
   same panel under different chrome (see "Tutorial builder" below)
   without forking the editor logic.
 
@@ -1167,11 +1275,14 @@ edits look identical to in-game terrain.
 - **HUD configurability.** `MapEditorHudView` exposes two configuration
   knobs that hosts set before `AddChild`:
   - `ShowSceneRootChrome` (default `true`) — controls whether the
-    Save Map / Load Map / Exit buttons are built. The standalone
-    `MapEditorScene` keeps them; `TutorialBuilderScene` sets it
-    `false` and exposes Save Tutorial / Load Tutorial / Exit through
-    the shared `EscMenu` modal instead. The standalone editor's
-    Exit button raises `EscRequested` to open the same modal.
+    HUD's right strip ends with an **Options** button that raises
+    `EscRequested`. Both `MapEditorScene` and `TutorialBuilderScene`
+    set this `true`; each scene's `OpenEscMenu` decides what the
+    `EscMenu` contains (map editor → Resume / Save Map / Load Map /
+    Exit; tutorial builder → mode switches + Save Tutorial / Load
+    Tutorial / Exit). Save Map / Load Map were previously HUD
+    buttons exposed via `SaveMapClicked` / `LoadMapClicked` events;
+    those events have been removed.
   - `TopOffsetPx` (default `0`) — vertical offset of the entire HUD
     strip. Both the standalone editor and TutorialBuilder use `0`
     (HUD at y=0..60); the knob remains for future hosts that want a
@@ -1210,7 +1321,7 @@ edits look identical to in-game terrain.
   entry. Pan-mode, no paint. Escape ladders out: a first press with
   any non-hand swatch active reselects the hand (canceling the
   paint mode); a second press with the hand already active opens
-  the `EscMenu` modal (Resume / Exit).
+  the `EscMenu` modal (Resume / Save Map / Load Map / Exit).
 - **Toggle stroke locking.** Tree and tower drag-paints have an
   explicit "Add" or "Erase" mode locked at the first cell of the
   stroke. If the first cell already carries the matching occupant
@@ -1678,33 +1789,53 @@ scripts/
 ├─ Main.cs                ─ play scene root; wires model + views + controller
 ├─ MainMenuScene.cs       ─ landing (Play / Load / Map Editor +
 │                           debug-only Tutorial Builder) + play-config
-│                           panels; Load Game modal; writes
+│                           panels; Load Game modal; instantiates
+│                           SettingsPanel as a modal overlay; writes
 │                           GameSettings + LoadRequest
-├─ MapEditorScene.cs      ─ editor scene root; chrome host (HUD, Save/Load
-│                           dialogs, EscMenu modal, Escape→hand→modal ladder)
+├─ MapEditorScene.cs      ─ editor scene root; chrome host (HUD,
+│                           Save/Load dialogs, EscMenu modal with
+│                           Resume / Save Map / Load Map / Exit
+│                           options, Escape→hand→modal ladder)
 ├─ MapEditorPanel.cs      ─ reusable editor body; owns HexMapView + draft
 │                           grid/water/territories + UndoStack<EditorSnapshot>
 │                           + paint stroke state + hover tooltip
 ├─ MapEditorHudView.cs    ─ editor HUD (seed entry + palette + undo/redo
-│                           + Save Map / Load Map / Exit). Configurable
-│                           via ShowSceneRootChrome (gate Save/Load/Exit)
-│                           and TopOffsetPx (offset entire strip)
+│                           + single Options button). Configurable
+│                           via ShowSceneRootChrome (gate the Options
+│                           button) and TopOffsetPx (offset entire
+│                           strip). Save Map / Load Map live in the
+│                           EscMenu now, wired by the host scene
 ├─ TutorialBuilderScene.cs─ tutorial builder scene root; TutorialMode
 │                           { MapEdit, Record, Preview } state machine;
-│                           hosts MapEditorPanel + a chrome-trimmed
-│                           MapEditorHudView + RecordPane + PreviewPane
-│                           + EscMenu modal (mode switches + Save/Load
-│                           Tutorial + Exit); captures/restores the
-│                           draft EditorSnapshot around play sessions
+│                           hosts MapEditorPanel + a MapEditorHudView
+│                           (ShowSceneRootChrome = true so its Options
+│                           button opens the menu) + RecordPane +
+│                           PreviewPane + EscMenu modal (mode switches
+│                           + Save/Load Tutorial + Exit); captures/
+│                           restores the draft EditorSnapshot around
+│                           play sessions
 ├─ EscMenu.cs             ─ shared pause/exit modal (CanvasLayer +
-│                           centered panel); host scenes call Show with
-│                           a mode-aware option list. ESC closes when
-│                           open. Used by Main, MapEditorScene,
+│                           centered panel; ProcessMode = Always so it
+│                           works in both paused and unpaused hosts);
+│                           host scenes call Show with a mode-aware
+│                           option list. ESC closes when open and fires
+│                           EscapeClosed (separate from the generic
+│                           Closed) so the pause coordinator can
+│                           distinguish "user backed out" from button
+│                           clicks. Used by Main, MapEditorScene,
 │                           TutorialBuilderScene
+├─ SettingsPanel.cs       ─ shared Settings modal (CanvasLayer +
+│                           backdrop + SFX/VFX checkboxes + Back);
+│                           Open() / Close() / Closed event. Used by
+│                           MainMenuScene's landing Settings button
+│                           and Main's pause-menu Settings option
 ├─ SlotPickerDialog.cs    ─ reusable Window-based load-slot picker;
 │                           ShowSlots(slots, emptyMsg, labelFor,
-│                           onPicked) + ShowError. Used by MainMenu-
-│                           Scene, MapEditorScene, TutorialBuilderScene
+│                           onPicked) + ShowError; ProcessMode = Always
+│                           so it works during in-game pause. Used by
+│                           MainMenuScene, MapEditorScene, Tutorial-
+│                           BuilderScene, and Main's pause-menu Load
+│                           Game option
 ├─ RecordPane.cs          ─ Record-mode chrome: spins up a real
 │                           GameController over the panel's draft
 │                           with all six players Human; captures the
@@ -1757,7 +1888,10 @@ scripts/
 │                           Cancel-then-reuse safety (testable via
 │                           ManualTimerFactory)
 ├─ SceneTreeTimerFactory.cs ─ Production ITimerFactory wrapping
-│                           SceneTree.CreateTimer (test-excluded)
+│                           SceneTree.CreateTimer (test-excluded).
+│                           Passes processAlways: false so AI pacing
+│                           halts when Main's pause coordinator sets
+│                           GetTree().Paused = true
 ├─ AiAction.cs            ─ AiMoveAction / AiBuyUnitAction / …
 ├─ AiCommon.cs            ─ shared candidate-action enumeration
 ├─ AiDispatcher.cs        ─ routes by Player.Kind
@@ -1882,10 +2016,11 @@ tests/
 
 `Main.cs`, `MainMenuScene.cs`, `MapEditorScene.cs`,
 `MapEditorPanel.cs`, `MapEditorHudView.cs`, `TutorialBuilderScene.cs`,
-`EscMenu.cs`, `RecordPane.cs`, `PreviewPane.cs`,
-`HexPaletteButton.cs`, `HexHoverTooltip.cs`, `HexMapView.cs`,
-`HudView.cs`, `SceneTreeTimerFactory.cs`, `HeadlessViews.cs`,
-`SaveStore.cs`, `AudioBus.cs`, and `UserSettings.cs` are NOT compiled into
+`EscMenu.cs`, `SettingsPanel.cs`, `SlotPickerDialog.cs`,
+`RecordPane.cs`, `PreviewPane.cs`, `HexPaletteButton.cs`,
+`HexHoverTooltip.cs`, `HexMapView.cs`, `HudView.cs`,
+`SceneTreeTimerFactory.cs`, `HeadlessViews.cs`, `SaveStore.cs`,
+`AudioBus.cs`, and `UserSettings.cs` are NOT compiled into
 the test assembly — they derive from Godot nodes or depend on `SceneTree`
 / Godot `FileAccess` / autoload lifecycle. The test csproj explicitly lists
 each production source file it includes, so when you add a new

@@ -40,8 +40,6 @@ public partial class MapEditorHudView : CanvasLayer
     public event Action? UndoAllClicked;
     public event Action? RedoLastClicked;
     public event Action? RedoAllClicked;
-    public event Action? SaveMapClicked;
-    public event Action? LoadMapClicked;
 
     /// <summary>
     /// When false, the right-side Save Map / Load Map / Exit buttons are
@@ -224,35 +222,19 @@ public partial class MapEditorHudView : CanvasLayer
 
         if (ShowSceneRootChrome)
         {
-            var saveMapButton = new Button
+            // Save Map and Load Map live inside the EscMenu now —
+            // MapEditorScene wires them into the Resume / Save / Load /
+            // Exit option list shown on Escape. The Options button is
+            // just the entry point to that menu.
+            var optionsButton = new Button
             {
-                Text = "Save Map",
+                Text = "Options",
                 FocusMode = Control.FocusModeEnum.None,
             };
-            saveMapButton.AddThemeFontSizeOverride("font_size", 18);
-            saveMapButton.Pressed += () => SaveMapClicked?.Invoke();
-            AudioBus.AttachClick(saveMapButton);
-            rightHbox.AddChild(saveMapButton);
-
-            var loadMapButton = new Button
-            {
-                Text = "Load Map",
-                FocusMode = Control.FocusModeEnum.None,
-            };
-            loadMapButton.AddThemeFontSizeOverride("font_size", 18);
-            loadMapButton.Pressed += () => LoadMapClicked?.Invoke();
-            AudioBus.AttachClick(loadMapButton);
-            rightHbox.AddChild(loadMapButton);
-
-            var exitButton = new Button
-            {
-                Text = "Exit",
-                FocusMode = Control.FocusModeEnum.None,
-            };
-            exitButton.AddThemeFontSizeOverride("font_size", 18);
-            exitButton.Pressed += () => EscRequested?.Invoke();
-            AudioBus.AttachClick(exitButton);
-            rightHbox.AddChild(exitButton);
+            optionsButton.AddThemeFontSizeOverride("font_size", 18);
+            optionsButton.Pressed += () => EscRequested?.Invoke();
+            AudioBus.AttachClick(optionsButton);
+            rightHbox.AddChild(optionsButton);
         }
     }
 

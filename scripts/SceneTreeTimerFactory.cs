@@ -20,7 +20,11 @@ public sealed class SceneTreeTimerFactory : ITimerFactory
     public void After(int delayMs, Action callback)
     {
         double seconds = delayMs / 1000.0;
-        SceneTreeTimer timer = _tree.CreateTimer(seconds);
+        // processAlways: false — SceneTreeTimer defaults to true, which
+        // keeps firing even when GetTree().Paused is true. The in-game
+        // pause menu sets Paused = true and expects AI pacing to halt;
+        // without this argument the AI keeps moving behind the modal.
+        SceneTreeTimer timer = _tree.CreateTimer(seconds, processAlways: false);
         timer.Timeout += () => callback();
     }
 }

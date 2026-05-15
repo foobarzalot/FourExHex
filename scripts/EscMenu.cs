@@ -27,6 +27,16 @@ public sealed partial class EscMenu : CanvasLayer
     public event Action? Opened;
     public event Action? Closed;
 
+    /// <summary>
+    /// Fires immediately before <see cref="Hide"/> when the user
+    /// dismisses the modal with the Escape key (not when a button is
+    /// clicked). Lets a host distinguish "user backed out" from "user
+    /// picked an option" — useful for pause coordinators that need to
+    /// unpause on Escape but stay paused while a button-driven
+    /// sub-screen takes over.
+    /// </summary>
+    public event Action? EscapeClosed;
+
     public bool IsOpen { get; private set; }
 
     private ColorRect _backdrop = null!;
@@ -38,6 +48,12 @@ public sealed partial class EscMenu : CanvasLayer
     {
         Layer = 100;
         Visible = false;
+        // Always — the modal must remain interactive both when the tree
+        // is paused (Main's pause coordinator drives this) AND when it
+        // isn't (map editor / tutorial builder use the same EscMenu
+        // without ever pausing). WhenPaused breaks the unpaused hosts;
+        // Pausable / Inherit breaks the paused host. Always covers both.
+        ProcessMode = ProcessModeEnum.Always;
 
         Vector2 viewport = GetViewport().GetVisibleRect().Size;
 
@@ -145,6 +161,7 @@ public sealed partial class EscMenu : CanvasLayer
         if (!IsOpen) return;
         if (@event is not InputEventKey keyEvent || !keyEvent.Pressed || keyEvent.Echo) return;
         if (keyEvent.Keycode != Key.Escape) return;
+        EscapeClosed?.Invoke();
         Hide();
         GetViewport().SetInputAsHandled();
     }

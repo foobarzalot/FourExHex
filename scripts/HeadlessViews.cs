@@ -81,7 +81,6 @@ public sealed class HeadlessHudView : IHudView
     public event Action? NextUnitClicked;
     public event Action? PreviousUnitClicked;
     public event Action? CancelActionPressed;
-    public event Action? SaveGameClicked;
     public event Action? DefeatContinueClicked;
     public event Action? ClaimVictoryWinNowClicked;
     public event Action? ClaimVictoryContinueClicked;

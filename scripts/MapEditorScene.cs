@@ -37,9 +37,6 @@ public partial class MapEditorScene : Node2D
         _hud.UndoAllClicked += _panel.UndoAll;
         _hud.RedoLastClicked += _panel.RedoLast;
         _hud.RedoAllClicked += _panel.RedoAll;
-        _hud.SaveMapClicked += OpenSaveDialog;
-        _hud.LoadMapClicked += OpenLoadDialog;
-
         // Sync HUD undo button enable state on every panel state change.
         _panel.UndoStateChanged += () =>
             _hud.SetUndoState(_panel.CanUndo, _panel.CanRedo);
@@ -76,6 +73,8 @@ public partial class MapEditorScene : Node2D
         _escMenu.Show("Menu", new[]
         {
             new EscMenu.Option("Resume", () => { }),
+            new EscMenu.Option("Save Map", OpenSaveDialog),
+            new EscMenu.Option("Load Map", OpenLoadDialog),
             new EscMenu.Option("Exit", ReturnToMainMenu),
         });
     }
