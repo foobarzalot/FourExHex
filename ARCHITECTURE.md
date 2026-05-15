@@ -857,7 +857,7 @@ StepReplayPreview:
        (or AiActionDelayMs if the next beat is ReplayEndTurnBeat)
 
 StepReplayExecute:
-  ├─ dispatch by ReplayBeatKind:
+  ├─ dispatch by record type:
   │    ReplayMoveBeat        → ExecuteAiMove(From, To)
   │    ReplayBuyBeat         → ExecuteAiBuyUnit(Capital, To, Level)
   │    ReplayBuildTowerBeat  → ExecuteAiBuildTower(Capital, To)
@@ -1472,8 +1472,9 @@ the dispatcher accepts them without rework): tile / territory highlight
 with arrow, pan / zoom camera, HUD-element callout.
 
 **Identity.** `TutorialOnlyBeat` carries `Actor = -1` (sentinel — no
-player owns these). The base `ReplayBeat` doc + the
-`ReplayBeatKind.DisplayText` enum entry mark the boundary.
+player owns these). The base `ReplayBeat` doc marks the boundary;
+the abstract `TutorialOnlyBeat` record itself is the type-system
+discriminator that dispatch and the cursor skip-scan key off of.
 
 **Cursor semantics.** The shared `ScriptCursor` is the single source of
 truth. Three consumers see it:
