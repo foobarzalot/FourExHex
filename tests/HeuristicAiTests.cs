@@ -587,6 +587,31 @@ public class HeuristicAiTests
         Assert.Same(beforeTerritories, state.Territories);
     }
 
+    [Theory]
+    [MemberData(nameof(UnsupportedAiActions))]
+    public void Simulator_Apply_ThrowsOnUnsupportedActionKind(AiAction action)
+    {
+        // Defense in depth: AiSimulator.Apply only models the three
+        // mutation kinds that AiCommon.Enumerate emits. If the
+        // enumerator (or a future AI) ever produces another kind, we
+        // want a loud crash rather than a silent no-op that would
+        // make scored futures disagree with live play.
+        var grid = new HexGrid();
+        grid.Add(new HexTile(HexCoord.FromOffset(0, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(1, 0), Red));
+        GameState state = BuildState(grid, new Player("Red", Red), new Player("Blue", Blue));
+
+        Assert.Throws<NotSupportedException>(() => AiSimulator.Apply(action, state));
+    }
+
+    public static IEnumerable<object[]> UnsupportedAiActions()
+    {
+        yield return new object[] { new AiLongPressRallyAction(HexCoord.FromOffset(0, 0)) };
+        yield return new object[] { new AiClaimVictoryAction(60) };
+        yield return new object[] { new AiDismissClaimAction(60) };
+        yield return new object[] { new AiDismissDefeatAction() };
+    }
+
     [Fact]
     public void HeuristicAi_DoesNotPingPongRepositions()
     {

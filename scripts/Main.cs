@@ -107,7 +107,7 @@ public partial class Main : Node2D
             // from the menu's role config — the saved map intentionally
             // doesn't carry kinds. Turn state starts at turn 1, player 0
             // (red goes first) and the treasury is empty.
-            _players = BuildPlayers();
+            _players = Player.BuildRoster();
             _state = new GameState(
                 pendingLoad.State.Grid,
                 pendingLoad.State.Territories,
@@ -120,14 +120,13 @@ public partial class Main : Node2D
         }
         else
         {
-            _players = BuildPlayers();
+            _players = Player.BuildRoster();
             var turnState = new TurnState(_players);
             var treasury = new Treasury();
             MapGenResult mapGen = MapGenerator.BuildInitialGrid(cols, rows, _players, seed);
             HexGrid grid = mapGen.Grid;
-            IReadOnlyList<Territory> raw = TerritoryFinder.FindAll(grid);
-            IReadOnlyList<Territory> territories = CapitalReconciler.Reconcile(
-                raw, new List<Territory>(), grid);
+            IReadOnlyList<Territory> territories = TerritoryFinder.Recompute(
+                grid, new List<Territory>());
             _state = new GameState(grid, territories, _players, turnState, treasury, mapGen.WaterCoords);
             _maxTurnNumber = diagnosticMode ? 500 : int.MaxValue;
             _originMapName = null;
@@ -427,21 +426,4 @@ public partial class Main : Node2D
         _saveErrorDialog.PopupCentered();
     }
 
-    private static List<Player> BuildPlayers()
-    {
-        var players = new List<Player>();
-        // Player roles come from GameSettings, which the main menu
-        // writes before switching to this scene. StartGame
-        // auto-drives any AI players at the front of the turn order
-        // so human input is only needed on a human's turn.
-        for (int i = 0; i < GameSettings.PlayerConfig.Length; i++)
-        {
-            (string name, string hex) = GameSettings.PlayerConfig[i];
-            AiKind kind = i < GameSettings.PlayerKinds.Length
-                ? GameSettings.PlayerKinds[i]
-                : AiKind.Heuristic;
-            players.Add(new Player(name, new Color(hex), kind));
-        }
-        return players;
-    }
 }

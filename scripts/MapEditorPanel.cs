@@ -87,9 +87,7 @@ public sealed partial class MapEditorPanel : Node2D
         _water = new HashSet<HexCoord>(mapGen.WaterCoords);
         // Reset the territory thread on regen — the previous list points
         // at coords from the old grid, so reconcile from scratch.
-        _territories = new List<Territory>();
-        IReadOnlyList<Territory> raw = TerritoryFinder.FindAll(_grid);
-        _territories = CapitalReconciler.Reconcile(raw, _territories, _grid);
+        _territories = TerritoryFinder.Recompute(_grid, new List<Territory>());
         // Generate is not undoable — drop any prior history so the new map
         // is a fresh starting point.
         _undoStack.Clear();

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Godot;
@@ -71,6 +72,15 @@ public static class AiSimulator
             case AiBuildTowerAction bt:
                 ApplyBuildTower(bt.Capital, bt.Destination, state);
                 break;
+            default:
+                // Rally / ClaimVictory / DismissClaim / DismissDefeat are
+                // replay-script-only actions emitted by ReplayDrivenAi,
+                // not by AiCommon.Enumerate. Scoring a future built on
+                // them would silently disagree with live play, so any
+                // attempt to simulate one is a programmer error.
+                throw new NotSupportedException(
+                    $"AiSimulator.Apply does not model {action.GetType().Name}; " +
+                    "this kind is only produced by ReplayDrivenAi and never reaches simulation.");
         }
     }
 
@@ -164,11 +174,8 @@ public static class AiSimulator
     /// </summary>
     private static void Reconcile(GameState state)
     {
-        IReadOnlyList<Territory> raw = TerritoryFinder.FindAll(state.Grid);
-        IReadOnlyList<Territory> reconciled = CapitalReconciler.Reconcile(
-            raw, state.Territories, state.Grid);
-        state.Treasury.ReconcileAfterCapture(state.Territories, reconciled);
-        state.Territories = reconciled;
+        state.Territories = TerritoryFinder.Recompute(
+            state.Grid, state.Territories, state.Treasury);
     }
 
 }

@@ -34,9 +34,7 @@ public partial class TutorialBuilderScene : Node2D
     private AcceptDialog? _saveDialog;
     private LineEdit? _saveDialogLineEdit;
     private AcceptDialog? _saveErrorDialog;
-    private Window? _loadDialog;
-    private VBoxContainer? _loadDialogList;
-    private AcceptDialog? _loadErrorDialog;
+    private SlotPickerDialog? _loadDialog;
     private ConfirmationDialog? _discardConfirmDialog;
     private System.Action? _onDiscardConfirmed;
 
@@ -50,7 +48,7 @@ public partial class TutorialBuilderScene : Node2D
 
     public override void _Ready()
     {
-        _players = BuildPlayers();
+        _players = Player.BuildAllHumanRoster();
 
         // 1. The reusable Map Editor panel. Owns the map + draft state +
         //    paint stroke machine + undo. Painting starts enabled because
@@ -289,17 +287,6 @@ public partial class TutorialBuilderScene : Node2D
         _escMenu.Show("Menu", options);
     }
 
-    private static List<Player> BuildPlayers()
-    {
-        var players = new List<Player>();
-        for (int i = 0; i < GameSettings.PlayerConfig.Length; i++)
-        {
-            (string name, string hex) = GameSettings.PlayerConfig[i];
-            players.Add(new Player(name, new Color(hex), AiKind.Human));
-        }
-        return players;
-    }
-
     private void ReturnToMainMenu()
     {
         GetTree().ChangeSceneToFile("res://scenes/main_menu.tscn");
@@ -386,87 +373,19 @@ public partial class TutorialBuilderScene : Node2D
 
     private void BuildLoadDialog()
     {
-        // Mirrors MapEditorScene.BuildLoadDialog — same Window-based
-        // modal, populated on open from SaveStore.ListTutorials() against
-        // TutorialsDirectory.
-        _loadDialog = new Window
-        {
-            Title = "Load Tutorial",
-            Size = new Vector2I(440, 360),
-            Visible = false,
-            Exclusive = true,
-        };
-        _loadDialog.CloseRequested += () => _loadDialog!.Hide();
-        _loadDialog.WindowInput += OnLoadDialogInput;
-        AddChild(_loadDialog);
-
-        var scroll = new ScrollContainer
-        {
-            AnchorLeft = 0f,
-            AnchorTop = 0f,
-            AnchorRight = 1f,
-            AnchorBottom = 1f,
-            OffsetLeft = 16f,
-            OffsetTop = 16f,
-            OffsetRight = -16f,
-            OffsetBottom = -16f,
-            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
-        };
-        _loadDialog.AddChild(scroll);
-
-        _loadDialogList = new VBoxContainer
-        {
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-        };
-        _loadDialogList.AddThemeConstantOverride("separation", 8);
-        scroll.AddChild(_loadDialogList);
-
-        _loadErrorDialog = new AcceptDialog
-        {
-            Title = "Load failed",
-        };
-        AddChild(_loadErrorDialog);
-        AudioBus.AttachClick(_loadErrorDialog.GetOkButton());
-    }
-
-    private void OnLoadDialogInput(InputEvent @event)
-    {
-        if (@event is not InputEventKey keyEvent || !keyEvent.Pressed || keyEvent.Echo) return;
-        if (keyEvent.Keycode != Key.Escape) return;
-        _loadDialog?.Hide();
+        _loadDialog = new SlotPickerDialog(
+            "Load Tutorial", "Load failed", disableHorizontalScroll: true);
+        _loadDialog.Attach(this);
     }
 
     private void OpenLoadDialog()
     {
-        if (_loadDialog == null || _loadDialogList == null) return;
-
-        foreach (Node child in _loadDialogList.GetChildren())
-        {
-            child.QueueFree();
-        }
-        IReadOnlyList<SaveSlotInfo> slots = _saveStore.ListTutorials();
-        if (slots.Count == 0)
-        {
-            var emptyLabel = new Label { Text = "No tutorials found." };
-            emptyLabel.AddThemeFontSizeOverride("font_size", 18);
-            _loadDialogList.AddChild(emptyLabel);
-        }
-        foreach (SaveSlotInfo info in slots)
-        {
-            string capturedName = info.SlotName;
-            string label = $"{info.SlotName} — {FormatTimestamp(info.SavedAtUnix)}";
-            var btn = new Button
-            {
-                Text = label,
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-                Alignment = HorizontalAlignment.Left,
-            };
-            btn.AddThemeFontSizeOverride("font_size", 18);
-            btn.Pressed += () => OnLoadSlotPressed(capturedName);
-            AudioBus.AttachClick(btn);
-            _loadDialogList.AddChild(btn);
-        }
-        _loadDialog.PopupCentered();
+        if (_loadDialog == null) return;
+        _loadDialog.ShowSlots(
+            _saveStore.ListTutorials(),
+            "No tutorials found.",
+            info => $"{info.SlotName} — {SlotPickerDialog.FormatTimestamp(info.SavedAtUnix)}",
+            OnLoadSlotPressed);
     }
 
     private void OnLoadSlotPressed(string slotName)
@@ -498,24 +417,7 @@ public partial class TutorialBuilderScene : Node2D
         }
         catch (System.Exception ex)
         {
-            ShowLoadError($"Could not load '{slotName}': {ex.Message}");
+            _loadDialog?.ShowError($"Could not load '{slotName}': {ex.Message}");
         }
-    }
-
-    private void ShowLoadError(string message)
-    {
-        if (_loadErrorDialog == null)
-        {
-            GD.PushError(message);
-            return;
-        }
-        _loadErrorDialog.DialogText = message;
-        _loadErrorDialog.PopupCentered();
-    }
-
-    private static string FormatTimestamp(long unixSeconds)
-    {
-        var dt = System.DateTimeOffset.FromUnixTimeSeconds(unixSeconds).LocalDateTime;
-        return dt.ToString("yyyy-MM-dd HH:mm");
     }
 }

@@ -216,7 +216,6 @@ public static class MapEditPaint
         HexGrid grid,
         IReadOnlyList<Territory> previousTerritories)
     {
-        IReadOnlyList<Territory> raw = TerritoryFinder.FindAll(grid);
-        return CapitalReconciler.Reconcile(raw, previousTerritories, grid);
+        return TerritoryFinder.Recompute(grid, previousTerritories);
     }
 }

@@ -11,6 +11,30 @@ using Godot;
 /// </summary>
 public static class TerritoryFinder
 {
+    /// <summary>
+    /// Standard post-mutation recompute: re-flood-fill the grid,
+    /// reconcile capitals against the previous territory list (so
+    /// inherited capitals keep their tile while orphaned ones get
+    /// new ones placed), and — when <paramref name="treasury"/> is
+    /// non-null — reconcile gold across the resulting split/merge.
+    /// Editor callers pass <paramref name="treasury"/> = null since
+    /// the map editor has no per-capital gold to track.
+    /// Returns the new reconciled territory list; the caller is
+    /// responsible for assigning it back into <c>GameState.Territories</c>
+    /// (the helper can't, since <c>Treasury.ReconcileAfterCapture</c>
+    /// needs both old and new lists to walk).
+    /// </summary>
+    public static IReadOnlyList<Territory> Recompute(
+        HexGrid grid,
+        IReadOnlyList<Territory> previous,
+        Treasury? treasury = null)
+    {
+        IReadOnlyList<Territory> raw = FindAll(grid);
+        IReadOnlyList<Territory> reconciled = CapitalReconciler.Reconcile(raw, previous, grid);
+        treasury?.ReconcileAfterCapture(previous, reconciled);
+        return reconciled;
+    }
+
     public static IReadOnlyList<Territory> FindAll(HexGrid grid)
     {
         var territories = new List<Territory>();

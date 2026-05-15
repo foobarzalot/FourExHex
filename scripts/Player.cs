@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Godot;
 
 /// <summary>
@@ -48,5 +49,45 @@ public class Player
     public Player(string name, Color color, bool isAi)
         : this(name, color, isAi ? AiKind.Random : AiKind.Human)
     {
+    }
+
+    /// <summary>
+    /// Build the canonical 6-player roster the game scene uses,
+    /// mapping each slot's <see cref="AiKind"/> from
+    /// <see cref="GameSettings.PlayerKinds"/>. Falls back to
+    /// <see cref="AiKind.Heuristic"/> for any slot the kinds array
+    /// doesn't cover (defense in depth — the array is the same length
+    /// as <see cref="GameSettings.PlayerConfig"/>, so this branch is
+    /// unreachable unless someone shortens one without the other).
+    /// </summary>
+    public static List<Player> BuildRoster()
+    {
+        var players = new List<Player>();
+        for (int i = 0; i < GameSettings.PlayerConfig.Length; i++)
+        {
+            (string name, string hex) = GameSettings.PlayerConfig[i];
+            AiKind kind = i < GameSettings.PlayerKinds.Length
+                ? GameSettings.PlayerKinds[i]
+                : AiKind.Heuristic;
+            players.Add(new Player(name, new Color(hex), kind));
+        }
+        return players;
+    }
+
+    /// <summary>
+    /// Build the same 6-slot roster but force every slot to
+    /// <see cref="AiKind.Human"/>. The map editor and tutorial
+    /// builder scenes use this to suppress AI turn-driving while
+    /// they share the play harness for previews/recordings.
+    /// </summary>
+    public static List<Player> BuildAllHumanRoster()
+    {
+        var players = new List<Player>();
+        for (int i = 0; i < GameSettings.PlayerConfig.Length; i++)
+        {
+            (string name, string hex) = GameSettings.PlayerConfig[i];
+            players.Add(new Player(name, new Color(hex), AiKind.Human));
+        }
+        return players;
     }
 }

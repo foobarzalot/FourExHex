@@ -57,6 +57,7 @@
     <Compile Include="..\scripts\PurchaseRules.cs" Link="scripts\PurchaseRules.cs" />
     <Compile Include="..\scripts\DefenseRules.cs" Link="scripts\DefenseRules.cs" />
     <Compile Include="..\scripts\MovementRules.cs" Link="scripts\MovementRules.cs" />
+    <Compile Include="..\scripts\RallyRules.cs" Link="scripts\RallyRules.cs" />
     <Compile Include="..\scripts\UpkeepRules.cs" Link="scripts\UpkeepRules.cs" />
     <Compile Include="..\scripts\WinConditionRules.cs" Link="scripts\WinConditionRules.cs" />
     <Compile Include="..\scripts\GameStateSnapshot.cs" Link="scripts\GameStateSnapshot.cs" />

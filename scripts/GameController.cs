@@ -625,39 +625,7 @@ public class GameController
         if (territory == null || territory.Owner != currentColor) return;
 
         HexCoord target = tile.Coord;
-
-        var unmoved = new List<HexCoord>();
-        foreach (HexCoord coord in territory.Coords)
-        {
-            Unit? u = _state.Grid.Get(coord)?.Unit;
-            if (u != null && u.Owner == currentColor && !u.HasMovedThisTurn)
-            {
-                unmoved.Add(coord);
-            }
-        }
-        if (unmoved.Count == 0) return;
-
-        // Process closest-to-target first so a far unit can't claim
-        // a near cell that a closer unit could have used. Lex-min
-        // tiebreak keeps the order deterministic.
-        unmoved.Sort((a, b) =>
-        {
-            int da = HexCoord.Distance(a, target);
-            int db = HexCoord.Distance(b, target);
-            int cmp = da.CompareTo(db);
-            return cmp != 0 ? cmp : a.CompareTo(b);
-        });
-
-        bool anyMoved = false;
-        foreach (HexCoord src in unmoved)
-        {
-            HexCoord? dst = FindClosestEmptyCellInTerritory(territory, src, target);
-            if (!dst.HasValue) continue;
-            // MovementRules.Move on an empty own-color destination is a
-            // free reposition: it does NOT set HasMovedThisTurn.
-            MovementRules.Move(src, dst.Value, _state.Grid, territory);
-            anyMoved = true;
-        }
+        bool anyMoved = RallyRules.ResolveRally(_state.Grid, territory, target, currentColor);
 
         if (anyMoved)
         {
@@ -667,34 +635,6 @@ public class GameController
             SetSelection(territory);
         }
         RefreshViews();
-    }
-
-    /// <summary>
-    /// Find the empty non-occupant tile in <paramref name="territory"/>
-    /// strictly closer to <paramref name="target"/> than
-    /// <paramref name="src"/>'s current distance, minimizing distance
-    /// to the target. Lex-min tiebreak. Returns null if no strictly
-    /// closer empty cell exists — the unit stays put.
-    /// </summary>
-    private HexCoord? FindClosestEmptyCellInTerritory(Territory territory, HexCoord src, HexCoord target)
-    {
-        int currentDist = HexCoord.Distance(src, target);
-        HexCoord? best = null;
-        int bestDist = int.MaxValue;
-        foreach (HexCoord coord in territory.Coords)
-        {
-            if (coord.Equals(src)) continue;
-            HexTile? t = _state.Grid.Get(coord);
-            if (t == null || t.Occupant != null) continue;
-            int d = HexCoord.Distance(coord, target);
-            if (d >= currentDist) continue;
-            if (best == null || d < bestDist || (d == bestDist && coord.CompareTo(best.Value) < 0))
-            {
-                best = coord;
-                bestDist = d;
-            }
-        }
-        return best;
     }
 
     /// <summary>
@@ -1123,9 +1063,7 @@ public class GameController
         Dictionary<HexCoord, (Color Owner, int Gold)> oldCaps = SnapshotCapitals(previous);
         HashSet<Color> colorsWithCapitalBefore = ColorsWithCapital(previous);
 
-        IReadOnlyList<Territory> raw = TerritoryFinder.FindAll(_state.Grid);
-        _state.Territories = CapitalReconciler.Reconcile(raw, previous, _state.Grid);
-        _state.Treasury.ReconcileAfterCapture(previous, _state.Territories);
+        _state.Territories = TerritoryFinder.Recompute(_state.Grid, previous, _state.Treasury);
 
         Dictionary<HexCoord, (Color Owner, int Gold)> newCaps = SnapshotCapitals(_state.Territories);
         LogCaptureDiff(actionDesc, oldCaps, newCaps);
@@ -1204,10 +1142,7 @@ public class GameController
     private void FinishPendingAction()
     {
         _session.ClearPendingAction();
-        _map.ShowMoveTargets(System.Array.Empty<HexCoord>(), UnitLevel.Peasant);
-        _map.ShowTowerTargets(System.Array.Empty<HexCoord>());
-        _map.ShowTowerCoverage(System.Array.Empty<HexCoord>());
-        _map.ShowMoveSource(null);
+        _map.ClearAllOverlays();
         // Selection is maintained by the caller: a non-capturing
         // reposition leaves it alone; a capture re-binds it via
         // RebindSelectionToContaining; a tower build leaves it alone.
@@ -1217,10 +1152,7 @@ public class GameController
     private void CancelPendingAction()
     {
         _session.ClearPendingAction();
-        _map.ShowMoveTargets(System.Array.Empty<HexCoord>(), UnitLevel.Peasant);
-        _map.ShowTowerTargets(System.Array.Empty<HexCoord>());
-        _map.ShowTowerCoverage(System.Array.Empty<HexCoord>());
-        _map.ShowMoveSource(null);
+        _map.ClearAllOverlays();
     }
 
     private void OnCancelActionPressed() => TrackHandler(OnCancelActionPressedBody);
@@ -1436,10 +1368,7 @@ public class GameController
             _session.Mode = SessionState.ActionMode.None;
             _session.MoveSource = null;
         }
-        _map.ShowMoveTargets(System.Array.Empty<HexCoord>(), UnitLevel.Peasant);
-        _map.ShowTowerTargets(System.Array.Empty<HexCoord>());
-        _map.ShowTowerCoverage(System.Array.Empty<HexCoord>());
-        _map.ShowMoveSource(null);
+        _map.ClearAllOverlays();
     }
 
     // --- HUD buttons ------------------------------------------------------
@@ -2334,10 +2263,7 @@ public class GameController
 
         _map.RebuildAfterTerritoryChange();
         _map.ShowHighlight(null);
-        _map.ShowMoveTargets(System.Array.Empty<HexCoord>(), UnitLevel.Peasant);
-        _map.ShowTowerTargets(System.Array.Empty<HexCoord>());
-        _map.ShowTowerCoverage(System.Array.Empty<HexCoord>());
-        _map.ShowMoveSource(null);
+        _map.ClearAllOverlays();
         RefreshViews();
 
         _aiPacer.Schedule(StepReplayPreview, AiBetweenPlayersDelayMs);
@@ -2471,31 +2397,7 @@ public class GameController
             _state.Territories, currentColor, target);
         if (territory == null) return;
 
-        var unmoved = new List<HexCoord>();
-        foreach (HexCoord coord in territory.Coords)
-        {
-            Unit? u = _state.Grid.Get(coord)?.Unit;
-            if (u != null && u.Owner == currentColor && !u.HasMovedThisTurn)
-            {
-                unmoved.Add(coord);
-            }
-        }
-        if (unmoved.Count == 0) return;
-
-        unmoved.Sort((a, b) =>
-        {
-            int da = HexCoord.Distance(a, target);
-            int db = HexCoord.Distance(b, target);
-            int cmp = da.CompareTo(db);
-            return cmp != 0 ? cmp : a.CompareTo(b);
-        });
-
-        foreach (HexCoord src in unmoved)
-        {
-            HexCoord? dst = FindClosestEmptyCellInTerritory(territory, src, target);
-            if (!dst.HasValue) continue;
-            MovementRules.Move(src, dst.Value, _state.Grid, territory);
-        }
+        RallyRules.ResolveRally(_state.Grid, territory, target, currentColor);
     }
 
     // --- AI action execution --------------------------------------------

@@ -19,13 +19,11 @@ public partial class MapEditorScene : Node2D
     private AcceptDialog? _saveDialog;
     private LineEdit? _saveDialogLineEdit;
     private AcceptDialog? _saveErrorDialog;
-    private Window? _loadDialog;
-    private VBoxContainer? _loadDialogList;
-    private AcceptDialog? _loadErrorDialog;
+    private SlotPickerDialog? _loadDialog;
 
     public override void _Ready()
     {
-        _players = BuildPlayers();
+        _players = Player.BuildAllHumanRoster();
 
         _panel = new MapEditorPanel { Players = _players };
         AddChild(_panel);
@@ -154,87 +152,18 @@ public partial class MapEditorScene : Node2D
 
     private void BuildLoadDialog()
     {
-        // Mirrors MainMenuScene.BuildLoadDialog — same Window-based modal,
-        // just listing maps from MapsDirectory instead of saves from
-        // SaveDirectory.
-        _loadDialog = new Window
-        {
-            Title = "Load Map",
-            Size = new Vector2I(440, 360),
-            Visible = false,
-            Exclusive = true,
-        };
-        _loadDialog.CloseRequested += () => _loadDialog!.Hide();
-        _loadDialog.WindowInput += OnLoadDialogInput;
-        AddChild(_loadDialog);
-
-        var scroll = new ScrollContainer
-        {
-            AnchorLeft = 0f,
-            AnchorTop = 0f,
-            AnchorRight = 1f,
-            AnchorBottom = 1f,
-            OffsetLeft = 16f,
-            OffsetTop = 16f,
-            OffsetRight = -16f,
-            OffsetBottom = -16f,
-        };
-        _loadDialog.AddChild(scroll);
-
-        _loadDialogList = new VBoxContainer
-        {
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-        };
-        _loadDialogList.AddThemeConstantOverride("separation", 8);
-        scroll.AddChild(_loadDialogList);
-
-        _loadErrorDialog = new AcceptDialog
-        {
-            Title = "Load failed",
-            OkButtonText = "OK",
-        };
-        AddChild(_loadErrorDialog);
-        AudioBus.AttachClick(_loadErrorDialog.GetOkButton());
-    }
-
-    private void OnLoadDialogInput(InputEvent @event)
-    {
-        if (@event is not InputEventKey keyEvent || !keyEvent.Pressed || keyEvent.Echo) return;
-        if (keyEvent.Keycode != Key.Escape) return;
-        _loadDialog?.Hide();
+        _loadDialog = new SlotPickerDialog("Load Map", "Load failed");
+        _loadDialog.Attach(this);
     }
 
     private void OpenLoadDialog()
     {
-        if (_loadDialog == null || _loadDialogList == null) return;
-
-        foreach (Node child in _loadDialogList.GetChildren())
-        {
-            child.QueueFree();
-        }
-        IReadOnlyList<SaveSlotInfo> slots = _saveStore.ListMaps();
-        if (slots.Count == 0)
-        {
-            var emptyLabel = new Label { Text = "No maps found." };
-            emptyLabel.AddThemeFontSizeOverride("font_size", 18);
-            _loadDialogList.AddChild(emptyLabel);
-        }
-        foreach (SaveSlotInfo info in slots)
-        {
-            string capturedName = info.SlotName;
-            string label = $"{info.SlotName} — {FormatTimestamp(info.SavedAtUnix)}";
-            var btn = new Button
-            {
-                Text = label,
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-                Alignment = HorizontalAlignment.Left,
-            };
-            btn.AddThemeFontSizeOverride("font_size", 18);
-            btn.Pressed += () => OnLoadSlotPressed(capturedName);
-            AudioBus.AttachClick(btn);
-            _loadDialogList.AddChild(btn);
-        }
-        _loadDialog.PopupCentered();
+        if (_loadDialog == null) return;
+        _loadDialog.ShowSlots(
+            _saveStore.ListMaps(),
+            "No maps found.",
+            info => $"{info.SlotName} — {SlotPickerDialog.FormatTimestamp(info.SavedAtUnix)}",
+            OnLoadSlotPressed);
     }
 
     private void OnLoadSlotPressed(string slotName)
@@ -247,36 +176,8 @@ public partial class MapEditorScene : Node2D
         }
         catch (System.Exception ex)
         {
-            ShowLoadError($"Could not load '{slotName}': {ex.Message}");
+            _loadDialog?.ShowError($"Could not load '{slotName}': {ex.Message}");
         }
-    }
-
-    private void ShowLoadError(string message)
-    {
-        if (_loadErrorDialog == null)
-        {
-            GD.PushError(message);
-            return;
-        }
-        _loadErrorDialog.DialogText = message;
-        _loadErrorDialog.PopupCentered();
-    }
-
-    private static string FormatTimestamp(long unixSeconds)
-    {
-        var dt = System.DateTimeOffset.FromUnixTimeSeconds(unixSeconds).LocalDateTime;
-        return dt.ToString("yyyy-MM-dd HH:mm");
-    }
-
-    private static List<Player> BuildPlayers()
-    {
-        var players = new List<Player>();
-        for (int i = 0; i < GameSettings.PlayerConfig.Length; i++)
-        {
-            (string name, string hex) = GameSettings.PlayerConfig[i];
-            players.Add(new Player(name, new Color(hex), AiKind.Human));
-        }
-        return players;
     }
 
     private void ReturnToMainMenu()

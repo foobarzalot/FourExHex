@@ -23,9 +23,7 @@ public partial class MainMenuScene : Control
 
     private readonly OptionButton[] _roleButtons = new OptionButton[GameSettings.PlayerConfig.Length];
     private SaveStore _saveStore = null!;
-    private Window? _loadDialog;
-    private VBoxContainer? _loadDialogList;
-    private AcceptDialog? _loadErrorDialog;
+    private SlotPickerDialog? _loadDialog;
 
     private Control? _landingPanel;
     private Control? _playConfigPanel;
@@ -600,90 +598,20 @@ public partial class MainMenuScene : Control
 
     private void BuildLoadDialog()
     {
-        _loadDialog = new Window
-        {
-            Title = "Load Game",
-            Size = new Vector2I(440, 360),
-            Visible = false,
-            Exclusive = true,
-        };
-        _loadDialog.CloseRequested += () => _loadDialog!.Hide();
-        // Escape closes the modal. Window doesn't dismiss on Escape by
-        // default, and the focused VBoxContainer/buttons swallow the key
-        // before _UnhandledInput would see it, so subscribe directly to
-        // the dialog's input stream.
-        _loadDialog.WindowInput += OnLoadDialogInput;
-        AddChild(_loadDialog);
-
-        var scroll = new ScrollContainer
-        {
-            AnchorLeft = 0f,
-            AnchorTop = 0f,
-            AnchorRight = 1f,
-            AnchorBottom = 1f,
-            OffsetLeft = 16f,
-            OffsetTop = 16f,
-            OffsetRight = -16f,
-            OffsetBottom = -16f,
-        };
-        _loadDialog.AddChild(scroll);
-
-        _loadDialogList = new VBoxContainer
-        {
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-        };
-        _loadDialogList.AddThemeConstantOverride("separation", 8);
-        scroll.AddChild(_loadDialogList);
-
-        _loadErrorDialog = new AcceptDialog
-        {
-            Title = "Load failed",
-            OkButtonText = "OK",
-        };
-        AddChild(_loadErrorDialog);
-    }
-
-    private void OnLoadDialogInput(InputEvent @event)
-    {
-        if (@event is not InputEventKey keyEvent || !keyEvent.Pressed || keyEvent.Echo) return;
-        if (keyEvent.Keycode != Key.Escape) return;
-        _loadDialog?.Hide();
+        _loadDialog = new SlotPickerDialog("Load Game", "Load failed");
+        _loadDialog.Attach(this);
     }
 
     private void OnLoadPressed()
     {
-        if (_loadDialog == null || _loadDialogList == null) return;
-
-        // Rebuild the list each time so newly-saved slots show up.
-        foreach (Node child in _loadDialogList.GetChildren())
-        {
-            child.QueueFree();
-        }
-        System.Collections.Generic.IReadOnlyList<SaveSlotInfo> slots = _saveStore.ListSlots();
-        if (slots.Count == 0)
-        {
-            var emptyLabel = new Label { Text = "No save files found." };
-            emptyLabel.AddThemeFontSizeOverride("font_size", 18);
-            _loadDialogList.AddChild(emptyLabel);
-        }
-        foreach (SaveSlotInfo info in slots)
-        {
-            string capturedName = info.SlotName;
-            string label = info.IsAutosave
-                ? $"[Autosave] turn {info.TurnNumber} — {FormatTimestamp(info.SavedAtUnix)}"
-                : $"{info.SlotName} — turn {info.TurnNumber} — {FormatTimestamp(info.SavedAtUnix)}";
-            var btn = new Button
-            {
-                Text = label,
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-                Alignment = HorizontalAlignment.Left,
-            };
-            btn.AddThemeFontSizeOverride("font_size", 18);
-            btn.Pressed += () => OnLoadSlotPressed(capturedName);
-            AudioBus.AttachClick(btn);
-            _loadDialogList.AddChild(btn);
-        }
-        _loadDialog.PopupCentered();
+        if (_loadDialog == null) return;
+        _loadDialog.ShowSlots(
+            _saveStore.ListSlots(),
+            "No save files found.",
+            info => info.IsAutosave
+                ? $"[Autosave] turn {info.TurnNumber} — {SlotPickerDialog.FormatTimestamp(info.SavedAtUnix)}"
+                : $"{info.SlotName} — turn {info.TurnNumber} — {SlotPickerDialog.FormatTimestamp(info.SavedAtUnix)}",
+            OnLoadSlotPressed);
     }
 
     private void OnLoadSlotPressed(string slotName)
@@ -703,25 +631,8 @@ public partial class MainMenuScene : Control
         }
         catch (System.Exception ex)
         {
-            ShowLoadError($"Could not load '{slotName}': {ex.Message}");
+            _loadDialog?.ShowError($"Could not load '{slotName}': {ex.Message}");
         }
-    }
-
-    private void ShowLoadError(string message)
-    {
-        if (_loadErrorDialog == null)
-        {
-            GD.PushError(message);
-            return;
-        }
-        _loadErrorDialog.DialogText = message;
-        _loadErrorDialog.PopupCentered();
-    }
-
-    private static string FormatTimestamp(long unixSeconds)
-    {
-        var dt = System.DateTimeOffset.FromUnixTimeSeconds(unixSeconds).LocalDateTime;
-        return dt.ToString("yyyy-MM-dd HH:mm");
     }
 
     private void LaunchGameScene()
@@ -841,7 +752,7 @@ public partial class MainMenuScene : Control
             }
             catch (System.Exception ex)
             {
-                ShowLoadError($"Could not load map '{_selectedMapName}': {ex.Message}");
+                _loadDialog?.ShowError($"Could not load map '{_selectedMapName}': {ex.Message}");
                 return;
             }
             GetTree().ChangeSceneToFile("res://scenes/main.tscn");
