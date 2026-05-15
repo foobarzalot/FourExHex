@@ -707,8 +707,17 @@ public partial class HexMapView : Node2D, IHexMapView
             {
                 Node2D corpse = kvp.Value;
                 _unitsLayer?.RemoveChild(corpse);
-                _deathsLayer?.AddChild(corpse);
-                StartShrinkAndFreeAnimation(corpse);
+                if (_silentMode)
+                {
+                    // Skip the shrink tween — under Instant the human
+                    // shouldn't see corpses fading on their next turn.
+                    corpse.QueueFree();
+                }
+                else
+                {
+                    _deathsLayer?.AddChild(corpse);
+                    StartShrinkAndFreeAnimation(corpse);
+                }
                 dyingCoords.Add(kvp.Key);
             }
         }
@@ -781,7 +790,7 @@ public partial class HexMapView : Node2D, IHexMapView
         {
             Node2D? graveVisual = _graveVisuals[c];
             HexTile? newTile = _state.Grid.Get(c);
-            if (graveVisual != null && _animateNewTrees && newTile?.Occupant is Tree)
+            if (graveVisual != null && _animateNewTrees && newTile?.Occupant is Tree && !_silentMode)
             {
                 _gravesLayer?.RemoveChild(graveVisual);
                 _deathsLayer?.AddChild(graveVisual);
@@ -835,7 +844,7 @@ public partial class HexMapView : Node2D, IHexMapView
                     visual.Position = center;
                     _gravesLayer?.AddChild(visual);
                     _graveVisuals[tile.Coord] = visual;
-                    if (_animateNewGraves)
+                    if (_animateNewGraves && !_silentMode)
                     {
                         StartGraveGrowAnimation(visual, dyingCoords.Contains(tile.Coord));
                     }
@@ -849,7 +858,7 @@ public partial class HexMapView : Node2D, IHexMapView
                     Node2D anchor = BuildTreeAnchor(center);
                     _treesLayer?.AddChild(anchor);
                     _treeVisuals[tile.Coord] = anchor;
-                    if (_animateNewTrees)
+                    if (_animateNewTrees && !_silentMode)
                     {
                         StartTreeGrowAnimation(anchor, graveToTreeCoords.Contains(tile.Coord));
                     }
@@ -965,9 +974,19 @@ public partial class HexMapView : Node2D, IHexMapView
     /// destruction the player needs to see. All transient nodes free
     /// themselves when their tweens finish.
     /// </summary>
+    /// <summary>True while an AI player runs under the "Instant" AI
+    /// Speed setting — gates per-action sound/anim spawn calls so the
+    /// AI batch is fully silent from the human's perspective. Toggled
+    /// by GameController; game-end overlays (victory/defeat/bankruptcy)
+    /// remain audible because they flow through Refresh, not through
+    /// the gated Play* paths.</summary>
+    private bool _silentMode;
+    public void SetSilentMode(bool silent) => _silentMode = silent;
+
     public void PlayDestructionEffect(HexCoord coord, HexOccupant destroyed)
     {
         if (!UserSettings.VfxEnabled) return;
+        if (_silentMode) return;
         if (destroyed is Grave) return;
         if (_deathsLayer == null) return;
 
@@ -1003,56 +1022,69 @@ public partial class HexMapView : Node2D, IHexMapView
     /// </summary>
     public void PlayUnitPlaced(HexCoord coord)
     {
+        if (_silentMode) return;
         AudioBus.Instance.PlayUnitPlaced();
     }
 
     public void PlayTowerPlaced(HexCoord coord)
     {
+        if (_silentMode) return;
         AudioBus.Instance.PlayTowerPlaced();
     }
 
     public void PlayUnitCombined(HexCoord coord)
     {
+        if (_silentMode) return;
         AudioBus.Instance.PlayUnitCombined();
     }
 
     public void PlayUnitDestroyed(HexCoord coord)
     {
+        if (_silentMode) return;
         AudioBus.Instance.PlayUnitDestroyed();
     }
 
     public void PlayTowerDestroyed(HexCoord coord)
     {
+        if (_silentMode) return;
         AudioBus.Instance.PlayTowerDestroyed();
     }
 
     public void PlayTreeCleared(HexCoord coord)
     {
+        if (_silentMode) return;
         AudioBus.Instance.PlayTreeCleared();
     }
 
     public void PlayCapitalDestroyed(HexCoord coord)
     {
+        if (_silentMode) return;
         AudioBus.Instance.PlayCapitalDestroyed();
     }
 
     public void PlayBankruptcy()
     {
+        // NOT gated by silent mode — bankruptcy is a turn-boundary
+        // event the human asked to still hear under Instant.
         AudioBus.Instance.PlayBankruptcy();
     }
 
     public void PlayGameWon()
     {
+        // NOT gated by silent mode — victory is a game-end event the
+        // human asked to still hear under Instant.
         AudioBus.Instance.PlayGameWon();
     }
 
     public void PlayRally()
     {
+        if (_silentMode) return;
         AudioBus.Instance.PlayRally();
     }
 
     public void PlayPlayerDefeated()
     {
+        if (_silentMode) return;
         AudioBus.Instance.PlayPlayerDefeated();
     }
 

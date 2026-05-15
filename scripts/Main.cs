@@ -216,7 +216,9 @@ public partial class Main : Node2D
         // looping forever.
         IAiPacer pacer = diagnosticMode
             ? new SynchronousAiPacer()
-            : new GodotAiPacer(new SceneTreeTimerFactory(GetTree()));
+            : new GodotAiPacer(
+                new SceneTreeTimerFactory(GetTree()),
+                () => UserSettings.AiSpeedMultiplier);
         // If we're resuming an in-progress save that carries a replay,
         // hand it to the controller so recording continues against the
         // same beat log (and BeginReplay can rewind to the original
@@ -230,7 +232,8 @@ public partial class Main : Node2D
             aiPacer: pacer,
             aiChooser: AiDispatcher.ChooseForCurrentPlayer,
             maxTurnNumber: _maxTurnNumber,
-            loadedReplay: loadedReplay);
+            loadedReplay: loadedReplay,
+            aiSilentMode: () => UserSettings.AiSpeed == AiSpeed.Instant);
 
         if (!diagnosticMode)
         {

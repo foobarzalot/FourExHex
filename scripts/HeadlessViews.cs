@@ -49,6 +49,7 @@ public sealed class HeadlessHexMapView : IHexMapView
     public void CenterOnTerritory(Territory territory) { }
     public void RebuildAfterTerritoryChange() { }
     public void RefreshOccupantVisuals(Color? currentPlayerColor, Treasury treasury) { }
+    public void SetSilentMode(bool silent) { }
     public void PlayDestructionEffect(HexCoord coord, HexOccupant destroyed) { }
     public void PlayUnitPlaced(HexCoord coord) { }
     public void PlayTowerPlaced(HexCoord coord) { }

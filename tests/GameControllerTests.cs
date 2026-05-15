@@ -5365,4 +5365,173 @@ public class GameControllerTests
         Assert.Empty(rejection.Defenders);
     }
 
+    // --- AI silent mode (Instant speed setting) -------------------------
+    // GameController takes an injected Func<bool> aiSilentMode. When true
+    // AND the current player is AI, the controller asks the view to enter
+    // silent mode for the duration of that AI's turn — per-action Play*
+    // effects and tween-animations are suppressed so the human sees the
+    // post-AI map state with no visible/audible AI playback. The wiring
+    // is symmetric: silent mode flips off as soon as control returns to a
+    // human player (or the game ends).
+
+    private static (GameState State, SessionState Session, MockHexMapView Map,
+        MockHudView Hud, Player Human, Player Ai) BuildHumanVsAiKillScenario()
+    {
+        // 5x1 line: Red (human) holds capital at (3,0) with one outpost
+        // at (4,0); Blue (AI) holds {(0,0),(1,0),(2,0)} with a Spearman
+        // at (2,0). The scripted chooser below directs Blue's Spearman
+        // to (3,0), killing Red's capital and capturing the territory.
+        // Used by both Silent and NonSilent tests below to keep the
+        // single AI action that fires a destruction effect identical
+        // across them.
+        var red = new Player("Red", new Color(1f, 0f, 0f));
+        var blue = new Player("Blue", new Color(0f, 0f, 1f), isAi: true);
+        var players = new List<Player> { red, blue };
+
+        var grid = TestHelpers.BuildRectGrid(5, 1, new Color(0.3f, 0.3f, 0.3f));
+        grid.Get(HexCoord.FromOffset(0, 0))!.Color = blue.Color;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Color = blue.Color;
+        grid.Get(HexCoord.FromOffset(2, 0))!.Color = blue.Color;
+        grid.Get(HexCoord.FromOffset(3, 0))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(4, 0))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(blue.Color, UnitLevel.Spearman);
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        var map = new MockHexMapView();
+        var hud = new MockHudView();
+        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
+        {
+            map.TileIndex[kvp.Key] = kvp.Value;
+        }
+        return (state, session, map, hud, red, blue);
+    }
+
+    [Fact]
+    public void AiSilentMode_True_SuppressesPerActionEffects()
+    {
+        // With silent mode on, the AI's spearman-into-capital capture
+        // still mutates state (capital destroyed, territory captured)
+        // but no Play* effects reach the view. This is the visible
+        // behavior the user expects from "Instant" speed.
+        var (state, session, map, hud, _, blue) = BuildHumanVsAiKillScenario();
+
+        AiAction? scripted = new AiMoveAction(
+            HexCoord.FromOffset(2, 0), HexCoord.FromOffset(3, 0));
+        AiAction? Chooser(GameState s, Color c, HashSet<HexCoord> v, Random r)
+        {
+            AiAction? next = scripted;
+            scripted = null;
+            return next;
+        }
+
+        var controller = new GameController(
+            state, session, map, hud, seed: 0,
+            aiChooser: Chooser,
+            aiPacer: new SynchronousAiPacer(),
+            aiSilentMode: () => true);
+        controller.StartGame();
+        hud.ClickEndTurn(); // hand turn to Blue (AI); SynchronousAiPacer drains the AI turn inline
+
+        // State mutated.
+        Assert.Null(state.Grid.Get(HexCoord.FromOffset(2, 0))!.Unit);
+        Assert.Equal(blue.Color, state.Grid.Get(HexCoord.FromOffset(3, 0))!.Color);
+        // But none of the per-action effects fired.
+        Assert.Empty(map.DestructionEffects);
+        Assert.Empty(map.CapitalDestroyedSounds);
+        Assert.Empty(map.UnitPlacedSounds);
+    }
+
+    [Fact]
+    public void AiSilentMode_False_PlaysAllPerActionEffects()
+    {
+        // Baseline: same scenario, silent mode off — the destruction
+        // effect and capital-destroyed sound DO fire. Establishes that
+        // the silent-mode gate (not some unrelated short-circuit) is
+        // what suppressed them in the silent test.
+        var (state, session, map, hud, _, _) = BuildHumanVsAiKillScenario();
+
+        AiAction? scripted = new AiMoveAction(
+            HexCoord.FromOffset(2, 0), HexCoord.FromOffset(3, 0));
+        AiAction? Chooser(GameState s, Color c, HashSet<HexCoord> v, Random r)
+        {
+            AiAction? next = scripted;
+            scripted = null;
+            return next;
+        }
+
+        var controller = new GameController(
+            state, session, map, hud, seed: 0,
+            aiChooser: Chooser,
+            aiPacer: new SynchronousAiPacer(),
+            aiSilentMode: () => false);
+        controller.StartGame();
+        hud.ClickEndTurn();
+
+        Assert.NotEmpty(map.DestructionEffects);
+        Assert.NotEmpty(map.CapitalDestroyedSounds);
+    }
+
+    [Fact]
+    public void AiSilentMode_True_SetsViewSilentDuringAiTurnOnly()
+    {
+        // The flag flips true when an AI player takes over and back to
+        // false the moment a human resumes control. The defeat overlay
+        // pause from the eliminated human keeps Blue in seat: by the time
+        // we inspect the mock, the AI has finished its only action and
+        // the controller is parked waiting for the human's dismissal —
+        // the human has not yet resumed control, so silent stays true.
+        var (state, session, map, hud, _, _) = BuildHumanVsAiKillScenario();
+
+        AiAction? scripted = new AiMoveAction(
+            HexCoord.FromOffset(2, 0), HexCoord.FromOffset(3, 0));
+        AiAction? Chooser(GameState s, Color c, HashSet<HexCoord> v, Random r)
+        {
+            AiAction? next = scripted;
+            scripted = null;
+            return next;
+        }
+
+        var controller = new GameController(
+            state, session, map, hud, seed: 0,
+            aiChooser: Chooser,
+            aiPacer: new SynchronousAiPacer(),
+            aiSilentMode: () => true);
+        controller.StartGame();
+        // Before the human ends turn, silent mode must be false (Red is human).
+        Assert.False(map.SilentMode);
+
+        hud.ClickEndTurn();
+        // AI took its turn; silent flipped on during that turn.
+        Assert.True(map.SilentMode);
+    }
+
+    [Fact]
+    public void AiSilentMode_DefaultOff_DoesNotBreakExistingFlow()
+    {
+        // Regression guard: if a caller omits aiSilentMode (existing
+        // tests, production paths that haven't been wired yet), the
+        // controller behaves exactly as before — effects fire normally.
+        var (state, session, map, hud, _, _) = BuildHumanVsAiKillScenario();
+
+        AiAction? scripted = new AiMoveAction(
+            HexCoord.FromOffset(2, 0), HexCoord.FromOffset(3, 0));
+        AiAction? Chooser(GameState s, Color c, HashSet<HexCoord> v, Random r)
+        {
+            AiAction? next = scripted;
+            scripted = null;
+            return next;
+        }
+
+        var controller = new GameController(
+            state, session, map, hud, seed: 0,
+            aiChooser: Chooser,
+            aiPacer: new SynchronousAiPacer());
+        controller.StartGame();
+        hud.ClickEndTurn();
+
+        Assert.NotEmpty(map.DestructionEffects);
+        Assert.False(map.SilentMode);
+    }
 }

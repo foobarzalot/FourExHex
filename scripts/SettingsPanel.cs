@@ -24,6 +24,13 @@ public sealed partial class SettingsPanel : CanvasLayer
     private CheckBox _sfxCheckBox = null!;
     private CheckBox _vfxCheckBox = null!;
 
+    // Radio-style buttons for the AiSpeed setting. Parallel to
+    // AiSpeedOrder below so Open() can re-sync the pressed state from
+    // UserSettings without manually mapping enum cases.
+    private static readonly AiSpeed[] AiSpeedOrder =
+        { AiSpeed.Slow, AiSpeed.Normal, AiSpeed.Fast, AiSpeed.Instant };
+    private Button[] _aiSpeedButtons = null!;
+
     public override void _Ready()
     {
         Layer = 100;
@@ -102,6 +109,48 @@ public sealed partial class SettingsPanel : CanvasLayer
         AudioBus.AttachClick(_vfxCheckBox);
         vbox.AddChild(_vfxCheckBox);
 
+        var aiSpeedLabel = new Label { Text = "AI Turn Speed" };
+        aiSpeedLabel.AddThemeFontSizeOverride("font_size", 22);
+        vbox.AddChild(aiSpeedLabel);
+
+        // Shared ButtonGroup turns the four toggles into a radio set:
+        // pressing one un-presses the others. Each button captures its
+        // own AiSpeed via the closure so the handler doesn't need to
+        // parse the label back into an enum. Godot's default toggle
+        // visuals are subtle (a slight shading shift); we paint our
+        // own selected/unselected stylebox so the active speed is
+        // obvious at a glance.
+        var aiSpeedRow = new HBoxContainer();
+        aiSpeedRow.AddThemeConstantOverride("separation", 8);
+        var aiSpeedGroup = new ButtonGroup();
+        AiSpeed currentSpeed = UserSettings.AiSpeed;
+        _aiSpeedButtons = new Button[AiSpeedOrder.Length];
+        for (int i = 0; i < AiSpeedOrder.Length; i++)
+        {
+            AiSpeed speed = AiSpeedOrder[i];
+            var btn = new Button
+            {
+                Text = SpeedLabel(speed),
+                ToggleMode = true,
+                ButtonGroup = aiSpeedGroup,
+                ButtonPressed = speed == currentSpeed,
+                FocusMode = Control.FocusModeEnum.None,
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            };
+            btn.AddThemeFontSizeOverride("font_size", 18);
+            btn.Pressed += () => OnAiSpeedPressed(speed);
+            // Toggled fires when this button's pressed state flips —
+            // including the auto-unpress the ButtonGroup triggers on
+            // siblings — so restyling here keeps every button in sync
+            // without polling.
+            btn.Toggled += pressed => ApplySpeedButtonStyle(btn, pressed);
+            AudioBus.AttachClick(btn);
+            aiSpeedRow.AddChild(btn);
+            _aiSpeedButtons[i] = btn;
+            ApplySpeedButtonStyle(btn, btn.ButtonPressed);
+        }
+        vbox.AddChild(aiSpeedRow);
+
         var backButton = new Button
         {
             Text = "Back",
@@ -121,6 +170,16 @@ public sealed partial class SettingsPanel : CanvasLayer
         if (IsOpen) return;
         _sfxCheckBox.ButtonPressed = UserSettings.SfxEnabled;
         _vfxCheckBox.ButtonPressed = UserSettings.VfxEnabled;
+        AiSpeed currentSpeed = UserSettings.AiSpeed;
+        for (int i = 0; i < AiSpeedOrder.Length; i++)
+        {
+            Button btn = _aiSpeedButtons[i];
+            bool pressed = AiSpeedOrder[i] == currentSpeed;
+            btn.ButtonPressed = pressed;
+            // Setting ButtonPressed programmatically does NOT raise
+            // Toggled, so refresh the stylebox by hand.
+            ApplySpeedButtonStyle(btn, pressed);
+        }
         IsOpen = true;
         Visible = true;
     }
@@ -150,5 +209,62 @@ public sealed partial class SettingsPanel : CanvasLayer
     private void OnVfxToggled(bool pressed)
     {
         UserSettings.VfxEnabled = pressed;
+    }
+
+    private void OnAiSpeedPressed(AiSpeed speed)
+    {
+        UserSettings.AiSpeed = speed;
+    }
+
+    private static string SpeedLabel(AiSpeed speed) => speed switch
+    {
+        AiSpeed.Slow => "Slow",
+        AiSpeed.Normal => "Normal",
+        AiSpeed.Fast => "Fast",
+        AiSpeed.Instant => "Instant",
+        _ => speed.ToString(),
+    };
+
+    /// <summary>
+    /// Repaint a speed button so the selected one reads as solid white
+    /// with dark text (mirrors the CTA accent in HudView) and the
+    /// unselected ones read as dim, transparent dark with light text.
+    /// Both states keep a visible border so the four-button row reads
+    /// as a single control rather than free-floating glyphs.
+    /// </summary>
+    private static void ApplySpeedButtonStyle(Button btn, bool pressed)
+    {
+        var style = new StyleBoxFlat
+        {
+            BgColor = pressed
+                ? new Color(1f, 1f, 1f, 1f)
+                : new Color(0.15f, 0.15f, 0.18f, 1f),
+            BorderColor = pressed
+                ? new Color(0f, 0f, 0f, 1f)
+                : new Color(0.55f, 0.55f, 0.6f, 1f),
+            BorderWidthLeft = 2,
+            BorderWidthRight = 2,
+            BorderWidthTop = 2,
+            BorderWidthBottom = 2,
+            CornerRadiusTopLeft = 4,
+            CornerRadiusTopRight = 4,
+            CornerRadiusBottomLeft = 4,
+            CornerRadiusBottomRight = 4,
+            ContentMarginLeft = 10,
+            ContentMarginRight = 10,
+            ContentMarginTop = 6,
+            ContentMarginBottom = 6,
+        };
+        btn.AddThemeStyleboxOverride("normal", style);
+        btn.AddThemeStyleboxOverride("hover", style);
+        btn.AddThemeStyleboxOverride("pressed", style);
+        btn.AddThemeStyleboxOverride("hover_pressed", style);
+        Color textColor = pressed
+            ? new Color(0f, 0f, 0f, 1f)
+            : new Color(0.9f, 0.9f, 0.95f, 1f);
+        btn.AddThemeColorOverride("font_color", textColor);
+        btn.AddThemeColorOverride("font_hover_color", textColor);
+        btn.AddThemeColorOverride("font_pressed_color", textColor);
+        btn.AddThemeColorOverride("font_hover_pressed_color", textColor);
     }
 }

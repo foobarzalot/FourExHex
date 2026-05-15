@@ -2,7 +2,22 @@ using System.Text.Json;
 using Godot;
 
 /// <summary>
-/// Process-wide user preferences (currently SFX + VFX toggles). Persisted
+/// Discrete AI-turn pacing presets the user picks from in the Settings
+/// panel. <see cref="UserSettings.AiSpeedMultiplier"/> turns the choice
+/// into a scalar the pacer applies to every delay; <see cref="Instant"/>
+/// (multiplier 0) additionally tells the controller to put the view in
+/// silent mode so per-action effects don't reach the player.
+/// </summary>
+public enum AiSpeed
+{
+    Slow,
+    Normal,
+    Fast,
+    Instant,
+}
+
+/// <summary>
+/// Process-wide user preferences (SFX + VFX toggles, AI speed). Persisted
 /// to <c>user://settings.json</c> so the choice survives quitting and
 /// relaunching the game. Mirrors <see cref="SaveStore"/>'s atomic-write
 /// pattern (tmp + rename) for crash-safety.
@@ -23,6 +38,7 @@ public static class UserSettings
     private static bool _isLoading;
     private static bool _sfxEnabled = true;
     private static bool _vfxEnabled = true;
+    private static AiSpeed _aiSpeed = AiSpeed.Normal;
 
     public static bool SfxEnabled
     {
@@ -56,10 +72,42 @@ public static class UserSettings
         }
     }
 
+    public static AiSpeed AiSpeed
+    {
+        get
+        {
+            EnsureLoaded();
+            return _aiSpeed;
+        }
+        set
+        {
+            EnsureLoaded();
+            if (_aiSpeed == value) return;
+            _aiSpeed = value;
+            Save();
+        }
+    }
+
+    /// <summary>
+    /// Multiplier applied to AI step delays. Slow doubles them, Fast
+    /// halves them, Instant returns 0 (which the pacer interprets as
+    /// "run inline, no scheduling"). Read on every Schedule call so a
+    /// mid-game change to <see cref="AiSpeed"/> takes effect immediately.
+    /// </summary>
+    public static float AiSpeedMultiplier => AiSpeed switch
+    {
+        AiSpeed.Slow => 2f,
+        AiSpeed.Normal => 1f,
+        AiSpeed.Fast => 0.5f,
+        AiSpeed.Instant => 0f,
+        _ => 1f,
+    };
+
     private sealed class SettingsDto
     {
         public bool SfxEnabled { get; set; } = true;
         public bool VfxEnabled { get; set; } = true;
+        public AiSpeed AiSpeed { get; set; } = AiSpeed.Normal;
     }
 
     private static void EnsureLoaded()
@@ -81,6 +129,7 @@ public static class UserSettings
             _isLoading = true;
             _sfxEnabled = dto.SfxEnabled;
             _vfxEnabled = dto.VfxEnabled;
+            _aiSpeed = dto.AiSpeed;
         }
         catch (System.Exception ex)
         {
@@ -98,7 +147,12 @@ public static class UserSettings
         try
         {
             string json = JsonSerializer.Serialize(
-                new SettingsDto { SfxEnabled = _sfxEnabled, VfxEnabled = _vfxEnabled },
+                new SettingsDto
+                {
+                    SfxEnabled = _sfxEnabled,
+                    VfxEnabled = _vfxEnabled,
+                    AiSpeed = _aiSpeed,
+                },
                 new JsonSerializerOptions { WriteIndented = true });
 
             // Atomic write: write to <name>.tmp then rename over the final

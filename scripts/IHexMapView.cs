@@ -118,6 +118,18 @@ public interface IHexMapView
     void RefreshOccupantVisuals(Color? currentPlayerColor, Treasury treasury);
 
     /// <summary>
+    /// Suppress (true) or restore (false) per-action AI feedback —
+    /// destruction effects, placement/move/combine sounds, and
+    /// tree/grave growth tweens. Set by GameController to true while
+    /// an AI player runs under the "Instant" AI Speed setting, then
+    /// false the moment a human resumes control. Game-state overlays
+    /// (victory, defeat, bankruptcy) flow through <see cref="Refresh"/>
+    /// and are unaffected — the user still sees those events even
+    /// when the AI batch is otherwise silent.
+    /// </summary>
+    void SetSilentMode(bool silent);
+
+    /// <summary>
     /// Play a one-shot destruction effect at <paramref name="coord"/> for
     /// the displaced occupant. Called by the controller after a
     /// movement-rule-driven capture, tree chop, or grave burial — once

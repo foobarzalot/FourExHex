@@ -82,6 +82,35 @@ public class GameController
     /// </summary>
     public event Action? HumanTurnStarted;
 
+    private readonly Func<bool> _aiSilentMode;
+
+    /// <summary>
+    /// Tell the view to enter (or leave) silent mode based on whether
+    /// the player about to act is AI and whether the user opted into
+    /// Instant AI Speed. Called from every player-transition entry point
+    /// — <see cref="Resume"/> for game start / load / replay seed, and
+    /// <see cref="StartPlayerTurn"/> for the live AI→AI and AI→human
+    /// hand-offs — so the flag tracks the active actor without leaking
+    /// any UserSettings dependency into pure controller code.
+    /// </summary>
+    private void RefreshSilentMode()
+    {
+        _map.SetSilentMode(InSilentAiBatch());
+    }
+
+    /// <summary>
+    /// True while an AI player is acting under the Instant speed setting.
+    /// The AI step machine consults this to skip per-beat highlight and
+    /// view-refresh calls — they'd never reach the screen anyway (the
+    /// SynchronousAiPacer drains the entire batch in one frame) and
+    /// running them blocks the main thread for hundreds of milliseconds
+    /// per AI player on a six-AI map. The final <c>RefreshViews</c> when
+    /// control returns to a human (i.e. when this returns false again)
+    /// is what the human actually sees.
+    /// </summary>
+    private bool InSilentAiBatch() =>
+        _aiSilentMode() && _state.Turns.CurrentPlayer.IsAi;
+
     public GameController(
         GameState state,
         SessionState session,
@@ -95,8 +124,10 @@ public class GameController
         Func<ReplayBeat, bool>? humanActionValidator = null,
         bool previewMode = false,
         bool recordingMode = false,
-        Action? onAfterRefresh = null)
+        Action? onAfterRefresh = null,
+        Func<bool>? aiSilentMode = null)
     {
+        _aiSilentMode = aiSilentMode ?? (() => false);
         _humanActionValidator = humanActionValidator;
         _previewMode = previewMode;
         _recordingMode = recordingMode;
@@ -245,6 +276,7 @@ public class GameController
             _initialCurrentPlayerIndex = _state.Turns.CurrentPlayerIndex;
         }
         ReseedRngForCurrentTurn();
+        RefreshSilentMode();
         RunAiTurnsUntilHumanOrDone();
         RefreshViews();
         // Initial player is human → StartPlayerTurn is never called
@@ -1921,6 +1953,10 @@ public class GameController
         // derived here.
         ReseedRngForCurrentTurn();
         _humanTurnFiredForCurrentTurn = false;
+        // Toggle the view's silent flag for the player about to act.
+        // Done BEFORE PlayBankruptcy below so the per-turn bankruptcy
+        // toll respects the policy in HexMapView (currently not silenced).
+        RefreshSilentMode();
 
         if (_state.Turns.TurnNumber > 1)
         {
@@ -2106,8 +2142,16 @@ public class GameController
             _aiVisited.Clear();
             _aiStepsThisPlayer = 0;
             _pendingAiAction = null;
-            _map.ShowHighlight(null);
-            RefreshViews();
+            // Skip the hand-off refresh while still inside a silent
+            // batch (next player is also AI) — the next StepAiPreview
+            // would rebuild views again immediately. When the new
+            // player is human, InSilentAiBatch flips false and this
+            // becomes the single end-of-batch refresh the human sees.
+            if (!InSilentAiBatch())
+            {
+                _map.ShowHighlight(null);
+                RefreshViews();
+            }
 
             if (_gameEndedFired) return;
             if (_session.IsGameOver) return;
@@ -2119,9 +2163,15 @@ public class GameController
         }
 
         _pendingAiAction = action;
-        Territory? acting = ResolveAiActingTerritory(action);
-        _map.ShowHighlight(acting);
-        RefreshViews();
+        // Per-action preview highlight is cosmetic; skip it (and the
+        // attendant view rebuild) when nothing will be drawn before
+        // the immediately-following execute beat.
+        if (!InSilentAiBatch())
+        {
+            Territory? acting = ResolveAiActingTerritory(action);
+            _map.ShowHighlight(acting);
+            RefreshViews();
+        }
         _aiPacer.Schedule(StepAiExecute, AiPreviewDelayMs);
     }
 
@@ -2246,10 +2296,15 @@ public class GameController
         // After a capture the old territory object is stale; find the
         // AI's territory now containing the result coord and
         // re-highlight so the outline matches the post-action board.
-        Territory? resulting = TerritoryLookup.FindOwnedContaining(
-            _state.Territories, _state.Turns.CurrentPlayer.Color, resultCoord);
-        _map.ShowHighlight(resulting);
-        RefreshViews();
+        // Skipped during a silent batch — the highlight pulse would
+        // never paint and the rebuild is the dominant per-action cost.
+        if (!InSilentAiBatch())
+        {
+            Territory? resulting = TerritoryLookup.FindOwnedContaining(
+                _state.Territories, _state.Turns.CurrentPlayer.Color, resultCoord);
+            _map.ShowHighlight(resulting);
+            RefreshViews();
+        }
 
         if (_session.IsGameOver)
         {

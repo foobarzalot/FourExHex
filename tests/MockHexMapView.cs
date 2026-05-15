@@ -83,30 +83,71 @@ public class MockHexMapView : IHexMapView
         LastOccupantRefreshPlayer = currentPlayerColor;
     }
 
+    /// <summary>
+    /// Mirrors <c>HexMapView</c>'s silent-mode policy so controller
+    /// integration tests can verify end-to-end suppression: per-action
+    /// Play* calls and the destruction effect drop while silent;
+    /// <see cref="PlayBankruptcy"/> and <see cref="PlayGameWon"/> stay
+    /// audible (turn-/game-boundary events the user asked to still hear).
+    /// </summary>
+    public bool SilentMode { get; private set; }
+    public void SetSilentMode(bool silent) => SilentMode = silent;
+
     public List<(HexCoord Coord, HexOccupant Destroyed)> DestructionEffects { get; } = new();
-    public void PlayDestructionEffect(HexCoord coord, HexOccupant destroyed) =>
+    public void PlayDestructionEffect(HexCoord coord, HexOccupant destroyed)
+    {
+        if (SilentMode) return;
         DestructionEffects.Add((coord, destroyed));
+    }
 
     public List<HexCoord> UnitPlacedSounds { get; } = new();
-    public void PlayUnitPlaced(HexCoord coord) => UnitPlacedSounds.Add(coord);
+    public void PlayUnitPlaced(HexCoord coord)
+    {
+        if (SilentMode) return;
+        UnitPlacedSounds.Add(coord);
+    }
 
     public List<HexCoord> TowerPlacedSounds { get; } = new();
-    public void PlayTowerPlaced(HexCoord coord) => TowerPlacedSounds.Add(coord);
+    public void PlayTowerPlaced(HexCoord coord)
+    {
+        if (SilentMode) return;
+        TowerPlacedSounds.Add(coord);
+    }
 
     public List<HexCoord> UnitCombinedSounds { get; } = new();
-    public void PlayUnitCombined(HexCoord coord) => UnitCombinedSounds.Add(coord);
+    public void PlayUnitCombined(HexCoord coord)
+    {
+        if (SilentMode) return;
+        UnitCombinedSounds.Add(coord);
+    }
 
     public List<HexCoord> UnitDestroyedSounds { get; } = new();
-    public void PlayUnitDestroyed(HexCoord coord) => UnitDestroyedSounds.Add(coord);
+    public void PlayUnitDestroyed(HexCoord coord)
+    {
+        if (SilentMode) return;
+        UnitDestroyedSounds.Add(coord);
+    }
 
     public List<HexCoord> TowerDestroyedSounds { get; } = new();
-    public void PlayTowerDestroyed(HexCoord coord) => TowerDestroyedSounds.Add(coord);
+    public void PlayTowerDestroyed(HexCoord coord)
+    {
+        if (SilentMode) return;
+        TowerDestroyedSounds.Add(coord);
+    }
 
     public List<HexCoord> TreeClearedSounds { get; } = new();
-    public void PlayTreeCleared(HexCoord coord) => TreeClearedSounds.Add(coord);
+    public void PlayTreeCleared(HexCoord coord)
+    {
+        if (SilentMode) return;
+        TreeClearedSounds.Add(coord);
+    }
 
     public List<HexCoord> CapitalDestroyedSounds { get; } = new();
-    public void PlayCapitalDestroyed(HexCoord coord) => CapitalDestroyedSounds.Add(coord);
+    public void PlayCapitalDestroyed(HexCoord coord)
+    {
+        if (SilentMode) return;
+        CapitalDestroyedSounds.Add(coord);
+    }
 
     public int BankruptcySoundCount { get; private set; }
     public void PlayBankruptcy() => BankruptcySoundCount++;
@@ -115,10 +156,18 @@ public class MockHexMapView : IHexMapView
     public void PlayGameWon() => GameWonSoundCount++;
 
     public int RallySoundCount { get; private set; }
-    public void PlayRally() => RallySoundCount++;
+    public void PlayRally()
+    {
+        if (SilentMode) return;
+        RallySoundCount++;
+    }
 
     public int PlayerDefeatedSoundCount { get; private set; }
-    public void PlayPlayerDefeated() => PlayerDefeatedSoundCount++;
+    public void PlayPlayerDefeated()
+    {
+        if (SilentMode) return;
+        PlayerDefeatedSoundCount++;
+    }
 
     /// <summary>
     /// Records every rejection feedback event the controller raised. Each
