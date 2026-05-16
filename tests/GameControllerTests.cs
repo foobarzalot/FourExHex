@@ -2132,6 +2132,49 @@ public class GameControllerTests
     }
 
     [Fact]
+    public void ExecuteAiBuildTower_NearExistingTower_DoesNotThrowOnSpacing()
+    {
+        // Tower spacing is an AI *selection* heuristic (filtered in
+        // AiCommon.Enumerate), NOT an execution legality rule — humans
+        // may bunch towers, so replaying a recorded human tower-build
+        // adjacent to another tower must not throw. Regression for the
+        // "about_to_win" replay desync (beat #714: human BuildTower
+        // rejected because ExecuteAiBuildTower applied AI-only spacing).
+        var red = new Player("Red", new Color(1f, 0f, 0f), isAi: true);
+        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var players = new List<Player> { red, blue };
+        // 5x1 strip: Red owns (0,0)-(3,0); (4,0) Blue. Capital lands at
+        // lex-min (0,0); (1,0)/(2,0)/(3,0) are empty Red tiles.
+        var grid = TestHelpers.BuildRectGrid(5, 1, blue.Color);
+        for (int x = 0; x < 4; x++)
+            grid.Get(HexCoord.FromOffset(x, 0))!.Color = red.Color;
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var map = new MockHexMapView();
+        var hud = new MockHudView();
+
+        Territory redTerr = state.Territories.First(t => t.Owner == red.Color);
+        HexCoord cap = redTerr.Capital!.Value;
+        state.Treasury.SetGold(cap, 20);
+        // Pre-place a Red tower and target a second tower one hex away —
+        // distance 1 < MinTowerSpacing (3), but otherwise fully legal.
+        HexCoord existing = HexCoord.FromOffset(1, 0);
+        HexCoord target = HexCoord.FromOffset(2, 0);
+        Assert.NotEqual(cap, existing);
+        Assert.NotEqual(cap, target);
+        Assert.True(HexCoord.Distance(existing, target) < AiCommon.MinTowerSpacing);
+        grid.Get(existing)!.Occupant = new Tower();
+
+        var build = new AiBuildTowerAction(cap, target);
+        GameController c = BuildHarnessWithStubAi(state, map, hud, build);
+
+        c.StartGame(); // must NOT throw on spacing
+
+        Assert.IsType<Tower>(grid.Get(target)!.Occupant);
+        Assert.Equal(20 - PurchaseRules.TowerCost, state.Treasury.GetGold(cap));
+    }
+
+    [Fact]
     public void ExecuteAi_LegalActionViaStubChooser_ExecutesNormally()
     {
         // Regression lock: the stub-chooser injection path doesn't

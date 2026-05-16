@@ -443,4 +443,65 @@ public class ReplayPlaybackTests
             Assert.Equal(occType, t.Occupant?.GetType().Name);
         }
     }
+
+    [Fact]
+    public void Replay_HumanRepositionThenMoveSameUnit_DoesNotThrow()
+    {
+        // A human may reposition a unit onto an own-empty tile and then
+        // move it again the same turn (ExecuteMove never consumes the
+        // move). ExecuteAiMove DOES consume it (an AI-loop selection
+        // shim). Replaying the recorded human moves through
+        // ExecuteAiMove must NOT apply that shim, or the second move
+        // throws "already moved this turn" — the about_to_win desync
+        // (beat #992).
+        var red = new Player("Red", new Color(1f, 0f, 0f));
+        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var players = new List<Player> { red, blue };
+        // 5x2: row 0 all Red (capital lands lex-min (0,0)), row 1 Blue.
+        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Color);
+        for (int x = 0; x < 5; x++)
+            grid.Get(HexCoord.FromOffset(x, 0))!.Color = red.Color;
+        HexCoord a = HexCoord.FromOffset(2, 0);
+        HexCoord b = HexCoord.FromOffset(3, 0);
+        HexCoord cc = HexCoord.FromOffset(4, 0);
+        grid.Get(a)!.Occupant = new Unit(red.Color);
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        var map = new MockHexMapView();
+        var hud = new MockHudView();
+        var pacer = new QueuedAiPacer();
+        var controller = new GameController(
+            state, session, map, hud, seed: 1, aiPacer: pacer, maxTurnNumber: 20);
+        controller.StartGame();
+        pacer.DrainAll();
+
+        HexCoord cap = state.Territories.First(t => t.Owner == red.Color).Capital!.Value;
+        Assert.DoesNotContain(cap, new[] { a, b, cc });
+
+        // Human: select unit@a → reposition a→b; reselect@b → move b→cc.
+        map.SimulateClick(grid.Get(a)!);
+        map.SimulateClick(grid.Get(b)!);
+        map.SimulateClick(grid.Get(b)!);
+        map.SimulateClick(grid.Get(cc)!);
+
+        Assert.Equal(2, controller.ReplayBeats.Count(x => x is ReplayMoveBeat));
+        Assert.IsType<Unit>(grid.Get(cc)!.Occupant);
+
+        GameStateSnapshot live = GameStateSnapshot.Capture(
+            state.Grid, state.Treasury, state.Territories);
+
+        controller.BeginReplay();
+        pacer.DrainAll(); // must not throw "already moved this turn"
+
+        var refTiles = new Dictionary<HexCoord, (Color, string?)>();
+        foreach ((HexCoord coord, Color color, HexOccupant? occ) in live.EnumerateTiles())
+            refTiles[coord] = (color, occ?.GetType().Name);
+        foreach (HexTile t in state.Grid.Tiles)
+        {
+            (Color color, string? occType) = refTiles[t.Coord];
+            Assert.Equal(color, t.Color);
+            Assert.Equal(occType, t.Occupant?.GetType().Name);
+        }
+    }
 }

@@ -1221,6 +1221,23 @@ each beat doesn't need to be passed through: `BeginReplay` restored
 `ReplayEndTurnBeat` steps it forward, so `_state.Turns.CurrentPlayer`
 is the right player when each `ExecuteAi*` call fires.
 
+**Invariant — no AI-only rules in the replay execute path.** The
+`ExecuteAi*` helpers replay *every* recorded beat, including ones the
+human performed. So those helpers must enforce only genuine game
+legality, never AI *selection* heuristics — the human action paths
+don't apply them, so a faithfully-recorded human beat would throw on
+replay. Two such heuristics were found and excluded (the
+`about_to_win` desync): (1) tower spacing — `AiCommon.MeetsAiTowerSpacing`
+is filtered in `AiCommon.Enumerate` (AI candidate generation), NOT
+gated in `ExecuteAiBuildTower`; humans may bunch towers. (2)
+"a reposition onto own-empty consumes the unit's move" — an AI-loop
+guard so the chooser doesn't re-pick the same unit; the
+`ExecuteAiMove` shim that sets `HasMovedThisTurn` on a reposition is
+gated `&& !_replayMode` so it never fires during playback (live AI
+still consumes it). New AI-only constraints must follow the same
+rule: enforce at candidate enumeration / in the AI loop, never in the
+shared execute path that replay drives.
+
 **Recording vs. playback.** Every state-mutation site that records a
 beat is gated on `!_replayMode` so replay execution doesn't
 re-record the beats it's replaying. Human input handlers (all

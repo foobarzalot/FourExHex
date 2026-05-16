@@ -2868,7 +2868,14 @@ public class GameController
         {
             _map.PlayDestructionEffect(destination, result.Destroyed);
         }
-        if (wasReposition)
+        // "A reposition consumes the unit's move" is an AI-loop
+        // selection concern (stops the chooser re-picking the same
+        // unit) — the human ExecuteMove path never sets this. Skip it
+        // during replay: a recorded HUMAN reposition followed by
+        // another move of that unit would otherwise throw "already
+        // moved this turn" (about_to_win desync, beat #992). Live AI
+        // play still consumes the move.
+        if (wasReposition && !_replayMode)
         {
             Unit? movedUnit = _state.Grid.Get(destination)?.Unit;
             if (movedUnit != null) movedUnit.HasMovedThisTurn = true;
@@ -2959,13 +2966,17 @@ public class GameController
             throw new InvalidOperationException(
                 $"AI BuildTower at {destination}: coord is off-map.");
         }
-        if (!PurchaseRules.IsValidTowerLocation(dst, territory, _state.Grid)
-            || !AiCommon.MeetsAiTowerSpacing(destination, territory, _state.Grid))
+        // Only the real legality rule gates execution. AI tower spacing
+        // (AiCommon.MeetsAiTowerSpacing) is a *selection* heuristic
+        // applied where AI candidates are enumerated (AiCommon.Enumerate)
+        // — it must NOT gate execution, or replaying a recorded *human*
+        // tower-build placed near another tower (humans aren't bound by
+        // the spacing rule) throws. This was the "about_to_win" desync.
+        if (!PurchaseRules.IsValidTowerLocation(dst, territory, _state.Grid))
         {
             throw new InvalidOperationException(
                 $"AI BuildTower at {destination} from capital {capital}: " +
-                $"location is invalid (occupied, out-of-territory, or within " +
-                $"{AiCommon.MinTowerSpacing} hexes of an existing tower).");
+                $"location is invalid (occupied or out-of-territory).");
         }
 
         _state.Treasury.SetGold(
