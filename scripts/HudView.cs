@@ -634,6 +634,17 @@ public partial class HudView : CanvasLayer, IHudView
         if (@event is not InputEventKey keyEvent) return;
         if (!keyEvent.Pressed || keyEvent.Echo) return;
 
+        // Tappable tutorial messages are dismissed by a click anywhere
+        // (the tap catcher) — let any keypress dismiss them too, with
+        // the gameplay shortcut suppressed so e.g. Enter doesn't both
+        // ack the narration and immediately end the turn.
+        if (_tutorialTapCatcher != null && _tutorialTapCatcher.Visible)
+        {
+            GetViewport().SetInputAsHandled();
+            TutorialMessageTapped?.Invoke();
+            return;
+        }
+
         switch (keyEvent.Keycode)
         {
             case Key.Enter:
