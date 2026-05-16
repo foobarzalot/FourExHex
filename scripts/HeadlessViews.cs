@@ -23,24 +23,6 @@ public sealed class HeadlessHexMapView : IHexMapView
     public event Action<HexCoord>? OffGridClicked;
 #pragma warning restore CS0067
 
-    private readonly GameState _state;
-
-    public HeadlessHexMapView(GameState state)
-    {
-        _state = state;
-    }
-
-    public Territory? TerritoryAt(HexCoord coord)
-    {
-        // Controller rarely calls this during autonomous AI play.
-        // A linear scan is fine for diagnostic speed.
-        foreach (Territory t in _state.Territories)
-        {
-            if (t.Coords.Contains(coord)) return t;
-        }
-        return null;
-    }
-
     public void ShowMoveTargets(IEnumerable<HexCoord> coords, UnitLevel level) { }
     public void ShowTowerTargets(IEnumerable<HexCoord> coords) { }
     public void ShowTowerCoverage(IEnumerable<HexCoord> coords) { }

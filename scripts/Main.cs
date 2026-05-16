@@ -164,7 +164,7 @@ public partial class Main : Node2D
         HudView? visibleHud = null;
         if (diagnosticMode)
         {
-            map = new HeadlessHexMapView(_state);
+            map = new HeadlessHexMapView();
             hud = new HeadlessHudView();
         }
         else

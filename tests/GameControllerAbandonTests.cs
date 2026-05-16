@@ -75,10 +75,6 @@ public class GameControllerAbandonTests
 
         var map = new MockHexMapView();
         var hud = new MockHudView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         var controller = new GameController(
             state, new SessionState(), map, hud,
             seed: 1, aiPacer: new SynchronousAiPacer());

@@ -17,14 +17,6 @@ public class MockHexMapView : IHexMapView
     public event Action<HexTile?>? TileLongClicked;
     public event Action<HexCoord>? OffGridClicked;
 
-    // Index wired up by the test fixture so TerritoryAt returns the right
-    // territory for each coord — mirrors what the real HexMapView caches
-    // after flood-fill.
-    public Dictionary<HexCoord, Territory> TileIndex { get; } = new();
-
-    public Territory? TerritoryAt(HexCoord coord) =>
-        TileIndex.TryGetValue(coord, out Territory? t) ? t : null;
-
     public List<HexCoord> LastMoveTargets { get; private set; } = new();
     /// <summary>The <see cref="UnitLevel"/> the controller most recently
     /// passed to <see cref="ShowMoveTargets"/>, or null if it has never

@@ -55,10 +55,6 @@ public class ClaimVictoryTests
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
         var session = new SessionState();
         var map = new MockHexMapView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         var hud = new MockHudView();
         var controller = new GameController(state, session, map, hud);
         controller.StartGame();
@@ -127,10 +123,6 @@ public class ClaimVictoryTests
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
         var session = new SessionState();
         var map = new MockHexMapView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         var hud = new MockHudView();
         var controller = new GameController(state, session, map, hud, previewMode: true);
         controller.StartGame();
@@ -166,10 +158,6 @@ public class ClaimVictoryTests
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
         var session = new SessionState();
         var map = new MockHexMapView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         var hud = new MockHudView();
         var controller = new GameController(state, session, map, hud, recordingMode: true);
         controller.StartGame();

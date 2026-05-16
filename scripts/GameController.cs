@@ -689,7 +689,7 @@ public class GameController
             return;
         }
 
-        Territory? territory = _map.TerritoryAt(tile.Coord);
+        Territory? territory = TerritoryLookup.FindContaining(_state.Territories, tile.Coord);
         if (territory == null || territory.Owner != _state.Turns.CurrentPlayer.Color)
         {
             SetSelection(null);
@@ -743,7 +743,7 @@ public class GameController
             return;
         }
 
-        Territory? territory = _map.TerritoryAt(tile.Coord);
+        Territory? territory = TerritoryLookup.FindContaining(_state.Territories, tile.Coord);
         if (territory == null || territory.Owner != currentColor) return;
 
         HexCoord target = tile.Coord;
@@ -861,7 +861,7 @@ public class GameController
     /// </summary>
     private void EmitRejection(UnitLevel attackerLevel, HexCoord coord)
     {
-        Territory? targetTerritory = _map.TerritoryAt(coord);
+        Territory? targetTerritory = TerritoryLookup.FindContaining(_state.Territories, coord);
         Color currentColor = _state.Turns.CurrentPlayer.Color;
 
         // Only surface defenders when the click was actually reachable —

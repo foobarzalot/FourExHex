@@ -51,10 +51,6 @@ public class ReplayRecordingTests
             Session.ClaimVictoryPromptedHighestThreshold[Blue.Color] = 90;
             Map = new MockHexMapView();
             Hud = new MockHudView();
-            foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-            {
-                Map.TileIndex[kvp.Key] = kvp.Value;
-            }
             AiChooser = aiChooser;
             Controller = new GameController(
                 State, Session, Map, Hud,

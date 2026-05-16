@@ -46,14 +46,6 @@ public class GameControllerTests
             Session.ClaimVictoryPromptedHighestThreshold[Blue.Color] = 90;
             Map = new MockHexMapView();
             Hud = new MockHudView();
-
-            // Populate the mock's tile-to-territory index so TerritoryAt
-            // works like the real view.
-            foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-            {
-                Map.TileIndex[kvp.Key] = kvp.Value;
-            }
-
             Controller = new GameController(State, Session, Map, Hud);
             Controller.StartGame();
         }
@@ -98,10 +90,6 @@ public class GameControllerTests
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
         var map = new MockHexMapView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         var controller = new GameController(state, new SessionState(), map, new MockHudView());
         controller.StartGame();
 
@@ -266,10 +254,6 @@ public class GameControllerTests
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
         var session = new SessionState();
         var map = new MockHexMapView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         var controller = new GameController(state, session, map, new MockHudView());
         controller.StartGame();
 
@@ -322,10 +306,6 @@ public class GameControllerTests
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
         var session = new SessionState();
         var map = new MockHexMapView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         var controller = new GameController(state, session, map, new MockHudView());
         controller.StartGame();
 
@@ -572,10 +552,6 @@ public class GameControllerTests
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
         var session = new SessionState();
         var map = new MockHexMapView();
-        foreach (System.Collections.Generic.KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         var controller = new GameController(state, session, map, new MockHudView());
         controller.StartGame();
 
@@ -659,10 +635,6 @@ public class GameControllerTests
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
         var session = new SessionState();
         var map = new MockHexMapView();
-        foreach (System.Collections.Generic.KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         var controller = new GameController(state, session, map, new MockHudView());
         controller.StartGame();
 
@@ -820,10 +792,6 @@ public class GameControllerTests
         var session = new SessionState();
         var map = new MockHexMapView();
         var hud = new MockHudView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         var controller = new GameController(state, session, map, hud);
         controller.StartGame();
 
@@ -869,10 +837,6 @@ public class GameControllerTests
         session.ClaimVictoryPromptedHighestThreshold[green.Color] = 90;
         var map = new MockHexMapView();
         var hud = new MockHudView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         var controller = new GameController(state, session, map, hud);
         controller.StartGame();
 
@@ -923,10 +887,6 @@ public class GameControllerTests
         session.ClaimVictoryPromptedHighestThreshold[green.Color] = 90;
         var map = new MockHexMapView();
         var hud = new MockHudView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         var controller = new GameController(state, session, map, hud);
         controller.StartGame();
 
@@ -958,10 +918,6 @@ public class GameControllerTests
         var session = new SessionState();
         var map = new MockHexMapView();
         var hud = new MockHudView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         var controller = new GameController(state, session, map, hud);
         controller.StartGame();
 
@@ -991,10 +947,6 @@ public class GameControllerTests
         var session = new SessionState();
         var map = new MockHexMapView();
         var hud = new MockHudView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         var controller = new GameController(state, session, map, hud);
         controller.StartGame();
 
@@ -1025,10 +977,6 @@ public class GameControllerTests
         var session = new SessionState();
         var map = new MockHexMapView();
         var hud = new MockHudView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         var controller = new GameController(state, session, map, hud, recordingMode: true);
         controller.StartGame();
 
@@ -1061,10 +1009,6 @@ public class GameControllerTests
         var session = new SessionState();
         var map = new MockHexMapView();
         var hud = new MockHudView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         var controller = new GameController(state, session, map, hud, recordingMode: true);
         controller.StartGame();
 
@@ -1152,10 +1096,6 @@ public class GameControllerTests
         var session = new SessionState();
         var map = new MockHexMapView();
         var hud = new MockHudView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         var controller = new GameController(state, session, map, hud);
         controller.StartGame();
         map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(1, 0)));
@@ -1203,10 +1143,6 @@ public class GameControllerTests
         var session = new SessionState();
         var map = new MockHexMapView();
         var hud = new MockHudView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         // Deterministic chooser: first call returns the killing-blow
         // move, subsequent calls return null (end of AI turn). Removes
         // dependence on the heuristic's scoring behavior.
@@ -1262,10 +1198,6 @@ public class GameControllerTests
         var session = new SessionState();
         var map = new MockHexMapView();
         var hud = new MockHudView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         var controller = new GameController(state, session, map, hud);
         controller.StartGame();
 
@@ -1304,10 +1236,6 @@ public class GameControllerTests
         var session = new SessionState();
         var map = new MockHexMapView();
         var hud = new MockHudView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         var controller = new GameController(state, session, map, hud);
         controller.StartGame();
 
@@ -1338,10 +1266,6 @@ public class GameControllerTests
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
         var session = new SessionState();
         var map = new MockHexMapView();
-        foreach (System.Collections.Generic.KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         var controller = new GameController(state, session, map, new MockHudView());
         controller.StartGame();
 
@@ -1419,10 +1343,6 @@ public class GameControllerTests
         var session = new SessionState();
         var map = new MockHexMapView();
         var hud = new MockHudView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         var controller = new GameController(state, session, map, hud);
         controller.StartGame();
 
@@ -2040,10 +1960,6 @@ public class GameControllerTests
         MockHudView hud,
         params AiAction?[] actions)
     {
-        foreach (KeyValuePair<HexCoord, Territory> kvp in state.Territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         int index = 0;
         AiAction? Chooser(GameState s, Color c, HashSet<HexCoord> visited, Random rng)
         {
@@ -2271,10 +2187,6 @@ public class GameControllerTests
             Session = new SessionState();
             Map = new MockHexMapView();
             Hud = new MockHudView();
-            foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-            {
-                Map.TileIndex[kvp.Key] = kvp.Value;
-            }
             // Seeded RNG so AI behavior is deterministic across runs.
             Controller = new GameController(State, Session, Map, Hud, seed: 12345);
             Controller.StartGame();
@@ -2341,10 +2253,6 @@ public class GameControllerTests
         var session = new SessionState();
         var map = new MockHexMapView();
         var hud = new MockHudView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         var controller = new GameController(state, session, map, hud, seed: 1);
         controller.StartGame();
 
@@ -2408,10 +2316,6 @@ public class GameControllerTests
         var session = new SessionState();
         var map = new MockHexMapView();
         var hud = new MockHudView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         var pacer = new QueuedAiPacer();
         var controller = new GameController(state, session, map, hud,
             seed: 1, aiPacer: pacer);
@@ -2451,10 +2355,6 @@ public class GameControllerTests
         var session = new SessionState();
         var map = new MockHexMapView();
         var hud = new MockHudView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         var controller = new GameController(state, session, map, hud, seed: 1);
         controller.StartGame();
 
@@ -2507,10 +2407,6 @@ public class GameControllerTests
         var session = new SessionState();
         var map = new MockHexMapView();
         var hud = new MockHudView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         var controller = new GameController(state, session, map, hud, seed: 7);
         controller.StartGame();
 
@@ -2561,8 +2457,6 @@ public class GameControllerTests
             Session = new SessionState();
             Map = new MockHexMapView();
             Hud = new MockHudView();
-            foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-                Map.TileIndex[kvp.Key] = kvp.Value;
             Controller = new GameController(State, Session, Map, Hud);
             Controller.StartGame();
         }
@@ -2807,10 +2701,6 @@ public class GameControllerTests
             Session = new SessionState();
             Map = new MockHexMapView();
             Hud = new MockHudView();
-            foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-            {
-                Map.TileIndex[kvp.Key] = kvp.Value;
-            }
             Controller = new GameController(State, Session, Map, Hud);
             Controller.StartGame();
         }
@@ -2857,10 +2747,6 @@ public class GameControllerTests
             Session = new SessionState();
             Map = new MockHexMapView();
             Hud = new MockHudView();
-            foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-            {
-                Map.TileIndex[kvp.Key] = kvp.Value;
-            }
             Controller = new GameController(State, Session, Map, Hud);
             Controller.StartGame();
         }
@@ -3040,10 +2926,6 @@ public class GameControllerTests
         var session = new SessionState();
         var map = new MockHexMapView();
         var hud = new MockHudView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         var controller = new GameController(state, session, map, hud);
         controller.StartGame();
 
@@ -3319,10 +3201,6 @@ public class GameControllerTests
             Session = new SessionState();
             Map = new MockHexMapView();
             Hud = new MockHudView();
-            foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-            {
-                Map.TileIndex[kvp.Key] = kvp.Value;
-            }
             Controller = new GameController(State, Session, Map, Hud);
             Controller.StartGame();
 
@@ -3707,10 +3585,6 @@ public class GameControllerTests
         var session = new SessionState();
         var map = new MockHexMapView();
         var hud = new MockHudView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         var controller = new GameController(state, session, map, hud);
         controller.StartGame();
 
@@ -3741,10 +3615,6 @@ public class GameControllerTests
         var session = new SessionState();
         var map = new MockHexMapView();
         var hud = new MockHudView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         var controller = new GameController(state, session, map, hud, seed: 1);
         controller.StartGame();
 
@@ -3773,10 +3643,6 @@ public class GameControllerTests
         var session = new SessionState();
         var map = new MockHexMapView();
         var hud = new MockHudView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         var controller = new GameController(state, session, map, hud);
         controller.StartGame();
 
@@ -3826,10 +3692,6 @@ public class GameControllerTests
         var session = new SessionState();
         var map = new MockHexMapView();
         var hud = new MockHudView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         var controller = new GameController(state, session, map, hud);
         controller.StartGame();
 
@@ -3867,10 +3729,6 @@ public class GameControllerTests
         session.ClaimVictoryPromptedHighestThreshold[red.Color] = 90;
         var map = new MockHexMapView();
         var hud = new MockHudView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         var controller = new GameController(state, session, map, hud);
         controller.StartGame();
 
@@ -3958,10 +3816,6 @@ public class GameControllerTests
         var session = new SessionState();
         var map = new MockHexMapView();
         var hud = new MockHudView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         var controller = new GameController(state, session, map, hud);
         controller.StartGame();
 
@@ -3994,10 +3848,6 @@ public class GameControllerTests
         var session = new SessionState();
         var map = new MockHexMapView();
         var hud = new MockHudView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         var controller = new GameController(state, session, map, hud);
         controller.StartGame();
 
@@ -4816,10 +4666,6 @@ public class GameControllerTests
         var session = new SessionState();
         var map = new MockHexMapView();
         var hud = new MockHudView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         var controller = new GameController(state, session, map, hud);
         controller.StartGame();
         return (controller, state, map, hud, session, red, blue);
@@ -5071,10 +4917,6 @@ public class GameControllerTests
         var state = new GameState(grid, territories, players,
             new TurnState(players), new Treasury());
         var map = new MockHexMapView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         var session = new SessionState();
         // Suppress claim-victory prompt.
         session.ClaimVictoryPromptedHighestThreshold[red.Color] = 90;
@@ -5117,10 +4959,6 @@ public class GameControllerTests
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
         var map = new MockHexMapView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         int callbackCount = 0;
         var controller = new GameController(
             state, new SessionState(), map, new MockHudView(),
@@ -5186,10 +5024,6 @@ public class GameControllerTests
         session.ClaimVictoryPromptedHighestThreshold[red.Color] = 90;
         session.ClaimVictoryPromptedHighestThreshold[blue.Color] = 90;
         var map = new MockHexMapView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         var controller = new GameController(state, session, map, new MockHudView());
         controller.StartGame();
 
@@ -5234,10 +5068,6 @@ public class GameControllerTests
         session.ClaimVictoryPromptedHighestThreshold[red.Color] = 90;
         session.ClaimVictoryPromptedHighestThreshold[blue.Color] = 90;
         var map = new MockHexMapView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         var controller = new GameController(state, session, map, new MockHudView());
         controller.StartGame();
 
@@ -5279,10 +5109,6 @@ public class GameControllerTests
         session.ClaimVictoryPromptedHighestThreshold[red.Color] = 90;
         session.ClaimVictoryPromptedHighestThreshold[blue.Color] = 90;
         var map = new MockHexMapView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         var controller = new GameController(state, session, map, new MockHudView());
         controller.StartGame();
 
@@ -5401,10 +5227,6 @@ public class GameControllerTests
         var session = new SessionState();
         var map = new MockHexMapView();
         var hud = new MockHudView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         return (state, session, map, hud, red, blue);
     }
 

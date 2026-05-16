@@ -59,10 +59,6 @@ public class ReplayFidelityTests
         // bookkeeping or re-fire AI turns. BeginReplay alone restores
         // the initial snapshot and steps through the beat log.
         var replayMap = new MockHexMapView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in loaded.State.Territories.BuildTileIndex())
-        {
-            replayMap.TileIndex[kvp.Key] = kvp.Value;
-        }
         var replayHud = new MockHudView();
         var replayController = new GameController(
             loaded.State, new SessionState(),
@@ -104,10 +100,6 @@ public class ReplayFidelityTests
         var state = new GameState(mapGen.Grid, territories, players,
             new TurnState(players), new Treasury(), mapGen.WaterCoords);
         var map = new MockHexMapView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         var hud = new MockHudView();
         var controller = new GameController(state, new SessionState(),
             map, hud,

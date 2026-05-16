@@ -124,10 +124,6 @@ public partial class HexMapView : Node2D, IHexMapView
     /// <summary>Pass-through to the game state's territory partition.</summary>
     public IReadOnlyList<Territory> Territories => _state.Territories;
 
-    // Tile coord -> the territory that contains it. Rebuilt whenever
-    // Territories is recomputed. Used for O(1) TerritoryAt lookups.
-    private readonly Dictionary<HexCoord, Territory> _tileToTerritory = new();
-
     /// <summary>
     /// Wire this view to a <see cref="GameState"/>. Must be called before
     /// adding the HexMapView to the scene tree so <see cref="_Ready"/> can
@@ -318,7 +314,6 @@ public partial class HexMapView : Node2D, IHexMapView
         _graveVisuals.Clear();
         _pulsingUnits.Clear();
         _pulsingCapitals.Clear();
-        _tileToTerritory.Clear();
         _highlightedTerritory = null;
         _selectedUnit = null;
 
@@ -406,8 +401,6 @@ public partial class HexMapView : Node2D, IHexMapView
 
         GD.Print($"HexMapView: rendering {_state.Grid.Count} tiles across {_state.Territories.Count} territories.");
 
-        RebuildTileToTerritoryIndex();
-
         // The tower-coverage tint sits above tile fills + outlines but
         // below borders, so the lift is subtle: the underlying territory
         // color shows through and crisp border lines stay on top.
@@ -453,7 +446,6 @@ public partial class HexMapView : Node2D, IHexMapView
     /// </summary>
     public void RebuildAfterTerritoryChange()
     {
-        RebuildTileToTerritoryIndex();
         ClearLayer(_bordersLayer);
         ClearLayer(_targetsLayer);
         DrawTerritoryBorders();
@@ -686,13 +678,6 @@ public partial class HexMapView : Node2D, IHexMapView
             child.QueueFree();
         }
     }
-
-    /// <summary>
-    /// Look up the territory containing <paramref name="coord"/>, or null
-    /// if the coord is outside the grid.
-    /// </summary>
-    public Territory? TerritoryAt(HexCoord coord) =>
-        _tileToTerritory.TryGetValue(coord, out Territory? t) ? t : null;
 
     /// <summary>
     /// Rebuild every occupant visual (units + capitals) using the CTA
@@ -1712,15 +1697,6 @@ public partial class HexMapView : Node2D, IHexMapView
             Color = color,
             Polygon = verts,
         };
-    }
-
-    private void RebuildTileToTerritoryIndex()
-    {
-        _tileToTerritory.Clear();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in Territories.BuildTileIndex())
-        {
-            _tileToTerritory[kvp.Key] = kvp.Value;
-        }
     }
 
     public override void _UnhandledInput(InputEvent @event)

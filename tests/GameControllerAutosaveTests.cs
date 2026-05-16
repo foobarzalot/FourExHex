@@ -46,10 +46,6 @@ public class GameControllerAutosaveTests
             Session = new SessionState();
             Map = new MockHexMapView();
             Hud = new MockHudView();
-            foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-            {
-                Map.TileIndex[kvp.Key] = kvp.Value;
-            }
             // Stub chooser: AI players take no actions. Keeps the
             // fixture stable across grid changes and isolates the
             // test to the turn-transition event we care about. Cap

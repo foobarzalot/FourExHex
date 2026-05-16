@@ -37,9 +37,6 @@ public interface IHexMapView
     /// </summary>
     event Action<HexCoord>? OffGridClicked;
 
-    /// <summary>Look up the territory containing a coord.</summary>
-    Territory? TerritoryAt(HexCoord coord);
-
     /// <summary>
     /// Highlight the given coords as valid move/placement targets for a
     /// would-be unit of <paramref name="level"/>. The view sizes the

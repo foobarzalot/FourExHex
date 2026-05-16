@@ -68,10 +68,6 @@ public class SaveLoadEquivalenceTests
 
         var session = new SessionState();
         var map = new MockHexMapView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in state.Territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
         var hud = new MockHudView();
 
         // Wrapping chooser: cap to 1 RandomAi action per (turn, player)

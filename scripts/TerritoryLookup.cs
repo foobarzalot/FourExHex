@@ -9,6 +9,22 @@ using Godot;
 /// </summary>
 public static class TerritoryLookup
 {
+    /// <summary>
+    /// First territory (in iteration order) whose coords contain
+    /// <paramref name="coord"/>, regardless of owner. Territory partitions
+    /// are disjoint per CapitalReconciler, so iteration order doesn't
+    /// affect correctness.
+    /// </summary>
+    public static Territory? FindContaining(
+        IReadOnlyList<Territory> territories, HexCoord coord)
+    {
+        foreach (Territory t in territories)
+        {
+            if (t.Coords.Contains(coord)) return t;
+        }
+        return null;
+    }
+
     public static Territory? FindOwnedContaining(
         IReadOnlyList<Territory> territories, Color owner, HexCoord coord)
     {

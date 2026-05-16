@@ -37,11 +37,6 @@ public class GameControllerRngTests
         var session = new SessionState();
         var map = new MockHexMapView();
         var hud = new MockHudView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
-
         var log = new List<string>();
         AiAction? Chooser(GameState s, Color c, HashSet<HexCoord> visited, Random rng)
         {
@@ -112,11 +107,6 @@ public class GameControllerRngTests
         var session = new SessionState();
         var map = new MockHexMapView();
         var hud = new MockHudView();
-        foreach (KeyValuePair<HexCoord, Territory> kvp in territories.BuildTileIndex())
-        {
-            map.TileIndex[kvp.Key] = kvp.Value;
-        }
-
         var controller = new GameController(state, session, map, hud, seed: 42);
         Assert.Equal(42, controller.MasterSeed);
         controller.StartGame();
