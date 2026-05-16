@@ -106,7 +106,8 @@ off it.
 │   │                      → SetSelection branch                           │
 │   │    OnTileLongClicked → rally: free-reposition every unmoved unit     │
 │   │                        in the territory toward the long-pressed     │
-│   │                        target (single undo step, fires PlayRally    │
+│   │                        target (single undo step, fires             │
+│   │                        PlaySound(Rally)                              │
 │   │                        once if any unit moved)                       │
 │   │                                                                      │
 │   ├─ action handlers:                                                    │
@@ -116,7 +117,8 @@ off it.
 │   │    ExecuteMove        → MovementRules.Move                           │
 │   │                       → if capture: HandleCapture                    │
 │   │                       → DispatchActionSound                          │
-│   │    ExecuteBuildTower  → debit gold + drop Tower + PlayTowerPlaced    │
+│   │    ExecuteBuildTower  → debit gold + drop Tower +                   │
+│   │                          PlaySound(TowerPlaced)                      │
 │   │                                                                      │
 │   ├─ AI loop (paced via IAiPacer):                                       │
 │   │    RunAiTurnsUntilHumanOrDone → preview → execute beats              │
@@ -130,7 +132,8 @@ off it.
 │   │                    (= FindAll → CapitalReconciler.Reconcile →        │
 │   │                       Treasury.ReconcileAfterCapture)                │
 │   │                  → detect freshly-eliminated colors (had a capital   │
-│   │                    before, none after) → PlayPlayerDefeated;         │
+│   │                    before, none after) →                            │
+│   │                    PlaySound(PlayerDefeated);                        │
 │   │                    set PendingDefeatScreen for human eliminations    │
 │   │                  → _map.RebuildAfterTerritoryChange                  │
 │   │                  → WinConditionRules.WinnerByDomination (mid-turn)   │
@@ -153,7 +156,7 @@ off it.
 │   └─ single UI update path:                                              │
 │        RefreshViews() → _hud.Refresh(state, session, hasActionable)      │
 │                       → _map.RefreshOccupantVisuals(playerColor, tr.)    │
-│                       → _hud.SetEndTurnCta(!hasActionable)               │
+│                       → _hud.SetCta(EndTurn, !hasActionable)            │
 │                       → _onAfterRefresh?.Invoke()  (Preview cue hook;    │
 │                         null in ordinary play)                           │
 └──────┬──────────────────────────────────┬────────────────────────────────┘
@@ -290,7 +293,8 @@ off it.
 │   UndoEntry — pair of (GameStateSnapshot, SessionStateSnapshot)          │
 │   UndoStack<T> — two-sided history of T (UndoEntry for play, also reused │
 │                  by the editor with EditorSnapshot)                      │
-│   TerritoryLookup — FindOwnedContaining / FindByCapital helpers          │
+│   TerritoryLookup — FindOwnedContaining / FindByCapital /               │
+│                     OwnedCapitalBearing helpers                         │
 │   MapGenerator — CA-driven land/water carve + tree scatter, seeded       │
 │   GameSettings — global PlayerConfig (name, color hex) + PlayerKinds     │
 │                  + optional MasterSeed; written by MainMenuScene,        │
@@ -332,10 +336,11 @@ off it.
 │   AttachClick(HexPaletteButton) helpers wire any button's Pressed       │
 │   signal to the shared click player.                                    │
 │                                                                          │
-│   HexMapView's Play* methods (PlayUnitPlaced, PlayBankruptcy, …)         │
-│   forward to AudioBus.Instance. The interface lets controllers fire     │
-│   audio without knowing about the autoload, and lets HeadlessHexMapView │
-│   (test/diagnostic) stub them out.                                      │
+│   HexMapView.PlaySound(SoundEffect, HexCoord?) is the single sound      │
+│   sink the controller calls — a switch on the SoundEffect enum forwards │
+│   to the matching AudioBus.Play* method. The interface lets controllers │
+│   fire audio without knowing about the autoload, and lets               │
+│   HeadlessHexMapView (test/diagnostic) stub it out with a single no-op. │
 │                                                                          │
 │   Each AudioBus.Play* method early-returns when                          │
 │   UserSettings.SfxEnabled is false — a single chokepoint that gates     │
@@ -347,15 +352,16 @@ off it.
 │                                                                          │
 │   HexMapView also carries a _silentMode flag (toggled by                 │
 │   GameController via IHexMapView.SetSilentMode when an AI player runs   │
-│   under AiSpeed.Instant). Silent mode is a second gate that suppresses  │
-│   per-action Play* methods AND the tree/grave grow/shrink tweens in     │
-│   RefreshOccupantVisuals AND the tree/grave teardown inside             │
+│   under AiSpeed.Instant). Silent mode is a second gate inside PlaySound │
+│   that drops every per-action cue AND the tree/grave grow/shrink tweens │
+│   in RefreshOccupantVisuals AND the tree/grave teardown inside          │
 │   RebuildAfterTerritoryChange (per-capture teardown would flash trees   │
 │   off-and-on as captures fire mid-batch; the end-of-batch refresh's    │
-│   diff loop frees only the trees actually chopped). PlayBankruptcy and │
-│   PlayGameWon stay ungated — those are turn-/game-boundary events the  │
-│   user asked to still hear under Instant. The same gating is mirrored  │
-│   in MockHexMapView so integration tests can verify end-to-end silence.│
+│   diff loop frees only the trees actually chopped).                     │
+│   SoundEffect.Bankruptcy and SoundEffect.GameWon are exempt from the    │
+│   silent gate — turn-/game-boundary events the user asked to still     │
+│   hear under Instant. The same exemption is mirrored in MockHexMapView │
+│   so integration tests can verify end-to-end silence.                  │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -384,18 +390,14 @@ void PlayDestructionEffect(HexCoord coord, HexOccupant destroyed);
 // from each blocking defender; defended-clang or generic-thunk sound).
 void FlashRejection(HexCoord target, RejectionShape shape, IEnumerable<HexCoord> blockingDefenders);
 
-// Audio sinks — forwarded to AudioBus.
-void PlayUnitPlaced(HexCoord coord);
-void PlayTowerPlaced(HexCoord coord);
-void PlayUnitCombined(HexCoord coord);
-void PlayUnitDestroyed(HexCoord coord);
-void PlayTowerDestroyed(HexCoord coord);
-void PlayTreeCleared(HexCoord coord);
-void PlayCapitalDestroyed(HexCoord coord);
-void PlayBankruptcy();
-void PlayGameWon();
-void PlayRally();
-void PlayPlayerDefeated();
+// Audio sink — forwarded to AudioBus. The SoundEffect enum
+// (UnitPlaced, TowerPlaced, UnitCombined, UnitDestroyed,
+// TowerDestroyed, TreeCleared, CapitalDestroyed, Bankruptcy, GameWon,
+// Rally, PlayerDefeated) picks which cue. The optional coord is
+// reserved for a future positional implementation. Per-action cues
+// drop while the view is in silent mode; Bankruptcy and GameWon
+// always play (turn-/game-boundary events).
+void PlaySound(SoundEffect kind, HexCoord? at = null);
 ```
 
 `HexMapView._UnhandledInput` routes a left-click to exactly one of
@@ -485,17 +487,14 @@ void SetReplayAvailable(bool available); // toggle the victory-overlay
                                        // replay history from game start
 
 // CTA-styled button highlights (white bg + black border + black text).
-// SetEndTurnCta takes an extra pulse flag: game-side "out of moves"
-// is steady (pulse: false), Tutorial Preview's scripted End Turn beat
-// pulses (pulse: true) — a looping Tween on Modulate.a (1.0 ↔ 0.55).
-// The other five tutorial CTAs are Tutorial-Preview-only and always
-// pulse internally.
-void SetEndTurnCta(bool isCta, bool pulse);
-void SetBuyPeasantCta(bool isCta);
-void SetBuildTowerCta(bool isCta);
-void SetClaimVictoryWinNowCta(bool isCta);
-void SetClaimVictoryContinueCta(bool isCta);
-void SetDefeatContinueCta(bool isCta);
+// The CtaButton enum (BuyPeasant, EndTurn, BuildTower,
+// ClaimVictoryWinNow, ClaimVictoryContinue, DefeatContinue) picks
+// the target. The pulse flag governs animation: game-side
+// "out of moves" sets EndTurn steady (pulse: false); Tutorial
+// Preview's scripted beats pulse (pulse: true) — a looping Tween on
+// Modulate.a (1.0 ↔ 0.55). All five non-EndTurn CTAs are Tutorial-
+// Preview-only and default to pulse: true.
+void SetCta(CtaButton button, bool isCta, bool pulse = true);
 
 // Force-disable the Undo / Redo button row regardless of
 // session.Undo state. Tutorial Preview latches this true because
@@ -687,7 +686,7 @@ Runs in this fixed order for the now-current player:
 5. **Apply upkeep** — `UpkeepRules.ApplyUpkeepFor`. Per-unit costs:
    Peasant 2, Spearman 6, Knight 18, Baron 54. A territory that
    can't pay total upkeep goes bankrupt: every unit in it becomes a
-   `Grave`, remaining gold stays. `PlayBankruptcy` fires once if any
+   `Grave`, remaining gold stays. `PlaySound(Bankruptcy)` fires once if any
    territory of this player went bankrupt (player-scoped, not
    tile-scoped).
 6. **Fire `HumanTurnStarted`** if the now-current player is human and
@@ -717,7 +716,7 @@ Two independent checks fire from different places:
   This is the typical victory path.
 
 `DeclareWinner` is the centralized setter for `SessionState.Winner`;
-it fires `PlayGameWon` iff the winner is human.
+it fires `PlaySound(GameWon)` iff the winner is human.
 
 ### Claim victory prompt
 
@@ -765,7 +764,7 @@ that can't be pre-recorded).
 
 `HandleCapture` diffs the set of colors with capitals before vs after
 the reconcile. A color that had at least one capital before and none
-after has been eliminated by this capture: `PlayPlayerDefeated`
+after has been eliminated by this capture: `PlaySound(PlayerDefeated)`
 fires; if the eliminated color is human,
 `SessionState.PendingDefeatScreen` is set so the HUD shows a defeat
 overlay. The AI loop pauses at the next `StepAiExecute` while the
@@ -832,7 +831,7 @@ GameController.OnTileClicked  ── wrapped in TrackHandler:
               │     │     │       Treasury.ReconcileAfterCapture; enemy gold
               │     │     │       on captured capital tiles is forfeited)
               │     │     ├─ if a color lost its last capital:
-              │     │     │     PlayPlayerDefeated; for human, set PendingDefeatScreen
+              │     │     │     PlaySound(PlayerDefeated); for human, set PendingDefeatScreen
               │     │     ├─ _map.RebuildAfterTerritoryChange()
               │     │     └─ if WinConditionRules.WinnerByDomination → DeclareWinner, clear undo
               │     └─ RebindSelectionToContaining(destination)
@@ -911,7 +910,7 @@ GameController.OnTileLongClicked  ── wrapped in TrackHandler:
         │      to the strictly closer empty in-territory cell via
         │      MovementRules.Move on own-empty — does NOT consume the
         │      move action; shared with replay's ApplyLongPressRally)
-        ├─ if anyMoved: _handlerMutatedGame = true; PlayRally;
+        ├─ if anyMoved: _handlerMutatedGame = true; PlaySound(Rally);
         │   re-select the territory
         └─ RefreshViews()
 ```
@@ -1713,7 +1712,7 @@ narration panel isn't overwritten. Otherwise it reads
 `TutorialOnlyBeat` sits between the cursor and the next player-0 beat —
 see "Tutorial-only beats" below) and dispatches:
 
-- **`ReplayEndTurnBeat`** → `SetEndTurnCta(true, pulse: true)`.
+- **`ReplayEndTurnBeat`** → `SetCta(EndTurn, true, pulse: true)`.
 - **`ReplayBuyBeat`** → auto-select capital's territory (via
   `GameController.SelectTerritoryForTutorial`). The Buy button CTA is
   on iff the player is not yet in the matching Buying mode
@@ -2042,7 +2041,8 @@ scripts/
 │
 ├─ MapGenerator.cs        ─ CA-driven land/water carve + tree scatter
 ├─ TerritoryFinder.cs     ─ pure rules
-├─ TerritoryLookup.cs     ─ FindOwnedContaining / FindByCapital helpers
+├─ TerritoryLookup.cs     ─ FindOwnedContaining / FindByCapital /
+│                           OwnedCapitalBearing helpers
 ├─ CapitalPlacer.cs       ─
 ├─ CapitalReconciler.cs   ─
 ├─ DefenseRules.cs        ─
