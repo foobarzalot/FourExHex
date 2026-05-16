@@ -33,7 +33,8 @@ public class ReplayPlaybackTests
         public Player Blue { get; }
 
         public Fixture(AiKind redKind = AiKind.Human, AiKind blueKind = AiKind.Human,
-            Func<GameState, Color, HashSet<HexCoord>, Random, AiAction?>? aiChooser = null)
+            Func<GameState, Color, HashSet<HexCoord>, Random, AiAction?>? aiChooser = null,
+            bool instantReplay = false)
         {
             Red = new Player("Red", new Color(1f, 0f, 0f), redKind);
             Blue = new Player("Blue", new Color(0f, 0f, 1f), blueKind);
@@ -56,7 +57,8 @@ public class ReplayPlaybackTests
                 seed: 1,
                 aiChooser: aiChooser,
                 aiPacer: Pacer,
-                maxTurnNumber: 20);
+                maxTurnNumber: 20,
+                replayIsInstantMode: instantReplay ? () => true : (Func<bool>?)null);
             Controller.StartGame();
             // StartGame may have scheduled an AI run; drain so the
             // fixture is on a stable human turn for further driving.
@@ -265,5 +267,180 @@ public class ReplayPlaybackTests
         Assert.True(f.Controller.IsReplayMode);
         f.Pacer.DrainAll();
         Assert.False(f.Controller.IsReplayMode);
+    }
+
+    // --- Instant replay --------------------------------------------------
+
+    /// <summary>
+    /// Builds a small recorded game then returns the fixture (already
+    /// in instant-replay mode) plus the live final snapshot, so the
+    /// instant tests share one recording. Five+ beats so the
+    /// per-beat-refresh assertion is meaningful.
+    /// </summary>
+    private static (Fixture F, GameStateSnapshot Live, int Beats) RecordedInstantGame()
+    {
+        var f = new Fixture(instantReplay: true);
+        f.Map.SimulateClick(f.State.Grid.Get(f.RedCapital)!);
+        f.Hud.ClickBuyPeasant();
+        f.Map.SimulateClick(f.State.Grid.Get(f.RedOther)!);   // buy beat
+        f.Hud.ClickEndTurn(); f.Pacer.DrainAll();              // Red end
+        f.Hud.ClickEndTurn(); f.Pacer.DrainAll();              // Blue end → Red T2
+        f.Hud.ClickEndTurn(); f.Pacer.DrainAll();              // Red end T2
+        f.Hud.ClickEndTurn(); f.Pacer.DrainAll();              // Blue end T2 → Red T3
+        GameStateSnapshot live = GameStateSnapshot.Capture(
+            f.State.Grid, f.State.Treasury, f.State.Territories);
+        Assert.True(f.Controller.ReplayBeats.Count >= 4,
+            $"Expected >=4 beats, got {f.Controller.ReplayBeats.Count}");
+        return (f, live, f.Controller.ReplayBeats.Count);
+    }
+
+    [Fact]
+    public void Replay_Instant_SetsSilentModeDuringPlaybackAndClearsAfter()
+    {
+        (Fixture f, _, _) = RecordedInstantGame();
+
+        f.Controller.BeginReplay();
+        // Silent mode must be on the moment instant replay begins, so
+        // the very first queued tick already runs with sound/VFX off.
+        Assert.True(f.Map.SilentMode);
+
+        f.Pacer.DrainAll();
+        // And cleared once playback finishes so the final game-over
+        // board renders normally.
+        Assert.False(f.Map.SilentMode);
+    }
+
+    [Fact]
+    public void Replay_Instant_RefreshesPerTurn_NotPerBeat_AndReachesSameFinalState()
+    {
+        (Fixture f, GameStateSnapshot live, int beats) = RecordedInstantGame();
+        int endTurns = f.Controller.ReplayBeats.Count(b => b is ReplayEndTurnBeat);
+
+        f.Controller.BeginReplay();
+        int refreshesBefore = f.Map.RefreshOccupantCount;
+        f.Pacer.DrainAll();
+        int refreshDelta = f.Map.RefreshOccupantCount - refreshesBefore;
+
+        // Instant replay repaints once per turn boundary plus one final
+        // refresh at EndReplay — O(turns), never once per action beat.
+        Assert.True(refreshDelta <= endTurns + 1,
+            $"Expected ≈one refresh per turn (≤{endTurns + 1}) for {beats} "
+            + $"beats, got {refreshDelta}");
+        // Fidelity must still match the live game.
+        f.AssertStateMatches(live);
+    }
+
+    [Fact]
+    public void Replay_Instant_DoesNotPlayPerActionSound()
+    {
+        (Fixture f, _, _) = RecordedInstantGame();
+
+        f.Controller.BeginReplay();
+        int unitPlacedBefore = f.Map.UnitPlacedSounds.Count;
+        f.Pacer.DrainAll();
+
+        // The recorded buy replays through ExecuteAiBuyUnit, which
+        // normally fires UnitPlaced; instant replay must stay silent.
+        Assert.Equal(unitPlacedBefore, f.Map.UnitPlacedSounds.Count);
+    }
+
+    [Fact]
+    public void Replay_Instant_RedrawsOncePerTurn_NotPerCapture()
+    {
+        // Custom grid: Blue AI has five peasants, each adjacent to a
+        // lone Red outpost it captures in a single turn. Red also holds
+        // a 2-tile capital territory so it isn't pre-eliminated. On
+        // replay, each of the five capturing moves runs HandleCapture →
+        // RebuildAfterTerritoryChange. Instant replay must coalesce the
+        // structural redraw to once per TURN (the user-visible "draw the
+        // screen once per turn"), NOT once per capture — otherwise a big
+        // endgame turn re-tessellates the whole map dozens of times and
+        // ends up slower than Fast.
+        var red = new Player("Red", new Color(1f, 0f, 0f));
+        var blue = new Player("Blue", new Color(0f, 0f, 1f), isAi: true);
+        var players = new List<Player> { red, blue };
+
+        HexGrid grid = TestHelpers.BuildRectGrid(11, 2, blue.Color);
+        // Red 2-tile capital territory (keeps Red alive at start).
+        grid.Get(HexCoord.FromOffset(10, 0))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(10, 1))!.Color = red.Color;
+        // Four lone Red outposts at odd cols on row 0; a Blue peasant on
+        // the even col immediately to the left of each captures it. Stop
+        // at col 7 so no outpost touches Red's (10,*) capital, which
+        // would defend it and make the peasant capture illegal.
+        var captures = new List<(HexCoord From, HexCoord To)>();
+        for (int i = 0; i < 4; i++)
+        {
+            int redCol = 2 * i + 1;
+            int blueCol = 2 * i;
+            HexCoord redTile = HexCoord.FromOffset(redCol, 0);
+            HexCoord blueTile = HexCoord.FromOffset(blueCol, 0);
+            grid.Get(redTile)!.Color = red.Color;
+            grid.Get(blueTile)!.Occupant = new Unit(blue.Color, UnitLevel.Peasant);
+            captures.Add((blueTile, redTile));
+        }
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        var map = new MockHexMapView();
+        var hud = new MockHudView();
+
+        int moveIdx = 0;
+        AiAction? Chooser(GameState s, Color c, HashSet<HexCoord> v, Random r)
+        {
+            if (c != blue.Color) return null;
+            if (moveIdx >= captures.Count) return null;
+            (HexCoord from, HexCoord to) = captures[moveIdx++];
+            return new AiMoveAction(from, to);
+        }
+
+        var pacer = new QueuedAiPacer();
+        var controller = new GameController(
+            state, session, map, hud,
+            seed: 1,
+            aiChooser: Chooser,
+            aiPacer: pacer,
+            maxTurnNumber: 20,
+            replayIsInstantMode: () => true);
+        controller.StartGame();
+        pacer.DrainAll();
+
+        // Red (human) ends turn → Blue AI runs its four capturing moves
+        // in one turn, then ends → back to Red T2.
+        hud.ClickEndTurn();
+        pacer.DrainAll();
+
+        // Snapshot the live final state AFTER the recorded play so the
+        // fidelity check compares replay's end state to the real one.
+        GameStateSnapshot live = GameStateSnapshot.Capture(
+            state.Grid, state.Treasury, state.Territories);
+
+        int captureBeats = controller.ReplayBeats.Count(b => b is ReplayMoveBeat);
+        Assert.True(captureBeats >= 4,
+            $"Fixture should record >=4 capturing move beats, got {captureBeats}");
+
+        controller.BeginReplay();
+        int rebuildBefore = map.RebuildCount;   // excludes BeginReplay's setup rebuild
+        pacer.DrainAll();
+        int rebuildDelta = map.RebuildCount - rebuildBefore;
+
+        // The five captures all fall in Blue's single turn. Per-capture
+        // rebuild ⇒ delta ≈ 5; per-turn sampled redraw ⇒ delta well
+        // under the capture count (≈ one redraw per turn boundary).
+        Assert.True(rebuildDelta < captureBeats,
+            $"Instant replay rebuilt the map {rebuildDelta}× for {captureBeats} "
+            + "captures — expected once per turn, not once per capture.");
+
+        // Fidelity must still hold.
+        var refTiles = new Dictionary<HexCoord, (Color, string?)>();
+        foreach ((HexCoord coord, Color color, HexOccupant? occ) in live.EnumerateTiles())
+            refTiles[coord] = (color, occ?.GetType().Name);
+        foreach (HexTile t in state.Grid.Tiles)
+        {
+            (Color color, string? occType) = refTiles[t.Coord];
+            Assert.Equal(color, t.Color);
+            Assert.Equal(occType, t.Occupant?.GetType().Name);
+        }
     }
 }

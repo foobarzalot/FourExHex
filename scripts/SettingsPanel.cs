@@ -31,11 +31,11 @@ public sealed partial class SettingsPanel : CanvasLayer
         { AiSpeed.Slow, AiSpeed.Normal, AiSpeed.Fast, AiSpeed.Instant };
     private Button[] _aiSpeedButtons = null!;
 
-    // Replay playback speed; separate from AiSpeed because watching a
-    // replay at "Instant" would skip past the recording with nothing
-    // to watch. Capped at Fast.
+    // Replay playback speed; separate from AiSpeed. Instant here is a
+    // silent fast-forward (chunked frame-yielded driver in the
+    // controller), not a zero delay — see ReplaySpeed/InstantReplayTick.
     private static readonly ReplaySpeed[] ReplaySpeedOrder =
-        { ReplaySpeed.Slow, ReplaySpeed.Normal, ReplaySpeed.Fast };
+        { ReplaySpeed.Slow, ReplaySpeed.Normal, ReplaySpeed.Fast, ReplaySpeed.Instant };
     private Button[] _replaySpeedButtons = null!;
 
     public override void _Ready()
@@ -281,6 +281,7 @@ public sealed partial class SettingsPanel : CanvasLayer
         ReplaySpeed.Slow => "Slow",
         ReplaySpeed.Normal => "Normal",
         ReplaySpeed.Fast => "Fast",
+        ReplaySpeed.Instant => "Instant",
         _ => speed.ToString(),
     };
 

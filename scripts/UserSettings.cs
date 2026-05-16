@@ -19,14 +19,19 @@ public enum AiSpeed
 /// <summary>
 /// Discrete pacing presets for replay playback — separate from
 /// <see cref="AiSpeed"/> because watching a recorded game is the
-/// point of replay; Instant (silent batch) would defeat that.
-/// Maxes at <see cref="Fast"/>.
+/// point of replay. <see cref="Instant"/> is NOT a smaller delay
+/// multiplier (that would trampoline the pacer and freeze the main
+/// thread); the controller routes it to a separate chunked,
+/// frame-yielded driver (<c>InstantReplayTick</c>) that fast-forwards
+/// silently. So Instant's <see cref="UserSettings.ReplaySpeedMultiplier"/>
+/// is 1f and never actually consulted on that path.
 /// </summary>
 public enum ReplaySpeed
 {
     Slow,
     Normal,
     Fast,
+    Instant,
 }
 
 /// <summary>
@@ -134,13 +139,17 @@ public static class UserSettings
     };
 
     /// <summary>Same shape as <see cref="AiSpeedMultiplier"/> but for
-    /// replay playback, capped at Fast — Instant would silently snap
-    /// past the whole recording and there'd be nothing to watch.</summary>
+    /// replay playback. Instant maps to 1f (NOT 0f): a 0 multiplier
+    /// would push <see cref="GodotAiPacer"/> into its inline trampoline
+    /// and block the main thread for the whole recording. Instant
+    /// instead takes the controller's chunked frame-yielded path, so
+    /// this value is inert for it.</summary>
     public static float ReplaySpeedMultiplier => ReplaySpeed switch
     {
         ReplaySpeed.Slow => 2f,
         ReplaySpeed.Normal => 1f,
         ReplaySpeed.Fast => 0.5f,
+        ReplaySpeed.Instant => 1f,
         _ => 1f,
     };
 

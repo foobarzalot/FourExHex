@@ -99,19 +99,25 @@ public class GameController
     /// </summary>
     private void RefreshSilentMode()
     {
-        bool silent = InSilentAiBatch();
-        _map.SetSilentMode(silent);
+        bool aiBatchSilent = InSilentAiBatch();
+        // Instant replay also wants the view silent, and must hold it
+        // across turn boundaries: ReplayApplyEndTurn → StartPlayerTurn
+        // calls this on every EndTurn beat, and InSilentAiBatch() is
+        // false during replay, so without this OR the second EndTurn
+        // would un-silence playback and leak sound/VFX.
+        _map.SetSilentMode(aiBatchSilent || _replayInstantActive);
         // Tutorial Preview / Record use the tutorial-message slot for
         // their own scripted text; don't clobber it. Outside those
         // modes the slot is free, so reuse it as a passive "AI is
-        // working" indicator.
+        // working" indicator. The overlay is an AI-batch affordance
+        // only — instant replay has its own UX and must not show it.
         if (_previewMode || _recordingMode) return;
-        if (silent && !_silentBatchOverlayShown)
+        if (aiBatchSilent && !_silentBatchOverlayShown)
         {
             _hud.ShowTutorialMessage("Opponents are taking their turns…");
             _silentBatchOverlayShown = true;
         }
-        else if (!silent && _silentBatchOverlayShown)
+        else if (!aiBatchSilent && _silentBatchOverlayShown)
         {
             _hud.HideTutorialMessage();
             _silentBatchOverlayShown = false;
@@ -158,9 +164,11 @@ public class GameController
         bool recordingMode = false,
         Action? onAfterRefresh = null,
         Func<bool>? aiSilentMode = null,
-        IAiBackgroundRunner? aiBackgroundRunner = null)
+        IAiBackgroundRunner? aiBackgroundRunner = null,
+        Func<bool>? replayIsInstantMode = null)
     {
         _aiSilentMode = aiSilentMode ?? (() => false);
+        _replayIsInstantMode = replayIsInstantMode;
         _aiBackgroundRunner = aiBackgroundRunner ?? new SynchronousAiBackgroundRunner();
         _humanActionValidator = humanActionValidator;
         _buyLevelValidator = buyLevelValidator;
@@ -482,6 +490,20 @@ public class GameController
 
     private bool _replayMode;
     private int _replayIndex;
+    // Predicate (injected by Main from UserSettings) consulted once per
+    // BeginReplay to decide whether playback runs in the chunked,
+    // frame-yielded "Instant" mode. _replayInstantActive is true only
+    // while such a playback is in flight; it makes RefreshSilentMode
+    // keep the view silent across turn boundaries.
+    private readonly Func<bool>? _replayIsInstantMode;
+    private bool _replayInstantActive;
+    // True only while InstantReplayTick is draining beats. Captures
+    // (HandleCapture) skip the per-capture full-map RebuildAfterTerritory-
+    // Change while this is set; the tick does ONE structural rebuild +
+    // screen refresh per turn instead. Without this a big endgame turn
+    // re-tessellates all map borders dozens of times and instant replay
+    // ends up slower than Fast.
+    private bool _suppressMapRebuild;
 
     // Parallel bookkeeping for undo/redo: track the beat-list size at
     // the moment each UndoEntry was pushed, so undo can trim
@@ -1256,7 +1278,11 @@ public class GameController
             }
         }
 
-        _map.RebuildAfterTerritoryChange();
+        // Instant replay coalesces the structural redraw to once per
+        // turn (see InstantReplayTick); skip the per-capture rebuild
+        // here so a capture-heavy turn doesn't re-tessellate every
+        // border on every beat.
+        if (!_suppressMapRebuild) _map.RebuildAfterTerritoryChange();
 
         // Mid-turn win check: only ends the game if the current
         // player owns every cell. The "opponent reduced to orphan
@@ -2545,12 +2571,20 @@ public class GameController
         _session.SelectedTerritory = null;
         ClearUndoAndReplayBookkeeping();
 
+        _replayInstantActive = _replayIsInstantMode?.Invoke() == true;
+
         _map.RebuildAfterTerritoryChange();
         _map.ShowHighlight(null);
         _map.ClearAllOverlays();
+        // Set silent BEFORE the setup refresh so even the rewind paint
+        // skips tweens. Instant playback never shows per-beat highlights.
+        if (_replayInstantActive) _map.SetSilentMode(true);
         RefreshViews();
 
-        _aiPacer.Schedule(StepReplayPreview, AiBetweenPlayersDelayMs);
+        if (_replayInstantActive)
+            _aiPacer.Schedule(InstantReplayTick, 0);
+        else
+            _aiPacer.Schedule(StepReplayPreview, AiBetweenPlayersDelayMs);
     }
 
     private void StepReplayPreview()
@@ -2573,6 +2607,27 @@ public class GameController
         ReplayBeat beat = _replayBeats[_replayIndex++];
         bool crossesTurn = beat is ReplayEndTurnBeat;
 
+        ExecuteReplayBeat(beat);
+
+        CheckGameEndConditions();
+        RefreshViews();
+
+        if (_session.IsGameOver) { EndReplay(); return; }
+
+        int delay = crossesTurn ? AiBetweenPlayersDelayMs : AiActionDelayMs;
+        _aiPacer.Schedule(StepReplayPreview, delay);
+    }
+
+    /// <summary>
+    /// Dispatch a single replay beat onto the same mutation paths the
+    /// live game uses. Shared by the paced step machine
+    /// (<see cref="StepReplayExecute"/>) and the chunked
+    /// <see cref="InstantReplayTick"/> so the two playback modes can't
+    /// drift. Does NOT advance <see cref="_replayIndex"/>, run the
+    /// game-end check, or refresh views — callers own pacing.
+    /// </summary>
+    private void ExecuteReplayBeat(ReplayBeat beat)
+    {
         switch (beat)
         {
             case ReplayMoveBeat mv:
@@ -2609,20 +2664,87 @@ public class GameController
                 // TutorialNarrationDriver instead.
                 break;
         }
+    }
 
-        CheckGameEndConditions();
-        RefreshViews();
+    // Max wall-clock a single InstantReplayTick may spend draining
+    // beats before it yields a frame. Small so the main thread stays
+    // responsive mid-replay — input, camera pan/zoom and rendering all
+    // run between ticks. A mid-turn budget break yields WITHOUT a
+    // redraw (nothing visual changed the user needs yet); the screen is
+    // repainted only at turn boundaries.
+    private const int InstantReplayBudgetMs = 8;
 
-        if (_session.IsGameOver) { EndReplay(); return; }
+    // Delay between a per-turn repaint and the next tick, so each
+    // player-turn's board lingers long enough to follow (≈5 turns/sec)
+    // instead of flipping past at frame rate. Still far faster than
+    // Fast (~325ms/beat). Mid-turn budget yields (no repaint) use 0 —
+    // an in-progress turn shouldn't be paced, only completed ones.
+    private const int InstantReplayTurnDelayMs = 200;
 
-        int delay = crossesTurn ? AiBetweenPlayersDelayMs : AiActionDelayMs;
-        _aiPacer.Schedule(StepReplayPreview, delay);
+    /// <summary>
+    /// Instant-replay driver. Drains beats with no per-beat visual work
+    /// (captures skip their rebuild via <see cref="_suppressMapRebuild"/>;
+    /// sound/VFX/tweens are off via silent mode), then repaints the
+    /// whole board exactly once per turn — the user-visible "draw the
+    /// screen once per turn" cadence. Each tick is capped at
+    /// <see cref="InstantReplayBudgetMs"/> so a huge turn still yields
+    /// frames (keeping pan/zoom/input alive) without redrawing until
+    /// that turn actually ends.
+    /// </summary>
+    private void InstantReplayTick()
+    {
+        if (!_replayMode) return;
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        bool turnBoundary = false;
+        _suppressMapRebuild = true;
+        while (_replayIndex < _replayBeats.Count)
+        {
+            ReplayBeat beat = _replayBeats[_replayIndex++];
+            bool isEndTurn = beat is ReplayEndTurnBeat;
+            ExecuteReplayBeat(beat);
+            CheckGameEndConditions();
+            if (_session.IsGameOver) break;
+            if (isEndTurn) { turnBoundary = true; break; }
+            if (sw.ElapsedMilliseconds >= InstantReplayBudgetMs) break;
+        }
+        _suppressMapRebuild = false;
+
+        if (_replayIndex >= _replayBeats.Count || _session.IsGameOver)
+        {
+            EndReplay();
+            return;
+        }
+
+        // Repaint only when a turn just completed. A budget-driven
+        // break mid-turn yields a bare frame (input/camera stay live)
+        // and resumes next tick — no redraw until the turn boundary.
+        if (turnBoundary)
+        {
+            _map.RebuildAfterTerritoryChange();
+            RefreshViews();
+        }
+        _aiPacer.Schedule(
+            InstantReplayTick,
+            turnBoundary ? InstantReplayTurnDelayMs : 0);
     }
 
     private void EndReplay()
     {
+        bool wasInstant = _replayInstantActive;
         _replayMode = false;
+        _replayInstantActive = false;
+        _suppressMapRebuild = false;
         _aiPacer.Cancel();
+        // Lift silent mode so the final game-over board (winner overlay,
+        // last-move state) renders with normal audio/VFX. No-op for
+        // non-instant replay, which never silenced the view.
+        _map.SetSilentMode(false);
+        // Instant replay suppressed every per-capture rebuild, so the
+        // border layer is stale; do one final structural rebuild before
+        // the closing refresh. Non-instant replay already rebuilt per
+        // capture, so this is instant-only.
+        if (wasInstant) _map.RebuildAfterTerritoryChange();
         ShowHighlightAndRefresh(null);
     }
 

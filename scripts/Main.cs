@@ -253,7 +253,11 @@ public partial class Main : Node2D
             loadedReplay: loadedReplay,
             aiSilentMode: () => controllerRef?.IsReplayMode != true
                 && UserSettings.AiSpeed == AiSpeed.Instant,
-            aiBackgroundRunner: bgRunner);
+            aiBackgroundRunner: bgRunner,
+            // Consulted once per BeginReplay (the only caller, fired by
+            // the post-game Replay button) to pick the chunked
+            // fast-forward path instead of the paced step machine.
+            replayIsInstantMode: () => UserSettings.ReplaySpeed == ReplaySpeed.Instant);
         controllerRef = _controller;
 
         if (!diagnosticMode)

@@ -44,6 +44,7 @@ off it.
 │           aiPacer:  pacer,                                               │
 │           maxTurnNumber: load ? saved : (diagnostic ? 500 : int.MaxVal), │
 │           aiSilentMode: () => UserSettings.AiSpeed == AiSpeed.Instant,   │
+│           replayIsInstantMode: () => ReplaySpeed.Instant,                │
 │           aiBackgroundRunner: GodotAiBackgroundRunner                    │
 │             (diagnostic uses SynchronousAiBackgroundRunner instead)     │
 │      8. Wire save/load + pause coordinator:                              │
@@ -74,7 +75,8 @@ off it.
 │   ├─ injected: master seed, aiChooser delegate, IAiPacer, maxTurnNumber, │
 │   │             aiSilentMode (Func<bool>; true → tells the view to mute  │
 │   │             per-action AI effects/sounds and lets the controller     │
-│   │             skip per-beat highlight/RefreshViews calls)              │
+│   │             skip per-beat highlight/RefreshViews calls),             │
+│   │             replayIsInstantMode (Func<bool>; instant replay path)    │
 │   ├─ exposes: MasterSeed, StartGame(), Resume(), AbandonGame()           │
 │   ├─ events: GameEnded (fires once on natural game-over or turn cap),    │
 │   │          HumanTurnStarted (start-of-each human turn — autosave seam) │
@@ -345,9 +347,11 @@ off it.
 │                  GameController, written by SettingsPanel.               │
 │                  AiSpeedMultiplier converts AiSpeed (Slow/Normal/Fast/   │
 │                  Instant) into a delay scalar (2/1/0.5/0) the pacer      │
-│                  applies per Schedule. ReplaySpeedMultiplier mirrors     │
-│                  ReplaySpeed (Slow/Normal/Fast — capped, no Instant      │
-│                  because replays are explicitly meant to be watched).   │
+│                  applies per Schedule. ReplaySpeedMultiplier maps        │
+│                  ReplaySpeed Slow/Normal/Fast → 2/1/0.5; Instant → 1     │
+│                  (inert — instant replay runs a separate chunked,        │
+│                  per-turn InstantReplayTick driver, not a pacer          │
+│                  scalar; 0 would trampoline-freeze the main thread).     │
 └──────────────────────────────────────────────────────────────────────────┘
 
 ┌──────────────────────────────────────────────────────────────────────────┐
@@ -379,7 +383,9 @@ off it.
 │                                                                          │
 │   HexMapView also carries a _silentMode flag (toggled by                 │
 │   GameController via IHexMapView.SetSilentMode when an AI player runs   │
-│   under AiSpeed.Instant). Silent mode is a second gate inside PlaySound │
+│   under AiSpeed.Instant, OR for the duration of a ReplaySpeed.Instant   │
+│   fast-forward — RefreshSilentMode ORs in _replayInstantActive so a    │
+│   turn boundary can't un-silence it). A second gate inside PlaySound   │
 │   that drops every per-action cue AND the tree/grave grow/shrink tweens │
 │   in RefreshOccupantVisuals AND the tree/grave teardown inside          │
 │   RebuildAfterTerritoryChange (per-capture teardown would flash trees   │
@@ -673,7 +679,10 @@ pacer interprets as "run inline now": it borrows the same FIFO
 trampoline `SynchronousAiPacer` uses so nested `Schedule` calls
 flatten and `Cancel` mid-drain clears the inline queue. With Instant
 selected, the entire AI batch unwinds within a single
-`OnEndTurnPressed` call — no Godot frame paints between beats.
+`OnEndTurnPressed` call — no Godot frame paints between beats. This
+trampoline is for *AI* Instant only: `ReplaySpeedMultiplier` for
+Instant is `1f` (never `0`), so instant *replay* keeps real timer
+ticks and stays frame-yielding — see "Instant replay" above.
 
 **`IAiBackgroundRunner`** — companion to `IAiPacer` that decides
 *where* the chooser runs (the pacer decides *when* the next beat
@@ -1127,8 +1136,12 @@ BeginReplay (public, called from victory-overlay Replay button):
   ├─ _state.Turns.Reset(initialPlayerIndex, initialTurnNumber)
   ├─ clear session: Winner, PendingDefeat, PendingClaim, pending action
   ├─ ClearUndoAndReplayBookkeeping
+  ├─ _replayInstantActive = replayIsInstantMode?()  (UserSettings
+  │     .ReplaySpeed == Instant; injected by Main)
+  ├─ if instant: _map.SetSilentMode(true)  (sound/VFX/tweens off)
   ├─ map.RebuildAfterTerritoryChange + overlay clears + RefreshViews
-  └─ schedule StepReplayPreview after AiBetweenPlayersDelayMs
+  └─ schedule InstantReplayTick (instant) else StepReplayPreview
+       after AiBetweenPlayersDelayMs
 
 StepReplayPreview:
   ├─ if _replayIndex >= _replayBeats.Count → EndReplay
@@ -1162,6 +1175,43 @@ StepReplayExecute:
   └─ schedule next StepReplayPreview after
        AiBetweenPlayersDelayMs (if beat was EndTurn) else AiActionDelayMs
 ```
+
+**Instant replay (`ReplaySpeed.Instant`).** A separate driver that
+trades the paced preview/execute cadence for a fast, silent
+fast-forward. `BeginReplay` branches to `InstantReplayTick` instead
+of `StepReplayPreview`:
+
+```
+InstantReplayTick:
+  ├─ _suppressMapRebuild = true
+  ├─ drain beats (ExecuteReplayBeat + CheckGameEndConditions),
+  │     stopping at the first ReplayEndTurnBeat (a turn boundary),
+  │     game-over, or InstantReplayBudgetMs (8 ms) wall-clock
+  ├─ _suppressMapRebuild = false
+  ├─ if all beats consumed / game over → EndReplay
+  ├─ if a turn just completed → _map.RebuildAfterTerritoryChange
+  │     + RefreshViews  (ONE structural repaint per player-turn)
+  └─ reschedule self after InstantReplayTurnDelayMs (200 ms) if a
+       turn was drawn, else 0 (a mid-turn budget yield keeps input/
+       camera live but paints nothing)
+```
+
+Why a distinct path: instant replay must NOT use the pacer's
+multiplier-0 trampoline (that drains every beat inline on the main
+thread — frozen UI for a whole game, the original "hang"). Instead
+`ReplaySpeedMultiplier` for Instant is `1f` and `InstantReplayTick`
+yields a real timer/frame each tick, so pan/zoom and input stay
+responsive throughout. The dominant per-beat view cost —
+`HandleCapture`'s full-map `RebuildAfterTerritoryChange`
+(`DrawTerritoryBorders` re-tessellates every tile, NOT silent-gated)
+— is suppressed via `_suppressMapRebuild` and coalesced into one
+rebuild + refresh per player-turn (the user-visible sampling
+cadence). `RefreshSilentMode` ORs in `_replayInstantActive` so a
+`ReplayEndTurnBeat` → `StartPlayerTurn` can't un-silence playback
+mid-stream; `EndReplay` lifts silent mode and does one final
+`RebuildAfterTerritoryChange` (per-capture ones were skipped) before
+the closing refresh. Fidelity is identical to paced replay — the
+model-mutation order is unchanged; only view work is deferred.
 
 Replay reuses the live `ExecuteAi*` helpers — same captures, same
 FX, same `HandleCapture` reconciliation — so replay fidelity comes
