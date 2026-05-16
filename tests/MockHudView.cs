@@ -47,6 +47,15 @@ public class MockHudView : IHudView
     /// </summary>
     public Color? LastSeenWinner { get; private set; }
 
+    /// <summary>
+    /// Snapshot of <see cref="SessionState.Mode"/> as observed at the
+    /// most recent Refresh call. The real HudView caches this value at
+    /// refresh time to gate Escape between cancel-action and pause, so
+    /// tests need to verify the controller refreshes the HUD AFTER mode
+    /// changes (not only before).
+    /// </summary>
+    public SessionState.ActionMode LastSeenMode { get; private set; }
+
     public void Refresh(GameState state, SessionState session, bool hasActionableRemaining)
     {
         RefreshCount++;
@@ -54,6 +63,7 @@ public class MockHudView : IHudView
         LastSession = session;
         LastHasActionableRemaining = hasActionableRemaining;
         LastSeenWinner = session.Winner;
+        LastSeenMode = session.Mode;
     }
 
     public string? LastSetMapLabel { get; private set; }

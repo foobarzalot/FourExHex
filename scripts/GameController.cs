@@ -708,6 +708,10 @@ public class GameController
             _session.MoveSource = tile.Coord;
             _map.ShowMoveTargets(ActionConsumingTargets(tile.Unit.Level, territory), tile.Unit.Level);
             _map.ShowMoveSource(tile.Coord);
+            // Re-refresh after entering MovingUnit so HudView's cached
+            // _hasPendingAction sees the new mode — otherwise Escape
+            // routes to the pause menu instead of cancelling the move.
+            RefreshViews();
         }
     }
 

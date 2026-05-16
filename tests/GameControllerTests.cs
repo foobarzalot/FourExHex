@@ -4065,6 +4065,23 @@ public class GameControllerTests
     }
 
     [Fact]
+    public void ClickingUnit_RefreshesHudWithMovingUnitMode()
+    {
+        // Real HudView caches session.Mode at Refresh time to decide
+        // whether Escape cancels the pending action or opens the pause
+        // menu. If OnTileClickedBody enters MovingUnit mode without a
+        // trailing refresh, the cached flag stays None and Escape
+        // wrongly opens the pause menu instead of cancelling the move.
+        var g = new TestGame();
+        g.Tile(1, 1).Occupant = new Unit(g.Red.Color);
+
+        g.Map.SimulateClick(g.Tile(1, 1));
+
+        Assert.Equal(SessionState.ActionMode.MovingUnit, g.Session.Mode);
+        Assert.Equal(SessionState.ActionMode.MovingUnit, g.Hud.LastSeenMode);
+    }
+
+    [Fact]
     public void CancelAction_WhileMovingUnit_ClearsModeAndMapOverlays()
     {
         var g = new TestGame();
