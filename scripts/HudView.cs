@@ -13,6 +13,7 @@ public partial class HudView : CanvasLayer, IHudView
     public const float HudHeight = 60f;
 
     public event Action? BuyPeasantClicked;
+    public event Action<UnitLevel>? BuyUnitClicked;
     public event Action? BuildTowerClicked;
     public event Action? UndoLastClicked;
     public event Action? UndoTurnClicked;
@@ -36,7 +37,11 @@ public partial class HudView : CanvasLayer, IHudView
     private Label _playerLabel = null!;
     private Label _goldLabel = null!;
     private Label _seedLabel = null!;
-    private HudIconButton _buyPeasantButton = null!;
+    // One radio button per buy level (Peasant / Spearman / Knight / Baron),
+    // in cycle order. _buyUnitButtons[(int)level] gives the button for
+    // a given UnitLevel. _buyUnitButtons[0] = Peasant (the legacy
+    // CtaButton.BuyPeasant target).
+    private HudIconButton[] _buyUnitButtons = null!;
     private HudIconButton _buildTowerButton = null!;
     private HudIconButton _undoLastButton = null!;
     private HudIconButton _undoTurnButton = null!;
@@ -113,14 +118,31 @@ public partial class HudView : CanvasLayer, IHudView
         _goldLabel.AddThemeFontSizeOverride("font_size", 24);
         leftHbox.AddChild(_goldLabel);
 
-        // Always visible — Refresh() flips Disabled based on selection
-        // and affordability and surfaces the reason in the tooltip.
-        // Default to Disabled until the first Refresh runs so the
-        // pre-state isn't briefly clickable.
-        _buyPeasantButton = new HudIconButton(HudIcon.Peasant) { Disabled = true };
-        _buyPeasantButton.Pressed += () => BuyPeasantClicked?.Invoke();
-        AudioBus.AttachClick(_buyPeasantButton);
-        leftHbox.AddChild(_buyPeasantButton);
+        // Four always-visible radio buttons (Peasant / Spearman / Knight
+        // / Baron) packed in a nested HBox so the row sits as one unit
+        // in the parent layout. Per-button Disabled / Selected /
+        // tooltip are set by Refresh(). Each click fires BuyUnitClicked
+        // with its specific level — direct selection, no cycling. The
+        // U-key fires BuyPeasantClicked which cycles in the controller.
+        var buyRow = new HBoxContainer();
+        buyRow.AddThemeConstantOverride("separation", 4);
+        leftHbox.AddChild(buyRow);
+
+        UnitLevel[] buyLevels = { UnitLevel.Peasant, UnitLevel.Spearman, UnitLevel.Knight, UnitLevel.Baron };
+        _buyUnitButtons = new HudIconButton[buyLevels.Length];
+        for (int i = 0; i < buyLevels.Length; i++)
+        {
+            UnitLevel level = buyLevels[i];
+            var button = new HudIconButton(HudIcon.Peasant)
+            {
+                Disabled = true,
+                BuyLevel = level,
+            };
+            button.Pressed += () => BuyUnitClicked?.Invoke(level);
+            AudioBus.AttachClick(button);
+            buyRow.AddChild(button);
+            _buyUnitButtons[i] = button;
+        }
 
         _buildTowerButton = new HudIconButton(HudIcon.Tower) { Disabled = true };
         _buildTowerButton.Pressed += () => BuildTowerClicked?.Invoke();
@@ -225,8 +247,17 @@ public partial class HudView : CanvasLayer, IHudView
     /// </summary>
     private Control? _tutorialTapCatcher;
 
+    // True while an external caller (tutorial system, AI-batch indicator)
+    // owns the tutorial-message panel. Refresh()'s gameplay action hint
+    // ("Click to place a Peasant", "Click to move the Knight") only
+    // writes to the panel when this is false, so the tutorial step text
+    // and the AI batch announcement aren't clobbered by the per-Refresh
+    // hint pass.
+    private bool _externalMessageActive;
+
     public void ShowTutorialMessage(string text)
     {
+        _externalMessageActive = true;
         _tutorialLabel.Text = text;
         _tutorialPanel.Visible = true;
         SetTutorialTapCatcherEnabled(false);
@@ -234,6 +265,7 @@ public partial class HudView : CanvasLayer, IHudView
 
     public void ShowTappableTutorialMessage(string text)
     {
+        _externalMessageActive = true;
         _tutorialLabel.Text = text;
         _tutorialPanel.Visible = true;
         SetTutorialTapCatcherEnabled(true);
@@ -241,6 +273,7 @@ public partial class HudView : CanvasLayer, IHudView
 
     public void HideTutorialMessage()
     {
+        _externalMessageActive = false;
         _tutorialPanel.Visible = false;
         SetTutorialTapCatcherEnabled(false);
     }
@@ -708,18 +741,23 @@ public partial class HudView : CanvasLayer, IHudView
             _goldLabel.Text = "";
         }
 
-        UnitLevel? buyLevel = SessionState.BuyModeLevel(session.Mode);
-        bool inBuyMode = buyLevel.HasValue;
-        bool canAffordPeasant = hasCapital && PurchaseRules.CanAffordPeasant(selected!, state.Treasury);
-        _buyPeasantButton.Visible = true;
-        _buyPeasantButton.Disabled = !inBuyMode && !canAffordPeasant;
-        _buyPeasantButton.Selected = inBuyMode;
-        _buyPeasantButton.BuyLevel = buyLevel ?? UnitLevel.Peasant;
-        _buyPeasantButton.TooltipText = inBuyMode
-            ? $"Click a tile ({buyLevel!.Value} {PurchaseRules.CostFor(buyLevel.Value)}g) — U"
-            : canAffordPeasant
-                ? HudIconButton.DefaultTooltip(HudIcon.Peasant)
-                : DisabledBuyReason(selected, hasCapital, "a peasant");
+        UnitLevel? currentBuyLevel = SessionState.BuyModeLevel(session.Mode);
+        foreach (HudIconButton button in _buyUnitButtons)
+        {
+            UnitLevel level = button.BuyLevel;
+            bool canAffordThis = hasCapital && PurchaseRules.CanAfford(selected!, state.Treasury, level);
+            bool isActive = currentBuyLevel == level;
+            button.Disabled = !canAffordThis;
+            button.Selected = isActive;
+            int cost = PurchaseRules.CostFor(level);
+            // Active button: tooltip is cleared because the placement
+            // instruction lives in the bottom-anchored panel.
+            button.TooltipText = isActive
+                ? ""
+                : canAffordThis
+                    ? $"Buy {level} ({cost}g) — U"
+                    : DisabledBuyReason(selected, hasCapital, $"a {level.ToString().ToLowerInvariant()}", cost);
+        }
 
         bool building = session.Mode == SessionState.ActionMode.BuildingTower;
         bool canAffordTower = hasCapital && PurchaseRules.CanAffordTower(selected!, state.Treasury);
@@ -730,7 +768,7 @@ public partial class HudView : CanvasLayer, IHudView
             ? "Click a tile... — T"
             : canAffordTower
                 ? HudIconButton.DefaultTooltip(HudIcon.Tower)
-                : DisabledBuyReason(selected, hasCapital, "a tower");
+                : DisabledBuyReason(selected, hasCapital, "a tower", PurchaseRules.TowerCost);
 
         _undoLastButton.Disabled = _undoRedoLocked || !session.Undo.CanUndo;
         _undoTurnButton.Disabled = _undoRedoLocked || !session.Undo.CanUndo;
@@ -788,26 +826,61 @@ public partial class HudView : CanvasLayer, IHudView
             session.PendingClaimVictory.HasValue
             && !session.Winner.HasValue
             && !session.PendingDefeatScreen.HasValue;
+
+        // Gameplay action hint — surfaces "Click to place / move" prompts
+        // through the bottom-anchored tutorial-message panel during buy
+        // and move modes. Skipped if an external caller (tutorial step
+        // text, AI-batch announcement) currently owns the panel.
+        if (!_externalMessageActive)
+        {
+            string? hint = ComputeActionHint(state, session);
+            if (hint != null)
+            {
+                _tutorialLabel.Text = hint;
+                _tutorialPanel.Visible = true;
+            }
+            else
+            {
+                _tutorialPanel.Visible = false;
+            }
+        }
+    }
+
+    private static string? ComputeActionHint(GameState state, SessionState session)
+    {
+        UnitLevel? buyLevel = SessionState.BuyModeLevel(session.Mode);
+        if (buyLevel.HasValue)
+        {
+            return $"Click to place a {buyLevel.Value}";
+        }
+        if (session.Mode == SessionState.ActionMode.MovingUnit && session.MoveSource.HasValue)
+        {
+            HexTile? src = state.Grid.Get(session.MoveSource.Value);
+            UnitLevel level = (src?.Unit?.Level) ?? UnitLevel.Peasant;
+            return $"Click to move the {level}";
+        }
+        return null;
     }
 
     /// <summary>
     /// Explain why the Buy / Build button is disabled. Walks the
     /// preconditions in player-facing priority order — selection first,
     /// then capital ownership, then affordability — so the tooltip names
-    /// the most actionable thing the player can fix.
+    /// the most actionable thing the player can fix. Includes the cost
+    /// in the affordability message so the player knows what they need.
     /// </summary>
-    private static string DisabledBuyReason(Territory? selected, bool hasCapital, string actionLabel)
+    private static string DisabledBuyReason(Territory? selected, bool hasCapital, string actionLabel, int cost)
     {
         if (selected == null) return "No territory selected";
         if (!hasCapital) return "Selected territory has no capital";
-        return $"Selected territory can't afford {actionLabel}";
+        return $"Selected territory can't afford {actionLabel} ({cost}g)";
     }
 
     public void SetCta(CtaButton button, bool isCta, bool pulse = true)
     {
         Button target = button switch
         {
-            CtaButton.BuyPeasant => _buyPeasantButton,
+            CtaButton.BuyPeasant => _buyUnitButtons.First(b => b.BuyLevel == UnitLevel.Peasant),
             CtaButton.EndTurn => _endTurnButton,
             CtaButton.BuildTower => _buildTowerButton,
             CtaButton.ClaimVictoryWinNow => _claimWinNowButton,

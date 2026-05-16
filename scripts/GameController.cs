@@ -194,6 +194,7 @@ public class GameController
         _map.TileLongClicked += OnTileLongClicked;
         _map.OffGridClicked += OnOffGridClicked;
         _hud.BuyPeasantClicked += OnBuyPressed;
+        _hud.BuyUnitClicked += OnBuyUnitPressed;
         _hud.BuildTowerClicked += OnBuildTowerPressed;
         _hud.UndoLastClicked += OnUndoLastPressed;
         _hud.UndoTurnClicked += OnUndoTurnPressed;
@@ -246,6 +247,7 @@ public class GameController
         _map.TileLongClicked -= OnTileLongClicked;
         _map.OffGridClicked -= OnOffGridClicked;
         _hud.BuyPeasantClicked -= OnBuyPressed;
+        _hud.BuyUnitClicked -= OnBuyUnitPressed;
         _hud.BuildTowerClicked -= OnBuildTowerPressed;
         _hud.UndoLastClicked -= OnUndoLastPressed;
         _hud.UndoTurnClicked -= OnUndoTurnPressed;
@@ -1547,12 +1549,42 @@ public class GameController
     };
 
     /// <summary>
-    /// Buy-button handler: enters the lowest affordable buy mode, or
-    /// cycles to the next affordable level if already in a buy mode.
-    /// If the only affordable level is the one already active, the
-    /// press is a no-op. Same handler is invoked by the `u` hotkey.
+    /// Buy-cycle handler: from no buy mode, enters the lowest affordable
+    /// level; from an existing buy mode, advances to the next higher
+    /// affordable level. From the most-expensive affordable level the
+    /// next press exits to <see cref="SessionState.ActionMode.None"/> —
+    /// the cycle does NOT wrap back to Peasant. Same handler is invoked
+    /// by the `u` hotkey.
     /// </summary>
     private void OnBuyPressed() => TrackHandler(OnBuyPressedBody);
+
+    /// <summary>
+    /// Direct per-level buy handler: clicking one of the four radio
+    /// buttons enters that specific buy mode (no cycling). Idempotent —
+    /// clicking the already-active level is a no-op so TrackHandler's
+    /// de-dup avoids pushing redundant undo entries. Unaffordable or
+    /// "no selection" clicks are also no-ops.
+    /// </summary>
+    private void OnBuyUnitPressed(UnitLevel level) => TrackHandler(() => OnBuyUnitPressedBody(level));
+
+    private void OnBuyUnitPressedBody(UnitLevel level)
+    {
+        if (_session.IsGameOver) return;
+        if (_session.SelectedTerritory == null) return;
+        if (!PurchaseRules.CanAfford(_session.SelectedTerritory, _state.Treasury, level)) return;
+        if (SessionState.BuyModeLevel(_session.Mode) == level) return;
+
+        _session.Mode = SessionState.BuyModeFor(level);
+        _session.MoveSource = null;
+        _map.ShowMoveTargets(ActionConsumingTargets(level, _session.SelectedTerritory), level);
+        // Switching into a buy mode from BuildingTower leaves the tower
+        // preview + coverage tint stale; clear both so the player only
+        // sees relevant CTAs.
+        _map.ShowTowerTargets(System.Array.Empty<HexCoord>());
+        _map.ShowTowerCoverage(System.Array.Empty<HexCoord>());
+        _map.ShowMoveSource(null);
+        RefreshViews();
+    }
 
     private void OnBuyPressedBody()
     {
@@ -1560,7 +1592,22 @@ public class GameController
         if (_session.SelectedTerritory == null) return;
 
         UnitLevel? next = NextAffordableBuyLevel();
-        if (next == null) return;
+        UnitLevel? current = SessionState.BuyModeLevel(_session.Mode);
+
+        if (next == null)
+        {
+            // No higher affordable level. If we're already in a buy mode,
+            // exit to None (cycle past the top). Otherwise nothing to do.
+            if (current == null) return;
+            _session.Mode = SessionState.ActionMode.None;
+            _session.MoveSource = null;
+            _map.ShowMoveTargets(System.Array.Empty<HexCoord>(), UnitLevel.Peasant);
+            _map.ShowTowerTargets(System.Array.Empty<HexCoord>());
+            _map.ShowTowerCoverage(System.Array.Empty<HexCoord>());
+            _map.ShowMoveSource(null);
+            RefreshViews();
+            return;
+        }
 
         _session.Mode = SessionState.BuyModeFor(next.Value);
         _session.MoveSource = null;
@@ -1575,11 +1622,11 @@ public class GameController
     }
 
     /// <summary>
-    /// Pick the next buy level for the cycle: if not currently in a
-    /// buy mode, return the lowest affordable level; if already in a
-    /// buy mode, return the next affordable level after it (cyclically),
-    /// or null if no other level is affordable. Returns null when
-    /// nothing is affordable at all.
+    /// Next strictly-higher affordable buy level after the current mode.
+    /// If no buy mode is active, returns the lowest affordable level
+    /// (cycle entry from None). Returns null when nothing affordable
+    /// exists at-or-above the current position — the cycle does NOT
+    /// wrap; the caller treats null as "exit to None".
     /// </summary>
     private UnitLevel? NextAffordableBuyLevel()
     {
@@ -1590,7 +1637,6 @@ public class GameController
         int startIndex = 0;
         if (current.HasValue)
         {
-            // Start one past the current level so re-pressing advances.
             for (int i = 0; i < BuyCycleOrder.Length; i++)
             {
                 if (BuyCycleOrder[i] == current.Value)
@@ -1601,10 +1647,9 @@ public class GameController
             }
         }
 
-        for (int offset = 0; offset < BuyCycleOrder.Length; offset++)
+        for (int i = startIndex; i < BuyCycleOrder.Length; i++)
         {
-            UnitLevel candidate = BuyCycleOrder[(startIndex + offset) % BuyCycleOrder.Length];
-            if (current.HasValue && candidate == current.Value) continue;
+            UnitLevel candidate = BuyCycleOrder[i];
             if (PurchaseRules.CanAfford(selected, _state.Treasury, candidate))
             {
                 return candidate;

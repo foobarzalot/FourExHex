@@ -4165,26 +4165,6 @@ public class GameControllerTests
     }
 
     [Fact]
-    public void BuyPressed_WhileBuyingBaron_CyclesBackToBuyingPeasant()
-    {
-        var g = new TestGame();
-        g.Map.SimulateClick(g.Tile(0, 1));
-        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
-        g.State.Treasury.SetGold(redCapital, 100);
-
-        // Cycle 4 times to reach Baron.
-        g.Hud.ClickBuyPeasant();
-        g.Hud.ClickBuyPeasant();
-        g.Hud.ClickBuyPeasant();
-        g.Hud.ClickBuyPeasant();
-        Assert.Equal(SessionState.ActionMode.BuyingBaron, g.Session.Mode);
-
-        g.Hud.ClickBuyPeasant();
-
-        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
-    }
-
-    [Fact]
     public void BuyPressed_SkipsUnaffordableLevels()
     {
         var g = new TestGame();
@@ -4196,29 +4176,9 @@ public class GameControllerTests
         g.Hud.ClickBuyPeasant();
         Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
 
+        // Skips no unaffordable levels here — Spearman is next affordable.
         g.Hud.ClickBuyPeasant();
         Assert.Equal(SessionState.ActionMode.BuyingSpearman, g.Session.Mode);
-
-        // Knight and Baron unaffordable → wraps back to Peasant.
-        g.Hud.ClickBuyPeasant();
-        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
-    }
-
-    [Fact]
-    public void BuyPressed_OnlyPeasantAffordable_IsNoOp_WhenAlreadyBuyingPeasant()
-    {
-        var g = new TestGame();
-        g.Map.SimulateClick(g.Tile(0, 1));
-        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
-        g.State.Treasury.SetGold(redCapital, 15); // only Peasant affordable
-
-        g.Hud.ClickBuyPeasant();
-        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
-
-        g.Hud.ClickBuyPeasant();
-
-        // Only Peasant affordable → cycle has nowhere else to go → stay put.
-        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
     }
 
     [Fact]
@@ -4373,6 +4333,164 @@ public class GameControllerTests
         Assert.Equal(UnitLevel.Baron, g.Tile(1, 1).Unit!.Level);
         Assert.Equal(SessionState.ActionMode.BuyingBaron, g.Session.Mode);
         Assert.Equal(40, g.State.Treasury.GetGold(redCapital));
+    }
+
+    // --- Cycle exits at top instead of wrapping ---------------------------
+
+    [Fact]
+    public void BuyPressed_WhileBuyingBaron_ExitsToNone()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 100);
+
+        // Cycle to Baron (top of the affordable subset).
+        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyPeasant();
+        Assert.Equal(SessionState.ActionMode.BuyingBaron, g.Session.Mode);
+
+        g.Hud.ClickBuyPeasant();
+
+        // From the most-expensive selectable unit, cycle exits instead
+        // of wrapping back to Peasant.
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+    }
+
+    [Fact]
+    public void BuyPressed_WhileBuyingHighestAffordable_ExitsToNone_WhenHigherUnaffordable()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        // 25g: Peasant (10) ✓, Spearman (20) ✓, Knight (30) ✗, Baron (40) ✗.
+        g.State.Treasury.SetGold(redCapital, 25);
+
+        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyPeasant();
+        Assert.Equal(SessionState.ActionMode.BuyingSpearman, g.Session.Mode);
+
+        g.Hud.ClickBuyPeasant();
+
+        // Spearman is the most-expensive selectable; cycling past exits.
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+    }
+
+    [Fact]
+    public void BuyPressed_WhileBuyingPeasant_ExitsToNone_WhenOnlyPeasantAffordable()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 15); // only Peasant affordable
+
+        g.Hud.ClickBuyPeasant();
+        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+
+        g.Hud.ClickBuyPeasant();
+
+        // Peasant is both cheapest and most-expensive selectable; cycling
+        // past it exits to None.
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+    }
+
+    [Fact]
+    public void BuyPressed_FromNone_AfterExit_EntersCheapestAffordable()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 100);
+
+        // Cycle all the way up and then exit.
+        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyPeasant();  // exit to None
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+
+        g.Hud.ClickBuyPeasant();
+
+        // Re-entry from None starts at the cheapest affordable level.
+        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+    }
+
+    // --- Direct per-level buy clicks --------------------------------------
+
+    [Fact]
+    public void BuyUnitClicked_WithKnight_EntersBuyingKnight_DirectlyFromNone()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 100);
+
+        g.Hud.ClickBuyUnit(UnitLevel.Knight);
+
+        // No cycling — goes straight to Knight.
+        Assert.Equal(SessionState.ActionMode.BuyingKnight, g.Session.Mode);
+    }
+
+    [Fact]
+    public void BuyUnitClicked_WithSpearman_SwitchesFromBuyingPeasantToBuyingSpearman()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 100);
+        g.Hud.ClickBuyPeasant();
+        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+
+        g.Hud.ClickBuyUnit(UnitLevel.Spearman);
+
+        Assert.Equal(SessionState.ActionMode.BuyingSpearman, g.Session.Mode);
+    }
+
+    [Fact]
+    public void BuyUnitClicked_WhenAlreadyInThatMode_DoesNotPushUndo()
+    {
+        // Radio-button no-op: clicking the already-active button is a
+        // no-op (no state change → TrackHandler de-dups → no undo push).
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 100);
+        g.Hud.ClickBuyUnit(UnitLevel.Spearman);
+        int baseline = g.Session.Undo.UndoCount;
+
+        g.Hud.ClickBuyUnit(UnitLevel.Spearman);
+        g.Hud.ClickBuyUnit(UnitLevel.Spearman);
+
+        Assert.Equal(baseline, g.Session.Undo.UndoCount);
+        Assert.Equal(SessionState.ActionMode.BuyingSpearman, g.Session.Mode);
+    }
+
+    [Fact]
+    public void BuyUnitClicked_WithUnaffordableLevel_IsNoOp()
+    {
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 15); // only Peasant affordable
+
+        g.Hud.ClickBuyUnit(UnitLevel.Knight);
+
+        // Can't afford Knight → no mode change, no push.
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+    }
+
+    [Fact]
+    public void BuyUnitClicked_WithoutSelection_IsNoOp()
+    {
+        var g = new TestGame();
+        // No SimulateClick — no selection.
+
+        g.Hud.ClickBuyUnit(UnitLevel.Peasant);
+
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
     }
 
     // --- Per-UI-change undo: restore selection + mode ---------------------
@@ -4576,22 +4694,28 @@ public class GameControllerTests
     // --- Per-UI-change undo: de-dup no-op handlers ------------------------
 
     [Fact]
-    public void OnBuyPressed_WhenOnlyPeasantAffordable_AndAlreadyInBuyingPeasant_DoesNotPushUndo()
+    public void OnBuyPressed_WhenOnlyPeasantAffordable_TogglesBuyingPeasantAndNone()
     {
+        // The cycle is "enter cheapest affordable" → "advance" → "exit
+        // at top". With only Peasant affordable, Peasant IS the top, so
+        // each press toggles between BuyingPeasant and None. Each
+        // transition is a real state change and pushes a fresh undo
+        // entry (no de-dup applies because state actually changes).
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
         HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
         g.State.Treasury.SetGold(redCapital, 10);  // exactly one peasant
-        g.Hud.ClickBuyPeasant();  // None → BuyingPeasant: should push (1 entry)
+        g.Hud.ClickBuyPeasant();  // None → BuyingPeasant
         Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
         int countAfterFirst = g.Session.Undo.UndoCount;
 
-        g.Hud.ClickBuyPeasant();  // BuyingPeasant → BuyingPeasant: NO push
-        g.Hud.ClickBuyPeasant();
-        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyPeasant();  // BuyingPeasant → None (exit at top)
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+        Assert.Equal(countAfterFirst + 1, g.Session.Undo.UndoCount);
 
-        Assert.Equal(countAfterFirst, g.Session.Undo.UndoCount);
+        g.Hud.ClickBuyPeasant();  // None → BuyingPeasant
         Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+        Assert.Equal(countAfterFirst + 2, g.Session.Undo.UndoCount);
     }
 
     [Fact]

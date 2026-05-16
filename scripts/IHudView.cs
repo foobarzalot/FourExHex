@@ -8,7 +8,21 @@ using System;
 /// </summary>
 public interface IHudView
 {
+    /// <summary>
+    /// "Cycle to next buy mode" — fired by the U hotkey. From None,
+    /// enters the lowest affordable level; from a buy mode, advances
+    /// to the next higher affordable level; from the top of the
+    /// affordable subset, exits back to None.
+    /// </summary>
     event Action? BuyPeasantClicked;
+
+    /// <summary>
+    /// "Enter a specific buy mode" — fired by clicking one of the four
+    /// per-level radio buttons on the HUD. Idempotent: clicking the
+    /// already-active level is a no-op (no undo push).
+    /// </summary>
+    event Action<UnitLevel>? BuyUnitClicked;
+
     event Action? BuildTowerClicked;
     event Action? UndoLastClicked;
     event Action? UndoTurnClicked;

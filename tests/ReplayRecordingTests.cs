@@ -329,11 +329,10 @@ public class ReplayRecordingTests
         Assert.Empty(f.Controller.ReplayBeats);
 
         // Different action: build a tower? Red has 10g but tower
-        // costs 15g. Instead, buy a peasant onto a DIFFERENT tile —
-        // since after undo, redOther is empty again, just re-do the
-        // same buy but assert there's still exactly one beat after.
-        f.Map.SimulateClick(f.State.Grid.Get(redCapital)!);
-        f.Hud.ClickBuyPeasant();
+        // costs 15g. Instead, re-do the same buy — undo restored
+        // session.Mode=BuyingPeasant and the selected territory, so
+        // we can click the placement tile directly. Assert exactly
+        // one beat after.
         f.Map.SimulateClick(f.State.Grid.Get(redOther)!);
         Assert.Single(f.Controller.ReplayBeats);
     }

@@ -11,6 +11,7 @@ namespace FourExHex.Tests;
 public class MockHudView : IHudView
 {
     public event Action? BuyPeasantClicked;
+    public event Action<UnitLevel>? BuyUnitClicked;
     public event Action? BuildTowerClicked;
     public event Action? UndoLastClicked;
     public event Action? UndoTurnClicked;
@@ -126,6 +127,7 @@ public class MockHudView : IHudView
     public void ClickReplay() => ReplayClicked?.Invoke();
 
     public void ClickBuyPeasant() => BuyPeasantClicked?.Invoke();
+    public void ClickBuyUnit(UnitLevel level) => BuyUnitClicked?.Invoke(level);
     public void ClickBuildTower() => BuildTowerClicked?.Invoke();
     public void PressNextTerritory() => NextTerritoryClicked?.Invoke();
     public void PressPreviousTerritory() => PreviousTerritoryClicked?.Invoke();

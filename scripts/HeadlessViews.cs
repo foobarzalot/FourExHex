@@ -41,6 +41,7 @@ public sealed class HeadlessHudView : IHudView
 {
 #pragma warning disable CS0067 // Events never used
     public event Action? BuyPeasantClicked;
+    public event Action<UnitLevel>? BuyUnitClicked;
     public event Action? BuildTowerClicked;
     public event Action? UndoLastClicked;
     public event Action? UndoTurnClicked;
