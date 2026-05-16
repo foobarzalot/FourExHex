@@ -92,6 +92,57 @@ public class TutorialPreviewCursorTests
     }
 
     [Fact]
+    public void AllowBuyLevel_AcceptsMatchingLevel_AndRejectsOthers()
+    {
+        var script = new List<ReplayBeat>
+        {
+            new ReplayBuyBeat
+            {
+                Index = 0, Turn = 1, Actor = 0,
+                Capital = new HexCoord(0, 0),
+                To = new HexCoord(1, 0),
+                Level = UnitLevel.Spearman,
+            },
+        };
+        var cursor = new ScriptCursor();
+        var preview = new TutorialPreview(script, TrivialState(TwoPlayerRoster()), cursor);
+
+        Assert.True(preview.AllowBuyLevel(UnitLevel.Spearman));
+        Assert.False(preview.AllowBuyLevel(UnitLevel.Peasant));
+        Assert.False(preview.AllowBuyLevel(UnitLevel.Knight));
+        Assert.False(preview.AllowBuyLevel(UnitLevel.Baron));
+    }
+
+    [Fact]
+    public void AllowBuyLevel_RejectsAnyLevel_WhenNextBeatIsNotBuy()
+    {
+        var script = new List<ReplayBeat>
+        {
+            new ReplayMoveBeat
+            {
+                Index = 0, Turn = 1, Actor = 0,
+                From = new HexCoord(0, 0), To = new HexCoord(1, 0),
+            },
+        };
+        var cursor = new ScriptCursor();
+        var preview = new TutorialPreview(script, TrivialState(TwoPlayerRoster()), cursor);
+
+        Assert.False(preview.AllowBuyLevel(UnitLevel.Peasant));
+        Assert.False(preview.AllowBuyLevel(UnitLevel.Spearman));
+    }
+
+    [Fact]
+    public void AllowBuyLevel_RejectsAll_WhenScriptComplete()
+    {
+        var script = new List<ReplayBeat>();
+        var cursor = new ScriptCursor();
+        var preview = new TutorialPreview(script, TrivialState(TwoPlayerRoster()), cursor);
+
+        Assert.False(preview.AllowBuyLevel(UnitLevel.Peasant));
+        Assert.False(preview.AllowBuyLevel(UnitLevel.Baron));
+    }
+
+    [Fact]
     public void ReplayDrivenAi_ReturnsNullWithoutAdvancing_OnTutorialOnlyBeat()
     {
         var roster = TwoPlayerRoster();

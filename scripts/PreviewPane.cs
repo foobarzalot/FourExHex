@@ -125,6 +125,7 @@ public sealed partial class PreviewPane : Control
             aiChooser: _replayAi.ChooseNextAction,
             aiPacer: new GodotAiPacer(new SceneTreeTimerFactory(GetTree())),
             humanActionValidator: _preview.TryAccept,
+            buyLevelValidator: _preview.AllowBuyLevel,
             previewMode: true,
             onAfterRefresh: () =>
             {

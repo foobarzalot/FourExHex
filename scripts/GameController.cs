@@ -153,6 +153,7 @@ public class GameController
         int maxTurnNumber = int.MaxValue,
         Replay? loadedReplay = null,
         Func<ReplayBeat, bool>? humanActionValidator = null,
+        Func<UnitLevel, bool>? buyLevelValidator = null,
         bool previewMode = false,
         bool recordingMode = false,
         Action? onAfterRefresh = null,
@@ -162,6 +163,7 @@ public class GameController
         _aiSilentMode = aiSilentMode ?? (() => false);
         _aiBackgroundRunner = aiBackgroundRunner ?? new SynchronousAiBackgroundRunner();
         _humanActionValidator = humanActionValidator;
+        _buyLevelValidator = buyLevelValidator;
         _previewMode = previewMode;
         _recordingMode = recordingMode;
         _onAfterRefresh = onAfterRefresh;
@@ -431,6 +433,15 @@ public class GameController
     // _replayMode for the RecordBeat gate but does NOT block input
     // handlers — Preview wants player-0 clicks to flow through.
     private readonly Func<ReplayBeat, bool>? _humanActionValidator;
+
+    // Tutorial Preview pre-placement guard for the Buy radio row. When
+    // set, returns true iff the next expected player-0 beat is a buy
+    // at exactly this level. The buy handlers consult it before
+    // changing session.Mode so the dev can't pre-select a stronger
+    // unit than the script asks for. Non-mutating — the cursor doesn't
+    // advance until the placement click runs through
+    // _humanActionValidator.
+    private readonly Func<UnitLevel, bool>? _buyLevelValidator;
     private readonly bool _previewMode;
     public bool IsPreviewMode => _previewMode;
 
@@ -1573,6 +1584,10 @@ public class GameController
         if (_session.SelectedTerritory == null) return;
         if (!PurchaseRules.CanAfford(_session.SelectedTerritory, _state.Treasury, level)) return;
         if (SessionState.BuyModeLevel(_session.Mode) == level) return;
+        // Tutorial Preview: refuse the switch if the script's next beat
+        // isn't a buy at this level. Lets the dev only enter the
+        // mode the tutorial expects.
+        if (_buyLevelValidator != null && !_buyLevelValidator(level)) return;
 
         _session.Mode = SessionState.BuyModeFor(level);
         _session.MoveSource = null;
@@ -1593,6 +1608,11 @@ public class GameController
 
         UnitLevel? next = NextAffordableBuyLevel();
         UnitLevel? current = SessionState.BuyModeLevel(_session.Mode);
+
+        // Tutorial Preview: if the cycle would land on a level the
+        // script doesn't expect, refuse the switch (stay put) instead
+        // of advancing or exiting.
+        if (next.HasValue && _buyLevelValidator != null && !_buyLevelValidator(next.Value)) return;
 
         if (next == null)
         {

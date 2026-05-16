@@ -68,6 +68,21 @@ public sealed class TutorialPreview
         }
     }
 
+    /// <summary>
+    /// Pre-placement guard for the four Buy radio buttons. Returns true
+    /// iff the next expected player-0 beat is a <see cref="ReplayBuyBeat"/>
+    /// at the proposed level. When the script expects a different level
+    /// (or a non-buy beat, or the tutorial is complete), the controller
+    /// refuses the mode switch — the dev must follow the script exactly
+    /// and can't pre-select a stronger unit before the placement click.
+    /// Non-mutating: does NOT advance the cursor; that happens only when
+    /// a complete action beat lands in <see cref="TryAccept"/>.
+    /// </summary>
+    public bool AllowBuyLevel(UnitLevel level)
+    {
+        return NextPlayer0Beat is ReplayBuyBeat buy && buy.Level == level;
+    }
+
     public bool TryAccept(ReplayBeat attempted)
     {
         if (_state.Turns.CurrentPlayerIndex != 0)
