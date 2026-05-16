@@ -43,7 +43,9 @@ off it.
 │           aiChooser: AiDispatcher.ChooseForCurrentPlayer,                │
 │           aiPacer:  pacer,                                               │
 │           maxTurnNumber: load ? saved : (diagnostic ? 500 : int.MaxVal), │
-│           aiSilentMode: () => UserSettings.AiSpeed == AiSpeed.Instant)   │
+│           aiSilentMode: () => UserSettings.AiSpeed == AiSpeed.Instant,   │
+│           aiBackgroundRunner: GodotAiBackgroundRunner                    │
+│             (diagnostic uses SynchronousAiBackgroundRunner instead)     │
 │      8. Wire save/load + pause coordinator:                              │
 │           • new SaveStore + (non-diagnostic) build the Save +           │
 │             Load dialogs and a shared SettingsPanel.                    │
@@ -305,13 +307,16 @@ off it.
 │   LoadedSave — bundle of (state, players, master seed, max-turn cap,     │
 │                slot name, optional OriginMapName)                        │
 │   SaveSlotInfo — slot listing metadata (name, time, turn, isAutosave)    │
-│   UserSettings — static class; SfxEnabled / VfxEnabled / AiSpeed         │
-│                  preferences persisted to user://settings.json (lazy     │
-│                  load, atomic tmp+rename save); read by AudioBus +       │
-│                  HexMapView + GodotAiPacer + GameController, written     │
-│                  by SettingsPanel. AiSpeedMultiplier converts the        │
-│                  AiSpeed enum (Slow/Normal/Fast/Instant) into a delay    │
-│                  scalar (2/1/0.5/0) the pacer applies per Schedule.      │
+│   UserSettings — static class; SfxEnabled / VfxEnabled / AiSpeed /       │
+│                  ReplaySpeed preferences persisted to                    │
+│                  user://settings.json (lazy load, atomic tmp+rename      │
+│                  save); read by AudioBus + HexMapView + GodotAiPacer +   │
+│                  GameController, written by SettingsPanel.               │
+│                  AiSpeedMultiplier converts AiSpeed (Slow/Normal/Fast/   │
+│                  Instant) into a delay scalar (2/1/0.5/0) the pacer      │
+│                  applies per Schedule. ReplaySpeedMultiplier mirrors     │
+│                  ReplaySpeed (Slow/Normal/Fast — capped, no Instant      │
+│                  because replays are explicitly meant to be watched).   │
 └──────────────────────────────────────────────────────────────────────────┘
 
 ┌──────────────────────────────────────────────────────────────────────────┐
@@ -344,11 +349,13 @@ off it.
 │   GameController via IHexMapView.SetSilentMode when an AI player runs   │
 │   under AiSpeed.Instant). Silent mode is a second gate that suppresses  │
 │   per-action Play* methods AND the tree/grave grow/shrink tweens in     │
-│   RefreshOccupantVisuals, so an Instant AI batch produces zero visible  │
-│   or audible per-action feedback. PlayBankruptcy and PlayGameWon stay   │
-│   ungated — those are turn-/game-boundary events the user asked to     │
-│   still hear under Instant. The same gating is mirrored in              │
-│   MockHexMapView so integration tests can verify end-to-end silence.   │
+│   RefreshOccupantVisuals AND the tree/grave teardown inside             │
+│   RebuildAfterTerritoryChange (per-capture teardown would flash trees   │
+│   off-and-on as captures fire mid-batch; the end-of-batch refresh's    │
+│   diff loop frees only the trees actually chopped). PlayBankruptcy and │
+│   PlayGameWon stay ungated — those are turn-/game-boundary events the  │
+│   user asked to still hear under Instant. The same gating is mirrored  │
+│   in MockHexMapView so integration tests can verify end-to-end silence.│
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -587,6 +594,24 @@ trampoline `SynchronousAiPacer` uses so nested `Schedule` calls
 flatten and `Cancel` mid-drain clears the inline queue. With Instant
 selected, the entire AI batch unwinds within a single
 `OnEndTurnPressed` call — no Godot frame paints between beats.
+
+**`IAiBackgroundRunner`** — companion to `IAiPacer` that decides
+*where* the chooser runs (the pacer decides *when* the next beat
+fires). Under silent batch the dominant cost is the chooser itself
+(`HeuristicAi.ChooseNextAction` does 1-ply lookahead with state
+cloning); running it inline on the main thread blocks the renderer
+for hundreds of ms per AI on a busy six-AI map. Production
+`GodotAiBackgroundRunner` posts each chooser invocation to
+`Task.Run` and marshals the result back to the main thread via
+`Callable.From(onMain).CallDeferred()` so a Godot frame can paint
+between beats — the visible "Opponents are taking their turns…" HUD
+overlay (drawn in the tutorial-message slot) signals the deliberate
+pause. Tests use `SynchronousAiBackgroundRunner` (calls work() then
+onMain() inline) or `ManualAiBackgroundRunner` (queues, test drives
+delivery via `DrainOne` / `DrainAll`). Cancellation mirrors the
+pacer's generation-counter pattern: `AbandonGame` calls
+`Cancel` on both pacer and runner so an in-flight worker's
+`CallDeferred` can't wake against disposed view nodes.
 
 ```csharp
 void Schedule(Action callback, int delayMs);
@@ -935,48 +960,77 @@ preview and execute beats via `IAiPacer.Schedule`:
 
 ```
 StepAiPreview:
-  ├─ aiChooser(state, color, visited, rng) → action
+  ├─ if InSilentAiBatch():
+  │     ├─ _aiBackgroundRunner.Run(
+  │     │     work: () => aiChooser(state, color, visited, rng),
+  │     │     onMain: a => StepAiPreviewAfterChoose(a, color))
+  │     └─ return  (continuation resumes on main thread)
+  └─ else: StepAiPreviewAfterChoose(aiChooser(…), color)
+
+StepAiPreviewAfterChoose(action, color):
+  ├─ defensive re-checks (game over? player changed? still AI?)
   ├─ if action == null OR step cap reached:
   │     ├─ EndOfTurnProcessing
   │     ├─ AdvanceToNextActivePlayer + StartPlayerTurn
   │     │     (StartPlayerTurn calls RefreshSilentMode → toggles the
   │     │     view's silent flag for the new player)
-  │     ├─ if !InSilentAiBatch(): _map.ShowHighlight(null) + RefreshViews
-  │     │     (the human-takeover refresh; skipped while still
-  │     │      handing off AI → AI in a silent batch)
+  │     ├─ HighlightDuringBeat(null) + RefreshDuringBeat
+  │     │     (no-op while still handing off AI → AI in a silent
+  │     │      batch; becomes the end-of-batch refresh when the new
+  │     │      player is human)
   │     └─ if next is AI: schedule next StepAiPreview
   ├─ _pendingAiAction = action
-  ├─ if !InSilentAiBatch():
-  │     ├─ _map.ShowHighlight(acting territory)
-  │     └─ RefreshViews
+  ├─ HighlightDuringBeat(acting territory) + RefreshDuringBeat
   └─ schedule StepAiExecute after AiPreviewDelayMs
 
 StepAiExecute:
   ├─ run ExecuteAiMove / ExecuteAiBuyUnit / ExecuteAiBuildTower
   │     (each validates preconditions; throws on illegal action;
   │     calls _map.Play* — silent mode no-ops these in the view)
-  ├─ if !InSilentAiBatch(): re-highlight resulting territory +
-  │     RefreshViews  (skipped during silent batch)
-  ├─ if PendingDefeatScreen: pause — return without scheduling next
-  │     (resumes from OnDefeatContinuePressed)
+  ├─ HighlightDuringBeat(resulting territory) + RefreshDuringBeat
+  ├─ if PendingDefeatScreen: lift silent (overlay needs to paint and
+  │     OnDefeatContinuePressed needs to dispatch), RefreshSilentMode +
+  │     RefreshViews, return without scheduling next. The dismissal
+  │     handler re-arms silent mode and schedules the next preview.
   └─ schedule next StepAiPreview after AiActionDelayMs
 ```
 
-`InSilentAiBatch()` = `aiSilentMode() && currentPlayer.IsAi`. The
+`InSilentAiBatch()` =
+`aiSilentMode() && currentPlayer.IsAi && !PendingDefeatScreen`. The
 `aiSilentMode` func is injected (production wires
-`() => UserSettings.AiSpeed == AiSpeed.Instant`). Silent mode does
-two things in lockstep:
+`() => UserSettings.AiSpeed == AiSpeed.Instant`, gated on
+`!IsReplayMode` so a replay never accidentally enters silent mode
+through this predicate). Silent mode does three things in lockstep:
 
 1. **Pacer**: `GodotAiPacer`'s `delayMultiplier` returns 0 so the
    whole chain runs inline via the FIFO trampoline.
-2. **Controller + view**: GameController skips per-beat
+2. **Background runner**: each chooser invocation hops to a worker
+   thread and resumes via `CallDeferred`, so the renderer keeps
+   painting and the "Opponents are taking their turns…" overlay is
+   visible during the wait.
+3. **Controller + view**: GameController skips per-beat
    `ShowHighlight`/`RefreshViews` calls and the view drops per-action
-   `Play*` + tween-spawning calls. The single `RefreshViews` that
-   happens once control returns to a human is what the human sees.
+   `Play*` + tween-spawning + `RebuildAfterTerritoryChange` work.
+   The single `RefreshViews` that happens once control returns to a
+   human is what the human sees.
 
-Game-end branches (game over, defeat overlay pending, `_gameEndedFired`)
-ignore the silent flag and always refresh — the victory/defeat UI
-must surface even mid-batch.
+Defeat-overlay handoff: `PendingDefeatScreen.HasValue` flips
+`InSilentAiBatch()` to false mid-batch so the view's silent flag
+lifts, the input gate unblocks `OnDefeatContinuePressed`, and the
+HUD's defeat panel renders. Once the human dismisses, the handler
+clears the flag, calls `RefreshSilentMode` to re-enter silent mode,
+and schedules the next preview to resume the batch.
+
+Input gating: every top-level human input handler (`TrackHandler`-
+wrapped click/key handlers, plus `OnEndTurnPressed`, `OnUndo*`,
+`OnRedo*`, `OnDefeatContinuePressed`, `OnClaimVictory*`) short-
+circuits on `InSilentAiBatch()`. Without it a Tab press or tile
+click on the main thread between worker yields would mutate
+`SessionState` behind the chooser's back.
+
+Game-end branches (game over, `_gameEndedFired`) ignore the silent
+flag and always refresh — the victory UI must surface even mid-
+batch.
 
 Tests use `SynchronousAiPacer` so the whole AI chain runs inline.
 
@@ -1245,15 +1299,18 @@ nothing else in the codebase listens to it for the pause flow.
 ### Reusable `SettingsPanel`
 
 `SettingsPanel` (CanvasLayer modal — backdrop + centered panel +
-SFX/VFX `CheckBox` rows + AI Turn Speed radio row + Back button) is
-the single Settings UI for both the main menu and the in-game pause
-flow. SFX/VFX toggles bind directly to `UserSettings.SfxEnabled` /
-`UserSettings.VfxEnabled` via `Toggled`. The AI Turn Speed row is
-four `Button`s (`Slow`/`Normal`/`Fast`/`Instant`) in `ToggleMode`
-sharing a `ButtonGroup` (radio semantics) and writes to
-`UserSettings.AiSpeed` from each `Pressed` handler. Godot's default
-toggle visuals are subtle, so `ApplySpeedButtonStyle` paints a solid
-white + dark-text stylebox on the pressed button and a dim
+SFX/VFX `CheckBox` rows + AI Turn Speed and Replay Speed radio rows
++ Back button) is the single Settings UI for both the main menu and
+the in-game pause flow. SFX/VFX toggles bind directly to
+`UserSettings.SfxEnabled` / `UserSettings.VfxEnabled` via `Toggled`.
+The AI Turn Speed row is four `Button`s
+(`Slow`/`Normal`/`Fast`/`Instant`) in `ToggleMode` sharing a
+`ButtonGroup` (radio semantics) and writes to `UserSettings.AiSpeed`
+from each `Pressed` handler. The Replay Speed row has three buttons
+(`Slow`/`Normal`/`Fast` — no Instant; watching a recording is the
+point of replay) and writes to `UserSettings.ReplaySpeed`. Godot's
+default toggle visuals are subtle, so `ApplySpeedButtonStyle` paints
+a solid white + dark-text stylebox on the pressed button and a dim
 dark-background + light-text stylebox on the others; `Toggled` fires
 on both the just-pressed and just-unpressed siblings, so a single
 handler restyle keeps every button in sync. `Open()` re-syncs every
@@ -1941,10 +1998,12 @@ scripts/
 │                           that survive scene changes; each Play* gates
 │                           on UserSettings.SfxEnabled
 ├─ UserSettings.cs        ─ static class; SfxEnabled / VfxEnabled /
-│                           AiSpeed preferences persisted to
-│                           user://settings.json (lazy load, atomic
-│                           tmp+rename save). AiSpeedMultiplier maps
-│                           the enum to the GodotAiPacer scalar.
+│                           AiSpeed / ReplaySpeed preferences persisted
+│                           to user://settings.json (lazy load, atomic
+│                           tmp+rename save). AiSpeedMultiplier and
+│                           ReplaySpeedMultiplier map their enums to
+│                           the GodotAiPacer scalar (ReplaySpeed caps
+│                           at Fast — no Instant for replays).
 │
 ├─ AiPacer.cs             ─ IAiPacer + SynchronousAiPacer +
 │                           ITimerFactory abstraction
@@ -1956,6 +2015,16 @@ scripts/
 │                           delay (Slow/Normal/Fast); a multiplier of
 │                           0 (Instant) drops into a FIFO trampoline
 │                           that runs callbacks inline.
+├─ AiBackgroundRunner.cs  ─ IAiBackgroundRunner + Synchronous-
+│                           AiBackgroundRunner (default for tests +
+│                           diagnostic mode). Decides where the chooser
+│                           runs; pairs with IAiPacer which decides
+│                           when the next beat fires.
+├─ GodotAiBackgroundRunner.cs ─ Production runner; Task.Run worker +
+│                           Callable.CallDeferred to marshal the
+│                           continuation back to the main thread.
+│                           Generation counter mirrors GodotAiPacer's
+│                           Cancel-then-reuse contract (test-excluded).
 ├─ SceneTreeTimerFactory.cs ─ Production ITimerFactory wrapping
 │                           SceneTree.CreateTimer (test-excluded).
 │                           Passes processAlways: false so AI pacing
