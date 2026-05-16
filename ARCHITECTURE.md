@@ -184,7 +184,6 @@ off it.
 │                           │  │   │    PaintCellEntered, motion fires per  │
 │                           │  │   │    new cell, release fires Stroke-     │
 │                           │  │   │    Ended; suppresses pan + click events│
-│                           │  │   ├─ TerritoryAt(coord)                    │
 │                           │  │   ├─ ShowHighlight(territory)              │
 │   SessionState            │  │   ├─ ShowMoveTargets(coords, level)        │
 │   ├─ Winner (Color?)      │  │   ├─ ShowTowerTargets(coords)              │
@@ -293,8 +292,8 @@ off it.
 │   UndoEntry — pair of (GameStateSnapshot, SessionStateSnapshot)          │
 │   UndoStack<T> — two-sided history of T (UndoEntry for play, also reused │
 │                  by the editor with EditorSnapshot)                      │
-│   TerritoryLookup — FindOwnedContaining / FindByCapital /               │
-│                     OwnedCapitalBearing helpers                         │
+│   TerritoryLookup — FindContaining / FindOwnedContaining /              │
+│                     FindByCapital / OwnedCapitalBearing helpers         │
 │   MapGenerator — CA-driven land/water carve + tree scatter, seeded       │
 │   GameSettings — global PlayerConfig (name, color hex) + PlayerKinds     │
 │                  + optional MasterSeed; written by MainMenuScene,        │
@@ -375,7 +374,6 @@ event Action<HexTile?>? TileLongClicked;      // rally
 event Action<HexCoord>? OffGridClicked;       // water / map-edge clicks; carries
                                               // the raw coord so the controller
                                               // can anchor rejection feedback
-Territory? TerritoryAt(HexCoord coord);
 void ShowMoveTargets(IEnumerable<HexCoord> coords, UnitLevel level);
 void ShowTowerTargets(IEnumerable<HexCoord> coords);
 void ShowTowerCoverage(IEnumerable<HexCoord> coords);
@@ -868,7 +866,7 @@ GameController  ── wrapped in TrackHandler:
                 (no mode → SetSelection(null) instead, preserving the
                  long-standing "click outside to deselect" UX)
   EmitRejection(level, coord):
-    ├─ targetTerritory = _map.TerritoryAt(coord)
+    ├─ targetTerritory = TerritoryLookup.FindContaining(state.Territories, coord)
     ├─ inFrontier = coord is in or neighbors SelectedTerritory.Coords
     ├─ defenders = (inFrontier && targetTerritory is enemy's)
     │     ? DefenseRules.BlockingDefenders(coord, level, grid, targetTerritory)
@@ -2041,8 +2039,8 @@ scripts/
 │
 ├─ MapGenerator.cs        ─ CA-driven land/water carve + tree scatter
 ├─ TerritoryFinder.cs     ─ pure rules
-├─ TerritoryLookup.cs     ─ FindOwnedContaining / FindByCapital /
-│                           OwnedCapitalBearing helpers
+├─ TerritoryLookup.cs     ─ FindContaining / FindOwnedContaining /
+│                           FindByCapital / OwnedCapitalBearing helpers
 ├─ CapitalPlacer.cs       ─
 ├─ CapitalReconciler.cs   ─
 ├─ DefenseRules.cs        ─
