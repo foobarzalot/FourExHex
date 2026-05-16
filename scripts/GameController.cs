@@ -766,8 +766,7 @@ public class GameController
     private void SetSelection(Territory? territory)
     {
         _session.SelectedTerritory = territory;
-        _map.ShowHighlight(territory);
-        RefreshViews();
+        ShowHighlightAndRefresh(territory);
     }
 
     /// <summary>
@@ -2154,8 +2153,7 @@ public class GameController
         if (_gameEndedFired) return;
         if (_session.IsGameOver)
         {
-            _map.ShowHighlight(null);
-            RefreshViews();
+            ShowHighlightAndRefresh(null);
             return;
         }
         if (!_state.Turns.CurrentPlayer.IsAi)
@@ -2239,8 +2237,7 @@ public class GameController
             // becomes the single end-of-batch refresh the human sees.
             if (!InSilentAiBatch())
             {
-                _map.ShowHighlight(null);
-                RefreshViews();
+                ShowHighlightAndRefresh(null);
             }
 
             if (_gameEndedFired) return;
@@ -2258,9 +2255,7 @@ public class GameController
         // the immediately-following execute beat.
         if (!InSilentAiBatch())
         {
-            Territory? acting = ResolveAiActingTerritory(action);
-            _map.ShowHighlight(acting);
-            RefreshViews();
+            ShowHighlightAndRefresh(ResolveAiActingTerritory(action));
         }
         _aiPacer.Schedule(StepAiExecute, AiPreviewDelayMs);
     }
@@ -2275,8 +2270,7 @@ public class GameController
         if (_gameEndedFired) return;
         if (_session.IsGameOver)
         {
-            _map.ShowHighlight(null);
-            RefreshViews();
+            ShowHighlightAndRefresh(null);
             return;
         }
         AiAction? action = _pendingAiAction;
@@ -2378,8 +2372,7 @@ public class GameController
             // overlay is gated on session.Winner inside RefreshViews,
             // so without this final refresh the dialog never appears
             // and the game looks frozen mid-board.
-            _map.ShowHighlight(null);
-            RefreshViews();
+            ShowHighlightAndRefresh(null);
             return;
         }
 
@@ -2390,10 +2383,8 @@ public class GameController
         // never paint and the rebuild is the dominant per-action cost.
         if (!InSilentAiBatch())
         {
-            Territory? resulting = TerritoryLookup.FindOwnedContaining(
-                _state.Territories, _state.Turns.CurrentPlayer.Color, resultCoord);
-            _map.ShowHighlight(resulting);
-            RefreshViews();
+            ShowHighlightAndRefresh(TerritoryLookup.FindOwnedContaining(
+                _state.Territories, _state.Turns.CurrentPlayer.Color, resultCoord));
         }
 
         if (_session.IsGameOver)
@@ -2502,9 +2493,7 @@ public class GameController
         if (_replayIndex >= _replayBeats.Count) { EndReplay(); return; }
 
         ReplayBeat beat = _replayBeats[_replayIndex];
-        Territory? acting = ResolveReplayActingTerritory(beat);
-        _map.ShowHighlight(acting);
-        RefreshViews();
+        ShowHighlightAndRefresh(ResolveReplayActingTerritory(beat));
 
         int delay = beat is ReplayEndTurnBeat ? AiActionDelayMs : AiPreviewDelayMs;
         _aiPacer.Schedule(StepReplayExecute, delay);
@@ -2568,8 +2557,7 @@ public class GameController
     {
         _replayMode = false;
         _aiPacer.Cancel();
-        _map.ShowHighlight(null);
-        RefreshViews();
+        ShowHighlightAndRefresh(null);
     }
 
     /// <summary>
@@ -2876,6 +2864,18 @@ public class GameController
     }
 
     // --- View refresh -----------------------------------------------------
+
+    /// <summary>
+    /// Set the highlight (null clears) and immediately refresh the
+    /// views. The pair appears in both the AI and replay step
+    /// machines plus several game-end / dismissal sites — a one-line
+    /// helper de-duplicates without inventing new abstraction.
+    /// </summary>
+    private void ShowHighlightAndRefresh(Territory? selected)
+    {
+        _map.ShowHighlight(selected);
+        RefreshViews();
+    }
 
     /// <summary>
     /// Push current state into both views in one call. Used after any
