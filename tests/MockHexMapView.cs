@@ -100,73 +100,41 @@ public class MockHexMapView : IHexMapView
         DestructionEffects.Add((coord, destroyed));
     }
 
+    // Per-sound recording surface — tests assert against these. Each
+    // property records every fire of the matching SoundEffect routed
+    // through PlaySound, with the silent-mode policy applied (per-action
+    // cues drop while silent; Bankruptcy/GameWon stay audible).
     public List<HexCoord> UnitPlacedSounds { get; } = new();
-    public void PlayUnitPlaced(HexCoord coord)
-    {
-        if (SilentMode) return;
-        UnitPlacedSounds.Add(coord);
-    }
-
     public List<HexCoord> TowerPlacedSounds { get; } = new();
-    public void PlayTowerPlaced(HexCoord coord)
-    {
-        if (SilentMode) return;
-        TowerPlacedSounds.Add(coord);
-    }
-
     public List<HexCoord> UnitCombinedSounds { get; } = new();
-    public void PlayUnitCombined(HexCoord coord)
-    {
-        if (SilentMode) return;
-        UnitCombinedSounds.Add(coord);
-    }
-
     public List<HexCoord> UnitDestroyedSounds { get; } = new();
-    public void PlayUnitDestroyed(HexCoord coord)
-    {
-        if (SilentMode) return;
-        UnitDestroyedSounds.Add(coord);
-    }
-
     public List<HexCoord> TowerDestroyedSounds { get; } = new();
-    public void PlayTowerDestroyed(HexCoord coord)
-    {
-        if (SilentMode) return;
-        TowerDestroyedSounds.Add(coord);
-    }
-
     public List<HexCoord> TreeClearedSounds { get; } = new();
-    public void PlayTreeCleared(HexCoord coord)
-    {
-        if (SilentMode) return;
-        TreeClearedSounds.Add(coord);
-    }
-
     public List<HexCoord> CapitalDestroyedSounds { get; } = new();
-    public void PlayCapitalDestroyed(HexCoord coord)
-    {
-        if (SilentMode) return;
-        CapitalDestroyedSounds.Add(coord);
-    }
-
     public int BankruptcySoundCount { get; private set; }
-    public void PlayBankruptcy() => BankruptcySoundCount++;
-
     public int GameWonSoundCount { get; private set; }
-    public void PlayGameWon() => GameWonSoundCount++;
-
     public int RallySoundCount { get; private set; }
-    public void PlayRally()
-    {
-        if (SilentMode) return;
-        RallySoundCount++;
-    }
-
     public int PlayerDefeatedSoundCount { get; private set; }
-    public void PlayPlayerDefeated()
+
+    public void PlaySound(SoundEffect kind, HexCoord? at = null)
     {
-        if (SilentMode) return;
-        PlayerDefeatedSoundCount++;
+        bool exemptFromSilent = kind == SoundEffect.Bankruptcy || kind == SoundEffect.GameWon;
+        if (SilentMode && !exemptFromSilent) return;
+        HexCoord coord = at ?? default;
+        switch (kind)
+        {
+            case SoundEffect.UnitPlaced: UnitPlacedSounds.Add(coord); break;
+            case SoundEffect.TowerPlaced: TowerPlacedSounds.Add(coord); break;
+            case SoundEffect.UnitCombined: UnitCombinedSounds.Add(coord); break;
+            case SoundEffect.UnitDestroyed: UnitDestroyedSounds.Add(coord); break;
+            case SoundEffect.TowerDestroyed: TowerDestroyedSounds.Add(coord); break;
+            case SoundEffect.TreeCleared: TreeClearedSounds.Add(coord); break;
+            case SoundEffect.CapitalDestroyed: CapitalDestroyedSounds.Add(coord); break;
+            case SoundEffect.Bankruptcy: BankruptcySoundCount++; break;
+            case SoundEffect.GameWon: GameWonSoundCount++; break;
+            case SoundEffect.Rally: RallySoundCount++; break;
+            case SoundEffect.PlayerDefeated: PlayerDefeatedSoundCount++; break;
+        }
     }
 
     /// <summary>

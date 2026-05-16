@@ -110,49 +110,16 @@ public interface IHudView
     event Action? TutorialMessageTapped;
 
     /// <summary>
-    /// Apply (or clear) tutorial-driven CTA styling to the Buy Peasant
-    /// button — same white-bg + black-text + border the End Turn button
-    /// already uses when no actions remain. Tutorial Preview only;
-    /// ordinary play never calls this and the styling clears
-    /// automatically when the player commits the buy (via the wrapper
-    /// dropping back to <c>SetBuyPeasantCta(false)</c>).
+    /// Apply (or clear) CTA styling to a specific HUD button. Called by
+    /// <see cref="GameController.RefreshViews"/> with
+    /// <see cref="CtaButton.EndTurn"/> + <paramref name="pulse"/> = false
+    /// when the human has no actionable territories left (steady glow);
+    /// otherwise by Tutorial Preview to highlight the next scripted beat
+    /// (pulse = true, animated, distinguishes from the game-side auto-CTA).
+    /// All Tutorial buttons except EndTurn always pulse — they're only
+    /// fired during tutorial scripting.
     /// </summary>
-    void SetBuyPeasantCta(bool isCta);
-
-    /// <summary>
-    /// Apply (or clear) CTA styling to the End Turn button. Called from
-    /// <see cref="GameController.RefreshViews"/> with <paramref name="pulse"/>
-    /// = false to indicate the human has no actionable territories
-    /// left (steady glow), and from Tutorial Preview with
-    /// <paramref name="pulse"/> = true to indicate the next scripted
-    /// beat is End Turn (animated to draw the eye and visually
-    /// distinguish from the game-side auto-CTA).
-    /// </summary>
-    void SetEndTurnCta(bool isCta, bool pulse);
-
-    /// <summary>
-    /// Apply (or clear) tutorial-driven CTA styling to the Build Tower
-    /// button. Tutorial Preview only.
-    /// </summary>
-    void SetBuildTowerCta(bool isCta);
-
-    /// <summary>
-    /// Apply (or clear) CTA styling to the claim-victory overlay's
-    /// "Win Now" button. Tutorial Preview only.
-    /// </summary>
-    void SetClaimVictoryWinNowCta(bool isCta);
-
-    /// <summary>
-    /// Apply (or clear) CTA styling to the claim-victory overlay's
-    /// "Continue Playing" button. Tutorial Preview only.
-    /// </summary>
-    void SetClaimVictoryContinueCta(bool isCta);
-
-    /// <summary>
-    /// Apply (or clear) CTA styling to the defeat overlay's "Continue"
-    /// button. Tutorial Preview only.
-    /// </summary>
-    void SetDefeatContinueCta(bool isCta);
+    void SetCta(CtaButton button, bool isCta, bool pulse = true);
 
     /// <summary>
     /// Lock (force-disable) the Undo / Redo button row. While locked,
@@ -172,4 +139,20 @@ public interface IHudView
     /// further author input.
     /// </summary>
     void SetVictoryOverlaySuppressed(bool suppressed);
+}
+
+/// <summary>
+/// Identifies which HUD button <see cref="IHudView.SetCta"/> targets.
+/// <see cref="EndTurn"/> is driven both by the game (steady glow when no
+/// actionable territories remain) and by Tutorial Preview (pulsed,
+/// scripted beat). The rest are Tutorial Preview only.
+/// </summary>
+public enum CtaButton
+{
+    BuyPeasant,
+    EndTurn,
+    BuildTower,
+    ClaimVictoryWinNow,
+    ClaimVictoryContinue,
+    DefeatContinue,
 }

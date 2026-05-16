@@ -146,12 +146,12 @@ public class TutorialPreviewCuesTests
     {
         var f = new Fixture(new List<ReplayBeat>());
         // Pre-set all CTAs to true to verify they all get cleared.
-        f.Hud.SetEndTurnCta(true, pulse: true);
-        f.Hud.SetBuyPeasantCta(true);
-        f.Hud.SetBuildTowerCta(true);
-        f.Hud.SetClaimVictoryWinNowCta(true);
-        f.Hud.SetClaimVictoryContinueCta(true);
-        f.Hud.SetDefeatContinueCta(true);
+        f.Hud.SetCta(CtaButton.EndTurn, true, pulse: true);
+        f.Hud.SetCta(CtaButton.BuyPeasant, true);
+        f.Hud.SetCta(CtaButton.BuildTower, true);
+        f.Hud.SetCta(CtaButton.ClaimVictoryWinNow, true);
+        f.Hud.SetCta(CtaButton.ClaimVictoryContinue, true);
+        f.Hud.SetCta(CtaButton.DefeatContinue, true);
 
         f.Cues.Apply();
 

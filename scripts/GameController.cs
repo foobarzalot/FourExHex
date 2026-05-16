@@ -753,7 +753,7 @@ public class GameController
         {
             _handlerMutatedGame = true;
             _pendingHumanBeat = new ReplayLongPressRallyBeat { Target = target };
-            _map.PlayRally();
+            _map.PlaySound(SoundEffect.Rally);
             SetSelection(territory);
         }
         RefreshViews();
@@ -1103,28 +1103,28 @@ public class GameController
     {
         if (wasCombine)
         {
-            _map.PlayUnitCombined(destination);
+            _map.PlaySound(SoundEffect.UnitCombined, destination);
             return;
         }
         switch (result.Destroyed)
         {
             case Unit:
-                _map.PlayUnitDestroyed(destination);
+                _map.PlaySound(SoundEffect.UnitDestroyed, destination);
                 return;
             case Tower:
-                _map.PlayTowerDestroyed(destination);
+                _map.PlaySound(SoundEffect.TowerDestroyed, destination);
                 return;
             case Tree:
             case Grave:
-                _map.PlayTreeCleared(destination);
+                _map.PlaySound(SoundEffect.TreeCleared, destination);
                 return;
             case Capital:
-                _map.PlayCapitalDestroyed(destination);
+                _map.PlaySound(SoundEffect.CapitalDestroyed, destination);
                 return;
         }
         if (_state.Grid.Get(destination)?.Unit?.HasMovedThisTurn == true)
         {
-            _map.PlayUnitPlaced(destination);
+            _map.PlaySound(SoundEffect.UnitPlaced, destination);
         }
     }
 
@@ -1182,7 +1182,7 @@ public class GameController
 
         HexTile dst = _state.Grid.Get(destination)!;
         dst.Occupant = new Tower();
-        _map.PlayTowerPlaced(destination);
+        _map.PlaySound(SoundEffect.TowerPlaced, destination);
 
         // QoL: stay in BuildingTower mode if the territory can still
         // afford another tower. Refresh both the tower-target preview
@@ -1224,7 +1224,7 @@ public class GameController
         {
             if (!colorsWithCapitalAfter.Contains(c))
             {
-                _map.PlayPlayerDefeated();
+                _map.PlaySound(SoundEffect.PlayerDefeated);
                 int defeatedIndex = -1;
                 for (int i = 0; i < _state.Turns.Players.Count; i++)
                 {
@@ -1282,7 +1282,7 @@ public class GameController
             .FirstOrDefault(p => p.Color == winnerColor);
         if (winnerPlayer != null && !winnerPlayer.IsAi)
         {
-            _map.PlayGameWon();
+            _map.PlaySound(SoundEffect.GameWon);
         }
     }
 
@@ -1657,14 +1657,9 @@ public class GameController
         if (_session.IsGameOver) return;
 
         Color color = _state.Turns.CurrentPlayer.Color;
-        var owned = new List<Territory>();
-        foreach (Territory t in _state.Territories)
-        {
-            if (t.Owner == color && t.HasCapital)
-            {
-                owned.Add(t);
-            }
-        }
+        List<Territory> owned = TerritoryLookup
+            .OwnedCapitalBearing(_state.Territories, color)
+            .ToList();
         if (owned.Count == 0) return;
         owned.Sort((a, b) => a.Capital!.Value.CompareTo(b.Capital!.Value));
 
@@ -2035,7 +2030,7 @@ public class GameController
         {
             // One toll per turn-start regardless of how many of the
             // player's territories went bankrupt — see IHexMapView.
-            _map.PlayBankruptcy();
+            _map.PlaySound(SoundEffect.Bankruptcy);
         }
 
         LogTurnStart();
@@ -2334,8 +2329,9 @@ public class GameController
                 _session.ClaimVictoryPromptedHighestThreshold[cvColor] = cv.ThresholdPercent;
                 DeclareWinner(cvColor);
                 ClearUndoAndReplayBookkeeping();
-                resultCoord = _state.Territories
-                    .FirstOrDefault(t => t.Owner == cvColor && t.HasCapital)?.Capital
+                resultCoord = TerritoryLookup
+                    .OwnedCapitalBearing(_state.Territories, cvColor)
+                    .FirstOrDefault()?.Capital
                     ?? new HexCoord(0, 0);
                 break;
             }
@@ -2347,8 +2343,9 @@ public class GameController
                     RecordBeat(new ReplayDismissClaimBeat { ThresholdPercent = dc.ThresholdPercent });
                 }
                 _session.ClaimVictoryPromptedHighestThreshold[dcColor] = dc.ThresholdPercent;
-                resultCoord = _state.Territories
-                    .FirstOrDefault(t => t.Owner == dcColor && t.HasCapital)?.Capital
+                resultCoord = TerritoryLookup
+                    .OwnedCapitalBearing(_state.Territories, dcColor)
+                    .FirstOrDefault()?.Capital
                     ?? new HexCoord(0, 0);
                 break;
             }
@@ -2783,7 +2780,7 @@ public class GameController
         _state.Treasury.SetGold(
             capital, _state.Treasury.GetGold(capital) - PurchaseRules.TowerCost);
         dst.Occupant = new Tower();
-        _map.PlayTowerPlaced(destination);
+        _map.PlaySound(SoundEffect.TowerPlaced, destination);
     }
 
     /// <summary>
@@ -2891,7 +2888,7 @@ public class GameController
         // left. Lives here (not inside _hud.Refresh) so Tutorial Preview's
         // onAfterRefresh callback can overwrite it when the next scripted
         // beat is End Turn — "last write wins" with the preview cue.
-        _hud.SetEndTurnCta(!hasActionable, pulse: false);
+        _hud.SetCta(CtaButton.EndTurn, !hasActionable, pulse: false);
         _onAfterRefresh?.Invoke();
     }
 

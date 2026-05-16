@@ -141,96 +141,17 @@ public interface IHexMapView
     void PlayDestructionEffect(HexCoord coord, HexOccupant destroyed);
 
     /// <summary>
-    /// Play the unit-placed/moved sound for the unit now at
-    /// <paramref name="coord"/>. Called by the controller after a
-    /// successful move or buy-and-place that consumes the unit's
-    /// move action — i.e., captures, tree/grave clearing, and any
-    /// purchase. NOT called for free repositions onto own-empty
-    /// tiles (which leave the unit actionable). Coord is supplied
-    /// in case the view chooses to attach a positional cue later.
+    /// Play a one-shot sound cue for a game event. The optional
+    /// <paramref name="at"/> coord is reserved for a future positional
+    /// implementation; the current AudioBus plays through a single
+    /// non-spatial 2D player. Silent-mode policy: per-action cues
+    /// (placement, combine, destruction, rally, defeat) drop while the
+    /// view is in silent mode (AI Instant batch); turn-/game-boundary
+    /// cues (<see cref="SoundEffect.Bankruptcy"/>,
+    /// <see cref="SoundEffect.GameWon"/>) always play. The view enforces
+    /// this — callers don't gate.
     /// </summary>
-    void PlayUnitPlaced(HexCoord coord);
-
-    /// <summary>
-    /// Play the tower-placed sound (stone-on-stone) for a tower
-    /// just built at <paramref name="coord"/>. Distinct from
-    /// <see cref="PlayUnitPlaced"/> so the player can audibly
-    /// distinguish a tower placement from a unit move.
-    /// </summary>
-    void PlayTowerPlaced(HexCoord coord);
-
-    /// <summary>
-    /// Play the unit-combined "level-up" chime when an arriving unit
-    /// merges with a same-color unit at <paramref name="coord"/>,
-    /// producing a higher-level unit. Replaces (does NOT layer with)
-    /// <see cref="PlayUnitPlaced"/> for that action — the controller
-    /// chooses one based on whether the destination held a friendly
-    /// unit before the move.
-    /// </summary>
-    void PlayUnitCombined(HexCoord coord);
-
-    /// <summary>
-    /// Play the "smoosh" sound when an enemy unit is crushed at
-    /// <paramref name="coord"/>. Replaces <see cref="PlayUnitPlaced"/>
-    /// for the action — the controller chooses one based on what
-    /// (if anything) was destroyed.
-    /// </summary>
-    void PlayUnitDestroyed(HexCoord coord);
-
-    /// <summary>
-    /// Play the "bursting stone" sound when an enemy tower is
-    /// captured/destroyed at <paramref name="coord"/>. Replaces
-    /// <see cref="PlayUnitPlaced"/> for the action.
-    /// </summary>
-    void PlayTowerDestroyed(HexCoord coord);
-
-    /// <summary>
-    /// Play the "chop" sound when a tree (cleared) or grave (buried)
-    /// is removed from <paramref name="coord"/>. Replaces
-    /// <see cref="PlayUnitPlaced"/> for the action — both events
-    /// share the same audio because the audible character is similar
-    /// (a single sharp impact), even though the visual is different.
-    /// </summary>
-    void PlayTreeCleared(HexCoord coord);
-
-    /// <summary>
-    /// Play the dramatic capital-falling sound when an enemy capital
-    /// is destroyed at <paramref name="coord"/>. The heaviest of the
-    /// destruction sounds — capital loss permanently fragments the
-    /// defender's territory, so the audio marks a strategic milestone.
-    /// </summary>
-    void PlayCapitalDestroyed(HexCoord coord);
-
-    /// <summary>
-    /// Play the bankruptcy bell once per player turn-start, when at
-    /// least one of the player's territories failed to pay upkeep and
-    /// converted its units to graves. No coord arg — the event is
-    /// player-scoped, not tile-scoped, and the sound fires exactly
-    /// once regardless of how many territories went bankrupt.
-    /// </summary>
-    void PlayBankruptcy();
-
-    /// <summary>
-    /// Play the game-won fanfare (joyful bell peal) when a human
-    /// player wins. AI wins stay silent — that maps to a future
-    /// "game lost" cue from the human's perspective.
-    /// </summary>
-    void PlayGameWon();
-
-    /// <summary>
-    /// Play the rally whoosh once per long-press rally that actually
-    /// moved at least one unit. A single cue per gesture, not per unit
-    /// — multiple units rallying read as one swept gesture.
-    /// </summary>
-    void PlayRally();
-
-    /// <summary>
-    /// Play the defeat bong when a capture eliminates a player —
-    /// i.e. the captured tile was their last capital and no other
-    /// capital-bearing territory of theirs survived the reconcile.
-    /// Fires once per eliminated player, after CapitalReconciler runs.
-    /// </summary>
-    void PlayPlayerDefeated();
+    void PlaySound(SoundEffect kind, HexCoord? at = null);
 
     /// <summary>
     /// Visual + audio feedback when a player's place/move/build-tower
@@ -243,6 +164,30 @@ public interface IHexMapView
     /// own-territory occupied, BuildTower invalidity).
     /// </summary>
     void FlashRejection(HexCoord target, RejectionShape shape, IEnumerable<HexCoord> blockingDefenders);
+}
+
+/// <summary>
+/// One-shot sound cues the controller can ask the view to play. The
+/// per-action cues (Unit*, Tower*, Tree*, Capital*, Rally, PlayerDefeated)
+/// are gated by the view's silent-mode toggle so the AI Instant batch
+/// stays inaudible from the human's perspective. <see cref="Bankruptcy"/>
+/// and <see cref="GameWon"/> are turn-/game-boundary events the user
+/// asked to still hear under Instant — the view exempts them from the
+/// gate.
+/// </summary>
+public enum SoundEffect
+{
+    UnitPlaced,
+    TowerPlaced,
+    UnitCombined,
+    UnitDestroyed,
+    TowerDestroyed,
+    TreeCleared,
+    CapitalDestroyed,
+    Bankruptcy,
+    GameWon,
+    Rally,
+    PlayerDefeated,
 }
 
 /// <summary>

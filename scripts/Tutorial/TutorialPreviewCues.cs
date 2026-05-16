@@ -116,7 +116,7 @@ public sealed class TutorialPreviewCues
         switch (next)
         {
             case ReplayEndTurnBeat _:
-                _hud.SetEndTurnCta(true, pulse: true);
+                _hud.SetCta(CtaButton.EndTurn, true, pulse: true);
                 break;
             case ReplayBuyBeat bu:
                 ApplyBuyCue(bu);
@@ -131,13 +131,13 @@ public sealed class TutorialPreviewCues
                 ApplyRallyCue(rl);
                 break;
             case ReplayClaimVictoryBeat _:
-                _hud.SetClaimVictoryWinNowCta(true);
+                _hud.SetCta(CtaButton.ClaimVictoryWinNow, true);
                 break;
             case ReplayDismissClaimBeat _:
-                _hud.SetClaimVictoryContinueCta(true);
+                _hud.SetCta(CtaButton.ClaimVictoryContinue, true);
                 break;
             case ReplayDismissDefeatBeat _:
-                _hud.SetDefeatContinueCta(true);
+                _hud.SetCta(CtaButton.DefeatContinue, true);
                 break;
         }
 
@@ -151,12 +151,12 @@ public sealed class TutorialPreviewCues
 
     private void ClearAllCtas()
     {
-        _hud.SetEndTurnCta(false, pulse: false);
-        _hud.SetBuyPeasantCta(false);
-        _hud.SetBuildTowerCta(false);
-        _hud.SetClaimVictoryWinNowCta(false);
-        _hud.SetClaimVictoryContinueCta(false);
-        _hud.SetDefeatContinueCta(false);
+        _hud.SetCta(CtaButton.EndTurn, false, pulse: false);
+        _hud.SetCta(CtaButton.BuyPeasant, false);
+        _hud.SetCta(CtaButton.BuildTower, false);
+        _hud.SetCta(CtaButton.ClaimVictoryWinNow, false);
+        _hud.SetCta(CtaButton.ClaimVictoryContinue, false);
+        _hud.SetCta(CtaButton.DefeatContinue, false);
     }
 
     private void ApplyBuyCue(ReplayBuyBeat bu)
@@ -173,7 +173,7 @@ public sealed class TutorialPreviewCues
         // drop the CTA so attention shifts to the single-tile target
         // highlight.
         bool inPlaceMode = SessionState.BuyModeLevel(_session.Mode) == bu.Level;
-        _hud.SetBuyPeasantCta(!inPlaceMode);
+        _hud.SetCta(CtaButton.BuyPeasant, !inPlaceMode);
         if (inPlaceMode)
         {
             _map.ShowMoveTargets(new[] { bu.To }, bu.Level);
@@ -189,7 +189,7 @@ public sealed class TutorialPreviewCues
             _selectTerritory(territory);
         }
         bool inPlaceMode = _session.Mode == SessionState.ActionMode.BuildingTower;
-        _hud.SetBuildTowerCta(!inPlaceMode);
+        _hud.SetCta(CtaButton.BuildTower, !inPlaceMode);
         if (inPlaceMode)
         {
             _map.ShowTowerTargets(new[] { bt.To });

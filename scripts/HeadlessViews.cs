@@ -51,17 +51,7 @@ public sealed class HeadlessHexMapView : IHexMapView
     public void RefreshOccupantVisuals(Color? currentPlayerColor, Treasury treasury) { }
     public void SetSilentMode(bool silent) { }
     public void PlayDestructionEffect(HexCoord coord, HexOccupant destroyed) { }
-    public void PlayUnitPlaced(HexCoord coord) { }
-    public void PlayTowerPlaced(HexCoord coord) { }
-    public void PlayUnitCombined(HexCoord coord) { }
-    public void PlayUnitDestroyed(HexCoord coord) { }
-    public void PlayTowerDestroyed(HexCoord coord) { }
-    public void PlayTreeCleared(HexCoord coord) { }
-    public void PlayCapitalDestroyed(HexCoord coord) { }
-    public void PlayBankruptcy() { }
-    public void PlayGameWon() { }
-    public void PlayRally() { }
-    public void PlayPlayerDefeated() { }
+    public void PlaySound(SoundEffect kind, HexCoord? at = null) { }
     public void FlashRejection(HexCoord target, RejectionShape shape, IEnumerable<HexCoord> blockingDefenders) { }
 }
 
@@ -94,12 +84,7 @@ public sealed class HeadlessHudView : IHudView
     public void ShowTutorialMessage(string text) { }
     public void ShowTappableTutorialMessage(string text) { }
     public void HideTutorialMessage() { }
-    public void SetBuyPeasantCta(bool isCta) { }
-    public void SetEndTurnCta(bool isCta, bool pulse) { }
-    public void SetBuildTowerCta(bool isCta) { }
-    public void SetClaimVictoryWinNowCta(bool isCta) { }
-    public void SetClaimVictoryContinueCta(bool isCta) { }
-    public void SetDefeatContinueCta(bool isCta) { }
+    public void SetCta(CtaButton button, bool isCta, bool pulse = true) { }
     public void SetReplayAvailable(bool available) { }
     public void SetUndoRedoLocked(bool locked) { }
     public void SetVictoryOverlaySuppressed(bool suppressed) { }

@@ -800,26 +800,20 @@ public partial class HudView : CanvasLayer, IHudView
             && !session.PendingDefeatScreen.HasValue;
     }
 
-    public void SetEndTurnCta(bool isCta, bool pulse) =>
-        ApplyCtaStyle(_endTurnButton, isCta, pulse);
-
-    // Buy / BuildTower / Claim / Defeat CTAs are only ever fired by
-    // Tutorial Preview — they always pulse so the dev can tell the
-    // tutorial highlight apart from any incidental button styling.
-    public void SetBuyPeasantCta(bool isCta) =>
-        ApplyCtaStyle(_buyPeasantButton, isCta, pulse: true);
-
-    public void SetBuildTowerCta(bool isCta) =>
-        ApplyCtaStyle(_buildTowerButton, isCta, pulse: true);
-
-    public void SetClaimVictoryWinNowCta(bool isCta) =>
-        ApplyCtaStyle(_claimWinNowButton, isCta, pulse: true);
-
-    public void SetClaimVictoryContinueCta(bool isCta) =>
-        ApplyCtaStyle(_claimContinueButton, isCta, pulse: true);
-
-    public void SetDefeatContinueCta(bool isCta) =>
-        ApplyCtaStyle(_defeatContinueButton, isCta, pulse: true);
+    public void SetCta(CtaButton button, bool isCta, bool pulse = true)
+    {
+        Button target = button switch
+        {
+            CtaButton.BuyPeasant => _buyPeasantButton,
+            CtaButton.EndTurn => _endTurnButton,
+            CtaButton.BuildTower => _buildTowerButton,
+            CtaButton.ClaimVictoryWinNow => _claimWinNowButton,
+            CtaButton.ClaimVictoryContinue => _claimContinueButton,
+            CtaButton.DefeatContinue => _defeatContinueButton,
+            _ => throw new System.ArgumentOutOfRangeException(nameof(button)),
+        };
+        ApplyCtaStyle(target, isCta, pulse);
+    }
 
     public void SetVictoryOverlaySuppressed(bool suppressed)
     {

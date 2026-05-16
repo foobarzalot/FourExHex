@@ -1024,77 +1024,32 @@ public partial class HexMapView : Node2D, IHexMapView
     }
 
     /// <summary>
-    /// Play the place/move sound. Coord is currently unused — the
-    /// AudioBus plays through a single shared 2D player so there's no
-    /// pan or spatial offset — but the parameter keeps room for a
-    /// later positional implementation without touching every caller.
+    /// Single sound-dispatch entry point. The <paramref name="at"/> coord
+    /// is unused today — AudioBus plays through a single non-spatial 2D
+    /// player — but the parameter keeps room for a later positional
+    /// implementation without touching every caller. Silent-mode gates
+    /// every per-action cue; <see cref="SoundEffect.Bankruptcy"/> and
+    /// <see cref="SoundEffect.GameWon"/> are exempt (turn-/game-boundary
+    /// events the user asked to still hear under Instant).
     /// </summary>
-    public void PlayUnitPlaced(HexCoord coord)
+    public void PlaySound(SoundEffect kind, HexCoord? at = null)
     {
-        if (_silentMode) return;
-        AudioBus.Instance.PlayUnitPlaced();
-    }
-
-    public void PlayTowerPlaced(HexCoord coord)
-    {
-        if (_silentMode) return;
-        AudioBus.Instance.PlayTowerPlaced();
-    }
-
-    public void PlayUnitCombined(HexCoord coord)
-    {
-        if (_silentMode) return;
-        AudioBus.Instance.PlayUnitCombined();
-    }
-
-    public void PlayUnitDestroyed(HexCoord coord)
-    {
-        if (_silentMode) return;
-        AudioBus.Instance.PlayUnitDestroyed();
-    }
-
-    public void PlayTowerDestroyed(HexCoord coord)
-    {
-        if (_silentMode) return;
-        AudioBus.Instance.PlayTowerDestroyed();
-    }
-
-    public void PlayTreeCleared(HexCoord coord)
-    {
-        if (_silentMode) return;
-        AudioBus.Instance.PlayTreeCleared();
-    }
-
-    public void PlayCapitalDestroyed(HexCoord coord)
-    {
-        if (_silentMode) return;
-        AudioBus.Instance.PlayCapitalDestroyed();
-    }
-
-    public void PlayBankruptcy()
-    {
-        // NOT gated by silent mode — bankruptcy is a turn-boundary
-        // event the human asked to still hear under Instant.
-        AudioBus.Instance.PlayBankruptcy();
-    }
-
-    public void PlayGameWon()
-    {
-        // NOT gated by silent mode — victory is a game-end event the
-        // human asked to still hear under Instant.
-        AudioBus.Instance.PlayGameWon();
-    }
-
-    public void PlayRally()
-    {
-        if (_silentMode) return;
-        AudioBus.Instance.PlayRally();
-    }
-
-    public void PlayPlayerDefeated()
-    {
-        if (_silentMode) return;
-        AudioBus.Instance.PlayPlayerDefeated();
+        bool exemptFromSilent = kind == SoundEffect.Bankruptcy || kind == SoundEffect.GameWon;
+        if (_silentMode && !exemptFromSilent) return;
+        switch (kind)
+        {
+            case SoundEffect.UnitPlaced: AudioBus.Instance.PlayUnitPlaced(); break;
+            case SoundEffect.TowerPlaced: AudioBus.Instance.PlayTowerPlaced(); break;
+            case SoundEffect.UnitCombined: AudioBus.Instance.PlayUnitCombined(); break;
+            case SoundEffect.UnitDestroyed: AudioBus.Instance.PlayUnitDestroyed(); break;
+            case SoundEffect.TowerDestroyed: AudioBus.Instance.PlayTowerDestroyed(); break;
+            case SoundEffect.TreeCleared: AudioBus.Instance.PlayTreeCleared(); break;
+            case SoundEffect.CapitalDestroyed: AudioBus.Instance.PlayCapitalDestroyed(); break;
+            case SoundEffect.Bankruptcy: AudioBus.Instance.PlayBankruptcy(); break;
+            case SoundEffect.GameWon: AudioBus.Instance.PlayGameWon(); break;
+            case SoundEffect.Rally: AudioBus.Instance.PlayRally(); break;
+            case SoundEffect.PlayerDefeated: AudioBus.Instance.PlayPlayerDefeated(); break;
+        }
     }
 
     public void FlashRejection(HexCoord target, RejectionShape shape, IEnumerable<HexCoord> blockingDefenders)

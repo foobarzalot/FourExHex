@@ -82,28 +82,27 @@ public class MockHudView : IHudView
     }
     public void RaiseTutorialMessageTapped() => TutorialMessageTapped?.Invoke();
 
+    // Per-button recording surface — tests assert against these.
     public bool BuyPeasantCtaActive { get; private set; }
-    public void SetBuyPeasantCta(bool isCta) => BuyPeasantCtaActive = isCta;
-
     public bool EndTurnCtaActive { get; private set; }
     public bool EndTurnCtaPulse { get; private set; }
-    public void SetEndTurnCta(bool isCta, bool pulse)
-    {
-        EndTurnCtaActive = isCta;
-        EndTurnCtaPulse = pulse;
-    }
-
     public bool BuildTowerCtaActive { get; private set; }
-    public void SetBuildTowerCta(bool isCta) => BuildTowerCtaActive = isCta;
-
     public bool ClaimVictoryWinNowCtaActive { get; private set; }
-    public void SetClaimVictoryWinNowCta(bool isCta) => ClaimVictoryWinNowCtaActive = isCta;
-
     public bool ClaimVictoryContinueCtaActive { get; private set; }
-    public void SetClaimVictoryContinueCta(bool isCta) => ClaimVictoryContinueCtaActive = isCta;
-
     public bool DefeatContinueCtaActive { get; private set; }
-    public void SetDefeatContinueCta(bool isCta) => DefeatContinueCtaActive = isCta;
+
+    public void SetCta(CtaButton button, bool isCta, bool pulse = true)
+    {
+        switch (button)
+        {
+            case CtaButton.BuyPeasant: BuyPeasantCtaActive = isCta; break;
+            case CtaButton.EndTurn: EndTurnCtaActive = isCta; EndTurnCtaPulse = pulse; break;
+            case CtaButton.BuildTower: BuildTowerCtaActive = isCta; break;
+            case CtaButton.ClaimVictoryWinNow: ClaimVictoryWinNowCtaActive = isCta; break;
+            case CtaButton.ClaimVictoryContinue: ClaimVictoryContinueCtaActive = isCta; break;
+            case CtaButton.DefeatContinue: DefeatContinueCtaActive = isCta; break;
+        }
+    }
 
     public bool UndoRedoLocked { get; private set; }
     public void SetUndoRedoLocked(bool locked) => UndoRedoLocked = locked;
