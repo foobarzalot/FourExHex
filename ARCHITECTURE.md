@@ -82,7 +82,13 @@ off it.
 │   ├─ subscribes in ctor:                                                 │
 │   │    map.TileClicked              → OnTileClicked                      │
 │   │    map.TileLongClicked          → OnTileLongClicked (rally)          │
-│   │    hud.BuyPeasantClicked        → OnBuyPressed (cycles unit level)   │
+│   │    hud.BuyPeasantClicked        → OnBuyPressed (U-hotkey: cycle     │
+│   │                                    Peasant→Spearman→Knight→Baron→   │
+│   │                                    None; no wrap)                    │
+│   │    hud.BuyUnitClicked            → OnBuyUnitPressed (per-button     │
+│   │                                    radio click: enter that specific │
+│   │                                    buy mode; idempotent no-op when  │
+│   │                                    already in it)                    │
 │   │    hud.BuildTowerClicked        → OnBuildTowerPressed                │
 │   │    hud.UndoLastClicked          → OnUndoLastPressed                  │
 │   │    hud.UndoTurnClicked          → OnUndoTurnPressed                  │
@@ -211,12 +217,14 @@ off it.
 │      SessionStateSnapshot)│  │                                            │
 │                           │  │                                            │
 │                           │  │   HudView : CanvasLayer, IHudView          │
-│                           │  │   ├─ events: BuyPeasant / BuildTower /     │
-│                           │  │     UndoLast / UndoTurn / RedoLast /       │
-│                           │  │     RedoAll / EndTurn / NewGame /          │
-│                           │  │     MainMenu / NextTerritory /             │
-│                           │  │     PreviousTerritory / NextUnit /         │
-│                           │  │     PreviousUnit / CancelAction /          │
+│                           │  │   ├─ events: BuyPeasant (U-key cycle) /    │
+│                           │  │     BuyUnit(level) (per-button radio       │
+│                           │  │     click) / BuildTower / UndoLast /       │
+│                           │  │     UndoTurn / RedoLast / RedoAll /        │
+│                           │  │     EndTurn / NewGame / MainMenu /         │
+│                           │  │     NextTerritory / PreviousTerritory /    │
+│                           │  │     NextUnit / PreviousUnit /              │
+│                           │  │     CancelAction /                         │
 │                           │  │     EscRequested (Options button + ESC) / │
 │                           │  │     DefeatContinue /                       │
 │                           │  │     ClaimVictoryWinNow /                   │
@@ -236,12 +244,20 @@ off it.
 │                           │  │   shared HudIcons helpers. Static tooltips │
 │                           │  │   come from HudIconButton.DefaultTooltip;  │
 │                           │  │   Buy/Build override dynamically per state.│
-│                           │  │   Buy/Build are always visible — disabled  │
-│                           │  │   when not actionable, with tooltips       │
-│                           │  │   naming the reason (no selection / no     │
-│                           │  │   capital / can't afford). Buy glyph       │
-│                           │  │   reflects BuyModeLevel (peasant / 2-ring  │
-│                           │  │   spearman / 3-ring knight / 3+dot baron). │
+│                           │  │   The Buy row is four always-visible       │
+│                           │  │   radio buttons (Peasant / Spearman /      │
+│                           │  │   Knight / Baron); per-level Disabled and  │
+│                           │  │   Selected mirror BuyModeLevel and         │
+│                           │  │   affordability. Disabled-reason tooltips  │
+│                           │  │   name the blocker (no selection / no      │
+│                           │  │   capital / can't afford <level> (Ng)).    │
+│                           │  │   While in a buy or move mode the active   │
+│                           │  │   button's tooltip is cleared and the      │
+│                           │  │   bottom panel surfaces "Click to place a  │
+│                           │  │   X" / "Click to move the X" (gated by an  │
+│                           │  │   _externalMessageActive flag so it can't  │
+│                           │  │   clobber tutorial step text or the AI-    │
+│                           │  │   batch announcement).                     │
 │                           │  │                                            │
 │                           │  │   HeadlessHexMapView / HeadlessHudView —   │
 │                           │  │   no-op stubs for diagnostic mode          │
@@ -441,7 +457,14 @@ move/buy resolution (combine > destruction-by-type > generic place).
 **`IHudView`** — everything the controller asks the HUD to do:
 
 ```csharp
-event Action? BuyPeasantClicked;       // cycles Peasant→Spearman→Knight→Baron
+event Action? BuyPeasantClicked;       // U-hotkey: cycle through
+                                       // affordable levels
+                                       // (Peasant→Spearman→Knight→Baron),
+                                       // exit at top instead of wrap
+event Action<UnitLevel>? BuyUnitClicked;// per-button radio click: enter
+                                       // that specific buy mode directly
+                                       // (idempotent — re-clicking the
+                                       // active button is a no-op)
 event Action? BuildTowerClicked;
 event Action? UndoLastClicked;
 event Action? UndoTurnClicked;
@@ -585,21 +608,37 @@ End Turn CTA stylebox is on (the bg goes white during pulse).
 Static tooltips ("`<label> — <hotkey>`") are owned by
 `HudIconButton.DefaultTooltip(HudIcon)` — a single source of truth
 the play HUD, map editor, and `HudView.Refresh`'s dynamic
-fallback all consume. Buy Peasant / Build Tower override the
-tooltip live in `Refresh` to show cost+state ("Click a tile
-(Knight 30g) — U") or the *reason they're disabled* ("No
-territory selected", "Selected territory has no capital",
-"Selected territory can't afford a peasant"). Buy / Build are
-always visible — the disabled-with-reason tooltip replaces the
-old visibility toggle so the layout doesn't shift. Three text
-labels (Turn / Current player / Gold) have fixed
-`CustomMinimumSize.X` so the buttons after them never reflow.
+fallback all consume. The four Buy buttons and Build Tower
+override the tooltip live in `Refresh` to show "Buy `<level>`
+(Ng) — U" / "Build Tower (15g) — T" when enabled, or the
+*reason they're disabled* ("No territory selected", "Selected
+territory has no capital", "Selected territory can't afford a
+knight (30g)"). Buy and Build are always visible — the
+disabled-with-reason tooltip replaces the old visibility toggle
+so the layout doesn't shift. Three text labels
+(Turn / Current player / Gold) have fixed `CustomMinimumSize.X`
+so the buttons after them never reflow.
 
-The current Buy / Build mode is signalled by the button's
-`Selected` outline (mirroring `HexPaletteButton.IsSelected` in the
-map editor), and the Buy glyph itself swaps to the active level
-(`BuyLevel` reflects `SessionState.BuyModeLevel`) so the icon
-upgrades as the player merges Peasant → Spearman → Knight → Baron.
+The Buy row is four always-visible radio buttons (Peasant /
+Spearman / Knight / Baron) packed in a nested `HBoxContainer`.
+Each `HudIconButton` carries a fixed `BuyLevel`; `Selected`
+mirrors `SessionState.BuyModeLevel` so exactly one is highlighted
+at a time. Clicking a button fires `IHudView.BuyUnitClicked(level)`
+for direct entry into that mode; the U hotkey fires
+`BuyPeasantClicked` which `GameController.OnBuyPressed` resolves
+as a cycle through affordable levels, *exiting at the top* (the
+most-expensive affordable level cycles back to `ActionMode.None`
+instead of wrapping to Peasant). Build Tower stays a single button.
+
+While the player is in a buy or move mode, the active button's
+tooltip is cleared and the bottom-anchored tutorial-message panel
+surfaces "Click to place a `<level>`" / "Click to move the
+`<level>`". `HudView` tracks an `_externalMessageActive` flag set
+by `ShowTutorialMessage` / `ShowTappableTutorialMessage` and
+cleared by `HideTutorialMessage`; the action-hint pass in
+`Refresh` only writes to the panel when that flag is false, so
+tutorial step text and the AI-batch "Opponents are taking their
+turns…" announcement always win over the generic placement hint.
 
 **`IAiPacer`** — schedules deferred continuations for both the AI
 step machine and the replay step machine. `GodotAiPacer` schedules
