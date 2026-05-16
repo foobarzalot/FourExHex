@@ -231,6 +231,18 @@ off it.
 │                           │  │      HideTutorialMessage() — bottom-       │
 │                           │  │      anchored click-through info popup    │
 │                           │  │                                            │
+│                           │  │   Buttons are HudIconButton (Button +      │
+│                           │  │   _Draw override) painting glyphs via the  │
+│                           │  │   shared HudIcons helpers. Static tooltips │
+│                           │  │   come from HudIconButton.DefaultTooltip;  │
+│                           │  │   Buy/Build override dynamically per state.│
+│                           │  │   Buy/Build are always visible — disabled  │
+│                           │  │   when not actionable, with tooltips       │
+│                           │  │   naming the reason (no selection / no     │
+│                           │  │   capital / can't afford). Buy glyph       │
+│                           │  │   reflects BuyModeLevel (peasant / 2-ring  │
+│                           │  │   spearman / 3-ring knight / 3+dot baron). │
+│                           │  │                                            │
 │                           │  │   HeadlessHexMapView / HeadlessHudView —   │
 │                           │  │   no-op stubs for diagnostic mode          │
 └─────────────┬─────────────┘  └────────────────────────────────────────────┘
@@ -556,6 +568,38 @@ Cues hide the panel during opponent (AI) turns mid-tutorial so the
 step text doesn't linger, but leave it alone once the script is
 exhausted (`NextPlayer0Beat == null`) so the completion toast
 survives.
+
+**HUD icon layer.** Both the play HUD and the map-editor HUD render
+their action buttons through a shared `HudIconButton : Button` that
+overrides `_Draw` to paint a programmatic glyph. Glyph helpers live
+in the static `HudIcons` class — `DrawUnit` (1/2/3 rings + Baron
+dot, mirroring `HexMapView`'s in-map unit visuals), `DrawTower`,
+`DrawTree`, `DrawCapital`, `DrawHand` (all reused by
+`HexPaletteButton`), `DrawCurvedArrow` (single + nested-concentric
+doubled variants for Undo Last / Undo All / Redo Last / Redo All),
+`DrawEndTurnTriangle`, `DrawGear`. Stroke-only glyphs (peasant
+ring, undo/redo arrows, End Turn triangle) paint white on the dark
+HUD bar and flip to black via `HudIconButton.CtaActive` while the
+End Turn CTA stylebox is on (the bg goes white during pulse).
+
+Static tooltips ("`<label> — <hotkey>`") are owned by
+`HudIconButton.DefaultTooltip(HudIcon)` — a single source of truth
+the play HUD, map editor, and `HudView.Refresh`'s dynamic
+fallback all consume. Buy Peasant / Build Tower override the
+tooltip live in `Refresh` to show cost+state ("Click a tile
+(Knight 30g) — U") or the *reason they're disabled* ("No
+territory selected", "Selected territory has no capital",
+"Selected territory can't afford a peasant"). Buy / Build are
+always visible — the disabled-with-reason tooltip replaces the
+old visibility toggle so the layout doesn't shift. Three text
+labels (Turn / Current player / Gold) have fixed
+`CustomMinimumSize.X` so the buttons after them never reflow.
+
+The current Buy / Build mode is signalled by the button's
+`Selected` outline (mirroring `HexPaletteButton.IsSelected` in the
+map editor), and the Buy glyph itself swaps to the active level
+(`BuyLevel` reflects `SessionState.BuyModeLevel`) so the icon
+upgrades as the player merges Peasant → Spearman → Knight → Baron.
 
 **`IAiPacer`** — schedules deferred continuations for both the AI
 step machine and the replay step machine. `GodotAiPacer` schedules
@@ -1967,7 +2011,9 @@ scripts/
 ├─ MapEditPaint.cs        ─ pure paint helpers (Land / Capital / Tower /
 │                           Tree / Water)
 ├─ EditorSnapshot.cs      ─ deep copy of editor draft (grid + water + terr.)
-├─ HexPaletteButton.cs    ─ hex-shaped palette swatch Control
+├─ HexPaletteButton.cs    ─ hex-shaped palette swatch Control;
+│                           delegates Tree/Capital/Tower/Hand glyphs
+│                           to HudIcons helpers (shared with HudView)
 ├─ HexHoverTooltip.cs     ─ editor-only floating tooltip showing the
 │                           hovered hex's lex index + (col, row)
 ├─ HexDragMode.cs         ─ Pan | Paint enum gating HexMapView's
@@ -1988,8 +2034,22 @@ scripts/
 ├─ IHudView.cs            ─ HUD view contract
 ├─ HexMapView.cs          ─ concrete map: rendering + input + camera pan
 │                           + audio forwarding
-├─ HudView.cs             ─ concrete HUD: labels + buttons + defeat overlay
-│                           + bottom-anchored tutorial-message popup
+├─ HudView.cs             ─ concrete HUD: labels + icon buttons +
+│                           defeat / claim-victory / victory overlays
+│                           + bottom-anchored tutorial-message popup.
+│                           Buy/Build always visible; tooltips name
+│                           the reason when disabled.
+├─ HudIconButton.cs       ─ Button subclass painting a programmatic
+│                           glyph via _Draw; carries Selected (mode
+│                           cue), CtaActive (CTA stylebox color flip),
+│                           BuyLevel (peasant→baron icon escalation).
+│                           DefaultTooltip(HudIcon) is the single
+│                           source for "<label> — <hotkey>" strings
+│                           shared by HudView + MapEditorHudView.
+├─ HudIcons.cs            ─ static glyph helpers shared by
+│                           HudIconButton + HexPaletteButton (tree,
+│                           capital, tower, hand, unit rings, curved
+│                           arrow ± nested, end-turn triangle, gear)
 ├─ HeadlessViews.cs       ─ no-op view stubs for diagnostic mode
 ├─ AudioBus.cs            ─ autoload Node singleton: shared SFX players
 │                           that survive scene changes; each Play* gates
