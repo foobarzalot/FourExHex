@@ -66,10 +66,10 @@ public partial class MapEditorHudView : CanvasLayer
     private LineEdit _seedField = null!;
     private Button _generateButton = null!;
     private HexPaletteButton[] _palette = null!;
-    private Button _undoAllButton = null!;
-    private Button _undoLastButton = null!;
-    private Button _redoLastButton = null!;
-    private Button _redoAllButton = null!;
+    private HudIconButton _undoAllButton = null!;
+    private HudIconButton _undoLastButton = null!;
+    private HudIconButton _redoLastButton = null!;
+    private HudIconButton _redoAllButton = null!;
 
     public override void _Ready()
     {
@@ -209,15 +209,15 @@ public partial class MapEditorHudView : CanvasLayer
         rightHbox.AddThemeConstantOverride("separation", 8);
         AddChild(rightHbox);
 
-        // Undo / redo cluster — same order and labels as the play HUD's
-        // right strip so the muscle memory carries over.
-        _undoAllButton = MakeUndoButton("Undo All", () => UndoAllClicked?.Invoke());
+        // Undo / redo cluster — icon glyphs + tooltips matching the play
+        // HUD so muscle memory and the visual language carry over.
+        _undoAllButton = MakeUndoButton(HudIcon.UndoAll, () => UndoAllClicked?.Invoke());
         rightHbox.AddChild(_undoAllButton);
-        _undoLastButton = MakeUndoButton("Undo Last", () => UndoLastClicked?.Invoke());
+        _undoLastButton = MakeUndoButton(HudIcon.UndoLast, () => UndoLastClicked?.Invoke());
         rightHbox.AddChild(_undoLastButton);
-        _redoLastButton = MakeUndoButton("Redo Last", () => RedoLastClicked?.Invoke());
+        _redoLastButton = MakeUndoButton(HudIcon.RedoLast, () => RedoLastClicked?.Invoke());
         rightHbox.AddChild(_redoLastButton);
-        _redoAllButton = MakeUndoButton("Redo All", () => RedoAllClicked?.Invoke());
+        _redoAllButton = MakeUndoButton(HudIcon.RedoAll, () => RedoAllClicked?.Invoke());
         rightHbox.AddChild(_redoAllButton);
 
         if (ShowSceneRootChrome)
@@ -226,27 +226,16 @@ public partial class MapEditorHudView : CanvasLayer
             // MapEditorScene wires them into the Resume / Save / Load /
             // Exit option list shown on Escape. The Options button is
             // just the entry point to that menu.
-            var optionsButton = new Button
-            {
-                Text = "Options",
-                FocusMode = Control.FocusModeEnum.None,
-            };
-            optionsButton.AddThemeFontSizeOverride("font_size", 18);
+            var optionsButton = new HudIconButton(HudIcon.Options);
             optionsButton.Pressed += () => EscRequested?.Invoke();
             AudioBus.AttachClick(optionsButton);
             rightHbox.AddChild(optionsButton);
         }
     }
 
-    private static Button MakeUndoButton(string text, Action onPressed)
+    private static HudIconButton MakeUndoButton(HudIcon icon, Action onPressed)
     {
-        var b = new Button
-        {
-            Text = text,
-            Disabled = true,
-            FocusMode = Control.FocusModeEnum.None,
-        };
-        b.AddThemeFontSizeOverride("font_size", 18);
+        var b = new HudIconButton(icon) { Disabled = true };
         b.Pressed += () => onPressed();
         AudioBus.AttachClick(b);
         return b;

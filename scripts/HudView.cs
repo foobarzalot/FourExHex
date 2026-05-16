@@ -36,16 +36,16 @@ public partial class HudView : CanvasLayer, IHudView
     private Label _playerLabel = null!;
     private Label _goldLabel = null!;
     private Label _seedLabel = null!;
-    private Button _buyPeasantButton = null!;
-    private Button _buildTowerButton = null!;
-    private Button _undoLastButton = null!;
-    private Button _undoTurnButton = null!;
-    private Button _redoLastButton = null!;
-    private Button _redoAllButton = null!;
+    private HudIconButton _buyPeasantButton = null!;
+    private HudIconButton _buildTowerButton = null!;
+    private HudIconButton _undoLastButton = null!;
+    private HudIconButton _undoTurnButton = null!;
+    private HudIconButton _redoLastButton = null!;
+    private HudIconButton _redoAllButton = null!;
     private bool _undoRedoLocked;
     private bool _victoryOverlaySuppressed;
-    private Button _endTurnButton = null!;
-    private Button _optionsButton = null!;
+    private HudIconButton _endTurnButton = null!;
+    private HudIconButton _optionsButton = null!;
     private Control _victoryOverlay = null!;
     private Label _victoryLabel = null!;
     private Control _defeatOverlay = null!;
@@ -83,39 +83,46 @@ public partial class HudView : CanvasLayer, IHudView
         leftHbox.AddThemeConstantOverride("separation", 24);
         AddChild(leftHbox);
 
-        _turnLabel = new Label { Text = "Turn: 1" };
+        // Fixed minimum widths so the buy/build buttons that follow these
+        // labels in the HBox don't slide left/right as the text changes
+        // (player name length, turn rollover, gold/income string growing
+        // and shrinking, gold blanking when no capital is selected). Sized
+        // for worst-case content at font_size 24: "Turn: 999",
+        // "Current: Orange", "9999g (99-99=+99)".
+        _turnLabel = new Label
+        {
+            Text = "Turn: 1",
+            CustomMinimumSize = new Vector2(130, 0),
+        };
         _turnLabel.AddThemeFontSizeOverride("font_size", 24);
         leftHbox.AddChild(_turnLabel);
 
-        _playerLabel = new Label { Text = "Current: Red" };
+        _playerLabel = new Label
+        {
+            Text = "Current: Red",
+            CustomMinimumSize = new Vector2(200, 0),
+        };
         _playerLabel.AddThemeFontSizeOverride("font_size", 24);
         leftHbox.AddChild(_playerLabel);
 
-        _goldLabel = new Label { Text = "" };
+        _goldLabel = new Label
+        {
+            Text = "",
+            CustomMinimumSize = new Vector2(240, 0),
+        };
         _goldLabel.AddThemeFontSizeOverride("font_size", 24);
         leftHbox.AddChild(_goldLabel);
 
-        _buyPeasantButton = new Button
-        {
-            Text = "Buy Peasant (10g)",
-            Visible = false,
-            // Non-focusable: keyboard shortcuts like Tab/Enter must
-            // reach _UnhandledInput rather than being consumed by a
-            // focused Button's default key handlers.
-            FocusMode = Control.FocusModeEnum.None,
-        };
-        _buyPeasantButton.AddThemeFontSizeOverride("font_size", 20);
+        // Always visible — Refresh() flips Disabled based on selection
+        // and affordability and surfaces the reason in the tooltip.
+        // Default to Disabled until the first Refresh runs so the
+        // pre-state isn't briefly clickable.
+        _buyPeasantButton = new HudIconButton(HudIcon.Peasant) { Disabled = true };
         _buyPeasantButton.Pressed += () => BuyPeasantClicked?.Invoke();
         AudioBus.AttachClick(_buyPeasantButton);
         leftHbox.AddChild(_buyPeasantButton);
 
-        _buildTowerButton = new Button
-        {
-            Text = "Build Tower (15g)",
-            Visible = false,
-            FocusMode = Control.FocusModeEnum.None,
-        };
-        _buildTowerButton.AddThemeFontSizeOverride("font_size", 20);
+        _buildTowerButton = new HudIconButton(HudIcon.Tower) { Disabled = true };
         _buildTowerButton.Pressed += () => BuildTowerClicked?.Invoke();
         AudioBus.AttachClick(_buildTowerButton);
         leftHbox.AddChild(_buildTowerButton);
@@ -141,56 +148,27 @@ public partial class HudView : CanvasLayer, IHudView
         rightHbox.AddThemeConstantOverride("separation", 8);
         AddChild(rightHbox);
 
-        _undoTurnButton = new Button
-        {
-            Text = "Undo Turn",
-            Disabled = true,
-            FocusMode = Control.FocusModeEnum.None,
-        };
-        _undoTurnButton.AddThemeFontSizeOverride("font_size", 18);
+        _undoTurnButton = new HudIconButton(HudIcon.UndoAll) { Disabled = true };
         _undoTurnButton.Pressed += () => UndoTurnClicked?.Invoke();
         AudioBus.AttachClick(_undoTurnButton);
         rightHbox.AddChild(_undoTurnButton);
 
-        _undoLastButton = new Button
-        {
-            Text = "Undo Last",
-            Disabled = true,
-            FocusMode = Control.FocusModeEnum.None,
-        };
-        _undoLastButton.AddThemeFontSizeOverride("font_size", 18);
+        _undoLastButton = new HudIconButton(HudIcon.UndoLast) { Disabled = true };
         _undoLastButton.Pressed += () => UndoLastClicked?.Invoke();
         AudioBus.AttachClick(_undoLastButton);
         rightHbox.AddChild(_undoLastButton);
 
-        _redoLastButton = new Button
-        {
-            Text = "Redo Last",
-            Disabled = true,
-            FocusMode = Control.FocusModeEnum.None,
-        };
-        _redoLastButton.AddThemeFontSizeOverride("font_size", 18);
+        _redoLastButton = new HudIconButton(HudIcon.RedoLast) { Disabled = true };
         _redoLastButton.Pressed += () => RedoLastClicked?.Invoke();
         AudioBus.AttachClick(_redoLastButton);
         rightHbox.AddChild(_redoLastButton);
 
-        _redoAllButton = new Button
-        {
-            Text = "Redo All",
-            Disabled = true,
-            FocusMode = Control.FocusModeEnum.None,
-        };
-        _redoAllButton.AddThemeFontSizeOverride("font_size", 18);
+        _redoAllButton = new HudIconButton(HudIcon.RedoAll) { Disabled = true };
         _redoAllButton.Pressed += () => RedoAllClicked?.Invoke();
         AudioBus.AttachClick(_redoAllButton);
         rightHbox.AddChild(_redoAllButton);
 
-        _endTurnButton = new Button
-        {
-            Text = "End Turn",
-            FocusMode = Control.FocusModeEnum.None,
-        };
-        _endTurnButton.AddThemeFontSizeOverride("font_size", 18);
+        _endTurnButton = new HudIconButton(HudIcon.EndTurn);
         _endTurnButton.Pressed += () => EndTurnClicked?.Invoke();
         AudioBus.AttachClick(_endTurnButton);
         rightHbox.AddChild(_endTurnButton);
@@ -199,12 +177,7 @@ public partial class HudView : CanvasLayer, IHudView
         // the Escape key fires, so the scene root's pause coordinator
         // drives both paths. Save Game and Settings live inside that
         // pause menu now rather than as standalone HUD buttons.
-        _optionsButton = new Button
-        {
-            Text = "Options",
-            FocusMode = Control.FocusModeEnum.None,
-        };
-        _optionsButton.AddThemeFontSizeOverride("font_size", 18);
+        _optionsButton = new HudIconButton(HudIcon.Options);
         _optionsButton.Pressed += () => EscRequested?.Invoke();
         AudioBus.AttachClick(_optionsButton);
         rightHbox.AddChild(_optionsButton);
@@ -713,34 +686,51 @@ public partial class HudView : CanvasLayer, IHudView
         _playerLabel.Text = $"Current: {current.Name}";
         _playerLabel.AddThemeColorOverride("font_color", current.Color);
 
-        // Gold label + buy/build buttons depend on the selection.
+        // Buy / Build buttons are always visible; the tooltip explains
+        // *why* the button is disabled (no selection / no capital / can't
+        // afford) so the player isn't left guessing. The contextual cost
+        // and mode-hint live in the tooltip; the in-progress mode is
+        // signalled with the Selected outline.
         Territory? selected = session.SelectedTerritory;
-        if (selected == null || !selected.HasCapital)
+        bool hasCapital = selected?.HasCapital ?? false;
+
+        if (hasCapital)
         {
-            _goldLabel.Text = "";
-            _buyPeasantButton.Visible = false;
-            _buyPeasantButton.Text = "Buy Peasant (10g)";
-            _buildTowerButton.Visible = false;
-            _buildTowerButton.Text = "Build Tower (15g)";
-        }
-        else
-        {
-            int gold = state.Treasury.GetGold(selected.Capital!.Value);
+            int gold = state.Treasury.GetGold(selected!.Capital!.Value);
             int income = TreeRules.CountIncomeProducingTiles(selected, state.Grid);
             int upkeep = UpkeepRules.TotalUpkeepFor(selected, state.Grid);
             int net = income - upkeep;
             string sign = net >= 0 ? "+" : "";
             _goldLabel.Text = $"{gold}g ({income}-{upkeep}={sign}{net})";
-            _buyPeasantButton.Visible = PurchaseRules.CanAffordPeasant(selected, state.Treasury);
-            UnitLevel? buyLevel = SessionState.BuyModeLevel(session.Mode);
-            _buyPeasantButton.Text = buyLevel.HasValue
-                ? $"Click a tile ({buyLevel.Value} {PurchaseRules.CostFor(buyLevel.Value)}g)"
-                : "Buy Peasant (10g)";
-            _buildTowerButton.Visible = PurchaseRules.CanAffordTower(selected, state.Treasury);
-            _buildTowerButton.Text = session.Mode == SessionState.ActionMode.BuildingTower
-                ? "Click a tile..."
-                : "Build Tower (15g)";
         }
+        else
+        {
+            _goldLabel.Text = "";
+        }
+
+        UnitLevel? buyLevel = SessionState.BuyModeLevel(session.Mode);
+        bool inBuyMode = buyLevel.HasValue;
+        bool canAffordPeasant = hasCapital && PurchaseRules.CanAffordPeasant(selected!, state.Treasury);
+        _buyPeasantButton.Visible = true;
+        _buyPeasantButton.Disabled = !inBuyMode && !canAffordPeasant;
+        _buyPeasantButton.Selected = inBuyMode;
+        _buyPeasantButton.BuyLevel = buyLevel ?? UnitLevel.Peasant;
+        _buyPeasantButton.TooltipText = inBuyMode
+            ? $"Click a tile ({buyLevel!.Value} {PurchaseRules.CostFor(buyLevel.Value)}g) — U"
+            : canAffordPeasant
+                ? HudIconButton.DefaultTooltip(HudIcon.Peasant)
+                : DisabledBuyReason(selected, hasCapital, "a peasant");
+
+        bool building = session.Mode == SessionState.ActionMode.BuildingTower;
+        bool canAffordTower = hasCapital && PurchaseRules.CanAffordTower(selected!, state.Treasury);
+        _buildTowerButton.Visible = true;
+        _buildTowerButton.Disabled = !building && !canAffordTower;
+        _buildTowerButton.Selected = building;
+        _buildTowerButton.TooltipText = building
+            ? "Click a tile... — T"
+            : canAffordTower
+                ? HudIconButton.DefaultTooltip(HudIcon.Tower)
+                : DisabledBuyReason(selected, hasCapital, "a tower");
 
         _undoLastButton.Disabled = _undoRedoLocked || !session.Undo.CanUndo;
         _undoTurnButton.Disabled = _undoRedoLocked || !session.Undo.CanUndo;
@@ -800,6 +790,19 @@ public partial class HudView : CanvasLayer, IHudView
             && !session.PendingDefeatScreen.HasValue;
     }
 
+    /// <summary>
+    /// Explain why the Buy / Build button is disabled. Walks the
+    /// preconditions in player-facing priority order — selection first,
+    /// then capital ownership, then affordability — so the tooltip names
+    /// the most actionable thing the player can fix.
+    /// </summary>
+    private static string DisabledBuyReason(Territory? selected, bool hasCapital, string actionLabel)
+    {
+        if (selected == null) return "No territory selected";
+        if (!hasCapital) return "Selected territory has no capital";
+        return $"Selected territory can't afford {actionLabel}";
+    }
+
     public void SetCta(CtaButton button, bool isCta, bool pulse = true)
     {
         Button target = button switch
@@ -848,6 +851,12 @@ public partial class HudView : CanvasLayer, IHudView
 
     private void ApplyCtaStyle(Button button, bool isCta, bool pulse)
     {
+        // Stroke-only HUD glyphs flip white↔black with the CTA bg; tell
+        // the icon button so its next _Draw uses the right palette.
+        if (button is HudIconButton iconButton)
+        {
+            iconButton.CtaActive = isCta;
+        }
         if (isCta)
         {
             var style = new StyleBoxFlat

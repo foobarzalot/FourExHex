@@ -1,0 +1,336 @@
+using Godot;
+
+/// <summary>
+/// Static glyph drawing helpers shared by the map editor's HexPaletteButton
+/// and the gameplay HUD's HudIconButton. Each method draws into the given
+/// CanvasItem centered at <paramref name="center"/>, scaled relative to
+/// <paramref name="radius"/> (the "design radius" of the surrounding shape,
+/// usually a hex circumradius or half the button's short axis), and tinted
+/// by <paramref name="modulate"/> — pass <see cref="Colors.White"/> for the
+/// default look or a dimmed color for a disabled button.
+/// </summary>
+public static class HudIcons
+{
+    private static readonly Color Outline = new Color(0f, 0f, 0f, 1f);
+    private const float OutlineWidth = 1.5f;
+    private const float StrokeWidth = 3f;
+
+    public static void DrawTree(CanvasItem t, Vector2 center, float radius, Color modulate)
+    {
+        float r = radius * 0.65f;
+        var canopy = new Vector2[]
+        {
+            center + new Vector2(0f, -r),
+            center + new Vector2(r * 0.85f, r * 0.4f),
+            center + new Vector2(-r * 0.85f, r * 0.4f),
+        };
+        t.DrawColoredPolygon(canopy, new Color(0.16f, 0.48f, 0.18f, 1f) * modulate);
+        for (int i = 0; i < 3; i++)
+        {
+            t.DrawLine(canopy[i], canopy[(i + 1) % 3], Outline * modulate, OutlineWidth);
+        }
+
+        float tw = r * 0.18f;
+        float ttop = r * 0.4f;
+        float tbot = r * 0.75f;
+        var trunk = new Vector2[]
+        {
+            center + new Vector2(-tw, ttop),
+            center + new Vector2(tw, ttop),
+            center + new Vector2(tw, tbot),
+            center + new Vector2(-tw, tbot),
+        };
+        t.DrawColoredPolygon(trunk, new Color(0.36f, 0.22f, 0.1f, 1f) * modulate);
+        for (int i = 0; i < 4; i++)
+        {
+            t.DrawLine(trunk[i], trunk[(i + 1) % 4], Outline * modulate, OutlineWidth);
+        }
+    }
+
+    public static void DrawCapital(CanvasItem t, Vector2 center, float radius, Color modulate)
+    {
+        float outer = radius * 0.65f;
+        float inner = outer * 0.4f;
+        var verts = new Vector2[10];
+        for (int i = 0; i < 10; i++)
+        {
+            float angle = -Mathf.Pi / 2f + i * Mathf.Pi / 5f;
+            float r = (i % 2 == 0) ? outer : inner;
+            verts[i] = center + new Vector2(r * Mathf.Cos(angle), r * Mathf.Sin(angle));
+        }
+        t.DrawColoredPolygon(verts, new Color(0.97f, 0.80f, 0.22f, 1f) * modulate);
+        for (int i = 0; i < 10; i++)
+        {
+            t.DrawLine(verts[i], verts[(i + 1) % 10], Outline * modulate, OutlineWidth);
+        }
+    }
+
+    public static void DrawHand(CanvasItem t, Vector2 center, float radius, Color modulate)
+    {
+        Color fill = new Color(0.93f, 0.78f, 0.62f, 1f) * modulate;
+        Color outline = Outline * modulate;
+        float r = radius * 0.55f;
+
+        float palmHalfW = r * 0.55f;
+        float palmTop = -r * 0.05f;
+        float palmBot = r * 0.85f;
+        Vector2[] palm =
+        {
+            center + new Vector2(-palmHalfW, palmTop),
+            center + new Vector2(palmHalfW, palmTop),
+            center + new Vector2(palmHalfW, palmBot),
+            center + new Vector2(-palmHalfW, palmBot),
+        };
+        t.DrawColoredPolygon(palm, fill);
+        for (int i = 0; i < 4; i++)
+        {
+            t.DrawLine(palm[i], palm[(i + 1) % 4], outline, OutlineWidth);
+        }
+
+        float fingerW = r * 0.22f;
+        float fingerTop = -r * 0.95f;
+        float fingerBot = palmTop + r * 0.02f;
+        float[] fingerCenters =
+        {
+            -palmHalfW + fingerW * 0.6f,
+            -fingerW * 0.6f,
+            fingerW * 0.6f,
+            palmHalfW - fingerW * 0.6f,
+        };
+        foreach (float fx in fingerCenters)
+        {
+            Vector2[] finger =
+            {
+                center + new Vector2(fx - fingerW * 0.5f, fingerTop),
+                center + new Vector2(fx + fingerW * 0.5f, fingerTop),
+                center + new Vector2(fx + fingerW * 0.5f, fingerBot),
+                center + new Vector2(fx - fingerW * 0.5f, fingerBot),
+            };
+            t.DrawColoredPolygon(finger, fill);
+            for (int i = 0; i < 4; i++)
+            {
+                t.DrawLine(finger[i], finger[(i + 1) % 4], outline, OutlineWidth);
+            }
+        }
+
+        Vector2 thumbBase = center + new Vector2(-palmHalfW, palmTop + r * 0.25f);
+        Vector2 thumbTip = thumbBase + new Vector2(-r * 0.55f, -r * 0.32f);
+        Vector2 thumbDir = (thumbTip - thumbBase).Normalized();
+        Vector2 thumbPerp = new Vector2(-thumbDir.Y, thumbDir.X) * (r * 0.18f);
+        Vector2[] thumb =
+        {
+            thumbBase + thumbPerp,
+            thumbTip + thumbPerp,
+            thumbTip - thumbPerp,
+            thumbBase - thumbPerp,
+        };
+        t.DrawColoredPolygon(thumb, fill);
+        for (int i = 0; i < 4; i++)
+        {
+            t.DrawLine(thumb[i], thumb[(i + 1) % 4], outline, OutlineWidth);
+        }
+    }
+
+    public static void DrawTower(CanvasItem t, Vector2 center, float radius, Color modulate)
+    {
+        float r = radius * 0.55f;
+        float halfW = r;
+        float top = -r;
+        float bot = r * 0.85f;
+        float merlonH = r * 0.35f;
+        float merlonW = halfW * 0.4f;
+        var verts = new Vector2[]
+        {
+            center + new Vector2(-halfW, bot),
+            center + new Vector2(-halfW, top + merlonH),
+            center + new Vector2(-halfW, top),
+            center + new Vector2(-halfW + merlonW, top),
+            center + new Vector2(-halfW + merlonW, top + merlonH),
+            center + new Vector2(-merlonW * 0.5f, top + merlonH),
+            center + new Vector2(-merlonW * 0.5f, top),
+            center + new Vector2(merlonW * 0.5f, top),
+            center + new Vector2(merlonW * 0.5f, top + merlonH),
+            center + new Vector2(halfW - merlonW, top + merlonH),
+            center + new Vector2(halfW - merlonW, top),
+            center + new Vector2(halfW, top),
+            center + new Vector2(halfW, top + merlonH),
+            center + new Vector2(halfW, bot),
+        };
+        t.DrawColoredPolygon(verts, new Color(0.72f, 0.72f, 0.76f, 1f) * modulate);
+        for (int i = 0; i < verts.Length; i++)
+        {
+            t.DrawLine(verts[i], verts[(i + 1) % verts.Length], Outline * modulate, OutlineWidth);
+        }
+    }
+
+    /// <summary>
+    /// Concentric rings matching HexMapView's in-map unit glyphs:
+    /// Peasant=1 ring, Spearman=2, Knight=3, Baron=3+center dot. Scaled
+    /// larger than the in-map version so the inner rings stay legible at
+    /// HUD-button size (the 0.20/0.37/0.55 hex proportions are too tight
+    /// at 44px).
+    /// </summary>
+    public static void DrawUnit(CanvasItem t, Vector2 center, float radius, UnitLevel level, Color stroke)
+    {
+        float outerR = radius * 0.78f;
+        float middleR = radius * 0.54f;
+        float innerR = radius * 0.30f;
+        float dotR = radius * 0.13f;
+
+        DrawRing(t, center, outerR, stroke);
+        if (level >= UnitLevel.Spearman) DrawRing(t, center, middleR, stroke);
+        if (level >= UnitLevel.Knight) DrawRing(t, center, innerR, stroke);
+        if (level >= UnitLevel.Baron) DrawFilledDisc(t, center, dotR, stroke);
+    }
+
+    private static void DrawRing(CanvasItem t, Vector2 center, float radius, Color stroke)
+    {
+        const int segments = 28;
+        for (int i = 0; i < segments; i++)
+        {
+            float a0 = i * Mathf.Tau / segments;
+            float a1 = (i + 1) * Mathf.Tau / segments;
+            Vector2 p0 = center + new Vector2(Mathf.Cos(a0), Mathf.Sin(a0)) * radius;
+            Vector2 p1 = center + new Vector2(Mathf.Cos(a1), Mathf.Sin(a1)) * radius;
+            t.DrawLine(p0, p1, stroke, StrokeWidth);
+        }
+    }
+
+    private static void DrawFilledDisc(CanvasItem t, Vector2 center, float radius, Color fill)
+    {
+        const int segments = 16;
+        var verts = new Vector2[segments];
+        for (int i = 0; i < segments; i++)
+        {
+            float a = i * Mathf.Tau / segments;
+            verts[i] = center + new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * radius;
+        }
+        t.DrawColoredPolygon(verts, fill);
+    }
+
+    /// <summary>
+    /// Curved arrow. <paramref name="facing"/> = -1 draws an "undo" arrow
+    /// (arrowhead on the left, arc opening down-right); +1 draws "redo"
+    /// (arrowhead on the right, arc opening down-left). When
+    /// <paramref name="doubled"/> is true, draws a second smaller arrow
+    /// nested below the main one to convey "all the way" (Undo Turn /
+    /// Redo All) vs the single-step variant.
+    /// </summary>
+    public static void DrawCurvedArrow(CanvasItem t, Vector2 center, float radius, Color stroke, int facing, bool doubled)
+    {
+        if (doubled)
+        {
+            // Outer + inner concentric arrows pointing the same way.
+            // Radii chosen so the inner arc's arrowhead clears the outer
+            // arc by a comfortable gap (arrowheads sweep tangentially, so
+            // they stay roughly on their own circle).
+            DrawSingleCurvedArrow(t, center, radius * 0.85f, stroke, facing);
+            DrawSingleCurvedArrow(t, center, radius * 0.42f, stroke, facing);
+        }
+        else
+        {
+            DrawSingleCurvedArrow(t, center, radius * 0.78f, stroke, facing);
+        }
+    }
+
+    private static void DrawSingleCurvedArrow(CanvasItem t, Vector2 center, float radius, Color stroke, int facing)
+    {
+        float r = radius;
+        const int segments = 18;
+
+        // Three-quarter arc swept clockwise from one o'clock around to about
+        // eight o'clock (the "tail" of the arrow rests at the open end).
+        // Mirror horizontally for redo by flipping the X of every point.
+        float startAng = -Mathf.Pi * 0.55f;
+        float endAng = Mathf.Pi * 0.95f;
+        Vector2 prev = ArcPoint(center, r, startAng, facing);
+        for (int i = 1; i <= segments; i++)
+        {
+            float a = Mathf.Lerp(startAng, endAng, (float)i / segments);
+            Vector2 cur = ArcPoint(center, r, a, facing);
+            t.DrawLine(prev, cur, stroke, StrokeWidth);
+            prev = cur;
+        }
+
+        // Arrowhead at the start of the arc, pointing roughly tangent to
+        // the arc direction at that point (i.e. outward-down for undo,
+        // outward-down for redo via the mirrored facing).
+        Vector2 tip = ArcPoint(center, r, startAng, facing);
+        Vector2 tangent = new Vector2(-Mathf.Sin(startAng), Mathf.Cos(startAng));
+        if (facing < 0) tangent.X = -tangent.X;
+        // Arrow points "backwards" along the arc (away from where the arc continues).
+        Vector2 arrowDir = -tangent.Normalized();
+        Vector2 perp = new Vector2(-arrowDir.Y, arrowDir.X);
+        float headLen = r * 0.55f;
+        float headHalf = r * 0.30f;
+        Vector2 baseMid = tip + arrowDir * 0f;
+        Vector2 ahTip = tip + arrowDir * headLen;
+        Vector2 ahL = baseMid + perp * headHalf;
+        Vector2 ahR = baseMid - perp * headHalf;
+        var head = new Vector2[] { ahTip, ahL, ahR };
+        t.DrawColoredPolygon(head, stroke);
+    }
+
+    private static Vector2 ArcPoint(Vector2 center, float radius, float angle, int facing)
+    {
+        float x = Mathf.Cos(angle) * radius;
+        float y = Mathf.Sin(angle) * radius;
+        if (facing < 0) x = -x;
+        return center + new Vector2(x, y);
+    }
+
+    /// <summary>
+    /// Filled right-pointing triangle (play / next-turn symbol). The
+    /// triangle is painted in <paramref name="fill"/>; pass a high-contrast
+    /// color for the surrounding button bg.
+    /// </summary>
+    public static void DrawEndTurnTriangle(CanvasItem t, Vector2 center, float radius, Color fill)
+    {
+        float r = radius * 0.68f;
+        Vector2 a = center + new Vector2(r, 0f);
+        Vector2 b = center + new Vector2(-r * 0.55f, -r * 0.85f);
+        Vector2 c = center + new Vector2(-r * 0.55f, r * 0.85f);
+        var verts = new Vector2[] { a, b, c };
+        t.DrawColoredPolygon(verts, fill);
+    }
+
+    /// <summary>
+    /// Eight-tooth gear (settings glyph) with a hollow centre. The body is
+    /// a stone-grey fill so it visually echoes the in-game tower's palette.
+    /// </summary>
+    public static void DrawGear(CanvasItem t, Vector2 center, float radius, Color modulate)
+    {
+        Color fill = new Color(0.72f, 0.72f, 0.76f, 1f) * modulate;
+        Color stroke = Outline * modulate;
+        const int teeth = 8;
+        float outerR = radius * 0.70f;
+        float innerR = outerR * 0.78f;
+        const int subdivisionsPerTooth = 4;
+        int n = teeth * subdivisionsPerTooth;
+        var verts = new Vector2[n];
+        for (int i = 0; i < n; i++)
+        {
+            float a = i * Mathf.Tau / n;
+            int phase = i % subdivisionsPerTooth;
+            // 0,1 sit on the tooth top; 2,3 sit in the valley between teeth.
+            float r = (phase == 0 || phase == 1) ? outerR : innerR;
+            verts[i] = center + new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * r;
+        }
+        t.DrawColoredPolygon(verts, fill);
+        for (int i = 0; i < n; i++)
+        {
+            t.DrawLine(verts[i], verts[(i + 1) % n], stroke, OutlineWidth);
+        }
+        // Hollow centre — fill with the same modulated outline color so the
+        // hole reads against the gear body regardless of button background.
+        float holeR = outerR * 0.32f;
+        const int holeSegments = 20;
+        var hole = new Vector2[holeSegments];
+        for (int i = 0; i < holeSegments; i++)
+        {
+            float a = i * Mathf.Tau / holeSegments;
+            hole[i] = center + new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * holeR;
+        }
+        t.DrawColoredPolygon(hole, stroke);
+    }
+}
