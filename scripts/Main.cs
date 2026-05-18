@@ -226,8 +226,8 @@ public partial class Main : Node2D
             : new GodotAiPacer(
                 new SceneTreeTimerFactory(GetTree()),
                 () => controllerRef?.IsReplayMode == true
-                    ? UserSettings.ReplaySpeedMultiplier
-                    : UserSettings.AiSpeedMultiplier);
+                    ? UserSettings.SpeedMultiplier(UserSettings.ReplaySpeed)
+                    : UserSettings.SpeedMultiplier(UserSettings.AiSpeed));
         // If we're resuming an in-progress save that carries a replay,
         // hand it to the controller so recording continues against the
         // same beat log (and BeginReplay can rewind to the original
@@ -235,15 +235,6 @@ public partial class Main : Node2D
         Replay? loadedReplay = (pendingLoad != null && !isStartingMap)
             ? pendingLoad.Replay
             : null;
-        // Background runner only matters under silent batch (Instant).
-        // Diagnostic mode runs the whole game through SynchronousAiPacer
-        // so a real worker thread would just add hops for no payoff;
-        // wire the synchronous runner there. Normal launch wires the
-        // production Godot runner: Task.Run + Callable.CallDeferred
-        // so the main thread can paint between AI beats.
-        IAiBackgroundRunner bgRunner = diagnosticMode
-            ? new SynchronousAiBackgroundRunner()
-            : new GodotAiBackgroundRunner();
         _controller = new GameController(
             _state, _session, map, hud,
             seed: seed,
@@ -251,13 +242,15 @@ public partial class Main : Node2D
             aiChooser: AiDispatcher.ChooseForCurrentPlayer,
             maxTurnNumber: _maxTurnNumber,
             loadedReplay: loadedReplay,
+            // Selects the chunked InstantAiTick path (via ScheduleAiTurn)
+            // for live AI turns when Ai Speed is Instant and we're not
+            // replaying.
             aiSilentMode: () => controllerRef?.IsReplayMode != true
-                && UserSettings.AiSpeed == AiSpeed.Instant,
-            aiBackgroundRunner: bgRunner,
+                && UserSettings.AiSpeed == PlaybackSpeed.Instant,
             // Consulted once per BeginReplay (the only caller, fired by
             // the post-game Replay button) to pick the chunked
             // fast-forward path instead of the paced step machine.
-            replayIsInstantMode: () => UserSettings.ReplaySpeed == ReplaySpeed.Instant);
+            replayIsInstantMode: () => UserSettings.ReplaySpeed == PlaybackSpeed.Instant);
         controllerRef = _controller;
 
         if (!diagnosticMode)

@@ -83,7 +83,6 @@ public class GameController
     public event Action? HumanTurnStarted;
 
     private readonly Func<bool> _aiSilentMode;
-    private readonly IAiBackgroundRunner _aiBackgroundRunner;
 
     /// <summary>
     /// Tell the view to enter (or leave) silent mode based on whether
@@ -164,12 +163,10 @@ public class GameController
         bool recordingMode = false,
         Action? onAfterRefresh = null,
         Func<bool>? aiSilentMode = null,
-        IAiBackgroundRunner? aiBackgroundRunner = null,
         Func<bool>? replayIsInstantMode = null)
     {
         _aiSilentMode = aiSilentMode ?? (() => false);
         _replayIsInstantMode = replayIsInstantMode;
-        _aiBackgroundRunner = aiBackgroundRunner ?? new SynchronousAiBackgroundRunner();
         _humanActionValidator = humanActionValidator;
         _buyLevelValidator = buyLevelValidator;
         _previewMode = previewMode;
@@ -243,10 +240,6 @@ public class GameController
     public void AbandonGame()
     {
         _aiPacer.Cancel();
-        // Drop any chooser worker in flight under silent batch — its
-        // CallDeferred-marshaled onMain would otherwise wake against a
-        // controller whose views have been disposed.
-        _aiBackgroundRunner.Cancel();
         // Unsubscribe from view events so a downstream click can't
         // re-enter this stale controller's handlers — relevant when
         // the view is shared between sessions (TutorialBuilder's
@@ -1380,7 +1373,7 @@ public class GameController
         if (_session.IsGameOver) return;
         if (_state.Turns.CurrentPlayer.IsAi)
         {
-            _aiPacer.Schedule(StepAiPreview, AiActionDelayMs);
+            ScheduleAiTurn(AiActionDelayMs);
         }
     }
 
@@ -2229,7 +2222,21 @@ public class GameController
         _aiVisited.Clear();
         _aiStepsThisPlayer = 0;
         _pendingAiAction = null;
-        _aiPacer.Schedule(StepAiPreview, AiBetweenPlayersDelayMs);
+        ScheduleAiTurn(AiBetweenPlayersDelayMs);
+    }
+
+    /// <summary>
+    /// Single decision point for kicking off / resuming a live AI
+    /// turn: under the Instant setting (<see cref="_aiSilentMode"/>)
+    /// route to the chunked <see cref="InstantAiTick"/> via the
+    /// unscaled scheduler (driver owns its cadence); otherwise the
+    /// multiplier-scaled paced step machine. Once a path is chosen the
+    /// turn stays on it — instant never enters <see cref="StepAiPreview"/>.
+    /// </summary>
+    private void ScheduleAiTurn(int delayMs)
+    {
+        if (_aiSilentMode()) _aiPacer.ScheduleUnscaled(InstantAiTick, delayMs);
+        else _aiPacer.Schedule(StepAiPreview, delayMs);
     }
 
     /// <summary>
@@ -2253,27 +2260,9 @@ public class GameController
             return;
         }
 
+        // Paced path only — Instant routes to InstantAiTick via
+        // ScheduleAiTurn and never enters this step machine.
         Color color = _state.Turns.CurrentPlayer.Color;
-
-        // Under Instant the chooser is the dominant per-beat cost —
-        // running it on the main thread freezes the renderer for
-        // hundreds of ms per AI on a busy six-AI map. Hand it to the
-        // background runner so the main thread can paint between
-        // beats. The continuation re-checks game state because the
-        // controller could have been abandoned mid-await (Main scene
-        // swap, or BeginReplay). Input gating during the await window
-        // is handled by InSilentAiBatch() checks on every human input
-        // handler — see TrackHandler and the OnEndTurnPressed /
-        // OnUndoLastPressed / OnDefeatContinuePressed / OnClaimVictory*
-        // family.
-        if (InSilentAiBatch())
-        {
-            _aiBackgroundRunner.Run(
-                work: () => _aiChooser(_state, color, _aiVisited, _rng),
-                onMain: a => StepAiPreviewAfterChoose(a, color));
-            return;
-        }
-
         StepAiPreviewAfterChoose(_aiChooser(_state, color, _aiVisited, _rng), color);
     }
 
@@ -2290,45 +2279,11 @@ public class GameController
 
         if (action == null || _aiStepsThisPlayer >= MaxAiStepsPerPlayer)
         {
-            if (AiLog.Enabled)
-            {
-                Player p = _state.Turns.CurrentPlayer;
-                string reason = action == null ? "no positive-delta actions" : "step cap reached";
-                AiLog.Print(
-                    $"[T{_state.Turns.TurnNumber}] {p.Name} ends turn after " +
-                    $"{_aiStepsThisPlayer} actions ({reason})");
-            }
-
-            // Current AI player is done. Run end-of-turn processing,
-            // clear the lingering highlight, advance, and either stop
-            // (human next) or schedule the next preview beat. If the
-            // end-of-turn win check fires we skip the advance and just
-            // announce — there's no next turn to start.
-            // Record AI's implicit end-of-turn for the replay log. The
-            // beat captures the *ending* AI player's actor/turn.
-            if (!_replayMode) RecordBeat(new ReplayEndTurnBeat());
-            EndOfTurnProcessing();
-            if (_session.IsGameOver)
-            {
-                CheckGameEndConditions();
-            }
-            else
-            {
-                AdvanceToNextActivePlayer();
-                StartPlayerTurn();
-            }
-            _aiVisited.Clear();
-            _aiStepsThisPlayer = 0;
-            _pendingAiAction = null;
-            // Skip the hand-off refresh while still inside a silent
-            // batch (next player is also AI) — the next StepAiPreview
-            // would rebuild views again immediately. When the new
-            // player is human, InSilentAiBatch flips false and this
-            // becomes the single end-of-batch refresh the human sees.
-            if (!InSilentAiBatch())
-            {
-                ShowHighlightAndRefresh(null);
-            }
+            // Current AI player is done. Run the shared end-of-turn
+            // mutation, clear the lingering highlight, then either stop
+            // (human next) or schedule the next preview beat.
+            EndCurrentAiPlayerTurnCore(action);
+            ShowHighlightAndRefresh(null);
 
             if (_gameEndedFired) return;
             if (_session.IsGameOver) return;
@@ -2340,13 +2295,7 @@ public class GameController
         }
 
         _pendingAiAction = action;
-        // Per-action preview highlight is cosmetic; skip it (and the
-        // attendant view rebuild) when nothing will be drawn before
-        // the immediately-following execute beat.
-        if (!InSilentAiBatch())
-        {
-            ShowHighlightAndRefresh(ResolveAiActingTerritory(action));
-        }
+        ShowHighlightAndRefresh(ResolveAiActingTerritory(action));
         _aiPacer.Schedule(StepAiExecute, AiPreviewDelayMs);
     }
 
@@ -2367,94 +2316,9 @@ public class GameController
         _pendingAiAction = null;
         if (action == null) return; // defensive; shouldn't happen
 
-        _aiStepsThisPlayer++;
-        LogAction(action);
-
-        HexCoord resultCoord;
-        switch (action)
-        {
-            case AiMoveAction mv:
-                if (!_replayMode)
-                {
-                    RecordBeat(new ReplayMoveBeat { From = mv.Source, To = mv.Destination });
-                }
-                ExecuteAiMove(mv.Source, mv.Destination);
-                resultCoord = mv.Destination;
-                break;
-            case AiBuyUnitAction bu:
-                if (!_replayMode)
-                {
-                    RecordBeat(new ReplayBuyBeat
-                    {
-                        Capital = bu.Capital,
-                        To = bu.Destination,
-                        Level = bu.Level,
-                    });
-                }
-                ExecuteAiBuyUnit(bu.Capital, bu.Destination, bu.Level);
-                resultCoord = bu.Destination;
-                break;
-            case AiBuildTowerAction bt:
-                if (!_replayMode)
-                {
-                    RecordBeat(new ReplayBuildTowerBeat
-                    {
-                        Capital = bt.Capital,
-                        To = bt.Destination,
-                    });
-                }
-                ExecuteAiBuildTower(bt.Capital, bt.Destination);
-                resultCoord = bt.Destination;
-                break;
-            case AiLongPressRallyAction rl:
-                if (!_replayMode)
-                {
-                    RecordBeat(new ReplayLongPressRallyBeat { Target = rl.Target });
-                }
-                ApplyLongPressRally(rl.Target);
-                resultCoord = rl.Target;
-                break;
-            case AiClaimVictoryAction cv:
-            {
-                Color cvColor = _state.Turns.CurrentPlayer.Color;
-                if (!_replayMode)
-                {
-                    RecordBeat(new ReplayClaimVictoryBeat { ThresholdPercent = cv.ThresholdPercent });
-                }
-                _session.ClaimVictoryPromptedHighestThreshold[cvColor] = cv.ThresholdPercent;
-                DeclareWinner(cvColor);
-                ClearUndoAndReplayBookkeeping();
-                resultCoord = TerritoryLookup
-                    .OwnedCapitalBearing(_state.Territories, cvColor)
-                    .FirstOrDefault()?.Capital
-                    ?? new HexCoord(0, 0);
-                break;
-            }
-            case AiDismissClaimAction dc:
-            {
-                Color dcColor = _state.Turns.CurrentPlayer.Color;
-                if (!_replayMode)
-                {
-                    RecordBeat(new ReplayDismissClaimBeat { ThresholdPercent = dc.ThresholdPercent });
-                }
-                _session.ClaimVictoryPromptedHighestThreshold[dcColor] = dc.ThresholdPercent;
-                resultCoord = TerritoryLookup
-                    .OwnedCapitalBearing(_state.Territories, dcColor)
-                    .FirstOrDefault()?.Capital
-                    ?? new HexCoord(0, 0);
-                break;
-            }
-            case AiDismissDefeatAction _:
-                if (!_replayMode)
-                {
-                    RecordBeat(new ReplayDismissDefeatBeat());
-                }
-                _session.PendingDefeatScreen = null;
-                resultCoord = new HexCoord(0, 0);
-                break;
-            default:
-                return;
-        }
+        HexCoord? rc = ApplyAiActionCore(action);
+        if (rc == null) return; // defensive; unrecognised action kind
+        HexCoord resultCoord = rc.Value;
 
         CheckGameEndConditions();
         if (_gameEndedFired)
@@ -2471,13 +2335,8 @@ public class GameController
         // After a capture the old territory object is stale; find the
         // AI's territory now containing the result coord and
         // re-highlight so the outline matches the post-action board.
-        // Skipped during a silent batch — the highlight pulse would
-        // never paint and the rebuild is the dominant per-action cost.
-        if (!InSilentAiBatch())
-        {
-            ShowHighlightAndRefresh(TerritoryLookup.FindOwnedContaining(
-                _state.Territories, _state.Turns.CurrentPlayer.Color, resultCoord));
-        }
+        ShowHighlightAndRefresh(TerritoryLookup.FindOwnedContaining(
+            _state.Territories, _state.Turns.CurrentPlayer.Color, resultCoord));
 
         if (_session.IsGameOver)
         {
@@ -2490,17 +2349,142 @@ public class GameController
         // game state several turns past their elimination.
         if (_session.PendingDefeatScreen.HasValue)
         {
-            // Silent-batch handoff: InSilentAiBatch() now returns
-            // false (PendingDefeatScreen unfreezes it) but the view's
-            // silent flag is still on from the start of the batch.
-            // RefreshSilentMode reconciles, lifting the map gate, and
-            // the final RefreshViews paints the defeat overlay so the
-            // human can dismiss it via the Continue button.
             RefreshSilentMode();
             RefreshViews();
             return;
         }
         _aiPacer.Schedule(StepAiPreview, AiActionDelayMs);
+    }
+
+    /// <summary>
+    /// Apply one chosen AI action: record its replay beat (live play
+    /// only) and run the same Execute* mutation the live game uses.
+    /// Shared by the paced step machine (<see cref="StepAiExecute"/>)
+    /// and the chunked <see cref="InstantAiTick"/> so the two pacing
+    /// modes can't drift. Returns the action's result coord (for the
+    /// paced post-action highlight) or null for an unrecognised action
+    /// kind (the old defensive <c>default: return;</c>). Does NOT run
+    /// the game-end check or refresh views — callers own pacing.
+    /// </summary>
+    private HexCoord? ApplyAiActionCore(AiAction action)
+    {
+        _aiStepsThisPlayer++;
+        LogAction(action);
+        switch (action)
+        {
+            case AiMoveAction mv:
+                if (!_replayMode)
+                {
+                    RecordBeat(new ReplayMoveBeat { From = mv.Source, To = mv.Destination });
+                }
+                ExecuteAiMove(mv.Source, mv.Destination);
+                return mv.Destination;
+            case AiBuyUnitAction bu:
+                if (!_replayMode)
+                {
+                    RecordBeat(new ReplayBuyBeat
+                    {
+                        Capital = bu.Capital,
+                        To = bu.Destination,
+                        Level = bu.Level,
+                    });
+                }
+                ExecuteAiBuyUnit(bu.Capital, bu.Destination, bu.Level);
+                return bu.Destination;
+            case AiBuildTowerAction bt:
+                if (!_replayMode)
+                {
+                    RecordBeat(new ReplayBuildTowerBeat
+                    {
+                        Capital = bt.Capital,
+                        To = bt.Destination,
+                    });
+                }
+                ExecuteAiBuildTower(bt.Capital, bt.Destination);
+                return bt.Destination;
+            case AiLongPressRallyAction rl:
+                if (!_replayMode)
+                {
+                    RecordBeat(new ReplayLongPressRallyBeat { Target = rl.Target });
+                }
+                ApplyLongPressRally(rl.Target);
+                return rl.Target;
+            case AiClaimVictoryAction cv:
+            {
+                Color cvColor = _state.Turns.CurrentPlayer.Color;
+                if (!_replayMode)
+                {
+                    RecordBeat(new ReplayClaimVictoryBeat { ThresholdPercent = cv.ThresholdPercent });
+                }
+                _session.ClaimVictoryPromptedHighestThreshold[cvColor] = cv.ThresholdPercent;
+                DeclareWinner(cvColor);
+                ClearUndoAndReplayBookkeeping();
+                return TerritoryLookup
+                    .OwnedCapitalBearing(_state.Territories, cvColor)
+                    .FirstOrDefault()?.Capital
+                    ?? new HexCoord(0, 0);
+            }
+            case AiDismissClaimAction dc:
+            {
+                Color dcColor = _state.Turns.CurrentPlayer.Color;
+                if (!_replayMode)
+                {
+                    RecordBeat(new ReplayDismissClaimBeat { ThresholdPercent = dc.ThresholdPercent });
+                }
+                _session.ClaimVictoryPromptedHighestThreshold[dcColor] = dc.ThresholdPercent;
+                return TerritoryLookup
+                    .OwnedCapitalBearing(_state.Territories, dcColor)
+                    .FirstOrDefault()?.Capital
+                    ?? new HexCoord(0, 0);
+            }
+            case AiDismissDefeatAction _:
+                if (!_replayMode)
+                {
+                    RecordBeat(new ReplayDismissDefeatBeat());
+                }
+                _session.PendingDefeatScreen = null;
+                return new HexCoord(0, 0);
+            default:
+                return null;
+        }
+    }
+
+    /// <summary>
+    /// Mutation half of an AI player's implicit end-of-turn: log,
+    /// record the EndTurn beat (live only), run end-of-turn
+    /// processing, then announce game-over or advance to the next
+    /// player and reset the per-player AI bookkeeping. Shared by the
+    /// paced step machine and the chunked <see cref="InstantAiTick"/>.
+    /// Does NOT refresh views or schedule the next beat — callers own
+    /// pacing. <paramref name="action"/> (the null/step-capped chooser
+    /// result) is used only for the AI-log reason string.
+    /// </summary>
+    private void EndCurrentAiPlayerTurnCore(AiAction? action)
+    {
+        if (AiLog.Enabled)
+        {
+            Player p = _state.Turns.CurrentPlayer;
+            string reason = action == null ? "no positive-delta actions" : "step cap reached";
+            AiLog.Print(
+                $"[T{_state.Turns.TurnNumber}] {p.Name} ends turn after " +
+                $"{_aiStepsThisPlayer} actions ({reason})");
+        }
+        // Record AI's implicit end-of-turn for the replay log. The
+        // beat captures the *ending* AI player's actor/turn.
+        if (!_replayMode) RecordBeat(new ReplayEndTurnBeat());
+        EndOfTurnProcessing();
+        if (_session.IsGameOver)
+        {
+            CheckGameEndConditions();
+        }
+        else
+        {
+            AdvanceToNextActivePlayer();
+            StartPlayerTurn();
+        }
+        _aiVisited.Clear();
+        _aiStepsThisPlayer = 0;
+        _pendingAiAction = null;
     }
 
     private void LogAction(AiAction action)
@@ -2582,7 +2566,7 @@ public class GameController
         RefreshViews();
 
         if (_replayInstantActive)
-            _aiPacer.Schedule(InstantReplayTick, 0);
+            _aiPacer.ScheduleUnscaled(InstantReplayTick, 0);
         else
             _aiPacer.Schedule(StepReplayPreview, AiBetweenPlayersDelayMs);
     }
@@ -2666,55 +2650,61 @@ public class GameController
         }
     }
 
-    // Max wall-clock a single InstantReplayTick may spend draining
-    // beats before it yields a frame. Small so the main thread stays
-    // responsive mid-replay — input, camera pan/zoom and rendering all
-    // run between ticks. A mid-turn budget break yields WITHOUT a
-    // redraw (nothing visual changed the user needs yet); the screen is
-    // repainted only at turn boundaries.
-    private const int InstantReplayBudgetMs = 8;
+    // Max wall-clock a single instant tick may spend draining steps
+    // before it yields a frame. Small so the main thread stays
+    // responsive mid-fast-forward — input, camera pan/zoom and
+    // rendering all run between ticks. A mid-turn budget break yields
+    // WITHOUT a redraw (nothing visual changed the user needs yet);
+    // the screen is repainted only at turn boundaries. Shared by
+    // instant replay and live-AI instant.
+    private const int InstantBudgetMs = 8;
 
     // Delay between a per-turn repaint and the next tick, so each
     // player-turn's board lingers long enough to follow (≈5 turns/sec)
     // instead of flipping past at frame rate. Still far faster than
     // Fast (~325ms/beat). Mid-turn budget yields (no repaint) use 0 —
     // an in-progress turn shouldn't be paced, only completed ones.
-    private const int InstantReplayTurnDelayMs = 200;
+    private const int InstantTurnDelayMs = 200;
+
+    /// <summary>One step's outcome for <see cref="RunInstantTick"/>:
+    /// keep draining, stop at a completed turn (repaint + pace), or
+    /// the driver is done (run the finish action).</summary>
+    private enum InstantStep { Continued, TurnBoundary, Exhausted }
 
     /// <summary>
-    /// Instant-replay driver. Drains beats with no per-beat visual work
-    /// (captures skip their rebuild via <see cref="_suppressMapRebuild"/>;
-    /// sound/VFX/tweens are off via silent mode), then repaints the
-    /// whole board exactly once per turn — the user-visible "draw the
-    /// screen once per turn" cadence. Each tick is capped at
-    /// <see cref="InstantReplayBudgetMs"/> so a huge turn still yields
-    /// frames (keeping pan/zoom/input alive) without redrawing until
-    /// that turn actually ends.
+    /// Shared chunked, frame-yielded fast-forward loop behind both
+    /// instant replay and live-AI instant. Drains <paramref name="step"/>
+    /// with no per-step visual work (captures skip their rebuild via
+    /// <see cref="_suppressMapRebuild"/>; sound/VFX/tweens off via
+    /// silent mode), repaints the whole board exactly once per turn,
+    /// and caps each tick at <see cref="InstantBudgetMs"/> so a huge
+    /// turn still yields frames (pan/zoom/input stay alive) without
+    /// redrawing until that turn ends. Reschedules itself via
+    /// <c>ScheduleUnscaled</c> — the driver owns its cadence; the speed
+    /// multiplier must not touch these delays.
     /// </summary>
-    private void InstantReplayTick()
+    private void RunInstantTick(
+        Func<bool> active, Func<InstantStep> step,
+        Action onExhausted, Action self)
     {
-        if (!_replayMode) return;
+        if (!active()) return;
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
         bool turnBoundary = false;
         _suppressMapRebuild = true;
-        while (_replayIndex < _replayBeats.Count)
+        while (true)
         {
-            ReplayBeat beat = _replayBeats[_replayIndex++];
-            bool isEndTurn = beat is ReplayEndTurnBeat;
-            ExecuteReplayBeat(beat);
-            CheckGameEndConditions();
-            if (_session.IsGameOver) break;
-            if (isEndTurn) { turnBoundary = true; break; }
-            if (sw.ElapsedMilliseconds >= InstantReplayBudgetMs) break;
+            InstantStep s = step();
+            if (s == InstantStep.Exhausted)
+            {
+                _suppressMapRebuild = false;
+                onExhausted();
+                return;
+            }
+            if (s == InstantStep.TurnBoundary) { turnBoundary = true; break; }
+            if (sw.ElapsedMilliseconds >= InstantBudgetMs) break;
         }
         _suppressMapRebuild = false;
-
-        if (_replayIndex >= _replayBeats.Count || _session.IsGameOver)
-        {
-            EndReplay();
-            return;
-        }
 
         // Repaint only when a turn just completed. A budget-driven
         // break mid-turn yields a bare frame (input/camera stay live)
@@ -2724,9 +2714,96 @@ public class GameController
             _map.RebuildAfterTerritoryChange();
             RefreshViews();
         }
-        _aiPacer.Schedule(
-            InstantReplayTick,
-            turnBoundary ? InstantReplayTurnDelayMs : 0);
+        _aiPacer.ScheduleUnscaled(self, turnBoundary ? InstantTurnDelayMs : 0);
+    }
+
+    /// <summary>Instant-replay driver: a thin <see cref="RunInstantTick"/>
+    /// wrapper over the recorded beat list. Behaviour-preserving vs the
+    /// old standalone loop (verified by ReplayPlaybackTests).</summary>
+    private void InstantReplayTick() => RunInstantTick(
+        active: () => _replayMode,
+        step: ReplayInstantStep,
+        onExhausted: EndReplay,
+        self: InstantReplayTick);
+
+    private InstantStep ReplayInstantStep()
+    {
+        if (_replayIndex >= _replayBeats.Count) return InstantStep.Exhausted;
+        ReplayBeat beat = _replayBeats[_replayIndex++];
+        bool isEndTurn = beat is ReplayEndTurnBeat;
+        ExecuteReplayBeat(beat);
+        CheckGameEndConditions();
+        if (_session.IsGameOver) return InstantStep.Exhausted;
+        return isEndTurn ? InstantStep.TurnBoundary : InstantStep.Continued;
+    }
+
+    /// <summary>
+    /// Live-AI instant driver — the user-visible 1:1 of instant replay
+    /// for AI opponents' turns. Same chunked cadence, silence and
+    /// per-turn sampling; the only deliberate difference is that the
+    /// "Opponents are taking their turns…" overlay stays (driven by
+    /// <see cref="RefreshSilentMode"/>, which replay leaves off).
+    /// </summary>
+    private void InstantAiTick() => RunInstantTick(
+        active: () => !_gameEndedFired && !_session.IsGameOver
+                      && _state.Turns.CurrentPlayer.IsAi,
+        step: AiInstantStep,
+        onExhausted: EndInstantAiBatch,
+        self: InstantAiTick);
+
+    private InstantStep AiInstantStep()
+    {
+        if (_gameEndedFired || _session.IsGameOver) return InstantStep.Exhausted;
+        if (!_state.Turns.CurrentPlayer.IsAi) return InstantStep.Exhausted;
+        // A human-dismissable overlay raised mid-batch: stop so it can
+        // paint; the dismiss handler reschedules InstantAiTick.
+        if (_session.PendingDefeatScreen.HasValue
+            || _session.PendingClaimVictory.HasValue) return InstantStep.Exhausted;
+
+        Color color = _state.Turns.CurrentPlayer.Color;
+        AiAction? action = _aiChooser(_state, color, _aiVisited, _rng);
+        if (action == null || _aiStepsThisPlayer >= MaxAiStepsPerPlayer)
+        {
+            EndCurrentAiPlayerTurnCore(action);
+            if (_gameEndedFired || _session.IsGameOver) return InstantStep.Exhausted;
+            // Next player is human → hand control back; else this AI
+            // turn just completed → repaint it and pace the next.
+            if (!_state.Turns.CurrentPlayer.IsAi) return InstantStep.Exhausted;
+            return InstantStep.TurnBoundary;
+        }
+
+        HexCoord? rc = ApplyAiActionCore(action);
+        if (rc == null) return InstantStep.Continued; // defensive
+        CheckGameEndConditions();
+        if (_gameEndedFired || _session.IsGameOver) return InstantStep.Exhausted;
+        if (_session.PendingDefeatScreen.HasValue) return InstantStep.Exhausted;
+        return InstantStep.Continued;
+    }
+
+    /// <summary>
+    /// Finish action for <see cref="InstantAiTick"/>. Mirrors
+    /// <see cref="EndReplay"/>'s shape (final rebuild + lift silent +
+    /// single paint) plus the live-only mid-batch pause: if a defeat /
+    /// claim-victory overlay is up, lift silent and paint it but DON'T
+    /// rebuild/advance — the dismiss handler resumes the batch.
+    /// </summary>
+    private void EndInstantAiBatch()
+    {
+        if (_session.PendingDefeatScreen.HasValue
+            || _session.PendingClaimVictory.HasValue)
+        {
+            RefreshSilentMode();
+            RefreshViews();
+            return;
+        }
+        // Per-capture rebuilds were suppressed during the batch; do one
+        // final structural rebuild so borders match the post-AI board.
+        _map.RebuildAfterTerritoryChange();
+        // Hands control back to a human (or the game ended): lift silent
+        // + hide the "Opponents…" overlay, then the single end-of-batch
+        // paint the human sees (winner overlay if the game just ended).
+        RefreshSilentMode();
+        ShowHighlightAndRefresh(null);
     }
 
     private void EndReplay()

@@ -168,6 +168,10 @@ public partial class HexMapView : Node2D, IHexMapView
     private readonly Dictionary<HexCoord, Node2D> _treeVisuals = new();
     private readonly Dictionary<HexCoord, Node2D> _graveVisuals = new();
 
+    // Per-tile fill polygon, owned by the view (was HexTile.Visual on the
+    // model). Resynced from _state in RebuildAfterTerritoryChange.
+    private readonly Dictionary<HexCoord, Polygon2D> _tileVisuals = new();
+
     // True except for one refresh after RebuildAfterTerritoryChange,
     // where we want trees and graves to reappear instantly (capture
     // chops removed trees; undo/redo restored a possibly different set
@@ -312,6 +316,7 @@ public partial class HexMapView : Node2D, IHexMapView
         _capitalVisuals.Clear();
         _treeVisuals.Clear();
         _graveVisuals.Clear();
+        _tileVisuals.Clear();
         _pulsingUnits.Clear();
         _pulsingCapitals.Clear();
         _highlightedTerritory = null;
@@ -382,14 +387,17 @@ public partial class HexMapView : Node2D, IHexMapView
         }
 
         // Tiles already exist in _state.Grid (populated by the controller
-        // before AddChild). Create one Polygon2D fill per tile and link
-        // it back to the tile so future recolors stay in sync via the
-        // HexTile.Color setter.
+        // before AddChild). Create one Polygon2D fill per tile, owned by
+        // the view in _tileVisuals. Recolors are NOT pushed by a model
+        // setter — RebuildAfterTerritoryChange resyncs fills from _state
+        // (the coalesced repaint path), so per-action model mutations
+        // during an instant fast-forward don't leak to the screen.
         foreach (HexTile tile in _state.Grid.Tiles)
         {
             Vector2 center = FirstHexCenterOffset + tile.Coord.ToPixel(HexSize);
-            tile.Visual = CreateHexVisual(center, tile.Color);
-            AddChild(tile.Visual);
+            Polygon2D fill = CreateHexVisual(center, tile.Color);
+            _tileVisuals[tile.Coord] = fill;
+            AddChild(fill);
         }
 
         // All per-tile outlines go in one layer drawn after every fill,
@@ -446,6 +454,23 @@ public partial class HexMapView : Node2D, IHexMapView
     /// </summary>
     public void RebuildAfterTerritoryChange()
     {
+        // Resync every tile fill from the model — the single coalesced
+        // repaint path for ownership color (HexTile no longer pushes via
+        // a setter). Under an instant fast-forward the per-capture call
+        // is _suppressMapRebuild-gated and the driver calls this once
+        // per turn / at batch end, so captures no longer recolor
+        // tile-by-tile mid-turn. Must run BEFORE the _silentMode
+        // early-out below — that guard only concerns tree/grave teardown,
+        // and the instant turn-boundary repaint runs with silent still on.
+        foreach (HexTile tile in _state.Grid.Tiles)
+        {
+            if (_tileVisuals.TryGetValue(tile.Coord, out Polygon2D? fill)
+                && fill != null)
+            {
+                fill.Color = tile.Color;
+            }
+        }
+
         ClearLayer(_bordersLayer);
         ClearLayer(_targetsLayer);
         DrawTerritoryBorders();
@@ -975,7 +1000,10 @@ public partial class HexMapView : Node2D, IHexMapView
     /// remain audible because they flow through Refresh, not through
     /// the gated Play* paths.</summary>
     private bool _silentMode;
-    public void SetSilentMode(bool silent) => _silentMode = silent;
+    public void SetSilentMode(bool silent)
+    {
+        _silentMode = silent;
+    }
 
     public void PlayDestructionEffect(HexCoord coord, HexOccupant destroyed)
     {

@@ -36,17 +36,17 @@ off it.
 │      5. Pick views: real HexMapView/HudView, or HeadlessHexMapView/      │
 │         HeadlessHudView when in diagnostic mode                          │
 │      6. Pick pacer: GodotAiPacer (visible delays, scaled by              │
-│         UserSettings.AiSpeedMultiplier) or SynchronousAiPacer            │
+│         UserSettings.SpeedMultiplier) or SynchronousAiPacer             │
 │         (diagnostic — runs inline)                                       │
 │      7. new GameController(state, session, map, hud,                     │
 │           seed: <chosen master seed>,                                    │
 │           aiChooser: AiDispatcher.ChooseForCurrentPlayer,                │
 │           aiPacer:  pacer,                                               │
 │           maxTurnNumber: load ? saved : (diagnostic ? 500 : int.MaxVal), │
-│           aiSilentMode: () => UserSettings.AiSpeed == AiSpeed.Instant,   │
-│           replayIsInstantMode: () => ReplaySpeed.Instant,                │
-│           aiBackgroundRunner: GodotAiBackgroundRunner                    │
-│             (diagnostic uses SynchronousAiBackgroundRunner instead)     │
+│           aiSilentMode: () => !IsReplayMode &&                           │
+│             UserSettings.AiSpeed == PlaybackSpeed.Instant,               │
+│           replayIsInstantMode: () =>                                     │
+│             UserSettings.ReplaySpeed == PlaybackSpeed.Instant)           │
 │      8. Wire save/load + pause coordinator:                              │
 │           • new SaveStore + (non-diagnostic) build the Save +           │
 │             Load dialogs and a shared SettingsPanel.                    │
@@ -300,7 +300,7 @@ off it.
 │                                                                          │
 │   HexCoord (struct, IEquatable, IComparable)                             │
 │   HexGrid — Dictionary<HexCoord, HexTile>                                │
-│   HexTile — Coord, Color, Visual, Occupant                               │
+│   HexTile — Coord, Color, Occupant (pure model — no view ref)            │
 │   HexOccupant (abstract)                                                 │
 │     ├─ Unit — Owner, Level, HasMovedThisTurn                             │
 │     ├─ Capital — marker                                                  │
@@ -344,14 +344,14 @@ off it.
 │                  ReplaySpeed preferences persisted to                    │
 │                  user://settings.json (lazy load, atomic tmp+rename      │
 │                  save); read by AudioBus + HexMapView + GodotAiPacer +   │
-│                  GameController, written by SettingsPanel.               │
-│                  AiSpeedMultiplier converts AiSpeed (Slow/Normal/Fast/   │
-│                  Instant) into a delay scalar (2/1/0.5/0) the pacer      │
-│                  applies per Schedule. ReplaySpeedMultiplier maps        │
-│                  ReplaySpeed Slow/Normal/Fast → 2/1/0.5; Instant → 1     │
-│                  (inert — instant replay runs a separate chunked,        │
-│                  per-turn InstantReplayTick driver, not a pacer          │
-│                  scalar; 0 would trampoline-freeze the main thread).     │
+│                  GameController, written by SettingsPanel. AiSpeed and   │
+│                  ReplaySpeed are two independent settings of one         │
+│                  shared enum PlaybackSpeed {Slow,Normal,Fast,Instant}    │
+│                  (member order is load-bearing — settings persist        │
+│                  numerically). SpeedMultiplier(PlaybackSpeed) → 2/1/0.5  │
+│                  for Slow/Normal/Fast; Instant has NO arm: it routes     │
+│                  to the chunked frame-yielded driver via the pacer's     │
+│                  ScheduleUnscaled (multiplier never consulted).          │
 └──────────────────────────────────────────────────────────────────────────┘
 
 ┌──────────────────────────────────────────────────────────────────────────┐
@@ -383,7 +383,7 @@ off it.
 │                                                                          │
 │   HexMapView also carries a _silentMode flag (toggled by                 │
 │   GameController via IHexMapView.SetSilentMode when an AI player runs   │
-│   under AiSpeed.Instant, OR for the duration of a ReplaySpeed.Instant   │
+│   under PlaybackSpeed.Instant, OR for a ReplaySpeed.Instant             │
 │   fast-forward — RefreshSilentMode ORs in _replayInstantActive so a    │
 │   turn boundary can't un-silence it). A second gate inside PlaySound   │
 │   that drops every per-action cue AND the tree/grave grow/shrink tweens │
@@ -671,39 +671,25 @@ an in-flight `StepAiExecute` can't fire against disposed
 `Polygon2D` nodes after the scene swap.
 
 `GodotAiPacer` additionally takes an optional `Func<float>`
-`delayMultiplier` (`Main` wires `() => UserSettings.AiSpeedMultiplier`).
-The multiplier is read on every `Schedule` call so a mid-game speed
-change takes effect on the next beat — Slow doubles delays, Fast
-halves them, Normal passes through. Instant returns `0`, which the
-pacer interprets as "run inline now": it borrows the same FIFO
-trampoline `SynchronousAiPacer` uses so nested `Schedule` calls
-flatten and `Cancel` mid-drain clears the inline queue. With Instant
-selected, the entire AI batch unwinds within a single
-`OnEndTurnPressed` call — no Godot frame paints between beats. This
-trampoline is for *AI* Instant only: `ReplaySpeedMultiplier` for
-Instant is `1f` (never `0`), so instant *replay* keeps real timer
-ticks and stays frame-yielding — see "Instant replay" above.
-
-**`IAiBackgroundRunner`** — companion to `IAiPacer` that decides
-*where* the chooser runs (the pacer decides *when* the next beat
-fires). Under silent batch the dominant cost is the chooser itself
-(`HeuristicAi.ChooseNextAction` does 1-ply lookahead with state
-cloning); running it inline on the main thread blocks the renderer
-for hundreds of ms per AI on a busy six-AI map. Production
-`GodotAiBackgroundRunner` posts each chooser invocation to
-`Task.Run` and marshals the result back to the main thread via
-`Callable.From(onMain).CallDeferred()` so a Godot frame can paint
-between beats — the visible "Opponents are taking their turns…" HUD
-overlay (drawn in the tutorial-message slot) signals the deliberate
-pause. Tests use `SynchronousAiBackgroundRunner` (calls work() then
-onMain() inline) or `ManualAiBackgroundRunner` (queues, test drives
-delivery via `DrainOne` / `DrainAll`). Cancellation mirrors the
-pacer's generation-counter pattern: `AbandonGame` calls
-`Cancel` on both pacer and runner so an in-flight worker's
-`CallDeferred` can't wake against disposed view nodes.
+`delayMultiplier` (`Main` wires
+`() => IsReplayMode ? SpeedMultiplier(ReplaySpeed) : SpeedMultiplier(AiSpeed)`).
+Read on every `Schedule` call so a mid-game speed change takes effect
+on the next beat — Slow doubles delays, Fast halves them, Normal
+passes through. **Instant is not a multiplier**: it routes to the
+chunked frame-yielded driver (`InstantAiTick` / `InstantReplayTick`,
+see "Instant fast-forward" below) which schedules via the second
+method, `ScheduleUnscaled` — a frame-yielded callback whose delay
+bypasses the multiplier entirely. Both methods share `Cancel`'s
+generation guard via one private `ScheduleTimer` helper; nothing runs
+inline (the old multiplier-0 FIFO trampoline and `_inlineQueue` were
+removed — the chunked driver owns stack depth by returning between
+ticks). `SynchronousAiPacer` drains both methods inline (tests +
+diagnostic). `AbandonGame` / `BeginReplay` call `Cancel` so an
+in-flight tick can't fire against disposed nodes.
 
 ```csharp
-void Schedule(Action callback, int delayMs);
+void Schedule(Action callback, int delayMs);          // multiplier-scaled
+void ScheduleUnscaled(Action callback, int delayMs);  // exact, frame-yielded
 void Cancel();
 ```
 
@@ -732,9 +718,16 @@ public interface ITimerFactory { void After(int delayMs, Action callback); }
   which captures pre-state, runs the body, and pushes one `UndoEntry`
   iff state actually changed — automatic de-dup of no-op clicks.
   Exceptions inside a handler propagate without pushing.
-- **`HexTile.Color` is the single source of truth for tile
-  ownership.** Its setter pushes the new color into the attached
-  `Polygon2D`, so the logical color and rendered fill can't drift.
+- **`HexTile` is a pure model — no view coupling.** `HexTile.Color`
+  is plain state; it does NOT push into a `Polygon2D` (the old
+  setter side-effect + `HexTile.Visual` were removed). The view owns
+  the tile→fill map (`HexMapView._tileVisuals`) and resyncs every
+  fill from `_state` inside `RebuildAfterTerritoryChange()` — the
+  single coalesced repaint path. This is why an instant fast-forward
+  no longer leaks per-action recolors: model captures mutate
+  `tile.Color` with zero view effect; the screen only catches up when
+  the driver calls `RebuildAfterTerritoryChange` (once per turn /
+  at batch end).
 - **Undo is turn-scoped.** `OnEndTurnPressed` clears the stack, so
   ending a turn commits everything.
 - **AI actions are not undoable** (undo gets cleared at end-of-turn
@@ -1042,86 +1035,106 @@ GameController.OnUndoLastPressed
   └─ CenterIfSelectionChanged(...)            // pan to the restored selection
 ```
 
-### AI turn (paced)
+### AI turn
 
-`RunAiTurnsUntilHumanOrDone` sets up a step machine that alternates
-preview and execute beats via `IAiPacer.Schedule`:
+`RunAiTurnsUntilHumanOrDone` resets the per-player AI bookkeeping and
+calls `ScheduleAiTurn` — the single decision point that picks the
+pacing path. Under `PlaybackSpeed.Instant` (`aiSilentMode()` true) it
+schedules the chunked `InstantAiTick` via `ScheduleUnscaled`;
+otherwise it schedules the paced `StepAiPreview` via the
+multiplier-scaled `Schedule`. Once a turn starts on a path it stays
+on it (instant never enters the paced step machine). The overlay-
+resume sites (`OnDefeatContinuePressed`, claim-victory continue →
+`EndTurnNow`) route back through `ScheduleAiTurn` too.
+
+**Paced (Slow/Normal/Fast)** — a preview/execute step machine:
 
 ```
-StepAiPreview:
-  ├─ if InSilentAiBatch():
-  │     ├─ _aiBackgroundRunner.Run(
-  │     │     work: () => aiChooser(state, color, visited, rng),
-  │     │     onMain: a => StepAiPreviewAfterChoose(a, color))
-  │     └─ return  (continuation resumes on main thread)
-  └─ else: StepAiPreviewAfterChoose(aiChooser(…), color)
+StepAiPreview: StepAiPreviewAfterChoose(aiChooser(state,color,visited,rng), color)
 
 StepAiPreviewAfterChoose(action, color):
   ├─ defensive re-checks (game over? player changed? still AI?)
   ├─ if action == null OR step cap reached:
-  │     ├─ EndOfTurnProcessing
-  │     ├─ AdvanceToNextActivePlayer + StartPlayerTurn
-  │     │     (StartPlayerTurn calls RefreshSilentMode → toggles the
-  │     │     view's silent flag for the new player)
-  │     ├─ HighlightDuringBeat(null) + RefreshDuringBeat
-  │     │     (no-op while still handing off AI → AI in a silent
-  │     │      batch; becomes the end-of-batch refresh when the new
-  │     │      player is human)
+  │     ├─ EndCurrentAiPlayerTurnCore(action)   ── shared mutation core
+  │     │     (EndOfTurnProcessing; advance + StartPlayerTurn;
+  │     │      reset _aiVisited/_aiStepsThisPlayer/_pendingAiAction)
+  │     ├─ ShowHighlightAndRefresh(null)
   │     └─ if next is AI: schedule next StepAiPreview
   ├─ _pendingAiAction = action
-  ├─ HighlightDuringBeat(acting territory) + RefreshDuringBeat
+  ├─ ShowHighlightAndRefresh(acting territory)
   └─ schedule StepAiExecute after AiPreviewDelayMs
 
 StepAiExecute:
-  ├─ run ExecuteAiMove / ExecuteAiBuyUnit / ExecuteAiBuildTower
-  │     (each validates preconditions; throws on illegal action;
-  │     calls _map.Play* — silent mode no-ops these in the view)
-  ├─ HighlightDuringBeat(resulting territory) + RefreshDuringBeat
-  ├─ if PendingDefeatScreen: lift silent (overlay needs to paint and
-  │     OnDefeatContinuePressed needs to dispatch), RefreshSilentMode +
-  │     RefreshViews, return without scheduling next. The dismissal
-  │     handler re-arms silent mode and schedules the next preview.
+  ├─ ApplyAiActionCore(action)   ── shared mutation core: record beat
+  │     (live only) + ExecuteAiMove/BuyUnit/BuildTower/… ; returns
+  │     result coord (null = unrecognised → defensive return)
+  ├─ CheckGameEndConditions; ShowHighlightAndRefresh(resulting terr.)
+  ├─ if PendingDefeatScreen: RefreshSilentMode + RefreshViews, return
+  │     without scheduling — dismissal handler resumes via ScheduleAiTurn
   └─ schedule next StepAiPreview after AiActionDelayMs
 ```
 
+**Instant fast-forward (shared driver).** Live AI Instant and
+instant replay share one chunked, frame-yielded loop,
+`RunInstantTick(active, step, onExhausted, self)`:
+
+```
+RunInstantTick:
+  ├─ _suppressMapRebuild = true
+  ├─ loop step():  Continued → keep draining
+  │                TurnBoundary → break (a turn just completed)
+  │                Exhausted → _suppressMapRebuild=false; onExhausted()
+  │                budget (InstantBudgetMs, 8 ms) → break, no repaint
+  ├─ _suppressMapRebuild = false
+  ├─ if turnBoundary: _map.RebuildAfterTerritoryChange + RefreshViews
+  └─ _aiPacer.ScheduleUnscaled(self,
+        turnBoundary ? InstantTurnDelayMs (200 ms) : 0)
+```
+
+Two thin wrappers feed it:
+
+- **`InstantReplayTick`** — `step` = `ReplayInstantStep` (pop a beat,
+  `ExecuteReplayBeat`, game-end check; `TurnBoundary` on
+  `ReplayEndTurnBeat`); `onExhausted` = `EndReplay`.
+- **`InstantAiTick`** — `step` = `AiInstantStep` (call the chooser;
+  `ApplyAiActionCore` or, on null/step-cap, `EndCurrentAiPlayerTurnCore`;
+  `TurnBoundary` when an AI turn completes and the next player is also
+  AI; `Exhausted` on game-over, hand-back to a human, or a pending
+  defeat/claim overlay); `onExhausted` = `EndInstantAiBatch` (final
+  rebuild + lift silent + one paint; or, if an overlay is pending,
+  lift silent + RefreshViews and let the dismiss handler resume).
+
+The chooser cost is paid inline within the 8 ms budget; the driver
+yields a real frame between ticks (`ScheduleUnscaled` → timer, not
+inline) so pan/zoom/input stay live. Per-capture
+`HandleCapture.RebuildAfterTerritoryChange` is `_suppressMapRebuild`-
+gated, so the structural redraw + tile-fill resync is coalesced to
+the driver's turn-boundary / batch-end repaint — captures no longer
+recolor tile-by-tile (the `HexTile` purity invariant above is what
+makes this hold). Live AI Instant is thus 1:1 with instant replay,
+with one deliberate difference: the "Opponents are taking their
+turns…" overlay stays for live play (driven by `RefreshSilentMode`),
+which replay leaves off. `ApplyAiActionCore` / `EndCurrentAiPlayerTurnCore`
+are shared with the paced path so the two can't drift (pinned by
+`InstantAiTests.InstantAi_SameBeatsAndFinalStateAsPaced`).
+
 `InSilentAiBatch()` =
-`aiSilentMode() && currentPlayer.IsAi && !PendingDefeatScreen`. The
-`aiSilentMode` func is injected (production wires
-`() => UserSettings.AiSpeed == AiSpeed.Instant`, gated on
-`!IsReplayMode` so a replay never accidentally enters silent mode
-through this predicate). Silent mode does three things in lockstep:
+`aiSilentMode() && currentPlayer.IsAi && !PendingDefeatScreen`
+(`aiSilentMode` = `!IsReplayMode && AiSpeed == PlaybackSpeed.Instant`).
+It no longer gates rendering (the driver owns coalescing); it remains
+the **input gate** and drives the "Opponents…" overlay. Every
+top-level human input handler (`TrackHandler`-wrapped click/key
+handlers, plus `OnEndTurnPressed`, `OnUndo*`, `OnRedo*`,
+`OnDefeatContinuePressed`, `OnClaimVictory*`) short-circuits on it so
+input can't mutate `SessionState` between the driver's frame yields.
+`PendingDefeatScreen.HasValue` flips it false mid-batch so the
+overlay paints and `OnDefeatContinuePressed` can dispatch; the
+dismiss handler resumes via `ScheduleAiTurn`. Game-end branches
+ignore the silent flag and always refresh.
 
-1. **Pacer**: `GodotAiPacer`'s `delayMultiplier` returns 0 so the
-   whole chain runs inline via the FIFO trampoline.
-2. **Background runner**: each chooser invocation hops to a worker
-   thread and resumes via `CallDeferred`, so the renderer keeps
-   painting and the "Opponents are taking their turns…" overlay is
-   visible during the wait.
-3. **Controller + view**: GameController skips per-beat
-   `ShowHighlight`/`RefreshViews` calls and the view drops per-action
-   `Play*` + tween-spawning + `RebuildAfterTerritoryChange` work.
-   The single `RefreshViews` that happens once control returns to a
-   human is what the human sees.
-
-Defeat-overlay handoff: `PendingDefeatScreen.HasValue` flips
-`InSilentAiBatch()` to false mid-batch so the view's silent flag
-lifts, the input gate unblocks `OnDefeatContinuePressed`, and the
-HUD's defeat panel renders. Once the human dismisses, the handler
-clears the flag, calls `RefreshSilentMode` to re-enter silent mode,
-and schedules the next preview to resume the batch.
-
-Input gating: every top-level human input handler (`TrackHandler`-
-wrapped click/key handlers, plus `OnEndTurnPressed`, `OnUndo*`,
-`OnRedo*`, `OnDefeatContinuePressed`, `OnClaimVictory*`) short-
-circuits on `InSilentAiBatch()`. Without it a Tab press or tile
-click on the main thread between worker yields would mutate
-`SessionState` behind the chooser's back.
-
-Game-end branches (game over, `_gameEndedFired`) ignore the silent
-flag and always refresh — the victory UI must surface even mid-
-batch.
-
-Tests use `SynchronousAiPacer` so the whole AI chain runs inline.
+Tests use `SynchronousAiPacer` (both `Schedule` and `ScheduleUnscaled`
+drain inline) or `QueuedAiPacer` (`DrainAll`) to step the driver
+deterministically.
 
 ### Replay turn (paced)
 
@@ -1140,8 +1153,8 @@ BeginReplay (public, called from victory-overlay Replay button):
   │     .ReplaySpeed == Instant; injected by Main)
   ├─ if instant: _map.SetSilentMode(true)  (sound/VFX/tweens off)
   ├─ map.RebuildAfterTerritoryChange + overlay clears + RefreshViews
-  └─ schedule InstantReplayTick (instant) else StepReplayPreview
-       after AiBetweenPlayersDelayMs
+  └─ if instant: ScheduleUnscaled(InstantReplayTick, 0)
+       else schedule StepReplayPreview after AiBetweenPlayersDelayMs
 
 StepReplayPreview:
   ├─ if _replayIndex >= _replayBeats.Count → EndReplay
@@ -1176,42 +1189,34 @@ StepReplayExecute:
        AiBetweenPlayersDelayMs (if beat was EndTurn) else AiActionDelayMs
 ```
 
-**Instant replay (`ReplaySpeed.Instant`).** A separate driver that
-trades the paced preview/execute cadence for a fast, silent
-fast-forward. `BeginReplay` branches to `InstantReplayTick` instead
-of `StepReplayPreview`:
+**Instant replay (`ReplaySpeed.Instant`).** `BeginReplay` schedules
+`InstantReplayTick` via `ScheduleUnscaled` — the thin replay wrapper
+over the shared `RunInstantTick` driver documented under "Instant
+fast-forward" above (`ReplayInstantStep` drains beats and reports
+`TurnBoundary` on each `ReplayEndTurnBeat`; `onExhausted` = `EndReplay`).
+It trades the paced preview/execute cadence for a silent, per-turn-
+sampled fast-forward.
 
-```
-InstantReplayTick:
-  ├─ _suppressMapRebuild = true
-  ├─ drain beats (ExecuteReplayBeat + CheckGameEndConditions),
-  │     stopping at the first ReplayEndTurnBeat (a turn boundary),
-  │     game-over, or InstantReplayBudgetMs (8 ms) wall-clock
-  ├─ _suppressMapRebuild = false
-  ├─ if all beats consumed / game over → EndReplay
-  ├─ if a turn just completed → _map.RebuildAfterTerritoryChange
-  │     + RefreshViews  (ONE structural repaint per player-turn)
-  └─ reschedule self after InstantReplayTurnDelayMs (200 ms) if a
-       turn was drawn, else 0 (a mid-turn budget yield keeps input/
-       camera live but paints nothing)
-```
-
-Why a distinct path: instant replay must NOT use the pacer's
-multiplier-0 trampoline (that drains every beat inline on the main
-thread — frozen UI for a whole game, the original "hang"). Instead
-`ReplaySpeedMultiplier` for Instant is `1f` and `InstantReplayTick`
-yields a real timer/frame each tick, so pan/zoom and input stay
-responsive throughout. The dominant per-beat view cost —
-`HandleCapture`'s full-map `RebuildAfterTerritoryChange`
-(`DrawTerritoryBorders` re-tessellates every tile, NOT silent-gated)
-— is suppressed via `_suppressMapRebuild` and coalesced into one
-rebuild + refresh per player-turn (the user-visible sampling
-cadence). `RefreshSilentMode` ORs in `_replayInstantActive` so a
-`ReplayEndTurnBeat` → `StartPlayerTurn` can't un-silence playback
-mid-stream; `EndReplay` lifts silent mode and does one final
-`RebuildAfterTerritoryChange` (per-capture ones were skipped) before
-the closing refresh. Fidelity is identical to paced replay — the
-model-mutation order is unchanged; only view work is deferred.
+Why not the multiplier: a zero multiplier would (historically) have
+trampolined the pacer and frozen the main thread for the whole
+recording — the original "hang". That inline path is gone entirely.
+Instant instead bypasses the multiplier via `ScheduleUnscaled`
+(`SpeedMultiplier` has no Instant arm) and yields a real timer/frame
+each tick, so pan/zoom and input stay responsive. The dominant
+per-beat view cost — `HandleCapture`'s full-map
+`RebuildAfterTerritoryChange` (`DrawTerritoryBorders` re-tessellates
+every tile **and** resyncs every tile fill) — is suppressed via
+`_suppressMapRebuild` and coalesced into one rebuild + refresh per
+player-turn (`InstantBudgetMs` 8 ms wall-clock per tick;
+`InstantTurnDelayMs` 200 ms between turn repaints). `RefreshSilentMode`
+ORs in `_replayInstantActive` so a `ReplayEndTurnBeat` →
+`StartPlayerTurn` can't un-silence playback mid-stream; `EndReplay`
+lifts silent mode and does one final `RebuildAfterTerritoryChange`
+(per-capture ones were skipped) before the closing refresh. Fidelity
+is identical to paced replay — the model-mutation order is unchanged;
+only view work is deferred. Live AI Instant uses the *same*
+`RunInstantTick` driver (wrapper `InstantAiTick`), so the two instant
+experiences are 1:1 by construction.
 
 Replay reuses the live `ExecuteAi*` helpers — same captures, same
 FX, same `HandleCapture` reconciliation — so replay fidelity comes
@@ -1450,12 +1455,13 @@ SFX/VFX `CheckBox` rows + AI Turn Speed and Replay Speed radio rows
 + Back button) is the single Settings UI for both the main menu and
 the in-game pause flow. SFX/VFX toggles bind directly to
 `UserSettings.SfxEnabled` / `UserSettings.VfxEnabled` via `Toggled`.
-The AI Turn Speed row is four `Button`s
-(`Slow`/`Normal`/`Fast`/`Instant`) in `ToggleMode` sharing a
-`ButtonGroup` (radio semantics) and writes to `UserSettings.AiSpeed`
-from each `Pressed` handler. The Replay Speed row has three buttons
-(`Slow`/`Normal`/`Fast` — no Instant; watching a recording is the
-point of replay) and writes to `UserSettings.ReplaySpeed`. Godot's
+Both speed rows are four `Button`s over the shared
+`PlaybackSpeed` enum (`Slow`/`Normal`/`Fast`/`Instant`, one
+`SpeedOrder` array + one `SpeedLabel`) in `ToggleMode` sharing a
+`ButtonGroup` (radio semantics). The AI Turn Speed row's `Pressed`
+handler writes `UserSettings.AiSpeed`; the Replay Speed row's writes
+`UserSettings.ReplaySpeed` — two independent settings of the same
+type. Godot's
 default toggle visuals are subtle, so `ApplySpeedButtonStyle` paints
 a solid white + dark-text stylebox on the pressed button and a dim
 dark-background + light-text stylebox on the others; `Toggled` fires
@@ -2163,31 +2169,26 @@ scripts/
 ├─ UserSettings.cs        ─ static class; SfxEnabled / VfxEnabled /
 │                           AiSpeed / ReplaySpeed preferences persisted
 │                           to user://settings.json (lazy load, atomic
-│                           tmp+rename save). AiSpeedMultiplier and
-│                           ReplaySpeedMultiplier map their enums to
-│                           the GodotAiPacer scalar (ReplaySpeed caps
-│                           at Fast — no Instant for replays).
+│                           tmp+rename save). AiSpeed/ReplaySpeed are
+│                           two settings of one shared PlaybackSpeed
+│                           enum (numeric-persisted; order fixed).
+│                           SpeedMultiplier maps Slow/Normal/Fast →
+│                           2/1/0.5; Instant has no arm (chunked
+│                           driver via ScheduleUnscaled instead).
 │
-├─ AiPacer.cs             ─ IAiPacer + SynchronousAiPacer +
-│                           ITimerFactory abstraction
+├─ AiPacer.cs             ─ IAiPacer (Schedule + ScheduleUnscaled +
+│                           Cancel) + SynchronousAiPacer (drains both
+│                           inline) + ITimerFactory abstraction
 ├─ GodotAiPacer.cs        ─ Default production pacer; uses
 │                           ITimerFactory + generation counter for
 │                           Cancel-then-reuse safety (testable via
-│                           ManualTimerFactory). Optional
-│                           Func<float> delayMultiplier scales every
-│                           delay (Slow/Normal/Fast); a multiplier of
-│                           0 (Instant) drops into a FIFO trampoline
-│                           that runs callbacks inline.
-├─ AiBackgroundRunner.cs  ─ IAiBackgroundRunner + Synchronous-
-│                           AiBackgroundRunner (default for tests +
-│                           diagnostic mode). Decides where the chooser
-│                           runs; pairs with IAiPacer which decides
-│                           when the next beat fires.
-├─ GodotAiBackgroundRunner.cs ─ Production runner; Task.Run worker +
-│                           Callable.CallDeferred to marshal the
-│                           continuation back to the main thread.
-│                           Generation counter mirrors GodotAiPacer's
-│                           Cancel-then-reuse contract (test-excluded).
+│                           ManualTimerFactory). One ScheduleTimer
+│                           helper: Schedule scales by the optional
+│                           Func<float> delayMultiplier (Slow/Normal/
+│                           Fast); ScheduleUnscaled passes the delay
+│                           through. Always frame-yields — no inline
+│                           trampoline (the chunked driver owns stack
+│                           depth by returning between ticks).
 ├─ SceneTreeTimerFactory.cs ─ Production ITimerFactory wrapping
 │                           SceneTree.CreateTimer (test-excluded).
 │                           Passes processAlways: false so AI pacing
@@ -2278,7 +2279,8 @@ scripts/
 │
 ├─ HexCoord.cs            ─ model primitives
 ├─ HexGrid.cs             ─
-├─ HexTile.cs             ─
+├─ HexTile.cs             ─ pure model: Coord, Color, Occupant (no
+│                           Godot/view ref — fills owned by HexMapView)
 ├─ HexOccupant.cs         ─
 ├─ Unit.cs                ─ + UnitLevel + UnitLevelExtensions
 ├─ Capital.cs             ─

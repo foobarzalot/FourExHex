@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 
 /// <summary>
 /// Default production <see cref="IAiPacer"/>. Schedules each step
@@ -26,19 +25,19 @@ using System.Collections.Generic;
 /// Delay scaling: the optional <c>delayMultiplier</c> ctor parameter
 /// (consulted on every <see cref="Schedule"/> call so mid-game speed
 /// changes take effect immediately) scales the requested delay before
-/// it's handed to the timer factory. A multiplier of <c>0</c> switches
-/// into a trampoline mode that mirrors <see cref="SynchronousAiPacer"/>:
-/// the callback runs inline and any callbacks it itself schedules
-/// drain in the same loop instead of recursing. Without the trampoline
-/// a busy six-AI Instant run would overflow the stack.
+/// it's handed to the timer factory — Slow=2x, Normal=1x, Fast=0.5x.
+/// "Instant" is NOT a multiplier: the controller routes it to a
+/// chunked frame-yielded driver that schedules via
+/// <see cref="ScheduleUnscaled"/>, whose delays bypass the multiplier
+/// entirely. Every path here frame-yields through the timer factory;
+/// nothing runs inline (the chunked driver owns stack depth by
+/// returning between ticks, so no trampoline is needed).
 /// </para>
 /// </summary>
 public sealed class GodotAiPacer : IAiPacer
 {
     private readonly ITimerFactory _timers;
     private readonly Func<float> _delayMultiplier;
-    private readonly Queue<Action> _inlineQueue = new();
-    private bool _draining;
     private int _generation;
 
     public GodotAiPacer(ITimerFactory timers, Func<float>? delayMultiplier = null)
@@ -47,43 +46,24 @@ public sealed class GodotAiPacer : IAiPacer
         _delayMultiplier = delayMultiplier ?? (() => 1f);
     }
 
-    public void Schedule(Action callback, int delayMs)
-    {
-        float mult = _delayMultiplier();
-        if (mult <= 0f)
-        {
-            // Instant: run inline via the same trampoline shape
-            // SynchronousAiPacer uses. Cancel() during draining drops
-            // anything still queued.
-            _inlineQueue.Enqueue(callback);
-            if (_draining) return;
-            _draining = true;
-            try
-            {
-                while (_inlineQueue.Count > 0) _inlineQueue.Dequeue()();
-            }
-            finally
-            {
-                _draining = false;
-            }
-            return;
-        }
+    public void Schedule(Action callback, int delayMs) =>
+        ScheduleTimer((int)(delayMs * _delayMultiplier()), callback);
 
-        int scaledDelay = (int)(delayMs * mult);
+    public void ScheduleUnscaled(Action callback, int delayMs) =>
+        ScheduleTimer(delayMs, callback);
+
+    private void ScheduleTimer(int delay, Action callback)
+    {
         int scheduledGen = _generation;
         // A timer in flight when Cancel() runs sees its captured
-        // generation no longer matches and no-ops, so a stale callback
-        // can't reach the GameController. New Schedule calls after
-        // Cancel use the bumped generation and fire normally.
-        _timers.After(scaledDelay, () =>
+        // generation no longer match and no-ops, so a stale callback
+        // can't reach the GameController. New schedules after Cancel
+        // use the bumped generation and fire normally.
+        _timers.After(delay, () =>
         {
             if (scheduledGen == _generation) callback();
         });
     }
 
-    public void Cancel()
-    {
-        _generation++;
-        _inlineQueue.Clear();
-    }
+    public void Cancel() => _generation++;
 }

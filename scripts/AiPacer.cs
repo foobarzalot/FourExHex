@@ -21,6 +21,17 @@ public interface IAiPacer
     void Schedule(Action callback, int delayMs);
 
     /// <summary>
+    /// Like <see cref="Schedule"/> but the delay is NOT scaled by the
+    /// speed multiplier. For driver-owned cadences (the instant
+    /// fast-forward tick) whose delays are exact by construction (0
+    /// between budget-yields, a fixed per-turn delay at boundaries).
+    /// Must still frame-yield (never run inline) and must honour the
+    /// same <see cref="Cancel"/> generation guard so a queued tick is
+    /// dropped on <c>AbandonGame</c> / <c>BeginReplay</c>.
+    /// </summary>
+    void ScheduleUnscaled(Action callback, int delayMs);
+
+    /// <summary>
     /// Drop any pending callbacks: timers already in flight at the
     /// moment of the call must not invoke their callbacks. Subsequent
     /// <see cref="Schedule"/> calls, however, MUST fire normally —
@@ -58,7 +69,11 @@ public sealed class SynchronousAiPacer : IAiPacer
     private readonly Queue<Action> _queue = new();
     private bool _draining;
 
-    public void Schedule(Action callback, int delayMs)
+    public void Schedule(Action callback, int delayMs) => Drain(callback);
+
+    public void ScheduleUnscaled(Action callback, int delayMs) => Drain(callback);
+
+    private void Drain(Action callback)
     {
         _queue.Enqueue(callback);
         if (_draining) return;

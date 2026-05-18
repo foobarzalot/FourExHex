@@ -18,6 +18,8 @@ public sealed class QueuedAiPacer : IAiPacer
 
     public void Schedule(Action callback, int delayMs) => _queue.Enqueue(callback);
 
+    public void ScheduleUnscaled(Action callback, int delayMs) => _queue.Enqueue(callback);
+
     public void Cancel() => _queue.Clear();
 
     /// <summary>True iff there's at least one pending callback.</summary>

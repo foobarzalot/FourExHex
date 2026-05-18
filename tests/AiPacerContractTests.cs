@@ -146,11 +146,12 @@ public class AiPacerContractTests
         Assert.Equal(0, fired);
     }
 
-    // --- Delay multiplier (AI Speed setting) ----------------------------
-    // The UserSettings.AiSpeed setting feeds a Func<float> multiplier
-    // into GodotAiPacer. Slow=2x, Normal=1x, Fast=0.5x, Instant=0
-    // (run inline). These tests pin that contract independently of
-    // the UserSettings layer, which is Godot-test-excluded.
+    // --- Delay multiplier (Slow/Normal/Fast pacing) ---------------------
+    // UserSettings feeds a Func<float> multiplier into GodotAiPacer:
+    // Slow=2x, Normal=1x, Fast=0.5x. Instant is NOT a multiplier — it
+    // routes to the chunked frame-yielded driver via ScheduleUnscaled
+    // (see the ScheduleUnscaled tests below). These pin the scaling
+    // contract independently of UserSettings (Godot-test-excluded).
 
     [Fact]
     public void GodotAiPacer_DefaultMultiplier_PassesDelayUnchanged()
@@ -200,62 +201,92 @@ public class AiPacerContractTests
         Assert.Equal(new[] { 300, 600 }, timers.ReceivedDelays);
     }
 
+    // --- ScheduleUnscaled (instant fast-forward driver path) ------------
+    // The chunked instant driver owns its own cadence and passes exact
+    // delays. ScheduleUnscaled must (a) frame-yield like Schedule —
+    // never run inline, even at the multiplier value that used to
+    // trampoline — (b) NOT scale the delay, and (c) honour the same
+    // Cancel generation guard.
+
     [Fact]
-    public void GodotAiPacer_MultiplierZero_FiresInlineWithoutTimer()
+    public void GodotAiPacer_ScheduleUnscaled_FrameYields_NotInline()
     {
-        // "Instant" preset: callback runs synchronously, never reaches
-        // the timer factory. The full AI batch then collapses into one
-        // frame (no animations or sounds get a chance to spawn between
-        // callbacks).
+        // Even at multiplier 0 (the value that previously trampolined
+        // Schedule), ScheduleUnscaled must defer to the timer factory,
+        // not run inline — that responsiveness is the whole point.
         var timers = new ManualTimerFactory();
         var pacer = new GodotAiPacer(timers, () => 0f);
         int fired = 0;
-        pacer.Schedule(() => fired++, 300);
+        pacer.ScheduleUnscaled(() => fired++, 200);
+        Assert.Equal(0, fired);              // not inline
+        Assert.Equal(1, timers.PendingCount);
+        timers.FireAll();
         Assert.Equal(1, fired);
-        Assert.Equal(0, timers.PendingCount);
-        Assert.Empty(timers.ReceivedDelays);
     }
 
     [Fact]
-    public void GodotAiPacer_MultiplierZero_TrampolinesNestedSchedules()
+    public void GodotAiPacer_ScheduleUnscaled_DoesNotScaleDelay()
     {
-        // Mirrors SynchronousAiPacer's trampoline contract: a callback
-        // that schedules another callback must not grow the call stack.
-        // Without this, a long chain of AI steps in Instant mode could
-        // stack-overflow on busy six-AI maps.
+        // The driver's 200ms turn cadence must survive regardless of
+        // the speed multiplier — ScheduleUnscaled passes delays through
+        // untouched (200, not 400 under a 2x multiplier).
         var timers = new ManualTimerFactory();
-        var pacer = new GodotAiPacer(timers, () => 0f);
-        int depth = 0;
-        const int totalSteps = 1000;
-        Action? next = null;
-        next = () =>
-        {
-            depth++;
-            if (depth < totalSteps) pacer.Schedule(next!, 100);
-        };
-        pacer.Schedule(next, 100);
-        Assert.Equal(totalSteps, depth);
-        Assert.Equal(0, timers.PendingCount);
+        var pacer = new GodotAiPacer(timers, () => 2f);
+        pacer.ScheduleUnscaled(() => { }, 200);
+        pacer.ScheduleUnscaled(() => { }, 0);
+        Assert.Equal(new[] { 200, 0 }, timers.ReceivedDelays);
     }
 
     [Fact]
-    public void GodotAiPacer_MultiplierZero_CancelClearsInlineQueue()
+    public void GodotAiPacer_ScheduleUnscaled_CancelledStraggler_DoesNotFire()
     {
-        // Cancel called from inside an inline callback must drop
-        // anything that callback (or earlier callbacks in the same
-        // drain) had already enqueued — matches AbandonGame semantics
-        // for the existing async path.
+        // Cancellation half of the contract: an unscaled callback in
+        // flight when Cancel runs must not fire (AbandonGame/BeginReplay).
         var timers = new ManualTimerFactory();
-        var pacer = new GodotAiPacer(timers, () => 0f);
-        int firedAfterCancel = 0;
-        bool cancellingCallbackRan = false;
-        pacer.Schedule(() =>
-        {
-            cancellingCallbackRan = true;
-            pacer.Schedule(() => firedAfterCancel++, 100);
-            pacer.Cancel();
-        }, 100);
-        Assert.True(cancellingCallbackRan);
-        Assert.Equal(0, firedAfterCancel);
+        var pacer = new GodotAiPacer(timers, () => 1f);
+        int fired = 0;
+        pacer.ScheduleUnscaled(() => fired++, 50);
+        pacer.Cancel();
+        timers.FireAll();
+        Assert.Equal(0, fired);
+    }
+
+    [Fact]
+    public void GodotAiPacer_ScheduleUnscaled_AfterCancel_NewScheduleFires()
+    {
+        // Survives Cancel-then-reuse, like Schedule: BeginReplay cancels
+        // stragglers then ScheduleUnscaled(InstantReplayTick).
+        var timers = new ManualTimerFactory();
+        var pacer = new GodotAiPacer(timers, () => 1f);
+        bool staleFired = false;
+        pacer.ScheduleUnscaled(() => staleFired = true, 50);
+        pacer.Cancel();
+        int freshFired = 0;
+        pacer.ScheduleUnscaled(() => freshFired++, 50);
+        timers.FireAll();
+        Assert.False(staleFired, "Cancelled stale callback must not fire");
+        Assert.Equal(1, freshFired);
+    }
+
+    [Fact]
+    public void Synchronous_ScheduleUnscaled_RunsInline()
+    {
+        // The synchronous test pacer drains ScheduleUnscaled inline,
+        // same as Schedule, so DrainAll-style tests of the instant
+        // driver work without a real clock.
+        var pacer = new SynchronousAiPacer();
+        int fired = 0;
+        pacer.ScheduleUnscaled(() => fired++, 200);
+        Assert.Equal(1, fired);
+    }
+
+    [Fact]
+    public void Synchronous_ScheduleUnscaled_AfterCancel_StillFires()
+    {
+        var pacer = new SynchronousAiPacer();
+        pacer.Cancel();
+        int fired = 0;
+        pacer.ScheduleUnscaled(() => fired++, 0);
+        Assert.Equal(1, fired);
     }
 }

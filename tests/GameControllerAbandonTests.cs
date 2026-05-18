@@ -19,6 +19,7 @@ public class GameControllerAbandonTests
         private readonly Queue<Action> _pending = new();
         public int PendingCount => _pending.Count;
         public void Schedule(Action callback, int delayMs) => _pending.Enqueue(callback);
+        public void ScheduleUnscaled(Action callback, int delayMs) => _pending.Enqueue(callback);
         public void Cancel() => _pending.Clear();
     }
 

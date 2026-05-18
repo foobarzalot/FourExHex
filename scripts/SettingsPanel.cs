@@ -24,18 +24,12 @@ public sealed partial class SettingsPanel : CanvasLayer
     private CheckBox _sfxCheckBox = null!;
     private CheckBox _vfxCheckBox = null!;
 
-    // Radio-style buttons for the AiSpeed setting. Parallel to
-    // AiSpeedOrder below so Open() can re-sync the pressed state from
-    // UserSettings without manually mapping enum cases.
-    private static readonly AiSpeed[] AiSpeedOrder =
-        { AiSpeed.Slow, AiSpeed.Normal, AiSpeed.Fast, AiSpeed.Instant };
+    // Display order for both speed radio rows (AI Turn Speed and Replay
+    // Speed are independent settings but share the preset list). Open()
+    // re-syncs each row's pressed state from UserSettings against this.
+    private static readonly PlaybackSpeed[] SpeedOrder =
+        { PlaybackSpeed.Slow, PlaybackSpeed.Normal, PlaybackSpeed.Fast, PlaybackSpeed.Instant };
     private Button[] _aiSpeedButtons = null!;
-
-    // Replay playback speed; separate from AiSpeed. Instant here is a
-    // silent fast-forward (chunked frame-yielded driver in the
-    // controller), not a zero delay — see ReplaySpeed/InstantReplayTick.
-    private static readonly ReplaySpeed[] ReplaySpeedOrder =
-        { ReplaySpeed.Slow, ReplaySpeed.Normal, ReplaySpeed.Fast, ReplaySpeed.Instant };
     private Button[] _replaySpeedButtons = null!;
 
     public override void _Ready()
@@ -122,19 +116,19 @@ public sealed partial class SettingsPanel : CanvasLayer
 
         // Shared ButtonGroup turns the four toggles into a radio set:
         // pressing one un-presses the others. Each button captures its
-        // own AiSpeed via the closure so the handler doesn't need to
-        // parse the label back into an enum. Godot's default toggle
+        // own PlaybackSpeed via the closure so the handler doesn't need
+        // to parse the label back into an enum. Godot's default toggle
         // visuals are subtle (a slight shading shift); we paint our
         // own selected/unselected stylebox so the active speed is
         // obvious at a glance.
         var aiSpeedRow = new HBoxContainer();
         aiSpeedRow.AddThemeConstantOverride("separation", 8);
         var aiSpeedGroup = new ButtonGroup();
-        AiSpeed currentSpeed = UserSettings.AiSpeed;
-        _aiSpeedButtons = new Button[AiSpeedOrder.Length];
-        for (int i = 0; i < AiSpeedOrder.Length; i++)
+        PlaybackSpeed currentSpeed = UserSettings.AiSpeed;
+        _aiSpeedButtons = new Button[SpeedOrder.Length];
+        for (int i = 0; i < SpeedOrder.Length; i++)
         {
-            AiSpeed speed = AiSpeedOrder[i];
+            PlaybackSpeed speed = SpeedOrder[i];
             var btn = new Button
             {
                 Text = SpeedLabel(speed),
@@ -165,14 +159,14 @@ public sealed partial class SettingsPanel : CanvasLayer
         var replaySpeedRow = new HBoxContainer();
         replaySpeedRow.AddThemeConstantOverride("separation", 8);
         var replaySpeedGroup = new ButtonGroup();
-        ReplaySpeed currentReplaySpeed = UserSettings.ReplaySpeed;
-        _replaySpeedButtons = new Button[ReplaySpeedOrder.Length];
-        for (int i = 0; i < ReplaySpeedOrder.Length; i++)
+        PlaybackSpeed currentReplaySpeed = UserSettings.ReplaySpeed;
+        _replaySpeedButtons = new Button[SpeedOrder.Length];
+        for (int i = 0; i < SpeedOrder.Length; i++)
         {
-            ReplaySpeed speed = ReplaySpeedOrder[i];
+            PlaybackSpeed speed = SpeedOrder[i];
             var btn = new Button
             {
-                Text = ReplaySpeedLabel(speed),
+                Text = SpeedLabel(speed),
                 ToggleMode = true,
                 ButtonGroup = replaySpeedGroup,
                 ButtonPressed = speed == currentReplaySpeed,
@@ -208,21 +202,21 @@ public sealed partial class SettingsPanel : CanvasLayer
         if (IsOpen) return;
         _sfxCheckBox.ButtonPressed = UserSettings.SfxEnabled;
         _vfxCheckBox.ButtonPressed = UserSettings.VfxEnabled;
-        AiSpeed currentSpeed = UserSettings.AiSpeed;
-        for (int i = 0; i < AiSpeedOrder.Length; i++)
+        PlaybackSpeed currentSpeed = UserSettings.AiSpeed;
+        for (int i = 0; i < SpeedOrder.Length; i++)
         {
             Button btn = _aiSpeedButtons[i];
-            bool pressed = AiSpeedOrder[i] == currentSpeed;
+            bool pressed = SpeedOrder[i] == currentSpeed;
             btn.ButtonPressed = pressed;
             // Setting ButtonPressed programmatically does NOT raise
             // Toggled, so refresh the stylebox by hand.
             ApplySpeedButtonStyle(btn, pressed);
         }
-        ReplaySpeed currentReplaySpeed = UserSettings.ReplaySpeed;
-        for (int i = 0; i < ReplaySpeedOrder.Length; i++)
+        PlaybackSpeed currentReplaySpeed = UserSettings.ReplaySpeed;
+        for (int i = 0; i < SpeedOrder.Length; i++)
         {
             Button btn = _replaySpeedButtons[i];
-            bool pressed = ReplaySpeedOrder[i] == currentReplaySpeed;
+            bool pressed = SpeedOrder[i] == currentReplaySpeed;
             btn.ButtonPressed = pressed;
             ApplySpeedButtonStyle(btn, pressed);
         }
@@ -257,31 +251,22 @@ public sealed partial class SettingsPanel : CanvasLayer
         UserSettings.VfxEnabled = pressed;
     }
 
-    private void OnAiSpeedPressed(AiSpeed speed)
+    private void OnAiSpeedPressed(PlaybackSpeed speed)
     {
         UserSettings.AiSpeed = speed;
     }
 
-    private void OnReplaySpeedPressed(ReplaySpeed speed)
+    private void OnReplaySpeedPressed(PlaybackSpeed speed)
     {
         UserSettings.ReplaySpeed = speed;
     }
 
-    private static string SpeedLabel(AiSpeed speed) => speed switch
+    private static string SpeedLabel(PlaybackSpeed speed) => speed switch
     {
-        AiSpeed.Slow => "Slow",
-        AiSpeed.Normal => "Normal",
-        AiSpeed.Fast => "Fast",
-        AiSpeed.Instant => "Instant",
-        _ => speed.ToString(),
-    };
-
-    private static string ReplaySpeedLabel(ReplaySpeed speed) => speed switch
-    {
-        ReplaySpeed.Slow => "Slow",
-        ReplaySpeed.Normal => "Normal",
-        ReplaySpeed.Fast => "Fast",
-        ReplaySpeed.Instant => "Instant",
+        PlaybackSpeed.Slow => "Slow",
+        PlaybackSpeed.Normal => "Normal",
+        PlaybackSpeed.Fast => "Fast",
+        PlaybackSpeed.Instant => "Instant",
         _ => speed.ToString(),
     };
 

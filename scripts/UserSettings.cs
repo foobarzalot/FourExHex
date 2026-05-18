@@ -2,31 +2,25 @@ using System.Text.Json;
 using Godot;
 
 /// <summary>
-/// Discrete AI-turn pacing presets the user picks from in the Settings
-/// panel. <see cref="UserSettings.AiSpeedMultiplier"/> turns the choice
-/// into a scalar the pacer applies to every delay; <see cref="Instant"/>
-/// (multiplier 0) additionally tells the controller to put the view in
-/// silent mode so per-action effects don't reach the player.
+/// Discrete pacing presets the user picks from in the Settings panel,
+/// shared by the two independent speed settings
+/// (<see cref="UserSettings.AiSpeed"/> for live AI turns,
+/// <see cref="UserSettings.ReplaySpeed"/> for replay playback).
+///
+/// Slow/Normal/Fast are delay scalars — see
+/// <see cref="UserSettings.SpeedMultiplier"/>. <see cref="Instant"/>
+/// is NOT a multiplier: a zero delay would freeze the main thread, so
+/// the controller routes Instant to a chunked, frame-yielded driver
+/// that fast-forwards silently and repaints once per turn (live AI and
+/// replay share that driver). Instant's delays bypass the multiplier
+/// entirely via <c>IAiPacer.ScheduleUnscaled</c>, so it has no entry
+/// in the multiplier table.
+///
+/// Member order is load-bearing: settings persist numerically (no
+/// JsonStringEnumConverter), so Slow=0…Instant=3 must stay fixed for
+/// existing <c>user://settings.json</c> files to keep loading.
 /// </summary>
-public enum AiSpeed
-{
-    Slow,
-    Normal,
-    Fast,
-    Instant,
-}
-
-/// <summary>
-/// Discrete pacing presets for replay playback — separate from
-/// <see cref="AiSpeed"/> because watching a recorded game is the
-/// point of replay. <see cref="Instant"/> is NOT a smaller delay
-/// multiplier (that would trampoline the pacer and freeze the main
-/// thread); the controller routes it to a separate chunked,
-/// frame-yielded driver (<c>InstantReplayTick</c>) that fast-forwards
-/// silently. So Instant's <see cref="UserSettings.ReplaySpeedMultiplier"/>
-/// is 1f and never actually consulted on that path.
-/// </summary>
-public enum ReplaySpeed
+public enum PlaybackSpeed
 {
     Slow,
     Normal,
@@ -56,8 +50,8 @@ public static class UserSettings
     private static bool _isLoading;
     private static bool _sfxEnabled = true;
     private static bool _vfxEnabled = true;
-    private static AiSpeed _aiSpeed = AiSpeed.Normal;
-    private static ReplaySpeed _replaySpeed = ReplaySpeed.Normal;
+    private static PlaybackSpeed _aiSpeed = PlaybackSpeed.Normal;
+    private static PlaybackSpeed _replaySpeed = PlaybackSpeed.Normal;
 
     public static bool SfxEnabled
     {
@@ -91,7 +85,7 @@ public static class UserSettings
         }
     }
 
-    public static AiSpeed AiSpeed
+    public static PlaybackSpeed AiSpeed
     {
         get
         {
@@ -107,7 +101,7 @@ public static class UserSettings
         }
     }
 
-    public static ReplaySpeed ReplaySpeed
+    public static PlaybackSpeed ReplaySpeed
     {
         get
         {
@@ -124,32 +118,22 @@ public static class UserSettings
     }
 
     /// <summary>
-    /// Multiplier applied to AI step delays. Slow doubles them, Fast
-    /// halves them, Instant returns 0 (which the pacer interprets as
-    /// "run inline, no scheduling"). Read on every Schedule call so a
-    /// mid-game change to <see cref="AiSpeed"/> takes effect immediately.
+    /// Scalar the pacer applies to step delays for a given speed:
+    /// Slow doubles them, Normal leaves them, Fast halves them. Read on
+    /// every <c>Schedule</c> call (via the <c>Main</c> lambda) so a
+    /// mid-game speed change takes effect immediately.
+    ///
+    /// <see cref="PlaybackSpeed.Instant"/> has no arm: it never reaches
+    /// here. Instant routes to the chunked frame-yielded driver, which
+    /// schedules via <c>IAiPacer.ScheduleUnscaled</c> (multiplier
+    /// bypassed); no scaled <c>Schedule</c> runs during an Instant
+    /// game. The <c>_ => 1f</c> default is a harmless safety net.
     /// </summary>
-    public static float AiSpeedMultiplier => AiSpeed switch
+    public static float SpeedMultiplier(PlaybackSpeed speed) => speed switch
     {
-        AiSpeed.Slow => 2f,
-        AiSpeed.Normal => 1f,
-        AiSpeed.Fast => 0.5f,
-        AiSpeed.Instant => 0f,
-        _ => 1f,
-    };
-
-    /// <summary>Same shape as <see cref="AiSpeedMultiplier"/> but for
-    /// replay playback. Instant maps to 1f (NOT 0f): a 0 multiplier
-    /// would push <see cref="GodotAiPacer"/> into its inline trampoline
-    /// and block the main thread for the whole recording. Instant
-    /// instead takes the controller's chunked frame-yielded path, so
-    /// this value is inert for it.</summary>
-    public static float ReplaySpeedMultiplier => ReplaySpeed switch
-    {
-        ReplaySpeed.Slow => 2f,
-        ReplaySpeed.Normal => 1f,
-        ReplaySpeed.Fast => 0.5f,
-        ReplaySpeed.Instant => 1f,
+        PlaybackSpeed.Slow => 2f,
+        PlaybackSpeed.Normal => 1f,
+        PlaybackSpeed.Fast => 0.5f,
         _ => 1f,
     };
 
@@ -157,8 +141,11 @@ public static class UserSettings
     {
         public bool SfxEnabled { get; set; } = true;
         public bool VfxEnabled { get; set; } = true;
-        public AiSpeed AiSpeed { get; set; } = AiSpeed.Normal;
-        public ReplaySpeed ReplaySpeed { get; set; } = ReplaySpeed.Normal;
+        // Property names unchanged for save-compat: existing
+        // settings.json keys "AiSpeed"/"ReplaySpeed" still bind, and
+        // PlaybackSpeed's numeric order matches the old enums'.
+        public PlaybackSpeed AiSpeed { get; set; } = PlaybackSpeed.Normal;
+        public PlaybackSpeed ReplaySpeed { get; set; } = PlaybackSpeed.Normal;
     }
 
     private static void EnsureLoaded()
