@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using Godot;
 using Xunit;
 
 namespace FourExHex.Tests;
@@ -14,14 +13,14 @@ namespace FourExHex.Tests;
 /// </summary>
 public class EditorUndoStackTests
 {
-    private static readonly Color Red = new Color(1f, 0f, 0f);
-    private static readonly Color Blue = new Color(0f, 0f, 1f);
+    private static readonly PlayerId Red = PlayerId.FromIndex(0);
+    private static readonly PlayerId Blue = PlayerId.FromIndex(1);
 
     /// <summary>
     /// Build a snapshot with a single tile of the given color at (0,0) so
     /// each test snapshot is distinguishable on apply.
     /// </summary>
-    private static EditorSnapshot SnapWithSingleTile(Color color)
+    private static EditorSnapshot SnapWithSingleTile(PlayerId color)
     {
         var grid = new HexGrid();
         grid.Add(new HexTile(HexCoord.FromOffset(0, 0), color));

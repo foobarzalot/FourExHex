@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using Godot;
 using Xunit;
 
 namespace FourExHex.Tests;
@@ -13,8 +12,8 @@ namespace FourExHex.Tests;
 /// </summary>
 public class TutorialPreviewCuesTests
 {
-    private static readonly Color Red = new(1f, 0f, 0f);
-    private static readonly Color Blue = new(0f, 0f, 1f);
+    private static readonly PlayerId Red = PlayerId.FromIndex(0);
+    private static readonly PlayerId Blue = PlayerId.FromIndex(1);
 
     // Fixture: a 6x2 rectangular grid split into two territories along
     // the middle column. Red owns the left half, Blue owns the right.
@@ -47,7 +46,7 @@ public class TutorialPreviewCuesTests
             {
                 for (int c = 0; c < 6; c++)
                 {
-                    Color color = c < 3 ? Red : Blue;
+                    PlayerId color = c < 3 ? Red : Blue;
                     grid.Add(new HexTile(HexCoord.FromOffset(c, r), color));
                 }
             }
@@ -86,15 +85,15 @@ public class TutorialPreviewCuesTests
                 Preview, State, Session, Hud, Map, Red, SelectTerritory, CancelAction);
         }
 
-        public Territory? FindOwned(Color c) =>
+        public Territory? FindOwned(PlayerId c) =>
             TerritoryLookup.FindOwnedContaining(State.Territories, c,
                 FirstCoordOf(c));
 
-        private HexCoord FirstCoordOf(Color c)
+        private HexCoord FirstCoordOf(PlayerId c)
         {
             foreach (HexTile tile in State.Grid.Tiles)
             {
-                if (tile.Color == c) return tile.Coord;
+                if (tile.Owner == c) return tile.Coord;
             }
             return new HexCoord(0, 0);
         }
@@ -484,7 +483,7 @@ public class TutorialPreviewCuesTests
         {
             for (int c = 0; c < 6; c++)
             {
-                Color color = c < 3 ? Red : Blue;
+                PlayerId color = c < 3 ? Red : Blue;
                 grid.Add(new HexTile(HexCoord.FromOffset(c, r), color));
             }
         }

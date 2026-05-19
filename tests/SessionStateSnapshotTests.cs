@@ -1,19 +1,18 @@
 using System.Collections.Generic;
-using Godot;
 using Xunit;
 
 namespace FourExHex.Tests;
 
 public class SessionStateSnapshotTests
 {
-    private static readonly Color Red = new Color(1f, 0f, 0f);
-    private static readonly Color Blue = new Color(0f, 0f, 1f);
+    private static readonly PlayerId Red = PlayerId.FromIndex(0);
+    private static readonly PlayerId Blue = PlayerId.FromIndex(1);
 
     private static (HexGrid grid, IReadOnlyList<Territory> territories) BuildTwoColorGrid()
     {
         HexGrid grid = TestHelpers.BuildRectGrid(3, 2, Blue);
-        grid.Get(HexCoord.FromOffset(0, 0))!.Color = Red;
-        grid.Get(HexCoord.FromOffset(0, 1))!.Color = Red;
+        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = Red;
+        grid.Get(HexCoord.FromOffset(0, 1))!.Owner = Red;
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         return (grid, territories);
     }

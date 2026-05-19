@@ -1,14 +1,13 @@
 using System.Collections.Generic;
 using System.Linq;
-using Godot;
 using Xunit;
 
 namespace FourExHex.Tests;
 
 public class TreeRulesTests
 {
-    private static readonly Color Red = new Color(1f, 0f, 0f);
-    private static readonly Color Blue = new Color(0f, 0f, 1f);
+    private static readonly PlayerId Red = PlayerId.FromIndex(0);
+    private static readonly PlayerId Blue = PlayerId.FromIndex(1);
     private static readonly IReadOnlySet<HexCoord> NoWater = new HashSet<HexCoord>();
 
     private static HexGrid BuildAxialGrid(int qMin, int qMax, int rMin, int rMax)
@@ -66,7 +65,7 @@ public class TreeRulesTests
         // Red-tile grave converts, Blue-tile grave stays when we end
         // Red's turn.
         HexGrid grid = BuildAxialGrid(-1, 2, -1, 2);
-        grid.Get(new HexCoord(0, 0))!.Color = Blue;
+        grid.Get(new HexCoord(0, 0))!.Owner = Blue;
         grid.Get(new HexCoord(0, 0))!.Occupant = new Grave();
         grid.Get(new HexCoord(1, 0))!.Occupant = new Grave(); // Red tile
 
@@ -80,7 +79,7 @@ public class TreeRulesTests
     public void ConvertGravesToTrees_NoGravesOfOwnerColor_NoOp()
     {
         HexGrid grid = BuildAxialGrid(-1, 2, -1, 2);
-        grid.Get(new HexCoord(0, 0))!.Color = Blue;
+        grid.Get(new HexCoord(0, 0))!.Owner = Blue;
         grid.Get(new HexCoord(0, 0))!.Occupant = new Grave();
 
         TreeRules.ConvertGravesToTrees(grid, Red);
@@ -181,7 +180,7 @@ public class TreeRulesTests
         // but is colored Blue — color filter still blocks the spread
         // when Red's turn starts.
         HexGrid grid = BuildAxialGrid(-1, 2, -1, 2);
-        grid.Get(new HexCoord(1, -1))!.Color = Blue;
+        grid.Get(new HexCoord(1, -1))!.Owner = Blue;
         PlantTree(grid, new HexCoord(0, 0));
         var water = new HashSet<HexCoord> { new HexCoord(2, -1) };
 
@@ -233,7 +232,7 @@ public class TreeRulesTests
         // make it a candidate by neighbor count, but the color filter
         // keeps it as-is when Red's turn starts.
         HexGrid grid = BuildAxialGrid(-1, 2, -1, 2);
-        grid.Get(new HexCoord(1, -1))!.Color = Blue;
+        grid.Get(new HexCoord(1, -1))!.Owner = Blue;
         PlantTree(grid, new HexCoord(0, 0));
         PlantTree(grid, new HexCoord(1, 0));
 
@@ -250,7 +249,7 @@ public class TreeRulesTests
         // Two graves: one on Red tile, one on Blue tile. Only the Red
         // grave converts when Red's turn starts; Blue's grave persists.
         HexGrid grid = BuildAxialGrid(-1, 2, -1, 2);
-        grid.Get(new HexCoord(0, 0))!.Color = Blue;
+        grid.Get(new HexCoord(0, 0))!.Owner = Blue;
         grid.Get(new HexCoord(0, 0))!.Occupant = new Grave();
         grid.Get(new HexCoord(1, 0))!.Occupant = new Grave(); // Red tile
 

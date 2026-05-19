@@ -728,7 +728,7 @@ public partial class HudView : CanvasLayer, IHudView
         _turnLabel.Text = $"Turn: {state.Turns.TurnNumber}";
         Player current = state.Turns.CurrentPlayer;
         _playerLabel.Text = $"Current: {current.Name}";
-        _playerLabel.AddThemeColorOverride("font_color", current.Color);
+        _playerLabel.AddThemeColorOverride("font_color", PlayerPalette.ColorFor(current.Id));
 
         // Buy / Build buttons are always visible; the tooltip explains
         // *why* the button is disabled (no selection / no capital / can't
@@ -796,12 +796,12 @@ public partial class HudView : CanvasLayer, IHudView
         // signaling in those modes).
         if (session.Winner.HasValue && !_victoryOverlaySuppressed)
         {
-            Color winColor = session.Winner.Value;
+            PlayerId winId = session.Winner.Value;
             Player? winner = state.Turns.Players
-                .FirstOrDefault(p => p.Color == winColor);
+                .FirstOrDefault(p => p.Id == winId);
             string name = winner?.Name ?? "Unknown";
             _victoryLabel.Text = $"{name} wins!";
-            _victoryLabel.AddThemeColorOverride("font_color", winColor);
+            _victoryLabel.AddThemeColorOverride("font_color", PlayerPalette.ColorFor(winId));
             _victoryOverlay.Visible = true;
         }
         else
@@ -814,12 +814,12 @@ public partial class HudView : CanvasLayer, IHudView
         // is set so the game-over screen takes precedence.
         if (session.PendingDefeatScreen.HasValue && !session.Winner.HasValue)
         {
-            Color loseColor = session.PendingDefeatScreen.Value;
+            PlayerId loseId = session.PendingDefeatScreen.Value;
             Player? loser = state.Turns.Players
-                .FirstOrDefault(p => p.Color == loseColor);
+                .FirstOrDefault(p => p.Id == loseId);
             string name = loser?.Name ?? "Unknown";
             _defeatLabel.Text = $"{name} defeated";
-            _defeatLabel.AddThemeColorOverride("font_color", loseColor);
+            _defeatLabel.AddThemeColorOverride("font_color", PlayerPalette.ColorFor(loseId));
             _defeatOverlay.Visible = true;
         }
         else

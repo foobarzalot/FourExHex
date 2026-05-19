@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using Godot;
 using Xunit;
 
 namespace FourExHex.Tests;
@@ -29,17 +28,17 @@ public class GameControllerAutosaveTests
         public Player Blue { get; }
         public int HumanTurnFireCount;
         public List<int> FireTurnNumbers { get; } = new();
-        public List<Color> FirePlayerColors { get; } = new();
+        public List<PlayerId> FirePlayerColors { get; } = new();
 
         public Fixture(AiKind redKind, AiKind blueKind)
         {
-            Red = new Player("Red", new Color(1f, 0f, 0f), redKind);
-            Blue = new Player("Blue", new Color(0f, 0f, 1f), blueKind);
+            Red = new Player("Red", PlayerId.FromIndex(0), redKind);
+            Blue = new Player("Blue", PlayerId.FromIndex(1), blueKind);
             var players = new List<Player> { Red, Blue };
 
-            HexGrid grid = TestHelpers.BuildRectGrid(5, 2, Blue.Color);
-            grid.Get(HexCoord.FromOffset(0, 1))!.Color = Red.Color;
-            grid.Get(HexCoord.FromOffset(1, 1))!.Color = Red.Color;
+            HexGrid grid = TestHelpers.BuildRectGrid(5, 2, Blue.Id);
+            grid.Get(HexCoord.FromOffset(0, 1))!.Owner = Red.Id;
+            grid.Get(HexCoord.FromOffset(1, 1))!.Owner = Red.Id;
 
             IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
             State = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -50,7 +49,7 @@ public class GameControllerAutosaveTests
             // fixture stable across grid changes and isolates the
             // test to the turn-transition event we care about. Cap
             // turn count so the all-AI variant terminates.
-            AiAction? NoopChooser(GameState s, Color c, HashSet<HexCoord> visited, Random rng) => null;
+            AiAction? NoopChooser(GameState s, PlayerId c, HashSet<HexCoord> visited, Random rng) => null;
             Controller = new GameController(
                 State, Session, Map, Hud,
                 seed: 1, aiChooser: NoopChooser, maxTurnNumber: 5);
@@ -58,7 +57,7 @@ public class GameControllerAutosaveTests
             {
                 HumanTurnFireCount++;
                 FireTurnNumbers.Add(State.Turns.TurnNumber);
-                FirePlayerColors.Add(State.Turns.CurrentPlayer.Color);
+                FirePlayerColors.Add(State.Turns.CurrentPlayer.Id);
             };
         }
     }
@@ -72,7 +71,7 @@ public class GameControllerAutosaveTests
         f.Controller.StartGame();
         Assert.Equal(1, f.HumanTurnFireCount);
         Assert.Equal(1, f.FireTurnNumbers[0]);
-        Assert.Equal(f.Red.Color, f.FirePlayerColors[0]);
+        Assert.Equal(f.Red.Id, f.FirePlayerColors[0]);
     }
 
     [Fact]
@@ -86,7 +85,7 @@ public class GameControllerAutosaveTests
         f.Hud.ClickEndTurn();
 
         Assert.Equal(2, f.HumanTurnFireCount);
-        Assert.All(f.FirePlayerColors, c => Assert.Equal(f.Red.Color, c));
+        Assert.All(f.FirePlayerColors, c => Assert.Equal(f.Red.Id, c));
     }
 
     [Fact]
@@ -99,7 +98,7 @@ public class GameControllerAutosaveTests
         f.Controller.StartGame();
 
         Assert.Equal(1, f.HumanTurnFireCount);
-        Assert.Equal(f.Blue.Color, f.FirePlayerColors[0]);
+        Assert.Equal(f.Blue.Id, f.FirePlayerColors[0]);
     }
 
     [Fact]

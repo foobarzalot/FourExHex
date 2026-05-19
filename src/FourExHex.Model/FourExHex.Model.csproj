@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Godot-free model + rules + AI + controller + view interfaces.
+    Deliberately NOT a Godot.NET.Sdk project and references NO GodotSharp:
+    this is what makes the model *physically incapable* of depending on
+    Godot. The game project and the test project both ProjectReference it.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>12</LangVersion>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>FourExHex</RootNamespace>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+  </PropertyGroup>
+
+</Project>

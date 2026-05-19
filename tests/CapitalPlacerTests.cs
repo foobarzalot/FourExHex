@@ -1,12 +1,11 @@
 using System.Linq;
-using Godot;
 using Xunit;
 
 namespace FourExHex.Tests;
 
 public class CapitalPlacerTests
 {
-    private static readonly Color Red = new Color(1f, 0f, 0f);
+    private static readonly PlayerId Red = PlayerId.FromIndex(0);
 
     private static HexGrid BuildGrid(params HexCoord[] coords) =>
         TestHelpers.BuildSpotGrid(Red, coords);

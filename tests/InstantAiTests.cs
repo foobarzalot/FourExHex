@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Godot;
 using Xunit;
 
 namespace FourExHex.Tests;
@@ -28,17 +27,17 @@ public class InstantAiTests
     private static (GameState State, SessionState Session, MockHexMapView Map,
         MockHudView Hud, Player Red, Player Blue) BuildKillScenario()
     {
-        var red = new Player("Red", new Color(1f, 0f, 0f));
-        var blue = new Player("Blue", new Color(0f, 0f, 1f), isAi: true);
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1), isAi: true);
         var players = new List<Player> { red, blue };
 
-        HexGrid grid = TestHelpers.BuildRectGrid(5, 1, new Color(0.3f, 0.3f, 0.3f));
-        grid.Get(HexCoord.FromOffset(0, 0))!.Color = blue.Color;
-        grid.Get(HexCoord.FromOffset(1, 0))!.Color = blue.Color;
-        grid.Get(HexCoord.FromOffset(2, 0))!.Color = blue.Color;
-        grid.Get(HexCoord.FromOffset(3, 0))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(4, 0))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(blue.Color, UnitLevel.Spearman);
+        HexGrid grid = TestHelpers.BuildRectGrid(5, 1, PlayerId.None);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = blue.Id;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Owner = blue.Id;
+        grid.Get(HexCoord.FromOffset(2, 0))!.Owner = blue.Id;
+        grid.Get(HexCoord.FromOffset(3, 0))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(4, 0))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(blue.Id, UnitLevel.Spearman);
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -55,21 +54,21 @@ public class InstantAiTests
         MockHudView Hud, Player Red, Player Blue, List<(HexCoord From, HexCoord To)> Captures)
         BuildMultiCaptureScenario()
     {
-        var red = new Player("Red", new Color(1f, 0f, 0f));
-        var blue = new Player("Blue", new Color(0f, 0f, 1f), isAi: true);
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1), isAi: true);
         var players = new List<Player> { red, blue };
 
-        HexGrid grid = TestHelpers.BuildRectGrid(11, 2, blue.Color);
-        grid.Get(HexCoord.FromOffset(10, 0))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(10, 1))!.Color = red.Color;
+        HexGrid grid = TestHelpers.BuildRectGrid(11, 2, blue.Id);
+        grid.Get(HexCoord.FromOffset(10, 0))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(10, 1))!.Owner = red.Id;
 
         var captures = new List<(HexCoord From, HexCoord To)>();
         for (int i = 0; i < 4; i++)
         {
             HexCoord redTile = HexCoord.FromOffset(2 * i + 1, 0);
             HexCoord blueTile = HexCoord.FromOffset(2 * i, 0);
-            grid.Get(redTile)!.Color = red.Color;
-            grid.Get(blueTile)!.Occupant = new Unit(blue.Color, UnitLevel.Peasant);
+            grid.Get(redTile)!.Owner = red.Id;
+            grid.Get(blueTile)!.Occupant = new Unit(blue.Id, UnitLevel.Peasant);
             captures.Add((blueTile, redTile));
         }
 
@@ -79,8 +78,8 @@ public class InstantAiTests
             red, blue, captures);
     }
 
-    private static Func<GameState, Color, HashSet<HexCoord>, Random, AiAction?>
-        SequencedCaptureChooser(Color aiColor, List<(HexCoord From, HexCoord To)> captures)
+    private static Func<GameState, PlayerId, HashSet<HexCoord>, Random, AiAction?>
+        SequencedCaptureChooser(PlayerId aiColor, List<(HexCoord From, HexCoord To)> captures)
     {
         int idx = 0;
         return (s, c, v, r) =>
@@ -94,7 +93,7 @@ public class InstantAiTests
     private static GameController NewController(
         GameState state, SessionState session, MockHexMapView map, MockHudView hud,
         QueuedAiPacer pacer,
-        Func<GameState, Color, HashSet<HexCoord>, Random, AiAction?>? chooser,
+        Func<GameState, PlayerId, HashSet<HexCoord>, Random, AiAction?>? chooser,
         bool instant)
     {
         return new GameController(
@@ -118,13 +117,13 @@ public class InstantAiTests
 
     private static void AssertSameBoard(GameStateSnapshot reference, GameState live)
     {
-        var refTiles = new Dictionary<HexCoord, (Color Color, string? Occ)>();
-        foreach ((HexCoord coord, Color color, HexOccupant? occ) in reference.EnumerateTiles())
-            refTiles[coord] = (color, occ?.GetType().Name);
+        var refTiles = new Dictionary<HexCoord, (PlayerId Owner, string? Occ)>();
+        foreach ((HexCoord coord, PlayerId owner, HexOccupant? occ) in reference.EnumerateTiles())
+            refTiles[coord] = (owner, occ?.GetType().Name);
         foreach (HexTile t in live.Grid.Tiles)
         {
-            (Color color, string? occ) = refTiles[t.Coord];
-            Assert.Equal(color, t.Color);
+            (PlayerId color, string? occ) = refTiles[t.Coord];
+            Assert.Equal(color, t.Owner);
             Assert.Equal(occ, t.Occupant?.GetType().Name);
         }
     }
@@ -136,7 +135,7 @@ public class InstantAiTests
     {
         var (state, session, map, hud, _, _) = BuildKillScenario();
         // Passive AI: ends its turn immediately, handing back to human.
-        AiAction? Chooser(GameState s, Color c, HashSet<HexCoord> v, Random r) => null;
+        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> v, Random r) => null;
         var pacer = new QueuedAiPacer();
         var c = NewController(state, session, map, hud, pacer, Chooser, instant: true);
         c.StartGame();
@@ -157,7 +156,7 @@ public class InstantAiTests
     public void InstantAi_ShowsOpponentsOverlay_DuringBatch_ClearedOnHandBack()
     {
         var (state, session, map, hud, _, _) = BuildKillScenario();
-        AiAction? Chooser(GameState s, Color c, HashSet<HexCoord> v, Random r) => null;
+        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> v, Random r) => null;
         var pacer = new QueuedAiPacer();
         var c = NewController(state, session, map, hud, pacer, Chooser, instant: true);
         c.StartGame();
@@ -179,7 +178,7 @@ public class InstantAiTests
         var (state, session, map, hud, _, _) = BuildKillScenario();
         // Always-move chooser: the batch never self-terminates, so it
         // stays parked on the pacer for the input assertion.
-        AiAction? Chooser(GameState s, Color c, HashSet<HexCoord> v, Random r) =>
+        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> v, Random r) =>
             new AiMoveAction(HexCoord.FromOffset(2, 0), HexCoord.FromOffset(3, 0));
         var pacer = new QueuedAiPacer();
         var c = NewController(state, session, map, hud, pacer, Chooser, instant: true);
@@ -203,7 +202,7 @@ public class InstantAiTests
         var (state, session, map, hud, _, blue, captures) = BuildMultiCaptureScenario();
         var pacer = new QueuedAiPacer();
         var c = NewController(state, session, map, hud, pacer,
-            SequencedCaptureChooser(blue.Color, captures), instant: true);
+            SequencedCaptureChooser(blue.Id, captures), instant: true);
         c.StartGame();
         pacer.DrainAll(); // stable on Red T1 (Red is human → nothing queued)
 
@@ -229,7 +228,7 @@ public class InstantAiTests
         var (state, session, map, hud, _, blue, captures) = BuildMultiCaptureScenario();
         var pacer = new QueuedAiPacer();
         var c = NewController(state, session, map, hud, pacer,
-            SequencedCaptureChooser(blue.Color, captures), instant: true);
+            SequencedCaptureChooser(blue.Id, captures), instant: true);
         c.StartGame();
         pacer.DrainAll();
 
@@ -259,7 +258,7 @@ public class InstantAiTests
             var (state, session, map, hud, _, blue, captures) = BuildMultiCaptureScenario();
             var pacer = new QueuedAiPacer();
             var c = NewController(state, session, map, hud, pacer,
-                SequencedCaptureChooser(blue.Color, captures), instant);
+                SequencedCaptureChooser(blue.Id, captures), instant);
             c.StartGame();
             pacer.DrainAll();
             hud.ClickEndTurn();
@@ -277,7 +276,7 @@ public class InstantAiTests
         var (s2, ss2, m2, h2, _, b2, caps2) = BuildMultiCaptureScenario();
         var p2 = new QueuedAiPacer();
         var c2 = NewController(s2, ss2, m2, h2, p2,
-            SequencedCaptureChooser(b2.Color, caps2), instant: true);
+            SequencedCaptureChooser(b2.Id, caps2), instant: true);
         c2.StartGame();
         p2.DrainAll();
         h2.ClickEndTurn();
@@ -296,7 +295,7 @@ public class InstantAiTests
         var (state, session, map, hud, red, _) = BuildKillScenario();
         AiAction? scripted = new AiMoveAction(
             HexCoord.FromOffset(2, 0), HexCoord.FromOffset(3, 0));
-        AiAction? Chooser(GameState s, Color c, HashSet<HexCoord> v, Random r)
+        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> v, Random r)
         {
             AiAction? next = scripted;
             scripted = null;
@@ -312,7 +311,7 @@ public class InstantAiTests
 
         // Blue's capture eliminated Red mid-batch: the driver stopped,
         // silent lifted, defeat overlay visible.
-        Assert.Equal(red.Color, session.PendingDefeatScreen);
+        Assert.Equal(red.Id, session.PendingDefeatScreen);
         Assert.False(map.SilentMode);
 
         int refreshesBefore = hud.RefreshCount;

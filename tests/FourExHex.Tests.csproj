@@ -12,7 +12,6 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
     <PackageReference Include="xunit" Version="2.6.6" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.5.6" />
-    <PackageReference Include="GodotSharp" Version="4.6.1" />
     <PackageReference Include="coverlet.collector" Version="6.0.0">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
@@ -20,73 +19,14 @@
   </ItemGroup>
 
   <!--
-    Pull in the production source files we want to test.
-    HexMap.cs and Main.cs are excluded because they derive from Node2D and
-    require the Godot.NET.Sdk source generator to compile.
+    The model under test is the Godot-free FourExHex.Model library. There
+    is intentionally NO GodotSharp PackageReference and NO per-file
+    <Compile Include="..\scripts\*"> list: if these tests compile and pass
+    with zero Godot on the reference graph, the model is provably,
+    compile-time-enforced Godot-free.
   -->
   <ItemGroup>
-    <Compile Include="..\scripts\HexCoord.cs" Link="scripts\HexCoord.cs" />
-    <Compile Include="..\scripts\ZoomMath.cs" Link="scripts\ZoomMath.cs" />
-    <Compile Include="..\scripts\HexGrid.cs" Link="scripts\HexGrid.cs" />
-    <Compile Include="..\scripts\HexTile.cs" Link="scripts\HexTile.cs" />
-    <Compile Include="..\scripts\Territory.cs" Link="scripts\Territory.cs" />
-    <Compile Include="..\scripts\TerritoryFinder.cs" Link="scripts\TerritoryFinder.cs" />
-    <Compile Include="..\scripts\TerritoryLookup.cs" Link="scripts\TerritoryLookup.cs" />
-    <Compile Include="..\scripts\CapitalPlacer.cs" Link="scripts\CapitalPlacer.cs" />
-    <Compile Include="..\scripts\CapitalReconciler.cs" Link="scripts\CapitalReconciler.cs" />
-    <Compile Include="..\scripts\Player.cs" Link="scripts\Player.cs" />
-    <Compile Include="..\scripts\TurnState.cs" Link="scripts\TurnState.cs" />
-    <Compile Include="..\scripts\Treasury.cs" Link="scripts\Treasury.cs" />
-    <Compile Include="..\scripts\HexOccupant.cs" Link="scripts\HexOccupant.cs" />
-    <Compile Include="..\scripts\Unit.cs" Link="scripts\Unit.cs" />
-    <Compile Include="..\scripts\Capital.cs" Link="scripts\Capital.cs" />
-    <Compile Include="..\scripts\Grave.cs" Link="scripts\Grave.cs" />
-    <Compile Include="..\scripts\Tree.cs" Link="scripts\Tree.cs" />
-    <Compile Include="..\scripts\TreeRules.cs" Link="scripts\TreeRules.cs" />
-    <Compile Include="..\scripts\Tower.cs" Link="scripts\Tower.cs" />
-    <Compile Include="..\scripts\AiAction.cs" Link="scripts\AiAction.cs" />
-    <Compile Include="..\scripts\ReplayBeat.cs" Link="scripts\ReplayBeat.cs" />
-    <Compile Include="..\scripts\Replay.cs" Link="scripts\Replay.cs" />
-    <Compile Include="..\scripts\AiLog.cs" Link="scripts\AiLog.cs" />
-    <Compile Include="..\scripts\AiCommon.cs" Link="scripts\AiCommon.cs" />
-    <Compile Include="..\scripts\AiSimulator.cs" Link="scripts\AiSimulator.cs" />
-    <Compile Include="..\scripts\AiStateScorer.cs" Link="scripts\AiStateScorer.cs" />
-    <Compile Include="..\scripts\HeuristicAi.cs" Link="scripts\HeuristicAi.cs" />
-    <Compile Include="..\scripts\RandomAi.cs" Link="scripts\RandomAi.cs" />
-    <Compile Include="..\scripts\AiDispatcher.cs" Link="scripts\AiDispatcher.cs" />
-    <Compile Include="..\scripts\PurchaseRules.cs" Link="scripts\PurchaseRules.cs" />
-    <Compile Include="..\scripts\DefenseRules.cs" Link="scripts\DefenseRules.cs" />
-    <Compile Include="..\scripts\MovementRules.cs" Link="scripts\MovementRules.cs" />
-    <Compile Include="..\scripts\RallyRules.cs" Link="scripts\RallyRules.cs" />
-    <Compile Include="..\scripts\UpkeepRules.cs" Link="scripts\UpkeepRules.cs" />
-    <Compile Include="..\scripts\WinConditionRules.cs" Link="scripts\WinConditionRules.cs" />
-    <Compile Include="..\scripts\GameStateSnapshot.cs" Link="scripts\GameStateSnapshot.cs" />
-    <Compile Include="..\scripts\GameStateChecksum.cs" Link="scripts\GameStateChecksum.cs" />
-    <Compile Include="..\scripts\SessionStateSnapshot.cs" Link="scripts\SessionStateSnapshot.cs" />
-    <Compile Include="..\scripts\UndoEntry.cs" Link="scripts\UndoEntry.cs" />
-    <Compile Include="..\scripts\UndoStack.cs" Link="scripts\UndoStack.cs" />
-    <Compile Include="..\scripts\GameState.cs" Link="scripts\GameState.cs" />
-    <Compile Include="..\scripts\SessionState.cs" Link="scripts\SessionState.cs" />
-    <Compile Include="..\scripts\IHexMapView.cs" Link="scripts\IHexMapView.cs" />
-    <Compile Include="..\scripts\IHudView.cs" Link="scripts\IHudView.cs" />
-    <Compile Include="..\scripts\AiPacer.cs" Link="scripts\AiPacer.cs" />
-    <Compile Include="..\scripts\GodotAiPacer.cs" Link="scripts\GodotAiPacer.cs" />
-    <Compile Include="..\scripts\GameController.cs" Link="scripts\GameController.cs" />
-    <Compile Include="..\scripts\SaveSerializer.cs" Link="scripts\SaveSerializer.cs" />
-    <Compile Include="..\scripts\LoadRequest.cs" Link="scripts\LoadRequest.cs" />
-    <Compile Include="..\scripts\SaveSlotInfo.cs" Link="scripts\SaveSlotInfo.cs" />
-    <Compile Include="..\scripts\GameSettings.cs" Link="scripts\GameSettings.cs" />
-    <Compile Include="..\scripts\MapGenerator.cs" Link="scripts\MapGenerator.cs" />
-    <Compile Include="..\scripts\MapEditPaint.cs" Link="scripts\MapEditPaint.cs" />
-    <Compile Include="..\scripts\EditorSnapshot.cs" Link="scripts\EditorSnapshot.cs" />
-    <Compile Include="..\scripts\Tutorial\Tutorial.cs" Link="scripts\Tutorial\Tutorial.cs" />
-    <Compile Include="..\scripts\Tutorial\ReplayDrivenAi.cs" Link="scripts\Tutorial\ReplayDrivenAi.cs" />
-    <Compile Include="..\scripts\Tutorial\TutorialPreview.cs" Link="scripts\Tutorial\TutorialPreview.cs" />
-    <Compile Include="..\scripts\Tutorial\RecordingCapture.cs" Link="scripts\Tutorial\RecordingCapture.cs" />
-    <Compile Include="..\scripts\Tutorial\PreviewSetup.cs" Link="scripts\Tutorial\PreviewSetup.cs" />
-    <Compile Include="..\scripts\Tutorial\TutorialPreviewCues.cs" Link="scripts\Tutorial\TutorialPreviewCues.cs" />
-    <Compile Include="..\scripts\Tutorial\TutorialInstructionText.cs" Link="scripts\Tutorial\TutorialInstructionText.cs" />
-    <Compile Include="..\scripts\Tutorial\TutorialNarrationDriver.cs" Link="scripts\Tutorial\TutorialNarrationDriver.cs" />
+    <ProjectReference Include="..\src\FourExHex.Model\FourExHex.Model.csproj" />
   </ItemGroup>
 
 </Project>

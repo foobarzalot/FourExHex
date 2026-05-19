@@ -328,7 +328,7 @@ public partial class HexMapView : Node2D, IHexMapView
         // the game's geometric style.
         foreach (HexCoord waterCoord in _state.WaterCoords)
         {
-            Vector2 center = FirstHexCenterOffset + waterCoord.ToPixel(HexSize);
+            Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(waterCoord, HexSize);
             AddChild(CreateWaterHexVisual(center));
         }
 
@@ -344,7 +344,7 @@ public partial class HexMapView : Node2D, IHexMapView
             {
                 if (row >= 0 && row < Rows && col >= 0 && col < Cols) continue;
                 HexCoord coord = HexCoord.FromOffset(col, row);
-                Vector2 center = FirstHexCenterOffset + coord.ToPixel(HexSize);
+                Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(coord, HexSize);
                 AddChild(CreateWaterHexVisual(center));
             }
         }
@@ -356,7 +356,7 @@ public partial class HexMapView : Node2D, IHexMapView
         AddChild(shoreLayer);
         foreach (HexCoord waterCoord in _state.WaterCoords)
         {
-            Vector2 center = FirstHexCenterOffset + waterCoord.ToPixel(HexSize);
+            Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(waterCoord, HexSize);
             AddShoreFoamStrips(shoreLayer, center, waterCoord);
         }
         for (int row = -WaterRimMargin; row < Rows + WaterRimMargin; row++)
@@ -365,7 +365,7 @@ public partial class HexMapView : Node2D, IHexMapView
             {
                 if (row >= 0 && row < Rows && col >= 0 && col < Cols) continue;
                 HexCoord coord = HexCoord.FromOffset(col, row);
-                Vector2 center = FirstHexCenterOffset + coord.ToPixel(HexSize);
+                Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(coord, HexSize);
                 AddShoreFoamStrips(shoreLayer, center, coord);
             }
         }
@@ -375,7 +375,7 @@ public partial class HexMapView : Node2D, IHexMapView
         Vector2[] hexVerts = HexVertices();
         foreach (HexTile tile in _state.Grid.Tiles)
         {
-            Vector2 landCenter = FirstHexCenterOffset + tile.Coord.ToPixel(HexSize);
+            Vector2 landCenter = FirstHexCenterOffset + HexPixel.ToPixel(tile.Coord, HexSize);
             for (int i = 0; i < 6; i++)
             {
                 int dirA = EdgeToDirection[(i + 5) % 6];
@@ -394,8 +394,8 @@ public partial class HexMapView : Node2D, IHexMapView
         // during an instant fast-forward don't leak to the screen.
         foreach (HexTile tile in _state.Grid.Tiles)
         {
-            Vector2 center = FirstHexCenterOffset + tile.Coord.ToPixel(HexSize);
-            Polygon2D fill = CreateHexVisual(center, tile.Color);
+            Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(tile.Coord, HexSize);
+            Polygon2D fill = CreateHexVisual(center, PlayerPalette.ColorFor(tile.Owner));
             _tileVisuals[tile.Coord] = fill;
             AddChild(fill);
         }
@@ -467,7 +467,7 @@ public partial class HexMapView : Node2D, IHexMapView
             if (_tileVisuals.TryGetValue(tile.Coord, out Polygon2D? fill)
                 && fill != null)
             {
-                fill.Color = tile.Color;
+                fill.Color = PlayerPalette.ColorFor(tile.Owner);
             }
         }
 
@@ -550,7 +550,7 @@ public partial class HexMapView : Node2D, IHexMapView
             // around (0,0); the parent's Position is the tile center).
             var preview = new Node2D
             {
-                Position = FirstHexCenterOffset + coord.ToPixel(HexSize),
+                Position = FirstHexCenterOffset + HexPixel.ToPixel(coord, HexSize),
             };
             for (int i = 0; i < rings; i++)
             {
@@ -577,7 +577,7 @@ public partial class HexMapView : Node2D, IHexMapView
         foreach (HexCoord coord in coords)
         {
             Node2D preview = CreateTowerPreviewVisual();
-            preview.Position = FirstHexCenterOffset + coord.ToPixel(HexSize);
+            preview.Position = FirstHexCenterOffset + HexPixel.ToPixel(coord, HexSize);
             _towerTargetsLayer.AddChild(preview);
         }
     }
@@ -602,7 +602,7 @@ public partial class HexMapView : Node2D, IHexMapView
         {
             var overlay = new Polygon2D
             {
-                Position = FirstHexCenterOffset + coord.ToPixel(HexSize),
+                Position = FirstHexCenterOffset + HexPixel.ToPixel(coord, HexSize),
                 Color = tint,
                 Polygon = verts,
             };
@@ -708,10 +708,10 @@ public partial class HexMapView : Node2D, IHexMapView
     /// Rebuild every occupant visual (units + capitals) using the CTA
     /// coloring rules: the current player's actionable things get a
     /// white interior, everything else gets black. All shapes have a
-    /// black border. Pass <paramref name="currentPlayerColor"/> = null to
+    /// black border. Pass <paramref name="currentPlayer"/> = null to
     /// render everything non-CTA (e.g., while no turn is active).
     /// </summary>
-    public void RefreshOccupantVisuals(Color? currentPlayerColor, Treasury treasury)
+    public void RefreshOccupantVisuals(PlayerId? currentPlayer, Treasury treasury)
     {
         // Detect Unit→Grave transitions BEFORE the units layer is cleared.
         // Each dying unit's visual is reparented to _deathsLayer and
@@ -756,11 +756,11 @@ public partial class HexMapView : Node2D, IHexMapView
         HexCoord? selectedCapital = _highlightedTerritory?.Capital;
 
         var actionableCapitals = new HashSet<HexCoord>();
-        if (currentPlayerColor.HasValue)
+        if (currentPlayer.HasValue)
         {
             foreach (Territory territory in Territories)
             {
-                if (territory.Owner != currentPlayerColor.Value) continue;
+                if (territory.Owner != currentPlayer.Value) continue;
                 if (!territory.HasCapital) continue;
                 // Peasant is the cheapest purchase (10g) and is cheaper
                 // than a tower (15g), so peasant-affordability is a
@@ -827,7 +827,7 @@ public partial class HexMapView : Node2D, IHexMapView
         {
             if (tile.Occupant == null) continue;
 
-            Vector2 center = FirstHexCenterOffset + tile.Coord.ToPixel(HexSize);
+            Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(tile.Coord, HexSize);
 
             if (tile.Occupant is Unit unit)
             {
@@ -837,8 +837,8 @@ public partial class HexMapView : Node2D, IHexMapView
                 _unitsLayer?.AddChild(visual);
                 _unitVisuals[tile.Coord] = visual;
 
-                bool actionable = currentPlayerColor.HasValue
-                    && unit.Owner == currentPlayerColor.Value
+                bool actionable = currentPlayer.HasValue
+                    && unit.Owner == currentPlayer.Value
                     && !unit.HasMovedThisTurn;
                 if (actionable) _pulsingUnits.Add(tile.Coord);
             }
@@ -1012,11 +1012,11 @@ public partial class HexMapView : Node2D, IHexMapView
         if (destroyed is Grave) return;
         if (_deathsLayer == null) return;
 
-        Vector2 center = FirstHexCenterOffset + coord.ToPixel(HexSize);
+        Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(coord, HexSize);
 
         Color shardColor = destroyed switch
         {
-            Unit u => u.Owner,
+            Unit u => PlayerPalette.ColorFor(u.Owner),
             Tower => new Color(0.72f, 0.72f, 0.76f, 1f),
             Tree => new Color(0.16f, 0.48f, 0.18f, 1f),
             _ => new Color(1f, 1f, 1f, 1f),
@@ -1214,8 +1214,8 @@ public partial class HexMapView : Node2D, IHexMapView
     {
         if (_rejectionsLayer == null) return;
 
-        Vector2 defenderPos = FirstHexCenterOffset + defenderCoord.ToPixel(HexSize);
-        Vector2 targetPos = FirstHexCenterOffset + targetCoord.ToPixel(HexSize);
+        Vector2 defenderPos = FirstHexCenterOffset + HexPixel.ToPixel(defenderCoord, HexSize);
+        Vector2 targetPos = FirstHexCenterOffset + HexPixel.ToPixel(targetCoord, HexSize);
         if (defenderPos == targetPos) return;
 
         Color black = new Color(0f, 0f, 0f, 1f);
@@ -1290,7 +1290,7 @@ public partial class HexMapView : Node2D, IHexMapView
     private void SpawnRejectionPulse(HexCoord coord, Node2D ghost)
     {
         if (_rejectionsLayer == null) return;
-        ghost.Position = FirstHexCenterOffset + coord.ToPixel(HexSize);
+        ghost.Position = FirstHexCenterOffset + HexPixel.ToPixel(coord, HexSize);
         ghost.Modulate = new Color(1f, 1f, 1f, 0.9f);
         _rejectionsLayer.AddChild(ghost);
 
@@ -1861,7 +1861,7 @@ public partial class HexMapView : Node2D, IHexMapView
         // Convert viewport position into our local space, then remove the
         // centering offset so the result is in axial-origin coordinates.
         Vector2 local = ToLocal(mouse.Position) - FirstHexCenterOffset;
-        HexCoord coord = HexCoord.FromPixel(local, HexSize);
+        HexCoord coord = HexPixel.FromPixel(local, HexSize);
 
         // CoordClicked fires on every click that wasn't a drag, regardless
         // of whether the coord is in the grid — the editor needs to know
@@ -1904,7 +1904,7 @@ public partial class HexMapView : Node2D, IHexMapView
         if (CoordHovered is null) return;
 
         Vector2 local = ToLocal(viewportPos) - FirstHexCenterOffset;
-        HexCoord coord = HexCoord.FromPixel(local, HexSize);
+        HexCoord coord = HexPixel.FromPixel(local, HexSize);
         (int col, int row) = coord.ToOffset();
         bool inBounds = col >= 0 && col < Cols && row >= 0 && row < Rows;
         CoordHovered.Invoke(inBounds ? coord : (HexCoord?)null);
@@ -1921,7 +1921,7 @@ public partial class HexMapView : Node2D, IHexMapView
     private void EmitPaintCellIfChanged(Vector2 viewportPos, bool force = false)
     {
         Vector2 local = ToLocal(viewportPos) - FirstHexCenterOffset;
-        HexCoord coord = HexCoord.FromPixel(local, HexSize);
+        HexCoord coord = HexPixel.FromPixel(local, HexSize);
         (int col, int row) = coord.ToOffset();
         if (col < 0 || col >= Cols || row < 0 || row >= Rows) return;
         if (!force && coord.Equals(_lastPaintedCoord)) return;
@@ -1962,7 +1962,7 @@ public partial class HexMapView : Node2D, IHexMapView
         if (!territory.HasCapital) return;
         // The capital's pixel position is in unscaled local space; scale
         // it to world space before subtracting from VisualCenter.
-        Vector2 localCenter = FirstHexCenterOffset + territory.Capital!.Value.ToPixel(HexSize);
+        Vector2 localCenter = FirstHexCenterOffset + HexPixel.ToPixel(territory.Capital!.Value, HexSize);
         Position = ClampPan(VisualCenter() - localCenter * _zoom);
     }
 
@@ -1971,7 +1971,9 @@ public partial class HexMapView : Node2D, IHexMapView
     /// whenever the OS window resizes.</summary>
     private void RecomputeZoomLevels()
     {
-        _zoomMin = ZoomMath.ComputeZoomMin(GetViewportRect().Size, HudView.HudHeight, PixelSize);
+        Vector2 vp = GetViewportRect().Size;
+        Vector2 px = PixelSize;
+        _zoomMin = ZoomMath.ComputeZoomMin(vp.X, vp.Y, HudView.HudHeight, px.X, px.Y);
         _zoomLevels = ZoomMath.BuildLevels(_zoomMin, ZoomLevelCount);
 
         _zoom = Mathf.Clamp(_zoom, _zoomMin, 1f);
@@ -2069,7 +2071,7 @@ public partial class HexMapView : Node2D, IHexMapView
 
         foreach (HexTile tile in _state.Grid.Tiles)
         {
-            Vector2 center = FirstHexCenterOffset + tile.Coord.ToPixel(HexSize);
+            Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(tile.Coord, HexSize);
             for (int edge = 0; edge < 6; edge++)
             {
                 int dir = EdgeToNeighborDirection[edge];
@@ -2268,7 +2270,7 @@ public partial class HexMapView : Node2D, IHexMapView
 
         foreach (HexTile tile in Grid.Tiles)
         {
-            Vector2 center = FirstHexCenterOffset + tile.Coord.ToPixel(HexSize);
+            Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(tile.Coord, HexSize);
 
             for (int edge = 0; edge < 6; edge++)
             {
@@ -2276,7 +2278,7 @@ public partial class HexMapView : Node2D, IHexMapView
                 HexCoord neighborCoord = tile.Coord.Neighbor(dir);
                 HexTile? neighbor = Grid.Get(neighborCoord);
 
-                bool isBoundary = neighbor == null || neighbor.Color != tile.Color;
+                bool isBoundary = neighbor == null || neighbor.Owner != tile.Owner;
                 if (!isBoundary) continue;
 
                 var line = new Line2D
@@ -2303,7 +2305,7 @@ public partial class HexMapView : Node2D, IHexMapView
 
         foreach (HexCoord coord in _highlightedTerritory.Coords)
         {
-            Vector2 center = FirstHexCenterOffset + coord.ToPixel(HexSize);
+            Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(coord, HexSize);
 
             for (int edge = 0; edge < 6; edge++)
             {

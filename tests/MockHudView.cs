@@ -1,5 +1,4 @@
 using System;
-using Godot;
 
 namespace FourExHex.Tests;
 
@@ -46,7 +45,7 @@ public class MockHudView : IHudView
     /// makes the on-screen dialog stay hidden even though session
     /// state thinks the game is over.
     /// </summary>
-    public Color? LastSeenWinner { get; private set; }
+    public PlayerId? LastSeenWinner { get; private set; }
 
     /// <summary>
     /// Snapshot of <see cref="SessionState.Mode"/> as observed at the

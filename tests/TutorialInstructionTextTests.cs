@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using Godot;
 using Xunit;
 
 namespace FourExHex.Tests;
@@ -15,8 +14,8 @@ public class TutorialInstructionTextTests
     private static readonly HexCoord A = new(0, 0);
     private static readonly HexCoord B = new(1, 0);
     private static readonly HexCoord C = new(2, 0);
-    private static readonly Color Red = new(1f, 0f, 0f);
-    private static readonly Color Blue = new(0f, 0f, 1f);
+    private static readonly PlayerId Red = PlayerId.FromIndex(0);
+    private static readonly PlayerId Blue = PlayerId.FromIndex(1);
 
     // Minimal GameState builder: when a test exercises a code path that
     // doesn't touch the grid, EmptyState() avoids the territory/turn

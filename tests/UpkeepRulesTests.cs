@@ -1,12 +1,11 @@
 using System.Collections.Generic;
-using Godot;
 using Xunit;
 
 namespace FourExHex.Tests;
 
 public class UpkeepRulesTests
 {
-    private static readonly Color Red = new Color(1f, 0f, 0f);
+    private static readonly PlayerId Red = PlayerId.FromIndex(0);
 
     private static HexGrid BuildGridOf(params HexCoord[] coords) =>
         TestHelpers.BuildSpotGrid(Red, coords);
@@ -156,7 +155,7 @@ public class UpkeepRulesTests
     [Fact]
     public void ApplyUpkeepFor_ReturnsTrueWhenAnyTerritoryWentBankrupt()
     {
-        var redPlayer = new Player("Red", Red);
+        var redPlayer = new Player("Red", PlayerId.FromIndex(0));
         HexGrid grid = new HexGrid();
         grid.Add(new HexTile(new HexCoord(0, 0), Red));
         grid.Add(new HexTile(new HexCoord(1, 0), Red));
@@ -175,7 +174,7 @@ public class UpkeepRulesTests
     [Fact]
     public void ApplyUpkeepFor_ReturnsFalseWhenAllTerritoriesAffordUpkeep()
     {
-        var redPlayer = new Player("Red", Red);
+        var redPlayer = new Player("Red", PlayerId.FromIndex(0));
         HexGrid grid = new HexGrid();
         grid.Add(new HexTile(new HexCoord(0, 0), Red));
         grid.Add(new HexTile(new HexCoord(1, 0), Red));
@@ -194,8 +193,8 @@ public class UpkeepRulesTests
     [Fact]
     public void ApplyUpkeepFor_OnlyAffectsMatchingPlayer()
     {
-        var blue = new Color(0f, 0f, 1f);
-        var redPlayer = new Player("Red", Red);
+        var blue = PlayerId.FromIndex(1);
+        var redPlayer = new Player("Red", PlayerId.FromIndex(0));
 
         HexGrid grid = new HexGrid();
         grid.Add(new HexTile(new HexCoord(0, 0), Red));

@@ -1,4 +1,4 @@
-using Godot;
+using System;
 using Xunit;
 
 namespace FourExHex.Tests;
@@ -13,9 +13,9 @@ public class ZoomMathTests
         // Map is 800x600 inside a 1920x1080 viewport (HUD 60). Already fits;
         // we floor at 1.0 so the player can't zoom out beyond the default.
         float min = ZoomMath.ComputeZoomMin(
-            viewport: new Vector2(1920f, 1080f),
+            viewportX: 1920f, viewportY: 1080f,
             hudHeight: 60f,
-            mapPixelSize: new Vector2(800f, 600f));
+            mapPixelX: 800f, mapPixelY: 600f);
 
         Assert.Equal(1f, min, Tolerance);
     }
@@ -26,9 +26,9 @@ public class ZoomMathTests
         // 1920x1080 viewport, 60px HUD => 1020 available Y.
         // Map 1000x2040 => Y-fit = 1020/2040 = 0.5; X-fit = 1920/1000 = 1.92.
         float min = ZoomMath.ComputeZoomMin(
-            viewport: new Vector2(1920f, 1080f),
+            viewportX: 1920f, viewportY: 1080f,
             hudHeight: 60f,
-            mapPixelSize: new Vector2(1000f, 2040f));
+            mapPixelX: 1000f, mapPixelY: 2040f);
 
         Assert.Equal(0.5f, min, Tolerance);
     }
@@ -39,9 +39,9 @@ public class ZoomMathTests
         // 1000x2000 viewport, 0px HUD. Map 2000x1000 => X-fit = 0.5,
         // Y-fit = 2.0. Min picks X.
         float min = ZoomMath.ComputeZoomMin(
-            viewport: new Vector2(1000f, 2000f),
+            viewportX: 1000f, viewportY: 2000f,
             hudHeight: 0f,
-            mapPixelSize: new Vector2(2000f, 1000f));
+            mapPixelX: 2000f, mapPixelY: 1000f);
 
         Assert.Equal(0.5f, min, Tolerance);
     }
@@ -53,9 +53,9 @@ public class ZoomMathTests
         // result would be 1.0 (since X also fits). With a 60px HUD strip
         // taken off, Y-fit becomes 1020/1080 ≈ 0.9444 and binds.
         float min = ZoomMath.ComputeZoomMin(
-            viewport: new Vector2(2000f, 1080f),
+            viewportX: 2000f, viewportY: 1080f,
             hudHeight: 60f,
-            mapPixelSize: new Vector2(1500f, 1080f));
+            mapPixelX: 1500f, mapPixelY: 1080f);
 
         Assert.Equal(1020f / 1080f, min, Tolerance);
     }
@@ -67,13 +67,13 @@ public class ZoomMathTests
         // PixelSize ~ (1443, 1488). On a 1920x1080 fullscreen viewport with
         // a 60px HUD strip, the available area is ~1920x1020, so Y binds
         // and the fit-min is well under 1.
-        float pixelW = (30 + 0.5f) * Mathf.Sqrt(3f) * 48f;
+        float pixelW = (30 + 0.5f) * (float)Math.Sqrt(3.0) * 48f;
         float pixelH = (1.5f * 20 + 0.5f) * 48f;
 
         float min = ZoomMath.ComputeZoomMin(
-            viewport: new Vector2(1920f, 1080f),
+            viewportX: 1920f, viewportY: 1080f,
             hudHeight: 60f,
-            mapPixelSize: new Vector2(pixelW, pixelH));
+            mapPixelX: pixelW, mapPixelY: pixelH);
 
         Assert.True(min < 1f, $"Expected min < 1, got {min}");
         Assert.True(min > 0.5f, $"Expected min > 0.5, got {min}");

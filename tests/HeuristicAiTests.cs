@@ -1,15 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Godot;
 using Xunit;
 
 namespace FourExHex.Tests;
 
 public class HeuristicAiTests
 {
-    private static readonly Color Red = new(1f, 0f, 0f);
-    private static readonly Color Blue = new(0f, 0f, 1f);
+    private static readonly PlayerId Red = PlayerId.FromIndex(0);
+    private static readonly PlayerId Blue = PlayerId.FromIndex(1);
 
     private static GameState BuildState(HexGrid grid, params Player[] players)
     {
@@ -31,7 +30,7 @@ public class HeuristicAiTests
         grid.Add(new HexTile(HexCoord.FromOffset(1, 0), Red));
         grid.Add(new HexTile(HexCoord.FromOffset(2, 0), Red));
         grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(Red);
-        GameState state = BuildState(grid, new Player("Red", Red), new Player("Blue", Blue));
+        GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
 
         GameState clone = AiSimulator.Clone(state);
         clone.Grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = null;
@@ -46,7 +45,7 @@ public class HeuristicAiTests
         var grid = new HexGrid();
         grid.Add(new HexTile(HexCoord.FromOffset(0, 0), Red));
         grid.Add(new HexTile(HexCoord.FromOffset(1, 0), Red));
-        GameState state = BuildState(grid, new Player("Red", Red), new Player("Blue", Blue));
+        GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
         HexCoord cap = state.Territories.First(t => t.Owner == Red).Capital!.Value;
         state.Treasury.SetGold(cap, 42);
 
@@ -68,7 +67,7 @@ public class HeuristicAiTests
         {
             gridA.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
         }
-        GameState stateA = BuildState(gridA, new Player("Red", Red), new Player("Blue", Blue));
+        GameState stateA = BuildState(gridA, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
 
         // Scenario B: two disjoint 3-tile Red islands separated by
         // a Blue-colored gap tile (Blue has no territory because
@@ -84,7 +83,7 @@ public class HeuristicAiTests
         {
             gridB.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
         }
-        GameState stateB = BuildState(gridB, new Player("Red", Red), new Player("Blue", Blue));
+        GameState stateB = BuildState(gridB, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
 
         double scoreA = AiStateScorer.Score(stateA, Red);
         double scoreB = AiStateScorer.Score(stateB, Red);
@@ -115,7 +114,7 @@ public class HeuristicAiTests
         gridA.Add(new HexTile(HexCoord.FromOffset(4, 0), Blue));
         gridA.Add(new HexTile(HexCoord.FromOffset(5, 0), Blue));
         gridA.Add(new HexTile(HexCoord.FromOffset(6, 0), Blue));
-        GameState stateA = BuildState(gridA, new Player("Red", Red), new Player("Blue", Blue));
+        GameState stateA = BuildState(gridA, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
 
         // Scenario B: same Red, but Blue is three disconnected
         // singletons (placed two columns apart so no Blue neighbors
@@ -129,7 +128,7 @@ public class HeuristicAiTests
         gridB.Add(new HexTile(HexCoord.FromOffset(4, 0), Blue));
         gridB.Add(new HexTile(HexCoord.FromOffset(6, 0), Blue));
         gridB.Add(new HexTile(HexCoord.FromOffset(8, 0), Blue));
-        GameState stateB = BuildState(gridB, new Player("Red", Red), new Player("Blue", Blue));
+        GameState stateB = BuildState(gridB, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
 
         double scoreA = AiStateScorer.Score(stateA, Red);
         double scoreB = AiStateScorer.Score(stateB, Red);
@@ -161,7 +160,7 @@ public class HeuristicAiTests
         grid.Add(new HexTile(HexCoord.FromOffset(6, 0), Blue));
         grid.Get(HexCoord.FromOffset(4, 0))!.Occupant = new Unit(Red);
         grid.Get(HexCoord.FromOffset(5, 0))!.Occupant = new Unit(Red);
-        GameState state = BuildState(grid, new Player("Red", Red), new Player("Blue", Blue));
+        GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
 
         AiAction? result = HeuristicAi.ChooseNextAction(
             state, Red, new HashSet<HexCoord>(), new Random(0));
@@ -169,7 +168,7 @@ public class HeuristicAiTests
         AiMoveAction move = Assert.IsType<AiMoveAction>(result);
         HexTile? dst = state.Grid.Get(move.Destination);
         Assert.NotNull(dst);
-        Assert.Equal(Blue, dst!.Color); // destination is the captured Blue tile
+        Assert.Equal(Blue, dst!.Owner); // destination is the captured Blue tile
     }
 
     [Fact]
@@ -182,13 +181,13 @@ public class HeuristicAiTests
         var gridA = new HexGrid();
         for (int col = 0; col < 4; col++)
             gridA.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
-        GameState cleanState = BuildState(gridA, new Player("Red", Red), new Player("Blue", Blue));
+        GameState cleanState = BuildState(gridA, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
 
         var gridB = new HexGrid();
         for (int col = 0; col < 4; col++)
             gridB.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
         gridB.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Tree();
-        GameState treedState = BuildState(gridB, new Player("Red", Red), new Player("Blue", Blue));
+        GameState treedState = BuildState(gridB, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
 
         double cleanScore = AiStateScorer.Score(cleanState, Red);
         double treedScore = AiStateScorer.Score(treedState, Red);
@@ -209,13 +208,13 @@ public class HeuristicAiTests
         for (int col = 0; col < 4; col++)
             gridTree.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
         gridTree.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Tree();
-        GameState treeState = BuildState(gridTree, new Player("Red", Red), new Player("Blue", Blue));
+        GameState treeState = BuildState(gridTree, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
 
         var gridGrave = new HexGrid();
         for (int col = 0; col < 4; col++)
             gridGrave.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
         gridGrave.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Grave();
-        GameState graveState = BuildState(gridGrave, new Player("Red", Red), new Player("Blue", Blue));
+        GameState graveState = BuildState(gridGrave, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
 
         double treeScore = AiStateScorer.Score(treeState, Red);
         double graveScore = AiStateScorer.Score(graveState, Red);
@@ -233,15 +232,15 @@ public class HeuristicAiTests
         // just hurts Blue's territory value, slightly helping Red).
         var gridRedGrave = TestHelpers.BuildRectGrid(6, 1, Blue);
         for (int col = 0; col < 3; col++)
-            gridRedGrave.Get(HexCoord.FromOffset(col, 0))!.Color = Red;
+            gridRedGrave.Get(HexCoord.FromOffset(col, 0))!.Owner = Red;
         gridRedGrave.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Grave();
-        GameState redGraveState = BuildState(gridRedGrave, new Player("Red", Red), new Player("Blue", Blue));
+        GameState redGraveState = BuildState(gridRedGrave, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
 
         var gridBlueGrave = TestHelpers.BuildRectGrid(6, 1, Blue);
         for (int col = 0; col < 3; col++)
-            gridBlueGrave.Get(HexCoord.FromOffset(col, 0))!.Color = Red;
+            gridBlueGrave.Get(HexCoord.FromOffset(col, 0))!.Owner = Red;
         gridBlueGrave.Get(HexCoord.FromOffset(4, 0))!.Occupant = new Grave();
-        GameState blueGraveState = BuildState(gridBlueGrave, new Player("Red", Red), new Player("Blue", Blue));
+        GameState blueGraveState = BuildState(gridBlueGrave, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
 
         double redGraveScore = AiStateScorer.Score(redGraveState, Red);
         double blueGraveScore = AiStateScorer.Score(blueGraveState, Red);
@@ -262,8 +261,8 @@ public class HeuristicAiTests
         // another tower → bonus = 3 × 10 = 30.
         var grid = TestHelpers.BuildRectGrid(6, 3, Blue);
         for (int col = 0; col < 6; col++)
-            grid.Get(HexCoord.FromOffset(col, 0))!.Color = Red;
-        GameState state = BuildState(grid, new Player("Red", Red), new Player("Blue", Blue));
+            grid.Get(HexCoord.FromOffset(col, 0))!.Owner = Red;
+        GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
 
         double bonus = AiStateScorer.BuildTowerBonus(HexCoord.FromOffset(2, 0), state, Red);
 
@@ -281,9 +280,9 @@ public class HeuristicAiTests
         // has no other tower covering it → counts. Bonus = 10.
         var grid = TestHelpers.BuildRectGrid(6, 3, Blue);
         for (int col = 0; col < 6; col++)
-            grid.Get(HexCoord.FromOffset(col, 0))!.Color = Red;
+            grid.Get(HexCoord.FromOffset(col, 0))!.Owner = Red;
         grid.Get(HexCoord.FromOffset(5, 0))!.Occupant = new Tower();
-        GameState state = BuildState(grid, new Player("Red", Red), new Player("Blue", Blue));
+        GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
 
         double bonus = AiStateScorer.BuildTowerBonus(HexCoord.FromOffset(4, 0), state, Red);
 
@@ -298,7 +297,7 @@ public class HeuristicAiTests
         // count as enemy). Placing a tower in the middle covers 7
         // tiles, none of which are borders → bonus = 0.
         var grid = TestHelpers.BuildRectGrid(3, 3, Red);
-        GameState state = BuildState(grid, new Player("Red", Red), new Player("Blue", Blue));
+        GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
 
         double bonus = AiStateScorer.BuildTowerBonus(HexCoord.FromOffset(1, 1), state, Red);
 
@@ -318,8 +317,8 @@ public class HeuristicAiTests
         var grid = TestHelpers.BuildRectGrid(6, 3, Blue);
         for (int col = 0; col < 3; col++)
             for (int row = 0; row < 3; row++)
-                grid.Get(HexCoord.FromOffset(col, row))!.Color = Red;
-        GameState state = BuildState(grid, new Player("Red", Red), new Player("Blue", Blue));
+                grid.Get(HexCoord.FromOffset(col, row))!.Owner = Red;
+        GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
         HexCoord cap = state.Territories.First(t => t.Owner == Red).Capital!.Value;
         state.Treasury.SetGold(cap, PurchaseRules.TowerCost);
 
@@ -351,7 +350,7 @@ public class HeuristicAiTests
         grid.Add(new HexTile(HexCoord.FromOffset(2, 2), Red));
         grid.Add(new HexTile(HexCoord.FromOffset(1, 1), Blue));
         grid.Get(HexCoord.FromOffset(2, 1))!.Occupant = new Tower();
-        GameState state = BuildState(grid, new Player("Red", Red), new Player("Blue", Blue));
+        GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
         // Capital lands at (1,0) by lex-min over the empty Red
         // tiles, so a peasant at (0,1) is the adjacent attacker.
         grid.Get(HexCoord.FromOffset(0, 1))!.Occupant = new Unit(Red);
@@ -379,7 +378,7 @@ public class HeuristicAiTests
         grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Tree();
         grid.Get(HexCoord.FromOffset(0, 0))!.Occupant = new Unit(Red);
         grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(Red);
-        GameState state = BuildState(grid, new Player("Red", Red), new Player("Blue", Blue));
+        GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
 
         AiAction? result = HeuristicAi.ChooseNextAction(
             state, Red, new HashSet<HexCoord>(), new Random(0));
@@ -403,13 +402,13 @@ public class HeuristicAiTests
         var gridCompact = TestHelpers.BuildRectGrid(6, 3, Blue);
         for (int col = 0; col < 2; col++)
             for (int row = 0; row < 3; row++)
-                gridCompact.Get(HexCoord.FromOffset(col, row))!.Color = Red;
-        GameState compact = BuildState(gridCompact, new Player("Red", Red), new Player("Blue", Blue));
+                gridCompact.Get(HexCoord.FromOffset(col, row))!.Owner = Red;
+        GameState compact = BuildState(gridCompact, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
 
         var gridStrip = TestHelpers.BuildRectGrid(6, 3, Blue);
         for (int col = 0; col < 6; col++)
-            gridStrip.Get(HexCoord.FromOffset(col, 0))!.Color = Red;
-        GameState strip = BuildState(gridStrip, new Player("Red", Red), new Player("Blue", Blue));
+            gridStrip.Get(HexCoord.FromOffset(col, 0))!.Owner = Red;
+        GameState strip = BuildState(gridStrip, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
 
         double compactScore = AiStateScorer.Score(compact, Red);
         double stripScore = AiStateScorer.Score(strip, Red);
@@ -443,13 +442,13 @@ public class HeuristicAiTests
         var gridCompact = TestHelpers.BuildRectGrid(6, 3, Blue);
         for (int col = 0; col < 2; col++)
             for (int row = 0; row < 3; row++)
-                gridCompact.Get(HexCoord.FromOffset(col, row))!.Color = Red;
-        GameState compact = BuildState(gridCompact, new Player("Red", Red), new Player("Blue", Blue));
+                gridCompact.Get(HexCoord.FromOffset(col, row))!.Owner = Red;
+        GameState compact = BuildState(gridCompact, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
 
         var gridStrip = TestHelpers.BuildRectGrid(6, 3, Blue);
         for (int col = 0; col < 6; col++)
-            gridStrip.Get(HexCoord.FromOffset(col, 0))!.Color = Red;
-        GameState strip = BuildState(gridStrip, new Player("Red", Red), new Player("Blue", Blue));
+            gridStrip.Get(HexCoord.FromOffset(col, 0))!.Owner = Red;
+        GameState strip = BuildState(gridStrip, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
 
         double gap = AiStateScorer.Score(compact, Red) - AiStateScorer.Score(strip, Red);
 
@@ -468,15 +467,15 @@ public class HeuristicAiTests
         var gridDefended = TestHelpers.BuildRectGrid(6, 3, Blue);
         for (int col = 0; col < 2; col++)
             for (int row = 0; row < 3; row++)
-                gridDefended.Get(HexCoord.FromOffset(col, row))!.Color = Red;
+                gridDefended.Get(HexCoord.FromOffset(col, row))!.Owner = Red;
         gridDefended.Get(HexCoord.FromOffset(1, 1))!.Occupant = new Unit(Red);
-        GameState defended = BuildState(gridDefended, new Player("Red", Red), new Player("Blue", Blue));
+        GameState defended = BuildState(gridDefended, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
 
         var gridUndefended = TestHelpers.BuildRectGrid(6, 3, Blue);
         for (int col = 0; col < 2; col++)
             for (int row = 0; row < 3; row++)
-                gridUndefended.Get(HexCoord.FromOffset(col, row))!.Color = Red;
-        GameState undefended = BuildState(gridUndefended, new Player("Red", Red), new Player("Blue", Blue));
+                gridUndefended.Get(HexCoord.FromOffset(col, row))!.Owner = Red;
+        GameState undefended = BuildState(gridUndefended, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
 
         double defendedScore = AiStateScorer.Score(defended, Red);
         double undefendedScore = AiStateScorer.Score(undefended, Red);
@@ -495,7 +494,7 @@ public class HeuristicAiTests
         grid.Add(new HexTile(HexCoord.FromOffset(0, 0), Red));
         grid.Add(new HexTile(HexCoord.FromOffset(1, 0), Red));
         grid.Add(new HexTile(HexCoord.FromOffset(2, 0), Red));
-        GameState state = BuildState(grid, new Player("Red", Red), new Player("Blue", Blue));
+        GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
 
         AiAction? result = HeuristicAi.ChooseNextAction(
             state, Red, new HashSet<HexCoord>(), new Random(0));
@@ -517,12 +516,12 @@ public class HeuristicAiTests
         var grid = TestHelpers.BuildRectGrid(6, 3, Blue);
         for (int col = 0; col < 2; col++)
             for (int row = 0; row < 3; row++)
-                grid.Get(HexCoord.FromOffset(col, row))!.Color = Red;
+                grid.Get(HexCoord.FromOffset(col, row))!.Owner = Red;
         // Peasant on interior Red tile (0,1) — its enemy-color
         // neighbors all sit OUTSIDE its current tile, so it gains
         // no defense by staying put.
         grid.Get(HexCoord.FromOffset(0, 1))!.Occupant = new Unit(Red);
-        GameState state = BuildState(grid, new Player("Red", Red), new Player("Blue", Blue));
+        GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
 
         AiAction? result = HeuristicAi.ChooseNextAction(
             state, Red, new HashSet<HexCoord>(), new Random(0));
@@ -551,7 +550,7 @@ public class HeuristicAiTests
             grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
         grid.Add(new HexTile(HexCoord.FromOffset(4, 0), Blue));
         grid.Get(HexCoord.FromOffset(0, 0))!.Occupant = new Unit(Red);
-        GameState state = BuildState(grid, new Player("Red", Red), new Player("Blue", Blue));
+        GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
         IReadOnlyList<Territory> beforeTerritories = state.Territories;
 
         var move = new AiMoveAction(HexCoord.FromOffset(0, 0), HexCoord.FromOffset(3, 0));
@@ -571,7 +570,7 @@ public class HeuristicAiTests
             grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
         grid.Add(new HexTile(HexCoord.FromOffset(4, 0), Blue));
         grid.Get(HexCoord.FromOffset(4, 0))!.Occupant = new Unit(Blue, UnitLevel.Spearman);
-        GameState state = BuildState(grid, new Player("Red", Red), new Player("Blue", Blue));
+        GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
         HexCoord cap = state.Territories.First(t => t.Owner == Red).Capital!.Value;
         state.Treasury.SetGold(cap, 10);
         IReadOnlyList<Territory> beforeTerritories = state.Territories;
@@ -599,7 +598,7 @@ public class HeuristicAiTests
         var grid = new HexGrid();
         grid.Add(new HexTile(HexCoord.FromOffset(0, 0), Red));
         grid.Add(new HexTile(HexCoord.FromOffset(1, 0), Red));
-        GameState state = BuildState(grid, new Player("Red", Red), new Player("Blue", Blue));
+        GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
 
         Assert.Throws<NotSupportedException>(() => AiSimulator.Apply(action, state));
     }
@@ -624,9 +623,9 @@ public class HeuristicAiTests
         var grid = TestHelpers.BuildRectGrid(6, 3, Blue);
         for (int col = 0; col < 2; col++)
             for (int row = 0; row < 3; row++)
-                grid.Get(HexCoord.FromOffset(col, row))!.Color = Red;
+                grid.Get(HexCoord.FromOffset(col, row))!.Owner = Red;
         grid.Get(HexCoord.FromOffset(0, 1))!.Occupant = new Unit(Red);
-        GameState state = BuildState(grid, new Player("Red", Red), new Player("Blue", Blue));
+        GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
 
         AiAction? first = HeuristicAi.ChooseNextAction(
             state, Red, new HashSet<HexCoord>(), new Random(0));

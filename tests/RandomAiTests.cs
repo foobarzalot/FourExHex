@@ -1,15 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Godot;
 using Xunit;
 
 namespace FourExHex.Tests;
 
 public class RandomAiTests
 {
-    private static readonly Color Red = new Color(1f, 0f, 0f);
-    private static readonly Color Blue = new Color(0f, 0f, 1f);
+    private static readonly PlayerId Red = PlayerId.FromIndex(0);
+    private static readonly PlayerId Blue = PlayerId.FromIndex(1);
 
     /// <summary>
     /// Build a GameState from a rect grid, overlaying Red tiles via
@@ -23,7 +22,7 @@ public class RandomAiTests
         foreach (HexCoord c in redCoords)
         {
             HexTile? tile = grid.Get(c);
-            if (tile != null) tile.Color = Red;
+            if (tile != null) tile.Owner = Red;
         }
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var players = new List<Player> { new("Red", Red), new("Blue", Blue) };
@@ -90,7 +89,7 @@ public class RandomAiTests
         Assert.Contains(move.Destination, expectedTargets);
         // And specifically, the destination must be an enemy tile
         // (the AI only emits capture moves from units, not repositions).
-        Assert.NotEqual(Red, state.Grid.Get(move.Destination)!.Color);
+        Assert.NotEqual(Red, state.Grid.Get(move.Destination)!.Owner);
     }
 
     [Fact]
@@ -154,7 +153,7 @@ public class RandomAiTests
         {
             HexTile? dst = state.Grid.Get(move.Destination);
             Assert.NotNull(dst);
-            Assert.Equal(Red, dst!.Color); // not a capture
+            Assert.Equal(Red, dst!.Owner); // not a capture
         }
     }
 
@@ -672,7 +671,7 @@ public class RandomAiTests
             AiMoveAction move = Assert.IsType<AiMoveAction>(result);
             HexTile? dst = state.Grid.Get(move.Destination);
             Assert.NotNull(dst);
-            Assert.NotEqual(Red, dst!.Color); // capture target is enemy-colored
+            Assert.NotEqual(Red, dst!.Owner); // capture target is enemy-colored
         }
     }
 

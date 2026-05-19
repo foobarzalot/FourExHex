@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using Godot;
 using Xunit;
 
 namespace FourExHex.Tests;
@@ -22,15 +21,15 @@ public class GameControllerRngTests
     /// </summary>
     private static List<string> RunAndCaptureAiActions(int seed, int turns)
     {
-        var red = new Player("Red", new Color(1f, 0f, 0f));
-        var blue = new Player("Blue", new Color(0f, 0f, 1f), isAi: true);
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1), isAi: true);
         var players = new List<Player> { red, blue };
 
         // 8x2 grid. Red owns (0,0)/(0,1); Blue owns the rest. Both
         // territories have plenty of room for AI-driven moves and buys.
-        HexGrid grid = TestHelpers.BuildRectGrid(8, 2, blue.Color);
-        grid.Get(HexCoord.FromOffset(0, 0))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(0, 1))!.Color = red.Color;
+        HexGrid grid = TestHelpers.BuildRectGrid(8, 2, blue.Id);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(0, 1))!.Owner = red.Id;
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -38,7 +37,7 @@ public class GameControllerRngTests
         var map = new MockHexMapView();
         var hud = new MockHudView();
         var log = new List<string>();
-        AiAction? Chooser(GameState s, Color c, HashSet<HexCoord> visited, Random rng)
+        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> visited, Random rng)
         {
             AiAction? action = RandomAi.ChooseNextAction(s, c, visited, rng);
             log.Add(action?.ToString() ?? "<end>");
@@ -96,12 +95,12 @@ public class GameControllerRngTests
         // Save format stores MasterSeed; the property must reflect the
         // value passed in (or the auto-generated one) and never change
         // mid-game even though the per-turn RNG is reseeded.
-        var red = new Player("Red", new Color(1f, 0f, 0f));
-        var blue = new Player("Blue", new Color(0f, 0f, 1f), isAi: true);
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1), isAi: true);
         var players = new List<Player> { red, blue };
-        HexGrid grid = TestHelpers.BuildRectGrid(5, 2, blue.Color);
-        grid.Get(HexCoord.FromOffset(0, 1))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(1, 1))!.Color = red.Color;
+        HexGrid grid = TestHelpers.BuildRectGrid(5, 2, blue.Id);
+        grid.Get(HexCoord.FromOffset(0, 1))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(1, 1))!.Owner = red.Id;
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
         var session = new SessionState();

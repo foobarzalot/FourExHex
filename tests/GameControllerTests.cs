@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Godot;
 using Xunit;
 
 namespace FourExHex.Tests;
@@ -25,13 +24,13 @@ public class GameControllerTests
 
         public TestGame(IReadOnlySet<HexCoord>? waterCoords = null)
         {
-            Red = new Player("Red", new Color(1f, 0f, 0f));
-            Blue = new Player("Blue", new Color(0f, 0f, 1f));
+            Red = new Player("Red", PlayerId.FromIndex(0));
+            Blue = new Player("Blue", PlayerId.FromIndex(1));
             var players = new List<Player> { Red, Blue };
 
-            var grid = TestHelpers.BuildRectGrid(5, 2, Blue.Color);
-            grid.Get(HexCoord.FromOffset(0, 1))!.Color = Red.Color;
-            grid.Get(HexCoord.FromOffset(1, 1))!.Color = Red.Color;
+            var grid = TestHelpers.BuildRectGrid(5, 2, Blue.Id);
+            grid.Get(HexCoord.FromOffset(0, 1))!.Owner = Red.Id;
+            grid.Get(HexCoord.FromOffset(1, 1))!.Owner = Red.Id;
 
             IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
 
@@ -42,8 +41,8 @@ public class GameControllerTests
             // otherwise interrupt every test that cycles turns via End
             // Turn. Tests specifically about the prompt build their own
             // fixture (see ClaimVictoryTests).
-            Session.ClaimVictoryPromptedHighestThreshold[Red.Color] = 90;
-            Session.ClaimVictoryPromptedHighestThreshold[Blue.Color] = 90;
+            Session.ClaimVictoryPromptedHighestThreshold[Red.Id] = 90;
+            Session.ClaimVictoryPromptedHighestThreshold[Blue.Id] = 90;
             Map = new MockHexMapView();
             Hud = new MockHudView();
             Controller = new GameController(State, Session, Map, Hud);
@@ -53,7 +52,7 @@ public class GameControllerTests
         public HexTile Tile(int col, int row) => State.Grid.Get(HexCoord.FromOffset(col, row))!;
 
         public Territory RedTerritory =>
-            State.Territories.First(t => t.Owner == Red.Color);
+            State.Territories.First(t => t.Owner == Red.Id);
     }
 
     // --- Startup ----------------------------------------------------------
@@ -68,7 +67,7 @@ public class GameControllerTests
         Assert.Equal(10, g.State.Treasury.GetGold(redCapital));
 
         // Blue also seeded at 5 × (tree-free cells). Fixture has no trees.
-        Territory blue = g.State.Territories.First(t => t.Owner == g.Blue.Color);
+        Territory blue = g.State.Territories.First(t => t.Owner == g.Blue.Id);
         Assert.Equal(5 * blue.Size, g.State.Treasury.GetGold(blue.Capital!.Value));
     }
 
@@ -78,13 +77,13 @@ public class GameControllerTests
         // Plant a tree on one Blue tile BEFORE StartGame runs. That tile
         // stops earning income, so Blue's seed drops by 5 (one tree × 5
         // gold/earning-cell).
-        var red = new Player("Red", new Color(1f, 0f, 0f));
-        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new List<Player> { red, blue };
 
-        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Color);
-        grid.Get(HexCoord.FromOffset(0, 1))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(1, 1))!.Color = red.Color;
+        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Id);
+        grid.Get(HexCoord.FromOffset(0, 1))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(1, 1))!.Owner = red.Id;
         grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = new Tree();
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
@@ -93,7 +92,7 @@ public class GameControllerTests
         var controller = new GameController(state, new SessionState(), map, new MockHudView());
         controller.StartGame();
 
-        Territory blueT = state.Territories.First(t => t.Owner == blue.Color);
+        Territory blueT = state.Territories.First(t => t.Owner == blue.Id);
         // Blue has 8 tiles total, 1 tree → 7 earning → 35 gold.
         Assert.Equal(5 * (blueT.Size - 1), state.Treasury.GetGold(blueT.Capital!.Value));
     }
@@ -109,7 +108,7 @@ public class GameControllerTests
         var g = new TestGame();
         HexCoord redCapital = g.RedTerritory.Capital!.Value;
         HexCoord blueCapital = g.State.Territories
-            .First(t => t.Owner == g.Blue.Color).Capital!.Value;
+            .First(t => t.Owner == g.Blue.Id).Capital!.Value;
         int redSeed = g.State.Treasury.GetGold(redCapital);
         int blueSeed = g.State.Treasury.GetGold(blueCapital);
 
@@ -132,7 +131,7 @@ public class GameControllerTests
         var g = new TestGame();
         HexCoord redCapital = g.RedTerritory.Capital!.Value;
         HexCoord blueCapital = g.State.Territories
-            .First(t => t.Owner == g.Blue.Color).Capital!.Value;
+            .First(t => t.Owner == g.Blue.Id).Capital!.Value;
         int redSeed = g.State.Treasury.GetGold(redCapital);
         int blueSeed = g.State.Treasury.GetGold(blueCapital);
 
@@ -161,7 +160,7 @@ public class GameControllerTests
         g.Map.SimulateClick(g.Tile(0, 1));
 
         Assert.NotNull(g.Session.SelectedTerritory);
-        Assert.Equal(g.Red.Color, g.Session.SelectedTerritory!.Owner);
+        Assert.Equal(g.Red.Id, g.Session.SelectedTerritory!.Owner);
         Assert.Same(g.Session.SelectedTerritory, g.Map.LastHighlight);
     }
 
@@ -197,7 +196,7 @@ public class GameControllerTests
     {
         var g = new TestGame();
         // Manually place a Red peasant on (1,1) — the non-capital Red tile.
-        g.Tile(1, 1).Occupant = new Unit(g.Red.Color);
+        g.Tile(1, 1).Occupant = new Unit(g.Red.Id);
 
         g.Map.SimulateClick(g.Tile(1, 1));
 
@@ -212,7 +211,7 @@ public class GameControllerTests
     public void Click_OwnUnit_SetsMoveSource_OnMapView()
     {
         var g = new TestGame();
-        g.Tile(1, 1).Occupant = new Unit(g.Red.Color);
+        g.Tile(1, 1).Occupant = new Unit(g.Red.Id);
 
         g.Map.SimulateClick(g.Tile(1, 1));
 
@@ -227,7 +226,7 @@ public class GameControllerTests
         // with the correct number of concentric rings (and Baron dot)
         // instead of always drawing a peasant-sized single ring.
         var g = new TestGame();
-        g.Tile(1, 1).Occupant = new Unit(g.Red.Color, UnitLevel.Spearman);
+        g.Tile(1, 1).Occupant = new Unit(g.Red.Id, UnitLevel.Spearman);
 
         g.Map.SimulateClick(g.Tile(1, 1));
 
@@ -239,16 +238,16 @@ public class GameControllerTests
     {
         // Trees in own territory consume the unit's action when cleared,
         // so they get the same green ring as captures.
-        var red = new Player("Red", new Color(1f, 0f, 0f));
-        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new List<Player> { red, blue };
 
         // 5x2 grid, Red owns (0,1)/(1,1)/(2,1) so we have room for both
         // a unit and a tree on non-capital own-territory tiles.
-        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Color);
-        grid.Get(HexCoord.FromOffset(0, 1))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(1, 1))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(2, 1))!.Color = red.Color;
+        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Id);
+        grid.Get(HexCoord.FromOffset(0, 1))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(1, 1))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(2, 1))!.Owner = red.Id;
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -259,11 +258,11 @@ public class GameControllerTests
 
         // Capital is on (0,1) (lex-min empty). Drop a tree on (1,1) and
         // a unit on (2,1), then pick up the unit.
-        Territory redT = state.Territories.First(t => t.Owner == red.Color);
+        Territory redT = state.Territories.First(t => t.Owner == red.Id);
         HexCoord treeCoord = redT.Coords.First(
             c => c != redT.Capital!.Value && c != HexCoord.FromOffset(2, 1));
         grid.Get(treeCoord)!.Occupant = new Tree();
-        grid.Get(HexCoord.FromOffset(2, 1))!.Occupant = new Unit(red.Color);
+        grid.Get(HexCoord.FromOffset(2, 1))!.Occupant = new Unit(red.Id);
 
         map.SimulateClick(grid.Get(HexCoord.FromOffset(2, 1)));
 
@@ -293,14 +292,14 @@ public class GameControllerTests
         // consumes the unit's action (see MovementRules.ResolveArrival's
         // clearedObstacle branch), so the grave tile must ring up as a
         // valid move target alongside captures and tree-chops.
-        var red = new Player("Red", new Color(1f, 0f, 0f));
-        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new List<Player> { red, blue };
 
-        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Color);
-        grid.Get(HexCoord.FromOffset(0, 1))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(1, 1))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(2, 1))!.Color = red.Color;
+        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Id);
+        grid.Get(HexCoord.FromOffset(0, 1))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(1, 1))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(2, 1))!.Owner = red.Id;
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -311,11 +310,11 @@ public class GameControllerTests
 
         // Capital is on (0,1). Drop a grave on the other non-capital tile
         // and a unit on (2,1), then pick up the unit.
-        Territory redT = state.Territories.First(t => t.Owner == red.Color);
+        Territory redT = state.Territories.First(t => t.Owner == red.Id);
         HexCoord graveCoord = redT.Coords.First(
             c => c != redT.Capital!.Value && c != HexCoord.FromOffset(2, 1));
         grid.Get(graveCoord)!.Occupant = new Grave();
-        grid.Get(HexCoord.FromOffset(2, 1))!.Occupant = new Unit(red.Color);
+        grid.Get(HexCoord.FromOffset(2, 1))!.Occupant = new Unit(red.Id);
 
         map.SimulateClick(grid.Get(HexCoord.FromOffset(2, 1)));
 
@@ -341,7 +340,7 @@ public class GameControllerTests
     public void Move_AfterCapture_ClearsMoveSource_OnMapView()
     {
         var g = new TestGame();
-        g.Tile(1, 1).Occupant = new Unit(g.Red.Color);
+        g.Tile(1, 1).Occupant = new Unit(g.Red.Id);
 
         g.Map.SimulateClick(g.Tile(1, 1)); // pick up
         Assert.NotNull(g.Map.LastMoveSource);
@@ -358,7 +357,7 @@ public class GameControllerTests
         // stays in MovingUnit mode so they can immediately try another
         // tile. (See rejection-feedback feature.)
         var g = new TestGame();
-        g.Tile(1, 1).Occupant = new Unit(g.Red.Color);
+        g.Tile(1, 1).Occupant = new Unit(g.Red.Id);
 
         g.Map.SimulateClick(g.Tile(1, 1)); // pick up
         Assert.NotNull(g.Map.LastMoveSource);
@@ -375,7 +374,7 @@ public class GameControllerTests
         // If the user picked up a unit and then presses U/click Buy,
         // the pulse should clear — we're no longer in MovingUnit mode.
         var g = new TestGame();
-        g.Tile(1, 1).Occupant = new Unit(g.Red.Color);
+        g.Tile(1, 1).Occupant = new Unit(g.Red.Id);
 
         g.Map.SimulateClick(g.Tile(1, 1));
         Assert.NotNull(g.Map.LastMoveSource);
@@ -389,7 +388,7 @@ public class GameControllerTests
     public void Click_OwnAlreadyMovedUnit_DoesNotEnterMoveMode()
     {
         var g = new TestGame();
-        var unit = new Unit(g.Red.Color) { HasMovedThisTurn = true };
+        var unit = new Unit(g.Red.Id) { HasMovedThisTurn = true };
         g.Tile(1, 1).Occupant = unit;
 
         g.Map.SimulateClick(g.Tile(1, 1));
@@ -414,7 +413,7 @@ public class GameControllerTests
         g.Map.SimulateClick(g.Tile(1, 1));
 
         Assert.NotNull(g.Tile(1, 1).Unit);
-        Assert.Equal(g.Red.Color, g.Tile(1, 1).Unit!.Owner);
+        Assert.Equal(g.Red.Id, g.Tile(1, 1).Unit!.Owner);
         Assert.Equal(goldBefore - PurchaseRules.PeasantCost, g.State.Treasury.GetGold(redCapital));
         // Buy-on-own-tile doesn't consume the unit's action.
         Assert.False(g.Tile(1, 1).Unit!.HasMovedThisTurn);
@@ -427,7 +426,7 @@ public class GameControllerTests
     public void Move_CaptureEnemyTile_ChangesOwnershipAndMarksMoved()
     {
         var g = new TestGame();
-        var unit = new Unit(g.Red.Color);
+        var unit = new Unit(g.Red.Id);
         g.Tile(1, 1).Occupant = unit;
 
         g.Map.SimulateClick(g.Tile(1, 1));
@@ -436,7 +435,7 @@ public class GameControllerTests
         // (2,1) is Blue, not Blue's capital, empty → capturable by peasant.
         g.Map.SimulateClick(g.Tile(2, 1));
 
-        Assert.Equal(g.Red.Color, g.Tile(2, 1).Color);
+        Assert.Equal(g.Red.Id, g.Tile(2, 1).Owner);
         Assert.Same(unit, g.Tile(2, 1).Unit);
         Assert.Null(g.Tile(1, 1).Unit);
         Assert.True(unit.HasMovedThisTurn);
@@ -453,14 +452,14 @@ public class GameControllerTests
         // of being cleared. The user clicked on a Red territory, moved
         // a unit into Blue space, and should still see Red selected.
         var g = new TestGame();
-        var unit = new Unit(g.Red.Color);
+        var unit = new Unit(g.Red.Id);
         g.Tile(1, 1).Occupant = unit;
 
         g.Map.SimulateClick(g.Tile(1, 1));
         g.Map.SimulateClick(g.Tile(2, 1)); // capture Blue hex
 
         Assert.NotNull(g.Session.SelectedTerritory);
-        Assert.Equal(g.Red.Color, g.Session.SelectedTerritory!.Owner);
+        Assert.Equal(g.Red.Id, g.Session.SelectedTerritory!.Owner);
         // The new territory should contain the captured tile.
         Assert.Contains(HexCoord.FromOffset(2, 1), g.Session.SelectedTerritory.Coords);
         // And the highlight on the map should point to the same territory.
@@ -473,9 +472,9 @@ public class GameControllerTests
         // Move-capture onto an enemy unit dispatches a single
         // PlayDestructionEffect for the displaced defender.
         var g = new TestGame();
-        var attacker = new Unit(g.Red.Color, UnitLevel.Spearman);
+        var attacker = new Unit(g.Red.Id, UnitLevel.Spearman);
         g.Tile(1, 1).Occupant = attacker;
-        var defender = new Unit(g.Blue.Color, UnitLevel.Peasant);
+        var defender = new Unit(g.Blue.Id, UnitLevel.Peasant);
         g.Tile(2, 1).Occupant = defender;
 
         g.Map.SimulateClick(g.Tile(1, 1));
@@ -492,7 +491,7 @@ public class GameControllerTests
         // Capturing an empty enemy tile flips its color but destroys
         // nothing — no FX should fire.
         var g = new TestGame();
-        g.Tile(1, 1).Occupant = new Unit(g.Red.Color);
+        g.Tile(1, 1).Occupant = new Unit(g.Red.Id);
 
         g.Map.SimulateClick(g.Tile(1, 1));
         g.Map.SimulateClick(g.Tile(2, 1));
@@ -524,7 +523,7 @@ public class GameControllerTests
     public void Move_CaptureEnemyTile_FiresUnitPlacedSound()
     {
         var g = new TestGame();
-        g.Tile(1, 1).Occupant = new Unit(g.Red.Color);
+        g.Tile(1, 1).Occupant = new Unit(g.Red.Id);
 
         g.Map.SimulateClick(g.Tile(1, 1));
         g.Map.SimulateClick(g.Tile(2, 1)); // capture empty Blue tile
@@ -539,14 +538,14 @@ public class GameControllerTests
         // Reposition needs a third Red tile so the unit has somewhere
         // empty to land within its own territory. Build a fresh 3-Red
         // grid here rather than retrofitting TestGame.
-        var red = new Player("Red", new Color(1f, 0f, 0f));
-        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new System.Collections.Generic.List<Player> { red, blue };
 
-        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Color);
-        grid.Get(HexCoord.FromOffset(0, 1))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(1, 1))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(2, 1))!.Color = red.Color;
+        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Id);
+        grid.Get(HexCoord.FromOffset(0, 1))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(1, 1))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(2, 1))!.Owner = red.Id;
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -558,7 +557,7 @@ public class GameControllerTests
         // Place the unit on the middle Red tile (non-capital). The
         // capital placer picks lex-min — (0,1) — so (1,1) and (2,1)
         // are both empty and within range.
-        var unit = new Unit(red.Color);
+        var unit = new Unit(red.Id);
         grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = unit;
 
         map.SimulateClick(grid.Get(HexCoord.FromOffset(1, 1))); // pick up
@@ -623,13 +622,13 @@ public class GameControllerTests
     {
         // 3-Red-tile setup so we can put two friendly units on
         // adjacent non-capital tiles and combine them.
-        var red = new Player("Red", new Color(1f, 0f, 0f));
-        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new System.Collections.Generic.List<Player> { red, blue };
-        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Color);
-        grid.Get(HexCoord.FromOffset(0, 1))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(1, 1))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(2, 1))!.Color = red.Color;
+        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Id);
+        grid.Get(HexCoord.FromOffset(0, 1))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(1, 1))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(2, 1))!.Owner = red.Id;
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -638,8 +637,8 @@ public class GameControllerTests
         var controller = new GameController(state, session, map, new MockHudView());
         controller.StartGame();
 
-        var moving = new Unit(red.Color, UnitLevel.Peasant);
-        var stationary = new Unit(red.Color, UnitLevel.Peasant);
+        var moving = new Unit(red.Id, UnitLevel.Peasant);
+        var stationary = new Unit(red.Id, UnitLevel.Peasant);
         grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = moving;
         grid.Get(HexCoord.FromOffset(2, 1))!.Occupant = stationary;
 
@@ -663,7 +662,7 @@ public class GameControllerTests
     {
         var g = new TestGame();
         // Stationary peasant on (1,1) for the bought peasant to merge into.
-        var stationary = new Unit(g.Red.Color, UnitLevel.Peasant);
+        var stationary = new Unit(g.Red.Id, UnitLevel.Peasant);
         g.Tile(1, 1).Occupant = stationary;
 
         HexCoord redCapital = g.RedTerritory.Capital!.Value;
@@ -693,9 +692,9 @@ public class GameControllerTests
     public void Move_CaptureEnemyUnit_FiresUnitDestroyedSound_NotPlace()
     {
         var g = new TestGame();
-        var attacker = new Unit(g.Red.Color, UnitLevel.Spearman);
+        var attacker = new Unit(g.Red.Id, UnitLevel.Spearman);
         g.Tile(1, 1).Occupant = attacker;
-        var defender = new Unit(g.Blue.Color, UnitLevel.Peasant);
+        var defender = new Unit(g.Blue.Id, UnitLevel.Peasant);
         g.Tile(2, 1).Occupant = defender;
 
         g.Map.SimulateClick(g.Tile(1, 1));
@@ -710,7 +709,7 @@ public class GameControllerTests
     public void Move_CaptureEnemyTower_FiresTowerDestroyedSound_NotPlace()
     {
         var g = new TestGame();
-        var knight = new Unit(g.Red.Color, UnitLevel.Knight);
+        var knight = new Unit(g.Red.Id, UnitLevel.Knight);
         g.Tile(1, 1).Occupant = knight;
         g.Tile(2, 1).Occupant = new Tower();
 
@@ -732,8 +731,8 @@ public class GameControllerTests
         // up a Knight on a Blue tile, zero the Blue treasury, then end
         // Red's turn so Blue's StartPlayerTurn runs and bankrupts.
         var g = new TestGame();
-        g.Tile(3, 0).Occupant = new Unit(g.Blue.Color, UnitLevel.Knight);
-        Territory blueT = g.State.Territories.First(t => t.Owner == g.Blue.Color);
+        g.Tile(3, 0).Occupant = new Unit(g.Blue.Id, UnitLevel.Knight);
+        Territory blueT = g.State.Territories.First(t => t.Owner == g.Blue.Id);
         HexCoord blueCapital = blueT.Capital!.Value;
         g.State.Treasury.SetGold(blueCapital, 0);
 
@@ -761,7 +760,7 @@ public class GameControllerTests
         // the territory layout: the audio dispatcher routes purely on
         // result.Destroyed's runtime type.
         var g = new TestGame();
-        g.Tile(1, 1).Occupant = new Unit(g.Red.Color, UnitLevel.Spearman);
+        g.Tile(1, 1).Occupant = new Unit(g.Red.Id, UnitLevel.Spearman);
         g.Tile(2, 1).Occupant = new Capital();
 
         g.Map.SimulateClick(g.Tile(1, 1));
@@ -778,14 +777,14 @@ public class GameControllerTests
         // 4x1: Red {(0,0),(1,0)} with Spearman on (1,0); Blue {(2,0),(3,0)}.
         // Spearman captures (2,0) — Blue's capital tile. Blue's remaining
         // tile (3,0) becomes a singleton, capital-less → eliminated.
-        var red = new Player("Red", new Color(1f, 0f, 0f));
-        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new List<Player> { red, blue };
 
-        var grid = TestHelpers.BuildRectGrid(4, 1, blue.Color);
-        grid.Get(HexCoord.FromOffset(0, 0))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(1, 0))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(red.Color, UnitLevel.Spearman);
+        var grid = TestHelpers.BuildRectGrid(4, 1, blue.Id);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(red.Id, UnitLevel.Spearman);
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -812,29 +811,29 @@ public class GameControllerTests
         // owed > 0). Without the phantom-turn processing,
         // AdvanceToNextActivePlayer skips Blue entirely and the unit
         // would survive indefinitely.
-        var red = new Player("Red", new Color(1f, 0f, 0f));
-        var green = new Player("Green", new Color(0f, 1f, 0f));
-        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var green = new Player("Green", PlayerId.FromIndex(2));
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new List<Player> { red, green, blue };
 
-        var grid = TestHelpers.BuildRectGrid(6, 2, red.Color);
+        var grid = TestHelpers.BuildRectGrid(6, 2, red.Id);
         // Green territory: a 2-tile strip so they have a capital and
         // pass IsEliminated.
-        grid.Get(HexCoord.FromOffset(0, 1))!.Color = green.Color;
-        grid.Get(HexCoord.FromOffset(1, 1))!.Color = green.Color;
+        grid.Get(HexCoord.FromOffset(0, 1))!.Owner = green.Id;
+        grid.Get(HexCoord.FromOffset(1, 1))!.Owner = green.Id;
         // Blue orphan singleton with a Peasant — no Blue capital on
         // the board.
         HexCoord orphanCoord = HexCoord.FromOffset(5, 1);
-        grid.Get(orphanCoord)!.Color = blue.Color;
-        grid.Get(orphanCoord)!.Occupant = new Unit(blue.Color, UnitLevel.Peasant);
+        grid.Get(orphanCoord)!.Owner = blue.Id;
+        grid.Get(orphanCoord)!.Occupant = new Unit(blue.Id, UnitLevel.Peasant);
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
         var session = new SessionState();
         // Red owns >50% of the map; pre-dismiss every claim-victory
         // tier so End Turn doesn't open the modal and stall the test.
-        session.ClaimVictoryPromptedHighestThreshold[red.Color] = 90;
-        session.ClaimVictoryPromptedHighestThreshold[green.Color] = 90;
+        session.ClaimVictoryPromptedHighestThreshold[red.Id] = 90;
+        session.ClaimVictoryPromptedHighestThreshold[green.Id] = 90;
         var map = new MockHexMapView();
         var hud = new MockHudView();
         var controller = new GameController(state, session, map, hud);
@@ -844,7 +843,7 @@ public class GameControllerTests
         hud.ClickEndTurn(); // Green → Blue phantom → Red
 
         HexTile orphan = state.Grid.Get(orphanCoord)!;
-        Assert.Equal(blue.Color, orphan.Color);
+        Assert.Equal(blue.Id, orphan.Owner);
         Assert.IsType<Grave>(orphan.Occupant);
     }
 
@@ -858,23 +857,23 @@ public class GameControllerTests
         // regardless of color (TreeRules.RunStartOfTurnGrowth), so
         // (3,1) sees two tree neighbours and converts. Bumping
         // TurnNumber > 1 lifts the round-1 tree-growth guard.
-        var red = new Player("Red", new Color(1f, 0f, 0f));
-        var green = new Player("Green", new Color(0f, 1f, 0f));
-        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var green = new Player("Green", PlayerId.FromIndex(2));
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new List<Player> { red, green, blue };
 
-        var grid = TestHelpers.BuildRectGrid(6, 3, red.Color);
+        var grid = TestHelpers.BuildRectGrid(6, 3, red.Id);
         // Green's 2-tile territory (so it has a capital and the
         // end-of-turn win check doesn't fire).
-        grid.Get(HexCoord.FromOffset(0, 2))!.Color = green.Color;
-        grid.Get(HexCoord.FromOffset(1, 2))!.Color = green.Color;
+        grid.Get(HexCoord.FromOffset(0, 2))!.Owner = green.Id;
+        grid.Get(HexCoord.FromOffset(1, 2))!.Owner = green.Id;
         // Two Red tiles flanking the Blue singleton, each with a Tree.
         grid.Get(HexCoord.FromOffset(4, 0))!.Occupant = new Tree();
         grid.Get(HexCoord.FromOffset(3, 2))!.Occupant = new Tree();
         // Blue empty singleton (neighbour of both tree-holding red
         // tiles, but not adjacent to any other blue tile).
         HexCoord emptyCoord = HexCoord.FromOffset(3, 1);
-        grid.Get(emptyCoord)!.Color = blue.Color;
+        grid.Get(emptyCoord)!.Owner = blue.Id;
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players,
@@ -883,8 +882,8 @@ public class GameControllerTests
         var session = new SessionState();
         // Red owns >50% of the map; pre-dismiss every claim-victory
         // tier so End Turn doesn't open the modal and stall the test.
-        session.ClaimVictoryPromptedHighestThreshold[red.Color] = 90;
-        session.ClaimVictoryPromptedHighestThreshold[green.Color] = 90;
+        session.ClaimVictoryPromptedHighestThreshold[red.Id] = 90;
+        session.ClaimVictoryPromptedHighestThreshold[green.Id] = 90;
         var map = new MockHexMapView();
         var hud = new MockHudView();
         var controller = new GameController(state, session, map, hud);
@@ -894,7 +893,7 @@ public class GameControllerTests
         hud.ClickEndTurn(); // Green → Blue phantom → Red
 
         HexTile filled = state.Grid.Get(emptyCoord)!;
-        Assert.Equal(blue.Color, filled.Color);
+        Assert.Equal(blue.Id, filled.Owner);
         Assert.IsType<Tree>(filled.Occupant);
     }
 
@@ -904,14 +903,14 @@ public class GameControllerTests
         // Same shape as the elimination test, but assert that
         // SessionState.PendingDefeatScreen is set to the human's color
         // — the HUD reads this to show the defeat overlay.
-        var red = new Player("Red", new Color(1f, 0f, 0f));
-        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new List<Player> { red, blue };
 
-        var grid = TestHelpers.BuildRectGrid(4, 1, blue.Color);
-        grid.Get(HexCoord.FromOffset(0, 0))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(1, 0))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(red.Color, UnitLevel.Spearman);
+        var grid = TestHelpers.BuildRectGrid(4, 1, blue.Id);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(red.Id, UnitLevel.Spearman);
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -924,7 +923,7 @@ public class GameControllerTests
         map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(1, 0)));
         map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(2, 0)));
 
-        Assert.Equal(blue.Color, session.PendingDefeatScreen);
+        Assert.Equal(blue.Id, session.PendingDefeatScreen);
     }
 
     [Fact]
@@ -933,14 +932,14 @@ public class GameControllerTests
         // AI defeats are silent (sound only, no popup). The Continue
         // overlay would be meaningless for a player no one is at the
         // keyboard for.
-        var red = new Player("Red", new Color(1f, 0f, 0f));
-        var blue = new Player("Blue", new Color(0f, 0f, 1f), isAi: true);
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1), isAi: true);
         var players = new List<Player> { red, blue };
 
-        var grid = TestHelpers.BuildRectGrid(4, 1, blue.Color);
-        grid.Get(HexCoord.FromOffset(0, 0))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(1, 0))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(red.Color, UnitLevel.Spearman);
+        var grid = TestHelpers.BuildRectGrid(4, 1, blue.Id);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(red.Id, UnitLevel.Spearman);
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -963,14 +962,14 @@ public class GameControllerTests
         // so the dev can play all six. Defeats for non-player-0 colors
         // should be silent because those colors will be AI in the
         // eventual Preview playback (where the overlay wouldn't fire).
-        var red = new Player("Red", new Color(1f, 0f, 0f));
-        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new List<Player> { red, blue };
 
-        var grid = TestHelpers.BuildRectGrid(4, 1, blue.Color);
-        grid.Get(HexCoord.FromOffset(0, 0))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(1, 0))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(red.Color, UnitLevel.Spearman);
+        var grid = TestHelpers.BuildRectGrid(4, 1, blue.Id);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(red.Id, UnitLevel.Spearman);
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -993,14 +992,14 @@ public class GameControllerTests
         // in playback, so a defeat of player 0 during recording should
         // still raise the overlay — the dev needs it visible to record
         // the matching dismiss beat.
-        var red = new Player("Red", new Color(1f, 0f, 0f));
-        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new List<Player> { red, blue };
 
-        var grid = TestHelpers.BuildRectGrid(4, 1, red.Color);
-        grid.Get(HexCoord.FromOffset(2, 0))!.Color = blue.Color;
-        grid.Get(HexCoord.FromOffset(3, 0))!.Color = blue.Color;
-        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(blue.Color, UnitLevel.Spearman);
+        var grid = TestHelpers.BuildRectGrid(4, 1, red.Id);
+        grid.Get(HexCoord.FromOffset(2, 0))!.Owner = blue.Id;
+        grid.Get(HexCoord.FromOffset(3, 0))!.Owner = blue.Id;
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(blue.Id, UnitLevel.Spearman);
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players,
@@ -1015,7 +1014,7 @@ public class GameControllerTests
         map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(2, 0)));
         map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(1, 0)));
 
-        Assert.Equal(red.Color, session.PendingDefeatScreen);
+        Assert.Equal(red.Id, session.PendingDefeatScreen);
     }
 
     [Fact]
@@ -1026,10 +1025,10 @@ public class GameControllerTests
         // panel signals completion instead.
         var players = new List<Player>
         {
-            new("Red", new Color(1f, 0f, 0f)),
-            new("Blue", new Color(0f, 0f, 1f), isAi: true),
+            new("Red", PlayerId.FromIndex(0)),
+            new("Blue", PlayerId.FromIndex(1), isAi: true),
         };
-        var grid = TestHelpers.BuildRectGrid(2, 1, players[0].Color);
+        var grid = TestHelpers.BuildRectGrid(2, 1, players[0].Id);
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
         var session = new SessionState();
@@ -1047,10 +1046,10 @@ public class GameControllerTests
         // record around.
         var players = new List<Player>
         {
-            new("Red", new Color(1f, 0f, 0f)),
-            new("Blue", new Color(0f, 0f, 1f)),
+            new("Red", PlayerId.FromIndex(0)),
+            new("Blue", PlayerId.FromIndex(1)),
         };
-        var grid = TestHelpers.BuildRectGrid(2, 1, players[0].Color);
+        var grid = TestHelpers.BuildRectGrid(2, 1, players[0].Id);
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
         var session = new SessionState();
@@ -1066,10 +1065,10 @@ public class GameControllerTests
         // Regular game lets the full-win modal fire normally.
         var players = new List<Player>
         {
-            new("Red", new Color(1f, 0f, 0f)),
-            new("Blue", new Color(0f, 0f, 1f), isAi: true),
+            new("Red", PlayerId.FromIndex(0)),
+            new("Blue", PlayerId.FromIndex(1), isAi: true),
         };
-        var grid = TestHelpers.BuildRectGrid(2, 1, players[0].Color);
+        var grid = TestHelpers.BuildRectGrid(2, 1, players[0].Id);
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
         var session = new SessionState();
@@ -1082,14 +1081,14 @@ public class GameControllerTests
     [Fact]
     public void DismissDefeatScreen_ClearsPendingDefeatScreen()
     {
-        var red = new Player("Red", new Color(1f, 0f, 0f));
-        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new List<Player> { red, blue };
 
-        var grid = TestHelpers.BuildRectGrid(4, 1, blue.Color);
-        grid.Get(HexCoord.FromOffset(0, 0))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(1, 0))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(red.Color, UnitLevel.Spearman);
+        var grid = TestHelpers.BuildRectGrid(4, 1, blue.Id);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(red.Id, UnitLevel.Spearman);
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -1100,7 +1099,7 @@ public class GameControllerTests
         controller.StartGame();
         map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(1, 0)));
         map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(2, 0)));
-        Assert.Equal(blue.Color, session.PendingDefeatScreen);
+        Assert.Equal(blue.Id, session.PendingDefeatScreen);
 
         hud.ClickDefeatContinue();
 
@@ -1119,8 +1118,8 @@ public class GameControllerTests
         // means Red is "eliminated" at start under our rotation rule. Use a
         // 5x2 layout instead so Red has a 2-hex territory + a one-hex
         // outpost the AI can capture for the kill.
-        var red = new Player("Red", new Color(1f, 0f, 0f));
-        var blue = new Player("Blue", new Color(0f, 0f, 1f), isAi: true);
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1), isAi: true);
         var players = new List<Player> { red, blue };
 
         // 5x1: Red {(3,0),(4,0)} (capital at lex-min (3,0)), Blue
@@ -1130,13 +1129,13 @@ public class GameControllerTests
         // first beat, eliminating Red. (Spearman upkeep = 6g vs
         // Blue's 15g seed, so it survives the start-of-turn upkeep
         // pass.)
-        var grid = TestHelpers.BuildRectGrid(5, 1, new Color(0.3f, 0.3f, 0.3f));
-        grid.Get(HexCoord.FromOffset(0, 0))!.Color = blue.Color;
-        grid.Get(HexCoord.FromOffset(1, 0))!.Color = blue.Color;
-        grid.Get(HexCoord.FromOffset(2, 0))!.Color = blue.Color;
-        grid.Get(HexCoord.FromOffset(3, 0))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(4, 0))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(blue.Color, UnitLevel.Spearman);
+        var grid = TestHelpers.BuildRectGrid(5, 1, PlayerId.None);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = blue.Id;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Owner = blue.Id;
+        grid.Get(HexCoord.FromOffset(2, 0))!.Owner = blue.Id;
+        grid.Get(HexCoord.FromOffset(3, 0))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(4, 0))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(blue.Id, UnitLevel.Spearman);
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -1148,7 +1147,7 @@ public class GameControllerTests
         // dependence on the heuristic's scoring behavior.
         AiAction? scriptedKill = new AiMoveAction(
             HexCoord.FromOffset(2, 0), HexCoord.FromOffset(3, 0));
-        AiAction? Chooser(GameState s, Color c, HashSet<HexCoord> v, Random r)
+        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> v, Random r)
         {
             AiAction? next = scriptedKill;
             scriptedKill = null;
@@ -1173,7 +1172,7 @@ public class GameControllerTests
 
         // PendingDefeatScreen is set, AI is paused. There should be no
         // pending callback queued.
-        Assert.Equal(red.Color, session.PendingDefeatScreen);
+        Assert.Equal(red.Id, session.PendingDefeatScreen);
         Assert.False(pacer.HasPending);
     }
 
@@ -1185,13 +1184,13 @@ public class GameControllerTests
         // enemy's capital tile. Capture eliminates the enemy.
         //
         // 4x1: Red {(0,0),(1,0)} adjacent to Blue {(2,0),(3,0)}.
-        var red = new Player("Red", new Color(1f, 0f, 0f));
-        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new List<Player> { red, blue };
 
-        var grid = TestHelpers.BuildRectGrid(4, 1, blue.Color);
-        grid.Get(HexCoord.FromOffset(0, 0))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(1, 0))!.Color = red.Color;
+        var grid = TestHelpers.BuildRectGrid(4, 1, blue.Id);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Owner = red.Id;
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -1202,7 +1201,7 @@ public class GameControllerTests
         controller.StartGame();
 
         // Boost Red's treasury so we can afford a Spearman (cost 20).
-        HexCoord redCapital = state.Territories.First(t => t.Owner == red.Color).Capital!.Value;
+        HexCoord redCapital = state.Territories.First(t => t.Owner == red.Id).Capital!.Value;
         state.Treasury.SetGold(redCapital, 100);
 
         // Select Red's territory, cycle buy-mode to Spearman, place on
@@ -1222,14 +1221,14 @@ public class GameControllerTests
         // Spearman captures (2,0) — Blue's capital. Blue's remaining
         // {(3,0),(4,0)} is still a 2-tile territory → fresh capital
         // placed → Blue is NOT eliminated.
-        var red = new Player("Red", new Color(1f, 0f, 0f));
-        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new List<Player> { red, blue };
 
-        var grid = TestHelpers.BuildRectGrid(5, 1, blue.Color);
-        grid.Get(HexCoord.FromOffset(0, 0))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(1, 0))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(red.Color, UnitLevel.Spearman);
+        var grid = TestHelpers.BuildRectGrid(5, 1, blue.Id);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(red.Id, UnitLevel.Spearman);
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -1251,15 +1250,15 @@ public class GameControllerTests
         // Same 3-Red-tile fixture as the existing tree-FX test: capital
         // at (0,1), unit at (2,1), tree at (1,1). Move (2,1) → (1,1)
         // chops the tree.
-        var red = new Player("Red", new Color(1f, 0f, 0f));
-        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new System.Collections.Generic.List<Player> { red, blue };
 
-        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Color);
-        grid.Get(HexCoord.FromOffset(0, 1))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(1, 1))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(2, 1))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(2, 1))!.Occupant = new Unit(red.Color);
+        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Id);
+        grid.Get(HexCoord.FromOffset(0, 1))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(1, 1))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(2, 1))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(2, 1))!.Occupant = new Unit(red.Id);
         grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = new Tree();
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
@@ -1302,7 +1301,7 @@ public class GameControllerTests
         // reported in the destruction effect so the view can render
         // tower-shaped FX.
         var g = new TestGame();
-        var knight = new Unit(g.Red.Color, UnitLevel.Knight);
+        var knight = new Unit(g.Red.Id, UnitLevel.Knight);
         g.Tile(1, 1).Occupant = knight;
         var tower = new Tower();
         g.Tile(2, 1).Occupant = tower;
@@ -1325,15 +1324,15 @@ public class GameControllerTests
         // tile: use a 5×3 fixture? Let's use what TestGame provides.
         // Place a unit on (1,1) and a tree elsewhere — there's no
         // other Red tile. Build a custom fixture inline.
-        var red = new Player("Red", new Color(1f, 0f, 0f));
-        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new List<Player> { red, blue };
 
-        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Color);
-        grid.Get(HexCoord.FromOffset(0, 1))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(1, 1))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(2, 1))!.Color = red.Color;
-        var unit = new Unit(red.Color);
+        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Id);
+        grid.Get(HexCoord.FromOffset(0, 1))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(1, 1))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(2, 1))!.Owner = red.Id;
+        var unit = new Unit(red.Id);
         grid.Get(HexCoord.FromOffset(2, 1))!.Occupant = unit;
         var tree = new Tree();
         grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = tree;
@@ -1361,9 +1360,9 @@ public class GameControllerTests
         // NOT replay or fire any new destruction effects — only
         // forward play does.
         var g = new TestGame();
-        var attacker = new Unit(g.Red.Color, UnitLevel.Spearman);
+        var attacker = new Unit(g.Red.Id, UnitLevel.Spearman);
         g.Tile(1, 1).Occupant = attacker;
-        var defender = new Unit(g.Blue.Color, UnitLevel.Peasant);
+        var defender = new Unit(g.Blue.Id, UnitLevel.Peasant);
         g.Tile(2, 1).Occupant = defender;
 
         g.Map.SimulateClick(g.Tile(1, 1));
@@ -1564,7 +1563,7 @@ public class GameControllerTests
         g.Map.SimulateClick(g.Tile(2, 1));
 
         Assert.NotNull(g.Session.SelectedTerritory);
-        Assert.Equal(g.Red.Color, g.Session.SelectedTerritory!.Owner);
+        Assert.Equal(g.Red.Id, g.Session.SelectedTerritory!.Owner);
         Assert.Contains(HexCoord.FromOffset(2, 1), g.Session.SelectedTerritory.Coords);
     }
 
@@ -1572,7 +1571,7 @@ public class GameControllerTests
     public void Move_WithinOwnTerritory_DoesNotConsumeAction()
     {
         var g = new TestGame();
-        var unit = new Unit(g.Red.Color);
+        var unit = new Unit(g.Red.Id);
         // Park a unit on (0,1) (capital hex is fine for manual test fixture
         // purposes — wait, (0,1) IS Red's capital, can't hold a unit).
         // Instead place on (1,1) and reposition back toward... hmm, Red
@@ -1592,18 +1591,18 @@ public class GameControllerTests
     public void EndTurn_AdvancesPlayer()
     {
         var g = new TestGame();
-        Assert.Equal(g.Red.Color, g.State.Turns.CurrentPlayer.Color);
+        Assert.Equal(g.Red.Id, g.State.Turns.CurrentPlayer.Id);
 
         g.Hud.ClickEndTurn();
 
-        Assert.Equal(g.Blue.Color, g.State.Turns.CurrentPlayer.Color);
+        Assert.Equal(g.Blue.Id, g.State.Turns.CurrentPlayer.Id);
     }
 
     [Fact]
     public void EndTurn_ResetsMovementForNewPlayer()
     {
         var g = new TestGame();
-        var blueUnit = new Unit(g.Blue.Color) { HasMovedThisTurn = true };
+        var blueUnit = new Unit(g.Blue.Id) { HasMovedThisTurn = true };
         g.Tile(3, 0).Occupant = blueUnit;
 
         g.Hud.ClickEndTurn(); // Red -> Blue
@@ -1619,9 +1618,9 @@ public class GameControllerTests
         // upkeep to pay when Blue's turn begins. Round 1 has no income
         // (every player's first turn skips income), so Blue's only
         // treasury change at the start of its first turn is upkeep.
-        g.Tile(3, 0).Occupant = new Unit(g.Blue.Color);
+        g.Tile(3, 0).Occupant = new Unit(g.Blue.Id);
         HexCoord blueCapital = g.State.Territories
-            .First(t => t.Owner == g.Blue.Color).Capital!.Value;
+            .First(t => t.Owner == g.Blue.Id).Capital!.Value;
         g.State.Treasury.SetGold(blueCapital, 20);
 
         g.Hud.ClickEndTurn(); // Red -> Blue: Blue pays upkeep, no income (round 1).
@@ -1638,9 +1637,9 @@ public class GameControllerTests
         // Give Blue a knight (upkeep 18) it can't pay. Blue has 0 gold
         // and round 1 skips the income credit, so upkeep goes straight
         // to bankruptcy.
-        g.Tile(3, 0).Occupant = new Unit(g.Blue.Color, UnitLevel.Knight);
+        g.Tile(3, 0).Occupant = new Unit(g.Blue.Id, UnitLevel.Knight);
         HexCoord blueCapital = g.State.Territories
-            .First(t => t.Owner == g.Blue.Color).Capital!.Value;
+            .First(t => t.Owner == g.Blue.Id).Capital!.Value;
         g.State.Treasury.SetGold(blueCapital, 0);
 
         g.Hud.ClickEndTurn(); // advance to Blue
@@ -1702,9 +1701,9 @@ public class GameControllerTests
         var g = new TestGame();
         g.Tile(3, 0).Occupant = new Tree();
         int blueSize = g.State.Territories
-            .First(t => t.Owner == g.Blue.Color).Size;
+            .First(t => t.Owner == g.Blue.Id).Size;
         HexCoord blueCapital = g.State.Territories
-            .First(t => t.Owner == g.Blue.Color).Capital!.Value;
+            .First(t => t.Owner == g.Blue.Id).Capital!.Value;
         g.State.Treasury.SetGold(blueCapital, 0);
 
         g.Hud.ClickEndTurn(); // Red T1 → Blue T1 (first round: no income).
@@ -1729,11 +1728,11 @@ public class GameControllerTests
         // tile. This pins the start-of-turn order: tree-growth →
         // income → upkeep.
         var g = new TestGame();
-        g.Tile(3, 0).Occupant = new Unit(g.Blue.Color, UnitLevel.Knight);
+        g.Tile(3, 0).Occupant = new Unit(g.Blue.Id, UnitLevel.Knight);
         int blueSize = g.State.Territories
-            .First(t => t.Owner == g.Blue.Color).Size;
+            .First(t => t.Owner == g.Blue.Id).Size;
         HexCoord blueCapital = g.State.Territories
-            .First(t => t.Owner == g.Blue.Color).Capital!.Value;
+            .First(t => t.Owner == g.Blue.Id).Capital!.Value;
         g.State.Treasury.SetGold(blueCapital, 0);
 
         g.Hud.ClickEndTurn(); // Red T1 → Blue T1: knight bankrupts → grave on (3,0)
@@ -1760,9 +1759,9 @@ public class GameControllerTests
         // gives 10 + 8 - 18 = 0g and the knight survives. If upkeep
         // ran first the knight would bankrupt at 10 < 18 → grave.
         var g = new TestGame();
-        g.Tile(3, 0).Occupant = new Unit(g.Blue.Color, UnitLevel.Knight);
+        g.Tile(3, 0).Occupant = new Unit(g.Blue.Id, UnitLevel.Knight);
         HexCoord blueCapital = g.State.Territories
-            .First(t => t.Owner == g.Blue.Color).Capital!.Value;
+            .First(t => t.Owner == g.Blue.Id).Capital!.Value;
 
         // Make Blue solvent through T1 (which has no income), then
         // jump to Blue T2 with the treasury exactly at 10g so the
@@ -1793,9 +1792,9 @@ public class GameControllerTests
         //   3. Blue's turn 2 starts: phase runs on Blue tiles, so
         //      the bankruptcy grave converts into a tree.
         var g = new TestGame();
-        g.Tile(3, 0).Occupant = new Unit(g.Blue.Color, UnitLevel.Knight);
+        g.Tile(3, 0).Occupant = new Unit(g.Blue.Id, UnitLevel.Knight);
         HexCoord blueCapital = g.State.Territories
-            .First(t => t.Owner == g.Blue.Color).Capital!.Value;
+            .First(t => t.Owner == g.Blue.Id).Capital!.Value;
         g.State.Treasury.SetGold(blueCapital, 0);
 
         g.Hud.ClickEndTurn(); // Red -> Blue (turn 1): skip phase, upkeep bankrupts.
@@ -1822,7 +1821,7 @@ public class GameControllerTests
         // after advancing into Red's turn 2 the Blue grave persists.
         var g = new TestGame();
         g.Tile(3, 0).Occupant = new Grave();
-        Assert.Equal(g.Blue.Color, g.Tile(3, 0).Color); // sanity: Blue tile
+        Assert.Equal(g.Blue.Id, g.Tile(3, 0).Owner); // sanity: Blue tile
 
         g.Hud.ClickEndTurn(); // Red -> Blue (turn 1, skip)
         Assert.IsType<Grave>(g.Tile(3, 0).Occupant);
@@ -1839,7 +1838,7 @@ public class GameControllerTests
         // return), the grave converts.
         var g = new TestGame();
         g.Tile(1, 1).Occupant = new Grave();
-        Assert.Equal(g.Red.Color, g.Tile(1, 1).Color);
+        Assert.Equal(g.Red.Id, g.Tile(1, 1).Owner);
 
         g.Hud.ClickEndTurn(); // Red -> Blue
         g.Hud.ClickEndTurn(); // Blue -> Red (turn 2, phase runs)
@@ -1914,9 +1913,9 @@ public class GameControllerTests
         // Correct order leaves the freshly-bankrupted unit as a grave.
         var g = new TestGame();
         // Knight on Blue tile that Blue cannot afford.
-        g.Tile(3, 0).Occupant = new Unit(g.Blue.Color, UnitLevel.Knight);
+        g.Tile(3, 0).Occupant = new Unit(g.Blue.Id, UnitLevel.Knight);
         HexCoord blueCapital = g.State.Territories
-            .First(t => t.Owner == g.Blue.Color).Capital!.Value;
+            .First(t => t.Owner == g.Blue.Id).Capital!.Value;
         g.State.Treasury.SetGold(blueCapital, 0);
 
         // Skip Blue's first turn so the phase actually fires the
@@ -1931,7 +1930,7 @@ public class GameControllerTests
         // turn 2 it should convert to a tree (rule 1) BEFORE upkeep
         // bankrupts the new knight. We can't put a knight directly
         // on the grave tile, so use (4,0).
-        g.Tile(4, 0).Occupant = new Unit(g.Blue.Color, UnitLevel.Knight);
+        g.Tile(4, 0).Occupant = new Unit(g.Blue.Id, UnitLevel.Knight);
         g.State.Treasury.SetGold(blueCapital, 0);
 
         g.Hud.ClickEndTurn(); // Blue -> Red (turn 2, Red tiles only)
@@ -1961,7 +1960,7 @@ public class GameControllerTests
         params AiAction?[] actions)
     {
         int index = 0;
-        AiAction? Chooser(GameState s, Color c, HashSet<HexCoord> visited, Random rng)
+        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> visited, Random rng)
         {
             if (index >= actions.Length) return null;
             return actions[index++];
@@ -1978,21 +1977,21 @@ public class GameControllerTests
     /// </summary>
     private static (GameState state, MockHexMapView map, MockHudView hud) BuildAiFixture()
     {
-        var red = new Player("Red", new Color(1f, 0f, 0f), isAi: true);
-        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var red = new Player("Red", PlayerId.FromIndex(0), isAi: true);
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new List<Player> { red, blue };
-        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Color);
-        grid.Get(HexCoord.FromOffset(0, 0))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(0, 1))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(1, 1))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = new Unit(red.Color);
+        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Id);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(0, 1))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(1, 1))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = new Unit(red.Id);
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
         return (state, new MockHexMapView(), new MockHudView());
     }
 
     private static HexCoord RedCapital(GameState state) =>
-        state.Territories.First(t => t.Owner == state.Players[0].Color).Capital!.Value;
+        state.Territories.First(t => t.Owner == state.Players[0].Id).Capital!.Value;
 
     [Fact]
     public void ExecuteAiMove_SourceNotInOwnedTerritory_Throws()
@@ -2140,20 +2139,20 @@ public class GameControllerTests
         // adjacent to another tower must not throw. Regression for the
         // "about_to_win" replay desync (beat #714: human BuildTower
         // rejected because ExecuteAiBuildTower applied AI-only spacing).
-        var red = new Player("Red", new Color(1f, 0f, 0f), isAi: true);
-        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var red = new Player("Red", PlayerId.FromIndex(0), isAi: true);
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new List<Player> { red, blue };
         // 5x1 strip: Red owns (0,0)-(3,0); (4,0) Blue. Capital lands at
         // lex-min (0,0); (1,0)/(2,0)/(3,0) are empty Red tiles.
-        var grid = TestHelpers.BuildRectGrid(5, 1, blue.Color);
+        var grid = TestHelpers.BuildRectGrid(5, 1, blue.Id);
         for (int x = 0; x < 4; x++)
-            grid.Get(HexCoord.FromOffset(x, 0))!.Color = red.Color;
+            grid.Get(HexCoord.FromOffset(x, 0))!.Owner = red.Id;
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
         var map = new MockHexMapView();
         var hud = new MockHudView();
 
-        Territory redTerr = state.Territories.First(t => t.Owner == red.Color);
+        Territory redTerr = state.Territories.First(t => t.Owner == red.Id);
         HexCoord cap = redTerr.Capital!.Value;
         state.Treasury.SetGold(cap, 20);
         // Pre-place a Red tower and target a second tower one hex away —
@@ -2185,7 +2184,7 @@ public class GameControllerTests
 
         c.StartGame(); // should NOT throw
 
-        Assert.Equal(state.Players[0].Color, state.Grid.Get(HexCoord.FromOffset(2, 1))!.Color);
+        Assert.Equal(state.Players[0].Id, state.Grid.Get(HexCoord.FromOffset(2, 1))!.Owner);
     }
 
     // --- AI turn integration ---------------------------------------------
@@ -2209,21 +2208,21 @@ public class GameControllerTests
 
         public HumanVsAiGame()
         {
-            Red = new Player("Red", new Color(1f, 0f, 0f)); // human
-            Blue = new Player("Blue", new Color(0f, 0f, 1f), isAi: true);
+            Red = new Player("Red", PlayerId.FromIndex(0)); // human
+            Blue = new Player("Blue", PlayerId.FromIndex(1), isAi: true);
             var players = new List<Player> { Red, Blue };
 
             // 8x2 grid: Red owns (0,0)-(2,0), Blue owns (5,1)-(7,1).
             // Blue has a peasant on (5,1) — not adjacent to any Red
             // tile, so it can't capture. Different test methods will
             // mutate the fixture as needed.
-            var grid = TestHelpers.BuildRectGrid(8, 2, new Color(0.3f, 0.3f, 0.3f));
-            grid.Get(HexCoord.FromOffset(0, 0))!.Color = Red.Color;
-            grid.Get(HexCoord.FromOffset(1, 0))!.Color = Red.Color;
-            grid.Get(HexCoord.FromOffset(2, 0))!.Color = Red.Color;
-            grid.Get(HexCoord.FromOffset(5, 1))!.Color = Blue.Color;
-            grid.Get(HexCoord.FromOffset(6, 1))!.Color = Blue.Color;
-            grid.Get(HexCoord.FromOffset(7, 1))!.Color = Blue.Color;
+            var grid = TestHelpers.BuildRectGrid(8, 2, PlayerId.None);
+            grid.Get(HexCoord.FromOffset(0, 0))!.Owner = Red.Id;
+            grid.Get(HexCoord.FromOffset(1, 0))!.Owner = Red.Id;
+            grid.Get(HexCoord.FromOffset(2, 0))!.Owner = Red.Id;
+            grid.Get(HexCoord.FromOffset(5, 1))!.Owner = Blue.Id;
+            grid.Get(HexCoord.FromOffset(6, 1))!.Owner = Blue.Id;
+            grid.Get(HexCoord.FromOffset(7, 1))!.Owner = Blue.Id;
 
             IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
             State = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -2245,12 +2244,12 @@ public class GameControllerTests
         // should auto-run Blue's turn and end up back on Red without
         // a second human click.
         var g = new HumanVsAiGame();
-        Assert.Equal(g.Red.Color, g.State.Turns.CurrentPlayer.Color);
+        Assert.Equal(g.Red.Id, g.State.Turns.CurrentPlayer.Id);
 
         g.Hud.ClickEndTurn();
 
         // After the AI turn finishes, control returns to Red.
-        Assert.Equal(g.Red.Color, g.State.Turns.CurrentPlayer.Color);
+        Assert.Equal(g.Red.Id, g.State.Turns.CurrentPlayer.Id);
     }
 
     [Fact]
@@ -2266,11 +2265,11 @@ public class GameControllerTests
 
         // No changes to Blue's tiles beyond income collection and
         // upkeep. Control is back to Red.
-        Assert.Equal(g.Red.Color, g.State.Turns.CurrentPlayer.Color);
+        Assert.Equal(g.Red.Id, g.State.Turns.CurrentPlayer.Id);
         // Blue's tiles are still Blue (no captures happened).
-        Assert.Equal(g.Blue.Color, g.Tile(5, 1).Color);
-        Assert.Equal(g.Blue.Color, g.Tile(6, 1).Color);
-        Assert.Equal(g.Blue.Color, g.Tile(7, 1).Color);
+        Assert.Equal(g.Blue.Id, g.Tile(5, 1).Owner);
+        Assert.Equal(g.Blue.Id, g.Tile(6, 1).Owner);
+        Assert.Equal(g.Blue.Id, g.Tile(7, 1).Owner);
     }
 
     [Fact]
@@ -2283,13 +2282,13 @@ public class GameControllerTests
         // rule. The AI should pick the winning capture on its first
         // turn (which is StartGame's job to auto-run since Red is the
         // starting AI player).
-        var red = new Player("Red", new Color(1f, 0f, 0f), isAi: true);
-        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var red = new Player("Red", PlayerId.FromIndex(0), isAi: true);
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new List<Player> { red, blue };
 
-        var grid = TestHelpers.BuildRectGrid(5, 1, red.Color);
-        grid.Get(HexCoord.FromOffset(4, 0))!.Color = blue.Color;
-        grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = new Unit(red.Color);
+        var grid = TestHelpers.BuildRectGrid(5, 1, red.Id);
+        grid.Get(HexCoord.FromOffset(4, 0))!.Owner = blue.Id;
+        grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = new Unit(red.Id);
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -2300,7 +2299,7 @@ public class GameControllerTests
         controller.StartGame();
 
         Assert.True(session.IsGameOver);
-        Assert.Equal(red.Color, session.Winner);
+        Assert.Equal(red.Id, session.Winner);
     }
 
     [Fact]
@@ -2314,8 +2313,8 @@ public class GameControllerTests
         // Replace the default peasant attacker with a spearman so it
         // can capture a defender at (2,1).
         state.Grid.Get(HexCoord.FromOffset(1, 1))!.Occupant =
-            new Unit(state.Players[0].Color, UnitLevel.Spearman);
-        var defender = new Unit(state.Players[1].Color, UnitLevel.Peasant);
+            new Unit(state.Players[0].Id, UnitLevel.Spearman);
+        var defender = new Unit(state.Players[1].Id, UnitLevel.Peasant);
         state.Grid.Get(HexCoord.FromOffset(2, 1))!.Occupant = defender;
 
         var move = new AiMoveAction(HexCoord.FromOffset(1, 1), HexCoord.FromOffset(2, 1));
@@ -2324,7 +2323,7 @@ public class GameControllerTests
         c.StartGame();
 
         // Sanity: capture happened.
-        Assert.Equal(state.Players[0].Color, state.Grid.Get(HexCoord.FromOffset(2, 1))!.Color);
+        Assert.Equal(state.Players[0].Id, state.Grid.Get(HexCoord.FromOffset(2, 1))!.Owner);
 
         Assert.Single(map.DestructionEffects);
         Assert.Equal(HexCoord.FromOffset(2, 1), map.DestructionEffects[0].Coord);
@@ -2346,13 +2345,13 @@ public class GameControllerTests
         // into Resume's call stack — the synchronous case has
         // Resume's trailing RefreshViews after RunAi returns, which
         // masks the bug.
-        var red = new Player("Red", new Color(1f, 0f, 0f), isAi: true);
-        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var red = new Player("Red", PlayerId.FromIndex(0), isAi: true);
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new List<Player> { red, blue };
 
-        var grid = TestHelpers.BuildRectGrid(5, 1, red.Color);
-        grid.Get(HexCoord.FromOffset(4, 0))!.Color = blue.Color;
-        grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = new Unit(red.Color);
+        var grid = TestHelpers.BuildRectGrid(5, 1, red.Id);
+        grid.Get(HexCoord.FromOffset(4, 0))!.Owner = blue.Id;
+        grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = new Unit(red.Id);
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -2365,7 +2364,7 @@ public class GameControllerTests
         controller.StartGame();
         pacer.DrainAll();
 
-        Assert.Equal(red.Color, hud.LastSeenWinner);
+        Assert.Equal(red.Id, hud.LastSeenWinner);
     }
 
     [Fact]
@@ -2382,16 +2381,16 @@ public class GameControllerTests
         // End-Turn win path runs CheckGameEndConditions explicitly
         // (line ~1729 in OnEndTurnPressed) and works correctly —
         // hence the discrepancy the user observed.
-        var red = new Player("Red", new Color(1f, 0f, 0f));   // human
-        var blue = new Player("Blue", new Color(0f, 0f, 1f)); // human (irrelevant)
+        var red = new Player("Red", PlayerId.FromIndex(0));   // human
+        var blue = new Player("Blue", PlayerId.FromIndex(1)); // human (irrelevant)
         var players = new List<Player> { red, blue };
 
         // 5x1 grid. Red owns (0..3); Blue owns the single (4,0)
         // capital tile. A red Knight at (3,0) captures (4,0) → all-red
         // → domination win.
-        var grid = TestHelpers.BuildRectGrid(5, 1, red.Color);
-        grid.Get(HexCoord.FromOffset(4, 0))!.Color = blue.Color;
-        grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = new Unit(red.Color, UnitLevel.Knight);
+        var grid = TestHelpers.BuildRectGrid(5, 1, red.Id);
+        grid.Get(HexCoord.FromOffset(4, 0))!.Owner = blue.Id;
+        grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = new Unit(red.Id, UnitLevel.Knight);
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -2411,7 +2410,7 @@ public class GameControllerTests
         map.SimulateClick(grid.Get(HexCoord.FromOffset(4, 0)));
 
         Assert.True(session.IsGameOver);
-        Assert.Equal(red.Color, session.Winner);
+        Assert.Equal(red.Id, session.Winner);
         // Without the fix, GameEnded never fires on the human mid-turn
         // capture path — Main can't enable the Replay button.
         Assert.True(gameEnded,
@@ -2426,8 +2425,8 @@ public class GameControllerTests
         // capturable neutral tiles. Verify that after the AI turn,
         // each territory has made at most one capture (not an
         // unbounded loop).
-        var red = new Player("Red", new Color(1f, 0f, 0f));
-        var blue = new Player("Blue", new Color(0f, 0f, 1f), isAi: true);
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1), isAi: true);
         var players = new List<Player> { red, blue };
 
         // 10x2 grid. Red owns (0,0)+(0,1) — a 2-tile territory so Red
@@ -2435,15 +2434,15 @@ public class GameControllerTests
         // territories: {(2,0),(3,0)} and {(6,0),(7,0)}. Each has a
         // knight on the right end so both can capture adjacent
         // neutral tiles ((4,0) and (8,0)).
-        var grid = TestHelpers.BuildRectGrid(10, 2, new Color(0.3f, 0.3f, 0.3f));
-        grid.Get(HexCoord.FromOffset(0, 0))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(0, 1))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(2, 0))!.Color = blue.Color;
-        grid.Get(HexCoord.FromOffset(3, 0))!.Color = blue.Color;
-        grid.Get(HexCoord.FromOffset(6, 0))!.Color = blue.Color;
-        grid.Get(HexCoord.FromOffset(7, 0))!.Color = blue.Color;
-        grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = new Unit(blue.Color, UnitLevel.Knight);
-        grid.Get(HexCoord.FromOffset(7, 0))!.Occupant = new Unit(blue.Color, UnitLevel.Knight);
+        var grid = TestHelpers.BuildRectGrid(10, 2, PlayerId.None);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(0, 1))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(2, 0))!.Owner = blue.Id;
+        grid.Get(HexCoord.FromOffset(3, 0))!.Owner = blue.Id;
+        grid.Get(HexCoord.FromOffset(6, 0))!.Owner = blue.Id;
+        grid.Get(HexCoord.FromOffset(7, 0))!.Owner = blue.Id;
+        grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = new Unit(blue.Id, UnitLevel.Knight);
+        grid.Get(HexCoord.FromOffset(7, 0))!.Occupant = new Unit(blue.Id, UnitLevel.Knight);
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -2462,7 +2461,7 @@ public class GameControllerTests
         int blueCount = 0;
         foreach (HexTile t in state.Grid.Tiles)
         {
-            if (t.Color == blue.Color) blueCount++;
+            if (t.Owner == blue.Id) blueCount++;
         }
         Assert.InRange(blueCount, 4, 6);
     }
@@ -2486,12 +2485,12 @@ public class GameControllerTests
 
         public FourStripGame(HexCoord? preExistingTowerAt = null)
         {
-            Red = new Player("Red", new Color(1f, 0f, 0f));
-            Blue = new Player("Blue", new Color(0f, 0f, 1f));
+            Red = new Player("Red", PlayerId.FromIndex(0));
+            Blue = new Player("Blue", PlayerId.FromIndex(1));
             var players = new List<Player> { Red, Blue };
-            var grid = TestHelpers.BuildRectGrid(8, 1, Blue.Color);
+            var grid = TestHelpers.BuildRectGrid(8, 1, Blue.Id);
             for (int col = 0; col < 4; col++)
-                grid.Get(HexCoord.FromOffset(col, 0))!.Color = Red.Color;
+                grid.Get(HexCoord.FromOffset(col, 0))!.Owner = Red.Id;
             if (preExistingTowerAt.HasValue)
                 grid.Get(preExistingTowerAt.Value)!.Occupant = new Tower();
 
@@ -2507,7 +2506,7 @@ public class GameControllerTests
         public HexTile Tile(int col, int row) =>
             State.Grid.Get(HexCoord.FromOffset(col, row))!;
         public Territory RedTerritory =>
-            State.Territories.First(t => t.Owner == Red.Color);
+            State.Territories.First(t => t.Owner == Red.Id);
     }
 
     [Fact]
@@ -2726,17 +2725,17 @@ public class GameControllerTests
 
         public TwoRedTerritoriesGame()
         {
-            Red = new Player("Red", new Color(1f, 0f, 0f));
-            Blue = new Player("Blue", new Color(0f, 0f, 1f));
+            Red = new Player("Red", PlayerId.FromIndex(0));
+            Blue = new Player("Blue", PlayerId.FromIndex(1));
             var players = new List<Player> { Red, Blue };
 
             // 10x1 Blue grid. Overlay two disjoint 2-tile Red blobs:
             // A at columns 0-1, B at columns 5-6.
-            var grid = TestHelpers.BuildRectGrid(10, 1, Blue.Color);
-            grid.Get(HexCoord.FromOffset(0, 0))!.Color = Red.Color;
-            grid.Get(HexCoord.FromOffset(1, 0))!.Color = Red.Color;
-            grid.Get(HexCoord.FromOffset(5, 0))!.Color = Red.Color;
-            grid.Get(HexCoord.FromOffset(6, 0))!.Color = Red.Color;
+            var grid = TestHelpers.BuildRectGrid(10, 1, Blue.Id);
+            grid.Get(HexCoord.FromOffset(0, 0))!.Owner = Red.Id;
+            grid.Get(HexCoord.FromOffset(1, 0))!.Owner = Red.Id;
+            grid.Get(HexCoord.FromOffset(5, 0))!.Owner = Red.Id;
+            grid.Get(HexCoord.FromOffset(6, 0))!.Owner = Red.Id;
 
             IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
 
@@ -2749,7 +2748,7 @@ public class GameControllerTests
         }
 
         public IEnumerable<Territory> RedTerritories =>
-            State.Territories.Where(t => t.Owner == Red.Color);
+            State.Territories.Where(t => t.Owner == Red.Id);
     }
 
     /// <summary>
@@ -2772,17 +2771,17 @@ public class GameControllerTests
 
         public ThreeRedTerritoriesGame()
         {
-            Red = new Player("Red", new Color(1f, 0f, 0f));
-            Blue = new Player("Blue", new Color(0f, 0f, 1f));
+            Red = new Player("Red", PlayerId.FromIndex(0));
+            Blue = new Player("Blue", PlayerId.FromIndex(1));
             var players = new List<Player> { Red, Blue };
 
-            var grid = TestHelpers.BuildRectGrid(12, 1, Blue.Color);
-            grid.Get(HexCoord.FromOffset(0, 0))!.Color = Red.Color;
-            grid.Get(HexCoord.FromOffset(1, 0))!.Color = Red.Color;
-            grid.Get(HexCoord.FromOffset(5, 0))!.Color = Red.Color;
-            grid.Get(HexCoord.FromOffset(6, 0))!.Color = Red.Color;
-            grid.Get(HexCoord.FromOffset(10, 0))!.Color = Red.Color;
-            grid.Get(HexCoord.FromOffset(11, 0))!.Color = Red.Color;
+            var grid = TestHelpers.BuildRectGrid(12, 1, Blue.Id);
+            grid.Get(HexCoord.FromOffset(0, 0))!.Owner = Red.Id;
+            grid.Get(HexCoord.FromOffset(1, 0))!.Owner = Red.Id;
+            grid.Get(HexCoord.FromOffset(5, 0))!.Owner = Red.Id;
+            grid.Get(HexCoord.FromOffset(6, 0))!.Owner = Red.Id;
+            grid.Get(HexCoord.FromOffset(10, 0))!.Owner = Red.Id;
+            grid.Get(HexCoord.FromOffset(11, 0))!.Owner = Red.Id;
 
             IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
 
@@ -2796,7 +2795,7 @@ public class GameControllerTests
 
         public Territory RedTerritoryAt(int col, int row) =>
             State.Territories.First(t =>
-                t.Owner == Red.Color && t.Coords.Contains(HexCoord.FromOffset(col, row)));
+                t.Owner == Red.Id && t.Coords.Contains(HexCoord.FromOffset(col, row)));
     }
 
     [Fact]
@@ -2943,7 +2942,7 @@ public class GameControllerTests
     public void NextTerritory_AfterWin_IsNoOp()
     {
         var g = new TwoRedTerritoriesGame();
-        g.Session.Winner = g.Red.Color;
+        g.Session.Winner = g.Red.Id;
 
         g.Hud.PressNextTerritory();
 
@@ -2955,14 +2954,14 @@ public class GameControllerTests
     {
         // Build a fixture where Red has a 2-hex territory and also a
         // lone singleton tile. Tab should only cycle the multi-hex one.
-        var red = new Player("Red", new Color(1f, 0f, 0f));
-        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new List<Player> { red, blue };
 
-        var grid = TestHelpers.BuildRectGrid(6, 2, blue.Color);
-        grid.Get(HexCoord.FromOffset(0, 0))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(1, 0))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(5, 1))!.Color = red.Color; // singleton
+        var grid = TestHelpers.BuildRectGrid(6, 2, blue.Id);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(5, 1))!.Owner = red.Id; // singleton
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -3032,7 +3031,7 @@ public class GameControllerTests
         Territory b = g.RedTerritoryAt(5, 0);
         g.State.Treasury.SetGold(b.Capital!.Value, 0);
         g.State.Grid.Get(HexCoord.FromOffset(6, 0))!.Occupant =
-            new Unit(g.Red.Color);
+            new Unit(g.Red.Id);
 
         g.Hud.PressNextTerritory(); // → A
         g.Hud.PressNextTerritory(); // → B (peasant makes it actionable)
@@ -3050,7 +3049,7 @@ public class GameControllerTests
         Territory c = g.RedTerritoryAt(10, 0);
         g.State.Treasury.SetGold(b.Capital!.Value, 0);
         g.State.Grid.Get(HexCoord.FromOffset(6, 0))!.Occupant =
-            new Unit(g.Red.Color) { HasMovedThisTurn = true };
+            new Unit(g.Red.Id) { HasMovedThisTurn = true };
 
         g.Hud.PressNextTerritory(); // → A
         g.Hud.PressNextTerritory(); // → should skip B → C
@@ -3066,7 +3065,7 @@ public class GameControllerTests
         var g = new ThreeRedTerritoriesGame();
         foreach (Territory t in g.State.Territories)
         {
-            if (t.Owner == g.Red.Color)
+            if (t.Owner == g.Red.Id)
             {
                 g.State.Treasury.SetGold(t.Capital!.Value, 0);
             }
@@ -3225,18 +3224,18 @@ public class GameControllerTests
         public HexCoord UnitC { get; } = HexCoord.FromOffset(3, 1);
 
         public Territory RedTerritory =>
-            State.Territories.First(t => t.Owner == Red.Color);
+            State.Territories.First(t => t.Owner == Red.Id);
 
         public ThreeUnitsRedGame()
         {
-            Red = new Player("Red", new Color(1f, 0f, 0f));
-            Blue = new Player("Blue", new Color(0f, 0f, 1f));
+            Red = new Player("Red", PlayerId.FromIndex(0));
+            Blue = new Player("Blue", PlayerId.FromIndex(1));
             var players = new List<Player> { Red, Blue };
 
-            var grid = TestHelpers.BuildRectGrid(6, 2, Blue.Color);
+            var grid = TestHelpers.BuildRectGrid(6, 2, Blue.Id);
             for (int col = 0; col <= 4; col++)
             {
-                grid.Get(HexCoord.FromOffset(col, 1))!.Color = Red.Color;
+                grid.Get(HexCoord.FromOffset(col, 1))!.Owner = Red.Id;
             }
 
             IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
@@ -3251,9 +3250,9 @@ public class GameControllerTests
             // isn't reset by the start-of-turn pass (and so the capital
             // — placed by CapitalReconciler on the lex-min empty tile —
             // ends up on (0,1) before any unit can occupy it).
-            grid.Get(UnitA)!.Occupant = new Unit(Red.Color);
-            grid.Get(UnitB)!.Occupant = new Unit(Red.Color);
-            grid.Get(UnitC)!.Occupant = new Unit(Red.Color);
+            grid.Get(UnitA)!.Occupant = new Unit(Red.Id);
+            grid.Get(UnitB)!.Occupant = new Unit(Red.Id);
+            grid.Get(UnitC)!.Occupant = new Unit(Red.Id);
         }
 
         public void SelectRed() => Map.SimulateClick(State.Grid.Get(RedTerritory.Capital!.Value));
@@ -3387,7 +3386,7 @@ public class GameControllerTests
     public void NextUnit_OneMovableUnitAlreadyTheSource_DoesNotPushUndo()
     {
         var g = new TestGame();
-        g.Tile(1, 1).Occupant = new Unit(g.Red.Color);
+        g.Tile(1, 1).Occupant = new Unit(g.Red.Id);
         g.Map.SimulateClick(g.Tile(1, 1)); // enters MovingUnit on (1,1)
         Assert.Equal(SessionState.ActionMode.MovingUnit, g.Session.Mode);
         Assert.Equal(HexCoord.FromOffset(1, 1), g.Session.MoveSource);
@@ -3405,7 +3404,7 @@ public class GameControllerTests
     {
         var g = new ThreeUnitsRedGame();
         g.SelectRed();
-        g.Session.Winner = g.Red.Color;
+        g.Session.Winner = g.Red.Id;
 
         g.Hud.PressNextUnit();
 
@@ -3573,10 +3572,10 @@ public class GameControllerTests
         // A bankrupt territory's UNITS become graves, but its TOWER
         // survives — towers have no upkeep.
         var g = new TestGame();
-        g.Tile(3, 0).Occupant = new Unit(g.Blue.Color, UnitLevel.Knight);
+        g.Tile(3, 0).Occupant = new Unit(g.Blue.Id, UnitLevel.Knight);
         g.Tile(4, 0).Occupant = new Tower();
         HexCoord blueCapital = g.State.Territories
-            .First(t => t.Owner == g.Blue.Color).Capital!.Value;
+            .First(t => t.Owner == g.Blue.Id).Capital!.Value;
         g.State.Treasury.SetGold(blueCapital, 0);
 
         g.Hud.ClickEndTurn(); // advance to Blue: income then upkeep
@@ -3615,13 +3614,13 @@ public class GameControllerTests
         // Mirror the Capture_LastEnemyHex_DeclaresWinner setup: Red is
         // a human with a peasant adjacent to the last Blue tile;
         // capturing it ends the game with a human winner.
-        var red = new Player("Red", new Color(1f, 0f, 0f));
-        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new List<Player> { red, blue };
 
-        var grid = TestHelpers.BuildRectGrid(4, 1, red.Color);
-        grid.Get(HexCoord.FromOffset(3, 0))!.Color = blue.Color;
-        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(red.Color);
+        var grid = TestHelpers.BuildRectGrid(4, 1, red.Id);
+        grid.Get(HexCoord.FromOffset(3, 0))!.Owner = blue.Id;
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(red.Id);
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -3635,7 +3634,7 @@ public class GameControllerTests
         map.SimulateClick(grid.Get(HexCoord.FromOffset(3, 0)));
 
         Assert.True(session.IsGameOver);
-        Assert.Equal(red.Color, session.Winner);
+        Assert.Equal(red.Id, session.Winner);
         Assert.Equal(1, map.GameWonSoundCount);
     }
 
@@ -3645,13 +3644,13 @@ public class GameControllerTests
         // Mirror AiTurn_CanCaptureLastEnemyHex_DeclaresWinner. From the
         // human's perspective an AI win is a loss, so the won-sound
         // must stay silent — the future game-lost cue handles this case.
-        var red = new Player("Red", new Color(1f, 0f, 0f), isAi: true);
-        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var red = new Player("Red", PlayerId.FromIndex(0), isAi: true);
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new List<Player> { red, blue };
 
-        var grid = TestHelpers.BuildRectGrid(5, 1, red.Color);
-        grid.Get(HexCoord.FromOffset(4, 0))!.Color = blue.Color;
-        grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = new Unit(red.Color);
+        var grid = TestHelpers.BuildRectGrid(5, 1, red.Id);
+        grid.Get(HexCoord.FromOffset(4, 0))!.Owner = blue.Id;
+        grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = new Unit(red.Id);
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -3662,7 +3661,7 @@ public class GameControllerTests
         controller.StartGame();
 
         Assert.True(session.IsGameOver);
-        Assert.Equal(red.Color, session.Winner);
+        Assert.Equal(red.Id, session.Winner);
         Assert.Equal(0, map.GameWonSoundCount);
     }
 
@@ -3672,14 +3671,14 @@ public class GameControllerTests
         // Build a minimal fixture: all tiles Red except one Blue tile
         // adjacent to Red. Capturing that tile wipes Blue out and Red
         // should be declared the winner.
-        var red = new Player("Red", new Color(1f, 0f, 0f));
-        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new List<Player> { red, blue };
 
-        var grid = TestHelpers.BuildRectGrid(4, 1, red.Color);
-        grid.Get(HexCoord.FromOffset(3, 0))!.Color = blue.Color;
+        var grid = TestHelpers.BuildRectGrid(4, 1, red.Id);
+        grid.Get(HexCoord.FromOffset(3, 0))!.Owner = blue.Id;
         // Park a Red peasant adjacent to the Blue hex.
-        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(red.Color);
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(red.Id);
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -3694,14 +3693,14 @@ public class GameControllerTests
         map.SimulateClick(grid.Get(HexCoord.FromOffset(3, 0)));
 
         Assert.True(session.IsGameOver);
-        Assert.Equal(red.Color, session.Winner);
+        Assert.Equal(red.Id, session.Winner);
     }
 
     [Fact]
     public void Capture_NonFinalHex_DoesNotDeclareWinner()
     {
         var g = new TestGame();
-        var unit = new Unit(g.Red.Color);
+        var unit = new Unit(g.Red.Id);
         g.Tile(1, 1).Occupant = unit;
 
         g.Map.SimulateClick(g.Tile(1, 1));
@@ -3721,14 +3720,14 @@ public class GameControllerTests
         // singleton with no capital. Mid-turn check requires the
         // current player to own EVERY cell, so the game does NOT
         // end yet (Blue still has 1 tile).
-        var red = new Player("Red", new Color(1f, 0f, 0f));
-        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new List<Player> { red, blue };
 
-        var grid = TestHelpers.BuildRectGrid(5, 1, red.Color);
-        grid.Get(HexCoord.FromOffset(3, 0))!.Color = blue.Color;
-        grid.Get(HexCoord.FromOffset(4, 0))!.Color = blue.Color;
-        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(red.Color, UnitLevel.Spearman);
+        var grid = TestHelpers.BuildRectGrid(5, 1, red.Id);
+        grid.Get(HexCoord.FromOffset(3, 0))!.Owner = blue.Id;
+        grid.Get(HexCoord.FromOffset(4, 0))!.Owner = blue.Id;
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(red.Id, UnitLevel.Spearman);
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -3744,7 +3743,7 @@ public class GameControllerTests
         Assert.False(session.IsGameOver);
         Assert.Null(session.Winner);
         // Blue's last tile is still there, just orphaned.
-        Assert.Equal(blue.Color, grid.Get(HexCoord.FromOffset(4, 0))!.Color);
+        Assert.Equal(blue.Id, grid.Get(HexCoord.FromOffset(4, 0))!.Owner);
     }
 
     [Fact]
@@ -3754,14 +3753,14 @@ public class GameControllerTests
         // mid-turn. Ending Red's turn should now declare Red the winner
         // because Blue holds only an orphan singleton — no
         // capital-bearing territory.
-        var red = new Player("Red", new Color(1f, 0f, 0f));
-        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new List<Player> { red, blue };
 
-        var grid = TestHelpers.BuildRectGrid(5, 1, red.Color);
-        grid.Get(HexCoord.FromOffset(3, 0))!.Color = blue.Color;
-        grid.Get(HexCoord.FromOffset(4, 0))!.Color = blue.Color;
-        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(red.Color, UnitLevel.Spearman);
+        var grid = TestHelpers.BuildRectGrid(5, 1, red.Id);
+        grid.Get(HexCoord.FromOffset(3, 0))!.Owner = blue.Id;
+        grid.Get(HexCoord.FromOffset(4, 0))!.Owner = blue.Id;
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(red.Id, UnitLevel.Spearman);
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -3769,7 +3768,7 @@ public class GameControllerTests
         // Suppress the End-Turn claim-victory prompt: this test exercises
         // the end-of-turn sole-capital-bearer winner path, not the new
         // human-at->50% prompt that would otherwise interject.
-        session.ClaimVictoryPromptedHighestThreshold[red.Color] = 90;
+        session.ClaimVictoryPromptedHighestThreshold[red.Id] = 90;
         var map = new MockHexMapView();
         var hud = new MockHudView();
         var controller = new GameController(state, session, map, hud);
@@ -3782,7 +3781,7 @@ public class GameControllerTests
         hud.ClickEndTurn();
 
         Assert.True(session.IsGameOver);
-        Assert.Equal(red.Color, session.Winner);
+        Assert.Equal(red.Id, session.Winner);
     }
 
     [Fact]
@@ -3802,7 +3801,7 @@ public class GameControllerTests
     public void BuyPeasant_AfterWin_IsNoOp()
     {
         var g = new TestGame();
-        g.Session.Winner = g.Red.Color; // simulate already-won state
+        g.Session.Winner = g.Red.Id; // simulate already-won state
 
         g.Map.SimulateClick(g.Tile(0, 1));
         g.Hud.ClickBuyPeasant();
@@ -3816,12 +3815,12 @@ public class GameControllerTests
     public void EndTurn_AfterWin_IsNoOp()
     {
         var g = new TestGame();
-        Color initialPlayer = g.State.Turns.CurrentPlayer.Color;
-        g.Session.Winner = g.Red.Color;
+        PlayerId initialPlayer = g.State.Turns.CurrentPlayer.Id;
+        g.Session.Winner = g.Red.Id;
 
         g.Hud.ClickEndTurn();
 
-        Assert.Equal(initialPlayer, g.State.Turns.CurrentPlayer.Color);
+        Assert.Equal(initialPlayer, g.State.Turns.CurrentPlayer.Id);
     }
 
     [Fact]
@@ -3834,7 +3833,7 @@ public class GameControllerTests
         g.Map.SimulateClick(g.Tile(1, 1));
         Assert.NotNull(g.Tile(1, 1).Unit);
 
-        g.Session.Winner = g.Red.Color;
+        g.Session.Winner = g.Red.Id;
         g.Hud.ClickUndoLast();
 
         // Unit should still be present; undo was frozen.
@@ -3846,13 +3845,13 @@ public class GameControllerTests
     {
         // Once the game is won, we don't want players rewinding past
         // the killing blow. HandleCapture should clear the undo stack.
-        var red = new Player("Red", new Color(1f, 0f, 0f));
-        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new List<Player> { red, blue };
 
-        var grid = TestHelpers.BuildRectGrid(4, 1, red.Color);
-        grid.Get(HexCoord.FromOffset(3, 0))!.Color = blue.Color;
-        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(red.Color);
+        var grid = TestHelpers.BuildRectGrid(4, 1, red.Id);
+        grid.Get(HexCoord.FromOffset(3, 0))!.Owner = blue.Id;
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(red.Id);
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -3874,17 +3873,17 @@ public class GameControllerTests
         // Three-player fixture where the middle player (Blue) has zero
         // tiles. Ending Red's turn should jump straight to Green,
         // skipping Blue entirely.
-        var red = new Player("Red", new Color(1f, 0f, 0f));
-        var blue = new Player("Blue", new Color(0f, 0f, 1f));
-        var green = new Player("Green", new Color(0f, 1f, 0f));
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
+        var green = new Player("Green", PlayerId.FromIndex(2));
         var players = new List<Player> { red, blue, green };
 
         // Grid has only Red and Green tiles — no Blue.
         var grid = new HexGrid();
-        grid.Add(new HexTile(HexCoord.FromOffset(0, 0), red.Color));
-        grid.Add(new HexTile(HexCoord.FromOffset(1, 0), red.Color));
-        grid.Add(new HexTile(HexCoord.FromOffset(3, 0), green.Color));
-        grid.Add(new HexTile(HexCoord.FromOffset(4, 0), green.Color));
+        grid.Add(new HexTile(HexCoord.FromOffset(0, 0), red.Id));
+        grid.Add(new HexTile(HexCoord.FromOffset(1, 0), red.Id));
+        grid.Add(new HexTile(HexCoord.FromOffset(3, 0), green.Id));
+        grid.Add(new HexTile(HexCoord.FromOffset(4, 0), green.Id));
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -3894,11 +3893,11 @@ public class GameControllerTests
         var controller = new GameController(state, session, map, hud);
         controller.StartGame();
 
-        Assert.Equal(red.Color, state.Turns.CurrentPlayer.Color);
+        Assert.Equal(red.Id, state.Turns.CurrentPlayer.Id);
         hud.ClickEndTurn();
 
         // Should skip Blue (eliminated) and land on Green.
-        Assert.Equal(green.Color, state.Turns.CurrentPlayer.Color);
+        Assert.Equal(green.Id, state.Turns.CurrentPlayer.Id);
     }
 
     private static int CountTrees(HexGrid grid)
@@ -3998,7 +3997,7 @@ public class GameControllerTests
         // Rejected move click stays in MovingUnit mode and keeps the
         // unit picked up.
         var g = new TestGame();
-        var unit = new Unit(g.Red.Color);
+        var unit = new Unit(g.Red.Id);
         g.Tile(1, 1).Occupant = unit;
         g.Map.SimulateClick(g.Tile(1, 1));
         Assert.Equal(SessionState.ActionMode.MovingUnit, g.Session.Mode);
@@ -4021,7 +4020,7 @@ public class GameControllerTests
         // Capturable by a new peasant.
         g.Map.SimulateClick(g.Tile(2, 1));
 
-        Assert.Equal(g.Red.Color, g.Tile(2, 1).Color);
+        Assert.Equal(g.Red.Id, g.Tile(2, 1).Owner);
         Assert.NotNull(g.Tile(2, 1).Unit);
         Assert.True(g.Tile(2, 1).Unit!.HasMovedThisTurn);
         Assert.True(g.Map.RebuildCount >= 1);
@@ -4116,7 +4115,7 @@ public class GameControllerTests
         // trailing refresh, the cached flag stays None and Escape
         // wrongly opens the pause menu instead of cancelling the move.
         var g = new TestGame();
-        g.Tile(1, 1).Occupant = new Unit(g.Red.Color);
+        g.Tile(1, 1).Occupant = new Unit(g.Red.Id);
 
         g.Map.SimulateClick(g.Tile(1, 1));
 
@@ -4128,7 +4127,7 @@ public class GameControllerTests
     public void CancelAction_WhileMovingUnit_ClearsModeAndMapOverlays()
     {
         var g = new TestGame();
-        g.Tile(1, 1).Occupant = new Unit(g.Red.Color);
+        g.Tile(1, 1).Occupant = new Unit(g.Red.Id);
         g.Map.SimulateClick(g.Tile(1, 1));
         Assert.Equal(SessionState.ActionMode.MovingUnit, g.Session.Mode);
         Assert.NotEmpty(g.Map.LastMoveTargets);
@@ -4254,7 +4253,7 @@ public class GameControllerTests
 
         Assert.NotNull(g.Tile(1, 1).Unit);
         Assert.Equal(UnitLevel.Spearman, g.Tile(1, 1).Unit!.Level);
-        Assert.Equal(g.Red.Color, g.Tile(1, 1).Unit!.Owner);
+        Assert.Equal(g.Red.Id, g.Tile(1, 1).Unit!.Owner);
         // 30 - 20 = 10. Cannot afford another Spearman, but CAN afford
         // a Peasant → drop down to BuyingPeasant.
         Assert.Equal(10, g.State.Treasury.GetGold(redCapital));
@@ -4267,7 +4266,7 @@ public class GameControllerTests
         var g = new TestGame();
         // Plant an enemy Spearman on (2,1) — Blue, adjacent to Red's (1,1).
         // Defense = 2 (the spearman itself); a Knight (3) > 2 → captures.
-        g.Tile(2, 1).Occupant = new Unit(g.Blue.Color, UnitLevel.Spearman);
+        g.Tile(2, 1).Occupant = new Unit(g.Blue.Id, UnitLevel.Spearman);
 
         g.Map.SimulateClick(g.Tile(0, 1));
         HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
@@ -4281,7 +4280,7 @@ public class GameControllerTests
 
         g.Map.SimulateClick(g.Tile(2, 1));
 
-        Assert.Equal(g.Red.Color, g.Tile(2, 1).Color);
+        Assert.Equal(g.Red.Id, g.Tile(2, 1).Owner);
         Assert.NotNull(g.Tile(2, 1).Unit);
         Assert.Equal(UnitLevel.Knight, g.Tile(2, 1).Unit!.Level);
         Assert.True(g.Tile(2, 1).Unit!.HasMovedThisTurn);
@@ -4579,7 +4578,7 @@ public class GameControllerTests
     public void UndoLast_AfterMove_RestoresMovingModeAndMoveSource()
     {
         var g = new TestGame();
-        g.Tile(1, 1).Occupant = new Unit(g.Red.Color);
+        g.Tile(1, 1).Occupant = new Unit(g.Red.Id);
         g.Map.SimulateClick(g.Tile(1, 1));  // selects + enters MovingUnit
         Assert.Equal(SessionState.ActionMode.MovingUnit, g.Session.Mode);
         Assert.Equal(HexCoord.FromOffset(1, 1), g.Session.MoveSource);
@@ -4686,7 +4685,7 @@ public class GameControllerTests
         // single click both selects and enters MovingUnit. Undo once
         // should revert both.
         var g = new TestGame();
-        g.Tile(1, 1).Occupant = new Unit(g.Red.Color);
+        g.Tile(1, 1).Occupant = new Unit(g.Red.Id);
         Assert.Null(g.Session.SelectedTerritory);
         Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
 
@@ -4836,14 +4835,14 @@ public class GameControllerTests
         MockHudView Hud, SessionState Session, Player Red, Player Blue)
         BuildRallyFixture(int redWidth)
     {
-        var red = new Player("Red", new Color(1f, 0f, 0f));
-        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new List<Player> { red, blue };
 
-        HexGrid grid = TestHelpers.BuildRectGrid(redWidth + 1, 2, blue.Color);
+        HexGrid grid = TestHelpers.BuildRectGrid(redWidth + 1, 2, blue.Id);
         for (int c = 0; c < redWidth; c++)
         {
-            grid.Get(HexCoord.FromOffset(c, 1))!.Color = red.Color;
+            grid.Get(HexCoord.FromOffset(c, 1))!.Owner = red.Id;
         }
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -4863,14 +4862,14 @@ public class GameControllerTests
         // friendly): unit should move to (4,1) itself (closest empty to
         // target = the target). The reposition is into an own-empty cell,
         // so HasMovedThisTurn must remain false.
-        state.Grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = new Unit(red.Color);
+        state.Grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = new Unit(red.Id);
 
         map.SimulateLongClick(state.Grid.Get(HexCoord.FromOffset(4, 1)));
 
         Assert.Null(state.Grid.Get(HexCoord.FromOffset(1, 1))!.Occupant);
         Unit? moved = state.Grid.Get(HexCoord.FromOffset(4, 1))!.Unit;
         Assert.NotNull(moved);
-        Assert.Equal(red.Color, moved!.Owner);
+        Assert.Equal(red.Id, moved!.Owner);
         Assert.False(moved.HasMovedThisTurn);
     }
 
@@ -4882,7 +4881,7 @@ public class GameControllerTests
         // (3,1): tower-occupied, so the closest legal empty cell to the
         // target is (2,1).
         state.Grid.Get(HexCoord.FromOffset(3, 1))!.Occupant = new Tower();
-        state.Grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = new Unit(red.Color);
+        state.Grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = new Unit(red.Id);
 
         map.SimulateLongClick(state.Grid.Get(HexCoord.FromOffset(3, 1)));
 
@@ -4898,7 +4897,7 @@ public class GameControllerTests
     public void LongClick_OnEnemyTile_NoOp()
     {
         var (_, state, map, _, _, red, _) = BuildRallyFixture(redWidth: 4);
-        state.Grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = new Unit(red.Color);
+        state.Grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = new Unit(red.Id);
 
         // Long-click on a Blue tile.
         map.SimulateLongClick(state.Grid.Get(HexCoord.FromOffset(0, 0)));
@@ -4911,7 +4910,7 @@ public class GameControllerTests
     public void LongClick_OnNullTile_NoOp()
     {
         var (_, state, map, _, _, red, _) = BuildRallyFixture(redWidth: 4);
-        state.Grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = new Unit(red.Color);
+        state.Grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = new Unit(red.Id);
 
         map.SimulateLongClick(null);
 
@@ -4925,7 +4924,7 @@ public class GameControllerTests
         // when a purchase / build / move action is pending. Otherwise
         // the player's mid-action context would silently disappear.
         var (_, state, map, hud, session, red, _) = BuildRallyFixture(redWidth: 4);
-        state.Grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = new Unit(red.Color);
+        state.Grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = new Unit(red.Id);
         // Select Red's territory and enter BuyingPeasant mode.
         map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(0, 1)));
         hud.ClickBuyPeasant();
@@ -4946,8 +4945,8 @@ public class GameControllerTests
         // (2,1) is closer, processed first → moves to (4,1) (target,
         // empty). Then (1,1) processed → empties to (3,1) (now closest
         // empty to target).
-        state.Grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = new Unit(red.Color);
-        state.Grid.Get(HexCoord.FromOffset(2, 1))!.Occupant = new Unit(red.Color);
+        state.Grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = new Unit(red.Id);
+        state.Grid.Get(HexCoord.FromOffset(2, 1))!.Occupant = new Unit(red.Id);
 
         map.SimulateLongClick(state.Grid.Get(HexCoord.FromOffset(4, 1)));
 
@@ -4964,9 +4963,9 @@ public class GameControllerTests
     {
         var (_, state, map, _, _, red, _) = BuildRallyFixture(redWidth: 5);
         // Already-moved unit at (1,1) (the closer one); fresh unit at (2,1).
-        var spent = new Unit(red.Color) { HasMovedThisTurn = true };
+        var spent = new Unit(red.Id) { HasMovedThisTurn = true };
         state.Grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = spent;
-        state.Grid.Get(HexCoord.FromOffset(2, 1))!.Occupant = new Unit(red.Color);
+        state.Grid.Get(HexCoord.FromOffset(2, 1))!.Occupant = new Unit(red.Id);
 
         map.SimulateLongClick(state.Grid.Get(HexCoord.FromOffset(4, 1)));
 
@@ -4981,7 +4980,7 @@ public class GameControllerTests
     {
         var (_, state, map, _, _, red, _) = BuildRallyFixture(redWidth: 5);
         // Unit already on the target tile — no closer cell exists.
-        var unit = new Unit(red.Color);
+        var unit = new Unit(red.Id);
         state.Grid.Get(HexCoord.FromOffset(4, 1))!.Occupant = unit;
 
         map.SimulateLongClick(state.Grid.Get(HexCoord.FromOffset(4, 1)));
@@ -4994,8 +4993,8 @@ public class GameControllerTests
     public void LongClick_RallyIsSingleUndoStep()
     {
         var (_, state, map, hud, _, red, _) = BuildRallyFixture(redWidth: 5);
-        state.Grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = new Unit(red.Color);
-        state.Grid.Get(HexCoord.FromOffset(2, 1))!.Occupant = new Unit(red.Color);
+        state.Grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = new Unit(red.Id);
+        state.Grid.Get(HexCoord.FromOffset(2, 1))!.Occupant = new Unit(red.Id);
 
         map.SimulateLongClick(state.Grid.Get(HexCoord.FromOffset(4, 1)));
 
@@ -5016,8 +5015,8 @@ public class GameControllerTests
     public void LongClick_PlaysRallySound_WhenAtLeastOneUnitMoves()
     {
         var (_, state, map, _, _, red, _) = BuildRallyFixture(redWidth: 5);
-        state.Grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = new Unit(red.Color);
-        state.Grid.Get(HexCoord.FromOffset(2, 1))!.Occupant = new Unit(red.Color);
+        state.Grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = new Unit(red.Id);
+        state.Grid.Get(HexCoord.FromOffset(2, 1))!.Occupant = new Unit(red.Id);
 
         map.SimulateLongClick(state.Grid.Get(HexCoord.FromOffset(4, 1)));
 
@@ -5031,7 +5030,7 @@ public class GameControllerTests
         // Long-click on own territory with a unit already at the target —
         // nothing moves, so nothing should sound.
         var (_, state, map, _, _, red, _) = BuildRallyFixture(redWidth: 5);
-        state.Grid.Get(HexCoord.FromOffset(4, 1))!.Occupant = new Unit(red.Color);
+        state.Grid.Get(HexCoord.FromOffset(4, 1))!.Occupant = new Unit(red.Id);
 
         map.SimulateLongClick(state.Grid.Get(HexCoord.FromOffset(4, 1)));
 
@@ -5090,25 +5089,25 @@ public class GameControllerTests
         // The handler tail must fire onAfterRefresh again so the cue
         // (or any post-handler observer) sees the final state with the
         // body's overwrites applied.
-        var red = new Player("Red", new Color(1f, 0f, 0f));
-        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new List<Player> { red, blue };
-        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Color);
-        grid.Get(HexCoord.FromOffset(0, 0))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(0, 1))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(1, 1))!.Color = red.Color;
+        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Id);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(0, 1))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(1, 1))!.Owner = red.Id;
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players,
             new TurnState(players), new Treasury());
         var map = new MockHexMapView();
         var session = new SessionState();
         // Suppress claim-victory prompt.
-        session.ClaimVictoryPromptedHighestThreshold[red.Color] = 90;
-        session.ClaimVictoryPromptedHighestThreshold[blue.Color] = 90;
+        session.ClaimVictoryPromptedHighestThreshold[red.Id] = 90;
+        session.ClaimVictoryPromptedHighestThreshold[blue.Id] = 90;
         // Place an actionable unit on Red's territory so clicking it
         // puts the controller in MovingUnit mode and paints all valid
         // targets.
-        grid.Get(HexCoord.FromOffset(0, 0))!.Occupant = new Unit(red.Color);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Occupant = new Unit(red.Id);
 
         var snapshotCalls = new List<int>(); // record map.LastMoveTargets.Count at each onAfterRefresh
         GameController? controllerRef = null;
@@ -5136,10 +5135,10 @@ public class GameControllerTests
     [Fact]
     public void RefreshViews_InvokesOnAfterRefreshCallback()
     {
-        var red = new Player("Red", new Color(1f, 0f, 0f));
-        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new List<Player> { red, blue };
-        var grid = TestHelpers.BuildRectGrid(2, 2, red.Color);
+        var grid = TestHelpers.BuildRectGrid(2, 2, red.Id);
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
         var map = new MockHexMapView();
@@ -5189,29 +5188,29 @@ public class GameControllerTests
         // tile that holds a peasant AND is adjacent to a Blue tower.
         // The peasant alone wouldn't block (1 < 2), but the tower (2)
         // does — only the tower coord should appear in Defenders.
-        var red = new Player("Red", new Color(1f, 0f, 0f));
-        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new List<Player> { red, blue };
 
         // 5x2 grid; Red owns (0,0),(0,1); Blue owns the rest. Target the
         // (1,0) Blue tile (peasant on it); plant a Blue tower on (2,0) so
         // it radiates into (1,0). Confirm only the tower flashes.
-        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Color);
-        grid.Get(HexCoord.FromOffset(0, 0))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(0, 1))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(blue.Color); // peasant
+        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Id);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(0, 1))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(blue.Id); // peasant
         grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Tower();          // blue tower
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
         var session = new SessionState();
-        session.ClaimVictoryPromptedHighestThreshold[red.Color] = 90;
-        session.ClaimVictoryPromptedHighestThreshold[blue.Color] = 90;
+        session.ClaimVictoryPromptedHighestThreshold[red.Id] = 90;
+        session.ClaimVictoryPromptedHighestThreshold[blue.Id] = 90;
         var map = new MockHexMapView();
         var controller = new GameController(state, session, map, new MockHudView());
         controller.StartGame();
 
-        Territory redT = state.Territories.First(t => t.Owner == red.Color);
+        Territory redT = state.Territories.First(t => t.Owner == red.Id);
         state.Treasury.SetGold(redT.Capital!.Value, 50); // afford a Spearman (20)
         map.SimulateClick(grid.Get(HexCoord.FromOffset(0, 0)));   // select Red
 
@@ -5236,21 +5235,21 @@ public class GameControllerTests
         // Pick up a Red Spearman, click an enemy hex defended by an
         // adjacent Blue tower. Rejection shape = Spearman; defenders =
         // [tower coord].
-        var red = new Player("Red", new Color(1f, 0f, 0f));
-        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new List<Player> { red, blue };
 
-        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Color);
-        grid.Get(HexCoord.FromOffset(0, 0))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(0, 1))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(0, 1))!.Occupant = new Unit(red.Color, UnitLevel.Spearman);
+        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Id);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(0, 1))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(0, 1))!.Occupant = new Unit(red.Id, UnitLevel.Spearman);
         grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Tower(); // Blue tower radiates into (1,0)/(1,1)
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
         var session = new SessionState();
-        session.ClaimVictoryPromptedHighestThreshold[red.Color] = 90;
-        session.ClaimVictoryPromptedHighestThreshold[blue.Color] = 90;
+        session.ClaimVictoryPromptedHighestThreshold[red.Id] = 90;
+        session.ClaimVictoryPromptedHighestThreshold[blue.Id] = 90;
         var map = new MockHexMapView();
         var controller = new GameController(state, session, map, new MockHudView());
         controller.StartGame();
@@ -5275,28 +5274,28 @@ public class GameControllerTests
         // (empty defenders, generic sound) rather than "blocked by
         // defenders". The defender list shouldn't surface for tiles the
         // player couldn't reach at all.
-        var red = new Player("Red", new Color(1f, 0f, 0f));
-        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new List<Player> { red, blue };
 
         // 5x2 grid; Red owns (0,0) + (0,1). A Blue tower sits on (4,0) —
         // far from Red's territory. Clicking (4,0) is invalid because
         // it's non-adjacent to Red, not because of defense.
-        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Color);
-        grid.Get(HexCoord.FromOffset(0, 0))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(0, 1))!.Color = red.Color;
+        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Id);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(0, 1))!.Owner = red.Id;
         grid.Get(HexCoord.FromOffset(4, 0))!.Occupant = new Tower();
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
         var session = new SessionState();
-        session.ClaimVictoryPromptedHighestThreshold[red.Color] = 90;
-        session.ClaimVictoryPromptedHighestThreshold[blue.Color] = 90;
+        session.ClaimVictoryPromptedHighestThreshold[red.Id] = 90;
+        session.ClaimVictoryPromptedHighestThreshold[blue.Id] = 90;
         var map = new MockHexMapView();
         var controller = new GameController(state, session, map, new MockHudView());
         controller.StartGame();
 
-        Territory redT = state.Territories.First(t => t.Owner == red.Color);
+        Territory redT = state.Territories.First(t => t.Owner == red.Id);
         state.Treasury.SetGold(redT.Capital!.Value, 50);
         map.SimulateClick(grid.Get(HexCoord.FromOffset(0, 0)));   // select Red
         session.Mode = SessionState.ActionMode.BuyingPeasant;
@@ -5394,17 +5393,17 @@ public class GameControllerTests
         // Used by both Silent and NonSilent tests below to keep the
         // single AI action that fires a destruction effect identical
         // across them.
-        var red = new Player("Red", new Color(1f, 0f, 0f));
-        var blue = new Player("Blue", new Color(0f, 0f, 1f), isAi: true);
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1), isAi: true);
         var players = new List<Player> { red, blue };
 
-        var grid = TestHelpers.BuildRectGrid(5, 1, new Color(0.3f, 0.3f, 0.3f));
-        grid.Get(HexCoord.FromOffset(0, 0))!.Color = blue.Color;
-        grid.Get(HexCoord.FromOffset(1, 0))!.Color = blue.Color;
-        grid.Get(HexCoord.FromOffset(2, 0))!.Color = blue.Color;
-        grid.Get(HexCoord.FromOffset(3, 0))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(4, 0))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(blue.Color, UnitLevel.Spearman);
+        var grid = TestHelpers.BuildRectGrid(5, 1, PlayerId.None);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = blue.Id;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Owner = blue.Id;
+        grid.Get(HexCoord.FromOffset(2, 0))!.Owner = blue.Id;
+        grid.Get(HexCoord.FromOffset(3, 0))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(4, 0))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(blue.Id, UnitLevel.Spearman);
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -5425,7 +5424,7 @@ public class GameControllerTests
 
         AiAction? scripted = new AiMoveAction(
             HexCoord.FromOffset(2, 0), HexCoord.FromOffset(3, 0));
-        AiAction? Chooser(GameState s, Color c, HashSet<HexCoord> v, Random r)
+        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> v, Random r)
         {
             AiAction? next = scripted;
             scripted = null;
@@ -5442,7 +5441,7 @@ public class GameControllerTests
 
         // State mutated.
         Assert.Null(state.Grid.Get(HexCoord.FromOffset(2, 0))!.Unit);
-        Assert.Equal(blue.Color, state.Grid.Get(HexCoord.FromOffset(3, 0))!.Color);
+        Assert.Equal(blue.Id, state.Grid.Get(HexCoord.FromOffset(3, 0))!.Owner);
         // But none of the per-action effects fired.
         Assert.Empty(map.DestructionEffects);
         Assert.Empty(map.CapitalDestroyedSounds);
@@ -5460,7 +5459,7 @@ public class GameControllerTests
 
         AiAction? scripted = new AiMoveAction(
             HexCoord.FromOffset(2, 0), HexCoord.FromOffset(3, 0));
-        AiAction? Chooser(GameState s, Color c, HashSet<HexCoord> v, Random r)
+        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> v, Random r)
         {
             AiAction? next = scripted;
             scripted = null;
@@ -5489,7 +5488,7 @@ public class GameControllerTests
 
         AiAction? scripted = new AiMoveAction(
             HexCoord.FromOffset(2, 0), HexCoord.FromOffset(3, 0));
-        AiAction? Chooser(GameState s, Color c, HashSet<HexCoord> v, Random r)
+        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> v, Random r)
         {
             AiAction? next = scripted;
             scripted = null;

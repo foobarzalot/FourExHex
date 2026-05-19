@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Godot;
 
 namespace FourExHex.Tests;
 
@@ -68,11 +67,11 @@ public class MockHexMapView : IHexMapView
     public void RebuildAfterTerritoryChange() => RebuildCount++;
 
     public int RefreshOccupantCount { get; private set; }
-    public Color? LastOccupantRefreshPlayer { get; private set; }
-    public void RefreshOccupantVisuals(Color? currentPlayerColor, Treasury treasury)
+    public PlayerId? LastOccupantRefreshPlayer { get; private set; }
+    public void RefreshOccupantVisuals(PlayerId? currentPlayer, Treasury treasury)
     {
         RefreshOccupantCount++;
-        LastOccupantRefreshPlayer = currentPlayerColor;
+        LastOccupantRefreshPlayer = currentPlayer;
     }
 
     /// <summary>

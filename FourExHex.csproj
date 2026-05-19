@@ -4,7 +4,17 @@
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <Nullable>enable</Nullable>
     <LangVersion>12</LangVersion>
-    <!-- Keep the test project's sources out of the main game assembly. -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);tests/**/*</DefaultItemExcludes>
+    <!--
+      Keep the test project's sources AND the Godot-free model library's
+      sources out of the main game assembly. The src/** exclude is
+      mandatory: without it the Godot SDK glob would also compile the
+      moved sources into FourExHex.dll, duplicating every model type
+      (CS0436) since the library already defines them.
+    -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);tests/**/*;src/**/*</DefaultItemExcludes>
   </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="src\FourExHex.Model\FourExHex.Model.csproj" />
+  </ItemGroup>
 </Project>

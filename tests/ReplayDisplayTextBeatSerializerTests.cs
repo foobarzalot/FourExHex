@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using Godot;
 using Xunit;
 
 namespace FourExHex.Tests;
@@ -13,9 +12,9 @@ public class ReplayDisplayTextBeatSerializerTests
 {
     private static (GameState, IReadOnlyList<Player>) BuildMinimalState()
     {
-        var red = new Player("Red", new Color("e53935"), AiKind.Human);
+        var red = new Player("Red", PlayerId.FromIndex(0), AiKind.Human);
         var players = new List<Player> { red };
-        HexGrid grid = TestHelpers.BuildRectGrid(2, 2, red.Color);
+        HexGrid grid = TestHelpers.BuildRectGrid(2, 2, red.Id);
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var turnState = new TurnState(players, currentPlayerIndex: 0, turnNumber: 0);
         var state = new GameState(grid, territories, players, turnState, new Treasury());

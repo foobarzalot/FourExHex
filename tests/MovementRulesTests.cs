@@ -1,26 +1,25 @@
 using System.Collections.Generic;
 using System.Linq;
-using Godot;
 using Xunit;
 
 namespace FourExHex.Tests;
 
 public class MovementRulesTests
 {
-    private static readonly Color Red = new Color(1f, 0f, 0f);
-    private static readonly Color Blue = new Color(0f, 0f, 1f);
+    private static readonly PlayerId Red = PlayerId.FromIndex(0);
+    private static readonly PlayerId Blue = PlayerId.FromIndex(1);
 
     /// <summary>
     /// Build a grid where every tile in a rectangular shape exists, and all
     /// tiles default to a neutral color. Tests override specific tiles.
     /// </summary>
-    private static HexGrid BuildGrid(int cols, int rows, Color fillColor) =>
+    private static HexGrid BuildGrid(int cols, int rows, PlayerId fillColor) =>
         TestHelpers.BuildRectGrid(cols, rows, fillColor);
 
-    private static void SetTile(HexGrid grid, HexCoord coord, Color color)
+    private static void SetTile(HexGrid grid, HexCoord coord, PlayerId color)
     {
         HexTile? tile = grid.Get(coord);
-        if (tile != null) tile.Color = color;
+        if (tile != null) tile.Owner = color;
     }
 
     // --- ValidTargets -----------------------------------------------------
@@ -281,7 +280,7 @@ public class MovementRulesTests
         Assert.True(result.WasCapture);
 
         HexTile captured = grid.Get(HexCoord.FromOffset(2, 0))!;
-        Assert.Equal(Red, captured.Color);
+        Assert.Equal(Red, captured.Owner);
         Assert.Same(unit, captured.Unit);
         Assert.True(unit.HasMovedThisTurn);
 
@@ -443,7 +442,7 @@ public class MovementRulesTests
 
         Assert.True(result.WasCapture);
         HexTile captured = grid.Get(HexCoord.FromOffset(2, 0))!;
-        Assert.Equal(Red, captured.Color);
+        Assert.Equal(Red, captured.Owner);
         Assert.Same(unit, captured.Unit);
         Assert.True(unit.HasMovedThisTurn);
     }
@@ -809,7 +808,7 @@ public class MovementRulesTests
 
         Assert.True(result.WasCapture);
         HexTile captured = grid.Get(HexCoord.FromOffset(2, 0))!;
-        Assert.Equal(Red, captured.Color);
+        Assert.Equal(Red, captured.Owner);
         Assert.Same(knight, captured.Unit);
         // Tower is gone — overwritten by the arriving unit.
         Assert.IsNotType<Tower>(captured.Occupant);

@@ -267,9 +267,9 @@ public sealed partial class MapEditorPanel : Node2D
         }
         // Color swatch: idx 1..PlayerConfig.Length. Index 0 is the hand
         // (Pan mode, never reaches here).
-        Color color = new Color(GameSettings.PlayerConfig[idx - 1].Hex);
+        PlayerId owner = PlayerId.FromIndex(idx - 1);
         _territories = MapEditPaint.PaintLand(
-            _grid, _water, _territories, Map.Cols, Map.Rows, coord, color);
+            _grid, _water, _territories, Map.Cols, Map.Rows, coord, owner);
     }
 
     /// <summary>
@@ -353,9 +353,9 @@ public sealed partial class MapEditorPanel : Node2D
         Map.ReloadState(state, animateNewOccupants);
         // ReloadState rebuilds tile fills, water, borders — but trees +
         // capitals come from RefreshOccupantVisuals, which is normally
-        // driven by GameController. Pass null currentPlayerColor so no
+        // driven by GameController. Pass null currentPlayer so no
         // CTA pulsing fires (no "current player" exists in the editor).
-        Map.RefreshOccupantVisuals(currentPlayerColor: null, state.Treasury);
+        Map.RefreshOccupantVisuals(currentPlayer: null, state.Treasury);
 
         DraftChanged?.Invoke();
         UndoStateChanged?.Invoke();

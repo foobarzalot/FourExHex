@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using System.Linq;
-using Godot;
 using Xunit;
 
 namespace FourExHex.Tests;
@@ -15,8 +14,8 @@ namespace FourExHex.Tests;
 /// </summary>
 public class ClaimVictoryTests
 {
-    private static readonly Color Red = new Color(1f, 0f, 0f);
-    private static readonly Color Blue = new Color(0f, 0f, 1f);
+    private static readonly PlayerId Red = PlayerId.FromIndex(0);
+    private static readonly PlayerId Blue = PlayerId.FromIndex(1);
 
     /// <summary>
     /// Build a <paramref name="cols"/>x<paramref name="rows"/> grid with
@@ -36,8 +35,8 @@ public class ClaimVictoryTests
             AiKind redKind = AiKind.Human,
             AiKind blueKind = AiKind.Human)
     {
-        var redP = new Player("Red", Red, redKind);
-        var blueP = new Player("Blue", Blue, blueKind);
+        var redP = new Player("Red", PlayerId.FromIndex(0), redKind);
+        var blueP = new Player("Blue", PlayerId.FromIndex(1), blueKind);
         var players = new List<Player> { redP, blueP };
 
         var grid = TestHelpers.BuildRectGrid(cols, rows, Blue);
@@ -46,7 +45,7 @@ public class ClaimVictoryTests
         {
             for (int col = 0; col < cols && flipped < redCount; col++)
             {
-                grid.Get(HexCoord.FromOffset(col, row))!.Color = Red;
+                grid.Get(HexCoord.FromOffset(col, row))!.Owner = Red;
                 flipped++;
             }
         }
@@ -88,7 +87,7 @@ public class ClaimVictoryTests
         g.Hud.ClickEndTurn();
 
         Assert.True(g.Session.PendingClaimVictory.HasValue);
-        Assert.Equal(Red, g.Session.PendingClaimVictory!.Value.Color);
+        Assert.Equal(Red, g.Session.PendingClaimVictory!.Value.Player);
         Assert.Equal(50, g.Session.PendingClaimVictory!.Value.ThresholdPercent);
         // Turn did NOT advance.
         Assert.Equal(turnBefore, g.State.Turns.TurnNumber);
@@ -106,8 +105,8 @@ public class ClaimVictoryTests
         // pre-record. Building a controller with previewMode: true must
         // suppress every PendingClaimVictory assignment regardless of
         // how much of the map the human player controls.
-        var redP = new Player("Red", Red, AiKind.Human);
-        var blueP = new Player("Blue", Blue, AiKind.Human);
+        var redP = new Player("Red", PlayerId.FromIndex(0), AiKind.Human);
+        var blueP = new Player("Blue", PlayerId.FromIndex(1), AiKind.Human);
         var players = new List<Player> { redP, blueP };
 
         var grid = TestHelpers.BuildRectGrid(5, 2, Blue);
@@ -117,7 +116,7 @@ public class ClaimVictoryTests
         // mid-tutorial dev would cross.
         for (int i = 0; i < 8; i++)
         {
-            grid.Get(HexCoord.FromOffset(i % 5, i / 5))!.Color = Red;
+            grid.Get(HexCoord.FromOffset(i % 5, i / 5))!.Owner = Red;
         }
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -145,14 +144,14 @@ public class ClaimVictoryTests
         // so the dev plays all six. The same scripted-flow concern as
         // Preview applies: a claim-victory modal would interrupt the
         // recording session. recordingMode: true suppresses it.
-        var redP = new Player("Red", Red, AiKind.Human);
-        var blueP = new Player("Blue", Blue, AiKind.Human);
+        var redP = new Player("Red", PlayerId.FromIndex(0), AiKind.Human);
+        var blueP = new Player("Blue", PlayerId.FromIndex(1), AiKind.Human);
         var players = new List<Player> { redP, blueP };
 
         var grid = TestHelpers.BuildRectGrid(5, 2, Blue);
         for (int i = 0; i < 8; i++)
         {
-            grid.Get(HexCoord.FromOffset(i % 5, i / 5))!.Color = Red;
+            grid.Get(HexCoord.FromOffset(i % 5, i / 5))!.Owner = Red;
         }
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -181,7 +180,7 @@ public class ClaimVictoryTests
         g.Hud.ClickEndTurn();
 
         Assert.True(g.Session.PendingClaimVictory.HasValue);
-        Assert.Equal(Red, g.Session.PendingClaimVictory!.Value.Color);
+        Assert.Equal(Red, g.Session.PendingClaimVictory!.Value.Player);
         Assert.Equal(75, g.Session.PendingClaimVictory!.Value.ThresholdPercent);
     }
 
@@ -305,7 +304,7 @@ public class ClaimVictoryTests
         // Cycle back to Red.
         int safety = 10;
         while (!g.Session.IsGameOver
-               && g.State.Turns.CurrentPlayer.Color != Red
+               && g.State.Turns.CurrentPlayer.Id != Red
                && safety-- > 0)
         {
             g.Hud.ClickEndTurn();

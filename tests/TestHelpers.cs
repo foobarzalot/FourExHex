@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using Godot;
 
 namespace FourExHex.Tests;
 
@@ -12,31 +11,31 @@ public static class TestHelpers
 {
     /// <summary>
     /// Build a grid consisting of exactly the given coords, each tile
-    /// colored <paramref name="color"/>. Used for hand-crafted topologies
+    /// owned by <paramref name="owner"/>. Used for hand-crafted topologies
     /// (e.g., testing a specific adjacency or a split/merge).
     /// </summary>
-    public static HexGrid BuildSpotGrid(Color color, params HexCoord[] coords)
+    public static HexGrid BuildSpotGrid(PlayerId owner, params HexCoord[] coords)
     {
         var grid = new HexGrid();
         foreach (HexCoord c in coords)
         {
-            grid.Add(new HexTile(c, color));
+            grid.Add(new HexTile(c, owner));
         }
         return grid;
     }
 
     /// <summary>
     /// Build a rectangular odd-r offset grid of size <paramref name="cols"/>
-    /// x <paramref name="rows"/>, every tile colored <paramref name="color"/>.
+    /// x <paramref name="rows"/>, every tile owned by <paramref name="owner"/>.
     /// </summary>
-    public static HexGrid BuildRectGrid(int cols, int rows, Color color)
+    public static HexGrid BuildRectGrid(int cols, int rows, PlayerId owner)
     {
         var grid = new HexGrid();
         for (int r = 0; r < rows; r++)
         {
             for (int c = 0; c < cols; c++)
             {
-                grid.Add(new HexTile(HexCoord.FromOffset(c, r), color));
+                grid.Add(new HexTile(HexCoord.FromOffset(c, r), owner));
             }
         }
         return grid;

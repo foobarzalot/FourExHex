@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using Godot;
 using Xunit;
 
 namespace FourExHex.Tests;
@@ -82,9 +81,10 @@ public class ReplayFidelityTests
         // map generator's player-aware territory seeding behaves the
         // same as the diagnostic launch.
         var list = new List<Player>(GameSettings.PlayerConfig.Length);
-        foreach ((string name, string hex) in GameSettings.PlayerConfig)
+        for (int i = 0; i < GameSettings.PlayerConfig.Length; i++)
         {
-            list.Add(new Player(name, new Color(hex), AiKind.Heuristic));
+            (string name, _) = GameSettings.PlayerConfig[i];
+            list.Add(new Player(name, PlayerId.FromIndex(i), AiKind.Heuristic));
         }
         return list;
     }

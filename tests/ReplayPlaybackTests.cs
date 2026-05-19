@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Godot;
 using Xunit;
 
 namespace FourExHex.Tests;
@@ -33,22 +32,22 @@ public class ReplayPlaybackTests
         public Player Blue { get; }
 
         public Fixture(AiKind redKind = AiKind.Human, AiKind blueKind = AiKind.Human,
-            Func<GameState, Color, HashSet<HexCoord>, Random, AiAction?>? aiChooser = null,
+            Func<GameState, PlayerId, HashSet<HexCoord>, Random, AiAction?>? aiChooser = null,
             bool instantReplay = false)
         {
-            Red = new Player("Red", new Color(1f, 0f, 0f), redKind);
-            Blue = new Player("Blue", new Color(0f, 0f, 1f), blueKind);
+            Red = new Player("Red", PlayerId.FromIndex(0), redKind);
+            Blue = new Player("Blue", PlayerId.FromIndex(1), blueKind);
             var players = new List<Player> { Red, Blue };
 
-            HexGrid grid = TestHelpers.BuildRectGrid(5, 2, Blue.Color);
-            grid.Get(HexCoord.FromOffset(0, 1))!.Color = Red.Color;
-            grid.Get(HexCoord.FromOffset(1, 1))!.Color = Red.Color;
+            HexGrid grid = TestHelpers.BuildRectGrid(5, 2, Blue.Id);
+            grid.Get(HexCoord.FromOffset(0, 1))!.Owner = Red.Id;
+            grid.Get(HexCoord.FromOffset(1, 1))!.Owner = Red.Id;
 
             IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
             State = new GameState(grid, territories, players, new TurnState(players), new Treasury());
             Session = new SessionState();
-            Session.ClaimVictoryPromptedHighestThreshold[Red.Color] = 90;
-            Session.ClaimVictoryPromptedHighestThreshold[Blue.Color] = 90;
+            Session.ClaimVictoryPromptedHighestThreshold[Red.Id] = 90;
+            Session.ClaimVictoryPromptedHighestThreshold[Blue.Id] = 90;
             Map = new MockHexMapView();
             Hud = new MockHudView();
             Pacer = new QueuedAiPacer();
@@ -68,7 +67,7 @@ public class ReplayPlaybackTests
         public HexTile Tile(int col, int row) => State.Grid.Get(HexCoord.FromOffset(col, row))!;
 
         public HexCoord RedCapital =>
-            State.Territories.First(t => t.Owner == Red.Color).Capital!.Value;
+            State.Territories.First(t => t.Owner == Red.Id).Capital!.Value;
         public HexCoord RedOther =>
             HexCoord.FromOffset(0, 1).Equals(RedCapital)
                 ? HexCoord.FromOffset(1, 1)
@@ -82,15 +81,15 @@ public class ReplayPlaybackTests
         /// </summary>
         public void AssertStateMatches(GameStateSnapshot reference)
         {
-            var refTiles = new Dictionary<HexCoord, (Color Color, string? OccupantType)>();
-            foreach ((HexCoord coord, Color color, HexOccupant? occupant) in reference.EnumerateTiles())
+            var refTiles = new Dictionary<HexCoord, (PlayerId Owner, string? OccupantType)>();
+            foreach ((HexCoord coord, PlayerId color, HexOccupant? occupant) in reference.EnumerateTiles())
             {
                 refTiles[coord] = (color, occupant?.GetType().Name);
             }
             foreach (HexTile live in State.Grid.Tiles)
             {
-                (Color color, string? occType) = refTiles[live.Coord];
-                Assert.Equal(color, live.Color);
+                (PlayerId color, string? occType) = refTiles[live.Coord];
+                Assert.Equal(color, live.Owner);
                 Assert.Equal(occType, live.Occupant?.GetType().Name);
             }
 
@@ -143,9 +142,9 @@ public class ReplayPlaybackTests
         bool blueActed = false;
         HexCoord? buyCapital = null;
         HexCoord? buyDest = null;
-        AiAction? Chooser(GameState s, Color c, HashSet<HexCoord> visited, Random rng)
+        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> visited, Random rng)
         {
-            if (c != new Color(0f, 0f, 1f)) return null;
+            if (c != PlayerId.FromIndex(1)) return null;
             if (blueActed) return null;
             Territory blue = s.Territories.First(t => t.Owner == c);
             buyCapital = blue.Capital!.Value;
@@ -239,10 +238,10 @@ public class ReplayPlaybackTests
     public void BeginReplay_NoInitialSnapshot_IsNoOp()
     {
         // Construct a controller without StartGame so no snapshot exists.
-        var red = new Player("Red", new Color(1f, 0f, 0f));
-        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new List<Player> { red, blue };
-        HexGrid grid = TestHelpers.BuildRectGrid(2, 2, blue.Color);
+        HexGrid grid = TestHelpers.BuildRectGrid(2, 2, blue.Id);
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
         var controller = new GameController(state, new SessionState(),
@@ -356,14 +355,14 @@ public class ReplayPlaybackTests
         // screen once per turn"), NOT once per capture — otherwise a big
         // endgame turn re-tessellates the whole map dozens of times and
         // ends up slower than Fast.
-        var red = new Player("Red", new Color(1f, 0f, 0f));
-        var blue = new Player("Blue", new Color(0f, 0f, 1f), isAi: true);
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1), isAi: true);
         var players = new List<Player> { red, blue };
 
-        HexGrid grid = TestHelpers.BuildRectGrid(11, 2, blue.Color);
+        HexGrid grid = TestHelpers.BuildRectGrid(11, 2, blue.Id);
         // Red 2-tile capital territory (keeps Red alive at start).
-        grid.Get(HexCoord.FromOffset(10, 0))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(10, 1))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(10, 0))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(10, 1))!.Owner = red.Id;
         // Four lone Red outposts at odd cols on row 0; a Blue peasant on
         // the even col immediately to the left of each captures it. Stop
         // at col 7 so no outpost touches Red's (10,*) capital, which
@@ -375,8 +374,8 @@ public class ReplayPlaybackTests
             int blueCol = 2 * i;
             HexCoord redTile = HexCoord.FromOffset(redCol, 0);
             HexCoord blueTile = HexCoord.FromOffset(blueCol, 0);
-            grid.Get(redTile)!.Color = red.Color;
-            grid.Get(blueTile)!.Occupant = new Unit(blue.Color, UnitLevel.Peasant);
+            grid.Get(redTile)!.Owner = red.Id;
+            grid.Get(blueTile)!.Occupant = new Unit(blue.Id, UnitLevel.Peasant);
             captures.Add((blueTile, redTile));
         }
 
@@ -387,9 +386,9 @@ public class ReplayPlaybackTests
         var hud = new MockHudView();
 
         int moveIdx = 0;
-        AiAction? Chooser(GameState s, Color c, HashSet<HexCoord> v, Random r)
+        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> v, Random r)
         {
-            if (c != blue.Color) return null;
+            if (c != blue.Id) return null;
             if (moveIdx >= captures.Count) return null;
             (HexCoord from, HexCoord to) = captures[moveIdx++];
             return new AiMoveAction(from, to);
@@ -433,13 +432,13 @@ public class ReplayPlaybackTests
             + "captures — expected once per turn, not once per capture.");
 
         // Fidelity must still hold.
-        var refTiles = new Dictionary<HexCoord, (Color, string?)>();
-        foreach ((HexCoord coord, Color color, HexOccupant? occ) in live.EnumerateTiles())
+        var refTiles = new Dictionary<HexCoord, (PlayerId, string?)>();
+        foreach ((HexCoord coord, PlayerId color, HexOccupant? occ) in live.EnumerateTiles())
             refTiles[coord] = (color, occ?.GetType().Name);
         foreach (HexTile t in state.Grid.Tiles)
         {
-            (Color color, string? occType) = refTiles[t.Coord];
-            Assert.Equal(color, t.Color);
+            (PlayerId color, string? occType) = refTiles[t.Coord];
+            Assert.Equal(color, t.Owner);
             Assert.Equal(occType, t.Occupant?.GetType().Name);
         }
     }
@@ -454,17 +453,17 @@ public class ReplayPlaybackTests
         // ExecuteAiMove must NOT apply that shim, or the second move
         // throws "already moved this turn" — the about_to_win desync
         // (beat #992).
-        var red = new Player("Red", new Color(1f, 0f, 0f));
-        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new List<Player> { red, blue };
         // 5x2: row 0 all Red (capital lands lex-min (0,0)), row 1 Blue.
-        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Color);
+        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Id);
         for (int x = 0; x < 5; x++)
-            grid.Get(HexCoord.FromOffset(x, 0))!.Color = red.Color;
+            grid.Get(HexCoord.FromOffset(x, 0))!.Owner = red.Id;
         HexCoord a = HexCoord.FromOffset(2, 0);
         HexCoord b = HexCoord.FromOffset(3, 0);
         HexCoord cc = HexCoord.FromOffset(4, 0);
-        grid.Get(a)!.Occupant = new Unit(red.Color);
+        grid.Get(a)!.Occupant = new Unit(red.Id);
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
         var session = new SessionState();
@@ -476,7 +475,7 @@ public class ReplayPlaybackTests
         controller.StartGame();
         pacer.DrainAll();
 
-        HexCoord cap = state.Territories.First(t => t.Owner == red.Color).Capital!.Value;
+        HexCoord cap = state.Territories.First(t => t.Owner == red.Id).Capital!.Value;
         Assert.DoesNotContain(cap, new[] { a, b, cc });
 
         // Human: select unit@a → reposition a→b; reselect@b → move b→cc.
@@ -494,13 +493,13 @@ public class ReplayPlaybackTests
         controller.BeginReplay();
         pacer.DrainAll(); // must not throw "already moved this turn"
 
-        var refTiles = new Dictionary<HexCoord, (Color, string?)>();
-        foreach ((HexCoord coord, Color color, HexOccupant? occ) in live.EnumerateTiles())
+        var refTiles = new Dictionary<HexCoord, (PlayerId, string?)>();
+        foreach ((HexCoord coord, PlayerId color, HexOccupant? occ) in live.EnumerateTiles())
             refTiles[coord] = (color, occ?.GetType().Name);
         foreach (HexTile t in state.Grid.Tiles)
         {
-            (Color color, string? occType) = refTiles[t.Coord];
-            Assert.Equal(color, t.Color);
+            (PlayerId color, string? occType) = refTiles[t.Coord];
+            Assert.Equal(color, t.Owner);
             Assert.Equal(occType, t.Occupant?.GetType().Name);
         }
     }

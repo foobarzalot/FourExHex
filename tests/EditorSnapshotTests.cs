@@ -1,14 +1,13 @@
 using System.Collections.Generic;
 using System.Linq;
-using Godot;
 using Xunit;
 
 namespace FourExHex.Tests;
 
 public class EditorSnapshotTests
 {
-    private static readonly Color Red = new Color(1f, 0f, 0f);
-    private static readonly Color Blue = new Color(0f, 0f, 1f);
+    private static readonly PlayerId Red = PlayerId.FromIndex(0);
+    private static readonly PlayerId Blue = PlayerId.FromIndex(1);
 
     [Fact]
     public void Capture_ThenApply_RestoresColorsAndOccupants()
@@ -22,13 +21,13 @@ public class EditorSnapshotTests
         EditorSnapshot snap = EditorSnapshot.Capture(grid, water, territories);
 
         // Mutate the live state.
-        grid.Get(HexCoord.FromOffset(0, 0))!.Color = Blue;
+        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = Blue;
         grid.Get(HexCoord.FromOffset(0, 0))!.Occupant = null;
         grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Tree();
 
         snap.ApplyTo(grid, water);
 
-        Assert.Equal(Red, grid.Get(HexCoord.FromOffset(0, 0))!.Color);
+        Assert.Equal(Red, grid.Get(HexCoord.FromOffset(0, 0))!.Owner);
         Assert.IsType<Tree>(grid.Get(HexCoord.FromOffset(0, 0))!.Occupant);
         Assert.IsType<Capital>(grid.Get(HexCoord.FromOffset(1, 0))!.Occupant);
     }
@@ -100,7 +99,7 @@ public class EditorSnapshotTests
 
         EditorSnapshot snap = EditorSnapshot.Capture(grid, water, new List<Territory>());
 
-        tile.Color = Blue;
+        tile.Owner = Blue;
         tile.Occupant = null;
 
         // Apply onto a fresh grid+water and check what we get.
@@ -108,7 +107,7 @@ public class EditorSnapshotTests
         var freshWater = new HashSet<HexCoord>();
         snap.ApplyTo(freshGrid, freshWater);
 
-        Assert.Equal(Red, freshGrid.Get(HexCoord.FromOffset(0, 0))!.Color);
+        Assert.Equal(Red, freshGrid.Get(HexCoord.FromOffset(0, 0))!.Owner);
         Assert.IsType<Tree>(freshGrid.Get(HexCoord.FromOffset(0, 0))!.Occupant);
     }
 }

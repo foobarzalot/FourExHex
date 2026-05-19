@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using Godot;
 using Xunit;
 
 namespace FourExHex.Tests;
@@ -20,7 +19,7 @@ public class RecordPaneCaptureTests
 {
     private static GameStateSnapshot DummySnapshot()
     {
-        HexGrid grid = TestHelpers.BuildRectGrid(2, 2, new Color(1, 0, 0));
+        HexGrid grid = TestHelpers.BuildRectGrid(2, 2, PlayerId.FromIndex(0));
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         return GameStateSnapshot.Capture(grid, new Treasury(), territories);
     }

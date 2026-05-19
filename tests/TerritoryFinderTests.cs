@@ -1,24 +1,23 @@
 using System.Collections.Generic;
 using System.Linq;
-using Godot;
 using Xunit;
 
 namespace FourExHex.Tests;
 
 public class TerritoryFinderTests
 {
-    private static readonly Color Red = new Color(1f, 0f, 0f);
-    private static readonly Color Blue = new Color(0f, 0f, 1f);
-    private static readonly Color Green = new Color(0f, 1f, 0f);
-    private static readonly Color Yellow = new Color(1f, 1f, 0f);
-    private static readonly Color Purple = new Color(0.5f, 0f, 0.5f);
-    private static readonly Color Teal = new Color(0f, 0.7f, 0.7f);
+    private static readonly PlayerId Red = PlayerId.FromIndex(0);
+    private static readonly PlayerId Blue = PlayerId.FromIndex(1);
+    private static readonly PlayerId Green = PlayerId.FromIndex(2);
+    private static readonly PlayerId Yellow = PlayerId.FromIndex(3);
+    private static readonly PlayerId Purple = PlayerId.FromIndex(4);
+    private static readonly PlayerId Teal = PlayerId.FromIndex(5);
 
-    private static readonly Color[] Palette = { Red, Blue, Green, Yellow, Purple, Teal };
+    private static readonly PlayerId[] Palette = { Red, Blue, Green, Yellow, Purple, Teal };
 
     // --- Helpers -----------------------------------------------------------
 
-    private static HexGrid BuildUniformGrid(int cols, int rows, Color color) =>
+    private static HexGrid BuildUniformGrid(int cols, int rows, PlayerId color) =>
         TestHelpers.BuildRectGrid(cols, rows, color);
 
     private static HexGrid BuildRandomColoredGrid(int cols, int rows, int seed)
@@ -29,7 +28,7 @@ public class TerritoryFinderTests
         {
             for (int c = 0; c < cols; c++)
             {
-                Color color = Palette[rng.Next(Palette.Length)];
+                PlayerId color = Palette[rng.Next(Palette.Length)];
                 grid.Add(new HexTile(HexCoord.FromOffset(c, r), color));
             }
         }
@@ -215,7 +214,7 @@ public class TerritoryFinderTests
             {
                 HexTile? tile = grid.Get(coord);
                 Assert.NotNull(tile);
-                Assert.Equal(territory.Owner, tile!.Color);
+                Assert.Equal(territory.Owner, tile!.Owner);
             }
         }
     }

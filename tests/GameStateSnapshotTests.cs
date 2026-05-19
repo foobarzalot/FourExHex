@@ -1,14 +1,13 @@
 using System.Collections.Generic;
 using System.Linq;
-using Godot;
 using Xunit;
 
 namespace FourExHex.Tests;
 
 public class GameStateSnapshotTests
 {
-    private static readonly Color Red = new Color(1f, 0f, 0f);
-    private static readonly Color Blue = new Color(0f, 0f, 1f);
+    private static readonly PlayerId Red = PlayerId.FromIndex(0);
+    private static readonly PlayerId Blue = PlayerId.FromIndex(1);
 
     private static HexGrid BuildTwoTileRedGrid()
     {
@@ -33,11 +32,11 @@ public class GameStateSnapshotTests
         GameStateSnapshot snap = GameStateSnapshot.Capture(grid, treasury, territories);
 
         // Mutate the live grid; restore should undo it.
-        grid.Get(new HexCoord(0, 0))!.Color = Blue;
+        grid.Get(new HexCoord(0, 0))!.Owner = Blue;
 
         snap.ApplyTo(grid, treasury);
 
-        Assert.Equal(Red, grid.Get(new HexCoord(0, 0))!.Color);
+        Assert.Equal(Red, grid.Get(new HexCoord(0, 0))!.Owner);
     }
 
     [Fact]
@@ -174,13 +173,13 @@ public class GameStateSnapshotTests
         GameStateSnapshot snap = GameStateSnapshot.Capture(grid, treasury, territories);
 
         // Now mutate every live tile to a different color.
-        grid.Get(new HexCoord(0, 0))!.Color = Blue;
-        grid.Get(new HexCoord(1, 0))!.Color = Blue;
+        grid.Get(new HexCoord(0, 0))!.Owner = Blue;
+        grid.Get(new HexCoord(1, 0))!.Owner = Blue;
 
         snap.ApplyTo(grid, treasury);
 
-        Assert.Equal(Red, grid.Get(new HexCoord(0, 0))!.Color);
-        Assert.Equal(Red, grid.Get(new HexCoord(1, 0))!.Color);
+        Assert.Equal(Red, grid.Get(new HexCoord(0, 0))!.Owner);
+        Assert.Equal(Red, grid.Get(new HexCoord(1, 0))!.Owner);
     }
 
     // --- Apply ------------------------------------------------------------

@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using Godot;
 using Xunit;
 
 namespace FourExHex.Tests;
@@ -11,7 +10,7 @@ public class TurnStateTests
         var players = new List<Player>();
         for (int i = 0; i < count; i++)
         {
-            players.Add(new Player($"P{i}", new Color(i / 10f, 0f, 0f)));
+            players.Add(new Player($"P{i}", PlayerId.FromIndex(i)));
         }
         return players;
     }
@@ -103,11 +102,11 @@ public class TurnStateTests
     [Fact]
     public void Player_ConstructorStoresNameAndColor()
     {
-        var color = new Color(0.2f, 0.4f, 0.6f);
+        var color = PlayerId.FromIndex(0);
 
         var player = new Player("Crimson", color);
 
         Assert.Equal("Crimson", player.Name);
-        Assert.Equal(color, player.Color);
+        Assert.Equal(color, player.Id);
     }
 }

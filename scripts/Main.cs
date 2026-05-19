@@ -50,6 +50,8 @@ public partial class Main : Node2D
         // game synchronously (no pacing delays), caps turns at 500
         // so stasis runs terminate, and auto-quits on game over.
         // Intended for Claude to run headless and read the logs.
+        // Route the Godot-free AiLog to GD.Print (stdout in headless).
+        AiLog.Sink ??= GD.Print;
         bool diagnosticMode = OS.GetEnvironment("FOUREXHEX_6AI").Length > 0;
         if (diagnosticMode)
         {
@@ -147,12 +149,12 @@ public partial class Main : Node2D
             _originMapName = null;
         }
         _session = new SessionState();
-        // Resumed games carry the per-color highest claim-victory tier
+        // Resumed games carry the per-player highest claim-victory tier
         // already dismissed — persist across save/load so the prompt
         // won't re-fire on a tier the player has already seen.
         if (pendingLoad != null)
         {
-            foreach (KeyValuePair<Color, int> kvp in pendingLoad.ClaimVictoryPromptedHighestThreshold)
+            foreach (KeyValuePair<PlayerId, int> kvp in pendingLoad.ClaimVictoryPromptedHighestThreshold)
             {
                 _session.ClaimVictoryPromptedHighestThreshold[kvp.Key] = kvp.Value;
             }

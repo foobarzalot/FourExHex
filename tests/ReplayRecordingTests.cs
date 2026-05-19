@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Godot;
 using Xunit;
 
 namespace FourExHex.Tests;
@@ -31,24 +30,24 @@ public class ReplayRecordingTests
         public GameController Controller { get; }
         public Player Red { get; }
         public Player Blue { get; }
-        public Func<GameState, Color, HashSet<HexCoord>, Random, AiAction?>? AiChooser { get; set; }
+        public Func<GameState, PlayerId, HashSet<HexCoord>, Random, AiAction?>? AiChooser { get; set; }
 
         public Fixture(AiKind redKind = AiKind.Human, AiKind blueKind = AiKind.Human,
-            Func<GameState, Color, HashSet<HexCoord>, Random, AiAction?>? aiChooser = null)
+            Func<GameState, PlayerId, HashSet<HexCoord>, Random, AiAction?>? aiChooser = null)
         {
-            Red = new Player("Red", new Color(1f, 0f, 0f), redKind);
-            Blue = new Player("Blue", new Color(0f, 0f, 1f), blueKind);
+            Red = new Player("Red", PlayerId.FromIndex(0), redKind);
+            Blue = new Player("Blue", PlayerId.FromIndex(1), blueKind);
             var players = new List<Player> { Red, Blue };
 
-            HexGrid grid = TestHelpers.BuildRectGrid(5, 2, Blue.Color);
-            grid.Get(HexCoord.FromOffset(0, 1))!.Color = Red.Color;
-            grid.Get(HexCoord.FromOffset(1, 1))!.Color = Red.Color;
+            HexGrid grid = TestHelpers.BuildRectGrid(5, 2, Blue.Id);
+            grid.Get(HexCoord.FromOffset(0, 1))!.Owner = Red.Id;
+            grid.Get(HexCoord.FromOffset(1, 1))!.Owner = Red.Id;
 
             IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
             State = new GameState(grid, territories, players, new TurnState(players), new Treasury());
             Session = new SessionState();
-            Session.ClaimVictoryPromptedHighestThreshold[Red.Color] = 90;
-            Session.ClaimVictoryPromptedHighestThreshold[Blue.Color] = 90;
+            Session.ClaimVictoryPromptedHighestThreshold[Red.Id] = 90;
+            Session.ClaimVictoryPromptedHighestThreshold[Blue.Id] = 90;
             Map = new MockHexMapView();
             Hud = new MockHudView();
             AiChooser = aiChooser;
@@ -83,7 +82,7 @@ public class ReplayRecordingTests
     public void Recording_HumanBuyPeasant_AppendsReplayBuyBeat()
     {
         var f = new Fixture();
-        HexCoord redCapital = f.State.Territories.First(t => t.Owner == f.Red.Color).Capital!.Value;
+        HexCoord redCapital = f.State.Territories.First(t => t.Owner == f.Red.Id).Capital!.Value;
         // Red has 10g at start (5×2 cells), enough for a peasant (10g).
         // Click Red's territory to select it, press Buy, click an empty
         // Red tile to commit.
@@ -116,7 +115,7 @@ public class ReplayRecordingTests
         // does NOT mark the unit as moved. So we can buy and then move
         // on the same turn. But end-of-turn growth doesn't trigger here.
         var f = new Fixture();
-        HexCoord redCapital = f.State.Territories.First(t => t.Owner == f.Red.Color).Capital!.Value;
+        HexCoord redCapital = f.State.Territories.First(t => t.Owner == f.Red.Id).Capital!.Value;
         HexCoord redOther = HexCoord.FromOffset(0, 1) == redCapital
             ? HexCoord.FromOffset(1, 1)
             : HexCoord.FromOffset(0, 1);
@@ -136,7 +135,7 @@ public class ReplayRecordingTests
         foreach (HexCoord n in redOther.Neighbors())
         {
             HexTile? t = f.State.Grid.Get(n);
-            if (t != null && t.Color == f.Blue.Color)
+            if (t != null && t.Owner == f.Blue.Id)
             {
                 captureTarget = n;
                 break;
@@ -169,7 +168,7 @@ public class ReplayRecordingTests
         f.Hud.ClickEndTurn();   // Red T4 → 16g
         int beforeBuild = f.Controller.ReplayBeats.Count;
 
-        HexCoord redCapital = f.State.Territories.First(t => t.Owner == f.Red.Color).Capital!.Value;
+        HexCoord redCapital = f.State.Territories.First(t => t.Owner == f.Red.Id).Capital!.Value;
         HexCoord redOther = HexCoord.FromOffset(0, 1) == redCapital
             ? HexCoord.FromOffset(1, 1)
             : HexCoord.FromOffset(0, 1);
@@ -240,7 +239,7 @@ public class ReplayRecordingTests
     public void Recording_UndoMove_PopsLastBeat()
     {
         var f = new Fixture();
-        HexCoord redCapital = f.State.Territories.First(t => t.Owner == f.Red.Color).Capital!.Value;
+        HexCoord redCapital = f.State.Territories.First(t => t.Owner == f.Red.Id).Capital!.Value;
         HexCoord redOther = HexCoord.FromOffset(0, 1) == redCapital
             ? HexCoord.FromOffset(1, 1)
             : HexCoord.FromOffset(0, 1);
@@ -258,7 +257,7 @@ public class ReplayRecordingTests
     public void Recording_RedoMove_RestoresPoppedBeat()
     {
         var f = new Fixture();
-        HexCoord redCapital = f.State.Territories.First(t => t.Owner == f.Red.Color).Capital!.Value;
+        HexCoord redCapital = f.State.Territories.First(t => t.Owner == f.Red.Id).Capital!.Value;
         HexCoord redOther = HexCoord.FromOffset(0, 1) == redCapital
             ? HexCoord.FromOffset(1, 1)
             : HexCoord.FromOffset(0, 1);
@@ -280,7 +279,7 @@ public class ReplayRecordingTests
     public void Recording_UndoTurn_PopsAllBeatsInTurn()
     {
         var f = new Fixture();
-        HexCoord redCapital = f.State.Territories.First(t => t.Owner == f.Red.Color).Capital!.Value;
+        HexCoord redCapital = f.State.Territories.First(t => t.Owner == f.Red.Id).Capital!.Value;
         HexCoord redOther = HexCoord.FromOffset(0, 1) == redCapital
             ? HexCoord.FromOffset(1, 1)
             : HexCoord.FromOffset(0, 1);
@@ -294,7 +293,7 @@ public class ReplayRecordingTests
         foreach (HexCoord n in redOther.Neighbors())
         {
             HexTile? t = f.State.Grid.Get(n);
-            if (t != null && t.Color == f.Blue.Color) { captureTarget = n; break; }
+            if (t != null && t.Owner == f.Blue.Id) { captureTarget = n; break; }
         }
         Assert.NotNull(captureTarget);
         f.Map.SimulateClick(f.State.Grid.Get(redOther)!);
@@ -314,7 +313,7 @@ public class ReplayRecordingTests
         // resurrect the old beat. Beat list should end with exactly
         // the new move beat.
         var f = new Fixture();
-        HexCoord redCapital = f.State.Territories.First(t => t.Owner == f.Red.Color).Capital!.Value;
+        HexCoord redCapital = f.State.Territories.First(t => t.Owner == f.Red.Id).Capital!.Value;
         HexCoord redOther = HexCoord.FromOffset(0, 1) == redCapital
             ? HexCoord.FromOffset(1, 1)
             : HexCoord.FromOffset(0, 1);
@@ -350,9 +349,9 @@ public class ReplayRecordingTests
         bool blueActed = false;
         HexCoord? blueCapital = null;
         HexCoord? blueEmpty = null;
-        AiAction? Chooser(GameState s, Color c, HashSet<HexCoord> visited, Random rng)
+        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> visited, Random rng)
         {
-            if (c != new Color(0f, 0f, 1f)) return null;
+            if (c != PlayerId.FromIndex(1)) return null;
             if (blueActed) return null;
             Territory blue = s.Territories.First(t => t.Owner == c);
             blueCapital = blue.Capital!.Value;
@@ -382,7 +381,7 @@ public class ReplayRecordingTests
     public void Recording_AiImplicitEndTurn_AppendsReplayEndTurnBeat()
     {
         // Chooser always returns null → Blue's AI immediately ends turn.
-        AiAction? Chooser(GameState s, Color c, HashSet<HexCoord> visited, Random rng) => null;
+        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> visited, Random rng) => null;
         var f = new Fixture(redKind: AiKind.Human, blueKind: AiKind.Random, aiChooser: Chooser);
         int before = f.Controller.ReplayBeats.Count;
         f.Hud.ClickEndTurn();   // Red ends. Blue runs AI (null action → EndTurn).

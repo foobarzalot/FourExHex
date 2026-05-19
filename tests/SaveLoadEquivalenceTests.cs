@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using Godot;
 using Xunit;
 
 namespace FourExHex.Tests;
@@ -51,15 +50,15 @@ public class SaveLoadEquivalenceTests
         }
         else
         {
-            var red = new Player("Red", new Color(1f, 0f, 0f), AiKind.Human);
-            var blue = new Player("Blue", new Color(0f, 0f, 1f), AiKind.Random);
+            var red = new Player("Red", PlayerId.FromIndex(0), AiKind.Human);
+            var blue = new Player("Blue", PlayerId.FromIndex(1), AiKind.Random);
             players = new List<Player> { red, blue };
-            HexGrid grid = TestHelpers.BuildRectGrid(14, 3, blue.Color);
+            HexGrid grid = TestHelpers.BuildRectGrid(14, 3, blue.Id);
             for (int row = 0; row < 3; row++)
             {
                 for (int col = 0; col < 5; col++)
                 {
-                    grid.Get(HexCoord.FromOffset(col, row))!.Color = red.Color;
+                    grid.Get(HexCoord.FromOffset(col, row))!.Owner = red.Id;
                 }
             }
             IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
@@ -76,7 +75,7 @@ public class SaveLoadEquivalenceTests
         // load boundaries don't accidentally let the AI exceed it.
         int currentTurnKey = -1;
         int actionsThisTurn = 0;
-        AiAction? CappedChooser(GameState s, Color c, HashSet<HexCoord> visited, Random rng)
+        AiAction? CappedChooser(GameState s, PlayerId c, HashSet<HexCoord> visited, Random rng)
         {
             int key = s.Turns.TurnNumber * 100 + s.Turns.CurrentPlayerIndex;
             if (key != currentTurnKey)
@@ -180,7 +179,7 @@ public class SaveLoadEquivalenceTests
             yCount++;
             Assert.True(xTiles.ContainsKey(yt.Coord), $"y has extra coord {yt.Coord}");
             HexTile xt = xTiles[yt.Coord];
-            Assert.Equal(xt.Color, yt.Color);
+            Assert.Equal(xt.Owner, yt.Owner);
             AssertOccupantsEqual(xt.Coord, xt.Occupant, yt.Occupant);
         }
         Assert.Equal(xTiles.Count, yCount);

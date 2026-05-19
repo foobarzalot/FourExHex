@@ -1,13 +1,12 @@
-using Godot;
 using Xunit;
 
 namespace FourExHex.Tests;
 
 public class PurchaseRulesTests
 {
-    private static readonly Color Red = new Color(1f, 0f, 0f);
+    private static readonly PlayerId Red = PlayerId.FromIndex(0);
 
-    private static Territory MakeTerritory(Color owner, HexCoord capital, params HexCoord[] coords) =>
+    private static Territory MakeTerritory(PlayerId owner, HexCoord capital, params HexCoord[] coords) =>
         new Territory(owner, coords, capital);
 
     // --- Unit + HexTile basics --------------------------------------------

@@ -1,14 +1,13 @@
 using System.Collections.Generic;
 using System.Linq;
-using Godot;
 using Xunit;
 
 namespace FourExHex.Tests;
 
 public class DefenseRulesTests
 {
-    private static readonly Color Red = new Color(1f, 0f, 0f);
-    private static readonly Color Blue = new Color(0f, 0f, 1f);
+    private static readonly PlayerId Red = PlayerId.FromIndex(0);
+    private static readonly PlayerId Blue = PlayerId.FromIndex(1);
 
     /// <summary>
     /// Build a small grid consisting of the given coords, all colored
@@ -16,7 +15,7 @@ public class DefenseRulesTests
     /// covering all of them.
     /// </summary>
     private static (HexGrid grid, Territory territory) BuildBlob(
-        Color color,
+        PlayerId color,
         HexCoord? capital,
         params HexCoord[] coords)
     {

@@ -35,7 +35,7 @@ public sealed class SaveStore
         IReadOnlyList<Player> players,
         int maxTurnNumber,
         string? originMapName = null,
-        IReadOnlyDictionary<Color, int>? claimVictoryPromptedHighestThreshold = null,
+        IReadOnlyDictionary<PlayerId, int>? claimVictoryPromptedHighestThreshold = null,
         Replay? replay = null)
     {
         WriteSlot(AutosaveSlotName, state, masterSeed, players, maxTurnNumber,
@@ -55,7 +55,7 @@ public sealed class SaveStore
         IReadOnlyList<Player> players,
         int maxTurnNumber,
         string? originMapName = null,
-        IReadOnlyDictionary<Color, int>? claimVictoryPromptedHighestThreshold = null,
+        IReadOnlyDictionary<PlayerId, int>? claimVictoryPromptedHighestThreshold = null,
         Replay? replay = null)
     {
         WriteSlotIn(SaveDirectory, slotName, state, masterSeed, players,
@@ -110,7 +110,7 @@ public sealed class SaveStore
         IReadOnlyList<Player> players,
         int maxTurnNumber,
         string? originMapName,
-        IReadOnlyDictionary<Color, int>? claimVictoryPromptedHighestThreshold,
+        IReadOnlyDictionary<PlayerId, int>? claimVictoryPromptedHighestThreshold,
         Replay? replay)
     {
         EnsureDirectory(directory);

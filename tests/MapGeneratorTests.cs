@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using Godot;
 using Xunit;
 
 namespace FourExHex.Tests;
@@ -19,9 +18,10 @@ public class MapGeneratorTests
     private static IReadOnlyList<Player> SixPlayers()
     {
         var list = new List<Player>();
-        foreach ((string name, string hex) in GameSettings.PlayerConfig)
+        for (int i = 0; i < GameSettings.PlayerConfig.Length; i++)
         {
-            list.Add(new Player(name, new Color(hex), AiKind.Heuristic));
+            (string name, _) = GameSettings.PlayerConfig[i];
+            list.Add(new Player(name, PlayerId.FromIndex(i), AiKind.Heuristic));
         }
         return list;
     }
@@ -57,7 +57,7 @@ public class MapGeneratorTests
         {
             HexTile? tB = b.Grid.Get(tA.Coord);
             Assert.NotNull(tB);
-            Assert.Equal(tA.Color, tB!.Color);
+            Assert.Equal(tA.Owner, tB!.Owner);
             Assert.Equal(tA.Occupant is Tree, tB.Occupant is Tree);
         }
         Assert.Equal(a.WaterCoords, b.WaterCoords);
@@ -76,7 +76,7 @@ public class MapGeneratorTests
             {
                 HexTile? tB = b.Grid.Get(tA.Coord);
                 if (tB == null) { anyDifference = true; break; }
-                if (tA.Color != tB.Color) { anyDifference = true; break; }
+                if (tA.Owner != tB.Owner) { anyDifference = true; break; }
                 if ((tA.Occupant is Tree) != (tB.Occupant is Tree)) { anyDifference = true; break; }
             }
         }
@@ -194,11 +194,11 @@ public class MapGeneratorTests
                 $"Tile at {tile.Coord} appears in both grid and water set");
         }
         // Every land tile carries one of the player colors.
-        var validColors = new HashSet<Color>();
-        foreach (Player p in SixPlayers()) validColors.Add(p.Color);
+        var validColors = new HashSet<PlayerId>();
+        foreach (Player p in SixPlayers()) validColors.Add(p.Id);
         foreach (HexTile tile in result.Grid.Tiles)
         {
-            Assert.Contains(tile.Color, validColors);
+            Assert.Contains(tile.Owner, validColors);
         }
     }
 

@@ -146,7 +146,7 @@ public sealed partial class RecordPane : Control
         var roster = new List<Player>(_panel.Players.Count);
         foreach (Player p in _panel.Players)
         {
-            roster.Add(new Player(p.Name, p.Color, AiKind.Human));
+            roster.Add(new Player(p.Name, p.Id, AiKind.Human));
         }
 
         _recordState = _panel.BuildLiveStateWith(roster);
@@ -207,7 +207,7 @@ public sealed partial class RecordPane : Control
         var roster = new List<Player>(_panel.Players.Count);
         foreach (Player p in _panel.Players)
         {
-            roster.Add(new Player(p.Name, p.Color, AiKind.Human));
+            roster.Add(new Player(p.Name, p.Id, AiKind.Human));
         }
 
         _recordState = _panel.BuildLiveStateWith(roster);

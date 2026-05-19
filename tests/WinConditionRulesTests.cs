@@ -1,14 +1,13 @@
 using System.Collections.Generic;
-using Godot;
 using Xunit;
 
 namespace FourExHex.Tests;
 
 public class WinConditionRulesTests
 {
-    private static readonly Color Red = new Color(1f, 0f, 0f);
-    private static readonly Color Blue = new Color(0f, 0f, 1f);
-    private static readonly Color Green = new Color(0f, 1f, 0f);
+    private static readonly PlayerId Red = PlayerId.FromIndex(0);
+    private static readonly PlayerId Blue = PlayerId.FromIndex(1);
+    private static readonly PlayerId Green = PlayerId.FromIndex(2);
 
     // --- IsEliminated ----------------------------------------------------
 
@@ -258,7 +257,7 @@ public class WinConditionRulesTests
         var grid = new HexGrid();
         for (int i = 0; i < 100; i++)
         {
-            Color c = i < redCount ? Red : Blue;
+            PlayerId c = i < redCount ? Red : Blue;
             grid.Add(new HexTile(new HexCoord(i, 0), c));
         }
         return grid;

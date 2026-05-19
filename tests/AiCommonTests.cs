@@ -1,14 +1,13 @@
 using System.Collections.Generic;
 using System.Linq;
-using Godot;
 using Xunit;
 
 namespace FourExHex.Tests;
 
 public class AiCommonTests
 {
-    private static readonly Color Red = new(1f, 0f, 0f);
-    private static readonly Color Blue = new(0f, 0f, 1f);
+    private static readonly PlayerId Red = PlayerId.FromIndex(0);
+    private static readonly PlayerId Blue = PlayerId.FromIndex(1);
 
     private static GameState BuildState(HexGrid grid, params Player[] players)
     {
@@ -29,7 +28,7 @@ public class AiCommonTests
             grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
         grid.Add(new HexTile(HexCoord.FromOffset(4, 0), Blue));
         grid.Get(HexCoord.FromOffset(0, 0))!.Occupant = new Unit(Red);
-        GameState state = BuildState(grid, new Player("Red", Red), new Player("Blue", Blue));
+        GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
 
         Territory red = state.Territories.First(t => t.Owner == Red);
         List<AiCandidate> candidates = AiCommon.Enumerate(red, state).ToList();
@@ -52,7 +51,7 @@ public class AiCommonTests
             grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
         grid.Add(new HexTile(HexCoord.FromOffset(4, 0), Blue));
         grid.Get(HexCoord.FromOffset(0, 0))!.Occupant = new Unit(Red);
-        GameState state = BuildState(grid, new Player("Red", Red), new Player("Blue", Blue));
+        GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
 
         Territory red = state.Territories.First(t => t.Owner == Red);
         List<AiCandidate> candidates = AiCommon.Enumerate(red, state).ToList();
@@ -86,7 +85,7 @@ public class AiCommonTests
             grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
         grid.Add(new HexTile(HexCoord.FromOffset(4, 0), Blue));
         grid.Get(HexCoord.FromOffset(4, 0))!.Occupant = new Unit(Blue, UnitLevel.Spearman);
-        GameState state = BuildState(grid, new Player("Red", Red), new Player("Blue", Blue));
+        GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
         HexCoord cap = state.Territories.First(t => t.Owner == Red).Capital!.Value;
         state.Treasury.SetGold(cap, 10);
 
@@ -117,7 +116,7 @@ public class AiCommonTests
         grid.Add(new HexTile(HexCoord.FromOffset(6, 0), Blue));
         grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Tower();
         grid.Get(HexCoord.FromOffset(5, 0))!.Occupant = new Unit(Red);
-        GameState state = BuildState(grid, new Player("Red", Red), new Player("Blue", Blue));
+        GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
         HexCoord cap = state.Territories.First(t => t.Owner == Red).Capital!.Value;
         state.Treasury.SetGold(cap, 100);
 
@@ -151,7 +150,7 @@ public class AiCommonTests
         grid.Add(new HexTile(HexCoord.FromOffset(5, 0), Blue));
         grid.Get(HexCoord.FromOffset(0, 0))!.Occupant = new Unit(Red);
         grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(Red);
-        GameState state = BuildState(grid, new Player("Red", Red), new Player("Blue", Blue));
+        GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
         HexCoord cap = state.Territories.First(t => t.Owner == Red).Capital!.Value;
         state.Treasury.SetGold(cap, 10);
 

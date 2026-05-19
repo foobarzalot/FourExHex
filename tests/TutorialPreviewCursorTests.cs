@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using Godot;
 using Xunit;
 
 namespace FourExHex.Tests;
@@ -14,8 +13,8 @@ namespace FourExHex.Tests;
 /// </summary>
 public class TutorialPreviewCursorTests
 {
-    private static readonly Color Red = new(1f, 0f, 0f);
-    private static readonly Color Blue = new(0f, 0f, 1f);
+    private static readonly PlayerId Red = PlayerId.FromIndex(0);
+    private static readonly PlayerId Blue = PlayerId.FromIndex(1);
 
     private static IReadOnlyList<Player> TwoPlayerRoster() => new List<Player>
     {

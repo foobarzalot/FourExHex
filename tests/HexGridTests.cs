@@ -1,5 +1,4 @@
 using System.Linq;
-using Godot;
 using Xunit;
 
 namespace FourExHex.Tests;
@@ -7,7 +6,7 @@ namespace FourExHex.Tests;
 public class HexGridTests
 {
     private static HexTile MakeTile(int q, int r) =>
-        new HexTile(new HexCoord(q, r), new Color(1f, 1f, 1f));
+        new HexTile(new HexCoord(q, r), PlayerId.None);
 
     /// <summary>
     /// Fill a grid with one tile per (col, row) in a rectangular odd-r offset
@@ -21,7 +20,7 @@ public class HexGridTests
         {
             for (int col = 0; col < cols; col++)
             {
-                grid.Add(new HexTile(HexCoord.FromOffset(col, row), new Color()));
+                grid.Add(new HexTile(HexCoord.FromOffset(col, row), PlayerId.None));
             }
         }
         return grid;
@@ -120,7 +119,7 @@ public class HexGridTests
         grid.Add(MakeTile(0, 0));
         foreach (HexCoord n in center.Neighbors())
         {
-            grid.Add(new HexTile(n, new Color()));
+            grid.Add(new HexTile(n, PlayerId.None));
         }
 
         var neighbors = grid.NeighborsOf(center).ToList();

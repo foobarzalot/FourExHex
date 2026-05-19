@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using Godot;
 using Xunit;
 
 namespace FourExHex.Tests;
@@ -15,9 +14,9 @@ public class TutorialSerializerTests
 {
     private static (GameState, IReadOnlyList<Player>) BuildMinimalState()
     {
-        var red = new Player("Red", new Color("e53935"), AiKind.Human);
+        var red = new Player("Red", PlayerId.FromIndex(0), AiKind.Human);
         var players = new List<Player> { red };
-        HexGrid grid = TestHelpers.BuildRectGrid(2, 2, red.Color);
+        HexGrid grid = TestHelpers.BuildRectGrid(2, 2, red.Id);
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var turnState = new TurnState(players, currentPlayerIndex: 0, turnNumber: 0);
         var state = new GameState(grid, territories, players, turnState, new Treasury());
@@ -25,9 +24,9 @@ public class TutorialSerializerTests
     }
 
     [Fact]
-    public void CurrentFormatVersion_IsFour()
+    public void CurrentFormatVersion_IsFive()
     {
-        Assert.Equal(4, SaveSerializer.CurrentFormatVersion);
+        Assert.Equal(5, SaveSerializer.CurrentFormatVersion);
     }
 
     [Fact]
@@ -35,7 +34,9 @@ public class TutorialSerializerTests
     {
         (GameState state, IReadOnlyList<Player> players) = BuildMinimalState();
         string json = SaveSerializer.SerializeMap(state, masterSeed: 7, players, "m");
-        string v2Json = json.Replace("\"FormatVersion\": 4", "\"FormatVersion\": 2");
+        string v2Json = json.Replace(
+            $"\"FormatVersion\": {SaveSerializer.CurrentFormatVersion}",
+            "\"FormatVersion\": 2");
 
         LoadedSave loaded = SaveSerializer.Deserialize(v2Json);
 

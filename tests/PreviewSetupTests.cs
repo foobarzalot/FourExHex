@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using Godot;
 using Xunit;
 
 namespace FourExHex.Tests;
@@ -19,8 +18,8 @@ namespace FourExHex.Tests;
 /// </summary>
 public class PreviewSetupTests
 {
-    private static readonly Color Red = new(1f, 0f, 0f);
-    private static readonly Color Blue = new(0f, 0f, 1f);
+    private static readonly PlayerId Red = PlayerId.FromIndex(0);
+    private static readonly PlayerId Blue = PlayerId.FromIndex(1);
 
     private static (GameState state, Tutorial tutorial) BuildSetup()
     {
@@ -30,8 +29,8 @@ public class PreviewSetupTests
             new("Blue", Blue, AiKind.Heuristic),
         };
         HexGrid grid = TestHelpers.BuildRectGrid(3, 2, Red);
-        grid.Get(HexCoord.FromOffset(2, 0))!.Color = Blue;
-        grid.Get(HexCoord.FromOffset(2, 1))!.Color = Blue;
+        grid.Get(HexCoord.FromOffset(2, 0))!.Owner = Blue;
+        grid.Get(HexCoord.FromOffset(2, 1))!.Owner = Blue;
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
         GameStateSnapshot snapshot = GameStateSnapshot.Capture(grid, state.Treasury, territories);

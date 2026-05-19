@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using Godot;
 using Xunit;
 
 namespace FourExHex.Tests;
@@ -22,25 +21,25 @@ public class SaveSerializerTests
     /// </summary>
     private static (GameState, IReadOnlyList<Player>) BuildRichState()
     {
-        var red = new Player("Red", new Color("e53935"), AiKind.Human);
-        var blue = new Player("Blue", new Color("1e88e5"), AiKind.Heuristic);
+        var red = new Player("Red", PlayerId.FromIndex(0), AiKind.Human);
+        var blue = new Player("Blue", PlayerId.FromIndex(1), AiKind.Heuristic);
         var players = new List<Player> { red, blue };
 
-        HexGrid grid = TestHelpers.BuildRectGrid(4, 3, blue.Color);
+        HexGrid grid = TestHelpers.BuildRectGrid(4, 3, blue.Id);
         // Red owns a 2x2 block in the top-left.
-        grid.Get(HexCoord.FromOffset(0, 0))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(1, 0))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(0, 1))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(1, 1))!.Color = red.Color;
+        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(0, 1))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(1, 1))!.Owner = red.Id;
 
         // Place every occupant type so the serializer has to handle
         // each branch.
-        grid.Get(HexCoord.FromOffset(0, 0))!.Occupant = new Unit(red.Color, UnitLevel.Knight) { HasMovedThisTurn = true };
-        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(red.Color, UnitLevel.Peasant) { HasMovedThisTurn = false };
+        grid.Get(HexCoord.FromOffset(0, 0))!.Occupant = new Unit(red.Id, UnitLevel.Knight) { HasMovedThisTurn = true };
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(red.Id, UnitLevel.Peasant) { HasMovedThisTurn = false };
         grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Tree();
         grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = new Grave();
         grid.Get(HexCoord.FromOffset(2, 1))!.Occupant = new Tower();
-        grid.Get(HexCoord.FromOffset(3, 1))!.Occupant = new Unit(blue.Color, UnitLevel.Baron);
+        grid.Get(HexCoord.FromOffset(3, 1))!.Occupant = new Unit(blue.Id, UnitLevel.Baron);
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
 
@@ -50,7 +49,7 @@ public class SaveSerializerTests
         var treasury = new Treasury();
         foreach (Territory t in territories)
         {
-            if (t.HasCapital) treasury.SetGold(t.Capital!.Value, t.Owner == red.Color ? 17 : 42);
+            if (t.HasCapital) treasury.SetGold(t.Capital!.Value, t.Owner == red.Id ? 17 : 42);
         }
 
         var state = new GameState(grid, territories, players, turnState, treasury);
@@ -81,7 +80,7 @@ public class SaveSerializerTests
         for (int i = 0; i < players.Count; i++)
         {
             Assert.Equal(players[i].Name, loaded.Players[i].Name);
-            Assert.Equal(players[i].Color, loaded.Players[i].Color);
+            Assert.Equal(players[i].Id, loaded.Players[i].Id);
         }
     }
 
@@ -117,10 +116,10 @@ public class SaveSerializerTests
     [Fact]
     public void Serialize_RoundTripsWaterCoords()
     {
-        var red = new Player("Red", new Color("e53935"), AiKind.Human);
-        var blue = new Player("Blue", new Color("1e88e5"), AiKind.Heuristic);
+        var red = new Player("Red", PlayerId.FromIndex(0), AiKind.Human);
+        var blue = new Player("Blue", PlayerId.FromIndex(1), AiKind.Heuristic);
         var players = new List<Player> { red, blue };
-        HexGrid grid = TestHelpers.BuildRectGrid(2, 2, red.Color);
+        HexGrid grid = TestHelpers.BuildRectGrid(2, 2, red.Id);
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var water = new HashSet<HexCoord>
         {
@@ -164,7 +163,7 @@ public class SaveSerializerTests
         for (int i = 0; i < originalPlayers.Count; i++)
         {
             Assert.Equal(originalPlayers[i].Name, loaded.Players[i].Name);
-            Assert.Equal(originalPlayers[i].Color, loaded.Players[i].Color);
+            Assert.Equal(originalPlayers[i].Id, loaded.Players[i].Id);
             Assert.Equal(originalPlayers[i].Kind, loaded.Players[i].Kind);
         }
 
@@ -173,7 +172,7 @@ public class SaveSerializerTests
         {
             HexTile? loadedTile = loaded.State.Grid.Get(origTile.Coord);
             Assert.NotNull(loadedTile);
-            Assert.Equal(origTile.Color, loadedTile!.Color);
+            Assert.Equal(origTile.Owner, loadedTile!.Owner);
             AssertOccupantsEqual(origTile.Occupant, loadedTile.Occupant);
         }
         // No extra tiles either.
@@ -303,10 +302,10 @@ public class SaveSerializerTests
         // across save/load, and survives reload so each tier's prompt
         // won't re-fire.
         (GameState state, IReadOnlyList<Player> players) = BuildRichState();
-        var prompted = new Dictionary<Color, int>
+        var prompted = new Dictionary<PlayerId, int>
         {
-            [players[0].Color] = 75,
-            [players[1].Color] = 90,
+            [players[0].Id] = 75,
+            [players[1].Id] = 90,
         };
 
         string json = SaveSerializer.Serialize(
@@ -316,8 +315,8 @@ public class SaveSerializerTests
         LoadedSave loaded = SaveSerializer.Deserialize(json);
 
         Assert.Equal(2, loaded.ClaimVictoryPromptedHighestThreshold.Count);
-        Assert.Equal(75, loaded.ClaimVictoryPromptedHighestThreshold[players[0].Color]);
-        Assert.Equal(90, loaded.ClaimVictoryPromptedHighestThreshold[players[1].Color]);
+        Assert.Equal(75, loaded.ClaimVictoryPromptedHighestThreshold[players[0].Id]);
+        Assert.Equal(90, loaded.ClaimVictoryPromptedHighestThreshold[players[1].Id]);
     }
 
     [Fact]
@@ -344,7 +343,7 @@ public class SaveSerializerTests
 
         // Inject the legacy field into otherwise-current JSON. Track
         // CurrentFormatVersion so the test survives format bumps.
-        string legacyHex = players[0].Color.ToHtml(includeAlpha: false);
+        string legacyHex = GameSettings.PlayerConfig[players[0].Id.Index].Hex;
         string versionLine = $"\"FormatVersion\": {SaveSerializer.CurrentFormatVersion},";
         string injected = baseJson.Replace(
             versionLine,
@@ -353,7 +352,7 @@ public class SaveSerializerTests
         LoadedSave loaded = SaveSerializer.Deserialize(injected);
 
         Assert.Single(loaded.ClaimVictoryPromptedHighestThreshold);
-        Assert.Equal(50, loaded.ClaimVictoryPromptedHighestThreshold[players[0].Color]);
+        Assert.Equal(50, loaded.ClaimVictoryPromptedHighestThreshold[players[0].Id]);
     }
 
     [Fact]
@@ -363,9 +362,9 @@ public class SaveSerializerTests
         // field — never the legacy flat list — even when a color is
         // recorded only at 50%. Keeps new saves clean.
         (GameState state, IReadOnlyList<Player> players) = BuildRichState();
-        var prompted = new Dictionary<Color, int>
+        var prompted = new Dictionary<PlayerId, int>
         {
-            [players[0].Color] = 50,
+            [players[0].Id] = 50,
         };
 
         string json = SaveSerializer.Serialize(
@@ -373,8 +372,11 @@ public class SaveSerializerTests
             originMapName: null,
             claimVictoryPromptedHighestThreshold: prompted);
 
+        // v5 writes only the palette-independent by-index field; neither
+        // legacy color-hex field is written. Keeps new saves clean.
         Assert.DoesNotContain("ClaimVictoryPromptedColorHexes", json);
-        Assert.Contains("ClaimVictoryPromptedHighestByColorHex", json);
+        Assert.DoesNotContain("ClaimVictoryPromptedHighestByColorHex", json);
+        Assert.Contains("ClaimVictoryPromptedHighestByPlayerIndex", json);
     }
 
     private static void AssertOccupantsEqual(HexOccupant? a, HexOccupant? b)
@@ -477,7 +479,7 @@ public class SaveSerializerTests
         var freshGrid = new HexGrid();
         foreach (HexTile t in liveGrid.Tiles)
         {
-            freshGrid.Add(new HexTile(t.Coord, t.Color));
+            freshGrid.Add(new HexTile(t.Coord, t.Owner));
         }
         var freshTreasury = new Treasury();
         loaded.Replay!.InitialSnapshot.ApplyTo(freshGrid, freshTreasury);
@@ -486,7 +488,7 @@ public class SaveSerializerTests
         {
             HexTile? restored = freshGrid.Get(original.Coord);
             Assert.NotNull(restored);
-            Assert.Equal(original.Color, restored!.Color);
+            Assert.Equal(original.Owner, restored!.Owner);
             AssertOccupantsEqual(original.Occupant, restored.Occupant);
         }
         foreach (Territory t in state.Territories)
@@ -508,7 +510,9 @@ public class SaveSerializerTests
         // The serializer bumps to v4 once the replay feature ships;
         // tweak the JSON to look like a v3 save (FormatVersion = 3,
         // no Replay block) and verify it still loads with Replay=null.
-        string v3Json = json.Replace("\"FormatVersion\": 4", "\"FormatVersion\": 3");
+        string v3Json = json.Replace(
+            $"\"FormatVersion\": {SaveSerializer.CurrentFormatVersion}",
+            "\"FormatVersion\": 3");
         LoadedSave loaded = SaveSerializer.Deserialize(v3Json);
 
         Assert.Null(loaded.Replay);

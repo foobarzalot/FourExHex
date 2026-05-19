@@ -1,5 +1,4 @@
 using System;
-using Godot;
 using Xunit;
 
 namespace FourExHex.Tests;
@@ -9,8 +8,8 @@ public class UndoStackTests
     private static UndoEntry MakeEntry(int goldValue)
     {
         var grid = new HexGrid();
-        grid.Add(new HexTile(new HexCoord(0, 0), new Color(1f, 0f, 0f)));
-        grid.Add(new HexTile(new HexCoord(1, 0), new Color(1f, 0f, 0f)));
+        grid.Add(new HexTile(new HexCoord(0, 0), PlayerId.FromIndex(0)));
+        grid.Add(new HexTile(new HexCoord(1, 0), PlayerId.FromIndex(0)));
         var treasury = new Treasury();
         var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         treasury.SetGold(territories[0].Capital!.Value, goldValue);

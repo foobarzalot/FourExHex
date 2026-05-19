@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using Godot;
 using Xunit;
 
 namespace FourExHex.Tests;
@@ -31,17 +30,17 @@ public class GameControllerAbandonTests
     [Fact]
     public void AbandonGame_DropsPendingAiStep()
     {
-        var red = new Player("Red", new Color(1f, 0f, 0f), isAi: true);
-        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var red = new Player("Red", PlayerId.FromIndex(0), isAi: true);
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new List<Player> { red, blue };
-        HexGrid grid = TestHelpers.BuildRectGrid(5, 2, blue.Color);
-        grid.Get(HexCoord.FromOffset(0, 0))!.Color = red.Color;
-        grid.Get(HexCoord.FromOffset(0, 1))!.Color = red.Color;
+        HexGrid grid = TestHelpers.BuildRectGrid(5, 2, blue.Id);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(0, 1))!.Owner = red.Id;
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
 
         DeferredAiPacer pacer = new();
-        AiAction? Chooser(GameState s, Color c, HashSet<HexCoord> visited, Random rng) => null;
+        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> visited, Random rng) => null;
         var controller = new GameController(
             state, new SessionState(), new MockHexMapView(), new MockHudView(),
             seed: 1, aiPacer: pacer, aiChooser: Chooser);
@@ -67,10 +66,10 @@ public class GameControllerAbandonTests
     [Fact]
     public void AbandonGame_UnsubscribesFromViewEvents_NoLingerHandler()
     {
-        var red = new Player("Red", new Color(1f, 0f, 0f));
-        var blue = new Player("Blue", new Color(0f, 0f, 1f));
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new List<Player> { red, blue };
-        HexGrid grid = TestHelpers.BuildRectGrid(2, 2, red.Color);
+        HexGrid grid = TestHelpers.BuildRectGrid(2, 2, red.Id);
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
 

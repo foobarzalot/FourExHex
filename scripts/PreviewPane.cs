@@ -75,7 +75,7 @@ public sealed partial class PreviewPane : Control
         {
             Player src = _panel.Players[i];
             AiKind kind = i == 0 ? AiKind.Human : AiKind.Heuristic;
-            roster.Add(new Player(src.Name, src.Color, kind));
+            roster.Add(new Player(src.Name, src.Id, kind));
         }
 
         _previewState = _panel.BuildLiveStateWith(roster);
@@ -146,7 +146,7 @@ public sealed partial class PreviewPane : Control
             previewSession,
             _hud,
             _panel.Map,
-            roster[0].Color,
+            roster[0].Id,
             t => _controller!.SelectTerritoryForTutorial(t),
             () => _controller!.CancelActionForTutorial());
         _cues.SetNarrationDriver(_narration);
