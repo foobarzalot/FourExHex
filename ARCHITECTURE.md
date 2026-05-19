@@ -63,8 +63,9 @@ Consequences for the rest of this doc:
 - **Pixel projection is view-side.** `HexCoord.Round` (cube-rounding)
   stays in the model; `scripts/HexPixel.cs` (Godot side) owns
   `ToPixel`/`FromPixel` and calls back into `HexCoord.Round`.
-- **`AiLog` is Godot-free** — it routes through an injectable
-  `AiLog.Sink` that `Main` wires to `GD.Print`.
+- **`Log` is Godot-free** — the master logging system routes through
+  an injectable `Log.Sink` that `Main` wires to `GD.Print`. See
+  **Logging** below.
 - **Save format is v5.** Ownership is a player index on the wire (−1 =
   `None`); claim-victory tiers are persisted by player index
   (palette-independent). v2–v5 still load; v2–v4 migrate their legacy
@@ -1361,9 +1362,11 @@ single beat).
 - **`AiDispatcher.ChooseForCurrentPlayer`** — routes to the per-player
   AI flavor based on `Player.Kind`. Wired into `GameController` as
   the single `aiChooser` delegate for normal play.
-- **`AiLog`** — `AiLog.Print` is off by default; flip
-  `AiLog.Enabled = true` (or use `FOUREXHEX_6AI`) to trace every
-  AI decision plus per-turn header lines and capture diffs.
+- **AI tracing** lives in the `Log.LogCategory.Ai` / `Turn` /
+  `Capture` categories (`HeuristicAi` candidate diagnostics,
+  per-turn header + end-turn + action lines, capture diffs). Off by
+  default; enable via `FOUREXHEX_LOG` or the `FOUREXHEX_6AI` implied
+  defaults. See **Logging** below.
 
 ## Save / load
 
@@ -2107,6 +2110,39 @@ block. Deserialize throws if the Tutorial block is present without
 a Replay block. The `Tutorial` class is `{ Title, Replay }` — no
 `StartTurn` / `StartPlayer` / `Beats` (the Replay carries those).
 
+## Logging (`Log`)
+
+`src/FourExHex.Model/Log.cs` is the master logging system — one
+Godot-free static class shared by Model, Controller, and the Godot
+`scripts/` layer (it has no namespace, so call sites need no `using`).
+It replaces the old `AiLog`.
+
+- **Two independent gates.** (1) Compile-time: `Log.Trace` / `Debug` /
+  `Info` are `[Conditional("DEBUG")]`, so the C# compiler removes the
+  call *and its argument evaluation* (interpolated strings included)
+  from Release/exported builds — instrumentation can be left in the
+  code permanently and is provably inactive in a shipping build.
+  `Log.Warn` / `Error` always compile (genuine anomalies + the
+  headless-run terminator survive). (2) Runtime: each
+  `Log.LogCategory` (`Ai`, `Turn`, `Capture`, `Tutorial`, `Render`,
+  `Input`) has an independent minimum `Log.LogLevel`; a message emits
+  only if its level ≥ the category threshold.
+- **Default is silent.** Every category defaults to `Off`, so normal
+  dev play prints nothing until configured.
+- **Configuration.** `Main` calls `Log.Configure(OS.GetEnvironment(
+  "FOUREXHEX_LOG"))`, parsing a spec like
+  `"Ai:Debug,Turn:Info,*:Warn"` (comma-separated `category:level`,
+  `*` = all; case-insensitive; unknown tokens ignored; never throws).
+  No UserSettings/UI exposure.
+- **Helpers that pre-compute** (`GameController.LogTurnStart`,
+  `LogAction`, `LogGameEndDiagnostics`, `LogCaptureDiff`) are
+  themselves marked `[Conditional("DEBUG")]` so the body — not just
+  the print — strips in Release. `Warn`/`Error` sites keep their
+  precompute (they must run in shipping).
+- `GD.PushWarning` / `GD.PushError` (user-facing save/load failures)
+  are deliberately **not** routed through `Log` — they are not gated
+  instrumentation.
+
 ## Diagnostic mode (`FOUREXHEX_6AI`)
 
 Setting the env var before launching Godot reconfigures the session
@@ -2115,7 +2151,10 @@ for a fully headless regression run:
 - All six player slots forced to `AiKind.Heuristic` (the menu also
   detects the env var and skips itself, so the launch jumps straight
   into `Main`).
-- `AiLog.Enabled = true`.
+- After parsing `FOUREXHEX_LOG`, `Main` pins `Log` to the verbose
+  AI/turn output the old `AiLog.Enabled = true` produced —
+  `Ai:Debug`, `Turn:Info`, `Capture:Debug` — set *after* `Configure`
+  so a stray `FOUREXHEX_LOG=*:Off` can't silence the harness.
 - `SynchronousAiPacer` replaces `GodotAiPacer` — turns execute inline.
 - `HeadlessHexMapView` / `HeadlessHudView` replace the real views.
 - `GameController` constructed with `maxTurnNumber: 500` so stasis
@@ -2298,7 +2337,8 @@ scripts/  (split: see the three source trees listed just above)
 ├─ AiStateScorer.cs       ─ scoring function for HeuristicAi
 ├─ RandomAi.cs            ─ uniform-random chooser
 ├─ HeuristicAi.cs         ─ 1-ply best-score chooser
-├─ AiLog.cs               ─ gated stdout logging
+├─ Log.cs                 ─ master logging (category × level,
+│                           [Conditional("DEBUG")] strip)
 │
 ├─ MapGenerator.cs        ─ CA-driven land/water carve + tree scatter
 ├─ TerritoryFinder.cs     ─ pure rules
@@ -2442,7 +2482,7 @@ across save/load, replay recording + playback contracts, and a
 6-heuristic-AI replay-fidelity test that hashes the live final
 state, round-trips it through SaveSerializer, and asserts the
 replayed state matches digest-for-digest. Also covers `PlayerId`
-semantics, the `AiLog` sink, `HexCoord.Round`, and v2→v5 save
+semantics, the `Log` category/level gate, `HexCoord.Round`, and v2→v5 save
 migration (`SaveMigrationTests`). The view layer is deliberately
 uncovered — it depends on Godot's `Node` lifecycle, so pin behavior
 in the controller and rules instead.

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 
 /// <summary>
@@ -689,7 +690,7 @@ public class GameController
                 ExecuteBuildTower(tile.Coord);
                 return;
             }
-            System.Console.WriteLine(
+            Log.Debug(Log.LogCategory.Input,
                 $"[BuildTower] click at {tile.Coord} rejected: {DescribeInvalidTowerReason(tile.Coord)}");
             _map.FlashRejection(tile.Coord, RejectionShape.Tower, System.Array.Empty<HexCoord>());
             return;
@@ -1284,10 +1285,9 @@ public class GameController
         PlayerId? winner = WinConditionRules.WinnerByDomination(_state.Grid);
         if (winner.HasValue)
         {
-            Player? winP = _state.Turns.Players
-                .FirstOrDefault(p => p.Id == winner.Value);
-            System.Console.WriteLine($"[T{_state.Turns.TurnNumber}] " +
-                $"post-capture domination winner: {winP?.Name ?? "?"}");
+            Log.Info(Log.LogCategory.Capture, $"[T{_state.Turns.TurnNumber}] " +
+                "post-capture domination winner: " +
+                $"{_state.Turns.Players.FirstOrDefault(p => p.Id == winner.Value)?.Name ?? "?"}");
             DeclareWinner(winner.Value);
             ClearUndoAndReplayBookkeeping();
             // Fire GameEnded for the mid-turn capture-win path. The
@@ -1981,21 +1981,22 @@ public class GameController
             _state.Turns.CurrentPlayer.Id, _state.Territories);
         if (winner.HasValue)
         {
-            Player? winP = _state.Turns.Players
-                .FirstOrDefault(p => p.Id == winner.Value);
-            System.Console.WriteLine($"[T{_state.Turns.TurnNumber}] " +
-                $"end-of-turn winner declared: {winP?.Name ?? "?"}");
+            Log.Info(Log.LogCategory.Turn, $"[T{_state.Turns.TurnNumber}] " +
+                "end-of-turn winner declared: " +
+                $"{_state.Turns.Players.FirstOrDefault(p => p.Id == winner.Value)?.Name ?? "?"}");
             DeclareWinner(winner.Value);
         }
     }
 
     /// <summary>
     /// One-line dump of per-player tile count and capital-bearing
-    /// territory count, plus context. Always-on diagnostic for
-    /// debugging stuck game-end conditions; emit volume is one
-    /// line per turn-end + a few extras, so it's safe to leave on
-    /// in normal play.
+    /// territory count, plus context — for debugging stuck game-end
+    /// conditions. The whole method is <c>[Conditional("DEBUG")]</c>
+    /// so the body (the two dictionary builds) is stripped from
+    /// Release/exported builds; in dev it's runtime-gated via
+    /// <see cref="Log.LogCategory.Turn"/> at Info.
     /// </summary>
+    [Conditional("DEBUG")]
     private void LogGameEndDiagnostics(string context)
     {
         var tiles = new Dictionary<PlayerId, int>();
@@ -2021,7 +2022,7 @@ public class GameController
             parts.Add($"{p.Name}:{t}t/{c}c");
         }
 
-        System.Console.WriteLine($"[T{_state.Turns.TurnNumber}] {context} — " +
+        Log.Info(Log.LogCategory.Turn, $"[T{_state.Turns.TurnNumber}] {context} — " +
             string.Join(", ", parts));
     }
 
@@ -2058,7 +2059,7 @@ public class GameController
             }
             UpkeepRules.ApplyUpkeepFor(
                 ghost, _state.Territories, _state.Grid, _state.Treasury);
-            System.Console.WriteLine($"[T{_state.Turns.TurnNumber}] phantom turn for eliminated " +
+            Log.Info(Log.LogCategory.Turn, $"[T{_state.Turns.TurnNumber}] phantom turn for eliminated " +
                 $"player {ghost.Name} (tree growth + upkeep)");
             _state.Turns.EndTurn();
         }
@@ -2138,9 +2139,9 @@ public class GameController
         }
     }
 
+    [Conditional("DEBUG")]
     private void LogTurnStart()
     {
-        if (!AiLog.Enabled) return;
         Player p = _state.Turns.CurrentPlayer;
         int tiles = 0;
         int ownedTerritories = 0;
@@ -2159,7 +2160,7 @@ public class GameController
                 totalGold += _state.Treasury.GetGold(t.Capital!.Value);
             }
         }
-        AiLog.Print(
+        Log.Info(Log.LogCategory.Turn,
             $"[T{_state.Turns.TurnNumber}] {p.Name} ({p.Kind}) turn begins — " +
             $"{tiles} tiles, {ownedTerritories} territories, " +
             $"{totalNet:+#;-#;0} net income, {totalGold}g total");
@@ -2186,7 +2187,7 @@ public class GameController
                     break;
                 }
             }
-            System.Console.WriteLine(
+            Log.Warn(Log.LogCategory.Turn,
                 $"[T{_state.Turns.TurnNumber}] GAME OVER — " +
                 $"winner: {winner?.Name ?? "(none)"}");
             _gameEndedFired = true;
@@ -2196,7 +2197,7 @@ public class GameController
 
         if (_state.Turns.TurnNumber > _maxTurnNumber)
         {
-            System.Console.WriteLine(
+            Log.Warn(Log.LogCategory.Turn,
                 $"[T{_state.Turns.TurnNumber}] GAME OVER — " +
                 $"turn cap {_maxTurnNumber} exceeded (stasis)");
             _gameEndedFired = true;
@@ -2460,14 +2461,10 @@ public class GameController
     /// </summary>
     private void EndCurrentAiPlayerTurnCore(AiAction? action)
     {
-        if (AiLog.Enabled)
-        {
-            Player p = _state.Turns.CurrentPlayer;
-            string reason = action == null ? "no positive-delta actions" : "step cap reached";
-            AiLog.Print(
-                $"[T{_state.Turns.TurnNumber}] {p.Name} ends turn after " +
-                $"{_aiStepsThisPlayer} actions ({reason})");
-        }
+        Log.Info(Log.LogCategory.Turn,
+            $"[T{_state.Turns.TurnNumber}] {_state.Turns.CurrentPlayer.Name} ends turn after " +
+            $"{_aiStepsThisPlayer} actions " +
+            $"({(action == null ? "no positive-delta actions" : "step cap reached")})");
         // Record AI's implicit end-of-turn for the replay log. The
         // beat captures the *ending* AI player's actor/turn.
         if (!_replayMode) RecordBeat(new ReplayEndTurnBeat());
@@ -2486,9 +2483,9 @@ public class GameController
         _pendingAiAction = null;
     }
 
+    [Conditional("DEBUG")]
     private void LogAction(AiAction action)
     {
-        if (!AiLog.Enabled) return;
         Player p = _state.Turns.CurrentPlayer;
         string desc = action switch
         {
@@ -2497,7 +2494,7 @@ public class GameController
             AiBuildTowerAction bt => $"Tower@{bt.Capital} → {bt.Destination}",
             _ => "?",
         };
-        AiLog.Print($"[T{_state.Turns.TurnNumber}]   {p.Name}: {desc}");
+        Log.Info(Log.LogCategory.Ai, $"[T{_state.Turns.TurnNumber}]   {p.Name}: {desc}");
     }
 
     /// <summary>
@@ -3101,12 +3098,13 @@ public class GameController
     /// reconcile. Untouched capitals are omitted so the log stays
     /// readable even on large multi-player maps.
     /// </summary>
+    [Conditional("DEBUG")]
     private void LogCaptureDiff(
         string actionDesc,
         Dictionary<HexCoord, (PlayerId Owner, int Gold)> oldCaps,
         Dictionary<HexCoord, (PlayerId Owner, int Gold)> newCaps)
     {
-        Console.WriteLine(
+        Log.Debug(Log.LogCategory.Capture,
             $"[Capture T{_state.Turns.TurnNumber} {_state.Turns.CurrentPlayer.Name}] {actionDesc}");
 
         var coords = new HashSet<HexCoord>(oldCaps.Keys);
@@ -3123,10 +3121,10 @@ public class GameController
 
             string oldStr = inOld ? $"{PlayerNameFor(o.Owner)}={o.Gold}g" : "—";
             string newStr = inNew ? $"{PlayerNameFor(n.Owner)}={n.Gold}g" : "gone";
-            Console.WriteLine($"  {c}: {oldStr} → {newStr}");
+            Log.Debug(Log.LogCategory.Capture, $"  {c}: {oldStr} → {newStr}");
             any = true;
         }
-        if (!any) Console.WriteLine("  (no capital/gold changes)");
+        if (!any) Log.Debug(Log.LogCategory.Capture, "  (no capital/gold changes)");
     }
 
     private string PlayerNameFor(PlayerId c)

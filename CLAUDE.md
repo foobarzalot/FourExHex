@@ -50,7 +50,7 @@ Show the diff and get buy-in on the plan when rule changes have test fallout (e.
 Setting the env var `FOUREXHEX_6AI` before launching Godot reconfigures the session for a fully headless regression run:
 
 - All six player slots are forced to `AiKind.Heuristic` (bypassing the main menu).
-- `AiLog.Enabled = true` so every AI decision prints to stdout (routed via `GD.Print`).
+- `Log` is pinned to verbose AI/turn output (`Ai:Debug`, `Turn:Info`, `Capture:Debug`) so every AI decision prints to stdout (routed via `GD.Print`). This is set *after* `Log.Configure(FOUREXHEX_LOG)`, so it can't be silenced by a stray `FOUREXHEX_LOG`.
 - `SynchronousAiPacer` replaces `GodotAiPacer` — turns execute inline with no delays.
 - `HeadlessHexMapView` / `HeadlessHudView` replace the real views so layout and rendering are skipped.
 - `GameController` is constructed with `maxTurnNumber: 500` so stasis runs terminate.
@@ -82,7 +82,7 @@ Typical invocation: `FOUREXHEX_6AI=1 /Applications/Godot_mono.app/Contents/MacOS
 - `AiCommon.Enumerate` is the single source of legal candidate actions; both AIs consume it. Only this helper knows about rule legality — the AIs own the "which candidate?" decision.
 - `AiSimulator.Clone` + `AiStateScorer.Score` back `HeuristicAi`'s 1-ply lookahead. `AiSimulator` mirrors the mutation logic in `GameController`'s `ExecuteAi*` paths; if you add a new AI-capable action, update both in lockstep or simulated scoring will drift from real play.
 - AI turn pacing is split into preview/execute beats (see the `AiPreviewDelayMs` / `AiActionDelayMs` / `AiBetweenPlayersDelayMs` constants in `GameController`) so humans can see which territory is acting. Tests use `SynchronousAiPacer` and observe all effects inline.
-- `AiLog.Print` is off by default. Enable it (via `FOUREXHEX_6AI` or by setting `AiLog.Enabled` in a scratch test) when debugging AI choices.
+- Logging goes through `Log` (`src/FourExHex.Model/Log.cs`): per-category (`Ai`/`Turn`/`Capture`/…) × level, off by default. `Trace`/`Debug`/`Info` are `[Conditional("DEBUG")]` (stripped from Release); `Warn`/`Error` always compile. Enable via `FOUREXHEX_LOG="Ai:Debug,Turn:Info"`, `FOUREXHEX_6AI`, or `Log.SetLevel(...)` in a scratch test when debugging AI choices.
 
 ## Project Structure
 

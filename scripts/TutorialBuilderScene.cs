@@ -142,7 +142,7 @@ public partial class TutorialBuilderScene : Node2D
         TutorialMode previous = _currentMode;
         _currentMode = mode;
 
-        GD.Print($"[TutorialBuilder] SetMode: {previous} → {mode}");
+        Log.Debug(Log.LogCategory.Tutorial, $"[TutorialBuilder] SetMode: {previous} → {mode}");
 
         // Capture the draft on every exit from Map Edit so we can
         // restore tile occupants when we come back. Record / Preview
@@ -203,7 +203,7 @@ public partial class TutorialBuilderScene : Node2D
             // RecordPane owns the in-memory Tutorial for the session;
             // PreviewPane builds its transient controller around it.
             Tutorial? authored = _recordPane.CurrentTutorial;
-            GD.Print($"[TutorialBuilder] Entering Preview. authored={(authored == null ? "null" : "non-null")}, beats={authored?.Replay.Beats.Count ?? -1}");
+            Log.Debug(Log.LogCategory.Tutorial, $"[TutorialBuilder] Entering Preview. authored={(authored == null ? "null" : "non-null")}, beats={authored?.Replay.Beats.Count ?? -1}");
             if (authored != null && authored.Replay.Beats.Count > 0)
             {
                 _previewPane.Start(authored);

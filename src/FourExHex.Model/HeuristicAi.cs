@@ -46,7 +46,7 @@ public static class HeuristicAi
         // or a useless tower.
         double bestDelta = 0.0;
 
-        // Diagnostic counters (only populated when AiLog is on).
+        // Diagnostic counters for the stasis-signal log below.
         int totalCandidates = 0;
         int positiveCandidates = 0;
         double observedBestDelta = double.NegativeInfinity;
@@ -108,12 +108,12 @@ public static class HeuristicAi
             }
         }
 
-        if (AiLog.Enabled && best == null && totalCandidates > 0)
+        if (best == null && totalCandidates > 0)
         {
             // The AI had options but every one was non-positive.
             // This is the stasis signal: legal actions exist but
             // the scorer thinks they all hurt. Log once per call.
-            AiLog.Print(
+            Log.Debug(Log.LogCategory.Ai,
                 $"[heuristic] {forPlayer} has {totalCandidates} candidates " +
                 $"({positiveCandidates} positive); best delta = " +
                 $"{observedBestDelta:+0.0;-0.0;0.0} ({observedBestKind?.ToString() ?? "?"})");

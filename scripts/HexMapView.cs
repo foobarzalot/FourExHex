@@ -407,7 +407,7 @@ public partial class HexMapView : Node2D, IHexMapView
         AddChild(_outlinesLayer);
         PopulateOutlinesLayer();
 
-        GD.Print($"HexMapView: rendering {_state.Grid.Count} tiles across {_state.Territories.Count} territories.");
+        Log.Debug(Log.LogCategory.Render, $"HexMapView: rendering {_state.Grid.Count} tiles across {_state.Territories.Count} territories.");
 
         // The tower-coverage tint sits above tile fills + outlines but
         // below borders, so the lift is subtle: the underlying territory

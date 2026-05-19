@@ -63,7 +63,7 @@ public sealed partial class PreviewPane : Control
     /// </summary>
     public void Start(Tutorial tutorial)
     {
-        GD.Print($"[PreviewPane] Start: beats={tutorial.Replay.Beats.Count}, initialTurn={tutorial.Replay.InitialTurnNumber}, initialPlayer={tutorial.Replay.InitialCurrentPlayerIndex}");
+        Log.Debug(Log.LogCategory.Tutorial, $"[PreviewPane] Start: beats={tutorial.Replay.Beats.Count}, initialTurn={tutorial.Replay.InitialTurnNumber}, initialPlayer={tutorial.Replay.InitialCurrentPlayerIndex}");
         if (_running) Pause();
 
         // Player roster: player 0 Human (the dev plays Red);
@@ -156,7 +156,7 @@ public sealed partial class PreviewPane : Control
         _panel.Map.DragMode = HexDragMode.Pan;
         _panel.Map.Init(_previewState);
         _controller.StartGame();
-        GD.Print($"[PreviewPane] post-StartGame: turn={_previewState.Turns.TurnNumber}, currentPlayer={_previewState.Turns.CurrentPlayerIndex} ({_previewState.Turns.CurrentPlayer.Name})");
+        Log.Debug(Log.LogCategory.Tutorial, $"[PreviewPane] post-StartGame: turn={_previewState.Turns.TurnNumber}, currentPlayer={_previewState.Turns.CurrentPlayerIndex} ({_previewState.Turns.CurrentPlayer.Name})");
 
         _running = true;
     }

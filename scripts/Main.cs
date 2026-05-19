@@ -50,8 +50,12 @@ public partial class Main : Node2D
         // game synchronously (no pacing delays), caps turns at 500
         // so stasis runs terminate, and auto-quits on game over.
         // Intended for Claude to run headless and read the logs.
-        // Route the Godot-free AiLog to GD.Print (stdout in headless).
-        AiLog.Sink ??= GD.Print;
+        // Route the Godot-free Log to GD.Print (stdout in headless).
+        Log.Sink ??= GD.Print;
+        // Runtime config, e.g. FOUREXHEX_LOG="Ai:Debug,Turn:Info,*:Warn".
+        // Best-effort parse; unknown tokens ignored; empty = silent
+        // (every category defaults to Off — parity with old AiLog).
+        Log.Configure(OS.GetEnvironment("FOUREXHEX_LOG"));
         bool diagnosticMode = OS.GetEnvironment("FOUREXHEX_6AI").Length > 0;
         if (diagnosticMode)
         {
@@ -59,7 +63,13 @@ public partial class Main : Node2D
             {
                 GameSettings.PlayerKinds[i] = AiKind.Heuristic;
             }
-            AiLog.Enabled = true;
+            // Reproduce the verbose AI/turn stdout the old
+            // AiLog.Enabled=true produced. Set AFTER Configure so the
+            // headless regression harness can't be silenced by a stray
+            // FOUREXHEX_LOG=*:Off.
+            Log.SetLevel(Log.LogCategory.Ai, Log.LogLevel.Debug);
+            Log.SetLevel(Log.LogCategory.Turn, Log.LogLevel.Info);
+            Log.SetLevel(Log.LogCategory.Capture, Log.LogLevel.Debug);
             GD.Print("=== FOUREXHEX_6AI diagnostic mode ===");
         }
 

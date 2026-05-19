@@ -137,7 +137,7 @@ public sealed partial class RecordPane : Control
     /// </summary>
     public void StartRecording()
     {
-        GD.Print($"[RecordPane] StartRecording (was running={_running})");
+        Log.Debug(Log.LogCategory.Tutorial, $"[RecordPane] StartRecording (was running={_running})");
         if (_running) StopRecording();
 
         // All-Human roster: keep the panel's colors/names so the grid
@@ -179,11 +179,11 @@ public sealed partial class RecordPane : Control
                 _controller.InitialReplayTurnNumber,
                 _controller.InitialReplayCurrentPlayerIndex);
             _capture.SetBeats(new List<ReplayBeat>(_controller.ReplayBeats));
-            GD.Print($"[RecordPane] Capture.Begin: turn={_controller.InitialReplayTurnNumber}, player={_controller.InitialReplayCurrentPlayerIndex}");
+            Log.Debug(Log.LogCategory.Tutorial, $"[RecordPane] Capture.Begin: turn={_controller.InitialReplayTurnNumber}, player={_controller.InitialReplayCurrentPlayerIndex}");
         }
         else
         {
-            GD.Print("[RecordPane] WARNING: controller has no initial snapshot after StartGame");
+            Log.Warn(Log.LogCategory.Tutorial, "[RecordPane] controller has no initial snapshot after StartGame");
         }
 
         BuildAddTextButton();
@@ -201,7 +201,7 @@ public sealed partial class RecordPane : Control
     /// </summary>
     public void ContinueRecording(Tutorial previous)
     {
-        GD.Print($"[RecordPane] ContinueRecording (was running={_running}, beats={previous.Replay.Beats.Count})");
+        Log.Debug(Log.LogCategory.Tutorial, $"[RecordPane] ContinueRecording (was running={_running}, beats={previous.Replay.Beats.Count})");
         if (_running) StopRecording();
 
         var roster = new List<Player>(_panel.Players.Count);
@@ -259,7 +259,7 @@ public sealed partial class RecordPane : Control
     /// </summary>
     public void StopRecording()
     {
-        GD.Print($"[RecordPane] StopRecording (running={_running}, beats={_controller?.ReplayBeats.Count ?? -1})");
+        Log.Debug(Log.LogCategory.Tutorial, $"[RecordPane] StopRecording (running={_running}, beats={_controller?.ReplayBeats.Count ?? -1})");
         if (!_running) return;
 
         // Snapshot the final beat list into the capture before nulling
@@ -409,7 +409,7 @@ public sealed partial class RecordPane : Control
                 _controller.RecordTutorialOnlyBeat(
                     new ReplayDisplayTextBeat { Text = text });
                 _capture.SetBeats(new List<ReplayBeat>(_controller.ReplayBeats));
-                GD.Print($"[RecordPane] Authored DisplayText beat: \"{text}\"");
+                Log.Debug(Log.LogCategory.Tutorial, $"[RecordPane] Authored DisplayText beat: \"{text}\"");
             }
             Close();
         }
