@@ -76,10 +76,10 @@ public class MockHexMapView : IHexMapView
 
     /// <summary>
     /// Mirrors <c>HexMapView</c>'s silent-mode policy so controller
-    /// integration tests can verify end-to-end suppression: per-action
-    /// Play* calls and the destruction effect drop while silent;
-    /// <see cref="PlayBankruptcy"/> and <see cref="PlayGameWon"/> stay
-    /// audible (turn-/game-boundary events the user asked to still hear).
+    /// integration tests can verify end-to-end suppression: every Play*
+    /// call (including Bankruptcy/GameWon) and the destruction effect
+    /// drop while silent. A human still hears their own bankruptcy /
+    /// game-won because a human's own turn is never silent.
     /// </summary>
     public bool SilentMode { get; private set; }
     public void SetSilentMode(bool silent) => SilentMode = silent;
@@ -93,8 +93,8 @@ public class MockHexMapView : IHexMapView
 
     // Per-sound recording surface — tests assert against these. Each
     // property records every fire of the matching SoundEffect routed
-    // through PlaySound, with the silent-mode policy applied (per-action
-    // cues drop while silent; Bankruptcy/GameWon stay audible).
+    // through PlaySound, with the silent-mode policy applied (every cue
+    // drops while silent, no exceptions).
     public List<HexCoord> UnitPlacedSounds { get; } = new();
     public List<HexCoord> TowerPlacedSounds { get; } = new();
     public List<HexCoord> UnitCombinedSounds { get; } = new();
@@ -109,8 +109,7 @@ public class MockHexMapView : IHexMapView
 
     public void PlaySound(SoundEffect kind, HexCoord? at = null)
     {
-        bool exemptFromSilent = kind == SoundEffect.Bankruptcy || kind == SoundEffect.GameWon;
-        if (SilentMode && !exemptFromSilent) return;
+        if (SilentMode) return;
         HexCoord coord = at ?? default;
         switch (kind)
         {

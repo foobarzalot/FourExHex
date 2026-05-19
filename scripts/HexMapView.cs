@@ -994,11 +994,15 @@ public partial class HexMapView : Node2D, IHexMapView
     /// themselves when their tweens finish.
     /// </summary>
     /// <summary>True while an AI player runs under the "Instant" AI
-    /// Speed setting — gates per-action sound/anim spawn calls so the
-    /// AI batch is fully silent from the human's perspective. Toggled
-    /// by GameController; game-end overlays (victory/defeat/bankruptcy)
-    /// remain audible because they flow through Refresh, not through
-    /// the gated Play* paths.</summary>
+    /// Speed setting, or for the whole of an instant-speed replay —
+    /// gates every per-action sound/anim spawn call AND the Bankruptcy/
+    /// GameWon cues so the fast-forward is fully silent from the human's
+    /// perspective. Toggled by GameController. A human still hears their
+    /// own bankruptcy / game-won fanfare because a human's own turn is
+    /// never silent (this flag is only set while an AI acts under
+    /// Instant, or across an instant replay — never on a live human
+    /// turn). Game-over visual overlays flow through Refresh, not
+    /// PlaySound, so they render regardless.</summary>
     private bool _silentMode;
     public void SetSilentMode(bool silent)
     {
@@ -1041,14 +1045,15 @@ public partial class HexMapView : Node2D, IHexMapView
     /// is unused today — AudioBus plays through a single non-spatial 2D
     /// player — but the parameter keeps room for a later positional
     /// implementation without touching every caller. Silent-mode gates
-    /// every per-action cue; <see cref="SoundEffect.Bankruptcy"/> and
-    /// <see cref="SoundEffect.GameWon"/> are exempt (turn-/game-boundary
-    /// events the user asked to still hear under Instant).
+    /// every cue with no exceptions: a silent AI-Instant batch or an
+    /// instant replay is a fully silent fast-forward. Bankruptcy/GameWon
+    /// still reach a human because a human's own turn is never silent
+    /// (silent mode is only on while an AI acts under Instant, or for the
+    /// whole of an instant replay).
     /// </summary>
     public void PlaySound(SoundEffect kind, HexCoord? at = null)
     {
-        bool exemptFromSilent = kind == SoundEffect.Bankruptcy || kind == SoundEffect.GameWon;
-        if (_silentMode && !exemptFromSilent) return;
+        if (_silentMode) return;
         switch (kind)
         {
             case SoundEffect.UnitPlaced: AudioBus.Instance.PlayUnitPlaced(); break;

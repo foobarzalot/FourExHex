@@ -114,14 +114,16 @@ public interface IHexMapView
     void RefreshOccupantVisuals(PlayerId? currentPlayer, Treasury treasury);
 
     /// <summary>
-    /// Suppress (true) or restore (false) per-action AI feedback —
-    /// destruction effects, placement/move/combine sounds, and
-    /// tree/grave growth tweens. Set by GameController to true while
-    /// an AI player runs under the "Instant" AI Speed setting, then
-    /// false the moment a human resumes control. Game-state overlays
-    /// (victory, defeat, bankruptcy) flow through <see cref="Refresh"/>
-    /// and are unaffected — the user still sees those events even
-    /// when the AI batch is otherwise silent.
+    /// Suppress (true) or restore (false) AI/replay fast-forward
+    /// feedback — destruction effects, every <see cref="PlaySound"/>
+    /// cue (including Bankruptcy/GameWon), and tree/grave growth tweens.
+    /// Set by GameController to true while an AI player runs under the
+    /// "Instant" AI Speed setting (cleared the moment a human resumes
+    /// control) or for the whole of an instant-speed replay. A human
+    /// still hears their own bankruptcy / game-won because a human's
+    /// own turn is never silent. Game-over *visual* overlays flow
+    /// through <see cref="Refresh"/>, not this gate, so they always
+    /// render.
     /// </summary>
     void SetSilentMode(bool silent);
 
@@ -140,12 +142,11 @@ public interface IHexMapView
     /// Play a one-shot sound cue for a game event. The optional
     /// <paramref name="at"/> coord is reserved for a future positional
     /// implementation; the current AudioBus plays through a single
-    /// non-spatial 2D player. Silent-mode policy: per-action cues
-    /// (placement, combine, destruction, rally, defeat) drop while the
-    /// view is in silent mode (AI Instant batch); turn-/game-boundary
-    /// cues (<see cref="SoundEffect.Bankruptcy"/>,
-    /// <see cref="SoundEffect.GameWon"/>) always play. The view enforces
-    /// this — callers don't gate.
+    /// non-spatial 2D player. Silent-mode policy: ALL cues drop while
+    /// the view is in silent mode (AI Instant batch or instant replay)
+    /// — no exceptions. A human still hears Bankruptcy/GameWon for
+    /// their own turn because a human's own turn is never silent. The
+    /// view enforces this — callers don't gate.
     /// </summary>
     void PlaySound(SoundEffect kind, HexCoord? at = null);
 
@@ -163,13 +164,12 @@ public interface IHexMapView
 }
 
 /// <summary>
-/// One-shot sound cues the controller can ask the view to play. The
-/// per-action cues (Unit*, Tower*, Tree*, Capital*, Rally, PlayerDefeated)
-/// are gated by the view's silent-mode toggle so the AI Instant batch
-/// stays inaudible from the human's perspective. <see cref="Bankruptcy"/>
-/// and <see cref="GameWon"/> are turn-/game-boundary events the user
-/// asked to still hear under Instant — the view exempts them from the
-/// gate.
+/// One-shot sound cues the controller can ask the view to play. Every
+/// cue (including <see cref="Bankruptcy"/> and <see cref="GameWon"/>) is
+/// gated by the view's silent-mode toggle so a silent AI-Instant batch
+/// or an instant replay is a fully silent fast-forward. A human still
+/// hears Bankruptcy/GameWon on their own turn because a human's own
+/// turn is never silent.
 /// </summary>
 public enum SoundEffect
 {

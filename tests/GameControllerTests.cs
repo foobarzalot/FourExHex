@@ -752,6 +752,80 @@ public class GameControllerTests
         Assert.Equal(0, g.Map.BankruptcySoundCount);
     }
 
+    private static (GameState State, SessionState Session, MockHexMapView Map,
+        MockHudView Hud, Player Red, Player Blue) BuildBlueBankruptcyScenario(bool blueIsAi)
+    {
+        // 5x2 grid: Red (human) holds {(0,1),(1,1)}, Blue holds the rest.
+        // A Knight on a Blue tile with a zeroed Blue capital guarantees
+        // Blue's next StartPlayerTurn bankrupts (Knight upkeep 18 > Blue
+        // income). Mirrors StartPlayerTurn_BankruptcyOccurs_* but lets the
+        // caller make Blue AI and wires aiSilentMode.
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1), isAi: blueIsAi);
+        var players = new List<Player> { red, blue };
+
+        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Id);
+        grid.Get(HexCoord.FromOffset(0, 1))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(1, 1))!.Owner = red.Id;
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        session.ClaimVictoryPromptedHighestThreshold[red.Id] = 90;
+        session.ClaimVictoryPromptedHighestThreshold[blue.Id] = 90;
+        return (state, session, new MockHexMapView(), new MockHudView(), red, blue);
+    }
+
+    [Fact]
+    public void StartPlayerTurn_AiBankruptcy_UnderInstantSilentMode_IsSilenced()
+    {
+        // Blue is AI; aiSilentMode is on (the "Instant" AI Speed wiring).
+        // When Blue's turn starts the view is in silent mode, so the
+        // per-turn bankruptcy toll must NOT reach the player — the AI
+        // batch is a silent fast-forward.
+        var (state, session, map, hud, _, blue) = BuildBlueBankruptcyScenario(blueIsAi: true);
+        var controller = new GameController(
+            state, session, map, hud, seed: 0,
+            aiChooser: (s, c, v, r) => null,
+            aiPacer: new SynchronousAiPacer(),
+            aiSilentMode: () => true);
+        controller.StartGame();
+
+        HexCoord blueCapital = state.Territories.First(t => t.Owner == blue.Id).Capital!.Value;
+        state.Grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = new Unit(blue.Id, UnitLevel.Knight);
+        state.Treasury.SetGold(blueCapital, 0);
+
+        hud.ClickEndTurn(); // Red ends → Blue (AI) StartPlayerTurn bankrupts
+
+        Assert.IsType<Grave>(state.Grid.Get(HexCoord.FromOffset(3, 0))!.Occupant);
+        Assert.Equal(0, map.BankruptcySoundCount);
+    }
+
+    [Fact]
+    public void StartPlayerTurn_HumanBankruptcy_StillAudible_EvenWhenAiSilentModePredicateOn()
+    {
+        // Blue is human. Even though aiSilentMode() returns true, it's
+        // the human's own turn, so silent mode is off and the player
+        // hears their own bankruptcy bell. Pins the "always play for a
+        // human player" half of the rule.
+        var (state, session, map, hud, _, blue) = BuildBlueBankruptcyScenario(blueIsAi: false);
+        var controller = new GameController(
+            state, session, map, hud, seed: 0,
+            aiChooser: (s, c, v, r) => null,
+            aiPacer: new SynchronousAiPacer(),
+            aiSilentMode: () => true);
+        controller.StartGame();
+
+        HexCoord blueCapital = state.Territories.First(t => t.Owner == blue.Id).Capital!.Value;
+        state.Grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = new Unit(blue.Id, UnitLevel.Knight);
+        state.Treasury.SetGold(blueCapital, 0);
+
+        hud.ClickEndTurn(); // Red ends → Blue (human) StartPlayerTurn bankrupts
+
+        Assert.IsType<Grave>(state.Grid.Get(HexCoord.FromOffset(3, 0))!.Occupant);
+        Assert.Equal(1, map.BankruptcySoundCount);
+    }
+
     [Fact]
     public void Move_CaptureEnemyCapital_FiresCapitalDestroyedSound_NotPlace()
     {

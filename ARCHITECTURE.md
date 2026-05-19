@@ -441,10 +441,14 @@ Consequences for the rest of this doc:
 │   RebuildAfterTerritoryChange (per-capture teardown would flash trees   │
 │   off-and-on as captures fire mid-batch; the end-of-batch refresh's    │
 │   diff loop frees only the trees actually chopped).                     │
-│   SoundEffect.Bankruptcy and SoundEffect.GameWon are exempt from the    │
-│   silent gate — turn-/game-boundary events the user asked to still     │
-│   hear under Instant. The same exemption is mirrored in MockHexMapView │
-│   so integration tests can verify end-to-end silence.                  │
+│   Every PlaySound cue — including SoundEffect.Bankruptcy and            │
+│   SoundEffect.GameWon — obeys the silent gate with NO exceptions, so a  │
+│   silent AI-Instant batch or an instant replay is a fully silent        │
+│   fast-forward. A human still hears their own bankruptcy / game-won     │
+│   because a human-controlled turn is never silent (the flag is set      │
+│   only while an AI acts under Instant, or across an instant replay).    │
+│   The same all-cues policy is mirrored in MockHexMapView so             │
+│   integration tests can verify end-to-end silence.                      │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -476,9 +480,11 @@ void FlashRejection(HexCoord target, RejectionShape shape, IEnumerable<HexCoord>
 // (UnitPlaced, TowerPlaced, UnitCombined, UnitDestroyed,
 // TowerDestroyed, TreeCleared, CapitalDestroyed, Bankruptcy, GameWon,
 // Rally, PlayerDefeated) picks which cue. The optional coord is
-// reserved for a future positional implementation. Per-action cues
-// drop while the view is in silent mode; Bankruptcy and GameWon
-// always play (turn-/game-boundary events).
+// reserved for a future positional implementation. ALL cues
+// (including Bankruptcy and GameWon) drop while the view is in
+// silent mode — a silent AI-Instant batch or an instant replay is
+// fully silent. A human still hears their own bankruptcy / game-won
+// because a human-controlled turn is never silent.
 void PlaySound(SoundEffect kind, HexCoord? at = null);
 ```
 

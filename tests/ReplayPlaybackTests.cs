@@ -344,6 +344,67 @@ public class ReplayPlaybackTests
     }
 
     [Fact]
+    public void Replay_Instant_DoesNotPlayBankruptcySound()
+    {
+        // A Baron pre-placed on Red's 2-tile territory (upkeep 54 ≫
+        // Red's seeded gold + income) guarantees Red's StartPlayerTurn
+        // bankrupts on turn 2 — both during the live recording and again
+        // when the recorded EndTurn beats replay it. Instant replay is a
+        // silent fast-forward, so the bankruptcy bell must NOT play
+        // during playback (it leaked through the old unconditional
+        // Bankruptcy/GameWon silent-gate exemption).
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
+        var players = new List<Player> { red, blue };
+
+        HexGrid grid = TestHelpers.BuildRectGrid(5, 2, blue.Id);
+        grid.Get(HexCoord.FromOffset(0, 1))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(1, 1))!.Owner = red.Id;
+        // Pre-placed BEFORE StartGame so it rides in the initial replay
+        // snapshot and the bankruptcy reproduces on playback.
+        grid.Get(HexCoord.FromOffset(0, 1))!.Occupant = new Unit(red.Id, UnitLevel.Baron);
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        session.ClaimVictoryPromptedHighestThreshold[red.Id] = 90;
+        session.ClaimVictoryPromptedHighestThreshold[blue.Id] = 90;
+        var map = new MockHexMapView();
+        var hud = new MockHudView();
+        var pacer = new QueuedAiPacer();
+        var controller = new GameController(
+            state, session, map, hud,
+            seed: 1,
+            aiPacer: pacer,
+            maxTurnNumber: 20,
+            replayIsInstantMode: () => true);
+        controller.StartGame();
+        pacer.DrainAll();
+
+        hud.ClickEndTurn(); pacer.DrainAll(); // Red ends T1
+        hud.ClickEndTurn(); pacer.DrainAll(); // Blue ends T1 → Red T2 bankrupts
+        hud.ClickEndTurn(); pacer.DrainAll(); // Red ends T2
+        hud.ClickEndTurn(); pacer.DrainAll(); // Blue ends T2 → Red T3
+
+        // The live bankruptcy fired (silent off during live recording).
+        // By Red's T3 start the bankruptcy Grave has aged into a Tree
+        // (grave → tree at the owner's next turn-start), so the
+        // post-recording occupant proves the bankruptcy happened.
+        Assert.Equal(1, map.BankruptcySoundCount);
+        Assert.IsType<Tree>(state.Grid.Get(HexCoord.FromOffset(0, 1))!.Occupant);
+        Assert.True(controller.ReplayBeats.Count(b => b is ReplayEndTurnBeat) >= 4);
+
+        int bankruptcyBefore = map.BankruptcySoundCount;
+        controller.BeginReplay();
+        pacer.DrainAll();
+
+        // Replay reproduced the bankruptcy (Baron → Grave → Tree, same
+        // deterministic aging) but stayed silent.
+        Assert.IsType<Tree>(state.Grid.Get(HexCoord.FromOffset(0, 1))!.Occupant);
+        Assert.Equal(bankruptcyBefore, map.BankruptcySoundCount);
+    }
+
+    [Fact]
     public void Replay_Instant_RedrawsOncePerTurn_NotPerCapture()
     {
         // Custom grid: Blue AI has five peasants, each adjacent to a
