@@ -5,6 +5,56 @@ new to the codebase. The MVC split (Main → GameController → views /
 model / rules) is the load-bearing structure; everything else hangs
 off it.
 
+## Project structure & the Godot-free model (read this first)
+
+The codebase is split across **two C# projects**:
+
+- **`src/FourExHex.Model/FourExHex.Model.csproj`** — a plain
+  `Microsoft.NET.Sdk` class library with **no GodotSharp reference and
+  not a Godot SDK project**. It holds the entire model: state types,
+  the static rule classes, the AI subsystem, snapshot/undo, save
+  serialization, `GameController`, and the `IHexMapView` / `IHudView` /
+  `IAiPacer` view-boundary interfaces. Because GodotSharp is not on its
+  reference graph, this code is *physically incapable* of depending on
+  Godot — adding `using Godot;` to any file here fails to compile. This
+  is the load-bearing invariant; it is enforced by the compiler, not by
+  a hand-maintained file list.
+- **`FourExHex.csproj`** (`Godot.NET.Sdk`) — the game. `<ProjectReference>`s
+  the model library and adds `src/**/*` to `DefaultItemExcludes` (the
+  Godot glob must not also compile the moved sources — that would
+  duplicate every type). Holds only Godot `Node`/scene/view code that
+  stays in `scripts/`: scene roots, `HexMapView`/`HudView`, the editor
+  and tutorial-builder panels, `SaveStore` (filesystem), `AudioBus`,
+  `SceneTreeTimerFactory`, `HeadlessViews`, and the two view-boundary
+  adapters below.
+- **`tests/FourExHex.Tests.csproj`** — `<ProjectReference>`s the model
+  library, with **no GodotSharp and no per-file `<Compile Include>`
+  list**. That the suite compiles and passes (958+) with zero Godot on
+  its reference graph is the compile-time purity proof.
+
+Consequences for the rest of this doc:
+
+- **Player identity is `PlayerId`**, a Godot-free `readonly struct`
+  (roster index; `PlayerId.None` == default == "unowned", encodes as
+  owner-index `-1`). The model never carries a color. Diagrams below
+  written before the split may say `Color` for an owner/winner field —
+  read those as `PlayerId`.
+- **Color is a pure view concern.** `scripts/PlayerPalette.cs` (Godot
+  side) maps `PlayerId → Godot.Color` (and back, for old-save loading
+  and editor painting) from `GameSettings.PlayerConfig` hex strings.
+- **Pixel projection is view-side.** `HexCoord.Round` (cube-rounding)
+  stays in the model; `scripts/HexPixel.cs` (Godot side) owns
+  `ToPixel`/`FromPixel` and calls back into `HexCoord.Round`.
+- **`AiLog` is Godot-free** — it routes through an injectable
+  `AiLog.Sink` that `Main` wires to `GD.Print`.
+- **Save format is v5.** Ownership is a player index on the wire (−1 =
+  `None`); claim-victory tiers are persisted by player index
+  (palette-independent). v2–v5 still load; v2–v4 migrate their legacy
+  color-hex claim data via `GameSettings` palette matching.
+- **`.cs.uid` sidecars**: the moved model files are not Godot
+  resources, so theirs were removed; `src/**` is `.gdignore`d. Files
+  still in `scripts/` keep their tracked `.cs.uid`.
+
 ## Layered view
 
 ```
@@ -415,7 +465,7 @@ void ShowMoveSource(HexCoord? coord);
 void ShowHighlight(Territory? selected);
 void CenterOnTerritory(Territory territory);
 void RebuildAfterTerritoryChange();
-void RefreshOccupantVisuals(Color? currentPlayerColor, Treasury treasury);
+void RefreshOccupantVisuals(PlayerId? currentPlayer, Treasury treasury);
 void PlayDestructionEffect(HexCoord coord, HexOccupant destroyed);
 
 // Rejection feedback (forbidden-slash on target + animated arrows
@@ -858,7 +908,7 @@ overlay is up so the human can read the result before play resumes.
 
 `AdvanceToNextActivePlayer()` calls `TurnState.EndTurn()` (which
 increments `TurnNumber` on wrap) then loops while
-`WinConditionRules.IsEliminated(currentPlayer.Color, grid)` is true.
+`WinConditionRules.IsEliminated(currentPlayer.Id, grid)` is true.
 The eliminated player can't take any input or AI action, but they're
 not silently skipped: each loop iteration runs a "phantom turn" that
 ticks the tile-bound rules — `TreeRules.RunStartOfTurnGrowth` (turn >
@@ -2057,8 +2107,17 @@ FOUREXHEX_6AI=1 /Applications/Godot_mono.app/Contents/MacOS/Godot \
 
 ## File layout
 
+Files are grouped by responsibility below. The **project** a file
+belongs to follows the split in "Project structure & the Godot-free
+model" above: Godot `Node`/scene/view/filesystem code (and the
+`PlayerPalette` / `HexPixel` view adapters) lives in `scripts/` in the
+`FourExHex` Godot project; everything else — model, rules, AI,
+`GameController`, view interfaces, save serialization, `PlayerId` —
+lives in `src/FourExHex.Model/` in the Godot-free library. The tree
+keeps the historical `scripts/` prefix only as a grouping label.
+
 ```
-scripts/
+scripts/  (model files now under src/FourExHex.Model/ — see split above)
 ├─ Main.cs                ─ play scene root; wires model + views + controller
 ├─ MainMenuScene.cs       ─ landing (Play / Load / Map Editor +
 │                           debug-only Tutorial Builder) + play-config
@@ -2326,10 +2385,13 @@ tests/
 `SceneTreeTimerFactory.cs`, `HeadlessViews.cs`, `SaveStore.cs`,
 `AudioBus.cs`, and `UserSettings.cs` are NOT compiled into
 the test assembly — they derive from Godot nodes or depend on `SceneTree`
-/ Godot `FileAccess` / autoload lifecycle. The test csproj explicitly lists
-each production source file it includes, so when you add a new
-testable source file you must add a matching `<Compile Include>`
-entry or tests won't see it.
+/ Godot `FileAccess` / autoload lifecycle, so they stay in the
+`FourExHex` (Godot) project. The test project `<ProjectReference>`s
+`src/FourExHex.Model` and has NO per-file `<Compile Include>` list and
+NO GodotSharp reference: a new testable source file is picked up
+automatically as long as it lives in `src/FourExHex.Model/`. If it
+needs Godot it does not belong in the model — put it in `scripts/` and
+test the Godot-free logic it calls instead.
 
 ## Tests
 
@@ -2341,9 +2403,16 @@ round-trip, save/serialize/deserialize equivalence, RNG determinism
 across save/load, replay recording + playback contracts, and a
 6-heuristic-AI replay-fidelity test that hashes the live final
 state, round-trips it through SaveSerializer, and asserts the
-replayed state matches digest-for-digest. The view layer is
-deliberately uncovered — it depends on Godot's `Node` lifecycle, so
-pin behavior in the controller and rules instead.
+replayed state matches digest-for-digest. Also covers `PlayerId`
+semantics, the `AiLog` sink, `HexCoord.Round`, and v2→v5 save
+migration (`SaveMigrationTests`). The view layer is deliberately
+uncovered — it depends on Godot's `Node` lifecycle, so pin behavior
+in the controller and rules instead.
+
+That `dotnet test` builds and passes against `FourExHex.Model` with
+**zero GodotSharp on the reference graph** is itself the purity test:
+if model code ever takes a Godot dependency, the library stops
+compiling and the whole suite goes red.
 
 For coverage:
 
