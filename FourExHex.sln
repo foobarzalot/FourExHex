@@ -6,6 +6,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FourExHex.Tests", "tests\Fo
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FourExHex.Model", "src\FourExHex.Model\FourExHex.Model.csproj", "{B1D3F7A2-0C4E-4E2A-9F5B-1A2B3C4D5E6F}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FourExHex.Controller", "src\FourExHex.Controller\FourExHex.Controller.csproj", "{108B3A70-F819-43A7-AB6F-F48F661832B6}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -31,5 +33,11 @@ Global
 		{B1D3F7A2-0C4E-4E2A-9F5B-1A2B3C4D5E6F}.ExportDebug|Any CPU.Build.0 = Debug|Any CPU
 		{B1D3F7A2-0C4E-4E2A-9F5B-1A2B3C4D5E6F}.ExportRelease|Any CPU.ActiveCfg = Debug|Any CPU
 		{B1D3F7A2-0C4E-4E2A-9F5B-1A2B3C4D5E6F}.ExportRelease|Any CPU.Build.0 = Debug|Any CPU
+		{108B3A70-F819-43A7-AB6F-F48F661832B6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{108B3A70-F819-43A7-AB6F-F48F661832B6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{108B3A70-F819-43A7-AB6F-F48F661832B6}.ExportDebug|Any CPU.ActiveCfg = Debug|Any CPU
+		{108B3A70-F819-43A7-AB6F-F48F661832B6}.ExportDebug|Any CPU.Build.0 = Debug|Any CPU
+		{108B3A70-F819-43A7-AB6F-F48F661832B6}.ExportRelease|Any CPU.ActiveCfg = Debug|Any CPU
+		{108B3A70-F819-43A7-AB6F-F48F661832B6}.ExportRelease|Any CPU.Build.0 = Debug|Any CPU
 	EndGlobalSection
 EndGlobal

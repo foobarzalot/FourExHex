@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Godot-free orchestration layer: GameController, SessionState,
+    undo/redo, the view-boundary interfaces (IHexMapView / IHudView /
+    IAiPacer), the AI pacers, and the tutorial Record/Preview scripting
+    helpers. Sits ABOVE FourExHex.Model and references it one-way; the
+    model has NO reference back, so the compiler physically rejects any
+    GameController / SessionState / view reference from model code — the
+    same purity trick the Godot-free split already uses for GodotSharp.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>12</LangVersion>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>FourExHex</RootNamespace>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FourExHex.Model\FourExHex.Model.csproj" />
+  </ItemGroup>
+
+</Project>

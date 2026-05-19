@@ -7,30 +7,48 @@ off it.
 
 ## Project structure & the Godot-free model (read this first)
 
-The codebase is split across **two C# projects**:
+The codebase is split across **four C# projects**, layered
+Model → Controller → game (with the test project alongside):
 
 - **`src/FourExHex.Model/FourExHex.Model.csproj`** — a plain
   `Microsoft.NET.Sdk` class library with **no GodotSharp reference and
-  not a Godot SDK project**. It holds the entire model: state types,
-  the static rule classes, the AI subsystem, snapshot/undo, save
-  serialization, `GameController`, and the `IHexMapView` / `IHudView` /
-  `IAiPacer` view-boundary interfaces. Because GodotSharp is not on its
-  reference graph, this code is *physically incapable* of depending on
-  Godot — adding `using Godot;` to any file here fails to compile. This
-  is the load-bearing invariant; it is enforced by the compiler, not by
-  a hand-maintained file list.
-- **`FourExHex.csproj`** (`Godot.NET.Sdk`) — the game. `<ProjectReference>`s
-  the model library and adds `src/**/*` to `DefaultItemExcludes` (the
-  Godot glob must not also compile the moved sources — that would
-  duplicate every type). Holds only Godot `Node`/scene/view code that
-  stays in `scripts/`: scene roots, `HexMapView`/`HudView`, the editor
-  and tutorial-builder panels, `SaveStore` (filesystem), `AudioBus`,
-  `SceneTreeTimerFactory`, `HeadlessViews`, and the two view-boundary
-  adapters below.
-- **`tests/FourExHex.Tests.csproj`** — `<ProjectReference>`s the model
-  library, with **no GodotSharp and no per-file `<Compile Include>`
-  list**. That the suite compiles and passes (958+) with zero Godot on
-  its reference graph is the compile-time purity proof.
+  not a Godot SDK project**, and **no reference to the controller
+  layer**. It holds the pure model: state types, the static rule
+  classes, the AI subsystem (incl. `AiDispatcher`), the generic
+  `UndoStack<T>` + `GameStateSnapshot`, save serialization
+  (`SaveSerializer`, `Replay`, `ReplayBeat`, the `Tutorial` POCO), and
+  `MapGenerator` / `MapEditPaint` / `EditorSnapshot`.
+- **`src/FourExHex.Controller/FourExHex.Controller.csproj`** — a plain
+  `Microsoft.NET.Sdk` class library that `<ProjectReference>`s **only**
+  `FourExHex.Model` (one-way). It holds the orchestration layer:
+  `GameController`, the UI-scoped `SessionState` +
+  `SessionStateSnapshot` + `UndoEntry`, the `IHexMapView` / `IHudView`
+  / `IAiPacer` view-boundary interfaces, the AI pacers (`AiPacer` /
+  `GodotAiPacer`), and the `Tutorial/` Record/Preview scripting helpers
+  (everything in `Tutorial/` except the model-side `Tutorial` POCO).
+- Because GodotSharp is on neither library's reference graph, model
+  and controller code are both *physically incapable* of depending on
+  Godot — `using Godot;` anywhere in either fails to compile. And
+  because Model has no reference to Controller, model code is
+  *physically incapable* of naming `GameController` / `SessionState` /
+  the view interfaces — a stray reference fails the build with
+  `CS0246`. Both are load-bearing invariants enforced by the compiler,
+  not by a hand-maintained file list.
+- **`FourExHex.csproj`** (`Godot.NET.Sdk`) — the game.
+  `<ProjectReference>`s **both** `FourExHex.Model` and
+  `FourExHex.Controller`, and adds `src/**/*` to `DefaultItemExcludes`
+  (the Godot glob must not also compile the moved sources — that would
+  duplicate every type; the single `src/**` exclude already covers the
+  new `src/FourExHex.Controller/` subdir). Holds only Godot
+  `Node`/scene/view code that stays in `scripts/`: scene roots,
+  `HexMapView`/`HudView`, the editor and tutorial-builder panels,
+  `SaveStore` (filesystem), `AudioBus`, `SceneTreeTimerFactory`,
+  `HeadlessViews`, and the two view-boundary adapters below.
+- **`tests/FourExHex.Tests.csproj`** — `<ProjectReference>`s **both**
+  `FourExHex.Model` and `FourExHex.Controller`, with **no GodotSharp
+  and no per-file `<Compile Include>` list**. That the suite compiles
+  and passes (961+) with zero Godot on its reference graph is the
+  compile-time purity proof.
 
 Consequences for the rest of this doc:
 
@@ -2115,15 +2133,28 @@ FOUREXHEX_6AI=1 /Applications/Godot_mono.app/Contents/MacOS/Godot \
 
 Files are grouped by responsibility below. The **project** a file
 belongs to follows the split in "Project structure & the Godot-free
-model" above: Godot `Node`/scene/view/filesystem code (and the
-`PlayerPalette` / `HexPixel` view adapters) lives in `scripts/` in the
-`FourExHex` Godot project; everything else — model, rules, AI,
-`GameController`, view interfaces, save serialization, `PlayerId` —
-lives in `src/FourExHex.Model/` in the Godot-free library. The tree
-keeps the historical `scripts/` prefix only as a grouping label.
+model" above. Three source trees:
+
+- `scripts/` (the `FourExHex` Godot project) — Godot
+  `Node`/scene/view/filesystem code plus the `PlayerPalette` /
+  `HexPixel` view adapters.
+- `src/FourExHex.Model/` (the `FourExHex.Model` library) — pure model,
+  rules, AI (incl. `AiDispatcher`), `UndoStack<T>` +
+  `GameStateSnapshot`, save serialization (`SaveSerializer`, `Replay`,
+  `ReplayBeat`, the `Tutorial` POCO), `MapGenerator` / `MapEditPaint`
+  / `EditorSnapshot`, `PlayerId`.
+- `src/FourExHex.Controller/` (the `FourExHex.Controller` library,
+  references Model one-way) — `GameController`, `SessionState` /
+  `SessionStateSnapshot` / `UndoEntry`, the `IHexMapView` /
+  `IHudView` / `IAiPacer` interfaces, `AiPacer` / `GodotAiPacer`, and
+  the `Tutorial/` Record/Preview scripting helpers (everything in
+  `Tutorial/` except the `Tutorial` POCO).
+
+The tree below keeps the historical `scripts/` prefix only as a
+grouping label; the per-file project is per the lists above.
 
 ```
-scripts/  (model files now under src/FourExHex.Model/ — see split above)
+scripts/  (split: see the three source trees listed just above)
 ├─ Main.cs                ─ play scene root; wires model + views + controller
 ├─ MainMenuScene.cs       ─ landing (Play / Load / Map Editor +
 │                           debug-only Tutorial Builder) + play-config
@@ -2393,10 +2424,11 @@ tests/
 the test assembly — they derive from Godot nodes or depend on `SceneTree`
 / Godot `FileAccess` / autoload lifecycle, so they stay in the
 `FourExHex` (Godot) project. The test project `<ProjectReference>`s
-`src/FourExHex.Model` and has NO per-file `<Compile Include>` list and
-NO GodotSharp reference: a new testable source file is picked up
-automatically as long as it lives in `src/FourExHex.Model/`. If it
-needs Godot it does not belong in the model — put it in `scripts/` and
+both `src/FourExHex.Model` and `src/FourExHex.Controller` and has NO
+per-file `<Compile Include>` list and NO GodotSharp reference: a new
+testable source file is picked up automatically as long as it lives in
+`src/FourExHex.Model/` or `src/FourExHex.Controller/`. If it needs
+Godot it does not belong in either library — put it in `scripts/` and
 test the Godot-free logic it calls instead.
 
 ## Tests
@@ -2415,10 +2447,11 @@ migration (`SaveMigrationTests`). The view layer is deliberately
 uncovered — it depends on Godot's `Node` lifecycle, so pin behavior
 in the controller and rules instead.
 
-That `dotnet test` builds and passes against `FourExHex.Model` with
-**zero GodotSharp on the reference graph** is itself the purity test:
-if model code ever takes a Godot dependency, the library stops
-compiling and the whole suite goes red.
+That `dotnet test` builds and passes against `FourExHex.Model` +
+`FourExHex.Controller` with **zero GodotSharp on the reference graph**
+is itself the purity test: if either library ever takes a Godot
+dependency — or if model code ever names a controller-layer type —
+the build stops compiling and the whole suite goes red.
 
 For coverage:
 
