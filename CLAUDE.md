@@ -51,6 +51,8 @@ Show the diff and get buy-in on the plan when rule changes have test fallout (e.
 
 **Architecture-doc-before-push rule**: When the user asks to push code changes to the remote, ask first whether they want `ARCHITECTURE.md` updated to reflect those changes — and wait for an answer before pushing. Triggers on any push whose diff (committed or about-to-commit) touches code: `.cs`, `.tscn`, `.csproj`, `project.godot`, etc. Skip the question if the push is documentation-only (`*.md` and similar) — there's no code drift to capture. Don't ask on plain commits, only when the push itself is requested.
 
+**Tech-debt-capture rule**: When you discover a problem in your own work — a flaky test, a known-broken edge case, a shortcut taken to unblock something, a TODO you'd otherwise drop into a comment — and you are not fixing it right now in this change, add an entry to `TECHDEBT.md` instead of leaving it un-tracked. Include enough context that future-you can act on it: file/line, symptom, suspected cause, and candidate fixes. The bar is "did I notice it and choose to defer it" — if yes, it goes in `TECHDEBT.md`. Don't silently move on.
+
 ## Diagnostic AI-stress mode (`FOUREXHEX_6AI`)
 
 Setting the env var `FOUREXHEX_6AI` before launching Godot reconfigures the session for a fully headless regression run:
