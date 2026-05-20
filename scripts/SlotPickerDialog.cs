@@ -34,7 +34,7 @@ public partial class SlotPickerDialog : Window
     public SlotPickerDialog(string title, string errorTitle, bool disableHorizontalScroll = false)
     {
         Title = title;
-        Size = new Vector2I(440, 360);
+        Size = new Vector2I(560, 480);
         Visible = false;
         Exclusive = true;
         CloseRequested += () => Hide();
