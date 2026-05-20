@@ -54,9 +54,10 @@ Consequences for the rest of this doc:
 
 - **Player identity is `PlayerId`**, a Godot-free `readonly struct`
   (roster index; `PlayerId.None` == default == "unowned", encodes as
-  owner-index `-1`). The model never carries a color. Diagrams below
-  written before the split may say `Color` for an owner/winner field —
-  read those as `PlayerId`.
+  owner-index `-1`). The model never carries a color; every
+  owner/winner/actor field — `HexTile.Owner`, `Player.Id`,
+  `Territory.Owner`, `SessionState.Winner`, `PendingDefeatScreen`,
+  `PendingClaimVictory`, etc. — is a `PlayerId`.
 - **Color is a pure view concern.** `scripts/PlayerPalette.cs` (Godot
   side) maps `PlayerId → Godot.Color` (and back, for old-save loading
   and editor painting) from `GameSettings.PlayerConfig` hex strings.
@@ -232,7 +233,7 @@ Consequences for the rest of this doc:
 │   │                                                                      │
 │   └─ single UI update path:                                              │
 │        RefreshViews() → _hud.Refresh(state, session, hasActionable)      │
-│                       → _map.RefreshOccupantVisuals(playerColor, tr.)    │
+│                       → _map.RefreshOccupantVisuals(currentPlayer, tr.)  │
 │                       → _hud.SetCta(EndTurn, !hasActionable)            │
 │                       → _onAfterRefresh?.Invoke()  (Preview cue hook;    │
 │                         null in ordinary play)                           │
@@ -263,20 +264,20 @@ Consequences for the rest of this doc:
 │                           │  │   │    Ended; suppresses pan + click events│
 │                           │  │   ├─ ShowHighlight(territory)              │
 │   SessionState            │  │   ├─ ShowMoveTargets(coords, level)        │
-│   ├─ Winner (Color?)      │  │   ├─ ShowTowerTargets(coords)              │
+│   ├─ Winner (PlayerId?)   │  │   ├─ ShowTowerTargets(coords)              │
 │   ├─ PendingDefeatScreen  │  │   ├─ ShowTowerCoverage(coords)             │
-│   │   (Color? — drives    │  │   ├─ ShowMoveSource(coord?)                │
+│   │   (PlayerId? — drives │  │   ├─ ShowMoveSource(coord?)                │
 │   │   the defeat overlay) │  │   ├─ CenterOnTerritory(territory)          │
 │   ├─ PendingClaimVictory  │  │   ├─ RebuildAfterTerritoryChange()         │
-│   │   ((Color, percent)?  │  │   ├─ RefreshOccupantVisuals(color, tr.)    │
+│   │   ((PlayerId,percent)?│  │   ├─ RefreshOccupantVisuals(color, tr.)    │
 │   │   — drives the claim- │  │   ├─ PlayDestructionEffect(coord, occ.)    │
 │   │   victory overlay;    │  │   ├─ Play{UnitPlaced, TowerPlaced,         │
 │   │   percent ∈ {50,75,90}│  │   │    UnitCombined, UnitDestroyed,        │
 │   │   — human-only)       │  │   │    TowerDestroyed, TreeCleared,        │
 │   ├─ ClaimVictoryPrompted │  │   │    CapitalDestroyed, Bankruptcy,       │
 │   │   HighestThreshold    │  │   │    GameWon, Rally, PlayerDefeated}     │
-│   │   (Dict<Color,int> —  │  │   │    — audio sinks routed to AudioBus    │
-│   │   color→highest tier  │  │   └─ layers: borders / capitals / units /  │
+│   │   (Dict<PlayerId,int> │  │   │    — audio sinks routed to AudioBus    │
+│   │   — player→top tier   │  │   └─ layers: borders / capitals / units /  │
 │   │   dismissed; persists │  │             towers / trees / graves /     │
 │   │   across save/load)   │  │             targets / highlight            │
 │   ├─ SelectedTerritory    │  │                                            │
@@ -371,7 +372,7 @@ Consequences for the rest of this doc:
 │                                                                          │
 │   HexCoord (struct, IEquatable, IComparable)                             │
 │   HexGrid — Dictionary<HexCoord, HexTile>                                │
-│   HexTile — Coord, Color, Occupant (pure model — no view ref)            │
+│   HexTile — Coord, Owner, Occupant (pure model — no view ref)            │
 │   HexOccupant (abstract)                                                 │
 │     ├─ Unit — Owner, Level, HasMovedThisTurn                             │
 │     ├─ Capital — marker                                                  │
@@ -379,11 +380,11 @@ Consequences for the rest of this doc:
 │     ├─ Tree — marker (blocks income; movement onto a tree consumes the   │
 │     │         action and clears the tile)                                │
 │     └─ Grave — marker (blocks income; converts to a Tree at the start    │
-│                of the owning color's next turn)                          │
+│                of the owning player's next turn)                         │
 │   UnitLevel — Peasant=1, Spearman=2, Knight=3, Baron=4                   │
 │   Territory — Owner, Coords, Capital (immutable)                         │
 │   TerritoryExtensions — BuildTileIndex                                   │
-│   Player — Name, Color, Kind (AiKind), IsAi                              │
+│   Player — Name, Id, Kind (AiKind), IsAi                                 │
 │   AiKind — Human, Random, Heuristic, Tutorial (tutorial-only)            │
 │   TurnState — Players[], CurrentPlayerIndex, TurnNumber                  │
 │   Treasury — Dictionary<HexCoord, int>; CollectIncomeFor;                │
@@ -795,14 +796,14 @@ public interface ITimerFactory { void After(int delayMs, Action callback); }
   which captures pre-state, runs the body, and pushes one `UndoEntry`
   iff state actually changed — automatic de-dup of no-op clicks.
   Exceptions inside a handler propagate without pushing.
-- **`HexTile` is a pure model — no view coupling.** `HexTile.Color`
+- **`HexTile` is a pure model — no view coupling.** `HexTile.Owner`
   is plain state; it does NOT push into a `Polygon2D` (the old
   setter side-effect + `HexTile.Visual` were removed). The view owns
   the tile→fill map (`HexMapView._tileVisuals`) and resyncs every
   fill from `_state` inside `RebuildAfterTerritoryChange()` — the
   single coalesced repaint path. This is why an instant fast-forward
   no longer leaks per-action recolors: model captures mutate
-  `tile.Color` with zero view effect; the screen only catches up when
+  `tile.Owner` with zero view effect; the screen only catches up when
   the driver calls `RebuildAfterTerritoryChange` (once per turn /
   at batch end).
 - **Undo is turn-scoped.** `OnEndTurnPressed` clears the stack, so
@@ -1024,7 +1025,7 @@ GameController.OnTileClicked  ── wrapped in TrackHandler:
         └─ ExecuteMove(source, destination)
               ├─ _handlerMutatedGame = true
               ├─ wasCombine = WasFriendlyUnitAt(dst, owner)
-              ├─ MovementRules.Move → dst.Color = attacker; dst.Occupant = unit
+              ├─ MovementRules.Move → dst.Owner = attacker; dst.Occupant = unit
               │                      → unit.HasMovedThisTurn = true
               ├─ if WasCapture:
               │     ├─ HandleCapture(...)
@@ -2460,7 +2461,7 @@ scripts/  (split: see the three source trees listed just above)
 │
 ├─ HexCoord.cs            ─ model primitives
 ├─ HexGrid.cs             ─
-├─ HexTile.cs             ─ pure model: Coord, Color, Occupant (no
+├─ HexTile.cs             ─ pure model: Coord, Owner, Occupant (no
 │                           Godot/view ref — fills owned by HexMapView)
 ├─ HexOccupant.cs         ─
 ├─ Unit.cs                ─ + UnitLevel + UnitLevelExtensions
