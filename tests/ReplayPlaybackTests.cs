@@ -137,6 +137,64 @@ public class ReplayPlaybackTests
     }
 
     [Fact]
+    public void Replay_HumanBuyOntoOwnEmptyThenMoveSameUnit_ProducesSameFinalState()
+    {
+        // Regression for a replay-fidelity bug uncovered during the
+        // ReplayRecorder extraction's manual smoke test: a human buys a
+        // peasant onto an own-empty tile (HasMovedThisTurn=false on the
+        // live side), then moves that peasant in the same turn (capture).
+        // During replay, ExecuteAiBuyUnit's "fresh buy consumes the
+        // unit's move" rule was applied unconditionally (no
+        // !_isReplayMode() gate analogous to ExecuteAiMove's reposition
+        // gate), so the subsequent move beat threw "unit has already
+        // moved this turn." Pre-existing in main; visible once the
+        // recorded log replays through this specific sequence.
+        var f = new Fixture();
+
+        // Step 1: select Red's territory, enter Buy Peasant mode, place
+        // peasant onto own-empty RedOther.
+        f.Map.SimulateClick(f.State.Grid.Get(f.RedCapital)!);
+        f.Hud.ClickBuyPeasant();
+        f.Map.SimulateClick(f.State.Grid.Get(f.RedOther)!);
+        Assert.True(f.State.Grid.Get(f.RedOther)!.Occupant is Unit,
+            "Buy should have placed a peasant on RedOther.");
+        Assert.False(((Unit)f.State.Grid.Get(f.RedOther)!.Occupant!).HasMovedThisTurn,
+            "A human buy onto own-empty must leave HasMovedThisTurn=false " +
+            "so the unit can still move this turn.");
+
+        // Step 2: pick up that peasant and move it onto an adjacent
+        // Blue tile (capture). Find any Blue tile adjacent to RedOther.
+        HexCoord? captureTarget = null;
+        foreach (HexCoord neighbor in f.RedOther.Neighbors())
+        {
+            HexTile? n = f.State.Grid.Get(neighbor);
+            if (n != null && n.Owner == f.Blue.Id)
+            {
+                captureTarget = neighbor;
+                break;
+            }
+        }
+        Assert.True(captureTarget.HasValue,
+            "Test setup error: RedOther should have at least one Blue neighbor.");
+
+        f.Map.SimulateClick(f.State.Grid.Get(f.RedOther)!);
+        f.Map.SimulateClick(f.State.Grid.Get(captureTarget!.Value)!);
+
+        // Step 3: end turn so the beat log has more than just the buy + move.
+        f.Hud.ClickEndTurn(); f.Pacer.DrainAll();
+        f.Hud.ClickEndTurn(); f.Pacer.DrainAll();  // Blue (human) ends → Red T2.
+
+        GameStateSnapshot liveFinal = GameStateSnapshot.Capture(
+            f.State.Grid, f.State.Treasury, f.State.Territories);
+
+        // Replay must reproduce the live final state without throwing.
+        f.Controller.BeginReplay();
+        f.Pacer.DrainAll();
+
+        f.AssertStateMatches(liveFinal);
+    }
+
+    [Fact]
     public void Replay_PlaysAiBuy_ToSameFinalState()
     {
         bool blueActed = false;

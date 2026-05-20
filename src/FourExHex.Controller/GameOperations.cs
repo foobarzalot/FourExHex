@@ -633,7 +633,13 @@ public class GameOperations
         {
             _map.PlayDestructionEffect(destination, result.Destroyed);
         }
-        if (wasReposition)
+        // "A fresh buy onto own-empty consumes the unit's move" is an
+        // AI-loop selection concern — the human ExecuteBuyAndPlace path
+        // never sets this. Skip it during replay: a recorded HUMAN buy
+        // followed by a move of that unit would otherwise throw "already
+        // moved this turn" — exact mirror of the gate on ExecuteAiMove's
+        // reposition arm above. Live AI play still consumes the move.
+        if (wasReposition && !_isReplayMode())
         {
             Unit? placed = _state.Grid.Get(destination)?.Unit;
             if (placed != null) placed.HasMovedThisTurn = true;
