@@ -10,6 +10,25 @@ using System.Collections.Generic;
 /// Upkeep values per Slay:
 ///   Peasant = 2, Spearman = 6, Knight = 18, Baron = 54
 /// </summary>
+/// <summary>
+/// Outlook of a territory's near-term economy. Pure economic facts —
+/// the human-vs-AI gate that decides whether to surface warnings in
+/// the view is the caller's concern.
+/// </summary>
+public enum EconomyOutlook
+{
+    /// <summary>Income covers upkeep this turn (or there is no upkeep).</summary>
+    Healthy,
+
+    /// <summary>Income is below upkeep but stored gold will cover the
+    /// shortfall on the owner's next turn. Reserves are bleeding.</summary>
+    NegativeDelta,
+
+    /// <summary>Even with the income about to be collected, the treasury
+    /// can't cover next turn's upkeep — every unit will die.</summary>
+    BankruptNextTurn,
+}
+
 public static class UpkeepRules
 {
     /// <summary>The upkeep cost a single unit of the given level demands per turn.</summary>
@@ -35,6 +54,58 @@ public static class UpkeepRules
             }
         }
         return total;
+    }
+
+    /// <summary>
+    /// Forecast whether <paramref name="territory"/> will go bankrupt on
+    /// its owner's next turn. Mirrors the turn-start sequence in
+    /// <see cref="GameController"/>: income is collected first
+    /// (<see cref="Treasury.CollectIncomeFor"/> adds
+    /// <see cref="TreeRules.CountIncomeProducingTiles"/>), then
+    /// <see cref="ApplyUpkeep"/> runs — bankrupt iff available &lt; owed,
+    /// and owed == 0 is never bankrupt.
+    ///
+    /// Scoped to capital territories (returns false when there is no
+    /// capital): the only consumer is the economic-report HUD label,
+    /// which is itself only rendered for territories that have a capital.
+    /// This is a forecast over the current static territory — it does
+    /// not model start-of-turn tree growth or intervening captures.
+    /// </summary>
+    public static bool ForecastBankruptNextTurn(Territory territory, HexGrid grid, Treasury treasury)
+    {
+        if (!territory.HasCapital) return false;
+
+        int owed = TotalUpkeepFor(territory, grid);
+        if (owed == 0) return false;
+
+        int income = TreeRules.CountIncomeProducingTiles(territory, grid);
+        int available = treasury.GetGold(territory.Capital!.Value) + income;
+        return available < owed;
+    }
+
+    /// <summary>
+    /// Classify <paramref name="territory"/>'s near-term economy:
+    ///   <see cref="EconomyOutlook.BankruptNextTurn"/> when
+    ///     <see cref="ForecastBankruptNextTurn"/> holds;
+    ///   <see cref="EconomyOutlook.NegativeDelta"/> when reserves cover
+    ///     next turn but per-turn income &lt; upkeep (bleeding);
+    ///   <see cref="EconomyOutlook.Healthy"/> otherwise (including
+    ///     no-capital and no-units, neither of which can lose money).
+    /// Pure economic facts; the view decides which outlooks deserve a
+    /// warning tint based on owner kind.
+    /// </summary>
+    public static EconomyOutlook Classify(Territory territory, HexGrid grid, Treasury treasury)
+    {
+        if (!territory.HasCapital) return EconomyOutlook.Healthy;
+
+        int owed = TotalUpkeepFor(territory, grid);
+        if (owed == 0) return EconomyOutlook.Healthy;
+
+        int income = TreeRules.CountIncomeProducingTiles(territory, grid);
+        int available = treasury.GetGold(territory.Capital!.Value) + income;
+        if (available < owed) return EconomyOutlook.BankruptNextTurn;
+        if (income < owed) return EconomyOutlook.NegativeDelta;
+        return EconomyOutlook.Healthy;
     }
 
     /// <summary>

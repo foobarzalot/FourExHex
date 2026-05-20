@@ -157,6 +157,7 @@ public partial class HexMapView : Node2D, IHexMapView
     private Node2D? _targetsLayer;
     private Node2D? _towerTargetsLayer;
     private Node2D? _highlightLayer;
+    private Node2D? _warningBadgesLayer;
     private readonly Dictionary<HexCoord, Node2D> _unitVisuals = new();
     private readonly Dictionary<HexCoord, Node2D> _capitalVisuals = new();
 
@@ -432,6 +433,10 @@ public partial class HexMapView : Node2D, IHexMapView
         AddChild(_towerTargetsLayer);
         _highlightLayer = new Node2D { Name = "HighlightLayer" };
         AddChild(_highlightLayer);
+        // Added last so badges draw on top of every other map layer
+        // (including highlight, units, capitals).
+        _warningBadgesLayer = new Node2D { Name = "WarningBadgesLayer" };
+        AddChild(_warningBadgesLayer);
         // Rejection overlays sit on top of everything so a red flash is
         // unambiguous. Persistent — never cleared by RefreshOccupantVisuals
         // — so an in-flight tween doesn't get QueueFree'd mid-pulse.
@@ -894,6 +899,12 @@ public partial class HexMapView : Node2D, IHexMapView
 
         _animateNewTrees = true;
         _animateNewGraves = true;
+
+        // Repaint warning badges on every refresh: the human just
+        // bought / moved / undid something that could have flipped a
+        // territory between Healthy / NegativeDelta / BankruptNextTurn.
+        // The badge layer is also cleared here for AI turns.
+        RedrawWarningBadges();
     }
 
     /// <summary>
@@ -2328,5 +2339,83 @@ public partial class HexMapView : Node2D, IHexMapView
                 _highlightLayer.AddChild(line);
             }
         }
+    }
+
+    // Stamp a warning-sign triangle on the capital of every affected
+    // territory belonging to the human whose turn it is. Bankruptcy =
+    // red triangle / white border + glyph; negative-delta = yellow
+    // triangle / black border + glyph. Never drawn during an AI turn —
+    // warnings are an in-turn affordance for the human, not a scoreboard.
+    private void RedrawWarningBadges()
+    {
+        if (_warningBadgesLayer == null) return;
+        ClearLayer(_warningBadgesLayer);
+
+        Player current = _state.Turns.CurrentPlayer;
+        if (current == null || current.IsAi) return;
+
+        foreach (Territory t in _state.Territories)
+        {
+            if (t.Owner != current.Id) continue;
+            if (!t.HasCapital) continue;
+            EconomyOutlook outlook = UpkeepRules.Classify(t, _state.Grid, _state.Treasury);
+            if (outlook == EconomyOutlook.Healthy) continue;
+            DrawWarningBadgeAt(t.Capital!.Value, outlook);
+        }
+    }
+
+    private void DrawWarningBadgeAt(HexCoord capital, EconomyOutlook outlook)
+    {
+        Color fill, accent;
+        switch (outlook)
+        {
+            case EconomyOutlook.BankruptNextTurn: fill = Colors.Red; accent = Colors.White; break;
+            case EconomyOutlook.NegativeDelta:    fill = Colors.Yellow; accent = Colors.Black; break;
+            default: return;
+        }
+
+        Vector2 capitalCenter = FirstHexCenterOffset + HexPixel.ToPixel(capital, HexSize);
+        // Tuck the badge into the capital's upper-right corner so the
+        // capital glyph stays visible underneath.
+        Vector2 badgePos = capitalCenter + new Vector2(HexSize * 0.45f, -HexSize * 0.45f);
+
+        // Equilateral triangle pointing up, inscribed in radius r.
+        const float Sqrt3Over2 = 0.8660254f;
+        float r = HexSize * 0.45f;
+        Vector2 vTop = new Vector2(0f, -r);
+        Vector2 vBR  = new Vector2( r * Sqrt3Over2, r * 0.5f);
+        Vector2 vBL  = new Vector2(-r * Sqrt3Over2, r * 0.5f);
+
+        var badge = new Node2D { Position = badgePos };
+        badge.AddChild(new Polygon2D { Polygon = new[] { vTop, vBR, vBL }, Color = fill });
+        // Border: closed Line2D around the triangle (Line2D has no
+        // auto-close, so repeat the first vertex).
+        badge.AddChild(new Line2D
+        {
+            Points = new[] { vTop, vBR, vBL, vTop },
+            Width = 2f,
+            DefaultColor = accent,
+        });
+
+        // Exclamation glyph: vertical bar + dot below, both accent color.
+        float barHalfWidth = r * 0.11f;
+        float barTop = -r * 0.40f;
+        float barBottom = r * 0.05f;
+        badge.AddChild(new Polygon2D
+        {
+            Polygon = new[]
+            {
+                new Vector2(-barHalfWidth, barTop),
+                new Vector2( barHalfWidth, barTop),
+                new Vector2( barHalfWidth, barBottom),
+                new Vector2(-barHalfWidth, barBottom),
+            },
+            Color = accent,
+        });
+        Polygon2D dot = CreateFilledDisc(r * 0.11f, accent);
+        dot.Position = new Vector2(0f, r * 0.28f);
+        badge.AddChild(dot);
+
+        _warningBadgesLayer!.AddChild(badge);
     }
 }

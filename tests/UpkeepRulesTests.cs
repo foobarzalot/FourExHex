@@ -61,6 +61,172 @@ public class UpkeepRulesTests
         Assert.Equal(20, UpkeepRules.TotalUpkeepFor(t, grid));
     }
 
+    // --- ForecastBankruptNextTurn ----------------------------------------
+
+    [Fact]
+    public void Forecast_GoldPlusIncomeCoversUpkeep_False()
+    {
+        // Knight upkeep 18, 2 income tiles (capital + knight, no trees),
+        // gold 20 -> 20 + 2 = 22 >= 18, solvent next turn.
+        HexGrid grid = BuildGridOf(new HexCoord(0, 0), new HexCoord(1, 0));
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red, UnitLevel.Knight);
+        Territory t = BuildTerritory(new HexCoord(0, 0), new HexCoord(0, 0), new HexCoord(1, 0));
+        var treasury = new Treasury();
+        treasury.SetGold(new HexCoord(0, 0), 20);
+
+        Assert.False(UpkeepRules.ForecastBankruptNextTurn(t, grid, treasury));
+    }
+
+    [Fact]
+    public void Forecast_GoldPlusIncomeShortOfUpkeep_True()
+    {
+        // Knight upkeep 18, income 2, gold 5 -> 5 + 2 = 7 < 18: bankrupt.
+        HexGrid grid = BuildGridOf(new HexCoord(0, 0), new HexCoord(1, 0));
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red, UnitLevel.Knight);
+        Territory t = BuildTerritory(new HexCoord(0, 0), new HexCoord(0, 0), new HexCoord(1, 0));
+        var treasury = new Treasury();
+        treasury.SetGold(new HexCoord(0, 0), 5);
+
+        Assert.True(UpkeepRules.ForecastBankruptNextTurn(t, grid, treasury));
+    }
+
+    [Fact]
+    public void Forecast_GoldPlusIncomeExactlyEqualsUpkeep_False()
+    {
+        // Boundary: income 2, gold 16 -> 18 == owed 18; ApplyUpkeep pays
+        // when available >= owed, so this is NOT bankrupt.
+        HexGrid grid = BuildGridOf(new HexCoord(0, 0), new HexCoord(1, 0));
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red, UnitLevel.Knight);
+        Territory t = BuildTerritory(new HexCoord(0, 0), new HexCoord(0, 0), new HexCoord(1, 0));
+        var treasury = new Treasury();
+        treasury.SetGold(new HexCoord(0, 0), 16);
+
+        Assert.False(UpkeepRules.ForecastBankruptNextTurn(t, grid, treasury));
+    }
+
+    [Fact]
+    public void Forecast_NoUnits_ZeroGold_False()
+    {
+        // owed == 0 -> ApplyUpkeep returns true regardless of gold.
+        HexGrid grid = BuildGridOf(new HexCoord(0, 0), new HexCoord(1, 0));
+        Territory t = BuildTerritory(new HexCoord(0, 0), new HexCoord(0, 0), new HexCoord(1, 0));
+        var treasury = new Treasury();
+        treasury.SetGold(new HexCoord(0, 0), 0);
+
+        Assert.False(UpkeepRules.ForecastBankruptNextTurn(t, grid, treasury));
+    }
+
+    [Fact]
+    public void Forecast_NoCapital_False()
+    {
+        // No capital -> no economic-report label is ever shown for it, so
+        // the forecast is intentionally scoped out even though a real
+        // upkeep step would wipe the unit.
+        HexGrid grid = BuildGridOf(new HexCoord(0, 0));
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Unit(Red);
+        Territory singleton = BuildTerritory(capital: null, new HexCoord(0, 0));
+        var treasury = new Treasury();
+
+        Assert.False(UpkeepRules.ForecastBankruptNextTurn(singleton, grid, treasury));
+    }
+
+    // --- Classify ---------------------------------------------------------
+
+    [Fact]
+    public void Classify_NetPositive_Healthy()
+    {
+        // Peasant upkeep 2, 2 income tiles -> income 2 == upkeep 2, net 0.
+        // Actually net positive: use a 3-tile territory with 1 peasant.
+        HexGrid grid = BuildGridOf(new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(0, 1));
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red); // upkeep 2
+        Territory t = BuildTerritory(new HexCoord(0, 0),
+            new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(0, 1));
+        var treasury = new Treasury();
+        treasury.SetGold(new HexCoord(0, 0), 0);
+        // income 3, upkeep 2 -> net +1 -> healthy.
+
+        Assert.Equal(EconomyOutlook.Healthy, UpkeepRules.Classify(t, grid, treasury));
+    }
+
+    [Fact]
+    public void Classify_IncomeEqualsUpkeep_Healthy()
+    {
+        // 2-tile territory, 1 peasant: income 2, upkeep 2 -> net 0.
+        // Pays exactly; not bleeding -> Healthy.
+        HexGrid grid = BuildGridOf(new HexCoord(0, 0), new HexCoord(1, 0));
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red); // upkeep 2
+        Territory t = BuildTerritory(new HexCoord(0, 0), new HexCoord(0, 0), new HexCoord(1, 0));
+        var treasury = new Treasury();
+        treasury.SetGold(new HexCoord(0, 0), 0);
+
+        Assert.Equal(EconomyOutlook.Healthy, UpkeepRules.Classify(t, grid, treasury));
+    }
+
+    [Fact]
+    public void Classify_NetNegativeButReservesCover_NegativeDelta()
+    {
+        // Knight upkeep 18, 2 income tiles -> income 2 < upkeep 18, but
+        // gold 20 -> 20 + 2 = 22 >= 18 covers next turn. Bleeding.
+        HexGrid grid = BuildGridOf(new HexCoord(0, 0), new HexCoord(1, 0));
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red, UnitLevel.Knight);
+        Territory t = BuildTerritory(new HexCoord(0, 0), new HexCoord(0, 0), new HexCoord(1, 0));
+        var treasury = new Treasury();
+        treasury.SetGold(new HexCoord(0, 0), 20);
+
+        Assert.Equal(EconomyOutlook.NegativeDelta, UpkeepRules.Classify(t, grid, treasury));
+    }
+
+    [Fact]
+    public void Classify_NetNegativeReservesExactlyCover_NegativeDelta()
+    {
+        // Boundary: gold + income exactly equals upkeep (pays in full),
+        // but income < upkeep -> still bleeding -> NegativeDelta.
+        HexGrid grid = BuildGridOf(new HexCoord(0, 0), new HexCoord(1, 0));
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red, UnitLevel.Knight); // upkeep 18
+        Territory t = BuildTerritory(new HexCoord(0, 0), new HexCoord(0, 0), new HexCoord(1, 0));
+        var treasury = new Treasury();
+        treasury.SetGold(new HexCoord(0, 0), 16); // 16 + 2 income = 18 == upkeep
+
+        Assert.Equal(EconomyOutlook.NegativeDelta, UpkeepRules.Classify(t, grid, treasury));
+    }
+
+    [Fact]
+    public void Classify_ReservesShortOfUpkeep_BankruptNextTurn()
+    {
+        // gold 5, income 2, upkeep 18 -> 7 < 18 -> bankrupt next turn.
+        HexGrid grid = BuildGridOf(new HexCoord(0, 0), new HexCoord(1, 0));
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red, UnitLevel.Knight);
+        Territory t = BuildTerritory(new HexCoord(0, 0), new HexCoord(0, 0), new HexCoord(1, 0));
+        var treasury = new Treasury();
+        treasury.SetGold(new HexCoord(0, 0), 5);
+
+        Assert.Equal(EconomyOutlook.BankruptNextTurn, UpkeepRules.Classify(t, grid, treasury));
+    }
+
+    [Fact]
+    public void Classify_NoUnits_Healthy()
+    {
+        HexGrid grid = BuildGridOf(new HexCoord(0, 0), new HexCoord(1, 0));
+        Territory t = BuildTerritory(new HexCoord(0, 0), new HexCoord(0, 0), new HexCoord(1, 0));
+        var treasury = new Treasury();
+        treasury.SetGold(new HexCoord(0, 0), 0);
+
+        Assert.Equal(EconomyOutlook.Healthy, UpkeepRules.Classify(t, grid, treasury));
+    }
+
+    [Fact]
+    public void Classify_NoCapital_Healthy()
+    {
+        // No capital -> no treasury, no label, scoped out. Same convention
+        // as ForecastBankruptNextTurn.
+        HexGrid grid = BuildGridOf(new HexCoord(0, 0));
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Unit(Red);
+        Territory singleton = BuildTerritory(capital: null, new HexCoord(0, 0));
+        var treasury = new Treasury();
+
+        Assert.Equal(EconomyOutlook.Healthy, UpkeepRules.Classify(singleton, grid, treasury));
+    }
+
     // --- ApplyUpkeep ------------------------------------------------------
 
     [Fact]

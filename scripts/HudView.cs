@@ -746,10 +746,40 @@ public partial class HudView : CanvasLayer, IHudView
             int net = income - upkeep;
             string sign = net >= 0 ? "+" : "";
             _goldLabel.Text = $"{gold}g ({income}-{upkeep}={sign}{net})";
+
+            // Economic-report severity for a human-owned territory:
+            //   red    — forecast bankrupt next turn (every unit dies at
+            //            the owner's next turn-start);
+            //   yellow — solvent next turn but the per-turn delta is
+            //            negative, so reserves are bleeding down toward
+            //            an eventual bankruptcy;
+            //   default — net >= 0, or not the human's territory.
+            EconomyOutlook outlook = IsHumanOwned(state, selected)
+                ? UpkeepRules.Classify(selected, state.Grid, state.Treasury)
+                : EconomyOutlook.Healthy;
+            switch (outlook)
+            {
+                case EconomyOutlook.BankruptNextTurn:
+                    _goldLabel.AddThemeColorOverride("font_color", Colors.Red);
+                    Log.Debug(Log.LogCategory.Turn,
+                        $"[economy] {selected.Owner} territory @ {selected.Capital!.Value} " +
+                        $"bankrupt next turn (gold {gold} + income {income} < upkeep {upkeep})");
+                    break;
+                case EconomyOutlook.NegativeDelta:
+                    _goldLabel.AddThemeColorOverride("font_color", Colors.Yellow);
+                    Log.Debug(Log.LogCategory.Turn,
+                        $"[economy] {selected.Owner} territory @ {selected.Capital!.Value} " +
+                        $"net {net} < 0 but solvent next turn (gold {gold} + income {income} >= upkeep {upkeep})");
+                    break;
+                default:
+                    _goldLabel.RemoveThemeColorOverride("font_color");
+                    break;
+            }
         }
         else
         {
             _goldLabel.Text = "";
+            _goldLabel.RemoveThemeColorOverride("font_color");
         }
 
         UnitLevel? currentBuyLevel = SessionState.BuyModeLevel(session.Mode);
@@ -857,6 +887,27 @@ public partial class HudView : CanvasLayer, IHudView
         }
     }
 
+    /// <summary>
+    /// True iff <paramref name="selected"/> is a human-owned capital
+    /// territory that <see cref="UpkeepRules.ForecastBankruptNextTurn"/>
+    /// predicts will lose all its units at its owner's next turn-start.
+    /// Shared by the red report-label styling and the warning panel text
+    /// so both key off one decision.
+    /// </summary>
+    private static bool IsHumanOwned(GameState state, Territory? selected)
+    {
+        if (selected == null) return false;
+        Player? owner = state.Turns.Players.FirstOrDefault(p => p.Id == selected.Owner);
+        return owner != null && !owner.IsAi;
+    }
+
+    private static bool ForecastHumanBankrupt(GameState state, Territory? selected)
+    {
+        if (selected == null) return false;
+        if (!IsHumanOwned(state, selected)) return false;
+        return UpkeepRules.Classify(selected, state.Grid, state.Treasury) == EconomyOutlook.BankruptNextTurn;
+    }
+
     private static string? ComputeActionHint(GameState state, SessionState session)
     {
         UnitLevel? buyLevel = SessionState.BuyModeLevel(session.Mode);
@@ -869,6 +920,12 @@ public partial class HudView : CanvasLayer, IHudView
             HexTile? src = state.Grid.Get(session.MoveSource.Value);
             UnitLevel level = (src?.Unit?.Level) ?? UnitLevel.Peasant;
             return $"Click to move the {level}";
+        }
+        // Action hint wins during buy/move; the bankruptcy warning fills
+        // the panel only when the doomed territory is just selected.
+        if (ForecastHumanBankrupt(state, session.SelectedTerritory))
+        {
+            return "Bankrupt next turn - all units die";
         }
         return null;
     }

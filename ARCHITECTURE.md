@@ -356,6 +356,8 @@ Consequences for the rest of this doc:
 │   TreeRules.RunStartOfTurnGrowth / ConvertGravesToTrees /                │
 │             CountIncomeProducingTiles                                    │
 │   UpkeepRules.UpkeepFor / TotalUpkeepFor / ApplyUpkeep / ApplyUpkeepFor  │
+│               / ForecastBankruptNextTurn / Classify -> EconomyOutlook    │
+│                          (Healthy / NegativeDelta / BankruptNextTurn)    │
 │   WinConditionRules.WinnerByDomination (mid-turn)                        │
 │                    .WinnerAtEndOfTurn (sole capital-bearer)              │
 │                    .IsEliminated                                         │
@@ -852,6 +854,49 @@ Runs in this fixed order for the now-current player:
 
 The income → upkeep ordering matters: it lets the same turn's income
 subsidize that turn's upkeep before bankruptcy is checked.
+
+### Bankruptcy warning surfaces
+
+The upkeep step above wipes every unit in a territory that can't pay;
+without warning, the human only sees it after it lands. The forecast
+pipeline that surfaces it ahead of time:
+
+- **Pure rule (`UpkeepRules.Classify`)** — returns one of three
+  `EconomyOutlook` values for a given territory:
+  - `BankruptNextTurn` — `gold + income < upkeep` (every unit will die
+    at the owner's next turn-start).
+  - `NegativeDelta` — `income < upkeep` but reserves still cover next
+    turn (bleeding down toward eventual bankruptcy).
+  - `Healthy` — otherwise; also returned when there is no capital or
+    no upkeep (no label is ever shown anyway).
+  Mirrors the real start-of-turn sequence (income then `ApplyUpkeep`,
+  bankrupt iff `available < owed`). Does not model start-of-turn tree
+  growth or intervening captures. `ForecastBankruptNextTurn` is the
+  same predicate exposed as a single bit for callers that only need
+  it (HUD panel text, `AiStateScorer`).
+- **HUD label (`HudView.Refresh`)** — colors `_goldLabel` red on
+  `BankruptNextTurn`, yellow on `NegativeDelta`, clears the override
+  otherwise. Only painted when the selected territory is human-owned;
+  AI territories never tint the label.
+- **HUD panel text (`ComputeActionHint`)** — final fallback after the
+  buy/move branches: a human-owned, forecast-bankrupt selected
+  territory shows "Bankrupt next turn - all units die" in the bottom-
+  anchored panel. Buy/move hints still win; tutorial / AI-batch text
+  still wins via `_externalMessageActive`.
+- **Map badge (`HexMapView.RedrawWarningBadges`)** — a top-most
+  `WarningBadgesLayer` (drawn above units, capitals, and the highlight
+  border) holds warning-sign triangles stamped on the capital of every
+  affected territory belonging to the current player: red triangle with
+  white border + exclamation for `BankruptNextTurn`; yellow with black
+  for `NegativeDelta`. Runs every `RefreshOccupantVisuals`, clears the
+  layer, returns immediately if `state.Turns.CurrentPlayer.IsAi`, and
+  otherwise iterates `state.Territories`. AI players never get badges,
+  ever — the layer is empty for the duration of any AI turn. Selection
+  is irrelevant; every affected current-player territory is flagged.
+- **Instrumentation** — when the HUD warning path fires it emits
+  `Log.Debug(Log.LogCategory.Turn, "[economy] …")` with the gold /
+  income / upkeep numbers, for `FOUREXHEX_LOG="Turn:Debug"`
+  verification.
 
 ### End-of-turn — `EndOfTurnProcessing()`
 
