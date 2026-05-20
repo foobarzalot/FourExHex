@@ -17,6 +17,7 @@ public class GameController
     private readonly SessionState _session;
     private readonly IHexMapView _map;
     private readonly IHudView _hud;
+    private readonly GameOperations _ops;
 
     // The save/load contract requires deterministic-on-reload AI: a saved
     // master seed plus the (turn, player) tuple uniquely determines the
@@ -25,11 +26,11 @@ public class GameController
     // just the seed (no RNG-consumption count) and still replay
     // identically on load.
     private readonly int _masterSeed;
-    private Random _rng;
     public int MasterSeed => _masterSeed;
 
     private readonly Func<GameState, PlayerId, HashSet<HexCoord>, Random, AiAction?> _aiChooser;
     private readonly IAiPacer _aiPacer;
+    private readonly Func<bool> _aiSilentMode;
 
     // Per-AI-turn scratch state for the step machine. Persists across
     // paced StepAi invocations and resets whenever control advances
@@ -58,11 +59,6 @@ public class GameController
     // chooser from pacing forever.
     private const int MaxAiStepsPerPlayer = 64;
 
-    // Hard cap on TurnState.TurnNumber. Default is unlimited; the
-    // diagnostic launch path in Main sets a smaller value so
-    // stasis runs terminate instead of looping forever.
-    private readonly int _maxTurnNumber;
-    private bool _gameEndedFired;
 
     /// <summary>
     /// Fired exactly once when the game ends — either naturally
@@ -76,76 +72,11 @@ public class GameController
     /// <summary>
     /// Fired at the start of every human player's turn, after start-of-turn
     /// bookkeeping (tree growth, income, upkeep) and after
-    /// <see cref="RefreshViews"/>. Save/load wires the autosave path to
+    /// <see cref="GameOperations.RefreshViews"/>. Save/load wires the autosave path to
     /// this event — the saved state matches what the player sees.
     /// Never fires for AI turns.
     /// </summary>
     public event Action? HumanTurnStarted;
-
-    private readonly Func<bool> _aiSilentMode;
-
-    /// <summary>
-    /// Tell the view to enter (or leave) silent mode based on whether
-    /// the player about to act is AI and whether the user opted into
-    /// Instant AI Speed. Called from every player-transition entry point
-    /// — <see cref="Resume"/> for game start / load / replay seed, and
-    /// <see cref="StartPlayerTurn"/> for the live AI→AI and AI→human
-    /// hand-offs — so the flag tracks the active actor without leaking
-    /// any UserSettings dependency into pure controller code.
-    /// Also drives the "Opponents are taking their turns…" HUD overlay
-    /// so the human knows their input is intentionally inert while the
-    /// background chooser runs (the alternative is a silent freeze).
-    /// </summary>
-    private void RefreshSilentMode()
-    {
-        bool aiBatchSilent = InSilentAiBatch();
-        // Instant replay also wants the view silent, and must hold it
-        // across turn boundaries: ReplayApplyEndTurn → StartPlayerTurn
-        // calls this on every EndTurn beat, and InSilentAiBatch() is
-        // false during replay, so without this OR the second EndTurn
-        // would un-silence playback and leak sound/VFX.
-        _map.SetSilentMode(aiBatchSilent || _replayInstantActive);
-        // Tutorial Preview / Record use the tutorial-message slot for
-        // their own scripted text; don't clobber it. Outside those
-        // modes the slot is free, so reuse it as a passive "AI is
-        // working" indicator. The overlay is an AI-batch affordance
-        // only — instant replay has its own UX and must not show it.
-        if (_previewMode || _recordingMode) return;
-        if (aiBatchSilent && !_silentBatchOverlayShown)
-        {
-            _hud.ShowTutorialMessage("Opponents are taking their turns…");
-            _silentBatchOverlayShown = true;
-        }
-        else if (!aiBatchSilent && _silentBatchOverlayShown)
-        {
-            _hud.HideTutorialMessage();
-            _silentBatchOverlayShown = false;
-        }
-    }
-
-    private bool _silentBatchOverlayShown;
-
-    /// <summary>
-    /// True while an AI player is acting under the Instant speed setting.
-    /// The AI step machine consults this to skip per-beat highlight and
-    /// view-refresh calls — they'd never reach the screen anyway (the
-    /// SynchronousAiPacer drains the entire batch in one frame) and
-    /// running them blocks the main thread for hundreds of milliseconds
-    /// per AI player on a six-AI map. The final <c>RefreshViews</c> when
-    /// control returns to a human (i.e. when this returns false again)
-    /// is what the human actually sees.
-    ///
-    /// Returns false while <see cref="SessionState.PendingDefeatScreen"/>
-    /// is set: the AI batch is paused waiting for the human to dismiss
-    /// the overlay, so input gates should lift, the view should accept
-    /// feedback, and the defeat HUD should render. The batch resumes
-    /// when <see cref="OnDefeatContinuePressed"/> clears the flag and
-    /// calls <see cref="RefreshSilentMode"/>.
-    /// </summary>
-    private bool InSilentAiBatch() =>
-        _aiSilentMode()
-        && _state.Turns.CurrentPlayer.IsAi
-        && !_session.PendingDefeatScreen.HasValue;
 
     public GameController(
         GameState state,
@@ -171,22 +102,29 @@ public class GameController
         _buyLevelValidator = buyLevelValidator;
         _previewMode = previewMode;
         _recordingMode = recordingMode;
-        _onAfterRefresh = onAfterRefresh;
         _state = state;
         _session = session;
         _map = map;
         _hud = hud;
         _masterSeed = seed ?? Random.Shared.Next();
-        // Initial _rng is set from the seed alone; StartPlayerTurn
-        // replaces it with a per-turn reseed before any gameplay RNG
-        // consumption begins. The non-null assignment here keeps the
-        // field non-nullable and prevents a NRE if anything reads
-        // _rng before the first StartPlayerTurn (currently nothing
-        // does, but the contract should be safe).
-        _rng = new Random(_masterSeed);
+        _ops = new GameOperations(
+            state,
+            session,
+            map,
+            hud,
+            recordingMode: recordingMode,
+            previewMode: previewMode,
+            isReplayMode: () => _replayMode,
+            aiSilentMode: _aiSilentMode,
+            isReplayInstantActive: () => _replayInstantActive,
+            clearUndoAndReplayBookkeeping: ClearUndoAndReplayBookkeeping,
+            onGameEnded: () => GameEnded?.Invoke(),
+            onHumanTurnStarted: () => HumanTurnStarted?.Invoke(),
+            maxTurnNumber: maxTurnNumber,
+            masterSeed: _masterSeed,
+            onAfterRefresh: onAfterRefresh);
         _aiChooser = aiChooser ?? RandomAi.ChooseNextAction;
         _aiPacer = aiPacer ?? new SynchronousAiPacer();
-        _maxTurnNumber = maxTurnNumber;
 
         if (loadedReplay != null)
         {
@@ -317,10 +255,10 @@ public class GameController
             _initialTurnNumber = _state.Turns.TurnNumber;
             _initialCurrentPlayerIndex = _state.Turns.CurrentPlayerIndex;
         }
-        ReseedRngForCurrentTurn();
-        RefreshSilentMode();
+        _ops.ReseedRngForCurrentTurn();
+        _ops.RefreshSilentMode();
         RunAiTurnsUntilHumanOrDone();
-        RefreshViews();
+        _ops.RefreshViews();
         // Initial player is human → StartPlayerTurn is never called
         // for them (it only runs at transitions), so fire the autosave
         // hook here. If a human turn was reached via AI hand-off
@@ -332,55 +270,13 @@ public class GameController
     // Tracks whether HumanTurnStarted has fired for the current player's
     // turn so StartGame doesn't double-fire when the AI hand-off path
     // already raised it from inside StartPlayerTurn.
-    private bool _humanTurnFiredForCurrentTurn;
-
     private void MaybeFireHumanTurnStartedFromStartGame()
     {
-        if (_humanTurnFiredForCurrentTurn) return;
-        if (_session.IsGameOver || _gameEndedFired) return;
+        if (_ops.HumanTurnFiredForCurrentTurn) return;
+        if (_session.IsGameOver || _ops.GameEndedFired) return;
         if (_state.Turns.CurrentPlayer.IsAi) return;
-        _humanTurnFiredForCurrentTurn = true;
+        _ops.HumanTurnFiredForCurrentTurn = true;
         HumanTurnStarted?.Invoke();
-    }
-
-    /// <summary>
-    /// Reset <see cref="_rng"/> to a fresh <see cref="Random"/> derived
-    /// solely from <see cref="_masterSeed"/> and the current
-    /// (turn, player) pair. This is the per-turn reseed that makes
-    /// save/load deterministic: a save records only the master seed,
-    /// and load reproduces identical RNG sequences regardless of how
-    /// many random numbers the prior turns consumed.
-    /// </summary>
-    private void ReseedRngForCurrentTurn()
-    {
-        int subSeed = MixSeed(
-            _masterSeed,
-            _state.Turns.TurnNumber,
-            _state.Turns.CurrentPlayerIndex);
-        _rng = new Random(subSeed);
-    }
-
-    /// <summary>
-    /// Deterministic 32-bit mixer over (masterSeed, turn, player).
-    /// XOR-of-small-ints would correlate adjacent (turn, player) pairs;
-    /// this uses three rounds of xorshift-multiply (the
-    /// "splitmix32" pattern) so adjacent inputs hash to uncorrelated
-    /// outputs.
-    /// </summary>
-    private static int MixSeed(int masterSeed, int turn, int playerIndex)
-    {
-        unchecked
-        {
-            uint x = (uint)masterSeed;
-            x ^= (uint)turn * 0x9E3779B1u;
-            x ^= (uint)playerIndex * 0x85EBCA77u;
-            x ^= x >> 16;
-            x *= 0x7feb352du;
-            x ^= x >> 15;
-            x *= 0x846ca68bu;
-            x ^= x >> 16;
-            return (int)x;
-        }
     }
 
     /// <summary>
@@ -397,21 +293,6 @@ public class GameController
             int earningCells = TreeRules.CountIncomeProducingTiles(territory, _state.Grid);
             _state.Treasury.SetGold(
                 territory.Capital!.Value, earningCells * startingGoldPerEarningCell);
-        }
-    }
-
-    /// <summary>
-    /// Reset HasMovedThisTurn on every unit owned by <paramref name="player"/>.
-    /// Called at the start of that player's turn.
-    /// </summary>
-    private static void ResetMovementFor(Player player, HexGrid grid)
-    {
-        foreach (HexTile tile in grid.Tiles)
-        {
-            if (tile.Unit != null && tile.Unit.Owner == player.Id)
-            {
-                tile.Unit.HasMovedThisTurn = false;
-            }
         }
     }
 
@@ -456,12 +337,6 @@ public class GameController
     private readonly bool _recordingMode;
     public bool IsRecordingMode => _recordingMode;
 
-    // Optional callback fired at the tail of every RefreshViews(). Used
-    // by Tutorial Preview to repaint visual cues (auto-selection,
-    // single-tile highlights, CTA-styled buttons) after every state
-    // change — both human-driven and AI-driven. Null in ordinary play.
-    private Action? _onAfterRefresh;
-
     // --- Replay recording / playback ------------------------------------
     // The replay log lives parallel to the per-turn undo stack: every
     // state-mutating action by every player (human and AI) appends a
@@ -490,13 +365,6 @@ public class GameController
     // keep the view silent across turn boundaries.
     private readonly Func<bool>? _replayIsInstantMode;
     private bool _replayInstantActive;
-    // True only while InstantReplayTick is draining beats. Captures
-    // (HandleCapture) skip the per-capture full-map RebuildAfterTerritory-
-    // Change while this is set; the tick does ONE structural rebuild +
-    // screen refresh per turn instead. Without this a big endgame turn
-    // re-tessellates all map borders dozens of times and instant replay
-    // ends up slower than Fast.
-    private bool _suppressMapRebuild;
 
     // Parallel bookkeeping for undo/redo: track the beat-list size at
     // the moment each UndoEntry was pushed, so undo can trim
@@ -583,7 +451,7 @@ public class GameController
         // mid-mutation window inside the synchronous trampoline (a
         // belt-and-braces guarantee: even if Godot's input ordering
         // ever changed, the controller's invariants are protected).
-        if (InSilentAiBatch()) return;
+        if (_ops.InSilentAiBatch()) return;
         int beatsBefore = _replayBeats.Count;
         UndoEntry pre = CaptureCurrentSnapshot();
         _handlerMutatedGame = false;
@@ -619,7 +487,7 @@ public class GameController
         // paints last and wins over the body's full-target sets.
         // Re-entrancy in TutorialPreviewCues.Apply is guarded
         // separately, so the extra invocation is safe.
-        _onAfterRefresh?.Invoke();
+        _ops.InvokeAfterRefresh();
     }
 
     // --- Click handling ---------------------------------------------------
@@ -739,7 +607,7 @@ public class GameController
             // Re-refresh after entering MovingUnit so HudView's cached
             // _hasPendingAction sees the new mode — otherwise Escape
             // routes to the pause menu instead of cancelling the move.
-            RefreshViews();
+            _ops.RefreshViews();
         }
     }
 
@@ -788,7 +656,7 @@ public class GameController
             _map.PlaySound(SoundEffect.Rally);
             SetSelection(territory);
         }
-        RefreshViews();
+        _ops.RefreshViews();
     }
 
     /// <summary>
@@ -822,7 +690,7 @@ public class GameController
     public void CancelActionForTutorial()
     {
         CancelPendingAction();
-        RefreshViews();
+        _ops.RefreshViews();
     }
 
     /// <summary>
@@ -834,7 +702,7 @@ public class GameController
     /// drive refreshes through the normal handler paths and shouldn't
     /// call this.
     /// </summary>
-    public void RefreshViewsForTutorial() => RefreshViews();
+    public void RefreshViewsForTutorial() => _ops.RefreshViews();
 
     /// <summary>
     /// Append an authored tutorial-only beat to the recording log. Used
@@ -998,7 +866,7 @@ public class GameController
             new ReplayBuyBeat { Capital = capital, To = destination, Level = level }))
         {
             CancelPendingAction();
-            RefreshViews();
+            _ops.RefreshViews();
             return;
         }
 
@@ -1015,12 +883,12 @@ public class GameController
         // friendly Unit at the dst tile means MovementRules will merge
         // them, and we want to fire the level-up chime instead of the
         // place thud.
-        bool wasCombine = WasFriendlyUnitAt(destination, _session.SelectedTerritory.Owner);
+        bool wasCombine = _ops.WasFriendlyUnitAt(destination, _session.SelectedTerritory.Owner);
         MoveResult result = MovementRules.PlaceNew(unit, destination, _state.Grid, _session.SelectedTerritory);
 
         if (result.WasCapture)
         {
-            HandleCapture($"Buy {level} → {destination}");
+            _ops.HandleCapture($"Buy {level} → {destination}");
             RebindSelectionToContaining(destination);
         }
 
@@ -1033,7 +901,7 @@ public class GameController
             _map.PlayDestructionEffect(destination, result.Destroyed);
         }
 
-        DispatchActionSound(destination, result, wasCombine);
+        _ops.DispatchActionSound(destination, result, wasCombine);
 
         // QoL: stay in a buy mode for the highest level the (possibly
         // rebound) territory can still afford that is at most the level
@@ -1050,7 +918,7 @@ public class GameController
             _session.MoveSource = null;
             _map.ShowMoveTargets(ActionConsumingTargets(next.Value, _session.SelectedTerritory), next.Value);
             _map.ShowMoveSource(null);
-            RefreshViews();
+            _ops.RefreshViews();
         }
         else
         {
@@ -1086,19 +954,19 @@ public class GameController
             new ReplayMoveBeat { From = source, To = destination }))
         {
             CancelPendingAction();
-            RefreshViews();
+            _ops.RefreshViews();
             return;
         }
 
         _handlerMutatedGame = true;
         _pendingHumanBeat = new ReplayMoveBeat { From = source, To = destination };
 
-        bool wasCombine = WasFriendlyUnitAt(destination, _session.SelectedTerritory.Owner);
+        bool wasCombine = _ops.WasFriendlyUnitAt(destination, _session.SelectedTerritory.Owner);
         MoveResult result = MovementRules.Move(source, destination, _state.Grid, _session.SelectedTerritory);
 
         if (result.WasCapture)
         {
-            HandleCapture($"Move {source}→{destination}");
+            _ops.HandleCapture($"Move {source}→{destination}");
             RebindSelectionToContaining(destination);
         }
 
@@ -1107,57 +975,9 @@ public class GameController
             _map.PlayDestructionEffect(destination, result.Destroyed);
         }
 
-        DispatchActionSound(destination, result, wasCombine);
+        _ops.DispatchActionSound(destination, result, wasCombine);
 
         FinishPendingAction();
-    }
-
-    /// <summary>
-    /// True iff <paramref name="coord"/>'s tile is colored
-    /// <paramref name="owner"/> AND occupied by a Unit. The destination
-    /// state right before a Move/PlaceNew that triggers MovementRules'
-    /// combine branch — pulled out so all four Execute paths share the
-    /// same predicate.
-    /// </summary>
-    private bool WasFriendlyUnitAt(HexCoord coord, PlayerId owner)
-    {
-        HexTile? tile = _state.Grid.Get(coord);
-        return tile != null && tile.Owner == owner && tile.Occupant is Unit;
-    }
-
-    /// <summary>
-    /// Decide and fire the single audio cue for a just-resolved
-    /// Move/PlaceNew. Priority: combine > destruction (by destroyed
-    /// occupant type) > generic place (only if the move was consumed).
-    /// Reposition onto own-empty stays silent.
-    /// </summary>
-    private void DispatchActionSound(HexCoord destination, MoveResult result, bool wasCombine)
-    {
-        if (wasCombine)
-        {
-            _map.PlaySound(SoundEffect.UnitCombined, destination);
-            return;
-        }
-        switch (result.Destroyed)
-        {
-            case Unit:
-                _map.PlaySound(SoundEffect.UnitDestroyed, destination);
-                return;
-            case Tower:
-                _map.PlaySound(SoundEffect.TowerDestroyed, destination);
-                return;
-            case Tree:
-            case Grave:
-                _map.PlaySound(SoundEffect.TreeCleared, destination);
-                return;
-            case Capital:
-                _map.PlaySound(SoundEffect.CapitalDestroyed, destination);
-                return;
-        }
-        if (_state.Grid.Get(destination)?.Unit?.HasMovedThisTurn == true)
-        {
-            _map.PlaySound(SoundEffect.UnitPlaced, destination);
-        }
     }
 
     /// <summary>
@@ -1199,7 +1019,7 @@ public class GameController
             new ReplayBuildTowerBeat { Capital = capital, To = destination }))
         {
             CancelPendingAction();
-            RefreshViews();
+            _ops.RefreshViews();
             return;
         }
 
@@ -1228,96 +1048,11 @@ public class GameController
             _map.ShowTowerTargets(ValidTowerTargets(_session.SelectedTerritory));
             _map.ShowTowerCoverage(TowerCoverageCoords(_session.SelectedTerritory));
             _map.ShowMoveSource(null);
-            RefreshViews();
+            _ops.RefreshViews();
         }
         else
         {
             FinishPendingAction();
-        }
-    }
-
-    private void HandleCapture(string actionDesc)
-    {
-        IReadOnlyList<Territory> previous = _state.Territories;
-        Dictionary<HexCoord, (PlayerId Owner, int Gold)> oldCaps = SnapshotCapitals(previous);
-        HashSet<PlayerId> colorsWithCapitalBefore = ColorsWithCapital(previous);
-
-        _state.Territories = TerritoryFinder.Recompute(_state.Grid, previous, _state.Treasury);
-
-        Dictionary<HexCoord, (PlayerId Owner, int Gold)> newCaps = SnapshotCapitals(_state.Territories);
-        LogCaptureDiff(actionDesc, oldCaps, newCaps);
-
-        // A player whose set of capital-bearing territories drops to
-        // empty is freshly defeated by this capture. At most one color
-        // can transition per capture (a single move/place captures one
-        // tile from one color).
-        HashSet<PlayerId> colorsWithCapitalAfter = ColorsWithCapital(_state.Territories);
-        foreach (PlayerId c in colorsWithCapitalBefore)
-        {
-            if (!colorsWithCapitalAfter.Contains(c))
-            {
-                _map.PlaySound(SoundEffect.PlayerDefeated);
-                int defeatedIndex = -1;
-                for (int i = 0; i < _state.Turns.Players.Count; i++)
-                {
-                    if (_state.Turns.Players[i].Id == c) { defeatedIndex = i; break; }
-                }
-                if (defeatedIndex >= 0
-                    && !_state.Turns.Players[defeatedIndex].IsAi
-                    && (!_recordingMode || defeatedIndex == 0))
-                {
-                    _session.PendingDefeatScreen = c;
-                }
-            }
-        }
-
-        // Instant replay coalesces the structural redraw to once per
-        // turn (see InstantReplayTick); skip the per-capture rebuild
-        // here so a capture-heavy turn doesn't re-tessellate every
-        // border on every beat.
-        if (!_suppressMapRebuild) _map.RebuildAfterTerritoryChange();
-
-        // Mid-turn win check: only ends the game if the current
-        // player owns every cell. The "opponent reduced to orphan
-        // singletons" win path is handled at end-of-turn instead
-        // (see EndOfTurnProcessing). Undo is cleared so the player
-        // can't rewind past the killing blow.
-        PlayerId? winner = WinConditionRules.WinnerByDomination(_state.Grid);
-        if (winner.HasValue)
-        {
-            Log.Info(Log.LogCategory.Capture, $"[T{_state.Turns.TurnNumber}] " +
-                "post-capture domination winner: " +
-                $"{_state.Turns.Players.FirstOrDefault(p => p.Id == winner.Value)?.Name ?? "?"}");
-            DeclareWinner(winner.Value);
-            ClearUndoAndReplayBookkeeping();
-            // Fire GameEnded for the mid-turn capture-win path. The
-            // End-Turn and claim-victory paths call CheckGameEndConditions
-            // themselves; without this, TrackHandler sees IsGameOver and
-            // early-returns, leaving GameEnded never raised — so Main
-            // never enables the victory-overlay Replay button. The
-            // _gameEndedFired guard inside CheckGameEndConditions keeps
-            // this idempotent if a subsequent caller fires it again.
-            CheckGameEndConditions();
-        }
-    }
-
-    /// <summary>
-    /// Set <see cref="SessionState.Winner"/> and fire the game-won
-    /// fanfare if the winner is human. Centralized here because Winner
-    /// is set from two places (mid-turn domination capture in
-    /// HandleCapture, end-of-turn orphan-singleton check in
-    /// EndOfTurnProcessing) and CheckGameEndConditions doesn't run
-    /// after every Execute path — the sound has to fire at the
-    /// Winner-set point or it'd miss the mid-turn human win.
-    /// </summary>
-    private void DeclareWinner(PlayerId winnerColor)
-    {
-        _session.Winner = winnerColor;
-        Player? winnerPlayer = _state.Turns.Players
-            .FirstOrDefault(p => p.Id == winnerColor);
-        if (winnerPlayer != null && !winnerPlayer.IsAi)
-        {
-            _map.PlaySound(SoundEffect.GameWon);
         }
     }
 
@@ -1328,7 +1063,7 @@ public class GameController
         // Selection is maintained by the caller: a non-capturing
         // reposition leaves it alone; a capture re-binds it via
         // RebindSelectionToContaining; a tower build leaves it alone.
-        RefreshViews();
+        _ops.RefreshViews();
     }
 
     private void CancelPendingAction()
@@ -1343,7 +1078,7 @@ public class GameController
     {
         if (_session.IsGameOver) return;
         CancelPendingAction();
-        RefreshViews();
+        _ops.RefreshViews();
     }
 
     /// <summary>
@@ -1355,7 +1090,7 @@ public class GameController
     private void OnDefeatContinuePressed()
     {
         if (_replayMode) return;
-        if (InSilentAiBatch()) return;
+        if (_ops.InSilentAiBatch()) return;
         if (!_session.PendingDefeatScreen.HasValue) return;
         if (_humanActionValidator != null && !_humanActionValidator(new ReplayDismissDefeatBeat()))
         {
@@ -1367,8 +1102,8 @@ public class GameController
         // PendingDefeatScreen makes InSilentAiBatch() flip back to
         // true, so push that change to the view BEFORE the refresh
         // (otherwise tweens for the post-dismiss state would leak).
-        RefreshSilentMode();
-        RefreshViews();
+        _ops.RefreshSilentMode();
+        _ops.RefreshViews();
         if (_session.IsGameOver) return;
         if (_state.Turns.CurrentPlayer.IsAi)
         {
@@ -1381,7 +1116,7 @@ public class GameController
     private void OnUndoLastPressed()
     {
         if (_replayMode) return;
-        if (InSilentAiBatch()) return;
+        if (_ops.InSilentAiBatch()) return;
         if (_session.IsGameOver) return;
         if (!_session.Undo.CanUndo) return;
         HexCoord? before = _session.SelectedTerritory?.Capital;
@@ -1393,7 +1128,7 @@ public class GameController
     private void OnUndoTurnPressed()
     {
         if (_replayMode) return;
-        if (InSilentAiBatch()) return;
+        if (_ops.InSilentAiBatch()) return;
         if (_session.IsGameOver) return;
         if (!_session.Undo.CanUndo) return;
         // Inline the UndoAll loop so each pop's beat bookkeeping fires.
@@ -1410,7 +1145,7 @@ public class GameController
     private void OnRedoLastPressed()
     {
         if (_replayMode) return;
-        if (InSilentAiBatch()) return;
+        if (_ops.InSilentAiBatch()) return;
         if (_session.IsGameOver) return;
         if (!_session.Undo.CanRedo) return;
         HexCoord? before = _session.SelectedTerritory?.Capital;
@@ -1422,7 +1157,7 @@ public class GameController
     private void OnRedoAllPressed()
     {
         if (_replayMode) return;
-        if (InSilentAiBatch()) return;
+        if (_ops.InSilentAiBatch()) return;
         if (_session.IsGameOver) return;
         if (!_session.Undo.CanRedo) return;
         PushOneBeatBatchForRedo();
@@ -1508,7 +1243,7 @@ public class GameController
         _map.RebuildAfterTerritoryChange();
         entry.Session.ApplyTo(_session, _state.Territories);
         RestoreOverlaysForCurrentMode();
-        RefreshViews();
+        _ops.RefreshViews();
     }
 
     /// <summary>
@@ -1616,7 +1351,7 @@ public class GameController
         _map.ShowTowerTargets(System.Array.Empty<HexCoord>());
         _map.ShowTowerCoverage(System.Array.Empty<HexCoord>());
         _map.ShowMoveSource(null);
-        RefreshViews();
+        _ops.RefreshViews();
     }
 
     private void OnBuyPressedBody()
@@ -1643,7 +1378,7 @@ public class GameController
             _map.ShowTowerTargets(System.Array.Empty<HexCoord>());
             _map.ShowTowerCoverage(System.Array.Empty<HexCoord>());
             _map.ShowMoveSource(null);
-            RefreshViews();
+            _ops.RefreshViews();
             return;
         }
 
@@ -1656,7 +1391,7 @@ public class GameController
         _map.ShowTowerTargets(System.Array.Empty<HexCoord>());
         _map.ShowTowerCoverage(System.Array.Empty<HexCoord>());
         _map.ShowMoveSource(null);
-        RefreshViews();
+        _ops.RefreshViews();
     }
 
     /// <summary>
@@ -1715,7 +1450,7 @@ public class GameController
         _map.ShowTowerTargets(ValidTowerTargets(_session.SelectedTerritory));
         _map.ShowTowerCoverage(TowerCoverageCoords(_session.SelectedTerritory));
         _map.ShowMoveSource(null);
-        RefreshViews();
+        _ops.RefreshViews();
     }
 
     /// <summary>
@@ -1842,13 +1577,13 @@ public class GameController
         _map.ShowTowerTargets(System.Array.Empty<HexCoord>());
         _map.ShowTowerCoverage(System.Array.Empty<HexCoord>());
         _map.ShowMoveSource(target);
-        RefreshViews();
+        _ops.RefreshViews();
     }
 
     private void OnEndTurnPressed()
     {
         if (_replayMode) return;
-        if (InSilentAiBatch()) return;
+        if (_ops.InSilentAiBatch()) return;
         if (_session.IsGameOver) return;
         if (_humanActionValidator != null && !_humanActionValidator(new ReplayEndTurnBeat()))
         {
@@ -1873,7 +1608,7 @@ public class GameController
             if (next.HasValue)
             {
                 _session.PendingClaimVictory = (current.Id, next.Value);
-                RefreshViews();
+                _ops.RefreshViews();
                 return;
             }
         }
@@ -1898,23 +1633,23 @@ public class GameController
         // Ending the turn commits everything; no further undo.
         ClearUndoAndReplayBookkeeping();
 
-        EndOfTurnProcessing();
+        _ops.EndOfTurnProcessing();
         if (_session.IsGameOver)
         {
             // End-of-turn win check fired. Don't advance to a player
             // who shouldn't get a turn — just announce the result.
-            CheckGameEndConditions();
+            _ops.CheckGameEndConditions();
         }
         else
         {
-            AdvanceToNextActivePlayer();
-            StartPlayerTurn();
+            _ops.AdvanceToNextActivePlayer();
+            _ops.StartPlayerTurn();
             RunAiTurnsUntilHumanOrDone();
         }
 
         CancelPendingAction();
         SetSelection(null);
-        RefreshViews();
+        _ops.RefreshViews();
     }
 
     /// <summary>
@@ -1926,7 +1661,7 @@ public class GameController
     private void OnClaimVictoryWinNowPressed()
     {
         if (_replayMode) return;
-        if (InSilentAiBatch()) return;
+        if (_ops.InSilentAiBatch()) return;
         if (!_session.PendingClaimVictory.HasValue) return;
         (PlayerId color, int threshold) = _session.PendingClaimVictory.Value;
         if (_humanActionValidator != null && !_humanActionValidator(
@@ -1937,10 +1672,10 @@ public class GameController
         RecordBeat(new ReplayClaimVictoryBeat { ThresholdPercent = threshold });
         _session.PendingClaimVictory = null;
         _session.ClaimVictoryPromptedHighestThreshold[color] = threshold;
-        DeclareWinner(color);
+        _ops.DeclareWinner(color);
         ClearUndoAndReplayBookkeeping();
-        CheckGameEndConditions();
-        RefreshViews();
+        _ops.CheckGameEndConditions();
+        _ops.RefreshViews();
     }
 
     /// <summary>
@@ -1951,7 +1686,7 @@ public class GameController
     private void OnClaimVictoryContinuePressed()
     {
         if (_replayMode) return;
-        if (InSilentAiBatch()) return;
+        if (_ops.InSilentAiBatch()) return;
         if (!_session.PendingClaimVictory.HasValue) return;
         (PlayerId color, int threshold) = _session.PendingClaimVictory.Value;
         if (_humanActionValidator != null && !_humanActionValidator(
@@ -1966,246 +1701,6 @@ public class GameController
     }
 
     /// <summary>
-    /// End-of-turn bookkeeping for the now-ending player: just the
-    /// end-of-turn win check. The current player wins iff no other
-    /// player still owns a capital-bearing territory — orphan
-    /// singletons of other colors don't keep the game alive. Income
-    /// and tree growth both run at the START of the NEXT player's
-    /// turn (see <see cref="StartPlayerTurn"/>).
-    /// </summary>
-    private void EndOfTurnProcessing()
-    {
-        LogGameEndDiagnostics(
-            $"end-of-turn check for {_state.Turns.CurrentPlayer.Name}");
-        PlayerId? winner = WinConditionRules.WinnerAtEndOfTurn(
-            _state.Turns.CurrentPlayer.Id, _state.Territories);
-        if (winner.HasValue)
-        {
-            Log.Info(Log.LogCategory.Turn, $"[T{_state.Turns.TurnNumber}] " +
-                "end-of-turn winner declared: " +
-                $"{_state.Turns.Players.FirstOrDefault(p => p.Id == winner.Value)?.Name ?? "?"}");
-            DeclareWinner(winner.Value);
-        }
-    }
-
-    /// <summary>
-    /// One-line dump of per-player tile count and capital-bearing
-    /// territory count, plus context — for debugging stuck game-end
-    /// conditions. The whole method is <c>[Conditional("DEBUG")]</c>
-    /// so the body (the two dictionary builds) is stripped from
-    /// Release/exported builds; in dev it's runtime-gated via
-    /// <see cref="Log.LogCategory.Turn"/> at Info.
-    /// </summary>
-    [Conditional("DEBUG")]
-    private void LogGameEndDiagnostics(string context)
-    {
-        var tiles = new Dictionary<PlayerId, int>();
-        foreach (HexTile tile in _state.Grid.Tiles)
-        {
-            tiles.TryGetValue(tile.Owner, out int n);
-            tiles[tile.Owner] = n + 1;
-        }
-
-        var caps = new Dictionary<PlayerId, int>();
-        foreach (Territory t in _state.Territories)
-        {
-            if (!t.HasCapital) continue;
-            caps.TryGetValue(t.Owner, out int n);
-            caps[t.Owner] = n + 1;
-        }
-
-        var parts = new List<string>();
-        foreach (Player p in _state.Turns.Players)
-        {
-            tiles.TryGetValue(p.Id, out int t);
-            caps.TryGetValue(p.Id, out int c);
-            parts.Add($"{p.Name}:{t}t/{c}c");
-        }
-
-        Log.Info(Log.LogCategory.Turn, $"[T{_state.Turns.TurnNumber}] {context} — " +
-            string.Join(", ", parts));
-    }
-
-    /// <summary>
-    /// Advance to the next non-eliminated player. A player with no
-    /// capital-bearing territory is skipped entirely — they own
-    /// nothing they can act on (no income, no purchases, no upkeep,
-    /// no AI candidates), so a turn for them would be a phantom turn.
-    /// The end-of-turn win check guarantees the current player has a
-    /// capital when this is called, so at least one player remains in
-    /// the rotation and the loop always terminates.
-    /// </summary>
-    private void AdvanceToNextActivePlayer()
-    {
-        _state.Turns.EndTurn();
-        while (WinConditionRules.IsEliminated(_state.Turns.CurrentPlayer.Id, _state.Grid))
-        {
-            // Phantom turn for an eliminated player: they can't take any
-            // input or AI action, but their tile-bound state still
-            // ticks. Order mirrors StartPlayerTurn — tree growth (graves
-            // on their color → trees; empty same-color cells with
-            // enough neighbor trees spread), then upkeep (orphan units
-            // bankrupt into graves because there's no capital to fund
-            // them). Income / view refresh / AI dispatch are skipped:
-            // there's nothing for them to act on. Without this, orphan
-            // units stranded on the eliminated player's tiles would
-            // linger forever on a turn rotation that always skipped
-            // them.
-            Player ghost = _state.Turns.CurrentPlayer;
-            if (_state.Turns.TurnNumber > 1)
-            {
-                TreeRules.RunStartOfTurnGrowth(
-                    _state.Grid, ghost.Id, _state.WaterCoords);
-            }
-            UpkeepRules.ApplyUpkeepFor(
-                ghost, _state.Territories, _state.Grid, _state.Treasury);
-            Log.Info(Log.LogCategory.Turn, $"[T{_state.Turns.TurnNumber}] phantom turn for eliminated " +
-                $"player {ghost.Name} (tree growth + upkeep)");
-            _state.Turns.EndTurn();
-        }
-    }
-
-    /// <summary>
-    /// Start-of-turn bookkeeping for the now-current player. Order:
-    ///   1. Tree-growth phase — graves on the player's tiles convert
-    ///      to trees, and empty cells of their color with >= 2
-    ///      neighboring trees become trees. Skipped during round 1
-    ///      (every player's first turn).
-    ///   2. Reset unit move flags.
-    ///   3. Collect income from the player's territories (excludes
-    ///      tree and grave tiles; see
-    ///      <see cref="TreeRules.CountIncomeProducingTiles"/>).
-    ///      Skipped during round 1 — no money is earned on each
-    ///      player's first turn; the seed from
-    ///      <see cref="SeedStartingGold"/> is the round-1 bankroll.
-    ///   4. Apply upkeep (which may bankrupt territories and turn
-    ///      their units into fresh graves; those graves wait until
-    ///      this player's NEXT turn to mature).
-    /// The income → upkeep ordering matters: it lets a territory's
-    /// freshly-credited income subsidize that same turn's upkeep
-    /// before bankruptcy is checked.
-    /// </summary>
-    private void StartPlayerTurn()
-    {
-        // Reseed first, before any RNG consumption this turn. Tree
-        // growth (currently deterministic), AI dispatch, and any future
-        // start-of-turn random effects all draw from the per-turn RNG
-        // derived here.
-        ReseedRngForCurrentTurn();
-        _humanTurnFiredForCurrentTurn = false;
-        // Toggle the view's silent flag for the player about to act.
-        // Done BEFORE PlayBankruptcy below so the per-turn bankruptcy
-        // toll respects the policy in HexMapView (currently not silenced).
-        RefreshSilentMode();
-
-        if (_state.Turns.TurnNumber > 1)
-        {
-            TreeRules.RunStartOfTurnGrowth(
-                _state.Grid, _state.Turns.CurrentPlayer.Id, _state.WaterCoords);
-        }
-
-        ResetMovementFor(_state.Turns.CurrentPlayer, _state.Grid);
-
-        if (_state.Turns.TurnNumber > 1)
-        {
-            _state.Treasury.CollectIncomeFor(
-                _state.Turns.CurrentPlayer, _state.Territories, _state.Grid);
-        }
-
-        bool anyBankrupt = UpkeepRules.ApplyUpkeepFor(
-            _state.Turns.CurrentPlayer, _state.Territories, _state.Grid, _state.Treasury);
-        if (anyBankrupt)
-        {
-            // One toll per turn-start regardless of how many of the
-            // player's territories went bankrupt — see IHexMapView.
-            _map.PlaySound(SoundEffect.Bankruptcy);
-        }
-
-        LogTurnStart();
-        CheckGameEndConditions();
-
-        // Fire the autosave hook for human turns. Skipped for AI
-        // (autosave is keyed to human turn-start, not AI). Skipped on
-        // game-over (no point saving a finished game). The flag is
-        // reset at the top of StartPlayerTurn so each turn re-arms.
-        if (!_session.IsGameOver
-            && !_gameEndedFired
-            && !_state.Turns.CurrentPlayer.IsAi
-            && !_humanTurnFiredForCurrentTurn
-            && !_replayMode)
-        {
-            _humanTurnFiredForCurrentTurn = true;
-            HumanTurnStarted?.Invoke();
-        }
-    }
-
-    [Conditional("DEBUG")]
-    private void LogTurnStart()
-    {
-        Player p = _state.Turns.CurrentPlayer;
-        int tiles = 0;
-        int ownedTerritories = 0;
-        int totalGold = 0;
-        int totalNet = 0;
-        foreach (Territory t in _state.Territories)
-        {
-            if (t.Owner != p.Id) continue;
-            ownedTerritories++;
-            tiles += t.Coords.Count;
-            int income = TreeRules.CountIncomeProducingTiles(t, _state.Grid);
-            int upkeep = UpkeepRules.TotalUpkeepFor(t, _state.Grid);
-            totalNet += income - upkeep;
-            if (t.HasCapital)
-            {
-                totalGold += _state.Treasury.GetGold(t.Capital!.Value);
-            }
-        }
-        Log.Info(Log.LogCategory.Turn,
-            $"[T{_state.Turns.TurnNumber}] {p.Name} ({p.Kind}) turn begins — " +
-            $"{tiles} tiles, {ownedTerritories} territories, " +
-            $"{totalNet:+#;-#;0} net income, {totalGold}g total");
-    }
-
-    /// <summary>
-    /// Check for terminal game conditions — natural game over via
-    /// <see cref="SessionState.IsGameOver"/>, or exceeding the
-    /// constructor-provided turn cap — and fire the
-    /// <see cref="GameEnded"/> event exactly once if either holds.
-    /// </summary>
-    private void CheckGameEndConditions()
-    {
-        if (_gameEndedFired) return;
-
-        if (_session.IsGameOver)
-        {
-            Player? winner = null;
-            foreach (Player p in _state.Turns.Players)
-            {
-                if (p.Id == _session.Winner)
-                {
-                    winner = p;
-                    break;
-                }
-            }
-            Log.Warn(Log.LogCategory.Turn,
-                $"[T{_state.Turns.TurnNumber}] GAME OVER — " +
-                $"winner: {winner?.Name ?? "(none)"}");
-            _gameEndedFired = true;
-            GameEnded?.Invoke();
-            return;
-        }
-
-        if (_state.Turns.TurnNumber > _maxTurnNumber)
-        {
-            Log.Warn(Log.LogCategory.Turn,
-                $"[T{_state.Turns.TurnNumber}] GAME OVER — " +
-                $"turn cap {_maxTurnNumber} exceeded (stasis)");
-            _gameEndedFired = true;
-            GameEnded?.Invoke();
-        }
-    }
-
-    /// <summary>
     /// If the current player is an AI, begin paced execution of their
     /// turn via the <see cref="IAiPacer"/>. With the default
     /// synchronous pacer the entire AI chain runs inline (existing
@@ -2215,7 +1710,7 @@ public class GameController
     /// </summary>
     private void RunAiTurnsUntilHumanOrDone()
     {
-        if (_gameEndedFired) return;
+        if (_ops.GameEndedFired) return;
         if (_session.IsGameOver) return;
         if (!_state.Turns.CurrentPlayer.IsAi) return;
 
@@ -2247,7 +1742,7 @@ public class GameController
     /// </summary>
     private void StepAiPreview()
     {
-        if (_gameEndedFired) return;
+        if (_ops.GameEndedFired) return;
         if (_session.IsGameOver)
         {
             ShowHighlightAndRefresh(null);
@@ -2263,7 +1758,7 @@ public class GameController
         // Paced path only — Instant routes to InstantAiTick via
         // ScheduleAiTurn and never enters this step machine.
         PlayerId color = _state.Turns.CurrentPlayer.Id;
-        StepAiPreviewAfterChoose(_aiChooser(_state, color, _aiVisited, _rng), color);
+        StepAiPreviewAfterChoose(_aiChooser(_state, color, _aiVisited, _ops.Rng), color);
     }
 
     private void StepAiPreviewAfterChoose(AiAction? action, PlayerId color)
@@ -2272,7 +1767,7 @@ public class GameController
         // changed (BeginReplay, AbandonGame mid-await) between the
         // chooser dispatch and this continuation. Mirrors the gates
         // at the top of StepAiPreview.
-        if (_gameEndedFired) return;
+        if (_ops.GameEndedFired) return;
         if (_session.IsGameOver) return;
         if (!_state.Turns.CurrentPlayer.IsAi) return;
         if (_state.Turns.CurrentPlayer.Id != color) return;
@@ -2285,7 +1780,7 @@ public class GameController
             EndCurrentAiPlayerTurnCore(action);
             ShowHighlightAndRefresh(null);
 
-            if (_gameEndedFired) return;
+            if (_ops.GameEndedFired) return;
             if (_session.IsGameOver) return;
             if (_state.Turns.CurrentPlayer.IsAi)
             {
@@ -2306,7 +1801,7 @@ public class GameController
     /// </summary>
     private void StepAiExecute()
     {
-        if (_gameEndedFired) return;
+        if (_ops.GameEndedFired) return;
         if (_session.IsGameOver)
         {
             ShowHighlightAndRefresh(null);
@@ -2320,8 +1815,8 @@ public class GameController
         if (rc == null) return; // defensive; unrecognised action kind
         HexCoord resultCoord = rc.Value;
 
-        CheckGameEndConditions();
-        if (_gameEndedFired)
+        _ops.CheckGameEndConditions();
+        if (_ops.GameEndedFired)
         {
             // Domination fired inside the action we just executed
             // (HandleCapture set _session.Winner). The HUD's victory
@@ -2349,8 +1844,8 @@ public class GameController
         // game state several turns past their elimination.
         if (_session.PendingDefeatScreen.HasValue)
         {
-            RefreshSilentMode();
-            RefreshViews();
+            _ops.RefreshSilentMode();
+            _ops.RefreshViews();
             return;
         }
         _aiPacer.Schedule(StepAiPreview, AiActionDelayMs);
@@ -2377,7 +1872,7 @@ public class GameController
                 {
                     RecordBeat(new ReplayMoveBeat { From = mv.Source, To = mv.Destination });
                 }
-                ExecuteAiMove(mv.Source, mv.Destination);
+                _ops.ExecuteAiMove(mv.Source, mv.Destination);
                 return mv.Destination;
             case AiBuyUnitAction bu:
                 if (!_replayMode)
@@ -2389,7 +1884,7 @@ public class GameController
                         Level = bu.Level,
                     });
                 }
-                ExecuteAiBuyUnit(bu.Capital, bu.Destination, bu.Level);
+                _ops.ExecuteAiBuyUnit(bu.Capital, bu.Destination, bu.Level);
                 return bu.Destination;
             case AiBuildTowerAction bt:
                 if (!_replayMode)
@@ -2400,14 +1895,14 @@ public class GameController
                         To = bt.Destination,
                     });
                 }
-                ExecuteAiBuildTower(bt.Capital, bt.Destination);
+                _ops.ExecuteAiBuildTower(bt.Capital, bt.Destination);
                 return bt.Destination;
             case AiLongPressRallyAction rl:
                 if (!_replayMode)
                 {
                     RecordBeat(new ReplayLongPressRallyBeat { Target = rl.Target });
                 }
-                ApplyLongPressRally(rl.Target);
+                _ops.ApplyLongPressRally(rl.Target);
                 return rl.Target;
             case AiClaimVictoryAction cv:
             {
@@ -2417,7 +1912,7 @@ public class GameController
                     RecordBeat(new ReplayClaimVictoryBeat { ThresholdPercent = cv.ThresholdPercent });
                 }
                 _session.ClaimVictoryPromptedHighestThreshold[cvColor] = cv.ThresholdPercent;
-                DeclareWinner(cvColor);
+                _ops.DeclareWinner(cvColor);
                 ClearUndoAndReplayBookkeeping();
                 return TerritoryLookup
                     .OwnedCapitalBearing(_state.Territories, cvColor)
@@ -2468,15 +1963,15 @@ public class GameController
         // Record AI's implicit end-of-turn for the replay log. The
         // beat captures the *ending* AI player's actor/turn.
         if (!_replayMode) RecordBeat(new ReplayEndTurnBeat());
-        EndOfTurnProcessing();
+        _ops.EndOfTurnProcessing();
         if (_session.IsGameOver)
         {
-            CheckGameEndConditions();
+            _ops.CheckGameEndConditions();
         }
         else
         {
-            AdvanceToNextActivePlayer();
-            StartPlayerTurn();
+            _ops.AdvanceToNextActivePlayer();
+            _ops.StartPlayerTurn();
         }
         _aiVisited.Clear();
         _aiStepsThisPlayer = 0;
@@ -2538,8 +2033,8 @@ public class GameController
         _aiPacer.Cancel();
         _replayMode = true;
         _replayIndex = 0;
-        _gameEndedFired = false;
-        _humanTurnFiredForCurrentTurn = false;
+        _ops.GameEndedFired = false;
+        _ops.HumanTurnFiredForCurrentTurn = false;
 
         _state.Territories = _initialSnapshot.ApplyTo(_state.Grid, _state.Treasury);
         _state.Turns.Reset(_initialCurrentPlayerIndex, _initialTurnNumber);
@@ -2559,7 +2054,7 @@ public class GameController
         // Set silent BEFORE the setup refresh so even the rewind paint
         // skips tweens. Instant playback never shows per-beat highlights.
         if (_replayInstantActive) _map.SetSilentMode(true);
-        RefreshViews();
+        _ops.RefreshViews();
 
         if (_replayInstantActive)
             _aiPacer.ScheduleUnscaled(InstantReplayTick, 0);
@@ -2589,8 +2084,8 @@ public class GameController
 
         ExecuteReplayBeat(beat);
 
-        CheckGameEndConditions();
-        RefreshViews();
+        _ops.CheckGameEndConditions();
+        _ops.RefreshViews();
 
         if (_session.IsGameOver) { EndReplay(); return; }
 
@@ -2611,13 +2106,13 @@ public class GameController
         switch (beat)
         {
             case ReplayMoveBeat mv:
-                ExecuteAiMove(mv.From, mv.To);
+                _ops.ExecuteAiMove(mv.From, mv.To);
                 break;
             case ReplayBuyBeat bu:
-                ExecuteAiBuyUnit(bu.Capital, bu.To, bu.Level);
+                _ops.ExecuteAiBuyUnit(bu.Capital, bu.To, bu.Level);
                 break;
             case ReplayBuildTowerBeat bt:
-                ExecuteAiBuildTower(bt.Capital, bt.To);
+                _ops.ExecuteAiBuildTower(bt.Capital, bt.To);
                 break;
             case ReplayEndTurnBeat _:
                 ReplayApplyEndTurn();
@@ -2625,7 +2120,7 @@ public class GameController
             case ReplayClaimVictoryBeat cv:
                 PlayerId cvColor = _state.Turns.CurrentPlayer.Id;
                 _session.ClaimVictoryPromptedHighestThreshold[cvColor] = cv.ThresholdPercent;
-                DeclareWinner(cvColor);
+                _ops.DeclareWinner(cvColor);
                 break;
             case ReplayDismissClaimBeat dcv:
                 PlayerId dcColor = _state.Turns.CurrentPlayer.Id;
@@ -2635,7 +2130,7 @@ public class GameController
                 _session.PendingDefeatScreen = null;
                 break;
             case ReplayLongPressRallyBeat rally:
-                ApplyLongPressRally(rally.Target);
+                _ops.ApplyLongPressRally(rally.Target);
                 break;
             case TutorialOnlyBeat _:
                 // Tutorial-only beats (e.g., narration text) are
@@ -2671,7 +2166,7 @@ public class GameController
     /// Shared chunked, frame-yielded fast-forward loop behind both
     /// instant replay and live-AI instant. Drains <paramref name="step"/>
     /// with no per-step visual work (captures skip their rebuild via
-    /// <see cref="_suppressMapRebuild"/>; sound/VFX/tweens off via
+    /// <see cref="GameOperations.SuppressMapRebuild"/>; sound/VFX/tweens off via
     /// silent mode), repaints the whole board exactly once per turn,
     /// and caps each tick at <see cref="InstantBudgetMs"/> so a huge
     /// turn still yields frames (pan/zoom/input stay alive) without
@@ -2687,20 +2182,20 @@ public class GameController
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
         bool turnBoundary = false;
-        _suppressMapRebuild = true;
+        _ops.SuppressMapRebuild = true;
         while (true)
         {
             InstantStep s = step();
             if (s == InstantStep.Exhausted)
             {
-                _suppressMapRebuild = false;
+                _ops.SuppressMapRebuild = false;
                 onExhausted();
                 return;
             }
             if (s == InstantStep.TurnBoundary) { turnBoundary = true; break; }
             if (sw.ElapsedMilliseconds >= InstantBudgetMs) break;
         }
-        _suppressMapRebuild = false;
+        _ops.SuppressMapRebuild = false;
 
         // Repaint only when a turn just completed. A budget-driven
         // break mid-turn yields a bare frame (input/camera stay live)
@@ -2708,7 +2203,7 @@ public class GameController
         if (turnBoundary)
         {
             _map.RebuildAfterTerritoryChange();
-            RefreshViews();
+            _ops.RefreshViews();
         }
         _aiPacer.ScheduleUnscaled(self, turnBoundary ? InstantTurnDelayMs : 0);
     }
@@ -2728,7 +2223,7 @@ public class GameController
         ReplayBeat beat = _replayBeats[_replayIndex++];
         bool isEndTurn = beat is ReplayEndTurnBeat;
         ExecuteReplayBeat(beat);
-        CheckGameEndConditions();
+        _ops.CheckGameEndConditions();
         if (_session.IsGameOver) return InstantStep.Exhausted;
         return isEndTurn ? InstantStep.TurnBoundary : InstantStep.Continued;
     }
@@ -2738,10 +2233,10 @@ public class GameController
     /// for AI opponents' turns. Same chunked cadence, silence and
     /// per-turn sampling; the only deliberate difference is that the
     /// "Opponents are taking their turns…" overlay stays (driven by
-    /// <see cref="RefreshSilentMode"/>, which replay leaves off).
+    /// <see cref="GameOperations.RefreshSilentMode"/>, which replay leaves off).
     /// </summary>
     private void InstantAiTick() => RunInstantTick(
-        active: () => !_gameEndedFired && !_session.IsGameOver
+        active: () => !_ops.GameEndedFired && !_session.IsGameOver
                       && _state.Turns.CurrentPlayer.IsAi,
         step: AiInstantStep,
         onExhausted: EndInstantAiBatch,
@@ -2749,7 +2244,7 @@ public class GameController
 
     private InstantStep AiInstantStep()
     {
-        if (_gameEndedFired || _session.IsGameOver) return InstantStep.Exhausted;
+        if (_ops.GameEndedFired || _session.IsGameOver) return InstantStep.Exhausted;
         if (!_state.Turns.CurrentPlayer.IsAi) return InstantStep.Exhausted;
         // A human-dismissable overlay raised mid-batch: stop so it can
         // paint; the dismiss handler reschedules InstantAiTick.
@@ -2757,11 +2252,11 @@ public class GameController
             || _session.PendingClaimVictory.HasValue) return InstantStep.Exhausted;
 
         PlayerId color = _state.Turns.CurrentPlayer.Id;
-        AiAction? action = _aiChooser(_state, color, _aiVisited, _rng);
+        AiAction? action = _aiChooser(_state, color, _aiVisited, _ops.Rng);
         if (action == null || _aiStepsThisPlayer >= MaxAiStepsPerPlayer)
         {
             EndCurrentAiPlayerTurnCore(action);
-            if (_gameEndedFired || _session.IsGameOver) return InstantStep.Exhausted;
+            if (_ops.GameEndedFired || _session.IsGameOver) return InstantStep.Exhausted;
             // Next player is human → hand control back; else this AI
             // turn just completed → repaint it and pace the next.
             if (!_state.Turns.CurrentPlayer.IsAi) return InstantStep.Exhausted;
@@ -2770,8 +2265,8 @@ public class GameController
 
         HexCoord? rc = ApplyAiActionCore(action);
         if (rc == null) return InstantStep.Continued; // defensive
-        CheckGameEndConditions();
-        if (_gameEndedFired || _session.IsGameOver) return InstantStep.Exhausted;
+        _ops.CheckGameEndConditions();
+        if (_ops.GameEndedFired || _session.IsGameOver) return InstantStep.Exhausted;
         if (_session.PendingDefeatScreen.HasValue) return InstantStep.Exhausted;
         return InstantStep.Continued;
     }
@@ -2788,8 +2283,8 @@ public class GameController
         if (_session.PendingDefeatScreen.HasValue
             || _session.PendingClaimVictory.HasValue)
         {
-            RefreshSilentMode();
-            RefreshViews();
+            _ops.RefreshSilentMode();
+            _ops.RefreshViews();
             return;
         }
         // Per-capture rebuilds were suppressed during the batch; do one
@@ -2798,7 +2293,7 @@ public class GameController
         // Hands control back to a human (or the game ended): lift silent
         // + hide the "Opponents…" overlay, then the single end-of-batch
         // paint the human sees (winner overlay if the game just ended).
-        RefreshSilentMode();
+        _ops.RefreshSilentMode();
         ShowHighlightAndRefresh(null);
     }
 
@@ -2807,7 +2302,7 @@ public class GameController
         bool wasInstant = _replayInstantActive;
         _replayMode = false;
         _replayInstantActive = false;
-        _suppressMapRebuild = false;
+        _ops.SuppressMapRebuild = false;
         _aiPacer.Cancel();
         // Lift silent mode so the final game-over board (winner overlay,
         // last-move state) renders with normal audio/VFX. No-op for
@@ -2848,292 +2343,10 @@ public class GameController
     /// </summary>
     private void ReplayApplyEndTurn()
     {
-        EndOfTurnProcessing();
+        _ops.EndOfTurnProcessing();
         if (_session.IsGameOver) return;
-        AdvanceToNextActivePlayer();
-        StartPlayerTurn();
-    }
-
-    /// <summary>
-    /// Apply a long-press rally at <paramref name="target"/> against the
-    /// current state — same algorithm as the live
-    /// <c>OnTileLongClickedBody</c> path, but extracted to skip the
-    /// pending-mode and game-over guards and to avoid touching
-    /// <c>_handlerMutatedGame</c> / <c>_pendingHumanBeat</c> (which
-    /// belong to TrackHandler's accounting). Deterministic from current
-    /// state (explicit lex-min tiebreaks in both unit selection and
-    /// destination choice).
-    /// </summary>
-    private void ApplyLongPressRally(HexCoord target)
-    {
-        HexTile? tile = _state.Grid.Get(target);
-        if (tile == null) return;
-        PlayerId currentColor = _state.Turns.CurrentPlayer.Id;
-        Territory? territory = TerritoryLookup.FindOwnedContaining(
-            _state.Territories, currentColor, target);
-        if (territory == null) return;
-
-        RallyRules.ResolveRally(_state.Grid, territory, target, currentColor);
-    }
-
-    // --- AI action execution --------------------------------------------
-    // These mirror ExecuteMove / ExecuteBuyAndPlace / ExecuteBuildTower
-    // but bypass session state (no selection, no pending-action mode,
-    // no undo push — AI actions are not undoable by the human player
-    // since undo is cleared at end of turn anyway).
-    //
-    // Each execute method validates its preconditions before mutating
-    // state. An AI that returns an illegal action (e.g. moving an
-    // already-moved unit, buying without gold, building on an occupied
-    // tile) triggers an InvalidOperationException that unwinds the
-    // AI turn loop and halts the game in an obvious error state. This
-    // is defense in depth: RandomAi only produces legal actions by
-    // construction, but any future AI with a bug will surface the
-    // failure loudly rather than corrupting game state.
-
-    private void ExecuteAiMove(HexCoord source, HexCoord destination)
-    {
-        Territory? attacker = TerritoryLookup.FindOwnedContaining(
-            _state.Territories, _state.Turns.CurrentPlayer.Id, source);
-        if (attacker == null)
-        {
-            throw new InvalidOperationException(
-                $"AI Move from {source}: that coord is not in a territory owned by " +
-                $"{_state.Turns.CurrentPlayer.Name}.");
-        }
-
-        HexTile? srcTile = _state.Grid.Get(source);
-        if (srcTile?.Unit == null)
-        {
-            throw new InvalidOperationException(
-                $"AI Move from {source}: no unit on the source tile.");
-        }
-        if (srcTile.Unit.HasMovedThisTurn)
-        {
-            throw new InvalidOperationException(
-                $"AI Move from {source}: unit has already moved this turn.");
-        }
-
-        List<HexCoord> legalTargets = MovementRules.ValidTargets(
-            srcTile.Unit.Level, attacker, _state.Grid, _state.Territories);
-        if (!legalTargets.Contains(destination))
-        {
-            throw new InvalidOperationException(
-                $"AI Move from {source} to {destination}: destination is not a " +
-                $"legal target for a {srcTile.Unit.Level}.");
-        }
-
-        // Reposition (own empty destination) is detected before the
-        // move so the AI-side "consumes the move" rule can apply
-        // afterward — see AiSimulator.MarkAiUnitMoved for why.
-        HexTile? dstTile = _state.Grid.Get(destination);
-        bool wasReposition = dstTile != null
-            && dstTile.Owner == attacker.Owner
-            && dstTile.Occupant == null;
-        bool wasCombine = WasFriendlyUnitAt(destination, attacker.Owner);
-
-        MoveResult result = MovementRules.Move(source, destination, _state.Grid, attacker);
-        if (result.WasCapture)
-        {
-            HandleCapture($"Move {source}→{destination}");
-        }
-        if (result.Destroyed != null)
-        {
-            _map.PlayDestructionEffect(destination, result.Destroyed);
-        }
-        // "A reposition consumes the unit's move" is an AI-loop
-        // selection concern (stops the chooser re-picking the same
-        // unit) — the human ExecuteMove path never sets this. Skip it
-        // during replay: a recorded HUMAN reposition followed by
-        // another move of that unit would otherwise throw "already
-        // moved this turn" (about_to_win desync, beat #992). Live AI
-        // play still consumes the move.
-        if (wasReposition && !_replayMode)
-        {
-            Unit? movedUnit = _state.Grid.Get(destination)?.Unit;
-            if (movedUnit != null) movedUnit.HasMovedThisTurn = true;
-        }
-
-        // Sound after the AI's reposition fixup so AI repositions —
-        // which the AI loop forces to consume the move — also play.
-        DispatchActionSound(destination, result, wasCombine);
-    }
-
-    private void ExecuteAiBuyUnit(HexCoord capital, HexCoord destination, UnitLevel level)
-    {
-        Territory? attacker = TerritoryLookup.FindByCapital(_state.Territories, capital);
-        if (attacker == null)
-        {
-            throw new InvalidOperationException(
-                $"AI BuyUnit with capital {capital}: no territory has that capital.");
-        }
-        if (!PurchaseRules.CanAfford(attacker, _state.Treasury, level))
-        {
-            throw new InvalidOperationException(
-                $"AI BuyUnit from capital {capital}: territory cannot afford a {level} " +
-                $"(treasury = {_state.Treasury.GetGold(capital)}g, cost = {PurchaseRules.CostFor(level)}g).");
-        }
-
-        List<HexCoord> legalTargets = MovementRules.ValidTargets(
-            level, attacker, _state.Grid, _state.Territories);
-        if (!legalTargets.Contains(destination))
-        {
-            throw new InvalidOperationException(
-                $"AI BuyUnit to {destination} from capital {capital}: destination is " +
-                $"not a legal {level} placement target.");
-        }
-
-        // Same AI semantic as ExecuteAiMove: a buy onto an own empty
-        // tile is treated as consuming the fresh unit's move so the
-        // AI doesn't immediately move it again next call.
-        HexTile? dstTile = _state.Grid.Get(destination);
-        bool wasReposition = dstTile != null
-            && dstTile.Owner == attacker.Owner
-            && dstTile.Occupant == null;
-        bool wasCombine = WasFriendlyUnitAt(destination, attacker.Owner);
-
-        _state.Treasury.SetGold(
-            capital, _state.Treasury.GetGold(capital) - PurchaseRules.CostFor(level));
-        var unit = new Unit(attacker.Owner, level);
-        MoveResult result = MovementRules.PlaceNew(unit, destination, _state.Grid, attacker);
-        if (result.WasCapture)
-        {
-            HandleCapture($"Buy {level} → {destination}");
-        }
-        if (result.Destroyed != null)
-        {
-            _map.PlayDestructionEffect(destination, result.Destroyed);
-        }
-        if (wasReposition)
-        {
-            Unit? placed = _state.Grid.Get(destination)?.Unit;
-            if (placed != null) placed.HasMovedThisTurn = true;
-        }
-
-        DispatchActionSound(destination, result, wasCombine);
-    }
-
-    private void ExecuteAiBuildTower(HexCoord capital, HexCoord destination)
-    {
-        Territory? territory = TerritoryLookup.FindByCapital(_state.Territories, capital);
-        if (territory == null)
-        {
-            throw new InvalidOperationException(
-                $"AI BuildTower with capital {capital}: no territory has that capital.");
-        }
-        if (!PurchaseRules.CanAffordTower(territory, _state.Treasury))
-        {
-            throw new InvalidOperationException(
-                $"AI BuildTower from capital {capital}: territory cannot afford a tower " +
-                $"(treasury = {_state.Treasury.GetGold(capital)}g).");
-        }
-        if (!territory.Coords.Contains(destination))
-        {
-            throw new InvalidOperationException(
-                $"AI BuildTower at {destination} from capital {capital}: destination is " +
-                $"not in that territory.");
-        }
-        HexTile? dst = _state.Grid.Get(destination);
-        if (dst == null)
-        {
-            throw new InvalidOperationException(
-                $"AI BuildTower at {destination}: coord is off-map.");
-        }
-        // Only the real legality rule gates execution. AI tower spacing
-        // (AiCommon.MeetsAiTowerSpacing) is a *selection* heuristic
-        // applied where AI candidates are enumerated (AiCommon.Enumerate)
-        // — it must NOT gate execution, or replaying a recorded *human*
-        // tower-build placed near another tower (humans aren't bound by
-        // the spacing rule) throws. This was the "about_to_win" desync.
-        if (!PurchaseRules.IsValidTowerLocation(dst, territory, _state.Grid))
-        {
-            throw new InvalidOperationException(
-                $"AI BuildTower at {destination} from capital {capital}: " +
-                $"location is invalid (occupied or out-of-territory).");
-        }
-
-        _state.Treasury.SetGold(
-            capital, _state.Treasury.GetGold(capital) - PurchaseRules.TowerCost);
-        dst.Occupant = new Tower();
-        _map.PlaySound(SoundEffect.TowerPlaced, destination);
-    }
-
-    /// <summary>
-    /// Snapshot every capital-bearing territory's (owner, gold) keyed by
-    /// capital coord. Used by the [Capture] trace to diff before/after
-    /// reconcile so the log records only what actually changed.
-    /// </summary>
-    private Dictionary<HexCoord, (PlayerId Owner, int Gold)> SnapshotCapitals(
-        IReadOnlyList<Territory> territories)
-    {
-        var snap = new Dictionary<HexCoord, (PlayerId Owner, int Gold)>();
-        foreach (Territory t in territories)
-        {
-            if (!t.HasCapital) continue;
-            HexCoord cap = t.Capital!.Value;
-            snap[cap] = (t.Owner, _state.Treasury.GetGold(cap));
-        }
-        return snap;
-    }
-
-    /// <summary>
-    /// Set of colors that own at least one capital-bearing territory
-    /// in <paramref name="territories"/>. Used by HandleCapture to
-    /// detect freshly-eliminated players (had a capital before, none
-    /// after).
-    /// </summary>
-    private static HashSet<PlayerId> ColorsWithCapital(IReadOnlyList<Territory> territories)
-    {
-        var set = new HashSet<PlayerId>();
-        foreach (Territory t in territories)
-        {
-            if (t.HasCapital) set.Add(t.Owner);
-        }
-        return set;
-    }
-
-    /// <summary>
-    /// Print the [Capture] trace: header + one body line per
-    /// capital-coord whose existence, owner, or gold changed across the
-    /// reconcile. Untouched capitals are omitted so the log stays
-    /// readable even on large multi-player maps.
-    /// </summary>
-    [Conditional("DEBUG")]
-    private void LogCaptureDiff(
-        string actionDesc,
-        Dictionary<HexCoord, (PlayerId Owner, int Gold)> oldCaps,
-        Dictionary<HexCoord, (PlayerId Owner, int Gold)> newCaps)
-    {
-        Log.Debug(Log.LogCategory.Capture,
-            $"[Capture T{_state.Turns.TurnNumber} {_state.Turns.CurrentPlayer.Name}] {actionDesc}");
-
-        var coords = new HashSet<HexCoord>(oldCaps.Keys);
-        coords.UnionWith(newCaps.Keys);
-        var sorted = new List<HexCoord>(coords);
-        sorted.Sort();
-
-        bool any = false;
-        foreach (HexCoord c in sorted)
-        {
-            bool inOld = oldCaps.TryGetValue(c, out (PlayerId Owner, int Gold) o);
-            bool inNew = newCaps.TryGetValue(c, out (PlayerId Owner, int Gold) n);
-            if (inOld && inNew && o.Owner == n.Owner && o.Gold == n.Gold) continue;
-
-            string oldStr = inOld ? $"{PlayerNameFor(o.Owner)}={o.Gold}g" : "—";
-            string newStr = inNew ? $"{PlayerNameFor(n.Owner)}={n.Gold}g" : "gone";
-            Log.Debug(Log.LogCategory.Capture, $"  {c}: {oldStr} → {newStr}");
-            any = true;
-        }
-        if (!any) Log.Debug(Log.LogCategory.Capture, "  (no capital/gold changes)");
-    }
-
-    private string PlayerNameFor(PlayerId c)
-    {
-        foreach (Player p in _state.Turns.Players)
-        {
-            if (p.Id == c) return p.Name;
-        }
-        return c.ToString();
+        _ops.AdvanceToNextActivePlayer();
+        _ops.StartPlayerTurn();
     }
 
     // --- View refresh -----------------------------------------------------
@@ -3147,51 +2360,7 @@ public class GameController
     private void ShowHighlightAndRefresh(Territory? selected)
     {
         _map.ShowHighlight(selected);
-        RefreshViews();
-    }
-
-    /// <summary>
-    /// Push current state into both views in one call. Used after any
-    /// state change (click, button press, turn end, undo/redo) — the
-    /// controller's only way to update the UI.
-    /// </summary>
-    private void RefreshViews()
-    {
-        bool hasActionable = HasAnyActionableForCurrentPlayer();
-        _hud.Refresh(_state, _session, hasActionable);
-        _map.RefreshOccupantVisuals(_state.Turns.CurrentPlayer.Id, _state.Treasury);
-        // End Turn CTA when the current player has nothing actionable
-        // left. Lives here (not inside _hud.Refresh) so Tutorial Preview's
-        // onAfterRefresh callback can overwrite it when the next scripted
-        // beat is End Turn — "last write wins" with the preview cue.
-        _hud.SetCta(CtaButton.EndTurn, !hasActionable, pulse: false);
-        _onAfterRefresh?.Invoke();
-    }
-
-    private bool HasAnyActionableForCurrentPlayer()
-    {
-        PlayerId color = _state.Turns.CurrentPlayer.Id;
-
-        foreach (HexTile tile in _state.Grid.Tiles)
-        {
-            if (tile.Occupant is Unit unit
-                && unit.Owner == color
-                && !unit.HasMovedThisTurn)
-            {
-                return true;
-            }
-        }
-
-        foreach (Territory territory in _state.Territories)
-        {
-            if (territory.Owner != color) continue;
-            if (PurchaseRules.CanAffordPeasant(territory, _state.Treasury))
-            {
-                return true;
-            }
-        }
-
-        return false;
+        _ops.RefreshViews();
     }
 
     /// <summary>

@@ -21,11 +21,13 @@ Model → Controller → game (with the test project alongside):
 - **`src/FourExHex.Controller/FourExHex.Controller.csproj`** — a plain
   `Microsoft.NET.Sdk` class library that `<ProjectReference>`s **only**
   `FourExHex.Model` (one-way). It holds the orchestration layer:
-  `GameController`, the UI-scoped `SessionState` +
-  `SessionStateSnapshot` + `UndoEntry`, the `IHexMapView` / `IHudView`
-  / `IAiPacer` view-boundary interfaces, the AI pacers (`AiPacer` /
-  `GodotAiPacer`), and the `Tutorial/` Record/Preview scripting helpers
-  (everything in `Tutorial/` except the model-side `Tutorial` POCO).
+  `GameController` (input + scheduling) and `GameOperations` (the
+  mutation/orchestration helpers — see "GameController ↔ GameOperations
+  split" below), the UI-scoped `SessionState` + `SessionStateSnapshot`
+  + `UndoEntry`, the `IHexMapView` / `IHudView` / `IAiPacer`
+  view-boundary interfaces, the AI pacers (`AiPacer` / `GodotAiPacer`),
+  and the `Tutorial/` Record/Preview scripting helpers (everything in
+  `Tutorial/` except the model-side `Tutorial` POCO).
 - Because GodotSharp is on neither library's reference graph, model
   and controller code are both *physically incapable* of depending on
   Godot — `using Godot;` anywhere in either fails to compile. And
@@ -473,6 +475,72 @@ Consequences for the rest of this doc:
 │   integration tests can verify end-to-end silence.                      │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
+
+## GameController ↔ GameOperations split
+
+The CONTROLLER box above predates a `GameController` → `GameController` +
+`GameOperations` split. The mutation/orchestration core (anything that
+both live AI and replay playback need) was extracted into
+`src/FourExHex.Controller/GameOperations.cs` so a future
+`ReplayRecorder` extraction won't create a circular dependency. Method
+ownership today:
+
+- **`GameOperations`** owns the mutation and turn-lifecycle helpers
+  that both live AI and replay drive into:
+  - Per-action execute helpers — `ExecuteAiMove`, `ExecuteAiBuyUnit`,
+    `ExecuteAiBuildTower`, `ApplyLongPressRally`
+  - Capture aftermath — `HandleCapture` (+ private
+    `SnapshotCapitals` / `ColorsWithCapital` / `LogCaptureDiff`),
+    `DispatchActionSound`, `DeclareWinner`
+  - Turn transitions — `ReseedRngForCurrentTurn` (+ static `MixSeed`),
+    `EndOfTurnProcessing` (+ private `LogGameEndDiagnostics`),
+    `AdvanceToNextActivePlayer`, `StartPlayerTurn` (+ static
+    `ResetMovementFor`, private `LogTurnStart`)
+  - Game-end signaling — `CheckGameEndConditions` (fires `GameEnded`
+    via the `onGameEnded` ctor callback; controller still owns the
+    public event)
+  - View sync — `RefreshViews`, `InvokeAfterRefresh`, private
+    `HasAnyActionableForCurrentPlayer`
+  - Silent-mode coordination — `RefreshSilentMode`, `InSilentAiBatch`
+  - Small helpers — `WasFriendlyUnitAt`
+  - Mutable shared state — `Rng` (read-only getter), `GameEndedFired`,
+    `HumanTurnFiredForCurrentTurn`, `SuppressMapRebuild` (public
+    properties; written by the controller's instant driver / replay
+    reset paths)
+
+- **`GameController`** retains the input + scheduling surface:
+  - All `IHexMapView` / `IHudView` event handlers (`OnTileClicked`,
+    `OnEndTurnPressed`, the Undo/Redo handlers, etc.) and the
+    `TrackHandler` wrapper
+  - Human execute helpers (`ExecuteMove`, `ExecuteBuyAndPlace`,
+    `ExecuteBuildTower`, `RebindSelectionToContaining`) — these don't
+    participate in replay and stay alongside the input dispatcher
+  - AI step machine — `StepAiPreview` / `StepAiExecute` /
+    `ApplyAiActionCore` / `EndCurrentAiPlayerTurnCore` /
+    `ScheduleAiTurn` / `RunAiTurnsUntilHumanOrDone`
+  - Replay step machine — `StepReplayPreview` / `StepReplayExecute` /
+    `ExecuteReplayBeat` / `ReplayApplyEndTurn` / `BeginReplay` /
+    `EndReplay` / `ClearUndoAndReplayBookkeeping`
+  - Instant driver — `RunInstantTick`, `InstantAiTick` /
+    `AiInstantStep`, `InstantReplayTick` / `ReplayInstantStep`
+  - `RecordBeat` and undo/redo bookkeeping (`_undoBeatCounts`,
+    `_redoBeatLists`, `_pendingHumanBeat`)
+  - Public surface — `StartGame`, `Resume`, `AbandonGame`,
+    `BeginReplay`, the four `*ForTutorial` methods,
+    `RecordTutorialOnlyBeat`, the readonly replay-state properties,
+    and the `GameEnded` / `HumanTurnStarted` events
+
+Construction: `GameController`'s constructor builds the `GameOperations`
+instance and passes in callbacks for the things `GameOperations` can't
+own (the public events, `ClearUndoAndReplayBookkeeping`, `_replayMode`,
+`_replayInstantActive`). After that, `GameController` calls into the
+operations through `_ops.X(...)`. The reverse edge is constrained to
+those callbacks; `GameOperations` does not name `GameController`.
+
+`AbandonGame`'s unsubscribe behaviour, the click policy state machine,
+and the `RefreshViews` invariant are unchanged — the split is a
+re-homing of methods, not a behaviour change. Existing tests pin the
+boundary (984/984 green throughout the extraction).
 
 ## Key contracts
 
@@ -2314,7 +2382,17 @@ scripts/  (split: see the three source trees listed just above)
 ├─ GameSettings.cs        ─ global player config (PlayerConfig, PlayerKinds,
 │                           optional MasterSeed)
 ├─ LoadRequest.cs         ─ static one-shot handoff: menu Load → Main
-├─ GameController.cs      ─ pure C# orchestration
+├─ GameController.cs      ─ pure C# orchestration: input event
+│                           handlers, AI/replay step machines, instant
+│                           driver, recording/undo bookkeeping
+├─ GameOperations.cs      ─ mutation/orchestration core shared by live
+│                           AI and replay drive: ExecuteAi*, HandleCapture,
+│                           DeclareWinner, DispatchActionSound, ApplyLong-
+│                           PressRally, EndOfTurnProcessing, Advance-
+│                           ToNextActivePlayer, StartPlayerTurn, Refresh-
+│                           Views, CheckGameEndConditions, Refresh-
+│                           SilentMode, etc. See "GameController ↔
+│                           GameOperations split" above
 │
 ├─ GameState.cs           ─ Grid, Territories, Players, Turns, Treasury,
 │                           WaterCoords (off-map renderer-only set)
