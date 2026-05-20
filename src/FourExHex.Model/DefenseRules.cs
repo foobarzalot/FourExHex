@@ -5,10 +5,11 @@ using System.Linq;
 /// Pure calculation of the defense value covering a hex. Defense is the
 /// max contribution over the tile's own occupant and the occupants of
 /// every adjacent tile in the same territory. Occupant contributions:
-///   - <see cref="Unit"/>     -> (int)unit.Level
-///   - <see cref="Tower"/>    -> 2  (spearman-equivalent)
-///   - <see cref="Capital"/>  -> 1
-///   - null / other occupants -> 0
+///   - <see cref="Unit"/>          -> (int)unit.Level
+///   - <see cref="Tower"/>         -> 2  (spearman-equivalent)
+///   - <see cref="Capital"/>       -> 1
+///   - <see cref="Tree"/> / <see cref="Grave"/> / null -> 0
+///   - any unknown subtype        -> throws
 /// Units, towers, and capitals all radiate their contribution to
 /// adjacent same-territory tiles. Contributions don't stack — the
 /// max single value wins.
@@ -46,10 +47,14 @@ public static class DefenseRules
     /// </summary>
     public static int ContributionOf(HexOccupant? occupant) => occupant switch
     {
+        null => 0,
         Unit u => (int)u.Level,
         Tower => 2,
         Capital => 1,
-        _ => 0,
+        Tree => 0,
+        Grave => 0,
+        _ => throw new System.InvalidOperationException(
+            $"Unknown HexOccupant subtype: {occupant.GetType().Name}"),
     };
 
     /// <summary>

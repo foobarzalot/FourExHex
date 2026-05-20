@@ -122,8 +122,8 @@ public static class GameStateChecksum
                 sb.Append("Grave");
                 return;
             default:
-                sb.Append("Unknown:").Append(occupant.GetType().Name);
-                return;
+                throw new System.InvalidOperationException(
+                    $"Unknown HexOccupant subtype in checksum: {occupant.GetType().Name}");
         }
     }
 }
