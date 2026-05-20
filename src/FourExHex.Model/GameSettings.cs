@@ -14,12 +14,12 @@ public static class GameSettings
     /// </summary>
     public static readonly (string Name, string Hex)[] PlayerConfig =
     {
-        ("Red",    "e53935"),
-        ("Blue",   "1e88e5"),
-        ("Green",  "43a047"),
-        ("Yellow", "fdd835"),
-        ("Purple", "8e24aa"),
-        ("Orange", "fb8c00"),
+        ("Red",    "b65649"), // Gules
+        ("Blue",   "4f7099"), // Azure
+        ("Green",  "5e9072"), // Vert
+        ("Yellow", "c9a042"), // Or
+        ("Purple", "7a4d77"), // Purpure
+        ("Orange", "bb7842"), // Tenné
     };
 
     /// <summary>

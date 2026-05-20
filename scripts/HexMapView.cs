@@ -2072,8 +2072,11 @@ public partial class HexMapView : Node2D, IHexMapView
         };
     }
 
-    private static readonly Color HexOutlineColor = new Color(0f, 0f, 0f, 0.4f);
-    private const float HexOutlineWidth = 1.5f;
+    // Per-tile heraldic dark companion to the player fill is the real
+    // border color; this fallback is used only when a tile has no owner.
+    // The width is the 1.2px stroke from the redesign spec.
+    private static readonly Color HexOutlineColor = PlayerPalette.NeutralDark;
+    private const float HexOutlineWidth = 1.2f;
 
     // Draw each shared land/land edge exactly once (using a coord
     // tie-break for ownership) and each land/water edge exactly once.
@@ -2126,7 +2129,7 @@ public partial class HexMapView : Node2D, IHexMapView
     private const float ShoreFoamInset = 0.30f;
     private static readonly Color ShoreFoamColor = new Color(0.95f, 1.0f, 1.0f);
 
-    private static readonly Color WaterColor = new Color(0.20f, 0.42f, 0.65f, 1f);
+    private static readonly Color WaterColor = UiPalette.WaterDeep;
 
     private Polygon2D CreateWaterHexVisual(Vector2 center)
     {
