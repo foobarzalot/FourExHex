@@ -18,6 +18,7 @@ public class GameController
     private readonly IHexMapView _map;
     private readonly IHudView _hud;
     private readonly GameOperations _ops;
+    private readonly ReplayRecorder _recorder;
 
     // The save/load contract requires deterministic-on-reload AI: a saved
     // master seed plus the (turn, player) tuple uniquely determines the
@@ -97,7 +98,6 @@ public class GameController
         Func<bool>? replayIsInstantMode = null)
     {
         _aiSilentMode = aiSilentMode ?? (() => false);
-        _replayIsInstantMode = replayIsInstantMode;
         _humanActionValidator = humanActionValidator;
         _buyLevelValidator = buyLevelValidator;
         _previewMode = previewMode;
@@ -114,9 +114,14 @@ public class GameController
             hud,
             recordingMode: recordingMode,
             previewMode: previewMode,
-            isReplayMode: () => _replayMode,
+            // Closures over _recorder: the field is null at GameOperations
+            // construction but the recorder is created immediately below;
+            // these predicates aren't invoked until runtime paths fire.
+            // Null-coalesce makes the timing window explicit and silences
+            // the static-analysis warning.
+            isReplayMode: () => _recorder?.IsReplaying ?? false,
             aiSilentMode: _aiSilentMode,
-            isReplayInstantActive: () => _replayInstantActive,
+            isReplayInstantActive: () => _recorder?.IsInstantModeActive ?? false,
             clearUndoAndReplayBookkeeping: ClearUndoAndReplayBookkeeping,
             onGameEnded: () => GameEnded?.Invoke(),
             onHumanTurnStarted: () => HumanTurnStarted?.Invoke(),
@@ -125,15 +130,16 @@ public class GameController
             onAfterRefresh: onAfterRefresh);
         _aiChooser = aiChooser ?? RandomAi.ChooseNextAction;
         _aiPacer = aiPacer ?? new SynchronousAiPacer();
-
-        if (loadedReplay != null)
-        {
-            _initialSnapshot = loadedReplay.InitialSnapshot;
-            _initialTurnNumber = loadedReplay.InitialTurnNumber;
-            _initialCurrentPlayerIndex = loadedReplay.InitialCurrentPlayerIndex;
-            _replayBeats.AddRange(loadedReplay.Beats);
-            _replayDataIsCompleteFromStart = true;
-        }
+        _recorder = new ReplayRecorder(
+            state: state,
+            session: session,
+            map: map,
+            ops: _ops,
+            aiPacer: _aiPacer,
+            previewMode: previewMode,
+            replayIsInstantMode: replayIsInstantMode,
+            instantTickEntry: InstantReplayTick,
+            loadedReplay: loadedReplay);
 
         _map.TileClicked += OnTileClicked;
         _map.TileLongClicked += OnTileLongClicked;
@@ -212,13 +218,13 @@ public class GameController
         // gold so replay's restore matches the seed the live game saw on
         // round 1. Skipped when the controller was constructed with a
         // loaded replay (the snapshot is already populated from disk).
-        if (_initialSnapshot == null)
+        if (!_recorder.HasInitialSnapshot)
         {
-            _initialSnapshot = GameStateSnapshot.Capture(
-                _state.Grid, _state.Treasury, _state.Territories);
-            _initialTurnNumber = _state.Turns.TurnNumber;
-            _initialCurrentPlayerIndex = _state.Turns.CurrentPlayerIndex;
-            _replayDataIsCompleteFromStart = true;
+            _recorder.CaptureInitialSnapshot(
+                GameStateSnapshot.Capture(_state.Grid, _state.Treasury, _state.Territories),
+                _state.Turns.TurnNumber,
+                _state.Turns.CurrentPlayerIndex,
+                markCompleteFromStart: true);
         }
         // No start-of-game income collection: the seed already equals
         // 5 × tree-free cells per territory, which is exactly what each
@@ -248,12 +254,13 @@ public class GameController
         // on, but leave _replayDataIsCompleteFromStart false: the UI
         // disables the Replay button for this game because we have no
         // history before the load point.
-        if (_initialSnapshot == null)
+        if (!_recorder.HasInitialSnapshot)
         {
-            _initialSnapshot = GameStateSnapshot.Capture(
-                _state.Grid, _state.Treasury, _state.Territories);
-            _initialTurnNumber = _state.Turns.TurnNumber;
-            _initialCurrentPlayerIndex = _state.Turns.CurrentPlayerIndex;
+            _recorder.CaptureInitialSnapshot(
+                GameStateSnapshot.Capture(_state.Grid, _state.Treasury, _state.Territories),
+                _state.Turns.TurnNumber,
+                _state.Turns.CurrentPlayerIndex,
+                markCompleteFromStart: false);
         }
         _ops.ReseedRngForCurrentTurn();
         _ops.RefreshSilentMode();
@@ -338,92 +345,31 @@ public class GameController
     public bool IsRecordingMode => _recordingMode;
 
     // --- Replay recording / playback ------------------------------------
-    // The replay log lives parallel to the per-turn undo stack: every
-    // state-mutating action by every player (human and AI) appends a
-    // ReplayBeat here. The list is never cleared by EndTurn or by load;
-    // it grows monotonically for the lifetime of the game. BeginReplay
-    // restores _initialSnapshot, then steps through the beats via
-    // IAiPacer.
-    private readonly List<ReplayBeat> _replayBeats = new();
-    private GameStateSnapshot? _initialSnapshot;
-    private int _initialTurnNumber;
-    private int _initialCurrentPlayerIndex;
-
-    // Set inside a human handler body that produced a state mutation;
-    // TrackHandler reads it after the handler returns and appends it to
-    // _replayBeats iff state actually changed. Mirrors how
-    // _handlerMutatedGame is consumed. Cleared back to null at the start
-    // of each TrackHandler invocation.
+    // The replay log + playback step machines live on _recorder
+    // (ReplayRecorder.cs). The only local bookkeeping that stays on
+    // GameController is _pendingHumanBeat: a per-handler buffer that
+    // handler bodies set when they mutate state; TrackHandler reads it
+    // post-body and forwards to _recorder.RecordBeat. The buffer lives
+    // here because the handlers themselves live here.
     private ReplayBeat? _pendingHumanBeat;
 
-    private bool _replayMode;
-    private int _replayIndex;
-    // Predicate (injected by Main from UserSettings) consulted once per
-    // BeginReplay to decide whether playback runs in the chunked,
-    // frame-yielded "Instant" mode. _replayInstantActive is true only
-    // while such a playback is in flight; it makes RefreshSilentMode
-    // keep the view silent across turn boundaries.
-    private readonly Func<bool>? _replayIsInstantMode;
-    private bool _replayInstantActive;
-
-    // Parallel bookkeeping for undo/redo: track the beat-list size at
-    // the moment each UndoEntry was pushed, so undo can trim
-    // _replayBeats back to that size and stash the popped beats for
-    // redo to restore. Synchronized externally with _session.Undo via
-    // every push/pop site below.
-    private readonly System.Collections.Generic.Stack<int> _undoBeatCounts = new();
-    private readonly System.Collections.Generic.Stack<System.Collections.Generic.List<ReplayBeat>> _redoBeatLists = new();
-
-    // True iff the recorded beats are sufficient to replay from the
-    // game's start. False for v3-save resumes: we capture an initial
-    // snapshot at load time so future replays from that game can begin
-    // somewhere, but the replay button stays disabled in the current
-    // game (loading code that pre-dates the feature has no recorded
-    // history before the load point).
-    private bool _replayDataIsCompleteFromStart;
-
     /// <summary>Read-only view of the recorded beat log.</summary>
-    public System.Collections.Generic.IReadOnlyList<ReplayBeat> ReplayBeats => _replayBeats;
+    public System.Collections.Generic.IReadOnlyList<ReplayBeat> ReplayBeats => _recorder.Beats;
     /// <summary>The captured game-start snapshot, or null if recording
     /// hasn't started yet.</summary>
-    public GameStateSnapshot? InitialReplaySnapshot => _initialSnapshot;
+    public GameStateSnapshot? InitialReplaySnapshot => _recorder.InitialSnapshot;
     /// <summary><see cref="TurnState.TurnNumber"/> at recording start.</summary>
-    public int InitialReplayTurnNumber => _initialTurnNumber;
+    public int InitialReplayTurnNumber => _recorder.InitialTurnNumber;
     /// <summary><see cref="TurnState.CurrentPlayerIndex"/> at recording start.</summary>
-    public int InitialReplayCurrentPlayerIndex => _initialCurrentPlayerIndex;
+    public int InitialReplayCurrentPlayerIndex => _recorder.InitialCurrentPlayerIndex;
     /// <summary>Whether <see cref="BeginReplay"/> would produce a
     /// faithful from-start playback. False after loading a save that
     /// pre-dates the replay feature.</summary>
-    public bool ReplayDataIsCompleteFromStart => _replayDataIsCompleteFromStart;
+    public bool ReplayDataIsCompleteFromStart => _recorder.IsCompleteFromStart;
     /// <summary>True while <see cref="BeginReplay"/> is driving playback.
     /// Input handlers early-return when this is set; autosave is
     /// suppressed.</summary>
-    public bool IsReplayMode => _replayMode;
-
-    /// <summary>
-    /// Append a typed beat to the replay log, stamping
-    /// <see cref="ReplayBeat.Index"/>, <see cref="ReplayBeat.Turn"/>,
-    /// and <see cref="ReplayBeat.Actor"/> from the current turn state.
-    /// Called from every state-mutation site; gated on
-    /// <see cref="_replayMode"/> by each caller so playback doesn't
-    /// re-record the beats it's replaying.
-    /// </summary>
-    private void RecordBeat(ReplayBeat beat)
-    {
-        // Preview mode also suppresses recording — the script lives
-        // in ReplayDrivenAi + TutorialPreview, not in _replayBeats.
-        // Leaving this guard inside the method (rather than at every
-        // call site) means new RecordBeat callers don't need to
-        // remember the gate.
-        if (_previewMode) return;
-        ReplayBeat stamped = beat with
-        {
-            Index = _replayBeats.Count,
-            Turn = _state.Turns.TurnNumber,
-            Actor = _state.Turns.CurrentPlayerIndex,
-        };
-        _replayBeats.Add(stamped);
-    }
+    public bool IsReplayMode => _recorder.IsReplaying;
 
     /// <summary>
     /// Per-event-handler push policy. Captures pre-handler state, runs
@@ -443,7 +389,7 @@ public class GameController
     /// </summary>
     private void TrackHandler(System.Action work)
     {
-        if (_replayMode) return;
+        if (_recorder.IsReplaying) return;
         // Drop the input outright while an AI player is acting under
         // Instant — the main thread is free between worker yields, so
         // a tile click or Tab press could otherwise race the chooser
@@ -452,7 +398,7 @@ public class GameController
         // belt-and-braces guarantee: even if Godot's input ordering
         // ever changed, the controller's invariants are protected).
         if (_ops.InSilentAiBatch()) return;
-        int beatsBefore = _replayBeats.Count;
+        int beatsBefore = _recorder.BeatsCount;
         UndoEntry pre = CaptureCurrentSnapshot();
         _handlerMutatedGame = false;
         _pendingHumanBeat = null;
@@ -464,7 +410,7 @@ public class GameController
         // ended the game must appear in the replay log.
         if (_session.IsGameOver)
         {
-            if (_pendingHumanBeat != null) RecordBeat(_pendingHumanBeat);
+            if (_pendingHumanBeat != null) _recorder.RecordBeat(_pendingHumanBeat);
             return;
         }
         SessionStateSnapshot postSession = SessionStateSnapshot.Capture(_session);
@@ -475,10 +421,9 @@ public class GameController
             // Parallel bookkeeping: this entry corresponds to the
             // beat-list at size beatsBefore. New action invalidates
             // forward history on the replay side too.
-            _undoBeatCounts.Push(beatsBefore);
-            _redoBeatLists.Clear();
+            _recorder.OnHumanHandlerCommitted(beatsBefore);
         }
-        if (_pendingHumanBeat != null) RecordBeat(_pendingHumanBeat);
+        if (_pendingHumanBeat != null) _recorder.RecordBeat(_pendingHumanBeat);
         // Tutorial Preview cue update: handler bodies sometimes paint
         // ShowMoveTargets / ShowTowerTargets AFTER their mid-body
         // RefreshViews call (e.g., OnTileClickedBody enters MovingUnit
@@ -713,17 +658,8 @@ public class GameController
     /// mode, or before StartGame). Crashes if a non-<see cref="TutorialOnlyBeat"/>
     /// subclass is passed — only tutorial-only beats are authorable.
     /// </summary>
-    public void RecordTutorialOnlyBeat(TutorialOnlyBeat beat)
-    {
-        if (_replayMode || _previewMode) return;
-        ReplayBeat stamped = beat with
-        {
-            Index = _replayBeats.Count,
-            Turn = _state.Turns.TurnNumber,
-            Actor = -1,
-        };
-        _replayBeats.Add(stamped);
-    }
+    public void RecordTutorialOnlyBeat(TutorialOnlyBeat beat) =>
+        _recorder.RecordTutorialOnlyBeat(beat);
 
     /// <summary>
     /// Returns the action-consuming targets for a would-be attacker of
@@ -1089,14 +1025,14 @@ public class GameController
     /// </summary>
     private void OnDefeatContinuePressed()
     {
-        if (_replayMode) return;
+        if (_recorder.IsReplaying) return;
         if (_ops.InSilentAiBatch()) return;
         if (!_session.PendingDefeatScreen.HasValue) return;
         if (_humanActionValidator != null && !_humanActionValidator(new ReplayDismissDefeatBeat()))
         {
             return;
         }
-        RecordBeat(new ReplayDismissDefeatBeat());
+        _recorder.RecordBeat(new ReplayDismissDefeatBeat());
         _session.PendingDefeatScreen = null;
         // Re-arm silent mode if we were in a silent batch — clearing
         // PendingDefeatScreen makes InSilentAiBatch() flip back to
@@ -1115,28 +1051,28 @@ public class GameController
 
     private void OnUndoLastPressed()
     {
-        if (_replayMode) return;
+        if (_recorder.IsReplaying) return;
         if (_ops.InSilentAiBatch()) return;
         if (_session.IsGameOver) return;
         if (!_session.Undo.CanUndo) return;
         HexCoord? before = _session.SelectedTerritory?.Capital;
-        PopOneBeatBatchForUndo();
+        _recorder.PopOneBeatBatchForUndo();
         ApplySnapshot(_session.Undo.UndoLast(CaptureCurrentSnapshot()));
         CenterIfSelectionChanged(before);
     }
 
     private void OnUndoTurnPressed()
     {
-        if (_replayMode) return;
+        if (_recorder.IsReplaying) return;
         if (_ops.InSilentAiBatch()) return;
         if (_session.IsGameOver) return;
         if (!_session.Undo.CanUndo) return;
         // Inline the UndoAll loop so each pop's beat bookkeeping fires.
-        PopOneBeatBatchForUndo();
+        _recorder.PopOneBeatBatchForUndo();
         UndoEntry restored = _session.Undo.UndoLast(CaptureCurrentSnapshot());
         while (_session.Undo.CanUndo)
         {
-            PopOneBeatBatchForUndo();
+            _recorder.PopOneBeatBatchForUndo();
             restored = _session.Undo.UndoLast(restored);
         }
         ApplySnapshot(restored);
@@ -1144,75 +1080,43 @@ public class GameController
 
     private void OnRedoLastPressed()
     {
-        if (_replayMode) return;
+        if (_recorder.IsReplaying) return;
         if (_ops.InSilentAiBatch()) return;
         if (_session.IsGameOver) return;
         if (!_session.Undo.CanRedo) return;
         HexCoord? before = _session.SelectedTerritory?.Capital;
-        PushOneBeatBatchForRedo();
+        _recorder.PushOneBeatBatchForRedo();
         ApplySnapshot(_session.Undo.RedoLast(CaptureCurrentSnapshot()));
         CenterIfSelectionChanged(before);
     }
 
     private void OnRedoAllPressed()
     {
-        if (_replayMode) return;
+        if (_recorder.IsReplaying) return;
         if (_ops.InSilentAiBatch()) return;
         if (_session.IsGameOver) return;
         if (!_session.Undo.CanRedo) return;
-        PushOneBeatBatchForRedo();
+        _recorder.PushOneBeatBatchForRedo();
         UndoEntry restored = _session.Undo.RedoLast(CaptureCurrentSnapshot());
         while (_session.Undo.CanRedo)
         {
-            PushOneBeatBatchForRedo();
+            _recorder.PushOneBeatBatchForRedo();
             restored = _session.Undo.RedoLast(restored);
         }
         ApplySnapshot(restored);
     }
 
     /// <summary>
-    /// Pop one entry from <see cref="_undoBeatCounts"/> and stash the
-    /// corresponding tail of <see cref="_replayBeats"/> onto
-    /// <see cref="_redoBeatLists"/>. Mirrors a single <see cref="UndoStack{T}.UndoLast"/>
-    /// pop on the replay side.
-    /// </summary>
-    private void PopOneBeatBatchForUndo()
-    {
-        int targetCount = _undoBeatCounts.Pop();
-        var popped = new System.Collections.Generic.List<ReplayBeat>();
-        for (int i = targetCount; i < _replayBeats.Count; i++)
-        {
-            popped.Add(_replayBeats[i]);
-        }
-        _replayBeats.RemoveRange(targetCount, _replayBeats.Count - targetCount);
-        _redoBeatLists.Push(popped);
-    }
-
-    /// <summary>
     /// Clear the per-turn undo stack and the parallel beat-tracking
-    /// stacks together. The three sites that commit "no more undo"
-    /// (end of turn, mid-turn domination, claim-victory win) all need
-    /// to drop replay bookkeeping in lockstep — otherwise a subsequent
-    /// undo would pop into a phantom beat count.
+    /// stacks on the recorder together. The three sites that commit
+    /// "no more undo" (end of turn, mid-turn domination, claim-victory
+    /// win) all need to drop replay bookkeeping in lockstep —
+    /// otherwise a subsequent undo would pop into a phantom beat count.
     /// </summary>
     private void ClearUndoAndReplayBookkeeping()
     {
         _session.Undo.Clear();
-        _undoBeatCounts.Clear();
-        _redoBeatLists.Clear();
-    }
-
-    /// <summary>
-    /// Pop one stashed batch from <see cref="_redoBeatLists"/> and
-    /// re-append to <see cref="_replayBeats"/>, recording the new
-    /// pre-batch count on <see cref="_undoBeatCounts"/>. Mirrors a
-    /// single <see cref="UndoStack{T}.RedoLast"/>.
-    /// </summary>
-    private void PushOneBeatBatchForRedo()
-    {
-        System.Collections.Generic.List<ReplayBeat> toRestore = _redoBeatLists.Pop();
-        _undoBeatCounts.Push(_replayBeats.Count);
-        _replayBeats.AddRange(toRestore);
+        _recorder.ClearBookkeeping();
     }
 
     /// <summary>
@@ -1582,7 +1486,7 @@ public class GameController
 
     private void OnEndTurnPressed()
     {
-        if (_replayMode) return;
+        if (_recorder.IsReplaying) return;
         if (_ops.InSilentAiBatch()) return;
         if (_session.IsGameOver) return;
         if (_humanActionValidator != null && !_humanActionValidator(new ReplayEndTurnBeat()))
@@ -1628,7 +1532,7 @@ public class GameController
         // turn metadata, before clearing the undo stack and advancing.
         // AI implicit end-of-turn (StepAiPreview's null-action branch)
         // records its own EndTurnBeat — the two sites are disjoint.
-        if (!_replayMode) RecordBeat(new ReplayEndTurnBeat());
+        if (!_recorder.IsReplaying) _recorder.RecordBeat(new ReplayEndTurnBeat());
 
         // Ending the turn commits everything; no further undo.
         ClearUndoAndReplayBookkeeping();
@@ -1660,7 +1564,7 @@ public class GameController
     /// </summary>
     private void OnClaimVictoryWinNowPressed()
     {
-        if (_replayMode) return;
+        if (_recorder.IsReplaying) return;
         if (_ops.InSilentAiBatch()) return;
         if (!_session.PendingClaimVictory.HasValue) return;
         (PlayerId color, int threshold) = _session.PendingClaimVictory.Value;
@@ -1669,7 +1573,7 @@ public class GameController
         {
             return;
         }
-        RecordBeat(new ReplayClaimVictoryBeat { ThresholdPercent = threshold });
+        _recorder.RecordBeat(new ReplayClaimVictoryBeat { ThresholdPercent = threshold });
         _session.PendingClaimVictory = null;
         _session.ClaimVictoryPromptedHighestThreshold[color] = threshold;
         _ops.DeclareWinner(color);
@@ -1685,7 +1589,7 @@ public class GameController
     /// </summary>
     private void OnClaimVictoryContinuePressed()
     {
-        if (_replayMode) return;
+        if (_recorder.IsReplaying) return;
         if (_ops.InSilentAiBatch()) return;
         if (!_session.PendingClaimVictory.HasValue) return;
         (PlayerId color, int threshold) = _session.PendingClaimVictory.Value;
@@ -1694,7 +1598,7 @@ public class GameController
         {
             return;
         }
-        RecordBeat(new ReplayDismissClaimBeat { ThresholdPercent = threshold });
+        _recorder.RecordBeat(new ReplayDismissClaimBeat { ThresholdPercent = threshold });
         _session.PendingClaimVictory = null;
         _session.ClaimVictoryPromptedHighestThreshold[color] = threshold;
         EndTurnNow();
@@ -1868,16 +1772,16 @@ public class GameController
         switch (action)
         {
             case AiMoveAction mv:
-                if (!_replayMode)
+                if (!_recorder.IsReplaying)
                 {
-                    RecordBeat(new ReplayMoveBeat { From = mv.Source, To = mv.Destination });
+                    _recorder.RecordBeat(new ReplayMoveBeat { From = mv.Source, To = mv.Destination });
                 }
                 _ops.ExecuteAiMove(mv.Source, mv.Destination);
                 return mv.Destination;
             case AiBuyUnitAction bu:
-                if (!_replayMode)
+                if (!_recorder.IsReplaying)
                 {
-                    RecordBeat(new ReplayBuyBeat
+                    _recorder.RecordBeat(new ReplayBuyBeat
                     {
                         Capital = bu.Capital,
                         To = bu.Destination,
@@ -1887,9 +1791,9 @@ public class GameController
                 _ops.ExecuteAiBuyUnit(bu.Capital, bu.Destination, bu.Level);
                 return bu.Destination;
             case AiBuildTowerAction bt:
-                if (!_replayMode)
+                if (!_recorder.IsReplaying)
                 {
-                    RecordBeat(new ReplayBuildTowerBeat
+                    _recorder.RecordBeat(new ReplayBuildTowerBeat
                     {
                         Capital = bt.Capital,
                         To = bt.Destination,
@@ -1898,18 +1802,18 @@ public class GameController
                 _ops.ExecuteAiBuildTower(bt.Capital, bt.Destination);
                 return bt.Destination;
             case AiLongPressRallyAction rl:
-                if (!_replayMode)
+                if (!_recorder.IsReplaying)
                 {
-                    RecordBeat(new ReplayLongPressRallyBeat { Target = rl.Target });
+                    _recorder.RecordBeat(new ReplayLongPressRallyBeat { Target = rl.Target });
                 }
                 _ops.ApplyLongPressRally(rl.Target);
                 return rl.Target;
             case AiClaimVictoryAction cv:
             {
                 PlayerId cvColor = _state.Turns.CurrentPlayer.Id;
-                if (!_replayMode)
+                if (!_recorder.IsReplaying)
                 {
-                    RecordBeat(new ReplayClaimVictoryBeat { ThresholdPercent = cv.ThresholdPercent });
+                    _recorder.RecordBeat(new ReplayClaimVictoryBeat { ThresholdPercent = cv.ThresholdPercent });
                 }
                 _session.ClaimVictoryPromptedHighestThreshold[cvColor] = cv.ThresholdPercent;
                 _ops.DeclareWinner(cvColor);
@@ -1922,9 +1826,9 @@ public class GameController
             case AiDismissClaimAction dc:
             {
                 PlayerId dcColor = _state.Turns.CurrentPlayer.Id;
-                if (!_replayMode)
+                if (!_recorder.IsReplaying)
                 {
-                    RecordBeat(new ReplayDismissClaimBeat { ThresholdPercent = dc.ThresholdPercent });
+                    _recorder.RecordBeat(new ReplayDismissClaimBeat { ThresholdPercent = dc.ThresholdPercent });
                 }
                 _session.ClaimVictoryPromptedHighestThreshold[dcColor] = dc.ThresholdPercent;
                 return TerritoryLookup
@@ -1933,9 +1837,9 @@ public class GameController
                     ?? new HexCoord(0, 0);
             }
             case AiDismissDefeatAction _:
-                if (!_replayMode)
+                if (!_recorder.IsReplaying)
                 {
-                    RecordBeat(new ReplayDismissDefeatBeat());
+                    _recorder.RecordBeat(new ReplayDismissDefeatBeat());
                 }
                 _session.PendingDefeatScreen = null;
                 return new HexCoord(0, 0);
@@ -1962,7 +1866,7 @@ public class GameController
             $"({(action == null ? "no positive-delta actions" : "step cap reached")})");
         // Record AI's implicit end-of-turn for the replay log. The
         // beat captures the *ending* AI player's actor/turn.
-        if (!_replayMode) RecordBeat(new ReplayEndTurnBeat());
+        if (!_recorder.IsReplaying) _recorder.RecordBeat(new ReplayEndTurnBeat());
         _ops.EndOfTurnProcessing();
         if (_session.IsGameOver)
         {
@@ -2027,118 +1931,19 @@ public class GameController
     /// suppressed. The view's victory overlay is hidden (Winner is
     /// reset) until the recorded game-ending beat re-fires it.
     /// </summary>
+    /// <summary>
+    /// Rewind and play back the recorded beat log. Forwards to
+    /// <see cref="ReplayRecorder.BeginReplay"/>; the undo-stack clear
+    /// is composite (session undo + beat-stack bookkeeping) so it
+    /// happens here, not inside the recorder.
+    /// </summary>
     public void BeginReplay()
     {
-        if (_initialSnapshot == null) return;
-        _aiPacer.Cancel();
-        _replayMode = true;
-        _replayIndex = 0;
-        _ops.GameEndedFired = false;
-        _ops.HumanTurnFiredForCurrentTurn = false;
-
-        _state.Territories = _initialSnapshot.ApplyTo(_state.Grid, _state.Treasury);
-        _state.Turns.Reset(_initialCurrentPlayerIndex, _initialTurnNumber);
-        _session.Winner = null;
-        _session.PendingDefeatScreen = null;
-        _session.PendingClaimVictory = null;
-        _session.ClaimVictoryPromptedHighestThreshold.Clear();
-        _session.ClearPendingAction();
-        _session.SelectedTerritory = null;
+        if (!_recorder.HasInitialSnapshot) return;
+        // Composite clear (session + beat stacks) before the recorder
+        // resets its own state — keeps the three stacks in lockstep.
         ClearUndoAndReplayBookkeeping();
-
-        _replayInstantActive = _replayIsInstantMode?.Invoke() == true;
-
-        _map.RebuildAfterTerritoryChange();
-        _map.ShowHighlight(null);
-        _map.ClearAllOverlays();
-        // Set silent BEFORE the setup refresh so even the rewind paint
-        // skips tweens. Instant playback never shows per-beat highlights.
-        if (_replayInstantActive) _map.SetSilentMode(true);
-        _ops.RefreshViews();
-
-        if (_replayInstantActive)
-            _aiPacer.ScheduleUnscaled(InstantReplayTick, 0);
-        else
-            _aiPacer.Schedule(StepReplayPreview, AiBetweenPlayersDelayMs);
-    }
-
-    private void StepReplayPreview()
-    {
-        if (!_replayMode) return;
-        if (_replayIndex >= _replayBeats.Count) { EndReplay(); return; }
-
-        ReplayBeat beat = _replayBeats[_replayIndex];
-        ShowHighlightAndRefresh(ResolveReplayActingTerritory(beat));
-
-        int delay = beat is ReplayEndTurnBeat ? AiActionDelayMs : AiPreviewDelayMs;
-        _aiPacer.Schedule(StepReplayExecute, delay);
-    }
-
-    private void StepReplayExecute()
-    {
-        if (!_replayMode) return;
-        if (_replayIndex >= _replayBeats.Count) { EndReplay(); return; }
-
-        ReplayBeat beat = _replayBeats[_replayIndex++];
-        bool crossesTurn = beat is ReplayEndTurnBeat;
-
-        ExecuteReplayBeat(beat);
-
-        _ops.CheckGameEndConditions();
-        _ops.RefreshViews();
-
-        if (_session.IsGameOver) { EndReplay(); return; }
-
-        int delay = crossesTurn ? AiBetweenPlayersDelayMs : AiActionDelayMs;
-        _aiPacer.Schedule(StepReplayPreview, delay);
-    }
-
-    /// <summary>
-    /// Dispatch a single replay beat onto the same mutation paths the
-    /// live game uses. Shared by the paced step machine
-    /// (<see cref="StepReplayExecute"/>) and the chunked
-    /// <see cref="InstantReplayTick"/> so the two playback modes can't
-    /// drift. Does NOT advance <see cref="_replayIndex"/>, run the
-    /// game-end check, or refresh views — callers own pacing.
-    /// </summary>
-    private void ExecuteReplayBeat(ReplayBeat beat)
-    {
-        switch (beat)
-        {
-            case ReplayMoveBeat mv:
-                _ops.ExecuteAiMove(mv.From, mv.To);
-                break;
-            case ReplayBuyBeat bu:
-                _ops.ExecuteAiBuyUnit(bu.Capital, bu.To, bu.Level);
-                break;
-            case ReplayBuildTowerBeat bt:
-                _ops.ExecuteAiBuildTower(bt.Capital, bt.To);
-                break;
-            case ReplayEndTurnBeat _:
-                ReplayApplyEndTurn();
-                break;
-            case ReplayClaimVictoryBeat cv:
-                PlayerId cvColor = _state.Turns.CurrentPlayer.Id;
-                _session.ClaimVictoryPromptedHighestThreshold[cvColor] = cv.ThresholdPercent;
-                _ops.DeclareWinner(cvColor);
-                break;
-            case ReplayDismissClaimBeat dcv:
-                PlayerId dcColor = _state.Turns.CurrentPlayer.Id;
-                _session.ClaimVictoryPromptedHighestThreshold[dcColor] = dcv.ThresholdPercent;
-                break;
-            case ReplayDismissDefeatBeat _:
-                _session.PendingDefeatScreen = null;
-                break;
-            case ReplayLongPressRallyBeat rally:
-                _ops.ApplyLongPressRally(rally.Target);
-                break;
-            case TutorialOnlyBeat _:
-                // Tutorial-only beats (e.g., narration text) are
-                // authoring-only — the in-game Replay button silently
-                // skips them. Tutorial Preview consumes them through
-                // TutorialNarrationDriver instead.
-                break;
-        }
+        _recorder.BeginReplay();
     }
 
     // Max wall-clock a single instant tick may spend draining steps
@@ -2160,7 +1965,6 @@ public class GameController
     /// <summary>One step's outcome for <see cref="RunInstantTick"/>:
     /// keep draining, stop at a completed turn (repaint + pace), or
     /// the driver is done (run the finish action).</summary>
-    private enum InstantStep { Continued, TurnBoundary, Exhausted }
 
     /// <summary>
     /// Shared chunked, frame-yielded fast-forward loop behind both
@@ -2209,24 +2013,14 @@ public class GameController
     }
 
     /// <summary>Instant-replay driver: a thin <see cref="RunInstantTick"/>
-    /// wrapper over the recorded beat list. Behaviour-preserving vs the
-    /// old standalone loop (verified by ReplayPlaybackTests).</summary>
+    /// wrapper. The step and finish actions both live on the recorder;
+    /// only this entry point stays here because <c>RunInstantTick</c>
+    /// itself is shared with live-AI instant.</summary>
     private void InstantReplayTick() => RunInstantTick(
-        active: () => _replayMode,
-        step: ReplayInstantStep,
-        onExhausted: EndReplay,
+        active: () => _recorder.IsReplaying,
+        step: _recorder.ReplayInstantStep,
+        onExhausted: _recorder.EndReplay,
         self: InstantReplayTick);
-
-    private InstantStep ReplayInstantStep()
-    {
-        if (_replayIndex >= _replayBeats.Count) return InstantStep.Exhausted;
-        ReplayBeat beat = _replayBeats[_replayIndex++];
-        bool isEndTurn = beat is ReplayEndTurnBeat;
-        ExecuteReplayBeat(beat);
-        _ops.CheckGameEndConditions();
-        if (_session.IsGameOver) return InstantStep.Exhausted;
-        return isEndTurn ? InstantStep.TurnBoundary : InstantStep.Continued;
-    }
 
     /// <summary>
     /// Live-AI instant driver — the user-visible 1:1 of instant replay
@@ -2273,7 +2067,7 @@ public class GameController
 
     /// <summary>
     /// Finish action for <see cref="InstantAiTick"/>. Mirrors
-    /// <see cref="EndReplay"/>'s shape (final rebuild + lift silent +
+    /// <see cref="ReplayRecorder.EndReplay"/>'s shape (final rebuild + lift silent +
     /// single paint) plus the live-only mid-batch pause: if a defeat /
     /// claim-victory overlay is up, lift silent and paint it but DON'T
     /// rebuild/advance — the dismiss handler resumes the batch.
@@ -2295,58 +2089,6 @@ public class GameController
         // paint the human sees (winner overlay if the game just ended).
         _ops.RefreshSilentMode();
         ShowHighlightAndRefresh(null);
-    }
-
-    private void EndReplay()
-    {
-        bool wasInstant = _replayInstantActive;
-        _replayMode = false;
-        _replayInstantActive = false;
-        _ops.SuppressMapRebuild = false;
-        _aiPacer.Cancel();
-        // Lift silent mode so the final game-over board (winner overlay,
-        // last-move state) renders with normal audio/VFX. No-op for
-        // non-instant replay, which never silenced the view.
-        _map.SetSilentMode(false);
-        // Instant replay suppressed every per-capture rebuild, so the
-        // border layer is stale; do one final structural rebuild before
-        // the closing refresh. Non-instant replay already rebuilt per
-        // capture, so this is instant-only.
-        if (wasInstant) _map.RebuildAfterTerritoryChange();
-        ShowHighlightAndRefresh(null);
-    }
-
-    /// <summary>
-    /// Acting-territory resolver for replay preview highlights. Mirrors
-    /// <see cref="ResolveAiActingTerritory"/> but covers the broader
-    /// beat-kind family (human-only beats too).
-    /// </summary>
-    private Territory? ResolveReplayActingTerritory(ReplayBeat beat)
-    {
-        PlayerId owner = _state.Turns.CurrentPlayer.Id;
-        return beat switch
-        {
-            ReplayMoveBeat mv => TerritoryLookup.FindOwnedContaining(_state.Territories, owner, mv.From),
-            ReplayBuyBeat bu => TerritoryLookup.FindOwnedContaining(_state.Territories, owner, bu.Capital),
-            ReplayBuildTowerBeat bt => TerritoryLookup.FindOwnedContaining(_state.Territories, owner, bt.Capital),
-            ReplayLongPressRallyBeat rally => TerritoryLookup.FindOwnedContaining(_state.Territories, owner, rally.Target),
-            _ => null,
-        };
-    }
-
-    /// <summary>
-    /// Replay's EndTurn dispatch. Runs the same end-of-turn bookkeeping
-    /// as <see cref="EndTurnNow"/> (win check, advance player, start
-    /// next turn) but skips the AI loop's <c>RunAiTurnsUntilHumanOrDone</c>
-    /// — replay drives every action beat explicitly, so leaving the AI
-    /// loop scheduled would queue stale steps.
-    /// </summary>
-    private void ReplayApplyEndTurn()
-    {
-        _ops.EndOfTurnProcessing();
-        if (_session.IsGameOver) return;
-        _ops.AdvanceToNextActivePlayer();
-        _ops.StartPlayerTurn();
     }
 
     // --- View refresh -----------------------------------------------------

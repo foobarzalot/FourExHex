@@ -21,11 +21,14 @@ Model → Controller → game (with the test project alongside):
 - **`src/FourExHex.Controller/FourExHex.Controller.csproj`** — a plain
   `Microsoft.NET.Sdk` class library that `<ProjectReference>`s **only**
   `FourExHex.Model` (one-way). It holds the orchestration layer:
-  `GameController` (input + scheduling) and `GameOperations` (the
+  `GameController` (input + AI scheduling), `GameOperations` (the
   mutation/orchestration helpers — see "GameController ↔ GameOperations
-  split" below), the UI-scoped `SessionState` + `SessionStateSnapshot`
-  + `UndoEntry`, the `IHexMapView` / `IHudView` / `IAiPacer`
-  view-boundary interfaces, the AI pacers (`AiPacer` / `GodotAiPacer`),
+  split" below), and `ReplayRecorder` (the recording + playback
+  subsystem — see "GameController ↔ ReplayRecorder split" below); the
+  UI-scoped `SessionState` + `SessionStateSnapshot` + `UndoEntry`;
+  the top-level `InstantStep` enum (shared between the AI and replay
+  instant step machines); the `IHexMapView` / `IHudView` / `IAiPacer`
+  view-boundary interfaces; the AI pacers (`AiPacer` / `GodotAiPacer`);
   and the `Tutorial/` Record/Preview scripting helpers (everything in
   `Tutorial/` except the model-side `Tutorial` POCO).
 - Because GodotSharp is on neither library's reference graph, model
@@ -541,6 +544,80 @@ those callbacks; `GameOperations` does not name `GameController`.
 and the `RefreshViews` invariant are unchanged — the split is a
 re-homing of methods, not a behaviour change. Existing tests pin the
 boundary (984/984 green throughout the extraction).
+
+## GameController ↔ ReplayRecorder split
+
+A second extraction lifted the replay subsystem out of `GameController`
+into `src/FourExHex.Controller/ReplayRecorder.cs`. Same one-way layering
+as the GameOperations split: `ReplayRecorder → GameOperations` for every
+mutation; the recorder does not reference `GameController`. The
+recorder owns recording, paced playback, and the instant-step function.
+
+### What lives on ReplayRecorder
+
+- **Recording state**: `_replayBeats`, `_initialSnapshot`,
+  `_initialTurnNumber`, `_initialCurrentPlayerIndex`,
+  `_replayDataIsCompleteFromStart`, `_replayMode`, `_replayIndex`,
+  `_replayInstantActive`, `_undoBeatCounts`, `_redoBeatLists`,
+  `_replayIsInstantMode`.
+- **Recording methods**: `RecordBeat`, `RecordTutorialOnlyBeat`,
+  `CaptureInitialSnapshot`, `ClearBookkeeping`,
+  `OnHumanHandlerCommitted`, `PopOneBeatBatchForUndo`,
+  `PushOneBeatBatchForRedo`.
+- **Playback methods**: `BeginReplay`, `EndReplay`,
+  `StepReplayPreview`, `StepReplayExecute`, `ExecuteReplayBeat`,
+  `ReplayApplyEndTurn`, `ReplayInstantStep` (the step function consumed
+  by `RunInstantTick`), private `ResolveReplayActingTerritory`.
+- **Public read surface** (consumed by `Main.cs` and `RecordPane.cs` via
+  thin forwarders on `GameController`): `Beats`, `BeatsCount`,
+  `InitialSnapshot`, `InitialTurnNumber`, `InitialCurrentPlayerIndex`,
+  `IsCompleteFromStart`, `HasInitialSnapshot`, `IsReplaying`,
+  `IsInstantModeActive`.
+
+### What stays on GameController
+
+- All input event handlers and the `TrackHandler` wrapper. The
+  per-handler `_pendingHumanBeat` buffer stays alongside the handlers;
+  `TrackHandler` post-body calls `_recorder.RecordBeat(...)` and
+  `_recorder.OnHumanHandlerCommitted(beatsBefore)` to keep the
+  three-way sync between `_session.Undo`, `_undoBeatCounts`, and
+  `_redoBeatLists`.
+- AI step machine (`StepAiPreview` / `StepAiExecute` /
+  `ApplyAiActionCore` / `EndCurrentAiPlayerTurnCore` / `ScheduleAiTurn`
+  / `RunAiTurnsUntilHumanOrDone` / `InstantAiTick` / `AiInstantStep` /
+  `EndInstantAiBatch`).
+- `RunInstantTick` (shared chunked driver for AI + replay instant)
+  and the `InstantReplayTick` one-line wrapper that targets it for
+  replay (the step + finish are on the recorder).
+- The `InstantStep` enum (`Continued` / `TurnBoundary` / `Exhausted`)
+  was lifted out of `GameController` as a top-level type in the
+  Controller assembly so both the AI step and the recorder's
+  `ReplayInstantStep` can return it.
+- Undo/redo input handlers (`OnUndoLastPressed`, etc.) — they call
+  `_recorder.PopOneBeatBatchForUndo()` / `PushOneBeatBatchForRedo()`
+  for the beat-stack side and operate on `_session.Undo` themselves.
+- `ClearUndoAndReplayBookkeeping()` — composite that does
+  `_session.Undo.Clear()` + `_recorder.ClearBookkeeping()`. Stays on
+  `GameController` because it mixes session-state and beat-state clears.
+- Public events (`GameEnded`, `HumanTurnStarted`).
+- Public API forwarders to the recorder: `BeginReplay`,
+  `RecordTutorialOnlyBeat`, `ReplayBeats`, `InitialReplaySnapshot`,
+  `InitialReplayTurnNumber`, `InitialReplayCurrentPlayerIndex`,
+  `ReplayDataIsCompleteFromStart`, `IsReplayMode`.
+
+### Construction
+
+`GameController`'s constructor creates `_ops` first, then `_recorder`.
+`GameOperations`' `isReplayMode` and `isReplayInstantActive` predicates
+are closures over the `_recorder` field; they read
+`_recorder?.IsReplaying ?? false` / `_recorder?.IsInstantModeActive ??
+false` so the static analyzer is satisfied and the predicates are safe
+to invoke at any later time. The recorder is constructed with refs to
+`_state`, `_session`, `_map`, `_ops`, `_aiPacer`, the
+`replayIsInstantMode` predicate from `Main`, the `InstantReplayTick`
+entry callback (which the recorder schedules into
+`_aiPacer.ScheduleUnscaled` for instant playback), and `loadedReplay`
+(for save-load bootstrap of `_initialSnapshot` + `_replayBeats`).
 
 ## Key contracts
 
@@ -2393,6 +2470,16 @@ scripts/  (split: see the three source trees listed just above)
 │                           Views, CheckGameEndConditions, Refresh-
 │                           SilentMode, etc. See "GameController ↔
 │                           GameOperations split" above
+├─ ReplayRecorder.cs      ─ replay subsystem: the beat log, initial
+│                           snapshot, undo/redo beat-stack bookkeeping,
+│                           paced + instant playback step machines.
+│                           RecordBeat, BeginReplay/EndReplay/Step-
+│                           Replay*, ExecuteReplayBeat, ReplayApply-
+│                           EndTurn, ReplayInstantStep. Calls into
+│                           GameOperations one-way. Hosts the top-level
+│                           InstantStep enum shared with GameController's
+│                           InstantAiTick. See "GameController ↔
+│                           ReplayRecorder split" above
 │
 ├─ GameState.cs           ─ Grid, Territories, Players, Turns, Treasury,
 │                           WaterCoords (off-map renderer-only set)
