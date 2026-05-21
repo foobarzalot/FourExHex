@@ -244,6 +244,9 @@ PopupMenu/styles/panel = SubResource("panel_main")
 
 PopupPanel/styles/panel = SubResource("panel_main")
 
+TooltipLabel/fonts/font = ExtResource("font_geist")
+TooltipLabel/font_sizes/font_size = 28
+
 ; Window theme overrides intentionally omitted for now — Godot 4's
 ; embedded-Window styling has some quirks that need a different shape
 ; than what we hand in here (the inner content panel renders with

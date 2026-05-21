@@ -83,7 +83,9 @@ public partial class MapEditorHudView : CanvasLayer
         {
             Position = new Vector2(0, TopOffsetPx),
             Size = new Vector2(viewport.X, HudView.HudHeight),
-            MouseFilter = Control.MouseFilterEnum.Ignore,
+            // Default MouseFilter = Stop — blocks the HexHoverTooltip
+            // sensor underneath so the coord tooltip is suppressed
+            // anywhere over the toolbar (between buttons too).
         };
         var barStyle = new StyleBoxFlat
         {

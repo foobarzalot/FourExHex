@@ -16,18 +16,20 @@ public static class PlayerPalette
     public static readonly Color NeutralDark = new Color("615c52");
 
     /// <summary>
-    /// Per-slot darker companion used for the 1.2px hex border stroke. Indices
-    /// align with <see cref="GameSettings.PlayerConfig"/>; the heraldic palette
-    /// spec pairs each `fill` with a matching `dk`.
+    /// Per-slot darker companion used for the hex border stroke (~fill * 0.45).
+    /// Indices align with <see cref="GameSettings.PlayerConfig"/>. The dark
+    /// is intentionally well below the fill in lightness so that per-tile
+    /// borders within a single-owner territory remain visible against the
+    /// fill instead of fading toward isoluminance.
     /// </summary>
     private static readonly Color[] PlayerDark =
     {
-        new Color("7c3329"), // Gules dk
-        new Color("33506f"), // Azure dk
-        new Color("3d6750"), // Vert dk
-        new Color("967426"), // Or dk
-        new Color("553355"), // Purpure dk
-        new Color("8a5326"), // Tenné dk
+        new Color("5c201c"), // Red dk
+        new Color("183856"), // Blue dk
+        new Color("244429"), // Green dk
+        new Color("66551b"), // Yellow dk
+        new Color("3b1941"), // Purple dk
+        new Color("633a0f"), // Orange dk
     };
 
     /// <summary>Display color for a player slot.</summary>

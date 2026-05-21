@@ -23,7 +23,7 @@ using Godot;
 /// </summary>
 public partial class HexHoverTooltip : CanvasLayer
 {
-    private const int FontSize = 16;
+    private const int FontSize = 32;
     private const float CursorOffsetX = 16f;
     private const float CursorOffsetY = 16f;
 
@@ -114,6 +114,25 @@ public partial class HexHoverTooltip : CanvasLayer
 
     public override void _Process(double delta)
     {
+        // Always check whether any other (Stop-filter) Control sits
+        // under the cursor — if so, hide the tooltip. The sensor's
+        // MouseExited signal alone misses transitions to chrome on a
+        // higher CanvasLayer (the editor toolbar at default Layer 1
+        // doesn't reliably wake the sensor at Layer 0), so we poll the
+        // viewport's "currently-hovered Control" each tick.
+        Control? hovered = GetViewport().GuiGetHoveredControl();
+        bool overChrome = hovered != null && hovered != _sensor;
+        if (overChrome)
+        {
+            if (_shown)
+            {
+                _label.Visible = false;
+                _shown = false;
+            }
+            _pendingCoord = null;
+            return;
+        }
+
         if (_shown) return;
         if (_pendingCoord is null) return;
         if (Time.GetTicksMsec() - _lastMotionMsec < DwellMsec) return;

@@ -36,7 +36,6 @@ public partial class HudView : CanvasLayer, IHudView
     private Label _turnLabel = null!;       // numeric mono turn number
     private Label _playerLabel = null!;     // current player name in their color
     private Label _goldLabel = null!;       // gold + income breakdown
-    private ColorRect _playerSwatch = null!;
     private PanelContainer _goldChip = null!;
     private Label _seedLabel = null!;
     private static readonly Font GeistFont =
@@ -92,7 +91,9 @@ public partial class HudView : CanvasLayer, IHudView
         {
             Position = Vector2.Zero,
             Size = new Vector2(viewport.X, HudHeight),
-            MouseFilter = Control.MouseFilterEnum.Ignore,
+            // Default MouseFilter = Stop — blocks any underlying
+            // sensor (e.g. the future-proofed HexHoverTooltip pattern)
+            // anywhere over the bar, including between buttons.
         };
         var barStyle = new StyleBoxFlat
         {
@@ -131,21 +132,13 @@ public partial class HudView : CanvasLayer, IHudView
 
         bar.AddChild(BuildVerticalDivider());
 
-        // 2) Current-player block — 14×14 swatch + "TO PLAY" eyebrow + name.
-        var playerRow = new HBoxContainer();
-        playerRow.AddThemeConstantOverride("separation", 8);
-        _playerSwatch = new ColorRect
-        {
-            CustomMinimumSize = new Vector2(26, 26),
-            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
-            Color = PlayerPalette.ColorFor(PlayerId.None),
-        };
-        playerRow.AddChild(_playerSwatch);
-        playerRow.AddChild(BuildEyebrowBlock("TO PLAY", out _playerLabel, mono: false, valueColor: UiPalette.Ink));
+        // 2) Current-player block — "TO PLAY" eyebrow + name in the
+        // player's fill color. No swatch — the colored name already
+        // identifies the active player.
+        bar.AddChild(BuildEyebrowBlock("TO PLAY", out _playerLabel, mono: false, valueColor: UiPalette.Ink));
         _playerLabel.Text = "Red";
         _playerLabel.CustomMinimumSize = new Vector2(140, 0);
-        _playerLabel.AddThemeFontSizeOverride("font_size", 30);
-        bar.AddChild(playerRow);
+        _playerLabel.AddThemeFontSizeOverride("font_size", 40);
 
         bar.AddChild(BuildVerticalDivider());
 
@@ -320,29 +313,36 @@ public partial class HudView : CanvasLayer, IHudView
         _seedLabel.Text = text;
     }
 
-    // Small uppercase "TURN" / "TO PLAY" eyebrow label stacked over a
-    // value label inside a tight VBox. The value label is handed back via
-    // out so the caller can poke at its text/font/color after the block
-    // is in the tree. Caller sets the value text/size/color/font (so the
-    // mono numeric and the player-name treatments stay specific).
+    // Small uppercase "TURN" / "TO PLAY" eyebrow label sitting side-by-
+    // side with the value (eyebrow on the left, big value on the right,
+    // both center-aligned vertically). The value label is handed back
+    // via out so the caller can poke at its text/font/color after the
+    // block is in the tree. Caller sets the value text/size/color/font
+    // (so the mono numeric and the player-name treatments stay specific).
     private Control BuildEyebrowBlock(string eyebrow, out Label value, bool mono, Color valueColor)
     {
-        var block = new VBoxContainer
+        var block = new HBoxContainer
         {
             SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
         };
-        block.AddThemeConstantOverride("separation", 0);
+        block.AddThemeConstantOverride("separation", 10);
 
         var eyebrowLabel = new Label
         {
             Text = eyebrow,
+            VerticalAlignment = VerticalAlignment.Center,
+            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
         };
         eyebrowLabel.AddThemeFontOverride("font", GeistFont);
         eyebrowLabel.AddThemeFontSizeOverride("font_size", 20);
         eyebrowLabel.AddThemeColorOverride("font_color", UiPalette.Gold);
         block.AddChild(eyebrowLabel);
 
-        value = new Label();
+        value = new Label
+        {
+            VerticalAlignment = VerticalAlignment.Center,
+            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
+        };
         if (mono) value.AddThemeFontOverride("font", MonoFont);
         else      value.AddThemeFontOverride("font", GeistFont);
         value.AddThemeColorOverride("font_color", valueColor);
@@ -478,6 +478,22 @@ public partial class HudView : CanvasLayer, IHudView
             Visible = false,
             MouseFilter = Control.MouseFilterEnum.Ignore,
         };
+        // Local stylebox override that restores the pre-redesign look:
+        // a flat, square-cornered dark rectangle with a thin gray
+        // border (so it reads as a plain text box, not the rounded
+        // slate panel the project theme paints by default). Alpha is
+        // low enough that the map and territory borders underneath
+        // stay legible when the panel sits over them.
+        var tutorialPanelStyle = new StyleBoxFlat
+        {
+            BgColor = new Color(0f, 0f, 0f, 0.55f),
+            BorderColor = new Color(0.3f, 0.3f, 0.3f, 0.7f),
+            BorderWidthLeft = 1,
+            BorderWidthRight = 1,
+            BorderWidthTop = 1,
+            BorderWidthBottom = 1,
+        };
+        _tutorialPanel.AddThemeStyleboxOverride("panel", tutorialPanelStyle);
         AddChild(_tutorialPanel);
 
         _tutorialLabel = new Label
@@ -519,21 +535,23 @@ public partial class HudView : CanvasLayer, IHudView
     private void BuildBankruptToast()
     {
         // 1.5x larger than the spec's reference so the toast reads at
-        // the heavier scale the rest of the redesign settled on.
+        // the heavier scale the rest of the redesign settled on. Lives
+        // top-center, just below the HUD bar, so it doesn't fight the
+        // tutorial action-hint panel (which lives bottom-center).
         const float panelW = 660f;
         const float panelH = 96f;
-        const float marginBottom = 36f;
+        const float marginTop = 16f;
 
         _bankruptToast = new Panel
         {
             AnchorLeft = 0.5f,
             AnchorRight = 0.5f,
-            AnchorTop = 1f,
-            AnchorBottom = 1f,
+            AnchorTop = 0f,
+            AnchorBottom = 0f,
             OffsetLeft = -panelW * 0.5f,
             OffsetRight = panelW * 0.5f,
-            OffsetTop = -marginBottom - panelH,
-            OffsetBottom = -marginBottom,
+            OffsetTop = HudHeight + marginTop,
+            OffsetBottom = HudHeight + marginTop + panelH,
             Visible = false,
             MouseFilter = Control.MouseFilterEnum.Ignore,
         };
@@ -1067,7 +1085,6 @@ public partial class HudView : CanvasLayer, IHudView
         Player current = state.Turns.CurrentPlayer;
         _playerLabel.Text = current.Name;
         _playerLabel.AddThemeColorOverride("font_color", PlayerPalette.ColorFor(current.Id));
-        _playerSwatch.Color = PlayerPalette.ColorFor(current.Id);
 
         // Buy / Build buttons are always visible; the tooltip explains
         // *why* the button is disabled (no selection / no capital / can't
@@ -1227,13 +1244,11 @@ public partial class HudView : CanvasLayer, IHudView
         }
 
         // Bankruptcy toast — shows whenever the selected human territory
-        // is forecast to bankrupt next turn AND the buy/move action hint
-        // isn't taking the bottom-of-screen real estate. The toast lives
-        // on its own widget (red pill + badge); it does NOT compete for
-        // the tutorial-message panel.
-        bool inActionMode = session.Mode != SessionState.ActionMode.None;
-        _bankruptToast.Visible =
-            !inActionMode && ForecastHumanBankrupt(state, session.SelectedTerritory);
+        // is forecast to bankrupt next turn. Lives top-center (just
+        // below the HUD), so it can coexist with the bottom-center
+        // tutorial-message panel during a buy/move mode without either
+        // covering the other.
+        _bankruptToast.Visible = ForecastHumanBankrupt(state, session.SelectedTerritory);
     }
 
     /// <summary>

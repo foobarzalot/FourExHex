@@ -135,21 +135,16 @@ public partial class HexMapView : Node2D, IHexMapView
     }
 
     // Layered overlay children (added in this order so draw order is
-    // fills -> bevel -> bottomShadow -> outlines -> borders -> capitals ->
-    // trees -> graves -> units -> deaths -> targets -> highlight). Trees
-    // draw under units so the rare unit-on-tree-tile transient (e.g.
-    // mid-chop) reads correctly. Deaths draws above units so a freshly-
-    // spawned grave grow-in reads underneath the still-shrinking corpse
-    // it replaces. Bevel (1px 8% white inner highlight) + bottomShadow
-    // (2px 18% black chord) are board-game-style lighting cues — see
-    // PopulateBevelLayer / PopulateBottomShadowLayer. Outlines live in
-    // their own layer (not as children of each fill) and use per-tile
-    // player-dark borders, so adjacent same-color tiles read as one
-    // smooth seam and adjacent different-color tiles read as two thin
-    // dk lines side-by-side.
+    // fills -> outlines -> borders -> capitals -> trees -> graves ->
+    // units -> deaths -> targets -> highlight). Trees draw under units
+    // so the rare unit-on-tree-tile transient (e.g. mid-chop) reads
+    // correctly. Deaths draws above units so a freshly-spawned grave
+    // grow-in reads underneath the still-shrinking corpse it replaces.
+    // Outlines live in their own layer (not as children of each fill)
+    // and use per-tile player-dark borders, so adjacent same-color
+    // tiles read as one smooth seam and adjacent different-color tiles
+    // read as two thin dk lines side-by-side.
     private Node2D? _outlinesLayer;
-    private Node2D? _bevelLayer;
-    private Node2D? _bottomShadowLayer;
     private Node2D? _towerCoverageLayer;
     private Node2D? _bordersLayer;
     private Node2D? _capitalsLayer;
@@ -408,19 +403,13 @@ public partial class HexMapView : Node2D, IHexMapView
         // All per-tile outlines go in one layer drawn after every fill,
         // so neighbor fills can never overdraw an outline. Each unique
         // edge is drawn exactly once for uniform thickness.
-        // Layer order on each land tile: fill → bevel highlight (1px white
-        // 8% alpha polyline scaled 0.94 toward center, the "top edge lit"
-        // cue) → bottom-shadow chord (2px black 18% alpha across the lower
-        // interior) → border (1.2px in this tile's player-dark, full
-        // perimeter). The border sits on top so seams between two players
-        // show both dk colors side-by-side without one overdrawing the
-        // other; bevel & shadow stay inset and don't touch the seam.
-        _bevelLayer = new Node2D { Name = "BevelLayer" };
-        AddChild(_bevelLayer);
-        PopulateBevelLayer();
-        _bottomShadowLayer = new Node2D { Name = "BottomShadowLayer" };
-        AddChild(_bottomShadowLayer);
-        PopulateBottomShadowLayer();
+        // Layer order on each land tile: fill → border (1.5px in this
+        // tile's player-dark, full perimeter). The border sits on top
+        // so seams between two players show both dk colors side-by-
+        // side without one overdrawing the other. (The earlier
+        // redesign also drew a bevel highlight + bottom-shadow chord
+        // per tile, but the lines read as paper grain and hurt
+        // readability — removed.)
         _outlinesLayer = new Node2D { Name = "OutlinesLayer" };
         AddChild(_outlinesLayer);
         PopulateOutlinesLayer();
@@ -2101,7 +2090,7 @@ public partial class HexMapView : Node2D, IHexMapView
         };
     }
 
-    private const float HexOutlineWidth = 1.2f;
+    private const float HexOutlineWidth = 1.5f;
 
     // Per-tile heraldic border: each land tile's full perimeter is its
     // own closed polyline in the owner's player-dark color. Two adjacent
@@ -2132,81 +2121,6 @@ public partial class HexMapView : Node2D, IHexMapView
                 JointMode = Line2D.LineJointMode.Round,
             });
         }
-    }
-
-    private const float BevelInsetFactor = 0.94f;
-    private const float BevelWidth = 1.0f;
-    private static readonly Color BevelColor = new Color(1f, 1f, 1f, 0.08f);
-
-    // 8%-white inner polyline scaled 0.94 toward the tile center. This is
-    // what sells the "lit from above" board-game look — the bevel is
-    // identical on every tile, so any uneven brightness reads as actual
-    // lighting rather than per-player chrome.
-    private void PopulateBevelLayer()
-    {
-        if (_bevelLayer == null) return;
-        Vector2[] inset = HexVerticesScaled(BevelInsetFactor);
-        var closed = new Vector2[7];
-        for (int i = 0; i < 6; i++) closed[i] = inset[i];
-        closed[6] = inset[0];
-
-        foreach (HexTile tile in _state.Grid.Tiles)
-        {
-            Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(tile.Coord, HexSize);
-            _bevelLayer.AddChild(new Line2D
-            {
-                Position = center,
-                Points = closed,
-                Width = BevelWidth,
-                DefaultColor = BevelColor,
-                Antialiased = true,
-                JointMode = Line2D.LineJointMode.Round,
-            });
-        }
-    }
-
-    private const float BottomShadowChordY = 0.55f;
-    private const float BottomShadowChordHalfWidth = 0.50f;
-    private const float BottomShadowWidth = 2.0f;
-    private static readonly Color BottomShadowColor = new Color(0f, 0f, 0f, 0.18f);
-
-    // Single horizontal chord across the lower interior, round-capped.
-    // Sits below symbols/units (which are drawn into later layers), giving
-    // every tile a faint floor shadow that mirrors the top bevel and
-    // grounds the symbol/unit silhouettes against the tile.
-    private void PopulateBottomShadowLayer()
-    {
-        if (_bottomShadowLayer == null) return;
-        float hw = HexSize * BottomShadowChordHalfWidth;
-        float y = HexSize * BottomShadowChordY;
-        var chord = new Vector2[] { new Vector2(-hw, y), new Vector2(hw, y) };
-
-        foreach (HexTile tile in _state.Grid.Tiles)
-        {
-            Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(tile.Coord, HexSize);
-            _bottomShadowLayer.AddChild(new Line2D
-            {
-                Position = center,
-                Points = chord,
-                Width = BottomShadowWidth,
-                DefaultColor = BottomShadowColor,
-                Antialiased = true,
-                BeginCapMode = Line2D.LineCapMode.Round,
-                EndCapMode = Line2D.LineCapMode.Round,
-            });
-        }
-    }
-
-    private Vector2[] HexVerticesScaled(float factor)
-    {
-        var verts = new Vector2[6];
-        float r = HexSize * factor;
-        for (int i = 0; i < 6; i++)
-        {
-            float angle = Mathf.Pi / 180f * (60f * i - 30f);
-            verts[i] = new Vector2(r * Mathf.Cos(angle), r * Mathf.Sin(angle));
-        }
-        return verts;
     }
 
     // Edge i of a hex (between vertex i and vertex (i+1)%6) maps to one
