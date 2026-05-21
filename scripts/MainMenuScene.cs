@@ -22,6 +22,8 @@ public partial class MainMenuScene : Control
     private const int SeedMax = 9999;
 
     private readonly OptionButton[] _roleButtons = new OptionButton[GameSettings.PlayerConfig.Length];
+    private static readonly Font SerifFont =
+        GD.Load<FontFile>("res://fonts/DMSerifDisplay-Regular.ttf");
     private SaveStore _saveStore = null!;
     private SlotPickerDialog? _loadDialog;
 
@@ -113,18 +115,34 @@ public partial class MainMenuScene : Control
             Text = "FourExHex",
             HorizontalAlignment = HorizontalAlignment.Center,
             Position = new Vector2(0, 36),
-            Size = new Vector2(panelW, 56),
+            Size = new Vector2(panelW, 68),
         };
-        title.AddThemeFontSizeOverride("font_size", 44);
+        title.AddThemeFontOverride("font", SerifFont);
+        title.AddThemeFontSizeOverride("font_size", 56);
         panel.AddChild(title);
+
+        // Decorative gold rule under the wordmark — the redesign's
+        // "thin gold horizontal" that separates brand from action.
+        var goldRule = new ColorRect
+        {
+            Color = UiPalette.GoldDim,
+            Position = new Vector2(panelW * 0.5f - 110f, 110f),
+            Size = new Vector2(220f, 1f),
+        };
+        panel.AddChild(goldRule);
 
         const float buttonH = 64f;
         const float buttonGap = 16f;
         const float buttonInset = 80f;
         const float buttonW = panelW - buttonInset * 2f;
-        const float firstButtonY = 132f;
+        const float firstButtonY = 140f;
 
         _landingPlayButton = new Button { Text = "Play Game" };
+        // Intentionally NOT brass-primary here — the redesign spec
+        // suggested it, but brass should mark terminal commit actions
+        // (Start Game in the setup panel, Resume in Pause), not menu
+        // navigation entries that the player passes through every
+        // launch. Uniform Button styling is the cleaner choice.
         _landingPlayButton.AddThemeFontSizeOverride("font_size", 26);
         _landingPlayButton.Position = new Vector2(buttonInset, firstButtonY);
         _landingPlayButton.Size = new Vector2(buttonW, buttonH);
