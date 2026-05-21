@@ -2312,6 +2312,34 @@ block. Deserialize throws if the Tutorial block is present without
 a Replay block. The `Tutorial` class is `{ Title, Replay }` — no
 `StartTurn` / `StartPlayer` / `Beats` (the Replay carries those).
 
+## Renderer
+
+The project is pinned to **GL Compatibility** (`project.godot` lines
+16 & 38: `config/features` contains `"GL Compatibility"`,
+`rendering/renderer/rendering_method="gl_compatibility"`). Switched
+from Forward Plus on 2026-05-21.
+
+Rationale: the game is 2D-only and draws exclusively with `Polygon2D`
+fills and `Line2D` strokes — no custom shaders, no 3D, no
+Forward-Plus-specific features. Compatibility is the more portable
+choice: it runs on a wider range of hardware, has a smaller runtime,
+and is the renderer required for any future web export. The visual
+delta on macOS/Apple Silicon is indistinguishable in practice for
+this rendering surface (per the manual desktop test on the switch
+commit; log header confirms `OpenGL API 4.1 Metal - Compatibility`).
+
+One-renderer-everywhere is intentional: no per-platform override.
+This means desktop and any future web build will draw identically,
+avoiding the "looks fine on desktop, broken in browser" class of
+regression.
+
+A web export was scoped on the same date but is blocked engine-side
+— Godot 4.6.1 .NET (mono) does not ship Web export templates. See
+the corresponding `TECHDEBT.md` entry for the survey of what's
+already done toward the eventual web build (code-surface audit,
+templates installed, renderer switched) so the work isn't repeated
+when a Godot version that supports .NET web export lands.
+
 ## Visual / UI theme
 
 The visual look is owned by three pieces on the Godot side, all in
