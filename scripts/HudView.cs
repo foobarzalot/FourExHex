@@ -43,6 +43,8 @@ public partial class HudView : CanvasLayer, IHudView
         GD.Load<FontFile>("res://fonts/Geist-VariableFont.ttf");
     private static readonly Font MonoFont =
         GD.Load<FontFile>("res://fonts/JetBrainsMono-VariableFont.ttf");
+    private static readonly Font SerifFont =
+        GD.Load<FontFile>("res://fonts/DMSerifDisplay-Regular.ttf");
     // One radio button per buy level (Peasant / Spearman / Knight / Baron),
     // in cycle order. _buyUnitButtons[(int)level] gives the button for
     // a given UnitLevel. _buyUnitButtons[0] = Peasant (the legacy
@@ -529,12 +531,13 @@ public partial class HudView : CanvasLayer, IHudView
         };
         _victoryOverlay.AddChild(scrim);
 
-        // Centered panel with the win text and three buttons: Play
-        // Again, Replay, and Main Menu. Bumped from 460→540 wide when
-        // the Replay button was added to fit three 150-wide buttons
-        // with 12px gaps.
-        const float panelW = 540f;
-        const float panelH = 220f;
+        // Centered panel: VICTORY eyebrow + DM Serif "<Player> wins!" in
+        // the player's fill color + thin gold rule + three-button action
+        // row (Play Again / Replay / Main Menu). Bumped from 540×220 →
+        // 580×280 so the eyebrow + rule fit above the win text without
+        // crowding the buttons.
+        const float panelW = 580f;
+        const float panelH = 280f;
         var panel = new Panel
         {
             Position = new Vector2((viewport.X - panelW) * 0.5f, (viewport.Y - panelH) * 0.5f),
@@ -542,20 +545,40 @@ public partial class HudView : CanvasLayer, IHudView
         };
         _victoryOverlay.AddChild(panel);
 
+        var eyebrow = new Label
+        {
+            Text = "VICTORY",
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Position = new Vector2(0, 32),
+            Size = new Vector2(panelW, 22),
+        };
+        eyebrow.AddThemeFontSizeOverride("font_size", 18);
+        eyebrow.AddThemeColorOverride("font_color", UiPalette.Gold);
+        panel.AddChild(eyebrow);
+
         _victoryLabel = new Label
         {
             Text = "Victory!",
             HorizontalAlignment = HorizontalAlignment.Center,
-            Position = new Vector2(0, 40),
-            Size = new Vector2(panelW, 48),
+            Position = new Vector2(0, 58),
+            Size = new Vector2(panelW, 70),
         };
-        _victoryLabel.AddThemeFontSizeOverride("font_size", 36);
+        _victoryLabel.AddThemeFontOverride("font", SerifFont);
+        _victoryLabel.AddThemeFontSizeOverride("font_size", 52);
         panel.AddChild(_victoryLabel);
 
+        var rule = new ColorRect
+        {
+            Color = UiPalette.GoldDim,
+            Position = new Vector2(panelW * 0.5f - 110f, 144f),
+            Size = new Vector2(220f, 1f),
+        };
+        panel.AddChild(rule);
+
         const float buttonW = 150f;
-        const float buttonH = 44f;
+        const float buttonH = 48f;
         const float gap = 12f;
-        float rowY = 130f;
+        float rowY = 200f;
         float rowX = (panelW - (buttonW * 3f + gap * 2f)) * 0.5f;
 
         var playAgainButton = new Button { Text = "Play Again" };
@@ -621,8 +644,11 @@ public partial class HudView : CanvasLayer, IHudView
         };
         _defeatOverlay.AddChild(scrim);
 
-        const float panelW = 460f;
-        const float panelH = 220f;
+        // DEFEAT eyebrow + DM Serif "<Player> defeated" in player color +
+        // gold rule + three-button row. Same shell as the Victory panel
+        // so the two read as a family.
+        const float panelW = 540f;
+        const float panelH = 280f;
         var panel = new Panel
         {
             Position = new Vector2((viewport.X - panelW) * 0.5f, (viewport.Y - panelH) * 0.5f),
@@ -630,20 +656,40 @@ public partial class HudView : CanvasLayer, IHudView
         };
         _defeatOverlay.AddChild(panel);
 
+        var eyebrow = new Label
+        {
+            Text = "DEFEAT",
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Position = new Vector2(0, 32),
+            Size = new Vector2(panelW, 22),
+        };
+        eyebrow.AddThemeFontSizeOverride("font_size", 18);
+        eyebrow.AddThemeColorOverride("font_color", UiPalette.Gold);
+        panel.AddChild(eyebrow);
+
         _defeatLabel = new Label
         {
             Text = "Defeated",
             HorizontalAlignment = HorizontalAlignment.Center,
-            Position = new Vector2(0, 40),
-            Size = new Vector2(panelW, 48),
+            Position = new Vector2(0, 58),
+            Size = new Vector2(panelW, 70),
         };
-        _defeatLabel.AddThemeFontSizeOverride("font_size", 36);
+        _defeatLabel.AddThemeFontOverride("font", SerifFont);
+        _defeatLabel.AddThemeFontSizeOverride("font_size", 48);
         panel.AddChild(_defeatLabel);
 
-        const float buttonW = 130f;
-        const float buttonH = 44f;
+        var rule = new ColorRect
+        {
+            Color = UiPalette.GoldDim,
+            Position = new Vector2(panelW * 0.5f - 110f, 144f),
+            Size = new Vector2(220f, 1f),
+        };
+        panel.AddChild(rule);
+
+        const float buttonW = 140f;
+        const float buttonH = 48f;
         const float gap = 20f;
-        float rowY = 130f;
+        float rowY = 200f;
         float rowX = (panelW - (buttonW * 3f + gap * 2f)) * 0.5f;
 
         _defeatContinueButton = new Button { Text = "Continue" };
@@ -702,8 +748,11 @@ public partial class HudView : CanvasLayer, IHudView
         };
         _claimVictoryOverlay.AddChild(scrim);
 
-        const float panelW = 520f;
-        const float panelH = 260f;
+        // CHECKPOINT eyebrow + DM Serif "Claim Victory?" + gold rule +
+        // two-button row (Win Now / Continue). Matches the Victory /
+        // Defeat shell so all three overlays read as one design family.
+        const float panelW = 540f;
+        const float panelH = 300f;
         var panel = new Panel
         {
             Position = new Vector2((viewport.X - panelW) * 0.5f, (viewport.Y - panelH) * 0.5f),
@@ -711,20 +760,40 @@ public partial class HudView : CanvasLayer, IHudView
         };
         _claimVictoryOverlay.AddChild(panel);
 
+        var eyebrow = new Label
+        {
+            Text = "CHECKPOINT",
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Position = new Vector2(0, 32),
+            Size = new Vector2(panelW, 22),
+        };
+        eyebrow.AddThemeFontSizeOverride("font_size", 18);
+        eyebrow.AddThemeColorOverride("font_color", UiPalette.Gold);
+        panel.AddChild(eyebrow);
+
         var headerLabel = new Label
         {
             Text = "Claim Victory?",
             HorizontalAlignment = HorizontalAlignment.Center,
-            Position = new Vector2(0, 64),
-            Size = new Vector2(panelW, 48),
+            Position = new Vector2(0, 58),
+            Size = new Vector2(panelW, 70),
         };
-        headerLabel.AddThemeFontSizeOverride("font_size", 32);
+        headerLabel.AddThemeFontOverride("font", SerifFont);
+        headerLabel.AddThemeFontSizeOverride("font_size", 44);
         panel.AddChild(headerLabel);
+
+        var rule = new ColorRect
+        {
+            Color = UiPalette.GoldDim,
+            Position = new Vector2(panelW * 0.5f - 110f, 144f),
+            Size = new Vector2(220f, 1f),
+        };
+        panel.AddChild(rule);
 
         const float buttonW = 200f;
         const float buttonH = 48f;
         const float gap = 20f;
-        float rowY = 170f;
+        float rowY = 220f;
         float rowX = (panelW - (buttonW * 2f + gap)) * 0.5f;
 
         _claimWinNowButton = new Button { Text = "Win Now" };
