@@ -10,6 +10,7 @@ public enum HudIcon
     RedoAll,
     EndTurn,
     Options,
+    Die,
 }
 
 /// <summary>
@@ -86,6 +87,26 @@ public partial class HudIconButton : Button
     }
 
     /// <summary>
+    /// Fire a brief warm-gold flash highlight, then fade back to neutral
+    /// over 450ms. Modulate components > 1 brighten the underlying
+    /// theme stylebox + glyph (rather than just tinting), which is what
+    /// makes the flash actually visible on the dark slate bg the buttons
+    /// otherwise paint with. Use on buttons whose effect doesn't
+    /// otherwise produce visible feedback — e.g. the map editor's
+    /// Generate die, whose click silently re-rolls the seed field and
+    /// would otherwise leave the player guessing whether the press
+    /// registered.
+    /// </summary>
+    public void FlashPress()
+    {
+        Tween tween = CreateTween();
+        Modulate = new Color(2.2f, 1.8f, 1.0f, 1f);
+        tween.TweenProperty(this, "modulate", new Color(1f, 1f, 1f, 1f), 0.45)
+            .SetTrans(Tween.TransitionType.Sine)
+            .SetEase(Tween.EaseType.Out);
+    }
+
+    /// <summary>
     /// Canonical "<label> — <hotkey>" tooltip for a given icon. Shared
     /// across the play HUD and the map editor's HUD so both display the
     /// same wording for the same icon (e.g. Undo All — Shift+Z) without
@@ -102,6 +123,7 @@ public partial class HudIconButton : Button
         HudIcon.RedoAll => "Redo All — Shift+Y",
         HudIcon.EndTurn => "End Turn — Enter",
         HudIcon.Options => "Options — Esc",
+        HudIcon.Die => "Generate map from seed",
         _ => "",
     };
 
@@ -131,6 +153,7 @@ public partial class HudIconButton : Button
             case HudIcon.RedoAll: HudIcons.DrawCurvedArrow(this, center, r, stroke, facing: -1, doubled: true); break;
             case HudIcon.EndTurn: HudIcons.DrawEndTurnTriangle(this, center, r, stroke); break;
             case HudIcon.Options: HudIcons.DrawGear(this, center, r, modulate); break;
+            case HudIcon.Die: HudIcons.DrawDie(this, center, r, stroke); break;
         }
 
         if (_selected)

@@ -278,6 +278,7 @@ public partial class MainMenuScene : Control
                 Position = new Vector2(panelW - rowInset - dropdownWidth, rowY + 12f),
                 Size = new Vector2(dropdownWidth, 38f),
             };
+            dropdown.AddThemeFontSizeOverride("font_size", 21);
             dropdown.AddItem("Human", HumanId);
             dropdown.AddItem("Random AI", RandomAiId);
             dropdown.AddItem("Heuristic AI", HeuristicAiId);
@@ -337,6 +338,7 @@ public partial class MainMenuScene : Control
             Position = new Vector2(rightColX, mapRowY + 12f),
             Size = new Vector2(rightColW, 38f),
         };
+        _mapSelector.AddThemeFontSizeOverride("font_size", 21);
         // Item 0 is the default — generates a fresh procedural map from
         // the seed below. Subsequent items (id == index in ListMaps) are
         // the user's saved starting maps.
@@ -371,6 +373,7 @@ public partial class MainMenuScene : Control
             Alignment = HorizontalAlignment.Right,
             Text = new System.Random().Next(SeedMin, SeedMax + 1).ToString(),
         };
+        _seedField.AddThemeFontSizeOverride("font_size", 21);
         _seedField.TextChanged += OnSeedTextChanged;
         // Intercept = / - even when the LineEdit has focus so the hotkey
         // is focus-agnostic. Without GuiInput here, the LineEdit would

@@ -64,7 +64,7 @@ public partial class MapEditorHudView : CanvasLayer
     public int SelectedPaletteIndex { get; private set; }
 
     private LineEdit _seedField = null!;
-    private Button _generateButton = null!;
+    private HudIconButton _generateButton = null!;
     private HexPaletteButton[] _palette = null!;
     private HudIconButton _undoAllButton = null!;
     private HudIconButton _undoLastButton = null!;
@@ -104,15 +104,19 @@ public partial class MapEditorHudView : CanvasLayer
         leftHbox.AddThemeConstantOverride("separation", 14);
         AddChild(leftHbox);
 
-        // SEED eyebrow + mono LineEdit, mirroring the play HUD's
-        // status-block treatment. The LineEdit's text shows in mono so
-        // the active seed reads as a numeric value, not body text.
-        var seedBlock = new VBoxContainer
+        // SEED eyebrow + mono LineEdit laid out side-by-side, mirroring
+        // the play HUD's TURN / TO PLAY treatment.
+        var seedBlock = new HBoxContainer
         {
             SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
         };
-        seedBlock.AddThemeConstantOverride("separation", 0);
-        var seedEyebrow = new Label { Text = "SEED" };
+        seedBlock.AddThemeConstantOverride("separation", 10);
+        var seedEyebrow = new Label
+        {
+            Text = "SEED",
+            VerticalAlignment = VerticalAlignment.Center,
+            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
+        };
         seedEyebrow.AddThemeFontSizeOverride("font_size", 20);
         seedEyebrow.AddThemeColorOverride("font_color", UiPalette.Gold);
         seedBlock.AddChild(seedEyebrow);
@@ -120,6 +124,7 @@ public partial class MapEditorHudView : CanvasLayer
         _seedField = new LineEdit
         {
             CustomMinimumSize = new Vector2(120, 0),
+            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
             MaxLength = 4,
             Alignment = HorizontalAlignment.Right,
             Text = new System.Random().Next(SeedMin, SeedMax + 1).ToString(),
@@ -135,13 +140,12 @@ public partial class MapEditorHudView : CanvasLayer
         seedBlock.AddChild(_seedField);
         leftHbox.AddChild(seedBlock);
 
-        _generateButton = new Button
-        {
-            Text = "Generate",
-            FocusMode = Control.FocusModeEnum.None,
-            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
-        };
-        _generateButton.AddThemeFontSizeOverride("font_size", 20);
+        // Six-sided die glyph in place of a "Generate" label — the
+        // button rolls a fresh map seed, so the die reads as the
+        // re-roll affordance. Tooltip carries the verbal meaning.
+        _generateButton = new HudIconButton(HudIcon.Die);
+        _generateButton.FocusMode = Control.FocusModeEnum.None;
+        _generateButton.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
         _generateButton.Pressed += OnGeneratePressed;
         AudioBus.AttachClick(_generateButton);
         leftHbox.AddChild(_generateButton);
@@ -344,6 +348,7 @@ public partial class MapEditorHudView : CanvasLayer
         if (string.IsNullOrEmpty(_seedField.Text)) return;
         int.TryParse(_seedField.Text, out int seed);
         seed = System.Math.Clamp(seed, SeedMin, SeedMax);
+        _generateButton.FlashPress();
         GenerateRequested?.Invoke(seed);
         // Re-randomize the field so the next press generates a different
         // map without the user re-typing. Use a fresh Random per press —

@@ -185,10 +185,13 @@ public partial class HudView : CanvasLayer, IHudView
         // Spacer 1 (centers the unit palette).
         bar.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
 
-        // 4) Unit palette — buy buttons (Peasant/Spearman/Knight/Baron),
-        // a divider, then Build Tower, all inside a single bg-deep panel.
-        // Keeping the per-button HudIconButton glyph + tooltip wiring
-        // intact — only the parent container changes.
+        // 4) Unit palette — the four buy buttons (Peasant/Spearman/
+        // Knight/Baron) live inside one rounded bg-deep PanelContainer
+        // so they read as one grouped widget. The Build Tower button
+        // sits OUTSIDE the panel as a separate sibling in the bar; the
+        // visual gap between them is the bar's own 14-px separation,
+        // so Build Tower has its own anchor point distinct from the
+        // unit-placement group.
         var palettePanel = new PanelContainer
         {
             SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
@@ -232,12 +235,10 @@ public partial class HudView : CanvasLayer, IHudView
             _buyUnitButtons[i] = button;
         }
 
-        paletteRow.AddChild(BuildVerticalDivider());
-
         _buildTowerButton = new HudIconButton(HudIcon.Tower) { Disabled = true };
         _buildTowerButton.Pressed += () => BuildTowerClicked?.Invoke();
         AudioBus.AttachClick(_buildTowerButton);
-        paletteRow.AddChild(_buildTowerButton);
+        bar.AddChild(_buildTowerButton);
 
         // Spacer 2.
         bar.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });

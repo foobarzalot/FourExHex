@@ -333,4 +333,64 @@ public static class HudIcons
         }
         t.DrawColoredPolygon(hole, stroke);
     }
+
+    // Six-sided die — used by the map editor's "Generate map" button.
+    // Rendered edge-on as a standard isometric projection so the icon
+    // reads as 3D: top face (1 pip), right face (2 pips), front face
+    // (3 pips). Stroke-only, no fill, so the underlying button bg
+    // shows through.
+    //
+    // Iso geometry: project a unit cube with axes
+    //   +x → screen (cos 30°, sin 30°), +y → (0, -1), +z → (-cos 30°, sin 30°)
+    // The eight cube corners collapse to seven distinct screen points
+    // (back-bottom corner is hidden behind the central front-top D);
+    // the silhouette is a regular hexagon (A B E G F C) and three
+    // internal cube edges all meet at D.
+    public static void DrawDie(CanvasItem t, Vector2 center, float radius, Color stroke)
+    {
+        float s = radius * 0.78f;     // half-edge of the cube in screen units
+        float sx = s * 0.8660254f;    // s * cos 30°
+        float sy = s * 0.5f;          // s * sin 30°
+        // Visible cube vertices (A B C are top, D is central, E F G are bottom).
+        Vector2 A = center + new Vector2(   0f, -s);
+        Vector2 B = center + new Vector2( sx,  -sy);
+        Vector2 C = center + new Vector2(-sx,  -sy);
+        Vector2 D = center;
+        Vector2 E = center + new Vector2( sx,   sy);
+        Vector2 F = center + new Vector2(-sx,   sy);
+        Vector2 G = center + new Vector2(   0f,  s);
+
+        // Hex silhouette + the three internal cube edges meeting at D.
+        Vector2[] silhouette = new[] { A, B, E, G, F, C, A };
+        t.DrawPolyline(silhouette, stroke, OutlineWidth, antialiased: true);
+        t.DrawLine(D, B, stroke, OutlineWidth, antialiased: true);
+        t.DrawLine(D, C, stroke, OutlineWidth, antialiased: true);
+        t.DrawLine(D, G, stroke, OutlineWidth, antialiased: true);
+
+        // Per-face bilinear interpolation from face-local (u, v) ∈ [0, 1]
+        // to screen position, with (0, 0) at the face's "top-left" in
+        // viewed-flat coords. Pips on each face use this to sit at
+        // standard die-face grid positions (0.5, 0.5 for center,
+        // 0.25 / 0.75 for corners).
+        Vector2 PipTop(float u, float v) =>
+            (1 - u) * (1 - v) * A + u * (1 - v) * B + (1 - u) * v * C + u * v * D;
+        Vector2 PipRight(float u, float v) =>
+            (1 - u) * (1 - v) * B + u * (1 - v) * D + (1 - u) * v * E + u * v * G;
+        Vector2 PipFront(float u, float v) =>
+            (1 - u) * (1 - v) * C + u * (1 - v) * D + (1 - u) * v * F + u * v * G;
+
+        float pipR = radius * 0.09f;
+
+        // Top face: 1 pip, dead center.
+        t.DrawCircle(PipTop(0.5f, 0.5f), pipR, stroke);
+
+        // Right face: 2 pips on the back-top → front-bottom diagonal.
+        t.DrawCircle(PipRight(0.3f, 0.3f), pipR, stroke);
+        t.DrawCircle(PipRight(0.7f, 0.7f), pipR, stroke);
+
+        // Front face (left half of the icon): 3 pips on the diagonal.
+        t.DrawCircle(PipFront(0.3f, 0.3f), pipR, stroke);
+        t.DrawCircle(PipFront(0.5f, 0.5f), pipR, stroke);
+        t.DrawCircle(PipFront(0.7f, 0.7f), pipR, stroke);
+    }
 }
