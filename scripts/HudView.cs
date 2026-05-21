@@ -10,7 +10,7 @@ using Godot;
 /// </summary>
 public partial class HudView : CanvasLayer, IHudView
 {
-    public const float HudHeight = 60f;
+    public const float HudHeight = 96f;
 
     public event Action? BuyPeasantClicked;
     public event Action<UnitLevel>? BuyUnitClicked;
@@ -33,10 +33,16 @@ public partial class HudView : CanvasLayer, IHudView
     public event Action? ClaimVictoryContinueClicked;
     public event Action? ReplayClicked;
 
-    private Label _turnLabel = null!;
-    private Label _playerLabel = null!;
-    private Label _goldLabel = null!;
+    private Label _turnLabel = null!;       // numeric mono turn number
+    private Label _playerLabel = null!;     // current player name in their color
+    private Label _goldLabel = null!;       // gold + income breakdown
+    private ColorRect _playerSwatch = null!;
+    private PanelContainer _goldChip = null!;
     private Label _seedLabel = null!;
+    private static readonly Font GeistFont =
+        GD.Load<FontFile>("res://fonts/Geist-VariableFont.ttf");
+    private static readonly Font MonoFont =
+        GD.Load<FontFile>("res://fonts/JetBrainsMono-VariableFont.ttf");
     // One radio button per buy level (Peasant / Spearman / Knight / Baron),
     // in cycle order. _buyUnitButtons[(int)level] gives the button for
     // a given UnitLevel. _buyUnitButtons[0] = Peasant (the legacy
@@ -71,62 +77,146 @@ public partial class HudView : CanvasLayer, IHudView
     {
         Vector2 viewport = GetViewport().GetVisibleRect().Size;
 
-        // Dark bar across the top so labels stay readable against the map.
-        var background = new ColorRect
+        // Warm-slate top strip — slightly darker than canvas BgDeep with a
+        // 1px line-soft bottom border so it reads as a layered toolbar
+        // sitting above the map. (The CSS spec calls for a vertical
+        // oklch gradient; Godot's StyleBoxFlat is flat-fill only and
+        // the visual difference at this contrast is imperceptible, so
+        // a single tone with a thin lower border carries the same look.)
+        var background = new Panel
         {
-            Color = new Color(0f, 0f, 0f, 0.8f),
             Position = Vector2.Zero,
             Size = new Vector2(viewport.X, HudHeight),
+            MouseFilter = Control.MouseFilterEnum.Ignore,
         };
+        var barStyle = new StyleBoxFlat
+        {
+            BgColor = new Color("28251f"),
+            BorderColor = UiPalette.LineSoft,
+            BorderWidthBottom = 1,
+        };
+        background.AddThemeStyleboxOverride("panel", barStyle);
         AddChild(background);
 
-        // Left-aligned info labels + buy button.
-        var leftHbox = new HBoxContainer
+        // Top bar laid out as one HBoxContainer with three regions —
+        // status / unit palette (centered via spacers) / turn controls.
+        // MouseFilter Pass keeps the bar itself click-through to leaf
+        // children only, so spacers don't swallow clicks heading to the
+        // map below.
+        var bar = new HBoxContainer
         {
-            Position = new Vector2(16, 12),
+            AnchorLeft = 0f,
+            AnchorRight = 1f,
+            AnchorTop = 0f,
+            AnchorBottom = 0f,
+            OffsetLeft = 16f,
+            OffsetRight = -16f,
+            OffsetTop = 8f,
+            OffsetBottom = HudHeight - 8f,
+            MouseFilter = Control.MouseFilterEnum.Pass,
         };
-        leftHbox.AddThemeConstantOverride("separation", 24);
-        AddChild(leftHbox);
+        bar.AddThemeConstantOverride("separation", 14);
+        AddChild(bar);
 
-        // Fixed minimum widths so the buy/build buttons that follow these
-        // labels in the HBox don't slide left/right as the text changes
-        // (player name length, turn rollover, gold/income string growing
-        // and shrinking, gold blanking when no capital is selected). Sized
-        // for worst-case content at font_size 24: "Turn: 999",
-        // "Current: Orange", "9999g (99-99=+99)".
-        _turnLabel = new Label
+        // 1) Turn block — small "TURN" eyebrow over a mono number.
+        bar.AddChild(BuildEyebrowBlock("TURN", out _turnLabel, mono: true, valueColor: UiPalette.Ink));
+        _turnLabel.Text = "1";
+        _turnLabel.CustomMinimumSize = new Vector2(70, 0);
+        _turnLabel.AddThemeFontSizeOverride("font_size", 36);
+
+        bar.AddChild(BuildVerticalDivider());
+
+        // 2) Current-player block — 14×14 swatch + "TO PLAY" eyebrow + name.
+        var playerRow = new HBoxContainer();
+        playerRow.AddThemeConstantOverride("separation", 8);
+        _playerSwatch = new ColorRect
         {
-            Text = "Turn: 1",
-            CustomMinimumSize = new Vector2(130, 0),
+            CustomMinimumSize = new Vector2(26, 26),
+            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
+            Color = PlayerPalette.ColorFor(PlayerId.None),
         };
-        _turnLabel.AddThemeFontSizeOverride("font_size", 24);
-        leftHbox.AddChild(_turnLabel);
+        playerRow.AddChild(_playerSwatch);
+        playerRow.AddChild(BuildEyebrowBlock("TO PLAY", out _playerLabel, mono: false, valueColor: UiPalette.Ink));
+        _playerLabel.Text = "Red";
+        _playerLabel.CustomMinimumSize = new Vector2(140, 0);
+        _playerLabel.AddThemeFontSizeOverride("font_size", 30);
+        bar.AddChild(playerRow);
 
-        _playerLabel = new Label
+        bar.AddChild(BuildVerticalDivider());
+
+        // 3) Gold chip — bg-deep pill containing the gold value + the
+        // income breakdown. We keep the existing "value (income-upkeep=net)"
+        // format inside one label so the rich economy-outlook color
+        // logic in Refresh() still applies wholesale.
+        var goldChip = new PanelContainer
         {
-            Text = "Current: Red",
-            CustomMinimumSize = new Vector2(200, 0),
+            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
         };
-        _playerLabel.AddThemeFontSizeOverride("font_size", 24);
-        leftHbox.AddChild(_playerLabel);
-
+        var goldChipStyle = new StyleBoxFlat
+        {
+            BgColor = UiPalette.BgDeep,
+            BorderColor = UiPalette.LineSoft,
+            BorderWidthLeft = 1,
+            BorderWidthRight = 1,
+            BorderWidthTop = 1,
+            BorderWidthBottom = 1,
+            CornerRadiusTopLeft = 8,
+            CornerRadiusTopRight = 8,
+            CornerRadiusBottomLeft = 8,
+            CornerRadiusBottomRight = 8,
+            ContentMarginLeft = 10,
+            ContentMarginRight = 10,
+            ContentMarginTop = 6,
+            ContentMarginBottom = 6,
+        };
+        goldChip.AddThemeStyleboxOverride("panel", goldChipStyle);
         _goldLabel = new Label
         {
             Text = "",
-            CustomMinimumSize = new Vector2(240, 0),
+            CustomMinimumSize = new Vector2(190, 0),
         };
-        _goldLabel.AddThemeFontSizeOverride("font_size", 24);
-        leftHbox.AddChild(_goldLabel);
+        _goldLabel.AddThemeFontOverride("font", MonoFont);
+        _goldLabel.AddThemeFontSizeOverride("font_size", 26);
+        goldChip.AddChild(_goldLabel);
+        // Hide the chip entirely when there's nothing to display (no
+        // territory selected, no capital) — an empty bg-deep pill in the
+        // bar reads as a missing widget.
+        _goldChip = goldChip;
+        bar.AddChild(goldChip);
 
-        // Four always-visible radio buttons (Peasant / Spearman / Knight
-        // / Baron) packed in a nested HBox so the row sits as one unit
-        // in the parent layout. Per-button Disabled / Selected /
-        // tooltip are set by Refresh(). Each click fires BuyUnitClicked
-        // with its specific level — direct selection, no cycling. The
-        // U-key fires BuyPeasantClicked which cycles in the controller.
-        var buyRow = new HBoxContainer();
-        buyRow.AddThemeConstantOverride("separation", 4);
-        leftHbox.AddChild(buyRow);
+        // Spacer 1 (centers the unit palette).
+        bar.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
+
+        // 4) Unit palette — buy buttons (Peasant/Spearman/Knight/Baron),
+        // a divider, then Build Tower, all inside a single bg-deep panel.
+        // Keeping the per-button HudIconButton glyph + tooltip wiring
+        // intact — only the parent container changes.
+        var palettePanel = new PanelContainer
+        {
+            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
+        };
+        var paletteStyle = new StyleBoxFlat
+        {
+            BgColor = UiPalette.BgDeep,
+            BorderColor = UiPalette.LineSoft,
+            BorderWidthLeft = 1,
+            BorderWidthRight = 1,
+            BorderWidthTop = 1,
+            BorderWidthBottom = 1,
+            CornerRadiusTopLeft = 10,
+            CornerRadiusTopRight = 10,
+            CornerRadiusBottomLeft = 10,
+            CornerRadiusBottomRight = 10,
+            ContentMarginLeft = 6,
+            ContentMarginRight = 6,
+            ContentMarginTop = 2,
+            ContentMarginBottom = 2,
+        };
+        palettePanel.AddThemeStyleboxOverride("panel", paletteStyle);
+        var paletteRow = new HBoxContainer();
+        paletteRow.AddThemeConstantOverride("separation", 2);
+        palettePanel.AddChild(paletteRow);
+        bar.AddChild(palettePanel);
 
         UnitLevel[] buyLevels = { UnitLevel.Peasant, UnitLevel.Spearman, UnitLevel.Knight, UnitLevel.Baron };
         _buyUnitButtons = new HudIconButton[buyLevels.Length];
@@ -140,60 +230,52 @@ public partial class HudView : CanvasLayer, IHudView
             };
             button.Pressed += () => BuyUnitClicked?.Invoke(level);
             AudioBus.AttachClick(button);
-            buyRow.AddChild(button);
+            paletteRow.AddChild(button);
             _buyUnitButtons[i] = button;
         }
+
+        paletteRow.AddChild(BuildVerticalDivider());
 
         _buildTowerButton = new HudIconButton(HudIcon.Tower) { Disabled = true };
         _buildTowerButton.Pressed += () => BuildTowerClicked?.Invoke();
         AudioBus.AttachClick(_buildTowerButton);
-        leftHbox.AddChild(_buildTowerButton);
+        paletteRow.AddChild(_buildTowerButton);
 
-        // Right-anchored action row: Undo Turn / Undo Last / Redo Last /
-        // Redo All / End Turn. The HBoxContainer spans the HUD width with
-        // End alignment so children pack to the right edge. MouseFilter
-        // Ignore keeps clicks on the left-HBox (Buy Peasant) from being
-        // swallowed by this full-width container.
-        var rightHbox = new HBoxContainer
-        {
-            AnchorLeft = 0f,
-            AnchorRight = 1f,
-            AnchorTop = 0f,
-            AnchorBottom = 0f,
-            OffsetLeft = 0f,
-            OffsetRight = -16f,
-            OffsetTop = 12f,
-            OffsetBottom = 48f,
-            Alignment = BoxContainer.AlignmentMode.End,
-            MouseFilter = Control.MouseFilterEnum.Ignore,
-        };
-        rightHbox.AddThemeConstantOverride("separation", 8);
-        AddChild(rightHbox);
+        // Spacer 2.
+        bar.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
 
+        // 5) Undo cluster — four ghost icon buttons.
         _undoTurnButton = new HudIconButton(HudIcon.UndoAll) { Disabled = true };
         _undoTurnButton.Pressed += () => UndoTurnClicked?.Invoke();
         AudioBus.AttachClick(_undoTurnButton);
-        rightHbox.AddChild(_undoTurnButton);
+        bar.AddChild(_undoTurnButton);
 
         _undoLastButton = new HudIconButton(HudIcon.UndoLast) { Disabled = true };
         _undoLastButton.Pressed += () => UndoLastClicked?.Invoke();
         AudioBus.AttachClick(_undoLastButton);
-        rightHbox.AddChild(_undoLastButton);
+        bar.AddChild(_undoLastButton);
 
         _redoLastButton = new HudIconButton(HudIcon.RedoLast) { Disabled = true };
         _redoLastButton.Pressed += () => RedoLastClicked?.Invoke();
         AudioBus.AttachClick(_redoLastButton);
-        rightHbox.AddChild(_redoLastButton);
+        bar.AddChild(_redoLastButton);
 
         _redoAllButton = new HudIconButton(HudIcon.RedoAll) { Disabled = true };
         _redoAllButton.Pressed += () => RedoAllClicked?.Invoke();
         AudioBus.AttachClick(_redoAllButton);
-        rightHbox.AddChild(_redoAllButton);
+        bar.AddChild(_redoAllButton);
 
+        bar.AddChild(BuildVerticalDivider());
+
+        // End Turn picks up the brass PrimaryButton theme variation so
+        // it reads as the bar's primary action by default. SetCta()
+        // overlays the white pulse on top when the controller flags
+        // it as the current CTA; clearing the CTA pops back to brass.
         _endTurnButton = new HudIconButton(HudIcon.EndTurn);
+        _endTurnButton.ThemeTypeVariation = "PrimaryButton";
         _endTurnButton.Pressed += () => EndTurnClicked?.Invoke();
         AudioBus.AttachClick(_endTurnButton);
-        rightHbox.AddChild(_endTurnButton);
+        bar.AddChild(_endTurnButton);
 
         // Single Options button — raises the same EscRequested event
         // the Escape key fires, so the scene root's pause coordinator
@@ -202,7 +284,7 @@ public partial class HudView : CanvasLayer, IHudView
         _optionsButton = new HudIconButton(HudIcon.Options);
         _optionsButton.Pressed += () => EscRequested?.Invoke();
         AudioBus.AttachClick(_optionsButton);
-        rightHbox.AddChild(_optionsButton);
+        bar.AddChild(_optionsButton);
 
         // Read-only seed display anchored to the bottom-left so a player
         // can recall or share the seed mid-game without crowding the
@@ -233,6 +315,50 @@ public partial class HudView : CanvasLayer, IHudView
     public void SetMapLabel(string text)
     {
         _seedLabel.Text = text;
+    }
+
+    // Small uppercase "TURN" / "TO PLAY" eyebrow label stacked over a
+    // value label inside a tight VBox. The value label is handed back via
+    // out so the caller can poke at its text/font/color after the block
+    // is in the tree. Caller sets the value text/size/color/font (so the
+    // mono numeric and the player-name treatments stay specific).
+    private Control BuildEyebrowBlock(string eyebrow, out Label value, bool mono, Color valueColor)
+    {
+        var block = new VBoxContainer
+        {
+            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
+        };
+        block.AddThemeConstantOverride("separation", 0);
+
+        var eyebrowLabel = new Label
+        {
+            Text = eyebrow,
+        };
+        eyebrowLabel.AddThemeFontOverride("font", GeistFont);
+        eyebrowLabel.AddThemeFontSizeOverride("font_size", 20);
+        eyebrowLabel.AddThemeColorOverride("font_color", UiPalette.Gold);
+        block.AddChild(eyebrowLabel);
+
+        value = new Label();
+        if (mono) value.AddThemeFontOverride("font", MonoFont);
+        else      value.AddThemeFontOverride("font", GeistFont);
+        value.AddThemeColorOverride("font_color", valueColor);
+        block.AddChild(value);
+
+        return block;
+    }
+
+    // 1×24 vertical divider in line-soft, used between the three regions
+    // of the top bar (status / palette / controls) and inside the unit
+    // palette panel to split Buy from Build.
+    private static Control BuildVerticalDivider()
+    {
+        return new ColorRect
+        {
+            Color = UiPalette.LineSoft,
+            CustomMinimumSize = new Vector2(1, 24),
+            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
+        };
     }
 
     public event Action? TutorialMessageTapped;
@@ -725,10 +851,11 @@ public partial class HudView : CanvasLayer, IHudView
     public void Refresh(GameState state, SessionState session, bool hasActionableRemaining)
     {
         _hasPendingAction = session.Mode != SessionState.ActionMode.None;
-        _turnLabel.Text = $"Turn: {state.Turns.TurnNumber}";
+        _turnLabel.Text = state.Turns.TurnNumber.ToString();
         Player current = state.Turns.CurrentPlayer;
-        _playerLabel.Text = $"Current: {current.Name}";
+        _playerLabel.Text = current.Name;
         _playerLabel.AddThemeColorOverride("font_color", PlayerPalette.ColorFor(current.Id));
+        _playerSwatch.Color = PlayerPalette.ColorFor(current.Id);
 
         // Buy / Build buttons are always visible; the tooltip explains
         // *why* the button is disabled (no selection / no capital / can't
@@ -738,6 +865,7 @@ public partial class HudView : CanvasLayer, IHudView
         Territory? selected = session.SelectedTerritory;
         bool hasCapital = selected?.HasCapital ?? false;
 
+        _goldChip.Visible = hasCapital;
         if (hasCapital)
         {
             int gold = state.Treasury.GetGold(selected!.Capital!.Value);
