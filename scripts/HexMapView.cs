@@ -135,16 +135,15 @@ public partial class HexMapView : Node2D, IHexMapView
     }
 
     // Layered overlay children (added in this order so draw order is
-    // fills -> outlines -> borders -> capitals -> trees -> graves -> units
-    // -> deaths -> targets -> highlight). Trees draw under units so the
-    // rare unit-on-tree-tile transient (e.g. mid-chop) reads correctly.
-    // Deaths draws above units so a freshly-spawned grave grow-in reads
-    // underneath the still-shrinking corpse it replaces.
-    // Outlines live in their own layer (not as children of each fill) so
-    // adjacent same-color tiles don't have one tile's fill overdraw the
-    // other tile's outline along the shared edge — that overdraw left
-    // the line asymmetric (one half ~0.4 alpha, the other ~0.64) and
-    // could read as faint or missing on interior seams.
+    // fills -> outlines -> borders -> capitals -> trees -> graves ->
+    // units -> deaths -> targets -> highlight). Trees draw under units
+    // so the rare unit-on-tree-tile transient (e.g. mid-chop) reads
+    // correctly. Deaths draws above units so a freshly-spawned grave
+    // grow-in reads underneath the still-shrinking corpse it replaces.
+    // Outlines live in their own layer (not as children of each fill)
+    // and use per-tile player-dark borders, so adjacent same-color
+    // tiles read as one smooth seam and adjacent different-color tiles
+    // read as two thin dk lines side-by-side.
     private Node2D? _outlinesLayer;
     private Node2D? _towerCoverageLayer;
     private Node2D? _bordersLayer;
@@ -404,6 +403,13 @@ public partial class HexMapView : Node2D, IHexMapView
         // All per-tile outlines go in one layer drawn after every fill,
         // so neighbor fills can never overdraw an outline. Each unique
         // edge is drawn exactly once for uniform thickness.
+        // Layer order on each land tile: fill → border (1.5px in this
+        // tile's player-dark, full perimeter). The border sits on top
+        // so seams between two players show both dk colors side-by-
+        // side without one overdrawing the other. (The earlier
+        // redesign also drew a bevel highlight + bottom-shadow chord
+        // per tile, but the lines read as paper grain and hurt
+        // readability — removed.)
         _outlinesLayer = new Node2D { Name = "OutlinesLayer" };
         AddChild(_outlinesLayer);
         PopulateOutlinesLayer();
@@ -476,6 +482,13 @@ public partial class HexMapView : Node2D, IHexMapView
             }
         }
 
+        // Per-tile border colors are owner-keyed (player-dark per tile),
+        // so an ownership change after a capture has to repaint the
+        // OutlinesLayer too — fill recolor alone would leave a captured
+        // tile's old player-dark stroke around its new fill.
+        ClearLayer(_outlinesLayer);
+        PopulateOutlinesLayer();
+
         ClearLayer(_bordersLayer);
         ClearLayer(_targetsLayer);
         DrawTerritoryBorders();
@@ -538,7 +551,6 @@ public partial class HexMapView : Node2D, IHexMapView
         if (_targetsLayer == null) return;
 
         var color = new Color(0.2f, 1f, 0.3f, 0.9f);
-        const float ringWidth = 4f;
         int rings = level switch
         {
             UnitLevel.Peasant => 1,
@@ -559,7 +571,8 @@ public partial class HexMapView : Node2D, IHexMapView
             };
             for (int i = 0; i < rings; i++)
             {
-                preview.AddChild(CreateCircleOutline(HexSize * UnitRingRadii[i], color, ringWidth));
+                preview.AddChild(CreateCircleOutline(
+                    HexSize * UnitRingRadii[i], color, HexSize * UnitRingWidthFactors[i]));
             }
             if (level == UnitLevel.Baron)
             {
@@ -1150,7 +1163,8 @@ public partial class HexMapView : Node2D, IHexMapView
         };
         for (int i = 0; i < rings; i++)
         {
-            node.AddChild(CreateCircleOutline(HexSize * UnitRingRadii[i], red, UnitRingWidth));
+            node.AddChild(CreateCircleOutline(
+                HexSize * UnitRingRadii[i], red, HexSize * UnitRingWidthFactors[i]));
         }
         if (level == UnitLevel.Baron)
         {
@@ -1469,15 +1483,20 @@ public partial class HexMapView : Node2D, IHexMapView
             .SetEase(Tween.EaseType.Out);
     }
 
+    // Castle fill + stroke per the redesign spec: warm dark slate body
+    // (#4a4640) with a thin ink-faint stroke (no thick black outline).
+    private static readonly Color CastleFillColor = new Color("4a4640");
+    private static readonly Color CastleStrokeColor = new Color("23211d");
+
     private Node2D CreateTowerVisual()
     {
         Vector2[] verts = TowerShapeVertices();
         var body = new Polygon2D
         {
-            Color = new Color(0.72f, 0.72f, 0.76f, 1f),
+            Color = CastleFillColor,
             Polygon = verts,
         };
-        body.AddChild(BuildClosedOutline(verts, 2f, new Color(0f, 0f, 0f, 1f)));
+        body.AddChild(BuildClosedOutline(verts, 1.2f, CastleStrokeColor));
         return body;
     }
 
@@ -1540,9 +1559,19 @@ public partial class HexMapView : Node2D, IHexMapView
         };
     }
 
+    // Conifer: dark green canopy triangle with a brown trunk, both
+    // stroked in BgDeep. Matches the HUD palette's tree icon
+    // (HudIcons.DrawTree) so the same shape appears in the map editor
+    // toolbar swatch and on the tile itself. The redesign spec called
+    // for a single bare triangle, but the user preferred the trunked
+    // conifer — easier to read at small scales and visually consistent
+    // with the existing icon language.
+    private static readonly Color ForestCanopyColor = new Color(0.16f, 0.48f, 0.18f, 1f);
+    private static readonly Color ForestTrunkColor = new Color(0.36f, 0.22f, 0.1f, 1f);
+    private static readonly Color ForestStrokeColor = UiPalette.BgDeep;
+
     private Node2D CreateTreeVisual()
     {
-        // Stylized conifer: dark green triangle with a small brown trunk.
         float r = HexSize * 0.45f;
         var canopyVerts = new[]
         {
@@ -1552,63 +1581,43 @@ public partial class HexMapView : Node2D, IHexMapView
         };
         var canopy = new Polygon2D
         {
-            Color = new Color(0.16f, 0.48f, 0.18f, 1f),
+            Color = ForestCanopyColor,
             Polygon = canopyVerts,
         };
-
-        var outline = new Line2D
-        {
-            Points = new[]
-            {
-                canopyVerts[0], canopyVerts[1], canopyVerts[2], canopyVerts[0],
-            },
-            Width = 2f,
-            DefaultColor = new Color(0f, 0f, 0f, 1f),
-        };
-        canopy.AddChild(outline);
+        canopy.AddChild(BuildClosedOutline(canopyVerts, 1.5f, ForestStrokeColor));
 
         float tw = r * 0.18f;
         float ttop = r * 0.4f;
         float tbot = r * 0.75f;
+        var trunkVerts = new[]
+        {
+            new Vector2(-tw, ttop),
+            new Vector2( tw, ttop),
+            new Vector2( tw, tbot),
+            new Vector2(-tw, tbot),
+        };
         var trunk = new Polygon2D
         {
-            Color = new Color(0.36f, 0.22f, 0.1f, 1f),
-            Polygon = new[]
-            {
-                new Vector2(-tw, ttop),
-                new Vector2(tw, ttop),
-                new Vector2(tw, tbot),
-                new Vector2(-tw, tbot),
-            },
+            Color = ForestTrunkColor,
+            Polygon = trunkVerts,
         };
-        var trunkOutline = new Line2D
-        {
-            Points = new[]
-            {
-                new Vector2(-tw, ttop),
-                new Vector2(tw, ttop),
-                new Vector2(tw, tbot),
-                new Vector2(-tw, tbot),
-                new Vector2(-tw, ttop),
-            },
-            Width = 1.5f,
-            DefaultColor = new Color(0f, 0f, 0f, 1f),
-        };
-        trunk.AddChild(trunkOutline);
+        trunk.AddChild(BuildClosedOutline(trunkVerts, 1.5f, ForestStrokeColor));
         canopy.AddChild(trunk);
 
         return canopy;
     }
 
-    // Unit ring radii, ordered outer → inner. The peasant gets just the
-    // outer ring; spearman adds the middle ring; knight adds the inner;
-    // baron adds a filled center dot on top of the knight's three rings.
-    // The outer ring matches the move-target ring radius (0.55 * HexSize)
-    // so a unit reads as the same on-tile footprint as the capture/chop
-    // target indicator.
-    private static readonly float[] UnitRingRadii = { 0.55f, 0.37f, 0.20f };
-    private const float UnitRingWidth = 3f;
-    private const float UnitDotRadius = 0.075f;
+    // Unit ring radii (outer → inner) per the redesign spec: peasant gets
+    // just the outer ring; spearman adds the middle; knight adds the
+    // inner; baron adds a filled center dot on top of the knight's three
+    // rings. The outer ring matches the move-target ring radius
+    // (0.50 * HexSize) so a unit reads as the same on-tile footprint as
+    // the capture/chop target indicator. Stroke widths scale with HexSize
+    // (outer thickest, inner thinnest) so the concentric rings read as a
+    // single graphic instead of three independent circles.
+    private static readonly float[] UnitRingRadii = { 0.50f, 0.34f, 0.20f };
+    private static readonly float[] UnitRingWidthFactors = { 0.06f, 0.05f, 0.045f };
+    private const float UnitDotRadius = 0.08f;
     private const int UnitRingSegments = 28;
 
     private Node2D CreateUnitVisual(bool selected, UnitLevel level)
@@ -1627,7 +1636,8 @@ public partial class HexMapView : Node2D, IHexMapView
 
         for (int i = 0; i < rings; i++)
         {
-            node.AddChild(CreateCircleOutline(HexSize * UnitRingRadii[i], color, UnitRingWidth));
+            node.AddChild(CreateCircleOutline(
+                HexSize * UnitRingRadii[i], color, HexSize * UnitRingWidthFactors[i]));
         }
 
         if (level == UnitLevel.Baron)
@@ -1670,47 +1680,45 @@ public partial class HexMapView : Node2D, IHexMapView
         };
     }
 
+    // Dead-unit cross per the redesign spec: two round-capped diagonal
+    // strokes in muted slate (oklch 0.45 0.012 60 ≈ #74706a). The spec
+    // color is near-isoluminant with several player fills (Red, Blue,
+    // Green, Purple all sit around oklch L≈0.5), so each diagonal is
+    // doubled — a slightly wider BgDeep underlay first, then the slate
+    // on top — giving every X a dark halo that keeps it legible on any
+    // player color.
+    private static readonly Color GraveCrossColor = new Color("74706a");
+    private const float GraveCrossArmReach = 0.32f;
+    private const float GraveCrossWidthFactor = 0.10f;
+    private const float GraveCrossHaloWidthFactor = 0.14f;
+
     private Node2D CreateGraveVisual()
     {
-        // Symmetrical grey plus sign (cross) — symmetric in both axes.
-        // Visually distinct from units (circles) and capitals (diamonds).
-        float r = HexSize * 0.38f;
-        float w = r * 0.32f; // half-width of each arm
-        var verts = new[]
+        float reach = HexSize * GraveCrossArmReach;
+        float coreWidth = HexSize * GraveCrossWidthFactor;
+        float haloWidth = HexSize * GraveCrossHaloWidthFactor;
+        var node = new Node2D();
+        var diag1 = new[] { new Vector2(-reach, -reach), new Vector2(reach, reach) };
+        var diag2 = new[] { new Vector2(-reach, reach), new Vector2(reach, -reach) };
+
+        node.AddChild(BuildGraveStroke(diag1, haloWidth, UiPalette.BgDeep));
+        node.AddChild(BuildGraveStroke(diag2, haloWidth, UiPalette.BgDeep));
+        node.AddChild(BuildGraveStroke(diag1, coreWidth, GraveCrossColor));
+        node.AddChild(BuildGraveStroke(diag2, coreWidth, GraveCrossColor));
+        return node;
+    }
+
+    private static Line2D BuildGraveStroke(Vector2[] points, float width, Color color)
+    {
+        return new Line2D
         {
-            new Vector2(-w, -r),
-            new Vector2( w, -r),
-            new Vector2( w, -w),
-            new Vector2( r, -w),
-            new Vector2( r,  w),
-            new Vector2( w,  w),
-            new Vector2( w,  r),
-            new Vector2(-w,  r),
-            new Vector2(-w,  w),
-            new Vector2(-r,  w),
-            new Vector2(-r, -w),
-            new Vector2(-w, -w),
+            Points = points,
+            Width = width,
+            DefaultColor = color,
+            Antialiased = true,
+            BeginCapMode = Line2D.LineCapMode.Round,
+            EndCapMode = Line2D.LineCapMode.Round,
         };
-
-        var body = new Polygon2D
-        {
-            Color = new Color(0.55f, 0.55f, 0.55f, 1f),
-            Polygon = verts,
-        };
-
-        var outlinePoints = new Vector2[verts.Length + 1];
-        for (int i = 0; i < verts.Length; i++) outlinePoints[i] = verts[i];
-        outlinePoints[verts.Length] = verts[0];
-
-        var outline = new Line2D
-        {
-            Points = outlinePoints,
-            Width = 2f,
-            DefaultColor = new Color(0f, 0f, 0f, 1f),
-        };
-        body.AddChild(outline);
-
-        return body;
     }
 
     // Capital star: outer point sized between the old diamond
@@ -1720,9 +1728,17 @@ public partial class HexMapView : Node2D, IHexMapView
     private const float CapitalStarOuterRadius = 0.48f;
     private const float CapitalStarInnerRadius = 0.20f;
 
+    // Capital star per the redesign spec: BgDeep fill with a thin white
+    // stroke so the silhouette stays legible on any player fill. When
+    // the territory is selected, the fill flips to brass (gold) — keeps
+    // the at-a-glance "this is the selected territory's capital" cue
+    // that the old white-vs-black palette gave us.
+    private static readonly Color CapitalStrokeColor = new Color(1f, 1f, 1f, 0.95f);
+    private const float CapitalStrokeWidth = 0.6f;
+
     private Node2D CreateCapitalVisual(bool selected)
     {
-        Color color = selected ? OccupantSelectedColor : OccupantDefaultColor;
+        Color fill = selected ? UiPalette.Gold : UiPalette.BgDeep;
         float outer = HexSize * CapitalStarOuterRadius;
         float inner = HexSize * CapitalStarInnerRadius;
 
@@ -1736,11 +1752,13 @@ public partial class HexMapView : Node2D, IHexMapView
             verts[i] = new Vector2(r * Mathf.Cos(angle), r * Mathf.Sin(angle));
         }
 
-        return new Polygon2D
+        var body = new Polygon2D
         {
-            Color = color,
+            Color = fill,
             Polygon = verts,
         };
+        body.AddChild(BuildClosedOutline(verts, CapitalStrokeWidth, CapitalStrokeColor));
+        return body;
     }
 
     public override void _UnhandledInput(InputEvent @event)
@@ -2072,47 +2090,37 @@ public partial class HexMapView : Node2D, IHexMapView
         };
     }
 
-    private static readonly Color HexOutlineColor = new Color(0f, 0f, 0f, 0.4f);
     private const float HexOutlineWidth = 1.5f;
 
-    // Draw each shared land/land edge exactly once (using a coord
-    // tie-break for ownership) and each land/water edge exactly once.
-    // Drawing each tile's full perimeter would double the line weight
-    // on interior same-color seams while leaving coastal seams single,
-    // which reads as uneven thickness.
+    // Per-tile heraldic border: each land tile's full perimeter is its
+    // own closed polyline in the owner's player-dark color. Two adjacent
+    // land tiles render BOTH perimeters along the shared seam — same
+    // owner reads as a single ~1.2px line (anti-aliased same-color
+    // overlap), different owners read as two thin lines in each player's
+    // dark, the "heraldic field boundary" the redesign calls for.
+    // Coastal land/water edges only have the land side, so they're
+    // single-line (same as before).
     private void PopulateOutlinesLayer()
     {
         if (_outlinesLayer == null) return;
         Vector2[] verts = HexVertices();
+        var closedPerimeter = new Vector2[7];
+        for (int i = 0; i < 6; i++) closedPerimeter[i] = verts[i];
+        closedPerimeter[6] = verts[0];
 
         foreach (HexTile tile in _state.Grid.Tiles)
         {
             Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(tile.Coord, HexSize);
-            for (int edge = 0; edge < 6; edge++)
+            _outlinesLayer.AddChild(new Line2D
             {
-                int dir = EdgeToNeighborDirection[edge];
-                HexCoord neighborCoord = tile.Coord.Neighbor(dir);
-                HexTile? neighbor = _state.Grid.Get(neighborCoord);
-                if (neighbor != null && CompareCoord(neighborCoord, tile.Coord) < 0)
-                {
-                    // Neighbor land tile is the canonical owner of this edge.
-                    continue;
-                }
-
-                _outlinesLayer.AddChild(new Line2D
-                {
-                    Points = new[] { center + verts[edge], center + verts[(edge + 1) % 6] },
-                    Width = HexOutlineWidth,
-                    DefaultColor = HexOutlineColor,
-                });
-            }
+                Position = center,
+                Points = closedPerimeter,
+                Width = HexOutlineWidth,
+                DefaultColor = PlayerPalette.DarkColorFor(tile.Owner),
+                Antialiased = true,
+                JointMode = Line2D.LineJointMode.Round,
+            });
         }
-    }
-
-    private static int CompareCoord(HexCoord a, HexCoord b)
-    {
-        if (a.Q != b.Q) return a.Q.CompareTo(b.Q);
-        return a.R.CompareTo(b.R);
     }
 
     // Edge i of a hex (between vertex i and vertex (i+1)%6) maps to one
@@ -2126,7 +2134,7 @@ public partial class HexMapView : Node2D, IHexMapView
     private const float ShoreFoamInset = 0.30f;
     private static readonly Color ShoreFoamColor = new Color(0.95f, 1.0f, 1.0f);
 
-    private static readonly Color WaterColor = new Color(0.20f, 0.42f, 0.65f, 1f);
+    private static readonly Color WaterColor = UiPalette.WaterDeep;
 
     private Polygon2D CreateWaterHexVisual(Vector2 center)
     {
@@ -2308,6 +2316,17 @@ public partial class HexMapView : Node2D, IHexMapView
         }
     }
 
+    // Selection outline drawn in two passes per boundary edge: a wider
+    // semi-transparent halo (HexSize * 0.22 wide, white 35% alpha) under
+    // a narrower solid warm-white core (HexSize * 0.10 wide). The halo
+    // bleeds onto adjacent tiles so the selection reads as glowing; the
+    // core stays crisp on the edge itself. Antialiased on both so the
+    // outline looks clean on the curved hex corners.
+    private const float SelectionHaloWidthFactor = 0.22f;
+    private const float SelectionCoreWidthFactor = 0.10f;
+    private static readonly Color SelectionHaloColor = new Color(1f, 1f, 1f, 0.35f);
+    private static readonly Color SelectionCoreColor = new Color(0.98f, 0.97f, 0.92f, 1f);
+
     private void RedrawHighlight()
     {
         if (_highlightLayer == null) return;
@@ -2318,6 +2337,8 @@ public partial class HexMapView : Node2D, IHexMapView
 
         Vector2[] verts = HexVertices();
         var inside = new HashSet<HexCoord>(_highlightedTerritory.Coords);
+        float haloWidth = HexSize * SelectionHaloWidthFactor;
+        float coreWidth = HexSize * SelectionCoreWidthFactor;
 
         foreach (HexCoord coord in _highlightedTerritory.Coords)
         {
@@ -2330,13 +2351,27 @@ public partial class HexMapView : Node2D, IHexMapView
 
                 if (inside.Contains(neighborCoord)) continue;
 
-                var line = new Line2D
+                Vector2 a = center + verts[edge];
+                Vector2 b = center + verts[(edge + 1) % 6];
+
+                _highlightLayer.AddChild(new Line2D
                 {
-                    Points = new[] { center + verts[edge], center + verts[(edge + 1) % 6] },
-                    Width = 7f,
-                    DefaultColor = new Color(1f, 1f, 1f, 1f),
-                };
-                _highlightLayer.AddChild(line);
+                    Points = new[] { a, b },
+                    Width = haloWidth,
+                    DefaultColor = SelectionHaloColor,
+                    Antialiased = true,
+                    BeginCapMode = Line2D.LineCapMode.Round,
+                    EndCapMode = Line2D.LineCapMode.Round,
+                });
+                _highlightLayer.AddChild(new Line2D
+                {
+                    Points = new[] { a, b },
+                    Width = coreWidth,
+                    DefaultColor = SelectionCoreColor,
+                    Antialiased = true,
+                    BeginCapMode = Line2D.LineCapMode.Round,
+                    EndCapMode = Line2D.LineCapMode.Round,
+                });
             }
         }
     }
@@ -2375,9 +2410,10 @@ public partial class HexMapView : Node2D, IHexMapView
         }
 
         Vector2 capitalCenter = FirstHexCenterOffset + HexPixel.ToPixel(capital, HexSize);
-        // Tuck the badge into the capital's upper-right corner so the
-        // capital glyph stays visible underneath.
-        Vector2 badgePos = capitalCenter + new Vector2(HexSize * 0.45f, -HexSize * 0.45f);
+        // Tuck the badge into the capital's upper-LEFT corner per the
+        // redesign spec so the capital glyph stays visible underneath
+        // and the warning sits in a consistent corner across tiles.
+        Vector2 badgePos = capitalCenter + new Vector2(-HexSize * 0.45f, -HexSize * 0.45f);
 
         // Equilateral triangle pointing up, inscribed in radius r.
         const float Sqrt3Over2 = 0.8660254f;

@@ -10,11 +10,38 @@ using Godot;
 public static class PlayerPalette
 {
     /// <summary>Fill shown for unowned/neutral tiles (<see cref="PlayerId.None"/>).</summary>
-    public static readonly Color Neutral = new Color("888888");
+    public static readonly Color Neutral = new Color("888378");
+
+    /// <summary>Darker companion to <see cref="Neutral"/>, used for the neutral tile border stroke.</summary>
+    public static readonly Color NeutralDark = new Color("615c52");
+
+    /// <summary>
+    /// Per-slot darker companion used for the hex border stroke (~fill * 0.45).
+    /// Indices align with <see cref="GameSettings.PlayerConfig"/>. The dark
+    /// is intentionally well below the fill in lightness so that per-tile
+    /// borders within a single-owner territory remain visible against the
+    /// fill instead of fading toward isoluminance.
+    /// </summary>
+    private static readonly Color[] PlayerDark =
+    {
+        new Color("5c201c"), // Red dk
+        new Color("183856"), // Blue dk
+        new Color("244429"), // Green dk
+        new Color("66551b"), // Yellow dk
+        new Color("3b1941"), // Purple dk
+        new Color("633a0f"), // Orange dk
+    };
 
     /// <summary>Display color for a player slot.</summary>
     public static Color ColorFor(PlayerId id) =>
         id.IsNone ? Neutral : new Color(GameSettings.PlayerConfig[id.Index].Hex);
+
+    /// <summary>
+    /// Darker companion to <see cref="ColorFor"/> for hex border strokes and
+    /// other 2-tone player chrome.
+    /// </summary>
+    public static Color DarkColorFor(PlayerId id) =>
+        id.IsNone ? NeutralDark : PlayerDark[id.Index];
 
     /// <summary>
     /// Inverse of <see cref="ColorFor"/>: the player slot whose palette

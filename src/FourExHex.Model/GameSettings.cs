@@ -12,14 +12,19 @@ public static class GameSettings
     /// menu, the game, and the turn order. Colors are stored as hex
     /// strings so this class can stay Godot-free.
     /// </summary>
+    // Each fill is a 50% lerp between the original saturated palette
+    // (Red e53935 etc.) and the fully-heraldic muted palette (Gules
+    // b65649 etc.) — restoring enough chroma that the colors don't read
+    // as washed-out while keeping them noticeably calmer than the
+    // original neon primaries.
     public static readonly (string Name, string Hex)[] PlayerConfig =
     {
-        ("Red",    "e53935"),
-        ("Blue",   "1e88e5"),
-        ("Green",  "43a047"),
-        ("Yellow", "fdd835"),
-        ("Purple", "8e24aa"),
-        ("Orange", "fb8c00"),
+        ("Red",    "cd473f"),
+        ("Blue",   "367cbf"),
+        ("Green",  "50985c"),
+        ("Yellow", "e3bc3b"),
+        ("Purple", "843890"),
+        ("Orange", "db8221"),
     };
 
     /// <summary>

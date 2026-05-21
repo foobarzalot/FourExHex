@@ -31,6 +31,8 @@ public sealed partial class SettingsPanel : CanvasLayer
         { PlaybackSpeed.Slow, PlaybackSpeed.Normal, PlaybackSpeed.Fast, PlaybackSpeed.Instant };
     private Button[] _aiSpeedButtons = null!;
     private Button[] _replaySpeedButtons = null!;
+    private static readonly Font _serifFont =
+        GD.Load<FontFile>("res://fonts/DMSerifDisplay-Regular.ttf");
 
     public override void _Ready()
     {
@@ -51,6 +53,9 @@ public sealed partial class SettingsPanel : CanvasLayer
         };
         AddChild(_backdrop);
 
+        // Centered panel — picks up the theme's slate Panel stylebox.
+        // No custom panelStyle override; the dialog reads as part of the
+        // same family as the Load Game / New Game modals.
         _panel = new PanelContainer
         {
             AnchorLeft = 0.5f,
@@ -60,26 +65,13 @@ public sealed partial class SettingsPanel : CanvasLayer
             GrowHorizontal = Control.GrowDirection.Both,
             GrowVertical = Control.GrowDirection.Both,
         };
-        var panelStyle = new StyleBoxFlat
-        {
-            BgColor = new Color(0f, 0f, 0f, 0.85f),
-            ContentMarginLeft = 24,
-            ContentMarginRight = 24,
-            ContentMarginTop = 20,
-            ContentMarginBottom = 20,
-            CornerRadiusTopLeft = 6,
-            CornerRadiusTopRight = 6,
-            CornerRadiusBottomLeft = 6,
-            CornerRadiusBottomRight = 6,
-        };
-        _panel.AddThemeStyleboxOverride("panel", panelStyle);
         AddChild(_panel);
 
         var vbox = new VBoxContainer
         {
-            CustomMinimumSize = new Vector2(320, 0),
+            CustomMinimumSize = new Vector2(420, 0),
         };
-        vbox.AddThemeConstantOverride("separation", 16);
+        vbox.AddThemeConstantOverride("separation", 18);
         _panel.AddChild(vbox);
 
         var title = new Label
@@ -87,15 +79,26 @@ public sealed partial class SettingsPanel : CanvasLayer
             Text = "Settings",
             HorizontalAlignment = HorizontalAlignment.Center,
         };
-        title.AddThemeFontSizeOverride("font_size", 28);
+        title.AddThemeFontOverride("font", _serifFont);
+        title.AddThemeFontSizeOverride("font_size", 36);
         vbox.AddChild(title);
+
+        // Decorative gold rule under the title — matches the menu panels.
+        var goldRule = new ColorRect
+        {
+            Color = UiPalette.GoldDim,
+            CustomMinimumSize = new Vector2(0, 1),
+            SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter,
+        };
+        goldRule.CustomMinimumSize = new Vector2(200, 1);
+        vbox.AddChild(goldRule);
 
         _sfxCheckBox = new CheckBox
         {
             Text = "Sound Effects",
             ButtonPressed = UserSettings.SfxEnabled,
         };
-        _sfxCheckBox.AddThemeFontSizeOverride("font_size", 22);
+        _sfxCheckBox.AddThemeFontSizeOverride("font_size", 24);
         _sfxCheckBox.Toggled += OnSfxToggled;
         AudioBus.AttachClick(_sfxCheckBox);
         vbox.AddChild(_sfxCheckBox);
@@ -105,13 +108,14 @@ public sealed partial class SettingsPanel : CanvasLayer
             Text = "Visual Effects",
             ButtonPressed = UserSettings.VfxEnabled,
         };
-        _vfxCheckBox.AddThemeFontSizeOverride("font_size", 22);
+        _vfxCheckBox.AddThemeFontSizeOverride("font_size", 24);
         _vfxCheckBox.Toggled += OnVfxToggled;
         AudioBus.AttachClick(_vfxCheckBox);
         vbox.AddChild(_vfxCheckBox);
 
         var aiSpeedLabel = new Label { Text = "AI Turn Speed" };
-        aiSpeedLabel.AddThemeFontSizeOverride("font_size", 22);
+        aiSpeedLabel.AddThemeFontSizeOverride("font_size", 24);
+        aiSpeedLabel.AddThemeColorOverride("font_color", UiPalette.InkSoft);
         vbox.AddChild(aiSpeedLabel);
 
         // Shared ButtonGroup turns the four toggles into a radio set:
@@ -138,7 +142,7 @@ public sealed partial class SettingsPanel : CanvasLayer
                 FocusMode = Control.FocusModeEnum.None,
                 SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
             };
-            btn.AddThemeFontSizeOverride("font_size", 18);
+            btn.AddThemeFontSizeOverride("font_size", 20);
             btn.Pressed += () => OnAiSpeedPressed(speed);
             // Toggled fires when this button's pressed state flips —
             // including the auto-unpress the ButtonGroup triggers on
@@ -153,7 +157,8 @@ public sealed partial class SettingsPanel : CanvasLayer
         vbox.AddChild(aiSpeedRow);
 
         var replaySpeedLabel = new Label { Text = "Replay Speed" };
-        replaySpeedLabel.AddThemeFontSizeOverride("font_size", 22);
+        replaySpeedLabel.AddThemeFontSizeOverride("font_size", 24);
+        replaySpeedLabel.AddThemeColorOverride("font_color", UiPalette.InkSoft);
         vbox.AddChild(replaySpeedLabel);
 
         var replaySpeedRow = new HBoxContainer();
@@ -173,7 +178,7 @@ public sealed partial class SettingsPanel : CanvasLayer
                 FocusMode = Control.FocusModeEnum.None,
                 SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
             };
-            btn.AddThemeFontSizeOverride("font_size", 18);
+            btn.AddThemeFontSizeOverride("font_size", 20);
             btn.Pressed += () => OnReplaySpeedPressed(speed);
             btn.Toggled += pressed => ApplySpeedButtonStyle(btn, pressed);
             AudioBus.AttachClick(btn);
@@ -189,7 +194,7 @@ public sealed partial class SettingsPanel : CanvasLayer
             FocusMode = Control.FocusModeEnum.None,
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
         };
-        backButton.AddThemeFontSizeOverride("font_size", 22);
+        backButton.AddThemeFontSizeOverride("font_size", 24);
         backButton.Pressed += Close;
         AudioBus.AttachClick(backButton);
         vbox.AddChild(backButton);

@@ -1024,11 +1024,22 @@ pipeline that surfaces it ahead of time:
   `BankruptNextTurn`, yellow on `NegativeDelta`, clears the override
   otherwise. Only painted when the selected territory is human-owned;
   AI territories never tint the label.
-- **HUD panel text (`ComputeActionHint`)** — final fallback after the
-  buy/move branches: a human-owned, forecast-bankrupt selected
-  territory shows "Bankrupt next turn - all units die" in the bottom-
-  anchored panel. Buy/move hints still win; tutorial / AI-batch text
-  still wins via `_externalMessageActive`.
+- **Bankruptcy toast (`HudView._bankruptToast`)** — a dedicated red
+  pill anchored 16 px below the HUD bar, top-center, built in
+  `BuildBankruptToast` and toggled by `Refresh` whenever
+  `ForecastHumanBankrupt(state, session.SelectedTerritory)` is true.
+  Dark-red bg (oklch 0.30 0.10 25 ≈ #4a2620) at 92 % alpha, 1 px
+  brighter-red border, 8 px radius. Two-line text: title
+  "Bankrupt next turn" (Geist 24 px ink) over subtitle "All units
+  in this territory will die" (Geist 21 px ink-mute). Left of the
+  text, a `TriangleWarningBadge` nested Control draws the same
+  upward-pointing red triangle + white "!" exclamation that
+  `HexMapView.DrawWarningBadgeAt` stamps on the capital, so the
+  toast and the in-map warning share one glyph. Independent of
+  the bottom-center tutorial-message panel (which still surfaces
+  buy/move placement hints); the two coexist without overlap so a
+  doomed-territory warning doesn't compete with an action mode in
+  progress.
 - **Map badge (`HexMapView.RedrawWarningBadges`)** — a top-most
   `WarningBadgesLayer` (drawn above units, capitals, and the highlight
   border) holds warning-sign triangles stamped on the capital of every
@@ -2301,6 +2312,115 @@ block. Deserialize throws if the Tutorial block is present without
 a Replay block. The `Tutorial` class is `{ Title, Replay }` — no
 `StartTurn` / `StartPlayer` / `Beats` (the Replay carries those).
 
+## Visual / UI theme
+
+The visual look is owned by three pieces on the Godot side, all in
+the view layer (Model and Controller stay color-free):
+
+- **`theme/fourexhex_theme.tres`** — the project-default `Theme`
+  resource, set as `gui/theme/custom` in `project.godot`. Defines
+  the slate `Panel` / `PanelContainer` / `PopupPanel` / `PopupMenu`
+  styleboxes everything modal renders against, the `Button` /
+  `OptionButton` normal/hover/pressed/disabled/focus styleboxes,
+  `LineEdit` normal + focus, `CheckBox` + `Label` font colors,
+  and the `TooltipLabel` font (Geist) + size (28). `Window` and
+  `AcceptDialog` deliberately have no theme entries — Godot 4
+  silently ignores `embedded_border` overrides on those, so
+  modals are rebuilt on the `CanvasLayer` + `PanelContainer`
+  shell instead (see below). A `PrimaryButton` `theme_type_variation`
+  was added for brass-gold action buttons but is no longer used
+  anywhere; the dead variation stays in the file for now.
+- **`scripts/UiPalette.cs`** — static C# class exposing the same
+  design tokens as `oklch`-style constants for view code that needs
+  to paint directly (HexMapView's water + per-tile borders, HUD bg
+  Panels with custom StyleBoxFlat overrides, gold rule decorations
+  under dialog titles). Three groups: surfaces (`BgDeep`,
+  `BgPanel`, `BgElev`, `BgRow`, `BgRowH`), lines (`Line`,
+  `LineSoft`, `LineHard`), ink (`Ink`, `InkSoft`, `InkMute`,
+  `InkFaint`), brass (`Gold`, `GoldDeep`, `GoldDim`), water
+  (`Water`, `WaterDeep`). The values match the heraldic-board-game
+  palette the redesign settled on after a 50 % lerp back toward
+  the original saturated primaries.
+- **`fonts/`** — three OFL font files imported as Godot
+  `FontFile` resources, loaded by view code via `GD.Load<FontFile>`
+  and applied via `AddThemeFontOverride`. DM Serif Display
+  (display titles — wordmark, dialog titles, end-game text),
+  Geist (UI body — buttons, labels, eyebrows), JetBrains Mono
+  (numerics — turn number, gold value, seed input).
+
+**Player palette** lives in `scripts/PlayerPalette.cs`, separate
+from the chrome palette because it depends on the roster:
+`ColorFor(PlayerId)` reads `GameSettings.PlayerConfig` for the
+fill, and `DarkColorFor(PlayerId)` returns a per-slot darker
+companion used for the 1.5-px per-tile hex border stroke in
+`HexMapView.PopulateOutlinesLayer`. The darks are ~ fill × 0.45
+so per-tile borders stay visible within a single-owner territory
+(rather than fading into isoluminance with the fill).
+
+### Modal-dialog shell pattern
+
+Every modal (Settings, EscMenu / pause, SlotPickerDialog for Save /
+Load / Tutorial pickers) is built on the same three-piece shell:
+
+1. **`CanvasLayer`** with `Layer = 100`, `Visible = false`,
+   `ProcessMode = Always` so the modal stays interactive while
+   the tree is paused (pause coordinator) AND while it isn't
+   (main menu / map editor hosts).
+2. **`ColorRect`** backdrop sized to the viewport, with
+   `Color = Color(0, 0, 0, 0.5)` and `MouseFilter = Stop` so
+   clicks behind the modal don't bleed through. (`SlotPickerDialog`
+   wires the backdrop's `GuiInput` to close the modal on click;
+   `SettingsPanel` and `EscMenu` don't.)
+3. **`PanelContainer`** centered via `AnchorLeft = AnchorRight =
+   AnchorTop = AnchorBottom = 0.5` + `GrowDirection.Both`,
+   picking up the theme's slate `Panel/styles/panel` stylebox
+   automatically. Content lives in a `VBoxContainer` child.
+
+`SlotPickerDialog` also has shared static helpers
+(`BuildBackdrop`, `BuildCenteredPanel`, `BuildPanelHead`) for the
+"panel-head with uppercase title + close × + 1-px gold-dim rule"
+shell, so future dialogs built on this pattern don't drift.
+
+The old `Window` / `AcceptDialog` modal shape (used by
+`SlotPickerDialog` before the redesign) didn't pick up the theme
+— Godot 4 silently dropped the `embedded_border` override — so
+that path was replaced. `Window`-class modals are out of the
+codebase.
+
+### HUD shape
+
+The play HUD (`HudView`) is one `Panel` background + one
+`HBoxContainer` bar broken into three regions:
+
+- **Status (left)** — `TURN` gold eyebrow + the turn number
+  (JetBrains Mono 36) | line-soft divider | `TO PLAY` gold
+  eyebrow + the current player's name in their fill color
+  (Geist 40) | divider | gold chip (bg-deep `PanelContainer`
+  with line-soft border + 8 px radius) containing the gold
+  total + income breakdown in JetBrains Mono 26, hidden when
+  no capital territory is selected.
+- **Unit palette (center)** — a slate `PanelContainer` (radius
+  10, bg-deep) wrapping the four buy buttons (Peasant /
+  Spearman / Knight / Baron) as a radio group. The Build Tower
+  button sits OUTSIDE that panel as a separate sibling in the
+  bar so it has its own anchor; the 14-px gap between them
+  comes from the bar's separation.
+- **Turn controls (right)** — Undo cluster (4 ghost icon
+  buttons) | divider | End Turn `HudIconButton` | Options
+  (gear) cog.
+
+The bar is 96 px tall (`HudView.HudHeight = 96`). The map editor
+HUD (`MapEditorHudView`) anchors to the same `HudHeight` and
+follows the same shell: warm-slate `Panel` background with a
+1-px line-soft bottom border, `SEED` gold eyebrow + mono
+`LineEdit`, a `HudIconButton(HudIcon.Die)` (isometric six-sided
+die glyph drawn by `HudIcons.DrawDie`; replaces the old "Generate"
+text button), then the palette swatches in three groups: the six
+land colors inside a rounded slate `PanelContainer` (radio-group
+framing), the four terrain tools (water / tree / capital / tower)
+as bare swatches, and the hand (pan / no-paint) tool at the right
+end.
+
 ## Logging (`Log`)
 
 `src/FourExHex.Model/Log.cs` is the master logging system — one
@@ -2428,13 +2548,19 @@ scripts/  (split: see the three source trees listed just above)
 │                           Open() / Close() / Closed event. Used by
 │                           MainMenuScene's landing Settings button
 │                           and Main's pause-menu Settings option
-├─ SlotPickerDialog.cs    ─ reusable Window-based load-slot picker;
+├─ SlotPickerDialog.cs    ─ reusable load-slot picker built on the
+│                           shared modal shell (CanvasLayer + dim
+│                           ColorRect backdrop + centered PanelContainer
+│                           with the theme's slate Panel stylebox);
 │                           ShowSlots(slots, emptyMsg, labelFor,
-│                           onPicked) + ShowError; ProcessMode = Always
-│                           so it works during in-game pause. Used by
-│                           MainMenuScene, MapEditorScene, Tutorial-
-│                           BuilderScene, and Main's pause-menu Load
-│                           Game option
+│                           onPicked) + ShowError (inline error panel);
+│                           ProcessMode = Always so it works during
+│                           in-game pause. Static BuildBackdrop /
+│                           BuildCenteredPanel / BuildPanelHead helpers
+│                           are the shared chrome the dialog-polish
+│                           pattern uses. Used by MainMenuScene,
+│                           MapEditorScene, TutorialBuilderScene, and
+│                           Main's pause-menu Load Game option
 ├─ RecordPane.cs          ─ Record-mode chrome: spins up a real
 │                           GameController over the panel's draft
 │                           with all six players Human; captures the
@@ -2492,11 +2618,17 @@ scripts/  (split: see the three source trees listed just above)
 ├─ IHudView.cs            ─ HUD view contract
 ├─ HexMapView.cs          ─ concrete map: rendering + input + camera pan
 │                           + audio forwarding
-├─ HudView.cs             ─ concrete HUD: labels + icon buttons +
-│                           defeat / claim-victory / victory overlays
-│                           + bottom-anchored tutorial-message popup.
-│                           Buy/Build always visible; tooltips name
-│                           the reason when disabled.
+├─ HudView.cs             ─ concrete HUD: 96-px slate top strip
+│                           organized into three regions (status,
+│                           centered unit-palette panel, turn
+│                           controls) + defeat / claim-victory /
+│                           victory overlays + bottom-anchored
+│                           tutorial-message popup + top-anchored
+│                           bankruptcy toast (red pill with the
+│                           same triangle warning glyph the map's
+│                           capital badge uses). Buy/Build always
+│                           visible; tooltips name the reason when
+│                           disabled.
 ├─ HudIconButton.cs       ─ Button subclass painting a programmatic
 │                           glyph via _Draw; carries Selected (mode
 │                           cue), CtaActive (CTA stylebox color flip),
@@ -2507,7 +2639,15 @@ scripts/  (split: see the three source trees listed just above)
 ├─ HudIcons.cs            ─ static glyph helpers shared by
 │                           HudIconButton + HexPaletteButton (tree,
 │                           capital, tower, hand, unit rings, curved
-│                           arrow ± nested, end-turn triangle, gear)
+│                           arrow ± nested, end-turn triangle, gear,
+│                           isometric d6 die for map-editor Generate)
+├─ UiPalette.cs           ─ static design-token C# constants (surfaces,
+│                           lines, ink, brass, water) consumed by view
+│                           code that paints directly (HexMapView water
+│                           + per-tile borders, HUD bg + chip Panels,
+│                           dialog gold-rule decorations). Heraldic
+│                           board-game palette lerped 50% back toward
+│                           the original saturated primaries.
 ├─ HeadlessViews.cs       ─ no-op view stubs for diagnostic mode
 ├─ AudioBus.cs            ─ autoload Node singleton: shared SFX players
 │                           that survive scene changes; each Play* gates

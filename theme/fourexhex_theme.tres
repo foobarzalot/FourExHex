@@ -1,0 +1,267 @@
+[gd_resource type="Theme" load_steps=14 format=3]
+
+[ext_resource type="FontFile" uid="uid://opv7mdim86bv" path="res://fonts/Geist-VariableFont.ttf" id="font_geist"]
+[ext_resource type="FontFile" uid="uid://xigykivn6a1k" path="res://fonts/DMSerifDisplay-Regular.ttf" id="font_serif"]
+[ext_resource type="FontFile" uid="uid://luh1jc7v4qe" path="res://fonts/JetBrainsMono-VariableFont.ttf" id="font_mono"]
+
+[sub_resource type="StyleBoxFlat" id="panel_main"]
+content_margin_left = 18.0
+content_margin_top = 14.0
+content_margin_right = 18.0
+content_margin_bottom = 14.0
+bg_color = Color(0.192157, 0.180392, 0.160784, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.270588, 0.250980, 0.223529, 1)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+shadow_color = Color(0, 0, 0, 0.6)
+shadow_size = 40
+shadow_offset = Vector2(0, 8)
+
+[sub_resource type="StyleBoxFlat" id="button_normal"]
+content_margin_left = 18.0
+content_margin_top = 10.0
+content_margin_right = 18.0
+content_margin_bottom = 10.0
+bg_color = Color(0.239216, 0.223529, 0.203922, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.329412, 0.309804, 0.278431, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="button_hover"]
+content_margin_left = 18.0
+content_margin_top = 10.0
+content_margin_right = 18.0
+content_margin_bottom = 10.0
+bg_color = Color(0.270588, 0.250980, 0.223529, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.411765, 0.384314, 0.352941, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="button_pressed"]
+content_margin_left = 18.0
+content_margin_top = 10.0
+content_margin_right = 18.0
+content_margin_bottom = 10.0
+bg_color = Color(0.270588, 0.250980, 0.223529, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.478431, 0.396078, 0.203922, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="button_focus"]
+content_margin_left = 18.0
+content_margin_top = 10.0
+content_margin_right = 18.0
+content_margin_bottom = 10.0
+bg_color = Color(0.239216, 0.223529, 0.203922, 0)
+draw_center = false
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.478431, 0.396078, 0.203922, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="button_disabled"]
+content_margin_left = 18.0
+content_margin_top = 10.0
+content_margin_right = 18.0
+content_margin_bottom = 10.0
+bg_color = Color(0.239216, 0.223529, 0.203922, 0.5)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.270588, 0.250980, 0.223529, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="primary_normal"]
+content_margin_left = 18.0
+content_margin_top = 10.0
+content_margin_right = 18.0
+content_margin_bottom = 10.0
+bg_color = Color(0.847059, 0.713725, 0.352941, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.639216, 0.509804, 0.156863, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="primary_hover"]
+content_margin_left = 18.0
+content_margin_top = 10.0
+content_margin_right = 18.0
+content_margin_bottom = 10.0
+bg_color = Color(0.913725, 0.776471, 0.415686, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.639216, 0.509804, 0.156863, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="primary_pressed"]
+content_margin_left = 18.0
+content_margin_top = 10.0
+content_margin_right = 18.0
+content_margin_bottom = 10.0
+bg_color = Color(0.639216, 0.509804, 0.156863, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.478431, 0.396078, 0.203922, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="lineedit_normal"]
+content_margin_left = 10.0
+content_margin_top = 8.0
+content_margin_right = 10.0
+content_margin_bottom = 8.0
+bg_color = Color(0.239216, 0.223529, 0.203922, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.270588, 0.250980, 0.223529, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="StyleBoxFlat" id="lineedit_focus"]
+content_margin_left = 10.0
+content_margin_top = 8.0
+content_margin_right = 10.0
+content_margin_bottom = 8.0
+bg_color = Color(0.239216, 0.223529, 0.203922, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.478431, 0.396078, 0.203922, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[resource]
+default_font = ExtResource("font_geist")
+default_font_size = 14
+
+; AcceptDialog styling left default for the same reason — see note
+; above the Window block.
+
+Button/colors/font_color = Color(0.952941, 0.945098, 0.925490, 1)
+Button/colors/font_disabled_color = Color(0.478431, 0.454902, 0.415686, 1)
+Button/colors/font_focus_color = Color(0.952941, 0.945098, 0.925490, 1)
+Button/colors/font_hover_color = Color(0.952941, 0.945098, 0.925490, 1)
+Button/colors/font_pressed_color = Color(0.847059, 0.713725, 0.352941, 1)
+Button/fonts/font = ExtResource("font_geist")
+Button/font_sizes/font_size = 14
+Button/styles/disabled = SubResource("button_disabled")
+Button/styles/focus = SubResource("button_focus")
+Button/styles/hover = SubResource("button_hover")
+Button/styles/normal = SubResource("button_normal")
+Button/styles/pressed = SubResource("button_pressed")
+
+CheckBox/colors/font_color = Color(0.831373, 0.811765, 0.768627, 1)
+CheckBox/colors/font_hover_color = Color(0.952941, 0.945098, 0.925490, 1)
+CheckBox/fonts/font = ExtResource("font_geist")
+CheckBox/font_sizes/font_size = 14
+
+Label/colors/font_color = Color(0.952941, 0.945098, 0.925490, 1)
+Label/fonts/font = ExtResource("font_geist")
+Label/font_sizes/font_size = 14
+
+LineEdit/colors/caret_color = Color(0.847059, 0.713725, 0.352941, 1)
+LineEdit/colors/font_color = Color(0.952941, 0.945098, 0.925490, 1)
+LineEdit/colors/font_placeholder_color = Color(0.478431, 0.454902, 0.415686, 1)
+LineEdit/colors/selection_color = Color(0.847059, 0.713725, 0.352941, 0.35)
+LineEdit/fonts/font = ExtResource("font_geist")
+LineEdit/font_sizes/font_size = 14
+LineEdit/styles/focus = SubResource("lineedit_focus")
+LineEdit/styles/normal = SubResource("lineedit_normal")
+
+OptionButton/colors/font_color = Color(0.952941, 0.945098, 0.925490, 1)
+OptionButton/colors/font_hover_color = Color(0.952941, 0.945098, 0.925490, 1)
+OptionButton/fonts/font = ExtResource("font_geist")
+OptionButton/font_sizes/font_size = 14
+OptionButton/styles/disabled = SubResource("button_disabled")
+OptionButton/styles/focus = SubResource("button_focus")
+OptionButton/styles/hover = SubResource("button_hover")
+OptionButton/styles/normal = SubResource("button_normal")
+OptionButton/styles/pressed = SubResource("button_pressed")
+
+Panel/styles/panel = SubResource("panel_main")
+
+PanelContainer/styles/panel = SubResource("panel_main")
+
+PopupMenu/colors/font_color = Color(0.952941, 0.945098, 0.925490, 1)
+PopupMenu/colors/font_hover_color = Color(0.847059, 0.713725, 0.352941, 1)
+PopupMenu/fonts/font = ExtResource("font_geist")
+PopupMenu/font_sizes/font_size = 14
+PopupMenu/styles/panel = SubResource("panel_main")
+
+PopupPanel/styles/panel = SubResource("panel_main")
+
+TooltipLabel/fonts/font = ExtResource("font_geist")
+TooltipLabel/font_sizes/font_size = 28
+
+; Window theme overrides intentionally omitted for now — Godot 4's
+; embedded-Window styling has some quirks that need a different shape
+; than what we hand in here (the inner content panel renders with
+; Godot's default blue StyleBox even when embedded_border is set).
+; Task #8 will re-home modal dialogs onto the CanvasLayer + ColorRect
+; backdrop + PanelContainer pattern that SettingsPanel already uses,
+; which lets the regular PanelContainer/styles/panel cover them.
+
+PrimaryButton/base_type = "Button"
+PrimaryButton/colors/font_color = Color(0.137255, 0.129412, 0.113725, 1)
+PrimaryButton/colors/font_focus_color = Color(0.137255, 0.129412, 0.113725, 1)
+PrimaryButton/colors/font_hover_color = Color(0.137255, 0.129412, 0.113725, 1)
+PrimaryButton/colors/font_pressed_color = Color(0.137255, 0.129412, 0.113725, 1)
+PrimaryButton/styles/normal = SubResource("primary_normal")
+PrimaryButton/styles/hover = SubResource("primary_hover")
+PrimaryButton/styles/pressed = SubResource("primary_pressed")
+PrimaryButton/styles/focus = SubResource("button_focus")
+PrimaryButton/styles/disabled = SubResource("button_disabled")

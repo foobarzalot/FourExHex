@@ -10,7 +10,7 @@ using Godot;
 /// </summary>
 public partial class HudView : CanvasLayer, IHudView
 {
-    public const float HudHeight = 60f;
+    public const float HudHeight = 96f;
 
     public event Action? BuyPeasantClicked;
     public event Action<UnitLevel>? BuyUnitClicked;
@@ -33,10 +33,17 @@ public partial class HudView : CanvasLayer, IHudView
     public event Action? ClaimVictoryContinueClicked;
     public event Action? ReplayClicked;
 
-    private Label _turnLabel = null!;
-    private Label _playerLabel = null!;
-    private Label _goldLabel = null!;
+    private Label _turnLabel = null!;       // numeric mono turn number
+    private Label _playerLabel = null!;     // current player name in their color
+    private Label _goldLabel = null!;       // gold + income breakdown
+    private PanelContainer _goldChip = null!;
     private Label _seedLabel = null!;
+    private static readonly Font GeistFont =
+        GD.Load<FontFile>("res://fonts/Geist-VariableFont.ttf");
+    private static readonly Font MonoFont =
+        GD.Load<FontFile>("res://fonts/JetBrainsMono-VariableFont.ttf");
+    private static readonly Font SerifFont =
+        GD.Load<FontFile>("res://fonts/DMSerifDisplay-Regular.ttf");
     // One radio button per buy level (Peasant / Spearman / Knight / Baron),
     // in cycle order. _buyUnitButtons[(int)level] gives the button for
     // a given UnitLevel. _buyUnitButtons[0] = Peasant (the legacy
@@ -61,6 +68,9 @@ public partial class HudView : CanvasLayer, IHudView
     private Button _claimContinueButton = null!;
     private Panel _tutorialPanel = null!;
     private Label _tutorialLabel = null!;
+    private Panel _bankruptToast = null!;
+    private Label _bankruptTitleLabel = null!;
+    private Label _bankruptSubLabel = null!;
 
     // Snapshot of session.Mode != None at the last Refresh, so the Escape
     // handler can decide between cancel-action (pending) and End Game (idle)
@@ -71,62 +81,143 @@ public partial class HudView : CanvasLayer, IHudView
     {
         Vector2 viewport = GetViewport().GetVisibleRect().Size;
 
-        // Dark bar across the top so labels stay readable against the map.
-        var background = new ColorRect
+        // Warm-slate top strip — slightly darker than canvas BgDeep with a
+        // 1px line-soft bottom border so it reads as a layered toolbar
+        // sitting above the map. (The CSS spec calls for a vertical
+        // oklch gradient; Godot's StyleBoxFlat is flat-fill only and
+        // the visual difference at this contrast is imperceptible, so
+        // a single tone with a thin lower border carries the same look.)
+        var background = new Panel
         {
-            Color = new Color(0f, 0f, 0f, 0.8f),
             Position = Vector2.Zero,
             Size = new Vector2(viewport.X, HudHeight),
+            // Default MouseFilter = Stop — blocks any underlying
+            // sensor (e.g. the future-proofed HexHoverTooltip pattern)
+            // anywhere over the bar, including between buttons.
         };
+        var barStyle = new StyleBoxFlat
+        {
+            BgColor = new Color("28251f"),
+            BorderColor = UiPalette.LineSoft,
+            BorderWidthBottom = 1,
+        };
+        background.AddThemeStyleboxOverride("panel", barStyle);
         AddChild(background);
 
-        // Left-aligned info labels + buy button.
-        var leftHbox = new HBoxContainer
+        // Top bar laid out as one HBoxContainer with three regions —
+        // status / unit palette (centered via spacers) / turn controls.
+        // MouseFilter Pass keeps the bar itself click-through to leaf
+        // children only, so spacers don't swallow clicks heading to the
+        // map below.
+        var bar = new HBoxContainer
         {
-            Position = new Vector2(16, 12),
+            AnchorLeft = 0f,
+            AnchorRight = 1f,
+            AnchorTop = 0f,
+            AnchorBottom = 0f,
+            OffsetLeft = 16f,
+            OffsetRight = -16f,
+            OffsetTop = 8f,
+            OffsetBottom = HudHeight - 8f,
+            MouseFilter = Control.MouseFilterEnum.Pass,
         };
-        leftHbox.AddThemeConstantOverride("separation", 24);
-        AddChild(leftHbox);
+        bar.AddThemeConstantOverride("separation", 14);
+        AddChild(bar);
 
-        // Fixed minimum widths so the buy/build buttons that follow these
-        // labels in the HBox don't slide left/right as the text changes
-        // (player name length, turn rollover, gold/income string growing
-        // and shrinking, gold blanking when no capital is selected). Sized
-        // for worst-case content at font_size 24: "Turn: 999",
-        // "Current: Orange", "9999g (99-99=+99)".
-        _turnLabel = new Label
+        // 1) Turn block — small "TURN" eyebrow over a mono number.
+        bar.AddChild(BuildEyebrowBlock("TURN", out _turnLabel, mono: true, valueColor: UiPalette.Ink));
+        _turnLabel.Text = "1";
+        _turnLabel.CustomMinimumSize = new Vector2(70, 0);
+        _turnLabel.AddThemeFontSizeOverride("font_size", 36);
+
+        bar.AddChild(BuildVerticalDivider());
+
+        // 2) Current-player block — "TO PLAY" eyebrow + name in the
+        // player's fill color. No swatch — the colored name already
+        // identifies the active player.
+        bar.AddChild(BuildEyebrowBlock("TO PLAY", out _playerLabel, mono: false, valueColor: UiPalette.Ink));
+        _playerLabel.Text = "Red";
+        _playerLabel.CustomMinimumSize = new Vector2(140, 0);
+        _playerLabel.AddThemeFontSizeOverride("font_size", 40);
+
+        bar.AddChild(BuildVerticalDivider());
+
+        // 3) Gold chip — bg-deep pill containing the gold value + the
+        // income breakdown. We keep the existing "value (income-upkeep=net)"
+        // format inside one label so the rich economy-outlook color
+        // logic in Refresh() still applies wholesale.
+        var goldChip = new PanelContainer
         {
-            Text = "Turn: 1",
-            CustomMinimumSize = new Vector2(130, 0),
+            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
         };
-        _turnLabel.AddThemeFontSizeOverride("font_size", 24);
-        leftHbox.AddChild(_turnLabel);
-
-        _playerLabel = new Label
+        var goldChipStyle = new StyleBoxFlat
         {
-            Text = "Current: Red",
-            CustomMinimumSize = new Vector2(200, 0),
+            BgColor = UiPalette.BgDeep,
+            BorderColor = UiPalette.LineSoft,
+            BorderWidthLeft = 1,
+            BorderWidthRight = 1,
+            BorderWidthTop = 1,
+            BorderWidthBottom = 1,
+            CornerRadiusTopLeft = 8,
+            CornerRadiusTopRight = 8,
+            CornerRadiusBottomLeft = 8,
+            CornerRadiusBottomRight = 8,
+            ContentMarginLeft = 10,
+            ContentMarginRight = 10,
+            ContentMarginTop = 6,
+            ContentMarginBottom = 6,
         };
-        _playerLabel.AddThemeFontSizeOverride("font_size", 24);
-        leftHbox.AddChild(_playerLabel);
-
+        goldChip.AddThemeStyleboxOverride("panel", goldChipStyle);
         _goldLabel = new Label
         {
             Text = "",
-            CustomMinimumSize = new Vector2(240, 0),
+            CustomMinimumSize = new Vector2(190, 0),
         };
-        _goldLabel.AddThemeFontSizeOverride("font_size", 24);
-        leftHbox.AddChild(_goldLabel);
+        _goldLabel.AddThemeFontOverride("font", MonoFont);
+        _goldLabel.AddThemeFontSizeOverride("font_size", 26);
+        goldChip.AddChild(_goldLabel);
+        // Hide the chip entirely when there's nothing to display (no
+        // territory selected, no capital) — an empty bg-deep pill in the
+        // bar reads as a missing widget.
+        _goldChip = goldChip;
+        bar.AddChild(goldChip);
 
-        // Four always-visible radio buttons (Peasant / Spearman / Knight
-        // / Baron) packed in a nested HBox so the row sits as one unit
-        // in the parent layout. Per-button Disabled / Selected /
-        // tooltip are set by Refresh(). Each click fires BuyUnitClicked
-        // with its specific level — direct selection, no cycling. The
-        // U-key fires BuyPeasantClicked which cycles in the controller.
-        var buyRow = new HBoxContainer();
-        buyRow.AddThemeConstantOverride("separation", 4);
-        leftHbox.AddChild(buyRow);
+        // Spacer 1 (centers the unit palette).
+        bar.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
+
+        // 4) Unit palette — the four buy buttons (Peasant/Spearman/
+        // Knight/Baron) live inside one rounded bg-deep PanelContainer
+        // so they read as one grouped widget. The Build Tower button
+        // sits OUTSIDE the panel as a separate sibling in the bar; the
+        // visual gap between them is the bar's own 14-px separation,
+        // so Build Tower has its own anchor point distinct from the
+        // unit-placement group.
+        var palettePanel = new PanelContainer
+        {
+            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
+        };
+        var paletteStyle = new StyleBoxFlat
+        {
+            BgColor = UiPalette.BgDeep,
+            BorderColor = UiPalette.LineSoft,
+            BorderWidthLeft = 1,
+            BorderWidthRight = 1,
+            BorderWidthTop = 1,
+            BorderWidthBottom = 1,
+            CornerRadiusTopLeft = 10,
+            CornerRadiusTopRight = 10,
+            CornerRadiusBottomLeft = 10,
+            CornerRadiusBottomRight = 10,
+            ContentMarginLeft = 6,
+            ContentMarginRight = 6,
+            ContentMarginTop = 2,
+            ContentMarginBottom = 2,
+        };
+        palettePanel.AddThemeStyleboxOverride("panel", paletteStyle);
+        var paletteRow = new HBoxContainer();
+        paletteRow.AddThemeConstantOverride("separation", 2);
+        palettePanel.AddChild(paletteRow);
+        bar.AddChild(palettePanel);
 
         UnitLevel[] buyLevels = { UnitLevel.Peasant, UnitLevel.Spearman, UnitLevel.Knight, UnitLevel.Baron };
         _buyUnitButtons = new HudIconButton[buyLevels.Length];
@@ -140,60 +231,47 @@ public partial class HudView : CanvasLayer, IHudView
             };
             button.Pressed += () => BuyUnitClicked?.Invoke(level);
             AudioBus.AttachClick(button);
-            buyRow.AddChild(button);
+            paletteRow.AddChild(button);
             _buyUnitButtons[i] = button;
         }
 
         _buildTowerButton = new HudIconButton(HudIcon.Tower) { Disabled = true };
         _buildTowerButton.Pressed += () => BuildTowerClicked?.Invoke();
         AudioBus.AttachClick(_buildTowerButton);
-        leftHbox.AddChild(_buildTowerButton);
+        bar.AddChild(_buildTowerButton);
 
-        // Right-anchored action row: Undo Turn / Undo Last / Redo Last /
-        // Redo All / End Turn. The HBoxContainer spans the HUD width with
-        // End alignment so children pack to the right edge. MouseFilter
-        // Ignore keeps clicks on the left-HBox (Buy Peasant) from being
-        // swallowed by this full-width container.
-        var rightHbox = new HBoxContainer
-        {
-            AnchorLeft = 0f,
-            AnchorRight = 1f,
-            AnchorTop = 0f,
-            AnchorBottom = 0f,
-            OffsetLeft = 0f,
-            OffsetRight = -16f,
-            OffsetTop = 12f,
-            OffsetBottom = 48f,
-            Alignment = BoxContainer.AlignmentMode.End,
-            MouseFilter = Control.MouseFilterEnum.Ignore,
-        };
-        rightHbox.AddThemeConstantOverride("separation", 8);
-        AddChild(rightHbox);
+        // Spacer 2.
+        bar.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
 
+        // 5) Undo cluster — four ghost icon buttons.
         _undoTurnButton = new HudIconButton(HudIcon.UndoAll) { Disabled = true };
         _undoTurnButton.Pressed += () => UndoTurnClicked?.Invoke();
         AudioBus.AttachClick(_undoTurnButton);
-        rightHbox.AddChild(_undoTurnButton);
+        bar.AddChild(_undoTurnButton);
 
         _undoLastButton = new HudIconButton(HudIcon.UndoLast) { Disabled = true };
         _undoLastButton.Pressed += () => UndoLastClicked?.Invoke();
         AudioBus.AttachClick(_undoLastButton);
-        rightHbox.AddChild(_undoLastButton);
+        bar.AddChild(_undoLastButton);
 
         _redoLastButton = new HudIconButton(HudIcon.RedoLast) { Disabled = true };
         _redoLastButton.Pressed += () => RedoLastClicked?.Invoke();
         AudioBus.AttachClick(_redoLastButton);
-        rightHbox.AddChild(_redoLastButton);
+        bar.AddChild(_redoLastButton);
 
         _redoAllButton = new HudIconButton(HudIcon.RedoAll) { Disabled = true };
         _redoAllButton.Pressed += () => RedoAllClicked?.Invoke();
         AudioBus.AttachClick(_redoAllButton);
-        rightHbox.AddChild(_redoAllButton);
+        bar.AddChild(_redoAllButton);
 
+        bar.AddChild(BuildVerticalDivider());
+
+        // End Turn uses the default Button theme — the SetCta() white
+        // pulse remains the only "this is the current CTA" signal.
         _endTurnButton = new HudIconButton(HudIcon.EndTurn);
         _endTurnButton.Pressed += () => EndTurnClicked?.Invoke();
         AudioBus.AttachClick(_endTurnButton);
-        rightHbox.AddChild(_endTurnButton);
+        bar.AddChild(_endTurnButton);
 
         // Single Options button — raises the same EscRequested event
         // the Escape key fires, so the scene root's pause coordinator
@@ -202,7 +280,7 @@ public partial class HudView : CanvasLayer, IHudView
         _optionsButton = new HudIconButton(HudIcon.Options);
         _optionsButton.Pressed += () => EscRequested?.Invoke();
         AudioBus.AttachClick(_optionsButton);
-        rightHbox.AddChild(_optionsButton);
+        bar.AddChild(_optionsButton);
 
         // Read-only seed display anchored to the bottom-left so a player
         // can recall or share the seed mid-game without crowding the
@@ -228,11 +306,63 @@ public partial class HudView : CanvasLayer, IHudView
         BuildDefeatOverlay(viewport);
         BuildClaimVictoryOverlay(viewport);
         BuildTutorialOverlay();
+        BuildBankruptToast();
     }
 
     public void SetMapLabel(string text)
     {
         _seedLabel.Text = text;
+    }
+
+    // Small uppercase "TURN" / "TO PLAY" eyebrow label sitting side-by-
+    // side with the value (eyebrow on the left, big value on the right,
+    // both center-aligned vertically). The value label is handed back
+    // via out so the caller can poke at its text/font/color after the
+    // block is in the tree. Caller sets the value text/size/color/font
+    // (so the mono numeric and the player-name treatments stay specific).
+    private Control BuildEyebrowBlock(string eyebrow, out Label value, bool mono, Color valueColor)
+    {
+        var block = new HBoxContainer
+        {
+            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
+        };
+        block.AddThemeConstantOverride("separation", 10);
+
+        var eyebrowLabel = new Label
+        {
+            Text = eyebrow,
+            VerticalAlignment = VerticalAlignment.Center,
+            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
+        };
+        eyebrowLabel.AddThemeFontOverride("font", GeistFont);
+        eyebrowLabel.AddThemeFontSizeOverride("font_size", 20);
+        eyebrowLabel.AddThemeColorOverride("font_color", UiPalette.Gold);
+        block.AddChild(eyebrowLabel);
+
+        value = new Label
+        {
+            VerticalAlignment = VerticalAlignment.Center,
+            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
+        };
+        if (mono) value.AddThemeFontOverride("font", MonoFont);
+        else      value.AddThemeFontOverride("font", GeistFont);
+        value.AddThemeColorOverride("font_color", valueColor);
+        block.AddChild(value);
+
+        return block;
+    }
+
+    // 1×24 vertical divider in line-soft, used between the three regions
+    // of the top bar (status / palette / controls) and inside the unit
+    // palette panel to split Buy from Build.
+    private static Control BuildVerticalDivider()
+    {
+        return new ColorRect
+        {
+            Color = UiPalette.LineSoft,
+            CustomMinimumSize = new Vector2(1, 24),
+            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
+        };
     }
 
     public event Action? TutorialMessageTapped;
@@ -349,6 +479,22 @@ public partial class HudView : CanvasLayer, IHudView
             Visible = false,
             MouseFilter = Control.MouseFilterEnum.Ignore,
         };
+        // Local stylebox override that restores the pre-redesign look:
+        // a flat, square-cornered dark rectangle with a thin gray
+        // border (so it reads as a plain text box, not the rounded
+        // slate panel the project theme paints by default). Alpha is
+        // low enough that the map and territory borders underneath
+        // stay legible when the panel sits over them.
+        var tutorialPanelStyle = new StyleBoxFlat
+        {
+            BgColor = new Color(0f, 0f, 0f, 0.55f),
+            BorderColor = new Color(0.3f, 0.3f, 0.3f, 0.7f),
+            BorderWidthLeft = 1,
+            BorderWidthRight = 1,
+            BorderWidthTop = 1,
+            BorderWidthBottom = 1,
+        };
+        _tutorialPanel.AddThemeStyleboxOverride("panel", tutorialPanelStyle);
         AddChild(_tutorialPanel);
 
         _tutorialLabel = new Label
@@ -371,6 +517,150 @@ public partial class HudView : CanvasLayer, IHudView
         };
         _tutorialLabel.AddThemeFontSizeOverride("font_size", 22);
         _tutorialPanel.AddChild(_tutorialLabel);
+    }
+
+    // Red-pill bankruptcy warning. The redesign §8 toast spec called
+    // for a circular badge, but the in-map warning on a doomed
+    // capital is an upward-pointing equilateral triangle (white-
+    // bordered red, white "!" inside) — so the toast uses the same
+    // triangle to keep the warning glyph consistent between the
+    // capital tile and the toast. Spec colors otherwise stand: dark-
+    // red bg (oklch 0.30 0.10 25 ≈ #4a2620) at 92% alpha, 1px
+    // brighter-red border, 8px radius. Two-line text block: title
+    // in Geist 600 ink, subtitle in Geist ink-mute. Shown by
+    // Refresh() while the currently-selected territory is doomed for
+    // the human's next turn; otherwise hidden.
+    private static readonly Color BankruptToastBg = new Color(0.290f, 0.149f, 0.125f, 0.92f);
+    private static readonly Color BankruptToastBorder = new Color(0.722f, 0.314f, 0.251f, 1f);
+
+    private void BuildBankruptToast()
+    {
+        // 1.5x larger than the spec's reference so the toast reads at
+        // the heavier scale the rest of the redesign settled on. Lives
+        // top-center, just below the HUD bar, so it doesn't fight the
+        // tutorial action-hint panel (which lives bottom-center).
+        const float panelW = 660f;
+        const float panelH = 96f;
+        const float marginTop = 16f;
+
+        _bankruptToast = new Panel
+        {
+            AnchorLeft = 0.5f,
+            AnchorRight = 0.5f,
+            AnchorTop = 0f,
+            AnchorBottom = 0f,
+            OffsetLeft = -panelW * 0.5f,
+            OffsetRight = panelW * 0.5f,
+            OffsetTop = HudHeight + marginTop,
+            OffsetBottom = HudHeight + marginTop + panelH,
+            Visible = false,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        var toastStyle = new StyleBoxFlat
+        {
+            BgColor = BankruptToastBg,
+            BorderColor = BankruptToastBorder,
+            BorderWidthLeft = 1,
+            BorderWidthRight = 1,
+            BorderWidthTop = 1,
+            BorderWidthBottom = 1,
+            CornerRadiusTopLeft = 8,
+            CornerRadiusTopRight = 8,
+            CornerRadiusBottomLeft = 8,
+            CornerRadiusBottomRight = 8,
+        };
+        _bankruptToast.AddThemeStyleboxOverride("panel", toastStyle);
+        AddChild(_bankruptToast);
+
+        var row = new HBoxContainer
+        {
+            AnchorLeft = 0f, AnchorRight = 1f,
+            AnchorTop = 0f, AnchorBottom = 1f,
+            OffsetLeft = 21f, OffsetRight = -21f,
+            OffsetTop = 0f, OffsetBottom = 0f,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        row.AddThemeConstantOverride("separation", 18);
+        _bankruptToast.AddChild(row);
+
+        // Triangle badge: same equilateral-up shape as the in-map
+        // capital warning (DrawWarningBadgeAt), in a 48-px Control box.
+        var badge = new TriangleWarningBadge { CustomMinimumSize = new Vector2(48, 48) };
+        badge.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+        badge.MouseFilter = Control.MouseFilterEnum.Ignore;
+        row.AddChild(badge);
+
+        var textBlock = new VBoxContainer
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        textBlock.AddThemeConstantOverride("separation", 3);
+
+        _bankruptTitleLabel = new Label
+        {
+            Text = "Bankrupt next turn",
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        _bankruptTitleLabel.AddThemeFontOverride("font", GeistFont);
+        _bankruptTitleLabel.AddThemeFontSizeOverride("font_size", 24);
+        _bankruptTitleLabel.AddThemeColorOverride("font_color", UiPalette.Ink);
+        textBlock.AddChild(_bankruptTitleLabel);
+
+        _bankruptSubLabel = new Label
+        {
+            Text = "All units in this territory will die",
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        _bankruptSubLabel.AddThemeFontOverride("font", GeistFont);
+        _bankruptSubLabel.AddThemeFontSizeOverride("font_size", 21);
+        _bankruptSubLabel.AddThemeColorOverride("font_color", UiPalette.InkMute);
+        textBlock.AddChild(_bankruptSubLabel);
+
+        row.AddChild(textBlock);
+    }
+
+    // Tiny self-drawing Control that paints the same upward-pointing
+    // equilateral triangle as HexMapView.DrawWarningBadgeAt — red
+    // fill, 2-px white stroke, white "!" exclamation glyph (a
+    // vertical bar + dot). Lives in HudView because the toast (this
+    // class) is the only consumer; the in-map badge keeps drawing
+    // its triangle inline so it can size relative to HexSize.
+    private sealed partial class TriangleWarningBadge : Control
+    {
+        public override void _Draw()
+        {
+            Color fill = new Color(0.95f, 0.10f, 0.10f, 1f);
+            Color accent = new Color(1f, 1f, 1f, 1f);
+
+            const float Sqrt3Over2 = 0.8660254f;
+            float r = Mathf.Min(Size.X, Size.Y) * 0.45f;
+            Vector2 c = Size * 0.5f;
+            Vector2 vTop = c + new Vector2(0f, -r);
+            Vector2 vBR  = c + new Vector2( r * Sqrt3Over2, r * 0.5f);
+            Vector2 vBL  = c + new Vector2(-r * Sqrt3Over2, r * 0.5f);
+
+            DrawColoredPolygon(new[] { vTop, vBR, vBL }, fill);
+            DrawLine(vTop, vBR, accent, 2f, true);
+            DrawLine(vBR, vBL, accent, 2f, true);
+            DrawLine(vBL, vTop, accent, 2f, true);
+
+            // Exclamation: vertical bar + dot, white. Geometry matches
+            // DrawWarningBadgeAt's per-HexSize ratios so the two badges
+            // read identically.
+            float barHalf = r * 0.11f;
+            float barTop = c.Y - r * 0.40f;
+            float barBottom = c.Y + r * 0.05f;
+            DrawColoredPolygon(new[]
+            {
+                new Vector2(c.X - barHalf, barTop),
+                new Vector2(c.X + barHalf, barTop),
+                new Vector2(c.X + barHalf, barBottom),
+                new Vector2(c.X - barHalf, barBottom),
+            }, accent);
+            DrawCircle(new Vector2(c.X, c.Y + r * 0.28f), r * 0.11f, accent);
+        }
     }
 
     /// <summary>
@@ -406,12 +696,13 @@ public partial class HudView : CanvasLayer, IHudView
         };
         _victoryOverlay.AddChild(scrim);
 
-        // Centered panel with the win text and three buttons: Play
-        // Again, Replay, and Main Menu. Bumped from 460→540 wide when
-        // the Replay button was added to fit three 150-wide buttons
-        // with 12px gaps.
-        const float panelW = 540f;
-        const float panelH = 220f;
+        // Centered panel: VICTORY eyebrow + DM Serif "<Player> wins!" in
+        // the player's fill color + thin gold rule + three-button action
+        // row (Play Again / Replay / Main Menu). Bumped from 540×220 →
+        // 580×280 so the eyebrow + rule fit above the win text without
+        // crowding the buttons.
+        const float panelW = 580f;
+        const float panelH = 280f;
         var panel = new Panel
         {
             Position = new Vector2((viewport.X - panelW) * 0.5f, (viewport.Y - panelH) * 0.5f),
@@ -419,20 +710,40 @@ public partial class HudView : CanvasLayer, IHudView
         };
         _victoryOverlay.AddChild(panel);
 
+        var eyebrow = new Label
+        {
+            Text = "VICTORY",
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Position = new Vector2(0, 32),
+            Size = new Vector2(panelW, 22),
+        };
+        eyebrow.AddThemeFontSizeOverride("font_size", 18);
+        eyebrow.AddThemeColorOverride("font_color", UiPalette.Gold);
+        panel.AddChild(eyebrow);
+
         _victoryLabel = new Label
         {
             Text = "Victory!",
             HorizontalAlignment = HorizontalAlignment.Center,
-            Position = new Vector2(0, 40),
-            Size = new Vector2(panelW, 48),
+            Position = new Vector2(0, 58),
+            Size = new Vector2(panelW, 70),
         };
-        _victoryLabel.AddThemeFontSizeOverride("font_size", 36);
+        _victoryLabel.AddThemeFontOverride("font", SerifFont);
+        _victoryLabel.AddThemeFontSizeOverride("font_size", 52);
         panel.AddChild(_victoryLabel);
 
+        var rule = new ColorRect
+        {
+            Color = UiPalette.GoldDim,
+            Position = new Vector2(panelW * 0.5f - 110f, 144f),
+            Size = new Vector2(220f, 1f),
+        };
+        panel.AddChild(rule);
+
         const float buttonW = 150f;
-        const float buttonH = 44f;
+        const float buttonH = 48f;
         const float gap = 12f;
-        float rowY = 130f;
+        float rowY = 200f;
         float rowX = (panelW - (buttonW * 3f + gap * 2f)) * 0.5f;
 
         var playAgainButton = new Button { Text = "Play Again" };
@@ -498,8 +809,11 @@ public partial class HudView : CanvasLayer, IHudView
         };
         _defeatOverlay.AddChild(scrim);
 
-        const float panelW = 460f;
-        const float panelH = 220f;
+        // DEFEAT eyebrow + DM Serif "<Player> defeated" in player color +
+        // gold rule + three-button row. Same shell as the Victory panel
+        // so the two read as a family.
+        const float panelW = 540f;
+        const float panelH = 280f;
         var panel = new Panel
         {
             Position = new Vector2((viewport.X - panelW) * 0.5f, (viewport.Y - panelH) * 0.5f),
@@ -507,20 +821,40 @@ public partial class HudView : CanvasLayer, IHudView
         };
         _defeatOverlay.AddChild(panel);
 
+        var eyebrow = new Label
+        {
+            Text = "DEFEAT",
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Position = new Vector2(0, 32),
+            Size = new Vector2(panelW, 22),
+        };
+        eyebrow.AddThemeFontSizeOverride("font_size", 18);
+        eyebrow.AddThemeColorOverride("font_color", UiPalette.Gold);
+        panel.AddChild(eyebrow);
+
         _defeatLabel = new Label
         {
             Text = "Defeated",
             HorizontalAlignment = HorizontalAlignment.Center,
-            Position = new Vector2(0, 40),
-            Size = new Vector2(panelW, 48),
+            Position = new Vector2(0, 58),
+            Size = new Vector2(panelW, 70),
         };
-        _defeatLabel.AddThemeFontSizeOverride("font_size", 36);
+        _defeatLabel.AddThemeFontOverride("font", SerifFont);
+        _defeatLabel.AddThemeFontSizeOverride("font_size", 48);
         panel.AddChild(_defeatLabel);
 
-        const float buttonW = 130f;
-        const float buttonH = 44f;
+        var rule = new ColorRect
+        {
+            Color = UiPalette.GoldDim,
+            Position = new Vector2(panelW * 0.5f - 110f, 144f),
+            Size = new Vector2(220f, 1f),
+        };
+        panel.AddChild(rule);
+
+        const float buttonW = 140f;
+        const float buttonH = 48f;
         const float gap = 20f;
-        float rowY = 130f;
+        float rowY = 200f;
         float rowX = (panelW - (buttonW * 3f + gap * 2f)) * 0.5f;
 
         _defeatContinueButton = new Button { Text = "Continue" };
@@ -579,8 +913,11 @@ public partial class HudView : CanvasLayer, IHudView
         };
         _claimVictoryOverlay.AddChild(scrim);
 
-        const float panelW = 520f;
-        const float panelH = 260f;
+        // CHECKPOINT eyebrow + DM Serif "Claim Victory?" + gold rule +
+        // two-button row (Win Now / Continue). Matches the Victory /
+        // Defeat shell so all three overlays read as one design family.
+        const float panelW = 540f;
+        const float panelH = 300f;
         var panel = new Panel
         {
             Position = new Vector2((viewport.X - panelW) * 0.5f, (viewport.Y - panelH) * 0.5f),
@@ -588,20 +925,40 @@ public partial class HudView : CanvasLayer, IHudView
         };
         _claimVictoryOverlay.AddChild(panel);
 
+        var eyebrow = new Label
+        {
+            Text = "CHECKPOINT",
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Position = new Vector2(0, 32),
+            Size = new Vector2(panelW, 22),
+        };
+        eyebrow.AddThemeFontSizeOverride("font_size", 18);
+        eyebrow.AddThemeColorOverride("font_color", UiPalette.Gold);
+        panel.AddChild(eyebrow);
+
         var headerLabel = new Label
         {
             Text = "Claim Victory?",
             HorizontalAlignment = HorizontalAlignment.Center,
-            Position = new Vector2(0, 64),
-            Size = new Vector2(panelW, 48),
+            Position = new Vector2(0, 58),
+            Size = new Vector2(panelW, 70),
         };
-        headerLabel.AddThemeFontSizeOverride("font_size", 32);
+        headerLabel.AddThemeFontOverride("font", SerifFont);
+        headerLabel.AddThemeFontSizeOverride("font_size", 44);
         panel.AddChild(headerLabel);
+
+        var rule = new ColorRect
+        {
+            Color = UiPalette.GoldDim,
+            Position = new Vector2(panelW * 0.5f - 110f, 144f),
+            Size = new Vector2(220f, 1f),
+        };
+        panel.AddChild(rule);
 
         const float buttonW = 200f;
         const float buttonH = 48f;
         const float gap = 20f;
-        float rowY = 170f;
+        float rowY = 220f;
         float rowX = (panelW - (buttonW * 2f + gap)) * 0.5f;
 
         _claimWinNowButton = new Button { Text = "Win Now" };
@@ -725,9 +1082,9 @@ public partial class HudView : CanvasLayer, IHudView
     public void Refresh(GameState state, SessionState session, bool hasActionableRemaining)
     {
         _hasPendingAction = session.Mode != SessionState.ActionMode.None;
-        _turnLabel.Text = $"Turn: {state.Turns.TurnNumber}";
+        _turnLabel.Text = state.Turns.TurnNumber.ToString();
         Player current = state.Turns.CurrentPlayer;
-        _playerLabel.Text = $"Current: {current.Name}";
+        _playerLabel.Text = current.Name;
         _playerLabel.AddThemeColorOverride("font_color", PlayerPalette.ColorFor(current.Id));
 
         // Buy / Build buttons are always visible; the tooltip explains
@@ -738,6 +1095,7 @@ public partial class HudView : CanvasLayer, IHudView
         Territory? selected = session.SelectedTerritory;
         bool hasCapital = selected?.HasCapital ?? false;
 
+        _goldChip.Visible = hasCapital;
         if (hasCapital)
         {
             int gold = state.Treasury.GetGold(selected!.Capital!.Value);
@@ -885,6 +1243,13 @@ public partial class HudView : CanvasLayer, IHudView
                 _tutorialPanel.Visible = false;
             }
         }
+
+        // Bankruptcy toast — shows whenever the selected human territory
+        // is forecast to bankrupt next turn. Lives top-center (just
+        // below the HUD), so it can coexist with the bottom-center
+        // tutorial-message panel during a buy/move mode without either
+        // covering the other.
+        _bankruptToast.Visible = ForecastHumanBankrupt(state, session.SelectedTerritory);
     }
 
     /// <summary>
@@ -921,12 +1286,9 @@ public partial class HudView : CanvasLayer, IHudView
             UnitLevel level = (src?.Unit?.Level) ?? UnitLevel.Peasant;
             return $"Click to move the {level}";
         }
-        // Action hint wins during buy/move; the bankruptcy warning fills
-        // the panel only when the doomed territory is just selected.
-        if (ForecastHumanBankrupt(state, session.SelectedTerritory))
-        {
-            return "Bankrupt next turn - all units die";
-        }
+        // Bankruptcy warning now flows through the red bankruptcy-toast
+        // widget (built by BuildBankruptToast / toggled in Refresh) —
+        // no longer competes for the tutorial panel.
         return null;
     }
 
