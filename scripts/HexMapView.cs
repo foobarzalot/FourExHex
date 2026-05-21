@@ -1570,31 +1570,52 @@ public partial class HexMapView : Node2D, IHexMapView
         };
     }
 
-    // Forest glyph per the redesign spec: a single dark-vert triangle,
-    // tip up, base sitting ~0.22s below center. No trunk, no thick stroke
-    // — the conifer was too noisy at small scales and competed with the
-    // unit rings for eye attention. A thin darker stroke keeps the
-    // silhouette readable on any player fill color.
-    private static readonly Color ForestFillColor = new Color("3a5640");
-    private static readonly Color ForestStrokeColor = new Color("23211d");
+    // Conifer: dark green canopy triangle with a brown trunk, both
+    // stroked in BgDeep. Matches the HUD palette's tree icon
+    // (HudIcons.DrawTree) so the same shape appears in the map editor
+    // toolbar swatch and on the tile itself. The redesign spec called
+    // for a single bare triangle, but the user preferred the trunked
+    // conifer — easier to read at small scales and visually consistent
+    // with the existing icon language.
+    private static readonly Color ForestCanopyColor = new Color(0.16f, 0.48f, 0.18f, 1f);
+    private static readonly Color ForestTrunkColor = new Color(0.36f, 0.22f, 0.1f, 1f);
+    private static readonly Color ForestStrokeColor = UiPalette.BgDeep;
 
     private Node2D CreateTreeVisual()
     {
-        float r = HexSize * 0.50f;
-        float baseY = r * 0.44f;
-        var verts = new[]
+        float r = HexSize * 0.45f;
+        var canopyVerts = new[]
         {
-            new Vector2(0f, -r * 0.95f),
-            new Vector2(r * 0.85f, baseY),
-            new Vector2(-r * 0.85f, baseY),
+            new Vector2(0f, -r),
+            new Vector2(r * 0.85f, r * 0.4f),
+            new Vector2(-r * 0.85f, r * 0.4f),
         };
-        var triangle = new Polygon2D
+        var canopy = new Polygon2D
         {
-            Color = ForestFillColor,
-            Polygon = verts,
+            Color = ForestCanopyColor,
+            Polygon = canopyVerts,
         };
-        triangle.AddChild(BuildClosedOutline(verts, 1.2f, ForestStrokeColor));
-        return triangle;
+        canopy.AddChild(BuildClosedOutline(canopyVerts, 1.5f, ForestStrokeColor));
+
+        float tw = r * 0.18f;
+        float ttop = r * 0.4f;
+        float tbot = r * 0.75f;
+        var trunkVerts = new[]
+        {
+            new Vector2(-tw, ttop),
+            new Vector2( tw, ttop),
+            new Vector2( tw, tbot),
+            new Vector2(-tw, tbot),
+        };
+        var trunk = new Polygon2D
+        {
+            Color = ForestTrunkColor,
+            Polygon = trunkVerts,
+        };
+        trunk.AddChild(BuildClosedOutline(trunkVerts, 1.5f, ForestStrokeColor));
+        canopy.AddChild(trunk);
+
+        return canopy;
     }
 
     // Unit ring radii (outer → inner) per the redesign spec: peasant gets

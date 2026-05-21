@@ -75,32 +75,54 @@ public partial class MapEditorHudView : CanvasLayer
     {
         Vector2 viewport = GetViewport().GetVisibleRect().Size;
 
-        var background = new ColorRect
+        // Warm-slate top strip + 1px line-soft bottom border — same
+        // chrome the play HUD uses so both scenes read as one design
+        // system. Falls back to a ColorRect-position so the host's
+        // TopOffsetPx still slides the whole strip down.
+        var background = new Panel
         {
-            Color = new Color(0f, 0f, 0f, 0.8f),
             Position = new Vector2(0, TopOffsetPx),
             Size = new Vector2(viewport.X, HudView.HudHeight),
+            MouseFilter = Control.MouseFilterEnum.Ignore,
         };
+        var barStyle = new StyleBoxFlat
+        {
+            BgColor = new Color("28251f"),
+            BorderColor = UiPalette.LineSoft,
+            BorderWidthBottom = 1,
+        };
+        background.AddThemeStyleboxOverride("panel", barStyle);
         AddChild(background);
 
         var leftHbox = new HBoxContainer
         {
-            Position = new Vector2(16, 12 + TopOffsetPx),
+            Position = new Vector2(16, 8 + TopOffsetPx),
+            Size = new Vector2(0, HudView.HudHeight - 16),
         };
-        leftHbox.AddThemeConstantOverride("separation", 12);
+        leftHbox.AddThemeConstantOverride("separation", 14);
         AddChild(leftHbox);
 
-        var seedLabel = new Label { Text = "Seed" };
-        seedLabel.AddThemeFontSizeOverride("font_size", 20);
-        leftHbox.AddChild(seedLabel);
+        // SEED eyebrow + mono LineEdit, mirroring the play HUD's
+        // status-block treatment. The LineEdit's text shows in mono so
+        // the active seed reads as a numeric value, not body text.
+        var seedBlock = new VBoxContainer
+        {
+            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
+        };
+        seedBlock.AddThemeConstantOverride("separation", 0);
+        var seedEyebrow = new Label { Text = "SEED" };
+        seedEyebrow.AddThemeFontSizeOverride("font_size", 20);
+        seedEyebrow.AddThemeColorOverride("font_color", UiPalette.Gold);
+        seedBlock.AddChild(seedEyebrow);
 
         _seedField = new LineEdit
         {
-            CustomMinimumSize = new Vector2(80, 32),
+            CustomMinimumSize = new Vector2(120, 0),
             MaxLength = 4,
             Alignment = HorizontalAlignment.Right,
             Text = new System.Random().Next(SeedMin, SeedMax + 1).ToString(),
         };
+        _seedField.AddThemeFontSizeOverride("font_size", 26);
         _seedField.TextChanged += OnSeedTextChanged;
         // Intercept Enter while the seed field has focus — without
         // GuiInput, the LineEdit consumes the key before _UnhandledInput
@@ -108,17 +130,22 @@ public partial class MapEditorHudView : CanvasLayer
         // keyboard with the field focused. Mirrors the seed field in
         // MainMenuScene.
         _seedField.GuiInput += OnSeedFieldGuiInput;
-        leftHbox.AddChild(_seedField);
+        seedBlock.AddChild(_seedField);
+        leftHbox.AddChild(seedBlock);
 
         _generateButton = new Button
         {
             Text = "Generate",
             FocusMode = Control.FocusModeEnum.None,
+            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
+            ThemeTypeVariation = "PrimaryButton",
         };
-        _generateButton.AddThemeFontSizeOverride("font_size", 18);
+        _generateButton.AddThemeFontSizeOverride("font_size", 20);
         _generateButton.Pressed += OnGeneratePressed;
         AudioBus.AttachClick(_generateButton);
         leftHbox.AddChild(_generateButton);
+
+        leftHbox.AddChild(BuildVerticalDivider());
 
         // Palette sits in the same left HBox as the seed/Generate cluster
         // so all the editor controls flow left-to-right without overlap.
@@ -149,9 +176,9 @@ public partial class MapEditorHudView : CanvasLayer
             paletteHbox.AddChild(button);
             _palette[paletteIndex] = button;
         }
-        // Water swatch — same blue HexMapView.CreateWaterHexVisual uses.
+        // Water swatch — same color HexMapView.CreateWaterHexVisual uses.
         int waterIndex = WaterPaletteIndex;
-        var waterButton = new HexPaletteButton(new Color(0.20f, 0.42f, 0.65f, 1f));
+        var waterButton = new HexPaletteButton(UiPalette.WaterDeep);
         waterButton.Pressed += _ => SelectPalette(waterIndex);
         AudioBus.AttachClick(waterButton);
         paletteHbox.AddChild(waterButton);
@@ -201,8 +228,8 @@ public partial class MapEditorHudView : CanvasLayer
             AnchorBottom = 0f,
             OffsetLeft = 0f,
             OffsetRight = -16f,
-            OffsetTop = 12f + TopOffsetPx,
-            OffsetBottom = 48f + TopOffsetPx,
+            OffsetTop = 8f + TopOffsetPx,
+            OffsetBottom = HudView.HudHeight - 8f + TopOffsetPx,
             Alignment = BoxContainer.AlignmentMode.End,
             MouseFilter = Control.MouseFilterEnum.Ignore,
         };
@@ -239,6 +266,19 @@ public partial class MapEditorHudView : CanvasLayer
         b.Pressed += () => onPressed();
         AudioBus.AttachClick(b);
         return b;
+    }
+
+    // Same 1×24 line-soft divider HudView uses between the three regions
+    // of its bar; kept as a static helper here so the editor doesn't
+    // depend on the play HUD's internals.
+    private static Control BuildVerticalDivider()
+    {
+        return new ColorRect
+        {
+            Color = UiPalette.LineSoft,
+            CustomMinimumSize = new Vector2(1, 32),
+            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
+        };
     }
 
     /// <summary>

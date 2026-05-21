@@ -45,7 +45,7 @@ public partial class HexPaletteButton : Control
     {
         _fillColor = fillColor;
         _icon = icon;
-        CustomMinimumSize = new Vector2(36, 40);
+        CustomMinimumSize = new Vector2(52, 56);
         MouseFilter = MouseFilterEnum.Stop;
     }
 
