@@ -152,73 +152,120 @@ public partial class MapEditorHudView : CanvasLayer
 
         leftHbox.AddChild(BuildVerticalDivider());
 
-        // Palette sits in the same left HBox as the seed/Generate cluster
-        // so all the editor controls flow left-to-right without overlap.
-        var paletteHbox = new HBoxContainer();
-        paletteHbox.AddThemeConstantOverride("separation", 6);
-        leftHbox.AddChild(paletteHbox);
-
+        // Three visually-distinct palette groups, all in the same left
+        // HBox as the seed/Generate cluster: a rounded slate "land
+        // colors" panel (the six player fills, presented as a radio
+        // group à la the play HUD's unit palette), then the four
+        // terrain tools (water/tree/capital/tower) as bare swatches,
+        // then the hand tool at the right end. Larger gaps between
+        // groups are provided by explicit Control spacers.
         _palette = new HexPaletteButton[GameSettings.PlayerConfig.Length + 5];
 
-        // Hand swatch — pan/no-paint mode. Default selection on scene
-        // entry. Dark neutral grey: gives the white selection outline
-        // enough contrast and lets the skin-tone hand silhouette read
-        // against the background.
-        var handButton = new HexPaletteButton(
-            new Color(0.32f, 0.34f, 0.38f, 1f), HexPaletteIcon.Hand);
-        handButton.Pressed += _ => SelectPalette(HandPaletteIndex);
-        AudioBus.AttachClick(handButton);
-        paletteHbox.AddChild(handButton);
-        _palette[HandPaletteIndex] = handButton;
+        // Group 1: six land-color swatches inside a slate PanelContainer.
+        var landPanel = new PanelContainer
+        {
+            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
+        };
+        var landStyle = new StyleBoxFlat
+        {
+            BgColor = UiPalette.BgDeep,
+            BorderColor = UiPalette.LineSoft,
+            BorderWidthLeft = 1,
+            BorderWidthRight = 1,
+            BorderWidthTop = 1,
+            BorderWidthBottom = 1,
+            CornerRadiusTopLeft = 10,
+            CornerRadiusTopRight = 10,
+            CornerRadiusBottomLeft = 10,
+            CornerRadiusBottomRight = 10,
+            ContentMarginLeft = 6,
+            ContentMarginRight = 6,
+            ContentMarginTop = 2,
+            ContentMarginBottom = 2,
+        };
+        landPanel.AddThemeStyleboxOverride("panel", landStyle);
+        var landRow = new HBoxContainer();
+        landRow.AddThemeConstantOverride("separation", 4);
+        landPanel.AddChild(landRow);
+        leftHbox.AddChild(landPanel);
 
         for (int i = 0; i < GameSettings.PlayerConfig.Length; i++)
         {
             (_, string hex) = GameSettings.PlayerConfig[i];
             var button = new HexPaletteButton(new Color(hex));
             int paletteIndex = i + 1;
+            // Same tooltip on every land swatch so the group reads as
+            // one widget — the player picks "which color" by clicking
+            // a specific swatch, but the meaning is identical across
+            // all six.
+            button.TooltipText = "Paint land for a player color";
             button.Pressed += _ => SelectPalette(paletteIndex);
             AudioBus.AttachClick(button);
-            paletteHbox.AddChild(button);
+            landRow.AddChild(button);
             _palette[paletteIndex] = button;
         }
-        // Water swatch — same color HexMapView.CreateWaterHexVisual uses.
+
+        // 18-px gap before the terrain-tool group.
+        leftHbox.AddChild(new Control { CustomMinimumSize = new Vector2(18, 0) });
+
+        // Group 2: terrain tools (water / tree / capital / tower) as
+        // bare swatches sitting outside the land panel.
+        var terrainRow = new HBoxContainer
+        {
+            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
+        };
+        terrainRow.AddThemeConstantOverride("separation", 6);
+        leftHbox.AddChild(terrainRow);
+
         int waterIndex = WaterPaletteIndex;
         var waterButton = new HexPaletteButton(UiPalette.WaterDeep);
+        waterButton.TooltipText = "Paint water";
         waterButton.Pressed += _ => SelectPalette(waterIndex);
         AudioBus.AttachClick(waterButton);
-        paletteHbox.AddChild(waterButton);
+        terrainRow.AddChild(waterButton);
         _palette[waterIndex] = waterButton;
-        // Tree swatch — earthy brown background with the tree icon
-        // overlaid. Reads as "tree on dirt" rather than a seventh
-        // player color, and dark enough that the white selection
-        // outline reads at a glance.
+
         int treeIndex = TreePaletteIndex;
         var treeButton = new HexPaletteButton(
             new Color(0.42f, 0.30f, 0.18f, 1f), HexPaletteIcon.Tree);
+        treeButton.TooltipText = "Place / remove a tree";
         treeButton.Pressed += _ => SelectPalette(treeIndex);
         AudioBus.AttachClick(treeButton);
-        paletteHbox.AddChild(treeButton);
+        terrainRow.AddChild(treeButton);
         _palette[treeIndex] = treeButton;
-        // Capital swatch — deep slate-violet so the white selection
-        // outline reads, and so it's visually distinct from the
-        // similarly grey-toned hand and tower swatches.
+
         int capitalIndex = CapitalPaletteIndex;
         var capitalButton = new HexPaletteButton(
             new Color(0.36f, 0.32f, 0.50f, 1f), HexPaletteIcon.Capital);
+        capitalButton.TooltipText = "Place a capital";
         capitalButton.Pressed += _ => SelectPalette(capitalIndex);
         AudioBus.AttachClick(capitalButton);
-        paletteHbox.AddChild(capitalButton);
+        terrainRow.AddChild(capitalButton);
         _palette[capitalIndex] = capitalButton;
-        // Tower swatch — dark stone-grey background with the rook icon
-        // overlaid. Distinct from the lighter capital slate so the two
-        // grey-ish buttons read as different at a glance.
+
         int towerIndex = TowerPaletteIndex;
         var towerButton = new HexPaletteButton(
             new Color(0.45f, 0.45f, 0.50f, 1f), HexPaletteIcon.Tower);
+        towerButton.TooltipText = "Place / remove a tower";
         towerButton.Pressed += _ => SelectPalette(towerIndex);
         AudioBus.AttachClick(towerButton);
-        paletteHbox.AddChild(towerButton);
+        terrainRow.AddChild(towerButton);
         _palette[towerIndex] = towerButton;
+
+        // 18-px gap before the hand tool.
+        leftHbox.AddChild(new Control { CustomMinimumSize = new Vector2(18, 0) });
+
+        // Group 3: hand (pan / no-paint) — its own slot at the right
+        // end of the palette area so it doesn't read as a paintable
+        // material. Dark neutral grey gives the white selection outline
+        // contrast and lets the skin-tone hand silhouette read.
+        var handButton = new HexPaletteButton(
+            new Color(0.32f, 0.34f, 0.38f, 1f), HexPaletteIcon.Hand);
+        handButton.TooltipText = "Pan";
+        handButton.Pressed += _ => SelectPalette(HandPaletteIndex);
+        AudioBus.AttachClick(handButton);
+        leftHbox.AddChild(handButton);
+        _palette[HandPaletteIndex] = handButton;
 
         // Default selection: the hand (no-paint, pan-only) swatch. Visual
         // is set via SelectPalette so the IsSelected outline draws from
