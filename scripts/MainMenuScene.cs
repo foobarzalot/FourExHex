@@ -387,7 +387,6 @@ public partial class MainMenuScene : Control
         panel.AddChild(backButton);
 
         _startButton = new Button { Text = "Start Game" };
-        _startButton.ThemeTypeVariation = "PrimaryButton";
         _startButton.AddThemeFontSizeOverride("font_size", 29);
         _startButton.Position = new Vector2(rightColX, buttonRowY);
         _startButton.Size = new Vector2(rightColW, buttonH);

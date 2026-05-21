@@ -267,12 +267,9 @@ public partial class HudView : CanvasLayer, IHudView
 
         bar.AddChild(BuildVerticalDivider());
 
-        // End Turn picks up the brass PrimaryButton theme variation so
-        // it reads as the bar's primary action by default. SetCta()
-        // overlays the white pulse on top when the controller flags
-        // it as the current CTA; clearing the CTA pops back to brass.
+        // End Turn uses the default Button theme — the SetCta() white
+        // pulse remains the only "this is the current CTA" signal.
         _endTurnButton = new HudIconButton(HudIcon.EndTurn);
-        _endTurnButton.ThemeTypeVariation = "PrimaryButton";
         _endTurnButton.Pressed += () => EndTurnClicked?.Invoke();
         AudioBus.AttachClick(_endTurnButton);
         bar.AddChild(_endTurnButton);

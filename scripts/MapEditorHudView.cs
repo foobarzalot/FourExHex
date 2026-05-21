@@ -138,7 +138,6 @@ public partial class MapEditorHudView : CanvasLayer
             Text = "Generate",
             FocusMode = Control.FocusModeEnum.None,
             SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
-            ThemeTypeVariation = "PrimaryButton",
         };
         _generateButton.AddThemeFontSizeOverride("font_size", 20);
         _generateButton.Pressed += OnGeneratePressed;

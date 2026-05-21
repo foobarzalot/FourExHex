@@ -22,7 +22,7 @@ using Godot;
 /// </summary>
 public sealed partial class EscMenu : CanvasLayer
 {
-    public sealed record Option(string Label, Action OnPressed, bool Disabled = false);
+    public sealed record Option(string Label, Action OnPressed, bool Disabled = false, bool IsPrimary = false);
 
     public event Action? Opened;
     public event Action? Closed;
@@ -66,6 +66,7 @@ public sealed partial class EscMenu : CanvasLayer
         };
         AddChild(_backdrop);
 
+        // Picks up the theme's slate Panel stylebox — no custom override.
         _panel = new PanelContainer
         {
             AnchorLeft = 0.5f,
@@ -75,39 +76,39 @@ public sealed partial class EscMenu : CanvasLayer
             GrowHorizontal = Control.GrowDirection.Both,
             GrowVertical = Control.GrowDirection.Both,
         };
-        var panelStyle = new StyleBoxFlat
-        {
-            BgColor = new Color(0f, 0f, 0f, 0.85f),
-            ContentMarginLeft = 24,
-            ContentMarginRight = 24,
-            ContentMarginTop = 20,
-            ContentMarginBottom = 20,
-            CornerRadiusTopLeft = 6,
-            CornerRadiusTopRight = 6,
-            CornerRadiusBottomLeft = 6,
-            CornerRadiusBottomRight = 6,
-        };
-        _panel.AddThemeStyleboxOverride("panel", panelStyle);
         AddChild(_panel);
 
         var vbox = new VBoxContainer
         {
-            CustomMinimumSize = new Vector2(280, 0),
+            CustomMinimumSize = new Vector2(360, 0),
         };
-        vbox.AddThemeConstantOverride("separation", 12);
+        vbox.AddThemeConstantOverride("separation", 14);
         _panel.AddChild(vbox);
 
         _titleLabel = new Label
         {
             HorizontalAlignment = HorizontalAlignment.Center,
         };
-        _titleLabel.AddThemeFontSizeOverride("font_size", 24);
+        _titleLabel.AddThemeFontOverride("font", _serifFont);
+        _titleLabel.AddThemeFontSizeOverride("font_size", 36);
         vbox.AddChild(_titleLabel);
 
+        // Decorative gold rule under the title — matches the menu panels.
+        var goldRule = new ColorRect
+        {
+            Color = UiPalette.GoldDim,
+            CustomMinimumSize = new Vector2(200, 1),
+            SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter,
+        };
+        vbox.AddChild(goldRule);
+
         _buttonBox = new VBoxContainer();
-        _buttonBox.AddThemeConstantOverride("separation", 8);
+        _buttonBox.AddThemeConstantOverride("separation", 10);
         vbox.AddChild(_buttonBox);
     }
+
+    private static readonly Font _serifFont =
+        GD.Load<FontFile>("res://fonts/DMSerifDisplay-Regular.ttf");
 
     /// <summary>
     /// Replace the button list and show the modal. Safe to call when
@@ -131,7 +132,9 @@ public sealed partial class EscMenu : CanvasLayer
                 FocusMode = Control.FocusModeEnum.None,
                 SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
             };
-            button.AddThemeFontSizeOverride("font_size", 18);
+            // IsPrimary is a dead flag now (no-brass-primary policy);
+            // every button paints with the default theme stylebox.
+            button.AddThemeFontSizeOverride("font_size", 22);
             Option captured = option;
             button.Pressed += () =>
             {
