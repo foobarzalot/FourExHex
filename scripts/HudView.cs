@@ -69,6 +69,9 @@ public partial class HudView : CanvasLayer, IHudView
     private Button _claimContinueButton = null!;
     private Panel _tutorialPanel = null!;
     private Label _tutorialLabel = null!;
+    private Panel _bankruptToast = null!;
+    private Label _bankruptTitleLabel = null!;
+    private Label _bankruptSubLabel = null!;
 
     // Snapshot of session.Mode != None at the last Refresh, so the Escape
     // handler can decide between cancel-action (pending) and End Game (idle)
@@ -309,6 +312,7 @@ public partial class HudView : CanvasLayer, IHudView
         BuildDefeatOverlay(viewport);
         BuildClaimVictoryOverlay(viewport);
         BuildTutorialOverlay();
+        BuildBankruptToast();
     }
 
     public void SetMapLabel(string text)
@@ -496,6 +500,148 @@ public partial class HudView : CanvasLayer, IHudView
         };
         _tutorialLabel.AddThemeFontSizeOverride("font_size", 22);
         _tutorialPanel.AddChild(_tutorialLabel);
+    }
+
+    // Red-pill bankruptcy warning. The redesign §8 toast spec called
+    // for a circular badge, but the in-map warning on a doomed
+    // capital is an upward-pointing equilateral triangle (white-
+    // bordered red, white "!" inside) — so the toast uses the same
+    // triangle to keep the warning glyph consistent between the
+    // capital tile and the toast. Spec colors otherwise stand: dark-
+    // red bg (oklch 0.30 0.10 25 ≈ #4a2620) at 92% alpha, 1px
+    // brighter-red border, 8px radius. Two-line text block: title
+    // in Geist 600 ink, subtitle in Geist ink-mute. Shown by
+    // Refresh() while the currently-selected territory is doomed for
+    // the human's next turn; otherwise hidden.
+    private static readonly Color BankruptToastBg = new Color(0.290f, 0.149f, 0.125f, 0.92f);
+    private static readonly Color BankruptToastBorder = new Color(0.722f, 0.314f, 0.251f, 1f);
+
+    private void BuildBankruptToast()
+    {
+        // 1.5x larger than the spec's reference so the toast reads at
+        // the heavier scale the rest of the redesign settled on.
+        const float panelW = 660f;
+        const float panelH = 96f;
+        const float marginBottom = 36f;
+
+        _bankruptToast = new Panel
+        {
+            AnchorLeft = 0.5f,
+            AnchorRight = 0.5f,
+            AnchorTop = 1f,
+            AnchorBottom = 1f,
+            OffsetLeft = -panelW * 0.5f,
+            OffsetRight = panelW * 0.5f,
+            OffsetTop = -marginBottom - panelH,
+            OffsetBottom = -marginBottom,
+            Visible = false,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        var toastStyle = new StyleBoxFlat
+        {
+            BgColor = BankruptToastBg,
+            BorderColor = BankruptToastBorder,
+            BorderWidthLeft = 1,
+            BorderWidthRight = 1,
+            BorderWidthTop = 1,
+            BorderWidthBottom = 1,
+            CornerRadiusTopLeft = 8,
+            CornerRadiusTopRight = 8,
+            CornerRadiusBottomLeft = 8,
+            CornerRadiusBottomRight = 8,
+        };
+        _bankruptToast.AddThemeStyleboxOverride("panel", toastStyle);
+        AddChild(_bankruptToast);
+
+        var row = new HBoxContainer
+        {
+            AnchorLeft = 0f, AnchorRight = 1f,
+            AnchorTop = 0f, AnchorBottom = 1f,
+            OffsetLeft = 21f, OffsetRight = -21f,
+            OffsetTop = 0f, OffsetBottom = 0f,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        row.AddThemeConstantOverride("separation", 18);
+        _bankruptToast.AddChild(row);
+
+        // Triangle badge: same equilateral-up shape as the in-map
+        // capital warning (DrawWarningBadgeAt), in a 48-px Control box.
+        var badge = new TriangleWarningBadge { CustomMinimumSize = new Vector2(48, 48) };
+        badge.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+        badge.MouseFilter = Control.MouseFilterEnum.Ignore;
+        row.AddChild(badge);
+
+        var textBlock = new VBoxContainer
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        textBlock.AddThemeConstantOverride("separation", 3);
+
+        _bankruptTitleLabel = new Label
+        {
+            Text = "Bankrupt next turn",
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        _bankruptTitleLabel.AddThemeFontOverride("font", GeistFont);
+        _bankruptTitleLabel.AddThemeFontSizeOverride("font_size", 24);
+        _bankruptTitleLabel.AddThemeColorOverride("font_color", UiPalette.Ink);
+        textBlock.AddChild(_bankruptTitleLabel);
+
+        _bankruptSubLabel = new Label
+        {
+            Text = "All units in this territory will die",
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        _bankruptSubLabel.AddThemeFontOverride("font", GeistFont);
+        _bankruptSubLabel.AddThemeFontSizeOverride("font_size", 21);
+        _bankruptSubLabel.AddThemeColorOverride("font_color", UiPalette.InkMute);
+        textBlock.AddChild(_bankruptSubLabel);
+
+        row.AddChild(textBlock);
+    }
+
+    // Tiny self-drawing Control that paints the same upward-pointing
+    // equilateral triangle as HexMapView.DrawWarningBadgeAt — red
+    // fill, 2-px white stroke, white "!" exclamation glyph (a
+    // vertical bar + dot). Lives in HudView because the toast (this
+    // class) is the only consumer; the in-map badge keeps drawing
+    // its triangle inline so it can size relative to HexSize.
+    private sealed partial class TriangleWarningBadge : Control
+    {
+        public override void _Draw()
+        {
+            Color fill = new Color(0.95f, 0.10f, 0.10f, 1f);
+            Color accent = new Color(1f, 1f, 1f, 1f);
+
+            const float Sqrt3Over2 = 0.8660254f;
+            float r = Mathf.Min(Size.X, Size.Y) * 0.45f;
+            Vector2 c = Size * 0.5f;
+            Vector2 vTop = c + new Vector2(0f, -r);
+            Vector2 vBR  = c + new Vector2( r * Sqrt3Over2, r * 0.5f);
+            Vector2 vBL  = c + new Vector2(-r * Sqrt3Over2, r * 0.5f);
+
+            DrawColoredPolygon(new[] { vTop, vBR, vBL }, fill);
+            DrawLine(vTop, vBR, accent, 2f, true);
+            DrawLine(vBR, vBL, accent, 2f, true);
+            DrawLine(vBL, vTop, accent, 2f, true);
+
+            // Exclamation: vertical bar + dot, white. Geometry matches
+            // DrawWarningBadgeAt's per-HexSize ratios so the two badges
+            // read identically.
+            float barHalf = r * 0.11f;
+            float barTop = c.Y - r * 0.40f;
+            float barBottom = c.Y + r * 0.05f;
+            DrawColoredPolygon(new[]
+            {
+                new Vector2(c.X - barHalf, barTop),
+                new Vector2(c.X + barHalf, barTop),
+                new Vector2(c.X + barHalf, barBottom),
+                new Vector2(c.X - barHalf, barBottom),
+            }, accent);
+            DrawCircle(new Vector2(c.X, c.Y + r * 0.28f), r * 0.11f, accent);
+        }
     }
 
     /// <summary>
@@ -1079,6 +1225,15 @@ public partial class HudView : CanvasLayer, IHudView
                 _tutorialPanel.Visible = false;
             }
         }
+
+        // Bankruptcy toast — shows whenever the selected human territory
+        // is forecast to bankrupt next turn AND the buy/move action hint
+        // isn't taking the bottom-of-screen real estate. The toast lives
+        // on its own widget (red pill + badge); it does NOT compete for
+        // the tutorial-message panel.
+        bool inActionMode = session.Mode != SessionState.ActionMode.None;
+        _bankruptToast.Visible =
+            !inActionMode && ForecastHumanBankrupt(state, session.SelectedTerritory);
     }
 
     /// <summary>
@@ -1115,12 +1270,9 @@ public partial class HudView : CanvasLayer, IHudView
             UnitLevel level = (src?.Unit?.Level) ?? UnitLevel.Peasant;
             return $"Click to move the {level}";
         }
-        // Action hint wins during buy/move; the bankruptcy warning fills
-        // the panel only when the doomed territory is just selected.
-        if (ForecastHumanBankrupt(state, session.SelectedTerritory))
-        {
-            return "Bankrupt next turn - all units die";
-        }
+        // Bankruptcy warning now flows through the red bankruptcy-toast
+        // widget (built by BuildBankruptToast / toggled in Refresh) —
+        // no longer competes for the tutorial panel.
         return null;
     }
 
