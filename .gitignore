@@ -8,6 +8,9 @@ bin/
 obj/
 *.user
 
+# Godot export output
+build/
+
 # Test output / coverage
 TestResults/
 

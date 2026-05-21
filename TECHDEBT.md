@@ -2,6 +2,39 @@
 
 Running list of known issues, flaky tests, and shortcuts that should eventually be cleaned up. Add new entries at the top.
 
+## macOS export ships ad-hoc (no hardened runtime) — fine locally, blocks distribution
+
+**Where:** discovered 2026-05-21 wiring up the macOS desktop build
+(`tools/build_macos.sh`, `export_presets.cfg`).
+
+**Symptom / shortcut taken:** Godot signs the exported bundle ad-hoc *with
+hardened runtime* (codesign flags `0x10002`). On this macOS (26.3) the
+kernel SIGKILLs an ad-hoc + hardened binary at the exec gate — `Killed: 9`,
+zero stdout, no crash report. `build_macos.sh` works around it by re-signing
+the bundle **plain ad-hoc** (`codesign --force --deep --sign -`, flags
+`0x2`), which strips hardened runtime and runs locally.
+
+**Why this is debt:** plain ad-hoc only runs on *this* Mac (and any Mac with
+Gatekeeper bypassed). Shipping FourExHex.app to another Mac or to itch.io
+needs the proper chain: a Developer ID Application cert, hardened runtime
+*kept on*, the JIT entitlements we already set in the preset
+(`allow-jit` / `allow-unsigned-executable-memory` /
+`disable-library-validation`), then `notarytool` submission + `stapler`.
+Until then the build is self-test only.
+
+**Candidate next steps:** (1) get an Apple Developer ID; (2) set
+`codesign/identity` + `notarization/notarization` in `export_presets.cfg`;
+(3) drop the plain-ad-hoc re-sign from `build_macos.sh` and add notarize +
+staple steps instead. Related: the system-wide .NET 8 SDK requirement
+(Godot's exporter uses `/usr/local/share/dotnet`, not `~/.dotnet`) is
+documented in the `build_macos.sh` header, not here, since it's a one-time
+machine setup rather than recurring debt.
+
+**Severity:** scope blocker for distributing the macOS build to other
+machines. Not blocking local testing.
+
+---
+
 ## Godot 4.6.1 C# has no Web/HTML5 export — itch.io browser hosting is blocked
 
 **Where:** discovered 2026-05-21 while scoping a web-export spike. The user
