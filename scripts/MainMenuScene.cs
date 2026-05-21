@@ -200,9 +200,12 @@ public partial class MainMenuScene : Control
         Vector2 viewport = GetViewportRect().Size;
 
         // Centered panel containing the title, player-role grid, the
-        // Map Seed entry, and the Back / Start Game buttons.
-        const float panelW = 520f;
-        const float panelH = 664f;
+        // Map Seed entry, and the Back / Start Game buttons. All
+        // dimensions are scaled 1.2x from the spec's base to read
+        // comfortably at the 1600x1080 viewport (matches the heavier
+        // play-HUD scale the rest of the redesign settled on).
+        const float panelW = 624f;
+        const float panelH = 800f;
         var panel = new Panel
         {
             Position = new Vector2((viewport.X - panelW) * 0.5f, (viewport.Y - panelH) * 0.5f),
@@ -211,31 +214,42 @@ public partial class MainMenuScene : Control
 
         var title = new Label
         {
-            Text = "FourExHex",
+            Text = "New Game",
             HorizontalAlignment = HorizontalAlignment.Center,
-            Position = new Vector2(0, 28),
-            Size = new Vector2(panelW, 48),
+            Position = new Vector2(0, 34),
+            Size = new Vector2(panelW, 68),
         };
-        title.AddThemeFontSizeOverride("font_size", 40);
+        title.AddThemeFontOverride("font", SerifFont);
+        title.AddThemeFontSizeOverride("font_size", 50);
         panel.AddChild(title);
+
+        // Thin gold rule under the wordmark — matches the landing panel.
+        var goldRule = new ColorRect
+        {
+            Color = UiPalette.GoldDim,
+            Position = new Vector2(panelW * 0.5f - 132f, 115f),
+            Size = new Vector2(264f, 1f),
+        };
+        panel.AddChild(goldRule);
 
         var subtitle = new Label
         {
             Text = "Assign each player to Human or AI",
             HorizontalAlignment = HorizontalAlignment.Center,
-            Position = new Vector2(0, 84),
-            Size = new Vector2(panelW, 24),
+            Position = new Vector2(0, 130),
+            Size = new Vector2(panelW, 32),
         };
-        subtitle.AddThemeFontSizeOverride("font_size", 16);
+        subtitle.AddThemeFontSizeOverride("font_size", 22);
+        subtitle.AddThemeColorOverride("font_color", UiPalette.InkSoft);
         panel.AddChild(subtitle);
 
         // Player rows. Each row is Swatch | Name | OptionButton.
-        const float rowStartY = 128f;
-        const float rowHeight = 52f;
-        const float rowInset = 40f;
-        const float swatchSize = 28f;
-        const float nameWidth = 120f;
-        const float dropdownWidth = 200f;
+        const float rowStartY = 154f;
+        const float rowHeight = 62f;
+        const float rowInset = 48f;
+        const float swatchSize = 34f;
+        const float nameWidth = 144f;
+        const float dropdownWidth = 240f;
 
         for (int i = 0; i < GameSettings.PlayerConfig.Length; i++)
         {
@@ -253,16 +267,16 @@ public partial class MainMenuScene : Control
             var nameLabel = new Label
             {
                 Text = name,
-                Position = new Vector2(rowInset + swatchSize + 16f, rowY + 14f),
-                Size = new Vector2(nameWidth, 24f),
+                Position = new Vector2(rowInset + swatchSize + 19f, rowY + 17f),
+                Size = new Vector2(nameWidth, 29f),
             };
-            nameLabel.AddThemeFontSizeOverride("font_size", 20);
+            nameLabel.AddThemeFontSizeOverride("font_size", 24);
             panel.AddChild(nameLabel);
 
             var dropdown = new OptionButton
             {
-                Position = new Vector2(panelW - rowInset - dropdownWidth, rowY + 10f),
-                Size = new Vector2(dropdownWidth, 32f),
+                Position = new Vector2(panelW - rowInset - dropdownWidth, rowY + 12f),
+                Size = new Vector2(dropdownWidth, 38f),
             };
             dropdown.AddItem("Human", HumanId);
             dropdown.AddItem("Random AI", RandomAiId);
@@ -291,8 +305,8 @@ public partial class MainMenuScene : Control
             _roleButtons[i] = dropdown;
         }
 
-        const float buttonH = 52f;
-        float buttonRowY = panelH - buttonH - 36f;
+        const float buttonH = 62f;
+        float buttonRowY = panelH - buttonH - 43f;
 
         // Each button stretches under its column above so the action
         // visually attaches to the content it relates to: Back sits
@@ -312,16 +326,16 @@ public partial class MainMenuScene : Control
         var mapLabel = new Label
         {
             Text = "Map",
-            Position = new Vector2(leftColX + swatchSize + 16f, mapRowY + 14f),
-            Size = new Vector2(nameWidth, 24f),
+            Position = new Vector2(leftColX + swatchSize + 19f, mapRowY + 17f),
+            Size = new Vector2(nameWidth, 29f),
         };
-        mapLabel.AddThemeFontSizeOverride("font_size", 20);
+        mapLabel.AddThemeFontSizeOverride("font_size", 24);
         panel.AddChild(mapLabel);
 
         _mapSelector = new OptionButton
         {
-            Position = new Vector2(rightColX, mapRowY + 10f),
-            Size = new Vector2(rightColW, 32f),
+            Position = new Vector2(rightColX, mapRowY + 12f),
+            Size = new Vector2(rightColW, 38f),
         };
         // Item 0 is the default — generates a fresh procedural map from
         // the seed below. Subsequent items (id == index in ListMaps) are
@@ -343,16 +357,16 @@ public partial class MainMenuScene : Control
         var seedLabel = new Label
         {
             Text = "Map Seed",
-            Position = new Vector2(leftColX + swatchSize + 16f, seedRowY + 14f),
-            Size = new Vector2(nameWidth, 24f),
+            Position = new Vector2(leftColX + swatchSize + 19f, seedRowY + 17f),
+            Size = new Vector2(nameWidth, 29f),
         };
-        seedLabel.AddThemeFontSizeOverride("font_size", 20);
+        seedLabel.AddThemeFontSizeOverride("font_size", 24);
         panel.AddChild(seedLabel);
 
         _seedField = new LineEdit
         {
-            Position = new Vector2(rightColX, seedRowY + 10f),
-            Size = new Vector2(rightColW, 32f),
+            Position = new Vector2(rightColX, seedRowY + 12f),
+            Size = new Vector2(rightColW, 38f),
             MaxLength = 4,
             Alignment = HorizontalAlignment.Right,
             Text = new System.Random().Next(SeedMin, SeedMax + 1).ToString(),
@@ -365,7 +379,7 @@ public partial class MainMenuScene : Control
         panel.AddChild(_seedField);
 
         var backButton = new Button { Text = "Back" };
-        backButton.AddThemeFontSizeOverride("font_size", 24);
+        backButton.AddThemeFontSizeOverride("font_size", 29);
         backButton.Position = new Vector2(leftColX, buttonRowY);
         backButton.Size = new Vector2(leftColW, buttonH);
         backButton.Pressed += OnBackPressed;
@@ -373,7 +387,8 @@ public partial class MainMenuScene : Control
         panel.AddChild(backButton);
 
         _startButton = new Button { Text = "Start Game" };
-        _startButton.AddThemeFontSizeOverride("font_size", 24);
+        _startButton.ThemeTypeVariation = "PrimaryButton";
+        _startButton.AddThemeFontSizeOverride("font_size", 29);
         _startButton.Position = new Vector2(rightColX, buttonRowY);
         _startButton.Size = new Vector2(rightColW, buttonH);
         _startButton.Pressed += OnStartPressed;
