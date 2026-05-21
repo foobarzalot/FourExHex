@@ -562,7 +562,6 @@ public partial class HexMapView : Node2D, IHexMapView
         if (_targetsLayer == null) return;
 
         var color = new Color(0.2f, 1f, 0.3f, 0.9f);
-        const float ringWidth = 4f;
         int rings = level switch
         {
             UnitLevel.Peasant => 1,
@@ -583,7 +582,8 @@ public partial class HexMapView : Node2D, IHexMapView
             };
             for (int i = 0; i < rings; i++)
             {
-                preview.AddChild(CreateCircleOutline(HexSize * UnitRingRadii[i], color, ringWidth));
+                preview.AddChild(CreateCircleOutline(
+                    HexSize * UnitRingRadii[i], color, HexSize * UnitRingWidthFactors[i]));
             }
             if (level == UnitLevel.Baron)
             {
@@ -1174,7 +1174,8 @@ public partial class HexMapView : Node2D, IHexMapView
         };
         for (int i = 0; i < rings; i++)
         {
-            node.AddChild(CreateCircleOutline(HexSize * UnitRingRadii[i], red, UnitRingWidth));
+            node.AddChild(CreateCircleOutline(
+                HexSize * UnitRingRadii[i], red, HexSize * UnitRingWidthFactors[i]));
         }
         if (level == UnitLevel.Baron)
         {
@@ -1596,15 +1597,17 @@ public partial class HexMapView : Node2D, IHexMapView
         return triangle;
     }
 
-    // Unit ring radii, ordered outer → inner. The peasant gets just the
-    // outer ring; spearman adds the middle ring; knight adds the inner;
-    // baron adds a filled center dot on top of the knight's three rings.
-    // The outer ring matches the move-target ring radius (0.55 * HexSize)
-    // so a unit reads as the same on-tile footprint as the capture/chop
-    // target indicator.
-    private static readonly float[] UnitRingRadii = { 0.55f, 0.37f, 0.20f };
-    private const float UnitRingWidth = 3f;
-    private const float UnitDotRadius = 0.075f;
+    // Unit ring radii (outer → inner) per the redesign spec: peasant gets
+    // just the outer ring; spearman adds the middle; knight adds the
+    // inner; baron adds a filled center dot on top of the knight's three
+    // rings. The outer ring matches the move-target ring radius
+    // (0.50 * HexSize) so a unit reads as the same on-tile footprint as
+    // the capture/chop target indicator. Stroke widths scale with HexSize
+    // (outer thickest, inner thinnest) so the concentric rings read as a
+    // single graphic instead of three independent circles.
+    private static readonly float[] UnitRingRadii = { 0.50f, 0.34f, 0.20f };
+    private static readonly float[] UnitRingWidthFactors = { 0.06f, 0.05f, 0.045f };
+    private const float UnitDotRadius = 0.08f;
     private const int UnitRingSegments = 28;
 
     private Node2D CreateUnitVisual(bool selected, UnitLevel level)
@@ -1623,7 +1626,8 @@ public partial class HexMapView : Node2D, IHexMapView
 
         for (int i = 0; i < rings; i++)
         {
-            node.AddChild(CreateCircleOutline(HexSize * UnitRingRadii[i], color, UnitRingWidth));
+            node.AddChild(CreateCircleOutline(
+                HexSize * UnitRingRadii[i], color, HexSize * UnitRingWidthFactors[i]));
         }
 
         if (level == UnitLevel.Baron)
@@ -1666,47 +1670,45 @@ public partial class HexMapView : Node2D, IHexMapView
         };
     }
 
+    // Dead-unit cross per the redesign spec: two round-capped diagonal
+    // strokes in muted slate (oklch 0.45 0.012 60 ≈ #74706a). The spec
+    // color is near-isoluminant with several player fills (Red, Blue,
+    // Green, Purple all sit around oklch L≈0.5), so each diagonal is
+    // doubled — a slightly wider BgDeep underlay first, then the slate
+    // on top — giving every X a dark halo that keeps it legible on any
+    // player color.
+    private static readonly Color GraveCrossColor = new Color("74706a");
+    private const float GraveCrossArmReach = 0.32f;
+    private const float GraveCrossWidthFactor = 0.10f;
+    private const float GraveCrossHaloWidthFactor = 0.14f;
+
     private Node2D CreateGraveVisual()
     {
-        // Symmetrical grey plus sign (cross) — symmetric in both axes.
-        // Visually distinct from units (circles) and capitals (diamonds).
-        float r = HexSize * 0.38f;
-        float w = r * 0.32f; // half-width of each arm
-        var verts = new[]
+        float reach = HexSize * GraveCrossArmReach;
+        float coreWidth = HexSize * GraveCrossWidthFactor;
+        float haloWidth = HexSize * GraveCrossHaloWidthFactor;
+        var node = new Node2D();
+        var diag1 = new[] { new Vector2(-reach, -reach), new Vector2(reach, reach) };
+        var diag2 = new[] { new Vector2(-reach, reach), new Vector2(reach, -reach) };
+
+        node.AddChild(BuildGraveStroke(diag1, haloWidth, UiPalette.BgDeep));
+        node.AddChild(BuildGraveStroke(diag2, haloWidth, UiPalette.BgDeep));
+        node.AddChild(BuildGraveStroke(diag1, coreWidth, GraveCrossColor));
+        node.AddChild(BuildGraveStroke(diag2, coreWidth, GraveCrossColor));
+        return node;
+    }
+
+    private static Line2D BuildGraveStroke(Vector2[] points, float width, Color color)
+    {
+        return new Line2D
         {
-            new Vector2(-w, -r),
-            new Vector2( w, -r),
-            new Vector2( w, -w),
-            new Vector2( r, -w),
-            new Vector2( r,  w),
-            new Vector2( w,  w),
-            new Vector2( w,  r),
-            new Vector2(-w,  r),
-            new Vector2(-w,  w),
-            new Vector2(-r,  w),
-            new Vector2(-r, -w),
-            new Vector2(-w, -w),
+            Points = points,
+            Width = width,
+            DefaultColor = color,
+            Antialiased = true,
+            BeginCapMode = Line2D.LineCapMode.Round,
+            EndCapMode = Line2D.LineCapMode.Round,
         };
-
-        var body = new Polygon2D
-        {
-            Color = new Color(0.55f, 0.55f, 0.55f, 1f),
-            Polygon = verts,
-        };
-
-        var outlinePoints = new Vector2[verts.Length + 1];
-        for (int i = 0; i < verts.Length; i++) outlinePoints[i] = verts[i];
-        outlinePoints[verts.Length] = verts[0];
-
-        var outline = new Line2D
-        {
-            Points = outlinePoints,
-            Width = 2f,
-            DefaultColor = new Color(0f, 0f, 0f, 1f),
-        };
-        body.AddChild(outline);
-
-        return body;
     }
 
     // Capital star: outer point sized between the old diamond
@@ -2379,6 +2381,17 @@ public partial class HexMapView : Node2D, IHexMapView
         }
     }
 
+    // Selection outline drawn in two passes per boundary edge: a wider
+    // semi-transparent halo (HexSize * 0.22 wide, white 35% alpha) under
+    // a narrower solid warm-white core (HexSize * 0.10 wide). The halo
+    // bleeds onto adjacent tiles so the selection reads as glowing; the
+    // core stays crisp on the edge itself. Antialiased on both so the
+    // outline looks clean on the curved hex corners.
+    private const float SelectionHaloWidthFactor = 0.22f;
+    private const float SelectionCoreWidthFactor = 0.10f;
+    private static readonly Color SelectionHaloColor = new Color(1f, 1f, 1f, 0.35f);
+    private static readonly Color SelectionCoreColor = new Color(0.98f, 0.97f, 0.92f, 1f);
+
     private void RedrawHighlight()
     {
         if (_highlightLayer == null) return;
@@ -2389,6 +2402,8 @@ public partial class HexMapView : Node2D, IHexMapView
 
         Vector2[] verts = HexVertices();
         var inside = new HashSet<HexCoord>(_highlightedTerritory.Coords);
+        float haloWidth = HexSize * SelectionHaloWidthFactor;
+        float coreWidth = HexSize * SelectionCoreWidthFactor;
 
         foreach (HexCoord coord in _highlightedTerritory.Coords)
         {
@@ -2401,13 +2416,27 @@ public partial class HexMapView : Node2D, IHexMapView
 
                 if (inside.Contains(neighborCoord)) continue;
 
-                var line = new Line2D
+                Vector2 a = center + verts[edge];
+                Vector2 b = center + verts[(edge + 1) % 6];
+
+                _highlightLayer.AddChild(new Line2D
                 {
-                    Points = new[] { center + verts[edge], center + verts[(edge + 1) % 6] },
-                    Width = 7f,
-                    DefaultColor = new Color(1f, 1f, 1f, 1f),
-                };
-                _highlightLayer.AddChild(line);
+                    Points = new[] { a, b },
+                    Width = haloWidth,
+                    DefaultColor = SelectionHaloColor,
+                    Antialiased = true,
+                    BeginCapMode = Line2D.LineCapMode.Round,
+                    EndCapMode = Line2D.LineCapMode.Round,
+                });
+                _highlightLayer.AddChild(new Line2D
+                {
+                    Points = new[] { a, b },
+                    Width = coreWidth,
+                    DefaultColor = SelectionCoreColor,
+                    Antialiased = true,
+                    BeginCapMode = Line2D.LineCapMode.Round,
+                    EndCapMode = Line2D.LineCapMode.Round,
+                });
             }
         }
     }
@@ -2446,9 +2475,10 @@ public partial class HexMapView : Node2D, IHexMapView
         }
 
         Vector2 capitalCenter = FirstHexCenterOffset + HexPixel.ToPixel(capital, HexSize);
-        // Tuck the badge into the capital's upper-right corner so the
-        // capital glyph stays visible underneath.
-        Vector2 badgePos = capitalCenter + new Vector2(HexSize * 0.45f, -HexSize * 0.45f);
+        // Tuck the badge into the capital's upper-LEFT corner per the
+        // redesign spec so the capital glyph stays visible underneath
+        // and the warning sits in a consistent corner across tiles.
+        Vector2 badgePos = capitalCenter + new Vector2(-HexSize * 0.45f, -HexSize * 0.45f);
 
         // Equilateral triangle pointing up, inscribed in radius r.
         const float Sqrt3Over2 = 0.8660254f;
