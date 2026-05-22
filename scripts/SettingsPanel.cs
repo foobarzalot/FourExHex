@@ -23,6 +23,7 @@ public sealed partial class SettingsPanel : CanvasLayer
     private PanelContainer _panel = null!;
     private CheckBox _sfxCheckBox = null!;
     private CheckBox _vfxCheckBox = null!;
+    private CreditsPanel _creditsPanel = null!;
 
     // Display order for both speed radio rows (AI Turn Speed and Replay
     // Speed are independent settings but share the preset list). Open()
@@ -188,6 +189,17 @@ public sealed partial class SettingsPanel : CanvasLayer
         }
         vbox.AddChild(replaySpeedRow);
 
+        var creditsButton = new Button
+        {
+            Text = "Credits",
+            FocusMode = Control.FocusModeEnum.None,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+        };
+        creditsButton.AddThemeFontSizeOverride("font_size", 24);
+        creditsButton.Pressed += OnCreditsPressed;
+        AudioBus.AttachClick(creditsButton);
+        vbox.AddChild(creditsButton);
+
         var backButton = new Button
         {
             Text = "Back",
@@ -198,6 +210,16 @@ public sealed partial class SettingsPanel : CanvasLayer
         backButton.Pressed += Close;
         AudioBus.AttachClick(backButton);
         vbox.AddChild(backButton);
+
+        // Credits is its own modal layered one above this panel (Layer
+        // 101 vs 100), so it draws on top while Settings stays visible.
+        _creditsPanel = new CreditsPanel();
+        AddChild(_creditsPanel);
+    }
+
+    private void OnCreditsPressed()
+    {
+        _creditsPanel.Open();
     }
 
     /// <summary>Show the panel. Re-syncs toggles from
@@ -232,6 +254,9 @@ public sealed partial class SettingsPanel : CanvasLayer
     public void Close()
     {
         if (!IsOpen) return;
+        // Tear down the credits modal too — it's a separate CanvasLayer,
+        // so hiding this panel wouldn't hide it on its own.
+        _creditsPanel.Close();
         IsOpen = false;
         Visible = false;
         Closed?.Invoke();
@@ -240,6 +265,9 @@ public sealed partial class SettingsPanel : CanvasLayer
     public override void _UnhandledInput(InputEvent @event)
     {
         if (!IsOpen) return;
+        // While Credits is open it owns Escape (closes credits only, not
+        // settings); don't double-handle the key here.
+        if (_creditsPanel.IsOpen) return;
         if (@event is not InputEventKey keyEvent || !keyEvent.Pressed || keyEvent.Echo) return;
         if (keyEvent.Keycode != Key.Escape) return;
         Close();

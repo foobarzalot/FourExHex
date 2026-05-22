@@ -2,6 +2,36 @@
 
 Running list of known issues, flaky tests, and shortcuts that should eventually be cleaned up. Add new entries at the top.
 
+## `Log` is silent in menu/editor scenes — only `Main` wires `Log.Sink`/`Configure`
+
+**Where:** discovered 2026-05-21 instrumenting `CreditsPanel`/`SettingsPanel`.
+`Log.Sink ??= GD.Print` and `Log.Configure(OS.GetEnvironment("FOUREXHEX_LOG"))`
+are set only in `scripts/Main.cs:54,58` (the in-game scene root).
+
+**Symptom:** any `Log.*` call made from a scene that isn't `Main` —
+`MainMenuScene`, `MapEditorScene`, `TutorialBuilderScene`, and the modals
+they own (`SettingsPanel`, `CreditsPanel`, `EscMenu`, `SlotPickerDialog`) —
+is dropped because `Log.Sink` is null and no category is configured. So the
+CLAUDE.md "verify via the logs after manual testing" step is impossible for
+menu-side code paths: e.g. `CreditsPanel.Open`/`Close` only print when
+Credits is reached from the **in-game pause** Settings, never from the main
+menu. The view-layer log net has a hole exactly where the menu UI lives.
+
+**Suspected cause:** sink/config wiring was added to `Main` when logging was
+an AI/turn-debugging tool (gameplay-only). The menu scenes predate the need
+to instrument them and were never given the same bootstrap.
+
+**Candidate fixes:** (1) hoist the `Log.Sink ??= GD.Print` + `Log.Configure`
+pair into an autoload (e.g. `AudioBus` already autoloads, or a tiny new
+`LogBootstrap` autoload) so every scene gets it once at startup; (2) or
+duplicate the two lines into each scene root's `_Ready` (cheap, but drift-
+prone). Option 1 is the clean fix — one bootstrap, all scenes covered.
+
+**Severity:** blocks log-based verification of menu/editor view code; no
+runtime impact (logs are diagnostic only).
+
+---
+
 ## macOS export ships ad-hoc (no hardened runtime) — fine locally, blocks distribution
 
 **Where:** discovered 2026-05-21 wiring up the macOS desktop build
