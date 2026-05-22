@@ -2379,11 +2379,13 @@ the view layer (Model and Controller stay color-free):
   design tokens as `oklch`-style constants for view code that needs
   to paint directly (HexMapView's water + per-tile borders, HUD bg
   Panels with custom StyleBoxFlat overrides, gold rule decorations
-  under dialog titles). Three groups: surfaces (`BgDeep`,
-  `BgPanel`, `BgElev`, `BgRow`, `BgRowH`), lines (`Line`,
-  `LineSoft`, `LineHard`), ink (`Ink`, `InkSoft`, `InkMute`,
-  `InkFaint`), brass (`Gold`, `GoldDeep`, `GoldDim`), water
-  (`Water`, `WaterDeep`). The values match the heraldic-board-game
+  under dialog titles). Groups: surfaces (`BgDeep`, `BgPanel`,
+  `BgElev`, `BgRow`, `BgRowH`, `HudBar` — the in-game/editor HUD
+  bar, a touch darker than `BgDeep`), lines (`Line`, `LineSoft`,
+  `LineHard`), ink (`Ink`, `InkSoft`, `InkMute`, `InkFaint`),
+  brass (`Gold`, `GoldDeep`, `GoldDim`), water (`Water`,
+  `WaterDeep`), plus the `ModalBackdrop` dim-scrim used by every
+  CanvasLayer modal. The values match the heraldic-board-game
   palette the redesign settled on after a 50 % lerp back toward
   the original saturated primaries.
 - **`fonts/`** — three OFL font files imported as Godot
@@ -2402,6 +2404,16 @@ companion used for the 1.5-px per-tile hex border stroke in
 so per-tile borders stay visible within a single-owner territory
 (rather than fading into isoluminance with the fill).
 
+**Board palette** lives in `scripts/BoardPalette.cs`, a third
+fixed-color class distinct from both `UiPalette` (UI chrome) and
+`PlayerPalette` (roster-driven). It holds the colors of the board
+itself: `RejectRed` (illegal-action ghost / forbidden slash),
+`ForestCanopy` / `ForestTrunk` (conifer art, shared by HexMapView's
+on-tile tree and `HudIcons.DrawTree`'s swatch), `CastleFill`,
+`GraveCross`, and the economy-status hues `WarnRed` / `WarnYellow`
+(selected-territory gold label + on-tile bankruptcy badge). Single
+source so the on-tile rendering and HUD swatches stay in sync.
+
 ### Modal-dialog shell pattern
 
 Every modal (Settings, EscMenu / pause, SlotPickerDialog for Save /
@@ -2411,20 +2423,26 @@ Load / Tutorial pickers) is built on the same three-piece shell:
    `ProcessMode = Always` so the modal stays interactive while
    the tree is paused (pause coordinator) AND while it isn't
    (main menu / map editor hosts).
-2. **`ColorRect`** backdrop sized to the viewport, with
-   `Color = Color(0, 0, 0, 0.5)` and `MouseFilter = Stop` so
-   clicks behind the modal don't bleed through. (`SlotPickerDialog`
-   wires the backdrop's `GuiInput` to close the modal on click;
-   `SettingsPanel` and `EscMenu` don't.)
+2. **`ColorRect`** backdrop sized to the viewport, painted
+   `UiPalette.ModalBackdrop` with `MouseFilter = Stop` so clicks
+   behind the modal don't bleed through. (`SlotPickerDialog` wires
+   the backdrop's `GuiInput` to close the modal on click;
+   `SettingsPanel`, `CreditsPanel`, and `EscMenu` don't.)
 3. **`PanelContainer`** centered via `AnchorLeft = AnchorRight =
    AnchorTop = AnchorBottom = 0.5` + `GrowDirection.Both`,
    picking up the theme's slate `Panel/styles/panel` stylebox
    automatically. Content lives in a `VBoxContainer` child.
 
-`SlotPickerDialog` also has shared static helpers
-(`BuildBackdrop`, `BuildCenteredPanel`, `BuildPanelHead`) for the
-"panel-head with uppercase title + close × + 1-px gold-dim rule"
-shell, so future dialogs built on this pattern don't drift.
+The shared builders live in **`scripts/ModalChrome.cs`** (a static
+class, no `using` needed): `BuildBackdrop(viewport)`,
+`BuildCenteredPanel(panelW, panelH)` (fixed pixel size — the slot
+picker) and its parameterless overload `BuildCenteredPanel()`
+(content-sized — Settings / Credits / EscMenu, whose inner vbox
+`CustomMinimumSize` drives the dimensions), and `BuildPanelHead`
+(uppercase title + close × + 1-px line-soft divider). All four
+modals call these so the shell can't drift. `ModalChrome` also
+exposes `PalettePanelStyle()`, the rounded slate `StyleBoxFlat`
+shared by HudView's and MapEditorHudView's palette-group panels.
 
 The old `Window` / `AcceptDialog` modal shape (used by
 `SlotPickerDialog` before the redesign) didn't pick up the theme
@@ -2606,10 +2624,9 @@ scripts/  (split: see the three source trees listed just above)
 │                           ShowSlots(slots, emptyMsg, labelFor,
 │                           onPicked) + ShowError (inline error panel);
 │                           ProcessMode = Always so it works during
-│                           in-game pause. Static BuildBackdrop /
-│                           BuildCenteredPanel / BuildPanelHead helpers
-│                           are the shared chrome the dialog-polish
-│                           pattern uses. Used by MainMenuScene,
+│                           in-game pause. Builds its shell from
+│                           ModalChrome (shared with the other modals).
+│                           Used by MainMenuScene,
 │                           MapEditorScene, TutorialBuilderScene, and
 │                           Main's pause-menu Load Game option
 ├─ RecordPane.cs          ─ Record-mode chrome: spins up a real
@@ -2692,13 +2709,26 @@ scripts/  (split: see the three source trees listed just above)
 │                           capital, tower, hand, unit rings, curved
 │                           arrow ± nested, end-turn triangle, gear,
 │                           isometric d6 die for map-editor Generate)
-├─ UiPalette.cs           ─ static design-token C# constants (surfaces,
-│                           lines, ink, brass, water) consumed by view
-│                           code that paints directly (HexMapView water
-│                           + per-tile borders, HUD bg + chip Panels,
+├─ UiPalette.cs           ─ static design-token C# constants (surfaces
+│                           incl. HudBar, lines, ink, brass, water, the
+│                           ModalBackdrop scrim) consumed by view code
+│                           that paints directly (HexMapView water +
+│                           per-tile borders, HUD bg + chip Panels,
 │                           dialog gold-rule decorations). Heraldic
 │                           board-game palette lerped 50% back toward
 │                           the original saturated primaries.
+├─ BoardPalette.cs        ─ static fixed colors for the board itself
+│                           (RejectRed, ForestCanopy/Trunk, CastleFill,
+│                           GraveCross, WarnRed/Yellow); shared by
+│                           HexMapView's on-tile art + HudIcons swatches.
+│                           Distinct from UiPalette (chrome) + PlayerPalette
+│                           (roster).
+├─ ModalChrome.cs         ─ static builders for the CanvasLayer modal
+│                           shell (BuildBackdrop, fixed + content-sized
+│                           BuildCenteredPanel, BuildPanelHead) plus
+│                           PalettePanelStyle(); shared by SlotPickerDialog,
+│                           SettingsPanel, CreditsPanel, EscMenu, and the
+│                           HUD palette-group panels.
 ├─ HeadlessViews.cs       ─ no-op view stubs for diagnostic mode
 ├─ AudioBus.cs            ─ autoload Node singleton: shared SFX players
 │                           that survive scene changes; each Play* gates
