@@ -50,12 +50,10 @@ public partial class Main : Node2D
         // game synchronously (no pacing delays), caps turns at 500
         // so stasis runs terminate, and auto-quits on game over.
         // Intended for Claude to run headless and read the logs.
-        // Route the Godot-free Log to GD.Print (stdout in headless).
-        Log.Sink ??= GD.Print;
-        // Runtime config, e.g. FOUREXHEX_LOG="Ai:Debug,Turn:Info,*:Warn".
-        // Best-effort parse; unknown tokens ignored; empty = silent
-        // (every category defaults to Off — parity with old AiLog).
-        Log.Configure(OS.GetEnvironment("FOUREXHEX_LOG"));
+        // Log.Sink + FOUREXHEX_LOG are wired by the LogBootstrap autoload
+        // before any scene loads (see scripts/LogBootstrap.cs), so the
+        // sink and category levels are already live here. The 6AI block
+        // below only adds its diagnostic level overrides on top.
         bool diagnosticMode = OS.GetEnvironment("FOUREXHEX_6AI").Length > 0;
         if (diagnosticMode)
         {
