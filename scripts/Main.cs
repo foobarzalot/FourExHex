@@ -23,9 +23,7 @@ public partial class Main : Node2D
     /// resumed game can keep showing "Map: foo" in the bottom-left.
     /// </summary>
     private string? _originMapName;
-    private AcceptDialog? _saveDialog;
-    private LineEdit? _saveDialogLineEdit;
-    private AcceptDialog? _saveErrorDialog;
+    private SaveNameModal? _saveModal;
     private SlotPickerDialog? _loadDialog;
     // True between "user picked a slot" and the deferred scene swap —
     // signals OnLoadDialogClosedDuringPause to skip re-showing the
@@ -394,70 +392,30 @@ public partial class Main : Node2D
     }
 
     /// <summary>
-    /// Build (once) the AcceptDialog used by the HUD's Save button.
-    /// Reused across every save action.
+    /// Build (once) the styled save modal used by the pause menu's
+    /// Save Game action. Reused across every save.
     /// </summary>
     private void BuildSaveDialog()
     {
-        _saveDialog = new AcceptDialog
-        {
-            Title = "Save Game",
-            OkButtonText = "Save",
-            // Allow the user to dismiss with the OS close button.
-            Exclusive = false,
-            // Always — Save Game is reached from the pause menu where
-            // GetTree().Paused is true, so the default Inherit would
-            // freeze the dialog. Always works in both states.
-            ProcessMode = ProcessModeEnum.Always,
-        };
-
-        // AcceptDialog's built-in DialogText label and any added child
-        // nodes share the same content area; setting both causes them
-        // to overlap. Build a VBox with our own label + LineEdit
-        // instead, leaving DialogText empty.
-        var content = new VBoxContainer { CustomMinimumSize = new Vector2(280, 0) };
-        content.AddThemeConstantOverride("separation", 8);
-        var label = new Label { Text = "Slot name:" };
-        content.AddChild(label);
-        _saveDialogLineEdit = new LineEdit
-        {
-            Text = "save",
-            CustomMinimumSize = new Vector2(260, 30),
-        };
-        content.AddChild(_saveDialogLineEdit);
-        _saveDialog.AddChild(content);
-        _saveDialog.RegisterTextEnter(_saveDialogLineEdit);
-        _saveDialog.Confirmed += OnSaveDialogConfirmed;
-
-        AddChild(_saveDialog);
-
-        _saveErrorDialog = new AcceptDialog
-        {
-            Title = "Save failed",
-            OkButtonText = "OK",
-            ProcessMode = ProcessModeEnum.Always,
-        };
-        AddChild(_saveErrorDialog);
+        _saveModal = new SaveNameModal();
+        _saveModal.Confirmed += OnSaveNameConfirmed;
+        AddChild(_saveModal);
     }
 
     private void OpenSaveDialog()
     {
-        if (_saveDialog == null || _saveDialogLineEdit == null) return;
-        _saveDialogLineEdit.Text = $"save_t{_state.Turns.TurnNumber}";
-        _saveDialog.PopupCentered();
-        _saveDialogLineEdit.GrabFocus();
-        _saveDialogLineEdit.SelectAll();
+        _saveModal?.Open($"save_t{_state.Turns.TurnNumber}");
     }
 
-    private void OnSaveDialogConfirmed()
+    private void OnSaveNameConfirmed(string rawName)
     {
-        if (_saveDialogLineEdit == null) return;
-        string name = SaveStore.SanitizeSlotName(_saveDialogLineEdit.Text);
+        if (_saveModal == null) return;
+        string name = SaveStore.SanitizeSlotName(rawName);
         if (name == SaveStore.AutosaveSlotName)
         {
             // Don't let the user manually overwrite the autosave slot
             // — its purpose is to stay an automated checkpoint.
-            ShowSaveError("'autosave' is reserved. Please pick a different name.");
+            _saveModal.ShowError("'autosave' is reserved. Please pick a different name.");
             return;
         }
         try
@@ -468,19 +426,10 @@ public partial class Main : Node2D
         }
         catch (System.Exception ex)
         {
-            ShowSaveError($"Could not save: {ex.Message}");
-        }
-    }
-
-    private void ShowSaveError(string message)
-    {
-        if (_saveErrorDialog == null)
-        {
-            GD.PushError(message);
+            _saveModal.ShowError($"Could not save: {ex.Message}");
             return;
         }
-        _saveErrorDialog.DialogText = message;
-        _saveErrorDialog.PopupCentered();
+        _saveModal.Close();
     }
 
     // --- Pause coordinator -----------------------------------------------
@@ -528,28 +477,26 @@ public partial class Main : Node2D
 
     private void OpenSaveDialogFromPause()
     {
-        if (_saveDialog == null)
+        if (_saveModal == null)
         {
-            // No dialog available (shouldn't happen post-BuildSaveDialog).
+            // No modal available (shouldn't happen post-BuildSaveDialog).
             // Re-show the pause menu so the user isn't stranded with no UI.
             ShowPauseMenu();
             return;
         }
-        // Both Confirmed and Canceled bring the user back to the pause
-        // menu. Existing OnSaveDialogConfirmed runs the actual save via
-        // its own (already-wired) Confirmed subscription from
-        // BuildSaveDialog — we just chain a return-to-pause hop.
-        _saveDialog.Confirmed += OnSaveDialogClosedDuringPause;
-        _saveDialog.Canceled += OnSaveDialogClosedDuringPause;
+        // Closing the modal (cancel, or a Close() after a successful save)
+        // brings the user back to the pause menu. The actual save runs via
+        // the Confirmed subscription wired in BuildSaveDialog; a failed save
+        // keeps the modal open (no Closed) so the user can fix the name.
+        _saveModal.Closed += OnSaveDialogClosedDuringPause;
         OpenSaveDialog();
     }
 
     private void OnSaveDialogClosedDuringPause()
     {
-        if (_saveDialog != null)
+        if (_saveModal != null)
         {
-            _saveDialog.Confirmed -= OnSaveDialogClosedDuringPause;
-            _saveDialog.Canceled -= OnSaveDialogClosedDuringPause;
+            _saveModal.Closed -= OnSaveDialogClosedDuringPause;
         }
         ShowPauseMenu();
     }
