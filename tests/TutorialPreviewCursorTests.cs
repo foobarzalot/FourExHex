@@ -100,16 +100,16 @@ public class TutorialPreviewCursorTests
                 Index = 0, Turn = 1, Actor = 0,
                 Capital = new HexCoord(0, 0),
                 To = new HexCoord(1, 0),
-                Level = UnitLevel.Spearman,
+                Level = UnitLevel.Soldier,
             },
         };
         var cursor = new ScriptCursor();
         var preview = new TutorialPreview(script, TrivialState(TwoPlayerRoster()), cursor);
 
-        Assert.True(preview.AllowBuyLevel(UnitLevel.Spearman));
-        Assert.False(preview.AllowBuyLevel(UnitLevel.Peasant));
-        Assert.False(preview.AllowBuyLevel(UnitLevel.Knight));
-        Assert.False(preview.AllowBuyLevel(UnitLevel.Baron));
+        Assert.True(preview.AllowBuyLevel(UnitLevel.Soldier));
+        Assert.False(preview.AllowBuyLevel(UnitLevel.Recruit));
+        Assert.False(preview.AllowBuyLevel(UnitLevel.Captain));
+        Assert.False(preview.AllowBuyLevel(UnitLevel.Commander));
     }
 
     [Fact]
@@ -126,8 +126,8 @@ public class TutorialPreviewCursorTests
         var cursor = new ScriptCursor();
         var preview = new TutorialPreview(script, TrivialState(TwoPlayerRoster()), cursor);
 
-        Assert.False(preview.AllowBuyLevel(UnitLevel.Peasant));
-        Assert.False(preview.AllowBuyLevel(UnitLevel.Spearman));
+        Assert.False(preview.AllowBuyLevel(UnitLevel.Recruit));
+        Assert.False(preview.AllowBuyLevel(UnitLevel.Soldier));
     }
 
     [Fact]
@@ -137,8 +137,8 @@ public class TutorialPreviewCursorTests
         var cursor = new ScriptCursor();
         var preview = new TutorialPreview(script, TrivialState(TwoPlayerRoster()), cursor);
 
-        Assert.False(preview.AllowBuyLevel(UnitLevel.Peasant));
-        Assert.False(preview.AllowBuyLevel(UnitLevel.Baron));
+        Assert.False(preview.AllowBuyLevel(UnitLevel.Recruit));
+        Assert.False(preview.AllowBuyLevel(UnitLevel.Commander));
     }
 
     [Fact]

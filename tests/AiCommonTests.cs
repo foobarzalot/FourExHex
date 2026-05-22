@@ -21,7 +21,7 @@ public class AiCommonTests
     {
         // 4-tile Red strip cols 0..3 + Blue tile col 4. Red border
         // tile is col 3 (adjacent to Blue at col 4); cols 0..2 are
-        // interior. Peasant on col 0 with no prior moves — its
+        // interior. Recruit on col 0 with no prior moves — its
         // valid in-territory targets include col 3 (border).
         var grid = new HexGrid();
         for (int col = 0; col <= 3; col++)
@@ -75,16 +75,16 @@ public class AiCommonTests
     [Fact]
     public void Enumerate_Yields_Buy_Reposition_To_Border_Tile()
     {
-        // 4-tile Red strip cols 0..3 + Blue col 4 with a Spearman
-        // (defense 2) — a fresh peasant cannot buy-capture col 4.
-        // Treasury has enough for a peasant. Border tile is col 3,
+        // 4-tile Red strip cols 0..3 + Blue col 4 with a Soldier
+        // (defense 2) — a fresh recruit cannot buy-capture col 4.
+        // Treasury has enough for a recruit. Border tile is col 3,
         // empty. Net income 4, upkeep 0 → buy-reposition post-net
         // = 4 - 2 = 2 ≥ 0, solvent.
         var grid = new HexGrid();
         for (int col = 0; col <= 3; col++)
             grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
         grid.Add(new HexTile(HexCoord.FromOffset(4, 0), Blue));
-        grid.Get(HexCoord.FromOffset(4, 0))!.Occupant = new Unit(Blue, UnitLevel.Spearman);
+        grid.Get(HexCoord.FromOffset(4, 0))!.Occupant = new Unit(Blue, UnitLevel.Soldier);
         GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
         HexCoord cap = state.Territories.First(t => t.Owner == Red).Capital!.Value;
         state.Treasury.SetGold(cap, 10);
@@ -96,7 +96,7 @@ public class AiCommonTests
             c.Kind == AiActionKind.Reposition && c.Action is AiBuyUnitAction);
         AiBuyUnitAction buy = Assert.IsType<AiBuyUnitAction>(buyReposition.Action);
         Assert.Equal(HexCoord.FromOffset(3, 0), buy.Destination);
-        Assert.Equal(UnitLevel.Peasant, buy.Level);
+        Assert.Equal(UnitLevel.Recruit, buy.Level);
     }
 
     [Fact]
@@ -104,7 +104,7 @@ public class AiCommonTests
     {
         // 6-tile Red strip cols 0..5 + Blue col 6 so every Red tile
         // except (0,0) is on a path toward the border. An existing
-        // Red tower sits at (1,0). With ample gold and a peasant on
+        // Red tower sits at (1,0). With ample gold and a recruit on
         // (5,0) (so net income is non-negative), the tower-build
         // candidates should NOT include any coord at distance < 3
         // from (1,0) — i.e., (0,0), (2,0), and (3,0) must be absent.
@@ -139,9 +139,9 @@ public class AiCommonTests
     public void Enumerate_Skips_Buy_Reposition_When_Insolvent()
     {
         // 5-tile Red strip cols 0..4 + Blue col 5. Two existing
-        // peasants on cols 0, 1 (upkeep 4). Income 5, net = 1.
-        // Buy-peasant-capture: post-net = 1 + 1 - 2 = 0 → solvent.
-        // Buy-peasant-reposition: post-net = 1 - 2 = -1 → insolvent.
+        // recruits on cols 0, 1 (upkeep 4). Income 5, net = 1.
+        // Buy-recruit-capture: post-net = 1 + 1 - 2 = 0 → solvent.
+        // Buy-recruit-reposition: post-net = 1 - 2 = -1 → insolvent.
         // Confirm the test scenario actually has a buy-capture
         // available (sanity), then assert no buy-reposition.
         var grid = new HexGrid();

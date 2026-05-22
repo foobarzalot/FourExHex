@@ -39,8 +39,8 @@ public interface IHexMapView
     /// <summary>
     /// Highlight the given coords as valid move/placement targets for a
     /// would-be unit of <paramref name="level"/>. The view sizes the
-    /// preview to match the unit's visual (peasant=1 ring, spearman=2,
-    /// knight=3, baron=3+dot) so the player sees what the destination
+    /// preview to match the unit's visual (recruit=1 ring, soldier=2,
+    /// captain=3, commander=3+dot) so the player sees what the destination
     /// will hold. Pass an empty sequence to clear; <paramref name="level"/>
     /// is ignored when there's nothing to draw.
     /// </summary>
@@ -82,7 +82,7 @@ public interface IHexMapView
     /// </summary>
     void ClearAllOverlays()
     {
-        ShowMoveTargets(System.Array.Empty<HexCoord>(), UnitLevel.Peasant);
+        ShowMoveTargets(System.Array.Empty<HexCoord>(), UnitLevel.Recruit);
         ShowTowerTargets(System.Array.Empty<HexCoord>());
         ShowTowerCoverage(System.Array.Empty<HexCoord>());
         ShowMoveSource(null);
@@ -193,10 +193,10 @@ public enum SoundEffect
 /// </summary>
 public enum RejectionShape
 {
-    Peasant,
-    Spearman,
-    Knight,
-    Baron,
+    Recruit,
+    Soldier,
+    Captain,
+    Commander,
     Tower,
 }
 
@@ -204,10 +204,10 @@ public static class RejectionShapeExtensions
 {
     public static RejectionShape FromUnitLevel(UnitLevel level) => level switch
     {
-        UnitLevel.Peasant => RejectionShape.Peasant,
-        UnitLevel.Spearman => RejectionShape.Spearman,
-        UnitLevel.Knight => RejectionShape.Knight,
-        UnitLevel.Baron => RejectionShape.Baron,
-        _ => RejectionShape.Peasant,
+        UnitLevel.Recruit => RejectionShape.Recruit,
+        UnitLevel.Soldier => RejectionShape.Soldier,
+        UnitLevel.Captain => RejectionShape.Captain,
+        UnitLevel.Commander => RejectionShape.Commander,
+        _ => RejectionShape.Recruit,
     };
 }

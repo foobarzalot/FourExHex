@@ -63,7 +63,7 @@ public class SessionStateSnapshotTests
         var other = new SessionState
         {
             SelectedTerritory = territories[0],
-            Mode = SessionState.ActionMode.BuyingPeasant,
+            Mode = SessionState.ActionMode.BuyingRecruit,
             MoveSource = new HexCoord(1, 1),
         };
         snap.ApplyTo(other, territories);
@@ -105,7 +105,7 @@ public class SessionStateSnapshotTests
         // because the territory was wiped or the coord never existed).
         var snap = new SessionStateSnapshot(
             SelectedAnchor: new HexCoord(99, 99),
-            Mode: SessionState.ActionMode.BuyingPeasant,
+            Mode: SessionState.ActionMode.BuyingRecruit,
             MoveSource: null);
 
         (_, IReadOnlyList<Territory> territories) = BuildTwoColorGrid();
@@ -114,7 +114,7 @@ public class SessionStateSnapshotTests
 
         Assert.Null(session.SelectedTerritory);
         // Mode is still restored — only selection failed to resolve.
-        Assert.Equal(SessionState.ActionMode.BuyingPeasant, session.Mode);
+        Assert.Equal(SessionState.ActionMode.BuyingRecruit, session.Mode);
     }
 
     [Fact]
@@ -122,9 +122,9 @@ public class SessionStateSnapshotTests
     {
         // Record equality is what powers TrackHandler's de-dup check.
         var a = new SessionStateSnapshot(
-            new HexCoord(1, 2), SessionState.ActionMode.BuyingSpearman, new HexCoord(3, 4));
+            new HexCoord(1, 2), SessionState.ActionMode.BuyingSoldier, new HexCoord(3, 4));
         var b = new SessionStateSnapshot(
-            new HexCoord(1, 2), SessionState.ActionMode.BuyingSpearman, new HexCoord(3, 4));
+            new HexCoord(1, 2), SessionState.ActionMode.BuyingSoldier, new HexCoord(3, 4));
 
         Assert.Equal(a, b);
     }
@@ -133,7 +133,7 @@ public class SessionStateSnapshotTests
     public void Equals_TreatsDifferentModes_AsUnequal()
     {
         var a = new SessionStateSnapshot(null, SessionState.ActionMode.None, null);
-        var b = new SessionStateSnapshot(null, SessionState.ActionMode.BuyingPeasant, null);
+        var b = new SessionStateSnapshot(null, SessionState.ActionMode.BuyingRecruit, null);
 
         Assert.NotEqual(a, b);
     }

@@ -4,17 +4,17 @@
 /// </summary>
 public enum UnitLevel
 {
-    Peasant = 1,
-    Spearman = 2,
-    Knight = 3,
-    Baron = 4,
+    Recruit = 1,
+    Soldier = 2,
+    Captain = 3,
+    Commander = 4,
 }
 
 /// <summary>
 /// A unit occupying a single hex. Higher-level units are produced by
 /// combining lower-level ones (see
 /// <see cref="UnitLevelExtensions.CombinedWith"/>). Direct purchase of
-/// levels above Peasant is not yet supported.
+/// levels above Recruit is not yet supported.
 /// </summary>
 public class Unit : HexOccupant
 {
@@ -28,7 +28,7 @@ public class Unit : HexOccupant
     /// </summary>
     public bool HasMovedThisTurn { get; set; }
 
-    public Unit(PlayerId owner, UnitLevel level = UnitLevel.Peasant)
+    public Unit(PlayerId owner, UnitLevel level = UnitLevel.Recruit)
     {
         Owner = owner;
         Level = level;
@@ -37,13 +37,13 @@ public class Unit : HexOccupant
 
 /// <summary>
 /// Combining rules on <see cref="UnitLevel"/>. Two units can be combined
-/// iff the sum of their levels is at most Baron (4). The result is the
+/// iff the sum of their levels is at most Commander (4). The result is the
 /// level at that sum.
 /// </summary>
 public static class UnitLevelExtensions
 {
     public static bool CanCombineWith(this UnitLevel a, UnitLevel b) =>
-        (int)a + (int)b <= (int)UnitLevel.Baron;
+        (int)a + (int)b <= (int)UnitLevel.Commander;
 
     /// <summary>
     /// Precondition: <see cref="CanCombineWith"/> returned true for this

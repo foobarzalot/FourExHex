@@ -79,15 +79,15 @@ public class ReplayRecordingTests
     // --- Human actions ----------------------------------------------------
 
     [Fact]
-    public void Recording_HumanBuyPeasant_AppendsReplayBuyBeat()
+    public void Recording_HumanBuyRecruit_AppendsReplayBuyBeat()
     {
         var f = new Fixture();
         HexCoord redCapital = f.State.Territories.First(t => t.Owner == f.Red.Id).Capital!.Value;
-        // Red has 10g at start (5×2 cells), enough for a peasant (10g).
+        // Red has 10g at start (5×2 cells), enough for a recruit (10g).
         // Click Red's territory to select it, press Buy, click an empty
         // Red tile to commit.
         f.Map.SimulateClick(f.Tile(0, 1));        // select Red territory
-        f.Hud.ClickBuyPeasant();                  // enter buy mode
+        f.Hud.ClickBuyRecruit();                  // enter buy mode
         // (1,1) is the other Red tile — pick whichever doesn't have the
         // capital so we buy onto an empty own tile.
         HexCoord redOther = HexCoord.FromOffset(0, 1) == redCapital
@@ -99,7 +99,7 @@ public class ReplayRecordingTests
         var buy = Assert.IsType<ReplayBuyBeat>(last);
         Assert.Equal(redCapital, buy.Capital);
         Assert.Equal(redOther, buy.To);
-        Assert.Equal(UnitLevel.Peasant, buy.Level);
+        Assert.Equal(UnitLevel.Recruit, buy.Level);
         Assert.Equal(1, buy.Turn);
         Assert.Equal(0, buy.Actor);
         Assert.Equal(0, buy.Index);
@@ -108,7 +108,7 @@ public class ReplayRecordingTests
     [Fact]
     public void Recording_HumanMove_AppendsReplayMoveBeat()
     {
-        // Buy a peasant onto Red's non-capital tile first (turn 1 →
+        // Buy a recruit onto Red's non-capital tile first (turn 1 →
         // unit can't move yet because HasMovedThisTurn after a buy
         // onto own empty is per the AI semantic — wait, that's AI only).
         // For human ExecuteBuyAndPlace on own empty, MovementRules.PlaceNew
@@ -121,13 +121,13 @@ public class ReplayRecordingTests
             : HexCoord.FromOffset(0, 1);
 
         f.Map.SimulateClick(f.State.Grid.Get(redCapital)!);
-        f.Hud.ClickBuyPeasant();
+        f.Hud.ClickBuyRecruit();
         f.Map.SimulateClick(f.State.Grid.Get(redOther)!);
         // Capture beat list length before the move so we know which
         // beat is the move beat.
         int beforeMove = f.Controller.ReplayBeats.Count;
 
-        // Move the just-bought peasant from redOther onto an adjacent
+        // Move the just-bought recruit from redOther onto an adjacent
         // Blue tile (capture).
         f.Map.SimulateClick(f.State.Grid.Get(redOther)!);  // pick up the unit
         // Find an adjacent Blue tile.
@@ -229,7 +229,7 @@ public class ReplayRecordingTests
         // Buy-button press only sets session mode, no board change.
         var f = new Fixture();
         f.Map.SimulateClick(f.Tile(0, 1));
-        f.Hud.ClickBuyPeasant();
+        f.Hud.ClickBuyRecruit();
         Assert.Empty(f.Controller.ReplayBeats);
     }
 
@@ -245,7 +245,7 @@ public class ReplayRecordingTests
             : HexCoord.FromOffset(0, 1);
 
         f.Map.SimulateClick(f.State.Grid.Get(redCapital)!);
-        f.Hud.ClickBuyPeasant();
+        f.Hud.ClickBuyRecruit();
         f.Map.SimulateClick(f.State.Grid.Get(redOther)!);
         Assert.Single(f.Controller.ReplayBeats);
 
@@ -263,7 +263,7 @@ public class ReplayRecordingTests
             : HexCoord.FromOffset(0, 1);
 
         f.Map.SimulateClick(f.State.Grid.Get(redCapital)!);
-        f.Hud.ClickBuyPeasant();
+        f.Hud.ClickBuyRecruit();
         f.Map.SimulateClick(f.State.Grid.Get(redOther)!);
         ReplayBeat preUndo = f.Controller.ReplayBeats[0];
 
@@ -286,7 +286,7 @@ public class ReplayRecordingTests
 
         // Two committed actions in one turn: buy + move.
         f.Map.SimulateClick(f.State.Grid.Get(redCapital)!);
-        f.Hud.ClickBuyPeasant();
+        f.Hud.ClickBuyRecruit();
         f.Map.SimulateClick(f.State.Grid.Get(redOther)!);
 
         HexCoord? captureTarget = null;
@@ -318,9 +318,9 @@ public class ReplayRecordingTests
             ? HexCoord.FromOffset(1, 1)
             : HexCoord.FromOffset(0, 1);
 
-        // First action: buy a peasant onto redOther.
+        // First action: buy a recruit onto redOther.
         f.Map.SimulateClick(f.State.Grid.Get(redCapital)!);
-        f.Hud.ClickBuyPeasant();
+        f.Hud.ClickBuyRecruit();
         f.Map.SimulateClick(f.State.Grid.Get(redOther)!);
 
         // Undo.
@@ -329,7 +329,7 @@ public class ReplayRecordingTests
 
         // Different action: build a tower? Red has 10g but tower
         // costs 15g. Instead, re-do the same buy — undo restored
-        // session.Mode=BuyingPeasant and the selected territory, so
+        // session.Mode=BuyingRecruit and the selected territory, so
         // we can click the placement tile directly. Assert exactly
         // one beat after.
         f.Map.SimulateClick(f.State.Grid.Get(redOther)!);
@@ -341,7 +341,7 @@ public class ReplayRecordingTests
     [Fact]
     public void Recording_AiBuyUnit_AppendsReplayBuyBeat()
     {
-        // Scripted AI: Blue buys a peasant onto an empty own-territory
+        // Scripted AI: Blue buys a recruit onto an empty own-territory
         // tile, then ends turn. Verify a ReplayBuyBeat lands with
         // Blue's actor index. Buy is simpler than Move to script
         // because the target can be any empty own tile — no need to
@@ -363,7 +363,7 @@ public class ReplayRecordingTests
                 if (t?.Occupant == null) { blueEmpty = coord; break; }
             }
             blueActed = true;
-            return new AiBuyUnitAction(blueCapital.Value, blueEmpty!.Value, UnitLevel.Peasant);
+            return new AiBuyUnitAction(blueCapital.Value, blueEmpty!.Value, UnitLevel.Recruit);
         }
 
         var f = new Fixture(redKind: AiKind.Human, blueKind: AiKind.Random, aiChooser: Chooser);
@@ -373,7 +373,7 @@ public class ReplayRecordingTests
         Assert.NotNull(buy);
         Assert.Equal(blueCapital, buy!.Capital);
         Assert.Equal(blueEmpty, buy.To);
-        Assert.Equal(UnitLevel.Peasant, buy.Level);
+        Assert.Equal(UnitLevel.Recruit, buy.Level);
         Assert.Equal(1, buy.Actor);  // Blue is player index 1
     }
 

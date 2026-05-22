@@ -16,10 +16,10 @@ public class UpkeepRulesTests
     // --- UpkeepFor --------------------------------------------------------
 
     [Theory]
-    [InlineData(UnitLevel.Peasant,  2)]
-    [InlineData(UnitLevel.Spearman, 6)]
-    [InlineData(UnitLevel.Knight,   18)]
-    [InlineData(UnitLevel.Baron,    54)]
+    [InlineData(UnitLevel.Recruit,  2)]
+    [InlineData(UnitLevel.Soldier, 6)]
+    [InlineData(UnitLevel.Captain,   18)]
+    [InlineData(UnitLevel.Commander,    54)]
     public void UpkeepFor_KnownLevels(UnitLevel level, int expected)
     {
         Assert.Equal(expected, UpkeepRules.UpkeepFor(level));
@@ -37,7 +37,7 @@ public class UpkeepRulesTests
     }
 
     [Fact]
-    public void TotalUpkeepFor_OnePeasant_IsTwo()
+    public void TotalUpkeepFor_OneRecruit_IsTwo()
     {
         HexGrid grid = BuildGridOf(new HexCoord(0, 0), new HexCoord(1, 0));
         grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red);
@@ -49,11 +49,11 @@ public class UpkeepRulesTests
     [Fact]
     public void TotalUpkeepFor_MixedLevels_SumsCorrectly()
     {
-        // Peasant (2) + Knight (18) = 20
+        // Recruit (2) + Captain (18) = 20
         HexGrid grid = BuildGridOf(
             new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(0, 1));
         grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red);
-        grid.Get(new HexCoord(0, 1))!.Occupant = new Unit(Red, UnitLevel.Knight);
+        grid.Get(new HexCoord(0, 1))!.Occupant = new Unit(Red, UnitLevel.Captain);
         Territory t = BuildTerritory(
             new HexCoord(0, 0),
             new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(0, 1));
@@ -66,10 +66,10 @@ public class UpkeepRulesTests
     [Fact]
     public void Forecast_GoldPlusIncomeCoversUpkeep_False()
     {
-        // Knight upkeep 18, 2 income tiles (capital + knight, no trees),
+        // Captain upkeep 18, 2 income tiles (capital + captain, no trees),
         // gold 20 -> 20 + 2 = 22 >= 18, solvent next turn.
         HexGrid grid = BuildGridOf(new HexCoord(0, 0), new HexCoord(1, 0));
-        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red, UnitLevel.Knight);
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red, UnitLevel.Captain);
         Territory t = BuildTerritory(new HexCoord(0, 0), new HexCoord(0, 0), new HexCoord(1, 0));
         var treasury = new Treasury();
         treasury.SetGold(new HexCoord(0, 0), 20);
@@ -80,9 +80,9 @@ public class UpkeepRulesTests
     [Fact]
     public void Forecast_GoldPlusIncomeShortOfUpkeep_True()
     {
-        // Knight upkeep 18, income 2, gold 5 -> 5 + 2 = 7 < 18: bankrupt.
+        // Captain upkeep 18, income 2, gold 5 -> 5 + 2 = 7 < 18: bankrupt.
         HexGrid grid = BuildGridOf(new HexCoord(0, 0), new HexCoord(1, 0));
-        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red, UnitLevel.Knight);
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red, UnitLevel.Captain);
         Territory t = BuildTerritory(new HexCoord(0, 0), new HexCoord(0, 0), new HexCoord(1, 0));
         var treasury = new Treasury();
         treasury.SetGold(new HexCoord(0, 0), 5);
@@ -96,7 +96,7 @@ public class UpkeepRulesTests
         // Boundary: income 2, gold 16 -> 18 == owed 18; ApplyUpkeep pays
         // when available >= owed, so this is NOT bankrupt.
         HexGrid grid = BuildGridOf(new HexCoord(0, 0), new HexCoord(1, 0));
-        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red, UnitLevel.Knight);
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red, UnitLevel.Captain);
         Territory t = BuildTerritory(new HexCoord(0, 0), new HexCoord(0, 0), new HexCoord(1, 0));
         var treasury = new Treasury();
         treasury.SetGold(new HexCoord(0, 0), 16);
@@ -135,8 +135,8 @@ public class UpkeepRulesTests
     [Fact]
     public void Classify_NetPositive_Healthy()
     {
-        // Peasant upkeep 2, 2 income tiles -> income 2 == upkeep 2, net 0.
-        // Actually net positive: use a 3-tile territory with 1 peasant.
+        // Recruit upkeep 2, 2 income tiles -> income 2 == upkeep 2, net 0.
+        // Actually net positive: use a 3-tile territory with 1 recruit.
         HexGrid grid = BuildGridOf(new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(0, 1));
         grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red); // upkeep 2
         Territory t = BuildTerritory(new HexCoord(0, 0),
@@ -151,7 +151,7 @@ public class UpkeepRulesTests
     [Fact]
     public void Classify_IncomeEqualsUpkeep_Healthy()
     {
-        // 2-tile territory, 1 peasant: income 2, upkeep 2 -> net 0.
+        // 2-tile territory, 1 recruit: income 2, upkeep 2 -> net 0.
         // Pays exactly; not bleeding -> Healthy.
         HexGrid grid = BuildGridOf(new HexCoord(0, 0), new HexCoord(1, 0));
         grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red); // upkeep 2
@@ -165,10 +165,10 @@ public class UpkeepRulesTests
     [Fact]
     public void Classify_NetNegativeButReservesCover_NegativeDelta()
     {
-        // Knight upkeep 18, 2 income tiles -> income 2 < upkeep 18, but
+        // Captain upkeep 18, 2 income tiles -> income 2 < upkeep 18, but
         // gold 20 -> 20 + 2 = 22 >= 18 covers next turn. Bleeding.
         HexGrid grid = BuildGridOf(new HexCoord(0, 0), new HexCoord(1, 0));
-        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red, UnitLevel.Knight);
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red, UnitLevel.Captain);
         Territory t = BuildTerritory(new HexCoord(0, 0), new HexCoord(0, 0), new HexCoord(1, 0));
         var treasury = new Treasury();
         treasury.SetGold(new HexCoord(0, 0), 20);
@@ -182,7 +182,7 @@ public class UpkeepRulesTests
         // Boundary: gold + income exactly equals upkeep (pays in full),
         // but income < upkeep -> still bleeding -> NegativeDelta.
         HexGrid grid = BuildGridOf(new HexCoord(0, 0), new HexCoord(1, 0));
-        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red, UnitLevel.Knight); // upkeep 18
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red, UnitLevel.Captain); // upkeep 18
         Territory t = BuildTerritory(new HexCoord(0, 0), new HexCoord(0, 0), new HexCoord(1, 0));
         var treasury = new Treasury();
         treasury.SetGold(new HexCoord(0, 0), 16); // 16 + 2 income = 18 == upkeep
@@ -195,7 +195,7 @@ public class UpkeepRulesTests
     {
         // gold 5, income 2, upkeep 18 -> 7 < 18 -> bankrupt next turn.
         HexGrid grid = BuildGridOf(new HexCoord(0, 0), new HexCoord(1, 0));
-        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red, UnitLevel.Knight);
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red, UnitLevel.Captain);
         Territory t = BuildTerritory(new HexCoord(0, 0), new HexCoord(0, 0), new HexCoord(1, 0));
         var treasury = new Treasury();
         treasury.SetGold(new HexCoord(0, 0), 5);
@@ -249,7 +249,7 @@ public class UpkeepRulesTests
     public void ApplyUpkeep_InsufficientGold_ReplacesUnitsWithGraves_AndLeavesGoldAlone()
     {
         HexGrid grid = BuildGridOf(new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(0, 1));
-        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red, UnitLevel.Knight); // upkeep 18
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red, UnitLevel.Captain); // upkeep 18
         grid.Get(new HexCoord(0, 1))!.Occupant = new Unit(Red); // upkeep 2
         Territory t = BuildTerritory(
             new HexCoord(0, 0),
@@ -300,11 +300,11 @@ public class UpkeepRulesTests
     [Fact]
     public void ApplyUpkeep_BankruptcyKeepsCapitalOccupant()
     {
-        // Territory with a Capital on one tile and a Knight on the other;
-        // bankrupt. Only the knight should die — the capital stays.
+        // Territory with a Capital on one tile and a Captain on the other;
+        // bankrupt. Only the captain should die — the capital stays.
         HexGrid grid = BuildGridOf(new HexCoord(0, 0), new HexCoord(1, 0));
         grid.Get(new HexCoord(0, 0))!.Occupant = new Capital();
-        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red, UnitLevel.Knight);
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red, UnitLevel.Captain);
         Territory t = BuildTerritory(new HexCoord(0, 0), new HexCoord(0, 0), new HexCoord(1, 0));
         var treasury = new Treasury();
         treasury.SetGold(new HexCoord(0, 0), 0);

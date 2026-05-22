@@ -38,7 +38,7 @@ public static class PreviewSetup
         state.Turns.Reset(replay.InitialCurrentPlayerIndex, replay.InitialTurnNumber);
         map.RebuildAfterTerritoryChange();
         map.ShowHighlight(null);
-        map.ShowMoveTargets(Array.Empty<HexCoord>(), UnitLevel.Peasant);
+        map.ShowMoveTargets(Array.Empty<HexCoord>(), UnitLevel.Recruit);
         map.ShowTowerTargets(Array.Empty<HexCoord>());
         map.ShowTowerCoverage(Array.Empty<HexCoord>());
         map.ShowMoveSource(null);

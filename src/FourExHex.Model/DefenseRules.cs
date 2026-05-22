@@ -6,7 +6,7 @@ using System.Linq;
 /// max contribution over the tile's own occupant and the occupants of
 /// every adjacent tile in the same territory. Occupant contributions:
 ///   - <see cref="Unit"/>          -> (int)unit.Level
-///   - <see cref="Tower"/>         -> 2  (spearman-equivalent)
+///   - <see cref="Tower"/>         -> 2  (soldier-equivalent)
 ///   - <see cref="Capital"/>       -> 1
 ///   - <see cref="Tree"/> / <see cref="Grave"/> / null -> 0
 ///   - any unknown subtype        -> throws

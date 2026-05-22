@@ -72,10 +72,13 @@ Consequences for the rest of this doc:
 - **`Log` is Godot-free** — the master logging system routes through
   an injectable `Log.Sink` that `Main` wires to `GD.Print`. See
   **Logging** below.
-- **Save format is v5.** Ownership is a player index on the wire (−1 =
+- **Save format is v6.** Ownership is a player index on the wire (−1 =
   `None`); claim-victory tiers are persisted by player index
-  (palette-independent). v2–v5 still load; v2–v4 migrate their legacy
-  color-hex claim data via `GameSettings` palette matching.
+  (palette-independent). v2–v6 still load; v2–v4 migrate their legacy
+  color-hex claim data via `GameSettings` palette matching. v6 renamed
+  the unit levels (Peasant/Spearman/Knight/Baron →
+  Recruit/Soldier/Captain/Commander); pre-v6 level names still load via
+  `SaveSerializer.ParseUnitLevel`.
 - **`.cs.uid` sidecars**: the moved model files are not Godot
   resources, so theirs were removed; `src/**` is `.gdignore`d. Files
   still in `scripts/` keep their tracked `.cs.uid`.
@@ -159,8 +162,8 @@ Consequences for the rest of this doc:
 │   ├─ subscribes in ctor:                                                 │
 │   │    map.TileClicked              → OnTileClicked                      │
 │   │    map.TileLongClicked          → OnTileLongClicked (rally)          │
-│   │    hud.BuyPeasantClicked        → OnBuyPressed (U-hotkey: cycle     │
-│   │                                    Peasant→Spearman→Knight→Baron→   │
+│   │    hud.BuyRecruitClicked        → OnBuyPressed (U-hotkey: cycle     │
+│   │                                    Recruit→Soldier→Captain→Commander→   │
 │   │                                    None; no wrap)                    │
 │   │    hud.BuyUnitClicked            → OnBuyUnitPressed (per-button     │
 │   │                                    radio click: enter that specific │
@@ -294,7 +297,7 @@ Consequences for the rest of this doc:
 │      SessionStateSnapshot)│  │                                            │
 │                           │  │                                            │
 │                           │  │   HudView : CanvasLayer, IHudView          │
-│                           │  │   ├─ events: BuyPeasant (U-key cycle) /    │
+│                           │  │   ├─ events: BuyRecruit (U-key cycle) /    │
 │                           │  │     BuyUnit(level) (per-button radio       │
 │                           │  │     click) / BuildTower / UndoLast /       │
 │                           │  │     UndoTurn / RedoLast / RedoAll /        │
@@ -322,8 +325,8 @@ Consequences for the rest of this doc:
 │                           │  │   come from HudIconButton.DefaultTooltip;  │
 │                           │  │   Buy/Build override dynamically per state.│
 │                           │  │   The Buy row is four always-visible       │
-│                           │  │   radio buttons (Peasant / Spearman /      │
-│                           │  │   Knight / Baron); per-level Disabled and  │
+│                           │  │   radio buttons (Recruit / Soldier /      │
+│                           │  │   Captain / Commander); per-level Disabled and  │
 │                           │  │   Selected mirror BuyModeLevel and         │
 │                           │  │   affordability. Disabled-reason tooltips  │
 │                           │  │   name the blocker (no selection / no      │
@@ -355,7 +358,7 @@ Consequences for the rest of this doc:
 │   CapitalPlacer.Choose(coords, grid)       ─ empty > unit, lex-min       │
 │   CapitalReconciler.Reconcile(raw, old, grid)                            │
 │                                            ─ split/merge + stomping      │
-│   PurchaseRules.CostFor / CanAfford / CanAffordTower / IsValidPeasant…   │
+│   PurchaseRules.CostFor / CanAfford / CanAffordTower / IsValidRecruit…   │
 │   MovementRules.ValidTargets / Move / PlaceNew /                         │
 │                  ArrivalConsumesAction (capture/tree/grave → true)        │
 │   DefenseRules.Defense(coord, grid, territory)                           │
@@ -386,7 +389,7 @@ Consequences for the rest of this doc:
 │     │         action and clears the tile)                                │
 │     └─ Grave — marker (blocks income; converts to a Tree at the start    │
 │                of the owning player's next turn)                         │
-│   UnitLevel — Peasant=1, Spearman=2, Knight=3, Baron=4                   │
+│   UnitLevel — Recruit=1, Soldier=2, Captain=3, Commander=4                   │
 │   Territory — Owner, Coords, Capital (immutable)                         │
 │   TerritoryExtensions — BuildTileIndex                                   │
 │   Player — Name, Id, Kind (AiKind), IsAi                                 │
@@ -678,17 +681,17 @@ assets are `assets/audio/reject_generic.wav` (soft wooden thunk) and
 `assets/audio/reject_defended.wav` (metallic sword-on-shield clang).
 
 `ShowMoveTargets` takes the unit level so the preview can render at
-the correct visual size (peasant=1 ring, spearman=2, knight=3,
-baron=3+dot). Audio is fired from the controller right after the
+the correct visual size (recruit=1 ring, soldier=2, captain=3,
+commander=3+dot). Audio is fired from the controller right after the
 mutation that produced it; `DispatchActionSound` picks one cue per
 move/buy resolution (combine > destruction-by-type > generic place).
 
 **`IHudView`** — everything the controller asks the HUD to do:
 
 ```csharp
-event Action? BuyPeasantClicked;       // U-hotkey: cycle through
+event Action? BuyRecruitClicked;       // U-hotkey: cycle through
                                        // affordable levels
-                                       // (Peasant→Spearman→Knight→Baron),
+                                       // (Recruit→Soldier→Captain→Commander),
                                        // exit at top instead of wrap
 event Action<UnitLevel>? BuyUnitClicked;// per-button radio click: enter
                                        // that specific buy mode directly
@@ -706,7 +709,7 @@ event Action? NextTerritoryClicked;    // Tab hotkey equivalent;
                                        // skips singletons and any
                                        // territory with no available
                                        // action (no unmoved unit and
-                                       // can't afford a peasant);
+                                       // can't afford a recruit);
                                        // no-op if none qualify
 event Action? PreviousTerritoryClicked;// Shift+Tab hotkey equivalent;
                                        // same skip rules
@@ -749,7 +752,7 @@ void SetReplayAvailable(bool available); // toggle the victory-overlay
                                        // replay history from game start
 
 // CTA-styled button highlights (white bg + black border + black text).
-// The CtaButton enum (BuyPeasant, EndTurn, BuildTower,
+// The CtaButton enum (BuyRecruit, EndTurn, BuildTower,
 // ClaimVictoryWinNow, ClaimVictoryContinue, DefeatContinue) picks
 // the target. The pulse flag governs animation: game-side
 // "out of moves" sets EndTurn steady (pulse: false); Tutorial
@@ -800,9 +803,9 @@ HUD content) so a click anywhere on screen fires
 hit Buy / End Turn / select a tile while a narration beat is gated.
 It surfaces four sources of text during Tutorial Preview:
 
-- Per-beat step instructions ("Press the Buy Peasant button.",
-  "Move the selected Peasant onto the target Spearman to combine
-  them into a Knight.", "Place the Peasant at the highlighted tile
+- Per-beat step instructions ("Press the Buy Recruit button.",
+  "Move the selected Recruit onto the target Soldier to combine
+  them into a Captain.", "Place the Recruit at the highlighted tile
   to clear the tree and capture the tile.", etc.) generated by
   `TutorialInstructionText.For(beat, state, session)` and pushed by
   `TutorialPreviewCues` at the tail of every `Apply()`. Uses
@@ -824,12 +827,12 @@ survives.
 **HUD icon layer.** Both the play HUD and the map-editor HUD render
 their action buttons through a shared `HudIconButton : Button` that
 overrides `_Draw` to paint a programmatic glyph. Glyph helpers live
-in the static `HudIcons` class — `DrawUnit` (1/2/3 rings + Baron
+in the static `HudIcons` class — `DrawUnit` (1/2/3 rings + Commander
 dot, mirroring `HexMapView`'s in-map unit visuals), `DrawTower`,
 `DrawTree`, `DrawCapital`, `DrawHand` (all reused by
 `HexPaletteButton`), `DrawCurvedArrow` (single + nested-concentric
 doubled variants for Undo Last / Undo All / Redo Last / Redo All),
-`DrawEndTurnTriangle`, `DrawGear`. Stroke-only glyphs (peasant
+`DrawEndTurnTriangle`, `DrawGear`. Stroke-only glyphs (recruit
 ring, undo/redo arrows, End Turn triangle) paint white on the dark
 HUD bar and flip to black via `HudIconButton.CtaActive` while the
 End Turn CTA stylebox is on (the bg goes white during pulse).
@@ -842,22 +845,22 @@ override the tooltip live in `Refresh` to show "Buy `<level>`
 (Ng) — U" / "Build Tower (15g) — T" when enabled, or the
 *reason they're disabled* ("No territory selected", "Selected
 territory has no capital", "Selected territory can't afford a
-knight (30g)"). Buy and Build are always visible — the
+captain (30g)"). Buy and Build are always visible — the
 disabled-with-reason tooltip replaces the old visibility toggle
 so the layout doesn't shift. Three text labels
 (Turn / Current player / Gold) have fixed `CustomMinimumSize.X`
 so the buttons after them never reflow.
 
-The Buy row is four always-visible radio buttons (Peasant /
-Spearman / Knight / Baron) packed in a nested `HBoxContainer`.
+The Buy row is four always-visible radio buttons (Recruit /
+Soldier / Captain / Commander) packed in a nested `HBoxContainer`.
 Each `HudIconButton` carries a fixed `BuyLevel`; `Selected`
 mirrors `SessionState.BuyModeLevel` so exactly one is highlighted
 at a time. Clicking a button fires `IHudView.BuyUnitClicked(level)`
 for direct entry into that mode; the U hotkey fires
-`BuyPeasantClicked` which `GameController.OnBuyPressed` resolves
+`BuyRecruitClicked` which `GameController.OnBuyPressed` resolves
 as a cycle through affordable levels, *exiting at the top* (the
 most-expensive affordable level cycles back to `ActionMode.None`
-instead of wrapping to Peasant). Build Tower stays a single button.
+instead of wrapping to Recruit). Build Tower stays a single button.
 
 While the player is in a buy or move mode, the active button's
 tooltip is cleared and the bottom-anchored tutorial-message panel
@@ -990,7 +993,7 @@ Runs in this fixed order for the now-current player:
    Tree and grave tiles don't pay; everything else (empty, units,
    capitals, towers) pays 1 gold.
 5. **Apply upkeep** — `UpkeepRules.ApplyUpkeepFor`. Per-unit costs:
-   Peasant 2, Spearman 6, Knight 18, Baron 54. A territory that
+   Recruit 2, Soldier 6, Captain 18, Commander 54. A territory that
    can't pay total upkeep goes bankrupt: every unit in it becomes a
    `Grave`, remaining gold stays. `PlaySound(Bankruptcy)` fires once if any
    territory of this player went bankrupt (player-scoped, not
@@ -1654,7 +1657,7 @@ just `Tutorial.json`, loaded via `LoadBundledMap`). It exposes
 `user://maps/` then falls back to `res://tutorials/` — used by the
 Play Again restart flow), plus `SanitizeSlotName` for
 filesystem-safe slot names. `SaveSerializer` is the JSON layer
-(format version 4; accepts v2/v3 on read so existing autosaves keep
+(format version 6; accepts v2–v5 on read so existing autosaves keep
 loading after each cutover); `Serialize` writes the player roster's
 `Kind` field, `SerializeMap` omits it (the editor's saved maps
 don't bake a player-kind config — roles are assigned at play time
@@ -1999,7 +2002,7 @@ the modal. `RecordPane` / `PreviewPane` forward their inner
 Record / Preview opens the same modal.
 
 **Draft preservation across mode switches.** The panel's `_grid` is
-shared with the play state Record / Preview build atop, so peasants /
+shared with the play state Record / Preview build atop, so recruits /
 towers placed during a recording mutate the same tile occupants the
 panel later reads. `TutorialBuilderScene` captures an
 `EditorSnapshot` of the draft on every exit from Map Edit and
@@ -2203,13 +2206,13 @@ see "Tutorial-only beats" below) and dispatches:
   `ShowMoveTargets([To], level)`; otherwise overwrite with `[From]`
   (single ring on the source) to direct the player to pick it up.
 - **`ReplayLongPressRallyBeat`** → auto-select containing territory;
-  `ShowMoveTargets([Target], Peasant)`.
+  `ShowMoveTargets([Target], Recruit)`.
 - **`ReplayClaimVictoryBeat` / `ReplayDismissClaimBeat` /
   `ReplayDismissDefeatBeat`** → CTA on the matching overlay button.
 
 Before dispatching, `Apply` checks mode compatibility with the next
 beat. If the player is in a mode the beat can't be executed from
-(e.g., still in BuyingPeasant when the next beat is End Turn,
+(e.g., still in BuyingRecruit when the next beat is End Turn,
 BuildingTower when the next beat is Buy, MovingUnit with the wrong
 MoveSource when the next beat is Move), `Apply` calls
 `GameController.CancelActionForTutorial()` to clear `Mode` /
@@ -2234,8 +2237,8 @@ a pure helper that switches on the next beat kind and the current
 strings:
 
 - **Buy beat** — escalates with the player: Mode=None → "Press the
-  Buy Peasant button."; Mode=BuyingX below target → "Now press the
-  Buy Peasant button again to upgrade to a {next}."; matching mode →
+  Buy Recruit button."; Mode=BuyingX below target → "Now press the
+  Buy Recruit button again to upgrade to a {next}."; matching mode →
   "Place the {Level} at the highlighted tile{suffix}." where the
   suffix names combine / tree-clear / grave-remove / capture (and
   combined capture-and-clear) outcomes based on the To-tile occupant
@@ -2315,7 +2318,7 @@ set the flag, then cues check it.
 position via `MoveChild`, and sets `MouseFilter = Stop`. Clicks
 anywhere — HUD buttons, the map, the tutorial panel itself — are
 intercepted and route to `TutorialMessageTapped`. The player can't
-accidentally hit Buy Peasant or End Turn while a narration beat is
+accidentally hit Buy Recruit or End Turn while a narration beat is
 gated. `HideTutorialMessage` hides the catcher and flips its
 `MouseFilter = Ignore` so normal play resumes.
 
@@ -2341,7 +2344,7 @@ Before the rewrite, Preview wrapped the real views in
 input through a `TutorialPlayer` state machine that mirrored a tiny
 subset of `GameController`'s click/buy/end-turn logic. That layer
 was ~300 LOC of duplicated invariants and only covered two beat
-kinds (EndTurn, BuyPeasant). The new design pushes gating into
+kinds (EndTurn, BuyRecruit). The new design pushes gating into
 `GameController` itself via the single `humanActionValidator` hook
 and reuses `_replayBeats` for the script — one source of truth for
 both recording and validation.
@@ -2488,8 +2491,8 @@ The play HUD (`HudView`) is one `Panel` background + one
   total + income breakdown in JetBrains Mono 26, hidden when
   no capital territory is selected.
 - **Unit palette (center)** — a slate `PanelContainer` (radius
-  10, bg-deep) wrapping the four buy buttons (Peasant /
-  Spearman / Knight / Baron) as a radio group. The Build Tower
+  10, bg-deep) wrapping the four buy buttons (Recruit /
+  Soldier / Captain / Commander) as a radio group. The Build Tower
   button sits OUTSIDE that panel as a separate sibling in the
   bar so it has its own anchor; the 14-px gap between them
   comes from the bar's separation.
@@ -2736,7 +2739,7 @@ scripts/  (split: see the three source trees listed just above)
 ├─ HudIconButton.cs       ─ Button subclass painting a programmatic
 │                           glyph via _Draw; carries Selected (mode
 │                           cue), CtaActive (CTA stylebox color flip),
-│                           BuyLevel (peasant→baron icon escalation).
+│                           BuyLevel (recruit→commander icon escalation).
 │                           DefaultTooltip(HudIcon) is the single
 │                           source for "<label> — <hotkey>" strings
 │                           shared by HudView + MapEditorHudView.
@@ -2951,7 +2954,7 @@ across save/load, replay recording + playback contracts, and a
 6-heuristic-AI replay-fidelity test that hashes the live final
 state, round-trips it through SaveSerializer, and asserts the
 replayed state matches digest-for-digest. Also covers `PlayerId`
-semantics, the `Log` category/level gate, `HexCoord.Round`, and v2→v5 save
+semantics, the `Log` category/level gate, `HexCoord.Round`, and v2→v6 save
 migration (`SaveMigrationTests`). The view layer is deliberately
 uncovered — it depends on Godot's `Node` lifecycle, so pin behavior
 in the controller and rules instead.

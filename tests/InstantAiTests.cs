@@ -22,8 +22,8 @@ namespace FourExHex.Tests;
 public class InstantAiTests
 {
     // 5x1 line: Red (human) capital {(3,0),(4,0)}; Blue (AI) holds
-    // {(0,0),(1,0),(2,0)} with a Spearman at (2,0). A scripted chooser
-    // can send that Spearman into Red's capital to eliminate Red.
+    // {(0,0),(1,0),(2,0)} with a Soldier at (2,0). A scripted chooser
+    // can send that Soldier into Red's capital to eliminate Red.
     private static (GameState State, SessionState Session, MockHexMapView Map,
         MockHudView Hud, Player Red, Player Blue) BuildKillScenario()
     {
@@ -37,7 +37,7 @@ public class InstantAiTests
         grid.Get(HexCoord.FromOffset(2, 0))!.Owner = blue.Id;
         grid.Get(HexCoord.FromOffset(3, 0))!.Owner = red.Id;
         grid.Get(HexCoord.FromOffset(4, 0))!.Owner = red.Id;
-        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(blue.Id, UnitLevel.Spearman);
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(blue.Id, UnitLevel.Soldier);
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -45,7 +45,7 @@ public class InstantAiTests
     }
 
     // 11x2: Blue AI; four lone Red outposts at odd cols on row 0, each
-    // with a Blue peasant immediately left that captures it — all four
+    // with a Blue recruit immediately left that captures it — all four
     // captures fall in Blue's single turn. Red also keeps a 2-tile
     // capital at (10,*) so it isn't pre-eliminated. Mirrors the
     // ReplayPlaybackTests per-capture fixture so the same per-turn
@@ -68,7 +68,7 @@ public class InstantAiTests
             HexCoord redTile = HexCoord.FromOffset(2 * i + 1, 0);
             HexCoord blueTile = HexCoord.FromOffset(2 * i, 0);
             grid.Get(redTile)!.Owner = red.Id;
-            grid.Get(blueTile)!.Occupant = new Unit(blue.Id, UnitLevel.Peasant);
+            grid.Get(blueTile)!.Occupant = new Unit(blue.Id, UnitLevel.Recruit);
             captures.Add((blueTile, redTile));
         }
 

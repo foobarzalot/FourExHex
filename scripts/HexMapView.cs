@@ -197,7 +197,7 @@ public partial class HexMapView : Node2D, IHexMapView
     private readonly HashSet<HexCoord> _pulsingUnits = new();
 
     // Every current-player capital whose territory can afford to buy
-    // anything (a peasant is the cheapest purchase, so peasant
+    // anything (a recruit is the cheapest purchase, so recruit
     // affordability subsumes tower affordability). Pulses in sync with
     // the actionable units so the player sees at a glance where they
     // can spend gold.
@@ -541,8 +541,8 @@ public partial class HexMapView : Node2D, IHexMapView
     /// <summary>
     /// Highlight the given coords as valid move/placement targets with
     /// green concentric rings sized to <paramref name="level"/> — the
-    /// preview matches the unit shape (peasant=1 ring, spearman=2,
-    /// knight=3, baron=3+dot) so the player sees what the destination
+    /// preview matches the unit shape (recruit=1 ring, soldier=2,
+    /// captain=3, commander=3+dot) so the player sees what the destination
     /// will hold. Pass an empty list to clear.
     /// </summary>
     public void ShowMoveTargets(IEnumerable<HexCoord> coords, UnitLevel level)
@@ -553,10 +553,10 @@ public partial class HexMapView : Node2D, IHexMapView
         var color = new Color(0.2f, 1f, 0.3f, 0.9f);
         int rings = level switch
         {
-            UnitLevel.Peasant => 1,
-            UnitLevel.Spearman => 2,
-            UnitLevel.Knight => 3,
-            UnitLevel.Baron => 3,
+            UnitLevel.Recruit => 1,
+            UnitLevel.Soldier => 2,
+            UnitLevel.Captain => 3,
+            UnitLevel.Commander => 3,
             _ => 1,
         };
 
@@ -574,7 +574,7 @@ public partial class HexMapView : Node2D, IHexMapView
                 preview.AddChild(CreateCircleOutline(
                     HexSize * UnitRingRadii[i], color, HexSize * UnitRingWidthFactors[i]));
             }
-            if (level == UnitLevel.Baron)
+            if (level == UnitLevel.Commander)
             {
                 preview.AddChild(CreateFilledDisc(HexSize * UnitDotRadius, color));
             }
@@ -780,10 +780,10 @@ public partial class HexMapView : Node2D, IHexMapView
             {
                 if (territory.Owner != currentPlayer.Value) continue;
                 if (!territory.HasCapital) continue;
-                // Peasant is the cheapest purchase (10g) and is cheaper
-                // than a tower (15g), so peasant-affordability is a
+                // Recruit is the cheapest purchase (10g) and is cheaper
+                // than a tower (15g), so recruit-affordability is a
                 // sufficient proxy for "this territory can spend gold".
-                if (PurchaseRules.CanAffordPeasant(territory, treasury))
+                if (PurchaseRules.CanAffordRecruit(territory, treasury))
                 {
                     actionableCapitals.Add(territory.Capital!.Value);
                 }
@@ -1136,11 +1136,11 @@ public partial class HexMapView : Node2D, IHexMapView
         {
             UnitLevel level = shape switch
             {
-                RejectionShape.Peasant => UnitLevel.Peasant,
-                RejectionShape.Spearman => UnitLevel.Spearman,
-                RejectionShape.Knight => UnitLevel.Knight,
-                RejectionShape.Baron => UnitLevel.Baron,
-                _ => UnitLevel.Peasant,
+                RejectionShape.Recruit => UnitLevel.Recruit,
+                RejectionShape.Soldier => UnitLevel.Soldier,
+                RejectionShape.Captain => UnitLevel.Captain,
+                RejectionShape.Commander => UnitLevel.Commander,
+                _ => UnitLevel.Recruit,
             };
             root.AddChild(BuildRedUnitGhost(level));
         }
@@ -1155,10 +1155,10 @@ public partial class HexMapView : Node2D, IHexMapView
         var node = new Node2D();
         int rings = level switch
         {
-            UnitLevel.Peasant => 1,
-            UnitLevel.Spearman => 2,
-            UnitLevel.Knight => 3,
-            UnitLevel.Baron => 3,
+            UnitLevel.Recruit => 1,
+            UnitLevel.Soldier => 2,
+            UnitLevel.Captain => 3,
+            UnitLevel.Commander => 3,
             _ => 1,
         };
         for (int i = 0; i < rings; i++)
@@ -1166,7 +1166,7 @@ public partial class HexMapView : Node2D, IHexMapView
             node.AddChild(CreateCircleOutline(
                 HexSize * UnitRingRadii[i], red, HexSize * UnitRingWidthFactors[i]));
         }
-        if (level == UnitLevel.Baron)
+        if (level == UnitLevel.Commander)
         {
             node.AddChild(CreateFilledDisc(HexSize * UnitDotRadius, red));
         }
@@ -1607,9 +1607,9 @@ public partial class HexMapView : Node2D, IHexMapView
         return canopy;
     }
 
-    // Unit ring radii (outer → inner) per the redesign spec: peasant gets
-    // just the outer ring; spearman adds the middle; knight adds the
-    // inner; baron adds a filled center dot on top of the knight's three
+    // Unit ring radii (outer → inner) per the redesign spec: recruit gets
+    // just the outer ring; soldier adds the middle; captain adds the
+    // inner; commander adds a filled center dot on top of the captain's three
     // rings. The outer ring matches the move-target ring radius
     // (0.50 * HexSize) so a unit reads as the same on-tile footprint as
     // the capture/chop target indicator. Stroke widths scale with HexSize
@@ -1627,10 +1627,10 @@ public partial class HexMapView : Node2D, IHexMapView
 
         int rings = level switch
         {
-            UnitLevel.Peasant => 1,
-            UnitLevel.Spearman => 2,
-            UnitLevel.Knight => 3,
-            UnitLevel.Baron => 3,
+            UnitLevel.Recruit => 1,
+            UnitLevel.Soldier => 2,
+            UnitLevel.Captain => 3,
+            UnitLevel.Commander => 3,
             _ => 1,
         };
 
@@ -1640,7 +1640,7 @@ public partial class HexMapView : Node2D, IHexMapView
                 HexSize * UnitRingRadii[i], color, HexSize * UnitRingWidthFactors[i]));
         }
 
-        if (level == UnitLevel.Baron)
+        if (level == UnitLevel.Commander)
         {
             node.AddChild(CreateFilledDisc(HexSize * UnitDotRadius, color));
         }

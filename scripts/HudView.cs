@@ -12,7 +12,7 @@ public partial class HudView : CanvasLayer, IHudView
 {
     public const float HudHeight = 96f;
 
-    public event Action? BuyPeasantClicked;
+    public event Action? BuyRecruitClicked;
     public event Action<UnitLevel>? BuyUnitClicked;
     public event Action? BuildTowerClicked;
     public event Action? UndoLastClicked;
@@ -44,10 +44,10 @@ public partial class HudView : CanvasLayer, IHudView
         GD.Load<FontFile>("res://fonts/JetBrainsMono-VariableFont.ttf");
     private static readonly Font SerifFont =
         GD.Load<FontFile>("res://fonts/DMSerifDisplay-Regular.ttf");
-    // One radio button per buy level (Peasant / Spearman / Knight / Baron),
+    // One radio button per buy level (Recruit / Soldier / Captain / Commander),
     // in cycle order. _buyUnitButtons[(int)level] gives the button for
-    // a given UnitLevel. _buyUnitButtons[0] = Peasant (the legacy
-    // CtaButton.BuyPeasant target).
+    // a given UnitLevel. _buyUnitButtons[0] = Recruit (the legacy
+    // CtaButton.BuyRecruit target).
     private HudIconButton[] _buyUnitButtons = null!;
     private HudIconButton _buildTowerButton = null!;
     private HudIconButton _undoLastButton = null!;
@@ -185,8 +185,8 @@ public partial class HudView : CanvasLayer, IHudView
         // Spacer 1 (centers the unit palette).
         bar.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
 
-        // 4) Unit palette — the four buy buttons (Peasant/Spearman/
-        // Knight/Baron) live inside one rounded bg-deep PanelContainer
+        // 4) Unit palette — the four buy buttons (Recruit/Soldier/
+        // Captain/Commander) live inside one rounded bg-deep PanelContainer
         // so they read as one grouped widget. The Build Tower button
         // sits OUTSIDE the panel as a separate sibling in the bar; the
         // visual gap between them is the bar's own 14-px separation,
@@ -202,12 +202,12 @@ public partial class HudView : CanvasLayer, IHudView
         palettePanel.AddChild(paletteRow);
         bar.AddChild(palettePanel);
 
-        UnitLevel[] buyLevels = { UnitLevel.Peasant, UnitLevel.Spearman, UnitLevel.Knight, UnitLevel.Baron };
+        UnitLevel[] buyLevels = { UnitLevel.Recruit, UnitLevel.Soldier, UnitLevel.Captain, UnitLevel.Commander };
         _buyUnitButtons = new HudIconButton[buyLevels.Length];
         for (int i = 0; i < buyLevels.Length; i++)
         {
             UnitLevel level = buyLevels[i];
-            var button = new HudIconButton(HudIcon.Peasant)
+            var button = new HudIconButton(HudIcon.Recruit)
             {
                 Disabled = true,
                 BuyLevel = level,
@@ -362,7 +362,7 @@ public partial class HudView : CanvasLayer, IHudView
 
     // True while an external caller (tutorial system, AI-batch indicator)
     // owns the tutorial-message panel. Refresh()'s gameplay action hint
-    // ("Click to place a Peasant", "Click to move the Knight") only
+    // ("Click to place a Recruit", "Click to move the Captain") only
     // writes to the panel when this is false, so the tutorial step text
     // and the AI batch announcement aren't clobbered by the per-Refresh
     // hint pass.
@@ -1023,7 +1023,7 @@ public partial class HudView : CanvasLayer, IHudView
                 GetViewport().SetInputAsHandled();
                 break;
             case Key.U:
-                BuyPeasantClicked?.Invoke();
+                BuyRecruitClicked?.Invoke();
                 GetViewport().SetInputAsHandled();
                 break;
             case Key.T:
@@ -1266,7 +1266,7 @@ public partial class HudView : CanvasLayer, IHudView
         if (session.Mode == SessionState.ActionMode.MovingUnit && session.MoveSource.HasValue)
         {
             HexTile? src = state.Grid.Get(session.MoveSource.Value);
-            UnitLevel level = (src?.Unit?.Level) ?? UnitLevel.Peasant;
+            UnitLevel level = (src?.Unit?.Level) ?? UnitLevel.Recruit;
             return $"Click to move the {level}";
         }
         // Bankruptcy warning now flows through the red bankruptcy-toast
@@ -1293,7 +1293,7 @@ public partial class HudView : CanvasLayer, IHudView
     {
         Button target = button switch
         {
-            CtaButton.BuyPeasant => _buyUnitButtons.First(b => b.BuyLevel == UnitLevel.Peasant),
+            CtaButton.BuyRecruit => _buyUnitButtons.First(b => b.BuyLevel == UnitLevel.Recruit),
             CtaButton.EndTurn => _endTurnButton,
             CtaButton.BuildTower => _buildTowerButton,
             CtaButton.ClaimVictoryWinNow => _claimWinNowButton,

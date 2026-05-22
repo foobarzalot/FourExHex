@@ -34,12 +34,12 @@ public class SaveSerializerTests
 
         // Place every occupant type so the serializer has to handle
         // each branch.
-        grid.Get(HexCoord.FromOffset(0, 0))!.Occupant = new Unit(red.Id, UnitLevel.Knight) { HasMovedThisTurn = true };
-        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(red.Id, UnitLevel.Peasant) { HasMovedThisTurn = false };
+        grid.Get(HexCoord.FromOffset(0, 0))!.Occupant = new Unit(red.Id, UnitLevel.Captain) { HasMovedThisTurn = true };
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(red.Id, UnitLevel.Recruit) { HasMovedThisTurn = false };
         grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Tree();
         grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = new Grave();
         grid.Get(HexCoord.FromOffset(2, 1))!.Occupant = new Tower();
-        grid.Get(HexCoord.FromOffset(3, 1))!.Occupant = new Unit(blue.Id, UnitLevel.Baron);
+        grid.Get(HexCoord.FromOffset(3, 1))!.Occupant = new Unit(blue.Id, UnitLevel.Commander);
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
 
@@ -204,6 +204,34 @@ public class SaveSerializerTests
                 original.Treasury.GetGold(cap),
                 loaded.State.Treasury.GetGold(cap));
         }
+    }
+
+    [Fact]
+    public void Deserialize_LegacyUnitLevelNames_MapToRenamedLevels()
+    {
+        // Saves written before the unit rename stored the old level
+        // names (Peasant/Spearman/Knight/Baron). They must still load,
+        // mapping onto the current names (Recruit/Soldier/Captain/
+        // Commander) — units keep their level, just under the new name.
+        (GameState state, IReadOnlyList<Player> players) = BuildRichState();
+        string json = SaveSerializer.Serialize(state, 42, players, "legacy", 100);
+
+        // Forge a pre-rename file: old level strings, old format version.
+        string legacy = json
+            .Replace("\"Recruit\"", "\"Peasant\"")
+            .Replace("\"Soldier\"", "\"Spearman\"")
+            .Replace("\"Captain\"", "\"Knight\"")
+            .Replace("\"Commander\"", "\"Baron\"")
+            .Replace($"\"FormatVersion\": {SaveSerializer.CurrentFormatVersion}", "\"FormatVersion\": 5");
+
+        LoadedSave loaded = SaveSerializer.Deserialize(legacy);
+
+        Unit captain = (Unit)loaded.State.Grid.Get(HexCoord.FromOffset(0, 0))!.Occupant!;
+        Unit recruit = (Unit)loaded.State.Grid.Get(HexCoord.FromOffset(1, 0))!.Occupant!;
+        Unit commander = (Unit)loaded.State.Grid.Get(HexCoord.FromOffset(3, 1))!.Occupant!;
+        Assert.Equal(UnitLevel.Captain, captain.Level);
+        Assert.Equal(UnitLevel.Recruit, recruit.Level);
+        Assert.Equal(UnitLevel.Commander, commander.Level);
     }
 
     [Fact]
@@ -421,7 +449,7 @@ public class SaveSerializerTests
             {
                 Index = 1, Turn = 1, Actor = 0,
                 Capital = new HexCoord(0, 0), To = new HexCoord(0, 1),
-                Level = UnitLevel.Spearman,
+                Level = UnitLevel.Soldier,
             },
             new ReplayBuildTowerBeat
             {

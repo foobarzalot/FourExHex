@@ -151,7 +151,7 @@ public sealed class TutorialPreviewCues
     private void ClearAllCtas()
     {
         _hud.SetCta(CtaButton.EndTurn, false, pulse: false);
-        _hud.SetCta(CtaButton.BuyPeasant, false);
+        _hud.SetCta(CtaButton.BuyRecruit, false);
         _hud.SetCta(CtaButton.BuildTower, false);
         _hud.SetCta(CtaButton.ClaimVictoryWinNow, false);
         _hud.SetCta(CtaButton.ClaimVictoryContinue, false);
@@ -172,7 +172,7 @@ public sealed class TutorialPreviewCues
         // drop the CTA so attention shifts to the single-tile target
         // highlight.
         bool inPlaceMode = SessionState.BuyModeLevel(_session.Mode) == bu.Level;
-        _hud.SetCta(CtaButton.BuyPeasant, !inPlaceMode);
+        _hud.SetCta(CtaButton.BuyRecruit, !inPlaceMode);
         if (inPlaceMode)
         {
             _map.ShowMoveTargets(new[] { bu.To }, bu.Level);
@@ -210,12 +210,12 @@ public sealed class TutorialPreviewCues
         if (_session.Mode == SessionState.ActionMode.MovingUnit
             && _session.MoveSource == mv.From)
         {
-            UnitLevel moveLevel = LevelAtOrPeasant(mv.From);
+            UnitLevel moveLevel = LevelAtOrRecruit(mv.From);
             _map.ShowMoveTargets(new[] { mv.To }, moveLevel);
         }
         else
         {
-            UnitLevel fromLevel = LevelAtOrPeasant(mv.From);
+            UnitLevel fromLevel = LevelAtOrRecruit(mv.From);
             _map.ShowMoveTargets(new[] { mv.From }, fromLevel);
         }
     }
@@ -229,14 +229,14 @@ public sealed class TutorialPreviewCues
         {
             _selectTerritory(territory);
         }
-        _map.ShowMoveTargets(new[] { rl.Target }, UnitLevel.Peasant);
+        _map.ShowMoveTargets(new[] { rl.Target }, UnitLevel.Recruit);
     }
 
-    private UnitLevel LevelAtOrPeasant(HexCoord coord)
+    private UnitLevel LevelAtOrRecruit(HexCoord coord)
     {
         HexTile? tile = _state.Grid.Get(coord);
         if (tile?.Occupant is Unit unit) return unit.Level;
-        return UnitLevel.Peasant;
+        return UnitLevel.Recruit;
     }
 
     /// <summary>

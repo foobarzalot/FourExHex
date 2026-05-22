@@ -22,8 +22,8 @@ public class HeuristicAiTests
     [Fact]
     public void Clone_MutatingCloneDoesNotAffectOriginal()
     {
-        // 3-tile Red island with a peasant on (1,0). Clone, then
-        // remove the peasant from the clone's tile and verify the
+        // 3-tile Red island with a recruit on (1,0). Clone, then
+        // remove the recruit from the clone's tile and verify the
         // original still has it.
         var grid = new HexGrid();
         grid.Add(new HexTile(HexCoord.FromOffset(0, 0), Red));
@@ -147,7 +147,7 @@ public class HeuristicAiTests
     [Fact]
     public void ChooseNextAction_PrefersCaptureOverCombine()
     {
-        // Two adjacent Red peasants with both a combine target
+        // Two adjacent Red recruits with both a combine target
         // (each other) AND an undefended Blue capturable tile next
         // to them. The AI must prefer the capture because it
         // strictly increases tile count and net income, while the
@@ -336,7 +336,7 @@ public class HeuristicAiTests
         // interior because each such tile lost its static tower-
         // defense bonus (~10/tile). Six Red tiles ringing a Blue
         // singleton, with one Red tile holding a Tower covering 3
-        // borders, plus a Red peasant adjacent to the enclave.
+        // borders, plus a Red recruit adjacent to the enclave.
         // Under the old static-bonus model the capture's delta
         // came out negative (~−5) and the AI passed; under the
         // action-bonus model it scores ~+25 and the capture goes
@@ -352,7 +352,7 @@ public class HeuristicAiTests
         grid.Get(HexCoord.FromOffset(2, 1))!.Occupant = new Tower();
         GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
         // Capital lands at (1,0) by lex-min over the empty Red
-        // tiles, so a peasant at (0,1) is the adjacent attacker.
+        // tiles, so a recruit at (0,1) is the adjacent attacker.
         grid.Get(HexCoord.FromOffset(0, 1))!.Occupant = new Unit(Red);
 
         AiAction? result = HeuristicAi.ChooseNextAction(
@@ -366,9 +366,9 @@ public class HeuristicAiTests
     [Fact]
     public void ChooseNextAction_PrefersChopOverCombine()
     {
-        // 10-tile Red territory with two adjacent peasants and a
-        // tree the peasants can reach. 10 tiles / 1 tree /
-        // 2 peasants → net income 9 - 4 = 5, which is enough for a
+        // 10-tile Red territory with two adjacent recruits and a
+        // tree the recruits can reach. 10 tiles / 1 tree /
+        // 2 recruits → net income 9 - 4 = 5, which is enough for a
         // P+P→S combine (upkeep delta +2) AND for a chop; both
         // are legal. With the own-tree penalty, chopping must
         // outrank combining.
@@ -460,7 +460,7 @@ public class HeuristicAiTests
     [Fact]
     public void Score_PenalizesUndefendedBorderTiles()
     {
-        // Same 2x3 Red blob in a Blue field. In state A a peasant
+        // Same 2x3 Red blob in a Blue field. In state A a recruit
         // sits on a border tile (providing defense). In state B
         // there's no unit at all → every border tile is
         // undefended. A should score strictly higher.
@@ -508,16 +508,16 @@ public class HeuristicAiTests
     public void ChooseNextAction_PicksDefensiveReposition_ToCoverUndefendedBorder()
     {
         // Red 2x3 blob in a Blue field, no captures available
-        // (peasant adjacent only to friendly tiles). Place the
-        // peasant on an interior Red tile, leaving the border tiles
+        // (recruit adjacent only to friendly tiles). Place the
+        // recruit on an interior Red tile, leaving the border tiles
         // undefended. The heuristic must pick a reposition that
-        // moves the peasant onto a border tile, reducing the
+        // moves the recruit onto a border tile, reducing the
         // undefended-border penalty and improving its score.
         var grid = TestHelpers.BuildRectGrid(6, 3, Blue);
         for (int col = 0; col < 2; col++)
             for (int row = 0; row < 3; row++)
                 grid.Get(HexCoord.FromOffset(col, row))!.Owner = Red;
-        // Peasant on interior Red tile (0,1) — its enemy-color
+        // Recruit on interior Red tile (0,1) — its enemy-color
         // neighbors all sit OUTSIDE its current tile, so it gains
         // no defense by staying put.
         grid.Get(HexCoord.FromOffset(0, 1))!.Occupant = new Unit(Red);
@@ -529,7 +529,7 @@ public class HeuristicAiTests
         AiMoveAction move = Assert.IsType<AiMoveAction>(result);
         Assert.Equal(HexCoord.FromOffset(0, 1), move.Source);
         Assert.True(AiCommon.IsBorderTile(move.Destination, state.Grid, Red),
-            $"peasant should reposition onto a border tile (got {move.Destination})");
+            $"recruit should reposition onto a border tile (got {move.Destination})");
     }
 
     // --- Simulator: reposition apply --------------------------------------
@@ -569,19 +569,19 @@ public class HeuristicAiTests
         for (int col = 0; col <= 3; col++)
             grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
         grid.Add(new HexTile(HexCoord.FromOffset(4, 0), Blue));
-        grid.Get(HexCoord.FromOffset(4, 0))!.Occupant = new Unit(Blue, UnitLevel.Spearman);
+        grid.Get(HexCoord.FromOffset(4, 0))!.Occupant = new Unit(Blue, UnitLevel.Soldier);
         GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
         HexCoord cap = state.Territories.First(t => t.Owner == Red).Capital!.Value;
         state.Treasury.SetGold(cap, 10);
         IReadOnlyList<Territory> beforeTerritories = state.Territories;
 
-        var buy = new AiBuyUnitAction(cap, HexCoord.FromOffset(3, 0), UnitLevel.Peasant);
+        var buy = new AiBuyUnitAction(cap, HexCoord.FromOffset(3, 0), UnitLevel.Recruit);
         AiSimulator.Apply(buy, state);
 
-        Assert.Equal(10 - PurchaseRules.CostFor(UnitLevel.Peasant), state.Treasury.GetGold(cap));
+        Assert.Equal(10 - PurchaseRules.CostFor(UnitLevel.Recruit), state.Treasury.GetGold(cap));
         Unit placed = Assert.IsType<Unit>(state.Grid.Get(HexCoord.FromOffset(3, 0))!.Occupant);
         Assert.Equal(Red, placed.Owner);
-        Assert.Equal(UnitLevel.Peasant, placed.Level);
+        Assert.Equal(UnitLevel.Recruit, placed.Level);
         Assert.True(placed.HasMovedThisTurn);
         Assert.Same(beforeTerritories, state.Territories);
     }

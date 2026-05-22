@@ -8,7 +8,7 @@ using System.Collections.Generic;
 /// stays in the treasury.
 ///
 /// Upkeep values per Slay:
-///   Peasant = 2, Spearman = 6, Knight = 18, Baron = 54
+///   Recruit = 2, Soldier = 6, Captain = 18, Commander = 54
 /// </summary>
 /// <summary>
 /// Outlook of a territory's near-term economy. Pure economic facts —
@@ -34,10 +34,10 @@ public static class UpkeepRules
     /// <summary>The upkeep cost a single unit of the given level demands per turn.</summary>
     public static int UpkeepFor(UnitLevel level) => level switch
     {
-        UnitLevel.Peasant => 2,
-        UnitLevel.Spearman => 6,
-        UnitLevel.Knight => 18,
-        UnitLevel.Baron => 54,
+        UnitLevel.Recruit => 2,
+        UnitLevel.Soldier => 6,
+        UnitLevel.Captain => 18,
+        UnitLevel.Commander => 54,
         _ => 0,
     };
 

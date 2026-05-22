@@ -195,7 +195,7 @@ public class GameControllerTests
     public void Click_OwnUnit_EntersMovingMode_AndShowsTargets()
     {
         var g = new TestGame();
-        // Manually place a Red peasant on (1,1) — the non-capital Red tile.
+        // Manually place a Red recruit on (1,1) — the non-capital Red tile.
         g.Tile(1, 1).Occupant = new Unit(g.Red.Id);
 
         g.Map.SimulateClick(g.Tile(1, 1));
@@ -222,15 +222,15 @@ public class GameControllerTests
     public void Click_OwnUnit_PassesUnitLevelToMoveTargetPreview()
     {
         // The destination preview rings need to know the source unit's
-        // level so the view can render a Spearman/Knight/Baron preview
-        // with the correct number of concentric rings (and Baron dot)
-        // instead of always drawing a peasant-sized single ring.
+        // level so the view can render a Soldier/Captain/Commander preview
+        // with the correct number of concentric rings (and Commander dot)
+        // instead of always drawing a recruit-sized single ring.
         var g = new TestGame();
-        g.Tile(1, 1).Occupant = new Unit(g.Red.Id, UnitLevel.Spearman);
+        g.Tile(1, 1).Occupant = new Unit(g.Red.Id, UnitLevel.Soldier);
 
         g.Map.SimulateClick(g.Tile(1, 1));
 
-        Assert.Equal(UnitLevel.Spearman, g.Map.LastMoveTargetsLevel);
+        Assert.Equal(UnitLevel.Soldier, g.Map.LastMoveTargetsLevel);
     }
 
     [Fact]
@@ -270,7 +270,7 @@ public class GameControllerTests
     }
 
     [Fact]
-    public void BuyPeasant_HighlightsTreeInOwnTerritory_AsTarget()
+    public void BuyRecruit_HighlightsTreeInOwnTerritory_AsTarget()
     {
         // The buy-and-place flow uses the same target ring logic — a
         // tree in own territory is a legal placement that consumes the
@@ -280,7 +280,7 @@ public class GameControllerTests
         g.Tile(1, 1).Occupant = new Tree();
         g.Map.SimulateClick(g.Tile(0, 1));
 
-        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyRecruit();
 
         Assert.Contains(HexCoord.FromOffset(1, 1), g.Map.LastMoveTargets);
     }
@@ -322,16 +322,16 @@ public class GameControllerTests
     }
 
     [Fact]
-    public void BuyPeasant_HighlightsGraveInOwnTerritory_AsTarget()
+    public void BuyRecruit_HighlightsGraveInOwnTerritory_AsTarget()
     {
-        // Buying a peasant onto a grave is already legal (PurchaseRules
+        // Buying a recruit onto a grave is already legal (PurchaseRules
         // accepts grave tiles) and consumes the action — so the grave
         // must show up in the placement preview ring.
         var g = new TestGame();
         g.Tile(1, 1).Occupant = new Grave();
         g.Map.SimulateClick(g.Tile(0, 1));
 
-        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyRecruit();
 
         Assert.Contains(HexCoord.FromOffset(1, 1), g.Map.LastMoveTargets);
     }
@@ -369,7 +369,7 @@ public class GameControllerTests
     }
 
     [Fact]
-    public void BuyPeasant_WhileUnitPickedUp_ClearsMoveSource()
+    public void BuyRecruit_WhileUnitPickedUp_ClearsMoveSource()
     {
         // If the user picked up a unit and then presses U/click Buy,
         // the pulse should clear — we're no longer in MovingUnit mode.
@@ -379,7 +379,7 @@ public class GameControllerTests
         g.Map.SimulateClick(g.Tile(1, 1));
         Assert.NotNull(g.Map.LastMoveSource);
 
-        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyRecruit();
 
         Assert.Null(g.Map.LastMoveSource);
     }
@@ -396,25 +396,25 @@ public class GameControllerTests
         Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
     }
 
-    // --- Buy peasant ------------------------------------------------------
+    // --- Buy recruit ------------------------------------------------------
 
     [Fact]
-    public void BuyPeasant_OnOwnEmptyTile_DeductsGoldAndPlacesUnit()
+    public void BuyRecruit_OnOwnEmptyTile_DeductsGoldAndPlacesUnit()
     {
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1)); // select Red
         HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
         int goldBefore = g.State.Treasury.GetGold(redCapital);
 
-        g.Hud.ClickBuyPeasant();
-        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+        g.Hud.ClickBuyRecruit();
+        Assert.Equal(SessionState.ActionMode.BuyingRecruit, g.Session.Mode);
 
         // (1,1) is in Red but not Red's capital ((0,1) is) and is empty.
         g.Map.SimulateClick(g.Tile(1, 1));
 
         Assert.NotNull(g.Tile(1, 1).Unit);
         Assert.Equal(g.Red.Id, g.Tile(1, 1).Unit!.Owner);
-        Assert.Equal(goldBefore - PurchaseRules.PeasantCost, g.State.Treasury.GetGold(redCapital));
+        Assert.Equal(goldBefore - PurchaseRules.RecruitCost, g.State.Treasury.GetGold(redCapital));
         // Buy-on-own-tile doesn't consume the unit's action.
         Assert.False(g.Tile(1, 1).Unit!.HasMovedThisTurn);
         Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
@@ -432,7 +432,7 @@ public class GameControllerTests
         g.Map.SimulateClick(g.Tile(1, 1));
         Assert.Equal(SessionState.ActionMode.MovingUnit, g.Session.Mode);
 
-        // (2,1) is Blue, not Blue's capital, empty → capturable by peasant.
+        // (2,1) is Blue, not Blue's capital, empty → capturable by recruit.
         g.Map.SimulateClick(g.Tile(2, 1));
 
         Assert.Equal(g.Red.Id, g.Tile(2, 1).Owner);
@@ -472,9 +472,9 @@ public class GameControllerTests
         // Move-capture onto an enemy unit dispatches a single
         // PlayDestructionEffect for the displaced defender.
         var g = new TestGame();
-        var attacker = new Unit(g.Red.Id, UnitLevel.Spearman);
+        var attacker = new Unit(g.Red.Id, UnitLevel.Soldier);
         g.Tile(1, 1).Occupant = attacker;
-        var defender = new Unit(g.Blue.Id, UnitLevel.Peasant);
+        var defender = new Unit(g.Blue.Id, UnitLevel.Recruit);
         g.Tile(2, 1).Occupant = defender;
 
         g.Map.SimulateClick(g.Tile(1, 1));
@@ -500,13 +500,13 @@ public class GameControllerTests
     }
 
     [Fact]
-    public void BuyPeasant_CaptureEmptyEnemyTile_DoesNotFireDestructionEffect()
+    public void BuyRecruit_CaptureEmptyEnemyTile_DoesNotFireDestructionEffect()
     {
         var g = new TestGame();
         HexCoord redCapital = g.RedTerritory.Capital!.Value;
         g.State.Treasury.SetGold(redCapital, 25);
         g.Map.SimulateClick(g.Tile(0, 1));
-        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyRecruit();
         g.Map.SimulateClick(g.Tile(2, 1));
 
         Assert.Empty(g.Map.DestructionEffects);
@@ -572,13 +572,13 @@ public class GameControllerTests
     }
 
     [Fact]
-    public void BuyPeasant_CaptureEmptyEnemyTile_FiresUnitPlacedSound()
+    public void BuyRecruit_CaptureEmptyEnemyTile_FiresUnitPlacedSound()
     {
         var g = new TestGame();
         HexCoord redCapital = g.RedTerritory.Capital!.Value;
         g.State.Treasury.SetGold(redCapital, 25);
         g.Map.SimulateClick(g.Tile(0, 1));
-        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyRecruit();
         g.Map.SimulateClick(g.Tile(2, 1));
 
         Assert.Single(g.Map.UnitPlacedSounds);
@@ -586,11 +586,11 @@ public class GameControllerTests
     }
 
     [Fact]
-    public void BuyPeasant_OnOwnEmptyTile_DoesNotFireUnitPlacedSound()
+    public void BuyRecruit_OnOwnEmptyTile_DoesNotFireUnitPlacedSound()
     {
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
-        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyRecruit();
         // (1,1) is Red and empty — placement leaves the new unit
         // actionable.
         g.Map.SimulateClick(g.Tile(1, 1));
@@ -637,18 +637,18 @@ public class GameControllerTests
         var controller = new GameController(state, session, map, new MockHudView());
         controller.StartGame();
 
-        var moving = new Unit(red.Id, UnitLevel.Peasant);
-        var stationary = new Unit(red.Id, UnitLevel.Peasant);
+        var moving = new Unit(red.Id, UnitLevel.Recruit);
+        var stationary = new Unit(red.Id, UnitLevel.Recruit);
         grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = moving;
         grid.Get(HexCoord.FromOffset(2, 1))!.Occupant = stationary;
 
         map.SimulateClick(grid.Get(HexCoord.FromOffset(1, 1))); // pick up
         map.SimulateClick(grid.Get(HexCoord.FromOffset(2, 1))); // combine
 
-        // The two peasants merged into a Spearman.
+        // The two recruits merged into a Soldier.
         Unit? combined = grid.Get(HexCoord.FromOffset(2, 1))!.Unit;
         Assert.NotNull(combined);
-        Assert.Equal(UnitLevel.Spearman, combined!.Level);
+        Assert.Equal(UnitLevel.Soldier, combined!.Level);
         Assert.Null(grid.Get(HexCoord.FromOffset(1, 1))!.Unit);
 
         Assert.Single(map.UnitCombinedSounds);
@@ -658,23 +658,23 @@ public class GameControllerTests
     }
 
     [Fact]
-    public void BuyPeasant_CombineOntoFriendlyUnit_FiresCombineSoundOnly()
+    public void BuyRecruit_CombineOntoFriendlyUnit_FiresCombineSoundOnly()
     {
         var g = new TestGame();
-        // Stationary peasant on (1,1) for the bought peasant to merge into.
-        var stationary = new Unit(g.Red.Id, UnitLevel.Peasant);
+        // Stationary recruit on (1,1) for the bought recruit to merge into.
+        var stationary = new Unit(g.Red.Id, UnitLevel.Recruit);
         g.Tile(1, 1).Occupant = stationary;
 
         HexCoord redCapital = g.RedTerritory.Capital!.Value;
         g.State.Treasury.SetGold(redCapital, 25);
 
         g.Map.SimulateClick(g.Tile(0, 1));
-        g.Hud.ClickBuyPeasant();
-        g.Map.SimulateClick(g.Tile(1, 1)); // combine — bought peasant onto stationary peasant
+        g.Hud.ClickBuyRecruit();
+        g.Map.SimulateClick(g.Tile(1, 1)); // combine — bought recruit onto stationary recruit
 
         Unit? combined = g.Tile(1, 1).Unit;
         Assert.NotNull(combined);
-        Assert.Equal(UnitLevel.Spearman, combined!.Level);
+        Assert.Equal(UnitLevel.Soldier, combined!.Level);
 
         Assert.Single(g.Map.UnitCombinedSounds);
         Assert.Equal(HexCoord.FromOffset(1, 1), g.Map.UnitCombinedSounds[0]);
@@ -692,9 +692,9 @@ public class GameControllerTests
     public void Move_CaptureEnemyUnit_FiresUnitDestroyedSound_NotPlace()
     {
         var g = new TestGame();
-        var attacker = new Unit(g.Red.Id, UnitLevel.Spearman);
+        var attacker = new Unit(g.Red.Id, UnitLevel.Soldier);
         g.Tile(1, 1).Occupant = attacker;
-        var defender = new Unit(g.Blue.Id, UnitLevel.Peasant);
+        var defender = new Unit(g.Blue.Id, UnitLevel.Recruit);
         g.Tile(2, 1).Occupant = defender;
 
         g.Map.SimulateClick(g.Tile(1, 1));
@@ -709,8 +709,8 @@ public class GameControllerTests
     public void Move_CaptureEnemyTower_FiresTowerDestroyedSound_NotPlace()
     {
         var g = new TestGame();
-        var knight = new Unit(g.Red.Id, UnitLevel.Knight);
-        g.Tile(1, 1).Occupant = knight;
+        var captain = new Unit(g.Red.Id, UnitLevel.Captain);
+        g.Tile(1, 1).Occupant = captain;
         g.Tile(2, 1).Occupant = new Tower();
 
         g.Map.SimulateClick(g.Tile(1, 1));
@@ -728,10 +728,10 @@ public class GameControllerTests
     {
         // StartGame doesn't run StartPlayerTurn for the initial human
         // player — upkeep first applies on the *next* turn-start. Set
-        // up a Knight on a Blue tile, zero the Blue treasury, then end
+        // up a Captain on a Blue tile, zero the Blue treasury, then end
         // Red's turn so Blue's StartPlayerTurn runs and bankrupts.
         var g = new TestGame();
-        g.Tile(3, 0).Occupant = new Unit(g.Blue.Id, UnitLevel.Knight);
+        g.Tile(3, 0).Occupant = new Unit(g.Blue.Id, UnitLevel.Captain);
         Territory blueT = g.State.Territories.First(t => t.Owner == g.Blue.Id);
         HexCoord blueCapital = blueT.Capital!.Value;
         g.State.Treasury.SetGold(blueCapital, 0);
@@ -756,8 +756,8 @@ public class GameControllerTests
         MockHudView Hud, Player Red, Player Blue) BuildBlueBankruptcyScenario(bool blueIsAi)
     {
         // 5x2 grid: Red (human) holds {(0,1),(1,1)}, Blue holds the rest.
-        // A Knight on a Blue tile with a zeroed Blue capital guarantees
-        // Blue's next StartPlayerTurn bankrupts (Knight upkeep 18 > Blue
+        // A Captain on a Blue tile with a zeroed Blue capital guarantees
+        // Blue's next StartPlayerTurn bankrupts (Captain upkeep 18 > Blue
         // income). Mirrors StartPlayerTurn_BankruptcyOccurs_* but lets the
         // caller make Blue AI and wires aiSilentMode.
         var red = new Player("Red", PlayerId.FromIndex(0));
@@ -792,7 +792,7 @@ public class GameControllerTests
         controller.StartGame();
 
         HexCoord blueCapital = state.Territories.First(t => t.Owner == blue.Id).Capital!.Value;
-        state.Grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = new Unit(blue.Id, UnitLevel.Knight);
+        state.Grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = new Unit(blue.Id, UnitLevel.Captain);
         state.Treasury.SetGold(blueCapital, 0);
 
         hud.ClickEndTurn(); // Red ends → Blue (AI) StartPlayerTurn bankrupts
@@ -817,7 +817,7 @@ public class GameControllerTests
         controller.StartGame();
 
         HexCoord blueCapital = state.Territories.First(t => t.Owner == blue.Id).Capital!.Value;
-        state.Grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = new Unit(blue.Id, UnitLevel.Knight);
+        state.Grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = new Unit(blue.Id, UnitLevel.Captain);
         state.Treasury.SetGold(blueCapital, 0);
 
         hud.ClickEndTurn(); // Red ends → Blue (human) StartPlayerTurn bankrupts
@@ -829,12 +829,12 @@ public class GameControllerTests
     [Fact]
     public void Move_CaptureEnemyCapital_FiresCapitalDestroyedSound_NotPlace()
     {
-        // Capital provides 1 defense, so a Spearman (level 2) beats it.
+        // Capital provides 1 defense, so a Soldier (level 2) beats it.
         // We plant a Capital on a regular Blue tile rather than fight
         // the territory layout: the audio dispatcher routes purely on
         // result.Destroyed's runtime type.
         var g = new TestGame();
-        g.Tile(1, 1).Occupant = new Unit(g.Red.Id, UnitLevel.Spearman);
+        g.Tile(1, 1).Occupant = new Unit(g.Red.Id, UnitLevel.Soldier);
         g.Tile(2, 1).Occupant = new Capital();
 
         g.Map.SimulateClick(g.Tile(1, 1));
@@ -848,8 +848,8 @@ public class GameControllerTests
     [Fact]
     public void Capture_EliminatingEnemyLastCapital_FiresPlayerDefeatedSound()
     {
-        // 4x1: Red {(0,0),(1,0)} with Spearman on (1,0); Blue {(2,0),(3,0)}.
-        // Spearman captures (2,0) — Blue's capital tile. Blue's remaining
+        // 4x1: Red {(0,0),(1,0)} with Soldier on (1,0); Blue {(2,0),(3,0)}.
+        // Soldier captures (2,0) — Blue's capital tile. Blue's remaining
         // tile (3,0) becomes a singleton, capital-less → eliminated.
         var red = new Player("Red", PlayerId.FromIndex(0));
         var blue = new Player("Blue", PlayerId.FromIndex(1));
@@ -858,7 +858,7 @@ public class GameControllerTests
         var grid = TestHelpers.BuildRectGrid(4, 1, blue.Id);
         grid.Get(HexCoord.FromOffset(0, 0))!.Owner = red.Id;
         grid.Get(HexCoord.FromOffset(1, 0))!.Owner = red.Id;
-        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(red.Id, UnitLevel.Spearman);
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(red.Id, UnitLevel.Soldier);
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -879,9 +879,9 @@ public class GameControllerTests
     {
         // 3-player setup: Red and Green still in the game, Blue is
         // eliminated (no capital on the board) with a single orphan
-        // Peasant on a one-tile territory. After Red ends turn → Green
+        // Recruit on a one-tile territory. After Red ends turn → Green
         // ends turn → Blue's skipped turn must still run upkeep so the
-        // stranded Peasant bankrupts into a Grave (no capital, no gold,
+        // stranded Recruit bankrupts into a Grave (no capital, no gold,
         // owed > 0). Without the phantom-turn processing,
         // AdvanceToNextActivePlayer skips Blue entirely and the unit
         // would survive indefinitely.
@@ -895,11 +895,11 @@ public class GameControllerTests
         // pass IsEliminated.
         grid.Get(HexCoord.FromOffset(0, 1))!.Owner = green.Id;
         grid.Get(HexCoord.FromOffset(1, 1))!.Owner = green.Id;
-        // Blue orphan singleton with a Peasant — no Blue capital on
+        // Blue orphan singleton with a Recruit — no Blue capital on
         // the board.
         HexCoord orphanCoord = HexCoord.FromOffset(5, 1);
         grid.Get(orphanCoord)!.Owner = blue.Id;
-        grid.Get(orphanCoord)!.Occupant = new Unit(blue.Id, UnitLevel.Peasant);
+        grid.Get(orphanCoord)!.Occupant = new Unit(blue.Id, UnitLevel.Recruit);
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -984,7 +984,7 @@ public class GameControllerTests
         var grid = TestHelpers.BuildRectGrid(4, 1, blue.Id);
         grid.Get(HexCoord.FromOffset(0, 0))!.Owner = red.Id;
         grid.Get(HexCoord.FromOffset(1, 0))!.Owner = red.Id;
-        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(red.Id, UnitLevel.Spearman);
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(red.Id, UnitLevel.Soldier);
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -1013,7 +1013,7 @@ public class GameControllerTests
         var grid = TestHelpers.BuildRectGrid(4, 1, blue.Id);
         grid.Get(HexCoord.FromOffset(0, 0))!.Owner = red.Id;
         grid.Get(HexCoord.FromOffset(1, 0))!.Owner = red.Id;
-        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(red.Id, UnitLevel.Spearman);
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(red.Id, UnitLevel.Soldier);
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -1043,7 +1043,7 @@ public class GameControllerTests
         var grid = TestHelpers.BuildRectGrid(4, 1, blue.Id);
         grid.Get(HexCoord.FromOffset(0, 0))!.Owner = red.Id;
         grid.Get(HexCoord.FromOffset(1, 0))!.Owner = red.Id;
-        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(red.Id, UnitLevel.Spearman);
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(red.Id, UnitLevel.Soldier);
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -1073,7 +1073,7 @@ public class GameControllerTests
         var grid = TestHelpers.BuildRectGrid(4, 1, red.Id);
         grid.Get(HexCoord.FromOffset(2, 0))!.Owner = blue.Id;
         grid.Get(HexCoord.FromOffset(3, 0))!.Owner = blue.Id;
-        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(blue.Id, UnitLevel.Spearman);
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(blue.Id, UnitLevel.Soldier);
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players,
@@ -1162,7 +1162,7 @@ public class GameControllerTests
         var grid = TestHelpers.BuildRectGrid(4, 1, blue.Id);
         grid.Get(HexCoord.FromOffset(0, 0))!.Owner = red.Id;
         grid.Get(HexCoord.FromOffset(1, 0))!.Owner = red.Id;
-        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(red.Id, UnitLevel.Spearman);
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(red.Id, UnitLevel.Soldier);
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -1188,7 +1188,7 @@ public class GameControllerTests
         // human dismisses the overlay.
         //
         // 5x1: Red (human) {(0,0)} singleton + Blue (AI) {(1,0),(2,0),(3,0),(4,0)}
-        // with a Knight at (1,0) (level 3, beats capital). Wait — Red singleton
+        // with a Captain at (1,0) (level 3, beats capital). Wait — Red singleton
         // means Red is "eliminated" at start under our rotation rule. Use a
         // 5x2 layout instead so Red has a 2-hex territory + a one-hex
         // outpost the AI can capture for the kill.
@@ -1197,10 +1197,10 @@ public class GameControllerTests
         var players = new List<Player> { red, blue };
 
         // 5x1: Red {(3,0),(4,0)} (capital at lex-min (3,0)), Blue
-        // {(0,0),(1,0),(2,0)} with a Spearman at (2,0). Spearman at
-        // (2,0) is adjacent to Red's capital (3,0); Spearman (atk 2)
+        // {(0,0),(1,0),(2,0)} with a Soldier at (2,0). Soldier at
+        // (2,0) is adjacent to Red's capital (3,0); Soldier (atk 2)
         // beats capital (def 1), so the heuristic captures it on
-        // first beat, eliminating Red. (Spearman upkeep = 6g vs
+        // first beat, eliminating Red. (Soldier upkeep = 6g vs
         // Blue's 15g seed, so it survives the start-of-turn upkeep
         // pass.)
         var grid = TestHelpers.BuildRectGrid(5, 1, PlayerId.None);
@@ -1209,7 +1209,7 @@ public class GameControllerTests
         grid.Get(HexCoord.FromOffset(2, 0))!.Owner = blue.Id;
         grid.Get(HexCoord.FromOffset(3, 0))!.Owner = red.Id;
         grid.Get(HexCoord.FromOffset(4, 0))!.Owner = red.Id;
-        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(blue.Id, UnitLevel.Spearman);
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(blue.Id, UnitLevel.Soldier);
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -1251,10 +1251,10 @@ public class GameControllerTests
     }
 
     [Fact]
-    public void Buy_PlacingSpearmanOnEnemyLastCapital_FiresPlayerDefeatedSound()
+    public void Buy_PlacingSoldierOnEnemyLastCapital_FiresPlayerDefeatedSound()
     {
         // User's repro: enemy has ONE 2-hex territory, total. Player
-        // selects own territory, buys a Spearman, places it on the
+        // selects own territory, buys a Soldier, places it on the
         // enemy's capital tile. Capture eliminates the enemy.
         //
         // 4x1: Red {(0,0),(1,0)} adjacent to Blue {(2,0),(3,0)}.
@@ -1274,15 +1274,15 @@ public class GameControllerTests
         var controller = new GameController(state, session, map, hud);
         controller.StartGame();
 
-        // Boost Red's treasury so we can afford a Spearman (cost 20).
+        // Boost Red's treasury so we can afford a Soldier (cost 20).
         HexCoord redCapital = state.Territories.First(t => t.Owner == red.Id).Capital!.Value;
         state.Treasury.SetGold(redCapital, 100);
 
-        // Select Red's territory, cycle buy-mode to Spearman, place on
+        // Select Red's territory, cycle buy-mode to Soldier, place on
         // Blue's capital tile (lex-min in Blue's 2-hex territory = (2,0)).
         map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(0, 0)));
-        hud.ClickBuyPeasant();             // Peasant
-        hud.ClickBuyPeasant();             // Spearman
+        hud.ClickBuyRecruit();             // Recruit
+        hud.ClickBuyRecruit();             // Soldier
         map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(2, 0)));
 
         Assert.Equal(1, map.PlayerDefeatedSoundCount);
@@ -1291,8 +1291,8 @@ public class GameControllerTests
     [Fact]
     public void Capture_EnemyStillHasCapital_DoesNotFirePlayerDefeatedSound()
     {
-        // 5x1: Red {(0,0),(1,0)} with Spearman on (1,0); Blue {(2,0),(3,0),(4,0)}.
-        // Spearman captures (2,0) — Blue's capital. Blue's remaining
+        // 5x1: Red {(0,0),(1,0)} with Soldier on (1,0); Blue {(2,0),(3,0),(4,0)}.
+        // Soldier captures (2,0) — Blue's capital. Blue's remaining
         // {(3,0),(4,0)} is still a 2-tile territory → fresh capital
         // placed → Blue is NOT eliminated.
         var red = new Player("Red", PlayerId.FromIndex(0));
@@ -1302,7 +1302,7 @@ public class GameControllerTests
         var grid = TestHelpers.BuildRectGrid(5, 1, blue.Id);
         grid.Get(HexCoord.FromOffset(0, 0))!.Owner = red.Id;
         grid.Get(HexCoord.FromOffset(1, 0))!.Owner = red.Id;
-        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(red.Id, UnitLevel.Spearman);
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(red.Id, UnitLevel.Soldier);
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -1371,12 +1371,12 @@ public class GameControllerTests
     [Fact]
     public void Move_CaptureEnemyTower_FiresDestructionEffectWithTower()
     {
-        // Knight captures an enemy tower — the displaced Tower is
+        // Captain captures an enemy tower — the displaced Tower is
         // reported in the destruction effect so the view can render
         // tower-shaped FX.
         var g = new TestGame();
-        var knight = new Unit(g.Red.Id, UnitLevel.Knight);
-        g.Tile(1, 1).Occupant = knight;
+        var captain = new Unit(g.Red.Id, UnitLevel.Captain);
+        g.Tile(1, 1).Occupant = captain;
         var tower = new Tower();
         g.Tile(2, 1).Occupant = tower;
 
@@ -1434,9 +1434,9 @@ public class GameControllerTests
         // NOT replay or fire any new destruction effects — only
         // forward play does.
         var g = new TestGame();
-        var attacker = new Unit(g.Red.Id, UnitLevel.Spearman);
+        var attacker = new Unit(g.Red.Id, UnitLevel.Soldier);
         g.Tile(1, 1).Occupant = attacker;
-        var defender = new Unit(g.Blue.Id, UnitLevel.Peasant);
+        var defender = new Unit(g.Blue.Id, UnitLevel.Recruit);
         g.Tile(2, 1).Occupant = defender;
 
         g.Map.SimulateClick(g.Tile(1, 1));
@@ -1450,34 +1450,34 @@ public class GameControllerTests
     }
 
     [Fact]
-    public void BuyPeasant_OnOwnTile_StaysInBuyingMode_IfStillAffordable()
+    public void BuyRecruit_OnOwnTile_StaysInBuyingMode_IfStillAffordable()
     {
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
         HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
-        // Give Red enough to buy two peasants in a row.
+        // Give Red enough to buy two recruits in a row.
         g.State.Treasury.SetGold(redCapital, 25);
 
-        g.Hud.ClickBuyPeasant();
-        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+        g.Hud.ClickBuyRecruit();
+        Assert.Equal(SessionState.ActionMode.BuyingRecruit, g.Session.Mode);
 
         // (1,1) is an empty Red non-capital tile — valid placement.
         g.Map.SimulateClick(g.Tile(1, 1));
 
         // Bought: 25 - 10 = 15 remaining, still ≥ 10 → stay in mode.
-        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+        Assert.Equal(SessionState.ActionMode.BuyingRecruit, g.Session.Mode);
         Assert.Equal(15, g.State.Treasury.GetGold(redCapital));
     }
 
     [Fact]
-    public void BuyPeasant_OnOwnTile_ExitsBuyingMode_IfNoLongerAffordable()
+    public void BuyRecruit_OnOwnTile_ExitsBuyingMode_IfNoLongerAffordable()
     {
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
         HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
-        g.State.Treasury.SetGold(redCapital, 10); // exactly one peasant
+        g.State.Treasury.SetGold(redCapital, 10); // exactly one recruit
 
-        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyRecruit();
         g.Map.SimulateClick(g.Tile(1, 1));
 
         // Bought: 10 - 10 = 0 < 10 → exit mode.
@@ -1485,23 +1485,23 @@ public class GameControllerTests
     }
 
     [Fact]
-    public void BuyPeasant_Capture_StaysInBuyingMode_IfMergedTerritoryStillAffordable()
+    public void BuyRecruit_Capture_StaysInBuyingMode_IfMergedTerritoryStillAffordable()
     {
         // Capture rebinds the selection to the new territory; the
         // affordability check runs against that new selection. The
         // Red territory in TestGame merges with the captured tile
         // (trivially — (2,1) becomes part of Red). Red's gold is 25-10=15,
-        // enough for another peasant.
+        // enough for another recruit.
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
         HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
         g.State.Treasury.SetGold(redCapital, 25);
 
-        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyRecruit();
         g.Map.SimulateClick(g.Tile(2, 1)); // capture Blue adjacent
 
         // Still in mode; selection rebound; treasury 15.
-        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+        Assert.Equal(SessionState.ActionMode.BuyingRecruit, g.Session.Mode);
         Assert.NotNull(g.Session.SelectedTerritory);
         Assert.Contains(HexCoord.FromOffset(2, 1), g.Session.SelectedTerritory!.Coords);
     }
@@ -1541,7 +1541,7 @@ public class GameControllerTests
     }
 
     [Fact]
-    public void BuildTower_ThenBuyPeasant_ClearsTowerTargets()
+    public void BuildTower_ThenBuyRecruit_ClearsTowerTargets()
     {
         // Switching from BuildingTower mode into a buy mode must wipe
         // the tower-target preview — otherwise the player picks a unit
@@ -1549,12 +1549,12 @@ public class GameControllerTests
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
         HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
-        g.State.Treasury.SetGold(redCapital, 25); // 15 tower + 10 peasant
+        g.State.Treasury.SetGold(redCapital, 25); // 15 tower + 10 recruit
 
         g.Hud.ClickBuildTower();
         Assert.NotEmpty(g.Map.LastTowerTargets); // sanity
 
-        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyRecruit();
 
         Assert.Empty(g.Map.LastTowerTargets);
     }
@@ -1609,7 +1609,7 @@ public class GameControllerTests
     }
 
     [Fact]
-    public void BuildTower_WhileInBuyingPeasantMode_SwitchesToBuildingMode()
+    public void BuildTower_WhileInBuyingRecruitMode_SwitchesToBuildingMode()
     {
         // Clicking a different placement button while in a placement
         // mode should switch cleanly to the new mode. Regression lock
@@ -1619,21 +1619,21 @@ public class GameControllerTests
         HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
         g.State.Treasury.SetGold(redCapital, 30);
 
-        g.Hud.ClickBuyPeasant();
-        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+        g.Hud.ClickBuyRecruit();
+        Assert.Equal(SessionState.ActionMode.BuyingRecruit, g.Session.Mode);
 
         g.Hud.ClickBuildTower();
         Assert.Equal(SessionState.ActionMode.BuildingTower, g.Session.Mode);
     }
 
     [Fact]
-    public void BuyPeasant_Capture_KeepsSelection_OnAttackerNewTerritory()
+    public void BuyRecruit_Capture_KeepsSelection_OnAttackerNewTerritory()
     {
         // Same QoL guarantee for the buy-and-capture path.
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
-        g.Hud.ClickBuyPeasant();
-        // (2,1) is Blue, adjacent to Red's (1,1). Capturable by a fresh peasant.
+        g.Hud.ClickBuyRecruit();
+        // (2,1) is Blue, adjacent to Red's (1,1). Capturable by a fresh recruit.
         g.Map.SimulateClick(g.Tile(2, 1));
 
         Assert.NotNull(g.Session.SelectedTerritory);
@@ -1688,7 +1688,7 @@ public class GameControllerTests
     public void EndTurn_PaysUpkeep_FromNewPlayerTerritories()
     {
         var g = new TestGame();
-        // Put a Blue peasant on a non-capital Blue tile so Blue has
+        // Put a Blue recruit on a non-capital Blue tile so Blue has
         // upkeep to pay when Blue's turn begins. Round 1 has no income
         // (every player's first turn skips income), so Blue's only
         // treasury change at the start of its first turn is upkeep.
@@ -1700,7 +1700,7 @@ public class GameControllerTests
         g.Hud.ClickEndTurn(); // Red -> Blue: Blue pays upkeep, no income (round 1).
 
         Assert.Equal(20 - 2, g.State.Treasury.GetGold(blueCapital));
-        // Peasant survived because Blue could afford it.
+        // Recruit survived because Blue could afford it.
         Assert.NotNull(g.Tile(3, 0).Unit);
     }
 
@@ -1708,17 +1708,17 @@ public class GameControllerTests
     public void EndTurn_BankruptTerritory_LeavesGraves()
     {
         var g = new TestGame();
-        // Give Blue a knight (upkeep 18) it can't pay. Blue has 0 gold
+        // Give Blue a captain (upkeep 18) it can't pay. Blue has 0 gold
         // and round 1 skips the income credit, so upkeep goes straight
         // to bankruptcy.
-        g.Tile(3, 0).Occupant = new Unit(g.Blue.Id, UnitLevel.Knight);
+        g.Tile(3, 0).Occupant = new Unit(g.Blue.Id, UnitLevel.Captain);
         HexCoord blueCapital = g.State.Territories
             .First(t => t.Owner == g.Blue.Id).Capital!.Value;
         g.State.Treasury.SetGold(blueCapital, 0);
 
         g.Hud.ClickEndTurn(); // advance to Blue
 
-        // Blue has 0g and owes 18 upkeep → bankrupt. Knight dies and
+        // Blue has 0g and owes 18 upkeep → bankrupt. Captain dies and
         // leaves a grave behind (not a null tile).
         Assert.IsType<Grave>(g.Tile(3, 0).Occupant);
     }
@@ -1802,14 +1802,14 @@ public class GameControllerTests
         // tile. This pins the start-of-turn order: tree-growth →
         // income → upkeep.
         var g = new TestGame();
-        g.Tile(3, 0).Occupant = new Unit(g.Blue.Id, UnitLevel.Knight);
+        g.Tile(3, 0).Occupant = new Unit(g.Blue.Id, UnitLevel.Captain);
         int blueSize = g.State.Territories
             .First(t => t.Owner == g.Blue.Id).Size;
         HexCoord blueCapital = g.State.Territories
             .First(t => t.Owner == g.Blue.Id).Capital!.Value;
         g.State.Treasury.SetGold(blueCapital, 0);
 
-        g.Hud.ClickEndTurn(); // Red T1 → Blue T1: knight bankrupts → grave on (3,0)
+        g.Hud.ClickEndTurn(); // Red T1 → Blue T1: captain bankrupts → grave on (3,0)
         Assert.IsType<Grave>(g.Tile(3, 0).Occupant);
         Assert.Equal(0, g.State.Treasury.GetGold(blueCapital));
 
@@ -1828,12 +1828,12 @@ public class GameControllerTests
     public void StartTurn_IncomeRunsBeforeUpkeep()
     {
         // Pin the income-vs-upkeep order. On Blue T2 start, Blue has
-        // 10g and a knight (upkeep 18). Blue's territory is 8 tiles,
+        // 10g and a captain (upkeep 18). Blue's territory is 8 tiles,
         // no trees → income = 8. Correct order (income before upkeep)
-        // gives 10 + 8 - 18 = 0g and the knight survives. If upkeep
-        // ran first the knight would bankrupt at 10 < 18 → grave.
+        // gives 10 + 8 - 18 = 0g and the captain survives. If upkeep
+        // ran first the captain would bankrupt at 10 < 18 → grave.
         var g = new TestGame();
-        g.Tile(3, 0).Occupant = new Unit(g.Blue.Id, UnitLevel.Knight);
+        g.Tile(3, 0).Occupant = new Unit(g.Blue.Id, UnitLevel.Captain);
         HexCoord blueCapital = g.State.Territories
             .First(t => t.Owner == g.Blue.Id).Capital!.Value;
 
@@ -1841,7 +1841,7 @@ public class GameControllerTests
         // jump to Blue T2 with the treasury exactly at 10g so the
         // ordering is what's being measured.
         g.State.Treasury.SetGold(blueCapital, 100); // survives T1 upkeep -18 fine
-        g.Hud.ClickEndTurn(); // Red T1 → Blue T1: -18 upkeep, knight survives
+        g.Hud.ClickEndTurn(); // Red T1 → Blue T1: -18 upkeep, captain survives
         Assert.IsType<Unit>(g.Tile(3, 0).Occupant);
         g.Hud.ClickEndTurn(); // Blue T1 → Red T2
 
@@ -1858,15 +1858,15 @@ public class GameControllerTests
     public void StartTurn_BankruptGraves_BecomeTreesOnPlayersNextOwnTurn()
     {
         // Full feedback loop under the new rule:
-        //   1. Blue can't afford its knight; on Blue's turn-1 START
+        //   1. Blue can't afford its captain; on Blue's turn-1 START
         //      the tree-growth phase is skipped (first-turn rule),
-        //      then upkeep bankrupts the knight → grave.
+        //      then upkeep bankrupts the captain → grave.
         //   2. Red's turn 2 starts: phase runs but only on Red tiles,
         //      so the Blue grave is unaffected.
         //   3. Blue's turn 2 starts: phase runs on Blue tiles, so
         //      the bankruptcy grave converts into a tree.
         var g = new TestGame();
-        g.Tile(3, 0).Occupant = new Unit(g.Blue.Id, UnitLevel.Knight);
+        g.Tile(3, 0).Occupant = new Unit(g.Blue.Id, UnitLevel.Captain);
         HexCoord blueCapital = g.State.Territories
             .First(t => t.Owner == g.Blue.Id).Capital!.Value;
         g.State.Treasury.SetGold(blueCapital, 0);
@@ -1986,25 +1986,25 @@ public class GameControllerTests
         // immediately convert that grave into a tree this turn.
         // Correct order leaves the freshly-bankrupted unit as a grave.
         var g = new TestGame();
-        // Knight on Blue tile that Blue cannot afford.
-        g.Tile(3, 0).Occupant = new Unit(g.Blue.Id, UnitLevel.Knight);
+        // Captain on Blue tile that Blue cannot afford.
+        g.Tile(3, 0).Occupant = new Unit(g.Blue.Id, UnitLevel.Captain);
         HexCoord blueCapital = g.State.Territories
             .First(t => t.Owner == g.Blue.Id).Capital!.Value;
         g.State.Treasury.SetGold(blueCapital, 0);
 
         // Skip Blue's first turn so the phase actually fires the
         // next time Blue starts a turn. We re-place the unbankrupted
-        // knight afterward to drive bankruptcy on Blue's turn 2 with
+        // captain afterward to drive bankruptcy on Blue's turn 2 with
         // the phase running first.
-        g.Hud.ClickEndTurn(); // Red -> Blue (turn 1, skip; knight goes bankrupt → grave)
+        g.Hud.ClickEndTurn(); // Red -> Blue (turn 1, skip; captain goes bankrupt → grave)
         Assert.IsType<Grave>(g.Tile(3, 0).Occupant);
 
-        // Plant a fresh knight that will bankrupt on Blue's turn 2.
+        // Plant a fresh captain that will bankrupt on Blue's turn 2.
         // The previous bankruptcy grave is still there; on Blue's
         // turn 2 it should convert to a tree (rule 1) BEFORE upkeep
-        // bankrupts the new knight. We can't put a knight directly
+        // bankrupts the new captain. We can't put a captain directly
         // on the grave tile, so use (4,0).
-        g.Tile(4, 0).Occupant = new Unit(g.Blue.Id, UnitLevel.Knight);
+        g.Tile(4, 0).Occupant = new Unit(g.Blue.Id, UnitLevel.Captain);
         g.State.Treasury.SetGold(blueCapital, 0);
 
         g.Hud.ClickEndTurn(); // Blue -> Red (turn 2, Red tiles only)
@@ -2014,7 +2014,7 @@ public class GameControllerTests
         g.Hud.ClickEndTurn(); // Red -> Blue (turn 2, runs on Blue tiles)
         // Old grave became a tree (growth ran first).
         Assert.IsType<Tree>(g.Tile(3, 0).Occupant);
-        // Fresh knight became a grave (upkeep ran AFTER growth, so
+        // Fresh captain became a grave (upkeep ran AFTER growth, so
         // the new grave does not get converted this turn).
         Assert.IsType<Grave>(g.Tile(4, 0).Occupant);
     }
@@ -2045,7 +2045,7 @@ public class GameControllerTests
     /// <summary>
     /// Minimal 2-player harness fixture mirroring the TestGame shape:
     /// a 5x2 Blue grid with Red owning (0,0), (0,1), (1,1) so there's
-    /// a capturable non-capital Blue tile at (2,1) for a peasant
+    /// a capturable non-capital Blue tile at (2,1) for a recruit
     /// placed at (1,1). Red's capital lands at (0,0), leaving (0,1)
     /// as the only empty Red tile for tower builds.
     /// </summary>
@@ -2106,7 +2106,7 @@ public class GameControllerTests
     public void ExecuteAiMove_DestinationNotAValidTarget_Throws()
     {
         (GameState state, MockHexMapView map, MockHudView hud) = BuildAiFixture();
-        // (4,1) is far from the peasant at (1,1), not adjacent.
+        // (4,1) is far from the recruit at (1,1), not adjacent.
         var bad = new AiMoveAction(HexCoord.FromOffset(1, 1), HexCoord.FromOffset(4, 1));
         GameController c = BuildHarnessWithStubAi(state, map, hud, bad);
 
@@ -2118,7 +2118,7 @@ public class GameControllerTests
     {
         (GameState state, MockHexMapView map, MockHudView hud) = BuildAiFixture();
         // (4,0) is Blue — no territory has that capital.
-        var bad = new AiBuyUnitAction(HexCoord.FromOffset(4, 0), HexCoord.FromOffset(2, 1), UnitLevel.Peasant);
+        var bad = new AiBuyUnitAction(HexCoord.FromOffset(4, 0), HexCoord.FromOffset(2, 1), UnitLevel.Recruit);
         GameController c = BuildHarnessWithStubAi(state, map, hud, bad);
 
         Assert.Throws<InvalidOperationException>(() => c.StartGame());
@@ -2128,14 +2128,14 @@ public class GameControllerTests
     public void ExecuteAiBuyUnit_Unaffordable_Throws()
     {
         // StartGame re-seeds treasury to 10 and collects income (+3)
-        // → 13g, above the 10g peasant cost. To exercise the
+        // → 13g, above the 10g recruit cost. To exercise the
         // affordability precondition we chain two actions: the first
         // is a legal buy-capture that drains the treasury to 3g, and
         // the second is a bad buy whose affordability check now fails.
         (GameState state, MockHexMapView map, MockHudView hud) = BuildAiFixture();
         HexCoord cap = RedCapital(state);
-        var first = new AiBuyUnitAction(cap, HexCoord.FromOffset(2, 1), UnitLevel.Peasant);
-        var second = new AiBuyUnitAction(cap, HexCoord.FromOffset(2, 1), UnitLevel.Peasant);
+        var first = new AiBuyUnitAction(cap, HexCoord.FromOffset(2, 1), UnitLevel.Recruit);
+        var second = new AiBuyUnitAction(cap, HexCoord.FromOffset(2, 1), UnitLevel.Recruit);
         GameController c = BuildHarnessWithStubAi(state, map, hud, first, second);
 
         Assert.Throws<InvalidOperationException>(() => c.StartGame());
@@ -2148,7 +2148,7 @@ public class GameControllerTests
         HexCoord cap = RedCapital(state);
         state.Treasury.SetGold(cap, 20);
         // (4,1) is Blue and not adjacent to any Red tile.
-        var bad = new AiBuyUnitAction(cap, HexCoord.FromOffset(4, 1), UnitLevel.Peasant);
+        var bad = new AiBuyUnitAction(cap, HexCoord.FromOffset(4, 1), UnitLevel.Recruit);
         GameController c = BuildHarnessWithStubAi(state, map, hud, bad);
 
         Assert.Throws<InvalidOperationException>(() => c.StartGame());
@@ -2197,7 +2197,7 @@ public class GameControllerTests
         (GameState state, MockHexMapView map, MockHudView hud) = BuildAiFixture();
         HexCoord cap = RedCapital(state);
         state.Treasury.SetGold(cap, 20);
-        // (1,1) has the peasant — occupied.
+        // (1,1) has the recruit — occupied.
         var bad = new AiBuildTowerAction(cap, HexCoord.FromOffset(1, 1));
         GameController c = BuildHarnessWithStubAi(state, map, hud, bad);
 
@@ -2251,7 +2251,7 @@ public class GameControllerTests
     public void ExecuteAi_LegalActionViaStubChooser_ExecutesNormally()
     {
         // Regression lock: the stub-chooser injection path doesn't
-        // break legal execution. Peasant at (1,1) captures (2,1).
+        // break legal execution. Recruit at (1,1) captures (2,1).
         (GameState state, MockHexMapView map, MockHudView hud) = BuildAiFixture();
         var good = new AiMoveAction(HexCoord.FromOffset(1, 1), HexCoord.FromOffset(2, 1));
         GameController c = BuildHarnessWithStubAi(state, map, hud, good, null);
@@ -2265,7 +2265,7 @@ public class GameControllerTests
 
     /// <summary>
     /// 2-player fixture where Blue is an AI with a 3-tile territory
-    /// containing a peasant positioned to capture a neutral Blue tile
+    /// containing a recruit positioned to capture a neutral Blue tile
     /// once it's their turn. Wait — Blue captures Blue? Let me rebuild.
     /// This fixture has Red (human) and Blue (AI) with their own
     /// territories; Blue's unit is adjacent to a capturable Red tile.
@@ -2287,7 +2287,7 @@ public class GameControllerTests
             var players = new List<Player> { Red, Blue };
 
             // 8x2 grid: Red owns (0,0)-(2,0), Blue owns (5,1)-(7,1).
-            // Blue has a peasant on (5,1) — not adjacent to any Red
+            // Blue has a recruit on (5,1) — not adjacent to any Red
             // tile, so it can't capture. Different test methods will
             // mutate the fixture as needed.
             var grid = TestHelpers.BuildRectGrid(8, 2, PlayerId.None);
@@ -2350,7 +2350,7 @@ public class GameControllerTests
     public void AiTurn_CanCaptureLastEnemyHex_DeclaresWinner()
     {
         // Minimal fixture where the AI can win in one move: a 4-tile
-        // Red territory with a peasant (sustainable upkeep), adjacent
+        // Red territory with a recruit (sustainable upkeep), adjacent
         // to a lone undefended Blue tile. Red's net = 4 - 2 = 2, and
         // post-capture net = 5 - 2 = 3 — well above the AI's bankruptcy
         // rule. The AI should pick the winning capture on its first
@@ -2384,11 +2384,11 @@ public class GameControllerTests
         // stub-chooser harness so the test pins the action regardless
         // of how the heuristic would score the move.
         (GameState state, MockHexMapView map, MockHudView hud) = BuildAiFixture();
-        // Replace the default peasant attacker with a spearman so it
+        // Replace the default recruit attacker with a soldier so it
         // can capture a defender at (2,1).
         state.Grid.Get(HexCoord.FromOffset(1, 1))!.Occupant =
-            new Unit(state.Players[0].Id, UnitLevel.Spearman);
-        var defender = new Unit(state.Players[1].Id, UnitLevel.Peasant);
+            new Unit(state.Players[0].Id, UnitLevel.Soldier);
+        var defender = new Unit(state.Players[1].Id, UnitLevel.Recruit);
         state.Grid.Get(HexCoord.FromOffset(2, 1))!.Occupant = defender;
 
         var move = new AiMoveAction(HexCoord.FromOffset(1, 1), HexCoord.FromOffset(2, 1));
@@ -2460,11 +2460,11 @@ public class GameControllerTests
         var players = new List<Player> { red, blue };
 
         // 5x1 grid. Red owns (0..3); Blue owns the single (4,0)
-        // capital tile. A red Knight at (3,0) captures (4,0) → all-red
+        // capital tile. A red Captain at (3,0) captures (4,0) → all-red
         // → domination win.
         var grid = TestHelpers.BuildRectGrid(5, 1, red.Id);
         grid.Get(HexCoord.FromOffset(4, 0))!.Owner = blue.Id;
-        grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = new Unit(red.Id, UnitLevel.Knight);
+        grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = new Unit(red.Id, UnitLevel.Captain);
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -2477,7 +2477,7 @@ public class GameControllerTests
         bool gameEnded = false;
         controller.GameEnded += () => gameEnded = true;
 
-        // Two clicks: pick up the knight, then drop onto Blue's tile
+        // Two clicks: pick up the captain, then drop onto Blue's tile
         // to capture it. The capture triggers WinConditionRules
         // domination → DeclareWinner.
         map.SimulateClick(grid.Get(HexCoord.FromOffset(3, 0)));
@@ -2495,7 +2495,7 @@ public class GameControllerTests
     [Fact]
     public void AiTurn_EachTerritoryActsAtMostOnce()
     {
-        // Blue has 2 territories; both have a knight adjacent to
+        // Blue has 2 territories; both have a captain adjacent to
         // capturable neutral tiles. Verify that after the AI turn,
         // each territory has made at most one capture (not an
         // unbounded loop).
@@ -2506,7 +2506,7 @@ public class GameControllerTests
         // 10x2 grid. Red owns (0,0)+(0,1) — a 2-tile territory so Red
         // has a real capital and stays in rotation. Two Blue
         // territories: {(2,0),(3,0)} and {(6,0),(7,0)}. Each has a
-        // knight on the right end so both can capture adjacent
+        // captain on the right end so both can capture adjacent
         // neutral tiles ((4,0) and (8,0)).
         var grid = TestHelpers.BuildRectGrid(10, 2, PlayerId.None);
         grid.Get(HexCoord.FromOffset(0, 0))!.Owner = red.Id;
@@ -2515,8 +2515,8 @@ public class GameControllerTests
         grid.Get(HexCoord.FromOffset(3, 0))!.Owner = blue.Id;
         grid.Get(HexCoord.FromOffset(6, 0))!.Owner = blue.Id;
         grid.Get(HexCoord.FromOffset(7, 0))!.Owner = blue.Id;
-        grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = new Unit(blue.Id, UnitLevel.Knight);
-        grid.Get(HexCoord.FromOffset(7, 0))!.Occupant = new Unit(blue.Id, UnitLevel.Knight);
+        grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = new Unit(blue.Id, UnitLevel.Captain);
+        grid.Get(HexCoord.FromOffset(7, 0))!.Occupant = new Unit(blue.Id, UnitLevel.Captain);
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -2769,7 +2769,7 @@ public class GameControllerTests
     }
 
     [Fact]
-    public void BuildTower_ThenBuyPeasant_ClearsCoverage()
+    public void BuildTower_ThenBuyRecruit_ClearsCoverage()
     {
         var g = new FourStripGame(preExistingTowerAt: HexCoord.FromOffset(1, 0));
         g.Map.SimulateClick(g.Tile(0, 0));
@@ -2777,7 +2777,7 @@ public class GameControllerTests
         g.Hud.ClickBuildTower();
         Assert.NotEmpty(g.Map.LastTowerCoverage);
 
-        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyRecruit();
 
         Assert.Empty(g.Map.LastTowerCoverage);
     }
@@ -2928,14 +2928,14 @@ public class GameControllerTests
     public void NextTerritory_CancelsPendingBuyMode()
     {
         // If the player is mid-buy, pressing Tab should cancel the
-        // pending action so they're not stuck in BuyingPeasant mode
+        // pending action so they're not stuck in BuyingRecruit mode
         // on a different territory.
         var g = new TwoRedTerritoriesGame();
         g.Hud.PressNextTerritory(); // select first Red territory
         HexCoord cap = g.Session.SelectedTerritory!.Capital!.Value;
         g.State.Treasury.SetGold(cap, 20);
-        g.Hud.ClickBuyPeasant();
-        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+        g.Hud.ClickBuyRecruit();
+        Assert.Equal(SessionState.ActionMode.BuyingRecruit, g.Session.Mode);
 
         g.Hud.PressNextTerritory(); // Tab
 
@@ -3004,8 +3004,8 @@ public class GameControllerTests
         g.Hud.PressNextTerritory();
         HexCoord cap = g.Session.SelectedTerritory!.Capital!.Value;
         g.State.Treasury.SetGold(cap, 20);
-        g.Hud.ClickBuyPeasant();
-        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+        g.Hud.ClickBuyRecruit();
+        Assert.Equal(SessionState.ActionMode.BuyingRecruit, g.Session.Mode);
 
         g.Hud.PressPreviousTerritory();
 
@@ -3100,7 +3100,7 @@ public class GameControllerTests
     [Fact]
     public void NextTerritory_StopsOnTerritoryWithUnmovedUnitEvenWithoutGold()
     {
-        // B is broke but contains a fresh peasant — still actionable.
+        // B is broke but contains a fresh recruit — still actionable.
         var g = new ThreeRedTerritoriesGame();
         Territory b = g.RedTerritoryAt(5, 0);
         g.State.Treasury.SetGold(b.Capital!.Value, 0);
@@ -3108,7 +3108,7 @@ public class GameControllerTests
             new Unit(g.Red.Id);
 
         g.Hud.PressNextTerritory(); // → A
-        g.Hud.PressNextTerritory(); // → B (peasant makes it actionable)
+        g.Hud.PressNextTerritory(); // → B (recruit makes it actionable)
 
         Assert.Same(b, g.Session.SelectedTerritory);
     }
@@ -3226,14 +3226,14 @@ public class GameControllerTests
     [Fact]
     public void UndoLast_NoSelectionChange_DoesNotCenter()
     {
-        // Undoing a non-selection change (e.g. exiting BuyingPeasant mode)
+        // Undoing a non-selection change (e.g. exiting BuyingRecruit mode)
         // must not pan the view — pan is reserved for selection moves.
         var g = new TwoRedTerritoriesGame();
         g.Hud.PressNextTerritory();                                  // → first; center=1
         HexCoord cap = g.Session.SelectedTerritory!.Capital!.Value;
         g.State.Treasury.SetGold(cap, 20);
-        g.Hud.ClickBuyPeasant();                                     // mode=BuyingPeasant
-        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+        g.Hud.ClickBuyRecruit();                                     // mode=BuyingRecruit
+        Assert.Equal(SessionState.ActionMode.BuyingRecruit, g.Session.Mode);
         int before = g.Map.CenterCount;
 
         g.Hud.ClickUndoLast();                                       // mode→None; selection unchanged
@@ -3279,7 +3279,7 @@ public class GameControllerTests
     /// <summary>
     /// 6x2 grid, Blue everywhere, Red overlay on row 1 cols 0-4 (5 tiles
     /// → capital lands on (0,1), the lex-min empty tile). Three unmoved
-    /// Red peasants on (1,1), (2,1), (3,1) so cycling has somewhere to go;
+    /// Red recruits on (1,1), (2,1), (3,1) so cycling has somewhere to go;
     /// (4,1) is left empty so the BuildTower-mode test has a valid tower
     /// target. Lex order on row 1 is by Q ascending: UnitA &lt; UnitB &lt; UnitC.
     /// </summary>
@@ -3646,7 +3646,7 @@ public class GameControllerTests
         // A bankrupt territory's UNITS become graves, but its TOWER
         // survives — towers have no upkeep.
         var g = new TestGame();
-        g.Tile(3, 0).Occupant = new Unit(g.Blue.Id, UnitLevel.Knight);
+        g.Tile(3, 0).Occupant = new Unit(g.Blue.Id, UnitLevel.Captain);
         g.Tile(4, 0).Occupant = new Tower();
         HexCoord blueCapital = g.State.Territories
             .First(t => t.Owner == g.Blue.Id).Capital!.Value;
@@ -3654,7 +3654,7 @@ public class GameControllerTests
 
         g.Hud.ClickEndTurn(); // advance to Blue: income then upkeep
 
-        // Knight went bankrupt → grave.
+        // Captain went bankrupt → grave.
         Assert.IsType<Grave>(g.Tile(3, 0).Occupant);
         // Tower untouched.
         Assert.IsType<Tower>(g.Tile(4, 0).Occupant);
@@ -3686,7 +3686,7 @@ public class GameControllerTests
     public void HumanWin_FiresGameWonSound()
     {
         // Mirror the Capture_LastEnemyHex_DeclaresWinner setup: Red is
-        // a human with a peasant adjacent to the last Blue tile;
+        // a human with a recruit adjacent to the last Blue tile;
         // capturing it ends the game with a human winner.
         var red = new Player("Red", PlayerId.FromIndex(0));
         var blue = new Player("Blue", PlayerId.FromIndex(1));
@@ -3751,7 +3751,7 @@ public class GameControllerTests
 
         var grid = TestHelpers.BuildRectGrid(4, 1, red.Id);
         grid.Get(HexCoord.FromOffset(3, 0))!.Owner = blue.Id;
-        // Park a Red peasant adjacent to the Blue hex.
+        // Park a Red recruit adjacent to the Blue hex.
         grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(red.Id);
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
@@ -3787,9 +3787,9 @@ public class GameControllerTests
     [Fact]
     public void Capture_LeavesOpponentWithOrphanSingleton_DoesNotEndMidTurn()
     {
-        // 5x1 grid: Red Red Red Blue Blue, spearman on Red(2,0).
-        // (Blue's 2-tile territory has a capital, so a peasant
-        // couldn't beat its defense — we need a spearman.)
+        // 5x1 grid: Red Red Red Blue Blue, soldier on Red(2,0).
+        // (Blue's 2-tile territory has a capital, so a recruit
+        // couldn't beat its defense — we need a soldier.)
         // Red captures Blue(3,0). Blue is left with (4,0) — a
         // singleton with no capital. Mid-turn check requires the
         // current player to own EVERY cell, so the game does NOT
@@ -3801,7 +3801,7 @@ public class GameControllerTests
         var grid = TestHelpers.BuildRectGrid(5, 1, red.Id);
         grid.Get(HexCoord.FromOffset(3, 0))!.Owner = blue.Id;
         grid.Get(HexCoord.FromOffset(4, 0))!.Owner = blue.Id;
-        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(red.Id, UnitLevel.Spearman);
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(red.Id, UnitLevel.Soldier);
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -3834,7 +3834,7 @@ public class GameControllerTests
         var grid = TestHelpers.BuildRectGrid(5, 1, red.Id);
         grid.Get(HexCoord.FromOffset(3, 0))!.Owner = blue.Id;
         grid.Get(HexCoord.FromOffset(4, 0))!.Owner = blue.Id;
-        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(red.Id, UnitLevel.Spearman);
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(red.Id, UnitLevel.Soldier);
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -3872,13 +3872,13 @@ public class GameControllerTests
     }
 
     [Fact]
-    public void BuyPeasant_AfterWin_IsNoOp()
+    public void BuyRecruit_AfterWin_IsNoOp()
     {
         var g = new TestGame();
         g.Session.Winner = g.Red.Id; // simulate already-won state
 
         g.Map.SimulateClick(g.Tile(0, 1));
-        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyRecruit();
 
         // Mode should still be None because the controller short-
         // circuits. Selection also does not happen.
@@ -3903,7 +3903,7 @@ public class GameControllerTests
         var g = new TestGame();
         // Do an action so undo is available, then simulate a win.
         g.Map.SimulateClick(g.Tile(0, 1));
-        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyRecruit();
         g.Map.SimulateClick(g.Tile(1, 1));
         Assert.NotNull(g.Tile(1, 1).Unit);
 
@@ -3988,9 +3988,9 @@ public class GameControllerTests
     public void EndTurn_ClearsUndoStack()
     {
         var g = new TestGame();
-        // Queue an undoable action (buy peasant).
+        // Queue an undoable action (buy recruit).
         g.Map.SimulateClick(g.Tile(0, 1));
-        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyRecruit();
         g.Map.SimulateClick(g.Tile(1, 1));
         Assert.True(g.Session.Undo.CanUndo);
 
@@ -4009,7 +4009,7 @@ public class GameControllerTests
         HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
         int goldBefore = g.State.Treasury.GetGold(redCapital);
 
-        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyRecruit();
         g.Map.SimulateClick(g.Tile(1, 1));
         Assert.NotNull(g.Tile(1, 1).Unit);
         Assert.Equal(goldBefore - 10, g.State.Treasury.GetGold(redCapital));
@@ -4025,7 +4025,7 @@ public class GameControllerTests
     {
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
-        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyRecruit();
         g.Map.SimulateClick(g.Tile(1, 1));
         g.Hud.ClickUndoLast();
         Assert.Null(g.Tile(1, 1).Unit);
@@ -4041,7 +4041,7 @@ public class GameControllerTests
     public void RefreshViews_ReportsHasActionable_WhenPlayerHasUnmovedUnit()
     {
         var g = new TestGame();
-        // Red has an affordable capital (10 gold, exactly peasant cost),
+        // Red has an affordable capital (10 gold, exactly recruit cost),
         // so actionable is already true right after StartGame.
         Assert.True(g.Hud.LastHasActionableRemaining);
     }
@@ -4049,19 +4049,19 @@ public class GameControllerTests
     [Fact]
     public void Click_InvalidTargetDuringBuyingMode_KeepsModeAndSelection()
     {
-        // Rejected buy click stays in BuyingPeasant mode and preserves
+        // Rejected buy click stays in BuyingRecruit mode and preserves
         // territory selection — the player can immediately re-aim
         // without re-clicking Buy or re-selecting their territory.
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
-        g.Hud.ClickBuyPeasant();
-        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+        g.Hud.ClickBuyRecruit();
+        Assert.Equal(SessionState.ActionMode.BuyingRecruit, g.Session.Mode);
 
         // (3, 0) is Blue, not adjacent to Red's territory, so not a valid
         // target. The buy should NOT cancel; rejection feedback fires.
         g.Map.SimulateClick(g.Tile(3, 0));
 
-        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+        Assert.Equal(SessionState.ActionMode.BuyingRecruit, g.Session.Mode);
         Assert.NotNull(g.Session.SelectedTerritory);
     }
 
@@ -4084,14 +4084,14 @@ public class GameControllerTests
     }
 
     [Fact]
-    public void BuyPeasant_OntoCapturableEnemyTile_CapturesImmediately()
+    public void BuyRecruit_OntoCapturableEnemyTile_CapturesImmediately()
     {
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
-        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyRecruit();
 
         // (2, 1) is Blue, not its capital, adjacent to Red's (1, 1).
-        // Capturable by a new peasant.
+        // Capturable by a new recruit.
         g.Map.SimulateClick(g.Tile(2, 1));
 
         Assert.Equal(g.Red.Id, g.Tile(2, 1).Owner);
@@ -4108,7 +4108,7 @@ public class GameControllerTests
         int goldBefore = g.State.Treasury.GetGold(redCapital);
 
         g.Map.SimulateClick(g.Tile(0, 1));
-        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyRecruit();
         g.Map.SimulateClick(g.Tile(1, 1));
         Assert.NotNull(g.Tile(1, 1).Unit);
 
@@ -4123,7 +4123,7 @@ public class GameControllerTests
     {
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
-        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyRecruit();
         g.Map.SimulateClick(g.Tile(1, 1));
         g.Hud.ClickUndoTurn();
         Assert.Null(g.Tile(1, 1).Unit);
@@ -4137,7 +4137,7 @@ public class GameControllerTests
     public void RefreshViews_ReportsNoActionable_WhenCapitalCantAffordAndNoUnits()
     {
         var g = new TestGame();
-        // Drain Red's treasury so no peasant can be bought.
+        // Drain Red's treasury so no recruit can be bought.
         HexCoord redCapital = g.RedTerritory.Capital!.Value;
         g.State.Treasury.SetGold(redCapital, 0);
 
@@ -4151,14 +4151,14 @@ public class GameControllerTests
     // --- Cancel pending action (Escape) ----------------------------------
 
     [Fact]
-    public void CancelAction_WhileBuyingPeasant_ClearsMode()
+    public void CancelAction_WhileBuyingRecruit_ClearsMode()
     {
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
         HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
         g.State.Treasury.SetGold(redCapital, 25);
-        g.Hud.ClickBuyPeasant();
-        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+        g.Hud.ClickBuyRecruit();
+        Assert.Equal(SessionState.ActionMode.BuyingRecruit, g.Session.Mode);
 
         g.Hud.PressCancelAction();
 
@@ -4214,70 +4214,70 @@ public class GameControllerTests
         Assert.Null(g.Map.LastMoveSource);
     }
 
-    // --- Buy button cycle (Peasant → Spearman → Knight → Baron → Peasant) ---
+    // --- Buy button cycle (Recruit → Soldier → Captain → Commander → Recruit) ---
 
     [Fact]
-    public void BuyPressed_FromNoneMode_EntersBuyingPeasant_WhenAllAffordable()
+    public void BuyPressed_FromNoneMode_EntersBuyingRecruit_WhenAllAffordable()
     {
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
         HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
         g.State.Treasury.SetGold(redCapital, 100);
 
-        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyRecruit();
 
-        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+        Assert.Equal(SessionState.ActionMode.BuyingRecruit, g.Session.Mode);
     }
 
     [Fact]
-    public void BuyPressed_WhileBuyingPeasant_CyclesToBuyingSpearman()
+    public void BuyPressed_WhileBuyingRecruit_CyclesToBuyingSoldier()
     {
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
         HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
         g.State.Treasury.SetGold(redCapital, 100);
 
-        g.Hud.ClickBuyPeasant();
-        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+        g.Hud.ClickBuyRecruit();
+        Assert.Equal(SessionState.ActionMode.BuyingRecruit, g.Session.Mode);
 
-        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyRecruit();
 
-        Assert.Equal(SessionState.ActionMode.BuyingSpearman, g.Session.Mode);
+        Assert.Equal(SessionState.ActionMode.BuyingSoldier, g.Session.Mode);
     }
 
     [Fact]
-    public void BuyPressed_WhileBuyingSpearman_CyclesToBuyingKnight()
+    public void BuyPressed_WhileBuyingSoldier_CyclesToBuyingCaptain()
     {
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
         HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
         g.State.Treasury.SetGold(redCapital, 100);
 
-        g.Hud.ClickBuyPeasant();
-        g.Hud.ClickBuyPeasant();
-        Assert.Equal(SessionState.ActionMode.BuyingSpearman, g.Session.Mode);
+        g.Hud.ClickBuyRecruit();
+        g.Hud.ClickBuyRecruit();
+        Assert.Equal(SessionState.ActionMode.BuyingSoldier, g.Session.Mode);
 
-        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyRecruit();
 
-        Assert.Equal(SessionState.ActionMode.BuyingKnight, g.Session.Mode);
+        Assert.Equal(SessionState.ActionMode.BuyingCaptain, g.Session.Mode);
     }
 
     [Fact]
-    public void BuyPressed_WhileBuyingKnight_CyclesToBuyingBaron()
+    public void BuyPressed_WhileBuyingCaptain_CyclesToBuyingCommander()
     {
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
         HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
         g.State.Treasury.SetGold(redCapital, 100);
 
-        g.Hud.ClickBuyPeasant();
-        g.Hud.ClickBuyPeasant();
-        g.Hud.ClickBuyPeasant();
-        Assert.Equal(SessionState.ActionMode.BuyingKnight, g.Session.Mode);
+        g.Hud.ClickBuyRecruit();
+        g.Hud.ClickBuyRecruit();
+        g.Hud.ClickBuyRecruit();
+        Assert.Equal(SessionState.ActionMode.BuyingCaptain, g.Session.Mode);
 
-        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyRecruit();
 
-        Assert.Equal(SessionState.ActionMode.BuyingBaron, g.Session.Mode);
+        Assert.Equal(SessionState.ActionMode.BuyingCommander, g.Session.Mode);
     }
 
     [Fact]
@@ -4286,15 +4286,15 @@ public class GameControllerTests
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
         HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
-        // 25g: Peasant (10) ✓, Spearman (20) ✓, Knight (30) ✗, Baron (40) ✗.
+        // 25g: Recruit (10) ✓, Soldier (20) ✓, Captain (30) ✗, Commander (40) ✗.
         g.State.Treasury.SetGold(redCapital, 25);
 
-        g.Hud.ClickBuyPeasant();
-        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+        g.Hud.ClickBuyRecruit();
+        Assert.Equal(SessionState.ActionMode.BuyingRecruit, g.Session.Mode);
 
-        // Skips no unaffordable levels here — Spearman is next affordable.
-        g.Hud.ClickBuyPeasant();
-        Assert.Equal(SessionState.ActionMode.BuyingSpearman, g.Session.Mode);
+        // Skips no unaffordable levels here — Soldier is next affordable.
+        g.Hud.ClickBuyRecruit();
+        Assert.Equal(SessionState.ActionMode.BuyingSoldier, g.Session.Mode);
     }
 
     [Fact]
@@ -4305,121 +4305,121 @@ public class GameControllerTests
         HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
         g.State.Treasury.SetGold(redCapital, 5);
 
-        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyRecruit();
 
         Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
     }
 
     [Fact]
-    public void BuySpearman_OnOwnEmptyTile_DeductsTwentyGoldAndPlacesSpearman()
+    public void BuySoldier_OnOwnEmptyTile_DeductsTwentyGoldAndPlacesSoldier()
     {
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
         HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
         g.State.Treasury.SetGold(redCapital, 30);
 
-        // Cycle to Spearman.
-        g.Hud.ClickBuyPeasant();
-        g.Hud.ClickBuyPeasant();
-        Assert.Equal(SessionState.ActionMode.BuyingSpearman, g.Session.Mode);
+        // Cycle to Soldier.
+        g.Hud.ClickBuyRecruit();
+        g.Hud.ClickBuyRecruit();
+        Assert.Equal(SessionState.ActionMode.BuyingSoldier, g.Session.Mode);
 
         g.Map.SimulateClick(g.Tile(1, 1));
 
         Assert.NotNull(g.Tile(1, 1).Unit);
-        Assert.Equal(UnitLevel.Spearman, g.Tile(1, 1).Unit!.Level);
+        Assert.Equal(UnitLevel.Soldier, g.Tile(1, 1).Unit!.Level);
         Assert.Equal(g.Red.Id, g.Tile(1, 1).Unit!.Owner);
-        // 30 - 20 = 10. Cannot afford another Spearman, but CAN afford
-        // a Peasant → drop down to BuyingPeasant.
+        // 30 - 20 = 10. Cannot afford another Soldier, but CAN afford
+        // a Recruit → drop down to BuyingRecruit.
         Assert.Equal(10, g.State.Treasury.GetGold(redCapital));
-        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+        Assert.Equal(SessionState.ActionMode.BuyingRecruit, g.Session.Mode);
     }
 
     [Fact]
-    public void BuyKnight_OntoCapturableEnemySpearmanTile_CapturesImmediately()
+    public void BuyCaptain_OntoCapturableEnemySoldierTile_CapturesImmediately()
     {
         var g = new TestGame();
-        // Plant an enemy Spearman on (2,1) — Blue, adjacent to Red's (1,1).
-        // Defense = 2 (the spearman itself); a Knight (3) > 2 → captures.
-        g.Tile(2, 1).Occupant = new Unit(g.Blue.Id, UnitLevel.Spearman);
+        // Plant an enemy Soldier on (2,1) — Blue, adjacent to Red's (1,1).
+        // Defense = 2 (the soldier itself); a Captain (3) > 2 → captures.
+        g.Tile(2, 1).Occupant = new Unit(g.Blue.Id, UnitLevel.Soldier);
 
         g.Map.SimulateClick(g.Tile(0, 1));
         HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
         g.State.Treasury.SetGold(redCapital, 50);
 
-        // Cycle to Knight.
-        g.Hud.ClickBuyPeasant();
-        g.Hud.ClickBuyPeasant();
-        g.Hud.ClickBuyPeasant();
-        Assert.Equal(SessionState.ActionMode.BuyingKnight, g.Session.Mode);
+        // Cycle to Captain.
+        g.Hud.ClickBuyRecruit();
+        g.Hud.ClickBuyRecruit();
+        g.Hud.ClickBuyRecruit();
+        Assert.Equal(SessionState.ActionMode.BuyingCaptain, g.Session.Mode);
 
         g.Map.SimulateClick(g.Tile(2, 1));
 
         Assert.Equal(g.Red.Id, g.Tile(2, 1).Owner);
         Assert.NotNull(g.Tile(2, 1).Unit);
-        Assert.Equal(UnitLevel.Knight, g.Tile(2, 1).Unit!.Level);
+        Assert.Equal(UnitLevel.Captain, g.Tile(2, 1).Unit!.Level);
         Assert.True(g.Tile(2, 1).Unit!.HasMovedThisTurn);
         // 50 - 30 = 20.
         Assert.Equal(20, g.State.Treasury.GetGold(g.Session.SelectedTerritory!.Capital!.Value));
     }
 
     [Fact]
-    public void BuyKnight_AfterPurchase_FallsBackToSpearman_IfKnightUnaffordableButSpearmanIs()
+    public void BuyCaptain_AfterPurchase_FallsBackToSoldier_IfCaptainUnaffordableButSoldierIs()
     {
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
         HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
         g.State.Treasury.SetGold(redCapital, 50);
 
-        // Cycle to Knight.
-        g.Hud.ClickBuyPeasant();
-        g.Hud.ClickBuyPeasant();
-        g.Hud.ClickBuyPeasant();
-        Assert.Equal(SessionState.ActionMode.BuyingKnight, g.Session.Mode);
+        // Cycle to Captain.
+        g.Hud.ClickBuyRecruit();
+        g.Hud.ClickBuyRecruit();
+        g.Hud.ClickBuyRecruit();
+        Assert.Equal(SessionState.ActionMode.BuyingCaptain, g.Session.Mode);
 
         g.Map.SimulateClick(g.Tile(1, 1));
 
-        // 50 - 30 = 20. Can't afford another Knight (need 30), but CAN
-        // afford a Spearman (20) → drop down to BuyingSpearman.
+        // 50 - 30 = 20. Can't afford another Captain (need 30), but CAN
+        // afford a Soldier (20) → drop down to BuyingSoldier.
         Assert.Equal(20, g.State.Treasury.GetGold(redCapital));
-        Assert.Equal(SessionState.ActionMode.BuyingSpearman, g.Session.Mode);
+        Assert.Equal(SessionState.ActionMode.BuyingSoldier, g.Session.Mode);
     }
 
     [Fact]
-    public void BuyBaron_AfterPurchase_FallsBackToPeasant_IfOnlyPeasantStillAffordable()
+    public void BuyCommander_AfterPurchase_FallsBackToRecruit_IfOnlyRecruitStillAffordable()
     {
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
         HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
         g.State.Treasury.SetGold(redCapital, 55);
 
-        // Cycle to Baron.
-        g.Hud.ClickBuyPeasant();
-        g.Hud.ClickBuyPeasant();
-        g.Hud.ClickBuyPeasant();
-        g.Hud.ClickBuyPeasant();
-        Assert.Equal(SessionState.ActionMode.BuyingBaron, g.Session.Mode);
+        // Cycle to Commander.
+        g.Hud.ClickBuyRecruit();
+        g.Hud.ClickBuyRecruit();
+        g.Hud.ClickBuyRecruit();
+        g.Hud.ClickBuyRecruit();
+        Assert.Equal(SessionState.ActionMode.BuyingCommander, g.Session.Mode);
 
         g.Map.SimulateClick(g.Tile(1, 1));
 
-        // 55 - 40 = 15. Knight (30) and Spearman (20) unaffordable; only
-        // Peasant (10) affordable → drop to BuyingPeasant.
+        // 55 - 40 = 15. Captain (30) and Soldier (20) unaffordable; only
+        // Recruit (10) affordable → drop to BuyingRecruit.
         Assert.Equal(15, g.State.Treasury.GetGold(redCapital));
-        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+        Assert.Equal(SessionState.ActionMode.BuyingRecruit, g.Session.Mode);
     }
 
     [Fact]
-    public void BuyKnight_AfterPurchase_ExitsMode_IfNothingAffordable()
+    public void BuyCaptain_AfterPurchase_ExitsMode_IfNothingAffordable()
     {
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
         HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
         g.State.Treasury.SetGold(redCapital, 35);
 
-        // Cycle to Knight.
-        g.Hud.ClickBuyPeasant();
-        g.Hud.ClickBuyPeasant();
-        g.Hud.ClickBuyPeasant();
-        Assert.Equal(SessionState.ActionMode.BuyingKnight, g.Session.Mode);
+        // Cycle to Captain.
+        g.Hud.ClickBuyRecruit();
+        g.Hud.ClickBuyRecruit();
+        g.Hud.ClickBuyRecruit();
+        Assert.Equal(SessionState.ActionMode.BuyingCaptain, g.Session.Mode);
 
         g.Map.SimulateClick(g.Tile(1, 1));
 
@@ -4429,49 +4429,49 @@ public class GameControllerTests
     }
 
     [Fact]
-    public void BuyBaron_StaysInBuyingBaronMode_IfStillAffordable()
+    public void BuyCommander_StaysInBuyingCommanderMode_IfStillAffordable()
     {
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
         HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
         g.State.Treasury.SetGold(redCapital, 80);
 
-        // Cycle to Baron.
-        g.Hud.ClickBuyPeasant();
-        g.Hud.ClickBuyPeasant();
-        g.Hud.ClickBuyPeasant();
-        g.Hud.ClickBuyPeasant();
-        Assert.Equal(SessionState.ActionMode.BuyingBaron, g.Session.Mode);
+        // Cycle to Commander.
+        g.Hud.ClickBuyRecruit();
+        g.Hud.ClickBuyRecruit();
+        g.Hud.ClickBuyRecruit();
+        g.Hud.ClickBuyRecruit();
+        Assert.Equal(SessionState.ActionMode.BuyingCommander, g.Session.Mode);
 
         g.Map.SimulateClick(g.Tile(1, 1));
 
-        // 80 - 40 = 40, still ≥ 40 → stay in BuyingBaron (does NOT cycle).
-        Assert.Equal(UnitLevel.Baron, g.Tile(1, 1).Unit!.Level);
-        Assert.Equal(SessionState.ActionMode.BuyingBaron, g.Session.Mode);
+        // 80 - 40 = 40, still ≥ 40 → stay in BuyingCommander (does NOT cycle).
+        Assert.Equal(UnitLevel.Commander, g.Tile(1, 1).Unit!.Level);
+        Assert.Equal(SessionState.ActionMode.BuyingCommander, g.Session.Mode);
         Assert.Equal(40, g.State.Treasury.GetGold(redCapital));
     }
 
     // --- Cycle exits at top instead of wrapping ---------------------------
 
     [Fact]
-    public void BuyPressed_WhileBuyingBaron_ExitsToNone()
+    public void BuyPressed_WhileBuyingCommander_ExitsToNone()
     {
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
         HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
         g.State.Treasury.SetGold(redCapital, 100);
 
-        // Cycle to Baron (top of the affordable subset).
-        g.Hud.ClickBuyPeasant();
-        g.Hud.ClickBuyPeasant();
-        g.Hud.ClickBuyPeasant();
-        g.Hud.ClickBuyPeasant();
-        Assert.Equal(SessionState.ActionMode.BuyingBaron, g.Session.Mode);
+        // Cycle to Commander (top of the affordable subset).
+        g.Hud.ClickBuyRecruit();
+        g.Hud.ClickBuyRecruit();
+        g.Hud.ClickBuyRecruit();
+        g.Hud.ClickBuyRecruit();
+        Assert.Equal(SessionState.ActionMode.BuyingCommander, g.Session.Mode);
 
-        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyRecruit();
 
         // From the most-expensive selectable unit, cycle exits instead
-        // of wrapping back to Peasant.
+        // of wrapping back to Recruit.
         Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
     }
 
@@ -4481,33 +4481,33 @@ public class GameControllerTests
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
         HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
-        // 25g: Peasant (10) ✓, Spearman (20) ✓, Knight (30) ✗, Baron (40) ✗.
+        // 25g: Recruit (10) ✓, Soldier (20) ✓, Captain (30) ✗, Commander (40) ✗.
         g.State.Treasury.SetGold(redCapital, 25);
 
-        g.Hud.ClickBuyPeasant();
-        g.Hud.ClickBuyPeasant();
-        Assert.Equal(SessionState.ActionMode.BuyingSpearman, g.Session.Mode);
+        g.Hud.ClickBuyRecruit();
+        g.Hud.ClickBuyRecruit();
+        Assert.Equal(SessionState.ActionMode.BuyingSoldier, g.Session.Mode);
 
-        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyRecruit();
 
-        // Spearman is the most-expensive selectable; cycling past exits.
+        // Soldier is the most-expensive selectable; cycling past exits.
         Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
     }
 
     [Fact]
-    public void BuyPressed_WhileBuyingPeasant_ExitsToNone_WhenOnlyPeasantAffordable()
+    public void BuyPressed_WhileBuyingRecruit_ExitsToNone_WhenOnlyRecruitAffordable()
     {
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
         HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
-        g.State.Treasury.SetGold(redCapital, 15); // only Peasant affordable
+        g.State.Treasury.SetGold(redCapital, 15); // only Recruit affordable
 
-        g.Hud.ClickBuyPeasant();
-        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+        g.Hud.ClickBuyRecruit();
+        Assert.Equal(SessionState.ActionMode.BuyingRecruit, g.Session.Mode);
 
-        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyRecruit();
 
-        // Peasant is both cheapest and most-expensive selectable; cycling
+        // Recruit is both cheapest and most-expensive selectable; cycling
         // past it exits to None.
         Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
     }
@@ -4521,48 +4521,48 @@ public class GameControllerTests
         g.State.Treasury.SetGold(redCapital, 100);
 
         // Cycle all the way up and then exit.
-        g.Hud.ClickBuyPeasant();
-        g.Hud.ClickBuyPeasant();
-        g.Hud.ClickBuyPeasant();
-        g.Hud.ClickBuyPeasant();
-        g.Hud.ClickBuyPeasant();  // exit to None
+        g.Hud.ClickBuyRecruit();
+        g.Hud.ClickBuyRecruit();
+        g.Hud.ClickBuyRecruit();
+        g.Hud.ClickBuyRecruit();
+        g.Hud.ClickBuyRecruit();  // exit to None
         Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
 
-        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyRecruit();
 
         // Re-entry from None starts at the cheapest affordable level.
-        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+        Assert.Equal(SessionState.ActionMode.BuyingRecruit, g.Session.Mode);
     }
 
     // --- Direct per-level buy clicks --------------------------------------
 
     [Fact]
-    public void BuyUnitClicked_WithKnight_EntersBuyingKnight_DirectlyFromNone()
+    public void BuyUnitClicked_WithCaptain_EntersBuyingCaptain_DirectlyFromNone()
     {
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
         HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
         g.State.Treasury.SetGold(redCapital, 100);
 
-        g.Hud.ClickBuyUnit(UnitLevel.Knight);
+        g.Hud.ClickBuyUnit(UnitLevel.Captain);
 
-        // No cycling — goes straight to Knight.
-        Assert.Equal(SessionState.ActionMode.BuyingKnight, g.Session.Mode);
+        // No cycling — goes straight to Captain.
+        Assert.Equal(SessionState.ActionMode.BuyingCaptain, g.Session.Mode);
     }
 
     [Fact]
-    public void BuyUnitClicked_WithSpearman_SwitchesFromBuyingPeasantToBuyingSpearman()
+    public void BuyUnitClicked_WithSoldier_SwitchesFromBuyingRecruitToBuyingSoldier()
     {
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
         HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
         g.State.Treasury.SetGold(redCapital, 100);
-        g.Hud.ClickBuyPeasant();
-        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+        g.Hud.ClickBuyRecruit();
+        Assert.Equal(SessionState.ActionMode.BuyingRecruit, g.Session.Mode);
 
-        g.Hud.ClickBuyUnit(UnitLevel.Spearman);
+        g.Hud.ClickBuyUnit(UnitLevel.Soldier);
 
-        Assert.Equal(SessionState.ActionMode.BuyingSpearman, g.Session.Mode);
+        Assert.Equal(SessionState.ActionMode.BuyingSoldier, g.Session.Mode);
     }
 
     [Fact]
@@ -4574,14 +4574,14 @@ public class GameControllerTests
         g.Map.SimulateClick(g.Tile(0, 1));
         HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
         g.State.Treasury.SetGold(redCapital, 100);
-        g.Hud.ClickBuyUnit(UnitLevel.Spearman);
+        g.Hud.ClickBuyUnit(UnitLevel.Soldier);
         int baseline = g.Session.Undo.UndoCount;
 
-        g.Hud.ClickBuyUnit(UnitLevel.Spearman);
-        g.Hud.ClickBuyUnit(UnitLevel.Spearman);
+        g.Hud.ClickBuyUnit(UnitLevel.Soldier);
+        g.Hud.ClickBuyUnit(UnitLevel.Soldier);
 
         Assert.Equal(baseline, g.Session.Undo.UndoCount);
-        Assert.Equal(SessionState.ActionMode.BuyingSpearman, g.Session.Mode);
+        Assert.Equal(SessionState.ActionMode.BuyingSoldier, g.Session.Mode);
     }
 
     [Fact]
@@ -4590,11 +4590,11 @@ public class GameControllerTests
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
         HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
-        g.State.Treasury.SetGold(redCapital, 15); // only Peasant affordable
+        g.State.Treasury.SetGold(redCapital, 15); // only Recruit affordable
 
-        g.Hud.ClickBuyUnit(UnitLevel.Knight);
+        g.Hud.ClickBuyUnit(UnitLevel.Captain);
 
-        // Can't afford Knight → no mode change, no push.
+        // Can't afford Captain → no mode change, no push.
         Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
     }
 
@@ -4604,7 +4604,7 @@ public class GameControllerTests
         var g = new TestGame();
         // No SimulateClick — no selection.
 
-        g.Hud.ClickBuyUnit(UnitLevel.Peasant);
+        g.Hud.ClickBuyUnit(UnitLevel.Recruit);
 
         Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
     }
@@ -4617,16 +4617,16 @@ public class GameControllerTests
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
         Territory redBefore = g.Session.SelectedTerritory!;
-        g.Hud.ClickBuyPeasant();
-        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+        g.Hud.ClickBuyRecruit();
+        Assert.Equal(SessionState.ActionMode.BuyingRecruit, g.Session.Mode);
 
-        g.Map.SimulateClick(g.Tile(1, 1));  // place peasant
+        g.Map.SimulateClick(g.Tile(1, 1));  // place recruit
 
         g.Hud.ClickUndoLast();
 
         Assert.NotNull(g.Session.SelectedTerritory);
         Assert.Equal(redBefore.Capital, g.Session.SelectedTerritory!.Capital);
-        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+        Assert.Equal(SessionState.ActionMode.BuyingRecruit, g.Session.Mode);
     }
 
     [Fact]
@@ -4691,8 +4691,8 @@ public class GameControllerTests
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
         Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
-        g.Hud.ClickBuyPeasant();
-        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+        g.Hud.ClickBuyRecruit();
+        Assert.Equal(SessionState.ActionMode.BuyingRecruit, g.Session.Mode);
 
         g.Hud.ClickUndoLast();
 
@@ -4706,25 +4706,25 @@ public class GameControllerTests
     {
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
-        g.Hud.ClickBuyPeasant();
-        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+        g.Hud.ClickBuyRecruit();
+        Assert.Equal(SessionState.ActionMode.BuyingRecruit, g.Session.Mode);
         g.Hud.PressCancelAction();
         Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
 
         g.Hud.ClickUndoLast();
 
-        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+        Assert.Equal(SessionState.ActionMode.BuyingRecruit, g.Session.Mode);
     }
 
     [Fact]
     public void UndoLast_AfterCaptureBuy_RestoresPreCaptureSelection()
     {
-        // Buy a peasant onto an enemy tile (capture), then undo.
+        // Buy a recruit onto an enemy tile (capture), then undo.
         // Selection should snap back to the pre-capture Red territory.
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
         HexCoord redCapitalBefore = g.Session.SelectedTerritory!.Capital!.Value;
-        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyRecruit();
         g.Map.SimulateClick(g.Tile(2, 1));  // Blue, adjacent → captures
 
         g.Hud.ClickUndoLast();
@@ -4739,14 +4739,14 @@ public class GameControllerTests
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
         Territory red = g.Session.SelectedTerritory!;
-        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyRecruit();
         // Place to advance state and push undo entry.
         g.Map.SimulateClick(g.Tile(1, 1));
 
         g.Hud.ClickUndoLast();
 
         // Highlight and move-target overlays should reflect the restored
-        // BuyingPeasant + Red selection.
+        // BuyingRecruit + Red selection.
         Assert.NotNull(g.Map.LastHighlight);
         Assert.Equal(red.Capital, g.Map.LastHighlight!.Capital);
         Assert.NotEmpty(g.Map.LastMoveTargets);
@@ -4798,7 +4798,7 @@ public class GameControllerTests
         Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
 
         g.Map.SimulateClick(g.Tile(0, 1));
-        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyRecruit();
         g.Map.SimulateClick(g.Tile(1, 1));
 
         g.Hud.ClickUndoTurn();
@@ -4810,27 +4810,27 @@ public class GameControllerTests
     // --- Per-UI-change undo: de-dup no-op handlers ------------------------
 
     [Fact]
-    public void OnBuyPressed_WhenOnlyPeasantAffordable_TogglesBuyingPeasantAndNone()
+    public void OnBuyPressed_WhenOnlyRecruitAffordable_TogglesBuyingRecruitAndNone()
     {
         // The cycle is "enter cheapest affordable" → "advance" → "exit
-        // at top". With only Peasant affordable, Peasant IS the top, so
-        // each press toggles between BuyingPeasant and None. Each
+        // at top". With only Recruit affordable, Recruit IS the top, so
+        // each press toggles between BuyingRecruit and None. Each
         // transition is a real state change and pushes a fresh undo
         // entry (no de-dup applies because state actually changes).
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
         HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
-        g.State.Treasury.SetGold(redCapital, 10);  // exactly one peasant
-        g.Hud.ClickBuyPeasant();  // None → BuyingPeasant
-        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+        g.State.Treasury.SetGold(redCapital, 10);  // exactly one recruit
+        g.Hud.ClickBuyRecruit();  // None → BuyingRecruit
+        Assert.Equal(SessionState.ActionMode.BuyingRecruit, g.Session.Mode);
         int countAfterFirst = g.Session.Undo.UndoCount;
 
-        g.Hud.ClickBuyPeasant();  // BuyingPeasant → None (exit at top)
+        g.Hud.ClickBuyRecruit();  // BuyingRecruit → None (exit at top)
         Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
         Assert.Equal(countAfterFirst + 1, g.Session.Undo.UndoCount);
 
-        g.Hud.ClickBuyPeasant();  // None → BuyingPeasant
-        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+        g.Hud.ClickBuyRecruit();  // None → BuyingRecruit
+        Assert.Equal(SessionState.ActionMode.BuyingRecruit, g.Session.Mode);
         Assert.Equal(countAfterFirst + 2, g.Session.Undo.UndoCount);
     }
 
@@ -4893,7 +4893,7 @@ public class GameControllerTests
         g.Map.ThrowOnNextShowMoveTargets =
             () => throw new InvalidOperationException("boom");
 
-        Assert.Throws<InvalidOperationException>(() => g.Hud.ClickBuyPeasant());
+        Assert.Throws<InvalidOperationException>(() => g.Hud.ClickBuyRecruit());
 
         Assert.Equal(baseline, g.Session.Undo.UndoCount);
     }
@@ -4999,16 +4999,16 @@ public class GameControllerTests
         // the player's mid-action context would silently disappear.
         var (_, state, map, hud, session, red, _) = BuildRallyFixture(redWidth: 4);
         state.Grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = new Unit(red.Id);
-        // Select Red's territory and enter BuyingPeasant mode.
+        // Select Red's territory and enter BuyingRecruit mode.
         map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(0, 1)));
-        hud.ClickBuyPeasant();
-        Assert.Equal(SessionState.ActionMode.BuyingPeasant, session.Mode);
+        hud.ClickBuyRecruit();
+        Assert.Equal(SessionState.ActionMode.BuyingRecruit, session.Mode);
 
         map.SimulateLongClick(state.Grid.Get(HexCoord.FromOffset(3, 1)));
 
         // Unit didn't move; mode preserved.
         Assert.NotNull(state.Grid.Get(HexCoord.FromOffset(1, 1))!.Unit);
-        Assert.Equal(SessionState.ActionMode.BuyingPeasant, session.Mode);
+        Assert.Equal(SessionState.ActionMode.BuyingRecruit, session.Mode);
     }
 
     [Fact]
@@ -5130,7 +5130,7 @@ public class GameControllerTests
     {
         var g = new TestGame();
         // Red is starting fresh — unmoved units? No, but they can afford
-        // a peasant (10g). HasAnyActionableForCurrentPlayer therefore
+        // a recruit (10g). HasAnyActionableForCurrentPlayer therefore
         // returns true → End Turn CTA cleared.
         Assert.False(g.Hud.EndTurnCtaActive);
     }
@@ -5139,7 +5139,7 @@ public class GameControllerTests
     public void RefreshViews_SetsEndTurnCtaTrue_WhenPlayerHasNothingActionable()
     {
         var g = new TestGame();
-        // Drain Red's treasury so they can't afford a peasant. They
+        // Drain Red's treasury so they can't afford a recruit. They
         // also own no unmoved units (none built yet).
         HexCoord redCapital = g.RedTerritory.Capital!.Value;
         g.State.Treasury.SetGold(redCapital, 0);
@@ -5233,16 +5233,16 @@ public class GameControllerTests
     // --- Rejection feedback (red-pulse + sound) -------------------------
 
     [Fact]
-    public void BuyPeasantRejected_OnNonAdjacentEnemy_FlashesGenericPeasantShape_NoDefenders()
+    public void BuyRecruitRejected_OnNonAdjacentEnemy_FlashesGenericRecruitShape_NoDefenders()
     {
         // Non-adjacent enemy hex: invalid placement (out of placement
         // frontier) but no defending tower. Defender set should be empty
-        // → generic sound, peasant-shaped overlay.
+        // → generic sound, recruit-shaped overlay.
         var g = new TestGame();
         HexCoord redCapital = g.RedTerritory.Capital!.Value;
         g.State.Treasury.SetGold(redCapital, 20);
         g.Map.SimulateClick(g.Tile(0, 1));   // select Red
-        g.Hud.ClickBuyPeasant();
+        g.Hud.ClickBuyRecruit();
         Assert.Empty(g.Map.Rejections);
 
         // (4,0) is Blue and non-adjacent to Red — fails the frontier check,
@@ -5251,28 +5251,28 @@ public class GameControllerTests
 
         Assert.Single(g.Map.Rejections);
         Assert.Equal(HexCoord.FromOffset(4, 0), g.Map.LastRejection!.Value.Target);
-        Assert.Equal(RejectionShape.Peasant, g.Map.LastRejection.Value.Shape);
+        Assert.Equal(RejectionShape.Recruit, g.Map.LastRejection.Value.Shape);
         Assert.Empty(g.Map.LastRejection.Value.Defenders);
     }
 
     [Fact]
-    public void BuySpearmanRejected_OnDefendedTile_FlashesWithDefenders_ExcludesWeakerOccupant()
+    public void BuySoldierRejected_OnDefendedTile_FlashesWithDefenders_ExcludesWeakerOccupant()
     {
-        // The exact user-spec scenario: Spearman buy aimed at an enemy
-        // tile that holds a peasant AND is adjacent to a Blue tower.
-        // The peasant alone wouldn't block (1 < 2), but the tower (2)
+        // The exact user-spec scenario: Soldier buy aimed at an enemy
+        // tile that holds a recruit AND is adjacent to a Blue tower.
+        // The recruit alone wouldn't block (1 < 2), but the tower (2)
         // does — only the tower coord should appear in Defenders.
         var red = new Player("Red", PlayerId.FromIndex(0));
         var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new List<Player> { red, blue };
 
         // 5x2 grid; Red owns (0,0),(0,1); Blue owns the rest. Target the
-        // (1,0) Blue tile (peasant on it); plant a Blue tower on (2,0) so
+        // (1,0) Blue tile (recruit on it); plant a Blue tower on (2,0) so
         // it radiates into (1,0). Confirm only the tower flashes.
         var grid = TestHelpers.BuildRectGrid(5, 2, blue.Id);
         grid.Get(HexCoord.FromOffset(0, 0))!.Owner = red.Id;
         grid.Get(HexCoord.FromOffset(0, 1))!.Owner = red.Id;
-        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(blue.Id); // peasant
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(blue.Id); // recruit
         grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Tower();          // blue tower
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
@@ -5285,29 +5285,29 @@ public class GameControllerTests
         controller.StartGame();
 
         Territory redT = state.Territories.First(t => t.Owner == red.Id);
-        state.Treasury.SetGold(redT.Capital!.Value, 50); // afford a Spearman (20)
+        state.Treasury.SetGold(redT.Capital!.Value, 50); // afford a Soldier (20)
         map.SimulateClick(grid.Get(HexCoord.FromOffset(0, 0)));   // select Red
 
-        // BuyingSpearman: enter the mode via session mutation since there's
-        // no dedicated Hud button for spearman (peasants combine up).
-        // Click Buy Peasant and verify mode; then forcibly switch into
-        // BuyingSpearman via the documented mode enum used in other tests.
-        session.Mode = SessionState.ActionMode.BuyingSpearman;
+        // BuyingSoldier: enter the mode via session mutation since there's
+        // no dedicated Hud button for soldier (recruits combine up).
+        // Click Buy Recruit and verify mode; then forcibly switch into
+        // BuyingSoldier via the documented mode enum used in other tests.
+        session.Mode = SessionState.ActionMode.BuyingSoldier;
 
         map.SimulateClick(grid.Get(HexCoord.FromOffset(1, 0))); // click the defended Blue tile
 
         Assert.Single(map.Rejections);
         var rejection = map.LastRejection!.Value;
         Assert.Equal(HexCoord.FromOffset(1, 0), rejection.Target);
-        Assert.Equal(RejectionShape.Spearman, rejection.Shape);
+        Assert.Equal(RejectionShape.Soldier, rejection.Shape);
         Assert.Equal(new[] { HexCoord.FromOffset(2, 0) }, rejection.Defenders);
     }
 
     [Fact]
     public void MoveRejected_OnDefendedTile_FlashesWithDefenders_ShapeMatchesSourceLevel()
     {
-        // Pick up a Red Spearman, click an enemy hex defended by an
-        // adjacent Blue tower. Rejection shape = Spearman; defenders =
+        // Pick up a Red Soldier, click an enemy hex defended by an
+        // adjacent Blue tower. Rejection shape = Soldier; defenders =
         // [tower coord].
         var red = new Player("Red", PlayerId.FromIndex(0));
         var blue = new Player("Blue", PlayerId.FromIndex(1));
@@ -5316,7 +5316,7 @@ public class GameControllerTests
         var grid = TestHelpers.BuildRectGrid(5, 2, blue.Id);
         grid.Get(HexCoord.FromOffset(0, 0))!.Owner = red.Id;
         grid.Get(HexCoord.FromOffset(0, 1))!.Owner = red.Id;
-        grid.Get(HexCoord.FromOffset(0, 1))!.Occupant = new Unit(red.Id, UnitLevel.Spearman);
+        grid.Get(HexCoord.FromOffset(0, 1))!.Occupant = new Unit(red.Id, UnitLevel.Soldier);
         grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Tower(); // Blue tower radiates into (1,0)/(1,1)
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
@@ -5328,7 +5328,7 @@ public class GameControllerTests
         var controller = new GameController(state, session, map, new MockHudView());
         controller.StartGame();
 
-        map.SimulateClick(grid.Get(HexCoord.FromOffset(0, 1))); // pick up spearman
+        map.SimulateClick(grid.Get(HexCoord.FromOffset(0, 1))); // pick up soldier
         Assert.Equal(SessionState.ActionMode.MovingUnit, session.Mode);
 
         map.SimulateClick(grid.Get(HexCoord.FromOffset(1, 1))); // adjacent Blue tile defended by tower
@@ -5336,7 +5336,7 @@ public class GameControllerTests
         Assert.Single(map.Rejections);
         var rejection = map.LastRejection!.Value;
         Assert.Equal(HexCoord.FromOffset(1, 1), rejection.Target);
-        Assert.Equal(RejectionShape.Spearman, rejection.Shape);
+        Assert.Equal(RejectionShape.Soldier, rejection.Shape);
         Assert.Equal(new[] { HexCoord.FromOffset(2, 0) }, rejection.Defenders);
     }
 
@@ -5372,7 +5372,7 @@ public class GameControllerTests
         Territory redT = state.Territories.First(t => t.Owner == red.Id);
         state.Treasury.SetGold(redT.Capital!.Value, 50);
         map.SimulateClick(grid.Get(HexCoord.FromOffset(0, 0)));   // select Red
-        session.Mode = SessionState.ActionMode.BuyingPeasant;
+        session.Mode = SessionState.ActionMode.BuyingRecruit;
 
         map.SimulateClick(grid.Get(HexCoord.FromOffset(4, 0))); // too-far + defended
 
@@ -5383,30 +5383,30 @@ public class GameControllerTests
     }
 
     [Fact]
-    public void BuyRejected_OnOffGridWaterCoord_FlashesGenericPeasantShape_KeepsModeAndSelection()
+    public void BuyRejected_OnOffGridWaterCoord_FlashesGenericRecruitShape_KeepsModeAndSelection()
     {
         // Off-grid clicks (water, edge of viewport) during placement
         // mode should behave like far-tile clicks: stay in mode, keep
-        // selection, play generic-rejection sound, flash a peasant ghost
+        // selection, play generic-rejection sound, flash a recruit ghost
         // on the off-grid coord. Previously water clicks fell into the
         // null-tile branch which cleared selection.
         var g = new TestGame();
         HexCoord redCapital = g.RedTerritory.Capital!.Value;
         g.State.Treasury.SetGold(redCapital, 20);
         g.Map.SimulateClick(g.Tile(0, 1));
-        g.Hud.ClickBuyPeasant();
-        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+        g.Hud.ClickBuyRecruit();
+        Assert.Equal(SessionState.ActionMode.BuyingRecruit, g.Session.Mode);
 
         // Pick an off-grid coord (far outside the 5x2 test grid).
         HexCoord offGrid = new HexCoord(20, 20);
         g.Map.SimulateOffGridClick(offGrid);
 
-        Assert.Equal(SessionState.ActionMode.BuyingPeasant, g.Session.Mode);
+        Assert.Equal(SessionState.ActionMode.BuyingRecruit, g.Session.Mode);
         Assert.NotNull(g.Session.SelectedTerritory);
         Assert.Single(g.Map.Rejections);
         var rejection = g.Map.LastRejection!.Value;
         Assert.Equal(offGrid, rejection.Target);
-        Assert.Equal(RejectionShape.Peasant, rejection.Shape);
+        Assert.Equal(RejectionShape.Recruit, rejection.Shape);
         Assert.Empty(rejection.Defenders);
     }
 
@@ -5461,8 +5461,8 @@ public class GameControllerTests
         MockHudView Hud, Player Human, Player Ai) BuildHumanVsAiKillScenario()
     {
         // 5x1 line: Red (human) holds capital at (3,0) with one outpost
-        // at (4,0); Blue (AI) holds {(0,0),(1,0),(2,0)} with a Spearman
-        // at (2,0). The scripted chooser below directs Blue's Spearman
+        // at (4,0); Blue (AI) holds {(0,0),(1,0),(2,0)} with a Soldier
+        // at (2,0). The scripted chooser below directs Blue's Soldier
         // to (3,0), killing Red's capital and capturing the territory.
         // Used by both Silent and NonSilent tests below to keep the
         // single AI action that fires a destruction effect identical
@@ -5477,7 +5477,7 @@ public class GameControllerTests
         grid.Get(HexCoord.FromOffset(2, 0))!.Owner = blue.Id;
         grid.Get(HexCoord.FromOffset(3, 0))!.Owner = red.Id;
         grid.Get(HexCoord.FromOffset(4, 0))!.Owner = red.Id;
-        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(blue.Id, UnitLevel.Spearman);
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(blue.Id, UnitLevel.Soldier);
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -5490,7 +5490,7 @@ public class GameControllerTests
     [Fact]
     public void AiSilentMode_True_SuppressesPerActionEffects()
     {
-        // With silent mode on, the AI's spearman-into-capital capture
+        // With silent mode on, the AI's soldier-into-capital capture
         // still mutates state (capital destroyed, territory captured)
         // but no Play* effects reach the view. This is the visible
         // behavior the user expects from "Instant" speed.

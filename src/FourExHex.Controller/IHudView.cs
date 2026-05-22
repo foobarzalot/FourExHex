@@ -14,7 +14,7 @@ public interface IHudView
     /// to the next higher affordable level; from the top of the
     /// affordable subset, exits back to None.
     /// </summary>
-    event Action? BuyPeasantClicked;
+    event Action? BuyRecruitClicked;
 
     /// <summary>
     /// "Enter a specific buy mode" — fired by clicking one of the four
@@ -163,7 +163,7 @@ public interface IHudView
 /// </summary>
 public enum CtaButton
 {
-    BuyPeasant,
+    BuyRecruit,
     EndTurn,
     BuildTower,
     ClaimVictoryWinNow,

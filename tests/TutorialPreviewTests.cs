@@ -119,7 +119,7 @@ public class TutorialPreviewTests
                                   From = new HexCoord(2, 2), To = new HexCoord(2, 1) },
             new ReplayBuyBeat { Index = 1, Turn = 1, Actor = 0,
                                  Capital = new HexCoord(0, 0), To = new HexCoord(1, 0),
-                                 Level = UnitLevel.Peasant },
+                                 Level = UnitLevel.Recruit },
         };
         var preview = new TutorialPreview(script, PlayerZeroTurnState());
         ReplayBeat? rejectedExpected = null;
@@ -128,7 +128,7 @@ public class TutorialPreviewTests
         bool ok = preview.TryAccept(new ReplayBuyBeat
         {
             Capital = new HexCoord(0, 0), To = new HexCoord(1, 0),
-            Level = UnitLevel.Peasant,
+            Level = UnitLevel.Recruit,
         });
 
         Assert.False(ok);
@@ -148,7 +148,7 @@ public class TutorialPreviewTests
             new ReplayEndTurnBeat { Index = 1, Turn = 1, Actor = 1 },
             new ReplayBuyBeat { Index = 2, Turn = 2, Actor = 0,
                                  Capital = new HexCoord(0, 0), To = new HexCoord(1, 0),
-                                 Level = UnitLevel.Peasant },
+                                 Level = UnitLevel.Recruit },
         };
         var cursor = new ScriptCursor();
         // Simulate the AI side having consumed Blue's two beats.
@@ -159,7 +159,7 @@ public class TutorialPreviewTests
         bool ok = preview.TryAccept(new ReplayBuyBeat
         {
             Capital = new HexCoord(0, 0), To = new HexCoord(1, 0),
-            Level = UnitLevel.Peasant,
+            Level = UnitLevel.Recruit,
         });
 
         Assert.True(ok);
@@ -188,14 +188,14 @@ public class TutorialPreviewTests
         {
             new ReplayBuyBeat { Index = 0, Turn = 1, Actor = 0,
                                  Capital = new HexCoord(0, 0), To = new HexCoord(1, 1),
-                                 Level = UnitLevel.Spearman },
+                                 Level = UnitLevel.Soldier },
         };
         var preview = new TutorialPreview(script, PlayerZeroTurnState());
 
         Assert.False(preview.TryAccept(new ReplayBuyBeat
         {
             Capital = new HexCoord(0, 0), To = new HexCoord(1, 1),
-            Level = UnitLevel.Peasant,  // wrong level
+            Level = UnitLevel.Recruit,  // wrong level
         }));
     }
 
@@ -242,7 +242,7 @@ public class TutorialPreviewTests
         {
             new ReplayBuyBeat { Index = 0, Turn = 1, Actor = 0,
                                  Capital = new HexCoord(0, 0), To = new HexCoord(1, 0),
-                                 Level = UnitLevel.Peasant },
+                                 Level = UnitLevel.Recruit },
         };
         var preview = new TutorialPreview(script, PlayerZeroTurnState());
 

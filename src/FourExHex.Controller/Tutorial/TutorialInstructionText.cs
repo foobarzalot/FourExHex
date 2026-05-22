@@ -5,7 +5,7 @@
 /// types, no side effects. Called from <see cref="TutorialPreviewCues"/>
 /// after every <c>RefreshViews</c> so the text tracks the player's
 /// progress through each multi-step beat (e.g. Buy beat shows
-/// "Press the Buy Peasant button." then "Place the peasant at the
+/// "Press the Buy Recruit button." then "Place the recruit at the
 /// highlighted tile." once the player enters buy mode).
 /// </summary>
 public static class TutorialInstructionText
@@ -18,7 +18,7 @@ public static class TutorialInstructionText
             ? "Place the tower at the highlighted tile."
             : "Press the Build Tower button.",
         ReplayMoveBeat mv => ForMove(mv, state, session),
-        ReplayLongPressRallyBeat _ => "Long-press the highlighted tile to rally peasants there.",
+        ReplayLongPressRallyBeat _ => "Long-press the highlighted tile to rally recruits there.",
         ReplayClaimVictoryBeat _ => "Press Win Now to claim victory.",
         ReplayDismissClaimBeat _ => "Press Continue Playing to keep going.",
         ReplayDismissDefeatBeat _ => "Press Continue.",
@@ -77,8 +77,8 @@ public static class TutorialInstructionText
         return "Move the unit to the highlighted tile.";
     }
 
-    // The Buy button is single — pressing it cycles Peasant → Spearman →
-    // Knight → Baron. From Mode=None the first press lands on Peasant,
+    // The Buy button is single — pressing it cycles Recruit → Soldier →
+    // Captain → Commander. From Mode=None the first press lands on Recruit,
     // so higher targets need extra presses; the text walks the player
     // one level at a time so they're never asked to look at a level
     // beyond the next press.
@@ -91,28 +91,28 @@ public static class TutorialInstructionText
         }
         if (current == null)
         {
-            // First press always lands on Peasant regardless of eventual
-            // target — the BuyingPeasant follow-up beat introduces the
+            // First press always lands on Recruit regardless of eventual
+            // target — the BuyingRecruit follow-up beat introduces the
             // upgrade-to-X messaging when needed.
-            return "Press the Buy Peasant button.";
+            return "Press the Buy Recruit button.";
         }
         if ((int)current.Value < (int)bu.Level)
         {
             UnitLevel nextLevel = NextLevelUp(current.Value);
-            return $"Now press the Buy Peasant button again to upgrade to a {nextLevel}.";
+            return $"Now press the Buy Recruit button again to upgrade to a {nextLevel}.";
         }
         // Wrap-around case (target is at or below current cycle position
-        // but not equal — e.g. mode=BuyingKnight, target=Peasant). The
+        // but not equal — e.g. mode=BuyingCaptain, target=Recruit). The
         // cycle eventually loops back; the dev presses through.
-        return $"Press the Buy Peasant button to cycle to a {bu.Level}.";
+        return $"Press the Buy Recruit button to cycle to a {bu.Level}.";
     }
 
     private static UnitLevel NextLevelUp(UnitLevel current) => current switch
     {
-        UnitLevel.Peasant => UnitLevel.Spearman,
-        UnitLevel.Spearman => UnitLevel.Knight,
-        UnitLevel.Knight => UnitLevel.Baron,
-        _ => UnitLevel.Baron,
+        UnitLevel.Recruit => UnitLevel.Soldier,
+        UnitLevel.Soldier => UnitLevel.Captain,
+        UnitLevel.Captain => UnitLevel.Commander,
+        _ => UnitLevel.Commander,
     };
 
     // Placement text for a Buy beat once the player is in the matching

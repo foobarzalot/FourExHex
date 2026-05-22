@@ -163,7 +163,7 @@ public static class AiCommon
         // tile, so post-net = netBefore - upkeep(level), requires >= 0
         // — strictly tighter than capture/chop. Buy-to-combine isn't
         // considered.
-        UnitLevel[] buyLevels = { UnitLevel.Peasant, UnitLevel.Spearman, UnitLevel.Knight, UnitLevel.Baron };
+        UnitLevel[] buyLevels = { UnitLevel.Recruit, UnitLevel.Soldier, UnitLevel.Captain, UnitLevel.Commander };
         foreach (UnitLevel level in buyLevels)
         {
             if (!PurchaseRules.CanAfford(territory, state.Treasury, level)) continue;

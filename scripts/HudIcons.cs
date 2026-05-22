@@ -165,7 +165,7 @@ public static class HudIcons
 
     /// <summary>
     /// Concentric rings matching HexMapView's in-map unit glyphs:
-    /// Peasant=1 ring, Spearman=2, Knight=3, Baron=3+center dot. Scaled
+    /// Recruit=1 ring, Soldier=2, Captain=3, Commander=3+center dot. Scaled
     /// larger than the in-map version so the inner rings stay legible at
     /// HUD-button size (the 0.20/0.37/0.55 hex proportions are too tight
     /// at 44px).
@@ -178,9 +178,9 @@ public static class HudIcons
         float dotR = radius * 0.13f;
 
         DrawRing(t, center, outerR, stroke);
-        if (level >= UnitLevel.Spearman) DrawRing(t, center, middleR, stroke);
-        if (level >= UnitLevel.Knight) DrawRing(t, center, innerR, stroke);
-        if (level >= UnitLevel.Baron) DrawFilledDisc(t, center, dotR, stroke);
+        if (level >= UnitLevel.Soldier) DrawRing(t, center, middleR, stroke);
+        if (level >= UnitLevel.Captain) DrawRing(t, center, innerR, stroke);
+        if (level >= UnitLevel.Commander) DrawFilledDisc(t, center, dotR, stroke);
     }
 
     private static void DrawRing(CanvasItem t, Vector2 center, float radius, Color stroke)

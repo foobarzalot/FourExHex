@@ -77,7 +77,7 @@ public class TutorialPreviewCuesTests
             {
                 CancelActionCalls++;
                 Session.ClearPendingAction();
-                Map.ShowMoveTargets(System.Array.Empty<HexCoord>(), UnitLevel.Peasant);
+                Map.ShowMoveTargets(System.Array.Empty<HexCoord>(), UnitLevel.Recruit);
                 Map.ShowTowerTargets(System.Array.Empty<HexCoord>());
                 Map.ShowMoveSource(null);
             };
@@ -146,7 +146,7 @@ public class TutorialPreviewCuesTests
         var f = new Fixture(new List<ReplayBeat>());
         // Pre-set all CTAs to true to verify they all get cleared.
         f.Hud.SetCta(CtaButton.EndTurn, true, pulse: true);
-        f.Hud.SetCta(CtaButton.BuyPeasant, true);
+        f.Hud.SetCta(CtaButton.BuyRecruit, true);
         f.Hud.SetCta(CtaButton.BuildTower, true);
         f.Hud.SetCta(CtaButton.ClaimVictoryWinNow, true);
         f.Hud.SetCta(CtaButton.ClaimVictoryContinue, true);
@@ -155,7 +155,7 @@ public class TutorialPreviewCuesTests
         f.Cues.Apply();
 
         Assert.False(f.Hud.EndTurnCtaActive);
-        Assert.False(f.Hud.BuyPeasantCtaActive);
+        Assert.False(f.Hud.BuyRecruitCtaActive);
         Assert.False(f.Hud.BuildTowerCtaActive);
         Assert.False(f.Hud.ClaimVictoryWinNowCtaActive);
         Assert.False(f.Hud.ClaimVictoryContinueCtaActive);
@@ -180,7 +180,7 @@ public class TutorialPreviewCuesTests
         // Tutorial-driven End Turn CTA pulses, distinct from the
         // game-side auto-out-of-moves CTA which sets pulse=false.
         Assert.True(f.Hud.EndTurnCtaPulse);
-        Assert.False(f.Hud.BuyPeasantCtaActive);
+        Assert.False(f.Hud.BuyRecruitCtaActive);
         Assert.Equal("Press End Turn.", f.Hud.CurrentTutorialMessage);
     }
 
@@ -193,18 +193,18 @@ public class TutorialPreviewCuesTests
         HexCoord destination = AnyOtherCoord(f0.RedTerritory, redCapital);
         var script = new List<ReplayBeat>
         {
-            BuyBeat(redCapital, destination, UnitLevel.Peasant),
+            BuyBeat(redCapital, destination, UnitLevel.Recruit),
         };
         var f = new Fixture(script);
 
         f.Cues.Apply();
 
-        Assert.True(f.Hud.BuyPeasantCtaActive);
+        Assert.True(f.Hud.BuyRecruitCtaActive);
         Assert.Equal(f.RedTerritory, f.Session.SelectedTerritory);
         Assert.Equal(1, f.SelectTerritoryCalls);
         // Mode is None → target tile NOT highlighted yet.
         Assert.Empty(f.Map.LastMoveTargets);
-        Assert.Equal("Press the Buy Peasant button.", f.Hud.CurrentTutorialMessage);
+        Assert.Equal("Press the Buy Recruit button.", f.Hud.CurrentTutorialMessage);
     }
 
     [Fact]
@@ -215,7 +215,7 @@ public class TutorialPreviewCuesTests
         HexCoord destination = AnyOtherCoord(f0.RedTerritory, redCapital);
         var script = new List<ReplayBeat>
         {
-            BuyBeat(redCapital, destination, UnitLevel.Peasant),
+            BuyBeat(redCapital, destination, UnitLevel.Recruit),
         };
         var f = new Fixture(script);
         // Pre-select correctly without going through the callback.
@@ -223,7 +223,7 @@ public class TutorialPreviewCuesTests
 
         f.Cues.Apply();
 
-        Assert.True(f.Hud.BuyPeasantCtaActive);
+        Assert.True(f.Hud.BuyRecruitCtaActive);
         Assert.Equal(0, f.SelectTerritoryCalls);
     }
 
@@ -235,22 +235,22 @@ public class TutorialPreviewCuesTests
         HexCoord destination = AnyOtherCoord(f0.RedTerritory, redCapital);
         var script = new List<ReplayBeat>
         {
-            BuyBeat(redCapital, destination, UnitLevel.Knight),
+            BuyBeat(redCapital, destination, UnitLevel.Captain),
         };
         var f = new Fixture(script);
         f.Session.SelectedTerritory = f.RedTerritory;
-        f.Session.Mode = SessionState.ActionMode.BuyingKnight;
+        f.Session.Mode = SessionState.ActionMode.BuyingCaptain;
 
         f.Cues.Apply();
 
         // Mode matches the target level → the player has moved past
         // the button-press step. Drop the button CTA so attention
         // shifts to the highlighted target tile.
-        Assert.False(f.Hud.BuyPeasantCtaActive);
+        Assert.False(f.Hud.BuyRecruitCtaActive);
         Assert.Single(f.Map.LastMoveTargets);
         Assert.Equal(destination, f.Map.LastMoveTargets[0]);
-        Assert.Equal(UnitLevel.Knight, f.Map.LastMoveTargetsLevel);
-        Assert.Equal("Place the Knight at the highlighted tile.", f.Hud.CurrentTutorialMessage);
+        Assert.Equal(UnitLevel.Captain, f.Map.LastMoveTargetsLevel);
+        Assert.Equal("Place the Captain at the highlighted tile.", f.Hud.CurrentTutorialMessage);
     }
 
     [Fact]
@@ -261,15 +261,15 @@ public class TutorialPreviewCuesTests
         HexCoord destination = AnyOtherCoord(f0.RedTerritory, redCapital);
         var script = new List<ReplayBeat>
         {
-            BuyBeat(redCapital, destination, UnitLevel.Knight),
+            BuyBeat(redCapital, destination, UnitLevel.Captain),
         };
         var f = new Fixture(script);
         f.Session.SelectedTerritory = f.RedTerritory;
-        f.Session.Mode = SessionState.ActionMode.BuyingPeasant;
+        f.Session.Mode = SessionState.ActionMode.BuyingRecruit;
 
         f.Cues.Apply();
 
-        Assert.True(f.Hud.BuyPeasantCtaActive);
+        Assert.True(f.Hud.BuyRecruitCtaActive);
         // Mode mismatch — cue should NOT overwrite the controller's full
         // target set with a single tile.
         Assert.Empty(f.Map.LastMoveTargets);
@@ -347,15 +347,15 @@ public class TutorialPreviewCuesTests
             },
         };
         var f = new Fixture(script);
-        // Place a Spearman at 'From' so the cue can read its level.
-        f.State.Grid.Get(from)!.Occupant = new Unit(Red, UnitLevel.Spearman);
+        // Place a Soldier at 'From' so the cue can read its level.
+        f.State.Grid.Get(from)!.Occupant = new Unit(Red, UnitLevel.Soldier);
 
         f.Cues.Apply();
 
         Assert.Equal(f.RedTerritory, f.Session.SelectedTerritory);
         Assert.Single(f.Map.LastMoveTargets);
         Assert.Equal(from, f.Map.LastMoveTargets[0]);
-        Assert.Equal(UnitLevel.Spearman, f.Map.LastMoveTargetsLevel);
+        Assert.Equal(UnitLevel.Soldier, f.Map.LastMoveTargetsLevel);
         Assert.Equal("Tap the highlighted unit to pick it up.", f.Hud.CurrentTutorialMessage);
     }
 
@@ -375,7 +375,7 @@ public class TutorialPreviewCuesTests
             },
         };
         var f = new Fixture(script);
-        f.State.Grid.Get(from)!.Occupant = new Unit(Red, UnitLevel.Knight);
+        f.State.Grid.Get(from)!.Occupant = new Unit(Red, UnitLevel.Captain);
         f.Session.SelectedTerritory = f.RedTerritory;
         f.Session.Mode = SessionState.ActionMode.MovingUnit;
         f.Session.MoveSource = from;
@@ -384,7 +384,7 @@ public class TutorialPreviewCuesTests
 
         Assert.Single(f.Map.LastMoveTargets);
         Assert.Equal(to, f.Map.LastMoveTargets[0]);
-        Assert.Equal(UnitLevel.Knight, f.Map.LastMoveTargetsLevel);
+        Assert.Equal(UnitLevel.Captain, f.Map.LastMoveTargetsLevel);
         Assert.Equal("Move the unit to the highlighted tile.", f.Hud.CurrentTutorialMessage);
     }
 
@@ -409,8 +409,8 @@ public class TutorialPreviewCuesTests
         Assert.Equal(f.RedTerritory, f.Session.SelectedTerritory);
         Assert.Single(f.Map.LastMoveTargets);
         Assert.Equal(target, f.Map.LastMoveTargets[0]);
-        Assert.Equal(UnitLevel.Peasant, f.Map.LastMoveTargetsLevel);
-        Assert.Equal("Long-press the highlighted tile to rally peasants there.",
+        Assert.Equal(UnitLevel.Recruit, f.Map.LastMoveTargetsLevel);
+        Assert.Equal("Long-press the highlighted tile to rally recruits there.",
             f.Hud.CurrentTutorialMessage);
     }
 
@@ -469,7 +469,7 @@ public class TutorialPreviewCuesTests
         HexCoord destination = AnyOtherCoord(f0.RedTerritory, redCapital);
         var script = new List<ReplayBeat>
         {
-            BuyBeat(redCapital, destination, UnitLevel.Peasant),
+            BuyBeat(redCapital, destination, UnitLevel.Recruit),
         };
         // Build a fixture whose selectTerritory callback recurses into
         // Cues.Apply (simulating RefreshViews → onAfterRefresh).
@@ -514,7 +514,7 @@ public class TutorialPreviewCuesTests
         cues.Apply(); // would StackOverflow without re-entrancy guard
 
         Assert.Equal(1, callbackCalls);
-        Assert.True(hud.BuyPeasantCtaActive);
+        Assert.True(hud.BuyRecruitCtaActive);
     }
 
     [Fact]
@@ -526,7 +526,7 @@ public class TutorialPreviewCuesTests
         var script = new List<ReplayBeat>
         {
             new ReplayEndTurnBeat { Index = 0, Turn = 1, Actor = 0 },
-            BuyBeat(redCapital, destination, UnitLevel.Peasant) with { Index = 1 },
+            BuyBeat(redCapital, destination, UnitLevel.Recruit) with { Index = 1 },
         };
         var f = new Fixture(script);
 
@@ -539,7 +539,7 @@ public class TutorialPreviewCuesTests
         f.Cues.Apply();
 
         Assert.False(f.Hud.EndTurnCtaActive);
-        Assert.True(f.Hud.BuyPeasantCtaActive);
+        Assert.True(f.Hud.BuyRecruitCtaActive);
     }
 
     [Fact]
@@ -550,7 +550,7 @@ public class TutorialPreviewCuesTests
             new ReplayEndTurnBeat { Index = 0, Turn = 1, Actor = 0 },
         };
         var f = new Fixture(script);
-        f.Session.Mode = SessionState.ActionMode.BuyingPeasant;
+        f.Session.Mode = SessionState.ActionMode.BuyingRecruit;
 
         f.Cues.Apply();
 
@@ -587,7 +587,7 @@ public class TutorialPreviewCuesTests
         HexCoord destination = AnyOtherCoord(f0.RedTerritory, redCapital);
         var script = new List<ReplayBeat>
         {
-            BuyBeat(redCapital, destination, UnitLevel.Peasant),
+            BuyBeat(redCapital, destination, UnitLevel.Recruit),
         };
         var f = new Fixture(script);
         f.Session.Mode = SessionState.ActionMode.BuildingTower;
@@ -596,7 +596,7 @@ public class TutorialPreviewCuesTests
 
         Assert.Equal(1, f.CancelActionCalls);
         Assert.Equal(SessionState.ActionMode.None, f.Session.Mode);
-        Assert.True(f.Hud.BuyPeasantCtaActive);
+        Assert.True(f.Hud.BuyRecruitCtaActive);
     }
 
     [Fact]
@@ -609,15 +609,15 @@ public class TutorialPreviewCuesTests
         HexCoord destination = AnyOtherCoord(f0.RedTerritory, redCapital);
         var script = new List<ReplayBeat>
         {
-            BuyBeat(redCapital, destination, UnitLevel.Knight),
+            BuyBeat(redCapital, destination, UnitLevel.Captain),
         };
         var f = new Fixture(script);
-        f.Session.Mode = SessionState.ActionMode.BuyingPeasant;
+        f.Session.Mode = SessionState.ActionMode.BuyingRecruit;
 
         f.Cues.Apply();
 
         Assert.Equal(0, f.CancelActionCalls);
-        Assert.Equal(SessionState.ActionMode.BuyingPeasant, f.Session.Mode);
+        Assert.Equal(SessionState.ActionMode.BuyingRecruit, f.Session.Mode);
     }
 
     [Fact]
@@ -635,7 +635,7 @@ public class TutorialPreviewCuesTests
             },
         };
         var f = new Fixture(script);
-        f.Session.Mode = SessionState.ActionMode.BuyingSpearman;
+        f.Session.Mode = SessionState.ActionMode.BuyingSoldier;
 
         f.Cues.Apply();
 
@@ -660,7 +660,7 @@ public class TutorialPreviewCuesTests
             },
         };
         var f = new Fixture(script);
-        f.State.Grid.Get(from)!.Occupant = new Unit(Red, UnitLevel.Peasant);
+        f.State.Grid.Get(from)!.Occupant = new Unit(Red, UnitLevel.Recruit);
         f.Session.Mode = SessionState.ActionMode.MovingUnit;
         f.Session.MoveSource = wrongSource;
 
@@ -686,7 +686,7 @@ public class TutorialPreviewCuesTests
             },
         };
         var f = new Fixture(script);
-        f.Session.Mode = SessionState.ActionMode.BuyingKnight;
+        f.Session.Mode = SessionState.ActionMode.BuyingCaptain;
 
         f.Cues.Apply();
 

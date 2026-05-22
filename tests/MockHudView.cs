@@ -9,7 +9,7 @@ namespace FourExHex.Tests;
 /// </summary>
 public class MockHudView : IHudView
 {
-    public event Action? BuyPeasantClicked;
+    public event Action? BuyRecruitClicked;
     public event Action<UnitLevel>? BuyUnitClicked;
     public event Action? BuildTowerClicked;
     public event Action? UndoLastClicked;
@@ -93,7 +93,7 @@ public class MockHudView : IHudView
     public void RaiseTutorialMessageTapped() => TutorialMessageTapped?.Invoke();
 
     // Per-button recording surface — tests assert against these.
-    public bool BuyPeasantCtaActive { get; private set; }
+    public bool BuyRecruitCtaActive { get; private set; }
     public bool EndTurnCtaActive { get; private set; }
     public bool EndTurnCtaPulse { get; private set; }
     public bool BuildTowerCtaActive { get; private set; }
@@ -105,7 +105,7 @@ public class MockHudView : IHudView
     {
         switch (button)
         {
-            case CtaButton.BuyPeasant: BuyPeasantCtaActive = isCta; break;
+            case CtaButton.BuyRecruit: BuyRecruitCtaActive = isCta; break;
             case CtaButton.EndTurn: EndTurnCtaActive = isCta; EndTurnCtaPulse = pulse; break;
             case CtaButton.BuildTower: BuildTowerCtaActive = isCta; break;
             case CtaButton.ClaimVictoryWinNow: ClaimVictoryWinNowCtaActive = isCta; break;
@@ -125,7 +125,7 @@ public class MockHudView : IHudView
 
     public void ClickReplay() => ReplayClicked?.Invoke();
 
-    public void ClickBuyPeasant() => BuyPeasantClicked?.Invoke();
+    public void ClickBuyRecruit() => BuyRecruitClicked?.Invoke();
     public void ClickBuyUnit(UnitLevel level) => BuyUnitClicked?.Invoke(level);
     public void ClickBuildTower() => BuildTowerClicked?.Invoke();
     public void PressNextTerritory() => NextTerritoryClicked?.Invoke();

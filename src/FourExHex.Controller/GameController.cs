@@ -144,7 +144,7 @@ public class GameController
         _map.TileClicked += OnTileClicked;
         _map.TileLongClicked += OnTileLongClicked;
         _map.OffGridClicked += OnOffGridClicked;
-        _hud.BuyPeasantClicked += OnBuyPressed;
+        _hud.BuyRecruitClicked += OnBuyPressed;
         _hud.BuyUnitClicked += OnBuyUnitPressed;
         _hud.BuildTowerClicked += OnBuildTowerPressed;
         _hud.UndoLastClicked += OnUndoLastPressed;
@@ -193,7 +193,7 @@ public class GameController
         _map.TileClicked -= OnTileClicked;
         _map.TileLongClicked -= OnTileLongClicked;
         _map.OffGridClicked -= OnOffGridClicked;
-        _hud.BuyPeasantClicked -= OnBuyPressed;
+        _hud.BuyRecruitClicked -= OnBuyPressed;
         _hud.BuyUnitClicked -= OnBuyUnitPressed;
         _hud.BuildTowerClicked -= OnBuildTowerPressed;
         _hud.UndoLastClicked -= OnUndoLastPressed;
@@ -377,8 +377,8 @@ public class GameController
     /// stack iff the handler actually changed something — either game
     /// state (signaled by <see cref="_handlerMutatedGame"/>) or session
     /// state (selection / mode / move source). De-dup is automatic: a
-    /// no-op handler (e.g. Buy Peasant when already in BuyingPeasant
-    /// and only peasant is affordable) leaves both signals false and
+    /// no-op handler (e.g. Buy Recruit when already in BuyingRecruit
+    /// and only recruit is affordable) leaves both signals false and
     /// no entry is pushed.
     ///
     /// Exceptions thrown by <paramref name="work"/> propagate; the push
@@ -842,7 +842,7 @@ public class GameController
         // QoL: stay in a buy mode for the highest level the (possibly
         // rebound) territory can still afford that is at most the level
         // just bought. Stay-at-same-level if still affordable; otherwise
-        // degrade downward through Knight → Spearman → Peasant. If no
+        // degrade downward through Captain → Soldier → Recruit. If no
         // level is affordable, exit. Completion does NOT auto-cycle
         // upward — re-pressing the buy button is what cycles.
         UnitLevel? next = _session.SelectedTerritory == null
@@ -871,7 +871,7 @@ public class GameController
     /// </summary>
     private UnitLevel? HighestAffordableAtOrBelow(Territory territory, UnitLevel ceiling)
     {
-        for (int i = (int)ceiling; i >= (int)UnitLevel.Peasant; i--)
+        for (int i = (int)ceiling; i >= (int)UnitLevel.Recruit; i--)
         {
             UnitLevel candidate = (UnitLevel)i;
             if (PurchaseRules.CanAfford(territory, _state.Treasury, candidate))
@@ -980,7 +980,7 @@ public class GameController
         {
             _session.Mode = SessionState.ActionMode.BuildingTower;
             _session.MoveSource = null;
-            _map.ShowMoveTargets(System.Array.Empty<HexCoord>(), UnitLevel.Peasant);
+            _map.ShowMoveTargets(System.Array.Empty<HexCoord>(), UnitLevel.Recruit);
             _map.ShowTowerTargets(ValidTowerTargets(_session.SelectedTerritory));
             _map.ShowTowerCoverage(TowerCoverageCoords(_session.SelectedTerritory));
             _map.ShowMoveSource(null);
@@ -1176,7 +1176,7 @@ public class GameController
         if (_session.Mode == SessionState.ActionMode.BuildingTower
             && _session.SelectedTerritory != null)
         {
-            _map.ShowMoveTargets(System.Array.Empty<HexCoord>(), UnitLevel.Peasant);
+            _map.ShowMoveTargets(System.Array.Empty<HexCoord>(), UnitLevel.Recruit);
             _map.ShowTowerTargets(ValidTowerTargets(_session.SelectedTerritory));
             _map.ShowTowerCoverage(TowerCoverageCoords(_session.SelectedTerritory));
             _map.ShowMoveSource(null);
@@ -1206,14 +1206,14 @@ public class GameController
 
     /// <summary>
     /// The unit levels considered by the buy-button cycle, in cycle
-    /// order (Peasant→Spearman→Knight→Baron→Peasant).
+    /// order (Recruit→Soldier→Captain→Commander→Recruit).
     /// </summary>
     private static readonly UnitLevel[] BuyCycleOrder =
     {
-        UnitLevel.Peasant,
-        UnitLevel.Spearman,
-        UnitLevel.Knight,
-        UnitLevel.Baron,
+        UnitLevel.Recruit,
+        UnitLevel.Soldier,
+        UnitLevel.Captain,
+        UnitLevel.Commander,
     };
 
     /// <summary>
@@ -1221,7 +1221,7 @@ public class GameController
     /// level; from an existing buy mode, advances to the next higher
     /// affordable level. From the most-expensive affordable level the
     /// next press exits to <see cref="SessionState.ActionMode.None"/> —
-    /// the cycle does NOT wrap back to Peasant. Same handler is invoked
+    /// the cycle does NOT wrap back to Recruit. Same handler is invoked
     /// by the `u` hotkey.
     /// </summary>
     private void OnBuyPressed() => TrackHandler(OnBuyPressedBody);
@@ -1278,7 +1278,7 @@ public class GameController
             if (current == null) return;
             _session.Mode = SessionState.ActionMode.None;
             _session.MoveSource = null;
-            _map.ShowMoveTargets(System.Array.Empty<HexCoord>(), UnitLevel.Peasant);
+            _map.ShowMoveTargets(System.Array.Empty<HexCoord>(), UnitLevel.Recruit);
             _map.ShowTowerTargets(System.Array.Empty<HexCoord>());
             _map.ShowTowerCoverage(System.Array.Empty<HexCoord>());
             _map.ShowMoveSource(null);
@@ -1350,7 +1350,7 @@ public class GameController
         // through ShowTowerTargets so the player sees where to click,
         // and ShowTowerCoverage tints already-defended cells so the
         // player can avoid stacking coverage.
-        _map.ShowMoveTargets(System.Array.Empty<HexCoord>(), UnitLevel.Peasant);
+        _map.ShowMoveTargets(System.Array.Empty<HexCoord>(), UnitLevel.Recruit);
         _map.ShowTowerTargets(ValidTowerTargets(_session.SelectedTerritory));
         _map.ShowTowerCoverage(TowerCoverageCoords(_session.SelectedTerritory));
         _map.ShowMoveSource(null);
@@ -2110,14 +2110,14 @@ public class GameController
     /// true iff the current player could do anything in
     /// <paramref name="territory"/> right now — either it contains an
     /// unmoved current-player unit, or the capital has enough gold to
-    /// buy the cheapest unit (a peasant). Tower cost (15g) is a strict
-    /// superset of peasant cost (10g), so checking peasant alone covers
+    /// buy the cheapest unit (a recruit). Tower cost (15g) is a strict
+    /// superset of recruit cost (10g), so checking recruit alone covers
     /// every purchase. Used by <see cref="StepTerritorySelection"/> to
     /// skip past territories where the player has nothing to do.
     /// </summary>
     private bool TerritoryHasAvailableAction(Territory territory)
     {
-        if (PurchaseRules.CanAffordPeasant(territory, _state.Treasury))
+        if (PurchaseRules.CanAffordRecruit(territory, _state.Treasury))
         {
             return true;
         }

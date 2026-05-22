@@ -127,13 +127,13 @@ public class ReplayDrivenAiTests
         {
             new ReplayBuyBeat { Index = 0, Turn = 1, Actor = 1,
                                  Capital = new HexCoord(1, 1), To = new HexCoord(2, 2),
-                                 Level = UnitLevel.Spearman },
+                                 Level = UnitLevel.Soldier },
         };
         var ai = new ReplayDrivenAi(beats, roster);
         var result = (AiBuyUnitAction)ai.ChooseNextAction(TrivialState(roster), Blue, new HashSet<HexCoord>(), new Random(1))!;
         Assert.Equal(new HexCoord(1, 1), result.Capital);
         Assert.Equal(new HexCoord(2, 2), result.Destination);
-        Assert.Equal(UnitLevel.Spearman, result.Level);
+        Assert.Equal(UnitLevel.Soldier, result.Level);
     }
 
     [Fact]

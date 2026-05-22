@@ -2,7 +2,7 @@ using Godot;
 
 public enum HudIcon
 {
-    Peasant,
+    Recruit,
     Tower,
     UndoLast,
     UndoAll,
@@ -21,7 +21,7 @@ public enum HudIcon
 /// a programmatic glyph on top of the rendered button chrome.
 ///
 /// Use <see cref="Selected"/> to mark a button as "this mode is currently
-/// active" (e.g. Buy Peasant after click, while waiting for a tile target).
+/// active" (e.g. Buy Recruit after click, while waiting for a tile target).
 /// Mirrors the white-outline cue used by the map editor's HexPaletteButton.
 /// </summary>
 public partial class HudIconButton : Button
@@ -29,13 +29,13 @@ public partial class HudIconButton : Button
     private readonly HudIcon _icon;
     private bool _selected;
     private bool _ctaActive;
-    private UnitLevel _buyLevel = UnitLevel.Peasant;
+    private UnitLevel _buyLevel = UnitLevel.Recruit;
 
     /// <summary>
     /// Which unit level the Buy button is currently targeting. Drives
-    /// the ring count drawn for <see cref="HudIcon.Peasant"/> so the
+    /// the ring count drawn for <see cref="HudIcon.Recruit"/> so the
     /// glyph tracks <see cref="SessionState.BuyModeLevel"/> as the
-    /// player escalates a buy (Peasant → Spearman → Knight → Baron via
+    /// player escalates a buy (Recruit → Soldier → Captain → Commander via
     /// adjacent-unit merges).
     /// </summary>
     public UnitLevel BuyLevel
@@ -62,7 +62,7 @@ public partial class HudIconButton : Button
 
     /// <summary>
     /// Set by <see cref="HudView.ApplyCtaStyle"/> when the white CTA
-    /// stylebox is applied. Stroke-only glyphs (Peasant, undo/redo arrows,
+    /// stylebox is applied. Stroke-only glyphs (Recruit, undo/redo arrows,
     /// EndTurn triangle) need to flip from white-on-dark to black-on-white
     /// or they disappear into the CTA bg.
     /// </summary>
@@ -115,7 +115,7 @@ public partial class HudIconButton : Button
     /// </summary>
     public static string DefaultTooltip(HudIcon icon) => icon switch
     {
-        HudIcon.Peasant => "Buy Peasant (10g) — U",
+        HudIcon.Recruit => "Buy Recruit (10g) — U",
         HudIcon.Tower => "Build Tower (15g) — T",
         HudIcon.UndoLast => "Undo Last — Z",
         HudIcon.UndoAll => "Undo All — Shift+Z",
@@ -132,7 +132,7 @@ public partial class HudIconButton : Button
         Vector2 center = Size * 0.5f;
         float r = Mathf.Min(Size.X, Size.Y) * 0.5f;
         // The HUD bar is near-black and the default Button stylebox is
-        // dark too, so stroke-only glyphs (Peasant, undo/redo arrows,
+        // dark too, so stroke-only glyphs (Recruit, undo/redo arrows,
         // EndTurn triangle) must paint in a *light* color or they
         // disappear into the button. When the CTA stylebox is active
         // the bg flips to white and we flip the stroke to black for
@@ -145,7 +145,7 @@ public partial class HudIconButton : Button
 
         switch (_icon)
         {
-            case HudIcon.Peasant: HudIcons.DrawUnit(this, center, r, _buyLevel, stroke); break;
+            case HudIcon.Recruit: HudIcons.DrawUnit(this, center, r, _buyLevel, stroke); break;
             case HudIcon.Tower: HudIcons.DrawTower(this, center, r, modulate); break;
             case HudIcon.UndoLast: HudIcons.DrawCurvedArrow(this, center, r, stroke, facing: +1, doubled: false); break;
             case HudIcon.UndoAll: HudIcons.DrawCurvedArrow(this, center, r, stroke, facing: +1, doubled: true); break;

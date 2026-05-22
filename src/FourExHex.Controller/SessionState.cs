@@ -2,7 +2,7 @@ using System.Collections.Generic;
 
 /// <summary>
 /// UI-scoped state for the current game session: which territory the
-/// player has selected, whether they're in the middle of buying a peasant
+/// player has selected, whether they're in the middle of buying a recruit
 /// or moving a unit, and the turn-scoped undo/redo history. Kept separate
 /// from <see cref="GameState"/> because none of this needs to be saved
 /// to disk or sent over the wire — it's bookkeeping for the controller's
@@ -59,10 +59,10 @@ public class SessionState
     public enum ActionMode
     {
         None,
-        BuyingPeasant,
-        BuyingSpearman,
-        BuyingKnight,
-        BuyingBaron,
+        BuyingRecruit,
+        BuyingSoldier,
+        BuyingCaptain,
+        BuyingCommander,
         BuildingTower,
         MovingUnit,
     }
@@ -73,10 +73,10 @@ public class SessionState
     /// </summary>
     public static UnitLevel? BuyModeLevel(ActionMode mode) => mode switch
     {
-        ActionMode.BuyingPeasant => UnitLevel.Peasant,
-        ActionMode.BuyingSpearman => UnitLevel.Spearman,
-        ActionMode.BuyingKnight => UnitLevel.Knight,
-        ActionMode.BuyingBaron => UnitLevel.Baron,
+        ActionMode.BuyingRecruit => UnitLevel.Recruit,
+        ActionMode.BuyingSoldier => UnitLevel.Soldier,
+        ActionMode.BuyingCaptain => UnitLevel.Captain,
+        ActionMode.BuyingCommander => UnitLevel.Commander,
         _ => null,
     };
 
@@ -86,10 +86,10 @@ public class SessionState
     /// </summary>
     public static ActionMode BuyModeFor(UnitLevel level) => level switch
     {
-        UnitLevel.Peasant => ActionMode.BuyingPeasant,
-        UnitLevel.Spearman => ActionMode.BuyingSpearman,
-        UnitLevel.Knight => ActionMode.BuyingKnight,
-        UnitLevel.Baron => ActionMode.BuyingBaron,
+        UnitLevel.Recruit => ActionMode.BuyingRecruit,
+        UnitLevel.Soldier => ActionMode.BuyingSoldier,
+        UnitLevel.Captain => ActionMode.BuyingCaptain,
+        UnitLevel.Commander => ActionMode.BuyingCommander,
         _ => ActionMode.None,
     };
 

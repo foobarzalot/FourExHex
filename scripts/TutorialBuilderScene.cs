@@ -146,7 +146,7 @@ public partial class TutorialBuilderScene : Node2D
 
         // Capture the draft on every exit from Map Edit so we can
         // restore tile occupants when we come back. Record / Preview
-        // share the panel's _grid, so without this peasants built
+        // share the panel's _grid, so without this recruits built
         // during a recording stay drawn on tiles after the switch.
         if (previous == TutorialMode.MapEdit)
         {
@@ -170,7 +170,7 @@ public partial class TutorialBuilderScene : Node2D
         {
             _recordPane.DiscardRecording();
             // RestoreDraft mutates the panel's _grid back to the
-            // captured tile occupants (clearing peasants / towers /
+            // captured tile occupants (clearing recruits / towers /
             // graves placed during Record / Preview) and calls
             // PushState internally to redraw the map.
             if (_draftSnapshot != null)

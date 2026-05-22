@@ -45,14 +45,14 @@ public class TutorialInstructionTextTests
     }
 
     [Theory]
-    [InlineData(UnitLevel.Peasant, "Press the Buy Peasant button.")]
-    [InlineData(UnitLevel.Spearman, "Press the Buy Peasant button.")]
-    [InlineData(UnitLevel.Knight, "Press the Buy Peasant button.")]
-    [InlineData(UnitLevel.Baron, "Press the Buy Peasant button.")]
+    [InlineData(UnitLevel.Recruit, "Press the Buy Recruit button.")]
+    [InlineData(UnitLevel.Soldier, "Press the Buy Recruit button.")]
+    [InlineData(UnitLevel.Captain, "Press the Buy Recruit button.")]
+    [InlineData(UnitLevel.Commander, "Press the Buy Recruit button.")]
     public void BuyBeat_ModeNone_PromptsButtonPress(UnitLevel level, string expected)
     {
-        // First press from Mode=None always lands on Peasant regardless
-        // of eventual target. The follow-up beats (BuyingPeasant →
+        // First press from Mode=None always lands on Recruit regardless
+        // of eventual target. The follow-up beats (BuyingRecruit →
         // upgrade-to-X) handle the escalation messaging, so the first
         // prompt stays plain.
         var session = new SessionState { Mode = SessionState.ActionMode.None };
@@ -67,21 +67,21 @@ public class TutorialInstructionTextTests
     }
 
     [Theory]
-    [InlineData(SessionState.ActionMode.BuyingPeasant, UnitLevel.Spearman,
-        "Now press the Buy Peasant button again to upgrade to a Spearman.")]
-    // Step-by-step: even when the eventual target is Knight, the next
+    [InlineData(SessionState.ActionMode.BuyingRecruit, UnitLevel.Soldier,
+        "Now press the Buy Recruit button again to upgrade to a Soldier.")]
+    // Step-by-step: even when the eventual target is Captain, the next
     // press only advances one level, so the instruction names the next
     // level reached (not the final target).
-    [InlineData(SessionState.ActionMode.BuyingPeasant, UnitLevel.Knight,
-        "Now press the Buy Peasant button again to upgrade to a Spearman.")]
-    [InlineData(SessionState.ActionMode.BuyingPeasant, UnitLevel.Baron,
-        "Now press the Buy Peasant button again to upgrade to a Spearman.")]
-    [InlineData(SessionState.ActionMode.BuyingSpearman, UnitLevel.Knight,
-        "Now press the Buy Peasant button again to upgrade to a Knight.")]
-    [InlineData(SessionState.ActionMode.BuyingSpearman, UnitLevel.Baron,
-        "Now press the Buy Peasant button again to upgrade to a Knight.")]
-    [InlineData(SessionState.ActionMode.BuyingKnight, UnitLevel.Baron,
-        "Now press the Buy Peasant button again to upgrade to a Baron.")]
+    [InlineData(SessionState.ActionMode.BuyingRecruit, UnitLevel.Captain,
+        "Now press the Buy Recruit button again to upgrade to a Soldier.")]
+    [InlineData(SessionState.ActionMode.BuyingRecruit, UnitLevel.Commander,
+        "Now press the Buy Recruit button again to upgrade to a Soldier.")]
+    [InlineData(SessionState.ActionMode.BuyingSoldier, UnitLevel.Captain,
+        "Now press the Buy Recruit button again to upgrade to a Captain.")]
+    [InlineData(SessionState.ActionMode.BuyingSoldier, UnitLevel.Commander,
+        "Now press the Buy Recruit button again to upgrade to a Captain.")]
+    [InlineData(SessionState.ActionMode.BuyingCaptain, UnitLevel.Commander,
+        "Now press the Buy Recruit button again to upgrade to a Commander.")]
     public void BuyBeat_BuyingModeBelowTarget_PromptsNextPress(
         SessionState.ActionMode currentMode, UnitLevel target, string expected)
     {
@@ -97,14 +97,14 @@ public class TutorialInstructionTextTests
     }
 
     [Theory]
-    [InlineData(UnitLevel.Peasant, SessionState.ActionMode.BuyingPeasant,
-        "Place the Peasant at the highlighted tile.")]
-    [InlineData(UnitLevel.Spearman, SessionState.ActionMode.BuyingSpearman,
-        "Place the Spearman at the highlighted tile.")]
-    [InlineData(UnitLevel.Knight, SessionState.ActionMode.BuyingKnight,
-        "Place the Knight at the highlighted tile.")]
-    [InlineData(UnitLevel.Baron, SessionState.ActionMode.BuyingBaron,
-        "Place the Baron at the highlighted tile.")]
+    [InlineData(UnitLevel.Recruit, SessionState.ActionMode.BuyingRecruit,
+        "Place the Recruit at the highlighted tile.")]
+    [InlineData(UnitLevel.Soldier, SessionState.ActionMode.BuyingSoldier,
+        "Place the Soldier at the highlighted tile.")]
+    [InlineData(UnitLevel.Captain, SessionState.ActionMode.BuyingCaptain,
+        "Place the Captain at the highlighted tile.")]
+    [InlineData(UnitLevel.Commander, SessionState.ActionMode.BuyingCommander,
+        "Place the Commander at the highlighted tile.")]
     public void BuyBeat_MatchingBuyMode_PromptsPlacement(
         UnitLevel level, SessionState.ActionMode mode, string expected)
     {
@@ -125,15 +125,15 @@ public class TutorialInstructionTextTests
         var grid = new HexGrid();
         grid.Add(new HexTile(A, Red));
         grid.Add(new HexTile(B, Red) { Occupant = new Grave() });
-        var session = new SessionState { Mode = SessionState.ActionMode.BuyingPeasant };
+        var session = new SessionState { Mode = SessionState.ActionMode.BuyingRecruit };
         string text = TutorialInstructionText.For(
             new ReplayBuyBeat
             {
                 Index = 0, Turn = 1, Actor = 0,
-                Capital = A, To = B, Level = UnitLevel.Peasant,
+                Capital = A, To = B, Level = UnitLevel.Recruit,
             },
             StateWithGrid(grid), session);
-        Assert.Equal("Place the Peasant at the highlighted tile to remove the grave.", text);
+        Assert.Equal("Place the Recruit at the highlighted tile to remove the grave.", text);
     }
 
     [Fact]
@@ -142,22 +142,22 @@ public class TutorialInstructionTextTests
         var grid = new HexGrid();
         grid.Add(new HexTile(A, Red));
         grid.Add(new HexTile(B, Red) { Occupant = new Tree() });
-        var session = new SessionState { Mode = SessionState.ActionMode.BuyingPeasant };
+        var session = new SessionState { Mode = SessionState.ActionMode.BuyingRecruit };
         string text = TutorialInstructionText.For(
             new ReplayBuyBeat
             {
                 Index = 0, Turn = 1, Actor = 0,
-                Capital = A, To = B, Level = UnitLevel.Peasant,
+                Capital = A, To = B, Level = UnitLevel.Recruit,
             },
             StateWithGrid(grid), session);
-        Assert.Equal("Place the Peasant at the highlighted tile to clear the tree.", text);
+        Assert.Equal("Place the Recruit at the highlighted tile to clear the tree.", text);
     }
 
     [Theory]
-    [InlineData(UnitLevel.Peasant, UnitLevel.Peasant, UnitLevel.Spearman)]
-    [InlineData(UnitLevel.Peasant, UnitLevel.Spearman, UnitLevel.Knight)]
-    [InlineData(UnitLevel.Peasant, UnitLevel.Knight, UnitLevel.Baron)]
-    [InlineData(UnitLevel.Spearman, UnitLevel.Spearman, UnitLevel.Baron)]
+    [InlineData(UnitLevel.Recruit, UnitLevel.Recruit, UnitLevel.Soldier)]
+    [InlineData(UnitLevel.Recruit, UnitLevel.Soldier, UnitLevel.Captain)]
+    [InlineData(UnitLevel.Recruit, UnitLevel.Captain, UnitLevel.Commander)]
+    [InlineData(UnitLevel.Soldier, UnitLevel.Soldier, UnitLevel.Commander)]
     public void BuyBeat_PlaceOntoFriendlyCombinable_PromptsCombine(
         UnitLevel buyLevel, UnitLevel existingLevel, UnitLevel combinedLevel)
     {
@@ -183,15 +183,15 @@ public class TutorialInstructionTextTests
         var grid = new HexGrid();
         grid.Add(new HexTile(A, Red));
         grid.Add(new HexTile(B, Blue));
-        var session = new SessionState { Mode = SessionState.ActionMode.BuyingPeasant };
+        var session = new SessionState { Mode = SessionState.ActionMode.BuyingRecruit };
         string text = TutorialInstructionText.For(
             new ReplayBuyBeat
             {
                 Index = 0, Turn = 1, Actor = 0,
-                Capital = A, To = B, Level = UnitLevel.Peasant,
+                Capital = A, To = B, Level = UnitLevel.Recruit,
             },
             StateWithGrid(grid), session);
-        Assert.Equal("Place the Peasant at the highlighted tile to capture it.", text);
+        Assert.Equal("Place the Recruit at the highlighted tile to capture it.", text);
     }
 
     [Fact]
@@ -200,16 +200,16 @@ public class TutorialInstructionTextTests
         var grid = new HexGrid();
         grid.Add(new HexTile(A, Red));
         grid.Add(new HexTile(B, Blue) { Occupant = new Tree() });
-        var session = new SessionState { Mode = SessionState.ActionMode.BuyingPeasant };
+        var session = new SessionState { Mode = SessionState.ActionMode.BuyingRecruit };
         string text = TutorialInstructionText.For(
             new ReplayBuyBeat
             {
                 Index = 0, Turn = 1, Actor = 0,
-                Capital = A, To = B, Level = UnitLevel.Peasant,
+                Capital = A, To = B, Level = UnitLevel.Recruit,
             },
             StateWithGrid(grid), session);
         Assert.Equal(
-            "Place the Peasant at the highlighted tile to clear the tree and capture the tile.",
+            "Place the Recruit at the highlighted tile to clear the tree and capture the tile.",
             text);
     }
 
@@ -219,16 +219,16 @@ public class TutorialInstructionTextTests
         var grid = new HexGrid();
         grid.Add(new HexTile(A, Red));
         grid.Add(new HexTile(B, Blue) { Occupant = new Grave() });
-        var session = new SessionState { Mode = SessionState.ActionMode.BuyingPeasant };
+        var session = new SessionState { Mode = SessionState.ActionMode.BuyingRecruit };
         string text = TutorialInstructionText.For(
             new ReplayBuyBeat
             {
                 Index = 0, Turn = 1, Actor = 0,
-                Capital = A, To = B, Level = UnitLevel.Peasant,
+                Capital = A, To = B, Level = UnitLevel.Recruit,
             },
             StateWithGrid(grid), session);
         Assert.Equal(
-            "Place the Peasant at the highlighted tile to remove the grave and capture the tile.",
+            "Place the Recruit at the highlighted tile to remove the grave and capture the tile.",
             text);
     }
 
@@ -238,16 +238,16 @@ public class TutorialInstructionTextTests
         var grid = new HexGrid();
         grid.Add(new HexTile(A, Red));
         grid.Add(new HexTile(B, Blue) { Occupant = new Tower() });
-        var session = new SessionState { Mode = SessionState.ActionMode.BuyingBaron };
+        var session = new SessionState { Mode = SessionState.ActionMode.BuyingCommander };
         string text = TutorialInstructionText.For(
             new ReplayBuyBeat
             {
                 Index = 0, Turn = 1, Actor = 0,
-                Capital = A, To = B, Level = UnitLevel.Baron,
+                Capital = A, To = B, Level = UnitLevel.Commander,
             },
             StateWithGrid(grid), session);
         Assert.Equal(
-            "Place the Baron at the highlighted tile to destroy the tower and capture the tile.",
+            "Place the Commander at the highlighted tile to destroy the tower and capture the tile.",
             text);
     }
 
@@ -272,7 +272,7 @@ public class TutorialInstructionTextTests
         // press Build Tower (which exits the buy mode).
         var session = new SessionState
         {
-            Mode = SessionState.ActionMode.BuyingPeasant,
+            Mode = SessionState.ActionMode.BuyingRecruit,
         };
         string text = TutorialInstructionText.For(
             new ReplayBuildTowerBeat
@@ -356,10 +356,10 @@ public class TutorialInstructionTextTests
     }
 
     [Theory]
-    [InlineData(UnitLevel.Peasant, UnitLevel.Peasant, UnitLevel.Spearman)]
-    [InlineData(UnitLevel.Peasant, UnitLevel.Spearman, UnitLevel.Knight)]
-    [InlineData(UnitLevel.Peasant, UnitLevel.Knight, UnitLevel.Baron)]
-    [InlineData(UnitLevel.Spearman, UnitLevel.Spearman, UnitLevel.Baron)]
+    [InlineData(UnitLevel.Recruit, UnitLevel.Recruit, UnitLevel.Soldier)]
+    [InlineData(UnitLevel.Recruit, UnitLevel.Soldier, UnitLevel.Captain)]
+    [InlineData(UnitLevel.Recruit, UnitLevel.Captain, UnitLevel.Commander)]
+    [InlineData(UnitLevel.Soldier, UnitLevel.Soldier, UnitLevel.Commander)]
     public void MoveBeat_OntoFriendlyCombinable_PromptsCombine(
         UnitLevel sourceLevel, UnitLevel destLevel, UnitLevel combinedLevel)
     {
@@ -388,7 +388,7 @@ public class TutorialInstructionTextTests
     public void MoveBeat_OntoFriendlyTree_PromptsClear()
     {
         var grid = new HexGrid();
-        grid.Add(new HexTile(A, Red) { Occupant = new Unit(Red, UnitLevel.Peasant) });
+        grid.Add(new HexTile(A, Red) { Occupant = new Unit(Red, UnitLevel.Recruit) });
         grid.Add(new HexTile(B, Red) { Occupant = new Tree() });
         var session = new SessionState
         {
@@ -402,14 +402,14 @@ public class TutorialInstructionTextTests
                 From = A, To = B,
             },
             StateWithGrid(grid), session);
-        Assert.Equal("Move the selected Peasant onto the tree to clear it.", text);
+        Assert.Equal("Move the selected Recruit onto the tree to clear it.", text);
     }
 
     [Fact]
     public void MoveBeat_OntoFriendlyGrave_PromptsBury()
     {
         var grid = new HexGrid();
-        grid.Add(new HexTile(A, Red) { Occupant = new Unit(Red, UnitLevel.Spearman) });
+        grid.Add(new HexTile(A, Red) { Occupant = new Unit(Red, UnitLevel.Soldier) });
         grid.Add(new HexTile(B, Red) { Occupant = new Grave() });
         var session = new SessionState
         {
@@ -423,14 +423,14 @@ public class TutorialInstructionTextTests
                 From = A, To = B,
             },
             StateWithGrid(grid), session);
-        Assert.Equal("Move the selected Spearman onto the grave to remove it.", text);
+        Assert.Equal("Move the selected Soldier onto the grave to remove it.", text);
     }
 
     [Fact]
     public void MoveBeat_OntoEnemyTile_PromptsCapture()
     {
         var grid = new HexGrid();
-        grid.Add(new HexTile(A, Red) { Occupant = new Unit(Red, UnitLevel.Knight) });
+        grid.Add(new HexTile(A, Red) { Occupant = new Unit(Red, UnitLevel.Captain) });
         grid.Add(new HexTile(B, Blue));
         var session = new SessionState
         {
@@ -444,14 +444,14 @@ public class TutorialInstructionTextTests
                 From = A, To = B,
             },
             StateWithGrid(grid), session);
-        Assert.Equal("Move the selected Knight onto the highlighted tile to capture it.", text);
+        Assert.Equal("Move the selected Captain onto the highlighted tile to capture it.", text);
     }
 
     [Fact]
     public void MoveBeat_OntoEnemyTower_PromptsDestroyTower()
     {
         var grid = new HexGrid();
-        grid.Add(new HexTile(A, Red) { Occupant = new Unit(Red, UnitLevel.Knight) });
+        grid.Add(new HexTile(A, Red) { Occupant = new Unit(Red, UnitLevel.Captain) });
         grid.Add(new HexTile(B, Blue) { Occupant = new Tower() });
         var session = new SessionState
         {
@@ -466,7 +466,7 @@ public class TutorialInstructionTextTests
             },
             StateWithGrid(grid), session);
         Assert.Equal(
-            "Move the selected Knight onto the highlighted tile to destroy the tower and capture the tile.",
+            "Move the selected Captain onto the highlighted tile to destroy the tower and capture the tile.",
             text);
     }
 
@@ -474,7 +474,7 @@ public class TutorialInstructionTextTests
     public void MoveBeat_OntoEnemyTree_PromptsChopTree()
     {
         var grid = new HexGrid();
-        grid.Add(new HexTile(A, Red) { Occupant = new Unit(Red, UnitLevel.Peasant) });
+        grid.Add(new HexTile(A, Red) { Occupant = new Unit(Red, UnitLevel.Recruit) });
         grid.Add(new HexTile(B, Blue) { Occupant = new Tree() });
         var session = new SessionState
         {
@@ -489,7 +489,7 @@ public class TutorialInstructionTextTests
             },
             StateWithGrid(grid), session);
         Assert.Equal(
-            "Move the selected Peasant onto the highlighted tile to clear the tree and capture the tile.",
+            "Move the selected Recruit onto the highlighted tile to clear the tree and capture the tile.",
             text);
     }
 
@@ -504,7 +504,7 @@ public class TutorialInstructionTextTests
                 Target = A,
             },
             EmptyState(), session);
-        Assert.Equal("Long-press the highlighted tile to rally peasants there.", text);
+        Assert.Equal("Long-press the highlighted tile to rally recruits there.", text);
     }
 
     [Fact]

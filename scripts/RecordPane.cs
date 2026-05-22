@@ -369,7 +369,7 @@ public sealed partial class RecordPane : Control
 
         var lineEdit = new LineEdit
         {
-            PlaceholderText = "e.g., Move your peasant to the highlighted tile.",
+            PlaceholderText = "e.g., Move your recruit to the highlighted tile.",
             AnchorLeft = 0f, AnchorRight = 1f, AnchorTop = 0f, AnchorBottom = 0f,
             OffsetLeft = 16f, OffsetRight = -16f, OffsetTop = 50f, OffsetBottom = 90f,
         };

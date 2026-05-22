@@ -5,7 +5,7 @@ using System.Collections.Generic;
 /// territory T can:
 ///   1. Reposition to any empty non-capital tile within T.
 ///   2. Combine with any friendly unit in T whose level sum with the
-///      source is at most <see cref="UnitLevel.Baron"/>.
+///      source is at most <see cref="UnitLevel.Commander"/>.
 ///   3. Capture any tile adjacent to T (different color) whose defense
 ///      is strictly less than the attacker's level.
 /// Captures consume the unit's action. Repositions do not. Combining
@@ -114,7 +114,7 @@ public static class MovementRules
     /// Place a newly created unit onto <paramref name="destination"/>,
     /// used by the buy-and-place flow. Goes through the same
     /// combine/capture branches as <see cref="Move"/> so a freshly bought
-    /// peasant can combine into a friendly unit or capture an enemy tile.
+    /// recruit can combine into a friendly unit or capture an enemy tile.
     /// </summary>
     public static MoveResult PlaceNew(
         Unit unit,

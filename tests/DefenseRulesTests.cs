@@ -50,7 +50,7 @@ public class DefenseRulesTests
     }
 
     [Fact]
-    public void Defense_TileWithOwnPeasant_IsOne()
+    public void Defense_TileWithOwnRecruit_IsOne()
     {
         (HexGrid grid, Territory territory) = BuildBlob(
             Red, null,
@@ -61,23 +61,23 @@ public class DefenseRulesTests
     }
 
     [Fact]
-    public void Defense_TileWithOwnSpearman_IsTwo()
+    public void Defense_TileWithOwnSoldier_IsTwo()
     {
         (HexGrid grid, Territory territory) = BuildBlob(
             Red, null,
             new HexCoord(0, 0), new HexCoord(1, 0));
-        grid.Get(new HexCoord(0, 0))!.Occupant = new Unit(Red, UnitLevel.Spearman);
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Unit(Red, UnitLevel.Soldier);
 
         Assert.Equal(2, DefenseRules.Defense(new HexCoord(0, 0), grid, territory));
     }
 
     [Fact]
-    public void Defense_TileWithOwnBaron_IsFour()
+    public void Defense_TileWithOwnCommander_IsFour()
     {
         (HexGrid grid, Territory territory) = BuildBlob(
             Red, null,
             new HexCoord(0, 0), new HexCoord(1, 0));
-        grid.Get(new HexCoord(0, 0))!.Occupant = new Unit(Red, UnitLevel.Baron);
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Unit(Red, UnitLevel.Commander);
 
         Assert.Equal(4, DefenseRules.Defense(new HexCoord(0, 0), grid, territory));
     }
@@ -98,7 +98,7 @@ public class DefenseRulesTests
     }
 
     [Fact]
-    public void Defense_TileAdjacentToOwnPeasant_RadiatesOne()
+    public void Defense_TileAdjacentToOwnRecruit_RadiatesOne()
     {
         (HexGrid grid, Territory territory) = BuildBlob(
             Red, null,
@@ -109,21 +109,21 @@ public class DefenseRulesTests
     }
 
     [Fact]
-    public void Defense_TileAdjacentToOwnKnight_RadiatesThree()
+    public void Defense_TileAdjacentToOwnCaptain_RadiatesThree()
     {
         (HexGrid grid, Territory territory) = BuildBlob(
             Red, null,
             new HexCoord(0, 0), new HexCoord(1, 0));
-        grid.Get(new HexCoord(0, 0))!.Occupant = new Unit(Red, UnitLevel.Knight);
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Unit(Red, UnitLevel.Captain);
 
         Assert.Equal(3, DefenseRules.Defense(new HexCoord(1, 0), grid, territory));
     }
 
     [Fact]
-    public void Defense_MaxOverPeasantAndBaron_IsFour()
+    public void Defense_MaxOverRecruitAndCommander_IsFour()
     {
-        // Three-tile territory where (1,0) is between a peasant-held and
-        // a baron-held tile. Defense of (1,0) = max(1, 4) = 4.
+        // Three-tile territory where (1,0) is between a recruit-held and
+        // a commander-held tile. Defense of (1,0) = max(1, 4) = 4.
         var coords = new[]
         {
             new HexCoord(0, 0),   // W neighbor
@@ -132,13 +132,13 @@ public class DefenseRulesTests
         };
         (HexGrid grid, Territory territory) = BuildBlob(Red, null, coords);
         grid.Get(new HexCoord(0, 0))!.Occupant = new Unit(Red);
-        grid.Get(new HexCoord(2, -1))!.Occupant = new Unit(Red, UnitLevel.Baron);
+        grid.Get(new HexCoord(2, -1))!.Occupant = new Unit(Red, UnitLevel.Commander);
 
         Assert.Equal(4, DefenseRules.Defense(new HexCoord(1, 0), grid, territory));
     }
 
     [Fact]
-    public void Defense_AdjacentPeasantAndCapital_Max_IsOne()
+    public void Defense_AdjacentRecruitAndCapital_Max_IsOne()
     {
         // Every contributor is level 1 right now, so max(1, 1) = 1. The
         // point of this test is that the max function is applied at all
@@ -161,7 +161,7 @@ public class DefenseRulesTests
     [Fact]
     public void Defense_AdjacentEnemyUnit_IsIgnored()
     {
-        // Red tile at (0,0), Blue peasant at (1,0). The Blue unit does not
+        // Red tile at (0,0), Blue recruit at (1,0). The Blue unit does not
         // contribute to Red's defense of (0,0) because it's not in Red's
         // territory.
         var grid = new HexGrid();
@@ -235,15 +235,15 @@ public class DefenseRulesTests
     }
 
     [Fact]
-    public void Defense_TowerPlusPeasantOnSameTile_IsTwo_NotThree()
+    public void Defense_TowerPlusRecruitOnSameTile_IsTwo_NotThree()
     {
-        // Contributions don't stack — the max wins. A peasant (1) plus a
+        // Contributions don't stack — the max wins. A recruit (1) plus a
         // tower (2) on overlapping coverage is still 2.
         (HexGrid grid, Territory territory) = BuildBlob(
             Red, null,
             new HexCoord(0, 0), new HexCoord(1, 0));
         grid.Get(new HexCoord(0, 0))!.Occupant = new Tower();
-        // Adjacent peasant that radiates 1 into (0,0) — tower already
+        // Adjacent recruit that radiates 1 into (0,0) — tower already
         // gives 2 so we expect 2, not 3.
         grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red);
 
@@ -251,15 +251,15 @@ public class DefenseRulesTests
     }
 
     [Fact]
-    public void Defense_KnightNextToTower_TileIsThree_ViaKnightMaxWins()
+    public void Defense_CaptainNextToTower_TileIsThree_ViaCaptainMaxWins()
     {
-        // A knight (3) on an adjacent same-territory tile beats the
+        // A captain (3) on an adjacent same-territory tile beats the
         // tower's radiated 2 on the subject tile.
         (HexGrid grid, Territory territory) = BuildBlob(
             Red, null,
             new HexCoord(0, 0), new HexCoord(1, 0));
         grid.Get(new HexCoord(0, 0))!.Occupant = new Tower();
-        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red, UnitLevel.Knight);
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red, UnitLevel.Captain);
 
         Assert.Equal(3, DefenseRules.Defense(new HexCoord(0, 0), grid, territory));
     }
@@ -292,7 +292,7 @@ public class DefenseRulesTests
             new HexCoord(0, 0), new HexCoord(1, 0));
 
         IReadOnlyList<HexCoord> blockers = DefenseRules
-            .BlockingDefenders(new HexCoord(0, 0), UnitLevel.Peasant, grid, territory)
+            .BlockingDefenders(new HexCoord(0, 0), UnitLevel.Recruit, grid, territory)
             .ToList();
 
         Assert.Empty(blockers);
@@ -301,7 +301,7 @@ public class DefenseRulesTests
     [Fact]
     public void BlockingDefenders_TargetOccupiedByMatchingTower_IncludesTarget()
     {
-        // Spearman (2) attacking a tile that itself holds a tower (2): the
+        // Soldier (2) attacking a tile that itself holds a tower (2): the
         // tower's own contribution meets the attacker level, so it's the
         // blocker.
         (HexGrid grid, Territory territory) = BuildBlob(
@@ -310,28 +310,28 @@ public class DefenseRulesTests
         grid.Get(new HexCoord(0, 0))!.Occupant = new Tower();
 
         IReadOnlyList<HexCoord> blockers = DefenseRules
-            .BlockingDefenders(new HexCoord(0, 0), UnitLevel.Spearman, grid, territory)
+            .BlockingDefenders(new HexCoord(0, 0), UnitLevel.Soldier, grid, territory)
             .ToList();
 
         Assert.Equal(new[] { new HexCoord(0, 0) }, blockers);
     }
 
     [Fact]
-    public void BlockingDefenders_SpearmanVsPeasantPlusAdjacentTower_OnlyTowerBlocks()
+    public void BlockingDefenders_SoldierVsRecruitPlusAdjacentTower_OnlyTowerBlocks()
     {
-        // The exact user-spec example. Target hex has a peasant; adjacent
-        // same-territory hex has a tower; attacker is a Spearman (2). The
-        // peasant contributes 1 — below the attacker level, so it does NOT
+        // The exact user-spec example. Target hex has a recruit; adjacent
+        // same-territory hex has a tower; attacker is a Soldier (2). The
+        // recruit contributes 1 — below the attacker level, so it does NOT
         // block. The tower contributes 2 — meets the attacker level, so it
         // blocks. Only the tower flashes.
         (HexGrid grid, Territory territory) = BuildBlob(
             Red, null,
             new HexCoord(0, 0), new HexCoord(1, 0));
-        grid.Get(new HexCoord(0, 0))!.Occupant = new Unit(Red); // peasant on target
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Unit(Red); // recruit on target
         grid.Get(new HexCoord(1, 0))!.Occupant = new Tower();   // adjacent tower
 
         IReadOnlyList<HexCoord> blockers = DefenseRules
-            .BlockingDefenders(new HexCoord(0, 0), UnitLevel.Spearman, grid, territory)
+            .BlockingDefenders(new HexCoord(0, 0), UnitLevel.Soldier, grid, territory)
             .ToList();
 
         Assert.Equal(new[] { new HexCoord(1, 0) }, blockers);
@@ -340,7 +340,7 @@ public class DefenseRulesTests
     [Fact]
     public void BlockingDefenders_MultipleQualifyingDefenders_ReturnsAll()
     {
-        // Peasant (1) attacking; target is between two same-territory
+        // Recruit (1) attacking; target is between two same-territory
         // towers, each contributing 2. Both are blockers.
         var coords = new[]
         {
@@ -353,7 +353,7 @@ public class DefenseRulesTests
         grid.Get(new HexCoord(2, -1))!.Occupant = new Tower();
 
         IReadOnlyList<HexCoord> blockers = DefenseRules
-            .BlockingDefenders(new HexCoord(1, 0), UnitLevel.Peasant, grid, territory)
+            .BlockingDefenders(new HexCoord(1, 0), UnitLevel.Recruit, grid, territory)
             .ToList();
 
         Assert.Equal(2, blockers.Count);
@@ -375,7 +375,7 @@ public class DefenseRulesTests
         var redTerritory = new Territory(Red, new[] { new HexCoord(0, 0) }, capital: null);
 
         IReadOnlyList<HexCoord> blockers = DefenseRules
-            .BlockingDefenders(new HexCoord(0, 0), UnitLevel.Spearman, grid, redTerritory)
+            .BlockingDefenders(new HexCoord(0, 0), UnitLevel.Soldier, grid, redTerritory)
             .ToList();
 
         Assert.Empty(blockers);
@@ -384,24 +384,24 @@ public class DefenseRulesTests
     [Fact]
     public void BlockingDefenders_DefenderBelowAttackerLevel_Excluded()
     {
-        // Adjacent peasant contributes 1; Spearman attacker (2) overpowers
-        // it — peasant is NOT a blocker.
+        // Adjacent recruit contributes 1; Soldier attacker (2) overpowers
+        // it — recruit is NOT a blocker.
         (HexGrid grid, Territory territory) = BuildBlob(
             Red, null,
             new HexCoord(0, 0), new HexCoord(1, 0));
         grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red);
 
         IReadOnlyList<HexCoord> blockers = DefenseRules
-            .BlockingDefenders(new HexCoord(0, 0), UnitLevel.Spearman, grid, territory)
+            .BlockingDefenders(new HexCoord(0, 0), UnitLevel.Soldier, grid, territory)
             .ToList();
 
         Assert.Empty(blockers);
     }
 
     [Fact]
-    public void BlockingDefenders_TargetCapitalVsPeasantAttacker_Blocks()
+    public void BlockingDefenders_TargetCapitalVsRecruitAttacker_Blocks()
     {
-        // Capital contributes 1. Peasant attacker (level 1) needs strictly
+        // Capital contributes 1. Recruit attacker (level 1) needs strictly
         // greater than the defense, so 1 >= 1 means capital blocks. The
         // capital itself flashes.
         (HexGrid grid, Territory territory) = BuildBlob(
@@ -410,7 +410,7 @@ public class DefenseRulesTests
         grid.Get(new HexCoord(0, 0))!.Occupant = new Capital();
 
         IReadOnlyList<HexCoord> blockers = DefenseRules
-            .BlockingDefenders(new HexCoord(0, 0), UnitLevel.Peasant, grid, territory)
+            .BlockingDefenders(new HexCoord(0, 0), UnitLevel.Recruit, grid, territory)
             .ToList();
 
         Assert.Equal(new[] { new HexCoord(0, 0) }, blockers);

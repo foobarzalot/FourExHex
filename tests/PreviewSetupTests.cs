@@ -76,7 +76,7 @@ public class PreviewSetupTests
         (GameState state, Tutorial tutorial) = BuildSetup();
         var map = new MockHexMapView();
         // Stale overlay state from prior session.
-        map.ShowMoveTargets(new[] { new HexCoord(1, 1) }, UnitLevel.Peasant);
+        map.ShowMoveTargets(new[] { new HexCoord(1, 1) }, UnitLevel.Recruit);
         map.ShowTowerTargets(new[] { new HexCoord(2, 2) });
         map.ShowMoveSource(new HexCoord(3, 3));
 

@@ -472,7 +472,7 @@ public class GameOperations
         foreach (Territory territory in _state.Territories)
         {
             if (territory.Owner != color) continue;
-            if (PurchaseRules.CanAffordPeasant(territory, _state.Treasury))
+            if (PurchaseRules.CanAffordRecruit(territory, _state.Treasury))
             {
                 return true;
             }

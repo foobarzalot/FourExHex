@@ -95,7 +95,7 @@ public static class SaveSerializer
     /// Bump on any breaking schema change. <see cref="Deserialize"/>
     /// rejects mismatched values rather than attempting migration.
     /// </summary>
-    public const int CurrentFormatVersion = 5;
+    public const int CurrentFormatVersion = 6;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -208,11 +208,14 @@ public static class SaveSerializer
         {
             throw new InvalidOperationException("Save file is empty or malformed.");
         }
-        // Accept v2..v5. v2 predates the Tutorial block; v3 predates the
+        // Accept v2..v6. v2 predates the Tutorial block; v3 predates the
         // Replay block; v4 keyed claim-victory by color hex and threw on
         // an owner not in the roster. v5 keys claim-victory by player
-        // index and encodes "no owner" as OwnerIndex -1. Older files
-        // still load via the legacy color-hex path below.
+        // index and encodes "no owner" as OwnerIndex -1. v6 renamed the
+        // unit levels (Peasant/Spearman/Knight/Baron →
+        // Recruit/Soldier/Captain/Commander); pre-v6 level names still
+        // load via ParseUnitLevel. Older files also load their
+        // claim-victory data via the legacy color-hex path below.
         if (data.FormatVersion is < 2 or > CurrentFormatVersion)
         {
             throw new InvalidOperationException(
@@ -424,7 +427,7 @@ public static class SaveSerializer
         {
             "Unit" => new Unit(
                 OwnerIndexToId(dto.OwnerIndex ?? 0, players),
-                Enum.Parse<UnitLevel>(dto.Level ?? nameof(UnitLevel.Peasant)))
+                ParseUnitLevel(dto.Level ?? nameof(UnitLevel.Recruit)))
             {
                 HasMovedThisTurn = dto.HasMovedThisTurn ?? false,
             },
@@ -681,7 +684,7 @@ public static class SaveSerializer
                     To = new HexCoord(
                         dto.ToQ ?? throw new InvalidOperationException("BuyUnit beat missing ToQ"),
                         dto.ToR ?? throw new InvalidOperationException("BuyUnit beat missing ToR")),
-                    Level = Enum.Parse<UnitLevel>(dto.Level ?? throw new InvalidOperationException("BuyUnit beat missing Level")),
+                    Level = ParseUnitLevel(dto.Level ?? throw new InvalidOperationException("BuyUnit beat missing Level")),
                 },
                 "BuildTower" => new ReplayBuildTowerBeat
                 {
@@ -732,6 +735,22 @@ public static class SaveSerializer
         }
         return beats;
     }
+
+    /// <summary>
+    /// Parse a stored unit-level string into the current
+    /// <see cref="UnitLevel"/>. Accepts the current names
+    /// (Recruit/Soldier/Captain/Commander, v6+) and the pre-v6 names
+    /// (Peasant/Spearman/Knight/Baron) so saves written before the unit
+    /// rename still load — the levels are unchanged, only the names are.
+    /// </summary>
+    private static UnitLevel ParseUnitLevel(string name) => name switch
+    {
+        "Peasant" => UnitLevel.Recruit,
+        "Spearman" => UnitLevel.Soldier,
+        "Knight" => UnitLevel.Captain,
+        "Baron" => UnitLevel.Commander,
+        _ => Enum.Parse<UnitLevel>(name),
+    };
 
     // --- Owner/index helpers --------------------------------------------
 

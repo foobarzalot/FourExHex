@@ -215,7 +215,7 @@ public class CapitalReconcilerTests
     [Fact]
     public void Reconcile_NewCapitalPlacedOverUnit_DestroysTheUnit()
     {
-        // Two-tile territory, both occupied by peasants. Reconciler must
+        // Two-tile territory, both occupied by recruits. Reconciler must
         // still place a capital; it picks the lex-min unit tile and the
         // unit is destroyed (no refund).
         HexGrid grid = BuildGrid(new HexCoord(0, 0), new HexCoord(1, 0));

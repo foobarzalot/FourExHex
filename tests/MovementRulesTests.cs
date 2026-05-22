@@ -35,7 +35,7 @@ public class MovementRulesTests
         var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         Territory red = territories.First(t => t.Owner == Red);
 
-        var targets = MovementRules.ValidTargets(UnitLevel.Peasant, red, grid, territories);
+        var targets = MovementRules.ValidTargets(UnitLevel.Recruit, red, grid, territories);
 
         Assert.Contains(red.Coords, c => targets.Contains(c) && c != red.Capital);
         Assert.DoesNotContain(red.Capital!.Value, targets);
@@ -50,7 +50,7 @@ public class MovementRulesTests
         var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         Territory red = territories.First(t => t.Owner == Red);
 
-        var targets = MovementRules.ValidTargets(UnitLevel.Peasant, red, grid, territories);
+        var targets = MovementRules.ValidTargets(UnitLevel.Recruit, red, grid, territories);
 
         Assert.DoesNotContain(red.Capital!.Value, targets);
     }
@@ -58,20 +58,20 @@ public class MovementRulesTests
     [Fact]
     public void ValidTargets_ExcludesOccupiedOwnTile_WhenNotCombinable()
     {
-        // Place a Baron on the target tile — a Peasant attacker can't
-        // combine with it (1 + 4 = 5 > Baron cap), so the tile is NOT a
+        // Place a Commander on the target tile — a Recruit attacker can't
+        // combine with it (1 + 4 = 5 > Commander cap), so the tile is NOT a
         // valid target.
         HexGrid grid = BuildGrid(5, 1, Blue);
         var coords = new[] { HexCoord.FromOffset(0, 0), HexCoord.FromOffset(1, 0), HexCoord.FromOffset(2, 0) };
         foreach (var c in coords) SetTile(grid, c, Red);
 
         HexTile? occupied = grid.Get(HexCoord.FromOffset(1, 0));
-        occupied!.Occupant = new Unit(Red, UnitLevel.Baron);
+        occupied!.Occupant = new Unit(Red, UnitLevel.Commander);
 
         var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         Territory red = territories.First(t => t.Owner == Red);
 
-        var targets = MovementRules.ValidTargets(UnitLevel.Peasant, red, grid, territories);
+        var targets = MovementRules.ValidTargets(UnitLevel.Recruit, red, grid, territories);
 
         Assert.DoesNotContain(HexCoord.FromOffset(1, 0), targets);
     }
@@ -79,7 +79,7 @@ public class MovementRulesTests
     [Fact]
     public void ValidTargets_IncludesOccupiedOwnTile_WhenCombinable()
     {
-        // Same fixture but with a Peasant on the target — 1 + 1 = 2,
+        // Same fixture but with a Recruit on the target — 1 + 1 = 2,
         // valid combine, so the tile IS a valid target.
         HexGrid grid = BuildGrid(5, 1, Blue);
         var coords = new[] { HexCoord.FromOffset(0, 0), HexCoord.FromOffset(1, 0), HexCoord.FromOffset(2, 0) };
@@ -90,7 +90,7 @@ public class MovementRulesTests
         var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         Territory red = territories.First(t => t.Owner == Red);
 
-        var targets = MovementRules.ValidTargets(UnitLevel.Peasant, red, grid, territories);
+        var targets = MovementRules.ValidTargets(UnitLevel.Recruit, red, grid, territories);
 
         Assert.Contains(HexCoord.FromOffset(1, 0), targets);
     }
@@ -100,14 +100,14 @@ public class MovementRulesTests
     {
         // Red at (0,1) and (1,1) in a 5x2 Blue grid. Blue's capital is
         // (0,0) (row-0 lex-min), so (2,0) is a non-capital Blue tile
-        // adjacent to Red's (1,1) — capturable by a peasant.
+        // adjacent to Red's (1,1) — capturable by a recruit.
         HexGrid grid = BuildGrid(5, 2, Blue);
         SetTile(grid, HexCoord.FromOffset(0, 1), Red);
         SetTile(grid, HexCoord.FromOffset(1, 1), Red);
         var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         Territory red = territories.First(t => t.Owner == Red);
 
-        var targets = MovementRules.ValidTargets(UnitLevel.Peasant, red, grid, territories);
+        var targets = MovementRules.ValidTargets(UnitLevel.Recruit, red, grid, territories);
 
         Assert.Contains(HexCoord.FromOffset(2, 0), targets);
     }
@@ -116,7 +116,7 @@ public class MovementRulesTests
     public void ValidTargets_ExcludesAdjacentEnemyCapital()
     {
         // Red at (0,0). Blue's only tiles are (1,0) and (2,0); Blue's
-        // capital is (1,0) (lex-min of its two coords). A peasant (level 1)
+        // capital is (1,0) (lex-min of its two coords). A recruit (level 1)
         // can't capture a capital (defense 1).
         HexGrid grid = new HexGrid();
         grid.Add(new HexTile(HexCoord.FromOffset(0, 0), Red));
@@ -131,7 +131,7 @@ public class MovementRulesTests
         Territory red = territories.First(t => t.Owner == Red);
         Territory blue = territories.First(t => t.Owner == Blue);
 
-        var targets = MovementRules.ValidTargets(UnitLevel.Peasant, red, grid, territories);
+        var targets = MovementRules.ValidTargets(UnitLevel.Recruit, red, grid, territories);
 
         // Confirm the test fixture: (1,0) really is Blue's capital.
         Assert.Equal(HexCoord.FromOffset(1, 0), blue.Capital);
@@ -142,8 +142,8 @@ public class MovementRulesTests
     public void ValidTargets_ExcludesAdjacentEnemyTileWithDefender()
     {
         // Same 5x2 fixture as the capture-included test. Blue's capital
-        // is (0,0); put a Blue peasant defender on (2,0) so defense == 1
-        // and a Red peasant (also level 1) can't capture it.
+        // is (0,0); put a Blue recruit defender on (2,0) so defense == 1
+        // and a Red recruit (also level 1) can't capture it.
         HexGrid grid = BuildGrid(5, 2, Blue);
         SetTile(grid, HexCoord.FromOffset(0, 1), Red);
         SetTile(grid, HexCoord.FromOffset(1, 1), Red);
@@ -152,7 +152,7 @@ public class MovementRulesTests
         var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         Territory red = territories.First(t => t.Owner == Red);
 
-        var targets = MovementRules.ValidTargets(UnitLevel.Peasant, red, grid, territories);
+        var targets = MovementRules.ValidTargets(UnitLevel.Recruit, red, grid, territories);
 
         // Sanity: confirm (2,0) is not Blue's capital in this fixture.
         Territory blue = territories.First(t => t.Coords.Contains(HexCoord.FromOffset(2, 0)));
@@ -173,7 +173,7 @@ public class MovementRulesTests
         var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         Territory red = territories.First(t => t.Owner == Red);
 
-        var targets = MovementRules.ValidTargets(UnitLevel.Peasant, red, grid, territories);
+        var targets = MovementRules.ValidTargets(UnitLevel.Recruit, red, grid, territories);
 
         Assert.DoesNotContain(HexCoord.FromOffset(5, 5), targets);
         Assert.DoesNotContain(HexCoord.FromOffset(6, 5), targets);
@@ -193,7 +193,7 @@ public class MovementRulesTests
         var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         Territory leftRed = territories.First(t => t.Owner == Red && t.Coords.Contains(HexCoord.FromOffset(0, 0)));
 
-        var targets = MovementRules.ValidTargets(UnitLevel.Peasant, leftRed, grid, territories);
+        var targets = MovementRules.ValidTargets(UnitLevel.Recruit, leftRed, grid, territories);
 
         Assert.DoesNotContain(HexCoord.FromOffset(8, 0), targets);
         Assert.DoesNotContain(HexCoord.FromOffset(9, 0), targets);
@@ -317,10 +317,10 @@ public class MovementRulesTests
         HexGrid grid = BuildGrid(5, 2, Blue);
         SetTile(grid, HexCoord.FromOffset(0, 1), Red);
         SetTile(grid, HexCoord.FromOffset(1, 1), Red);
-        var defender = new Unit(Blue, UnitLevel.Peasant);
+        var defender = new Unit(Blue, UnitLevel.Recruit);
         grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = defender;
 
-        grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = new Unit(Red, UnitLevel.Spearman);
+        grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = new Unit(Red, UnitLevel.Soldier);
 
         var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         Territory red = territories.First(t => t.Owner == Red);
@@ -343,7 +343,7 @@ public class MovementRulesTests
         var tower = new Tower();
         grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = tower;
 
-        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(Red, UnitLevel.Knight);
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(Red, UnitLevel.Captain);
 
         var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         Territory red = territories.First(t => t.Owner == Red);
@@ -450,7 +450,7 @@ public class MovementRulesTests
     // --- Combining --------------------------------------------------------
 
     [Fact]
-    public void Move_OntoOwnPeasant_ProducesSpearman_InheritingDestMoveState()
+    public void Move_OntoOwnRecruit_ProducesSoldier_InheritingDestMoveState()
     {
         HexGrid grid = BuildGrid(5, 1, Blue);
         foreach (var c in new[] { HexCoord.FromOffset(0, 0), HexCoord.FromOffset(1, 0), HexCoord.FromOffset(2, 0) })
@@ -472,14 +472,14 @@ public class MovementRulesTests
         Assert.Null(grid.Get(HexCoord.FromOffset(2, 0))!.Unit); // source empty
         Unit? combined = grid.Get(HexCoord.FromOffset(1, 0))!.Unit;
         Assert.NotNull(combined);
-        Assert.Equal(UnitLevel.Spearman, combined!.Level);
+        Assert.Equal(UnitLevel.Soldier, combined!.Level);
         Assert.Equal(Red, combined.Owner);
         // Dest was unmoved, so the combined unit inherits unmoved state.
         Assert.False(combined.HasMovedThisTurn);
     }
 
     [Fact]
-    public void Move_OntoOwnMovedPeasant_ProducesMovedSpearman()
+    public void Move_OntoOwnMovedRecruit_ProducesMovedSoldier()
     {
         HexGrid grid = BuildGrid(5, 1, Blue);
         foreach (var c in new[] { HexCoord.FromOffset(0, 0), HexCoord.FromOffset(1, 0), HexCoord.FromOffset(2, 0) })
@@ -498,13 +498,13 @@ public class MovementRulesTests
 
         Unit? combined = grid.Get(HexCoord.FromOffset(1, 0))!.Unit;
         Assert.NotNull(combined);
-        Assert.Equal(UnitLevel.Spearman, combined!.Level);
+        Assert.Equal(UnitLevel.Soldier, combined!.Level);
         // Dest was moved, so the combined unit inherits that.
         Assert.True(combined.HasMovedThisTurn);
     }
 
     [Fact]
-    public void Move_OntoOwnSpearman_ProducesKnight()
+    public void Move_OntoOwnSoldier_ProducesCaptain()
     {
         HexGrid grid = BuildGrid(5, 1, Blue);
         foreach (var c in new[] { HexCoord.FromOffset(0, 0), HexCoord.FromOffset(1, 0), HexCoord.FromOffset(2, 0) })
@@ -513,7 +513,7 @@ public class MovementRulesTests
         }
 
         grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(Red);
-        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(Red, UnitLevel.Spearman);
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(Red, UnitLevel.Soldier);
 
         var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         Territory red = territories.First(t => t.Owner == Red);
@@ -522,31 +522,31 @@ public class MovementRulesTests
 
         Unit? combined = grid.Get(HexCoord.FromOffset(1, 0))!.Unit;
         Assert.NotNull(combined);
-        Assert.Equal(UnitLevel.Knight, combined!.Level);
+        Assert.Equal(UnitLevel.Captain, combined!.Level);
     }
 
     // --- Higher-level capture rules ---------------------------------------
 
     [Fact]
-    public void ValidTargets_Spearman_CanCaptureTileDefendedByPeasant()
+    public void ValidTargets_Soldier_CanCaptureTileDefendedByRecruit()
     {
         HexGrid grid = BuildGrid(5, 2, Blue);
         SetTile(grid, HexCoord.FromOffset(0, 1), Red);
         SetTile(grid, HexCoord.FromOffset(1, 1), Red);
-        // Place a Blue peasant defender on (2,0) — defense 1.
+        // Place a Blue recruit defender on (2,0) — defense 1.
         grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(Blue);
 
         var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         Territory red = territories.First(t => t.Owner == Red);
 
-        // Spearman (level 2) > defense 1 → capturable.
-        var targets = MovementRules.ValidTargets(UnitLevel.Spearman, red, grid, territories);
+        // Soldier (level 2) > defense 1 → capturable.
+        var targets = MovementRules.ValidTargets(UnitLevel.Soldier, red, grid, territories);
 
         Assert.Contains(HexCoord.FromOffset(2, 0), targets);
     }
 
     [Fact]
-    public void ValidTargets_Peasant_CannotCaptureTileDefendedByPeasant()
+    public void ValidTargets_Recruit_CannotCaptureTileDefendedByRecruit()
     {
         HexGrid grid = BuildGrid(5, 2, Blue);
         SetTile(grid, HexCoord.FromOffset(0, 1), Red);
@@ -556,40 +556,40 @@ public class MovementRulesTests
         var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         Territory red = territories.First(t => t.Owner == Red);
 
-        // Peasant (level 1) vs defense 1 → not strictly greater → excluded.
-        var targets = MovementRules.ValidTargets(UnitLevel.Peasant, red, grid, territories);
+        // Recruit (level 1) vs defense 1 → not strictly greater → excluded.
+        var targets = MovementRules.ValidTargets(UnitLevel.Recruit, red, grid, territories);
 
         Assert.DoesNotContain(HexCoord.FromOffset(2, 0), targets);
     }
 
     [Fact]
-    public void ValidTargets_Baron_CanCaptureTileDefendedByKnight()
+    public void ValidTargets_Commander_CanCaptureTileDefendedByCaptain()
     {
         HexGrid grid = BuildGrid(5, 2, Blue);
         SetTile(grid, HexCoord.FromOffset(0, 1), Red);
         SetTile(grid, HexCoord.FromOffset(1, 1), Red);
-        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(Blue, UnitLevel.Knight);
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(Blue, UnitLevel.Captain);
 
         var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         Territory red = territories.First(t => t.Owner == Red);
 
-        var targets = MovementRules.ValidTargets(UnitLevel.Baron, red, grid, territories);
+        var targets = MovementRules.ValidTargets(UnitLevel.Commander, red, grid, territories);
 
         Assert.Contains(HexCoord.FromOffset(2, 0), targets);
     }
 
     [Fact]
-    public void ValidTargets_Knight_CannotCaptureTileDefendedByKnight()
+    public void ValidTargets_Captain_CannotCaptureTileDefendedByCaptain()
     {
         HexGrid grid = BuildGrid(5, 2, Blue);
         SetTile(grid, HexCoord.FromOffset(0, 1), Red);
         SetTile(grid, HexCoord.FromOffset(1, 1), Red);
-        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(Blue, UnitLevel.Knight);
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(Blue, UnitLevel.Captain);
 
         var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         Territory red = territories.First(t => t.Owner == Red);
 
-        var targets = MovementRules.ValidTargets(UnitLevel.Knight, red, grid, territories);
+        var targets = MovementRules.ValidTargets(UnitLevel.Captain, red, grid, territories);
 
         Assert.DoesNotContain(HexCoord.FromOffset(2, 0), targets);
     }
@@ -610,7 +610,7 @@ public class MovementRulesTests
         var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         Territory red = territories.First(t => t.Owner == Red);
 
-        var targets = MovementRules.ValidTargets(UnitLevel.Peasant, red, grid, territories);
+        var targets = MovementRules.ValidTargets(UnitLevel.Recruit, red, grid, territories);
 
         Assert.Contains(HexCoord.FromOffset(1, 0), targets);
     }
@@ -644,7 +644,7 @@ public class MovementRulesTests
     [Fact]
     public void PlaceNew_OntoOwnGrave_ClearsGraveAndConsumesAction()
     {
-        // Buy-and-place onto a grave tile: the fresh peasant buries the
+        // Buy-and-place onto a grave tile: the fresh recruit buries the
         // grave and spends its action. Matches PlaceNew-onto-tree.
         HexGrid grid = BuildGrid(5, 1, Blue);
         foreach (var c in new[] { HexCoord.FromOffset(0, 0), HexCoord.FromOffset(1, 0) })
@@ -664,7 +664,7 @@ public class MovementRulesTests
     }
 
     [Fact]
-    public void PlaceNew_OntoOwnPeasant_CombinesIntoSpearman()
+    public void PlaceNew_OntoOwnRecruit_CombinesIntoSoldier()
     {
         // Regression: PlaceNew used to overwrite the destination's
         // occupant with the fresh unit, silently destroying any
@@ -686,15 +686,15 @@ public class MovementRulesTests
         Assert.False(result.WasCapture);
         Unit? combined = grid.Get(HexCoord.FromOffset(1, 0))!.Unit;
         Assert.NotNull(combined);
-        Assert.Equal(UnitLevel.Spearman, combined!.Level);
+        Assert.Equal(UnitLevel.Soldier, combined!.Level);
     }
 
     [Fact]
-    public void PlaceNew_OntoOwnMovedPeasant_ProducesMovedSpearman()
+    public void PlaceNew_OntoOwnMovedRecruit_ProducesMovedSoldier()
     {
-        // Buying a peasant and placing it on an already-moved friendly
-        // peasant should produce a MOVED spearman (inherits dest state),
-        // not a fresh peasant.
+        // Buying a recruit and placing it on an already-moved friendly
+        // recruit should produce a MOVED soldier (inherits dest state),
+        // not a fresh recruit.
         HexGrid grid = BuildGrid(5, 1, Blue);
         foreach (var c in new[] { HexCoord.FromOffset(0, 0), HexCoord.FromOffset(1, 0), HexCoord.FromOffset(2, 0) })
         {
@@ -710,7 +710,7 @@ public class MovementRulesTests
 
         Unit? combined = grid.Get(HexCoord.FromOffset(1, 0))!.Unit;
         Assert.NotNull(combined);
-        Assert.Equal(UnitLevel.Spearman, combined!.Level);
+        Assert.Equal(UnitLevel.Soldier, combined!.Level);
         Assert.True(combined.HasMovedThisTurn);
     }
 
@@ -732,15 +732,15 @@ public class MovementRulesTests
         var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         Territory red = territories.First(t => t.Owner == Red);
 
-        var targets = MovementRules.ValidTargets(UnitLevel.Peasant, red, grid, territories);
+        var targets = MovementRules.ValidTargets(UnitLevel.Recruit, red, grid, territories);
 
         Assert.DoesNotContain(HexCoord.FromOffset(1, 0), targets);
     }
 
     [Fact]
-    public void ValidTargets_Knight_CanCaptureEnemyTowerTile()
+    public void ValidTargets_Captain_CanCaptureEnemyTowerTile()
     {
-        // Tower defends at 2; knight (3) is strictly greater → capturable.
+        // Tower defends at 2; captain (3) is strictly greater → capturable.
         HexGrid grid = BuildGrid(5, 2, Blue);
         SetTile(grid, HexCoord.FromOffset(0, 1), Red);
         SetTile(grid, HexCoord.FromOffset(1, 1), Red);
@@ -749,15 +749,15 @@ public class MovementRulesTests
         var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         Territory red = territories.First(t => t.Owner == Red);
 
-        var targets = MovementRules.ValidTargets(UnitLevel.Knight, red, grid, territories);
+        var targets = MovementRules.ValidTargets(UnitLevel.Captain, red, grid, territories);
 
         Assert.Contains(HexCoord.FromOffset(2, 0), targets);
     }
 
     [Fact]
-    public void ValidTargets_Spearman_CannotCaptureEnemyTowerTile()
+    public void ValidTargets_Soldier_CannotCaptureEnemyTowerTile()
     {
-        // Tower defense 2 vs spearman level 2 — strict-less rule says no.
+        // Tower defense 2 vs soldier level 2 — strict-less rule says no.
         HexGrid grid = BuildGrid(5, 2, Blue);
         SetTile(grid, HexCoord.FromOffset(0, 1), Red);
         SetTile(grid, HexCoord.FromOffset(1, 1), Red);
@@ -766,16 +766,16 @@ public class MovementRulesTests
         var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         Territory red = territories.First(t => t.Owner == Red);
 
-        var targets = MovementRules.ValidTargets(UnitLevel.Spearman, red, grid, territories);
+        var targets = MovementRules.ValidTargets(UnitLevel.Soldier, red, grid, territories);
 
         Assert.DoesNotContain(HexCoord.FromOffset(2, 0), targets);
     }
 
     [Fact]
-    public void ValidTargets_Spearman_CannotCaptureTileAdjacentToEnemyTower()
+    public void ValidTargets_Soldier_CannotCaptureTileAdjacentToEnemyTower()
     {
         // (2,0) is empty but adjacent to a tower on (3,0) — radiation
-        // gives it defense 2, blocking a spearman.
+        // gives it defense 2, blocking a soldier.
         HexGrid grid = BuildGrid(5, 2, Blue);
         SetTile(grid, HexCoord.FromOffset(0, 1), Red);
         SetTile(grid, HexCoord.FromOffset(1, 1), Red);
@@ -784,7 +784,7 @@ public class MovementRulesTests
         var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         Territory red = territories.First(t => t.Owner == Red);
 
-        var targets = MovementRules.ValidTargets(UnitLevel.Spearman, red, grid, territories);
+        var targets = MovementRules.ValidTargets(UnitLevel.Soldier, red, grid, territories);
 
         Assert.DoesNotContain(HexCoord.FromOffset(2, 0), targets);
     }
@@ -797,8 +797,8 @@ public class MovementRulesTests
         SetTile(grid, HexCoord.FromOffset(1, 0), Red);
         grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Tower();
 
-        var knight = new Unit(Red, UnitLevel.Knight);
-        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = knight;
+        var captain = new Unit(Red, UnitLevel.Captain);
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = captain;
 
         var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         Territory red = territories.First(t => t.Owner == Red);
@@ -809,10 +809,10 @@ public class MovementRulesTests
         Assert.True(result.WasCapture);
         HexTile captured = grid.Get(HexCoord.FromOffset(2, 0))!;
         Assert.Equal(Red, captured.Owner);
-        Assert.Same(knight, captured.Unit);
+        Assert.Same(captain, captured.Unit);
         // Tower is gone — overwritten by the arriving unit.
         Assert.IsNotType<Tower>(captured.Occupant);
-        Assert.True(knight.HasMovedThisTurn);
+        Assert.True(captain.HasMovedThisTurn);
     }
 
     // --- Tree tiles: clearable, consume action ---------------------------
@@ -830,7 +830,7 @@ public class MovementRulesTests
         var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         Territory red = territories.First(t => t.Owner == Red);
 
-        var targets = MovementRules.ValidTargets(UnitLevel.Peasant, red, grid, territories);
+        var targets = MovementRules.ValidTargets(UnitLevel.Recruit, red, grid, territories);
 
         Assert.Contains(HexCoord.FromOffset(1, 0), targets);
     }
@@ -883,8 +883,8 @@ public class MovementRulesTests
     [Fact]
     public void PlaceNew_OnOwnEmptyTile_DoesNotConsumeAction()
     {
-        // Buying a peasant and placing it on an empty own-territory tile
-        // doesn't consume its action — the fresh peasant can still move
+        // Buying a recruit and placing it on an empty own-territory tile
+        // doesn't consume its action — the fresh recruit can still move
         // and capture this turn.
         HexGrid grid = BuildGrid(5, 1, Blue);
         SetTile(grid, HexCoord.FromOffset(0, 0), Red);

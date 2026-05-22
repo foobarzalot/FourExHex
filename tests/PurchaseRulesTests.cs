@@ -35,7 +35,7 @@ public class PurchaseRulesTests
         Assert.Null(tile.Unit);
     }
 
-    // --- CanAffordPeasant -------------------------------------------------
+    // --- CanAffordRecruit -------------------------------------------------
 
     [Theory]
     [InlineData(0, false)]
@@ -44,27 +44,27 @@ public class PurchaseRulesTests
     [InlineData(10, true)]
     [InlineData(11, true)]
     [InlineData(100, true)]
-    public void CanAffordPeasant_GoldThreshold(int gold, bool expected)
+    public void CanAffordRecruit_GoldThreshold(int gold, bool expected)
     {
         var capital = new HexCoord(0, 0);
         Territory territory = MakeTerritory(Red, capital, new HexCoord(0, 0), new HexCoord(1, 0));
         var treasury = new Treasury();
         treasury.SetGold(capital, gold);
 
-        bool result = PurchaseRules.CanAffordPeasant(territory, treasury);
+        bool result = PurchaseRules.CanAffordRecruit(territory, treasury);
 
         Assert.Equal(expected, result);
     }
 
     [Fact]
-    public void CanAffordPeasant_SingletonTerritory_ReturnsFalse()
+    public void CanAffordRecruit_SingletonTerritory_ReturnsFalse()
     {
         // A singleton has no capital so the treasury can't hold gold for it;
         // CanAfford must not blow up trying to dereference a null Capital.
         var singleton = new Territory(Red, new[] { new HexCoord(0, 0) }, capital: null);
         var treasury = new Treasury();
 
-        bool result = PurchaseRules.CanAffordPeasant(singleton, treasury);
+        bool result = PurchaseRules.CanAffordRecruit(singleton, treasury);
 
         Assert.False(result);
     }
@@ -95,10 +95,10 @@ public class PurchaseRulesTests
         Assert.False(PurchaseRules.CanAffordTower(singleton, treasury));
     }
 
-    // --- IsValidPeasantTarget ---------------------------------------------
+    // --- IsValidRecruitTarget ---------------------------------------------
 
     [Fact]
-    public void IsValidPeasantTarget_TileInTerritoryAndEmpty_ReturnsTrue()
+    public void IsValidRecruitTarget_TileInTerritoryAndEmpty_ReturnsTrue()
     {
         var capital = new HexCoord(0, 0);
         Territory territory = MakeTerritory(
@@ -106,11 +106,11 @@ public class PurchaseRulesTests
             new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(0, 1));
         var tile = new HexTile(new HexCoord(1, 0), Red);
 
-        Assert.True(PurchaseRules.IsValidPeasantTarget(tile, territory));
+        Assert.True(PurchaseRules.IsValidRecruitTarget(tile, territory));
     }
 
     [Fact]
-    public void IsValidPeasantTarget_TileInTerritoryButOccupied_ReturnsFalse()
+    public void IsValidRecruitTarget_TileInTerritoryButOccupied_ReturnsFalse()
     {
         var capital = new HexCoord(0, 0);
         Territory territory = MakeTerritory(
@@ -121,11 +121,11 @@ public class PurchaseRulesTests
             Occupant = new Unit(Red),
         };
 
-        Assert.False(PurchaseRules.IsValidPeasantTarget(tile, territory));
+        Assert.False(PurchaseRules.IsValidRecruitTarget(tile, territory));
     }
 
     [Fact]
-    public void IsValidPeasantTarget_TileNotInTerritory_ReturnsFalse()
+    public void IsValidRecruitTarget_TileNotInTerritory_ReturnsFalse()
     {
         var capital = new HexCoord(0, 0);
         Territory territory = MakeTerritory(
@@ -133,13 +133,13 @@ public class PurchaseRulesTests
             new HexCoord(0, 0), new HexCoord(1, 0));
         var tile = new HexTile(new HexCoord(5, 5), Red);
 
-        Assert.False(PurchaseRules.IsValidPeasantTarget(tile, territory));
+        Assert.False(PurchaseRules.IsValidRecruitTarget(tile, territory));
     }
 
     [Fact]
-    public void IsValidPeasantTarget_OnOwnGrave_ReturnsTrue()
+    public void IsValidRecruitTarget_OnOwnGrave_ReturnsTrue()
     {
-        // Graves don't block placement — a new peasant can be dropped
+        // Graves don't block placement — a new recruit can be dropped
         // onto a grave tile and bury it.
         var capital = new HexCoord(0, 0);
         Territory territory = MakeTerritory(
@@ -150,11 +150,11 @@ public class PurchaseRulesTests
             Occupant = new Grave(),
         };
 
-        Assert.True(PurchaseRules.IsValidPeasantTarget(graveTile, territory));
+        Assert.True(PurchaseRules.IsValidRecruitTarget(graveTile, territory));
     }
 
     [Fact]
-    public void IsValidPeasantTarget_OnOwnCapital_ReturnsFalse()
+    public void IsValidRecruitTarget_OnOwnCapital_ReturnsFalse()
     {
         // Can't stand on top of your own capital. With the occupant model,
         // the capital hex has a Capital occupant, so the tile is "occupied"
@@ -168,7 +168,7 @@ public class PurchaseRulesTests
             Occupant = new Capital(),
         };
 
-        Assert.False(PurchaseRules.IsValidPeasantTarget(capitalTile, territory));
+        Assert.False(PurchaseRules.IsValidRecruitTarget(capitalTile, territory));
     }
 
     // --- IsValidTowerLocation ---------------------------------------------
@@ -252,10 +252,10 @@ public class PurchaseRulesTests
         Assert.True(PurchaseRules.IsValidTowerLocation(tile, territory, grid));
     }
 
-    // --- BuyPeasant --------------------------------------------------------
+    // --- BuyRecruit --------------------------------------------------------
 
     [Fact]
-    public void BuyPeasant_DeductsTenGold()
+    public void BuyRecruit_DeductsTenGold()
     {
         var capital = new HexCoord(0, 0);
         Territory territory = MakeTerritory(
@@ -265,13 +265,13 @@ public class PurchaseRulesTests
         var treasury = new Treasury();
         treasury.SetGold(capital, 42);
 
-        PurchaseRules.BuyPeasant(tile, territory, treasury);
+        PurchaseRules.BuyRecruit(tile, territory, treasury);
 
         Assert.Equal(32, treasury.GetGold(capital));
     }
 
     [Fact]
-    public void BuyPeasant_PlacesPeasantOwnedByTerritoryOwner()
+    public void BuyRecruit_PlacesRecruitOwnedByTerritoryOwner()
     {
         var capital = new HexCoord(0, 0);
         Territory territory = MakeTerritory(
@@ -281,7 +281,7 @@ public class PurchaseRulesTests
         var treasury = new Treasury();
         treasury.SetGold(capital, 20);
 
-        PurchaseRules.BuyPeasant(tile, territory, treasury);
+        PurchaseRules.BuyRecruit(tile, territory, treasury);
 
         Assert.NotNull(tile.Unit);
         Assert.Equal(Red, tile.Unit!.Owner);

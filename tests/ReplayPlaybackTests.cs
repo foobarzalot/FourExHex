@@ -113,10 +113,10 @@ public class ReplayPlaybackTests
     {
         var f = new Fixture();
 
-        // Play a scripted game: Red buys a peasant, ends turn, Blue
+        // Play a scripted game: Red buys a recruit, ends turn, Blue
         // ends turn (Blue is human; no input so manual ClickEndTurn).
         f.Map.SimulateClick(f.State.Grid.Get(f.RedCapital)!);
-        f.Hud.ClickBuyPeasant();
+        f.Hud.ClickBuyRecruit();
         f.Map.SimulateClick(f.State.Grid.Get(f.RedOther)!);
         f.Hud.ClickEndTurn();
         f.Pacer.DrainAll();
@@ -141,8 +141,8 @@ public class ReplayPlaybackTests
     {
         // Regression for a replay-fidelity bug uncovered during the
         // ReplayRecorder extraction's manual smoke test: a human buys a
-        // peasant onto an own-empty tile (HasMovedThisTurn=false on the
-        // live side), then moves that peasant in the same turn (capture).
+        // recruit onto an own-empty tile (HasMovedThisTurn=false on the
+        // live side), then moves that recruit in the same turn (capture).
         // During replay, ExecuteAiBuyUnit's "fresh buy consumes the
         // unit's move" rule was applied unconditionally (no
         // !_isReplayMode() gate analogous to ExecuteAiMove's reposition
@@ -151,18 +151,18 @@ public class ReplayPlaybackTests
         // recorded log replays through this specific sequence.
         var f = new Fixture();
 
-        // Step 1: select Red's territory, enter Buy Peasant mode, place
-        // peasant onto own-empty RedOther.
+        // Step 1: select Red's territory, enter Buy Recruit mode, place
+        // recruit onto own-empty RedOther.
         f.Map.SimulateClick(f.State.Grid.Get(f.RedCapital)!);
-        f.Hud.ClickBuyPeasant();
+        f.Hud.ClickBuyRecruit();
         f.Map.SimulateClick(f.State.Grid.Get(f.RedOther)!);
         Assert.True(f.State.Grid.Get(f.RedOther)!.Occupant is Unit,
-            "Buy should have placed a peasant on RedOther.");
+            "Buy should have placed a recruit on RedOther.");
         Assert.False(((Unit)f.State.Grid.Get(f.RedOther)!.Occupant!).HasMovedThisTurn,
             "A human buy onto own-empty must leave HasMovedThisTurn=false " +
             "so the unit can still move this turn.");
 
-        // Step 2: pick up that peasant and move it onto an adjacent
+        // Step 2: pick up that recruit and move it onto an adjacent
         // Blue tile (capture). Find any Blue tile adjacent to RedOther.
         HexCoord? captureTarget = null;
         foreach (HexCoord neighbor in f.RedOther.Neighbors())
@@ -212,7 +212,7 @@ public class ReplayPlaybackTests
                 if (s.Grid.Get(coord)?.Occupant == null) { buyDest = coord; break; }
             }
             blueActed = true;
-            return new AiBuyUnitAction(buyCapital.Value, buyDest!.Value, UnitLevel.Peasant);
+            return new AiBuyUnitAction(buyCapital.Value, buyDest!.Value, UnitLevel.Recruit);
         }
 
         var f = new Fixture(blueKind: AiKind.Random, aiChooser: Chooser);
@@ -236,7 +236,7 @@ public class ReplayPlaybackTests
         var f = new Fixture();
         // Make a buy so there's a beat to replay.
         f.Map.SimulateClick(f.State.Grid.Get(f.RedCapital)!);
-        f.Hud.ClickBuyPeasant();
+        f.Hud.ClickBuyRecruit();
         f.Map.SimulateClick(f.State.Grid.Get(f.RedOther)!);
         Assert.Single(f.Controller.ReplayBeats);
 
@@ -256,7 +256,7 @@ public class ReplayPlaybackTests
     {
         var f = new Fixture();
         f.Map.SimulateClick(f.State.Grid.Get(f.RedCapital)!);
-        f.Hud.ClickBuyPeasant();
+        f.Hud.ClickBuyRecruit();
         f.Map.SimulateClick(f.State.Grid.Get(f.RedOther)!);
 
         int beatsBeforeReplay = f.Controller.ReplayBeats.Count;
@@ -317,7 +317,7 @@ public class ReplayPlaybackTests
     {
         var f = new Fixture();
         f.Map.SimulateClick(f.State.Grid.Get(f.RedCapital)!);
-        f.Hud.ClickBuyPeasant();
+        f.Hud.ClickBuyRecruit();
         f.Map.SimulateClick(f.State.Grid.Get(f.RedOther)!);
 
         f.Controller.BeginReplay();
@@ -338,7 +338,7 @@ public class ReplayPlaybackTests
     {
         var f = new Fixture(instantReplay: true);
         f.Map.SimulateClick(f.State.Grid.Get(f.RedCapital)!);
-        f.Hud.ClickBuyPeasant();
+        f.Hud.ClickBuyRecruit();
         f.Map.SimulateClick(f.State.Grid.Get(f.RedOther)!);   // buy beat
         f.Hud.ClickEndTurn(); f.Pacer.DrainAll();              // Red end
         f.Hud.ClickEndTurn(); f.Pacer.DrainAll();              // Blue end → Red T2
@@ -404,7 +404,7 @@ public class ReplayPlaybackTests
     [Fact]
     public void Replay_Instant_DoesNotPlayBankruptcySound()
     {
-        // A Baron pre-placed on Red's 2-tile territory (upkeep 54 ≫
+        // A Commander pre-placed on Red's 2-tile territory (upkeep 54 ≫
         // Red's seeded gold + income) guarantees Red's StartPlayerTurn
         // bankrupts on turn 2 — both during the live recording and again
         // when the recorded EndTurn beats replay it. Instant replay is a
@@ -420,7 +420,7 @@ public class ReplayPlaybackTests
         grid.Get(HexCoord.FromOffset(1, 1))!.Owner = red.Id;
         // Pre-placed BEFORE StartGame so it rides in the initial replay
         // snapshot and the bankruptcy reproduces on playback.
-        grid.Get(HexCoord.FromOffset(0, 1))!.Occupant = new Unit(red.Id, UnitLevel.Baron);
+        grid.Get(HexCoord.FromOffset(0, 1))!.Occupant = new Unit(red.Id, UnitLevel.Commander);
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -456,7 +456,7 @@ public class ReplayPlaybackTests
         controller.BeginReplay();
         pacer.DrainAll();
 
-        // Replay reproduced the bankruptcy (Baron → Grave → Tree, same
+        // Replay reproduced the bankruptcy (Commander → Grave → Tree, same
         // deterministic aging) but stayed silent.
         Assert.IsType<Tree>(state.Grid.Get(HexCoord.FromOffset(0, 1))!.Occupant);
         Assert.Equal(bankruptcyBefore, map.BankruptcySoundCount);
@@ -465,7 +465,7 @@ public class ReplayPlaybackTests
     [Fact]
     public void Replay_Instant_RedrawsOncePerTurn_NotPerCapture()
     {
-        // Custom grid: Blue AI has five peasants, each adjacent to a
+        // Custom grid: Blue AI has five recruits, each adjacent to a
         // lone Red outpost it captures in a single turn. Red also holds
         // a 2-tile capital territory so it isn't pre-eliminated. On
         // replay, each of the five capturing moves runs HandleCapture →
@@ -482,10 +482,10 @@ public class ReplayPlaybackTests
         // Red 2-tile capital territory (keeps Red alive at start).
         grid.Get(HexCoord.FromOffset(10, 0))!.Owner = red.Id;
         grid.Get(HexCoord.FromOffset(10, 1))!.Owner = red.Id;
-        // Four lone Red outposts at odd cols on row 0; a Blue peasant on
+        // Four lone Red outposts at odd cols on row 0; a Blue recruit on
         // the even col immediately to the left of each captures it. Stop
         // at col 7 so no outpost touches Red's (10,*) capital, which
-        // would defend it and make the peasant capture illegal.
+        // would defend it and make the recruit capture illegal.
         var captures = new List<(HexCoord From, HexCoord To)>();
         for (int i = 0; i < 4; i++)
         {
@@ -494,7 +494,7 @@ public class ReplayPlaybackTests
             HexCoord redTile = HexCoord.FromOffset(redCol, 0);
             HexCoord blueTile = HexCoord.FromOffset(blueCol, 0);
             grid.Get(redTile)!.Owner = red.Id;
-            grid.Get(blueTile)!.Occupant = new Unit(blue.Id, UnitLevel.Peasant);
+            grid.Get(blueTile)!.Occupant = new Unit(blue.Id, UnitLevel.Recruit);
             captures.Add((blueTile, redTile));
         }
 

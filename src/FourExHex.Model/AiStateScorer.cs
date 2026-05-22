@@ -234,7 +234,7 @@ public static class AiStateScorer
     /// Count own tiles in this territory that are adjacent to an
     /// enemy-owned neighbor AND have zero defense coverage.
     /// Each such tile is an immediate, zero-cost capture target
-    /// for any enemy peasant; fixing them is one of the AI's
+    /// for any enemy recruit; fixing them is one of the AI's
     /// primary defensive jobs.
     /// </summary>
     private static int CountUndefendedBorderTiles(Territory territory, HexGrid grid, PlayerId forPlayer)
@@ -314,17 +314,17 @@ public static class AiStateScorer
     /// <summary>
     /// Strategic value of a unit by level. Roughly tracks upkeep
     /// cost but discounts higher levels so the AI doesn't
-    /// over-combine when lower-level units would suffice. Peasant
-    /// = 4 (attack level 1, cheap), Spearman = 12, Knight = 30,
-    /// Baron = 70. Not strictly proportional to upkeep (2/6/18/54)
+    /// over-combine when lower-level units would suffice. Recruit
+    /// = 4 (attack level 1, cheap), Soldier = 12, Captain = 30,
+    /// Commander = 70. Not strictly proportional to upkeep (2/6/18/54)
     /// because the upkeep/value ratio should reward leveling up.
     /// </summary>
     private static double UnitValue(UnitLevel level) => level switch
     {
-        UnitLevel.Peasant => 4.0,
-        UnitLevel.Spearman => 12.0,
-        UnitLevel.Knight => 30.0,
-        UnitLevel.Baron => 70.0,
+        UnitLevel.Recruit => 4.0,
+        UnitLevel.Soldier => 12.0,
+        UnitLevel.Captain => 30.0,
+        UnitLevel.Commander => 70.0,
         _ => 0.0,
     };
 }

@@ -20,7 +20,7 @@ public class MockHexMapView : IHexMapView
     /// <summary>The <see cref="UnitLevel"/> the controller most recently
     /// passed to <see cref="ShowMoveTargets"/>, or null if it has never
     /// been called. Used to verify the destination preview is sized for
-    /// the source unit's level (e.g., a Spearman's preview should render
+    /// the source unit's level (e.g., a Soldier's preview should render
     /// two rings, not one).</summary>
     public UnitLevel? LastMoveTargetsLevel { get; private set; }
     /// <summary>Test hook: invoked-and-cleared at the top of the next
