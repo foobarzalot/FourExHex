@@ -35,7 +35,7 @@ public class SaveLoadEquivalenceTests
     /// 14x3 grid. Red owns the leftmost 5 columns (15 tiles); Blue owns
     /// the right 9 columns (27 tiles). To keep the test stable across
     /// many turns, the chooser caps Blue's actions to 1 per turn —
-    /// otherwise default RandomAi can run dozens of captures in T1
+    /// otherwise default ComputerAi can run dozens of captures in T1
     /// (134 starting gold + adjacent Red tiles) and end the game.
     /// </summary>
     private static GameWithObserver BuildHumanVsAi(int seed, GameState? loadedState = null)
@@ -50,8 +50,8 @@ public class SaveLoadEquivalenceTests
         }
         else
         {
-            var red = new Player("Red", PlayerId.FromIndex(0), AiKind.Human);
-            var blue = new Player("Blue", PlayerId.FromIndex(1), AiKind.Random);
+            var red = new Player("Red", PlayerId.FromIndex(0), PlayerKind.Human);
+            var blue = new Player("Blue", PlayerId.FromIndex(1), PlayerKind.Computer);
             players = new List<Player> { red, blue };
             HexGrid grid = TestHelpers.BuildRectGrid(14, 3, blue.Id);
             for (int row = 0; row < 3; row++)
@@ -69,7 +69,7 @@ public class SaveLoadEquivalenceTests
         var map = new MockHexMapView();
         var hud = new MockHudView();
 
-        // Wrapping chooser: cap to 1 RandomAi action per (turn, player)
+        // Wrapping chooser: cap to 1 ComputerAi action per (turn, player)
         // so the game spans many turns without an early elimination.
         // The cap is keyed to (turn, player) so captures across save/
         // load boundaries don't accidentally let the AI exceed it.
@@ -84,7 +84,7 @@ public class SaveLoadEquivalenceTests
                 actionsThisTurn = 0;
             }
             if (actionsThisTurn >= 1) return null;
-            AiAction? action = RandomAi.ChooseNextAction(s, c, visited, rng);
+            AiAction? action = ComputerAi.ChooseNextAction(s, c, visited, rng);
             if (action != null) actionsThisTurn++;
             return action;
         }

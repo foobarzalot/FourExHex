@@ -32,7 +32,7 @@ public class ReplayRecordingTests
         public Player Blue { get; }
         public Func<GameState, PlayerId, HashSet<HexCoord>, Random, AiAction?>? AiChooser { get; set; }
 
-        public Fixture(AiKind redKind = AiKind.Human, AiKind blueKind = AiKind.Human,
+        public Fixture(PlayerKind redKind = PlayerKind.Human, PlayerKind blueKind = PlayerKind.Human,
             Func<GameState, PlayerId, HashSet<HexCoord>, Random, AiAction?>? aiChooser = null)
         {
             Red = new Player("Red", PlayerId.FromIndex(0), redKind);
@@ -366,7 +366,7 @@ public class ReplayRecordingTests
             return new AiBuyUnitAction(blueCapital.Value, blueEmpty!.Value, UnitLevel.Recruit);
         }
 
-        var f = new Fixture(redKind: AiKind.Human, blueKind: AiKind.Random, aiChooser: Chooser);
+        var f = new Fixture(redKind: PlayerKind.Human, blueKind: PlayerKind.Computer, aiChooser: Chooser);
         f.Hud.ClickEndTurn();   // Red ends → Blue AI runs scripted buy → null → end turn.
 
         ReplayBuyBeat? buy = f.Controller.ReplayBeats.OfType<ReplayBuyBeat>().FirstOrDefault();
@@ -382,7 +382,7 @@ public class ReplayRecordingTests
     {
         // Chooser always returns null → Blue's AI immediately ends turn.
         AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> visited, Random rng) => null;
-        var f = new Fixture(redKind: AiKind.Human, blueKind: AiKind.Random, aiChooser: Chooser);
+        var f = new Fixture(redKind: PlayerKind.Human, blueKind: PlayerKind.Computer, aiChooser: Chooser);
         int before = f.Controller.ReplayBeats.Count;
         f.Hud.ClickEndTurn();   // Red ends. Blue runs AI (null action → EndTurn).
 

@@ -1,7 +1,7 @@
 using System.Linq;
 
 /// <summary>
-/// Pure state → scalar scoring function used by <see cref="HeuristicAi"/>.
+/// Pure state → scalar scoring function used by <see cref="ComputerAi"/>.
 /// Computes <c>self_value − sum(enemy_values)</c> so higher = better
 /// for the given player. The key strategic behaviors fall out of
 /// three design choices:

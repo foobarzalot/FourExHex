@@ -32,7 +32,7 @@ public sealed record AiBuildTowerAction(HexCoord Capital, HexCoord Destination) 
 
 /// <summary>
 /// Replay-script-only: a long-press rally targeting <see cref="Target"/>.
-/// Heuristic/Random AIs never produce this; it exists so the
+/// <see cref="ComputerAi"/> never produces this; it exists so the
 /// <c>ReplayDrivenAi</c> chooser can drive recorded human rallies on
 /// non-player-0 turns during tutorial Preview through the same
 /// <c>StepAiExecute</c> dispatch as ordinary AI moves.

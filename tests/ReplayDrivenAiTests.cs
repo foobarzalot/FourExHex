@@ -16,8 +16,8 @@ public class ReplayDrivenAiTests
 
     private static IReadOnlyList<Player> TwoPlayerRoster() => new List<Player>
     {
-        new("Red", Red, AiKind.Human),
-        new("Blue", Blue, AiKind.Heuristic),
+        new("Red", Red, PlayerKind.Human),
+        new("Blue", Blue, PlayerKind.Computer),
     };
 
     private static GameState TrivialState(IReadOnlyList<Player> players)

@@ -26,8 +26,8 @@ public class TutorialInstructionTextTests
     {
         var players = new List<Player>
         {
-            new("Red", Red, AiKind.Human),
-            new("Blue", Blue, AiKind.Heuristic),
+            new("Red", Red, PlayerKind.Human),
+            new("Blue", Blue, PlayerKind.Computer),
         };
         return new GameState(grid, new List<Territory>(), players,
             new TurnState(players, currentPlayerIndex: 0, turnNumber: 1),

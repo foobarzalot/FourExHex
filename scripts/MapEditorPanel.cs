@@ -153,7 +153,7 @@ public sealed partial class MapEditorPanel : Node2D
     /// <paramref name="roster"/> rather than the panel's
     /// <see cref="Players"/>. Used by the TutorialBuilder: Record mode
     /// uses an all-Human override roster so the dev plays hot-seat;
-    /// Preview mode uses a player-0-Human / players-1-5-Heuristic
+    /// Preview mode uses a player-0-Human / players-1-5-Computer
     /// override so the AI step machine kicks in for non-main players.
     /// The grid and tile-color partition are reused unchanged — the
     /// override roster must declare the same colors.

@@ -12,8 +12,8 @@ public class SaveMigrationTests
 {
     private static (GameState, IReadOnlyList<Player>) BuildState()
     {
-        var red = new Player("Red", PlayerId.FromIndex(0), AiKind.Human);
-        var blue = new Player("Blue", PlayerId.FromIndex(1), AiKind.Heuristic);
+        var red = new Player("Red", PlayerId.FromIndex(0), PlayerKind.Human);
+        var blue = new Player("Blue", PlayerId.FromIndex(1), PlayerKind.Computer);
         var players = new List<Player> { red, blue };
 
         HexGrid grid = TestHelpers.BuildRectGrid(4, 3, blue.Id);
@@ -132,6 +132,24 @@ public class SaveMigrationTests
 
         LoadedSave loaded = SaveSerializer.Deserialize(v3);
         Assert.Equal(50, loaded.ClaimVictoryPromptedHighestThreshold[PlayerId.FromIndex(1)]);
+    }
+
+    [Theory]
+    [InlineData("Random")]
+    [InlineData("Heuristic")]
+    public void LegacyAiKind_MigratesToComputer(string legacyKind)
+    {
+        // Old saves predate the PlayerKind { Human, Computer } collapse:
+        // they stored the AiKind name "Random" or "Heuristic". Both must
+        // load as Computer rather than throwing on the gone enum names.
+        (GameState s, IReadOnlyList<Player> p) = BuildState();
+        string json = SaveSerializer.Serialize(s, 1, p, "slot", 100);
+
+        string legacy = json.Replace("\"Kind\": \"Computer\"", $"\"Kind\": \"{legacyKind}\"");
+        Assert.Contains($"\"Kind\": \"{legacyKind}\"", legacy); // replace took effect
+
+        LoadedSave loaded = SaveSerializer.Deserialize(legacy);
+        Assert.Equal(PlayerKind.Computer, loaded.State.Players[1].Kind);
     }
 
     [Fact]

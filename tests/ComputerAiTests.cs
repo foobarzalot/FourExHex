@@ -5,7 +5,7 @@ using Xunit;
 
 namespace FourExHex.Tests;
 
-public class HeuristicAiTests
+public class ComputerAiTests
 {
     private static readonly PlayerId Red = PlayerId.FromIndex(0);
     private static readonly PlayerId Blue = PlayerId.FromIndex(1);
@@ -142,7 +142,7 @@ public class HeuristicAiTests
             $"expected orphaned-enemy (B={scoreB}) to beat healthy-enemy (A={scoreA})");
     }
 
-    // --- HeuristicAi: action selection ------------------------------------
+    // --- ComputerAi: action selection ------------------------------------
 
     [Fact]
     public void ChooseNextAction_PrefersCaptureOverCombine()
@@ -162,7 +162,7 @@ public class HeuristicAiTests
         grid.Get(HexCoord.FromOffset(5, 0))!.Occupant = new Unit(Red);
         GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
 
-        AiAction? result = HeuristicAi.ChooseNextAction(
+        AiAction? result = ComputerAi.ChooseNextAction(
             state, Red, new HashSet<HexCoord>(), new Random(0));
 
         AiMoveAction move = Assert.IsType<AiMoveAction>(result);
@@ -322,7 +322,7 @@ public class HeuristicAiTests
         HexCoord cap = state.Territories.First(t => t.Owner == Red).Capital!.Value;
         state.Treasury.SetGold(cap, PurchaseRules.TowerCost);
 
-        AiAction? result = HeuristicAi.ChooseNextAction(
+        AiAction? result = ComputerAi.ChooseNextAction(
             state, Red, new HashSet<HexCoord>(), new Random(0));
 
         Assert.IsType<AiBuildTowerAction>(result);
@@ -355,7 +355,7 @@ public class HeuristicAiTests
         // tiles, so a recruit at (0,1) is the adjacent attacker.
         grid.Get(HexCoord.FromOffset(0, 1))!.Occupant = new Unit(Red);
 
-        AiAction? result = HeuristicAi.ChooseNextAction(
+        AiAction? result = ComputerAi.ChooseNextAction(
             state, Red, new HashSet<HexCoord>(), new Random(0));
 
         AiMoveAction move = Assert.IsType<AiMoveAction>(result);
@@ -380,7 +380,7 @@ public class HeuristicAiTests
         grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(Red);
         GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
 
-        AiAction? result = HeuristicAi.ChooseNextAction(
+        AiAction? result = ComputerAi.ChooseNextAction(
             state, Red, new HashSet<HexCoord>(), new Random(0));
 
         AiMoveAction move = Assert.IsType<AiMoveAction>(result);
@@ -496,7 +496,7 @@ public class HeuristicAiTests
         grid.Add(new HexTile(HexCoord.FromOffset(2, 0), Red));
         GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
 
-        AiAction? result = HeuristicAi.ChooseNextAction(
+        AiAction? result = ComputerAi.ChooseNextAction(
             state, Red, new HashSet<HexCoord>(), new Random(0));
 
         Assert.Null(result);
@@ -523,7 +523,7 @@ public class HeuristicAiTests
         grid.Get(HexCoord.FromOffset(0, 1))!.Occupant = new Unit(Red);
         GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
 
-        AiAction? result = HeuristicAi.ChooseNextAction(
+        AiAction? result = ComputerAi.ChooseNextAction(
             state, Red, new HashSet<HexCoord>(), new Random(0));
 
         AiMoveAction move = Assert.IsType<AiMoveAction>(result);
@@ -612,7 +612,7 @@ public class HeuristicAiTests
     }
 
     [Fact]
-    public void HeuristicAi_DoesNotPingPongRepositions()
+    public void ComputerAi_DoesNotPingPongRepositions()
     {
         // After repositioning a unit once, calling the chooser again
         // must not return another move whose source is where that
@@ -627,12 +627,12 @@ public class HeuristicAiTests
         grid.Get(HexCoord.FromOffset(0, 1))!.Occupant = new Unit(Red);
         GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
 
-        AiAction? first = HeuristicAi.ChooseNextAction(
+        AiAction? first = ComputerAi.ChooseNextAction(
             state, Red, new HashSet<HexCoord>(), new Random(0));
         AiMoveAction firstMove = Assert.IsType<AiMoveAction>(first);
         AiSimulator.Apply(firstMove, state);
 
-        AiAction? second = HeuristicAi.ChooseNextAction(
+        AiAction? second = ComputerAi.ChooseNextAction(
             state, Red, new HashSet<HexCoord>(), new Random(0));
         if (second is AiMoveAction secondMove)
         {

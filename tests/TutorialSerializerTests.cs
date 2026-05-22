@@ -14,7 +14,7 @@ public class TutorialSerializerTests
 {
     private static (GameState, IReadOnlyList<Player>) BuildMinimalState()
     {
-        var red = new Player("Red", PlayerId.FromIndex(0), AiKind.Human);
+        var red = new Player("Red", PlayerId.FromIndex(0), PlayerKind.Human);
         var players = new List<Player> { red };
         HexGrid grid = TestHelpers.BuildRectGrid(2, 2, red.Id);
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);

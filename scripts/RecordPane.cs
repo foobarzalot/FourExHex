@@ -10,7 +10,7 @@ using Godot;
 ///
 /// <para>
 /// On entering Record (via <see cref="StartRecording"/>), this pane:
-/// builds an all-Human roster (every slot <c>AiKind.Human</c>), spins
+/// builds an all-Human roster (every slot <c>PlayerKind.Human</c>), spins
 /// up a transient real <see cref="HudView"/> + <see cref="GameController"/>
 /// against the panel's painted draft, forces drag-mode to Pan so tile
 /// clicks fire, and calls <c>StartGame</c>. The controller's normal
@@ -146,7 +146,7 @@ public sealed partial class RecordPane : Control
         var roster = new List<Player>(_panel.Players.Count);
         foreach (Player p in _panel.Players)
         {
-            roster.Add(new Player(p.Name, p.Id, AiKind.Human));
+            roster.Add(new Player(p.Name, p.Id, PlayerKind.Human));
         }
 
         _recordState = _panel.BuildLiveStateWith(roster);
@@ -207,7 +207,7 @@ public sealed partial class RecordPane : Control
         var roster = new List<Player>(_panel.Players.Count);
         foreach (Player p in _panel.Players)
         {
-            roster.Add(new Player(p.Name, p.Id, AiKind.Human));
+            roster.Add(new Player(p.Name, p.Id, PlayerKind.Human));
         }
 
         _recordState = _panel.BuildLiveStateWith(roster);

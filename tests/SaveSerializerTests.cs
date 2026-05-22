@@ -21,8 +21,8 @@ public class SaveSerializerTests
     /// </summary>
     private static (GameState, IReadOnlyList<Player>) BuildRichState()
     {
-        var red = new Player("Red", PlayerId.FromIndex(0), AiKind.Human);
-        var blue = new Player("Blue", PlayerId.FromIndex(1), AiKind.Heuristic);
+        var red = new Player("Red", PlayerId.FromIndex(0), PlayerKind.Human);
+        var blue = new Player("Blue", PlayerId.FromIndex(1), PlayerKind.Computer);
         var players = new List<Player> { red, blue };
 
         HexGrid grid = TestHelpers.BuildRectGrid(4, 3, blue.Id);
@@ -97,7 +97,7 @@ public class SaveSerializerTests
 
         foreach (Player p in loaded.Players)
         {
-            Assert.Equal(AiKind.Human, p.Kind);
+            Assert.Equal(PlayerKind.Human, p.Kind);
         }
     }
 
@@ -116,8 +116,8 @@ public class SaveSerializerTests
     [Fact]
     public void Serialize_RoundTripsWaterCoords()
     {
-        var red = new Player("Red", PlayerId.FromIndex(0), AiKind.Human);
-        var blue = new Player("Blue", PlayerId.FromIndex(1), AiKind.Heuristic);
+        var red = new Player("Red", PlayerId.FromIndex(0), PlayerKind.Human);
+        var blue = new Player("Blue", PlayerId.FromIndex(1), PlayerKind.Computer);
         var players = new List<Player> { red, blue };
         HexGrid grid = TestHelpers.BuildRectGrid(2, 2, red.Id);
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);

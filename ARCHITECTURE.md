@@ -392,8 +392,8 @@ Consequences for the rest of this doc:
 │   UnitLevel — Recruit=1, Soldier=2, Captain=3, Commander=4                   │
 │   Territory — Owner, Coords, Capital (immutable)                         │
 │   TerritoryExtensions — BuildTileIndex                                   │
-│   Player — Name, Id, Kind (AiKind), IsAi                                 │
-│   AiKind — Human, Random, Heuristic, Tutorial (tutorial-only)            │
+│   Player — Name, Id, Kind (PlayerKind), IsAi                             │
+│   PlayerKind — Human, Computer                                           │
 │   TurnState — Players[], CurrentPlayerIndex, TurnNumber                  │
 │   Treasury — Dictionary<HexCoord, int>; CollectIncomeFor;                │
 │              ReconcileAfterCapture (forfeits enemy gold on capture)      │
@@ -1547,9 +1547,9 @@ single beat).
 - **`AiAction`** — discriminated union: `AiMoveAction`, `AiBuyUnitAction`,
   `AiBuildTowerAction`.
 - **`AiCommon.Enumerate`** — single source of legal candidate actions;
-  both AIs consume it. Only this helper knows about rule legality.
-- **`RandomAi`** — picks any positive-effect action uniformly.
-- **`HeuristicAi`** — 1-ply lookahead via `AiSimulator.Clone` +
+  `ComputerAi` consumes it. Only this helper knows about rule legality.
+- **`ComputerAi`** — the game's only AI (drives every `PlayerKind.Computer`
+  slot). 1-ply lookahead via `AiSimulator.Clone` +
   `AiStateScorer.Score`. `AiSimulator` mirrors the mutation logic in
   `GameController`'s `ExecuteAi*` paths; if you add a new AI-capable
   action you must update both in lockstep, or simulated scoring will
@@ -1564,11 +1564,12 @@ single beat).
   side, so beats consumed by either advance the other). Lives in
   `scripts/Tutorial/`; plugged into `GameController` directly as
   the `aiChooser` delegate, bypassing `AiDispatcher`.
-- **`AiDispatcher.ChooseForCurrentPlayer`** — routes to the per-player
-  AI flavor based on `Player.Kind`. Wired into `GameController` as
-  the single `aiChooser` delegate for normal play.
+- **`AiDispatcher.ChooseForCurrentPlayer`** — returns `ComputerAi`'s
+  choice for a `Computer` slot and null for a `Human` one, based on
+  `Player.Kind`. Wired into `GameController` as the single `aiChooser`
+  delegate for normal play.
 - **AI tracing** lives in the `Log.LogCategory.Ai` / `Turn` /
-  `Capture` categories (`HeuristicAi` candidate diagnostics,
+  `Capture` categories (`ComputerAi` candidate diagnostics,
   per-turn header + end-turn + action lines, capture diffs). Off by
   default; enable via `FOUREXHEX_LOG` or the `FOUREXHEX_6AI` implied
   defaults. See **Logging** below.
@@ -1981,7 +1982,7 @@ hotkeys. The modal's button for the current mode is rendered
   at y=0..60.
 - **Record** — `panel.PaintingEnabled = false`; `RecordPane` builds
   a transient `GameController` over the painted draft with all six
-  players forced `AiKind.Human`. The pane's own `HudView` occupies
+  players forced `PlayerKind.Human`. The pane's own `HudView` occupies
   y=0..60. The dev plays hot-seat for all six players; the
   controller's normal recording pipeline (`_replayBeats` via
   `TrackHandler` / `StepAiExecute`) captures game-action beats
@@ -2550,7 +2551,7 @@ It replaces the old `AiLog`.
 Setting the env var before launching Godot reconfigures the session
 for a fully headless regression run:
 
-- All six player slots forced to `AiKind.Heuristic` (the menu also
+- All six player slots forced to `PlayerKind.Computer` (the menu also
   detects the env var and skips itself, so the launch jumps straight
   into `Main`).
 - After parsing `FOUREXHEX_LOG`, `Main` pins `Log` to the verbose
@@ -2805,9 +2806,8 @@ scripts/  (split: see the three source trees listed just above)
 ├─ AiDispatcher.cs        ─ routes by Player.Kind
 ├─ AiSimulator.cs         ─ Clone + apply for 1-ply lookahead;
 │                           throws on unsupported AiAction kinds
-├─ AiStateScorer.cs       ─ scoring function for HeuristicAi
-├─ RandomAi.cs            ─ uniform-random chooser
-├─ HeuristicAi.cs         ─ 1-ply best-score chooser
+├─ AiStateScorer.cs       ─ scoring function for ComputerAi
+├─ ComputerAi.cs          ─ 1-ply best-score chooser
 ├─ Log.cs                 ─ master logging (category × level,
 │                           [Conditional("DEBUG")] strip)
 │
@@ -2895,7 +2895,7 @@ scripts/  (split: see the three source trees listed just above)
 ├─ Tree.cs                ─
 ├─ Grave.cs               ─
 ├─ Territory.cs           ─ + TerritoryExtensions
-├─ Player.cs              ─ + AiKind
+├─ Player.cs              ─ + PlayerKind
 ├─ TurnState.cs           ─
 ├─ Treasury.cs            ─
 ├─ ZoomMath.cs            ─ pixel↔hex helpers used by HexMapView

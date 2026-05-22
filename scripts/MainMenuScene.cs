@@ -15,8 +15,7 @@ public partial class MainMenuScene : Control
     // the OptionButton's item ID so the selection round-trips via
     // GetSelectedId() regardless of reordering.
     private const int HumanId = 0;
-    private const int RandomAiId = 1;
-    private const int HeuristicAiId = 2;
+    private const int ComputerId = 1;
 
     private const int SeedMin = 1;
     private const int SeedMax = 9999;
@@ -46,14 +45,14 @@ public partial class MainMenuScene : Control
     {
         // Diagnostic launch: if FOUREXHEX_6AI is set we skip the
         // menu entirely and jump straight into the game scene with
-        // all slots pre-configured as Heuristic. Main.cs handles the
+        // all slots pre-configured as Computer. Main.cs handles the
         // rest (sync pacer, logging, turn cap, auto-quit). Deferred
         // so the scene change happens after _Ready completes.
         if (OS.GetEnvironment("FOUREXHEX_6AI").Length > 0)
         {
             for (int i = 0; i < GameSettings.PlayerKinds.Length; i++)
             {
-                GameSettings.PlayerKinds[i] = AiKind.Heuristic;
+                GameSettings.PlayerKinds[i] = PlayerKind.Computer;
             }
             CallDeferred(nameof(LaunchGameScene));
             return;
@@ -291,19 +290,16 @@ public partial class MainMenuScene : Control
                 Size = new Vector2(dropdownWidth, 38f),
             };
             dropdown.AddThemeFontSizeOverride("font_size", 21);
+            // The button face and its drop-down popup are themed
+            // separately; without this the expanded item list renders
+            // at the tiny default size instead of matching the face.
+            dropdown.GetPopup().AddThemeFontSizeOverride("font_size", 21);
             dropdown.AddItem("Human", HumanId);
-            dropdown.AddItem("Random AI", RandomAiId);
-            dropdown.AddItem("Heuristic AI", HeuristicAiId);
-            AiKind currentKind = i < GameSettings.PlayerKinds.Length
+            dropdown.AddItem("Computer", ComputerId);
+            PlayerKind currentKind = i < GameSettings.PlayerKinds.Length
                 ? GameSettings.PlayerKinds[i]
-                : AiKind.Heuristic;
-            int initialId = currentKind switch
-            {
-                AiKind.Human => HumanId,
-                AiKind.Random => RandomAiId,
-                AiKind.Heuristic => HeuristicAiId,
-                _ => HumanId,
-            };
+                : PlayerKind.Computer;
+            int initialId = currentKind == PlayerKind.Computer ? ComputerId : HumanId;
             // Selected is an index; find the entry that matches the
             // ID we want and select that index.
             for (int item = 0; item < dropdown.ItemCount; item++)
@@ -351,6 +347,7 @@ public partial class MainMenuScene : Control
             Size = new Vector2(rightColW, 38f),
         };
         _mapSelector.AddThemeFontSizeOverride("font_size", 21);
+        _mapSelector.GetPopup().AddThemeFontSizeOverride("font_size", 21);
         // Item 0 is the default — generates a fresh procedural map from
         // the seed below. Subsequent items (id == index in ListMaps) are
         // the user's saved starting maps.
@@ -722,13 +719,9 @@ public partial class MainMenuScene : Control
         for (int i = 0; i < _roleButtons.Length; i++)
         {
             int selectedId = _roleButtons[i].GetSelectedId();
-            GameSettings.PlayerKinds[i] = selectedId switch
-            {
-                HumanId => AiKind.Human,
-                RandomAiId => AiKind.Random,
-                HeuristicAiId => AiKind.Heuristic,
-                _ => AiKind.Human,
-            };
+            GameSettings.PlayerKinds[i] = selectedId == ComputerId
+                ? PlayerKind.Computer
+                : PlayerKind.Human;
         }
 
         if (_selectedMapName != null)

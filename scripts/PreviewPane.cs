@@ -67,14 +67,14 @@ public sealed partial class PreviewPane : Control
         if (_running) Pause();
 
         // Player roster: player 0 Human (the dev plays Red);
-        // players 1-5 Heuristic so the AI step machine schedules
+        // players 1-5 Computer so the AI step machine schedules
         // their turns. The actual action choice comes from
         // ReplayDrivenAi (overrides the chooser delegate).
         var roster = new List<Player>(_panel.Players.Count);
         for (int i = 0; i < _panel.Players.Count; i++)
         {
             Player src = _panel.Players[i];
-            AiKind kind = i == 0 ? AiKind.Human : AiKind.Heuristic;
+            PlayerKind kind = i == 0 ? PlayerKind.Human : PlayerKind.Computer;
             roster.Add(new Player(src.Name, src.Id, kind));
         }
 

@@ -38,8 +38,8 @@ public class TutorialPreviewCuesTests
         {
             var players = new List<Player>
             {
-                new("Red", Red, AiKind.Human),
-                new("Blue", Blue, AiKind.Heuristic),
+                new("Red", Red, PlayerKind.Human),
+                new("Blue", Blue, PlayerKind.Computer),
             };
             var grid = new HexGrid();
             for (int r = 0; r < 2; r++)
@@ -475,8 +475,8 @@ public class TutorialPreviewCuesTests
         // Cues.Apply (simulating RefreshViews → onAfterRefresh).
         var players = new List<Player>
         {
-            new("Red", Red, AiKind.Human),
-            new("Blue", Blue, AiKind.Heuristic),
+            new("Red", Red, PlayerKind.Human),
+            new("Blue", Blue, PlayerKind.Computer),
         };
         var grid = new HexGrid();
         for (int r = 0; r < 2; r++)

@@ -30,7 +30,7 @@ public static class Log
     /// from current call sites — no speculative categories.</summary>
     public enum LogCategory
     {
-        Ai = 0,       // HeuristicAi candidate diag + GameController AI turn/action logs
+        Ai = 0,       // ComputerAi candidate diag + GameController AI turn/action logs
         Turn = 1,     // turn begin/end, end-of-turn winner, phantom turn, game-end, stasis
         Capture = 2,  // post-capture domination winner + capture capital/gold diff
         Tutorial = 3, // RecordPane / PreviewPane / TutorialBuilderScene dev traces

@@ -25,8 +25,8 @@ public class PreviewSetupTests
     {
         var players = new List<Player>
         {
-            new("Red", Red, AiKind.Human),
-            new("Blue", Blue, AiKind.Heuristic),
+            new("Red", Red, PlayerKind.Human),
+            new("Blue", Blue, PlayerKind.Computer),
         };
         HexGrid grid = TestHelpers.BuildRectGrid(3, 2, Red);
         grid.Get(HexCoord.FromOffset(2, 0))!.Owner = Blue;

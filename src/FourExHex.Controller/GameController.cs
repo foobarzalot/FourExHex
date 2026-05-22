@@ -128,7 +128,7 @@ public class GameController
             maxTurnNumber: maxTurnNumber,
             masterSeed: _masterSeed,
             onAfterRefresh: onAfterRefresh);
-        _aiChooser = aiChooser ?? RandomAi.ChooseNextAction;
+        _aiChooser = aiChooser ?? ComputerAi.ChooseNextAction;
         _aiPacer = aiPacer ?? new SynchronousAiPacer();
         _recorder = new ReplayRecorder(
             state: state,

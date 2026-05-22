@@ -19,8 +19,8 @@ public class TutorialPreviewTests
     {
         var players = new List<Player>
         {
-            new("Red", Red, AiKind.Human),
-            new("Blue", Blue, AiKind.Heuristic),
+            new("Red", Red, PlayerKind.Human),
+            new("Blue", Blue, PlayerKind.Computer),
         };
         HexGrid grid = TestHelpers.BuildRectGrid(2, 2, Red);
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
@@ -31,8 +31,8 @@ public class TutorialPreviewTests
     {
         var players = new List<Player>
         {
-            new("Red", Red, AiKind.Human),
-            new("Blue", Blue, AiKind.Heuristic),
+            new("Red", Red, PlayerKind.Human),
+            new("Blue", Blue, PlayerKind.Computer),
         };
         HexGrid grid = TestHelpers.BuildRectGrid(2, 2, Red);
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);

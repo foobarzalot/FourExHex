@@ -31,7 +31,7 @@ public class ReplayPlaybackTests
         public Player Red { get; }
         public Player Blue { get; }
 
-        public Fixture(AiKind redKind = AiKind.Human, AiKind blueKind = AiKind.Human,
+        public Fixture(PlayerKind redKind = PlayerKind.Human, PlayerKind blueKind = PlayerKind.Human,
             Func<GameState, PlayerId, HashSet<HexCoord>, Random, AiAction?>? aiChooser = null,
             bool instantReplay = false)
         {
@@ -215,7 +215,7 @@ public class ReplayPlaybackTests
             return new AiBuyUnitAction(buyCapital.Value, buyDest!.Value, UnitLevel.Recruit);
         }
 
-        var f = new Fixture(blueKind: AiKind.Random, aiChooser: Chooser);
+        var f = new Fixture(blueKind: PlayerKind.Computer, aiChooser: Chooser);
         f.Hud.ClickEndTurn();  // Red ends → Blue AI runs scripted buy → null → end turn → Red T2.
         f.Pacer.DrainAll();
 

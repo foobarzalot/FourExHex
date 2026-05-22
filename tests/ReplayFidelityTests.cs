@@ -4,7 +4,7 @@ using Xunit;
 namespace FourExHex.Tests;
 
 /// <summary>
-/// End-to-end replay fidelity: six heuristic AI players run a full
+/// End-to-end replay fidelity: six computer AI players run a full
 /// game under a synchronous pacer, the live final state is hashed,
 /// the game is serialized and deserialized, and the deserialized
 /// controller's replay is hashed. All three checksums (live, saved,
@@ -19,7 +19,7 @@ namespace FourExHex.Tests;
 public class ReplayFidelityTests
 {
     [Fact]
-    public void Replay_SixHeuristicPlayers_MatchesSavedStateChecksum()
+    public void Replay_SixComputerPlayers_MatchesSavedStateChecksum()
     {
         const int MasterSeed = 12345;
         const int MaxTurns = 30;
@@ -27,7 +27,7 @@ public class ReplayFidelityTests
         const int Rows = 13;
 
         // --- Phase 1: live game ----------------------------------------------
-        IReadOnlyList<Player> players = BuildSixHeuristicPlayers();
+        IReadOnlyList<Player> players = BuildSixComputerPlayers();
         (GameState liveState, var liveController, var liveMap, var liveHud) =
             BuildHeadlessGame(players, MasterSeed, MaxTurns, Cols, Rows);
         liveController.StartGame();
@@ -75,7 +75,7 @@ public class ReplayFidelityTests
         Assert.Equal(liveChecksum, replayChecksum);
     }
 
-    private static IReadOnlyList<Player> BuildSixHeuristicPlayers()
+    private static IReadOnlyList<Player> BuildSixComputerPlayers()
     {
         // Match the FOUREXHEX_6AI palette / naming convention so the
         // map generator's player-aware territory seeding behaves the
@@ -84,7 +84,7 @@ public class ReplayFidelityTests
         for (int i = 0; i < GameSettings.PlayerConfig.Length; i++)
         {
             (string name, _) = GameSettings.PlayerConfig[i];
-            list.Add(new Player(name, PlayerId.FromIndex(i), AiKind.Heuristic));
+            list.Add(new Player(name, PlayerId.FromIndex(i), PlayerKind.Computer));
         }
         return list;
     }

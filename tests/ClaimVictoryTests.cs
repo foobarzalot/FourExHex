@@ -32,8 +32,8 @@ public class ClaimVictoryTests
             int redCount,
             int cols = 5,
             int rows = 2,
-            AiKind redKind = AiKind.Human,
-            AiKind blueKind = AiKind.Human)
+            PlayerKind redKind = PlayerKind.Human,
+            PlayerKind blueKind = PlayerKind.Human)
     {
         var redP = new Player("Red", PlayerId.FromIndex(0), redKind);
         var blueP = new Player("Blue", PlayerId.FromIndex(1), blueKind);
@@ -105,8 +105,8 @@ public class ClaimVictoryTests
         // pre-record. Building a controller with previewMode: true must
         // suppress every PendingClaimVictory assignment regardless of
         // how much of the map the human player controls.
-        var redP = new Player("Red", PlayerId.FromIndex(0), AiKind.Human);
-        var blueP = new Player("Blue", PlayerId.FromIndex(1), AiKind.Human);
+        var redP = new Player("Red", PlayerId.FromIndex(0), PlayerKind.Human);
+        var blueP = new Player("Blue", PlayerId.FromIndex(1), PlayerKind.Human);
         var players = new List<Player> { redP, blueP };
 
         var grid = TestHelpers.BuildRectGrid(5, 2, Blue);
@@ -144,8 +144,8 @@ public class ClaimVictoryTests
         // so the dev plays all six. The same scripted-flow concern as
         // Preview applies: a claim-victory modal would interrupt the
         // recording session. recordingMode: true suppresses it.
-        var redP = new Player("Red", PlayerId.FromIndex(0), AiKind.Human);
-        var blueP = new Player("Blue", PlayerId.FromIndex(1), AiKind.Human);
+        var redP = new Player("Red", PlayerId.FromIndex(0), PlayerKind.Human);
+        var blueP = new Player("Blue", PlayerId.FromIndex(1), PlayerKind.Human);
         var players = new List<Player> { redP, blueP };
 
         var grid = TestHelpers.BuildRectGrid(5, 2, Blue);
@@ -227,7 +227,7 @@ public class ClaimVictoryTests
     public void EndTurn_AiAboveHalf_DoesNotPrompt()
     {
         // Red is AI here. Even at 60% it should not see a prompt.
-        var g = BuildGame(redCount: 6, redKind: AiKind.Random);
+        var g = BuildGame(redCount: 6, redKind: PlayerKind.Computer);
         // Red's AI turn already ran via StartGame.
         Assert.False(g.Session.PendingClaimVictory.HasValue);
     }

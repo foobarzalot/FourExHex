@@ -7,20 +7,20 @@ using System.Collections.Generic;
 /// game state, applies the action to the clone, and scores the
 /// resulting board via <see cref="AiStateScorer.Score"/>. It then
 /// returns the candidate whose simulated-post-score delta over the
-/// current-score is highest.
+/// current-score is highest. This is the only AI in the game; a
+/// <see cref="PlayerKind.Computer"/> slot is driven by it.
 ///
-/// Shares all legality/solvency rules with <see cref="RandomAi"/>
-/// through <see cref="AiCommon.Enumerate"/> — this class owns no
-/// rules, only the "which action is best?" decision. The visited-
-/// capital set has the same meaning as for RandomAi (multi-action
-/// turns): a territory is marked visited only when enumeration
-/// finds zero candidates.
+/// Draws all legality/solvency rules from <see cref="AiCommon.Enumerate"/>
+/// — this class owns no rules, only the "which action is best?"
+/// decision. The visited-capital set supports multi-action turns:
+/// a territory is marked visited only when enumeration finds zero
+/// candidates.
 ///
 /// Determinism: the <see cref="Random"/> parameter is used solely
 /// for tiebreaking at equal scores, so tests with a seeded RNG
 /// still observe stable behavior.
 /// </summary>
-public static class HeuristicAi
+public static class ComputerAi
 {
     /// <summary>
     /// Pick the highest-scoring single action for

@@ -44,7 +44,7 @@ public partial class Main : Node2D
     {
         // Diagnostic launch: setting the FOUREXHEX_6AI environment
         // variable before starting Godot forces all six slots to
-        // Heuristic AI, enables verbose AI logging to stdout, runs the
+        // Computer, enables verbose AI logging to stdout, runs the
         // game synchronously (no pacing delays), caps turns at 500
         // so stasis runs terminate, and auto-quits on game over.
         // Intended for Claude to run headless and read the logs.
@@ -57,7 +57,7 @@ public partial class Main : Node2D
         {
             for (int i = 0; i < GameSettings.PlayerKinds.Length; i++)
             {
-                GameSettings.PlayerKinds[i] = AiKind.Heuristic;
+                GameSettings.PlayerKinds[i] = PlayerKind.Computer;
             }
             // Reproduce the verbose AI/turn stdout the old
             // AiLog.Enabled=true produced. Set AFTER Configure so the

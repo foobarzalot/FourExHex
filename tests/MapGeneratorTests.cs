@@ -21,7 +21,7 @@ public class MapGeneratorTests
         for (int i = 0; i < GameSettings.PlayerConfig.Length; i++)
         {
             (string name, _) = GameSettings.PlayerConfig[i];
-            list.Add(new Player(name, PlayerId.FromIndex(i), AiKind.Heuristic));
+            list.Add(new Player(name, PlayerId.FromIndex(i), PlayerKind.Computer));
         }
         return list;
     }

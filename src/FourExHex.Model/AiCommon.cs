@@ -1,9 +1,8 @@
 using System.Collections.Generic;
 
 /// <summary>
-/// Strategic category of an AI action, used by both
-/// <see cref="RandomAi"/>'s priority-bucket selector and
-/// <see cref="HeuristicAi"/>'s scoring loop. Assigned when the action
+/// Strategic category of an AI action, used by
+/// <see cref="ComputerAi"/>'s scoring loop. Assigned when the action
 /// is enumerated so downstream consumers never need to re-classify.
 /// </summary>
 public enum AiActionKind
@@ -22,9 +21,9 @@ public readonly record struct AiCandidate(AiAction Action, AiActionKind Kind);
 
 /// <summary>
 /// Shared AI plumbing: legality + solvency enumeration and helpers.
-/// Both the random and heuristic AIs call into <see cref="Enumerate"/>
-/// as their single source of truth for "what moves are available" —
-/// each class then decides how to pick among them.
+/// <see cref="ComputerAi"/> calls into <see cref="Enumerate"/> as its
+/// single source of truth for "what moves are available" — it then
+/// decides how to pick among them.
 ///
 /// The enumeration here encodes the game-mechanical rules about what
 /// a player *could* do (and what wouldn't bankrupt them); it says

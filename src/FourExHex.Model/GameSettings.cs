@@ -32,17 +32,17 @@ public static class GameSettings
     /// who controls that slot. The main menu writes this before
     /// switching to the game scene; <see cref="Main"/> reads it
     /// when building players. Defaults to "Player 1 human, everyone
-    /// else Heuristic AI" so a fresh launch still works even if the
+    /// else Computer" so a fresh launch still works even if the
     /// menu is skipped.
     /// </summary>
-    public static AiKind[] PlayerKinds =
+    public static PlayerKind[] PlayerKinds =
     {
-        AiKind.Human,     // Red
-        AiKind.Heuristic, // Blue
-        AiKind.Heuristic, // Green
-        AiKind.Heuristic, // Yellow
-        AiKind.Heuristic, // Purple
-        AiKind.Heuristic, // Orange
+        PlayerKind.Human,     // Red
+        PlayerKind.Computer, // Blue
+        PlayerKind.Computer, // Green
+        PlayerKind.Computer, // Yellow
+        PlayerKind.Computer, // Purple
+        PlayerKind.Computer, // Orange
     };
 
     /// <summary>

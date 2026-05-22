@@ -368,14 +368,29 @@ public static class SaveSerializer
         var list = new List<Player>(dtos.Count);
         foreach (PlayerDto dto in dtos)
         {
-            // Missing Kind = starting map. Use Human as a placeholder;
-            // the play-scene load path overrides from GameSettings.
-            AiKind kind = string.IsNullOrEmpty(dto.Kind)
-                ? AiKind.Human
-                : Enum.Parse<AiKind>(dto.Kind);
+            PlayerKind kind = ParsePlayerKind(dto.Kind);
             list.Add(new Player(dto.Name, PlayerId.FromIndex(dto.Index), kind));
         }
         return list;
+    }
+
+    /// <summary>
+    /// Map a saved <see cref="PlayerDto.Kind"/> string to a
+    /// <see cref="PlayerKind"/>. Missing/empty = starting map: use Human
+    /// as a placeholder (the play-scene load path overrides from
+    /// GameSettings). Legacy saves predate the {Human, Computer} collapse
+    /// and stored the old AiKind names "Random"/"Heuristic" — both map to
+    /// Computer, the game's only AI.
+    /// </summary>
+    private static PlayerKind ParsePlayerKind(string? kind)
+    {
+        if (string.IsNullOrEmpty(kind))
+            return PlayerKind.Human;
+        return kind switch
+        {
+            "Random" or "Heuristic" => PlayerKind.Computer,
+            _ => Enum.Parse<PlayerKind>(kind),
+        };
     }
 
     // --- Tiles -----------------------------------------------------------
@@ -866,7 +881,7 @@ public sealed class PlayerDto
     public string Name { get; set; } = "";
     public string ColorHex { get; set; } = "";
     /// <summary>
-    /// AI kind name (one of <see cref="AiKind"/>). Null/missing in
+    /// AI kind name (one of <see cref="PlayerKind"/>). Null/missing in
     /// "starting map" exports from the editor — the role for each color
     /// is assigned at play time via the Play Game config menu, not
     /// baked into the map. Present in regular in-progress saves.

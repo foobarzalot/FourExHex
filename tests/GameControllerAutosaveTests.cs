@@ -14,7 +14,7 @@ public class GameControllerAutosaveTests
 {
     /// <summary>
     /// 5x2 fixture: Red owns (0,1)/(1,1) (a 2-tile territory), Blue owns
-    /// the rest. Red and Blue's <see cref="AiKind"/> are configurable so
+    /// the rest. Red and Blue's <see cref="PlayerKind"/> are configurable so
     /// tests can drive the human/AI mix.
     /// </summary>
     private class Fixture
@@ -30,7 +30,7 @@ public class GameControllerAutosaveTests
         public List<int> FireTurnNumbers { get; } = new();
         public List<PlayerId> FirePlayerColors { get; } = new();
 
-        public Fixture(AiKind redKind, AiKind blueKind)
+        public Fixture(PlayerKind redKind, PlayerKind blueKind)
         {
             Red = new Player("Red", PlayerId.FromIndex(0), redKind);
             Blue = new Player("Blue", PlayerId.FromIndex(1), blueKind);
@@ -67,7 +67,7 @@ public class GameControllerAutosaveTests
     {
         // Red is human and goes first. The event should fire once during
         // StartGame so autosave captures the very first state.
-        var f = new Fixture(redKind: AiKind.Human, blueKind: AiKind.Random);
+        var f = new Fixture(redKind: PlayerKind.Human, blueKind: PlayerKind.Computer);
         f.Controller.StartGame();
         Assert.Equal(1, f.HumanTurnFireCount);
         Assert.Equal(1, f.FireTurnNumbers[0]);
@@ -80,7 +80,7 @@ public class GameControllerAutosaveTests
         // Blue is AI; Red is human. After Red ends turn 1, Blue's AI
         // turn runs and then Red's turn 2 begins. The event should fire
         // for Red's turn 1 and Red's turn 2 only — never for Blue.
-        var f = new Fixture(redKind: AiKind.Human, blueKind: AiKind.Random);
+        var f = new Fixture(redKind: PlayerKind.Human, blueKind: PlayerKind.Computer);
         f.Controller.StartGame();
         f.Hud.ClickEndTurn();
 
@@ -94,7 +94,7 @@ public class GameControllerAutosaveTests
         // Red is AI, Blue is human. StartGame auto-runs Red's AI turn,
         // then transitions to Blue's human turn. The event should fire
         // exactly once — for Blue, on Blue's first turn.
-        var f = new Fixture(redKind: AiKind.Random, blueKind: AiKind.Human);
+        var f = new Fixture(redKind: PlayerKind.Computer, blueKind: PlayerKind.Human);
         f.Controller.StartGame();
 
         Assert.Equal(1, f.HumanTurnFireCount);
@@ -105,7 +105,7 @@ public class GameControllerAutosaveTests
     public void HumanTurnStarted_DoesNotFire_WhenAllPlayersAreAi()
     {
         // All-AI game: no event firings. Tested with synchronous pacer.
-        var f = new Fixture(redKind: AiKind.Random, blueKind: AiKind.Random);
+        var f = new Fixture(redKind: PlayerKind.Computer, blueKind: PlayerKind.Computer);
         f.Controller.StartGame();
 
         Assert.Equal(0, f.HumanTurnFireCount);
@@ -119,7 +119,7 @@ public class GameControllerAutosaveTests
         // *after* RefreshViews has pushed the latest state into the HUD.
         // Use the Hud's RefreshCount as a proxy: the count when the
         // event fires must equal or exceed the count immediately before.
-        var f = new Fixture(redKind: AiKind.Human, blueKind: AiKind.Random);
+        var f = new Fixture(redKind: PlayerKind.Human, blueKind: PlayerKind.Computer);
         int refreshCountAtFire = -1;
         f.Controller.HumanTurnStarted += () => refreshCountAtFire = f.Hud.RefreshCount;
         f.Controller.StartGame();

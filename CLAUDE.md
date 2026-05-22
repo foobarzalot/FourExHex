@@ -25,7 +25,7 @@ FourExHex is a hex-based 4X strategy game built with Godot 4.6 and C#.
   `/Applications/Godot_mono.app/Contents/MacOS/Godot --headless --path . --import`
 - **Build C# assembly**: `dotnet build FourExHex.csproj` (or `dotnet build` to build the whole solution including tests)
 - **Run all unit tests**: `dotnet test` — runs the xUnit tests in `tests/FourExHex.Tests.csproj`
-- **Run a single test file / class**: `dotnet test --filter FullyQualifiedName~HeuristicAiTests` (substring match on the fully qualified test name)
+- **Run a single test file / class**: `dotnet test --filter FullyQualifiedName~ComputerAiTests` (substring match on the fully qualified test name)
 - **Run the game** (launches the real menu scene pinned in `project.godot`): `/Applications/Godot_mono.app/Contents/MacOS/Godot --path .`
 - **Run the game headless**: add `--headless` to the above.
 - **Open editor**: `open /Applications/Godot_mono.app --args --path $(pwd)`
@@ -57,7 +57,7 @@ Show the diff and get buy-in on the plan when rule changes have test fallout (e.
 
 Setting the env var `FOUREXHEX_6AI` before launching Godot reconfigures the session for a fully headless regression run:
 
-- All six player slots are forced to `AiKind.Heuristic` (bypassing the main menu).
+- All six player slots are forced to `PlayerKind.Computer` (bypassing the main menu).
 - `Log` is pinned to verbose AI/turn output (`Ai:Debug`, `Turn:Info`, `Capture:Debug`) so every AI decision prints to stdout (routed via `GD.Print`). This is set *after* `Log.Configure(FOUREXHEX_LOG)`, so it can't be silenced by a stray `FOUREXHEX_LOG`.
 - `SynchronousAiPacer` replaces `GodotAiPacer` — turns execute inline with no delays.
 - `HeadlessHexMapView` / `HeadlessHudView` replace the real views so layout and rendering are skipped.
@@ -87,9 +87,9 @@ Typical invocation: `FOUREXHEX_6AI=1 /Applications/Godot_mono.app/Contents/MacOS
 
 ## AI subsystem
 
-- `GameController` takes an injected `aiChooser: Func<GameState, Color, HashSet<HexCoord>, Random, AiAction?>` and an `IAiPacer`. `Main` wires the chooser to `AiDispatcher.ChooseForCurrentPlayer`, which routes to `RandomAi` or `HeuristicAi` based on `Player.Kind`.
-- `AiCommon.Enumerate` is the single source of legal candidate actions; both AIs consume it. Only this helper knows about rule legality — the AIs own the "which candidate?" decision.
-- `AiSimulator.Clone` + `AiStateScorer.Score` back `HeuristicAi`'s 1-ply lookahead. `AiSimulator` mirrors the mutation logic in `GameController`'s `ExecuteAi*` paths; if you add a new AI-capable action, update both in lockstep or simulated scoring will drift from real play.
+- `GameController` takes an injected `aiChooser: Func<GameState, Color, HashSet<HexCoord>, Random, AiAction?>` and an `IAiPacer`. `Main` wires the chooser to `AiDispatcher.ChooseForCurrentPlayer`, which delegates to `ComputerAi` for a `PlayerKind.Computer` slot and returns null for a `Human` one (based on `Player.Kind`).
+- `AiCommon.Enumerate` is the single source of legal candidate actions; `ComputerAi` consumes it. Only this helper knows about rule legality — the AI owns the "which candidate?" decision.
+- `AiSimulator.Clone` + `AiStateScorer.Score` back `ComputerAi`'s 1-ply lookahead. `AiSimulator` mirrors the mutation logic in `GameController`'s `ExecuteAi*` paths; if you add a new AI-capable action, update both in lockstep or simulated scoring will drift from real play.
 - AI turn pacing is split into preview/execute beats (see the `AiPreviewDelayMs` / `AiActionDelayMs` / `AiBetweenPlayersDelayMs` constants in `GameController`) so humans can see which territory is acting. Tests use `SynchronousAiPacer` and observe all effects inline.
 - Logging goes through `Log` (`src/FourExHex.Model/Log.cs`): per-category (`Ai`/`Turn`/`Capture`/…) × level, off by default. `Trace`/`Debug`/`Info` are `[Conditional("DEBUG")]` (stripped from Release); `Warn`/`Error` always compile. Enable via `FOUREXHEX_LOG="Ai:Debug,Turn:Info"`, `FOUREXHEX_6AI`, or `Log.SetLevel(...)` in a scratch test when debugging AI choices.
 
