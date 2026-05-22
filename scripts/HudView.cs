@@ -97,7 +97,7 @@ public partial class HudView : CanvasLayer, IHudView
         };
         var barStyle = new StyleBoxFlat
         {
-            BgColor = new Color("28251f"),
+            BgColor = UiPalette.HudBar,
             BorderColor = UiPalette.LineSoft,
             BorderWidthBottom = 1,
         };
@@ -196,24 +196,7 @@ public partial class HudView : CanvasLayer, IHudView
         {
             SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
         };
-        var paletteStyle = new StyleBoxFlat
-        {
-            BgColor = UiPalette.BgDeep,
-            BorderColor = UiPalette.LineSoft,
-            BorderWidthLeft = 1,
-            BorderWidthRight = 1,
-            BorderWidthTop = 1,
-            BorderWidthBottom = 1,
-            CornerRadiusTopLeft = 10,
-            CornerRadiusTopRight = 10,
-            CornerRadiusBottomLeft = 10,
-            CornerRadiusBottomRight = 10,
-            ContentMarginLeft = 6,
-            ContentMarginRight = 6,
-            ContentMarginTop = 2,
-            ContentMarginBottom = 2,
-        };
-        palettePanel.AddThemeStyleboxOverride("panel", paletteStyle);
+        palettePanel.AddThemeStyleboxOverride("panel", ModalChrome.PalettePanelStyle());
         var paletteRow = new HBoxContainer();
         paletteRow.AddThemeConstantOverride("separation", 2);
         palettePanel.AddChild(paletteRow);
@@ -1118,13 +1101,13 @@ public partial class HudView : CanvasLayer, IHudView
             switch (outlook)
             {
                 case EconomyOutlook.BankruptNextTurn:
-                    _goldLabel.AddThemeColorOverride("font_color", Colors.Red);
+                    _goldLabel.AddThemeColorOverride("font_color", BoardPalette.WarnRed);
                     Log.Debug(Log.LogCategory.Turn,
                         $"[economy] {selected.Owner} territory @ {selected.Capital!.Value} " +
                         $"bankrupt next turn (gold {gold} + income {income} < upkeep {upkeep})");
                     break;
                 case EconomyOutlook.NegativeDelta:
-                    _goldLabel.AddThemeColorOverride("font_color", Colors.Yellow);
+                    _goldLabel.AddThemeColorOverride("font_color", BoardPalette.WarnYellow);
                     Log.Debug(Log.LogCategory.Turn,
                         $"[economy] {selected.Owner} territory @ {selected.Capital!.Value} " +
                         $"net {net} < 0 but solvent next turn (gold {gold} + income {income} >= upkeep {upkeep})");

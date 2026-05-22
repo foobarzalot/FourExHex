@@ -18,6 +18,10 @@ public static class UiPalette
     public static readonly Color BgElev  = new Color("3d3934"); // raised within panel
     public static readonly Color BgRow   = new Color("373430"); // list row
     public static readonly Color BgRowH  = new Color("454039"); // list row hover
+    public static readonly Color HudBar  = new Color("28251f"); // in-game / editor HUD bar (a touch darker than BgDeep)
+
+    // Dim scrim behind every CanvasLayer modal dialog.
+    public static readonly Color ModalBackdrop = new Color(0f, 0f, 0f, 0.5f);
 
     // Lines / chrome.
     public static readonly Color Line     = new Color("544f47");

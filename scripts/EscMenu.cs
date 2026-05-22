@@ -22,7 +22,7 @@ using Godot;
 /// </summary>
 public sealed partial class EscMenu : CanvasLayer
 {
-    public sealed record Option(string Label, Action OnPressed, bool Disabled = false, bool IsPrimary = false);
+    public sealed record Option(string Label, Action OnPressed, bool Disabled = false);
 
     public event Action? Opened;
     public event Action? Closed;
@@ -57,25 +57,12 @@ public sealed partial class EscMenu : CanvasLayer
 
         Vector2 viewport = GetViewport().GetVisibleRect().Size;
 
-        _backdrop = new ColorRect
-        {
-            Color = new Color(0f, 0f, 0f, 0.5f),
-            Position = Vector2.Zero,
-            Size = viewport,
-            MouseFilter = Control.MouseFilterEnum.Stop,
-        };
+        _backdrop = ModalChrome.BuildBackdrop(viewport);
         AddChild(_backdrop);
 
-        // Picks up the theme's slate Panel stylebox — no custom override.
-        _panel = new PanelContainer
-        {
-            AnchorLeft = 0.5f,
-            AnchorRight = 0.5f,
-            AnchorTop = 0.5f,
-            AnchorBottom = 0.5f,
-            GrowHorizontal = Control.GrowDirection.Both,
-            GrowVertical = Control.GrowDirection.Both,
-        };
+        // Content-sized centered panel — picks up the theme's slate Panel
+        // stylebox; the vbox CustomMinimumSize below drives dimensions.
+        _panel = ModalChrome.BuildCenteredPanel();
         AddChild(_panel);
 
         var vbox = new VBoxContainer
@@ -132,8 +119,6 @@ public sealed partial class EscMenu : CanvasLayer
                 FocusMode = Control.FocusModeEnum.None,
                 SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
             };
-            // IsPrimary is a dead flag now (no-brass-primary policy);
-            // every button paints with the default theme stylebox.
             button.AddThemeFontSizeOverride("font_size", 22);
             Option captured = option;
             button.Pressed += () =>

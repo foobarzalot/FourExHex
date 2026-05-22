@@ -45,27 +45,12 @@ public sealed partial class SettingsPanel : CanvasLayer
 
         Vector2 viewport = GetViewport().GetVisibleRect().Size;
 
-        _backdrop = new ColorRect
-        {
-            Color = new Color(0f, 0f, 0f, 0.5f),
-            Position = Vector2.Zero,
-            Size = viewport,
-            MouseFilter = Control.MouseFilterEnum.Stop,
-        };
+        _backdrop = ModalChrome.BuildBackdrop(viewport);
         AddChild(_backdrop);
 
-        // Centered panel — picks up the theme's slate Panel stylebox.
-        // No custom panelStyle override; the dialog reads as part of the
-        // same family as the Load Game / New Game modals.
-        _panel = new PanelContainer
-        {
-            AnchorLeft = 0.5f,
-            AnchorRight = 0.5f,
-            AnchorTop = 0.5f,
-            AnchorBottom = 0.5f,
-            GrowHorizontal = Control.GrowDirection.Both,
-            GrowVertical = Control.GrowDirection.Both,
-        };
+        // Content-sized centered panel — the inner vbox CustomMinimumSize
+        // drives dimensions; reads as part of the Load Game / New Game family.
+        _panel = ModalChrome.BuildCenteredPanel();
         AddChild(_panel);
 
         var vbox = new VBoxContainer

@@ -46,26 +46,12 @@ public sealed partial class CreditsPanel : CanvasLayer
 
         Vector2 viewport = GetViewport().GetVisibleRect().Size;
 
-        _backdrop = new ColorRect
-        {
-            Color = new Color(0f, 0f, 0f, 0.5f),
-            Position = Vector2.Zero,
-            Size = viewport,
-            MouseFilter = Control.MouseFilterEnum.Stop,
-        };
+        _backdrop = ModalChrome.BuildBackdrop(viewport);
         AddChild(_backdrop);
 
-        // Centered panel — picks up the theme's slate Panel stylebox,
-        // matching the Settings / Load Game modal family.
-        _panel = new PanelContainer
-        {
-            AnchorLeft = 0.5f,
-            AnchorRight = 0.5f,
-            AnchorTop = 0.5f,
-            AnchorBottom = 0.5f,
-            GrowHorizontal = Control.GrowDirection.Both,
-            GrowVertical = Control.GrowDirection.Both,
-        };
+        // Content-sized centered panel, matching the Settings / Load Game
+        // modal family.
+        _panel = ModalChrome.BuildCenteredPanel();
         AddChild(_panel);
 
         // Match the SettingsPanel vbox min size (420 x 570) so the

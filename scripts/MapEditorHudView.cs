@@ -89,7 +89,7 @@ public partial class MapEditorHudView : CanvasLayer
         };
         var barStyle = new StyleBoxFlat
         {
-            BgColor = new Color("28251f"),
+            BgColor = UiPalette.HudBar,
             BorderColor = UiPalette.LineSoft,
             BorderWidthBottom = 1,
         };
@@ -166,24 +166,7 @@ public partial class MapEditorHudView : CanvasLayer
         {
             SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
         };
-        var landStyle = new StyleBoxFlat
-        {
-            BgColor = UiPalette.BgDeep,
-            BorderColor = UiPalette.LineSoft,
-            BorderWidthLeft = 1,
-            BorderWidthRight = 1,
-            BorderWidthTop = 1,
-            BorderWidthBottom = 1,
-            CornerRadiusTopLeft = 10,
-            CornerRadiusTopRight = 10,
-            CornerRadiusBottomLeft = 10,
-            CornerRadiusBottomRight = 10,
-            ContentMarginLeft = 6,
-            ContentMarginRight = 6,
-            ContentMarginTop = 2,
-            ContentMarginBottom = 2,
-        };
-        landPanel.AddThemeStyleboxOverride("panel", landStyle);
+        landPanel.AddThemeStyleboxOverride("panel", ModalChrome.PalettePanelStyle());
         var landRow = new HBoxContainer();
         landRow.AddThemeConstantOverride("separation", 4);
         landPanel.AddChild(landRow);

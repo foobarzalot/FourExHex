@@ -378,8 +378,8 @@ public partial class HexMapView : Node2D, IHexMapView
             Vector2 landCenter = FirstHexCenterOffset + HexPixel.ToPixel(tile.Coord, HexSize);
             for (int i = 0; i < 6; i++)
             {
-                int dirA = EdgeToDirection[(i + 5) % 6];
-                int dirB = EdgeToDirection[i];
+                int dirA = EdgeToNeighborDirection[(i + 5) % 6];
+                int dirB = EdgeToNeighborDirection[i];
                 if (_state.Grid.Get(tile.Coord.Neighbor(dirA)) != null) continue;
                 if (_state.Grid.Get(tile.Coord.Neighbor(dirB)) != null) continue;
                 AddCornerFoamDisk(shoreLayer, landCenter + hexVerts[i]);
@@ -1046,7 +1046,7 @@ public partial class HexMapView : Node2D, IHexMapView
         {
             Unit u => PlayerPalette.ColorFor(u.Owner),
             Tower => new Color(0.72f, 0.72f, 0.76f, 1f),
-            Tree => new Color(0.16f, 0.48f, 0.18f, 1f),
+            Tree => BoardPalette.ForestCanopy,
             _ => new Color(1f, 1f, 1f, 1f),
         };
         int shardCount = destroyed switch
@@ -1151,7 +1151,7 @@ public partial class HexMapView : Node2D, IHexMapView
 
     private Node2D BuildRedUnitGhost(UnitLevel level)
     {
-        Color red = new Color(1f, 0.15f, 0.15f, 1f);
+        Color red = BoardPalette.RejectRed;
         var node = new Node2D();
         int rings = level switch
         {
@@ -1175,7 +1175,7 @@ public partial class HexMapView : Node2D, IHexMapView
 
     private Node2D BuildRedTowerGhost()
     {
-        Color red = new Color(1f, 0.15f, 0.15f, 1f);
+        Color red = BoardPalette.RejectRed;
         Vector2[] verts = TowerShapeVertices();
         var body = new Polygon2D
         {
@@ -1193,7 +1193,7 @@ public partial class HexMapView : Node2D, IHexMapView
     /// </summary>
     private Node2D BuildForbiddenSlash()
     {
-        Color red = new Color(0.95f, 0.1f, 0.1f, 1f);
+        Color red = BoardPalette.RejectRed;
         Color black = new Color(0f, 0f, 0f, 1f);
         const float ringWidth = 5f;
         const float blackPad = 3f; // how much wider the black underline is
@@ -1485,8 +1485,8 @@ public partial class HexMapView : Node2D, IHexMapView
 
     // Castle fill + stroke per the redesign spec: warm dark slate body
     // (#4a4640) with a thin ink-faint stroke (no thick black outline).
-    private static readonly Color CastleFillColor = new Color("4a4640");
-    private static readonly Color CastleStrokeColor = new Color("23211d");
+    private static readonly Color CastleFillColor = BoardPalette.CastleFill;
+    private static readonly Color CastleStrokeColor = UiPalette.BgDeep;
 
     private Node2D CreateTowerVisual()
     {
@@ -1566,8 +1566,8 @@ public partial class HexMapView : Node2D, IHexMapView
     // for a single bare triangle, but the user preferred the trunked
     // conifer — easier to read at small scales and visually consistent
     // with the existing icon language.
-    private static readonly Color ForestCanopyColor = new Color(0.16f, 0.48f, 0.18f, 1f);
-    private static readonly Color ForestTrunkColor = new Color(0.36f, 0.22f, 0.1f, 1f);
+    private static readonly Color ForestCanopyColor = BoardPalette.ForestCanopy;
+    private static readonly Color ForestTrunkColor = BoardPalette.ForestTrunk;
     private static readonly Color ForestStrokeColor = UiPalette.BgDeep;
 
     private Node2D CreateTreeVisual()
@@ -1687,7 +1687,7 @@ public partial class HexMapView : Node2D, IHexMapView
     // doubled — a slightly wider BgDeep underlay first, then the slate
     // on top — giving every X a dark halo that keeps it legible on any
     // player color.
-    private static readonly Color GraveCrossColor = new Color("74706a");
+    private static readonly Color GraveCrossColor = BoardPalette.GraveCross;
     private const float GraveCrossArmReach = 0.32f;
     private const float GraveCrossWidthFactor = 0.10f;
     private const float GraveCrossHaloWidthFactor = 0.14f;
@@ -2123,12 +2123,6 @@ public partial class HexMapView : Node2D, IHexMapView
         }
     }
 
-    // Edge i of a hex (between vertex i and vertex (i+1)%6) maps to one
-    // of HexCoord's 6 neighbor directions. Order derived from the vertex
-    // angles in HexVertices() (60i-30 degrees, +Y down) and the direction
-    // table in HexCoord.Directions (E, NE, NW, W, SW, SE).
-    private static readonly int[] EdgeToDirection = { 0, 5, 4, 3, 2, 1 };
-
     // Foam strip width as a fraction of HexSize, measured perpendicular
     // to the shore edge into the water hex.
     private const float ShoreFoamInset = 0.30f;
@@ -2168,7 +2162,7 @@ public partial class HexMapView : Node2D, IHexMapView
         int shoreCount = 0;
         for (int edge = 0; edge < 6; edge++)
         {
-            int dir = EdgeToDirection[edge];
+            int dir = EdgeToNeighborDirection[edge];
             if (_state.Grid.Get(coord.Neighbor(dir)) != null)
             {
                 isShore[edge] = true;
@@ -2404,8 +2398,8 @@ public partial class HexMapView : Node2D, IHexMapView
         Color fill, accent;
         switch (outlook)
         {
-            case EconomyOutlook.BankruptNextTurn: fill = Colors.Red; accent = Colors.White; break;
-            case EconomyOutlook.NegativeDelta:    fill = Colors.Yellow; accent = Colors.Black; break;
+            case EconomyOutlook.BankruptNextTurn: fill = BoardPalette.WarnRed; accent = Colors.White; break;
+            case EconomyOutlook.NegativeDelta:    fill = BoardPalette.WarnYellow; accent = Colors.Black; break;
             default: return;
         }
 

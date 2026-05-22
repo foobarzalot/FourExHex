@@ -2,6 +2,41 @@
 
 Running list of known issues, flaky tests, and shortcuts that should eventually be cleaned up. Add new entries at the top.
 
+## Custom-draw rendering in HexMapView/HudView is full of unnamed magic numbers + long methods
+
+**Where:** discovered 2026-05-21 during a view-styling code-debt audit
+(`scripts/HexMapView.cs`, `scripts/HudView.cs`).
+
+**Symptom / shortcut taken:** the visual-redesign rewrite of the hex tile
+rendering and HUD left ~40 hand-tuned geometry literals inline (bevel/border
+widths, halo + unit-ring radii, symbol scale factors, alpha values, circle
+segment counts that vary 8/16/28/36, line widths 1.2–6) and several long
+mixed-responsibility methods (`RefreshOccupantVisuals` ~190 lines,
+`BuildStateVisuals` ~150, `AddShoreFoamStrips`, `DrawWarningBadgeAt`,
+`RedrawHighlight`). The audit's color-token and structural-dedup wins were
+done; this geometry/method-length tier was deliberately deferred.
+
+**Why this is debt:** the literals are undocumented (hard to retune the look
+coherently) and the long methods mix layout, classification, and drawing.
+
+**Why deferred (the blocker):** these files are view-layer and excluded from
+the unit-test suite, so there is no automated net to catch a visual
+regression from an aggressive refactor — each change needs a manual launch +
+eyeball. High churn × no test net = real regression risk for low functional
+payoff, so it wasn't worth bundling into the token cleanup.
+
+**Candidate next steps:** (1) extract a `RenderMetrics` constants block (or
+per-shape `static readonly` groups) for the recurring radii/widths/segment
+counts, with comments tying them to the design spec; (2) split the two long
+`Refresh`/`Build` methods into named sub-builders (water layer, foam layer,
+occupant diff) one at a time, manual-testing after each; (3) consider a
+small stroke/segment style sheet so circle quality is a named choice. Do
+these incrementally, never as one big-bang refactor.
+
+**Severity:** maintainability only; no functional impact. Low priority.
+
+---
+
 ## macOS export ships ad-hoc (no hardened runtime) — fine locally, blocks distribution
 
 **Where:** discovered 2026-05-21 wiring up the macOS desktop build

@@ -24,7 +24,7 @@ public static class HudIcons
             center + new Vector2(r * 0.85f, r * 0.4f),
             center + new Vector2(-r * 0.85f, r * 0.4f),
         };
-        t.DrawColoredPolygon(canopy, new Color(0.16f, 0.48f, 0.18f, 1f) * modulate);
+        t.DrawColoredPolygon(canopy, BoardPalette.ForestCanopy * modulate);
         for (int i = 0; i < 3; i++)
         {
             t.DrawLine(canopy[i], canopy[(i + 1) % 3], Outline * modulate, OutlineWidth);
@@ -40,7 +40,7 @@ public static class HudIcons
             center + new Vector2(tw, tbot),
             center + new Vector2(-tw, tbot),
         };
-        t.DrawColoredPolygon(trunk, new Color(0.36f, 0.22f, 0.1f, 1f) * modulate);
+        t.DrawColoredPolygon(trunk, BoardPalette.ForestTrunk * modulate);
         for (int i = 0; i < 4; i++)
         {
             t.DrawLine(trunk[i], trunk[(i + 1) % 4], Outline * modulate, OutlineWidth);

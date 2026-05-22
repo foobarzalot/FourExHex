@@ -63,11 +63,11 @@ public sealed partial class SlotPickerDialog : CanvasLayer
     {
         Vector2 viewport = GetViewport().GetVisibleRect().Size;
 
-        _backdrop = BuildBackdrop(viewport);
+        _backdrop = ModalChrome.BuildBackdrop(viewport);
         _backdrop.GuiInput += OnBackdropInput;
         AddChild(_backdrop);
 
-        _panel = BuildCenteredPanel(viewport, panelW: 560, panelH: 480);
+        _panel = ModalChrome.BuildCenteredPanel(panelW: 560, panelH: 480);
         AddChild(_panel);
 
         var vbox = new VBoxContainer
@@ -78,7 +78,7 @@ public sealed partial class SlotPickerDialog : CanvasLayer
         vbox.AddThemeConstantOverride("separation", 12);
         _panel.AddChild(vbox);
 
-        vbox.AddChild(BuildPanelHead(_title, onClose: Hide));
+        vbox.AddChild(ModalChrome.BuildPanelHead(_title, onClose: Hide));
 
         var scroll = new ScrollContainer
         {
@@ -191,11 +191,11 @@ public sealed partial class SlotPickerDialog : CanvasLayer
 
     private void BuildErrorOverlay(Vector2 viewport)
     {
-        _errorBackdrop = BuildBackdrop(viewport);
+        _errorBackdrop = ModalChrome.BuildBackdrop(viewport);
         _errorBackdrop.Visible = false;
         AddChild(_errorBackdrop);
 
-        _errorPanel = BuildCenteredPanel(viewport, panelW: 420, panelH: 200);
+        _errorPanel = ModalChrome.BuildCenteredPanel(panelW: 420, panelH: 200);
         _errorPanel.Visible = false;
         AddChild(_errorPanel);
 
@@ -269,79 +269,4 @@ public sealed partial class SlotPickerDialog : CanvasLayer
         return dt.ToString("yyyy-MM-dd HH:mm");
     }
 
-    // --- Shared modal chrome builders. The dialog-polish pass uses
-    //     these to give every CanvasLayer-based dialog the same
-    //     dim-backdrop + slate-panel shell, so adding more modals in
-    //     future doesn't drift from the established look. ---
-
-    internal static ColorRect BuildBackdrop(Vector2 viewport)
-    {
-        return new ColorRect
-        {
-            Color = new Color(0f, 0f, 0f, 0.5f),
-            Position = Vector2.Zero,
-            Size = viewport,
-            AnchorLeft = 0f, AnchorRight = 1f, AnchorTop = 0f, AnchorBottom = 1f,
-            MouseFilter = Control.MouseFilterEnum.Stop,
-        };
-    }
-
-    internal static PanelContainer BuildCenteredPanel(Vector2 viewport, float panelW, float panelH)
-    {
-        return new PanelContainer
-        {
-            AnchorLeft = 0.5f, AnchorRight = 0.5f, AnchorTop = 0.5f, AnchorBottom = 0.5f,
-            OffsetLeft = -panelW * 0.5f, OffsetRight = panelW * 0.5f,
-            OffsetTop = -panelH * 0.5f, OffsetBottom = panelH * 0.5f,
-            GrowHorizontal = Control.GrowDirection.Both,
-            GrowVertical = Control.GrowDirection.Both,
-        };
-    }
-
-    // Small uppercase title + close (×) button row, with a 1px line-soft
-    // divider beneath. The redesign's "panel-head" pattern — every modal
-    // built on this dialog system gets the same head.
-    internal static Control BuildPanelHead(string title, Action onClose)
-    {
-        var head = new VBoxContainer
-        {
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-        };
-        head.AddThemeConstantOverride("separation", 10);
-
-        var row = new HBoxContainer
-        {
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-        };
-        var titleLabel = new Label
-        {
-            Text = title.ToUpperInvariant(),
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-        };
-        titleLabel.AddThemeFontSizeOverride("font_size", 16);
-        titleLabel.AddThemeColorOverride("font_color", UiPalette.InkSoft);
-        row.AddChild(titleLabel);
-
-        var closeButton = new Button
-        {
-            Text = "×",
-            FocusMode = Control.FocusModeEnum.None,
-            CustomMinimumSize = new Vector2(32, 32),
-        };
-        closeButton.AddThemeFontSizeOverride("font_size", 22);
-        closeButton.Pressed += () => onClose();
-        AudioBus.AttachClick(closeButton);
-        row.AddChild(closeButton);
-        head.AddChild(row);
-
-        var divider = new ColorRect
-        {
-            Color = UiPalette.LineSoft,
-            CustomMinimumSize = new Vector2(0, 1),
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-        };
-        head.AddChild(divider);
-
-        return head;
-    }
 }
