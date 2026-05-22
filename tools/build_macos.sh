@@ -15,7 +15,18 @@
 #      re-sign plain ad-hoc (flags 0x2) afterward, which runs locally.
 #
 # Result: build/FourExHex.app, launchable via `open build/FourExHex.app`.
+#
+# Usage:  tools/build_macos.sh [debug|release]   (default: debug)
+#   debug   -> ExportDebug config, --export-debug   (DEBUG defined, logs/asserts on)
+#   release -> ExportRelease config, --export-release (optimized, Conditional logs stripped)
 set -euo pipefail
+
+MODE="${1:-debug}"
+case "$MODE" in
+  debug)   CSHARP_CONFIG="ExportDebug";   GODOT_FLAG="--export-debug" ;;
+  release) CSHARP_CONFIG="ExportRelease"; GODOT_FLAG="--export-release" ;;
+  *) echo "ERROR: unknown mode '$MODE' (use 'debug' or 'release')" >&2; exit 2 ;;
+esac
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GODOT="/Applications/Godot_mono.app/Contents/MacOS/Godot"
@@ -25,14 +36,14 @@ OUT="$PROJECT_DIR/build/FourExHex.app"
 export DOTNET_ROOT="$HOME/.dotnet"
 export PATH="$HOME/.dotnet:$PATH"
 
-echo "==> Building C# assemblies (Debug for editor load + ExportDebug for the export)"
-dotnet build "$PROJECT_DIR/FourExHex.csproj" -c Debug        >/dev/null
-dotnet build "$PROJECT_DIR/FourExHex.csproj" -c ExportDebug  >/dev/null
+echo "==> Building C# assemblies (Debug for editor load + $CSHARP_CONFIG for the export)"
+dotnet build "$PROJECT_DIR/FourExHex.csproj" -c Debug            >/dev/null
+dotnet build "$PROJECT_DIR/FourExHex.csproj" -c "$CSHARP_CONFIG" >/dev/null
 
-echo "==> Exporting macOS bundle (headless)"
+echo "==> Exporting macOS bundle ($MODE, headless)"
 rm -rf "$PROJECT_DIR/build"
 mkdir -p "$PROJECT_DIR/build"
-"$GODOT" --headless --path "$PROJECT_DIR" --export-debug "$PRESET" "$OUT"
+"$GODOT" --headless --path "$PROJECT_DIR" "$GODOT_FLAG" "$PRESET" "$OUT"
 
 if [[ ! -x "$OUT/Contents/MacOS/FourExHex" ]]; then
   echo "ERROR: export did not produce $OUT/Contents/MacOS/FourExHex" >&2
