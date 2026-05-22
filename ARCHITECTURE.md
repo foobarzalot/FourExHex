@@ -1752,12 +1752,29 @@ or Escape calls `Close`, which fires `Closed`. The previous inline
 instantiates the same component and opens it as a modal overlay on
 top of the landing page.
 
+A **Credits** button sits just above Back. It opens `CreditsPanel`
+(`scripts/CreditsPanel.cs`) — a sibling CanvasLayer modal at
+`Layer = 101`, one above `SettingsPanel`'s `100`, so it draws on top
+while Settings stays visible underneath. `SettingsPanel` owns the
+instance (created in `_Ready`, added as a child), so Credits is
+reachable from both the main menu and in-game pause with no per-scene
+wiring. `CreditsPanel` mirrors the modal shell (backdrop + centered
+`PanelContainer` + serif title + gold rule + a `ScrollContainer`
+holding the credits `Label` + Back button) and its vbox uses the same
+`(420, 570)` min size as `SettingsPanel` so the box doesn't resize on
+open; the scroll area `ExpandFill`s to absorb the slack. Back or
+Escape calls `Close`. `SettingsPanel.Close` also calls
+`_creditsPanel.Close()` (a separate CanvasLayer wouldn't hide on its
+own), and `SettingsPanel._UnhandledInput` early-returns while
+`_creditsPanel.IsOpen` so Escape closes only Credits, not Settings —
+the same guard `MainMenuScene` uses for the settings panel.
+
 ### ProcessMode rules
 
 The pause modal must stay interactive while
 `GetTree().Paused == true`, so each modal node opts out of the
-freeze: `EscMenu`, `SettingsPanel`, `SlotPickerDialog` (and its
-sibling error dialog), and `Main`'s `_saveDialog` /
+freeze: `EscMenu`, `SettingsPanel`, `CreditsPanel`, `SlotPickerDialog`
+(and its sibling error dialog), and `Main`'s `_saveDialog` /
 `_saveErrorDialog` all set `ProcessMode = ProcessModeEnum.Always`.
 `Always` is a superset of the unpaused-host scenes' needs (map
 editor / tutorial builder / main menu), so the same setting works
@@ -2572,10 +2589,16 @@ scripts/  (split: see the three source trees listed just above)
 │                           clicks. Used by Main, MapEditorScene,
 │                           TutorialBuilderScene
 ├─ SettingsPanel.cs       ─ shared Settings modal (CanvasLayer +
-│                           backdrop + SFX/VFX checkboxes + Back);
-│                           Open() / Close() / Closed event. Used by
+│                           backdrop + SFX/VFX checkboxes + speed rows
+│                           + Credits + Back); Open() / Close() / Closed
+│                           event; owns + opens the CreditsPanel. Used by
 │                           MainMenuScene's landing Settings button
 │                           and Main's pause-menu Settings option
+├─ CreditsPanel.cs        ─ Credits modal (CanvasLayer at Layer 101,
+│                           one above SettingsPanel; backdrop + centered
+│                           PanelContainer + scrollable credits text +
+│                           Back); Open() / Close() / Closed event.
+│                           Owned + opened by SettingsPanel
 ├─ SlotPickerDialog.cs    ─ reusable load-slot picker built on the
 │                           shared modal shell (CanvasLayer + dim
 │                           ColorRect backdrop + centered PanelContainer
@@ -2835,7 +2858,8 @@ tests/
 
 `Main.cs`, `MainMenuScene.cs`, `MapEditorScene.cs`,
 `MapEditorPanel.cs`, `MapEditorHudView.cs`, `TutorialBuilderScene.cs`,
-`EscMenu.cs`, `SettingsPanel.cs`, `SlotPickerDialog.cs`,
+`EscMenu.cs`, `SettingsPanel.cs`, `CreditsPanel.cs`,
+`SlotPickerDialog.cs`,
 `RecordPane.cs`, `PreviewPane.cs`, `HexPaletteButton.cs`,
 `HexHoverTooltip.cs`, `HexMapView.cs`, `HudView.cs`,
 `SceneTreeTimerFactory.cs`, `HeadlessViews.cs`, `SaveStore.cs`,
