@@ -14,7 +14,7 @@
 #      Hardened runtime is only needed for notarized distribution, so we
 #      re-sign plain ad-hoc (flags 0x2) afterward, which runs locally.
 #
-# Result: build/FourExHex.app, launchable via `open build/FourExHex.app`.
+# Result: build/macos/FourExHex.app, launchable via `open build/macos/FourExHex.app`.
 #
 # Usage:  tools/build_macos.sh [debug|release]   (default: debug)
 #   debug   -> ExportDebug config, --export-debug   (DEBUG defined, logs/asserts on)
@@ -31,7 +31,7 @@ esac
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GODOT="/Applications/Godot_mono.app/Contents/MacOS/Godot"
 PRESET="macOS"
-OUT="$PROJECT_DIR/build/FourExHex.app"
+OUT="$PROJECT_DIR/build/macos/FourExHex.app"
 
 export DOTNET_ROOT="$HOME/.dotnet"
 export PATH="$HOME/.dotnet:$PATH"
@@ -41,8 +41,8 @@ dotnet build "$PROJECT_DIR/FourExHex.csproj" -c Debug            >/dev/null
 dotnet build "$PROJECT_DIR/FourExHex.csproj" -c "$CSHARP_CONFIG" >/dev/null
 
 echo "==> Exporting macOS bundle ($MODE, headless)"
-rm -rf "$PROJECT_DIR/build"
-mkdir -p "$PROJECT_DIR/build"
+rm -rf "$PROJECT_DIR/build/macos"
+mkdir -p "$PROJECT_DIR/build/macos"
 "$GODOT" --headless --path "$PROJECT_DIR" "$GODOT_FLAG" "$PRESET" "$OUT"
 
 if [[ ! -x "$OUT/Contents/MacOS/FourExHex" ]]; then
