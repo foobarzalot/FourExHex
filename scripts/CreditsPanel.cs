@@ -15,9 +15,14 @@ using Godot;
 /// </summary>
 public sealed partial class CreditsPanel : CanvasLayer
 {
+    private const string RepoUrl = "https://github.com/foobarzalot/FourExHex";
+
+    // BBCode (RichTextLabel) so the author name can be a clickable link
+    // to the repo. The [url] meta is the URL itself; OnMetaClicked hands
+    // it to OS.ShellOpen.
     private const string CreditsText =
-        "FourExHex\n\n" +
-        "Created by FooBarzalot\n\n" +
+        "[center]FourExHex\n\n" +
+        "Created by [url=" + RepoUrl + "][color=#d8b65a]FooBarzalot[/color][/url]\n\n" +
         "Inspired by Slay by Sean O'Connor\n\n" +
         "Built with Godot 4.6\n\n" +
         "Coding assistance: Claude Code\n\n" +
@@ -26,7 +31,7 @@ public sealed partial class CreditsPanel : CanvasLayer
         "Fonts:\n" +
         "  DM Serif Display\n" +
         "  Geist\n" +
-        "  JetBrains Mono";
+        "  JetBrains Mono[/center]";
 
     public event Action? Closed;
 
@@ -92,15 +97,17 @@ public sealed partial class CreditsPanel : CanvasLayer
         };
         vbox.AddChild(scroll);
 
-        var body = new Label
+        var body = new RichTextLabel
         {
+            BbcodeEnabled = true,
             Text = CreditsText,
+            FitContent = true,
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
-            HorizontalAlignment = HorizontalAlignment.Center,
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
         };
-        body.AddThemeFontSizeOverride("font_size", 22);
-        body.AddThemeColorOverride("font_color", UiPalette.InkSoft);
+        body.AddThemeFontSizeOverride("normal_font_size", 22);
+        body.AddThemeColorOverride("default_color", UiPalette.InkSoft);
+        body.MetaClicked += OnMetaClicked;
         scroll.AddChild(body);
 
         var backButton = new Button
@@ -113,6 +120,13 @@ public sealed partial class CreditsPanel : CanvasLayer
         backButton.Pressed += Close;
         AudioBus.AttachClick(backButton);
         vbox.AddChild(backButton);
+    }
+
+    private void OnMetaClicked(Variant meta)
+    {
+        string url = meta.AsString();
+        Log.Info(Log.LogCategory.Input, $"CreditsPanel meta clicked — opening {url}");
+        OS.ShellOpen(url);
     }
 
     public void Open()
