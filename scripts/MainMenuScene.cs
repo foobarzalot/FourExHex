@@ -26,6 +26,7 @@ public partial class MainMenuScene : Control
         GD.Load<FontFile>("res://fonts/DMSerifDisplay-Regular.ttf");
     private SaveStore _saveStore = null!;
     private SlotPickerDialog? _loadDialog;
+    private ConfirmModal? _quitConfirmModal;
 
     private Control? _landingPanel;
     private Control? _playConfigPanel;
@@ -89,6 +90,7 @@ public partial class MainMenuScene : Control
         AddChild(_settingsPanel);
 
         BuildLoadDialog();
+        BuildQuitConfirmDialog();
 
         ShowLanding();
     }
@@ -495,9 +497,25 @@ public partial class MainMenuScene : Control
         GetTree().ChangeSceneToFile("res://scenes/tutorial_builder.tscn");
     }
 
+    private void BuildQuitConfirmDialog()
+    {
+        _quitConfirmModal = new ConfirmModal(
+            "Exit FourExHex?", "Are you sure you want to exit?", "Exit");
+        _quitConfirmModal.Confirmed += OnQuitConfirmed;
+        AddChild(_quitConfirmModal);
+    }
+
+    // Exit button and the landing-page Escape key both route here — they
+    // open the confirmation dialog rather than quitting outright.
     private void OnExitPressed()
     {
-        Log.Info(Log.LogCategory.Input, "MainMenu Exit pressed — quitting.");
+        Log.Info(Log.LogCategory.Input, "MainMenu Exit requested — confirming.");
+        _quitConfirmModal?.Open();
+    }
+
+    private void OnQuitConfirmed()
+    {
+        Log.Info(Log.LogCategory.Input, "MainMenu quit confirmed — quitting.");
         GetTree().Quit();
     }
 
@@ -618,6 +636,10 @@ public partial class MainMenuScene : Control
         // backdrop).
         if (_settingsPanel != null && _settingsPanel.IsOpen) return;
 
+        // Quit-confirm modal owns its own Escape (cancel) while open; let
+        // it consume the key instead of the landing handler re-opening it.
+        if (_quitConfirmModal != null && _quitConfirmModal.IsOpen) return;
+
         // Per-panel input dispatch: each panel only sees the keys that
         // make sense while it's the visible one.
         if (_playConfigPanel != null && _playConfigPanel.Visible)
@@ -674,6 +696,16 @@ public partial class MainMenuScene : Control
     private void HandleLandingKey(InputEventKey keyEvent)
     {
         if (keyEvent.Echo) return;
+        // Escape on the landing page acts like clicking Exit — pops the
+        // quit-confirmation dialog. (Once the dialog is open it grabs
+        // input focus, so a second Escape cancels it rather than reaching
+        // here.)
+        if (keyEvent.Keycode == Key.Escape)
+        {
+            OnExitPressed();
+            GetViewport()?.SetInputAsHandled();
+            return;
+        }
         if (keyEvent.Keycode != Key.Enter && keyEvent.Keycode != Key.KpEnter) return;
         // Mirror button state: only fire if Play is actually clickable.
         if (_landingPlayButton != null && !_landingPlayButton.Disabled)

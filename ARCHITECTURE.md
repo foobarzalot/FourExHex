@@ -1760,14 +1760,39 @@ instance (created in `_Ready`, added as a child), so Credits is
 reachable from both the main menu and in-game pause with no per-scene
 wiring. `CreditsPanel` mirrors the modal shell (backdrop + centered
 `PanelContainer` + serif title + gold rule + a `ScrollContainer`
-holding the credits `Label` + Back button) and its vbox uses the same
+holding the credits body + Back button) and its vbox uses the same
 `(420, 570)` min size as `SettingsPanel` so the box doesn't resize on
-open; the scroll area `ExpandFill`s to absorb the slack. Back or
-Escape calls `Close`. `SettingsPanel.Close` also calls
+open; the scroll area `ExpandFill`s to absorb the slack. The body is a
+BBCode `RichTextLabel` (not a plain `Label`) so the author name
+"FooBarzalot" is a gold `[url]` link to the repo; `MetaClicked` hands
+the URL to `OS.ShellOpen`. Back or Escape calls `Close`. `SettingsPanel.Close` also calls
 `_creditsPanel.Close()` (a separate CanvasLayer wouldn't hide on its
 own), and `SettingsPanel._UnhandledInput` early-returns while
 `_creditsPanel.IsOpen` so Escape closes only Credits, not Settings —
 the same guard `MainMenuScene` uses for the settings panel.
+
+### Quitting from the main menu (`ConfirmModal`)
+
+The landing page has an **Exit** button at the bottom of the button
+stack (placed after the debug-only Tutorial Builder via a `nextRow`
+counter so it lands correctly in both build flavors). Both the Exit
+button and Escape on the landing page route to `OnExitPressed`, which
+opens a quit-confirmation modal rather than calling `GetTree().Quit()`
+outright; the actual quit lives in `OnQuitConfirmed`, wired to the
+modal's `Confirmed` event.
+
+The confirmation uses `ConfirmModal` (`scripts/ConfirmModal.cs`) — a
+reusable yes/no dialog in the `ModalChrome` family (dim backdrop +
+centered slate panel + serif title + gold rule + message + Cancel /
+confirm buttons), built to replace Godot's unstyled
+`ConfirmationDialog` so it matches Settings / Credits / the slot
+picker. Title, message, and confirm-label are constructor args, so the
+same shell serves any prompt. Cancel or Escape raises `Canceled` and
+closes; the confirm button **or Enter** raises `Confirmed`.
+`MainMenuScene._UnhandledInput` early-returns while
+`_quitConfirmModal.IsOpen` (the same modal-open guard used for
+Settings) so an open dialog owns its own Escape/Enter instead of the
+landing handler re-triggering.
 
 ### ProcessMode rules
 
@@ -2570,9 +2595,11 @@ grouping label; the per-file project is per the lists above.
 scripts/  (split: see the three source trees listed just above)
 ├─ Main.cs                ─ play scene root; wires model + views + controller
 ├─ MainMenuScene.cs       ─ landing (Play / Load / Map Editor +
-│                           debug-only Tutorial Builder) + play-config
-│                           panels; Load Game modal; instantiates
-│                           SettingsPanel as a modal overlay; writes
+│                           debug-only Tutorial Builder + Exit) +
+│                           play-config panels; Load Game modal;
+│                           instantiates SettingsPanel as a modal
+│                           overlay; Exit / landing-Escape open a
+│                           ConfirmModal before quitting; writes
 │                           GameSettings + LoadRequest
 ├─ MapEditorScene.cs      ─ editor scene root; chrome host (HUD,
 │                           Save/Load dialogs, EscMenu modal with
@@ -2614,9 +2641,18 @@ scripts/  (split: see the three source trees listed just above)
 │                           and Main's pause-menu Settings option
 ├─ CreditsPanel.cs        ─ Credits modal (CanvasLayer at Layer 101,
 │                           one above SettingsPanel; backdrop + centered
-│                           PanelContainer + scrollable credits text +
-│                           Back); Open() / Close() / Closed event.
+│                           PanelContainer + scrollable BBCode credits
+│                           (author name links to the repo via
+│                           MetaClicked → OS.ShellOpen) + Back);
+│                           Open() / Close() / Closed event.
 │                           Owned + opened by SettingsPanel
+├─ ConfirmModal.cs        ─ reusable yes/no confirm modal in the
+│                           ModalChrome family (backdrop + centered
+│                           panel + serif title + gold rule + message +
+│                           Cancel / confirm buttons); ctor takes
+│                           title/message/confirm-label; Confirmed /
+│                           Canceled events; Escape cancels, Enter
+│                           confirms. Used by MainMenuScene's Exit flow
 ├─ SlotPickerDialog.cs    ─ reusable load-slot picker built on the
 │                           shared modal shell (CanvasLayer + dim
 │                           ColorRect backdrop + centered PanelContainer
@@ -2727,8 +2763,8 @@ scripts/  (split: see the three source trees listed just above)
 │                           shell (BuildBackdrop, fixed + content-sized
 │                           BuildCenteredPanel, BuildPanelHead) plus
 │                           PalettePanelStyle(); shared by SlotPickerDialog,
-│                           SettingsPanel, CreditsPanel, EscMenu, and the
-│                           HUD palette-group panels.
+│                           SettingsPanel, CreditsPanel, ConfirmModal,
+│                           EscMenu, and the HUD palette-group panels.
 ├─ HeadlessViews.cs       ─ no-op view stubs for diagnostic mode
 ├─ AudioBus.cs            ─ autoload Node singleton: shared SFX players
 │                           that survive scene changes; each Play* gates
@@ -2888,7 +2924,7 @@ tests/
 
 `Main.cs`, `MainMenuScene.cs`, `MapEditorScene.cs`,
 `MapEditorPanel.cs`, `MapEditorHudView.cs`, `TutorialBuilderScene.cs`,
-`EscMenu.cs`, `SettingsPanel.cs`, `CreditsPanel.cs`,
+`EscMenu.cs`, `SettingsPanel.cs`, `CreditsPanel.cs`, `ConfirmModal.cs`,
 `SlotPickerDialog.cs`,
 `RecordPane.cs`, `PreviewPane.cs`, `HexPaletteButton.cs`,
 `HexHoverTooltip.cs`, `HexMapView.cs`, `HudView.cs`,
