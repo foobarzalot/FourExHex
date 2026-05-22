@@ -97,13 +97,13 @@ public partial class MainMenuScene : Control
     {
         Vector2 viewport = GetViewportRect().Size;
         const float panelW = 520f;
-        // 660f instead of 580f to accommodate a 5-button stack: Play, Load,
-        // Map Editor, Settings, and the debug-only Tutorial Builder. Release
-        // builds render the same 4-button stack against a panel that's
-        // 80px taller than necessary; not enough to be worth a runtime
-        // resize since OS.IsDebugBuild() is compile-time-stable for any
-        // given binary.
-        const float panelH = 660f;
+        // 740f accommodates the tallest stack: Play, Load, Map Editor,
+        // Settings, the debug-only Tutorial Builder, and Exit (6 buttons).
+        // Release builds render a 5-button stack (no Tutorial Builder)
+        // against a panel that's 80px taller than necessary; not enough to
+        // be worth a runtime resize since OS.IsDebugBuild() is
+        // compile-time-stable for any given binary.
+        const float panelH = 740f;
         var panel = new Panel
         {
             Position = new Vector2((viewport.X - panelW) * 0.5f, (viewport.Y - panelH) * 0.5f),
@@ -180,17 +180,27 @@ public partial class MainMenuScene : Control
         // Debug-only entry point into the new authoring tool. Per spec
         // §"Dev-mode gating", this button is gated on OS.IsDebugBuild()
         // — release exports never see it.
+        int nextRow = 4;
         if (OS.IsDebugBuild())
         {
             var tutorialBuilderButton = new Button { Text = "Tutorial Builder" };
             tutorialBuilderButton.AddThemeFontSizeOverride("font_size", 26);
             tutorialBuilderButton.Position = new Vector2(
-                buttonInset, firstButtonY + (buttonH + buttonGap) * 4);
+                buttonInset, firstButtonY + (buttonH + buttonGap) * nextRow);
             tutorialBuilderButton.Size = new Vector2(buttonW, buttonH);
             tutorialBuilderButton.Pressed += OnTutorialBuilderPressed;
             AudioBus.AttachClick(tutorialBuilderButton);
             panel.AddChild(tutorialBuilderButton);
+            nextRow++;
         }
+
+        var exitButton = new Button { Text = "Exit" };
+        exitButton.AddThemeFontSizeOverride("font_size", 26);
+        exitButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * nextRow);
+        exitButton.Size = new Vector2(buttonW, buttonH);
+        exitButton.Pressed += OnExitPressed;
+        AudioBus.AttachClick(exitButton);
+        panel.AddChild(exitButton);
 
         return panel;
     }
@@ -483,6 +493,12 @@ public partial class MainMenuScene : Control
     private void OnTutorialBuilderPressed()
     {
         GetTree().ChangeSceneToFile("res://scenes/tutorial_builder.tscn");
+    }
+
+    private void OnExitPressed()
+    {
+        Log.Info(Log.LogCategory.Input, "MainMenu Exit pressed — quitting.");
+        GetTree().Quit();
     }
 
     private void OnBackPressed()
