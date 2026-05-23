@@ -99,7 +99,7 @@ public sealed partial class SettingsPanel : CanvasLayer
         AudioBus.AttachClick(_vfxCheckBox);
         vbox.AddChild(_vfxCheckBox);
 
-        var aiSpeedLabel = new Label { Text = "AI Turn Speed" };
+        var aiSpeedLabel = new Label { Text = "Computer Player Speed" };
         aiSpeedLabel.AddThemeFontSizeOverride("font_size", 24);
         aiSpeedLabel.AddThemeColorOverride("font_color", UiPalette.InkSoft);
         vbox.AddChild(aiSpeedLabel);
