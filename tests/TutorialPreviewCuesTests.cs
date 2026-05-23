@@ -126,18 +126,19 @@ public class TutorialPreviewCuesTests
     }
 
     [Fact]
-    public void NotPlayer0Turn_NoFurtherBeats_ShowsOpponentsTurnMessage()
+    public void Complete_DuringAiTurn_CuesHandOff_NoMessage()
     {
-        // Script exhausted and an opponent is acting: the dev should see
-        // "Opponents are taking their turns…", not a lingering
-        // "Tutorial complete." (which only belongs once control returns
-        // to player 0 with nothing left to do).
+        // Once the script is exhausted the tutorial graduates to ordinary
+        // gameplay: cues paint nothing — no "Opponents…", no completion
+        // banner — so the normal HUD / game-end handling takes over. The
+        // empty script is complete from the start.
         var f = new Fixture(new List<ReplayBeat>(), currentPlayerIndex: 1);
-        f.Hud.ShowTutorialMessage("Tutorial complete.");
+        Assert.True(f.Preview.IsComplete);
+        f.Hud.ShowTutorialMessage("sentinel");
 
         f.Cues.Apply();
 
-        Assert.Equal("Opponents are taking their turns…", f.Hud.CurrentTutorialMessage);
+        Assert.Equal("sentinel", f.Hud.CurrentTutorialMessage);
     }
 
     [Fact]
@@ -238,9 +239,9 @@ public class TutorialPreviewCuesTests
         Assert.False(f.Hud.ClaimVictoryWinNowCtaActive);
         Assert.False(f.Hud.ClaimVictoryContinueCtaActive);
         Assert.False(f.Hud.DefeatContinueCtaActive);
-        // No further player-0 beats and control is on player 0 → the
-        // tutorial is done; show the completion message.
-        Assert.Equal("Tutorial complete.", f.Hud.CurrentTutorialMessage);
+        // Empty script is complete → cues hand off to ordinary gameplay:
+        // CTAs cleared, no completion banner painted.
+        Assert.Null(f.Hud.CurrentTutorialMessage);
     }
 
     [Fact]

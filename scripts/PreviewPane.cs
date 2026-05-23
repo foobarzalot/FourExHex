@@ -39,6 +39,9 @@ public sealed partial class PreviewPane : Control
     private TutorialNarrationDriver? _narration;
     private HexDragMode _savedDragMode;
     private bool _running;
+    // The tutorial currently being previewed, kept so the victory
+    // overlay's "Play Again" can restart this same tutorial.
+    private Tutorial? _tutorial;
 
     public override void _Ready()
     {
@@ -65,6 +68,7 @@ public sealed partial class PreviewPane : Control
     {
         Log.Debug(Log.LogCategory.Tutorial, $"[PreviewPane] Start: beats={tutorial.Replay.Beats.Count}, initialTurn={tutorial.Replay.InitialTurnNumber}, initialPlayer={tutorial.Replay.InitialCurrentPlayerIndex}");
         if (_running) Pause();
+        _tutorial = tutorial;
 
         // Player roster: player 0 Human (the dev plays Red);
         // players 1-5 Computer so the AI step machine schedules
@@ -122,11 +126,21 @@ public sealed partial class PreviewPane : Control
             _panel.Map,
             _hud,
             seed: _panel.CurrentSeed,
-            aiChooser: _replayAi.ChooseNextAction,
+            // While the script has beats, opponents replay their recorded
+            // moves; once it's exhausted the session graduates to free
+            // play and real AI (AiDispatcher) takes over the opponents.
+            aiChooser: (s, c, v, r) => _preview!.IsComplete
+                ? AiDispatcher.ChooseForCurrentPlayer(s, c, v, r)
+                : _replayAi!.ChooseNextAction(s, c, v, r),
             aiPacer: new GodotAiPacer(new SceneTreeTimerFactory(GetTree())),
             humanActionValidator: _preview.TryAccept,
             buyLevelValidator: _preview.AllowBuyLevel,
             previewMode: true,
+            // Seed the recorded tutorial as replay data so the victory
+            // overlay's Replay button can auto-play it hands-free via
+            // BeginReplay (RecordBeat stays suppressed in preview, so the
+            // interactive playthrough doesn't pollute it).
+            loadedReplay: tutorial.Replay,
             // Hold the paced AI run while a narration beat is on screen,
             // so opponents don't drain their turns past the parked replay
             // cursor while the player reads/taps. Resumed below.
@@ -163,6 +177,14 @@ public sealed partial class PreviewPane : Control
         _cues.SetNarrationDriver(_narration);
         cuesRef = _cues;
 
+        // Victory-overlay buttons. The overlay only appears once the
+        // tutorial graduates to free play and the game is won (see
+        // GraduateFromTutorialScripting); these wire its three actions.
+        _hud.NewGameClicked += OnPlayAgainPressed;
+        _hud.MainMenuClicked += OnMainMenuPressed;
+        _hud.ReplayClicked += OnReplayPressed;
+        _controller.GameEnded += OnPreviewGameEnded;
+
         _savedDragMode = _panel.Map.DragMode;
         _panel.Map.DragMode = HexDragMode.Pan;
         _panel.Map.Init(_previewState);
@@ -176,6 +198,7 @@ public sealed partial class PreviewPane : Control
     {
         if (!_running) return;
 
+        if (_controller != null) _controller.GameEnded -= OnPreviewGameEnded;
         _controller?.AbandonGame();
         if (_preview != null)
         {
@@ -184,6 +207,9 @@ public sealed partial class PreviewPane : Control
         }
         if (_hud != null)
         {
+            _hud.NewGameClicked -= OnPlayAgainPressed;
+            _hud.MainMenuClicked -= OnMainMenuPressed;
+            _hud.ReplayClicked -= OnReplayPressed;
             RemoveChild(_hud);
             _hud.QueueFree();
             _hud = null;
@@ -208,6 +234,44 @@ public sealed partial class PreviewPane : Control
 
     private void OnFinished()
     {
-        _hud?.ShowTutorialMessage(TutorialPreviewCues.TutorialCompleteMessage);
+        // Don't announce "tutorial complete" — hand back to ordinary
+        // gameplay rules. The controller lifts the preview's scripted
+        // suppressions (win overlay, claim-victory prompt); the validators
+        // and AI chooser go permissive on their own once IsComplete.
+        _controller?.GraduateFromTutorialScripting();
+    }
+
+    private void OnPreviewGameEnded()
+    {
+        // Enable the victory overlay's Replay button — the seeded tutorial
+        // replay is complete from start, so BeginReplay can auto-play it.
+        _hud?.SetReplayAvailable(_controller?.ReplayDataIsCompleteFromStart ?? false);
+    }
+
+    // Victory overlay: "Play Again" → restart the interactive tutorial from
+    // the beginning (resetting the map). Deferred because Start() tears down
+    // the HudView that raised this signal — re-entrant teardown mid-emit is
+    // unsafe.
+    private void OnPlayAgainPressed()
+    {
+        Log.Info(Log.LogCategory.Tutorial, "[PreviewPane] Play Again — restarting tutorial preview");
+        Tutorial? t = _tutorial;
+        if (t != null) Callable.From(() => Start(t)).CallDeferred();
+    }
+
+    // Victory overlay: "Main Menu" → leave the builder for the main menu.
+    private void OnMainMenuPressed()
+    {
+        Log.Info(Log.LogCategory.Tutorial, "[PreviewPane] Main Menu — leaving to main menu");
+        GetTree().ChangeSceneToFile("res://scenes/main_menu.tscn");
+    }
+
+    // Victory overlay: "Replay" → auto-play the whole tutorial hands-free
+    // via the standard replay step machine (rewinds to the recorded start,
+    // executes every action beat; narration beats are skipped).
+    private void OnReplayPressed()
+    {
+        Log.Info(Log.LogCategory.Tutorial, "[PreviewPane] Replay — auto-playing tutorial");
+        _controller?.BeginReplay();
     }
 }

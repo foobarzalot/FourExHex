@@ -90,11 +90,17 @@ public sealed class TutorialPreview
     /// </summary>
     public bool AllowBuyLevel(UnitLevel level)
     {
+        // Script exhausted → ordinary gameplay resumes; allow any buy.
+        if (IsComplete) return true;
         return NextPlayer0Beat is ReplayBuyBeat buy && buy.Level == level;
     }
 
     public bool TryAccept(ReplayBeat attempted)
     {
+        // Script exhausted → the tutorial has graduated to free play;
+        // accept any action and stop validating against the (empty) script.
+        if (IsComplete) return true;
+
         if (_state.Turns.CurrentPlayerIndex != 0)
         {
             Reject(NextPlayer0Beat,

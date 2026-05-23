@@ -11,11 +11,6 @@ using System;
 /// </summary>
 public sealed class TutorialPreviewCues
 {
-    /// <summary>Shown once the script is exhausted and control is back on
-    /// player 0 — nothing left to do. Also set by
-    /// <c>PreviewPane.OnFinished</c> at the moment the final beat lands.</summary>
-    public const string TutorialCompleteMessage = "Tutorial complete.";
-
     private readonly TutorialPreview _preview;
     private readonly GameState _state;
     private readonly SessionState _session;
@@ -77,6 +72,15 @@ public sealed class TutorialPreviewCues
 
     private void ApplyCore()
     {
+        // Script exhausted → the tutorial has graduated to ordinary
+        // gameplay. Paint no cues and show no banner; the normal HUD
+        // refresh and game-end overlays take over from here.
+        if (_preview.IsComplete)
+        {
+            ClearAllCtas();
+            return;
+        }
+
         // Narration takes priority: while a tutorial-only beat is
         // presenting (e.g., display-text awaiting tap), don't paint
         // cues or touch the tutorial-message panel — the narration
@@ -110,21 +114,10 @@ public sealed class TutorialPreviewCues
         ReplayBeat? next = _preview.NextPlayer0Beat;
         if (next == null)
         {
+            // Not complete (handled above) but NextPlayer0Beat is null →
+            // a narration beat is gating ahead. Leave the panel alone so
+            // the narration driver owns it; just clear stale CTAs.
             ClearAllCtas();
-            // NextPlayer0Beat is null for two very different reasons:
-            //  (a) the whole script is consumed → tutorial done; or
-            //  (b) a narration beat is gating ahead → NOT done, the
-            //      narration driver owns the panel (and the IsPresenting
-            //      guard above usually short-circuits before we get here).
-            // Only show the completion message in case (a); in case (b)
-            // leave the panel alone so we never flash "Tutorial complete."
-            // mid-script.
-            if (_preview.IsComplete)
-            {
-                _hud.ShowTutorialMessage(TutorialCompleteMessage);
-                Log.Debug(Log.LogCategory.Tutorial,
-                    "[Cues] player 0, script complete; showing tutorial-complete message");
-            }
             return;
         }
 

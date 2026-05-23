@@ -351,6 +351,12 @@ public class GameController
     private readonly bool _previewMode;
     public bool IsPreviewMode => _previewMode;
 
+    // Latched true once a Tutorial-Preview script runs out of beats and
+    // the session graduates to ordinary free play (see
+    // GraduateFromTutorialScripting). While false in preview, scripted
+    // suppressions hold; once true, ordinary game-end rules resume.
+    private bool _previewScriptingComplete;
+
     // _recordingMode (set via the recordingMode param) is true when the
     // controller is hosting the Tutorial Builder's Record session. All
     // six slots are forced Human in that mode so the dev can play every
@@ -665,6 +671,27 @@ public class GameController
     /// call this.
     /// </summary>
     public void RefreshViewsForTutorial() => _ops.RefreshViews();
+
+    /// <summary>
+    /// Graduate a Tutorial-Preview session to ordinary free play once the
+    /// scripted beats run out. Called by <c>PreviewPane</c> when
+    /// <c>TutorialPreview.TutorialFinished</c> fires. Lifts the preview's
+    /// scripted suppressions so normal game-end rules resume: the full-win
+    /// overlay un-hides and the End-Turn claim-victory prompt fires again.
+    /// (The validators / AI chooser become permissive on their own once
+    /// the script is complete; this only flips the controller-side gates.)
+    /// </summary>
+    public void GraduateFromTutorialScripting()
+    {
+        _previewScriptingComplete = true;
+        _hud.SetVictoryOverlaySuppressed(false);
+        // Clear any pinned scripted cue instruction (e.g. "Press End
+        // Turn.") so it doesn't linger into free play or the auto-replay;
+        // hands the message panel back to the normal HUD action-hint pass.
+        _hud.HideTutorialMessage();
+        Log.Info(Log.LogCategory.Tutorial,
+            "[GameController] tutorial script exhausted; graduated to ordinary free play");
+    }
 
     /// <summary>
     /// Append an authored tutorial-only beat to the recording log. Used
@@ -1529,7 +1556,11 @@ public class GameController
         // there.
         bool alreadyWon = WinConditionRules.WinnerAtEndOfTurn(
             current.Id, _state.Territories) == current.Id;
-        if (!alreadyWon && !current.IsAi && !_previewMode && !_recordingMode)
+        // Preview suppresses the prompt while scripted, but once the
+        // tutorial graduates to free play (see GraduateFromTutorialScripting)
+        // ordinary claim-victory rules resume.
+        bool previewScripted = _previewMode && !_previewScriptingComplete;
+        if (!alreadyWon && !current.IsAi && !previewScripted && !_recordingMode)
         {
             int seen = _session.ClaimVictoryPromptedHighestThreshold
                 .TryGetValue(current.Id, out int s) ? s : 0;

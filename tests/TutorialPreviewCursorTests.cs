@@ -131,14 +131,17 @@ public class TutorialPreviewCursorTests
     }
 
     [Fact]
-    public void AllowBuyLevel_RejectsAll_WhenScriptComplete()
+    public void AllowBuyLevel_AllowsAll_WhenScriptComplete()
     {
+        // Once the script is exhausted the tutorial graduates to ordinary
+        // free play, so the Buy radio guard stops constraining levels.
         var script = new List<ReplayBeat>();
         var cursor = new ScriptCursor();
         var preview = new TutorialPreview(script, TrivialState(TwoPlayerRoster()), cursor);
+        Assert.True(preview.IsComplete);
 
-        Assert.False(preview.AllowBuyLevel(UnitLevel.Recruit));
-        Assert.False(preview.AllowBuyLevel(UnitLevel.Commander));
+        Assert.True(preview.AllowBuyLevel(UnitLevel.Recruit));
+        Assert.True(preview.AllowBuyLevel(UnitLevel.Commander));
     }
 
     [Fact]

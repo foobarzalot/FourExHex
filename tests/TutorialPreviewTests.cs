@@ -225,6 +225,48 @@ public class TutorialPreviewTests
     }
 
     [Fact]
+    public void TryAccept_WhenComplete_AllowsFreePlay()
+    {
+        // Once the script is exhausted the tutorial graduates to ordinary
+        // gameplay: TryAccept must accept any player-0 action (rather than
+        // rejecting with "no further moves expected") so the dev keeps
+        // playing under normal rules.
+        var script = new List<ReplayBeat>
+        {
+            new ReplayEndTurnBeat { Index = 0, Turn = 1, Actor = 0 },
+        };
+        var preview = new TutorialPreview(script, PlayerZeroTurnState());
+        preview.TryAccept(new ReplayEndTurnBeat()); // consume the only beat
+        Assert.True(preview.IsComplete);
+
+        bool rejected = false;
+        preview.PlayerActionRejected += (_, _) => rejected = true;
+
+        // An arbitrary post-script action is accepted, no rejection fires.
+        Assert.True(preview.TryAccept(new ReplayMoveBeat
+        {
+            From = new HexCoord(0, 0), To = new HexCoord(1, 0),
+        }));
+        Assert.False(rejected);
+    }
+
+    [Fact]
+    public void AllowBuyLevel_WhenComplete_ReturnsTrueForEveryLevel()
+    {
+        var script = new List<ReplayBeat>
+        {
+            new ReplayEndTurnBeat { Index = 0, Turn = 1, Actor = 0 },
+        };
+        var preview = new TutorialPreview(script, PlayerZeroTurnState());
+        preview.TryAccept(new ReplayEndTurnBeat());
+        Assert.True(preview.IsComplete);
+
+        Assert.True(preview.AllowBuyLevel(UnitLevel.Recruit));
+        Assert.True(preview.AllowBuyLevel(UnitLevel.Soldier));
+        Assert.True(preview.AllowBuyLevel(UnitLevel.Captain));
+    }
+
+    [Fact]
     public void TryAccept_BuyBeat_MatchesOnCapitalToAndLevel()
     {
         var script = new List<ReplayBeat>

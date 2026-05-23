@@ -100,6 +100,42 @@ public class ClaimVictoryTests
     }
 
     [Fact]
+    public void GraduateFromTutorialScripting_ResumesOrdinaryGameEndRules()
+    {
+        // A preview-mode controller suppresses the win overlay and the
+        // claim-victory prompt while the tutorial is scripted. Once it
+        // graduates (script exhausted), ordinary rules resume: the win
+        // overlay un-suppresses and the claim-victory prompt fires again.
+        var redP = new Player("Red", PlayerId.FromIndex(0), PlayerKind.Human);
+        var blueP = new Player("Blue", PlayerId.FromIndex(1), PlayerKind.Human);
+        var players = new List<Player> { redP, blueP };
+        var grid = TestHelpers.BuildRectGrid(5, 2, Blue);
+        for (int i = 0; i < 6; i++) // Red 60% — would prompt at the 50 tier
+        {
+            grid.Get(HexCoord.FromOffset(i % 5, i / 5))!.Owner = Red;
+        }
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        var map = new MockHexMapView();
+        var hud = new MockHudView();
+        var controller = new GameController(state, session, map, hud, previewMode: true);
+        controller.StartGame();
+        Assert.True(hud.VictoryOverlaySuppressed);   // suppressed during the tutorial
+
+        // A scripted cue instruction is pinned in the message panel.
+        hud.ShowTutorialMessage("Press End Turn.");
+
+        controller.GraduateFromTutorialScripting();
+
+        Assert.False(hud.VictoryOverlaySuppressed);   // ordinary rules resume
+        Assert.Null(hud.CurrentTutorialMessage);      // stale cue text cleared
+        hud.ClickEndTurn();
+        Assert.True(session.PendingClaimVictory.HasValue); // prompt fires again
+        Assert.Equal(50, session.PendingClaimVictory!.Value.ThresholdPercent);
+    }
+
+    [Fact]
     public void EndTurn_HumanAtExactlyHalf_DoesNotPrompt()
     {
         // 5 of 10 tiles = exactly 50%, NOT > 50%.
