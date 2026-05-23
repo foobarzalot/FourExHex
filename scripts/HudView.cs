@@ -415,14 +415,24 @@ public partial class HudView : CanvasLayer, IHudView
     public event Action? TutorialMessageTapped;
 
     /// <summary>
-    /// Full-viewport invisible overlay used while a tappable tutorial
-    /// message is showing. Built lazily on first tappable-show. Sits
-    /// above every other HudView child so a click anywhere on the
-    /// screen (HUD buttons, map tiles, the panel itself) is intercepted
-    /// and advances the tutorial — the player can't accidentally hit
-    /// Buy / End Turn / select a tile while a narration beat is gated.
+    /// Full-viewport overlay used while a tappable tutorial (display-text)
+    /// beat is showing. Built lazily on first tappable-show. Two jobs:
+    /// (1) a semi-transparent black fill that dims the rest of the screen
+    /// so the narration reads as a modal — this is specific to the
+    /// display-text beat, not the other (click-through) uses of the
+    /// tutorial-message panel; (2) a click catcher (MouseFilter=Stop) so a
+    /// tap anywhere advances the beat and the player can't hit
+    /// Buy / End Turn / select a tile while it's gated. It sits BELOW the
+    /// narration panel + continue-hint (which are MouseFilter=Ignore, so
+    /// taps on them fall through to this catcher) but ABOVE the map/HUD,
+    /// so only the board and buttons are dimmed.
     /// </summary>
-    private Control? _tutorialTapCatcher;
+    private ColorRect? _tutorialTapCatcher;
+
+    // Dim level applied to the rest of the screen behind a display-text
+    // beat. Black at this alpha reads as a clear modal scrim without
+    // hiding the board state the narration refers to.
+    private static readonly Color TutorialDimColor = new(0f, 0f, 0f, 0.5f);
 
     // True while an external caller (tutorial system, AI-batch indicator)
     // owns the tutorial-message panel. Refresh()'s gameplay action hint
@@ -448,7 +458,7 @@ public partial class HudView : CanvasLayer, IHudView
         SetTutorialTapCatcherEnabled(true);
         ShowContinueHint(true);
         Log.Debug(Log.LogCategory.Tutorial,
-            $"[HudView] tappable tutorial message shown; continue-hint scheduled in {ContinueHintDelaySeconds}s");
+            $"[HudView] tappable tutorial message shown; screen dimmed; continue-hint scheduled in {ContinueHintDelaySeconds}s");
     }
 
     public void HideTutorialMessage()
@@ -523,8 +533,9 @@ public partial class HudView : CanvasLayer, IHudView
             if (_tutorialTapCatcher == null)
             {
                 Vector2 viewport = GetViewport().GetVisibleRect().Size;
-                _tutorialTapCatcher = new Control
+                _tutorialTapCatcher = new ColorRect
                 {
+                    Color = TutorialDimColor,
                     Position = Vector2.Zero,
                     Size = viewport,
                     AnchorLeft = 0f, AnchorRight = 1f,
@@ -534,10 +545,15 @@ public partial class HudView : CanvasLayer, IHudView
                 _tutorialTapCatcher.GuiInput += OnTutorialTapCatcherInput;
                 AddChild(_tutorialTapCatcher);
             }
-            // Re-parent so the catcher is the topmost child of HudView,
-            // guaranteeing it receives clicks ahead of HUD buttons, the
-            // map below, and the tutorial panel.
+            // Order (back→front): catcher (dim) → panel → continue-hint.
+            // The catcher goes topmost first so it's above HUD buttons and
+            // the map (which it dims); the panel is then lifted above it so
+            // the narration text stays bright and un-dimmed. The hint is
+            // lifted above the panel when it reveals. Panel + hint are
+            // MouseFilter=Ignore, so taps on them fall through to the
+            // catcher and still advance the beat.
             MoveChild(_tutorialTapCatcher, GetChildCount() - 1);
+            MoveChild(_tutorialPanel, GetChildCount() - 1);
             _tutorialTapCatcher.Visible = true;
             _tutorialTapCatcher.MouseFilter = Control.MouseFilterEnum.Stop;
         }
