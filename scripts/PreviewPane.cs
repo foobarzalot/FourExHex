@@ -45,13 +45,13 @@ public sealed partial class PreviewPane : Control
 
     public override void _Ready()
     {
-        AnchorLeft = 0f;
-        AnchorTop = 0f;
-        AnchorRight = 1f;
-        AnchorBottom = 1f;
+        // Full-rect against the viewport (parent is a Node2D, so anchors
+        // resolve to the viewport). The preset sets anchors AND offsets,
+        // so the pane fills and auto-resizes with the viewport — no
+        // explicit Size assignment, which is what triggered the
+        // "non-equal opposite anchors" warning on _Ready.
+        SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         MouseFilter = MouseFilterEnum.Ignore;
-        Size = GetViewport().GetVisibleRect().Size;
-        GetViewport().SizeChanged += () => Size = GetViewport().GetVisibleRect().Size;
     }
 
     public void SetPanel(MapEditorPanel panel)
