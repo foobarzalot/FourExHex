@@ -39,7 +39,7 @@ public sealed partial class RecordPane : Control
     private GameState? _recordState;
     private HexDragMode _savedDragMode;
     private bool _running;
-    private Control? _addTextDialog;
+    private CanvasLayer? _addTextDialog;
     // Pure-C# captor for the captured tutorial. Lives separately from
     // _controller so the snapshot survives StopRecording (which nulls
     // the controller). Without this the live bug was: SetMode runs
@@ -312,58 +312,78 @@ public sealed partial class RecordPane : Control
         if (_addTextDialog != null) return;
         if (_controller == null) return;
 
-        // Translucent backdrop that captures clicks so the map below
-        // is inert while the dialog is open.
-        var backdrop = new ColorRect
-        {
-            Color = new Color(0f, 0f, 0f, 0.45f),
-            AnchorLeft = 0f, AnchorRight = 1f, AnchorTop = 0f, AnchorBottom = 1f,
-            MouseFilter = MouseFilterEnum.Stop,
-        };
+        // Match the ModalChrome dialog family (Save Game / Settings / slot
+        // picker). Those are CanvasLayer modals, and that's exactly why their
+        // dim backdrop + centered slate panel anchor correctly: a CanvasLayer's
+        // Control children resolve their anchors against the viewport. RecordPane
+        // is a plain Control whose subtree doesn't resolve full-rect/center
+        // anchors here (the panel collapsed offscreen), so we host the dialog on
+        // its own throwaway CanvasLayer and tear the whole layer down on close.
+        Vector2 viewport = GetViewport().GetVisibleRect().Size;
 
-        const float panelW = 460f;
-        const float panelH = 180f;
-        var panel = new Panel
-        {
-            AnchorLeft = 0.5f, AnchorRight = 0.5f,
-            AnchorTop = 0.5f, AnchorBottom = 0.5f,
-            OffsetLeft = -panelW * 0.5f, OffsetRight = panelW * 0.5f,
-            OffsetTop = -panelH * 0.5f, OffsetBottom = panelH * 0.5f,
-            MouseFilter = MouseFilterEnum.Stop,
-        };
-        backdrop.AddChild(panel);
+        var layer = new CanvasLayer { Layer = 100 };
 
-        var titleLabel = new Label
+        ColorRect backdrop = ModalChrome.BuildBackdrop(viewport);
+        layer.AddChild(backdrop);
+
+        // Sibling of the backdrop on the layer (as in SaveNameModal), centered
+        // via its own anchors — no CenterContainer needed on a CanvasLayer.
+        PanelContainer panel = ModalChrome.BuildCenteredPanel();
+        layer.AddChild(panel);
+
+        var vbox = new VBoxContainer
+        {
+            CustomMinimumSize = new Vector2(460, 0),
+        };
+        vbox.AddThemeConstantOverride("separation", 18);
+        panel.AddChild(vbox);
+
+        vbox.AddChild(ModalChrome.BuildSerifTitle("Add Narration"));
+
+        var label = new Label
         {
             Text = "Narration text for this tutorial beat:",
-            AnchorLeft = 0f, AnchorRight = 1f, AnchorTop = 0f, AnchorBottom = 0f,
-            OffsetLeft = 16f, OffsetRight = -16f, OffsetTop = 16f, OffsetBottom = 44f,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
         };
-        panel.AddChild(titleLabel);
+        label.AddThemeFontSizeOverride("font_size", 22);
+        label.AddThemeColorOverride("font_color", UiPalette.InkSoft);
+        vbox.AddChild(label);
 
         var lineEdit = new LineEdit
         {
             PlaceholderText = "e.g., Move your recruit to the highlighted tile.",
-            AnchorLeft = 0f, AnchorRight = 1f, AnchorTop = 0f, AnchorBottom = 0f,
-            OffsetLeft = 16f, OffsetRight = -16f, OffsetTop = 50f, OffsetBottom = 90f,
+            CustomMinimumSize = new Vector2(0, 36),
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
         };
-        panel.AddChild(lineEdit);
+        lineEdit.AddThemeFontSizeOverride("font_size", 22);
+        vbox.AddChild(lineEdit);
 
-        var insertButton = new Button
+        var buttonRow = new HBoxContainer
         {
-            Text = "Insert",
-            AnchorLeft = 1f, AnchorRight = 1f, AnchorTop = 1f, AnchorBottom = 1f,
-            OffsetLeft = -110f, OffsetRight = -16f, OffsetTop = -50f, OffsetBottom = -16f,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
         };
-        panel.AddChild(insertButton);
+        buttonRow.AddThemeConstantOverride("separation", 12);
+        vbox.AddChild(buttonRow);
 
         var cancelButton = new Button
         {
             Text = "Cancel",
-            AnchorLeft = 1f, AnchorRight = 1f, AnchorTop = 1f, AnchorBottom = 1f,
-            OffsetLeft = -220f, OffsetRight = -120f, OffsetTop = -50f, OffsetBottom = -16f,
+            FocusMode = Control.FocusModeEnum.None,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
         };
-        panel.AddChild(cancelButton);
+        cancelButton.AddThemeFontSizeOverride("font_size", 24);
+        AudioBus.AttachClick(cancelButton);
+        buttonRow.AddChild(cancelButton);
+
+        var insertButton = new Button
+        {
+            Text = "Insert",
+            FocusMode = Control.FocusModeEnum.None,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+        };
+        insertButton.AddThemeFontSizeOverride("font_size", 24);
+        AudioBus.AttachClick(insertButton);
+        buttonRow.AddChild(insertButton);
 
         void Close()
         {
@@ -391,9 +411,20 @@ public sealed partial class RecordPane : Control
         insertButton.Pressed += Submit;
         cancelButton.Pressed += Close;
         lineEdit.TextSubmitted += _ => Submit();
+        // Backdrop click closes (modal-family contract). The panel eats its
+        // own clicks (PanelContainer MouseFilter Stop), so only empty
+        // backdrop area reaches here.
+        backdrop.GuiInput += @event =>
+        {
+            if (@event is InputEventMouseButton mb && mb.Pressed && mb.ButtonIndex == MouseButton.Left)
+            {
+                backdrop.AcceptEvent();
+                Close();
+            }
+        };
 
-        AddChild(backdrop);
-        _addTextDialog = backdrop;
+        AddChild(layer);
+        _addTextDialog = layer;
         lineEdit.GrabFocus();
     }
 }
