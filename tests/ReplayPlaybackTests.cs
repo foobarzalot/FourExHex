@@ -33,7 +33,8 @@ public class ReplayPlaybackTests
 
         public Fixture(PlayerKind redKind = PlayerKind.Human, PlayerKind blueKind = PlayerKind.Human,
             Func<GameState, PlayerId, HashSet<HexCoord>, Random, AiAction?>? aiChooser = null,
-            bool instantReplay = false)
+            bool instantReplay = false,
+            Func<bool>? replayInstantMode = null)
         {
             Red = new Player("Red", PlayerId.FromIndex(0), redKind);
             Blue = new Player("Blue", PlayerId.FromIndex(1), blueKind);
@@ -57,7 +58,8 @@ public class ReplayPlaybackTests
                 aiChooser: aiChooser,
                 aiPacer: Pacer,
                 maxTurnNumber: 20,
-                replayIsInstantMode: instantReplay ? () => true : (Func<bool>?)null);
+                replayIsInstantMode: replayInstantMode
+                    ?? (instantReplay ? () => true : (Func<bool>?)null));
             Controller.StartGame();
             // StartGame may have scheduled an AI run; drain so the
             // fixture is on a stable human turn for further driving.
@@ -560,6 +562,75 @@ public class ReplayPlaybackTests
             Assert.Equal(color, t.Owner);
             Assert.Equal(occType, t.Occupant?.GetType().Name);
         }
+    }
+
+    // --- Mid-flight replay speed switching ------------------------------
+
+    /// <summary>
+    /// Records the same multi-turn human game as
+    /// <see cref="RecordedInstantGame"/> on the given fixture and returns
+    /// the live final snapshot. Replay-speed is governed by the fixture's
+    /// injected predicate, so the recording itself is speed-agnostic.
+    /// </summary>
+    private static GameStateSnapshot RecordMultiTurnGame(Fixture f)
+    {
+        f.Map.SimulateClick(f.State.Grid.Get(f.RedCapital)!);
+        f.Hud.ClickBuyRecruit();
+        f.Map.SimulateClick(f.State.Grid.Get(f.RedOther)!); // buy beat
+        f.Hud.ClickEndTurn(); f.Pacer.DrainAll();            // Red end T1
+        f.Hud.ClickEndTurn(); f.Pacer.DrainAll();            // Blue end T1 → Red T2
+        f.Hud.ClickEndTurn(); f.Pacer.DrainAll();            // Red end T2
+        f.Hud.ClickEndTurn(); f.Pacer.DrainAll();            // Blue end T2 → Red T3
+        Assert.True(f.Controller.ReplayBeats.Count >= 4,
+            $"Expected >=4 beats, got {f.Controller.ReplayBeats.Count}");
+        return GameStateSnapshot.Capture(f.State.Grid, f.State.Treasury, f.State.Territories);
+    }
+
+    [Fact]
+    public void Speed_PacedToInstant_MidReplay_GoesSilentAndReachesSameState()
+    {
+        bool instantFlag = false;
+        var f = new Fixture(replayInstantMode: () => instantFlag);
+        GameStateSnapshot live = RecordMultiTurnGame(f);
+
+        f.Controller.BeginReplay(); // paced
+        Assert.False(f.Map.SilentMode);
+
+        // Step a couple of paced beats, then switch to Instant.
+        f.Pacer.StepOne();
+        f.Pacer.StepOne();
+        Assert.False(f.Map.SilentMode);
+
+        instantFlag = true;
+        int guard = 0;
+        while (!f.Map.SilentMode && f.Pacer.HasPending && guard++ < 40)
+            f.Pacer.StepOne();
+        Assert.True(f.Map.SilentMode,
+            "switching Replay Speed to Instant mid-replay should silence the view");
+
+        f.Pacer.DrainAll();
+        Assert.False(f.Map.SilentMode); // lifted at end of replay
+        f.AssertStateMatches(live);
+    }
+
+    [Fact]
+    public void Speed_InstantToPaced_MidReplay_SwitchesTrackAndLiftsSilent()
+    {
+        bool instantFlag = true;
+        var f = new Fixture(replayInstantMode: () => instantFlag);
+        GameStateSnapshot live = RecordMultiTurnGame(f);
+
+        f.Controller.BeginReplay(); // instant
+        Assert.True(f.Map.SilentMode);
+
+        instantFlag = false;  // user switches to a paced speed
+        f.Pacer.StepOne();    // instant tick runs T1 beats → boundary reschedule picks paced
+        Assert.False(f.Map.SilentMode,
+            "switching Replay Speed off Instant mid-replay should lift silent mode");
+
+        f.Pacer.DrainAll();
+        Assert.False(f.Map.SilentMode);
+        f.AssertStateMatches(live);
     }
 
     [Fact]

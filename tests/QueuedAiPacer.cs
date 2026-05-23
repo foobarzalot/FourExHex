@@ -25,6 +25,20 @@ public sealed class QueuedAiPacer : IAiPacer
     /// <summary>True iff there's at least one pending callback.</summary>
     public bool HasPending => _queue.Count > 0;
 
+    /// <summary>Number of pending callbacks.</summary>
+    public int PendingCount => _queue.Count;
+
+    /// <summary>
+    /// Run exactly one queued callback (FIFO), if any. Lets a test
+    /// pump the step machine one beat at a time and mutate state (e.g.
+    /// flip a speed setting) between beats — the lever for mid-flight
+    /// speed-switch tests, which <see cref="DrainAll"/> collapses past.
+    /// </summary>
+    public void StepOne()
+    {
+        if (_queue.Count > 0) _queue.Dequeue().Invoke();
+    }
+
     /// <summary>
     /// Run every queued callback in FIFO order, including any new
     /// ones scheduled by callbacks already running. Returns when

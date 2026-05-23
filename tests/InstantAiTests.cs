@@ -52,9 +52,9 @@ public class InstantAiTests
     // coalescing assertion applies to the live path.
     private static (GameState State, SessionState Session, MockHexMapView Map,
         MockHudView Hud, Player Red, Player Blue, List<(HexCoord From, HexCoord To)> Captures)
-        BuildMultiCaptureScenario()
+        BuildMultiCaptureScenario(bool redIsAi = false)
     {
-        var red = new Player("Red", PlayerId.FromIndex(0));
+        var red = new Player("Red", PlayerId.FromIndex(0), isAi: redIsAi);
         var blue = new Player("Blue", PlayerId.FromIndex(1), isAi: true);
         var players = new List<Player> { red, blue };
 
@@ -95,6 +95,17 @@ public class InstantAiTests
         QueuedAiPacer pacer,
         Func<GameState, PlayerId, HashSet<HexCoord>, Random, AiAction?>? chooser,
         bool instant)
+        => NewController(state, session, map, hud, pacer, chooser,
+            aiSilentMode: instant ? () => true : (Func<bool>?)null);
+
+    // Overload that takes the silent-mode predicate directly so a test
+    // can back it with a mutable bool and flip the speed setting between
+    // beats (mid-flight track switching).
+    private static GameController NewController(
+        GameState state, SessionState session, MockHexMapView map, MockHudView hud,
+        QueuedAiPacer pacer,
+        Func<GameState, PlayerId, HashSet<HexCoord>, Random, AiAction?>? chooser,
+        Func<bool>? aiSilentMode)
     {
         return new GameController(
             state, session, map, hud,
@@ -102,7 +113,7 @@ public class InstantAiTests
             aiChooser: chooser,
             aiPacer: pacer,
             maxTurnNumber: 20,
-            aiSilentMode: instant ? () => true : (Func<bool>?)null);
+            aiSilentMode: aiSilentMode);
     }
 
     private static List<string> BeatSignatures(IReadOnlyList<ReplayBeat> beats) =>
@@ -318,5 +329,156 @@ public class InstantAiTests
         hud.ClickDefeatContinue();
         Assert.Null(session.PendingDefeatScreen);
         Assert.True(hud.RefreshCount > refreshesBefore);
+    }
+
+    // --- Mid-flight speed switching (any-to-any, both directions) --------
+
+    private static GameStateSnapshot PacedReferenceBoard()
+    {
+        var (state, session, map, hud, _, blue, captures) = BuildMultiCaptureScenario();
+        var pacer = new QueuedAiPacer();
+        var c = NewController(state, session, map, hud, pacer,
+            SequencedCaptureChooser(blue.Id, captures), instant: false);
+        c.StartGame();
+        pacer.DrainAll();
+        hud.ClickEndTurn();
+        pacer.DrainAll();
+        return GameStateSnapshot.Capture(state.Grid, state.Treasury, state.Territories);
+    }
+
+    [Fact]
+    public void Speed_PacedToInstant_MidAiTurn_GoesSilentAndCompletesSameBoard()
+    {
+        GameStateSnapshot pacedRef = PacedReferenceBoard();
+
+        bool instantFlag = false;
+        var (state, session, map, hud, _, blue, captures) = BuildMultiCaptureScenario();
+        var pacer = new QueuedAiPacer();
+        var c = NewController(state, session, map, hud, pacer,
+            SequencedCaptureChooser(blue.Id, captures), aiSilentMode: () => instantFlag);
+        c.StartGame();
+        pacer.DrainAll();
+
+        hud.ClickEndTurn(); // Red ends → Blue AI begins, paced (audible)
+        int guard = 0;
+        while (c.ReplayBeats.Count(b => b is ReplayMoveBeat) < 1 && pacer.HasPending && guard++ < 30)
+            pacer.StepOne();
+        Assert.False(map.SilentMode); // paced AI is audible
+
+        instantFlag = true; // user switches to Instant mid-turn
+        guard = 0;
+        while (!map.SilentMode && pacer.HasPending && guard++ < 30)
+            pacer.StepOne();
+        Assert.True(map.SilentMode,
+            "switching to Instant mid-AI-turn should silence the view at the next action boundary");
+        Assert.Equal("Opponents are taking their turns…", hud.CurrentTutorialMessage);
+
+        pacer.DrainAll();
+        Assert.False(map.SilentMode);            // lifted on hand-back to the human
+        Assert.Null(hud.CurrentTutorialMessage); // overlay cleared
+        AssertSameBoard(pacedRef, state);        // same final board as a pure-paced run
+    }
+
+    [Fact]
+    public void Speed_InstantToPaced_AtAiTurnBoundary_SwitchesTrackAndLiftsSilent()
+    {
+        // Two AI players: Red (passive) then Blue (4 captures). Start
+        // Instant; flip to a paced speed before pumping. Red's turn runs
+        // Instant; at the Red→Blue boundary the dispatcher re-reads the
+        // setting and runs Blue's turn on the PACED track.
+        bool instantFlag = true;
+        var (state, session, map, hud, _, blue, captures) =
+            BuildMultiCaptureScenario(redIsAi: true);
+        var pacer = new QueuedAiPacer();
+        var c = NewController(state, session, map, hud, pacer,
+            SequencedCaptureChooser(blue.Id, captures), aiSilentMode: () => instantFlag);
+        c.StartGame();
+        Assert.True(map.SilentMode); // Instant batch armed for Red
+
+        instantFlag = false;     // user switches to a paced speed
+        pacer.StepOne();         // InstantAiTick: Red's passive turn → boundary reschedule
+        pacer.StepOne();         // boundary picks paced track → StepAiPreview (Blue): highlights, no action yet
+
+        // On the paced track a preview runs BEFORE the action: zero Blue
+        // captures applied after the first preview beat. On the instant
+        // track all four would already be done in one tick.
+        Assert.Equal(0, c.ReplayBeats.Count(b => b is ReplayMoveBeat));
+        Assert.False(map.SilentMode); // paced AI is audible
+
+        int guard = 0;
+        while (c.ReplayBeats.Count(b => b is ReplayMoveBeat) < 4 && pacer.HasPending && guard++ < 60)
+            pacer.StepOne();
+        foreach ((HexCoord _, HexCoord to) in captures)
+            Assert.Equal(blue.Id, state.Grid.Get(to)!.Owner);
+        Assert.False(map.SilentMode);
+    }
+
+    [Fact]
+    public void Speed_FlipToInstant_DuringPreviewExecuteWindow_DoesNotReChooseAction()
+    {
+        // RNG-safety guard: the preview→execute hop must stay a direct
+        // schedule (no re-dispatch), so flipping speed between a paced
+        // preview and its execute can't re-run the chooser (which draws
+        // RNG) for the already-chosen action.
+        GameStateSnapshot pacedRef = PacedReferenceBoard();
+
+        bool instantFlag = false;
+        int blueChoices = 0;
+        var (state, session, map, hud, _, blue, captures) = BuildMultiCaptureScenario();
+        Func<GameState, PlayerId, HashSet<HexCoord>, Random, AiAction?> baseChooser =
+            SequencedCaptureChooser(blue.Id, captures);
+        AiAction? Counting(GameState s, PlayerId col, HashSet<HexCoord> v, Random r)
+        {
+            AiAction? a = baseChooser(s, col, v, r);
+            if (col == blue.Id && a != null) blueChoices++;
+            return a;
+        }
+        var pacer = new QueuedAiPacer();
+        var c = NewController(state, session, map, hud, pacer, Counting,
+            aiSilentMode: () => instantFlag);
+        c.StartGame();
+        pacer.DrainAll();
+
+        hud.ClickEndTurn();
+        pacer.StepOne(); // StepAiPreview: chooser called once, action pending
+        Assert.Equal(1, blueChoices);
+        Assert.Equal(0, c.ReplayBeats.Count(b => b is ReplayMoveBeat));
+
+        instantFlag = true;       // flip inside the preview→execute window
+        pacer.StepOne();          // StepAiExecute: applies the pending action, no re-choose
+        Assert.Equal(1, blueChoices);
+        Assert.Equal(1, c.ReplayBeats.Count(b => b is ReplayMoveBeat));
+
+        pacer.DrainAll();
+        AssertSameBoard(pacedRef, state);
+    }
+
+    [Fact]
+    public void Speed_FlipToInstant_ThenDismissDefeat_ResumesWithoutError()
+    {
+        var (state, session, map, hud, red, _) = BuildKillScenario();
+        AiAction? scripted = new AiMoveAction(
+            HexCoord.FromOffset(2, 0), HexCoord.FromOffset(3, 0));
+        AiAction? Chooser(GameState s, PlayerId col, HashSet<HexCoord> v, Random r)
+        {
+            AiAction? next = scripted;
+            scripted = null;
+            return next;
+        }
+        bool instantFlag = false;
+        var pacer = new QueuedAiPacer();
+        var c = NewController(state, session, map, hud, pacer, Chooser,
+            aiSilentMode: () => instantFlag);
+        c.StartGame();
+        pacer.DrainAll();
+
+        hud.ClickEndTurn();
+        pacer.DrainAll(); // paced Blue eliminates Red → defeat overlay
+        Assert.Equal(red.Id, session.PendingDefeatScreen);
+
+        instantFlag = true;          // user switches to Instant while paused on defeat
+        hud.ClickDefeatContinue();   // resume must pick the live track, no crash
+        Assert.Null(session.PendingDefeatScreen);
+        pacer.DrainAll();            // must not throw
     }
 }

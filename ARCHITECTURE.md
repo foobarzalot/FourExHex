@@ -570,7 +570,14 @@ recorder owns recording, paced playback, and the instant-step function.
 - **Playback methods**: `BeginReplay`, `EndReplay`,
   `StepReplayPreview`, `StepReplayExecute`, `ExecuteReplayBeat`,
   `ReplayApplyEndTurn`, `ReplayInstantStep` (the step function consumed
-  by `RunInstantTick`), private `ResolveReplayActingTerritory`.
+  by `RunInstantTick`), `ScheduleNextReplayBeat(turnBoundary)` (the
+  re-dispatching scheduler — replay's mirror of `ScheduleAiTurn`: it
+  re-reads `_replayIsInstantMode` each beat so a mid-replay Replay-Speed
+  change switches the paced↔instant track, drives `SetSilentMode`
+  directly, and forces the structural rebuild on an instant→paced
+  transition; called by `StepReplayExecute` and by `RunInstantTick`'s
+  `reschedule` callback for instant replay), private
+  `ResolveReplayActingTerritory`.
 - **Public read surface** (consumed by `Main.cs` and `RecordPane.cs` via
   thin forwarders on `GameController`): `Beats`, `BeatsCount`,
   `InitialSnapshot`, `InitialTurnNumber`, `InitialCurrentPlayerIndex`,
@@ -1318,14 +1325,29 @@ GameController.OnUndoLastPressed
 ### AI turn
 
 `RunAiTurnsUntilHumanOrDone` resets the per-player AI bookkeeping and
-calls `ScheduleAiTurn` — the single decision point that picks the
-pacing path. Under `PlaybackSpeed.Instant` (`aiSilentMode()` true) it
-schedules the chunked `InstantAiTick` via `ScheduleUnscaled`;
-otherwise it schedules the paced `StepAiPreview` via the
-multiplier-scaled `Schedule`. Once a turn starts on a path it stays
-on it (instant never enters the paced step machine). The overlay-
-resume sites (`OnDefeatContinuePressed`, claim-victory continue →
-`EndTurnNow`) route back through `ScheduleAiTurn` too.
+calls `ScheduleAiTurn(turnBoundary)` — the single **re-dispatching**
+decision point that picks the pacing path *every* beat. It re-reads
+`aiSilentMode()` on each call: under `PlaybackSpeed.Instant` it
+schedules the chunked `InstantAiTick` via `ScheduleUnscaled` (delay
+`InstantTurnDelayMs`/0); otherwise the paced `StepAiPreview` via the
+multiplier-scaled `Schedule` (delay `AiBetweenPlayersDelayMs`/
+`AiActionDelayMs`). Because *all* continuation points route through it
+— the next-AI-player hop, the post-execute hop (`StepAiExecute`), the
+instant driver's own reschedule (`RunInstantTick`'s `reschedule`
+callback), and the overlay-resume sites (`OnDefeatContinuePressed`,
+claim-victory continue → `EndTurnNow`) — a mid-turn Ai-Speed change
+**switches tracks at the next beat**. The one exception is the
+preview→execute hop (`StepAiPreview` → `StepAiExecute`), which stays a
+direct `Schedule`: `_pendingAiAction` is already chosen there, so a
+track switch would re-draw RNG for it; the switch lands at the next
+action boundary instead. `ScheduleAiTurn` also calls
+`RefreshSilentMode` each time (syncing the silent flag + "Opponents…"
+overlay to the live setting) and, on an instant→paced transition,
+forces a `RebuildAfterTerritoryChange` to refresh borders the instant
+track's suppressed per-capture rebuilds left stale. `_aiTrackInstant`
+holds the previous track so the transition can be detected; it is
+seeded in `RunAiTurnsUntilHumanOrDone` so the first dispatch never
+registers a spurious transition.
 
 **Paced (Slow/Normal/Fast)** — a preview/execute step machine:
 
@@ -1356,7 +1378,7 @@ StepAiExecute:
 
 **Instant fast-forward (shared driver).** Live AI Instant and
 instant replay share one chunked, frame-yielded loop,
-`RunInstantTick(active, step, onExhausted, self)`:
+`RunInstantTick(active, step, onExhausted, reschedule)`:
 
 ```
 RunInstantTick:
@@ -1367,8 +1389,10 @@ RunInstantTick:
   │                budget (InstantBudgetMs, 8 ms) → break, no repaint
   ├─ _suppressMapRebuild = false
   ├─ if turnBoundary: _map.RebuildAfterTerritoryChange + RefreshViews
-  └─ _aiPacer.ScheduleUnscaled(self,
-        turnBoundary ? InstantTurnDelayMs (200 ms) : 0)
+  └─ reschedule(turnBoundary)   ── caller's re-dispatching scheduler,
+        NOT a fixed self-reschedule, so a mid-run speed change can
+        switch OFF the instant track here (AI → ScheduleAiTurn,
+        replay → ScheduleNextReplayBeat; each owns its per-track delay)
 ```
 
 Two thin wrappers feed it:

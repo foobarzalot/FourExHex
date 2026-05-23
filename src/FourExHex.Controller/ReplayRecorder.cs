@@ -41,6 +41,11 @@ public class ReplayRecorder
     private const int AiPreviewDelayMs = 350;
     private const int AiActionDelayMs = 300;
     private const int AiBetweenPlayersDelayMs = 600;
+    // Mirrors GameController.InstantTurnDelayMs (the per-turn cadence of
+    // the chunked instant driver). Duplicated here the same way the
+    // paced delays above are, so the recorder can re-dispatch the
+    // instant track without reaching into GameController.
+    private const int InstantTurnDelayMs = 200;
 
     // The replay log lives parallel to the per-turn undo stack: every
     // state-mutating action by every player (human and AI) appends a
@@ -274,10 +279,47 @@ public class ReplayRecorder
         if (_replayInstantActive) _map.SetSilentMode(true);
         _ops.RefreshViews();
 
-        if (_replayInstantActive)
-            _aiPacer.ScheduleUnscaled(_instantTickEntry, 0);
+        // First dispatch is a turn boundary; the track was just seeded
+        // above so this won't register a spurious transition.
+        ScheduleNextReplayBeat(turnBoundary: true);
+    }
+
+    /// <summary>
+    /// Single re-dispatching decision point for advancing replay
+    /// playback. Called by <see cref="StepReplayExecute"/> after each
+    /// beat and by the chunked instant driver's reschedule, so a
+    /// mid-replay Replay-Speed change switches tracks at the next beat:
+    /// Instant routes to the chunked driver (unscaled), otherwise the
+    /// paced preview/execute machine. Re-reads
+    /// <see cref="_replayIsInstantMode"/> each call, syncs silent mode,
+    /// and on an instant→paced transition forces the structural rebuild
+    /// the instant track's suppressed per-capture rebuilds skipped.
+    /// </summary>
+    public void ScheduleNextReplayBeat(bool turnBoundary)
+    {
+        if (!_replayMode) return;
+        bool nowInstant = _replayIsInstantMode?.Invoke() == true;
+        if (_replayInstantActive && !nowInstant)
+        {
+            Log.Info(Log.LogCategory.Turn,
+                $"[speed] replay track instant→paced at beat {_replayIndex}");
+            // Instant suppressed per-capture rebuilds; refresh borders
+            // before the first paced render.
+            _map.RebuildAfterTerritoryChange();
+        }
+        else if (!_replayInstantActive && nowInstant)
+        {
+            Log.Info(Log.LogCategory.Turn,
+                $"[speed] replay track paced→instant at beat {_replayIndex}");
+        }
+        _replayInstantActive = nowInstant;
+        // Replay's silent flag is driven directly by the instant flag
+        // (no AI "Opponents…" overlay), mirroring BeginReplay/EndReplay.
+        _map.SetSilentMode(nowInstant);
+        if (nowInstant)
+            _aiPacer.ScheduleUnscaled(_instantTickEntry, turnBoundary ? InstantTurnDelayMs : 0);
         else
-            _aiPacer.Schedule(StepReplayPreview, AiBetweenPlayersDelayMs);
+            _aiPacer.Schedule(StepReplayPreview, turnBoundary ? AiBetweenPlayersDelayMs : AiActionDelayMs);
     }
 
     private void StepReplayPreview()
@@ -308,8 +350,9 @@ public class ReplayRecorder
 
         if (_session.IsGameOver) { EndReplay(); return; }
 
-        int delay = crossesTurn ? AiBetweenPlayersDelayMs : AiActionDelayMs;
-        _aiPacer.Schedule(StepReplayPreview, delay);
+        // Beat boundary: re-dispatch so a mid-replay Replay-Speed change
+        // switches tracks for the next beat.
+        ScheduleNextReplayBeat(turnBoundary: crossesTurn);
     }
 
     /// <summary>

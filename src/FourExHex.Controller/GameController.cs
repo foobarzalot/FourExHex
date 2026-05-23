@@ -44,6 +44,14 @@ public class GameController
     // territory first, pause, then actually run the action.
     private AiAction? _pendingAiAction;
 
+    // Which track the live AI run is currently on (true = chunked
+    // Instant, false = paced). Re-read from _aiSilentMode() at every
+    // continuation point so a mid-turn Ai-Speed change switches tracks;
+    // the previous value lets ScheduleAiTurn detect an instant→paced
+    // transition and force the structural rebuild that instant's
+    // suppressed per-capture rebuilds skipped.
+    private bool _aiTrackInstant;
+
     // Delay (milliseconds) between AI step beats. Each AI action is
     // split into a preview (highlight the acting territory) and an
     // execute (run the action, re-highlight the resulting territory)
@@ -1043,7 +1051,7 @@ public class GameController
         if (_session.IsGameOver) return;
         if (_state.Turns.CurrentPlayer.IsAi)
         {
-            ScheduleAiTurn(AiActionDelayMs);
+            ScheduleAiTurn(turnBoundary: false);
         }
     }
 
@@ -1621,21 +1629,54 @@ public class GameController
         _aiVisited.Clear();
         _aiStepsThisPlayer = 0;
         _pendingAiAction = null;
-        ScheduleAiTurn(AiBetweenPlayersDelayMs);
+        // Seed the track from the live setting so the first dispatch
+        // doesn't register a spurious instant→paced transition.
+        _aiTrackInstant = _aiSilentMode();
+        ScheduleAiTurn(turnBoundary: true);
     }
 
     /// <summary>
-    /// Single decision point for kicking off / resuming a live AI
-    /// turn: under the Instant setting (<see cref="_aiSilentMode"/>)
-    /// route to the chunked <see cref="InstantAiTick"/> via the
-    /// unscaled scheduler (driver owns its cadence); otherwise the
-    /// multiplier-scaled paced step machine. Once a path is chosen the
-    /// turn stays on it — instant never enters <see cref="StepAiPreview"/>.
+    /// Single re-dispatching decision point for kicking off, resuming,
+    /// or continuing a live AI run. Called at every safe continuation
+    /// boundary (between players, after an executed action, the instant
+    /// driver's self-reschedule, and the defeat-dismiss resume) — never
+    /// between a paced preview and its execute, so a track switch can't
+    /// re-draw RNG for an already-chosen action. Re-reads
+    /// <see cref="_aiSilentMode"/> each call so a mid-turn Ai-Speed change
+    /// switches tracks: Instant routes to the chunked
+    /// <see cref="InstantAiTick"/> (unscaled), otherwise the
+    /// multiplier-scaled paced step machine. Syncs silent mode / the
+    /// "Opponents…" overlay first, and on an instant→paced transition
+    /// forces the structural rebuild instant's suppressed per-capture
+    /// rebuilds skipped.
     /// </summary>
-    private void ScheduleAiTurn(int delayMs)
+    private void ScheduleAiTurn(bool turnBoundary)
     {
-        if (_aiSilentMode()) _aiPacer.ScheduleUnscaled(InstantAiTick, delayMs);
-        else _aiPacer.Schedule(StepAiPreview, delayMs);
+        bool nowInstant = _aiSilentMode();
+        if (_aiTrackInstant && !nowInstant)
+        {
+            Log.Debug(Log.LogCategory.Ai,
+                $"[speed] AI track instant→paced mid-turn (player={_state.Turns.CurrentPlayer.Id})");
+            // Instant suppressed per-capture rebuilds; the border layer
+            // is stale before the first paced render.
+            _map.RebuildAfterTerritoryChange();
+        }
+        else if (!_aiTrackInstant && nowInstant)
+        {
+            Log.Debug(Log.LogCategory.Ai,
+                $"[speed] AI track paced→instant mid-turn (player={_state.Turns.CurrentPlayer.Id})");
+        }
+        _aiTrackInstant = nowInstant;
+        // Sync the view's silent flag + "Opponents…" overlay to the live
+        // setting before scheduling, so the next beat renders correctly.
+        _ops.RefreshSilentMode();
+        // Delay belongs to whichever track we land on: instant runs at
+        // its own cadence (0 mid-turn, InstantTurnDelayMs at a boundary,
+        // unscaled); paced uses the multiplier-scaled step delays.
+        if (nowInstant)
+            _aiPacer.ScheduleUnscaled(InstantAiTick, turnBoundary ? InstantTurnDelayMs : 0);
+        else
+            _aiPacer.Schedule(StepAiPreview, turnBoundary ? AiBetweenPlayersDelayMs : AiActionDelayMs);
     }
 
     /// <summary>
@@ -1688,13 +1729,19 @@ public class GameController
             if (_session.IsGameOver) return;
             if (_state.Turns.CurrentPlayer.IsAi)
             {
-                _aiPacer.Schedule(StepAiPreview, AiBetweenPlayersDelayMs);
+                // Crossing to the next AI player: re-dispatch so a
+                // mid-run Ai-Speed change can switch tracks here.
+                ScheduleAiTurn(turnBoundary: true);
             }
             return;
         }
 
         _pendingAiAction = action;
         ShowHighlightAndRefresh(ResolveAiActingTerritory(action));
+        // Preview→execute hop stays a direct schedule (NOT a re-dispatch):
+        // _pendingAiAction is already chosen, so switching tracks here
+        // would re-draw RNG for it. The track switch lands at the next
+        // action boundary in StepAiExecute instead.
         _aiPacer.Schedule(StepAiExecute, AiPreviewDelayMs);
     }
 
@@ -1752,7 +1799,9 @@ public class GameController
             _ops.RefreshViews();
             return;
         }
-        _aiPacer.Schedule(StepAiPreview, AiActionDelayMs);
+        // Action boundary: re-dispatch so a mid-turn Ai-Speed change
+        // switches tracks for the next action.
+        ScheduleAiTurn(turnBoundary: false);
     }
 
     /// <summary>
@@ -1980,7 +2029,7 @@ public class GameController
     /// </summary>
     private void RunInstantTick(
         Func<bool> active, Func<InstantStep> step,
-        Action onExhausted, Action self)
+        Action onExhausted, Action<bool> reschedule)
     {
         if (!active()) return;
 
@@ -2009,7 +2058,10 @@ public class GameController
             _map.RebuildAfterTerritoryChange();
             _ops.RefreshViews();
         }
-        _aiPacer.ScheduleUnscaled(self, turnBoundary ? InstantTurnDelayMs : 0);
+        // Re-dispatch through the caller's scheduler (NOT a fixed
+        // self-reschedule) so a mid-run speed change can switch off the
+        // instant track here. The scheduler owns the delay per track.
+        reschedule(turnBoundary);
     }
 
     /// <summary>Instant-replay driver: a thin <see cref="RunInstantTick"/>
@@ -2020,7 +2072,7 @@ public class GameController
         active: () => _recorder.IsReplaying,
         step: _recorder.ReplayInstantStep,
         onExhausted: _recorder.EndReplay,
-        self: InstantReplayTick);
+        reschedule: _recorder.ScheduleNextReplayBeat);
 
     /// <summary>
     /// Live-AI instant driver — the user-visible 1:1 of instant replay
@@ -2034,7 +2086,7 @@ public class GameController
                       && _state.Turns.CurrentPlayer.IsAi,
         step: AiInstantStep,
         onExhausted: EndInstantAiBatch,
-        self: InstantAiTick);
+        reschedule: ScheduleAiTurn);
 
     private InstantStep AiInstantStep()
     {
