@@ -556,11 +556,17 @@ public partial class HudView : CanvasLayer, IHudView
             MoveChild(_tutorialPanel, GetChildCount() - 1);
             _tutorialTapCatcher.Visible = true;
             _tutorialTapCatcher.MouseFilter = Control.MouseFilterEnum.Stop;
+            // Diagnostic for the consecutive-narration rapid-click desync:
+            // pairs with the "caught"/"DISARMED" lines so a leaked click
+            // (one that reaches the map → "REJECTED … actor -1") can be
+            // traced against the catcher's arm timing.
+            Log.Debug(Log.LogCategory.Tutorial, "[HudView] tap-catcher ARMED (topmost, Stop)");
         }
         else if (_tutorialTapCatcher != null)
         {
             _tutorialTapCatcher.Visible = false;
             _tutorialTapCatcher.MouseFilter = Control.MouseFilterEnum.Ignore;
+            Log.Debug(Log.LogCategory.Tutorial, "[HudView] tap-catcher DISARMED");
         }
     }
 
@@ -568,6 +574,7 @@ public partial class HudView : CanvasLayer, IHudView
     {
         if (ev is InputEventMouseButton mb && mb.Pressed && mb.ButtonIndex == MouseButton.Left)
         {
+            Log.Debug(Log.LogCategory.Tutorial, "[HudView] tap-catcher CAUGHT click → TutorialMessageTapped");
             _tutorialTapCatcher!.AcceptEvent();
             TutorialMessageTapped?.Invoke();
         }
@@ -1144,6 +1151,13 @@ public partial class HudView : CanvasLayer, IHudView
         // ack the narration and immediately end the turn.
         if (_tutorialTapCatcher != null && _tutorialTapCatcher.Visible)
         {
+            // Keyboard dismiss path — bypasses the tap-catcher's mouse
+            // routing entirely (so it's immune to the consecutive-narration
+            // rapid-click desync). Logged distinctly from the catcher's
+            // "CAUGHT click" so a trace shows whether a narration advanced
+            // via key or click.
+            Log.Debug(Log.LogCategory.Tutorial,
+                $"[HudView] keypress ({keyEvent.Keycode}) advanced tutorial narration → TutorialMessageTapped");
             GetViewport().SetInputAsHandled();
             TutorialMessageTapped?.Invoke();
             return;
