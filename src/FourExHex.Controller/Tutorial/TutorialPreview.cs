@@ -42,8 +42,18 @@ public sealed class TutorialPreview
     /// end-of-script) and a human-readable reason.</summary>
     public event Action<ReplayBeat?, string>? PlayerActionRejected;
 
-    /// <summary>Fires once after the final player-0 beat is consumed.</summary>
+    /// <summary>Fires once when the final beat in the script is consumed
+    /// (cursor reaches the tail), signalling the tutorial is genuinely
+    /// over. NOT fired merely because no further player-0 beats remain —
+    /// a pending narration beat makes <see cref="NextPlayer0Beat"/> null
+    /// without the tutorial being complete.</summary>
     public event Action? TutorialFinished;
+
+    /// <summary>True once every beat in the script has been consumed
+    /// (the shared cursor has advanced past the tail). This — not
+    /// <see cref="NextPlayer0Beat"/> being null — is the authoritative
+    /// "tutorial done" signal.</summary>
+    public bool IsComplete => _cursor.Index >= _script.Count;
 
     /// <summary>
     /// The next expected player-0 beat, or null if no further player-0
@@ -87,7 +97,7 @@ public sealed class TutorialPreview
     {
         if (_state.Turns.CurrentPlayerIndex != 0)
         {
-            PlayerActionRejected?.Invoke(NextPlayer0Beat,
+            Reject(NextPlayer0Beat,
                 "Wait for your turn (you play Red — player 0).");
             return false;
         }
@@ -97,33 +107,50 @@ public sealed class TutorialPreview
         // player-0-owned for the script to stay in sync.
         if (_cursor.Index >= _script.Count)
         {
-            PlayerActionRejected?.Invoke(null,
+            Reject(null,
                 "Tutorial already complete — no further moves expected.");
             return false;
         }
         ReplayBeat expected = _script[_cursor.Index];
         if (expected.Actor != 0)
         {
-            PlayerActionRejected?.Invoke(expected,
+            Reject(expected,
                 "Cursor desync: expected a player-0 beat next but the script "
                 + $"points to actor {expected.Actor}.");
             return false;
         }
         if (!BeatsMatch(expected, attempted))
         {
-            PlayerActionRejected?.Invoke(expected,
+            Reject(expected,
                 $"Expected {DescribeBeat(expected)}; got {DescribeBeat(attempted)}.");
             return false;
         }
 
         // Match — advance the shared cursor. The AI side picks up
         // from the new index on its next call.
+        Log.Info(Log.LogCategory.Tutorial,
+            $"[TutorialPreview] executed player-0 beat #{expected.Index} "
+            + $"{DescribeBeat(expected)} (cursor {_cursor.Index}→{_cursor.Index + 1}/{_script.Count})");
         _cursor.Advance();
-        if (NextPlayer0Beat == null)
+        if (IsComplete)
         {
+            Log.Info(Log.LogCategory.Tutorial,
+                $"[TutorialPreview] script tail reached ({_cursor.Index}/{_script.Count}); firing TutorialFinished");
             TutorialFinished?.Invoke();
         }
         return true;
+    }
+
+    // Log every rejection (with cursor + expected-beat context) before
+    // surfacing it on screen, so a stalled preview is diagnosable from
+    // the captured stdout, not just the transient on-screen toast.
+    private void Reject(ReplayBeat? expected, string reason)
+    {
+        Log.Warn(Log.LogCategory.Tutorial,
+            $"[TutorialPreview] REJECTED at cursor {_cursor.Index}/{_script.Count} "
+            + $"(currentPlayer {_state.Turns.CurrentPlayerIndex}, "
+            + $"expected {(expected == null ? "none" : "#" + expected.Index + " " + DescribeBeat(expected))}): {reason}");
+        PlayerActionRejected?.Invoke(expected, reason);
     }
 
     /// <summary>Compare two beats by kind + key fields. Stamped

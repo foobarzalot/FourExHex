@@ -58,6 +58,7 @@ public sealed class ReplayDrivenAi
     private readonly IReadOnlyList<ReplayBeat> _script;
     private readonly int _rosterSize;
     private readonly ScriptCursor _cursor;
+    private bool _tailLogged;
 
     public ReplayDrivenAi(IReadOnlyList<ReplayBeat> script,
         IReadOnlyList<Player> roster, ScriptCursor? cursor = null)
@@ -76,7 +77,16 @@ public sealed class ReplayDrivenAi
     public AiAction? ChooseNextAction(GameState state, PlayerId forPlayer,
         HashSet<HexCoord> visitedCapitals, Random rng)
     {
-        if (_cursor.Index >= _script.Count) return null;
+        if (_cursor.Index >= _script.Count)
+        {
+            if (!_tailLogged)
+            {
+                Log.Info(Log.LogCategory.Tutorial,
+                    $"[ReplayDrivenAi] script tail reached (cursor {_cursor.Index}/{_script.Count}); no more AI beats");
+                _tailLogged = true;
+            }
+            return null;
+        }
         ReplayBeat next = _script[_cursor.Index];
         // Tutorial-only beats (e.g., narration text) are not actions
         // any player takes. The narration driver consumes them; the AI
@@ -87,9 +97,15 @@ public sealed class ReplayDrivenAi
         if (next.Actor != actorIndex) return null;
         if (next is ReplayEndTurnBeat)
         {
+            Log.Info(Log.LogCategory.Tutorial,
+                $"[ReplayDrivenAi] executed beat #{next.Index} EndTurn actor{next.Actor} "
+                + $"(cursor {_cursor.Index}→{_cursor.Index + 1}/{_script.Count})");
             _cursor.Advance();
             return null;
         }
+        Log.Info(Log.LogCategory.Tutorial,
+            $"[ReplayDrivenAi] executed beat #{next.Index} {next.GetType().Name} actor{next.Actor} "
+            + $"(cursor {_cursor.Index}→{_cursor.Index + 1}/{_script.Count})");
         _cursor.Advance();
         return ToAiAction(next);
     }

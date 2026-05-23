@@ -120,24 +120,76 @@ public class TutorialPreviewCuesTests
         Assert.False(f.Hud.EndTurnCtaActive);
         Assert.Empty(f.Map.LastMoveTargets);
         Assert.Equal(0, f.SelectTerritoryCalls);
-        // Not player 0's turn, but a future player-0 beat still pending
-        // (the EndTurn beat the fixture set up) — clear the stale
-        // instruction so it doesn't linger through opponent turns.
-        Assert.Null(f.Hud.CurrentTutorialMessage);
+        // Not player 0's turn — replace the stale player-0 instruction
+        // with the passive "opponents acting" indicator.
+        Assert.Equal("Opponents are taking their turns…", f.Hud.CurrentTutorialMessage);
     }
 
     [Fact]
-    public void NotPlayer0Turn_NoFurtherBeats_LeavesTutorialMessageAlone()
+    public void NotPlayer0Turn_NoFurtherBeats_ShowsOpponentsTurnMessage()
     {
-        // When the script is exhausted, PreviewPane sets
-        // "Tutorial complete." via OnFinished. The cues' AI-turn branch
-        // must NOT wipe it.
+        // Script exhausted and an opponent is acting: the dev should see
+        // "Opponents are taking their turns…", not a lingering
+        // "Tutorial complete." (which only belongs once control returns
+        // to player 0 with nothing left to do).
         var f = new Fixture(new List<ReplayBeat>(), currentPlayerIndex: 1);
         f.Hud.ShowTutorialMessage("Tutorial complete.");
 
         f.Cues.Apply();
 
-        Assert.Equal("Tutorial complete.", f.Hud.CurrentTutorialMessage);
+        Assert.Equal("Opponents are taking their turns…", f.Hud.CurrentTutorialMessage);
+    }
+
+    [Fact]
+    public void NotPlayer0Turn_NarrationPresenting_DoesNotOverwriteMessage()
+    {
+        // A display-text beat can land mid opponent turn. The narration
+        // driver presents it (tappable, blocks on a click); Cues must
+        // NOT clobber it with the "Opponents…" indicator.
+        var script = new List<ReplayBeat>
+        {
+            new ReplayDisplayTextBeat
+            {
+                Index = 0, Turn = 1, Actor = 0, Text = "Watch the enemy advance.",
+            },
+        };
+        var f = new Fixture(script, currentPlayerIndex: 1);
+        var narration = new TutorialNarrationDriver(script, f.Cursor, f.Hud, () => { });
+        f.Cues.SetNarrationDriver(narration);
+
+        narration.Tick(); // presents the display-text beat
+        Assert.True(narration.IsPresenting);
+        Assert.Equal("Watch the enemy advance.", f.Hud.CurrentTutorialMessage);
+
+        f.Cues.Apply();
+
+        // Narration text survived — not overwritten by "Opponents…".
+        Assert.Equal("Watch the enemy advance.", f.Hud.CurrentTutorialMessage);
+    }
+
+    [Fact]
+    public void Player0Turn_NarrationBeatPendingNotComplete_DoesNotShowComplete()
+    {
+        // Player 0's turn, but the next beat is a pending DisplayText
+        // (narration) with a player-0 beat behind it. NextPlayer0Beat is
+        // null due to the narration gate, but the tutorial is NOT done —
+        // must not prematurely show "Tutorial complete." (The narration
+        // driver normally owns the panel here; this verifies the
+        // IsComplete gate independently of that guard.)
+        var f0 = new Fixture(new List<ReplayBeat>());
+        HexCoord redCapital = f0.RedTerritory.Capital!.Value;
+        HexCoord destination = AnyOtherCoord(f0.RedTerritory, redCapital);
+        var script = new List<ReplayBeat>
+        {
+            new ReplayDisplayTextBeat { Index = 0, Turn = 1, Actor = -1, Text = "Read me." },
+            BuyBeat(redCapital, destination, UnitLevel.Recruit) with { Index = 1 },
+        };
+        var f = new Fixture(script, currentPlayerIndex: 0);
+
+        f.Cues.Apply();
+
+        Assert.False(f.Preview.IsComplete);
+        Assert.Null(f.Hud.CurrentTutorialMessage);
     }
 
     [Fact]
@@ -160,9 +212,9 @@ public class TutorialPreviewCuesTests
         Assert.False(f.Hud.ClaimVictoryWinNowCtaActive);
         Assert.False(f.Hud.ClaimVictoryContinueCtaActive);
         Assert.False(f.Hud.DefeatContinueCtaActive);
-        // No further player-0 beats → cues leave the panel alone so the
-        // "Tutorial complete." message set by PreviewPane.OnFinished stays.
-        Assert.Null(f.Hud.CurrentTutorialMessage);
+        // No further player-0 beats and control is on player 0 → the
+        // tutorial is done; show the completion message.
+        Assert.Equal("Tutorial complete.", f.Hud.CurrentTutorialMessage);
     }
 
     [Fact]

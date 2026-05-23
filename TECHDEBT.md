@@ -2,6 +2,35 @@
 
 Running list of known issues, flaky tests, and shortcuts that should eventually be cleaned up. Add new entries at the top.
 
+## RecordPane / PreviewPane emit "non-equal opposite anchors" warnings on _Ready
+
+**Where:** `scripts/RecordPane.cs:57` and `scripts/PreviewPane.cs:50`
+(both reached via `TutorialBuilderScene._Ready()`). Noticed 2026-05-23.
+
+**Symptom:** every launch of the tutorial builder prints two Godot warnings:
+`Nodes with non-equal opposite anchors will have their size overridden after
+_ready().` They are harmless — the panes look and behave correctly — but they
+clutter stdout and make real warnings harder to spot in the log-verification
+step.
+
+**Suspected cause:** both `_Ready()` bodies set full-rect anchors
+(`AnchorLeft=0, AnchorTop=0, AnchorRight=1, AnchorBottom=1`) and then *also*
+assign `Size = GetViewport().GetVisibleRect().Size` in the same frame. With
+opposite anchors not equal, Godot computes size from the anchors and overrides
+the explicit `Size` set during `_Ready()`, hence the warning.
+
+**Candidate fixes:** (1) drop the explicit `Size =` assignment — the full-rect
+anchors already stretch the pane to the viewport, so it's redundant; or
+(2) defer it via `SetDeferred("size", ...)` as the warning suggests; or
+(3) set the size with `set_deferred` only and keep the `SizeChanged` handler.
+Option (1) is simplest and most likely correct. View-layer, so verify by
+manual launch + confirming the warnings are gone and the panes still fill the
+screen.
+
+**Severity:** cosmetic / log-noise only; no functional impact. Low priority.
+
+---
+
 ## Custom-draw rendering in HexMapView/HudView is full of unnamed magic numbers + long methods
 
 **Where:** discovered 2026-05-21 during a view-styling code-debt audit

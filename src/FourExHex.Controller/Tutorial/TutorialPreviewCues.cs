@@ -11,6 +11,11 @@ using System;
 /// </summary>
 public sealed class TutorialPreviewCues
 {
+    /// <summary>Shown once the script is exhausted and control is back on
+    /// player 0 — nothing left to do. Also set by
+    /// <c>PreviewPane.OnFinished</c> at the moment the final beat lands.</summary>
+    public const string TutorialCompleteMessage = "Tutorial complete.";
+
     private readonly TutorialPreview _preview;
     private readonly GameState _state;
     private readonly SessionState _session;
@@ -81,15 +86,14 @@ public sealed class TutorialPreviewCues
         if (_state.Turns.CurrentPlayerIndex != 0)
         {
             ClearAllCtas();
-            // Mid-tutorial AI turns: wipe the stale player-0 instruction
-            // so e.g. "Press End Turn." doesn't linger while the opponent
-            // acts. When the script is exhausted (NextPlayer0Beat null),
-            // leave the panel alone so PreviewPane's "Tutorial complete."
-            // toast survives.
-            if (_preview.NextPlayer0Beat != null)
-            {
-                _hud.HideTutorialMessage();
-            }
+            // An opponent is acting: replace any stale player-0 instruction
+            // (or a premature "Tutorial complete.") with the passive
+            // "opponents acting" indicator so the dev knows input is inert.
+            // A display-text beat landing mid AI turn is handled by the
+            // IsPresenting guard above, which leaves the narration in place.
+            _hud.ShowTutorialMessage(GameOperations.OpponentsTakingTurnsMessage);
+            Log.Debug(Log.LogCategory.Tutorial,
+                $"[Cues] AI turn (player {_state.Turns.CurrentPlayerIndex}); showing opponents-acting message");
             return;
         }
 
@@ -97,6 +101,20 @@ public sealed class TutorialPreviewCues
         if (next == null)
         {
             ClearAllCtas();
+            // NextPlayer0Beat is null for two very different reasons:
+            //  (a) the whole script is consumed → tutorial done; or
+            //  (b) a narration beat is gating ahead → NOT done, the
+            //      narration driver owns the panel (and the IsPresenting
+            //      guard above usually short-circuits before we get here).
+            // Only show the completion message in case (a); in case (b)
+            // leave the panel alone so we never flash "Tutorial complete."
+            // mid-script.
+            if (_preview.IsComplete)
+            {
+                _hud.ShowTutorialMessage(TutorialCompleteMessage);
+                Log.Debug(Log.LogCategory.Tutorial,
+                    "[Cues] player 0, script complete; showing tutorial-complete message");
+            }
             return;
         }
 

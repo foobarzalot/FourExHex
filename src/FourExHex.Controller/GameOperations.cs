@@ -17,6 +17,12 @@ using System.Linq;
 /// </summary>
 public class GameOperations
 {
+    /// <summary>Passive HUD indicator shown while AI opponents act and
+    /// the human's input is intentionally inert. Shared with
+    /// <see cref="TutorialPreviewCues"/> so the live-play and
+    /// tutorial-preview wording can't drift.</summary>
+    public const string OpponentsTakingTurnsMessage = "Opponents are taking their turns…";
+
     private readonly GameState _state;
     private readonly SessionState _session;
     private readonly IHexMapView _map;
@@ -189,7 +195,7 @@ public class GameOperations
         if (_previewMode || _recordingMode) return;
         if (aiBatchSilent && !_silentBatchOverlayShown)
         {
-            _hud.ShowTutorialMessage("Opponents are taking their turns…");
+            _hud.ShowTutorialMessage(OpponentsTakingTurnsMessage);
             _silentBatchOverlayShown = true;
         }
         else if (!aiBatchSilent && _silentBatchOverlayShown)

@@ -81,6 +81,9 @@ public sealed class TutorialNarrationDriver
     private void PresentDisplayText(ReplayDisplayTextBeat dt)
     {
         IsPresenting = true;
+        Log.Info(Log.LogCategory.Tutorial,
+            $"[Narration] presenting beat #{dt.Index} DisplayText actor{dt.Actor} "
+            + $"(cursor {_cursor.Index}/{_script.Count})");
         _hud.ShowTappableTutorialMessage(dt.Text);
 
         // Single-fire subscription. Stash the handler in _onTap so
@@ -98,6 +101,8 @@ public sealed class TutorialNarrationDriver
             _hud.TutorialMessageTapped -= _onTap;
             _onTap = null;
         }
+        Log.Info(Log.LogCategory.Tutorial,
+            $"[Narration] dismissed; advancing cursor {_cursor.Index}→{_cursor.Index + 1}/{_script.Count}");
         _cursor.Advance();
         IsPresenting = false;
         _hud.HideTutorialMessage();

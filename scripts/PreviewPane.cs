@@ -127,6 +127,10 @@ public sealed partial class PreviewPane : Control
             humanActionValidator: _preview.TryAccept,
             buyLevelValidator: _preview.AllowBuyLevel,
             previewMode: true,
+            // Hold the paced AI run while a narration beat is on screen,
+            // so opponents don't drain their turns past the parked replay
+            // cursor while the player reads/taps. Resumed below.
+            isReplayPaused: () => narrationRef?.IsPresenting == true,
             onAfterRefresh: () =>
             {
                 narrationRef?.Tick();
@@ -137,7 +141,14 @@ public sealed partial class PreviewPane : Control
             tutorial.Replay.Beats,
             cursor,
             _hud,
-            () => _controller!.RefreshViewsForTutorial());
+            // On dismissal: refresh (advances cursor visuals / next Tick),
+            // then re-kick the AI in case the narration was blocking an
+            // opponent's turn (no-op if it's the human's turn).
+            () =>
+            {
+                _controller!.RefreshViewsForTutorial();
+                _controller!.ResumeAiTurnsAfterReplayPause();
+            });
         narrationRef = _narration;
 
         _cues = new TutorialPreviewCues(
@@ -197,6 +208,6 @@ public sealed partial class PreviewPane : Control
 
     private void OnFinished()
     {
-        _hud?.ShowTutorialMessage("Tutorial complete.");
+        _hud?.ShowTutorialMessage(TutorialPreviewCues.TutorialCompleteMessage);
     }
 }

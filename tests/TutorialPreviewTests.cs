@@ -182,6 +182,49 @@ public class TutorialPreviewTests
     }
 
     [Fact]
+    public void TryAccept_Player0BeatBeforePendingNarration_DoesNotFireFinished()
+    {
+        // Regression: TutorialFinished must fire only when the entire
+        // script is consumed, NOT when NextPlayer0Beat returns null
+        // because a DisplayText narration beat is gating ahead. Before
+        // the fix this fired "Tutorial complete." after the very first
+        // turn whenever a narration beat followed.
+        var script = new List<ReplayBeat>
+        {
+            new ReplayEndTurnBeat { Index = 0, Turn = 1, Actor = 0 },
+            new ReplayDisplayTextBeat { Index = 1, Turn = 1, Actor = -1, Text = "Nice work." },
+            new ReplayMoveBeat
+            {
+                Index = 2, Turn = 2, Actor = 0,
+                From = new HexCoord(0, 0), To = new HexCoord(1, 0),
+            },
+        };
+        var preview = new TutorialPreview(script, PlayerZeroTurnState());
+        int finishedCount = 0;
+        preview.TutorialFinished += () => finishedCount++;
+
+        bool ok = preview.TryAccept(new ReplayEndTurnBeat());
+
+        Assert.True(ok);
+        Assert.Equal(0, finishedCount);   // beats #1 and #2 still remain
+        Assert.False(preview.IsComplete);
+    }
+
+    [Fact]
+    public void IsComplete_TrueOnlyAfterAllBeatsConsumed()
+    {
+        var script = new List<ReplayBeat>
+        {
+            new ReplayEndTurnBeat { Index = 0, Turn = 1, Actor = 0 },
+        };
+        var preview = new TutorialPreview(script, PlayerZeroTurnState());
+
+        Assert.False(preview.IsComplete);
+        preview.TryAccept(new ReplayEndTurnBeat());
+        Assert.True(preview.IsComplete);
+    }
+
+    [Fact]
     public void TryAccept_BuyBeat_MatchesOnCapitalToAndLevel()
     {
         var script = new List<ReplayBeat>

@@ -33,6 +33,13 @@ public class GameController
     private readonly IAiPacer _aiPacer;
     private readonly Func<bool> _aiSilentMode;
 
+    // True while the replay must hold (a blocking Tutorial-Preview
+    // narration beat is on screen awaiting the player's tap). The paced
+    // AI step machine consults this so it doesn't drain opponents' turns
+    // while the shared replay cursor is parked on the narration — see
+    // ResumeAiTurnsAfterReplayPause. Always false outside Preview.
+    private readonly Func<bool> _isReplayPaused;
+
     // Per-AI-turn scratch state for the step machine. Persists across
     // paced StepAi invocations and resets whenever control advances
     // to a new player.
@@ -103,9 +110,11 @@ public class GameController
         bool recordingMode = false,
         Action? onAfterRefresh = null,
         Func<bool>? aiSilentMode = null,
-        Func<bool>? replayIsInstantMode = null)
+        Func<bool>? replayIsInstantMode = null,
+        Func<bool>? isReplayPaused = null)
     {
         _aiSilentMode = aiSilentMode ?? (() => false);
+        _isReplayPaused = isReplayPaused ?? (() => false);
         _humanActionValidator = humanActionValidator;
         _buyLevelValidator = buyLevelValidator;
         _previewMode = previewMode;
@@ -1620,6 +1629,24 @@ public class GameController
     /// pacer each step is deferred so the player can see individual
     /// AI actions.
     /// </summary>
+    /// <summary>
+    /// Re-kick the paced AI run after an external replay pause clears
+    /// (the Tutorial-Preview narration beat was tapped away). No-op if
+    /// it's the human's turn, the game ended, or the pause is still
+    /// active. Unlike <see cref="RunAiTurnsUntilHumanOrDone"/> this does
+    /// NOT reset the per-turn step bookkeeping — it resumes the same AI
+    /// player's turn mid-stream so its remaining scripted beats (which
+    /// sat behind the narration in the shared cursor) execute in order.
+    /// </summary>
+    public void ResumeAiTurnsAfterReplayPause()
+    {
+        if (_ops.GameEndedFired) return;
+        if (_session.IsGameOver) return;
+        if (!_state.Turns.CurrentPlayer.IsAi) return;
+        if (_isReplayPaused()) return;
+        ScheduleAiTurn(turnBoundary: false);
+    }
+
     private void RunAiTurnsUntilHumanOrDone()
     {
         if (_ops.GameEndedFired) return;
@@ -1701,6 +1728,18 @@ public class GameController
         {
             // Control changed out from under a scheduled callback
             // (scene reload, test teardown). Just stop.
+            return;
+        }
+
+        // A blocking Tutorial-Preview narration beat is on screen: the
+        // current AI player's own scripted beat may sit behind it in the
+        // shared replay cursor. Bail WITHOUT scheduling or ending the
+        // turn — ResumeAiTurnsAfterReplayPause re-kicks this step once the
+        // player taps the narration away. (Always false outside Preview.)
+        if (_isReplayPaused())
+        {
+            Log.Debug(Log.LogCategory.Ai,
+                $"[replay] AI step held: narration blocking (player={_state.Turns.CurrentPlayer.Id})");
             return;
         }
 

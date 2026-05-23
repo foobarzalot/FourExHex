@@ -827,6 +827,39 @@ public class GameControllerTests
     }
 
     [Fact]
+    public void AiTurn_WhileReplayPaused_DoesNotRunUntilResumed()
+    {
+        // Regression for the Tutorial-Preview narration desync: a
+        // narration beat that lands during an opponent's turn must hold
+        // the paced AI run until the player taps it away. Modeled here
+        // with an isReplayPaused predicate the test flips by hand.
+        var (state, session, map, hud, _, blue) = BuildBlueBankruptcyScenario(blueIsAi: true);
+        int chooserCalls = 0;
+        bool paused = true;
+        var controller = new GameController(
+            state, session, map, hud, seed: 0,
+            aiChooser: (s, c, v, r) => { chooserCalls++; return null; },
+            aiPacer: new SynchronousAiPacer(),
+            isReplayPaused: () => paused);
+        controller.StartGame();
+
+        hud.ClickEndTurn(); // Red ends → Blue (AI) scheduled, but paused
+
+        // Paused: the AI step machine must NOT consult the chooser or end
+        // Blue's turn — control stays parked on Blue.
+        Assert.Equal(0, chooserCalls);
+        Assert.Equal(blue.Id, state.Turns.CurrentPlayer.Id);
+
+        // Pause clears (player tapped the narration) → resume runs Blue's
+        // turn to completion and control returns to Red.
+        paused = false;
+        controller.ResumeAiTurnsAfterReplayPause();
+
+        Assert.True(chooserCalls >= 1);
+        Assert.Equal(PlayerId.FromIndex(0), state.Turns.CurrentPlayer.Id);
+    }
+
+    [Fact]
     public void Move_CaptureEnemyCapital_FiresCapitalDestroyedSound_NotPlace()
     {
         // Capital provides 1 defense, so a Soldier (level 2) beats it.
