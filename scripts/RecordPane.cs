@@ -39,7 +39,6 @@ public sealed partial class RecordPane : Control
     private GameState? _recordState;
     private HexDragMode _savedDragMode;
     private bool _running;
-    private Button? _addTextButton;
     private Control? _addTextDialog;
     // Pure-C# captor for the captured tutorial. Lives separately from
     // _controller so the snapshot survives StopRecording (which nulls
@@ -153,6 +152,8 @@ public sealed partial class RecordPane : Control
         _hud = new HudView();
         AddChild(_hud);
         _hud.EscRequested += () => EscRequested?.Invoke();
+        _hud.AddTextClicked += OpenAddTextDialog;
+        _hud.SetAddTextButtonVisible(true);
 
         _controller = new GameController(
             _recordState,
@@ -186,7 +187,6 @@ public sealed partial class RecordPane : Control
             Log.Warn(Log.LogCategory.Tutorial, "[RecordPane] controller has no initial snapshot after StartGame");
         }
 
-        BuildAddTextButton();
         _running = true;
     }
 
@@ -214,6 +214,8 @@ public sealed partial class RecordPane : Control
         _hud = new HudView();
         AddChild(_hud);
         _hud.EscRequested += () => EscRequested?.Invoke();
+        _hud.AddTextClicked += OpenAddTextDialog;
+        _hud.SetAddTextButtonVisible(true);
 
         _controller = new GameController(
             _recordState,
@@ -246,7 +248,6 @@ public sealed partial class RecordPane : Control
             _capture.SetBeats(new List<ReplayBeat>(_controller.ReplayBeats));
         }
 
-        BuildAddTextButton();
         _running = true;
     }
 
@@ -290,41 +291,14 @@ public sealed partial class RecordPane : Control
     }
 
     /// <summary>
-    /// Add the "+ Text" authoring affordance to RecordPane's chrome.
-    /// Positioned at the top-right just below the HUD strip; click
-    /// opens a small modal dialog with a LineEdit. Submit appends a
-    /// <see cref="ReplayDisplayTextBeat"/> to the recording via
-    /// <see cref="GameController.RecordTutorialOnlyBeat"/>.
+    /// Tear down any open Add Text dialog. The button itself lives on
+    /// the HUD now (HudIcon.AddText, revealed via
+    /// <see cref="HudView.SetAddTextButtonVisible"/>) and is freed with
+    /// the HUD in <see cref="StopRecording"/>; only the modal dialog,
+    /// which parents to RecordPane, needs explicit cleanup here.
     /// </summary>
-    private void BuildAddTextButton()
-    {
-        if (_addTextButton != null) return;
-        var btn = new Button
-        {
-            Text = "+ Text",
-            AnchorLeft = 1f,
-            AnchorRight = 1f,
-            AnchorTop = 0f,
-            AnchorBottom = 0f,
-            OffsetLeft = -110f,
-            OffsetRight = -10f,
-            OffsetTop = 70f,
-            OffsetBottom = 100f,
-            TooltipText = "Insert a tutorial-only display-text beat at the current position.",
-        };
-        btn.Pressed += OpenAddTextDialog;
-        AddChild(btn);
-        _addTextButton = btn;
-    }
-
     private void TearDownAddTextButton()
     {
-        if (_addTextButton != null)
-        {
-            RemoveChild(_addTextButton);
-            _addTextButton.QueueFree();
-            _addTextButton = null;
-        }
         if (_addTextDialog != null)
         {
             RemoveChild(_addTextDialog);

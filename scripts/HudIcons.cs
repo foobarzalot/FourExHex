@@ -209,6 +209,73 @@ public static class HudIcons
     }
 
     /// <summary>
+    /// Cartoon speech bubble: a rounded-rect body with a tail dropping
+    /// from the lower-left and three dots (ellipsis) inside to read as
+    /// "text". Stroke-only so it flips white-on-dark / black-on-CTA like
+    /// the other line glyphs. Used by the tutorial recorder's Add Text
+    /// button (HudIcon.AddText).
+    /// </summary>
+    public static void DrawSpeechBubble(CanvasItem t, Vector2 center, float radius, Color stroke)
+    {
+        float halfW = radius * 0.66f;
+        float halfH = radius * 0.46f;
+        float corner = radius * 0.22f;
+        // Body sits a touch high so the tail has room below it.
+        Vector2 body = center + new Vector2(0f, -radius * 0.14f);
+
+        Vector2[] outline = RoundedRectPoints(body, halfW, halfH, corner);
+        for (int i = 0; i < outline.Length; i++)
+        {
+            t.DrawLine(outline[i], outline[(i + 1) % outline.Length], stroke, StrokeWidth);
+        }
+
+        // Tail: a short open "V" hanging off the lower-left edge.
+        Vector2 tailRoot = body + new Vector2(-halfW * 0.18f, halfH);
+        Vector2 tailHeel = body + new Vector2(-halfW * 0.58f, halfH);
+        Vector2 tailTip = body + new Vector2(-halfW * 0.62f, halfH + radius * 0.40f);
+        t.DrawLine(tailRoot, tailTip, stroke, StrokeWidth);
+        t.DrawLine(tailTip, tailHeel, stroke, StrokeWidth);
+
+        // Ellipsis dots — "…" — to signal text content.
+        float dotR = radius * 0.075f;
+        float gap = radius * 0.30f;
+        for (int i = -1; i <= 1; i++)
+        {
+            DrawFilledDisc(t, body + new Vector2(i * gap, 0f), dotR, stroke);
+        }
+    }
+
+    /// <summary>
+    /// Closed polyline approximating a rounded rectangle centered at
+    /// <paramref name="center"/>, half-extents <paramref name="halfW"/> ×
+    /// <paramref name="halfH"/>, with quarter-circle corners of radius
+    /// <paramref name="corner"/>. Corners are sampled so consecutive
+    /// points can be stroked with DrawLine.
+    /// </summary>
+    private static Vector2[] RoundedRectPoints(Vector2 center, float halfW, float halfH, float corner)
+    {
+        const int perCorner = 4;
+        var pts = new System.Collections.Generic.List<Vector2>((perCorner + 1) * 4);
+        // Corner centers (TR, BR, BL, TL) with their arc start angles.
+        (Vector2 c, float start)[] corners =
+        {
+            (center + new Vector2(halfW - corner, -halfH + corner), -Mathf.Pi / 2f),
+            (center + new Vector2(halfW - corner, halfH - corner), 0f),
+            (center + new Vector2(-halfW + corner, halfH - corner), Mathf.Pi / 2f),
+            (center + new Vector2(-halfW + corner, -halfH + corner), Mathf.Pi),
+        };
+        foreach ((Vector2 c, float start) in corners)
+        {
+            for (int i = 0; i <= perCorner; i++)
+            {
+                float a = start + (Mathf.Pi / 2f) * ((float)i / perCorner);
+                pts.Add(c + new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * corner);
+            }
+        }
+        return pts.ToArray();
+    }
+
+    /// <summary>
     /// Curved arrow. <paramref name="facing"/> = -1 draws an "undo" arrow
     /// (arrowhead on the left, arc opening down-right); +1 draws "redo"
     /// (arrowhead on the right, arc opening down-left). When

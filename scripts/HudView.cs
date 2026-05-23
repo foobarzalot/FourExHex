@@ -32,6 +32,10 @@ public partial class HudView : CanvasLayer, IHudView
     public event Action? ClaimVictoryWinNowClicked;
     public event Action? ClaimVictoryContinueClicked;
     public event Action? ReplayClicked;
+    // Tutorial-recorder only: the Add Text button (speech-bubble glyph)
+    // is hidden by default and revealed via SetAddTextButtonVisible, so
+    // it never shows in normal play or preview.
+    public event Action? AddTextClicked;
 
     private Label _turnLabel = null!;       // numeric mono turn number
     private Label _playerLabel = null!;     // current player name in their color
@@ -58,6 +62,7 @@ public partial class HudView : CanvasLayer, IHudView
     private bool _victoryOverlaySuppressed;
     private HudIconButton _endTurnButton = null!;
     private HudIconButton _optionsButton = null!;
+    private HudIconButton _addTextButton = null!;
     private Control _victoryOverlay = null!;
     private Label _victoryLabel = null!;
     private Control _defeatOverlay = null!;
@@ -104,12 +109,18 @@ public partial class HudView : CanvasLayer, IHudView
         background.AddThemeStyleboxOverride("panel", barStyle);
         AddChild(background);
 
-        // Top bar laid out as one HBoxContainer with three regions —
-        // status / unit palette (centered via spacers) / turn controls.
-        // MouseFilter Pass keeps the bar itself click-through to leaf
-        // children only, so spacers don't swallow clicks heading to the
-        // map below.
-        var bar = new HBoxContainer
+        // Top bar split into three INDEPENDENTLY ANCHORED groups instead
+        // of one HBox with expanding spacers. The old spacer layout floated
+        // the center button cluster relative to the left status region's
+        // width, so the gold chip appearing/disappearing — or its economy
+        // report growing a few digits between territories — shoved the
+        // buttons sideways. Anchoring each group to its own reference point
+        // (left edge / bar midpoint / right edge) decouples them: the center
+        // action buttons and right-hand turn controls hold position no matter
+        // what the left status region does. MouseFilter Pass keeps the bar +
+        // groups click-through to leaf children only, so empty group area
+        // doesn't swallow clicks heading to the map below.
+        var bar = new Control
         {
             AnchorLeft = 0f,
             AnchorRight = 1f,
@@ -121,26 +132,57 @@ public partial class HudView : CanvasLayer, IHudView
             OffsetBottom = HudHeight - 8f,
             MouseFilter = Control.MouseFilterEnum.Pass,
         };
-        bar.AddThemeConstantOverride("separation", 14);
         AddChild(bar);
 
+        // Left status group — pinned to the left edge, grows rightward.
+        var leftGroup = new HBoxContainer
+        {
+            AnchorLeft = 0f, AnchorRight = 0f, AnchorTop = 0f, AnchorBottom = 1f,
+            GrowHorizontal = Control.GrowDirection.End,
+            MouseFilter = Control.MouseFilterEnum.Pass,
+        };
+        leftGroup.AddThemeConstantOverride("separation", 14);
+        bar.AddChild(leftGroup);
+
+        // Center action group — anchored to the bar's horizontal midpoint
+        // and grown symmetrically (GrowDirection.Both), so it stays centered
+        // on the bar regardless of the left group's width.
+        var centerGroup = new HBoxContainer
+        {
+            AnchorLeft = 0.5f, AnchorRight = 0.5f, AnchorTop = 0f, AnchorBottom = 1f,
+            GrowHorizontal = Control.GrowDirection.Both,
+            MouseFilter = Control.MouseFilterEnum.Pass,
+        };
+        centerGroup.AddThemeConstantOverride("separation", 14);
+        bar.AddChild(centerGroup);
+
+        // Right turn-controls group — pinned to the right edge, grows leftward.
+        var rightGroup = new HBoxContainer
+        {
+            AnchorLeft = 1f, AnchorRight = 1f, AnchorTop = 0f, AnchorBottom = 1f,
+            GrowHorizontal = Control.GrowDirection.Begin,
+            MouseFilter = Control.MouseFilterEnum.Pass,
+        };
+        rightGroup.AddThemeConstantOverride("separation", 14);
+        bar.AddChild(rightGroup);
+
         // 1) Turn block — small "TURN" eyebrow over a mono number.
-        bar.AddChild(BuildEyebrowBlock("TURN", out _turnLabel, mono: true, valueColor: UiPalette.Ink));
+        leftGroup.AddChild(BuildEyebrowBlock("TURN", out _turnLabel, mono: true, valueColor: UiPalette.Ink));
         _turnLabel.Text = "1";
         _turnLabel.CustomMinimumSize = new Vector2(70, 0);
         _turnLabel.AddThemeFontSizeOverride("font_size", 36);
 
-        bar.AddChild(BuildVerticalDivider());
+        leftGroup.AddChild(BuildVerticalDivider());
 
         // 2) Current-player block — "TO PLAY" eyebrow + name in the
         // player's fill color. No swatch — the colored name already
         // identifies the active player.
-        bar.AddChild(BuildEyebrowBlock("TO PLAY", out _playerLabel, mono: false, valueColor: UiPalette.Ink));
+        leftGroup.AddChild(BuildEyebrowBlock("TO PLAY", out _playerLabel, mono: false, valueColor: UiPalette.Ink));
         _playerLabel.Text = "Red";
         _playerLabel.CustomMinimumSize = new Vector2(140, 0);
         _playerLabel.AddThemeFontSizeOverride("font_size", 40);
 
-        bar.AddChild(BuildVerticalDivider());
+        leftGroup.AddChild(BuildVerticalDivider());
 
         // 3) Gold chip — bg-deep pill containing the gold value + the
         // income breakdown. We keep the existing "value (income-upkeep=net)"
@@ -178,18 +220,17 @@ public partial class HudView : CanvasLayer, IHudView
         goldChip.AddChild(_goldLabel);
         // Hide the chip entirely when there's nothing to display (no
         // territory selected, no capital) — an empty bg-deep pill in the
-        // bar reads as a missing widget.
+        // bar reads as a missing widget. It lives in the left group, whose
+        // width no longer affects the center/right button groups, so the
+        // chip can grow or vanish freely without shifting any buttons.
         _goldChip = goldChip;
-        bar.AddChild(goldChip);
-
-        // Spacer 1 (centers the unit palette).
-        bar.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
+        leftGroup.AddChild(goldChip);
 
         // 4) Unit palette — the four buy buttons (Recruit/Soldier/
         // Captain/Commander) live inside one rounded bg-deep PanelContainer
         // so they read as one grouped widget. The Build Tower button
-        // sits OUTSIDE the panel as a separate sibling in the bar; the
-        // visual gap between them is the bar's own 14-px separation,
+        // sits OUTSIDE the panel as a separate sibling in the center group;
+        // the visual gap between them is the group's own 14-px separation,
         // so Build Tower has its own anchor point distinct from the
         // unit-placement group.
         var palettePanel = new PanelContainer
@@ -200,7 +241,7 @@ public partial class HudView : CanvasLayer, IHudView
         var paletteRow = new HBoxContainer();
         paletteRow.AddThemeConstantOverride("separation", 2);
         palettePanel.AddChild(paletteRow);
-        bar.AddChild(palettePanel);
+        centerGroup.AddChild(palettePanel);
 
         UnitLevel[] buyLevels = { UnitLevel.Recruit, UnitLevel.Soldier, UnitLevel.Captain, UnitLevel.Commander };
         _buyUnitButtons = new HudIconButton[buyLevels.Length];
@@ -221,40 +262,51 @@ public partial class HudView : CanvasLayer, IHudView
         _buildTowerButton = new HudIconButton(HudIcon.Tower) { Disabled = true };
         _buildTowerButton.Pressed += () => BuildTowerClicked?.Invoke();
         AudioBus.AttachClick(_buildTowerButton);
-        bar.AddChild(_buildTowerButton);
+        centerGroup.AddChild(_buildTowerButton);
 
-        // Spacer 2.
-        bar.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
+        // Tutorial-recorder authoring affordance, parked just right of
+        // Build Tower. Hidden by default (an invisible Control takes no
+        // space in the HBox), so normal play and preview never see it;
+        // RecordPane reveals it via SetAddTextButtonVisible. Refresh()
+        // deliberately never touches its visibility, so the reveal sticks.
+        // Because the center group is anchored to the bar midpoint and grows
+        // both ways, revealing this button nudges the group's left edge out
+        // a little but keeps it centered — it never displaces the right
+        // controls.
+        _addTextButton = new HudIconButton(HudIcon.AddText) { Visible = false };
+        _addTextButton.Pressed += () => AddTextClicked?.Invoke();
+        AudioBus.AttachClick(_addTextButton);
+        centerGroup.AddChild(_addTextButton);
 
         // 5) Undo cluster — four ghost icon buttons.
         _undoTurnButton = new HudIconButton(HudIcon.UndoAll) { Disabled = true };
         _undoTurnButton.Pressed += () => UndoTurnClicked?.Invoke();
         AudioBus.AttachClick(_undoTurnButton);
-        bar.AddChild(_undoTurnButton);
+        rightGroup.AddChild(_undoTurnButton);
 
         _undoLastButton = new HudIconButton(HudIcon.UndoLast) { Disabled = true };
         _undoLastButton.Pressed += () => UndoLastClicked?.Invoke();
         AudioBus.AttachClick(_undoLastButton);
-        bar.AddChild(_undoLastButton);
+        rightGroup.AddChild(_undoLastButton);
 
         _redoLastButton = new HudIconButton(HudIcon.RedoLast) { Disabled = true };
         _redoLastButton.Pressed += () => RedoLastClicked?.Invoke();
         AudioBus.AttachClick(_redoLastButton);
-        bar.AddChild(_redoLastButton);
+        rightGroup.AddChild(_redoLastButton);
 
         _redoAllButton = new HudIconButton(HudIcon.RedoAll) { Disabled = true };
         _redoAllButton.Pressed += () => RedoAllClicked?.Invoke();
         AudioBus.AttachClick(_redoAllButton);
-        bar.AddChild(_redoAllButton);
+        rightGroup.AddChild(_redoAllButton);
 
-        bar.AddChild(BuildVerticalDivider());
+        rightGroup.AddChild(BuildVerticalDivider());
 
         // End Turn uses the default Button theme — the SetCta() white
         // pulse remains the only "this is the current CTA" signal.
         _endTurnButton = new HudIconButton(HudIcon.EndTurn);
         _endTurnButton.Pressed += () => EndTurnClicked?.Invoke();
         AudioBus.AttachClick(_endTurnButton);
-        bar.AddChild(_endTurnButton);
+        rightGroup.AddChild(_endTurnButton);
 
         // Single Options button — raises the same EscRequested event
         // the Escape key fires, so the scene root's pause coordinator
@@ -263,7 +315,7 @@ public partial class HudView : CanvasLayer, IHudView
         _optionsButton = new HudIconButton(HudIcon.Options);
         _optionsButton.Pressed += () => EscRequested?.Invoke();
         AudioBus.AttachClick(_optionsButton);
-        bar.AddChild(_optionsButton);
+        rightGroup.AddChild(_optionsButton);
 
         // Read-only seed display anchored to the bottom-left so a player
         // can recall or share the seed mid-game without crowding the
@@ -295,6 +347,16 @@ public partial class HudView : CanvasLayer, IHudView
     public void SetMapLabel(string text)
     {
         _seedLabel.Text = text;
+    }
+
+    /// <summary>
+    /// Reveal (or hide) the tutorial-recorder Add Text button. Only the
+    /// tutorial RecordPane calls this; normal play leaves it hidden.
+    /// </summary>
+    public void SetAddTextButtonVisible(bool visible)
+    {
+        _addTextButton.Visible = visible;
+        Log.Debug(Log.LogCategory.Tutorial, $"[HudView] Add Text button visible={visible}");
     }
 
     // Small uppercase "TURN" / "TO PLAY" eyebrow label sitting side-by-

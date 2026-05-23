@@ -11,6 +11,7 @@ public enum HudIcon
     EndTurn,
     Options,
     Die,
+    AddText,
 }
 
 /// <summary>
@@ -124,6 +125,7 @@ public partial class HudIconButton : Button
         HudIcon.EndTurn => "End Turn — Enter",
         HudIcon.Options => "Options — Esc",
         HudIcon.Die => "Generate map from seed",
+        HudIcon.AddText => "Insert a tutorial-only narration beat here",
         _ => "",
     };
 
@@ -154,6 +156,7 @@ public partial class HudIconButton : Button
             case HudIcon.EndTurn: HudIcons.DrawEndTurnTriangle(this, center, r, stroke); break;
             case HudIcon.Options: HudIcons.DrawGear(this, center, r, modulate); break;
             case HudIcon.Die: HudIcons.DrawDie(this, center, r, stroke); break;
+            case HudIcon.AddText: HudIcons.DrawSpeechBubble(this, center, r, stroke); break;
         }
 
         if (_selected)
