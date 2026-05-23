@@ -24,6 +24,15 @@ public sealed partial class SaveNameModal : CanvasLayer
 
     public bool IsOpen { get; private set; }
 
+    /// <param name="title">Serif panel title — e.g. "Save Game", "Save Map",
+    /// "Save Tutorial". Defaults to "Save Game" for the in-game save flow.</param>
+    public SaveNameModal(string title = "Save Game")
+    {
+        _title = title;
+    }
+
+    private readonly string _title;
+
     private LineEdit _lineEdit = null!;
     private ColorRect _backdrop = null!;
 
@@ -56,7 +65,7 @@ public sealed partial class SaveNameModal : CanvasLayer
         vbox.AddThemeConstantOverride("separation", 18);
         panel.AddChild(vbox);
 
-        vbox.AddChild(ModalChrome.BuildSerifTitle("Save Game"));
+        vbox.AddChild(ModalChrome.BuildSerifTitle(_title));
 
         var label = new Label
         {

@@ -16,9 +16,7 @@ public partial class MapEditorScene : Node2D
     private EscMenu _escMenu = null!;
 
     private SaveStore _saveStore = null!;
-    private AcceptDialog? _saveDialog;
-    private LineEdit? _saveDialogLineEdit;
-    private AcceptDialog? _saveErrorDialog;
+    private SaveNameModal? _saveModal;
     private SlotPickerDialog? _loadDialog;
 
     public override void _Ready()
@@ -54,8 +52,9 @@ public partial class MapEditorScene : Node2D
     {
         if (@event is not InputEventKey keyEvent || !keyEvent.Pressed || keyEvent.Echo) return;
         if (keyEvent.Keycode != Key.Escape) return;
-        // Modal already handles its own ESC-to-close.
+        // These modals handle their own ESC-to-close.
         if (_escMenu.IsOpen) return;
+        if (_saveModal?.IsOpen == true) return;
         GetViewport()?.SetInputAsHandled();
         // Escape ladders out: a non-hand palette drops to hand first
         // (canceling whatever paint mode is selected); ESC with hand
@@ -81,72 +80,36 @@ public partial class MapEditorScene : Node2D
 
     private void BuildSaveDialog()
     {
-        _saveDialog = new AcceptDialog
-        {
-            Title = "Save Map",
-            OkButtonText = "Save",
-            Exclusive = false,
-        };
-        var content = new VBoxContainer { CustomMinimumSize = new Vector2(280, 0) };
-        content.AddThemeConstantOverride("separation", 8);
-        content.AddChild(new Label { Text = "Map name:" });
-        _saveDialogLineEdit = new LineEdit
-        {
-            Text = "map",
-            CustomMinimumSize = new Vector2(260, 30),
-        };
-        content.AddChild(_saveDialogLineEdit);
-        _saveDialog.AddChild(content);
-        _saveDialog.RegisterTextEnter(_saveDialogLineEdit);
-        _saveDialog.Confirmed += OnSaveDialogConfirmed;
-        AddChild(_saveDialog);
-        // GetOkButton() requires the dialog be in the scene tree (the
-        // button is auto-built lazily); attach the click sound after
-        // AddChild, not before.
-        AudioBus.AttachClick(_saveDialog.GetOkButton());
-
-        _saveErrorDialog = new AcceptDialog
-        {
-            Title = "Save failed",
-            OkButtonText = "OK",
-        };
-        AddChild(_saveErrorDialog);
-        AudioBus.AttachClick(_saveErrorDialog.GetOkButton());
+        // ModalChrome family name-entry modal (matches in-game Save Game).
+        // Its built-in ShowError overlay replaces the old separate error
+        // dialog; Confirmed does NOT auto-close, so the host closes on
+        // success or shows an inline error on failure.
+        _saveModal = new SaveNameModal("Save Map");
+        _saveModal.Confirmed += OnSaveNameConfirmed;
+        AddChild(_saveModal);
     }
 
     private void OpenSaveDialog()
     {
-        if (_saveDialog == null || _saveDialogLineEdit == null) return;
+        if (_saveModal == null) return;
         int seed = _panel.CurrentSeed;
-        _saveDialogLineEdit.Text = seed > 0 ? $"map_seed{seed}" : "map";
-        _saveDialog.PopupCentered();
-        _saveDialogLineEdit.GrabFocus();
-        _saveDialogLineEdit.SelectAll();
+        _saveModal.Open(seed > 0 ? $"map_seed{seed}" : "map");
     }
 
-    private void OnSaveDialogConfirmed()
+    private void OnSaveNameConfirmed(string rawName)
     {
-        if (_saveDialogLineEdit == null) return;
-        string name = SaveStore.SanitizeSlotName(_saveDialogLineEdit.Text);
+        if (_saveModal == null) return;
+        string name = SaveStore.SanitizeSlotName(rawName);
         try
         {
             _saveStore.WriteMapSlot(name, _panel.BuildSaveState(), _panel.CurrentSeed, _players);
         }
         catch (System.Exception ex)
         {
-            ShowSaveError($"Could not save: {ex.Message}");
-        }
-    }
-
-    private void ShowSaveError(string message)
-    {
-        if (_saveErrorDialog == null)
-        {
-            GD.PushError(message);
+            _saveModal.ShowError($"Could not save: {ex.Message}");
             return;
         }
-        _saveErrorDialog.DialogText = message;
-        _saveErrorDialog.PopupCentered();
+        _saveModal.Close();
     }
 
     private void BuildLoadDialog()

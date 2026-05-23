@@ -31,9 +31,7 @@ public partial class TutorialBuilderScene : Node2D
     private List<Player> _players = null!;
 
     private SaveStore _saveStore = null!;
-    private AcceptDialog? _saveDialog;
-    private LineEdit? _saveDialogLineEdit;
-    private AcceptDialog? _saveErrorDialog;
+    private SaveNameModal? _saveModal;
     private SlotPickerDialog? _loadDialog;
     private ConfirmModal? _discardConfirmDialog;
     private System.Action? _onDiscardConfirmed;
@@ -248,6 +246,7 @@ public partial class TutorialBuilderScene : Node2D
         // These modals handle their own ESC-to-close.
         if (_escMenu.IsOpen) return;
         if (_discardConfirmDialog?.IsOpen == true) return;
+        if (_saveModal?.IsOpen == true) return;
         GetViewport().SetInputAsHandled();
         // In Map Edit submode, ESC first drops a non-hand palette back
         // to Hand (mirrors the standalone Map Editor). The palette HUD
@@ -294,47 +293,26 @@ public partial class TutorialBuilderScene : Node2D
 
     private void BuildSaveDialog()
     {
-        _saveDialog = new AcceptDialog
-        {
-            Title = "Save Tutorial",
-            OkButtonText = "Save",
-            DialogHideOnOk = true,
-        };
-        var content = new VBoxContainer();
-        _saveDialogLineEdit = new LineEdit
-        {
-            CustomMinimumSize = new Vector2(320, 0),
-            PlaceholderText = "tutorial name",
-        };
-        content.AddChild(_saveDialogLineEdit);
-        _saveDialog.AddChild(content);
-        _saveDialog.RegisterTextEnter(_saveDialogLineEdit);
-        _saveDialog.Confirmed += OnSaveDialogConfirmed;
-        AddChild(_saveDialog);
-        AudioBus.AttachClick(_saveDialog.GetOkButton());
-
-        _saveErrorDialog = new AcceptDialog
-        {
-            Title = "Save failed",
-        };
-        AddChild(_saveErrorDialog);
-        AudioBus.AttachClick(_saveErrorDialog.GetOkButton());
+        // ModalChrome family name-entry modal (matches in-game Save Game).
+        // Its built-in ShowError overlay replaces the old separate error
+        // dialog; Confirmed does NOT auto-close, so the host closes on
+        // success or shows an inline error on failure.
+        _saveModal = new SaveNameModal("Save Tutorial");
+        _saveModal.Confirmed += OnSaveNameConfirmed;
+        AddChild(_saveModal);
     }
 
     private void OpenSaveDialog()
     {
-        if (_saveDialog == null || _saveDialogLineEdit == null) return;
+        if (_saveModal == null) return;
         int seed = _panel.CurrentSeed;
-        _saveDialogLineEdit.Text = seed > 0 ? $"tutorial_seed{seed}" : "tutorial";
-        _saveDialog.PopupCentered();
-        _saveDialogLineEdit.GrabFocus();
-        _saveDialogLineEdit.SelectAll();
+        _saveModal.Open(seed > 0 ? $"tutorial_seed{seed}" : "tutorial");
     }
 
-    private void OnSaveDialogConfirmed()
+    private void OnSaveNameConfirmed(string rawName)
     {
-        if (_saveDialogLineEdit == null) return;
-        string name = SaveStore.SanitizeSlotName(_saveDialogLineEdit.Text);
+        if (_saveModal == null) return;
+        string name = SaveStore.SanitizeSlotName(rawName);
         try
         {
             // Read the authored Tutorial off the RecordPane (which owns
@@ -344,7 +322,7 @@ public partial class TutorialBuilderScene : Node2D
             Tutorial? authored = _recordPane.CurrentTutorial;
             if (authored == null)
             {
-                ShowSaveError("Nothing recorded yet. Switch to Record and play a turn first.");
+                _saveModal.ShowError("Nothing recorded yet. Switch to Record and play a turn first.");
                 return;
             }
             _saveStore.WriteTutorial(
@@ -356,19 +334,10 @@ public partial class TutorialBuilderScene : Node2D
         }
         catch (System.Exception ex)
         {
-            ShowSaveError($"Could not save: {ex.Message}");
-        }
-    }
-
-    private void ShowSaveError(string message)
-    {
-        if (_saveErrorDialog == null)
-        {
-            GD.PushError(message);
+            _saveModal.ShowError($"Could not save: {ex.Message}");
             return;
         }
-        _saveErrorDialog.DialogText = message;
-        _saveErrorDialog.PopupCentered();
+        _saveModal.Close();
     }
 
     private void BuildLoadDialog()
