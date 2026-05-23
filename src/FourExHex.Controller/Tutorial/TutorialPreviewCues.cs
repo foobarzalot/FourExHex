@@ -81,7 +81,17 @@ public sealed class TutorialPreviewCues
         // presenting (e.g., display-text awaiting tap), don't paint
         // cues or touch the tutorial-message panel — the narration
         // driver owns those surfaces until the player acknowledges.
-        if (_narration?.IsPresenting == true) return;
+        if (_narration?.IsPresenting == true)
+        {
+            // Keep any leftover unit/tower placement previews cleared so
+            // the board reads cleanly behind the text. RefreshViews never
+            // repaints these, so this isn't fighting the renderer; the
+            // cue repaints them when it runs again after dismissal.
+            _map.ShowMoveTargets(Array.Empty<HexCoord>(), UnitLevel.Recruit);
+            _map.ShowTowerTargets(Array.Empty<HexCoord>());
+            _map.ShowTowerCoverage(Array.Empty<HexCoord>());
+            return;
+        }
 
         if (_state.Turns.CurrentPlayerIndex != 0)
         {

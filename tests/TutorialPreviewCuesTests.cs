@@ -168,6 +168,32 @@ public class TutorialPreviewCuesTests
     }
 
     [Fact]
+    public void NarrationPresenting_SuppressesPlacementPreviews()
+    {
+        // While a narration beat blocks input, unit/tower placement
+        // previews (the green target highlights) must be cleared so the
+        // board reads cleanly behind the text. They're repainted by the
+        // cue once the player dismisses the narration.
+        var script = new List<ReplayBeat>
+        {
+            new ReplayDisplayTextBeat { Index = 0, Turn = 1, Actor = -1, Text = "Read this." },
+        };
+        var f = new Fixture(script, currentPlayerIndex: 0);
+        var narration = new TutorialNarrationDriver(script, f.Cursor, f.Hud, () => { });
+        f.Cues.SetNarrationDriver(narration);
+        narration.Tick(); // presenting
+
+        // Placement previews already painted on the map.
+        f.Map.ShowMoveTargets(new[] { new HexCoord(1, 1) }, UnitLevel.Recruit);
+        f.Map.ShowTowerTargets(new[] { new HexCoord(2, 2) });
+
+        f.Cues.Apply();
+
+        Assert.Empty(f.Map.LastMoveTargets);
+        Assert.Empty(f.Map.LastTowerTargets);
+    }
+
+    [Fact]
     public void Player0Turn_NarrationBeatPendingNotComplete_DoesNotShowComplete()
     {
         // Player 0's turn, but the next beat is a pending DisplayText
