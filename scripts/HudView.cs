@@ -73,6 +73,8 @@ public partial class HudView : CanvasLayer, IHudView
     private Button _claimContinueButton = null!;
     private Panel _tutorialPanel = null!;
     private Label _tutorialLabel = null!;
+    private Label _continueHint = null!;
+    private Tween? _continueHintTween;
     private Panel _bankruptToast = null!;
     private Label _bankruptTitleLabel = null!;
     private Label _bankruptSubLabel = null!;
@@ -444,6 +446,9 @@ public partial class HudView : CanvasLayer, IHudView
         _tutorialLabel.Text = text;
         _tutorialPanel.Visible = true;
         SetTutorialTapCatcherEnabled(true);
+        ShowContinueHint(true);
+        Log.Debug(Log.LogCategory.Tutorial,
+            $"[HudView] tappable tutorial message shown; continue-hint scheduled in {ContinueHintDelaySeconds}s");
     }
 
     public void HideTutorialMessage()
@@ -451,6 +456,64 @@ public partial class HudView : CanvasLayer, IHudView
         _externalMessageActive = false;
         _tutorialPanel.Visible = false;
         SetTutorialTapCatcherEnabled(false);
+        ShowContinueHint(false);
+    }
+
+    // Short beat between the narration text appearing and the flashing
+    // continue-hint surfacing, so the player reads the message first.
+    private const double ContinueHintDelaySeconds = 0.8;
+
+    // Bumped on every show/hide so a pending delayed reveal whose beat was
+    // already dismissed (player tapped fast) is invalidated and no-ops.
+    private int _continueHintGen;
+
+    private void ShowContinueHint(bool show)
+    {
+        _continueHintGen++;
+        if (show)
+        {
+            int gen = _continueHintGen;
+            SceneTreeTimer timer = GetTree().CreateTimer(ContinueHintDelaySeconds);
+            timer.Timeout += () => RevealContinueHint(gen);
+        }
+        else
+        {
+            StopContinueHintPulse();
+            _continueHint.Visible = false;
+        }
+    }
+
+    private void RevealContinueHint(int gen)
+    {
+        if (gen != _continueHintGen) return; // beat already dismissed
+        Log.Debug(Log.LogCategory.Tutorial, "[HudView] continue-hint revealed; flashing");
+        _continueHint.Visible = true;
+        // Keep the hint above the invisible tap catcher so it's not
+        // visually occluded; the catcher still owns the click.
+        MoveChild(_continueHint, GetChildCount() - 1);
+        StartContinueHintPulse();
+    }
+
+    private void StartContinueHintPulse()
+    {
+        if (_continueHintTween != null && _continueHintTween.IsValid())
+        {
+            return; // already pulsing
+        }
+        _continueHintTween = _continueHint.CreateTween();
+        _continueHintTween.SetLoops();
+        _continueHintTween.TweenProperty(_continueHint, "modulate:a", 0.25f, 0.6).SetTrans(Tween.TransitionType.Sine);
+        _continueHintTween.TweenProperty(_continueHint, "modulate:a", 1.0f, 0.6).SetTrans(Tween.TransitionType.Sine);
+    }
+
+    private void StopContinueHintPulse()
+    {
+        if (_continueHintTween != null && _continueHintTween.IsValid())
+        {
+            _continueHintTween.Kill();
+        }
+        _continueHintTween = null;
+        _continueHint.Modulate = new Color(1f, 1f, 1f, 1f);
     }
 
     private void SetTutorialTapCatcherEnabled(bool enabled)
@@ -562,6 +625,29 @@ public partial class HudView : CanvasLayer, IHudView
         };
         _tutorialLabel.AddThemeFontSizeOverride("font_size", 22);
         _tutorialPanel.AddChild(_tutorialLabel);
+
+        // Flashing "Click anywhere to continue" prompt shown only while a
+        // tappable (display-text) tutorial beat is gating input. Horizontally
+        // centered and sitting in the gap just below the narration panel
+        // (which is bottom-anchored panelH tall, marginBottom off the bottom).
+        // Click-through (MouseFilter=Ignore) so the tap catcher still receives
+        // the dismissing click; purely a visual cue.
+        _continueHint = new Label
+        {
+            Text = "Click anywhere to continue",
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            AnchorLeft = 0f,
+            AnchorRight = 1f,
+            AnchorTop = 1f,
+            AnchorBottom = 1f,
+            OffsetTop = -marginBottom + 4f,
+            OffsetBottom = -4f,
+            Visible = false,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        _continueHint.AddThemeFontSizeOverride("font_size", 24);
+        AddChild(_continueHint);
     }
 
     // Red-pill bankruptcy warning. The redesign §8 toast spec called
