@@ -98,13 +98,13 @@ public partial class MainMenuScene : Control
     {
         Vector2 viewport = GetViewportRect().Size;
         const float panelW = 520f;
-        // 740f accommodates the tallest stack: Play, Load, Map Editor,
-        // Settings, the debug-only Tutorial Builder, and Exit (6 buttons).
-        // Release builds render a 5-button stack (no Tutorial Builder)
-        // against a panel that's 80px taller than necessary; not enough to
-        // be worth a runtime resize since OS.IsDebugBuild() is
+        // 820f accommodates the tallest stack: Play, Play Tutorial, Load,
+        // Map Editor, Settings, the debug-only Tutorial Builder, and Exit
+        // (7 buttons). Release builds render a 6-button stack (no Tutorial
+        // Builder) against a panel that's 80px taller than necessary; not
+        // enough to be worth a runtime resize since OS.IsDebugBuild() is
         // compile-time-stable for any given binary.
-        const float panelH = 740f;
+        const float panelH = 820f;
         var panel = new Panel
         {
             Position = new Vector2((viewport.X - panelW) * 0.5f, (viewport.Y - panelH) * 0.5f),
@@ -151,9 +151,20 @@ public partial class MainMenuScene : Control
         AudioBus.AttachClick(_landingPlayButton);
         panel.AddChild(_landingPlayButton);
 
+        // Always visible (unlike the debug-only Tutorial Builder) — this is
+        // the end-user-facing tutorial entry point. Sits just under Play
+        // Game so a new player finds it immediately.
+        var playTutorialButton = new Button { Text = "Play Tutorial" };
+        playTutorialButton.AddThemeFontSizeOverride("font_size", 26);
+        playTutorialButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap));
+        playTutorialButton.Size = new Vector2(buttonW, buttonH);
+        playTutorialButton.Pressed += OnPlayTutorialPressed;
+        AudioBus.AttachClick(playTutorialButton);
+        panel.AddChild(playTutorialButton);
+
         _landingLoadButton = new Button { Text = "Load Game" };
         _landingLoadButton.AddThemeFontSizeOverride("font_size", 26);
-        _landingLoadButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap));
+        _landingLoadButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 2);
         _landingLoadButton.Size = new Vector2(buttonW, buttonH);
         _landingLoadButton.Pressed += OnLoadPressed;
         AudioBus.AttachClick(_landingLoadButton);
@@ -164,7 +175,7 @@ public partial class MainMenuScene : Control
 
         var mapEditorButton = new Button { Text = "Map Editor" };
         mapEditorButton.AddThemeFontSizeOverride("font_size", 26);
-        mapEditorButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 2);
+        mapEditorButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 3);
         mapEditorButton.Size = new Vector2(buttonW, buttonH);
         mapEditorButton.Pressed += OnMapEditorPressed;
         AudioBus.AttachClick(mapEditorButton);
@@ -172,7 +183,7 @@ public partial class MainMenuScene : Control
 
         var settingsButton = new Button { Text = "Settings" };
         settingsButton.AddThemeFontSizeOverride("font_size", 26);
-        settingsButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 3);
+        settingsButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 4);
         settingsButton.Size = new Vector2(buttonW, buttonH);
         settingsButton.Pressed += OnSettingsPressed;
         AudioBus.AttachClick(settingsButton);
@@ -181,7 +192,7 @@ public partial class MainMenuScene : Control
         // Debug-only entry point into the new authoring tool. Per spec
         // §"Dev-mode gating", this button is gated on OS.IsDebugBuild()
         // — release exports never see it.
-        int nextRow = 4;
+        int nextRow = 5;
         if (OS.IsDebugBuild())
         {
             var tutorialBuilderButton = new Button { Text = "Tutorial Builder" };
@@ -492,6 +503,11 @@ public partial class MainMenuScene : Control
     private void OnTutorialBuilderPressed()
     {
         GetTree().ChangeSceneToFile("res://scenes/tutorial_builder.tscn");
+    }
+
+    private void OnPlayTutorialPressed()
+    {
+        GetTree().ChangeSceneToFile("res://scenes/play_tutorial.tscn");
     }
 
     private void BuildQuitConfirmDialog()

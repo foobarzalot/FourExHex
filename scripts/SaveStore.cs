@@ -210,6 +210,12 @@ public sealed class SaveStore
     /// <summary>Load a tutorial by sanitized name from <see cref="TutorialsDirectory"/>.</summary>
     public LoadedSave LoadTutorial(string slotName) => LoadSlotIn(TutorialsDirectory, slotName);
 
+    /// <summary>Load a tutorial shipped with the game from
+    /// <see cref="BundledMapsDirectory"/> (res://tutorials/). Used by the
+    /// main-menu "Play Tutorial" flow, which plays a bundled tutorial the
+    /// end-user never authored.</summary>
+    public LoadedSave LoadBundledTutorial(string slotName) => LoadSlotIn(BundledMapsDirectory, slotName);
+
     /// <summary>List every tutorial in <see cref="TutorialsDirectory"/>.</summary>
     public IReadOnlyList<SaveSlotInfo> ListTutorials() => ListSlotsIn(TutorialsDirectory);
 

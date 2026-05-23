@@ -1993,6 +1993,26 @@ instance constructed in `_Ready` and never torn down. Mode switching
 only flips `panel.PaintingEnabled` and the per-mode chrome's
 `Visible`, so the painted draft survives every transition.
 
+### Playing a tutorial (end-user `play_tutorial.tscn`)
+
+`PlayTutorialScene` (root of `res://scenes/play_tutorial.tscn`, reached
+from the main menu's **always-visible** "Play Tutorial" button) lets an
+end-user *play* a tutorial without the authoring tool. It's a chrome-free
+host that reuses the playback machinery: in `_Ready` it builds a
+`MapEditorPanel` (roster set to `Player.BuildAllHumanRoster()` BEFORE
+`AddChild`, as the panel asserts) + a `PreviewPane` + a shared `EscMenu`,
+loads the bundled tutorial via `SaveStore.LoadBundledTutorial("full_tutorial")`,
+then `panel.LoadFromMap` → `panel.ResetToTutorialStart(InitialSnapshot)`
+→ `preview.Start(tutorial)` — the same load sequence
+`TutorialBuilderScene.OnLoadSlotPressed` uses, ending in `Start` instead
+of `SetMode(Record)`. ESC raises `PreviewPane.EscRequested` → a minimal
+`EscMenu` (Resume / Main Menu). The end-of-tutorial victory overlay's
+Replay / Play Again / Main Menu buttons are handled inside `PreviewPane`
+itself (no host wiring). The played tutorial ships in the repo at
+`tutorials/full_tutorial.json` (= `res://tutorials/`, the same
+`SaveStore.BundledMapsDirectory` bundled maps use); packaged exports need
+a `*.json` export filter to include it.
+
 ### Modes
 
 `TutorialMode { MapEdit, Record, Preview }`. Mode switching, Save /
@@ -2622,13 +2642,17 @@ grouping label; the per-file project is per the lists above.
 ```
 scripts/  (split: see the three source trees listed just above)
 ├─ Main.cs                ─ play scene root; wires model + views + controller
-├─ MainMenuScene.cs       ─ landing (Play / Load / Map Editor +
-│                           debug-only Tutorial Builder + Exit) +
-│                           play-config panels; Load Game modal;
+├─ MainMenuScene.cs       ─ landing (Play / Play Tutorial / Load /
+│                           Map Editor + debug-only Tutorial Builder +
+│                           Exit) + play-config panels; Load Game modal;
 │                           instantiates SettingsPanel as a modal
 │                           overlay; Exit / landing-Escape open a
 │                           ConfirmModal before quitting; writes
 │                           GameSettings + LoadRequest
+├─ PlayTutorialScene.cs   ─ end-user "Play Tutorial" scene root; hosts
+│                           MapEditorPanel + PreviewPane + EscMenu,
+│                           loads bundled full_tutorial and plays it
+│                           (Esc → Resume / Main Menu)
 ├─ MapEditorScene.cs      ─ editor scene root; chrome host (HUD,
 │                           Save/Load dialogs, EscMenu modal with
 │                           Resume / Save Map / Load Map / Exit
