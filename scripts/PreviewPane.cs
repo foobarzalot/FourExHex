@@ -229,7 +229,13 @@ public sealed partial class PreviewPane : Control
 
     private void OnRejected(ReplayBeat? expected, string reason)
     {
-        _hud?.ShowTutorialMessage(reason);
+        // Off-script input is a silent no-op — don't surface a rejection
+        // toast. Pressing the wrong button / hotkey / tile just aborts
+        // (the handler already bailed); the cue's positive instruction
+        // ("Press the Buy Recruit button.") stays on screen to guide the
+        // player. This matches how mode-entry actions (Build Tower, a
+        // wrong Buy level) already no-op via the cue's auto-cancel.
+        // TutorialPreview.Reject still logs the reason for diagnostics.
     }
 
     private void OnFinished()

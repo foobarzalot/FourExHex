@@ -128,6 +128,9 @@ public sealed class TutorialPreviewCues
         // recursion, which the re-entrancy guard short-circuits.
         if (!IsModeCompatibleWith(next, _session.Mode, _session.MoveSource))
         {
+            Log.Debug(Log.LogCategory.Tutorial,
+                $"[Cues] mode {_session.Mode} incompatible with expected {next.GetType().Name}"
+                + " → auto-cancelling silently (no validator, no toast)");
             _cancelAction();
         }
 
