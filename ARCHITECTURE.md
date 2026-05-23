@@ -1426,15 +1426,24 @@ are shared with the paced path so the two can't drift (pinned by
 `aiSilentMode() && currentPlayer.IsAi && !PendingDefeatScreen`
 (`aiSilentMode` = `!IsReplayMode && AiSpeed == PlaybackSpeed.Instant`).
 It no longer gates rendering (the driver owns coalescing); it remains
-the **input gate** and drives the "Opponents…" overlay. Every
-top-level human input handler (`TrackHandler`-wrapped click/key
-handlers, plus `OnEndTurnPressed`, `OnUndo*`, `OnRedo*`,
-`OnDefeatContinuePressed`, `OnClaimVictory*`) short-circuits on it so
-input can't mutate `SessionState` between the driver's frame yields.
+the **input gate** and the silent-flag source. Every top-level human
+input handler (`TrackHandler`-wrapped click/key handlers, plus
+`OnEndTurnPressed`, `OnUndo*`, `OnRedo*`, `OnDefeatContinuePressed`,
+`OnClaimVictory*`) short-circuits on it so input can't mutate
+`SessionState` between the instant driver's frame yields.
 `PendingDefeatScreen.HasValue` flips it false mid-batch so the
 overlay paints and `OnDefeatContinuePressed` can dispatch; the
 dismiss handler resumes via `ScheduleAiTurn`. Game-end branches
 ignore the silent flag and always refresh.
+
+The **"Opponents are taking their turns…" overlay is decoupled from
+silence**: `RefreshSilentMode` shows it whenever an AI is acting in
+live play at *any* speed (`!IsReplayMode && !GameEndedFired &&
+!IsGameOver && currentPlayer.IsAi && !PendingDefeatScreen`), tracked by
+`_aiBatchOverlayShown` — so a paced (Slow/Normal/Fast) AI turn shows
+the indicator too, even though only the Instant batch is silenced.
+(Replay never shows it; the input gate above still only fires for the
+Instant batch.)
 
 Tests use `SynchronousAiPacer` (both `Schedule` and `ScheduleUnscaled`
 drain inline) or `QueuedAiPacer` (`DrainAll`) to step the driver

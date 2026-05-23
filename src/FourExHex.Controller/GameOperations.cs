@@ -38,7 +38,7 @@ public class GameOperations
     private readonly Func<bool> _aiSilentMode;
     private readonly Func<bool> _isReplayInstantActive;
     private readonly bool _previewMode;
-    private bool _silentBatchOverlayShown;
+    private bool _aiBatchOverlayShown;
     private Random _rng;
 
     /// <summary>
@@ -176,32 +176,38 @@ public class GameOperations
         && !_session.PendingDefeatScreen.HasValue;
 
     /// <summary>
-    /// Tell the view to enter (or leave) silent mode based on whether
-    /// the player about to act is AI and whether the user opted into
-    /// Instant AI Speed. Also drives the "Opponents are taking their
-    /// turns…" HUD overlay so the human knows their input is
-    /// intentionally inert while the background chooser runs.
+    /// Tell the view to enter (or leave) silent mode (Instant AI Speed,
+    /// or an instant-replay fast-forward), and independently drive the
+    /// "Opponents are taking their turns…" HUD overlay. The two are
+    /// deliberately decoupled: silence is Instant-only, but the overlay
+    /// shows whenever an AI is acting in live play at ANY speed, so the
+    /// human always knows their input is intentionally inert while the
+    /// background chooser runs.
     /// </summary>
     public void RefreshSilentMode()
     {
-        bool aiBatchSilent = InSilentAiBatch();
         // Instant replay also wants the view silent, and must hold it
         // across turn boundaries.
-        _map.SetSilentMode(aiBatchSilent || _isReplayInstantActive());
+        _map.SetSilentMode(InSilentAiBatch() || _isReplayInstantActive());
         // Tutorial Preview / Record use the tutorial-message slot for
         // their own scripted text; don't clobber it. Outside those
         // modes the slot is free, so reuse it as a passive "AI is
-        // working" indicator.
+        // working" indicator — for paced AI just as much as Instant.
         if (_previewMode || _recordingMode) return;
-        if (aiBatchSilent && !_silentBatchOverlayShown)
+        bool aiActing = !_isReplayMode()
+            && !GameEndedFired
+            && !_session.IsGameOver
+            && _state.Turns.CurrentPlayer.IsAi
+            && !_session.PendingDefeatScreen.HasValue;
+        if (aiActing && !_aiBatchOverlayShown)
         {
             _hud.ShowTutorialMessage(OpponentsTakingTurnsMessage);
-            _silentBatchOverlayShown = true;
+            _aiBatchOverlayShown = true;
         }
-        else if (!aiBatchSilent && _silentBatchOverlayShown)
+        else if (!aiActing && _aiBatchOverlayShown)
         {
             _hud.HideTutorialMessage();
-            _silentBatchOverlayShown = false;
+            _aiBatchOverlayShown = false;
         }
     }
 

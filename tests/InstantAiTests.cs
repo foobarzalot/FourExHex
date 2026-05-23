@@ -184,6 +184,30 @@ public class InstantAiTests
     }
 
     [Fact]
+    public void PacedAi_ShowsOpponentsOverlay_DuringBatch_ClearedOnHandBack()
+    {
+        // The "Opponents are taking their turns…" indicator is about the
+        // human's input being inert while AI acts — it should show at ANY
+        // AI speed, not only the silent Instant batch. The view is NOT
+        // silenced for paced AI.
+        var (state, session, map, hud, _, _) = BuildKillScenario();
+        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> v, Random r) => null;
+        var pacer = new QueuedAiPacer();
+        var c = NewController(state, session, map, hud, pacer, Chooser, instant: false);
+        c.StartGame();
+        pacer.DrainAll();
+        Assert.Null(hud.CurrentTutorialMessage); // Red (human) acting
+
+        hud.ClickEndTurn();
+        // Blue (AI) batch begins, paced — overlay shows, view stays audible.
+        Assert.Equal("Opponents are taking their turns…", hud.CurrentTutorialMessage);
+        Assert.False(map.SilentMode);
+
+        pacer.DrainAll();
+        Assert.Null(hud.CurrentTutorialMessage); // back to Red
+    }
+
+    [Fact]
     public void InstantAi_IgnoresHumanInput_WhileBatchPending()
     {
         var (state, session, map, hud, _, _) = BuildKillScenario();
