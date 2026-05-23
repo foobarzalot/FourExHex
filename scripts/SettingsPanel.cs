@@ -21,8 +21,13 @@ public sealed partial class SettingsPanel : CanvasLayer
 
     private ColorRect _backdrop = null!;
     private PanelContainer _panel = null!;
-    private CheckBox _sfxCheckBox = null!;
-    private CheckBox _vfxCheckBox = null!;
+    // Each toggle is a square Button laid out beside a separate Label
+    // (see BuildCheckRow) rather than a stock CheckBox: keeping the box
+    // and its caption as independent controls means the label can never
+    // shift on hover (the bug stock CheckBox's per-state content margins
+    // produce) and the box can be sized however we like.
+    private Button _sfxCheckBox = null!;
+    private Button _vfxCheckBox = null!;
     private CreditsPanel _creditsPanel = null!;
 
     // Display order for both speed radio rows (AI Turn Speed and Replay
@@ -79,25 +84,8 @@ public sealed partial class SettingsPanel : CanvasLayer
         goldRule.CustomMinimumSize = new Vector2(200, 1);
         vbox.AddChild(goldRule);
 
-        _sfxCheckBox = new CheckBox
-        {
-            Text = "Sound Effects",
-            ButtonPressed = UserSettings.SfxEnabled,
-        };
-        _sfxCheckBox.AddThemeFontSizeOverride("font_size", 24);
-        _sfxCheckBox.Toggled += OnSfxToggled;
-        AudioBus.AttachClick(_sfxCheckBox);
-        vbox.AddChild(_sfxCheckBox);
-
-        _vfxCheckBox = new CheckBox
-        {
-            Text = "Visual Effects",
-            ButtonPressed = UserSettings.VfxEnabled,
-        };
-        _vfxCheckBox.AddThemeFontSizeOverride("font_size", 24);
-        _vfxCheckBox.Toggled += OnVfxToggled;
-        AudioBus.AttachClick(_vfxCheckBox);
-        vbox.AddChild(_vfxCheckBox);
+        _sfxCheckBox = BuildCheckRow(vbox, "Sound Effects", UserSettings.SfxEnabled, OnSfxToggled);
+        _vfxCheckBox = BuildCheckRow(vbox, "Visual Effects", UserSettings.VfxEnabled, OnVfxToggled);
 
         var aiSpeedLabel = new Label { Text = "Computer Player Speed" };
         aiSpeedLabel.AddThemeFontSizeOverride("font_size", 24);
@@ -213,7 +201,9 @@ public sealed partial class SettingsPanel : CanvasLayer
     {
         if (IsOpen) return;
         _sfxCheckBox.ButtonPressed = UserSettings.SfxEnabled;
+        ApplyCheckBoxStyle(_sfxCheckBox, UserSettings.SfxEnabled);
         _vfxCheckBox.ButtonPressed = UserSettings.VfxEnabled;
+        ApplyCheckBoxStyle(_vfxCheckBox, UserSettings.VfxEnabled);
         PlaybackSpeed currentSpeed = UserSettings.AiSpeed;
         for (int i = 0; i < SpeedOrder.Length; i++)
         {
@@ -277,6 +267,94 @@ public sealed partial class SettingsPanel : CanvasLayer
     private void OnReplaySpeedPressed(PlaybackSpeed speed)
     {
         UserSettings.ReplaySpeed = speed;
+    }
+
+    /// <summary>
+    /// Build one boolean-setting row: a left-aligned caption Label that
+    /// fills the row, plus a fixed-size square toggle Button on the right.
+    /// Splitting caption and box into two sibling controls (rather than a
+    /// stock CheckBox, which bundles icon+text into one control with
+    /// per-state content margins) means the caption can never shift on
+    /// hover. Returns the box so Open() can re-sync its pressed state.
+    /// </summary>
+    private Button BuildCheckRow(VBoxContainer parent, string label, bool initial, Action<bool> onToggled)
+    {
+        var row = new HBoxContainer();
+        row.AddThemeConstantOverride("separation", 12);
+
+        var caption = new Label
+        {
+            Text = label,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        caption.AddThemeFontSizeOverride("font_size", 24);
+        caption.AddThemeColorOverride("font_color", UiPalette.InkSoft);
+        row.AddChild(caption);
+
+        var box = new Button
+        {
+            ToggleMode = true,
+            ButtonPressed = initial,
+            FocusMode = Control.FocusModeEnum.None,
+            CustomMinimumSize = new Vector2(32, 32),
+            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
+        };
+        box.AddThemeFontSizeOverride("font_size", 22);
+        box.Toggled += pressed =>
+        {
+            ApplyCheckBoxStyle(box, pressed);
+            onToggled(pressed);
+        };
+        AudioBus.AttachClick(box);
+        ApplyCheckBoxStyle(box, initial);
+        row.AddChild(box);
+
+        parent.AddChild(row);
+        return box;
+    }
+
+    /// <summary>
+    /// Repaint the square toggle: gold filled with a dark check when on,
+    /// dark with a light border when off. Hover only brightens the
+    /// border/fill — because the box holds nothing but a centered glyph,
+    /// no caption or content shifts under the cursor.
+    /// </summary>
+    private static void ApplyCheckBoxStyle(Button box, bool pressed)
+    {
+        box.Text = pressed ? "✓" : "";
+
+        StyleBoxFlat Build(Color bg, Color border) => new StyleBoxFlat
+        {
+            BgColor = bg,
+            BorderColor = border,
+            BorderWidthLeft = 2,
+            BorderWidthRight = 2,
+            BorderWidthTop = 2,
+            BorderWidthBottom = 2,
+            CornerRadiusTopLeft = 4,
+            CornerRadiusTopRight = 4,
+            CornerRadiusBottomLeft = 4,
+            CornerRadiusBottomRight = 4,
+        };
+
+        StyleBoxFlat normal = pressed
+            ? Build(UiPalette.Gold, UiPalette.GoldDeep)
+            : Build(UiPalette.BgElev, UiPalette.LineHard);
+        StyleBoxFlat hover = pressed
+            ? Build(UiPalette.Gold, UiPalette.Ink)
+            : Build(UiPalette.BgElev, UiPalette.Ink);
+
+        box.AddThemeStyleboxOverride("normal", normal);
+        box.AddThemeStyleboxOverride("pressed", normal);
+        box.AddThemeStyleboxOverride("hover", hover);
+        box.AddThemeStyleboxOverride("hover_pressed", hover);
+
+        Color tick = pressed ? UiPalette.BgDeep : UiPalette.InkSoft;
+        box.AddThemeColorOverride("font_color", tick);
+        box.AddThemeColorOverride("font_hover_color", tick);
+        box.AddThemeColorOverride("font_pressed_color", tick);
+        box.AddThemeColorOverride("font_hover_pressed_color", tick);
     }
 
     private static string SpeedLabel(PlaybackSpeed speed) => speed switch
