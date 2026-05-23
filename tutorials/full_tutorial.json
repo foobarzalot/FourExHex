@@ -2922,7 +2922,7 @@
         "Turn": 1,
         "Actor": -1,
         "Kind": "DisplayText",
-        "Text": "Welcome to FourExHex! You are the red player. Your goal is to conquer the map. Buy a recuit from your territory and capture a hex!"
+        "Text": "Welcome to FourExHex! You are the Red player. Your goal is to conquer the map. Buy a Recruit from your territory and capture a hex!"
       },
       {
         "Index": 1,
@@ -3058,7 +3058,7 @@
         "Turn": 2,
         "Actor": -1,
         "Kind": "DisplayText",
-        "Text": "The green player split the blue territory in two! All their units are now in a territory that\u0027s too weak to sustain them. At the start of Blue\u0027s next turn they will all die!"
+        "Text": "The Green player split the Blue territory in two! All their units are now in a territory that\u0027s too weak to sustain them. At the start of Blue\u0027s next turn they will all die!"
       },
       {
         "Index": 16,
@@ -3075,7 +3075,7 @@
         "Turn": 2,
         "Actor": -1,
         "Kind": "DisplayText",
-        "Text": "The blue cells that remain are defended. A Recruit isn\u0027t streong enough to take these cells. Buy another recuit and place it on the active unit to create a Soldier."
+        "Text": "The Blue cells that remain are defended. A Recruit isn\u0027t strong enough to take these cells. Buy another Recruit and place it on the active unit to create a Soldier."
       },
       {
         "Index": 18,
@@ -3138,7 +3138,7 @@
         "Turn": 3,
         "Actor": -1,
         "Kind": "DisplayText",
-        "Text": "Destroy the blue territory by splitting it into singleton hexes. If a hex has no neithbor of the same color, it\u0027s not part of any territory.."
+        "Text": "Destroy the Blue territory by splitting it into singleton hexes. If a hex has no neighbor of the same color, it\u0027s not part of any territory."
       },
       {
         "Index": 26,
@@ -3178,7 +3178,7 @@
         "Turn": 3,
         "Actor": -1,
         "Kind": "DisplayText",
-        "Text": "Note how the blue unit graves become trees. Trees can spread, but units can chop them down."
+        "Text": "Note how the Blue unit graves become trees. Trees can spread, but units can chop them down."
       },
       {
         "Index": 31,
@@ -3201,7 +3201,7 @@
         "Turn": 3,
         "Actor": -1,
         "Kind": "DisplayText",
-        "Text": "Green has defeated blue! Blue has no territories remaining on the map."
+        "Text": "Green has defeated Blue! Blue has no territories remaining on the map."
       },
       {
         "Index": 34,
@@ -3231,7 +3231,7 @@
         "Turn": 4,
         "Actor": -1,
         "Kind": "DisplayText",
-        "Text": "The tower is too strong for your soldier. Purchase another recruit an place it on the soldier to form a captain, and then use it to destroy the tower!"
+        "Text": "The tower is too strong for your Soldier. Purchase another Recruit and place it on the Soldier to form a Captain, and then use it to destroy the tower!"
       },
       {
         "Index": 38,
@@ -3312,7 +3312,7 @@
         "Turn": 5,
         "Actor": -1,
         "Kind": "DisplayText",
-        "Text": "You split green\u0027s territory and its unit died."
+        "Text": "You split Green\u0027s territory and its unit died."
       },
       {
         "Index": 48,
@@ -3325,7 +3325,7 @@
         "Turn": 6,
         "Actor": -1,
         "Kind": "DisplayText",
-        "Text": "The grave of your captain became a tree. Chop it down before it spreads."
+        "Text": "The grave of your Captain became a tree. Chop it down before it spreads."
       },
       {
         "Index": 50,
@@ -3365,7 +3365,7 @@
         "Turn": 7,
         "Actor": -1,
         "Kind": "DisplayText",
-        "Text": "Combine your recruits to form a soldier and capture the green capital. Don\u0027t forget to keep chopping trees!"
+        "Text": "Combine your Recruits to form a Soldier and capture the Green capital. Don\u0027t forget to keep chopping trees!"
       },
       {
         "Index": 55,
@@ -3415,14 +3415,14 @@
         "Turn": 8,
         "Actor": -1,
         "Kind": "DisplayText",
-        "Text": "When you capture an enemt capital, the territory will form a new capital, if it has at least two adjacent cells. Any gold that was stored on the territory is lost."
+        "Text": "When you capture an enemy capital, the territory will form a new capital, if it has at least two adjacent cells. Any gold that was stored on the territory is lost."
       },
       {
         "Index": 61,
         "Turn": 8,
         "Actor": -1,
         "Kind": "DisplayText",
-        "Text": "Now finish off green to win the game!"
+        "Text": "Now finish off Green to win the game!"
       },
       {
         "Index": 62,
