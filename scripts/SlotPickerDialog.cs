@@ -78,7 +78,7 @@ public sealed partial class SlotPickerDialog : CanvasLayer
         vbox.AddThemeConstantOverride("separation", 12);
         _panel.AddChild(vbox);
 
-        vbox.AddChild(ModalChrome.BuildPanelHead(_title, onClose: Hide));
+        vbox.AddChild(ModalChrome.BuildSerifTitle(_title));
 
         var scroll = new ScrollContainer
         {

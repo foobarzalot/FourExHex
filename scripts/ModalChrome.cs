@@ -1,4 +1,3 @@
-using System;
 using Godot;
 
 /// <summary>
@@ -9,6 +8,9 @@ using Godot;
 /// </summary>
 public static class ModalChrome
 {
+    private static readonly Font SerifFont =
+        GD.Load<FontFile>("res://fonts/DMSerifDisplay-Regular.ttf");
+
     // Full-screen dim scrim. MouseFilter=Stop so clicks don't bleed through
     // to whatever is behind the modal.
     public static ColorRect BuildBackdrop(Vector2 viewport)
@@ -50,48 +52,33 @@ public static class ModalChrome
         };
     }
 
-    // Small uppercase title + close (×) button row, with a 1px line-soft
-    // divider beneath. The redesign's "panel-head" pattern.
-    public static Control BuildPanelHead(string title, Action onClose)
+    // Large centered serif title with a decorative gold rule beneath — the
+    // title block shared by the save/load modal family.
+    public static Control BuildSerifTitle(string title)
     {
         var head = new VBoxContainer
         {
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
         };
-        head.AddThemeConstantOverride("separation", 10);
+        head.AddThemeConstantOverride("separation", 18);
 
-        var row = new HBoxContainer
-        {
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-        };
         var titleLabel = new Label
         {
-            Text = title.ToUpperInvariant(),
+            Text = title,
+            HorizontalAlignment = HorizontalAlignment.Center,
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
         };
-        titleLabel.AddThemeFontSizeOverride("font_size", 16);
-        titleLabel.AddThemeColorOverride("font_color", UiPalette.InkSoft);
-        row.AddChild(titleLabel);
+        titleLabel.AddThemeFontOverride("font", SerifFont);
+        titleLabel.AddThemeFontSizeOverride("font_size", 36);
+        head.AddChild(titleLabel);
 
-        var closeButton = new Button
+        var goldRule = new ColorRect
         {
-            Text = "×",
-            FocusMode = Control.FocusModeEnum.None,
-            CustomMinimumSize = new Vector2(32, 32),
+            Color = UiPalette.GoldDim,
+            CustomMinimumSize = new Vector2(200, 1),
+            SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter,
         };
-        closeButton.AddThemeFontSizeOverride("font_size", 22);
-        closeButton.Pressed += () => onClose();
-        AudioBus.AttachClick(closeButton);
-        row.AddChild(closeButton);
-        head.AddChild(row);
-
-        var divider = new ColorRect
-        {
-            Color = UiPalette.LineSoft,
-            CustomMinimumSize = new Vector2(0, 1),
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-        };
-        head.AddChild(divider);
+        head.AddChild(goldRule);
 
         return head;
     }

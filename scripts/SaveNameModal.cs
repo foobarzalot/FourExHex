@@ -31,9 +31,6 @@ public sealed partial class SaveNameModal : CanvasLayer
     private PanelContainer _errorPanel = null!;
     private ColorRect _errorBackdrop = null!;
 
-    private static readonly Font _serifFont =
-        GD.Load<FontFile>("res://fonts/DMSerifDisplay-Regular.ttf");
-
     public override void _Ready()
     {
         // Same layer as the rest of the modal family.
@@ -59,23 +56,7 @@ public sealed partial class SaveNameModal : CanvasLayer
         vbox.AddThemeConstantOverride("separation", 18);
         panel.AddChild(vbox);
 
-        var title = new Label
-        {
-            Text = "Save Game",
-            HorizontalAlignment = HorizontalAlignment.Center,
-        };
-        title.AddThemeFontOverride("font", _serifFont);
-        title.AddThemeFontSizeOverride("font_size", 36);
-        vbox.AddChild(title);
-
-        // Decorative gold rule under the title — matches the menu panels.
-        var goldRule = new ColorRect
-        {
-            Color = UiPalette.GoldDim,
-            CustomMinimumSize = new Vector2(200, 1),
-            SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter,
-        };
-        vbox.AddChild(goldRule);
+        vbox.AddChild(ModalChrome.BuildSerifTitle("Save Game"));
 
         var label = new Label
         {
