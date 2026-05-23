@@ -2010,8 +2010,10 @@ of `SetMode(Record)`. ESC raises `PreviewPane.EscRequested` → a minimal
 Replay / Play Again / Main Menu buttons are handled inside `PreviewPane`
 itself (no host wiring). The played tutorial ships in the repo at
 `tutorials/full_tutorial.json` (= `res://tutorials/`, the same
-`SaveStore.BundledMapsDirectory` bundled maps use); packaged exports need
-a `*.json` export filter to include it.
+`SaveStore.BundledMapsDirectory` bundled maps use). Since `.json` isn't a
+Godot resource, `export_presets.cfg` carries `include_filter="tutorials/*.json"`
+on every preset so the bundled tutorials/maps ship in the packaged PCK
+(the `export_filter="all_resources"` mode alone would skip them).
 
 ### Modes
 
