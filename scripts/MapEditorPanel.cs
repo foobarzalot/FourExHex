@@ -198,6 +198,8 @@ public sealed partial class MapEditorPanel : Node2D
         if (!ReferenceEquals(_territories, beforeRef))
         {
             _undoStack.PushBefore(pre);
+            AudioBus.Instance.PlayUnitPlaced();
+            Log.Debug(Log.LogCategory.Input, $"MapEditorPanel: placement sound (capital) at {coord}.");
         }
         PushState(animateNewOccupants: false);
     }
@@ -220,6 +222,8 @@ public sealed partial class MapEditorPanel : Node2D
         if (!ReferenceEquals(_territories, beforeRef))
         {
             _paintStrokeChanged = true;
+            AudioBus.Instance.PlayUnitPlaced();
+            Log.Debug(Log.LogCategory.Input, $"MapEditorPanel: placement sound (palette {SelectedPaletteIndex}) at {coord}.");
         }
         PushState(animateNewOccupants: false);
     }
