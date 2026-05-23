@@ -1520,7 +1520,16 @@ public class GameController
         // (it would interrupt the scripted / recording flow with a
         // modal the tutorial author can't pre-record).
         Player current = _state.Turns.CurrentPlayer;
-        if (!current.IsAi && !_previewMode && !_recordingMode)
+        // Skip the prompt entirely when this End Turn already wins
+        // outright: the player is the sole capital-bearer (every opponent
+        // is down to orphan singletons / eliminated), so EndTurnNow's
+        // WinnerAtEndOfTurn check will declare the win. Offering "Claim
+        // Victory or Continue?" is meaningless once victory is sealed —
+        // either choice just shows the victory screen — so go straight
+        // there.
+        bool alreadyWon = WinConditionRules.WinnerAtEndOfTurn(
+            current.Id, _state.Territories) == current.Id;
+        if (!alreadyWon && !current.IsAi && !_previewMode && !_recordingMode)
         {
             int seen = _session.ClaimVictoryPromptedHighestThreshold
                 .TryGetValue(current.Id, out int s) ? s : 0;

@@ -61,6 +61,45 @@ public class ClaimVictoryTests
     }
 
     [Fact]
+    public void EndTurn_WhenAlreadySoleCapitalBearer_WinsImmediately_NoClaimPrompt()
+    {
+        // Red holds a capital-bearing territory; the only enemy (Blue) has
+        // been reduced to an orphan singleton (no capital). Red owns 75%
+        // so the claim-victory prompt WOULD fire — but this End Turn wins
+        // outright (WinnerAtEndOfTurn: Red is the sole capital-bearer), so
+        // the prompt must be skipped and victory declared immediately.
+        var redP = new Player("Red", PlayerId.FromIndex(0), PlayerKind.Human);
+        var blueP = new Player("Blue", PlayerId.FromIndex(1), PlayerKind.Human);
+        var players = new List<Player> { redP, blueP };
+
+        var grid = TestHelpers.BuildRectGrid(4, 1, Blue);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = Red;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Owner = Red;
+        grid.Get(HexCoord.FromOffset(2, 0))!.Owner = Red;
+        // Blue owns only (3,0) — an orphan singleton with no capital.
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        var map = new MockHexMapView();
+        var hud = new MockHudView();
+        var controller = new GameController(state, session, map, hud);
+        bool gameEnded = false;
+        controller.GameEnded += () => gameEnded = true;
+        controller.StartGame();
+        Assert.Equal(0, state.Turns.CurrentPlayerIndex); // Red's turn
+        Assert.False(session.IsGameOver);                // not won mid-turn (Blue still owns a tile)
+
+        hud.ClickEndTurn();
+
+        // Straight to victory — no "Claim Victory?" prompt.
+        Assert.False(session.PendingClaimVictory.HasValue);
+        Assert.True(session.IsGameOver);
+        Assert.Equal(Red, session.Winner);
+        Assert.True(gameEnded);
+    }
+
+    [Fact]
     public void EndTurn_HumanAtExactlyHalf_DoesNotPrompt()
     {
         // 5 of 10 tiles = exactly 50%, NOT > 50%.
