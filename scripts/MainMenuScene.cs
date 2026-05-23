@@ -96,7 +96,6 @@ public partial class MainMenuScene : Control
 
     private Control BuildLandingPanel()
     {
-        Vector2 viewport = GetViewportRect().Size;
         const float panelW = 520f;
         // 820f accommodates the tallest stack: Play, Play Tutorial, Load,
         // Map Editor, Settings, the debug-only Tutorial Builder, and Exit
@@ -105,11 +104,19 @@ public partial class MainMenuScene : Control
         // enough to be worth a runtime resize since OS.IsDebugBuild() is
         // compile-time-stable for any given binary.
         const float panelH = 820f;
+        // Center-anchored so Godot re-solves the position on every window
+        // resize (matches ModalChrome.BuildCenteredPanel). Children below
+        // are laid out in the panel's local space against the fixed
+        // panelW/panelH, so only the panel's screen position tracks resize.
         var panel = new Panel
         {
-            Position = new Vector2((viewport.X - panelW) * 0.5f, (viewport.Y - panelH) * 0.5f),
-            Size = new Vector2(panelW, panelH),
+            AnchorLeft = 0.5f, AnchorRight = 0.5f, AnchorTop = 0.5f, AnchorBottom = 0.5f,
+            OffsetLeft = -panelW * 0.5f, OffsetRight = panelW * 0.5f,
+            OffsetTop = -panelH * 0.5f, OffsetBottom = panelH * 0.5f,
+            GrowHorizontal = GrowDirection.Both,
+            GrowVertical = GrowDirection.Both,
         };
+        Log.Trace(Log.LogCategory.Render, "MainMenu: built landing panel (center-anchored).");
 
         var title = new Label
         {
@@ -219,8 +226,6 @@ public partial class MainMenuScene : Control
 
     private Control BuildPlayConfigPanel()
     {
-        Vector2 viewport = GetViewportRect().Size;
-
         // Centered panel containing the title, player-role grid, the
         // Map Seed entry, and the Back / Start Game buttons. All
         // dimensions are scaled 1.2x from the spec's base to read
@@ -228,11 +233,19 @@ public partial class MainMenuScene : Control
         // play-HUD scale the rest of the redesign settled on).
         const float panelW = 624f;
         const float panelH = 800f;
+        // Center-anchored so Godot re-solves the position on every window
+        // resize (matches ModalChrome.BuildCenteredPanel). Children below
+        // are laid out in the panel's local space against the fixed
+        // panelW/panelH, so only the panel's screen position tracks resize.
         var panel = new Panel
         {
-            Position = new Vector2((viewport.X - panelW) * 0.5f, (viewport.Y - panelH) * 0.5f),
-            Size = new Vector2(panelW, panelH),
+            AnchorLeft = 0.5f, AnchorRight = 0.5f, AnchorTop = 0.5f, AnchorBottom = 0.5f,
+            OffsetLeft = -panelW * 0.5f, OffsetRight = panelW * 0.5f,
+            OffsetTop = -panelH * 0.5f, OffsetBottom = panelH * 0.5f,
+            GrowHorizontal = GrowDirection.Both,
+            GrowVertical = GrowDirection.Both,
         };
+        Log.Trace(Log.LogCategory.Render, "MainMenu: built play-config panel (center-anchored).");
 
         var title = new Label
         {
