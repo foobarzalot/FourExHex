@@ -35,7 +35,7 @@ public partial class TutorialBuilderScene : Node2D
     private LineEdit? _saveDialogLineEdit;
     private AcceptDialog? _saveErrorDialog;
     private SlotPickerDialog? _loadDialog;
-    private ConfirmationDialog? _discardConfirmDialog;
+    private ConfirmModal? _discardConfirmDialog;
     private System.Action? _onDiscardConfirmed;
 
     // Captured when leaving Map Edit (the panel's _grid is shared with
@@ -217,13 +217,13 @@ public partial class TutorialBuilderScene : Node2D
 
     private void BuildDiscardConfirmDialog()
     {
-        _discardConfirmDialog = new ConfirmationDialog
-        {
-            Title = "Discard recording?",
-            DialogText = "Switching to Map Edit will clear the current tutorial recording. Continue?",
-            OkButtonText = "Discard",
-            Exclusive = true,
-        };
+        // ModalChrome family confirm dialog (dim backdrop + centered slate
+        // panel + serif title) so it matches Settings / Save Game / the slot
+        // picker rather than Godot's unstyled ConfirmationDialog.
+        _discardConfirmDialog = new ConfirmModal(
+            "Discard recording?",
+            "Switching to Map Edit will clear the current tutorial recording. Continue?",
+            "Discard");
         _discardConfirmDialog.Confirmed += () =>
         {
             System.Action? a = _onDiscardConfirmed;
@@ -232,23 +232,22 @@ public partial class TutorialBuilderScene : Node2D
         };
         _discardConfirmDialog.Canceled += () => _onDiscardConfirmed = null;
         AddChild(_discardConfirmDialog);
-        AudioBus.AttachClick(_discardConfirmDialog.GetOkButton());
-        AudioBus.AttachClick(_discardConfirmDialog.GetCancelButton());
     }
 
     private void ShowDiscardConfirm(System.Action onConfirmed)
     {
         if (_discardConfirmDialog == null) return;
         _onDiscardConfirmed = onConfirmed;
-        _discardConfirmDialog.PopupCentered();
+        _discardConfirmDialog.Open();
     }
 
     public override void _UnhandledInput(InputEvent @event)
     {
         if (@event is not InputEventKey keyEvent || !keyEvent.Pressed || keyEvent.Echo) return;
         if (keyEvent.Keycode != Key.Escape) return;
-        // The modal handles its own ESC-to-close.
+        // These modals handle their own ESC-to-close.
         if (_escMenu.IsOpen) return;
+        if (_discardConfirmDialog?.IsOpen == true) return;
         GetViewport().SetInputAsHandled();
         // In Map Edit submode, ESC first drops a non-hand palette back
         // to Hand (mirrors the standalone Map Editor). The palette HUD
