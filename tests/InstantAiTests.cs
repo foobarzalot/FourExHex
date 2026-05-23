@@ -372,6 +372,7 @@ public class InstantAiTests
         Assert.True(map.SilentMode,
             "switching to Instant mid-AI-turn should silence the view at the next action boundary");
         Assert.Equal("Opponents are taking their turns…", hud.CurrentTutorialMessage);
+        Assert.Null(map.LastHighlight); // paced acting-territory highlight cleared on switch to Instant
 
         pacer.DrainAll();
         Assert.False(map.SilentMode);            // lifted on hand-back to the human

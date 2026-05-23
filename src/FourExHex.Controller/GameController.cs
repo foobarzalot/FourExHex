@@ -1665,6 +1665,10 @@ public class GameController
         {
             Log.Debug(Log.LogCategory.Ai,
                 $"[speed] AI track paced→instant mid-turn (player={_state.Turns.CurrentPlayer.Id})");
+            // The instant track shows no per-action highlight, so clear
+            // the acting-territory outline the paced track last drew —
+            // otherwise it lingers through the fast-forward.
+            _map.ShowHighlight(null);
         }
         _aiTrackInstant = nowInstant;
         // Sync the view's silent flag + "Opponents…" overlay to the live

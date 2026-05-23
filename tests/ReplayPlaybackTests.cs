@@ -596,9 +596,11 @@ public class ReplayPlaybackTests
         f.Controller.BeginReplay(); // paced
         Assert.False(f.Map.SilentMode);
 
-        // Step a couple of paced beats, then switch to Instant.
-        f.Pacer.StepOne();
-        f.Pacer.StepOne();
+        // Step the first beat's PREVIEW so a (non-end-turn) acting
+        // territory is highlighted, then switch to Instant before its
+        // execute — the switch must clear that lingering highlight.
+        f.Pacer.StepOne(); // StepReplayPreview: highlights the acting territory
+        Assert.NotNull(f.Map.LastHighlight);
         Assert.False(f.Map.SilentMode);
 
         instantFlag = true;
@@ -607,6 +609,7 @@ public class ReplayPlaybackTests
             f.Pacer.StepOne();
         Assert.True(f.Map.SilentMode,
             "switching Replay Speed to Instant mid-replay should silence the view");
+        Assert.Null(f.Map.LastHighlight); // paced acting-territory highlight cleared on switch to Instant
 
         f.Pacer.DrainAll();
         Assert.False(f.Map.SilentMode); // lifted at end of replay

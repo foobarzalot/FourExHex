@@ -311,6 +311,10 @@ public class ReplayRecorder
         {
             Log.Info(Log.LogCategory.Turn,
                 $"[speed] replay track paced→instant at beat {_replayIndex}");
+            // Instant playback shows no per-beat highlight; clear the
+            // acting-territory outline the paced track last drew so it
+            // doesn't linger through the fast-forward.
+            _map.ShowHighlight(null);
         }
         _replayInstantActive = nowInstant;
         // Replay's silent flag is driven directly by the instant flag
