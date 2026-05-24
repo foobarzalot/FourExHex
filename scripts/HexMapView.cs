@@ -244,6 +244,12 @@ public partial class HexMapView : Node2D, IHexMapView
     private float _topInset = HudView.HudHeight;
     private float _bottomInset = 0f;
 
+    // Board rotation: 0 in landscape, −90° (CCW) in portrait so the wide map
+    // fills a tall viewport. The whole board node rotates; icon glyphs
+    // counter-rotate (ApplyGlyphUpright) to stay upright. Resolved from the
+    // viewport aspect via ScreenLayout, consistent with the HUD.
+    private float _mapAngleRad = 0f;
+
     // Sensitivity for InputEventPanGesture (two-finger trackpad scroll).
     // Per-event delta is small and dimensionless (~0.03–1.1 in Godot 4.6
     // on macOS); exp() of the negated cumulative delta makes a brisk
@@ -265,6 +271,10 @@ public partial class HexMapView : Node2D, IHexMapView
     {
         BuildStateVisuals();
 
+        // Resolve board rotation (portrait ⇒ −90° CCW) before the zoom/pan
+        // math so the rotated extent is used from the first frame.
+        ResolveRotation();
+
         // Compute zoom levels for the current viewport before the initial
         // pan so ClampPan/VisualCenter use the right effective extent. The
         // resize hook re-runs both whenever the OS window changes size.
@@ -275,7 +285,7 @@ public partial class HexMapView : Node2D, IHexMapView
         // If the map fits in the viewport, ClampPan locks each axis to
         // its centered value (matches the previous one-shot centering
         // that lived in Main.cs).
-        Position = ClampPan(VisualCenter() - PixelSize * 0.5f * _zoom);
+        RecenterMap();
     }
 
     /// <summary>
@@ -605,6 +615,9 @@ public partial class HexMapView : Node2D, IHexMapView
             preview.Position = FirstHexCenterOffset + HexPixel.ToPixel(coord, HexSize);
             _towerTargetsLayer.AddChild(preview);
         }
+        // Tower previews are built outside the RefreshOccupantVisuals pass, so
+        // upright them here too (no-op at angle 0).
+        ApplyGlyphUpright();
     }
 
     /// <summary>
@@ -925,6 +938,10 @@ public partial class HexMapView : Node2D, IHexMapView
         // territory between Healthy / NegativeDelta / BankruptNextTurn.
         // The badge layer is also cleared here for AI turns.
         RedrawWarningBadges();
+
+        // Freshly-built glyphs default to Rotation 0; counter-rotate them so
+        // they stay upright when the board is rotated (no-op at angle 0).
+        ApplyGlyphUpright();
     }
 
     /// <summary>
@@ -939,18 +956,23 @@ public partial class HexMapView : Node2D, IHexMapView
     {
         // Trunk bottom in CreateTreeVisual's local coords sits at
         // y = +0.225 * HexSize (r * 0.75 where r = 0.3 * HexSize).
-        // Place an anchor there and shift the tree up by the same
-        // amount so it draws unchanged but its (0,0) pivot is the
-        // trunk base.
+        //
+        // Two nested nodes so rotation and the grow pivot don't fight:
+        //  - placement: origin AT the tile center. ApplyGlyphUpright
+        //    counter-rotates THIS, pivoting around the center, so a rotated
+        //    board keeps the tree in place and upright.
+        //  - anchor (child): origin at the trunk base, shifted down by
+        //    trunkBottomOffset, with the tree drawn back up by the same
+        //    amount — so the grow-in scale animation reads as "rising out of
+        //    the ground" without moving the placement.
         float trunkBottomOffset = HexSize * 0.225f;
-        var anchor = new Node2D
-        {
-            Position = center + new Vector2(0f, trunkBottomOffset),
-        };
+        var placement = new Node2D { Position = center };
+        var anchor = new Node2D { Position = new Vector2(0f, trunkBottomOffset) };
         Node2D tree = CreateTreeVisual();
         tree.Position = new Vector2(0f, -trunkBottomOffset);
         anchor.AddChild(tree);
-        return anchor;
+        placement.AddChild(anchor);
+        return placement;
     }
 
     // Shrink/grow timings for the bankruptcy death and the start-of-turn
@@ -970,8 +992,12 @@ public partial class HexMapView : Node2D, IHexMapView
     /// tween waits for a preceding grave-shrink to finish before
     /// starting, so the grave→tree promotion reads as sequential.
     /// </summary>
-    private static void StartTreeGrowAnimation(Node2D anchor, bool afterShrink = false)
+    private static void StartTreeGrowAnimation(Node2D placement, bool afterShrink = false)
     {
+        // Scale the inner anchor (pivot at the trunk base), not the placement
+        // node (pivot at the tile center) — so the tree rises out of the
+        // ground rather than swelling from its middle.
+        Node2D anchor = placement.GetChild<Node2D>(0);
         anchor.Scale = new Vector2(0.05f, 0.05f);
         anchor.Modulate = new Color(1f, 1f, 1f, afterShrink ? 0f : 0.3f);
         Tween tween = anchor.CreateTween();
@@ -1069,6 +1095,7 @@ public partial class HexMapView : Node2D, IHexMapView
         {
             SpawnDestructionShard(center, shardColor, i, shardCount);
         }
+        ApplyGlyphUpright();
     }
 
     /// <summary>
@@ -1987,25 +2014,37 @@ public partial class HexMapView : Node2D, IHexMapView
     private Vector2 ClampPan(Vector2 desired)
     {
         Vector2 vp = GetViewportRect().Size;
+        float availX = vp.X;
         float availY = vp.Y - _topInset - _bottomInset;
-        float w = PixelSize.X * _zoom;
-        float h = PixelSize.Y * _zoom;
-        float x = w <= vp.X
-            ? (vp.X - w) * 0.5f
-            : Mathf.Clamp(desired.X, vp.X - w, 0f);
-        float y = h <= availY
-            ? _topInset + (availY - h) * 0.5f
-            : Mathf.Clamp(desired.Y, _topInset + availY - h, _topInset);
+        // On-screen bounding box of the (scaled + rotated) board relative to
+        // this node's origin. At angle 0 this is (0,0,w·zoom,h·zoom), so the
+        // branches below reduce to the legacy landscape clamp exactly.
+        (float minX, float minY, float maxX, float maxY) =
+            MapPlacement.RotatedBoardBox(PixelSize.X, PixelSize.Y, _zoom, _mapAngleRad);
+        float boxW = maxX - minX;
+        float boxH = maxY - minY;
+        float x = boxW <= availX
+            ? (availX - boxW) * 0.5f - minX
+            : Mathf.Clamp(desired.X, availX - maxX, -minX);
+        float y = boxH <= availY
+            ? _topInset + (availY - boxH) * 0.5f - minY
+            : Mathf.Clamp(desired.Y, _topInset + availY - maxY, _topInset - minY);
         return new Vector2(x, y);
     }
 
     public void CenterOnTerritory(Territory territory)
     {
         if (!territory.HasCapital) return;
-        // The capital's pixel position is in unscaled local space; scale
-        // it to world space before subtracting from VisualCenter.
+        // The capital's pixel position is in unscaled local space; scale AND
+        // rotate it to world space before subtracting from VisualCenter.
         Vector2 localCenter = FirstHexCenterOffset + HexPixel.ToPixel(territory.Capital!.Value, HexSize);
-        Position = ClampPan(VisualCenter() - localCenter * _zoom);
+        Position = ClampPan(VisualCenter() - (localCenter * _zoom).Rotated(_mapAngleRad));
+    }
+
+    /// <summary>Center the (possibly rotated) board in the play area.</summary>
+    private void RecenterMap()
+    {
+        Position = ClampPan(VisualCenter() - (PixelSize * 0.5f * _zoom).Rotated(_mapAngleRad));
     }
 
     /// <summary>Recompute zoom range and discrete levels for the current
@@ -2014,8 +2053,11 @@ public partial class HexMapView : Node2D, IHexMapView
     private void RecomputeZoomLevels()
     {
         Vector2 vp = GetViewportRect().Size;
-        Vector2 px = PixelSize;
-        _zoomMin = ZoomMath.ComputeZoomMin(vp.X, vp.Y, _topInset + _bottomInset, px.X, px.Y);
+        // Fit-to-view against the ROTATED extent (width/height swap at ±90°).
+        (float minX, float minY, float maxX, float maxY) =
+            MapPlacement.RotatedBoardBox(PixelSize.X, PixelSize.Y, 1f, _mapAngleRad);
+        _zoomMin = ZoomMath.ComputeZoomMin(
+            vp.X, vp.Y, _topInset + _bottomInset, maxX - minX, maxY - minY);
         _zoomLevels = ZoomMath.BuildLevels(_zoomMin, ZoomLevelCount);
 
         _zoom = Mathf.Clamp(_zoom, _zoomMin, 1f);
@@ -2041,8 +2083,69 @@ public partial class HexMapView : Node2D, IHexMapView
 
     private void OnViewportResized()
     {
+        bool flipped = ResolveRotation();
         RecomputeZoomLevels();
-        Position = ClampPan(Position);
+        if (flipped)
+        {
+            // Orientation changed: re-upright the glyphs and recenter the
+            // board (the old pan is meaningless under the new rotation).
+            ApplyGlyphUpright();
+            RecenterMap();
+        }
+        else
+        {
+            Position = ClampPan(Position);
+        }
+    }
+
+    /// <summary>Resolve board rotation from the viewport aspect (portrait ⇒
+    /// −90° CCW, landscape ⇒ 0) and apply it to this node. Returns true if the
+    /// angle changed.</summary>
+    private bool ResolveRotation()
+    {
+        Vector2 vp = GetViewportRect().Size;
+        ScreenOrientation orientation = ScreenLayout.Resolve(vp.X, vp.Y);
+        float angle = orientation == ScreenOrientation.Portrait ? -Mathf.Pi / 2f : 0f;
+        if (Mathf.IsEqualApprox(angle, _mapAngleRad)) return false;
+        _mapAngleRad = angle;
+        Rotation = angle;
+        Log.Debug(Log.LogCategory.Render,
+            $"HexMapView: map angle → {Mathf.RadToDeg(angle):0}° ({orientation}).");
+        return true;
+    }
+
+    /// <summary>Keep icon glyphs upright when the board is rotated: counter-
+    /// rotate each glyph node by −mapAngle so its net world rotation is 0,
+    /// while its position still follows the rotated grid. Tower-placement
+    /// previews are tower-shaped (have an "up") so they're included. Hex-cell-
+    /// aligned overlays (tile fills, outlines, territory borders, water, shore
+    /// foam, tower coverage, selection highlight, the symmetric move-target
+    /// rings) are intentionally NOT touched — they rotate with the cells to
+    /// stay aligned. The rejection layer is also excluded: its defender arrows
+    /// are directional and must rotate with the board to keep pointing.</summary>
+    private void ApplyGlyphUpright()
+    {
+        float counter = -_mapAngleRad;
+        Node2D?[] glyphLayers =
+        {
+            _unitsLayer, _capitalsLayer, _treesLayer, _gravesLayer,
+            _deathsLayer, _warningBadgesLayer, _towerTargetsLayer,
+        };
+        int n = 0;
+        foreach (Node2D? layer in glyphLayers)
+        {
+            if (layer == null) continue;
+            foreach (Node child in layer.GetChildren())
+            {
+                if (child is Node2D node)
+                {
+                    node.Rotation = counter;
+                    ++n;
+                }
+            }
+        }
+        Log.Debug(Log.LogCategory.Render,
+            $"HexMapView: glyph-upright applied to {n} nodes (counter {Mathf.RadToDeg(counter):0}°).");
     }
 
     /// <summary>Set the HUD-reserved top/bottom insets the map centers within.
@@ -2077,7 +2180,7 @@ public partial class HexMapView : Node2D, IHexMapView
         Vector2 localUnderAnchor = ToLocal(anchorVp);
         Scale = new Vector2(newZoom, newZoom);
         _zoom = newZoom;
-        Position = ClampPan(anchorVp - localUnderAnchor * newZoom);
+        Position = ClampPan(anchorVp - (localUnderAnchor * newZoom).Rotated(_mapAngleRad));
         _zoomLevelIndex = ClosestLevelIndex(_zoom);
     }
 
