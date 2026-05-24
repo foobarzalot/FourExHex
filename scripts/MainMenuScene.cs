@@ -29,6 +29,10 @@ public partial class MainMenuScene : Control
 
     private Control? _landingPanel;
     private Control? _playConfigPanel;
+    // Design (unscaled) sizes of the two panels, recorded at build time so
+    // FitPanels can scale them down to fit a smaller-than-design viewport.
+    private Vector2 _landingDesignSize;
+    private Vector2 _playConfigDesignSize;
     private SettingsPanel? _settingsPanel;
     private Button? _landingPlayButton;
     private Button? _landingLoadButton;
@@ -92,6 +96,31 @@ public partial class MainMenuScene : Control
         BuildQuitConfirmDialog();
 
         ShowLanding();
+
+        // Shrink the fixed-size panels to fit windows shorter/narrower than
+        // their design size (e.g. 720p), and keep fitting them on resize.
+        FitPanels();
+        GetViewport().SizeChanged += FitPanels;
+    }
+
+    /// <summary>Scale each fixed-size panel down (never up) so it fits the
+    /// current viewport with a small margin. The panels are center-anchored,
+    /// so scaling around their center keeps them centered.</summary>
+    private void FitPanels()
+    {
+        Vector2 viewport = GetViewportRect().Size;
+        if (_landingPanel != null) ScaleToFit(_landingPanel, _landingDesignSize, viewport);
+        if (_playConfigPanel != null) ScaleToFit(_playConfigPanel, _playConfigDesignSize, viewport);
+    }
+
+    private static void ScaleToFit(Control panel, Vector2 designSize, Vector2 viewport)
+    {
+        const float margin = 24f;
+        float scale = Mathf.Min(1f, Mathf.Min(
+            (viewport.X - margin) / designSize.X,
+            (viewport.Y - margin) / designSize.Y));
+        panel.PivotOffset = designSize * 0.5f;
+        panel.Scale = new Vector2(scale, scale);
     }
 
     private Control BuildLandingPanel()
@@ -221,6 +250,7 @@ public partial class MainMenuScene : Control
         AudioBus.AttachClick(exitButton);
         panel.AddChild(exitButton);
 
+        _landingDesignSize = new Vector2(panelW, panelH);
         return panel;
     }
 
@@ -432,6 +462,7 @@ public partial class MainMenuScene : Control
 
         RefreshStartButtonGating();
 
+        _playConfigDesignSize = new Vector2(panelW, panelH);
         return panel;
     }
 
