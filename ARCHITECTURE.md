@@ -2568,6 +2568,65 @@ framing), the four terrain tools (water / tree / capital / tower)
 as bare swatches, and the hand (pan / no-paint) tool at the right
 end.
 
+### Responsive layout (landscape / portrait)
+
+Both the gameplay and editor screens reflow between a wide landscape
+and a tall portrait aspect ratio (mobile groundwork). The whole system
+keys off one pure decision function so the HUD and the map can't
+disagree:
+
+- **`ScreenLayout` (`src/FourExHex.Model`, Godot-free, unit-tested,
+  mirrors `ZoomMath`).** `Resolve(width, height)` → `Landscape` when
+  `width >= height`, else `Portrait` (square ties to landscape).
+  `ComputeInsets(orientation, topBarVisible, landscapeBarH,
+  portraitTopBarH, portraitBottomBarH)` → the `(Top, Bottom)` pixels the
+  map must reserve for the HUD bars. No view magic numbers live here —
+  the caller passes its own bar heights.
+
+- **Orientation-aware HUDs.** `HudView` and `MapEditorHudView` build
+  their widget *clusters* once and **reparent** (never rebuild) them
+  between bar containers on a landscape↔portrait flip, so button state /
+  event wiring survives. The bar scaffolding
+  (`MakeBarPanel`/`MakeBarFrame`/`MakeAnchoredGroup`/`Detach`) is shared
+  in **`scripts/HudBars.cs`** so the two HUDs can't drift. Both subscribe
+  to `GetViewport().SizeChanged` and re-apply on a flip.
+  - *Landscape:* the single 96-px top bar described above (unchanged).
+  - *Portrait gameplay:* a **top bar** with territory-specific content
+    (gold chip + buy/build), shown only while a territory is selected,
+    and an always-on **bottom bar** (turn # + player + undo / End Turn /
+    Options). The `TURN` / `TO PLAY` eyebrow captions are dropped in
+    portrait. The seed label hides (the bottom bar owns that space).
+  - *Portrait editor:* a **top bar** with all paint options and a
+    **bottom bar** with seed + die + undo/redo + Options.
+
+- **Map reserves the bars + rotates in portrait** (`HexMapView`). The
+  view is a pure consumer of layout: `SetMapInsets(top, bottom)` (pushed
+  by the HUD via a `MapInsetsChanged` event that `Main` /
+  `MapEditorScene` relay) tells it how much vertical space the bars take;
+  it re-centers within that. Separately, `HexMapView` resolves its own
+  rotation from the viewport aspect (`ScreenLayout.Resolve`): **portrait
+  ⇒ the board node rotates −90° (CCW)** so a wide map fills the tall
+  viewport. Icon glyphs with an "up" (units, capitals, towers, trees,
+  graves, warning badges, tower-placement previews) are counter-rotated
+  by `ApplyGlyphUpright()` so they render upright at their rotated tile
+  positions; hex-cell-aligned overlays (tile fills, per-tile outlines,
+  territory borders, water, shore foam, tower coverage, selection
+  highlight, the symmetric move-target rings) and the directional
+  rejection arrows rotate with the board. The pan / center / zoom-fit /
+  zoom-anchor math runs through the pure, unit-tested
+  **`MapPlacement.RotatedBoardBox(w, h, zoom, angleRad)`** (the on-screen
+  AABB of the scaled+rotated board); at angle 0 it reduces exactly to the
+  legacy landscape behavior, which stays pixel-identical. The tree glyph
+  is split into a center-pivot placement node (counter-rotated) and an
+  inner trunk-base anchor (the grow animation) so rotation and the
+  rise-from-ground pivot don't fight.
+
+`project.godot` is unchanged (default stretch, resizable); the responsive
+behavior is all in the view layer. Real mobile-export settings (handheld
+orientation lock, DPI stretch mode) are a later concern. Verify by
+launching with `--resolution 720x1280` (portrait) vs `1280x720`
+(landscape) and resizing across the square boundary for a live flip.
+
 ## Logging (`Log`)
 
 `src/FourExHex.Model/Log.cs` is the master logging system — one
