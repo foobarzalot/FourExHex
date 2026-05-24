@@ -2588,9 +2588,19 @@ disagree:
   between bar containers on a landscape↔portrait flip, so button state /
   event wiring survives. The bar scaffolding
   (`MakeBarPanel`/`MakeBarFrame`/`MakeAnchoredGroup`/`Detach`) is shared
-  in **`scripts/HudBars.cs`** so the two HUDs can't drift. Both subscribe
-  to `GetViewport().SizeChanged` and re-apply on a flip.
-  - *Landscape:* the single 96-px top bar described above (unchanged).
+  in **`scripts/HudBars.cs`**, and the orientation *lifecycle* —
+  `TopBar`/`BottomBar`, the `MapInsetsChanged` event, the
+  `SizeChanged`→resolve→relayout→publish cycle — lives in the
+  **`OrientationHud : CanvasLayer`** base (Template Method): subclasses
+  override `DetachClusters` / `BuildLandscapeBars` / `BuildPortraitBars` /
+  `ComputeInsets`, plus the virtual `OnLayoutApplied` (post-flip) and
+  `OnViewportMetricsChanged` (every resize). So the two HUDs can't drift
+  on either the chrome or the coordination.
+  - *Landscape:* the single 96-px top bar described above. On windows
+    narrower than 1500 px the `TURN` / `TO PLAY` eyebrow captions are
+    dropped (via `OnViewportMetricsChanged`) so a long economy report
+    can't grow the left status group into the centered unit buttons; the
+    turn number and player name always stay.
   - *Portrait gameplay:* a **top bar** with territory-specific content
     (gold chip + buy/build), shown only while a territory is selected,
     and an always-on **bottom bar** (turn # + player + undo / End Turn /
