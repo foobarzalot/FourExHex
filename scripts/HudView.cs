@@ -11,6 +11,16 @@ using Godot;
 public partial class HudView : CanvasLayer, IHudView
 {
     public const float HudHeight = 96f;
+    // Portrait split-bar heights. Top bar carries territory-specific content
+    // (gold + buy/build) and only shows when a territory is selected; the
+    // bottom bar carries turn/player status + turn controls and is always up.
+    private const float PortraitTopBarHeight = 96f;
+    private const float PortraitBottomBarHeight = 96f;
+
+    // Fires (topInset, bottomInset) whenever the HUD's reserved map space
+    // changes — orientation flip or the portrait top bar showing/hiding. The
+    // scene root relays it to HexMapView.SetMapInsets.
+    public event Action<float, float>? MapInsetsChanged;
 
     public event Action? BuyRecruitClicked;
     public event Action<UnitLevel>? BuyUnitClicked;
@@ -39,6 +49,8 @@ public partial class HudView : CanvasLayer, IHudView
 
     private Label _turnLabel = null!;       // numeric mono turn number
     private Label _playerLabel = null!;     // current player name in their color
+    private Label _turnEyebrow = null!;     // "TURN" caption (hidden in portrait)
+    private Label _playerEyebrow = null!;   // "TO PLAY" caption (hidden in portrait)
     private Label _goldLabel = null!;       // gold + income breakdown
     private PanelContainer _goldChip = null!;
     private Label _seedLabel = null!;
@@ -79,6 +91,18 @@ public partial class HudView : CanvasLayer, IHudView
     private Label _bankruptTitleLabel = null!;
     private Label _bankruptSubLabel = null!;
 
+    // Orientation-aware bar scaffolding. The clusters are built once and
+    // reparented between these bars on a landscape↔portrait flip; the bar
+    // Panels themselves are rebuilt by ApplyLayout. _bottomBar is null in
+    // landscape (single top strip).
+    private Panel? _topBar;
+    private Panel? _bottomBar;
+    private Control _statusCluster = null!;   // TURN # + TO PLAY name
+    private Control _actionCluster = null!;   // buy palette + Build Tower + Add Text
+    private Control _controlsCluster = null!; // undo cluster + End Turn + Options
+    private ScreenOrientation _orientation = ScreenOrientation.Landscape;
+    private bool _selectionPresent;           // a territory is currently selected
+
     // Snapshot of session.Mode != None at the last Refresh, so the Escape
     // handler can decide between cancel-action (pending) and End Game (idle)
     // without holding a SessionState reference.
@@ -88,103 +112,35 @@ public partial class HudView : CanvasLayer, IHudView
     {
         Vector2 viewport = GetViewport().GetVisibleRect().Size;
 
-        // Warm-slate top strip — slightly darker than canvas BgDeep with a
-        // 1px line-soft bottom border so it reads as a layered toolbar
-        // sitting above the map. (The CSS spec calls for a vertical
-        // oklch gradient; Godot's StyleBoxFlat is flat-fill only and
-        // the visual difference at this contrast is imperceptible, so
-        // a single tone with a thin lower border carries the same look.)
-        var background = new Panel
-        {
-            Position = Vector2.Zero,
-            Size = new Vector2(viewport.X, HudHeight),
-            // Default MouseFilter = Stop — blocks any underlying
-            // sensor (e.g. the future-proofed HexHoverTooltip pattern)
-            // anywhere over the bar, including between buttons.
-        };
-        var barStyle = new StyleBoxFlat
-        {
-            BgColor = UiPalette.HudBar,
-            BorderColor = UiPalette.LineSoft,
-            BorderWidthBottom = 1,
-        };
-        background.AddThemeStyleboxOverride("panel", barStyle);
-        AddChild(background);
-
-        // Top bar split into three INDEPENDENTLY ANCHORED groups instead
-        // of one HBox with expanding spacers. The old spacer layout floated
-        // the center button cluster relative to the left status region's
-        // width, so the gold chip appearing/disappearing — or its economy
-        // report growing a few digits between territories — shoved the
-        // buttons sideways. Anchoring each group to its own reference point
-        // (left edge / bar midpoint / right edge) decouples them: the center
-        // action buttons and right-hand turn controls hold position no matter
-        // what the left status region does. MouseFilter Pass keeps the bar +
-        // groups click-through to leaf children only, so empty group area
-        // doesn't swallow clicks heading to the map below.
-        var bar = new Control
-        {
-            AnchorLeft = 0f,
-            AnchorRight = 1f,
-            AnchorTop = 0f,
-            AnchorBottom = 0f,
-            OffsetLeft = 16f,
-            OffsetRight = -16f,
-            OffsetTop = 8f,
-            OffsetBottom = HudHeight - 8f,
-            MouseFilter = Control.MouseFilterEnum.Pass,
-        };
-        AddChild(bar);
-
-        // Left status group — pinned to the left edge, grows rightward.
-        var leftGroup = new HBoxContainer
-        {
-            AnchorLeft = 0f, AnchorRight = 0f, AnchorTop = 0f, AnchorBottom = 1f,
-            GrowHorizontal = Control.GrowDirection.End,
-            MouseFilter = Control.MouseFilterEnum.Pass,
-        };
-        leftGroup.AddThemeConstantOverride("separation", 14);
-        bar.AddChild(leftGroup);
-
-        // Center action group — anchored to the bar's horizontal midpoint
-        // and grown symmetrically (GrowDirection.Both), so it stays centered
-        // on the bar regardless of the left group's width.
-        var centerGroup = new HBoxContainer
-        {
-            AnchorLeft = 0.5f, AnchorRight = 0.5f, AnchorTop = 0f, AnchorBottom = 1f,
-            GrowHorizontal = Control.GrowDirection.Both,
-            MouseFilter = Control.MouseFilterEnum.Pass,
-        };
-        centerGroup.AddThemeConstantOverride("separation", 14);
-        bar.AddChild(centerGroup);
-
-        // Right turn-controls group — pinned to the right edge, grows leftward.
-        var rightGroup = new HBoxContainer
-        {
-            AnchorLeft = 1f, AnchorRight = 1f, AnchorTop = 0f, AnchorBottom = 1f,
-            GrowHorizontal = Control.GrowDirection.Begin,
-            MouseFilter = Control.MouseFilterEnum.Pass,
-        };
-        rightGroup.AddThemeConstantOverride("separation", 14);
-        bar.AddChild(rightGroup);
+        // Build the three persistent widget clusters as parentless HBoxes.
+        // ApplyLayout parents them (plus the gold chip) into orientation-
+        // specific bars; on a landscape↔portrait flip they're reparented,
+        // never rebuilt, so their event wiring and disabled/CTA state survive.
+        // MouseFilter Pass keeps the clusters click-through to leaf children
+        // only. (The slate bar background + click-blocking now live on the
+        // bar Panels created in ApplyLayout, not a standalone background.)
+        _statusCluster = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Pass };
+        _statusCluster.AddThemeConstantOverride("separation", 14);
+        _actionCluster = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Pass };
+        _actionCluster.AddThemeConstantOverride("separation", 14);
+        _controlsCluster = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Pass };
+        _controlsCluster.AddThemeConstantOverride("separation", 14);
 
         // 1) Turn block — small "TURN" eyebrow over a mono number.
-        leftGroup.AddChild(BuildEyebrowBlock("TURN", out _turnLabel, mono: true, valueColor: UiPalette.Ink));
+        _statusCluster.AddChild(BuildEyebrowBlock("TURN", out _turnLabel, mono: true, valueColor: UiPalette.Ink, out _turnEyebrow));
         _turnLabel.Text = "1";
         _turnLabel.CustomMinimumSize = new Vector2(70, 0);
         _turnLabel.AddThemeFontSizeOverride("font_size", 36);
 
-        leftGroup.AddChild(BuildVerticalDivider());
+        _statusCluster.AddChild(BuildVerticalDivider());
 
         // 2) Current-player block — "TO PLAY" eyebrow + name in the
         // player's fill color. No swatch — the colored name already
         // identifies the active player.
-        leftGroup.AddChild(BuildEyebrowBlock("TO PLAY", out _playerLabel, mono: false, valueColor: UiPalette.Ink));
+        _statusCluster.AddChild(BuildEyebrowBlock("TO PLAY", out _playerLabel, mono: false, valueColor: UiPalette.Ink, out _playerEyebrow));
         _playerLabel.Text = "Red";
         _playerLabel.CustomMinimumSize = new Vector2(140, 0);
         _playerLabel.AddThemeFontSizeOverride("font_size", 40);
-
-        leftGroup.AddChild(BuildVerticalDivider());
 
         // 3) Gold chip — bg-deep pill containing the gold value + the
         // income breakdown. We keep the existing "value (income-upkeep=net)"
@@ -221,12 +177,10 @@ public partial class HudView : CanvasLayer, IHudView
         _goldLabel.AddThemeFontSizeOverride("font_size", 26);
         goldChip.AddChild(_goldLabel);
         // Hide the chip entirely when there's nothing to display (no
-        // territory selected, no capital) — an empty bg-deep pill in the
-        // bar reads as a missing widget. It lives in the left group, whose
-        // width no longer affects the center/right button groups, so the
-        // chip can grow or vanish freely without shifting any buttons.
+        // territory selected, no capital) — an empty bg-deep pill reads as a
+        // missing widget. ApplyLayout places it (left region in landscape,
+        // top bar in portrait); it grows/vanishes without shifting buttons.
         _goldChip = goldChip;
-        leftGroup.AddChild(goldChip);
 
         // 4) Unit palette — the four buy buttons (Recruit/Soldier/
         // Captain/Commander) live inside one rounded bg-deep PanelContainer
@@ -243,7 +197,7 @@ public partial class HudView : CanvasLayer, IHudView
         var paletteRow = new HBoxContainer();
         paletteRow.AddThemeConstantOverride("separation", 2);
         palettePanel.AddChild(paletteRow);
-        centerGroup.AddChild(palettePanel);
+        _actionCluster.AddChild(palettePanel);
 
         UnitLevel[] buyLevels = { UnitLevel.Recruit, UnitLevel.Soldier, UnitLevel.Captain, UnitLevel.Commander };
         _buyUnitButtons = new HudIconButton[buyLevels.Length];
@@ -264,7 +218,7 @@ public partial class HudView : CanvasLayer, IHudView
         _buildTowerButton = new HudIconButton(HudIcon.Tower) { Disabled = true };
         _buildTowerButton.Pressed += () => BuildTowerClicked?.Invoke();
         AudioBus.AttachClick(_buildTowerButton);
-        centerGroup.AddChild(_buildTowerButton);
+        _actionCluster.AddChild(_buildTowerButton);
 
         // Tutorial-recorder authoring affordance, parked just right of
         // Build Tower. Hidden by default (an invisible Control takes no
@@ -278,37 +232,37 @@ public partial class HudView : CanvasLayer, IHudView
         _addTextButton = new HudIconButton(HudIcon.AddText) { Visible = false };
         _addTextButton.Pressed += () => AddTextClicked?.Invoke();
         AudioBus.AttachClick(_addTextButton);
-        centerGroup.AddChild(_addTextButton);
+        _actionCluster.AddChild(_addTextButton);
 
         // 5) Undo cluster — four ghost icon buttons.
         _undoTurnButton = new HudIconButton(HudIcon.UndoAll) { Disabled = true };
         _undoTurnButton.Pressed += () => UndoTurnClicked?.Invoke();
         AudioBus.AttachClick(_undoTurnButton);
-        rightGroup.AddChild(_undoTurnButton);
+        _controlsCluster.AddChild(_undoTurnButton);
 
         _undoLastButton = new HudIconButton(HudIcon.UndoLast) { Disabled = true };
         _undoLastButton.Pressed += () => UndoLastClicked?.Invoke();
         AudioBus.AttachClick(_undoLastButton);
-        rightGroup.AddChild(_undoLastButton);
+        _controlsCluster.AddChild(_undoLastButton);
 
         _redoLastButton = new HudIconButton(HudIcon.RedoLast) { Disabled = true };
         _redoLastButton.Pressed += () => RedoLastClicked?.Invoke();
         AudioBus.AttachClick(_redoLastButton);
-        rightGroup.AddChild(_redoLastButton);
+        _controlsCluster.AddChild(_redoLastButton);
 
         _redoAllButton = new HudIconButton(HudIcon.RedoAll) { Disabled = true };
         _redoAllButton.Pressed += () => RedoAllClicked?.Invoke();
         AudioBus.AttachClick(_redoAllButton);
-        rightGroup.AddChild(_redoAllButton);
+        _controlsCluster.AddChild(_redoAllButton);
 
-        rightGroup.AddChild(BuildVerticalDivider());
+        _controlsCluster.AddChild(BuildVerticalDivider());
 
         // End Turn uses the default Button theme — the SetCta() white
         // pulse remains the only "this is the current CTA" signal.
         _endTurnButton = new HudIconButton(HudIcon.EndTurn);
         _endTurnButton.Pressed += () => EndTurnClicked?.Invoke();
         AudioBus.AttachClick(_endTurnButton);
-        rightGroup.AddChild(_endTurnButton);
+        _controlsCluster.AddChild(_endTurnButton);
 
         // Single Options button — raises the same EscRequested event
         // the Escape key fires, so the scene root's pause coordinator
@@ -317,7 +271,7 @@ public partial class HudView : CanvasLayer, IHudView
         _optionsButton = new HudIconButton(HudIcon.Options);
         _optionsButton.Pressed += () => EscRequested?.Invoke();
         AudioBus.AttachClick(_optionsButton);
-        rightGroup.AddChild(_optionsButton);
+        _controlsCluster.AddChild(_optionsButton);
 
         // Read-only seed display anchored to the bottom-left so a player
         // can recall or share the seed mid-game without crowding the
@@ -339,11 +293,213 @@ public partial class HudView : CanvasLayer, IHudView
         _seedLabel.AddThemeColorOverride("font_color", new Color(0f, 0f, 0f, 1f));
         AddChild(_seedLabel);
 
+        // Arrange the clusters for the current orientation, then track resize.
+        _orientation = ScreenLayout.Resolve(viewport.X, viewport.Y);
+        ApplyLayout(_orientation);
+        GetViewport().SizeChanged += OnViewportResized;
+        RecomputeAndPublishInsets();
+
         BuildVictoryOverlay(viewport);
         BuildDefeatOverlay(viewport);
         BuildClaimVictoryOverlay(viewport);
         BuildTutorialOverlay();
         BuildBankruptToast();
+    }
+
+    // ---- Orientation-aware layout ----------------------------------------
+
+    /// <summary>Detach a persistent cluster from whatever bar currently holds
+    /// it, so freeing the old bars on a flip never frees the cluster.</summary>
+    private static void DetachFromParent(Node node)
+    {
+        node.GetParent()?.RemoveChild(node);
+    }
+
+    /// <summary>A bar Panel anchored to the top or bottom edge of the viewport
+    /// (HudView is a CanvasLayer, so top-level Controls anchor to the viewport).
+    /// Carries the warm-slate stylebox + the 1px divider border; default
+    /// MouseFilter Stop blocks clicks over the bar from reaching the map.</summary>
+    private static Panel MakeBarPanel(bool top, float height)
+    {
+        var panel = new Panel
+        {
+            AnchorLeft = 0f, AnchorRight = 1f,
+            AnchorTop = top ? 0f : 1f,
+            AnchorBottom = top ? 0f : 1f,
+            OffsetLeft = 0f, OffsetRight = 0f,
+            OffsetTop = top ? 0f : -height,
+            OffsetBottom = top ? height : 0f,
+        };
+        var style = new StyleBoxFlat
+        {
+            BgColor = UiPalette.HudBar,
+            BorderColor = UiPalette.LineSoft,
+        };
+        if (top) style.BorderWidthBottom = 1; else style.BorderWidthTop = 1;
+        panel.AddThemeStyleboxOverride("panel", style);
+        return panel;
+    }
+
+    /// <summary>One of the three independently-anchored regions inside a bar
+    /// (left/center/right), so a cluster growing or vanishing never shoves the
+    /// others sideways.</summary>
+    private static HBoxContainer MakeAnchoredGroup(float anchorX, Control.GrowDirection grow)
+    {
+        var group = new HBoxContainer
+        {
+            AnchorLeft = anchorX, AnchorRight = anchorX, AnchorTop = 0f, AnchorBottom = 1f,
+            GrowHorizontal = grow,
+            MouseFilter = Control.MouseFilterEnum.Pass,
+        };
+        group.AddThemeConstantOverride("separation", 14);
+        return group;
+    }
+
+    /// <summary>Inner margin frame (16px sides, 8px top/bottom) that the
+    /// anchored region groups live in, matching the legacy bar insets.</summary>
+    private static Control MakeBarFrame()
+    {
+        return new Control
+        {
+            AnchorLeft = 0f, AnchorRight = 1f, AnchorTop = 0f, AnchorBottom = 1f,
+            OffsetLeft = 16f, OffsetRight = -16f, OffsetTop = 8f, OffsetBottom = -8f,
+            MouseFilter = Control.MouseFilterEnum.Pass,
+        };
+    }
+
+    /// <summary>Reparent the persistent clusters into orientation-specific
+    /// bars. Called on _Ready and on every landscape↔portrait flip.</summary>
+    private void ApplyLayout(ScreenOrientation orientation)
+    {
+        _orientation = orientation;
+
+        DetachFromParent(_statusCluster);
+        DetachFromParent(_goldChip);
+        DetachFromParent(_actionCluster);
+        DetachFromParent(_controlsCluster);
+
+        _topBar?.QueueFree();
+        _bottomBar?.QueueFree();
+        _topBar = null;
+        _bottomBar = null;
+
+        if (orientation == ScreenOrientation.Landscape)
+            BuildLandscapeBars();
+        else
+            BuildPortraitBars();
+
+        // Seed label sits bottom-left over open map in landscape; in portrait
+        // the bottom bar occupies that space, so hide it there.
+        _seedLabel.Visible = orientation == ScreenOrientation.Landscape;
+
+        // Drop the "TURN" / "TO PLAY" captions in portrait — the number and
+        // the colored player name read on their own, and the narrow bottom
+        // bar has no room for the eyebrows.
+        bool showEyebrows = orientation == ScreenOrientation.Landscape;
+        _turnEyebrow.Visible = showEyebrows;
+        _playerEyebrow.Visible = showEyebrows;
+
+        UpdateTopBarVisibility();
+    }
+
+    /// <summary>Legacy single top strip: status + gold (left), actions
+    /// (center), turn controls (right).</summary>
+    private void BuildLandscapeBars()
+    {
+        _topBar = MakeBarPanel(top: true, height: HudHeight);
+        AddChild(_topBar);
+        Control frame = MakeBarFrame();
+        _topBar.AddChild(frame);
+
+        HBoxContainer left = MakeAnchoredGroup(0f, Control.GrowDirection.End);
+        frame.AddChild(left);
+        left.AddChild(_statusCluster);
+        left.AddChild(BuildVerticalDivider());
+        left.AddChild(_goldChip);
+
+        HBoxContainer center = MakeAnchoredGroup(0.5f, Control.GrowDirection.Both);
+        frame.AddChild(center);
+        center.AddChild(_actionCluster);
+
+        HBoxContainer right = MakeAnchoredGroup(1f, Control.GrowDirection.Begin);
+        frame.AddChild(right);
+        right.AddChild(_controlsCluster);
+    }
+
+    /// <summary>Portrait split bars: top = territory content (gold + actions),
+    /// shown only when a territory is selected; bottom = status (left) + turn
+    /// controls (right), always up.</summary>
+    private void BuildPortraitBars()
+    {
+        _topBar = MakeBarPanel(top: true, height: PortraitTopBarHeight);
+        AddChild(_topBar);
+        var topRow = new HBoxContainer
+        {
+            AnchorLeft = 0.5f, AnchorRight = 0.5f, AnchorTop = 0f, AnchorBottom = 1f,
+            OffsetTop = 8f, OffsetBottom = -8f,
+            GrowHorizontal = Control.GrowDirection.Both,
+            MouseFilter = Control.MouseFilterEnum.Pass,
+        };
+        topRow.AddThemeConstantOverride("separation", 14);
+        _topBar.AddChild(topRow);
+        topRow.AddChild(_goldChip);
+        topRow.AddChild(_actionCluster);
+
+        _bottomBar = MakeBarPanel(top: false, height: PortraitBottomBarHeight);
+        AddChild(_bottomBar);
+        Control frame = MakeBarFrame();
+        _bottomBar.AddChild(frame);
+
+        HBoxContainer left = MakeAnchoredGroup(0f, Control.GrowDirection.End);
+        frame.AddChild(left);
+        left.AddChild(_statusCluster);
+
+        HBoxContainer right = MakeAnchoredGroup(1f, Control.GrowDirection.Begin);
+        frame.AddChild(right);
+        right.AddChild(_controlsCluster);
+    }
+
+    /// <summary>Top bar shows always in landscape; in portrait only when a
+    /// territory is selected (per the split-bar design).</summary>
+    private void UpdateTopBarVisibility()
+    {
+        if (_topBar == null) return;
+        _topBar.Visible = _orientation == ScreenOrientation.Landscape || _selectionPresent;
+    }
+
+    /// <summary>Called from Refresh with whether a territory is selected.
+    /// In portrait this drives the top bar's visibility and the map's top
+    /// inset; landscape ignores it (bar always up).</summary>
+    private void SetSelectionPresent(bool present)
+    {
+        if (present == _selectionPresent) return;
+        _selectionPresent = present;
+        if (_orientation != ScreenOrientation.Portrait || _topBar == null) return;
+        _topBar.Visible = present;
+        Log.Debug(Log.LogCategory.Render, $"HudView: portrait top bar visible={present}.");
+        RecomputeAndPublishInsets();
+    }
+
+    private void OnViewportResized()
+    {
+        Vector2 vp = GetViewport().GetVisibleRect().Size;
+        ScreenOrientation o = ScreenLayout.Resolve(vp.X, vp.Y);
+        if (o != _orientation)
+        {
+            ApplyLayout(o);
+            Log.Info(Log.LogCategory.Render, $"HudView: orientation → {o} at {vp.X}x{vp.Y}.");
+        }
+        RecomputeAndPublishInsets();
+    }
+
+    private void RecomputeAndPublishInsets()
+    {
+        bool topVisible = _orientation == ScreenOrientation.Landscape || _selectionPresent;
+        MapInsets insets = ScreenLayout.ComputeInsets(
+            _orientation, topVisible, HudHeight, PortraitTopBarHeight, PortraitBottomBarHeight);
+        Log.Debug(Log.LogCategory.Render,
+            $"HudView: insets top={insets.Top} bottom={insets.Bottom} ({_orientation}).");
+        MapInsetsChanged?.Invoke(insets.Top, insets.Bottom);
     }
 
     public void SetMapLabel(string text)
@@ -367,7 +523,7 @@ public partial class HudView : CanvasLayer, IHudView
     // via out so the caller can poke at its text/font/color after the
     // block is in the tree. Caller sets the value text/size/color/font
     // (so the mono numeric and the player-name treatments stay specific).
-    private Control BuildEyebrowBlock(string eyebrow, out Label value, bool mono, Color valueColor)
+    private Control BuildEyebrowBlock(string eyebrow, out Label value, bool mono, Color valueColor, out Label eyebrowLabel)
     {
         var block = new HBoxContainer
         {
@@ -375,7 +531,7 @@ public partial class HudView : CanvasLayer, IHudView
         };
         block.AddThemeConstantOverride("separation", 10);
 
-        var eyebrowLabel = new Label
+        eyebrowLabel = new Label
         {
             Text = eyebrow,
             VerticalAlignment = VerticalAlignment.Center,
@@ -1255,6 +1411,10 @@ public partial class HudView : CanvasLayer, IHudView
         // signalled with the Selected outline.
         Territory? selected = session.SelectedTerritory;
         bool hasCapital = selected?.HasCapital ?? false;
+
+        // Portrait: the territory-content top bar shows whenever a territory
+        // is selected (no-op in landscape, where the bar is always up).
+        SetSelectionPresent(selected != null);
 
         _goldChip.Visible = hasCapital;
         if (hasCapital)

@@ -237,6 +237,13 @@ public partial class HexMapView : Node2D, IHexMapView
     private float[] _zoomLevels = new[] { 1f, 1f, 1f, 1f, 1f };
     private int _zoomLevelIndex = ZoomLevelCount - 1;
 
+    // HUD-reserved insets the map must avoid when centering/clamping. The
+    // HUD owns layout policy and pushes these via SetMapInsets; defaults
+    // reproduce the legacy single-top-strip landscape behavior so nothing
+    // changes until told otherwise (and so the headless view stays correct).
+    private float _topInset = HudView.HudHeight;
+    private float _bottomInset = 0f;
+
     // Sensitivity for InputEventPanGesture (two-finger trackpad scroll).
     // Per-event delta is small and dimensionless (~0.03–1.1 in Godot 4.6
     // on macOS); exp() of the negated cumulative delta makes a brisk
@@ -1964,11 +1971,12 @@ public partial class HexMapView : Node2D, IHexMapView
     }
 
     /// <summary>Visible center of the play area in viewport space — accounts
-    /// for the HUD's reserved strip at the top.</summary>
+    /// for the HUD's reserved insets at the top and bottom.</summary>
     private Vector2 VisualCenter()
     {
         Vector2 vp = GetViewportRect().Size;
-        return new Vector2(vp.X * 0.5f, HudView.HudHeight + (vp.Y - HudView.HudHeight) * 0.5f);
+        float availY = vp.Y - _topInset - _bottomInset;
+        return new Vector2(vp.X * 0.5f, _topInset + availY * 0.5f);
     }
 
     /// <summary>Clamp the proposed Position so the map can't be dragged off-
@@ -1979,15 +1987,15 @@ public partial class HexMapView : Node2D, IHexMapView
     private Vector2 ClampPan(Vector2 desired)
     {
         Vector2 vp = GetViewportRect().Size;
-        float availY = vp.Y - HudView.HudHeight;
+        float availY = vp.Y - _topInset - _bottomInset;
         float w = PixelSize.X * _zoom;
         float h = PixelSize.Y * _zoom;
         float x = w <= vp.X
             ? (vp.X - w) * 0.5f
             : Mathf.Clamp(desired.X, vp.X - w, 0f);
         float y = h <= availY
-            ? HudView.HudHeight + (availY - h) * 0.5f
-            : Mathf.Clamp(desired.Y, HudView.HudHeight + availY - h, HudView.HudHeight);
+            ? _topInset + (availY - h) * 0.5f
+            : Mathf.Clamp(desired.Y, _topInset + availY - h, _topInset);
         return new Vector2(x, y);
     }
 
@@ -2007,7 +2015,7 @@ public partial class HexMapView : Node2D, IHexMapView
     {
         Vector2 vp = GetViewportRect().Size;
         Vector2 px = PixelSize;
-        _zoomMin = ZoomMath.ComputeZoomMin(vp.X, vp.Y, HudView.HudHeight, px.X, px.Y);
+        _zoomMin = ZoomMath.ComputeZoomMin(vp.X, vp.Y, _topInset + _bottomInset, px.X, px.Y);
         _zoomLevels = ZoomMath.BuildLevels(_zoomMin, ZoomLevelCount);
 
         _zoom = Mathf.Clamp(_zoom, _zoomMin, 1f);
@@ -2033,6 +2041,22 @@ public partial class HexMapView : Node2D, IHexMapView
 
     private void OnViewportResized()
     {
+        RecomputeZoomLevels();
+        Position = ClampPan(Position);
+    }
+
+    /// <summary>Set the HUD-reserved top/bottom insets the map centers within.
+    /// Called by the HUD (relayed through the scene root) when orientation
+    /// flips or the portrait top bar shows/hides. Re-centers immediately.
+    /// Before _Ready / outside the tree we only store — the initial
+    /// RecomputeZoomLevels in _Ready will pick the stored values up.</summary>
+    public void SetMapInsets(float top, float bottom)
+    {
+        if (Mathf.IsEqualApprox(top, _topInset) && Mathf.IsEqualApprox(bottom, _bottomInset)) return;
+        _topInset = top;
+        _bottomInset = bottom;
+        Log.Debug(Log.LogCategory.Render, $"HexMapView: insets top={top} bottom={bottom}.");
+        if (!IsInsideTree()) return;
         RecomputeZoomLevels();
         Position = ClampPan(Position);
     }

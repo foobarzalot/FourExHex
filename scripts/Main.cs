@@ -183,6 +183,13 @@ public partial class Main : Node2D
             // pan, supports maps larger than the viewport).
 
             visibleHud = new HudView();
+            // The HUD owns layout policy (orientation + which bars are up) and
+            // publishes the map's reserved top/bottom insets; relay them to the
+            // map. Subscribe BEFORE AddChild so the HUD's _Ready-time publish is
+            // caught. visibleMap is already in the tree (added above), so its
+            // SetMapInsets re-centers immediately.
+            HexMapView mapForInsets = visibleMap!;
+            visibleHud.MapInsetsChanged += (top, bottom) => mapForInsets.SetMapInsets(top, bottom);
             AddChild(visibleHud);
 
             // Scene-level actions: Play Again reloads the whole
