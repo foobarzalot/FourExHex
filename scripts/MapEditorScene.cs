@@ -27,6 +27,10 @@ public partial class MapEditorScene : Node2D
         AddChild(_panel);
 
         _hud = new MapEditorHudView();
+        // Relay the HUD's reserved map insets to the editor map. Subscribe
+        // BEFORE AddChild so the HUD's _Ready-time publish is caught; the
+        // panel's Map is already in the tree (panel added above).
+        _hud.MapInsetsChanged += (top, bottom) => _panel.Map.SetMapInsets(top, bottom);
         AddChild(_hud);
         _hud.EscRequested += OpenEscMenu;
         _hud.GenerateRequested += _panel.GenerateMap;

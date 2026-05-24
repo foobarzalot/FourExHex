@@ -308,75 +308,16 @@ public partial class HudView : CanvasLayer, IHudView
 
     // ---- Orientation-aware layout ----------------------------------------
 
-    /// <summary>Detach a persistent cluster from whatever bar currently holds
-    /// it, so freeing the old bars on a flip never frees the cluster.</summary>
-    private static void DetachFromParent(Node node)
-    {
-        node.GetParent()?.RemoveChild(node);
-    }
-
-    /// <summary>A bar Panel anchored to the top or bottom edge of the viewport
-    /// (HudView is a CanvasLayer, so top-level Controls anchor to the viewport).
-    /// Carries the warm-slate stylebox + the 1px divider border; default
-    /// MouseFilter Stop blocks clicks over the bar from reaching the map.</summary>
-    private static Panel MakeBarPanel(bool top, float height)
-    {
-        var panel = new Panel
-        {
-            AnchorLeft = 0f, AnchorRight = 1f,
-            AnchorTop = top ? 0f : 1f,
-            AnchorBottom = top ? 0f : 1f,
-            OffsetLeft = 0f, OffsetRight = 0f,
-            OffsetTop = top ? 0f : -height,
-            OffsetBottom = top ? height : 0f,
-        };
-        var style = new StyleBoxFlat
-        {
-            BgColor = UiPalette.HudBar,
-            BorderColor = UiPalette.LineSoft,
-        };
-        if (top) style.BorderWidthBottom = 1; else style.BorderWidthTop = 1;
-        panel.AddThemeStyleboxOverride("panel", style);
-        return panel;
-    }
-
-    /// <summary>One of the three independently-anchored regions inside a bar
-    /// (left/center/right), so a cluster growing or vanishing never shoves the
-    /// others sideways.</summary>
-    private static HBoxContainer MakeAnchoredGroup(float anchorX, Control.GrowDirection grow)
-    {
-        var group = new HBoxContainer
-        {
-            AnchorLeft = anchorX, AnchorRight = anchorX, AnchorTop = 0f, AnchorBottom = 1f,
-            GrowHorizontal = grow,
-            MouseFilter = Control.MouseFilterEnum.Pass,
-        };
-        group.AddThemeConstantOverride("separation", 14);
-        return group;
-    }
-
-    /// <summary>Inner margin frame (16px sides, 8px top/bottom) that the
-    /// anchored region groups live in, matching the legacy bar insets.</summary>
-    private static Control MakeBarFrame()
-    {
-        return new Control
-        {
-            AnchorLeft = 0f, AnchorRight = 1f, AnchorTop = 0f, AnchorBottom = 1f,
-            OffsetLeft = 16f, OffsetRight = -16f, OffsetTop = 8f, OffsetBottom = -8f,
-            MouseFilter = Control.MouseFilterEnum.Pass,
-        };
-    }
-
     /// <summary>Reparent the persistent clusters into orientation-specific
     /// bars. Called on _Ready and on every landscape↔portrait flip.</summary>
     private void ApplyLayout(ScreenOrientation orientation)
     {
         _orientation = orientation;
 
-        DetachFromParent(_statusCluster);
-        DetachFromParent(_goldChip);
-        DetachFromParent(_actionCluster);
-        DetachFromParent(_controlsCluster);
+        HudBars.Detach(_statusCluster);
+        HudBars.Detach(_goldChip);
+        HudBars.Detach(_actionCluster);
+        HudBars.Detach(_controlsCluster);
 
         _topBar?.QueueFree();
         _bottomBar?.QueueFree();
@@ -406,22 +347,22 @@ public partial class HudView : CanvasLayer, IHudView
     /// (center), turn controls (right).</summary>
     private void BuildLandscapeBars()
     {
-        _topBar = MakeBarPanel(top: true, height: HudHeight);
+        _topBar = HudBars.MakeBarPanel(top: true, height: HudHeight);
         AddChild(_topBar);
-        Control frame = MakeBarFrame();
+        Control frame = HudBars.MakeBarFrame();
         _topBar.AddChild(frame);
 
-        HBoxContainer left = MakeAnchoredGroup(0f, Control.GrowDirection.End);
+        HBoxContainer left = HudBars.MakeAnchoredGroup(0f, Control.GrowDirection.End);
         frame.AddChild(left);
         left.AddChild(_statusCluster);
         left.AddChild(BuildVerticalDivider());
         left.AddChild(_goldChip);
 
-        HBoxContainer center = MakeAnchoredGroup(0.5f, Control.GrowDirection.Both);
+        HBoxContainer center = HudBars.MakeAnchoredGroup(0.5f, Control.GrowDirection.Both);
         frame.AddChild(center);
         center.AddChild(_actionCluster);
 
-        HBoxContainer right = MakeAnchoredGroup(1f, Control.GrowDirection.Begin);
+        HBoxContainer right = HudBars.MakeAnchoredGroup(1f, Control.GrowDirection.Begin);
         frame.AddChild(right);
         right.AddChild(_controlsCluster);
     }
@@ -431,7 +372,7 @@ public partial class HudView : CanvasLayer, IHudView
     /// controls (right), always up.</summary>
     private void BuildPortraitBars()
     {
-        _topBar = MakeBarPanel(top: true, height: PortraitTopBarHeight);
+        _topBar = HudBars.MakeBarPanel(top: true, height: PortraitTopBarHeight);
         AddChild(_topBar);
         var topRow = new HBoxContainer
         {
@@ -445,16 +386,16 @@ public partial class HudView : CanvasLayer, IHudView
         topRow.AddChild(_goldChip);
         topRow.AddChild(_actionCluster);
 
-        _bottomBar = MakeBarPanel(top: false, height: PortraitBottomBarHeight);
+        _bottomBar = HudBars.MakeBarPanel(top: false, height: PortraitBottomBarHeight);
         AddChild(_bottomBar);
-        Control frame = MakeBarFrame();
+        Control frame = HudBars.MakeBarFrame();
         _bottomBar.AddChild(frame);
 
-        HBoxContainer left = MakeAnchoredGroup(0f, Control.GrowDirection.End);
+        HBoxContainer left = HudBars.MakeAnchoredGroup(0f, Control.GrowDirection.End);
         frame.AddChild(left);
         left.AddChild(_statusCluster);
 
-        HBoxContainer right = MakeAnchoredGroup(1f, Control.GrowDirection.Begin);
+        HBoxContainer right = HudBars.MakeAnchoredGroup(1f, Control.GrowDirection.Begin);
         frame.AddChild(right);
         right.AddChild(_controlsCluster);
     }
