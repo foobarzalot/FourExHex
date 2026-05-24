@@ -2,6 +2,52 @@
 
 Running list of known issues, flaky tests, and shortcuts that should eventually be cleaned up. Add new entries at the top.
 
+## Android APK pipeline added but never built/verified (no SDK, no device yet)
+
+**Where:** added 2026-05-23. New "Android" preset in `export_presets.cfg`
+(`[preset.2]`) + `tools/build_android.sh`. Keystores generated under
+`~/Library/Application Support/Godot/keystores/` (debug + release;
+credentials in the non-committed `fourexhex-android-creds.sh`).
+
+**Symptom / shortcut taken:** the build pipeline is written but has **never
+produced an APK** and has **never been smoke-tested on a device**. The Android
+SDK is not installed (editor settings point at `~/Library/Android/sdk`, which
+doesn't exist yet) and no device has been attached. `tools/build_android.sh`
+currently stops at its fail-fast SDK check. Task #4 of the original plan
+(build + `adb install` + logcat verification + user confirmation of
+tap-select / pinch-zoom) is outstanding.
+
+**The net8-vs-net9 constraint (the important gotcha):** Godot 4.6.1's
+**prebuilt** Android template hardcodes **net9.0** as the only supported C#
+TFM (string `net9.0` is baked into the engine binary; the editor's own
+`GodotPlugins`/`GodotTools` runtimeconfigs are `net8.0`). This project pins
+`net8.0` across all four csprojs, and a net9 game assembly would no longer
+load in the net8 editor / desktop builds (no major-version roll-forward) —
+which is almost certainly the wall hit when the project briefly tried a higher
+TFM before settling on net8.0. **Resolution:** use a custom **Gradle build**
+(`gradle_build/use_gradle_build=true`), which runs `dotnet publish` against
+the project's own net8.0 and bundles that runtime into the APK, bypassing the
+net9 check. This is the engine's own suggested workaround. So: do NOT "fix"
+this by bumping the TFM — that re-breaks desktop. Keep net8.0 + gradle build.
+
+**SDK components the gradle build requires** (Godot 4.6.1 build template:
+Gradle 8.11.1, AGP 8.6.1): `platforms;android-35`, `build-tools;35.x`,
+`ndk;28.1.13356709` (exact), `platform-tools`, `cmdline-tools` (licenses
+accepted), and JDK ≥ 17 (the installed JDK 21 is fine). The Gradle wrapper
+downloads itself + AGP deps on the first build (one-time network).
+
+**Candidate next steps:** (1) install the SDK components above; (2) run
+`tools/build_android.sh debug` (it auto-installs the `res://android/build/`
+template via `--install-android-build-template`); (3) `adb install -r` +
+read logcat for a clean boot; (4) confirm tap-select + pinch-zoom on device;
+(5) then `tools/build_android.sh release`. **Also unverified:** that
+`dotnet publish` for the android RID succeeds under the gradle build with only
+the .NET 8 SDK installed (no android workload) — if it complains, that's the
+first thing to chase.
+
+**Severity:** the Android target is non-functional until built+verified. Not
+blocking any desktop path.
+
 ## Custom-draw rendering in HexMapView/HudView is full of unnamed magic numbers + long methods
 
 **Where:** discovered 2026-05-21 during a view-styling code-debt audit

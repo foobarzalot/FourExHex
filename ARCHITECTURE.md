@@ -2660,6 +2660,65 @@ log under `Log.LogCategory.Input`. The gesture state machine is view-layer
 verifiable only on real touch hardware (Mac trackpad exercises the
 `MagnifyGesture` path, not this one).
 
+## Platform builds & Android export
+
+Three export presets live in `export_presets.cfg`, each with a
+matching script in `tools/` that builds the C# assemblies and runs a
+headless Godot export:
+
+- **macOS** (`tools/build_macos.sh`) → `build/macos/FourExHex.app`
+- **Windows** (`tools/build_windows.sh`) → `build/windows/FourExHex.exe`
+- **Android** (`tools/build_android.sh`) → `build/android/FourExHex-{debug,release}.apk`
+
+All three follow the same shape: `dotnet build -c Debug` (so the
+editor can load the assembly) **plus** `-c ExportDebug`/`-c ExportRelease`
+for the export, then `godot --headless --export-debug|--export-release
+<preset> <out>`. See each script's header for the platform-specific
+gotchas it papers over.
+
+### The net8-vs-net9 constraint (why Android uses a gradle build)
+
+Godot 4.6.1's **prebuilt** Android template hardcodes **net9.0** as the
+only supported C# target framework (the string is baked into the engine
+binary), but this project pins **net8.0** across all four csprojs — and
+the editor's own runtime (`GodotPlugins`/`GodotTools`) is net8.0, so a
+net9 game assembly would no longer load in the editor / desktop builds
+(no major-version roll-forward). Retargeting up is therefore **not** an
+option: it re-breaks every desktop path.
+
+The engine's own advice is "use gradle builds instead", so the Android
+preset sets **`gradle_build/use_gradle_build=true`**. A custom Gradle
+build runs `dotnet publish` against the project's net8.0 and bundles
+that runtime into the APK, bypassing the net9 check. `build_android.sh`
+passes `--install-android-build-template` (idempotent) so the Gradle
+project is dropped into `res://android/build/` on first run; `/android/`
+is gitignored. The build template pins Gradle 8.11.1 / AGP 8.6.1 /
+compileSdk 35 / NDK 28.1.13356709 and needs JDK ≥ 17 (the machine's JDK
+21 is fine). .NET on Android is 64-bit only, so the preset enables
+**arm64-v8a only** — re-enabling a 32-bit ABI breaks the publish step.
+
+### Signing
+
+Debug and release keystores live **outside the repo** under
+`~/Library/Application Support/Godot/keystores/`. Credentials are sourced
+from a non-committed `fourexhex-android-creds.sh` into the
+`GODOT_ANDROID_KEYSTORE_{DEBUG,RELEASE}_{PATH,USER,PASSWORD}` env vars
+Godot reads at export time, so the `export_presets.cfg` keystore fields
+stay empty and no secret is committed.
+
+### Orientation
+
+`project.godot` sets `display/window/handheld/orientation=6` (Godot
+"Sensor" → Android manifest `screenOrientation="13"` / `fullUser`), so
+the app follows the device through all four orientations when the
+phone's auto-rotate is on. No code change was needed: the
+`OrientationHud` layer (see *Responsive layout* above) resolves
+orientation from the live viewport size and relayouts on every
+`SizeChanged`, so a rotation that resizes the viewport flips the board
+and HUD automatically. **Gotcha:** the setting key is `handheld`, not
+`handle` — Godot silently ignores an unknown key and keeps the default
+landscape (0).
+
 ## Logging (`Log`)
 
 `src/FourExHex.Model/Log.cs` is the master logging system — one

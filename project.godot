@@ -25,6 +25,7 @@ AudioBus="*res://scripts/AudioBus.cs"
 
 window/size/viewport_width=1600
 window/size/viewport_height=1080
+window/handheld/orientation=6
 
 [dotnet]
 
