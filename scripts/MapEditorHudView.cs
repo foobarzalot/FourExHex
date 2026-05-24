@@ -13,7 +13,7 @@ using Godot;
 /// is the play-scene controller contract and includes events the editor
 /// has no use for.
 /// </summary>
-public partial class MapEditorHudView : CanvasLayer
+public partial class MapEditorHudView : OrientationHud
 {
     public const int SeedMin = 1;
     public const int SeedMax = 1000;
@@ -43,9 +43,6 @@ public partial class MapEditorHudView : CanvasLayer
     public event Action? UndoAllClicked;
     public event Action? RedoLastClicked;
     public event Action? RedoAllClicked;
-    // Fires (topInset, bottomInset) when the HUD's reserved map space changes
-    // (orientation flip). MapEditorScene relays it to the editor HexMapView.
-    public event Action<float, float>? MapInsetsChanged;
 
     /// <summary>
     /// When false, the right-side Save Map / Load Map / Exit buttons are
@@ -77,14 +74,11 @@ public partial class MapEditorHudView : CanvasLayer
     private HudIconButton _redoLastButton = null!;
     private HudIconButton _redoAllButton = null!;
 
-    // Orientation-aware bar scaffolding (mirrors HudView). Clusters are built
-    // once and reparented between bars on a flip; bar Panels are rebuilt.
-    private Panel? _topBar;
-    private Panel? _bottomBar;
+    // Persistent clusters, built once and reparented between the bars
+    // (TopBar/BottomBar, owned by OrientationHud) on a landscape↔portrait flip.
     private Control _paletteCluster = null!;      // all paint swatches/tools
     private Control _seedCluster = null!;         // SEED field + Generate die
     private Control _editControlsCluster = null!; // undo/redo (+ Options)
-    private ScreenOrientation _orientation = ScreenOrientation.Landscape;
 
     public override void _Ready()
     {
@@ -272,43 +266,27 @@ public partial class MapEditorHudView : CanvasLayer
             _editControlsCluster.AddChild(optionsButton);
         }
 
-        // Arrange the clusters for the current orientation, then track resize.
-        _orientation = ScreenLayout.Resolve(viewport.X, viewport.Y);
-        ApplyLayout(_orientation);
-        GetViewport().SizeChanged += OnViewportResized;
-        RecomputeAndPublishInsets();
+        // Arrange the clusters for the current orientation + track resize
+        // (OrientationHud owns the bars + the flip/publish lifecycle).
+        InitOrientation();
     }
 
-    // ---- Orientation-aware layout ----------------------------------------
+    // ---- Orientation-aware layout (OrientationHud hooks) -----------------
 
-    /// <summary>Reparent the clusters into orientation-specific bars: landscape
-    /// = single top strip (seed+palette left, undo/options right); portrait =
-    /// paint palette on top, seed/generate + controls on the bottom.</summary>
-    private void ApplyLayout(ScreenOrientation orientation)
+    protected override void DetachClusters()
     {
-        _orientation = orientation;
-
         HudBars.Detach(_seedCluster);
         HudBars.Detach(_paletteCluster);
         HudBars.Detach(_editControlsCluster);
-
-        _topBar?.QueueFree();
-        _bottomBar?.QueueFree();
-        _topBar = null;
-        _bottomBar = null;
-
-        if (orientation == ScreenOrientation.Landscape)
-            BuildLandscapeBars();
-        else
-            BuildPortraitBars();
     }
 
-    private void BuildLandscapeBars()
+    /// <summary>Single top strip: seed + palette (left), undo/options (right).</summary>
+    protected override void BuildLandscapeBars()
     {
-        _topBar = HudBars.MakeBarPanel(top: true, height: HudView.HudHeight, topOffset: TopOffsetPx);
-        AddChild(_topBar);
+        TopBar = HudBars.MakeBarPanel(top: true, height: HudView.HudHeight, topOffset: TopOffsetPx);
+        AddChild(TopBar);
         Control frame = HudBars.MakeBarFrame();
-        _topBar.AddChild(frame);
+        TopBar.AddChild(frame);
 
         HBoxContainer left = HudBars.MakeAnchoredGroup(0f, Control.GrowDirection.End);
         frame.AddChild(left);
@@ -321,12 +299,14 @@ public partial class MapEditorHudView : CanvasLayer
         right.AddChild(_editControlsCluster);
     }
 
-    private void BuildPortraitBars()
+    /// <summary>Portrait split: all paint options on top; seed/generate +
+    /// undo/redo/options on the bottom.</summary>
+    protected override void BuildPortraitBars()
     {
         // Top bar: all paint options (always visible — the editor has no
         // selection concept).
-        _topBar = HudBars.MakeBarPanel(top: true, height: HudView.HudHeight, topOffset: TopOffsetPx);
-        AddChild(_topBar);
+        TopBar = HudBars.MakeBarPanel(top: true, height: HudView.HudHeight, topOffset: TopOffsetPx);
+        AddChild(TopBar);
         var topRow = new HBoxContainer
         {
             AnchorLeft = 0.5f, AnchorRight = 0.5f, AnchorTop = 0f, AnchorBottom = 1f,
@@ -335,14 +315,14 @@ public partial class MapEditorHudView : CanvasLayer
             MouseFilter = Control.MouseFilterEnum.Pass,
         };
         topRow.AddThemeConstantOverride("separation", 14);
-        _topBar.AddChild(topRow);
+        TopBar.AddChild(topRow);
         topRow.AddChild(_paletteCluster);
 
         // Bottom bar: seed + generate (left) and undo/redo + options (right).
-        _bottomBar = HudBars.MakeBarPanel(top: false, height: PortraitBottomBarHeight);
-        AddChild(_bottomBar);
+        BottomBar = HudBars.MakeBarPanel(top: false, height: PortraitBottomBarHeight);
+        AddChild(BottomBar);
         Control frame = HudBars.MakeBarFrame();
-        _bottomBar.AddChild(frame);
+        BottomBar.AddChild(frame);
 
         HBoxContainer left = HudBars.MakeAnchoredGroup(0f, Control.GrowDirection.End);
         frame.AddChild(left);
@@ -353,32 +333,17 @@ public partial class MapEditorHudView : CanvasLayer
         right.AddChild(_editControlsCluster);
     }
 
-    private void OnViewportResized()
-    {
-        Vector2 vp = GetViewport().GetVisibleRect().Size;
-        ScreenOrientation o = ScreenLayout.Resolve(vp.X, vp.Y);
-        if (o != _orientation)
-        {
-            ApplyLayout(o);
-            Log.Info(Log.LogCategory.Render, $"MapEditorHudView: orientation → {o} at {vp.X}x{vp.Y}.");
-        }
-        RecomputeAndPublishInsets();
-    }
-
-    private void RecomputeAndPublishInsets()
+    protected override MapInsets ComputeInsets()
     {
         // Editor top bar is always up (no selection gating), so topBarVisible
-        // is always true. Landscape/portrait top inset includes TopOffsetPx so
-        // a host (tutorial builder) that slides the strip down is accounted for.
-        MapInsets insets = ScreenLayout.ComputeInsets(
-            _orientation,
+        // is always true. The top inset includes TopOffsetPx so a host (tutorial
+        // builder) that slides the strip down is accounted for.
+        return ScreenLayout.ComputeInsets(
+            Orientation,
             topBarVisible: true,
             landscapeBarHeight: TopOffsetPx + HudView.HudHeight,
             portraitTopBarHeight: TopOffsetPx + HudView.HudHeight,
             portraitBottomBarHeight: PortraitBottomBarHeight);
-        Log.Debug(Log.LogCategory.Render,
-            $"MapEditorHudView: insets top={insets.Top} bottom={insets.Bottom} ({_orientation}).");
-        MapInsetsChanged?.Invoke(insets.Top, insets.Bottom);
     }
 
     private static HudIconButton MakeUndoButton(HudIcon icon, Action onPressed)

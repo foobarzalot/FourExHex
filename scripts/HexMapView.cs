@@ -2035,17 +2035,23 @@ public partial class HexMapView : Node2D, IHexMapView
     public void CenterOnTerritory(Territory territory)
     {
         if (!territory.HasCapital) return;
-        // The capital's pixel position is in unscaled local space; scale AND
-        // rotate it to world space before subtracting from VisualCenter.
+        // The capital's pixel position is in unscaled local space; map it to a
+        // world offset (zoom + rotation) before subtracting from VisualCenter.
         Vector2 localCenter = FirstHexCenterOffset + HexPixel.ToPixel(territory.Capital!.Value, HexSize);
-        Position = ClampPan(VisualCenter() - (localCenter * _zoom).Rotated(_mapAngleRad));
+        Position = ClampPan(VisualCenter() - ToWorldOffset(localCenter, _zoom));
     }
 
     /// <summary>Center the (possibly rotated) board in the play area.</summary>
     private void RecenterMap()
     {
-        Position = ClampPan(VisualCenter() - (PixelSize * 0.5f * _zoom).Rotated(_mapAngleRad));
+        Position = ClampPan(VisualCenter() - ToWorldOffset(PixelSize * 0.5f, _zoom));
     }
+
+    /// <summary>Map an unscaled local board offset to a world-space offset by
+    /// applying the current zoom and board rotation. (The inverse direction —
+    /// world→local for input — is handled by Godot's <c>ToLocal</c>.)</summary>
+    private Vector2 ToWorldOffset(Vector2 localOffset, float zoom) =>
+        (localOffset * zoom).Rotated(_mapAngleRad);
 
     /// <summary>Recompute zoom range and discrete levels for the current
     /// viewport size and snap _zoom into range. Called on _Ready and
@@ -2180,7 +2186,7 @@ public partial class HexMapView : Node2D, IHexMapView
         Vector2 localUnderAnchor = ToLocal(anchorVp);
         Scale = new Vector2(newZoom, newZoom);
         _zoom = newZoom;
-        Position = ClampPan(anchorVp - (localUnderAnchor * newZoom).Rotated(_mapAngleRad));
+        Position = ClampPan(anchorVp - ToWorldOffset(localUnderAnchor, newZoom));
         _zoomLevelIndex = ClosestLevelIndex(_zoom);
     }
 

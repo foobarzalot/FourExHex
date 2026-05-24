@@ -8,7 +8,7 @@ using Godot;
 /// updates label text / button disabled state when the controller calls
 /// <see cref="Refresh"/>. Owns no game data.
 /// </summary>
-public partial class HudView : CanvasLayer, IHudView
+public partial class HudView : OrientationHud, IHudView
 {
     public const float HudHeight = 96f;
     // Portrait split-bar heights. Top bar carries territory-specific content
@@ -16,11 +16,6 @@ public partial class HudView : CanvasLayer, IHudView
     // bottom bar carries turn/player status + turn controls and is always up.
     private const float PortraitTopBarHeight = 96f;
     private const float PortraitBottomBarHeight = 96f;
-
-    // Fires (topInset, bottomInset) whenever the HUD's reserved map space
-    // changes — orientation flip or the portrait top bar showing/hiding. The
-    // scene root relays it to HexMapView.SetMapInsets.
-    public event Action<float, float>? MapInsetsChanged;
 
     public event Action? BuyRecruitClicked;
     public event Action<UnitLevel>? BuyUnitClicked;
@@ -91,16 +86,11 @@ public partial class HudView : CanvasLayer, IHudView
     private Label _bankruptTitleLabel = null!;
     private Label _bankruptSubLabel = null!;
 
-    // Orientation-aware bar scaffolding. The clusters are built once and
-    // reparented between these bars on a landscape↔portrait flip; the bar
-    // Panels themselves are rebuilt by ApplyLayout. _bottomBar is null in
-    // landscape (single top strip).
-    private Panel? _topBar;
-    private Panel? _bottomBar;
+    // Persistent clusters, built once and reparented between the bars
+    // (TopBar/BottomBar, owned by OrientationHud) on a landscape↔portrait flip.
     private Control _statusCluster = null!;   // TURN # + TO PLAY name
     private Control _actionCluster = null!;   // buy palette + Build Tower + Add Text
     private Control _controlsCluster = null!; // undo cluster + End Turn + Options
-    private ScreenOrientation _orientation = ScreenOrientation.Landscape;
     private bool _selectionPresent;           // a territory is currently selected
 
     // Snapshot of session.Mode != None at the last Refresh, so the Escape
@@ -293,11 +283,9 @@ public partial class HudView : CanvasLayer, IHudView
         _seedLabel.AddThemeColorOverride("font_color", new Color(0f, 0f, 0f, 1f));
         AddChild(_seedLabel);
 
-        // Arrange the clusters for the current orientation, then track resize.
-        _orientation = ScreenLayout.Resolve(viewport.X, viewport.Y);
-        ApplyLayout(_orientation);
-        GetViewport().SizeChanged += OnViewportResized;
-        RecomputeAndPublishInsets();
+        // Arrange the clusters for the current orientation + track resize
+        // (OrientationHud owns the bars + the flip/publish lifecycle).
+        InitOrientation();
 
         BuildVictoryOverlay(viewport);
         BuildDefeatOverlay(viewport);
@@ -306,51 +294,24 @@ public partial class HudView : CanvasLayer, IHudView
         BuildBankruptToast();
     }
 
-    // ---- Orientation-aware layout ----------------------------------------
+    // ---- Orientation-aware layout (OrientationHud hooks) -----------------
 
-    /// <summary>Reparent the persistent clusters into orientation-specific
-    /// bars. Called on _Ready and on every landscape↔portrait flip.</summary>
-    private void ApplyLayout(ScreenOrientation orientation)
+    protected override void DetachClusters()
     {
-        _orientation = orientation;
-
         HudBars.Detach(_statusCluster);
         HudBars.Detach(_goldChip);
         HudBars.Detach(_actionCluster);
         HudBars.Detach(_controlsCluster);
-
-        _topBar?.QueueFree();
-        _bottomBar?.QueueFree();
-        _topBar = null;
-        _bottomBar = null;
-
-        if (orientation == ScreenOrientation.Landscape)
-            BuildLandscapeBars();
-        else
-            BuildPortraitBars();
-
-        // Seed label sits bottom-left over open map in landscape; in portrait
-        // the bottom bar occupies that space, so hide it there.
-        _seedLabel.Visible = orientation == ScreenOrientation.Landscape;
-
-        // Drop the "TURN" / "TO PLAY" captions in portrait — the number and
-        // the colored player name read on their own, and the narrow bottom
-        // bar has no room for the eyebrows.
-        bool showEyebrows = orientation == ScreenOrientation.Landscape;
-        _turnEyebrow.Visible = showEyebrows;
-        _playerEyebrow.Visible = showEyebrows;
-
-        UpdateTopBarVisibility();
     }
 
     /// <summary>Legacy single top strip: status + gold (left), actions
     /// (center), turn controls (right).</summary>
-    private void BuildLandscapeBars()
+    protected override void BuildLandscapeBars()
     {
-        _topBar = HudBars.MakeBarPanel(top: true, height: HudHeight);
-        AddChild(_topBar);
+        TopBar = HudBars.MakeBarPanel(top: true, height: HudHeight);
+        AddChild(TopBar);
         Control frame = HudBars.MakeBarFrame();
-        _topBar.AddChild(frame);
+        TopBar.AddChild(frame);
 
         HBoxContainer left = HudBars.MakeAnchoredGroup(0f, Control.GrowDirection.End);
         frame.AddChild(left);
@@ -370,10 +331,10 @@ public partial class HudView : CanvasLayer, IHudView
     /// <summary>Portrait split bars: top = territory content (gold + actions),
     /// shown only when a territory is selected; bottom = status (left) + turn
     /// controls (right), always up.</summary>
-    private void BuildPortraitBars()
+    protected override void BuildPortraitBars()
     {
-        _topBar = HudBars.MakeBarPanel(top: true, height: PortraitTopBarHeight);
-        AddChild(_topBar);
+        TopBar = HudBars.MakeBarPanel(top: true, height: PortraitTopBarHeight);
+        AddChild(TopBar);
         var topRow = new HBoxContainer
         {
             AnchorLeft = 0.5f, AnchorRight = 0.5f, AnchorTop = 0f, AnchorBottom = 1f,
@@ -382,14 +343,14 @@ public partial class HudView : CanvasLayer, IHudView
             MouseFilter = Control.MouseFilterEnum.Pass,
         };
         topRow.AddThemeConstantOverride("separation", 14);
-        _topBar.AddChild(topRow);
+        TopBar.AddChild(topRow);
         topRow.AddChild(_goldChip);
         topRow.AddChild(_actionCluster);
 
-        _bottomBar = HudBars.MakeBarPanel(top: false, height: PortraitBottomBarHeight);
-        AddChild(_bottomBar);
+        BottomBar = HudBars.MakeBarPanel(top: false, height: PortraitBottomBarHeight);
+        AddChild(BottomBar);
         Control frame = HudBars.MakeBarFrame();
-        _bottomBar.AddChild(frame);
+        BottomBar.AddChild(frame);
 
         HBoxContainer left = HudBars.MakeAnchoredGroup(0f, Control.GrowDirection.End);
         frame.AddChild(left);
@@ -400,12 +361,46 @@ public partial class HudView : CanvasLayer, IHudView
         right.AddChild(_controlsCluster);
     }
 
+    // Below this viewport width the "TURN" / "TO PLAY" eyebrow captions are
+    // dropped even in landscape: the status group would otherwise grow wide
+    // enough (long economy report) to crowd the centered unit buttons. The
+    // design target is 1600 wide; common laptop/narrow widths go compact.
+    private const float CompactLandscapeWidth = 1500f;
+
+    /// <summary>Post-layout (orientation flip): the seed label is landscape-
+    /// only, and the top bar follows the selection. Eyebrow visibility is
+    /// width-driven, handled in OnViewportMetricsChanged.</summary>
+    protected override void OnLayoutApplied()
+    {
+        _seedLabel.Visible = Orientation == ScreenOrientation.Landscape;
+        UpdateTopBarVisibility();
+    }
+
+    /// <summary>Drop the "TURN" / "TO PLAY" captions in portrait (no room) and
+    /// in a narrow landscape window (they'd crowd the centered unit buttons).
+    /// The turn number and player name always stay.</summary>
+    protected override void OnViewportMetricsChanged()
+    {
+        float width = GetViewport().GetVisibleRect().Size.X;
+        bool showEyebrows = Orientation == ScreenOrientation.Landscape
+            && width >= CompactLandscapeWidth;
+        _turnEyebrow.Visible = showEyebrows;
+        _playerEyebrow.Visible = showEyebrows;
+    }
+
+    protected override MapInsets ComputeInsets()
+    {
+        bool topVisible = Orientation == ScreenOrientation.Landscape || _selectionPresent;
+        return ScreenLayout.ComputeInsets(
+            Orientation, topVisible, HudHeight, PortraitTopBarHeight, PortraitBottomBarHeight);
+    }
+
     /// <summary>Top bar shows always in landscape; in portrait only when a
     /// territory is selected (per the split-bar design).</summary>
     private void UpdateTopBarVisibility()
     {
-        if (_topBar == null) return;
-        _topBar.Visible = _orientation == ScreenOrientation.Landscape || _selectionPresent;
+        if (TopBar == null) return;
+        TopBar.Visible = Orientation == ScreenOrientation.Landscape || _selectionPresent;
     }
 
     /// <summary>Called from Refresh with whether a territory is selected.
@@ -415,32 +410,10 @@ public partial class HudView : CanvasLayer, IHudView
     {
         if (present == _selectionPresent) return;
         _selectionPresent = present;
-        if (_orientation != ScreenOrientation.Portrait || _topBar == null) return;
-        _topBar.Visible = present;
+        if (Orientation != ScreenOrientation.Portrait || TopBar == null) return;
+        TopBar.Visible = present;
         Log.Debug(Log.LogCategory.Render, $"HudView: portrait top bar visible={present}.");
-        RecomputeAndPublishInsets();
-    }
-
-    private void OnViewportResized()
-    {
-        Vector2 vp = GetViewport().GetVisibleRect().Size;
-        ScreenOrientation o = ScreenLayout.Resolve(vp.X, vp.Y);
-        if (o != _orientation)
-        {
-            ApplyLayout(o);
-            Log.Info(Log.LogCategory.Render, $"HudView: orientation → {o} at {vp.X}x{vp.Y}.");
-        }
-        RecomputeAndPublishInsets();
-    }
-
-    private void RecomputeAndPublishInsets()
-    {
-        bool topVisible = _orientation == ScreenOrientation.Landscape || _selectionPresent;
-        MapInsets insets = ScreenLayout.ComputeInsets(
-            _orientation, topVisible, HudHeight, PortraitTopBarHeight, PortraitBottomBarHeight);
-        Log.Debug(Log.LogCategory.Render,
-            $"HudView: insets top={insets.Top} bottom={insets.Bottom} ({_orientation}).");
-        MapInsetsChanged?.Invoke(insets.Top, insets.Bottom);
+        PublishInsets();
     }
 
     public void SetMapLabel(string text)
