@@ -2636,6 +2636,29 @@ behavior is all in the view layer. Real mobile-export settings (handheld
 orientation lock, DPI stretch mode) are a later concern. Verify by
 launching with `--resolution 720x1280` (portrait) vs `1280x720`
 (landscape) and resizing across the square boundary for a live flip.
+**Do not switch `window/stretch/mode` to `canvas_items`/`expand`** — the
+view-layer layout already scales from the real viewport size, so a stretch
+mode double-applies scaling and shrinks everything (regressed once in
+portrait, then reverted).
+
+**Touch input.** Touchscreen support is additive — mouse/trackpad stay
+fully functional. Single-finger gestures need no special code or project
+setting: Godot's default `emulate_mouse_from_touch` synthesizes mouse
+events from finger 0, so **tap = left-click, drag = pan, press-and-hold =
+long-press (rally)** all flow through the existing `HexMapView` mouse path.
+The one genuinely-new path is **two-finger pinch-to-zoom**: touchscreens do
+*not* emit the macOS-trackpad `InputEventMagnifyGesture`/`PanGesture` (those
+keep their own handlers), so `HexMapView._UnhandledInput` also handles
+`InputEventScreenTouch`/`InputEventScreenDrag`, tracking active fingers in
+`_touchPoints` and feeding the new pure, unit-tested `ZoomMath.PinchZoom`
+(zoom × new-sep/prev-sep) into the existing `ApplyZoom(newZoom, midpoint)`.
+A second finger landing cancels the in-flight finger-0 drag, and a
+`_gestureWasPinch` flag swallows the trailing emulated finger-0 release so
+ending a pinch never registers a spurious tap/rally. Pinch begin/update/end
+log under `Log.LogCategory.Input`. The gesture state machine is view-layer
+(test-excluded); only `PinchZoom` is unit-tested, and the on-device pinch is
+verifiable only on real touch hardware (Mac trackpad exercises the
+`MagnifyGesture` path, not this one).
 
 ## Logging (`Log`)
 
