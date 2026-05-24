@@ -374,6 +374,9 @@ public partial class HudView : OrientationHud, IHudView
     {
         _seedLabel.Visible = Orientation == ScreenOrientation.Landscape;
         UpdateTopBarVisibility();
+        // Lift the tutorial box above the portrait bottom bar (no-op until the
+        // overlay is built later in _Ready, and in landscape).
+        PositionTutorialOverlay();
     }
 
     /// <summary>Drop the "TURN" / "TO PLAY" captions in portrait (no room) and
@@ -657,26 +660,28 @@ public partial class HudView : OrientationHud, IHudView
     /// map underneath. Sized as a fixed strip horizontally centered
     /// near the bottom of the viewport.
     /// </summary>
+    // Tutorial narration box: bottom-anchored, fixed size. The vertical
+    // offsets are set by PositionTutorialOverlay so they can lift above the
+    // portrait bottom HUD bar; only the left/right (width) offsets are inline.
+    private const float TutorialPanelW = 720f;
+    private const float TutorialPanelH = 120f;
+    private const float TutorialMarginBottom = 60f;
+    private bool _tutorialOverlayBuilt;
+
     private void BuildTutorialOverlay()
     {
         // Width and height grew to fit the longer instruction strings
         // ("Move the selected X onto the highlighted tile to destroy
         // the tower and capture it.") and to give the autowrapped label
         // room for two or three lines without bleeding out the panel.
-        const float panelW = 720f;
-        const float panelH = 120f;
-        const float marginBottom = 60f;
-
         _tutorialPanel = new Panel
         {
             AnchorLeft = 0.5f,
             AnchorRight = 0.5f,
             AnchorTop = 1f,
             AnchorBottom = 1f,
-            OffsetLeft = -panelW * 0.5f,
-            OffsetRight = panelW * 0.5f,
-            OffsetTop = -marginBottom - panelH,
-            OffsetBottom = -marginBottom,
+            OffsetLeft = -TutorialPanelW * 0.5f,
+            OffsetRight = TutorialPanelW * 0.5f,
             Visible = false,
             MouseFilter = Control.MouseFilterEnum.Ignore,
         };
@@ -734,13 +739,30 @@ public partial class HudView : OrientationHud, IHudView
             AnchorRight = 1f,
             AnchorTop = 1f,
             AnchorBottom = 1f,
-            OffsetTop = -marginBottom + 4f,
-            OffsetBottom = -4f,
             Visible = false,
             MouseFilter = Control.MouseFilterEnum.Ignore,
         };
         _continueHint.AddThemeFontSizeOverride("font_size", 24);
         AddChild(_continueHint);
+
+        _tutorialOverlayBuilt = true;
+        PositionTutorialOverlay();
+    }
+
+    /// <summary>Place the tutorial narration box (and its continue-hint) above
+    /// the bottom edge — lifted by the portrait bottom HUD bar so it doesn't
+    /// overlap it. Re-run on every orientation flip (OnLayoutApplied).</summary>
+    private void PositionTutorialOverlay()
+    {
+        if (!_tutorialOverlayBuilt) return;
+        float lift = Orientation == ScreenOrientation.Portrait ? PortraitBottomBarHeight : 0f;
+        float bottom = TutorialMarginBottom + lift;
+        _tutorialPanel.OffsetTop = -bottom - TutorialPanelH;
+        _tutorialPanel.OffsetBottom = -bottom;
+        // Continue hint sits in the gap between the panel's bottom and the
+        // bottom-bar top (or the viewport bottom in landscape).
+        _continueHint.OffsetTop = -bottom + 4f;
+        _continueHint.OffsetBottom = -lift - 4f;
     }
 
     // Red-pill bankruptcy warning. The redesign §8 toast spec called
