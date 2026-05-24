@@ -167,8 +167,8 @@ Consequences for the rest of this doc:
 │   │                                    None; no wrap)                    │
 │   │    hud.BuyUnitClicked            → OnBuyUnitPressed (per-button     │
 │   │                                    radio click: enter that specific │
-│   │                                    buy mode; idempotent no-op when  │
-│   │                                    already in it)                    │
+│   │                                    buy mode; re-click active level   │
+│   │                                    toggles it off / cancels)         │
 │   │    hud.BuildTowerClicked        → OnBuildTowerPressed                │
 │   │    hud.UndoLastClicked          → OnUndoLastPressed                  │
 │   │    hud.UndoTurnClicked          → OnUndoTurnPressed                  │
@@ -687,6 +687,17 @@ mid-pulse tweens survive subsequent refreshes; each ghost / arrow
 assets are `assets/audio/reject_generic.wav` (soft wooden thunk) and
 `assets/audio/reject_defended.wav` (metallic sword-on-shield clang).
 
+**Invalid-tap policy (flash then cancel).** A tap on an invalid target
+while a buy / build-tower / move action is pending no longer keeps the
+mode alive for re-aiming. The controller flashes the rejection feedback
+above, then calls `CancelPendingAction()` (clears `Mode` / `MoveSource`
++ the preview overlays, same as Escape) and — for in-grid taps — falls
+through to the normal-selection block so the tap is re-processed as a
+fresh click (tapping your own other territory switches selection / picks
+up its unmoved unit; tapping enemy/empty/off-grid deselects). Off-grid
+(water / map-edge) taps cancel then deselect. This applies in both
+`OnTileClickedBody` and `OnOffGridClickedBody`.
+
 `ShowMoveTargets` takes the unit level so the preview can render at
 the correct visual size (recruit=1 ring, soldier=2, captain=3,
 commander=3+dot). Audio is fired from the controller right after the
@@ -702,8 +713,9 @@ event Action? BuyRecruitClicked;       // U-hotkey: cycle through
                                        // exit at top instead of wrap
 event Action<UnitLevel>? BuyUnitClicked;// per-button radio click: enter
                                        // that specific buy mode directly
-                                       // (idempotent — re-clicking the
-                                       // active button is a no-op)
+                                       // (toggle — re-clicking the active
+                                       // button cancels the mode, like Esc;
+                                       // clicking a different level switches)
 event Action? BuildTowerClicked;
 event Action? UndoLastClicked;
 event Action? UndoTurnClicked;
@@ -863,11 +875,14 @@ Soldier / Captain / Commander) packed in a nested `HBoxContainer`.
 Each `HudIconButton` carries a fixed `BuyLevel`; `Selected`
 mirrors `SessionState.BuyModeLevel` so exactly one is highlighted
 at a time. Clicking a button fires `IHudView.BuyUnitClicked(level)`
-for direct entry into that mode; the U hotkey fires
-`BuyRecruitClicked` which `GameController.OnBuyPressed` resolves
-as a cycle through affordable levels, *exiting at the top* (the
-most-expensive affordable level cycles back to `ActionMode.None`
-instead of wrapping to Recruit). Build Tower stays a single button.
+for direct entry into that mode; re-clicking the already-active level
+toggles the mode back off (cancel), while clicking a different level
+switches. The U hotkey fires `BuyRecruitClicked` which
+`GameController.OnBuyPressed` resolves as a cycle through affordable
+levels, *exiting at the top* (the most-expensive affordable level
+cycles back to `ActionMode.None` instead of wrapping to Recruit).
+Build Tower stays a single button, and re-clicking it while already in
+BuildingTower toggles that mode off too.
 
 While the player is in a buy or move mode, the active button's
 tooltip is cleared and the bottom-anchored tutorial-message panel

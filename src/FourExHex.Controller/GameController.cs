@@ -469,9 +469,10 @@ public class GameController
     /// <summary>
     /// Handle a click whose coord is outside the land grid (water, etc.).
     /// In a pending placement mode (buy/move/tower) it's a rejected click
-    /// just like a far in-grid click: flash + sound, stay in mode, keep
-    /// selection. Outside of placement mode the click clears selection —
-    /// preserves the long-standing "click off-grid to deselect" UX.
+    /// just like a far in-grid click: flash + sound, then cancel the mode
+    /// (like Escape) and deselect — off-grid "re-selection" is the
+    /// long-standing "click off-grid to deselect" UX. Outside of a
+    /// placement mode the click simply clears selection.
     /// </summary>
     private void OnOffGridClickedBody(HexCoord coord)
     {
@@ -481,21 +482,27 @@ public class GameController
         if (buyLevel.HasValue && _session.SelectedTerritory != null)
         {
             EmitRejection(buyLevel.Value, coord);
-            return;
+            Log.Debug(Log.LogCategory.Input,
+                $"[Click] off-grid buy click at {coord} → flash + cancel mode, deselecting");
+            CancelPendingAction();
         }
-        if (_session.Mode == SessionState.ActionMode.BuildingTower && _session.SelectedTerritory != null)
+        else if (_session.Mode == SessionState.ActionMode.BuildingTower && _session.SelectedTerritory != null)
         {
             _map.FlashRejection(coord, RejectionShape.Tower, System.Array.Empty<HexCoord>());
-            return;
+            Log.Debug(Log.LogCategory.Input,
+                $"[Click] off-grid build-tower click at {coord} → flash + cancel mode, deselecting");
+            CancelPendingAction();
         }
-        if (_session.Mode == SessionState.ActionMode.MovingUnit && _session.MoveSource.HasValue)
+        else if (_session.Mode == SessionState.ActionMode.MovingUnit && _session.MoveSource.HasValue)
         {
             Unit? sourceUnit = _state.Grid.Get(_session.MoveSource.Value)?.Unit;
             if (sourceUnit != null)
             {
                 EmitRejection(sourceUnit.Level, coord);
             }
-            return;
+            Log.Debug(Log.LogCategory.Input,
+                $"[Click] off-grid move click at {coord} → flash + cancel mode, deselecting");
+            CancelPendingAction();
         }
 
         SetSelection(null);
@@ -514,10 +521,13 @@ public class GameController
                 ExecuteBuyAndPlace(buyLevel.Value, tile.Coord);
                 return;
             }
-            // Stay in buy mode so the player can re-aim without
-            // re-clicking the buy button. Feedback is the only response.
+            // Invalid target: flash feedback to explain why, then cancel
+            // the buy mode (like Escape) and fall through to re-process
+            // the tap as a normal selection click.
             EmitRejection(buyLevel.Value, tile.Coord);
-            return;
+            Log.Debug(Log.LogCategory.Input,
+                $"[Click] invalid buy target at {tile.Coord} → flash + cancel mode, re-processing as selection");
+            CancelPendingAction();
         }
         else if (_session.Mode == SessionState.ActionMode.BuildingTower && tile != null && _session.SelectedTerritory != null)
         {
@@ -527,9 +537,9 @@ public class GameController
                 return;
             }
             Log.Debug(Log.LogCategory.Input,
-                $"[BuildTower] click at {tile.Coord} rejected: {DescribeInvalidTowerReason(tile.Coord)}");
+                $"[Click] invalid build-tower target at {tile.Coord} ({DescribeInvalidTowerReason(tile.Coord)}) → flash + cancel mode, re-processing as selection");
             _map.FlashRejection(tile.Coord, RejectionShape.Tower, System.Array.Empty<HexCoord>());
-            return;
+            CancelPendingAction();
         }
         else if (_session.Mode == SessionState.ActionMode.MovingUnit && tile != null && _session.SelectedTerritory != null && _session.MoveSource.HasValue)
         {
@@ -543,7 +553,9 @@ public class GameController
             {
                 EmitRejection(sourceUnit.Level, tile.Coord);
             }
-            return;
+            Log.Debug(Log.LogCategory.Input,
+                $"[Click] invalid move target at {tile.Coord} → flash + cancel mode, re-processing as selection");
+            CancelPendingAction();
         }
 
         // Normal click handling.
@@ -1272,10 +1284,9 @@ public class GameController
 
     /// <summary>
     /// Direct per-level buy handler: clicking one of the four radio
-    /// buttons enters that specific buy mode (no cycling). Idempotent —
-    /// clicking the already-active level is a no-op so TrackHandler's
-    /// de-dup avoids pushing redundant undo entries. Unaffordable or
-    /// "no selection" clicks are also no-ops.
+    /// buttons enters that specific buy mode (no cycling). Toggles —
+    /// clicking the already-active level cancels the mode (like Escape).
+    /// Unaffordable or "no selection" clicks are no-ops.
     /// </summary>
     private void OnBuyUnitPressed(UnitLevel level) => TrackHandler(() => OnBuyUnitPressedBody(level));
 
@@ -1283,8 +1294,18 @@ public class GameController
     {
         if (_session.IsGameOver) return;
         if (_session.SelectedTerritory == null) return;
+        // Toggle off: a second click on the active buy level cancels the
+        // mode (like Escape). Checked before affordability so you can
+        // always back out of a mode you're already in.
+        if (SessionState.BuyModeLevel(_session.Mode) == level)
+        {
+            Log.Debug(Log.LogCategory.Input,
+                $"[Buy] re-click on active level {level} → toggle mode off");
+            CancelPendingAction();
+            _ops.RefreshViews();
+            return;
+        }
         if (!PurchaseRules.CanAfford(_session.SelectedTerritory, _state.Treasury, level)) return;
-        if (SessionState.BuyModeLevel(_session.Mode) == level) return;
         // Tutorial Preview: refuse the switch if the script's next beat
         // isn't a buy at this level. Lets the dev only enter the
         // mode the tutorial expects.
@@ -1385,6 +1406,15 @@ public class GameController
     {
         if (_session.IsGameOver) return;
         if (_session.SelectedTerritory == null) return;
+        // Toggle off: a second click while already building cancels the
+        // mode (like Escape).
+        if (_session.Mode == SessionState.ActionMode.BuildingTower)
+        {
+            Log.Debug(Log.LogCategory.Input, "[BuildTower] re-click while building → toggle mode off");
+            CancelPendingAction();
+            _ops.RefreshViews();
+            return;
+        }
         if (!PurchaseRules.CanAffordTower(_session.SelectedTerritory, _state.Treasury)) return;
 
         _session.Mode = SessionState.ActionMode.BuildingTower;
