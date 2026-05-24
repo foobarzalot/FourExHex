@@ -256,6 +256,19 @@ public partial class HexMapView : Node2D, IHexMapView
     // swipe traverse the full zoom range in roughly one full gesture.
     private const float TrackpadScrollSensitivity = 0.04f;
 
+    // Touchscreen pinch-to-zoom state. Touchscreens don't synthesize the
+    // MagnifyGesture/PanGesture events the macOS trackpad sends, so we track
+    // raw ScreenTouch/ScreenDrag fingers ourselves. _touchPoints maps each
+    // active finger index → its last viewport position; a 2-finger gesture
+    // drives the existing ApplyZoom path via ZoomMath.PinchZoom.
+    // emulate_mouse_from_touch (Godot default) synthesizes mouse events from
+    // finger 0 only, so single-finger tap/drag/long-press still flow through
+    // the mouse code below untouched. _gestureWasPinch swallows the trailing
+    // finger-0 mouse-release so ending a pinch never fires a spurious tap.
+    private readonly Dictionary<int, Vector2> _touchPoints = new();
+    private float _pinchPrevDist;
+    private bool _gestureWasPinch;
+
     /// <summary>Pixel bounding box of the rendered grid, for centering.</summary>
     public Vector2 PixelSize => new Vector2(
         (Cols + 0.5f) * Mathf.Sqrt(3f) * HexSize,
@@ -1875,6 +1888,58 @@ public partial class HexMapView : Node2D, IHexMapView
             return;
         }
 
+        // Touchscreen multi-touch. A second finger landing begins a pinch;
+        // we cancel the in-flight finger-0 drag/click so the map doesn't pan
+        // mid-pinch and the trailing release doesn't register as a tap.
+        if (@event is InputEventScreenTouch touch)
+        {
+            if (touch.Pressed)
+            {
+                _touchPoints[touch.Index] = touch.Position;
+                // First finger of a brand-new gesture: clear any stale pinch
+                // flag so a normal tap isn't swallowed.
+                if (_touchPoints.Count == 1) _gestureWasPinch = false;
+                if (_touchPoints.Count == 2)
+                {
+                    _gestureWasPinch = true;
+                    _dragCandidate = false;
+                    _isDragging = false;
+                    _pinchPrevDist = TwoFingerDistance();
+                    Log.Debug(Log.LogCategory.Input,
+                        $"HexMapView: pinch begin, startDist={_pinchPrevDist:0.0}.");
+                    GetViewport().SetInputAsHandled();
+                }
+            }
+            else
+            {
+                _touchPoints.Remove(touch.Index);
+                if (_touchPoints.Count < 2 && _pinchPrevDist > 0f)
+                {
+                    Log.Debug(Log.LogCategory.Input,
+                        $"HexMapView: pinch end at zoom={_zoom:0.000}.");
+                    _pinchPrevDist = 0f;
+                }
+            }
+            return;
+        }
+
+        if (@event is InputEventScreenDrag drag)
+        {
+            _touchPoints[drag.Index] = drag.Position;
+            if (_touchPoints.Count == 2)
+            {
+                float curDist = TwoFingerDistance();
+                float newZoom = ZoomMath.PinchZoom(_zoom, _pinchPrevDist, curDist);
+                Vector2 anchor = TwoFingerMidpoint();
+                Log.Debug(Log.LogCategory.Input,
+                    $"HexMapView: pinch update dist {_pinchPrevDist:0.0}→{curDist:0.0}, zoom {_zoom:0.000}→{newZoom:0.000}.");
+                ApplyZoom(newZoom, anchor);
+                _pinchPrevDist = curDist;
+                GetViewport().SetInputAsHandled();
+            }
+            return;
+        }
+
         if (@event is not InputEventMouseButton mouse) return;
 
         // Wheel zoom must be checked before the Left-button filter below
@@ -1916,6 +1981,17 @@ public partial class HexMapView : Node2D, IHexMapView
             _paintActive = false;
             PaintStrokeEnded?.Invoke();
             GetViewport().SetInputAsHandled();
+            return;
+        }
+
+        // A pinch just ended: this is the trailing emulated finger-0 release.
+        // Swallow it so the multi-touch gesture never registers as a tap or
+        // (since pinches usually exceed the long-press threshold) a rally.
+        if (_gestureWasPinch)
+        {
+            _gestureWasPinch = false;
+            _dragCandidate = false;
+            _isDragging = false;
             return;
         }
 
@@ -2045,6 +2121,26 @@ public partial class HexMapView : Node2D, IHexMapView
     private void RecenterMap()
     {
         Position = ClampPan(VisualCenter() - ToWorldOffset(PixelSize * 0.5f, _zoom));
+    }
+
+    /// <summary>Viewport-space distance between the two active pinch fingers.
+    /// Assumes exactly two entries in <see cref="_touchPoints"/>.</summary>
+    private float TwoFingerDistance()
+    {
+        var fingers = new Vector2[2];
+        int i = 0;
+        foreach (Vector2 p in _touchPoints.Values) fingers[i++] = p;
+        return fingers[0].DistanceTo(fingers[1]);
+    }
+
+    /// <summary>Viewport-space midpoint of the two active pinch fingers —
+    /// the zoom anchor so the point between the fingers stays put.</summary>
+    private Vector2 TwoFingerMidpoint()
+    {
+        var fingers = new Vector2[2];
+        int i = 0;
+        foreach (Vector2 p in _touchPoints.Values) fingers[i++] = p;
+        return (fingers[0] + fingers[1]) * 0.5f;
     }
 
     /// <summary>Map an unscaled local board offset to a world-space offset by

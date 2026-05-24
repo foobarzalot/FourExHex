@@ -35,4 +35,18 @@ public static class ZoomMath
         }
         return levels;
     }
+
+    /// <summary>
+    /// New zoom factor for a two-finger pinch: scale the current zoom by the
+    /// ratio of the fingers' new separation to their previous separation. A
+    /// non-positive <paramref name="prevDist"/> (degenerate seed) returns the
+    /// current zoom unchanged so the gesture can't divide-by-zero or blow up.
+    /// Caller clamps to the legal range (ApplyZoom already does), matching the
+    /// trackpad gesture paths.
+    /// </summary>
+    public static float PinchZoom(float currentZoom, float prevDist, float curDist)
+    {
+        if (prevDist <= 0f) return currentZoom;
+        return currentZoom * (curDist / prevDist);
+    }
 }

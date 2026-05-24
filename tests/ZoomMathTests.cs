@@ -121,4 +121,39 @@ public class ZoomMathTests
             Assert.Equal(1f, v, Tolerance);
         }
     }
+
+    [Fact]
+    public void PinchZoom_FingersSpreadApart_ZoomsIn()
+    {
+        // Fingers moved from 100px apart to 150px apart => 1.5x scale.
+        float zoom = ZoomMath.PinchZoom(currentZoom: 0.6f, prevDist: 100f, curDist: 150f);
+
+        Assert.Equal(0.9f, zoom, Tolerance);
+    }
+
+    [Fact]
+    public void PinchZoom_FingersPinchTogether_ZoomsOut()
+    {
+        // Fingers moved from 200px apart to 100px apart => 0.5x scale.
+        float zoom = ZoomMath.PinchZoom(currentZoom: 0.8f, prevDist: 200f, curDist: 100f);
+
+        Assert.Equal(0.4f, zoom, Tolerance);
+    }
+
+    [Fact]
+    public void PinchZoom_DistanceUnchanged_NoOp()
+    {
+        float zoom = ZoomMath.PinchZoom(currentZoom: 0.7f, prevDist: 120f, curDist: 120f);
+
+        Assert.Equal(0.7f, zoom, Tolerance);
+    }
+
+    [Fact]
+    public void PinchZoom_PrevDistZeroOrNegative_ReturnsCurrentUnchanged()
+    {
+        // A degenerate seed distance (fingers at the same point, or an
+        // uninitialized value) must not divide-by-zero or blow the zoom up.
+        Assert.Equal(0.7f, ZoomMath.PinchZoom(0.7f, prevDist: 0f, curDist: 150f), Tolerance);
+        Assert.Equal(0.7f, ZoomMath.PinchZoom(0.7f, prevDist: -10f, curDist: 150f), Tolerance);
+    }
 }
