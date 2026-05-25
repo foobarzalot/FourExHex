@@ -9,6 +9,7 @@ public enum HudIcon
     RedoLast,
     RedoAll,
     EndTurn,
+    NextTerritory,
     Options,
     Die,
     AddText,
@@ -123,6 +124,7 @@ public partial class HudIconButton : Button
         HudIcon.RedoLast => "Redo Last — Y",
         HudIcon.RedoAll => "Redo All — Shift+Y",
         HudIcon.EndTurn => "End Turn — Enter",
+        HudIcon.NextTerritory => "Next Territory — Tab",
         HudIcon.Options => "Options — Esc",
         HudIcon.Die => "Generate map from seed",
         HudIcon.AddText => "Insert a tutorial-only narration beat here",
@@ -154,6 +156,7 @@ public partial class HudIconButton : Button
             case HudIcon.RedoLast: HudIcons.DrawCurvedArrow(this, center, r, stroke, facing: -1, doubled: false); break;
             case HudIcon.RedoAll: HudIcons.DrawCurvedArrow(this, center, r, stroke, facing: -1, doubled: true); break;
             case HudIcon.EndTurn: HudIcons.DrawEndTurnTriangle(this, center, r, stroke); break;
+            case HudIcon.NextTerritory: HudIcons.DrawNextTerritory(this, center, r, modulate); break;
             case HudIcon.Options: HudIcons.DrawGear(this, center, r, modulate); break;
             case HudIcon.Die: HudIcons.DrawDie(this, center, r, stroke); break;
             case HudIcon.AddText: HudIcons.DrawSpeechBubble(this, center, r, stroke); break;

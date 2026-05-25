@@ -1495,9 +1495,13 @@ public class GameController
                 CancelPendingAction();
                 SetSelection(owned[idx]);
                 _map.CenterOnTerritory(owned[idx]);
+                Log.Debug(Log.LogCategory.Input,
+                    $"StepTerritorySelection(forward={forward}) -> selected capital {owned[idx].Capital}");
                 return;
             }
         }
+        Log.Debug(Log.LogCategory.Input,
+            $"StepTerritorySelection(forward={forward}) -> no actionable territory (no-op)");
     }
 
     /// <summary>

@@ -67,6 +67,7 @@ public partial class HudView : OrientationHud, IHudView
     private HudIconButton _redoAllButton = null!;
     private bool _undoRedoLocked;
     private bool _victoryOverlaySuppressed;
+    private HudIconButton _nextTerritoryButton = null!;
     private HudIconButton _endTurnButton = null!;
     private HudIconButton _optionsButton = null!;
     private HudIconButton _addTextButton = null!;
@@ -245,6 +246,13 @@ public partial class HudView : OrientationHud, IHudView
         _controlsCluster.AddChild(_redoAllButton);
 
         _controlsCluster.AddChild(BuildVerticalDivider());
+
+        // Next active territory — same action as the Tab hotkey. Disabled
+        // exactly when End Turn is the CTA (no actionable territory left).
+        _nextTerritoryButton = new HudIconButton(HudIcon.NextTerritory);
+        _nextTerritoryButton.Pressed += () => NextTerritoryClicked?.Invoke();
+        AudioBus.AttachClick(_nextTerritoryButton);
+        _controlsCluster.AddChild(_nextTerritoryButton);
 
         // End Turn uses the default Button theme — the SetCta() white
         // pulse remains the only "this is the current CTA" signal.
@@ -1459,6 +1467,9 @@ public partial class HudView : OrientationHud, IHudView
         _undoTurnButton.Disabled = _undoRedoLocked || !session.Undo.CanUndo;
         _redoLastButton.Disabled = _undoRedoLocked || !session.Undo.CanRedo;
         _redoAllButton.Disabled = _undoRedoLocked || !session.Undo.CanRedo;
+        // Mirrors the End Turn CTA: disabled exactly when the current player
+        // has no actionable territory left (the same flag that lights End Turn).
+        _nextTerritoryButton.Disabled = !hasActionableRemaining;
         // End Turn CTA styling is driven by GameController.RefreshViews
         // post-Refresh so Tutorial Preview's onAfterRefresh callback can
         // overwrite it (e.g. light it for an EndTurn scripted beat even

@@ -65,6 +65,30 @@ public static class HudIcons
         }
     }
 
+    /// <summary>
+    /// "Next active territory" glyph: a gold capital star (mirroring the
+    /// in-map capital marker), centered and sized to fill the button so it
+    /// reads at HUD-button scale. Silhouettes via its gold fill like
+    /// Tower/Gear; <paramref name="modulate"/> dims it when disabled.
+    /// </summary>
+    public static void DrawNextTerritory(CanvasItem t, Vector2 center, float radius, Color modulate)
+    {
+        float outer = radius * 0.82f;
+        float inner = outer * 0.4f;
+        var verts = new Vector2[10];
+        for (int i = 0; i < 10; i++)
+        {
+            float angle = -Mathf.Pi / 2f + i * Mathf.Pi / 5f;
+            float r = (i % 2 == 0) ? outer : inner;
+            verts[i] = center + new Vector2(r * Mathf.Cos(angle), r * Mathf.Sin(angle));
+        }
+        t.DrawColoredPolygon(verts, new Color(0.97f, 0.80f, 0.22f, 1f) * modulate);
+        for (int i = 0; i < 10; i++)
+        {
+            t.DrawLine(verts[i], verts[(i + 1) % 10], Outline * modulate, OutlineWidth);
+        }
+    }
+
     public static void DrawHand(CanvasItem t, Vector2 center, float radius, Color modulate)
     {
         Color fill = new Color(0.93f, 0.78f, 0.62f, 1f) * modulate;
