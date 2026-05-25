@@ -179,6 +179,17 @@ public sealed partial class MapEditorPanel : Node2D
 
     private void OnCoordHovered(HexCoord? coord)
     {
+        // The lex-index hover tooltip is an editing-mode authoring aid
+        // (standalone Map Editor + tutorial-builder Map Edit). The same panel
+        // is reused with PaintingEnabled=false by Record / Preview / Play
+        // Tutorial, which must not show editor chrome — feed null there so any
+        // visible tooltip is dismissed and none re-appears (see _Process).
+        if (!PaintingEnabled)
+        {
+            Log.Trace(Log.LogCategory.Render, "[HoverTip] suppressed (PaintingEnabled=false)");
+            _hoverTooltip.NotifyHover(null, Map.Cols);
+            return;
+        }
         _hoverTooltip.NotifyHover(coord, Map.Cols);
     }
 
