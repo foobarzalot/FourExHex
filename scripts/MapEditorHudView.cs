@@ -21,6 +21,15 @@ public partial class MapEditorHudView : OrientationHud
     // portrait top bar (paint palette) reuses HudView.HudHeight.
     private const float PortraitBottomBarHeight = 96f;
 
+    // Below these viewport widths the six individual land swatches collapse to
+    // a single colored button that cycles the player color on each press —
+    // mirrors HudView's player-swatch-bar compacting. Two thresholds because
+    // landscape lays the palette beside the seed cluster, so it needs more
+    // room before the full row fits. Tuned against the S9 portrait/landscape
+    // widths (see RELEASE.md device playbook).
+    private const float FullLandRowWidthPortrait = 760f;
+    private const float FullLandRowWidthLandscape = 1040f;
+
     /// <summary>
     /// Palette index reserved for the hand (no-op / pan-only) swatch.
     /// Always 0 — the hand sits first in the palette and is the default
@@ -71,6 +80,15 @@ public partial class MapEditorHudView : OrientationHud
     private HexPaletteButton[] _palette = null!;
     private HudIconButton _undoLastButton = null!;
     private HudIconButton _redoLastButton = null!;
+
+    // The six land swatches (expanded) and the single cycling button
+    // (collapsed) live side-by-side in the slate land group; exactly one is
+    // visible, toggled by OnViewportMetricsChanged. _lastLandPaletteIndex is
+    // the land color the cycle button shows / will paint with (1..N land
+    // indices; defaults to Red).
+    private Control _landRow = null!;
+    private HexPaletteButton _landCycleButton = null!;
+    private int _lastLandPaletteIndex = 1;
 
     // Persistent clusters, built once and reparented between the bars
     // (TopBar/BottomBar, owned by OrientationHud) on a landscape↔portrait flip.
@@ -147,16 +165,25 @@ public partial class MapEditorHudView : OrientationHud
         // provided by explicit Control spacers.
         _palette = new HexPaletteButton[GameSettings.PlayerConfig.Length + 5];
 
-        // Group 1: six land-color swatches inside a slate PanelContainer.
+        // Group 1: six land-color swatches inside a slate PanelContainer. The
+        // panel wraps a single landGroup that holds both the full six-swatch
+        // row and a single collapsed cycle button; exactly one is visible at a
+        // time (hidden children are excluded from container layout, so the
+        // panel sizes to whichever is shown). The collapse is driven by
+        // OnViewportMetricsChanged, mirroring HudView's swatch-bar compacting.
         var landPanel = new PanelContainer
         {
             SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
         };
         landPanel.AddThemeStyleboxOverride("panel", ModalChrome.PalettePanelStyle());
+        var landGroup = new HBoxContainer();
+        landPanel.AddChild(landGroup);
+        _paletteCluster.AddChild(landPanel);
+
         var landRow = new HBoxContainer();
         landRow.AddThemeConstantOverride("separation", 4);
-        landPanel.AddChild(landRow);
-        _paletteCluster.AddChild(landPanel);
+        landGroup.AddChild(landRow);
+        _landRow = landRow;
 
         for (int i = 0; i < GameSettings.PlayerConfig.Length; i++)
         {
@@ -173,6 +200,18 @@ public partial class MapEditorHudView : OrientationHud
             landRow.AddChild(button);
             _palette[paletteIndex] = button;
         }
+
+        // Collapsed-mode counterpart: a single colored hex that cycles the
+        // player color on each press (built hidden — the init
+        // OnViewportMetricsChanged call flips it on if the viewport is narrow).
+        _landCycleButton = new HexPaletteButton(new Color(GameSettings.PlayerConfig[0].Hex))
+        {
+            TooltipText = "Paint land — tap to cycle player color",
+            Visible = false,
+        };
+        _landCycleButton.Pressed += _ => OnLandCyclePressed();
+        AudioBus.AttachClick(_landCycleButton);
+        landGroup.AddChild(_landCycleButton);
 
         // 18-px gap before the terrain-tool group.
         _paletteCluster.AddChild(new Control { CustomMinimumSize = new Vector2(18, 0) });
@@ -463,11 +502,65 @@ public partial class MapEditorHudView : OrientationHud
     private void SelectPalette(int index, bool fireEvent = true)
     {
         if (index < 0 || index >= _palette.Length) return;
-        if (index == SelectedPaletteIndex && _palette[index].IsSelected) return;
+        if (index == SelectedPaletteIndex && _palette[index].IsSelected)
+        {
+            RefreshLandCycleVisual();
+            return;
+        }
 
         _palette[SelectedPaletteIndex].IsSelected = false;
         SelectedPaletteIndex = index;
         _palette[index].IsSelected = true;
+        // Remember the last land color so the collapsed cycle button shows it,
+        // even when the swatch was picked directly from the expanded row.
+        if (IsLandIndex(index)) _lastLandPaletteIndex = index;
+        RefreshLandCycleVisual();
         if (fireEvent) PaletteSelectionChanged?.Invoke(index);
+    }
+
+    private static bool IsLandIndex(int index) =>
+        index >= 1 && index <= GameSettings.PlayerConfig.Length;
+
+    // Wrap forward through the land indices (1..N), 6 -> 1.
+    private static int NextLandIndex(int index) =>
+        index % GameSettings.PlayerConfig.Length + 1;
+
+    /// <summary>
+    /// Select-first-then-cycle: if land isn't the active tool, the first press
+    /// just selects land at the last-used color; once land is active, each
+    /// further press advances to the next color.
+    /// </summary>
+    private void OnLandCyclePressed()
+    {
+        bool wasLand = IsLandIndex(SelectedPaletteIndex);
+        if (wasLand) _lastLandPaletteIndex = NextLandIndex(_lastLandPaletteIndex);
+        Log.Debug(Log.LogCategory.Input,
+            $"[LandCycle] press -> select {_lastLandPaletteIndex} (wasLand={wasLand})");
+        SelectPalette(_lastLandPaletteIndex);
+    }
+
+    /// <summary>Keep the collapsed cycle button's fill + selection outline in
+    /// sync with the remembered land color and the current tool.</summary>
+    private void RefreshLandCycleVisual()
+    {
+        _landCycleButton.FillColor = new Color(GameSettings.PlayerConfig[_lastLandPaletteIndex - 1].Hex);
+        _landCycleButton.IsSelected = IsLandIndex(SelectedPaletteIndex);
+    }
+
+    /// <summary>Collapse the six land swatches to the single cycling button in
+    /// a narrow viewport (and restore the full row when there's room) — the
+    /// editor analogue of HudView's player-swatch-bar compacting.</summary>
+    protected override void OnViewportMetricsChanged()
+    {
+        float width = GetViewport().GetVisibleRect().Size.X;
+        float threshold = Orientation == ScreenOrientation.Landscape
+            ? FullLandRowWidthLandscape
+            : FullLandRowWidthPortrait;
+        bool collapse = width < threshold;
+        _landRow.Visible = !collapse;
+        _landCycleButton.Visible = collapse;
+        RefreshLandCycleVisual();
+        Log.Debug(Log.LogCategory.Render,
+            $"[LandPalette] metrics: width={width:0} orient={Orientation} collapse={collapse}");
     }
 }

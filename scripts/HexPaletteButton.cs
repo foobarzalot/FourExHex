@@ -26,7 +26,7 @@ public partial class HexPaletteButton : Control
 {
     public event Action<HexPaletteButton>? Pressed;
 
-    private readonly Color _fillColor;
+    private Color _fillColor;
     private readonly HexPaletteIcon _icon;
     private bool _isSelected;
 
@@ -37,6 +37,21 @@ public partial class HexPaletteButton : Control
         {
             if (_isSelected == value) return;
             _isSelected = value;
+            QueueRedraw();
+        }
+    }
+
+    /// <summary>
+    /// The hex fill color. Settable so a single button can repaint as it
+    /// cycles through colors (the map editor's collapsed land swatch).
+    /// </summary>
+    public Color FillColor
+    {
+        get => _fillColor;
+        set
+        {
+            if (_fillColor == value) return;
+            _fillColor = value;
             QueueRedraw();
         }
     }

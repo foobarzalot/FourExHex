@@ -2036,6 +2036,21 @@ edits look identical to in-game terrain.
   in place, then re-runs `TerritoryFinder` + `CapitalReconciler`
   (except `PaintCapital`, which honors the user's exact pick rather
   than letting the placer second-guess them).
+- **Responsive land swatches.** The six land-color swatches collapse
+  to a single cycling `HexPaletteButton` when the viewport is narrow
+  (e.g. mobile portrait) — the editor analogue of HudView's
+  player-swatch-bar compacting. The full `_landRow` and the lone
+  `_landCycleButton` live side-by-side in the slate land panel; the
+  `OnViewportMetricsChanged` override (inherited hook from
+  `OrientationHud`) toggles which is visible by width threshold
+  (`FullLandRowWidth{Portrait,Landscape}`). The collapsed button is
+  *select-first-then-cycle*: when land isn't the active tool a press
+  just selects it at the remembered color (`_lastLandPaletteIndex`);
+  once land is active each press advances to the next player color
+  (wrapping 6→1). Its `FillColor` (now a settable property on
+  `HexPaletteButton`) and selection outline track that state via
+  `RefreshLandCycleVisual`. Only the land group collapses — water,
+  tree, capital, tower, and hand stay individual.
 - **Save format.** Editor maps are written with `SaveSerializer.SerializeMap`
   (no `Kind` per player, `TurnNumber == 0`). At play time, `Main`
   detects `TurnNumber == 0` to branch into the "starting map" flow:
