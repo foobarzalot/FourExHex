@@ -142,10 +142,34 @@ GODOT="/Applications/Godot_mono.app/Contents/MacOS/Godot"
 **Option A — reproduce the layout (no code, recommended).** On the dev Mac the
 factor floors to 1.0, so the window size *is* the logical viewport. Launch at the
 device's logical size to get the identical layout (crowding/overlap), just at 1×
-physical size:
+physical size.
+
+**S9 quick-launch** (logical viewports from §5; factor 1.0 locally → window ==
+logical viewport):
 ```
-"$GODOT" --path . --resolution 486x999      # S9 portrait logical space
+GODOT="/Applications/Godot_mono.app/Contents/MacOS/Godot"
+
+# Galaxy S9 PORTRAIT  (device logical 486×999)
+"$GODOT" --path . --resolution 486x999
+
+# Galaxy S9 LANDSCAPE (device logical 1332×648)
+"$GODOT" --path . --resolution 1332x648
 ```
+
+Append a scene path to load straight into a screen (omit it for the main menu),
+and prefix `FOUREXHEX_LOG` to see the centering / scale logs:
+```
+# scenes/play_tutorial.tscn (tutorial) · scenes/map_editor.tscn (editor) · scenes/main.tscn (in-game)
+
+# S9 portrait, tutorial, with map-centering logs (RecenterMap: / content box):
+FOUREXHEX_LOG="Render:Debug" "$GODOT" --path . scenes/play_tutorial.tscn --resolution 486x999
+
+# S9 landscape, map editor:
+"$GODOT" --path . scenes/map_editor.tscn --resolution 1332x648
+```
+(Use `Display:Debug` instead for the `DisplayScale:` line.) This reproduces the
+S9 *logical layout* at 1× — not the physical magnification; for that see Option B
+and the real device factors in §5.
 
 **Option B — reproduce the magnification too (not yet implemented).** Godot has
 no CLI flag or project-setting override for `ContentScaleFactor`, and the
