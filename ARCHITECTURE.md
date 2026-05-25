@@ -496,13 +496,14 @@ active screen's DPI and drives the root `Window.ContentScaleFactor`:
   minimum; capped at 3.0). It's unit-tested; the autoload is the thin Godot
   adapter that reads `DisplayServer.ScreenGetDpi` / `ScreenGetScale` and applies
   the result.
-- **Logical DPI, not raw DPI.** Platforms like macOS already render in OS-scaled
-  logical points, so the adapter divides raw DPI by `ScreenGetScale` before
-  applying the baseline — a 2× retina Mac (256 dpi ÷ 2 = 128 logical) floors to
-  factor 1.0 and is unchanged, while Android (which reports `ScreenGetScale` 1.0)
-  scales up by its raw density. *(Unverified on a real Android device — see
-  TECHDEBT; a temporary forced `Display`-category log surfaces the
-  dpi/osScale/factor line in logcat for that check.)*
+- **Logical DPI, not raw DPI.** Platforms like macOS render in OS-scaled logical
+  points, so the adapter divides raw DPI by `ScreenGetScale` before applying the
+  baseline — a 2× retina Mac (256 dpi ÷ 2 = 128 logical) floors to factor 1.0 and
+  is unchanged. Android *also* reports a non-1.0 `ScreenGetScale` that **varies by
+  orientation** (verified on a Galaxy S9: 1.35 portrait / 1.8 landscape), so it
+  still scales up, just by less than raw density — factor ≈ 2.22 portrait / 1.67
+  landscape there. See `RELEASE.md` §5 for the device data and `TECHDEBT.md` for
+  the cross-device-consistency risk this creates.
 - **Why it just works with the existing HUD.** `ContentScaleFactor` doesn't only
   enlarge 2D content — it also sets the GUI's logical layout size to
   `window / factor`. So `GetViewport().GetVisibleRect().Size` (read by
@@ -2726,51 +2727,15 @@ log under `Log.LogCategory.Input`. The gesture state machine is view-layer
 verifiable only on real touch hardware (Mac trackpad exercises the
 `MagnifyGesture` path, not this one).
 
-## Platform builds & Android export
+## Platform builds & orientation
 
-Three export presets live in `export_presets.cfg`, each with a
-matching script in `tools/` that builds the C# assemblies and runs a
-headless Godot export:
-
-- **macOS** (`tools/build_macos.sh`) → `build/macos/FourExHex.app`
-- **Windows** (`tools/build_windows.sh`) → `build/windows/FourExHex.exe`
-- **Android** (`tools/build_android.sh`) → `build/android/FourExHex-{debug,release}.apk`
-
-All three follow the same shape: `dotnet build -c Debug` (so the
-editor can load the assembly) **plus** `-c ExportDebug`/`-c ExportRelease`
-for the export, then `godot --headless --export-debug|--export-release
-<preset> <out>`. See each script's header for the platform-specific
-gotchas it papers over.
-
-### The net8-vs-net9 constraint (why Android uses a gradle build)
-
-Godot 4.6.1's **prebuilt** Android template hardcodes **net9.0** as the
-only supported C# target framework (the string is baked into the engine
-binary), but this project pins **net8.0** across all four csprojs — and
-the editor's own runtime (`GodotPlugins`/`GodotTools`) is net8.0, so a
-net9 game assembly would no longer load in the editor / desktop builds
-(no major-version roll-forward). Retargeting up is therefore **not** an
-option: it re-breaks every desktop path.
-
-The engine's own advice is "use gradle builds instead", so the Android
-preset sets **`gradle_build/use_gradle_build=true`**. A custom Gradle
-build runs `dotnet publish` against the project's net8.0 and bundles
-that runtime into the APK, bypassing the net9 check. `build_android.sh`
-passes `--install-android-build-template` (idempotent) so the Gradle
-project is dropped into `res://android/build/` on first run; `/android/`
-is gitignored. The build template pins Gradle 8.11.1 / AGP 8.6.1 /
-compileSdk 35 / NDK 28.1.13356709 and needs JDK ≥ 17 (the machine's JDK
-21 is fine). .NET on Android is 64-bit only, so the preset enables
-**arm64-v8a only** — re-enabling a 32-bit ABI breaks the publish step.
-
-### Signing
-
-Debug and release keystores live **outside the repo** under
-`~/Library/Application Support/Godot/keystores/`. Credentials are sourced
-from a non-committed `fourexhex-android-creds.sh` into the
-`GODOT_ANDROID_KEYSTORE_{DEBUG,RELEASE}_{PATH,USER,PASSWORD}` env vars
-Godot reads at export time, so the `export_presets.cfg` keystore fields
-stay empty and no secret is committed.
+Build/export **mechanics** for all three targets — the `export_presets.cfg`
+presets, the `tools/build_{macos,windows,android}.sh` scripts, the common
+`dotnet build -c Debug` + `-c ExportDebug`/`ExportRelease` + headless-export
+shape, the net8-vs-net9 gradle workaround (why Android uses a gradle build), and
+APK signing — live in **`RELEASE.md`**, alongside the on-device install / logcat
+/ scale-reproduction workflow. This section keeps only the architectural pieces
+that the build docs reference.
 
 ### Orientation
 
