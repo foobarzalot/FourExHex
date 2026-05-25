@@ -69,10 +69,8 @@ public partial class MapEditorHudView : OrientationHud
     private LineEdit _seedField = null!;
     private HudIconButton _generateButton = null!;
     private HexPaletteButton[] _palette = null!;
-    private HudIconButton _undoAllButton = null!;
     private HudIconButton _undoLastButton = null!;
     private HudIconButton _redoLastButton = null!;
-    private HudIconButton _redoAllButton = null!;
 
     // Persistent clusters, built once and reparented between the bars
     // (TopBar/BottomBar, owned by OrientationHud) on a landscape↔portrait flip.
@@ -243,16 +241,17 @@ public partial class MapEditorHudView : OrientationHud
         // the start.
         SelectPalette(HandPaletteIndex, fireEvent: false);
 
-        // Undo / redo cluster — icon glyphs + tooltips matching the play
-        // HUD so muscle memory and the visual language carry over.
-        _undoAllButton = MakeUndoButton(HudIcon.UndoAll, () => UndoAllClicked?.Invoke());
-        _editControlsCluster.AddChild(_undoAllButton);
-        _undoLastButton = MakeUndoButton(HudIcon.UndoLast, () => UndoLastClicked?.Invoke());
+        // Undo / redo cluster — two icon buttons matching the play HUD: a
+        // short click is Undo/Redo Last, holding past the long-press
+        // threshold fires Undo All / Redo All (same as Shift+Z / Shift+Y).
+        _undoLastButton = MakeUndoButton(
+            HudIcon.UndoLast, "Undo — Z (hold for Undo All)",
+            () => UndoLastClicked?.Invoke(), () => UndoAllClicked?.Invoke());
         _editControlsCluster.AddChild(_undoLastButton);
-        _redoLastButton = MakeUndoButton(HudIcon.RedoLast, () => RedoLastClicked?.Invoke());
+        _redoLastButton = MakeUndoButton(
+            HudIcon.RedoLast, "Redo — Y (hold for Redo All)",
+            () => RedoLastClicked?.Invoke(), () => RedoAllClicked?.Invoke());
         _editControlsCluster.AddChild(_redoLastButton);
-        _redoAllButton = MakeUndoButton(HudIcon.RedoAll, () => RedoAllClicked?.Invoke());
-        _editControlsCluster.AddChild(_redoAllButton);
 
         if (ShowSceneRootChrome)
         {
@@ -346,10 +345,19 @@ public partial class MapEditorHudView : OrientationHud
             portraitBottomBarHeight: PortraitBottomBarHeight);
     }
 
-    private static HudIconButton MakeUndoButton(HudIcon icon, Action onPressed)
+    private static HudIconButton MakeUndoButton(HudIcon icon, string tooltip, Action onShort, Action onLong)
     {
-        var b = new HudIconButton(icon) { Disabled = true };
-        b.Pressed += () => onPressed();
+        var b = new HudIconButton(icon) { Disabled = true, TooltipText = tooltip };
+        b.Pressed += () =>
+        {
+            if (b.ConsumeLongPress()) return;
+            onShort();
+        };
+        b.LongPressed += () =>
+        {
+            Log.Debug(Log.LogCategory.Input, $"Editor {icon} long-press");
+            onLong();
+        };
         AudioBus.AttachClick(b);
         return b;
     }
@@ -368,15 +376,13 @@ public partial class MapEditorHudView : OrientationHud
     }
 
     /// <summary>
-    /// Refresh the disabled state of the four undo/redo buttons. Called by
+    /// Refresh the disabled state of the undo/redo buttons. Called by
     /// <see cref="MapEditorScene"/> after every state change.
     /// </summary>
     public void SetUndoState(bool canUndo, bool canRedo)
     {
-        _undoAllButton.Disabled = !canUndo;
         _undoLastButton.Disabled = !canUndo;
         _redoLastButton.Disabled = !canRedo;
-        _redoAllButton.Disabled = !canRedo;
     }
 
     public override void _UnhandledInput(InputEvent @event)
@@ -388,7 +394,7 @@ public partial class MapEditorHudView : OrientationHud
             case Key.Z:
                 if (keyEvent.ShiftPressed)
                 {
-                    if (!_undoAllButton.Disabled) UndoAllClicked?.Invoke();
+                    if (!_undoLastButton.Disabled) UndoAllClicked?.Invoke();
                 }
                 else
                 {
@@ -399,7 +405,7 @@ public partial class MapEditorHudView : OrientationHud
             case Key.Y:
                 if (keyEvent.ShiftPressed)
                 {
-                    if (!_redoAllButton.Disabled) RedoAllClicked?.Invoke();
+                    if (!_redoLastButton.Disabled) RedoAllClicked?.Invoke();
                 }
                 else
                 {
