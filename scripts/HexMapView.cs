@@ -800,12 +800,6 @@ public partial class HexMapView : Node2D, IHexMapView
         _pulsingUnits.Clear();
         _pulsingCapitals.Clear();
 
-        // Capital that gets the white "selected" color: the one in the
-        // currently highlighted territory, if any. Controllers always
-        // call ShowHighlight before RefreshOccupantVisuals on selection
-        // changes, so reading _highlightedTerritory here is current.
-        HexCoord? selectedCapital = _highlightedTerritory?.Capital;
-
         var actionableCapitals = new HashSet<HexCoord>();
         if (currentPlayer.HasValue)
         {
@@ -895,16 +889,13 @@ public partial class HexMapView : Node2D, IHexMapView
             }
             else if (tile.Occupant is Capital)
             {
-                bool selected = selectedCapital.HasValue && selectedCapital.Value == tile.Coord;
-                Node2D visual = CreateCapitalVisual(selected);
+                bool actionable = actionableCapitals.Contains(tile.Coord);
+                Node2D visual = CreateCapitalVisual(actionable);
                 visual.Position = center;
                 _capitalsLayer?.AddChild(visual);
                 _capitalVisuals[tile.Coord] = visual;
 
-                if (actionableCapitals.Contains(tile.Coord))
-                {
-                    _pulsingCapitals.Add(tile.Coord);
-                }
+                if (actionable) _pulsingCapitals.Add(tile.Coord);
             }
             else if (tile.Occupant is Grave)
             {
@@ -955,6 +946,9 @@ public partial class HexMapView : Node2D, IHexMapView
         // Freshly-built glyphs default to Rotation 0; counter-rotate them so
         // they stay upright when the board is rotated (no-op at angle 0).
         ApplyGlyphUpright();
+
+        Log.Debug(Log.LogCategory.Render,
+            $"HexMapView: {actionableCapitals.Count} actionable (bright/pulsing) capitals for current player.");
     }
 
     /// <summary>
@@ -1775,17 +1769,17 @@ public partial class HexMapView : Node2D, IHexMapView
     private const float CapitalStarOuterRadius = 0.48f;
     private const float CapitalStarInnerRadius = 0.20f;
 
-    // Capital star per the redesign spec: BgDeep fill with a thin white
-    // stroke so the silhouette stays legible on any player fill. When
-    // the territory is selected, the fill flips to brass (gold) — keeps
-    // the at-a-glance "this is the selected territory's capital" cue
-    // that the old white-vs-black palette gave us.
+    // Capital star: BgDeep fill with a thin white stroke so the
+    // silhouette stays legible on any player fill. The fill flips to
+    // brass (gold) iff the capital is actionable — owned by the current
+    // player with an affordable action — which is also exactly when it
+    // pulses. Bright == has an action; idle (dark) == nothing to do.
     private static readonly Color CapitalStrokeColor = new Color(1f, 1f, 1f, 0.95f);
     private const float CapitalStrokeWidth = 0.6f;
 
-    private Node2D CreateCapitalVisual(bool selected)
+    private Node2D CreateCapitalVisual(bool actionable)
     {
-        Color fill = selected ? UiPalette.Gold : UiPalette.BgDeep;
+        Color fill = actionable ? UiPalette.Gold : UiPalette.BgDeep;
         float outer = HexSize * CapitalStarOuterRadius;
         float inner = HexSize * CapitalStarInnerRadius;
 
