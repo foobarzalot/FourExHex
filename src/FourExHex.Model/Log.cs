@@ -36,6 +36,7 @@ public static class Log
         Tutorial = 3, // RecordPane / PreviewPane / TutorialBuilderScene dev traces
         Render = 4,   // HexMapView "rendering N tiles" line
         Input = 5,    // BuildTower click-rejection diagnostic
+        Display = 6,  // DisplayScale autoload: DPI → ContentScaleFactor
     }
 
     /// <summary>Severity, ascending. <see cref="Off"/> disables a

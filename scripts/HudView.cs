@@ -99,8 +99,6 @@ public partial class HudView : OrientationHud, IHudView
 
     public override void _Ready()
     {
-        Vector2 viewport = GetViewport().GetVisibleRect().Size;
-
         // Build the three persistent widget clusters as parentless HBoxes.
         // ApplyLayout parents them (plus the gold chip) into orientation-
         // specific bars; on a landscape↔portrait flip they're reparented,
@@ -310,9 +308,9 @@ public partial class HudView : OrientationHud, IHudView
         // (OrientationHud owns the bars + the flip/publish lifecycle).
         InitOrientation();
 
-        BuildVictoryOverlay(viewport);
-        BuildDefeatOverlay(viewport);
-        BuildClaimVictoryOverlay(viewport);
+        BuildVictoryOverlay();
+        BuildDefeatOverlay();
+        BuildClaimVictoryOverlay();
         BuildTutorialOverlay();
         BuildBankruptToast();
     }
@@ -426,6 +424,11 @@ public partial class HudView : OrientationHud, IHudView
         _playerSwatchBar.SetCompact(compactSwatches);
         Log.Debug(Log.LogCategory.Render,
             $"[SwatchBar] metrics: width={width:0} orient={Orientation} compact={compactSwatches}");
+
+        // Re-fit the width-capped HUD panels to the new viewport (no-op until
+        // each is built).
+        PositionTutorialOverlay();
+        PositionBankruptToast();
     }
 
     protected override MapInsets ComputeInsets()
@@ -703,6 +706,10 @@ public partial class HudView : OrientationHud, IHudView
     private const float TutorialPanelW = 720f;
     private const float TutorialPanelH = 120f;
     private const float TutorialMarginBottom = 60f;
+    // Minimum gap kept on each side when the viewport is too narrow for a
+    // centered fixed-width HUD panel (tutorial box, bankruptcy toast), so the
+    // panel shrinks to fit instead of clipping off both edges.
+    private const float HudPanelSideMargin = 24f;
     private bool _tutorialOverlayBuilt;
 
     private void BuildTutorialOverlay()
@@ -792,6 +799,13 @@ public partial class HudView : OrientationHud, IHudView
     private void PositionTutorialOverlay()
     {
         if (!_tutorialOverlayBuilt) return;
+        // Cap the panel width to the viewport (logical size already reflects the
+        // content-scale factor) so the fixed design width can't clip off both
+        // sides on a narrow or scaled-up viewport (portrait phones especially).
+        float viewportW = GetViewport().GetVisibleRect().Size.X;
+        float width = Mathf.Min(TutorialPanelW, viewportW - HudPanelSideMargin * 2f);
+        _tutorialPanel.OffsetLeft = -width * 0.5f;
+        _tutorialPanel.OffsetRight = width * 0.5f;
         float lift = Orientation == ScreenOrientation.Portrait ? PortraitBottomBarHeight : 0f;
         float bottom = TutorialMarginBottom + lift;
         _tutorialPanel.OffsetTop = -bottom - TutorialPanelH;
@@ -816,26 +830,25 @@ public partial class HudView : OrientationHud, IHudView
     private static readonly Color BankruptToastBg = new Color(0.290f, 0.149f, 0.125f, 0.92f);
     private static readonly Color BankruptToastBorder = new Color(0.722f, 0.314f, 0.251f, 1f);
 
+    // 1.5x larger than the spec's reference so the toast reads at the heavier
+    // scale the rest of the redesign settled on. Lives top-center, just below
+    // the HUD bar, so it doesn't fight the tutorial action-hint panel (which
+    // lives bottom-center).
+    private const float BankruptToastW = 660f;
+    private const float BankruptToastH = 96f;
+    private const float BankruptToastMarginTop = 16f;
+    private bool _bankruptToastBuilt;
+
     private void BuildBankruptToast()
     {
-        // 1.5x larger than the spec's reference so the toast reads at
-        // the heavier scale the rest of the redesign settled on. Lives
-        // top-center, just below the HUD bar, so it doesn't fight the
-        // tutorial action-hint panel (which lives bottom-center).
-        const float panelW = 660f;
-        const float panelH = 96f;
-        const float marginTop = 16f;
-
         _bankruptToast = new Panel
         {
             AnchorLeft = 0.5f,
             AnchorRight = 0.5f,
             AnchorTop = 0f,
             AnchorBottom = 0f,
-            OffsetLeft = -panelW * 0.5f,
-            OffsetRight = panelW * 0.5f,
-            OffsetTop = HudHeight + marginTop,
-            OffsetBottom = HudHeight + marginTop + panelH,
+            OffsetTop = HudHeight + BankruptToastMarginTop,
+            OffsetBottom = HudHeight + BankruptToastMarginTop + BankruptToastH,
             Visible = false,
             MouseFilter = Control.MouseFilterEnum.Ignore,
         };
@@ -884,6 +897,9 @@ public partial class HudView : OrientationHud, IHudView
         _bankruptTitleLabel = new Label
         {
             Text = "Bankrupt next turn",
+            // Wrap rather than overflow the box when the toast is width-capped
+            // on a narrow/scaled viewport (see PositionBankruptToast).
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
             MouseFilter = Control.MouseFilterEnum.Ignore,
         };
         _bankruptTitleLabel.AddThemeFontOverride("font", GeistFont);
@@ -894,6 +910,7 @@ public partial class HudView : OrientationHud, IHudView
         _bankruptSubLabel = new Label
         {
             Text = "All units in this territory will die",
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
             MouseFilter = Control.MouseFilterEnum.Ignore,
         };
         _bankruptSubLabel.AddThemeFontOverride("font", GeistFont);
@@ -902,6 +919,22 @@ public partial class HudView : OrientationHud, IHudView
         textBlock.AddChild(_bankruptSubLabel);
 
         row.AddChild(textBlock);
+
+        _bankruptToastBuilt = true;
+        PositionBankruptToast();
+    }
+
+    /// <summary>Cap the bankruptcy toast width to the viewport (same rationale
+    /// as <see cref="PositionTutorialOverlay"/>) so its fixed design width can't
+    /// clip off both sides on a narrow or scaled-up viewport. Re-run on resize
+    /// via <see cref="OnViewportMetricsChanged"/>.</summary>
+    private void PositionBankruptToast()
+    {
+        if (!_bankruptToastBuilt) return;
+        float viewportW = GetViewport().GetVisibleRect().Size.X;
+        float width = Mathf.Min(BankruptToastW, viewportW - HudPanelSideMargin * 2f);
+        _bankruptToast.OffsetLeft = -width * 0.5f;
+        _bankruptToast.OffsetRight = width * 0.5f;
     }
 
     // Tiny self-drawing Control that paints the same upward-pointing
@@ -954,7 +987,7 @@ public partial class HudView : OrientationHud, IHudView
     private Button _replayButton = null!;
     private bool _replayAvailable;
 
-    private void BuildVictoryOverlay(Vector2 viewport)
+    private void BuildVictoryOverlay()
     {
         // Full-screen semi-transparent scrim that blocks clicks through
         // to the map.
@@ -988,8 +1021,17 @@ public partial class HudView : OrientationHud, IHudView
         const float panelH = 280f;
         var panel = new Panel
         {
-            Position = new Vector2((viewport.X - panelW) * 0.5f, (viewport.Y - panelH) * 0.5f),
-            Size = new Vector2(panelW, panelH),
+            // Anchor-centered (not absolute Position) so it stays centered
+            // across viewport changes — content-scale factor, window resize,
+            // orientation flip — without a reposition pass.
+            AnchorLeft = 0.5f,
+            AnchorRight = 0.5f,
+            AnchorTop = 0.5f,
+            AnchorBottom = 0.5f,
+            OffsetLeft = -panelW * 0.5f,
+            OffsetRight = panelW * 0.5f,
+            OffsetTop = -panelH * 0.5f,
+            OffsetBottom = panelH * 0.5f,
         };
         _victoryOverlay.AddChild(panel);
 
@@ -1069,7 +1111,7 @@ public partial class HudView : OrientationHud, IHudView
     /// the overlay (controller resumes the paused AI loop); Main Menu
     /// reuses the existing <see cref="MainMenuClicked"/> event.
     /// </summary>
-    private void BuildDefeatOverlay(Vector2 viewport)
+    private void BuildDefeatOverlay()
     {
         _defeatOverlay = new Control
         {
@@ -1099,8 +1141,16 @@ public partial class HudView : OrientationHud, IHudView
         const float panelH = 280f;
         var panel = new Panel
         {
-            Position = new Vector2((viewport.X - panelW) * 0.5f, (viewport.Y - panelH) * 0.5f),
-            Size = new Vector2(panelW, panelH),
+            // Anchor-centered (see BuildVictoryOverlay): stays centered across
+            // viewport/content-scale changes with no reposition pass.
+            AnchorLeft = 0.5f,
+            AnchorRight = 0.5f,
+            AnchorTop = 0.5f,
+            AnchorBottom = 0.5f,
+            OffsetLeft = -panelW * 0.5f,
+            OffsetRight = panelW * 0.5f,
+            OffsetTop = -panelH * 0.5f,
+            OffsetBottom = panelH * 0.5f,
         };
         _defeatOverlay.AddChild(panel);
 
@@ -1173,7 +1223,7 @@ public partial class HudView : OrientationHud, IHudView
     /// toggles visibility based on
     /// <see cref="SessionState.PendingClaimVictory"/>.
     /// </summary>
-    private void BuildClaimVictoryOverlay(Vector2 viewport)
+    private void BuildClaimVictoryOverlay()
     {
         _claimVictoryOverlay = new Control
         {
@@ -1203,8 +1253,16 @@ public partial class HudView : OrientationHud, IHudView
         const float panelH = 300f;
         var panel = new Panel
         {
-            Position = new Vector2((viewport.X - panelW) * 0.5f, (viewport.Y - panelH) * 0.5f),
-            Size = new Vector2(panelW, panelH),
+            // Anchor-centered (see BuildVictoryOverlay): stays centered across
+            // viewport/content-scale changes with no reposition pass.
+            AnchorLeft = 0.5f,
+            AnchorRight = 0.5f,
+            AnchorTop = 0.5f,
+            AnchorBottom = 0.5f,
+            OffsetLeft = -panelW * 0.5f,
+            OffsetRight = panelW * 0.5f,
+            OffsetTop = -panelH * 0.5f,
+            OffsetBottom = panelH * 0.5f,
         };
         _claimVictoryOverlay.AddChild(panel);
 

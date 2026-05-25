@@ -2,6 +2,46 @@
 
 Running list of known issues, flaky tests, and shortcuts that should eventually be cleaned up. Add new entries at the top.
 
+## Portrait HUD overlaps at high DPI scale factors (logical viewport too narrow)
+
+**Where:** added 2026-05-24, surfaced by the new DPI UI-scaling feature
+(`scripts/DisplayScale.cs` + `DisplayScaleMath`). The portrait bars are built
+in `HudView.BuildPortraitBars` / the cluster layout in `OrientationHud`;
+width-responsive tweaks live in `HudView.OnViewportMetricsChanged`
+(`CompactLandscapeWidth`, `FullSwatchRowWidthPortrait`, eyebrow/​swatch
+compaction).
+
+**Symptom:** `Window.ContentScaleFactor` scales the UI up for legibility/touch,
+which *divides* the logical viewport (`window / factor`). On a real portrait
+phone (e.g. 1080×2340 physical at ~440 dpi → factor ≈ 2.75) the logical
+viewport is only ~**400 px wide**. The portrait HUD was laid out for a much
+wider logical space, so at ~400 wide the bottom-bar clusters (buy buttons +
+controls) **overlap**. Reproduce on desktop by forcing a high factor
+(temporarily set `factor` in `DisplayScale.Apply`) or launching small +
+portrait: `--resolution 800x1280`.
+
+**Also:** the bankruptcy toast text now autowraps and the box width is capped
+(`PositionBankruptToast`), but the toast height is still fixed at
+`BankruptToastH = 96`, so at very narrow widths the wrapped text can clip
+*vertically*. Same root cause (portrait layout not designed for a narrow
+logical canvas).
+
+**Root tension (not a scaling bug):** bigger physical touch targets + a
+fixed-width phone screen ⇒ fewer elements fit per row. There's no free lunch.
+
+**Candidate fixes:** (1) make the portrait bars responsive at narrow logical
+widths — tighter cluster separation, smaller fonts, and/or wrap the buy/control
+clusters to multiple rows; (2) let the bankruptcy toast grow vertically with its
+content instead of a fixed height; (3) as a stopgap, lower
+`DisplayScaleMath.MaxFactor` (currently 3.0) toward ~1.8 to keep more logical
+width, trading away some touch-target size on the densest phones. Decision
+(2026-05-24): ship the scaling + overlay/tutorial/toast-width fixes, defer the
+portrait responsive pass to its own effort. Closely tied to the Android entry
+below — this is exactly what a device test would expose.
+
+**Severity:** portrait layout on high-density phones is cramped/overlapping;
+landscape and desktop are unaffected.
+
 ## Android APK pipeline added but never built/verified (no SDK, no device yet)
 
 **Where:** added 2026-05-23. New "Android" preset in `export_presets.cfg`

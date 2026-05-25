@@ -19,6 +19,7 @@ config/icon="res://icon.svg"
 [autoload]
 
 LogBootstrap="*res://scripts/LogBootstrap.cs"
+DisplayScale="*res://scripts/DisplayScale.cs"
 AudioBus="*res://scripts/AudioBus.cs"
 
 [display]

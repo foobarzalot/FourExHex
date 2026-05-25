@@ -482,6 +482,44 @@ Consequences for the rest of this doc:
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
+## Display scaling (autoload)
+
+`DisplayScale` — autoload-registered Node (`project.godot` `[autoload]` entry
+"DisplayScale", ordered after `LogBootstrap` so `Log` is wired). Keeps on-screen
+UI at a roughly constant *physical* size across resolutions/densities (the
+motivating case: HUD buttons too small to tap on high-DPI phones). It reads the
+active screen's DPI and drives the root `Window.ContentScaleFactor`:
+
+- The pure clamp math lives in the Godot-free model assembly —
+  `DisplayScaleMath.FactorForDpi(logicalDpi)` = `clamp(logicalDpi / 160, 1.0,
+  3.0)` (160 = Android mdpi baseline; floored at 1.0 so design size is the
+  minimum; capped at 3.0). It's unit-tested; the autoload is the thin Godot
+  adapter that reads `DisplayServer.ScreenGetDpi` / `ScreenGetScale` and applies
+  the result.
+- **Logical DPI, not raw DPI.** Platforms like macOS already render in OS-scaled
+  logical points, so the adapter divides raw DPI by `ScreenGetScale` before
+  applying the baseline — a 2× retina Mac (256 dpi ÷ 2 = 128 logical) floors to
+  factor 1.0 and is unchanged, while Android (which reports `ScreenGetScale` 1.0)
+  scales up by its raw density. *(Unverified on a real Android device — see
+  TECHDEBT; a temporary forced `Display`-category log surfaces the
+  dpi/osScale/factor line in logcat for that check.)*
+- **Why it just works with the existing HUD.** `ContentScaleFactor` doesn't only
+  enlarge 2D content — it also sets the GUI's logical layout size to
+  `window / factor`. So `GetViewport().GetVisibleRect().Size` (read by
+  `OrientationHud` / `HexMapView` for orientation + layout) returns the *logical*
+  size, and the anchor-based HUD reflows correctly with no per-widget changes,
+  even with stretch mode left `disabled`. Set once at startup and re-applied on
+  `SizeChanged` (rotation / monitor move), with an equality guard against the
+  resize feedback loop.
+- **Consequence for narrow viewports.** Scaling up shrinks the logical canvas
+  (a high-density portrait phone lands near ~400 logical px wide). Centered
+  fixed-width HUD panels therefore cap their width to the viewport
+  (`HudView.PositionTutorialOverlay` / `PositionBankruptToast`, shared
+  `HudPanelSideMargin`) and the win/defeat/claim overlays center via anchors
+  rather than an absolute position captured at build time. The portrait bar
+  layout itself does not yet reflow for very narrow logical widths — tracked in
+  TECHDEBT.
+
 ## GameController ↔ GameOperations split
 
 The CONTROLLER box above predates a `GameController` → `GameController` +
