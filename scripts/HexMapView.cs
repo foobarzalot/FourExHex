@@ -816,6 +816,10 @@ public partial class HexMapView : Node2D, IHexMapView
                 }
             }
         }
+        // Diagnostic for the device-only "actionable capital stays dark" report:
+        // emits only when the actionable set changes (this runs on every refresh,
+        // so per-call logging would flood the log).
+        LogActionableCapitalsIfChanged(actionableCapitals);
 
         // Diff trees and graves against the previous refresh so we only
         // animate newly-planted/dug ones. Both are removed lazily here
@@ -946,9 +950,25 @@ public partial class HexMapView : Node2D, IHexMapView
         // Freshly-built glyphs default to Rotation 0; counter-rotate them so
         // they stay upright when the board is rotated (no-op at angle 0).
         ApplyGlyphUpright();
+    }
 
+    // Previous actionable-capital set, so the diagnostic below logs only on a
+    // change instead of on every RefreshOccupantVisuals.
+    private readonly HashSet<HexCoord> _lastActionableCapitals = new();
+
+    // Diagnostic for the device "actionable capital renders dark" report. Logs
+    // only when the set changes. No release special-casing: the string.Join is
+    // an argument to Log.Debug, which is itself [Conditional("DEBUG")], so the
+    // whole message (and its formatting) is compiled out of release builds. If
+    // a dark star's coord IS in this set it's a render bug; if it's absent it's
+    // data. (On mobile debug builds every Log category is on — see LogBootstrap.)
+    private void LogActionableCapitalsIfChanged(HashSet<HexCoord> actionable)
+    {
+        if (actionable.SetEquals(_lastActionableCapitals)) return;
+        _lastActionableCapitals.Clear();
+        _lastActionableCapitals.UnionWith(actionable);
         Log.Debug(Log.LogCategory.Render,
-            $"HexMapView: {actionableCapitals.Count} actionable (bright/pulsing) capitals for current player.");
+            $"actionable capitals changed: count={actionable.Count} coords=[{string.Join(", ", actionable)}]");
     }
 
     /// <summary>

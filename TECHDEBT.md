@@ -2,6 +2,35 @@
 
 Running list of known issues, flaky tests, and shortcuts that should eventually be cleaned up. Add new entries at the top.
 
+## Capital "actionable" star reported dark on Android (not reproduced)
+
+**Where:** `scripts/HexMapView.cs` — `RefreshOccupantVisuals` computes
+`actionableCapitals` (recruit-affordable, current player); `CreateCapitalVisual`
+fills the star Gold iff actionable, else BgDeep; the pulse is a Scale animation
+in `_Process` keyed off the same `_pulsingCapitals` set. Star-color-by-
+actionability landed in commit 8c8e7d1.
+
+**Symptom (2026-05-25, Samsung Galaxy S9, debug APK):** capital stars for
+territories that *had* an action showed **dark (BgDeep) and did not pulse**,
+where they should be bright (Gold) + pulsing. Worked correctly in desktop
+testing. After a rebuild/reinstall it **stopped reproducing**, and logcat showed
+the actionable set computed correctly (9 actionable, each `fill=Gold`). No code
+change explains a fix — root cause unknown.
+
+**Hypotheses:** (1) transient/timing — a stale render between refreshes (same
+family as the portrait first-show mis-position, since fixed); (2) state-
+dependent — those capitals genuinely had no affordable action at that instant
+(gold not yet collected) and were correctly dark.
+
+**Catch-net in place:** `HexMapView.LogActionableCapitalsIfChanged` (Render
+category, logs only when the actionable coord set changes). If it recurs: a dark
+star whose coord **is** in the logged set ⇒ render bug (the device runs Vulkan
+Forward Mobile vs desktop GL Compatibility — suspect color/pulse rendering); a
+coord **absent** from the set ⇒ data/timing. On mobile builds every Log category
+is on, so the line lands in `adb logcat`.
+
+**Severity:** cosmetic; not currently reproducible.
+
 ## Portrait HUD overlaps at high DPI scale factors (logical viewport too narrow)
 
 **Where:** added 2026-05-24, surfaced by the new DPI UI-scaling feature

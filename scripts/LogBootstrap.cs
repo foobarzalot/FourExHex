@@ -28,12 +28,11 @@ public partial class LogBootstrap : Node
         // (every category defaults to Off).
         Log.Configure(OS.GetEnvironment("FOUREXHEX_LOG"));
 
-#if DEBUG
-        // Mobile (Android/iOS) can't set the FOUREXHEX_LOG env var, so a DEBUG
-        // build on a device turns every category fully verbose for logcat
-        // bring-up. Desktop keeps env-var-driven gating (above). Release builds
-        // strip Trace/Debug/Info at compile time, so this only ever affects a
-        // debug device run.
+        // Mobile (Android/iOS) can't set the FOUREXHEX_LOG env var, so turn
+        // every category fully verbose for logcat. Desktop keeps env-var-driven
+        // gating (above). Trace/Debug/Info are compiled out of release builds
+        // regardless of level, so in a release build this only surfaces
+        // Warn/Error in the field — intentional for device diagnostics.
         if (OS.HasFeature("mobile"))
         {
             foreach (Log.LogCategory cat in System.Enum.GetValues<Log.LogCategory>())
@@ -41,6 +40,5 @@ public partial class LogBootstrap : Node
                 Log.SetLevel(cat, Log.LogLevel.Debug);
             }
         }
-#endif
     }
 }
