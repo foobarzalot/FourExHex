@@ -179,14 +179,21 @@ public sealed partial class MapEditorPanel : Node2D
 
     private void OnCoordHovered(HexCoord? coord)
     {
-        // The lex-index hover tooltip is an editing-mode authoring aid
-        // (standalone Map Editor + tutorial-builder Map Edit). The same panel
-        // is reused with PaintingEnabled=false by Record / Preview / Play
-        // Tutorial, which must not show editor chrome — feed null there so any
-        // visible tooltip is dismissed and none re-appears (see _Process).
-        if (!PaintingEnabled)
+        // The lex-index hover tooltip is a mouse-only editing-mode authoring
+        // aid (standalone Map Editor + tutorial-builder Map Edit). Suppress it
+        // when:
+        //  - painting is off — the panel is reused with PaintingEnabled=false
+        //    by Record / Preview / Play Tutorial, which must not show editor
+        //    chrome; or
+        //  - a touchscreen is the input device — Android emulates mouse motion
+        //    from touch, so a tap/drag fires CoordHovered and the parked
+        //    cursor's dwell timer would show a sticky tooltip with no hover.
+        // In both cases feed null so any visible tooltip is dismissed and none
+        // re-appears (see HexHoverTooltip._Process).
+        if (!PaintingEnabled || DisplayServer.IsTouchscreenAvailable())
         {
-            Log.Trace(Log.LogCategory.Render, "[HoverTip] suppressed (PaintingEnabled=false)");
+            Log.Trace(Log.LogCategory.Render,
+                $"[HoverTip] suppressed (painting={PaintingEnabled} touch={DisplayServer.IsTouchscreenAvailable()})");
             _hoverTooltip.NotifyHover(null, Map.Cols);
             return;
         }

@@ -2025,12 +2025,16 @@ edits look identical to in-game terrain.
   the row-major lex index (`row * Cols + col`) plus `(col, row)` —
   the lex index is the single-int handle intended for future
   tutorial scripting that refers to specific cells by number. The
-  tooltip is an *editing-mode* aid: `MapEditorPanel` always subscribes
-  to `CoordHovered`, but `OnCoordHovered` gates on `PaintingEnabled`,
-  feeding `null` (which dismisses + suppresses the tooltip) whenever
-  painting is off. So it shows in the standalone editor and the
-  tutorial-builder Map Edit mode, but not in Record / Preview / Play
-  Tutorial, which reuse the same panel with `PaintingEnabled = false`.
+  tooltip is a *mouse-only, editing-mode* aid: `MapEditorPanel` always
+  subscribes to `CoordHovered`, but `OnCoordHovered` feeds `null`
+  (which dismisses + suppresses the tooltip) when either `PaintingEnabled`
+  is false *or* `DisplayServer.IsTouchscreenAvailable()` is true. So it
+  shows in the standalone editor and the tutorial-builder Map Edit mode
+  on a pointer device, but not in Record / Preview / Play Tutorial (which
+  reuse the same panel with `PaintingEnabled = false`), and not on a
+  touchscreen at all — Android emulates mouse-motion from touch
+  (`emulate_mouse_from_touch`), so a tap/drag would otherwise fire
+  `CoordHovered` and a parked finger would dwell into a sticky tooltip.
 - **Palette.** `MapEditorHudView` builds a palette of
   `HexPaletteButton` swatches: one per player color, plus water,
   tree, capital, and tower toggles. The selected index is read by
