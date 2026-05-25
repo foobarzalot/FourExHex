@@ -132,6 +132,12 @@ public partial class HexMapView : Node2D, IHexMapView
     public void Init(GameState state)
     {
         _state = state;
+        RecomputeContentBox();
+        // Frame the (content-aware) board if we're already in the tree — the
+        // tutorial/preview path Inits an in-tree map after insets are wired, so
+        // it must recenter here. The normal game Inits before AddChild (not in
+        // tree); _Ready does its recenter there.
+        if (IsInsideTree()) RecenterMap();
     }
 
     // Layered overlay children (added in this order so draw order is
@@ -280,6 +286,25 @@ public partial class HexMapView : Node2D, IHexMapView
         0.5f * Mathf.Sqrt(3f) * HexSize,
         HexSize);
 
+    // Unscaled board-pixel bounding box of the playable tiles (not the padded
+    // nominal grid), cached when the state is set. Centering + pan-clamping
+    // frame this so an off-center level still frames centered. Recomputed in
+    // RecomputeContentBox (Init / ReloadState); the land set is static per game.
+    private (float minX, float minY, float maxX, float maxY) _contentBox;
+
+    private void RecomputeContentBox()
+    {
+        var coords = new System.Collections.Generic.List<HexCoord>();
+        foreach (HexTile tile in _state.Grid.Tiles) coords.Add(tile.Coord);
+        _contentBox = coords.Count > 0
+            ? MapPlacement.ContentPixelBounds(coords, HexSize)
+            : (0f, 0f, PixelSize.X, PixelSize.Y); // degenerate: fall back to grid
+        Log.Debug(Log.LogCategory.Render,
+            $"HexMapView: content box=({_contentBox.minX:0},{_contentBox.minY:0})-" +
+            $"({_contentBox.maxX:0},{_contentBox.maxY:0}) vs grid PixelSize=({PixelSize.X:0},{PixelSize.Y:0}) " +
+            $"over {coords.Count} tiles.");
+    }
+
     public override void _Ready()
     {
         BuildStateVisuals();
@@ -319,6 +344,7 @@ public partial class HexMapView : Node2D, IHexMapView
     public void ReloadState(GameState state, bool animateNewOccupants = true)
     {
         _state = state;
+        RecomputeContentBox();
         BuildStateVisuals();
         if (!animateNewOccupants)
         {
@@ -2106,11 +2132,14 @@ public partial class HexMapView : Node2D, IHexMapView
         Vector2 vp = GetViewportRect().Size;
         float availX = vp.X;
         float availY = vp.Y - _topInset - _bottomInset;
-        // On-screen bounding box of the (scaled + rotated) board relative to
-        // this node's origin. At angle 0 this is (0,0,w·zoom,h·zoom), so the
-        // branches below reduce to the legacy landscape clamp exactly.
+        // On-screen bounding box of the (scaled + rotated) CONTENT — the
+        // playable tiles, not the padded nominal grid — relative to this node's
+        // origin, so centering/clamping frames the content rather than the
+        // grid. See _contentBox / RecomputeContentBox.
         (float minX, float minY, float maxX, float maxY) =
-            MapPlacement.RotatedBoardBox(PixelSize.X, PixelSize.Y, _zoom, _mapAngleRad);
+            MapPlacement.RotatedRectBox(
+                _contentBox.minX, _contentBox.minY, _contentBox.maxX, _contentBox.maxY,
+                _zoom, _mapAngleRad);
         float boxW = maxX - minX;
         float boxH = maxY - minY;
         float x = boxW <= availX
@@ -2131,10 +2160,30 @@ public partial class HexMapView : Node2D, IHexMapView
         Position = ClampPan(VisualCenter() - ToWorldOffset(localCenter, _zoom));
     }
 
-    /// <summary>Center the (possibly rotated) board in the play area.</summary>
+    /// <summary>Center the (possibly rotated) content in the play area. Uses the
+    /// content box center (not the nominal grid center) so a level whose tiles
+    /// sit off-center in a padded grid still frames centered.</summary>
     private void RecenterMap()
     {
-        Position = ClampPan(VisualCenter() - ToWorldOffset(PixelSize * 0.5f, _zoom));
+        var contentCenter = new Vector2(
+            (_contentBox.minX + _contentBox.maxX) * 0.5f,
+            (_contentBox.minY + _contentBox.maxY) * 0.5f);
+        Position = ClampPan(VisualCenter() - ToWorldOffset(contentCenter, _zoom));
+
+        // Centering instrumentation (Render:Debug, compile-stripped from
+        // release; fires only on recenter — setup / orientation flip / inset
+        // change). Logs the inputs and the resulting on-screen content rect so
+        // a framing regression is diagnosable without seeing the view: compare
+        // the onscreen rect against the play area (vp minus insets).
+        (float rMinX, float rMinY, float rMaxX, float rMaxY) =
+            MapPlacement.RotatedRectBox(_contentBox.minX, _contentBox.minY,
+                _contentBox.maxX, _contentBox.maxY, _zoom, _mapAngleRad);
+        Log.Debug(Log.LogCategory.Render,
+            $"RecenterMap: angle={Mathf.RadToDeg(_mapAngleRad):0}deg zoom={_zoom:0.00} " +
+            $"vp={GetViewportRect().Size} insets=({_topInset:0},{_bottomInset:0}) " +
+            $"contentBox=({_contentBox.minX:0},{_contentBox.minY:0})-({_contentBox.maxX:0},{_contentBox.maxY:0}) " +
+            $"rotatedBox=({rMinX:0},{rMinY:0})-({rMaxX:0},{rMaxY:0}) center={contentCenter} pos={Position} " +
+            $"=> onscreen=({Position.X + rMinX:0},{Position.Y + rMinY:0})-({Position.X + rMaxX:0},{Position.Y + rMaxY:0})");
     }
 
     /// <summary>Viewport-space distance between the two active pinch fingers.

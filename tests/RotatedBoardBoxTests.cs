@@ -72,4 +72,30 @@ public class RotatedBoardBoxTests
         Assert.Equal(80f, maxX - minX, Tolerance);
         Assert.Equal(80f, maxY - minY, Tolerance);
     }
+
+    // RotatedRectBox generalizes RotatedBoardBox to an arbitrary (offset) rect,
+    // for content-aware clamping where the content isn't anchored at origin.
+
+    [Fact]
+    public void RectBox_AngleZero_ScalesOffsetRect()
+    {
+        var (minX, minY, maxX, maxY) =
+            MapPlacement.RotatedRectBox(2f, 3f, 5f, 7f, 2f, 0f);
+        Assert.Equal(4f, minX, Tolerance);
+        Assert.Equal(6f, minY, Tolerance);
+        Assert.Equal(10f, maxX, Tolerance);
+        Assert.Equal(14f, maxY, Tolerance);
+    }
+
+    [Fact]
+    public void RectBox_Ccw90_RotatesOffsetRect()
+    {
+        // (x,y) -> (y,-x): corners of [2,5]x[3,7] map to x in [3,7], y in [-5,-2].
+        var (minX, minY, maxX, maxY) =
+            MapPlacement.RotatedRectBox(2f, 3f, 5f, 7f, 1f, -MathF.PI / 2f);
+        Assert.Equal(3f, minX, Tolerance);
+        Assert.Equal(-5f, minY, Tolerance);
+        Assert.Equal(7f, maxX, Tolerance);
+        Assert.Equal(-2f, maxY, Tolerance);
+    }
 }

@@ -90,6 +90,13 @@ public sealed partial class PreviewPane : Control
         PreviewSetup.Apply(_panel.Map, _previewState, tutorial);
 
         _hud = new HudView();
+        // Relay the HUD's reserved top/bottom insets to the map so it frames
+        // the play area (and reflows on orientation flips) — mirrors Main.cs.
+        // Without this the map keeps its landscape default insets (top=96,
+        // bottom=0) even in portrait, pushing content down. Subscribe BEFORE
+        // AddChild so the HUD's _Ready-time publish is caught.
+        HexMapView mapForInsets = _panel.Map;
+        _hud.MapInsetsChanged += (top, bottom) => mapForInsets.SetMapInsets(top, bottom);
         AddChild(_hud);
         _hud.EscRequested += () => EscRequested?.Invoke();
         // Undo/Redo aren't recorded as beats and would desync the
