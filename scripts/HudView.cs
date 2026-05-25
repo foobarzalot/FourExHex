@@ -62,9 +62,7 @@ public partial class HudView : OrientationHud, IHudView
     private HudIconButton[] _buyUnitButtons = null!;
     private HudIconButton _buildTowerButton = null!;
     private HudIconButton _undoLastButton = null!;
-    private HudIconButton _undoTurnButton = null!;
     private HudIconButton _redoLastButton = null!;
-    private HudIconButton _redoAllButton = null!;
     private bool _undoRedoLocked;
     private bool _victoryOverlaySuppressed;
     private HudIconButton _nextTerritoryButton = null!;
@@ -224,26 +222,44 @@ public partial class HudView : OrientationHud, IHudView
         AudioBus.AttachClick(_addTextButton);
         _actionCluster.AddChild(_addTextButton);
 
-        // 5) Undo cluster — four ghost icon buttons.
-        _undoTurnButton = new HudIconButton(HudIcon.UndoAll) { Disabled = true };
-        _undoTurnButton.Pressed += () => UndoTurnClicked?.Invoke();
-        AudioBus.AttachClick(_undoTurnButton);
-        _controlsCluster.AddChild(_undoTurnButton);
-
-        _undoLastButton = new HudIconButton(HudIcon.UndoLast) { Disabled = true };
-        _undoLastButton.Pressed += () => UndoLastClicked?.Invoke();
+        // 5) Undo / Redo — two ghost icon buttons. A short click is
+        // Undo/Redo Last; holding past the long-press threshold fires
+        // Undo All / Redo All (the same actions Shift+Z / Shift+Y reach).
+        _undoLastButton = new HudIconButton(HudIcon.UndoLast)
+        {
+            Disabled = true,
+            TooltipText = "Undo — Z (hold for Undo All)",
+        };
+        _undoLastButton.Pressed += () =>
+        {
+            if (_undoLastButton.ConsumeLongPress()) return;
+            UndoLastClicked?.Invoke();
+        };
+        _undoLastButton.LongPressed += () =>
+        {
+            Log.Debug(Log.LogCategory.Input, "Undo button long-press -> Undo All");
+            UndoTurnClicked?.Invoke();
+        };
         AudioBus.AttachClick(_undoLastButton);
         _controlsCluster.AddChild(_undoLastButton);
 
-        _redoLastButton = new HudIconButton(HudIcon.RedoLast) { Disabled = true };
-        _redoLastButton.Pressed += () => RedoLastClicked?.Invoke();
+        _redoLastButton = new HudIconButton(HudIcon.RedoLast)
+        {
+            Disabled = true,
+            TooltipText = "Redo — Y (hold for Redo All)",
+        };
+        _redoLastButton.Pressed += () =>
+        {
+            if (_redoLastButton.ConsumeLongPress()) return;
+            RedoLastClicked?.Invoke();
+        };
+        _redoLastButton.LongPressed += () =>
+        {
+            Log.Debug(Log.LogCategory.Input, "Redo button long-press -> Redo All");
+            RedoAllClicked?.Invoke();
+        };
         AudioBus.AttachClick(_redoLastButton);
         _controlsCluster.AddChild(_redoLastButton);
-
-        _redoAllButton = new HudIconButton(HudIcon.RedoAll) { Disabled = true };
-        _redoAllButton.Pressed += () => RedoAllClicked?.Invoke();
-        AudioBus.AttachClick(_redoAllButton);
-        _controlsCluster.AddChild(_redoAllButton);
 
         _controlsCluster.AddChild(BuildVerticalDivider());
 
@@ -1464,9 +1480,7 @@ public partial class HudView : OrientationHud, IHudView
                 : DisabledBuyReason(selected, hasCapital, "a tower", PurchaseRules.TowerCost);
 
         _undoLastButton.Disabled = _undoRedoLocked || !session.Undo.CanUndo;
-        _undoTurnButton.Disabled = _undoRedoLocked || !session.Undo.CanUndo;
         _redoLastButton.Disabled = _undoRedoLocked || !session.Undo.CanRedo;
-        _redoAllButton.Disabled = _undoRedoLocked || !session.Undo.CanRedo;
         // Mirrors the End Turn CTA: disabled exactly when the current player
         // has no actionable territory left (the same flag that lights End Turn).
         _nextTerritoryButton.Disabled = !hasActionableRemaining;
@@ -1638,9 +1652,7 @@ public partial class HudView : OrientationHud, IHudView
             // before the first refresh) — disable immediately so the
             // first frame doesn't paint them clickable.
             _undoLastButton.Disabled = true;
-            _undoTurnButton.Disabled = true;
             _redoLastButton.Disabled = true;
-            _redoAllButton.Disabled = true;
         }
     }
 

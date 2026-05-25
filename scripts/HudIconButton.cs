@@ -33,6 +33,24 @@ public partial class HudIconButton : Button
     private bool _ctaActive;
     private UnitLevel _buyLevel = UnitLevel.Recruit;
 
+    // Long-press (hold) support. Armed only when a LongPressed handler is
+    // attached, so buttons without one keep their plain click behaviour
+    // and never spin up a timer. Threshold mirrors HexMapView.LongPressMs
+    // (400ms) so the hold gesture feels consistent with the map's rally.
+    private const double LongPressSeconds = 0.4;
+    private ulong _pressGen;
+    private bool _longFired;
+
+    /// <summary>
+    /// Raised when the button is held past the long-press threshold while
+    /// still pressed (fires before release, so the player gets immediate
+    /// feedback). The release-click that follows is swallowed via
+    /// <see cref="ConsumeLongPress"/> so the short-click action does not
+    /// also fire. Used by the play HUD to map a hold on Undo/Redo to
+    /// Undo All / Redo All.
+    /// </summary>
+    public event System.Action? LongPressed;
+
     /// <summary>
     /// Which unit level the Buy button is currently targeting. Drives
     /// the ring count drawn for <see cref="HudIcon.Recruit"/> so the
@@ -86,6 +104,40 @@ public partial class HudIconButton : Button
         CustomMinimumSize = new Vector2(44, 44);
         FocusMode = Control.FocusModeEnum.None;
         TooltipText = DefaultTooltip(icon);
+        ButtonDown += OnButtonDown;
+        ButtonUp += OnButtonUp;
+    }
+
+    private void OnButtonDown()
+    {
+        if (LongPressed == null) return;   // no listener → no hold gesture
+        _longFired = false;
+        ulong gen = ++_pressGen;
+        SceneTreeTimer timer = GetTree().CreateTimer(LongPressSeconds);
+        timer.Timeout += () =>
+        {
+            // Bail if the press was released (or re-pressed) before the
+            // threshold — ButtonUp bumps _pressGen to invalidate this.
+            if (gen != _pressGen || !ButtonPressed) return;
+            _longFired = true;
+            FlashPress();   // one-shot pulse confirming the hold registered
+            LongPressed?.Invoke();
+        };
+    }
+
+    private void OnButtonUp() => _pressGen++;
+
+    /// <summary>
+    /// Returns true (and resets) iff a long-press fired during the current
+    /// press. The <see cref="Button.Pressed"/> handler calls this first and
+    /// returns early when true, so a hold does not also trigger the
+    /// short-click action.
+    /// </summary>
+    public bool ConsumeLongPress()
+    {
+        if (!_longFired) return false;
+        _longFired = false;
+        return true;
     }
 
     /// <summary>
