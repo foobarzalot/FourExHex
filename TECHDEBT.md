@@ -39,6 +39,26 @@ width, trading away some touch-target size on the densest phones. Decision
 portrait responsive pass to its own effort. Closely tied to the Android entry
 below — this is exactly what a device test would expose.
 
+**Confirmed on device (2026-05-25, Samsung Galaxy S9 / SM-G960U, debug APK):**
+- Android `DisplayServer.ScreenGetScale` does **NOT** return 1.0 (my original
+  assumption) — it returned **1.35 in portrait and 1.8 in landscape** on the
+  same device. So the divide-by-`osScale` (added for macOS retina) *does* fire
+  on Android, and the resulting factor **varies by orientation**: ~**2.22**
+  portrait (480 dpi / 1.35 / 160) vs ~**1.67** landscape (480 / 1.8 / 160).
+- This means the scale factor is **device- and orientation-dependent** on
+  Android, not a clean function of density. On the S9 it happened to land at a
+  comfortable, usable size (the user confirmed buttons tappable + readable), so
+  the divide-by-scale is being **kept** for now rather than gated to macOS/iOS.
+- Open risk: other Android devices may report different `osScale`, so the
+  on-screen size won't be consistent across the fleet. Revisit if a future
+  device looks too small/large; the fix would be per-platform gating of the
+  divide (raw `dpi/160` on Android) and/or tuning `MaxFactor`.
+- The original portrait *overlap* (bottom-bar clusters colliding) and the
+  first-show top-bar mis-position were fixed (landscape buy palette anchored
+  right; portrait top row made full-width/centered). What remains deferred is
+  the general portrait responsiveness at the narrowest widths and the toast's
+  fixed vertical height.
+
 **Severity:** portrait layout on high-density phones is cramped/overlapping;
 landscape and desktop are unaffected.
 

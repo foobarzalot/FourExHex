@@ -24,12 +24,6 @@ public partial class DisplayScale : Node
 {
     public override void _Ready()
     {
-        // TEMP device-debug: FOUREXHEX_LOG can't be set via env var on Android,
-        // so force the Display category on (Debug captures both the scaled and
-        // the no-op cases) to surface the dpi/osScale/factor line in
-        // `adb logcat`. Revert before shipping.
-        Log.SetLevel(Log.LogCategory.Display, Log.LogLevel.Debug);
-
         Apply();
         // Catches rotation / monitor moves that could change the active DPI.
         GetViewport().SizeChanged += Apply;
