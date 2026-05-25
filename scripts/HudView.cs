@@ -91,7 +91,6 @@ public partial class HudView : OrientationHud, IHudView
     private Control _actionCluster = null!;   // buy palette + Build Tower + Add Text
     private Control _controlsCluster = null!; // undo cluster + End Turn + Options
     private bool _selectionPresent;           // a territory is currently selected
-    private HBoxContainer? _portraitTopRow;   // TEMP bug2 diag: portrait top-bar row
 
     // Snapshot of session.Mode != None at the last Refresh, so the Escape
     // handler can decide between cancel-action (pending) and End Game (idle)
@@ -379,7 +378,6 @@ public partial class HudView : OrientationHud, IHudView
         TopBar.AddChild(topRow);
         topRow.AddChild(_goldChip);
         topRow.AddChild(_actionCluster);
-        _portraitTopRow = topRow; // TEMP bug2 diag
 
         BottomBar = HudBars.MakeBarPanel(top: false, height: PortraitBottomBarHeight);
         AddChild(BottomBar);
@@ -418,16 +416,7 @@ public partial class HudView : OrientationHud, IHudView
         // Lift the tutorial box above the portrait bottom bar (no-op until the
         // overlay is built later in _Ready, and in landscape).
         PositionTutorialOverlay();
-
-        // TEMP bug2 diag: capture the (presumed-good) layout after a relayout so
-        // it can be compared against the mispositioned on-select state.
-        if (Orientation == ScreenOrientation.Portrait && _selectionPresent)
-            CallDeferred(nameof(LogPortraitTopBarLayoutRelayout));
     }
-
-    // TEMP bug2 diag — remove with the rest of the bug2 instrumentation.
-    private void LogPortraitTopBarLayoutRelayout() =>
-        LogPortraitTopBarLayout("post-relayout (deferred +1 frame)");
 
     /// <summary>Drop the "TURN" / "TO PLAY" captions in portrait (no room) and
     /// in a narrow landscape window (they'd crowd the centered unit buttons).
@@ -479,34 +468,6 @@ public partial class HudView : OrientationHud, IHudView
         TopBar.Visible = present;
         Log.Debug(Log.LogCategory.Render, $"HudView: portrait top bar visible={present}.");
         PublishInsets();
-
-        // TEMP bug2 diag: top bar shown on selection is mispositioned (contents
-        // pushed off the right) until an orientation round-trip. Log the layout
-        // at show time AND one frame later to see whether a deferred layout pass
-        // corrects it. Compare against the post-relayout log in OnLayoutApplied.
-        if (present)
-        {
-            LogPortraitTopBarLayout("on-select (same frame)");
-            CallDeferred(nameof(LogPortraitTopBarLayoutDeferred));
-        }
-    }
-
-    // TEMP bug2 diag — remove with the rest of the bug2 instrumentation.
-    private void LogPortraitTopBarLayoutDeferred() =>
-        LogPortraitTopBarLayout("on-select (deferred +1 frame)");
-
-    private void LogPortraitTopBarLayout(string when)
-    {
-        if (_portraitTopRow == null) return;
-        Vector2 vp = GetViewport().GetVisibleRect().Size;
-        Rect2 row = _portraitTopRow.GetGlobalRect();
-        Rect2 gold = _goldChip.GetGlobalRect();
-        Rect2 action = _actionCluster.GetGlobalRect();
-        Log.Info(Log.LogCategory.Display,
-            $"bug2 [{when}]: vp={vp} topRow.pos={row.Position} topRow.size={row.Size} " +
-            $"gold.pos={gold.Position} gold.size={gold.Size} " +
-            $"action.pos={action.Position} action.size={action.Size} " +
-            $"(action.right={action.Position.X + action.Size.X}, vp.right={vp.X})");
     }
 
     public void SetMapLabel(string text)
