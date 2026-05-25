@@ -866,9 +866,11 @@ override the tooltip live in `Refresh` to show "Buy `<level>`
 territory has no capital", "Selected territory can't afford a
 captain (30g)"). Buy and Build are always visible — the
 disabled-with-reason tooltip replaces the old visibility toggle
-so the layout doesn't shift. Three text labels
-(Turn / Current player / Gold) have fixed `CustomMinimumSize.X`
-so the buttons after them never reflow.
+so the layout doesn't shift. The Turn and Gold text labels plus
+the player-swatch bar have fixed/reserved `CustomMinimumSize.X`
+(the swatch bar reserves every slot at the enlarged width so the
+highlight can move without changing width) so the buttons after
+them never reflow.
 
 The Buy row is four always-visible radio buttons (Recruit /
 Soldier / Captain / Commander) packed in a nested `HBoxContainer`.
@@ -2555,12 +2557,18 @@ The play HUD (`HudView`) is one `Panel` background + one
 `HBoxContainer` bar broken into three regions:
 
 - **Status (left)** — `TURN` gold eyebrow + the turn number
-  (JetBrains Mono 36) | line-soft divider | `TO PLAY` gold
-  eyebrow + the current player's name in their fill color
-  (Geist 40) | divider | gold chip (bg-deep `PanelContainer`
-  with line-soft border + 8 px radius) containing the gold
-  total + income breakdown in JetBrains Mono 26, hidden when
-  no capital territory is selected.
+  (JetBrains Mono 36) | line-soft divider | the **player-swatch
+  bar** (`scripts/PlayerSwatchBar.cs`) — a custom-drawn `Control`
+  showing a row of color swatches, one per player in movement
+  (turn) order, with the current player's swatch enlarged +
+  white-outlined and eliminated players (no capital, detected via
+  `WinConditionRules.IsEliminated`) dimmed in place. Replaces the
+  old colored name label. Below a width threshold it collapses to
+  the current player's swatch only (see "Responsive layout"). |
+  divider | gold chip (bg-deep `PanelContainer` with line-soft
+  border + 8 px radius) containing the gold total + income
+  breakdown in JetBrains Mono 26, hidden when no capital territory
+  is selected.
 - **Unit palette (center)** — a slate `PanelContainer` (radius
   10, bg-deep) wrapping the four buy buttons (Recruit /
   Soldier / Captain / Commander) as a radio group. The Build Tower
@@ -2612,15 +2620,20 @@ disagree:
   `OnViewportMetricsChanged` (every resize). So the two HUDs can't drift
   on either the chrome or the coordination.
   - *Landscape:* the single 96-px top bar described above. On windows
-    narrower than 1500 px the `TURN` / `TO PLAY` eyebrow captions are
-    dropped (via `OnViewportMetricsChanged`) so a long economy report
-    can't grow the left status group into the centered unit buttons; the
-    turn number and player name always stay.
+    narrower than 1500 px the `TURN` eyebrow caption is dropped (via
+    `OnViewportMetricsChanged`) so a long economy report can't grow the
+    left status group into the centered unit buttons; the turn number and
+    swatch bar always stay. The swatch bar collapses to the current
+    player's swatch below 1100 px wide (landscape spends width on the
+    centered action cluster, so it needs more room before the full row
+    fits).
   - *Portrait gameplay:* a **top bar** with territory-specific content
     (gold chip + buy/build), shown only while a territory is selected,
-    and an always-on **bottom bar** (turn # + player + undo / End Turn /
-    Options). The `TURN` / `TO PLAY` eyebrow captions are dropped in
-    portrait. The seed label hides (the bottom bar owns that space).
+    and an always-on **bottom bar** (turn # + swatch bar + undo / End
+    Turn / Options). The `TURN` eyebrow caption is dropped in portrait,
+    and the swatch bar collapses to the current player's swatch only
+    below 820 px wide (low-res portrait). The seed label hides (the
+    bottom bar owns that space).
   - *Portrait editor:* a **top bar** with all paint options and a
     **bottom bar** with seed + die + undo/redo + Options.
 

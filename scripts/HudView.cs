@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Godot;
 
@@ -43,9 +44,8 @@ public partial class HudView : OrientationHud, IHudView
     public event Action? AddTextClicked;
 
     private Label _turnLabel = null!;       // numeric mono turn number
-    private Label _playerLabel = null!;     // current player name in their color
+    private PlayerSwatchBar _playerSwatchBar = null!; // players in turn order, current highlighted
     private Label _turnEyebrow = null!;     // "TURN" caption (hidden in portrait)
-    private Label _playerEyebrow = null!;   // "TO PLAY" caption (hidden in portrait)
     private Label _goldLabel = null!;       // gold + income breakdown
     private PanelContainer _goldChip = null!;
     private Label _seedLabel = null!;
@@ -124,13 +124,12 @@ public partial class HudView : OrientationHud, IHudView
 
         _statusCluster.AddChild(BuildVerticalDivider());
 
-        // 2) Current-player block — "TO PLAY" eyebrow + name in the
-        // player's fill color. No swatch — the colored name already
-        // identifies the active player.
-        _statusCluster.AddChild(BuildEyebrowBlock("TO PLAY", out _playerLabel, mono: false, valueColor: UiPalette.Ink, out _playerEyebrow));
-        _playerLabel.Text = "Red";
-        _playerLabel.CustomMinimumSize = new Vector2(140, 0);
-        _playerLabel.AddThemeFontSizeOverride("font_size", 40);
+        // 2) Current-player block — a row of color swatches, one per
+        // player in movement order, with the current player's swatch
+        // enlarged + white-outlined and eliminated players dimmed in
+        // place. Replaces the old colored name label.
+        _playerSwatchBar = new PlayerSwatchBar { SizeFlagsVertical = Control.SizeFlags.ShrinkCenter };
+        _statusCluster.AddChild(_playerSwatchBar);
 
         // 3) Gold chip — bg-deep pill containing the gold value + the
         // income breakdown. We keep the existing "value (income-upkeep=net)"
@@ -367,6 +366,13 @@ public partial class HudView : OrientationHud, IHudView
     // design target is 1600 wide; common laptop/narrow widths go compact.
     private const float CompactLandscapeWidth = 1500f;
 
+    // Below these widths the player-swatch bar collapses to the current
+    // player's swatch only — the full turn-order row doesn't fit. Two
+    // thresholds because landscape also spends width on the centered
+    // action cluster, so it needs more room before the full row fits.
+    private const float FullSwatchRowWidthPortrait = 820f;
+    private const float FullSwatchRowWidthLandscape = 1100f;
+
     /// <summary>Post-layout (orientation flip): the seed label is landscape-
     /// only, and the top bar follows the selection. Eyebrow visibility is
     /// width-driven, handled in OnViewportMetricsChanged.</summary>
@@ -388,7 +394,14 @@ public partial class HudView : OrientationHud, IHudView
         bool showEyebrows = Orientation == ScreenOrientation.Landscape
             && width >= CompactLandscapeWidth;
         _turnEyebrow.Visible = showEyebrows;
-        _playerEyebrow.Visible = showEyebrows;
+
+        float fullRowMin = Orientation == ScreenOrientation.Landscape
+            ? FullSwatchRowWidthLandscape
+            : FullSwatchRowWidthPortrait;
+        bool compactSwatches = width < fullRowMin;
+        _playerSwatchBar.SetCompact(compactSwatches);
+        Log.Debug(Log.LogCategory.Render,
+            $"[SwatchBar] metrics: width={width:0} orient={Orientation} compact={compactSwatches}");
     }
 
     protected override MapInsets ComputeInsets()
@@ -1336,9 +1349,25 @@ public partial class HudView : OrientationHud, IHudView
     {
         _hasPendingAction = session.Mode != SessionState.ActionMode.None;
         _turnLabel.Text = state.Turns.TurnNumber.ToString();
-        Player current = state.Turns.CurrentPlayer;
-        _playerLabel.Text = current.Name;
-        _playerLabel.AddThemeColorOverride("font_color", PlayerPalette.ColorFor(current.Id));
+        IReadOnlyList<Player> roster = state.Turns.Players;
+        var swatchColors = new Color[roster.Count];
+        var swatchEliminated = new bool[roster.Count];
+        for (int i = 0; i < roster.Count; i++)
+        {
+            swatchColors[i] = PlayerPalette.ColorFor(roster[i].Id);
+            swatchEliminated[i] = WinConditionRules.IsEliminated(roster[i].Id, state.Grid);
+        }
+        int currentIndex = state.Turns.CurrentPlayerIndex;
+        _playerSwatchBar.SetPlayers(swatchColors, swatchEliminated, currentIndex);
+        if (Log.IsEnabled(Log.LogCategory.Render, Log.LogLevel.Debug))
+        {
+            var parts = new List<string>(roster.Count);
+            for (int i = 0; i < roster.Count; i++)
+            {
+                parts.Add($"{i}:{roster[i].Name}{(swatchEliminated[i] ? "(elim)" : "")}{(i == currentIndex ? "*" : "")}");
+            }
+            Log.Debug(Log.LogCategory.Render, $"[SwatchBar] current={currentIndex} [{string.Join(", ", parts)}]");
+        }
 
         // Buy / Build buttons are always visible; the tooltip explains
         // *why* the button is disabled (no selection / no capital / can't
