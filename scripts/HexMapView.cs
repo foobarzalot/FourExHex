@@ -2699,8 +2699,15 @@ public partial class HexMapView : Node2D, IHexMapView
         Vector2 capitalCenter = FirstHexCenterOffset + HexPixel.ToPixel(capital, HexSize);
         // Tuck the badge into the capital's upper-LEFT corner per the
         // redesign spec so the capital glyph stays visible underneath
-        // and the warning sits in a consistent corner across tiles.
-        Vector2 badgePos = capitalCenter + new Vector2(-HexSize * 0.45f, -HexSize * 0.45f);
+        // and the warning sits in a consistent corner across tiles. The offset
+        // lives in board space (this layer rotates with the board in portrait),
+        // so counter-rotate it by -_mapAngleRad to keep it pointing up-left on
+        // screen in every orientation. (The badge's glyph is kept upright
+        // separately by ApplyGlyphUpright.)
+        Vector2 cornerOffset = new Vector2(-HexSize * 0.45f, -HexSize * 0.45f).Rotated(-_mapAngleRad);
+        Vector2 badgePos = capitalCenter + cornerOffset;
+        Log.Debug(Log.LogCategory.Render,
+            $"[WarningBadge] capital={capital} offset={cornerOffset} (mapAngle {Mathf.RadToDeg(_mapAngleRad):0}°)");
 
         // Equilateral triangle pointing up, inscribed in radius r.
         const float Sqrt3Over2 = 0.8660254f;
