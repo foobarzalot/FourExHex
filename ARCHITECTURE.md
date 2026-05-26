@@ -2615,43 +2615,48 @@ codebase.
 
 ### HUD shape
 
-The play HUD (`HudView`) is one `Panel` background + one
-`HBoxContainer` bar broken into three regions:
+The play HUD (`HudView`) is a set of widget *clusters* laid out in a
+96-px slate bar; `OrientationHud` places the clusters per orientation
+(see "Responsive layout" for the concrete left/center/right and
+top/bottom assignment). The clusters:
 
-- **Status (left)** — `TURN` gold eyebrow + the turn number
+- **Status** — `TURN` gold eyebrow + the turn number
   (JetBrains Mono 36) | line-soft divider | the **player-swatch
   bar** (`scripts/PlayerSwatchBar.cs`) — a custom-drawn `Control`
   showing a row of color swatches, one per player in movement
   (turn) order, with the current player's swatch enlarged +
   white-outlined and eliminated players (no capital, detected via
-  `WinConditionRules.IsEliminated`) dimmed in place. Replaces the
-  old colored name label. Below a width threshold it collapses to
-  the current player's swatch only (see "Responsive layout"). |
-  divider | gold chip (bg-deep `PanelContainer` with line-soft
-  border + 8 px radius) containing the gold total + income
-  breakdown in JetBrains Mono 26, hidden when no capital territory
-  is selected.
-- **Unit palette (center)** — a slate `PanelContainer` (radius
-  10, bg-deep) wrapping the four buy buttons (Recruit /
-  Soldier / Captain / Commander) as a radio group. The Build Tower
-  button sits OUTSIDE that panel as a separate sibling in the
-  bar so it has its own anchor; the 14-px gap between them
-  comes from the bar's separation.
-- **Turn controls (right)** — Undo cluster (4 ghost icon
-  buttons) | divider | End Turn `HudIconButton` | Options
-  (gear) cog.
+  `WinConditionRules.IsEliminated`) dimmed in place. Below a width
+  threshold it collapses to the current player's swatch only (see
+  "Responsive layout").
+- **Gold chip** — bg-deep `PanelContainer` (line-soft border + 8 px
+  radius) with the gold total + income breakdown in JetBrains Mono 26,
+  hidden when no capital territory is selected.
+- **Action (unit palette)** — a slate `PanelContainer` (radius 10,
+  bg-deep) wrapping, side by side, the four buy buttons (Recruit /
+  Soldier / Captain / Commander) as a radio group **and** a single
+  *collapsed* buy button; exactly one is visible. Below a width
+  threshold (`FullBuyRowWidth{Portrait,Landscape}`, toggled in
+  `OnViewportMetricsChanged`) the four-button row hides and the lone
+  button shows, cycling through the affordable levels on each press —
+  it fires the same `BuyRecruitClicked` event as the `U` hotkey
+  (`GameController.OnBuyPressed`), so there's no extra controller path.
+  The Build Tower button sits OUTSIDE that panel as a separate sibling.
+- **Undo** — Undo / Redo ghost icon buttons (centered on the portrait
+  bottom bar).
+- **Turn controls** — Next Territory | End Turn.
+- **Options** — gear cog (raises `EscRequested`).
 
 The bar is 96 px tall (`HudView.HudHeight = 96`). The map editor
-HUD (`MapEditorHudView`) anchors to the same `HudHeight` and
-follows the same shell: warm-slate `Panel` background with a
-1-px line-soft bottom border, `SEED` gold eyebrow + mono
-`LineEdit`, a `HudIconButton(HudIcon.Die)` (isometric six-sided
-die glyph drawn by `HudIcons.DrawDie`; replaces the old "Generate"
-text button), then the palette swatches in three groups: the six
-land colors inside a rounded slate `PanelContainer` (radio-group
-framing), the four terrain tools (water / tree / capital / tower)
-as bare swatches, and the hand (pan / no-paint) tool at the right
-end.
+HUD (`MapEditorHudView`) anchors to the same `HudHeight` and follows
+the same shell: warm-slate `Panel`, `SEED` gold eyebrow + mono
+`LineEdit`, a `HudIconButton(HudIcon.Die)` (isometric six-sided die
+glyph drawn by `HudIcons.DrawDie`), and the palette as two reparentable
+clusters — a **land cluster** (the six land colors inside a rounded
+slate `PanelContainer`, radio-group framing) and a **tools cluster**
+(the four terrain tools water / tree / capital / tower as bare swatches,
+then the hand / pan tool) — plus an undo/redo cluster and the Options
+gear.
 
 ### Responsive layout (landscape / portrait)
 
@@ -2681,23 +2686,28 @@ disagree:
   `ComputeInsets`, plus the virtual `OnLayoutApplied` (post-flip) and
   `OnViewportMetricsChanged` (every resize). So the two HUDs can't drift
   on either the chrome or the coordination.
-  - *Landscape:* the single 96-px top bar described above. On windows
+  - *Landscape gameplay:* a single 96-px **bottom** bar (moved from the
+    top for thumb reach) in three anchored zones — unit/tower purchase +
+    gold at the **left** edge, turn # + swatch bar **centered**, and
+    undo/redo + Next/End Turn + Options at the **right**. On windows
     narrower than 1500 px the `TURN` eyebrow caption is dropped (via
-    `OnViewportMetricsChanged`) so a long economy report can't grow the
-    left status group into the centered unit buttons; the turn number and
-    swatch bar always stay. The swatch bar collapses to the current
-    player's swatch below 1100 px wide (landscape spends width on the
-    centered action cluster, so it needs more room before the full row
-    fits).
-  - *Portrait gameplay:* a **top bar** with territory-specific content
-    (gold chip + buy/build), shown only while a territory is selected,
-    and an always-on **bottom bar** (turn # + swatch bar + undo / End
-    Turn / Options). The `TURN` eyebrow caption is dropped in portrait,
-    and the swatch bar collapses to the current player's swatch only
-    below 820 px wide (low-res portrait). The seed label hides (the
-    bottom bar owns that space).
-  - *Portrait editor:* a **top bar** with all paint options and a
-    **bottom bar** with seed + die + undo/redo + Options.
+    `OnViewportMetricsChanged`); the turn number and swatch bar always
+    stay. The swatch bar collapses to the current player's swatch below
+    1100 px wide, and the buy palette collapses to the single cycling
+    button below `FullBuyRowWidthLandscape`.
+  - *Portrait gameplay:* a **top bar** of non-interactive display only —
+    turn # + swatch bar (firmly left-anchored so it doesn't shift as the
+    gold chip appears) + gold, with the Options gear at the top-right —
+    **always up**; and a **bottom bar** of all interactive controls —
+    the (collapsed) buy button + Build Tower at the left, undo/redo
+    **centered**, Next/End Turn at the right. The `TURN` eyebrow is
+    dropped, the swatch bar collapses below 820 px, and the buy palette
+    collapses below `FullBuyRowWidthPortrait`. The seed label hides.
+  - *Landscape editor:* a single **bottom** bar — the six land swatches
+    at the **left**, seed + die **centered**, and terrain tools + hand,
+    then undo/redo + Options, at the **right**.
+  - *Portrait editor:* **top bar** with seed + die + undo/redo + Options;
+    **bottom bar** with the paint palette (land + tools) centered.
 
 - **Map reserves the bars + rotates in portrait** (`HexMapView`). The
   view is a pure consumer of layout: `SetMapInsets(top, bottom)` (pushed
@@ -2709,7 +2719,10 @@ disagree:
   viewport. Icon glyphs with an "up" (units, capitals, towers, trees,
   graves, warning badges, tower-placement previews) are counter-rotated
   by `ApplyGlyphUpright()` so they render upright at their rotated tile
-  positions; hex-cell-aligned overlays (tile fills, per-tile outlines,
+  positions; the capital warning badge additionally counter-rotates its
+  upper-left *corner offset* (`-_mapAngleRad`) so it stays up-left on
+  screen instead of following the board into a down-left corner. Hex-cell-
+  aligned overlays (tile fills, per-tile outlines,
   territory borders, water, shore foam, tower coverage, selection
   highlight, the symmetric move-target rings) and the directional
   rejection arrows rotate with the board. The pan / center / zoom-fit /
@@ -2739,9 +2752,10 @@ disagree:
   (`ZoomMath.ComputeZoomMin`) likewise uses the full grid, so the zoom range is
   unchanged. **Insets must reach the map:** the HUD's
   `MapInsetsChanged` is relayed to `HexMapView.SetMapInsets` by *both* `Main`
-  (play) and `PreviewPane` (tutorial); without that relay the map keeps the
-  landscape default insets (`top=96, bottom=0`) and portrait content is pushed
-  down. `RecenterMap` logs its inputs + resulting on-screen rect at
+  (play) and `PreviewPane` (tutorial); without that relay the map keeps its
+  default insets and portrait content is pushed down. (Landscape now reserves
+  the bottom strip — `ComputeInsets` returns `top=0, bottom=barHeight` — since
+  the bar moved to the bottom.) `RecenterMap` logs its inputs + resulting on-screen rect at
   `Render:Debug` for regression diagnosis.
 
 `project.godot` is unchanged (default stretch, resizable); the responsive
@@ -3013,10 +3027,10 @@ scripts/  (split: see the three source trees listed just above)
 ├─ IHudView.cs            ─ HUD view contract
 ├─ HexMapView.cs          ─ concrete map: rendering + input + camera pan
 │                           + audio forwarding
-├─ HudView.cs             ─ concrete HUD: 96-px slate top strip
-│                           organized into three regions (status,
-│                           centered unit-palette panel, turn
-│                           controls) + defeat / claim-victory /
+├─ HudView.cs             ─ concrete HUD: 96-px slate bar (bottom in
+│                           landscape; split display-top / controls-
+│                           bottom in portrait, see Responsive layout)
+│                           + defeat / claim-victory /
 │                           victory overlays + bottom-anchored
 │                           tutorial-message popup + top-anchored
 │                           bankruptcy toast (red pill with the
