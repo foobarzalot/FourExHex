@@ -25,7 +25,7 @@ public class ScreenLayoutTests
     }
 
     [Fact]
-    public void ComputeInsets_Landscape_TopBarOnly_BottomZero()
+    public void ComputeInsets_Landscape_BottomBarOnly_TopZero()
     {
         MapInsets insets = ScreenLayout.ComputeInsets(
             ScreenOrientation.Landscape,
@@ -34,8 +34,8 @@ public class ScreenLayoutTests
             portraitTopBarHeight: 80f,
             portraitBottomBarHeight: 110f);
 
-        Assert.Equal(96f, insets.Top, Tolerance);
-        Assert.Equal(0f, insets.Bottom, Tolerance);
+        Assert.Equal(0f, insets.Top, Tolerance);
+        Assert.Equal(96f, insets.Bottom, Tolerance);
     }
 
     [Fact]
@@ -49,8 +49,8 @@ public class ScreenLayoutTests
             portraitTopBarHeight: 80f,
             portraitBottomBarHeight: 110f);
 
-        Assert.Equal(96f, insets.Top, Tolerance);
-        Assert.Equal(0f, insets.Bottom, Tolerance);
+        Assert.Equal(0f, insets.Top, Tolerance);
+        Assert.Equal(96f, insets.Bottom, Tolerance);
     }
 
     [Fact]

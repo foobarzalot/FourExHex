@@ -60,6 +60,12 @@ public partial class HudView : OrientationHud, IHudView
     // a given UnitLevel. _buyUnitButtons[0] = Recruit (the legacy
     // CtaButton.BuyRecruit target).
     private HudIconButton[] _buyUnitButtons = null!;
+    // The four-button row and a single collapsed cycling button live side by
+    // side in the palette panel; exactly one is visible (width-driven, set in
+    // OnViewportMetricsChanged). The collapsed button fires the same
+    // BuyRecruitClicked cycle event as the U hotkey.
+    private HBoxContainer _paletteRow = null!;
+    private HudIconButton _collapsedBuyButton = null!;
     private HudIconButton _buildTowerButton = null!;
     private HudIconButton _undoLastButton = null!;
     private HudIconButton _redoLastButton = null!;
@@ -89,8 +95,8 @@ public partial class HudView : OrientationHud, IHudView
     // (TopBar/BottomBar, owned by OrientationHud) on a landscape↔portrait flip.
     private Control _statusCluster = null!;   // TURN # + TO PLAY name
     private Control _actionCluster = null!;   // buy palette + Build Tower + Add Text
-    private Control _controlsCluster = null!; // undo cluster + End Turn + Options
-    private bool _selectionPresent;           // a territory is currently selected
+    private Control _undoCluster = null!;     // undo + redo (centered on the portrait bottom bar)
+    private Control _controlsCluster = null!; // next territory + End Turn (+ Options in landscape)
 
     // Snapshot of session.Mode != None at the last Refresh, so the Escape
     // handler can decide between cancel-action (pending) and End Game (idle)
@@ -110,6 +116,8 @@ public partial class HudView : OrientationHud, IHudView
         _statusCluster.AddThemeConstantOverride("separation", 14);
         _actionCluster = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Pass };
         _actionCluster.AddThemeConstantOverride("separation", 14);
+        _undoCluster = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Pass };
+        _undoCluster.AddThemeConstantOverride("separation", 14);
         _controlsCluster = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Pass };
         _controlsCluster.AddThemeConstantOverride("separation", 14);
 
@@ -180,9 +188,16 @@ public partial class HudView : OrientationHud, IHudView
             SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
         };
         palettePanel.AddThemeStyleboxOverride("panel", ModalChrome.PalettePanelStyle());
+        // The panel wraps a single group holding both the full four-button row
+        // and a single collapsed cycle button; exactly one is visible at a time
+        // (hidden children take no space in the HBox, so the panel sizes to
+        // whichever is shown). Mirrors the map editor's land-swatch collapse.
+        var paletteGroup = new HBoxContainer();
+        palettePanel.AddChild(paletteGroup);
         var paletteRow = new HBoxContainer();
         paletteRow.AddThemeConstantOverride("separation", 2);
-        palettePanel.AddChild(paletteRow);
+        paletteGroup.AddChild(paletteRow);
+        _paletteRow = paletteRow;
         _actionCluster.AddChild(palettePanel);
 
         UnitLevel[] buyLevels = { UnitLevel.Recruit, UnitLevel.Soldier, UnitLevel.Captain, UnitLevel.Commander };
@@ -200,6 +215,22 @@ public partial class HudView : OrientationHud, IHudView
             paletteRow.AddChild(button);
             _buyUnitButtons[i] = button;
         }
+
+        // Collapsed-mode counterpart: a single unit button that fires the same
+        // BuyRecruitClicked cycle event as the U hotkey (select-lowest-affordable
+        // → advance → exit, owned by GameController.OnBuyPressed). Built hidden —
+        // OnViewportMetricsChanged flips it on when the viewport is narrow. Its
+        // BuyLevel/Selected are synced to the active buy mode in Refresh().
+        _collapsedBuyButton = new HudIconButton(HudIcon.Recruit)
+        {
+            Disabled = true,
+            BuyLevel = UnitLevel.Recruit,
+            TooltipText = "Buy unit — cycles affordable levels (U)",
+            Visible = false,
+        };
+        _collapsedBuyButton.Pressed += () => BuyRecruitClicked?.Invoke();
+        AudioBus.AttachClick(_collapsedBuyButton);
+        paletteGroup.AddChild(_collapsedBuyButton);
 
         _buildTowerButton = new HudIconButton(HudIcon.Tower) { Disabled = true };
         _buildTowerButton.Pressed += () => BuildTowerClicked?.Invoke();
@@ -239,7 +270,7 @@ public partial class HudView : OrientationHud, IHudView
             UndoTurnClicked?.Invoke();
         };
         AudioBus.AttachClick(_undoLastButton);
-        _controlsCluster.AddChild(_undoLastButton);
+        _undoCluster.AddChild(_undoLastButton);
 
         _redoLastButton = new HudIconButton(HudIcon.RedoLast)
         {
@@ -257,9 +288,7 @@ public partial class HudView : OrientationHud, IHudView
             RedoAllClicked?.Invoke();
         };
         AudioBus.AttachClick(_redoLastButton);
-        _controlsCluster.AddChild(_redoLastButton);
-
-        _controlsCluster.AddChild(BuildVerticalDivider());
+        _undoCluster.AddChild(_redoLastButton);
 
         // Next active territory — same action as the Tab hotkey. Disabled
         // exactly when End Turn is the CTA (no actionable territory left).
@@ -279,26 +308,28 @@ public partial class HudView : OrientationHud, IHudView
         // the Escape key fires, so the scene root's pause coordinator
         // drives both paths. Save Game and Settings live inside that
         // pause menu now rather than as standalone HUD buttons.
+        // Options is reparented per orientation (end of the controls cluster in
+        // landscape; the top display bar's right side in portrait), so it isn't
+        // added to a cluster here — the Build*Bars methods place it.
         _optionsButton = new HudIconButton(HudIcon.Options);
         _optionsButton.Pressed += () => EscRequested?.Invoke();
         AudioBus.AttachClick(_optionsButton);
-        _controlsCluster.AddChild(_optionsButton);
 
-        // Read-only seed display anchored to the bottom-left so a player
-        // can recall or share the seed mid-game without crowding the
-        // top-bar action UI. Small font + dim color so it sits in the
-        // visual background.
+        // Read-only seed display anchored to the top-left (landscape-only) so a
+        // player can recall or share the seed mid-game. The HUD bar now sits at
+        // the bottom, leaving the top free; small font + dim color so it sits in
+        // the visual background.
         _seedLabel = new Label
         {
             Text = "",
             AnchorLeft = 0f,
             AnchorRight = 0f,
-            AnchorTop = 1f,
-            AnchorBottom = 1f,
+            AnchorTop = 0f,
+            AnchorBottom = 0f,
             OffsetLeft = 12f,
             OffsetRight = 280f,
-            OffsetTop = -48f,
-            OffsetBottom = -8f,
+            OffsetTop = 8f,
+            OffsetBottom = 48f,
         };
         _seedLabel.AddThemeFontSizeOverride("font_size", 28);
         _seedLabel.AddThemeColorOverride("font_color", new Color(0f, 0f, 0f, 1f));
@@ -322,62 +353,65 @@ public partial class HudView : OrientationHud, IHudView
         HudBars.Detach(_statusCluster);
         HudBars.Detach(_goldChip);
         HudBars.Detach(_actionCluster);
+        HudBars.Detach(_undoCluster);
         HudBars.Detach(_controlsCluster);
+        // Options floats between the controls cluster (landscape) and the top
+        // bar (portrait); detach it so freeing the old bars can't free it.
+        HudBars.Detach(_optionsButton);
     }
 
-    /// <summary>Legacy single top strip: status + gold (left), actions
-    /// (center), turn controls (right).</summary>
+    /// <summary>Single bottom strip: status + gold (left), actions
+    /// (center), turn controls (right) — moved to the bottom for thumb reach.</summary>
     protected override void BuildLandscapeBars()
     {
-        TopBar = HudBars.MakeBarPanel(top: true, height: HudHeight);
-        AddChild(TopBar);
+        BottomBar = HudBars.MakeBarPanel(top: false, height: HudHeight);
+        AddChild(BottomBar);
         Control frame = HudBars.MakeBarFrame();
-        TopBar.AddChild(frame);
+        BottomBar.AddChild(frame);
 
+        // Left edge: unit/tower purchase buttons + the gold report beside them.
+        // Action is anchored to the left edge; gold grows rightward from it.
         HBoxContainer left = HudBars.MakeAnchoredGroup(0f, Control.GrowDirection.End);
         frame.AddChild(left);
-        left.AddChild(_statusCluster);
+        left.AddChild(_actionCluster);
         left.AddChild(BuildVerticalDivider());
         left.AddChild(_goldChip);
 
-        // Buy palette + turn controls share the right group (buttons left,
-        // controls at the far-right corner). Anchoring the buy buttons right
-        // instead of center keeps them clear of the economy report, which
-        // grows rightward from the left group and otherwise overlapped a
-        // centered palette at narrow landscape widths.
+        // Centered: turn counter + player swatches.
+        HBoxContainer center = HudBars.MakeAnchoredGroup(0.5f, Control.GrowDirection.Both);
+        frame.AddChild(center);
+        center.AddChild(_statusCluster);
+
+        // Right corner: turn controls (undo/redo | next, end, options).
         HBoxContainer right = HudBars.MakeAnchoredGroup(1f, Control.GrowDirection.Begin);
         frame.AddChild(right);
-        right.AddChild(_actionCluster);
+        right.AddChild(_undoCluster);
         right.AddChild(BuildVerticalDivider());
         right.AddChild(_controlsCluster);
+        _controlsCluster.AddChild(_optionsButton);
     }
 
-    /// <summary>Portrait split bars: top = territory content (gold + actions),
-    /// shown only when a territory is selected; bottom = status (left) + turn
-    /// controls (right), always up.</summary>
+    /// <summary>Portrait split bars: top = non-interactive display (status +
+    /// gold), always up; bottom = all interactive buttons (actions left, turn
+    /// controls right) for thumb reach.</summary>
     protected override void BuildPortraitBars()
     {
         TopBar = HudBars.MakeBarPanel(top: true, height: PortraitTopBarHeight);
         AddChild(TopBar);
-        // Full-width row with centered content (NOT anchored at a single
-        // 0.5 point). A point-anchored row derives its on-screen position from
-        // its own min-size, which is stale the first time the bar is shown on
-        // selection (the buy cluster's min-size hasn't propagated yet) — the
-        // content then centered on the wrong size and overflowed off the right
-        // until an orientation round-trip forced a rebuild. A full-width row is
-        // anchor-driven, so its children always center within the viewport and
-        // can never shoot off-screen.
-        var topRow = new HBoxContainer
-        {
-            AnchorLeft = 0f, AnchorRight = 1f, AnchorTop = 0f, AnchorBottom = 1f,
-            OffsetTop = 8f, OffsetBottom = -8f,
-            Alignment = BoxContainer.AlignmentMode.Center,
-            MouseFilter = Control.MouseFilterEnum.Pass,
-        };
-        topRow.AddThemeConstantOverride("separation", 14);
-        TopBar.AddChild(topRow);
-        topRow.AddChild(_goldChip);
-        topRow.AddChild(_actionCluster);
+        Control topFrame = HudBars.MakeBarFrame();
+        TopBar.AddChild(topFrame);
+        // Status (turn + swatches) is firmly anchored to the left edge so it
+        // never shifts when the gold report appears/disappears beside it; the
+        // gold chip grows rightward from the same left group. Options anchors to
+        // the right corner.
+        HBoxContainer topLeft = HudBars.MakeAnchoredGroup(0f, Control.GrowDirection.End);
+        topFrame.AddChild(topLeft);
+        topLeft.AddChild(_statusCluster);
+        topLeft.AddChild(_goldChip);
+
+        HBoxContainer topRight = HudBars.MakeAnchoredGroup(1f, Control.GrowDirection.Begin);
+        topFrame.AddChild(topRight);
+        topRight.AddChild(_optionsButton);
 
         BottomBar = HudBars.MakeBarPanel(top: false, height: PortraitBottomBarHeight);
         AddChild(BottomBar);
@@ -386,7 +420,12 @@ public partial class HudView : OrientationHud, IHudView
 
         HBoxContainer left = HudBars.MakeAnchoredGroup(0f, Control.GrowDirection.End);
         frame.AddChild(left);
-        left.AddChild(_statusCluster);
+        left.AddChild(_actionCluster);
+
+        // Undo/redo centered on the bottom bar (anchor 0.5, grows both ways).
+        HBoxContainer center = HudBars.MakeAnchoredGroup(0.5f, Control.GrowDirection.Both);
+        frame.AddChild(center);
+        center.AddChild(_undoCluster);
 
         HBoxContainer right = HudBars.MakeAnchoredGroup(1f, Control.GrowDirection.Begin);
         frame.AddChild(right);
@@ -405,6 +444,13 @@ public partial class HudView : OrientationHud, IHudView
     // action cluster, so it needs more room before the full row fits.
     private const float FullSwatchRowWidthPortrait = 820f;
     private const float FullSwatchRowWidthLandscape = 1100f;
+
+    // Below these widths the four unit-buy buttons collapse to a single cycling
+    // button (mirrors the swatch-bar / map-editor land-swatch collapse). Two
+    // thresholds because landscape spends width on status + gold + controls
+    // beside the palette, so it needs more room before the full row fits.
+    private const float FullBuyRowWidthPortrait = 820f;
+    private const float FullBuyRowWidthLandscape = 1300f;
 
     /// <summary>Post-layout (orientation flip): the seed label is landscape-
     /// only, and the top bar follows the selection. Eyebrow visibility is
@@ -436,6 +482,15 @@ public partial class HudView : OrientationHud, IHudView
         Log.Debug(Log.LogCategory.Render,
             $"[SwatchBar] metrics: width={width:0} orient={Orientation} compact={compactSwatches}");
 
+        float buyRowMin = Orientation == ScreenOrientation.Landscape
+            ? FullBuyRowWidthLandscape
+            : FullBuyRowWidthPortrait;
+        bool collapseBuy = width < buyRowMin;
+        _paletteRow.Visible = !collapseBuy;
+        _collapsedBuyButton.Visible = collapseBuy;
+        Log.Debug(Log.LogCategory.Render,
+            $"[BuyPalette] metrics: width={width:0} orient={Orientation} collapse={collapseBuy}");
+
         // Re-fit the width-capped HUD panels to the new viewport (no-op until
         // each is built).
         PositionTutorialOverlay();
@@ -444,30 +499,18 @@ public partial class HudView : OrientationHud, IHudView
 
     protected override MapInsets ComputeInsets()
     {
-        bool topVisible = Orientation == ScreenOrientation.Landscape || _selectionPresent;
+        // The portrait top bar holds always-relevant display (turn / players /
+        // gold), so it's always up — top inset is stable across selection.
         return ScreenLayout.ComputeInsets(
-            Orientation, topVisible, HudHeight, PortraitTopBarHeight, PortraitBottomBarHeight);
+            Orientation, topBarVisible: true, HudHeight, PortraitTopBarHeight, PortraitBottomBarHeight);
     }
 
-    /// <summary>Top bar shows always in landscape; in portrait only when a
-    /// territory is selected (per the split-bar design).</summary>
+    /// <summary>Portrait keeps its top display bar up always; landscape builds
+    /// no top bar (single bottom strip), so this only guards the portrait case.</summary>
     private void UpdateTopBarVisibility()
     {
         if (TopBar == null) return;
-        TopBar.Visible = Orientation == ScreenOrientation.Landscape || _selectionPresent;
-    }
-
-    /// <summary>Called from Refresh with whether a territory is selected.
-    /// In portrait this drives the top bar's visibility and the map's top
-    /// inset; landscape ignores it (bar always up).</summary>
-    private void SetSelectionPresent(bool present)
-    {
-        if (present == _selectionPresent) return;
-        _selectionPresent = present;
-        if (Orientation != ScreenOrientation.Portrait || TopBar == null) return;
-        TopBar.Visible = present;
-        Log.Debug(Log.LogCategory.Render, $"HudView: portrait top bar visible={present}.");
-        PublishInsets();
+        TopBar.Visible = true;
     }
 
     public void SetMapLabel(string text)
@@ -817,7 +860,8 @@ public partial class HudView : OrientationHud, IHudView
         float width = Mathf.Min(TutorialPanelW, viewportW - HudPanelSideMargin * 2f);
         _tutorialPanel.OffsetLeft = -width * 0.5f;
         _tutorialPanel.OffsetRight = width * 0.5f;
-        float lift = Orientation == ScreenOrientation.Portrait ? PortraitBottomBarHeight : 0f;
+        // Both orientations now have a bottom HUD bar; lift the box above it.
+        float lift = Orientation == ScreenOrientation.Portrait ? PortraitBottomBarHeight : HudHeight;
         float bottom = TutorialMarginBottom + lift;
         _tutorialPanel.OffsetTop = -bottom - TutorialPanelH;
         _tutorialPanel.OffsetBottom = -bottom;
@@ -858,8 +902,8 @@ public partial class HudView : OrientationHud, IHudView
             AnchorRight = 0.5f,
             AnchorTop = 0f,
             AnchorBottom = 0f,
-            OffsetTop = HudHeight + BankruptToastMarginTop,
-            OffsetBottom = HudHeight + BankruptToastMarginTop + BankruptToastH,
+            // Vertical offsets are set in PositionBankruptToast (orientation-
+            // aware: clears the portrait top bar; flush to the top in landscape).
             Visible = false,
             MouseFilter = Control.MouseFilterEnum.Ignore,
         };
@@ -946,6 +990,12 @@ public partial class HudView : OrientationHud, IHudView
         float width = Mathf.Min(BankruptToastW, viewportW - HudPanelSideMargin * 2f);
         _bankruptToast.OffsetLeft = -width * 0.5f;
         _bankruptToast.OffsetRight = width * 0.5f;
+        // Clear the portrait top display bar; landscape has no top bar, so the
+        // toast sits flush below the top edge.
+        float top = (Orientation == ScreenOrientation.Portrait ? PortraitTopBarHeight : 0f)
+            + BankruptToastMarginTop;
+        _bankruptToast.OffsetTop = top;
+        _bankruptToast.OffsetBottom = top + BankruptToastH;
     }
 
     // Tiny self-drawing Control that paints the same upward-pointing
@@ -1470,10 +1520,6 @@ public partial class HudView : OrientationHud, IHudView
         Territory? selected = session.SelectedTerritory;
         bool hasCapital = selected?.HasCapital ?? false;
 
-        // Portrait: the territory-content top bar shows whenever a territory
-        // is selected (no-op in landscape, where the bar is always up).
-        SetSelectionPresent(selected != null);
-
         _goldChip.Visible = hasCapital;
         if (hasCapital)
         {
@@ -1536,6 +1582,20 @@ public partial class HudView : OrientationHud, IHudView
                     ? $"Buy {level} ({cost}g) — U"
                     : DisabledBuyReason(selected, hasCapital, $"a {level.ToString().ToLowerInvariant()}", cost);
         }
+
+        // Collapsed single button (shown when narrow): mirror the active buy
+        // mode's level on its glyph and its outline. Recruit is the cheapest
+        // level, so if it's unaffordable nothing is — disable the whole button.
+        bool anyBuyAffordable = hasCapital
+            && PurchaseRules.CanAfford(selected!, state.Treasury, UnitLevel.Recruit);
+        _collapsedBuyButton.BuyLevel = currentBuyLevel ?? UnitLevel.Recruit;
+        _collapsedBuyButton.Selected = currentBuyLevel != null;
+        _collapsedBuyButton.Disabled = !anyBuyAffordable;
+        _collapsedBuyButton.TooltipText = currentBuyLevel != null
+            ? ""
+            : anyBuyAffordable
+                ? "Buy unit — cycles affordable levels (U)"
+                : DisabledBuyReason(selected, hasCapital, "a unit", PurchaseRules.CostFor(UnitLevel.Recruit));
 
         bool building = session.Mode == SessionState.ActionMode.BuildingTower;
         bool canAffordTower = hasCapital && PurchaseRules.CanAffordTower(selected!, state.Treasury);

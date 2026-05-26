@@ -23,10 +23,10 @@ public static class ScreenLayout
         width >= height ? ScreenOrientation.Landscape : ScreenOrientation.Portrait;
 
     /// <summary>
-    /// Landscape reserves a single top strip (<paramref name="landscapeBarHeight"/>)
-    /// and nothing at the bottom. Portrait reserves the bottom bar always, and
-    /// the top bar only when it's currently shown (gameplay hides it with no
-    /// territory selected; the editor always shows it).
+    /// Landscape reserves a single bottom strip (<paramref name="landscapeBarHeight"/>)
+    /// and nothing at the top. Portrait reserves the bottom bar always, and the
+    /// top bar only when it's currently shown (the gameplay HUD keeps it up
+    /// always now; the param stays for callers that hide it).
     /// </summary>
     public static MapInsets ComputeInsets(
         ScreenOrientation orientation,
@@ -35,6 +35,6 @@ public static class ScreenLayout
         float portraitTopBarHeight,
         float portraitBottomBarHeight) =>
         orientation == ScreenOrientation.Landscape
-            ? new MapInsets(landscapeBarHeight, 0f)
+            ? new MapInsets(0f, landscapeBarHeight)
             : new MapInsets(topBarVisible ? portraitTopBarHeight : 0f, portraitBottomBarHeight);
 }
