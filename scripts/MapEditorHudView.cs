@@ -17,8 +17,8 @@ public partial class MapEditorHudView : OrientationHud
 {
     public const int SeedMin = 1;
     public const int SeedMax = 1000;
-    // Portrait bottom-bar height (seed + generate + undo/redo + options). The
-    // portrait top bar (paint palette) reuses HudView.HudHeight.
+    // Portrait bottom-bar height (paint palette). The portrait top bar
+    // (seed + generate + undo/redo + options) reuses HudView.HudHeight.
     private const float PortraitBottomBarHeight = 96f;
 
     // Below these viewport widths the six individual land swatches collapse to
@@ -92,9 +92,11 @@ public partial class MapEditorHudView : OrientationHud
 
     // Persistent clusters, built once and reparented between the bars
     // (TopBar/BottomBar, owned by OrientationHud) on a landscape↔portrait flip.
-    private Control _paletteCluster = null!;      // all paint swatches/tools
     private Control _seedCluster = null!;         // SEED field + Generate die
-    private Control _editControlsCluster = null!; // undo/redo (+ Options)
+    private Control _landCluster = null!;         // six land swatches (collapses to the cycle button)
+    private Control _toolsCluster = null!;        // terrain tools (water/tree/capital/tower) + hand
+    private Control _undoCluster = null!;         // undo/redo
+    private HudIconButton? _optionsButton;        // gear → EscRequested (only when ShowSceneRootChrome)
 
     public override void _Ready()
     {
@@ -106,10 +108,10 @@ public partial class MapEditorHudView : OrientationHud
         // standalone background. The clusters carry no parent until then.
         _seedCluster = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Pass };
         _seedCluster.AddThemeConstantOverride("separation", 14);
-        _paletteCluster = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Pass };
-        _paletteCluster.AddThemeConstantOverride("separation", 14);
-        _editControlsCluster = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Pass };
-        _editControlsCluster.AddThemeConstantOverride("separation", 8);
+        _toolsCluster = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Pass };
+        _toolsCluster.AddThemeConstantOverride("separation", 14);
+        _undoCluster = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Pass };
+        _undoCluster.AddThemeConstantOverride("separation", 8);
 
         // SEED eyebrow + mono LineEdit laid out side-by-side, mirroring
         // the play HUD's TURN / TO PLAY treatment.
@@ -157,12 +159,13 @@ public partial class MapEditorHudView : OrientationHud
         AudioBus.AttachClick(_generateButton);
         _seedCluster.AddChild(_generateButton);
 
-        // Three visually-distinct palette groups, all in the paint-palette
-        // cluster: a rounded slate "land colors" panel (the six player fills,
-        // presented as a radio group à la the play HUD's unit palette), then
-        // the four terrain tools (water/tree/capital/tower) as bare swatches,
-        // then the hand tool at the right end. Larger gaps between groups are
-        // provided by explicit Control spacers.
+        // Three visually-distinct palette groups: a rounded slate "land colors"
+        // panel (the six player fills, presented as a radio group à la the play
+        // HUD's unit palette) forms the land cluster; the four terrain tools
+        // (water/tree/capital/tower) and the hand tool form the tools cluster.
+        // Landscape splits them (land at the left edge, tools beside the
+        // controls on the right); portrait centers both together. Larger gaps
+        // within the tools cluster are provided by explicit Control spacers.
         _palette = new HexPaletteButton[GameSettings.PlayerConfig.Length + 5];
 
         // Group 1: six land-color swatches inside a slate PanelContainer. The
@@ -178,7 +181,7 @@ public partial class MapEditorHudView : OrientationHud
         landPanel.AddThemeStyleboxOverride("panel", ModalChrome.PalettePanelStyle());
         var landGroup = new HBoxContainer();
         landPanel.AddChild(landGroup);
-        _paletteCluster.AddChild(landPanel);
+        _landCluster = landPanel;
 
         var landRow = new HBoxContainer();
         landRow.AddThemeConstantOverride("separation", 4);
@@ -213,17 +216,14 @@ public partial class MapEditorHudView : OrientationHud
         AudioBus.AttachClick(_landCycleButton);
         landGroup.AddChild(_landCycleButton);
 
-        // 18-px gap before the terrain-tool group.
-        _paletteCluster.AddChild(new Control { CustomMinimumSize = new Vector2(18, 0) });
-
         // Group 2: terrain tools (water / tree / capital / tower) as
-        // bare swatches sitting outside the land panel.
+        // bare swatches, first in the tools cluster.
         var terrainRow = new HBoxContainer
         {
             SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
         };
         terrainRow.AddThemeConstantOverride("separation", 6);
-        _paletteCluster.AddChild(terrainRow);
+        _toolsCluster.AddChild(terrainRow);
 
         int waterIndex = WaterPaletteIndex;
         var waterButton = new HexPaletteButton(UiPalette.WaterDeep);
@@ -260,19 +260,16 @@ public partial class MapEditorHudView : OrientationHud
         terrainRow.AddChild(towerButton);
         _palette[towerIndex] = towerButton;
 
-        // 18-px gap before the hand tool.
-        _paletteCluster.AddChild(new Control { CustomMinimumSize = new Vector2(18, 0) });
-
-        // Group 3: hand (pan / no-paint) — its own slot at the right
-        // end of the palette area so it doesn't read as a paintable
-        // material. Dark neutral grey gives the white selection outline
-        // contrast and lets the skin-tone hand silhouette read.
+        // Group 3: hand (pan / no-paint) — sits just after the terrain tools
+        // (only the tools-cluster separation apart). Dark neutral grey gives the
+        // white selection outline contrast and lets the skin-tone hand
+        // silhouette read.
         var handButton = new HexPaletteButton(
             new Color(0.32f, 0.34f, 0.38f, 1f), HexPaletteIcon.Hand);
         handButton.TooltipText = "Pan";
         handButton.Pressed += _ => SelectPalette(HandPaletteIndex);
         AudioBus.AttachClick(handButton);
-        _paletteCluster.AddChild(handButton);
+        _toolsCluster.AddChild(handButton);
         _palette[HandPaletteIndex] = handButton;
 
         // Default selection: the hand (no-paint, pan-only) swatch. Visual
@@ -286,22 +283,23 @@ public partial class MapEditorHudView : OrientationHud
         _undoLastButton = MakeUndoButton(
             HudIcon.UndoLast, "Undo — Z (hold for Undo All)",
             () => UndoLastClicked?.Invoke(), () => UndoAllClicked?.Invoke());
-        _editControlsCluster.AddChild(_undoLastButton);
+        _undoCluster.AddChild(_undoLastButton);
         _redoLastButton = MakeUndoButton(
             HudIcon.RedoLast, "Redo — Y (hold for Redo All)",
             () => RedoLastClicked?.Invoke(), () => RedoAllClicked?.Invoke());
-        _editControlsCluster.AddChild(_redoLastButton);
+        _undoCluster.AddChild(_redoLastButton);
 
         if (ShowSceneRootChrome)
         {
             // Save Map and Load Map live inside the EscMenu now —
             // MapEditorScene wires them into the Resume / Save / Load /
             // Exit option list shown on Escape. The Options button is
-            // just the entry point to that menu.
-            var optionsButton = new HudIconButton(HudIcon.Options);
-            optionsButton.Pressed += () => EscRequested?.Invoke();
-            AudioBus.AttachClick(optionsButton);
-            _editControlsCluster.AddChild(optionsButton);
+            // just the entry point to that menu. Reparented per orientation by
+            // the Build*Bars methods (far-right corner), so it's not added to a
+            // cluster here.
+            _optionsButton = new HudIconButton(HudIcon.Options);
+            _optionsButton.Pressed += () => EscRequested?.Invoke();
+            AudioBus.AttachClick(_optionsButton);
         }
 
         // Arrange the clusters for the current orientation + track resize
@@ -314,13 +312,50 @@ public partial class MapEditorHudView : OrientationHud
     protected override void DetachClusters()
     {
         HudBars.Detach(_seedCluster);
-        HudBars.Detach(_paletteCluster);
-        HudBars.Detach(_editControlsCluster);
+        HudBars.Detach(_landCluster);
+        HudBars.Detach(_toolsCluster);
+        HudBars.Detach(_undoCluster);
+        if (_optionsButton != null) HudBars.Detach(_optionsButton);
     }
 
-    /// <summary>Single top strip: seed + palette (left), undo/options (right).</summary>
+    /// <summary>Single bottom strip: seed + palette (left), undo/options (right)
+    /// — moved to the bottom for thumb reach, matching the play HUD.</summary>
     protected override void BuildLandscapeBars()
     {
+        BottomBar = HudBars.MakeBarPanel(top: false, height: HudView.HudHeight);
+        AddChild(BottomBar);
+        Control frame = HudBars.MakeBarFrame();
+        BottomBar.AddChild(frame);
+
+        // Left edge: the six land-color swatches.
+        HBoxContainer left = HudBars.MakeAnchoredGroup(0f, Control.GrowDirection.End);
+        frame.AddChild(left);
+        left.AddChild(_landCluster);
+
+        // Centered: seed field + generate.
+        HBoxContainer center = HudBars.MakeAnchoredGroup(0.5f, Control.GrowDirection.Both);
+        frame.AddChild(center);
+        center.AddChild(_seedCluster);
+
+        // Right corner: undo/redo first (just left of the water tool), then the
+        // terrain tools + hand, then the options gear at the far right.
+        HBoxContainer right = HudBars.MakeAnchoredGroup(1f, Control.GrowDirection.Begin, separation: 14);
+        frame.AddChild(right);
+        right.AddChild(_undoCluster);
+        right.AddChild(BuildVerticalDivider());
+        right.AddChild(_toolsCluster);
+        if (_optionsButton != null)
+        {
+            right.AddChild(BuildVerticalDivider());
+            right.AddChild(_optionsButton);
+        }
+    }
+
+    /// <summary>Portrait split: seed/generate + undo/redo/options on top; all
+    /// paint options on the bottom for thumb reach.</summary>
+    protected override void BuildPortraitBars()
+    {
+        // Top bar: seed + generate (left) and undo/redo + options (right).
         TopBar = HudBars.MakeBarPanel(top: true, height: HudView.HudHeight, topOffset: TopOffsetPx);
         AddChild(TopBar);
         Control frame = HudBars.MakeBarFrame();
@@ -329,57 +364,40 @@ public partial class MapEditorHudView : OrientationHud
         HBoxContainer left = HudBars.MakeAnchoredGroup(0f, Control.GrowDirection.End);
         frame.AddChild(left);
         left.AddChild(_seedCluster);
-        left.AddChild(BuildVerticalDivider());
-        left.AddChild(_paletteCluster);
 
         HBoxContainer right = HudBars.MakeAnchoredGroup(1f, Control.GrowDirection.Begin, separation: 8);
         frame.AddChild(right);
-        right.AddChild(_editControlsCluster);
-    }
+        right.AddChild(_undoCluster);
+        if (_optionsButton != null) right.AddChild(_optionsButton);
 
-    /// <summary>Portrait split: all paint options on top; seed/generate +
-    /// undo/redo/options on the bottom.</summary>
-    protected override void BuildPortraitBars()
-    {
-        // Top bar: all paint options (always visible — the editor has no
+        // Bottom bar: all paint options (always visible — the editor has no
         // selection concept).
-        TopBar = HudBars.MakeBarPanel(top: true, height: HudView.HudHeight, topOffset: TopOffsetPx);
-        AddChild(TopBar);
-        var topRow = new HBoxContainer
+        BottomBar = HudBars.MakeBarPanel(top: false, height: PortraitBottomBarHeight);
+        AddChild(BottomBar);
+        var bottomRow = new HBoxContainer
         {
             AnchorLeft = 0.5f, AnchorRight = 0.5f, AnchorTop = 0f, AnchorBottom = 1f,
             OffsetTop = 8f, OffsetBottom = -8f,
             GrowHorizontal = Control.GrowDirection.Both,
             MouseFilter = Control.MouseFilterEnum.Pass,
         };
-        topRow.AddThemeConstantOverride("separation", 14);
-        TopBar.AddChild(topRow);
-        topRow.AddChild(_paletteCluster);
-
-        // Bottom bar: seed + generate (left) and undo/redo + options (right).
-        BottomBar = HudBars.MakeBarPanel(top: false, height: PortraitBottomBarHeight);
-        AddChild(BottomBar);
-        Control frame = HudBars.MakeBarFrame();
-        BottomBar.AddChild(frame);
-
-        HBoxContainer left = HudBars.MakeAnchoredGroup(0f, Control.GrowDirection.End);
-        frame.AddChild(left);
-        left.AddChild(_seedCluster);
-
-        HBoxContainer right = HudBars.MakeAnchoredGroup(1f, Control.GrowDirection.Begin, separation: 8);
-        frame.AddChild(right);
-        right.AddChild(_editControlsCluster);
+        bottomRow.AddThemeConstantOverride("separation", 14);
+        BottomBar.AddChild(bottomRow);
+        bottomRow.AddChild(_landCluster);
+        bottomRow.AddChild(new Control { CustomMinimumSize = new Vector2(18, 0) });
+        bottomRow.AddChild(_toolsCluster);
     }
 
     protected override MapInsets ComputeInsets()
     {
-        // Editor top bar is always up (no selection gating), so topBarVisible
-        // is always true. The top inset includes TopOffsetPx so a host (tutorial
-        // builder) that slides the strip down is accounted for.
+        // Landscape now reserves a bottom strip (ScreenLayout puts the
+        // landscapeBarHeight at the bottom). The portrait top bar is always up
+        // (no selection gating); its inset includes TopOffsetPx so a host
+        // (tutorial builder) that slides the strip down is accounted for.
         return ScreenLayout.ComputeInsets(
             Orientation,
             topBarVisible: true,
-            landscapeBarHeight: TopOffsetPx + HudView.HudHeight,
+            landscapeBarHeight: HudView.HudHeight,
             portraitTopBarHeight: TopOffsetPx + HudView.HudHeight,
             portraitBottomBarHeight: PortraitBottomBarHeight);
     }
