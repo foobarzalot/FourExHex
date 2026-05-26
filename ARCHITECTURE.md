@@ -2721,17 +2721,23 @@ disagree:
   inner trunk-base anchor (the grow animation) so rotation and the
   rise-from-ground pivot don't fight.
 
-- **Content-aware centering.** Centering and pan-clamping frame the *playable
-  content* (the land tiles, `_state.Grid.Tiles` — water is separate, off-grid),
-  not the padded nominal `Cols×Rows` grid. `HexMapView` caches the content's
-  unscaled pixel box (`MapPlacement.ContentPixelBounds(landCoords, hexSize)`,
-  recomputed on `Init`/`ReloadState`) and feeds it through
+- **Content-aware centering (centering only, not clamping).** *Centering*
+  frames the *playable content* (the land tiles, `_state.Grid.Tiles` — water is
+  separate, off-grid), not the padded nominal `Cols×Rows` grid: `HexMapView`
+  caches the content's unscaled pixel box
+  (`MapPlacement.ContentPixelBounds(landCoords, hexSize)`, recomputed on
+  `Init`/`ReloadState`) and `RecenterMap` centers on that box's center via
   **`MapPlacement.RotatedRectBox(left, top, right, bottom, zoom, angleRad)`** —
   the offset-rect generalization of `RotatedBoardBox` (which now delegates to
-  it) — in `RecenterMap`/`ClampPan`. Without this, a level whose tiles sit
-  off-center in a larger grid (notably the tutorial map) frames off-center.
-  Zoom-fit (`ZoomMath.ComputeZoomMin`) intentionally still uses the full grid, so
-  the zoom range is unchanged. **Insets must reach the map:** the HUD's
+  it). Without this, a level whose tiles sit off-center in a larger grid
+  (notably the tutorial map) frames off-center. **Pan-clamping, by contrast,
+  frames the full nominal grid** (`ClampPan` → `RotatedBoardBox(PixelSize…)`),
+  *not* the content box: clamping to content would lock panning whenever the
+  content is smaller than the viewport (egregiously, a sparsely-painted editor
+  map with a few cells couldn't pan at all) and tighten it everywhere else, so
+  the clamp deliberately keeps the pre-content-framing pan freedom. Zoom-fit
+  (`ZoomMath.ComputeZoomMin`) likewise uses the full grid, so the zoom range is
+  unchanged. **Insets must reach the map:** the HUD's
   `MapInsetsChanged` is relayed to `HexMapView.SetMapInsets` by *both* `Main`
   (play) and `PreviewPane` (tutorial); without that relay the map keeps the
   landscape default insets (`top=96, bottom=0`) and portrait content is pushed

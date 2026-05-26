@@ -2132,14 +2132,15 @@ public partial class HexMapView : Node2D, IHexMapView
         Vector2 vp = GetViewportRect().Size;
         float availX = vp.X;
         float availY = vp.Y - _topInset - _bottomInset;
-        // On-screen bounding box of the (scaled + rotated) CONTENT — the
-        // playable tiles, not the padded nominal grid — relative to this node's
-        // origin, so centering/clamping frames the content rather than the
-        // grid. See _contentBox / RecomputeContentBox.
+        // On-screen bounding box of the (scaled + rotated) full nominal grid
+        // (Cols×Rows), relative to this node's origin. Pan-clamping frames the
+        // whole grid — NOT the content box — so panning stays as free as it was
+        // before content-aware framing landed: a sparsely-painted editor map or
+        // an off-center level can still pan across the full board. Initial
+        // centering is content-aware separately in RecenterMap. At angle 0 this
+        // reduces to (0,0,w·zoom,h·zoom), the legacy landscape clamp.
         (float minX, float minY, float maxX, float maxY) =
-            MapPlacement.RotatedRectBox(
-                _contentBox.minX, _contentBox.minY, _contentBox.maxX, _contentBox.maxY,
-                _zoom, _mapAngleRad);
+            MapPlacement.RotatedBoardBox(PixelSize.X, PixelSize.Y, _zoom, _mapAngleRad);
         float boxW = maxX - minX;
         float boxH = maxY - minY;
         float x = boxW <= availX
