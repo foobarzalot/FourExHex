@@ -1748,9 +1748,18 @@ public partial class HudView : OrientationHud, IHudView
 
     public void SetCta(CtaButton button, bool isCta, bool pulse = true)
     {
+        if (button == CtaButton.BuyRecruit)
+        {
+            // The buy control is either the four-button row (Recruit button) or
+            // the single collapsed cycle button, depending on viewport width.
+            // Style both so the CTA shows on whichever is currently visible and
+            // survives a collapse flip; the hidden one's pulse is just unseen.
+            ApplyCtaStyle(_buyUnitButtons.First(b => b.BuyLevel == UnitLevel.Recruit), isCta, pulse);
+            ApplyCtaStyle(_collapsedBuyButton, isCta, pulse);
+            return;
+        }
         Button target = button switch
         {
-            CtaButton.BuyRecruit => _buyUnitButtons.First(b => b.BuyLevel == UnitLevel.Recruit),
             CtaButton.EndTurn => _endTurnButton,
             CtaButton.BuildTower => _buildTowerButton,
             CtaButton.ClaimVictoryWinNow => _claimWinNowButton,
