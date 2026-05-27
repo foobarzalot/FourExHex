@@ -32,6 +32,10 @@ window/handheld/orientation=6
 
 project/assembly_name="FourExHex"
 
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/rotationfix/plugin.cfg")
+
 [gui]
 
 theme/custom="res://theme/fourexhex_theme.tres"

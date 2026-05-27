@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Godot v2 Android plugin discovery: the engine scans merged manifest
+             meta-data named org.godotengine.plugin.v2.<PluginName> and
+             instantiates the named class. Without this, the plugin never loads. -->
+        <meta-data
+            android:name="org.godotengine.plugin.v2.RotationFix"
+            android:value="net.sitkoff.fourexhex.RotationFixPlugin" />
+    </application>
+</manifest>

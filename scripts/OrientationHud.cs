@@ -65,6 +65,12 @@ public abstract partial class OrientationHud : CanvasLayer
 
     private void OnViewportResized()
     {
+        ulong frame = Engine.GetProcessFrames();
+        ulong t0 = Time.GetTicksMsec();
+        Vector2 vp0 = GetViewport().GetVisibleRect().Size;
+        Log.Debug(Log.LogCategory.Render,
+            $"{GetType().Name}: resize@frame={frame} t={t0}ms vp={vp0.X}x{vp0.Y}.");
+
         ScreenOrientation o = ResolveOrientation();
         if (o != Orientation)
         {
@@ -77,6 +83,10 @@ public abstract partial class OrientationHud : CanvasLayer
         // Width-responsive tweaks that don't depend on an orientation flip
         // (e.g. dropping captions in a narrow landscape window).
         OnViewportMetricsChanged();
+
+        Log.Debug(Log.LogCategory.Render,
+            $"{GetType().Name}: resize settled@frame={Engine.GetProcessFrames()} " +
+            $"dt={Time.GetTicksMsec() - t0}ms ({Orientation}).");
     }
 
     /// <summary>Recompute the map insets via <see cref="ComputeInsets"/> and

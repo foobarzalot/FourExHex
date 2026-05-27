@@ -2,6 +2,53 @@
 
 Running list of known issues, flaky tests, and shortcuts that should eventually be cleaned up. Add new entries at the top.
 
+## Rotation-stretch worked around with a heuristic blank overlay (RotationFix plugin)
+
+**Where:** `android_plugin/rotationfix/` (Kotlin `RotationFixPlugin`, a Godot v2
+Android plugin), wired in via `addons/rotationfix/` (`plugin.cfg` +
+`rotation_fix_export.gd` `EditorExportPlugin._get_android_libraries`), enabled in
+`project.godot` `[editor_plugins]`. AAR built by `tools/build_android_plugin.sh`
+and auto-built by `tools/build_android.sh` if missing. Added 2026-05-27.
+
+**Root cause (confirmed via logcat):** on portrait↔landscape rotation Android
+calls `startFreezingDisplayLocked` and shows a snapshot of the OLD-orientation
+frame **stretched** into the NEW screen bounds until the app redraws — the single
+distorted frame. The snapshot is taken BEFORE the app is notified (config change /
+surface resize), so nothing on the Godot side can pre-empt it. Our own resize
+handling already settles in one frame (~6ms — see the `resize@frame`/`settled`
+Render logs in `OrientationHud.OnViewportResized` / `HexMapView.OnViewportResized`),
+so the stretch is purely this OS freeze.
+
+**Why the clean fixes don't work:** there is no `android:windowRotationAnimation`
+theme/manifest attribute (aapt rejects it). Setting it programmatically to
+`JUMPCUT` does nothing (the stretch is a freeze, not an animation). The only mode
+that skips the snapshot, `SEAMLESS`, requires an OPAQUE fullscreen window —
+Godot's Android GL `SurfaceView` forces the window `fmt=TRANSLUCENT` and a plugin
+cannot override it (tried `setFormat(OPAQUE)` in both `onMainCreate` and
+`onGodotMainLoopStarted`; dumpsys still reports TRANSLUCENT). Properly removing the
+snapshot would need an engine patch to make the render surface opaque.
+
+**The workaround (heuristic):** the plugin watches the physical orientation
+sensor (`OrientationEventListener`) — the only signal that arrives before the
+freeze — and on a band crossing drops an opaque black `TYPE_APPLICATION_PANEL`
+window over the surface, so the snapshot is of black (stretched black = invisible).
+Removed `DISPLAY_SETTLE_MS` (600ms, tuned by hand on an S9) after the display
+actually rotates, with a `FALLBACK_MS` (1000ms) safety net for tilts that never
+become a rotation. Skips when auto-rotate is off.
+
+**Known limitations / debt:**
+- `DISPLAY_SETTLE_MS=600` is a magic number tuned on one device (Galaxy S9); the
+  freeze duration is device-dependent, so other devices may show a tail of the
+  stretch (too short) or a longer black (too long). A reliable removal would key
+  off "Godot presented the new-orientation frame" rather than a timer — e.g. a
+  `@UsedByGodot` plugin method called from `OrientationHud`'s resize-settle hook.
+- Blanks on any tilt past the ~45° band boundary even if no rotation completes
+  (brief black flash during normal handling). Threshold/hysteresis is untuned.
+- There is a ~300ms lead (sensor predicts well before the OS commits), so total
+  black ≈ lead + 600ms — longer than strictly necessary.
+- Only manually verified on the S9; not validated across devices/orientations
+  (incl. reverse-portrait) or with auto-rotate edge cases.
+
 ## Capital "actionable" star reported dark on Android (not reproduced)
 
 **Where:** `scripts/HexMapView.cs` — `RefreshOccupantVisuals` computes

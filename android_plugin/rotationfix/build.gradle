@@ -1,0 +1,28 @@
+plugins {
+    id 'com.android.library'
+    id 'org.jetbrains.kotlin.android'
+}
+
+android {
+    namespace 'net.sitkoff.fourexhex.rotationfix'
+    compileSdk 35
+
+    defaultConfig {
+        minSdk 24
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+}
+
+dependencies {
+    // Provided at runtime by the engine; compile against the exact version this
+    // project exports with (matches android/build/config.gradle's godot lib).
+    compileOnly 'org.godotengine:godot:4.6.1.stable'
+}

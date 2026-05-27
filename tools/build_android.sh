@@ -97,6 +97,17 @@ echo "==> SDK:  $ANDROID_SDK"
 echo "==> JDK:  $JAVA_HOME"
 echo "==> NDK:  $NDK_VERSION   build-tools: $(basename "$BTDIR")   platform: $COMPILE_SDK"
 
+# The Android export links the RotationFix plugin AAR (via the addons/rotationfix
+# EditorExportPlugin); without it the gradle build fails to resolve the
+# dependency. The AAR is a build artifact (gitignored under bin/), so build it on
+# first run. When the plugin SOURCE changes, rerun tools/build_android_plugin.sh
+# by hand to regenerate it.
+PLUGIN_AAR="$PROJECT_DIR/addons/rotationfix/bin/release/RotationFix.aar"
+if [[ ! -f "$PLUGIN_AAR" ]]; then
+  echo "==> RotationFix plugin AAR missing; building it first"
+  "$PROJECT_DIR/tools/build_android_plugin.sh"
+fi
+
 echo "==> Building C# assemblies (Debug for editor load + $CSHARP_CONFIG for the export)"
 dotnet build "$PROJECT_DIR/FourExHex.csproj" -c Debug            >/dev/null
 dotnet build "$PROJECT_DIR/FourExHex.csproj" -c "$CSHARP_CONFIG" >/dev/null

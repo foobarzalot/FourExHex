@@ -1,0 +1,6 @@
+// Versions mirror android/build/config.gradle so the plugin compiles against the
+// same toolchain the Godot app build uses (AGP 8.6.1, Kotlin 2.1.20, SDK 35).
+plugins {
+    id 'com.android.library' version '8.6.1' apply false
+    id 'org.jetbrains.kotlin.android' version '2.1.20' apply false
+}

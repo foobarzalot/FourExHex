@@ -2249,6 +2249,12 @@ public partial class HexMapView : Node2D, IHexMapView
 
     private void OnViewportResized()
     {
+        ulong frame = Engine.GetProcessFrames();
+        ulong t0 = Time.GetTicksMsec();
+        Vector2 vp = GetViewportRect().Size;
+        Log.Debug(Log.LogCategory.Render,
+            $"HexMapView: resize@frame={frame} t={t0}ms vp={vp.X}x{vp.Y}.");
+
         bool flipped = ResolveRotation();
         RecomputeZoomLevels();
         if (flipped)
@@ -2262,6 +2268,10 @@ public partial class HexMapView : Node2D, IHexMapView
         {
             Position = ClampPan(Position);
         }
+
+        Log.Debug(Log.LogCategory.Render,
+            $"HexMapView: resize settled@frame={Engine.GetProcessFrames()} " +
+            $"dt={Time.GetTicksMsec() - t0}ms flipped={flipped} angle={Mathf.RadToDeg(_mapAngleRad):0}°.");
     }
 
     /// <summary>Resolve board rotation from the viewport aspect (portrait ⇒
