@@ -315,10 +315,9 @@ public partial class HudView : OrientationHud, IHudView
         _optionsButton.Pressed += () => EscRequested?.Invoke();
         AudioBus.AttachClick(_optionsButton);
 
-        // Read-only seed display anchored to the top-left (landscape-only) so a
-        // player can recall or share the seed mid-game. The HUD bar now sits at
-        // the bottom, leaving the top free; small font + dim color so it sits in
-        // the visual background.
+        // Read-only seed display anchored to the top-left so a player can recall
+        // or share the seed mid-game. OnLayoutApplied positions it per
+        // orientation (below the portrait top bar so it isn't covered).
         _seedLabel = new Label
         {
             Text = "",
@@ -452,12 +451,20 @@ public partial class HudView : OrientationHud, IHudView
     private const float FullBuyRowWidthPortrait = 820f;
     private const float FullBuyRowWidthLandscape = 1300f;
 
-    /// <summary>Post-layout (orientation flip): the seed label is landscape-
-    /// only, and the top bar follows the selection. Eyebrow visibility is
-    /// width-driven, handled in OnViewportMetricsChanged.</summary>
+    /// <summary>Post-layout (orientation flip): reposition the seed label into
+    /// the free map area (top-left in landscape; below the top bar in portrait so
+    /// it isn't covered), and the top bar follows the selection. Eyebrow
+    /// visibility is width-driven, handled in OnViewportMetricsChanged.</summary>
     protected override void OnLayoutApplied()
     {
-        _seedLabel.Visible = Orientation == ScreenOrientation.Landscape;
+        _seedLabel.Visible = true;
+        // Portrait has a 96px top bar over the map; landscape leaves the top
+        // free. Drop the label below the bar in portrait so it reads on the map.
+        float seedTop = Orientation == ScreenOrientation.Portrait ? PortraitTopBarHeight + 8f : 8f;
+        _seedLabel.OffsetTop = seedTop;
+        _seedLabel.OffsetBottom = seedTop + 40f;
+        Log.Debug(Log.LogCategory.Render,
+            $"HudView: seed label at top={seedTop} ({Orientation}).");
         UpdateTopBarVisibility();
         // Lift the tutorial box above the portrait bottom bar (no-op until the
         // overlay is built later in _Ready, and in landscape).
