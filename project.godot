@@ -44,4 +44,4 @@ theme/custom="res://theme/fourexhex_theme.tres"
 
 renderer/rendering_method="gl_compatibility"
 textures/vram_compression/import_etc2_astc=true
-environment/defaults/default_clear_color=Color(0.08, 0.22, 0.45, 1)
+environment/defaults/default_clear_color=Color(0.188235, 0.32549, 0.494118, 1)
