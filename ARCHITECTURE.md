@@ -2810,6 +2810,53 @@ and HUD automatically. **Gotcha:** the setting key is `handheld`, not
 `handle` — Godot silently ignores an unknown key and keeps the default
 landscape (0).
 
+### Rotation transition (`RotationFix` Android plugin)
+
+A rotation triggers an Android display **freeze**:
+`startFreezingDisplayLocked` snapshots the old-orientation frame and
+stretches that snapshot into the new screen bounds until the app
+redraws — one visibly distorted frame per rotation. The snapshot is
+taken *before* the app is notified (config change / `SizeChanged`), so
+nothing in `OrientationHud` / `HexMapView` can pre-empt it — their
+relayout already settles in ~6ms (see the `resize@frame` / `settled`
+`Render`-category logs in each one's `OnViewportResized`, kept as
+permanent instrumentation). The clean fixes don't apply: there is no
+`android:windowRotationAnimation` theme attribute (aapt rejects it),
+and the only rotation mode that skips the snapshot (`SEAMLESS`)
+requires an opaque fullscreen window, which Godot's translucent GL
+`SurfaceView` prevents (a plugin can't force it opaque).
+
+So the workaround is a small **Godot v2 Android plugin, `RotationFix`**:
+
+- **Source:** `android_plugin/rotationfix/` — a Kotlin
+  `RotationFixPlugin : GodotPlugin`, built to an AAR by
+  `tools/build_android_plugin.sh` (its own gradle project, compiles
+  against `org.godotengine:godot:4.6.1.stable`, mirrors the build
+  template's SDK/AGP/Kotlin versions).
+- **Wiring:** `addons/rotationfix/` — `plugin.cfg` + an
+  `EditorExportPlugin` (`rotation_fix_export.gd`) whose
+  `_get_android_libraries` links the AAR into the gradle build;
+  enabled in `project.godot` `[editor_plugins]`.
+  `tools/build_android.sh` auto-builds the AAR on first run if it's
+  missing (it's a gitignored `bin/` artifact). The plugin class is
+  discovered via the AAR manifest's
+  `org.godotengine.plugin.v2.RotationFix` meta-data.
+- **Behavior:** the plugin watches the **physical orientation sensor**
+  (`OrientationEventListener`) — the only signal that arrives before
+  the freeze — and, on crossing an orientation band, drops an opaque
+  black `TYPE_APPLICATION_PANEL` window over the surface, so the OS
+  snapshots black (a stretched black is invisible). It's removed
+  `DISPLAY_SETTLE_MS` (600ms) after the rotation actually lands
+  (`DisplayManager.DisplayListener.onDisplayChanged`), with a
+  `FALLBACK_MS` (1000ms) safety net for tilts that never complete a
+  rotation. Self-skips when auto-rotate is off.
+
+This is a heuristic (hand-tuned hold, can blank on an incomplete tilt).
+Its limitations — and a recorded dead end (a Godot-frame-driven removal
+can't work: the stretch is gated by the OS freeze *thaw*, which lands
+well after Godot's resize callback and isn't observable from the render
+loop) — are in `TECHDEBT.md`.
+
 ## Logging (`Log`)
 
 `src/FourExHex.Model/Log.cs` is the master logging system — one
