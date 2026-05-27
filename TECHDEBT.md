@@ -39,9 +39,16 @@ become a rotation. Skips when auto-rotate is off.
 **Known limitations / debt:**
 - `DISPLAY_SETTLE_MS=600` is a magic number tuned on one device (Galaxy S9); the
   freeze duration is device-dependent, so other devices may show a tail of the
-  stretch (too short) or a longer black (too long). A reliable removal would key
-  off "Godot presented the new-orientation frame" rather than a timer — e.g. a
-  `@UsedByGodot` plugin method called from `OrientationHud`'s resize-settle hook.
+  stretch (too short) or a longer black (too long). **A Godot-frame-driven
+  removal was tried (a `@UsedByGodot dismissBlank` called from
+  `OrientationHud.OnViewportResized`) and reintroduced the stretch** — the
+  disappearance of the stretch is gated by the OS display-freeze *thaw*, which
+  happens well after Godot's resize callback and is NOT observable from the app's
+  render loop (Godot's own redraw is already fast, ~6ms, and doesn't drive the
+  thaw). So a fixed hold that outlasts the freeze is the appropriate tool here;
+  the device-dependent constant is the residual debt. A truly device-independent
+  removal would need an OS-side "freeze thawed" signal (none is exposed to apps;
+  best lead is detecting the overlay window's own post-rotation relayout).
 - Blanks on any tilt past the ~45° band boundary even if no rotation completes
   (brief black flash during normal handling). Threshold/hysteresis is untuned.
 - There is a ~300ms lead (sensor predicts well before the OS commits), so total
