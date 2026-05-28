@@ -2499,14 +2499,20 @@ The project is pinned to **GL Compatibility** (`project.godot` lines
 `rendering/renderer/rendering_method="gl_compatibility"`). Switched
 from Forward Plus on 2026-05-21.
 
-Rationale: the game is 2D-only and draws exclusively with `Polygon2D`
-fills and `Line2D` strokes — no custom shaders, no 3D, no
-Forward-Plus-specific features. Compatibility is the more portable
-choice: it runs on a wider range of hardware, has a smaller runtime,
-and is the renderer required for any future web export. The visual
-delta on macOS/Apple Silicon is indistinguishable in practice for
-this rendering surface (per the manual desktop test on the switch
-commit; log header confirms `OpenGL API 4.1 Metal - Compatibility`).
+Rationale: the game is 2D-only and draws with `Polygon2D` tile fills
+and batched immediate-mode line/triangle primitives (see "Draw-call
+batching" below) — no custom shaders, no 3D, no Forward-Plus-specific
+features. Compatibility is the more portable choice: it runs on a wider
+range of hardware, has a smaller runtime, and is the renderer required
+for any future web export. The visual delta on macOS/Apple Silicon is
+indistinguishable in practice for this rendering surface (per the manual
+desktop test on the switch commit; log header confirms `OpenGL API 4.1
+Metal - Compatibility`).
+
+2D MSAA is enabled at 2× (`project.godot`
+`rendering/anti_aliasing/quality/msaa_2d=1`) so the batched, non-AA
+border/outline lines (below) stay smooth — per-primitive antialiasing
+is off because it defeats batching.
 
 One-renderer-everywhere is intentional: no per-platform override.
 This means desktop and any future web build will draw identically,
@@ -2519,6 +2525,41 @@ the corresponding `TECHDEBT.md` entry for the survey of what's
 already done toward the eventual web build (code-surface audit,
 templates installed, renderer switched) so the work isn't repeated
 when a Godot version that supports .NET web export lands.
+
+### Draw-call batching (Android performance)
+
+In GL Compatibility every visible `CanvasItem` issues its own draw
+call every frame, and neither `Polygon2D` nor antialiased lines batch.
+A naïve "one node per shape" map hit **~6,500 draw calls/frame**, which
+on a mid-range Android device (S9, OpenGL ES) turned every capture into
+a ~300 ms multi-frame stall: a capture dirties the canvas and the
+renderer re-processes all ~6,500 items. Diagnosed 2026-05-27 (the cost
+is draw-call count, **not** C# / node churn — the C# rebuild is ~1 ms).
+Two pieces in `HexMapView` collapse that to **~180–256 draws/frame**:
+
+- **`PolylineBatch`** (one per layer, for territory borders and per-tile
+  outlines): instead of a `Line2D` per edge, all edge segments are drawn
+  in a single `DrawMultiline` (borders, uniform color) or
+  `DrawMultilineColors` (outlines, player-dark per tile). `Draw*` is
+  non-antialiased so it batches to ~1 call; 2D MSAA smooths it.
+  `DrawTerritoryBorders` / `PopulateOutlinesLayer` build the segment
+  arrays and `QueueRedraw()` on territory change.
+- **`TriangleSoup` + `TriangleSoupBuilder`**: the water cells, rim water,
+  and shoreline foam are **static** (never change after init) yet were
+  ~1,870 `Polygon2D`. They're baked once into a single vertex-colored,
+  indexed triangle array (`TriangleSoupBuilder` triangulates each source
+  polygon via `Geometry2D.TriangulatePolygon`, preserving Polygon2D's
+  `Color × VertexColors` shading) and drawn in one
+  `RenderingServer.CanvasItemAddTriangleArray` call.
+
+Tile fills remain one `Polygon2D` each (recolored, not recreated, on
+capture) — they weren't the bottleneck. The remaining per-capture cost
+is CPU-side `RefreshOccupantVisuals` recreating all occupant nodes every
+refresh; making that incremental is tracked in `TECHDEBT.md` if it ever
+resurfaces. Diagnostic instrumentation lives behind the `[hitch]` log
+prefix (`Log.Since` timings, the `LogLongFrame` CPU/draw-call split in
+`_Process`, and the one-shot `DumpSceneComposition`), all
+`[Conditional("DEBUG")]` so they're stripped from Release.
 
 ## Visual / UI theme
 

@@ -150,9 +150,9 @@ public partial class HexMapView : Node2D, IHexMapView
     // and use per-tile player-dark borders, so adjacent same-color
     // tiles read as one smooth seam and adjacent different-color tiles
     // read as two thin dk lines side-by-side.
-    private Node2D? _outlinesLayer;
+    private PolylineBatch? _outlinesLayer;
     private Node2D? _towerCoverageLayer;
-    private Node2D? _bordersLayer;
+    private PolylineBatch? _bordersLayer;
     private Node2D? _capitalsLayer;
     private Node2D? _rejectionsLayer;
     private Node2D? _treesLayer;
@@ -378,21 +378,25 @@ public partial class HexMapView : Node2D, IHexMapView
         _highlightedTerritory = null;
         _selectedUnit = null;
 
-        // Water cells render first so they sit behind everything else. They
-        // are off-map for gameplay (not in _state.Grid) — only the renderer
-        // sees them. Each is a flat-colored polygon to match the rest of
-        // the game's geometric style.
+        // Water cells + shoreline foam are STATIC (never change after init).
+        // As individual Polygon2D they were ~1,870 separate canvas items =
+        // ~1,870 draw calls every frame in the gl_compatibility renderer —
+        // the dominant cost behind the device per-capture hitch (see
+        // TECHDEBT). Bake all of it into ONE vertex-colored triangle soup =
+        // one draw call. Order matters within the soup: water first (behind),
+        // foam after (on top). The whole bake sits behind the land tile
+        // fills added below, matching the old child z-order.
+        var bake = new TriangleSoupBuilder();
+        Vector2[] waterHex = HexVertices();
+
+        // Water cells — off-map for gameplay (not in _state.Grid), renderer
+        // only — plus a render-only ring of rim water hexes that hides the
+        // half-hex map edge at default zoom.
         foreach (HexCoord waterCoord in _state.WaterCoords)
         {
             Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(waterCoord, HexSize);
-            AddChild(CreateWaterHexVisual(center));
+            bake.AddPolygon(center, waterHex, WaterColor, null);
         }
-
-        // Render-only extension: a ring of extra water hexes surrounding
-        // the playable rectangle. Hides the half-hex rim at default zoom
-        // and pushes the visible map edge further off-screen when zoomed.
-        // These are not in _state.WaterCoords — they're presentation-only
-        // and never reach gameplay rules or save state.
         const int WaterRimMargin = 4;
         for (int row = -WaterRimMargin; row < Rows + WaterRimMargin; row++)
         {
@@ -401,19 +405,17 @@ public partial class HexMapView : Node2D, IHexMapView
                 if (row >= 0 && row < Rows && col >= 0 && col < Cols) continue;
                 HexCoord coord = HexCoord.FromOffset(col, row);
                 Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(coord, HexSize);
-                AddChild(CreateWaterHexVisual(center));
+                bake.AddPolygon(center, waterHex, WaterColor, null);
             }
         }
 
-        // Per-edge shoreline foam. Each shore edge gets one independent
-        // quad — concave shorelines render cleanly because no
-        // interpolation crosses between edges.
-        var shoreLayer = new Node2D { Name = "ShoreFoamLayer" };
-        AddChild(shoreLayer);
+        // Per-edge shoreline foam. Each shore edge gets one independent quad
+        // — concave shorelines render cleanly because no interpolation
+        // crosses between edges.
         foreach (HexCoord waterCoord in _state.WaterCoords)
         {
             Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(waterCoord, HexSize);
-            AddShoreFoamStrips(shoreLayer, center, waterCoord);
+            AddShoreFoamStrips(bake, center, waterCoord);
         }
         for (int row = -WaterRimMargin; row < Rows + WaterRimMargin; row++)
         {
@@ -422,7 +424,7 @@ public partial class HexMapView : Node2D, IHexMapView
                 if (row >= 0 && row < Rows && col >= 0 && col < Cols) continue;
                 HexCoord coord = HexCoord.FromOffset(col, row);
                 Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(coord, HexSize);
-                AddShoreFoamStrips(shoreLayer, center, coord);
+                AddShoreFoamStrips(bake, center, coord);
             }
         }
         // Bridge the gap between strips on adjacent water hexes around a
@@ -438,9 +440,13 @@ public partial class HexMapView : Node2D, IHexMapView
                 int dirB = EdgeToNeighborDirection[i];
                 if (_state.Grid.Get(tile.Coord.Neighbor(dirA)) != null) continue;
                 if (_state.Grid.Get(tile.Coord.Neighbor(dirB)) != null) continue;
-                AddCornerFoamDisk(shoreLayer, landCenter + hexVerts[i]);
+                AddCornerFoamDisk(bake, landCenter + hexVerts[i]);
             }
         }
+
+        var waterFoamBake = new TriangleSoup { Name = "WaterFoamBake" };
+        AddChild(waterFoamBake);
+        waterFoamBake.SetTriangles(bake.Points.ToArray(), bake.Colors.ToArray(), bake.Indices.ToArray());
 
         // Tiles already exist in _state.Grid (populated by the controller
         // before AddChild). Create one Polygon2D fill per tile, owned by
@@ -466,7 +472,7 @@ public partial class HexMapView : Node2D, IHexMapView
         // redesign also drew a bevel highlight + bottom-shadow chord
         // per tile, but the lines read as paper grain and hurt
         // readability — removed.)
-        _outlinesLayer = new Node2D { Name = "OutlinesLayer" };
+        _outlinesLayer = new PolylineBatch { Name = "OutlinesLayer" };
         AddChild(_outlinesLayer);
         PopulateOutlinesLayer();
 
@@ -477,7 +483,7 @@ public partial class HexMapView : Node2D, IHexMapView
         // color shows through and crisp border lines stay on top.
         _towerCoverageLayer = new Node2D { Name = "TowerCoverageLayer" };
         AddChild(_towerCoverageLayer);
-        _bordersLayer = new Node2D { Name = "BordersLayer" };
+        _bordersLayer = new PolylineBatch { Name = "BordersLayer" };
         AddChild(_bordersLayer);
         _capitalsLayer = new Node2D { Name = "CapitalsLayer" };
         AddChild(_capitalsLayer);
@@ -506,10 +512,61 @@ public partial class HexMapView : Node2D, IHexMapView
         AddChild(_rejectionsLayer);
 
         DrawTerritoryBorders();
+        DumpSceneComposition();
         // Occupant visuals are drawn by the controller via
         // RefreshOccupantVisuals once it knows the current player and
         // treasury. We don't draw them here because they'd all be non-CTA
         // by default and the controller would immediately overwrite them.
+    }
+
+    // Logs the just-completed frame's timing split when it ran long
+    // (>50ms): CPU process/physics time plus render draw-call / object
+    // counts, so a stall can be attributed to our C# (high cpuProc), the
+    // GPU/canvas (high draws/objs), or an idle gap (all tiny). The whole
+    // call is stripped from Release — the Performance reads never run there.
+    [System.Diagnostics.Conditional("DEBUG")]
+    private void LogLongFrame(double delta)
+    {
+        if (delta <= 0.05) return;
+        double cpuProcMs = Performance.GetMonitor(Performance.Monitor.TimeProcess) * 1000.0;
+        double cpuPhysMs = Performance.GetMonitor(Performance.Monitor.TimePhysicsProcess) * 1000.0;
+        long draws = (long)Performance.GetMonitor(Performance.Monitor.RenderTotalDrawCallsInFrame);
+        long objs = (long)Performance.GetMonitor(Performance.Monitor.RenderTotalObjectsInFrame);
+        Log.Debug(Log.LogCategory.Render,
+            $"[hitch] long frame {delta * 1000.0:F0}ms cpuProc={cpuProcMs:F1}ms " +
+            $"cpuPhys={cpuPhysMs:F1}ms draws={draws} objs={objs} @frame={Engine.GetProcessFrames()}");
+    }
+
+    private bool _composedDumped;
+
+    // One-shot scene-composition dump: tallies every CanvasItem in the map
+    // subtree by concrete type so we can see what makes up the per-frame
+    // draw-call count (the device per-capture hitch was draw-call-bound; see
+    // TECHDEBT). Logs once per session; whole method stripped from Release.
+    [System.Diagnostics.Conditional("DEBUG")]
+    private void DumpSceneComposition()
+    {
+        if (_composedDumped) return;
+        _composedDumped = true;
+        var counts = new System.Collections.Generic.SortedDictionary<string, int>();
+        int total = 0;
+        var stack = new System.Collections.Generic.Stack<Node>();
+        stack.Push(this);
+        while (stack.Count > 0)
+        {
+            Node n = stack.Pop();
+            if (n is CanvasItem && n != this)
+            {
+                string key = n.GetType().Name;
+                counts[key] = counts.TryGetValue(key, out int c) ? c + 1 : 1;
+                total++;
+            }
+            foreach (Node child in n.GetChildren()) stack.Push(child);
+        }
+        var sb = new System.Text.StringBuilder($"[hitch] composition total CanvasItems={total} :: ");
+        foreach (System.Collections.Generic.KeyValuePair<string, int> kv in counts)
+            sb.Append($"{kv.Key}={kv.Value} ");
+        Log.Debug(Log.LogCategory.Render, sb.ToString());
     }
 
     /// <summary>
@@ -542,12 +599,17 @@ public partial class HexMapView : Node2D, IHexMapView
         // so an ownership change after a capture has to repaint the
         // OutlinesLayer too — fill recolor alone would leave a captured
         // tile's old player-dark stroke around its new fill.
-        ClearLayer(_outlinesLayer);
+        long tOutlines = Log.Stamp();
         PopulateOutlinesLayer();
+        Log.Since(Log.LogCategory.Capture, "[hitch] PopulateOutlinesLayer", tOutlines);
 
-        ClearLayer(_bordersLayer);
+        long tBorders = Log.Stamp();
         ClearLayer(_targetsLayer);
         DrawTerritoryBorders();
+        Log.Since(Log.LogCategory.Capture, "[hitch] DrawTerritoryBorders", tBorders);
+        Log.Debug(Log.LogCategory.Capture,
+            $"[hitch] strokes outlines={_outlinesLayer?.StrokeCount ?? 0} " +
+            $"borders={_bordersLayer?.StrokeCount ?? 0} trees={_treeVisuals.Count} graves={_graveVisuals.Count}");
 
         // Silent batch (AI under Instant): leave tree and grave visuals
         // in place. The controller skips the per-capture RefreshOccupant-
@@ -558,6 +620,7 @@ public partial class HexMapView : Node2D, IHexMapView
         // trees that were actually chopped — correct outcome, no flicker.
         if (_silentMode) return;
 
+        long tTeardown = Log.Stamp();
         // Tear down all tree and grave visuals and force the next refresh
         // to rebuild them without the grow-in animation. Captures and
         // undo/redo are the only callers, and neither should make existing
@@ -581,6 +644,7 @@ public partial class HexMapView : Node2D, IHexMapView
         // Cancel any in-flight death animations — the corpses they show
         // belonged to a state that no longer applies.
         ClearLayer(_deathsLayer);
+        Log.Since(Log.LogCategory.Capture, "[hitch] tree/grave teardown", tTeardown);
     }
 
     /// <summary>
@@ -705,6 +769,11 @@ public partial class HexMapView : Node2D, IHexMapView
 
     public override void _Process(double delta)
     {
+        // Long-frame probe: catches the hitch frame as a whole, including
+        // Godot's redraw/flush of newly created nodes that happens after
+        // our capture-path C# returns (which the inline timers miss).
+        LogLongFrame(delta);
+
         int targetCount = _targetsLayer?.GetChildCount() ?? 0;
         int towerTargetCount = _towerTargetsLayer?.GetChildCount() ?? 0;
         if (_pulsingUnits.Count == 0
@@ -898,6 +967,7 @@ public partial class HexMapView : Node2D, IHexMapView
             _graveVisuals.Remove(c);
         }
 
+        long tRebuildLoop = Log.Stamp();
         foreach (HexTile tile in Grid.Tiles)
         {
             if (tile.Occupant == null) continue;
@@ -964,6 +1034,10 @@ public partial class HexMapView : Node2D, IHexMapView
             }
         }
 
+        Log.Since(Log.LogCategory.Capture, "[hitch] occupant rebuild loop", tRebuildLoop);
+        Log.Debug(Log.LogCategory.Capture,
+            $"[hitch] occupants units={_unitVisuals.Count} capitals={_capitalVisuals.Count}");
+
         _animateNewTrees = true;
         _animateNewGraves = true;
 
@@ -971,11 +1045,15 @@ public partial class HexMapView : Node2D, IHexMapView
         // bought / moved / undid something that could have flipped a
         // territory between Healthy / NegativeDelta / BankruptNextTurn.
         // The badge layer is also cleared here for AI turns.
+        long tBadges = Log.Stamp();
         RedrawWarningBadges();
+        Log.Since(Log.LogCategory.Capture, "[hitch] RedrawWarningBadges", tBadges);
 
         // Freshly-built glyphs default to Rotation 0; counter-rotate them so
         // they stay upright when the board is rotated (no-op at angle 0).
+        long tGlyph = Log.Stamp();
         ApplyGlyphUpright();
+        Log.Since(Log.LogCategory.Capture, "[hitch] ApplyGlyphUpright", tGlyph);
     }
 
     // Previous actionable-capital set, so the diagnostic below logs only on a
@@ -2407,23 +2485,22 @@ public partial class HexMapView : Node2D, IHexMapView
     {
         if (_outlinesLayer == null) return;
         Vector2[] verts = HexVertices();
-        var closedPerimeter = new Vector2[7];
-        for (int i = 0; i < 6; i++) closedPerimeter[i] = verts[i];
-        closedPerimeter[6] = verts[0];
 
+        int tiles = _state.Grid.Count;
+        var segments = new List<Vector2>(tiles * 12);
+        var colors = new List<Color>(tiles * 6);
         foreach (HexTile tile in _state.Grid.Tiles)
         {
             Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(tile.Coord, HexSize);
-            _outlinesLayer.AddChild(new Line2D
+            Color c = PlayerPalette.DarkColorFor(tile.Owner);
+            for (int e = 0; e < 6; e++)
             {
-                Position = center,
-                Points = closedPerimeter,
-                Width = HexOutlineWidth,
-                DefaultColor = PlayerPalette.DarkColorFor(tile.Owner),
-                Antialiased = true,
-                JointMode = Line2D.LineJointMode.Round,
-            });
+                segments.Add(center + verts[e]);
+                segments.Add(center + verts[(e + 1) % 6]);
+                colors.Add(c);
+            }
         }
+        _outlinesLayer.SetColored(segments.ToArray(), colors.ToArray(), HexOutlineWidth);
     }
 
     // Foam strip width as a fraction of HexSize, measured perpendicular
@@ -2432,19 +2509,6 @@ public partial class HexMapView : Node2D, IHexMapView
     private static readonly Color ShoreFoamColor = new Color(0.95f, 1.0f, 1.0f);
 
     private static readonly Color WaterColor = UiPalette.WaterDeep;
-
-    private Polygon2D CreateWaterHexVisual(Vector2 center)
-    {
-        // No Line2D outline — adjacent land hexes still draw their own
-        // outlines on the water/land seam, but water/water seams should
-        // read as one continuous body of water.
-        return new Polygon2D
-        {
-            Position = center,
-            Color = WaterColor,
-            Polygon = HexVertices(),
-        };
-    }
 
     // For each water hex, group consecutive shore edges (edges whose
     // neighbor is land) into runs and emit one polygon per run. A run
@@ -2458,7 +2522,7 @@ public partial class HexMapView : Node2D, IHexMapView
     // need a polygon-with-hole to handle in one piece, so we fall back
     // to emitting 6 quads — rare enough that the corner artifacts
     // there don't matter.
-    private void AddShoreFoamStrips(Node2D parent, Vector2 center, HexCoord coord)
+    private void AddShoreFoamStrips(TriangleSoupBuilder bake, Vector2 center, HexCoord coord)
     {
         Vector2[] verts = HexVertices();
         bool[] isShore = new bool[6];
@@ -2484,7 +2548,7 @@ public partial class HexMapView : Node2D, IHexMapView
         {
             for (int edge = 0; edge < 6; edge++)
             {
-                EmitFoamStrip(parent, center,
+                EmitFoamStrip(bake, center,
                     verts[edge], verts[(edge + 1) % 6],
                     inner[(edge + 1) % 6], inner[edge]);
             }
@@ -2529,13 +2593,7 @@ public partial class HexMapView : Node2D, IHexMapView
                 colors[outerCount + k] = new Color(1f, 1f, 1f, 0f);
             }
 
-            parent.AddChild(new Polygon2D
-            {
-                Position = center,
-                Color = ShoreFoamColor,
-                Polygon = poly,
-                VertexColors = colors,
-            });
+            bake.AddPolygon(center, poly, ShoreFoamColor, colors);
         }
     }
 
@@ -2544,7 +2602,7 @@ public partial class HexMapView : Node2D, IHexMapView
     // (rather than a single fan polygon) because Polygon2D's auto
     // triangulation of a star-shaped vertex list isn't a fan and would
     // mis-interpolate the per-vertex alpha.
-    private void AddCornerFoamDisk(Node2D parent, Vector2 worldCenter)
+    private void AddCornerFoamDisk(TriangleSoupBuilder bake, Vector2 worldCenter)
     {
         const int Segments = 8;
         float radius = HexSize * ShoreFoamInset * 1.1f;
@@ -2556,39 +2614,33 @@ public partial class HexMapView : Node2D, IHexMapView
             float a1 = (i + 1) * Mathf.Tau / Segments;
             Vector2 p0 = new Vector2(Mathf.Cos(a0), Mathf.Sin(a0)) * radius;
             Vector2 p1 = new Vector2(Mathf.Cos(a1), Mathf.Sin(a1)) * radius;
-            parent.AddChild(new Polygon2D
-            {
-                Position = worldCenter,
-                Color = ShoreFoamColor,
-                Polygon = new[] { Vector2.Zero, p0, p1 },
-                VertexColors = new[] { centerColor, rimColor, rimColor },
-            });
+            bake.AddPolygon(worldCenter, new[] { Vector2.Zero, p0, p1 },
+                ShoreFoamColor, new[] { centerColor, rimColor, rimColor });
         }
     }
 
-    private void EmitFoamStrip(Node2D parent, Vector2 center,
+    private void EmitFoamStrip(TriangleSoupBuilder bake, Vector2 center,
         Vector2 outerA, Vector2 outerB, Vector2 innerB, Vector2 innerA)
     {
-        parent.AddChild(new Polygon2D
-        {
-            Position = center,
-            Color = ShoreFoamColor,
-            Polygon = new[] { outerA, outerB, innerB, innerA },
-            VertexColors = new[]
+        bake.AddPolygon(center, new[] { outerA, outerB, innerB, innerA },
+            ShoreFoamColor, new[]
             {
                 new Color(1f, 1f, 1f, 1f),
                 new Color(1f, 1f, 1f, 1f),
                 new Color(1f, 1f, 1f, 0f),
                 new Color(1f, 1f, 1f, 0f),
-            },
-        });
+            });
     }
+
+    private static readonly Color TerritoryBorderColor = new Color(0f, 0f, 0f, 1f);
+    private const float TerritoryBorderWidth = 4f;
 
     private void DrawTerritoryBorders()
     {
         if (_bordersLayer == null) return;
         Vector2[] verts = HexVertices();
 
+        var segments = new List<Vector2>();
         foreach (HexTile tile in Grid.Tiles)
         {
             Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(tile.Coord, HexSize);
@@ -2602,14 +2654,125 @@ public partial class HexMapView : Node2D, IHexMapView
                 bool isBoundary = neighbor == null || neighbor.Owner != tile.Owner;
                 if (!isBoundary) continue;
 
-                var line = new Line2D
-                {
-                    Points = new[] { center + verts[edge], center + verts[(edge + 1) % 6] },
-                    Width = 4f,
-                    DefaultColor = new Color(0f, 0f, 0f, 1f),
-                };
-                _bordersLayer.AddChild(line);
+                segments.Add(center + verts[edge]);
+                segments.Add(center + verts[(edge + 1) % 6]);
             }
+        }
+        _bordersLayer.SetUniform(segments.ToArray(), TerritoryBorderColor, TerritoryBorderWidth);
+    }
+
+    // Batched line drawer: draws ALL edge segments in a single
+    // DrawMultiline / DrawMultilineColors call — one draw call instead of
+    // one per segment. (Antialiased Line2D / DrawPolyline can't batch, so
+    // ~2000 of them were ~2000 draw calls — the device per-capture hitch;
+    // see TECHDEBT.) AA is off here so the segments batch; smoothing comes
+    // from project-level 2D MSAA. Points are consecutive pairs: each
+    // [2i, 2i+1] is one segment.
+    private sealed partial class PolylineBatch : Node2D
+    {
+        private Vector2[] _segments = System.Array.Empty<Vector2>();
+        private Color[]? _segmentColors;
+        private Color _uniformColor = Colors.Black;
+        private float _width = 1f;
+
+        public int StrokeCount => _segments.Length / 2;
+
+        // Borders: every segment the same color.
+        public void SetUniform(Vector2[] segments, Color color, float width)
+        {
+            _segments = segments;
+            _segmentColors = null;
+            _uniformColor = color;
+            _width = width;
+            QueueRedraw();
+        }
+
+        // Outlines: one color per segment (player-dark per tile).
+        public void SetColored(Vector2[] segments, Color[] segmentColors, float width)
+        {
+            _segments = segments;
+            _segmentColors = segmentColors;
+            _width = width;
+            QueueRedraw();
+        }
+
+        public override void _Draw()
+        {
+            if (_segments.Length == 0) return;
+            if (_segmentColors != null)
+            {
+                DrawMultilineColors(_segments, _segmentColors, _width);
+            }
+            else
+            {
+                DrawMultiline(_segments, _uniformColor, _width);
+            }
+        }
+    }
+
+    // Accumulates many small polygons into one vertex-colored, indexed
+    // triangle array. Each source polygon is triangulated (Godot's ear
+    // clipper, same as Polygon2D uses) and appended; the result is handed
+    // to a single TriangleSoup node = one draw call for the whole batch.
+    private sealed class TriangleSoupBuilder
+    {
+        public readonly List<Vector2> Points = new();
+        public readonly List<Color> Colors = new();
+        public readonly List<int> Indices = new();
+
+        // local: polygon vertices in node-local space; offset shifts them to
+        // world. baseColor is the modulate; vertColors (per vertex, or null
+        // for solid) multiplies it — matching Polygon2D.Color × VertexColors.
+        public void AddPolygon(Vector2 offset, Vector2[] local, Color baseColor, Color[]? vertColors)
+        {
+            int b = Points.Count;
+            for (int i = 0; i < local.Length; i++)
+            {
+                Points.Add(offset + local[i]);
+                Colors.Add(vertColors == null ? baseColor : baseColor * vertColors[i]);
+            }
+            int[] tri = Geometry2D.TriangulatePolygon(local);
+            if (tri.Length == 0)
+            {
+                // Triangulation failed (degenerate) — fan fallback.
+                for (int i = 1; i + 1 < local.Length; i++)
+                {
+                    Indices.Add(b);
+                    Indices.Add(b + i);
+                    Indices.Add(b + i + 1);
+                }
+            }
+            else
+            {
+                foreach (int t in tri) Indices.Add(b + t);
+            }
+        }
+    }
+
+    // Draws an entire vertex-colored triangle array in a single canvas batch
+    // (one draw call) via RenderingServer. Used to bake the static
+    // water + shoreline foam (~1,870 Polygon2D ⇒ 1 draw) — see TECHDEBT.
+    private sealed partial class TriangleSoup : Node2D
+    {
+        private int[] _indices = System.Array.Empty<int>();
+        private Vector2[] _points = System.Array.Empty<Vector2>();
+        private Color[] _colors = System.Array.Empty<Color>();
+
+        public int TriangleCount => _indices.Length / 3;
+
+        public void SetTriangles(Vector2[] points, Color[] colors, int[] indices)
+        {
+            _points = points;
+            _colors = colors;
+            _indices = indices;
+            QueueRedraw();
+        }
+
+        public override void _Draw()
+        {
+            if (_indices.Length == 0) return;
+            RenderingServer.CanvasItemAddTriangleArray(
+                GetCanvasItem(), _indices, _points, _colors);
         }
     }
 

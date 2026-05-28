@@ -2,6 +2,83 @@
 
 Running list of known issues, flaky tests, and shortcuts that should eventually be cleaned up. Add new entries at the top.
 
+## Per-capture frame hitch on Android: scene renders ~6,500 draw calls/frame [RESOLVED 2026-05-27]
+
+**RESOLUTION:** fixed by cutting per-frame draw calls **~6,550 → ~180–256** on
+the S9. Three changes in `HexMapView`: (1) borders + outlines now draw via a
+single batched `DrawMultiline`/`DrawMultilineColors` per layer (`PolylineBatch`)
+instead of one antialiased `DrawPolyline` per segment; (2) project 2D MSAA enabled
+(`rendering/anti_aliasing/quality/msaa_2d=1`, 2×) to keep the now-non-AA lines
+smooth; (3) the ~1,870 static water + shoreline-foam `Polygon2D` baked into one
+vertex-colored `TriangleSoup` (via `RenderingServer.CanvasItemAddTriangleArray`) =
+one draw call. Device-confirmed: the per-capture stall went from a cluster of 2–3
+frames (~300 ms total) to a single ~60–75 ms frame; user reports captures now feel
+instant. **Residual (optional future work):** that remaining ~60–75 ms single
+frame is now CPU-bound (`cpuProc` ~20–48 ms), largely `RefreshOccupantVisuals`
+recreating all occupant nodes on every refresh — make it incremental if it ever
+becomes perceptible again. Tile fills (~344 `Polygon2D`) could also become a
+`MultiMesh` but weren't the bottleneck.
+
+The original problem and (now-validated) diagnosis are kept below for context.
+
+**Where:** whole-map rendering in `HexMapView` (`scripts/HexMapView.cs`). Reported
+on the S9 as a hard hitch when placing a unit to capture a hex (even an empty hex,
+even with SFX off). Diagnosed 2026-05-27. **The first hypothesis (Line2D node
+churn) was wrong** — see below; keeping the corrected diagnosis here.
+
+**Device measurement (debug APK, logcat `[hitch]`):** every capture produces a
+cluster of **2–3 long frames, ~55 + ~130 + ~110 ms ≈ 300 ms total**, with
+`draws=~6550 objs=~6800` per frame (`Performance` monitors via the `_Process`
+delta>50ms probe). The S9 runs continuously (no `low_processor_mode`), so these
+are real stalls. The synchronous C# cost is ~1 ms — **not** the bottleneck.
+
+**Root cause:** the scene contains ~2,230 static-ish `Polygon2D` plus ~2,060
+antialiased border/outline line draws, and in the `gl_compatibility` 2D renderer
+**every visible canvas item issues its own draw call every frame** — `Polygon2D`
+and antialiased lines do **not** batch (confirmed: `draws ≈ objs`). Composition
+dump (`[hitch] composition …`, `DumpSceneComposition`): `Polygon2D=2216,
+PolylineBatch=2`. Breakdown of the ~6,500 draws:
+- ~1,870 `Polygon2D` — water-rim hexes + per-edge shore foam + corner foam disks
+  (`AddShoreFoamStrips`/`AddCornerFoamDisk`/`CreateWaterHexVisual`). **Static —
+  never change after init**, yet redrawn every frame.
+- ~344 `Polygon2D` — tile fills (recolored on capture).
+- ~2,060 antialiased line draws — `DrawTerritoryBorders` (~1,720) +
+  `PopulateOutlinesLayer` (~344), now in two `PolylineBatch` `_Draw` nodes but
+  still one `DrawPolyline(antialiased:true)` per segment ⇒ one draw call each.
+- remainder — occupants (capitals/trees/units), recreated wholesale every
+  `RefreshOccupantVisuals` (i.e. every click), which dirties the canvas.
+
+**Already done (2026-05-27):** the border/outline `Line2D`-per-edge swarm was
+collapsed into two `PolylineBatch` `_Draw` nodes. This cut the C# rebuild cost
+~10× (`HandleCapture` ~8 ms → ~1 ms) and removed ~4,400 scene nodes — **worth
+keeping** — but did **not** reduce draw calls (AA `DrawPolyline` is still 1 draw
+per segment), so the device hitch was unchanged.
+
+**Candidate fixes (deferred — measured, not yet fixed; all reduce draw calls):**
+- **Lines → `DrawMultiline`:** borders are all one color/width, outlines are
+  per-tile colored — `DrawMultiline`/`DrawMultilineColors` collapses ~2,060 draws
+  to ~2. Trade-off: loses per-line AA; pair with project 2D MSAA
+  (`rendering/anti_aliasing/quality/msaa_2d`) to keep edges smooth.
+- **Bake static water + foam:** ~1,870 `Polygon2D` never change — bake to a single
+  sprite/texture (or merge into one mesh / `MultiMesh`) ⇒ ~1,870 draws → 1.
+- **Tile fills → `MultiMesh`** (~344 → 1); recolor via per-instance color.
+- **Incremental occupants:** stop recreating all occupant nodes on every refresh
+  (only touch what changed) so a click/capture doesn't dirty the whole canvas.
+
+**Build-config note:** the Android `ExportDebug` build compiles
+`FourExHex.Model` **without** the `DEBUG` symbol, so `Log.Trace/Debug/Info` (and
+the body of `Log.Since`) are stripped *inside the Model assembly* — `Log.Since`
+timing lines are silently no-ops on device, while direct `Log.Debug` calls made
+from the game assembly (`scripts/`) still print. Worth aligning the export configs
+to define `DEBUG` for all libs if on-device sub-step timing is needed.
+
+**Instrumentation in place:** `[hitch]`-prefixed `Log.Capture` timing lines
+(`Log.Since`), the `Log.Render` long-frame probe with CPU/draw-call split in
+`HexMapView._Process`, and `DumpSceneComposition`. Free in Release
+(`[Conditional("DEBUG")]`); on a debug APK every category is on, so
+`adb logcat -d -s godot | grep '\[hitch\]'` reproduces these numbers on-device.
+The `Log.Stamp()`/`Log.Since()` helper lives in `src/FourExHex.Model/Log.cs`.
+
 ## Rotation-stretch worked around with a heuristic blank overlay (RotationFix plugin)
 
 **Where:** `android_plugin/rotationfix/` (Kotlin `RotationFixPlugin`, a Godot v2

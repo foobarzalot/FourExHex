@@ -167,6 +167,17 @@ public static class Log
     public static void Error(LogCategory category, string message)
         => Emit(category, LogLevel.Error, message);
 
+    // Timing helpers. Stamp() always compiles (a cheap timestamp read,
+    // portable across the Godot-free libraries that can't use Godot's
+    // Time). Since() is [Conditional("DEBUG")] like Debug — the whole
+    // call (subtraction, formatting, log) is stripped from Release, so
+    // it's free to leave in permanently and live in the debug APK.
+    public static long Stamp() => Stopwatch.GetTimestamp();
+
+    [Conditional("DEBUG")]
+    public static void Since(LogCategory category, string label, long stamp)
+        => Debug(category, $"{label} {(Stamp() - stamp) * 1000.0 / Stopwatch.Frequency:F1}ms");
+
     private static void Emit(LogCategory category, LogLevel level, string message)
     {
         if (level < _minLevel[(int)category])

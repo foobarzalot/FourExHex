@@ -446,15 +446,21 @@ public class GameOperations
     /// </summary>
     public void RefreshViews()
     {
+        long tWhole = Log.Stamp();
         bool hasActionable = HasAnyActionableForCurrentPlayer();
+        long tHud = Log.Stamp();
         _hud.Refresh(_state, _session, hasActionable);
+        Log.Since(Log.LogCategory.Capture, "[hitch] HudView.Refresh", tHud);
+        long tOccupants = Log.Stamp();
         _map.RefreshOccupantVisuals(_state.Turns.CurrentPlayer.Id, _state.Treasury);
+        Log.Since(Log.LogCategory.Capture, "[hitch] RefreshOccupantVisuals", tOccupants);
         // End Turn CTA when the current player has nothing actionable
         // left. Lives here (not inside _hud.Refresh) so Tutorial Preview's
         // onAfterRefresh callback can overwrite it when the next scripted
         // beat is End Turn — "last write wins" with the preview cue.
         _hud.SetCta(CtaButton.EndTurn, !hasActionable, pulse: false);
         _onAfterRefresh?.Invoke();
+        Log.Since(Log.LogCategory.Capture, "[hitch] RefreshViews total", tWhole);
     }
 
     /// <summary>
@@ -769,11 +775,16 @@ public class GameOperations
     /// </summary>
     public void HandleCapture(string actionDesc)
     {
+        long tWhole = Log.Stamp();
         IReadOnlyList<Territory> previous = _state.Territories;
         Dictionary<HexCoord, (PlayerId Owner, int Gold)> oldCaps = SnapshotCapitals(previous);
         HashSet<PlayerId> colorsWithCapitalBefore = ColorsWithCapital(previous);
 
+        long tRecompute = Log.Stamp();
         _state.Territories = TerritoryFinder.Recompute(_state.Grid, previous, _state.Treasury);
+        Log.Since(Log.LogCategory.Capture, "[hitch] TerritoryFinder.Recompute", tRecompute);
+        Log.Debug(Log.LogCategory.Capture,
+            $"[hitch] counts tiles={_state.Grid.Count} territories={_state.Territories.Count}");
 
         Dictionary<HexCoord, (PlayerId Owner, int Gold)> newCaps = SnapshotCapitals(_state.Territories);
         LogCaptureDiff(actionDesc, oldCaps, newCaps);
@@ -806,7 +817,9 @@ public class GameOperations
         // turn (see InstantReplayTick); skip the per-capture rebuild
         // here so a capture-heavy turn doesn't re-tessellate every
         // border on every beat.
+        long tRebuild = Log.Stamp();
         if (!SuppressMapRebuild) _map.RebuildAfterTerritoryChange();
+        Log.Since(Log.LogCategory.Capture, "[hitch] RebuildAfterTerritoryChange", tRebuild);
 
         // Mid-turn win check: only ends the game if the current
         // player owns every cell. The "opponent reduced to orphan
@@ -830,6 +843,8 @@ public class GameOperations
             // this idempotent if a subsequent caller fires it again.
             CheckGameEndConditions();
         }
+
+        Log.Since(Log.LogCategory.Capture, "[hitch] HandleCapture total", tWhole);
     }
 
     /// <summary>
