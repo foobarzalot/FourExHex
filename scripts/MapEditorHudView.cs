@@ -322,7 +322,8 @@ public partial class MapEditorHudView : OrientationHud
     /// — moved to the bottom for thumb reach, matching the play HUD.</summary>
     protected override void BuildLandscapeBars()
     {
-        BottomBar = HudBars.MakeBarPanel(top: false, height: HudView.HudHeight);
+        BottomBar = HudBars.MakeBarPanel(top: false, height: HudView.HudHeight,
+            bottomOffset: SafeArea.Current.Bottom);
         AddChild(BottomBar);
         Control frame = HudBars.MakeBarFrame();
         BottomBar.AddChild(frame);
@@ -356,7 +357,8 @@ public partial class MapEditorHudView : OrientationHud
     protected override void BuildPortraitBars()
     {
         // Top bar: seed + generate (left) and undo/redo + options (right).
-        TopBar = HudBars.MakeBarPanel(top: true, height: HudView.HudHeight, topOffset: TopOffsetPx);
+        TopBar = HudBars.MakeBarPanel(top: true, height: HudView.HudHeight,
+            topOffset: TopOffsetPx + SafeArea.Current.Top);
         AddChild(TopBar);
         Control frame = HudBars.MakeBarFrame();
         TopBar.AddChild(frame);
@@ -372,7 +374,8 @@ public partial class MapEditorHudView : OrientationHud
 
         // Bottom bar: all paint options (always visible — the editor has no
         // selection concept).
-        BottomBar = HudBars.MakeBarPanel(top: false, height: PortraitBottomBarHeight);
+        BottomBar = HudBars.MakeBarPanel(top: false, height: PortraitBottomBarHeight,
+            bottomOffset: SafeArea.Current.Bottom);
         AddChild(BottomBar);
         var bottomRow = new HBoxContainer
         {

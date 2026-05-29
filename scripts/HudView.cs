@@ -363,7 +363,8 @@ public partial class HudView : OrientationHud, IHudView
     /// (center), turn controls (right) — moved to the bottom for thumb reach.</summary>
     protected override void BuildLandscapeBars()
     {
-        BottomBar = HudBars.MakeBarPanel(top: false, height: HudHeight);
+        BottomBar = HudBars.MakeBarPanel(top: false, height: HudHeight,
+            bottomOffset: SafeArea.Current.Bottom);
         AddChild(BottomBar);
         Control frame = HudBars.MakeBarFrame();
         BottomBar.AddChild(frame);
@@ -395,7 +396,8 @@ public partial class HudView : OrientationHud, IHudView
     /// controls right) for thumb reach.</summary>
     protected override void BuildPortraitBars()
     {
-        TopBar = HudBars.MakeBarPanel(top: true, height: PortraitTopBarHeight);
+        TopBar = HudBars.MakeBarPanel(top: true, height: PortraitTopBarHeight,
+            topOffset: SafeArea.Current.Top);
         AddChild(TopBar);
         Control topFrame = HudBars.MakeBarFrame();
         TopBar.AddChild(topFrame);
@@ -412,7 +414,8 @@ public partial class HudView : OrientationHud, IHudView
         topFrame.AddChild(topRight);
         topRight.AddChild(_optionsButton);
 
-        BottomBar = HudBars.MakeBarPanel(top: false, height: PortraitBottomBarHeight);
+        BottomBar = HudBars.MakeBarPanel(top: false, height: PortraitBottomBarHeight,
+            bottomOffset: SafeArea.Current.Bottom);
         AddChild(BottomBar);
         Control frame = HudBars.MakeBarFrame();
         BottomBar.AddChild(frame);
@@ -460,7 +463,10 @@ public partial class HudView : OrientationHud, IHudView
         _seedLabel.Visible = true;
         // Portrait has a 96px top bar over the map; landscape leaves the top
         // free. Drop the label below the bar in portrait so it reads on the map.
-        float seedTop = Orientation == ScreenOrientation.Portrait ? PortraitTopBarHeight + 8f : 8f;
+        // Portrait label drops below the (safe-area-shifted) top bar; landscape
+        // sits just below the notch with an 8px margin.
+        float seedTop = SafeArea.Current.Top +
+            (Orientation == ScreenOrientation.Portrait ? PortraitTopBarHeight + 8f : 8f);
         _seedLabel.OffsetTop = seedTop;
         _seedLabel.OffsetBottom = seedTop + 40f;
         Log.Debug(Log.LogCategory.Render,

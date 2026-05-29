@@ -20,6 +20,7 @@ config/icon="res://icon.svg"
 
 LogBootstrap="*res://scripts/LogBootstrap.cs"
 DisplayScale="*res://scripts/DisplayScale.cs"
+SafeArea="*res://scripts/SafeArea.cs"
 AudioBus="*res://scripts/AudioBus.cs"
 
 [display]

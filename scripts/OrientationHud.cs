@@ -34,6 +34,22 @@ public abstract partial class OrientationHud : CanvasLayer
         Orientation = ResolveOrientation();
         ApplyLayout();
         GetViewport().SizeChanged += OnViewportResized;
+        // Notch / Dynamic Island / home-indicator insets can change without a
+        // viewport resize (e.g. status-bar show/hide). Rebuild the bars when
+        // the safe area shifts so the chrome stays inside the safe zone.
+        SafeArea.Changed += OnSafeAreaChanged;
+        PublishInsets();
+        OnViewportMetricsChanged();
+    }
+
+    public override void _ExitTree()
+    {
+        SafeArea.Changed -= OnSafeAreaChanged;
+    }
+
+    private void OnSafeAreaChanged(FourExHex.Model.LogicalSafeInsets _)
+    {
+        ApplyLayout();
         PublishInsets();
         OnViewportMetricsChanged();
     }

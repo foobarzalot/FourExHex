@@ -21,9 +21,11 @@ public static class HudBars
 
     /// <summary>A warm-slate bar Panel pinned to the top or bottom edge of
     /// the viewport. <paramref name="topOffset"/> slides a top bar down (the
-    /// tutorial builder hosts the editor HUD below its own topbar). Default
-    /// MouseFilter Stop blocks clicks over the bar from reaching the map.</summary>
-    public static Panel MakeBarPanel(bool top, float height, float topOffset = 0f)
+    /// tutorial builder hosts the editor HUD below its own topbar; iOS notch
+    /// adds a top safe-area inset). <paramref name="bottomOffset"/> lifts a
+    /// bottom bar up by the iOS home-indicator inset. Default MouseFilter Stop
+    /// blocks clicks over the bar from reaching the map.</summary>
+    public static Panel MakeBarPanel(bool top, float height, float topOffset = 0f, float bottomOffset = 0f)
     {
         var panel = new Panel
         {
@@ -31,8 +33,8 @@ public static class HudBars
             AnchorTop = top ? 0f : 1f,
             AnchorBottom = top ? 0f : 1f,
             OffsetLeft = 0f, OffsetRight = 0f,
-            OffsetTop = top ? topOffset : -height,
-            OffsetBottom = top ? topOffset + height : 0f,
+            OffsetTop = top ? topOffset : -(height + bottomOffset),
+            OffsetBottom = top ? topOffset + height : -bottomOffset,
         };
         var style = new StyleBoxFlat
         {
