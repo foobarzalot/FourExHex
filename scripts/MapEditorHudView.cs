@@ -323,9 +323,9 @@ public partial class MapEditorHudView : OrientationHud
     protected override void BuildLandscapeBars()
     {
         BottomBar = HudBars.MakeBarPanel(top: false, height: HudView.HudHeight,
-            bottomOffset: SafeArea.Current.Bottom);
+            safeAreaBottom: SafeArea.Current.Bottom);
         AddChild(BottomBar);
-        Control frame = HudBars.MakeBarFrame();
+        Control frame = HudBars.MakeBarFrame(safeAreaBottom: SafeArea.Current.Bottom);
         BottomBar.AddChild(frame);
 
         // Left edge: the six land-color swatches.
@@ -358,9 +358,9 @@ public partial class MapEditorHudView : OrientationHud
     {
         // Top bar: seed + generate (left) and undo/redo + options (right).
         TopBar = HudBars.MakeBarPanel(top: true, height: HudView.HudHeight,
-            topOffset: TopOffsetPx + SafeArea.Current.Top);
+            topOffset: TopOffsetPx, safeAreaTop: SafeArea.Current.Top);
         AddChild(TopBar);
-        Control frame = HudBars.MakeBarFrame();
+        Control frame = HudBars.MakeBarFrame(safeAreaTop: SafeArea.Current.Top);
         TopBar.AddChild(frame);
 
         HBoxContainer left = HudBars.MakeAnchoredGroup(0f, Control.GrowDirection.End);
@@ -375,12 +375,14 @@ public partial class MapEditorHudView : OrientationHud
         // Bottom bar: all paint options (always visible — the editor has no
         // selection concept).
         BottomBar = HudBars.MakeBarPanel(top: false, height: PortraitBottomBarHeight,
-            bottomOffset: SafeArea.Current.Bottom);
+            safeAreaBottom: SafeArea.Current.Bottom);
         AddChild(BottomBar);
         var bottomRow = new HBoxContainer
         {
             AnchorLeft = 0.5f, AnchorRight = 0.5f, AnchorTop = 0f, AnchorBottom = 1f,
-            OffsetTop = 8f, OffsetBottom = -8f,
+            // Match MakeBarFrame: 8px chrome inset + safe-area bottom so the
+            // paint clusters sit above the iOS home indicator.
+            OffsetTop = 8f, OffsetBottom = -(8f + SafeArea.Current.Bottom),
             GrowHorizontal = Control.GrowDirection.Both,
             MouseFilter = Control.MouseFilterEnum.Pass,
         };
@@ -397,12 +399,15 @@ public partial class MapEditorHudView : OrientationHud
         // landscapeBarHeight at the bottom). The portrait top bar is always up
         // (no selection gating); its inset includes TopOffsetPx so a host
         // (tutorial builder) that slides the strip down is accounted for.
+        // Safe-area insets grow the reserved heights so the map doesn't draw
+        // under the bar's slate extension into the notch / home indicator.
+        var safe = SafeArea.Current;
         return ScreenLayout.ComputeInsets(
             Orientation,
             topBarVisible: true,
-            landscapeBarHeight: HudView.HudHeight,
-            portraitTopBarHeight: TopOffsetPx + HudView.HudHeight,
-            portraitBottomBarHeight: PortraitBottomBarHeight);
+            landscapeBarHeight: HudView.HudHeight + safe.Bottom,
+            portraitTopBarHeight: TopOffsetPx + HudView.HudHeight + safe.Top,
+            portraitBottomBarHeight: PortraitBottomBarHeight + safe.Bottom);
     }
 
     private static HudIconButton MakeUndoButton(HudIcon icon, string tooltip, Action onShort, Action onLong)

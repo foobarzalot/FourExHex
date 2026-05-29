@@ -20,21 +20,33 @@ public static class HudBars
     }
 
     /// <summary>A warm-slate bar Panel pinned to the top or bottom edge of
-    /// the viewport. <paramref name="topOffset"/> slides a top bar down (the
-    /// tutorial builder hosts the editor HUD below its own topbar; iOS notch
-    /// adds a top safe-area inset). <paramref name="bottomOffset"/> lifts a
-    /// bottom bar up by the iOS home-indicator inset. Default MouseFilter Stop
-    /// blocks clicks over the bar from reaching the map.</summary>
-    public static Panel MakeBarPanel(bool top, float height, float topOffset = 0f, float bottomOffset = 0f)
+    /// the viewport.
+    /// <para>
+    /// Two orthogonal insets:
+    /// <list type="bullet">
+    /// <item><paramref name="topOffset"/>/<paramref name="bottomOffset"/> is a
+    /// STRUCTURAL inset: slide the entire bar away from the viewport edge
+    /// (tutorial builder hosts the editor HUD below its own topbar).</item>
+    /// <item><paramref name="safeAreaTop"/>/<paramref name="safeAreaBottom"/>
+    /// is a DEVICE inset: extend the bar's slate fill into the notch /
+    /// home-indicator zone so the bar reads edge-to-edge on iOS. Content sits
+    /// inside the safe zone (see <see cref="MakeBarFrame"/>).</item>
+    /// </list>
+    /// </para>
+    /// Default MouseFilter Stop blocks clicks over the bar from reaching the map.</summary>
+    public static Panel MakeBarPanel(bool top, float height,
+        float topOffset = 0f, float bottomOffset = 0f,
+        float safeAreaTop = 0f, float safeAreaBottom = 0f)
     {
+        float topExtra = top ? safeAreaTop : safeAreaBottom;
         var panel = new Panel
         {
             AnchorLeft = 0f, AnchorRight = 1f,
             AnchorTop = top ? 0f : 1f,
             AnchorBottom = top ? 0f : 1f,
             OffsetLeft = 0f, OffsetRight = 0f,
-            OffsetTop = top ? topOffset : -(height + bottomOffset),
-            OffsetBottom = top ? topOffset + height : -bottomOffset,
+            OffsetTop = top ? topOffset : -(height + topExtra + bottomOffset),
+            OffsetBottom = top ? topOffset + height + topExtra : -bottomOffset,
         };
         var style = new StyleBoxFlat
         {
@@ -48,13 +60,18 @@ public static class HudBars
 
     /// <summary>Inner margin frame (configurable side inset, 8px top/bottom)
     /// that the anchored region groups live in. Anchors fill its parent bar
-    /// Panel, so it's independent of where that bar sits on screen.</summary>
-    public static Control MakeBarFrame(float sideInset = 16f)
+    /// Panel. <paramref name="safeAreaTop"/>/<paramref name="safeAreaBottom"/>
+    /// pads beyond the 8px margin to push content past the notch (top bar) or
+    /// home indicator (bottom bar); pass the same value as the parent
+    /// MakeBarPanel call so content sits in the safe zone.</summary>
+    public static Control MakeBarFrame(float sideInset = 16f,
+        float safeAreaTop = 0f, float safeAreaBottom = 0f)
     {
         return new Control
         {
             AnchorLeft = 0f, AnchorRight = 1f, AnchorTop = 0f, AnchorBottom = 1f,
-            OffsetLeft = sideInset, OffsetRight = -sideInset, OffsetTop = 8f, OffsetBottom = -8f,
+            OffsetLeft = sideInset, OffsetRight = -sideInset,
+            OffsetTop = 8f + safeAreaTop, OffsetBottom = -(8f + safeAreaBottom),
             MouseFilter = Control.MouseFilterEnum.Pass,
         };
     }

@@ -364,9 +364,9 @@ public partial class HudView : OrientationHud, IHudView
     protected override void BuildLandscapeBars()
     {
         BottomBar = HudBars.MakeBarPanel(top: false, height: HudHeight,
-            bottomOffset: SafeArea.Current.Bottom);
+            safeAreaBottom: SafeArea.Current.Bottom);
         AddChild(BottomBar);
-        Control frame = HudBars.MakeBarFrame();
+        Control frame = HudBars.MakeBarFrame(safeAreaBottom: SafeArea.Current.Bottom);
         BottomBar.AddChild(frame);
 
         // Left edge: unit/tower purchase buttons + the gold report beside them.
@@ -397,9 +397,9 @@ public partial class HudView : OrientationHud, IHudView
     protected override void BuildPortraitBars()
     {
         TopBar = HudBars.MakeBarPanel(top: true, height: PortraitTopBarHeight,
-            topOffset: SafeArea.Current.Top);
+            safeAreaTop: SafeArea.Current.Top);
         AddChild(TopBar);
-        Control topFrame = HudBars.MakeBarFrame();
+        Control topFrame = HudBars.MakeBarFrame(safeAreaTop: SafeArea.Current.Top);
         TopBar.AddChild(topFrame);
         // Status (turn + swatches) is firmly anchored to the left edge so it
         // never shifts when the gold report appears/disappears beside it; the
@@ -415,9 +415,9 @@ public partial class HudView : OrientationHud, IHudView
         topRight.AddChild(_optionsButton);
 
         BottomBar = HudBars.MakeBarPanel(top: false, height: PortraitBottomBarHeight,
-            bottomOffset: SafeArea.Current.Bottom);
+            safeAreaBottom: SafeArea.Current.Bottom);
         AddChild(BottomBar);
-        Control frame = HudBars.MakeBarFrame();
+        Control frame = HudBars.MakeBarFrame(safeAreaBottom: SafeArea.Current.Bottom);
         BottomBar.AddChild(frame);
 
         HBoxContainer left = HudBars.MakeAnchoredGroup(0f, Control.GrowDirection.End);
@@ -514,8 +514,15 @@ public partial class HudView : OrientationHud, IHudView
     {
         // The portrait top bar holds always-relevant display (turn / players /
         // gold), so it's always up — top inset is stable across selection.
+        // Bar heights grow by the iOS safe-area insets so the map reserves room
+        // for the slate fill that wraps the notch / home indicator (otherwise
+        // map content would draw under the bar's safe-zone extension).
+        var safe = SafeArea.Current;
         return ScreenLayout.ComputeInsets(
-            Orientation, topBarVisible: true, HudHeight, PortraitTopBarHeight, PortraitBottomBarHeight);
+            Orientation, topBarVisible: true,
+            HudHeight + safe.Bottom,
+            PortraitTopBarHeight + safe.Top,
+            PortraitBottomBarHeight + safe.Bottom);
     }
 
     /// <summary>Portrait keeps its top display bar up always; landscape builds
@@ -873,8 +880,11 @@ public partial class HudView : OrientationHud, IHudView
         float width = Mathf.Min(TutorialPanelW, viewportW - HudPanelSideMargin * 2f);
         _tutorialPanel.OffsetLeft = -width * 0.5f;
         _tutorialPanel.OffsetRight = width * 0.5f;
-        // Both orientations now have a bottom HUD bar; lift the box above it.
-        float lift = Orientation == ScreenOrientation.Portrait ? PortraitBottomBarHeight : HudHeight;
+        // Both orientations now have a bottom HUD bar; lift the box above it
+        // (including the iOS safe-area extension so it clears the visible bar
+        // top, not the home-indicator-covered bottom of the bar).
+        float lift = (Orientation == ScreenOrientation.Portrait ? PortraitBottomBarHeight : HudHeight)
+            + SafeArea.Current.Bottom;
         float bottom = TutorialMarginBottom + lift;
         _tutorialPanel.OffsetTop = -bottom - TutorialPanelH;
         _tutorialPanel.OffsetBottom = -bottom;
@@ -1004,8 +1014,10 @@ public partial class HudView : OrientationHud, IHudView
         _bankruptToast.OffsetLeft = -width * 0.5f;
         _bankruptToast.OffsetRight = width * 0.5f;
         // Clear the portrait top display bar; landscape has no top bar, so the
-        // toast sits flush below the top edge.
-        float top = (Orientation == ScreenOrientation.Portrait ? PortraitTopBarHeight : 0f)
+        // toast sits flush below the top edge. In both cases push down past the
+        // iOS notch so the toast isn't clipped under it.
+        float top = SafeArea.Current.Top
+            + (Orientation == ScreenOrientation.Portrait ? PortraitTopBarHeight : 0f)
             + BankruptToastMarginTop;
         _bankruptToast.OffsetTop = top;
         _bankruptToast.OffsetBottom = top + BankruptToastH;
