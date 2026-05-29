@@ -97,11 +97,13 @@ public partial class HexMapView : Node2D, IHexMapView
     [Export] public int Rows { get; set; } = 20;
     [Export] public float HexSize { get; set; } = 48f;
 
-    // Unit + capital fill/stroke colors. White = "selected by the
-    // player" (move-source unit, or the capital of the selected
-    // territory). Black = everything else. Pulse animation, not color,
-    // signals "actionable".
-    private static readonly Color OccupantSelectedColor = new Color(1f, 1f, 1f, 1f);
+    // Unit ring fill colors. White = "current player's unit that
+    // still has its move this turn" (actionable); black = everything
+    // else. The selected (picked-up) unit stays white — selection is
+    // signalled by a dark halo behind the rings (see
+    // ApplySelectionAffordance), not by color. Capitals use a
+    // separate palette (UiPalette.Gold / UiPalette.BgDeep).
+    private static readonly Color OccupantActionableColor = new Color(1f, 1f, 1f, 1f);
     private static readonly Color OccupantDefaultColor = new Color(0f, 0f, 0f, 1f);
 
     // Edge i of a pointy-top hex (vertex i -> vertex (i+1)%6) is shared with
@@ -191,15 +193,34 @@ public partial class HexMapView : Node2D, IHexMapView
     // so RedrawHighlight doesn't need to take a parameter.
     private Territory? _highlightedTerritory;
 
-    // The coord of the currently "picked up" unit (move source). Drives
-    // the white ring color on that one visual; everything else is black.
-    // Driven by the controller via ShowMoveSource.
+    // The coord of the currently "picked up" unit (move source).
+    // Drives the selection affordance (a dark halo behind that unit's
+    // rings) and excludes that unit from the actionable pulse. Driven
+    // by the controller via ShowMoveSource.
     private HexCoord? _selectedUnit;
+
+    // The black hex drawn behind the selected unit's rings. Lives
+    // in _unitsLayer at the selected unit's center. Built by
+    // ApplySelectionAffordance, freed by ClearSelectionAffordance.
+    private Node2D? _selectionBackdrop;
+
+    // The player whose turn was active at the most recent
+    // RefreshOccupantVisuals call. Cached so IsActionableUnit can
+    // answer "is this coord still actionable?" between refreshes (used
+    // by ShowMoveSource when restoring the pulse on a deselected
+    // unit). Null while no turn is active (between games / pre-Init).
+    private PlayerId? _currentPlayer;
+
+    // Selection backdrop: a solid-black tile-sized hex drawn beneath
+    // the selected unit's rings so the white rings sit on jet black
+    // (instead of on the player's territory color).
+    private static readonly Color SelectionBackdropColor = new Color(0f, 0f, 0f, 1f);
 
     // Every current-player unit that still has its move available this
     // turn. Each one pulses (scales up and back) in _Process so the
     // player can see at a glance which units are actionable. Rebuilt in
-    // RefreshOccupantVisuals.
+    // RefreshOccupantVisuals. The selected unit is deliberately
+    // excluded so its lift+shadow reads as a static "held" state.
     private readonly HashSet<HexCoord> _pulsingUnits = new();
 
     // Every current-player capital whose territory can afford to buy
@@ -753,8 +774,11 @@ public partial class HexMapView : Node2D, IHexMapView
 
     /// <summary>
     /// Tell the view which unit the player has picked up to move.
-    /// Recolors that unit's rings white (and the previous selection's
-    /// rings back to black). Pass null to clear the selection.
+    /// Applies a dark-halo affordance behind that unit (and removes
+    /// it from the actionable pulse set) and reverses the same effect
+    /// on the previous selection. Pass null to clear. Both the new
+    /// and previous units' rings stay white as long as they are
+    /// still actionable — color is no longer a selection cue.
     /// </summary>
     public void ShowMoveSource(HexCoord? coord)
     {
@@ -763,8 +787,20 @@ public partial class HexMapView : Node2D, IHexMapView
         HexCoord? previous = _selectedUnit;
         _selectedUnit = coord;
 
-        if (previous.HasValue) RebuildUnitVisualAt(previous.Value);
-        if (coord.HasValue) RebuildUnitVisualAt(coord.Value);
+        if (previous.HasValue)
+        {
+            ClearSelectionAffordance(previous.Value);
+            if (IsActionableUnit(previous.Value)) _pulsingUnits.Add(previous.Value);
+        }
+        if (coord.HasValue)
+        {
+            _pulsingUnits.Remove(coord.Value);
+            ApplySelectionAffordance();
+        }
+
+        Log.Debug(Log.LogCategory.Render,
+            $"ShowMoveSource: prev={previous?.ToString() ?? "none"} next={coord?.ToString() ?? "none"} " +
+            $"backdrop={(_selectionBackdrop != null ? "attached" : "cleared")}");
     }
 
     public override void _Process(double delta)
@@ -819,26 +855,82 @@ public partial class HexMapView : Node2D, IHexMapView
     }
 
     /// <summary>
-    /// Rebuild a single unit's visual in place — used by
-    /// <see cref="ShowMoveSource"/> when the selection toggles between
-    /// refreshes (the controller sets selection AFTER calling
-    /// RefreshOccupantVisuals, so the freshly-built visual doesn't yet
-    /// know about it). No-op if the coord has no live unit visual.
+    /// Attach the dark-halo selection affordance to
+    /// <c>_selectedUnit</c> if its visual exists. No-op if there's no
+    /// selection or the visual is missing (e.g., right after a move
+    /// when the controller hasn't yet called ShowMoveSource(null)).
+    /// Called from <see cref="ShowMoveSource"/> on pick-up and from
+    /// <see cref="RefreshOccupantVisuals"/> to re-apply after a layer
+    /// rebuild.
     /// </summary>
-    private void RebuildUnitVisualAt(HexCoord coord)
+    private void ApplySelectionAffordance()
     {
-        if (!_unitVisuals.TryGetValue(coord, out Node2D? old) || old == null) return;
+        if (!_selectedUnit.HasValue) return;
+        HexCoord coord = _selectedUnit.Value;
+        if (!_unitVisuals.TryGetValue(coord, out Node2D? visual) || visual == null) return;
+
+        Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(coord, HexSize);
+
+        // Free any leftover shadow before building a new one.
+        if (_selectionBackdrop != null)
+        {
+            _selectionBackdrop.QueueFree();
+            _selectionBackdrop = null;
+        }
+
+        // The backdrop is a tile-sized black hexagon at the unit's
+        // center so the white rings read on jet black instead of on
+        // the territory's player color. CreateHexVisual returns a
+        // Polygon2D, which is itself a Node2D — store it in
+        // _selectionBackdrop.
+        Polygon2D backdrop = CreateHexVisual(center, SelectionBackdropColor);
+        _unitsLayer?.AddChild(backdrop);
+        // Put the backdrop immediately under the unit visual in child
+        // order so it draws beneath the rings (later children draw on
+        // top in a Node2D).
+        if (_unitsLayer != null) _unitsLayer.MoveChild(backdrop, visual.GetIndex());
+        _selectionBackdrop = backdrop;
+
+        // Cancel any in-flight pulse scaling so the selection reads
+        // as a static halo; the next _Process tick will leave the
+        // scale alone since the selected unit is excluded from
+        // _pulsingUnits.
+        visual.Scale = Vector2.One;
+    }
+
+    /// <summary>
+    /// Reverse <see cref="ApplySelectionAffordance"/> for the given
+    /// (previously-selected) coord: free the shadow and reset the
+    /// unit's scale so the next pulse tick starts from identity. The
+    /// unit's color and position are unaffected — color stays white
+    /// as long as it's still actionable, and the unit was never
+    /// moved by the affordance.
+    /// </summary>
+    private void ClearSelectionAffordance(HexCoord coord)
+    {
+        if (_selectionBackdrop != null)
+        {
+            _selectionBackdrop.QueueFree();
+            _selectionBackdrop = null;
+        }
+        if (_unitVisuals.TryGetValue(coord, out Node2D? visual) && visual != null)
+        {
+            visual.Scale = Vector2.One;
+        }
+    }
+
+    /// <summary>
+    /// True iff the live unit at <paramref name="coord"/> belongs to
+    /// the current turn's player and still has its move available
+    /// this turn. Reads <c>_currentPlayer</c> cached by the most
+    /// recent <see cref="RefreshOccupantVisuals"/>.
+    /// </summary>
+    private bool IsActionableUnit(HexCoord coord)
+    {
+        if (!_currentPlayer.HasValue) return false;
         HexTile? tile = _state.Grid.Get(coord);
-        if (tile?.Unit == null) return;
-
-        Vector2 center = old.Position;
-        bool selected = _selectedUnit.HasValue && _selectedUnit.Value == coord;
-
-        old.QueueFree();
-        Node2D fresh = CreateUnitVisual(selected, tile.Unit.Level);
-        fresh.Position = center;
-        _unitsLayer?.AddChild(fresh);
-        _unitVisuals[coord] = fresh;
+        if (tile?.Occupant is not Unit unit) return false;
+        return unit.Owner == _currentPlayer.Value && !unit.HasMovedThisTurn;
     }
 
     private static void ClearLayer(Node2D? layer)
@@ -859,6 +951,17 @@ public partial class HexMapView : Node2D, IHexMapView
     /// </summary>
     public void RefreshOccupantVisuals(PlayerId? currentPlayer, Treasury treasury)
     {
+        // Cache for IsActionableUnit so it can recompute the
+        // actionable predicate without the controller passing the
+        // player in again on every selection toggle.
+        _currentPlayer = currentPlayer;
+
+        // The previous _selectionBackdrop (if any) was a child of the
+        // _unitsLayer that's about to be cleared; the ClearLayer call
+        // below will QueueFree it. Drop the reference so we don't try
+        // to free it again later. ApplySelectionAffordance below
+        // re-attaches a fresh shadow if _selectedUnit still exists.
+        _selectionBackdrop = null;
         // Detect Unit→Grave transitions BEFORE the units layer is cleared.
         // Each dying unit's visual is reparented to _deathsLayer and
         // tweened out so the grave underneath can grow into view. The
@@ -976,16 +1079,21 @@ public partial class HexMapView : Node2D, IHexMapView
 
             if (tile.Occupant is Unit unit)
             {
+                bool actionable = currentPlayer.HasValue
+                    && unit.Owner == currentPlayer.Value
+                    && !unit.HasMovedThisTurn;
                 bool selected = _selectedUnit.HasValue && _selectedUnit.Value == tile.Coord;
-                Node2D visual = CreateUnitVisual(selected, unit.Level);
+                Node2D visual = CreateUnitVisual(actionable, unit.Level);
                 visual.Position = center;
                 _unitsLayer?.AddChild(visual);
                 _unitVisuals[tile.Coord] = visual;
 
-                bool actionable = currentPlayer.HasValue
-                    && unit.Owner == currentPlayer.Value
-                    && !unit.HasMovedThisTurn;
-                if (actionable) _pulsingUnits.Add(tile.Coord);
+                // The selected unit is rendered static (no pulse) and
+                // gets a lift + drop shadow applied by
+                // ApplySelectionAffordance below. Pulsing the selected
+                // unit on top of the lift looked like a bug, so we
+                // exclude it.
+                if (actionable && !selected) _pulsingUnits.Add(tile.Coord);
             }
             else if (tile.Occupant is Capital)
             {
@@ -1040,6 +1148,21 @@ public partial class HexMapView : Node2D, IHexMapView
 
         _animateNewTrees = true;
         _animateNewGraves = true;
+
+        // Re-apply the selection halo on the selected unit now that
+        // its visual has been freshly built. ApplySelectionAffordance
+        // is a no-op if there's no selection or if the unit's visual
+        // is missing.
+        ApplySelectionAffordance();
+
+        // Proves the actionable→white rule actually ran and reports
+        // the selection state alongside it. Enable with
+        // FOUREXHEX_LOG="Render:Debug".
+        int actionableCount = _pulsingUnits.Count + (_selectedUnit.HasValue ? 1 : 0);
+        int otherUnitCount = _unitVisuals.Count - actionableCount;
+        Log.Debug(Log.LogCategory.Render,
+            $"RefreshOccupantVisuals: actionable(white)={actionableCount} other(black)={otherUnitCount} " +
+            $"selected={_selectedUnit?.ToString() ?? "none"} currentPlayer={currentPlayer?.ToString() ?? "none"}");
 
         // Repaint warning badges on every refresh: the human just
         // bought / moved / undid something that could have flipped a
@@ -1785,9 +1908,9 @@ public partial class HexMapView : Node2D, IHexMapView
     private const float UnitDotRadius = 0.08f;
     private const int UnitRingSegments = 28;
 
-    private Node2D CreateUnitVisual(bool selected, UnitLevel level)
+    private Node2D CreateUnitVisual(bool actionable, UnitLevel level)
     {
-        Color color = selected ? OccupantSelectedColor : OccupantDefaultColor;
+        Color color = actionable ? OccupantActionableColor : OccupantDefaultColor;
         var node = new Node2D();
 
         int rings = level switch

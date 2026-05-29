@@ -743,6 +743,32 @@ commander=3+dot). Audio is fired from the controller right after the
 mutation that produced it; `DispatchActionSound` picks one cue per
 move/buy resolution (combine > destruction-by-type > generic place).
 
+**Unit visual language.** A placed unit reads as one of three states,
+all set in `RefreshOccupantVisuals` and `ShowMoveSource`:
+
+- **Actionable** — current player's unit with `!HasMovedThisTurn`:
+  white rings + scale pulse (`PulseAmplitude` / `PulseRate` in
+  `HexMapView`).
+- **Selected** — the picked-up move-source, a strict subset of
+  actionable: white rings (unchanged), pulse suppressed, and a
+  tile-sized black hex backdrop inserted underneath the rings in
+  `_unitsLayer` so the rings sit on jet black instead of the
+  territory's player color. Built by `ApplySelectionAffordance`, torn
+  down by `ClearSelectionAffordance`. The single field
+  `_selectionBackdrop` tracks the live backdrop node; the next
+  `RefreshOccupantVisuals` re-runs `ApplySelectionAffordance` after
+  the units layer is rebuilt, so the backdrop survives a refresh
+  while a selection is live.
+- **Idle** (everything else — opponent unit, current player's unit
+  that has already moved this turn, or any unit between turns):
+  black rings, no pulse, no backdrop.
+
+`IsActionableUnit(HexCoord)` is the shared predicate. It reads
+`_currentPlayer` (cached by `RefreshOccupantVisuals`) so
+`ShowMoveSource` can decide whether to re-add a just-deselected coord
+to `_pulsingUnits` without the controller passing the player in
+again.
+
 **`IHudView`** — everything the controller asks the HUD to do:
 
 ```csharp
