@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Used by `xcodebuild -exportArchive` to produce a TestFlight-ready .ipa from
+  the .xcarchive `tools/build_ios.sh` builds. The `@TEAM_ID@` token is sed-
+  substituted with the real `IOS_TEAM_ID` at script run-time; the committed
+  template has no real value so this file is safe to ship.
+
+  Key fields:
+    method = app-store-connect: target the TestFlight / App Store pipeline
+      (development would code-sign for a registered device; not what we want)
+    signingStyle = automatic: Xcode auto-picks the matching distribution
+      profile for the team — works as long as the App ID is registered at
+      developer.apple.com (Phase 0b Step 2 of the iOS plan)
+    stripSwiftSymbols = true: standard for App Store builds
+    uploadSymbols = true: ship dSYMs so App Store Connect can symbolicate
+      crash reports from TestFlight testers
+-->
+<plist version="1.0">
+<dict>
+    <key>method</key>
+    <string>app-store-connect</string>
+
+    <key>teamID</key>
+    <string>@TEAM_ID@</string>
+
+    <key>signingStyle</key>
+    <string>automatic</string>
+
+    <key>stripSwiftSymbols</key>
+    <true/>
+
+    <key>uploadSymbols</key>
+    <true/>
+
+    <key>destination</key>
+    <string>export</string>
+</dict>
+</plist>

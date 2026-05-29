@@ -74,13 +74,13 @@ keys, so switching between them fails with
 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`. Uninstall first (this clears that app's
 save data), then install:
 ```
-"$ADB" uninstall net.sitkoff.fourexhex
+"$ADB" uninstall com.foobarzalot.fourexhex
 "$ADB" install build/android/FourExHex-release.apk
 ```
 
 Launch without needing the activity name:
 ```
-"$ADB" shell monkey -p net.sitkoff.fourexhex -c android.intent.category.LAUNCHER 1
+"$ADB" shell monkey -p com.foobarzalot.fourexhex -c android.intent.category.LAUNCHER 1
 ```
 
 ## 3. Reading logs on the device
