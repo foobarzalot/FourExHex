@@ -1490,7 +1490,7 @@ public class GameController
         for (int offset = 1; offset <= maxOffset; offset++)
         {
             int idx = ((startIndex + step * offset) % owned.Count + owned.Count) % owned.Count;
-            if (TerritoryHasAvailableAction(owned[idx]))
+            if (_ops.TerritoryHasAvailableAction(owned[idx]))
             {
                 CancelPendingAction();
                 SetSelection(owned[idx]);
@@ -2274,33 +2274,4 @@ public class GameController
         _ops.RefreshViews();
     }
 
-    /// <summary>
-    /// Per-territory variant of <see cref="HasAnyActionableForCurrentPlayer"/>:
-    /// true iff the current player could do anything in
-    /// <paramref name="territory"/> right now — either it contains an
-    /// unmoved current-player unit, or the capital has enough gold to
-    /// buy the cheapest unit (a recruit). Tower cost (15g) is a strict
-    /// superset of recruit cost (10g), so checking recruit alone covers
-    /// every purchase. Used by <see cref="StepTerritorySelection"/> to
-    /// skip past territories where the player has nothing to do.
-    /// </summary>
-    private bool TerritoryHasAvailableAction(Territory territory)
-    {
-        if (PurchaseRules.CanAffordRecruit(territory, _state.Treasury))
-        {
-            return true;
-        }
-        PlayerId color = _state.Turns.CurrentPlayer.Id;
-        foreach (HexCoord coord in territory.Coords)
-        {
-            HexTile? tile = _state.Grid.Get(coord);
-            if (tile?.Occupant is Unit unit
-                && unit.Owner == color
-                && !unit.HasMovedThisTurn)
-            {
-                return true;
-            }
-        }
-        return false;
-    }
 }

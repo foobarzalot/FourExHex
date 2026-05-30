@@ -459,6 +459,18 @@ public class GameOperations
         // onAfterRefresh callback can overwrite it when the next scripted
         // beat is End Turn — "last write wins" with the preview cue.
         _hud.SetCta(CtaButton.EndTurn, !hasActionable, pulse: false);
+        // Next-Territory CTA: highlight the star when the current human
+        // player has somewhere actionable to jump to but their current
+        // selection (if any) is itself exhausted. Suppressed on AI turns
+        // — the star is a human-input affordance. Same "last write wins"
+        // policy as EndTurn so Tutorial Preview can override.
+        bool isHuman = !_state.Turns.CurrentPlayer.IsAi;
+        Territory? sel = _session.SelectedTerritory;
+        bool selExhausted = sel == null || !TerritoryHasAvailableAction(sel);
+        bool nextCta = isHuman && hasActionable && selExhausted;
+        _hud.SetCta(CtaButton.NextTerritory, nextCta, pulse: false);
+        Log.Debug(Log.LogCategory.Hud,
+            $"[cta] NextTerritory={nextCta} (isHuman={isHuman}, hasActionable={hasActionable}, selExhausted={selExhausted})");
         _onAfterRefresh?.Invoke();
         Log.Since(Log.LogCategory.Capture, "[hitch] RefreshViews total", tWhole);
     }
@@ -496,6 +508,38 @@ public class GameOperations
             }
         }
 
+        return false;
+    }
+
+    /// <summary>
+    /// Per-territory variant of <see cref="HasAnyActionableForCurrentPlayer"/>:
+    /// true iff the current player can take some legal action on
+    /// <paramref name="territory"/> right now — either it contains an
+    /// unmoved current-player unit, or the capital has enough gold to
+    /// buy the cheapest unit (a recruit). Tower cost (15g) is a strict
+    /// superset of recruit cost (10g), so checking recruit alone covers
+    /// every purchase. Used by <c>GameController.StepTerritorySelection</c>
+    /// to skip past territories where the player has nothing to do, and
+    /// by <see cref="RefreshViews"/> to decide whether to highlight the
+    /// Next-Territory star CTA.
+    /// </summary>
+    internal bool TerritoryHasAvailableAction(Territory territory)
+    {
+        if (PurchaseRules.CanAffordRecruit(territory, _state.Treasury))
+        {
+            return true;
+        }
+        PlayerId color = _state.Turns.CurrentPlayer.Id;
+        foreach (HexCoord coord in territory.Coords)
+        {
+            HexTile? tile = _state.Grid.Get(coord);
+            if (tile?.Occupant is Unit unit
+                && unit.Owner == color
+                && !unit.HasMovedThisTurn)
+            {
+                return true;
+            }
+        }
         return false;
     }
 

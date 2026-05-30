@@ -157,9 +157,10 @@ public interface IHudView
 
 /// <summary>
 /// Identifies which HUD button <see cref="IHudView.SetCta"/> targets.
-/// <see cref="EndTurn"/> is driven both by the game (steady glow when no
-/// actionable territories remain) and by Tutorial Preview (pulsed,
-/// scripted beat). The rest are Tutorial Preview only.
+/// <see cref="EndTurn"/> and <see cref="NextTerritory"/> are driven by the
+/// game itself (steady glow during normal play) and may also be triggered
+/// by Tutorial Preview (pulsed, scripted beat). The rest are Tutorial
+/// Preview only.
 /// </summary>
 public enum CtaButton
 {
@@ -169,4 +170,5 @@ public enum CtaButton
     ClaimVictoryWinNow,
     ClaimVictoryContinue,
     DefeatContinue,
+    NextTerritory,
 }

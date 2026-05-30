@@ -1790,6 +1790,7 @@ public partial class HudView : OrientationHud, IHudView
             CtaButton.ClaimVictoryWinNow => _claimWinNowButton,
             CtaButton.ClaimVictoryContinue => _claimContinueButton,
             CtaButton.DefeatContinue => _defeatContinueButton,
+            CtaButton.NextTerritory => _nextTerritoryButton,
             _ => throw new System.ArgumentOutOfRangeException(nameof(button)),
         };
         ApplyCtaStyle(target, isCta, pulse);

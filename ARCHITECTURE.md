@@ -243,6 +243,8 @@ Consequences for the rest of this doc:
 │        RefreshViews() → _hud.Refresh(state, session, hasActionable)      │
 │                       → _map.RefreshOccupantVisuals(currentPlayer, tr.)  │
 │                       → _hud.SetCta(EndTurn, !hasActionable)            │
+│                       → _hud.SetCta(NextTerritory,                       │
+│                          isHuman && hasActionable && selExhausted)       │
 │                       → _onAfterRefresh?.Invoke()  (Preview cue hook;    │
 │                         null in ordinary play)                           │
 └──────┬──────────────────────────────────┬────────────────────────────────┘
@@ -879,12 +881,15 @@ void SetReplayAvailable(bool available); // toggle the victory-overlay
 
 // CTA-styled button highlights (white bg + black border + black text).
 // The CtaButton enum (BuyRecruit, EndTurn, BuildTower,
-// ClaimVictoryWinNow, ClaimVictoryContinue, DefeatContinue) picks
-// the target. The pulse flag governs animation: game-side
-// "out of moves" sets EndTurn steady (pulse: false); Tutorial
-// Preview's scripted beats pulse (pulse: true) — a looping Tween on
-// Modulate.a (1.0 ↔ 0.55). All five non-EndTurn CTAs are Tutorial-
-// Preview-only and default to pulse: true.
+// ClaimVictoryWinNow, ClaimVictoryContinue, DefeatContinue,
+// NextTerritory) picks the target. The pulse flag governs animation:
+// game-side calls set steady (pulse: false) — EndTurn when the human
+// is out of moves, NextTerritory when the human has an actionable
+// territory to jump to but their current selection is exhausted (or
+// they have no selection); Tutorial Preview's scripted beats pulse
+// (pulse: true) — a looping Tween on Modulate.a (1.0 ↔ 0.55). The
+// four claim/defeat/build CTAs are Tutorial-Preview-only and default
+// to pulse: true.
 void SetCta(CtaButton button, bool isCta, bool pulse = true);
 
 // Force-disable the Undo / Redo button row regardless of

@@ -37,6 +37,7 @@ public static class Log
         Render = 4,   // HexMapView "rendering N tiles" line
         Input = 5,    // BuildTower click-rejection diagnostic
         Display = 6,  // DisplayScale autoload: DPI → ContentScaleFactor
+        Hud = 7,      // HUD CTA / button-state transitions
     }
 
     /// <summary>Severity, ascending. <see cref="Off"/> disables a

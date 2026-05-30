@@ -100,6 +100,7 @@ public class MockHudView : IHudView
     public bool ClaimVictoryWinNowCtaActive { get; private set; }
     public bool ClaimVictoryContinueCtaActive { get; private set; }
     public bool DefeatContinueCtaActive { get; private set; }
+    public bool NextTerritoryCtaActive { get; private set; }
 
     public void SetCta(CtaButton button, bool isCta, bool pulse = true)
     {
@@ -111,6 +112,7 @@ public class MockHudView : IHudView
             case CtaButton.ClaimVictoryWinNow: ClaimVictoryWinNowCtaActive = isCta; break;
             case CtaButton.ClaimVictoryContinue: ClaimVictoryContinueCtaActive = isCta; break;
             case CtaButton.DefeatContinue: DefeatContinueCtaActive = isCta; break;
+            case CtaButton.NextTerritory: NextTerritoryCtaActive = isCta; break;
         }
     }
 
