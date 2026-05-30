@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text.Json;
-using System.Text.Json.Serialization;
+using FourExHex.Model;
 
 /// <summary>
 /// Bundle returned by <see cref="SaveSerializer.Deserialize"/>. Holds the
@@ -97,12 +97,6 @@ public static class SaveSerializer
     /// </summary>
     public const int CurrentFormatVersion = 6;
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    };
-
     public static string Serialize(
         GameState state,
         int masterSeed,
@@ -178,7 +172,12 @@ public static class SaveSerializer
             // explicit `replay` arg (regular in-progress saves).
             Replay = SerializeReplay(tutorial?.Replay ?? replay),
         };
-        return JsonSerializer.Serialize(data, JsonOptions);
+        // Source-gen path (FourExHexJsonContext) so this works under iOS AOT,
+        // where reflection-based serialization is disabled. The context's
+        // [JsonSourceGenerationOptions] attribute carries the same
+        // WriteIndented + IgnoreNulls options the reflection path historically
+        // used, so the JSON wire format is unchanged.
+        return JsonSerializer.Serialize(data, FourExHexJsonContext.Default.SaveData);
     }
 
     /// <summary>
@@ -203,7 +202,7 @@ public static class SaveSerializer
 
     public static LoadedSave Deserialize(string json)
     {
-        SaveData? data = JsonSerializer.Deserialize<SaveData>(json, JsonOptions);
+        SaveData? data = JsonSerializer.Deserialize(json, FourExHexJsonContext.Default.SaveData);
         if (data == null)
         {
             throw new InvalidOperationException("Save file is empty or malformed.");

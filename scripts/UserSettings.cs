@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Godot;
 
 /// <summary>
@@ -38,7 +39,7 @@ public enum PlaybackSpeed
 /// as <see cref="SaveStore"/>. The serialization is small enough that a
 /// dedicated pure-C# DTO class isn't worth splitting out yet.
 /// </summary>
-public static class UserSettings
+public static partial class UserSettings
 {
     private const string SettingsPath = "user://settings.json";
     private const string TempPath = "user://settings.json.tmp";
@@ -148,6 +149,19 @@ public static class UserSettings
         public PlaybackSpeed ReplaySpeed { get; set; } = PlaybackSpeed.Normal;
     }
 
+    // Source-gen JsonSerializerContext for SettingsDto. Nested inside
+    // UserSettings so it can reach the private SettingsDto type. Needed
+    // because iOS AOT disables reflection-based JSON; the [JsonSerializable]
+    // attribute below generates a JsonTypeInfo<SettingsDto> table at compile
+    // time. The [JsonSourceGenerationOptions(WriteIndented = true)] mirrors
+    // the option Save() historically passed, so settings.json stays formatted
+    // identically across the migration.
+    [JsonSourceGenerationOptions(WriteIndented = true)]
+    [JsonSerializable(typeof(SettingsDto))]
+    private partial class JsonContext : JsonSerializerContext
+    {
+    }
+
     private static void EnsureLoaded()
     {
         if (_loaded) return;
@@ -162,7 +176,7 @@ public static class UserSettings
             using FileAccess f = FileAccess.Open(SettingsPath, FileAccess.ModeFlags.Read);
             if (f == null) return;
             string json = f.GetAsText();
-            SettingsDto? dto = JsonSerializer.Deserialize<SettingsDto>(json);
+            SettingsDto? dto = JsonSerializer.Deserialize(json, JsonContext.Default.SettingsDto);
             if (dto == null) return;
             _isLoading = true;
             _sfxEnabled = dto.SfxEnabled;
@@ -193,7 +207,7 @@ public static class UserSettings
                     AiSpeed = _aiSpeed,
                     ReplaySpeed = _replaySpeed,
                 },
-                new JsonSerializerOptions { WriteIndented = true });
+                JsonContext.Default.SettingsDto);
 
             // Atomic write: write to <name>.tmp then rename over the final
             // path so a crash mid-write leaves the prior file intact.

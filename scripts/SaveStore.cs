@@ -265,9 +265,11 @@ public sealed class SaveStore
             // enough that we don't need a streaming header parser.
             LoadedSave save = SaveSerializer.Deserialize(json);
             // Pull SavedAt out of the raw DTO since LoadedSave doesn't
-            // surface it (we only need it here for slot listing).
+            // surface it (we only need it here for slot listing). Source-gen
+            // path (FourExHexJsonContext) so this survives iOS AOT, where
+            // reflection-based deserialization throws.
             using System.IO.MemoryStream ms = new System.IO.MemoryStream(System.Text.Encoding.UTF8.GetBytes(json));
-            SaveData? data = System.Text.Json.JsonSerializer.Deserialize<SaveData>(ms);
+            SaveData? data = System.Text.Json.JsonSerializer.Deserialize(ms, FourExHex.Model.FourExHexJsonContext.Default.SaveData);
             long savedAt = data?.SavedAtUnix ?? 0;
             return new SaveSlotInfo(
                 slotName: save.SlotName,
