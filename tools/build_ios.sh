@@ -55,8 +55,8 @@ for arg in "$@"; do
   esac
 done
 case "$MODE" in
-  debug)   CSHARP_CONFIG="ExportDebug";   GODOT_FLAG="--export-debug" ;;
-  release) CSHARP_CONFIG="ExportRelease"; GODOT_FLAG="--export-release" ;;
+  debug)   CSHARP_CONFIG="ExportDebug";   GODOT_FLAG="--export-debug";   XCODE_CONFIG="Debug" ;;
+  release) CSHARP_CONFIG="ExportRelease"; GODOT_FLAG="--export-release"; XCODE_CONFIG="Release" ;;
   *) echo "ERROR: unknown mode '$MODE' (use 'debug' or 'release')" >&2; exit 2 ;;
 esac
 
@@ -148,10 +148,15 @@ mkdir -p "$BUILD_DIR"
 [[ -d "$XCODEPROJ" ]] || fail "Godot export did not produce $XCODEPROJ"
 
 echo "==> Archiving with xcodebuild (this is the slow step, several minutes)"
+# Match xcodebuild's -configuration to MODE: Debug picks the "Apple
+# Development" signing identity (matches auto-signing for tethered USB
+# install); Release picks "Apple Distribution" (matches the App Store
+# Connect upload path). Mismatching them surfaces as "conflicting
+# provisioning settings" at archive time.
 xcodebuild \
   -project "$XCODEPROJ" \
   -scheme FourExHex \
-  -configuration Release \
+  -configuration "$XCODE_CONFIG" \
   -destination "generic/platform=iOS" \
   -archivePath "$XCARCHIVE" \
   -allowProvisioningUpdates \
@@ -184,15 +189,16 @@ if (( TETHERED )); then
   if [[ -z "$DEVICE_JSON" ]]; then
     fail "xcrun devicectl list devices failed — is Xcode 15+ installed? (current: $(xcodebuild -version | head -1))"
   fi
-  # Filter for paired, USB-attached iPhone/iPad. Stop early if none.
+  # First paired, USB-attached iOS device wins. devicectl's
+  # deviceProperties.platformIdentifier was unreliable in our testing
+  # (came back null for a real paired iPhone), so we lean on the more
+  # robust pairingState + transportType checks.
   DEVICE_UDID="$(printf '%s' "$DEVICE_JSON" | python3 -c '
 import json, sys
 data = json.load(sys.stdin)
 for d in data.get("result", {}).get("devices", []):
-    props = d.get("deviceProperties", {})
-    conn  = d.get("connectionProperties", {})
-    if props.get("platformIdentifier", "").startswith("com.apple.platform.iphoneos") \
-       and conn.get("pairingState") == "paired" \
+    conn = d.get("connectionProperties", {})
+    if conn.get("pairingState") == "paired" \
        and "wired" in str(conn.get("transportType", "")).lower():
         print(d.get("identifier", ""))
         break
