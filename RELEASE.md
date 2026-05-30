@@ -234,15 +234,23 @@ Notes: Android's `ScreenGetScale` is **not** 1.0 (my original assumption) and
 not a clean function of density. On the S9 this lands at a usable size; see the
 portrait-overlap entry in `TECHDEBT.md` for the open risk on other devices.
 
-**iPhone 13 mini (iPhone14,4)** — iOS 26.5 (build 23F77), debug build, first
-on-device install 2026-05-29: app launches and is playable. DPI / osScale /
-factor / safe-area inset numbers not yet captured — fill this row in after a
-Console.app session reading the `DisplayScale:` and `SafeArea:` lines.
+**iPhone 13 mini (iPhone14,4)** — iOS 26.5 (build 23F77), debug build, captured
+2026-05-30 via `idevicesyslog | grep -E "DisplayScale:|SafeArea:"`:
 
 | Orientation | dpi | osScale | factor | window (phys) | logical viewport | safe insets (t,b,l,r) |
 |-------------|-----|---------|--------|---------------|------------------|------------------------|
-| Portrait    | TBD | TBD     | TBD    | 1080 × 2340   | TBD              | TBD                    |
-| Landscape   | TBD | TBD     | TBD    | 2340 × 1080   | TBD              | TBD                    |
+| Portrait    | 476 | 3       | 1.0    | 1125 × 2436   | 1125 × 2436      | 150, 102, 0, 0          |
+| Landscape   | 476 | 3       | 1.0    | 2436 × 1125   | 2436 × 1125      | 0, 60, 150, 150         |
+
+Notes: iOS's `ScreenGetScale` reports 3 (matching the iPhone's 3× retina);
+divided by raw 476 dpi → logical DPI 158.67, **just below the 160 baseline**,
+so `DisplayScaleMath` floors `factor` to 1.0 — design size 96 px maps to 96
+physical px ≈ 5 mm tall, well under Apple HIG's 44 pt (~7 mm) touch-target
+minimum. See the TECHDEBT entry for the open-question on whether to lower the
+baseline so iPhones scale up. The landscape `(L, R) = (150, 150)` insets are
+the iPhone notch sitting on the rotated edge; the HUD bars currently only
+consume top/bottom safe insets, so in landscape the bars draw under the notch
+on the left/right edges — also tracked in TECHDEBT.
 
 ## 6. Reproducing a device's scale locally
 

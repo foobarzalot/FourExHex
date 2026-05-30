@@ -2,39 +2,105 @@
 
 Running list of known issues, flaky tests, and shortcuts that should eventually be cleaned up. Add new entries at the top.
 
-## iPhone first on-device install: visual / logging verification incomplete
+## iPhone HUD undersized: DisplayScale floors `factor` to 1.0 below 160 baseline
 
-**Where:** added 2026-05-29 after the first tethered iOS install succeeded.
-Build is on the iPhone 13 mini (iPhone14,4, iOS 26.5 build 23F77) and the user
-reports the app is "playable", but the safe-area + DisplayScale story hasn't
-been verified end-to-end with a Console.app reading of the live device logs.
+**Where:** discovered 2026-05-30 reading the first device-capture of
+`DisplayScale:` from an iPhone 13 mini (iPhone14,4, iOS 26.5; numbers
+in `RELEASE.md` §5).
 
-**Symptom / what's deferred:**
+**Symptom:** the iPhone reports `dpi=476` / `osScale=3`, so
+`DisplayScaleMath` computes `logicalDpi = 476 / 3 ≈ 158.67` — *just* under
+the 160 mdpi baseline. `clamp(logicalDpi / 160, 1.0, 3.0)` therefore floors
+the factor to **1.0**, meaning no UI upscale. Bar height stays at the
+authored 96 logical px = 96 *physical* px ≈ 5 mm tall on the device — under
+Apple's HIG 44 pt (~7 mm) touch-target minimum. The Android baseline (which
+160 was chosen for) is mdpi; iPhones at 158.67 logical DPI fall on the
+"barely below baseline" side of the cliff by coincidence.
 
-- `RELEASE.md` §5 device-data table for iPhone 13 mini has all TBD cells. Need
-  one debug-build session on device with Console.app filtered to the
-  `FourExHex` process, then transcribe the `DisplayScale:` (dpi/osScale/factor/
-  logicalViewport) and `SafeArea:` (insets t/b/l/r) lines for portrait AND
-  landscape.
-- The portrait HUD layout (the edge-to-edge bar wrap with content inset that
-  landed in `4cc09a6`) hasn't been visually compared against the iOS reference
-  on a notched device. Need to confirm: top-bar slate covers the Dynamic
-  Island, bottom-bar slate covers the home indicator zone, content (status,
-  gold chip, options, action / undo / next clusters) sits visible inside the
-  safe zone with no clipping.
-- Whether the portrait-overlap TECHDEBT entry below (logical viewport too
-  narrow on high-DPI phones) actually fires on iPhone 13 mini at content-scale
-  ~2.75. Likely yes; needs a screenshot.
+**Why this is debt:** the safe-area work made the bars *placed correctly*
+on iPhone — slate fills the notch / home-indicator zones, content sits in
+the safe area. But "correctly placed and undersized" still reads as
+"unusably small" to a player.
 
-**Candidate next steps:** (1) launch the installed app, capture
-`DisplayScale:` and `SafeArea:` log lines in Console.app, fill in the
-`RELEASE.md` §5 table; (2) take portrait + landscape screenshots, compare HUD
-chrome and seed-label position against the desktop reference; (3) close
-this entry once the row is filled and the screenshots look right.
+**Candidate fixes:**
+- (a) Lower `DisplayScaleMath.ReferenceDpi` from 160 to ~140 so 158.67
+  scales to ≈ 1.13. Risk: changes the desktop floor — would a 144-dpi
+  desktop monitor start upscaling? Verify with a `dotnet test` sweep of
+  the existing `DisplayScaleMath` tests + a check on a hi-DPI Mac.
+- (b) Add a per-platform multiplier in `DisplayScale.Apply`: on iOS,
+  multiply the computed factor by ~1.3 to lift typical iPhones into the
+  Android-comparable range. Localizes the change to mobile.
+- (c) Raise `MinFactor` only when `OS.HasFeature("ios")`, so iPhones
+  always scale up at least 1.2× regardless of logical DPI. Simplest gate.
 
-**Severity:** the install pipeline works and the app runs; this entry is about
-finishing the verification loop the safe-area work was designed for, not about
-a known bug.
+Defer-pending-decision: which lever to pull is a design call — the user
+will see whichever choice picks the on-screen size they want. Capture an
+intentional on-device screenshot at each candidate factor before deciding.
+
+**Severity:** functional but cramped — the app is playable on iPhone, but
+HUD interactions are awkward at design-size on a 5.4" screen.
+
+## iOS landscape: side-notch L/R safe insets not consumed by HUD bars
+
+**Where:** discovered 2026-05-30 reading the first device-capture of
+`SafeArea:` from an iPhone 13 mini in landscape (`RELEASE.md` §5).
+
+**Symptom:** iPhone landscape reports `insets=(t=0, b=60, l=150, r=150)`
+— the notch sits on the rotated screen edge. The current safe-area
+plumbing only feeds top/bottom into `MakeBarPanel`/`MakeBarFrame`'s
+`safeAreaTop`/`safeAreaBottom` params. The landscape bottom bar covers
+the home indicator correctly (b=60 → 60 logical px slate at the bottom),
+but the bar itself extends edge-to-edge horizontally, so its left and
+right ~150 px sit under the notch's curved cutout. The clusters anchored
+to the left (`_actionCluster` + gold chip) and right (`_undoCluster` +
+controls + options) of the landscape bar can therefore be visually
+clipped or thumb-unreachable on a notched iPhone in landscape.
+
+**Why this is debt:** the safe-area architecture covers the obvious
+orientation pair (notch on top in portrait, home indicator on bottom in
+either orientation), but side-notch landscape was deliberately deferred
+when the work landed — see commit `4cc09a6` description. The exact
+landscape sub-orientation that puts the notch on a side
+(`UIInterfaceOrientationLandscapeLeft` vs `LandscapeRight`) determines
+which side is non-zero, but in our case the symptom is symmetric (both
+L and R were 150 in the capture).
+
+**Candidate fix:** plumb `safeAreaLeft` / `safeAreaRight` through
+`MakeBarPanel` (shifts the bar's `AnchorLeft`/`AnchorRight` inward) and
+`MakeBarFrame` (offsets the content inset by the side amount). Map
+insets in `ComputeInsets` would also need a `(Left, Right)` extension —
+currently `MapInsets` is `(Top, Bottom)` only, so this involves widening
+the model record and the consumer (HexMapView's pan-clamp). Bigger
+change than the top/bottom work; worth doing once we decide it's a
+priority.
+
+**Severity:** cosmetic-plus — buttons on the notched-side edge of a
+landscape phone may be partly obscured or hard to reach. Portrait
+unaffected.
+
+## iPhone first on-device install: visual screenshot comparison still open
+
+**Where:** original entry added 2026-05-29 after the first tethered iOS
+install. Partial closeout 2026-05-30: the `RELEASE.md` §5 device-data row
+for iPhone 13 mini is filled in (Console-app/idevicesyslog capture via the
+new IosLog mirror), and the `factor=1` + landscape-side-notch findings have
+their own dedicated TECHDEBT entries above. What's still open:
+
+- A side-by-side portrait + landscape screenshot of the HUD on iPhone
+  alongside the desktop reference, just to eyeball that seed-label
+  position / cluster spacing / bar borders all read correctly. The
+  user reports "playable" + the one mid-game screenshot we have (the
+  one that revealed the Save failed dialog) showed the safe-area wrap
+  working, but a side-by-side hasn't been done.
+- The original portrait-overlap entry below (narrow logical width on
+  high-DPI phones) — not actually a portrait-overlap on iPhone *because*
+  factor floored to 1 (logical viewport = full 1125 wide). Confirmed
+  not-an-issue on iPhone 13 mini specifically. Other iPhones with
+  higher logical DPI (Pro Max models near 460 dpi÷3 ≈ 153) would also
+  floor to factor 1 and not overlap.
+
+**Severity:** mostly cosmetic — the install pipeline works, the app runs
+saves work, and the unsurprising on-device numbers landed in RELEASE.md.
 
 ## iOS SDK build vs device OS build mismatch breaks `xcodebuild archive`
 
