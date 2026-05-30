@@ -21,8 +21,18 @@ public partial class LogBootstrap : Node
 {
     public override void _EnterTree()
     {
-        // Route the Godot-free Log to GD.Print (stdout in headless).
-        Log.Sink ??= GD.Print;
+        // Route the Godot-free Log to GD.Print (stdout in headless). On iOS
+        // GD.Print → printf to stdout, which the device's unified log doesn't
+        // capture, so additionally mirror through libc's syslog (see IosLog)
+        // — that's what idevicesyslog / Console.app / xcrun devicectl read.
+        if (OS.HasFeature("ios"))
+        {
+            Log.Sink ??= msg => { GD.Print(msg); IosLog.Write(msg); };
+        }
+        else
+        {
+            Log.Sink ??= GD.Print;
+        }
         // Runtime config, e.g. FOUREXHEX_LOG="Ai:Debug,Turn:Info,*:Warn".
         // Best-effort parse; unknown tokens ignored; empty = silent
         // (every category defaults to Off).
