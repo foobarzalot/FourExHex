@@ -1824,7 +1824,25 @@ filesystem-safe slot names. `SaveSerializer` is the JSON layer
 loading after each cutover); `Serialize` writes the player roster's
 `Kind` field, `SerializeMap` omits it (the editor's saved maps
 don't bake a player-kind config — roles are assigned at play time
-from the menu). Both accept an optional `Tutorial` POCO that
+from the menu).
+
+**iOS AOT constraint: source-generated `JsonSerializerContext`.** iOS
+forbids JIT, so .NET on iOS is AOT-compiled and `System.Text.Json`'s
+reflection-based path throws "Reflection-based serialization has been
+disabled for this application." Every `JsonSerializer.Serialize`/
+`Deserialize` call therefore routes through a source-generated
+`JsonTypeInfo<T>`: `src/FourExHex.Model/FourExHexJsonContext.cs` declares
+the top-level context with one `[JsonSerializable(typeof(SaveData))]`
+attribute, used by `SaveSerializer` and `SaveStore`'s SavedAt-header
+read; `scripts/UserSettings.cs` nests its own `JsonContext` so the
+generator can reach the file's `private sealed class SettingsDto`. The
+`[JsonSourceGenerationOptions]` attribute carries the historical
+`WriteIndented` / `WhenWritingNull` settings, so the JSON wire format is
+unchanged and pre-source-gen saves load through the new path with no
+migration. Adding a new top-level serialized type means adding it to
+the context's `[JsonSerializable]` list — the deliberate
+discriminator-string-plus-hand-switch shape (see `SerializeOccupant` /
+`SerializeReplayBeats`) keeps the surface tiny. Both accept an optional `Tutorial` POCO that
 round-trips as the top-level `"Tutorial"` block carrying just
 `{ Title }` — the recorded gameplay lives in the sibling `"Replay"`
 block; `Tutorial` and `Replay` must both be present on a tutorial
