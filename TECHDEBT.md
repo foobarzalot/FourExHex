@@ -2,6 +2,71 @@
 
 Running list of known issues, flaky tests, and shortcuts that should eventually be cleaned up. Add new entries at the top.
 
+## iPhone first on-device install: visual / logging verification incomplete
+
+**Where:** added 2026-05-29 after the first tethered iOS install succeeded.
+Build is on the iPhone 13 mini (iPhone14,4, iOS 26.5 build 23F77) and the user
+reports the app is "playable", but the safe-area + DisplayScale story hasn't
+been verified end-to-end with a Console.app reading of the live device logs.
+
+**Symptom / what's deferred:**
+
+- `RELEASE.md` §5 device-data table for iPhone 13 mini has all TBD cells. Need
+  one debug-build session on device with Console.app filtered to the
+  `FourExHex` process, then transcribe the `DisplayScale:` (dpi/osScale/factor/
+  logicalViewport) and `SafeArea:` (insets t/b/l/r) lines for portrait AND
+  landscape.
+- The portrait HUD layout (the edge-to-edge bar wrap with content inset that
+  landed in `4cc09a6`) hasn't been visually compared against the iOS reference
+  on a notched device. Need to confirm: top-bar slate covers the Dynamic
+  Island, bottom-bar slate covers the home indicator zone, content (status,
+  gold chip, options, action / undo / next clusters) sits visible inside the
+  safe zone with no clipping.
+- Whether the portrait-overlap TECHDEBT entry below (logical viewport too
+  narrow on high-DPI phones) actually fires on iPhone 13 mini at content-scale
+  ~2.75. Likely yes; needs a screenshot.
+
+**Candidate next steps:** (1) launch the installed app, capture
+`DisplayScale:` and `SafeArea:` log lines in Console.app, fill in the
+`RELEASE.md` §5 table; (2) take portrait + landscape screenshots, compare HUD
+chrome and seed-label position against the desktop reference; (3) close
+this entry once the row is filled and the screenshots look right.
+
+**Severity:** the install pipeline works and the app runs; this entry is about
+finishing the verification loop the safe-area work was designed for, not about
+a known bug.
+
+## iOS SDK build vs device OS build mismatch breaks `xcodebuild archive`
+
+**Where:** discovered 2026-05-29 during the first tethered install. `xcodebuild
+archive -destination "generic/platform=iOS"` refused with "iOS 26.5 is not
+installed. Please download and install the platform from Xcode > Settings >
+Components." even though `xcodebuild -showsdks` listed `iOS 26.5`.
+
+**Root cause:** Xcode's bundled iOS SDK is for build `23F73`; the iPhone is
+running iOS 26.5 build `23F77` (a later point-release with the same minor
+version number). xcodebuild's strict-match logic refused the destination on
+the build-number mismatch, and `xcodebuild -downloadPlatform iOS` downloads the
+**Simulator** runtime (8.5 GB), not the **device** platform / DDI we actually
+needed.
+
+**Workaround in use:** open `build/ios/FourExHex.xcodeproj` in Xcode UI, pick
+the device from the destination dropdown, hit Cmd+R. Xcode then offers to
+download the matching device-support files interactively (smaller download,
+~500 MB) and proceeds. `tools/build_ios.sh --tethered` works once the support
+files are in place; this Xcode-UI step is a one-time-per-iOS-build fixup.
+
+**Candidate proper fixes:** (1) check Mac App Store / Xcode for a point-release
+that bundles support for the device's build; (2) extend `build_ios.sh` to
+detect the "iOS X is not installed" error and call `xcodebuild
+-downloadPlatform iOS-device` (if Apple ships such an option in a future Xcode)
+or print a clear "open in Xcode to fetch DDI" hint; (3) explore whether
+`xcrun xcdevice` or the CoreDevice service can pre-fetch the DDI from CLI.
+
+**Severity:** blocks `tools/build_ios.sh --tethered` whenever the device gets
+an iOS point-update ahead of the installed Xcode. Recoverable via Xcode UI in
+a few minutes.
+
 ## Per-capture frame hitch on Android: scene renders ~6,500 draw calls/frame [RESOLVED 2026-05-27]
 
 **RESOLUTION:** fixed by cutting per-frame draw calls **~6,550 → ~180–256** on

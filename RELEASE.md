@@ -1,12 +1,12 @@
 # RELEASE.md
 
-Release / on-device (Android) testing playbook for FourExHex. Desktop dev is
-covered by `CLAUDE.md`; this is the device side — building APKs, installing,
+Release / on-device (Android + iOS) testing playbook for FourExHex. Desktop dev
+is covered by `CLAUDE.md`; this is the device side — building, installing,
 reading logs, and reproducing a device's UI scale locally.
 
 ## 1. Building
 
-Three export presets live in `export_presets.cfg`, each with a matching `tools/`
+Four export presets live in `export_presets.cfg`, each with a matching `tools/`
 script that builds the C# assemblies and runs a headless Godot export:
 
 | Target  | Command                              | Output                                       |
@@ -14,12 +14,15 @@ script that builds the C# assemblies and runs a headless Godot export:
 | macOS   | `tools/build_macos.sh`               | `build/macos/FourExHex.app`                  |
 | Windows | `tools/build_windows.sh`             | `build/windows/FourExHex.exe`                |
 | Android | `tools/build_android.sh [debug\|release]` | `build/android/FourExHex-{debug,release}.apk` |
+| iOS     | `tools/build_ios.sh [debug\|release] [--tethered\|--no-upload]` | `build/ios/FourExHex.ipa` (+ `.xcodeproj`, `.xcarchive`) |
 
-(Android defaults to `debug`.) All three follow the same shape: `dotnet build -c
-Debug` (so the editor can load the assembly) **plus** `-c ExportDebug`/`-c
-ExportRelease` for the export, then `godot --headless
+(Android defaults to `debug`; iOS defaults to `release`.) All follow the same
+shape: `dotnet build -c Debug` (so the editor can load the assembly) **plus**
+`-c ExportDebug`/`-c ExportRelease` for the export, then `godot --headless
 --export-debug|--export-release <preset> <out>`. Each script's header documents
-the platform-specific gotchas it papers over.
+the platform-specific gotchas it papers over. iOS additionally runs `xcodebuild
+archive` → `xcodebuild -exportArchive` → either `xcrun devicectl device install`
+(tethered) or `xcrun altool --upload-app` (TestFlight); see §1.5 below.
 
 ### Android prerequisites
 
@@ -57,6 +60,56 @@ at export time, so the `export_presets.cfg` keystore fields stay empty and no
 secret is committed. Debug and release are signed with **different keys** — see
 the signature-mismatch note in §2.
 
+## 1.5. iOS prerequisites
+
+`build_ios.sh` fail-fast checks require:
+
+- **Full Xcode at `/Applications/Xcode.app`** — Command Line Tools alone are
+  not enough; `xcodebuild` will refuse to archive without the full app. Accept
+  the license once: `sudo xcodebuild -license`.
+- **Apple Developer Program membership** (paid, $99/yr) — Individual enrollment
+  is fine for TestFlight; the seller name shown on the public App Store would
+  be the enrolling person's legal name unless DBA / Organization paperwork
+  follows later. See `docs/ios-apple-developer-setup.md` for the one-time
+  setup runbook (App ID registration, App Store Connect record, API key).
+- **App Store Connect API key file** at `~/.appstoreconnect/private_keys/AuthKey_<KeyID>.p8`
+  — one of `xcrun altool`'s standard search paths. Generated once via App
+  Store Connect → Users and Access → Integrations.
+- **Creds file** at `~/Library/Application Support/Godot/keystores/fourexhex-ios-creds.sh`
+  (same dir as Android keystores), exporting `ASC_API_KEY_ID`,
+  `ASC_API_ISSUER_ID`, `IOS_TEAM_ID`. NOT committed. `chmod 600`.
+
+### iOS Team ID injection (why the committed preset has it empty)
+
+Godot's iOS export REQUIRES a non-empty `application/app_store_team_id` or it
+refuses with "App Store Team ID not specified". But the team ID is per-developer
+private data that shouldn't ship in `export_presets.cfg`. `build_ios.sh` `cp`s
+`export_presets.cfg` to a `.bak.$$` file, `sed`s the real `IOS_TEAM_ID` from the
+creds file into the empty placeholder, and runs Godot — then unconditionally
+restores the backup on EXIT (trap), so a crashed build never leaves the team ID
+checked in. The committed file always has `application/app_store_team_id=""`.
+
+### iOS targeted_device_family enum gotcha
+
+Godot 4.6.1's iOS preset writes `TARGETED_DEVICE_FAMILY = ""` (empty string) if
+the enum value is out of range — which produces an Xcode project that matches
+no device family, so Xcode silently refuses to install with "doesn't match any
+of FourExHex.app's targeted device families". The right values are
+**0=iPhone, 1=iPad, 2=Universal** (writes `"1,2"`). Anything else writes "".
+Our preset is `application/targeted_device_family=2`.
+
+### iOS net8 (no net9 issue)
+
+Unlike the Android prebuilt template (which forces net9.0), Godot 4.6.1's iOS
+export generates an Xcode project whose own build phases run `dotnet publish`
+for the iOS RID against the project's own `net8.0`, so no Gradle-style workaround
+is needed. The export DOES print a "Exporting to an Apple Embedded platform when
+using C#/.NET is experimental" warning — it's just a warning; the export
+succeeds. No `dotnet workload install ios` was needed; Godot's iOS export uses
+the system .NET (10.x at `/usr/local/share/dotnet`) for the publish step, and
+the project's own `$HOME/.dotnet` (8.x) for the editor / desktop builds. Both
+pipelines coexist.
+
 ## 2. Installing to a device
 
 `adb` is at `~/Library/Android/sdk/platform-tools/adb` (not on `PATH` — use the
@@ -83,6 +136,47 @@ Launch without needing the activity name:
 "$ADB" shell monkey -p com.foobarzalot.fourexhex -c android.intent.category.LAUNCHER 1
 ```
 
+### iOS — tethered USB install
+
+```
+tools/build_ios.sh debug --tethered
+```
+
+Prereqs once per device: plug in via USB, accept "Trust This Computer" on the
+device, enable **Settings → Privacy & Security → Developer Mode** (only appears
+after the first `xcrun devicectl list devices` from this Mac), restart, confirm
+Developer Mode again. `xcrun devicectl device info details --device <UDID>`
+should show `developerModeStatus: enabled`.
+
+The script auto-detects the first paired USB device. If `xcodebuild archive`
+errors with **"iOS X.Y is not installed"** even though `xcodebuild -showsdks`
+lists the SDK: the iPhone is on a newer point-release of the same iOS minor
+than Xcode's bundled SDK (build number mismatch, e.g. device on `23F77`, Xcode
+SDK on `23F73`). Workaround: open `build/ios/FourExHex.xcodeproj` in Xcode UI,
+pick the device, hit Cmd+R — Xcode auto-downloads the matching device-support
+files. Real fix: update Xcode to a matching point-release.
+
+If Xcode complains **"Build input file cannot be found: ... .mobileprovision"**
+on a fresh sign-in, it's a stale provisioning-profile UUID cached in
+DerivedData. Wipe and retry: `rm -rf ~/Library/Developer/Xcode/DerivedData/FourExHex-*`.
+
+### iOS — TestFlight upload (App Store Connect)
+
+```
+tools/build_ios.sh release
+```
+
+Same build, but the script swaps `method=app-store-connect` into the
+`tools/ios_export_options.plist`, skips the `devicectl install` step, and runs
+`xcrun altool --upload-app` against the API key found at
+`~/.appstoreconnect/private_keys/AuthKey_<KeyID>.p8`. The build then sits in
+App Store Connect → My Apps → FourExHex → TestFlight under "Processing" for
+~15–30 min before becoming available to internal testers. External testers
+require a one-time Beta App Review (~24h) on the first build.
+
+`tools/build_ios.sh debug --no-upload` does the local build through .ipa and
+stops — useful for verifying signing locally without burning an upload slot.
+
 ## 3. Reading logs on the device
 
 `Log` (`src/FourExHex.Model/Log.cs`) routes through `GD.Print`, which Android
@@ -93,11 +187,18 @@ sends to logcat under the `godot` tag:
 "$ADB" logcat -d -s godot | grep DisplayScale    # one-shot dump + filter
 ```
 
+iOS routes `GD.Print` to the device's unified logging system. Easiest read is
+**Console.app** on the Mac with the device connected: filter the `FourExHex`
+process and search for `DisplayScale:` / `SafeArea:` / `[hitch]` etc. The CLI
+equivalent is `idevicesyslog` (Homebrew: `brew install libimobiledevice`) or
+`xcrun devicectl device process launch --console --device <UDID> com.foobarzalot.fourexhex`
+which attaches stdout to the foreground terminal.
+
 **Gotcha:** `FOUREXHEX_LOG` (the desktop log-config env var) can't be set on
-Android. So `LogBootstrap` force-enables **every** `Log` category on mobile
-builds. In a **release** build `Trace`/`Debug`/`Info` are compiled out, so only
-`Warn`/`Error` reach logcat; use a **debug** build to see `Debug`-level
-diagnostics (e.g. the capital-actionability line, the `DisplayScale:` line).
+Android or iOS. So `LogBootstrap` force-enables **every** `Log` category on
+mobile builds. In a **release** build `Trace`/`Debug`/`Info` are compiled out,
+so only `Warn`/`Error` reach the device log; use a **debug** build to see
+`Debug`-level diagnostics (e.g. the `DisplayScale:` / `SafeArea:` lines).
 
 ## 4. DPI / UI scaling (`DisplayScale`)
 
@@ -132,6 +233,16 @@ Notes: Android's `ScreenGetScale` is **not** 1.0 (my original assumption) and
 **varies by orientation**, so the factor is device- and orientation-dependent,
 not a clean function of density. On the S9 this lands at a usable size; see the
 portrait-overlap entry in `TECHDEBT.md` for the open risk on other devices.
+
+**iPhone 13 mini (iPhone14,4)** — iOS 26.5 (build 23F77), debug build, first
+on-device install 2026-05-29: app launches and is playable. DPI / osScale /
+factor / safe-area inset numbers not yet captured — fill this row in after a
+Console.app session reading the `DisplayScale:` and `SafeArea:` lines.
+
+| Orientation | dpi | osScale | factor | window (phys) | logical viewport | safe insets (t,b,l,r) |
+|-------------|-----|---------|--------|---------------|------------------|------------------------|
+| Portrait    | TBD | TBD     | TBD    | 1080 × 2340   | TBD              | TBD                    |
+| Landscape   | TBD | TBD     | TBD    | 2340 × 1080   | TBD              | TBD                    |
 
 ## 6. Reproducing a device's scale locally
 
