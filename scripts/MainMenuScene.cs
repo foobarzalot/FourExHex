@@ -34,6 +34,7 @@ public partial class MainMenuScene : Control
     private Vector2 _landingDesignSize;
     private Vector2 _playConfigDesignSize;
     private SettingsPanel? _settingsPanel;
+    private Button? _landingResumeButton;
     private Button? _landingPlayButton;
     private Button? _landingLoadButton;
 
@@ -126,12 +127,12 @@ public partial class MainMenuScene : Control
     private Control BuildLandingPanel()
     {
         const float panelW = 520f;
-        // 820f accommodates the tallest stack: Play, Play Tutorial, Load,
-        // Map Editor, Settings, the debug-only Tutorial Builder, and Exit
-        // (7 buttons). Release builds render a 6-button stack (no Tutorial
-        // Builder) against a panel that's 80px taller than necessary; not
-        // enough to be worth a runtime resize since OS.IsDebugBuild() is
-        // compile-time-stable for any given binary.
+        // 820f accommodates the tallest stack: Resume, Play, Play Tutorial,
+        // Load, Map Editor, Settings, the debug-only Tutorial Builder, and
+        // Exit (8 buttons). Release builds render a 7-button stack (no
+        // Tutorial Builder) against a panel that's 80px taller than
+        // necessary; not enough to be worth a runtime resize since
+        // OS.IsDebugBuild() is compile-time-stable for any given binary.
         const float panelH = 820f;
         // Center-anchored so Godot re-solves the position on every window
         // resize (matches ModalChrome.BuildCenteredPanel). Children below
@@ -174,6 +175,23 @@ public partial class MainMenuScene : Control
         const float buttonW = panelW - buttonInset * 2f;
         const float firstButtonY = 140f;
 
+        // Single ListSlots() call shared between Resume (needs the autosave
+        // entry specifically) and Load Game (needs any slot) so we don't
+        // walk the saves directory twice on every panel build.
+        System.Collections.Generic.IReadOnlyList<SaveSlotInfo> slots = _saveStore.ListSlots();
+
+        // Resume sits above Play Game so a returning player hits the
+        // one-click path first; new players see it disabled and fall to
+        // Play Game directly below.
+        _landingResumeButton = new Button { Text = "Resume" };
+        _landingResumeButton.AddThemeFontSizeOverride("font_size", 26);
+        _landingResumeButton.Position = new Vector2(buttonInset, firstButtonY);
+        _landingResumeButton.Size = new Vector2(buttonW, buttonH);
+        _landingResumeButton.Pressed += OnResumePressed;
+        AudioBus.AttachClick(_landingResumeButton);
+        _landingResumeButton.Disabled = !slots.Any(s => s.IsAutosave);
+        panel.AddChild(_landingResumeButton);
+
         _landingPlayButton = new Button { Text = "Play Game" };
         // Intentionally NOT brass-primary here — the redesign spec
         // suggested it, but brass should mark terminal commit actions
@@ -181,7 +199,7 @@ public partial class MainMenuScene : Control
         // navigation entries that the player passes through every
         // launch. Uniform Button styling is the cleaner choice.
         _landingPlayButton.AddThemeFontSizeOverride("font_size", 26);
-        _landingPlayButton.Position = new Vector2(buttonInset, firstButtonY);
+        _landingPlayButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap));
         _landingPlayButton.Size = new Vector2(buttonW, buttonH);
         _landingPlayButton.Pressed += OnPlayPressed;
         AudioBus.AttachClick(_landingPlayButton);
@@ -192,7 +210,7 @@ public partial class MainMenuScene : Control
         // Game so a new player finds it immediately.
         var playTutorialButton = new Button { Text = "Play Tutorial" };
         playTutorialButton.AddThemeFontSizeOverride("font_size", 26);
-        playTutorialButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap));
+        playTutorialButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 2);
         playTutorialButton.Size = new Vector2(buttonW, buttonH);
         playTutorialButton.Pressed += OnPlayTutorialPressed;
         AudioBus.AttachClick(playTutorialButton);
@@ -200,18 +218,18 @@ public partial class MainMenuScene : Control
 
         _landingLoadButton = new Button { Text = "Load Game" };
         _landingLoadButton.AddThemeFontSizeOverride("font_size", 26);
-        _landingLoadButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 2);
+        _landingLoadButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 3);
         _landingLoadButton.Size = new Vector2(buttonW, buttonH);
         _landingLoadButton.Pressed += OnLoadPressed;
         AudioBus.AttachClick(_landingLoadButton);
         // Disable when no saves exist so the user gets immediate visual
         // feedback rather than an empty popup.
-        _landingLoadButton.Disabled = _saveStore.ListSlots().Count == 0;
+        _landingLoadButton.Disabled = slots.Count == 0;
         panel.AddChild(_landingLoadButton);
 
         var mapEditorButton = new Button { Text = "Map Editor" };
         mapEditorButton.AddThemeFontSizeOverride("font_size", 26);
-        mapEditorButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 3);
+        mapEditorButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 4);
         mapEditorButton.Size = new Vector2(buttonW, buttonH);
         mapEditorButton.Pressed += OnMapEditorPressed;
         AudioBus.AttachClick(mapEditorButton);
@@ -219,7 +237,7 @@ public partial class MainMenuScene : Control
 
         var settingsButton = new Button { Text = "Settings" };
         settingsButton.AddThemeFontSizeOverride("font_size", 26);
-        settingsButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 4);
+        settingsButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 5);
         settingsButton.Size = new Vector2(buttonW, buttonH);
         settingsButton.Pressed += OnSettingsPressed;
         AudioBus.AttachClick(settingsButton);
@@ -228,7 +246,7 @@ public partial class MainMenuScene : Control
         // Debug-only entry point into the new authoring tool. Per spec
         // §"Dev-mode gating", this button is gated on OS.IsDebugBuild()
         // — release exports never see it.
-        int nextRow = 5;
+        int nextRow = 6;
         if (OS.IsDebugBuild())
         {
             var tutorialBuilderButton = new Button { Text = "Tutorial Builder" };
@@ -513,11 +531,17 @@ public partial class MainMenuScene : Control
     {
         if (_landingPanel != null) _landingPanel.Visible = true;
         if (_playConfigPanel != null) _playConfigPanel.Visible = false;
-        // Re-check Load Game enabled state on every return to landing
-        // so a save that landed in the meantime would unblock the button.
+        // Re-check save-driven button states on every return to landing
+        // so a save that landed in the meantime would unblock them. One
+        // ListSlots() call drives both gates.
+        System.Collections.Generic.IReadOnlyList<SaveSlotInfo> slots = _saveStore.ListSlots();
+        if (_landingResumeButton != null)
+        {
+            _landingResumeButton.Disabled = !slots.Any(s => s.IsAutosave);
+        }
         if (_landingLoadButton != null)
         {
-            _landingLoadButton.Disabled = _saveStore.ListSlots().Count == 0;
+            _landingLoadButton.Disabled = slots.Count == 0;
         }
     }
 
@@ -673,6 +697,29 @@ public partial class MainMenuScene : Control
         catch (System.Exception ex)
         {
             _loadDialog?.ShowError($"Could not load '{slotName}': {ex.Message}");
+        }
+    }
+
+    private void OnResumePressed()
+    {
+        Log.Info(Log.LogCategory.Input, "MainMenu Resume pressed — loading autosave.");
+        try
+        {
+            LoadedSave loaded = _saveStore.LoadSlot(SaveStore.AutosaveSlotName);
+            LoadRequest.Pending = loaded;
+            for (int i = 0; i < loaded.Players.Count && i < GameSettings.PlayerKinds.Length; i++)
+            {
+                GameSettings.PlayerKinds[i] = loaded.Players[i].Kind;
+            }
+            GetTree().ChangeSceneToFile("res://scenes/main.tscn");
+        }
+        catch (System.Exception ex)
+        {
+            // Resume has no dialog of its own — log and re-disable so the
+            // user falls back to Load Game (which surfaces errors in its
+            // own picker dialog).
+            Log.Error(Log.LogCategory.Input, $"MainMenu Resume failed: {ex.Message}");
+            if (_landingResumeButton != null) _landingResumeButton.Disabled = true;
         }
     }
 
