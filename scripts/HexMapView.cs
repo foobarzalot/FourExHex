@@ -2499,7 +2499,11 @@ public partial class HexMapView : Node2D, IHexMapView
     /// foam, tower coverage, selection highlight, the symmetric move-target
     /// rings) are intentionally NOT touched — they rotate with the cells to
     /// stay aligned. The rejection layer is also excluded: its defender arrows
-    /// are directional and must rotate with the board to keep pointing.</summary>
+    /// are directional and must rotate with the board to keep pointing. The
+    /// move-source selection backdrop lives inside <c>_unitsLayer</c> (so it
+    /// draws right beneath the selected unit's rings) but is hex-cell-aligned,
+    /// not directional — skip it so its edges keep matching the underlying
+    /// tile fill in portrait.</summary>
     private void ApplyGlyphUpright()
     {
         float counter = -_mapAngleRad;
@@ -2509,6 +2513,7 @@ public partial class HexMapView : Node2D, IHexMapView
             _deathsLayer, _warningBadgesLayer, _towerTargetsLayer,
         };
         int n = 0;
+        int skipped = 0;
         foreach (Node2D? layer in glyphLayers)
         {
             if (layer == null) continue;
@@ -2516,13 +2521,21 @@ public partial class HexMapView : Node2D, IHexMapView
             {
                 if (child is Node2D node)
                 {
+                    if (ReferenceEquals(node, _selectionBackdrop))
+                    {
+                        // Hex-cell-aligned overlay — must rotate with the
+                        // board, not counter to it. Leave Rotation at 0 so
+                        // the parent's −90° in portrait carries through.
+                        ++skipped;
+                        continue;
+                    }
                     node.Rotation = counter;
                     ++n;
                 }
             }
         }
         Log.Debug(Log.LogCategory.Render,
-            $"HexMapView: glyph-upright applied to {n} nodes (counter {Mathf.RadToDeg(counter):0}°).");
+            $"HexMapView: glyph-upright applied to {n} nodes (counter {Mathf.RadToDeg(counter):0}°, skipped {skipped} hex-aligned).");
     }
 
     /// <summary>Set the HUD-reserved top/bottom insets the map centers within.
