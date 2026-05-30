@@ -38,19 +38,33 @@
 # Usage:  tools/build_ios.sh [debug|release] [--no-upload]
 #   debug    -> ExportDebug C# config, --export-debug    (DEBUG defined, logs/asserts on)
 #   release  -> ExportRelease C# config, --export-release (optimized; default)
-#   --no-upload  Skip the xcrun altool upload step (for dry-run / inspection)
+#   --no-upload  Skip the xcrun altool upload step (for dry-run / inspection).
+#   --tethered   Sign the .ipa for `development` distribution (not
+#                `app-store-connect`), skip the App Store Connect upload, and
+#                install onto the connected USB device via `xcrun devicectl`.
+#                Device must be in Developer Mode and trusted on this Mac.
 set -euo pipefail
 
 MODE="${1:-release}"
 UPLOAD=1
+TETHERED=0
 for arg in "$@"; do
-  if [[ "$arg" == "--no-upload" ]]; then UPLOAD=0; fi
+  case "$arg" in
+    --no-upload) UPLOAD=0 ;;
+    --tethered)  TETHERED=1; UPLOAD=0 ;;
+  esac
 done
 case "$MODE" in
   debug)   CSHARP_CONFIG="ExportDebug";   GODOT_FLAG="--export-debug" ;;
   release) CSHARP_CONFIG="ExportRelease"; GODOT_FLAG="--export-release" ;;
   *) echo "ERROR: unknown mode '$MODE' (use 'debug' or 'release')" >&2; exit 2 ;;
 esac
+
+if (( TETHERED )); then
+  EXPORT_METHOD="development"
+else
+  EXPORT_METHOD="app-store-connect"
+fi
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GODOT="/Applications/Godot_mono.app/Contents/MacOS/Godot"
@@ -114,6 +128,11 @@ grep -q "^application/app_store_team_id=\"${IOS_TEAM_ID}\"\$" "$PRESETS_CFG" \
 
 echo "==> Xcode:    $(xcodebuild -version | head -1)"
 echo "==> Mode:     $MODE  ($CSHARP_CONFIG, $GODOT_FLAG)"
+if (( TETHERED )); then
+  echo "==> Method:   $EXPORT_METHOD  (tethered USB install)"
+else
+  echo "==> Method:   $EXPORT_METHOD"
+fi
 echo "==> Team ID:  $IOS_TEAM_ID"
 echo "==> Output:   $IPA"
 
@@ -141,10 +160,11 @@ xcodebuild \
   | sed -E 's/^/    /'
 [[ -d "$XCARCHIVE" ]] || fail "xcodebuild archive did not produce $XCARCHIVE"
 
-# Materialize ExportOptions.plist with the real Team ID substituted in.
-sed "s|@TEAM_ID@|${IOS_TEAM_ID}|g" "$EXPORT_OPTIONS_TEMPLATE" > "$EXPORT_OPTIONS_LIVE"
+# Materialize ExportOptions.plist with the real Team ID + method substituted in.
+sed -e "s|@TEAM_ID@|${IOS_TEAM_ID}|g" -e "s|@METHOD@|${EXPORT_METHOD}|g" \
+  "$EXPORT_OPTIONS_TEMPLATE" > "$EXPORT_OPTIONS_LIVE"
 
-echo "==> Exporting .ipa for app-store-connect distribution"
+echo "==> Exporting .ipa for $EXPORT_METHOD distribution"
 xcodebuild \
   -exportArchive \
   -archivePath "$XCARCHIVE" \
@@ -155,6 +175,40 @@ xcodebuild \
 [[ -f "$IPA" ]] || fail "xcodebuild -exportArchive did not produce $IPA"
 
 echo "==> Built: $(file -b "$IPA")"
+
+if (( TETHERED )); then
+  echo "==> Installing onto tethered iOS device via xcrun devicectl"
+  # Pick the first connected device that's connected via USB. `devicectl list
+  # devices` JSON output keys are stable across Xcode 15/16/26.
+  DEVICE_JSON="$(xcrun devicectl list devices --json-output - 2>/dev/null || true)"
+  if [[ -z "$DEVICE_JSON" ]]; then
+    fail "xcrun devicectl list devices failed — is Xcode 15+ installed? (current: $(xcodebuild -version | head -1))"
+  fi
+  # Filter for paired, USB-attached iPhone/iPad. Stop early if none.
+  DEVICE_UDID="$(printf '%s' "$DEVICE_JSON" | python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+for d in data.get("result", {}).get("devices", []):
+    props = d.get("deviceProperties", {})
+    conn  = d.get("connectionProperties", {})
+    if props.get("platformIdentifier", "").startswith("com.apple.platform.iphoneos") \
+       and conn.get("pairingState") == "paired" \
+       and "wired" in str(conn.get("transportType", "")).lower():
+        print(d.get("identifier", ""))
+        break
+' )"
+  if [[ -z "$DEVICE_UDID" ]]; then
+    fail "No paired USB-attached iOS device found. Plug in, unlock, Trust This Computer, and enable Developer Mode (Settings → Privacy & Security → Developer Mode)."
+  fi
+  echo "    Device: $DEVICE_UDID"
+  xcrun devicectl device install app --device "$DEVICE_UDID" "$IPA" \
+    | sed -E 's/^/    /'
+  echo "==> Done. App is installed; launch it from the home screen."
+  echo "    Read live device logs with:"
+  echo "      xcrun devicectl device process launch --console --device $DEVICE_UDID com.foobarzalot.fourexhex"
+  echo "    Or open Console.app → filter by process 'FourExHex' for the SafeArea/DisplayScale lines."
+  exit 0
+fi
 
 if (( ! UPLOAD )); then
   echo "==> --no-upload set; skipping TestFlight upload."
