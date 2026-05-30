@@ -521,6 +521,48 @@ active screen's DPI and drives the root `Window.ContentScaleFactor`:
   layout itself does not yet reflow for very narrow logical widths — tracked in
   TECHDEBT.
 
+## Safe-area handling (autoload)
+
+`SafeArea` — peer autoload to `DisplayScale` (`project.godot` `[autoload]`
+entry "SafeArea", ordered after `DisplayScale` so `ContentScaleFactor` is
+settled before insets are computed). Keeps HUD chrome out of the iOS notch /
+Dynamic Island / home-indicator zones on devices that have them.
+
+- The pure math lives in the Godot-free model assembly —
+  `SafeAreaMath.InsetsFor(physicalWindow, physicalSafeRect, contentScaleFactor)`
+  returns a `LogicalSafeInsets(Top, Bottom, Left, Right)` record by clamping the
+  gap between safe rect and window to ≥ 0 and dividing by the scale factor.
+  Unit-tested in `tests/SafeAreaMathTests.cs`; the autoload is the thin Godot
+  adapter that reads `DisplayServer.GetDisplaySafeArea` and applies the result.
+- **Mobile-only gate.** On non-mobile (`!OS.HasFeature("mobile")`) the autoload
+  returns `LogicalSafeInsets.Zero` regardless of what Godot reports, because
+  `GetDisplaySafeArea` on desktop reports the *screen* safe area (e.g.
+  excluding the macOS menu bar) in screen — not window — coordinates, which
+  isn't a useful inset for a sub-screen window. Desktops have no notch /
+  home indicator to compensate for, so Zero is correct and identical to the
+  pre-safe-area layout. Android with cutouts benefits from the same code
+  path as iOS.
+- **Edge-to-edge bar fill + content inset (iOS-standard).** `HudBars.MakeBarPanel`
+  takes `safeAreaTop` / `safeAreaBottom` params that GROW the bar's outer
+  extent into the safe zone (so the bar's slate background covers the notch /
+  home-indicator area); `MakeBarFrame` takes matching params that ADD to its
+  8-px chrome margin so the bar's *content* (buttons, status, gold chip)
+  stays inside the safe zone. The split mirrors how iOS UIKit nav/tab bars
+  work — chrome edge-to-edge, content respecting `safeAreaInsets`. The
+  pre-existing `topOffset`/`bottomOffset` params keep their unrelated
+  structural-inset meaning (tutorial builder hosting the editor HUD below
+  its own topbar) and compose cleanly with the new params.
+- **Re-layout on inset change.** `OrientationHud` subscribes to
+  `SafeArea.Changed` and triggers an `ApplyLayout` + `PublishInsets` pass when
+  the OS reports a different safe rect (e.g. status-bar show/hide, rotation
+  crossing the notch axis). `ComputeInsets` folds the safe-area extents into
+  the `MapInsets` returned to `HexMapView` so the map reserves room for the
+  bar's grown visual height — otherwise map content would draw under the
+  bar's safe-zone extension. Same fold applies in `PositionTutorialOverlay`
+  (lift the tutorial box above the visible bar top, not the home-indicator-
+  covered bottom of the bar) and `PositionBankruptToast` (drop the toast past
+  the notch in both orientations).
+
 ## GameController ↔ GameOperations split
 
 The CONTROLLER box above predates a `GameController` → `GameController` +
@@ -2753,6 +2795,11 @@ disagree:
   `ComputeInsets`, plus the virtual `OnLayoutApplied` (post-flip) and
   `OnViewportMetricsChanged` (every resize). So the two HUDs can't drift
   on either the chrome or the coordination.
+  - *iOS notch / home-indicator handling* sits inside this same scaffolding
+    via the `safeAreaTop` / `safeAreaBottom` params on `MakeBarPanel` and
+    `MakeBarFrame` (see the *Safe-area handling (autoload)* section above).
+    `OrientationHud` also subscribes to `SafeArea.Changed` so a status-bar
+    show/hide or rotation crossing the notch axis triggers a relayout.
   - *Landscape gameplay:* a single 96-px **bottom** bar (moved from the
     top for thumb reach) in three anchored zones — unit/tower purchase +
     gold at the **left** edge, turn # + swatch bar **centered**, and
@@ -2856,12 +2903,17 @@ verifiable only on real touch hardware (Mac trackpad exercises the
 
 ## Platform builds & orientation
 
-Build/export **mechanics** for all three targets — the `export_presets.cfg`
-presets, the `tools/build_{macos,windows,android}.sh` scripts, the common
+Build/export **mechanics** for all four targets — the `export_presets.cfg`
+presets, the `tools/build_{macos,windows,android,ios}.sh` scripts, the common
 `dotnet build -c Debug` + `-c ExportDebug`/`ExportRelease` + headless-export
-shape, the net8-vs-net9 gradle workaround (why Android uses a gradle build), and
-APK signing — live in **`RELEASE.md`**, alongside the on-device install / logcat
-/ scale-reproduction workflow. This section keeps only the architectural pieces
+shape, the net8-vs-net9 gradle workaround on Android (and the corresponding
+*non*-issue on iOS, where the generated Xcode project's build phases run
+`dotnet publish` against net8 directly), APK signing, and the iOS chain
+(xcodebuild archive → exportArchive → altool for TestFlight or devicectl for
+tethered USB install, with Team ID sed-injected into the empty preset slot
+and restored on EXIT so secrets stay out of the repo) — all live in
+**`RELEASE.md`**, alongside the on-device install / log-reading /
+scale-reproduction workflow. This section keeps only the architectural pieces
 that the build docs reference.
 
 ### Orientation
