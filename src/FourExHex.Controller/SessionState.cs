@@ -108,12 +108,30 @@ public class SessionState
     /// </summary>
     public HexCoord? MoveSource { get; set; }
 
+    /// <summary>
+    /// Sticky bit: when on, a successful unit move auto-picks the next
+    /// movable unit in power-then-lex order so the human can place a run
+    /// of units without re-pressing N each time. Set by
+    /// <see cref="GameController.StepUnitSelection"/> whenever it
+    /// successfully picks a different unit; cleared by Esc, entry into
+    /// any non-None action mode, a manual selection change, end-of-turn,
+    /// or running out of movable units after an auto-advance.
+    /// Deliberately NOT cleared by <see cref="ClearPendingAction"/>: the
+    /// successful-move path needs the flag alive across
+    /// <c>FinishPendingAction</c> so the auto-advance hook can read it.
+    /// Round-trips through <see cref="SessionStateSnapshot"/> for undo/redo.
+    /// </summary>
+    public bool RepeatedMovement { get; set; }
+
     /// <summary>Turn-scoped undo history. Cleared at EndTurn.</summary>
     public UndoStack<UndoEntry> Undo { get; } = new UndoStack<UndoEntry>();
 
     /// <summary>
     /// Reset all pending-action fields to "nothing in progress". Does
-    /// NOT clear the undo stack — that's its own lifecycle.
+    /// NOT clear the undo stack — that's its own lifecycle. Also does NOT
+    /// clear <see cref="RepeatedMovement"/>: cancel/exit paths clear it
+    /// explicitly so the successful-move path can read it across
+    /// <c>FinishPendingAction</c>.
     /// </summary>
     public void ClearPendingAction()
     {

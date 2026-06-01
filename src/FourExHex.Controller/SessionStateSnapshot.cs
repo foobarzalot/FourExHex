@@ -5,14 +5,16 @@ using System.Linq;
 /// Immutable capture of the player-intent slice of <see cref="SessionState"/>:
 /// the selected territory (by anchor coord, not reference, so it survives
 /// territory rebuilds), the pending <see cref="SessionState.ActionMode"/>,
-/// and the move source (if any). Pairs with <see cref="GameStateSnapshot"/>
-/// inside an <see cref="UndoEntry"/> so undo/redo can restore where the
-/// player was, not just what was on the board.
+/// the move source (if any), and the repeated-movement sticky bit.
+/// Pairs with <see cref="GameStateSnapshot"/> inside an <see cref="UndoEntry"/>
+/// so undo/redo can restore where the player was, not just what was on the
+/// board.
 /// </summary>
 public sealed record SessionStateSnapshot(
     HexCoord? SelectedAnchor,
     SessionState.ActionMode Mode,
-    HexCoord? MoveSource)
+    HexCoord? MoveSource,
+    bool RepeatedMovement)
 {
     /// <summary>
     /// Snapshot the player-intent fields of <paramref name="session"/>.
@@ -40,7 +42,7 @@ public sealed record SessionStateSnapshot(
                 }
             }
         }
-        return new SessionStateSnapshot(anchor, session.Mode, session.MoveSource);
+        return new SessionStateSnapshot(anchor, session.Mode, session.MoveSource, session.RepeatedMovement);
     }
 
     /// <summary>
@@ -69,5 +71,6 @@ public sealed record SessionStateSnapshot(
         session.SelectedTerritory = match;
         session.Mode = Mode;
         session.MoveSource = MoveSource;
+        session.RepeatedMovement = RepeatedMovement;
     }
 }

@@ -572,6 +572,22 @@ public class GameController
             return;
         }
 
+        // A user click that lands on a *different* territory exits
+        // repeated-movement (the user redirected their attention). Same-
+        // territory clicks preserve the flag — those are either picking
+        // up a unit (handled below) or were already routed through the
+        // MovingUnit branch above (which cleared via CancelPendingAction
+        // on invalid targets). Capture-rebound selection changes happen
+        // via RebindSelectionToContaining, which doesn't pass through
+        // this code path.
+        if (_session.RepeatedMovement
+            && !ReferenceEquals(_session.SelectedTerritory, territory))
+        {
+            Log.Debug(Log.LogCategory.Input,
+                "[RepeatedMovement] cleared (user-clicked different territory)");
+            _session.RepeatedMovement = false;
+        }
+
         // Select the territory; if the clicked tile has one of our own
         // unused units, also pick it up for movement.
         SetSelection(territory);
@@ -612,6 +628,15 @@ public class GameController
     {
         if (_session.IsGameOver) return;
         if (tile == null) return;
+        // Repeated-movement is a passive sticky intent — a deliberate
+        // long-press overrides it: cancel the pending pick (clears Mode +
+        // MoveSource + flag) and proceed with rally. Buy / Build / non-
+        // chained MovingUnit pending intents stay protected by the guard
+        // below.
+        if (_session.RepeatedMovement)
+        {
+            CancelPendingAction("long-press rally");
+        }
         if (_session.Mode != SessionState.ActionMode.None) return;
 
         PlayerId currentColor = _state.Turns.CurrentPlayer.Id;
@@ -953,6 +978,10 @@ public class GameController
         _handlerMutatedGame = true;
         _pendingHumanBeat = new ReplayMoveBeat { From = source, To = destination };
 
+        // Capture the source unit's level before MovementRules.Move clears
+        // the source tile — auto-advance needs it to walk the next entry
+        // in the power-then-coord order.
+        UnitLevel movedLevel = _state.Grid.Get(source)!.Unit!.Level;
         bool wasCombine = _ops.WasFriendlyUnitAt(destination, _session.SelectedTerritory.Owner);
         MoveResult result = MovementRules.Move(source, destination, _state.Grid, _session.SelectedTerritory);
 
@@ -970,6 +999,11 @@ public class GameController
         _ops.DispatchActionSound(destination, result, wasCombine);
 
         FinishPendingAction();
+
+        if (_session.RepeatedMovement)
+        {
+            AutoAdvanceAfterMove(movedLevel, source, destination);
+        }
     }
 
     /// <summary>
@@ -1058,10 +1092,30 @@ public class GameController
         _ops.RefreshViews();
     }
 
-    private void CancelPendingAction()
+    private void CancelPendingAction(string reason = "cancel / invalid click / end-of-turn")
     {
+        if (_session.RepeatedMovement)
+        {
+            Log.Debug(Log.LogCategory.Input,
+                $"[RepeatedMovement] cleared ({reason})");
+            _session.RepeatedMovement = false;
+        }
         _session.ClearPendingAction();
         _map.ClearAllOverlays();
+    }
+
+    /// <summary>
+    /// Called at the top of every handler that enters a non-None
+    /// <see cref="SessionState.ActionMode"/> (buy / build) to clear the
+    /// repeated-movement sticky bit. Quiet no-op when the bit is already
+    /// off.
+    /// </summary>
+    private void ClearRepeatedMovementOnActionModeEntry(string reason)
+    {
+        if (!_session.RepeatedMovement) return;
+        Log.Debug(Log.LogCategory.Input,
+            $"[RepeatedMovement] cleared ({reason})");
+        _session.RepeatedMovement = false;
     }
 
     private void OnCancelActionPressed() => TrackHandler(OnCancelActionPressedBody);
@@ -1294,6 +1348,7 @@ public class GameController
     {
         if (_session.IsGameOver) return;
         if (_session.SelectedTerritory == null) return;
+        ClearRepeatedMovementOnActionModeEntry("buy unit button");
         // Toggle off: a second click on the active buy level cancels the
         // mode (like Escape). Checked before affordability so you can
         // always back out of a mode you're already in.
@@ -1327,6 +1382,7 @@ public class GameController
     {
         if (_session.IsGameOver) return;
         if (_session.SelectedTerritory == null) return;
+        ClearRepeatedMovementOnActionModeEntry("buy hotkey");
 
         UnitLevel? next = NextAffordableBuyLevel();
         UnitLevel? current = SessionState.BuyModeLevel(_session.Mode);
@@ -1406,6 +1462,7 @@ public class GameController
     {
         if (_session.IsGameOver) return;
         if (_session.SelectedTerritory == null) return;
+        ClearRepeatedMovementOnActionModeEntry("build tower");
         // Toggle off: a second click while already building cancels the
         // mode (like Escape).
         if (_session.Mode == SessionState.ActionMode.BuildingTower)
@@ -1525,18 +1582,8 @@ public class GameController
         if (selected == null) return;
 
         PlayerId color = _state.Turns.CurrentPlayer.Id;
-        var movable = new List<HexCoord>();
-        foreach (HexCoord coord in selected.Coords)
-        {
-            HexTile? tile = _state.Grid.Get(coord);
-            Unit? unit = tile?.Unit;
-            if (unit != null && unit.Owner == color && !unit.HasMovedThisTurn)
-            {
-                movable.Add(coord);
-            }
-        }
+        List<HexCoord> movable = SortedMovableCoords(selected, color);
         if (movable.Count == 0) return;
-        movable.Sort();
 
         int currentIndex = -1;
         if (_session.Mode == SessionState.ActionMode.MovingUnit
@@ -1553,12 +1600,99 @@ public class GameController
         Unit chosen = _state.Grid.Get(target)!.Unit!;
         _session.Mode = SessionState.ActionMode.MovingUnit;
         _session.MoveSource = target;
+        _session.RepeatedMovement = true;
+        Log.Debug(Log.LogCategory.Input,
+            $"[N-cycle] forward={forward} count={movable.Count} pickedIdx={nextIndex} coord={target} level={chosen.Level} → RepeatedMovement on");
         _map.ShowMoveTargets(ActionConsumingTargets(chosen.Level, selected), chosen.Level);
         // Defensive: clear tower overlays in case we're transitioning out
         // of BuildingTower mode.
         _map.ShowTowerTargets(System.Array.Empty<HexCoord>());
         _map.ShowTowerCoverage(System.Array.Empty<HexCoord>());
         _map.ShowMoveSource(target);
+        _ops.RefreshViews();
+    }
+
+    /// <summary>
+    /// Movable units in <paramref name="territory"/> owned by
+    /// <paramref name="color"/> with HasMovedThisTurn=false, returned in
+    /// power-then-coord order: <see cref="UnitLevel"/> ascending (Recruit
+    /// → Commander), <see cref="HexCoord"/> lex within each tier. The
+    /// single source of truth for the N-cycle order and the auto-advance
+    /// next-unit pick after a successful move.
+    /// </summary>
+    private List<HexCoord> SortedMovableCoords(Territory territory, PlayerId color)
+    {
+        var movable = new List<(HexCoord Coord, UnitLevel Level)>();
+        foreach (HexCoord coord in territory.Coords)
+        {
+            HexTile? tile = _state.Grid.Get(coord);
+            Unit? unit = tile?.Unit;
+            if (unit != null && unit.Owner == color && !unit.HasMovedThisTurn)
+            {
+                movable.Add((coord, unit.Level));
+            }
+        }
+        movable.Sort((a, b) =>
+        {
+            int byLevel = a.Level.CompareTo(b.Level);
+            return byLevel != 0 ? byLevel : a.Coord.CompareTo(b.Coord);
+        });
+        var result = new List<HexCoord>(movable.Count);
+        foreach ((HexCoord c, _) in movable) result.Add(c);
+        return result;
+    }
+
+    /// <summary>
+    /// Repeated-movement auto-advance: called after a successful
+    /// <see cref="ExecuteMove"/> while <see cref="SessionState.RepeatedMovement"/>
+    /// is on. Picks the next movable unit in power-then-coord order
+    /// strictly after the moved unit's (Level, source) key, wrapping to
+    /// the first if none qualify. If no movable units remain in the
+    /// (possibly capture-rebound) selected territory, clears the flag.
+    /// The just-acted-on tile (<paramref name="movedDestination"/>) is
+    /// excluded from the candidate pool: an in-territory reposition or
+    /// friendly combine doesn't set HasMovedThisTurn, so without this
+    /// filter auto-advance would re-pick the same unit at its new spot.
+    /// </summary>
+    private void AutoAdvanceAfterMove(UnitLevel movedLevel, HexCoord movedSource, HexCoord movedDestination)
+    {
+        Territory? selected = _session.SelectedTerritory;
+        if (selected == null)
+        {
+            _session.RepeatedMovement = false;
+            Log.Debug(Log.LogCategory.Input,
+                "[AutoAdvance] no selected territory after move → RepeatedMovement cleared");
+            return;
+        }
+        PlayerId color = _state.Turns.CurrentPlayer.Id;
+        List<HexCoord> movable = SortedMovableCoords(selected, color);
+        movable.Remove(movedDestination);
+        if (movable.Count == 0)
+        {
+            _session.RepeatedMovement = false;
+            Log.Debug(Log.LogCategory.Input,
+                "[AutoAdvance] no movable units remaining → RepeatedMovement cleared");
+            return;
+        }
+        // Find first entry with (Level, Coord) strictly > (movedLevel,
+        // movedSource); else wrap to first.
+        HexCoord pick = movable[0];
+        foreach (HexCoord c in movable)
+        {
+            Unit u = _state.Grid.Get(c)!.Unit!;
+            int byLevel = u.Level.CompareTo(movedLevel);
+            int cmp = byLevel != 0 ? byLevel : c.CompareTo(movedSource);
+            if (cmp > 0) { pick = c; break; }
+        }
+        Unit chosen = _state.Grid.Get(pick)!.Unit!;
+        _session.Mode = SessionState.ActionMode.MovingUnit;
+        _session.MoveSource = pick;
+        Log.Debug(Log.LogCategory.Input,
+            $"[AutoAdvance] picked {pick} level={chosen.Level} (after move from {movedSource} level={movedLevel})");
+        _map.ShowMoveTargets(ActionConsumingTargets(chosen.Level, selected), chosen.Level);
+        _map.ShowTowerTargets(System.Array.Empty<HexCoord>());
+        _map.ShowTowerCoverage(System.Array.Empty<HexCoord>());
+        _map.ShowMoveSource(pick);
         _ops.RefreshViews();
     }
 

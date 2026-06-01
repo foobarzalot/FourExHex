@@ -177,8 +177,12 @@ Consequences for the rest of this doc:
 │   │    hud.EndTurnClicked           → OnEndTurnPressed                   │
 │   │    hud.NextTerritoryClicked     → OnNextTerritoryPressed             │
 │   │    hud.PreviousTerritoryClicked → OnPreviousTerritoryPressed         │
-│   │    hud.NextUnitClicked          → OnNextUnitPressed                  │
-│   │    hud.PreviousUnitClicked      → OnPreviousUnitPressed              │
+│   │    hud.NextUnitClicked          → OnNextUnitPressed (N: power-order  │
+│   │                                    cycle Recruit→Soldier→Captain→   │
+│   │                                    Commander, lex within tier;       │
+│   │                                    also enters repeated-movement)    │
+│   │    hud.PreviousUnitClicked      → OnPreviousUnitPressed (Shift+N:    │
+│   │                                    same cycle backward)              │
 │   │    hud.CancelActionPressed      → OnCancelActionPressed              │
 │   │    hud.DefeatContinueClicked    → OnDefeatContinuePressed            │
 │   │    hud.ClaimVictoryWinNowClicked    → OnClaimVictoryWinNowPressed    │
@@ -400,7 +404,8 @@ Consequences for the rest of this doc:
 │   Treasury — Dictionary<HexCoord, int>; CollectIncomeFor;                │
 │              ReconcileAfterCapture (forfeits enemy gold on capture)      │
 │   GameStateSnapshot — deep-copy (tiles + gold + territories)             │
-│   SessionStateSnapshot — selection anchor + Mode + MoveSource            │
+│   SessionStateSnapshot — selection anchor + Mode + MoveSource +          │
+│                          RepeatedMovement flag                           │
 │   UndoEntry — pair of (GameStateSnapshot, SessionStateSnapshot)          │
 │   UndoStack<T> — two-sided history of T (UndoEntry for play, also reused │
 │                  by the editor with EditorSnapshot)                      │
@@ -855,7 +860,15 @@ event Action? NextTerritoryClicked;    // Tab hotkey equivalent;
 event Action? PreviousTerritoryClicked;// Shift+Tab hotkey equivalent;
                                        // same skip rules
 event Action? NextUnitClicked;         // N hotkey: cycle units in selection
-event Action? PreviousUnitClicked;     // Shift+N hotkey
+                                       // by (Level, HexCoord) — Recruits,
+                                       // then Soldiers, then Captains,
+                                       // then Commanders, lex within
+                                       // each tier; wraps. First press
+                                       // (and every successful pick) also
+                                       // turns on
+                                       // SessionState.RepeatedMovement.
+event Action? PreviousUnitClicked;     // Shift+N hotkey — same cycle
+                                       // walked backward
 event Action? CancelActionPressed;     // Escape hotkey while a Buy/
                                        // Build/Move action is pending
 event Action? EscRequested;            // Options button OR Escape with
@@ -1086,13 +1099,34 @@ public interface ITimerFactory { void After(int delayMs, Action callback); }
 - **Every state change funnels through `RefreshViews()`** at the end
   of the handler. One path, no drift.
 - **Snapshots capture `GameState` plus the player-intent slice of
-  `SessionState`** (`SelectedTerritory` anchor, `Mode`, `MoveSource`)
-  via `UndoEntry` (a `(GameStateSnapshot, SessionStateSnapshot)` pair).
-  `Winner`, `PendingDefeatScreen`, and the `Undo` stack itself stay
-  out. Top-level human event handlers are wrapped in `TrackHandler`,
-  which captures pre-state, runs the body, and pushes one `UndoEntry`
-  iff state actually changed — automatic de-dup of no-op clicks.
-  Exceptions inside a handler propagate without pushing.
+  `SessionState`** (`SelectedTerritory` anchor, `Mode`, `MoveSource`,
+  `RepeatedMovement` flag) via `UndoEntry` (a `(GameStateSnapshot,
+  SessionStateSnapshot)` pair). `Winner`, `PendingDefeatScreen`, and
+  the `Undo` stack itself stay out. Top-level human event handlers are
+  wrapped in `TrackHandler`, which captures pre-state, runs the body,
+  and pushes one `UndoEntry` iff state actually changed — automatic
+  de-dup of no-op clicks. Exceptions inside a handler propagate
+  without pushing.
+- **Repeated-movement** is a sticky bit on `SessionState` that drives
+  the N-hotkey's auto-advance behaviour. `StepUnitSelection` turns it
+  on whenever it successfully picks a different unit. While on, the
+  tail of `ExecuteMove` calls `AutoAdvanceAfterMove(level, source,
+  destination)`: power-then-coord sort of remaining movables in the
+  (possibly capture-rebound) selected territory, with the destination
+  coord excluded (so an in-territory reposition — which leaves
+  `HasMovedThisTurn=false` — doesn't re-pick the same unit at its new
+  spot). The flag clears on Esc/cancel, entry into any non-None
+  `ActionMode` (buy or build), a user-click selection change to a
+  different territory, a long-press rally (treated as a deliberate
+  override of the passive sticky intent — buy/build/non-chained
+  MovingUnit pending intents are still protected by rally's own
+  `Mode != None` guard), End Turn, or an auto-advance that finds no
+  remaining movables. `ClearPendingAction` deliberately does NOT
+  clear it — `ExecuteMove`'s `FinishPendingAction` must run with the
+  flag alive so the auto-advance hook can read it. Round-trips
+  through `SessionStateSnapshot` so a single Undo rewinds both the
+  move and the auto-advance back to the prior `MoveSource`. Capture-
+  rebind preserves the flag (the user didn't manually re-select).
 - **`HexTile` is a pure model — no view coupling.** `HexTile.Owner`
   is plain state; it does NOT push into a `Polygon2D` (the old
   setter side-effect + `HexTile.Visual` were removed). The view owns

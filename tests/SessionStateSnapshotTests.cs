@@ -106,7 +106,8 @@ public class SessionStateSnapshotTests
         var snap = new SessionStateSnapshot(
             SelectedAnchor: new HexCoord(99, 99),
             Mode: SessionState.ActionMode.BuyingRecruit,
-            MoveSource: null);
+            MoveSource: null,
+            RepeatedMovement: false);
 
         (_, IReadOnlyList<Territory> territories) = BuildTwoColorGrid();
         var session = new SessionState();
@@ -122,9 +123,9 @@ public class SessionStateSnapshotTests
     {
         // Record equality is what powers TrackHandler's de-dup check.
         var a = new SessionStateSnapshot(
-            new HexCoord(1, 2), SessionState.ActionMode.BuyingSoldier, new HexCoord(3, 4));
+            new HexCoord(1, 2), SessionState.ActionMode.BuyingSoldier, new HexCoord(3, 4), false);
         var b = new SessionStateSnapshot(
-            new HexCoord(1, 2), SessionState.ActionMode.BuyingSoldier, new HexCoord(3, 4));
+            new HexCoord(1, 2), SessionState.ActionMode.BuyingSoldier, new HexCoord(3, 4), false);
 
         Assert.Equal(a, b);
     }
@@ -132,8 +133,8 @@ public class SessionStateSnapshotTests
     [Fact]
     public void Equals_TreatsDifferentModes_AsUnequal()
     {
-        var a = new SessionStateSnapshot(null, SessionState.ActionMode.None, null);
-        var b = new SessionStateSnapshot(null, SessionState.ActionMode.BuyingRecruit, null);
+        var a = new SessionStateSnapshot(null, SessionState.ActionMode.None, null, false);
+        var b = new SessionStateSnapshot(null, SessionState.ActionMode.BuyingRecruit, null, false);
 
         Assert.NotEqual(a, b);
     }

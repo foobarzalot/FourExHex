@@ -3553,6 +3553,341 @@ public class GameControllerTests
         Assert.Equal(SessionState.ActionMode.MovingUnit, g.Session.Mode);
     }
 
+    // --- N / Shift+N: power-ordered cycle ---------------------------------
+
+    [Fact]
+    public void NextUnit_PowerOrder_AdvancesByLevelAscending()
+    {
+        // Replace the three Recruits with a Recruit, a Soldier, and a
+        // Captain (in coord-lex order they're still A < B < C, but power
+        // order is the same here). N should walk them in level order.
+        var g = new ThreeUnitsRedGame();
+        g.State.Grid.Get(g.UnitA)!.Occupant = new Unit(g.Red.Id, UnitLevel.Recruit);
+        g.State.Grid.Get(g.UnitB)!.Occupant = new Unit(g.Red.Id, UnitLevel.Soldier);
+        g.State.Grid.Get(g.UnitC)!.Occupant = new Unit(g.Red.Id, UnitLevel.Captain);
+        g.SelectRed();
+
+        g.Hud.PressNextUnit();
+        Assert.Equal(g.UnitA, g.Session.MoveSource); // Recruit
+        g.Hud.PressNextUnit();
+        Assert.Equal(g.UnitB, g.Session.MoveSource); // Soldier
+        g.Hud.PressNextUnit();
+        Assert.Equal(g.UnitC, g.Session.MoveSource); // Captain
+        g.Hud.PressNextUnit();
+        Assert.Equal(g.UnitA, g.Session.MoveSource); // wraps back to Recruit
+    }
+
+    [Fact]
+    public void NextUnit_PowerOrder_LexTiebreakerWithinTier()
+    {
+        // Level-asc-then-coord-lex: with two Recruits and one Soldier,
+        // cycle goes Recruit-A → Recruit-C → Soldier-B → wrap.
+        var g = new ThreeUnitsRedGame();
+        g.State.Grid.Get(g.UnitA)!.Occupant = new Unit(g.Red.Id, UnitLevel.Recruit);
+        g.State.Grid.Get(g.UnitB)!.Occupant = new Unit(g.Red.Id, UnitLevel.Soldier);
+        g.State.Grid.Get(g.UnitC)!.Occupant = new Unit(g.Red.Id, UnitLevel.Recruit);
+        g.SelectRed();
+
+        g.Hud.PressNextUnit();
+        Assert.Equal(g.UnitA, g.Session.MoveSource); // Recruit at (1,1)
+        g.Hud.PressNextUnit();
+        Assert.Equal(g.UnitC, g.Session.MoveSource); // Recruit at (3,1) — same tier, lex next
+        g.Hud.PressNextUnit();
+        Assert.Equal(g.UnitB, g.Session.MoveSource); // Soldier
+    }
+
+    [Fact]
+    public void PreviousUnit_PowerOrder_WalksLevelDescending()
+    {
+        var g = new ThreeUnitsRedGame();
+        g.State.Grid.Get(g.UnitA)!.Occupant = new Unit(g.Red.Id, UnitLevel.Recruit);
+        g.State.Grid.Get(g.UnitB)!.Occupant = new Unit(g.Red.Id, UnitLevel.Soldier);
+        g.State.Grid.Get(g.UnitC)!.Occupant = new Unit(g.Red.Id, UnitLevel.Captain);
+        g.SelectRed();
+
+        g.Hud.PressPreviousUnit();
+        Assert.Equal(g.UnitC, g.Session.MoveSource); // Captain (highest)
+        g.Hud.PressPreviousUnit();
+        Assert.Equal(g.UnitB, g.Session.MoveSource); // Soldier
+        g.Hud.PressPreviousUnit();
+        Assert.Equal(g.UnitA, g.Session.MoveSource); // Recruit
+        g.Hud.PressPreviousUnit();
+        Assert.Equal(g.UnitC, g.Session.MoveSource); // wraps to Captain
+    }
+
+    // --- Repeated-movement mode: flag, auto-advance, exits ---------------
+
+    [Fact]
+    public void NextUnit_TurnsOnRepeatedMovementFlag()
+    {
+        var g = new ThreeUnitsRedGame();
+        g.SelectRed();
+        Assert.False(g.Session.RepeatedMovement);
+
+        g.Hud.PressNextUnit();
+
+        Assert.True(g.Session.RepeatedMovement);
+    }
+
+    [Fact]
+    public void RepeatedMovement_AfterMove_AutoAdvancesToNextUnitInPowerOrder()
+    {
+        var g = new ThreeUnitsRedGame();
+        g.SelectRed();
+        g.Hud.PressNextUnit(); // picks UnitA (Recruit), flag → true
+        Assert.Equal(g.UnitA, g.Session.MoveSource);
+
+        // (4,1) is empty Red — a valid in-territory move target.
+        g.Map.SimulateClick(g.State.Grid.Get(HexCoord.FromOffset(4, 1)));
+
+        // Unit moved off (1,1).
+        Assert.Null(g.State.Grid.Get(g.UnitA)!.Unit);
+        Assert.NotNull(g.State.Grid.Get(HexCoord.FromOffset(4, 1))!.Unit);
+        // Flag still on; next unit auto-picked.
+        Assert.True(g.Session.RepeatedMovement);
+        Assert.Equal(SessionState.ActionMode.MovingUnit, g.Session.Mode);
+        Assert.Equal(g.UnitB, g.Session.MoveSource);
+    }
+
+    [Fact]
+    public void RepeatedMovement_AutoAdvanceFromLastMovableUnit_ClearsFlag()
+    {
+        // Only UnitC is unmoved — A and B already spent.
+        var g = new ThreeUnitsRedGame();
+        g.State.Grid.Get(g.UnitA)!.Unit!.HasMovedThisTurn = true;
+        g.State.Grid.Get(g.UnitB)!.Unit!.HasMovedThisTurn = true;
+        g.SelectRed();
+        g.Hud.PressNextUnit();
+        Assert.Equal(g.UnitC, g.Session.MoveSource);
+        Assert.True(g.Session.RepeatedMovement);
+
+        g.Map.SimulateClick(g.State.Grid.Get(HexCoord.FromOffset(4, 1)));
+
+        Assert.False(g.Session.RepeatedMovement);
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+        Assert.Null(g.Session.MoveSource);
+    }
+
+    [Fact]
+    public void RepeatedMovement_Cancel_ClearsFlag()
+    {
+        var g = new ThreeUnitsRedGame();
+        g.SelectRed();
+        g.Hud.PressNextUnit();
+        Assert.True(g.Session.RepeatedMovement);
+
+        g.Hud.PressCancelAction();
+
+        Assert.False(g.Session.RepeatedMovement);
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+    }
+
+    [Fact]
+    public void RepeatedMovement_BuyRecruitHotkey_ClearsFlag()
+    {
+        var g = new ThreeUnitsRedGame();
+        g.SelectRed();
+        // Ensure recruit is affordable so U enters BuyingRecruit (otherwise
+        // the cycle exits back to None and the flag-clear is still tested
+        // — but make the assertion deterministic about the buy-mode entry).
+        HexCoord cap = g.RedTerritory.Capital!.Value;
+        g.State.Treasury.SetGold(cap, 20);
+        g.Hud.PressNextUnit();
+        Assert.True(g.Session.RepeatedMovement);
+
+        g.Hud.ClickBuyRecruit();
+
+        Assert.False(g.Session.RepeatedMovement);
+        Assert.Equal(SessionState.ActionMode.BuyingRecruit, g.Session.Mode);
+    }
+
+    [Fact]
+    public void RepeatedMovement_BuyUnitDirectButton_ClearsFlag()
+    {
+        var g = new ThreeUnitsRedGame();
+        g.SelectRed();
+        HexCoord cap = g.RedTerritory.Capital!.Value;
+        g.State.Treasury.SetGold(cap, 20);
+        g.Hud.PressNextUnit();
+        Assert.True(g.Session.RepeatedMovement);
+
+        g.Hud.ClickBuyUnit(UnitLevel.Recruit);
+
+        Assert.False(g.Session.RepeatedMovement);
+        Assert.Equal(SessionState.ActionMode.BuyingRecruit, g.Session.Mode);
+    }
+
+    [Fact]
+    public void RepeatedMovement_BuildTower_ClearsFlag()
+    {
+        var g = new ThreeUnitsRedGame();
+        g.SelectRed();
+        HexCoord cap = g.RedTerritory.Capital!.Value;
+        g.State.Treasury.SetGold(cap, 20);
+        g.Hud.PressNextUnit();
+        Assert.True(g.Session.RepeatedMovement);
+
+        g.Hud.ClickBuildTower();
+
+        Assert.False(g.Session.RepeatedMovement);
+        Assert.Equal(SessionState.ActionMode.BuildingTower, g.Session.Mode);
+    }
+
+    [Fact]
+    public void RepeatedMovement_EndTurn_ClearsFlag()
+    {
+        var g = new ThreeUnitsRedGame();
+        g.SelectRed();
+        g.Hud.PressNextUnit();
+        Assert.True(g.Session.RepeatedMovement);
+
+        g.Hud.ClickEndTurn();
+
+        Assert.False(g.Session.RepeatedMovement);
+    }
+
+    [Fact]
+    public void RepeatedMovement_ClickOutsideOwnTerritory_ClearsFlag()
+    {
+        // Clicking the Blue capital is an invalid target for a Recruit
+        // (capital radiates defense=1, attacker level=1, need strictly
+        // greater). The MovingUnit branch falls through to
+        // CancelPendingAction → flag clears.
+        var g = new ThreeUnitsRedGame();
+        g.SelectRed();
+        g.Hud.PressNextUnit();
+        Assert.True(g.Session.RepeatedMovement);
+
+        Territory blueT = g.State.Territories.First(t => t.Owner == g.Blue.Id);
+        g.Map.SimulateClick(g.State.Grid.Get(blueT.Capital!.Value));
+
+        Assert.False(g.Session.RepeatedMovement);
+    }
+
+    [Fact]
+    public void RepeatedMovement_CaptureRebind_KeepsFlagAndAutoPicksInReboundTerritory()
+    {
+        // 5x1 grid: Red at cols 0..3, Blue singleton at col 4. Capital
+        // lands on (0,0); place an unmoved Recruit at (1,0) and the
+        // attacker Recruit at (3,0). Attacker captures (4,0); the
+        // selection rebinds to the (now 5-tile) Red territory; auto-
+        // advance should pick (1,0).
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
+        var players = new List<Player> { red, blue };
+
+        var grid = TestHelpers.BuildRectGrid(5, 1, red.Id);
+        grid.Get(HexCoord.FromOffset(4, 0))!.Owner = blue.Id;
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        session.ClaimVictoryPromptedHighestThreshold[red.Id] = 90;
+        session.ClaimVictoryPromptedHighestThreshold[blue.Id] = 90;
+        var map = new MockHexMapView();
+        var hud = new MockHudView();
+        var controller = new GameController(state, session, map, hud);
+        controller.StartGame();
+
+        // Place units after StartGame so they don't get their HasMoved reset.
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(red.Id);
+        grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = new Unit(red.Id);
+
+        map.SimulateClick(grid.Get(HexCoord.FromOffset(0, 0))); // select Red
+        // Two Recruits in the territory; first N picks lex-min: (1,0).
+        // Advance once to pick (3,0) — the attacker we want.
+        hud.PressNextUnit();
+        Assert.Equal(HexCoord.FromOffset(1, 0), session.MoveSource);
+        hud.PressNextUnit();
+        Assert.Equal(HexCoord.FromOffset(3, 0), session.MoveSource);
+        Assert.True(session.RepeatedMovement);
+
+        // Capture the Blue singleton at (4,0).
+        map.SimulateClick(grid.Get(HexCoord.FromOffset(4, 0)));
+
+        Assert.True(session.RepeatedMovement);
+        Assert.Equal(SessionState.ActionMode.MovingUnit, session.Mode);
+        // (3,0) is now empty; (1,0)'s Recruit is the only unmoved unit
+        // remaining in the rebound territory.
+        Assert.Equal(HexCoord.FromOffset(1, 0), session.MoveSource);
+    }
+
+    [Fact]
+    public void Undo_AfterEnteringRepeatedMovement_RevertsFlagAndModeAndMoveSource()
+    {
+        var g = new ThreeUnitsRedGame();
+        g.SelectRed();
+        Assert.False(g.Session.RepeatedMovement);
+        g.Hud.PressNextUnit();
+        Assert.True(g.Session.RepeatedMovement);
+
+        g.Hud.ClickUndoLast();
+
+        Assert.False(g.Session.RepeatedMovement);
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+        Assert.Null(g.Session.MoveSource);
+    }
+
+    [Fact]
+    public void Undo_AfterAutoAdvancedMove_RestoresOriginalSource_FlagStillOn()
+    {
+        var g = new ThreeUnitsRedGame();
+        g.SelectRed();
+        g.Hud.PressNextUnit(); // picks UnitA, flag → true (undo entry #1)
+        g.Map.SimulateClick(g.State.Grid.Get(HexCoord.FromOffset(4, 1))); // move + auto-advance (entry #2)
+        Assert.Equal(g.UnitB, g.Session.MoveSource);
+
+        g.Hud.ClickUndoLast(); // pops entry #2
+
+        // Move reverted: unit back on (1,1), target empty again.
+        Assert.NotNull(g.State.Grid.Get(g.UnitA)!.Unit);
+        Assert.Null(g.State.Grid.Get(HexCoord.FromOffset(4, 1))!.Unit);
+        // MoveSource and flag restored to the pre-place state.
+        Assert.Equal(g.UnitA, g.Session.MoveSource);
+        Assert.True(g.Session.RepeatedMovement);
+        Assert.Equal(SessionState.ActionMode.MovingUnit, g.Session.Mode);
+    }
+
+    [Fact]
+    public void RepeatedMovement_LongPressRally_ClearsFlag_AndRallyFires()
+    {
+        // Long-press rally normally short-circuits when Mode != None,
+        // but repeated-movement is a passive sticky intent — a deliberate
+        // long-press should override it: clear the flag, cancel the
+        // pending pick, and rally as usual.
+        var g = new ThreeUnitsRedGame();
+        g.SelectRed();
+        g.Hud.PressNextUnit(); // Mode=MovingUnit on UnitA, flag on
+        Assert.True(g.Session.RepeatedMovement);
+        Assert.Equal(SessionState.ActionMode.MovingUnit, g.Session.Mode);
+        int rallyCountBefore = g.Map.RallySoundCount;
+
+        // Long-press (4,1), an empty Red tile — every unmoved unit
+        // gravitates toward it. Rally must fire AND the flag must clear.
+        g.Map.SimulateLongClick(g.State.Grid.Get(HexCoord.FromOffset(4, 1)));
+
+        Assert.False(g.Session.RepeatedMovement);
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+        Assert.Equal(rallyCountBefore + 1, g.Map.RallySoundCount);
+    }
+
+    [Fact]
+    public void Redo_AfterAutoAdvancedMove_ReappliesMoveAndAutoAdvance()
+    {
+        var g = new ThreeUnitsRedGame();
+        g.SelectRed();
+        g.Hud.PressNextUnit();
+        g.Map.SimulateClick(g.State.Grid.Get(HexCoord.FromOffset(4, 1)));
+        g.Hud.ClickUndoLast(); // back to pre-place
+
+        g.Hud.ClickRedoLast(); // re-apply move + auto-advance
+
+        Assert.Null(g.State.Grid.Get(g.UnitA)!.Unit);
+        Assert.NotNull(g.State.Grid.Get(HexCoord.FromOffset(4, 1))!.Unit);
+        Assert.True(g.Session.RepeatedMovement);
+        Assert.Equal(g.UnitB, g.Session.MoveSource);
+    }
+
     // --- Build tower ------------------------------------------------------
 
     [Fact]
