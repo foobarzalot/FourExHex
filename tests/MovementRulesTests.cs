@@ -904,4 +904,52 @@ public class MovementRulesTests
         Assert.Same(unit, grid.Get(HexCoord.FromOffset(2, 0))!.Unit);
         Assert.False(unit.HasMovedThisTurn);
     }
+
+    // --- HasUnmovedUnitsOwnedBy ------------------------------------------
+
+    [Fact]
+    public void HasUnmovedUnitsOwnedBy_ReturnsTrue_WhenTerritoryHasUnmovedUnit()
+    {
+        HexGrid grid = BuildGrid(3, 1, Red);
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(Red);
+        var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        Territory red = territories.First(t => t.Owner == Red);
+
+        Assert.True(MovementRules.HasUnmovedUnitsOwnedBy(red, Red, grid));
+    }
+
+    [Fact]
+    public void HasUnmovedUnitsOwnedBy_ReturnsFalse_WhenAllUnitsHaveMoved()
+    {
+        HexGrid grid = BuildGrid(3, 1, Red);
+        var u = new Unit(Red) { HasMovedThisTurn = true };
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = u;
+        var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        Territory red = territories.First(t => t.Owner == Red);
+
+        Assert.False(MovementRules.HasUnmovedUnitsOwnedBy(red, Red, grid));
+    }
+
+    [Fact]
+    public void HasUnmovedUnitsOwnedBy_ReturnsFalse_WhenOnlyOpponentUnitsPresent()
+    {
+        // The territory is Red's, but the unit standing on it is owned by
+        // Blue (e.g. via mid-capture inspection). Owner filter must skip it.
+        HexGrid grid = BuildGrid(3, 1, Red);
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(Blue);
+        var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        Territory red = territories.First(t => t.Owner == Red);
+
+        Assert.False(MovementRules.HasUnmovedUnitsOwnedBy(red, Red, grid));
+    }
+
+    [Fact]
+    public void HasUnmovedUnitsOwnedBy_ReturnsFalse_OnEmptyTerritory()
+    {
+        HexGrid grid = BuildGrid(3, 1, Red);
+        var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        Territory red = territories.First(t => t.Owner == Red);
+
+        Assert.False(MovementRules.HasUnmovedUnitsOwnedBy(red, Red, grid));
+    }
 }

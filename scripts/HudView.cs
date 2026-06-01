@@ -71,6 +71,7 @@ public partial class HudView : OrientationHud, IHudView
     private HudIconButton _redoLastButton = null!;
     private bool _undoRedoLocked;
     private bool _victoryOverlaySuppressed;
+    private HudIconButton _nextUnitButton = null!;
     private HudIconButton _nextTerritoryButton = null!;
     private HudIconButton _endTurnButton = null!;
     private HudIconButton _optionsButton = null!;
@@ -289,6 +290,16 @@ public partial class HudView : OrientationHud, IHudView
         };
         AudioBus.AttachClick(_redoLastButton);
         _undoCluster.AddChild(_redoLastButton);
+
+        // Next unmoved unit in the selected territory — same action as
+        // the N hotkey. Sits to the LEFT of Next Territory so the two
+        // "next ..." buttons read as a stepped pair. Disabled when no
+        // unmoved units remain in the selection; highlighted while
+        // SessionState.RepeatedMovement is on.
+        _nextUnitButton = new HudIconButton(HudIcon.NextUnit);
+        _nextUnitButton.Pressed += () => NextUnitClicked?.Invoke();
+        AudioBus.AttachClick(_nextUnitButton);
+        _controlsCluster.AddChild(_nextUnitButton);
 
         // Next active territory — same action as the Tab hotkey. Disabled
         // exactly when End Turn is the CTA (no actionable territory left).
@@ -1638,6 +1649,22 @@ public partial class HudView : OrientationHud, IHudView
         // Mirrors the End Turn CTA: disabled exactly when the current player
         // has no actionable territory left (the same flag that lights End Turn).
         _nextTerritoryButton.Disabled = !hasActionableRemaining;
+
+        // Next Unit: enabled iff the selected territory has at least one
+        // unmoved current-player unit (mirrors the N hotkey's no-op
+        // semantic). Selected lights up while repeated-movement is on
+        // (parallel to Buy/Build buttons mirroring their Mode), but
+        // only if the button is also enabled — a disabled button must
+        // never show the white active ring, even if the underlying
+        // RepeatedMovement bit is still set (e.g. after Tab-cycling to
+        // a territory with no movables).
+        bool hasMovableInSelection = selected != null
+            && MovementRules.HasUnmovedUnitsOwnedBy(selected, state.Turns.CurrentPlayer.Id, state.Grid);
+        _nextUnitButton.Disabled = !hasMovableInSelection;
+        _nextUnitButton.Selected = hasMovableInSelection && session.RepeatedMovement;
+        _nextUnitButton.TooltipText = hasMovableInSelection
+            ? HudIconButton.DefaultTooltip(HudIcon.NextUnit)
+            : "No unmoved units to cycle";
         // End Turn CTA styling is driven by GameController.RefreshViews
         // post-Refresh so Tutorial Preview's onAfterRefresh callback can
         // overwrite it (e.g. light it for an EndTurn scripted beat even

@@ -14,6 +14,24 @@ using System.Collections.Generic;
 public static class MovementRules
 {
     /// <summary>
+    /// True iff <paramref name="territory"/> contains at least one unit
+    /// owned by <paramref name="owner"/> whose
+    /// <see cref="Unit.HasMovedThisTurn"/> is false. Cheap predicate
+    /// counterpart to the controller's sorted-movable enumeration —
+    /// useful for HUD "any unmoved units to cycle?" checks where the
+    /// caller doesn't need the list itself.
+    /// </summary>
+    public static bool HasUnmovedUnitsOwnedBy(Territory territory, PlayerId owner, HexGrid grid)
+    {
+        foreach (HexCoord coord in territory.Coords)
+        {
+            Unit? unit = grid.Get(coord)?.Unit;
+            if (unit != null && unit.Owner == owner && !unit.HasMovedThisTurn) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
     /// Returns every coord a level-<paramref name="attackerLevel"/> unit
     /// in <paramref name="attackerTerritory"/> could legally move to.
     /// The <paramref name="allTerritories"/> list is used to determine

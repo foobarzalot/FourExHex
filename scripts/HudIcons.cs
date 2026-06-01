@@ -66,13 +66,59 @@ public static class HudIcons
     }
 
     /// <summary>
-    /// "Next active territory" glyph: a gold capital star (mirroring the
-    /// in-map capital marker), centered and sized to fill the button so it
-    /// reads at HUD-button scale. Silhouettes via its gold fill like
-    /// Tower/Gear; <paramref name="modulate"/> dims it when disabled.
+    /// Math-vector-style arrow used by the two "Next ..." glyphs: a
+    /// horizontal line with a filled triangular arrowhead at the right
+    /// end (→). Matches the filled-triangle arrowhead style of the
+    /// undo/redo curved arrows for icon-family consistency. Sits in the
+    /// top sliver of the button so the per-button symbol (capital star
+    /// for territory, Recruit ring for unit) can keep its original full
+    /// size below it.
     /// </summary>
-    public static void DrawNextTerritory(CanvasItem t, Vector2 center, float radius, Color modulate)
+    private static void DrawNextArrow(CanvasItem t, Vector2 center, float radius, Color stroke)
     {
+        float y = -radius * 0.95f;
+        float xTail = -radius * 0.50f;
+        float xBase =  radius * 0.35f;   // arrowhead base / line endpoint
+        Vector2 tail = center + new Vector2(xTail, y);
+        Vector2 baseMid = center + new Vector2(xBase, y);
+        t.DrawLine(tail, baseMid, stroke, StrokeWidth);
+        // Filled triangular arrowhead, same construction as the undo/redo
+        // arrows. Sized to match the doubled-undo outer arrowhead
+        // (headLen = r*0.85 * 0.55 ≈ 0.468r, headHalf = r*0.85 * 0.30
+        // ≈ 0.255r) so the icon family reads at the same arrowhead scale.
+        float headLen = radius * 0.468f;
+        float headHalf = radius * 0.255f;
+        Vector2 apex = baseMid + new Vector2(headLen, 0f);
+        Vector2 baseUp = baseMid + new Vector2(0f, -headHalf);
+        Vector2 baseDown = baseMid + new Vector2(0f, +headHalf);
+        t.DrawColoredPolygon(new[] { apex, baseUp, baseDown }, stroke);
+    }
+
+    /// <summary>
+    /// "Next unit in territory" glyph: a single Recruit-style ring (line
+    /// only, matching <see cref="DrawUnit"/>'s recruit ring scale) shifted
+    /// down to make room for the math-vector arrow above. Stroke-only so
+    /// it inverts on the CTA stylebox like other line glyphs.
+    /// </summary>
+    public static void DrawNextUnit(CanvasItem t, Vector2 center, float radius, Color stroke)
+    {
+        DrawNextArrow(t, center, radius, stroke);
+        Vector2 ringCenter = center + new Vector2(0f, radius * 0.20f);
+        DrawRing(t, ringCenter, radius * 0.62f, stroke);
+    }
+
+    /// <summary>
+    /// "Next active territory" glyph: a gold capital star at its
+    /// original full size shifted down to sit below the math-vector
+    /// arrow. The two "next" buttons read as a family via the shared
+    /// arrow. Star uses <paramref name="modulate"/> for disabled
+    /// dimming; the arrow uses <paramref name="stroke"/> so it flips
+    /// with the CTA stylebox.
+    /// </summary>
+    public static void DrawNextTerritory(CanvasItem t, Vector2 center, float radius, Color stroke, Color modulate)
+    {
+        DrawNextArrow(t, center, radius, stroke);
+        Vector2 starCenter = center + new Vector2(0f, radius * 0.20f);
         float outer = radius * 0.82f;
         float inner = outer * 0.4f;
         var verts = new Vector2[10];
@@ -80,7 +126,7 @@ public static class HudIcons
         {
             float angle = -Mathf.Pi / 2f + i * Mathf.Pi / 5f;
             float r = (i % 2 == 0) ? outer : inner;
-            verts[i] = center + new Vector2(r * Mathf.Cos(angle), r * Mathf.Sin(angle));
+            verts[i] = starCenter + new Vector2(r * Mathf.Cos(angle), r * Mathf.Sin(angle));
         }
         t.DrawColoredPolygon(verts, new Color(0.97f, 0.80f, 0.22f, 1f) * modulate);
         for (int i = 0; i < 10; i++)

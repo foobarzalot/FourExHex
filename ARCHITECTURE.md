@@ -994,10 +994,29 @@ dot, mirroring `HexMapView`'s in-map unit visuals), `DrawTower`,
 `DrawTree`, `DrawCapital`, `DrawHand` (all reused by
 `HexPaletteButton`), `DrawCurvedArrow` (single + nested-concentric
 doubled variants for Undo Last / Undo All / Redo Last / Redo All),
-`DrawEndTurnTriangle`, `DrawGear`. Stroke-only glyphs (recruit
-ring, undo/redo arrows, End Turn triangle) paint white on the dark
-HUD bar and flip to black via `HudIconButton.CtaActive` while the
-End Turn CTA stylebox is on (the bg goes white during pulse).
+`DrawEndTurnTriangle`, `DrawGear`. The two "next ..." buttons
+(`DrawNextUnit`, `DrawNextTerritory`) share an arrow-above-symbol
+composition via the private `DrawNextArrow` helper: a horizontal
+math-vector arrow (line + filled triangular arrowhead, same
+construction as `DrawSingleCurvedArrow`'s arrowhead and sized to
+match the doubled-undo outer arrow — `headLen = 0.468r`,
+`headHalf = 0.255r`) at the top of the button, the per-button
+symbol (Recruit ring vs gold capital star, both at their original
+full size and shifted down `0.20r`) below it. Stroke-only glyphs
+(recruit ring, undo/redo arrows, the next-arrow line, End Turn
+triangle) paint white on the dark HUD bar and flip to black via
+`HudIconButton.CtaActive` while the End Turn CTA stylebox is on
+(the bg goes white during pulse).
+
+The play HUD's right-side controls cluster orders
+`NextUnit → NextTerritory → EndTurn (→ Options in landscape)`.
+`NextUnit` fires the same `NextUnitClicked` event as the N hotkey;
+its `Selected` mirrors `SessionState.RepeatedMovement` (gated on
+the button also being enabled — a disabled button never shows the
+white `Selected` ring), and its `Disabled` flag mirrors
+`MovementRules.HasUnmovedUnitsOwnedBy` on the selected territory —
+greyed out with the disabled-reason tooltip "No unmoved units to
+cycle" when there's nothing to walk.
 
 Static tooltips ("`<label> — <hotkey>`") are owned by
 `HudIconButton.DefaultTooltip(HudIcon)` — a single source of truth
