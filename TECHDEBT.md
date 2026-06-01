@@ -2,7 +2,23 @@
 
 Running list of known issues, flaky tests, and shortcuts that should eventually be cleaned up. Add new entries at the top.
 
-## iPhone HUD undersized: DisplayScale floors `factor` to 1.0 below 160 baseline
+## iPhone HUD undersized: DisplayScale floors `factor` to 1.0 below 160 baseline [RESOLVED 2026-05-31]
+
+**RESOLUTION:** added a unified mobile floor via
+`DisplayScaleMath.MobileMinFactor = 1.8f` and a `OS.HasFeature("mobile")` gate
+in `scripts/DisplayScale.cs`. On-device confirmation from iPhone 13 mini
+(2026-05-31): `DisplayScale: dpi=476 osScale=3 logicalDpi=158.67 isMobile=True
+minFactor=1.8 factor=1.8 logicalViewport=(625, 1353)` portrait and
+`(1353, 625)` landscape — vs. the prior `factor=1.0 logicalViewport=(1125,
+2436)`. The 96-logical-px HUD bar now renders at ~9 mm physical instead of
+~5 mm, comfortably above Apple HIG's 44 pt minimum. S9 unaffected (natural
+factor 2.22 / 1.67 exceeds the floor); desktop unaffected (`isMobile=False`).
+Same gate covers any future Android device whose natural factor underperforms.
+
+Also added `FOUREXHEX_UI_SCALE` env override in `DisplayScale.Apply()` so a
+dev Mac can reproduce a device's pixel-for-pixel factor without shipping to
+the device (see RELEASE.md §6 Option B). The original problem and candidate
+fixes are kept below for context.
 
 **Where:** discovered 2026-05-30 reading the first device-capture of
 `DisplayScale:` from an iPhone 13 mini (iPhone14,4, iOS 26.5; numbers

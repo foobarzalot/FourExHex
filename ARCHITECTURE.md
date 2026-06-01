@@ -493,11 +493,12 @@ motivating case: HUD buttons too small to tap on high-DPI phones). It reads the
 active screen's DPI and drives the root `Window.ContentScaleFactor`:
 
 - The pure clamp math lives in the Godot-free model assembly —
-  `DisplayScaleMath.FactorForDpi(logicalDpi)` = `clamp(logicalDpi / 160, 1.0,
-  3.0)` (160 = Android mdpi baseline; floored at 1.0 so design size is the
-  minimum; capped at 3.0). It's unit-tested; the autoload is the thin Godot
-  adapter that reads `DisplayServer.ScreenGetDpi` / `ScreenGetScale` and applies
-  the result.
+  `DisplayScaleMath.FactorForDpi(logicalDpi, minFactor)` =
+  `clamp(logicalDpi / 160, max(minFactor, 1.0), 3.0)` (160 = Android mdpi
+  baseline; floored at the caller-supplied `minFactor`, never below `MinFactor`
+  = 1.0 so design size is the minimum; capped at 3.0). It's unit-tested; the
+  autoload is the thin Godot adapter that reads `DisplayServer.ScreenGetDpi` /
+  `ScreenGetScale` and applies the result.
 - **Logical DPI, not raw DPI.** Platforms like macOS render in OS-scaled logical
   points, so the adapter divides raw DPI by `ScreenGetScale` before applying the
   baseline — a 2× retina Mac (256 dpi ÷ 2 = 128 logical) floors to factor 1.0 and
@@ -506,6 +507,18 @@ active screen's DPI and drives the root `Window.ContentScaleFactor`:
   still scales up, just by less than raw density — factor ≈ 2.22 portrait / 1.67
   landscape there. See `RELEASE.md` §5 for the device data and `TECHDEBT.md` for
   the cross-device-consistency risk this creates.
+- **Unified mobile floor.** On `OS.HasFeature("mobile")` the adapter passes
+  `DisplayScaleMath.MobileMinFactor` (= 1.8) as the floor, so any mobile device
+  whose natural DPI factor would otherwise floor to 1.0 — notably iPhones, where
+  the logical-points system lands at ~158 dpi just under the 160 baseline —
+  gets pulled up to a tappable size. The S9's natural factor (2.22 / 1.67)
+  exceeds this floor and is unaffected; desktop is non-mobile and unaffected.
+  Same gate covers iOS + Android + any future mobile platform.
+- **Local repro / override.** `DisplayScale.Apply()` honors a
+  `FOUREXHEX_UI_SCALE` env var that bypasses the DPI computation and forces a
+  specific factor on any platform (takes precedence over the mobile floor).
+  Used to reproduce a device's pixel-for-pixel layout on the dev Mac without
+  shipping to the device — see RELEASE.md §6 Option B.
 - **Why it just works with the existing HUD.** `ContentScaleFactor` doesn't only
   enlarge 2D content — it also sets the GUI's logical layout size to
   `window / factor`. So `GetViewport().GetVisibleRect().Size` (read by

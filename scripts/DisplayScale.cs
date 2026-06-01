@@ -8,17 +8,24 @@ using Godot;
 /// map) and sets the GUI's logical layout size to <c>window / factor</c>, so the
 /// existing anchor-based HUD layout reflows with no per-widget changes.
 ///
-/// The factor is floored at 1.0 (see <see cref="DisplayScaleMath"/>) and desktop
-/// windows report a low logical DPI, so desktop rendering is unchanged — the
-/// floor is the implicit desktop gate, no platform check needed. The pure clamp
-/// math lives in the model assembly (<see cref="DisplayScaleMath"/>); this is the
-/// thin Godot-side adapter that reads DPI and applies it.
+/// On mobile platforms (<c>OS.HasFeature("mobile")</c>) the minimum factor is
+/// lifted to <see cref="DisplayScaleMath.MobileMinFactor"/> so touch targets
+/// stay tappable even on devices whose natural DPI factor floors to 1.0 (e.g.
+/// iPhones, whose Apple-points system lands at ~158 logical dpi, just under
+/// our 160 baseline). The S9 already sits above this floor and is unaffected;
+/// desktop is non-mobile and unaffected. See <see cref="DisplayScaleMath"/> for
+/// the pure clamp math.
 ///
 /// Window-level, so set once at startup and re-applied on viewport resize
 /// (device rotation, or window moving to a different-DPI monitor). It persists
 /// across scene swaps because every scene shares the one root Window. Registered
 /// as an autoload in project.godot under the name "DisplayScale", after
 /// LogBootstrap so <see cref="Log"/> is already wired.
+///
+/// The <c>FOUREXHEX_UI_SCALE</c> env var bypasses the DPI computation entirely
+/// and forces a specific factor — used to reproduce a device's scale locally
+/// (see RELEASE.md §6 Option B). Honored on all platforms; takes precedence
+/// over both the DPI path and the mobile floor.
 /// </summary>
 public partial class DisplayScale : Node
 {
@@ -31,19 +38,37 @@ public partial class DisplayScale : Node
 
     private void Apply()
     {
+        Window window = GetWindow();
+        bool isMobile = OS.HasFeature("mobile");
         int screen = DisplayServer.WindowGetCurrentScreen();
         float dpi = DisplayServer.ScreenGetDpi(screen);
-        // ScreenGetDpi reports physical density, but platforms like macOS
-        // already render in OS-scaled logical points (a 2x retina screen
-        // presents ~half its physical DPI). Divide by the OS display scale to
-        // recover the logical DPI the layout was authored against, so retina
-        // desktops floor to 1.0 instead of double-counting. Android reports
-        // scale 1.0, so its raw density still drives a scale-up.
+        // ScreenGetDpi reports physical density, but platforms like macOS already
+        // render in OS-scaled logical points (a 2x retina screen presents ~half
+        // its physical DPI). Divide by the OS display scale to recover the
+        // logical DPI the layout was authored against, so retina desktops floor
+        // to 1.0 instead of double-counting.
         float osScale = DisplayServer.ScreenGetScale(screen);
         float logicalDpi = dpi / Mathf.Max(osScale, 1f);
-        float factor = DisplayScaleMath.FactorForDpi(logicalDpi);
+        float minFactor = isMobile ? DisplayScaleMath.MobileMinFactor : DisplayScaleMath.MinFactor;
 
-        Window window = GetWindow();
+        // Env-var override wins. Lets a dev Mac reproduce an iPhone/Android
+        // factor locally without touching code (see RELEASE.md §6 Option B).
+        string overrideRaw = OS.GetEnvironment("FOUREXHEX_UI_SCALE");
+        float factor;
+        bool overrideActive;
+        if (!string.IsNullOrEmpty(overrideRaw)
+            && float.TryParse(overrideRaw, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float overrideFactor)
+            && overrideFactor > 0f)
+        {
+            factor = overrideFactor;
+            overrideActive = true;
+        }
+        else
+        {
+            factor = DisplayScaleMath.FactorForDpi(logicalDpi, minFactor);
+            overrideActive = false;
+        }
+
         // Setting ContentScaleFactor shrinks the logical viewport, which re-fires
         // SizeChanged → Apply. Skip the write (and the resulting recursion) when
         // unchanged, but still log so the path is observable on every call.
@@ -51,6 +76,8 @@ public partial class DisplayScale : Node
         if (changed) window.ContentScaleFactor = factor;
 
         string msg = $"DisplayScale: dpi={dpi} osScale={osScale} logicalDpi={logicalDpi} " +
+            $"isMobile={isMobile} minFactor={minFactor} " +
+            $"override={(overrideActive ? overrideRaw : "<none>")} " +
             $"screen={screen} window={window.Size} factor={factor} changed={changed} " +
             $"logicalViewport={GetViewport().GetVisibleRect().Size}";
         // A factor change is the noteworthy event (startup, monitor move); the

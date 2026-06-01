@@ -194,6 +194,13 @@ equivalent is `idevicesyslog` (Homebrew: `brew install libimobiledevice`) or
 `xcrun devicectl device process launch --console --device <UDID> com.foobarzalot.fourexhex`
 which attaches stdout to the foreground terminal.
 
+**Gotcha:** `devicectl ... --console` ties the on-device app's lifecycle to the
+host terminal session — killing the local `devicectl` process (Ctrl-C, pkill,
+or closing the terminal) **also terminates the app on the phone**. For a
+hands-off log capture that survives, prefer `idevicesyslog | grep ...` (or tap
+the app from the home screen and read Console.app separately) so the host- and
+device-side processes are independent.
+
 **Gotcha:** `FOUREXHEX_LOG` (the desktop log-config env var) can't be set on
 Android or iOS. So `LogBootstrap` force-enables **every** `Log` category on
 mobile builds. In a **release** build `Trace`/`Debug`/`Info` are compiled out,
@@ -290,10 +297,28 @@ FOUREXHEX_LOG="Render:Debug" "$GODOT" --path . scenes/play_tutorial.tscn --resol
 S9 *logical layout* at 1× — not the physical magnification; for that see Option B
 and the real device factors in §5.
 
-**Option B — reproduce the magnification too (not yet implemented).** Godot has
-no CLI flag or project-setting override for `ContentScaleFactor`, and the
-`DisplayScale` autoload recomputes the factor from DPI on launch anyway. To force
-a specific factor locally you'd add an `FOUREXHEX_UI_SCALE` env override in
-`DisplayScale.Apply()` (matching the existing `FOUREXHEX_LOG` / `FOUREXHEX_6AI`
-convention), then e.g. `FOUREXHEX_UI_SCALE=2.222 "$GODOT" --path . --resolution 1080x2220`
-would match the S9 pixel-for-pixel. This knob does not exist yet.
+**Option B — reproduce the magnification too.** `DisplayScale.Apply()` honors a
+`FOUREXHEX_UI_SCALE` env var that bypasses the DPI computation and forces a
+specific factor. Combined with `--resolution` (physical window size), this
+reproduces a device's pixel-for-pixel layout on the dev Mac:
+
+```
+GODOT="/Applications/Godot_mono.app/Contents/MacOS/Godot"
+
+# iPhone 13 mini PORTRAIT  (physical 1125×2436 at factor 1.8 → logical ~625×1353)
+FOUREXHEX_UI_SCALE=1.8 "$GODOT" --path . --resolution 1125x2436
+
+# iPhone 13 mini LANDSCAPE (physical 2436×1125 at factor 1.8)
+FOUREXHEX_UI_SCALE=1.8 "$GODOT" --path . --resolution 2436x1125
+
+# Galaxy S9 PORTRAIT  (physical 1080×2220 at factor 2.222)
+FOUREXHEX_UI_SCALE=2.222 "$GODOT" --path . --resolution 1080x2220
+
+# Galaxy S9 LANDSCAPE (physical 2220×1080 at factor 1.667)
+FOUREXHEX_UI_SCALE=1.667 "$GODOT" --path . --resolution 2220x1080
+```
+
+Prefix `FOUREXHEX_LOG="Display:Debug"` to see the `DisplayScale:` line confirm
+the override fired (`override=<value>` is set instead of `<none>`). The
+override takes precedence over both the DPI path and the mobile floor, on any
+platform.

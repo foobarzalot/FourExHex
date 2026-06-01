@@ -47,4 +47,51 @@ public class DisplayScaleMathTests
     {
         Assert.Equal(DisplayScaleMath.MaxFactor, DisplayScaleMath.FactorForDpi(10000f), Tolerance);
     }
+
+    [Fact]
+    public void FactorForDpi_MobileFloor_LiftsLowDensityToFloor()
+    {
+        // iPhone 13 mini: dpi=476/osScale=3 → logicalDpi=158.67, just under the
+        // 160 baseline. Without a mobile floor this floors to 1.0 (the user-
+        // reported "too small" symptom). With MobileMinFactor it lifts.
+        Assert.Equal(
+            DisplayScaleMath.MobileMinFactor,
+            DisplayScaleMath.FactorForDpi(158.67f, DisplayScaleMath.MobileMinFactor),
+            Tolerance);
+    }
+
+    [Fact]
+    public void FactorForDpi_MobileFloor_DoesNotLowerHighNaturalFactor()
+    {
+        // Galaxy S9 portrait: dpi=480/osScale=1.35 → logicalDpi≈355.5,
+        // natural factor ≈ 2.22. The mobile floor must not pull it down.
+        Assert.Equal(2.2222f, DisplayScaleMath.FactorForDpi(355.5556f, DisplayScaleMath.MobileMinFactor), Tolerance);
+    }
+
+    [Fact]
+    public void FactorForDpi_MobileFloor_DoesNotLowerMaxFactor()
+    {
+        // MaxFactor still wins over an absurdly high density even with the
+        // mobile floor in play.
+        Assert.Equal(DisplayScaleMath.MaxFactor, DisplayScaleMath.FactorForDpi(10000f, DisplayScaleMath.MobileMinFactor), Tolerance);
+    }
+
+    [Fact]
+    public void FactorForDpi_HeadlessWithMobileFloor_ReturnsFloor()
+    {
+        // A headless mobile rig (dpi<=0) should still see the mobile lift, not
+        // collapse to the desktop default of 1.0.
+        Assert.Equal(
+            DisplayScaleMath.MobileMinFactor,
+            DisplayScaleMath.FactorForDpi(0f, DisplayScaleMath.MobileMinFactor),
+            Tolerance);
+    }
+
+    [Fact]
+    public void FactorForDpi_SubMinFloor_GuardClampsFloorToOne()
+    {
+        // An adapter passing minFactor below 1.0 must not shrink design size
+        // below the authored MinFactor.
+        Assert.Equal(1.0f, DisplayScaleMath.FactorForDpi(96f, 0.5f), Tolerance);
+    }
 }
