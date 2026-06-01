@@ -2,6 +2,43 @@
 
 Running list of known issues, flaky tests, and shortcuts that should eventually be cleaned up. Add new entries at the top.
 
+## iOS App Store master icon may need an opaque 1024 PNG
+
+**Where:** noticed 2026-05-31 wiring up `tools/build_icon.py`. The committed
+`icon.svg` has a transparent canvas (the visible shape is just the red hex);
+Godot's iOS export rasterizes that into the 16 PNGs under
+`build/ios/FourExHex/Images.xcassets/AppIcon.appiconset/` with the same
+transparency.
+
+**Symptom:** App Store Connect has historically rejected app-icon submissions
+where the 1024×1024 master is not fully opaque. TestFlight + tethered dev
+installs accept transparent corners (iOS auto-applies its own rounded mask
+at render time), so the iPhone 13 mini build looks correct — but the
+first real App Store submission may fail validation with "Invalid Image —
+The icon cannot contain transparency."
+
+**Candidate fix:** add `icons/app_store_1024x1024="res://assets/icon/ios_1024.png"`
+to the iOS preset in `export_presets.cfg` and have `tools/build_icon.py`
+render a 1024×1024 PNG (opaque slate background + hex + 4X) into
+`assets/icon/ios_1024.png`. Same approach already used for the Android
+adaptive layers.
+
+## Android monochrome icon layer is unrendered
+
+**Where:** `export_presets.cfg`,
+`launcher_icons/adaptive_monochrome_432x432=""`.
+
+**Symptom:** on Android 13+ with "Themed icons" enabled, the launcher draws
+a tinted silhouette from the monochrome layer when the user picks themed
+icons. We don't provide one, so the launcher falls back to the regular
+adaptive foreground rendered in flat grayscale — works but loses brand
+consistency under themed mode.
+
+**Candidate fix:** add a third PNG generator to `tools/build_icon.py` —
+`assets/icon/android_mono_432.png` — drawing the hex outline + "4X" in
+**white** (or a single grayscale tone) on transparent at the same safe-
+zone sizing as the foreground. Wire to `launcher_icons/adaptive_monochrome_432x432`.
+
 ## iPhone HUD undersized: DisplayScale floors `factor` to 1.0 below 160 baseline [RESOLVED 2026-05-31]
 
 **RESOLUTION:** added a unified mobile floor via

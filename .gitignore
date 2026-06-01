@@ -24,3 +24,6 @@ Thumbs.db
 .vscode/
 *.swp
 .claude/
+
+# Python venvs (e.g. for tools/build_icon.py)
+.venv*/

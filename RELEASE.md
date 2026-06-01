@@ -50,6 +50,33 @@ into `res://android/build/` on first run (`/android/` is gitignored). .NET on
 Android is 64-bit only, so the preset enables **arm64-v8a only** — re-enabling a
 32-bit ABI breaks the publish step.
 
+### App icon assets
+
+The app icon is baked by `tools/build_icon.py` from the in-game palette
+(`UiPalette.Gold`, `GameSettings` player-0 red) and the DMSerifDisplay-Regular
+font, with the "4X" glyphs converted to SVG paths via `fontTools` (so the
+committed SVG has no system-font dependency). Re-run with
+`python3 tools/build_icon.py` after editing the script; needs `fonttools` +
+`Pillow` in a venv (see the module docstring). After regenerating, run
+`godot --headless --path . --import` so the next `build_*.sh` picks up the
+new rasters.
+
+Three files are emitted:
+
+| Path | Used by |
+|------|---------|
+| `icon.svg` (1024×1024, transparent) | macOS, iOS, Windows — via `project.godot`'s `config/icon` and the per-platform presets |
+| `assets/icon/android_fg_432.png` | Android — wired in `export_presets.cfg` as `launcher_icons/adaptive_foreground_432x432` |
+| `assets/icon/android_bg_432.png` | Android — wired as `launcher_icons/adaptive_background_432x432` |
+
+Android gets its own pair because Godot's auto-rasterized adaptive layers
+would scale `icon.svg` 1:1 into the 108 dp canvas, pushing the full-bleed
+hex outside the 72 dp safe square — every launcher mask then clips the hex
+points and heraldic border, leaving only the red interior and "4X" visible
+(reproduced on a Samsung S9). The dedicated foreground PNG renders the hex
+inside the safe square; the background PNG fills the masked area with the
+slate frame.
+
 ### Signing
 
 Debug and release keystores live **outside the repo** under `~/Library/Application
