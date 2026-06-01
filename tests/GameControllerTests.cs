@@ -3815,17 +3815,24 @@ public class GameControllerTests
     [Fact]
     public void RepeatedMovement_CaptureRebind_KeepsFlagAndAutoPicksInReboundTerritory()
     {
-        // 5x1 grid: Red at cols 0..3, Blue singleton at col 4. Capital
-        // lands on (0,0); place an unmoved Recruit at (1,0) and the
-        // attacker Recruit at (3,0). Attacker captures (4,0); the
-        // selection rebinds to the (now 5-tile) Red territory; auto-
-        // advance should pick (1,0).
+        // 7x1 grid: Red at cols 0..3, Blue at cols 4..6 with Trees on
+        // (4,0)+(5,0) so Blue's capital placement falls on (6,0) (the
+        // lex-min empty Blue tile). Trees defend 0 and the capital at
+        // (6,0) doesn't radiate to (4,0) (non-adjacent: (4,0)→(5,0)→(6,0)),
+        // so a Red Recruit can clear the tree at (4,0) — that's a capture
+        // (Blue→Red ownership flip + tree destroyed) but Blue still holds
+        // (5,0)+(6,0) with a capital, so the game continues and the
+        // capture-rebind path is exercised in isolation from game-over.
         var red = new Player("Red", PlayerId.FromIndex(0));
         var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new List<Player> { red, blue };
 
-        var grid = TestHelpers.BuildRectGrid(5, 1, red.Id);
+        var grid = TestHelpers.BuildRectGrid(7, 1, red.Id);
         grid.Get(HexCoord.FromOffset(4, 0))!.Owner = blue.Id;
+        grid.Get(HexCoord.FromOffset(5, 0))!.Owner = blue.Id;
+        grid.Get(HexCoord.FromOffset(6, 0))!.Owner = blue.Id;
+        grid.Get(HexCoord.FromOffset(4, 0))!.Occupant = new Tree();
+        grid.Get(HexCoord.FromOffset(5, 0))!.Occupant = new Tree();
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
@@ -3850,13 +3857,14 @@ public class GameControllerTests
         Assert.Equal(HexCoord.FromOffset(3, 0), session.MoveSource);
         Assert.True(session.RepeatedMovement);
 
-        // Capture the Blue singleton at (4,0).
+        // Capture (4,0) — Blue-owned tree-occupied tile, undefended.
         map.SimulateClick(grid.Get(HexCoord.FromOffset(4, 0)));
 
         Assert.True(session.RepeatedMovement);
         Assert.Equal(SessionState.ActionMode.MovingUnit, session.Mode);
-        // (3,0) is now empty; (1,0)'s Recruit is the only unmoved unit
-        // remaining in the rebound territory.
+        // (3,0) is now empty (the attacker moved to (4,0) with HasMoved=true);
+        // (1,0)'s Recruit is the only unmoved unit remaining in the rebound
+        // Red territory.
         Assert.Equal(HexCoord.FromOffset(1, 0), session.MoveSource);
     }
 

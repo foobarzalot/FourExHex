@@ -416,4 +416,34 @@ public class ClaimVictoryTests
         Assert.Equal(currentBefore, g.State.Turns.CurrentPlayerIndex);
         Assert.Empty(g.Session.ClaimVictoryPromptedHighestThreshold);
     }
+
+    [Fact]
+    public void ClaimVictoryWinNow_FromRepeatedMovementMode_ClearsPendingAction()
+    {
+        // Bug: pressing End Turn → claim-victory prompt → Win Now while
+        // mid-N-cycle in repeated-movement mode used to leave Mode and
+        // MoveSource set, so the HUD showed "Red Wins!" alongside the
+        // stale "Click to place a Soldier" action hint. The DeclareWinner
+        // path must clear pending-action state for all game-over paths.
+        var g = BuildGame(redCount: 6);
+        // Place a Red unit on a Red tile (BuildGame flips ownership but
+        // doesn't place units). (0,0) is Red after BuildGame; pick a Red
+        // tile likely to be non-capital so N has a movable unit to find.
+        g.State.Grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(Red);
+        Territory redT = g.State.Territories.First(t => t.Owner == Red);
+        g.Map.SimulateClick(g.State.Grid.Get(redT.Coords.First()));
+        g.Hud.PressNextUnit();
+        Assert.Equal(SessionState.ActionMode.MovingUnit, g.Session.Mode);
+        Assert.True(g.Session.RepeatedMovement);
+
+        g.Hud.ClickEndTurn();
+        Assert.True(g.Session.PendingClaimVictory.HasValue);
+
+        g.Hud.ClickClaimVictoryWinNow();
+
+        Assert.True(g.Session.IsGameOver);
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+        Assert.Null(g.Session.MoveSource);
+        Assert.False(g.Session.RepeatedMovement);
+    }
 }

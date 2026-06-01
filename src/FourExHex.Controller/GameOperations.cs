@@ -555,6 +555,15 @@ public class GameOperations
     public void DeclareWinner(PlayerId winnerColor)
     {
         _session.Winner = winnerColor;
+        // Any pending UI intent (buy/build/move + RepeatedMovement chain
+        // bit) is meaningless once the game is over — the action panel's
+        // "Click to place a ..." hint must not bleed through the win
+        // overlay. Clear pending action + chain bit + map overlays here
+        // so every game-over path (claim-victory WinNow, capture of last
+        // capital, turn-cap domination) is consistently quiet.
+        _session.RepeatedMovement = false;
+        _session.ClearPendingAction();
+        _map.ClearAllOverlays();
         Player? winnerPlayer = _state.Turns.Players
             .FirstOrDefault(p => p.Id == winnerColor);
         if (winnerPlayer != null && !winnerPlayer.IsAi)

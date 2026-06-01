@@ -1144,8 +1144,12 @@ public interface ITimerFactory { void After(int delayMs, Action callback); }
   different territory, a long-press rally (treated as a deliberate
   override of the passive sticky intent — buy/build/non-chained
   MovingUnit pending intents are still protected by rally's own
-  `Mode != None` guard), End Turn, or an auto-advance that finds no
-  remaining movables. `ClearPendingAction` deliberately does NOT
+  `Mode != None` guard), End Turn, game-over (any path through
+  `GameOperations.DeclareWinner` — claim-victory WinNow, capture of
+  the last enemy capital, turn-cap domination — clears pending action +
+  flag + map overlays so the win overlay isn't undercut by a stale
+  "Click to place a ..." action hint), or an auto-advance that finds
+  no remaining movables. `ClearPendingAction` deliberately does NOT
   clear it — `ExecuteMove`'s `FinishPendingAction` must run with the
   flag alive so the auto-advance hook can read it. Round-trips
   through `SessionStateSnapshot` so a single Undo rewinds both the
