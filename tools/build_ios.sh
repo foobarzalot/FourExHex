@@ -147,12 +147,22 @@ mkdir -p "$BUILD_DIR"
 "$GODOT" --headless --path "$PROJECT_DIR" "$GODOT_FLAG" "$PRESET" "$XCODEPROJ"
 [[ -d "$XCODEPROJ" ]] || fail "Godot export did not produce $XCODEPROJ"
 
+# Godot's iOS exporter hardcodes CODE_SIGN_IDENTITY = "Apple Distribution"
+# in the Release config alongside CODE_SIGN_STYLE = "Automatic". xcodebuild
+# archive's automatic signing picks "Apple Development" by default, so the
+# hardcoded "Apple Distribution" fires the "conflicting provisioning
+# settings" error. Strip the hardcoded identity so auto-signing handles
+# archive cleanly; the exportArchive step (method=app-store-connect) re-
+# signs with Apple Distribution as part of producing the .ipa, which is
+# the canonical Apple distribution workflow. No-op for Debug (which has
+# "Apple Development" — matches auto-signing's archive pick).
+sed -i '' 's|CODE_SIGN_IDENTITY = "Apple Distribution";|CODE_SIGN_IDENTITY = "";|g' \
+  "$XCODEPROJ/project.pbxproj"
+
 echo "==> Archiving with xcodebuild (this is the slow step, several minutes)"
-# Match xcodebuild's -configuration to MODE: Debug picks the "Apple
-# Development" signing identity (matches auto-signing for tethered USB
-# install); Release picks "Apple Distribution" (matches the App Store
-# Connect upload path). Mismatching them surfaces as "conflicting
-# provisioning settings" at archive time.
+# Archive uses auto-signing (Apple Development for both Debug and Release —
+# the Release distribution-signing happens at exportArchive time per the
+# ExportOptions.plist method).
 xcodebuild \
   -project "$XCODEPROJ" \
   -scheme FourExHex \

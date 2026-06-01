@@ -201,8 +201,45 @@ App Store Connect → My Apps → FourExHex → TestFlight under "Processing" fo
 ~15–30 min before becoming available to internal testers. External testers
 require a one-time Beta App Review (~24h) on the first build.
 
+**Signing fix in the archive step** — Godot's iOS exporter hardcodes
+`CODE_SIGN_IDENTITY = "Apple Distribution"` into the Release config of
+the generated `.xcodeproj`, alongside `CODE_SIGN_STYLE = "Automatic"`.
+xcodebuild's automatic archive signing picks "Apple Development" by
+default and treats the explicit "Apple Distribution" as a conflicting
+manual override, failing with *"FourExHex has conflicting provisioning
+settings."* `build_ios.sh` works around this by `sed`-stripping the
+hardcoded identity right after Godot exports, so archive auto-signs
+with Development and `xcodebuild -exportArchive` re-signs with
+Distribution per the export options plist (the canonical Apple
+distribution workflow).
+
+**Bump the build number for every TestFlight upload.** App Store
+Connect rejects duplicate `CFBundleVersion` values within the same
+`CFBundleShortVersionString`. Before each `tools/build_ios.sh release`,
+edit `export_presets.cfg` — the iOS preset's `application/version="N"`
+needs an increment (Apple Apple ID `6774765597`, bundle
+`com.foobarzalot.fourexhex`).
+
 `tools/build_ios.sh debug --no-upload` does the local build through .ipa and
 stops — useful for verifying signing locally without burning an upload slot.
+
+**Internal-group setup is web-UI-only (one-time).** Apple's API
+doesn't expose `isInternalGroup` as a writable attribute on
+`POST /v1/betaGroups`, so the first internal beta group must be
+created via App Store Connect → FourExHex → TestFlight → Internal
+Testing → "+". Add team users from the dropdown. Once the group
+exists, every subsequent operation (add/remove builds, add/remove
+testers, query state) is fully API-driven via `tools/asc_api.sh`.
+
+**App Store Connect helpers:**
+- `tools/asc_api.sh` — mints a JWT from the same creds `build_ios.sh`
+  uses and runs `curl` against `api.appstoreconnect.apple.com/v1$1`.
+  Never prints credentials. Usage: `tools/asc_api.sh /apps`, or
+  `tools/asc_api.sh -X POST -H 'Content-Type: application/json' -d '{...}' /betaGroups`.
+- `tools/check_testflight_status.sh` — one-shot read of the most
+  recent build's `processingState` (PROCESSING / VALID / INVALID /
+  EXPIRED). Useful for poll loops between upload and tester
+  visibility.
 
 ## 3. Reading logs on the device
 
