@@ -194,6 +194,11 @@ Consequences for the rest of this doc:
 │   ├─ click policy state machine:                                         │
 │   │    OnTileClicked     → pending-mode branch (buy/build/move)          │
 │   │                      → SetSelection branch                           │
+│   │                      (rejected clicks split: in-range near-miss      │
+│   │                       flashes + stays in mode; out-of-range flashes  │
+│   │                       + cancels mode + reselects. "In range" for     │
+│   │                       buy/move = in own territory or shares a border │
+│   │                       with it; for tower = in own territory only)    │
 │   │    OnTileLongClicked → rally: free-reposition every unmoved unit     │
 │   │                        in the territory toward the long-pressed     │
 │   │                        target (single undo step, fires             │

@@ -512,7 +512,13 @@ public class GameController
     {
         if (_session.IsGameOver) return;
 
-        // Handle any pending action mode first.
+        // Handle any pending action mode first. Rejected clicks split
+        // into two cases: "in range but blocked" (own-territory occupant,
+        // adjacent over-defended enemy) flashes + stays in mode so the
+        // user can adjust without re-pressing the button; "out of range"
+        // (no shared border with the selected territory; for tower,
+        // outside the selected territory entirely) cancels the mode and
+        // falls through to the normal selection branch.
         UnitLevel? buyLevel = SessionState.BuyModeLevel(_session.Mode);
         if (buyLevel.HasValue && tile != null && _session.SelectedTerritory != null)
         {
@@ -521,12 +527,15 @@ public class GameController
                 ExecuteBuyAndPlace(buyLevel.Value, tile.Coord);
                 return;
             }
-            // Invalid target: flash feedback to explain why, then cancel
-            // the buy mode (like Escape) and fall through to re-process
-            // the tap as a normal selection click.
             EmitRejection(buyLevel.Value, tile.Coord);
+            if (IsCoordReachableForUnitAction(tile.Coord, _session.SelectedTerritory))
+            {
+                Log.Debug(Log.LogCategory.Input,
+                    $"[Click] in-range invalid buy target at {tile.Coord} → flash + stay in buy mode");
+                return;
+            }
             Log.Debug(Log.LogCategory.Input,
-                $"[Click] invalid buy target at {tile.Coord} → flash + cancel mode, re-processing as selection");
+                $"[Click] out-of-range invalid buy target at {tile.Coord} → flash + cancel mode, re-processing as selection");
             CancelPendingAction();
         }
         else if (_session.Mode == SessionState.ActionMode.BuildingTower && tile != null && _session.SelectedTerritory != null)
@@ -536,9 +545,15 @@ public class GameController
                 ExecuteBuildTower(tile.Coord);
                 return;
             }
-            Log.Debug(Log.LogCategory.Input,
-                $"[Click] invalid build-tower target at {tile.Coord} ({DescribeInvalidTowerReason(tile.Coord)}) → flash + cancel mode, re-processing as selection");
             _map.FlashRejection(tile.Coord, RejectionShape.Tower, System.Array.Empty<HexCoord>());
+            if (IsCoordReachableForTowerAction(tile.Coord, _session.SelectedTerritory))
+            {
+                Log.Debug(Log.LogCategory.Input,
+                    $"[Click] in-territory invalid build-tower target at {tile.Coord} ({DescribeInvalidTowerReason(tile.Coord)}) → flash + stay in build mode");
+                return;
+            }
+            Log.Debug(Log.LogCategory.Input,
+                $"[Click] out-of-territory invalid build-tower target at {tile.Coord} ({DescribeInvalidTowerReason(tile.Coord)}) → flash + cancel mode, re-processing as selection");
             CancelPendingAction();
         }
         else if (_session.Mode == SessionState.ActionMode.MovingUnit && tile != null && _session.SelectedTerritory != null && _session.MoveSource.HasValue)
@@ -553,8 +568,14 @@ public class GameController
             {
                 EmitRejection(sourceUnit.Level, tile.Coord);
             }
+            if (IsCoordReachableForUnitAction(tile.Coord, _session.SelectedTerritory))
+            {
+                Log.Debug(Log.LogCategory.Input,
+                    $"[Click] in-range invalid move target at {tile.Coord} → flash + stay in move mode");
+                return;
+            }
             Log.Debug(Log.LogCategory.Input,
-                $"[Click] invalid move target at {tile.Coord} → flash + cancel mode, re-processing as selection");
+                $"[Click] out-of-range invalid move target at {tile.Coord} → flash + cancel mode, re-processing as selection");
             CancelPendingAction();
         }
 
@@ -1610,6 +1631,42 @@ public class GameController
         _map.ShowTowerCoverage(System.Array.Empty<HexCoord>());
         _map.ShowMoveSource(target);
         _ops.RefreshViews();
+    }
+
+    /// <summary>
+    /// True if <paramref name="coord"/> sits inside
+    /// <paramref name="territory"/> or shares a border with it — i.e.,
+    /// a unit move or freshly-bought recruit *could* legally end up
+    /// there given the right unit level / defender layout. Used by
+    /// <see cref="OnTileClickedBody"/> to distinguish in-range near-miss
+    /// clicks (flash + stay in mode) from out-of-range clicks (flash +
+    /// cancel mode).
+    /// </summary>
+    private static bool IsCoordReachableForUnitAction(HexCoord coord, Territory territory)
+    {
+        if (territory.Coords.Contains(coord)) return true;
+        foreach (HexCoord own in territory.Coords)
+        {
+            foreach (HexCoord neighbor in own.Neighbors())
+            {
+                if (neighbor.Equals(coord)) return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// True if <paramref name="coord"/> sits inside
+    /// <paramref name="territory"/>. Towers can only be built on the
+    /// selected territory's own tiles — adjacent enemy / friendly-
+    /// sibling / water tiles are out of range. Parallel to
+    /// <see cref="IsCoordReachableForUnitAction"/>; kept as a named
+    /// helper so the call site reads symmetrically and any future
+    /// expansion of tower rules has one place to update.
+    /// </summary>
+    private static bool IsCoordReachableForTowerAction(HexCoord coord, Territory territory)
+    {
+        return territory.Coords.Contains(coord);
     }
 
     /// <summary>

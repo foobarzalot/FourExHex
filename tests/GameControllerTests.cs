@@ -1594,21 +1594,23 @@ public class GameControllerTests
     }
 
     [Fact]
-    public void BuildTower_OnInvalidTarget_ClearsTowerTargets()
+    public void BuildTower_OnInTerritoryInvalidTarget_KeepsTargetPreview()
     {
-        // Rejected tower placement flashes feedback then cancels
-        // BuildingTower mode (like Escape), clearing the target preview.
+        // In-range near-miss (capital is inside the selected territory
+        // but already occupied): flash, stay in mode, keep the tower-
+        // target preview so the user can pick a different in-territory
+        // tile without re-pressing the build button.
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
         HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
         g.State.Treasury.SetGold(redCapital, 20);
 
         g.Hud.ClickBuildTower();
-        Assert.NotEmpty(g.Map.LastTowerTargets); // sanity: targets were shown
-        g.Map.SimulateClick(g.Tile(0, 1));       // capital — invalid
+        Assert.NotEmpty(g.Map.LastTowerTargets);
+        g.Map.SimulateClick(g.Tile(0, 1));       // capital — in-territory, occupied
 
-        Assert.Empty(g.Map.LastTowerTargets);
-        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+        Assert.NotEmpty(g.Map.LastTowerTargets);
+        Assert.Equal(SessionState.ActionMode.BuildingTower, g.Session.Mode);
     }
 
     [Fact]
@@ -2689,20 +2691,22 @@ public class GameControllerTests
     }
 
     [Fact]
-    public void BuildTower_OnInvalidTarget_ClearsCoverage()
+    public void BuildTower_OnInTerritoryInvalidTarget_KeepsCoverageTint()
     {
-        // Rejected tower placement flashes feedback then cancels
-        // BuildingTower mode (like Escape), clearing the coverage tint.
+        // In-range near-miss (tower-occupied tile inside the selected
+        // territory): flash, stay in BuildingTower mode, keep the
+        // coverage tint visible so the user can pick another in-territory
+        // tile without re-pressing the build button.
         var g = new FourStripGame(preExistingTowerAt: HexCoord.FromOffset(1, 0));
         g.Map.SimulateClick(g.Tile(0, 0));
         g.State.Treasury.SetGold(g.RedTerritory.Capital!.Value, 20);
         g.Hud.ClickBuildTower();
-        Assert.NotEmpty(g.Map.LastTowerCoverage); // sanity
+        Assert.NotEmpty(g.Map.LastTowerCoverage);
 
-        g.Map.SimulateClick(g.Tile(1, 0)); // tower-occupied → invalid
+        g.Map.SimulateClick(g.Tile(1, 0)); // tower-occupied, in-territory
 
-        Assert.Empty(g.Map.LastTowerCoverage);
-        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+        Assert.NotEmpty(g.Map.LastTowerCoverage);
+        Assert.Equal(SessionState.ActionMode.BuildingTower, g.Session.Mode);
     }
 
     [Fact]
@@ -3747,12 +3751,12 @@ public class GameControllerTests
     }
 
     [Fact]
-    public void RepeatedMovement_ClickOutsideOwnTerritory_ClearsFlag()
+    public void RepeatedMovement_AdjacentInvalidClick_KeepsFlagOn()
     {
-        // Clicking the Blue capital is an invalid target for a Recruit
-        // (capital radiates defense=1, attacker level=1, need strictly
-        // greater). The MovingUnit branch falls through to
-        // CancelPendingAction → flag clears.
+        // Clicking the (adjacent) Blue capital is an in-range near-miss
+        // (defended, Recruit can't capture). Under the in-range-stays
+        // policy, the move mode flashes but stays, so repeated-movement
+        // also persists — the user can adjust without losing context.
         var g = new ThreeUnitsRedGame();
         g.SelectRed();
         g.Hud.PressNextUnit();
@@ -3761,7 +3765,51 @@ public class GameControllerTests
         Territory blueT = g.State.Territories.First(t => t.Owner == g.Blue.Id);
         g.Map.SimulateClick(g.State.Grid.Get(blueT.Capital!.Value));
 
-        Assert.False(g.Session.RepeatedMovement);
+        Assert.True(g.Session.RepeatedMovement);
+        Assert.Equal(SessionState.ActionMode.MovingUnit, g.Session.Mode);
+    }
+
+    [Fact]
+    public void RepeatedMovement_FarAwayClick_ClearsFlag()
+    {
+        // A click that's truly out of range (non-adjacent enemy tile)
+        // cancels the mode → flag clears. Uses a custom 10x2 grid so
+        // there's a Blue tile far enough from Red to be unreachable
+        // (ThreeUnitsRedGame's 6x2 layout has every Blue tile adjacent
+        // to Red).
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
+        var players = new List<Player> { red, blue };
+
+        var grid = TestHelpers.BuildRectGrid(10, 2, blue.Id);
+        for (int col = 0; col <= 3; col++)
+        {
+            grid.Get(HexCoord.FromOffset(col, 1))!.Owner = red.Id;
+        }
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        session.ClaimVictoryPromptedHighestThreshold[red.Id] = 90;
+        session.ClaimVictoryPromptedHighestThreshold[blue.Id] = 90;
+        var map = new MockHexMapView();
+        var hud = new MockHudView();
+        var controller = new GameController(state, session, map, hud);
+        controller.StartGame();
+
+        // Drop a Recruit at (1,1) (post StartGame so the start-of-turn
+        // reset doesn't undo HasMoved state).
+        grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = new Unit(red.Id);
+
+        map.SimulateClick(grid.Get(HexCoord.FromOffset(0, 1))); // select Red
+        hud.PressNextUnit();
+        Assert.True(session.RepeatedMovement);
+
+        // (9,0) is at the far end of the grid — well beyond reach.
+        map.SimulateClick(grid.Get(HexCoord.FromOffset(9, 0)));
+
+        Assert.False(session.RepeatedMovement);
+        Assert.Equal(SessionState.ActionMode.None, session.Mode);
     }
 
     [Fact]
@@ -3928,8 +3976,9 @@ public class GameControllerTests
     [Fact]
     public void BuildTower_OnOccupiedTile_ClearsMode()
     {
-        // Rejected tower placement flashes feedback then cancels
-        // BuildingTower mode (like Escape). Gold unchanged (no build).
+        // Rejected tower placement on an in-territory occupied tile
+        // flashes feedback but stays in BuildingTower mode (in-range
+        // near-miss). Gold unchanged (no build).
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
         HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
@@ -3941,7 +3990,7 @@ public class GameControllerTests
         // (0,1) is Red's capital — occupied — not a valid tower target.
         g.Map.SimulateClick(g.Tile(0, 1));
 
-        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+        Assert.Equal(SessionState.ActionMode.BuildingTower, g.Session.Mode);
         Assert.Equal(20, g.State.Treasury.GetGold(redCapital));
     }
 
@@ -4456,10 +4505,12 @@ public class GameControllerTests
     }
 
     [Fact]
-    public void Click_InvalidTargetDuringBuildingTower_FlashesThenClearsMode()
+    public void Click_InvalidInTerritoryTowerSite_FlashesAndStaysInMode()
     {
-        // A rejected build-tower click (occupied tile) flashes a tower
-        // ghost then cancels build mode, just like Escape.
+        // In-range invalid clicks now flash + stay so the user can adjust
+        // without losing their mode. The capital tile sits inside the
+        // selected territory (the tower's allowed range) but is occupied,
+        // so it's an in-range near-miss → keep BuildingTower.
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
         HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
@@ -4467,8 +4518,30 @@ public class GameControllerTests
         g.Hud.ClickBuildTower();
         Assert.Equal(SessionState.ActionMode.BuildingTower, g.Session.Mode);
 
-        // (0, 1) is Red's capital — occupied, so an invalid tower site.
+        g.Map.SimulateClick(g.Tile(0, 1)); // capital — in-territory but occupied
+
+        Assert.Equal(SessionState.ActionMode.BuildingTower, g.Session.Mode);
+        Assert.NotNull(g.Session.SelectedTerritory);
+        Assert.Single(g.Map.Rejections);
+        Assert.Equal(RejectionShape.Tower, g.Map.LastRejection!.Value.Shape);
+    }
+
+    [Fact]
+    public void Click_TowerSiteOutsideTerritory_FlashesAndCancelsMode()
+    {
+        // A tower site outside the selected territory is genuinely out of
+        // range (tower can only build on own land), so the mode cancels
+        // and the fall-through reselects the clicked territory or
+        // deselects.
+        var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.RedTerritory.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 25);
+        g.Hud.ClickBuildTower();
+        Assert.Equal(SessionState.ActionMode.BuildingTower, g.Session.Mode);
+
+        // (2,0) is adjacent Blue land — out of tower's allowed range.
+        g.Map.SimulateClick(g.Tile(2, 0));
 
         Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
         Assert.Single(g.Map.Rejections);
@@ -4476,26 +4549,61 @@ public class GameControllerTests
     }
 
     [Fact]
-    public void Click_InvalidBuyTargetOnOwnUnit_CancelsThenPicksUpThatUnit()
+    public void Click_InvalidBuyTargetOnOwnUnit_FlashesAndStaysInMode()
     {
-        // Re-select case: in buy mode, tap an own-territory tile holding
-        // an unmoved unit the bought recruit can't combine with (a
-        // Commander). The tap is invalid for the buy, so it flashes +
-        // cancels the buy mode, then re-processes as a normal selection
-        // click — which picks the unit up into MovingUnit mode.
+        // Stacking on a friendly Commander in own territory is an
+        // in-range near-miss (in selected territory, just blocked by a
+        // non-combinable occupant). Stay in BuyingRecruit — the user
+        // probably mis-clicked one tile.
         var g = new TestGame();
         g.Tile(1, 1).Occupant = new Unit(g.Red.Id, UnitLevel.Commander);
         HexCoord redCapital = g.RedTerritory.Capital!.Value;
         g.State.Treasury.SetGold(redCapital, 20);
-        g.Map.SimulateClick(g.Tile(0, 1)); // select Red
+        g.Map.SimulateClick(g.Tile(0, 1));
         g.Hud.ClickBuyRecruit();
         Assert.Equal(SessionState.ActionMode.BuyingRecruit, g.Session.Mode);
 
         g.Map.SimulateClick(g.Tile(1, 1)); // own Commander — recruit can't combine
 
+        Assert.Equal(SessionState.ActionMode.BuyingRecruit, g.Session.Mode);
+        Assert.NotNull(g.Session.SelectedTerritory);
+        Assert.Single(g.Map.Rejections);
+    }
+
+    [Fact]
+    public void Click_BuyAdjacentDefendedEnemy_FlashesAndStaysInMode()
+    {
+        // Clicking an adjacent enemy tile that's too well defended is the
+        // canonical "in range but blocked" case. Stay in BuyingRecruit.
+        var g = new TestGame();
+        HexCoord redCapital = g.RedTerritory.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 20);
+        g.Map.SimulateClick(g.Tile(0, 1));
+        g.Hud.ClickBuyRecruit();
+
+        // Blue capital sits at (0,0) — adjacent to Red's territory but
+        // defends itself with strength 1 (Recruit can't capture).
+        Territory blueT = g.State.Territories.First(t => t.Owner == g.Blue.Id);
+        g.Map.SimulateClick(g.State.Grid.Get(blueT.Capital!.Value));
+
+        Assert.Equal(SessionState.ActionMode.BuyingRecruit, g.Session.Mode);
+        Assert.Single(g.Map.Rejections);
+    }
+
+    [Fact]
+    public void Click_MoveInvalidInRangeTarget_FlashesAndStaysInMode()
+    {
+        // Move mode + click on the territory's own capital (in-territory
+        // but unenterable). Stay in MovingUnit on the same source.
+        var g = new TestGame();
+        g.Tile(1, 1).Occupant = new Unit(g.Red.Id);
+        g.Map.SimulateClick(g.Tile(1, 1)); // pick up the unit
+        Assert.Equal(SessionState.ActionMode.MovingUnit, g.Session.Mode);
+
+        g.Map.SimulateClick(g.Tile(0, 1)); // capital — invalid landing but in-territory
+
         Assert.Equal(SessionState.ActionMode.MovingUnit, g.Session.Mode);
         Assert.Equal(HexCoord.FromOffset(1, 1), g.Session.MoveSource);
-        Assert.NotNull(g.Session.SelectedTerritory);
         Assert.Single(g.Map.Rejections);
     }
 
