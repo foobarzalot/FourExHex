@@ -260,13 +260,24 @@ public partial class MainMenuScene : Control
             nextRow++;
         }
 
-        var exitButton = new Button { Text = "Exit" };
-        exitButton.AddThemeFontSizeOverride("font_size", 26);
-        exitButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * nextRow);
-        exitButton.Size = new Vector2(buttonW, buttonH);
-        exitButton.Pressed += OnExitPressed;
-        AudioBus.AttachClick(exitButton);
-        panel.AddChild(exitButton);
+        // Suppress the app-quit button on mobile — Apple HIG (and Google Play
+        // guidance) discourage user-initiated quit on phones/tablets; the home
+        // gesture is the platform-native way out. Desktop builds still get it.
+        if (!OS.HasFeature("mobile"))
+        {
+            var exitButton = new Button { Text = "Exit" };
+            exitButton.AddThemeFontSizeOverride("font_size", 26);
+            exitButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * nextRow);
+            exitButton.Size = new Vector2(buttonW, buttonH);
+            exitButton.Pressed += OnExitPressed;
+            AudioBus.AttachClick(exitButton);
+            panel.AddChild(exitButton);
+            Log.Info(Log.LogCategory.Render, "MainMenu: Exit button rendered (desktop build).");
+        }
+        else
+        {
+            Log.Info(Log.LogCategory.Render, "MainMenu: Exit button suppressed (mobile build).");
+        }
 
         _landingDesignSize = new Vector2(panelW, panelH);
         return panel;
