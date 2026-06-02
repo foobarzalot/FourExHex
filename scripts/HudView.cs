@@ -210,6 +210,12 @@ public partial class HudView : OrientationHud, IHudView
             {
                 Disabled = true,
                 BuyLevel = level,
+                // Match the 80px height that other HudIconButtons render
+                // at (they stretch to the bar's 80px content area via
+                // HBox cross-axis Fill; the buy buttons sit in a
+                // ShrinkCenter palette panel, so without this override
+                // they'd shrink back to the 44×44 minimum).
+                CustomMinimumSize = new Vector2(44, 80),
             };
             button.Pressed += () => BuyUnitClicked?.Invoke(level);
             AudioBus.AttachClick(button);
@@ -228,6 +234,7 @@ public partial class HudView : OrientationHud, IHudView
             BuyLevel = UnitLevel.Recruit,
             TooltipText = "Buy unit — cycles affordable levels (U)",
             Visible = false,
+            CustomMinimumSize = new Vector2(44, 80),
         };
         _collapsedBuyButton.Pressed += () => BuyRecruitClicked?.Invoke();
         AudioBus.AttachClick(_collapsedBuyButton);
