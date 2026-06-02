@@ -61,13 +61,14 @@ committed SVG has no system-font dependency). Re-run with
 `godot --headless --path . --import` so the next `build_*.sh` picks up the
 new rasters.
 
-Three files are emitted:
+Four files are emitted:
 
 | Path | Used by |
 |------|---------|
 | `icon.svg` (1024×1024, transparent) | macOS, iOS, Windows — via `project.godot`'s `config/icon` and the per-platform presets |
 | `assets/icon/android_fg_432.png` | Android — wired in `export_presets.cfg` as `launcher_icons/adaptive_foreground_432x432` |
 | `assets/icon/android_bg_432.png` | Android — wired as `launcher_icons/adaptive_background_432x432` |
+| `assets/icon/splash_1024.png` (1024×1024, slate) | Godot runtime boot splash on all platforms (`project.godot` `boot_splash/image`) **and** iOS pre-engine launch storyboard (`export_presets.cfg` `storyboard/custom_image@2x` + `@3x`) |
 
 Android gets its own pair because Godot's auto-rasterized adaptive layers
 would scale `icon.svg` 1:1 into the 108 dp canvas, pushing the full-bleed
@@ -76,6 +77,16 @@ points and heraldic border, leaving only the red interior and "4X" visible
 (reproduced on a Samsung S9). The dedicated foreground PNG renders the hex
 inside the safe square; the background PNG fills the masked area with the
 slate frame.
+
+The splash PNG is *not* the same as `icon.svg` because (a) iOS launch
+storyboards take PNG only, no SVG, and (b) the splash needs an opaque
+slate background and a smaller hex (~70% of canvas) so the launch screen
+has breathing room on portrait phones once iOS Scale-to-Fit stretches the
+square image to the short axis. The `boot_splash/bg_color` in
+`project.godot` and the storyboard's `custom_bg_color` both match the PNG
+bg (`UiPalette.BgDeep` = `#23211d` = `Color(0.137, 0.129, 0.114, 1)`), so
+the area iOS or Godot fills around the image is indistinguishable from
+the image itself.
 
 ### Signing
 

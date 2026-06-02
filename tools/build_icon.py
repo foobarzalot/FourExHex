@@ -15,7 +15,14 @@ Emits, from the same palette + DMSerifDisplay glyph data:
    background for Android. Flat `UiPalette.BgDeep` so the area around the
    hex inside the mask reads as a warm slate frame.
 
-Run with `python3 tools/build_icon.py` to write all three. Re-runnable so
+4. `assets/icon/splash_1024.png` (1024x1024, opaque slate) -- shared boot
+   splash for the Godot runtime (`project.godot` `boot_splash/image`) AND
+   the iOS pre-engine launch storyboard (`export_presets.cfg`
+   `storyboard/custom_image@2x|@3x`). Same hex + "4X" centered at 70 % of
+   the canvas on a `UiPalette.BgDeep` field, so the launch screen reads as
+   the in-game frame with the icon inside.
+
+Run with `python3 tools/build_icon.py` to write all four. Re-runnable so
 sizing / palette can be tweaked in code, not by hand-editing the outputs.
 
 Requires: `pip install fonttools Pillow` (use a venv; not project deps).
@@ -37,6 +44,7 @@ SVG_PATH = REPO / "icon.svg"
 ANDROID_DIR = REPO / "assets" / "icon"
 ANDROID_FG_PATH = ANDROID_DIR / "android_fg_432.png"
 ANDROID_BG_PATH = ANDROID_DIR / "android_bg_432.png"
+SPLASH_PATH = ANDROID_DIR / "splash_1024.png"
 
 # Canvas — 1024 squared, transparent background. Like the default Godot icon
 # the visual shape IS the hex (no opaque rectangle behind it). This lets the
@@ -212,6 +220,34 @@ def build_android_background() -> Image.Image:
                      _hex_to_rgba(BG_DEEP))
 
 
+# ---------- Boot splash / iOS launch storyboard PNG ----------
+
+# 1024 canvas matches the SVG icon; the hex is shrunk to ~70 % so the launch
+# screen has slate margin around the icon (rather than the SVG icon's
+# full-bleed look, which gets uncomfortable on portrait phones once iOS's
+# Scale-to-Fit stretches the square image to fit the short axis).
+SPLASH_CANVAS = CANVAS
+SPLASH_CENTER = SPLASH_CANVAS / 2
+SPLASH_HEX_RADIUS = 350
+SPLASH_CAP_HEIGHT_PX = round(SPLASH_HEX_RADIUS * TARGET_CAP_HEIGHT_PX / HEX_RADIUS)
+SPLASH_BORDER_WIDTH = round(SPLASH_HEX_RADIUS * HEX_BORDER_WIDTH / HEX_RADIUS)
+
+
+def build_splash() -> Image.Image:
+    img = Image.new("RGBA", (SPLASH_CANVAS, SPLASH_CANVAS), _hex_to_rgba(BG_DEEP))
+    draw = ImageDraw.Draw(img)
+
+    vertices = hex_vertices(SPLASH_CENTER, SPLASH_CENTER, SPLASH_HEX_RADIUS)
+    draw.polygon(vertices, fill=RED)
+    closed = vertices + [vertices[0]]
+    draw.line(closed, fill=HEX_BORDER, width=SPLASH_BORDER_WIDTH, joint="curve")
+
+    font = _pillow_font_for_cap_height(SPLASH_CAP_HEIGHT_PX)
+    draw.text((SPLASH_CENTER, SPLASH_CENTER), TEXT,
+              font=font, fill=GOLD, anchor="mm")
+    return img
+
+
 def _hex_to_rgba(hex_color: str, alpha: int = 255):
     h = hex_color.lstrip("#")
     return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16), alpha)
@@ -238,6 +274,8 @@ def main():
     print(f"Wrote {ANDROID_FG_PATH}")
     build_android_background().save(ANDROID_BG_PATH, "PNG", optimize=True)
     print(f"Wrote {ANDROID_BG_PATH}")
+    build_splash().save(SPLASH_PATH, "PNG", optimize=True)
+    print(f"Wrote {SPLASH_PATH}")
 
 
 if __name__ == "__main__":

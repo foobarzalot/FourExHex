@@ -15,6 +15,11 @@ config/description="Hexagon Strategy Game"
 run/main_scene="res://scenes/main_menu.tscn"
 config/features=PackedStringArray("4.6", "C#", "GL Compatibility")
 config/icon="res://icon.svg"
+boot_splash/show_image=true
+boot_splash/image="res://assets/icon/splash_1024.png"
+boot_splash/fullsize=true
+boot_splash/use_filter=true
+boot_splash/bg_color=Color(0.137, 0.129, 0.114, 1)
 
 [autoload]
 
