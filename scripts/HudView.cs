@@ -317,10 +317,13 @@ public partial class HudView : OrientationHud, IHudView
 
         // End Turn uses the default Button theme — the SetCta() white
         // pulse remains the only "this is the current CTA" signal.
+        // End Turn is reparented per orientation (end of the controls cluster in
+        // landscape; the top display bar's right side in portrait, just left of
+        // Options), so it isn't added to a cluster here — the Build*Bars
+        // methods place it.
         _endTurnButton = new HudIconButton(HudIcon.EndTurn);
         _endTurnButton.Pressed += () => EndTurnClicked?.Invoke();
         AudioBus.AttachClick(_endTurnButton);
-        _controlsCluster.AddChild(_endTurnButton);
 
         // Single Options button — raises the same EscRequested event
         // the Escape key fires, so the scene root's pause coordinator
@@ -374,7 +377,10 @@ public partial class HudView : OrientationHud, IHudView
         HudBars.Detach(_controlsCluster);
         // Options floats between the controls cluster (landscape) and the top
         // bar (portrait); detach it so freeing the old bars can't free it.
+        // End Turn floats the same way (controls cluster in landscape, top bar
+        // in portrait); same lifecycle care.
         HudBars.Detach(_optionsButton);
+        HudBars.Detach(_endTurnButton);
     }
 
     /// <summary>Single bottom strip: status + gold (left), actions
@@ -406,6 +412,7 @@ public partial class HudView : OrientationHud, IHudView
         right.AddChild(_undoCluster);
         right.AddChild(BuildVerticalDivider());
         right.AddChild(_controlsCluster);
+        _controlsCluster.AddChild(_endTurnButton);
         _controlsCluster.AddChild(_optionsButton);
     }
 
@@ -430,6 +437,7 @@ public partial class HudView : OrientationHud, IHudView
 
         HBoxContainer topRight = HudBars.MakeAnchoredGroup(1f, Control.GrowDirection.Begin);
         topFrame.AddChild(topRight);
+        topRight.AddChild(_endTurnButton);
         topRight.AddChild(_optionsButton);
 
         BottomBar = HudBars.MakeBarPanel(top: false, height: PortraitBottomBarHeight,
