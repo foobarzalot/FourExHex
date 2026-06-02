@@ -941,6 +941,17 @@ public class GameController
 
         _ops.DispatchActionSound(destination, result, wasCombine);
 
+        // Combining is an explicit punctuation point in a streak of buys:
+        // even with gold left, exit the mode so the player re-presses the
+        // buy button to keep going. Otherwise, fall through to the QoL
+        // stay-in-mode logic below.
+        if (wasCombine)
+        {
+            Log.Debug(Log.LogCategory.Hud, $"Combine exited BuyingX at {destination}");
+            FinishPendingAction();
+            return;
+        }
+
         // QoL: stay in a buy mode for the highest level the (possibly
         // rebound) territory can still afford that is at most the level
         // just bought. Stay-at-same-level if still affordable; otherwise
@@ -1021,7 +1032,15 @@ public class GameController
 
         FinishPendingAction();
 
-        if (_session.RepeatedMovement)
+        // Combining is an explicit punctuation point in a streak of moves:
+        // clear the sticky flag so auto-advance stops and the player must
+        // re-press N to keep going. Captures still auto-advance.
+        if (wasCombine && _session.RepeatedMovement)
+        {
+            Log.Debug(Log.LogCategory.Hud, $"Combine cleared RepeatedMovement at {destination}");
+            _session.RepeatedMovement = false;
+        }
+        else if (_session.RepeatedMovement)
         {
             AutoAdvanceAfterMove(movedLevel, source, destination);
         }

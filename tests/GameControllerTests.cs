@@ -1519,6 +1519,28 @@ public class GameControllerTests
     }
 
     [Fact]
+    public void BuyRecruit_CombineOntoFriendlyUnit_ExitsBuyingMode_EvenIfAffordable()
+    {
+        // Combining is an explicit punctuation point in a streak of buys —
+        // even with gold left for another recruit, the mode exits so the
+        // player has to re-press Buy Recruit to continue.
+        var g = new TestGame();
+        var stationary = new Unit(g.Red.Id, UnitLevel.Recruit);
+        g.Tile(1, 1).Occupant = stationary;
+
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 25); // enough for two recruits
+
+        g.Hud.ClickBuyRecruit();
+        g.Map.SimulateClick(g.Tile(1, 1)); // combine onto stationary recruit
+
+        Assert.Equal(UnitLevel.Soldier, g.Tile(1, 1).Unit!.Level);
+        Assert.Equal(15, g.State.Treasury.GetGold(redCapital)); // affordability sanity
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+    }
+
+    [Fact]
     public void BuyRecruit_Capture_StaysInBuyingMode_IfMergedTerritoryStillAffordable()
     {
         // Capture rebinds the selection to the new territory; the
@@ -3650,6 +3672,37 @@ public class GameControllerTests
         Assert.True(g.Session.RepeatedMovement);
         Assert.Equal(SessionState.ActionMode.MovingUnit, g.Session.Mode);
         Assert.Equal(g.UnitB, g.Session.MoveSource);
+    }
+
+    [Fact]
+    public void RepeatedMovement_CombineWithFriendlyUnit_ClearsFlag_AndExitsMovingMode()
+    {
+        // Combining onto a friendly unit is an explicit punctuation point
+        // in a streak of moves — the sticky flag clears and Mode exits so
+        // the player has to re-press N to keep auto-advancing.
+        var g = new ThreeUnitsRedGame();
+        // Drop a stationary friendly recruit on the click target so the
+        // move from UnitA → (4,1) becomes a combine instead of an empty
+        // placement. Mark it already-moved so NextUnit's power-then-coord
+        // walk still picks UnitA first (otherwise it might land on (4,1)).
+        var stationary = new Unit(g.Red.Id, UnitLevel.Recruit);
+        stationary.HasMovedThisTurn = true;
+        g.State.Grid.Get(HexCoord.FromOffset(4, 1))!.Occupant = stationary;
+
+        g.SelectRed();
+        g.Hud.PressNextUnit(); // picks UnitA, flag → true
+        Assert.Equal(g.UnitA, g.Session.MoveSource);
+        Assert.True(g.Session.RepeatedMovement);
+
+        g.Map.SimulateClick(g.State.Grid.Get(HexCoord.FromOffset(4, 1))); // combine
+
+        // Combine happened: stationary recruit + moved recruit → Soldier.
+        Assert.Equal(UnitLevel.Soldier, g.State.Grid.Get(HexCoord.FromOffset(4, 1))!.Unit!.Level);
+        Assert.Null(g.State.Grid.Get(g.UnitA)!.Unit);
+        // Mode and sticky flag both exited.
+        Assert.False(g.Session.RepeatedMovement);
+        Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+        Assert.Null(g.Session.MoveSource);
     }
 
     [Fact]
