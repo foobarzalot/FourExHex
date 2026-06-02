@@ -1585,10 +1585,11 @@ public class GameController
     /// <summary>
     /// Cycle the move-source through the current player's unmoved units
     /// inside <see cref="SessionState.SelectedTerritory"/>. N goes forward
-    /// (lex-min first when nothing is picked up); Shift+N goes backward
-    /// (lex-max first). Acts exactly like clicking the next unit: enters
-    /// MovingUnit mode and re-emits the move-target ring. Does not pan
-    /// the camera — the territory is already in view.
+    /// (highest-power first when nothing is picked up; coord-lex within
+    /// a tier); Shift+N goes backward (lowest-power first). Acts exactly
+    /// like clicking the next unit: enters MovingUnit mode and re-emits
+    /// the move-target ring. Does not pan the camera — the territory is
+    /// already in view.
     /// </summary>
     private void OnNextUnitPressed() =>
         TrackHandler(() => StepUnitSelection(forward: true));
@@ -1672,10 +1673,11 @@ public class GameController
     /// <summary>
     /// Movable units in <paramref name="territory"/> owned by
     /// <paramref name="color"/> with HasMovedThisTurn=false, returned in
-    /// power-then-coord order: <see cref="UnitLevel"/> ascending (Recruit
-    /// → Commander), <see cref="HexCoord"/> lex within each tier. The
-    /// single source of truth for the N-cycle order and the auto-advance
-    /// next-unit pick after a successful move.
+    /// power-then-coord order: <see cref="UnitLevel"/> descending
+    /// (Commander → Recruit), <see cref="HexCoord"/> lex ascending
+    /// within each tier. The single source of truth for the N-cycle
+    /// order and the auto-advance next-unit pick after a successful
+    /// move.
     /// </summary>
     private List<HexCoord> SortedMovableCoords(Territory territory, PlayerId color)
     {
@@ -1691,7 +1693,7 @@ public class GameController
         }
         movable.Sort((a, b) =>
         {
-            int byLevel = a.Level.CompareTo(b.Level);
+            int byLevel = b.Level.CompareTo(a.Level);
             return byLevel != 0 ? byLevel : a.Coord.CompareTo(b.Coord);
         });
         var result = new List<HexCoord>(movable.Count);
@@ -1737,7 +1739,7 @@ public class GameController
         foreach (HexCoord c in movable)
         {
             Unit u = _state.Grid.Get(c)!.Unit!;
-            int byLevel = u.Level.CompareTo(movedLevel);
+            int byLevel = movedLevel.CompareTo(u.Level);
             int cmp = byLevel != 0 ? byLevel : c.CompareTo(movedSource);
             if (cmp > 0) { pick = c; break; }
         }
