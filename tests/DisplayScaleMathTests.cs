@@ -64,7 +64,10 @@ public class DisplayScaleMathTests
     public void FactorForDpi_MobileFloor_DoesNotLowerHighNaturalFactor()
     {
         // Galaxy S9 portrait: dpi=480/osScale=1.35 → logicalDpi≈355.5,
-        // natural factor ≈ 2.22. The mobile floor must not pull it down.
+        // natural factor ≈ 2.22. The mobile floor must not pull it down. (Since
+        // MobileMinFactor is now tuned to S9-portrait parity the natural factor
+        // and the floor coincide here; the assertion still proves clamping
+        // doesn't reduce a high natural value.)
         Assert.Equal(2.2222f, DisplayScaleMath.FactorForDpi(355.5556f, DisplayScaleMath.MobileMinFactor), Tolerance);
     }
 
@@ -93,5 +96,15 @@ public class DisplayScaleMathTests
         // An adapter passing minFactor below 1.0 must not shrink design size
         // below the authored MinFactor.
         Assert.Equal(1.0f, DisplayScaleMath.FactorForDpi(96f, 0.5f), Tolerance);
+    }
+
+    [Fact]
+    public void MobileMinFactor_IsTunedToS9PortraitParity()
+    {
+        // The mobile floor is tuned so iPhones (logical dpi ~158, just under the
+        // 160 baseline) get the same factor as the S9 portrait's natural ~2.22 —
+        // equalizing physical button size and logical viewport across the two
+        // reference devices. Pinned here so an accidental revert is caught by CI.
+        Assert.Equal(2.2222f, DisplayScaleMath.MobileMinFactor, Tolerance);
     }
 }

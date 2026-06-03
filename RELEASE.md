@@ -304,35 +304,46 @@ The `DisplayScale:` logcat line (Info on change, Debug otherwise) reports:
 
 ## 5. Known device data
 
-**Samsung Galaxy S9 (SM-G960U)** — FHD+ mode, debug APK, 2026-05-25:
+On mobile, the effective `factor` is `max(naturalFactor, MobileMinFactor)`
+where `naturalFactor = logicalDpi / 160` and `MobileMinFactor` is currently
+**2.2222** (S9-portrait parity — see `DisplayScaleMath.cs`). So natural values
+below the floor are lifted; values above are unaffected. The tables below
+show the **post-floor** factor that actually drives `ContentScaleFactor`, with
+the natural value in parentheses where the floor clamps.
 
-| Orientation | dpi | osScale | factor | window (phys) | logical viewport |
-|-------------|-----|---------|--------|---------------|------------------|
-| Portrait    | 480 | 1.35    | 2.22   | 1080 × 2220   | 486 × 999        |
-| Landscape   | 480 | 1.80    | 1.67   | 2220 × 1080   | 1332 × 648       |
+**Samsung Galaxy S9 (SM-G960U)** — FHD+ mode, debug APK, captured 2026-05-25;
+factor recomputed under current floor 2.2222:
+
+| Orientation | dpi | osScale | factor (natural) | window (phys) | logical viewport |
+|-------------|-----|---------|-------------------|---------------|------------------|
+| Portrait    | 480 | 1.35    | 2.22              | 1080 × 2220   | 486 × 999        |
+| Landscape   | 480 | 1.80    | 2.22 (1.67)       | 2220 × 1080   | 1000 × 486       |
 
 Notes: Android's `ScreenGetScale` is **not** 1.0 (my original assumption) and
-**varies by orientation**, so the factor is device- and orientation-dependent,
-not a clean function of density. On the S9 this lands at a usable size; see the
-portrait-overlap entry in `TECHDEBT.md` for the open risk on other devices.
+**varies by orientation**, so the natural factor is device- and orientation-
+dependent, not a clean function of density. S9-portrait sits exactly on the
+floor; S9-landscape was lifted from 1.67 → 2.22 when the floor moved to
+S9-portrait parity (this collapsed the landscape buy palette via the
+`FullBuyRowWidthLandscape=1300px` threshold — see `HudView`).
 
-**iPhone 13 mini (iPhone14,4)** — iOS 26.5 (build 23F77), debug build, captured
-2026-05-30 via `idevicesyslog | grep -E "DisplayScale:|SafeArea:"`:
+**iPhone 13 mini (iPhone14,4)** — iOS 26.5 (build 23F77), debug build,
+captured 2026-05-30 via `idevicesyslog | grep -E "DisplayScale:|SafeArea:"`;
+factor recomputed under current floor 2.2222:
 
-| Orientation | dpi | osScale | factor | window (phys) | logical viewport | safe insets (t,b,l,r) |
-|-------------|-----|---------|--------|---------------|------------------|------------------------|
-| Portrait    | 476 | 3       | 1.0    | 1125 × 2436   | 1125 × 2436      | 150, 102, 0, 0          |
-| Landscape   | 476 | 3       | 1.0    | 2436 × 1125   | 2436 × 1125      | 0, 60, 150, 150         |
+| Orientation | dpi | osScale | factor (natural) | window (phys) | logical viewport | safe insets (t,b,l,r) |
+|-------------|-----|---------|-------------------|---------------|------------------|------------------------|
+| Portrait    | 476 | 3       | 2.22 (0.99)       | 1125 × 2436   | 507 × 1097       | 150, 102, 0, 0          |
+| Landscape   | 476 | 3       | 2.22 (0.99)       | 2436 × 1125   | 1097 × 507       | 0, 60, 150, 150         |
 
 Notes: iOS's `ScreenGetScale` reports 3 (matching the iPhone's 3× retina);
 divided by raw 476 dpi → logical DPI 158.67, **just below the 160 baseline**,
-so `DisplayScaleMath` floors `factor` to 1.0 — design size 96 px maps to 96
-physical px ≈ 5 mm tall, well under Apple HIG's 44 pt (~7 mm) touch-target
-minimum. See the TECHDEBT entry for the open-question on whether to lower the
-baseline so iPhones scale up. The landscape `(L, R) = (150, 150)` insets are
+so the iPhone's natural factor is 0.99 → lifted to the floor 2.22 by the
+mobile clamp. This puts iPhone-portrait on near-identical logical viewport
+(507×1097) to S9-portrait (486×999), equalizing physical button size between
+the two reference devices. The landscape `(L, R) = (150, 150)` insets are
 the iPhone notch sitting on the rotated edge; the HUD bars currently only
 consume top/bottom safe insets, so in landscape the bars draw under the notch
-on the left/right edges — also tracked in TECHDEBT.
+on the left/right edges — tracked as part of GitHub issue #3.
 
 ## 6. Reproducing a device's scale locally
 

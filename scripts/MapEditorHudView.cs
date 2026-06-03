@@ -92,7 +92,8 @@ public partial class MapEditorHudView : OrientationHud
 
     // Persistent clusters, built once and reparented between the bars
     // (TopBar/BottomBar, owned by OrientationHud) on a landscape↔portrait flip.
-    private Control _seedCluster = null!;         // SEED field + Generate die
+    // Seed field + Generate die are reparented individually (not as a cluster)
+    // so each can be placed independently per orientation.
     private Control _landCluster = null!;         // six land swatches (collapses to the cycle button)
     private Control _toolsCluster = null!;        // terrain tools (water/tree/capital/tower) + hand
     private Control _undoCluster = null!;         // undo/redo
@@ -106,39 +107,44 @@ public partial class MapEditorHudView : OrientationHud
         // specific bars by ApplyLayout. The slate bar background + click-
         // blocking now live on the bar Panels (created in ApplyLayout), not a
         // standalone background. The clusters carry no parent until then.
-        _seedCluster = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Pass };
-        _seedCluster.AddThemeConstantOverride("separation", 14);
         _toolsCluster = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Pass };
         _toolsCluster.AddThemeConstantOverride("separation", 14);
         _undoCluster = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Pass };
         _undoCluster.AddThemeConstantOverride("separation", 8);
 
-        // SEED eyebrow + mono LineEdit laid out side-by-side, mirroring
-        // the play HUD's TURN / TO PLAY treatment.
-        var seedBlock = new HBoxContainer
-        {
-            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
-        };
-        seedBlock.AddThemeConstantOverride("separation", 10);
-        var seedEyebrow = new Label
-        {
-            Text = "SEED",
-            VerticalAlignment = VerticalAlignment.Center,
-            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
-        };
-        seedEyebrow.AddThemeFontSizeOverride("font_size", 20);
-        seedEyebrow.AddThemeColorOverride("font_color", UiPalette.Gold);
-        seedBlock.AddChild(seedEyebrow);
-
+        // Seed field — styled as a pill matching the gameplay HUD's gold chip
+        // (slate fill, line-soft border, 8px rounded corners, 10/6 content
+        // margins) so the editor's seed display reads as the same widget
+        // family as the play HUD's economy readouts. No SEED eyebrow — the
+        // pill chrome plus the die glyph next to it carry the meaning.
         _seedField = new LineEdit
         {
             CustomMinimumSize = new Vector2(120, 0),
-            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
             MaxLength = 4,
             Alignment = HorizontalAlignment.Right,
             Text = new System.Random().Next(SeedMin, SeedMax + 1).ToString(),
         };
         _seedField.AddThemeFontSizeOverride("font_size", 26);
+        var seedFieldStyle = new StyleBoxFlat
+        {
+            BgColor = UiPalette.BgDeep,
+            BorderColor = UiPalette.LineSoft,
+            BorderWidthLeft = 1,
+            BorderWidthRight = 1,
+            BorderWidthTop = 1,
+            BorderWidthBottom = 1,
+            CornerRadiusTopLeft = 8,
+            CornerRadiusTopRight = 8,
+            CornerRadiusBottomLeft = 8,
+            CornerRadiusBottomRight = 8,
+            ContentMarginLeft = 10,
+            ContentMarginRight = 10,
+            ContentMarginTop = 6,
+            ContentMarginBottom = 6,
+        };
+        _seedField.AddThemeStyleboxOverride("normal", seedFieldStyle);
+        _seedField.AddThemeStyleboxOverride("focus", seedFieldStyle);
+        _seedField.AddThemeStyleboxOverride("read_only", seedFieldStyle);
         _seedField.TextChanged += OnSeedTextChanged;
         // Intercept Enter while the seed field has focus — without
         // GuiInput, the LineEdit consumes the key before _UnhandledInput
@@ -146,8 +152,6 @@ public partial class MapEditorHudView : OrientationHud
         // keyboard with the field focused. Mirrors the seed field in
         // MainMenuScene.
         _seedField.GuiInput += OnSeedFieldGuiInput;
-        seedBlock.AddChild(_seedField);
-        _seedCluster.AddChild(seedBlock);
 
         // Six-sided die glyph in place of a "Generate" label — the
         // button rolls a fresh map seed, so the die reads as the
@@ -157,7 +161,6 @@ public partial class MapEditorHudView : OrientationHud
         _generateButton.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
         _generateButton.Pressed += OnGeneratePressed;
         AudioBus.AttachClick(_generateButton);
-        _seedCluster.AddChild(_generateButton);
 
         // Three visually-distinct palette groups: a rounded slate "land colors"
         // panel (the six player fills, presented as a radio group à la the play
@@ -311,32 +314,35 @@ public partial class MapEditorHudView : OrientationHud
 
     protected override void DetachClusters()
     {
-        HudBars.Detach(_seedCluster);
+        HudBars.Detach(_seedField);
+        HudBars.Detach(_generateButton);
         HudBars.Detach(_landCluster);
         HudBars.Detach(_toolsCluster);
         HudBars.Detach(_undoCluster);
         if (_optionsButton != null) HudBars.Detach(_optionsButton);
     }
 
-    /// <summary>Single bottom strip: seed + palette (left), undo/options (right)
-    /// — moved to the bottom for thumb reach, matching the play HUD.</summary>
+    /// <summary>Single bottom strip: land palette + seed/die (left),
+    /// undo/tools/options (right) — moved to the bottom for thumb reach,
+    /// matching the play HUD.</summary>
     protected override void BuildLandscapeBars()
     {
-        BottomBar = HudBars.MakeBarPanel(top: false, height: HudView.HudHeight,
-            safeAreaBottom: SafeArea.Current.Bottom);
+        BottomBar = HudBars.MakeBarPanel(top: false, height: HudView.HudHeight);
         AddChild(BottomBar);
-        Control frame = HudBars.MakeBarFrame(safeAreaBottom: SafeArea.Current.Bottom);
+        Control frame = HudBars.MakeBarFrame();
         BottomBar.AddChild(frame);
 
-        // Left edge: the six land-color swatches.
+        // Left edge: the six land-color swatches, then the seed pill + die
+        // immediately after — the seed cluster's left edge sits flush against
+        // the land cluster's right edge so the two read as one left-aligned
+        // group instead of a centered island.
         HBoxContainer left = HudBars.MakeAnchoredGroup(0f, Control.GrowDirection.End);
         frame.AddChild(left);
         left.AddChild(_landCluster);
-
-        // Centered: seed field + generate.
-        HBoxContainer center = HudBars.MakeAnchoredGroup(0.5f, Control.GrowDirection.Both);
-        frame.AddChild(center);
-        center.AddChild(_seedCluster);
+        _seedField.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+        left.AddChild(_seedField);
+        _generateButton.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+        left.AddChild(_generateButton);
 
         // Right corner: undo/redo first (just left of the water tool), then the
         // terrain tools + hand, then the options gear at the far right.
@@ -352,37 +358,58 @@ public partial class MapEditorHudView : OrientationHud
         }
     }
 
-    /// <summary>Portrait split: seed/generate + undo/redo/options on top; all
-    /// paint options on the bottom for thumb reach.</summary>
+    /// <summary>Portrait split: undo/redo + seed pill on top-left, die + options
+    /// on top-right; all paint options on the bottom for thumb reach.</summary>
     protected override void BuildPortraitBars()
     {
-        // Top bar: seed + generate (left) and undo/redo + options (right).
+        // Top bar: undo/redo + seed pill (left) and die + options (right).
         TopBar = HudBars.MakeBarPanel(top: true, height: HudView.HudHeight,
-            topOffset: TopOffsetPx, safeAreaTop: SafeArea.Current.Top);
+            topOffset: TopOffsetPx);
         AddChild(TopBar);
-        Control frame = HudBars.MakeBarFrame(safeAreaTop: SafeArea.Current.Top);
+        Control frame = HudBars.MakeBarFrame();
+        // On notched devices (iPhone portrait), drop the bottom 8px chrome
+        // inset so the seed pill bottom-aligns flush with the bar bottom edge
+        // — same treatment the gameplay HUD uses for the gold chip.
+        bool hasTopNotch = SafeArea.Current.Top > 0f;
+        if (hasTopNotch) frame.OffsetBottom = 0f;
         TopBar.AddChild(frame);
 
         HBoxContainer left = HudBars.MakeAnchoredGroup(0f, Control.GrowDirection.End);
         frame.AddChild(left);
-        left.AddChild(_seedCluster);
+        left.AddChild(_undoCluster);
+
+        // Seed pill + die — horizontally centered as a pair so their position
+        // is independent of undo width on the left and the options gear on the
+        // right. Both bottom-align under the notch on iOS so they sit flush
+        // with the bar's bottom edge (matching the gameplay HUD's gold chip),
+        // otherwise both center vertically. Pairing them here mirrors the
+        // landscape bottom-bar layout where they also sit side-by-side.
+        HBoxContainer center = HudBars.MakeAnchoredGroup(0.5f, Control.GrowDirection.Both);
+        frame.AddChild(center);
+        Control.SizeFlags pillAlign = hasTopNotch
+            ? Control.SizeFlags.ShrinkEnd
+            : Control.SizeFlags.ShrinkCenter;
+        _seedField.SizeFlagsVertical = pillAlign;
+        _generateButton.SizeFlagsVertical = pillAlign;
+        center.AddChild(_seedField);
+        center.AddChild(_generateButton);
 
         HBoxContainer right = HudBars.MakeAnchoredGroup(1f, Control.GrowDirection.Begin, separation: 8);
         frame.AddChild(right);
-        right.AddChild(_undoCluster);
         if (_optionsButton != null) right.AddChild(_optionsButton);
 
         // Bottom bar: all paint options (always visible — the editor has no
         // selection concept).
-        BottomBar = HudBars.MakeBarPanel(top: false, height: PortraitBottomBarHeight,
-            safeAreaBottom: SafeArea.Current.Bottom);
+        BottomBar = HudBars.MakeBarPanel(top: false, height: PortraitBottomBarHeight);
         AddChild(BottomBar);
         var bottomRow = new HBoxContainer
         {
             AnchorLeft = 0.5f, AnchorRight = 0.5f, AnchorTop = 0f, AnchorBottom = 1f,
-            // Match MakeBarFrame: 8px chrome inset + safe-area bottom so the
-            // paint clusters sit above the iOS home indicator.
-            OffsetTop = 8f, OffsetBottom = -(8f + SafeArea.Current.Bottom),
+            // Match MakeBarFrame: 8px chrome inset top/bottom. The bar's slate
+            // fill still extends into the home-indicator zone (see MakeBarPanel);
+            // letting the paint clusters fill that zone too means the bar reads
+            // at the S9-baseline 96 px visible-content height on notched devices.
+            OffsetTop = 8f, OffsetBottom = -8f,
             GrowHorizontal = Control.GrowDirection.Both,
             MouseFilter = Control.MouseFilterEnum.Pass,
         };
@@ -399,15 +426,15 @@ public partial class MapEditorHudView : OrientationHud
         // landscapeBarHeight at the bottom). The portrait top bar is always up
         // (no selection gating); its inset includes TopOffsetPx so a host
         // (tutorial builder) that slides the strip down is accounted for.
-        // Safe-area insets grow the reserved heights so the map doesn't draw
-        // under the bar's slate extension into the notch / home indicator.
-        var safe = SafeArea.Current;
+        // Bars overlap the iOS safe-inset zones (see MakeBarPanel), so map
+        // insets are just the bar heights — the map reclaims the safe-inset
+        // vertical space.
         return ScreenLayout.ComputeInsets(
             Orientation,
             topBarVisible: true,
-            landscapeBarHeight: HudView.HudHeight + safe.Bottom,
-            portraitTopBarHeight: TopOffsetPx + HudView.HudHeight + safe.Top,
-            portraitBottomBarHeight: PortraitBottomBarHeight + safe.Bottom);
+            landscapeBarHeight: HudView.HudHeight,
+            portraitTopBarHeight: TopOffsetPx + HudView.HudHeight,
+            portraitBottomBarHeight: PortraitBottomBarHeight);
     }
 
     private static HudIconButton MakeUndoButton(HudIcon icon, string tooltip, Action onShort, Action onLong)

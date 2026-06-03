@@ -513,17 +513,20 @@ active screen's DPI and drives the root `Window.ContentScaleFactor`:
   points, so the adapter divides raw DPI by `ScreenGetScale` before applying the
   baseline — a 2× retina Mac (256 dpi ÷ 2 = 128 logical) floors to factor 1.0 and
   is unchanged. Android *also* reports a non-1.0 `ScreenGetScale` that **varies by
-  orientation** (verified on a Galaxy S9: 1.35 portrait / 1.8 landscape), so it
-  still scales up, just by less than raw density — factor ≈ 2.22 portrait / 1.67
-  landscape there. See `RELEASE.md` §5 for the device data and `TECHDEBT.md` for
-  the cross-device-consistency risk this creates.
-- **Unified mobile floor.** On `OS.HasFeature("mobile")` the adapter passes
-  `DisplayScaleMath.MobileMinFactor` (= 1.8) as the floor, so any mobile device
-  whose natural DPI factor would otherwise floor to 1.0 — notably iPhones, where
-  the logical-points system lands at ~158 dpi just under the 160 baseline —
-  gets pulled up to a tappable size. The S9's natural factor (2.22 / 1.67)
-  exceeds this floor and is unaffected; desktop is non-mobile and unaffected.
-  Same gate covers iOS + Android + any future mobile platform.
+  orientation** (verified on a Galaxy S9: 1.35 portrait / 1.8 landscape), so the
+  *natural* factor differs by orientation — ≈ 2.22 portrait / 1.67 landscape on
+  the S9. See `RELEASE.md` §5 for the device data.
+- **Unified mobile floor at S9-portrait parity.** On `OS.HasFeature("mobile")` the
+  adapter passes `DisplayScaleMath.MobileMinFactor` (= 2.2222) as the floor — the
+  S9 portrait's natural factor, picked so the iPhone 13 mini (logical DPI ≈ 158,
+  just under the 160 baseline → raw factor ≈ 0.99) and the S9 portrait (natural
+  2.22) land on the *same* factor. That equalizes physical button size between
+  the two reference devices and produces near-identical logical viewports
+  (iPhone 507 × 1097, S9 486 × 999). Side effect: S9 landscape's natural ≈ 1.67
+  and iPhone landscape's ≈ 1.0 both get lifted to 2.22, so the buy palette
+  collapses (via `FullBuyRowWidthLandscape = 1300`) on both devices in landscape
+  — a consistency win, not a regression. Desktop is non-mobile and unaffected;
+  same gate covers iOS + Android + any future mobile platform.
 - **Local repro / override.** `DisplayScale.Apply()` honors a
   `FOUREXHEX_UI_SCALE` env var that bypasses the DPI computation and forces a
   specific factor on any platform (takes precedence over the mobile floor).
@@ -567,26 +570,34 @@ Dynamic Island / home-indicator zones on devices that have them.
   home indicator to compensate for, so Zero is correct and identical to the
   pre-safe-area layout. Android with cutouts benefits from the same code
   path as iOS.
-- **Edge-to-edge bar fill + content inset (iOS-standard).** `HudBars.MakeBarPanel`
-  takes `safeAreaTop` / `safeAreaBottom` params that GROW the bar's outer
-  extent into the safe zone (so the bar's slate background covers the notch /
-  home-indicator area); `MakeBarFrame` takes matching params that ADD to its
-  8-px chrome margin so the bar's *content* (buttons, status, gold chip)
-  stays inside the safe zone. The split mirrors how iOS UIKit nav/tab bars
-  work — chrome edge-to-edge, content respecting `safeAreaInsets`. The
-  pre-existing `topOffset`/`bottomOffset` params keep their unrelated
-  structural-inset meaning (tutorial builder hosting the editor HUD below
-  its own topbar) and compose cleanly with the new params.
+- **Bar overlaps iOS chrome (map reclaims safe-inset space).**
+  `HudBars.MakeBarPanel` builds a bar of exactly `height` logical px (no
+  safe-inset growth). The bar stays anchored to the viewport edge, so on a
+  notched device the bar's top edge (top bar) or bottom edge (bottom bar)
+  visually sits *under* the notch / home indicator — the iOS chrome carves
+  into the bar's slate fill, not into the map. `MakeBarFrame` is a plain
+  symmetric 8-px chrome inset; it no longer takes safe-area parameters.
+  `ComputeInsets` returns just `barHeight` (no `+ safe.Bottom` fold), so the
+  map reclaims the safe-inset vertical space that was previously reserved
+  for the bar's extension. The pre-existing `topOffset` / `bottomOffset`
+  params keep their structural-inset meaning (tutorial builder hosting the
+  editor HUD below its own topbar). The same "no safe-area fold" rule applies
+  to overlay positioning helpers (`PositionTutorialOverlay`,
+  `PositionBankruptToast`, the seed label drop position).
+- **Notch-aware widget tweaks for top-bar elements that risk being clipped.**
+  On `SafeArea.Current.Top > 0` (iOS portrait), the gameplay-HUD top bar
+  drops the frame's 8-px bottom chrome inset (`topFrame.OffsetBottom = 0f`)
+  and bottom-aligns the gold chip
+  (`_goldChip.SizeFlagsVertical = ShrinkEnd`) so its body sits flush with
+  the bar's bottom edge — below the notch overhang. Same treatment in
+  `MapEditorHudView.BuildPortraitBars` for the seed pill + die in the top
+  bar's center cluster. On non-notched devices both elements stay
+  `ShrinkCenter` and the symmetric chrome inset is preserved.
 - **Re-layout on inset change.** `OrientationHud` subscribes to
-  `SafeArea.Changed` and triggers an `ApplyLayout` + `PublishInsets` pass when
-  the OS reports a different safe rect (e.g. status-bar show/hide, rotation
-  crossing the notch axis). `ComputeInsets` folds the safe-area extents into
-  the `MapInsets` returned to `HexMapView` so the map reserves room for the
-  bar's grown visual height — otherwise map content would draw under the
-  bar's safe-zone extension. Same fold applies in `PositionTutorialOverlay`
-  (lift the tutorial box above the visible bar top, not the home-indicator-
-  covered bottom of the bar) and `PositionBankruptToast` (drop the toast past
-  the notch in both orientations).
+  `SafeArea.Changed` and triggers an `ApplyLayout` + `PublishInsets` pass
+  when the OS reports a different safe rect (e.g. status-bar show/hide,
+  rotation crossing the notch axis). The `hasTopNotch` conditional above
+  re-evaluates on each rebuild.
 
 ## GameController ↔ GameOperations split
 
@@ -2893,10 +2904,11 @@ disagree:
   `ComputeInsets`, plus the virtual `OnLayoutApplied` (post-flip) and
   `OnViewportMetricsChanged` (every resize). So the two HUDs can't drift
   on either the chrome or the coordination.
-  - *iOS notch / home-indicator handling* sits inside this same scaffolding
-    via the `safeAreaTop` / `safeAreaBottom` params on `MakeBarPanel` and
-    `MakeBarFrame` (see the *Safe-area handling (autoload)* section above).
-    `OrientationHud` also subscribes to `SafeArea.Changed` so a status-bar
+  - *iOS notch / home-indicator handling* sits inside this same scaffolding.
+    Bars are exactly `height` logical px and overlap the safe-inset zones
+    rather than extending past them, so map insets are just the bar heights
+    (see the *Safe-area handling (autoload)* section above for the model).
+    `OrientationHud` subscribes to `SafeArea.Changed` so a status-bar
     show/hide or rotation crossing the notch axis triggers a relayout.
   - *Landscape gameplay:* a single 96-px **bottom** bar (moved from the
     top for thumb reach) in three anchored zones — unit/tower purchase +
@@ -2908,18 +2920,25 @@ disagree:
     1100 px wide, and the buy palette collapses to the single cycling
     button below `FullBuyRowWidthLandscape`.
   - *Portrait gameplay:* a **top bar** of non-interactive display only —
-    turn # + swatch bar (firmly left-anchored so it doesn't shift as the
-    gold chip appears) + gold, with the Options gear at the top-right —
-    **always up**; and a **bottom bar** of all interactive controls —
-    the (collapsed) buy button + Build Tower at the left, undo/redo
-    **centered**, Next/End Turn at the right. The `TURN` eyebrow is
-    dropped, the swatch bar collapses below 820 px, and the buy palette
-    collapses below `FullBuyRowWidthPortrait`. The seed label hides.
+    swatch bar + turn # (swatches lead, turn block immediately right with
+    no divider so they read as one active-player display) + gold chip,
+    with End Turn + Options at the top-right — **always up**; and a
+    **bottom bar** of all interactive controls — the (collapsed) buy
+    button + Build Tower at the left, undo/redo **centered**, Next at
+    the right. The `TURN` eyebrow is dropped, the swatch bar collapses
+    below 820 px, and the buy palette collapses below
+    `FullBuyRowWidthPortrait`.
   - *Landscape editor:* a single **bottom** bar — the six land swatches
-    at the **left**, seed + die **centered**, and terrain tools + hand,
-    then undo/redo + Options, at the **right**.
-  - *Portrait editor:* **top bar** with seed + die + undo/redo + Options;
-    **bottom bar** with the paint palette (land + tools) centered.
+    at the **left** with the seed pill + die immediately right of them
+    (sharing the left-anchored group so the seed cluster sits flush
+    against the land cluster's right edge), and terrain tools + hand,
+    then undo/redo + Options, at the **right**. No SEED eyebrow — the
+    pill chrome + adjacent die glyph carry the meaning.
+  - *Portrait editor:* **top bar** with undo/redo at the **left**, seed
+    pill + die **centered** as a pair, and Options at the **right**;
+    **bottom bar** with the paint palette (land + tools) centered. The
+    centered seed pill + die both bottom-align under the iPhone notch
+    (same `hasTopNotch` treatment the gameplay HUD's gold chip uses).
 
 - **Map reserves the bars + rotates in portrait** (`HexMapView`). The
   view is a pure consumer of layout: `SetMapInsets(top, bottom)` (pushed

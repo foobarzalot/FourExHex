@@ -22,12 +22,17 @@ public static class DisplayScaleMath
     /// mobile platform (<c>OS.HasFeature("mobile")</c>). Lifts touch targets
     /// up to a tappable size on phones whose natural DPI factor underperforms
     /// — notably iPhones, where Apple's logical-points system targets ~160 dpi
-    /// exactly so the unified mdpi/160 math floors to 1.0. The S9's natural
-    /// factor exceeds this floor and is unaffected. Tuned to S9-landscape
-    /// parity (≈1.67) rounded up — on iPhone 13 mini this maps the authored
-    /// 96-logical-px HUD bar to ~9 mm, well past Apple HIG's 44 pt minimum.
+    /// exactly so the unified mdpi/160 math floors to 1.0. Tuned to
+    /// **S9-portrait parity (≈2.22)** so the iPhone 13 mini (logical dpi
+    /// ~158.67) and the S9 portrait (natural factor 2.22) land on the same
+    /// factor — equalizing physical button size and producing near-identical
+    /// logical viewports (iPhone 507×1097, S9 486×999). Side effect on
+    /// mobile landscape: the S9's natural landscape factor (≈1.67) and the
+    /// iPhone's (≈1.0) are both lifted to 2.22, so both devices use the
+    /// width-collapsed (cycling) buy palette in landscape — a consistency win
+    /// that mirrors the long-standing S9-landscape collapse onto iPhone too.
     /// </summary>
-    public const float MobileMinFactor = 1.8f;
+    public const float MobileMinFactor = 2.2222f;
 
     /// <summary>Scale factor for a screen density, with a default floor of
     /// <see cref="MinFactor"/>. <paramref name="dpi"/> &lt;= 0 (headless or

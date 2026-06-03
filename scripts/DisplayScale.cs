@@ -9,12 +9,14 @@ using Godot;
 /// existing anchor-based HUD layout reflows with no per-widget changes.
 ///
 /// On mobile platforms (<c>OS.HasFeature("mobile")</c>) the minimum factor is
-/// lifted to <see cref="DisplayScaleMath.MobileMinFactor"/> so touch targets
-/// stay tappable even on devices whose natural DPI factor floors to 1.0 (e.g.
-/// iPhones, whose Apple-points system lands at ~158 logical dpi, just under
-/// our 160 baseline). The S9 already sits above this floor and is unaffected;
-/// desktop is non-mobile and unaffected. See <see cref="DisplayScaleMath"/> for
-/// the pure clamp math.
+/// lifted to <see cref="DisplayScaleMath.MobileMinFactor"/> (currently tuned to
+/// S9-portrait parity ≈2.22) so devices whose natural DPI factor floors to 1.0
+/// — notably iPhones, whose Apple-points system lands at ~158 logical dpi, just
+/// under our 160 baseline — render UI at the same physical size as the S9 in
+/// portrait. The S9-portrait natural factor coincides with the floor and is
+/// unaffected; S9-landscape's natural ≈1.67 is lifted by the floor, matching
+/// iPhone landscape. Desktop is non-mobile and unaffected. See
+/// <see cref="DisplayScaleMath"/> for the pure clamp math.
 ///
 /// Window-level, so set once at startup and re-applied on viewport resize
 /// (device rotation, or window moving to a different-DPI monitor). It persists
