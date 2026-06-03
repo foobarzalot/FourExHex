@@ -53,6 +53,8 @@ Show the diff and get buy-in on the plan when rule changes have test fallout (e.
 
 **Tech-debt-capture rule**: When you discover a problem in your own work — a flaky test, a known-broken edge case, a shortcut taken to unblock something, a TODO you'd otherwise drop into a comment — and you are not fixing it right now in this change, add an entry to `TECHDEBT.md` instead of leaving it un-tracked. Include enough context that future-you can act on it: file/line, symptom, suspected cause, and candidate fixes. The bar is "did I notice it and choose to defer it" — if yes, it goes in `TECHDEBT.md`. Don't silently move on.
 
+**Issue-tracking rule**: Bugs and features are tracked as GitHub issues on `foobarzalot/FourExHex` via the `gh` CLI. Before planning or implementing any non-trivial fix or feature, prefer to have an associated issue — check `gh issue list` first; if none exists, propose filing one (or ask the user to point at the right ticket) before changing code. The user can override on any given task ("just fix it", "no ticket needed") — when they do, proceed without one and don't keep asking for that task. Available labels: `bug`, `enhancement`, `tech-debt`, `ai`, `ui`, `rules`. Issue body format — bugs: **Context / Repro / Expected / Notes**; features: **Context / Proposed behavior / Acceptance / Notes**; goals-only design tickets (when the solution is still TBD): **Context / Goals / Notes**.
+
 ## Diagnostic AI-stress mode (`FOUREXHEX_6AI`)
 
 Setting the env var `FOUREXHEX_6AI` before launching Godot reconfigures the session for a fully headless regression run:
