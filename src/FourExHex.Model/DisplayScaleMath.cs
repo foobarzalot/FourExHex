@@ -51,4 +51,30 @@ public static class DisplayScaleMath
         float raw = dpi / ReferenceDpi;
         return System.Math.Clamp(raw, floor, MaxFactor);
     }
+
+    /// <summary>Mobile reference DPI for the raw-DPI factor formula.
+    /// Reverse-engineered from S9 FHD+ portrait at the 2.22 factor we
+    /// already ship: 401 raw DPI / 2.22 ≈ 180. Equalizes physical
+    /// button size across iPhone (raw DPI 476) and S9 (raw DPI 401)
+    /// without resorting to a per-device floor.</summary>
+    public const float MobileReferenceDpi = 180f;
+
+    /// <summary>
+    /// Mobile-only factor formula: <c>rawDpi / MobileReferenceDpi</c>,
+    /// clamped to [<paramref name="minFactor"/>, <see cref="MaxFactor"/>].
+    /// Use this on <c>OS.HasFeature("mobile")</c> in place of
+    /// <see cref="FactorForDpi(float, float)"/> — that one divides by
+    /// <c>osScale</c>, which mis-counts iOS's retina pixel doubling and
+    /// makes high-DPI iPhones render physically smaller than mid-DPI
+    /// Androids at the same factor floor. Desktop continues to use
+    /// <see cref="FactorForDpi(float, float)"/> because retina OS-scaling
+    /// there genuinely pre-renders content at logical points.
+    /// </summary>
+    public static float FactorForRawMobileDpi(float rawDpi, float minFactor)
+    {
+        float floor = System.Math.Max(minFactor, MinFactor);
+        if (rawDpi <= 0f) return floor;
+        float raw = rawDpi / MobileReferenceDpi;
+        return System.Math.Clamp(raw, floor, MaxFactor);
+    }
 }

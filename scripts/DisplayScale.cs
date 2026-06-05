@@ -50,6 +50,11 @@ public partial class DisplayScale : Node
         // logical DPI the layout was authored against, so retina desktops floor
         // to 1.0 instead of double-counting.
         float osScale = DisplayServer.ScreenGetScale(screen);
+        // Desktop divides by osScale to recover Apple's logical-points DPI
+        // (so a 2× retina laptop floors to 1.0). Mobile does NOT — iOS's
+        // retina pixel doubling doesn't change the physical size our
+        // buttons render at, and dividing by osScale there just makes
+        // iPhones come up small relative to mid-DPI Androids.
         float logicalDpi = dpi / Mathf.Max(osScale, 1f);
         float minFactor = isMobile ? DisplayScaleMath.MobileMinFactor : DisplayScaleMath.MinFactor;
 
@@ -67,7 +72,17 @@ public partial class DisplayScale : Node
         }
         else
         {
-            factor = DisplayScaleMath.FactorForDpi(logicalDpi, minFactor);
+            // iOS-only: raw DPI / 180 (Apple's ScreenGetScale is the retina
+            // multiplier, not a system density choice — dividing by it
+            // mis-counts the actual physical density and makes iPhones come
+            // up small). Android's ScreenGetScale represents the system's
+            // density bucket (xhdpi / xxhdpi / etc.) so logicalDpi / 160 is
+            // the right input there; this preserves the S9-portrait 2.22
+            // calibration that's been shipping. Desktop unchanged.
+            bool isIos = OS.HasFeature("ios");
+            factor = isIos
+                ? DisplayScaleMath.FactorForRawMobileDpi(dpi, minFactor)
+                : DisplayScaleMath.FactorForDpi(logicalDpi, minFactor);
             overrideActive = false;
         }
 

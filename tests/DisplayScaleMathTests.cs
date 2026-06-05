@@ -107,4 +107,70 @@ public class DisplayScaleMathTests
         // reference devices. Pinned here so an accidental revert is caught by CI.
         Assert.Equal(2.2222f, DisplayScaleMath.MobileMinFactor, Tolerance);
     }
+
+    // FactorForRawMobileDpi — mobile uses RAW DPI / MobileReferenceDpi
+    // (=180) so devices land at the same physical button size regardless
+    // of their pixel density. logicalDpi (which divides raw by osScale)
+    // is wrong on iOS — Apple's retina pixel doubling doesn't change what
+    // physical size our buttons render at, so dividing by osScale just
+    // makes iPhones come up short. Desktop continues to use the
+    // logicalDpi / 160 path because retina OS-scaling there genuinely
+    // pre-renders content at logical points.
+
+    [Fact]
+    public void MobileReferenceDpi_PinsS9FhdPortrait()
+    {
+        // 180 is reverse-engineered from S9 FHD+ portrait at the
+        // 2.22 factor we already ship: 401 raw DPI / 2.22 ≈ 180. Any
+        // future tweak to "what S9 looks like" should retune this.
+        Assert.Equal(180f, DisplayScaleMath.MobileReferenceDpi, Tolerance);
+    }
+
+    [Fact]
+    public void FactorForRawMobileDpi_iPhone13Mini_Matches264()
+    {
+        // iPhone 13 mini raw DPI 476. Target 476/180 = 2.6444. This is
+        // the whole point of the formula — high-DPI iPhone gets a higher
+        // factor so its buttons physically match the S9.
+        Assert.Equal(2.6444f, DisplayScaleMath.FactorForRawMobileDpi(476f, DisplayScaleMath.MobileMinFactor), Tolerance);
+    }
+
+    [Fact]
+    public void FactorForRawMobileDpi_S9FhdPortrait_Matches222()
+    {
+        // S9 portrait raw DPI 401. 401/180 = 2.227 ≈ 2.22 — preserves
+        // current S9 behavior unchanged.
+        Assert.Equal(2.2278f, DisplayScaleMath.FactorForRawMobileDpi(401f, DisplayScaleMath.MobileMinFactor), Tolerance);
+    }
+
+    [Fact]
+    public void FactorForRawMobileDpi_BelowFloor_LiftsToFloor()
+    {
+        // A low-density Android phone (e.g., 160 DPI) would compute
+        // 160/180 = 0.89 — below the mobile floor. Must lift to the
+        // MobileMinFactor safety net so buttons are still tappable.
+        Assert.Equal(
+            DisplayScaleMath.MobileMinFactor,
+            DisplayScaleMath.FactorForRawMobileDpi(160f, DisplayScaleMath.MobileMinFactor),
+            Tolerance);
+    }
+
+    [Fact]
+    public void FactorForRawMobileDpi_AbsurdDensity_ClampsToMaxFactor()
+    {
+        Assert.Equal(
+            DisplayScaleMath.MaxFactor,
+            DisplayScaleMath.FactorForRawMobileDpi(10000f, DisplayScaleMath.MobileMinFactor),
+            Tolerance);
+    }
+
+    [Fact]
+    public void FactorForRawMobileDpi_HeadlessOrZero_ReturnsFloor()
+    {
+        // A headless mobile rig (dpi<=0) should still see the mobile lift.
+        Assert.Equal(
+            DisplayScaleMath.MobileMinFactor,
+            DisplayScaleMath.FactorForRawMobileDpi(0f, DisplayScaleMath.MobileMinFactor),
+            Tolerance);
+    }
 }
