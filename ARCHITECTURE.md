@@ -516,17 +516,27 @@ active screen's DPI and drives the root `Window.ContentScaleFactor`:
   orientation** (verified on a Galaxy S9: 1.35 portrait / 1.8 landscape), so the
   *natural* factor differs by orientation — ≈ 2.22 portrait / 1.67 landscape on
   the S9. See `RELEASE.md` §5 for the device data.
-- **Unified mobile floor at S9-portrait parity.** On `OS.HasFeature("mobile")` the
-  adapter passes `DisplayScaleMath.MobileMinFactor` (= 2.2222) as the floor — the
-  S9 portrait's natural factor, picked so the iPhone 13 mini (logical DPI ≈ 158,
-  just under the 160 baseline → raw factor ≈ 0.99) and the S9 portrait (natural
-  2.22) land on the *same* factor. That equalizes physical button size between
-  the two reference devices and produces near-identical logical viewports
-  (iPhone 507 × 1097, S9 486 × 999). Side effect: S9 landscape's natural ≈ 1.67
-  and iPhone landscape's ≈ 1.0 both get lifted to 2.22, so the buy palette
-  collapses (via `FullBuyRowWidthLandscape = 1300`) on both devices in landscape
-  — a consistency win, not a regression. Desktop is non-mobile and unaffected;
-  same gate covers iOS + Android + any future mobile platform.
+- **Per-platform mobile formula** (the same naïve `logicalDpi / 160` formula
+  mis-counted iOS's retina pixel multiplier — `ScreenGetScale = 3` on iPhone is
+  the retina factor, not a system density choice — so iPhone factor floored
+  to 1.0 and got lifted by the floor to 2.22, ending up physically smaller than
+  the S9 at the same logical factor):
+  - **iOS:** `DisplayScaleMath.FactorForRawMobileDpi(rawDpi, MobileMinFactor)`
+    = `clamp(rawDpi / MobileReferenceDpi, MobileMinFactor, 3.0)`, where
+    `MobileReferenceDpi = 180` is reverse-engineered from S9 FHD+ portrait
+    at the shipped 2.22 factor (401 raw / 2.22 ≈ 180). iPhone 13 mini's
+    raw DPI 476 → factor 2.64, matching S9's physical button size.
+  - **Android (and other mobile):** the legacy `FactorForDpi(logicalDpi,
+    MobileMinFactor)` path. Android's `ScreenGetScale` represents a system
+    density bucket (xxhdpi etc.), so dividing by it IS correct there.
+    S9 portrait (logicalDpi ≈ 355) lands at 2.22 naturally; S9 landscape
+    (≈1.67 natural) lifts to the `MobileMinFactor = 2.22` floor.
+  - **Desktop:** non-mobile, unchanged — `FactorForDpi(logicalDpi)` floors to
+    1.0 so design size is preserved. The mobile floor doesn't apply.
+- **Why a unified mobile floor still exists.** `MobileMinFactor = 2.2222` is the
+  safety net for low-density Android phones (and a sanity floor on iOS even
+  though iPhones we test all clear it). Without it, a 160-DPI Android phone
+  would compute factor 1.0 and render unusably small buttons.
 - **Local repro / override.** `DisplayScale.Apply()` honors a
   `FOUREXHEX_UI_SCALE` env var that bypasses the DPI computation and forces a
   specific factor on any platform (takes precedence over the mobile floor).
@@ -2833,112 +2843,173 @@ codebase.
 
 ### HUD shape
 
-The play HUD (`HudView`) is a set of widget *clusters* laid out in a
-96-px slate bar; `OrientationHud` places the clusters per orientation
-(see "Responsive layout" for the concrete left/center/right and
-top/bottom assignment). The clusters:
+The play HUD (`HudView`) is a set of widget *clusters* parented into
+floating zones (no opaque chrome bar — design D1 "Roles Split (floating)"
+from `delivery/HUD_Spec_Issue3.md`). The map fills the viewport; the
+HUD chips and buttons sit on top in fixed zones, and only the buttons /
+chips themselves block clicks. The clusters:
 
-- **Status** — `TURN` gold eyebrow + the turn number
-  (JetBrains Mono 36) | line-soft divider | the **player-swatch
-  bar** (`scripts/PlayerSwatchBar.cs`) — a custom-drawn `Control`
-  showing a row of color swatches, one per player in movement
-  (turn) order, with the current player's swatch enlarged +
-  white-outlined and eliminated players (no capital, detected via
-  `WinConditionRules.IsEliminated`) dimmed in place. Below a width
-  threshold it collapses to the current player's swatch only (see
-  "Responsive layout").
-- **Gold chip** — bg-deep `PanelContainer` (line-soft border + 8 px
-  radius) with the gold total + income breakdown in JetBrains Mono 26,
-  hidden when no capital territory is selected.
-- **Action (unit palette)** — a slate `PanelContainer` (radius 10,
-  bg-deep) wrapping, side by side, the four buy buttons (Recruit /
-  Soldier / Captain / Commander) as a radio group **and** a single
-  *collapsed* buy button; exactly one is visible. Below a width
-  threshold (`FullBuyRowWidth{Portrait,Landscape}`, toggled in
-  `OnViewportMetricsChanged`) the four-button row hides and the lone
-  button shows, cycling through the affordable levels on each press —
-  it fires the same `BuyRecruitClicked` event as the `U` hotkey
-  (`GameController.OnBuyPressed`), so there's no extra controller path.
-  The Build Tower button sits OUTSIDE that panel as a separate sibling.
-- **Undo** — Undo / Redo ghost icon buttons (centered on the portrait
-  bottom bar).
-- **Turn controls** — Next Territory | End Turn.
+- **Status chip** — `_statusChip` `PanelContainer` (semi-transparent
+  slate, 75% opacity, line-soft border, 8-px radius) wrapping the
+  `_statusCluster` HBox: `TURN` gold eyebrow + turn number
+  (JetBrains Mono 36) and the **player-swatch bar**
+  (`scripts/PlayerSwatchBar.cs`) — a custom-drawn `Control` showing one
+  swatch per player in movement (turn) order, with the current player's
+  swatch enlarged + white-outlined and eliminated players (no capital,
+  detected via `WinConditionRules.IsEliminated`) dimmed in place. Collapses
+  to a single active-swatch + bare turn number in compact mode (see
+  "Responsive layout"). `MouseFilter = Ignore` cascaded over the chip
+  and its children — taps fall through to the map.
+- **Gold chip** — same chip styling as the status chip, with the gold
+  total + income breakdown in JetBrains Mono 36, hidden when no capital
+  territory is selected. Click-through.
+- **Action cluster** — `_actionCluster` is a `BoxContainer` (Vertical
+  flipped per orientation by `SetClusterVertical`) holding the four buy
+  buttons (Recruit / Soldier / Captain / Commander) as a flippable
+  `_paletteRow` AND a single collapsed cycle button (`_collapsedBuyButton`).
+  Exactly one is visible — driven by `Compact` in `OnViewportMetricsChanged`,
+  not a per-orientation width threshold. The cycle button fires the same
+  `BuyRecruitClicked` event as the `U` hotkey
+  (`GameController.OnBuyPressed`). The `_buildTowerButton` sits in the
+  cluster alongside the palette.
+- **Controls cluster** — `_controlsCluster` `BoxContainer` (Vertical
+  flips per orientation) holding `_nextUnitButton` + `_nextTerritoryButton`.
+  `_endTurnButton` is NOT in this cluster — it's placed at the row /
+  rail level so it can anchor independently (bottom-right corner in
+  landscape, end of bottom-bar row 2 in portrait).
+- **Undo cluster** — `_undoCluster` HBox with the Undo / Redo ghost
+  icon buttons. Long-press fires Undo All / Redo All.
 - **Options** — gear cog (raises `EscRequested`).
 
-The bar is 96 px tall (`HudView.HudHeight = 96`). The map editor
-HUD (`MapEditorHudView`) anchors to the same `HudHeight` and follows
-the same shell: warm-slate `Panel`, `SEED` gold eyebrow + mono
-`LineEdit`, a `HudIconButton(HudIcon.Die)` (isometric six-sided die
-glyph drawn by `HudIcons.DrawDie`), and the palette as two reparentable
-clusters — a **land cluster** (the six land colors inside a rounded
-slate `PanelContainer`, radio-group framing) and a **tools cluster**
-(the four terrain tools water / tree / capital / tower as bare swatches,
-then the hand / pan tool) — plus an undo/redo cluster and the Options
-gear.
+Every action / chrome button is a `HudIconButton` rendered at **68×68
+logical px** with a 2-px black border, 10-px rounded corners, dark-slate
+fill (or terracotta "Hero" fill via `HudIconButton.Hero`; the white CTA
+stylebox layered on top via `HudView.ApplyCtaStyle` keeps the same shape
+and reapplies hero on CTA-off via `ReapplyHero`). Selected state draws
+a cool-blue `UiPalette.SelectionRing` outline (replaces the previous
+white ring) so "this mode is engaged" reads distinctly from the warm
+hero accent.
 
-### Responsive layout (landscape / portrait)
+`HudView.HudHeight = 96f` is preserved as a layout token for the tutorial
+builder / record pane chrome that nests above the editor HUD; the
+gameplay HUD itself no longer renders a 96-px slate bar. The portrait
+bottom-bar height is `HudBars.PortraitBottomBarHeight = 200f`, sized for
+two rows of 68-px buttons + 8-px row separation + 10-px top/bottom
+padding.
 
-Both the gameplay and editor screens reflow between a wide landscape
-and a tall portrait aspect ratio (mobile groundwork). The whole system
-keys off one pure decision function so the HUD and the map can't
-disagree:
+The map editor HUD (`MapEditorHudView`) follows the same shell and
+clusters: `_landCluster` (rounded slate `PanelContainer` wrapping the
+six land swatches as a `BoxContainer`), `_landCycleButton` (standalone
+squared swatch for compact — sibling of `_landCluster`, not nested
+inside the panel), `_paintCluster` (water / tree / capital / tower as
+**squared** `HexPaletteButton`s with the same 68×68 chrome as the die),
+`_toolsCluster` (hand / pan + die / random), plus the undo/redo cluster
+and Options gear. The die is the lone randomize trigger — pressing it
+picks a fresh random seed and regenerates, then drops back to the hand
+tool. The legacy seed `LineEdit` is gone.
 
-- **`ScreenLayout` (`src/FourExHex.Model`, Godot-free, unit-tested,
-  mirrors `ZoomMath`).** `Resolve(width, height)` → `Landscape` when
+### Responsive layout (landscape / portrait, compact / expanded)
+
+Both gameplay and editor screens reflow between landscape ↔ portrait
+**and** between compact (phone) ↔ expanded (tablet / desktop). Two
+pure decisions, both Godot-free + unit-tested:
+
+- **`ScreenLayout.Resolve(width, height)`** → `Landscape` when
   `width >= height`, else `Portrait` (square ties to landscape).
-  `ComputeInsets(orientation, topBarVisible, landscapeBarH,
-  portraitTopBarH, portraitBottomBarH)` → the `(Top, Bottom)` pixels the
-  map must reserve for the HUD bars. No view magic numbers live here —
-  the caller passes its own bar heights.
+- **`ScreenLayout.IsCompact(width, height, prevWasCompact, deadBand)`** →
+  true when the shorter viewport edge falls below
+  `ScreenLayout.CompactBreakpointPx = 700` logical px (±32 px dead-band
+  hysteresis around the boundary so a window resize through the line
+  can't thrash the layout). Calibrated so every phone we test lands in
+  compact and every tablet in expanded (iPhone 13 mini on-device min=507
+  ✓ compact, S9 portrait min=486 ✓ compact, iPad mini min=768 ✓ expanded).
+- **`ScreenLayout.ComputeInsets`** still exists for callers that
+  reserve map space for an opaque bar; the gameplay / editor HUDs return
+  `(0, 0)` — D1 is a true floating overlay.
 
-- **Orientation-aware HUDs.** `HudView` and `MapEditorHudView` build
-  their widget *clusters* once and **reparent** (never rebuild) them
-  between bar containers on a landscape↔portrait flip, so button state /
-  event wiring survives. The bar scaffolding
-  (`MakeBarPanel`/`MakeBarFrame`/`MakeAnchoredGroup`/`Detach`) is shared
-  in **`scripts/HudBars.cs`**, and the orientation *lifecycle* —
-  `TopBar`/`BottomBar`, the `MapInsetsChanged` event, the
-  `SizeChanged`→resolve→relayout→publish cycle — lives in the
-  **`OrientationHud : CanvasLayer`** base (Template Method): subclasses
-  override `DetachClusters` / `BuildLandscapeBars` / `BuildPortraitBars` /
-  `ComputeInsets`, plus the virtual `OnLayoutApplied` (post-flip) and
-  `OnViewportMetricsChanged` (every resize). So the two HUDs can't drift
-  on either the chrome or the coordination.
-  - *iOS notch / home-indicator handling* sits inside this same scaffolding.
-    Bars are exactly `height` logical px and overlap the safe-inset zones
-    rather than extending past them, so map insets are just the bar heights
-    (see the *Safe-area handling (autoload)* section above for the model).
-    `OrientationHud` subscribes to `SafeArea.Changed` so a status-bar
-    show/hide or rotation crossing the notch axis triggers a relayout.
-  - *Landscape gameplay:* a single 96-px **bottom** bar (moved from the
-    top for thumb reach) in three anchored zones — unit/tower purchase +
-    gold at the **left** edge, turn # + swatch bar **centered**, and
-    undo/redo + Next/End Turn + Options at the **right**. On windows
-    narrower than 1500 px the `TURN` eyebrow caption is dropped (via
-    `OnViewportMetricsChanged`); the turn number and swatch bar always
-    stay. The swatch bar collapses to the current player's swatch below
-    1100 px wide, and the buy palette collapses to the single cycling
-    button below `FullBuyRowWidthLandscape`.
-  - *Portrait gameplay:* a **top bar** of non-interactive display only —
-    swatch bar + turn # (swatches lead, turn block immediately right with
-    no divider so they read as one active-player display) + gold chip,
-    with End Turn + Options at the top-right — **always up**; and a
-    **bottom bar** of all interactive controls — the (collapsed) buy
-    button + Build Tower at the left, undo/redo **centered**, Next at
-    the right. The `TURN` eyebrow is dropped, the swatch bar collapses
-    below 820 px, and the buy palette collapses below
-    `FullBuyRowWidthPortrait`.
-  - *Landscape editor:* a single **bottom** bar — the six land swatches
-    at the **left** with the seed pill + die immediately right of them
-    (sharing the left-anchored group so the seed cluster sits flush
-    against the land cluster's right edge), and terrain tools + hand,
-    then undo/redo + Options, at the **right**. No SEED eyebrow — the
-    pill chrome + adjacent die glyph carry the meaning.
-  - *Portrait editor:* **top bar** with undo/redo at the **left**, seed
-    pill + die **centered** as a pair, and Options at the **right**;
-    **bottom bar** with the paint palette (land + tools) centered. The
-    centered seed pill + die both bottom-align under the iPhone notch
-    (same `hasTopNotch` treatment the gameplay HUD's gold chip uses).
+**Orientation + compact lifecycle** lives in **`OrientationHud :
+CanvasLayer`** (Template Method). The base owns five **zone**
+containers, recreated on every layout flip:
+
+| Zone | Type | Present | Role |
+|---|---|---|---|
+| `TopLeftZone` | content-sized HBox anchored top-left | both orientations | Read-only chips (status, gold) |
+| `TopRightZone` | content-sized HBox anchored top-right | both | undo / redo / options |
+| `BottomBar` | full-width Panel anchored bottom | portrait only | Action button rows |
+| `LeftRail` (+ `LeftRailGroup` inner VBox) | 78-px wide Panel anchored left, full height | landscape only | Create / paint cluster |
+| `RightRail` (+ `RightRailGroup` inner VBox) | mirror of LeftRail anchored right | landscape only | Command / tools cluster |
+
+`Compact` is a public `bool` on `OrientationHud`; subclasses read it in
+`OnViewportMetricsChanged` to swap the collapsed↔expanded palette /
+roster variants. Rails are vertically `Center`-aligned on compact and
+`End`-aligned on expanded — the spec's "lower-corner thumb zone" for
+tablets.
+
+Subclasses (`HudView`, `MapEditorHudView`) override `DetachClusters`,
+`BuildLandscapeBars`, `BuildPortraitBars`, `ComputeInsets`, plus the
+virtual `OnLayoutApplied` (post-flip) and `OnViewportMetricsChanged`
+(every resize). They never call `AddChild` on a fresh zone — they
+just parent their persistent clusters into the zone the base prepared.
+`ApplyLayout` rebuilds zones whenever EITHER `Orientation` OR `Compact`
+flips, so the rails' alignment + the palette / roster collapse update
+in lockstep.
+
+**Z-order matters.** `ApplyLayout` adds the rails / bottom bar FIRST,
+then the corner zones — corner buttons (Options, undo/redo) must
+intercept clicks before the rail's full-height Panel does, or taps in
+the top-right column would be eaten by the rail. The corner zones are
+`MouseFilter.Pass`; only the chips / buttons inside block clicks. The
+portrait `BottomBar` is also `MouseFilter.Pass`, so the gap between
+the left action cluster and End Turn on the right falls through to the
+map (the player can tap a tile beneath the empty space).
+
+**Safe-area policy** — split between "critical" buttons and "corner"
+chrome:
+- *Rails* (the critical action buttons: buy, build, nav, end turn)
+  use `max(safe.Left, safe.Right) + edgePad` on BOTH sides so they
+  NEVER overlap the notch regardless of orientation.
+- *Corner zones* (status / gold readout chips, Options, undo/redo)
+  and the bottom-right pinned End Turn button use no horizontal safe
+  inset — they claim the corner real estate the rails leave behind.
+  On iPhone landscape this means the corner chrome may overlap the
+  notch or home-indicator visually, but iOS still routes taps through.
+- `OrientationHud` subscribes to `SafeArea.Changed` so a status-bar
+  show/hide or rotation crossing the notch axis triggers a relayout.
+
+**Cluster placement per (orientation × variant) — gameplay:**
+
+| | Compact (phone) | Expanded (tablet / desktop) |
+|---|---|---|
+| Portrait TopLeft | `_statusChip` (1-swatch active) over `_goldChip` | Same, with 6-roster swatch bar |
+| Portrait TopRight | `_undoCluster` + `_optionsButton` | Same |
+| Portrait BottomBar | Row 1: nav cluster (left). Row 2 (space-between): `_actionCluster` (buy cycle + Build Tower) left, `_endTurnButton` right | Row 1 same; Row 2 buy palette expands to 1×4 radio |
+| Landscape TopLeft | `_statusChip` (1-swatch) + `_goldChip` inline | Same, expanded swatches |
+| Landscape TopRight | undo + options | Same |
+| Landscape LeftRail | `_actionCluster` (buy cycle + Build Tower) vertically centered | Buy palette expands to 1×4 vertical |
+| Landscape RightRail | `_controlsCluster` (nav) vertically centered | Vertically end-anchored (with End Turn clearance pushed up) |
+| Landscape End Turn | Pinned bottom-right corner (anchored directly to `HudView`, outside the rails) | Same; right rail's group pushed up by `endTurnClearance = 88px` so it doesn't collide |
+
+**Cluster placement — editor:**
+
+| | Compact | Expanded |
+|---|---|---|
+| Portrait TopLeft | *(empty)* | *(empty)* |
+| Portrait TopRight | undo + options | Same |
+| Portrait BottomBar | Row 1: tools (hand + die). Row 2: `_landCycleButton` + paint tools (water/tree/capital/tower) | Row 2: 1×6 land panel + paint tools |
+| Landscape LeftRail | `_landCycleButton` + paint tools, vertically stacked | `_landCluster` (1×6 vertical line inside the slate panel) + paint tools |
+| Landscape RightRail | hand + die | Same |
+
+The `_landCluster` PanelContainer (slate frame around the 1×6 land row)
+is fully hidden in compact mode — the bare `_landCycleButton` stands
+alone as its sibling so the cycle button never sits inside the frame.
+
+**Map reserves nothing in D1** (`HexMapView`). `MapInsetsChanged` still
+fires from `OrientationHud`, but both subclasses' `ComputeInsets` return
+`(0, 0)` — the map fills the viewport edge to edge, and the floating
+chips / buttons overlay it. Portrait board rotation
+(−90° to fit a wide map into a tall viewport) still runs via
+`ScreenLayout.Resolve`. The pan / center / zoom math is unchanged
+(see "Content-aware centering" below).
 
 - **Map reserves the bars + rotates in portrait** (`HexMapView`). The
   view is a pure consumer of layout: `SetMapInsets(top, bottom)` (pushed
