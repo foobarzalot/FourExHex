@@ -271,6 +271,16 @@ public partial class HexMapView : Node2D, IHexMapView
     private float _topInset = HudView.HudHeight;
     private float _bottomInset = 0f;
 
+    // Board-local pixel pad (pre-zoom) around the nominal grid that the
+    // player can scroll into. Sized to exceed worst-case D1 floating-HUD
+    // occlusion (portrait bottom bar 200 + tutorial 60 = 260; portrait
+    // stacked top chips ~148; landscape rails 78) so an edge hex can
+    // always be panned clear of the chips/buttons that float over it.
+    // Symmetric on all four sides — rotation flips axes so a single value
+    // covers both orientations. Drives both the water rim render and the
+    // ClampPan extent.
+    private const float ScrollPaddingPx = 300f;
+
     // Board rotation: 0 in landscape, −90° (CCW) in portrait so the wide map
     // fills a tall viewport. The whole board node rotates; icon glyphs
     // counter-rotate (ApplyGlyphUpright) to stay upright. Resolved from the
@@ -320,9 +330,11 @@ public partial class HexMapView : Node2D, IHexMapView
         _contentBox = coords.Count > 0
             ? MapPlacement.ContentPixelBounds(coords, HexSize)
             : (0f, 0f, PixelSize.X, PixelSize.Y); // degenerate: fall back to grid
+        int waterRimTiles = Mathf.CeilToInt(ScrollPaddingPx / (1.5f * HexSize)) + 1;
         Log.Debug(Log.LogCategory.Render,
             $"HexMapView: content box=({_contentBox.minX:0},{_contentBox.minY:0})-" +
             $"({_contentBox.maxX:0},{_contentBox.maxY:0}) vs grid PixelSize=({PixelSize.X:0},{PixelSize.Y:0}) " +
+            $"scrollPad={ScrollPaddingPx:0} waterRimTiles={waterRimTiles} " +
             $"over {coords.Count} tiles.");
     }
 
@@ -418,10 +430,14 @@ public partial class HexMapView : Node2D, IHexMapView
             Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(waterCoord, HexSize);
             bake.AddPolygon(center, waterHex, WaterColor, null);
         }
-        const int WaterRimMargin = 4;
-        for (int row = -WaterRimMargin; row < Rows + WaterRimMargin; row++)
+        // Rim depth (in tiles) sized to cover the ClampPan-allowed pad. Row
+        // pitch is 1.5*HexSize (see PixelSize.Y); +1 is a safety margin so
+        // the rendered water always extends beyond the reachable scroll
+        // edge in both axes and at the corners.
+        int waterRimMargin = Mathf.CeilToInt(ScrollPaddingPx / (1.5f * HexSize)) + 1;
+        for (int row = -waterRimMargin; row < Rows + waterRimMargin; row++)
         {
-            for (int col = -WaterRimMargin; col < Cols + WaterRimMargin; col++)
+            for (int col = -waterRimMargin; col < Cols + waterRimMargin; col++)
             {
                 if (row >= 0 && row < Rows && col >= 0 && col < Cols) continue;
                 HexCoord coord = HexCoord.FromOffset(col, row);
@@ -438,9 +454,9 @@ public partial class HexMapView : Node2D, IHexMapView
             Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(waterCoord, HexSize);
             AddShoreFoamStrips(bake, center, waterCoord);
         }
-        for (int row = -WaterRimMargin; row < Rows + WaterRimMargin; row++)
+        for (int row = -waterRimMargin; row < Rows + waterRimMargin; row++)
         {
-            for (int col = -WaterRimMargin; col < Cols + WaterRimMargin; col++)
+            for (int col = -waterRimMargin; col < Cols + waterRimMargin; col++)
             {
                 if (row >= 0 && row < Rows && col >= 0 && col < Cols) continue;
                 HexCoord coord = HexCoord.FromOffset(col, row);
@@ -2342,6 +2358,14 @@ public partial class HexMapView : Node2D, IHexMapView
         // reduces to (0,0,w·zoom,h·zoom), the legacy landscape clamp.
         (float minX, float minY, float maxX, float maxY) =
             MapPlacement.RotatedBoardBox(PixelSize.X, PixelSize.Y, _zoom, _mapAngleRad);
+        // Symmetric scrollable pad applied in viewport space — a rotated
+        // symmetric pad is still symmetric, so we widen the rotated AABB
+        // directly instead of feeding the pad through RotatedBoardBox.
+        // This lets edge hexes pan clear of the floating HUD chips/buttons
+        // that overlay the viewport corners (issue #16). Sized in board-
+        // local pixels and scaled by zoom to match the rest of the box.
+        float pad = ScrollPaddingPx * _zoom;
+        minX -= pad; minY -= pad; maxX += pad; maxY += pad;
         float boxW = maxX - minX;
         float boxH = maxY - minY;
         float x = boxW <= availX
@@ -2380,11 +2404,16 @@ public partial class HexMapView : Node2D, IHexMapView
         (float rMinX, float rMinY, float rMaxX, float rMaxY) =
             MapPlacement.RotatedRectBox(_contentBox.minX, _contentBox.minY,
                 _contentBox.maxX, _contentBox.maxY, _zoom, _mapAngleRad);
+        (float cMinX, float cMinY, float cMaxX, float cMaxY) =
+            MapPlacement.RotatedBoardBox(PixelSize.X, PixelSize.Y, _zoom, _mapAngleRad);
+        float clampPad = ScrollPaddingPx * _zoom;
         Log.Debug(Log.LogCategory.Render,
             $"RecenterMap: angle={Mathf.RadToDeg(_mapAngleRad):0}deg zoom={_zoom:0.00} " +
             $"vp={GetViewportRect().Size} insets=({_topInset:0},{_bottomInset:0}) " +
             $"contentBox=({_contentBox.minX:0},{_contentBox.minY:0})-({_contentBox.maxX:0},{_contentBox.maxY:0}) " +
-            $"rotatedBox=({rMinX:0},{rMinY:0})-({rMaxX:0},{rMaxY:0}) center={contentCenter} pos={Position} " +
+            $"rotatedBox=({rMinX:0},{rMinY:0})-({rMaxX:0},{rMaxY:0}) " +
+            $"paddedClamp=({cMinX - clampPad:0},{cMinY - clampPad:0})-({cMaxX + clampPad:0},{cMaxY + clampPad:0}) " +
+            $"center={contentCenter} pos={Position} " +
             $"=> onscreen=({Position.X + rMinX:0},{Position.Y + rMinY:0})-({Position.X + rMaxX:0},{Position.Y + rMaxY:0})");
     }
 

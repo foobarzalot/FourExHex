@@ -3050,7 +3050,17 @@ chips / buttons overlay it. Portrait board rotation
   *not* the content box: clamping to content would lock panning whenever the
   content is smaller than the viewport (egregiously, a sparsely-painted editor
   map with a few cells couldn't pan at all) and tighten it everywhere else, so
-  the clamp deliberately keeps the pre-content-framing pan freedom. Zoom-fit
+  the clamp deliberately keeps the pre-content-framing pan freedom. **Edge-
+  scroll pad (issue #16):** the clamp box is widened by `ScrollPaddingPx` (300
+  board-local px pre-zoom, symmetric) applied *after* `RotatedBoardBox` — in
+  viewport space, since a rotated symmetric pad is still symmetric. This lets
+  edge hexes pan out from under the D1 floating-HUD chips (top) and button bar
+  (bottom) which would otherwise permanently occlude the outermost ring. The
+  rendered water rim's depth in tiles is derived from the same constant
+  (`ceil(ScrollPaddingPx / (1.5·HexSize)) + 1`) so the visible water always
+  covers the reachable scroll area; the legacy hardcoded `WaterRimMargin = 4`
+  is gone. Initial framing in `RecenterMap` is unchanged — it still centers on
+  the content box, so the player starts looking at land, not the pad. Zoom-fit
   (`ZoomMath.ComputeZoomMin`) likewise uses the full grid, so the zoom range is
   unchanged. **Insets must reach the map:** the HUD's
   `MapInsetsChanged` is relayed to `HexMapView.SetMapInsets` by *both* `Main`
