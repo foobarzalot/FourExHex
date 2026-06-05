@@ -633,14 +633,18 @@ public partial class HudView : OrientationHud, IHudView
     }
 
     /// <summary>Shared chip-pill stylebox used by both the status chip
-    /// (turn # + swatch row) and the gold chip (treasury readout). Black
-    /// fill, line-soft border, 8-px radius, generous content margins to
-    /// accommodate the 36-pt heading text the chips wrap.</summary>
+    /// (turn # + swatch row) and the gold chip (treasury readout). Dark
+    /// slate fill at 75% opacity so the map shows through faintly —
+    /// these chips are click-through readouts, not buttons, and the
+    /// semi-transparent fill signals that. Line-soft border, 8-px
+    /// radius, generous content margins for the 36-pt heading text.</summary>
     private static StyleBoxFlat BuildHudChipStyle()
     {
+        Color fill = UiPalette.BgDeep;
+        fill.A = 0.75f;
         return new StyleBoxFlat
         {
-            BgColor = UiPalette.BgDeep,
+            BgColor = fill,
             BorderColor = UiPalette.LineSoft,
             BorderWidthLeft = 1, BorderWidthRight = 1,
             BorderWidthTop = 1, BorderWidthBottom = 1,
