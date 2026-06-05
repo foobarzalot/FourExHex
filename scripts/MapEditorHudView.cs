@@ -420,11 +420,14 @@ public partial class MapEditorHudView : OrientationHud
     {
         // Fresh random seed every press — the user no longer types a
         // specific seed; the die is the lone "give me a different map"
-        // affordance.
+        // affordance. After regenerating, drop back to the hand tool
+        // so the player can immediately pan / inspect without
+        // accidentally repainting the fresh map.
         int seed = new System.Random().Next(SeedMin, SeedMax + 1);
         _generateButton.FlashPress();
         Log.Debug(Log.LogCategory.Input, $"[MapEditor] die press → seed={seed}");
         GenerateRequested?.Invoke(seed);
+        SelectHand();
     }
 
     /// <summary>
