@@ -1133,14 +1133,28 @@ public partial class HudView : OrientationHud, IHudView
     {
         if (!_bankruptToastBuilt) return;
         float viewportW = GetViewport().GetVisibleRect().Size.X;
-        float width = Mathf.Min(BankruptToastW, viewportW - HudPanelSideMargin * 2f);
+
+        // Landscape: shrink the toast so it never reaches into the side
+        // rails — both rails together claim up to ~2 × (notch + railWidth
+        // + edgePad). Portrait has no rails, so the standard side-margin
+        // cap applies.
+        float railClearance = 0f;
+        if (Orientation == ScreenOrientation.Landscape)
+        {
+            float notch = Mathf.Max(SafeArea.Current.Left, SafeArea.Current.Right);
+            railClearance = (notch + HudBars.RailWidth + 8f) * 2f;
+        }
+        float width = Mathf.Min(BankruptToastW,
+            viewportW - railClearance - HudPanelSideMargin * 2f);
         _bankruptToast.OffsetLeft = -width * 0.5f;
         _bankruptToast.OffsetRight = width * 0.5f;
-        // Clear the floating TopLeft / TopRight corner chips (status, gold,
-        // undo, options) in both orientations — they hug the top edge inside
-        // the safe-area inset. ~90 px below the safe-area top reliably puts
-        // the toast under the chips on every device.
-        float top = SafeArea.Current.Top + 90f + BankruptToastMarginTop;
+
+        // Portrait stacks the status chip above the gold chip in the
+        // top-left, so the toast has to clear ~150 px of chip column.
+        // Landscape places them side-by-side (one chip row tall) and
+        // only needs ~80 px clearance.
+        float topClearance = Orientation == ScreenOrientation.Portrait ? 150f : 80f;
+        float top = SafeArea.Current.Top + topClearance + BankruptToastMarginTop;
         _bankruptToast.OffsetTop = top;
         _bankruptToast.OffsetBottom = top + BankruptToastH;
     }
