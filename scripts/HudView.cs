@@ -334,11 +334,10 @@ public partial class HudView : OrientationHud, IHudView
         _optionsButton.Pressed += () => EscRequested?.Invoke();
         AudioBus.AttachClick(_optionsButton);
 
-        // Read-only seed / map-name display anchored to the bottom-left
-        // safe-area corner so it tucks under the action buttons in the
-        // unused strip above the iOS home indicator (and flush bottom-left
-        // on desktop). OnLayoutApplied refreshes the offsets if the safe
-        // area changes.
+        // Read-only seed / map-name display tucked in the bottom-left
+        // safe-area strip — below the action buttons, sharing the iOS
+        // home-indicator strip on notched devices. Click-through so taps
+        // in its footprint reach the map.
         _seedLabel = new Label
         {
             Text = "",
@@ -346,8 +345,9 @@ public partial class HudView : OrientationHud, IHudView
             AnchorRight = 0f,
             AnchorTop = 1f,
             AnchorBottom = 1f,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
         };
-        _seedLabel.AddThemeFontSizeOverride("font_size", 20);
+        _seedLabel.AddThemeFontSizeOverride("font_size", 18);
         _seedLabel.AddThemeColorOverride("font_color", UiPalette.InkSoft);
         AddChild(_seedLabel);
 
@@ -434,7 +434,10 @@ public partial class HudView : OrientationHud, IHudView
     /// (anchored — no container layout interference).</summary>
     private void PinEndTurnBottomRight()
     {
-        FourExHex.Model.LogicalSafeInsets safe = SafeArea.Current;
+        // End Turn sits at the literal bottom-right corner — does NOT
+        // respect safe-area insets (it claims the corner real estate the
+        // rails leave behind). On iPhone landscape it'll overlap the
+        // home-indicator strip; iOS still routes taps through.
         float pad = 10f;
         _endTurnButton.AnchorLeft = 1f;
         _endTurnButton.AnchorRight = 1f;
@@ -442,12 +445,10 @@ public partial class HudView : OrientationHud, IHudView
         _endTurnButton.AnchorBottom = 1f;
         _endTurnButton.GrowHorizontal = Control.GrowDirection.Begin;
         _endTurnButton.GrowVertical = Control.GrowDirection.Begin;
-        float offX = -(safe.Right + pad);
-        float offY = -(safe.Bottom + pad);
-        _endTurnButton.OffsetLeft = offX;
-        _endTurnButton.OffsetRight = offX;
-        _endTurnButton.OffsetTop = offY;
-        _endTurnButton.OffsetBottom = offY;
+        _endTurnButton.OffsetLeft = -pad;
+        _endTurnButton.OffsetRight = -pad;
+        _endTurnButton.OffsetTop = -pad;
+        _endTurnButton.OffsetBottom = -pad;
         AddChild(_endTurnButton);
     }
 
@@ -556,20 +557,23 @@ public partial class HudView : OrientationHud, IHudView
     protected override void OnLayoutApplied()
     {
         _seedLabel.Visible = true;
-        // Bottom-left, above the safe-area inset. In portrait the bottom
-        // bar is 200 px tall but transparent; the two button rows occupy
-        // the top ~150 px of that bar (10 px padding + 68 + 8 + 68), so
-        // the label sits in the unused bottom strip without overlapping
-        // any button. On desktop (safe.Bottom = 0) it sits flush to the
-        // viewport's bottom-left.
-        float seedBottom = -(SafeArea.Current.Bottom + 6f);
-        float seedTop = seedBottom - 26f;
+        // Bottom-left, INSIDE the safe-area-bottom strip — below the
+        // button rows so it sits where the iPhone home indicator lives.
+        // OffsetLeft matches the bottom-bar's inner-VBox left padding
+        // (16 px) so the label lines up under the leftmost button column.
+        // Bottom margin sits just inside the safe-area; nudged up so the
+        // label doesn't graze the indicator on iPhone.
+        float seedBottom = -10f;
+        float seedTop = seedBottom - 22f;
         _seedLabel.OffsetTop = seedTop;
         _seedLabel.OffsetBottom = seedBottom;
-        _seedLabel.OffsetLeft = SafeArea.Current.Left + 12f;
-        _seedLabel.OffsetRight = SafeArea.Current.Left + 280f;
+        // Nudged right of the bottom-bar inner padding so the label
+        // tucks under the right edge of the leftmost button column
+        // rather than hugging the viewport edge.
+        _seedLabel.OffsetLeft = 36f;
+        _seedLabel.OffsetRight = 316f;
         Log.Debug(Log.LogCategory.Render,
-            $"HudView: seed label at bottom-left, top={seedTop:0} ({Orientation}).");
+            $"HudView: seed label in safe-area bottom-left ({Orientation}).");
         PositionTutorialOverlay();
     }
 

@@ -42,10 +42,13 @@ public static class HudBars
     public static HBoxContainer MakeCornerZone(bool left)
     {
         FourExHex.Model.LogicalSafeInsets safe = SafeArea.Current;
-        // Pad off the safe-area edges. Extra 10 px gap below the notch so a
-        // chip doesn't tuck under the iOS Dynamic Island in landscape.
+        // Top respects the safe inset (notch / Dynamic Island vertically);
+        // the horizontal sides do NOT — corner readouts and the
+        // undo/redo/options buttons may sit IN the safe-area corners
+        // (acceptable on iPhone landscape: the notch occupies one
+        // top-corner; the others are safe). Rails take the inset instead.
         float topOffset = safe.Top + 10f;
-        float sideOffset = (left ? safe.Left : safe.Right) + 10f;
+        float sideOffset = 10f;
 
         var zone = new HBoxContainer
         {
@@ -66,10 +69,10 @@ public static class HudBars
     }
 
     /// <summary>Portrait-only full-width bottom bar. Transparent backdrop
-    /// (the spec calls for a floating HUD; the bar is invisible) but
-    /// MouseFilter.Stop on the Panel itself, so taps in the gap between hero
-    /// buttons hit the bar (not the obscured map below). Subclasses parent
-    /// their action layout (rows / clusters) into the bar.</summary>
+    /// (D1 spec — floating HUD, no opaque chrome). MouseFilter.Ignore so
+    /// taps in the gaps between buttons fall through to the map; only the
+    /// individual buttons consume clicks on their own footprint. Subclasses
+    /// parent their action layout (rows / clusters) into the bar.</summary>
     public static Panel MakeBottomBar()
     {
         FourExHex.Model.LogicalSafeInsets safe = SafeArea.Current;
@@ -82,7 +85,10 @@ public static class HudBars
             // legacy bar shape) so the map reclaims the safe-inset space.
             OffsetTop = -PortraitBottomBarHeight,
             OffsetBottom = 0f,
-            MouseFilter = Control.MouseFilterEnum.Stop,
+            // Pass — children (buttons) consume their own clicks; gaps in
+            // the bar fall through to the map. With Stop the whole strip
+            // blocked input even where no button was drawn.
+            MouseFilter = Control.MouseFilterEnum.Pass,
         };
         // Transparent backdrop — the spec's "floating HUD (no opaque chrome
         // bar)". Buttons inside carry their own chip chrome.
@@ -104,14 +110,15 @@ public static class HudBars
     public static (Panel Rail, VBoxContainer Group) MakeRail(bool left, bool alignBottom)
     {
         FourExHex.Model.LogicalSafeInsets safe = SafeArea.Current;
-        // Inset the rail from the viewport edge by EdgePad logical px so
-        // the buttons inside it line up with corner-anchored buttons
-        // (HudView's End Turn pin uses the same EdgePad). Without this,
-        // the rail's 8-px inner gutter leaves rail buttons rendering 2 px
-        // from the viewport edge while End Turn sits 10 px in — visibly
-        // misaligned at the bottom-right corner.
+        // Rails carry the critical action buttons (buy / build / nav / end
+        // turn) — they must NEVER overlap the notch regardless of which
+        // way the phone is rotated. Use max(safe.Left, safe.Right) on
+        // BOTH sides so the inset is symmetric and orientation-safe; the
+        // corner zones (display chips, options) skip the safe inset and
+        // get the unused corner real estate instead.
         const float edgePad = 8f;
-        float sideOffset = (left ? safe.Left : safe.Right) + edgePad;
+        float notchSafe = Mathf.Max(safe.Left, safe.Right);
+        float sideOffset = notchSafe + edgePad;
 
         var rail = new Panel
         {
