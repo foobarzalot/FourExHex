@@ -28,6 +28,7 @@ public partial class HexPaletteButton : Control
 
     private Color _fillColor;
     private readonly HexPaletteIcon _icon;
+    private readonly bool _squared;
     private bool _isSelected;
 
     public bool IsSelected
@@ -56,11 +57,16 @@ public partial class HexPaletteButton : Control
         }
     }
 
-    public HexPaletteButton(Color fillColor, HexPaletteIcon icon = HexPaletteIcon.None)
+    public HexPaletteButton(Color fillColor, HexPaletteIcon icon = HexPaletteIcon.None, bool squared = false)
     {
         _fillColor = fillColor;
         _icon = icon;
-        CustomMinimumSize = new Vector2(52, 56);
+        _squared = squared;
+        // All HexPaletteButton variants render at the HudIconButton scale
+        // (68×68) so the hex inside (squared = inscribed in the slate
+        // backdrop; non-squared = bare hex polygon) lands at the same
+        // visual size whether the button is a tool (water) or a land swatch.
+        CustomMinimumSize = new Vector2(68, 68);
         MouseFilter = MouseFilterEnum.Stop;
     }
 
@@ -74,14 +80,21 @@ public partial class HexPaletteButton : Control
 
     public override void _Draw()
     {
-        // Pointy-top hex centered in our rect. Circumradius is the largest
-        // value that keeps both the horizontal width (radius * sqrt(3))
-        // and the vertical height (radius * 2) inside our box, with a
-        // small inset so the selected outline isn't clipped.
+        if (_squared)
+        {
+            DrawSquared();
+            return;
+        }
+
+        // Pointy-top hex centered in our rect. Multiplier 0.808 = 0.85 *
+        // 0.95 — tuned so the bare hex matches the inscribed hex of the
+        // squared (water / land cycle) variant. Without this the same
+        // 68×68 button would render a noticeably larger hex in non-
+        // squared mode (height-limited at 0.92 of half-height).
         Vector2 center = Size * 0.5f;
         float maxByWidth = Size.X / Mathf.Sqrt(3f);
         float maxByHeight = Size.Y * 0.5f;
-        float radius = Mathf.Min(maxByWidth, maxByHeight) * 0.92f;
+        float radius = Mathf.Min(maxByWidth, maxByHeight) * 0.808f;
 
         var verts = new Vector2[6];
         for (int i = 0; i < 6; i++)
@@ -106,6 +119,69 @@ public partial class HexPaletteButton : Control
         for (int i = 0; i < 6; i++)
         {
             DrawLine(verts[i], verts[(i + 1) % 6], outlineColor, outlineWidth);
+        }
+    }
+
+    /// <summary>Squared variant: rounded-square dark-slate backdrop with
+    /// a black border (matches HudIconButton's chrome — the die button
+    /// is the canonical example). Used for the editor's tool buttons
+    /// (pan / water / tree / capital / tower) so they read as one
+    /// family with the die.</summary>
+    private void DrawSquared()
+    {
+        // Backdrop — same shape + colors as HudIconButton's base stylebox.
+        var backdrop = new StyleBoxFlat
+        {
+            BgColor = UiPalette.BgPanel,
+            BorderColor = new Color(0f, 0f, 0f, 1f),
+            BorderWidthLeft = 2, BorderWidthRight = 2,
+            BorderWidthTop = 2, BorderWidthBottom = 2,
+            CornerRadiusTopLeft = 10, CornerRadiusTopRight = 10,
+            CornerRadiusBottomLeft = 10, CornerRadiusBottomRight = 10,
+        };
+        DrawStyleBox(backdrop, new Rect2(Vector2.Zero, Size));
+
+        Vector2 center = Size * 0.5f;
+        // Icon glyph radius — same proportion HudIconButton glyphs use
+        // (~85% of the half-edge so a 68×68 button gets ~29 px radius).
+        float radius = Mathf.Min(Size.X, Size.Y) * 0.5f * 0.85f;
+
+        switch (_icon)
+        {
+            case HexPaletteIcon.Tree:    HudIcons.DrawTree(this, center, radius, Colors.White); break;
+            case HexPaletteIcon.Capital: HudIcons.DrawCapital(this, center, radius, Colors.White); break;
+            case HexPaletteIcon.Tower:   HudIcons.DrawTower(this, center, radius, Colors.White); break;
+            case HexPaletteIcon.Hand:    HudIcons.DrawHand(this, center, radius, Colors.White); break;
+            case HexPaletteIcon.None:
+                // Icon-less squared variant (water paint, land cycle):
+                // inscribe a pointy-top hex polygon in the FillColor so
+                // the button retains the "swatch" identity it had in hex
+                // mode, just inside the rounded-square backdrop.
+                float hexR = radius * 0.95f;
+                var hexVerts = new Vector2[6];
+                for (int i = 0; i < 6; i++)
+                {
+                    float angleRad = Mathf.Pi * 0.5f - i * Mathf.Pi / 3f;
+                    hexVerts[i] = center + new Vector2(Mathf.Cos(angleRad), -Mathf.Sin(angleRad)) * hexR;
+                }
+                DrawColoredPolygon(hexVerts, _fillColor);
+                break;
+        }
+
+        if (_isSelected)
+        {
+            // Cool-blue selection ring (D1 §6) layered on top of the
+            // black border so the active brush is unmistakable.
+            var ringStyle = new StyleBoxFlat
+            {
+                BgColor = new Color(0f, 0f, 0f, 0f),
+                BorderColor = UiPalette.SelectionRing,
+                BorderWidthLeft = 3, BorderWidthRight = 3,
+                BorderWidthTop = 3, BorderWidthBottom = 3,
+                CornerRadiusTopLeft = 10, CornerRadiusTopRight = 10,
+                CornerRadiusBottomLeft = 10, CornerRadiusBottomRight = 10,
+            };
+            DrawStyleBox(ringStyle, new Rect2(Vector2.Zero, Size));
         }
     }
 }

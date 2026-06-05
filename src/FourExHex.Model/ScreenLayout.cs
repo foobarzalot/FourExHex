@@ -37,4 +37,43 @@ public static class ScreenLayout
         orientation == ScreenOrientation.Landscape
             ? new MapInsets(0f, landscapeBarHeight)
             : new MapInsets(topBarVisible ? portraitTopBarHeight : 0f, portraitBottomBarHeight);
+
+    /// <summary>
+    /// Phone↔tablet breakpoint for the responsive HUD, in logical px on the
+    /// shorter viewport edge. Picked to put every phone we test on the
+    /// compact side and every tablet on the expanded side:
+    ///
+    ///   iPhone 13 mini (on-device, min=507)        ✓ compact
+    ///   iPhone 13 mini Option-B repro (min=625)    ✓ compact
+    ///   Galaxy S9 portrait/landscape (min=486)     ✓ compact
+    ///   iPad mini (min=768)                        ✓ expanded
+    ///   iPad Pro (min=1024+)                       ✓ expanded
+    ///
+    /// 700 sits midway between the largest phone repro (625) and the
+    /// smallest tablet (768), with the ±32 dead-band giving lower=668 /
+    /// upper=732 — comfortably outside both extremes.
+    /// </summary>
+    public const float CompactBreakpointPx = 700f;
+
+    /// <summary>
+    /// True when the HUD should render in its compact (phone) form: the
+    /// shorter viewport edge is below <see cref="CompactBreakpointPx"/>
+    /// (with hysteresis). The ±dead-band is symmetric: an expanded window
+    /// flips to compact only when min(w,h) drops below
+    /// <c>CompactBreakpointPx - deadBand</c>; a compact window flips to
+    /// expanded only when min(w,h) climbs above
+    /// <c>CompactBreakpointPx + deadBand</c>. Inside the dead-band the
+    /// prior state holds, so a window resize that hovers around the
+    /// breakpoint can't thrash the layout. Callers pass the previous
+    /// compact bit so the function stays pure (no internal state).
+    /// </summary>
+    public static bool IsCompact(
+        float width, float height, bool prevWasCompact, float deadBand = 32f)
+    {
+        float minSide = System.Math.Min(width, height);
+        float threshold = prevWasCompact
+            ? CompactBreakpointPx + deadBand
+            : CompactBreakpointPx - deadBand;
+        return minSide < threshold;
+    }
 }

@@ -11,12 +11,10 @@ using Godot;
 /// </summary>
 public partial class HudView : OrientationHud, IHudView
 {
+    // Kept for external callers (e.g. tutorial builder chrome heights).
+    // The D1 floating layout no longer renders an opaque slate bar at this
+    // height; the value persists as a layout token only.
     public const float HudHeight = 96f;
-    // Portrait split-bar heights. Top bar carries territory-specific content
-    // (gold + buy/build) and only shows when a territory is selected; the
-    // bottom bar carries turn/player status + turn controls and is always up.
-    private const float PortraitTopBarHeight = 96f;
-    private const float PortraitBottomBarHeight = 96f;
 
     public event Action? BuyRecruitClicked;
     public event Action<UnitLevel>? BuyUnitClicked;
@@ -64,7 +62,7 @@ public partial class HudView : OrientationHud, IHudView
     // side in the palette panel; exactly one is visible (width-driven, set in
     // OnViewportMetricsChanged). The collapsed button fires the same
     // BuyRecruitClicked cycle event as the U hotkey.
-    private HBoxContainer _paletteRow = null!;
+    private BoxContainer _paletteRow = null!;
     private HudIconButton _collapsedBuyButton = null!;
     private HudIconButton _buildTowerButton = null!;
     private HudIconButton _undoLastButton = null!;
@@ -94,10 +92,11 @@ public partial class HudView : OrientationHud, IHudView
 
     // Persistent clusters, built once and reparented between the bars
     // (TopBar/BottomBar, owned by OrientationHud) on a landscape↔portrait flip.
-    private Control _statusCluster = null!;   // TURN # + TO PLAY name
-    private Control _actionCluster = null!;   // buy palette + Build Tower + Add Text
-    private Control _undoCluster = null!;     // undo + redo (centered on the portrait bottom bar)
-    private Control _controlsCluster = null!; // next territory + End Turn (+ Options in landscape)
+    private Control _statusCluster = null!;       // TURN # + swatch bar (raw cluster)
+    private PanelContainer _statusChip = null!;   // chip-styled wrapper around _statusCluster (matches gold chip)
+    private BoxContainer _actionCluster = null!;  // buy palette + Build Tower + Add Text (flips H↔V)
+    private Control _undoCluster = null!;         // undo + redo
+    private BoxContainer _controlsCluster = null!;// next unit + next territory (flips H↔V)
 
     // Snapshot of session.Mode != None at the last Refresh, so the Escape
     // handler can decide between cancel-action (pending) and End Game (idle)
@@ -113,93 +112,91 @@ public partial class HudView : OrientationHud, IHudView
         // MouseFilter Pass keeps the clusters click-through to leaf children
         // only. (The slate bar background + click-blocking now live on the
         // bar Panels created in ApplyLayout, not a standalone background.)
-        _statusCluster = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Pass };
-        _statusCluster.AddThemeConstantOverride("separation", 14);
-        _actionCluster = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Pass };
-        _actionCluster.AddThemeConstantOverride("separation", 14);
+        // All clusters use 8-px separation so the horizontal gaps within a
+        // row match the vertical gap between rows (the bottom-bar VBox uses
+        // 8 too). Mixing 14 + 8 looked irregular in the bottom-left grid.
+        // MouseFilter Ignore on the read-only status cluster (and on every
+        // descendant) so taps in the chip area fall through to the map
+        // below — the chip is a display, not a button.
+        _statusCluster = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
+        _statusCluster.AddThemeConstantOverride("separation", 8);
+        // Action + controls clusters use plain BoxContainer so they can
+        // flip Vertical/horizontal between portrait rows and landscape rails.
+        _actionCluster = new BoxContainer { MouseFilter = Control.MouseFilterEnum.Pass };
+        _actionCluster.AddThemeConstantOverride("separation", 8);
         _undoCluster = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Pass };
-        _undoCluster.AddThemeConstantOverride("separation", 14);
-        _controlsCluster = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Pass };
-        _controlsCluster.AddThemeConstantOverride("separation", 14);
+        _undoCluster.AddThemeConstantOverride("separation", 8);
+        _controlsCluster = new BoxContainer { MouseFilter = Control.MouseFilterEnum.Pass };
+        _controlsCluster.AddThemeConstantOverride("separation", 8);
 
         // 1) Current-player block — a row of color swatches, one per
         // player in movement order, with the current player's swatch
         // enlarged + white-outlined and eliminated players dimmed in
         // place. Placed first so it leads the status row.
-        _playerSwatchBar = new PlayerSwatchBar { SizeFlagsVertical = Control.SizeFlags.ShrinkCenter };
+        _playerSwatchBar = new PlayerSwatchBar
+        {
+            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
         _statusCluster.AddChild(_playerSwatchBar);
 
         // 2) Turn block — small "TURN" eyebrow over a mono number. Sits
         // immediately right of the swatch row (no divider) so the turn
         // counter reads as part of the active-player display.
-        _statusCluster.AddChild(BuildEyebrowBlock("TURN", out _turnLabel, mono: true, valueColor: UiPalette.Ink, out _turnEyebrow));
+        Control turnBlock = BuildEyebrowBlock("TURN", out _turnLabel, mono: true, valueColor: UiPalette.Ink, out _turnEyebrow);
+        SetClickThrough(turnBlock);
+        _statusCluster.AddChild(turnBlock);
         _turnLabel.Text = "1";
         _turnLabel.CustomMinimumSize = new Vector2(70, 0);
         _turnLabel.AddThemeFontSizeOverride("font_size", 36);
 
+        // Wrap the status cluster in a black-pill chip matching the gold
+        // chip's style. MouseFilter = Ignore so the chip is click-
+        // through (taps in its footprint reach the map below).
+        _statusChip = new PanelContainer
+        {
+            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        _statusChip.AddThemeStyleboxOverride("panel", BuildHudChipStyle());
+        _statusChip.AddChild(_statusCluster);
+
         // 3) Gold chip — bg-deep pill containing the gold value + the
-        // income breakdown. We keep the existing "value (income-upkeep=net)"
-        // format inside one label so the rich economy-outlook color
-        // logic in Refresh() still applies wholesale.
+        // income breakdown. The font matches the turn counter (36) so the
+        // two chips read at the same heading scale; the chip auto-sizes
+        // to the larger label.
         var goldChip = new PanelContainer
         {
             SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
+            // Click-through — gold chip is a read-only readout, not a
+            // button; taps fall through to the map.
+            MouseFilter = Control.MouseFilterEnum.Ignore,
         };
-        var goldChipStyle = new StyleBoxFlat
-        {
-            BgColor = UiPalette.BgDeep,
-            BorderColor = UiPalette.LineSoft,
-            BorderWidthLeft = 1,
-            BorderWidthRight = 1,
-            BorderWidthTop = 1,
-            BorderWidthBottom = 1,
-            CornerRadiusTopLeft = 8,
-            CornerRadiusTopRight = 8,
-            CornerRadiusBottomLeft = 8,
-            CornerRadiusBottomRight = 8,
-            ContentMarginLeft = 10,
-            ContentMarginRight = 10,
-            ContentMarginTop = 6,
-            ContentMarginBottom = 6,
-        };
-        goldChip.AddThemeStyleboxOverride("panel", goldChipStyle);
+        goldChip.AddThemeStyleboxOverride("panel", BuildHudChipStyle());
         _goldLabel = new Label
         {
             Text = "",
-            CustomMinimumSize = new Vector2(190, 0),
+            CustomMinimumSize = new Vector2(220, 0),
+            MouseFilter = Control.MouseFilterEnum.Ignore,
         };
         _goldLabel.AddThemeFontOverride("font", MonoFont);
-        _goldLabel.AddThemeFontSizeOverride("font_size", 26);
+        _goldLabel.AddThemeFontSizeOverride("font_size", 36);
         goldChip.AddChild(_goldLabel);
-        // Hide the chip entirely when there's nothing to display (no
-        // territory selected, no capital) — an empty bg-deep pill reads as a
-        // missing widget. ApplyLayout places it (left region in landscape,
-        // top bar in portrait); it grows/vanishes without shifting buttons.
         _goldChip = goldChip;
 
-        // 4) Unit palette — the four buy buttons (Recruit/Soldier/
-        // Captain/Commander) live inside one rounded bg-deep PanelContainer
-        // so they read as one grouped widget. The Build Tower button
-        // sits OUTSIDE the panel as a separate sibling in the center group;
-        // the visual gap between them is the group's own 14-px separation,
-        // so Build Tower has its own anchor point distinct from the
-        // unit-placement group.
-        var palettePanel = new PanelContainer
-        {
-            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
-        };
-        palettePanel.AddThemeStyleboxOverride("panel", ModalChrome.PalettePanelStyle());
-        // The panel wraps a single group holding both the full four-button row
-        // and a single collapsed cycle button; exactly one is visible at a time
-        // (hidden children take no space in the HBox, so the panel sizes to
-        // whichever is shown). Mirrors the map editor's land-swatch collapse.
-        var paletteGroup = new HBoxContainer();
-        palettePanel.AddChild(paletteGroup);
-        var paletteRow = new HBoxContainer();
+        // 4) Unit palette — D1 floating layout: no rounded slate backdrop
+        // around the buy buttons. The four buy radios (Recruit/Soldier/
+        // Captain/Commander) live in `paletteRow`; the single collapsed
+        // cycle button (`_collapsedBuyButton`) is added as a sibling of
+        // paletteRow inside `_actionCluster`. Exactly one is visible at a
+        // time — hidden children take no space in the BoxContainer — so
+        // paletteRow and the cycle button are mutually exclusive without a
+        // shared wrapper. paletteRow is a BoxContainer (not HBox) so it
+        // can flip Vertical in a landscape rail.
+        var paletteRow = new BoxContainer();
         paletteRow.AddThemeConstantOverride("separation", 2);
-        paletteGroup.AddChild(paletteRow);
         _paletteRow = paletteRow;
-        _actionCluster.AddChild(palettePanel);
+        _actionCluster.AddChild(paletteRow);
 
         UnitLevel[] buyLevels = { UnitLevel.Recruit, UnitLevel.Soldier, UnitLevel.Captain, UnitLevel.Commander };
         _buyUnitButtons = new HudIconButton[buyLevels.Length];
@@ -210,12 +207,6 @@ public partial class HudView : OrientationHud, IHudView
             {
                 Disabled = true,
                 BuyLevel = level,
-                // Match the 80px height that other HudIconButtons render
-                // at (they stretch to the bar's 80px content area via
-                // HBox cross-axis Fill; the buy buttons sit in a
-                // ShrinkCenter palette panel, so without this override
-                // they'd shrink back to the 44×44 minimum).
-                CustomMinimumSize = new Vector2(44, 80),
             };
             button.Pressed += () => BuyUnitClicked?.Invoke(level);
             AudioBus.AttachClick(button);
@@ -234,11 +225,14 @@ public partial class HudView : OrientationHud, IHudView
             BuyLevel = UnitLevel.Recruit,
             TooltipText = "Buy unit — cycles affordable levels (U)",
             Visible = false,
-            CustomMinimumSize = new Vector2(44, 80),
         };
         _collapsedBuyButton.Pressed += () => BuyRecruitClicked?.Invoke();
         AudioBus.AttachClick(_collapsedBuyButton);
-        paletteGroup.AddChild(_collapsedBuyButton);
+        // Sibling of paletteRow inside _actionCluster (the rounded slate
+        // wrapper that used to group them is gone). One is visible at a
+        // time — OnViewportMetricsChanged toggles paletteRow vs cycle
+        // button based on Compact.
+        _actionCluster.AddChild(_collapsedBuyButton);
 
         _buildTowerButton = new HudIconButton(HudIcon.Tower) { Disabled = true };
         _buildTowerButton.Pressed += () => BuildTowerClicked?.Invoke();
@@ -321,6 +315,10 @@ public partial class HudView : OrientationHud, IHudView
         // landscape; the top display bar's right side in portrait, just left of
         // Options), so it isn't added to a cluster here — the Build*Bars
         // methods place it.
+        // End Turn now matches the nav buttons (Next Unit / Next Territory) —
+        // dark slate chrome with the shared black border. The white CTA pulse
+        // still kicks in when the controller flags it as the current CTA
+        // (no actionable territories remain).
         _endTurnButton = new HudIconButton(HudIcon.EndTurn);
         _endTurnButton.Pressed += () => EndTurnClicked?.Invoke();
         AudioBus.AttachClick(_endTurnButton);
@@ -336,23 +334,21 @@ public partial class HudView : OrientationHud, IHudView
         _optionsButton.Pressed += () => EscRequested?.Invoke();
         AudioBus.AttachClick(_optionsButton);
 
-        // Read-only seed display anchored to the top-left so a player can recall
-        // or share the seed mid-game. OnLayoutApplied positions it per
-        // orientation (below the portrait top bar so it isn't covered).
+        // Read-only seed / map-name display anchored to the bottom-left
+        // safe-area corner so it tucks under the action buttons in the
+        // unused strip above the iOS home indicator (and flush bottom-left
+        // on desktop). OnLayoutApplied refreshes the offsets if the safe
+        // area changes.
         _seedLabel = new Label
         {
             Text = "",
             AnchorLeft = 0f,
             AnchorRight = 0f,
-            AnchorTop = 0f,
-            AnchorBottom = 0f,
-            OffsetLeft = 12f,
-            OffsetRight = 280f,
-            OffsetTop = 8f,
-            OffsetBottom = 48f,
+            AnchorTop = 1f,
+            AnchorBottom = 1f,
         };
-        _seedLabel.AddThemeFontSizeOverride("font_size", 28);
-        _seedLabel.AddThemeColorOverride("font_color", new Color(0f, 0f, 0f, 1f));
+        _seedLabel.AddThemeFontSizeOverride("font_size", 20);
+        _seedLabel.AddThemeColorOverride("font_color", UiPalette.InkSoft);
         AddChild(_seedLabel);
 
         // Arrange the clusters for the current orientation + track resize
@@ -370,208 +366,285 @@ public partial class HudView : OrientationHud, IHudView
 
     protected override void DetachClusters()
     {
-        HudBars.Detach(_statusCluster);
+        // _statusChip wraps _statusCluster — detach the chip (the parented
+        // node), not the inner cluster.
+        HudBars.Detach(_statusChip);
         HudBars.Detach(_goldChip);
         HudBars.Detach(_actionCluster);
         HudBars.Detach(_undoCluster);
         HudBars.Detach(_controlsCluster);
-        // Options floats between the controls cluster (landscape) and the top
-        // bar (portrait); detach it so freeing the old bars can't free it.
-        // End Turn floats the same way (controls cluster in landscape, top bar
-        // in portrait); same lifecycle care.
+        // Options + End Turn migrate between zones per orientation; detach
+        // them so freeing the old zones can't free them.
         HudBars.Detach(_optionsButton);
         HudBars.Detach(_endTurnButton);
     }
 
-    /// <summary>Single bottom strip: status + gold (left), actions
-    /// (center), turn controls (right) — moved to the bottom for thumb reach.</summary>
+    /// <summary>Landscape — D1 zones: TopLeftZone holds status + gold;
+    /// TopRightZone holds undo + options (always); LeftRail holds the
+    /// create/paint cluster (buy palette + Build Tower); RightRail holds
+    /// the command cluster (nav) + End Turn (hero) stacked vertically.
+    /// Rails align Center (compact) or End (expanded) — set by
+    /// HudBars.MakeRail.</summary>
     protected override void BuildLandscapeBars()
     {
-        BottomBar = HudBars.MakeBarPanel(top: false, height: HudHeight);
-        AddChild(BottomBar);
-        Control frame = HudBars.MakeBarFrame();
-        BottomBar.AddChild(frame);
+        // Flip the action + controls clusters to vertical for the rails.
+        SetClusterVertical(true);
 
-        // Left edge: unit/tower purchase buttons + the gold report beside them.
-        // Action is anchored to the left edge; gold grows rightward from it.
-        HBoxContainer left = HudBars.MakeAnchoredGroup(0f, Control.GrowDirection.End);
-        frame.AddChild(left);
-        left.AddChild(_actionCluster);
-        left.AddChild(BuildVerticalDivider());
-        // Landscape bottom bar has no notch overhead, so center the chip.
+        // Top-left: status chip (turn + swatches) + gold chip, inline.
+        _statusChip.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
         _goldChip.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
-        left.AddChild(_goldChip);
+        TopLeftZone.AddChild(_statusChip);
+        TopLeftZone.AddChild(_goldChip);
 
-        // Centered: turn counter + player swatches.
-        HBoxContainer center = HudBars.MakeAnchoredGroup(0.5f, Control.GrowDirection.Both);
-        frame.AddChild(center);
-        center.AddChild(_statusCluster);
+        // Top-right: undo cluster + options gear.
+        TopRightZone.AddChild(_undoCluster);
+        TopRightZone.AddChild(_optionsButton);
 
-        // Right corner: turn controls (undo/redo | next, end, options).
-        HBoxContainer right = HudBars.MakeAnchoredGroup(1f, Control.GrowDirection.Begin);
-        frame.AddChild(right);
-        right.AddChild(_undoCluster);
-        right.AddChild(BuildVerticalDivider());
-        right.AddChild(_controlsCluster);
-        _controlsCluster.AddChild(_endTurnButton);
-        _controlsCluster.AddChild(_optionsButton);
+        // Left rail: buy palette + Build Tower, vertically centered.
+        LeftRailGroup!.AddChild(_actionCluster);
+
+        // Right rail: nav (next unit + next territory), vertically centered
+        // — mirrors the left rail's pair. End Turn is NOT in the rail.
+        RightRailGroup!.AddChild(_controlsCluster);
+
+        // End Turn floats anchored to the bottom-right corner of the
+        // viewport, inside the safe-area inset.
+        PinEndTurnBottomRight();
+
+        // In expanded landscape the right rail bottom-anchors its content
+        // (alignBottom = true). End Turn pinned to the bottom-right corner
+        // would then collide with the bottom-most nav button. Push the
+        // rail group's bottom edge UP by End Turn's footprint so the nav
+        // cluster sits just above the End Turn slot. Compact landscape
+        // centers the group vertically and doesn't need this clearance.
+        if (!Compact && RightRailGroup != null)
+        {
+            const float endTurnClearance = 68f + 20f;   // button + spacing
+            RightRailGroup.OffsetBottom -= endTurnClearance;
+        }
+
+        Log.Debug(Log.LogCategory.Render,
+            "HudView: landscape cluster placement — statusChip+goldChip → TopLeft, " +
+            "undoCluster+optionsButton → TopRight, actionCluster → LeftRail, " +
+            "controlsCluster → RightRail (centered), endTurnButton → bottom-right corner.");
     }
 
-    /// <summary>Portrait split bars: top = non-interactive display (status +
-    /// gold), always up; bottom = all interactive buttons (actions left, turn
-    /// controls right) for thumb reach.</summary>
+    /// <summary>Place End Turn at the bottom-right corner of the viewport,
+    /// inside the safe-area inset, as a direct child of this CanvasLayer
+    /// (anchored — no container layout interference).</summary>
+    private void PinEndTurnBottomRight()
+    {
+        FourExHex.Model.LogicalSafeInsets safe = SafeArea.Current;
+        float pad = 10f;
+        _endTurnButton.AnchorLeft = 1f;
+        _endTurnButton.AnchorRight = 1f;
+        _endTurnButton.AnchorTop = 1f;
+        _endTurnButton.AnchorBottom = 1f;
+        _endTurnButton.GrowHorizontal = Control.GrowDirection.Begin;
+        _endTurnButton.GrowVertical = Control.GrowDirection.Begin;
+        float offX = -(safe.Right + pad);
+        float offY = -(safe.Bottom + pad);
+        _endTurnButton.OffsetLeft = offX;
+        _endTurnButton.OffsetRight = offX;
+        _endTurnButton.OffsetTop = offY;
+        _endTurnButton.OffsetBottom = offY;
+        AddChild(_endTurnButton);
+    }
+
+    /// <summary>Undo the corner-anchoring landscape applied, so the next
+    /// portrait Build*Bars can drop End Turn into a Container without the
+    /// anchors fighting the container's layout.</summary>
+    private void ResetEndTurnAnchors()
+    {
+        _endTurnButton.AnchorLeft = 0f;
+        _endTurnButton.AnchorRight = 0f;
+        _endTurnButton.AnchorTop = 0f;
+        _endTurnButton.AnchorBottom = 0f;
+        _endTurnButton.OffsetLeft = 0f;
+        _endTurnButton.OffsetRight = 0f;
+        _endTurnButton.OffsetTop = 0f;
+        _endTurnButton.OffsetBottom = 0f;
+        _endTurnButton.GrowHorizontal = Control.GrowDirection.End;
+        _endTurnButton.GrowVertical = Control.GrowDirection.End;
+    }
+
+    /// <summary>Portrait — D1 zones (wireframe variant A): TopLeftZone holds
+    /// status above gold; TopRightZone holds undo + options; BottomBar
+    /// holds a VBox of two full-width rows:
+    ///  - row1 = `[nextUnit · nextTerritory] ←→ [End Turn (hero)]` (space-between)
+    ///  - row2 = `[Buy (hero) · Build Tower]` (left-aligned)
+    /// Mirrors `hud-d1.jsx` variant A precisely — hero buttons sit at
+    /// opposite corners (End Turn top-right of the bar, Buy at the bottom-
+    /// left thumb spot).</summary>
     protected override void BuildPortraitBars()
     {
-        TopBar = HudBars.MakeBarPanel(top: true, height: PortraitTopBarHeight);
-        AddChild(TopBar);
-        Control topFrame = HudBars.MakeBarFrame();
-        // On devices with a top safe inset (iPhone notch), drop the 8px
-        // chrome inset at the bottom of the top bar so ShrinkEnd-anchored
-        // content (the gold chip) sits flush with the bar's bottom edge,
-        // clearing the notch overhang. On non-notched devices (S9, desktop)
-        // leave the symmetric 8/8 chrome so ShrinkCenter elements stay
-        // centered in the bar.
-        bool hasTopNotch = SafeArea.Current.Top > 0f;
-        if (hasTopNotch) topFrame.OffsetBottom = 0f;
-        TopBar.AddChild(topFrame);
-        // Status (turn + swatches) is firmly anchored to the left edge so it
-        // never shifts when the gold report appears/disappears beside it; the
-        // gold chip grows rightward from the same left group. Options anchors to
-        // the right corner.
-        HBoxContainer topLeft = HudBars.MakeAnchoredGroup(0f, Control.GrowDirection.End);
-        topFrame.AddChild(topLeft);
-        topLeft.AddChild(_statusCluster);
-        // Portrait top bar overlaps the iOS notch (see MakeBarPanel). Bottom-
-        // align the gold chip on notched devices so its body sits in the
-        // visible bar portion below the notch instead of being half-clipped
-        // by the cutout. On non-notched devices (S9, desktop) keep it
-        // vertically centered like the rest of the bar.
-        _goldChip.SizeFlagsVertical = hasTopNotch
-            ? Control.SizeFlags.ShrinkEnd
-            : Control.SizeFlags.ShrinkCenter;
-        topLeft.AddChild(_goldChip);
+        // Action + controls clusters render horizontally in the bottom-bar rows.
+        SetClusterVertical(false);
+        // Wipe any anchor state landscape applied to End Turn (corner pin)
+        // so the bottom-bar Container can size/place it cleanly.
+        ResetEndTurnAnchors();
 
-        HBoxContainer topRight = HudBars.MakeAnchoredGroup(1f, Control.GrowDirection.Begin);
-        topFrame.AddChild(topRight);
-        topRight.AddChild(_endTurnButton);
-        topRight.AddChild(_optionsButton);
+        // Top-left: status chip above gold chip. Status sticks to its
+        // natural width via ShrinkBegin — without it, the VBox stretches
+        // status horizontally to match the wider gold chip when a
+        // territory is selected, which the player reads as the status
+        // chip "growing" on selection.
+        var tlStack = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Pass };
+        tlStack.AddThemeConstantOverride("separation", 4);
+        _statusChip.SizeFlagsHorizontal = Control.SizeFlags.ShrinkBegin;
+        tlStack.AddChild(_statusChip);
+        _goldChip.SizeFlagsHorizontal = Control.SizeFlags.ShrinkBegin;
+        _goldChip.SizeFlagsVertical = Control.SizeFlags.ShrinkBegin;
+        tlStack.AddChild(_goldChip);
+        TopLeftZone.AddChild(tlStack);
 
-        BottomBar = HudBars.MakeBarPanel(top: false, height: PortraitBottomBarHeight);
-        AddChild(BottomBar);
-        Control frame = HudBars.MakeBarFrame();
-        BottomBar.AddChild(frame);
+        // Top-right: undo + options.
+        TopRightZone.AddChild(_undoCluster);
+        TopRightZone.AddChild(_optionsButton);
 
-        HBoxContainer left = HudBars.MakeAnchoredGroup(0f, Control.GrowDirection.End);
-        frame.AddChild(left);
-        left.AddChild(_actionCluster);
+        // Bottom bar — full-width transparent strip; two rows of buttons,
+        // each row fills the width so internal justify works as designed.
+        var inner = new VBoxContainer
+        {
+            AnchorLeft = 0f, AnchorRight = 1f,
+            AnchorTop = 0f, AnchorBottom = 1f,
+            OffsetLeft = 16f, OffsetRight = -16f,
+            OffsetTop = 10f, OffsetBottom = -(10f + SafeArea.Current.Bottom),
+            MouseFilter = Control.MouseFilterEnum.Pass,
+        };
+        inner.AddThemeConstantOverride("separation", 8);
+        BottomBar!.AddChild(inner);
 
-        // Undo/redo centered on the bottom bar (anchor 0.5, grows both ways).
-        HBoxContainer center = HudBars.MakeAnchoredGroup(0.5f, Control.GrowDirection.Both);
-        frame.AddChild(center);
-        center.AddChild(_undoCluster);
+        // Row 1 — left-aligned nav: [next unit · next territory].
+        var row1 = new HBoxContainer
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.Fill,
+            MouseFilter = Control.MouseFilterEnum.Pass,
+        };
+        row1.AddChild(_controlsCluster);
+        inner.AddChild(row1);
 
-        HBoxContainer right = HudBars.MakeAnchoredGroup(1f, Control.GrowDirection.Begin);
-        frame.AddChild(right);
-        right.AddChild(_controlsCluster);
+        // Row 2 — space-between: [Buy · Build Tower] at left, End Turn at right.
+        // Hero actions cluster at the bottom thumb spot; End Turn anchored
+        // to the right edge as a hero too.
+        var row2 = new HBoxContainer
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.Fill,
+            MouseFilter = Control.MouseFilterEnum.Pass,
+        };
+        row2.AddThemeConstantOverride("separation", 8);
+        row2.AddChild(_actionCluster);
+        var row2Spacer = new Control
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            MouseFilter = Control.MouseFilterEnum.Pass,
+        };
+        row2.AddChild(row2Spacer);
+        row2.AddChild(_endTurnButton);
+        inner.AddChild(row2);
+
+        Log.Debug(Log.LogCategory.Render,
+            "HudView: portrait cluster placement — statusCluster+goldChip → TopLeft, " +
+            "undoCluster+optionsButton → TopRight, controlsCluster → BottomBar.row1 (nav, left), " +
+            "actionCluster + endTurnButton → BottomBar.row2 (space-between).");
     }
 
-    // Below this viewport width the "TURN" / "TO PLAY" eyebrow captions are
-    // dropped even in landscape: the status group would otherwise grow wide
-    // enough (long economy report) to crowd the centered unit buttons. The
-    // design target is 1600 wide; common laptop/narrow widths go compact.
-    private const float CompactLandscapeWidth = 1500f;
-
-    // Below these widths the player-swatch bar collapses to the current
-    // player's swatch only — the full turn-order row doesn't fit. Two
-    // thresholds because landscape also spends width on the centered
-    // action cluster, so it needs more room before the full row fits.
-    private const float FullSwatchRowWidthPortrait = 820f;
-    private const float FullSwatchRowWidthLandscape = 1100f;
-
-    // Below these widths the four unit-buy buttons collapse to a single cycling
-    // button (mirrors the swatch-bar / map-editor land-swatch collapse). Two
-    // thresholds because landscape spends width on status + gold + controls
-    // beside the palette, so it needs more room before the full row fits.
-    private const float FullBuyRowWidthPortrait = 820f;
-    private const float FullBuyRowWidthLandscape = 1300f;
-
-    /// <summary>Post-layout (orientation flip): reposition the seed label into
-    /// the free map area (top-left in landscape; below the top bar in portrait so
-    /// it isn't covered), and the top bar follows the selection. Eyebrow
-    /// visibility is width-driven, handled in OnViewportMetricsChanged.</summary>
+    /// <summary>Post-layout (orientation / compact flip): reposition the seed
+    /// label so it doesn't tuck under the floating corner zones; reposition
+    /// the tutorial overlay over the bottom bar (portrait) or near the
+    /// bottom (landscape, no bottom bar).</summary>
     protected override void OnLayoutApplied()
     {
         _seedLabel.Visible = true;
-        // Portrait has a 96px top bar over the map; landscape leaves the top
-        // free. Drop the label below the bar in portrait so it reads on the map.
-        // Portrait label drops below the top bar; landscape has no top bar
-        // and sits 8 px below the viewport edge (notch is on the side in
-        // landscape, not the top, so no extra offset is needed here).
-        float seedTop = Orientation == ScreenOrientation.Portrait ? PortraitTopBarHeight + 8f : 8f;
+        // Bottom-left, above the safe-area inset. In portrait the bottom
+        // bar is 200 px tall but transparent; the two button rows occupy
+        // the top ~150 px of that bar (10 px padding + 68 + 8 + 68), so
+        // the label sits in the unused bottom strip without overlapping
+        // any button. On desktop (safe.Bottom = 0) it sits flush to the
+        // viewport's bottom-left.
+        float seedBottom = -(SafeArea.Current.Bottom + 6f);
+        float seedTop = seedBottom - 26f;
         _seedLabel.OffsetTop = seedTop;
-        _seedLabel.OffsetBottom = seedTop + 40f;
+        _seedLabel.OffsetBottom = seedBottom;
+        _seedLabel.OffsetLeft = SafeArea.Current.Left + 12f;
+        _seedLabel.OffsetRight = SafeArea.Current.Left + 280f;
         Log.Debug(Log.LogCategory.Render,
-            $"HudView: seed label at top={seedTop} ({Orientation}).");
-        UpdateTopBarVisibility();
-        // Lift the tutorial box above the portrait bottom bar (no-op until the
-        // overlay is built later in _Ready, and in landscape).
+            $"HudView: seed label at bottom-left, top={seedTop:0} ({Orientation}).");
         PositionTutorialOverlay();
     }
 
-    /// <summary>Drop the "TURN" / "TO PLAY" captions in portrait (no room) and
-    /// in a narrow landscape window (they'd crowd the centered unit buttons).
-    /// The turn number and player name always stay.</summary>
+    /// <summary>Swap collapsed↔expanded variants of the palette + roster
+    /// based on the unified Compact state from the base class. The TURN
+    /// eyebrow is hidden when compact (no room beside the swatches /
+    /// number).</summary>
     protected override void OnViewportMetricsChanged()
     {
-        float width = GetViewport().GetVisibleRect().Size.X;
-        bool showEyebrows = Orientation == ScreenOrientation.Landscape
-            && width >= CompactLandscapeWidth;
-        _turnEyebrow.Visible = showEyebrows;
-
-        float fullRowMin = Orientation == ScreenOrientation.Landscape
-            ? FullSwatchRowWidthLandscape
-            : FullSwatchRowWidthPortrait;
-        bool compactSwatches = width < fullRowMin;
-        _playerSwatchBar.SetCompact(compactSwatches);
+        bool compact = Compact;
+        _turnEyebrow.Visible = !compact;
+        _playerSwatchBar.SetCompact(compact);
+        _paletteRow.Visible = !compact;
+        _collapsedBuyButton.Visible = compact;
         Log.Debug(Log.LogCategory.Render,
-            $"[SwatchBar] metrics: width={width:0} orient={Orientation} compact={compactSwatches}");
+            $"HudView: metrics orient={Orientation} compact={compact} " +
+            $"swatch={(compact ? "single" : "roster")} buy={(compact ? "cycle" : "1x4")}");
 
-        float buyRowMin = Orientation == ScreenOrientation.Landscape
-            ? FullBuyRowWidthLandscape
-            : FullBuyRowWidthPortrait;
-        bool collapseBuy = width < buyRowMin;
-        _paletteRow.Visible = !collapseBuy;
-        _collapsedBuyButton.Visible = collapseBuy;
-        Log.Debug(Log.LogCategory.Render,
-            $"[BuyPalette] metrics: width={width:0} orient={Orientation} collapse={collapseBuy}");
-
-        // Re-fit the width-capped HUD panels to the new viewport (no-op until
-        // each is built).
+        // Re-fit width-capped overlays.
         PositionTutorialOverlay();
         PositionBankruptToast();
     }
 
     protected override MapInsets ComputeInsets()
     {
-        // The portrait top bar holds always-relevant display (turn / players /
-        // gold), so it's always up — top inset is stable across selection.
-        // Bars now overlap the iOS safe-inset zones rather than extending past
-        // them (see MakeBarPanel), so map insets are just the bar heights —
-        // the map reclaims the vertical space the safe insets would otherwise
-        // cost.
-        return ScreenLayout.ComputeInsets(
-            Orientation, topBarVisible: true,
-            HudHeight,
-            PortraitTopBarHeight,
-            PortraitBottomBarHeight);
+        // D1 is a true floating HUD: the map fills the viewport and the
+        // corner chips / bottom bar / rails sit on top. The map reserves
+        // no vertical inset, so a landscape window now shows tiles edge-
+        // to-edge top and bottom (rails are horizontal-only insets,
+        // which the map view doesn't track).
+        return new MapInsets(0f, 0f);
     }
 
-    /// <summary>Portrait keeps its top display bar up always; landscape builds
-    /// no top bar (single bottom strip), so this only guards the portrait case.</summary>
-    private void UpdateTopBarVisibility()
+    /// <summary>Flip the action / controls / palette-row BoxContainers
+    /// between horizontal (portrait bottom-bar rows) and vertical
+    /// (landscape side rails). The visible variant inside the buy palette
+    /// (collapsed cycle button vs 1×4 paletteRow) is governed separately
+    /// by Compact in <see cref="OnViewportMetricsChanged"/>.</summary>
+    private void SetClusterVertical(bool vertical)
     {
-        if (TopBar == null) return;
-        TopBar.Visible = true;
+        _actionCluster.Vertical = vertical;
+        _controlsCluster.Vertical = vertical;
+        _paletteRow.Vertical = vertical;
+    }
+
+    /// <summary>Recursively set <c>MouseFilter = Ignore</c> on a node and
+    /// every descendant Control, so taps in its footprint fall through to
+    /// whatever sits behind it (the map). Used for read-only display
+    /// chips that have no interactive children.</summary>
+    private static void SetClickThrough(Node node)
+    {
+        if (node is Control c) c.MouseFilter = Control.MouseFilterEnum.Ignore;
+        foreach (Node child in node.GetChildren())
+        {
+            SetClickThrough(child);
+        }
+    }
+
+    /// <summary>Shared chip-pill stylebox used by both the status chip
+    /// (turn # + swatch row) and the gold chip (treasury readout). Black
+    /// fill, line-soft border, 8-px radius, generous content margins to
+    /// accommodate the 36-pt heading text the chips wrap.</summary>
+    private static StyleBoxFlat BuildHudChipStyle()
+    {
+        return new StyleBoxFlat
+        {
+            BgColor = UiPalette.BgDeep,
+            BorderColor = UiPalette.LineSoft,
+            BorderWidthLeft = 1, BorderWidthRight = 1,
+            BorderWidthTop = 1, BorderWidthBottom = 1,
+            CornerRadiusTopLeft = 8, CornerRadiusTopRight = 8,
+            CornerRadiusBottomLeft = 8, CornerRadiusBottomRight = 8,
+            ContentMarginLeft = 12, ContentMarginRight = 12,
+            ContentMarginTop = 10, ContentMarginBottom = 10,
+        };
     }
 
     public void SetMapLabel(string text)
@@ -921,11 +994,12 @@ public partial class HudView : OrientationHud, IHudView
         float width = Mathf.Min(TutorialPanelW, viewportW - HudPanelSideMargin * 2f);
         _tutorialPanel.OffsetLeft = -width * 0.5f;
         _tutorialPanel.OffsetRight = width * 0.5f;
-        // Both orientations now have a bottom HUD bar; lift the box above its
-        // top edge. The bar overlaps the iOS home-indicator zone (see
-        // MakeBarPanel), so lifting by exactly the bar height keeps the box
-        // above the visible bar top.
-        float lift = Orientation == ScreenOrientation.Portrait ? PortraitBottomBarHeight : HudHeight;
+        // Portrait has a bottom bar (lift above its top edge); landscape is
+        // pure rails (no bottom bar — let the tutorial box settle near the
+        // viewport bottom with just the safe-area inset).
+        float lift = Orientation == ScreenOrientation.Portrait
+            ? HudBars.PortraitBottomBarHeight
+            : SafeArea.Current.Bottom;
         float bottom = TutorialMarginBottom + lift;
         _tutorialPanel.OffsetTop = -bottom - TutorialPanelH;
         _tutorialPanel.OffsetBottom = -bottom;
@@ -1054,12 +1128,11 @@ public partial class HudView : OrientationHud, IHudView
         float width = Mathf.Min(BankruptToastW, viewportW - HudPanelSideMargin * 2f);
         _bankruptToast.OffsetLeft = -width * 0.5f;
         _bankruptToast.OffsetRight = width * 0.5f;
-        // Clear the portrait top display bar (which overlaps the notch — see
-        // MakeBarPanel — so its bottom edge is the right anchor); in landscape
-        // there's no top bar and the notch is on the side, so just clear the
-        // viewport edge plus the margin.
-        float top = (Orientation == ScreenOrientation.Portrait ? PortraitTopBarHeight : 0f)
-            + BankruptToastMarginTop;
+        // Clear the floating TopLeft / TopRight corner chips (status, gold,
+        // undo, options) in both orientations — they hug the top edge inside
+        // the safe-area inset. ~90 px below the safe-area top reliably puts
+        // the toast under the chips on every device.
+        float top = SafeArea.Current.Top + 90f + BankruptToastMarginTop;
         _bankruptToast.OffsetTop = top;
         _bankruptToast.OffsetBottom = top + BankruptToastH;
     }
@@ -1933,6 +2006,9 @@ public partial class HudView : OrientationHud, IHudView
             button.RemoveThemeColorOverride("font_hover_color");
             button.RemoveThemeColorOverride("font_pressed_color");
             StopCtaPulse(button);
+            // Hero (terracotta accent) survives the CTA toggle — re-apply
+            // it so End Turn / active Buy stay accented when not the CTA.
+            if (button is HudIconButton heroish) heroish.ReapplyHero();
         }
     }
 

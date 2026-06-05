@@ -102,23 +102,29 @@ public static class HudIcons
     /// </summary>
     public static void DrawNextUnit(CanvasItem t, Vector2 center, float radius, Color stroke)
     {
-        DrawNextArrow(t, center, radius, stroke);
-        Vector2 ringCenter = center + new Vector2(0f, radius * 0.20f);
-        DrawRing(t, ringCenter, radius * 0.62f, stroke);
+        // Rightward-facing arrow centered on the button: horizontal shaft +
+        // filled triangular arrowhead. Sized to fill the button at the same
+        // scale as the EndTurn triangle / undo arrows so the icon family
+        // reads at one stroke weight.
+        float r = radius * 0.85f;
+        float headLen = r * 0.55f;
+        float headHalf = r * 0.45f;
+        Vector2 tail = center + new Vector2(-r, 0f);
+        Vector2 baseMid = center + new Vector2(r - headLen, 0f);
+        Vector2 apex = center + new Vector2(r, 0f);
+        Vector2 baseUp = baseMid + new Vector2(0f, -headHalf);
+        Vector2 baseDown = baseMid + new Vector2(0f, +headHalf);
+        t.DrawLine(tail, baseMid, stroke, StrokeWidth);
+        t.DrawColoredPolygon(new[] { apex, baseUp, baseDown }, stroke);
     }
 
     /// <summary>
-    /// "Next active territory" glyph: a gold capital star at its
-    /// original full size shifted down to sit below the math-vector
-    /// arrow. The two "next" buttons read as a family via the shared
-    /// arrow. Star uses <paramref name="modulate"/> for disabled
-    /// dimming; the arrow uses <paramref name="stroke"/> so it flips
-    /// with the CTA stylebox.
+    /// "Next active territory" glyph: a gold capital star centered on the
+    /// button. Star uses <paramref name="modulate"/> for disabled dimming.
+    /// The prior "next" arrow above the star has been removed.
     /// </summary>
     public static void DrawNextTerritory(CanvasItem t, Vector2 center, float radius, Color stroke, Color modulate)
     {
-        DrawNextArrow(t, center, radius, stroke);
-        Vector2 starCenter = center + new Vector2(0f, radius * 0.20f);
         float outer = radius * 0.82f;
         float inner = outer * 0.4f;
         var verts = new Vector2[10];
@@ -126,7 +132,7 @@ public static class HudIcons
         {
             float angle = -Mathf.Pi / 2f + i * Mathf.Pi / 5f;
             float r = (i % 2 == 0) ? outer : inner;
-            verts[i] = starCenter + new Vector2(r * Mathf.Cos(angle), r * Mathf.Sin(angle));
+            verts[i] = center + new Vector2(r * Mathf.Cos(angle), r * Mathf.Sin(angle));
         }
         t.DrawColoredPolygon(verts, new Color(0.97f, 0.80f, 0.22f, 1f) * modulate);
         for (int i = 0; i < 10; i++)

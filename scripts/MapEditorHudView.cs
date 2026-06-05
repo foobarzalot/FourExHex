@@ -1,13 +1,19 @@
 using System;
-using System.Linq;
 using Godot;
 
 /// <summary>
-/// Minimal HUD for the map editor scene. Dark top strip with a seed entry
-/// + Generate button (mirrors the main menu's seed control style) and an
-/// Exit button on the right. Matches <see cref="HudView.HudHeight"/> so
-/// the reserved-strip math in <see cref="HexMapView.VisualCenter"/> /
-/// ClampPan continues to work unchanged.
+/// HUD for the map editor scene. Follows the gameplay HUD's D1 "Roles
+/// Split (floating)" layout: TopLeftZone empty (editor has no read-only
+/// status), TopRightZone holds undo/redo + Options (when present), the
+/// paint cluster (land palette + sea + tree + capital + tower) lives in
+/// the LeftRail (landscape) or bottom row 2 (portrait), and the tools
+/// cluster (hand + die) lives in the RightRail (landscape) or bottom row
+/// 1 (portrait).
+///
+/// The die is the lone randomize trigger — pressing it rolls a fresh
+/// random seed each time (the previous numeric seed LineEdit was removed
+/// per the D1 redesign so the bar isn't crowded with a status display
+/// the player never needs to read).
 ///
 /// Deliberately does NOT implement <see cref="IHudView"/> — that interface
 /// is the play-scene controller contract and includes events the editor
@@ -17,18 +23,6 @@ public partial class MapEditorHudView : OrientationHud
 {
     public const int SeedMin = 1;
     public const int SeedMax = 1000;
-    // Portrait bottom-bar height (paint palette). The portrait top bar
-    // (seed + generate + undo/redo + options) reuses HudView.HudHeight.
-    private const float PortraitBottomBarHeight = 96f;
-
-    // Below these viewport widths the six individual land swatches collapse to
-    // a single colored button that cycles the player color on each press —
-    // mirrors HudView's player-swatch-bar compacting. Two thresholds because
-    // landscape lays the palette beside the seed cluster, so it needs more
-    // room before the full row fits. Tuned against the S9 portrait/landscape
-    // widths (see RELEASE.md device playbook).
-    private const float FullLandRowWidthPortrait = 760f;
-    private const float FullLandRowWidthLandscape = 1040f;
 
     /// <summary>
     /// Palette index reserved for the hand (no-op / pan-only) swatch.
@@ -54,235 +48,170 @@ public partial class MapEditorHudView : OrientationHud
     public event Action? RedoAllClicked;
 
     /// <summary>
-    /// When false, the right-side Save Map / Load Map / Exit buttons are
-    /// not built. Hosts that supply their own scene-root chrome (e.g.
-    /// TutorialBuilderScene's topbar) set this to false. The standalone
-    /// Map Editor scene leaves it at the default true.
-    ///
-    /// Must be set before <see cref="_Ready"/> runs (i.e. before the
-    /// host calls <c>AddChild(hud)</c>).
+    /// When false, the Options button is not built. Hosts that supply
+    /// their own scene-root chrome (e.g. TutorialBuilderScene's topbar)
+    /// set this to false. The standalone Map Editor scene leaves it true.
+    /// Must be set before <see cref="_Ready"/> runs.
     /// </summary>
     public bool ShowSceneRootChrome { get; set; } = true;
 
     /// <summary>
-    /// Vertical offset (in pixels) for the entire HUD strip. Default 0
-    /// (the standalone editor sits at the top). TutorialBuilderScene
-    /// sets this to 60 so the strip renders below its topbar.
-    ///
-    /// Must be set before <see cref="_Ready"/> runs.
+    /// Vertical offset (in pixels) for the entire HUD strip. Default 0.
+    /// TutorialBuilderScene sets this to 60 so the strip renders below
+    /// its topbar. Must be set before <see cref="_Ready"/> runs.
     /// </summary>
     public int TopOffsetPx { get; set; } = 0;
 
     public int SelectedPaletteIndex { get; private set; }
 
-    private LineEdit _seedField = null!;
     private HudIconButton _generateButton = null!;
     private HexPaletteButton[] _palette = null!;
     private HudIconButton _undoLastButton = null!;
     private HudIconButton _redoLastButton = null!;
 
-    // The six land swatches (expanded) and the single cycling button
-    // (collapsed) live side-by-side in the slate land group; exactly one is
-    // visible, toggled by OnViewportMetricsChanged. _lastLandPaletteIndex is
-    // the land color the cycle button shows / will paint with (1..N land
-    // indices; defaults to Red).
-    private Control _landRow = null!;
+    // Land palette state: the six swatches (expanded) and the single
+    // cycling button (compact) live side-by-side in the slate land panel;
+    // exactly one is visible (driven by Compact). _lastLandPaletteIndex
+    // is the land color the cycle button shows / will paint with.
+    private BoxContainer _landRow = null!;
     private HexPaletteButton _landCycleButton = null!;
     private int _lastLandPaletteIndex = 1;
 
-    // Persistent clusters, built once and reparented between the bars
-    // (TopBar/BottomBar, owned by OrientationHud) on a landscape↔portrait flip.
-    // Seed field + Generate die are reparented individually (not as a cluster)
-    // so each can be placed independently per orientation.
-    private Control _landCluster = null!;         // six land swatches (collapses to the cycle button)
-    private Control _toolsCluster = null!;        // terrain tools (water/tree/capital/tower) + hand
-    private Control _undoCluster = null!;         // undo/redo
-    private HudIconButton? _optionsButton;        // gear → EscRequested (only when ShowSceneRootChrome)
+    // Persistent clusters reparented per orientation. The two BoxContainers
+    // flip Vertical/horizontal on landscape↔portrait so the same buttons
+    // stack as a rail column or sit as a bar row.
+    private PanelContainer _landCluster = null!;   // 6 land swatches OR 1 cycle button (chip chrome)
+    private BoxContainer _paintCluster = null!;    // water + tree + capital + tower (terrain paint)
+    private BoxContainer _toolsCluster = null!;    // hand (pan) + die (random)
+    private Control _undoCluster = null!;          // undo / redo
+    private HudIconButton? _optionsButton;         // gear → EscRequested (only when ShowSceneRootChrome)
 
     public override void _Ready()
     {
-        Vector2 viewport = GetViewport().GetVisibleRect().Size;
+        // Persistent clusters, parentless until ApplyLayout reparents them.
 
-        // Persistent clusters, built once and reparented between orientation-
-        // specific bars by ApplyLayout. The slate bar background + click-
-        // blocking now live on the bar Panels (created in ApplyLayout), not a
-        // standalone background. The clusters carry no parent until then.
-        _toolsCluster = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Pass };
-        _toolsCluster.AddThemeConstantOverride("separation", 14);
+        _paintCluster = new BoxContainer { MouseFilter = Control.MouseFilterEnum.Pass };
+        _paintCluster.AddThemeConstantOverride("separation", 8);
+
+        _toolsCluster = new BoxContainer { MouseFilter = Control.MouseFilterEnum.Pass };
+        _toolsCluster.AddThemeConstantOverride("separation", 8);
+
         _undoCluster = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Pass };
         _undoCluster.AddThemeConstantOverride("separation", 8);
 
-        // Seed field — styled as a pill matching the gameplay HUD's gold chip
-        // (slate fill, line-soft border, 8px rounded corners, 10/6 content
-        // margins) so the editor's seed display reads as the same widget
-        // family as the play HUD's economy readouts. No SEED eyebrow — the
-        // pill chrome plus the die glyph next to it carry the meaning.
-        _seedField = new LineEdit
+        // Die — fires a fresh random seed each press; no numeric input
+        // surfaced any more. Was previously paired with a LineEdit (seed
+        // pill); the LineEdit was removed in the D1 redesign so the bar
+        // isn't crowded with a status the player never reads.
+        _generateButton = new HudIconButton(HudIcon.Die)
         {
-            CustomMinimumSize = new Vector2(120, 0),
-            MaxLength = 4,
-            Alignment = HorizontalAlignment.Right,
-            Text = new System.Random().Next(SeedMin, SeedMax + 1).ToString(),
+            FocusMode = Control.FocusModeEnum.None,
         };
-        _seedField.AddThemeFontSizeOverride("font_size", 26);
-        var seedFieldStyle = new StyleBoxFlat
-        {
-            BgColor = UiPalette.BgDeep,
-            BorderColor = UiPalette.LineSoft,
-            BorderWidthLeft = 1,
-            BorderWidthRight = 1,
-            BorderWidthTop = 1,
-            BorderWidthBottom = 1,
-            CornerRadiusTopLeft = 8,
-            CornerRadiusTopRight = 8,
-            CornerRadiusBottomLeft = 8,
-            CornerRadiusBottomRight = 8,
-            ContentMarginLeft = 10,
-            ContentMarginRight = 10,
-            ContentMarginTop = 6,
-            ContentMarginBottom = 6,
-        };
-        _seedField.AddThemeStyleboxOverride("normal", seedFieldStyle);
-        _seedField.AddThemeStyleboxOverride("focus", seedFieldStyle);
-        _seedField.AddThemeStyleboxOverride("read_only", seedFieldStyle);
-        _seedField.TextChanged += OnSeedTextChanged;
-        // Intercept Enter while the seed field has focus — without
-        // GuiInput, the LineEdit consumes the key before _UnhandledInput
-        // sees it, so the user has no way to fire Generate from the
-        // keyboard with the field focused. Mirrors the seed field in
-        // MainMenuScene.
-        _seedField.GuiInput += OnSeedFieldGuiInput;
-
-        // Six-sided die glyph in place of a "Generate" label — the
-        // button rolls a fresh map seed, so the die reads as the
-        // re-roll affordance. Tooltip carries the verbal meaning.
-        _generateButton = new HudIconButton(HudIcon.Die);
-        _generateButton.FocusMode = Control.FocusModeEnum.None;
-        _generateButton.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
         _generateButton.Pressed += OnGeneratePressed;
         AudioBus.AttachClick(_generateButton);
+        Log.Info(Log.LogCategory.Render,
+            "MapEditorHudView: seed LineEdit removed; die-only randomize wired.");
 
-        // Three visually-distinct palette groups: a rounded slate "land colors"
-        // panel (the six player fills, presented as a radio group à la the play
-        // HUD's unit palette) forms the land cluster; the four terrain tools
-        // (water/tree/capital/tower) and the hand tool form the tools cluster.
-        // Landscape splits them (land at the left edge, tools beside the
-        // controls on the right); portrait centers both together. Larger gaps
-        // within the tools cluster are provided by explicit Control spacers.
+        // Six-position palette array: 0 = hand, 1..N = land swatches, then
+        // water, tree, capital, tower. _palette is indexed by these slots.
         _palette = new HexPaletteButton[GameSettings.PlayerConfig.Length + 5];
 
-        // Group 1: six land-color swatches inside a slate PanelContainer. The
-        // panel wraps a single landGroup that holds both the full six-swatch
-        // row and a single collapsed cycle button; exactly one is visible at a
-        // time (hidden children are excluded from container layout, so the
-        // panel sizes to whichever is shown). The collapse is driven by
-        // OnViewportMetricsChanged, mirroring HudView's swatch-bar compacting.
-        var landPanel = new PanelContainer
+        // Land cluster — a PanelContainer (chip chrome) wrapping a flippable
+        // row: full 1×6 land swatches OR a single cycle button (Compact).
+        _landCluster = new PanelContainer
         {
             SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
+            SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter,
         };
-        landPanel.AddThemeStyleboxOverride("panel", ModalChrome.PalettePanelStyle());
-        var landGroup = new HBoxContainer();
-        landPanel.AddChild(landGroup);
-        _landCluster = landPanel;
+        // Default land panel chrome; switched to a blue-border variant
+        // when a land tool is the active brush (RefreshLandPanelSelectionStyle).
+        _landCluster.AddThemeStyleboxOverride("panel", ModalChrome.PalettePanelStyle());
+        var landGroup = new BoxContainer();
+        _landCluster.AddChild(landGroup);
 
-        var landRow = new HBoxContainer();
-        landRow.AddThemeConstantOverride("separation", 4);
-        landGroup.AddChild(landRow);
-        _landRow = landRow;
+        _landRow = new BoxContainer();
+        _landRow.AddThemeConstantOverride("separation", 4);
+        landGroup.AddChild(_landRow);
 
         for (int i = 0; i < GameSettings.PlayerConfig.Length; i++)
         {
             (_, string hex) = GameSettings.PlayerConfig[i];
             var button = new HexPaletteButton(new Color(hex));
             int paletteIndex = i + 1;
-            // Same tooltip on every land swatch so the group reads as
-            // one widget — the player picks "which color" by clicking
-            // a specific swatch, but the meaning is identical across
-            // all six.
             button.TooltipText = "Paint land for a player color";
             button.Pressed += _ => SelectPalette(paletteIndex);
             AudioBus.AttachClick(button);
-            landRow.AddChild(button);
+            _landRow.AddChild(button);
             _palette[paletteIndex] = button;
         }
 
-        // Collapsed-mode counterpart: a single colored hex that cycles the
-        // player color on each press (built hidden — the init
-        // OnViewportMetricsChanged call flips it on if the viewport is narrow).
-        _landCycleButton = new HexPaletteButton(new Color(GameSettings.PlayerConfig[0].Hex))
+        // Compact counterpart: a single squared swatch button that cycles
+        // the player color on each press. Squared (68×68) so it matches
+        // the water-paint and other tool buttons in scale + chrome;
+        // OnViewportMetricsChanged toggles visibility against _landRow
+        // based on the base class's Compact bit.
+        _landCycleButton = new HexPaletteButton(
+            new Color(GameSettings.PlayerConfig[0].Hex), squared: true)
         {
             TooltipText = "Paint land — tap to cycle player color",
             Visible = false,
         };
         _landCycleButton.Pressed += _ => OnLandCyclePressed();
         AudioBus.AttachClick(_landCycleButton);
-        landGroup.AddChild(_landCycleButton);
+        // NOT a child of the slate PanelContainer — sits as a sibling
+        // of _landCluster in the layout. When compact the cluster panel
+        // hides and only the bare cycle button shows (no surrounding
+        // frame chrome).
 
-        // Group 2: terrain tools (water / tree / capital / tower) as
-        // bare swatches, first in the tools cluster.
-        var terrainRow = new HBoxContainer
-        {
-            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
-        };
-        terrainRow.AddThemeConstantOverride("separation", 6);
-        _toolsCluster.AddChild(terrainRow);
-
+        // Paint cluster — the four terrain tools.
         int waterIndex = WaterPaletteIndex;
-        var waterButton = new HexPaletteButton(UiPalette.WaterDeep);
+        var waterButton = new HexPaletteButton(UiPalette.WaterDeep, squared: true);
         waterButton.TooltipText = "Paint water";
         waterButton.Pressed += _ => SelectPalette(waterIndex);
         AudioBus.AttachClick(waterButton);
-        terrainRow.AddChild(waterButton);
+        _paintCluster.AddChild(waterButton);
         _palette[waterIndex] = waterButton;
 
         int treeIndex = TreePaletteIndex;
         var treeButton = new HexPaletteButton(
-            new Color(0.42f, 0.30f, 0.18f, 1f), HexPaletteIcon.Tree);
+            new Color(0.42f, 0.30f, 0.18f, 1f), HexPaletteIcon.Tree, squared: true);
         treeButton.TooltipText = "Place / remove a tree";
         treeButton.Pressed += _ => SelectPalette(treeIndex);
         AudioBus.AttachClick(treeButton);
-        terrainRow.AddChild(treeButton);
+        _paintCluster.AddChild(treeButton);
         _palette[treeIndex] = treeButton;
 
         int capitalIndex = CapitalPaletteIndex;
         var capitalButton = new HexPaletteButton(
-            new Color(0.36f, 0.32f, 0.50f, 1f), HexPaletteIcon.Capital);
+            new Color(0.36f, 0.32f, 0.50f, 1f), HexPaletteIcon.Capital, squared: true);
         capitalButton.TooltipText = "Place a capital";
         capitalButton.Pressed += _ => SelectPalette(capitalIndex);
         AudioBus.AttachClick(capitalButton);
-        terrainRow.AddChild(capitalButton);
+        _paintCluster.AddChild(capitalButton);
         _palette[capitalIndex] = capitalButton;
 
         int towerIndex = TowerPaletteIndex;
         var towerButton = new HexPaletteButton(
-            new Color(0.45f, 0.45f, 0.50f, 1f), HexPaletteIcon.Tower);
+            new Color(0.45f, 0.45f, 0.50f, 1f), HexPaletteIcon.Tower, squared: true);
         towerButton.TooltipText = "Place / remove a tower";
         towerButton.Pressed += _ => SelectPalette(towerIndex);
         AudioBus.AttachClick(towerButton);
-        terrainRow.AddChild(towerButton);
+        _paintCluster.AddChild(towerButton);
         _palette[towerIndex] = towerButton;
 
-        // Group 3: hand (pan / no-paint) — sits just after the terrain tools
-        // (only the tools-cluster separation apart). Dark neutral grey gives the
-        // white selection outline contrast and lets the skin-tone hand
-        // silhouette read.
+        // Tools cluster — hand (pan, no-paint) + die (random regenerate).
         var handButton = new HexPaletteButton(
-            new Color(0.32f, 0.34f, 0.38f, 1f), HexPaletteIcon.Hand);
+            new Color(0.32f, 0.34f, 0.38f, 1f), HexPaletteIcon.Hand, squared: true);
         handButton.TooltipText = "Pan";
         handButton.Pressed += _ => SelectPalette(HandPaletteIndex);
         AudioBus.AttachClick(handButton);
         _toolsCluster.AddChild(handButton);
         _palette[HandPaletteIndex] = handButton;
+        _toolsCluster.AddChild(_generateButton);
 
-        // Default selection: the hand (no-paint, pan-only) swatch. Visual
-        // is set via SelectPalette so the IsSelected outline draws from
-        // the start.
         SelectPalette(HandPaletteIndex, fireEvent: false);
 
-        // Undo / redo cluster — two icon buttons matching the play HUD: a
-        // short click is Undo/Redo Last, holding past the long-press
-        // threshold fires Undo All / Redo All (same as Shift+Z / Shift+Y).
+        // Undo / redo cluster.
         _undoLastButton = MakeUndoButton(
             HudIcon.UndoLast, "Undo — Z (hold for Undo All)",
             () => UndoLastClicked?.Invoke(), () => UndoAllClicked?.Invoke());
@@ -294,19 +223,11 @@ public partial class MapEditorHudView : OrientationHud
 
         if (ShowSceneRootChrome)
         {
-            // Save Map and Load Map live inside the EscMenu now —
-            // MapEditorScene wires them into the Resume / Save / Load /
-            // Exit option list shown on Escape. The Options button is
-            // just the entry point to that menu. Reparented per orientation by
-            // the Build*Bars methods (far-right corner), so it's not added to a
-            // cluster here.
             _optionsButton = new HudIconButton(HudIcon.Options);
             _optionsButton.Pressed += () => EscRequested?.Invoke();
             AudioBus.AttachClick(_optionsButton);
         }
 
-        // Arrange the clusters for the current orientation + track resize
-        // (OrientationHud owns the bars + the flip/publish lifecycle).
         InitOrientation();
     }
 
@@ -314,127 +235,127 @@ public partial class MapEditorHudView : OrientationHud
 
     protected override void DetachClusters()
     {
-        HudBars.Detach(_seedField);
-        HudBars.Detach(_generateButton);
         HudBars.Detach(_landCluster);
+        HudBars.Detach(_landCycleButton);
+        HudBars.Detach(_paintCluster);
         HudBars.Detach(_toolsCluster);
         HudBars.Detach(_undoCluster);
         if (_optionsButton != null) HudBars.Detach(_optionsButton);
     }
 
-    /// <summary>Single bottom strip: land palette + seed/die (left),
-    /// undo/tools/options (right) — moved to the bottom for thumb reach,
-    /// matching the play HUD.</summary>
+    /// <summary>Landscape — D1 rails: paint cluster (land + 4 terrain) in
+    /// LeftRail; tools cluster (hand + die) in RightRail; undo/options
+    /// stay in TopRightZone. TopLeftZone is empty (editor has no read-only
+    /// status to show).</summary>
     protected override void BuildLandscapeBars()
     {
-        BottomBar = HudBars.MakeBarPanel(top: false, height: HudView.HudHeight);
-        AddChild(BottomBar);
-        Control frame = HudBars.MakeBarFrame();
-        BottomBar.AddChild(frame);
+        // Flip the inner BoxContainers to vertical so the buttons stack
+        // as rail columns.
+        SetClusterVertical(true);
 
-        // Left edge: the six land-color swatches, then the seed pill + die
-        // immediately after — the seed cluster's left edge sits flush against
-        // the land cluster's right edge so the two read as one left-aligned
-        // group instead of a centered island.
-        HBoxContainer left = HudBars.MakeAnchoredGroup(0f, Control.GrowDirection.End);
-        frame.AddChild(left);
-        left.AddChild(_landCluster);
-        _seedField.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
-        left.AddChild(_seedField);
-        _generateButton.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
-        left.AddChild(_generateButton);
+        // Top-right: undo + options. (Top-left is empty — editor has no
+        // read-only status block.)
+        TopRightZone.AddChild(_undoCluster);
+        if (_optionsButton != null) TopRightZone.AddChild(_optionsButton);
 
-        // Right corner: undo/redo first (just left of the water tool), then the
-        // terrain tools + hand, then the options gear at the far right.
-        HBoxContainer right = HudBars.MakeAnchoredGroup(1f, Control.GrowDirection.Begin, separation: 14);
-        frame.AddChild(right);
-        right.AddChild(_undoCluster);
-        right.AddChild(BuildVerticalDivider());
-        right.AddChild(_toolsCluster);
-        if (_optionsButton != null)
-        {
-            right.AddChild(BuildVerticalDivider());
-            right.AddChild(_optionsButton);
-        }
+        // Left rail (create/paint): land palette panel + compact cycle
+        // button (mutually exclusive) + terrain paint tools.
+        LeftRailGroup!.AddChild(_landCluster);
+        LeftRailGroup!.AddChild(_landCycleButton);
+        LeftRailGroup!.AddChild(_paintCluster);
+
+        // Right rail (command/tools): hand + die.
+        RightRailGroup!.AddChild(_toolsCluster);
+
+        Log.Debug(Log.LogCategory.Render,
+            "MapEditorHudView: landscape cluster placement — undo+options → TopRight, " +
+            "landCluster+paintCluster → LeftRail, toolsCluster → RightRail.");
     }
 
-    /// <summary>Portrait split: undo/redo + seed pill on top-left, die + options
-    /// on top-right; all paint options on the bottom for thumb reach.</summary>
+    /// <summary>Portrait — D1 bottom bar: TopRightZone holds undo +
+    /// options; BottomBar holds row 1 (hand + die) and row 2
+    /// (land palette + terrain paint tools). TopLeftZone is empty.</summary>
     protected override void BuildPortraitBars()
     {
-        // Top bar: undo/redo + seed pill (left) and die + options (right).
-        TopBar = HudBars.MakeBarPanel(top: true, height: HudView.HudHeight,
-            topOffset: TopOffsetPx);
-        AddChild(TopBar);
-        Control frame = HudBars.MakeBarFrame();
-        // On notched devices (iPhone portrait), drop the bottom 8px chrome
-        // inset so the seed pill bottom-aligns flush with the bar bottom edge
-        // — same treatment the gameplay HUD uses for the gold chip.
-        bool hasTopNotch = SafeArea.Current.Top > 0f;
-        if (hasTopNotch) frame.OffsetBottom = 0f;
-        TopBar.AddChild(frame);
+        // Horizontal inside the bottom-bar rows.
+        SetClusterVertical(false);
 
-        HBoxContainer left = HudBars.MakeAnchoredGroup(0f, Control.GrowDirection.End);
-        frame.AddChild(left);
-        left.AddChild(_undoCluster);
+        // Top-right: undo + options.
+        TopRightZone.AddChild(_undoCluster);
+        if (_optionsButton != null) TopRightZone.AddChild(_optionsButton);
 
-        // Seed pill + die — horizontally centered as a pair so their position
-        // is independent of undo width on the left and the options gear on the
-        // right. Both bottom-align under the notch on iOS so they sit flush
-        // with the bar's bottom edge (matching the gameplay HUD's gold chip),
-        // otherwise both center vertically. Pairing them here mirrors the
-        // landscape bottom-bar layout where they also sit side-by-side.
-        HBoxContainer center = HudBars.MakeAnchoredGroup(0.5f, Control.GrowDirection.Both);
-        frame.AddChild(center);
-        Control.SizeFlags pillAlign = hasTopNotch
-            ? Control.SizeFlags.ShrinkEnd
-            : Control.SizeFlags.ShrinkCenter;
-        _seedField.SizeFlagsVertical = pillAlign;
-        _generateButton.SizeFlagsVertical = pillAlign;
-        center.AddChild(_seedField);
-        center.AddChild(_generateButton);
-
-        HBoxContainer right = HudBars.MakeAnchoredGroup(1f, Control.GrowDirection.Begin, separation: 8);
-        frame.AddChild(right);
-        if (_optionsButton != null) right.AddChild(_optionsButton);
-
-        // Bottom bar: all paint options (always visible — the editor has no
-        // selection concept).
-        BottomBar = HudBars.MakeBarPanel(top: false, height: PortraitBottomBarHeight);
-        AddChild(BottomBar);
-        var bottomRow = new HBoxContainer
+        // Bottom bar — two rows. Apply TopOffsetPx as a top inset (the
+        // tutorial builder slides the editor HUD's bottom bar UP by that
+        // many px to make room for its own topbar above; legacy compat).
+        var inner = new VBoxContainer
         {
-            AnchorLeft = 0.5f, AnchorRight = 0.5f, AnchorTop = 0f, AnchorBottom = 1f,
-            // Match MakeBarFrame: 8px chrome inset top/bottom. The bar's slate
-            // fill still extends into the home-indicator zone (see MakeBarPanel);
-            // letting the paint clusters fill that zone too means the bar reads
-            // at the S9-baseline 96 px visible-content height on notched devices.
-            OffsetTop = 8f, OffsetBottom = -8f,
-            GrowHorizontal = Control.GrowDirection.Both,
+            AnchorLeft = 0f, AnchorRight = 1f,
+            AnchorTop = 0f, AnchorBottom = 1f,
+            OffsetLeft = 16f, OffsetRight = -16f,
+            OffsetTop = 10f, OffsetBottom = -(10f + SafeArea.Current.Bottom),
+            MouseFilter = Control.MouseFilterEnum.Pass,
+            Alignment = BoxContainer.AlignmentMode.Center,
+        };
+        inner.AddThemeConstantOverride("separation", 8);
+        BottomBar!.AddChild(inner);
+
+        var row1 = new HBoxContainer
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter,
             MouseFilter = Control.MouseFilterEnum.Pass,
         };
-        bottomRow.AddThemeConstantOverride("separation", 14);
-        BottomBar.AddChild(bottomRow);
-        bottomRow.AddChild(_landCluster);
-        bottomRow.AddChild(new Control { CustomMinimumSize = new Vector2(18, 0) });
-        bottomRow.AddChild(_toolsCluster);
+        row1.AddThemeConstantOverride("separation", 14);
+        row1.AddChild(_toolsCluster);
+        inner.AddChild(row1);
+
+        var row2 = new HBoxContainer
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter,
+            MouseFilter = Control.MouseFilterEnum.Pass,
+        };
+        row2.AddThemeConstantOverride("separation", 14);
+        row2.AddChild(_landCluster);
+        row2.AddChild(_landCycleButton);
+        row2.AddChild(_paintCluster);
+        inner.AddChild(row2);
+
+        Log.Debug(Log.LogCategory.Render,
+            "MapEditorHudView: portrait cluster placement — undo+options → TopRight, " +
+            "toolsCluster → BottomBar.row1, landCluster+paintCluster → BottomBar.row2.");
     }
 
     protected override MapInsets ComputeInsets()
     {
-        // Landscape now reserves a bottom strip (ScreenLayout puts the
-        // landscapeBarHeight at the bottom). The portrait top bar is always up
-        // (no selection gating); its inset includes TopOffsetPx so a host
-        // (tutorial builder) that slides the strip down is accounted for.
-        // Bars overlap the iOS safe-inset zones (see MakeBarPanel), so map
-        // insets are just the bar heights — the map reclaims the safe-inset
-        // vertical space.
-        return ScreenLayout.ComputeInsets(
-            Orientation,
-            topBarVisible: true,
-            landscapeBarHeight: HudView.HudHeight,
-            portraitTopBarHeight: TopOffsetPx + HudView.HudHeight,
-            portraitBottomBarHeight: PortraitBottomBarHeight);
+        // Floating layout: the editor map fills the viewport. Rails /
+        // bottom bar / corner chips overlay it. No vertical inset.
+        return new MapInsets(0f, 0f);
+    }
+
+    /// <summary>Land palette: full row vs cycle button driven by Compact.
+    /// Mirrors HudView's buy-palette collapse — same breakpoint, same
+    /// signal.</summary>
+    protected override void OnViewportMetricsChanged()
+    {
+        bool compact = Compact;
+        // Hide the slate-framed land panel entirely in compact mode (the
+        // bare cycle button takes its slot) so the cycle button doesn't
+        // appear inside the panel's chrome frame.
+        _landCluster.Visible = !compact;
+        _landCycleButton.Visible = compact;
+        RefreshLandCycleVisual();
+        Log.Debug(Log.LogCategory.Render,
+            $"MapEditorHudView: metrics orient={Orientation} compact={compact} " +
+            $"land={(compact ? "cycle (bare)" : "1x6 panel")}");
+    }
+
+    private void SetClusterVertical(bool vertical)
+    {
+        _paintCluster.Vertical = vertical;
+        _toolsCluster.Vertical = vertical;
+        _landRow.Vertical = vertical;
+        // The landGroup wrapper (parent of _landRow + _landCycleButton)
+        // doesn't need to flip — only one child is visible at a time, so
+        // its axis is irrelevant.
     }
 
     private static HudIconButton MakeUndoButton(HudIcon icon, string tooltip, Action onShort, Action onLong)
@@ -452,19 +373,6 @@ public partial class MapEditorHudView : OrientationHud
         };
         AudioBus.AttachClick(b);
         return b;
-    }
-
-    // Same 1×24 line-soft divider HudView uses between the three regions
-    // of its bar; kept as a static helper here so the editor doesn't
-    // depend on the play HUD's internals.
-    private static Control BuildVerticalDivider()
-    {
-        return new ColorRect
-        {
-            Color = UiPalette.LineSoft,
-            CustomMinimumSize = new Vector2(1, 32),
-            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
-        };
     }
 
     /// <summary>
@@ -508,40 +416,15 @@ public partial class MapEditorHudView : OrientationHud
         }
     }
 
-    private void OnSeedTextChanged(string newText)
-    {
-        // Strip non-digits that slip past MaxLength (paste/IME), keep
-        // caret at the same logical column. Mirrors MainMenuScene.
-        string filtered = new string(newText.Where(char.IsAsciiDigit).ToArray());
-        if (filtered != newText)
-        {
-            int caret = _seedField.CaretColumn;
-            _seedField.Text = filtered;
-            _seedField.CaretColumn = System.Math.Min(caret, filtered.Length);
-        }
-        _generateButton.Disabled = string.IsNullOrEmpty(_seedField.Text);
-    }
-
     private void OnGeneratePressed()
     {
-        if (string.IsNullOrEmpty(_seedField.Text)) return;
-        int.TryParse(_seedField.Text, out int seed);
-        seed = System.Math.Clamp(seed, SeedMin, SeedMax);
+        // Fresh random seed every press — the user no longer types a
+        // specific seed; the die is the lone "give me a different map"
+        // affordance.
+        int seed = new System.Random().Next(SeedMin, SeedMax + 1);
         _generateButton.FlashPress();
+        Log.Debug(Log.LogCategory.Input, $"[MapEditor] die press → seed={seed}");
         GenerateRequested?.Invoke(seed);
-        // Re-randomize the field so the next press generates a different
-        // map without the user re-typing. Use a fresh Random per press —
-        // the user controls timing, so a new seed each call gives them a
-        // different roll without us holding RNG state across the HUD.
-        _seedField.Text = new System.Random().Next(SeedMin, SeedMax + 1).ToString();
-    }
-
-    private void OnSeedFieldGuiInput(InputEvent @event)
-    {
-        if (@event is not InputEventKey keyEvent || !keyEvent.Pressed || keyEvent.Echo) return;
-        if (keyEvent.Keycode != Key.Enter && keyEvent.Keycode != Key.KpEnter) return;
-        _seedField.AcceptEvent();
-        OnGeneratePressed();
     }
 
     /// <summary>
@@ -564,11 +447,26 @@ public partial class MapEditorHudView : OrientationHud
         _palette[SelectedPaletteIndex].IsSelected = false;
         SelectedPaletteIndex = index;
         _palette[index].IsSelected = true;
-        // Remember the last land color so the collapsed cycle button shows it,
-        // even when the swatch was picked directly from the expanded row.
         if (IsLandIndex(index)) _lastLandPaletteIndex = index;
         RefreshLandCycleVisual();
+        RefreshLandPanelSelectionStyle();
         if (fireEvent) PaletteSelectionChanged?.Invoke(index);
+    }
+
+    /// <summary>Swap the land palette panel's chrome between the neutral
+    /// slate stylebox and a SelectionRing-bordered variant whenever the
+    /// active brush is one of the six land colors. Mirrors the per-button
+    /// cool-blue ring used by the squared tool buttons so the "this
+    /// group is active" signal is consistent.</summary>
+    private void RefreshLandPanelSelectionStyle()
+    {
+        StyleBoxFlat style = ModalChrome.PalettePanelStyle();
+        if (IsLandIndex(SelectedPaletteIndex))
+        {
+            style.BorderColor = UiPalette.SelectionRing;
+            style.SetBorderWidthAll(3);
+        }
+        _landCluster.AddThemeStyleboxOverride("panel", style);
     }
 
     private static bool IsLandIndex(int index) =>
@@ -598,22 +496,5 @@ public partial class MapEditorHudView : OrientationHud
     {
         _landCycleButton.FillColor = new Color(GameSettings.PlayerConfig[_lastLandPaletteIndex - 1].Hex);
         _landCycleButton.IsSelected = IsLandIndex(SelectedPaletteIndex);
-    }
-
-    /// <summary>Collapse the six land swatches to the single cycling button in
-    /// a narrow viewport (and restore the full row when there's room) — the
-    /// editor analogue of HudView's player-swatch-bar compacting.</summary>
-    protected override void OnViewportMetricsChanged()
-    {
-        float width = GetViewport().GetVisibleRect().Size.X;
-        float threshold = Orientation == ScreenOrientation.Landscape
-            ? FullLandRowWidthLandscape
-            : FullLandRowWidthPortrait;
-        bool collapse = width < threshold;
-        _landRow.Visible = !collapse;
-        _landCycleButton.Visible = collapse;
-        RefreshLandCycleVisual();
-        Log.Debug(Log.LogCategory.Render,
-            $"[LandPalette] metrics: width={width:0} orient={Orientation} collapse={collapse}");
     }
 }

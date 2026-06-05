@@ -45,4 +45,20 @@ public static class UiPalette
     // genuinely watery without the original's neon brightness.
     public static readonly Color Water     = new Color("4a6488");
     public static readonly Color WaterDeep = new Color("30537e");
+
+    // D1 floating-HUD chip backdrop (spec §6: paper fill, 2 px ink
+    // border, ~10 px radius). Used by HudBars.ChipStyle().
+    public static readonly Color ChipFill   = new Color("f3f1ec"); // paper (matches Ink)
+    public static readonly Color ChipBorder = new Color("23211d"); // ink (matches BgDeep)
+
+    // Hero accent — the spec's warm terracotta for priority actions
+    // (End Turn, active Buy). Reads as oklch(0.63 0.17 25); sRGB
+    // hex equivalent.
+    public static readonly Color Accent     = new Color("c95a3d");
+    public static readonly Color AccentDeep = new Color("9c4128");
+
+    // Selection ring — cool blue, distinct hue from the warm accent.
+    // Used to mark the active brush in the map editor and (optionally)
+    // the engaged buy level in gameplay.
+    public static readonly Color SelectionRing = new Color("4f8cd6");
 }

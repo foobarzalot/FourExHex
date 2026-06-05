@@ -32,6 +32,7 @@ public partial class HudIconButton : Button
     private readonly HudIcon _icon;
     private bool _selected;
     private bool _ctaActive;
+    private bool _hero;
     private UnitLevel _buyLevel = UnitLevel.Recruit;
 
     // Long-press (hold) support. Armed only when a LongPressed handler is
@@ -98,15 +99,97 @@ public partial class HudIconButton : Button
         }
     }
 
+    /// <summary>
+    /// D1 spec §6 "hero / priority" accent — terracotta backdrop on
+    /// always-priority actions (End Turn, the active Buy). Composes with
+    /// <see cref="CtaActive"/>: CTA's white stylebox overrides hero while
+    /// active, and the button re-applies hero when CTA flips off (see
+    /// <see cref="ReapplyHero"/>, called from <c>HudView.ApplyCtaStyle</c>).
+    /// </summary>
+    public bool Hero
+    {
+        get => _hero;
+        set
+        {
+            if (_hero == value) return;
+            _hero = value;
+            if (!_ctaActive) ApplyHeroStylebox(_hero);
+        }
+    }
+
+    /// <summary>Called by HudView.ApplyCtaStyle after it clears CTA stylebox
+    /// overrides. Restores either the hero (terracotta) or the base
+    /// (slate) stylebox — both with the same black border — so the button
+    /// never lands in the no-border default theme state mid-game.</summary>
+    public void ReapplyHero()
+    {
+        ApplyHeroStylebox(_hero);
+    }
+
+    private void ApplyHeroStylebox(bool on)
+    {
+        if (on)
+        {
+            // Same black border + 10-px radius as the base stylebox so the
+            // hero only swaps the FILL — buttons read as one family with a
+            // hero variant, not a different-shaped button.
+            AddThemeStyleboxOverride("normal", MakeBorderedStylebox(UiPalette.Accent));
+            AddThemeStyleboxOverride("hover", MakeBorderedStylebox(UiPalette.Accent));
+            AddThemeStyleboxOverride("pressed", MakeBorderedStylebox(UiPalette.AccentDeep));
+        }
+        else
+        {
+            // Fall back to the default bordered stylebox (constructor's
+            // base) so the black border survives the hero flip-off.
+            ApplyBaseStylebox();
+        }
+    }
+
     public HudIconButton(HudIcon icon)
     {
         _icon = icon;
         Text = "";
-        CustomMinimumSize = new Vector2(44, 44);
+        // D1 spec §6 floor is 54×54 (iOS ≥44pt, Android ≥48dp). We render
+        // at 68×68 — 25% above the floor — so the hit target is comfortable
+        // on phones. Every HUD icon button uses this size, so the corner
+        // chips (undo/redo/options) and the bottom-bar action buttons stay
+        // uniformly sized whatever zone they land in.
+        CustomMinimumSize = new Vector2(68, 68);
         FocusMode = Control.FocusModeEnum.None;
         TooltipText = DefaultTooltip(icon);
         ButtonDown += OnButtonDown;
         ButtonUp += OnButtonUp;
+        ApplyBaseStylebox();
+    }
+
+    /// <summary>Default chrome — dark-slate fill, 2-px black border, 10-px
+    /// rounded corners. Every HudIconButton wears this in its normal /
+    /// hover / pressed / disabled states; the hero (terracotta) and CTA
+    /// (white pulse) variants override on top and keep the same black
+    /// border so the buttons read as one button family.</summary>
+    private void ApplyBaseStylebox()
+    {
+        StyleBoxFlat normal = MakeBorderedStylebox(UiPalette.BgPanel);
+        StyleBoxFlat disabled = MakeBorderedStylebox(UiPalette.BgDeep);
+        AddThemeStyleboxOverride("normal", normal);
+        AddThemeStyleboxOverride("hover", normal);
+        AddThemeStyleboxOverride("pressed", normal);
+        AddThemeStyleboxOverride("disabled", disabled);
+    }
+
+    private static StyleBoxFlat MakeBorderedStylebox(Color fill)
+    {
+        return new StyleBoxFlat
+        {
+            BgColor = fill,
+            BorderColor = new Color(0f, 0f, 0f, 1f),    // Pure black.
+            BorderWidthLeft = 2, BorderWidthRight = 2,
+            BorderWidthTop = 2, BorderWidthBottom = 2,
+            CornerRadiusTopLeft = 10, CornerRadiusTopRight = 10,
+            CornerRadiusBottomLeft = 10, CornerRadiusBottomRight = 10,
+            ContentMarginLeft = 8, ContentMarginRight = 8,
+            ContentMarginTop = 6, ContentMarginBottom = 6,
+        };
     }
 
     private void OnButtonDown()
@@ -205,10 +288,12 @@ public partial class HudIconButton : Button
         {
             case HudIcon.Recruit: HudIcons.DrawUnit(this, center, r, _buyLevel, stroke); break;
             case HudIcon.Tower: HudIcons.DrawTower(this, center, r, modulate); break;
-            case HudIcon.UndoLast: HudIcons.DrawCurvedArrow(this, center, r, stroke, facing: +1, doubled: false); break;
-            case HudIcon.UndoAll: HudIcons.DrawCurvedArrow(this, center, r, stroke, facing: +1, doubled: true); break;
-            case HudIcon.RedoLast: HudIcons.DrawCurvedArrow(this, center, r, stroke, facing: -1, doubled: false); break;
-            case HudIcon.RedoAll: HudIcons.DrawCurvedArrow(this, center, r, stroke, facing: -1, doubled: true); break;
+            // Undo/redo glyphs render at 75% scale so the arrows read
+            // lighter than the action buttons in the same chip family.
+            case HudIcon.UndoLast: HudIcons.DrawCurvedArrow(this, center, r * 0.75f, stroke, facing: +1, doubled: false); break;
+            case HudIcon.UndoAll:  HudIcons.DrawCurvedArrow(this, center, r * 0.75f, stroke, facing: +1, doubled: true);  break;
+            case HudIcon.RedoLast: HudIcons.DrawCurvedArrow(this, center, r * 0.75f, stroke, facing: -1, doubled: false); break;
+            case HudIcon.RedoAll:  HudIcons.DrawCurvedArrow(this, center, r * 0.75f, stroke, facing: -1, doubled: true);  break;
             case HudIcon.EndTurn: HudIcons.DrawEndTurnTriangle(this, center, r, stroke); break;
             case HudIcon.NextUnit: HudIcons.DrawNextUnit(this, center, r, stroke); break;
             case HudIcon.NextTerritory: HudIcons.DrawNextTerritory(this, center, r, stroke, modulate); break;
@@ -219,11 +304,11 @@ public partial class HudIconButton : Button
 
         if (_selected)
         {
-            // White outline ring around the whole button, matching the
-            // selected-palette cue in the map editor. Drawn last so it
-            // sits on top of the glyph.
+            // Cool-blue selection ring (D1 spec §6) — distinct hue from
+            // the warm hero accent so "this mode is engaged" reads as a
+            // separate signal from "this is a priority action."
             var rect = new Rect2(Vector2.One, Size - new Vector2(2f, 2f));
-            DrawRect(rect, new Color(1f, 1f, 1f, 1f), filled: false, width: 2f);
+            DrawRect(rect, UiPalette.SelectionRing, filled: false, width: 2f);
         }
     }
 }
