@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 
 /// <summary>
 /// A 1-ply score-maximizing AI. For each legal candidate action
@@ -36,7 +37,17 @@ public static class ComputerAi
         HashSet<HexCoord> visitedCapitals,
         Random rng)
     {
+        // Profiling: per-call accumulators for the four hot-path
+        // arms (Clone, Apply, Score, and bookkeeping/enumeration as
+        // the implicit remainder). Surfaced as a single [ai-prof]
+        // line at the end of the call; aggregate across a game by
+        // grep+sum on the harness output. See issue #25.
+        long methodStart = Log.Stamp();
+        long cloneTicks = 0, applyTicks = 0, scoreTicks = 0;
+
+        long scoreT = Log.Stamp();
         double baseScore = AiStateScorer.Score(state, forPlayer);
+        scoreTicks += Log.Stamp() - scoreT;
 
         AiAction? best = null;
         // Positive-delta threshold: the AI only picks an action
@@ -64,9 +75,17 @@ public static class ComputerAi
                 anyCandidate = true;
                 totalCandidates++;
 
+                long cloneT = Log.Stamp();
                 GameState clone = AiSimulator.Clone(state);
+                cloneTicks += Log.Stamp() - cloneT;
+
+                long applyT = Log.Stamp();
                 AiSimulator.Apply(candidate.Action, clone);
+                applyTicks += Log.Stamp() - applyT;
+
+                long scoreT2 = Log.Stamp();
                 double afterScore = AiStateScorer.Score(clone, forPlayer);
+                scoreTicks += Log.Stamp() - scoreT2;
                 double delta = afterScore - baseScore;
 
                 // Tower placement is the one action whose value
@@ -124,6 +143,26 @@ public static class ComputerAi
         // for test stability. Kept in signature to match the
         // AiChooser contract.
         _ = rng;
+
+        // Profile breakdown: one line per ChooseNextAction call. The
+        // `other` bucket is the implicit remainder — enumeration
+        // (AiCommon.Enumerate's lazy work, interleaved with the
+        // foreach body), bookkeeping, and the per-iteration
+        // branching/allocation overhead. Per-call cost: a Stopwatch
+        // tick read is ~10ns on M1; with thousands of candidates
+        // per call we add tens of microseconds of measurement
+        // noise, dwarfed by the millisecond-scale Clone/Score work
+        // we're measuring. See #25.
+        long totalTicks = Log.Stamp() - methodStart;
+        double ToMs(long ticks) => ticks * 1000.0 / Stopwatch.Frequency;
+        long otherTicks = totalTicks - cloneTicks - applyTicks - scoreTicks;
+        Log.Info(Log.LogCategory.Ai,
+            $"[ai-prof] cand={totalCandidates} " +
+            $"clone={ToMs(cloneTicks):F1}ms " +
+            $"apply={ToMs(applyTicks):F1}ms " +
+            $"score={ToMs(scoreTicks):F1}ms " +
+            $"other={ToMs(otherTicks):F1}ms " +
+            $"total={ToMs(totalTicks):F1}ms");
 
         return best;
     }
