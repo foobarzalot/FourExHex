@@ -75,12 +75,20 @@ public static class AiCommon
         int upkeep = UpkeepRules.TotalUpkeepFor(territory, state.Grid);
         int netBefore = income - upkeep;
 
+        // Treasury is consulted by every solvency gate below. A
+        // capital-less territory can't hold gold and can't collect
+        // income — it dies on the next upkeep step regardless, so
+        // SurvivesNextUpkeep(0, …) below will reject everything for
+        // it, which is the right behavior.
+        int gold = territory.HasCapital
+            ? state.Treasury.GetGold(territory.Capital!.Value)
+            : 0;
+
         // --- Move actions: capture, chop, or combine ---
-        // Capture / chop: +1 income, 0 upkeep change. Post-net is
-        // netBefore + 1, requirement netBefore >= -1.
-        // Combine: 0 income change, upkeep delta =
-        // upkeep(combined) - upkeep(source) - upkeep(destination).
-        // Requirement netBefore - upkeepDelta >= 0.
+        // Each gate asks the shared SurvivesNextUpkeep predicate
+        // whether the post-action (gold, netIncome) pair clears
+        // next upkeep. Move actions don't spend gold, so the gold
+        // argument is unchanged.
         foreach (HexCoord coord in territory.Coords)
         {
             HexTile? tile = state.Grid.Get(coord);
@@ -105,7 +113,7 @@ public static class AiCommon
                 switch (kind)
                 {
                     case TargetKind.Capture:
-                        if (netBefore + 1 >= 0)
+                        if (UpkeepRules.SurvivesNextUpkeep(gold, netBefore + 1))
                         {
                             yield return new AiCandidate(
                                 new AiMoveAction(coord, target),
@@ -113,7 +121,7 @@ public static class AiCommon
                         }
                         break;
                     case TargetKind.Chop:
-                        if (netBefore + 1 >= 0)
+                        if (UpkeepRules.SurvivesNextUpkeep(gold, netBefore + 1))
                         {
                             yield return new AiCandidate(
                                 new AiMoveAction(coord, target),
@@ -126,7 +134,7 @@ public static class AiCommon
                         int upkeepDelta = UpkeepRules.UpkeepFor(combinedLevel)
                                           - UpkeepRules.UpkeepFor(sourceUnit.Level)
                                           - UpkeepRules.UpkeepFor(destUnit.Level);
-                        if (netBefore - upkeepDelta >= 0)
+                        if (UpkeepRules.SurvivesNextUpkeep(gold, netBefore - upkeepDelta))
                         {
                             yield return new AiCandidate(
                                 new AiMoveAction(coord, target),
@@ -156,19 +164,18 @@ public static class AiCommon
         }
 
         // --- Buy actions: buy-capture, buy-chop, or buy-reposition ---
-        // Capture/chop add +1 income and +upkeep(level): post-net =
-        // netBefore + 1 - upkeep(level), requires >= 0.
-        // Reposition (placing onto an empty own border tile) gains no
-        // tile, so post-net = netBefore - upkeep(level), requires >= 0
-        // — strictly tighter than capture/chop. Buy-to-combine isn't
-        // considered.
+        // A buy spends `cost` gold and adds `upkeep_` upkeep. Capture
+        // also gains +1 tile (+1 income). Each gate passes the
+        // post-action (gold - cost, netBefore + Δ) pair through
+        // SurvivesNextUpkeep. Buy-to-combine isn't considered.
         UnitLevel[] buyLevels = { UnitLevel.Recruit, UnitLevel.Soldier, UnitLevel.Captain, UnitLevel.Commander };
         foreach (UnitLevel level in buyLevels)
         {
             if (!PurchaseRules.CanAfford(territory, state.Treasury, level)) continue;
             int upkeep_ = UpkeepRules.UpkeepFor(level);
-            bool captureSolvent = netBefore + 1 - upkeep_ >= 0;
-            bool repositionSolvent = netBefore - upkeep_ >= 0;
+            int cost = PurchaseRules.CostFor(level);
+            bool captureSolvent = UpkeepRules.SurvivesNextUpkeep(gold - cost, netBefore + 1 - upkeep_);
+            bool repositionSolvent = UpkeepRules.SurvivesNextUpkeep(gold - cost, netBefore - upkeep_);
             if (!captureSolvent && !repositionSolvent) continue;
 
             List<HexCoord> buyTargets = MovementRules.ValidTargets(
@@ -205,12 +212,12 @@ public static class AiCommon
 
         // --- Build-tower actions ---
         // Towers have no upkeep and don't change income, so post-net
-        // equals netBefore: requires netBefore >= 0 and 15g. Only
-        // considered for border tiles — an interior tower defends
+        // equals netBefore; the action just drains TowerCost gold.
+        // Only considered for border tiles — an interior tower defends
         // nothing — and AI-only spacing (MeetsAiTowerSpacing) prevents
         // redundant towers clustered on the same border.
         if (PurchaseRules.CanAffordTower(territory, state.Treasury)
-            && netBefore >= 0)
+            && UpkeepRules.SurvivesNextUpkeep(gold - PurchaseRules.TowerCost, netBefore))
         {
             foreach (HexCoord coord in territory.Coords)
             {

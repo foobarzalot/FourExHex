@@ -212,6 +212,35 @@ public class GameOperations
     }
 
     /// <summary>
+    /// Mark the unit at <paramref name="destination"/> as having spent
+    /// its action this turn, but only when (a) the just-landed action
+    /// was a pure reposition (own-empty target — captures, chops, and
+    /// combines are already handled by MovementRules.ResolveArrival)
+    /// AND (b) the current player is an AI.
+    ///
+    /// Humans get the relaxed rule (chain a reposition into a move via
+    /// long-press rally or repeat-action), but AIs treat each
+    /// reposition as a consumed action so the multi-action turn loop
+    /// doesn't re-pick the same unit. The gate is on actor KIND, not
+    /// replay-mode, so live and replay agree: a recorded AI reposition
+    /// sets the flag in both paths, a recorded HUMAN one in neither.
+    /// CurrentPlayer is the actor during both live AI execution and
+    /// replay (the replay step machine advances turn state before each
+    /// action beat lands).
+    ///
+    /// Shared by <see cref="ExecuteAiMove"/> and
+    /// <see cref="ExecuteAiBuyUnit"/>; the live↔replay parity is
+    /// pinned by <c>ReplayFidelityTests</c>.
+    /// </summary>
+    private void ConsumeRepositionMoveIfAi(HexCoord destination, bool wasReposition)
+    {
+        if (!wasReposition) return;
+        if (_state.Turns.CurrentPlayer.Kind != PlayerKind.Computer) return;
+        Unit? unit = _state.Grid.Get(destination)?.Unit;
+        if (unit != null) unit.HasMovedThisTurn = true;
+    }
+
+    /// <summary>
     /// Reset HasMovedThisTurn on every unit owned by
     /// <paramref name="player"/>. Called at the start of that
     /// player's turn.
@@ -642,15 +671,7 @@ public class GameOperations
         {
             _map.PlayDestructionEffect(destination, result.Destroyed);
         }
-        // "A reposition consumes the unit's move" is an AI-loop selection
-        // concern — the human ExecuteMove path never sets this. Skip it
-        // during replay: a recorded HUMAN reposition followed by another
-        // move of that unit would otherwise throw "already moved this turn".
-        if (wasReposition && !_isReplayMode())
-        {
-            Unit? movedUnit = _state.Grid.Get(destination)?.Unit;
-            if (movedUnit != null) movedUnit.HasMovedThisTurn = true;
-        }
+        ConsumeRepositionMoveIfAi(destination, wasReposition);
 
         DispatchActionSound(destination, result, wasCombine);
     }
@@ -704,17 +725,7 @@ public class GameOperations
         {
             _map.PlayDestructionEffect(destination, result.Destroyed);
         }
-        // "A fresh buy onto own-empty consumes the unit's move" is an
-        // AI-loop selection concern — the human ExecuteBuyAndPlace path
-        // never sets this. Skip it during replay: a recorded HUMAN buy
-        // followed by a move of that unit would otherwise throw "already
-        // moved this turn" — exact mirror of the gate on ExecuteAiMove's
-        // reposition arm above. Live AI play still consumes the move.
-        if (wasReposition && !_isReplayMode())
-        {
-            Unit? placed = _state.Grid.Get(destination)?.Unit;
-            if (placed != null) placed.HasMovedThisTurn = true;
-        }
+        ConsumeRepositionMoveIfAi(destination, wasReposition);
 
         DispatchActionSound(destination, result, wasCombine);
     }

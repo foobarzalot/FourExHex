@@ -30,6 +30,19 @@ public static class GameStateChecksum
     /// </summary>
     public static string Compute(GameState state)
     {
+        string canonical = Stringify(state);
+        using SHA256 sha = SHA256.Create();
+        byte[] hash = sha.ComputeHash(Encoding.UTF8.GetBytes(canonical));
+        return System.Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// The canonical pre-hash string used by <see cref="Compute"/>.
+    /// Exposed so callers diagnosing a checksum mismatch can diff the
+    /// stringified inputs directly instead of staring at hex digests.
+    /// </summary>
+    public static string Stringify(GameState state)
+    {
         var sb = new StringBuilder();
 
         var tiles = new List<HexTile>(state.Grid.Tiles);
@@ -89,10 +102,7 @@ public static class GameStateChecksum
         sb.Append("Turn|").Append(state.Turns.TurnNumber)
           .Append('|').Append(state.Turns.CurrentPlayerIndex).Append('\n');
 
-        using SHA256 sha = SHA256.Create();
-        byte[] hash = sha.ComputeHash(Encoding.UTF8.GetBytes(sb.ToString()));
-        // ToHexString is .NET 5+; lowercase is conventional for digests.
-        return System.Convert.ToHexString(hash).ToLowerInvariant();
+        return sb.ToString();
     }
 
     private static int OwnerIndex(PlayerId owner) => owner.IsNone ? -1 : owner.Index;

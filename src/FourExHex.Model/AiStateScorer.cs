@@ -48,10 +48,6 @@ public static class AiStateScorer
     // over all territories on the board.
     private const double FragmentationPenalty = 15.0;
 
-    // Treasury gold has modest direct value (you can spend it next
-    // turn). Not too high or the AI hoards instead of acting.
-    private const double GoldWeight = 0.3;
-
     // Flat penalty per tree (or grave) in an OWN territory. Trees
     // block income on their tile (already accounted for) and seed
     // further growth via TreeRules.RunStartOfTurnGrowth at the
@@ -268,8 +264,16 @@ public static class AiStateScorer
     ///   + max(0, net_income) × NetIncomeWeight  (clamped: a
     ///     bankrupt territory doesn't get positive recurring value)
     ///   + unit value (zeroed if bankrupt — units will die)
-    ///   + gold × GoldWeight
     ///   − FragmentationPenalty (flat, per territory)
+    ///
+    /// Treasury gold contributes ZERO to standing value. With a
+    /// non-zero gold term the AI was reading a 1500g hoard as
+    /// +450 standing score, dwarfing the +1 swing of any productive
+    /// 1-ply buy and collapsing into "do nothing" stasis (see issue
+    /// #19). Removing it makes any score-positive buy strictly
+    /// better than holding gold. The bankruptcy lookahead below
+    /// still prevents buys that would push the territory into
+    /// negative net income — that's the remaining cost signal.
     /// </summary>
     private static double TerritoryValue(Territory territory, GameState state)
     {
@@ -278,11 +282,16 @@ public static class AiStateScorer
         int upkeep = UpkeepRules.TotalUpkeepFor(territory, state.Grid);
         int netIncome = income - upkeep;
 
-        // Bankruptcy lookahead: a territory with netIncome < 0 or
-        // no capital will lose all its units on its next upkeep
-        // step, so its units (and any stored gold it can't even
-        // collect) are worth zero going forward.
-        bool willBankrupt = netIncome < 0 || !territory.HasCapital;
+        int gold = territory.HasCapital
+            ? state.Treasury.GetGold(territory.Capital!.Value)
+            : 0;
+
+        // Bankruptcy lookahead: a capital-less territory can't collect
+        // income at all, so its units die on the next upkeep step.
+        // Otherwise defer to the shared solvency primitive — the same
+        // one AiCommon.Enumerate uses for its candidate-gating gates.
+        bool willBankrupt = !territory.HasCapital
+            || !UpkeepRules.SurvivesNextUpkeep(gold, netIncome);
 
         double unitValue = 0.0;
         if (!willBankrupt)
@@ -297,15 +306,10 @@ public static class AiStateScorer
             }
         }
 
-        int gold = territory.HasCapital
-            ? state.Treasury.GetGold(territory.Capital!.Value)
-            : 0;
-
         double effectiveNetIncome = System.Math.Max(0, netIncome);
         double value = tiles * TileWeight
                        + effectiveNetIncome * NetIncomeWeight
                        + unitValue
-                       + gold * GoldWeight
                        - FragmentationPenalty;
 
         return value;

@@ -95,6 +95,132 @@ public class ComputerAiTests
             $"expected merged (A={scoreA}) to beat fragmented (B={scoreB})");
     }
 
+    // --- AiStateScorer: gold is invisible to standing score ---------------
+
+    [Fact]
+    public void Score_IgnoresTreasuryGold()
+    {
+        // Two identical Red 3-tile islands; only the capital treasury
+        // differs (0g vs 1000g). With the GoldWeight term removed,
+        // the scorer must read them as exactly equal — hoarded gold
+        // contributes nothing to standing value.
+        var gridA = new HexGrid();
+        gridA.Add(new HexTile(HexCoord.FromOffset(0, 0), Red));
+        gridA.Add(new HexTile(HexCoord.FromOffset(1, 0), Red));
+        gridA.Add(new HexTile(HexCoord.FromOffset(2, 0), Red));
+        GameState stateA = BuildState(gridA, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
+
+        var gridB = new HexGrid();
+        gridB.Add(new HexTile(HexCoord.FromOffset(0, 0), Red));
+        gridB.Add(new HexTile(HexCoord.FromOffset(1, 0), Red));
+        gridB.Add(new HexTile(HexCoord.FromOffset(2, 0), Red));
+        GameState stateB = BuildState(gridB, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
+        HexCoord capB = stateB.Territories.First(t => t.Owner == Red).Capital!.Value;
+        stateB.Treasury.SetGold(capB, 1000);
+
+        Assert.Equal(AiStateScorer.Score(stateA, Red), AiStateScorer.Score(stateB, Red));
+    }
+
+    // --- AiStateScorer: treasury covers transient deficit -----------------
+
+    [Fact]
+    public void Score_TreasuryCoversNegativeNetIncomeKeepsUnitsAlive()
+    {
+        // 3-tile Red territory with two Recruits: income 3, upkeep 4
+        // (Recruit upkeep is 2), net = -1. The current willBankrupt
+        // check zeroes unit value the moment netIncome < 0, regardless
+        // of how much gold the capital holds. But the actual game only
+        // bankrupts when treasury can't cover the shortfall on the next
+        // upkeep step. A 100g treasury at -1/turn has 100 turns of
+        // runway — the units should read as fully alive.
+        HexGrid MakeGrid()
+        {
+            var g = new HexGrid();
+            g.Add(new HexTile(HexCoord.FromOffset(0, 0), Red));
+            g.Add(new HexTile(HexCoord.FromOffset(1, 0), Red));
+            g.Add(new HexTile(HexCoord.FromOffset(2, 0), Red));
+            return g;
+        }
+
+        GameState empty = BuildState(MakeGrid(), new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
+        HexCoord capEmpty = empty.Territories.First(t => t.Owner == Red).Capital!.Value;
+        foreach (HexCoord c in new[] { HexCoord.FromOffset(0, 0), HexCoord.FromOffset(1, 0), HexCoord.FromOffset(2, 0) })
+        {
+            if (c.Equals(capEmpty)) continue;
+            empty.Grid.Get(c)!.Occupant = new Unit(Red);
+        }
+
+        GameState rich = BuildState(MakeGrid(), new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
+        HexCoord capRich = rich.Territories.First(t => t.Owner == Red).Capital!.Value;
+        foreach (HexCoord c in new[] { HexCoord.FromOffset(0, 0), HexCoord.FromOffset(1, 0), HexCoord.FromOffset(2, 0) })
+        {
+            if (c.Equals(capRich)) continue;
+            rich.Grid.Get(c)!.Occupant = new Unit(Red);
+        }
+        rich.Treasury.SetGold(capRich, 100);
+
+        double emptyScore = AiStateScorer.Score(empty, Red);
+        double richScore = AiStateScorer.Score(rich, Red);
+
+        // empty: 0g + (-1) = -1 < 0 → still bankrupt, no unit value.
+        // rich : 100g + (-1) = 99 ≥ 0 → solvent, two Recruits worth
+        // 4 each → +8 above empty.
+        Assert.True(richScore > emptyScore,
+            $"expected solvent-by-treasury (rich={richScore}) to beat " +
+            $"insolvent (empty={emptyScore})");
+    }
+
+    // --- AiCommon: treasury-aware enumerator solvency ---------------------
+
+    [Fact]
+    public void Enumerate_HighTreasuryUnlocksHigherTierBuy()
+    {
+        // 5-tile Red strip bordering 2-tile Blue. Red has one Recruit
+        // (upkeep 2), giving income 5 / upkeep 2 / net +1. Soldier
+        // costs 15 gold (PurchaseRules.CostFor) with upkeep 6, so the
+        // old solvency gate (netBefore - upkeep_ >= 0 → +1 - 6 = -5)
+        // rejects every Soldier buy. With 200g in treasury the new
+        // gate sees (200 - 15) + (+1 - 6) = 180 ≥ 0 — Soldier buys
+        // become legal. Captain (cost 30, upkeep 18) is similar.
+        var grid = new HexGrid();
+        for (int col = 0; col < 5; col++)
+        {
+            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        }
+        grid.Add(new HexTile(HexCoord.FromOffset(5, 0), Blue));
+        grid.Add(new HexTile(HexCoord.FromOffset(6, 0), Blue));
+        GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
+        Territory red = state.Territories.First(t => t.Owner == Red);
+        HexCoord cap = red.Capital!.Value;
+        // Place a Recruit somewhere off-capital so the territory has
+        // exactly +1 net income (5 income - 2 upkeep = +1).
+        HexCoord recruitTile = red.Coords.First(c => !c.Equals(cap));
+        state.Grid.Get(recruitTile)!.Occupant = new Unit(Red);
+        state.Treasury.SetGold(cap, 200);
+
+        List<AiCandidate> candidates = AiCommon.Enumerate(red, state).ToList();
+        Assert.True(
+            candidates.Any(c => c.Action is AiBuyUnitAction b && b.Level == UnitLevel.Soldier),
+            $"expected at least one Buy-Soldier candidate with 200g treasury; got: " +
+            string.Join(", ", candidates.Select(c => c.Action.GetType().Name)));
+    }
+
+    // --- UpkeepRules.SurvivesNextUpkeep boundary cases --------------------
+
+    [Fact]
+    public void SurvivesNextUpkeep_ExactBoundary()
+    {
+        // gold + netIncome == 0 → just barely survives.
+        Assert.True(UpkeepRules.SurvivesNextUpkeep(0, 0));
+        Assert.True(UpkeepRules.SurvivesNextUpkeep(1, -1));
+        Assert.True(UpkeepRules.SurvivesNextUpkeep(100, -100));
+        // gold + netIncome < 0 → cannot cover next upkeep.
+        Assert.False(UpkeepRules.SurvivesNextUpkeep(0, -1));
+        Assert.False(UpkeepRules.SurvivesNextUpkeep(5, -6));
+        // Healthy positive net → always survives regardless of gold.
+        Assert.True(UpkeepRules.SurvivesNextUpkeep(0, 5));
+    }
+
     // --- AiStateScorer: orphaning enemies ---------------------------------
 
     [Fact]

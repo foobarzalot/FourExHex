@@ -41,6 +41,23 @@ public static class UpkeepRules
         _ => 0,
     };
 
+    /// <summary>
+    /// True iff a territory holding <paramref name="gold"/> gold at
+    /// <paramref name="netIncome"/> per turn will survive its next
+    /// upkeep step. Treasury covers any shortfall: a 100g hoard at
+    /// -1 net has 100 turns of runway and reads as "alive."
+    ///
+    /// The single shared solvency predicate used by
+    /// <see cref="AiStateScorer"/>'s bankruptcy lookahead and by every
+    /// gate in <see cref="AiCommon.Enumerate"/>. Both layers must
+    /// agree on what counts as solvent — otherwise the scorer
+    /// approves actions the enumerator never proposes, or vice versa.
+    /// Future tuning (multi-turn horizons, fractional discounts) lives
+    /// in this one place.
+    /// </summary>
+    public static bool SurvivesNextUpkeep(int gold, int netIncome) =>
+        gold + netIncome >= 0;
+
     /// <summary>Sum of upkeep costs for every unit in <paramref name="territory"/>.</summary>
     public static int TotalUpkeepFor(Territory territory, HexGrid grid)
     {

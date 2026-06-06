@@ -378,6 +378,8 @@ Consequences for the rest of this doc:
 │   UpkeepRules.UpkeepFor / TotalUpkeepFor / ApplyUpkeep / ApplyUpkeepFor  │
 │               / ForecastBankruptNextTurn / Classify -> EconomyOutlook    │
 │                          (Healthy / NegativeDelta / BankruptNextTurn)    │
+│               / SurvivesNextUpkeep(gold, netIncome) — shared solvency    │
+│                          primitive used by AI scorer + enumerator        │
 │   WinConditionRules.WinnerByDomination (mid-turn)                        │
 │                    .WinnerAtEndOfTurn (sole capital-bearer)              │
 │                    .IsEliminated                                         │
@@ -1790,12 +1792,18 @@ replay. Two such heuristics were found and excluded (the
 is filtered in `AiCommon.Enumerate` (AI candidate generation), NOT
 gated in `ExecuteAiBuildTower`; humans may bunch towers. (2)
 "a reposition onto own-empty consumes the unit's move" — an AI-loop
-guard so the chooser doesn't re-pick the same unit; the
-`ExecuteAiMove` shim that sets `HasMovedThisTurn` on a reposition is
-gated `&& !_replayMode` so it never fires during playback (live AI
-still consumes it). New AI-only constraints must follow the same
-rule: enforce at candidate enumeration / in the AI loop, never in the
-shared execute path that replay drives.
+guard so the chooser doesn't re-pick the same unit. Gated on
+**actor kind** (`CurrentPlayer.Kind == PlayerKind.Computer`) via the
+`ConsumeRepositionMoveIfAi` helper shared by `ExecuteAiMove` and
+`ExecuteAiBuyUnit`. The original gate was `&& !_replayMode`, but that
+diverged live↔replay when the actor was AI in BOTH paths (AI live set
+the flag, AI replay didn't) — pinned by `ReplayFidelityTests`. Actor-
+kind is correct in both paths because the replay step machine advances
+turn state before each action beat fires, so `CurrentPlayer` is the
+original actor regardless of which path is executing. New AI-only
+constraints must follow the same rule: enforce at candidate enumeration
+or via an actor-kind gate in the shared execute path, never via a
+replay-mode gate (that conflates "the AI is acting" with "we are live").
 
 **Recording vs. playback.** Every state-mutation site that records a
 beat is gated on `!_replayMode` so replay execution doesn't
@@ -1822,6 +1830,16 @@ single beat).
   `AiBuildTowerAction`.
 - **`AiCommon.Enumerate`** — single source of legal candidate actions;
   `ComputerAi` consumes it. Only this helper knows about rule legality.
+  All six solvency gates (move-capture/chop/combine, buy-capture/
+  reposition, build-tower) defer to `UpkeepRules.SurvivesNextUpkeep
+  (gold, netIncome)`, the shared primitive that asks "does treasury +
+  next-turn net cover the next upkeep step?" `AiStateScorer`'s
+  bankruptcy lookahead uses the same predicate, so a candidate the
+  scorer would approve is never silently dropped by the enumerator
+  (and vice versa). Future runway tuning (multi-turn horizons, etc.)
+  lives in that one function. This treasury-aware solvency, plus the
+  removal of the standing `GoldWeight` term from `AiStateScorer`, is
+  what closes issue #19's gold-hoarding pathology.
 - **`ComputerAi`** — the game's only AI (drives every `PlayerKind.Computer`
   slot). 1-ply lookahead via `AiSimulator.Clone` +
   `AiStateScorer.Score`. `AiSimulator` mirrors the mutation logic in
