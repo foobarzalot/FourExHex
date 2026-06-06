@@ -122,6 +122,24 @@ public class MockHudView : IHudView
     public bool VictoryOverlaySuppressed { get; private set; }
     public void SetVictoryOverlaySuppressed(bool suppressed) => VictoryOverlaySuppressed = suppressed;
 
+    public HexCoord? SummonedCapitalAlertCoord { get; private set; }
+    public EconomyOutlook? LastSummonedAlertOutlook { get; private set; }
+    public int SummonAlertCallCount { get; private set; }
+    public int DismissAlertCallCount { get; private set; }
+
+    public void SummonCapitalAlertNotice(HexCoord capital, EconomyOutlook outlook)
+    {
+        SummonedCapitalAlertCoord = capital;
+        LastSummonedAlertOutlook = outlook;
+        SummonAlertCallCount++;
+    }
+
+    public void DismissCapitalAlertNotice()
+    {
+        SummonedCapitalAlertCoord = null;
+        DismissAlertCallCount++;
+    }
+
     public bool ReplayAvailable { get; private set; }
     public void SetReplayAvailable(bool available) => ReplayAvailable = available;
 

@@ -153,6 +153,34 @@ public interface IHudView
     /// further author input.
     /// </summary>
     void SetVictoryOverlaySuppressed(bool suppressed);
+
+    /// <summary>
+    /// Coord of the capital whose tap-summoned alert notice is
+    /// currently visible, or null when no notice is showing. Read by
+    /// the controller's tap handler to implement toggle-off-on-re-tap
+    /// of the same capital. View-only state — never reflected in
+    /// <see cref="GameState"/> or <see cref="SessionState"/>, so the
+    /// notice is not snapshotted into undo entries.
+    /// </summary>
+    HexCoord? SummonedCapitalAlertCoord { get; }
+
+    /// <summary>
+    /// Show the tap-summoned alert notice anchored to
+    /// <paramref name="capital"/> with content/palette chosen by
+    /// <paramref name="outlook"/> (red for
+    /// <see cref="EconomyOutlook.BankruptNextTurn"/>, yellow for
+    /// <see cref="EconomyOutlook.NegativeDelta"/>). Replaces any
+    /// previously summoned notice. The controller is expected to gate
+    /// on human ownership and a non-Healthy outlook before calling.
+    /// </summary>
+    void SummonCapitalAlertNotice(HexCoord capital, EconomyOutlook outlook);
+
+    /// <summary>
+    /// Hide the tap-summoned alert notice if visible. Safe to call
+    /// when nothing is summoned. Called by the controller from every
+    /// top-level human handler so any non-tap action dismisses.
+    /// </summary>
+    void DismissCapitalAlertNotice();
 }
 
 /// <summary>

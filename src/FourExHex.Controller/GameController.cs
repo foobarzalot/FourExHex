@@ -226,6 +226,9 @@ public class GameController
         _hud.DefeatContinueClicked -= OnDefeatContinuePressed;
         _hud.ClaimVictoryWinNowClicked -= OnClaimVictoryWinNowPressed;
         _hud.ClaimVictoryContinueClicked -= OnClaimVictoryContinuePressed;
+        // Clear any tap-summoned notice so a shared HudView doesn't
+        // carry stale view state into the next session.
+        _hud.DismissCapitalAlertNotice();
     }
 
     public void StartGame()
@@ -425,6 +428,12 @@ public class GameController
         UndoEntry pre = CaptureCurrentSnapshot();
         _handlerMutatedGame = false;
         _pendingHumanBeat = null;
+        // Default-dismiss the tap-summoned capital-alert notice on every
+        // human action. OnTileClicked's outer wrapper captures the prior
+        // coord before TrackHandler runs, so OnTileClickedBody can still
+        // implement toggle-off-on-re-tap; every other handler just clears
+        // the notice and that's the desired behavior.
+        _hud.DismissCapitalAlertNotice();
         work();
         // If the handler triggered a game-over (e.g., a winning capture
         // calls Undo.Clear()), don't push — there's nothing to undo past
@@ -460,8 +469,14 @@ public class GameController
 
     // --- Click handling ---------------------------------------------------
 
-    private void OnTileClicked(HexTile? tile) =>
-        TrackHandler(() => OnTileClickedBody(tile));
+    private void OnTileClicked(HexTile? tile)
+    {
+        // Capture BEFORE TrackHandler runs, since TrackHandler's default-
+        // dismiss will clear _hud.SummonedCapitalAlertCoord. The body uses
+        // priorAlert to implement toggle-off-on-re-tap of the same capital.
+        HexCoord? priorAlert = _hud.SummonedCapitalAlertCoord;
+        TrackHandler(() => OnTileClickedBody(tile, priorAlert));
+    }
 
     private void OnOffGridClicked(HexCoord coord) =>
         TrackHandler(() => OnOffGridClickedBody(coord));
@@ -508,7 +523,7 @@ public class GameController
         SetSelection(null);
     }
 
-    private void OnTileClickedBody(HexTile? tile)
+    private void OnTileClickedBody(HexTile? tile, HexCoord? priorAlertCoord)
     {
         if (_session.IsGameOver) return;
 
@@ -577,6 +592,28 @@ public class GameController
             Log.Debug(Log.LogCategory.Input,
                 $"[Click] out-of-range invalid move target at {tile.Coord} → flash + cancel mode, re-processing as selection");
             CancelPendingAction();
+        }
+
+        // Tap-summoned capital-alert notice. TrackHandler has already
+        // dismissed any previously-summoned notice; re-summon iff this
+        // tap landed on the current human player's own capital whose
+        // economy outlook would draw the warning badge AND the prior
+        // tap wasn't already on that same coord (toggle-off semantics).
+        if (tile != null && !_state.Turns.CurrentPlayer.IsAi)
+        {
+            Territory? alertTerritory = TerritoryLookup.FindContaining(_state.Territories, tile.Coord);
+            if (alertTerritory != null
+                && alertTerritory.Owner == _state.Turns.CurrentPlayer.Id
+                && alertTerritory.Capital == tile.Coord
+                && priorAlertCoord != tile.Coord)
+            {
+                EconomyOutlook outlook = UpkeepRules.Classify(
+                    alertTerritory, _state.Grid, _state.Treasury);
+                if (outlook != EconomyOutlook.Healthy)
+                {
+                    _hud.SummonCapitalAlertNotice(tile.Coord, outlook);
+                }
+            }
         }
 
         // Normal click handling.
@@ -1182,6 +1219,7 @@ public class GameController
         {
             return;
         }
+        _hud.DismissCapitalAlertNotice();
         _recorder.RecordBeat(new ReplayDismissDefeatBeat());
         _session.PendingDefeatScreen = null;
         // Re-arm silent mode if we were in a silent batch — clearing
@@ -1205,6 +1243,7 @@ public class GameController
         if (_ops.InSilentAiBatch()) return;
         if (_session.IsGameOver) return;
         if (!_session.Undo.CanUndo) return;
+        _hud.DismissCapitalAlertNotice();
         HexCoord? before = _session.SelectedTerritory?.Capital;
         _recorder.PopOneBeatBatchForUndo();
         ApplySnapshot(_session.Undo.UndoLast(CaptureCurrentSnapshot()));
@@ -1217,6 +1256,7 @@ public class GameController
         if (_ops.InSilentAiBatch()) return;
         if (_session.IsGameOver) return;
         if (!_session.Undo.CanUndo) return;
+        _hud.DismissCapitalAlertNotice();
         // Inline the UndoAll loop so each pop's beat bookkeeping fires.
         _recorder.PopOneBeatBatchForUndo();
         UndoEntry restored = _session.Undo.UndoLast(CaptureCurrentSnapshot());
@@ -1234,6 +1274,7 @@ public class GameController
         if (_ops.InSilentAiBatch()) return;
         if (_session.IsGameOver) return;
         if (!_session.Undo.CanRedo) return;
+        _hud.DismissCapitalAlertNotice();
         HexCoord? before = _session.SelectedTerritory?.Capital;
         _recorder.PushOneBeatBatchForRedo();
         ApplySnapshot(_session.Undo.RedoLast(CaptureCurrentSnapshot()));
@@ -1246,6 +1287,7 @@ public class GameController
         if (_ops.InSilentAiBatch()) return;
         if (_session.IsGameOver) return;
         if (!_session.Undo.CanRedo) return;
+        _hud.DismissCapitalAlertNotice();
         _recorder.PushOneBeatBatchForRedo();
         UndoEntry restored = _session.Undo.RedoLast(CaptureCurrentSnapshot());
         while (_session.Undo.CanRedo)
@@ -1783,6 +1825,7 @@ public class GameController
         {
             return;
         }
+        _hud.DismissCapitalAlertNotice();
 
         // Claim-victory prompt: a human pressing End Turn while crossing
         // a tier in WinConditionRules.ClaimVictoryThresholdsPercent
@@ -1876,6 +1919,7 @@ public class GameController
         {
             return;
         }
+        _hud.DismissCapitalAlertNotice();
         _recorder.RecordBeat(new ReplayClaimVictoryBeat { ThresholdPercent = threshold });
         _session.PendingClaimVictory = null;
         _session.ClaimVictoryPromptedHighestThreshold[color] = threshold;
@@ -1901,6 +1945,7 @@ public class GameController
         {
             return;
         }
+        _hud.DismissCapitalAlertNotice();
         _recorder.RecordBeat(new ReplayDismissClaimBeat { ThresholdPercent = threshold });
         _session.PendingClaimVictory = null;
         _session.ClaimVictoryPromptedHighestThreshold[color] = threshold;

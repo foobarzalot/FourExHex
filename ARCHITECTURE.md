@@ -1259,22 +1259,38 @@ pipeline that surfaces it ahead of time:
   `BankruptNextTurn`, yellow on `NegativeDelta`, clears the override
   otherwise. Only painted when the selected territory is human-owned;
   AI territories never tint the label.
-- **Bankruptcy toast (`HudView._bankruptToast`)** — a dedicated red
-  pill anchored 16 px below the HUD bar, top-center, built in
-  `BuildBankruptToast` and toggled by `Refresh` whenever
-  `ForecastHumanBankrupt(state, session.SelectedTerritory)` is true.
-  Dark-red bg (oklch 0.30 0.10 25 ≈ #4a2620) at 92 % alpha, 1 px
-  brighter-red border, 8 px radius. Two-line text: title
-  "Bankrupt next turn" (Geist 24 px ink) over subtitle "All units
-  in this territory will die" (Geist 21 px ink-mute). Left of the
-  text, a `TriangleWarningBadge` nested Control draws the same
-  upward-pointing red triangle + white "!" exclamation that
-  `HexMapView.DrawWarningBadgeAt` stamps on the capital, so the
-  toast and the in-map warning share one glyph. Independent of
-  the bottom-center tutorial-message panel (which still surfaces
-  buy/move placement hints); the two coexist without overlap so a
-  doomed-territory warning doesn't compete with an action mode in
-  progress.
+- **Tap-summoned alert notice (`HudView._bankruptToast`)** — a
+  dedicated pill anchored 16 px below the HUD bar, top-center, built
+  once in `BuildBankruptToast` and hosting **both** the red
+  `BankruptNextTurn` and yellow `NegativeDelta` variants of the
+  warning. Driven by a private `_summonedAlertCoord: HexCoord?` field:
+  the panel is visible iff that field is set. The controller's
+  `OnTileClicked` path summons by calling `IHudView.SummonCapitalAlertNotice(coord, outlook)`
+  when the tap lands on the current human player's own capital and
+  `UpkeepRules.Classify(...)` returns a non-`Healthy` outlook; tapping
+  the same capital again is a toggle-off. Every other top-level human
+  handler (TrackHandler-wrapped or otherwise) calls
+  `DismissCapitalAlertNotice()` at entry so the notice clears on Buy /
+  Build / End Turn / Undo / Redo / Cancel / Defeat / Claim-Victory etc.
+  `Refresh` also stale-guards: if the summoned coord no longer resolves
+  to a human capital with the originally-summoned outlook (e.g., the
+  capital was captured or recovered), it dismisses. Visibility is
+  **never** driven by Refresh itself — purely tap-summoned.
+  Red palette: dark-red bg (oklch 0.30 0.10 25 ≈ #4a2620) at 92 %
+  alpha, 1 px brighter-red border; title "Bankrupt next turn" over
+  subtitle "All units in this territory will die". Yellow palette:
+  dark-olive bg `(0.290, 0.260, 0.110, 0.92)` with `BoardPalette.WarnYellow`
+  border; title "Losing gold" over subtitle "This territory spends
+  more than it earns each turn". Both share the 8 px radius, Geist
+  24/21 px ink/ink-mute typography, and the `TriangleWarningBadge`
+  glyph (red+white for BankruptNextTurn, yellow+black for
+  NegativeDelta via `SetVariant`). State lives on `IHudView`
+  (`SummonedCapitalAlertCoord` / `SummonCapitalAlertNotice` /
+  `DismissCapitalAlertNotice`) — view-layer only, never reflected in
+  `GameState` or `SessionState`, so summon/dismiss never push undo
+  entries (the old auto-show toast had this property by accident; the
+  new design makes it explicit). Logging through
+  `Log.LogCategory.Hud` (`[AlertNotice] summon …` / `dismiss …`).
 - **Map badge (`HexMapView.RedrawWarningBadges`)** — a top-most
   `WarningBadgesLayer` (drawn above units, capitals, and the highlight
   border) holds warning-sign triangles stamped on the capital of every

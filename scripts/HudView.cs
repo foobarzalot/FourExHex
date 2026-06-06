@@ -89,6 +89,10 @@ public partial class HudView : OrientationHud, IHudView
     private Panel _bankruptToast = null!;
     private Label _bankruptTitleLabel = null!;
     private Label _bankruptSubLabel = null!;
+    private StyleBoxFlat _bankruptToastStyle = null!;
+    private TriangleWarningBadge _bankruptToastBadge = null!;
+    private HexCoord? _summonedAlertCoord;
+    private EconomyOutlook _summonedAlertOutlook;
 
     // Persistent clusters, built once and reparented between the bars
     // (TopBar/BottomBar, owned by OrientationHud) on a landscape↔portrait flip.
@@ -1030,6 +1034,14 @@ public partial class HudView : OrientationHud, IHudView
     // the human's next turn; otherwise hidden.
     private static readonly Color BankruptToastBg = new Color(0.290f, 0.149f, 0.125f, 0.92f);
     private static readonly Color BankruptToastBorder = new Color(0.722f, 0.314f, 0.251f, 1f);
+    // Yellow (NegativeDelta) variant of the toast palette. Dark olive
+    // background derived to be the warm-mute analogue of the red bg
+    // (same luminance, hue shifted from red to yellow); border keys off
+    // BoardPalette.WarnYellow so the toast border matches the in-map
+    // capital warning glyph. Sub-Geist text remains InkMute, matching
+    // the red variant.
+    private static readonly Color NegativeDeltaToastBg = new Color(0.290f, 0.260f, 0.110f, 0.92f);
+    private static readonly Color NegativeDeltaToastBorder = new Color(0.886f, 0.722f, 0.255f, 1f);
 
     // 1.5x larger than the spec's reference so the toast reads at the heavier
     // scale the rest of the redesign settled on. Lives top-center, just below
@@ -1053,7 +1065,7 @@ public partial class HudView : OrientationHud, IHudView
             Visible = false,
             MouseFilter = Control.MouseFilterEnum.Ignore,
         };
-        var toastStyle = new StyleBoxFlat
+        _bankruptToastStyle = new StyleBoxFlat
         {
             BgColor = BankruptToastBg,
             BorderColor = BankruptToastBorder,
@@ -1066,7 +1078,7 @@ public partial class HudView : OrientationHud, IHudView
             CornerRadiusBottomLeft = 8,
             CornerRadiusBottomRight = 8,
         };
-        _bankruptToast.AddThemeStyleboxOverride("panel", toastStyle);
+        _bankruptToast.AddThemeStyleboxOverride("panel", _bankruptToastStyle);
         AddChild(_bankruptToast);
 
         var row = new HBoxContainer
@@ -1082,10 +1094,10 @@ public partial class HudView : OrientationHud, IHudView
 
         // Triangle badge: same equilateral-up shape as the in-map
         // capital warning (DrawWarningBadgeAt), in a 48-px Control box.
-        var badge = new TriangleWarningBadge { CustomMinimumSize = new Vector2(48, 48) };
-        badge.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
-        badge.MouseFilter = Control.MouseFilterEnum.Ignore;
-        row.AddChild(badge);
+        _bankruptToastBadge = new TriangleWarningBadge { CustomMinimumSize = new Vector2(48, 48) };
+        _bankruptToastBadge.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+        _bankruptToastBadge.MouseFilter = Control.MouseFilterEnum.Ignore;
+        row.AddChild(_bankruptToastBadge);
 
         var textBlock = new VBoxContainer
         {
@@ -1161,16 +1173,37 @@ public partial class HudView : OrientationHud, IHudView
 
     // Tiny self-drawing Control that paints the same upward-pointing
     // equilateral triangle as HexMapView.DrawWarningBadgeAt — red
-    // fill, 2-px white stroke, white "!" exclamation glyph (a
-    // vertical bar + dot). Lives in HudView because the toast (this
-    // class) is the only consumer; the in-map badge keeps drawing
-    // its triangle inline so it can size relative to HexSize.
+    // fill + white accent by default (BankruptNextTurn), or yellow
+    // fill + black accent when SetVariant(NegativeDelta) is applied.
+    // Lives in HudView because the toast (this class) is the only
+    // consumer; the in-map badge keeps drawing its triangle inline so
+    // it can size relative to HexSize.
     private sealed partial class TriangleWarningBadge : Control
     {
+        private Color _fill = new Color(0.95f, 0.10f, 0.10f, 1f);
+        private Color _accent = new Color(1f, 1f, 1f, 1f);
+
+        public void SetVariant(EconomyOutlook outlook)
+        {
+            switch (outlook)
+            {
+                case EconomyOutlook.NegativeDelta:
+                    _fill = BoardPalette.WarnYellow;
+                    _accent = new Color(0f, 0f, 0f, 1f);
+                    break;
+                case EconomyOutlook.BankruptNextTurn:
+                default:
+                    _fill = new Color(0.95f, 0.10f, 0.10f, 1f);
+                    _accent = new Color(1f, 1f, 1f, 1f);
+                    break;
+            }
+            QueueRedraw();
+        }
+
         public override void _Draw()
         {
-            Color fill = new Color(0.95f, 0.10f, 0.10f, 1f);
-            Color accent = new Color(1f, 1f, 1f, 1f);
+            Color fill = _fill;
+            Color accent = _accent;
 
             const float Sqrt3Over2 = 0.8660254f;
             float r = Mathf.Min(Size.X, Size.Y) * 0.45f;
@@ -1861,20 +1894,23 @@ public partial class HudView : OrientationHud, IHudView
             }
         }
 
-        // Bankruptcy toast — shows whenever the selected human territory
-        // is forecast to bankrupt next turn. Lives top-center (just
-        // below the HUD), so it can coexist with the bottom-center
-        // tutorial-message panel during a buy/move mode without either
-        // covering the other.
-        _bankruptToast.Visible = ForecastHumanBankrupt(state, session.SelectedTerritory);
+        // Tap-summoned capital alert notice (issue #15) — replaces the
+        // old always-on bankruptcy toast. Visibility is driven by
+        // _summonedAlertCoord, set by the controller's tap handler.
+        // Refresh stale-guards: if the previously-summoned capital was
+        // captured, eliminated, or recovered (outlook now Healthy /
+        // mismatched), dismiss so we don't show a misleading notice.
+        if (_summonedAlertCoord.HasValue && !IsValidSummonTarget(state, _summonedAlertCoord.Value, _summonedAlertOutlook))
+        {
+            DismissCapitalAlertNotice();
+        }
     }
 
     /// <summary>
-    /// True iff <paramref name="selected"/> is a human-owned capital
-    /// territory that <see cref="UpkeepRules.ForecastBankruptNextTurn"/>
-    /// predicts will lose all its units at its owner's next turn-start.
-    /// Shared by the red report-label styling and the warning panel text
-    /// so both key off one decision.
+    /// True iff <paramref name="selected"/> is a human-owned territory.
+    /// Used by the gold-chip color picker (the gold label gets the
+    /// red/yellow warn-tint only for human territories) and by the
+    /// alert-notice stale-summon guard below.
     /// </summary>
     private static bool IsHumanOwned(GameState state, Territory? selected)
     {
@@ -1883,11 +1919,57 @@ public partial class HudView : OrientationHud, IHudView
         return owner != null && !owner.IsAi;
     }
 
-    private static bool ForecastHumanBankrupt(GameState state, Territory? selected)
+    /// <summary>
+    /// True iff <paramref name="coord"/> still resolves to a
+    /// human-owned capital whose current outlook matches the summon
+    /// that triggered the notice. Used by Refresh to retire stale
+    /// notices when the underlying state shifts (income applied,
+    /// capital captured, etc.). The exact-outlook match is what makes
+    /// a recovered capital silently drop the notice instead of, e.g.,
+    /// silently downgrading from red to yellow.
+    /// </summary>
+    private static bool IsValidSummonTarget(GameState state, HexCoord coord, EconomyOutlook expected)
     {
-        if (selected == null) return false;
-        if (!IsHumanOwned(state, selected)) return false;
-        return UpkeepRules.Classify(selected, state.Grid, state.Treasury) == EconomyOutlook.BankruptNextTurn;
+        Territory? t = TerritoryLookup.FindContaining(state.Territories, coord);
+        if (t == null) return false;
+        if (t.Capital != coord) return false;
+        if (!IsHumanOwned(state, t)) return false;
+        return UpkeepRules.Classify(t, state.Grid, state.Treasury) == expected;
+    }
+
+    public HexCoord? SummonedCapitalAlertCoord => _summonedAlertCoord;
+
+    public void SummonCapitalAlertNotice(HexCoord capital, EconomyOutlook outlook)
+    {
+        _summonedAlertCoord = capital;
+        _summonedAlertOutlook = outlook;
+        if (outlook == EconomyOutlook.NegativeDelta)
+        {
+            _bankruptToastStyle.BgColor = NegativeDeltaToastBg;
+            _bankruptToastStyle.BorderColor = NegativeDeltaToastBorder;
+            _bankruptTitleLabel.Text = "Losing gold";
+            _bankruptSubLabel.Text = "This territory spends more than it earns each turn";
+        }
+        else
+        {
+            _bankruptToastStyle.BgColor = BankruptToastBg;
+            _bankruptToastStyle.BorderColor = BankruptToastBorder;
+            _bankruptTitleLabel.Text = "Bankrupt next turn";
+            _bankruptSubLabel.Text = "All units in this territory will die";
+        }
+        _bankruptToastBadge.SetVariant(outlook);
+        _bankruptToast.Visible = true;
+        Log.Debug(Log.LogCategory.Hud,
+            $"[AlertNotice] summon {capital} outlook={outlook}");
+    }
+
+    public void DismissCapitalAlertNotice()
+    {
+        if (!_summonedAlertCoord.HasValue && !_bankruptToast.Visible) return;
+        Log.Debug(Log.LogCategory.Hud,
+            $"[AlertNotice] dismiss (was={_summonedAlertCoord})");
+        _summonedAlertCoord = null;
+        _bankruptToast.Visible = false;
     }
 
     private static string? ComputeActionHint(GameState state, SessionState session)
