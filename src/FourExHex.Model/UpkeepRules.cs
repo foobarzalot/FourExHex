@@ -150,14 +150,21 @@ public static class UpkeepRules
         // Bankrupt — every unit in the territory dies and leaves a
         // grave behind. Capital occupants and other non-unit occupants
         // survive untouched.
+        int killed = 0;
         foreach (HexCoord coord in territory.Coords)
         {
             HexTile? tile = grid.Get(coord);
             if (tile?.Occupant is Unit)
             {
                 tile.Occupant = new Grave();
+                killed++;
             }
         }
+        Log.Info(Log.LogCategory.Turn,
+            $"[upkeep] BANKRUPT owner={territory.Owner.Index} " +
+            $"cap={(territory.HasCapital ? territory.Capital!.Value.ToString() : "none")} " +
+            $"size={territory.Coords.Count} units_killed={killed} " +
+            $"owed={owed} available={available}");
         return false;
     }
 

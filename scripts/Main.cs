@@ -86,8 +86,16 @@ public partial class Main : Node2D
         HexMapView? visibleMap = null;
         if (diagnosticMode)
         {
-            cols = 18;
-            rows = 13;
+            // Match HexMapView's [Export] defaults — diverging here used to
+            // hide whole classes of AI economic bugs (see #24): the 6AI
+            // harness on 18×13 showed 0 bankruptcies in 10 runs while
+            // menu-launched 6AI on the default 30×20 showed dozens. Pull
+            // dimensions from a throwaway HexMapView instance so the two
+            // launch paths can't drift again.
+            visibleMap = new HexMapView();
+            cols = visibleMap.Cols;
+            rows = visibleMap.Rows;
+            visibleMap = null;  // not added to the scene tree; let GC reclaim
         }
         else
         {
