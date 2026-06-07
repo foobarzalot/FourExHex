@@ -1600,7 +1600,13 @@ public class GameController
             .OwnedCapitalBearing(_state.Territories, color)
             .ToList();
         if (owned.Count == 0) return;
-        owned.Sort((a, b) => a.Capital!.Value.CompareTo(b.Capital!.Value));
+        owned.Sort((a, b) =>
+        {
+            int sizeComp = b.Size.CompareTo(a.Size);
+            return sizeComp != 0 ? sizeComp : a.Capital!.Value.CompareTo(b.Capital!.Value);
+        });
+        Log.Debug(Log.LogCategory.Input,
+            $"StepTerritorySelection: {owned.Count} territories, largest first = capital {owned[0].Capital} size={owned[0].Size}");
 
         int currentIndex = -1;
         if (_session.SelectedTerritory != null)

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 
 /// <summary>
 /// A 1-ply score-maximizing AI. For each legal candidate action
@@ -63,11 +64,15 @@ public static class ComputerAi
         int observedBestDelta = int.MinValue;
         AiActionKind? observedBestKind = null;
 
-        foreach (Territory t in state.Territories)
+        foreach (Territory t in state.Territories
+            .OrderByDescending(terr => terr.Size)
+            .ThenBy(terr => terr.HasCapital ? terr.Capital!.Value : default(HexCoord)))
         {
             if (t.Owner != forPlayer) continue;
             if (!t.HasCapital) continue;
             if (visitedCapitals.Contains(t.Capital!.Value)) continue;
+            Log.Debug(Log.LogCategory.Ai,
+                $"[territory-order] capital={t.Capital} size={t.Size}");
 
             bool anyCandidate = false;
             foreach (AiCandidate candidate in AiCommon.Enumerate(t, state))

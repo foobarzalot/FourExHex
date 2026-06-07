@@ -941,4 +941,51 @@ public class ComputerAiTests
             Assert.NotEqual(firstMove.Destination, secondMove.Source);
         }
     }
+
+    [Fact]
+    public void ChooseNextAction_VisitsLargestTerritoryFirst()
+    {
+        // Two Red territories of different sizes. Both have one capture candidate
+        // with identical score delta (+22). Under strict > comparison, the FIRST
+        // territory visited locks in its action; the second's equal delta cannot
+        // displace it. So the result reveals visit order.
+        //
+        // Old sort (capital coord): small territory capital (10,0) < (20,0) → small first.
+        // New sort (size desc): big territory (3 cells) first.
+        //
+        // Grid: 30×1, all Blue. Small Red = cols 10-11, big Red = cols 20-22.
+        // Blue territories {0-9}, {12-19}, {23-29} have capitals at cols 0, 12, 23.
+        // Each territory's left-facing Blue cell (9 and 19) is NOT a capital → defense=0,
+        // so a Recruit placed at the left border of each territory can capture it.
+        //
+        // Recruits are placed at the LEFT border cell of each territory so:
+        //   - CapitalPlacer lands the capital on the next cell (lex-min empty).
+        //   - After the Recruit captures leftward, the capital's own defense covers
+        //     any remaining border tiles — no undefended tile is created.
+        //   - Score delta is identical for both captures (+22), so the FIRST territory
+        //     visited locks in the winner (strict > means equal delta can't displace it).
+        //
+        // Old sort (capital coord): small capital=(11,0) < (21,0) → small visits first → Source=(10,0).
+        // New sort (size desc): big (3 cells) visits first → Source=(20,0).
+        var grid = TestHelpers.BuildRectGrid(30, 1, Blue);
+
+        grid.Get(HexCoord.FromOffset(10, 0))!.Owner = Red;
+        grid.Get(HexCoord.FromOffset(11, 0))!.Owner = Red;
+        grid.Get(HexCoord.FromOffset(10, 0))!.Occupant = new Unit(Red);  // left border; capital → (11,0)
+
+        grid.Get(HexCoord.FromOffset(20, 0))!.Owner = Red;
+        grid.Get(HexCoord.FromOffset(21, 0))!.Owner = Red;
+        grid.Get(HexCoord.FromOffset(22, 0))!.Owner = Red;
+        grid.Get(HexCoord.FromOffset(20, 0))!.Occupant = new Unit(Red);  // left border; capital → (21,0)
+
+        GameState state = BuildState(grid,
+            new Player("Red", PlayerId.FromIndex(0)),
+            new Player("Blue", PlayerId.FromIndex(1)));
+
+        AiAction? action = ComputerAi.ChooseNextAction(
+            state, Red, new HashSet<HexCoord>(), new Random(0));
+
+        AiMoveAction mv = Assert.IsType<AiMoveAction>(action);
+        Assert.Equal(HexCoord.FromOffset(20, 0), mv.Source);
+    }
 }

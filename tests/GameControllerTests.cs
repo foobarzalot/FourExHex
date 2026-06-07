@@ -2930,6 +2930,47 @@ public class GameControllerTests
                 t.Owner == Red.Id && t.Coords.Contains(HexCoord.FromOffset(col, row)));
     }
 
+    /// <summary>
+    /// Two Red territories of DIFFERENT sizes: small (2 tiles at cols 0-1, capital
+    /// at (0,0)) and big (3 tiles at cols 5-7, capital at (5,0)). Used to verify
+    /// that next-territory cycling visits the larger territory first.
+    /// </summary>
+    private class UnequalRedTerritoriesGame
+    {
+        public GameState State { get; }
+        public SessionState Session { get; }
+        public MockHexMapView Map { get; }
+        public MockHudView Hud { get; }
+        public GameController Controller { get; }
+        public Player Red { get; }
+        public Player Blue { get; }
+
+        public UnequalRedTerritoriesGame()
+        {
+            Red = new Player("Red", PlayerId.FromIndex(0));
+            Blue = new Player("Blue", PlayerId.FromIndex(1));
+            var players = new List<Player> { Red, Blue };
+
+            var grid = TestHelpers.BuildRectGrid(12, 1, Blue.Id);
+            grid.Get(HexCoord.FromOffset(0, 0))!.Owner = Red.Id;
+            grid.Get(HexCoord.FromOffset(1, 0))!.Owner = Red.Id;
+            grid.Get(HexCoord.FromOffset(5, 0))!.Owner = Red.Id;
+            grid.Get(HexCoord.FromOffset(6, 0))!.Owner = Red.Id;
+            grid.Get(HexCoord.FromOffset(7, 0))!.Owner = Red.Id;
+
+            IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+
+            State = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+            Session = new SessionState();
+            Session.ClaimVictoryPromptedHighestThreshold[Red.Id] = 90;
+            Session.ClaimVictoryPromptedHighestThreshold[Blue.Id] = 90;
+            Map = new MockHexMapView();
+            Hud = new MockHudView();
+            Controller = new GameController(State, Session, Map, Hud);
+            Controller.StartGame();
+        }
+    }
+
     [Fact]
     public void NextTerritory_NoneSelected_SelectsLexMinCapital()
     {
@@ -2980,6 +3021,18 @@ public class GameControllerTests
         g.Hud.PressNextTerritory(); // wraps — same one
 
         Assert.Same(first, g.Session.SelectedTerritory);
+    }
+
+    [Fact]
+    public void NextTerritory_LargerTerritoryVisitedFirst()
+    {
+        // Small territory (2 tiles, capital at (0,0)) has a lower capital coord
+        // than big territory (3 tiles, capital at (5,0)). Old sort (capital coord)
+        // selects small first; new sort (size desc) selects big first.
+        var g = new UnequalRedTerritoriesGame();
+        g.Hud.PressNextTerritory();
+        Assert.NotNull(g.Session.SelectedTerritory);
+        Assert.Contains(HexCoord.FromOffset(5, 0), g.Session.SelectedTerritory!.Coords);
     }
 
     [Fact]
