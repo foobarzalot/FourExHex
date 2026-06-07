@@ -42,21 +42,33 @@ public static class UpkeepRules
     };
 
     /// <summary>
+    /// Number of upkeep steps the AI's solvency check looks ahead.
+    /// One-step lookahead let the AI take buys whose post-state
+    /// barely survived next upkeep but drained the treasury within
+    /// a few more turns — the #22 doom spiral. A 5-step horizon
+    /// forces the AI to keep enough runway to absorb the new
+    /// upkeep over several turns, not just one.
+    /// </summary>
+    public const int UpkeepHorizon = 5;
+
+    /// <summary>
     /// True iff a territory holding <paramref name="gold"/> gold at
-    /// <paramref name="netIncome"/> per turn will survive its next
-    /// upkeep step. Treasury covers any shortfall: a 100g hoard at
-    /// -1 net has 100 turns of runway and reads as "alive."
+    /// <paramref name="netIncome"/> per turn can sustain itself
+    /// across the next <see cref="UpkeepHorizon"/> upkeep steps —
+    /// i.e., gold + <see cref="UpkeepHorizon"/> × netIncome ≥ 0.
+    /// Positive or zero net income trivially survives regardless of
+    /// gold (the multiplication can't push it negative).
     ///
     /// The single shared solvency predicate used by
     /// <see cref="AiStateScorer"/>'s bankruptcy lookahead and by every
     /// gate in <see cref="AiCommon.Enumerate"/>. Both layers must
     /// agree on what counts as solvent — otherwise the scorer
     /// approves actions the enumerator never proposes, or vice versa.
-    /// Future tuning (multi-turn horizons, fractional discounts) lives
-    /// in this one place.
+    /// Tuning the horizon (or moving to a graduated discount) is a
+    /// one-line edit here that the entire system inherits.
     /// </summary>
     public static bool SurvivesNextUpkeep(int gold, int netIncome) =>
-        gold + netIncome >= 0;
+        gold + UpkeepHorizon * netIncome >= 0;
 
     /// <summary>Sum of upkeep costs for every unit in <paramref name="territory"/>.</summary>
     public static int TotalUpkeepFor(Territory territory, HexGrid grid)

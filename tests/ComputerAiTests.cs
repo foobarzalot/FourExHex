@@ -205,20 +205,62 @@ public class ComputerAiTests
             string.Join(", ", candidates.Select(c => c.Action.GetType().Name)));
     }
 
-    // --- UpkeepRules.SurvivesNextUpkeep boundary cases --------------------
+    // --- UpkeepRules.SurvivesNextUpkeep horizon cases ---------------------
 
     [Fact]
-    public void SurvivesNextUpkeep_ExactBoundary()
+    public void SurvivesNextUpkeep_FiveTurnHorizon()
     {
-        // gold + netIncome == 0 → just barely survives.
+        // Healthy: net income >= 0 → survives regardless of gold.
         Assert.True(UpkeepRules.SurvivesNextUpkeep(0, 0));
-        Assert.True(UpkeepRules.SurvivesNextUpkeep(1, -1));
-        Assert.True(UpkeepRules.SurvivesNextUpkeep(100, -100));
-        // gold + netIncome < 0 → cannot cover next upkeep.
-        Assert.False(UpkeepRules.SurvivesNextUpkeep(0, -1));
-        Assert.False(UpkeepRules.SurvivesNextUpkeep(5, -6));
-        // Healthy positive net → always survives regardless of gold.
         Assert.True(UpkeepRules.SurvivesNextUpkeep(0, 5));
+
+        // 5-turn horizon: treasury must cover 5 turns of the deficit,
+        // not just one. Boundary: gold + 5 * netIncome == 0 just
+        // survives.
+        Assert.True(UpkeepRules.SurvivesNextUpkeep(5, -1));
+        Assert.True(UpkeepRules.SurvivesNextUpkeep(25, -5));
+        Assert.True(UpkeepRules.SurvivesNextUpkeep(500, -100));
+
+        // Just below the 5-turn boundary: fails.
+        Assert.False(UpkeepRules.SurvivesNextUpkeep(4, -1));
+        Assert.False(UpkeepRules.SurvivesNextUpkeep(24, -5));
+        Assert.False(UpkeepRules.SurvivesNextUpkeep(499, -100));
+
+        // Old 1-turn cases the AI would previously accept but can't
+        // actually sustain over the horizon — now correctly rejected.
+        // These are the #22 doom-spiral triggers.
+        Assert.False(UpkeepRules.SurvivesNextUpkeep(1, -1));
+        Assert.False(UpkeepRules.SurvivesNextUpkeep(100, -100));
+    }
+
+    [Fact]
+    public void Enumerate_RejectsBuyThatWouldBankruptWithinHorizon()
+    {
+        // 5-tile Red strip bordering Blue with an existing Recruit
+        // for +1 net income (5 income - 2 upkeep), 20g treasury.
+        // Buy Soldier (cost 15g, upkeep 6) post-state is gold=5g,
+        // net=-4 (or -5 for reposition). Under the old 1-turn gate
+        // 5 + (-4) = 1 ≥ 0 — Soldier candidate generated. Under the
+        // new 5-turn gate 5 + 5*(-4) = -15 < 0 — Soldier candidate
+        // filtered. Closes #22's doom spiral: the AI no longer
+        // approves buys it can't actually sustain.
+        var grid = new HexGrid();
+        for (int col = 0; col < 5; col++)
+        {
+            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        }
+        grid.Add(new HexTile(HexCoord.FromOffset(5, 0), Blue));
+        grid.Add(new HexTile(HexCoord.FromOffset(6, 0), Blue));
+        GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
+        Territory red = state.Territories.First(t => t.Owner == Red);
+        HexCoord cap = red.Capital!.Value;
+        HexCoord recruitTile = red.Coords.First(c => !c.Equals(cap));
+        state.Grid.Get(recruitTile)!.Occupant = new Unit(Red);
+        state.Treasury.SetGold(cap, 20);
+
+        List<AiCandidate> candidates = AiCommon.Enumerate(red, state).ToList();
+        Assert.DoesNotContain(candidates,
+            c => c.Action is AiBuyUnitAction b && b.Level == UnitLevel.Soldier);
     }
 
     // --- AiStateScorer: orphaning enemies ---------------------------------

@@ -1833,13 +1833,15 @@ single beat).
   All six solvency gates (move-capture/chop/combine, buy-capture/
   reposition, build-tower) defer to `UpkeepRules.SurvivesNextUpkeep
   (gold, netIncome)`, the shared primitive that asks "does treasury +
-  next-turn net cover the next upkeep step?" `AiStateScorer`'s
-  bankruptcy lookahead uses the same predicate, so a candidate the
-  scorer would approve is never silently dropped by the enumerator
-  (and vice versa). Future runway tuning (multi-turn horizons, etc.)
-  lives in that one function. This treasury-aware solvency, plus the
-  removal of the standing `GoldWeight` term from `AiStateScorer`, is
-  what closes issue #19's gold-hoarding pathology.
+  `UpkeepHorizon` × netIncome ≥ 0?" — i.e., can the territory sustain
+  itself across the next `UpkeepHorizon` upkeep steps (currently 5)?
+  `AiStateScorer`'s bankruptcy lookahead uses the same predicate, so a
+  candidate the scorer would approve is never silently dropped by the
+  enumerator (and vice versa). Tuning the horizon is a one-line edit
+  there that the whole system inherits. Treasury-aware solvency + the
+  removal of the standing `GoldWeight` term close #19's hoarding; the
+  multi-turn horizon (vs the original 1-turn check) closes #22's
+  doom-spiral bankruptcies.
 - **`ComputerAi`** — the game's only AI (drives every `PlayerKind.Computer`
   slot). 1-ply lookahead via `AiSimulator.Clone` +
   `AiStateScorer.Score`. `AiSimulator` mirrors the mutation logic in
