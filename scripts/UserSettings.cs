@@ -9,7 +9,7 @@ using Godot;
 /// <see cref="UserSettings.ReplaySpeed"/> for replay playback).
 ///
 /// Slow/Normal/Fast are delay scalars — see
-/// <see cref="UserSettings.SpeedMultiplier"/>. <see cref="Instant"/>
+/// <see cref="UserSettings.SpeedMultiplierPercent"/>. <see cref="Instant"/>
 /// is NOT a multiplier: a zero delay would freeze the main thread, so
 /// the controller routes Instant to a chunked, frame-yielded driver
 /// that fast-forwards silently and repaints once per turn (live AI and
@@ -128,14 +128,18 @@ public static partial class UserSettings
     /// here. Instant routes to the chunked frame-yielded driver, which
     /// schedules via <c>IAiPacer.ScheduleUnscaled</c> (multiplier
     /// bypassed); no scaled <c>Schedule</c> runs during an Instant
-    /// game. The <c>_ => 1f</c> default is a harmless safety net.
+    /// game. The <c>_ =&gt; 100</c> default is a harmless safety net.
+    ///
+    /// Returns integer percent (50 / 100 / 200) — Slow doubles the
+    /// delay, Normal is 1×, Fast halves it. Integer so the controller's
+    /// GodotAiPacer can stay float-free (issue #20).
     /// </summary>
-    public static float SpeedMultiplier(PlaybackSpeed speed) => speed switch
+    public static int SpeedMultiplierPercent(PlaybackSpeed speed) => speed switch
     {
-        PlaybackSpeed.Slow => 2f,
-        PlaybackSpeed.Normal => 1f,
-        PlaybackSpeed.Fast => 0.5f,
-        _ => 1f,
+        PlaybackSpeed.Slow => 200,
+        PlaybackSpeed.Normal => 100,
+        PlaybackSpeed.Fast => 50,
+        _ => 100,
     };
 
     private sealed class SettingsDto

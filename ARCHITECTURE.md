@@ -39,21 +39,61 @@ Model → Controller → game (with the test project alongside):
   the view interfaces — a stray reference fails the build with
   `CS0246`. Both are load-bearing invariants enforced by the compiler,
   not by a hand-maintained file list.
+- **`src/FourExHex.ViewMath/FourExHex.ViewMath.csproj`** — a plain
+  `Microsoft.NET.Sdk` class library, **no GodotSharp**, one-way
+  `<ProjectReference>` to `FourExHex.Model` (for shared primitives
+  like `HexCoord`). Holds Godot-free view-side math that legitimately
+  needs floating-point precision: `DisplayScaleMath`, `SafeAreaMath`,
+  `MapPlacement`, `ZoomMath`, `ScreenLayout`, and the fractional
+  cube-rounding helper `HexRounding.Round(float, float)`. The
+  pressure-relief valve for the no-floats rule in Model + Controller
+  (see "No floating-point in Model or Controller" below).
 - **`FourExHex.csproj`** (`Godot.NET.Sdk`) — the game.
-  `<ProjectReference>`s **both** `FourExHex.Model` and
-  `FourExHex.Controller`, and adds `src/**/*` to `DefaultItemExcludes`
-  (the Godot glob must not also compile the moved sources — that would
-  duplicate every type; the single `src/**` exclude already covers the
-  new `src/FourExHex.Controller/` subdir). Holds only Godot
-  `Node`/scene/view code that stays in `scripts/`: scene roots,
-  `HexMapView`/`HudView`, the editor and tutorial-builder panels,
-  `SaveStore` (filesystem), `AudioBus`, `SceneTreeTimerFactory`,
+  `<ProjectReference>`s **all three** Godot-free libraries
+  (`FourExHex.Model`, `FourExHex.Controller`, `FourExHex.ViewMath`),
+  and adds `src/**/*` to `DefaultItemExcludes` (the Godot glob must
+  not also compile the moved sources — that would duplicate every
+  type; the single `src/**` exclude already covers the
+  `src/FourExHex.Controller/` and `src/FourExHex.ViewMath/` subdirs).
+  Holds only Godot `Node`/scene/view code that stays in `scripts/`:
+  scene roots, `HexMapView`/`HudView`, the editor and tutorial-builder
+  panels, `SaveStore` (filesystem), `AudioBus`, `SceneTreeTimerFactory`,
   `HeadlessViews`, and the two view-boundary adapters below.
-- **`tests/FourExHex.Tests.csproj`** — `<ProjectReference>`s **both**
-  `FourExHex.Model` and `FourExHex.Controller`, with **no GodotSharp
-  and no per-file `<Compile Include>` list**. That the suite compiles
-  and passes (961+) with zero Godot on its reference graph is the
-  compile-time purity proof.
+- **`tests/FourExHex.Tests.csproj`** — `<ProjectReference>`s **all
+  three** of `FourExHex.Model`, `FourExHex.Controller`,
+  `FourExHex.ViewMath`, with **no GodotSharp and no per-file
+  `<Compile Include>` list**. That the suite compiles and passes
+  (961+) with zero Godot on its reference graph is the compile-time
+  purity proof.
+
+### No floating-point in Model or Controller
+
+`float` and `double` are not deterministic across platforms,
+compilers, and JIT levels, so any floating-point on the game-state
+code path is a desync time bomb for networked multiplayer (#6).
+**Both `FourExHex.Model` and `FourExHex.Controller` are integer-only
+assemblies** — no `float`/`double` fields, properties, parameters,
+return types, or method-body locals. AI scoring (`AiStateScorer`,
+`ComputerAi`), map-generation probability (`MapGenerator`), AI-pacer
+timing multipliers (`GodotAiPacer`), and every rule helper use `int`
+or `long`. Fractional values are expressed as fixed-point integers
+(e.g. percent: `InitialLandPercent = 65`, speed multipliers
+`50/100/200` for Fast/Normal/Slow).
+
+The rule is enforced at test time by
+`tests/NoFloatsInModelOrControllerTests.cs`. It reflects over the
+two assemblies and asserts that no member's signature or method body
+mentions `float`/`double` (including via `Nullable<>`, arrays, and
+generic args). The test fails `dotnet test` if a floating-point
+escape ever lands in either project, listing every offender in one
+message so cleanup is straightforward.
+
+The legitimate float math that view code needs — DPI scaling,
+safe-area insets, pixel/hex geometry, zoom-level smoothing — lives
+in `FourExHex.ViewMath`, which is the "Godot-free, float-allowed"
+peer of Model. The game and tests reference all three of Model,
+Controller, ViewMath; Model and Controller do not reference ViewMath
+(one-way layering, compiler-enforced).
 
 Consequences for the rest of this doc:
 
@@ -66,9 +106,12 @@ Consequences for the rest of this doc:
 - **Color is a pure view concern.** `scripts/PlayerPalette.cs` (Godot
   side) maps `PlayerId → Godot.Color` (and back, for old-save loading
   and editor painting) from `GameSettings.PlayerConfig` hex strings.
-- **Pixel projection is view-side.** `HexCoord.Round` (cube-rounding)
-  stays in the model; `scripts/HexPixel.cs` (Godot side) owns
-  `ToPixel`/`FromPixel` and calls back into `HexCoord.Round`.
+- **Pixel projection is view-side.** Fractional cube-rounding lives
+  in `FourExHex.ViewMath` (`HexRounding.Round(float qFrac, float
+  rFrac) -> HexCoord`) — the float→int boundary point that lets
+  `HexCoord` itself stay integer-only in `FourExHex.Model`.
+  `scripts/HexPixel.cs` (Godot side) owns `ToPixel`/`FromPixel` and
+  calls back into `HexRounding.Round`.
 - **`Log` is Godot-free** — the master logging system routes through
   an injectable `Log.Sink` that `Main` wires to `GD.Print`. See
   **Logging** below.

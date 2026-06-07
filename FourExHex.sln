@@ -8,6 +8,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FourExHex.Model", "src\Four
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FourExHex.Controller", "src\FourExHex.Controller\FourExHex.Controller.csproj", "{108B3A70-F819-43A7-AB6F-F48F661832B6}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{D0251F7A-0104-4A29-B34C-4A2F41F2145E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FourExHex.ViewMath", "src\FourExHex.ViewMath\FourExHex.ViewMath.csproj", "{2AFA11E9-869A-4C76-AAA4-CF610D7EBADC}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -39,5 +43,14 @@ Global
 		{108B3A70-F819-43A7-AB6F-F48F661832B6}.ExportDebug|Any CPU.Build.0 = Debug|Any CPU
 		{108B3A70-F819-43A7-AB6F-F48F661832B6}.ExportRelease|Any CPU.ActiveCfg = Debug|Any CPU
 		{108B3A70-F819-43A7-AB6F-F48F661832B6}.ExportRelease|Any CPU.Build.0 = Debug|Any CPU
+		{2AFA11E9-869A-4C76-AAA4-CF610D7EBADC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2AFA11E9-869A-4C76-AAA4-CF610D7EBADC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2AFA11E9-869A-4C76-AAA4-CF610D7EBADC}.ExportDebug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2AFA11E9-869A-4C76-AAA4-CF610D7EBADC}.ExportDebug|Any CPU.Build.0 = Debug|Any CPU
+		{2AFA11E9-869A-4C76-AAA4-CF610D7EBADC}.ExportRelease|Any CPU.ActiveCfg = Debug|Any CPU
+		{2AFA11E9-869A-4C76-AAA4-CF610D7EBADC}.ExportRelease|Any CPU.Build.0 = Debug|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{2AFA11E9-869A-4C76-AAA4-CF610D7EBADC} = {D0251F7A-0104-4A29-B34C-4A2F41F2145E}
 	EndGlobalSection
 EndGlobal

@@ -1,12 +1,12 @@
 using Xunit;
-using FourExHex.Model;
 
 namespace FourExHex.Tests;
 
 // Pure mapping of a physical-pixel safe-area rect (as Godot reports from
 // DisplayServer.GetDisplaySafeArea) to logical-pixel insets the HUD layout
-// consumes. The model assembly stays Godot-free; scripts/SafeArea.cs feeds
-// these helpers with the live values and forwards the result to HudView.
+// consumes. The view-math assembly stays Godot-free; scripts/SafeArea.cs
+// feeds these helpers with the live values and forwards the result to
+// HudView.
 public class SafeAreaMathTests
 {
     private const float Tol = 0.001f;

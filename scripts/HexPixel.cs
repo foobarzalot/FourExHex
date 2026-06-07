@@ -4,7 +4,7 @@ using Godot;
 /// View-side pixel ↔ axial projection for pointy-top hexes. Lives in the
 /// Godot layer (uses <see cref="Vector2"/>) so <see cref="HexCoord"/> can
 /// stay engine-free. The cube-rounding correctness still lives in the
-/// model via <see cref="HexCoord.Round"/>, which this calls.
+/// model via <see cref="HexRounding.Round"/>, which this calls.
 /// </summary>
 public static class HexPixel
 {
@@ -22,12 +22,12 @@ public static class HexPixel
     /// <summary>
     /// Inverse of <see cref="ToPixel"/>: find the hex whose footprint
     /// contains <paramref name="pixel"/>. Uses cube-coordinate rounding
-    /// (<see cref="HexCoord.Round"/>) to pick the correct hex near an edge.
+    /// (<see cref="HexRounding.Round"/>) to pick the correct hex near an edge.
     /// </summary>
     public static HexCoord FromPixel(Vector2 pixel, float size)
     {
         float qFrac = (pixel.X * Mathf.Sqrt(3f) / 3f - pixel.Y / 3f) / size;
         float rFrac = (pixel.Y * 2f / 3f) / size;
-        return HexCoord.Round(qFrac, rFrac);
+        return HexRounding.Round(qFrac, rFrac);
     }
 }

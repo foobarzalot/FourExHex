@@ -168,10 +168,10 @@ public class AiPacerContractTests
     [Fact]
     public void GodotAiPacer_MultiplierTwo_DoublesDelay()
     {
-        // "Slow" preset: each delay constant is scaled by 2.0 before
+        // "Slow" preset: each delay constant is scaled by 200% before
         // being handed to the timer factory.
         var timers = new ManualTimerFactory();
-        var pacer = new GodotAiPacer(timers, () => 2f);
+        var pacer = new GodotAiPacer(timers, () => 200);
         pacer.Schedule(() => { }, 300);
         Assert.Equal(new[] { 600 }, timers.ReceivedDelays);
     }
@@ -179,9 +179,9 @@ public class AiPacerContractTests
     [Fact]
     public void GodotAiPacer_MultiplierHalf_HalvesDelay()
     {
-        // "Fast" preset: each delay scaled by 0.5.
+        // "Fast" preset: each delay scaled by 50%.
         var timers = new ManualTimerFactory();
-        var pacer = new GodotAiPacer(timers, () => 0.5f);
+        var pacer = new GodotAiPacer(timers, () => 50);
         pacer.Schedule(() => { }, 300);
         Assert.Equal(new[] { 150 }, timers.ReceivedDelays);
     }
@@ -193,10 +193,10 @@ public class AiPacerContractTests
         // beat must reflect the new value — so the pacer reads the
         // multiplier on every Schedule call, not just at construction.
         var timers = new ManualTimerFactory();
-        float mult = 1f;
+        int mult = 100;
         var pacer = new GodotAiPacer(timers, () => mult);
         pacer.Schedule(() => { }, 300);
-        mult = 2f;
+        mult = 200;
         pacer.Schedule(() => { }, 300);
         Assert.Equal(new[] { 300, 600 }, timers.ReceivedDelays);
     }
@@ -215,7 +215,7 @@ public class AiPacerContractTests
         // Schedule), ScheduleUnscaled must defer to the timer factory,
         // not run inline — that responsiveness is the whole point.
         var timers = new ManualTimerFactory();
-        var pacer = new GodotAiPacer(timers, () => 0f);
+        var pacer = new GodotAiPacer(timers, () => 0);
         int fired = 0;
         pacer.ScheduleUnscaled(() => fired++, 200);
         Assert.Equal(0, fired);              // not inline
@@ -231,7 +231,7 @@ public class AiPacerContractTests
         // the speed multiplier — ScheduleUnscaled passes delays through
         // untouched (200, not 400 under a 2x multiplier).
         var timers = new ManualTimerFactory();
-        var pacer = new GodotAiPacer(timers, () => 2f);
+        var pacer = new GodotAiPacer(timers, () => 200);
         pacer.ScheduleUnscaled(() => { }, 200);
         pacer.ScheduleUnscaled(() => { }, 0);
         Assert.Equal(new[] { 200, 0 }, timers.ReceivedDelays);
@@ -243,7 +243,7 @@ public class AiPacerContractTests
         // Cancellation half of the contract: an unscaled callback in
         // flight when Cancel runs must not fire (AbandonGame/BeginReplay).
         var timers = new ManualTimerFactory();
-        var pacer = new GodotAiPacer(timers, () => 1f);
+        var pacer = new GodotAiPacer(timers, () => 100);
         int fired = 0;
         pacer.ScheduleUnscaled(() => fired++, 50);
         pacer.Cancel();
@@ -257,7 +257,7 @@ public class AiPacerContractTests
         // Survives Cancel-then-reuse, like Schedule: BeginReplay cancels
         // stragglers then ScheduleUnscaled(InstantReplayTick).
         var timers = new ManualTimerFactory();
-        var pacer = new GodotAiPacer(timers, () => 1f);
+        var pacer = new GodotAiPacer(timers, () => 100);
         bool staleFired = false;
         pacer.ScheduleUnscaled(() => staleFired = true, 50);
         pacer.Cancel();

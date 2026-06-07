@@ -17,5 +17,6 @@
   <ItemGroup>
     <ProjectReference Include="src\FourExHex.Model\FourExHex.Model.csproj" />
     <ProjectReference Include="src\FourExHex.Controller\FourExHex.Controller.csproj" />
+    <ProjectReference Include="src\FourExHex.ViewMath\FourExHex.ViewMath.csproj" />
   </ItemGroup>
 </Project>

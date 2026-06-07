@@ -22,32 +22,34 @@ using System;
 /// </para>
 ///
 /// <para>
-/// Delay scaling: the optional <c>delayMultiplier</c> ctor parameter
-/// (consulted on every <see cref="Schedule"/> call so mid-game speed
-/// changes take effect immediately) scales the requested delay before
-/// it's handed to the timer factory — Slow=2x, Normal=1x, Fast=0.5x.
-/// "Instant" is NOT a multiplier: the controller routes it to a
-/// chunked frame-yielded driver that schedules via
-/// <see cref="ScheduleUnscaled"/>, whose delays bypass the multiplier
-/// entirely. Every path here frame-yields through the timer factory;
-/// nothing runs inline (the chunked driver owns stack depth by
-/// returning between ticks, so no trampoline is needed).
+/// Delay scaling: the optional <c>delayMultiplierPercent</c> ctor
+/// parameter (consulted on every <see cref="Schedule"/> call so
+/// mid-game speed changes take effect immediately) scales the
+/// requested delay before it's handed to the timer factory —
+/// Slow=200, Normal=100, Fast=50 (integer percent so the controller
+/// layer stays float-free; see "No floating-point in Model or
+/// Controller" in ARCHITECTURE.md). "Instant" is NOT a multiplier:
+/// the controller routes it to a chunked frame-yielded driver that
+/// schedules via <see cref="ScheduleUnscaled"/>, whose delays bypass
+/// the multiplier entirely. Every path here frame-yields through the
+/// timer factory; nothing runs inline (the chunked driver owns stack
+/// depth by returning between ticks, so no trampoline is needed).
 /// </para>
 /// </summary>
 public sealed class GodotAiPacer : IAiPacer
 {
     private readonly ITimerFactory _timers;
-    private readonly Func<float> _delayMultiplier;
+    private readonly Func<int> _delayMultiplierPercent;
     private int _generation;
 
-    public GodotAiPacer(ITimerFactory timers, Func<float>? delayMultiplier = null)
+    public GodotAiPacer(ITimerFactory timers, Func<int>? delayMultiplierPercent = null)
     {
         _timers = timers;
-        _delayMultiplier = delayMultiplier ?? (() => 1f);
+        _delayMultiplierPercent = delayMultiplierPercent ?? (() => 100);
     }
 
     public void Schedule(Action callback, int delayMs) =>
-        ScheduleTimer((int)(delayMs * _delayMultiplier()), callback);
+        ScheduleTimer(delayMs * _delayMultiplierPercent() / 100, callback);
 
     public void ScheduleUnscaled(Action callback, int delayMs) =>
         ScheduleTimer(delayMs, callback);

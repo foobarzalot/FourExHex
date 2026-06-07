@@ -1,12 +1,12 @@
 using System;
-using FourExHex.Model;
 using Godot;
 
 /// <summary>
 /// Autoload that reads the OS-reported display safe area (notch, Dynamic
 /// Island, home indicator) and exposes it as <see cref="LogicalSafeInsets"/> in
 /// the same logical-pixel space the HUD lays out against. Pure math lives in
-/// <see cref="SafeAreaMath"/> in the model assembly; this is the thin Godot-side
+/// <see cref="SafeAreaMath"/> in the FourExHex.ViewMath assembly; this is the
+/// thin Godot-side
 /// adapter that reads <c>DisplayServer.GetDisplaySafeArea</c> and divides by the
 /// running <c>Window.ContentScaleFactor</c>.
 ///

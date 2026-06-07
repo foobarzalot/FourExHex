@@ -35,7 +35,10 @@ public sealed record MapGenResult(HexGrid Grid, IReadOnlySet<HexCoord> WaterCoor
 /// </summary>
 public static class MapGenerator
 {
-    private const double InitialLandProbability = 0.65;
+    // Integer percent (was a double 0.65 before issue #20's no-floats
+    // rule) — compared against rng.Next(100) below for the same
+    // 65% land seed probability with no floating-point on the path.
+    private const int InitialLandPercent = 65;
     private const int CaIterations = 5;
     private const int MinLandCount = 30;
     private const int MaxRetries = 8;
@@ -105,7 +108,7 @@ public static class MapGenerator
         {
             for (int col = 1; col < cols - 1; col++)
             {
-                if (rng.NextDouble() < InitialLandProbability)
+                if (rng.Next(100) < InitialLandPercent)
                 {
                     land.Add(HexCoord.FromOffset(col, row));
                 }

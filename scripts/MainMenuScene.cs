@@ -48,12 +48,15 @@ public partial class MainMenuScene : Control
 
     public override void _Ready()
     {
-        // Diagnostic launch: if FOUREXHEX_6AI is set we skip the
-        // menu entirely and jump straight into the game scene with
-        // all slots pre-configured as Computer. Main.cs handles the
-        // rest (sync pacer, logging, turn cap, auto-quit). Deferred
-        // so the scene change happens after _Ready completes.
-        if (OS.GetEnvironment("FOUREXHEX_6AI").Length > 0)
+        // Diagnostic launch: if FOUREXHEX_6AI or FOUREXHEX_6AI_QUICK
+        // is set we skip the menu entirely and jump straight into the
+        // game scene with all slots pre-configured as Computer.
+        // Main.cs handles the rest (sync pacer, logging, turn cap,
+        // grid size, auto-quit) and branches on which of the two was
+        // set. Deferred so the scene change happens after _Ready
+        // completes.
+        if (OS.GetEnvironment("FOUREXHEX_6AI").Length > 0
+            || OS.GetEnvironment("FOUREXHEX_6AI_QUICK").Length > 0)
         {
             for (int i = 0; i < GameSettings.PlayerKinds.Length; i++)
             {

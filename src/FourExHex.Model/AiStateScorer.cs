@@ -31,7 +31,7 @@ using System.Linq;
 public static class AiStateScorer
 {
     // Per-tile value — the base unit of territorial worth.
-    private const double TileWeight = 10.0;
+    private const int TileWeight = 10;
 
     // Recurring net income is treated as a SINGLE-turn effect in the
     // score — higher weights crushed combines and chops into
@@ -40,13 +40,13 @@ public static class AiStateScorer
     // was only +4). Weight 1 keeps captures dominant (+20+) but
     // leaves combines marginally positive (~+2-4), so the AI can
     // level up when it hits defensive stasis.
-    private const double NetIncomeWeight = 1.0;
+    private const int NetIncomeWeight = 1;
 
     // Fragmentation penalty: every territory pays this flat cost.
     // Driving force behind "merges are good" and "enemy splits are
     // good" — both effects fall out of the sign flip when summing
     // over all territories on the board.
-    private const double FragmentationPenalty = 15.0;
+    private const int FragmentationPenalty = 15;
 
     // Flat penalty per tree (or grave) in an OWN territory. Trees
     // block income on their tile (already accounted for) and seed
@@ -59,7 +59,7 @@ public static class AiStateScorer
     // only our own trees/graves, not rewarding us for enemy ones
     // (which would mean capturing an enemy tree-tile is worth less
     // than capturing a bare tile, the opposite of what we want).
-    private const double OwnTreePenalty = 20.0;
+    private const int OwnTreePenalty = 20;
 
     // Flat penalty per edge on our territories that faces an
     // enemy-colored tile. "Edges" are counted from our side only
@@ -81,7 +81,7 @@ public static class AiStateScorer
     // loss when interior tiles stop being borders. Tuned not to go
     // higher: at 5+ the AI starts contorting territory shape at
     // the expense of captures that actually grow it.
-    private const double EnemyEdgePenalty = 3.0;
+    private const int EnemyEdgePenalty = 3;
 
     // Flat penalty per own tile that (a) has at least one
     // enemy-colored neighbor and (b) has defense 0 (no unit,
@@ -89,7 +89,7 @@ public static class AiStateScorer
     // risk. This rewards covering borders with units / towers,
     // building towers on contested frontiers, and capturing an
     // enemy tile that brings a defender into range.
-    private const double UndefendedBorderPenalty = 10.0;
+    private const int UndefendedBorderPenalty = 10;
 
     // Bonus awarded per border tile that a newly-placed tower
     // covers, counted only at the moment of the BuildTower action.
@@ -102,7 +102,7 @@ public static class AiStateScorer
     // into interior tiles: each such tile lost its bonus, often
     // enough to push otherwise-good captures into negative-delta
     // territory.
-    private const double BuildTowerCoverageBonus = 10.0;
+    private const int BuildTowerCoverageBonus = 10;
 
     /// <summary>
     /// One-shot scoring delta awarded for the act of placing a
@@ -115,11 +115,11 @@ public static class AiStateScorer
     /// territory (defensive — callers should only invoke for valid
     /// BuildTower candidates).
     /// </summary>
-    public static double BuildTowerBonus(HexCoord placement, GameState state, PlayerId owner)
+    public static int BuildTowerBonus(HexCoord placement, GameState state, PlayerId owner)
     {
         Territory? territory = TerritoryLookup.FindOwnedContaining(
             state.Territories, owner, placement);
-        if (territory == null) return 0.0;
+        if (territory == null) return 0;
 
         int count = 0;
         if (CoverageTileQualifies(placement, placement, territory, state.Grid, owner))
@@ -172,12 +172,12 @@ public static class AiStateScorer
     /// perspective: sum of own territory values minus sum of enemy
     /// territory values. Higher = better for this player.
     /// </summary>
-    public static double Score(GameState state, PlayerId forPlayer)
+    public static int Score(GameState state, PlayerId forPlayer)
     {
-        double total = 0.0;
+        int total = 0;
         foreach (Territory t in state.Territories)
         {
-            double value = TerritoryValue(t, state);
+            int value = TerritoryValue(t, state);
             if (t.Owner == forPlayer)
             {
                 total += value;
@@ -275,7 +275,7 @@ public static class AiStateScorer
     /// still prevents buys that would push the territory into
     /// negative net income — that's the remaining cost signal.
     /// </summary>
-    private static double TerritoryValue(Territory territory, GameState state)
+    private static int TerritoryValue(Territory territory, GameState state)
     {
         int tiles = territory.Coords.Count;
         int income = TreeRules.CountIncomeProducingTiles(territory, state.Grid);
@@ -293,7 +293,7 @@ public static class AiStateScorer
         bool willBankrupt = !territory.HasCapital
             || !UpkeepRules.SurvivesNextUpkeep(gold, netIncome);
 
-        double unitValue = 0.0;
+        int unitValue = 0;
         if (!willBankrupt)
         {
             foreach (HexCoord coord in territory.Coords)
@@ -306,11 +306,11 @@ public static class AiStateScorer
             }
         }
 
-        double effectiveNetIncome = System.Math.Max(0, netIncome);
-        double value = tiles * TileWeight
-                       + effectiveNetIncome * NetIncomeWeight
-                       + unitValue
-                       - FragmentationPenalty;
+        int effectiveNetIncome = System.Math.Max(0, netIncome);
+        int value = tiles * TileWeight
+                    + effectiveNetIncome * NetIncomeWeight
+                    + unitValue
+                    - FragmentationPenalty;
 
         return value;
     }
@@ -323,12 +323,12 @@ public static class AiStateScorer
     /// Commander = 70. Not strictly proportional to upkeep (2/6/18/54)
     /// because the upkeep/value ratio should reward leveling up.
     /// </summary>
-    private static double UnitValue(UnitLevel level) => level switch
+    private static int UnitValue(UnitLevel level) => level switch
     {
-        UnitLevel.Recruit => 4.0,
-        UnitLevel.Soldier => 12.0,
-        UnitLevel.Captain => 30.0,
-        UnitLevel.Commander => 70.0,
-        _ => 0.0,
+        UnitLevel.Recruit => 4,
+        UnitLevel.Soldier => 12,
+        UnitLevel.Captain => 30,
+        UnitLevel.Commander => 70,
+        _ => 0,
     };
 }

@@ -1,6 +1,13 @@
 using System;
 using System.Collections.Generic;
 
+// Fractional cube-rounding (the float→int boundary point) used to live
+// here as HexCoord.Round(float, float). It has been moved to
+// FourExHex.ViewMath/HexRounding.cs so this assembly stays
+// integer-only (see ARCHITECTURE.md, "No floating-point in Model or
+// Controller"). View code that needs to project a fractional axial
+// coord back to a HexCoord now calls HexRounding.Round.
+
 /// <summary>
 /// Axial coordinate for a pointy-top hex. Q runs roughly east, R runs roughly
 /// south-east. The six neighbors live at Q±1, R±1, and (Q+1,R-1)/(Q-1,R+1).
@@ -57,39 +64,6 @@ public readonly struct HexCoord : IEquatable<HexCoord>, IComparable<HexCoord>
         int row = R;
         int col = Q + (R - (R & 1)) / 2;
         return (col, row);
-    }
-
-    /// <summary>
-    /// Round fractional axial coordinates to the nearest integer hex. The
-    /// naive approach (round Q and R independently) can produce wrong
-    /// results near hex corners; the cube-coordinate invariant
-    /// <c>x + y + z == 0</c> fixes it by re-deriving the axis with the
-    /// largest rounding error. Godot-free: the pixel↔axial projection
-    /// lives view-side in <c>HexPixel</c>, which calls back into this.
-    /// </summary>
-    public static HexCoord Round(float qFrac, float rFrac)
-    {
-        float sFrac = -qFrac - rFrac;
-
-        int q = (int)MathF.Round(qFrac, MidpointRounding.AwayFromZero);
-        int r = (int)MathF.Round(rFrac, MidpointRounding.AwayFromZero);
-        int s = (int)MathF.Round(sFrac, MidpointRounding.AwayFromZero);
-
-        float qDiff = MathF.Abs(q - qFrac);
-        float rDiff = MathF.Abs(r - rFrac);
-        float sDiff = MathF.Abs(s - sFrac);
-
-        if (qDiff > rDiff && qDiff > sDiff)
-        {
-            q = -r - s;
-        }
-        else if (rDiff > sDiff)
-        {
-            r = -q - s;
-        }
-        // else: s had the largest error; q and r are already correct.
-
-        return new HexCoord(q, r);
     }
 
     /// <summary>

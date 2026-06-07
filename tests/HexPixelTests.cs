@@ -5,7 +5,7 @@ namespace FourExHex.Tests;
 // The pixel↔axial projection (ToPixel/FromPixel) moved to the Godot-side
 // HexPixel helper and is exercised by manual play-testing of the map (the
 // view layer is not unit-tested). What stays library-tested here is the
-// engine-free cube-rounding core, HexCoord.Round — the part whose
+// engine-free cube-rounding core, HexRounding.Round — the part whose
 // correctness the model depends on.
 public class HexCoordRoundTests
 {
@@ -20,7 +20,7 @@ public class HexCoordRoundTests
     [InlineData(-4, 3)]
     public void Round_ExactIntegerAxial_ReturnsThatHex(int q, int r)
     {
-        Assert.Equal(new HexCoord(q, r), HexCoord.Round(q, r));
+        Assert.Equal(new HexCoord(q, r), HexRounding.Round(q, r));
     }
 
     [Theory]
@@ -34,10 +34,10 @@ public class HexCoordRoundTests
         // must still resolve to the integer hex — the axial analogue of
         // the old "near hex center" pixel test.
         const float j = 0.3f;
-        Assert.Equal(new HexCoord(q, r), HexCoord.Round(q + j, r));
-        Assert.Equal(new HexCoord(q, r), HexCoord.Round(q - j, r));
-        Assert.Equal(new HexCoord(q, r), HexCoord.Round(q, r + j));
-        Assert.Equal(new HexCoord(q, r), HexCoord.Round(q, r - j));
+        Assert.Equal(new HexCoord(q, r), HexRounding.Round(q + j, r));
+        Assert.Equal(new HexCoord(q, r), HexRounding.Round(q - j, r));
+        Assert.Equal(new HexCoord(q, r), HexRounding.Round(q, r + j));
+        Assert.Equal(new HexCoord(q, r), HexRounding.Round(q, r - j));
     }
 
     [Fact]
@@ -49,8 +49,8 @@ public class HexCoordRoundTests
         {
             for (int r = -8; r <= 8; r++)
             {
-                Assert.Equal(new HexCoord(q, r), HexCoord.Round(q + 0.2f, r - 0.2f));
-                Assert.Equal(new HexCoord(q, r), HexCoord.Round(q, r));
+                Assert.Equal(new HexCoord(q, r), HexRounding.Round(q + 0.2f, r - 0.2f));
+                Assert.Equal(new HexCoord(q, r), HexRounding.Round(q, r));
             }
         }
     }
@@ -66,7 +66,7 @@ public class HexCoordRoundTests
         {
             foreach (float rf in rs)
             {
-                HexCoord h = HexCoord.Round(qf, rf);
+                HexCoord h = HexRounding.Round(qf, rf);
                 int s = -h.Q - h.R;
                 Assert.Equal(0, h.Q + h.R + s);
             }

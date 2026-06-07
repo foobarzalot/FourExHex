@@ -41,7 +41,7 @@ public static class HudBars
     /// HBox itself; chips inside are MouseFilter.Stop.</summary>
     public static HBoxContainer MakeCornerZone(bool left)
     {
-        FourExHex.Model.LogicalSafeInsets safe = SafeArea.Current;
+        LogicalSafeInsets safe = SafeArea.Current;
         // Top respects the safe inset (notch / Dynamic Island vertically);
         // the horizontal sides do NOT — corner readouts and the
         // undo/redo/options buttons may sit IN the safe-area corners
@@ -75,7 +75,7 @@ public static class HudBars
     /// parent their action layout (rows / clusters) into the bar.</summary>
     public static Panel MakeBottomBar()
     {
-        FourExHex.Model.LogicalSafeInsets safe = SafeArea.Current;
+        LogicalSafeInsets safe = SafeArea.Current;
         var panel = new Panel
         {
             AnchorLeft = 0f, AnchorRight = 1f,
@@ -109,7 +109,7 @@ public static class HudBars
     /// so the column intercepts clicks.</summary>
     public static (Panel Rail, VBoxContainer Group) MakeRail(bool left, bool alignBottom)
     {
-        FourExHex.Model.LogicalSafeInsets safe = SafeArea.Current;
+        LogicalSafeInsets safe = SafeArea.Current;
         // Rails carry the critical action buttons (buy / build / nav / end
         // turn) — they must NEVER overlap the notch regardless of which
         // way the phone is rotated. Use max(safe.Left, safe.Right) on

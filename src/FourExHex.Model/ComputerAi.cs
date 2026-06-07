@@ -46,7 +46,7 @@ public static class ComputerAi
         long cloneTicks = 0, applyTicks = 0, scoreTicks = 0;
 
         long scoreT = Log.Stamp();
-        double baseScore = AiStateScorer.Score(state, forPlayer);
+        int baseScore = AiStateScorer.Score(state, forPlayer);
         scoreTicks += Log.Stamp() - scoreT;
 
         AiAction? best = null;
@@ -55,12 +55,12 @@ public static class ComputerAi
         // does, we return null and the step machine ends the turn
         // — better to pass than to burn gold on a losing combine
         // or a useless tower.
-        double bestDelta = 0.0;
+        int bestDelta = 0;
 
         // Diagnostic counters for the stasis-signal log below.
         int totalCandidates = 0;
         int positiveCandidates = 0;
-        double observedBestDelta = double.NegativeInfinity;
+        int observedBestDelta = int.MinValue;
         AiActionKind? observedBestKind = null;
 
         foreach (Territory t in state.Territories)
@@ -84,9 +84,9 @@ public static class ComputerAi
                 applyTicks += Log.Stamp() - applyT;
 
                 long scoreT2 = Log.Stamp();
-                double afterScore = AiStateScorer.Score(clone, forPlayer);
+                int afterScore = AiStateScorer.Score(clone, forPlayer);
                 scoreTicks += Log.Stamp() - scoreT2;
-                double delta = afterScore - baseScore;
+                int delta = afterScore - baseScore;
 
                 // Tower placement is the one action whose value
                 // doesn't show up in Score: a fresh tower has no
@@ -135,7 +135,7 @@ public static class ComputerAi
             Log.Debug(Log.LogCategory.Ai,
                 $"[heuristic] {forPlayer} has {totalCandidates} candidates " +
                 $"({positiveCandidates} positive); best delta = " +
-                $"{observedBestDelta:+0.0;-0.0;0.0} ({observedBestKind?.ToString() ?? "?"})");
+                $"{observedBestDelta:+#;-#;0} ({observedBestKind?.ToString() ?? "?"})");
         }
 
         // rng unused for now — the first-wins tiebreak at equal
@@ -154,15 +154,15 @@ public static class ComputerAi
         // noise, dwarfed by the millisecond-scale Clone/Score work
         // we're measuring. See #25.
         long totalTicks = Log.Stamp() - methodStart;
-        double ToMs(long ticks) => ticks * 1000.0 / Stopwatch.Frequency;
+        long ToMs(long ticks) => ticks * 1000L / Stopwatch.Frequency;
         long otherTicks = totalTicks - cloneTicks - applyTicks - scoreTicks;
         Log.Info(Log.LogCategory.Ai,
             $"[ai-prof] cand={totalCandidates} " +
-            $"clone={ToMs(cloneTicks):F1}ms " +
-            $"apply={ToMs(applyTicks):F1}ms " +
-            $"score={ToMs(scoreTicks):F1}ms " +
-            $"other={ToMs(otherTicks):F1}ms " +
-            $"total={ToMs(totalTicks):F1}ms");
+            $"clone={ToMs(cloneTicks)}ms " +
+            $"apply={ToMs(applyTicks)}ms " +
+            $"score={ToMs(scoreTicks)}ms " +
+            $"other={ToMs(otherTicks)}ms " +
+            $"total={ToMs(totalTicks)}ms");
 
         return best;
     }

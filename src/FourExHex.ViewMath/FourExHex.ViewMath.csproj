@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Godot-free view-math library: the float-allowed peer of FourExHex.Model.
+    Houses display / layout / geometry math that legitimately needs
+    floating-point precision (DPI scaling, safe-area insets, pixel/hex
+    geometry, zoom smoothing, fractional hex rounding).
+
+    Deliberately NOT a Godot.NET.Sdk project and references NO GodotSharp:
+    this stays Godot-free so the math is unit-testable without dragging
+    Node / SceneTree into the test graph. The game project and the test
+    project both ProjectReference it; FourExHex.Model and
+    FourExHex.Controller do NOT — the one-way edge keeps Model + Controller
+    integer-only (see "No floating-point in Model or Controller" in
+    ARCHITECTURE.md and the NoFloatsInModelOrControllerTests guardrail).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>12</LangVersion>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>FourExHex</RootNamespace>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FourExHex.Model\FourExHex.Model.csproj" />
+  </ItemGroup>
+
+</Project>

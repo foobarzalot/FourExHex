@@ -88,7 +88,7 @@ public abstract partial class OrientationHud : CanvasLayer
         SafeArea.Changed -= OnSafeAreaChanged;
     }
 
-    private void OnSafeAreaChanged(FourExHex.Model.LogicalSafeInsets _)
+    private void OnSafeAreaChanged(LogicalSafeInsets _)
     {
         ApplyLayout();
         PublishInsets();

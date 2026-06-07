@@ -42,17 +42,32 @@ public partial class Main : Node2D
 
     public override void _Ready()
     {
-        // Diagnostic launch: setting the FOUREXHEX_6AI environment
-        // variable before starting Godot forces all six slots to
-        // Computer, enables verbose AI logging to stdout, runs the
-        // game synchronously (no pacing delays), caps turns at 500
-        // so stasis runs terminate, and auto-quits on game over.
-        // Intended for Claude to run headless and read the logs.
-        // Log.Sink + FOUREXHEX_LOG are wired by the LogBootstrap autoload
-        // before any scene loads (see scripts/LogBootstrap.cs), so the
-        // sink and category levels are already live here. The 6AI block
+        // Diagnostic launches: setting FOUREXHEX_6AI or FOUREXHEX_6AI_QUICK
+        // before starting Godot forces all six slots to Computer, enables
+        // verbose AI logging to stdout, runs the game synchronously (no
+        // pacing delays), and auto-quits on game over. Intended for
+        // Claude to run headless and read the logs. Log.Sink +
+        // FOUREXHEX_LOG are wired by the LogBootstrap autoload before any
+        // scene loads (see scripts/LogBootstrap.cs), so the sink and
+        // category levels are already live here. The diagnostic block
         // below only adds its diagnostic level overrides on top.
-        bool diagnosticMode = OS.GetEnvironment("FOUREXHEX_6AI").Length > 0;
+        //
+        // FOUREXHEX_6AI (full) uses HexMapView's default grid (30×20,
+        // 600 tiles) and a 500-turn cap — slow but faithful to a
+        // menu-launched game, which is what catches AI economic bugs
+        // (see #24 / #22). FOUREXHEX_6AI_QUICK uses an 18×13 grid (234
+        // tiles, 2.6× fewer) and a 100-turn cap — a fast smoke test for
+        // crash regressions and determinism checks. Full mode wins if
+        // both are set.
+        //
+        // FOUREXHEX_SEED=<int> locks the master seed so two runs of the
+        // same mode produce byte-identical output (the determinism check
+        // for issue #20). Falls back to the saved-load seed, then
+        // GameSettings.MasterSeed, then a fresh Random.Shared.Next().
+        bool fullDiagMode = OS.GetEnvironment("FOUREXHEX_6AI").Length > 0;
+        bool quickDiagMode = !fullDiagMode
+            && OS.GetEnvironment("FOUREXHEX_6AI_QUICK").Length > 0;
+        bool diagnosticMode = fullDiagMode || quickDiagMode;
         if (diagnosticMode)
         {
             for (int i = 0; i < GameSettings.PlayerKinds.Length; i++)
@@ -66,7 +81,9 @@ public partial class Main : Node2D
             Log.SetLevel(Log.LogCategory.Ai, Log.LogLevel.Debug);
             Log.SetLevel(Log.LogCategory.Turn, Log.LogLevel.Info);
             Log.SetLevel(Log.LogCategory.Capture, Log.LogLevel.Debug);
-            GD.Print("=== FOUREXHEX_6AI diagnostic mode ===");
+            GD.Print(quickDiagMode
+                ? "=== FOUREXHEX_6AI_QUICK diagnostic mode (smoke test, 18×13, cap=200) ==="
+                : "=== FOUREXHEX_6AI diagnostic mode (full, 30×20, cap=500) ===");
         }
 
         // Consume any pending load request from the menu. Clear it
@@ -84,7 +101,18 @@ public partial class Main : Node2D
         // tight loop.
         int cols, rows;
         HexMapView? visibleMap = null;
-        if (diagnosticMode)
+        if (quickDiagMode)
+        {
+            // Smoke-test grid (18×13, 234 tiles) — small enough that a
+            // full 100-turn 6AI game finishes in seconds. Loses #24's
+            // AI-economic-bug signal (the doom-spiral bankruptcy
+            // pattern needs the full 30×20 to surface), so use full
+            // mode for AI-behavior checks, quick mode for crash-only
+            // smoke + determinism reruns.
+            cols = 18;
+            rows = 13;
+        }
+        else if (fullDiagMode)
         {
             // Match HexMapView's [Export] defaults — diverging here used to
             // hide whole classes of AI economic bugs (see #24): the 6AI
@@ -106,10 +134,23 @@ public partial class Main : Node2D
 
         // One seed drives both the initial grid and the GameController's
         // per-turn RNG, so the menu's "Map Seed" field is reproducible
-        // end-to-end. Load wins (replays the saved game), then the menu's
-        // selection, and finally a fresh random seed for the diagnostic
-        // path (FOUREXHEX_6AI never visits the menu so MasterSeed is null).
-        int seed = pendingLoad?.MasterSeed
+        // end-to-end. Order of precedence:
+        //   1. FOUREXHEX_SEED env var (locks the seed for determinism
+        //      reruns — e.g. issue #20's "two FOUREXHEX_6AI_QUICK runs
+        //      must produce identical output" check).
+        //   2. Saved-load (replays the saved game).
+        //   3. Menu's selection.
+        //   4. Fresh Random for the diagnostic path (FOUREXHEX_6AI never
+        //      visits the menu so MasterSeed is null).
+        int? envSeed = null;
+        string envSeedStr = OS.GetEnvironment("FOUREXHEX_SEED");
+        if (envSeedStr.Length > 0 && int.TryParse(envSeedStr, out int parsedSeed))
+        {
+            envSeed = parsedSeed;
+            if (diagnosticMode) GD.Print($"=== FOUREXHEX_SEED={parsedSeed} ===");
+        }
+        int seed = envSeed
+                ?? pendingLoad?.MasterSeed
                 ?? GameSettings.MasterSeed
                 ?? System.Random.Shared.Next();
 
@@ -146,7 +187,9 @@ public partial class Main : Node2D
                 new TurnState(_players),
                 new Treasury(),
                 pendingLoad.State.WaterCoords);
-            _maxTurnNumber = diagnosticMode ? 500 : int.MaxValue;
+            _maxTurnNumber = quickDiagMode ? 200
+                : fullDiagMode ? 500
+                : int.MaxValue;
             _originMapName = pendingLoad.SlotName;
         }
         else
@@ -159,7 +202,9 @@ public partial class Main : Node2D
             IReadOnlyList<Territory> territories = TerritoryFinder.Recompute(
                 grid, new List<Territory>());
             _state = new GameState(grid, territories, _players, turnState, treasury, mapGen.WaterCoords);
-            _maxTurnNumber = diagnosticMode ? 500 : int.MaxValue;
+            _maxTurnNumber = quickDiagMode ? 200
+                : fullDiagMode ? 500
+                : int.MaxValue;
             _originMapName = null;
         }
         _session = new SessionState();
@@ -249,8 +294,8 @@ public partial class Main : Node2D
             : new GodotAiPacer(
                 new SceneTreeTimerFactory(GetTree()),
                 () => controllerRef?.IsReplayMode == true
-                    ? UserSettings.SpeedMultiplier(UserSettings.ReplaySpeed)
-                    : UserSettings.SpeedMultiplier(UserSettings.AiSpeed));
+                    ? UserSettings.SpeedMultiplierPercent(UserSettings.ReplaySpeed)
+                    : UserSettings.SpeedMultiplierPercent(UserSettings.AiSpeed));
         // If we're resuming an in-progress save that carries a replay,
         // hand it to the controller so recording continues against the
         // same beat log (and BeginReplay can rewind to the original
