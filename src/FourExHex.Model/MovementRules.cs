@@ -32,6 +32,46 @@ public static class MovementRules
     }
 
     /// <summary>
+    /// Coords of unmoved units owned by <paramref name="owner"/> in
+    /// <paramref name="territory"/>, returned in **power-then-coord
+    /// order**: <see cref="UnitLevel"/> descending (Commander →
+    /// Recruit), <see cref="HexCoord"/> lex ascending within each
+    /// tier. The single source of truth for "consider the strongest
+    /// unit first" iteration, used by both the human N-cycle (via
+    /// <c>GameController.SortedMovableCoords</c>) and the AI
+    /// candidate enumerator (<see cref="AiCommon.Enumerate"/>).
+    ///
+    /// Both call sites must agree on the order — when two units have
+    /// equal-scoring moves the AI's first-wins tiebreak picks the
+    /// one yielded first, and the human's N-key cycle steps through
+    /// in the same order. Without this shared helper, the AI's
+    /// `territory.Coords` BFS order would let a Recruit near the
+    /// seed tile win ties over a Commander deeper in the territory
+    /// — see issue #21.
+    /// </summary>
+    public static List<HexCoord> MovableUnitsInPowerOrder(
+        Territory territory, PlayerId owner, HexGrid grid)
+    {
+        var movable = new List<(HexCoord Coord, UnitLevel Level)>();
+        foreach (HexCoord coord in territory.Coords)
+        {
+            Unit? unit = grid.Get(coord)?.Unit;
+            if (unit != null && unit.Owner == owner && !unit.HasMovedThisTurn)
+            {
+                movable.Add((coord, unit.Level));
+            }
+        }
+        movable.Sort((a, b) =>
+        {
+            int byLevel = b.Level.CompareTo(a.Level);
+            return byLevel != 0 ? byLevel : a.Coord.CompareTo(b.Coord);
+        });
+        var result = new List<HexCoord>(movable.Count);
+        foreach ((HexCoord c, _) in movable) result.Add(c);
+        return result;
+    }
+
+    /// <summary>
     /// Returns every coord a level-<paramref name="attackerLevel"/> unit
     /// in <paramref name="attackerTerritory"/> could legally move to.
     /// The <paramref name="allTerritories"/> list is used to determine

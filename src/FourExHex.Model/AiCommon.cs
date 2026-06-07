@@ -88,12 +88,17 @@ public static class AiCommon
         // Each gate asks the shared SurvivesNextUpkeep predicate
         // whether the post-action (gold, netIncome) pair clears
         // next upkeep. Move actions don't spend gold, so the gold
-        // argument is unchanged.
-        foreach (HexCoord coord in territory.Coords)
+        // argument is unchanged. Units are iterated in power-then-
+        // coord order (Commander → Recruit, lex-min within tier) so
+        // ties resolve in favor of the strongest unit — same order
+        // the human N-cycle uses. See issue #21.
+        foreach (HexCoord coord in MovementRules.MovableUnitsInPowerOrder(territory, owner, state.Grid))
         {
             HexTile? tile = state.Grid.Get(coord);
+            // Defensive: helper already filtered by owner +
+            // !HasMovedThisTurn, but the unit could theoretically be
+            // gone in a state we don't trust. Belt-and-braces.
             if (tile?.Unit == null) continue;
-            if (tile.Unit.HasMovedThisTurn) continue;
 
             Unit sourceUnit = tile.Unit;
             List<HexCoord> targets = MovementRules.ValidTargets(

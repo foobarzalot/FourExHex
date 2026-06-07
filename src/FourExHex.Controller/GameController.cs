@@ -1734,33 +1734,14 @@ public class GameController
     /// <summary>
     /// Movable units in <paramref name="territory"/> owned by
     /// <paramref name="color"/> with HasMovedThisTurn=false, returned in
-    /// power-then-coord order: <see cref="UnitLevel"/> descending
-    /// (Commander → Recruit), <see cref="HexCoord"/> lex ascending
-    /// within each tier. The single source of truth for the N-cycle
-    /// order and the auto-advance next-unit pick after a successful
-    /// move.
+    /// power-then-coord order. Thin forwarder to
+    /// <see cref="MovementRules.MovableUnitsInPowerOrder"/>, the
+    /// single source of truth shared with the AI candidate enumerator
+    /// (<c>AiCommon.Enumerate</c>) so the N-cycle and the AI's
+    /// tie-breaking iteration can't drift. See issue #21.
     /// </summary>
     private List<HexCoord> SortedMovableCoords(Territory territory, PlayerId color)
-    {
-        var movable = new List<(HexCoord Coord, UnitLevel Level)>();
-        foreach (HexCoord coord in territory.Coords)
-        {
-            HexTile? tile = _state.Grid.Get(coord);
-            Unit? unit = tile?.Unit;
-            if (unit != null && unit.Owner == color && !unit.HasMovedThisTurn)
-            {
-                movable.Add((coord, unit.Level));
-            }
-        }
-        movable.Sort((a, b) =>
-        {
-            int byLevel = b.Level.CompareTo(a.Level);
-            return byLevel != 0 ? byLevel : a.Coord.CompareTo(b.Coord);
-        });
-        var result = new List<HexCoord>(movable.Count);
-        foreach ((HexCoord c, _) in movable) result.Add(c);
-        return result;
-    }
+        => MovementRules.MovableUnitsInPowerOrder(territory, color, _state.Grid);
 
     /// <summary>
     /// Repeated-movement auto-advance: called after a successful

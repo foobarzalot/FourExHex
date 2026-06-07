@@ -170,6 +170,140 @@ public class ComputerAiTests
             $"insolvent (empty={emptyScore})");
     }
 
+    // --- MovementRules.MovableUnitsInPowerOrder ---------------------------
+
+    [Fact]
+    public void MovableUnitsInPowerOrder_DescendsByLevel()
+    {
+        // 3-tile Red strip with Recruit / Soldier / Captain across the
+        // tiles. Helper must return them in power-descending order:
+        // Captain first, then Soldier, then Recruit.
+        var grid = new HexGrid();
+        grid.Add(new HexTile(HexCoord.FromOffset(0, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(1, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(2, 0), Red));
+        GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
+        Territory red = state.Territories.First(t => t.Owner == Red);
+        HexCoord cap = red.Capital!.Value;
+        HexCoord[] offCap = red.Coords.Where(c => !c.Equals(cap)).Take(2).ToArray();
+        // Capital tile is the 3rd unit position.
+        grid.Get(offCap[0])!.Occupant = new Unit(Red, UnitLevel.Recruit);
+        grid.Get(offCap[1])!.Occupant = new Unit(Red, UnitLevel.Soldier);
+        grid.Get(cap)!.Occupant = new Unit(Red, UnitLevel.Captain);
+
+        List<HexCoord> ordered = MovementRules.MovableUnitsInPowerOrder(red, Red, grid);
+
+        Assert.Equal(3, ordered.Count);
+        Assert.Equal(cap, ordered[0]);        // Captain
+        Assert.Equal(offCap[1], ordered[1]);  // Soldier
+        Assert.Equal(offCap[0], ordered[2]);  // Recruit
+    }
+
+    [Fact]
+    public void MovableUnitsInPowerOrder_LexTiebreakerWithinTier()
+    {
+        // Two Soldiers at distinct coords. Tie on level → lex-min
+        // coord wins. HexCoord.CompareTo orders by R then Q (row-major).
+        var grid = new HexGrid();
+        grid.Add(new HexTile(HexCoord.FromOffset(0, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(1, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(2, 0), Red));
+        GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
+        Territory red = state.Territories.First(t => t.Owner == Red);
+        HexCoord a = HexCoord.FromOffset(0, 0);
+        HexCoord b = HexCoord.FromOffset(2, 0);
+        grid.Get(a)!.Occupant = new Unit(Red, UnitLevel.Soldier);
+        grid.Get(b)!.Occupant = new Unit(Red, UnitLevel.Soldier);
+
+        List<HexCoord> ordered = MovementRules.MovableUnitsInPowerOrder(red, Red, grid);
+
+        Assert.Equal(2, ordered.Count);
+        HexCoord first = a.CompareTo(b) < 0 ? a : b;
+        HexCoord second = a.CompareTo(b) < 0 ? b : a;
+        Assert.Equal(first, ordered[0]);
+        Assert.Equal(second, ordered[1]);
+    }
+
+    [Fact]
+    public void MovableUnitsInPowerOrder_ExcludesMovedAndNonOwnerUnits()
+    {
+        // Three Red tiles: one fresh Recruit, one already-moved
+        // Recruit, one empty tile. Helper must return ONLY the fresh
+        // one. The non-owner case can't realistically arise (all
+        // tiles in a territory share the owner) but the helper's
+        // defensive check is still exercised by passing the wrong
+        // owner — the result should be empty.
+        var grid = new HexGrid();
+        grid.Add(new HexTile(HexCoord.FromOffset(0, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(1, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(2, 0), Red));
+        GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
+        Territory red = state.Territories.First(t => t.Owner == Red);
+        HexCoord fresh = HexCoord.FromOffset(0, 0);
+        HexCoord moved = HexCoord.FromOffset(1, 0);
+        grid.Get(fresh)!.Occupant = new Unit(Red, UnitLevel.Recruit);
+        var movedUnit = new Unit(Red, UnitLevel.Recruit) { HasMovedThisTurn = true };
+        grid.Get(moved)!.Occupant = movedUnit;
+
+        List<HexCoord> ordered = MovementRules.MovableUnitsInPowerOrder(red, Red, grid);
+        Assert.Single(ordered);
+        Assert.Equal(fresh, ordered[0]);
+
+        // Pass wrong owner: defensive owner check yields empty list.
+        List<HexCoord> wrongOwner = MovementRules.MovableUnitsInPowerOrder(red, Blue, grid);
+        Assert.Empty(wrongOwner);
+    }
+
+    [Fact]
+    public void Enumerate_FirstMoveCandidateIsHighestPowerUnit()
+    {
+        // 5-tile Red strip sandwiched between two Blue singletons
+        // so the strip's outer Red tiles have enemy adjacency on
+        // each end and both unit placements can generate at least
+        // one Capture candidate against defense-0 Blue.
+        //
+        // Soldier (level 2, upkeep 6) and Recruit (level 1, upkeep 2)
+        // keep the territory solvent: income 5, upkeep 8, net -3, and
+        // 30g treasury covers the 5-turn horizon (30 + 5 × -3 = 15 ≥ 0).
+        // Higher tiers like Commander would bankrupt this small a
+        // territory before any candidate cleared the solvency gate.
+        //
+        // Pre-fix the enumerator iterates territory.Coords (BFS
+        // order) so the Recruit's candidates yield first. Post-fix
+        // the shared helper orders by power descending, so Soldier
+        // candidates yield first — closing #21's tie-breaking
+        // pathology.
+        var grid = new HexGrid();
+        grid.Add(new HexTile(HexCoord.FromOffset(0, 0), Blue));
+        for (int col = 1; col <= 5; col++)
+        {
+            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        }
+        grid.Add(new HexTile(HexCoord.FromOffset(6, 0), Blue));
+        GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
+        Territory red = state.Territories.First(t => t.Owner == Red);
+
+        HexCoord cap = red.Capital!.Value;
+        List<HexCoord> nonCap = red.Coords.Where(c => !c.Equals(cap)).ToList();
+        HexCoord recruitTile = nonCap.First();
+        HexCoord soldierTile = nonCap.Last();
+        Assert.NotEqual(recruitTile, soldierTile);
+        grid.Get(recruitTile)!.Occupant = new Unit(Red, UnitLevel.Recruit);
+        grid.Get(soldierTile)!.Occupant = new Unit(Red, UnitLevel.Soldier);
+        state.Treasury.SetGold(cap, 30);
+
+        List<AiMoveAction> moves = AiCommon.Enumerate(red, state)
+            .Select(c => c.Action)
+            .OfType<AiMoveAction>()
+            .ToList();
+        // Sanity: both units contributed candidates so the ordering
+        // assertion below isn't trivially satisfied by either having
+        // zero moves.
+        Assert.Contains(moves, m => m.Source.Equals(recruitTile));
+        Assert.Contains(moves, m => m.Source.Equals(soldierTile));
+        Assert.Equal(soldierTile, moves[0].Source);
+    }
+
     // --- AiCommon: treasury-aware enumerator solvency ---------------------
 
     [Fact]
