@@ -219,6 +219,8 @@ Consequences for the rest of this doc:
 │   │    hud.RedoAllClicked           → OnRedoAllPressed                   │
 │   │    hud.EndTurnClicked           → OnEndTurnPressed                   │
 │   │    hud.NextTerritoryClicked     → OnNextTerritoryPressed             │
+│   │                                    (Tab: descending-size cycle,      │
+│   │                                     capital coord tie-breaker)       │
 │   │    hud.PreviousTerritoryClicked → OnPreviousTerritoryPressed         │
 │   │    hud.NextUnitClicked          → OnNextUnitPressed (N: power-order  │
 │   │                                    cycle Recruit→Soldier→Captain→   │
@@ -1887,13 +1889,16 @@ single beat).
   doom-spiral bankruptcies.
 - **`ComputerAi`** — the game's only AI (drives every `PlayerKind.Computer`
   slot). 1-ply lookahead via `AiSimulator.Clone` +
-  `AiStateScorer.Score`. `AiSimulator` mirrors the mutation logic in
-  `GameController`'s `ExecuteAi*` paths; if you add a new AI-capable
-  action you must update both in lockstep, or simulated scoring will
-  drift from real play. `AiSimulator.Apply` throws
-  `NotSupportedException` on action kinds it doesn't model (Rally,
-  ClaimVictory, Dismiss*) so future drift surfaces loudly rather than
-  as a silent no-op.
+  `AiStateScorer.Score`. Territories are visited in **descending cell-count
+  order** (capital coord as stable tie-breaker) so larger, higher-leverage
+  territories are evaluated first; equal-delta candidates from later
+  territories can't displace the first winner under the strict `>` test.
+  `AiSimulator` mirrors the mutation logic in `GameController`'s
+  `ExecuteAi*` paths; if you add a new AI-capable action you must update
+  both in lockstep, or simulated scoring will drift from real play.
+  `AiSimulator.Apply` throws `NotSupportedException` on action kinds it
+  doesn't model (Rally, ClaimVictory, Dismiss*) so future drift surfaces
+  loudly rather than as a silent no-op.
 - **`ReplayDrivenAi`** — script-driven chooser used only by the
   TutorialBuilder's Preview mode. Replays recorded non-player-0
   `ReplayBeat`s through the standard AI step machine via a shared
