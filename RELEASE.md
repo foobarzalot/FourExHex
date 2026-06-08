@@ -24,6 +24,28 @@ the platform-specific gotchas it papers over. iOS additionally runs `xcodebuild
 archive` → `xcodebuild -exportArchive` → either `xcrun devicectl device install`
 (tethered) or `xcrun altool --upload-app` (TestFlight); see §1.5 below.
 
+### Versioning
+
+The canonical version lives in **`scripts/AppVersion.cs`** — `Marketing` (a
+semver string, e.g. `"1.0"`) and `Build` (a monotonic integer, e.g. `6`). The
+Settings panel reads it directly (`AppVersion.Display` → `v1.0 (6)`), so the
+displayed value can never be a hand-copied second copy. Bump those two consts to
+cut a release.
+
+The two-part scheme maps onto each platform's two version fields in
+`export_presets.cfg`:
+
+| Canonical | iOS | Android | Desktop (macOS/Windows) |
+|-----------|-----|---------|-------------------------|
+| `AppVersion.Marketing` | `application/short_version` (CFBundleShortVersionString) | `version/name` (versionName) | `application/short_version` |
+| `AppVersion.Build` | `application/version` (CFBundleVersion) | `version/code` (versionCode) | `application/version` |
+
+**For now the export presets are NOT auto-synced from `AppVersion`** — wiring the
+build scripts to read from it is a deferred follow-up (issue #32 Notes). Until
+that lands, a version bump means editing `scripts/AppVersion.cs` **and** the
+matching `export_presets.cfg` fields above by hand. See the TestFlight
+build-number note in §2 for the iOS-specific bump requirement.
+
 ### Android prerequisites
 
 The `build_android.sh` fail-fast checks require (it installs nothing): Android

@@ -184,6 +184,18 @@ public sealed partial class SettingsPanel : CanvasLayer
         AudioBus.AttachClick(backButton);
         vbox.AddChild(backButton);
 
+        // Unobtrusive build stamp at the foot of the panel so testers can
+        // report which version they're on. Static text (AppVersion is a
+        // compile-time constant), so Open() never needs to re-sync it.
+        var versionLabel = new Label
+        {
+            Text = AppVersion.Display,
+            HorizontalAlignment = HorizontalAlignment.Right,
+        };
+        versionLabel.AddThemeFontSizeOverride("font_size", 16);
+        versionLabel.AddThemeColorOverride("font_color", UiPalette.InkMute);
+        vbox.AddChild(versionLabel);
+
         // Credits is its own modal layered one above this panel (Layer
         // 101 vs 100), so it draws on top while Settings stays visible.
         _creditsPanel = new CreditsPanel();
