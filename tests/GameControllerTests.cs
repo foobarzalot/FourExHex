@@ -2434,6 +2434,36 @@ public class GameControllerTests
     }
 
     [Fact]
+    public void AiWin_HidesOpponentsTakingTurnsOverlay()
+    {
+        // #23: when an AI wins on its own (paced) turn, the
+        // "Opponents are taking their turns…" overlay must be hidden so
+        // it doesn't draw on top of the victory screen. Same one-move
+        // domination fixture as AiTurn_CanCaptureLastEnemyHex_DeclaresWinner;
+        // the overlay is shown when the AI batch starts, and must be
+        // reconciled away once the win fires.
+        var red = new Player("Red", PlayerId.FromIndex(0), isAi: true);
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
+        var players = new List<Player> { red, blue };
+
+        var grid = TestHelpers.BuildRectGrid(5, 1, red.Id);
+        grid.Get(HexCoord.FromOffset(4, 0))!.Owner = blue.Id;
+        grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = new Unit(red.Id);
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        var map = new MockHexMapView();
+        var hud = new MockHudView();
+        var controller = new GameController(state, session, map, hud, seed: 1);
+        controller.StartGame();
+
+        Assert.True(session.IsGameOver);
+        Assert.Equal(red.Id, session.Winner);
+        Assert.Null(hud.CurrentTutorialMessage);
+    }
+
+    [Fact]
     public void AiTurn_CaptureEnemyUnit_FiresDestructionEffectOnView()
     {
         // AI captures a defended enemy tile — destruction effect fires

@@ -2084,6 +2084,12 @@ public class GameController
             // mutation, clear the lingering highlight, then either stop
             // (human next) or schedule the next preview beat.
             EndCurrentAiPlayerTurnCore(action);
+            // End-of-turn win (sole capital-bearer) declared inside
+            // EndCurrentAiPlayerTurnCore: no next StartPlayerTurn fires to
+            // hide the "Opponents…" overlay, so reconcile it here before
+            // the victory paint so it doesn't draw on top (#23). Mirrors
+            // the domination branch in StepAiExecute.
+            if (_ops.GameEndedFired || _session.IsGameOver) _ops.RefreshSilentMode();
             ShowHighlightAndRefresh(null);
 
             if (_ops.GameEndedFired) return;
@@ -2135,6 +2141,12 @@ public class GameController
             // overlay is gated on session.Winner inside RefreshViews,
             // so without this final refresh the dialog never appears
             // and the game looks frozen mid-board.
+            //
+            // RefreshSilentMode first: the paced step machine has no
+            // StartPlayerTurn hand-off on game-over, so this is where we
+            // hide the "Opponents…" overlay (aiActing is now false) before
+            // painting the victory screen — otherwise it draws on top (#23).
+            _ops.RefreshSilentMode();
             ShowHighlightAndRefresh(null);
             return;
         }

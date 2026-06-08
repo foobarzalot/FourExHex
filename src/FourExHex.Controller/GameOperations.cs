@@ -201,11 +201,14 @@ public class GameOperations
             && !_session.PendingDefeatScreen.HasValue;
         if (aiActing && !_aiBatchOverlayShown)
         {
+            Log.Debug(Log.LogCategory.Ai, "[overlay] show 'Opponents…' (AI acting)");
             _hud.ShowTutorialMessage(OpponentsTakingTurnsMessage);
             _aiBatchOverlayShown = true;
         }
         else if (!aiActing && _aiBatchOverlayShown)
         {
+            Log.Debug(Log.LogCategory.Ai,
+                $"[overlay] hide 'Opponents…' (gameEnded={GameEndedFired} gameOver={_session.IsGameOver})");
             _hud.HideTutorialMessage();
             _aiBatchOverlayShown = false;
         }
