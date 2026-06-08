@@ -39,6 +39,9 @@ OUT="$PROJECT_DIR/build/windows/FourExHex.exe"
 export DOTNET_ROOT="$HOME/.dotnet"
 export PATH="$HOME/.dotnet:$PATH"
 
+echo "==> Syncing export_presets.cfg version from scripts/AppVersion.cs"
+"$PROJECT_DIR/tools/sync_version.sh"
+
 echo "==> Building C# assemblies (Debug for editor load + $CSHARP_CONFIG for the export)"
 dotnet build "$PROJECT_DIR/FourExHex.csproj" -c Debug            >/dev/null
 dotnet build "$PROJECT_DIR/FourExHex.csproj" -c "$CSHARP_CONFIG" >/dev/null

@@ -37,14 +37,16 @@ The two-part scheme maps onto each platform's two version fields in
 
 | Canonical | iOS | Android | Desktop (macOS/Windows) |
 |-----------|-----|---------|-------------------------|
-| `AppVersion.Marketing` | `application/short_version` (CFBundleShortVersionString) | `version/name` (versionName) | `application/short_version` |
-| `AppVersion.Build` | `application/version` (CFBundleVersion) | `version/code` (versionCode) | `application/version` |
+| `AppVersion.Marketing` | `application/short_version` (CFBundleShortVersionString) | `version/name` (versionName) | macOS `application/short_version` |
+| `AppVersion.Build` | `application/version` (CFBundleVersion) | `version/code` (versionCode) | macOS `application/version` |
 
-**For now the export presets are NOT auto-synced from `AppVersion`** — wiring the
-build scripts to read from it is a deferred follow-up (issue #32 Notes). Until
-that lands, a version bump means editing `scripts/AppVersion.cs` **and** the
-matching `export_presets.cfg` fields above by hand. See the TestFlight
-build-number note in §2 for the iOS-specific bump requirement.
+**The export presets are auto-synced from `AppVersion`** by
+`tools/sync_version.sh`, which every `tools/build_*.sh` runs before exporting —
+so a build can never ship a stale preset version. To bump, edit **only**
+`scripts/AppVersion.cs`; run `tools/sync_version.sh` (idempotent) to update the
+committed `export_presets.cfg` immediately, or just let the next build do it.
+(Windows' dot-quad `file_version`/`product_version` use a different format and
+are currently unset; the sync leaves them untouched.)
 
 ### Android prerequisites
 
@@ -249,9 +251,10 @@ distribution workflow).
 **Bump the build number for every TestFlight upload.** App Store
 Connect rejects duplicate `CFBundleVersion` values within the same
 `CFBundleShortVersionString`. Before each `tools/build_ios.sh release`,
-edit `export_presets.cfg` — the iOS preset's `application/version="N"`
-needs an increment (Apple Apple ID `6774765597`, bundle
-`com.foobarzalot.fourexhex`).
+increment `AppVersion.Build` in `scripts/AppVersion.cs` (the canonical
+source — `build_ios.sh` syncs it into the iOS preset's
+`application/version` automatically; see §1 Versioning). Apple Apple ID
+`6774765597`, bundle `com.foobarzalot.fourexhex`.
 
 `tools/build_ios.sh debug --no-upload` does the local build through .ipa and
 stops — useful for verifying signing locally without burning an upload slot.

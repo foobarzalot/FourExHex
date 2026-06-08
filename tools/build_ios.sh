@@ -119,6 +119,13 @@ restore_presets() {
 }
 trap restore_presets EXIT
 
+# Sync version from the canonical AppVersion.cs BEFORE taking the backup, so the
+# synced values are captured in PRESETS_BAK and persist through the trap restore
+# (the restore only exists to scrub the transient team-ID edit below, which must
+# NOT be committed — the version sync is meant to stick).
+echo "==> Syncing export_presets.cfg version from scripts/AppVersion.cs"
+"$PROJECT_DIR/tools/sync_version.sh"
+
 cp "$PRESETS_CFG" "$PRESETS_BAK"
 # In-place edit: empty app_store_team_id → real Team ID. Bracket regex
 # protects against macOS sed eating the trailing newline.
