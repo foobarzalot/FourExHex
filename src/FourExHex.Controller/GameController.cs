@@ -2211,6 +2211,20 @@ public class GameController
                 }
                 _ops.ExecuteAiBuildTower(bt.Capital, bt.Destination);
                 return bt.Destination;
+            case AiBuyCombineAction bc:
+                if (!_recorder.IsReplaying)
+                {
+                    // Recorded as a buy beat; replay drives ExecuteAiBuyUnit
+                    // which handles combines naturally via PlaceNew.
+                    _recorder.RecordBeat(new ReplayBuyBeat
+                    {
+                        Capital = bc.Capital,
+                        To = bc.CombineTarget,
+                        Level = bc.BuyLevel,
+                    });
+                }
+                _ops.ExecuteAiBuyCombine(bc.Capital, bc.CombineTarget, bc.BuyLevel);
+                return bc.CombineTarget;
             case AiLongPressRallyAction rl:
                 if (!_recorder.IsReplaying)
                 {
@@ -2301,6 +2315,7 @@ public class GameController
             AiMoveAction mv => $"Move {mv.Source}→{mv.Destination}",
             AiBuyUnitAction bu => $"Buy {bu.Level}@{bu.Capital} → {bu.Destination}",
             AiBuildTowerAction bt => $"Tower@{bt.Capital} → {bt.Destination}",
+            AiBuyCombineAction bc => $"BuyCombine {bc.BuyLevel}@{bc.Capital} → {bc.CombineTarget}",
             _ => "?",
         };
         Log.Info(Log.LogCategory.Ai, $"[T{_state.Turns.TurnNumber}]   {p.Name}: {desc}");
@@ -2322,6 +2337,7 @@ public class GameController
             AiMoveAction mv => TerritoryLookup.FindOwnedContaining(_state.Territories, owner, mv.Source),
             AiBuyUnitAction bu => TerritoryLookup.FindOwnedContaining(_state.Territories, owner, bu.Capital),
             AiBuildTowerAction bt => TerritoryLookup.FindOwnedContaining(_state.Territories, owner, bt.Capital),
+            AiBuyCombineAction bc => TerritoryLookup.FindOwnedContaining(_state.Territories, owner, bc.Capital),
             _ => null
         };
     }

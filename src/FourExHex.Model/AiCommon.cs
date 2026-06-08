@@ -10,6 +10,7 @@ public enum AiActionKind
     Capture,
     Chop,
     Combine,
+    BuyCombine,
     Tower,
     Reposition,
 }
@@ -242,21 +243,23 @@ public static class AiCommon
     {
         Capture,
         Chop,
+        Grave,
         Combine,
         Reposition,
     }
 
     /// <summary>
     /// Classify a move / buy destination tile relative to
-    /// <paramref name="owner"/>: enemy color = capture, own color
-    /// with a Tree = chop, own color with a friendly Unit = combine,
-    /// anything else (empty own, own capital, own tower, grave) =
+    /// <paramref name="owner"/>: enemy color = capture, own tree = chop,
+    /// own grave = grave (movement-consuming, like chop), own friendly
+    /// unit = combine, anything else (empty own, capital, tower) =
     /// pure reposition.
     /// </summary>
     private static TargetKind ClassifyTarget(HexTile targetTile, PlayerId owner)
     {
         if (targetTile.Owner != owner) return TargetKind.Capture;
         if (targetTile.Occupant is Tree) return TargetKind.Chop;
+        if (targetTile.Occupant is Grave) return TargetKind.Grave;
         if (targetTile.Occupant is Unit unit && unit.Owner == owner) return TargetKind.Combine;
         return TargetKind.Reposition;
     }
@@ -277,5 +280,262 @@ public static class AiCommon
             if (tile.Owner != owner) return true;
         }
         return false;
+    }
+
+    // -----------------------------------------------------------------------
+    // Phase-specific enumeration (stepwise-greedy AI, issue #26)
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// Phase 1: captures, tree chops, and grave clears available to
+    /// <paramref name="unitCoord"/>/<paramref name="unit"/> in
+    /// <paramref name="territory"/>. All are movement-consuming and cost
+    /// no gold. Solvency-gated (all three actions yield +1 income on the
+    /// tile they resolve on).
+    /// </summary>
+    public static IEnumerable<AiCandidate> EnumeratePhase1ForUnit(
+        HexCoord unitCoord,
+        Unit unit,
+        Territory territory,
+        GameState state)
+    {
+        // No solvency gate: captures, chops, and grave clears don't change
+        // upkeep at all (the unit was already paying upkeep). They can only
+        // improve the economic situation (+1 income tile for captures/chops).
+        // Gating them was wrong — a bankrupt territory should still attack.
+        List<HexCoord> targets = MovementRules.ValidTargets(
+            unit.Level, territory, state.Grid, state.Territories);
+        foreach (HexCoord target in targets)
+        {
+            if (target.Equals(unitCoord)) continue;
+            HexTile? targetTile = state.Grid.Get(target);
+            if (targetTile == null) continue;
+            TargetKind kind = ClassifyTarget(targetTile, territory.Owner);
+            if (kind == TargetKind.Capture)
+                yield return new AiCandidate(new AiMoveAction(unitCoord, target), AiActionKind.Capture);
+            else if (kind == TargetKind.Chop || kind == TargetKind.Grave)
+                yield return new AiCandidate(new AiMoveAction(unitCoord, target), AiActionKind.Chop);
+        }
+    }
+
+    /// <summary>
+    /// Phase 2a: combine moves for <paramref name="unitCoord"/>/<paramref
+    /// name="unit"/> that pass the unlock filter — the combined unit must
+    /// reach a movement-consuming target that neither source individually
+    /// could. No gold spent; solvency-gated on the upkeep delta of the
+    /// combine.
+    /// </summary>
+    public static IEnumerable<AiCandidate> EnumeratePhase2aForUnit(
+        HexCoord unitCoord,
+        Unit unit,
+        Territory territory,
+        GameState state)
+    {
+        int gold = territory.HasCapital ? state.Treasury.GetGold(territory.Capital!.Value) : 0;
+        int income = TreeRules.CountIncomeProducingTiles(territory, state.Grid);
+        int upkeep = UpkeepRules.TotalUpkeepFor(territory, state.Grid);
+        int netBefore = income - upkeep;
+
+        List<HexCoord> targets = MovementRules.ValidTargets(
+            unit.Level, territory, state.Grid, state.Territories);
+        foreach (HexCoord target in targets)
+        {
+            if (target.Equals(unitCoord)) continue;
+            HexTile? targetTile = state.Grid.Get(target);
+            if (targetTile == null) continue;
+            if (ClassifyTarget(targetTile, territory.Owner) != TargetKind.Combine) continue;
+
+            Unit destUnit = (Unit)targetTile.Occupant!;
+            UnitLevel combinedLevel = unit.Level.CombinedWith(destUnit.Level);
+            int upkeepDelta = UpkeepRules.UpkeepFor(combinedLevel)
+                              - UpkeepRules.UpkeepFor(unit.Level)
+                              - UpkeepRules.UpkeepFor(destUnit.Level);
+            if (!UpkeepRules.SurvivesNextUpkeep(gold, netBefore - upkeepDelta)) continue;
+            if (!UnlocksMovementConsumingTarget(unit.Level, destUnit.Level, territory, state)) continue;
+
+            yield return new AiCandidate(new AiMoveAction(unitCoord, target), AiActionKind.Combine);
+        }
+    }
+
+    /// <summary>
+    /// Phase 2b: buy-and-combine candidates that pass the unlock filter.
+    /// Emits <see cref="AiBuyCombineAction"/> for each affordable level ×
+    /// unmoved friendly unit pair that unlocks a new movement-consuming target.
+    /// </summary>
+    public static IEnumerable<AiCandidate> EnumeratePhase2b(
+        Territory territory,
+        GameState state)
+    {
+        if (!territory.HasCapital) yield break;
+        int gold = state.Treasury.GetGold(territory.Capital!.Value);
+        int income = TreeRules.CountIncomeProducingTiles(territory, state.Grid);
+        int upkeep = UpkeepRules.TotalUpkeepFor(territory, state.Grid);
+        int netBefore = income - upkeep;
+
+        UnitLevel[] levels = { UnitLevel.Recruit, UnitLevel.Soldier, UnitLevel.Captain, UnitLevel.Commander };
+        foreach (UnitLevel level in levels)
+        {
+            if (!PurchaseRules.CanAfford(territory, state.Treasury, level)) continue;
+            int cost = PurchaseRules.CostFor(level);
+            int buyUpkeep = UpkeepRules.UpkeepFor(level);
+
+            foreach (HexCoord coord in territory.Coords)
+            {
+                Unit? existingUnit = state.Grid.Get(coord)?.Unit;
+                if (existingUnit == null || existingUnit.HasMovedThisTurn) continue;
+
+                UnitLevel combinedLevel = level.CombinedWith(existingUnit.Level);
+                int upkeepDelta = UpkeepRules.UpkeepFor(combinedLevel)
+                                  - UpkeepRules.UpkeepFor(existingUnit.Level)
+                                  - buyUpkeep;
+                if (!UpkeepRules.SurvivesNextUpkeep(gold - cost, netBefore - upkeepDelta)) continue;
+                if (!UnlocksMovementConsumingTarget(level, existingUnit.Level, territory, state)) continue;
+
+                yield return new AiCandidate(
+                    new AiBuyCombineAction(territory.Capital!.Value, coord, level),
+                    AiActionKind.BuyCombine);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Phase 3: buy-to-capture and buy-to-chop candidates — buys that land
+    /// on movement-consuming targets (enemy tiles, trees, graves).
+    /// Buy-reposition is excluded by design. Solvency-gated.
+    /// </summary>
+    public static IEnumerable<AiCandidate> EnumeratePhase3(
+        Territory territory,
+        GameState state)
+    {
+        if (!territory.HasCapital) yield break;
+        int gold = state.Treasury.GetGold(territory.Capital!.Value);
+        int income = TreeRules.CountIncomeProducingTiles(territory, state.Grid);
+        int upkeep = UpkeepRules.TotalUpkeepFor(territory, state.Grid);
+        int netBefore = income - upkeep;
+
+        UnitLevel[] levels = { UnitLevel.Recruit, UnitLevel.Soldier, UnitLevel.Captain, UnitLevel.Commander };
+        foreach (UnitLevel level in levels)
+        {
+            if (!PurchaseRules.CanAfford(territory, state.Treasury, level)) continue;
+            int cost = PurchaseRules.CostFor(level);
+            int levelUpkeep = UpkeepRules.UpkeepFor(level);
+            if (!UpkeepRules.SurvivesNextUpkeep(gold - cost, netBefore + 1 - levelUpkeep)) continue;
+
+            List<HexCoord> targets = MovementRules.ValidTargets(
+                level, territory, state.Grid, state.Territories);
+            foreach (HexCoord target in targets)
+            {
+                HexTile? targetTile = state.Grid.Get(target);
+                if (targetTile == null) continue;
+                TargetKind kind = ClassifyTarget(targetTile, territory.Owner);
+                if (kind == TargetKind.Capture)
+                    yield return new AiCandidate(
+                        new AiBuyUnitAction(territory.Capital!.Value, target, level),
+                        AiActionKind.Capture);
+                else if (kind == TargetKind.Chop || kind == TargetKind.Grave)
+                    yield return new AiCandidate(
+                        new AiBuyUnitAction(territory.Capital!.Value, target, level),
+                        AiActionKind.Chop);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Phase 4a: tower placements — border tiles that pass
+    /// <see cref="MeetsAiTowerSpacing"/> and the gold solvency gate.
+    /// </summary>
+    public static IEnumerable<AiCandidate> EnumeratePhase4Towers(
+        Territory territory,
+        GameState state)
+    {
+        if (!territory.HasCapital) yield break;
+        if (!PurchaseRules.CanAffordTower(territory, state.Treasury)) yield break;
+
+        int gold = state.Treasury.GetGold(territory.Capital!.Value);
+        int income = TreeRules.CountIncomeProducingTiles(territory, state.Grid);
+        int upkeep = UpkeepRules.TotalUpkeepFor(territory, state.Grid);
+        int netBefore = income - upkeep;
+        if (!UpkeepRules.SurvivesNextUpkeep(gold - PurchaseRules.TowerCost, netBefore)) yield break;
+
+        foreach (HexCoord coord in territory.Coords)
+        {
+            HexTile? tile = state.Grid.Get(coord);
+            if (tile == null) continue;
+            if (!IsBorderTile(coord, state.Grid, territory.Owner)) continue;
+            if (!PurchaseRules.IsValidTowerLocation(tile, territory, state.Grid)) continue;
+            if (!MeetsAiTowerSpacing(coord, territory, state.Grid)) continue;
+            yield return new AiCandidate(
+                new AiBuildTowerAction(territory.Capital!.Value, coord),
+                AiActionKind.Tower);
+        }
+    }
+
+    /// <summary>
+    /// Phase 4b: defensive repositions for a single unit — moves to empty
+    /// border tiles within the territory. No gold spent.
+    /// </summary>
+    public static IEnumerable<AiCandidate> EnumeratePhase4bForUnit(
+        HexCoord unitCoord,
+        Unit unit,
+        Territory territory,
+        GameState state)
+    {
+        List<HexCoord> targets = MovementRules.ValidTargets(
+            unit.Level, territory, state.Grid, state.Territories);
+        foreach (HexCoord target in targets)
+        {
+            if (target.Equals(unitCoord)) continue;
+            HexTile? targetTile = state.Grid.Get(target);
+            if (targetTile == null) continue;
+            if (ClassifyTarget(targetTile, territory.Owner) == TargetKind.Reposition
+                && targetTile.Occupant == null
+                && IsBorderTile(target, state.Grid, territory.Owner))
+            {
+                yield return new AiCandidate(
+                    new AiMoveAction(unitCoord, target), AiActionKind.Reposition);
+            }
+        }
+    }
+
+    /// <summary>
+    /// True iff combining a unit of <paramref name="sourceLevel"/> with
+    /// a unit of <paramref name="destLevel"/> unlocks at least one
+    /// movement-consuming target (capture, chop, grave) from
+    /// <paramref name="territory"/> that was not reachable by either unit
+    /// at its original level. Used by phase 2a and 2b.
+    /// </summary>
+    public static bool UnlocksMovementConsumingTarget(
+        UnitLevel sourceLevel,
+        UnitLevel destLevel,
+        Territory territory,
+        GameState state)
+    {
+        UnitLevel combinedLevel = sourceLevel.CombinedWith(destLevel);
+        if (combinedLevel == sourceLevel && combinedLevel == destLevel) return false;
+
+        var preCombine = new System.Collections.Generic.HashSet<HexCoord>(
+            MovementConsumingTargets(sourceLevel, territory, state));
+        foreach (HexCoord c in MovementConsumingTargets(destLevel, territory, state))
+            preCombine.Add(c);
+
+        foreach (HexCoord c in MovementConsumingTargets(combinedLevel, territory, state))
+        {
+            if (!preCombine.Contains(c)) return true;
+        }
+        return false;
+    }
+
+    private static IEnumerable<HexCoord> MovementConsumingTargets(
+        UnitLevel level, Territory territory, GameState state)
+    {
+        foreach (HexCoord target in MovementRules.ValidTargets(
+            level, territory, state.Grid, state.Territories))
+        {
+            HexTile? tile = state.Grid.Get(target);
+            if (tile == null) continue;
+            TargetKind kind = ClassifyTarget(tile, territory.Owner);
+            if (kind == TargetKind.Capture || kind == TargetKind.Chop || kind == TargetKind.Grave)
+                yield return target;
+        }
     }
 }

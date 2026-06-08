@@ -525,6 +525,42 @@ public class ComputerAiTests
     }
 
     [Fact]
+    public void Score_OwnTreePenaltyIsRaisedSoChopsBeatBorderExposure()
+    {
+        // A chop is worth OwnTreePenalty (tree removed) minus
+        // UndefendedBorderPenalty(10) per border the chopping unit stops
+        // covering, and on a bankrupt territory the +1 income gain is
+        // clamped away. At the old value (20) a chop that exposes two
+        // borders scored exactly 0 and was declined / oscillated forever
+        // (seed-4 stasis). Raise the penalty to 35 so a chop beats even a
+        // three-border exposure (35 - 30 = +5).
+        //
+        // Pin it on a BANKRUPT territory (Captain upkeep 18 >> income) so
+        // income clamps to 0 in both states and unit value is zeroed in
+        // both: the only score difference is the single own tree, so
+        // Score(no-tree) - Score(tree) == OwnTreePenalty exactly.
+        var gridTree = new HexGrid();
+        for (int col = 0; col < 3; col++)
+            gridTree.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        gridTree.Get(HexCoord.FromOffset(0, 0))!.Occupant = new Unit(Red, UnitLevel.Captain);
+        gridTree.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Tree();
+        GameState treeState = BuildState(gridTree,
+            new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
+
+        var gridNoTree = new HexGrid();
+        for (int col = 0; col < 3; col++)
+            gridNoTree.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        gridNoTree.Get(HexCoord.FromOffset(0, 0))!.Occupant = new Unit(Red, UnitLevel.Captain);
+        GameState noTreeState = BuildState(gridNoTree,
+            new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
+
+        int treeScore = AiStateScorer.Score(treeState, Red);
+        int noTreeScore = AiStateScorer.Score(noTreeState, Red);
+
+        Assert.Equal(35, noTreeScore - treeScore);
+    }
+
+    [Fact]
     public void Score_DoesNotApplyTreePenaltyToEnemyGraves()
     {
         // Penalty must remain own-side only. Two states with one
@@ -606,29 +642,11 @@ public class ComputerAiTests
         Assert.Equal(0.0, bonus);
     }
 
-    [Fact]
-    public void ChooseNextAction_BuildsTower_OnContestedBorderWithSpareGold()
-    {
-        // 3x3 Red blob facing 3x3 Blue blob in a 6x3 field, no
-        // units anywhere, capital lands at (1,0) by lex-min so the
-        // three Red border tiles ((2,0), (2,1), (2,2)) are all
-        // undefended. With exactly TowerCost gold and no units the
-        // AI's only candidates are buy-reposition and build-tower;
-        // build-tower's combined undefended-border savings + action
-        // bonus must beat the buy-reposition alternative.
-        var grid = TestHelpers.BuildRectGrid(6, 3, Blue);
-        for (int col = 0; col < 3; col++)
-            for (int row = 0; row < 3; row++)
-                grid.Get(HexCoord.FromOffset(col, row))!.Owner = Red;
-        GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
-        HexCoord cap = state.Territories.First(t => t.Owner == Red).Capital!.Value;
-        state.Treasury.SetGold(cap, PurchaseRules.TowerCost);
-
-        AiAction? result = ComputerAi.ChooseNextAction(
-            state, Red, new HashSet<HexCoord>(), new Random(0));
-
-        Assert.IsType<AiBuildTowerAction>(result);
-    }
+    // ChooseNextAction_BuildsTower_OnContestedBorderWithSpareGold was removed:
+    // under phase ordering, buy-capture (phase 3) fires before tower (phase 4)
+    // when both are available. The new ChooseNextAction_Phase4TowerWhenNoBuyCaptureAvailable
+    // covers tower-building behavior and ChooseNextAction_Phase3BuyCaptureBeforePhase4Tower
+    // covers the phase-ordering invariant.
 
     [Fact]
     public void ChooseNextAction_TakesEnclosedEnemyCapture_DespiteSurroundingTowers()
@@ -987,5 +1005,486 @@ public class ComputerAiTests
 
         AiMoveAction mv = Assert.IsType<AiMoveAction>(action);
         Assert.Equal(HexCoord.FromOffset(20, 0), mv.Source);
+    }
+
+    // -----------------------------------------------------------------------
+    // Phase-ordering invariants (issue #26 — stepwise-greedy AI)
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void ChooseNextAction_Phase3BuyCaptureBeforePhase4Tower()
+    {
+        // Same setup as the previous ChooseNextAction_BuildsTower test:
+        // 3x3 Red blob facing 3x3 Blue blob, no units, TowerCost gold.
+        // Under flat scoring, the tower wins (coverage bonus large).
+        // Under phase ordering, buy-capture is phase 3 and tower is phase
+        // 4 — so buy-capture must fire first even though it scores lower.
+        var grid = TestHelpers.BuildRectGrid(6, 3, Blue);
+        for (int col = 0; col < 3; col++)
+            for (int row = 0; row < 3; row++)
+                grid.Get(HexCoord.FromOffset(col, row))!.Owner = Red;
+        GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
+        HexCoord cap = state.Territories.First(t => t.Owner == Red).Capital!.Value;
+        state.Treasury.SetGold(cap, PurchaseRules.TowerCost);
+
+        AiAction? result = ComputerAi.ChooseNextAction(
+            state, Red, new HashSet<HexCoord>(), new Random(0));
+
+        Assert.IsType<AiBuyUnitAction>(result);
+    }
+
+    [Fact]
+    public void ChooseNextAction_Phase4TowerWhenNoBuyCaptureAvailable()
+    {
+        // Isolated Red blob (no adjacent enemies) → phase 3 buy-capture
+        // is impossible. With TowerCost gold and undefended border tiles,
+        // phase 4a tower build must fire.
+        //
+        // Layout: 3x3 Red island surrounded by water (off-grid tiles) on
+        // all sides except the right column which borders Blue. Wait, that
+        // would enable phase 3. Instead: Red with trees as its only
+        // neighbors, no enemy tiles reachable by any affordable buy.
+        //
+        // Simpler: a standalone 5-tile Red cross in an otherwise-empty
+        // grid — no Blue tiles at all. Phase 3 has no capture targets.
+        // But then no border tiles exist either, so towers don't help.
+        //
+        // Correct approach: Red blob in a Blue field BUT the Blue tiles
+        // are all defended so even a Commander can't capture them. That
+        // removes all phase-3 candidates while keeping border tiles for
+        // phase 4a.
+        //
+        // 3x3 Red blob (cols 0-2) facing 3x3 Blue blob (cols 3-5) with
+        // a Blue Commander on each Blue border tile — defense >= 4 on all
+        // Blue border tiles, nothing in phase 1-3 can breach them. Red has
+        // TowerCost gold. Phase 4a tower must fire.
+        var grid = TestHelpers.BuildRectGrid(6, 3, Blue);
+        for (int col = 0; col < 3; col++)
+            for (int row = 0; row < 3; row++)
+                grid.Get(HexCoord.FromOffset(col, row))!.Owner = Red;
+        // Place Blue Commanders on the three Blue border tiles so defense >= 4.
+        grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = new Unit(Blue, UnitLevel.Commander);
+        grid.Get(HexCoord.FromOffset(3, 1))!.Occupant = new Unit(Blue, UnitLevel.Commander);
+        grid.Get(HexCoord.FromOffset(3, 2))!.Occupant = new Unit(Blue, UnitLevel.Commander);
+        GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
+        HexCoord cap = state.Territories.First(t => t.Owner == Red).Capital!.Value;
+        state.Treasury.SetGold(cap, PurchaseRules.TowerCost);
+
+        AiAction? result = ComputerAi.ChooseNextAction(
+            state, Red, new HashSet<HexCoord>(), new Random(0));
+
+        Assert.IsType<AiBuildTowerAction>(result);
+    }
+
+    [Fact]
+    public void ChooseNextAction_Phase1FreeCaptureBeforePhase3BuyCapture()
+    {
+        // Red 5-tile strip with a Recruit at (4,0) adjacent to an
+        // undefended Blue tile at (5,0) — phase-1 capture, delta ~+20.
+        // Blue Captain at (-1,0) adjacent to Red's (0,0): only a
+        // Commander can capture it (defense 3 < Commander 4). Destroying
+        // the Captain boosts Blue's unit-value loss → Commander buy-capture
+        // scores higher than the Recruit free-capture under flat scoring.
+        // Phase ordering must pick the Recruit free-capture first (phase 1).
+        var grid = new HexGrid();
+        for (int col = 0; col < 5; col++)
+            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(5, 0), Blue));          // undefended
+        grid.Add(new HexTile(HexCoord.FromOffset(-1, 0), Blue));         // defended by Captain
+        grid.Get(HexCoord.FromOffset(-1, 0))!.Occupant = new Unit(Blue, UnitLevel.Captain);
+        HexCoord recruitCoord = HexCoord.FromOffset(4, 0);
+        grid.Get(recruitCoord)!.Occupant = new Unit(Red, UnitLevel.Recruit);
+        GameState state = BuildState(grid,
+            new Player("Red", PlayerId.FromIndex(0)),
+            new Player("Blue", PlayerId.FromIndex(1)));
+        HexCoord cap = state.Territories.First(t => t.Owner == Red).Capital!.Value;
+        state.Treasury.SetGold(cap, 80); // enough for Commander (40g)
+
+        AiAction? result = ComputerAi.ChooseNextAction(
+            state, Red, new HashSet<HexCoord>(), new Random(0));
+
+        // Phase 1 fires: Recruit free-captures (5,0).
+        AiMoveAction mv = Assert.IsType<AiMoveAction>(result);
+        Assert.Equal(recruitCoord, mv.Source);
+        Assert.Equal(HexCoord.FromOffset(5, 0), mv.Destination);
+    }
+
+    [Fact]
+    public void ChooseNextAction_Phase2aUnlockFilter_NoCombineWhenNoUnlock()
+    {
+        // Two adjacent Red Recruits. Both can already reach the same
+        // undefended Blue tile (so a Recruit→Recruit combine into a
+        // Soldier doesn't unlock any NEW movement-consuming target —
+        // both could already capture it). Under phase-2a's unlock filter,
+        // this combine must NOT be emitted. With no phase-1 capture
+        // available (e.g., both Recruits are on interior tiles only) and
+        // no phase-3/4 candidates, ChooseNextAction returns null.
+        //
+        // Layout: 6-tile Red strip (cols 0-5). Recruit at (0,0) and (1,0).
+        // Undefended Blue at (6,0). Both Recruits can reach (6,0) already.
+        // No gold for buys (phase 3 out). No existing towers needed.
+        // Result: null (combine doesn't unlock, no other candidates).
+        var grid = new HexGrid();
+        for (int col = 0; col < 6; col++)
+            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(6, 0), Blue));
+        grid.Get(HexCoord.FromOffset(0, 0))!.Occupant = new Unit(Red, UnitLevel.Recruit);
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(Red, UnitLevel.Recruit);
+        GameState state = BuildState(grid,
+            new Player("Red", PlayerId.FromIndex(0)),
+            new Player("Blue", PlayerId.FromIndex(1)));
+        // No gold: eliminates phase 3 and 4a.
+
+        AiAction? result = ComputerAi.ChooseNextAction(
+            state, Red, new HashSet<HexCoord>(), new Random(0));
+
+        // Both Recruits can capture (6,0) directly — there IS a phase-1 action.
+        // So the result should be a capture, not null. This test verifies
+        // phase 1 fires (capture at (6,0)) rather than a non-unlocking combine.
+        AiMoveAction mv = Assert.IsType<AiMoveAction>(result);
+        Assert.Equal(HexCoord.FromOffset(6, 0), mv.Destination);
+    }
+
+    [Fact]
+    public void ChooseNextAction_Phase2aUnlockFilter_CombineWhenUnlocks()
+    {
+        // 8-tile Red strip with a Recruit and a Soldier on it. Adjacent
+        // Blue Soldier at (8,0) has defense 2. Neither Red unit can
+        // capture alone (Recruit level 1 < 2, Soldier level 2 not < 2).
+        // Combining Recruit+Soldier → Captain (1+2=3): defense 2 < 3 →
+        // unlock! Phase 1 is empty (no captures possible), so phase 2a
+        // fires and returns the combine.
+        //
+        // Income = 8, upkeep = Recruit(2)+Soldier(6) = 8, net = 0.
+        // Post-combine upkeep = Captain(18), net = -10. Solvency needs
+        // gold + 5×(-10) ≥ 0 → gold ≥ 50. 80g covers it.
+        // Phase 3: no unit can afford to capture Blue Soldier — bought
+        // Captain costs 30g (net -17, SurvivesNextUpkeep(50,-17) < 0).
+        var grid = new HexGrid();
+        for (int col = 0; col < 8; col++)
+            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(8, 0), Blue));
+        grid.Get(HexCoord.FromOffset(8, 0))!.Occupant = new Unit(Blue, UnitLevel.Soldier);
+        GameState state = BuildState(grid,
+            new Player("Red", PlayerId.FromIndex(0)),
+            new Player("Blue", PlayerId.FromIndex(1)));
+        Territory red = state.Territories.First(t => t.Owner == Red);
+        HexCoord cap = red.Capital!.Value;
+        List<HexCoord> nonCap = red.Coords.Where(c => !c.Equals(cap)).Take(2).ToList();
+        grid.Get(nonCap[0])!.Occupant = new Unit(Red, UnitLevel.Recruit);
+        grid.Get(nonCap[1])!.Occupant = new Unit(Red, UnitLevel.Soldier);
+        state.Treasury.SetGold(cap, 80);
+
+        AiAction? result = ComputerAi.ChooseNextAction(
+            state, Red, new HashSet<HexCoord>(), new Random(0));
+
+        // Phase 2a fires: combine Recruit+Soldier → Captain (unlocks capture).
+        AiMoveAction mv = Assert.IsType<AiMoveAction>(result);
+        bool sourceIsRedUnit = grid.Get(mv.Source)?.Unit?.Owner == Red;
+        bool destIsRedUnit = grid.Get(mv.Destination)?.Unit?.Owner == Red;
+        Assert.True(sourceIsRedUnit && destIsRedUnit,
+            $"expected Red-unit→Red-unit combine; got {mv.Source}→{mv.Destination}");
+    }
+
+    [Fact]
+    public void EnumeratePhase1ForUnit_ReturnsCapture_EvenWhenTerritoryBankrupt()
+    {
+        // A bankrupt territory (upkeep > income, 0 gold) still has a free unit
+        // that can capture an adjacent undefended Blue tile. Captures don't
+        // change upkeep — they can only help — so the solvency gate must NOT
+        // block them.
+        var grid = new HexGrid();
+        for (int col = 0; col < 3; col++)
+            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(3, 0), Blue));
+        // 3 tiles, 1 Captain (upkeep 18) → income 3, upkeep 18, net -15. Bankrupt.
+        // 0g treasury. SurvivesNextUpkeep(0, -14) = 0+5×(-14) = -70 < 0.
+        GameState state = BuildState(grid,
+            new Player("Red", PlayerId.FromIndex(0)),
+            new Player("Blue", PlayerId.FromIndex(1)));
+        Territory red = state.Territories.First(t => t.Owner == Red);
+        HexCoord unitCoord = HexCoord.FromOffset(2, 0);
+        grid.Get(unitCoord)!.Occupant = new Unit(Red, UnitLevel.Captain);
+        Unit unit = state.Grid.Get(unitCoord)!.Unit!;
+
+        List<AiCandidate> candidates = AiCommon.EnumeratePhase1ForUnit(
+            unitCoord, unit, red, state).ToList();
+
+        Assert.Contains(candidates,
+            c => c.Action is AiMoveAction mv && mv.Destination.Equals(HexCoord.FromOffset(3, 0)));
+    }
+
+    [Fact]
+    public void EnumeratePhase1ForUnit_ReturnsCaptures()
+    {
+        // Verify the new phase-1 helper returns capture candidates for a
+        // Recruit adjacent to an undefended Blue tile.
+        var grid = new HexGrid();
+        for (int col = 0; col < 4; col++)
+            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(4, 0), Blue));
+        grid.Get(HexCoord.FromOffset(0, 0))!.Occupant = new Unit(Red, UnitLevel.Recruit);
+        GameState state = BuildState(grid,
+            new Player("Red", PlayerId.FromIndex(0)),
+            new Player("Blue", PlayerId.FromIndex(1)));
+        Territory red = state.Territories.First(t => t.Owner == Red);
+        HexCoord unitCoord = HexCoord.FromOffset(3, 0); // rightmost Red tile, adjacent to Blue
+        grid.Get(unitCoord)!.Occupant = new Unit(Red, UnitLevel.Recruit);
+        // Rebuild territories after placing units.
+        state = BuildState(grid,
+            new Player("Red", PlayerId.FromIndex(0)),
+            new Player("Blue", PlayerId.FromIndex(1)));
+        red = state.Territories.First(t => t.Owner == Red);
+        Unit unit = state.Grid.Get(unitCoord)!.Unit!;
+
+        List<AiCandidate> candidates = AiCommon.EnumeratePhase1ForUnit(
+            unitCoord, unit, red, state).ToList();
+
+        Assert.Contains(candidates,
+            c => c.Action is AiMoveAction mv && mv.Destination.Equals(HexCoord.FromOffset(4, 0)));
+        Assert.All(candidates, c => Assert.True(
+            c.Kind == AiActionKind.Capture || c.Kind == AiActionKind.Chop,
+            $"phase 1 must only emit Capture/Chop/Grave; got {c.Kind}"));
+    }
+
+    [Fact]
+    public void EnumeratePhase1ForUnit_ReturnsGraveClear()
+    {
+        // Moving onto an own grave clears it (movement-consuming) — this
+        // must appear in phase 1, not phase 4b repositions.
+        var grid = new HexGrid();
+        for (int col = 0; col < 5; col++)
+            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        HexCoord graveCoord = HexCoord.FromOffset(2, 0);
+        HexCoord unitCoord = HexCoord.FromOffset(1, 0);
+        grid.Get(graveCoord)!.Occupant = new Grave();
+        grid.Get(unitCoord)!.Occupant = new Unit(Red, UnitLevel.Recruit);
+        GameState state = BuildState(grid,
+            new Player("Red", PlayerId.FromIndex(0)),
+            new Player("Blue", PlayerId.FromIndex(1)));
+        Territory red = state.Territories.First(t => t.Owner == Red);
+        Unit unit = state.Grid.Get(unitCoord)!.Unit!;
+
+        List<AiCandidate> candidates = AiCommon.EnumeratePhase1ForUnit(
+            unitCoord, unit, red, state).ToList();
+
+        Assert.Contains(candidates,
+            c => c.Action is AiMoveAction mv && mv.Destination.Equals(graveCoord));
+    }
+
+    [Fact]
+    public void EnumeratePhase1ForUnit_DoesNotReturnRepositions()
+    {
+        // Phase 1 must not include moves to empty own-territory tiles
+        // (those belong to phase 4b).
+        var grid = new HexGrid();
+        for (int col = 0; col < 5; col++)
+            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        HexCoord unitCoord = HexCoord.FromOffset(0, 0);
+        grid.Get(unitCoord)!.Occupant = new Unit(Red, UnitLevel.Recruit);
+        // No enemies, no trees, no graves — only empty own tiles reachable.
+        GameState state = BuildState(grid,
+            new Player("Red", PlayerId.FromIndex(0)),
+            new Player("Blue", PlayerId.FromIndex(1)));
+        Territory red = state.Territories.First(t => t.Owner == Red);
+        Unit unit = state.Grid.Get(unitCoord)!.Unit!;
+
+        List<AiCandidate> candidates = AiCommon.EnumeratePhase1ForUnit(
+            unitCoord, unit, red, state).ToList();
+
+        Assert.Empty(candidates);
+    }
+
+    [Fact]
+    public void EnumeratePhase3_ReturnsBuyCaptures()
+    {
+        // Phase 3 returns buy-capture candidates for each affordable level
+        // whose placement would land on an enemy tile.
+        var grid = new HexGrid();
+        for (int col = 0; col < 5; col++)
+            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(5, 0), Blue));
+        GameState state = BuildState(grid,
+            new Player("Red", PlayerId.FromIndex(0)),
+            new Player("Blue", PlayerId.FromIndex(1)));
+        Territory red = state.Territories.First(t => t.Owner == Red);
+        state.Treasury.SetGold(red.Capital!.Value, 50);
+
+        List<AiCandidate> candidates = AiCommon.EnumeratePhase3(red, state).ToList();
+
+        Assert.NotEmpty(candidates);
+        Assert.All(candidates, c =>
+        {
+            Assert.True(c.Kind == AiActionKind.Capture || c.Kind == AiActionKind.Chop,
+                $"phase 3 must only emit Capture/Chop; got {c.Kind}");
+            Assert.IsType<AiBuyUnitAction>(c.Action);
+        });
+    }
+
+    [Fact]
+    public void EnumeratePhase3_DoesNotReturnBuyRepositions()
+    {
+        // Phase 3 must not include buy-repositions (dropped by design).
+        // Setup: Red territory with no adjacent enemies (no captures), only
+        // own empty tiles reachable. Even with gold, phase 3 returns empty.
+        var grid = new HexGrid();
+        for (int col = 0; col < 5; col++)
+            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        GameState state = BuildState(grid,
+            new Player("Red", PlayerId.FromIndex(0)),
+            new Player("Blue", PlayerId.FromIndex(1)));
+        Territory red = state.Territories.First(t => t.Owner == Red);
+        state.Treasury.SetGold(red.Capital!.Value, 100);
+
+        List<AiCandidate> candidates = AiCommon.EnumeratePhase3(red, state).ToList();
+
+        Assert.Empty(candidates);
+    }
+
+    [Fact]
+    public void UnlocksMovementConsumingTarget_TrueWhenCombineUnlocksCapture()
+    {
+        // Recruit(1)+Soldier(2) → Captain(3). Adjacent Blue Soldier
+        // (defense 2): Recruit can't capture (1 < 2 false), Soldier
+        // can't (2 < 2 false), Captain can (2 < 3 true). Unlock filter
+        // must return true.
+        var grid = new HexGrid();
+        for (int col = 0; col < 6; col++)
+            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(6, 0), Blue));
+        grid.Get(HexCoord.FromOffset(6, 0))!.Occupant = new Unit(Blue, UnitLevel.Soldier);
+        GameState state = BuildState(grid,
+            new Player("Red", PlayerId.FromIndex(0)),
+            new Player("Blue", PlayerId.FromIndex(1)));
+        Territory red = state.Territories.First(t => t.Owner == Red);
+
+        bool unlocks = AiCommon.UnlocksMovementConsumingTarget(
+            UnitLevel.Recruit, UnitLevel.Soldier, red, state);
+
+        Assert.True(unlocks, "Recruit+Soldier→Captain should unlock capture of Blue Soldier tile");
+    }
+
+    [Fact]
+    public void UnlocksMovementConsumingTarget_FalseWhenTargetAlreadyReachable()
+    {
+        // Two Recruits combine → Soldier(2). Adjacent undefended Blue tile
+        // (defense 0): both Recruits could already capture it (0 < 1 true).
+        // The Soldier adds no new movement-consuming targets → returns false.
+        var grid = new HexGrid();
+        for (int col = 0; col < 6; col++)
+            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(6, 0), Blue));
+        GameState state = BuildState(grid,
+            new Player("Red", PlayerId.FromIndex(0)),
+            new Player("Blue", PlayerId.FromIndex(1)));
+        Territory red = state.Territories.First(t => t.Owner == Red);
+
+        bool unlocks = AiCommon.UnlocksMovementConsumingTarget(
+            UnitLevel.Recruit, UnitLevel.Recruit, red, state);
+
+        Assert.False(unlocks, "Recruit+Recruit→Soldier should NOT unlock when Recruits already reached the Blue tile");
+    }
+
+    // -----------------------------------------------------------------------
+    // Phases 1 & 2a never decline a legal action for the status quo.
+    // A free chop / unlock-combine must be taken even when its score delta is
+    // <= 0 (the status quo must never win over an offensive/unlock action).
+    // Phases 2b/3 are provably always-positive under the scorer, so they keep
+    // the strictly-positive gate and have no red->green test here.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void ChooseNextAction_Phase1ForcesChopEvenWhenDeltaNotPositive()
+    {
+        // A lone Red Recruit at (0,0) is the SOLE defender (via radiation) of
+        // three Red border tiles (1,0),(0,1),(-1,1), each touching a defended
+        // Blue tile (Blue Soldier, defence 2 -> not capturable by a Recruit,
+        // so no phase-1 capture candidate). A tree sits on interior tile
+        // (0,-2), whose neighbourhood contains none of the three borders, so
+        // moving the Recruit there to chop EXPOSES all three borders.
+        //
+        // Chop delta = +20 (tree removed) +1 (chopped tile now earns income,
+        // territory solvent both states) -30 (three borders go undefended)
+        // = -9 <= 0. Under the old > 0 gate phase 1 declines and (with no
+        // gold and no other candidates) ChooseNextAction returns null. After
+        // the fix phase 1 must commit to the chop regardless of sign.
+        var grid = new HexGrid();
+        grid.Add(new HexTile(new HexCoord(0, 0), Red));    // Recruit
+        grid.Add(new HexTile(new HexCoord(1, 0), Red));    // border (E -> Blue 2,0)
+        grid.Add(new HexTile(new HexCoord(0, 1), Red));    // border (SE -> Blue 0,2)
+        grid.Add(new HexTile(new HexCoord(-1, 1), Red));   // border (W -> Blue -2,1)
+        grid.Add(new HexTile(new HexCoord(0, -1), Red));   // capital (lex-min empty)
+        grid.Add(new HexTile(new HexCoord(0, -2), Red));   // tree (interior)
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Unit(Red, UnitLevel.Recruit);
+        grid.Get(new HexCoord(0, -2))!.Occupant = new Tree();
+        // Defended Blue tiles (defence 2): make our tiles borders but block
+        // any Recruit capture so phase 1 has only the chop.
+        grid.Add(new HexTile(new HexCoord(2, 0), Blue));
+        grid.Add(new HexTile(new HexCoord(0, 2), Blue));
+        grid.Add(new HexTile(new HexCoord(-2, 1), Blue));
+        grid.Get(new HexCoord(2, 0))!.Occupant = new Unit(Blue, UnitLevel.Soldier);
+        grid.Get(new HexCoord(0, 2))!.Occupant = new Unit(Blue, UnitLevel.Soldier);
+        grid.Get(new HexCoord(-2, 1))!.Occupant = new Unit(Blue, UnitLevel.Soldier);
+
+        GameState state = BuildState(grid,
+            new Player("Red", PlayerId.FromIndex(0)),
+            new Player("Blue", PlayerId.FromIndex(1)));
+        // gold left at 0: no phase 2b/3/4a buys.
+
+        AiAction? result = ComputerAi.ChooseNextAction(
+            state, Red, new HashSet<HexCoord>(), new Random(0));
+
+        AiMoveAction mv = Assert.IsType<AiMoveAction>(result);
+        Assert.Equal(new HexCoord(0, 0), mv.Source);
+        Assert.Equal(new HexCoord(0, -2), mv.Destination);
+    }
+
+    [Fact]
+    public void ChooseNextAction_Phase2aForcesCombineEvenWhenDeltaNotPositive()
+    {
+        // Two Red Recruits — (0,0) and (4,0) — each the sole defender of its
+        // own tile, which is a border (a defence-1 Blue Recruit sits just
+        // outside: (-1,0) beside (0,0), (5,0) beside (4,0)). A Recruit
+        // (defence 1) cannot capture a defence-1 tile, so PHASE 1 IS EMPTY; a
+        // combined Soldier (level 2) can (1 < 2), so the unlock filter passes.
+        //
+        // Either combine ordering merges the two Recruits into one Soldier and
+        // exposes exactly the vacated unit's border. Combine value =
+        // ΔunitValue(+4) − Δnet-upkeep(−2) = +2; minus one exposed border −10
+        // = −8 <= 0 for BOTH orderings, so the best phase-2a delta is <= 0.
+        // Old gate declines -> null (no gold, no other phase). After the fix
+        // phase 2a must commit to the combine.
+        var grid = new HexGrid();
+        foreach (var c in new[]
+        {
+            new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(2, 0),
+            new HexCoord(3, 0), new HexCoord(4, 0),
+            new HexCoord(2, 1), new HexCoord(2, -1), // extra tiles for income + capital
+        })
+        {
+            grid.Add(new HexTile(c, Red));
+        }
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Unit(Red, UnitLevel.Recruit);
+        grid.Get(new HexCoord(4, 0))!.Occupant = new Unit(Red, UnitLevel.Recruit);
+        // Defence-1 Blue tiles just outside each Recruit's tile.
+        grid.Add(new HexTile(new HexCoord(-1, 0), Blue));
+        grid.Add(new HexTile(new HexCoord(5, 0), Blue));
+        grid.Get(new HexCoord(-1, 0))!.Occupant = new Unit(Blue, UnitLevel.Recruit);
+        grid.Get(new HexCoord(5, 0))!.Occupant = new Unit(Blue, UnitLevel.Recruit);
+
+        GameState state = BuildState(grid,
+            new Player("Red", PlayerId.FromIndex(0)),
+            new Player("Blue", PlayerId.FromIndex(1)));
+        // gold left at 0: no phase 2b/3/4a.
+
+        AiAction? result = ComputerAi.ChooseNextAction(
+            state, Red, new HashSet<HexCoord>(), new Random(0));
+
+        // Phase 2a fires: a Red-unit -> Red-unit combine (delta -8).
+        AiMoveAction mv = Assert.IsType<AiMoveAction>(result);
+        bool sourceIsRedUnit = grid.Get(mv.Source)?.Unit?.Owner == Red;
+        bool destIsRedUnit = grid.Get(mv.Destination)?.Unit?.Owner == Red;
+        Assert.True(sourceIsRedUnit && destIsRedUnit,
+            $"expected Red-unit→Red-unit combine; got {mv.Source}→{mv.Destination}");
     }
 }

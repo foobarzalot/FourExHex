@@ -731,6 +731,49 @@ public class GameOperations
     }
 
     /// <summary>
+    /// Apply a phase-2b AI buy-and-combine action: purchase a unit of
+    /// <paramref name="level"/> from <paramref name="capital"/>'s treasury
+    /// and combine it onto the existing friendly unit at
+    /// <paramref name="combineTarget"/>. The combined unit inherits the
+    /// target's <c>HasMovedThisTurn=false</c> so it remains actionable for
+    /// a subsequent phase-1 capture. Does NOT mark the unit as moved (unlike
+    /// buy-reposition). Throws if the territory can't afford the buy or if
+    /// <paramref name="combineTarget"/> doesn't hold a combinable unit.
+    /// </summary>
+    public void ExecuteAiBuyCombine(HexCoord capital, HexCoord combineTarget, UnitLevel level)
+    {
+        Territory? attacker = TerritoryLookup.FindByCapital(_state.Territories, capital);
+        if (attacker == null)
+        {
+            throw new InvalidOperationException(
+                $"AI BuyCombine with capital {capital}: no territory has that capital.");
+        }
+        if (!PurchaseRules.CanAfford(attacker, _state.Treasury, level))
+        {
+            throw new InvalidOperationException(
+                $"AI BuyCombine from capital {capital}: territory cannot afford a {level} " +
+                $"(treasury = {_state.Treasury.GetGold(capital)}g, cost = {PurchaseRules.CostFor(level)}g).");
+        }
+        HexTile? dstTile = _state.Grid.Get(combineTarget);
+        if (dstTile?.Unit == null)
+        {
+            throw new InvalidOperationException(
+                $"AI BuyCombine to {combineTarget}: no unit on the target tile.");
+        }
+
+        _state.Treasury.SetGold(
+            capital, _state.Treasury.GetGold(capital) - PurchaseRules.CostFor(level));
+        var unit = new Unit(attacker.Owner, level);
+        MoveResult result = MovementRules.PlaceNew(unit, combineTarget, _state.Grid, attacker);
+        // A buy-combine onto a friendly unit is never a capture.
+        if (result.Destroyed != null)
+        {
+            _map.PlayDestructionEffect(combineTarget, result.Destroyed);
+        }
+        DispatchActionSound(combineTarget, result, wasCombine: true);
+    }
+
+    /// <summary>
     /// Apply a long-press rally at <paramref name="target"/> against
     /// the current state — same algorithm as the live
     /// <c>OnTileLongClickedBody</c> path, but skips the pending-mode

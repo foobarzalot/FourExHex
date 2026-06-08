@@ -71,6 +71,9 @@ public static class AiSimulator
             case AiBuildTowerAction bt:
                 ApplyBuildTower(bt.Capital, bt.Destination, state);
                 break;
+            case AiBuyCombineAction bc:
+                ApplyBuyCombine(bc.Capital, bc.CombineTarget, bc.BuyLevel, state);
+                break;
             default:
                 // Rally / ClaimVictory / DismissClaim / DismissDefeat are
                 // replay-script-only actions emitted by ReplayDrivenAi,
@@ -152,6 +155,20 @@ public static class AiSimulator
     {
         Unit? unit = state.Grid.Get(destination)?.Unit;
         if (unit != null) unit.HasMovedThisTurn = true;
+    }
+
+    private static void ApplyBuyCombine(HexCoord capital, HexCoord combineTarget, UnitLevel level, GameState state)
+    {
+        Territory? territory = TerritoryLookup.FindByCapital(state.Territories, capital);
+        if (territory == null) return;
+        state.Treasury.SetGold(
+            capital, state.Treasury.GetGold(capital) - PurchaseRules.CostFor(level));
+        var unit = new Unit(territory.Owner, level);
+        // PlaceNew onto a friendly unit tile performs the combine.
+        // The combined unit inherits the dest unit's HasMovedThisTurn=false,
+        // so no MarkAiUnitMoved — the combined unit remains actionable for
+        // a subsequent phase-1 capture.
+        MovementRules.PlaceNew(unit, combineTarget, state.Grid, territory);
     }
 
     private static void ApplyBuildTower(HexCoord capital, HexCoord destination, GameState state)

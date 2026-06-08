@@ -59,7 +59,17 @@ public static class AiStateScorer
     // only our own trees/graves, not rewarding us for enemy ones
     // (which would mean capturing an enemy tree-tile is worth less
     // than capturing a bare tile, the opposite of what we want).
-    private const int OwnTreePenalty = 20;
+    // Raised from 20 to 35 so a tree-chop dominates the border-exposure
+    // it can incur. A chop is worth OwnTreePenalty (tree removed) minus
+    // UndefendedBorderPenalty (10) per border the chopping unit stops
+    // covering — and on a bankrupt territory the +1 income gain clamps to
+    // 0. At 20 a chop that uncovers two borders netted exactly 0, so the
+    // AI either declined it (trees spread — treeopocalypse) or, once
+    // phases 1/2a were forced past the status quo, chopped a regrowing
+    // tree forever (seed-4 stasis). At 35 even a three-border exposure
+    // stays positive (35 - 30 = +5), so chops are taken on their own
+    // merit and clearly outrank doing nothing.
+    private const int OwnTreePenalty = 35;
 
     // Flat penalty per edge on our territories that faces an
     // enemy-colored tile. "Edges" are counted from our side only

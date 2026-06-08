@@ -7,9 +7,10 @@ public abstract record AiAction;
 
 /// <summary>
 /// Move an existing unit from <see cref="Source"/> to
-/// <see cref="Destination"/>. May be a capture (enemy tile) or a
-/// tree chop (own-territory tree tile). The AI never emits a pure
-/// reposition or a combine — those don't advance the AI's goals.
+/// <see cref="Destination"/>. In phase 1: a capture (enemy tile),
+/// tree chop, or grave clear. In phase 2a: a combine that unlocks
+/// a new movement-consuming target. In phase 4b: a defensive
+/// reposition to an empty border tile.
 /// </summary>
 public sealed record AiMoveAction(HexCoord Source, HexCoord Destination) : AiAction;
 
@@ -29,6 +30,19 @@ public sealed record AiBuyUnitAction(
 /// <see cref="Destination"/>.
 /// </summary>
 public sealed record AiBuildTowerAction(HexCoord Capital, HexCoord Destination) : AiAction;
+
+/// <summary>
+/// Buy a unit of <see cref="BuyLevel"/> from the territory whose capital
+/// is <see cref="Capital"/> and combine it onto the existing friendly unit
+/// at <see cref="CombineTarget"/>. Only emitted when the combined unit
+/// unlocks a movement-consuming target (capture/chop/grave) that neither
+/// the bought unit nor the target unit could reach at their original levels
+/// — phase-2b of the stepwise-greedy AI.
+/// </summary>
+public sealed record AiBuyCombineAction(
+    HexCoord Capital,
+    HexCoord CombineTarget,
+    UnitLevel BuyLevel) : AiAction;
 
 /// <summary>
 /// Replay-script-only: a long-press rally targeting <see cref="Target"/>.

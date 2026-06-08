@@ -668,7 +668,7 @@ ownership today:
 - **`GameOperations`** owns the mutation and turn-lifecycle helpers
   that both live AI and replay drive into:
   - Per-action execute helpers — `ExecuteAiMove`, `ExecuteAiBuyUnit`,
-    `ExecuteAiBuildTower`, `ApplyLongPressRally`
+    `ExecuteAiBuyCombine`, `ExecuteAiBuildTower`, `ApplyLongPressRally`
   - Capture aftermath — `HandleCapture` (+ private
     `SnapshotCapitals` / `ColorsWithCapital` / `LogCaptureDiff`),
     `DispatchActionSound`, `DeclareWinner`
@@ -1834,8 +1834,9 @@ legality, never AI *selection* heuristics — the human action paths
 don't apply them, so a faithfully-recorded human beat would throw on
 replay. Two such heuristics were found and excluded (the
 `about_to_win` desync): (1) tower spacing — `AiCommon.MeetsAiTowerSpacing`
-is filtered in `AiCommon.Enumerate` (AI candidate generation), NOT
-gated in `ExecuteAiBuildTower`; humans may bunch towers. (2)
+is filtered in `AiCommon.EnumeratePhase4Towers` (AI candidate
+generation), NOT gated in `ExecuteAiBuildTower`; humans may bunch
+towers. (2)
 "a reposition onto own-empty consumes the unit's move" — an AI-loop
 guard so the chooser doesn't re-pick the same unit. Gated on
 **actor kind** (`CurrentPlayer.Kind == PlayerKind.Computer`) via the
@@ -1872,33 +1873,67 @@ single beat).
 ## AI subsystem
 
 - **`AiAction`** — discriminated union: `AiMoveAction`, `AiBuyUnitAction`,
-  `AiBuildTowerAction`.
-- **`AiCommon.Enumerate`** — single source of legal candidate actions;
-  `ComputerAi` consumes it. Only this helper knows about rule legality.
-  All six solvency gates (move-capture/chop/combine, buy-capture/
-  reposition, build-tower) defer to `UpkeepRules.SurvivesNextUpkeep
-  (gold, netIncome)`, the shared primitive that asks "does treasury +
-  `UpkeepHorizon` × netIncome ≥ 0?" — i.e., can the territory sustain
-  itself across the next `UpkeepHorizon` upkeep steps (currently 5)?
-  `AiStateScorer`'s bankruptcy lookahead uses the same predicate, so a
-  candidate the scorer would approve is never silently dropped by the
-  enumerator (and vice versa). Tuning the horizon is a one-line edit
-  there that the whole system inherits. Treasury-aware solvency + the
-  removal of the standing `GoldWeight` term close #19's hoarding; the
-  multi-turn horizon (vs the original 1-turn check) closes #22's
-  doom-spiral bankruptcies.
+  `AiBuildTowerAction`, `AiBuyCombineAction` (buy a unit and combine it
+  onto an existing friendly unit to unlock a new movement-consuming
+  target — phase 2b below).
+- **`AiCommon` phase-split enumeration** — the single source of legal
+  candidate actions, split into one enumerator per stepwise-greedy phase
+  (see `ComputerAi` below): `EnumeratePhase1ForUnit` (free
+  captures/chops/grave-clears), `EnumeratePhase2aForUnit`
+  (combine-to-unlock, existing units), `EnumeratePhase2b`
+  (buy-and-combine-to-unlock), `EnumeratePhase3` (buy-to-capture/chop),
+  `EnumeratePhase4Towers`, and `EnumeratePhase4bForUnit` (defensive
+  repositions to border tiles). The shared unlock filter
+  `UnlocksMovementConsumingTarget` admits a combine for phase 2a/2b only
+  when the combined level reaches a movement-consuming target that
+  neither source level could. Only these helpers know about rule
+  legality. **Solvency gating is scoped to upkeep-increasing actions
+  only** — buys, combines, and towers defer to
+  `UpkeepRules.SurvivesNextUpkeep(gold, netIncome)` (treasury +
+  `UpkeepHorizon`×netIncome ≥ 0, horizon currently 5). Phase-1
+  captures/chops/grave-clears are **never** solvency-gated: they don't
+  change upkeep and can only improve the economy, so a bankrupt
+  territory must still be allowed to attack/chop (gating them caused
+  stalemates). `AiStateScorer`'s bankruptcy lookahead uses the same
+  `SurvivesNextUpkeep` predicate, so a buy/combine the scorer would
+  approve is never silently dropped by the enumerator. Treasury-aware
+  solvency + the removal of the standing `GoldWeight` term close #19's
+  hoarding; the multi-turn horizon closes #22's doom-spiral bankruptcies.
 - **`ComputerAi`** — the game's only AI (drives every `PlayerKind.Computer`
-  slot). 1-ply lookahead via `AiSimulator.Clone` +
-  `AiStateScorer.Score`. Territories are visited in **descending cell-count
-  order** (capital coord as stable tie-breaker) so larger, higher-leverage
-  territories are evaluated first; equal-delta candidates from later
-  territories can't displace the first winner under the strict `>` test.
+  slot). 1-ply lookahead via `AiSimulator.Clone` + `AiStateScorer.Score`.
+  **Stepwise-greedy phase ordering (#26):** each `ChooseNextAction` call
+  picks the largest non-exhausted owned territory (descending cell-count,
+  capital coord tie-breaker) and tries phases **1 → 2a → 2b → 3 → 4a → 4b**
+  in order, committing to the first phase that yields an action; a
+  territory is marked visited only when *all* phases come up empty. Within
+  a phase, units are iterated in power-then-coord order and all candidates
+  scored, best delta wins.
+  **Phases 1 and 2a take their best legal candidate regardless of delta
+  sign** (`BestPositiveDelta` called with `threshold = int.MinValue`) — a
+  free capture/chop/grave-clear or an unlock-combine is never declined in
+  favor of the status quo, even when border-exposure makes the immediate
+  delta ≤ 0. Phases 2b/3/4 keep the strictly-positive (`> 0`) gate: 2b/3
+  are always-positive under the scorer anyway, and 4a/4b (towers,
+  defensive repositions) are genuinely optional. Ties resolve to the
+  first-yielded candidate, so equal-delta candidates from later
+  territories/units can't displace an earlier winner.
   `AiSimulator` mirrors the mutation logic in `GameController`'s
-  `ExecuteAi*` paths; if you add a new AI-capable action you must update
-  both in lockstep, or simulated scoring will drift from real play.
-  `AiSimulator.Apply` throws `NotSupportedException` on action kinds it
-  doesn't model (Rally, ClaimVictory, Dismiss*) so future drift surfaces
-  loudly rather than as a silent no-op.
+  `ExecuteAi*` paths (including `ExecuteAiBuyCombine`); if you add a new
+  AI-capable action you must update both in lockstep, or simulated scoring
+  will drift from real play. `AiSimulator.Apply` throws
+  `NotSupportedException` on action kinds it doesn't model (Rally,
+  ClaimVictory, Dismiss*) so future drift surfaces loudly rather than as
+  a silent no-op.
+- **`AiStateScorer`** — pure `GameState → int` scoring (self value minus
+  enemy values). Key tuned constants: `TileWeight` 10, `NetIncomeWeight`
+  1, `FragmentationPenalty` 15, `EnemyEdgePenalty` 3,
+  `UndefendedBorderPenalty` 10, and **`OwnTreePenalty` 35** (raised from
+  20). The tree penalty is set above 3× `UndefendedBorderPenalty` so a
+  chop (worth `OwnTreePenalty` for removing the tree, on a bankrupt
+  territory the +1 income is clamped) stays positive even when the
+  chopping unit uncovers up to three border tiles — i.e. chops dominate
+  the border-exposure they incur, fixing the tree-spread "treeopocalypse"
+  stalemates. Gold contributes zero to standing value (see #19).
 - **`ReplayDrivenAi`** — script-driven chooser used only by the
   TutorialBuilder's Preview mode. Replays recorded non-player-0
   `ReplayBeat`s through the standard AI step machine via a shared
