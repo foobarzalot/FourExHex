@@ -45,8 +45,10 @@ The two-part scheme maps onto each platform's two version fields in
 so a build can never ship a stale preset version. To bump, edit **only**
 `scripts/AppVersion.cs`; run `tools/sync_version.sh` (idempotent) to update the
 committed `export_presets.cfg` immediately, or just let the next build do it.
-(Windows' dot-quad `file_version`/`product_version` use a different format and
-are currently unset; the sync leaves them untouched.)
+Windows needs a 4-part numeric version, so the sync derives a dot-quad
+`<major>.<minor>.<patch>.<build>` from Marketing (padded to three parts) plus
+Build — e.g. `1.0` + `6` → `1.0.0.6` — and writes it to both
+`application/file_version` and `application/product_version`.
 
 ### Android prerequisites
 

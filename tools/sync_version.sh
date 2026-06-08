@@ -20,8 +20,12 @@
 #   Build     -> iOS application/version       (CFBundleVersion)
 #             -> Android version/code          (versionCode)
 #             -> macOS application/version
-# (Windows uses a different dot-quad file_version/product_version format and is
-#  left untouched — currently unset; wire it here if Windows shipping starts.)
+#   Windows   -> application/file_version + application/product_version, as a
+#                dot-quad "<major>.<minor>.<patch>.<build>" — Marketing padded
+#                to three numeric parts (missing parts -> 0) with Build as the
+#                fourth (e.g. Marketing "1.0" + Build 6 -> "1.0.0.6"). Windows
+#                version resources require this 4-part numeric format, not the
+#                marketing string the other platforms carry.
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -37,15 +41,23 @@ BUILD="$(grep -oE 'Build[[:space:]]*=[[:space:]]*[0-9]+' "$APPVER" | grep -oE '[
 [[ -n "$MARKETING" ]] || { echo "ERROR: could not parse 'Marketing = \"...\"' from $APPVER" >&2; exit 1; }
 [[ -n "$BUILD" ]]     || { echo "ERROR: could not parse 'Build = <int>' from $APPVER" >&2; exit 1; }
 
+# Windows wants a 4-part numeric dot-quad. Pad Marketing's dotted parts to
+# major.minor.patch (missing -> 0) and append Build as the fourth component.
+IFS='.' read -r WIN_MAJOR WIN_MINOR WIN_PATCH _ <<< "$MARKETING"
+WINVER="${WIN_MAJOR:-0}.${WIN_MINOR:-0}.${WIN_PATCH:-0}.${BUILD}"
+
 # Anchored at line start so application/short_version is never matched by the
-# application/version rule, and Windows' application/{file,product}_version are
-# left alone. macOS and iOS both carry application/short_version + /version and
-# both want the same value, so the global substitution is correct for both.
+# application/version rule (and neither is matched by file_version /
+# product_version, which are distinct keys). macOS and iOS both carry
+# application/short_version + /version and both want the same value, so the
+# global substitution is correct for both.
 sed -i '' -E \
   -e "s|^application/short_version=\".*\"|application/short_version=\"${MARKETING}\"|" \
   -e "s|^application/version=\".*\"|application/version=\"${BUILD}\"|" \
   -e "s|^version/name=\".*\"|version/name=\"${MARKETING}\"|" \
   -e "s|^version/code=.*|version/code=${BUILD}|" \
+  -e "s|^application/file_version=\".*\"|application/file_version=\"${WINVER}\"|" \
+  -e "s|^application/product_version=\".*\"|application/product_version=\"${WINVER}\"|" \
   "$PRESETS"
 
-echo "==> Synced export_presets.cfg to AppVersion: marketing=${MARKETING} build=${BUILD}"
+echo "==> Synced export_presets.cfg to AppVersion: marketing=${MARKETING} build=${BUILD} (windows=${WINVER})"
