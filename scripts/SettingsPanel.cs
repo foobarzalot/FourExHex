@@ -40,6 +40,13 @@ public sealed partial class SettingsPanel : CanvasLayer
     private static readonly Font _serifFont =
         GD.Load<FontFile>("res://fonts/DMSerifDisplay-Regular.ttf");
 
+    // Single fixed-size centered panel (one column, both orientations). When
+    // the safe viewport is smaller than the panel's design size — landscape on
+    // a short phone — FitPanel scales the whole panel down uniformly to fit,
+    // the same shrink-to-fit the main menu uses for its panels (issue #17).
+    private const float ContentWidth = 420f;   // inner VBox min width
+    private const float ViewportMargin = 24f;
+
     public override void _Ready()
     {
         Layer = 100;
@@ -53,14 +60,15 @@ public sealed partial class SettingsPanel : CanvasLayer
         _backdrop = ModalChrome.BuildBackdrop(viewport);
         AddChild(_backdrop);
 
-        // Content-sized centered panel — the inner vbox CustomMinimumSize
-        // drives dimensions; reads as part of the Load Game / New Game family.
+        // Content-sized centered panel — a single column in both orientations.
+        // FitPanel scales it down (never up) to fit a short/narrow viewport,
+        // the same shrink-to-fit the main menu uses for its panels.
         _panel = ModalChrome.BuildCenteredPanel();
         AddChild(_panel);
 
         var vbox = new VBoxContainer
         {
-            CustomMinimumSize = new Vector2(420, 0),
+            CustomMinimumSize = new Vector2(ContentWidth, 0),
         };
         vbox.AddThemeConstantOverride("separation", 18);
         _panel.AddChild(vbox);
@@ -78,89 +86,25 @@ public sealed partial class SettingsPanel : CanvasLayer
         var goldRule = new ColorRect
         {
             Color = UiPalette.GoldDim,
-            CustomMinimumSize = new Vector2(0, 1),
+            CustomMinimumSize = new Vector2(200, 1),
             SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter,
         };
-        goldRule.CustomMinimumSize = new Vector2(200, 1);
         vbox.AddChild(goldRule);
 
-        _sfxCheckBox = BuildCheckRow(vbox, "Sound Effects", UserSettings.SfxEnabled, OnSfxToggled);
-        _vfxCheckBox = BuildCheckRow(vbox, "Visual Effects", UserSettings.VfxEnabled, OnVfxToggled);
+        vbox.AddChild(BuildCheckRow("Sound Effects", UserSettings.SfxEnabled, OnSfxToggled, out _sfxCheckBox));
+        vbox.AddChild(BuildCheckRow("Visual Effects", UserSettings.VfxEnabled, OnVfxToggled, out _vfxCheckBox));
 
         var aiSpeedLabel = new Label { Text = "Computer Player Speed" };
         aiSpeedLabel.AddThemeFontSizeOverride("font_size", 24);
         aiSpeedLabel.AddThemeColorOverride("font_color", UiPalette.InkSoft);
         vbox.AddChild(aiSpeedLabel);
-
-        // Shared ButtonGroup turns the four toggles into a radio set:
-        // pressing one un-presses the others. Each button captures its
-        // own PlaybackSpeed via the closure so the handler doesn't need
-        // to parse the label back into an enum. Godot's default toggle
-        // visuals are subtle (a slight shading shift); we paint our
-        // own selected/unselected stylebox so the active speed is
-        // obvious at a glance.
-        var aiSpeedRow = new HBoxContainer();
-        aiSpeedRow.AddThemeConstantOverride("separation", 8);
-        var aiSpeedGroup = new ButtonGroup();
-        PlaybackSpeed currentSpeed = UserSettings.AiSpeed;
-        _aiSpeedButtons = new Button[SpeedOrder.Length];
-        for (int i = 0; i < SpeedOrder.Length; i++)
-        {
-            PlaybackSpeed speed = SpeedOrder[i];
-            var btn = new Button
-            {
-                Text = SpeedLabel(speed),
-                ToggleMode = true,
-                ButtonGroup = aiSpeedGroup,
-                ButtonPressed = speed == currentSpeed,
-                FocusMode = Control.FocusModeEnum.None,
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-            };
-            btn.AddThemeFontSizeOverride("font_size", 20);
-            btn.Pressed += () => OnAiSpeedPressed(speed);
-            // Toggled fires when this button's pressed state flips —
-            // including the auto-unpress the ButtonGroup triggers on
-            // siblings — so restyling here keeps every button in sync
-            // without polling.
-            btn.Toggled += pressed => ApplySpeedButtonStyle(btn, pressed);
-            AudioBus.AttachClick(btn);
-            aiSpeedRow.AddChild(btn);
-            _aiSpeedButtons[i] = btn;
-            ApplySpeedButtonStyle(btn, btn.ButtonPressed);
-        }
-        vbox.AddChild(aiSpeedRow);
+        vbox.AddChild(BuildSpeedRow(UserSettings.AiSpeed, OnAiSpeedPressed, out _aiSpeedButtons));
 
         var replaySpeedLabel = new Label { Text = "Replay Speed" };
         replaySpeedLabel.AddThemeFontSizeOverride("font_size", 24);
         replaySpeedLabel.AddThemeColorOverride("font_color", UiPalette.InkSoft);
         vbox.AddChild(replaySpeedLabel);
-
-        var replaySpeedRow = new HBoxContainer();
-        replaySpeedRow.AddThemeConstantOverride("separation", 8);
-        var replaySpeedGroup = new ButtonGroup();
-        PlaybackSpeed currentReplaySpeed = UserSettings.ReplaySpeed;
-        _replaySpeedButtons = new Button[SpeedOrder.Length];
-        for (int i = 0; i < SpeedOrder.Length; i++)
-        {
-            PlaybackSpeed speed = SpeedOrder[i];
-            var btn = new Button
-            {
-                Text = SpeedLabel(speed),
-                ToggleMode = true,
-                ButtonGroup = replaySpeedGroup,
-                ButtonPressed = speed == currentReplaySpeed,
-                FocusMode = Control.FocusModeEnum.None,
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-            };
-            btn.AddThemeFontSizeOverride("font_size", 20);
-            btn.Pressed += () => OnReplaySpeedPressed(speed);
-            btn.Toggled += pressed => ApplySpeedButtonStyle(btn, pressed);
-            AudioBus.AttachClick(btn);
-            replaySpeedRow.AddChild(btn);
-            _replaySpeedButtons[i] = btn;
-            ApplySpeedButtonStyle(btn, btn.ButtonPressed);
-        }
-        vbox.AddChild(replaySpeedRow);
+        vbox.AddChild(BuildSpeedRow(UserSettings.ReplaySpeed, OnReplaySpeedPressed, out _replaySpeedButtons));
 
         var creditsButton = new Button
         {
@@ -200,6 +144,44 @@ public sealed partial class SettingsPanel : CanvasLayer
         // 101 vs 100), so it draws on top while Settings stays visible.
         _creditsPanel = new CreditsPanel();
         AddChild(_creditsPanel);
+
+        // Scale-to-fit now and on every later change. Rotation / window move
+        // fires SizeChanged; a notch/status-bar toggle that shifts the safe
+        // rect without a resize fires SafeArea.Changed.
+        FitPanel();
+        GetViewport().SizeChanged += FitPanel;
+        SafeArea.Changed += OnSafeAreaChanged;
+    }
+
+    public override void _ExitTree()
+    {
+        SafeArea.Changed -= OnSafeAreaChanged;
+    }
+
+    private void OnSafeAreaChanged(LogicalSafeInsets _) => FitPanel();
+
+    /// <summary>Scale the centered panel down (never up) so its single-column
+    /// layout fits within the safe viewport — the same shrink-to-fit the main
+    /// menu's <c>ScaleToFit</c> uses. In a short landscape safe area the whole
+    /// panel scales uniformly instead of scrolling or clipping (issue #17).</summary>
+    private void FitPanel()
+    {
+        Vector2 vp = GetViewport().GetVisibleRect().Size;
+        LogicalSafeInsets safe = SafeArea.Current;
+        float availW = vp.X - safe.Left - safe.Right - ViewportMargin * 2f;
+        float availH = vp.Y - safe.Top - safe.Bottom - ViewportMargin * 2f;
+
+        Vector2 design = _panel.GetCombinedMinimumSize();
+        float scale = design.X > 0f && design.Y > 0f
+            ? Mathf.Min(1f, Mathf.Min(availW / design.X, availH / design.Y))
+            : 1f;
+        _panel.PivotOffset = design * 0.5f;
+        _panel.Scale = new Vector2(scale, scale);
+
+        Log.Debug(Log.LogCategory.Render,
+            $"SettingsPanel: fit viewport={vp.X:0}x{vp.Y:0} " +
+            $"safe=(t{safe.Top:0},b{safe.Bottom:0},l{safe.Left:0},r{safe.Right:0}) " +
+            $"design={design.X:0}x{design.Y:0} scale={scale:0.00}");
     }
 
     private void OnCreditsPressed()
@@ -212,6 +194,8 @@ public sealed partial class SettingsPanel : CanvasLayer
     public void Open()
     {
         if (IsOpen) return;
+        // Re-fit in case the viewport / safe area changed while closed.
+        FitPanel();
         _sfxCheckBox.ButtonPressed = UserSettings.SfxEnabled;
         ApplyCheckBoxStyle(_sfxCheckBox, UserSettings.SfxEnabled);
         _vfxCheckBox.ButtonPressed = UserSettings.VfxEnabled;
@@ -287,9 +271,11 @@ public sealed partial class SettingsPanel : CanvasLayer
     /// Splitting caption and box into two sibling controls (rather than a
     /// stock CheckBox, which bundles icon+text into one control with
     /// per-state content margins) means the caption can never shift on
-    /// hover. Returns the box so Open() can re-sync its pressed state.
+    /// hover. Returns the parentless row; <paramref name="box"/> hands back the
+    /// toggle Button so Open() can re-sync its pressed state. RebuildBody
+    /// parents the row into the current single/two-column arrangement.
     /// </summary>
-    private Button BuildCheckRow(VBoxContainer parent, string label, bool initial, Action<bool> onToggled)
+    private HBoxContainer BuildCheckRow(string label, bool initial, Action<bool> onToggled, out Button box)
     {
         var row = new HBoxContainer();
         row.AddThemeConstantOverride("separation", 12);
@@ -304,7 +290,7 @@ public sealed partial class SettingsPanel : CanvasLayer
         caption.AddThemeColorOverride("font_color", UiPalette.InkSoft);
         row.AddChild(caption);
 
-        var box = new Button
+        box = new Button
         {
             ToggleMode = true,
             ButtonPressed = initial,
@@ -312,18 +298,56 @@ public sealed partial class SettingsPanel : CanvasLayer
             CustomMinimumSize = new Vector2(32, 32),
             SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
         };
-        box.AddThemeFontSizeOverride("font_size", 22);
-        box.Toggled += pressed =>
+        Button boxLocal = box;
+        boxLocal.AddThemeFontSizeOverride("font_size", 22);
+        boxLocal.Toggled += pressed =>
         {
-            ApplyCheckBoxStyle(box, pressed);
+            ApplyCheckBoxStyle(boxLocal, pressed);
             onToggled(pressed);
         };
-        AudioBus.AttachClick(box);
-        ApplyCheckBoxStyle(box, initial);
-        row.AddChild(box);
+        AudioBus.AttachClick(boxLocal);
+        ApplyCheckBoxStyle(boxLocal, initial);
+        row.AddChild(boxLocal);
 
-        parent.AddChild(row);
-        return box;
+        return row;
+    }
+
+    /// <summary>
+    /// Build one parentless four-button speed radio row (Slow / Normal / Fast /
+    /// Instant) sharing a ButtonGroup. <paramref name="buttons"/> hands back the
+    /// buttons so Open() can re-sync pressed state. Used for both the AI-turn
+    /// and replay speed rows.
+    /// </summary>
+    private HBoxContainer BuildSpeedRow(PlaybackSpeed current, Action<PlaybackSpeed> onPressed, out Button[] buttons)
+    {
+        var row = new HBoxContainer();
+        row.AddThemeConstantOverride("separation", 8);
+        var group = new ButtonGroup();
+        buttons = new Button[SpeedOrder.Length];
+        for (int i = 0; i < SpeedOrder.Length; i++)
+        {
+            PlaybackSpeed speed = SpeedOrder[i];
+            var btn = new Button
+            {
+                Text = SpeedLabel(speed),
+                ToggleMode = true,
+                ButtonGroup = group,
+                ButtonPressed = speed == current,
+                FocusMode = Control.FocusModeEnum.None,
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            };
+            btn.AddThemeFontSizeOverride("font_size", 20);
+            btn.Pressed += () => onPressed(speed);
+            // Toggled fires on every pressed-state flip — including the
+            // auto-unpress the ButtonGroup triggers on siblings — so restyling
+            // here keeps every button in sync without polling.
+            btn.Toggled += pressed => ApplySpeedButtonStyle(btn, pressed);
+            AudioBus.AttachClick(btn);
+            row.AddChild(btn);
+            buttons[i] = btn;
+            ApplySpeedButtonStyle(btn, btn.ButtonPressed);
+        }
+        return row;
     }
 
     /// <summary>

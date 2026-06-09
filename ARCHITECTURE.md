@@ -598,13 +598,23 @@ active screen's DPI and drives the root `Window.ContentScaleFactor`:
   `SizeChanged` (rotation / monitor move), with an equality guard against the
   resize feedback loop.
 - **Consequence for narrow viewports.** Scaling up shrinks the logical canvas
-  (a high-density portrait phone lands near ~400 logical px wide). Centered
+  (a high-density portrait phone lands near ~400–500 logical px wide). Centered
   fixed-width HUD panels therefore cap their width to the viewport
   (`HudView.PositionTutorialOverlay` / `PositionBankruptToast`, shared
-  `HudPanelSideMargin`) and the win/defeat/claim overlays center via anchors
-  rather than an absolute position captured at build time. The portrait bar
-  layout itself does not yet reflow for very narrow logical widths — tracked in
-  TECHDEBT.
+  `HudPanelSideMargin`). The win/defeat/claim overlays are container-based
+  (eyebrow + DM Serif title + gold rule + an `HFlowContainer` button row that
+  wraps to a second line when too narrow), built by a shared
+  `HudView.BuildEndgameOverlay`; `HudView.PositionEndgameOverlays` clamps each
+  panel's width to `min(designW, viewport − 2·HudPanelSideMargin)` and re-runs
+  on `OnViewportMetricsChanged`. The shared modals (`SettingsPanel`,
+  `CreditsPanel`) keep a single-column layout in both orientations and
+  scale-to-fit: `FitPanel` applies a uniform `Control.Scale` (clamped ≤ 1) so
+  the whole panel shrinks to the safe viewport on a short landscape instead of
+  scrolling or clipping — the same shrink-to-fit as `MainMenuScene.ScaleToFit`.
+  (CreditsPanel keeps its own inner `ScrollContainer` for the long blurb; its
+  body label is `MouseFilter = Pass` so a touch-drag reaches the scroll.) Issue
+  #17. The portrait bar layout itself does not yet reflow for very narrow
+  logical widths — tracked in TECHDEBT.
 
 ## Safe-area handling (autoload)
 
@@ -654,7 +664,11 @@ Dynamic Island / home-indicator zones on devices that have them.
   `SafeArea.Changed` and triggers an `ApplyLayout` + `PublishInsets` pass
   when the OS reports a different safe rect (e.g. status-bar show/hide,
   rotation crossing the notch axis). The `hasTopNotch` conditional above
-  re-evaluates on each rebuild.
+  re-evaluates on each rebuild. The shared modals (`SettingsPanel`,
+  `CreditsPanel`) likewise subscribe to `SafeArea.Changed` and
+  `GetViewport().SizeChanged`, re-running `FitPanel` so their scale-to-fit
+  stays inside the safe viewport (they read `SafeArea.Current` for the
+  top/bottom/left/right insets); both unsubscribe in `_ExitTree`.
 
 ## GameController ↔ GameOperations split
 

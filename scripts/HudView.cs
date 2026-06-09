@@ -82,6 +82,10 @@ public partial class HudView : OrientationHud, IHudView
     private Button _defeatContinueButton = null!;
     private Button _claimWinNowButton = null!;
     private Button _claimContinueButton = null!;
+    // The endgame overlay panels (victory / defeat / claim) paired with their
+    // design widths, so PositionEndgameOverlays can clamp each to the viewport
+    // on narrow / scaled-up screens (portrait phones) without clipping.
+    private readonly System.Collections.Generic.List<(PanelContainer Panel, float DesignWidth)> _endgamePanels = new();
     private Panel _tutorialPanel = null!;
     private Label _tutorialLabel = null!;
     private Label _continueHint = null!;
@@ -362,6 +366,7 @@ public partial class HudView : OrientationHud, IHudView
         BuildVictoryOverlay();
         BuildDefeatOverlay();
         BuildClaimVictoryOverlay();
+        PositionEndgameOverlays();
         BuildTutorialOverlay();
         BuildBankruptToast();
     }
@@ -599,6 +604,7 @@ public partial class HudView : OrientationHud, IHudView
         // Re-fit width-capped overlays.
         PositionTutorialOverlay();
         PositionBankruptToast();
+        PositionEndgameOverlays();
     }
 
     protected override MapInsets ComputeInsets()
@@ -1244,112 +1250,24 @@ public partial class HudView : OrientationHud, IHudView
 
     private void BuildVictoryOverlay()
     {
-        // Full-screen semi-transparent scrim that blocks clicks through
-        // to the map.
-        _victoryOverlay = new Control
-        {
-            AnchorLeft = 0f,
-            AnchorRight = 1f,
-            AnchorTop = 0f,
-            AnchorBottom = 1f,
-            MouseFilter = Control.MouseFilterEnum.Stop,
-            Visible = false,
-        };
-        AddChild(_victoryOverlay);
-
-        var scrim = new ColorRect
-        {
-            Color = new Color(0f, 0f, 0f, 0.6f),
-            AnchorLeft = 0f,
-            AnchorRight = 1f,
-            AnchorTop = 0f,
-            AnchorBottom = 1f,
-        };
-        _victoryOverlay.AddChild(scrim);
-
-        // Centered panel: VICTORY eyebrow + DM Serif "<Player> wins!" in
-        // the player's fill color + thin gold rule + three-button action
-        // row (Play Again / Replay / Main Menu). Bumped from 540×220 →
-        // 580×280 so the eyebrow + rule fit above the win text without
-        // crowding the buttons.
-        const float panelW = 580f;
-        const float panelH = 280f;
-        var panel = new Panel
-        {
-            // Anchor-centered (not absolute Position) so it stays centered
-            // across viewport changes — content-scale factor, window resize,
-            // orientation flip — without a reposition pass.
-            AnchorLeft = 0.5f,
-            AnchorRight = 0.5f,
-            AnchorTop = 0.5f,
-            AnchorBottom = 0.5f,
-            OffsetLeft = -panelW * 0.5f,
-            OffsetRight = panelW * 0.5f,
-            OffsetTop = -panelH * 0.5f,
-            OffsetBottom = panelH * 0.5f,
-        };
-        _victoryOverlay.AddChild(panel);
-
-        var eyebrow = new Label
-        {
-            Text = "VICTORY",
-            HorizontalAlignment = HorizontalAlignment.Center,
-            Position = new Vector2(0, 32),
-            Size = new Vector2(panelW, 22),
-        };
-        eyebrow.AddThemeFontSizeOverride("font_size", 18);
-        eyebrow.AddThemeColorOverride("font_color", UiPalette.Gold);
-        panel.AddChild(eyebrow);
-
-        _victoryLabel = new Label
-        {
-            Text = "Victory!",
-            HorizontalAlignment = HorizontalAlignment.Center,
-            Position = new Vector2(0, 58),
-            Size = new Vector2(panelW, 70),
-        };
-        _victoryLabel.AddThemeFontOverride("font", SerifFont);
-        _victoryLabel.AddThemeFontSizeOverride("font_size", 52);
-        panel.AddChild(_victoryLabel);
-
-        var rule = new ColorRect
-        {
-            Color = UiPalette.GoldDim,
-            Position = new Vector2(panelW * 0.5f - 110f, 144f),
-            Size = new Vector2(220f, 1f),
-        };
-        panel.AddChild(rule);
-
-        const float buttonW = 150f;
-        const float buttonH = 48f;
-        const float gap = 12f;
-        float rowY = 200f;
-        float rowX = (panelW - (buttonW * 3f + gap * 2f)) * 0.5f;
-
-        var playAgainButton = new Button { Text = "Play Again" };
-        playAgainButton.AddThemeFontSizeOverride("font_size", 22);
-        playAgainButton.Position = new Vector2(rowX, rowY);
-        playAgainButton.Size = new Vector2(buttonW, buttonH);
-        playAgainButton.Pressed += () => NewGameClicked?.Invoke();
-        AudioBus.AttachClick(playAgainButton);
-        panel.AddChild(playAgainButton);
-
-        _replayButton = new Button { Text = "Replay" };
-        _replayButton.AddThemeFontSizeOverride("font_size", 22);
-        _replayButton.Position = new Vector2(rowX + buttonW + gap, rowY);
-        _replayButton.Size = new Vector2(buttonW, buttonH);
-        _replayButton.Pressed += () => ReplayClicked?.Invoke();
+        // VICTORY eyebrow + DM Serif "<Player> wins!" (color set by Refresh)
+        // + gold rule + three-button row (Play Again / Replay / Main Menu).
+        (Control overlay, Label title, Button[] buttons) = BuildEndgameOverlay(
+            eyebrowText: "VICTORY",
+            titleText: "Victory!",
+            titleFontSize: 52,
+            designWidth: 580f,
+            buttonMinWidth: 150f,
+            buttonSpecs: new (string, Action)[]
+            {
+                ("Play Again", () => NewGameClicked?.Invoke()),
+                ("Replay", () => ReplayClicked?.Invoke()),
+                ("Main Menu", () => MainMenuClicked?.Invoke()),
+            });
+        _victoryOverlay = overlay;
+        _victoryLabel = title;
+        _replayButton = buttons[1];
         _replayButton.Disabled = true;  // gated by SetReplayAvailable
-        AudioBus.AttachClick(_replayButton);
-        panel.AddChild(_replayButton);
-
-        var mainMenuButton = new Button { Text = "Main Menu" };
-        mainMenuButton.AddThemeFontSizeOverride("font_size", 22);
-        mainMenuButton.Position = new Vector2(rowX + (buttonW + gap) * 2f, rowY);
-        mainMenuButton.Size = new Vector2(buttonW, buttonH);
-        mainMenuButton.Pressed += () => MainMenuClicked?.Invoke();
-        AudioBus.AttachClick(mainMenuButton);
-        panel.AddChild(mainMenuButton);
     }
 
     public void SetReplayAvailable(bool available)
@@ -1359,128 +1277,77 @@ public partial class HudView : OrientationHud, IHudView
     }
 
     /// <summary>
-    /// Build a centered, click-blocking panel with "<Player> defeated"
-    /// and Continue / Main Menu buttons. Hidden by default;
-    /// <see cref="Refresh"/> toggles visibility based on
+    /// Build the defeat overlay: "<Player> defeated" with Continue / Play
+    /// Again / Main Menu buttons. Hidden by default; <see cref="Refresh"/>
+    /// toggles visibility based on
     /// <see cref="SessionState.PendingDefeatScreen"/>. Continue dismisses
-    /// the overlay (controller resumes the paused AI loop); Main Menu
-    /// reuses the existing <see cref="MainMenuClicked"/> event.
+    /// the overlay (controller resumes the paused AI loop).
     /// </summary>
     private void BuildDefeatOverlay()
     {
-        _defeatOverlay = new Control
-        {
-            AnchorLeft = 0f,
-            AnchorRight = 1f,
-            AnchorTop = 0f,
-            AnchorBottom = 1f,
-            MouseFilter = Control.MouseFilterEnum.Stop,
-            Visible = false,
-        };
-        AddChild(_defeatOverlay);
-
-        var scrim = new ColorRect
-        {
-            Color = new Color(0f, 0f, 0f, 0.6f),
-            AnchorLeft = 0f,
-            AnchorRight = 1f,
-            AnchorTop = 0f,
-            AnchorBottom = 1f,
-        };
-        _defeatOverlay.AddChild(scrim);
-
-        // DEFEAT eyebrow + DM Serif "<Player> defeated" in player color +
-        // gold rule + three-button row. Same shell as the Victory panel
-        // so the two read as a family.
-        const float panelW = 540f;
-        const float panelH = 280f;
-        var panel = new Panel
-        {
-            // Anchor-centered (see BuildVictoryOverlay): stays centered across
-            // viewport/content-scale changes with no reposition pass.
-            AnchorLeft = 0.5f,
-            AnchorRight = 0.5f,
-            AnchorTop = 0.5f,
-            AnchorBottom = 0.5f,
-            OffsetLeft = -panelW * 0.5f,
-            OffsetRight = panelW * 0.5f,
-            OffsetTop = -panelH * 0.5f,
-            OffsetBottom = panelH * 0.5f,
-        };
-        _defeatOverlay.AddChild(panel);
-
-        var eyebrow = new Label
-        {
-            Text = "DEFEAT",
-            HorizontalAlignment = HorizontalAlignment.Center,
-            Position = new Vector2(0, 32),
-            Size = new Vector2(panelW, 22),
-        };
-        eyebrow.AddThemeFontSizeOverride("font_size", 18);
-        eyebrow.AddThemeColorOverride("font_color", UiPalette.Gold);
-        panel.AddChild(eyebrow);
-
-        _defeatLabel = new Label
-        {
-            Text = "Defeated",
-            HorizontalAlignment = HorizontalAlignment.Center,
-            Position = new Vector2(0, 58),
-            Size = new Vector2(panelW, 70),
-        };
-        _defeatLabel.AddThemeFontOverride("font", SerifFont);
-        _defeatLabel.AddThemeFontSizeOverride("font_size", 48);
-        panel.AddChild(_defeatLabel);
-
-        var rule = new ColorRect
-        {
-            Color = UiPalette.GoldDim,
-            Position = new Vector2(panelW * 0.5f - 110f, 144f),
-            Size = new Vector2(220f, 1f),
-        };
-        panel.AddChild(rule);
-
-        const float buttonW = 140f;
-        const float buttonH = 48f;
-        const float gap = 20f;
-        float rowY = 200f;
-        float rowX = (panelW - (buttonW * 3f + gap * 2f)) * 0.5f;
-
-        _defeatContinueButton = new Button { Text = "Continue" };
-        _defeatContinueButton.AddThemeFontSizeOverride("font_size", 22);
-        _defeatContinueButton.Position = new Vector2(rowX, rowY);
-        _defeatContinueButton.Size = new Vector2(buttonW, buttonH);
-        _defeatContinueButton.Pressed += () => DefeatContinueClicked?.Invoke();
-        AudioBus.AttachClick(_defeatContinueButton);
-        panel.AddChild(_defeatContinueButton);
-
-        var playAgainButton = new Button { Text = "Play Again" };
-        playAgainButton.AddThemeFontSizeOverride("font_size", 22);
-        playAgainButton.Position = new Vector2(rowX + buttonW + gap, rowY);
-        playAgainButton.Size = new Vector2(buttonW, buttonH);
-        playAgainButton.Pressed += () => NewGameClicked?.Invoke();
-        AudioBus.AttachClick(playAgainButton);
-        panel.AddChild(playAgainButton);
-
-        var mainMenuButton = new Button { Text = "Main Menu" };
-        mainMenuButton.AddThemeFontSizeOverride("font_size", 22);
-        mainMenuButton.Position = new Vector2(rowX + (buttonW + gap) * 2f, rowY);
-        mainMenuButton.Size = new Vector2(buttonW, buttonH);
-        mainMenuButton.Pressed += () => MainMenuClicked?.Invoke();
-        AudioBus.AttachClick(mainMenuButton);
-        panel.AddChild(mainMenuButton);
+        (Control overlay, Label title, Button[] buttons) = BuildEndgameOverlay(
+            eyebrowText: "DEFEAT",
+            titleText: "Defeated",
+            titleFontSize: 48,
+            designWidth: 540f,
+            buttonMinWidth: 140f,
+            buttonSpecs: new (string, Action)[]
+            {
+                ("Continue", () => DefeatContinueClicked?.Invoke()),
+                ("Play Again", () => NewGameClicked?.Invoke()),
+                ("Main Menu", () => MainMenuClicked?.Invoke()),
+            });
+        _defeatOverlay = overlay;
+        _defeatLabel = title;
+        _defeatContinueButton = buttons[0];
     }
 
     /// <summary>
-    /// Build a centered, click-blocking panel offering an early win when
-    /// a human ends their turn while owning >50% of the map. Two buttons:
-    /// Win Now (declare victory immediately) and Continue Playing (proceed
-    /// with the End Turn). Hidden by default; <see cref="Refresh"/>
+    /// Build the claim-victory overlay offering an early win when a human
+    /// ends their turn owning a winning share of the map. Two buttons: Win
+    /// Now / Continue Playing. Hidden by default; <see cref="Refresh"/>
     /// toggles visibility based on
     /// <see cref="SessionState.PendingClaimVictory"/>.
     /// </summary>
     private void BuildClaimVictoryOverlay()
     {
-        _claimVictoryOverlay = new Control
+        (Control overlay, Label _, Button[] buttons) = BuildEndgameOverlay(
+            eyebrowText: "CHECKPOINT",
+            titleText: "Claim Victory?",
+            titleFontSize: 44,
+            designWidth: 540f,
+            buttonMinWidth: 200f,
+            buttonSpecs: new (string, Action)[]
+            {
+                ("Win Now", () => ClaimVictoryWinNowClicked?.Invoke()),
+                ("Continue Playing", () => ClaimVictoryContinueClicked?.Invoke()),
+            });
+        _claimVictoryOverlay = overlay;
+        _claimWinNowButton = buttons[0];
+        _claimContinueButton = buttons[1];
+    }
+
+    /// <summary>
+    /// Shared builder for the victory / defeat / claim-victory overlays —
+    /// a full-screen click-blocking scrim plus a centered slate panel with
+    /// an eyebrow label, a DM Serif title, a gold rule, and a button row.
+    /// All three differ only in their text, title size, design width, and
+    /// button set, so they share one container-based layout.
+    ///
+    /// The panel is content-sized vertically (height grows with the wrapped
+    /// content) and clamped horizontally by <see cref="PositionEndgameOverlays"/>
+    /// so it never clips off the sides of a narrow / scaled-up viewport. The
+    /// button row is an <see cref="HFlowContainer"/> so the buttons wrap to a
+    /// second line on very narrow widths rather than overflowing the panel.
+    /// Returns the overlay root, the title label (so Refresh can set the
+    /// per-player text/color), and the built buttons in spec order.
+    /// </summary>
+    private (Control Overlay, Label Title, Button[] Buttons) BuildEndgameOverlay(
+        string eyebrowText, string titleText, int titleFontSize,
+        float designWidth, float buttonMinWidth,
+        (string Text, Action OnPressed)[] buttonSpecs)
+    {
+        var overlay = new Control
         {
             AnchorLeft = 0f,
             AnchorRight = 1f,
@@ -1489,7 +1356,7 @@ public partial class HudView : OrientationHud, IHudView
             MouseFilter = Control.MouseFilterEnum.Stop,
             Visible = false,
         };
-        AddChild(_claimVictoryOverlay);
+        AddChild(overlay);
 
         var scrim = new ColorRect
         {
@@ -1499,79 +1366,116 @@ public partial class HudView : OrientationHud, IHudView
             AnchorTop = 0f,
             AnchorBottom = 1f,
         };
-        _claimVictoryOverlay.AddChild(scrim);
+        overlay.AddChild(scrim);
 
-        // CHECKPOINT eyebrow + DM Serif "Claim Victory?" + gold rule +
-        // two-button row (Win Now / Continue). Matches the Victory /
-        // Defeat shell so all three overlays read as one design family.
-        const float panelW = 540f;
-        const float panelH = 300f;
-        var panel = new Panel
+        // Anchor-centered panel. The horizontal offsets (= ±designWidth/2)
+        // are re-set by PositionEndgameOverlays to a viewport-clamped width;
+        // GrowVertical.Both lets the height follow the wrapped content.
+        var panel = new PanelContainer
         {
-            // Anchor-centered (see BuildVictoryOverlay): stays centered across
-            // viewport/content-scale changes with no reposition pass.
             AnchorLeft = 0.5f,
             AnchorRight = 0.5f,
             AnchorTop = 0.5f,
             AnchorBottom = 0.5f,
-            OffsetLeft = -panelW * 0.5f,
-            OffsetRight = panelW * 0.5f,
-            OffsetTop = -panelH * 0.5f,
-            OffsetBottom = panelH * 0.5f,
+            OffsetLeft = -designWidth * 0.5f,
+            OffsetRight = designWidth * 0.5f,
+            GrowHorizontal = Control.GrowDirection.Both,
+            GrowVertical = Control.GrowDirection.Both,
         };
-        _claimVictoryOverlay.AddChild(panel);
+        overlay.AddChild(panel);
+        _endgamePanels.Add((panel, designWidth));
+
+        var margin = new MarginContainer();
+        margin.AddThemeConstantOverride("margin_left", 28);
+        margin.AddThemeConstantOverride("margin_right", 28);
+        margin.AddThemeConstantOverride("margin_top", 24);
+        margin.AddThemeConstantOverride("margin_bottom", 24);
+        panel.AddChild(margin);
+
+        var vbox = new VBoxContainer();
+        vbox.AddThemeConstantOverride("separation", 16);
+        margin.AddChild(vbox);
 
         var eyebrow = new Label
         {
-            Text = "CHECKPOINT",
+            Text = eyebrowText,
             HorizontalAlignment = HorizontalAlignment.Center,
-            Position = new Vector2(0, 32),
-            Size = new Vector2(panelW, 22),
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
         };
         eyebrow.AddThemeFontSizeOverride("font_size", 18);
         eyebrow.AddThemeColorOverride("font_color", UiPalette.Gold);
-        panel.AddChild(eyebrow);
+        vbox.AddChild(eyebrow);
 
-        var headerLabel = new Label
+        var title = new Label
         {
-            Text = "Claim Victory?",
+            Text = titleText,
             HorizontalAlignment = HorizontalAlignment.Center,
-            Position = new Vector2(0, 58),
-            Size = new Vector2(panelW, 70),
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
         };
-        headerLabel.AddThemeFontOverride("font", SerifFont);
-        headerLabel.AddThemeFontSizeOverride("font_size", 44);
-        panel.AddChild(headerLabel);
+        title.AddThemeFontOverride("font", SerifFont);
+        title.AddThemeFontSizeOverride("font_size", titleFontSize);
+        vbox.AddChild(title);
 
         var rule = new ColorRect
         {
             Color = UiPalette.GoldDim,
-            Position = new Vector2(panelW * 0.5f - 110f, 144f),
-            Size = new Vector2(220f, 1f),
+            CustomMinimumSize = new Vector2(220f, 1f),
+            SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter,
         };
-        panel.AddChild(rule);
+        vbox.AddChild(rule);
 
-        const float buttonW = 200f;
-        const float buttonH = 48f;
-        const float gap = 20f;
-        float rowY = 220f;
-        float rowX = (panelW - (buttonW * 2f + gap)) * 0.5f;
+        // HFlowContainer (centered) so the buttons sit in one centered row on
+        // wide panels and wrap to additional centered rows when the clamped
+        // panel is too narrow to fit them side-by-side.
+        var row = new HFlowContainer
+        {
+            Alignment = FlowContainer.AlignmentMode.Center,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+        };
+        row.AddThemeConstantOverride("h_separation", 12);
+        row.AddThemeConstantOverride("v_separation", 10);
+        vbox.AddChild(row);
 
-        _claimWinNowButton = new Button { Text = "Win Now" };
-        _claimWinNowButton.AddThemeFontSizeOverride("font_size", 22);
-        _claimWinNowButton.Position = new Vector2(rowX, rowY);
-        _claimWinNowButton.Size = new Vector2(buttonW, buttonH);
-        _claimWinNowButton.Pressed += () => ClaimVictoryWinNowClicked?.Invoke();
-        AudioBus.AttachClick(_claimWinNowButton);
-        panel.AddChild(_claimWinNowButton);
+        var buttons = new Button[buttonSpecs.Length];
+        for (int i = 0; i < buttonSpecs.Length; i++)
+        {
+            (string text, Action onPressed) = buttonSpecs[i];
+            var button = new Button
+            {
+                Text = text,
+                FocusMode = Control.FocusModeEnum.None,
+                CustomMinimumSize = new Vector2(buttonMinWidth, 48f),
+            };
+            button.AddThemeFontSizeOverride("font_size", 22);
+            button.Pressed += () => onPressed();
+            AudioBus.AttachClick(button);
+            row.AddChild(button);
+            buttons[i] = button;
+        }
 
-        _claimContinueButton = new Button { Text = "Continue Playing" };
-        _claimContinueButton.AddThemeFontSizeOverride("font_size", 22);
-        _claimContinueButton.Position = new Vector2(rowX + buttonW + gap, rowY);
-        _claimContinueButton.Size = new Vector2(buttonW, buttonH);
-        _claimContinueButton.Pressed += () => ClaimVictoryContinueClicked?.Invoke();
-        AudioBus.AttachClick(_claimContinueButton);
-        panel.AddChild(_claimContinueButton);
+        return (overlay, title, buttons);
+    }
+
+    /// <summary>Clamp each endgame overlay panel (victory / defeat / claim)
+    /// to the viewport width so its design width can't clip off both sides on
+    /// a narrow or scaled-up viewport (portrait phones especially). Mirrors
+    /// <see cref="PositionTutorialOverlay"/>; re-run on every orientation flip
+    /// / resize via <see cref="OnViewportMetricsChanged"/>.</summary>
+    private void PositionEndgameOverlays()
+    {
+        if (_endgamePanels.Count == 0) return;
+        float viewportW = GetViewport().GetVisibleRect().Size.X;
+        float clampedW = 0f;
+        foreach ((PanelContainer panel, float designW) in _endgamePanels)
+        {
+            clampedW = Mathf.Min(designW, viewportW - HudPanelSideMargin * 2f);
+            panel.OffsetLeft = -clampedW * 0.5f;
+            panel.OffsetRight = clampedW * 0.5f;
+        }
+        Log.Debug(Log.LogCategory.Render,
+            $"HudView: endgame overlays re-fit orient={Orientation} " +
+            $"viewportW={viewportW:0} clampedW={clampedW:0} panels={_endgamePanels.Count}");
     }
 
     /// <summary>

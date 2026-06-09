@@ -42,6 +42,15 @@ public sealed partial class CreditsPanel : CanvasLayer
     private static readonly Font _serifFont =
         GD.Load<FontFile>("res://fonts/DMSerifDisplay-Regular.ttf");
 
+    // Fixed-size centered panel (matches SettingsPanel so switching
+    // Settings↔Credits doesn't jump the box). FitPanel scales it down (never
+    // up) to fit a short/narrow safe viewport, the same shrink-to-fit the main
+    // menu uses; the long credits text scrolls within the design-size panel
+    // (issue #17).
+    private const float DesignWidth = 456f;
+    private const float DesignHeight = 540f;
+    private const float ViewportMargin = 24f;
+
     public override void _Ready()
     {
         // One layer above SettingsPanel (100) so it draws on top.
@@ -54,19 +63,14 @@ public sealed partial class CreditsPanel : CanvasLayer
         _backdrop = ModalChrome.BuildBackdrop(viewport);
         AddChild(_backdrop);
 
-        // Content-sized centered panel, matching the Settings / Load Game
-        // modal family.
-        _panel = ModalChrome.BuildCenteredPanel();
+        // Anchor-centered panel clamped to the safe viewport by FitToViewport
+        // (same rect as SettingsPanel), matching the Settings / Load Game
+        // modal family. The explicit rect bounds the scroll body's height so a
+        // short landscape safe area scrolls instead of clipping Back.
+        _panel = ModalChrome.BuildCenteredPanel(DesignWidth, DesignHeight);
         AddChild(_panel);
 
-        // Match the SettingsPanel vbox min size (420 x 570) so the
-        // credits modal renders at the same panel dimensions — pressing
-        // Credits from Settings doesn't resize the box. The scroll area
-        // below expands to absorb the slack.
-        var vbox = new VBoxContainer
-        {
-            CustomMinimumSize = new Vector2(420, 570),
-        };
+        var vbox = new VBoxContainer();
         vbox.AddThemeConstantOverride("separation", 18);
         _panel.AddChild(vbox);
 
@@ -91,8 +95,8 @@ public sealed partial class CreditsPanel : CanvasLayer
         // Scrollable body so long credits don't blow out the panel.
         var scroll = new ScrollContainer
         {
-            CustomMinimumSize = new Vector2(420, 0),
             SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
             HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
         };
         vbox.AddChild(scroll);
@@ -104,6 +108,10 @@ public sealed partial class CreditsPanel : CanvasLayer
             FitContent = true,
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            // Pass (not the default Stop) so a touch-drag propagates up to the
+            // ScrollContainer for panning instead of being swallowed here; a
+            // plain tap still reaches the [url] meta link (issue #17).
+            MouseFilter = Control.MouseFilterEnum.Pass,
         };
         body.AddThemeFontSizeOverride("normal_font_size", 22);
         body.AddThemeColorOverride("default_color", UiPalette.InkSoft);
@@ -120,6 +128,37 @@ public sealed partial class CreditsPanel : CanvasLayer
         backButton.Pressed += Close;
         AudioBus.AttachClick(backButton);
         vbox.AddChild(backButton);
+
+        FitPanel();
+        GetViewport().SizeChanged += FitPanel;
+        SafeArea.Changed += OnSafeAreaChanged;
+    }
+
+    public override void _ExitTree()
+    {
+        SafeArea.Changed -= OnSafeAreaChanged;
+    }
+
+    private void OnSafeAreaChanged(LogicalSafeInsets _) => FitPanel();
+
+    /// <summary>Scale the fixed-size panel down (never up) so it fits within the
+    /// safe viewport — the same shrink-to-fit the main menu uses. In a short
+    /// landscape safe area the whole panel (and its scrolling credits body)
+    /// scales uniformly instead of clipping Back (issue #17).</summary>
+    private void FitPanel()
+    {
+        Vector2 vp = GetViewport().GetVisibleRect().Size;
+        LogicalSafeInsets safe = SafeArea.Current;
+        float availW = vp.X - safe.Left - safe.Right - ViewportMargin * 2f;
+        float availH = vp.Y - safe.Top - safe.Bottom - ViewportMargin * 2f;
+
+        float scale = Mathf.Min(1f, Mathf.Min(availW / DesignWidth, availH / DesignHeight));
+        _panel.PivotOffset = new Vector2(DesignWidth, DesignHeight) * 0.5f;
+        _panel.Scale = new Vector2(scale, scale);
+
+        Log.Debug(Log.LogCategory.Render,
+            $"CreditsPanel: fit viewport={vp.X:0}x{vp.Y:0} " +
+            $"safe=(t{safe.Top:0},b{safe.Bottom:0},l{safe.Left:0},r{safe.Right:0}) scale={scale:0.00}");
     }
 
     private void OnMetaClicked(Variant meta)
@@ -132,6 +171,8 @@ public sealed partial class CreditsPanel : CanvasLayer
     public void Open()
     {
         if (IsOpen) return;
+        // Re-fit in case the viewport / safe area changed while closed.
+        FitPanel();
         IsOpen = true;
         Visible = true;
         Log.Debug(Log.LogCategory.Input, "CreditsPanel.Open");
