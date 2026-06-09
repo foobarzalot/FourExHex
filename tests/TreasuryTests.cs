@@ -230,9 +230,9 @@ public class TreasuryTests
     }
 
     [Fact]
-    public void CollectIncomeFor_AppliesPlayerEarnMultiplier_WithGrid()
+    public void CollectIncomeFor_BrutalDifficulty_DoublesIncome_WithGrid()
     {
-        // 3-income-tile territory, Red earns 2× → 6 gold.
+        // 3-income-tile territory, Brutal Red (2×) → 6 gold.
         var capital = new HexCoord(0, 0);
         Territory t = MakeTerritory(
             Red, capital,
@@ -241,34 +241,54 @@ public class TreasuryTests
         grid.Add(new HexTile(new HexCoord(0, 0), Red));
         grid.Add(new HexTile(new HexCoord(1, 0), Red));
         grid.Add(new HexTile(new HexCoord(2, 0), Red));
-        var boostedRed = new Player("Red", Red, earnMultiplier: 2);
+        var brutalRed = new Player("Red", Red, PlayerKind.Computer, Difficulty.Brutal);
 
         var treasury = new Treasury();
-        treasury.CollectIncomeFor(boostedRed, new[] { t }, grid);
+        treasury.CollectIncomeFor(brutalRed, new[] { t }, grid);
 
         Assert.Equal(6, treasury.GetGold(capital));
     }
 
     [Fact]
-    public void CollectIncomeFor_AppliesPlayerEarnMultiplier_WithoutGrid()
+    public void CollectIncomeFor_EasyDifficulty_HalvesIncomeTruncating_WithGrid()
     {
-        // No grid → income falls back to territory Size (3) × 2 = 6.
+        // 3 income tiles, Easy → 3/2 = 1 (truncation, not rounding).
         var capital = new HexCoord(0, 0);
         Territory t = MakeTerritory(
             Red, capital,
             new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(2, 0));
-        var boostedRed = new Player("Red", Red, earnMultiplier: 2);
+        var grid = new HexGrid();
+        grid.Add(new HexTile(new HexCoord(0, 0), Red));
+        grid.Add(new HexTile(new HexCoord(1, 0), Red));
+        grid.Add(new HexTile(new HexCoord(2, 0), Red));
+        var easyRed = new Player("Red", Red, PlayerKind.Computer, Difficulty.Easy);
 
         var treasury = new Treasury();
-        treasury.CollectIncomeFor(boostedRed, new[] { t });
+        treasury.CollectIncomeFor(easyRed, new[] { t }, grid);
 
-        Assert.Equal(6, treasury.GetGold(capital));
+        Assert.Equal(1, treasury.GetGold(capital));
     }
 
     [Fact]
-    public void CollectIncomeFor_DefaultMultiplierIsOne()
+    public void CollectIncomeFor_EasyDifficulty_HalvesSizeFallback_WithoutGrid()
     {
-        // A player built without an explicit multiplier earns 1× (unchanged).
+        // No grid → income falls back to Size (3), Easy → 1.
+        var capital = new HexCoord(0, 0);
+        Territory t = MakeTerritory(
+            Red, capital,
+            new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(2, 0));
+        var easyRed = new Player("Red", Red, PlayerKind.Computer, Difficulty.Easy);
+
+        var treasury = new Treasury();
+        treasury.CollectIncomeFor(easyRed, new[] { t });
+
+        Assert.Equal(1, treasury.GetGold(capital));
+    }
+
+    [Fact]
+    public void CollectIncomeFor_DefaultDifficultyIsNormal()
+    {
+        // A player built without an explicit difficulty earns 1× (unchanged).
         var capital = new HexCoord(0, 0);
         Territory t = MakeTerritory(
             Red, capital,

@@ -74,21 +74,24 @@ public partial class Main : Node2D
             {
                 GameSettings.PlayerKinds[i] = PlayerKind.Computer;
             }
-            // FOUREXHEX_EARN="m0,m1,...": per-slot integer earn-rate
-            // multipliers (issue #11 difficulty lever). Boost one AI here
+            // FOUREXHEX_DIFFICULTY="easy,normal,hard,brutal,...": per-slot
+            // difficulty levels (issue #11 lever). Set one AI to brutal here
             // and confirm via the headless 6-AI run that it dominates.
-            // Comma-separated, up to 6 ints; missing/unparseable slots stay
-            // at 1. Must run before Player.BuildRoster (below) reads it.
-            string earnSpec = OS.GetEnvironment("FOUREXHEX_EARN");
-            if (earnSpec.Length > 0)
+            // Comma-separated level names, case-insensitive, up to 6; missing
+            // or unknown slots stay Normal. Must run before Player.BuildRoster
+            // (below) reads it.
+            string diffSpec = OS.GetEnvironment("FOUREXHEX_DIFFICULTY");
+            if (diffSpec.Length > 0)
             {
-                string[] parts = earnSpec.Split(',');
-                for (int i = 0; i < GameSettings.EarnMultipliers.Length; i++)
+                string[] parts = diffSpec.Split(',');
+                for (int i = 0; i < GameSettings.Difficulties.Length; i++)
                 {
-                    GameSettings.EarnMultipliers[i] =
-                        i < parts.Length && int.TryParse(parts[i].Trim(), out int m) && m >= 1
-                            ? m
-                            : 1;
+                    GameSettings.Difficulties[i] =
+                        i < parts.Length
+                        && System.Enum.TryParse(parts[i].Trim(), ignoreCase: true,
+                            out Difficulty d)
+                            ? d
+                            : Difficulty.Normal;
                 }
             }
             // Reproduce the verbose AI/turn stdout the old
@@ -623,6 +626,7 @@ public partial class Main : Node2D
             for (int i = 0; i < loaded.Players.Count && i < GameSettings.PlayerKinds.Length; i++)
             {
                 GameSettings.PlayerKinds[i] = loaded.Players[i].Kind;
+                GameSettings.Difficulties[i] = loaded.Players[i].Difficulty;
             }
             _loadDialogPicked = true;
             // Drop any in-flight AI step so a stale SceneTreeTimer can't

@@ -30,9 +30,10 @@ public class SaveMigrationTests
     }
 
     [Fact]
-    public void CurrentFormatVersion_IsSix()
+    public void CurrentFormatVersion_IsSeven()
     {
-        Assert.Equal(6, SaveSerializer.CurrentFormatVersion);
+        // v7 added per-player Difficulty (issue #11).
+        Assert.Equal(7, SaveSerializer.CurrentFormatVersion);
     }
 
     [Fact]
@@ -41,7 +42,7 @@ public class SaveMigrationTests
         (GameState s, IReadOnlyList<Player> p) = BuildState();
         string json = SaveSerializer.Serialize(s, 1, p, "slot", 100);
 
-        foreach (int bad in new[] { 1, 7, 99 })
+        foreach (int bad in new[] { 1, 8, 99 })
         {
             string mutated = json.Replace(
                 $"\"FormatVersion\": {SaveSerializer.CurrentFormatVersion}",
@@ -49,12 +50,34 @@ public class SaveMigrationTests
             Assert.ThrowsAny<System.Exception>(() => SaveSerializer.Deserialize(mutated));
         }
 
-        foreach (int ok in new[] { 2, 3, 4, 5, 6 })
+        foreach (int ok in new[] { 2, 3, 4, 5, 6, 7 })
         {
             string mutated = json.Replace(
                 $"\"FormatVersion\": {SaveSerializer.CurrentFormatVersion}",
                 $"\"FormatVersion\": {ok}");
             SaveSerializer.Deserialize(mutated); // must not throw
+        }
+    }
+
+    [Fact]
+    public void Deserialize_PreV7Save_DefaultsDifficultyToNormal()
+    {
+        // A pre-v7 save has no per-player Difficulty field. Simulate one by
+        // serializing then stripping the Difficulty entries and stamping the
+        // older version; every player must load as Normal.
+        (GameState s, IReadOnlyList<Player> p) = BuildState();
+        string json = SaveSerializer.Serialize(s, 1, p, "slot", 100);
+        string legacy = System.Text.RegularExpressions.Regex
+            .Replace(json, ",\\s*\"Difficulty\": \"[A-Za-z]+\"", string.Empty)
+            .Replace(
+                $"\"FormatVersion\": {SaveSerializer.CurrentFormatVersion}",
+                "\"FormatVersion\": 6");
+
+        LoadedSave loaded = SaveSerializer.Deserialize(legacy);
+
+        foreach (Player player in loaded.Players)
+        {
+            Assert.Equal(Difficulty.Normal, player.Difficulty);
         }
     }
 

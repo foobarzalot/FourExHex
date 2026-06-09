@@ -95,7 +95,7 @@ public static class SaveSerializer
     /// Bump on any breaking schema change. <see cref="Deserialize"/>
     /// rejects mismatched values rather than attempting migration.
     /// </summary>
-    public const int CurrentFormatVersion = 6;
+    public const int CurrentFormatVersion = 7;
 
     public static string Serialize(
         GameState state,
@@ -357,6 +357,7 @@ public static class SaveSerializer
                 // Null is omitted from JSON via JsonOptions, so starting
                 // maps have no per-color role baked into the file.
                 Kind = includeKind ? p.Kind.ToString() : null,
+                Difficulty = includeKind ? p.Difficulty.ToString() : null,
             });
         }
         return dtos;
@@ -368,7 +369,8 @@ public static class SaveSerializer
         foreach (PlayerDto dto in dtos)
         {
             PlayerKind kind = ParsePlayerKind(dto.Kind);
-            list.Add(new Player(dto.Name, PlayerId.FromIndex(dto.Index), kind));
+            Difficulty difficulty = ParseDifficulty(dto.Difficulty);
+            list.Add(new Player(dto.Name, PlayerId.FromIndex(dto.Index), kind, difficulty));
         }
         return list;
     }
@@ -390,6 +392,18 @@ public static class SaveSerializer
             "Random" or "Heuristic" => PlayerKind.Computer,
             _ => Enum.Parse<PlayerKind>(kind),
         };
+    }
+
+    /// <summary>
+    /// Map a saved <see cref="PlayerDto.Difficulty"/> string to a
+    /// <see cref="Difficulty"/>. Missing/empty = starting map or pre-v7 save:
+    /// default to <see cref="Difficulty.Normal"/>.
+    /// </summary>
+    private static Difficulty ParseDifficulty(string? difficulty)
+    {
+        if (string.IsNullOrEmpty(difficulty))
+            return Difficulty.Normal;
+        return Enum.Parse<Difficulty>(difficulty);
     }
 
     // --- Tiles -----------------------------------------------------------
@@ -886,6 +900,13 @@ public sealed class PlayerDto
     /// baked into the map. Present in regular in-progress saves.
     /// </summary>
     public string? Kind { get; set; }
+
+    /// <summary>
+    /// Per-player <see cref="Difficulty"/> name (issue #11). Null/missing in
+    /// starting-map exports (assigned at the Play Game menu) and in pre-v7
+    /// saves; both default to <see cref="Difficulty.Normal"/> on load.
+    /// </summary>
+    public string? Difficulty { get; set; }
 }
 
 public sealed class TileDto

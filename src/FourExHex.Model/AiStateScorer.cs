@@ -288,10 +288,10 @@ public static class AiStateScorer
     private static int TerritoryValue(Territory territory, GameState state)
     {
         int tiles = territory.Coords.Count;
-        int earnMultiplier = territory.Owner.IsNone
-            ? 1
-            : state.Players[territory.Owner.Index].EarnMultiplier;
-        int income = IncomeRules.IncomeFor(territory, state.Grid, earnMultiplier);
+        Difficulty difficulty = territory.Owner.IsNone
+            ? Difficulty.Normal
+            : state.Players[territory.Owner.Index].Difficulty;
+        int income = IncomeRules.IncomeFor(territory, state.Grid, difficulty);
         int upkeep = UpkeepRules.TotalUpkeepFor(territory, state.Grid);
         int netIncome = income - upkeep;
 

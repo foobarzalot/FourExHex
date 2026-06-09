@@ -41,6 +41,7 @@ public partial class MainMenuScene : Control
     private LineEdit? _seedField;
     private Button? _startButton;
     private OptionButton? _mapSelector;
+    private OptionButton? _difficultyDropdown;
     // Slot name of the selected starting map, or null when "Random Map"
     // is chosen — that's the dropdown's first/default entry, which keeps
     // the seed field active and triggers the procedural-generation flow.
@@ -334,7 +335,8 @@ public partial class MainMenuScene : Control
         // comfortably at the 1600x1080 viewport (matches the heavier
         // play-HUD scale the rest of the redesign settled on).
         const float panelW = 624f;
-        const float panelH = 800f;
+        // Tall enough for six player rows + Map + Seed + Difficulty + buttons.
+        const float panelH = 862f;
         // Center-anchored so Godot re-solves the position on every window
         // resize (matches ModalChrome.BuildCenteredPanel). Children below
         // are laid out in the panel's local space against the fixed
@@ -453,11 +455,47 @@ public partial class MainMenuScene : Control
         float rightColX = panelW - rowInset - dropdownWidth;
         float rightColW = dropdownWidth;
 
-        // Map row sits just below the last player row. The dropdown lists
+        // Difficulty row (issue #11) sits directly under the player
+        // selectors. One global control; on Start it's written to every AI
+        // slot (humans stay Normal). Easy halves AI income, Hard is 1.5×,
+        // Brutal doubles. Item ids match the Difficulty enum values.
+        float difficultyRowY = rowStartY + rowHeight * GameSettings.PlayerConfig.Length;
+        var difficultyLabel = new Label
+        {
+            Text = "Difficulty",
+            Position = new Vector2(leftColX + swatchSize + 19f, difficultyRowY + 17f),
+            Size = new Vector2(nameWidth, 29f),
+        };
+        difficultyLabel.AddThemeFontSizeOverride("font_size", 24);
+        panel.AddChild(difficultyLabel);
+
+        _difficultyDropdown = new OptionButton
+        {
+            Position = new Vector2(rightColX, difficultyRowY + 12f),
+            Size = new Vector2(rightColW, 38f),
+        };
+        _difficultyDropdown.AddThemeFontSizeOverride("font_size", 21);
+        _difficultyDropdown.GetPopup().AddThemeFontSizeOverride("font_size", 21);
+        _difficultyDropdown.AddItem("Easy", (int)Difficulty.Easy);
+        _difficultyDropdown.AddItem("Normal", (int)Difficulty.Normal);
+        _difficultyDropdown.AddItem("Hard", (int)Difficulty.Hard);
+        _difficultyDropdown.AddItem("Brutal", (int)Difficulty.Brutal);
+        // Select Normal by its id (don't assume item order == enum order).
+        for (int item = 0; item < _difficultyDropdown.ItemCount; item++)
+        {
+            if (_difficultyDropdown.GetItemId(item) == (int)Difficulty.Normal)
+            {
+                _difficultyDropdown.Selected = item;
+                break;
+            }
+        }
+        panel.AddChild(_difficultyDropdown);
+
+        // Map row sits just below the Difficulty row. The dropdown lists
         // "Random Map" (the default) plus every saved starting map. Picking
         // a map disables the seed field below — the map's terrain replaces
         // procedural generation.
-        float mapRowY = rowStartY + rowHeight * GameSettings.PlayerConfig.Length;
+        float mapRowY = rowStartY + rowHeight * (GameSettings.PlayerConfig.Length + 1);
         var mapLabel = new Label
         {
             Text = "Map",
@@ -490,7 +528,7 @@ public partial class MainMenuScene : Control
         // Map Seed row sits just below the Map row, aligned with the
         // dropdown column so the input lines up with the AI selectors
         // above it.
-        float seedRowY = rowStartY + rowHeight * (GameSettings.PlayerConfig.Length + 1);
+        float seedRowY = rowStartY + rowHeight * (GameSettings.PlayerConfig.Length + 2);
         var seedLabel = new Label
         {
             Text = "Map Seed",
@@ -843,6 +881,7 @@ public partial class MainMenuScene : Control
             for (int i = 0; i < loaded.Players.Count && i < GameSettings.PlayerKinds.Length; i++)
             {
                 GameSettings.PlayerKinds[i] = loaded.Players[i].Kind;
+                GameSettings.Difficulties[i] = loaded.Players[i].Difficulty;
             }
             GetTree().ChangeSceneToFile("res://scenes/main.tscn");
         }
@@ -862,6 +901,7 @@ public partial class MainMenuScene : Control
             for (int i = 0; i < loaded.Players.Count && i < GameSettings.PlayerKinds.Length; i++)
             {
                 GameSettings.PlayerKinds[i] = loaded.Players[i].Kind;
+                GameSettings.Difficulties[i] = loaded.Players[i].Difficulty;
             }
             GetTree().ChangeSceneToFile("res://scenes/main.tscn");
         }
@@ -982,6 +1022,11 @@ public partial class MainMenuScene : Control
                 ? PlayerKind.Computer
                 : PlayerKind.Human;
         }
+
+        // One global difficulty written onto every AI slot; humans stay
+        // Normal. Stored per-slot so it round-trips through the save.
+        var chosen = (Difficulty)(_difficultyDropdown?.GetSelectedId() ?? (int)Difficulty.Normal);
+        GameSettings.Difficulties = DifficultyRules.AssignGlobalToAi(GameSettings.PlayerKinds, chosen);
 
         if (_selectedMapName != null)
         {

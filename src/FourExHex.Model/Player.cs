@@ -25,15 +25,14 @@ public class Player
     public PlayerKind Kind { get; }
 
     /// <summary>
-    /// Difficulty lever (issue #11): integer multiplier applied to this
-    /// player's per-turn gold income (gold earned per income-producing
-    /// hex). Default <c>1</c> = unchanged; <c>2</c> = double, etc. Kept an
-    /// int to satisfy the no-floats rule in Model/Controller. Consumed by
+    /// Difficulty lever (issue #11): how much per-turn gold income this
+    /// player earns, via <see cref="DifficultyRules.ScaleIncome"/>. Default
+    /// <see cref="Difficulty.Normal"/> = unchanged. Consumed by
     /// <see cref="IncomeRules.IncomeFor"/>, the single source of truth both
     /// real income collection (<see cref="Treasury.CollectIncomeFor"/>) and
     /// the AI lookahead scorer (<see cref="AiStateScorer"/>) read.
     /// </summary>
-    public int EarnMultiplier { get; }
+    public Difficulty Difficulty { get; }
 
     /// <summary>
     /// Convenience: true iff this slot is computer-controlled.
@@ -42,12 +41,12 @@ public class Player
     /// </summary>
     public bool IsAi => Kind != PlayerKind.Human;
 
-    public Player(string name, PlayerId id, PlayerKind kind = PlayerKind.Human, int earnMultiplier = 1)
+    public Player(string name, PlayerId id, PlayerKind kind = PlayerKind.Human, Difficulty difficulty = Difficulty.Normal)
     {
         Name = name;
         Id = id;
         Kind = kind;
-        EarnMultiplier = earnMultiplier;
+        Difficulty = difficulty;
     }
 
     /// <summary>
@@ -78,10 +77,10 @@ public class Player
             PlayerKind kind = i < GameSettings.PlayerKinds.Length
                 ? GameSettings.PlayerKinds[i]
                 : PlayerKind.Computer;
-            int earnMultiplier = i < GameSettings.EarnMultipliers.Length
-                ? GameSettings.EarnMultipliers[i]
-                : 1;
-            players.Add(new Player(name, PlayerId.FromIndex(i), kind, earnMultiplier));
+            Difficulty difficulty = i < GameSettings.Difficulties.Length
+                ? GameSettings.Difficulties[i]
+                : Difficulty.Normal;
+            players.Add(new Player(name, PlayerId.FromIndex(i), kind, difficulty));
         }
         return players;
     }

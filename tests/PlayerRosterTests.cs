@@ -7,42 +7,46 @@ namespace FourExHex.Tests;
 public class PlayerRosterTests
 {
     [Fact]
-    public void BuildRoster_ReadsEarnMultipliersOntoSlots()
+    public void BuildRoster_ReadsDifficultiesOntoSlots()
     {
-        int[] saved = GameSettings.EarnMultipliers;
+        Difficulty[] saved = GameSettings.Difficulties;
         try
         {
-            GameSettings.EarnMultipliers = new[] { 1, 1, 1, 1, 1, 3 };
+            GameSettings.Difficulties = new[]
+            {
+                Difficulty.Normal, Difficulty.Normal, Difficulty.Normal,
+                Difficulty.Normal, Difficulty.Normal, Difficulty.Brutal,
+            };
 
             List<Player> roster = Player.BuildRoster();
 
-            Assert.Equal(1, roster[0].EarnMultiplier);
-            Assert.Equal(3, roster[5].EarnMultiplier);
+            Assert.Equal(Difficulty.Normal, roster[0].Difficulty);
+            Assert.Equal(Difficulty.Brutal, roster[5].Difficulty);
         }
         finally
         {
-            GameSettings.EarnMultipliers = saved;
+            GameSettings.Difficulties = saved;
         }
     }
 
     [Fact]
-    public void BuildRoster_ShortMultiplierArray_FallsBackToOne()
+    public void BuildRoster_ShortDifficultyArray_FallsBackToNormal()
     {
-        int[] saved = GameSettings.EarnMultipliers;
+        Difficulty[] saved = GameSettings.Difficulties;
         try
         {
-            GameSettings.EarnMultipliers = Array.Empty<int>();
+            GameSettings.Difficulties = Array.Empty<Difficulty>();
 
             List<Player> roster = Player.BuildRoster();
 
             foreach (Player p in roster)
             {
-                Assert.Equal(1, p.EarnMultiplier);
+                Assert.Equal(Difficulty.Normal, p.Difficulty);
             }
         }
         finally
         {
-            GameSettings.EarnMultipliers = saved;
+            GameSettings.Difficulties = saved;
         }
     }
 }

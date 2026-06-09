@@ -184,15 +184,15 @@ public class GameController
         _hud.SetVictoryOverlaySuppressed(_previewMode || _recordingMode);
 
         // Difficulty lever instrumentation (issue #11): one-shot at game
-        // construction, only when some slot is boosted, so a FOUREXHEX_EARN
-        // run proves which player got the multiplier and at what value. Lands
+        // construction, only when some slot is non-Normal, so a
+        // FOUREXHEX_DIFFICULTY run proves which player got which level. Lands
         // in the FOUREXHEX_6AI stdout (Turn:Info is pinned there).
-        if (System.Linq.Enumerable.Any(_state.Players, p => p.EarnMultiplier != 1))
+        if (System.Linq.Enumerable.Any(_state.Players, p => p.Difficulty != Difficulty.Normal))
         {
             Log.Info(Log.LogCategory.Turn,
-                "earn multipliers: " + string.Join(", ",
+                "difficulties: " + string.Join(", ",
                     System.Linq.Enumerable.Select(_state.Players,
-                        p => $"{p.Name}={p.EarnMultiplier}")));
+                        p => $"{p.Name}={p.Difficulty}")));
         }
     }
 

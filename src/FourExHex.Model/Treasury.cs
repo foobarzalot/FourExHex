@@ -45,8 +45,8 @@ public class Treasury
 
             HexCoord capital = territory.Capital!.Value;
             int income = grid != null
-                ? IncomeRules.IncomeFor(territory, grid, player.EarnMultiplier)
-                : territory.Size * player.EarnMultiplier;
+                ? IncomeRules.IncomeFor(territory, grid, player.Difficulty)
+                : DifficultyRules.ScaleIncome(territory.Size, player.Difficulty);
             int current = GetGold(capital);
             _gold[capital] = current + income;
         }
