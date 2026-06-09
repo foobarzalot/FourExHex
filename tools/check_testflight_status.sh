@@ -1,3 +1,4 @@
+```
 #!/usr/bin/env bash
 # Poll App Store Connect for the most recent build's processing state.
 # Uses the same creds + .p8 API key that build_ios.sh's TestFlight upload
@@ -75,19 +76,4 @@ RESP=$(curl -sS -H "Authorization: Bearer $JWT" \
 
 # Surface API errors verbatim (no creds in response body).
 if printf '%s' "$RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); sys.exit(0 if 'data' in d else 1)" 2>/dev/null; then
-  python3 - <<PY
-import json, sys
-resp = json.loads('''$RESP''')
-items = resp.get("data", [])
-if not items:
-    print("no builds found for app id $APP_ID")
-    sys.exit(2)
-b = items[0]
-attrs = b.get("attributes", {})
-print(f"build={attrs.get('version')} state={attrs.get('processingState')} uploaded={attrs.get('uploadedDate')} expired={attrs.get('expired')}")
-PY
-else
-  echo "API error response:" >&2
-  printf '%s\n' "$RESP" >&2
-  exit 3
-fi
+  # SECURITY: Use a heredoc for the Python script (with shell variable expansion for APP
