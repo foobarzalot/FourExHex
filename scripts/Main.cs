@@ -74,6 +74,23 @@ public partial class Main : Node2D
             {
                 GameSettings.PlayerKinds[i] = PlayerKind.Computer;
             }
+            // FOUREXHEX_EARN="m0,m1,...": per-slot integer earn-rate
+            // multipliers (issue #11 difficulty lever). Boost one AI here
+            // and confirm via the headless 6-AI run that it dominates.
+            // Comma-separated, up to 6 ints; missing/unparseable slots stay
+            // at 1. Must run before Player.BuildRoster (below) reads it.
+            string earnSpec = OS.GetEnvironment("FOUREXHEX_EARN");
+            if (earnSpec.Length > 0)
+            {
+                string[] parts = earnSpec.Split(',');
+                for (int i = 0; i < GameSettings.EarnMultipliers.Length; i++)
+                {
+                    GameSettings.EarnMultipliers[i] =
+                        i < parts.Length && int.TryParse(parts[i].Trim(), out int m) && m >= 1
+                            ? m
+                            : 1;
+                }
+            }
             // Reproduce the verbose AI/turn stdout the old
             // AiLog.Enabled=true produced. Set AFTER Configure so the
             // headless regression harness can't be silenced by a stray

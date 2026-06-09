@@ -229,6 +229,57 @@ public class TreasuryTests
         Assert.Equal(3, treasury.GetGold(capital));
     }
 
+    [Fact]
+    public void CollectIncomeFor_AppliesPlayerEarnMultiplier_WithGrid()
+    {
+        // 3-income-tile territory, Red earns 2× → 6 gold.
+        var capital = new HexCoord(0, 0);
+        Territory t = MakeTerritory(
+            Red, capital,
+            new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(2, 0));
+        var grid = new HexGrid();
+        grid.Add(new HexTile(new HexCoord(0, 0), Red));
+        grid.Add(new HexTile(new HexCoord(1, 0), Red));
+        grid.Add(new HexTile(new HexCoord(2, 0), Red));
+        var boostedRed = new Player("Red", Red, earnMultiplier: 2);
+
+        var treasury = new Treasury();
+        treasury.CollectIncomeFor(boostedRed, new[] { t }, grid);
+
+        Assert.Equal(6, treasury.GetGold(capital));
+    }
+
+    [Fact]
+    public void CollectIncomeFor_AppliesPlayerEarnMultiplier_WithoutGrid()
+    {
+        // No grid → income falls back to territory Size (3) × 2 = 6.
+        var capital = new HexCoord(0, 0);
+        Territory t = MakeTerritory(
+            Red, capital,
+            new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(2, 0));
+        var boostedRed = new Player("Red", Red, earnMultiplier: 2);
+
+        var treasury = new Treasury();
+        treasury.CollectIncomeFor(boostedRed, new[] { t });
+
+        Assert.Equal(6, treasury.GetGold(capital));
+    }
+
+    [Fact]
+    public void CollectIncomeFor_DefaultMultiplierIsOne()
+    {
+        // A player built without an explicit multiplier earns 1× (unchanged).
+        var capital = new HexCoord(0, 0);
+        Territory t = MakeTerritory(
+            Red, capital,
+            new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(2, 0));
+
+        var treasury = new Treasury();
+        treasury.CollectIncomeFor(RedPlayer, new[] { t });
+
+        Assert.Equal(3, treasury.GetGold(capital));
+    }
+
     // --- ReconcileAfterCapture -------------------------------------------
 
     [Fact]

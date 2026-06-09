@@ -182,6 +182,18 @@ public class GameController
         // message panel for game-over signaling; the click-blocking
         // victory modal would otherwise freeze further author input.
         _hud.SetVictoryOverlaySuppressed(_previewMode || _recordingMode);
+
+        // Difficulty lever instrumentation (issue #11): one-shot at game
+        // construction, only when some slot is boosted, so a FOUREXHEX_EARN
+        // run proves which player got the multiplier and at what value. Lands
+        // in the FOUREXHEX_6AI stdout (Turn:Info is pinned there).
+        if (System.Linq.Enumerable.Any(_state.Players, p => p.EarnMultiplier != 1))
+        {
+            Log.Info(Log.LogCategory.Turn,
+                "earn multipliers: " + string.Join(", ",
+                    System.Linq.Enumerable.Select(_state.Players,
+                        p => $"{p.Name}={p.EarnMultiplier}")));
+        }
     }
 
     /// <summary>

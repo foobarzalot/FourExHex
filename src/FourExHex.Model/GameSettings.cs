@@ -46,6 +46,16 @@ public static class GameSettings
     };
 
     /// <summary>
+    /// One integer earn-rate multiplier per slot in <see cref="PlayerConfig"/>
+    /// (issue #11 difficulty lever). <c>1</c> = normal income; <c>2</c> doubles
+    /// that slot's per-turn gold, etc. Read by <see cref="Player.BuildRoster"/>
+    /// onto each <see cref="Player.EarnMultiplier"/>. Defaults to all-1 so a
+    /// fresh launch is unchanged; the headless <c>FOUREXHEX_EARN</c> env var
+    /// (see <see cref="Main"/>) overwrites it for AI-stress difficulty tests.
+    /// </summary>
+    public static int[] EarnMultipliers = { 1, 1, 1, 1, 1, 1 };
+
+    /// <summary>
     /// Master seed for grid generation and per-turn RNG. Written by
     /// the main menu's "Map Seed" field before scene change; null
     /// means "auto-pick" (used by the FOUREXHEX_6AI diagnostic path
