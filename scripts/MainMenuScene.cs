@@ -457,8 +457,9 @@ public partial class MainMenuScene : Control
 
         // Difficulty row (issue #11) sits directly under the player
         // selectors. One global control; on Start it's written to every AI
-        // slot (humans stay Normal). Easy halves AI income, Hard is 1.5×,
-        // Brutal doubles. Item ids match the Difficulty enum values.
+        // slot (humans stay Normal). The level→income mapping lives in
+        // DifficultyRules.ScaleIncome (currently Easy 50%, Hard 120%,
+        // Brutal 140%). Item ids match the Difficulty enum values.
         float difficultyRowY = rowStartY + rowHeight * GameSettings.PlayerConfig.Length;
         var difficultyLabel = new Label
         {

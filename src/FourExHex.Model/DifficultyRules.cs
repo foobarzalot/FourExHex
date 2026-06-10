@@ -8,17 +8,26 @@ using System.Collections.Generic;
 public static class DifficultyRules
 {
     /// <summary>
-    /// Scale a base per-turn income by a player's difficulty, all integer
-    /// (no-floats rule) and truncating. Easy halves (⌊income/2⌋); Normal is
-    /// unchanged; Hard is 1.5× (×3 then ÷2, so it truncates); Brutal doubles.
+    /// Scale a base per-turn income by a player's difficulty, expressed as an
+    /// integer percent so levels can be tuned finely near 1× (income bonuses
+    /// compound — gold buys units, units take tiles, tiles raise income — so
+    /// even 1.5× proved far too punishing in playtesting). Easy = 50%,
+    /// Normal = 100%, Hard = 120%, Brutal = 140%. All integer math
+    /// (no-floats rule), truncating: small territories see little or no
+    /// bonus (at 120%, a bonus only appears from 5 income tiles up), which
+    /// softens the early game. Tuning a level is a one-integer edit here.
     /// </summary>
-    public static int ScaleIncome(int baseIncome, Difficulty difficulty) => difficulty switch
+    public static int ScaleIncome(int baseIncome, Difficulty difficulty)
     {
-        Difficulty.Easy => baseIncome / 2,        // integer division truncates
-        Difficulty.Hard => baseIncome * 3 / 2,    // 1.5× — multiply first, then divide
-        Difficulty.Brutal => baseIncome * 2,
-        _ => baseIncome,                          // Normal
-    };
+        int percent = difficulty switch
+        {
+            Difficulty.Easy => 50,
+            Difficulty.Hard => 120,
+            Difficulty.Brutal => 140,
+            _ => 100, // Normal
+        };
+        return baseIncome * percent / 100; // integer division truncates
+    }
 
     /// <summary>
     /// Map a single global difficulty onto a roster: every computer slot

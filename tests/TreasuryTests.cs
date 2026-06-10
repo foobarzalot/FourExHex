@@ -230,23 +230,25 @@ public class TreasuryTests
     }
 
     [Fact]
-    public void CollectIncomeFor_BrutalDifficulty_DoublesIncome_WithGrid()
+    public void CollectIncomeFor_BrutalDifficulty_Scales140Percent_WithGrid()
     {
-        // 3-income-tile territory, Brutal Red (2×) → 6 gold.
+        // 8-income-tile territory, Brutal Red (140%) → 8*140/100 = 11 gold.
+        // Big enough that the percent bonus survives integer truncation.
         var capital = new HexCoord(0, 0);
-        Territory t = MakeTerritory(
-            Red, capital,
-            new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(2, 0));
+        var coords = new HexCoord[8];
         var grid = new HexGrid();
-        grid.Add(new HexTile(new HexCoord(0, 0), Red));
-        grid.Add(new HexTile(new HexCoord(1, 0), Red));
-        grid.Add(new HexTile(new HexCoord(2, 0), Red));
+        for (int c = 0; c < 8; c++)
+        {
+            coords[c] = new HexCoord(c, 0);
+            grid.Add(new HexTile(coords[c], Red));
+        }
+        Territory t = new Territory(Red, coords, capital);
         var brutalRed = new Player("Red", Red, PlayerKind.Computer, Difficulty.Brutal);
 
         var treasury = new Treasury();
         treasury.CollectIncomeFor(brutalRed, new[] { t }, grid);
 
-        Assert.Equal(6, treasury.GetGold(capital));
+        Assert.Equal(11, treasury.GetGold(capital));
     }
 
     [Fact]
