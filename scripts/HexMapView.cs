@@ -415,7 +415,8 @@ public partial class HexMapView : Node2D, IHexMapView
         // As individual Polygon2D they were ~1,870 separate canvas items =
         // ~1,870 draw calls every frame in the gl_compatibility renderer —
         // the dominant cost behind the device per-capture hitch (see
-        // TECHDEBT). Bake all of it into ONE vertex-colored triangle soup =
+        // ARCHITECTURE.md "Draw-call batching (Android performance)").
+        // Bake all of it into ONE vertex-colored triangle soup =
         // one draw call. Order matters within the soup: water first (behind),
         // foam after (on top). The whole bake sits behind the land tile
         // fills added below, matching the old child z-order.
@@ -579,7 +580,8 @@ public partial class HexMapView : Node2D, IHexMapView
     // One-shot scene-composition dump: tallies every CanvasItem in the map
     // subtree by concrete type so we can see what makes up the per-frame
     // draw-call count (the device per-capture hitch was draw-call-bound; see
-    // TECHDEBT). Logs once per session; whole method stripped from Release.
+    // ARCHITECTURE.md "Draw-call batching (Android performance)"). Logs
+    // once per session; whole method stripped from Release.
     [System.Diagnostics.Conditional("DEBUG")]
     private void DumpSceneComposition()
     {
@@ -2830,7 +2832,8 @@ public partial class HexMapView : Node2D, IHexMapView
     // DrawMultiline / DrawMultilineColors call — one draw call instead of
     // one per segment. (Antialiased Line2D / DrawPolyline can't batch, so
     // ~2000 of them were ~2000 draw calls — the device per-capture hitch;
-    // see TECHDEBT.) AA is off here so the segments batch; smoothing comes
+    // see ARCHITECTURE.md "Draw-call batching (Android performance)".)
+    // AA is off here so the segments batch; smoothing comes
     // from project-level 2D MSAA. Points are consecutive pairs: each
     // [2i, 2i+1] is one segment.
     private sealed partial class PolylineBatch : Node2D
@@ -2916,7 +2919,8 @@ public partial class HexMapView : Node2D, IHexMapView
 
     // Draws an entire vertex-colored triangle array in a single canvas batch
     // (one draw call) via RenderingServer. Used to bake the static
-    // water + shoreline foam (~1,870 Polygon2D ⇒ 1 draw) — see TECHDEBT.
+    // water + shoreline foam (~1,870 Polygon2D ⇒ 1 draw) — see
+    // ARCHITECTURE.md "Draw-call batching (Android performance)".
     private sealed partial class TriangleSoup : Node2D
     {
         private int[] _indices = System.Array.Empty<int>();

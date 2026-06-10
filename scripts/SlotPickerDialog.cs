@@ -21,7 +21,8 @@ using Godot;
 /// <see cref="PanelContainer"/> (same pattern as <see cref="SettingsPanel"/>)
 /// so the modal picks up the project theme's slate panel style instead
 /// of Godot 4's default <see cref="Window"/> chrome (which silently
-/// ignores embedded_border overrides; see TECHDEBT.md).
+/// ignores embedded_border overrides; see the "Visual / UI theme"
+/// section of ARCHITECTURE.md).
 /// </summary>
 public sealed partial class SlotPickerDialog : CanvasLayer
 {

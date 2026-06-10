@@ -613,8 +613,7 @@ active screen's DPI and drives the root `Window.ContentScaleFactor`:
   scrolling or clipping — the same shrink-to-fit as `MainMenuScene.ScaleToFit`.
   (CreditsPanel keeps its own inner `ScrollContainer` for the long blurb; its
   body label is `MouseFilter = Pass` so a touch-drag reaches the scroll.) Issue
-  #17. The portrait bar layout itself does not yet reflow for very narrow
-  logical widths — tracked in TECHDEBT.
+  #17.
 
 ## Safe-area handling (autoload)
 
@@ -2840,11 +2839,18 @@ avoiding the "looks fine on desktop, broken in browser" class of
 regression.
 
 A web export was scoped on the same date but is blocked engine-side
-— Godot 4.6.1 .NET (mono) does not ship Web export templates. See
-the corresponding `TECHDEBT.md` entry for the survey of what's
-already done toward the eventual web build (code-surface audit,
-templates installed, renderer switched) so the work isn't repeated
-when a Godot version that supports .NET web export lands.
+— Godot 4.6.1 .NET (mono) does not ship Web export templates (the
+non-mono build's web templates target the GDScript-only runtime and
+cannot run a C# project). Recording what's already done toward the
+eventual web build so the work isn't repeated when a Godot version
+with .NET web export lands: the renderer was switched to GL
+Compatibility (independently the right choice for a 2D game), the
+4.6.1 mono export-templates archive is installed under
+`~/Library/Application Support/Godot/export_templates/`, and a
+code-surface audit found no web-export risk surfaces (no threading,
+no DllImport, no native deps, no runtime NuGet packages, no custom
+shaders). Before retrying, reconfirm the new templates archive
+actually contains `web_*.zip` files.
 
 ### Draw-call batching (Android performance)
 
@@ -2875,8 +2881,9 @@ Two pieces in `HexMapView` collapse that to **~180–256 draws/frame**:
 Tile fills remain one `Polygon2D` each (recolored, not recreated, on
 capture) — they weren't the bottleneck. The remaining per-capture cost
 is CPU-side `RefreshOccupantVisuals` recreating all occupant nodes every
-refresh; making that incremental is tracked in `TECHDEBT.md` if it ever
-resurfaces. Diagnostic instrumentation lives behind the `[hitch]` log
+refresh; making that incremental is a known candidate optimization if
+the cost ever resurfaces (the related method-split refactor is
+issue #10). Diagnostic instrumentation lives behind the `[hitch]` log
 prefix (`Log.Since` timings, the `LogLongFrame` CPU/draw-call split in
 `_Process`, and the one-shot `DumpSceneComposition`), all
 `[Conditional("DEBUG")]` so they're stripped from Release.
@@ -3305,7 +3312,7 @@ This is a heuristic (hand-tuned hold, can blank on an incomplete tilt).
 Its limitations — and a recorded dead end (a Godot-frame-driven removal
 can't work: the stretch is gated by the OS freeze *thaw*, which lands
 well after Godot's resize callback and isn't observable from the render
-loop) — are in `TECHDEBT.md`.
+loop) — are recorded in issue #9.
 
 ## Logging (`Log`)
 
