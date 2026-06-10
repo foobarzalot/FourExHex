@@ -1652,8 +1652,12 @@ public partial class HudView : OrientationHud, IHudView
         if (hasCapital)
         {
             int gold = state.Treasury.GetGold(selected!.Capital!.Value);
-            int income = TreeRules.CountIncomeProducingTiles(selected, state.Grid);
-            int upkeep = UpkeepRules.TotalUpkeepFor(selected, state.Grid);
+            // Difficulty-scaled economics (humans are always Soldier, so the
+            // visible numbers are unchanged — this keeps the label honest if
+            // a non-Soldier territory is ever shown).
+            Difficulty ownerDifficulty = state.Players[selected.Owner.Index].Difficulty;
+            int income = IncomeRules.IncomeFor(selected, state.Grid, ownerDifficulty);
+            int upkeep = UpkeepRules.TotalUpkeepFor(selected, state.Grid, ownerDifficulty);
             int net = income - upkeep;
             string sign = net >= 0 ? "+" : "";
             _goldLabel.Text = $"{gold}g ({income}-{upkeep}={sign}{net})";
@@ -1666,7 +1670,7 @@ public partial class HudView : OrientationHud, IHudView
             //            an eventual bankruptcy;
             //   default — net >= 0, or not the human's territory.
             EconomyOutlook outlook = IsHumanOwned(state, selected)
-                ? UpkeepRules.Classify(selected, state.Grid, state.Treasury)
+                ? UpkeepRules.Classify(selected, state.Grid, state.Treasury, ownerDifficulty)
                 : EconomyOutlook.Healthy;
             switch (outlook)
             {
@@ -1872,7 +1876,8 @@ public partial class HudView : OrientationHud, IHudView
         if (t == null) return false;
         if (t.Capital != coord) return false;
         if (!IsHumanOwned(state, t)) return false;
-        return UpkeepRules.Classify(t, state.Grid, state.Treasury) == expected;
+        return UpkeepRules.Classify(t, state.Grid, state.Treasury,
+            state.Players[t.Owner.Index].Difficulty) == expected;
     }
 
     public HexCoord? SummonedCapitalAlertCoord => _summonedAlertCoord;

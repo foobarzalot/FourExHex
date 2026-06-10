@@ -7,8 +7,10 @@ using System.Collections.Generic;
 /// the territory dies (the territory is "bankrupt"). The remaining gold
 /// stays in the treasury.
 ///
-/// Upkeep values per Slay:
-///   Recruit = 2, Soldier = 6, Captain = 18, Commander = 54
+/// Upkeep values depend on the owner's <see cref="Difficulty"/> via the
+/// table in <see cref="DifficultyRules.UnitUpkeep"/>; the Soldier-difficulty
+/// baseline is per Slay: Recruit = 2, Soldier = 6, Captain = 18,
+/// Commander = 54.
 /// </summary>
 /// <summary>
 /// Outlook of a territory's near-term economy. Pure economic facts —
@@ -31,15 +33,16 @@ public enum EconomyOutlook
 
 public static class UpkeepRules
 {
-    /// <summary>The upkeep cost a single unit of the given level demands per turn.</summary>
-    public static int UpkeepFor(UnitLevel level) => level switch
-    {
-        UnitLevel.Recruit => 2,
-        UnitLevel.Soldier => 6,
-        UnitLevel.Captain => 18,
-        UnitLevel.Commander => 54,
-        _ => 0,
-    };
+    /// <summary>
+    /// The upkeep cost a single unit of the given level demands per turn,
+    /// for an owner at the given difficulty. The values live in
+    /// <see cref="DifficultyRules.UnitUpkeep"/> (all difficulty tuning in one
+    /// file); this is per-unit (not per-territory-total) so AiCommon's
+    /// combine/buy upkeep-delta arithmetic stays exactly consistent with
+    /// totals and real charging.
+    /// </summary>
+    public static int UpkeepFor(UnitLevel level, Difficulty difficulty) =>
+        DifficultyRules.UnitUpkeep(level, difficulty);
 
     /// <summary>
     /// Number of upkeep steps the AI's solvency check looks ahead.
@@ -70,8 +73,9 @@ public static class UpkeepRules
     public static bool SurvivesNextUpkeep(int gold, int netIncome) =>
         gold + UpkeepHorizon * netIncome >= 0;
 
-    /// <summary>Sum of upkeep costs for every unit in <paramref name="territory"/>.</summary>
-    public static int TotalUpkeepFor(Territory territory, HexGrid grid)
+    /// <summary>Sum of upkeep costs for every unit in <paramref name="territory"/>,
+    /// at the owner's <paramref name="difficulty"/>.</summary>
+    public static int TotalUpkeepFor(Territory territory, HexGrid grid, Difficulty difficulty)
     {
         int total = 0;
         foreach (HexCoord coord in territory.Coords)
@@ -79,7 +83,7 @@ public static class UpkeepRules
             HexTile? tile = grid.Get(coord);
             if (tile?.Occupant is Unit u)
             {
-                total += UpkeepFor(u.Level);
+                total += UpkeepFor(u.Level, difficulty);
             }
         }
         return total;
@@ -100,14 +104,14 @@ public static class UpkeepRules
     /// This is a forecast over the current static territory — it does
     /// not model start-of-turn tree growth or intervening captures.
     /// </summary>
-    public static bool ForecastBankruptNextTurn(Territory territory, HexGrid grid, Treasury treasury)
+    public static bool ForecastBankruptNextTurn(Territory territory, HexGrid grid, Treasury treasury, Difficulty difficulty)
     {
         if (!territory.HasCapital) return false;
 
-        int owed = TotalUpkeepFor(territory, grid);
+        int owed = TotalUpkeepFor(territory, grid, difficulty);
         if (owed == 0) return false;
 
-        int income = TreeRules.CountIncomeProducingTiles(territory, grid);
+        int income = IncomeRules.IncomeFor(territory, grid, difficulty);
         int available = treasury.GetGold(territory.Capital!.Value) + income;
         return available < owed;
     }
@@ -123,14 +127,14 @@ public static class UpkeepRules
     /// Pure economic facts; the view decides which outlooks deserve a
     /// warning tint based on owner kind.
     /// </summary>
-    public static EconomyOutlook Classify(Territory territory, HexGrid grid, Treasury treasury)
+    public static EconomyOutlook Classify(Territory territory, HexGrid grid, Treasury treasury, Difficulty difficulty)
     {
         if (!territory.HasCapital) return EconomyOutlook.Healthy;
 
-        int owed = TotalUpkeepFor(territory, grid);
+        int owed = TotalUpkeepFor(territory, grid, difficulty);
         if (owed == 0) return EconomyOutlook.Healthy;
 
-        int income = TreeRules.CountIncomeProducingTiles(territory, grid);
+        int income = IncomeRules.IncomeFor(territory, grid, difficulty);
         int available = treasury.GetGold(territory.Capital!.Value) + income;
         if (available < owed) return EconomyOutlook.BankruptNextTurn;
         if (income < owed) return EconomyOutlook.NegativeDelta;
@@ -144,9 +148,9 @@ public static class UpkeepRules
     /// no treasury), every unit in the territory is destroyed (set to
     /// null) and returns false. The remaining gold is left untouched.
     /// </summary>
-    public static bool ApplyUpkeep(Territory territory, HexGrid grid, Treasury treasury)
+    public static bool ApplyUpkeep(Territory territory, HexGrid grid, Treasury treasury, Difficulty difficulty)
     {
-        int owed = TotalUpkeepFor(territory, grid);
+        int owed = TotalUpkeepFor(territory, grid, difficulty);
         if (owed == 0) return true; // nothing to pay
 
         int available = territory.HasCapital
@@ -194,7 +198,7 @@ public static class UpkeepRules
         foreach (Territory territory in territories)
         {
             if (territory.Owner != player.Id) continue;
-            if (!ApplyUpkeep(territory, grid, treasury))
+            if (!ApplyUpkeep(territory, grid, treasury, player.Difficulty))
             {
                 anyBankrupt = true;
             }

@@ -230,10 +230,10 @@ public class TreasuryTests
     }
 
     [Fact]
-    public void CollectIncomeFor_CommanderDifficulty_Scales140Percent_WithGrid()
+    public void CollectIncomeFor_CommanderDifficulty_IncomeIsFlat100Percent_WithGrid()
     {
-        // 8-income-tile territory, Commander Red (140%) → 8*140/100 = 11 gold.
-        // Big enough that the percent bonus survives integer truncation.
+        // Hard levels don't boost income — their lever is the cheaper-upkeep
+        // table. 8 income tiles at Commander difficulty earn exactly 8 gold.
         var capital = new HexCoord(0, 0);
         var coords = new HexCoord[8];
         var grid = new HexGrid();
@@ -248,7 +248,7 @@ public class TreasuryTests
         var treasury = new Treasury();
         treasury.CollectIncomeFor(commanderRed, new[] { t }, grid);
 
-        Assert.Equal(11, treasury.GetGold(capital));
+        Assert.Equal(8, treasury.GetGold(capital));
     }
 
     [Fact]

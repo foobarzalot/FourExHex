@@ -11,25 +11,54 @@ public static class DifficultyRules
 {
     /// <summary>
     /// Scale a base per-turn income by a player's difficulty, expressed as an
-    /// integer percent so levels can be tuned finely near 1× (income bonuses
-    /// compound — gold buys units, units take tiles, tiles raise income — so
-    /// even 1.5× proved far too punishing in playtesting). Recruit = 50%,
-    /// Soldier = 100%, Captain = 120%, Commander = 140%. All integer math
-    /// (no-floats rule), truncating: small territories see little or no
-    /// bonus (at 120%, a bonus only appears from 5 income tiles up), which
-    /// softens the early game. Tuning a level is a one-integer edit here.
+    /// integer percent. Recruit = 50% (the easy-level handicap); everything
+    /// else is flat 100% — hard levels are driven by the cheaper-upkeep table
+    /// (<see cref="UnitUpkeep"/>) instead, because income bonuses compound
+    /// (gold buys units, units take tiles, tiles raise income) and proved
+    /// knife-edged to tune. All integer math (no-floats rule), truncating.
     /// </summary>
     public static int ScaleIncome(int baseIncome, Difficulty difficulty)
     {
         int percent = difficulty switch
         {
             Difficulty.Recruit => 50,
-            Difficulty.Captain => 120,
-            Difficulty.Commander => 140,
-            _ => 100, // Soldier (default)
+            _ => 100, // Soldier baseline; Captain/Commander use the upkeep lever
         };
         return baseIncome * percent / 100; // integer division truncates
     }
+
+    /// <summary>
+    /// Upkeep table: gold per turn a unit of <paramref name="level"/> costs
+    /// when owned by a player at <paramref name="difficulty"/>. Explicit
+    /// hand-picked integers (no percent formula, no truncation arithmetic).
+    /// The Soldier column is the baseline (2/6/18/54, per Slay) — humans are
+    /// always Soldier, so human economics never change. Captain/Commander
+    /// difficulties pay roughly 3/4 and 1/2: cheaper armies are the sole
+    /// hard-level lever (income is flat 100% above Recruit), chosen because
+    /// upkeep relief engages from turn 1, scales with army size rather than
+    /// land, and counters the bankruptcy doom-spiral (#22) instead of
+    /// compounding like the income lever did.
+    /// </summary>
+    public static int UnitUpkeep(UnitLevel level, Difficulty difficulty) => (level, difficulty) switch
+    {
+        (UnitLevel.Recruit, Difficulty.Captain) => 1,
+        (UnitLevel.Recruit, Difficulty.Commander) => 1,
+        (UnitLevel.Recruit, _) => 2,
+
+        (UnitLevel.Soldier, Difficulty.Captain) => 4,
+        (UnitLevel.Soldier, Difficulty.Commander) => 3,
+        (UnitLevel.Soldier, _) => 6,
+
+        (UnitLevel.Captain, Difficulty.Captain) => 13,
+        (UnitLevel.Captain, Difficulty.Commander) => 9,
+        (UnitLevel.Captain, _) => 18,
+
+        (UnitLevel.Commander, Difficulty.Captain) => 40,
+        (UnitLevel.Commander, Difficulty.Commander) => 27,
+        (UnitLevel.Commander, _) => 54,
+
+        _ => 0,
+    };
 
     /// <summary>
     /// Map a single global difficulty onto a roster: every computer slot

@@ -309,8 +309,8 @@ public class GameOperations
             if (t.Owner != p.Id) continue;
             ownedTerritories++;
             tiles += t.Coords.Count;
-            int income = TreeRules.CountIncomeProducingTiles(t, _state.Grid);
-            int upkeep = UpkeepRules.TotalUpkeepFor(t, _state.Grid);
+            int income = IncomeRules.IncomeFor(t, _state.Grid, p.Difficulty);
+            int upkeep = UpkeepRules.TotalUpkeepFor(t, _state.Grid, p.Difficulty);
             totalNet += income - upkeep;
             if (t.HasCapital)
             {

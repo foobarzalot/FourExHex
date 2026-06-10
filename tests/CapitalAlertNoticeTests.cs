@@ -68,7 +68,7 @@ public class CapitalAlertNoticeTests
             State.Grid.Get(nonCapital)!.Occupant = new Unit(Red.Id, UnitLevel.Captain);
             State.Treasury.SetGold(RedCapital, 0);
             Assert.Equal(EconomyOutlook.BankruptNextTurn,
-                UpkeepRules.Classify(RedTerritory, State.Grid, State.Treasury));
+                UpkeepRules.Classify(RedTerritory, State.Grid, State.Treasury, Difficulty.Soldier));
         }
 
         /// <summary>Drive Red's territory into NegativeDelta by placing a
@@ -81,7 +81,7 @@ public class CapitalAlertNoticeTests
             State.Grid.Get(nonCapital)!.Occupant = new Unit(Red.Id, UnitLevel.Soldier);
             State.Treasury.SetGold(RedCapital, 100);
             Assert.Equal(EconomyOutlook.NegativeDelta,
-                UpkeepRules.Classify(RedTerritory, State.Grid, State.Treasury));
+                UpkeepRules.Classify(RedTerritory, State.Grid, State.Treasury, Difficulty.Soldier));
         }
     }
 
@@ -119,7 +119,7 @@ public class CapitalAlertNoticeTests
         var f = new AlertFixture();
         // No units placed → owed = 0 → Healthy.
         Assert.Equal(EconomyOutlook.Healthy,
-            UpkeepRules.Classify(f.RedTerritory, f.State.Grid, f.State.Treasury));
+            UpkeepRules.Classify(f.RedTerritory, f.State.Grid, f.State.Treasury, Difficulty.Soldier));
 
         f.Map.SimulateClick(f.State.Grid.Get(f.RedCapital)!);
 
@@ -251,8 +251,8 @@ public class CapitalAlertNoticeTests
         state.Grid.Get(nonCapB)!.Occupant = new Unit(red.Id, UnitLevel.Soldier);
         state.Treasury.SetGold(capB, 100);
 
-        Assert.Equal(EconomyOutlook.BankruptNextTurn, UpkeepRules.Classify(tA, state.Grid, state.Treasury));
-        Assert.Equal(EconomyOutlook.NegativeDelta, UpkeepRules.Classify(tB, state.Grid, state.Treasury));
+        Assert.Equal(EconomyOutlook.BankruptNextTurn, UpkeepRules.Classify(tA, state.Grid, state.Treasury, Difficulty.Soldier));
+        Assert.Equal(EconomyOutlook.NegativeDelta, UpkeepRules.Classify(tB, state.Grid, state.Treasury, Difficulty.Soldier));
 
         map.SimulateClick(state.Grid.Get(capA)!);
         Assert.Equal(capA, hud.SummonedCapitalAlertCoord);

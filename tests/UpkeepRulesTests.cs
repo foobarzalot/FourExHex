@@ -22,7 +22,7 @@ public class UpkeepRulesTests
     [InlineData(UnitLevel.Commander,    54)]
     public void UpkeepFor_KnownLevels(UnitLevel level, int expected)
     {
-        Assert.Equal(expected, UpkeepRules.UpkeepFor(level));
+        Assert.Equal(expected, UpkeepRules.UpkeepFor(level, Difficulty.Soldier));
     }
 
     // --- TotalUpkeepFor ---------------------------------------------------
@@ -33,7 +33,7 @@ public class UpkeepRulesTests
         HexGrid grid = BuildGridOf(new HexCoord(0, 0), new HexCoord(1, 0));
         Territory t = BuildTerritory(new HexCoord(0, 0), new HexCoord(0, 0), new HexCoord(1, 0));
 
-        Assert.Equal(0, UpkeepRules.TotalUpkeepFor(t, grid));
+        Assert.Equal(0, UpkeepRules.TotalUpkeepFor(t, grid, Difficulty.Soldier));
     }
 
     [Fact]
@@ -43,7 +43,7 @@ public class UpkeepRulesTests
         grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red);
         Territory t = BuildTerritory(new HexCoord(0, 0), new HexCoord(0, 0), new HexCoord(1, 0));
 
-        Assert.Equal(2, UpkeepRules.TotalUpkeepFor(t, grid));
+        Assert.Equal(2, UpkeepRules.TotalUpkeepFor(t, grid, Difficulty.Soldier));
     }
 
     [Fact]
@@ -58,7 +58,72 @@ public class UpkeepRulesTests
             new HexCoord(0, 0),
             new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(0, 1));
 
-        Assert.Equal(20, UpkeepRules.TotalUpkeepFor(t, grid));
+        Assert.Equal(20, UpkeepRules.TotalUpkeepFor(t, grid, Difficulty.Soldier));
+    }
+
+    [Fact]
+    public void TotalUpkeepFor_CommanderDifficulty_SumsScaledPerUnitValues()
+    {
+        // Commander (54→27) + Recruit (2→1) at Commander difficulty = 28
+        // (vs 56 at Soldier).
+        HexGrid grid = BuildGridOf(
+            new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(0, 1));
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red, UnitLevel.Commander);
+        grid.Get(new HexCoord(0, 1))!.Occupant = new Unit(Red);
+        Territory t = BuildTerritory(
+            new HexCoord(0, 0),
+            new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(0, 1));
+
+        Assert.Equal(28, UpkeepRules.TotalUpkeepFor(t, grid, Difficulty.Commander));
+    }
+
+    [Fact]
+    public void ApplyUpkeep_CommanderDifficulty_ChargesScaledAmount()
+    {
+        // One Captain: owed 9 at Commander difficulty (vs 18 at Soldier).
+        // Gold 10 covers 9 → pays, 1 left, unit survives.
+        HexGrid grid = BuildGridOf(new HexCoord(0, 0), new HexCoord(1, 0));
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red, UnitLevel.Captain);
+        Territory t = BuildTerritory(new HexCoord(0, 0), new HexCoord(0, 0), new HexCoord(1, 0));
+        var treasury = new Treasury();
+        treasury.SetGold(new HexCoord(0, 0), 10);
+
+        Assert.True(UpkeepRules.ApplyUpkeep(t, grid, treasury, Difficulty.Commander));
+        Assert.Equal(1, treasury.GetGold(new HexCoord(0, 0)));
+        Assert.IsType<Unit>(grid.Get(new HexCoord(1, 0))!.Occupant);
+    }
+
+    [Fact]
+    public void ApplyUpkeep_SameGold_BankruptAtSoldierButSolventAtCommander()
+    {
+        // The same 10 gold that sustains a Captain at Commander difficulty
+        // (owed 9) is bankrupt at Soldier (owed 18) — units die.
+        HexGrid grid = BuildGridOf(new HexCoord(0, 0), new HexCoord(1, 0));
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red, UnitLevel.Captain);
+        Territory t = BuildTerritory(new HexCoord(0, 0), new HexCoord(0, 0), new HexCoord(1, 0));
+        var treasury = new Treasury();
+        treasury.SetGold(new HexCoord(0, 0), 10);
+
+        Assert.False(UpkeepRules.ApplyUpkeep(t, grid, treasury, Difficulty.Soldier));
+        Assert.IsType<Grave>(grid.Get(new HexCoord(1, 0))!.Occupant);
+    }
+
+    [Fact]
+    public void ApplyUpkeepFor_UsesThePlayersDifficulty()
+    {
+        // A Commander-difficulty player's territory pays the scaled rate via
+        // the Player overload — proves ApplyUpkeepFor reads player.Difficulty.
+        HexGrid grid = BuildGridOf(new HexCoord(0, 0), new HexCoord(1, 0));
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red, UnitLevel.Captain);
+        Territory t = BuildTerritory(new HexCoord(0, 0), new HexCoord(0, 0), new HexCoord(1, 0));
+        var treasury = new Treasury();
+        treasury.SetGold(new HexCoord(0, 0), 10);
+        var commanderRed = new Player("Red", Red, PlayerKind.Computer, Difficulty.Commander);
+
+        bool anyBankrupt = UpkeepRules.ApplyUpkeepFor(commanderRed, new[] { t }, grid, treasury);
+
+        Assert.False(anyBankrupt);
+        Assert.Equal(1, treasury.GetGold(new HexCoord(0, 0)));
     }
 
     // --- ForecastBankruptNextTurn ----------------------------------------
@@ -74,7 +139,7 @@ public class UpkeepRulesTests
         var treasury = new Treasury();
         treasury.SetGold(new HexCoord(0, 0), 20);
 
-        Assert.False(UpkeepRules.ForecastBankruptNextTurn(t, grid, treasury));
+        Assert.False(UpkeepRules.ForecastBankruptNextTurn(t, grid, treasury, Difficulty.Soldier));
     }
 
     [Fact]
@@ -87,7 +152,7 @@ public class UpkeepRulesTests
         var treasury = new Treasury();
         treasury.SetGold(new HexCoord(0, 0), 5);
 
-        Assert.True(UpkeepRules.ForecastBankruptNextTurn(t, grid, treasury));
+        Assert.True(UpkeepRules.ForecastBankruptNextTurn(t, grid, treasury, Difficulty.Soldier));
     }
 
     [Fact]
@@ -101,7 +166,7 @@ public class UpkeepRulesTests
         var treasury = new Treasury();
         treasury.SetGold(new HexCoord(0, 0), 16);
 
-        Assert.False(UpkeepRules.ForecastBankruptNextTurn(t, grid, treasury));
+        Assert.False(UpkeepRules.ForecastBankruptNextTurn(t, grid, treasury, Difficulty.Soldier));
     }
 
     [Fact]
@@ -113,7 +178,7 @@ public class UpkeepRulesTests
         var treasury = new Treasury();
         treasury.SetGold(new HexCoord(0, 0), 0);
 
-        Assert.False(UpkeepRules.ForecastBankruptNextTurn(t, grid, treasury));
+        Assert.False(UpkeepRules.ForecastBankruptNextTurn(t, grid, treasury, Difficulty.Soldier));
     }
 
     [Fact]
@@ -127,7 +192,7 @@ public class UpkeepRulesTests
         Territory singleton = BuildTerritory(capital: null, new HexCoord(0, 0));
         var treasury = new Treasury();
 
-        Assert.False(UpkeepRules.ForecastBankruptNextTurn(singleton, grid, treasury));
+        Assert.False(UpkeepRules.ForecastBankruptNextTurn(singleton, grid, treasury, Difficulty.Soldier));
     }
 
     // --- Classify ---------------------------------------------------------
@@ -145,7 +210,7 @@ public class UpkeepRulesTests
         treasury.SetGold(new HexCoord(0, 0), 0);
         // income 3, upkeep 2 -> net +1 -> healthy.
 
-        Assert.Equal(EconomyOutlook.Healthy, UpkeepRules.Classify(t, grid, treasury));
+        Assert.Equal(EconomyOutlook.Healthy, UpkeepRules.Classify(t, grid, treasury, Difficulty.Soldier));
     }
 
     [Fact]
@@ -159,7 +224,7 @@ public class UpkeepRulesTests
         var treasury = new Treasury();
         treasury.SetGold(new HexCoord(0, 0), 0);
 
-        Assert.Equal(EconomyOutlook.Healthy, UpkeepRules.Classify(t, grid, treasury));
+        Assert.Equal(EconomyOutlook.Healthy, UpkeepRules.Classify(t, grid, treasury, Difficulty.Soldier));
     }
 
     [Fact]
@@ -173,7 +238,7 @@ public class UpkeepRulesTests
         var treasury = new Treasury();
         treasury.SetGold(new HexCoord(0, 0), 20);
 
-        Assert.Equal(EconomyOutlook.NegativeDelta, UpkeepRules.Classify(t, grid, treasury));
+        Assert.Equal(EconomyOutlook.NegativeDelta, UpkeepRules.Classify(t, grid, treasury, Difficulty.Soldier));
     }
 
     [Fact]
@@ -187,7 +252,7 @@ public class UpkeepRulesTests
         var treasury = new Treasury();
         treasury.SetGold(new HexCoord(0, 0), 16); // 16 + 2 income = 18 == upkeep
 
-        Assert.Equal(EconomyOutlook.NegativeDelta, UpkeepRules.Classify(t, grid, treasury));
+        Assert.Equal(EconomyOutlook.NegativeDelta, UpkeepRules.Classify(t, grid, treasury, Difficulty.Soldier));
     }
 
     [Fact]
@@ -200,7 +265,7 @@ public class UpkeepRulesTests
         var treasury = new Treasury();
         treasury.SetGold(new HexCoord(0, 0), 5);
 
-        Assert.Equal(EconomyOutlook.BankruptNextTurn, UpkeepRules.Classify(t, grid, treasury));
+        Assert.Equal(EconomyOutlook.BankruptNextTurn, UpkeepRules.Classify(t, grid, treasury, Difficulty.Soldier));
     }
 
     [Fact]
@@ -211,7 +276,7 @@ public class UpkeepRulesTests
         var treasury = new Treasury();
         treasury.SetGold(new HexCoord(0, 0), 0);
 
-        Assert.Equal(EconomyOutlook.Healthy, UpkeepRules.Classify(t, grid, treasury));
+        Assert.Equal(EconomyOutlook.Healthy, UpkeepRules.Classify(t, grid, treasury, Difficulty.Soldier));
     }
 
     [Fact]
@@ -224,7 +289,7 @@ public class UpkeepRulesTests
         Territory singleton = BuildTerritory(capital: null, new HexCoord(0, 0));
         var treasury = new Treasury();
 
-        Assert.Equal(EconomyOutlook.Healthy, UpkeepRules.Classify(singleton, grid, treasury));
+        Assert.Equal(EconomyOutlook.Healthy, UpkeepRules.Classify(singleton, grid, treasury, Difficulty.Soldier));
     }
 
     // --- ApplyUpkeep ------------------------------------------------------
@@ -238,7 +303,7 @@ public class UpkeepRulesTests
         var treasury = new Treasury();
         treasury.SetGold(new HexCoord(0, 0), 10);
 
-        bool paid = UpkeepRules.ApplyUpkeep(t, grid, treasury);
+        bool paid = UpkeepRules.ApplyUpkeep(t, grid, treasury, Difficulty.Soldier);
 
         Assert.True(paid);
         Assert.Equal(8, treasury.GetGold(new HexCoord(0, 0))); // 10 - 2
@@ -257,7 +322,7 @@ public class UpkeepRulesTests
         var treasury = new Treasury();
         treasury.SetGold(new HexCoord(0, 0), 5); // far less than 20 owed
 
-        bool paid = UpkeepRules.ApplyUpkeep(t, grid, treasury);
+        bool paid = UpkeepRules.ApplyUpkeep(t, grid, treasury, Difficulty.Soldier);
 
         Assert.False(paid);
         Assert.IsType<Grave>(grid.Get(new HexCoord(1, 0))!.Occupant);
@@ -274,7 +339,7 @@ public class UpkeepRulesTests
         var treasury = new Treasury();
         treasury.SetGold(new HexCoord(0, 0), 7);
 
-        bool paid = UpkeepRules.ApplyUpkeep(t, grid, treasury);
+        bool paid = UpkeepRules.ApplyUpkeep(t, grid, treasury, Difficulty.Soldier);
 
         Assert.True(paid);
         Assert.Equal(7, treasury.GetGold(new HexCoord(0, 0)));
@@ -291,7 +356,7 @@ public class UpkeepRulesTests
         Territory singleton = BuildTerritory(capital: null, new HexCoord(0, 0));
         var treasury = new Treasury();
 
-        bool paid = UpkeepRules.ApplyUpkeep(singleton, grid, treasury);
+        bool paid = UpkeepRules.ApplyUpkeep(singleton, grid, treasury, Difficulty.Soldier);
 
         Assert.False(paid);
         Assert.IsType<Grave>(grid.Get(new HexCoord(0, 0))!.Occupant);
@@ -309,7 +374,7 @@ public class UpkeepRulesTests
         var treasury = new Treasury();
         treasury.SetGold(new HexCoord(0, 0), 0);
 
-        bool paid = UpkeepRules.ApplyUpkeep(t, grid, treasury);
+        bool paid = UpkeepRules.ApplyUpkeep(t, grid, treasury, Difficulty.Soldier);
 
         Assert.False(paid);
         Assert.IsType<Capital>(grid.Get(new HexCoord(0, 0))!.Occupant);

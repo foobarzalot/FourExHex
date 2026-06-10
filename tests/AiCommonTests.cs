@@ -17,6 +17,35 @@ public class AiCommonTests
     }
 
     [Fact]
+    public void Enumerate_BuyGate_SeesDifficultyScaledUpkeep()
+    {
+        // 20-tile Red territory (income 20 at 100%), gold 100, one adjacent
+        // Blue tile so buy targets exist. Buying a Commander unit costs 40
+        // and adds upkeep 54 at Soldier difficulty / 27 at Commander
+        // difficulty (the table). Solvency gate: gold-cost + 5×net ≥ 0:
+        //   Soldier:   60 + 5×(20-54) = -110 → gated out
+        //   Commander: 60 + 5×(20-27) =  +25 → enumerated
+        // Same board, only the owner's difficulty differs.
+        List<AiCandidate> CandidatesFor(Difficulty d)
+        {
+            HexGrid grid = TestHelpers.BuildRectGrid(5, 4, Red);
+            grid.Add(new HexTile(HexCoord.FromOffset(5, 0), Blue));
+            GameState state = BuildState(grid,
+                new Player("Red", PlayerId.FromIndex(0), PlayerKind.Computer, d),
+                new Player("Blue", PlayerId.FromIndex(1), PlayerKind.Computer));
+            Territory red = state.Territories.First(t => t.Owner == Red);
+            state.Treasury.SetGold(red.Capital!.Value, 100);
+            return AiCommon.Enumerate(red, state).ToList();
+        }
+
+        bool CommanderBuy(AiCandidate c) =>
+            c.Action is AiBuyUnitAction buy && buy.Level == UnitLevel.Commander;
+
+        Assert.DoesNotContain(CandidatesFor(Difficulty.Soldier), CommanderBuy);
+        Assert.Contains(CandidatesFor(Difficulty.Commander), CommanderBuy);
+    }
+
+    [Fact]
     public void Enumerate_Yields_Move_Reposition_To_Border_Tile()
     {
         // 4-tile Red strip cols 0..3 + Blue tile col 4. Red border
