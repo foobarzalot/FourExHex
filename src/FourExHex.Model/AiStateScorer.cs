@@ -289,7 +289,7 @@ public static class AiStateScorer
     {
         int tiles = territory.Coords.Count;
         Difficulty difficulty = territory.Owner.IsNone
-            ? Difficulty.Normal
+            ? Difficulty.Soldier
             : state.Players[territory.Owner.Index].Difficulty;
         int income = IncomeRules.IncomeFor(territory, state.Grid, difficulty);
         int upkeep = UpkeepRules.TotalUpkeepFor(territory, state.Grid);

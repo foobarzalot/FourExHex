@@ -27,7 +27,7 @@ public class Player
     /// <summary>
     /// Difficulty lever (issue #11): how much per-turn gold income this
     /// player earns, via <see cref="DifficultyRules.ScaleIncome"/>. Default
-    /// <see cref="Difficulty.Normal"/> = unchanged. Consumed by
+    /// <see cref="Difficulty.Soldier"/> = unchanged. Consumed by
     /// <see cref="IncomeRules.IncomeFor"/>, the single source of truth both
     /// real income collection (<see cref="Treasury.CollectIncomeFor"/>) and
     /// the AI lookahead scorer (<see cref="AiStateScorer"/>) read.
@@ -41,7 +41,7 @@ public class Player
     /// </summary>
     public bool IsAi => Kind != PlayerKind.Human;
 
-    public Player(string name, PlayerId id, PlayerKind kind = PlayerKind.Human, Difficulty difficulty = Difficulty.Normal)
+    public Player(string name, PlayerId id, PlayerKind kind = PlayerKind.Human, Difficulty difficulty = Difficulty.Soldier)
     {
         Name = name;
         Id = id;
@@ -79,7 +79,7 @@ public class Player
                 : PlayerKind.Computer;
             Difficulty difficulty = i < GameSettings.Difficulties.Length
                 ? GameSettings.Difficulties[i]
-                : Difficulty.Normal;
+                : Difficulty.Soldier;
             players.Add(new Player(name, PlayerId.FromIndex(i), kind, difficulty));
         }
         return players;

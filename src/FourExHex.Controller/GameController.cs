@@ -184,10 +184,10 @@ public class GameController
         _hud.SetVictoryOverlaySuppressed(_previewMode || _recordingMode);
 
         // Difficulty lever instrumentation (issue #11): one-shot at game
-        // construction, only when some slot is non-Normal, so a
+        // construction, only when some slot is non-Soldier (non-default), so a
         // FOUREXHEX_DIFFICULTY run proves which player got which level. Lands
         // in the FOUREXHEX_6AI stdout (Turn:Info is pinned there).
-        if (System.Linq.Enumerable.Any(_state.Players, p => p.Difficulty != Difficulty.Normal))
+        if (System.Linq.Enumerable.Any(_state.Players, p => p.Difficulty != Difficulty.Soldier))
         {
             Log.Info(Log.LogCategory.Turn,
                 "difficulties: " + string.Join(", ",

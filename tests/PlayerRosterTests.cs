@@ -14,14 +14,14 @@ public class PlayerRosterTests
         {
             GameSettings.Difficulties = new[]
             {
-                Difficulty.Normal, Difficulty.Normal, Difficulty.Normal,
-                Difficulty.Normal, Difficulty.Normal, Difficulty.Brutal,
+                Difficulty.Soldier, Difficulty.Soldier, Difficulty.Soldier,
+                Difficulty.Soldier, Difficulty.Soldier, Difficulty.Commander,
             };
 
             List<Player> roster = Player.BuildRoster();
 
-            Assert.Equal(Difficulty.Normal, roster[0].Difficulty);
-            Assert.Equal(Difficulty.Brutal, roster[5].Difficulty);
+            Assert.Equal(Difficulty.Soldier, roster[0].Difficulty);
+            Assert.Equal(Difficulty.Commander, roster[5].Difficulty);
         }
         finally
         {
@@ -30,7 +30,7 @@ public class PlayerRosterTests
     }
 
     [Fact]
-    public void BuildRoster_ShortDifficultyArray_FallsBackToNormal()
+    public void BuildRoster_ShortDifficultyArray_FallsBackToSoldier()
     {
         Difficulty[] saved = GameSettings.Difficulties;
         try
@@ -41,7 +41,7 @@ public class PlayerRosterTests
 
             foreach (Player p in roster)
             {
-                Assert.Equal(Difficulty.Normal, p.Difficulty);
+                Assert.Equal(Difficulty.Soldier, p.Difficulty);
             }
         }
         finally

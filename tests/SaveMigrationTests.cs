@@ -60,11 +60,11 @@ public class SaveMigrationTests
     }
 
     [Fact]
-    public void Deserialize_PreV7Save_DefaultsDifficultyToNormal()
+    public void Deserialize_PreV7Save_DefaultsDifficultyToSoldier()
     {
         // A pre-v7 save has no per-player Difficulty field. Simulate one by
         // serializing then stripping the Difficulty entries and stamping the
-        // older version; every player must load as Normal.
+        // older version; every player must load as Soldier (the default).
         (GameState s, IReadOnlyList<Player> p) = BuildState();
         string json = SaveSerializer.Serialize(s, 1, p, "slot", 100);
         string legacy = System.Text.RegularExpressions.Regex
@@ -77,7 +77,7 @@ public class SaveMigrationTests
 
         foreach (Player player in loaded.Players)
         {
-            Assert.Equal(Difficulty.Normal, player.Difficulty);
+            Assert.Equal(Difficulty.Soldier, player.Difficulty);
         }
     }
 

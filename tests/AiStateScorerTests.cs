@@ -13,7 +13,7 @@ public class AiStateScorerTests
         // An all-Red board → one Red territory with positive net income
         // (empty tiles, no upkeep). 12 tiles so the percent-based difficulty
         // bonuses survive integer truncation and every level's income
-        // differs (Easy 6, Normal 12, Hard 13, Brutal 15). Blue exists only
+        // differs (Recruit 6, Soldier 12, Captain 13, Commander 15). Blue exists only
         // so the roster has two index-ordered slots for the owner lookup.
         HexGrid grid = TestHelpers.BuildRectGrid(4, 3, Red);
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
@@ -28,13 +28,13 @@ public class AiStateScorerTests
     [Fact]
     public void Score_RisesWithOwnerDifficulty()
     {
-        int easy = AiStateScorer.Score(BuildState(Difficulty.Easy), Red);
-        int normal = AiStateScorer.Score(BuildState(Difficulty.Normal), Red);
-        int hard = AiStateScorer.Score(BuildState(Difficulty.Hard), Red);
-        int brutal = AiStateScorer.Score(BuildState(Difficulty.Brutal), Red);
+        int recruit = AiStateScorer.Score(BuildState(Difficulty.Recruit), Red);
+        int soldier = AiStateScorer.Score(BuildState(Difficulty.Soldier), Red);
+        int captain = AiStateScorer.Score(BuildState(Difficulty.Captain), Red);
+        int commander = AiStateScorer.Score(BuildState(Difficulty.Commander), Red);
 
-        Assert.True(normal > easy, $"expected normal {normal} > easy {easy}");
-        Assert.True(hard > normal, $"expected hard {hard} > normal {normal}");
-        Assert.True(brutal > hard, $"expected brutal {brutal} > hard {hard}");
+        Assert.True(soldier > recruit, $"expected soldier {soldier} > recruit {recruit}");
+        Assert.True(captain > soldier, $"expected captain {captain} > soldier {soldier}");
+        Assert.True(commander > captain, $"expected commander {commander} > captain {captain}");
     }
 }

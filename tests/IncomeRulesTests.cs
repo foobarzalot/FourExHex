@@ -24,7 +24,7 @@ public class IncomeRulesTests
     }
 
     // 12-tile single-row territory, two trees → 10 income tiles. Big enough
-    // that the percent-based Hard/Brutal bonuses survive truncation.
+    // that the percent-based Captain/Commander bonuses survive truncation.
     private static (Territory, HexGrid) TenIncomeTiles()
     {
         var grid = new HexGrid();
@@ -41,10 +41,10 @@ public class IncomeRulesTests
     }
 
     [Theory]
-    [InlineData(Difficulty.Easy, 1)]    // 50%: 3*50/100 = 1
-    [InlineData(Difficulty.Normal, 3)]
-    [InlineData(Difficulty.Hard, 3)]    // 120%: 3*120/100 = 3 (truncated, no bonus)
-    [InlineData(Difficulty.Brutal, 4)]  // 140%: 3*140/100 = 4 (truncated from 4.2)
+    [InlineData(Difficulty.Recruit, 1)]    // 50%: 3*50/100 = 1
+    [InlineData(Difficulty.Soldier, 3)]
+    [InlineData(Difficulty.Captain, 3)]    // 120%: 3*120/100 = 3 (truncated, no bonus)
+    [InlineData(Difficulty.Commander, 4)]  // 140%: 3*140/100 = 4 (truncated from 4.2)
     public void IncomeFor_SmallTerritory_ScalesByDifficulty(Difficulty d, int expected)
     {
         (Territory t, HexGrid grid) = ThreeIncomeTiles();
@@ -52,10 +52,10 @@ public class IncomeRulesTests
     }
 
     [Theory]
-    [InlineData(Difficulty.Easy, 5)]     // 50%: 10*50/100 = 5
-    [InlineData(Difficulty.Normal, 10)]
-    [InlineData(Difficulty.Hard, 12)]    // 120%: 10*120/100 = 12
-    [InlineData(Difficulty.Brutal, 14)]  // 140%: 10*140/100 = 14
+    [InlineData(Difficulty.Recruit, 5)]     // 50%: 10*50/100 = 5
+    [InlineData(Difficulty.Soldier, 10)]
+    [InlineData(Difficulty.Captain, 12)]    // 120%: 10*120/100 = 12
+    [InlineData(Difficulty.Commander, 14)]  // 140%: 10*140/100 = 14
     public void IncomeFor_LargeTerritory_ScalesByDifficulty(Difficulty d, int expected)
     {
         (Territory t, HexGrid grid) = TenIncomeTiles();

@@ -397,12 +397,12 @@ public static class SaveSerializer
     /// <summary>
     /// Map a saved <see cref="PlayerDto.Difficulty"/> string to a
     /// <see cref="Difficulty"/>. Missing/empty = starting map or pre-v7 save:
-    /// default to <see cref="Difficulty.Normal"/>.
+    /// default to <see cref="Difficulty.Soldier"/>.
     /// </summary>
     private static Difficulty ParseDifficulty(string? difficulty)
     {
         if (string.IsNullOrEmpty(difficulty))
-            return Difficulty.Normal;
+            return Difficulty.Soldier;
         return Enum.Parse<Difficulty>(difficulty);
     }
 
@@ -904,7 +904,7 @@ public sealed class PlayerDto
     /// <summary>
     /// Per-player <see cref="Difficulty"/> name (issue #11). Null/missing in
     /// starting-map exports (assigned at the Play Game menu) and in pre-v7
-    /// saves; both default to <see cref="Difficulty.Normal"/> on load.
+    /// saves; both default to <see cref="Difficulty.Soldier"/> on load.
     /// </summary>
     public string? Difficulty { get; set; }
 }

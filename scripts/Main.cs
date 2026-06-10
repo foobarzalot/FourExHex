@@ -74,12 +74,12 @@ public partial class Main : Node2D
             {
                 GameSettings.PlayerKinds[i] = PlayerKind.Computer;
             }
-            // FOUREXHEX_DIFFICULTY="easy,normal,hard,brutal,...": per-slot
-            // difficulty levels (issue #11 lever). Set one AI to brutal here
-            // and confirm via the headless 6-AI run that it dominates.
-            // Comma-separated level names, case-insensitive, up to 6; missing
-            // or unknown slots stay Normal. Must run before Player.BuildRoster
-            // (below) reads it.
+            // FOUREXHEX_DIFFICULTY="recruit,soldier,captain,commander,...":
+            // per-slot difficulty levels (issue #11 lever). Set one AI to
+            // commander here and confirm via the headless 6-AI run that it
+            // dominates. Comma-separated level names, case-insensitive, up
+            // to 6; missing or unknown slots stay Soldier (the default).
+            // Must run before Player.BuildRoster (below) reads it.
             string diffSpec = OS.GetEnvironment("FOUREXHEX_DIFFICULTY");
             if (diffSpec.Length > 0)
             {
@@ -91,7 +91,7 @@ public partial class Main : Node2D
                         && System.Enum.TryParse(parts[i].Trim(), ignoreCase: true,
                             out Difficulty d)
                             ? d
-                            : Difficulty.Normal;
+                            : Difficulty.Soldier;
                 }
             }
             // Reproduce the verbose AI/turn stdout the old

@@ -382,7 +382,6 @@ public partial class MainMenuScene : Control
         subtitle.AddThemeColorOverride("font_color", UiPalette.InkSoft);
         panel.AddChild(subtitle);
 
-        // Player rows. Each row is Swatch | Name | OptionButton.
         const float rowStartY = 154f;
         const float rowHeight = 62f;
         const float rowInset = 48f;
@@ -390,10 +389,51 @@ public partial class MainMenuScene : Control
         const float nameWidth = 144f;
         const float dropdownWidth = 240f;
 
+        // Difficulty row (issue #11) leads the panel, above the per-player
+        // selectors. Levels are named after the unit ranks (Recruit =
+        // easiest … Commander = hardest). One global control; on Start it's
+        // written to every AI slot (humans stay Soldier, the default). The
+        // level→income mapping lives in DifficultyRules.ScaleIncome
+        // (currently Recruit 50%, Captain 120%, Commander 140%). Item ids
+        // match the Difficulty enum values.
+        var difficultyLabel = new Label
+        {
+            Text = "Difficulty",
+            Position = new Vector2(rowInset + swatchSize + 19f, rowStartY + 17f),
+            Size = new Vector2(nameWidth, 29f),
+        };
+        difficultyLabel.AddThemeFontSizeOverride("font_size", 24);
+        panel.AddChild(difficultyLabel);
+
+        _difficultyDropdown = new OptionButton
+        {
+            Position = new Vector2(panelW - rowInset - dropdownWidth, rowStartY + 12f),
+            Size = new Vector2(dropdownWidth, 38f),
+        };
+        _difficultyDropdown.AddThemeFontSizeOverride("font_size", 21);
+        _difficultyDropdown.GetPopup().AddThemeFontSizeOverride("font_size", 21);
+        _difficultyDropdown.AddItem("Recruit", (int)Difficulty.Recruit);
+        _difficultyDropdown.AddItem("Soldier", (int)Difficulty.Soldier);
+        _difficultyDropdown.AddItem("Captain", (int)Difficulty.Captain);
+        _difficultyDropdown.AddItem("Commander", (int)Difficulty.Commander);
+        // Select Soldier (the default) by its id (don't assume item order
+        // == enum order).
+        for (int item = 0; item < _difficultyDropdown.ItemCount; item++)
+        {
+            if (_difficultyDropdown.GetItemId(item) == (int)Difficulty.Soldier)
+            {
+                _difficultyDropdown.Selected = item;
+                break;
+            }
+        }
+        panel.AddChild(_difficultyDropdown);
+
+        // Player rows follow, one row below the Difficulty control. Each
+        // row is Swatch | Name | OptionButton.
         for (int i = 0; i < GameSettings.PlayerConfig.Length; i++)
         {
             (string name, string hex) = GameSettings.PlayerConfig[i];
-            float rowY = rowStartY + rowHeight * i;
+            float rowY = rowStartY + rowHeight * (i + 1);
 
             var swatch = new ColorRect
             {
@@ -455,44 +495,7 @@ public partial class MainMenuScene : Control
         float rightColX = panelW - rowInset - dropdownWidth;
         float rightColW = dropdownWidth;
 
-        // Difficulty row (issue #11) sits directly under the player
-        // selectors. One global control; on Start it's written to every AI
-        // slot (humans stay Normal). The level→income mapping lives in
-        // DifficultyRules.ScaleIncome (currently Easy 50%, Hard 120%,
-        // Brutal 140%). Item ids match the Difficulty enum values.
-        float difficultyRowY = rowStartY + rowHeight * GameSettings.PlayerConfig.Length;
-        var difficultyLabel = new Label
-        {
-            Text = "Difficulty",
-            Position = new Vector2(leftColX + swatchSize + 19f, difficultyRowY + 17f),
-            Size = new Vector2(nameWidth, 29f),
-        };
-        difficultyLabel.AddThemeFontSizeOverride("font_size", 24);
-        panel.AddChild(difficultyLabel);
-
-        _difficultyDropdown = new OptionButton
-        {
-            Position = new Vector2(rightColX, difficultyRowY + 12f),
-            Size = new Vector2(rightColW, 38f),
-        };
-        _difficultyDropdown.AddThemeFontSizeOverride("font_size", 21);
-        _difficultyDropdown.GetPopup().AddThemeFontSizeOverride("font_size", 21);
-        _difficultyDropdown.AddItem("Easy", (int)Difficulty.Easy);
-        _difficultyDropdown.AddItem("Normal", (int)Difficulty.Normal);
-        _difficultyDropdown.AddItem("Hard", (int)Difficulty.Hard);
-        _difficultyDropdown.AddItem("Brutal", (int)Difficulty.Brutal);
-        // Select Normal by its id (don't assume item order == enum order).
-        for (int item = 0; item < _difficultyDropdown.ItemCount; item++)
-        {
-            if (_difficultyDropdown.GetItemId(item) == (int)Difficulty.Normal)
-            {
-                _difficultyDropdown.Selected = item;
-                break;
-            }
-        }
-        panel.AddChild(_difficultyDropdown);
-
-        // Map row sits just below the Difficulty row. The dropdown lists
+        // Map row sits just below the last player row. The dropdown lists
         // "Random Map" (the default) plus every saved starting map. Picking
         // a map disables the seed field below — the map's terrain replaces
         // procedural generation.
@@ -1025,8 +1028,9 @@ public partial class MainMenuScene : Control
         }
 
         // One global difficulty written onto every AI slot; humans stay
-        // Normal. Stored per-slot so it round-trips through the save.
-        var chosen = (Difficulty)(_difficultyDropdown?.GetSelectedId() ?? (int)Difficulty.Normal);
+        // Soldier (the default). Stored per-slot so it round-trips through
+        // the save.
+        var chosen = (Difficulty)(_difficultyDropdown?.GetSelectedId() ?? (int)Difficulty.Soldier);
         GameSettings.Difficulties = DifficultyRules.AssignGlobalToAi(GameSettings.PlayerKinds, chosen);
 
         if (_selectedMapName != null)

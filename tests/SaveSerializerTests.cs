@@ -118,8 +118,8 @@ public class SaveSerializerTests
     {
         // Per-AI difficulty must survive an in-progress save so a reloaded
         // game keeps each opponent earning at its configured rate.
-        var red = new Player("Red", PlayerId.FromIndex(0), PlayerKind.Human, Difficulty.Normal);
-        var blue = new Player("Blue", PlayerId.FromIndex(1), PlayerKind.Computer, Difficulty.Brutal);
+        var red = new Player("Red", PlayerId.FromIndex(0), PlayerKind.Human, Difficulty.Soldier);
+        var blue = new Player("Blue", PlayerId.FromIndex(1), PlayerKind.Computer, Difficulty.Commander);
         var players = new List<Player> { red, blue };
         HexGrid grid = TestHelpers.BuildRectGrid(2, 2, blue.Id);
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
@@ -128,8 +128,8 @@ public class SaveSerializerTests
         string json = SaveSerializer.Serialize(state, 42, players, "d", 100);
         LoadedSave loaded = SaveSerializer.Deserialize(json);
 
-        Assert.Equal(Difficulty.Normal, loaded.Players[0].Difficulty);
-        Assert.Equal(Difficulty.Brutal, loaded.Players[1].Difficulty);
+        Assert.Equal(Difficulty.Soldier, loaded.Players[0].Difficulty);
+        Assert.Equal(Difficulty.Commander, loaded.Players[1].Difficulty);
     }
 
     [Fact]
@@ -145,10 +145,10 @@ public class SaveSerializerTests
     }
 
     [Fact]
-    public void Deserialize_PlayerWithMissingDifficulty_DefaultsToNormal()
+    public void Deserialize_PlayerWithMissingDifficulty_DefaultsToSoldier()
     {
         // A starting map (and any pre-v7 save) has no "Difficulty" field;
-        // the loader must default each player to Normal.
+        // the loader must default each player to Soldier.
         (GameState state, IReadOnlyList<Player> players) = BuildRichState();
         string json = SaveSerializer.SerializeMap(state, 42, players, "m");
 
@@ -156,7 +156,7 @@ public class SaveSerializerTests
 
         foreach (Player p in loaded.Players)
         {
-            Assert.Equal(Difficulty.Normal, p.Difficulty);
+            Assert.Equal(Difficulty.Soldier, p.Difficulty);
         }
     }
 
@@ -264,7 +264,12 @@ public class SaveSerializerTests
         string json = SaveSerializer.Serialize(state, 42, players, "legacy", 100);
 
         // Forge a pre-rename file: old level strings, old format version.
-        string legacy = json
+        // Strip the per-player Difficulty fields first — they're a v7
+        // addition a genuine v5 file wouldn't have, and their values share
+        // names with unit levels so the blanket replaces below would
+        // otherwise corrupt them.
+        string legacy = System.Text.RegularExpressions.Regex
+            .Replace(json, ",\\s*\"Difficulty\": \"[A-Za-z]+\"", string.Empty)
             .Replace("\"Recruit\"", "\"Peasant\"")
             .Replace("\"Soldier\"", "\"Spearman\"")
             .Replace("\"Captain\"", "\"Knight\"")
