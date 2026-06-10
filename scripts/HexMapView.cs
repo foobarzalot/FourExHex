@@ -187,6 +187,9 @@ public partial class HexMapView : Node2D, IHexMapView
     // DO animate in on the first refresh, which is the desired feel.
     private bool _animateNewTrees = true;
     private bool _animateNewGraves = true;
+    // True once _Ready hooked the viewport's SizeChanged (_ExitTree must
+    // not disconnect a never-connected signal).
+    private bool _viewportResizeHooked;
 
     // The territory currently drawn as highlighted. Pure view state — the
     // single source of truth lives in SessionState, but we cache it here
@@ -351,12 +354,26 @@ public partial class HexMapView : Node2D, IHexMapView
         // resize hook re-runs both whenever the OS window changes size.
         RecomputeZoomLevels();
         GetViewport().SizeChanged += OnViewportResized;
+        _viewportResizeHooked = true;
 
         // Initial pan: geometric center of the map, clamped to bounds.
         // If the map fits in the viewport, ClampPan locks each axis to
         // its centered value (matches the previous one-shot centering
         // that lived in Main.cs).
         RecenterMap();
+    }
+
+    public override void _ExitTree()
+    {
+        // The root Window outlives this node across the game→menu swap;
+        // without the unsubscribe a later resize invokes a handler on a
+        // freed node. Guarded: disconnecting a never-connected Godot
+        // signal errors.
+        if (!_viewportResizeHooked) return;
+        GetViewport().SizeChanged -= OnViewportResized;
+        _viewportResizeHooked = false;
+        Log.Debug(Log.LogCategory.Display,
+            "HexMapView: viewport SizeChanged unsubscribed on exit");
     }
 
     /// <summary>

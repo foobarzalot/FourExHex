@@ -45,6 +45,10 @@ public partial class MainMenuScene : Control
     // is chosen — that's the dropdown's first/default entry, which keeps
     // the seed field active and triggers the procedural-generation flow.
     private string? _selectedMapName;
+    // True once _Ready hooked the viewport's SizeChanged (the diagnostic
+    // 6AI branch returns before the hook; _ExitTree must not disconnect a
+    // never-connected signal).
+    private bool _viewportResizeHooked;
 
     public override void _Ready()
     {
@@ -105,6 +109,21 @@ public partial class MainMenuScene : Control
         // their design size (e.g. 720p), and keep fitting them on resize.
         FitPanels();
         GetViewport().SizeChanged += FitPanels;
+        _viewportResizeHooked = true;
+    }
+
+    public override void _ExitTree()
+    {
+        // The root Window outlives this scene across the menu→game swap;
+        // without the unsubscribe a later resize invokes FitPanels on a
+        // freed node. Guarded: the diagnostic 6AI branch leaves _Ready
+        // before the subscription, and disconnecting a never-connected
+        // Godot signal errors.
+        if (!_viewportResizeHooked) return;
+        GetViewport().SizeChanged -= FitPanels;
+        _viewportResizeHooked = false;
+        Log.Debug(Log.LogCategory.Display,
+            "MainMenuScene: viewport SizeChanged unsubscribed on exit");
     }
 
     /// <summary>Scale each fixed-size panel down (never up) so it fits the

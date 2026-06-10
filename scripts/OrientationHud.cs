@@ -65,6 +65,10 @@ public abstract partial class OrientationHud : CanvasLayer
 
     protected ScreenOrientation Orientation { get; private set; } = ScreenOrientation.Landscape;
 
+    // True once InitOrientation hooked the viewport's SizeChanged
+    // (_ExitTree must not disconnect a never-connected signal).
+    private bool _viewportResizeHooked;
+
     /// <summary>Call at the end of <c>_Ready</c>, once the clusters are built:
     /// resolve orientation + compact, lay out the zones, track resizes, and
     /// publish the initial insets.</summary>
@@ -75,6 +79,7 @@ public abstract partial class OrientationHud : CanvasLayer
         Compact = ScreenLayout.IsCompact(vp.X, vp.Y, prevWasCompact: false);
         ApplyLayout();
         GetViewport().SizeChanged += OnViewportResized;
+        _viewportResizeHooked = true;
         // Notch / Dynamic Island / home-indicator insets can change without a
         // viewport resize (e.g. status-bar show/hide). Rebuild the zones when
         // the safe area shifts so the corner chips stay inside the safe zone.
@@ -85,7 +90,16 @@ public abstract partial class OrientationHud : CanvasLayer
 
     public override void _ExitTree()
     {
+        // The root Window outlives this node across scene swaps; without
+        // the unsubscribe a later resize invokes a handler on a freed node.
+        // Guarded: disconnecting a never-connected Godot signal errors, and
+        // a subclass may exit without having called InitOrientation.
         SafeArea.Changed -= OnSafeAreaChanged;
+        if (!_viewportResizeHooked) return;
+        GetViewport().SizeChanged -= OnViewportResized;
+        _viewportResizeHooked = false;
+        Log.Debug(Log.LogCategory.Display,
+            $"{GetType().Name}: viewport SizeChanged unsubscribed on exit");
     }
 
     private void OnSafeAreaChanged(LogicalSafeInsets _)

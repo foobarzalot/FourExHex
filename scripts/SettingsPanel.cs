@@ -21,6 +21,9 @@ public sealed partial class SettingsPanel : CanvasLayer
 
     private ColorRect _backdrop = null!;
     private PanelContainer _panel = null!;
+    // True once _Ready hooked the viewport's SizeChanged (_ExitTree must
+    // not disconnect a never-connected signal).
+    private bool _viewportResizeHooked;
     // Each toggle is a square Button laid out beside a separate Label
     // (see BuildCheckRow) rather than a stock CheckBox: keeping the box
     // and its caption as independent controls means the label can never
@@ -150,12 +153,19 @@ public sealed partial class SettingsPanel : CanvasLayer
         // rect without a resize fires SafeArea.Changed.
         FitPanel();
         GetViewport().SizeChanged += FitPanel;
+        _viewportResizeHooked = true;
         SafeArea.Changed += OnSafeAreaChanged;
     }
 
     public override void _ExitTree()
     {
         SafeArea.Changed -= OnSafeAreaChanged;
+        // Guarded: disconnecting a never-connected Godot signal errors.
+        if (!_viewportResizeHooked) return;
+        GetViewport().SizeChanged -= FitPanel;
+        _viewportResizeHooked = false;
+        Log.Debug(Log.LogCategory.Display,
+            "SettingsPanel: viewport SizeChanged unsubscribed on exit");
     }
 
     private void OnSafeAreaChanged(LogicalSafeInsets _) => FitPanel();
