@@ -396,6 +396,14 @@ public class GameController
     /// Input handlers early-return when this is set; autosave is
     /// suppressed.</summary>
     public bool IsReplayMode => _recorder.IsReplaying;
+    /// <summary>Depth of the recorder's undo beat-count stack. Invariant:
+    /// equals <c>SessionState.Undo.UndoCount</c> at every quiescent point
+    /// (pinned by UndoReplayBeatSyncTests).</summary>
+    public int UndoBeatBatchDepth => _recorder.UndoBatchDepth;
+    /// <summary>Depth of the recorder's redo beat-stash stack. Invariant:
+    /// equals <c>SessionState.Undo.RedoCount</c> at every quiescent point
+    /// (pinned by UndoReplayBeatSyncTests).</summary>
+    public int RedoBeatBatchDepth => _recorder.RedoBatchDepth;
 
     /// <summary>
     /// Per-event-handler push policy. Captures pre-handler state, runs
@@ -449,11 +457,11 @@ public class GameController
         bool sessionChanged = !pre.Session.Equals(postSession);
         if (_handlerMutatedGame || sessionChanged)
         {
-            _session.Undo.PushBefore(pre);
-            // Parallel bookkeeping: this entry corresponds to the
-            // beat-list at size beatsBefore. New action invalidates
-            // forward history on the replay side too.
-            _recorder.OnHumanHandlerCommitted(beatsBefore);
+            // Atomic: pushes the session undo entry AND the parallel
+            // beat bookkeeping (this entry corresponds to the beat list
+            // at size beatsBefore; new action invalidates forward
+            // history on both sides) in one call.
+            _recorder.CommitHumanHandler(pre, beatsBefore);
         }
         if (_pendingHumanBeat != null) _recorder.RecordBeat(_pendingHumanBeat);
         // Tutorial Preview cue update: handler bodies sometimes paint
@@ -1245,8 +1253,7 @@ public class GameController
         if (!_session.Undo.CanUndo) return;
         _hud.DismissCapitalAlertNotice();
         HexCoord? before = _session.SelectedTerritory?.Capital;
-        _recorder.PopOneBeatBatchForUndo();
-        ApplySnapshot(_session.Undo.UndoLast(CaptureCurrentSnapshot()));
+        ApplySnapshot(_recorder.UndoOneStep(CaptureCurrentSnapshot()));
         CenterIfSelectionChanged(before);
     }
 
@@ -1257,13 +1264,11 @@ public class GameController
         if (_session.IsGameOver) return;
         if (!_session.Undo.CanUndo) return;
         _hud.DismissCapitalAlertNotice();
-        // Inline the UndoAll loop so each pop's beat bookkeeping fires.
-        _recorder.PopOneBeatBatchForUndo();
-        UndoEntry restored = _session.Undo.UndoLast(CaptureCurrentSnapshot());
+        // Step (not UndoAll) so each pop's beat bookkeeping fires atomically.
+        UndoEntry restored = _recorder.UndoOneStep(CaptureCurrentSnapshot());
         while (_session.Undo.CanUndo)
         {
-            _recorder.PopOneBeatBatchForUndo();
-            restored = _session.Undo.UndoLast(restored);
+            restored = _recorder.UndoOneStep(restored);
         }
         ApplySnapshot(restored);
     }
@@ -1276,8 +1281,7 @@ public class GameController
         if (!_session.Undo.CanRedo) return;
         _hud.DismissCapitalAlertNotice();
         HexCoord? before = _session.SelectedTerritory?.Capital;
-        _recorder.PushOneBeatBatchForRedo();
-        ApplySnapshot(_session.Undo.RedoLast(CaptureCurrentSnapshot()));
+        ApplySnapshot(_recorder.RedoOneStep(CaptureCurrentSnapshot()));
         CenterIfSelectionChanged(before);
     }
 
@@ -1288,12 +1292,10 @@ public class GameController
         if (_session.IsGameOver) return;
         if (!_session.Undo.CanRedo) return;
         _hud.DismissCapitalAlertNotice();
-        _recorder.PushOneBeatBatchForRedo();
-        UndoEntry restored = _session.Undo.RedoLast(CaptureCurrentSnapshot());
+        UndoEntry restored = _recorder.RedoOneStep(CaptureCurrentSnapshot());
         while (_session.Undo.CanRedo)
         {
-            _recorder.PushOneBeatBatchForRedo();
-            restored = _session.Undo.RedoLast(restored);
+            restored = _recorder.RedoOneStep(restored);
         }
         ApplySnapshot(restored);
     }
@@ -1305,11 +1307,8 @@ public class GameController
     /// win) all need to drop replay bookkeeping in lockstep —
     /// otherwise a subsequent undo would pop into a phantom beat count.
     /// </summary>
-    private void ClearUndoAndReplayBookkeeping()
-    {
-        _session.Undo.Clear();
-        _recorder.ClearBookkeeping();
-    }
+    private void ClearUndoAndReplayBookkeeping() =>
+        _recorder.ClearUndoAndBookkeeping();
 
     /// <summary>
     /// Single-step undo / redo centers the view on the new selection when

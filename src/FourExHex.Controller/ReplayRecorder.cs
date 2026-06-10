@@ -105,6 +105,11 @@ public class ReplayRecorder
 
     public IReadOnlyList<ReplayBeat> Beats => _replayBeats;
     public int BeatsCount => _replayBeats.Count;
+    // Depths of the parallel beat-tracking stacks. Invariant: equal to
+    // the session undo stack's UndoCount / RedoCount at every quiescent
+    // point — tests pin this (UndoReplayBeatSyncTests).
+    public int UndoBatchDepth => _undoBeatCounts.Count;
+    public int RedoBatchDepth => _redoBeatLists.Count;
     public GameStateSnapshot? InitialSnapshot => _initialSnapshot;
     public int InitialTurnNumber => _initialTurnNumber;
     public int InitialCurrentPlayerIndex => _initialCurrentPlayerIndex;
@@ -178,27 +183,38 @@ public class ReplayRecorder
     }
 
     // --- Undo/redo beat-stack bookkeeping ------------------------------
+    //
+    // The session undo stack and the two beat stacks below must move in
+    // lockstep: one beat batch per undo entry. The public coordinator
+    // methods (CommitHumanHandler / UndoOneStep / RedoOneStep /
+    // ClearUndoAndBookkeeping) each perform BOTH sides as one atomic
+    // operation and validate the invariant afterward, so a caller cannot
+    // half-do the dance. The single-side steps are private.
 
     /// <summary>
-    /// Single sync point called by <c>GameController.TrackHandler</c>
-    /// right after pushing onto <c>_session.Undo</c>: stamps the
-    /// pre-handler beat-list size so undo can later trim back to it,
-    /// and clears the redo stash because new forward history invalidates
-    /// the previous forward branch.
+    /// Atomic commit of a state-changing human handler: push the
+    /// pre-action snapshot onto the session undo stack AND stamp the
+    /// pre-handler beat-list size so undo can later trim back to it
+    /// (clearing the redo stash — new forward history invalidates the
+    /// previous forward branch). Called by <c>GameController.TrackHandler</c>.
     /// </summary>
-    public void OnHumanHandlerCommitted(int beatsBefore)
+    public void CommitHumanHandler(UndoEntry pre, int beatsBefore)
     {
+        _session.Undo.PushBefore(pre);
         _undoBeatCounts.Push(beatsBefore);
         _redoBeatLists.Clear();
+        ValidateBeatStacksInSync("CommitHumanHandler");
+        Log.Trace(Log.LogCategory.Undo,
+            $"commit: undo depth {_undoBeatCounts.Count}, beats {_replayBeats.Count}");
     }
 
     /// <summary>
-    /// Pop one entry from <see cref="_undoBeatCounts"/> and stash the
-    /// corresponding tail of the beat log onto <see cref="_redoBeatLists"/>.
-    /// Mirrors a single <see cref="UndoStack{T}.UndoLast"/> pop on the
-    /// replay side.
+    /// Atomic single-step undo: pop one beat batch (trimming the beat
+    /// log back to the entry's pre-handler size, stashing the tail for
+    /// redo) AND pop the session undo stack. Returns the restored entry
+    /// for the caller to apply.
     /// </summary>
-    public void PopOneBeatBatchForUndo()
+    public UndoEntry UndoOneStep(UndoEntry current)
     {
         int targetCount = _undoBeatCounts.Pop();
         var popped = new List<ReplayBeat>();
@@ -208,33 +224,65 @@ public class ReplayRecorder
         }
         _replayBeats.RemoveRange(targetCount, _replayBeats.Count - targetCount);
         _redoBeatLists.Push(popped);
+        UndoEntry restored = _session.Undo.UndoLast(current);
+        ValidateBeatStacksInSync("UndoOneStep");
+        Log.Debug(Log.LogCategory.Undo,
+            $"undo step: popped {popped.Count} beat(s), undo depth {_undoBeatCounts.Count}, " +
+            $"redo depth {_redoBeatLists.Count}, beats {_replayBeats.Count}");
+        return restored;
     }
 
     /// <summary>
-    /// Pop one stashed batch from <see cref="_redoBeatLists"/> and
-    /// re-append to <see cref="_replayBeats"/>, recording the new
-    /// pre-batch count on <see cref="_undoBeatCounts"/>. Mirrors a
-    /// single <see cref="UndoStack{T}.RedoLast"/>.
+    /// Atomic single-step redo: re-append one stashed beat batch
+    /// (recording the new pre-batch count) AND pop the session redo
+    /// stack. Returns the restored entry for the caller to apply.
     /// </summary>
-    public void PushOneBeatBatchForRedo()
+    public UndoEntry RedoOneStep(UndoEntry current)
     {
         List<ReplayBeat> toRestore = _redoBeatLists.Pop();
         _undoBeatCounts.Push(_replayBeats.Count);
         _replayBeats.AddRange(toRestore);
+        UndoEntry restored = _session.Undo.RedoLast(current);
+        ValidateBeatStacksInSync("RedoOneStep");
+        Log.Debug(Log.LogCategory.Undo,
+            $"redo step: restored {toRestore.Count} beat(s), undo depth {_undoBeatCounts.Count}, " +
+            $"redo depth {_redoBeatLists.Count}, beats {_replayBeats.Count}");
+        return restored;
     }
 
     /// <summary>
-    /// Clear the parallel beat-tracking stacks. Called by
-    /// <c>GameController.ClearUndoAndReplayBookkeeping</c> in lockstep
-    /// with <c>_session.Undo.Clear()</c> at the three "no more undo"
+    /// Atomic clear of the session undo stack and the parallel
+    /// beat-tracking stacks. Called (via the controller's
+    /// <c>ClearUndoAndReplayBookkeeping</c>) at the three "no more undo"
     /// commit sites (end of turn, mid-turn domination, claim-victory
     /// win). Does NOT touch the beat log itself — those beats are
     /// committed history.
     /// </summary>
-    public void ClearBookkeeping()
+    public void ClearUndoAndBookkeeping()
     {
+        _session.Undo.Clear();
         _undoBeatCounts.Clear();
         _redoBeatLists.Clear();
+        Log.Debug(Log.LogCategory.Undo,
+            $"clear: bookkeeping dropped, beats {_replayBeats.Count} committed");
+    }
+
+    /// <summary>
+    /// The lockstep invariant: one beat batch per session undo entry,
+    /// one stashed batch per session redo entry. A divergence means the
+    /// next undo would trim the wrong tail of the beat log — crash
+    /// loudly at the cause instead of corrupting the replay silently.
+    /// </summary>
+    private void ValidateBeatStacksInSync(string operation)
+    {
+        if (_undoBeatCounts.Count != _session.Undo.UndoCount
+            || _redoBeatLists.Count != _session.Undo.RedoCount)
+        {
+            throw new InvalidOperationException(
+                $"Undo/replay-beat bookkeeping desync after {operation}: " +
+                $"session undo={_session.Undo.UndoCount} redo={_session.Undo.RedoCount}, " +
+                $"beat stacks undo={_undoBeatCounts.Count} redo={_redoBeatLists.Count}.");
+        }
     }
 
     // --- Playback ------------------------------------------------------

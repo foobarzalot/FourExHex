@@ -38,6 +38,7 @@ public static class Log
         Input = 5,    // BuildTower click-rejection diagnostic
         Display = 6,  // DisplayScale autoload: DPI → ContentScaleFactor
         Hud = 7,      // HUD CTA / button-state transitions
+        Undo = 8,     // undo/redo ↔ replay-beat bookkeeping coordinator
     }
 
     /// <summary>Severity, ascending. <see cref="Off"/> disables a

@@ -197,6 +197,75 @@ public class ReplayPlaybackTests
     }
 
     [Fact]
+    public void Replay_AfterUndoRedoChurn_ProducesSameFinalState()
+    {
+        // The beat log must stay faithful through undo/redo churn: each
+        // undo trims the beat tail, each redo restores it, and a fresh
+        // action after an undo drops the stashed forward branch. If the
+        // session undo stack and the recorder's beat bookkeeping ever
+        // diverge (the three-stack sync UndoReplayBeatSyncTests pins),
+        // the trimmed tail is wrong and this round-trip desyncs.
+        // No Treasury seeding: gold set after StartGame is NOT in the
+        // initial replay snapshot, so the live and replay sides would
+        // start from different treasuries and desync. The default
+        // capital gold affords the single recruit this script buys.
+        var f = new Fixture();
+
+        // Buy a recruit, undo it, redo it — the kept action. Buy mode is
+        // radio-style and persists across the place + the redo, so toggle
+        // it off explicitly before the move clicks below (otherwise the
+        // "pick up" click would buy-combine a second recruit instead).
+        f.Map.SimulateClick(f.State.Grid.Get(f.RedCapital)!);
+        f.Hud.ClickBuyRecruit();
+        f.Map.SimulateClick(f.State.Grid.Get(f.RedOther)!);
+        f.Hud.ClickUndoLast();
+        f.Hud.ClickRedoLast();
+        f.Hud.ClickBuyRecruit();  // toggle buy mode off
+
+        // Move it onto a Blue neighbor, then undo — and replace the
+        // discarded forward branch with a different action (a second
+        // buy onto the capital's own tile), invalidating the redo stash.
+        HexCoord? captureTarget = null;
+        foreach (HexCoord neighbor in f.RedOther.Neighbors())
+        {
+            HexTile? n = f.State.Grid.Get(neighbor);
+            if (n != null && n.Owner == f.Blue.Id)
+            {
+                captureTarget = neighbor;
+                break;
+            }
+        }
+        Assert.True(captureTarget.HasValue,
+            "Test setup error: RedOther should have at least one Blue neighbor.");
+        f.Map.SimulateClick(f.State.Grid.Get(f.RedOther)!);
+        f.Map.SimulateClick(f.State.Grid.Get(captureTarget!.Value)!);
+        f.Hud.ClickUndoLast();
+        f.Map.SimulateClick(f.State.Grid.Get(f.RedOther)!);
+        f.Map.SimulateClick(f.State.Grid.Get(captureTarget!.Value)!);
+
+        // Undo EVERYTHING this turn, then redo it all back.
+        f.Hud.ClickUndoTurn();
+        f.Hud.ClickRedoAll();
+
+        // The churn must leave exactly the kept actions in the log:
+        // one buy, one move (plus the end-turn beats appended below).
+        Assert.Equal(
+            new[] { "ReplayBuyBeat", "ReplayMoveBeat" },
+            f.Controller.ReplayBeats.Select(b => b.GetType().Name).ToArray());
+
+        f.Hud.ClickEndTurn(); f.Pacer.DrainAll();
+        f.Hud.ClickEndTurn(); f.Pacer.DrainAll();  // Blue ends → Red T2.
+
+        GameStateSnapshot liveFinal = GameStateSnapshot.Capture(
+            f.State.Grid, f.State.Treasury, f.State.Territories);
+
+        f.Controller.BeginReplay();
+        f.Pacer.DrainAll();
+
+        f.AssertStateMatches(liveFinal);
+    }
+
+    [Fact]
     public void Replay_PlaysAiBuy_ToSameFinalState()
     {
         bool blueActed = false;
