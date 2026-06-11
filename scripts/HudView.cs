@@ -765,6 +765,7 @@ public partial class HudView : OrientationHud, IHudView
     {
         _externalMessageActive = true;
         _tutorialLabel.Text = text;
+        PositionTutorialOverlay(); // re-fit the panel height to this message (#18)
         _tutorialPanel.Visible = true;
         SetTutorialTapCatcherEnabled(false);
     }
@@ -773,6 +774,7 @@ public partial class HudView : OrientationHud, IHudView
     {
         _externalMessageActive = true;
         _tutorialLabel.Text = text;
+        PositionTutorialOverlay(); // re-fit the panel height to this message (#18)
         _tutorialPanel.Visible = true;
         SetTutorialTapCatcherEnabled(true);
         ShowContinueHint(true);
@@ -903,12 +905,15 @@ public partial class HudView : OrientationHud, IHudView
     /// Bottom-anchored, click-through informational panel for tutorial
     /// narration. Not interactive — MouseFilter=Ignore on both the
     /// panel and label so a click anywhere on it falls through to the
-    /// map underneath. Sized as a fixed strip horizontally centered
-    /// near the bottom of the viewport.
+    /// map underneath. A horizontally centered strip near the bottom of
+    /// the viewport: design-width (clamped to the viewport), with the
+    /// height grown to fit the current message's wrapped text.
     /// </summary>
-    // Tutorial narration box: bottom-anchored, fixed size. The vertical
-    // offsets are set by PositionTutorialOverlay so they can lift above the
-    // portrait bottom HUD bar; only the left/right (width) offsets are inline.
+    // Tutorial narration box: bottom-anchored, fixed design width, height
+    // grows past TutorialPanelH when the wrapped message needs more lines
+    // (#18). The vertical offsets are set by PositionTutorialOverlay so they
+    // can lift above the portrait bottom HUD bar; only the left/right (width)
+    // offsets are inline.
     private const float TutorialPanelW = 720f;
     private const float TutorialPanelH = 120f;
     private const float TutorialMarginBottom = 60f;
@@ -1009,9 +1014,26 @@ public partial class HudView : OrientationHud, IHudView
         // content-scale factor) so the fixed design width can't clip off both
         // sides on a narrow or scaled-up viewport (portrait phones especially).
         float viewportW = GetViewport().GetVisibleRect().Size.X;
-        float width = Mathf.Min(TutorialPanelW, viewportW - HudPanelSideMargin * 2f);
+        float width = HudPanelMath.ClampWidth(TutorialPanelW, viewportW, HudPanelSideMargin);
         _tutorialPanel.OffsetLeft = -width * 0.5f;
         _tutorialPanel.OffsetRight = width * 0.5f;
+        // Grow the panel past its design height when the message wraps to more
+        // lines than TutorialPanelH holds (#18 — narrow portrait viewports wrap
+        // long messages to 4+ lines at the clamped width). Measured with the
+        // label's own font at its wrap width; the break flags mirror the
+        // label's WordSmart autowrap, and line_spacing is the Label's per-line
+        // gap that GetMultilineStringSize does not include.
+        Font font = _tutorialLabel.GetThemeFont("font");
+        int fontSize = _tutorialLabel.GetThemeFontSize("font_size");
+        float labelWidth = width - 24f; // the label's 12px left/right insets
+        Vector2 textSize = font.GetMultilineStringSize(
+            _tutorialLabel.Text, HorizontalAlignment.Center, labelWidth, fontSize,
+            brkFlags: TextServer.LineBreakFlag.Mandatory
+                | TextServer.LineBreakFlag.WordBound
+                | TextServer.LineBreakFlag.Adaptive);
+        int lines = Mathf.Max(1, Mathf.RoundToInt(textSize.Y / font.GetHeight(fontSize)));
+        float textH = textSize.Y + (lines - 1) * _tutorialLabel.GetThemeConstant("line_spacing");
+        float panelH = HudPanelMath.FitHeight(textH, 8f, TutorialPanelH);
         // Portrait has a bottom bar (lift above its top edge); landscape is
         // pure rails (no bottom bar — let the tutorial box settle near the
         // viewport bottom with just the safe-area inset).
@@ -1019,8 +1041,11 @@ public partial class HudView : OrientationHud, IHudView
             ? HudBars.PortraitBottomBarHeight
             : SafeArea.Current.Bottom;
         float bottom = TutorialMarginBottom + lift;
-        _tutorialPanel.OffsetTop = -bottom - TutorialPanelH;
+        _tutorialPanel.OffsetTop = -bottom - panelH;
         _tutorialPanel.OffsetBottom = -bottom;
+        Log.Debug(Log.LogCategory.Render,
+            $"[HudView] tutorial panel fit: viewportW={viewportW:0} width={width:0} " +
+            $"lines={lines} textH={textH:0} panelH={panelH:0}");
         // Continue hint sits in the gap between the panel's bottom and the
         // bottom-bar top (or the viewport bottom in landscape).
         _continueHint.OffsetTop = -bottom + 4f;
@@ -1162,8 +1187,8 @@ public partial class HudView : OrientationHud, IHudView
             float notch = Mathf.Max(SafeArea.Current.Left, SafeArea.Current.Right);
             railClearance = (notch + HudBars.RailWidth + 8f) * 2f;
         }
-        float width = Mathf.Min(BankruptToastW,
-            viewportW - railClearance - HudPanelSideMargin * 2f);
+        float width = HudPanelMath.ClampWidth(
+            BankruptToastW, viewportW - railClearance, HudPanelSideMargin);
         _bankruptToast.OffsetLeft = -width * 0.5f;
         _bankruptToast.OffsetRight = width * 0.5f;
 
@@ -1469,7 +1494,7 @@ public partial class HudView : OrientationHud, IHudView
         float clampedW = 0f;
         foreach ((PanelContainer panel, float designW) in _endgamePanels)
         {
-            clampedW = Mathf.Min(designW, viewportW - HudPanelSideMargin * 2f);
+            clampedW = HudPanelMath.ClampWidth(designW, viewportW, HudPanelSideMargin);
             panel.OffsetLeft = -clampedW * 0.5f;
             panel.OffsetRight = clampedW * 0.5f;
         }
@@ -1789,7 +1814,11 @@ public partial class HudView : OrientationHud, IHudView
             string? hint = ComputeActionHint(state, session);
             if (hint != null)
             {
-                _tutorialLabel.Text = hint;
+                if (_tutorialLabel.Text != hint)
+                {
+                    _tutorialLabel.Text = hint;
+                    PositionTutorialOverlay(); // re-fit the panel height to this hint (#18)
+                }
                 _tutorialPanel.Visible = true;
             }
             else
