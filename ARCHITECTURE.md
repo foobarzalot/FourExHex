@@ -46,7 +46,9 @@ Model → Controller → game (with the test project alongside):
   needs floating-point precision: `DisplayScaleMath`, `SafeAreaMath`,
   `MapPlacement`, `ZoomMath`, `ScreenLayout`, `HudPanelMath` (floating
   HUD-panel sizing: width clamped to the viewport, height grown to fit
-  wrapped text — tutorial box, bankruptcy toast, endgame overlays), and
+  wrapped text — tutorial box, bankruptcy toast, endgame overlays),
+  `KeyboardAvoidance` (panel lift so a focused text field clears the
+  mobile on-screen keyboard — see "Mobile keyboard avoidance" below), and
   the fractional cube-rounding helper `HexRounding.Round(float, float)`. The
   pressure-relief valve for the no-floats rule in Model + Controller
   (see "No floating-point in Model or Controller" below).
@@ -622,6 +624,26 @@ active screen's DPI and drives the root `Window.ContentScaleFactor`:
   (CreditsPanel keeps its own inner `ScrollContainer` for the long blurb; its
   body label is `MouseFilter = Pass` so a touch-drag reaches the scroll.) Issue
   #17.
+- **Mobile keyboard avoidance (Map Seed field, issue #4).** The main menu's
+  seed `LineEdit` is the one mobile text input. While it has focus,
+  `MainMenuScene` polls `DisplayServer.VirtualKeyboardGetHeight()` per frame
+  (`SetProcess` gated on `FocusEntered`/`FocusExited` — the keyboard animates
+  in and Godot has no height-changed signal) and translates the
+  center-anchored play-config panel up via its anchor offsets by
+  `KeyboardAvoidance.LiftFor(fieldBottomY, viewportHeight,
+  keyboardPhysicalHeight ÷ ContentScaleFactor, margin)` (ViewMath, unit-tested;
+  the field's unlifted bottom is measured by adding back the applied lift so
+  the lift never feeds back into its own input). `ScaleToFit` only touches
+  `Scale`/`PivotOffset`, so the two never fight. The field sets
+  `SelectAllOnFocus` (tap replaces the old seed); on mobile, Return releases
+  focus (dismisses the keyboard, stays on the config screen) instead of
+  starting the game — desktop keeps Enter-starts-game; a press outside the
+  focused field also releases focus (handled in `_Input`, not consumed,
+  because the root Control's `MouseFilter.Stop` keeps outside taps from ever
+  reaching `_UnhandledInput`). `FOUREXHEX_FAKE_KB=<physical px>` fakes a
+  keyboard height on desktop and forces the mobile Return branch so the whole
+  flow is testable on the dev Mac. Instrumented under `Display:Debug`
+  (focus/lift transitions) and `Input:Debug` (Return / tap-outside dismissal).
 
 ## Safe-area handling (autoload)
 
