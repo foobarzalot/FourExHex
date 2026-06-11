@@ -252,9 +252,10 @@ public class TreasuryTests
     }
 
     [Fact]
-    public void CollectIncomeFor_RecruitDifficulty_HalvesIncomeTruncating_WithGrid()
+    public void CollectIncomeFor_RecruitDifficulty_IncomeIsFlat_WithGrid()
     {
-        // 3 income tiles, Recruit → 3/2 = 1 (truncation, not rounding).
+        // Earn rate is flat 1× at every difficulty (the handicap is upkeep).
+        // 3 income tiles at Recruit difficulty earn exactly 3 gold.
         var capital = new HexCoord(0, 0);
         Territory t = MakeTerritory(
             Red, capital,
@@ -268,13 +269,13 @@ public class TreasuryTests
         var treasury = new Treasury();
         treasury.CollectIncomeFor(recruitRed, new[] { t }, grid);
 
-        Assert.Equal(1, treasury.GetGold(capital));
+        Assert.Equal(3, treasury.GetGold(capital));
     }
 
     [Fact]
-    public void CollectIncomeFor_RecruitDifficulty_HalvesSizeFallback_WithoutGrid()
+    public void CollectIncomeFor_RecruitDifficulty_IncomeIsFlat_WithoutGrid()
     {
-        // No grid → income falls back to Size (3), Recruit → 1.
+        // No grid → income falls back to Size (3); still flat at Recruit.
         var capital = new HexCoord(0, 0);
         Territory t = MakeTerritory(
             Red, capital,
@@ -284,7 +285,7 @@ public class TreasuryTests
         var treasury = new Treasury();
         treasury.CollectIncomeFor(recruitRed, new[] { t });
 
-        Assert.Equal(1, treasury.GetGold(capital));
+        Assert.Equal(3, treasury.GetGold(capital));
     }
 
     [Fact]

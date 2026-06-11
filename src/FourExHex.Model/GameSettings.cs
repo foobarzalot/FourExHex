@@ -49,7 +49,7 @@ public static class GameSettings
     /// One <see cref="Difficulty"/> per slot in <see cref="PlayerConfig"/>
     /// (issue #11 difficulty lever). Read by <see cref="Player.BuildRoster"/>
     /// onto each <see cref="Player.Difficulty"/>. The New Game panel writes the
-    /// chosen level to every AI slot (humans stay Soldier); a loaded save mirrors
+    /// chosen level to every human slot (AIs stay Soldier); a loaded save mirrors
     /// each player's saved level here before BuildRoster. Defaults to all-Soldier
     /// so a fresh launch is unchanged; the headless <c>FOUREXHEX_DIFFICULTY</c>
     /// env var (see <see cref="Main"/>) overwrites it for AI-stress tests.

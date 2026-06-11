@@ -64,8 +64,8 @@ public class UpkeepRulesTests
     [Fact]
     public void TotalUpkeepFor_CommanderDifficulty_SumsScaledPerUnitValues()
     {
-        // Commander (54→27) + Recruit (2→1) at Commander difficulty = 28
-        // (vs 56 at Soldier).
+        // Difficulty is the owner's handicap: Commander (54→81) + Recruit
+        // (2→3) at Commander difficulty = 84 (vs 56 at Soldier).
         HexGrid grid = BuildGridOf(
             new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(0, 1));
         grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red, UnitLevel.Commander);
@@ -74,56 +74,57 @@ public class UpkeepRulesTests
             new HexCoord(0, 0),
             new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(0, 1));
 
-        Assert.Equal(28, UpkeepRules.TotalUpkeepFor(t, grid, Difficulty.Commander));
+        Assert.Equal(84, UpkeepRules.TotalUpkeepFor(t, grid, Difficulty.Commander));
     }
 
     [Fact]
     public void ApplyUpkeep_CommanderDifficulty_ChargesScaledAmount()
     {
-        // One Captain: owed 9 at Commander difficulty (vs 18 at Soldier).
-        // Gold 10 covers 9 → pays, 1 left, unit survives.
+        // One Captain: owed 27 at Commander difficulty (vs 18 at Soldier).
+        // Gold 30 covers 27 → pays, 3 left, unit survives.
         HexGrid grid = BuildGridOf(new HexCoord(0, 0), new HexCoord(1, 0));
         grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red, UnitLevel.Captain);
         Territory t = BuildTerritory(new HexCoord(0, 0), new HexCoord(0, 0), new HexCoord(1, 0));
         var treasury = new Treasury();
-        treasury.SetGold(new HexCoord(0, 0), 10);
+        treasury.SetGold(new HexCoord(0, 0), 30);
 
         Assert.True(UpkeepRules.ApplyUpkeep(t, grid, treasury, Difficulty.Commander));
-        Assert.Equal(1, treasury.GetGold(new HexCoord(0, 0)));
+        Assert.Equal(3, treasury.GetGold(new HexCoord(0, 0)));
         Assert.IsType<Unit>(grid.Get(new HexCoord(1, 0))!.Occupant);
     }
 
     [Fact]
-    public void ApplyUpkeep_SameGold_BankruptAtSoldierButSolventAtCommander()
+    public void ApplyUpkeep_SameGold_SolventAtSoldierButBankruptAtCommander()
     {
-        // The same 10 gold that sustains a Captain at Commander difficulty
-        // (owed 9) is bankrupt at Soldier (owed 18) — units die.
+        // The same 20 gold that sustains a Captain at Soldier difficulty
+        // (owed 18) is bankrupt at Commander (owed 27) — units die.
         HexGrid grid = BuildGridOf(new HexCoord(0, 0), new HexCoord(1, 0));
         grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red, UnitLevel.Captain);
         Territory t = BuildTerritory(new HexCoord(0, 0), new HexCoord(0, 0), new HexCoord(1, 0));
         var treasury = new Treasury();
-        treasury.SetGold(new HexCoord(0, 0), 10);
+        treasury.SetGold(new HexCoord(0, 0), 20);
 
-        Assert.False(UpkeepRules.ApplyUpkeep(t, grid, treasury, Difficulty.Soldier));
+        Assert.False(UpkeepRules.ApplyUpkeep(t, grid, treasury, Difficulty.Commander));
         Assert.IsType<Grave>(grid.Get(new HexCoord(1, 0))!.Occupant);
     }
 
     [Fact]
     public void ApplyUpkeepFor_UsesThePlayersDifficulty()
     {
-        // A Commander-difficulty player's territory pays the scaled rate via
-        // the Player overload — proves ApplyUpkeepFor reads player.Difficulty.
+        // Gold 20 pays a Captain's upkeep at Soldier (18) but not at
+        // Commander (27): the Player overload must charge the Commander
+        // rate and go bankrupt — proves it reads player.Difficulty.
         HexGrid grid = BuildGridOf(new HexCoord(0, 0), new HexCoord(1, 0));
         grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red, UnitLevel.Captain);
         Territory t = BuildTerritory(new HexCoord(0, 0), new HexCoord(0, 0), new HexCoord(1, 0));
         var treasury = new Treasury();
-        treasury.SetGold(new HexCoord(0, 0), 10);
+        treasury.SetGold(new HexCoord(0, 0), 20);
         var commanderRed = new Player("Red", Red, PlayerKind.Computer, Difficulty.Commander);
 
         bool anyBankrupt = UpkeepRules.ApplyUpkeepFor(commanderRed, new[] { t }, grid, treasury);
 
-        Assert.False(anyBankrupt);
-        Assert.Equal(1, treasury.GetGold(new HexCoord(0, 0)));
+        Assert.True(anyBankrupt);
+        Assert.IsType<Grave>(grid.Get(new HexCoord(1, 0))!.Occupant);
     }
 
     // --- ForecastBankruptNextTurn ----------------------------------------

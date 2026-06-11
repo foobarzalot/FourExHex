@@ -40,11 +40,13 @@ public class IncomeRulesTests
         return (t, grid);
     }
 
+    // Earn rate is flat 1× at every difficulty — the lever stays plumbed
+    // ("for now") but income never varies; upkeep is the handicap.
     [Theory]
-    [InlineData(Difficulty.Recruit, 1)]    // 50%: 3*50/100 = 1
+    [InlineData(Difficulty.Recruit, 3)]
     [InlineData(Difficulty.Soldier, 3)]
-    [InlineData(Difficulty.Captain, 3)]    // 100% — hard levels use the upkeep lever
-    [InlineData(Difficulty.Commander, 3)]  // 100%
+    [InlineData(Difficulty.Captain, 3)]
+    [InlineData(Difficulty.Commander, 3)]
     public void IncomeFor_SmallTerritory_ScalesByDifficulty(Difficulty d, int expected)
     {
         (Territory t, HexGrid grid) = ThreeIncomeTiles();
@@ -52,10 +54,10 @@ public class IncomeRulesTests
     }
 
     [Theory]
-    [InlineData(Difficulty.Recruit, 5)]     // 50%: 10*50/100 = 5
+    [InlineData(Difficulty.Recruit, 10)]
     [InlineData(Difficulty.Soldier, 10)]
-    [InlineData(Difficulty.Captain, 10)]    // 100% — hard levels use the upkeep lever
-    [InlineData(Difficulty.Commander, 10)]  // 100%
+    [InlineData(Difficulty.Captain, 10)]
+    [InlineData(Difficulty.Commander, 10)]
     public void IncomeFor_LargeTerritory_ScalesByDifficulty(Difficulty d, int expected)
     {
         (Territory t, HexGrid grid) = TenIncomeTiles();

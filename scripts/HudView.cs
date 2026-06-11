@@ -1652,9 +1652,9 @@ public partial class HudView : OrientationHud, IHudView
         if (hasCapital)
         {
             int gold = state.Treasury.GetGold(selected!.Capital!.Value);
-            // Difficulty-scaled economics (humans are always Soldier, so the
-            // visible numbers are unchanged — this keeps the label honest if
-            // a non-Soldier territory is ever shown).
+            // Difficulty-scaled economics: difficulty is the human's own
+            // upkeep handicap, so on Captain/Commander the label genuinely
+            // shows the higher costs the player is paying.
             Difficulty ownerDifficulty = state.Players[selected.Owner.Index].Difficulty;
             int income = IncomeRules.IncomeFor(selected, state.Grid, ownerDifficulty);
             int upkeep = UpkeepRules.TotalUpkeepFor(selected, state.Grid, ownerDifficulty);

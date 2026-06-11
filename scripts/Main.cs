@@ -75,11 +75,13 @@ public partial class Main : Node2D
                 GameSettings.PlayerKinds[i] = PlayerKind.Computer;
             }
             // FOUREXHEX_DIFFICULTY="recruit,soldier,captain,commander,...":
-            // per-slot difficulty levels (issue #11 lever). Set one AI to
-            // commander here and confirm via the headless 6-AI run that it
-            // dominates. Comma-separated level names, case-insensitive, up
-            // to 6; missing or unknown slots stay Soldier (the default).
-            // Must run before Player.BuildRoster (below) reads it.
+            // per-slot difficulty levels (issue #11). Difficulty is an
+            // upkeep HANDICAP, so a commander slot pays 1.5× upkeep and
+            // should underperform in a headless 6-AI run (and a recruit
+            // slot, paying less, should overperform). Comma-separated level
+            // names, case-insensitive, up to 6; missing or unknown slots
+            // stay Soldier (the default). Must run before Player.BuildRoster
+            // (below) reads it.
             string diffSpec = OS.GetEnvironment("FOUREXHEX_DIFFICULTY");
             if (diffSpec.Length > 0)
             {

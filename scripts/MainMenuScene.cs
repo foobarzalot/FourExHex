@@ -391,11 +391,12 @@ public partial class MainMenuScene : Control
 
         // Difficulty row (issue #11) leads the panel, above the per-player
         // selectors. Levels are named after the unit ranks (Recruit =
-        // easiest … Commander = hardest). One global control; on Start it's
-        // written to every AI slot (humans stay Soldier, the default). The
-        // level→income mapping lives in DifficultyRules.ScaleIncome
-        // (currently Recruit 50%, Captain 120%, Commander 140%). Item ids
-        // match the Difficulty enum values.
+        // easiest … Commander = hardest) and set the HUMAN player's own
+        // handicap: on Start the chosen level is written to every Human
+        // slot while AI opponents stay at Soldier (normal). The
+        // level→upkeep mapping lives in DifficultyRules.UnitUpkeep
+        // (Recruit cheaper than the AIs, Captain ≈×1.25, Commander ×1.5).
+        // Item ids match the Difficulty enum values.
         var difficultyLabel = new Label
         {
             Text = "Difficulty",
@@ -1027,11 +1028,11 @@ public partial class MainMenuScene : Control
                 : PlayerKind.Human;
         }
 
-        // One global difficulty written onto every AI slot; humans stay
-        // Soldier (the default). Stored per-slot so it round-trips through
-        // the save.
+        // The chosen difficulty is the human player's own handicap: it lands
+        // on every Human slot, while AI opponents stay at Soldier (normal).
+        // Stored per-slot so it round-trips through the save.
         var chosen = (Difficulty)(_difficultyDropdown?.GetSelectedId() ?? (int)Difficulty.Soldier);
-        GameSettings.Difficulties = DifficultyRules.AssignGlobalToAi(GameSettings.PlayerKinds, chosen);
+        GameSettings.Difficulties = DifficultyRules.AssignGlobalToHumans(GameSettings.PlayerKinds, chosen);
 
         if (_selectedMapName != null)
         {

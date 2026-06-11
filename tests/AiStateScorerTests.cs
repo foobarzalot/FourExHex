@@ -24,42 +24,41 @@ public class AiStateScorerTests
     }
 
     [Fact]
-    public void Score_RecruitIncomeHandicap_LowersScore()
+    public void Score_IncomeIsFlat_UnitlessBoardScoresEquallyAtEveryDifficulty()
     {
-        // Income is the only Recruit-difficulty lever: on a unit-less board
-        // (no upkeep) a Recruit owner earns 50% (6 of 12 tiles) and must
-        // score below a Soldier owner of the identical board.
+        // Earn rate is flat 1× everywhere and difficulty only touches unit
+        // upkeep, so a board with no units scores identically at every level.
         int recruit = AiStateScorer.Score(BuildState(Difficulty.Recruit), Red);
         int soldier = AiStateScorer.Score(BuildState(Difficulty.Soldier), Red);
+        int commander = AiStateScorer.Score(BuildState(Difficulty.Commander), Red);
 
-        Assert.True(soldier > recruit, $"expected soldier {soldier} > recruit {recruit}");
+        Assert.Equal(soldier, recruit);
+        Assert.Equal(soldier, commander);
     }
 
     [Fact]
-    public void Score_UnitUpkeepRelief_RisesWithHardDifficulty()
+    public void Score_UpkeepHandicap_LowersScoreAsDifficultyRises()
     {
-        // Same 12-tile board with a Captain unit (base upkeep 18) and 10
-        // gold. Net income / solvency per difficulty (income flat 100%):
-        //   Soldier:   12 − 18 = −6  → 10 + 5×(−6) < 0 → bankrupt, unit worth 0
-        //   Captain:   12 − 13 = −1  → 10 + 5×(−1) ≥ 0 → solvent, unit counts
-        //   Commander: 12 −  9 = +3  → solvent AND positive recurring income
-        // So the score must rise strictly: Soldier < Captain < Commander —
-        // entirely via the upkeep table.
+        // Same 12-tile board with a Soldier unit (base upkeep 6), zero gold.
+        // Net income per difficulty (income flat 12):
+        //   Recruit:   12 − 4 = 8   (cheaper-than-baseline easy mode)
+        //   Soldier:   12 − 6 = 6   (baseline)
+        //   Commander: 12 − 9 = 3   (1.5× handicap)
+        // All solvent, so the score differs purely via recurring net income
+        // and must fall strictly as difficulty rises.
         int ScoreFor(Difficulty d)
         {
             GameState state = BuildState(d);
             state.Grid.Get(HexCoord.FromOffset(1, 1))!.Occupant =
-                new Unit(Red, UnitLevel.Captain);
-            Territory red = state.Territories.First(t => t.Owner == Red);
-            state.Treasury.SetGold(red.Capital!.Value, 10);
+                new Unit(Red, UnitLevel.Soldier);
             return AiStateScorer.Score(state, Red);
         }
 
+        int recruit = ScoreFor(Difficulty.Recruit);
         int soldier = ScoreFor(Difficulty.Soldier);
-        int captain = ScoreFor(Difficulty.Captain);
         int commander = ScoreFor(Difficulty.Commander);
 
-        Assert.True(captain > soldier, $"expected captain {captain} > soldier {soldier}");
-        Assert.True(commander > captain, $"expected commander {commander} > captain {captain}");
+        Assert.True(recruit > soldier, $"expected recruit {recruit} > soldier {soldier}");
+        Assert.True(soldier > commander, $"expected soldier {soldier} > commander {commander}");
     }
 }
