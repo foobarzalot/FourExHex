@@ -1948,10 +1948,15 @@ single beat).
   defensive repositions) are genuinely optional. Ties resolve to the
   first-yielded candidate, so equal-delta candidates from later
   territories/units can't displace an earlier winner.
-  `AiSimulator` mirrors the mutation logic in `GameController`'s
+  `AiSimulator` mirrors the mutation logic in `GameOperations`'
   `ExecuteAi*` paths (including `ExecuteAiBuyCombine`); if you add a new
   AI-capable action you must update both in lockstep, or simulated scoring
-  will drift from real play. `AiSimulator.Apply` throws
+  will drift from real play. The lockstep is pinned by
+  `AiSimulatorDriftTests`: every action the enumerators emit from a rich
+  fixture is applied through both paths and the resulting
+  `GameStateChecksum` canonical strings must match (plus a
+  clone-fidelity check and a fixture-rot guard asserting all four
+  action kinds stay covered). `AiSimulator.Apply` throws
   `NotSupportedException` on action kinds it doesn't model (Rally,
   ClaimVictory, Dismiss*) so future drift surfaces loudly rather than as
   a silent no-op.

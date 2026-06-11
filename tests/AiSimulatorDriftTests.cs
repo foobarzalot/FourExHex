@@ -1,0 +1,207 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Xunit;
+
+namespace FourExHex.Tests;
+
+/// <summary>
+/// Pins the AiSimulator ↔ GameOperations mirror: for EVERY candidate
+/// action the AI enumerators emit from a rich mid-game state, applying
+/// it via <see cref="AiSimulator.Apply"/> on a clone must produce a
+/// state checksum-identical to running the same action through the
+/// real <see cref="GameOperations"/> ExecuteAi* path. The simulator's
+/// doc comment promises this lockstep ("simulated futures match what
+/// the real harness would produce"); if a new mutation rule lands on
+/// one side only, AI scoring silently predicts wrong futures — this
+/// test turns that drift into a red test naming the action and the
+/// first divergent checksum line.
+/// </summary>
+public class AiSimulatorDriftTests
+{
+    private const int RedGold = 100;
+    private const int BlueGold = 50;
+
+    /// <summary>
+    /// 8x4 mid-game-shaped state. Red (Computer, current player) owns
+    /// the left three columns with unmoved units (Recruit + Soldier), a
+    /// tree and a grave inside its territory, and a funded capital; Blue
+    /// owns the rest with a border Recruit (capturable), a deeper
+    /// Soldier, a Tower, and its own funded capital. Ingredients chosen
+    /// so the enumerators emit every action kind: capture moves,
+    /// repositions, tree/grave clears, buy-place, buy-capture,
+    /// buy-combine, and tower builds.
+    /// </summary>
+    private static GameState BuildRichState()
+    {
+        var red = new Player("Red", PlayerId.FromIndex(0), PlayerKind.Computer);
+        var blue = new Player("Blue", PlayerId.FromIndex(1), PlayerKind.Computer);
+        var players = new List<Player> { red, blue };
+
+        HexGrid grid = TestHelpers.BuildRectGrid(8, 4, blue.Id);
+        for (int col = 0; col < 3; col++)
+        {
+            for (int row = 0; row < 4; row++)
+            {
+                grid.Get(HexCoord.FromOffset(col, row))!.Owner = red.Id;
+            }
+        }
+
+        // Red pieces: two unmoved units, a tree, a grave.
+        grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = new Unit(red.Id, UnitLevel.Recruit);
+        grid.Get(HexCoord.FromOffset(2, 1))!.Occupant = new Unit(red.Id, UnitLevel.Soldier);
+        grid.Get(HexCoord.FromOffset(0, 2))!.Occupant = new Tree();
+        grid.Get(HexCoord.FromOffset(1, 3))!.Occupant = new Grave();
+
+        // Blue pieces: a capturable border Recruit, a deeper Soldier, a Tower.
+        grid.Get(HexCoord.FromOffset(3, 1))!.Occupant = new Unit(blue.Id, UnitLevel.Recruit);
+        grid.Get(HexCoord.FromOffset(5, 2))!.Occupant = new Unit(blue.Id, UnitLevel.Soldier);
+        grid.Get(HexCoord.FromOffset(4, 3))!.Occupant = new Tower();
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+
+        foreach (Territory t in state.Territories.Where(t => t.HasCapital))
+        {
+            state.Treasury.SetGold(t.Capital!.Value, t.Owner == red.Id ? RedGold : BlueGold);
+        }
+        return state;
+    }
+
+    /// <summary>
+    /// Every distinct action any enumerator emits for the current
+    /// player: the all-in-one <see cref="AiCommon.Enumerate"/> plus the
+    /// phase-specific enumerators ComputerAi actually drives, so kinds
+    /// only a phase helper emits (e.g. buy-combine) are covered too.
+    /// </summary>
+    private static List<AiAction> AllCandidateActions(GameState state)
+    {
+        PlayerId current = state.Turns.CurrentPlayer.Id;
+        var candidates = new List<AiCandidate>();
+        foreach (Territory t in state.Territories.Where(t => t.Owner == current))
+        {
+            candidates.AddRange(AiCommon.Enumerate(t, state));
+            candidates.AddRange(AiCommon.EnumeratePhase2b(t, state));
+            candidates.AddRange(AiCommon.EnumeratePhase3(t, state));
+            candidates.AddRange(AiCommon.EnumeratePhase4Towers(t, state));
+            foreach (HexCoord c in t.Coords)
+            {
+                if (state.Grid.Get(c)?.Unit is Unit u && !u.HasMovedThisTurn)
+                {
+                    candidates.AddRange(AiCommon.EnumeratePhase1ForUnit(c, u, t, state));
+                    candidates.AddRange(AiCommon.EnumeratePhase2aForUnit(c, u, t, state));
+                    candidates.AddRange(AiCommon.EnumeratePhase4bForUnit(c, u, t, state));
+                }
+            }
+        }
+        return candidates.Select(c => c.Action).Distinct().ToList();
+    }
+
+    /// <summary>
+    /// Run one action through the real mutation path: a fresh
+    /// <see cref="GameOperations"/> (mock views, inert callbacks) over a
+    /// clone of <paramref name="initial"/>, dispatched to the matching
+    /// ExecuteAi* method. Returns the mutated clone.
+    /// </summary>
+    private static GameState ExecuteViaGameOperations(GameState initial, AiAction action)
+    {
+        GameState real = AiSimulator.Clone(initial);
+        var ops = new GameOperations(
+            real,
+            new SessionState(),
+            new MockHexMapView(),
+            new MockHudView(),
+            recordingMode: false,
+            previewMode: false,
+            isReplayMode: () => false,
+            aiSilentMode: () => false,
+            isReplayInstantActive: () => false,
+            clearUndoAndReplayBookkeeping: () => { },
+            onGameEnded: () => { },
+            onHumanTurnStarted: () => { },
+            maxTurnNumber: 100,
+            masterSeed: 1,
+            onAfterRefresh: null);
+        switch (action)
+        {
+            case AiMoveAction mv:
+                ops.ExecuteAiMove(mv.Source, mv.Destination);
+                break;
+            case AiBuyUnitAction bu:
+                ops.ExecuteAiBuyUnit(bu.Capital, bu.Destination, bu.Level);
+                break;
+            case AiBuyCombineAction bc:
+                ops.ExecuteAiBuyCombine(bc.Capital, bc.CombineTarget, bc.BuyLevel);
+                break;
+            case AiBuildTowerAction bt:
+                ops.ExecuteAiBuildTower(bt.Capital, bt.Destination);
+                break;
+            default:
+                throw new NotSupportedException(
+                    $"Unexpected enumerated action kind {action.GetType().Name}.");
+        }
+        return real;
+    }
+
+    /// <summary>First line where the two canonical strings differ — far
+    /// more readable on failure than two full board dumps.</summary>
+    private static string FirstDifference(string sim, string real)
+    {
+        string[] simLines = sim.Split('\n');
+        string[] realLines = real.Split('\n');
+        int n = Math.Max(simLines.Length, realLines.Length);
+        for (int i = 0; i < n; i++)
+        {
+            string s = i < simLines.Length ? simLines[i] : "<missing>";
+            string r = i < realLines.Length ? realLines[i] : "<missing>";
+            if (s != r) return $"line {i}: simulator [{s}] vs GameOperations [{r}]";
+        }
+        return "<identical>";
+    }
+
+    [Fact]
+    public void Clone_IsChecksumIdenticalToOriginal()
+    {
+        // Guards the test's own setup: both sides below start from
+        // Clone(initial), so Clone infidelity would otherwise cancel out.
+        GameState initial = BuildRichState();
+        Assert.Equal(
+            GameStateChecksum.Stringify(initial),
+            GameStateChecksum.Stringify(AiSimulator.Clone(initial)));
+    }
+
+    [Fact]
+    public void Fixture_EmitsEveryActionKind()
+    {
+        // Fixture-rot guard: if a rules change quietly stops the rich
+        // state from producing some action kind, the drift sweep below
+        // would still pass while covering less than it claims.
+        List<AiAction> actions = AllCandidateActions(BuildRichState());
+        Assert.Contains(actions, a => a is AiMoveAction);
+        Assert.Contains(actions, a => a is AiBuyUnitAction);
+        Assert.Contains(actions, a => a is AiBuyCombineAction);
+        Assert.Contains(actions, a => a is AiBuildTowerAction);
+        Assert.True(actions.Count >= 20,
+            $"Expected a rich candidate set, got only {actions.Count}.");
+    }
+
+    [Fact]
+    public void EveryEnumeratedCandidate_SimulatesIdenticallyToGameOperations()
+    {
+        GameState initial = BuildRichState();
+        List<AiAction> actions = AllCandidateActions(initial);
+
+        foreach (AiAction action in actions)
+        {
+            GameState sim = AiSimulator.Clone(initial);
+            AiSimulator.Apply(action, sim);
+            GameState real = ExecuteViaGameOperations(initial, action);
+
+            string simCanonical = GameStateChecksum.Stringify(sim);
+            string realCanonical = GameStateChecksum.Stringify(real);
+            Assert.True(simCanonical == realCanonical,
+                $"Simulator drift for {action}: " +
+                FirstDifference(simCanonical, realCanonical));
+        }
+    }
+}
