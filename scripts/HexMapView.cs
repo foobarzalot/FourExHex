@@ -2138,6 +2138,7 @@ public partial class HexMapView : Node2D, IHexMapView
                 // Right/Down keys move the world view in that direction,
                 // which means translating the map node OPPOSITE.
                 Position = ClampPan(Position - panDir * KeyboardPanStepPx);
+                LogCameraState("keypan");
                 GetViewport().SetInputAsHandled();
                 return;
             }
@@ -2276,7 +2277,11 @@ public partial class HexMapView : Node2D, IHexMapView
             && Time.GetTicksMsec() - _pressStartMsec >= LongPressMs;
         _dragCandidate = false;
         _isDragging = false;
-        if (wasDragging) return;
+        if (wasDragging)
+        {
+            LogCameraState("pan");
+            return;
+        }
 
         // Convert viewport position into our local space, then remove the
         // centering offset so the result is in axial-origin coordinates.
@@ -2403,6 +2408,25 @@ public partial class HexMapView : Node2D, IHexMapView
         // world offset (zoom + rotation) before subtracting from VisualCenter.
         Vector2 localCenter = FirstHexCenterOffset + HexPixel.ToPixel(territory.Capital!.Value, HexSize);
         Position = ClampPan(VisualCenter() - ToWorldOffset(localCenter, _zoom));
+    }
+
+    /// <summary>Frame the camera at <paramref name="zoom"/> with the view
+    /// centered <paramref name="contentCenterOffset"/> away from the content
+    /// box's center (content/local coords, +x right / +y down). Clamps the
+    /// zoom to the allowed range and re-syncs the discrete level index, like
+    /// a user gesture would. Callers use this to open a scene with a
+    /// hand-tuned framing instead of the RecenterMap fit default (e.g. the
+    /// tutorial's landscape camera, #14).</summary>
+    public void SetCamera(float zoom, Vector2 contentCenterOffset)
+    {
+        _zoom = Mathf.Clamp(zoom, _zoomMin, 1f);
+        Scale = new Vector2(_zoom, _zoom);
+        _zoomLevelIndex = ClosestLevelIndex(_zoom);
+        var contentCenter = new Vector2(
+            (_contentBox.minX + _contentBox.maxX) * 0.5f,
+            (_contentBox.minY + _contentBox.maxY) * 0.5f) + contentCenterOffset;
+        Position = ClampPan(VisualCenter() - ToWorldOffset(contentCenter, _zoom));
+        LogCameraState("set");
     }
 
     /// <summary>Center the (possibly rotated) content in the play area. Uses the
@@ -2620,6 +2644,19 @@ public partial class HexMapView : Node2D, IHexMapView
         _zoom = newZoom;
         Position = ClampPan(anchorVp - ToWorldOffset(localUnderAnchor, newZoom));
         _zoomLevelIndex = ClosestLevelIndex(_zoom);
+        LogCameraState("zoom");
+    }
+
+    /// <summary>Render-debug snapshot of the camera after a user pan/zoom:
+    /// the zoom factor plus the content-space point under the viewport's
+    /// visual center — together the spec needed to reproduce a framing as
+    /// an initial view (see RecenterMap's contentCenter math).</summary>
+    private void LogCameraState(string source)
+    {
+        Vector2 center = ToLocal(VisualCenter());
+        Log.Debug(Log.LogCategory.Render,
+            $"HexMapView: camera {source} zoom={_zoom:0.000} " +
+            $"center=({center.X:0},{center.Y:0}) pos=({Position.X:0},{Position.Y:0})");
     }
 
     /// <summary>Discrete zoom step from wheel ticks or +/- keys. After a

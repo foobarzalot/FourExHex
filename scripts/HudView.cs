@@ -916,7 +916,12 @@ public partial class HudView : OrientationHud, IHudView
     // offsets are inline.
     private const float TutorialPanelW = 720f;
     private const float TutorialPanelH = 120f;
-    private const float TutorialMarginBottom = 60f;
+    // Hairline pad between the narration box and the chrome below it (the
+    // portrait bottom bar / the landscape safe-area edge). Both orientations
+    // hug the bottom (#14): every px of float margin is map the narration
+    // box needlessly covers, and on phones the map zoom-fits the full
+    // viewport height.
+    private const float TutorialMarginBottom = 8f;
     // Minimum gap kept on each side when the viewport is too narrow for a
     // centered fixed-width HUD panel (tutorial box, bankruptcy toast), so the
     // panel shrinks to fit instead of clipping off both edges.
@@ -981,10 +986,10 @@ public partial class HudView : OrientationHud, IHudView
 
         // Flashing "Click anywhere to continue" prompt shown only while a
         // tappable (display-text) tutorial beat is gating input. Horizontally
-        // centered and sitting in the gap just below the narration panel
-        // (which is bottom-anchored panelH tall, marginBottom off the bottom).
-        // Click-through (MouseFilter=Ignore) so the tap catcher still receives
-        // the dismissing click; purely a visual cue.
+        // centered, just above the bottom-hugging narration panel (#14) —
+        // see PositionTutorialOverlay. Click-through (MouseFilter=Ignore) so
+        // the tap catcher still receives the dismissing click; purely a
+        // visual cue.
         _continueHint = new Label
         {
             Text = "Click anywhere to continue",
@@ -1034,9 +1039,9 @@ public partial class HudView : OrientationHud, IHudView
         int lines = Mathf.Max(1, Mathf.RoundToInt(textSize.Y / font.GetHeight(fontSize)));
         float textH = textSize.Y + (lines - 1) * _tutorialLabel.GetThemeConstant("line_spacing");
         float panelH = HudPanelMath.FitHeight(textH, 8f, TutorialPanelH);
-        // Portrait has a bottom bar (lift above its top edge); landscape is
-        // pure rails (no bottom bar — let the tutorial box settle near the
-        // viewport bottom with just the safe-area inset).
+        // The box hugs the bottom in both orientations (#14): lifted over the
+        // portrait bottom bar, or just the safe-area inset in landscape
+        // (pure rails, no bottom bar), plus the hairline pad.
         float lift = Orientation == ScreenOrientation.Portrait
             ? HudBars.PortraitBottomBarHeight
             : SafeArea.Current.Bottom;
@@ -1045,11 +1050,11 @@ public partial class HudView : OrientationHud, IHudView
         _tutorialPanel.OffsetBottom = -bottom;
         Log.Debug(Log.LogCategory.Render,
             $"[HudView] tutorial panel fit: viewportW={viewportW:0} width={width:0} " +
-            $"lines={lines} textH={textH:0} panelH={panelH:0}");
-        // Continue hint sits in the gap between the panel's bottom and the
-        // bottom-bar top (or the viewport bottom in landscape).
-        _continueHint.OffsetTop = -bottom + 4f;
-        _continueHint.OffsetBottom = -lift - 4f;
+            $"lines={lines} textH={textH:0} panelH={panelH:0} bottom={bottom:0}");
+        // Continue hint sits just above the bottom-hugging panel (there's no
+        // gap below it to live in anymore).
+        _continueHint.OffsetTop = -bottom - panelH - 40f;
+        _continueHint.OffsetBottom = -bottom - panelH - 4f;
     }
 
     // Red-pill bankruptcy warning. The redesign §8 toast spec called

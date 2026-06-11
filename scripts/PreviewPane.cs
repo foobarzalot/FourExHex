@@ -29,6 +29,14 @@ public sealed partial class PreviewPane : Control
     /// </summary>
     public event Action? EscRequested;
 
+    // Hand-tuned opening camera for landscape tutorial playback (#14):
+    // zoomed out a touch from the fit default and view-centered slightly
+    // below-right of the content center, which shifts the board up clear of
+    // the bottom-hugging narration box. Captured from a manual framing at
+    // 921x425 (iPhone 13 mini landscape logical size).
+    private const float LandscapeOpeningZoom = 0.85f;
+    private static readonly Vector2 LandscapeOpeningCenterOffset = new Vector2(10f, 19f);
+
     private MapEditorPanel _panel = null!;
     private HudView? _hud;
     private TutorialPreview? _preview;
@@ -197,6 +205,18 @@ public sealed partial class PreviewPane : Control
         _panel.Map.Init(_previewState);
         _controller.StartGame();
         Log.Debug(Log.LogCategory.Tutorial, $"[PreviewPane] post-StartGame: turn={_previewState.Turns.TurnNumber}, currentPlayer={_previewState.Turns.CurrentPlayerIndex} ({_previewState.Turns.CurrentPlayer.Name})");
+
+        // Landscape opens with the board zoomed out a touch and shifted up so
+        // the bottom-hugging narration box (#14) doesn't cover it. Deferred so
+        // it lands after the ReloadState-queued RecenterMap fit default;
+        // portrait keeps that default.
+        Vector2 vp = GetViewport().GetVisibleRect().Size;
+        if (ScreenLayout.Resolve(vp.X, vp.Y) == ScreenOrientation.Landscape)
+        {
+            HexMapView mapForCamera = _panel.Map;
+            Callable.From(() =>
+                mapForCamera.SetCamera(LandscapeOpeningZoom, LandscapeOpeningCenterOffset)).CallDeferred();
+        }
 
         _running = true;
     }
