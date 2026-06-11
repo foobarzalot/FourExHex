@@ -3255,7 +3255,18 @@ chips / buttons overlay it. Portrait board rotation
   default insets and portrait content is pushed down. (Landscape now reserves
   the bottom strip — `ComputeInsets` returns `top=0, bottom=barHeight` — since
   the bar moved to the bottom.) `RecenterMap` logs its inputs + resulting on-screen rect at
-  `Render:Debug` for regression diagnosis.
+  `Render:Debug` for regression diagnosis. **Hand-tuned opening framing
+  (#14):** `HexMapView.SetCamera(zoom, contentCenterOffset)` is the public
+  alternative to the `RecenterMap` fit default — it clamps the zoom, re-syncs
+  the discrete level index, and centers the view `contentCenterOffset` away
+  from the content-box center. `PreviewPane.Start` uses it (deferred, so it
+  lands after the `ReloadState`-queued recenter) to open *landscape* tutorial
+  playback zoomed out slightly with the board shifted up clear of the
+  bottom-hugging narration box; portrait keeps the fit default. Every user
+  pan/zoom (and `SetCamera` itself) logs a `Render:Debug` `camera
+  pan/zoom/set` line with the zoom + content point under the viewport center,
+  which is exactly the pair needed to capture a manual framing as a new
+  default.
 
 `project.godot` is unchanged (default stretch, resizable); the responsive
 behavior is all in the view layer. Real mobile-export settings (handheld
