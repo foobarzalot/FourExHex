@@ -1656,7 +1656,7 @@ public partial class HudView : OrientationHud, IHudView
             // upkeep handicap, so on Captain/Commander the label genuinely
             // shows the higher costs the player is paying.
             Difficulty ownerDifficulty = state.Players[selected.Owner.Index].Difficulty;
-            int income = IncomeRules.IncomeFor(selected, state.Grid, ownerDifficulty);
+            int income = IncomeRules.IncomeFor(selected, state.Grid);
             int upkeep = UpkeepRules.TotalUpkeepFor(selected, state.Grid, ownerDifficulty);
             int net = income - upkeep;
             string sign = net >= 0 ? "+" : "";

@@ -25,12 +25,11 @@ public class Player
     public PlayerKind Kind { get; }
 
     /// <summary>
-    /// Difficulty lever (issue #11): how much per-turn gold income this
-    /// player earns, via <see cref="DifficultyRules.ScaleIncome"/>. Default
-    /// <see cref="Difficulty.Soldier"/> = unchanged. Consumed by
-    /// <see cref="IncomeRules.IncomeFor"/>, the single source of truth both
-    /// real income collection (<see cref="Treasury.CollectIncomeFor"/>) and
-    /// the AI lookahead scorer (<see cref="AiStateScorer"/>) read.
+    /// Difficulty lever (issue #11): how much upkeep this player's units
+    /// cost per turn, via <see cref="DifficultyRules.UnitUpkeep"/>. Default
+    /// <see cref="Difficulty.Soldier"/> = the baseline AIs always play at.
+    /// Consumed by <see cref="UpkeepRules"/> (real charging), the AI
+    /// solvency gates, and the lookahead scorer.
     /// </summary>
     public Difficulty Difficulty { get; }
 

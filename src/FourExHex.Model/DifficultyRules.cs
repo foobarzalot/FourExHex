@@ -2,30 +2,13 @@ using System.Collections.Generic;
 
 /// <summary>
 /// The single place the <see cref="Difficulty"/> level → behavior mapping
-/// lives, so retuning a level's percent is one edit. Levels are named after
-/// the unit ranks: Recruit (easiest) … Commander (hardest); Soldier is the
-/// 100% default.
+/// lives, so retuning a level is one edit. Levels are named after the unit
+/// ranks: Recruit (easiest) … Commander (hardest); Soldier is the baseline.
+/// Difficulty acts purely through unit upkeep (income is never scaled).
 /// Godot-free and integer-only (no-floats rule).
 /// </summary>
 public static class DifficultyRules
 {
-    /// <summary>
-    /// Scale a base per-turn income by a player's difficulty, expressed as an
-    /// integer percent. Currently flat 100% at every level — difficulty acts
-    /// purely through the upkeep table (<see cref="UnitUpkeep"/>) for now.
-    /// The lever stays plumbed (every income consumer routes through here via
-    /// <see cref="IncomeRules.IncomeFor"/>) so earn-rate handicaps can rejoin
-    /// the mix by editing this one switch. All integer math (no-floats rule).
-    /// </summary>
-    public static int ScaleIncome(int baseIncome, Difficulty difficulty)
-    {
-        int percent = difficulty switch
-        {
-            _ => 100, // flat at every level for now; upkeep is the handicap
-        };
-        return baseIncome * percent / 100; // integer division truncates
-    }
-
     /// <summary>
     /// Upkeep table: gold per turn a unit of <paramref name="level"/> costs
     /// when owned by a player at <paramref name="difficulty"/>. Explicit

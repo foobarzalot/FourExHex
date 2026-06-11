@@ -291,7 +291,7 @@ public static class AiStateScorer
         Difficulty difficulty = territory.Owner.IsNone
             ? Difficulty.Soldier
             : state.Players[territory.Owner.Index].Difficulty;
-        int income = IncomeRules.IncomeFor(territory, state.Grid, difficulty);
+        int income = IncomeRules.IncomeFor(territory, state.Grid);
         int upkeep = UpkeepRules.TotalUpkeepFor(territory, state.Grid, difficulty);
         int netIncome = income - upkeep;
 

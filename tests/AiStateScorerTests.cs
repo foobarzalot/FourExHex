@@ -24,19 +24,6 @@ public class AiStateScorerTests
     }
 
     [Fact]
-    public void Score_IncomeIsFlat_UnitlessBoardScoresEquallyAtEveryDifficulty()
-    {
-        // Earn rate is flat 1× everywhere and difficulty only touches unit
-        // upkeep, so a board with no units scores identically at every level.
-        int recruit = AiStateScorer.Score(BuildState(Difficulty.Recruit), Red);
-        int soldier = AiStateScorer.Score(BuildState(Difficulty.Soldier), Red);
-        int commander = AiStateScorer.Score(BuildState(Difficulty.Commander), Red);
-
-        Assert.Equal(soldier, recruit);
-        Assert.Equal(soldier, commander);
-    }
-
-    [Fact]
     public void Score_UpkeepHandicap_LowersScoreAsDifficultyRises()
     {
         // Same 12-tile board with a Soldier unit (base upkeep 6), zero gold.

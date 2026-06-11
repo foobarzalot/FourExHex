@@ -10,10 +10,11 @@ public static class IncomeRules
     /// <summary>
     /// Gold a territory yields in one turn: the count of income-producing
     /// tiles (<see cref="TreeRules.CountIncomeProducingTiles"/> — trees and
-    /// graves don't pay), scaled by the owner's <paramref name="difficulty"/>
-    /// via <see cref="DifficultyRules.ScaleIncome"/>.
+    /// graves don't pay). Income is NOT difficulty-scaled: the difficulty
+    /// handicap acts purely through unit upkeep
+    /// (<see cref="DifficultyRules.UnitUpkeep"/>). If an earn-rate lever is
+    /// ever reintroduced, it goes here so every consumer inherits it.
     /// </summary>
-    public static int IncomeFor(Territory territory, HexGrid grid, Difficulty difficulty)
-        => DifficultyRules.ScaleIncome(
-            TreeRules.CountIncomeProducingTiles(territory, grid), difficulty);
+    public static int IncomeFor(Territory territory, HexGrid grid)
+        => TreeRules.CountIncomeProducingTiles(territory, grid);
 }

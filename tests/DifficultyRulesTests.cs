@@ -5,21 +5,6 @@ namespace FourExHex.Tests;
 
 public class DifficultyRulesTests
 {
-    // Earn rate is flat 1× at every level for now — difficulty is the
-    // human player's upkeep handicap (the UnitUpkeep table). The lever
-    // stays plumbed so income can rejoin the mix later.
-    [Theory]
-    [InlineData(Difficulty.Recruit, 3, 3)]
-    [InlineData(Difficulty.Recruit, 5, 5)]
-    [InlineData(Difficulty.Recruit, 0, 0)]
-    [InlineData(Difficulty.Soldier, 3, 3)]
-    [InlineData(Difficulty.Captain, 20, 20)]
-    [InlineData(Difficulty.Commander, 20, 20)]
-    public void ScaleIncome_IsFlatAtEveryLevel(Difficulty d, int baseIncome, int expected)
-    {
-        Assert.Equal(expected, DifficultyRules.ScaleIncome(baseIncome, d));
-    }
-
     // The hand-picked upkeep table (#11): rows = unit level, columns = the
     // owner's difficulty. Difficulty is the HUMAN player's handicap — AI
     // opponents always play the Soldier column (the 2/6/18/54 Slay

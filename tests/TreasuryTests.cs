@@ -230,65 +230,6 @@ public class TreasuryTests
     }
 
     [Fact]
-    public void CollectIncomeFor_CommanderDifficulty_IncomeIsFlat100Percent_WithGrid()
-    {
-        // Hard levels don't boost income — their lever is the cheaper-upkeep
-        // table. 8 income tiles at Commander difficulty earn exactly 8 gold.
-        var capital = new HexCoord(0, 0);
-        var coords = new HexCoord[8];
-        var grid = new HexGrid();
-        for (int c = 0; c < 8; c++)
-        {
-            coords[c] = new HexCoord(c, 0);
-            grid.Add(new HexTile(coords[c], Red));
-        }
-        Territory t = new Territory(Red, coords, capital);
-        var commanderRed = new Player("Red", Red, PlayerKind.Computer, Difficulty.Commander);
-
-        var treasury = new Treasury();
-        treasury.CollectIncomeFor(commanderRed, new[] { t }, grid);
-
-        Assert.Equal(8, treasury.GetGold(capital));
-    }
-
-    [Fact]
-    public void CollectIncomeFor_RecruitDifficulty_IncomeIsFlat_WithGrid()
-    {
-        // Earn rate is flat 1× at every difficulty (the handicap is upkeep).
-        // 3 income tiles at Recruit difficulty earn exactly 3 gold.
-        var capital = new HexCoord(0, 0);
-        Territory t = MakeTerritory(
-            Red, capital,
-            new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(2, 0));
-        var grid = new HexGrid();
-        grid.Add(new HexTile(new HexCoord(0, 0), Red));
-        grid.Add(new HexTile(new HexCoord(1, 0), Red));
-        grid.Add(new HexTile(new HexCoord(2, 0), Red));
-        var recruitRed = new Player("Red", Red, PlayerKind.Computer, Difficulty.Recruit);
-
-        var treasury = new Treasury();
-        treasury.CollectIncomeFor(recruitRed, new[] { t }, grid);
-
-        Assert.Equal(3, treasury.GetGold(capital));
-    }
-
-    [Fact]
-    public void CollectIncomeFor_RecruitDifficulty_IncomeIsFlat_WithoutGrid()
-    {
-        // No grid → income falls back to Size (3); still flat at Recruit.
-        var capital = new HexCoord(0, 0);
-        Territory t = MakeTerritory(
-            Red, capital,
-            new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(2, 0));
-        var recruitRed = new Player("Red", Red, PlayerKind.Computer, Difficulty.Recruit);
-
-        var treasury = new Treasury();
-        treasury.CollectIncomeFor(recruitRed, new[] { t });
-
-        Assert.Equal(3, treasury.GetGold(capital));
-    }
-
-    [Fact]
     public void CollectIncomeFor_DefaultDifficultyIsSoldier()
     {
         // A player built without an explicit difficulty earns 1× (unchanged).

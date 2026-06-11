@@ -70,7 +70,7 @@ public static class AiCommon
     /// AND spacing-checked via <see cref="MeetsAiTowerSpacing"/>.
     /// </summary>
     /// <summary>
-    /// The owner's difficulty plus the territory's difficulty-scaled net
+    /// The owner's difficulty plus the territory's net
     /// income (income − upkeep), exactly as real play will charge it.
     /// Single helper shared by every enumerator so the solvency gates
     /// can't drift from each other or from <see cref="Treasury"/> /
@@ -80,7 +80,7 @@ public static class AiCommon
         Territory territory, GameState state)
     {
         Difficulty difficulty = state.Players[territory.Owner.Index].Difficulty;
-        int income = IncomeRules.IncomeFor(territory, state.Grid, difficulty);
+        int income = IncomeRules.IncomeFor(territory, state.Grid);
         int upkeep = UpkeepRules.TotalUpkeepFor(territory, state.Grid, difficulty);
         return (difficulty, income - upkeep);
     }

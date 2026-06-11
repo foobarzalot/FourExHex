@@ -111,7 +111,7 @@ public static class UpkeepRules
         int owed = TotalUpkeepFor(territory, grid, difficulty);
         if (owed == 0) return false;
 
-        int income = IncomeRules.IncomeFor(territory, grid, difficulty);
+        int income = IncomeRules.IncomeFor(territory, grid);
         int available = treasury.GetGold(territory.Capital!.Value) + income;
         return available < owed;
     }
@@ -134,7 +134,7 @@ public static class UpkeepRules
         int owed = TotalUpkeepFor(territory, grid, difficulty);
         if (owed == 0) return EconomyOutlook.Healthy;
 
-        int income = IncomeRules.IncomeFor(territory, grid, difficulty);
+        int income = IncomeRules.IncomeFor(territory, grid);
         int available = treasury.GetGold(territory.Capital!.Value) + income;
         if (available < owed) return EconomyOutlook.BankruptNextTurn;
         if (income < owed) return EconomyOutlook.NegativeDelta;
