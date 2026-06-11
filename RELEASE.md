@@ -313,11 +313,15 @@ so only `Warn`/`Error` reach the device log; use a **debug** build to see
 
 `scripts/DisplayScale.cs` (autoload) drives the root `Window.ContentScaleFactor`
 to keep UI at a roughly constant physical size across densities. Pure math is in
-`src/FourExHex.Model/DisplayScaleMath.cs`:
+`src/FourExHex.ViewMath/DisplayScaleMath.cs`:
 
 ```
+# Desktop (FactorForDpi):
 logicalDpi = ScreenGetDpi / max(ScreenGetScale, 1)
 factor     = clamp(logicalDpi / 160, 1.0, 3.0)     # 160 = Android mdpi baseline
+
+# Mobile (FactorForRawMobileDpi — OS.HasFeature("mobile")):
+factor     = clamp(ScreenGetDpi / 180, 2.2222, 3.0)  # 180 = S9-parity reference
 ```
 
 Dividing by the OS display scale recovers logical DPI so retina desktops floor
@@ -332,7 +336,8 @@ The `DisplayScale:` logcat line (Info on change, Debug otherwise) reports:
 ## 5. Known device data
 
 On mobile, the effective `factor` is `max(naturalFactor, MobileMinFactor)`
-where `naturalFactor = logicalDpi / 160` and `MobileMinFactor` is currently
+where `naturalFactor = rawDpi / 180` (`FactorForRawMobileDpi`) and
+`MobileMinFactor` is currently
 **2.2222** (S9-portrait parity — see `DisplayScaleMath.cs`). So natural values
 below the floor are lifted; values above are unaffected. The tables below
 show the **post-floor** factor that actually drives `ContentScaleFactor`, with
@@ -354,20 +359,23 @@ S9-portrait parity (this collapsed the landscape buy palette via the
 `FullBuyRowWidthLandscape=1300px` threshold — see `HudView`).
 
 **iPhone 13 mini (iPhone14,4)** — iOS 26.5 (build 23F77), debug build,
-captured 2026-05-30 via `idevicesyslog | grep -E "DisplayScale:|SafeArea:"`;
-factor recomputed under current floor 2.2222:
+captured 2026-06-11 via `idevicesyslog | grep -E "DisplayScale:|SafeArea:"`
+under the `FactorForRawMobileDpi` formula (raw 476 dpi / 180 = 2.64, above
+the 2.2222 floor so the floor doesn't clamp):
 
 | Orientation | dpi | osScale | factor (natural) | window (phys) | logical viewport | safe insets (t,b,l,r) |
 |-------------|-----|---------|-------------------|---------------|------------------|------------------------|
-| Portrait    | 476 | 3       | 2.22 (0.99)       | 1125 × 2436   | 507 × 1097       | 150, 102, 0, 0          |
-| Landscape   | 476 | 3       | 2.22 (0.99)       | 2436 × 1125   | 1097 × 507       | 0, 60, 150, 150         |
+| Portrait    | 476 | 3       | 2.64              | 1125 × 2436   | 425 × 921        | 150, 102, 0, 0          |
+| Landscape   | 476 | 3       | 2.64              | 2436 × 1125   | 921 × 425        | 0, 60, 150, 150         |
 
-Notes: iOS's `ScreenGetScale` reports 3 (matching the iPhone's 3× retina);
-divided by raw 476 dpi → logical DPI 158.67, **just below the 160 baseline**,
-so the iPhone's natural factor is 0.99 → lifted to the floor 2.22 by the
-mobile clamp. This puts iPhone-portrait on near-identical logical viewport
-(507×1097) to S9-portrait (486×999), equalizing physical button size between
-the two reference devices. The landscape `(L, R) = (150, 150)` insets are
+Notes: the mobile factor formula is `rawDpi / MobileReferenceDpi (180)`
+(`DisplayScaleMath.FactorForRawMobileDpi`) — NOT the desktop
+`logicalDpi / 160` path, which divides by iOS's `ScreenGetScale` of 3 and
+would floor the iPhone to the 2.2222 clamp (the pre-2026-06 behavior that
+produced the old 507×1097 figure). At factor 2.64 the 13 mini's logical
+viewport is **425×921** — noticeably narrower than the S9's 486×999, which
+is what makes long tutorial strings wrap to 4 lines there (#18). The safe
+insets column is physical px. The landscape `(L, R) = (150, 150)` insets are
 the iPhone notch sitting on the rotated edge; the HUD bars currently only
 consume top/bottom safe insets, so in landscape the bars draw under the notch
 on the left/right edges — tracked as part of GitHub issue #3.
@@ -393,6 +401,12 @@ GODOT="/Applications/Godot_mono.app/Contents/MacOS/Godot"
 
 # Galaxy S9 LANDSCAPE (device logical 1332×648)
 "$GODOT" --path . --resolution 1332x648
+
+# iPhone 13 mini PORTRAIT  (device logical 425×921)
+"$GODOT" --path . --resolution 425x921
+
+# iPhone 13 mini LANDSCAPE (device logical 921×425)
+"$GODOT" --path . --resolution 921x425
 ```
 
 Append a scene path to load straight into a screen (omit it for the main menu),
@@ -418,11 +432,11 @@ reproduces a device's pixel-for-pixel layout on the dev Mac:
 ```
 GODOT="/Applications/Godot_mono.app/Contents/MacOS/Godot"
 
-# iPhone 13 mini PORTRAIT  (physical 1125×2436 at factor 1.8 → logical ~625×1353)
-FOUREXHEX_UI_SCALE=1.8 "$GODOT" --path . --resolution 1125x2436
+# iPhone 13 mini PORTRAIT  (physical 1125×2436 at factor 2.644 → logical 425×921)
+FOUREXHEX_UI_SCALE=2.644 "$GODOT" --path . --resolution 1125x2436
 
-# iPhone 13 mini LANDSCAPE (physical 2436×1125 at factor 1.8)
-FOUREXHEX_UI_SCALE=1.8 "$GODOT" --path . --resolution 2436x1125
+# iPhone 13 mini LANDSCAPE (physical 2436×1125 at factor 2.644)
+FOUREXHEX_UI_SCALE=2.644 "$GODOT" --path . --resolution 2436x1125
 
 # Galaxy S9 PORTRAIT  (physical 1080×2220 at factor 2.222)
 FOUREXHEX_UI_SCALE=2.222 "$GODOT" --path . --resolution 1080x2220

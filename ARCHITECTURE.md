@@ -44,8 +44,10 @@ Model → Controller → game (with the test project alongside):
   `<ProjectReference>` to `FourExHex.Model` (for shared primitives
   like `HexCoord`). Holds Godot-free view-side math that legitimately
   needs floating-point precision: `DisplayScaleMath`, `SafeAreaMath`,
-  `MapPlacement`, `ZoomMath`, `ScreenLayout`, and the fractional
-  cube-rounding helper `HexRounding.Round(float, float)`. The
+  `MapPlacement`, `ZoomMath`, `ScreenLayout`, `HudPanelMath` (floating
+  HUD-panel sizing: width clamped to the viewport, height grown to fit
+  wrapped text — tutorial box, bankruptcy toast, endgame overlays), and
+  the fractional cube-rounding helper `HexRounding.Round(float, float)`. The
   pressure-relief valve for the no-floats rule in Model + Controller
   (see "No floating-point in Model or Controller" below).
 - **`FourExHex.csproj`** (`Godot.NET.Sdk`) — the game.
