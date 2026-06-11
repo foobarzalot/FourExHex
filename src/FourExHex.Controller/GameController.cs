@@ -14,6 +14,10 @@ using System.Linq;
 public class GameController
 {
     private readonly GameState _state;
+
+    /// <summary>Purchase costs depend on the buyer; in every controller
+    /// path the buyer is the current player.</summary>
+    private Difficulty CurrentDifficulty => _state.Turns.CurrentPlayer.Difficulty;
     private readonly SessionState _session;
     private readonly IHexMapView _map;
     private readonly IHudView _hud;
@@ -991,7 +995,7 @@ public class GameController
             To = destination,
             Level = level,
         };
-        _state.Treasury.SetGold(capital, _state.Treasury.GetGold(capital) - PurchaseRules.CostFor(level));
+        _state.Treasury.SetGold(capital, _state.Treasury.GetGold(capital) - PurchaseRules.CostFor(level, CurrentDifficulty));
         var unit = new Unit(_session.SelectedTerritory.Owner, level);
         // Detect combine before the rule mutates the destination — a
         // friendly Unit at the dst tile means MovementRules will merge
@@ -1063,7 +1067,7 @@ public class GameController
         for (int i = (int)ceiling; i >= (int)UnitLevel.Recruit; i--)
         {
             UnitLevel candidate = (UnitLevel)i;
-            if (PurchaseRules.CanAfford(territory, _state.Treasury, candidate))
+            if (PurchaseRules.CanAfford(territory, _state.Treasury, candidate, CurrentDifficulty))
             {
                 return candidate;
             }
@@ -1173,7 +1177,7 @@ public class GameController
             To = destination,
         };
         _state.Treasury.SetGold(
-            capital, _state.Treasury.GetGold(capital) - PurchaseRules.TowerCost);
+            capital, _state.Treasury.GetGold(capital) - PurchaseRules.TowerCostFor(CurrentDifficulty));
 
         HexTile dst = _state.Grid.Get(destination)!;
         dst.Occupant = new Tower();
@@ -1183,7 +1187,7 @@ public class GameController
         // afford another tower. Refresh both the tower-target preview
         // and the coverage tint — the just-placed tower expands the
         // covered set and removes its own tile from the legal set.
-        if (PurchaseRules.CanAffordTower(_session.SelectedTerritory, _state.Treasury))
+        if (PurchaseRules.CanAffordTower(_session.SelectedTerritory, _state.Treasury, CurrentDifficulty))
         {
             _session.Mode = SessionState.ActionMode.BuildingTower;
             _session.MoveSource = null;
@@ -1473,7 +1477,7 @@ public class GameController
             _ops.RefreshViews();
             return;
         }
-        if (!PurchaseRules.CanAfford(_session.SelectedTerritory, _state.Treasury, level)) return;
+        if (!PurchaseRules.CanAfford(_session.SelectedTerritory, _state.Treasury, level, CurrentDifficulty)) return;
         // Tutorial Preview: refuse the switch if the script's next beat
         // isn't a buy at this level. Lets the dev only enter the
         // mode the tutorial expects.
@@ -1561,7 +1565,7 @@ public class GameController
         for (int i = startIndex; i < BuyCycleOrder.Length; i++)
         {
             UnitLevel candidate = BuyCycleOrder[i];
-            if (PurchaseRules.CanAfford(selected, _state.Treasury, candidate))
+            if (PurchaseRules.CanAfford(selected, _state.Treasury, candidate, CurrentDifficulty))
             {
                 return candidate;
             }
@@ -1585,7 +1589,7 @@ public class GameController
             _ops.RefreshViews();
             return;
         }
-        if (!PurchaseRules.CanAffordTower(_session.SelectedTerritory, _state.Treasury)) return;
+        if (!PurchaseRules.CanAffordTower(_session.SelectedTerritory, _state.Treasury, CurrentDifficulty)) return;
 
         _session.Mode = SessionState.ActionMode.BuildingTower;
         _session.MoveSource = null;

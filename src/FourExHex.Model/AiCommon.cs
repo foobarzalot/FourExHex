@@ -191,9 +191,9 @@ public static class AiCommon
         UnitLevel[] buyLevels = { UnitLevel.Recruit, UnitLevel.Soldier, UnitLevel.Captain, UnitLevel.Commander };
         foreach (UnitLevel level in buyLevels)
         {
-            if (!PurchaseRules.CanAfford(territory, state.Treasury, level)) continue;
+            if (!PurchaseRules.CanAfford(territory, state.Treasury, level, difficulty)) continue;
             int upkeep_ = UpkeepRules.UpkeepFor(level, difficulty);
-            int cost = PurchaseRules.CostFor(level);
+            int cost = PurchaseRules.CostFor(level, difficulty);
             bool captureSolvent = UpkeepRules.SurvivesNextUpkeep(gold - cost, netBefore + 1 - upkeep_);
             bool repositionSolvent = UpkeepRules.SurvivesNextUpkeep(gold - cost, netBefore - upkeep_);
             if (!captureSolvent && !repositionSolvent) continue;
@@ -236,8 +236,8 @@ public static class AiCommon
         // Only considered for border tiles — an interior tower defends
         // nothing — and AI-only spacing (MeetsAiTowerSpacing) prevents
         // redundant towers clustered on the same border.
-        if (PurchaseRules.CanAffordTower(territory, state.Treasury)
-            && UpkeepRules.SurvivesNextUpkeep(gold - PurchaseRules.TowerCost, netBefore))
+        if (PurchaseRules.CanAffordTower(territory, state.Treasury, difficulty)
+            && UpkeepRules.SurvivesNextUpkeep(gold - PurchaseRules.TowerCostFor(difficulty), netBefore))
         {
             foreach (HexCoord coord in territory.Coords)
             {
@@ -385,8 +385,8 @@ public static class AiCommon
         UnitLevel[] levels = { UnitLevel.Recruit, UnitLevel.Soldier, UnitLevel.Captain, UnitLevel.Commander };
         foreach (UnitLevel level in levels)
         {
-            if (!PurchaseRules.CanAfford(territory, state.Treasury, level)) continue;
-            int cost = PurchaseRules.CostFor(level);
+            if (!PurchaseRules.CanAfford(territory, state.Treasury, level, difficulty)) continue;
+            int cost = PurchaseRules.CostFor(level, difficulty);
             int buyUpkeep = UpkeepRules.UpkeepFor(level, difficulty);
 
             foreach (HexCoord coord in territory.Coords)
@@ -424,8 +424,8 @@ public static class AiCommon
         UnitLevel[] levels = { UnitLevel.Recruit, UnitLevel.Soldier, UnitLevel.Captain, UnitLevel.Commander };
         foreach (UnitLevel level in levels)
         {
-            if (!PurchaseRules.CanAfford(territory, state.Treasury, level)) continue;
-            int cost = PurchaseRules.CostFor(level);
+            if (!PurchaseRules.CanAfford(territory, state.Treasury, level, difficulty)) continue;
+            int cost = PurchaseRules.CostFor(level, difficulty);
             int levelUpkeep = UpkeepRules.UpkeepFor(level, difficulty);
             if (!UpkeepRules.SurvivesNextUpkeep(gold - cost, netBefore + 1 - levelUpkeep)) continue;
 
@@ -457,11 +457,12 @@ public static class AiCommon
         GameState state)
     {
         if (!territory.HasCapital) yield break;
-        if (!PurchaseRules.CanAffordTower(territory, state.Treasury)) yield break;
+
+        (Difficulty difficulty, int netBefore) = EconomyBefore(territory, state);
+        if (!PurchaseRules.CanAffordTower(territory, state.Treasury, difficulty)) yield break;
 
         int gold = state.Treasury.GetGold(territory.Capital!.Value);
-        (Difficulty _, int netBefore) = EconomyBefore(territory, state);
-        if (!UpkeepRules.SurvivesNextUpkeep(gold - PurchaseRules.TowerCost, netBefore)) yield break;
+        if (!UpkeepRules.SurvivesNextUpkeep(gold - PurchaseRules.TowerCostFor(difficulty), netBefore)) yield break;
 
         foreach (HexCoord coord in territory.Coords)
         {

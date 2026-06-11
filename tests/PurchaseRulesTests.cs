@@ -35,6 +35,66 @@ public class PurchaseRulesTests
         Assert.Null(tile.Unit);
     }
 
+    // --- CostFor: base × tier per difficulty -------------------------------
+
+    // Unit cost = DifficultyRules.UnitBaseCost × tier (1/2/3/4). Soldier
+    // base 10 reproduces the classic 10/20/30/40 ladder the AIs always pay;
+    // Recruit (easy) base 8, Captain 13, Commander 15.
+    [Theory]
+    [InlineData(Difficulty.Recruit, UnitLevel.Recruit, 8)]
+    [InlineData(Difficulty.Recruit, UnitLevel.Commander, 32)]
+    [InlineData(Difficulty.Soldier, UnitLevel.Recruit, 10)]
+    [InlineData(Difficulty.Soldier, UnitLevel.Soldier, 20)]
+    [InlineData(Difficulty.Soldier, UnitLevel.Captain, 30)]
+    [InlineData(Difficulty.Soldier, UnitLevel.Commander, 40)]
+    [InlineData(Difficulty.Captain, UnitLevel.Recruit, 13)]
+    [InlineData(Difficulty.Captain, UnitLevel.Commander, 52)]
+    [InlineData(Difficulty.Commander, UnitLevel.Recruit, 15)]
+    [InlineData(Difficulty.Commander, UnitLevel.Soldier, 30)]
+    [InlineData(Difficulty.Commander, UnitLevel.Captain, 45)]
+    [InlineData(Difficulty.Commander, UnitLevel.Commander, 60)]
+    public void CostFor_BaseTimesTierPerDifficulty(Difficulty d, UnitLevel level, int expected)
+    {
+        Assert.Equal(expected, PurchaseRules.CostFor(level, d));
+    }
+
+    [Theory]
+    [InlineData(Difficulty.Recruit, 12)]
+    [InlineData(Difficulty.Soldier, 15)]
+    [InlineData(Difficulty.Captain, 18)]
+    [InlineData(Difficulty.Commander, 20)]
+    public void TowerCostFor_PerDifficulty(Difficulty d, int expected)
+    {
+        Assert.Equal(expected, PurchaseRules.TowerCostFor(d));
+    }
+
+    [Fact]
+    public void CanAfford_SameGold_FlipsBetweenSoldierAndCommander()
+    {
+        // 44 gold buys a Captain unit at Soldier difficulty (30) but not at
+        // Commander (45) — affordability sees the buyer's difficulty.
+        Territory territory = MakeTerritory(Red, new HexCoord(0, 0),
+            new HexCoord(0, 0), new HexCoord(1, 0));
+        var treasury = new Treasury();
+        treasury.SetGold(territory.Capital!.Value, 44);
+
+        Assert.True(PurchaseRules.CanAfford(territory, treasury, UnitLevel.Captain, Difficulty.Soldier));
+        Assert.False(PurchaseRules.CanAfford(territory, treasury, UnitLevel.Captain, Difficulty.Commander));
+    }
+
+    [Fact]
+    public void CanAffordTower_SameGold_FlipsBetweenSoldierAndCommander()
+    {
+        // 19 gold builds a tower at Soldier (15) but not at Commander (20).
+        Territory territory = MakeTerritory(Red, new HexCoord(0, 0),
+            new HexCoord(0, 0), new HexCoord(1, 0));
+        var treasury = new Treasury();
+        treasury.SetGold(territory.Capital!.Value, 19);
+
+        Assert.True(PurchaseRules.CanAffordTower(territory, treasury, Difficulty.Soldier));
+        Assert.False(PurchaseRules.CanAffordTower(territory, treasury, Difficulty.Commander));
+    }
+
     // --- CanAffordRecruit -------------------------------------------------
 
     [Theory]
@@ -51,7 +111,7 @@ public class PurchaseRulesTests
         var treasury = new Treasury();
         treasury.SetGold(capital, gold);
 
-        bool result = PurchaseRules.CanAffordRecruit(territory, treasury);
+        bool result = PurchaseRules.CanAffordRecruit(territory, treasury, Difficulty.Soldier);
 
         Assert.Equal(expected, result);
     }
@@ -64,7 +124,7 @@ public class PurchaseRulesTests
         var singleton = new Territory(Red, new[] { new HexCoord(0, 0) }, capital: null);
         var treasury = new Treasury();
 
-        bool result = PurchaseRules.CanAffordRecruit(singleton, treasury);
+        bool result = PurchaseRules.CanAffordRecruit(singleton, treasury, Difficulty.Soldier);
 
         Assert.False(result);
     }
@@ -83,7 +143,7 @@ public class PurchaseRulesTests
         var treasury = new Treasury();
         treasury.SetGold(capital, gold);
 
-        Assert.Equal(expected, PurchaseRules.CanAffordTower(territory, treasury));
+        Assert.Equal(expected, PurchaseRules.CanAffordTower(territory, treasury, Difficulty.Soldier));
     }
 
     [Fact]
@@ -92,7 +152,7 @@ public class PurchaseRulesTests
         var singleton = new Territory(Red, new[] { new HexCoord(0, 0) }, capital: null);
         var treasury = new Treasury();
 
-        Assert.False(PurchaseRules.CanAffordTower(singleton, treasury));
+        Assert.False(PurchaseRules.CanAffordTower(singleton, treasury, Difficulty.Soldier));
     }
 
     // --- IsValidRecruitTarget ---------------------------------------------
@@ -265,7 +325,7 @@ public class PurchaseRulesTests
         var treasury = new Treasury();
         treasury.SetGold(capital, 42);
 
-        PurchaseRules.BuyRecruit(tile, territory, treasury);
+        PurchaseRules.BuyRecruit(tile, territory, treasury, Difficulty.Soldier);
 
         Assert.Equal(32, treasury.GetGold(capital));
     }
@@ -281,7 +341,7 @@ public class PurchaseRulesTests
         var treasury = new Treasury();
         treasury.SetGold(capital, 20);
 
-        PurchaseRules.BuyRecruit(tile, territory, treasury);
+        PurchaseRules.BuyRecruit(tile, territory, treasury, Difficulty.Soldier);
 
         Assert.NotNull(tile.Unit);
         Assert.Equal(Red, tile.Unit!.Owner);

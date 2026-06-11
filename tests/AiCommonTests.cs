@@ -20,12 +20,12 @@ public class AiCommonTests
     public void Enumerate_BuyGate_SeesDifficultyScaledUpkeep()
     {
         // 20-tile Red territory (income 20, flat at every difficulty), gold
-        // 250, one adjacent Blue tile so buy targets exist. Buying a
-        // Commander unit costs 40 and adds upkeep 54 at Soldier difficulty /
-        // 81 at Commander difficulty (the handicap table). Capture solvency
-        // gate: gold-cost + 5×(net+1) ≥ 0:
+        // 250, one adjacent Blue tile so buy targets exist. A Commander
+        // unit costs 40 / upkeep 54 at Soldier difficulty, but 60 / 81 at
+        // Commander difficulty (cost base 15 × tier 4; the handicap
+        // tables). Capture solvency gate: gold-cost + 5×(net+1) ≥ 0:
         //   Soldier:   210 + 5×(21-54) =  +45 → enumerated
-        //   Commander: 210 + 5×(21-81) =  -90 → gated out
+        //   Commander: 190 + 5×(21-81) = -110 → gated out
         // Same board, only the owner's difficulty differs.
         List<AiCandidate> CandidatesFor(Difficulty d)
         {

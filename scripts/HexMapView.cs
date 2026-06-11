@@ -1040,10 +1040,12 @@ public partial class HexMapView : Node2D, IHexMapView
             {
                 if (territory.Owner != currentPlayer.Value) continue;
                 if (!territory.HasCapital) continue;
-                // Recruit is the cheapest purchase (10g) and is cheaper
-                // than a tower (15g), so recruit-affordability is a
-                // sufficient proxy for "this territory can spend gold".
-                if (PurchaseRules.CanAffordRecruit(territory, treasury))
+                // The recruit is the cheapest purchase at every
+                // difficulty (base < tower cost in every column), so
+                // recruit-affordability is a sufficient proxy for "this
+                // territory can spend gold".
+                if (PurchaseRules.CanAffordRecruit(territory, treasury,
+                        _state.Turns.CurrentPlayer.Difficulty))
                 {
                     actionableCapitals.Add(territory.Capital!.Value);
                 }

@@ -898,7 +898,7 @@ public class ComputerAiTests
         var buy = new AiBuyUnitAction(cap, HexCoord.FromOffset(3, 0), UnitLevel.Recruit);
         AiSimulator.Apply(buy, state);
 
-        Assert.Equal(10 - PurchaseRules.CostFor(UnitLevel.Recruit), state.Treasury.GetGold(cap));
+        Assert.Equal(10 - PurchaseRules.CostFor(UnitLevel.Recruit, Difficulty.Soldier), state.Treasury.GetGold(cap));
         Unit placed = Assert.IsType<Unit>(state.Grid.Get(HexCoord.FromOffset(3, 0))!.Occupant);
         Assert.Equal(Red, placed.Owner);
         Assert.Equal(UnitLevel.Recruit, placed.Level);
@@ -1025,7 +1025,7 @@ public class ComputerAiTests
                 grid.Get(HexCoord.FromOffset(col, row))!.Owner = Red;
         GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
         HexCoord cap = state.Territories.First(t => t.Owner == Red).Capital!.Value;
-        state.Treasury.SetGold(cap, PurchaseRules.TowerCost);
+        state.Treasury.SetGold(cap, PurchaseRules.TowerCostFor(Difficulty.Soldier));
 
         AiAction? result = ComputerAi.ChooseNextAction(
             state, Red, new HashSet<HexCoord>(), new Random(0));
@@ -1068,7 +1068,7 @@ public class ComputerAiTests
         grid.Get(HexCoord.FromOffset(3, 2))!.Occupant = new Unit(Blue, UnitLevel.Commander);
         GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
         HexCoord cap = state.Territories.First(t => t.Owner == Red).Capital!.Value;
-        state.Treasury.SetGold(cap, PurchaseRules.TowerCost);
+        state.Treasury.SetGold(cap, PurchaseRules.TowerCostFor(Difficulty.Soldier));
 
         AiAction? result = ComputerAi.ChooseNextAction(
             state, Red, new HashSet<HexCoord>(), new Random(0));

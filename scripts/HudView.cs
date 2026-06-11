@@ -1697,15 +1697,18 @@ public partial class HudView : OrientationHud, IHudView
             _goldLabel.RemoveThemeColorOverride("font_color");
         }
 
+        // Costs depend on the buyer: the HUD's buy buttons always act for
+        // the current (human) player.
+        Difficulty buyerDifficulty = state.Turns.CurrentPlayer.Difficulty;
         UnitLevel? currentBuyLevel = SessionState.BuyModeLevel(session.Mode);
         foreach (HudIconButton button in _buyUnitButtons)
         {
             UnitLevel level = button.BuyLevel;
-            bool canAffordThis = hasCapital && PurchaseRules.CanAfford(selected!, state.Treasury, level);
+            bool canAffordThis = hasCapital && PurchaseRules.CanAfford(selected!, state.Treasury, level, buyerDifficulty);
             bool isActive = currentBuyLevel == level;
             button.Disabled = !canAffordThis;
             button.Selected = isActive;
-            int cost = PurchaseRules.CostFor(level);
+            int cost = PurchaseRules.CostFor(level, buyerDifficulty);
             // Active button: tooltip is cleared because the placement
             // instruction lives in the bottom-anchored panel.
             button.TooltipText = isActive
@@ -1719,7 +1722,7 @@ public partial class HudView : OrientationHud, IHudView
         // mode's level on its glyph and its outline. Recruit is the cheapest
         // level, so if it's unaffordable nothing is — disable the whole button.
         bool anyBuyAffordable = hasCapital
-            && PurchaseRules.CanAfford(selected!, state.Treasury, UnitLevel.Recruit);
+            && PurchaseRules.CanAfford(selected!, state.Treasury, UnitLevel.Recruit, buyerDifficulty);
         _collapsedBuyButton.BuyLevel = currentBuyLevel ?? UnitLevel.Recruit;
         _collapsedBuyButton.Selected = currentBuyLevel != null;
         _collapsedBuyButton.Disabled = !anyBuyAffordable;
@@ -1727,10 +1730,10 @@ public partial class HudView : OrientationHud, IHudView
             ? ""
             : anyBuyAffordable
                 ? "Buy unit — cycles affordable levels (U)"
-                : DisabledBuyReason(selected, hasCapital, "a unit", PurchaseRules.CostFor(UnitLevel.Recruit));
+                : DisabledBuyReason(selected, hasCapital, "a unit", PurchaseRules.CostFor(UnitLevel.Recruit, buyerDifficulty));
 
         bool building = session.Mode == SessionState.ActionMode.BuildingTower;
-        bool canAffordTower = hasCapital && PurchaseRules.CanAffordTower(selected!, state.Treasury);
+        bool canAffordTower = hasCapital && PurchaseRules.CanAffordTower(selected!, state.Treasury, buyerDifficulty);
         _buildTowerButton.Visible = true;
         _buildTowerButton.Disabled = !building && !canAffordTower;
         _buildTowerButton.Selected = building;
@@ -1738,7 +1741,7 @@ public partial class HudView : OrientationHud, IHudView
             ? "Click a tile... — T"
             : canAffordTower
                 ? HudIconButton.DefaultTooltip(HudIcon.Tower)
-                : DisabledBuyReason(selected, hasCapital, "a tower", PurchaseRules.TowerCost);
+                : DisabledBuyReason(selected, hasCapital, "a tower", PurchaseRules.TowerCostFor(buyerDifficulty));
 
         _undoLastButton.Disabled = _undoRedoLocked || !session.Undo.CanUndo;
         _redoLastButton.Disabled = _undoRedoLocked || !session.Undo.CanRedo;

@@ -25,7 +25,7 @@ public partial class GameControllerTests
 
         Assert.NotNull(g.Tile(1, 1).Unit);
         Assert.Equal(g.Red.Id, g.Tile(1, 1).Unit!.Owner);
-        Assert.Equal(goldBefore - PurchaseRules.RecruitCost, g.State.Treasury.GetGold(redCapital));
+        Assert.Equal(goldBefore - PurchaseRules.CostFor(UnitLevel.Recruit, Difficulty.Soldier), g.State.Treasury.GetGold(redCapital));
         // Buy-on-own-tile doesn't consume the unit's action.
         Assert.False(g.Tile(1, 1).Unit!.HasMovedThisTurn);
         Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
@@ -142,7 +142,7 @@ public partial class GameControllerTests
         g.Map.SimulateClick(g.Tile(1, 1));
 
         Assert.IsType<Tower>(g.Tile(1, 1).Occupant);
-        Assert.Equal(before - PurchaseRules.TowerCost, g.State.Treasury.GetGold(redCapital));
+        Assert.Equal(before - PurchaseRules.TowerCostFor(Difficulty.Soldier), g.State.Treasury.GetGold(redCapital));
         Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
     }
 

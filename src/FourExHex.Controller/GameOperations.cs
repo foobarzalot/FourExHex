@@ -24,6 +24,10 @@ public class GameOperations
     public const string OpponentsTakingTurnsMessage = "Opponents are taking their turns…";
 
     private readonly GameState _state;
+
+    /// <summary>Purchase costs depend on the buyer; in every operations
+    /// path the buyer is the current player.</summary>
+    private Difficulty CurrentDifficulty => _state.Turns.CurrentPlayer.Difficulty;
     private readonly SessionState _session;
     private readonly IHexMapView _map;
     private readonly IHudView _hud;
@@ -534,7 +538,7 @@ public class GameOperations
         foreach (Territory territory in _state.Territories)
         {
             if (territory.Owner != color) continue;
-            if (PurchaseRules.CanAffordRecruit(territory, _state.Treasury))
+            if (PurchaseRules.CanAffordRecruit(territory, _state.Treasury, CurrentDifficulty))
             {
                 return true;
             }
@@ -557,7 +561,7 @@ public class GameOperations
     /// </summary>
     internal bool TerritoryHasAvailableAction(Territory territory)
     {
-        if (PurchaseRules.CanAffordRecruit(territory, _state.Treasury))
+        if (PurchaseRules.CanAffordRecruit(territory, _state.Treasury, CurrentDifficulty))
         {
             return true;
         }
@@ -691,11 +695,11 @@ public class GameOperations
             throw new InvalidOperationException(
                 $"AI BuyUnit with capital {capital}: no territory has that capital.");
         }
-        if (!PurchaseRules.CanAfford(attacker, _state.Treasury, level))
+        if (!PurchaseRules.CanAfford(attacker, _state.Treasury, level, CurrentDifficulty))
         {
             throw new InvalidOperationException(
                 $"AI BuyUnit from capital {capital}: territory cannot afford a {level} " +
-                $"(treasury = {_state.Treasury.GetGold(capital)}g, cost = {PurchaseRules.CostFor(level)}g).");
+                $"(treasury = {_state.Treasury.GetGold(capital)}g, cost = {PurchaseRules.CostFor(level, CurrentDifficulty)}g).");
         }
 
         List<HexCoord> legalTargets = MovementRules.ValidTargets(
@@ -717,7 +721,7 @@ public class GameOperations
         bool wasCombine = WasFriendlyUnitAt(destination, attacker.Owner);
 
         _state.Treasury.SetGold(
-            capital, _state.Treasury.GetGold(capital) - PurchaseRules.CostFor(level));
+            capital, _state.Treasury.GetGold(capital) - PurchaseRules.CostFor(level, CurrentDifficulty));
         var unit = new Unit(attacker.Owner, level);
         MoveResult result = MovementRules.PlaceNew(unit, destination, _state.Grid, attacker);
         if (result.WasCapture)
@@ -751,11 +755,11 @@ public class GameOperations
             throw new InvalidOperationException(
                 $"AI BuyCombine with capital {capital}: no territory has that capital.");
         }
-        if (!PurchaseRules.CanAfford(attacker, _state.Treasury, level))
+        if (!PurchaseRules.CanAfford(attacker, _state.Treasury, level, CurrentDifficulty))
         {
             throw new InvalidOperationException(
                 $"AI BuyCombine from capital {capital}: territory cannot afford a {level} " +
-                $"(treasury = {_state.Treasury.GetGold(capital)}g, cost = {PurchaseRules.CostFor(level)}g).");
+                $"(treasury = {_state.Treasury.GetGold(capital)}g, cost = {PurchaseRules.CostFor(level, CurrentDifficulty)}g).");
         }
         HexTile? dstTile = _state.Grid.Get(combineTarget);
         if (dstTile?.Unit == null)
@@ -765,7 +769,7 @@ public class GameOperations
         }
 
         _state.Treasury.SetGold(
-            capital, _state.Treasury.GetGold(capital) - PurchaseRules.CostFor(level));
+            capital, _state.Treasury.GetGold(capital) - PurchaseRules.CostFor(level, CurrentDifficulty));
         var unit = new Unit(attacker.Owner, level);
         MoveResult result = MovementRules.PlaceNew(unit, combineTarget, _state.Grid, attacker);
         // A buy-combine onto a friendly unit is never a capture.
@@ -810,7 +814,7 @@ public class GameOperations
             throw new InvalidOperationException(
                 $"AI BuildTower with capital {capital}: no territory has that capital.");
         }
-        if (!PurchaseRules.CanAffordTower(territory, _state.Treasury))
+        if (!PurchaseRules.CanAffordTower(territory, _state.Treasury, CurrentDifficulty))
         {
             throw new InvalidOperationException(
                 $"AI BuildTower from capital {capital}: territory cannot afford a tower " +
@@ -836,7 +840,7 @@ public class GameOperations
         }
 
         _state.Treasury.SetGold(
-            capital, _state.Treasury.GetGold(capital) - PurchaseRules.TowerCost);
+            capital, _state.Treasury.GetGold(capital) - PurchaseRules.TowerCostFor(CurrentDifficulty));
         dst.Occupant = new Tower();
         _map.PlaySound(SoundEffect.TowerPlaced, destination);
     }

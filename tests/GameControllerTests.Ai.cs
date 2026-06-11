@@ -232,7 +232,7 @@ public partial class GameControllerTests
         c.StartGame(); // must NOT throw on spacing
 
         Assert.IsType<Tower>(grid.Get(target)!.Occupant);
-        Assert.Equal(20 - PurchaseRules.TowerCost, state.Treasury.GetGold(cap));
+        Assert.Equal(20 - PurchaseRules.TowerCostFor(Difficulty.Soldier), state.Treasury.GetGold(cap));
     }
 
     [Fact]

@@ -115,8 +115,9 @@ public static class AiSimulator
 
         bool wasReposition = IsRepositionTarget(destination, territory.Owner, state);
 
+        Difficulty difficulty = state.Players[territory.Owner.Index].Difficulty;
         state.Treasury.SetGold(
-            capital, state.Treasury.GetGold(capital) - PurchaseRules.CostFor(level));
+            capital, state.Treasury.GetGold(capital) - PurchaseRules.CostFor(level, difficulty));
         var unit = new Unit(territory.Owner, level);
         MoveResult result = MovementRules.PlaceNew(unit, destination, state.Grid, territory);
         if (result.WasCapture)
@@ -161,8 +162,9 @@ public static class AiSimulator
     {
         Territory? territory = TerritoryLookup.FindByCapital(state.Territories, capital);
         if (territory == null) return;
+        Difficulty difficulty = state.Players[territory.Owner.Index].Difficulty;
         state.Treasury.SetGold(
-            capital, state.Treasury.GetGold(capital) - PurchaseRules.CostFor(level));
+            capital, state.Treasury.GetGold(capital) - PurchaseRules.CostFor(level, difficulty));
         var unit = new Unit(territory.Owner, level);
         // PlaceNew onto a friendly unit tile performs the combine.
         // The combined unit inherits the dest unit's HasMovedThisTurn=false,
@@ -179,7 +181,9 @@ public static class AiSimulator
         if (dst == null) return;
 
         state.Treasury.SetGold(
-            capital, state.Treasury.GetGold(capital) - PurchaseRules.TowerCost);
+            capital,
+            state.Treasury.GetGold(capital)
+                - PurchaseRules.TowerCostFor(state.Players[territory.Owner.Index].Difficulty));
         dst.Occupant = new Tower();
     }
 
