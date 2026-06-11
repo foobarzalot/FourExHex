@@ -1218,7 +1218,9 @@ public interface ITimerFactory { void After(int delayMs, Action callback); }
 - **Controller never touches Godot Nodes directly.** It talks to views
   through the interfaces above and to the event loop through
   `IAiPacer`. This is what makes the entire `GameController`
-  unit-testable with mocks (see `tests/GameControllerTests.cs`).
+  unit-testable with mocks (see the `tests/GameControllerTests.*.cs`
+  partial-class domain files; the shared `TestGame` fixture lives in
+  `tests/GameControllerTests.cs`).
 - **Every state change funnels through `RefreshViews()`** at the end
   of the handler. One path, no drift.
 - **Snapshots capture `GameState` plus the player-intent slice of
