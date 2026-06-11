@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -5,7 +6,8 @@ using System.Linq;
 /// Immutable capture of the player-intent slice of <see cref="SessionState"/>:
 /// the selected territory (by anchor coord, not reference, so it survives
 /// territory rebuilds), the pending <see cref="SessionState.ActionMode"/>,
-/// the move source (if any), and the repeated-movement sticky bit.
+/// the move source (if any), the repeated-movement sticky bit, and the
+/// visited-territory capitals that drive Tab-cycle ordering.
 /// Pairs with <see cref="GameStateSnapshot"/> inside an <see cref="UndoEntry"/>
 /// so undo/redo can restore where the player was, not just what was on the
 /// board.
@@ -14,14 +16,16 @@ public sealed record SessionStateSnapshot(
     HexCoord? SelectedAnchor,
     SessionState.ActionMode Mode,
     HexCoord? MoveSource,
-    bool RepeatedMovement)
+    bool RepeatedMovement,
+    IReadOnlyList<HexCoord> VisitedCapitals)
 {
     /// <summary>
     /// Snapshot the player-intent fields of <paramref name="session"/>.
     /// The selected territory is reduced to an anchor coord (capital if
     /// present, otherwise the first coord) so a later restore can find
     /// the matching territory by membership instead of relying on
-    /// reference identity.
+    /// reference identity. The visited set is captured sorted so two
+    /// snapshots of the same set compare equal regardless of hash order.
     /// </summary>
     public static SessionStateSnapshot Capture(SessionState session)
     {
@@ -42,7 +46,9 @@ public sealed record SessionStateSnapshot(
                 }
             }
         }
-        return new SessionStateSnapshot(anchor, session.Mode, session.MoveSource, session.RepeatedMovement);
+        HexCoord[] visited = session.VisitedTerritoryCapitals.OrderBy(c => c).ToArray();
+        return new SessionStateSnapshot(
+            anchor, session.Mode, session.MoveSource, session.RepeatedMovement, visited);
     }
 
     /// <summary>
@@ -72,5 +78,34 @@ public sealed record SessionStateSnapshot(
         session.Mode = Mode;
         session.MoveSource = MoveSource;
         session.RepeatedMovement = RepeatedMovement;
+        session.VisitedTerritoryCapitals.Clear();
+        session.VisitedTerritoryCapitals.UnionWith(VisitedCapitals);
+    }
+
+    /// <summary>
+    /// Value equality including the visited list (sequence compare —
+    /// the synthesized record Equals would compare the list by
+    /// reference, breaking TrackHandler's pushed-iff-changed de-dup).
+    /// </summary>
+    public bool Equals(SessionStateSnapshot? other) =>
+        other is not null
+        && Nullable.Equals(SelectedAnchor, other.SelectedAnchor)
+        && Mode == other.Mode
+        && Nullable.Equals(MoveSource, other.MoveSource)
+        && RepeatedMovement == other.RepeatedMovement
+        && VisitedCapitals.SequenceEqual(other.VisitedCapitals);
+
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(SelectedAnchor);
+        hash.Add(Mode);
+        hash.Add(MoveSource);
+        hash.Add(RepeatedMovement);
+        foreach (HexCoord c in VisitedCapitals)
+        {
+            hash.Add(c);
+        }
+        return hash.ToHashCode();
     }
 }

@@ -736,8 +736,26 @@ public class GameController
     /// </summary>
     private void SetSelection(Territory? territory)
     {
+        MarkSelectedVisited(territory);
         _session.SelectedTerritory = territory;
         ShowHighlightAndRefresh(territory);
+    }
+
+    /// <summary>
+    /// Record <paramref name="territory"/> as visited this turn for
+    /// Tab-cycle ordering (#35). Any selection counts — Tab, Shift+Tab,
+    /// or a direct click — so "untouched" means the player hasn't been
+    /// there at all. Keyed by capital coord; capital-less territories
+    /// (singletons) never participate in the cycle and are skipped.
+    /// </summary>
+    private void MarkSelectedVisited(Territory? territory)
+    {
+        if (territory?.Capital is not HexCoord capital) return;
+        if (_session.VisitedTerritoryCapitals.Add(capital))
+        {
+            Log.Debug(Log.LogCategory.Input,
+                $"[visited] += capital {capital} ({_session.VisitedTerritoryCapitals.Count} this turn)");
+        }
     }
 
     /// <summary>
@@ -1111,6 +1129,7 @@ public class GameController
                 break;
             }
         }
+        MarkSelectedVisited(match);
         _session.SelectedTerritory = match;
         _map.ShowHighlight(match);
     }
@@ -1626,26 +1645,62 @@ public class GameController
         // OTHER territory exactly once and never revisits the current
         // one — so if the current selection is the sole actionable
         // territory the press is a no-op.
+        //
+        // Two passes (#35): the sort key (Size) mutates as the player
+        // acts, so walk position alone can't guarantee a fair tour —
+        // pass 1 only stops on territories not yet visited this turn.
+        // When every actionable territory has been toured, pass 2 starts
+        // a fresh round: reset the visited set and stop on the first
+        // actionable territory regardless. The reset only happens when
+        // pass 2 actually has somewhere to land, so a press with no
+        // reachable territory stays a true no-op (no set churn, no
+        // undo entry).
         int step = forward ? 1 : -1;
         int startIndex = currentIndex == -1
             ? (forward ? -1 : owned.Count)
             : currentIndex;
         int maxOffset = currentIndex == -1 ? owned.Count : owned.Count - 1;
-        for (int offset = 1; offset <= maxOffset; offset++)
+
+        int Find(bool skipVisited)
         {
-            int idx = ((startIndex + step * offset) % owned.Count + owned.Count) % owned.Count;
-            if (_ops.TerritoryHasAvailableAction(owned[idx]))
+            for (int offset = 1; offset <= maxOffset; offset++)
             {
-                CancelPendingAction();
-                SetSelection(owned[idx]);
-                _map.CenterOnTerritory(owned[idx]);
-                Log.Debug(Log.LogCategory.Input,
-                    $"StepTerritorySelection(forward={forward}) -> selected capital {owned[idx].Capital}");
-                return;
+                int idx = ((startIndex + step * offset) % owned.Count + owned.Count) % owned.Count;
+                if (!_ops.TerritoryHasAvailableAction(owned[idx])) continue;
+                if (skipVisited
+                    && _session.VisitedTerritoryCapitals.Contains(owned[idx].Capital!.Value))
+                {
+                    continue;
+                }
+                return idx;
             }
+            return -1;
         }
+
+        int pick = Find(skipVisited: true);
+        bool newRound = false;
+        if (pick == -1)
+        {
+            pick = Find(skipVisited: false);
+            newRound = pick != -1;
+        }
+        if (pick == -1)
+        {
+            Log.Debug(Log.LogCategory.Input,
+                $"StepTerritorySelection(forward={forward}) -> no actionable territory (no-op)");
+            return;
+        }
+        if (newRound)
+        {
+            Log.Debug(Log.LogCategory.Input,
+                $"[visited] new round: set reset ({_session.VisitedTerritoryCapitals.Count} entries dropped)");
+            _session.VisitedTerritoryCapitals.Clear();
+        }
+        CancelPendingAction();
+        SetSelection(owned[pick]);
+        _map.CenterOnTerritory(owned[pick]);
         Log.Debug(Log.LogCategory.Input,
-            $"StepTerritorySelection(forward={forward}) -> no actionable territory (no-op)");
+            $"StepTerritorySelection(forward={forward}) -> selected capital {owned[pick].Capital} ({(newRound ? "new round" : "unvisited")})");
     }
 
     /// <summary>
@@ -1885,6 +1940,15 @@ public class GameController
 
         CancelPendingAction();
         SetSelection(null);
+        // Visited-territory tracking is per-turn (#35): the next human
+        // turn starts with a clean tour. AI turns never mark (they don't
+        // route through SetSelection), so clearing here is sufficient.
+        if (_session.VisitedTerritoryCapitals.Count > 0)
+        {
+            Log.Debug(Log.LogCategory.Input,
+                $"[visited] cleared ({_session.VisitedTerritoryCapitals.Count} entries)");
+            _session.VisitedTerritoryCapitals.Clear();
+        }
         _ops.RefreshViews();
     }
 

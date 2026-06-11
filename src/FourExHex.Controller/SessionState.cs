@@ -123,6 +123,18 @@ public class SessionState
     /// </summary>
     public bool RepeatedMovement { get; set; }
 
+    /// <summary>
+    /// Capital coords of territories the human has visited (selected by
+    /// Tab / Shift+Tab / click) this turn. Tab-cycling prefers unvisited
+    /// territories so mid-turn size changes can't make the cycle revisit
+    /// a territory before every untouched one has had its chance (#35).
+    /// Keyed by capital coord because territory objects are rebuilt on
+    /// every mutation. Cleared at EndTurn and when a full cycle exhausts
+    /// (a new round starts). Round-trips through
+    /// <see cref="SessionStateSnapshot"/> for undo/redo.
+    /// </summary>
+    public HashSet<HexCoord> VisitedTerritoryCapitals { get; } = new HashSet<HexCoord>();
+
     /// <summary>Turn-scoped undo history. Cleared at EndTurn.</summary>
     public UndoStack<UndoEntry> Undo { get; } = new UndoStack<UndoEntry>();
 

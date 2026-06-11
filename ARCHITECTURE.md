@@ -220,7 +220,9 @@ Consequences for the rest of this doc:
 │   │    hud.EndTurnClicked           → OnEndTurnPressed                   │
 │   │    hud.NextTerritoryClicked     → OnNextTerritoryPressed             │
 │   │                                    (Tab: descending-size cycle,      │
-│   │                                     capital coord tie-breaker)       │
+│   │                                     capital coord tie-breaker;       │
+│   │                                     unvisited-this-turn first, then  │
+│   │                                     a fresh round — see #35)         │
 │   │    hud.PreviousTerritoryClicked → OnPreviousTerritoryPressed         │
 │   │    hud.NextUnitClicked          → OnNextUnitPressed (N: power-order  │
 │   │                                    cycle Recruit→Soldier→Captain→   │
@@ -347,6 +349,9 @@ Consequences for the rest of this doc:
 │   ├─ SelectedTerritory    │  │                                            │
 │   ├─ Mode (enum)          │  │                                            │
 │   ├─ MoveSource           │  │                                            │
+│   ├─ VisitedTerritory     │  │                                            │
+│   │   Capitals (per-turn  │  │                                            │
+│   │   Tab-cycle tour set) │  │                                            │
 │   └─ Undo (UndoStack of   │  │                                            │
 │      UndoEntry =          │  │                                            │
 │      GameStateSnapshot +  │  │                                            │
@@ -457,7 +462,8 @@ Consequences for the rest of this doc:
 │              ReconcileAfterCapture (forfeits enemy gold on capture)      │
 │   GameStateSnapshot — deep-copy (tiles + gold + territories)             │
 │   SessionStateSnapshot — selection anchor + Mode + MoveSource +          │
-│                          RepeatedMovement flag                           │
+│                          RepeatedMovement flag + visited capitals        │
+│                          (sorted; hand-written sequence equality)        │
 │   UndoEntry — pair of (GameStateSnapshot, SessionStateSnapshot)          │
 │   UndoStack<T> — two-sided history of T (UndoEntry for play, also reused │
 │                  by the editor with EditorSnapshot)                      │
@@ -1225,13 +1231,27 @@ public interface ITimerFactory { void After(int delayMs, Action callback); }
   of the handler. One path, no drift.
 - **Snapshots capture `GameState` plus the player-intent slice of
   `SessionState`** (`SelectedTerritory` anchor, `Mode`, `MoveSource`,
-  `RepeatedMovement` flag) via `UndoEntry` (a `(GameStateSnapshot,
-  SessionStateSnapshot)` pair). `Winner`, `PendingDefeatScreen`, and
-  the `Undo` stack itself stay out. Top-level human event handlers are
-  wrapped in `TrackHandler`, which captures pre-state, runs the body,
-  and pushes one `UndoEntry` iff state actually changed — automatic
-  de-dup of no-op clicks. Exceptions inside a handler propagate
-  without pushing.
+  `RepeatedMovement` flag, `VisitedTerritoryCapitals`) via `UndoEntry`
+  (a `(GameStateSnapshot, SessionStateSnapshot)` pair). `Winner`,
+  `PendingDefeatScreen`, and the `Undo` stack itself stay out.
+  Top-level human event handlers are wrapped in `TrackHandler`, which
+  captures pre-state, runs the body, and pushes one `UndoEntry` iff
+  state actually changed — automatic de-dup of no-op clicks (the
+  visited set is compared by sorted-sequence equality in
+  `SessionStateSnapshot.Equals`, not reference, to keep that de-dup
+  honest). Exceptions inside a handler propagate without pushing.
+- **Visited-territory cycling (#35)**: `SessionState.
+  VisitedTerritoryCapitals` records the capital of every territory the
+  human selects (Tab / Shift+Tab / click / post-capture rebind) this
+  turn. `StepTerritorySelection` re-sorts by descending size on every
+  press — and size mutates as the player acts — so the walk alone
+  can't guarantee a fair tour; pass 1 stops only on actionable
+  *unvisited* territories, and when all are toured, pass 2 resets the
+  set and starts a fresh round (each round visits every actionable
+  territory at most once before any repeat). The set clears on
+  `EndTurnNow` and round-trips through `SessionStateSnapshot` so undo
+  rewinds visits along with the selection. AI turns never touch it
+  (AI executes via `GameOperations.ExecuteAi*`, not `SetSelection`).
 - **Repeated-movement** is a sticky bit on `SessionState` that drives
   the N-hotkey's auto-advance behaviour. `StepUnitSelection` turns it
   on whenever it successfully picks a different unit. While on, the
