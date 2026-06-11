@@ -751,9 +751,26 @@ recorder owns recording, paced playback, and the instant-step function.
   `_replayInstantActive`, `_undoBeatCounts`, `_redoBeatLists`,
   `_replayIsInstantMode`.
 - **Recording methods**: `RecordBeat`, `RecordTutorialOnlyBeat`,
-  `CaptureInitialSnapshot`, `ClearBookkeeping`,
-  `OnHumanHandlerCommitted`, `PopOneBeatBatchForUndo`,
-  `PushOneBeatBatchForRedo`.
+  `CaptureInitialSnapshot`.
+- **Undo/redo coordinator**: the session undo stack and the parallel
+  beat stacks must move in lockstep (one beat batch per undo entry),
+  and the recorder owns both sides as single atomic operations —
+  `CommitHumanHandler(pre, beatsBefore)` (push session entry + stamp
+  pre-handler beat count + clear the redo stash), `UndoOneStep` /
+  `RedoOneStep` (pop/restore one beat batch + the matching session
+  pop, returning the restored `UndoEntry` for the caller to apply),
+  and `ClearUndoAndBookkeeping` (drop both sides; the beat log itself
+  is committed history). The single-side steps are private, so a
+  caller cannot half-do the pairing. Every operation ends with an
+  always-on `ValidateBeatStacksInSync` that throws (with all four
+  counts) on divergence — crash at the cause instead of silently
+  trimming the wrong tail of the replay log. Pinned by
+  `UndoReplayBeatSyncTests` (depth equality after every step of
+  scripted + 400-op random-stress flows, via the read-only
+  `UndoBatchDepth` / `RedoBatchDepth` properties) and by
+  `ReplayPlaybackTests.Replay_AfterUndoRedoChurn_ProducesSameFinalState`
+  (the beat log stays replay-faithful through undo/redo churn).
+  Instrumented under `Log.LogCategory.Undo`.
 - **Playback methods**: `BeginReplay`, `EndReplay`,
   `StepReplayPreview`, `StepReplayExecute`, `ExecuteReplayBeat`,
   `ReplayApplyEndTurn`, `ReplayInstantStep` (the step function consumed
@@ -769,16 +786,17 @@ recorder owns recording, paced playback, and the instant-step function.
   thin forwarders on `GameController`): `Beats`, `BeatsCount`,
   `InitialSnapshot`, `InitialTurnNumber`, `InitialCurrentPlayerIndex`,
   `IsCompleteFromStart`, `HasInitialSnapshot`, `IsReplaying`,
-  `IsInstantModeActive`.
+  `IsInstantModeActive`, plus the bookkeeping depths `UndoBatchDepth` /
+  `RedoBatchDepth` (forwarded as `UndoBeatBatchDepth` /
+  `RedoBeatBatchDepth`; consumed by the sync tests).
 
 ### What stays on GameController
 
 - All input event handlers and the `TrackHandler` wrapper. The
   per-handler `_pendingHumanBeat` buffer stays alongside the handlers;
-  `TrackHandler` post-body calls `_recorder.RecordBeat(...)` and
-  `_recorder.OnHumanHandlerCommitted(beatsBefore)` to keep the
-  three-way sync between `_session.Undo`, `_undoBeatCounts`, and
-  `_redoBeatLists`.
+  `TrackHandler` post-body calls `_recorder.CommitHumanHandler(pre,
+  beatsBefore)` (the atomic session-push + beat-bookkeeping commit —
+  see the undo/redo coordinator above) and `_recorder.RecordBeat(...)`.
 - AI step machine (`StepAiPreview` / `StepAiExecute` /
   `ApplyAiActionCore` / `EndCurrentAiPlayerTurnCore` / `ScheduleAiTurn`
   / `RunAiTurnsUntilHumanOrDone` / `InstantAiTick` / `AiInstantStep` /
@@ -790,12 +808,12 @@ recorder owns recording, paced playback, and the instant-step function.
   was lifted out of `GameController` as a top-level type in the
   Controller assembly so both the AI step and the recorder's
   `ReplayInstantStep` can return it.
-- Undo/redo input handlers (`OnUndoLastPressed`, etc.) — they call
-  `_recorder.PopOneBeatBatchForUndo()` / `PushOneBeatBatchForRedo()`
-  for the beat-stack side and operate on `_session.Undo` themselves.
-- `ClearUndoAndReplayBookkeeping()` — composite that does
-  `_session.Undo.Clear()` + `_recorder.ClearBookkeeping()`. Stays on
-  `GameController` because it mixes session-state and beat-state clears.
+- Undo/redo input handlers (`OnUndoLastPressed`, etc.) — gating,
+  `ApplySnapshot`, and view centering only; the stack mechanics are
+  one `_recorder.UndoOneStep` / `RedoOneStep` call per step.
+- `ClearUndoAndReplayBookkeeping()` — one-line forwarder to
+  `_recorder.ClearUndoAndBookkeeping()` (kept on `GameController` as
+  the ctor callback target for `GameOperations`).
 - Public events (`GameEnded`, `HumanTurnStarted`).
 - Public API forwarders to the recorder: `BeginReplay`,
   `RecordTutorialOnlyBeat`, `ReplayBeats`, `InitialReplaySnapshot`,
@@ -3329,8 +3347,9 @@ It replaces the old `AiLog`.
   `Log.Warn` / `Error` always compile (genuine anomalies + the
   headless-run terminator survive). (2) Runtime: each
   `Log.LogCategory` (`Ai`, `Turn`, `Capture`, `Tutorial`, `Render`,
-  `Input`) has an independent minimum `Log.LogLevel`; a message emits
-  only if its level ≥ the category threshold.
+  `Input`, `Display`, `Hud`, `Undo`) has an independent minimum
+  `Log.LogLevel`; a message emits only if its level ≥ the category
+  threshold.
 - **Default is silent.** Every category defaults to `Off`, so normal
   dev play prints nothing until configured.
 - **Configuration.** `Main` calls `Log.Configure(OS.GetEnvironment(
