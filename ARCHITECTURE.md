@@ -119,13 +119,15 @@ Consequences for the rest of this doc:
 - **`Log` is Godot-free** — the master logging system routes through
   an injectable `Log.Sink` that `Main` wires to `GD.Print`. See
   **Logging** below.
-- **Save format is v6.** Ownership is a player index on the wire (−1 =
+- **Save format is v7.** Ownership is a player index on the wire (−1 =
   `None`); claim-victory tiers are persisted by player index
-  (palette-independent). v2–v6 still load; v2–v4 migrate their legacy
+  (palette-independent). v2–v7 still load; v2–v4 migrate their legacy
   color-hex claim data via `GameSettings` palette matching. v6 renamed
   the unit levels (Peasant/Spearman/Knight/Baron →
   Recruit/Soldier/Captain/Commander); pre-v6 level names still load via
-  `SaveSerializer.ParseUnitLevel`.
+  `SaveSerializer.ParseUnitLevel`. v7 added the per-player `Difficulty`
+  field (see **Difficulty** below); absent in pre-v7 saves and starting
+  maps → defaults to `Soldier` via `SaveSerializer.ParseDifficulty`.
 - **`.cs.uid` sidecars**: the moved model files are not Godot
   resources, so theirs were removed; `src/**` is `.gdignore`d. Files
   still in `scripts/` keep their tracked `.cs.uid`.
@@ -475,8 +477,8 @@ Consequences for the rest of this doc:
 │                     FindByCapital / OwnedCapitalBearing helpers         │
 │   MapGenerator — CA-driven land/water carve + tree scatter, seeded       │
 │   GameSettings — global PlayerConfig (name, color hex) + PlayerKinds     │
-│                  + optional MasterSeed; written by MainMenuScene,        │
-│                  read by Main                                            │
+│                  + Difficulties (per-slot) + optional MasterSeed;        │
+│                  written by MainMenuScene, read by Main                   │
 │   LoadRequest — static one-shot handoff from menu's Load button to       │
 │                 Main (consumed and cleared in _Ready)                    │
 │   SaveStore — user://saves/ slot CRUD + user://maps/ for starting        │
@@ -1348,12 +1350,14 @@ Runs in this fixed order for the now-current player:
    round 1; the seed from `SeedStartingGold` is the round-1 bankroll).
    Tree and grave tiles don't pay; everything else (empty, units,
    capitals, towers) pays 1 gold.
-5. **Apply upkeep** — `UpkeepRules.ApplyUpkeepFor`. Per-unit costs:
-   Recruit 2, Soldier 6, Captain 18, Commander 54. A territory that
-   can't pay total upkeep goes bankrupt: every unit in it becomes a
-   `Grave`, remaining gold stays. `PlaySound(Bankruptcy)` fires once if any
-   territory of this player went bankrupt (player-scoped, not
-   tile-scoped).
+5. **Apply upkeep** — `UpkeepRules.ApplyUpkeepFor`. Per-unit costs
+   come from the owner's difficulty via `DifficultyRules.UnitUpkeep`
+   (the Soldier baseline — what AIs always pay — is Recruit 2,
+   Soldier 6, Captain 18, Commander 54; see **Difficulty** below). A
+   territory that can't pay total upkeep goes bankrupt: every unit in
+   it becomes a `Grave`, remaining gold stays. `PlaySound(Bankruptcy)`
+   fires once if any territory of this player went bankrupt
+   (player-scoped, not tile-scoped).
 6. **Fire `HumanTurnStarted`** if the now-current player is human and
    the game isn't over. Save/load wires the autosave path here.
 
@@ -1521,6 +1525,54 @@ because there's no capital to fund them). Income, view refresh, AI
 dispatch and turn logging are skipped — a silent pass-through. Without
 this, an eliminated player's lone unit on a singleton would linger
 forever on a rotation that always skipped them.
+
+## Difficulty (the human's economic handicap)
+
+Difficulty (issue #11) is a **self-imposed handicap on the human
+player's economy**; AI opponents always play at the `Soldier`
+baseline. Levels are named after the unit ranks — `Recruit` (easiest)
+… `Commander` (hardest) — and the one-sentence mechanism is: *higher
+difficulty makes your own units cost more to buy and to keep.* Income
+is **never** difficulty-scaled (an earn-rate lever was implemented,
+measured, and removed: land-proportional bonuses compound and proved
+knife-edged to tune, where upkeep/cost engage from turn 1 and scale
+with army size).
+
+All tuning lives in `DifficultyRules` (Model) as hand-picked integer
+tables — retuning a level is a one-table edit:
+
+| your difficulty | unit upkeep/turn (per unit tier) | unit cost (`UnitBaseCost` × tier 1–4) | tower |
+|---|---|---|---|
+| Recruit   | 1 / 4 / 13 / 40 | 8 / 16 / 24 / 32  | 12 |
+| Soldier   | 2 / 6 / 18 / 54 | 10 / 20 / 30 / 40 | 15 |
+| Captain   | 3 / 8 / 23 / 68 | 13 / 26 / 39 / 52 | 18 |
+| Commander | 3 / 9 / 27 / 81 | 15 / 30 / 45 / 60 | 20 |
+
+- **Plumbing.** `Difficulty` is a per-player field (`Player.Difficulty`,
+  default `Soldier`), populated by `Player.BuildRoster` from
+  `GameSettings.Difficulties`. The New Game panel's Difficulty dropdown
+  writes the chosen level to every Human slot via
+  `DifficultyRules.AssignGlobalToHumans` (Computer slots stay
+  `Soldier`). Storage is per-player so a future UI could vary it per
+  slot.
+- **Lockstep invariant.** `UpkeepRules` and `PurchaseRules` take a
+  `Difficulty` parameter with **no default**, so the compiler surfaces
+  every consumer. Real charging (`ApplyUpkeepFor` uses
+  `player.Difficulty`; controller buy paths use the current player's),
+  the AI solvency gates (`AiCommon.EconomyBefore` + per-unit deltas),
+  `AiSimulator`'s deductions, `AiStateScorer`, and the HUD economy
+  label / buy-button prices all derive from the same tables — an
+  all-Soldier game is byte-identical before/after the subsystem's
+  refactors, which is the regression check used when touching it.
+- **Persistence.** Saved per player in save format v7 (`PlayerDto.
+  Difficulty`); missing (pre-v7 saves, starting maps) defaults to
+  `Soldier`. Load paths mirror it into `GameSettings.Difficulties`
+  before `BuildRoster`, so resumes and replays reproduce.
+- **Diagnostics.** `FOUREXHEX_DIFFICULTY="recruit,…,commander"` sets
+  per-slot levels in the 6AI harness (a non-Soldier AI slot is
+  *handicapped* and should underperform). The `GameController`
+  constructor logs a one-shot `difficulties: Red=…, …` line
+  (`Turn:Info`) whenever any slot is non-Soldier.
 
 ## Call flows
 
@@ -2117,11 +2169,11 @@ just `Tutorial.json`, loaded via `LoadBundledMap`). It exposes
 `user://maps/` then falls back to `res://tutorials/` — used by the
 Play Again restart flow), plus `SanitizeSlotName` for
 filesystem-safe slot names. `SaveSerializer` is the JSON layer
-(format version 6; accepts v2–v5 on read so existing autosaves keep
+(format version 7; accepts v2–v6 on read so existing autosaves keep
 loading after each cutover); `Serialize` writes the player roster's
-`Kind` field, `SerializeMap` omits it (the editor's saved maps
-don't bake a player-kind config — roles are assigned at play time
-from the menu).
+`Kind` and `Difficulty` fields, `SerializeMap` omits both (the
+editor's saved maps don't bake a player config — roles and
+difficulty are assigned at play time from the menu).
 
 **iOS AOT constraint: source-generated `JsonSerializerContext`.** iOS
 forbids JIT, so .NET on iOS is AOT-compiled and `System.Text.Json`'s
@@ -3840,7 +3892,7 @@ across save/load, replay recording + playback contracts, and a
 6-heuristic-AI replay-fidelity test that hashes the live final
 state, round-trips it through SaveSerializer, and asserts the
 replayed state matches digest-for-digest. Also covers `PlayerId`
-semantics, the `Log` category/level gate, `HexCoord.Round`, and v2→v6 save
+semantics, the `Log` category/level gate, `HexCoord.Round`, and v2→v7 save
 migration (`SaveMigrationTests`). The view layer is deliberately
 uncovered — it depends on Godot's `Node` lifecycle, so pin behavior
 in the controller and rules instead.
