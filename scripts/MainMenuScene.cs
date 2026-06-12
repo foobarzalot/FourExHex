@@ -480,12 +480,13 @@ public partial class MainMenuScene : Control
         }
 
         // Player rows. Each row is Swatch | Name | Kind | Difficulty
-        // (issue #38: difficulty is per-slot). The difficulty dropdown
-        // shows the same raw rank names for Human and Computer slots —
-        // Recruit (easiest handicap / strongest AI) … Commander (hardest
-        // handicap / weakest AI); the level→cost mapping lives in
-        // DifficultyRules. Item ids match the enum values, and the
-        // selection persists unchanged when the kind flips.
+        // (issue #38: difficulty is per-slot). Difficulty is the human
+        // player's self-imposed handicap — Recruit (easiest) … Commander
+        // (hardest); the level→cost mapping lives in DifficultyRules and
+        // item ids match the enum values. Computer slots always play the
+        // Soldier baseline, so their dropdown is locked to Soldier and
+        // disabled; flipping a row to Computer resets any other level
+        // (see ApplyDifficultyLock).
         for (int i = 0; i < GameSettings.PlayerConfig.Length; i++)
         {
             (string name, string hex) = GameSettings.PlayerConfig[i];
@@ -570,6 +571,12 @@ public partial class MainMenuScene : Control
             SelectItemById(difficultyDropdown, (int)currentDifficulty);
             panel.AddChild(difficultyDropdown);
             _difficultyButtons[i] = difficultyDropdown;
+
+            // Lock the difficulty dropdown whenever the row is a Computer
+            // slot — now (initial state) and on every kind change.
+            int slot = i;
+            dropdown.ItemSelected += _ => ApplyDifficultyLock(slot);
+            ApplyDifficultyLock(slot);
         }
 
         const float buttonH = 62f;
@@ -693,6 +700,25 @@ public partial class MainMenuScene : Control
         label.AddThemeFontSizeOverride("font_size", 18);
         label.AddThemeColorOverride("font_color", UiPalette.InkSoft);
         return label;
+    }
+
+    /// <summary>Computer slots always play the Soldier baseline: while a
+    /// row's kind is Computer its difficulty dropdown is pinned to Soldier
+    /// and disabled. The reset sticks — flipping the row back to Human
+    /// re-enables the dropdown at Soldier rather than restoring the old
+    /// level.</summary>
+    private void ApplyDifficultyLock(int slot)
+    {
+        OptionButton difficultyDropdown = _difficultyButtons[slot];
+        bool isComputer = _roleButtons[slot].GetSelectedId() == ComputerId;
+        if (isComputer && (Difficulty)difficultyDropdown.GetSelectedId() != Difficulty.Soldier)
+        {
+            SelectItemById(difficultyDropdown, (int)Difficulty.Soldier);
+            Log.Debug(Log.LogCategory.Input,
+                $"MainMenu: {GameSettings.PlayerConfig[slot].Name} difficulty reset to "
+                + "Soldier (Computer slot)");
+        }
+        difficultyDropdown.Disabled = isComputer;
     }
 
     /// <summary>Select the OptionButton entry whose item ID matches

@@ -1529,20 +1529,21 @@ forever on a rotation that always skipped them.
 ## Difficulty (a per-player economic handicap)
 
 Difficulty (issue #11) is an **economic handicap on whoever owns it**,
-selectable per slot on the New Game panel (issue #38) and defaulting
-everywhere to the `Soldier` baseline. Levels are named after the unit
-ranks — `Recruit` (easiest) … `Commander` (hardest) — and the
-one-sentence mechanism is: *higher difficulty makes that player's own
-units cost more to buy and to keep.* On a Human slot it's a
-self-imposed challenge; on a Computer slot the framing inverts —
-raising an AI's level *weakens* it (calibration: a Commander AI scores
-0/10 where a Recruit AI scores 3/10 vs the ~1.7 null), and a
-handicapped AI doesn't adapt its strategy: it buys to the solvency
-edge and visibly doom-spirals into bankruptcies rather than playing
-leaner. Income is **never** difficulty-scaled (an earn-rate lever was
-implemented, measured, and removed: land-proportional bonuses compound
-and proved knife-edged to tune, where upkeep/cost engage from turn 1
-and scale with army size).
+stored per slot and selectable per Human row on the New Game panel
+(issue #38); everything defaults to the `Soldier` baseline. Levels are
+named after the unit ranks — `Recruit` (easiest) … `Commander`
+(hardest) — and the one-sentence mechanism is: *higher difficulty
+makes that player's own units cost more to buy and to keep.* Computer
+slots always play `Soldier`: handicapping an AI inverts the framing
+(raising its level *weakens* it — calibration: a Commander AI scores
+0/10 where a Recruit AI scores 3/10 vs the ~1.7 null) and a
+handicapped AI doesn't adapt its strategy — it buys to the solvency
+edge and doom-spirals into bankruptcies — so the UI locks AI rows to
+the baseline (the model still supports per-slot AI levels for the
+`FOUREXHEX_DIFFICULTY` diagnostics). Income is **never**
+difficulty-scaled (an earn-rate lever was implemented, measured, and
+removed: land-proportional bonuses compound and proved knife-edged to
+tune, where upkeep/cost engage from turn 1 and scale with army size).
 
 All tuning lives in `DifficultyRules` (Model) as hand-picked integer
 tables — retuning a level is a one-table edit:
@@ -1557,9 +1558,11 @@ tables — retuning a level is a one-table edit:
 - **Plumbing.** `Difficulty` is a per-player field (`Player.Difficulty`,
   default `Soldier`), populated by `Player.BuildRoster` from
   `GameSettings.Difficulties`. The New Game panel gives every player
-  row its own Recruit/Soldier/Captain/Commander dropdown (same raw
-  rank names for Human and Computer slots; the selection persists
-  unchanged when the kind flips) and `OnStartPressed` writes each
+  row its own Recruit/Soldier/Captain/Commander dropdown; on a
+  Computer row it's pinned to Soldier and disabled, and flipping a
+  row Human→Computer resets any other level to Soldier (the reset
+  sticks — flipping back doesn't restore it; see
+  `MainMenuScene.ApplyDifficultyLock`). `OnStartPressed` writes each
   row's choice straight into `GameSettings.Difficulties[i]`. The
   panel's layout is orientation-dependent: landscape puts the
   difficulty dropdown beside the Human/Computer selector under
