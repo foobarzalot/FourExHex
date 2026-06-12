@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-
 /// <summary>
 /// The single place the <see cref="Difficulty"/> level → behavior mapping
 /// lives, so retuning a level is one edit. Levels are named after the unit
@@ -73,21 +71,4 @@ public static class DifficultyRules
 
         _ => 0,
     };
-
-    /// <summary>
-    /// Map a single global difficulty onto a roster: every human slot gets
-    /// <paramref name="global"/> — difficulty is the human player's
-    /// self-imposed handicap — while computer slots stay at
-    /// <see cref="Difficulty.Soldier"/> (the normal baseline). Used by the
-    /// New Game panel, which exposes one global control over per-slot storage.
-    /// </summary>
-    public static Difficulty[] AssignGlobalToHumans(IReadOnlyList<PlayerKind> kinds, Difficulty global)
-    {
-        var result = new Difficulty[kinds.Count];
-        for (int i = 0; i < kinds.Count; i++)
-        {
-            result[i] = kinds[i] == PlayerKind.Human ? global : Difficulty.Soldier;
-        }
-        return result;
-    }
 }

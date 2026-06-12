@@ -1352,7 +1352,7 @@ Runs in this fixed order for the now-current player:
    capitals, towers) pays 1 gold.
 5. **Apply upkeep** — `UpkeepRules.ApplyUpkeepFor`. Per-unit costs
    come from the owner's difficulty via `DifficultyRules.UnitUpkeep`
-   (the Soldier baseline — what AIs always pay — is Recruit 2,
+   (the Soldier baseline — the default for every slot — is Recruit 2,
    Soldier 6, Captain 18, Commander 54; see **Difficulty** below). A
    territory that can't pay total upkeep goes bankrupt: every unit in
    it becomes a `Grave`, remaining gold stays. `PlaySound(Bankruptcy)`
@@ -1526,17 +1526,23 @@ dispatch and turn logging are skipped — a silent pass-through. Without
 this, an eliminated player's lone unit on a singleton would linger
 forever on a rotation that always skipped them.
 
-## Difficulty (the human's economic handicap)
+## Difficulty (a per-player economic handicap)
 
-Difficulty (issue #11) is a **self-imposed handicap on the human
-player's economy**; AI opponents always play at the `Soldier`
-baseline. Levels are named after the unit ranks — `Recruit` (easiest)
-… `Commander` (hardest) — and the one-sentence mechanism is: *higher
-difficulty makes your own units cost more to buy and to keep.* Income
-is **never** difficulty-scaled (an earn-rate lever was implemented,
-measured, and removed: land-proportional bonuses compound and proved
-knife-edged to tune, where upkeep/cost engage from turn 1 and scale
-with army size).
+Difficulty (issue #11) is an **economic handicap on whoever owns it**,
+selectable per slot on the New Game panel (issue #38) and defaulting
+everywhere to the `Soldier` baseline. Levels are named after the unit
+ranks — `Recruit` (easiest) … `Commander` (hardest) — and the
+one-sentence mechanism is: *higher difficulty makes that player's own
+units cost more to buy and to keep.* On a Human slot it's a
+self-imposed challenge; on a Computer slot the framing inverts —
+raising an AI's level *weakens* it (calibration: a Commander AI scores
+0/10 where a Recruit AI scores 3/10 vs the ~1.7 null), and a
+handicapped AI doesn't adapt its strategy: it buys to the solvency
+edge and visibly doom-spirals into bankruptcies rather than playing
+leaner. Income is **never** difficulty-scaled (an earn-rate lever was
+implemented, measured, and removed: land-proportional bonuses compound
+and proved knife-edged to tune, where upkeep/cost engage from turn 1
+and scale with army size).
 
 All tuning lives in `DifficultyRules` (Model) as hand-picked integer
 tables — retuning a level is a one-table edit:
@@ -1550,11 +1556,19 @@ tables — retuning a level is a one-table edit:
 
 - **Plumbing.** `Difficulty` is a per-player field (`Player.Difficulty`,
   default `Soldier`), populated by `Player.BuildRoster` from
-  `GameSettings.Difficulties`. The New Game panel's Difficulty dropdown
-  writes the chosen level to every Human slot via
-  `DifficultyRules.AssignGlobalToHumans` (Computer slots stay
-  `Soldier`). Storage is per-player so a future UI could vary it per
-  slot.
+  `GameSettings.Difficulties`. The New Game panel gives every player
+  row its own Recruit/Soldier/Captain/Commander dropdown (same raw
+  rank names for Human and Computer slots; the selection persists
+  unchanged when the kind flips) and `OnStartPressed` writes each
+  row's choice straight into `GameSettings.Difficulties[i]`. The
+  panel's layout is orientation-dependent: landscape puts the
+  difficulty dropdown beside the Human/Computer selector under
+  Type/Difficulty column headers; portrait stacks it in a sub-row
+  beneath the selector with per-row Type/Difficulty labels. A viewport
+  resize that flips `ScreenLayout.Resolve` rebuilds the panel in place,
+  round-tripping the dropdown selections through the `GameSettings`
+  arrays. Rows initialize from `GameSettings.Difficulties`, so loaded
+  saves / Play Again reflect each slot's level.
 - **Lockstep invariant.** `UpkeepRules` and `PurchaseRules` take a
   `Difficulty` parameter with **no default**, so the compiler surfaces
   every consumer. Real charging (`ApplyUpkeepFor` uses

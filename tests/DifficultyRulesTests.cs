@@ -31,24 +31,4 @@ public class DifficultyRulesTests
     {
         Assert.Equal(expected, DifficultyRules.UnitUpkeep(level, d));
     }
-
-    [Fact]
-    public void AssignGlobalToHumans_GivesHumanSlotsGlobalAndAiSoldier()
-    {
-        // Difficulty is the human's self-imposed handicap: the chosen level
-        // lands on Human slots; Computer opponents stay at Soldier (normal).
-        var kinds = new[]
-        {
-            PlayerKind.Human,
-            PlayerKind.Computer,
-            PlayerKind.Computer,
-            PlayerKind.Human,
-        };
-
-        Difficulty[] result = DifficultyRules.AssignGlobalToHumans(kinds, Difficulty.Commander);
-
-        Assert.Equal(
-            new[] { Difficulty.Commander, Difficulty.Soldier, Difficulty.Soldier, Difficulty.Commander },
-            result);
-    }
 }

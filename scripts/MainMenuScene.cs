@@ -21,6 +21,7 @@ public partial class MainMenuScene : Control
     private const int SeedMax = 9999;
 
     private readonly OptionButton[] _roleButtons = new OptionButton[GameSettings.PlayerConfig.Length];
+    private readonly OptionButton[] _difficultyButtons = new OptionButton[GameSettings.PlayerConfig.Length];
     private static readonly Font SerifFont =
         GD.Load<FontFile>("res://fonts/DMSerifDisplay-Regular.ttf");
     private SaveStore _saveStore = null!;
@@ -41,7 +42,9 @@ public partial class MainMenuScene : Control
     private LineEdit? _seedField;
     private Button? _startButton;
     private OptionButton? _mapSelector;
-    private OptionButton? _difficultyDropdown;
+    // Orientation the play-config panel was last built for; a viewport
+    // resize that flips it triggers a rebuild (see FitPanels).
+    private ScreenOrientation _playConfigOrientation = ScreenOrientation.Landscape;
     // Slot name of the selected starting map, or null when "Random Map"
     // is chosen — that's the dropdown's first/default entry, which keeps
     // the seed field active and triggers the procedural-generation flow.
@@ -154,8 +157,60 @@ public partial class MainMenuScene : Control
     private void FitPanels()
     {
         Vector2 viewport = GetViewportRect().Size;
+        RebuildPlayConfigOnOrientationFlip(viewport);
         if (_landingPanel != null) ScaleToFit(_landingPanel, _landingDesignSize, viewport);
         if (_playConfigPanel != null) ScaleToFit(_playConfigPanel, _playConfigDesignSize, viewport);
+    }
+
+    /// <summary>Rebuild the play-config panel when a viewport resize flips
+    /// the orientation (issue #38: portrait stacks each row's difficulty
+    /// dropdown under the kind selector; landscape puts them side by side).
+    /// Dropdown selections are written back into GameSettings — the build
+    /// path initializes from there — and the seed/map controls are restored
+    /// explicitly.</summary>
+    private void RebuildPlayConfigOnOrientationFlip(Vector2 viewport)
+    {
+        if (_playConfigPanel == null) return;
+        ScreenOrientation next = ScreenLayout.Resolve(viewport.X, viewport.Y);
+        if (next == _playConfigOrientation) return;
+        Log.Debug(Log.LogCategory.Render,
+            $"MainMenu: orientation flip {_playConfigOrientation} -> {next}; rebuilding play-config panel");
+
+        for (int i = 0; i < _roleButtons.Length; i++)
+        {
+            GameSettings.PlayerKinds[i] = _roleButtons[i].GetSelectedId() == ComputerId
+                ? PlayerKind.Computer
+                : PlayerKind.Human;
+            GameSettings.Difficulties[i] = (Difficulty)_difficultyButtons[i].GetSelectedId();
+        }
+        string seedText = _seedField?.Text ?? "";
+        int mapSelected = _mapSelector?.Selected ?? 0;
+        bool wasVisible = _playConfigPanel.Visible;
+
+        // The freed seed field never fires FocusExited, so stop the
+        // keyboard-lift polling it may have left running. The new panel
+        // starts with default anchor offsets, i.e. zero lift.
+        SetProcess(false);
+        SetProcessInput(false);
+        _keyboardLift = 0f;
+
+        Control old = _playConfigPanel;
+        int treeIndex = old.GetIndex();
+        old.Visible = false;
+        old.QueueFree();
+
+        _playConfigPanel = BuildPlayConfigPanel();
+        AddChild(_playConfigPanel);
+        MoveChild(_playConfigPanel, treeIndex);
+        _playConfigPanel.Visible = wasVisible;
+        if (_seedField != null) _seedField.Text = seedText;
+        if (_mapSelector != null && mapSelected < _mapSelector.ItemCount)
+        {
+            _mapSelector.Selected = mapSelected;
+            // Setting Selected programmatically doesn't fire ItemSelected;
+            // re-derive map-name / seed-enabled / start-gating state.
+            OnMapSelectorChanged(mapSelected);
+        }
     }
 
     private static void ScaleToFit(Control panel, Vector2 designSize, Vector2 viewport)
@@ -334,9 +389,27 @@ public partial class MainMenuScene : Control
         // dimensions are scaled 1.2x from the spec's base to read
         // comfortably at the 1600x1080 viewport (matches the heavier
         // play-HUD scale the rest of the redesign settled on).
-        const float panelW = 624f;
-        // Tall enough for six player rows + Map + Seed + Difficulty + buttons.
-        const float panelH = 862f;
+        //
+        // The layout is orientation-dependent (issue #38): in landscape
+        // each player row is Swatch | Name | Kind | Difficulty (two
+        // narrow dropdowns side by side, panel widened to fit); in
+        // portrait the difficulty dropdown drops to a sub-row directly
+        // under the kind selector (single full-width dropdown column,
+        // panel grows taller instead). FitPanels rebuilds the panel when
+        // a resize flips the orientation.
+        Vector2 viewportSize = GetViewportRect().Size;
+        _playConfigOrientation = ScreenLayout.Resolve(viewportSize.X, viewportSize.Y);
+        bool portrait = _playConfigOrientation == ScreenOrientation.Portrait;
+
+        const float kindDropdownWidth = 170f;
+        const float difficultyDropdownWidth = 170f;
+        const float dropdownGap = 12f;
+        const float portraitDropdownWidth = 240f;
+
+        float panelW = portrait ? 624f : 736f;
+        // Portrait: six two-row player blocks + Map + Seed + buttons.
+        // Landscape: six single rows + Map + Seed + buttons.
+        float panelH = portrait ? 1100f : 800f;
         // Center-anchored so Godot re-solves the position on every window
         // resize (matches ModalChrome.BuildCenteredPanel). Children below
         // are laid out in the panel's local space against the fixed
@@ -371,70 +444,52 @@ public partial class MainMenuScene : Control
         };
         panel.AddChild(goldRule);
 
-        var subtitle = new Label
-        {
-            Text = "Assign each player to Human or AI",
-            HorizontalAlignment = HorizontalAlignment.Center,
-            Position = new Vector2(0, 130),
-            Size = new Vector2(panelW, 32),
-        };
-        subtitle.AddThemeFontSizeOverride("font_size", 22);
-        subtitle.AddThemeColorOverride("font_color", UiPalette.InkSoft);
-        panel.AddChild(subtitle);
-
         const float rowStartY = 154f;
         const float rowHeight = 62f;
         const float rowInset = 48f;
         const float swatchSize = 34f;
         const float nameWidth = 144f;
-        const float dropdownWidth = 240f;
 
-        // Difficulty row (issue #11) leads the panel, above the per-player
-        // selectors. Levels are named after the unit ranks (Recruit =
-        // easiest … Commander = hardest) and set the HUMAN player's own
-        // handicap: on Start the chosen level is written to every Human
-        // slot while AI opponents stay at Soldier (normal). The
-        // level→upkeep mapping lives in DifficultyRules.UnitUpkeep
-        // (Recruit cheaper than the AIs, Captain ≈×1.25, Commander ×1.5).
-        // Item ids match the Difficulty enum values.
-        var difficultyLabel = new Label
-        {
-            Text = "Difficulty",
-            Position = new Vector2(rowInset + swatchSize + 19f, rowStartY + 17f),
-            Size = new Vector2(nameWidth, 29f),
-        };
-        difficultyLabel.AddThemeFontSizeOverride("font_size", 24);
-        panel.AddChild(difficultyLabel);
+        // The right-hand control column. Landscape fits the kind +
+        // difficulty dropdowns side by side; portrait keeps one wide
+        // column and stacks the difficulty dropdown beneath the kind.
+        float rightColW = portrait
+            ? portraitDropdownWidth
+            : kindDropdownWidth + dropdownGap + difficultyDropdownWidth;
+        float rightColXShared = panelW - rowInset - rightColW;
+        // Portrait player blocks are two rows tall (kind + difficulty).
+        float playerBlockH = portrait ? rowHeight + 50f : rowHeight;
+        // Headers gap between a portrait row label's right edge and the
+        // dropdown column it describes.
+        const float headerGap = 12f;
 
-        _difficultyDropdown = new OptionButton
+        // Landscape names the two dropdown columns once, in the band the
+        // old subtitle occupied. Portrait has no columns to head — each
+        // block's rows get their own Type / Difficulty labels instead
+        // (see the player loop below).
+        if (!portrait)
         {
-            Position = new Vector2(panelW - rowInset - dropdownWidth, rowStartY + 12f),
-            Size = new Vector2(dropdownWidth, 38f),
-        };
-        _difficultyDropdown.AddThemeFontSizeOverride("font_size", 21);
-        _difficultyDropdown.GetPopup().AddThemeFontSizeOverride("font_size", 21);
-        _difficultyDropdown.AddItem("Recruit", (int)Difficulty.Recruit);
-        _difficultyDropdown.AddItem("Soldier", (int)Difficulty.Soldier);
-        _difficultyDropdown.AddItem("Captain", (int)Difficulty.Captain);
-        _difficultyDropdown.AddItem("Commander", (int)Difficulty.Commander);
-        // Select Soldier (the default) by its id (don't assume item order
-        // == enum order).
-        for (int item = 0; item < _difficultyDropdown.ItemCount; item++)
-        {
-            if (_difficultyDropdown.GetItemId(item) == (int)Difficulty.Soldier)
-            {
-                _difficultyDropdown.Selected = item;
-                break;
-            }
+            panel.AddChild(MakeFieldHeader("Type",
+                new Vector2(rightColXShared + 8f, rowStartY - 28f),
+                new Vector2(kindDropdownWidth - 8f, 22f),
+                HorizontalAlignment.Left));
+            panel.AddChild(MakeFieldHeader("Difficulty",
+                new Vector2(rightColXShared + kindDropdownWidth + dropdownGap + 8f, rowStartY - 28f),
+                new Vector2(difficultyDropdownWidth - 8f, 22f),
+                HorizontalAlignment.Left));
         }
-        panel.AddChild(_difficultyDropdown);
 
-        // Player rows follow, one row below the Difficulty control. Each
-        // row is Swatch | Name | OptionButton.
+        // Player rows. Each row is Swatch | Name | Kind | Difficulty
+        // (issue #38: difficulty is per-slot). The difficulty dropdown
+        // shows the same raw rank names for Human and Computer slots —
+        // Recruit (easiest handicap / strongest AI) … Commander (hardest
+        // handicap / weakest AI); the level→cost mapping lives in
+        // DifficultyRules. Item ids match the enum values, and the
+        // selection persists unchanged when the kind flips.
         for (int i = 0; i < GameSettings.PlayerConfig.Length; i++)
         {
             (string name, string hex) = GameSettings.PlayerConfig[i];
-            float rowY = rowStartY + rowHeight * (i + 1);
+            float rowY = rowStartY + playerBlockH * i;
 
             var swatch = new ColorRect
             {
@@ -453,10 +508,28 @@ public partial class MainMenuScene : Control
             nameLabel.AddThemeFontSizeOverride("font_size", 24);
             panel.AddChild(nameLabel);
 
+            if (portrait)
+            {
+                // Row headers: right-aligned against the dropdown column.
+                // The Type label squeezes between the name column and the
+                // dropdown; the Difficulty sub-row has the full left side.
+                float nameEndX = rowInset + swatchSize + 19f + nameWidth;
+                float labelRightX = rightColXShared - headerGap;
+                panel.AddChild(MakeFieldHeader("Type",
+                    new Vector2(nameEndX, rowY + 20f),
+                    new Vector2(labelRightX - nameEndX, 22f),
+                    HorizontalAlignment.Right));
+                panel.AddChild(MakeFieldHeader("Difficulty",
+                    new Vector2(rowInset + swatchSize + 19f, rowY + rowHeight + 8f),
+                    new Vector2(labelRightX - (rowInset + swatchSize + 19f), 22f),
+                    HorizontalAlignment.Right));
+            }
+
+            float kindWidth = portrait ? portraitDropdownWidth : kindDropdownWidth;
             var dropdown = new OptionButton
             {
-                Position = new Vector2(panelW - rowInset - dropdownWidth, rowY + 12f),
-                Size = new Vector2(dropdownWidth, 38f),
+                Position = new Vector2(rightColXShared, rowY + 12f),
+                Size = new Vector2(kindWidth, 38f),
             };
             dropdown.AddThemeFontSizeOverride("font_size", 21);
             // The button face and its drop-down popup are themed
@@ -468,19 +541,35 @@ public partial class MainMenuScene : Control
             PlayerKind currentKind = i < GameSettings.PlayerKinds.Length
                 ? GameSettings.PlayerKinds[i]
                 : PlayerKind.Computer;
-            int initialId = currentKind == PlayerKind.Computer ? ComputerId : HumanId;
-            // Selected is an index; find the entry that matches the
-            // ID we want and select that index.
-            for (int item = 0; item < dropdown.ItemCount; item++)
-            {
-                if (dropdown.GetItemId(item) == initialId)
-                {
-                    dropdown.Selected = item;
-                    break;
-                }
-            }
+            SelectItemById(dropdown, currentKind == PlayerKind.Computer ? ComputerId : HumanId);
             panel.AddChild(dropdown);
             _roleButtons[i] = dropdown;
+
+            // Portrait: sub-row directly under the kind selector.
+            // Landscape: beside it in the same row.
+            Vector2 difficultyPosition = portrait
+                ? new Vector2(rightColXShared, rowY + rowHeight)
+                : new Vector2(rightColXShared + kindDropdownWidth + dropdownGap, rowY + 12f);
+            float difficultyWidth = portrait ? portraitDropdownWidth : difficultyDropdownWidth;
+            var difficultyDropdown = new OptionButton
+            {
+                Position = difficultyPosition,
+                Size = new Vector2(difficultyWidth, 38f),
+            };
+            difficultyDropdown.AddThemeFontSizeOverride("font_size", 21);
+            difficultyDropdown.GetPopup().AddThemeFontSizeOverride("font_size", 21);
+            difficultyDropdown.AddItem("Recruit", (int)Difficulty.Recruit);
+            difficultyDropdown.AddItem("Soldier", (int)Difficulty.Soldier);
+            difficultyDropdown.AddItem("Captain", (int)Difficulty.Captain);
+            difficultyDropdown.AddItem("Commander", (int)Difficulty.Commander);
+            // Initialize from GameSettings (mirrors the kind dropdown) so
+            // loaded saves / Play Again round-trip per-slot levels.
+            Difficulty currentDifficulty = i < GameSettings.Difficulties.Length
+                ? GameSettings.Difficulties[i]
+                : Difficulty.Soldier;
+            SelectItemById(difficultyDropdown, (int)currentDifficulty);
+            panel.AddChild(difficultyDropdown);
+            _difficultyButtons[i] = difficultyDropdown;
         }
 
         const float buttonH = 62f;
@@ -493,14 +582,13 @@ public partial class MainMenuScene : Control
         // action key falls on the rightmost button.
         float leftColX = rowInset;
         float leftColW = swatchSize + 16f + nameWidth;
-        float rightColX = panelW - rowInset - dropdownWidth;
-        float rightColW = dropdownWidth;
+        float rightColX = rightColXShared;
 
         // Map row sits just below the last player row. The dropdown lists
         // "Random Map" (the default) plus every saved starting map. Picking
         // a map disables the seed field below — the map's terrain replaces
         // procedural generation.
-        float mapRowY = rowStartY + rowHeight * (GameSettings.PlayerConfig.Length + 1);
+        float mapRowY = rowStartY + playerBlockH * GameSettings.PlayerConfig.Length;
         var mapLabel = new Label
         {
             Text = "Map",
@@ -533,7 +621,7 @@ public partial class MainMenuScene : Control
         // Map Seed row sits just below the Map row, aligned with the
         // dropdown column so the input lines up with the AI selectors
         // above it.
-        float seedRowY = rowStartY + rowHeight * (GameSettings.PlayerConfig.Length + 2);
+        float seedRowY = mapRowY + rowHeight;
         var seedLabel = new Label
         {
             Text = "Map Seed",
@@ -582,8 +670,44 @@ public partial class MainMenuScene : Control
 
         RefreshStartButtonGating();
 
+        Log.Debug(Log.LogCategory.Render,
+            $"MainMenu: play-config built ({_playConfigOrientation}, per-row difficulty "
+            + (portrait ? "sub-rows)" : "side-by-side)"));
         _playConfigDesignSize = new Vector2(panelW, panelH);
         return panel;
+    }
+
+    /// <summary>Small muted label naming a dropdown column (landscape
+    /// column headers) or a control row (portrait row headers) on the
+    /// play-config panel.</summary>
+    private static Label MakeFieldHeader(
+        string text, Vector2 position, Vector2 size, HorizontalAlignment alignment)
+    {
+        var label = new Label
+        {
+            Text = text,
+            Position = position,
+            Size = size,
+            HorizontalAlignment = alignment,
+        };
+        label.AddThemeFontSizeOverride("font_size", 18);
+        label.AddThemeColorOverride("font_color", UiPalette.InkSoft);
+        return label;
+    }
+
+    /// <summary>Select the OptionButton entry whose item ID matches
+    /// <paramref name="id"/>. Selected is an index, so callers can't
+    /// assume item order == id order.</summary>
+    private static void SelectItemById(OptionButton button, int id)
+    {
+        for (int item = 0; item < button.ItemCount; item++)
+        {
+            if (button.GetItemId(item) == id)
+            {
+                button.Selected = item;
+                return;
+            }
+        }
     }
 
     private void OnMapSelectorChanged(long index)
@@ -1018,21 +1142,23 @@ public partial class MainMenuScene : Control
 
     private void OnStartPressed()
     {
-        // Persist the dropdown selections — kinds always come from this
-        // panel (saved maps don't carry per-color roles).
+        // Persist the dropdown selections — kinds and per-slot difficulty
+        // always come from this panel (saved maps don't carry per-color
+        // roles). Difficulty is stored per-slot (issue #38) so mixed
+        // configurations land directly on the roster and round-trip
+        // through the save.
         for (int i = 0; i < _roleButtons.Length; i++)
         {
             int selectedId = _roleButtons[i].GetSelectedId();
             GameSettings.PlayerKinds[i] = selectedId == ComputerId
                 ? PlayerKind.Computer
                 : PlayerKind.Human;
+            GameSettings.Difficulties[i] = (Difficulty)_difficultyButtons[i].GetSelectedId();
         }
-
-        // The chosen difficulty is the human player's own handicap: it lands
-        // on every Human slot, while AI opponents stay at Soldier (normal).
-        // Stored per-slot so it round-trips through the save.
-        var chosen = (Difficulty)(_difficultyDropdown?.GetSelectedId() ?? (int)Difficulty.Soldier);
-        GameSettings.Difficulties = DifficultyRules.AssignGlobalToHumans(GameSettings.PlayerKinds, chosen);
+        Log.Info(Log.LogCategory.Input,
+            "MainMenu: start — " + string.Join(", ",
+                GameSettings.PlayerConfig.Select((config, i) =>
+                    $"{config.Name}={GameSettings.PlayerKinds[i]}/{GameSettings.Difficulties[i]}")));
 
         if (_selectedMapName != null)
         {
