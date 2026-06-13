@@ -153,6 +153,16 @@ creds file into the empty placeholder, and runs Godot — then unconditionally
 restores the backup on EXIT (trap), so a crashed build never leaves the team ID
 checked in. The committed file always has `application/app_store_team_id=""`.
 
+> **Don't `git add` `export_presets.cfg` while a build is running.** During the
+> build the file holds the real team ID (and a synced version bump); the EXIT
+> trap only restores the team ID *after* the build finishes. If you stage/commit
+> a version bump mid-build you'll capture the injected `app_store_team_id` by
+> accident. Either commit the version bump **before** launching the build, or
+> wait for the build to finish (and the trap to restore the file) before
+> `git add`. Also expect a stray `export_presets.cfg.bak.<pid>` if a build is
+> killed before its trap runs — it's a temp artifact, safe to delete, and not
+> committed.
+
 ### iOS targeted_device_family enum gotcha
 
 Godot 4.6.1's iOS preset writes `TARGETED_DEVICE_FAMILY = ""` (empty string) if

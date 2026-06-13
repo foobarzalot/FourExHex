@@ -49,8 +49,11 @@ public partial class CampaignPanel : Panel
     private readonly float _hexW;
     private readonly float _hexH;
     private readonly float _hexGap;
+    private Button _backButton = null!;
     private Label _totalStat = null!;
+    private Panel _progressTrack = null!;
     private ColorRect _progressFill = null!;
+    private ScrollContainer _scroll = null!;
     private readonly Label[] _tierStats = new Label[CampaignProgress.TierCount];
     private readonly TierGrid[] _tierGrids = new TierGrid[CampaignProgress.TierCount];
 
@@ -85,24 +88,78 @@ public partial class CampaignPanel : Panel
 
         BuildHeader();
         BuildScrollingTiers();
+        // Inset the header stat and the scroll/scrollbar away from the
+        // notch / Dynamic Island / home indicator, then keep them there
+        // across rotations (the autoload recomputes insets on resize,
+        // sometimes after this panel is rebuilt).
+        ApplyInsets(SafeArea.Current);
+        SafeArea.Changed += ApplyInsets;
 
         Log.Debug(Log.LogCategory.Campaign,
             $"CampaignPanel: built ({(portrait ? "portrait" : "landscape")}, {_columns} columns, " +
             $"fit {fit:0.00}, hex {_hexW:0}×{_hexH:0}, viewport-filling)");
     }
 
+    public override void _ExitTree()
+    {
+        // Unsubscribe so a rotation after this panel is freed (orientation
+        // flip rebuilds it) doesn't call ApplyInsets on a disposed node.
+        SafeArea.Changed -= ApplyInsets;
+    }
+
+    /// <summary>Position the header controls and the scroll surface inside
+    /// the device safe area. Left/right insets keep the top-right stat and
+    /// the right-edge scrollbar clear of a landscape notch; the top inset
+    /// clears the portrait status bar / Dynamic Island; the bottom inset
+    /// clears the home indicator.</summary>
+    private void ApplyInsets(LogicalSafeInsets s)
+    {
+        // Back button and total stat share one 48px-tall band (both
+        // vertically centered) so they line up; the progress bar sits well
+        // below it with clearance so neither label touches it.
+        _backButton.OffsetLeft = Pad - 8f + s.Left;
+        _backButton.OffsetRight = Pad - 8f + 280f + s.Left;
+        _backButton.OffsetTop = 18f + s.Top;
+        _backButton.OffsetBottom = 18f + 48f + s.Top;
+
+        // Nudged 6px below the back button's band so it lines up with the
+        // serif "← Campaign" (whose optical center sits a touch lower).
+        _totalStat.OffsetLeft = -Pad - 260f - s.Right;
+        _totalStat.OffsetRight = -Pad - s.Right;
+        _totalStat.OffsetTop = 24f + s.Top;
+        _totalStat.OffsetBottom = 24f + 48f + s.Top;
+
+        _progressTrack.OffsetLeft = Pad + s.Left;
+        _progressTrack.OffsetRight = -Pad - s.Right;
+        _progressTrack.OffsetTop = 82f + s.Top;
+        _progressTrack.OffsetBottom = 92f + s.Top;
+
+        _scroll.OffsetLeft = Pad + s.Left;
+        _scroll.OffsetRight = -Pad - s.Right;
+        _scroll.OffsetTop = HeaderHeight + s.Top;
+        _scroll.OffsetBottom = -Pad - s.Bottom;
+
+        Log.Debug(Log.LogCategory.Campaign,
+            $"CampaignPanel: applied safe-area insets (t={s.Top:0} b={s.Bottom:0} " +
+            $"l={s.Left:0} r={s.Right:0})");
+    }
+
+    // Offsets that depend on the safe area are set by ApplyInsets; build
+    // only the anchors and static properties here.
     private void BuildHeader()
     {
-        var backButton = new Button { Text = "← Campaign", Flat = true };
-        backButton.AddThemeFontOverride("font", SerifFont);
-        backButton.AddThemeFontSizeOverride("font_size", 34);
-        backButton.AnchorLeft = 0f; backButton.AnchorTop = 0f;
-        backButton.OffsetLeft = Pad - 8f; backButton.OffsetTop = 22f;
-        backButton.OffsetRight = Pad - 8f + 280f; backButton.OffsetBottom = 22f + 48f;
-        backButton.Alignment = HorizontalAlignment.Left;
-        backButton.Pressed += () => BackPressed?.Invoke();
-        AudioBus.AttachClick(backButton);
-        AddChild(backButton);
+        _backButton = new Button { Text = "← Campaign", Flat = true };
+        _backButton.AddThemeFontOverride("font", SerifFont);
+        // 28 (was 34): the big serif overflowed its box toward the progress
+        // bar and its optical center sat below the smaller stat label. 28
+        // clears the bar and reads aligned with the 22px stat.
+        _backButton.AddThemeFontSizeOverride("font_size", 28);
+        _backButton.AnchorLeft = 0f; _backButton.AnchorTop = 0f;
+        _backButton.AnchorRight = 0f; _backButton.AnchorBottom = 0f;
+        _backButton.Alignment = HorizontalAlignment.Left;
+        _backButton.Pressed += () => BackPressed?.Invoke();
+        AudioBus.AttachClick(_backButton);
+        AddChild(_backButton);
 
         // Top-right, pinned to the right edge so it tracks viewport width.
         _totalStat = new Label
@@ -110,8 +167,6 @@ public partial class CampaignPanel : Panel
             HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Center,
             AnchorLeft = 1f, AnchorRight = 1f, AnchorTop = 0f, AnchorBottom = 0f,
-            OffsetLeft = -Pad - 260f, OffsetRight = -Pad,
-            OffsetTop = 22f, OffsetBottom = 22f + 48f,
         };
         _totalStat.AddThemeColorOverride("font_color", UiPalette.InkSoft);
         _totalStat.AddThemeFontSizeOverride("font_size", 22);
@@ -120,10 +175,9 @@ public partial class CampaignPanel : Panel
         // Thin full-width progress bar: bordered track spanning the inset
         // width, with a fill whose right anchor = wins/256 (set in Refresh,
         // so it scales with viewport width for free).
-        var track = new Panel
+        _progressTrack = new Panel
         {
             AnchorLeft = 0f, AnchorRight = 1f, AnchorTop = 0f, AnchorBottom = 0f,
-            OffsetLeft = Pad, OffsetRight = -Pad, OffsetTop = 78f, OffsetBottom = 88f,
         };
         var trackStyle = new StyleBoxFlat
         {
@@ -133,8 +187,8 @@ public partial class CampaignPanel : Panel
             CornerRadiusBottomLeft = 5, CornerRadiusBottomRight = 5,
         };
         trackStyle.SetBorderWidthAll(1);
-        track.AddThemeStyleboxOverride("panel", trackStyle);
-        AddChild(track);
+        _progressTrack.AddThemeStyleboxOverride("panel", trackStyle);
+        AddChild(_progressTrack);
 
         _progressFill = new ColorRect
         {
@@ -142,7 +196,7 @@ public partial class CampaignPanel : Panel
             AnchorLeft = 0f, AnchorRight = 0f, AnchorTop = 0f, AnchorBottom = 1f,
             OffsetLeft = 1f, OffsetTop = 1f, OffsetBottom = -1f, OffsetRight = 0f,
         };
-        track.AddChild(_progressFill);
+        _progressTrack.AddChild(_progressFill);
     }
 
     private void BuildScrollingTiers()
@@ -150,14 +204,12 @@ public partial class CampaignPanel : Panel
         // Fills the viewport below the header and scrolls vertically. The
         // tier blocks render at full hex size, so the four of them overflow
         // and the ScrollContainer pans (touch-drag on device).
-        var scroll = new ScrollContainer
+        _scroll = new ScrollContainer
         {
             AnchorLeft = 0f, AnchorRight = 1f, AnchorTop = 0f, AnchorBottom = 1f,
-            OffsetLeft = Pad, OffsetRight = -Pad,
-            OffsetTop = HeaderHeight, OffsetBottom = -Pad,
             HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
         };
-        AddChild(scroll);
+        AddChild(_scroll);
 
         var column = new VBoxContainer
         {
@@ -167,7 +219,7 @@ public partial class CampaignPanel : Panel
             MouseFilter = MouseFilterEnum.Ignore,
         };
         column.AddThemeConstantOverride("separation", 10);
-        scroll.AddChild(column);
+        _scroll.AddChild(column);
 
         for (int tier = 0; tier < CampaignProgress.TierCount; tier++)
         {
