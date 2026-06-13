@@ -2155,6 +2155,13 @@ sequences.
   still **read** by the deserializer — each entry maps to `→ 50` —
   but new saves never **write** it. Read precedence: the new dict
   wins if non-empty.
+- **Campaign level pointer (v8).** Saves carry an optional
+  `CampaignLevel` (0..255) for games launched from the campaign screen
+  (see "Campaign mode" below); null/missing for freeform games and
+  pre-v8 saves. It rides through autosave so a resumed campaign game
+  still knows which ladder level it is and can record the win on
+  game-over. `Main._Ready` restores it into `GameSettings.CampaignLevel`
+  (or clears it for a freeform/starting-map/diagnostic load).
 - **Load.** The main menu's Load button populates `LoadRequest.Pending`
   with a `LoadedSave` (state + players + master seed + max-turn cap +
   optional OriginMapName + optional claim-victory prompted tiers) and
@@ -2190,7 +2197,7 @@ just `Tutorial.json`, loaded via `LoadBundledMap`). It exposes
 `user://maps/` then falls back to `res://tutorials/` — used by the
 Play Again restart flow), plus `SanitizeSlotName` for
 filesystem-safe slot names. `SaveSerializer` is the JSON layer
-(format version 7; accepts v2–v6 on read so existing autosaves keep
+(format version 8; accepts v2–v7 on read so existing autosaves keep
 loading after each cutover); `Serialize` writes the player roster's
 `Kind` and `Difficulty` fields, `SerializeMap` omits both (the
 editor's saved maps don't bake a player config — roles and
@@ -2202,10 +2209,12 @@ reflection-based path throws "Reflection-based serialization has been
 disabled for this application." Every `JsonSerializer.Serialize`/
 `Deserialize` call therefore routes through a source-generated
 `JsonTypeInfo<T>`: `src/FourExHex.Model/FourExHexJsonContext.cs` declares
-the top-level context with one `[JsonSerializable(typeof(SaveData))]`
-attribute, used by `SaveSerializer` and `SaveStore`'s SavedAt-header
-read; `scripts/UserSettings.cs` nests its own `JsonContext` so the
-generator can reach the file's `private sealed class SettingsDto`. The
+the top-level context with `[JsonSerializable(typeof(SaveData))]` (used
+by `SaveSerializer` and `SaveStore`'s SavedAt-header read) and
+`[JsonSerializable(typeof(CampaignData))]` (used by `CampaignSerializer`,
+see "Campaign mode" below); `scripts/UserSettings.cs` nests its own
+`JsonContext` so the generator can reach the file's
+`private sealed class SettingsDto`. The
 `[JsonSourceGenerationOptions]` attribute carries the historical
 `WriteIndented` / `WhenWritingNull` settings, so the JSON wire format is
 unchanged and pre-source-gen saves load through the new path with no
@@ -2242,6 +2251,87 @@ future autosaves of that game can carry replay data; the controller
 sets `_replayDataIsCompleteFromStart = false` so the
 victory-overlay Replay button stays disabled — the recorded log
 starts after the load, not at game start.
+
+## Campaign mode (issue #2)
+
+A fixed ladder of **256 levels** (`00`–`FF`) reachable from the main
+menu's **Campaign** button, with persistent per-level win/loss
+tracking. Levels split into four tiers of 64 that line up with the
+high hex digit and map straight onto the existing `Difficulty` enum:
+Recruit `00–3F`, Soldier `40–7F`, Captain `80–BF`, Commander `C0–FF`.
+Every level is one Human (Red) + five Computer on a procedural map; the
+**human's difficulty handicap = the tier** (AIs stay Soldier), and the
+level→seed mapping is identity (`MasterSeed = level`). Same handicap
+machinery as the per-player difficulty lever — no new rules.
+
+The feature spans all four layers, respecting the one-way dependency
+graph:
+
+- **Model (Godot-free, unit-tested):**
+  - `CampaignProgress` (`src/FourExHex.Model/CampaignProgress.cs`) —
+    256 `CampaignLevelStatus` values (`Untried`/`Lost`/`Won`, member
+    order load-bearing because statuses persist numerically). Exposes
+    `StatusOf`, `MarkAttempted` (Untried→Lost, Won terminal), `MarkWon`
+    (terminal), `WonCount`, `TierWonCount`, `NextUp` (lowest non-won,
+    null when all won), and the statics `DifficultyForLevel`
+    (`(Difficulty)(level / 64)`), `LabelFor` (`"4F"`), `SeedForLevel`
+    (identity). **Mark-at-launch semantics:** starting a level marks it
+    Lost so an abandon or crash already counts as an attempt with no
+    extra bookkeeping; winning flips it to Won, which a later loss can't
+    revert.
+  - `CampaignSerializer` + `CampaignData` (same file family) — JSON
+    `{ FormatVersion, Statuses[] }`, registered on `FourExHexJsonContext`
+    for iOS AOT. Tolerant on read: short arrays pad with Untried, extras
+    past 256 are ignored, out-of-range ints degrade to Untried, unknown
+    versions throw (the store catches → fresh progress).
+- **ViewMath (floats OK, unit-tested):** `CampaignGridMath`
+  (`src/FourExHex.ViewMath/CampaignGridMath.cs`) — pointy-top honeycomb
+  geometry: `CellCenter` (odd rows shift half a step, rows interlock at
+  0.75×height pitch), `BlockSize`, and `HitTest` (exact point-in-hexagon
+  so the overlapping rows resolve to the right cell). Drives both the
+  draw and the tap path, so they can't drift.
+- **Scripts (Godot view layer, test-excluded):**
+  - `CampaignStore` (`scripts/CampaignStore.cs`) — static persistence to
+    the `user://campaign.json` **sidecar** (independent of game saves;
+    deleting saves never touches progress). Mirrors `UserSettings`: lazy
+    load, atomic tmp+rename write **immediately on every status
+    transition** (never "on exit", so a crash can't lose a result),
+    `GD.PushWarning` + fresh fallback on a corrupt/missing file.
+    `PrepareLaunch(level)` centralizes the seed/roster/difficulty setup
+    and the mark-attempted, shared by both launch entry points.
+  - `CampaignPanel` (`scripts/CampaignPanel.cs`) — the campaign screen:
+    fixed header (back, `won / 256`, progress bar) over a
+    `ScrollContainer` of four tier sections. Each tier is **one**
+    custom-drawn `TierGrid` control (64 hexes in `_Draw` via
+    `CampaignGridMath`, taps in `_GuiInput`) — far lighter than 256
+    Button nodes, and the 8↔16 column reflow is just a rebuild. Status
+    drives hex styling: green fill = won, red outline = lost, gray
+    outline = untried. (The design's "next up" thick-outline state was
+    dropped — it masked the lost styling of the lowest unbeaten hex.)
+  - `MainMenuScene` — **Campaign** button on the landing panel; the
+    campaign panel is the third toggled panel (same `Visible` pattern as
+    landing/play-config), rebuilt on an orientation flip like the
+    play-config panel. Tapping a hex opens a `ConfirmModal` (level, tier,
+    status, Play/Cancel); Play calls `CampaignStore.PrepareLaunch` and
+    changes scene to `main.tscn`. The one-shot static
+    `MainMenuScene.OpenCampaignOnArrival` makes the menu open straight to
+    the campaign screen when returning from a campaign game.
+
+**Win-flow call path.** `Main._Ready` reads `GameSettings.CampaignLevel`
+(set by the menu, or restored from the loaded save) into `_campaignLevel`
+and, for campaign games, wires the `HudView` campaign events. On
+`GameController.GameEnded`, `Main.OnGameEndedRecordCampaignResult` marks
+the level Won iff the winner is the human (any other outcome leaves the
+launch-time Lost mark) — recorded **before** the controller's trailing
+`RefreshViews`, so the overlay reads updated totals. `HudView.Refresh`
+then shows the **campaign victory overlay** ("Level XX — won", updated
+`N / 256`) instead of the standard one, with **Next unbeaten level**
+(`Main.LaunchNextUnbeatenCampaignLevel` → `PrepareLaunch(NextUp)`) and
+**Back to campaign** (sets `OpenCampaignOnArrival`, then
+`AbandonAndReturnToMenu`). An AI win shows the standard overlay. The
+campaign overlay is a Main-facing extension of the concrete `HudView`
+(like `NewGameClicked`/`MainMenuClicked`), **not** part of the
+`IHudView` contract — `GameController` and its tests are untouched.
 
 ## Pause / Options menu
 
@@ -3503,9 +3593,9 @@ It replaces the old `AiLog`.
   `Log.Warn` / `Error` always compile (genuine anomalies + the
   headless-run terminator survive). (2) Runtime: each
   `Log.LogCategory` (`Ai`, `Turn`, `Capture`, `Tutorial`, `Render`,
-  `Input`, `Display`, `Hud`, `Undo`, `Cheat`) has an independent minimum
-  `Log.LogLevel`; a message emits only if its level ≥ the category
-  threshold.
+  `Input`, `Display`, `Hud`, `Undo`, `Cheat`, `Campaign`) has an
+  independent minimum `Log.LogLevel`; a message emits only if its level ≥
+  the category threshold.
 - **Default is silent.** Every category defaults to `Off`, so normal
   dev play prints nothing until configured.
 - **Configuration.** `Main` calls `Log.Configure(OS.GetEnvironment(
