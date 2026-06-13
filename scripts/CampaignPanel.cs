@@ -33,76 +33,97 @@ public partial class CampaignPanel : Panel
     private static readonly Font SerifFont =
         GD.Load<FontFile>("res://fonts/DMSerifDisplay-Regular.ttf");
 
-    // Hex cell geometry. 56px wide comfortably clears the 44px minimum
-    // touch target; height is the regular pointy-top ratio (w / sin60).
-    private const float HexW = 56f;
-    private const float HexH = 64f;
-    private const float HexGap = 4f;
+    // Base hex cell geometry. 56px wide comfortably clears the 44px
+    // minimum touch target; height is the regular pointy-top ratio
+    // (w / sin60). Scaled down per instance (`_hexW`/`_hexH`/`_hexGap`)
+    // so the tier block fits the viewport width without clipping.
+    private const float BaseHexW = 56f;
+    private const float BaseHexH = 64f;
+    private const float BaseHexGap = 4f;
 
-    public Vector2 DesignSize { get; }
+    // Horizontal inset and header band height (px, unscaled — see below).
+    private const float Pad = 28f;
+    private const float HeaderHeight = 100f;
 
     private readonly int _columns;
+    private readonly float _hexW;
+    private readonly float _hexH;
+    private readonly float _hexGap;
     private Label _totalStat = null!;
     private ColorRect _progressFill = null!;
-    private float _progressTrackWidth;
     private readonly Label[] _tierStats = new Label[CampaignProgress.TierCount];
     private readonly TierGrid[] _tierGrids = new TierGrid[CampaignProgress.TierCount];
 
-    public CampaignPanel(ScreenOrientation orientation)
+    public CampaignPanel(ScreenOrientation orientation, Vector2 viewport)
     {
         bool portrait = orientation == ScreenOrientation.Portrait;
         _columns = portrait ? 8 : 16;
-        (float blockW, float _) = CampaignGridMath.BlockSize(
-            CampaignProgress.TierSize, _columns, HexW, HexH, HexGap);
 
-        const float pad = 28f;
-        float panelW = blockW + pad * 2f;
-        float panelH = portrait ? 1160f : 860f;
-        DesignSize = new Vector2(panelW, panelH);
+        // Derive the hex size from the PORTRAIT constraint (8 columns in
+        // the screen's narrower dimension), regardless of the current
+        // orientation, and never upscale. That makes the hexes identical
+        // portrait vs landscape — and since a landscape row is 16 wide in
+        // the wider dimension (≈2× the narrow one), an 8-column-fit hex
+        // always fits the 16 columns there too, so nothing clips.
+        const float scrollbarAllowance = 18f;
+        float narrowSide = Mathf.Min(viewport.X, viewport.Y);
+        float available = narrowSide - Pad * 2f - scrollbarAllowance;
+        (float portraitBlockW, float _) = CampaignGridMath.BlockSize(
+            CampaignProgress.TierSize, 8, BaseHexW, BaseHexH, BaseHexGap);
+        float fit = Mathf.Clamp(available / portraitBlockW, 0.1f, 1f);
+        _hexW = BaseHexW * fit;
+        _hexH = BaseHexH * fit;
+        _hexGap = BaseHexGap * fit;
 
-        AnchorLeft = 0.5f; AnchorRight = 0.5f; AnchorTop = 0.5f; AnchorBottom = 0.5f;
-        OffsetLeft = -panelW * 0.5f; OffsetRight = panelW * 0.5f;
-        OffsetTop = -panelH * 0.5f; OffsetBottom = panelH * 0.5f;
-        GrowHorizontal = GrowDirection.Both;
-        GrowVertical = GrowDirection.Both;
+        // Fill the whole viewport. The campaign ladder is a SCROLLING
+        // surface, not a fixed dialog: unlike the landing / play-config
+        // panels (which FitPanels shrinks to fit), this one fills the
+        // viewport and scrolls the overflow — so it is deliberately NOT in
+        // the ScaleToFit set. Anchors let Godot re-solve width/height on
+        // every resize; an orientation flip rebuilds it (8 ↔ 16 columns).
+        AnchorLeft = 0f; AnchorTop = 0f; AnchorRight = 1f; AnchorBottom = 1f;
 
-        BuildHeader(panelW, pad);
-        BuildScrollingTiers(panelW, panelH, pad);
+        BuildHeader();
+        BuildScrollingTiers();
 
         Log.Debug(Log.LogCategory.Campaign,
             $"CampaignPanel: built ({(portrait ? "portrait" : "landscape")}, {_columns} columns, " +
-            $"design {panelW}x{panelH})");
+            $"fit {fit:0.00}, hex {_hexW:0}×{_hexH:0}, viewport-filling)");
     }
 
-    private void BuildHeader(float panelW, float pad)
+    private void BuildHeader()
     {
         var backButton = new Button { Text = "← Campaign", Flat = true };
         backButton.AddThemeFontOverride("font", SerifFont);
         backButton.AddThemeFontSizeOverride("font_size", 34);
-        backButton.Position = new Vector2(pad - 8f, 22f);
-        backButton.Size = new Vector2(280f, 48f);
+        backButton.AnchorLeft = 0f; backButton.AnchorTop = 0f;
+        backButton.OffsetLeft = Pad - 8f; backButton.OffsetTop = 22f;
+        backButton.OffsetRight = Pad - 8f + 280f; backButton.OffsetBottom = 22f + 48f;
         backButton.Alignment = HorizontalAlignment.Left;
         backButton.Pressed += () => BackPressed?.Invoke();
         AudioBus.AttachClick(backButton);
         AddChild(backButton);
 
+        // Top-right, pinned to the right edge so it tracks viewport width.
         _totalStat = new Label
         {
             HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Center,
-            Position = new Vector2(panelW - pad - 240f, 22f),
-            Size = new Vector2(240f, 48f),
+            AnchorLeft = 1f, AnchorRight = 1f, AnchorTop = 0f, AnchorBottom = 0f,
+            OffsetLeft = -Pad - 260f, OffsetRight = -Pad,
+            OffsetTop = 22f, OffsetBottom = 22f + 48f,
         };
         _totalStat.AddThemeColorOverride("font_color", UiPalette.InkSoft);
         _totalStat.AddThemeFontSizeOverride("font_size", 22);
         AddChild(_totalStat);
 
-        // Thin total-progress bar: bordered track + proportional fill.
-        _progressTrackWidth = panelW - pad * 2f - 2f;
+        // Thin full-width progress bar: bordered track spanning the inset
+        // width, with a fill whose right anchor = wins/256 (set in Refresh,
+        // so it scales with viewport width for free).
         var track = new Panel
         {
-            Position = new Vector2(pad, 78f),
-            Size = new Vector2(panelW - pad * 2f, 10f),
+            AnchorLeft = 0f, AnchorRight = 1f, AnchorTop = 0f, AnchorBottom = 0f,
+            OffsetLeft = Pad, OffsetRight = -Pad, OffsetTop = 78f, OffsetBottom = 88f,
         };
         var trackStyle = new StyleBoxFlat
         {
@@ -118,18 +139,22 @@ public partial class CampaignPanel : Panel
         _progressFill = new ColorRect
         {
             Color = WonFill,
-            Position = new Vector2(1f, 1f),
-            Size = new Vector2(0f, 8f),
+            AnchorLeft = 0f, AnchorRight = 0f, AnchorTop = 0f, AnchorBottom = 1f,
+            OffsetLeft = 1f, OffsetTop = 1f, OffsetBottom = -1f, OffsetRight = 0f,
         };
         track.AddChild(_progressFill);
     }
 
-    private void BuildScrollingTiers(float panelW, float panelH, float pad)
+    private void BuildScrollingTiers()
     {
+        // Fills the viewport below the header and scrolls vertically. The
+        // tier blocks render at full hex size, so the four of them overflow
+        // and the ScrollContainer pans (touch-drag on device).
         var scroll = new ScrollContainer
         {
-            Position = new Vector2(pad, 100f),
-            Size = new Vector2(panelW - pad * 2f, panelH - 100f - pad),
+            AnchorLeft = 0f, AnchorRight = 1f, AnchorTop = 0f, AnchorBottom = 1f,
+            OffsetLeft = Pad, OffsetRight = -Pad,
+            OffsetTop = HeaderHeight, OffsetBottom = -Pad,
             HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
         };
         AddChild(scroll);
@@ -137,6 +162,9 @@ public partial class CampaignPanel : Panel
         var column = new VBoxContainer
         {
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            // Ignore so a touch-drag starting in the column's gaps reaches
+            // the ScrollContainer instead of being swallowed.
+            MouseFilter = MouseFilterEnum.Ignore,
         };
         column.AddThemeConstantOverride("separation", 10);
         scroll.AddChild(column);
@@ -156,6 +184,9 @@ public partial class CampaignPanel : Panel
         {
             CustomMinimumSize = new Vector2(0f, 44f),
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            // Ignore so a touch-drag starting on a tier header scrolls the
+            // list (a Panel defaults to Stop and would eat the gesture).
+            MouseFilter = MouseFilterEnum.Ignore,
         };
         var style = new StyleBoxFlat
         {
@@ -208,8 +239,9 @@ public partial class CampaignPanel : Panel
         CampaignProgress progress = CampaignStore.Progress;
         int won = progress.WonCount;
         _totalStat.Text = $"{won} / {CampaignProgress.LevelCount} won";
-        _progressFill.Size = new Vector2(
-            _progressTrackWidth * won / CampaignProgress.LevelCount, 8f);
+        // Fill's right anchor = wins/256, so it scales with the track's
+        // (viewport-driven) width without recomputing a pixel width.
+        _progressFill.AnchorRight = (float)won / CampaignProgress.LevelCount;
         for (int tier = 0; tier < CampaignProgress.TierCount; tier++)
         {
             _tierStats[tier].Text =
@@ -230,9 +262,21 @@ public partial class CampaignPanel : Panel
     /// </summary>
     private partial class TierGrid : Control
     {
+        // A press that moves more than this (px) is a scroll drag, not a
+        // level tap — lets touch-drag scroll even when it starts on a hex.
+        private const float TapSlopPx = 12f;
+
         private readonly CampaignPanel _panel;
         private readonly int _tier;
         private readonly int _columns;
+        private Vector2 _pressLocal;
+        private Vector2 _pressGlobal;
+        private bool _pressed;
+
+        // Scaled hex geometry, read from the owning panel.
+        private float HexW => _panel._hexW;
+        private float HexH => _panel._hexH;
+        private float HexGap => _panel._hexGap;
 
         public TierGrid(CampaignPanel panel, int tier, int columns)
         {
@@ -243,14 +287,17 @@ public partial class CampaignPanel : Panel
                 CampaignProgress.TierSize, columns, HexW, HexH, HexGap);
             CustomMinimumSize = new Vector2(w, h);
             SizeFlagsHorizontal = SizeFlags.ShrinkCenter;
-            MouseFilter = MouseFilterEnum.Stop;
+            // Pass (not Stop): the parent ScrollContainer must still see the
+            // touch so a drag that starts on a hex scrolls. We never
+            // AcceptEvent, and only treat a near-stationary press as a tap.
+            MouseFilter = MouseFilterEnum.Pass;
         }
 
         public override void _Draw()
         {
             CampaignProgress progress = CampaignStore.Progress;
             Font font = GetThemeDefaultFont();
-            const int fontSize = 18;
+            int fontSize = Mathf.RoundToInt(18f * HexW / BaseHexW);
 
             for (int i = 0; i < CampaignProgress.TierSize; i++)
             {
@@ -287,18 +334,33 @@ public partial class CampaignPanel : Panel
 
         public override void _GuiInput(InputEvent @event)
         {
+            // Tap = press + release whose GLOBAL position barely moved. We
+            // compare global (not local) positions because a scroll drags
+            // the content under the finger, so the local point stays put
+            // even as the screen point travels — a local test would read a
+            // scroll as a tap. We never AcceptEvent, so a drag still reaches
+            // the ScrollContainer.
             if (@event is not InputEventMouseButton mb
-                || mb.ButtonIndex != MouseButton.Left
-                || !mb.Pressed)
+                || mb.ButtonIndex != MouseButton.Left)
             {
                 return;
             }
+            if (mb.Pressed)
+            {
+                _pressLocal = mb.Position;
+                _pressGlobal = mb.GlobalPosition;
+                _pressed = true;
+                return;
+            }
+            if (!_pressed) return;
+            _pressed = false;
+            if (mb.GlobalPosition.DistanceTo(_pressGlobal) > TapSlopPx) return; // scroll, not tap
+
             int? cell = CampaignGridMath.HitTest(
-                mb.Position.X, mb.Position.Y,
+                _pressLocal.X, _pressLocal.Y,
                 CampaignProgress.TierSize, _columns, HexW, HexH, HexGap);
             if (cell == null) return;
             int level = _tier * CampaignProgress.TierSize + cell.Value;
-            AcceptEvent();
             Log.Debug(Log.LogCategory.Campaign,
                 $"CampaignPanel: tapped level {CampaignProgress.LabelFor(level)} " +
                 $"({CampaignStore.Progress.StatusOf(level)})");
@@ -307,7 +369,7 @@ public partial class CampaignPanel : Panel
 
         /// <summary>Pointy-top hexagon vertices around a center — the
         /// same shape <see cref="CampaignGridMath.HitTest"/> tests.</summary>
-        private static Vector2[] HexPoints(float cx, float cy) => new[]
+        private Vector2[] HexPoints(float cx, float cy) => new[]
         {
             new Vector2(cx, cy - HexH / 2f),
             new Vector2(cx + HexW / 2f, cy - HexH / 4f),

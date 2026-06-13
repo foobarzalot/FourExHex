@@ -187,7 +187,9 @@ public partial class MainMenuScene : Control
         RebuildCampaignOnOrientationFlip(viewport);
         if (_landingPanel != null) ScaleToFit(_landingPanel, _landingDesignSize, viewport);
         if (_playConfigPanel != null) ScaleToFit(_playConfigPanel, _playConfigDesignSize, viewport);
-        if (_campaignPanel != null) ScaleToFit(_campaignPanel, _campaignPanel.DesignSize, viewport);
+        // The campaign panel is NOT scaled — it fills the viewport and
+        // scrolls (anchors re-solve on resize on their own; an orientation
+        // flip rebuilds it via RebuildCampaignOnOrientationFlip below).
     }
 
     /// <summary>Rebuild the campaign panel when a viewport resize flips the
@@ -829,7 +831,7 @@ public partial class MainMenuScene : Control
     {
         Vector2 viewportSize = GetViewportRect().Size;
         _campaignOrientation = ScreenLayout.Resolve(viewportSize.X, viewportSize.Y);
-        var panel = new CampaignPanel(_campaignOrientation) { Visible = false };
+        var panel = new CampaignPanel(_campaignOrientation, viewportSize) { Visible = false };
         panel.BackPressed += ShowLanding;
         panel.LevelTapped += OnCampaignLevelTapped;
         return panel;
