@@ -29,7 +29,6 @@ public partial class CampaignPanel : Panel
     private static readonly Color LostOutline = UiPalette.Accent;
     private static readonly Color UntriedOutline = UiPalette.Line;
     private static readonly Color UntriedInk = UiPalette.InkMute;
-    private static readonly Color NextUpOutline = UiPalette.Ink;
 
     private static readonly Font SerifFont =
         GD.Load<FontFile>("res://fonts/DMSerifDisplay-Regular.ttf");
@@ -250,7 +249,6 @@ public partial class CampaignPanel : Panel
         public override void _Draw()
         {
             CampaignProgress progress = CampaignStore.Progress;
-            int? nextUp = progress.NextUp;
             Font font = GetThemeDefaultFont();
             const int fontSize = 18;
 
@@ -260,20 +258,17 @@ public partial class CampaignPanel : Panel
                 (float cx, float cy) = CampaignGridMath.CellCenter(
                     i, _columns, HexW, HexH, HexGap);
 
-                CampaignLevelStatus status = progress.StatusOf(level);
-                bool isNextUp = level == nextUp;
-                (Color fill, Color outline, Color ink, float outlineWidth) = status switch
+                // No "next up" treatment: the design handoff had a thick
+                // outline on the lowest unbeaten level, but it masked the
+                // lost state of that very hex and read as confusing —
+                // status alone drives the styling now.
+                (Color fill, Color outline, Color ink, float outlineWidth) =
+                    progress.StatusOf(level) switch
                 {
                     CampaignLevelStatus.Won => (WonFill, WonFill, UiPalette.Ink, 1.5f),
                     CampaignLevelStatus.Lost => (CellFill, LostOutline, LostOutline, 1.5f),
                     _ => (CellFill, UntriedOutline, UntriedInk, 1.5f),
                 };
-                if (isNextUp && status != CampaignLevelStatus.Won)
-                {
-                    // "Next up" overrides lost/untried styling: thick
-                    // bright outline, bright number.
-                    (outline, ink, outlineWidth) = (NextUpOutline, UiPalette.Ink, 3f);
-                }
 
                 Vector2[] points = HexPoints(cx, cy);
                 DrawColoredPolygon(points, fill);

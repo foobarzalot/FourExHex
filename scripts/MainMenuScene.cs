@@ -837,10 +837,53 @@ public partial class MainMenuScene : Control
         Log.Info(Log.LogCategory.Campaign, "MainMenu: campaign screen opened");
     }
 
+    /// <summary>Tap on a campaign hex: open the confirmation sheet
+    /// (level number, tier, current status, Play / Cancel). A fresh
+    /// modal per tap — content is level-specific and the modal family
+    /// builds its UI once in _Ready.</summary>
     private void OnCampaignLevelTapped(int level)
     {
-        // Confirmation sheet + launch land in the next milestone; the
-        // tap itself is already logged by the grid.
+        string status = CampaignStore.Progress.StatusOf(level) switch
+        {
+            CampaignLevelStatus.Won => "Already won — replaying can't lose it.",
+            CampaignLevelStatus.Lost => "Attempted, not yet won.",
+            _ => "Not yet attempted.",
+        };
+        var sheet = new ConfirmModal(
+            $"Level {CampaignProgress.LabelFor(level)}",
+            $"{CampaignProgress.DifficultyForLevel(level)} tier · {status}",
+            "Play");
+        sheet.Confirmed += () => LaunchCampaignLevel(level);
+        sheet.Canceled += sheet.QueueFree;
+        AddChild(sheet);
+        sheet.Open();
+    }
+
+    /// <summary>Launch a campaign level: pin the master seed (identity:
+    /// seed = level), lock the roster to 1 Human + 5 Computer with the
+    /// human's handicap set to the tier difficulty (AIs stay Soldier),
+    /// mark the level attempted (Untried → Lost until won — abandon and
+    /// crash safe), and swap to the game scene.</summary>
+    private void LaunchCampaignLevel(int level)
+    {
+        GameSettings.CampaignLevel = level;
+        GameSettings.MasterSeed = CampaignProgress.SeedForLevel(level);
+        for (int i = 0; i < GameSettings.PlayerKinds.Length; i++)
+        {
+            GameSettings.PlayerKinds[i] = i == 0 ? PlayerKind.Human : PlayerKind.Computer;
+            GameSettings.Difficulties[i] = i == 0
+                ? CampaignProgress.DifficultyForLevel(level)
+                : Difficulty.Soldier;
+        }
+        // A stale starting-map handoff from an earlier Load/Play flow
+        // would override procedural generation — campaign maps are
+        // always seed-generated.
+        LoadRequest.Pending = null;
+        CampaignStore.MarkAttempted(level);
+        Log.Info(Log.LogCategory.Campaign,
+            $"MainMenu: launching campaign level {CampaignProgress.LabelFor(level)} " +
+            $"(seed {GameSettings.MasterSeed}, human difficulty {GameSettings.Difficulties[0]})");
+        GetTree().ChangeSceneToFile("res://scenes/main.tscn");
     }
 
     private void ShowLanding()
