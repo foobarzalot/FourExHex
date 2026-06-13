@@ -28,6 +28,7 @@ namespace FourExHex.Model;
     WriteIndented = true,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 [JsonSerializable(typeof(SaveData))]
+[JsonSerializable(typeof(CampaignData))]
 public partial class FourExHexJsonContext : JsonSerializerContext
 {
 }
