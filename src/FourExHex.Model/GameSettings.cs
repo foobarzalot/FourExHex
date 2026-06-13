@@ -67,4 +67,15 @@ public static class GameSettings
     /// which skips the menu entirely).
     /// </summary>
     public static int? MasterSeed = null;
+
+    /// <summary>
+    /// Campaign level index (0..255) when the next game is a campaign
+    /// launch (issue #2), null for freeform games. Written by the
+    /// campaign screen alongside <see cref="MasterSeed"/> (identity
+    /// mapping: seed = level); cleared by the freeform Start Game path
+    /// so ordinary games never record campaign results. <c>Main</c>
+    /// reads it to wire the win/loss bookkeeping and the campaign
+    /// variant of the victory overlay.
+    /// </summary>
+    public static int? CampaignLevel = null;
 }

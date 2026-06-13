@@ -611,4 +611,47 @@ public class SaveSerializerTests
 
         Assert.Null(loaded.Replay);
     }
+
+    [Fact]
+    public void Serialize_RoundTripPreservesCampaignLevel()
+    {
+        // v8: a campaign game's level index rides along in the save so a
+        // resumed autosave still knows which campaign hex it is (issue #2).
+        (GameState state, IReadOnlyList<Player> players) = BuildRichState();
+
+        string json = SaveSerializer.Serialize(state, 42, players, "s", 100,
+            campaignLevel: 79);
+        LoadedSave loaded = SaveSerializer.Deserialize(json);
+
+        Assert.Equal(79, loaded.CampaignLevel);
+    }
+
+    [Fact]
+    public void Serialize_FreeformGame_OmitsCampaignLevelAndLoadsNull()
+    {
+        // Non-campaign saves must not carry the field at all (skip-nulls
+        // keeps the JSON clean) and must load with CampaignLevel = null.
+        (GameState state, IReadOnlyList<Player> players) = BuildRichState();
+
+        string json = SaveSerializer.Serialize(state, 42, players, "s", 100);
+        LoadedSave loaded = SaveSerializer.Deserialize(json);
+
+        Assert.DoesNotContain("CampaignLevel", json);
+        Assert.Null(loaded.CampaignLevel);
+    }
+
+    [Fact]
+    public void Deserialize_V7SaveWithoutCampaignField_LoadsNullCampaignLevel()
+    {
+        // Saves written before the v8 CampaignLevel addition must keep
+        // loading, with the field defaulting to null.
+        (GameState state, IReadOnlyList<Player> players) = BuildRichState();
+        string json = SaveSerializer.Serialize(state, 42, players, "s", 100)
+            .Replace($"\"FormatVersion\": {SaveSerializer.CurrentFormatVersion}",
+                "\"FormatVersion\": 7");
+
+        LoadedSave loaded = SaveSerializer.Deserialize(json);
+
+        Assert.Null(loaded.CampaignLevel);
+    }
 }

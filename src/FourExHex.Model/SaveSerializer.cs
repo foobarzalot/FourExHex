@@ -50,6 +50,14 @@ public sealed class LoadedSave
     /// </summary>
     public Replay? Replay { get; }
 
+    /// <summary>
+    /// Campaign level index (0..255) this game was launched from, or
+    /// null for freeform games and pre-v8 saves. Restored into
+    /// <see cref="GameSettings.CampaignLevel"/> on load so resuming an
+    /// autosaved campaign game can still record a win (issue #2).
+    /// </summary>
+    public int? CampaignLevel { get; }
+
     public LoadedSave(
         GameState state,
         IReadOnlyList<Player> players,
@@ -59,7 +67,8 @@ public sealed class LoadedSave
         string? originMapName = null,
         IReadOnlyDictionary<PlayerId, int>? claimVictoryPromptedHighestThreshold = null,
         Tutorial? tutorial = null,
-        Replay? replay = null)
+        Replay? replay = null,
+        int? campaignLevel = null)
     {
         State = state;
         Players = players;
@@ -71,6 +80,7 @@ public sealed class LoadedSave
             ?? new Dictionary<PlayerId, int>();
         Tutorial = tutorial;
         Replay = replay;
+        CampaignLevel = campaignLevel;
     }
 }
 
@@ -95,7 +105,7 @@ public static class SaveSerializer
     /// Bump on any breaking schema change. <see cref="Deserialize"/>
     /// rejects mismatched values rather than attempting migration.
     /// </summary>
-    public const int CurrentFormatVersion = 7;
+    public const int CurrentFormatVersion = 8;
 
     public static string Serialize(
         GameState state,
@@ -106,13 +116,15 @@ public static class SaveSerializer
         string? originMapName = null,
         IReadOnlyDictionary<PlayerId, int>? claimVictoryPromptedHighestThreshold = null,
         Tutorial? tutorial = null,
-        Replay? replay = null)
+        Replay? replay = null,
+        int? campaignLevel = null)
         => SerializeInternal(
             state, masterSeed, players, slotName, maxTurnNumber,
             includeKind: true, originMapName: originMapName,
             claimVictoryPromptedHighestThreshold: claimVictoryPromptedHighestThreshold,
             tutorial: tutorial,
-            replay: replay);
+            replay: replay,
+            campaignLevel: campaignLevel);
 
     /// <summary>
     /// Serialize a starting map — same JSON format as <see cref="Serialize"/>,
@@ -132,7 +144,8 @@ public static class SaveSerializer
             maxTurnNumber: int.MaxValue, includeKind: false,
             originMapName: null, claimVictoryPromptedHighestThreshold: null,
             tutorial: tutorial,
-            replay: null);
+            replay: null,
+            campaignLevel: null);
 
     private static string SerializeInternal(
         GameState state,
@@ -144,7 +157,8 @@ public static class SaveSerializer
         string? originMapName,
         IReadOnlyDictionary<PlayerId, int>? claimVictoryPromptedHighestThreshold,
         Tutorial? tutorial,
-        Replay? replay)
+        Replay? replay,
+        int? campaignLevel)
     {
         var data = new SaveData
         {
@@ -171,6 +185,7 @@ public static class SaveSerializer
             // a tutorial, write that Replay block. Otherwise honor an
             // explicit `replay` arg (regular in-progress saves).
             Replay = SerializeReplay(tutorial?.Replay ?? replay),
+            CampaignLevel = campaignLevel,
         };
         // Source-gen path (FourExHexJsonContext) so this works under iOS AOT,
         // where reflection-based serialization is disabled. The context's
@@ -207,7 +222,7 @@ public static class SaveSerializer
         {
             throw new InvalidOperationException("Save file is empty or malformed.");
         }
-        // Accept v2..v6. v2 predates the Tutorial block; v3 predates the
+        // Accept v2..v8. v2 predates the Tutorial block; v3 predates the
         // Replay block; v4 keyed claim-victory by color hex and threw on
         // an owner not in the roster. v5 keys claim-victory by player
         // index and encodes "no owner" as OwnerIndex -1. v6 renamed the
@@ -215,6 +230,9 @@ public static class SaveSerializer
         // Recruit/Soldier/Captain/Commander); pre-v6 level names still
         // load via ParseUnitLevel. Older files also load their
         // claim-victory data via the legacy color-hex path below.
+        // v7 added per-player Difficulty; v8 added the optional
+        // CampaignLevel pointer (issue #2) — both default-absent, so
+        // pre-bump files load unchanged.
         if (data.FormatVersion is < 2 or > CurrentFormatVersion)
         {
             throw new InvalidOperationException(
@@ -273,7 +291,8 @@ public static class SaveSerializer
             originMapName: data.OriginMapName,
             claimVictoryPromptedHighestThreshold: prompted,
             tutorial: tutorial,
-            replay: replay);
+            replay: replay,
+            campaignLevel: data.CampaignLevel);
     }
 
     /// <summary>
@@ -886,6 +905,13 @@ public sealed class SaveData
     /// data. Starting maps and tutorials never include it.
     /// </summary>
     public ReplayDto? Replay { get; set; }
+
+    /// <summary>
+    /// v8: campaign level index (0..255) for games launched from the
+    /// campaign screen (issue #2). Null/missing for freeform games and
+    /// all pre-v8 saves.
+    /// </summary>
+    public int? CampaignLevel { get; set; }
 }
 
 public sealed class PlayerDto

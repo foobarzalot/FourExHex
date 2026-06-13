@@ -1147,6 +1147,10 @@ public partial class MainMenuScene : Control
 
     private void OnStartPressed()
     {
+        // Freeform games never record campaign results — clear any
+        // leftover campaign context from a prior launch (issue #2).
+        GameSettings.CampaignLevel = null;
+
         // Persist the dropdown selections — kinds and per-slot difficulty
         // always come from this panel (saved maps don't carry per-color
         // roles). Difficulty is stored per-slot (issue #38) so mixed
