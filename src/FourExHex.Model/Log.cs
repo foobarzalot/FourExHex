@@ -40,6 +40,7 @@ public static class Log
         Hud = 7,      // HUD CTA / button-state transitions
         Undo = 8,     // undo/redo ↔ replay-beat bookkeeping coordinator
         Cheat = 9,    // debug cheat menu: attach/toggle/button presses
+        Campaign = 10, // campaign ladder (issue #2): store load/save, status marks, level launch, panel
     }
 
     /// <summary>Severity, ascending. <see cref="Off"/> disables a

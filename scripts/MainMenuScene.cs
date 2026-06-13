@@ -30,10 +30,14 @@ public partial class MainMenuScene : Control
 
     private Control? _landingPanel;
     private Control? _playConfigPanel;
+    private CampaignPanel? _campaignPanel;
     // Design (unscaled) sizes of the two panels, recorded at build time so
     // FitPanels can scale them down to fit a smaller-than-design viewport.
     private Vector2 _landingDesignSize;
     private Vector2 _playConfigDesignSize;
+    // Orientation the campaign panel was last built for; a resize that
+    // flips it rebuilds the panel 8 columns ↔ 16 columns (see FitPanels).
+    private ScreenOrientation _campaignOrientation = ScreenOrientation.Landscape;
     private SettingsPanel? _settingsPanel;
     private Button? _landingResumeButton;
     private Button? _landingPlayButton;
@@ -126,6 +130,9 @@ public partial class MainMenuScene : Control
         _playConfigPanel = BuildPlayConfigPanel();
         AddChild(_playConfigPanel);
 
+        _campaignPanel = BuildCampaignPanel();
+        AddChild(_campaignPanel);
+
         _settingsPanel = new SettingsPanel();
         AddChild(_settingsPanel);
 
@@ -162,8 +169,35 @@ public partial class MainMenuScene : Control
     {
         Vector2 viewport = GetViewportRect().Size;
         RebuildPlayConfigOnOrientationFlip(viewport);
+        RebuildCampaignOnOrientationFlip(viewport);
         if (_landingPanel != null) ScaleToFit(_landingPanel, _landingDesignSize, viewport);
         if (_playConfigPanel != null) ScaleToFit(_playConfigPanel, _playConfigDesignSize, viewport);
+        if (_campaignPanel != null) ScaleToFit(_campaignPanel, _campaignPanel.DesignSize, viewport);
+    }
+
+    /// <summary>Rebuild the campaign panel when a viewport resize flips the
+    /// orientation: the honeycomb reflows 8 columns (portrait) ↔ 16 columns
+    /// (landscape). All campaign state lives in CampaignStore, so a rebuild
+    /// loses nothing.</summary>
+    private void RebuildCampaignOnOrientationFlip(Vector2 viewport)
+    {
+        if (_campaignPanel == null) return;
+        ScreenOrientation next = ScreenLayout.Resolve(viewport.X, viewport.Y);
+        if (next == _campaignOrientation) return;
+        Log.Debug(Log.LogCategory.Campaign,
+            $"MainMenu: orientation flip {_campaignOrientation} -> {next}; rebuilding campaign panel");
+
+        bool wasVisible = _campaignPanel.Visible;
+        CampaignPanel old = _campaignPanel;
+        int treeIndex = old.GetIndex();
+        old.Visible = false;
+        old.QueueFree();
+
+        _campaignPanel = BuildCampaignPanel();
+        AddChild(_campaignPanel);
+        MoveChild(_campaignPanel, treeIndex);
+        _campaignPanel.Visible = wasVisible;
+        if (wasVisible) _campaignPanel.Refresh();
     }
 
     /// <summary>Rebuild the play-config panel when a viewport resize flips
@@ -230,10 +264,11 @@ public partial class MainMenuScene : Control
     private Control BuildLandingPanel()
     {
         const float panelW = 520f;
-        // 740f accommodates the tallest stack: Resume, Play, Play Tutorial,
-        // Load, Map Editor, Settings, and Exit (7 buttons; the Tutorial
-        // Builder entry moved to the debug-only cheat menu, issue #7).
-        const float panelH = 740f;
+        // 820f accommodates the tallest stack: Resume, Play, Campaign,
+        // Play Tutorial, Load, Map Editor, Settings, and Exit (8 buttons;
+        // the Tutorial Builder entry moved to the debug-only cheat menu,
+        // issue #7).
+        const float panelH = 820f;
         // Center-anchored so Godot re-solves the position on every window
         // resize (matches ModalChrome.BuildCenteredPanel). Children below
         // are laid out in the panel's local space against the fixed
@@ -305,12 +340,22 @@ public partial class MainMenuScene : Control
         AudioBus.AttachClick(_landingPlayButton);
         panel.AddChild(_landingPlayButton);
 
+        // Campaign ladder (issue #2): 256 fixed-seed levels with
+        // persistent progress. Sits right under Play Game — it's the
+        // long-horizon progression mode.
+        var campaignButton = new Button { Text = "Campaign" };
+        campaignButton.AddThemeFontSizeOverride("font_size", 26);
+        campaignButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 2);
+        campaignButton.Size = new Vector2(buttonW, buttonH);
+        campaignButton.Pressed += OnCampaignPressed;
+        AudioBus.AttachClick(campaignButton);
+        panel.AddChild(campaignButton);
+
         // The end-user-facing tutorial entry point (the authoring tool
-        // lives in the debug-only cheat menu). Sits just under Play
-        // Game so a new player finds it immediately.
+        // lives in the debug-only cheat menu).
         var playTutorialButton = new Button { Text = "Play Tutorial" };
         playTutorialButton.AddThemeFontSizeOverride("font_size", 26);
-        playTutorialButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 2);
+        playTutorialButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 3);
         playTutorialButton.Size = new Vector2(buttonW, buttonH);
         playTutorialButton.Pressed += OnPlayTutorialPressed;
         AudioBus.AttachClick(playTutorialButton);
@@ -318,7 +363,7 @@ public partial class MainMenuScene : Control
 
         _landingLoadButton = new Button { Text = "Load Game" };
         _landingLoadButton.AddThemeFontSizeOverride("font_size", 26);
-        _landingLoadButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 3);
+        _landingLoadButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 4);
         _landingLoadButton.Size = new Vector2(buttonW, buttonH);
         _landingLoadButton.Pressed += OnLoadPressed;
         AudioBus.AttachClick(_landingLoadButton);
@@ -329,7 +374,7 @@ public partial class MainMenuScene : Control
 
         var mapEditorButton = new Button { Text = "Map Editor" };
         mapEditorButton.AddThemeFontSizeOverride("font_size", 26);
-        mapEditorButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 4);
+        mapEditorButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 5);
         mapEditorButton.Size = new Vector2(buttonW, buttonH);
         mapEditorButton.Pressed += OnMapEditorPressed;
         AudioBus.AttachClick(mapEditorButton);
@@ -337,7 +382,7 @@ public partial class MainMenuScene : Control
 
         var settingsButton = new Button { Text = "Settings" };
         settingsButton.AddThemeFontSizeOverride("font_size", 26);
-        settingsButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 5);
+        settingsButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 6);
         settingsButton.Size = new Vector2(buttonW, buttonH);
         settingsButton.Pressed += OnSettingsPressed;
         AudioBus.AttachClick(settingsButton);
@@ -350,7 +395,7 @@ public partial class MainMenuScene : Control
         {
             var exitButton = new Button { Text = "Exit" };
             exitButton.AddThemeFontSizeOverride("font_size", 26);
-            exitButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 6);
+            exitButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 7);
             exitButton.Size = new Vector2(buttonW, buttonH);
             exitButton.Pressed += OnExitPressed;
             AudioBus.AttachClick(exitButton);
@@ -763,10 +808,46 @@ public partial class MainMenuScene : Control
         _startButton.Disabled = seedEmpty && !mapSelected;
     }
 
+    /// <summary>Build the campaign screen for the current orientation and
+    /// wire its navigation. Hidden until <see cref="ShowCampaign"/>.</summary>
+    private CampaignPanel BuildCampaignPanel()
+    {
+        Vector2 viewportSize = GetViewportRect().Size;
+        _campaignOrientation = ScreenLayout.Resolve(viewportSize.X, viewportSize.Y);
+        var panel = new CampaignPanel(_campaignOrientation) { Visible = false };
+        panel.BackPressed += ShowLanding;
+        panel.LevelTapped += OnCampaignLevelTapped;
+        return panel;
+    }
+
+    private void OnCampaignPressed()
+    {
+        ShowCampaign();
+    }
+
+    private void ShowCampaign()
+    {
+        if (_landingPanel != null) _landingPanel.Visible = false;
+        if (_playConfigPanel != null) _playConfigPanel.Visible = false;
+        if (_campaignPanel != null)
+        {
+            _campaignPanel.Refresh();
+            _campaignPanel.Visible = true;
+        }
+        Log.Info(Log.LogCategory.Campaign, "MainMenu: campaign screen opened");
+    }
+
+    private void OnCampaignLevelTapped(int level)
+    {
+        // Confirmation sheet + launch land in the next milestone; the
+        // tap itself is already logged by the grid.
+    }
+
     private void ShowLanding()
     {
         if (_landingPanel != null) _landingPanel.Visible = true;
         if (_playConfigPanel != null) _playConfigPanel.Visible = false;
+        if (_campaignPanel != null) _campaignPanel.Visible = false;
         // Re-check save-driven button states on every return to landing
         // so a save that landed in the meantime would unblock them. One
         // ListSlots() call drives both gates.
