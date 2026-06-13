@@ -46,6 +46,33 @@ public static class CampaignStore
         Save();
     }
 
+    /// <summary>
+    /// Configure <see cref="GameSettings"/> for a campaign launch and mark
+    /// the level attempted: master seed pinned to the level (identity
+    /// mapping), roster locked to 1 Human + 5 Computer with the human's
+    /// handicap set to the tier difficulty (AIs stay Soldier), any stale
+    /// starting-map handoff cleared. Shared by the campaign screen's Play
+    /// button and the victory overlay's "Next unbeaten level" button; the
+    /// caller performs the scene change.
+    /// </summary>
+    public static void PrepareLaunch(int level)
+    {
+        GameSettings.CampaignLevel = level;
+        GameSettings.MasterSeed = CampaignProgress.SeedForLevel(level);
+        for (int i = 0; i < GameSettings.PlayerKinds.Length; i++)
+        {
+            GameSettings.PlayerKinds[i] = i == 0 ? PlayerKind.Human : PlayerKind.Computer;
+            GameSettings.Difficulties[i] = i == 0
+                ? CampaignProgress.DifficultyForLevel(level)
+                : Difficulty.Soldier;
+        }
+        LoadRequest.Pending = null;
+        MarkAttempted(level);
+        Log.Info(Log.LogCategory.Campaign,
+            $"CampaignStore: launching level {CampaignProgress.LabelFor(level)} " +
+            $"(seed {GameSettings.MasterSeed}, human difficulty {GameSettings.Difficulties[0]})");
+    }
+
     /// <summary>Mark a level won (terminal) and persist if anything
     /// changed. Called when the human wins a campaign game.</summary>
     public static void MarkWon(int level)

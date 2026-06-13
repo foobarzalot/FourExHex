@@ -36,10 +36,11 @@ public sealed class SaveStore
         int maxTurnNumber,
         string? originMapName = null,
         IReadOnlyDictionary<PlayerId, int>? claimVictoryPromptedHighestThreshold = null,
-        Replay? replay = null)
+        Replay? replay = null,
+        int? campaignLevel = null)
     {
         WriteSlot(AutosaveSlotName, state, masterSeed, players, maxTurnNumber,
-            originMapName, claimVictoryPromptedHighestThreshold, replay);
+            originMapName, claimVictoryPromptedHighestThreshold, replay, campaignLevel);
     }
 
     /// <summary>
@@ -56,10 +57,12 @@ public sealed class SaveStore
         int maxTurnNumber,
         string? originMapName = null,
         IReadOnlyDictionary<PlayerId, int>? claimVictoryPromptedHighestThreshold = null,
-        Replay? replay = null)
+        Replay? replay = null,
+        int? campaignLevel = null)
     {
         WriteSlotIn(SaveDirectory, slotName, state, masterSeed, players,
-            maxTurnNumber, originMapName, claimVictoryPromptedHighestThreshold, replay);
+            maxTurnNumber, originMapName, claimVictoryPromptedHighestThreshold, replay,
+            campaignLevel);
     }
 
     /// <summary>
@@ -111,7 +114,8 @@ public sealed class SaveStore
         int maxTurnNumber,
         string? originMapName,
         IReadOnlyDictionary<PlayerId, int>? claimVictoryPromptedHighestThreshold,
-        Replay? replay)
+        Replay? replay,
+        int? campaignLevel)
     {
         EnsureDirectory(directory);
         string sanitized = SanitizeSlotName(slotName);
@@ -119,7 +123,8 @@ public sealed class SaveStore
             state, masterSeed, players, sanitized, maxTurnNumber,
             originMapName, claimVictoryPromptedHighestThreshold,
             tutorial: null,
-            replay: replay);
+            replay: replay,
+            campaignLevel: campaignLevel);
         AtomicWrite(directory, sanitized, json);
     }
 

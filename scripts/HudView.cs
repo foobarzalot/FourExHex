@@ -364,6 +364,7 @@ public partial class HudView : OrientationHud, IHudView
         InitOrientation();
 
         BuildVictoryOverlay();
+        BuildCampaignVictoryOverlay();
         BuildDefeatOverlay();
         BuildClaimVictoryOverlay();
         PositionEndgameOverlays();
@@ -1306,6 +1307,63 @@ public partial class HudView : OrientationHud, IHudView
         if (_replayButton != null) _replayButton.Disabled = !available;
     }
 
+    // ---- Campaign victory (issue #2) ----------------------------------
+    // Main-facing like NewGameClicked / MainMenuClicked — not part of the
+    // controller's IHudView contract, so GameController stays untouched.
+
+    public event Action? CampaignNextLevelClicked;
+    public event Action? CampaignBackClicked;
+
+    /// <summary>Campaign level this game was launched from, or null for
+    /// freeform games. Set by <see cref="Main"/> at startup; selects the
+    /// campaign variant of the victory overlay when the human wins.</summary>
+    private int? _campaignLevel;
+    private Control _campaignVictoryOverlay = null!;
+    private Label _campaignVictoryLabel = null!;
+    private Label _campaignVictorySubtitle = null!;
+    private Button _campaignNextButton = null!;
+
+    public void SetCampaignLevel(int level) => _campaignLevel = level;
+
+    /// <summary>
+    /// Build the campaign variant of the victory overlay: "Level XX — won"
+    /// with the updated campaign total, and Next unbeaten level / Back to
+    /// campaign buttons. Shown by <see cref="Refresh"/> instead of the
+    /// standard victory overlay when a campaign game ends with the human
+    /// winning (an AI win shows the standard overlay — the level stays
+    /// marked lost from launch).
+    /// </summary>
+    private void BuildCampaignVictoryOverlay()
+    {
+        (Control overlay, Label title, Button[] buttons) = BuildEndgameOverlay(
+            eyebrowText: "CAMPAIGN",
+            titleText: "Level won",
+            titleFontSize: 52,
+            designWidth: 620f,
+            buttonMinWidth: 180f,
+            buttonSpecs: new (string, Action)[]
+            {
+                ("Next unbeaten level", () => CampaignNextLevelClicked?.Invoke()),
+                ("Back to campaign", () => CampaignBackClicked?.Invoke()),
+            });
+        _campaignVictoryOverlay = overlay;
+        _campaignVictoryLabel = title;
+        _campaignNextButton = buttons[0];
+
+        // Campaign-total subtitle slotted between the title and the gold
+        // rule (BuildEndgameOverlay's vbox: eyebrow, title, rule, buttons).
+        _campaignVictorySubtitle = new Label
+        {
+            HorizontalAlignment = HorizontalAlignment.Center,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+        };
+        _campaignVictorySubtitle.AddThemeFontSizeOverride("font_size", 22);
+        _campaignVictorySubtitle.AddThemeColorOverride("font_color", UiPalette.InkSoft);
+        Node vbox = title.GetParent();
+        vbox.AddChild(_campaignVictorySubtitle);
+        vbox.MoveChild(_campaignVictorySubtitle, title.GetIndex() + 1);
+    }
+
     /// <summary>
     /// Build the defeat overlay: "<Player> defeated" with Continue / Play
     /// Again / Main Menu buttons. Hidden by default; <see cref="Refresh"/>
@@ -1778,14 +1836,37 @@ public partial class HudView : OrientationHud, IHudView
             PlayerId winId = session.Winner.Value;
             Player? winner = state.Turns.Players
                 .FirstOrDefault(p => p.Id == winId);
-            string name = winner?.Name ?? "Unknown";
-            _victoryLabel.Text = $"{name} wins!";
-            _victoryLabel.AddThemeColorOverride("font_color", PlayerPalette.ColorFor(winId));
-            _victoryOverlay.Visible = true;
+            if (_campaignLevel is int level && winner?.Kind == PlayerKind.Human)
+            {
+                // Campaign win: level result + updated ladder total. The
+                // store is already updated (Main marks the win on
+                // GameEnded, before this Refresh runs).
+                CampaignProgress progress = CampaignStore.Progress;
+                _campaignVictoryLabel.Text =
+                    $"Level {CampaignProgress.LabelFor(level)} — won";
+                _campaignVictorySubtitle.Text =
+                    $"{progress.WonCount} / {CampaignProgress.LevelCount} won";
+                // All 256 won: nothing left for "Next unbeaten level".
+                _campaignNextButton.Visible = progress.NextUp != null;
+                _campaignVictoryOverlay.Visible = true;
+                _victoryOverlay.Visible = false;
+                Log.Debug(Log.LogCategory.Campaign,
+                    $"HudView: campaign victory overlay shown for level " +
+                    $"{CampaignProgress.LabelFor(level)} ({progress.WonCount} won)");
+            }
+            else
+            {
+                string name = winner?.Name ?? "Unknown";
+                _victoryLabel.Text = $"{name} wins!";
+                _victoryLabel.AddThemeColorOverride("font_color", PlayerPalette.ColorFor(winId));
+                _victoryOverlay.Visible = true;
+                _campaignVictoryOverlay.Visible = false;
+            }
         }
         else
         {
             _victoryOverlay.Visible = false;
+            _campaignVictoryOverlay.Visible = false;
         }
 
         // Defeat overlay: show iff a human just lost their last capital

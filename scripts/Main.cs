@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Godot;
 
 /// <summary>
@@ -23,6 +24,11 @@ public partial class Main : Node2D
     /// resumed game can keep showing "Map: foo" in the bottom-left.
     /// </summary>
     private string? _originMapName;
+    /// <summary>Campaign level (issue #2) this game plays, or null for
+    /// freeform games. Read from GameSettings / the loaded save in _Ready;
+    /// drives the win-recording GameEnded hook, the campaign victory
+    /// overlay, and the CampaignLevel field of every save written.</summary>
+    private int? _campaignLevel;
     private SaveNameModal? _saveModal;
     private SlotPickerDialog? _loadDialog;
     // True between "user picked a slot" and the deferred scene swap —
@@ -182,6 +188,26 @@ public partial class Main : Node2D
         // play scene can do the right thing for each case.
         bool isStartingMap = pendingLoad != null && pendingLoad.State.Turns.TurnNumber == 0;
 
+        // Campaign pointer (issue #2). A fresh menu launch arrives with
+        // GameSettings.CampaignLevel already set (campaign screen) or
+        // cleared (freeform Start Game). Loads override it from the save:
+        // a resumed campaign autosave restores its level so the win still
+        // counts; a freeform save (null in the file) clears any leftover.
+        // Starting-map and diagnostic games are never campaign games.
+        if (pendingLoad != null || diagnosticMode)
+        {
+            GameSettings.CampaignLevel = (isStartingMap || diagnosticMode)
+                ? null
+                : pendingLoad!.CampaignLevel;
+        }
+        _campaignLevel = GameSettings.CampaignLevel;
+        if (_campaignLevel is int campaignLvl)
+        {
+            Log.Info(Log.LogCategory.Campaign,
+                $"Main: campaign game for level {CampaignProgress.LabelFor(campaignLvl)}" +
+                (pendingLoad != null ? " (resumed from save)" : ""));
+        }
+
         if (pendingLoad != null && !isStartingMap)
         {
             // Resume in-progress save: state, players, seed, max-turn cap
@@ -276,6 +302,19 @@ public partial class Main : Node2D
             visibleHud.NewGameClicked += RestartCurrentGame;
             visibleHud.MainMenuClicked += AbandonAndReturnToMenu;
 
+            // Campaign games swap the victory overlay for the campaign
+            // variant ("Level XX — won", Next unbeaten / Back to campaign).
+            if (_campaignLevel is int hudCampaignLevel)
+            {
+                visibleHud.SetCampaignLevel(hudCampaignLevel);
+                visibleHud.CampaignBackClicked += () =>
+                {
+                    MainMenuScene.OpenCampaignOnArrival = true;
+                    AbandonAndReturnToMenu();
+                };
+                visibleHud.CampaignNextLevelClicked += LaunchNextUnbeatenCampaignLevel;
+            }
+
             // ESC and the Pause HUD button both raise EscRequested.
             // The pause modal lives at the scene root so its options
             // can reach the controller / scene tree directly, and the
@@ -353,6 +392,11 @@ public partial class Main : Node2D
             hud.ReplayClicked += () => _controller.BeginReplay();
             _controller.GameEnded += () =>
                 hud.SetReplayAvailable(_controller.ReplayDataIsCompleteFromStart);
+            // Campaign result (issue #2): record before the controller's
+            // trailing RefreshViews paints the overlay, so the campaign
+            // victory screen reads updated totals. Subscribed after the
+            // replay hook; both run synchronously on GameEnded.
+            _controller.GameEnded += OnGameEndedRecordCampaignResult;
         }
 
         if (diagnosticMode)
@@ -430,6 +474,48 @@ public partial class Main : Node2D
     }
 
     /// <summary>
+    /// GameEnded hook for campaign games (issue #2): if the human won,
+    /// flip the level to Won (terminal) and persist. Any other outcome —
+    /// AI winner, turn-cap stasis — leaves the mark-at-launch Lost status
+    /// standing. No-op for freeform games (_campaignLevel null). BeginReplay
+    /// re-fires GameEnded at the end of playback; MarkWon is idempotent so
+    /// the re-run is harmless.
+    /// </summary>
+    private void OnGameEndedRecordCampaignResult()
+    {
+        if (_campaignLevel is not int level) return;
+        Player? winner = _session.Winner.HasValue
+            ? _players.FirstOrDefault(p => p.Id == _session.Winner.Value)
+            : null;
+        if (winner?.Kind == PlayerKind.Human)
+        {
+            CampaignStore.MarkWon(level);
+        }
+        else
+        {
+            Log.Info(Log.LogCategory.Campaign,
+                $"Main: campaign level {CampaignProgress.LabelFor(level)} ended " +
+                $"without a human win (winner: {winner?.Name ?? "none"}) — stays " +
+                $"{CampaignStore.Progress.StatusOf(level)}");
+        }
+    }
+
+    /// <summary>
+    /// "Next unbeaten level" on the campaign victory overlay: launch the
+    /// lowest non-won level via the shared campaign launch path. Hidden by
+    /// HudView when everything is won, so the null check is defensive.
+    /// </summary>
+    private void LaunchNextUnbeatenCampaignLevel()
+    {
+        if (CampaignStore.Progress.NextUp is not int next) return;
+        // Same teardown rationale as AbandonAndReturnToMenu: drop any
+        // in-flight AI step before swapping scenes.
+        _controller?.AbandonGame();
+        CampaignStore.PrepareLaunch(next);
+        GetTree().ChangeSceneToFile("res://scenes/main.tscn");
+    }
+
+    /// <summary>
     /// Drop any pending AI step before tearing down the scene so an in-
     /// flight SceneTreeTimer can't fire StepAiExecute against disposed
     /// Polygon2D nodes after the swap, then return to the main menu.
@@ -453,7 +539,8 @@ public partial class Main : Node2D
         {
             _saveStore.WriteAutosave(_state, _controller.MasterSeed, _players,
                 _maxTurnNumber, _originMapName, _session.ClaimVictoryPromptedHighestThreshold,
-                replay: BuildReplaySnapshot());
+                replay: BuildReplaySnapshot(),
+                campaignLevel: _campaignLevel);
         }
         catch (System.Exception ex)
         {
@@ -508,7 +595,8 @@ public partial class Main : Node2D
         {
             _saveStore.WriteSlot(name, _state, _controller.MasterSeed, _players,
                 _maxTurnNumber, _originMapName, _session.ClaimVictoryPromptedHighestThreshold,
-                replay: BuildReplaySnapshot());
+                replay: BuildReplaySnapshot(),
+                campaignLevel: _campaignLevel);
         }
         catch (System.Exception ex)
         {

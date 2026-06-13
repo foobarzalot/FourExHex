@@ -20,6 +20,13 @@ public partial class MainMenuScene : Control
     private const int SeedMin = 1;
     private const int SeedMax = 9999;
 
+    /// <summary>One-shot handoff: when true, the menu opens straight to
+    /// the campaign screen instead of the landing page (set by
+    /// <see cref="Main"/>'s "Back to campaign" path so the player returns
+    /// to the refreshed ladder, not the landing buttons). Mirrors the
+    /// <see cref="LoadRequest.Pending"/> cross-scene handoff pattern.</summary>
+    public static bool OpenCampaignOnArrival;
+
     private readonly OptionButton[] _roleButtons = new OptionButton[GameSettings.PlayerConfig.Length];
     private readonly OptionButton[] _difficultyButtons = new OptionButton[GameSettings.PlayerConfig.Length];
     private static readonly Font SerifFont =
@@ -139,7 +146,15 @@ public partial class MainMenuScene : Control
         BuildLoadDialog();
         BuildQuitConfirmDialog();
 
-        ShowLanding();
+        if (OpenCampaignOnArrival)
+        {
+            OpenCampaignOnArrival = false;
+            ShowCampaign();
+        }
+        else
+        {
+            ShowLanding();
+        }
 
         // Shrink the fixed-size panels to fit windows shorter/narrower than
         // their design size (e.g. 720p), and keep fitting them on resize.
@@ -859,30 +874,12 @@ public partial class MainMenuScene : Control
         sheet.Open();
     }
 
-    /// <summary>Launch a campaign level: pin the master seed (identity:
-    /// seed = level), lock the roster to 1 Human + 5 Computer with the
-    /// human's handicap set to the tier difficulty (AIs stay Soldier),
-    /// mark the level attempted (Untried → Lost until won — abandon and
-    /// crash safe), and swap to the game scene.</summary>
+    /// <summary>Launch a campaign level: <see cref="CampaignStore.PrepareLaunch"/>
+    /// pins the seed, locks the roster, and marks the level attempted
+    /// (Untried → Lost until won — abandon and crash safe).</summary>
     private void LaunchCampaignLevel(int level)
     {
-        GameSettings.CampaignLevel = level;
-        GameSettings.MasterSeed = CampaignProgress.SeedForLevel(level);
-        for (int i = 0; i < GameSettings.PlayerKinds.Length; i++)
-        {
-            GameSettings.PlayerKinds[i] = i == 0 ? PlayerKind.Human : PlayerKind.Computer;
-            GameSettings.Difficulties[i] = i == 0
-                ? CampaignProgress.DifficultyForLevel(level)
-                : Difficulty.Soldier;
-        }
-        // A stale starting-map handoff from an earlier Load/Play flow
-        // would override procedural generation — campaign maps are
-        // always seed-generated.
-        LoadRequest.Pending = null;
-        CampaignStore.MarkAttempted(level);
-        Log.Info(Log.LogCategory.Campaign,
-            $"MainMenu: launching campaign level {CampaignProgress.LabelFor(level)} " +
-            $"(seed {GameSettings.MasterSeed}, human difficulty {GameSettings.Difficulties[0]})");
+        CampaignStore.PrepareLaunch(level);
         GetTree().ChangeSceneToFile("res://scenes/main.tscn");
     }
 
