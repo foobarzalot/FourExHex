@@ -48,7 +48,11 @@ Model → Controller → game (with the test project alongside):
   HUD-panel sizing: width clamped to the viewport, height grown to fit
   wrapped text — tutorial box, bankruptcy toast, endgame overlays),
   `KeyboardAvoidance` (panel lift so a focused text field clears the
-  mobile on-screen keyboard — see "Mobile keyboard avoidance" below), and
+  mobile on-screen keyboard — see "Mobile keyboard avoidance" below),
+  `MultiTouchTapDetector` (3-finger-tap recognition for the debug
+  cheat menu — fires once when the third concurrent touch lands,
+  re-arms only after all touches lift; no floats, but lives here
+  because it's view-input logic that must stay unit-testable), and
   the fractional cube-rounding helper `HexRounding.Round(float, float)`. The
   pressure-relief valve for the no-floats rule in Model + Controller
   (see "No floating-point in Model or Controller" below).
@@ -2324,8 +2328,7 @@ the same guard `MainMenuScene` uses for the settings panel.
 ### Quitting from the main menu (`ConfirmModal`)
 
 The landing page has an **Exit** button at the bottom of the button
-stack (placed after the debug-only Tutorial Builder via a `nextRow`
-counter so it lands correctly in both build flavors). Both the Exit
+stack (desktop builds only). Both the Exit
 button and Escape on the landing page route to `OnExitPressed`, which
 opens a quit-confirmation modal rather than calling `GetTree().Quit()`
 outright; the actual quit lives in `OnQuitConfirmed`, wired to the
@@ -2382,6 +2385,28 @@ and Preview submodes of the tutorial builder hide the
 `MapEditorHudView` and rely on the nested `HudView`'s own Options
 button (it raises `EscRequested` too, forwarded to the same
 `OpenEscMenu`).
+
+### Debug cheat menu (`CheatMenu`)
+
+`scripts/CheatMenu.cs` (issue #7) is a Debug-only button modal
+summonable over any screen: backquote on desktop, 3-finger tap on
+touch (recognized by `MultiTouchTapDetector` in ViewMath). The whole
+file is wrapped in `#if DEBUG`, and every scene root
+(`MainMenuScene`, `Main`, `MapEditorScene`, `TutorialBuilderScene`,
+`PlayTutorialScene`) calls `CheatMenu.Attach(this)` from `_Ready`
+inside its own `#if DEBUG` block — there is **no autoload
+registration**, so a Release build contains no listener, no menu,
+and no call sites (the formal Release-strip check is deferred to
+#6). `Attach` also runtime-guards on `OS.IsDebugBuild()`.
+
+The node itself is a thin input listener (`_Input`, not
+`_UnhandledInput`, so the summon gesture wins even over focused
+Controls — a deliberate dev-tool tradeoff) that owns a private
+`EscMenu` instance for the modal chrome. Current entries: **Tutorial
+Builder** (`ChangeSceneToFile` to the builder, no in-progress-game
+guard — it's a dev tool) and **Close**. Adding a cheat = adding an
+`EscMenu.Option` to the list in `Toggle`. Instrumented under
+`Log.LogCategory.Cheat` (attach / open / close / button presses).
 
 ## Map editor
 
@@ -3478,7 +3503,7 @@ It replaces the old `AiLog`.
   `Log.Warn` / `Error` always compile (genuine anomalies + the
   headless-run terminator survive). (2) Runtime: each
   `Log.LogCategory` (`Ai`, `Turn`, `Capture`, `Tutorial`, `Render`,
-  `Input`, `Display`, `Hud`, `Undo`) has an independent minimum
+  `Input`, `Display`, `Hud`, `Undo`, `Cheat`) has an independent minimum
   `Log.LogLevel`; a message emits only if its level ≥ the category
   threshold.
 - **Default is silent.** Every category defaults to `Off`, so normal
@@ -3549,8 +3574,8 @@ grouping label; the per-file project is per the lists above.
 ```
 scripts/  (split: see the three source trees listed just above)
 ├─ Main.cs                ─ play scene root; wires model + views + controller
-├─ MainMenuScene.cs       ─ landing (Play / Play Tutorial / Load /
-│                           Map Editor + debug-only Tutorial Builder +
+├─ MainMenuScene.cs       ─ landing (Resume / Play / Play Tutorial /
+│                           Load / Map Editor / Settings + desktop-only
 │                           Exit) + play-config panels; Load Game modal;
 │                           instantiates SettingsPanel as a modal
 │                           overlay; Exit / landing-Escape open a
@@ -3591,7 +3616,13 @@ scripts/  (split: see the three source trees listed just above)
 │                           Closed) so the pause coordinator can
 │                           distinguish "user backed out" from button
 │                           clicks. Used by Main, MapEditorScene,
-│                           TutorialBuilderScene
+│                           TutorialBuilderScene, CheatMenu
+├─ CheatMenu.cs           ─ Debug-only cheat menu (#if DEBUG; thin
+│                           input listener owning an EscMenu modal);
+│                           backquote / 3-finger tap toggles it over
+│                           any screen; Tutorial Builder + Close
+│                           entries; scene roots opt in via
+│                           CheatMenu.Attach(this) — no autoload
 ├─ SettingsPanel.cs       ─ shared Settings modal (CanvasLayer +
 │                           backdrop + SFX/VFX checkboxes + speed rows
 │                           + Credits + Back); Open() / Close() / Closed
@@ -3882,7 +3913,7 @@ tests/
 
 `Main.cs`, `MainMenuScene.cs`, `MapEditorScene.cs`,
 `MapEditorPanel.cs`, `MapEditorHudView.cs`, `TutorialBuilderScene.cs`,
-`EscMenu.cs`, `SettingsPanel.cs`, `CreditsPanel.cs`, `ConfirmModal.cs`,
+`EscMenu.cs`, `CheatMenu.cs`, `SettingsPanel.cs`, `CreditsPanel.cs`, `ConfirmModal.cs`,
 `SlotPickerDialog.cs`,
 `RecordPane.cs`, `PreviewPane.cs`, `HexPaletteButton.cs`,
 `HexHoverTooltip.cs`, `HexMapView.cs`, `HudView.cs`,
