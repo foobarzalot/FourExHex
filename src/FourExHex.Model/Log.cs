@@ -39,6 +39,7 @@ public static class Log
         Display = 6,  // DisplayScale autoload: DPI → ContentScaleFactor
         Hud = 7,      // HUD CTA / button-state transitions
         Undo = 8,     // undo/redo ↔ replay-beat bookkeeping coordinator
+        Cheat = 9,    // debug cheat menu: attach/toggle/button presses
     }
 
     /// <summary>Severity, ascending. <see cref="Off"/> disables a

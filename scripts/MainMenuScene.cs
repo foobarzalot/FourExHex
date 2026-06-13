@@ -88,6 +88,10 @@ public partial class MainMenuScene : Control
             return;
         }
 
+#if DEBUG
+        CheatMenu.Attach(this);
+#endif
+
         string fakeKb = OS.GetEnvironment("FOUREXHEX_FAKE_KB");
         if (fakeKb.Length > 0 && float.TryParse(fakeKb, out float fakeKbHeight))
         {
@@ -226,13 +230,10 @@ public partial class MainMenuScene : Control
     private Control BuildLandingPanel()
     {
         const float panelW = 520f;
-        // 820f accommodates the tallest stack: Resume, Play, Play Tutorial,
-        // Load, Map Editor, Settings, the debug-only Tutorial Builder, and
-        // Exit (8 buttons). Release builds render a 7-button stack (no
-        // Tutorial Builder) against a panel that's 80px taller than
-        // necessary; not enough to be worth a runtime resize since
-        // OS.IsDebugBuild() is compile-time-stable for any given binary.
-        const float panelH = 820f;
+        // 740f accommodates the tallest stack: Resume, Play, Play Tutorial,
+        // Load, Map Editor, Settings, and Exit (7 buttons; the Tutorial
+        // Builder entry moved to the debug-only cheat menu, issue #7).
+        const float panelH = 740f;
         // Center-anchored so Godot re-solves the position on every window
         // resize (matches ModalChrome.BuildCenteredPanel). Children below
         // are laid out in the panel's local space against the fixed
@@ -304,8 +305,8 @@ public partial class MainMenuScene : Control
         AudioBus.AttachClick(_landingPlayButton);
         panel.AddChild(_landingPlayButton);
 
-        // Always visible (unlike the debug-only Tutorial Builder) — this is
-        // the end-user-facing tutorial entry point. Sits just under Play
+        // The end-user-facing tutorial entry point (the authoring tool
+        // lives in the debug-only cheat menu). Sits just under Play
         // Game so a new player finds it immediately.
         var playTutorialButton = new Button { Text = "Play Tutorial" };
         playTutorialButton.AddThemeFontSizeOverride("font_size", 26);
@@ -342,23 +343,6 @@ public partial class MainMenuScene : Control
         AudioBus.AttachClick(settingsButton);
         panel.AddChild(settingsButton);
 
-        // Debug-only entry point into the new authoring tool. Per spec
-        // §"Dev-mode gating", this button is gated on OS.IsDebugBuild()
-        // — release exports never see it.
-        int nextRow = 6;
-        if (OS.IsDebugBuild())
-        {
-            var tutorialBuilderButton = new Button { Text = "Tutorial Builder" };
-            tutorialBuilderButton.AddThemeFontSizeOverride("font_size", 26);
-            tutorialBuilderButton.Position = new Vector2(
-                buttonInset, firstButtonY + (buttonH + buttonGap) * nextRow);
-            tutorialBuilderButton.Size = new Vector2(buttonW, buttonH);
-            tutorialBuilderButton.Pressed += OnTutorialBuilderPressed;
-            AudioBus.AttachClick(tutorialBuilderButton);
-            panel.AddChild(tutorialBuilderButton);
-            nextRow++;
-        }
-
         // Suppress the app-quit button on mobile — Apple HIG (and Google Play
         // guidance) discourage user-initiated quit on phones/tablets; the home
         // gesture is the platform-native way out. Desktop builds still get it.
@@ -366,7 +350,7 @@ public partial class MainMenuScene : Control
         {
             var exitButton = new Button { Text = "Exit" };
             exitButton.AddThemeFontSizeOverride("font_size", 26);
-            exitButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * nextRow);
+            exitButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 6);
             exitButton.Size = new Vector2(buttonW, buttonH);
             exitButton.Pressed += OnExitPressed;
             AudioBus.AttachClick(exitButton);
@@ -818,11 +802,6 @@ public partial class MainMenuScene : Control
         // Settings is a modal layered over the landing page now — leaves
         // the landing buttons visible underneath the backdrop.
         _settingsPanel?.Open();
-    }
-
-    private void OnTutorialBuilderPressed()
-    {
-        GetTree().ChangeSceneToFile("res://scenes/tutorial_builder.tscn");
     }
 
     private void OnPlayTutorialPressed()

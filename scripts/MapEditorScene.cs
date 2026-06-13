@@ -50,6 +50,10 @@ public partial class MapEditorScene : Node2D
 
         _escMenu = new EscMenu();
         AddChild(_escMenu);
+
+#if DEBUG
+        CheatMenu.Attach(this);
+#endif
     }
 
     public override void _UnhandledInput(InputEvent @event)

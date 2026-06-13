@@ -395,6 +395,10 @@ public partial class Main : Node2D
             ? $"Map: {_originMapName}"
             : $"Seed: {_controller.MasterSeed}";
         hud.SetMapLabel(mapLabel);
+
+#if DEBUG
+        CheatMenu.Attach(this);
+#endif
     }
 
     /// <summary>

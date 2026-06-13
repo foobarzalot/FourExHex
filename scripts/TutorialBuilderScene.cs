@@ -106,6 +106,10 @@ public partial class TutorialBuilderScene : Node2D
 
         _mapEditHud.Visible = true;
         _panel.PaintingEnabled = true;
+
+#if DEBUG
+        CheatMenu.Attach(this);
+#endif
     }
 
     /// <summary>

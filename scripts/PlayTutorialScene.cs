@@ -79,6 +79,10 @@ public partial class PlayTutorialScene : Node2D
         Log.Info(Log.LogCategory.Tutorial,
             $"[PlayTutorial] starting '{TutorialName}' ({loaded.Tutorial.Replay.Beats.Count} beats)");
         _preview.Start(loaded.Tutorial);
+
+#if DEBUG
+        CheatMenu.Attach(this);
+#endif
     }
 
     private void OpenPauseMenu()
