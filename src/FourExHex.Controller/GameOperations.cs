@@ -903,6 +903,24 @@ public class GameOperations
         Dictionary<HexCoord, (PlayerId Owner, int Gold)> newCaps = SnapshotCapitals(_state.Territories);
         LogCaptureDiff(actionDesc, oldCaps, newCaps);
 
+        // Neutral-hex captures (issue #39): a coord that belonged to a
+        // None-owned (neutral) territory before the recompute and now has a
+        // real owner was just captured from neutral. Logged so manual tests
+        // can confirm the neutral-capture path actually executed.
+        foreach (Territory prev in previous)
+        {
+            if (!prev.Owner.IsNone) continue;
+            foreach (HexCoord c in prev.Coords)
+            {
+                PlayerId nowOwner = _state.Grid.Get(c)?.Owner ?? PlayerId.None;
+                if (!nowOwner.IsNone)
+                {
+                    Log.Debug(Log.LogCategory.Capture,
+                        $"[capture] neutral hex {c} -> {nowOwner}");
+                }
+            }
+        }
+
         // A player whose set of capital-bearing territories drops to
         // empty is freshly defeated by this capture. At most one color
         // can transition per capture (a single move/place captures one

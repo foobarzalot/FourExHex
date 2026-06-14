@@ -428,7 +428,11 @@ Consequences for the rest of this doc:
 │                                              (capture, edit paint, init) │
 │   CapitalPlacer.Choose(coords, grid)       ─ empty > unit, lex-min       │
 │   CapitalReconciler.Reconcile(raw, old, grid)                            │
-│                                            ─ split/merge + stomping      │
+│                                            ─ split/merge + stomping;     │
+│                                              None-owned (neutral)         │
+│                                              territories stay capital-    │
+│                                              less (throws on a capital    │
+│                                              found on neutral land)       │
 │   PurchaseRules.CostFor / CanAfford / CanAffordTower / IsValidRecruit…   │
 │   MovementRules.ValidTargets / Move / PlaceNew /                         │
 │                  ArrivalConsumesAction (capture/tree/grave → true)        │
@@ -2608,15 +2612,38 @@ edits look identical to in-game terrain.
   (`emulate_mouse_from_touch`), so a tap/drag would otherwise fire
   `CoordHovered` and a parked finger would dwell into a sticky tooltip.
 - **Palette.** `MapEditorHudView` builds a palette of
-  `HexPaletteButton` swatches: one per player color, plus water,
-  tree, capital, and tower toggles. The selected index is read by
+  `HexPaletteButton` swatches: one per player color, a **neutral
+  (unowned land)** swatch, plus water, tree, capital, and tower
+  toggles. The selected index is read by
   `OnCoordClicked` and dispatched to one of `MapEditPaint`'s pure
-  functions (`PaintLand`, `PaintCapital`, `PaintTowerToggle`,
-  `PaintTreeToggle`, `PaintWater`). Each helper mutates the grid
-  in place, then re-runs `TerritoryFinder` + `CapitalReconciler`
-  (except `PaintCapital`, which honors the user's exact pick rather
-  than letting the placer second-guess them).
-- **Responsive land swatches.** The six land-color swatches collapse
+  functions (`PaintLand`, `PaintNeutral`, `PaintCapital`,
+  `PaintTowerToggle`, `PaintTreeToggle`, `PaintWater`). Each helper
+  mutates the grid in place, then re-runs `TerritoryFinder` +
+  `CapitalReconciler` (except `PaintCapital`, which honors the user's
+  exact pick rather than letting the placer second-guess them).
+- **Neutral hexes (issue #39).** A neutral hex is land owned by
+  `PlayerId.None` — part of the map but belonging to no player,
+  capturable by any adjacent player exactly like enemy territory
+  (`tile.Owner != attackerTerritory.Owner` is already the capture
+  predicate), and once captured it becomes ordinary owned land.
+  Neutral placement is **editor-only** — `MapGenerator` never produces
+  a `None`-owned tile. `PaintNeutral` sets the tile's owner to `None`
+  and **clears its occupant** (a neutral hex is empty unowned land), so
+  a player-bound occupant can't be stranded there; the tower tool can
+  then add a tower on top, which protects/radiates over the neutral
+  region as usual. Neutral tiles flood-fill into their own `None`-owned
+  `Territory`, which generates no income (`Treasury.CollectIncomeFor`
+  skips non-owned, capital-less territories) and never gets a capital —
+  `CapitalReconciler.Reconcile` short-circuits a `None`-owned territory
+  to capital-less and **throws** if a `Capital` occupant is ever found
+  on neutral land (an upstream paint bug, surfaced not papered over). A
+  neutral capture is instrumented under `Log.LogCategory.Capture`
+  (`[capture] neutral hex {coord} -> {player}` from
+  `GameOperations.HandleCapture`). Save/load round-trips neutral tiles
+  with no version bump (ownership already encodes `None` as wire index
+  `-1`).
+- **Responsive land swatches.** The land-color swatches plus the
+  neutral swatch (the "owner" group) collapse
   to a single cycling `HexPaletteButton` when the viewport is narrow
   (e.g. mobile portrait) — the editor analogue of HudView's
   player-swatch-bar compacting. The full `_landRow` and the lone
@@ -2626,10 +2653,12 @@ edits look identical to in-game terrain.
   (`FullLandRowWidth{Portrait,Landscape}`). The collapsed button is
   *select-first-then-cycle*: when land isn't the active tool a press
   just selects it at the remembered color (`_lastLandPaletteIndex`);
-  once land is active each press advances to the next player color
-  (wrapping 6→1). Its `FillColor` (now a settable property on
-  `HexPaletteButton`) and selection outline track that state via
-  `RefreshLandCycleVisual`. Only the land group collapses — water,
+  once land is active each press advances to the next owner state,
+  cycling through the player colors and then the neutral slot before
+  wrapping back to the first color. Its `FillColor` (a settable property
+  on `HexPaletteButton`; the neutral state shows `PlayerPalette.Neutral`
+  gray) and selection outline track that state via
+  `RefreshLandCycleVisual`. Only the owner group collapses — water,
   tree, capital, tower, and hand stay individual.
 - **Save format.** Editor maps are written with `SaveSerializer.SerializeMap`
   (no `Kind` per player, `TurnNumber == 0`). At play time, `Main`
@@ -3756,8 +3785,8 @@ scripts/  (split: see the three source trees listed just above)
 │                           GameController with ReplayDrivenAi +
 │                           TutorialPreview + humanActionValidator;
 │                           uses PreviewSetup to reset board state
-├─ MapEditPaint.cs        ─ pure paint helpers (Land / Capital / Tower /
-│                           Tree / Water)
+├─ MapEditPaint.cs        ─ pure paint helpers (Land / Neutral / Capital /
+│                           Tower / Tree / Water)
 ├─ EditorSnapshot.cs      ─ deep copy of editor draft (grid + water + terr.)
 ├─ HexPaletteButton.cs    ─ hex-shaped palette swatch Control;
 │                           delegates Tree/Capital/Tower/Hand glyphs

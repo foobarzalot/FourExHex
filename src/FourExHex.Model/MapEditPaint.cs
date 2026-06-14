@@ -205,6 +205,45 @@ public static class MapEditPaint
         return Reconcile(grid, previousTerritories);
     }
 
+    /// <summary>
+    /// Set the tile at <paramref name="coord"/> to be neutral (unowned,
+    /// <see cref="PlayerId.None"/>) — a land tile owned by no player, but
+    /// capturable by any adjacent player (issue #39). Creates a tile (and
+    /// removes the coord from <paramref name="water"/>) if it was water;
+    /// reassigns an existing tile in place otherwise. The tile's occupant
+    /// is cleared: a neutral hex is empty unowned land, so any player-bound
+    /// occupant (Capital, Unit) — and, like <see cref="PaintWater"/>, any
+    /// Tower/Tree/Grave — is discarded. Clearing the occupant is what keeps
+    /// a capital off neutral land (the invariant
+    /// <see cref="CapitalReconciler.Reconcile"/> enforces). Out-of-bounds
+    /// coords are no-ops. Returns the up-to-date territory list to thread
+    /// into the next call.
+    /// </summary>
+    public static IReadOnlyList<Territory> PaintNeutral(
+        HexGrid grid,
+        HashSet<HexCoord> water,
+        IReadOnlyList<Territory> previousTerritories,
+        int cols,
+        int rows,
+        HexCoord coord)
+    {
+        if (!InBounds(coord, cols, rows)) return previousTerritories;
+
+        HexTile? existing = grid.Get(coord);
+        if (existing != null)
+        {
+            existing.Owner = PlayerId.None;
+            existing.Occupant = null;
+        }
+        else
+        {
+            grid.Add(new HexTile(coord, PlayerId.None));
+            water.Remove(coord);
+        }
+
+        return Reconcile(grid, previousTerritories);
+    }
+
     private static bool InBounds(HexCoord coord, int cols, int rows)
     {
         (int col, int row) = coord.ToOffset();

@@ -287,6 +287,12 @@ public sealed partial class MapEditorPanel : Node2D
                 _grid, _water, _territories, Map.Cols, Map.Rows, coord);
             return;
         }
+        if (idx == MapEditorHudView.NeutralPaletteIndex)
+        {
+            _territories = MapEditPaint.PaintNeutral(
+                _grid, _water, _territories, Map.Cols, Map.Rows, coord);
+            return;
+        }
         // Color swatch: idx 1..PlayerConfig.Length. Index 0 is the hand
         // (Pan mode, never reaches here).
         PlayerId owner = PlayerId.FromIndex(idx - 1);

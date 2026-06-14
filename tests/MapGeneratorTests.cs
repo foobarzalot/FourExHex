@@ -226,4 +226,17 @@ public class MapGeneratorTests
         int total = Cols * Rows;
         Assert.InRange(result.Grid.Count, 30, (total * 2) / 3);
     }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(42)]
+    [InlineData(9999)]
+    public void GeneratedMapHasNoNeutralTiles(int seed)
+    {
+        // Issue #39: neutral (unowned) hexes are editor-only. Random
+        // generation must assign every land tile to a real player.
+        MapGenResult result = Build(seed);
+        Assert.All(result.Grid.Tiles, t => Assert.False(t.Owner.IsNone));
+    }
 }

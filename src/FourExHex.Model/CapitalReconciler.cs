@@ -36,6 +36,26 @@ public static class CapitalReconciler
         var result = new List<Territory>(rawNewTerritories.Count);
         foreach (Territory newT in rawNewTerritories)
         {
+            // Neutral (unowned) territories never get a capital — neutral
+            // land belongs to no player and produces no income (issue #39).
+            // A Capital occupant sitting on neutral land is an upstream
+            // paint bug, so surface it by throwing rather than silently
+            // stripping it.
+            if (newT.Owner.IsNone)
+            {
+                foreach (HexCoord c in newT.Coords)
+                {
+                    if (grid.Get(c)?.Occupant is Capital)
+                    {
+                        throw new System.InvalidOperationException(
+                            $"Capital occupant found on neutral (unowned) tile {c}; " +
+                            "neutral land must never hold a capital.");
+                    }
+                }
+                result.Add(new Territory(newT.Owner, newT.Coords, capital: null));
+                continue;
+            }
+
             // Singletons never have a capital. If the new territory
             // shrank to one tile (e.g. a split stranded the old capital
             // alone), strip any lingering Capital occupant so the grid

@@ -323,4 +323,41 @@ public class CapitalReconcilerTests
         Assert.IsType<Capital>(grid.Get(new HexCoord(0, 0))!.Occupant);
         Assert.IsType<Tree>(grid.Get(new HexCoord(1, 0))!.Occupant);
     }
+
+    // --- Neutral (unowned) territories (issue #39) ------------------------
+
+    [Fact]
+    public void Reconcile_MultiHexNeutralTerritory_GetsNoCapital()
+    {
+        // A 2+ hex region owned by nobody (PlayerId.None) is a neutral
+        // region. It must NOT get a capital — neutral land belongs to no
+        // player and produces no income.
+        var a = new HexCoord(0, 0);
+        var b = new HexCoord(1, 0);
+        HexGrid grid = TestHelpers.BuildSpotGrid(PlayerId.None, a, b);
+        var raw = new[] { new Territory(PlayerId.None, new[] { a, b }, capital: null) };
+
+        var result = CapitalReconciler.Reconcile(raw, new List<Territory>(), grid);
+
+        Assert.Single(result);
+        Assert.False(result[0].HasCapital);
+        Assert.Null(grid.Get(a)!.Occupant);
+        Assert.Null(grid.Get(b)!.Occupant);
+    }
+
+    [Fact]
+    public void Reconcile_NeutralTerritoryWithCapitalOccupant_Throws()
+    {
+        // Invariant: a Capital must never sit on neutral land. If one is
+        // found, that's an upstream paint bug — the reconciler surfaces it
+        // by throwing rather than silently stripping the capital.
+        var a = new HexCoord(0, 0);
+        var b = new HexCoord(1, 0);
+        HexGrid grid = TestHelpers.BuildSpotGrid(PlayerId.None, a, b);
+        grid.Get(a)!.Occupant = new Capital();
+        var raw = new[] { new Territory(PlayerId.None, new[] { a, b }, capital: null) };
+
+        Assert.Throws<System.InvalidOperationException>(
+            () => CapitalReconciler.Reconcile(raw, new List<Territory>(), grid));
+    }
 }

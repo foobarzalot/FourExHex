@@ -462,4 +462,93 @@ public class MapEditPaintTests
 
         Assert.Equal(1, CountCapitals(grid));
     }
+
+    // --- PaintNeutral (issue #39) -----------------------------------------
+
+    [Fact]
+    public void PaintNeutral_OnWater_AddsUnownedTileAndRemovesFromWater()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var coord = HexCoord.FromOffset(2, 3);
+
+        MapEditPaint.PaintNeutral(grid, water, new List<Territory>(), Cols, Rows, coord);
+
+        Assert.True(grid.Contains(coord));
+        Assert.True(grid.Get(coord)!.Owner.IsNone);
+        Assert.DoesNotContain(coord, water);
+    }
+
+    [Fact]
+    public void PaintNeutral_OnOwnedLand_SetsOwnerNone()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = PlayerId.FromIndex(0);
+        var coord = HexCoord.FromOffset(2, 3);
+        IReadOnlyList<Territory> territories = MapEditPaint.PaintLand(
+            grid, water, new List<Territory>(), Cols, Rows, coord, color);
+
+        MapEditPaint.PaintNeutral(grid, water, territories, Cols, Rows, coord);
+
+        Assert.True(grid.Get(coord)!.Owner.IsNone);
+    }
+
+    [Fact]
+    public void PaintNeutral_OutOfBounds_IsNoop()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        IReadOnlyList<Territory> territories = new List<Territory>();
+        int waterBefore = water.Count;
+
+        territories = MapEditPaint.PaintNeutral(
+            grid, water, territories, Cols, Rows, HexCoord.FromOffset(-1, 0));
+
+        Assert.Equal(0, grid.Count);
+        Assert.Equal(waterBefore, water.Count);
+        Assert.Empty(territories);
+    }
+
+    [Fact]
+    public void PaintNeutral_OverCapitalTile_ClearsOccupant_AndReconcileDoesNotThrow()
+    {
+        // Paint a 2-hex owned region so a capital is placed, then paint the
+        // capital tile neutral. PaintNeutral must clear the occupant so the
+        // "no capital on neutral land" invariant holds and the internal
+        // Reconcile call does not throw.
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = PlayerId.FromIndex(0);
+        IReadOnlyList<Territory> territories = new List<Territory>();
+        for (int col = 0; col < 2; col++)
+        {
+            territories = MapEditPaint.PaintLand(
+                grid, water, territories, Cols, Rows,
+                HexCoord.FromOffset(col, 0), color);
+        }
+        HexCoord capital = territories[0].Capital!.Value;
+        Assert.IsType<Capital>(grid.Get(capital)!.Occupant);
+
+        IReadOnlyList<Territory> after = MapEditPaint.PaintNeutral(
+            grid, water, territories, Cols, Rows, capital);
+
+        Assert.True(grid.Get(capital)!.Owner.IsNone);
+        Assert.Null(grid.Get(capital)!.Occupant);
+        Assert.DoesNotContain(after, t => t.Owner.IsNone && t.HasCapital);
+    }
+
+    [Fact]
+    public void PaintNeutral_RoundTripsThroughEditorSnapshot()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = PlayerId.FromIndex(0);
+        var coord = HexCoord.FromOffset(2, 3);
+        IReadOnlyList<Territory> territories = MapEditPaint.PaintLand(
+            grid, water, new List<Territory>(), Cols, Rows, coord, color);
+        territories = MapEditPaint.PaintNeutral(grid, water, territories, Cols, Rows, coord);
+
+        EditorSnapshot snap = EditorSnapshot.Capture(grid, water, territories);
+        // Mutate away, then restore.
+        MapEditPaint.PaintLand(grid, water, territories, Cols, Rows, coord, color);
+        snap.ApplyTo(grid, water);
+
+        Assert.True(grid.Get(coord)!.Owner.IsNone);
+    }
 }

@@ -30,14 +30,18 @@ public partial class MapEditorHudView : OrientationHud
     /// selection on scene entry.
     /// </summary>
     public const int HandPaletteIndex = 0;
+    /// <summary>Palette index for the neutral (unowned land) swatch. Sits
+    /// with the land/owner group (right after the player colors) so it
+    /// joins the collapsed mobile cycle. Issue #39.</summary>
+    public static int NeutralPaletteIndex => 1 + GameSettings.PlayerConfig.Length;
     /// <summary>Palette index reserved for the water swatch.</summary>
-    public static int WaterPaletteIndex => 1 + GameSettings.PlayerConfig.Length;
+    public static int WaterPaletteIndex => 2 + GameSettings.PlayerConfig.Length;
     /// <summary>Palette index reserved for the tree-toggle swatch.</summary>
-    public static int TreePaletteIndex => 2 + GameSettings.PlayerConfig.Length;
+    public static int TreePaletteIndex => 3 + GameSettings.PlayerConfig.Length;
     /// <summary>Palette index reserved for the capital-placement swatch.</summary>
-    public static int CapitalPaletteIndex => 3 + GameSettings.PlayerConfig.Length;
+    public static int CapitalPaletteIndex => 4 + GameSettings.PlayerConfig.Length;
     /// <summary>Palette index reserved for the tower-toggle swatch.</summary>
-    public static int TowerPaletteIndex => 4 + GameSettings.PlayerConfig.Length;
+    public static int TowerPaletteIndex => 5 + GameSettings.PlayerConfig.Length;
 
     public event Action? EscRequested;
     public event Action<int>? GenerateRequested;
@@ -112,9 +116,10 @@ public partial class MapEditorHudView : OrientationHud
         Log.Info(Log.LogCategory.Render,
             "MapEditorHudView: seed LineEdit removed; die-only randomize wired.");
 
-        // Six-position palette array: 0 = hand, 1..N = land swatches, then
-        // water, tree, capital, tower. _palette is indexed by these slots.
-        _palette = new HexPaletteButton[GameSettings.PlayerConfig.Length + 5];
+        // Palette array: 0 = hand, 1..N = land color swatches, then neutral
+        // (unowned land), water, tree, capital, tower. _palette is indexed
+        // by these slots.
+        _palette = new HexPaletteButton[GameSettings.PlayerConfig.Length + 6];
 
         // Land cluster — a PanelContainer (chip chrome) wrapping a flippable
         // row: full 1×6 land swatches OR a single cycle button (Compact).
@@ -144,6 +149,19 @@ public partial class MapEditorHudView : OrientationHud
             _landRow.AddChild(button);
             _palette[paletteIndex] = button;
         }
+
+        // Neutral (unowned land) swatch — last entry in the owner/land row
+        // (issue #39). Sharing the land panel means it inherits the panel's
+        // active-highlight chrome and joins the collapsed mobile cycle.
+        int neutralIndex = NeutralPaletteIndex;
+        var neutralButton = new HexPaletteButton(PlayerPalette.Neutral)
+        {
+            TooltipText = "Paint neutral (unowned)",
+        };
+        neutralButton.Pressed += _ => SelectPalette(neutralIndex);
+        AudioBus.AttachClick(neutralButton);
+        _landRow.AddChild(neutralButton);
+        _palette[neutralIndex] = neutralButton;
 
         // Compact counterpart: a single squared swatch button that cycles
         // the player color on each press. Squared (68×68) so it matches
@@ -472,12 +490,15 @@ public partial class MapEditorHudView : OrientationHud
         _landCluster.AddThemeStyleboxOverride("panel", style);
     }
 
+    // The owner/land group is the player colors (1..N) plus the neutral
+    // (unowned) slot at NeutralPaletteIndex (= N+1). Issue #39.
     private static bool IsLandIndex(int index) =>
-        index >= 1 && index <= GameSettings.PlayerConfig.Length;
+        index >= 1 && index <= NeutralPaletteIndex;
 
-    // Wrap forward through the land indices (1..N), 6 -> 1.
+    // Wrap forward through the owner indices (1..N colors, then neutral at
+    // N+1), neutral -> first color.
     private static int NextLandIndex(int index) =>
-        index % GameSettings.PlayerConfig.Length + 1;
+        index >= NeutralPaletteIndex ? 1 : index + 1;
 
     /// <summary>
     /// Select-first-then-cycle: if land isn't the active tool, the first press
@@ -497,7 +518,11 @@ public partial class MapEditorHudView : OrientationHud
     /// sync with the remembered land color and the current tool.</summary>
     private void RefreshLandCycleVisual()
     {
-        _landCycleButton.FillColor = new Color(GameSettings.PlayerConfig[_lastLandPaletteIndex - 1].Hex);
+        // The neutral slot has no PlayerConfig entry — show the neutral gray
+        // (matching the painted tile) instead of indexing out of range.
+        _landCycleButton.FillColor = _lastLandPaletteIndex == NeutralPaletteIndex
+            ? PlayerPalette.Neutral
+            : new Color(GameSettings.PlayerConfig[_lastLandPaletteIndex - 1].Hex);
         _landCycleButton.IsSelected = IsLandIndex(SelectedPaletteIndex);
     }
 }
