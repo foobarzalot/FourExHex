@@ -281,11 +281,28 @@ public partial class MainMenuScene : Control
     private Control BuildLandingPanel()
     {
         const float panelW = 520f;
-        // 820f accommodates the tallest stack: Resume, Play, Campaign,
-        // Play Tutorial, Load, Map Editor, Settings, and Exit (8 buttons;
-        // the Tutorial Builder entry moved to the debug-only cheat menu,
-        // issue #7).
-        const float panelH = 820f;
+        // Button-stack layout: a 64px button plus a 16px gap per slot,
+        // starting at y=140. Hoisted above panelH so the panel height can be
+        // derived from the count of buttons actually rendered.
+        const float buttonH = 64f;
+        const float buttonGap = 16f;
+        const float firstButtonY = 140f;
+
+        // The full stack is Resume, Play, Campaign, Play Tutorial, Load, Map
+        // Editor, Settings, and Exit (8 buttons; the Tutorial Builder entry
+        // moved to the debug-only cheat menu, issue #7). On mobile the Exit
+        // button is suppressed (Apple HIG / Google Play guidance), so the
+        // panel reclaims its slot — height is computed from the actual count
+        // rather than the fixed 8-button design, otherwise ScaleToFit centers
+        // against a phantom Exit slot, leaving dead space at the bottom (#42).
+        bool exitSuppressed = OS.HasFeature("mobile");
+        int landingButtonCount = exitSuppressed ? 7 : 8;
+        const float bottomMargin = 56f; // matches the desktop 8-button design (820 - 764)
+        float panelH = firstButtonY + (buttonH + buttonGap) * (landingButtonCount - 1)
+                       + buttonH + bottomMargin;
+        Log.Info(Log.LogCategory.Render,
+            $"MainMenu: landing panel sized for {landingButtonCount} buttons "
+            + $"(panelH={panelH}, exitSuppressed={exitSuppressed}).");
         // Center-anchored so Godot re-solves the position on every window
         // resize (matches ModalChrome.BuildCenteredPanel). Children below
         // are laid out in the panel's local space against the fixed
@@ -321,11 +338,8 @@ public partial class MainMenuScene : Control
         };
         panel.AddChild(goldRule);
 
-        const float buttonH = 64f;
-        const float buttonGap = 16f;
         const float buttonInset = 80f;
         const float buttonW = panelW - buttonInset * 2f;
-        const float firstButtonY = 140f;
 
         // Single ListSlots() call shared between Resume (needs the autosave
         // entry specifically) and Load Game (needs any slot) so we don't
@@ -408,7 +422,7 @@ public partial class MainMenuScene : Control
         // Suppress the app-quit button on mobile — Apple HIG (and Google Play
         // guidance) discourage user-initiated quit on phones/tablets; the home
         // gesture is the platform-native way out. Desktop builds still get it.
-        if (!OS.HasFeature("mobile"))
+        if (!exitSuppressed)
         {
             var exitButton = new Button { Text = "Exit" };
             exitButton.AddThemeFontSizeOverride("font_size", 26);
