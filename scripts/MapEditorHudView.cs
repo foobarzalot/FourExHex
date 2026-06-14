@@ -21,8 +21,6 @@ using Godot;
 /// </summary>
 public partial class MapEditorHudView : OrientationHud
 {
-    public const int SeedMin = 1;
-    public const int SeedMax = 1000;
 
     /// <summary>
     /// Palette index reserved for the hand (no-op / pan-only) swatch.
@@ -441,9 +439,10 @@ public partial class MapEditorHudView : OrientationHud
         // affordance. After regenerating, drop back to the hand tool
         // so the player can immediately pan / inspect without
         // accidentally repainting the fresh map.
-        int seed = new System.Random().Next(SeedMin, SeedMax + 1);
+        int seed = SeedFormat.NextSeed(new System.Random());
         _generateButton.FlashPress();
-        Log.Debug(Log.LogCategory.Input, $"[MapEditor] die press → seed={seed}");
+        Log.Debug(Log.LogCategory.Input,
+            $"[MapEditor] die press → seed={SeedFormat.ToHex(seed)}");
         GenerateRequested?.Invoke(seed);
         SelectHand();
     }

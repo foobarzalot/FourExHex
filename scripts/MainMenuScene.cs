@@ -17,8 +17,8 @@ public partial class MainMenuScene : Control
     private const int HumanId = 0;
     private const int ComputerId = 1;
 
-    private const int SeedMin = 1;
-    private const int SeedMax = 9999;
+    // The master seed is a full 32-bit value entered as 8 hex digits.
+    private const int SeedHexDigits = 8;
 
     /// <summary>One-shot handoff: when true, the menu opens straight to
     /// the campaign screen instead of the landing page (set by
@@ -702,9 +702,9 @@ public partial class MainMenuScene : Control
         {
             Position = new Vector2(rightColX, seedRowY + 12f),
             Size = new Vector2(rightColW, 38f),
-            MaxLength = 4,
+            MaxLength = SeedHexDigits,
             Alignment = HorizontalAlignment.Right,
-            Text = new System.Random().Next(SeedMin, SeedMax + 1).ToString(),
+            Text = SeedFormat.ToHex(SeedFormat.NextSeed(new System.Random())),
             // Tapping/clicking into the field selects the existing seed so
             // the next keystroke replaces it (issue #4).
             SelectAllOnFocus = true,
@@ -976,10 +976,11 @@ public partial class MainMenuScene : Control
     private void OnSeedTextChanged(string newText)
     {
         if (_seedField == null) return;
-        // Strip any non-digit characters that slipped past MaxLength
-        // (paste, IME, etc.) and keep the caret at the same logical
-        // position so typing isn't disrupted.
-        string filtered = new string(newText.Where(char.IsAsciiDigit).ToArray());
+        // Strip any non-hex characters that slipped past MaxLength
+        // (paste, IME, etc.), uppercase the rest, and keep the caret at
+        // the same logical position so typing isn't disrupted.
+        string filtered = new string(
+            newText.Where(char.IsAsciiHexDigit).ToArray()).ToUpperInvariant();
         if (filtered != newText)
         {
             int caret = _seedField.CaretColumn;
@@ -1031,9 +1032,10 @@ public partial class MainMenuScene : Control
     private void NudgeSeed(int delta)
     {
         if (_seedField == null) return;
-        int.TryParse(_seedField.Text, out int current);
-        int next = System.Math.Clamp(current + delta, SeedMin, SeedMax);
-        _seedField.Text = next.ToString();
+        SeedFormat.TryParseHex(_seedField.Text, out int current);
+        // Full 32-bit range, so wrap naturally rather than clamp.
+        int next = unchecked(current + delta);
+        _seedField.Text = SeedFormat.ToHex(next);
         _seedField.CaretColumn = _seedField.Text.Length;
         if (_startButton != null) _startButton.Disabled = false;
     }
@@ -1328,8 +1330,10 @@ public partial class MainMenuScene : Control
 
         // Random-map flow: needs a seed.
         if (_seedField == null || string.IsNullOrEmpty(_seedField.Text)) return;
-        int.TryParse(_seedField.Text, out int seed);
-        GameSettings.MasterSeed = System.Math.Clamp(seed, SeedMin, SeedMax);
+        SeedFormat.TryParseHex(_seedField.Text, out int seed);
+        GameSettings.MasterSeed = seed;
+        Log.Debug(Log.LogCategory.Input,
+            $"MainMenu: start seed={SeedFormat.ToHex(seed)}");
         GetTree().ChangeSceneToFile("res://scenes/main.tscn");
     }
 }

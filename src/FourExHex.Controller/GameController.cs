@@ -127,7 +127,7 @@ public class GameController
         _session = session;
         _map = map;
         _hud = hud;
-        _masterSeed = seed ?? Random.Shared.Next();
+        _masterSeed = seed ?? SeedFormat.NextSeed(Random.Shared);
         _ops = new GameOperations(
             state,
             session,

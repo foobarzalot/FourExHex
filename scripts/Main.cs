@@ -180,7 +180,7 @@ public partial class Main : Node2D
         int seed = envSeed
                 ?? pendingLoad?.MasterSeed
                 ?? GameSettings.MasterSeed
-                ?? System.Random.Shared.Next();
+                ?? SeedFormat.NextSeed(System.Random.Shared);
 
         // A loaded "starting map" is distinguished by TurnNumber == 0 on
         // disk — the editor never advances the turn counter, while in-
@@ -437,8 +437,10 @@ public partial class Main : Node2D
         // games show the seed driving the per-turn RNG.
         string mapLabel = _originMapName != null
             ? $"Map: {_originMapName}"
-            : $"Seed: {_controller.MasterSeed}";
+            : $"Seed: {SeedFormat.ToHex(_controller.MasterSeed)}";
         hud.SetMapLabel(mapLabel);
+        Log.Info(Log.LogCategory.Turn,
+            $"Main: master seed {SeedFormat.ToHex(_controller.MasterSeed)}");
 
 #if DEBUG
         CheatMenu.Attach(this);
