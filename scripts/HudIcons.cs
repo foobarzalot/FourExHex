@@ -15,6 +15,22 @@ public static class HudIcons
     private const float OutlineWidth = 1.5f;
     private const float StrokeWidth = 3f;
 
+    /// <summary>
+    /// Gold-coin glyph (issue #45) for the map editor's gold-tile brush: a
+    /// filled gold disc with a darker rim and an inner ring so it reads as a
+    /// coin rather than a plain color swatch (which would be mistaken for a
+    /// player-land color).
+    /// </summary>
+    public static void DrawGold(CanvasItem t, Vector2 center, float radius, Color modulate)
+    {
+        Color gold = new Color(1f, 0.84f, 0.0f, 1f) * modulate;
+        Color rim = new Color(0.70f, 0.52f, 0.05f, 1f) * modulate;
+        float r = radius * 0.72f;
+        t.DrawCircle(center, r, gold);
+        t.DrawArc(center, r, 0f, Mathf.Tau, 32, rim, OutlineWidth * 1.5f);
+        t.DrawArc(center, r * 0.6f, 0f, Mathf.Tau, 24, rim, OutlineWidth);
+    }
+
     public static void DrawTree(CanvasItem t, Vector2 center, float radius, Color modulate)
     {
         float r = radius * 0.65f;

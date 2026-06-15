@@ -287,6 +287,13 @@ public sealed partial class MapEditorPanel : Node2D
                 _grid, _water, _territories, Map.Cols, Map.Rows, coord);
             return;
         }
+        if (idx == MapEditorHudView.GoldPaletteIndex)
+        {
+            if (!GoldToggleCellAllowed(coord)) return;
+            _territories = MapEditPaint.PaintGoldToggle(
+                _grid, _water, _territories, Map.Cols, Map.Rows, coord);
+            return;
+        }
         if (idx == MapEditorHudView.NeutralPaletteIndex)
         {
             _territories = MapEditPaint.PaintNeutral(
@@ -309,14 +316,17 @@ public sealed partial class MapEditorPanel : Node2D
     private ToggleStrokeMode? ResolveToggleStrokeMode(int idx, HexCoord firstCoord)
     {
         if (idx != MapEditorHudView.TreePaletteIndex
-            && idx != MapEditorHudView.TowerPaletteIndex)
+            && idx != MapEditorHudView.TowerPaletteIndex
+            && idx != MapEditorHudView.GoldPaletteIndex)
         {
             return null;
         }
         HexTile? tile = _grid.Get(firstCoord);
         if (tile == null) return ToggleStrokeMode.Add;
-        bool isTree = idx == MapEditorHudView.TreePaletteIndex;
-        bool present = isTree ? tile.Occupant is Tree : tile.Occupant is Tower;
+        bool present;
+        if (idx == MapEditorHudView.TreePaletteIndex) present = tile.Occupant is Tree;
+        else if (idx == MapEditorHudView.TowerPaletteIndex) present = tile.Occupant is Tower;
+        else present = tile.IsGold; // GoldPaletteIndex
         return present ? ToggleStrokeMode.Erase : ToggleStrokeMode.Add;
     }
 
@@ -332,6 +342,23 @@ public sealed partial class MapEditorPanel : Node2D
         HexTile? tile = _grid.Get(coord);
         bool present = tile != null
             && (isTree ? tile.Occupant is Tree : tile.Occupant is Tower);
+        return _toggleStrokeMode switch
+        {
+            ToggleStrokeMode.Add => !present,
+            ToggleStrokeMode.Erase => present,
+            _ => true,
+        };
+    }
+
+    /// <summary>
+    /// Gate a per-cell gold toggle by the locked stroke direction (issue #45),
+    /// mirroring <see cref="ToggleCellAllowed"/> for the gold flag: Add-mode
+    /// skips already-gold tiles, Erase-mode skips non-gold tiles, so a drag
+    /// stroke sets one consistent direction instead of flickering on/off.
+    /// </summary>
+    private bool GoldToggleCellAllowed(HexCoord coord)
+    {
+        bool present = _grid.Get(coord)?.IsGold ?? false;
         return _toggleStrokeMode switch
         {
             ToggleStrokeMode.Add => !present,

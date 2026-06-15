@@ -16,11 +16,13 @@ public sealed class EditorSnapshot
     {
         public PlayerId Owner { get; }
         public HexOccupant? Occupant { get; }
+        public bool IsGold { get; }
 
-        public TileState(PlayerId owner, HexOccupant? occupant)
+        public TileState(PlayerId owner, HexOccupant? occupant, bool isGold)
         {
             Owner = owner;
             Occupant = occupant;
+            IsGold = isGold;
         }
     }
 
@@ -46,7 +48,7 @@ public sealed class EditorSnapshot
         var tiles = new Dictionary<HexCoord, TileState>();
         foreach (HexTile tile in grid.Tiles)
         {
-            tiles[tile.Coord] = new TileState(tile.Owner, HexOccupant.Clone(tile.Occupant));
+            tiles[tile.Coord] = new TileState(tile.Owner, HexOccupant.Clone(tile.Occupant), tile.IsGold);
         }
         return new EditorSnapshot(
             tiles,
@@ -71,6 +73,7 @@ public sealed class EditorSnapshot
             var tile = new HexTile(kvp.Key, kvp.Value.Owner)
             {
                 Occupant = HexOccupant.Clone(kvp.Value.Occupant),
+                IsGold = kvp.Value.IsGold,
             };
             grid.Add(tile);
         }

@@ -8,13 +8,36 @@
 public static class IncomeRules
 {
     /// <summary>
+    /// Extra gold a gold tile (issue #45) yields per turn on top of the
+    /// ordinary 1 gp every income-producing tile pays. A bonus of 1 makes a
+    /// gold tile worth 2 gp/turn (double). Single integer constant — the one
+    /// place to retune the gold earn rate.
+    /// </summary>
+    public const int GoldTileBonus = 1;
+
+    /// <summary>
     /// Gold a territory yields in one turn: the count of income-producing
     /// tiles (<see cref="TreeRules.CountIncomeProducingTiles"/> — trees and
-    /// graves don't pay). Income is NOT difficulty-scaled: the difficulty
-    /// handicap acts purely through unit upkeep
-    /// (<see cref="DifficultyRules.UnitUpkeep"/>). If an earn-rate lever is
-    /// ever reintroduced, it goes here so every consumer inherits it.
+    /// graves don't pay) plus <see cref="GoldTileBonus"/> for each gold
+    /// income-tile (<see cref="TreeRules.CountGoldIncomeTiles"/>). Income is
+    /// NOT difficulty-scaled: the difficulty handicap acts purely through unit
+    /// upkeep (<see cref="DifficultyRules.UnitUpkeep"/>). The gold earn-rate
+    /// lever lives here so every consumer (real play + AI lookahead) inherits
+    /// it.
     /// </summary>
     public static int IncomeFor(Territory territory, HexGrid grid)
-        => TreeRules.CountIncomeProducingTiles(territory, grid);
+    {
+        int baseIncome = TreeRules.CountIncomeProducingTiles(territory, grid);
+        int goldTiles = TreeRules.CountGoldIncomeTiles(territory, grid);
+        int total = baseIncome + goldTiles * GoldTileBonus;
+
+        if (goldTiles > 0)
+        {
+            Log.Debug(Log.LogCategory.Turn,
+                $"Income: territory cap={territory.Capital} base={baseIncome} " +
+                $"gold={goldTiles}(+{goldTiles * GoldTileBonus}) total={total}");
+        }
+
+        return total;
+    }
 }

@@ -244,6 +244,31 @@ public static class MapEditPaint
         return Reconcile(grid, previousTerritories);
     }
 
+    /// <summary>
+    /// Toggle the <see cref="HexTile.IsGold"/> flag on the land tile at
+    /// <paramref name="coord"/> (issue #45). Gold is a per-tile income
+    /// modifier orthogonal to owner and occupant, so this preserves both — a
+    /// gold tile may be owned by any player or neutral and may hold any
+    /// occupant. No-op out of bounds or on water (no tile there). The
+    /// territory partition is unaffected; the previous list is returned
+    /// unchanged for call-shape parity with the other paint helpers.
+    /// </summary>
+    public static IReadOnlyList<Territory> PaintGoldToggle(
+        HexGrid grid,
+        HashSet<HexCoord> water,
+        IReadOnlyList<Territory> previousTerritories,
+        int cols,
+        int rows,
+        HexCoord coord)
+    {
+        if (!InBounds(coord, cols, rows)) return previousTerritories;
+        HexTile? tile = grid.Get(coord);
+        if (tile == null) return previousTerritories;
+
+        tile.IsGold = !tile.IsGold;
+        return previousTerritories;
+    }
+
     private static bool InBounds(HexCoord coord, int cols, int rows)
     {
         (int col, int row) = coord.ToOffset();

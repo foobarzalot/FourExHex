@@ -48,4 +48,22 @@ public class AiStateScorerTests
         Assert.True(recruit > soldier, $"expected recruit {recruit} > soldier {soldier}");
         Assert.True(soldier > commander, $"expected soldier {soldier} > commander {commander}");
     }
+
+    [Fact]
+    public void Score_GoldTile_RaisesScoreViaIncome()
+    {
+        // Same board scored with and without a single gold tile. The gold
+        // bonus flows through IncomeRules.IncomeFor into the net-income term,
+        // so the AI values the gold board strictly higher (issue #45).
+        GameState plain = BuildState(Difficulty.Soldier);
+
+        GameState gilded = BuildState(Difficulty.Soldier);
+        gilded.Grid.Get(HexCoord.FromOffset(1, 1))!.IsGold = true;
+
+        int plainScore = AiStateScorer.Score(plain, Red);
+        int gildedScore = AiStateScorer.Score(gilded, Red);
+
+        Assert.True(gildedScore > plainScore,
+            $"expected gold {gildedScore} > plain {plainScore}");
+    }
 }

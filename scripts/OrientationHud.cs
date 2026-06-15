@@ -135,8 +135,8 @@ public abstract partial class OrientationHud : CanvasLayer
         // intercept clicks meant for the Options / undo / redo buttons.
         if (Orientation == ScreenOrientation.Landscape)
         {
-            (LeftRail, LeftRailGroup) = HudBars.MakeRail(left: true, alignBottom: !Compact);
-            (RightRail, RightRailGroup) = HudBars.MakeRail(left: false, alignBottom: !Compact);
+            (LeftRail, LeftRailGroup) = HudBars.MakeRail(left: true, alignBottom: !Compact, width: LeftRailWidth);
+            (RightRail, RightRailGroup) = HudBars.MakeRail(left: false, alignBottom: !Compact, width: RightRailWidth);
             AddChild(LeftRail);
             AddChild(RightRail);
         }
@@ -233,6 +233,14 @@ public abstract partial class OrientationHud : CanvasLayer
     /// D1 normally returns (0, 0) — the HUD doesn't push the map around — but
     /// subclasses can override (e.g. to clear a hosted toolbar above).</summary>
     protected abstract MapInsets ComputeInsets();
+
+    /// <summary>Width of the landscape side rails, logical px. Defaults to
+    /// <see cref="HudBars.RailWidth"/>; a subclass overrides (e.g. the map
+    /// editor on compact, where the paint tools wrap to a second column —
+    /// issue #45) to widen one rail. Read each <see cref="ApplyLayout"/>, so
+    /// a compact flip rebuilds the rails at the new width.</summary>
+    protected virtual float LeftRailWidth => HudBars.RailWidth;
+    protected virtual float RightRailWidth => HudBars.RailWidth;
 
     /// <summary>Optional post-layout step. Runs after the zones are
     /// (re)built. Default: nothing.</summary>

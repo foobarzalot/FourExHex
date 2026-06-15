@@ -12,11 +12,13 @@ public class GameStateSnapshot
     {
         public PlayerId Owner { get; }
         public HexOccupant? Occupant { get; }
+        public bool IsGold { get; }
 
-        public TileState(PlayerId owner, HexOccupant? occupant)
+        public TileState(PlayerId owner, HexOccupant? occupant, bool isGold)
         {
             Owner = owner;
             Occupant = occupant;
+            IsGold = isGold;
         }
     }
 
@@ -48,7 +50,8 @@ public class GameStateSnapshot
         {
             tiles[tile.Coord] = new TileState(
                 owner: tile.Owner,
-                occupant: HexOccupant.Clone(tile.Occupant));
+                occupant: HexOccupant.Clone(tile.Occupant),
+                isGold: tile.IsGold);
         }
 
         var gold = new Dictionary<HexCoord, int>();
@@ -74,11 +77,11 @@ public class GameStateSnapshot
     /// persist the snapshot inside a <c>ReplayDto.InitialState</c> without
     /// having to re-apply the snapshot to a throwaway grid first.
     /// </summary>
-    public IEnumerable<(HexCoord Coord, PlayerId Owner, HexOccupant? Occupant)> EnumerateTiles()
+    public IEnumerable<(HexCoord Coord, PlayerId Owner, HexOccupant? Occupant, bool IsGold)> EnumerateTiles()
     {
         foreach (KeyValuePair<HexCoord, TileState> kvp in _tiles)
         {
-            yield return (kvp.Key, kvp.Value.Owner, kvp.Value.Occupant);
+            yield return (kvp.Key, kvp.Value.Owner, kvp.Value.Occupant, kvp.Value.IsGold);
         }
     }
 
@@ -117,6 +120,7 @@ public class GameStateSnapshot
             // Clone again on apply so the snapshot remains independent and
             // restores remain idempotent across multiple calls.
             tile.Occupant = HexOccupant.Clone(kvp.Value.Occupant);
+            tile.IsGold = kvp.Value.IsGold;
         }
 
         treasury.Clear();

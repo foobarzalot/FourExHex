@@ -40,6 +40,9 @@ public partial class MapEditorHudView : OrientationHud
     public static int CapitalPaletteIndex => 4 + GameSettings.PlayerConfig.Length;
     /// <summary>Palette index reserved for the tower-toggle swatch.</summary>
     public static int TowerPaletteIndex => 5 + GameSettings.PlayerConfig.Length;
+    /// <summary>Palette index reserved for the gold-tile-toggle swatch
+    /// (issue #45).</summary>
+    public static int GoldPaletteIndex => 6 + GameSettings.PlayerConfig.Length;
 
     public event Action? EscRequested;
     public event Action<int>? GenerateRequested;
@@ -83,7 +86,11 @@ public partial class MapEditorHudView : OrientationHud
     // flip Vertical/horizontal on landscape↔portrait so the same buttons
     // stack as a rail column or sit as a bar row.
     private PanelContainer _landCluster = null!;   // 6 land swatches OR 1 cycle button (chip chrome)
-    private BoxContainer _paintCluster = null!;    // water + tree + capital + tower (terrain paint)
+    // Paint tools (water + tree + capital + tower + gold). A GridContainer so
+    // it can wrap to a 2nd row (portrait) / column (landscape) on compact
+    // phones — five 68-px buttons no longer fit one line on a small screen
+    // (issue #45). ApplyPaintGrid sets Columns per orientation × compact.
+    private GridContainer _paintCluster = null!;
     private BoxContainer _toolsCluster = null!;    // hand (pan) + die (random)
     private Control _undoCluster = null!;          // undo / redo
     private HudIconButton? _optionsButton;         // gear → EscRequested (only when ShowSceneRootChrome)
@@ -92,8 +99,9 @@ public partial class MapEditorHudView : OrientationHud
     {
         // Persistent clusters, parentless until ApplyLayout reparents them.
 
-        _paintCluster = new BoxContainer { MouseFilter = Control.MouseFilterEnum.Pass };
-        _paintCluster.AddThemeConstantOverride("separation", 8);
+        _paintCluster = new GridContainer { MouseFilter = Control.MouseFilterEnum.Pass };
+        _paintCluster.AddThemeConstantOverride("h_separation", 8);
+        _paintCluster.AddThemeConstantOverride("v_separation", 8);
 
         _toolsCluster = new BoxContainer { MouseFilter = Control.MouseFilterEnum.Pass };
         _toolsCluster.AddThemeConstantOverride("separation", 8);
@@ -115,9 +123,9 @@ public partial class MapEditorHudView : OrientationHud
             "MapEditorHudView: seed LineEdit removed; die-only randomize wired.");
 
         // Palette array: 0 = hand, 1..N = land color swatches, then neutral
-        // (unowned land), water, tree, capital, tower. _palette is indexed
-        // by these slots.
-        _palette = new HexPaletteButton[GameSettings.PlayerConfig.Length + 6];
+        // (unowned land), water, tree, capital, tower, gold. _palette is
+        // indexed by these slots.
+        _palette = new HexPaletteButton[GameSettings.PlayerConfig.Length + 7];
 
         // Land cluster — a PanelContainer (chip chrome) wrapping a flippable
         // row: full 1×6 land swatches OR a single cycle button (Compact).
@@ -215,6 +223,16 @@ public partial class MapEditorHudView : OrientationHud
         _paintCluster.AddChild(towerButton);
         _palette[towerIndex] = towerButton;
 
+        // Gold-tile toggle (issue #45) — a higher-income hotspot tile.
+        int goldIndex = GoldPaletteIndex;
+        var goldButton = new HexPaletteButton(
+            new Color(0.97f, 0.80f, 0.22f, 1f), HexPaletteIcon.Gold, squared: true);
+        goldButton.TooltipText = "Place / remove a gold tile (2× income)";
+        goldButton.Pressed += _ => SelectPalette(goldIndex);
+        AudioBus.AttachClick(goldButton);
+        _paintCluster.AddChild(goldButton);
+        _palette[goldIndex] = goldButton;
+
         // Tools cluster — hand (pan, no-paint) + die (random regenerate).
         var handButton = new HexPaletteButton(
             new Color(0.32f, 0.34f, 0.38f, 1f), HexPaletteIcon.Hand, squared: true);
@@ -283,6 +301,8 @@ public partial class MapEditorHudView : OrientationHud
         // Right rail (command/tools): hand + die.
         RightRailGroup!.AddChild(_toolsCluster);
 
+        ApplyPaintGrid();
+
         Log.Debug(Log.LogCategory.Render,
             "MapEditorHudView: landscape cluster placement — undo+options → TopRight, " +
             "landCluster+paintCluster → LeftRail, toolsCluster → RightRail.");
@@ -335,6 +355,8 @@ public partial class MapEditorHudView : OrientationHud
         row2.AddChild(_paintCluster);
         inner.AddChild(row2);
 
+        ApplyPaintGrid();
+
         Log.Debug(Log.LogCategory.Render,
             "MapEditorHudView: portrait cluster placement — undo+options → TopRight, " +
             "toolsCluster → BottomBar.row1, landCluster+paintCluster → BottomBar.row2.");
@@ -359,6 +381,9 @@ public partial class MapEditorHudView : OrientationHud
         _landCluster.Visible = !compact;
         _landCycleButton.Visible = compact;
         RefreshLandCycleVisual();
+        // Re-wrap the paint grid for the new compact state (a width-only
+        // change that doesn't flip orientation won't have rebuilt the bars).
+        ApplyPaintGrid();
         Log.Debug(Log.LogCategory.Render,
             $"MapEditorHudView: metrics orient={Orientation} compact={compact} " +
             $"land={(compact ? "cycle (bare)" : "1x6 panel")}");
@@ -366,13 +391,58 @@ public partial class MapEditorHudView : OrientationHud
 
     private void SetClusterVertical(bool vertical)
     {
-        _paintCluster.Vertical = vertical;
         _toolsCluster.Vertical = vertical;
         _landRow.Vertical = vertical;
+        // _paintCluster is a GridContainer (not a BoxContainer): its axis is
+        // set via Columns in ApplyPaintGrid, not a Vertical flag.
         // The landGroup wrapper (parent of _landRow + _landCycleButton)
         // doesn't need to flip — only one child is visible at a time, so
         // its axis is irrelevant.
     }
+
+    /// <summary>
+    /// Lay the paint tools out as a single line on roomy screens and wrap
+    /// them to a 2nd row (portrait) / column (landscape) on compact phones
+    /// (issue #45). Columns come from the unit-tested
+    /// <see cref="EditorPaletteLayout"/>; the bottom bar grows / the left
+    /// rail widens (<see cref="LeftRailWidth"/>) to fit the extra line.
+    /// </summary>
+    private void ApplyPaintGrid()
+    {
+        int count = _paintCluster.GetChildCount();
+        int cols = EditorPaletteLayout.PaintColumns(Orientation, Compact, count);
+        _paintCluster.Columns = Mathf.Max(1, cols);
+
+        // Portrait: grow the bottom bar when the tools wrap to a 2nd row so
+        // the extra row isn't clipped. (Landscape widens the rail instead,
+        // via LeftRailWidth read during the base ApplyLayout.)
+        if (Orientation == ScreenOrientation.Portrait && BottomBar != null)
+        {
+            int rows = EditorPaletteLayout.RowsFor(count, _paintCluster.Columns);
+            // Bottom-bar content = tools row (1 line) + sep + paint rows,
+            // plus the VBox's 10px top / (10 + safe.Bottom) bottom insets.
+            float needed = 10f
+                + EditorPaletteLayout.LineExtent(1)
+                + 8f
+                + EditorPaletteLayout.LineExtent(rows)
+                + 10f + SafeArea.Current.Bottom;
+            float height = Mathf.Max(HudBars.PortraitBottomBarHeight, needed);
+            BottomBar.OffsetTop = -height;
+        }
+
+        Log.Debug(Log.LogCategory.Render,
+            $"MapEditorHudView: paint grid orient={Orientation} compact={Compact} " +
+            $"buttons={count} cols={_paintCluster.Columns} " +
+            $"rows={EditorPaletteLayout.RowsFor(count, _paintCluster.Columns)} " +
+            $"leftRailW={LeftRailWidth} barTop={(BottomBar != null ? BottomBar.OffsetTop : 0f)}");
+    }
+
+    /// <summary>Widen the left rail on compact so the paint tools' 2nd column
+    /// fits (issue #45). Two 68-px columns + 8-px gutter + 8-px rail padding
+    /// each side = 160; the default 78 stays for the single-column case and
+    /// the gameplay HUD.</summary>
+    protected override float LeftRailWidth =>
+        Compact ? 160f : HudBars.RailWidth;
 
     private static HudIconButton MakeUndoButton(HudIcon icon, string tooltip, Action onShort, Action onLong)
     {

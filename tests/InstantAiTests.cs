@@ -129,7 +129,7 @@ public class InstantAiTests
     private static void AssertSameBoard(GameStateSnapshot reference, GameState live)
     {
         var refTiles = new Dictionary<HexCoord, (PlayerId Owner, string? Occ)>();
-        foreach ((HexCoord coord, PlayerId owner, HexOccupant? occ) in reference.EnumerateTiles())
+        foreach ((HexCoord coord, PlayerId owner, HexOccupant? occ, bool _) in reference.EnumerateTiles())
             refTiles[coord] = (owner, occ?.GetType().Name);
         foreach (HexTile t in live.Grid.Tiles)
         {

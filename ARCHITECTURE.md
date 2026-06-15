@@ -52,7 +52,10 @@ Model → Controller → game (with the test project alongside):
   `MultiTouchTapDetector` (3-finger-tap recognition for the debug
   cheat menu — fires once when the third concurrent touch lands,
   re-arms only after all touches lift; no floats, but lives here
-  because it's view-input logic that must stay unit-testable), and
+  because it's view-input logic that must stay unit-testable),
+  `EditorPaletteLayout` (map-editor paint-tool grid wrapping: how many
+  columns the brush grid uses so it spills to a 2nd row/column on
+  compact phones — issue #45), and
   the fractional cube-rounding helper `HexRounding.Round(float, float)`. The
   pressure-relief valve for the no-floats rule in Model + Controller
   (see "No floating-point in Model or Controller" below).
@@ -123,15 +126,19 @@ Consequences for the rest of this doc:
 - **`Log` is Godot-free** — the master logging system routes through
   an injectable `Log.Sink` that `Main` wires to `GD.Print`. See
   **Logging** below.
-- **Save format is v7.** Ownership is a player index on the wire (−1 =
+- **Save format is v9.** Ownership is a player index on the wire (−1 =
   `None`); claim-victory tiers are persisted by player index
-  (palette-independent). v2–v7 still load; v2–v4 migrate their legacy
+  (palette-independent). v2–v9 still load; v2–v4 migrate their legacy
   color-hex claim data via `GameSettings` palette matching. v6 renamed
   the unit levels (Peasant/Spearman/Knight/Baron →
   Recruit/Soldier/Captain/Commander); pre-v6 level names still load via
   `SaveSerializer.ParseUnitLevel`. v7 added the per-player `Difficulty`
   field (see **Difficulty** below); absent in pre-v7 saves and starting
-  maps → defaults to `Soldier` via `SaveSerializer.ParseDifficulty`.
+  maps → defaults to `Soldier` via `SaveSerializer.ParseDifficulty`. v8
+  added the optional `CampaignLevel` pointer. v9 added the per-tile
+  `IsGold` flag (gold tiles, issue #45); absent in pre-v9 saves → `false`
+  (an ordinary tile). All added fields are default-absent, so pre-bump
+  files load unchanged.
 - **`.cs.uid` sidecars**: the moved model files are not Godot
   resources, so theirs were removed; `src/**` is `.gdignore`d. Files
   still in `scripts/` keep their tracked `.cs.uid`.
@@ -353,9 +360,9 @@ Consequences for the rest of this doc:
 │   ├─ ClaimVictoryPrompted │  │   │    CapitalDestroyed, Bankruptcy,       │
 │   │   HighestThreshold    │  │   │    GameWon, Rally, PlayerDefeated}     │
 │   │   (Dict<PlayerId,int> │  │   │    — audio sinks routed to AudioBus    │
-│   │   — player→top tier   │  │   └─ layers: borders / capitals / units /  │
-│   │   dismissed; persists │  │             towers / trees / graves /     │
-│   │   across save/load)   │  │             targets / highlight            │
+│   │   — player→top tier   │  │   └─ layers: borders / gold / capitals /  │
+│   │   dismissed; persists │  │             units / towers / trees /      │
+│   │   across save/load)   │  │             graves / targets / highlight  │
 │   ├─ SelectedTerritory    │  │                                            │
 │   ├─ Mode (enum)          │  │                                            │
 │   ├─ MoveSource           │  │                                            │
@@ -438,7 +445,8 @@ Consequences for the rest of this doc:
 │                  ArrivalConsumesAction (capture/tree/grave → true)        │
 │   DefenseRules.Defense(coord, grid, territory)                           │
 │   TreeRules.RunStartOfTurnGrowth / ConvertGravesToTrees /                │
-│             CountIncomeProducingTiles                                    │
+│             CountIncomeProducingTiles / CountGoldIncomeTiles             │
+│   IncomeRules.IncomeFor (base tiles + GoldTileBonus per gold tile)       │
 │   UpkeepRules.UpkeepFor / TotalUpkeepFor / ApplyUpkeep / ApplyUpkeepFor  │
 │               / ForecastBankruptNextTurn / Classify -> EconomyOutlook    │
 │                          (Healthy / NegativeDelta / BankruptNextTurn)    │
@@ -457,7 +465,7 @@ Consequences for the rest of this doc:
 │                                                                          │
 │   HexCoord (struct, IEquatable, IComparable)                             │
 │   HexGrid — Dictionary<HexCoord, HexTile>                                │
-│   HexTile — Coord, Owner, Occupant (pure model — no view ref)            │
+│   HexTile — Coord, Owner, Occupant, IsGold (pure model)                  │
 │   HexOccupant (abstract)                                                 │
 │     ├─ Unit — Owner, Level, HasMovedThisTurn                             │
 │     ├─ Capital — marker                                                  │
@@ -560,6 +568,45 @@ Consequences for the rest of this doc:
 │   integration tests can verify end-to-end silence.                      │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
+
+## Gold tiles (issue #45)
+
+A **gold tile** is an income hotspot that pays its controlling player double
+the per-turn income of an ordinary tile (2 gp vs 1). Implemented as a single
+per-tile attribute that threads through every layer:
+
+- **Model.** `HexTile.IsGold` (bool, defaults false) — a terrain attribute
+  orthogonal to `Owner` and `Occupant`: a gold tile can be owned by any player
+  or neutral and hold any occupant.
+- **Income.** The 2× bonus lives in the single income chokepoint
+  `IncomeRules.IncomeFor` = `TreeRules.CountIncomeProducingTiles` +
+  `CountGoldIncomeTiles · IncomeRules.GoldTileBonus` (bonus = 1, the one knob
+  to retune the gold earn rate). A gold tile under a `Tree`/`Grave` pays
+  nothing — it's excluded from both counts, same as any dead-ground tile. Real
+  play (`Treasury.CollectIncomeFor`) and the AI lookahead
+  (`AiStateScorer`) both route through `IncomeFor`, so the AI values gold tiles
+  for free. The starting-gold seed (`SeedStartingGold`, 5×tile-count) is
+  deliberately NOT boosted — gold affects recurring income only.
+- **Persistence + undo.** Carried as `TileDto.IsGold` (save format v9),
+  through replay-initial snapshots (`GameStateSnapshot.EnumerateTiles`), and in
+  both deep-copy snapshots (`GameStateSnapshot` / `EditorSnapshot`).
+- **Authoring.** Gold tiles are placed **only via the map editor** — a toggle
+  brush (`MapEditPaint.PaintGoldToggle`, palette glyph `HexPaletteIcon.Gold`)
+  that flips `IsGold` without disturbing owner/occupant, with the same
+  drag-stroke add/erase locking as the tree/tower brushes. `MapGenerator` never
+  creates gold tiles.
+- **Rendering.** `HexMapView`'s `GoldBordersLayer` (a `TriangleSoup` batch)
+  draws an inset gold hex-ring band per gold tile, layered above the territory
+  borders but below all occupants so it coexists with any player color and any
+  tree/tower/unit/capital. Drawn as filled mitered quads (one per edge, sharing
+  corner vertices) rather than a multiline stroke so the corners have no gaps.
+- **Responsive palette.** Adding a 5th paint brush (gold) overflowed the
+  editor palette on compact phones, so `_paintCluster` became a `GridContainer`
+  whose column count comes from `EditorPaletteLayout.PaintColumns` (ViewMath,
+  unit-tested): it stays one line on roomy screens and wraps to a 2nd row
+  (portrait) / column (landscape) on compact. The portrait bottom bar grows and
+  the landscape left rail widens (via the new `HudBars.MakeRail` `width` param +
+  the `OrientationHud.LeftRailWidth` virtual hook) to fit the wrapped grid.
 
 ## Display scaling (autoload)
 

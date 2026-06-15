@@ -155,6 +155,7 @@ public partial class HexMapView : Node2D, IHexMapView
     private PolylineBatch? _outlinesLayer;
     private Node2D? _towerCoverageLayer;
     private PolylineBatch? _bordersLayer;
+    private TriangleSoup? _goldBordersLayer;
     private Node2D? _capitalsLayer;
     private Node2D? _rejectionsLayer;
     private Node2D? _treesLayer;
@@ -544,6 +545,13 @@ public partial class HexMapView : Node2D, IHexMapView
         AddChild(_towerCoverageLayer);
         _bordersLayer = new PolylineBatch { Name = "BordersLayer" };
         AddChild(_bordersLayer);
+        // Gold-tile inner borders (issue #45): above territory borders so the
+        // gold accent reads on top of the black boundary lines, but below
+        // capitals / units / trees / towers so it never hides an occupant.
+        // A filled hex-ring band (TriangleSoup) rather than a multiline stroke
+        // so the corners miter cleanly with no gaps.
+        _goldBordersLayer = new TriangleSoup { Name = "GoldBordersLayer" };
+        AddChild(_goldBordersLayer);
         _capitalsLayer = new Node2D { Name = "CapitalsLayer" };
         AddChild(_capitalsLayer);
         _treesLayer = new Node2D { Name = "TreesLayer" };
@@ -571,6 +579,7 @@ public partial class HexMapView : Node2D, IHexMapView
         AddChild(_rejectionsLayer);
 
         DrawTerritoryBorders();
+        DrawGoldBorders();
         DumpSceneComposition();
         // Occupant visuals are drawn by the controller via
         // RefreshOccupantVisuals once it knows the current player and
@@ -666,6 +675,7 @@ public partial class HexMapView : Node2D, IHexMapView
         long tBorders = Log.Stamp();
         ClearLayer(_targetsLayer);
         DrawTerritoryBorders();
+        DrawGoldBorders();
         Log.Since(Log.LogCategory.Capture, "[hitch] DrawTerritoryBorders", tBorders);
         Log.Debug(Log.LogCategory.Capture,
             $"[hitch] strokes outlines={_outlinesLayer?.StrokeCount ?? 0} " +
@@ -2886,6 +2896,53 @@ public partial class HexMapView : Node2D, IHexMapView
             }
         }
         _bordersLayer.SetUniform(segments.ToArray(), TerritoryBorderColor, TerritoryBorderWidth);
+    }
+
+    private static readonly Color GoldBorderColor = new Color(1f, 0.84f, 0f, 1f);
+    // Concentric hex factors (× the tile's circumradius) bounding the gold
+    // ring band: the band spans from GoldBorderInner to GoldBorderOuter, so
+    // its radial thickness is (Outer − Inner)·radius and it sits just inside
+    // the territory border. Drawn as filled quads (one per edge, sharing
+    // corner vertices) so the corners miter cleanly — a multiline stroke left
+    // gaps at each corner.
+    private const float GoldBorderOuter = 0.90f;
+    private const float GoldBorderInner = 0.74f;
+
+    /// <summary>
+    /// Draw a gold hex-ring band inside every <see cref="HexTile.IsGold"/>
+    /// tile. Batched into one TriangleSoup like the static water; runs on the
+    /// same static-terrain repaint path as <see cref="DrawTerritoryBorders"/>.
+    /// Independent of owner color and occupant, so a gold tile shows its ring
+    /// under any player color and alongside a tree / tower / unit / capital.
+    /// </summary>
+    private void DrawGoldBorders()
+    {
+        if (_goldBordersLayer == null) return;
+        Vector2[] verts = HexVertices();
+        var outer = new Vector2[6];
+        var inner = new Vector2[6];
+        for (int i = 0; i < 6; i++)
+        {
+            outer[i] = verts[i] * GoldBorderOuter;
+            inner[i] = verts[i] * GoldBorderInner;
+        }
+
+        var builder = new TriangleSoupBuilder();
+        foreach (HexTile tile in Grid.Tiles)
+        {
+            if (!tile.IsGold) continue;
+            Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(tile.Coord, HexSize);
+            for (int edge = 0; edge < 6; edge++)
+            {
+                int next = (edge + 1) % 6;
+                // Trapezoid spanning one edge of the ring; adjacent quads
+                // share the outer/inner corner vertices → no corner gap.
+                var quad = new[] { outer[edge], outer[next], inner[next], inner[edge] };
+                builder.AddPolygon(center, quad, GoldBorderColor, vertColors: null);
+            }
+        }
+        _goldBordersLayer.SetTriangles(
+            builder.Points.ToArray(), builder.Colors.ToArray(), builder.Indices.ToArray());
     }
 
     // Batched line drawer: draws ALL edge segments in a single

@@ -105,7 +105,7 @@ public static class SaveSerializer
     /// Bump on any breaking schema change. <see cref="Deserialize"/>
     /// rejects mismatched values rather than attempting migration.
     /// </summary>
-    public const int CurrentFormatVersion = 8;
+    public const int CurrentFormatVersion = 9;
 
     public static string Serialize(
         GameState state,
@@ -231,8 +231,9 @@ public static class SaveSerializer
         // load via ParseUnitLevel. Older files also load their
         // claim-victory data via the legacy color-hex path below.
         // v7 added per-player Difficulty; v8 added the optional
-        // CampaignLevel pointer (issue #2) — both default-absent, so
-        // pre-bump files load unchanged.
+        // CampaignLevel pointer (issue #2); v9 added per-tile IsGold
+        // (issue #45) — all default-absent, so pre-bump files load unchanged
+        // (missing IsGold → false, an ordinary tile).
         if (data.FormatVersion is < 2 or > CurrentFormatVersion)
         {
             throw new InvalidOperationException(
@@ -253,6 +254,7 @@ public static class SaveSerializer
             var hexTile = new HexTile(new HexCoord(tile.Q, tile.R), owner)
             {
                 Occupant = DeserializeOccupant(tile.Occupant, players),
+                IsGold = tile.IsGold,
             };
             grid.Add(hexTile);
         }
@@ -438,6 +440,7 @@ public static class SaveSerializer
                 R = tile.Coord.R,
                 OwnerIndex = IdToOwnerIndex(tile.Owner),
                 Occupant = SerializeOccupant(tile.Occupant),
+                IsGold = tile.IsGold,
             });
         }
         return dtos;
@@ -557,7 +560,7 @@ public static class SaveSerializer
     {
         if (replay == null) return null;
         var tileDtos = new List<TileDto>();
-        foreach ((HexCoord coord, PlayerId owner, HexOccupant? occupant) in replay.InitialSnapshot.EnumerateTiles())
+        foreach ((HexCoord coord, PlayerId owner, HexOccupant? occupant, bool isGold) in replay.InitialSnapshot.EnumerateTiles())
         {
             tileDtos.Add(new TileDto
             {
@@ -565,6 +568,7 @@ public static class SaveSerializer
                 R = coord.R,
                 OwnerIndex = IdToOwnerIndex(owner),
                 Occupant = SerializeOccupant(occupant),
+                IsGold = isGold,
             });
         }
         var goldDtos = new List<CapitalGoldDto>();
@@ -612,6 +616,7 @@ public static class SaveSerializer
             grid.Add(new HexTile(new HexCoord(t.Q, t.R), owner)
             {
                 Occupant = DeserializeOccupant(t.Occupant, players),
+                IsGold = t.IsGold,
             });
         }
         var territories = new List<Territory>(dto.InitialState.Territories.Count);
@@ -960,6 +965,9 @@ public sealed class TileDto
     public int R { get; set; }
     public int OwnerIndex { get; set; }
     public OccupantDto? Occupant { get; set; }
+
+    /// <summary>Gold tile (issue #45). Absent in pre-v9 saves → false.</summary>
+    public bool IsGold { get; set; }
 }
 
 public sealed class OccupantDto

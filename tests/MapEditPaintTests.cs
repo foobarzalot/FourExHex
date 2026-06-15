@@ -551,4 +551,81 @@ public class MapEditPaintTests
 
         Assert.True(grid.Get(coord)!.Owner.IsNone);
     }
+
+    // --- PaintGoldToggle (issue #45) -------------------------------------
+
+    [Fact]
+    public void PaintGoldToggle_OnLand_SetsGold()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = PlayerId.FromIndex(0);
+        var coord = HexCoord.FromOffset(2, 2);
+        IReadOnlyList<Territory> territories = MapEditPaint.PaintLand(
+            grid, water, new List<Territory>(), Cols, Rows, coord, color);
+
+        MapEditPaint.PaintGoldToggle(grid, water, territories, Cols, Rows, coord);
+
+        Assert.True(grid.Get(coord)!.IsGold);
+    }
+
+    [Fact]
+    public void PaintGoldToggle_Twice_TogglesBackOff()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = PlayerId.FromIndex(0);
+        var coord = HexCoord.FromOffset(2, 2);
+        IReadOnlyList<Territory> territories = MapEditPaint.PaintLand(
+            grid, water, new List<Territory>(), Cols, Rows, coord, color);
+
+        territories = MapEditPaint.PaintGoldToggle(grid, water, territories, Cols, Rows, coord);
+        MapEditPaint.PaintGoldToggle(grid, water, territories, Cols, Rows, coord);
+
+        Assert.False(grid.Get(coord)!.IsGold);
+    }
+
+    [Fact]
+    public void PaintGoldToggle_PreservesOwnerAndOccupant()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = PlayerId.FromIndex(0);
+        var coord = HexCoord.FromOffset(2, 2);
+        IReadOnlyList<Territory> territories = MapEditPaint.PaintLand(
+            grid, water, new List<Territory>(), Cols, Rows, coord, color);
+        grid.Get(coord)!.Occupant = new Tower();
+
+        MapEditPaint.PaintGoldToggle(grid, water, territories, Cols, Rows, coord);
+
+        Assert.Equal(color, grid.Get(coord)!.Owner);
+        Assert.IsType<Tower>(grid.Get(coord)!.Occupant);
+        Assert.True(grid.Get(coord)!.IsGold);
+    }
+
+    [Fact]
+    public void PaintGoldToggle_OnNeutralLand_SetsGold()
+    {
+        // Gold must be allowed on neutral (unowned) land (issue #45 acceptance).
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = PlayerId.FromIndex(0);
+        var coord = HexCoord.FromOffset(2, 2);
+        IReadOnlyList<Territory> territories = MapEditPaint.PaintLand(
+            grid, water, new List<Territory>(), Cols, Rows, coord, color);
+        territories = MapEditPaint.PaintNeutral(grid, water, territories, Cols, Rows, coord);
+
+        MapEditPaint.PaintGoldToggle(grid, water, territories, Cols, Rows, coord);
+
+        Assert.True(grid.Get(coord)!.Owner.IsNone);
+        Assert.True(grid.Get(coord)!.IsGold);
+    }
+
+    [Fact]
+    public void PaintGoldToggle_OnWater_IsNoop()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var coord = HexCoord.FromOffset(2, 2);
+
+        MapEditPaint.PaintGoldToggle(grid, water, new List<Territory>(), Cols, Rows, coord);
+
+        Assert.False(grid.Contains(coord));
+        Assert.Contains(coord, water);
+    }
 }

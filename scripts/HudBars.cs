@@ -107,7 +107,7 @@ public static class HudBars
     /// Center (compact → reachable mid-screen) per the
     /// <paramref name="alignBottom"/> flag. MouseFilter.Stop on the Panel
     /// so the column intercepts clicks.</summary>
-    public static (Panel Rail, VBoxContainer Group) MakeRail(bool left, bool alignBottom)
+    public static (Panel Rail, VBoxContainer Group) MakeRail(bool left, bool alignBottom, float width = RailWidth)
     {
         LogicalSafeInsets safe = SafeArea.Current;
         // Rails carry the critical action buttons (buy / build / nav / end
@@ -125,8 +125,8 @@ public static class HudBars
             AnchorLeft  = left ? 0f : 1f,
             AnchorRight = left ? 0f : 1f,
             AnchorTop = 0f, AnchorBottom = 1f,
-            OffsetLeft  = left ?  sideOffset : -(RailWidth + sideOffset),
-            OffsetRight = left ?  RailWidth + sideOffset : -sideOffset,
+            OffsetLeft  = left ?  sideOffset : -(width + sideOffset),
+            OffsetRight = left ?  width + sideOffset : -sideOffset,
             OffsetTop = 0f, OffsetBottom = 0f,
             MouseFilter = Control.MouseFilterEnum.Stop,
         };

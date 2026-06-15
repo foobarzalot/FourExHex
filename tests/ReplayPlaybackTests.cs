@@ -84,7 +84,7 @@ public class ReplayPlaybackTests
         public void AssertStateMatches(GameStateSnapshot reference)
         {
             var refTiles = new Dictionary<HexCoord, (PlayerId Owner, string? OccupantType)>();
-            foreach ((HexCoord coord, PlayerId color, HexOccupant? occupant) in reference.EnumerateTiles())
+            foreach ((HexCoord coord, PlayerId color, HexOccupant? occupant, bool _) in reference.EnumerateTiles())
             {
                 refTiles[coord] = (color, occupant?.GetType().Name);
             }
@@ -623,7 +623,7 @@ public class ReplayPlaybackTests
 
         // Fidelity must still hold.
         var refTiles = new Dictionary<HexCoord, (PlayerId, string?)>();
-        foreach ((HexCoord coord, PlayerId color, HexOccupant? occ) in live.EnumerateTiles())
+        foreach ((HexCoord coord, PlayerId color, HexOccupant? occ, bool _) in live.EnumerateTiles())
             refTiles[coord] = (color, occ?.GetType().Name);
         foreach (HexTile t in state.Grid.Tiles)
         {
@@ -756,7 +756,7 @@ public class ReplayPlaybackTests
         pacer.DrainAll(); // must not throw "already moved this turn"
 
         var refTiles = new Dictionary<HexCoord, (PlayerId, string?)>();
-        foreach ((HexCoord coord, PlayerId color, HexOccupant? occ) in live.EnumerateTiles())
+        foreach ((HexCoord coord, PlayerId color, HexOccupant? occ, bool _) in live.EnumerateTiles())
             refTiles[coord] = (color, occ?.GetType().Name);
         foreach (HexTile t in state.Grid.Tiles)
         {

@@ -114,6 +114,58 @@ public class SaveSerializerTests
     }
 
     [Fact]
+    public void CurrentFormatVersion_IsNine_ForGoldTiles()
+    {
+        Assert.Equal(9, SaveSerializer.CurrentFormatVersion);
+    }
+
+    [Fact]
+    public void Serialize_RoundTripPreservesGoldTiles()
+    {
+        (GameState state, IReadOnlyList<Player> players) = BuildRichState();
+        // Mark a couple of tiles gold (issue #45). One empty, one occupied,
+        // to prove gold is orthogonal to the occupant.
+        state.Grid.Get(HexCoord.FromOffset(1, 1))!.IsGold = true;   // empty Red tile
+        state.Grid.Get(HexCoord.FromOffset(2, 1))!.IsGold = true;   // Tower tile
+
+        string json = SaveSerializer.Serialize(state, 42, players, "s", 100);
+        LoadedSave loaded = SaveSerializer.Deserialize(json);
+
+        foreach (HexTile orig in state.Grid.Tiles)
+        {
+            HexTile? loadedTile = loaded.State.Grid.Get(orig.Coord);
+            Assert.NotNull(loadedTile);
+            Assert.Equal(orig.IsGold, loadedTile!.IsGold);
+        }
+        Assert.True(loaded.State.Grid.Get(HexCoord.FromOffset(1, 1))!.IsGold);
+        Assert.True(loaded.State.Grid.Get(HexCoord.FromOffset(2, 1))!.IsGold);
+    }
+
+    [Fact]
+    public void Deserialize_PreV9Save_DefaultsGoldToFalse()
+    {
+        // A pre-gold save (v8) has no IsGold field on any tile. The loader
+        // must accept it and default every tile to non-gold.
+        (GameState state, IReadOnlyList<Player> players) = BuildRichState();
+        state.Grid.Get(HexCoord.FromOffset(1, 1))!.IsGold = true;
+        string json = SaveSerializer.Serialize(state, 42, players, "s", 100);
+
+        // Strip the new field (always the last tile property, so consume the
+        // preceding comma to keep the JSON valid) and rewind the version to
+        // simulate an old file.
+        string legacy = System.Text.RegularExpressions.Regex
+            .Replace(json, ",\\s*\"IsGold\": (true|false)", string.Empty)
+            .Replace("\"FormatVersion\": 9", "\"FormatVersion\": 8");
+
+        LoadedSave loaded = SaveSerializer.Deserialize(legacy);
+
+        foreach (HexTile loadedTile in loaded.State.Grid.Tiles)
+        {
+            Assert.False(loadedTile.IsGold);
+        }
+    }
+
+    [Fact]
     public void Serialize_RoundTripsPlayerDifficulty()
     {
         // Per-AI difficulty must survive an in-progress save so a reloaded

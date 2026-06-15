@@ -124,9 +124,37 @@ public static class TreeRules
         {
             HexTile? tile = grid.Get(coord);
             if (tile == null) continue;
-            if (tile.Occupant is Tree || tile.Occupant is Grave) continue;
+            if (BlocksIncome(tile)) continue;
             count++;
         }
         return count;
     }
+
+    /// <summary>
+    /// Number of <see cref="HexTile.IsGold"/> tiles in <paramref name="territory"/>
+    /// that actually produce income — i.e. gold tiles NOT occupied by a
+    /// <see cref="Tree"/>/<see cref="Grave"/>. This is the count of tiles
+    /// eligible for the gold income bonus (issue #45); it never exceeds
+    /// <see cref="CountIncomeProducingTiles"/> for the same territory, and a
+    /// gold tile under dead ground contributes to neither. Used by
+    /// <see cref="IncomeRules.IncomeFor"/>.
+    /// </summary>
+    public static int CountGoldIncomeTiles(Territory territory, HexGrid grid)
+    {
+        int count = 0;
+        foreach (HexCoord coord in territory.Coords)
+        {
+            HexTile? tile = grid.Get(coord);
+            if (tile == null) continue;
+            if (!tile.IsGold) continue;
+            if (BlocksIncome(tile)) continue;
+            count++;
+        }
+        return count;
+    }
+
+    /// <summary>Trees and graves are the only income-blockers — dead ground
+    /// that pays nothing regardless of owner or gold status.</summary>
+    private static bool BlocksIncome(HexTile tile)
+        => tile.Occupant is Tree || tile.Occupant is Grave;
 }
