@@ -818,10 +818,24 @@ public static class SaveSerializer
     }
 
     /// <summary>
-    /// Map a legacy v2..v4 stored hex back to the palette slot it names,
-    /// or false if no slot matches (cosmetic palette drift between builds —
-    /// the entry is dropped, same lossy behavior as the old Godot.Color
-    /// round-trip).
+    /// Hex strings that a palette slot used to ship with but no longer does,
+    /// mapped to the slot index that inherited the identity. Consulted as a
+    /// fallback by <see cref="TryPlayerForHex"/> so legacy v2..v4 claim-victory
+    /// data keyed by a retired color still resolves to the right player.
+    /// "e3bc3b" was slot 3's Yellow before it was recolored Brown (issue #44).
+    /// </summary>
+    private static readonly Dictionary<string, int> RetiredHexAliases =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["e3bc3b"] = 3,
+        };
+
+    /// <summary>
+    /// Map a legacy v2..v4 stored hex back to the palette slot it names — the
+    /// live <see cref="GameSettings.PlayerConfig"/> first, then the
+    /// <see cref="RetiredHexAliases"/> table for colors a slot has since
+    /// dropped. Returns false if neither matches (genuine palette drift — the
+    /// entry is dropped, same lossy behavior as the old Godot.Color round-trip).
     /// </summary>
     private static bool TryPlayerForHex(string hex, out PlayerId id)
     {
@@ -833,6 +847,11 @@ public static class SaveSerializer
                 id = PlayerId.FromIndex(i);
                 return true;
             }
+        }
+        if (RetiredHexAliases.TryGetValue(hex, out int aliasIndex))
+        {
+            id = PlayerId.FromIndex(aliasIndex);
+            return true;
         }
         id = PlayerId.None;
         return false;

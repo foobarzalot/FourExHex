@@ -22,7 +22,7 @@ public static class GameSettings
         ("Red",    "cd473f"),
         ("Blue",   "367cbf"),
         ("Green",  "50985c"),
-        ("Yellow", "e3bc3b"),
+        ("Brown",  "8a5a2b"),
         ("Purple", "843890"),
         ("Orange", "db8221"),
     };

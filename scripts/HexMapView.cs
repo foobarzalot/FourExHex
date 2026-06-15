@@ -532,6 +532,10 @@ public partial class HexMapView : Node2D, IHexMapView
         PopulateOutlinesLayer();
 
         Log.Debug(Log.LogCategory.Render, $"HexMapView: rendering {_state.Grid.Count} tiles across {_state.Territories.Count} territories.");
+        Log.Debug(Log.LogCategory.Render,
+            "HexMapView: player palette = " +
+            string.Join(", ", System.Linq.Enumerable.Select(
+                GameSettings.PlayerConfig, c => $"{c.Name}=#{c.Hex}")));
 
         // The tower-coverage tint sits above tile fills + outlines but
         // below borders, so the lift is subtle: the underlying territory
