@@ -204,9 +204,9 @@ public partial class HexMapView : Node2D, IHexMapView
     // by the controller via ShowMoveSource.
     private HexCoord? _selectedUnit;
 
-    // The black hex drawn behind the selected unit's rings. Lives
-    // in _unitsLayer at the selected unit's center. Built by
-    // ApplySelectionAffordance, freed by ClearSelectionAffordance.
+    // The translucent darkening hex drawn behind the selected unit's
+    // rings. Lives in _unitsLayer at the selected unit's center. Built
+    // by ApplySelectionAffordance, freed by ClearSelectionAffordance.
     private Node2D? _selectionBackdrop;
 
     // The player whose turn was active at the most recent
@@ -216,10 +216,12 @@ public partial class HexMapView : Node2D, IHexMapView
     // unit). Null while no turn is active (between games / pre-Init).
     private PlayerId? _currentPlayer;
 
-    // Selection backdrop: a solid-black tile-sized hex drawn beneath
-    // the selected unit's rings so the white rings sit on jet black
-    // (instead of on the player's territory color).
-    private static readonly Color SelectionBackdropColor = new Color(0f, 0f, 0f, 1f);
+    // Selection backdrop: a translucent black tile-sized hex drawn
+    // beneath the selected unit's rings. Darkens the tile enough that
+    // the white rings still read, while letting the territory fill and
+    // any co-located capital/tower/tree/grave show through (issue #46).
+    // Tune ~0.45-0.65 for ring contrast vs. feature visibility.
+    private static readonly Color SelectionBackdropColor = new Color(0f, 0f, 0f, 0.42f);
 
     // Every current-player unit that still has its move available this
     // turn. Each one pulses (scales up and back) in _Process so the
@@ -857,7 +859,7 @@ public partial class HexMapView : Node2D, IHexMapView
 
         Log.Debug(Log.LogCategory.Render,
             $"ShowMoveSource: prev={previous?.ToString() ?? "none"} next={coord?.ToString() ?? "none"} " +
-            $"backdrop={(_selectionBackdrop != null ? "attached" : "cleared")}");
+            $"backdrop={(_selectionBackdrop != null ? $"attached(a={SelectionBackdropColor.A})" : "cleared")}");
     }
 
     public override void _Process(double delta)
@@ -935,10 +937,11 @@ public partial class HexMapView : Node2D, IHexMapView
             _selectionBackdrop = null;
         }
 
-        // The backdrop is a tile-sized black hexagon at the unit's
-        // center so the white rings read on jet black instead of on
-        // the territory's player color. CreateHexVisual returns a
-        // Polygon2D, which is itself a Node2D — store it in
+        // The backdrop is a tile-sized translucent-black hexagon at the
+        // unit's center: it darkens the tile enough for the white rings
+        // to read, while letting the territory fill and any co-located
+        // capital/tower/tree/grave show through (issue #46). CreateHexVisual
+        // returns a Polygon2D, which is itself a Node2D — store it in
         // _selectionBackdrop.
         Polygon2D backdrop = CreateHexVisual(center, SelectionBackdropColor);
         _unitsLayer?.AddChild(backdrop);
