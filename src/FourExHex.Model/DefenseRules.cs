@@ -10,21 +10,24 @@ using System.Linq;
 ///   - <see cref="Capital"/>       -> 1
 ///   - <see cref="Tree"/> / <see cref="Grave"/> / null -> 0
 ///   - any unknown subtype        -> throws
-/// Units, towers, and capitals all radiate their contribution to
-/// adjacent same-territory tiles. Contributions don't stack — the
-/// max single value wins.
+/// A <see cref="Unit"/> or <see cref="Tower"/> standing on a mountain
+/// (issue #37) adds <see cref="MountainBonus"/> (+1) on top of its
+/// contribution — high ground. Units, towers, and capitals all radiate
+/// their (possibly mountain-boosted) contribution to adjacent
+/// same-territory tiles. Contributions don't stack — the max single
+/// value wins.
 /// </summary>
 public static class DefenseRules
 {
     /// <summary>
-    /// Defense a mountain tile (issue #37) contributes — tower-strength (2).
-    /// A mountain's own tile always carries this (the terrain is physically
-    /// there, owned or neutral); an owned mountain also radiates it to its
-    /// same-territory neighbors, exactly like a <see cref="Tower"/>. A neutral
-    /// mountain is in no player territory and so radiates to nobody, only
-    /// self-defending. Contributions still don't stack — the max wins.
+    /// Extra defense (issue #37) a <see cref="Unit"/> or <see cref="Tower"/>
+    /// gains from standing on a mountain — the high-ground bonus. A mountain
+    /// gives no defense on its own (an empty mountain contributes nothing); only
+    /// an occupant earns the bonus, and that boosted value radiates to
+    /// same-territory neighbors like any other defender. Contributions still
+    /// don't stack — the max wins.
     /// </summary>
-    public const int MountainDefense = 2;
+    public const int MountainBonus = 1;
 
     /// <summary>
     /// Defense value covering the tile at <paramref name="coord"/>. To
@@ -35,24 +38,30 @@ public static class DefenseRules
         int max = 0;
 
         HexTile? tile = grid.Get(coord);
-        if (tile != null)
-        {
-            max = System.Math.Max(max, ContributionOf(tile.Occupant));
-            // The tile's own mountain self-defends regardless of owner.
-            if (tile.IsMountain) max = System.Math.Max(max, MountainDefense);
-        }
+        if (tile != null) max = System.Math.Max(max, ContributionAt(tile));
 
         foreach (HexCoord neighbor in coord.Neighbors())
         {
             if (!territory.Coords.Contains(neighbor)) continue;
             HexTile? neighborTile = grid.Get(neighbor);
             if (neighborTile == null) continue;
-            max = System.Math.Max(max, ContributionOf(neighborTile.Occupant));
-            // A same-territory neighbor mountain radiates its defense here.
-            if (neighborTile.IsMountain) max = System.Math.Max(max, MountainDefense);
+            max = System.Math.Max(max, ContributionAt(neighborTile));
         }
 
         return max;
+    }
+
+    /// <summary>
+    /// A tile's total defense contribution: its occupant's base value plus the
+    /// mountain high-ground bonus when a <see cref="Unit"/> or <see cref="Tower"/>
+    /// stands on a mountain. An empty mountain contributes nothing.
+    /// </summary>
+    private static int ContributionAt(HexTile tile)
+    {
+        int contribution = ContributionOf(tile.Occupant);
+        if (tile.IsMountain && (tile.Occupant is Unit || tile.Occupant is Tower))
+            contribution += MountainBonus;
+        return contribution;
     }
 
     /// <summary>
@@ -88,8 +97,7 @@ public static class DefenseRules
         HexTile? targetTile = grid.Get(target);
         if (targetTile != null
             && targetTerritory.Coords.Contains(target)
-            && (ContributionOf(targetTile.Occupant) >= threshold
-                || (targetTile.IsMountain && MountainDefense >= threshold)))
+            && ContributionAt(targetTile) >= threshold)
         {
             yield return target;
         }
@@ -99,8 +107,7 @@ public static class DefenseRules
             if (!targetTerritory.Coords.Contains(neighbor)) continue;
             HexTile? neighborTile = grid.Get(neighbor);
             if (neighborTile == null) continue;
-            if (ContributionOf(neighborTile.Occupant) >= threshold
-                || (neighborTile.IsMountain && MountainDefense >= threshold))
+            if (ContributionAt(neighborTile) >= threshold)
             {
                 yield return neighbor;
             }

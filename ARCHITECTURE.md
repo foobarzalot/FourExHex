@@ -609,11 +609,12 @@ per-tile attribute that threads through every layer:
   the landscape left rail widens (via the new `HudBars.MakeRail` `width` param +
   the `OrientationHud.LeftRailWidth` virtual hook) to fit the wrapped grid.
 
-## Mountain tiles (issue #37)
+## Mountain tiles (issues #37, #47)
 
-A **mountain tile** is defensive terrain: tower-strength defense that radiates
-to friendly neighbors, capturable by a Captain/Commander without being
-destroyed. Like gold it is a single per-tile attribute threaded through every
+A **mountain tile** is high ground: it gives **no defense on its own**, but a
+unit or tower standing on it gains a **+1 bonus that radiates** to friendly
+neighbors. Capturable without being destroyed; an *empty* mountain is
+defenseless. Like gold it is a single per-tile attribute threaded through every
 layer, but defensive rather than economic — the two flags are independent (a
 tile can be a gold mountain).
 
@@ -622,19 +623,24 @@ tile can be a gold mountain).
   player and is **passable**: units move onto, through, and die on it. It has
   no income behavior of its own (a controlled mountain pays the ordinary 1 gp;
   a gold mountain still pays the gold bonus).
-- **Defense.** `DefenseRules.Defense` treats a mountain as a contributor of
-  `DefenseRules.MountainDefense` (2, = a `Tower`): the tile's own mountain
-  always self-defends (so capturing a neutral mountain needs level > 2, i.e.
-  Captain/Commander), and a same-territory neighbor mountain radiates to it.
-  Contributions are still `max`, not cumulative, so a unit on a mountain takes
-  the greater of the two. `BlockingDefenders` mirrors this for the view's
-  red-flash. Capture (`MovementRules.ResolveArrival`) transfers ownership but
-  leaves `IsMountain` set — the terrain (and its defense) persists for the new
-  owner; a `Log.LogCategory.Capture` line records it.
+- **Defense.** `DefenseRules.Defense` gives a `Unit` or `Tower` on a mountain
+  `DefenseRules.MountainBonus` (+1) on top of its contribution (folded in by the
+  private `ContributionAt` helper); an **empty mountain contributes nothing**.
+  The boosted value radiates to same-territory neighbors like any other
+  defender, so a Soldier/Tower on a mountain protects at 3 and a Commander at 5.
+  Contributions are still `max`, not cumulative. Because empty mountains no
+  longer defend, an empty neutral mountain is capturable by any level (even a
+  Recruit), while a defended one raises the capture threshold by 1.
+  `BlockingDefenders` mirrors this (via the same `ContributionAt`) for the
+  view's red-flash. Capture (`MovementRules.ResolveArrival`) transfers ownership
+  but leaves `IsMountain` set — the terrain persists, so the new owner's
+  occupant earns the bonus; a `Log.LogCategory.Capture` line records it.
 - **Rule guards.** Trees never spread onto mountains
-  (`TreeRules.RunStartOfTurnGrowth`); towers can't be built on them
-  (`PurchaseRules.IsValidTowerLocation`); a unit that dies on a mountain leaves
-  **no grave** (`UpkeepRules.ApplyUpkeep` empties the tile instead).
+  (`TreeRules.RunStartOfTurnGrowth`); **towers may be built on mountains**
+  (`PurchaseRules.IsValidTowerLocation` — the +1 is the point), with a
+  `Log.LogCategory.Capture` `[tower] placed on mountain` line on the human
+  build path; a unit that dies on a mountain leaves **no grave**
+  (`UpkeepRules.ApplyUpkeep` empties the tile instead).
 - **No-capital edge case.** Capitals are never placed on mountains
   (`CapitalPlacer.Choose` skips them). A connected same-owner region made
   **entirely** of mountains therefore has no legal capital site, so
@@ -651,8 +657,9 @@ tile can be a gold mountain).
 - **Authoring.** Placed **only via the map editor** — a toggle brush
   (`MapEditPaint.PaintMountainToggle`, palette glyph `HexPaletteIcon.Mountain`)
   with the same drag-stroke add/erase locking as the tree/tower/gold brushes.
-  Mountain and tree/tower are mutually exclusive (painting one clears the
-  other); the capital brush refuses a mountain tile and vice-versa; gold is
+  Mountain and **tree** are mutually exclusive (painting one clears the other);
+  a **tower coexists** with a mountain (#47 — neither brush clears the other);
+  the capital brush refuses a mountain tile and vice-versa; gold is
   independent. `MapGenerator` never creates mountains.
 - **Editor undo/sound for flag paints.** Mountain and gold paints leave the
   territory partition untouched, so the editor's old "territory-list reference

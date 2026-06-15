@@ -1181,6 +1181,13 @@ public class GameController
 
         HexTile dst = _state.Grid.Get(destination)!;
         dst.Occupant = new Tower();
+        if (dst.IsMountain)
+        {
+            // Issue #37: towers may now stand on mountains for the +1 bonus.
+            Log.Debug(Log.LogCategory.Capture,
+                $"[tower] placed on mountain at {destination} → defense " +
+                $"{DefenseRules.Defense(destination, _state.Grid, _session.SelectedTerritory)}");
+        }
         _map.PlaySound(SoundEffect.TowerPlaced, destination);
 
         // QoL: stay in BuildingTower mode if the territory can still

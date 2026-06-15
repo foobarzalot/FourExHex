@@ -144,11 +144,10 @@ public static class MapEditPaint
         else
         {
             // Empty or Tree (or anything else non-Capital): replace with a
-            // tower. Tree → Tower is the cross-type swap; empty → Tower
-            // is the place case. A tower never coexists with a mountain
-            // (issue #37), so placing one clears the mountain flag.
+            // tower. Tree → Tower is the cross-type swap; empty → Tower is the
+            // place case. A tower may coexist with a mountain (issue #37) — it
+            // earns the +1 high-ground bonus — so the mountain flag is left as-is.
             tile.Occupant = new Tower();
-            tile.IsMountain = false;
         }
         return Reconcile(grid, previousTerritories);
     }
@@ -277,11 +276,12 @@ public static class MapEditPaint
 
     /// <summary>
     /// Toggle the <see cref="HexTile.IsMountain"/> flag on the land tile at
-    /// <paramref name="coord"/> (issue #37). Mountains are defensive terrain
-    /// mutually exclusive with a <see cref="Tree"/>/<see cref="Tower"/>:
-    /// turning a mountain ON clears any tree or tower on the tile (and,
-    /// symmetrically, <see cref="PaintTreeToggle"/>/<see cref="PaintTowerToggle"/>
-    /// clear the mountain when they place their occupant). A tile holding a
+    /// <paramref name="coord"/> (issue #37). Mountains are high-ground terrain
+    /// mutually exclusive only with a <see cref="Tree"/>: turning a mountain ON
+    /// clears any tree on the tile (and, symmetrically,
+    /// <see cref="PaintTreeToggle"/> clears the mountain when it places a tree).
+    /// A <see cref="Tower"/> may coexist with a mountain (it earns the +1
+    /// high-ground bonus), so it is left in place. A tile holding a
     /// <see cref="Capital"/> is refused (no-op) — capitals never coexist with a
     /// mountain. <see cref="HexTile.IsGold"/> and <see cref="HexTile.Owner"/>
     /// are preserved (the two terrain flags are independent; a mountain may be
@@ -311,8 +311,9 @@ public static class MapEditPaint
         else
         {
             tile.IsMountain = true;
-            // Mutual exclusion: a new mountain clears a tree/tower.
-            if (tile.Occupant is Tree || tile.Occupant is Tower)
+            // Mutual exclusion: a new mountain clears a tree (trees never grow on
+            // mountains). A tower stays — towers may stand on mountains (#37).
+            if (tile.Occupant is Tree)
             {
                 tile.Occupant = null;
             }

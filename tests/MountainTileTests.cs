@@ -6,11 +6,12 @@ namespace FourExHex.Tests;
 
 /// <summary>
 /// Mountain hex tiles (issue #37): a per-tile <see cref="HexTile.IsMountain"/>
-/// flag — defensive terrain that contributes tower-strength defense
-/// (<see cref="DefenseRules.MountainDefense"/>) to itself and radiates it to
-/// same-owner neighbors. Passable, capturable by Captain/Commander without
-/// being destroyed, leaves no grave on death, blocks tree spread / tower /
-/// capital placement, and carries no income behavior of its own.
+/// flag — high ground that gives no defense on its own, but grants a unit or
+/// tower standing on it a <see cref="DefenseRules.MountainBonus"/> (+1) defense
+/// bonus that radiates to same-owner neighbors like any other defender.
+/// Passable, capturable (an empty mountain is defenseless), retains its terrain
+/// when captured, leaves no grave on death, blocks tree spread, and carries no
+/// income behavior of its own. Towers may be built on mountains; capitals never.
 /// </summary>
 public class MountainTileTests
 {
@@ -34,18 +35,18 @@ public class MountainTileTests
         return new Territory(owner, coords, capital);
     }
 
-    // --- Defense: self-defense ------------------------------------------
+    // --- Defense: empty mountain gives no benefit -----------------------
 
     [Fact]
-    public void Defense_NeutralMountain_SelfDefendsAtTowerStrength()
+    public void Defense_EmptyNeutralMountain_IsZero()
     {
-        // A lone neutral mountain defends only itself, at strength 2.
+        // A lone empty mountain gives no defense on its own.
         var grid = new HexGrid();
         grid.Add(new HexTile(new HexCoord(0, 0), PlayerId.None));
         grid.Get(new HexCoord(0, 0))!.IsMountain = true;
         var neutral = new Territory(PlayerId.None, new[] { new HexCoord(0, 0) }, capital: null);
 
-        Assert.Equal(2, DefenseRules.Defense(new HexCoord(0, 0), grid, neutral));
+        Assert.Equal(0, DefenseRules.Defense(new HexCoord(0, 0), grid, neutral));
     }
 
     [Fact]
@@ -58,55 +59,110 @@ public class MountainTileTests
         Assert.Equal(0, DefenseRules.Defense(new HexCoord(0, 0), grid, neutral));
     }
 
-    // --- Defense: radiation to friendly neighbors -----------------------
-
     [Fact]
-    public void Defense_OwnedMountain_RadiatesToSameOwnerNeighbor()
+    public void Defense_EmptyOwnedMountain_RadiatesNothing()
     {
-        // Red owns (0,0) mountain and (1,0) empty, same territory. The empty
-        // tile is protected by the adjacent mountain.
+        // Red owns (0,0) empty mountain and (1,0) empty, same territory. The
+        // empty mountain confers no protection on its neighbor.
         HexGrid grid = BuildRow(0, 1, Red);
         grid.Get(new HexCoord(0, 0))!.IsMountain = true;
         Territory red = RowTerritory(0, 1, Red, capital: new HexCoord(0, 0));
 
-        Assert.Equal(2, DefenseRules.Defense(new HexCoord(1, 0), grid, red));
-    }
-
-    [Fact]
-    public void Defense_NeutralMountain_DoesNotRadiateToPlayerNeighbor()
-    {
-        // Neutral mountain at (0,0); Red owns (1,0). The neutral mountain is
-        // not in Red's territory, so it does not protect Red's tile.
-        var grid = new HexGrid();
-        grid.Add(new HexTile(new HexCoord(0, 0), PlayerId.None));
-        grid.Get(new HexCoord(0, 0))!.IsMountain = true;
-        grid.Add(new HexTile(new HexCoord(1, 0), Red));
-        Territory red = new Territory(Red, new[] { new HexCoord(1, 0) }, capital: null);
-
         Assert.Equal(0, DefenseRules.Defense(new HexCoord(1, 0), grid, red));
     }
 
-    // --- Defense: non-cumulative (max) ----------------------------------
+    [Fact]
+    public void Defense_EmptyMountainAdjacentToUnit_NoBonus()
+    {
+        // A Soldier on plain (0,0) next to an empty mountain (1,0): the empty
+        // mountain adds nothing, so the soldier's tile defends at its base 2.
+        HexGrid grid = BuildRow(0, 1, Red);
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Unit(Red, UnitLevel.Soldier);
+        grid.Get(new HexCoord(1, 0))!.IsMountain = true;
+        Territory red = RowTerritory(0, 1, Red, capital: null);
+
+        Assert.Equal(2, DefenseRules.Defense(new HexCoord(0, 0), grid, red));
+    }
+
+    // --- Defense: occupant +1 bonus and its radiation -------------------
 
     [Fact]
-    public void Defense_CommanderOnMountain_IsMaxNotSum()
+    public void Defense_SoldierOnMountain_IsThree()
     {
-        // Commander (4) standing on a mountain (2): defense is max(4,2)=4, not 6.
+        // Soldier (2) on a mountain gets +1 → 3.
+        HexGrid grid = BuildRow(0, 0, Red);
+        HexTile tile = grid.Get(new HexCoord(0, 0))!;
+        tile.IsMountain = true;
+        tile.Occupant = new Unit(Red, UnitLevel.Soldier);
+        Territory red = RowTerritory(0, 0, Red, capital: null);
+
+        Assert.Equal(3, DefenseRules.Defense(new HexCoord(0, 0), grid, red));
+    }
+
+    [Fact]
+    public void Defense_TowerOnMountain_IsThree()
+    {
+        // Tower (2) on a mountain gets +1 → 3.
+        HexGrid grid = BuildRow(0, 0, Red);
+        HexTile tile = grid.Get(new HexCoord(0, 0))!;
+        tile.IsMountain = true;
+        tile.Occupant = new Tower();
+        Territory red = RowTerritory(0, 0, Red, capital: null);
+
+        Assert.Equal(3, DefenseRules.Defense(new HexCoord(0, 0), grid, red));
+    }
+
+    [Fact]
+    public void Defense_CommanderOnMountain_IsFive()
+    {
+        // Commander (4) on a mountain gets +1 → 5 (the bonus adds, the max with
+        // the plain occupant value is still 5).
         HexGrid grid = BuildRow(0, 0, Red);
         HexTile tile = grid.Get(new HexCoord(0, 0))!;
         tile.IsMountain = true;
         tile.Occupant = new Unit(Red, UnitLevel.Commander);
         Territory red = RowTerritory(0, 0, Red, capital: null);
 
-        Assert.Equal(4, DefenseRules.Defense(new HexCoord(0, 0), grid, red));
+        Assert.Equal(5, DefenseRules.Defense(new HexCoord(0, 0), grid, red));
+    }
+
+    [Fact]
+    public void Defense_UnitOnMountain_RadiatesBoostedValueToNeighbor()
+    {
+        // Soldier on mountain (0,0) → 3; the boosted value radiates to the
+        // same-territory empty neighbor (1,0).
+        HexGrid grid = BuildRow(0, 1, Red);
+        HexTile tile = grid.Get(new HexCoord(0, 0))!;
+        tile.IsMountain = true;
+        tile.Occupant = new Unit(Red, UnitLevel.Soldier);
+        Territory red = RowTerritory(0, 1, Red, capital: new HexCoord(1, 0));
+
+        Assert.Equal(3, DefenseRules.Defense(new HexCoord(1, 0), grid, red));
+    }
+
+    [Fact]
+    public void Defense_NeutralMountain_DoesNotRadiateToPlayerNeighbor()
+    {
+        // Soldier on a neutral-territory mountain at (0,0); Red owns (1,0). The
+        // mountain tile is not in Red's territory, so its bonus does not reach
+        // Red's tile.
+        var grid = new HexGrid();
+        grid.Add(new HexTile(new HexCoord(0, 0), PlayerId.None));
+        grid.Get(new HexCoord(0, 0))!.IsMountain = true;
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Unit(Red, UnitLevel.Soldier);
+        grid.Add(new HexTile(new HexCoord(1, 0), Red));
+        Territory red = new Territory(Red, new[] { new HexCoord(1, 0) }, capital: null);
+
+        Assert.Equal(0, DefenseRules.Defense(new HexCoord(1, 0), grid, red));
     }
 
     // --- Capture thresholds ---------------------------------------------
 
     [Fact]
-    public void ValidTargets_SoldierCannotCaptureNeutralMountain_CaptainCan()
+    public void ValidTargets_RecruitCanCaptureEmptyNeutralMountain()
     {
-        // Red unit at (0,0); neutral mountain at (1,0). Mountain defense=2.
+        // Red unit at (0,0); empty neutral mountain at (1,0). An empty mountain
+        // has defense 0, so even a Recruit can take it.
         var grid = new HexGrid();
         grid.Add(new HexTile(new HexCoord(0, 0), Red));
         grid.Add(new HexTile(new HexCoord(1, 0), PlayerId.None));
@@ -116,11 +172,31 @@ public class MountainTileTests
         Territory neutral = new Territory(PlayerId.None, new[] { new HexCoord(1, 0) }, capital: null);
         var all = new List<Territory> { red, neutral };
 
-        List<HexCoord> soldierTargets = MovementRules.ValidTargets(UnitLevel.Soldier, red, grid, all);
-        List<HexCoord> captainTargets = MovementRules.ValidTargets(UnitLevel.Captain, red, grid, all);
+        List<HexCoord> recruitTargets = MovementRules.ValidTargets(UnitLevel.Recruit, red, grid, all);
 
-        Assert.DoesNotContain(new HexCoord(1, 0), soldierTargets);
-        Assert.Contains(new HexCoord(1, 0), captainTargets);
+        Assert.Contains(new HexCoord(1, 0), recruitTargets);
+    }
+
+    [Fact]
+    public void ValidTargets_DefendedMountain_RaisesCaptureThreshold()
+    {
+        // Neutral mountain at (1,0) holding a Soldier (defense 2+1=3). A Captain
+        // (3) cannot take it (needs strictly greater), a Commander (4) can.
+        var grid = new HexGrid();
+        grid.Add(new HexTile(new HexCoord(0, 0), Red));
+        grid.Add(new HexTile(new HexCoord(1, 0), PlayerId.None));
+        grid.Get(new HexCoord(1, 0))!.IsMountain = true;
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(PlayerId.None, UnitLevel.Soldier);
+
+        Territory red = new Territory(Red, new[] { new HexCoord(0, 0) }, capital: null);
+        Territory neutral = new Territory(PlayerId.None, new[] { new HexCoord(1, 0) }, capital: null);
+        var all = new List<Territory> { red, neutral };
+
+        List<HexCoord> captainTargets = MovementRules.ValidTargets(UnitLevel.Captain, red, grid, all);
+        List<HexCoord> commanderTargets = MovementRules.ValidTargets(UnitLevel.Commander, red, grid, all);
+
+        Assert.DoesNotContain(new HexCoord(1, 0), captainTargets);
+        Assert.Contains(new HexCoord(1, 0), commanderTargets);
     }
 
     [Fact]
@@ -164,17 +240,21 @@ public class MountainTileTests
     // --- Tower placement -------------------------------------------------
 
     [Fact]
-    public void IsValidTowerLocation_FalseOnEmptyMountain()
+    public void IsValidTowerLocation_TrueOnEmptyMountain()
     {
+        // Towers may now be built on mountains (the +1 high-ground bonus is the
+        // whole point). An occupied mountain is still rejected.
         HexGrid grid = BuildRow(0, 1, Red);
         grid.Get(new HexCoord(0, 0))!.IsMountain = true;
         Territory red = RowTerritory(0, 1, Red, capital: new HexCoord(1, 0));
 
+        Assert.True(PurchaseRules.IsValidTowerLocation(
+            grid.Get(new HexCoord(0, 0))!, red, grid));
+
+        // sanity: an occupied mountain is not a valid tower site.
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Unit(Red, UnitLevel.Soldier);
         Assert.False(PurchaseRules.IsValidTowerLocation(
             grid.Get(new HexCoord(0, 0))!, red, grid));
-        // sanity: a non-mountain empty tile in the same territory is valid.
-        Assert.True(PurchaseRules.IsValidTowerLocation(
-            grid.Get(new HexCoord(1, 0))!, red, grid));
     }
 
     // --- Grave suppression on death --------------------------------------

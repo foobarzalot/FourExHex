@@ -730,8 +730,10 @@ public class MapEditPaintTests
     }
 
     [Fact]
-    public void PaintTowerToggle_OverMountain_ClearsMountain()
+    public void PaintTowerToggle_OverMountain_KeepsMountain()
     {
+        // Towers and mountains now coexist (the +1 high-ground bonus): placing a
+        // tower on a mountain leaves the terrain flag set.
         (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
         var color = PlayerId.FromIndex(0);
         var coord = HexCoord.FromOffset(2, 2);
@@ -742,7 +744,25 @@ public class MapEditPaintTests
         MapEditPaint.PaintTowerToggle(grid, water, territories, Cols, Rows, coord);
 
         Assert.IsType<Tower>(grid.Get(coord)!.Occupant);
-        Assert.False(grid.Get(coord)!.IsMountain);   // mountain cleared
+        Assert.True(grid.Get(coord)!.IsMountain);   // mountain retained
+    }
+
+    [Fact]
+    public void PaintMountainToggle_OverTower_KeepsTower()
+    {
+        // Symmetric to the above: turning a mountain ON under a tower leaves the
+        // tower in place (only trees are mutually exclusive with mountains).
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = PlayerId.FromIndex(0);
+        var coord = HexCoord.FromOffset(2, 2);
+        IReadOnlyList<Territory> territories = MapEditPaint.PaintLand(
+            grid, water, new List<Territory>(), Cols, Rows, coord, color);
+        territories = MapEditPaint.PaintTowerToggle(grid, water, territories, Cols, Rows, coord);
+
+        MapEditPaint.PaintMountainToggle(grid, water, territories, Cols, Rows, coord);
+
+        Assert.True(grid.Get(coord)!.IsMountain);
+        Assert.IsType<Tower>(grid.Get(coord)!.Occupant);   // tower retained
     }
 
     [Fact]

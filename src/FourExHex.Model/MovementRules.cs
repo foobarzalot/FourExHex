@@ -256,8 +256,8 @@ public static class MovementRules
 
         if (wasCapture && dstTile.IsMountain)
         {
-            // Issue #37: capturing a mountain transfers ownership but leaves
-            // the terrain (and its defense) intact for the new owner.
+            // Issue #37: capturing a mountain transfers ownership but leaves the
+            // terrain intact, so the new owner's occupant earns the +1 bonus.
             Log.Debug(Log.LogCategory.Capture,
                 $"[capture] mountain at {dstTile.Coord} → owner " +
                 $"{attackerTerritory.Owner.Index} (terrain retained)");
