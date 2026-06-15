@@ -105,7 +105,7 @@ public static class SaveSerializer
     /// Bump on any breaking schema change. <see cref="Deserialize"/>
     /// rejects mismatched values rather than attempting migration.
     /// </summary>
-    public const int CurrentFormatVersion = 9;
+    public const int CurrentFormatVersion = 10;
 
     public static string Serialize(
         GameState state,
@@ -232,8 +232,9 @@ public static class SaveSerializer
         // claim-victory data via the legacy color-hex path below.
         // v7 added per-player Difficulty; v8 added the optional
         // CampaignLevel pointer (issue #2); v9 added per-tile IsGold
-        // (issue #45) — all default-absent, so pre-bump files load unchanged
-        // (missing IsGold → false, an ordinary tile).
+        // (issue #45); v10 added per-tile IsMountain (issue #37) — all
+        // default-absent, so pre-bump files load unchanged (missing IsGold /
+        // IsMountain → false, an ordinary tile).
         if (data.FormatVersion is < 2 or > CurrentFormatVersion)
         {
             throw new InvalidOperationException(
@@ -255,6 +256,7 @@ public static class SaveSerializer
             {
                 Occupant = DeserializeOccupant(tile.Occupant, players),
                 IsGold = tile.IsGold,
+                IsMountain = tile.IsMountain,
             };
             grid.Add(hexTile);
         }
@@ -441,6 +443,7 @@ public static class SaveSerializer
                 OwnerIndex = IdToOwnerIndex(tile.Owner),
                 Occupant = SerializeOccupant(tile.Occupant),
                 IsGold = tile.IsGold,
+                IsMountain = tile.IsMountain,
             });
         }
         return dtos;
@@ -560,7 +563,7 @@ public static class SaveSerializer
     {
         if (replay == null) return null;
         var tileDtos = new List<TileDto>();
-        foreach ((HexCoord coord, PlayerId owner, HexOccupant? occupant, bool isGold) in replay.InitialSnapshot.EnumerateTiles())
+        foreach ((HexCoord coord, PlayerId owner, HexOccupant? occupant, bool isGold, bool isMountain) in replay.InitialSnapshot.EnumerateTiles())
         {
             tileDtos.Add(new TileDto
             {
@@ -569,6 +572,7 @@ public static class SaveSerializer
                 OwnerIndex = IdToOwnerIndex(owner),
                 Occupant = SerializeOccupant(occupant),
                 IsGold = isGold,
+                IsMountain = isMountain,
             });
         }
         var goldDtos = new List<CapitalGoldDto>();
@@ -617,6 +621,7 @@ public static class SaveSerializer
             {
                 Occupant = DeserializeOccupant(t.Occupant, players),
                 IsGold = t.IsGold,
+                IsMountain = t.IsMountain,
             });
         }
         var territories = new List<Territory>(dto.InitialState.Territories.Count);
@@ -968,6 +973,9 @@ public sealed class TileDto
 
     /// <summary>Gold tile (issue #45). Absent in pre-v9 saves → false.</summary>
     public bool IsGold { get; set; }
+
+    /// <summary>Mountain tile (issue #37). Absent in pre-v10 saves → false.</summary>
+    public bool IsMountain { get; set; }
 }
 
 public sealed class OccupantDto

@@ -136,8 +136,9 @@ Consequences for the rest of this doc:
   field (see **Difficulty** below); absent in pre-v7 saves and starting
   maps → defaults to `Soldier` via `SaveSerializer.ParseDifficulty`. v8
   added the optional `CampaignLevel` pointer. v9 added the per-tile
-  `IsGold` flag (gold tiles, issue #45); absent in pre-v9 saves → `false`
-  (an ordinary tile). All added fields are default-absent, so pre-bump
+  `IsGold` flag (gold tiles, issue #45); v10 added the per-tile
+  `IsMountain` flag (mountain tiles, issue #37); both absent in pre-bump
+  saves → `false` (an ordinary tile). All added fields are default-absent, so pre-bump
   files load unchanged.
 - **`.cs.uid` sidecars**: the moved model files are not Godot
   resources, so theirs were removed; `src/**` is `.gdignore`d. Files
@@ -465,7 +466,7 @@ Consequences for the rest of this doc:
 │                                                                          │
 │   HexCoord (struct, IEquatable, IComparable)                             │
 │   HexGrid — Dictionary<HexCoord, HexTile>                                │
-│   HexTile — Coord, Owner, Occupant, IsGold (pure model)                  │
+│   HexTile — Coord, Owner, Occupant, IsGold, IsMountain (pure model)      │
 │   HexOccupant (abstract)                                                 │
 │     ├─ Unit — Owner, Level, HasMovedThisTurn                             │
 │     ├─ Capital — marker                                                  │
@@ -607,6 +608,64 @@ per-tile attribute that threads through every layer:
   (portrait) / column (landscape) on compact. The portrait bottom bar grows and
   the landscape left rail widens (via the new `HudBars.MakeRail` `width` param +
   the `OrientationHud.LeftRailWidth` virtual hook) to fit the wrapped grid.
+
+## Mountain tiles (issue #37)
+
+A **mountain tile** is defensive terrain: tower-strength defense that radiates
+to friendly neighbors, capturable by a Captain/Commander without being
+destroyed. Like gold it is a single per-tile attribute threaded through every
+layer, but defensive rather than economic — the two flags are independent (a
+tile can be a gold mountain).
+
+- **Model.** `HexTile.IsMountain` (bool, defaults false) — orthogonal to
+  `Owner`, `Occupant`, and `IsGold`. A mountain can be neutral or owned by any
+  player and is **passable**: units move onto, through, and die on it. It has
+  no income behavior of its own (a controlled mountain pays the ordinary 1 gp;
+  a gold mountain still pays the gold bonus).
+- **Defense.** `DefenseRules.Defense` treats a mountain as a contributor of
+  `DefenseRules.MountainDefense` (2, = a `Tower`): the tile's own mountain
+  always self-defends (so capturing a neutral mountain needs level > 2, i.e.
+  Captain/Commander), and a same-territory neighbor mountain radiates to it.
+  Contributions are still `max`, not cumulative, so a unit on a mountain takes
+  the greater of the two. `BlockingDefenders` mirrors this for the view's
+  red-flash. Capture (`MovementRules.ResolveArrival`) transfers ownership but
+  leaves `IsMountain` set — the terrain (and its defense) persists for the new
+  owner; a `Log.LogCategory.Capture` line records it.
+- **Rule guards.** Trees never spread onto mountains
+  (`TreeRules.RunStartOfTurnGrowth`); towers can't be built on them
+  (`PurchaseRules.IsValidTowerLocation`); a unit that dies on a mountain leaves
+  **no grave** (`UpkeepRules.ApplyUpkeep` empties the tile instead).
+- **No-capital edge case.** Capitals are never placed on mountains
+  (`CapitalPlacer.Choose` skips them). A connected same-owner region made
+  **entirely** of mountains therefore has no legal capital site, so
+  `CapitalReconciler` leaves it capital-less — it is *not* a territory in the
+  economic sense (no treasury/income/upkeep, skipped by the AI), exactly like
+  the existing singleton / neutral capital-less regions, yet it still renders
+  in the owner's color and still radiates its mountain defense. Every
+  territory consumer already guards on `HasCapital`, so this needed no new
+  branch beyond the `CapitalPlacer` skip. A `Turn` log marks the case.
+- **Persistence + undo.** Carried as `TileDto.IsMountain` (save format **v10**;
+  absent in pre-v10 saves → false), through replay-initial snapshots
+  (`GameStateSnapshot.EnumerateTiles`), and in both deep-copy snapshots
+  (`GameStateSnapshot` / `EditorSnapshot`).
+- **Authoring.** Placed **only via the map editor** — a toggle brush
+  (`MapEditPaint.PaintMountainToggle`, palette glyph `HexPaletteIcon.Mountain`)
+  with the same drag-stroke add/erase locking as the tree/tower/gold brushes.
+  Mountain and tree/tower are mutually exclusive (painting one clears the
+  other); the capital brush refuses a mountain tile and vice-versa; gold is
+  independent. `MapGenerator` never creates mountains.
+- **Editor undo/sound for flag paints.** Mountain and gold paints leave the
+  territory partition untouched, so the editor's old "territory-list reference
+  changed" heuristic missed them. The undo push now compares the pre-stroke
+  snapshot against the live grid via `EditorSnapshot.DiffersFromGrid` (a pure,
+  unit-tested grid diff over owner/occupant/gold/mountain/water), and the
+  per-cell placement sound additionally checks the painted tile's gold/mountain
+  flags. Both flag brushes now record undo and play the sound.
+- **Rendering.** `HexMapView`'s `MountainsLayer` (`Node2D`) draws one
+  `Polygon2D` peak glyph (grey rock + white snow cap, `HudIcons.DrawMountain`)
+  per mountain tile, layered above the gold borders but below occupants so a
+  unit/capital on the tile draws on top. Counter-rotated by `ApplyGlyphUpright`
+  to stay upright on a rotated board.
 
 ## Display scaling (autoload)
 

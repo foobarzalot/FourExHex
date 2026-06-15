@@ -628,4 +628,157 @@ public class MapEditPaintTests
         Assert.False(grid.Contains(coord));
         Assert.Contains(coord, water);
     }
+
+    // --- Mountain brush (issue #37) --------------------------------------
+
+    [Fact]
+    public void PaintMountainToggle_OnEmptyLand_SetsMountain()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = PlayerId.FromIndex(0);
+        var coord = HexCoord.FromOffset(2, 2);
+        IReadOnlyList<Territory> territories = MapEditPaint.PaintLand(
+            grid, water, new List<Territory>(), Cols, Rows, coord, color);
+
+        MapEditPaint.PaintMountainToggle(grid, water, territories, Cols, Rows, coord);
+
+        Assert.True(grid.Get(coord)!.IsMountain);
+    }
+
+    [Fact]
+    public void PaintMountainToggle_OnExistingMountain_ClearsIt()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = PlayerId.FromIndex(0);
+        var coord = HexCoord.FromOffset(2, 2);
+        IReadOnlyList<Territory> territories = MapEditPaint.PaintLand(
+            grid, water, new List<Territory>(), Cols, Rows, coord, color);
+
+        territories = MapEditPaint.PaintMountainToggle(grid, water, territories, Cols, Rows, coord);
+        MapEditPaint.PaintMountainToggle(grid, water, territories, Cols, Rows, coord);
+
+        Assert.False(grid.Get(coord)!.IsMountain);
+    }
+
+    [Fact]
+    public void PaintMountainToggle_OverTree_ClearsTreeAndSetsMountain()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = PlayerId.FromIndex(0);
+        var coord = HexCoord.FromOffset(2, 2);
+        IReadOnlyList<Territory> territories = MapEditPaint.PaintLand(
+            grid, water, new List<Territory>(), Cols, Rows, coord, color);
+        territories = MapEditPaint.PaintTreeToggle(grid, water, territories, Cols, Rows, coord);
+
+        MapEditPaint.PaintMountainToggle(grid, water, territories, Cols, Rows, coord);
+
+        Assert.True(grid.Get(coord)!.IsMountain);
+        Assert.Null(grid.Get(coord)!.Occupant);   // tree cleared
+    }
+
+    [Fact]
+    public void PaintMountainToggle_OnCapital_IsNoop()
+    {
+        // Build a 2-tile territory so a capital can exist, move the capital
+        // onto the target tile, then try to paint it a mountain.
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = PlayerId.FromIndex(0);
+        var a = HexCoord.FromOffset(2, 2);
+        var b = HexCoord.FromOffset(3, 2);
+        IReadOnlyList<Territory> territories = MapEditPaint.PaintLand(
+            grid, water, new List<Territory>(), Cols, Rows, a, color);
+        territories = MapEditPaint.PaintLand(grid, water, territories, Cols, Rows, b, color);
+        territories = MapEditPaint.PaintCapital(grid, water, territories, Cols, Rows, a);
+
+        MapEditPaint.PaintMountainToggle(grid, water, territories, Cols, Rows, a);
+
+        Assert.False(grid.Get(a)!.IsMountain);              // refused
+        Assert.IsType<Capital>(grid.Get(a)!.Occupant);      // capital intact
+    }
+
+    [Fact]
+    public void PaintMountainToggle_PreservesGoldAndOwner()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = PlayerId.FromIndex(2);
+        var coord = HexCoord.FromOffset(4, 4);
+        IReadOnlyList<Territory> territories = MapEditPaint.PaintLand(
+            grid, water, new List<Territory>(), Cols, Rows, coord, color);
+        MapEditPaint.PaintGoldToggle(grid, water, territories, Cols, Rows, coord);
+
+        MapEditPaint.PaintMountainToggle(grid, water, territories, Cols, Rows, coord);
+
+        Assert.True(grid.Get(coord)!.IsMountain);
+        Assert.True(grid.Get(coord)!.IsGold);     // gold independent of mountain
+        Assert.Equal(color, grid.Get(coord)!.Owner);
+    }
+
+    [Fact]
+    public void PaintTreeToggle_OverMountain_ClearsMountain()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = PlayerId.FromIndex(0);
+        var coord = HexCoord.FromOffset(2, 2);
+        IReadOnlyList<Territory> territories = MapEditPaint.PaintLand(
+            grid, water, new List<Territory>(), Cols, Rows, coord, color);
+        territories = MapEditPaint.PaintMountainToggle(grid, water, territories, Cols, Rows, coord);
+
+        MapEditPaint.PaintTreeToggle(grid, water, territories, Cols, Rows, coord);
+
+        Assert.IsType<Tree>(grid.Get(coord)!.Occupant);
+        Assert.False(grid.Get(coord)!.IsMountain);   // mountain cleared
+    }
+
+    [Fact]
+    public void PaintTowerToggle_OverMountain_ClearsMountain()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = PlayerId.FromIndex(0);
+        var coord = HexCoord.FromOffset(2, 2);
+        IReadOnlyList<Territory> territories = MapEditPaint.PaintLand(
+            grid, water, new List<Territory>(), Cols, Rows, coord, color);
+        territories = MapEditPaint.PaintMountainToggle(grid, water, territories, Cols, Rows, coord);
+
+        MapEditPaint.PaintTowerToggle(grid, water, territories, Cols, Rows, coord);
+
+        Assert.IsType<Tower>(grid.Get(coord)!.Occupant);
+        Assert.False(grid.Get(coord)!.IsMountain);   // mountain cleared
+    }
+
+    [Fact]
+    public void PaintCapital_OnMountain_IsNoop()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = PlayerId.FromIndex(0);
+        var a = HexCoord.FromOffset(2, 2);
+        var b = HexCoord.FromOffset(3, 2);
+        IReadOnlyList<Territory> territories = MapEditPaint.PaintLand(
+            grid, water, new List<Territory>(), Cols, Rows, a, color);
+        territories = MapEditPaint.PaintLand(grid, water, territories, Cols, Rows, b, color);
+        // Reconcile auto-placed the capital on one tile; mountain-ify the other.
+        HexCoord capCoord = territories.Single(t => t.Owner == color).Capital!.Value;
+        HexCoord mountainCoord = capCoord == a ? b : a;
+        territories = MapEditPaint.PaintMountainToggle(
+            grid, water, territories, Cols, Rows, mountainCoord);
+
+        territories = MapEditPaint.PaintCapital(
+            grid, water, territories, Cols, Rows, mountainCoord);
+
+        Assert.Null(grid.Get(mountainCoord)!.Occupant);   // no capital placed on the mountain
+        Assert.True(grid.Get(mountainCoord)!.IsMountain);
+        // The capital stayed put on its original tile.
+        Assert.Equal(capCoord, territories.Single(t => t.Owner == color).Capital!.Value);
+    }
+
+    [Fact]
+    public void PaintMountainToggle_OnWater_IsNoop()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var coord = HexCoord.FromOffset(2, 2);
+
+        MapEditPaint.PaintMountainToggle(grid, water, new List<Territory>(), Cols, Rows, coord);
+
+        Assert.False(grid.Contains(coord));
+        Assert.Contains(coord, water);
+    }
 }

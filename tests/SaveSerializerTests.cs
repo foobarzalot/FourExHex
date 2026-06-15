@@ -114,9 +114,9 @@ public class SaveSerializerTests
     }
 
     [Fact]
-    public void CurrentFormatVersion_IsNine_ForGoldTiles()
+    public void CurrentFormatVersion_IsTen_ForMountainTiles()
     {
-        Assert.Equal(9, SaveSerializer.CurrentFormatVersion);
+        Assert.Equal(10, SaveSerializer.CurrentFormatVersion);
     }
 
     [Fact]
@@ -162,6 +162,54 @@ public class SaveSerializerTests
         foreach (HexTile loadedTile in loaded.State.Grid.Tiles)
         {
             Assert.False(loadedTile.IsGold);
+        }
+    }
+
+    [Fact]
+    public void Serialize_RoundTripPreservesMountainTiles()
+    {
+        (GameState state, IReadOnlyList<Player> players) = BuildRichState();
+        // Mark tiles mountain (issue #37). One empty, one also gold to prove
+        // the two terrain flags are independent.
+        state.Grid.Get(HexCoord.FromOffset(1, 1))!.IsMountain = true;
+        HexTile goldMountain = state.Grid.Get(HexCoord.FromOffset(2, 1))!;
+        goldMountain.IsMountain = true;
+        goldMountain.IsGold = true;
+
+        string json = SaveSerializer.Serialize(state, 42, players, "s", 100);
+        LoadedSave loaded = SaveSerializer.Deserialize(json);
+
+        foreach (HexTile orig in state.Grid.Tiles)
+        {
+            HexTile? loadedTile = loaded.State.Grid.Get(orig.Coord);
+            Assert.NotNull(loadedTile);
+            Assert.Equal(orig.IsMountain, loadedTile!.IsMountain);
+        }
+        HexTile loadedGoldMountain = loaded.State.Grid.Get(HexCoord.FromOffset(2, 1))!;
+        Assert.True(loadedGoldMountain.IsMountain);
+        Assert.True(loadedGoldMountain.IsGold);
+    }
+
+    [Fact]
+    public void Deserialize_PreV10Save_DefaultsMountainToFalse()
+    {
+        // A pre-mountain save (v9) has no IsMountain field on any tile. The
+        // loader must accept it and default every tile to non-mountain.
+        (GameState state, IReadOnlyList<Player> players) = BuildRichState();
+        state.Grid.Get(HexCoord.FromOffset(1, 1))!.IsMountain = true;
+        string json = SaveSerializer.Serialize(state, 42, players, "s", 100);
+
+        // Strip the new field (always the last tile property, so consume the
+        // preceding comma to keep the JSON valid) and rewind the version.
+        string legacy = System.Text.RegularExpressions.Regex
+            .Replace(json, ",\\s*\"IsMountain\": (true|false)", string.Empty)
+            .Replace("\"FormatVersion\": 10", "\"FormatVersion\": 9");
+
+        LoadedSave loaded = SaveSerializer.Deserialize(legacy);
+
+        foreach (HexTile loadedTile in loaded.State.Grid.Tiles)
+        {
+            Assert.False(loadedTile.IsMountain);
         }
     }
 

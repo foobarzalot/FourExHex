@@ -110,4 +110,98 @@ public class EditorSnapshotTests
         Assert.Equal(Red, freshGrid.Get(HexCoord.FromOffset(0, 0))!.Owner);
         Assert.IsType<Tree>(freshGrid.Get(HexCoord.FromOffset(0, 0))!.Occupant);
     }
+
+    // --- DiffersFromGrid: change detection for the editor undo push ------
+    // The editor pushes a stroke onto the undo stack iff the grid actually
+    // changed. Flag-only paints (gold #45, mountain #37) don't touch the
+    // territory partition, so detection must compare grid state, not the
+    // territory-list reference.
+
+    private static (HexGrid grid, HashSet<HexCoord> water) MakeBoard()
+    {
+        var grid = new HexGrid();
+        var water = new HashSet<HexCoord>();
+        grid.Add(new HexTile(HexCoord.FromOffset(0, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(1, 0), Red));
+        return (grid, water);
+    }
+
+    [Fact]
+    public void DiffersFromGrid_NoChange_ReturnsFalse()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBoard();
+        EditorSnapshot snap = EditorSnapshot.Capture(grid, water, new List<Territory>());
+
+        Assert.False(snap.DiffersFromGrid(grid, water));
+    }
+
+    [Fact]
+    public void DiffersFromGrid_MountainToggled_ReturnsTrue()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBoard();
+        EditorSnapshot snap = EditorSnapshot.Capture(grid, water, new List<Territory>());
+
+        grid.Get(HexCoord.FromOffset(0, 0))!.IsMountain = true;
+
+        Assert.True(snap.DiffersFromGrid(grid, water));
+    }
+
+    [Fact]
+    public void DiffersFromGrid_GoldToggled_ReturnsTrue()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBoard();
+        EditorSnapshot snap = EditorSnapshot.Capture(grid, water, new List<Territory>());
+
+        grid.Get(HexCoord.FromOffset(0, 0))!.IsGold = true;
+
+        Assert.True(snap.DiffersFromGrid(grid, water));
+    }
+
+    [Fact]
+    public void DiffersFromGrid_OwnerChanged_ReturnsTrue()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBoard();
+        EditorSnapshot snap = EditorSnapshot.Capture(grid, water, new List<Territory>());
+
+        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = Blue;
+
+        Assert.True(snap.DiffersFromGrid(grid, water));
+    }
+
+    [Fact]
+    public void DiffersFromGrid_OccupantChanged_ReturnsTrue()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBoard();
+        EditorSnapshot snap = EditorSnapshot.Capture(grid, water, new List<Territory>());
+
+        grid.Get(HexCoord.FromOffset(0, 0))!.Occupant = new Tree();
+
+        Assert.True(snap.DiffersFromGrid(grid, water));
+    }
+
+    [Fact]
+    public void DiffersFromGrid_WaterPaintedOverLand_ReturnsTrue()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBoard();
+        EditorSnapshot snap = EditorSnapshot.Capture(grid, water, new List<Territory>());
+
+        grid.Remove(HexCoord.FromOffset(1, 0));
+        water.Add(HexCoord.FromOffset(1, 0));
+
+        Assert.True(snap.DiffersFromGrid(grid, water));
+    }
+
+    [Fact]
+    public void DiffersFromGrid_ToggledThenReverted_ReturnsFalse()
+    {
+        // A drag that flips a flag on and back off nets no change → no undo.
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBoard();
+        EditorSnapshot snap = EditorSnapshot.Capture(grid, water, new List<Territory>());
+
+        HexTile tile = grid.Get(HexCoord.FromOffset(0, 0))!;
+        tile.IsMountain = true;
+        tile.IsMountain = false;
+
+        Assert.False(snap.DiffersFromGrid(grid, water));
+    }
 }

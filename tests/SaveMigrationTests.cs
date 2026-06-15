@@ -30,12 +30,12 @@ public class SaveMigrationTests
     }
 
     [Fact]
-    public void CurrentFormatVersion_IsNine()
+    public void CurrentFormatVersion_IsTen()
     {
         // v7 added per-player Difficulty (issue #11); v8 added the
         // optional CampaignLevel pointer (issue #2); v9 added per-tile
-        // IsGold (issue #45).
-        Assert.Equal(9, SaveSerializer.CurrentFormatVersion);
+        // IsGold (issue #45); v10 added per-tile IsMountain (issue #37).
+        Assert.Equal(10, SaveSerializer.CurrentFormatVersion);
     }
 
     [Fact]
@@ -44,7 +44,7 @@ public class SaveMigrationTests
         (GameState s, IReadOnlyList<Player> p) = BuildState();
         string json = SaveSerializer.Serialize(s, 1, p, "slot", 100);
 
-        foreach (int bad in new[] { 1, 10, 99 })
+        foreach (int bad in new[] { 1, 11, 99 })
         {
             string mutated = json.Replace(
                 $"\"FormatVersion\": {SaveSerializer.CurrentFormatVersion}",
@@ -52,7 +52,7 @@ public class SaveMigrationTests
             Assert.ThrowsAny<System.Exception>(() => SaveSerializer.Deserialize(mutated));
         }
 
-        foreach (int ok in new[] { 2, 3, 4, 5, 6, 7, 8, 9 })
+        foreach (int ok in new[] { 2, 3, 4, 5, 6, 7, 8, 9, 10 })
         {
             string mutated = json.Replace(
                 $"\"FormatVersion\": {SaveSerializer.CurrentFormatVersion}",

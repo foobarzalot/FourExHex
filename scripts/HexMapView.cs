@@ -156,6 +156,7 @@ public partial class HexMapView : Node2D, IHexMapView
     private Node2D? _towerCoverageLayer;
     private PolylineBatch? _bordersLayer;
     private TriangleSoup? _goldBordersLayer;
+    private Node2D? _mountainsLayer;
     private Node2D? _capitalsLayer;
     private Node2D? _rejectionsLayer;
     private Node2D? _treesLayer;
@@ -552,6 +553,11 @@ public partial class HexMapView : Node2D, IHexMapView
         // so the corners miter cleanly with no gaps.
         _goldBordersLayer = new TriangleSoup { Name = "GoldBordersLayer" };
         AddChild(_goldBordersLayer);
+        // Mountain glyphs (issue #37): defensive terrain. Above gold borders
+        // and tile fills, below capitals / units / trees / towers so an
+        // occupant standing on a mountain draws on top of the peak.
+        _mountainsLayer = new Node2D { Name = "MountainsLayer" };
+        AddChild(_mountainsLayer);
         _capitalsLayer = new Node2D { Name = "CapitalsLayer" };
         AddChild(_capitalsLayer);
         _treesLayer = new Node2D { Name = "TreesLayer" };
@@ -580,6 +586,7 @@ public partial class HexMapView : Node2D, IHexMapView
 
         DrawTerritoryBorders();
         DrawGoldBorders();
+        DrawMountains();
         DumpSceneComposition();
         // Occupant visuals are drawn by the controller via
         // RefreshOccupantVisuals once it knows the current player and
@@ -676,6 +683,7 @@ public partial class HexMapView : Node2D, IHexMapView
         ClearLayer(_targetsLayer);
         DrawTerritoryBorders();
         DrawGoldBorders();
+        DrawMountains();
         Log.Since(Log.LogCategory.Capture, "[hitch] DrawTerritoryBorders", tBorders);
         Log.Debug(Log.LogCategory.Capture,
             $"[hitch] strokes outlines={_outlinesLayer?.StrokeCount ?? 0} " +
@@ -2599,6 +2607,7 @@ public partial class HexMapView : Node2D, IHexMapView
         {
             _unitsLayer, _capitalsLayer, _treesLayer, _gravesLayer,
             _deathsLayer, _warningBadgesLayer, _towerTargetsLayer,
+            _mountainsLayer,
         };
         int n = 0;
         int skipped = 0;
@@ -2943,6 +2952,65 @@ public partial class HexMapView : Node2D, IHexMapView
         }
         _goldBordersLayer.SetTriangles(
             builder.Points.ToArray(), builder.Colors.ToArray(), builder.Indices.ToArray());
+    }
+
+    private static readonly Color MountainRockColor = BoardPalette.MountainRock;
+    private static readonly Color MountainSnowColor = BoardPalette.MountainSnow;
+    private static readonly Color MountainStrokeColor = UiPalette.BgDeep;
+
+    /// <summary>
+    /// Rebuild the on-tile mountain glyphs (issue #37): one Tolkien-map peak
+    /// per <see cref="HexTile.IsMountain"/> tile. Cleared and rebuilt wholesale
+    /// each call (mountains only change via editor / capture, which already
+    /// trigger a territory rebuild), mirroring <see cref="DrawGoldBorders"/>.
+    /// Each glyph is counter-rotated to stay upright on a rotated board, the
+    /// same as the occupant glyphs handled by <see cref="ApplyGlyphUpright"/>.
+    /// </summary>
+    private void DrawMountains()
+    {
+        if (_mountainsLayer == null) return;
+        foreach (Node child in _mountainsLayer.GetChildren()) child.QueueFree();
+
+        foreach (HexTile tile in Grid.Tiles)
+        {
+            if (!tile.IsMountain) continue;
+            Node2D glyph = CreateMountainVisual();
+            glyph.Position = FirstHexCenterOffset + HexPixel.ToPixel(tile.Coord, HexSize);
+            glyph.Rotation = -_mapAngleRad;   // upright on a rotated board
+            _mountainsLayer.AddChild(glyph);
+        }
+    }
+
+    /// <summary>
+    /// A grey rock peak with a white snow cap plus a smaller back peak, drawn
+    /// as <see cref="Polygon2D"/> nodes to match the other on-tile glyphs.
+    /// Same silhouette as the editor swatch (<see cref="HudIcons.DrawMountain"/>).
+    /// </summary>
+    private Node2D CreateMountainVisual()
+    {
+        float r = HexSize * 0.75f;
+        var node = new Node2D();
+
+        // A single centered peak.
+        var apex = new Vector2(0f, -0.85f * r);
+        var baseL = new Vector2(-0.82f * r, 0.62f * r);
+        var baseR = new Vector2(0.82f * r, 0.62f * r);
+        var mainVerts = new[] { apex, baseR, baseL };
+        var main = new Polygon2D { Color = MountainRockColor, Polygon = mainVerts };
+        main.AddChild(BuildClosedOutline(mainVerts, 1.5f, MountainStrokeColor));
+        node.AddChild(main);
+
+        // Snow cap: apex down each slope ~42%, dipping lower at the center.
+        var capVerts = new[]
+        {
+            apex,
+            apex.Lerp(baseR, 0.42f),
+            apex.Lerp((baseL + baseR) * 0.5f, 0.52f),
+            apex.Lerp(baseL, 0.42f),
+        };
+        node.AddChild(new Polygon2D { Color = MountainSnowColor, Polygon = capVerts });
+
+        return node;
     }
 
     // Batched line drawer: draws ALL edge segments in a single

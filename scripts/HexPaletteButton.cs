@@ -21,6 +21,7 @@ public enum HexPaletteIcon
     Tower,
     Hand,
     Gold,
+    Mountain,
 }
 
 public partial class HexPaletteButton : Control
@@ -114,6 +115,7 @@ public partial class HexPaletteButton : Control
             case HexPaletteIcon.Tower: HudIcons.DrawTower(this, center, radius, Colors.White); break;
             case HexPaletteIcon.Hand: HudIcons.DrawHand(this, center, radius, Colors.White); break;
             case HexPaletteIcon.Gold: HudIcons.DrawGold(this, center, radius, Colors.White); break;
+            case HexPaletteIcon.Mountain: HudIcons.DrawMountain(this, center, radius, Colors.White); break;
         }
 
         Color outlineColor = _isSelected ? new Color(1f, 1f, 1f) : new Color(0f, 0f, 0f);
@@ -155,6 +157,7 @@ public partial class HexPaletteButton : Control
             case HexPaletteIcon.Tower:   HudIcons.DrawTower(this, center, radius, Colors.White); break;
             case HexPaletteIcon.Hand:    HudIcons.DrawHand(this, center, radius, Colors.White); break;
             case HexPaletteIcon.Gold:    HudIcons.DrawGold(this, center, radius, Colors.White); break;
+            case HexPaletteIcon.Mountain: HudIcons.DrawMountain(this, center, radius, Colors.White); break;
             case HexPaletteIcon.None:
                 // Icon-less squared variant (water paint, land cycle):
                 // inscribe a pointy-top hex polygon in the FillColor so

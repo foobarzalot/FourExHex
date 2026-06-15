@@ -63,6 +63,38 @@ public static class HudIcons
         }
     }
 
+    /// <summary>
+    /// Mountain glyph (issue #37) for the editor's mountain brush and the
+    /// on-tile terrain marker: a Tolkien-map-style grey rock peak with a white
+    /// snow cap, plus a smaller back peak for a "range" silhouette. Reads
+    /// distinctly from the gold coin and the conifer tree.
+    /// </summary>
+    public static void DrawMountain(CanvasItem t, Vector2 center, float radius, Color modulate)
+    {
+        float r = radius * 0.9f;
+        Color rock = BoardPalette.MountainRock * modulate;
+        Color snow = BoardPalette.MountainSnow * modulate;
+        Color outline = Outline * modulate;
+
+        // A single centered peak.
+        Vector2 apex = center + new Vector2(0f, -0.85f * r);
+        Vector2 baseL = center + new Vector2(-0.82f * r, 0.62f * r);
+        Vector2 baseR = center + new Vector2(0.82f * r, 0.62f * r);
+        t.DrawColoredPolygon(new Vector2[] { apex, baseR, baseL }, rock);
+
+        // Snow cap: apex down each slope ~42%, dipping lower at the center
+        // for the classic snowline notch.
+        Vector2 leftSlope = apex.Lerp(baseL, 0.42f);
+        Vector2 rightSlope = apex.Lerp(baseR, 0.42f);
+        Vector2 notch = apex.Lerp((baseL + baseR) * 0.5f, 0.52f);
+        t.DrawColoredPolygon(new Vector2[] { apex, rightSlope, notch, leftSlope }, snow);
+
+        // Peak silhouette outline.
+        t.DrawLine(apex, baseL, outline, OutlineWidth);
+        t.DrawLine(apex, baseR, outline, OutlineWidth);
+        t.DrawLine(baseL, baseR, outline, OutlineWidth);
+    }
+
     public static void DrawCapital(CanvasItem t, Vector2 center, float radius, Color modulate)
     {
         float outer = radius * 0.65f;

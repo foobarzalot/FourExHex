@@ -34,6 +34,22 @@ public class HexTile
     public bool IsGold { get; set; }
 
     /// <summary>
+    /// A mountain tile (issue #37): defensive terrain that contributes
+    /// tower-strength defense (<see cref="DefenseRules.MountainDefense"/>) to
+    /// itself and, when owned, radiates it to same-owner neighbors. A per-tile
+    /// terrain attribute, orthogonal to <see cref="Owner"/>,
+    /// <see cref="Occupant"/>, and <see cref="IsGold"/> — a mountain may be
+    /// neutral or owned by any player, may hold a unit (units move onto,
+    /// through, and die on it without leaving a grave), and may also be gold.
+    /// Mountains never hold a capital or tower, trees never spread onto them,
+    /// and a Captain/Commander can capture one without destroying it. No income
+    /// behavior of its own. Authored only via the map editor; never created by
+    /// <c>MapGenerator</c>. Defaults <c>false</c>; plain state — changing it
+    /// does not repaint anything.
+    /// </summary>
+    public bool IsMountain { get; set; }
+
+    /// <summary>
     /// Convenience read-only accessor: the tile's occupant cast to
     /// <see cref="global::Unit"/>, or null if the occupant is something
     /// else (capital, tower, etc.) or the tile is empty. For setting, use

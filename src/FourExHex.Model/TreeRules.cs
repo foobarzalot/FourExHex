@@ -88,6 +88,8 @@ public static class TreeRules
         {
             if (tile.Owner != owner) continue;
             if (tile.Occupant != null) continue;
+            // Trees never spread onto mountains (issue #37).
+            if (tile.IsMountain) continue;
 
             int treeNeighbors = 0;
             bool hasWaterNeighbor = false;

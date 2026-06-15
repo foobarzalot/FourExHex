@@ -78,6 +78,8 @@ public static class PurchaseRules
     public static bool IsValidTowerLocation(HexTile tile, Territory territory, HexGrid grid)
     {
         if (tile.Occupant != null) return false;
+        // Towers are never built on mountains (issue #37).
+        if (tile.IsMountain) return false;
         return territory.Coords.Contains(tile.Coord);
     }
 

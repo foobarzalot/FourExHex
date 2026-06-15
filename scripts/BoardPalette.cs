@@ -22,6 +22,12 @@ public static class BoardPalette
     public static readonly Color CastleFill = new Color("4a4640"); // warm dark slate body
     public static readonly Color GraveCross = new Color("74706a"); // muted slate dead-unit X
 
+    // Mountain art (issue #37) — Tolkien-map peak: grey rock body + white
+    // snow cap. Shared by the on-tile mountain glyph and the editor swatch
+    // (HudIcons.DrawMountain).
+    public static readonly Color MountainRock = new Color("6f6a64"); // grey-brown stone
+    public static readonly Color MountainSnow = new Color("eef2f5"); // off-white snow cap
+
     // Economy status hues (selected-territory gold label + on-tile badge).
     public static readonly Color WarnRed    = Colors.Red;    // bankrupt next turn
     public static readonly Color WarnYellow = Colors.Yellow; // negative delta, still solvent

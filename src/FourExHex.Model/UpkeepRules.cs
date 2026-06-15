@@ -163,16 +163,17 @@ public static class UpkeepRules
             return true;
         }
 
-        // Bankrupt — every unit in the territory dies and leaves a
-        // grave behind. Capital occupants and other non-unit occupants
-        // survive untouched.
+        // Bankrupt — every unit in the territory dies. On ordinary ground it
+        // leaves a grave; a unit dying on a mountain leaves no grave (issue
+        // #37) — the tile just empties. Capital occupants and other non-unit
+        // occupants survive untouched.
         int killed = 0;
         foreach (HexCoord coord in territory.Coords)
         {
             HexTile? tile = grid.Get(coord);
             if (tile?.Occupant is Unit)
             {
-                tile.Occupant = new Grave();
+                tile.Occupant = tile.IsMountain ? null : new Grave();
                 killed++;
             }
         }

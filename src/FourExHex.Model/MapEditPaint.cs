@@ -76,6 +76,8 @@ public static class MapEditPaint
         HexTile? tile = grid.Get(coord);
         if (tile == null) return previousTerritories;
         if (tile.Occupant is Capital) return previousTerritories;
+        // Capitals are never placed on mountains (issue #37).
+        if (tile.IsMountain) return previousTerritories;
 
         int territoryIdx = -1;
         for (int i = 0; i < previousTerritories.Count; i++)
@@ -143,8 +145,10 @@ public static class MapEditPaint
         {
             // Empty or Tree (or anything else non-Capital): replace with a
             // tower. Tree → Tower is the cross-type swap; empty → Tower
-            // is the place case.
+            // is the place case. A tower never coexists with a mountain
+            // (issue #37), so placing one clears the mountain flag.
             tile.Occupant = new Tower();
+            tile.IsMountain = false;
         }
         return Reconcile(grid, previousTerritories);
     }
@@ -177,8 +181,10 @@ public static class MapEditPaint
         {
             // Empty or Tower (or any other non-Capital): replace with a
             // tree. Tower → Tree is the cross-type swap; empty → Tree is
-            // the place case.
+            // the place case. A tree never coexists with a mountain
+            // (issue #37), so placing one clears the mountain flag.
             tile.Occupant = new Tree();
+            tile.IsMountain = false;
         }
         return Reconcile(grid, previousTerritories);
     }
@@ -266,6 +272,51 @@ public static class MapEditPaint
         if (tile == null) return previousTerritories;
 
         tile.IsGold = !tile.IsGold;
+        return previousTerritories;
+    }
+
+    /// <summary>
+    /// Toggle the <see cref="HexTile.IsMountain"/> flag on the land tile at
+    /// <paramref name="coord"/> (issue #37). Mountains are defensive terrain
+    /// mutually exclusive with a <see cref="Tree"/>/<see cref="Tower"/>:
+    /// turning a mountain ON clears any tree or tower on the tile (and,
+    /// symmetrically, <see cref="PaintTreeToggle"/>/<see cref="PaintTowerToggle"/>
+    /// clear the mountain when they place their occupant). A tile holding a
+    /// <see cref="Capital"/> is refused (no-op) — capitals never coexist with a
+    /// mountain. <see cref="HexTile.IsGold"/> and <see cref="HexTile.Owner"/>
+    /// are preserved (the two terrain flags are independent; a mountain may be
+    /// owned by any player or neutral). No-op out of bounds or on water. The
+    /// territory partition is unaffected, so the previous list is returned
+    /// unchanged.
+    /// </summary>
+    public static IReadOnlyList<Territory> PaintMountainToggle(
+        HexGrid grid,
+        HashSet<HexCoord> water,
+        IReadOnlyList<Territory> previousTerritories,
+        int cols,
+        int rows,
+        HexCoord coord)
+    {
+        if (!InBounds(coord, cols, rows)) return previousTerritories;
+        HexTile? tile = grid.Get(coord);
+        if (tile == null) return previousTerritories;
+
+        // Capitals never coexist with a mountain — refuse rather than stomp.
+        if (tile.Occupant is Capital) return previousTerritories;
+
+        if (tile.IsMountain)
+        {
+            tile.IsMountain = false;
+        }
+        else
+        {
+            tile.IsMountain = true;
+            // Mutual exclusion: a new mountain clears a tree/tower.
+            if (tile.Occupant is Tree || tile.Occupant is Tower)
+            {
+                tile.Occupant = null;
+            }
+        }
         return previousTerritories;
     }
 

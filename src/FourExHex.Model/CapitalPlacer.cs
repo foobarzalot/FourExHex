@@ -43,6 +43,10 @@ public static class CapitalPlacer
         {
             HexTile? tile = grid.Get(c);
             if (tile == null) continue;
+            // Capitals are never placed on mountains (issue #37). A region
+            // made entirely of mountains yields no candidate and Choose
+            // returns null — the reconciler then leaves it capital-less.
+            if (tile.IsMountain) continue;
 
             if (tile.Occupant == null)
             {

@@ -17,6 +17,16 @@ using System.Linq;
 public static class DefenseRules
 {
     /// <summary>
+    /// Defense a mountain tile (issue #37) contributes — tower-strength (2).
+    /// A mountain's own tile always carries this (the terrain is physically
+    /// there, owned or neutral); an owned mountain also radiates it to its
+    /// same-territory neighbors, exactly like a <see cref="Tower"/>. A neutral
+    /// mountain is in no player territory and so radiates to nobody, only
+    /// self-defending. Contributions still don't stack — the max wins.
+    /// </summary>
+    public const int MountainDefense = 2;
+
+    /// <summary>
     /// Defense value covering the tile at <paramref name="coord"/>. To
     /// capture this tile, the attacker's level must be strictly greater.
     /// </summary>
@@ -28,6 +38,8 @@ public static class DefenseRules
         if (tile != null)
         {
             max = System.Math.Max(max, ContributionOf(tile.Occupant));
+            // The tile's own mountain self-defends regardless of owner.
+            if (tile.IsMountain) max = System.Math.Max(max, MountainDefense);
         }
 
         foreach (HexCoord neighbor in coord.Neighbors())
@@ -36,6 +48,8 @@ public static class DefenseRules
             HexTile? neighborTile = grid.Get(neighbor);
             if (neighborTile == null) continue;
             max = System.Math.Max(max, ContributionOf(neighborTile.Occupant));
+            // A same-territory neighbor mountain radiates its defense here.
+            if (neighborTile.IsMountain) max = System.Math.Max(max, MountainDefense);
         }
 
         return max;
@@ -74,7 +88,8 @@ public static class DefenseRules
         HexTile? targetTile = grid.Get(target);
         if (targetTile != null
             && targetTerritory.Coords.Contains(target)
-            && ContributionOf(targetTile.Occupant) >= threshold)
+            && (ContributionOf(targetTile.Occupant) >= threshold
+                || (targetTile.IsMountain && MountainDefense >= threshold)))
         {
             yield return target;
         }
@@ -84,7 +99,8 @@ public static class DefenseRules
             if (!targetTerritory.Coords.Contains(neighbor)) continue;
             HexTile? neighborTile = grid.Get(neighbor);
             if (neighborTile == null) continue;
-            if (ContributionOf(neighborTile.Occupant) >= threshold)
+            if (ContributionOf(neighborTile.Occupant) >= threshold
+                || (neighborTile.IsMountain && MountainDefense >= threshold))
             {
                 yield return neighbor;
             }

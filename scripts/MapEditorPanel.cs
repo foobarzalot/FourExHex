@@ -32,7 +32,6 @@ public sealed partial class MapEditorPanel : Node2D
     // it locks the stroke to "Add" or "Erase" after the first cell so
     // a single drag never both places and clears.
     private EditorSnapshot? _paintStrokePre;
-    private bool _paintStrokeChanged;
     private ToggleStrokeMode? _toggleStrokeMode;
 
     private enum ToggleStrokeMode { Add, Erase }
@@ -231,15 +230,24 @@ public sealed partial class MapEditorPanel : Node2D
         if (_paintStrokePre is null)
         {
             _paintStrokePre = EditorSnapshot.Capture(_grid, _water, _territories);
-            _paintStrokeChanged = false;
             _toggleStrokeMode = ResolveToggleStrokeMode(SelectedPaletteIndex, coord);
         }
 
+        // Detect a change to play the placement sound. Owner/occupant paints
+        // rebuild the territory list (new reference); flag-only paints — gold
+        // (#45) and mountain (#37) — leave it untouched, so also compare the
+        // target tile's gold/mountain flags before and after.
+        HexTile? preTile = _grid.Get(coord);
+        bool goldBefore = preTile?.IsGold ?? false;
+        bool mountainBefore = preTile?.IsMountain ?? false;
         IReadOnlyList<Territory> beforeRef = _territories;
         ApplyPaintAt(SelectedPaletteIndex, coord);
-        if (!ReferenceEquals(_territories, beforeRef))
+        HexTile? postTile = _grid.Get(coord);
+        bool changed = !ReferenceEquals(_territories, beforeRef)
+            || (postTile != null
+                && (postTile.IsGold != goldBefore || postTile.IsMountain != mountainBefore));
+        if (changed)
         {
-            _paintStrokeChanged = true;
             AudioBus.Instance.PlayUnitPlaced();
             Log.Debug(Log.LogCategory.Input, $"MapEditorPanel: placement sound (palette {SelectedPaletteIndex}) at {coord}.");
         }
@@ -251,17 +259,19 @@ public sealed partial class MapEditorPanel : Node2D
         if (!PaintingEnabled)
         {
             _paintStrokePre = null;
-            _paintStrokeChanged = false;
             _toggleStrokeMode = null;
             return;
         }
-        if (_paintStrokePre is not null && _paintStrokeChanged)
+        // Push iff the grid actually changed since the stroke began. Comparing
+        // against the pre-stroke snapshot (rather than the territory-list
+        // reference) catches flag-only paints — gold (#45) and mountain (#37) —
+        // that leave the territory partition untouched.
+        if (_paintStrokePre is not null && _paintStrokePre.DiffersFromGrid(_grid, _water))
         {
             _undoStack.PushBefore(_paintStrokePre);
             UndoStateChanged?.Invoke();
         }
         _paintStrokePre = null;
-        _paintStrokeChanged = false;
         _toggleStrokeMode = null;
     }
 
@@ -294,6 +304,13 @@ public sealed partial class MapEditorPanel : Node2D
                 _grid, _water, _territories, Map.Cols, Map.Rows, coord);
             return;
         }
+        if (idx == MapEditorHudView.MountainPaletteIndex)
+        {
+            if (!MountainToggleCellAllowed(coord)) return;
+            _territories = MapEditPaint.PaintMountainToggle(
+                _grid, _water, _territories, Map.Cols, Map.Rows, coord);
+            return;
+        }
         if (idx == MapEditorHudView.NeutralPaletteIndex)
         {
             _territories = MapEditPaint.PaintNeutral(
@@ -317,7 +334,8 @@ public sealed partial class MapEditorPanel : Node2D
     {
         if (idx != MapEditorHudView.TreePaletteIndex
             && idx != MapEditorHudView.TowerPaletteIndex
-            && idx != MapEditorHudView.GoldPaletteIndex)
+            && idx != MapEditorHudView.GoldPaletteIndex
+            && idx != MapEditorHudView.MountainPaletteIndex)
         {
             return null;
         }
@@ -326,6 +344,7 @@ public sealed partial class MapEditorPanel : Node2D
         bool present;
         if (idx == MapEditorHudView.TreePaletteIndex) present = tile.Occupant is Tree;
         else if (idx == MapEditorHudView.TowerPaletteIndex) present = tile.Occupant is Tower;
+        else if (idx == MapEditorHudView.MountainPaletteIndex) present = tile.IsMountain;
         else present = tile.IsGold; // GoldPaletteIndex
         return present ? ToggleStrokeMode.Erase : ToggleStrokeMode.Add;
     }
@@ -359,6 +378,22 @@ public sealed partial class MapEditorPanel : Node2D
     private bool GoldToggleCellAllowed(HexCoord coord)
     {
         bool present = _grid.Get(coord)?.IsGold ?? false;
+        return _toggleStrokeMode switch
+        {
+            ToggleStrokeMode.Add => !present,
+            ToggleStrokeMode.Erase => present,
+            _ => true,
+        };
+    }
+
+    /// <summary>
+    /// Gate a per-cell mountain toggle by the locked stroke direction
+    /// (issue #37), mirroring <see cref="GoldToggleCellAllowed"/> for the
+    /// mountain flag so a drag stroke sets one consistent direction.
+    /// </summary>
+    private bool MountainToggleCellAllowed(HexCoord coord)
+    {
+        bool present = _grid.Get(coord)?.IsMountain ?? false;
         return _toggleStrokeMode switch
         {
             ToggleStrokeMode.Add => !present,

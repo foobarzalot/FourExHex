@@ -43,6 +43,9 @@ public partial class MapEditorHudView : OrientationHud
     /// <summary>Palette index reserved for the gold-tile-toggle swatch
     /// (issue #45).</summary>
     public static int GoldPaletteIndex => 6 + GameSettings.PlayerConfig.Length;
+    /// <summary>Palette index reserved for the mountain-tile-toggle swatch
+    /// (issue #37).</summary>
+    public static int MountainPaletteIndex => 7 + GameSettings.PlayerConfig.Length;
 
     public event Action? EscRequested;
     public event Action<int>? GenerateRequested;
@@ -125,7 +128,7 @@ public partial class MapEditorHudView : OrientationHud
         // Palette array: 0 = hand, 1..N = land color swatches, then neutral
         // (unowned land), water, tree, capital, tower, gold. _palette is
         // indexed by these slots.
-        _palette = new HexPaletteButton[GameSettings.PlayerConfig.Length + 7];
+        _palette = new HexPaletteButton[GameSettings.PlayerConfig.Length + 8];
 
         // Land cluster — a PanelContainer (chip chrome) wrapping a flippable
         // row: full 1×6 land swatches OR a single cycle button (Compact).
@@ -232,6 +235,16 @@ public partial class MapEditorHudView : OrientationHud
         AudioBus.AttachClick(goldButton);
         _paintCluster.AddChild(goldButton);
         _palette[goldIndex] = goldButton;
+
+        // Mountain-tile toggle (issue #37) — defensive terrain.
+        int mountainIndex = MountainPaletteIndex;
+        var mountainButton = new HexPaletteButton(
+            BoardPalette.MountainRock, HexPaletteIcon.Mountain, squared: true);
+        mountainButton.TooltipText = "Place / remove a mountain (tower-strength defense)";
+        mountainButton.Pressed += _ => SelectPalette(mountainIndex);
+        AudioBus.AttachClick(mountainButton);
+        _paintCluster.AddChild(mountainButton);
+        _palette[mountainIndex] = mountainButton;
 
         // Tools cluster — hand (pan, no-paint) + die (random regenerate).
         var handButton = new HexPaletteButton(

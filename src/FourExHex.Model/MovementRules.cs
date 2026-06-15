@@ -254,6 +254,15 @@ public static class MovementRules
             arrivingUnit.HasMovedThisTurn = true;
         }
 
+        if (wasCapture && dstTile.IsMountain)
+        {
+            // Issue #37: capturing a mountain transfers ownership but leaves
+            // the terrain (and its defense) intact for the new owner.
+            Log.Debug(Log.LogCategory.Capture,
+                $"[capture] mountain at {dstTile.Coord} → owner " +
+                $"{attackerTerritory.Owner.Index} (terrain retained)");
+        }
+
         return new MoveResult(wasCapture, destroyed: displaced);
     }
 }
