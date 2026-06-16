@@ -20,7 +20,20 @@ public sealed partial class SettingsPanel : CanvasLayer
     public bool IsOpen { get; private set; }
 
     private ColorRect _backdrop = null!;
+    // The surface the body lives in: portrait = a centered PanelContainer that
+    // FitPanel scales down; landscape = the rounded fill surface from
+    // LandscapeMenuChrome (never scaled).
     private PanelContainer _panel = null!;
+    // The node added directly under this CanvasLayer that RebuildBody frees on
+    // an orientation flip — portrait: _panel itself; landscape: the fill root
+    // wrapping the safe-margin + surface.
+    private Control _panelRoot = null!;
+    // Landscape only: the MarginContainer whose insets track the device safe
+    // area (null in portrait, where FitPanel handles fit instead).
+    private MarginContainer? _safeMargin;
+    // Which layout the body was last built for; a resize that flips it rebuilds
+    // the body (two-zones landscape ↔ single-column portrait, issue #34).
+    private ScreenOrientation _orientation;
     // True once _Ready hooked the viewport's SizeChanged (_ExitTree must
     // not disconnect a never-connected signal).
     private bool _viewportResizeHooked;
@@ -63,96 +76,22 @@ public sealed partial class SettingsPanel : CanvasLayer
         _backdrop = ModalChrome.BuildBackdrop(viewport);
         AddChild(_backdrop);
 
-        // Content-sized centered panel — a single column in both orientations.
-        // FitPanel scales it down (never up) to fit a short/narrow viewport,
-        // the same shrink-to-fit the main menu uses for its panels.
-        _panel = ModalChrome.BuildCenteredPanel();
-        AddChild(_panel);
-
-        var vbox = new VBoxContainer
-        {
-            CustomMinimumSize = new Vector2(ContentWidth, 0),
-        };
-        vbox.AddThemeConstantOverride("separation", 18);
-        _panel.AddChild(vbox);
-
-        var title = new Label
-        {
-            Text = "Settings",
-            HorizontalAlignment = HorizontalAlignment.Center,
-        };
-        title.AddThemeFontOverride("font", _serifFont);
-        title.AddThemeFontSizeOverride("font_size", 36);
-        vbox.AddChild(title);
-
-        // Decorative gold rule under the title — matches the menu panels.
-        var goldRule = new ColorRect
-        {
-            Color = UiPalette.GoldDim,
-            CustomMinimumSize = new Vector2(200, 1),
-            SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter,
-        };
-        vbox.AddChild(goldRule);
-
-        vbox.AddChild(BuildCheckRow("Sound Effects", UserSettings.SfxEnabled, OnSfxToggled, out _sfxCheckBox));
-        vbox.AddChild(BuildCheckRow("Visual Effects", UserSettings.VfxEnabled, OnVfxToggled, out _vfxCheckBox));
-
-        var aiSpeedLabel = new Label { Text = "Computer Player Speed" };
-        aiSpeedLabel.AddThemeFontSizeOverride("font_size", 24);
-        aiSpeedLabel.AddThemeColorOverride("font_color", UiPalette.InkSoft);
-        vbox.AddChild(aiSpeedLabel);
-        vbox.AddChild(BuildSpeedRow(UserSettings.AiSpeed, OnAiSpeedPressed, out _aiSpeedButtons));
-
-        var replaySpeedLabel = new Label { Text = "Replay Speed" };
-        replaySpeedLabel.AddThemeFontSizeOverride("font_size", 24);
-        replaySpeedLabel.AddThemeColorOverride("font_color", UiPalette.InkSoft);
-        vbox.AddChild(replaySpeedLabel);
-        vbox.AddChild(BuildSpeedRow(UserSettings.ReplaySpeed, OnReplaySpeedPressed, out _replaySpeedButtons));
-
-        var creditsButton = new Button
-        {
-            Text = "Credits",
-            FocusMode = Control.FocusModeEnum.None,
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-        };
-        creditsButton.AddThemeFontSizeOverride("font_size", 24);
-        creditsButton.Pressed += OnCreditsPressed;
-        AudioBus.AttachClick(creditsButton);
-        vbox.AddChild(creditsButton);
-
-        var backButton = new Button
-        {
-            Text = "Back",
-            FocusMode = Control.FocusModeEnum.None,
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-        };
-        backButton.AddThemeFontSizeOverride("font_size", 24);
-        backButton.Pressed += Close;
-        AudioBus.AttachClick(backButton);
-        vbox.AddChild(backButton);
-
-        // Unobtrusive build stamp at the foot of the panel so testers can
-        // report which version they're on. Static text (AppVersion is a
-        // compile-time constant), so Open() never needs to re-sync it.
-        var versionLabel = new Label
-        {
-            Text = AppVersion.Display,
-            HorizontalAlignment = HorizontalAlignment.Right,
-        };
-        versionLabel.AddThemeFontSizeOverride("font_size", 16);
-        versionLabel.AddThemeColorOverride("font_color", UiPalette.InkMute);
-        vbox.AddChild(versionLabel);
+        // Build the layout for the current orientation (portrait single column
+        // vs landscape two-zones). The toggle/speed controls are the same
+        // instances either way — only the container tree differs.
+        BuildBody();
 
         // Credits is its own modal layered one above this panel (Layer
         // 101 vs 100), so it draws on top while Settings stays visible.
+        // It persists across body rebuilds (RebuildBody frees only _panelRoot).
         _creditsPanel = new CreditsPanel();
         AddChild(_creditsPanel);
 
-        // Scale-to-fit now and on every later change. Rotation / window move
-        // fires SizeChanged; a notch/status-bar toggle that shifts the safe
+        // React now and on every later change. A resize that flips orientation
+        // rebuilds the body; a same-orientation resize re-fits (portrait) or
+        // re-insets (landscape). A notch/status-bar toggle that shifts the safe
         // rect without a resize fires SafeArea.Changed.
-        FitPanel();
-        GetViewport().SizeChanged += FitPanel;
+        GetViewport().SizeChanged += OnViewportResized;
         _viewportResizeHooked = true;
         SafeArea.Changed += OnSafeAreaChanged;
     }
@@ -162,13 +101,250 @@ public sealed partial class SettingsPanel : CanvasLayer
         SafeArea.Changed -= OnSafeAreaChanged;
         // Guarded: disconnecting a never-connected Godot signal errors.
         if (!_viewportResizeHooked) return;
-        GetViewport().SizeChanged -= FitPanel;
+        GetViewport().SizeChanged -= OnViewportResized;
         _viewportResizeHooked = false;
         Log.Debug(Log.LogCategory.Display,
             "SettingsPanel: viewport SizeChanged unsubscribed on exit");
     }
 
-    private void OnSafeAreaChanged(LogicalSafeInsets _) => FitPanel();
+    /// <summary>Build the panel subtree for the current orientation, populating
+    /// <see cref="_panel"/> (the surface), <see cref="_panelRoot"/> (the node to
+    /// free on a flip) and, in landscape, <see cref="_safeMargin"/>.</summary>
+    private void BuildBody()
+    {
+        Vector2 viewport = GetViewport().GetVisibleRect().Size;
+        _orientation = ScreenLayout.Resolve(viewport.X, viewport.Y);
+        if (_orientation == ScreenOrientation.Landscape) BuildLandscapeBody();
+        else BuildPortraitBody();
+        Log.Info(Log.LogCategory.Render,
+            $"SettingsPanel: built {_orientation} body (viewport {viewport.X:0}x{viewport.Y:0})");
+    }
+
+    /// <summary>Original single-column layout: a content-sized centered panel
+    /// that FitPanel scales down (never up) to fit a short/narrow viewport.</summary>
+    private void BuildPortraitBody()
+    {
+        _panel = ModalChrome.BuildCenteredPanel();
+        _panelRoot = _panel;
+        _safeMargin = null;
+        AddChild(_panel);
+
+        var vbox = new VBoxContainer
+        {
+            CustomMinimumSize = new Vector2(ContentWidth, 0),
+        };
+        vbox.AddThemeConstantOverride("separation", 18);
+        _panel.AddChild(vbox);
+
+        vbox.AddChild(MakeTitle());
+        vbox.AddChild(MakeGoldRule());
+
+        vbox.AddChild(BuildCheckRow("Sound Effects", UserSettings.SfxEnabled, OnSfxToggled, out _sfxCheckBox));
+        vbox.AddChild(BuildCheckRow("Visual Effects", UserSettings.VfxEnabled, OnVfxToggled, out _vfxCheckBox));
+
+        vbox.AddChild(MakeSpeedLabel("Computer Player Speed"));
+        vbox.AddChild(BuildSpeedRow(UserSettings.AiSpeed, OnAiSpeedPressed, out _aiSpeedButtons));
+
+        vbox.AddChild(MakeSpeedLabel("Replay Speed"));
+        vbox.AddChild(BuildSpeedRow(UserSettings.ReplaySpeed, OnReplaySpeedPressed, out _replaySpeedButtons));
+
+        vbox.AddChild(MakeNavButton("Credits", OnCreditsPressed));
+        vbox.AddChild(MakeNavButton("Back", Close));
+
+        // Unobtrusive build stamp at the foot of the panel so testers can
+        // report which version they're on.
+        vbox.AddChild(MakeVersionLabel());
+
+        FitPanel();
+    }
+
+    /// <summary>"Two zones" landscape layout (issue #34): a title row over a
+    /// two-column body — toggles left, the two speed segmented controls right —
+    /// with a Credits / Back / version footer, filling the safe rect instead of
+    /// downscaling a portrait stack.</summary>
+    private void BuildLandscapeBody()
+    {
+        _panelRoot = LandscapeMenuChrome.Build(out _panel, out MarginContainer safeMargin);
+        _safeMargin = safeMargin;
+        AddChild(_panelRoot);
+
+        var outer = new VBoxContainer();
+        outer.AddThemeConstantOverride("separation", 18);
+        _panel.AddChild(outer);
+
+        // Title row: serif title + an expanding gold rule to its right.
+        var titleRow = new HBoxContainer();
+        titleRow.AddThemeConstantOverride("separation", 18);
+        Label title = MakeTitle();
+        title.HorizontalAlignment = HorizontalAlignment.Left;
+        title.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+        titleRow.AddChild(title);
+        var titleRule = new ColorRect
+        {
+            Color = UiPalette.GoldDim,
+            CustomMinimumSize = new Vector2(0, 2),
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
+        };
+        titleRow.AddChild(titleRule);
+        outer.AddChild(titleRow);
+
+        // Body: left toggle zone | hairline | right speed zone.
+        var body = new HBoxContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill };
+        body.AddThemeConstantOverride("separation", 28);
+        outer.AddChild(body);
+
+        var leftZone = new VBoxContainer
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.Fill,
+            Alignment = BoxContainer.AlignmentMode.Center,
+        };
+        leftZone.AddThemeConstantOverride("separation", 14);
+        leftZone.AddChild(MakeToggleCard(
+            BuildCheckRow("Sound Effects", UserSettings.SfxEnabled, OnSfxToggled, out _sfxCheckBox)));
+        leftZone.AddChild(MakeToggleCard(
+            BuildCheckRow("Visual Effects", UserSettings.VfxEnabled, OnVfxToggled, out _vfxCheckBox)));
+        body.AddChild(leftZone);
+
+        body.AddChild(new ColorRect
+        {
+            Color = UiPalette.LineSoft,
+            CustomMinimumSize = new Vector2(1, 0),
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+        });
+
+        var rightZone = new VBoxContainer
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.Fill,
+            // Slightly wider than the left zone (design: 1.12 : 1).
+            SizeFlagsStretchRatio = 1.12f,
+            Alignment = BoxContainer.AlignmentMode.Center,
+        };
+        rightZone.AddThemeConstantOverride("separation", 10);
+        rightZone.AddChild(MakeSpeedLabel("Computer Player Speed"));
+        rightZone.AddChild(BuildSpeedRow(UserSettings.AiSpeed, OnAiSpeedPressed, out _aiSpeedButtons));
+        rightZone.AddChild(MakeSpeedLabel("Replay Speed"));
+        rightZone.AddChild(BuildSpeedRow(UserSettings.ReplaySpeed, OnReplaySpeedPressed, out _replaySpeedButtons));
+        body.AddChild(rightZone);
+
+        // Footer: Credits | Back (equal width) + version pinned far right.
+        var footer = new HBoxContainer();
+        footer.AddThemeConstantOverride("separation", 14);
+        footer.AddChild(MakeNavButton("Credits", OnCreditsPressed));
+        footer.AddChild(MakeNavButton("Back", Close));
+        Label version = MakeVersionLabel();
+        version.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+        footer.AddChild(version);
+        outer.AddChild(footer);
+
+        LandscapeMenuChrome.ApplyInsets(_safeMargin, SafeArea.Current);
+    }
+
+    private Label MakeTitle()
+    {
+        var title = new Label
+        {
+            Text = "Settings",
+            HorizontalAlignment = HorizontalAlignment.Center,
+        };
+        title.AddThemeFontOverride("font", _serifFont);
+        title.AddThemeFontSizeOverride("font_size", 36);
+        return title;
+    }
+
+    // Decorative gold rule under the title — matches the menu panels.
+    private static ColorRect MakeGoldRule() => new ColorRect
+    {
+        Color = UiPalette.GoldDim,
+        CustomMinimumSize = new Vector2(200, 1),
+        SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter,
+    };
+
+    private static Label MakeSpeedLabel(string text)
+    {
+        var label = new Label { Text = text };
+        label.AddThemeFontSizeOverride("font_size", 24);
+        label.AddThemeColorOverride("font_color", UiPalette.InkSoft);
+        return label;
+    }
+
+    private Button MakeNavButton(string text, Action onPressed)
+    {
+        var button = new Button
+        {
+            Text = text,
+            FocusMode = Control.FocusModeEnum.None,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+        };
+        button.AddThemeFontSizeOverride("font_size", 24);
+        button.Pressed += onPressed;
+        AudioBus.AttachClick(button);
+        return button;
+    }
+
+    // Static text (AppVersion is a compile-time constant), so Open() never
+    // needs to re-sync it.
+    private static Label MakeVersionLabel()
+    {
+        var label = new Label
+        {
+            Text = AppVersion.Display,
+            HorizontalAlignment = HorizontalAlignment.Right,
+        };
+        label.AddThemeFontSizeOverride("font_size", 16);
+        label.AddThemeColorOverride("font_color", UiPalette.InkMute);
+        return label;
+    }
+
+    /// <summary>Landscape only: wrap a toggle row in a raised rounded card
+    /// (design: full-width #3b362e row, ~62px tall) so the two toggles read as
+    /// distinct controls filling the left zone.</summary>
+    private static PanelContainer MakeToggleCard(HBoxContainer row)
+    {
+        var style = new StyleBoxFlat { BgColor = UiPalette.BgElev };
+        style.SetCornerRadiusAll(10);
+        style.ContentMarginLeft = 18;
+        style.ContentMarginRight = 18;
+        style.ContentMarginTop = 6;
+        style.ContentMarginBottom = 6;
+        var card = new PanelContainer
+        {
+            CustomMinimumSize = new Vector2(0, 62),
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+        };
+        card.AddThemeStyleboxOverride("panel", style);
+        card.AddChild(row);
+        return card;
+    }
+
+    /// <summary>Free the current body and rebuild it for the new orientation
+    /// (mirrors MainMenuScene's play-config flip rebuild). State lives in
+    /// UserSettings, so a re-sync after the rebuild loses nothing.</summary>
+    private void RebuildBody()
+    {
+        Log.Debug(Log.LogCategory.Render,
+            $"SettingsPanel: orientation flip from {_orientation}; rebuilding body");
+        _panelRoot.QueueFree();
+        BuildBody();
+        if (IsOpen) SyncControls();
+    }
+
+    private void OnViewportResized()
+    {
+        Vector2 viewport = GetViewport().GetVisibleRect().Size;
+        ScreenOrientation next = ScreenLayout.Resolve(viewport.X, viewport.Y);
+        if (next != _orientation) { RebuildBody(); return; }
+        if (_orientation == ScreenOrientation.Portrait) FitPanel();
+        else if (_safeMargin != null) LandscapeMenuChrome.ApplyInsets(_safeMargin, SafeArea.Current);
+    }
+
+    private void OnSafeAreaChanged(LogicalSafeInsets s)
+    {
+        if (_orientation == ScreenOrientation.Portrait) FitPanel();
+        else if (_safeMargin != null) LandscapeMenuChrome.ApplyInsets(_safeMargin, s);
+    }
 
     /// <summary>Scale the centered panel down (never up) so its single-column
     /// layout fits within the safe viewport — the same shrink-to-fit the main
@@ -204,8 +380,18 @@ public sealed partial class SettingsPanel : CanvasLayer
     public void Open()
     {
         if (IsOpen) return;
-        // Re-fit in case the viewport / safe area changed while closed.
-        FitPanel();
+        // Re-fit / re-inset in case the viewport / safe area changed while closed.
+        if (_orientation == ScreenOrientation.Portrait) FitPanel();
+        else if (_safeMargin != null) LandscapeMenuChrome.ApplyInsets(_safeMargin, SafeArea.Current);
+        SyncControls();
+        IsOpen = true;
+        Visible = true;
+    }
+
+    /// <summary>Re-sync every control from <see cref="UserSettings"/> so external
+    /// changes (or a body rebuild on orientation flip) are reflected.</summary>
+    private void SyncControls()
+    {
         _sfxCheckBox.ButtonPressed = UserSettings.SfxEnabled;
         ApplyCheckBoxStyle(_sfxCheckBox, UserSettings.SfxEnabled);
         _vfxCheckBox.ButtonPressed = UserSettings.VfxEnabled;
@@ -228,8 +414,6 @@ public sealed partial class SettingsPanel : CanvasLayer
             btn.ButtonPressed = pressed;
             ApplySpeedButtonStyle(btn, pressed);
         }
-        IsOpen = true;
-        Visible = true;
     }
 
     public void Close()
