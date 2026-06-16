@@ -49,9 +49,11 @@ public static class LandscapeMenuChrome
     /// <summary>Size and center the surface: it fills the safe rect (minus the
     /// edge margin) up to the <see cref="MaxWidth"/> × <see cref="MaxHeight"/>
     /// cap, so it stays inside the notch / home-indicator on a phone yet remains
-    /// a tidy centered panel on a large desktop window.</summary>
+    /// a tidy centered panel on a large desktop window. <paramref name="verticalShift"/>
+    /// lifts the whole surface up (on-screen-keyboard avoidance for the New Game
+    /// seed field, issue #34).</summary>
     public static void ApplyLayout(PanelContainer surface, Vector2 viewport, LogicalSafeInsets s,
-        float edge = EdgeMargin, float maxW = MaxWidth, float maxH = MaxHeight)
+        float edge = EdgeMargin, float maxW = MaxWidth, float maxH = MaxHeight, float verticalShift = 0f)
     {
         float availW = Mathf.Max(0f, viewport.X - s.Left - s.Right - edge * 2f);
         float availH = Mathf.Max(0f, viewport.Y - s.Top - s.Bottom - edge * 2f);
@@ -59,11 +61,11 @@ public static class LandscapeMenuChrome
         float h = Mathf.Min(availH, maxH);
         surface.OffsetLeft = -w * 0.5f;
         surface.OffsetRight = w * 0.5f;
-        surface.OffsetTop = -h * 0.5f;
-        surface.OffsetBottom = h * 0.5f;
+        surface.OffsetTop = -h * 0.5f - verticalShift;
+        surface.OffsetBottom = h * 0.5f - verticalShift;
 
         Log.Debug(Log.LogCategory.Render,
-            $"LandscapeMenuChrome: laid out {w:0}x{h:0} "
+            $"LandscapeMenuChrome: laid out {w:0}x{h:0} shift={verticalShift:0} "
             + $"(viewport {viewport.X:0}x{viewport.Y:0}, safe t{s.Top:0} b{s.Bottom:0} l{s.Left:0} r{s.Right:0})");
     }
 

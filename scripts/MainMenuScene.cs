@@ -210,7 +210,16 @@ public partial class MainMenuScene : Control
             else if (_landingSurface != null)
                 LandscapeMenuChrome.ApplyLayout(_landingSurface, viewport, SafeArea.Current);
         }
-        if (_playConfigPanel != null) ScaleToFit(_playConfigPanel, _playConfigDesignSize, viewport);
+        if (_playConfigPanel != null)
+        {
+            if (_playConfigOrientation == ScreenOrientation.Portrait)
+                ScaleToFit(_playConfigPanel, _playConfigDesignSize, viewport);
+            else if (_playConfigSurface != null)
+                // Carry any active seed-field keyboard lift so a resize while the
+                // on-screen keyboard is up doesn't snap the panel back down.
+                LandscapeMenuChrome.ApplyLayout(_playConfigSurface, viewport, SafeArea.Current,
+                    verticalShift: _keyboardLift);
+        }
         // The campaign panel is NOT scaled — it fills the viewport and
         // scrolls (anchors re-solve on resize on their own; an orientation
         // flip rebuilds it via RebuildCampaignOnOrientationFlip below).
@@ -223,7 +232,8 @@ public partial class MainMenuScene : Control
     {
         Vector2 viewport = GetViewportRect().Size;
         if (_landingSurface != null) LandscapeMenuChrome.ApplyLayout(_landingSurface, viewport, s);
-        if (_playConfigSurface != null) LandscapeMenuChrome.ApplyLayout(_playConfigSurface, viewport, s);
+        if (_playConfigSurface != null)
+            LandscapeMenuChrome.ApplyLayout(_playConfigSurface, viewport, s, verticalShift: _keyboardLift);
     }
 
     /// <summary>Rebuild the landing panel when a viewport resize flips the
@@ -649,32 +659,21 @@ public partial class MainMenuScene : Control
 
     private Control BuildPlayConfigPanel()
     {
-        // Centered panel containing the title, player-role grid, the
-        // Map Seed entry, and the Back / Start Game buttons. All
-        // dimensions are scaled 1.2x from the spec's base to read
-        // comfortably at the 1600x1080 viewport (matches the heavier
-        // play-HUD scale the rest of the redesign settled on).
-        //
-        // The layout is orientation-dependent (issue #38): in landscape
-        // each player row is Swatch | Name | Kind | Difficulty (two
-        // narrow dropdowns side by side, panel widened to fit); in
-        // portrait the difficulty dropdown drops to a sub-row directly
-        // under the kind selector (single full-width dropdown column,
-        // panel grows taller instead). FitPanels rebuilds the panel when
-        // a resize flips the orientation.
         Vector2 viewportSize = GetViewportRect().Size;
         _playConfigOrientation = ScreenLayout.Resolve(viewportSize.X, viewportSize.Y);
-        bool portrait = _playConfigOrientation == ScreenOrientation.Portrait;
+        if (_playConfigOrientation == ScreenOrientation.Landscape)
+        {
+            return BuildPlayConfigPanelLandscape();
+        }
+        _playConfigSurface = null;
 
-        const float kindDropdownWidth = 170f;
-        const float difficultyDropdownWidth = 170f;
-        const float dropdownGap = 12f;
-        const float portraitDropdownWidth = 240f;
-
-        float panelW = portrait ? 624f : 736f;
-        // Portrait: six two-row player blocks + Map + Seed + buttons.
-        // Landscape: six single rows + Map + Seed + buttons.
-        float panelH = portrait ? 1100f : 800f;
+        // Portrait: a centered fixed-size panel; each player block stacks the
+        // difficulty dropdown under the kind selector (issue #38). ScaleToFit
+        // shrinks it to fit a short viewport, and FitPanels rebuilds it into the
+        // landscape "config rail" layout when a resize flips orientation (#34).
+        const float dropdownWidth = 240f;
+        const float panelW = 624f;
+        const float panelH = 1100f;
         // Center-anchored so Godot re-solves the position on every window
         // resize (matches ModalChrome.BuildCenteredPanel). Children below
         // are laid out in the panel's local space against the fixed
@@ -714,35 +713,12 @@ public partial class MainMenuScene : Control
         const float rowInset = 48f;
         const float swatchSize = 34f;
         const float nameWidth = 144f;
-
-        // The right-hand control column. Landscape fits the kind +
-        // difficulty dropdowns side by side; portrait keeps one wide
-        // column and stacks the difficulty dropdown beneath the kind.
-        float rightColW = portrait
-            ? portraitDropdownWidth
-            : kindDropdownWidth + dropdownGap + difficultyDropdownWidth;
-        float rightColXShared = panelW - rowInset - rightColW;
-        // Portrait player blocks are two rows tall (kind + difficulty).
-        float playerBlockH = portrait ? rowHeight + 50f : rowHeight;
-        // Headers gap between a portrait row label's right edge and the
-        // dropdown column it describes.
+        // Headers gap between a row label's right edge and the dropdown column.
         const float headerGap = 12f;
 
-        // Landscape names the two dropdown columns once, in the band the
-        // old subtitle occupied. Portrait has no columns to head — each
-        // block's rows get their own Type / Difficulty labels instead
-        // (see the player loop below).
-        if (!portrait)
-        {
-            panel.AddChild(MakeFieldHeader("Type",
-                new Vector2(rightColXShared + 8f, rowStartY - 28f),
-                new Vector2(kindDropdownWidth - 8f, 22f),
-                HorizontalAlignment.Left));
-            panel.AddChild(MakeFieldHeader("Difficulty",
-                new Vector2(rightColXShared + kindDropdownWidth + dropdownGap + 8f, rowStartY - 28f),
-                new Vector2(difficultyDropdownWidth - 8f, 22f),
-                HorizontalAlignment.Left));
-        }
+        float rightColX = panelW - rowInset - dropdownWidth;
+        // Player blocks are two rows tall (kind + difficulty sub-row).
+        float playerBlockH = rowHeight + 50f;
 
         // Player rows. Each row is Swatch | Name | Kind | Difficulty
         // (issue #38: difficulty is per-slot). Difficulty is the human
@@ -774,74 +750,32 @@ public partial class MainMenuScene : Control
             nameLabel.AddThemeFontSizeOverride("font_size", 24);
             panel.AddChild(nameLabel);
 
-            if (portrait)
-            {
-                // Row headers: right-aligned against the dropdown column.
-                // The Type label squeezes between the name column and the
-                // dropdown; the Difficulty sub-row has the full left side.
-                float nameEndX = rowInset + swatchSize + 19f + nameWidth;
-                float labelRightX = rightColXShared - headerGap;
-                panel.AddChild(MakeFieldHeader("Type",
-                    new Vector2(nameEndX, rowY + 20f),
-                    new Vector2(labelRightX - nameEndX, 22f),
-                    HorizontalAlignment.Right));
-                panel.AddChild(MakeFieldHeader("Difficulty",
-                    new Vector2(rowInset + swatchSize + 19f, rowY + rowHeight + 8f),
-                    new Vector2(labelRightX - (rowInset + swatchSize + 19f), 22f),
-                    HorizontalAlignment.Right));
-            }
+            // Row headers: right-aligned against the dropdown column. The Type
+            // label squeezes between the name column and the dropdown; the
+            // Difficulty sub-row has the full left side.
+            float nameEndX = rowInset + swatchSize + 19f + nameWidth;
+            float labelRightX = rightColX - headerGap;
+            panel.AddChild(MakeFieldHeader("Type",
+                new Vector2(nameEndX, rowY + 20f),
+                new Vector2(labelRightX - nameEndX, 22f),
+                HorizontalAlignment.Right));
+            panel.AddChild(MakeFieldHeader("Difficulty",
+                new Vector2(rowInset + swatchSize + 19f, rowY + rowHeight + 8f),
+                new Vector2(labelRightX - (rowInset + swatchSize + 19f), 22f),
+                HorizontalAlignment.Right));
 
-            float kindWidth = portrait ? portraitDropdownWidth : kindDropdownWidth;
-            var dropdown = new OptionButton
-            {
-                Position = new Vector2(rightColXShared, rowY + 12f),
-                Size = new Vector2(kindWidth, 38f),
-            };
-            dropdown.AddThemeFontSizeOverride("font_size", 21);
-            // The button face and its drop-down popup are themed
-            // separately; without this the expanded item list renders
-            // at the tiny default size instead of matching the face.
-            dropdown.GetPopup().AddThemeFontSizeOverride("font_size", 21);
-            dropdown.AddItem("Human", HumanId);
-            dropdown.AddItem("Computer", ComputerId);
-            PlayerKind currentKind = i < GameSettings.PlayerKinds.Length
-                ? GameSettings.PlayerKinds[i]
-                : PlayerKind.Computer;
-            SelectItemById(dropdown, currentKind == PlayerKind.Computer ? ComputerId : HumanId);
+            OptionButton dropdown = ConfigureRoleDropdown(i);
+            dropdown.Position = new Vector2(rightColX, rowY + 12f);
+            dropdown.Size = new Vector2(dropdownWidth, 38f);
             panel.AddChild(dropdown);
-            _roleButtons[i] = dropdown;
 
-            // Portrait: sub-row directly under the kind selector.
-            // Landscape: beside it in the same row.
-            Vector2 difficultyPosition = portrait
-                ? new Vector2(rightColXShared, rowY + rowHeight)
-                : new Vector2(rightColXShared + kindDropdownWidth + dropdownGap, rowY + 12f);
-            float difficultyWidth = portrait ? portraitDropdownWidth : difficultyDropdownWidth;
-            var difficultyDropdown = new OptionButton
-            {
-                Position = difficultyPosition,
-                Size = new Vector2(difficultyWidth, 38f),
-            };
-            difficultyDropdown.AddThemeFontSizeOverride("font_size", 21);
-            difficultyDropdown.GetPopup().AddThemeFontSizeOverride("font_size", 21);
-            difficultyDropdown.AddItem("Recruit", (int)Difficulty.Recruit);
-            difficultyDropdown.AddItem("Soldier", (int)Difficulty.Soldier);
-            difficultyDropdown.AddItem("Captain", (int)Difficulty.Captain);
-            difficultyDropdown.AddItem("Commander", (int)Difficulty.Commander);
-            // Initialize from GameSettings (mirrors the kind dropdown) so
-            // loaded saves / Play Again round-trip per-slot levels.
-            Difficulty currentDifficulty = i < GameSettings.Difficulties.Length
-                ? GameSettings.Difficulties[i]
-                : Difficulty.Soldier;
-            SelectItemById(difficultyDropdown, (int)currentDifficulty);
+            // Difficulty sub-row directly under the kind selector.
+            OptionButton difficultyDropdown = ConfigureDifficultyDropdown(i);
+            difficultyDropdown.Position = new Vector2(rightColX, rowY + rowHeight);
+            difficultyDropdown.Size = new Vector2(dropdownWidth, 38f);
             panel.AddChild(difficultyDropdown);
-            _difficultyButtons[i] = difficultyDropdown;
 
-            // Lock the difficulty dropdown whenever the row is a Computer
-            // slot — now (initial state) and on every kind change.
-            int slot = i;
-            dropdown.ItemSelected += _ => ApplyDifficultyLock(slot);
-            ApplyDifficultyLock(slot);
+            ApplyDifficultyLock(i);
         }
 
         const float buttonH = 62f;
@@ -854,7 +788,6 @@ public partial class MainMenuScene : Control
         // action key falls on the rightmost button.
         float leftColX = rowInset;
         float leftColW = swatchSize + 16f + nameWidth;
-        float rightColX = rightColXShared;
 
         // Map row sits just below the last player row. The dropdown lists
         // "Random Map" (the default) plus every saved starting map. Picking
@@ -870,25 +803,10 @@ public partial class MainMenuScene : Control
         mapLabel.AddThemeFontSizeOverride("font_size", 24);
         panel.AddChild(mapLabel);
 
-        _mapSelector = new OptionButton
-        {
-            Position = new Vector2(rightColX, mapRowY + 12f),
-            Size = new Vector2(rightColW, 38f),
-        };
-        _mapSelector.AddThemeFontSizeOverride("font_size", 21);
-        _mapSelector.GetPopup().AddThemeFontSizeOverride("font_size", 21);
-        // Item 0 is the default — generates a fresh procedural map from
-        // the seed below. Subsequent items (id == index in ListMaps) are
-        // the user's saved starting maps.
-        _mapSelector.AddItem("Random Map", 0);
-        System.Collections.Generic.IReadOnlyList<SaveSlotInfo> mapSlots = _saveStore.ListMaps();
-        for (int i = 0; i < mapSlots.Count; i++)
-        {
-            _mapSelector.AddItem(mapSlots[i].SlotName, i + 1);
-        }
-        _mapSelector.Selected = 0;
-        _mapSelector.ItemSelected += OnMapSelectorChanged;
-        panel.AddChild(_mapSelector);
+        OptionButton mapSelector = ConfigureMapSelector();
+        mapSelector.Position = new Vector2(rightColX, mapRowY + 12f);
+        mapSelector.Size = new Vector2(dropdownWidth, 38f);
+        panel.AddChild(mapSelector);
 
         // Map Seed row sits just below the Map row, aligned with the
         // dropdown column so the input lines up with the AI selectors
@@ -903,26 +821,10 @@ public partial class MainMenuScene : Control
         seedLabel.AddThemeFontSizeOverride("font_size", 24);
         panel.AddChild(seedLabel);
 
-        _seedField = new LineEdit
-        {
-            Position = new Vector2(rightColX, seedRowY + 12f),
-            Size = new Vector2(rightColW, 38f),
-            MaxLength = SeedHexDigits,
-            Alignment = HorizontalAlignment.Right,
-            Text = SeedFormat.ToHex(SeedFormat.NextSeed(new System.Random())),
-            // Tapping/clicking into the field selects the existing seed so
-            // the next keystroke replaces it (issue #4).
-            SelectAllOnFocus = true,
-        };
-        _seedField.AddThemeFontSizeOverride("font_size", 21);
-        _seedField.TextChanged += OnSeedTextChanged;
-        _seedField.FocusEntered += OnSeedFieldFocusEntered;
-        _seedField.FocusExited += OnSeedFieldFocusExited;
-        // Intercept = / - even when the LineEdit has focus so the hotkey
-        // is focus-agnostic. Without GuiInput here, the LineEdit would
-        // consume printable-key events before _UnhandledInput sees them.
-        _seedField.GuiInput += OnSeedFieldGuiInput;
-        panel.AddChild(_seedField);
+        LineEdit seedField = ConfigureSeedField();
+        seedField.Position = new Vector2(rightColX, seedRowY + 12f);
+        seedField.Size = new Vector2(dropdownWidth, 38f);
+        panel.AddChild(seedField);
 
         var backButton = new Button { Text = "Back" };
         backButton.AddThemeFontSizeOverride("font_size", 29);
@@ -935,7 +837,7 @@ public partial class MainMenuScene : Control
         _startButton = new Button { Text = "Start Game" };
         _startButton.AddThemeFontSizeOverride("font_size", 29);
         _startButton.Position = new Vector2(rightColX, buttonRowY);
-        _startButton.Size = new Vector2(rightColW, buttonH);
+        _startButton.Size = new Vector2(dropdownWidth, buttonH);
         _startButton.Pressed += OnStartPressed;
         AudioBus.AttachClick(_startButton);
         panel.AddChild(_startButton);
@@ -943,10 +845,257 @@ public partial class MainMenuScene : Control
         RefreshStartButtonGating();
 
         Log.Debug(Log.LogCategory.Render,
-            $"MainMenu: play-config built ({_playConfigOrientation}, per-row difficulty "
-            + (portrait ? "sub-rows)" : "side-by-side)"));
+            "MainMenu: play-config built (Portrait, per-row difficulty sub-rows)");
         _playConfigDesignSize = new Vector2(panelW, panelH);
         return panel;
+    }
+
+    // --- Shared play-config control factories (portrait + landscape) ---
+    // Each configures the control + wiring (items, selection, events) and
+    // stores it in its field; the caller positions / parents it.
+
+    private OptionButton ConfigureRoleDropdown(int slot)
+    {
+        var dropdown = new OptionButton();
+        dropdown.AddThemeFontSizeOverride("font_size", 21);
+        // The button face and its drop-down popup are themed separately;
+        // without this the expanded item list renders at the tiny default size.
+        dropdown.GetPopup().AddThemeFontSizeOverride("font_size", 21);
+        dropdown.AddItem("Human", HumanId);
+        dropdown.AddItem("Computer", ComputerId);
+        PlayerKind currentKind = slot < GameSettings.PlayerKinds.Length
+            ? GameSettings.PlayerKinds[slot]
+            : PlayerKind.Computer;
+        SelectItemById(dropdown, currentKind == PlayerKind.Computer ? ComputerId : HumanId);
+        _roleButtons[slot] = dropdown;
+        // Lock the difficulty dropdown whenever the row is a Computer slot.
+        dropdown.ItemSelected += _ => ApplyDifficultyLock(slot);
+        return dropdown;
+    }
+
+    private OptionButton ConfigureDifficultyDropdown(int slot)
+    {
+        var dropdown = new OptionButton();
+        dropdown.AddThemeFontSizeOverride("font_size", 21);
+        dropdown.GetPopup().AddThemeFontSizeOverride("font_size", 21);
+        dropdown.AddItem("Recruit", (int)Difficulty.Recruit);
+        dropdown.AddItem("Soldier", (int)Difficulty.Soldier);
+        dropdown.AddItem("Captain", (int)Difficulty.Captain);
+        dropdown.AddItem("Commander", (int)Difficulty.Commander);
+        // Initialize from GameSettings (mirrors the kind dropdown) so loaded
+        // saves / Play Again round-trip per-slot levels.
+        Difficulty currentDifficulty = slot < GameSettings.Difficulties.Length
+            ? GameSettings.Difficulties[slot]
+            : Difficulty.Soldier;
+        SelectItemById(dropdown, (int)currentDifficulty);
+        _difficultyButtons[slot] = dropdown;
+        return dropdown;
+    }
+
+    private OptionButton ConfigureMapSelector()
+    {
+        var selector = new OptionButton();
+        selector.AddThemeFontSizeOverride("font_size", 21);
+        selector.GetPopup().AddThemeFontSizeOverride("font_size", 21);
+        // Item 0 is the default — generates a fresh procedural map from the
+        // seed. Subsequent items (id == index in ListMaps) are saved maps.
+        selector.AddItem("Random Map", 0);
+        System.Collections.Generic.IReadOnlyList<SaveSlotInfo> mapSlots = _saveStore.ListMaps();
+        for (int i = 0; i < mapSlots.Count; i++)
+        {
+            selector.AddItem(mapSlots[i].SlotName, i + 1);
+        }
+        selector.Selected = 0;
+        selector.ItemSelected += OnMapSelectorChanged;
+        _mapSelector = selector;
+        return selector;
+    }
+
+    private LineEdit ConfigureSeedField()
+    {
+        var field = new LineEdit
+        {
+            MaxLength = SeedHexDigits,
+            Alignment = HorizontalAlignment.Right,
+            Text = SeedFormat.ToHex(SeedFormat.NextSeed(new System.Random())),
+            // Tapping/clicking into the field selects the existing seed so the
+            // next keystroke replaces it (issue #4).
+            SelectAllOnFocus = true,
+        };
+        field.AddThemeFontSizeOverride("font_size", 21);
+        field.TextChanged += OnSeedTextChanged;
+        field.FocusEntered += OnSeedFieldFocusEntered;
+        field.FocusExited += OnSeedFieldFocusExited;
+        // Intercept = / - even when the LineEdit has focus so the hotkey is
+        // focus-agnostic. Without GuiInput here, the LineEdit would consume
+        // printable-key events before _UnhandledInput sees them.
+        field.GuiInput += OnSeedFieldGuiInput;
+        _seedField = field;
+        return field;
+    }
+
+    /// <summary>"Config rail + player list" landscape New Game (issue #34): a
+    /// fixed left rail (title, map, seed, Start, Back) beside a scrolling player
+    /// list (swatch | name | Type | Difficulty per row), filling a centered,
+    /// size-capped surface instead of the portrait stack.</summary>
+    private Control BuildPlayConfigPanelLandscape()
+    {
+        PanelContainer surface = LandscapeMenuChrome.Build();
+        _playConfigSurface = surface;
+
+        var hbox = new HBoxContainer();
+        hbox.AddThemeConstantOverride("separation", 20);
+        surface.AddChild(hbox);
+
+        // Left rail: title, map + seed inputs, then Start / Back pinned bottom.
+        var rail = new VBoxContainer
+        {
+            CustomMinimumSize = new Vector2(262, 0),
+            SizeFlagsVertical = Control.SizeFlags.Fill,
+        };
+        rail.AddThemeConstantOverride("separation", 8);
+        hbox.AddChild(rail);
+
+        var title = new Label { Text = "New Game", HorizontalAlignment = HorizontalAlignment.Left };
+        title.AddThemeFontOverride("font", SerifFont);
+        title.AddThemeFontSizeOverride("font_size", 38);
+        rail.AddChild(title);
+        rail.AddChild(new ColorRect
+        {
+            Color = UiPalette.Gold,
+            CustomMinimumSize = new Vector2(90, 3),
+            SizeFlagsHorizontal = Control.SizeFlags.ShrinkBegin,
+        });
+
+        rail.AddChild(MakeRailLabel("Map"));
+        OptionButton mapSelector = ConfigureMapSelector();
+        mapSelector.CustomMinimumSize = new Vector2(0, 44);
+        rail.AddChild(mapSelector);
+
+        rail.AddChild(MakeRailLabel("Map Seed"));
+        LineEdit seedField = ConfigureSeedField();
+        seedField.CustomMinimumSize = new Vector2(0, 44);
+        rail.AddChild(seedField);
+
+        rail.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
+
+        _startButton = new Button { Text = "Start Game", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        _startButton.AddThemeFontSizeOverride("font_size", 27);
+        _startButton.CustomMinimumSize = new Vector2(0, 54);
+        _startButton.Pressed += OnStartPressed;
+        AudioBus.AttachClick(_startButton);
+        rail.AddChild(_startButton);
+
+        var backButton = new Button { Text = "Back", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        backButton.AddThemeFontSizeOverride("font_size", 24);
+        backButton.CustomMinimumSize = new Vector2(0, 48);
+        backButton.Pressed += OnBackPressed;
+        AudioBus.AttachClick(backButton);
+        rail.AddChild(backButton);
+
+        // Hairline divider between the rail and the player list.
+        hbox.AddChild(new ColorRect
+        {
+            Color = UiPalette.LineSoft,
+            CustomMinimumSize = new Vector2(1, 0),
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+        });
+
+        var rightCol = new VBoxContainer
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.Fill,
+        };
+        rightCol.AddThemeConstantOverride("separation", 6);
+        hbox.AddChild(rightCol);
+
+        // Column header row mirrors the player-row layout so TYPE / DIFFICULTY
+        // line up over the two dropdown columns.
+        rightCol.AddChild(MakePlayerColumnHeader());
+
+        // Scroll the list so a build with more than six players still fits; the
+        // rail stays pinned (design handoff).
+        var scroll = new ScrollContainer
+        {
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+        };
+        rightCol.AddChild(scroll);
+        var list = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        list.AddThemeConstantOverride("separation", 9);
+        scroll.AddChild(list);
+
+        for (int i = 0; i < GameSettings.PlayerConfig.Length; i++)
+        {
+            list.AddChild(MakePlayerRow(i));
+        }
+
+        RefreshStartButtonGating();
+        LandscapeMenuChrome.ApplyLayout(surface, GetViewportRect().Size, SafeArea.Current);
+        Log.Debug(Log.LogCategory.Render, "MainMenu: play-config built (Landscape config-rail)");
+        return surface;
+    }
+
+    /// <summary>One landscape player row: swatch | name | Type | Difficulty.</summary>
+    private HBoxContainer MakePlayerRow(int slot)
+    {
+        (string name, string hex) = GameSettings.PlayerConfig[slot];
+        var row = new HBoxContainer { CustomMinimumSize = new Vector2(0, 44) };
+        row.AddThemeConstantOverride("separation", 10);
+
+        row.AddChild(new ColorRect
+        {
+            Color = new Color(hex),
+            CustomMinimumSize = new Vector2(22, 22),
+            SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter,
+            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
+        });
+        var nameLabel = new Label
+        {
+            Text = name,
+            CustomMinimumSize = new Vector2(82, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        nameLabel.AddThemeFontSizeOverride("font_size", 22);
+        row.AddChild(nameLabel);
+
+        OptionButton role = ConfigureRoleDropdown(slot);
+        role.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        row.AddChild(role);
+        OptionButton difficulty = ConfigureDifficultyDropdown(slot);
+        difficulty.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        row.AddChild(difficulty);
+
+        ApplyDifficultyLock(slot);
+        return row;
+    }
+
+    /// <summary>Header row for the landscape player list — spacers matching the
+    /// swatch + name columns, then TYPE / DIFFICULTY over the dropdown columns.</summary>
+    private HBoxContainer MakePlayerColumnHeader()
+    {
+        var row = new HBoxContainer();
+        row.AddThemeConstantOverride("separation", 10);
+        row.AddChild(new Control { CustomMinimumSize = new Vector2(22, 0) });
+        row.AddChild(new Control { CustomMinimumSize = new Vector2(82, 0) });
+        Label type = MakeRailLabel("Type");
+        type.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        row.AddChild(type);
+        Label difficulty = MakeRailLabel("Difficulty");
+        difficulty.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        row.AddChild(difficulty);
+        return row;
+    }
+
+    /// <summary>Section label (Map / Map Seed / column headers) for the
+    /// landscape config rail — title case, matching the portrait labels.</summary>
+    private static Label MakeRailLabel(string text)
+    {
+        var label = new Label { Text = text };
+        label.AddThemeFontSizeOverride("font_size", 18);
+        label.AddThemeColorOverride("font_color", UiPalette.InkSoft);
+        return label;
     }
 
     /// <summary>Small muted label naming a dropdown column (landscape
@@ -1312,21 +1461,30 @@ public partial class MainMenuScene : Control
         ApplyKeyboardLift(lift);
     }
 
-    /// <summary>Translate the center-anchored play-config panel up by
-    /// <paramref name="lift"/> logical px via its anchor offsets. FitPanels
-    /// only touches Scale/PivotOffset, so the two never fight; a viewport
-    /// resize re-solves the anchors against these offsets and the next
-    /// _Process frame re-derives the lift.</summary>
+    /// <summary>Translate the play-config panel up by <paramref name="lift"/>
+    /// logical px so the on-screen keyboard never covers the seed field.
+    /// Portrait shifts the fixed panel's anchor offsets (FitPanels only touches
+    /// Scale, so they never fight); landscape re-lays out the centered fill
+    /// surface with the lift applied (FitPanels / safe-area changes re-pass
+    /// <see cref="_keyboardLift"/>, so they don't snap it back down).</summary>
     private void ApplyKeyboardLift(float lift)
     {
         if (_playConfigPanel == null) return;
         if (Mathf.IsEqualApprox(lift, _keyboardLift)) return;
-        float halfH = _playConfigDesignSize.Y * 0.5f;
-        _playConfigPanel.OffsetTop = -halfH - lift;
-        _playConfigPanel.OffsetBottom = halfH - lift;
         _keyboardLift = lift;
+        if (_playConfigOrientation == ScreenOrientation.Portrait)
+        {
+            float halfH = _playConfigDesignSize.Y * 0.5f;
+            _playConfigPanel.OffsetTop = -halfH - lift;
+            _playConfigPanel.OffsetBottom = halfH - lift;
+        }
+        else if (_playConfigSurface != null)
+        {
+            LandscapeMenuChrome.ApplyLayout(_playConfigSurface, GetViewportRect().Size,
+                SafeArea.Current, verticalShift: lift);
+        }
         Log.Debug(Log.LogCategory.Display,
-            $"MainMenu: keyboard lift -> {lift:0.#} logical px");
+            $"MainMenu: keyboard lift -> {lift:0.#} logical px ({_playConfigOrientation})");
     }
 
     private void BuildLoadDialog()
