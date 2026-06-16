@@ -541,13 +541,17 @@ public partial class MainMenuScene : Control
         };
         leftCol.AddThemeConstantOverride("separation", 6);
         leftCol.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
-        leftCol.AddChild(MakeWordmarkLine("FourEx"));
-        leftCol.AddChild(MakeWordmarkLine("Hex"));
+        // Single-line wordmark, centered in the rail, at the portrait font size.
+        var wordmark = new Label { Text = "FourExHex", HorizontalAlignment = HorizontalAlignment.Center };
+        wordmark.AddThemeFontOverride("font", SerifFont);
+        wordmark.AddThemeFontSizeOverride("font_size", 56);
+        leftCol.AddChild(wordmark);
+        // Gold underline — extended and centered beneath the wordmark.
         leftCol.AddChild(new ColorRect
         {
             Color = UiPalette.Gold,
-            CustomMinimumSize = new Vector2(118, 3),
-            SizeFlagsHorizontal = Control.SizeFlags.ShrinkBegin,
+            CustomMinimumSize = new Vector2(220, 3),
+            SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter,
         });
         leftCol.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
         var version = new Label { Text = AppVersion.Display };
@@ -618,14 +622,6 @@ public partial class MainMenuScene : Control
         Log.Info(Log.LogCategory.Render,
             $"MainMenu: landing built (Landscape split-hero, exitSuppressed={exitSuppressed})");
         return surface;
-    }
-
-    private static Label MakeWordmarkLine(string text)
-    {
-        var label = new Label { Text = text, HorizontalAlignment = HorizontalAlignment.Left };
-        label.AddThemeFontOverride("font", SerifFont);
-        label.AddThemeFontSizeOverride("font_size", 56);
-        return label;
     }
 
     /// <summary>Full-width landing action button (Play Game / Exit).</summary>
