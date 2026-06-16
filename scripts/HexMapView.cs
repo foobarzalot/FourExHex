@@ -521,6 +521,16 @@ public partial class HexMapView : Node2D, IHexMapView
             AddChild(fill);
         }
 
+        // Gold-tile inner borders (issue #45): drawn just above the tile fills
+        // but BELOW the per-tile outlines and territory borders, so both the
+        // thin cell-to-cell outline and the thick boundary lines draw on top of
+        // the gold accent. The gold ring reaches the tile edge, so if it sat
+        // above the outlines it would erase the thin shared outline between two
+        // adjacent gold tiles. A filled hex-ring band (TriangleSoup) rather than
+        // a multiline stroke so the corners miter cleanly with no gaps.
+        _goldBordersLayer = new TriangleSoup { Name = "GoldBordersLayer" };
+        AddChild(_goldBordersLayer);
+
         // All per-tile outlines go in one layer drawn after every fill,
         // so neighbor fills can never overdraw an outline. Each unique
         // edge is drawn exactly once for uniform thickness.
@@ -548,13 +558,6 @@ public partial class HexMapView : Node2D, IHexMapView
         AddChild(_towerCoverageLayer);
         _bordersLayer = new PolylineBatch { Name = "BordersLayer" };
         AddChild(_bordersLayer);
-        // Gold-tile inner borders (issue #45): above territory borders so the
-        // gold accent reads on top of the black boundary lines, but below
-        // capitals / units / trees / towers so it never hides an occupant.
-        // A filled hex-ring band (TriangleSoup) rather than a multiline stroke
-        // so the corners miter cleanly with no gaps.
-        _goldBordersLayer = new TriangleSoup { Name = "GoldBordersLayer" };
-        AddChild(_goldBordersLayer);
         // Mountain glyphs (issue #37): defensive terrain. Above gold borders
         // and tile fills, below capitals / units / trees / towers so an
         // occupant standing on a mountain draws on top of the peak.
@@ -2917,7 +2920,7 @@ public partial class HexMapView : Node2D, IHexMapView
     // the territory border. Drawn as filled quads (one per edge, sharing
     // corner vertices) so the corners miter cleanly — a multiline stroke left
     // gaps at each corner.
-    private const float GoldBorderOuter = 0.90f;
+    private const float GoldBorderOuter = 1.0f;
     private const float GoldBorderInner = 0.74f;
 
     /// <summary>
@@ -2974,6 +2977,7 @@ public partial class HexMapView : Node2D, IHexMapView
         if (_mountainsLayer == null) return;
         foreach (Node child in _mountainsLayer.GetChildren()) child.QueueFree();
 
+        int built = 0;
         foreach (HexTile tile in Grid.Tiles)
         {
             if (!tile.IsMountain) continue;
@@ -2981,7 +2985,9 @@ public partial class HexMapView : Node2D, IHexMapView
             glyph.Position = FirstHexCenterOffset + HexPixel.ToPixel(tile.Coord, HexSize);
             glyph.Rotation = -_mapAngleRad;   // upright on a rotated board
             _mountainsLayer.AddChild(glyph);
+            built++;
         }
+        Log.Debug(Log.LogCategory.Render, $"DrawMountains: built {built} mountain outline glyphs");
     }
 
     /// <summary>
@@ -2991,7 +2997,7 @@ public partial class HexMapView : Node2D, IHexMapView
     /// </summary>
     private Node2D CreateMountainVisual()
     {
-        float r = HexSize * 0.75f;
+        float r = HexSize * 0.675f;   // 10% smaller than the original 0.75f
         var node = new Node2D();
 
         // A single centered peak.
@@ -2999,19 +3005,12 @@ public partial class HexMapView : Node2D, IHexMapView
         var baseL = new Vector2(-0.82f * r, 0.62f * r);
         var baseR = new Vector2(0.82f * r, 0.62f * r);
         var mainVerts = new[] { apex, baseR, baseL };
-        var main = new Polygon2D { Color = MountainRockColor, Polygon = mainVerts };
-        main.AddChild(BuildClosedOutline(mainVerts, 1.5f, MountainStrokeColor));
+        // Mostly-transparent fill (issue: legibility) so the hex's owner color
+        // still shows through, with a slight dark tint to set the triangle off
+        // from the tile beneath. Reads as a translucent outlined peak.
+        var main = new Polygon2D { Color = new Color(0f, 0f, 0f, 0.18f), Polygon = mainVerts };
+        main.AddChild(BuildClosedOutline(mainVerts, 3.0f, MountainStrokeColor));
         node.AddChild(main);
-
-        // Snow cap: apex down each slope ~42%, dipping lower at the center.
-        var capVerts = new[]
-        {
-            apex,
-            apex.Lerp(baseR, 0.42f),
-            apex.Lerp((baseL + baseR) * 0.5f, 0.52f),
-            apex.Lerp(baseL, 0.42f),
-        };
-        node.AddChild(new Polygon2D { Color = MountainSnowColor, Polygon = capVerts });
 
         return node;
     }
