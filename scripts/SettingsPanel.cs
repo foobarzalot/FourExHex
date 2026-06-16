@@ -25,12 +25,9 @@ public sealed partial class SettingsPanel : CanvasLayer
     // LandscapeMenuChrome (never scaled).
     private PanelContainer _panel = null!;
     // The node added directly under this CanvasLayer that RebuildBody frees on
-    // an orientation flip — portrait: _panel itself; landscape: the fill root
-    // wrapping the safe-margin + surface.
+    // an orientation flip. Portrait and landscape both add _panel directly, so
+    // this currently tracks _panel; kept distinct for symmetry with the menu.
     private Control _panelRoot = null!;
-    // Landscape only: the MarginContainer whose insets track the device safe
-    // area (null in portrait, where FitPanel handles fit instead).
-    private MarginContainer? _safeMargin;
     // Which layout the body was last built for; a resize that flips it rebuilds
     // the body (two-zones landscape ↔ single-column portrait, issue #34).
     private ScreenOrientation _orientation;
@@ -108,8 +105,8 @@ public sealed partial class SettingsPanel : CanvasLayer
     }
 
     /// <summary>Build the panel subtree for the current orientation, populating
-    /// <see cref="_panel"/> (the surface), <see cref="_panelRoot"/> (the node to
-    /// free on a flip) and, in landscape, <see cref="_safeMargin"/>.</summary>
+    /// <see cref="_panel"/> (the surface) and <see cref="_panelRoot"/> (the node
+    /// to free on a flip).</summary>
     private void BuildBody()
     {
         Vector2 viewport = GetViewport().GetVisibleRect().Size;
@@ -126,7 +123,6 @@ public sealed partial class SettingsPanel : CanvasLayer
     {
         _panel = ModalChrome.BuildCenteredPanel();
         _panelRoot = _panel;
-        _safeMargin = null;
         AddChild(_panel);
 
         var vbox = new VBoxContainer
@@ -164,9 +160,9 @@ public sealed partial class SettingsPanel : CanvasLayer
     /// downscaling a portrait stack.</summary>
     private void BuildLandscapeBody()
     {
-        _panelRoot = LandscapeMenuChrome.Build(out _panel, out MarginContainer safeMargin);
-        _safeMargin = safeMargin;
-        AddChild(_panelRoot);
+        _panel = LandscapeMenuChrome.Build();
+        _panelRoot = _panel;
+        AddChild(_panel);
 
         var outer = new VBoxContainer();
         outer.AddThemeConstantOverride("separation", 18);
@@ -239,7 +235,7 @@ public sealed partial class SettingsPanel : CanvasLayer
         footer.AddChild(version);
         outer.AddChild(footer);
 
-        LandscapeMenuChrome.ApplyInsets(_safeMargin, SafeArea.Current);
+        LandscapeMenuChrome.ApplyLayout(_panel, GetViewport().GetVisibleRect().Size, SafeArea.Current);
     }
 
     private Label MakeTitle()
@@ -336,14 +332,17 @@ public sealed partial class SettingsPanel : CanvasLayer
         Vector2 viewport = GetViewport().GetVisibleRect().Size;
         ScreenOrientation next = ScreenLayout.Resolve(viewport.X, viewport.Y);
         if (next != _orientation) { RebuildBody(); return; }
-        if (_orientation == ScreenOrientation.Portrait) FitPanel();
-        else if (_safeMargin != null) LandscapeMenuChrome.ApplyInsets(_safeMargin, SafeArea.Current);
+        RefitOrRelayout();
     }
 
-    private void OnSafeAreaChanged(LogicalSafeInsets s)
+    private void OnSafeAreaChanged(LogicalSafeInsets _) => RefitOrRelayout();
+
+    /// <summary>Portrait scales the fixed panel to fit; landscape re-centers and
+    /// re-caps the fill surface against the current viewport / safe area.</summary>
+    private void RefitOrRelayout()
     {
         if (_orientation == ScreenOrientation.Portrait) FitPanel();
-        else if (_safeMargin != null) LandscapeMenuChrome.ApplyInsets(_safeMargin, s);
+        else LandscapeMenuChrome.ApplyLayout(_panel, GetViewport().GetVisibleRect().Size, SafeArea.Current);
     }
 
     /// <summary>Scale the centered panel down (never up) so its single-column
@@ -380,9 +379,8 @@ public sealed partial class SettingsPanel : CanvasLayer
     public void Open()
     {
         if (IsOpen) return;
-        // Re-fit / re-inset in case the viewport / safe area changed while closed.
-        if (_orientation == ScreenOrientation.Portrait) FitPanel();
-        else if (_safeMargin != null) LandscapeMenuChrome.ApplyInsets(_safeMargin, SafeArea.Current);
+        // Re-fit / re-layout in case the viewport / safe area changed while closed.
+        RefitOrRelayout();
         SyncControls();
         IsOpen = true;
         Visible = true;

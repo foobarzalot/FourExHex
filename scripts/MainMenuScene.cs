@@ -49,6 +49,15 @@ public partial class MainMenuScene : Control
     private Button? _landingResumeButton;
     private Button? _landingPlayButton;
     private Button? _landingLoadButton;
+    // Orientation the landing panel was last built for. Portrait keeps the
+    // original button-stack panel (ScaleToFit shrinks it); landscape uses the
+    // "split hero" fill layout (issue #34). A resize that flips it rebuilds.
+    private ScreenOrientation _landingOrientation = ScreenOrientation.Landscape;
+    // Centered fill surfaces of the landscape menu panels (null when that panel
+    // is built portrait); OnMenuSafeAreaChanged / FitPanels keep them centered +
+    // size-capped against the current viewport / safe area.
+    private PanelContainer? _landingSurface;
+    private PanelContainer? _playConfigSurface;
 
     private LineEdit? _seedField;
     private Button? _startButton;
@@ -161,10 +170,15 @@ public partial class MainMenuScene : Control
         FitPanels();
         GetViewport().SizeChanged += FitPanels;
         _viewportResizeHooked = true;
+        // The landscape fill panels (landing now; play-config in #34) inset to
+        // the device safe area — keep them clear of the notch / home indicator
+        // when it shifts without a resize.
+        SafeArea.Changed += OnMenuSafeAreaChanged;
     }
 
     public override void _ExitTree()
     {
+        SafeArea.Changed -= OnMenuSafeAreaChanged;
         // The root Window outlives this scene across the menu→game swap;
         // without the unsubscribe a later resize invokes FitPanels on a
         // freed node. Guarded: the diagnostic 6AI branch leaves _Ready
@@ -183,13 +197,57 @@ public partial class MainMenuScene : Control
     private void FitPanels()
     {
         Vector2 viewport = GetViewportRect().Size;
+        RebuildLandingOnOrientationFlip(viewport);
         RebuildPlayConfigOnOrientationFlip(viewport);
         RebuildCampaignOnOrientationFlip(viewport);
-        if (_landingPanel != null) ScaleToFit(_landingPanel, _landingDesignSize, viewport);
+        // Portrait panels are fixed-size and ScaleToFit shrinks them to fit a
+        // smaller viewport; the landscape "split hero" landing instead fills
+        // the safe rect, so it only needs its insets refreshed (issue #34).
+        if (_landingPanel != null)
+        {
+            if (_landingOrientation == ScreenOrientation.Portrait)
+                ScaleToFit(_landingPanel, _landingDesignSize, viewport);
+            else if (_landingSurface != null)
+                LandscapeMenuChrome.ApplyLayout(_landingSurface, viewport, SafeArea.Current);
+        }
         if (_playConfigPanel != null) ScaleToFit(_playConfigPanel, _playConfigDesignSize, viewport);
         // The campaign panel is NOT scaled — it fills the viewport and
         // scrolls (anchors re-solve on resize on their own; an orientation
         // flip rebuilds it via RebuildCampaignOnOrientationFlip below).
+    }
+
+    /// <summary>Re-apply safe-area insets to the landscape fill panels when the
+    /// notch / home indicator shifts without a resize (rotation, status-bar
+    /// toggle). Portrait panels ignore this — FitPanels scales them instead.</summary>
+    private void OnMenuSafeAreaChanged(LogicalSafeInsets s)
+    {
+        Vector2 viewport = GetViewportRect().Size;
+        if (_landingSurface != null) LandscapeMenuChrome.ApplyLayout(_landingSurface, viewport, s);
+        if (_playConfigSurface != null) LandscapeMenuChrome.ApplyLayout(_playConfigSurface, viewport, s);
+    }
+
+    /// <summary>Rebuild the landing panel when a viewport resize flips the
+    /// orientation: portrait button-stack ↔ landscape "split hero" (issue #34).
+    /// Save-state button gating is re-derived from disk on every build, so a
+    /// rebuild loses nothing.</summary>
+    private void RebuildLandingOnOrientationFlip(Vector2 viewport)
+    {
+        if (_landingPanel == null) return;
+        ScreenOrientation next = ScreenLayout.Resolve(viewport.X, viewport.Y);
+        if (next == _landingOrientation) return;
+        Log.Debug(Log.LogCategory.Render,
+            $"MainMenu: orientation flip {_landingOrientation} -> {next}; rebuilding landing panel");
+
+        bool wasVisible = _landingPanel.Visible;
+        Control old = _landingPanel;
+        int treeIndex = old.GetIndex();
+        old.Visible = false;
+        old.QueueFree();
+
+        _landingPanel = BuildLandingPanel();
+        AddChild(_landingPanel);
+        MoveChild(_landingPanel, treeIndex);
+        _landingPanel.Visible = wasVisible;
     }
 
     /// <summary>Rebuild the campaign panel when a viewport resize flips the
@@ -280,6 +338,15 @@ public partial class MainMenuScene : Control
 
     private Control BuildLandingPanel()
     {
+        Vector2 landingViewport = GetViewportRect().Size;
+        _landingOrientation = ScreenLayout.Resolve(landingViewport.X, landingViewport.Y);
+        if (_landingOrientation == ScreenOrientation.Landscape)
+        {
+            return BuildLandingPanelLandscape();
+        }
+        // Portrait: the original fixed-size button-stack panel below.
+        _landingSurface = null;
+
         const float panelW = 520f;
         // Button-stack layout: a 64px button plus a 16px gap per slot,
         // starting at y=140. Hoisted above panelH so the panel height can be
@@ -440,6 +507,144 @@ public partial class MainMenuScene : Control
 
         _landingDesignSize = new Vector2(panelW, panelH);
         return panel;
+    }
+
+    /// <summary>"Split hero" landscape landing (issue #34): a wordmark + version
+    /// rail on the left, a full-width Play Game over a 2-column action grid on
+    /// the right, filling the safe rect instead of downscaling the portrait
+    /// button stack. Exit (desktop only) is a full-width button below the grid.</summary>
+    private Control BuildLandingPanelLandscape()
+    {
+        PanelContainer surface = LandscapeMenuChrome.Build();
+        _landingSurface = surface;
+
+        var hbox = new HBoxContainer();
+        hbox.AddThemeConstantOverride("separation", 20);
+        surface.AddChild(hbox);
+
+        // Left rail: wordmark + gold underline vertically centered, version
+        // string pinned to the bottom.
+        var leftCol = new VBoxContainer
+        {
+            CustomMinimumSize = new Vector2(300, 0),
+            SizeFlagsVertical = Control.SizeFlags.Fill,
+        };
+        leftCol.AddThemeConstantOverride("separation", 6);
+        leftCol.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
+        leftCol.AddChild(MakeWordmarkLine("FourEx"));
+        leftCol.AddChild(MakeWordmarkLine("Hex"));
+        leftCol.AddChild(new ColorRect
+        {
+            Color = UiPalette.Gold,
+            CustomMinimumSize = new Vector2(118, 3),
+            SizeFlagsHorizontal = Control.SizeFlags.ShrinkBegin,
+        });
+        leftCol.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
+        var version = new Label { Text = AppVersion.Display };
+        version.AddThemeFontSizeOverride("font_size", 15);
+        version.AddThemeColorOverride("font_color", UiPalette.InkMute);
+        leftCol.AddChild(version);
+        hbox.AddChild(leftCol);
+
+        // Hairline divider between the rail and the action column.
+        hbox.AddChild(new ColorRect
+        {
+            Color = UiPalette.LineSoft,
+            CustomMinimumSize = new Vector2(1, 0),
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+        });
+
+        var rightCol = new VBoxContainer
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.Fill,
+        };
+        rightCol.AddThemeConstantOverride("separation", 11);
+        hbox.AddChild(rightCol);
+
+        // Play Game sits on top, full width; the grid fills the rest.
+        _landingPlayButton = MakeLandingButton("Play Game", OnPlayPressed, 26);
+        _landingPlayButton.CustomMinimumSize = new Vector2(0, 62);
+        rightCol.AddChild(_landingPlayButton);
+
+        var grid = new GridContainer
+        {
+            Columns = 2,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+        };
+        grid.AddThemeConstantOverride("h_separation", 11);
+        grid.AddThemeConstantOverride("v_separation", 11);
+        rightCol.AddChild(grid);
+
+        // One ListSlots() call drives both Resume (needs the autosave entry)
+        // and Load Game (needs any slot), matching the portrait build.
+        System.Collections.Generic.IReadOnlyList<SaveSlotInfo> slots = _saveStore.ListSlots();
+
+        // Resume / Load render disabled but keep their grid slots so the grid
+        // never reflows when a save exists (design handoff).
+        _landingResumeButton = MakeGridButton("Resume", OnResumePressed);
+        _landingResumeButton.Disabled = !slots.Any(s => s.IsAutosave);
+        grid.AddChild(_landingResumeButton);
+        grid.AddChild(MakeGridButton("Campaign", OnCampaignPressed));
+        grid.AddChild(MakeGridButton("Play Tutorial", OnPlayTutorialPressed));
+        _landingLoadButton = MakeGridButton("Load Game", OnLoadPressed);
+        _landingLoadButton.Disabled = slots.Count == 0;
+        grid.AddChild(_landingLoadButton);
+        grid.AddChild(MakeGridButton("Map Editor", OnMapEditorPressed));
+        grid.AddChild(MakeGridButton("Settings", OnSettingsPressed));
+
+        // Exit is suppressed on mobile (Apple HIG / Google Play); desktop gets
+        // a full-width Exit below the grid (per the #34 layout decision).
+        bool exitSuppressed = OS.HasFeature("mobile");
+        if (!exitSuppressed)
+        {
+            Button exitButton = MakeLandingButton("Exit", OnExitPressed, 26);
+            exitButton.CustomMinimumSize = new Vector2(0, 52);
+            rightCol.AddChild(exitButton);
+        }
+
+        LandscapeMenuChrome.ApplyLayout(surface, GetViewportRect().Size, SafeArea.Current);
+        Log.Info(Log.LogCategory.Render,
+            $"MainMenu: landing built (Landscape split-hero, exitSuppressed={exitSuppressed})");
+        return surface;
+    }
+
+    private static Label MakeWordmarkLine(string text)
+    {
+        var label = new Label { Text = text, HorizontalAlignment = HorizontalAlignment.Left };
+        label.AddThemeFontOverride("font", SerifFont);
+        label.AddThemeFontSizeOverride("font_size", 56);
+        return label;
+    }
+
+    /// <summary>Full-width landing action button (Play Game / Exit).</summary>
+    private static Button MakeLandingButton(string text, System.Action onPressed, int fontSize)
+    {
+        var button = new Button
+        {
+            Text = text,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+        };
+        button.AddThemeFontSizeOverride("font_size", fontSize);
+        button.Pressed += onPressed;
+        AudioBus.AttachClick(button);
+        return button;
+    }
+
+    /// <summary>Grid action button that expands to fill its cell.</summary>
+    private static Button MakeGridButton(string text, System.Action onPressed)
+    {
+        var button = new Button
+        {
+            Text = text,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+        };
+        button.AddThemeFontSizeOverride("font_size", 24);
+        button.Pressed += onPressed;
+        AudioBus.AttachClick(button);
+        return button;
     }
 
     private Control BuildPlayConfigPanel()

@@ -1,67 +1,70 @@
 using Godot;
 
 /// <summary>
-/// Shared chrome for the purpose-built <b>landscape</b> menu layouts
-/// (issue #34). Unlike the portrait menus — fixed-size centered panels that
+/// Shared surface for the purpose-built <b>landscape</b> menu layouts
+/// (issue #34). Unlike the portrait menus — tall fixed-size panels that
 /// <c>ScaleToFit</c>/<c>FitPanel</c> downscale to fit a short viewport — a
-/// landscape menu <i>fills</i> the safe rect and reflows its content with
-/// containers, so controls stay full-size on a wide-but-short screen.
+/// landscape menu reflows its content into a <i>wide-but-short</i> panel so
+/// controls stay full-size on a landscape phone.
 ///
-/// <see cref="Build"/> returns a viewport-filling root holding a
-/// <see cref="MarginContainer"/> (margins = device safe insets + a small edge
-/// margin) wrapping a rounded slate <see cref="PanelContainer"/> surface. The
-/// caller drops its <c>HBox</c>/<c>VBox</c>/<c>Grid</c> tree into the surface and
-/// keeps the margins live by calling <see cref="ApplyInsets"/> on
-/// <c>SafeArea.Changed</c> / viewport <c>SizeChanged</c> (same upkeep pattern as
-/// <see cref="CampaignPanel"/>, the other viewport-filling menu).
+/// The surface is centered and <b>size-capped</b>: it grows to fill the safe
+/// rect on a small phone (where the cap exceeds the safe area) but never
+/// stretches past <see cref="MaxWidth"/> × <see cref="MaxHeight"/> on a large
+/// desktop window — same "comfortable centered panel" feel as the portrait
+/// caps, just in a landscape aspect. <see cref="Build"/> returns the rounded
+/// slate <see cref="PanelContainer"/>; the caller fills it with its
+/// <c>HBox</c>/<c>VBox</c>/<c>Grid</c> tree and keeps it laid out by calling
+/// <see cref="ApplyLayout"/> on <c>SafeArea.Changed</c> / viewport
+/// <c>SizeChanged</c>.
 /// </summary>
 public static class LandscapeMenuChrome
 {
-    /// <summary>Gap between the device safe rect and the surface, on every
-    /// side (design handoff: ~12px inset from the safe area).</summary>
+    /// <summary>Gap between the safe rect and the surface when the surface is
+    /// smaller-screen-bound (design handoff: ~12px inset from the safe area).</summary>
     public const float EdgeMargin = 12f;
 
-    /// <summary>Build the fill root. <paramref name="surface"/> hands back the
-    /// rounded panel the caller fills with content; <paramref name="safeMargin"/>
-    /// is the <see cref="MarginContainer"/> whose insets the caller must refresh
-    /// via <see cref="ApplyInsets"/> on safe-area / resize changes.</summary>
-    public static Control Build(out PanelContainer surface, out MarginContainer safeMargin,
-        float contentPadding = 26f)
+    /// <summary>Comfortable landscape cap. Beyond this the surface stays
+    /// centered instead of stretching across a big desktop window — mirrors the
+    /// portrait panels' fixed design sizes (520–736 wide). Authored against the
+    /// iPhone 13 mini landscape safe rect (~797×447), with headroom.</summary>
+    public const float MaxWidth = 920f;
+    public const float MaxHeight = 520f;
+
+    /// <summary>Build the centered surface. The caller adds it directly to its
+    /// CanvasLayer / scene and fills it; call <see cref="ApplyLayout"/> once
+    /// after building and on every safe-area / resize change.</summary>
+    public static PanelContainer Build(float contentPadding = 26f)
     {
-        var root = new Control
+        var surface = new PanelContainer
         {
-            AnchorLeft = 0f, AnchorTop = 0f, AnchorRight = 1f, AnchorBottom = 1f,
-            MouseFilter = Control.MouseFilterEnum.Ignore,
+            // Center-anchored; ApplyLayout sets the offsets to the capped size.
+            AnchorLeft = 0.5f, AnchorRight = 0.5f, AnchorTop = 0.5f, AnchorBottom = 0.5f,
+            GrowHorizontal = Control.GrowDirection.Both,
+            GrowVertical = Control.GrowDirection.Both,
         };
-
-        safeMargin = new MarginContainer
-        {
-            AnchorLeft = 0f, AnchorTop = 0f, AnchorRight = 1f, AnchorBottom = 1f,
-        };
-        root.AddChild(safeMargin);
-
-        surface = new PanelContainer();
         surface.AddThemeStyleboxOverride("panel", SurfaceStyle(contentPadding));
-        safeMargin.AddChild(surface);
-
-        ApplyInsets(safeMargin, SafeArea.Current);
-        Log.Debug(Log.LogCategory.Render,
-            "LandscapeMenuChrome: built fill surface "
-            + $"(safe insets t{SafeArea.Current.Top:0} b{SafeArea.Current.Bottom:0} "
-            + $"l{SafeArea.Current.Left:0} r{SafeArea.Current.Right:0}, edge {EdgeMargin:0})");
-        return root;
+        return surface;
     }
 
-    /// <summary>Recompute the four <see cref="MarginContainer"/> insets from the
-    /// device safe area + the edge margin so the surface stays inside the notch /
-    /// home-indicator on every rotation and safe-area change.</summary>
-    public static void ApplyInsets(MarginContainer safeMargin, LogicalSafeInsets s,
-        float edge = EdgeMargin)
+    /// <summary>Size and center the surface: it fills the safe rect (minus the
+    /// edge margin) up to the <see cref="MaxWidth"/> × <see cref="MaxHeight"/>
+    /// cap, so it stays inside the notch / home-indicator on a phone yet remains
+    /// a tidy centered panel on a large desktop window.</summary>
+    public static void ApplyLayout(PanelContainer surface, Vector2 viewport, LogicalSafeInsets s,
+        float edge = EdgeMargin, float maxW = MaxWidth, float maxH = MaxHeight)
     {
-        safeMargin.AddThemeConstantOverride("margin_left", Mathf.RoundToInt(s.Left + edge));
-        safeMargin.AddThemeConstantOverride("margin_top", Mathf.RoundToInt(s.Top + edge));
-        safeMargin.AddThemeConstantOverride("margin_right", Mathf.RoundToInt(s.Right + edge));
-        safeMargin.AddThemeConstantOverride("margin_bottom", Mathf.RoundToInt(s.Bottom + edge));
+        float availW = Mathf.Max(0f, viewport.X - s.Left - s.Right - edge * 2f);
+        float availH = Mathf.Max(0f, viewport.Y - s.Top - s.Bottom - edge * 2f);
+        float w = Mathf.Min(availW, maxW);
+        float h = Mathf.Min(availH, maxH);
+        surface.OffsetLeft = -w * 0.5f;
+        surface.OffsetRight = w * 0.5f;
+        surface.OffsetTop = -h * 0.5f;
+        surface.OffsetBottom = h * 0.5f;
+
+        Log.Debug(Log.LogCategory.Render,
+            $"LandscapeMenuChrome: laid out {w:0}x{h:0} "
+            + $"(viewport {viewport.X:0}x{viewport.Y:0}, safe t{s.Top:0} b{s.Bottom:0} l{s.Left:0} r{s.Right:0})");
     }
 
     /// <summary>Rounded warm-slate surface (design: #322e28, radius 22, hairline
