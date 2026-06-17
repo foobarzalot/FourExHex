@@ -38,10 +38,10 @@ public partial class MainMenuScene : Control
     private Control? _landingPanel;
     private Control? _playConfigPanel;
     private CampaignPanel? _campaignPanel;
-    // Design (unscaled) sizes of the two panels, recorded at build time so
-    // FitPanels can scale them down to fit a smaller-than-design viewport.
+    // Design (unscaled) size of the landing panel, recorded at build time so
+    // FitPanels can scale it down to fit a smaller-than-design viewport. (The
+    // play-config panel is now a fill-to-cap surface and needs no design size.)
     private Vector2 _landingDesignSize;
-    private Vector2 _playConfigDesignSize;
     // Orientation the campaign panel was last built for; a resize that
     // flips it rebuilds the panel 8 columns ↔ 16 columns (see FitPanels).
     private ScreenOrientation _campaignOrientation = ScreenOrientation.Landscape;
@@ -224,30 +224,23 @@ public partial class MainMenuScene : Control
             else if (_landingSurface != null)
                 LandscapeMenuChrome.ApplyLayout(_landingSurface, viewport, SafeArea.Current);
         }
-        if (_playConfigPanel != null)
-        {
-            if (_playConfigOrientation == ScreenOrientation.Portrait)
-                ScaleToFit(_playConfigPanel, _playConfigDesignSize, viewport);
-            else if (_playConfigSurface != null)
-                // Carry any active seed-field keyboard lift so a resize while the
-                // on-screen keyboard is up doesn't snap the panel back down.
-                LandscapeMenuChrome.ApplyLayout(_playConfigSurface, viewport, SafeArea.Current,
-                    verticalShift: _keyboardLift);
-        }
+        // Both orientations use the fill-to-cap surface now; ApplyPlayConfigLayout
+        // picks the orientation cap and carries any active seed-field keyboard
+        // lift so a resize while the keyboard is up doesn't snap it back down.
+        if (_playConfigSurface != null) ApplyPlayConfigLayout(_keyboardLift);
         // The campaign panel is NOT scaled — it fills the viewport and
         // scrolls (anchors re-solve on resize on their own; an orientation
         // flip rebuilds it via RebuildCampaignOnOrientationFlip below).
     }
 
-    /// <summary>Re-apply safe-area insets to the landscape fill panels when the
-    /// notch / home indicator shifts without a resize (rotation, status-bar
-    /// toggle). Portrait panels ignore this — FitPanels scales them instead.</summary>
+    /// <summary>Re-apply safe-area insets to the fill surfaces when the notch /
+    /// home indicator shifts without a resize (rotation, status-bar toggle).
+    /// The portrait landing panel is still fixed-size — FitPanels scales it.</summary>
     private void OnMenuSafeAreaChanged(LogicalSafeInsets s)
     {
         Vector2 viewport = GetViewportRect().Size;
         if (_landingSurface != null) LandscapeMenuChrome.ApplyLayout(_landingSurface, viewport, s);
-        if (_playConfigSurface != null)
-            LandscapeMenuChrome.ApplyLayout(_playConfigSurface, viewport, s, verticalShift: _keyboardLift);
+        if (_playConfigSurface != null) ApplyPlayConfigLayout(_keyboardLift);
     }
 
     /// <summary>Rebuild the landing panel when a viewport resize flips the
@@ -679,232 +672,187 @@ public partial class MainMenuScene : Control
         {
             return BuildPlayConfigPanelLandscape();
         }
-        _playConfigSurface = null;
+        // Portrait: the SAME fill-to-viewport-up-to-a-cap surface the landscape
+        // New Game uses, but with the cap transposed (tall, not wide). The pages
+        // are container-based and fill the surface, so on a phone the panel uses
+        // the full long edge instead of being uniformly ScaleToFit-shrunk (which
+        // left vertical space unused and made portrait smaller than landscape).
+        PanelContainer surface = LandscapeMenuChrome.Build();
+        _playConfigSurface = surface;
 
-        // Portrait: a centered fixed-size panel holding two pages (issue #40) —
-        // player setup and map setup — toggled by ShowCurrentPlayConfigPage.
-        // ScaleToFit shrinks it for a short viewport; FitPanels rebuilds it into
-        // the landscape layout when a resize flips orientation (#34).
-        const float panelW = 624f;
-        const float panelH = 1100f;
-        // Center-anchored so Godot re-solves the position on every window
-        // resize (matches ModalChrome.BuildCenteredPanel).
-        var panel = new Panel
-        {
-            AnchorLeft = 0.5f, AnchorRight = 0.5f, AnchorTop = 0.5f, AnchorBottom = 0.5f,
-            OffsetLeft = -panelW * 0.5f, OffsetRight = panelW * 0.5f,
-            OffsetTop = -panelH * 0.5f, OffsetBottom = panelH * 0.5f,
-            GrowHorizontal = GrowDirection.Both,
-            GrowVertical = GrowDirection.Both,
-        };
-        Log.Trace(Log.LogCategory.Render, "MainMenu: built play-config panel (center-anchored).");
-
-        _playerPageContent = BuildPortraitPlayerPage(panelW, panelH);
-        panel.AddChild(_playerPageContent);
-        _mapPageContent = BuildPortraitMapPage(panelW, panelH);
-        panel.AddChild(_mapPageContent);
+        _playerPageContent = BuildPortraitPlayerPage();
+        surface.AddChild(_playerPageContent);
+        _mapPageContent = BuildPortraitMapPage();
+        surface.AddChild(_mapPageContent);
 
         RefreshStartButtonGating();
         ShowCurrentPlayConfigPage();
-
+        ApplyPlayConfigLayout(0f);
         Log.Debug(Log.LogCategory.Render,
-            "MainMenu: play-config built (Portrait, paged player/map setup)");
-        _playConfigDesignSize = new Vector2(panelW, panelH);
-        return panel;
+            "MainMenu: play-config built (Portrait, paged setup, fill surface)");
+        return surface;
     }
 
-    // Shared portrait page metrics.
-    private const float PortraitPanelInset = 48f;
-    private const float PortraitDropdownW = 240f;
-    private const float PortraitTitleY = 34f;
-    private const float PortraitContentTop = 154f;
-    private const float PortraitButtonH = 62f;
+    // Portrait New Game surface cap — the 90° transpose of the landscape cap
+    // (LandscapeMenuChrome 920×520), so the dialog keeps a consistent footprint
+    // across an orientation flip and fills the long edge on a phone.
+    private const float PortraitMaxW = 520f;
+    private const float PortraitMaxH = 920f;
 
-    /// <summary>A "New Game" wordmark + gold rule at the top of a portrait
-    /// page, parented to <paramref name="page"/>.</summary>
-    private void AddPortraitHeader(Control page, float panelW)
+    /// <summary>Size + center the play-config surface, filling the safe area up
+    /// to the orientation-appropriate cap. The single sizing path shared by
+    /// <see cref="FitPanels"/>, the safe-area hook, and the keyboard-lift path
+    /// so they can't drift. <paramref name="verticalShift"/> lifts the surface
+    /// for on-screen-keyboard avoidance.</summary>
+    private void ApplyPlayConfigLayout(float verticalShift)
     {
-        var title = new Label
-        {
-            Text = "New Game",
-            HorizontalAlignment = HorizontalAlignment.Center,
-            Position = new Vector2(0, PortraitTitleY),
-            Size = new Vector2(panelW, 68),
-        };
+        if (_playConfigSurface == null) return;
+        Vector2 vp = GetViewportRect().Size;
+        bool portrait = ScreenLayout.Resolve(vp.X, vp.Y) == ScreenOrientation.Portrait;
+        LandscapeMenuChrome.ApplyLayout(_playConfigSurface, vp, SafeArea.Current,
+            maxW: portrait ? PortraitMaxW : LandscapeMenuChrome.MaxWidth,
+            maxH: portrait ? PortraitMaxH : LandscapeMenuChrome.MaxHeight,
+            verticalShift: verticalShift);
+    }
+
+    /// <summary>Centered "New Game" wordmark + gold rule at the top of a portrait
+    /// page.</summary>
+    private void AddPortraitHeader(BoxContainer page)
+    {
+        var title = new Label { Text = "New Game", HorizontalAlignment = HorizontalAlignment.Center };
         title.AddThemeFontOverride("font", SerifFont);
-        title.AddThemeFontSizeOverride("font_size", 50);
+        title.AddThemeFontSizeOverride("font_size", 40);
         page.AddChild(title);
         page.AddChild(new ColorRect
         {
             Color = UiPalette.GoldDim,
-            Position = new Vector2(panelW * 0.5f - 132f, 115f),
-            Size = new Vector2(264f, 1f),
+            CustomMinimumSize = new Vector2(0, 1),
+            SizeFlagsHorizontal = Control.SizeFlags.Fill,
         });
     }
 
-    /// <summary>Full-page Control sized to the panel; children use panel-local
-    /// (absolute) coordinates.</summary>
-    private static Control NewFullPage()
+    /// <summary>Portrait player-setup page (fills the surface): six two-line
+    /// player blocks (swatch + name, then the Type / Difficulty dropdowns
+    /// side-by-side below), a spacer, then Back (→ landing) / Next (→ map setup)
+    /// at the bottom. Stacked-by-line so the dropdowns get the full (narrow)
+    /// portrait width and the six players fit the height without scrolling.</summary>
+    private Control BuildPortraitPlayerPage()
     {
-        var page = new Control();
-        page.SetAnchorsPreset(LayoutPreset.FullRect);
-        return page;
-    }
+        var col = new VBoxContainer { SizeFlagsVertical = Control.SizeFlags.Fill };
+        col.AddThemeConstantOverride("separation", 8);
+        AddPortraitHeader(col);
 
-    /// <summary>Portrait player-setup page: the six role + difficulty rows, with
-    /// Back (→ landing) and Next (→ map setup) pinned at the bottom.</summary>
-    private Control BuildPortraitPlayerPage(float panelW, float panelH)
-    {
-        Control page = NewFullPage();
-        AddPortraitHeader(page, panelW);
-
-        const float rowHeight = 62f;
-        const float swatchSize = 34f;
-        const float nameWidth = 144f;
-        const float headerGap = 12f;
-        float rightColX = panelW - PortraitPanelInset - PortraitDropdownW;
-        float playerBlockH = rowHeight + 50f; // kind + difficulty sub-row
-
-        // Player rows: Swatch | Name | Kind | Difficulty (issue #38). Computer
-        // slots lock difficulty to Soldier (see ApplyDifficultyLock).
+        var list = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        list.AddThemeConstantOverride("separation", 12);
         for (int i = 0; i < GameSettings.PlayerConfig.Length; i++)
-        {
-            (string name, string hex) = GameSettings.PlayerConfig[i];
-            float rowY = PortraitContentTop + playerBlockH * i;
+            list.AddChild(MakePortraitPlayerBlock(i));
+        col.AddChild(list);
 
-            page.AddChild(new ColorRect
-            {
-                Color = new Color(hex),
-                Position = new Vector2(PortraitPanelInset, rowY + (rowHeight - swatchSize) * 0.5f),
-                Size = new Vector2(swatchSize, swatchSize),
-            });
+        col.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
 
-            var nameLabel = new Label
-            {
-                Text = name,
-                Position = new Vector2(PortraitPanelInset + swatchSize + 19f, rowY + 17f),
-                Size = new Vector2(nameWidth, 29f),
-            };
-            nameLabel.AddThemeFontSizeOverride("font_size", 24);
-            page.AddChild(nameLabel);
-
-            float nameEndX = PortraitPanelInset + swatchSize + 19f + nameWidth;
-            float labelRightX = rightColX - headerGap;
-            page.AddChild(MakeFieldHeader("Type",
-                new Vector2(nameEndX, rowY + 20f),
-                new Vector2(labelRightX - nameEndX, 22f),
-                HorizontalAlignment.Right));
-            page.AddChild(MakeFieldHeader("Difficulty",
-                new Vector2(PortraitPanelInset + swatchSize + 19f, rowY + rowHeight + 8f),
-                new Vector2(labelRightX - (PortraitPanelInset + swatchSize + 19f), 22f),
-                HorizontalAlignment.Right));
-
-            OptionButton dropdown = ConfigureRoleDropdown(i);
-            dropdown.Position = new Vector2(rightColX, rowY + 12f);
-            dropdown.Size = new Vector2(PortraitDropdownW, 38f);
-            page.AddChild(dropdown);
-
-            OptionButton difficultyDropdown = ConfigureDifficultyDropdown(i);
-            difficultyDropdown.Position = new Vector2(rightColX, rowY + rowHeight);
-            difficultyDropdown.Size = new Vector2(PortraitDropdownW, 38f);
-            page.AddChild(difficultyDropdown);
-
-            ApplyDifficultyLock(i);
-        }
-
-        float buttonRowY = panelH - PortraitButtonH - 43f;
-        float leftColW = swatchSize + 16f + nameWidth;
-        page.AddChild(MakePortraitNavButton("Back", PortraitPanelInset, buttonRowY,
-            leftColW, OnBackPressed));
-        page.AddChild(MakePortraitNavButton("Next", rightColX, buttonRowY,
-            PortraitDropdownW, GoToMapPage));
-        return page;
+        var nav = new HBoxContainer();
+        nav.AddThemeConstantOverride("separation", 12);
+        nav.AddChild(MakeLandscapeNavButton("Back", OnBackPressed));
+        nav.AddChild(MakeLandscapeNavButton("Next", GoToMapPage));
+        col.AddChild(nav);
+        return col;
     }
 
-    /// <summary>Portrait map-setup page: map selector, seed + re-roll, a live
-    /// board thumbnail, and Back (→ player setup) / Start Game at the bottom.</summary>
-    private Control BuildPortraitMapPage(float panelW, float panelH)
+    /// <summary>One portrait player block: swatch + name on the first line, the
+    /// role and difficulty dropdowns side-by-side on the second (each filling
+    /// half the row — wide enough at portrait width, unlike a single side-by-side
+    /// row with the swatch/name competing for space). Computer slots lock
+    /// difficulty to Soldier (#38).</summary>
+    private Control MakePortraitPlayerBlock(int slot)
     {
-        Control page = NewFullPage();
-        AddPortraitHeader(page, panelW);
+        (string name, string hex) = GameSettings.PlayerConfig[slot];
+        var block = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        block.AddThemeConstantOverride("separation", 4);
 
-        const float rowHeight = 62f;
-        const float swatchSize = 34f;
-        const float nameWidth = 144f;
-        float leftLabelX = PortraitPanelInset + swatchSize + 19f;
-        float rightColX = panelW - PortraitPanelInset - PortraitDropdownW;
-
-        float mapRowY = PortraitContentTop;
-        var mapLabel = new Label
+        var idRow = new HBoxContainer();
+        idRow.AddThemeConstantOverride("separation", 10);
+        idRow.AddChild(new ColorRect
         {
-            Text = "Map",
-            Position = new Vector2(leftLabelX, mapRowY + 17f),
-            Size = new Vector2(nameWidth, 29f),
-        };
-        mapLabel.AddThemeFontSizeOverride("font_size", 24);
-        page.AddChild(mapLabel);
+            Color = new Color(hex),
+            CustomMinimumSize = new Vector2(22, 22),
+            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
+        });
+        var nameLabel = new Label { Text = name, VerticalAlignment = VerticalAlignment.Center };
+        nameLabel.AddThemeFontSizeOverride("font_size", 22);
+        idRow.AddChild(nameLabel);
+        block.AddChild(idRow);
 
-        OptionButton mapSelector = ConfigureMapSelector();
-        mapSelector.Position = new Vector2(rightColX, mapRowY + 12f);
-        mapSelector.Size = new Vector2(PortraitDropdownW, 38f);
-        page.AddChild(mapSelector);
+        var ctrlRow = new HBoxContainer();
+        ctrlRow.AddThemeConstantOverride("separation", 10);
+        OptionButton role = ConfigureRoleDropdown(slot);
+        role.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        role.CustomMinimumSize = new Vector2(0, 40);
+        ctrlRow.AddChild(role);
+        OptionButton difficulty = ConfigureDifficultyDropdown(slot);
+        difficulty.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        difficulty.CustomMinimumSize = new Vector2(0, 40);
+        ctrlRow.AddChild(difficulty);
+        block.AddChild(ctrlRow);
 
-        float seedRowY = mapRowY + rowHeight;
-        var seedLabel = new Label
-        {
-            Text = "Map Seed",
-            Position = new Vector2(leftLabelX, seedRowY + 17f),
-            Size = new Vector2(nameWidth, 29f),
-        };
-        seedLabel.AddThemeFontSizeOverride("font_size", 24);
-        page.AddChild(seedLabel);
+        ApplyDifficultyLock(slot);
+        return block;
+    }
 
-        // Seed field shares its column with a square re-roll button (issue #5).
-        const float rerollSize = 38f;
-        const float rerollGap = 6f;
-        float seedFieldW = PortraitDropdownW - rerollSize - rerollGap;
+    /// <summary>A labeled control row — fixed-width caption then the control
+    /// filling the rest (portrait Type / Difficulty / Map / Map Seed rows).</summary>
+    private HBoxContainer MakePortraitFieldRow(string label, Control field)
+    {
+        var row = new HBoxContainer();
+        row.AddThemeConstantOverride("separation", 10);
+        Label caption = MakeRailLabel(label);
+        caption.CustomMinimumSize = new Vector2(108, 0);
+        caption.VerticalAlignment = VerticalAlignment.Center;
+        row.AddChild(caption);
+        field.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        field.CustomMinimumSize = new Vector2(0, 44);
+        row.AddChild(field);
+        return row;
+    }
+
+    /// <summary>Portrait map-setup page (fills the surface): map selector, seed +
+    /// re-roll, the live thumbnail (expands), and Back / Start at the bottom.</summary>
+    private Control BuildPortraitMapPage()
+    {
+        var col = new VBoxContainer { SizeFlagsVertical = Control.SizeFlags.Fill };
+        col.AddThemeConstantOverride("separation", 10);
+        AddPortraitHeader(col);
+
+        col.AddChild(MakePortraitFieldRow("Map", ConfigureMapSelector()));
+
+        // Seed field + square re-roll die share a row.
+        var seedRow = new HBoxContainer();
+        seedRow.AddThemeConstantOverride("separation", 10);
+        Label seedCaption = MakeRailLabel("Map Seed");
+        seedCaption.CustomMinimumSize = new Vector2(108, 0);
+        seedCaption.VerticalAlignment = VerticalAlignment.Center;
+        seedRow.AddChild(seedCaption);
         LineEdit seedField = ConfigureSeedField();
-        seedField.Position = new Vector2(rightColX, seedRowY + 12f);
-        seedField.Size = new Vector2(seedFieldW, 38f);
-        page.AddChild(seedField);
-
+        seedField.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        seedField.CustomMinimumSize = new Vector2(0, 44);
+        seedRow.AddChild(seedField);
         _rerollButton = MakeRerollButton();
-        // HudIconButton defaults to a 68×68 minimum; override it so the die
-        // button shrinks to match the 38px seed field instead of towering over
-        // it (issue: portrait die looked oversized).
-        _rerollButton.CustomMinimumSize = new Vector2(rerollSize, rerollSize);
-        _rerollButton.Position = new Vector2(rightColX + seedFieldW + rerollGap, seedRowY + 12f);
-        _rerollButton.Size = new Vector2(rerollSize, rerollSize);
-        page.AddChild(_rerollButton);
+        _rerollButton.CustomMinimumSize = new Vector2(44, 44);
+        seedRow.AddChild(_rerollButton);
+        col.AddChild(seedRow);
 
-        // Live board thumbnail (issue #40): fills the tall mid-page space so the
-        // rotated portrait board reads at a usable size.
-        float thumbTop = seedRowY + rowHeight + 20f;
-        float buttonRowY = panelH - PortraitButtonH - 43f;
+        // Live board thumbnail (issue #40) — expands to fill the mid-page space.
         _thumbnail = BuildThumbnail();
-        _thumbnail.Position = new Vector2(PortraitPanelInset, thumbTop);
-        _thumbnail.Size = new Vector2(panelW - 2f * PortraitPanelInset, buttonRowY - thumbTop - 24f);
-        page.AddChild(_thumbnail);
+        _thumbnail.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        _thumbnail.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+        col.AddChild(_thumbnail);
 
-        float leftColW = swatchSize + 16f + nameWidth;
-        page.AddChild(MakePortraitNavButton("Back", PortraitPanelInset, buttonRowY,
-            leftColW, GoToPlayerPage));
-        _startButton = MakePortraitNavButton("Start Game", rightColX, buttonRowY,
-            PortraitDropdownW, OnStartPressed);
-        page.AddChild(_startButton);
-        return page;
-    }
-
-    private Button MakePortraitNavButton(
-        string text, float x, float y, float width, System.Action onPressed)
-    {
-        var button = new Button { Text = text };
-        button.AddThemeFontSizeOverride("font_size", 29);
-        button.Position = new Vector2(x, y);
-        button.Size = new Vector2(width, PortraitButtonH);
-        button.Pressed += onPressed;
-        AudioBus.AttachClick(button);
-        return button;
+        var nav = new HBoxContainer();
+        nav.AddThemeConstantOverride("separation", 12);
+        nav.AddChild(MakeLandscapeNavButton("Back", GoToPlayerPage));
+        _startButton = MakeLandscapeNavButton("Start Game", OnStartPressed);
+        nav.AddChild(_startButton);
+        col.AddChild(nav);
+        return col;
     }
 
     // --- Shared play-config control factories (portrait + landscape) ---
@@ -1069,16 +1017,11 @@ public partial class MainMenuScene : Control
         hbox.AddChild(rightCol);
 
         rightCol.AddChild(MakePlayerColumnHeader());
-        var scroll = new ScrollContainer
-        {
-            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
-        };
-        rightCol.AddChild(scroll);
+        // No ScrollContainer: the six 40px rows fit the surface in both
+        // orientations, so a plain list never shows a scrollbar.
         var list = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-        list.AddThemeConstantOverride("separation", 9);
-        scroll.AddChild(list);
+        list.AddThemeConstantOverride("separation", 4);
+        rightCol.AddChild(list);
         for (int i = 0; i < GameSettings.PlayerConfig.Length; i++)
         {
             list.AddChild(MakePlayerRow(i));
@@ -1164,7 +1107,9 @@ public partial class MainMenuScene : Control
     private HBoxContainer MakePlayerRow(int slot)
     {
         (string name, string hex) = GameSettings.PlayerConfig[slot];
-        var row = new HBoxContainer { CustomMinimumSize = new Vector2(0, 44) };
+        // 40px keeps all six rows inside the short phone-landscape surface
+        // without a scrollbar (and there's ample room in portrait).
+        var row = new HBoxContainer { CustomMinimumSize = new Vector2(0, 40) };
         row.AddThemeConstantOverride("separation", 10);
 
         row.AddChild(new ColorRect
@@ -1221,23 +1166,6 @@ public partial class MainMenuScene : Control
         return label;
     }
 
-    /// <summary>Small muted label naming a dropdown column (landscape
-    /// column headers) or a control row (portrait row headers) on the
-    /// play-config panel.</summary>
-    private static Label MakeFieldHeader(
-        string text, Vector2 position, Vector2 size, HorizontalAlignment alignment)
-    {
-        var label = new Label
-        {
-            Text = text,
-            Position = position,
-            Size = size,
-            HorizontalAlignment = alignment,
-        };
-        label.AddThemeFontSizeOverride("font_size", 18);
-        label.AddThemeColorOverride("font_color", UiPalette.InkSoft);
-        return label;
-    }
 
     /// <summary>Computer slots always play the Soldier baseline: while a
     /// row's kind is Computer its difficulty dropdown is pinned to Soldier
@@ -1655,28 +1583,17 @@ public partial class MainMenuScene : Control
         ApplyKeyboardLift(lift);
     }
 
-    /// <summary>Translate the play-config panel up by <paramref name="lift"/>
-    /// logical px so the on-screen keyboard never covers the seed field.
-    /// Portrait shifts the fixed panel's anchor offsets (FitPanels only touches
-    /// Scale, so they never fight); landscape re-lays out the centered fill
-    /// surface with the lift applied (FitPanels / safe-area changes re-pass
-    /// <see cref="_keyboardLift"/>, so they don't snap it back down).</summary>
+    /// <summary>Translate the play-config surface up by <paramref name="lift"/>
+    /// logical px so the on-screen keyboard never covers the seed field. Both
+    /// orientations re-lay out the centered fill surface with the lift applied
+    /// (FitPanels / safe-area changes re-pass <see cref="_keyboardLift"/>, so
+    /// they don't snap it back down).</summary>
     private void ApplyKeyboardLift(float lift)
     {
-        if (_playConfigPanel == null) return;
+        if (_playConfigSurface == null) return;
         if (Mathf.IsEqualApprox(lift, _keyboardLift)) return;
         _keyboardLift = lift;
-        if (_playConfigOrientation == ScreenOrientation.Portrait)
-        {
-            float halfH = _playConfigDesignSize.Y * 0.5f;
-            _playConfigPanel.OffsetTop = -halfH - lift;
-            _playConfigPanel.OffsetBottom = halfH - lift;
-        }
-        else if (_playConfigSurface != null)
-        {
-            LandscapeMenuChrome.ApplyLayout(_playConfigSurface, GetViewportRect().Size,
-                SafeArea.Current, verticalShift: lift);
-        }
+        ApplyPlayConfigLayout(lift);
         Log.Debug(Log.LogCategory.Display,
             $"MainMenu: keyboard lift -> {lift:0.#} logical px ({_playConfigOrientation})");
     }
