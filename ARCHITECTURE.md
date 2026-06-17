@@ -16,8 +16,11 @@ Model → Controller → game (with the test project alongside):
   layer**. It holds the pure model: state types, the static rule
   classes, the AI subsystem (incl. `AiDispatcher`), the generic
   `UndoStack<T>` + `GameStateSnapshot`, save serialization
-  (`SaveSerializer`, `Replay`, `ReplayBeat`, the `Tutorial` POCO), and
-  `MapGenerator` / `MapEditPaint` / `EditorSnapshot`.
+  (`SaveSerializer`, `Replay`, `ReplayBeat`, the `Tutorial` POCO),
+  `MapGenerator` / `MapEditPaint` / `EditorSnapshot`, and `ProceduralGame`
+  (the shared "build a fresh `GameState` from a seed" pipeline that both the
+  play scene and the main-menu map thumbnail call — see "New Game setup &
+  map thumbnail" below).
 - **`src/FourExHex.Controller/FourExHex.Controller.csproj`** — a plain
   `Microsoft.NET.Sdk` class library that `<ProjectReference>`s **only**
   `FourExHex.Model` (one-way). It holds the orchestration layer:
@@ -55,7 +58,9 @@ Model → Controller → game (with the test project alongside):
   because it's view-input logic that must stay unit-testable),
   `EditorPaletteLayout` (map-editor paint-tool grid wrapping: how many
   columns the brush grid uses so it spills to a 2nd row/column on
-  compact phones — issue #45), and
+  compact phones — issue #45), `ThumbnailLayout` (the "contain" fit that
+  sizes the New Game map-thumbnail's offscreen viewport — see "New Game
+  setup & map thumbnail" below), and
   the fractional cube-rounding helper `HexRounding.Round(float, float)`. The
   pressure-relief valve for the no-floats rule in Model + Controller
   (see "No floating-point in Model or Controller" below).
@@ -1685,10 +1690,11 @@ tables — retuning a level is a one-table edit:
   sticks — flipping back doesn't restore it; see
   `MainMenuScene.ApplyDifficultyLock`). `OnStartPressed` writes each
   row's choice straight into `GameSettings.Difficulties[i]`. The
-  panel's layout is orientation-dependent: landscape puts the
-  difficulty dropdown beside the Human/Computer selector under
-  Type/Difficulty column headers; portrait stacks it in a sub-row
-  beneath the selector with per-row Type/Difficulty labels. A viewport
+  Type/Difficulty dropdowns live on the **player-setup page** of the
+  paged New Game flow (see "New Game setup & map thumbnail" below):
+  landscape lays each player out as one row (swatch | name | role |
+  difficulty) under column headers; portrait uses a two-line block
+  (swatch + name, then role and difficulty side-by-side). A viewport
   resize that flips `ScreenLayout.Resolve` rebuilds the panel in place,
   round-tripping the dropdown selections through the `GameSettings`
   arrays. Rows initialize from `GameSettings.Difficulties`, so loaded
@@ -1711,6 +1717,53 @@ tables — retuning a level is a one-table edit:
   *handicapped* and should underperform). The `GameController`
   constructor logs a one-shot `difficulties: Red=…, …` line
   (`Turn:Info`) whenever any slot is non-Soldier.
+
+## New Game setup & map thumbnail (issues #40, #5)
+
+The New Game flow in `MainMenuScene` is **two paged screens** toggled by
+`_playConfigPage` (`PlayerSetup` / `MapSetup`); both page contents are built
+up front and their visibility flipped (so selections survive paging), with
+`Enter`/`Esc` and Back/Next wired per page (`GoToMapPage` / `GoToPlayerPage`).
+The **player-setup** page holds the six role + difficulty rows; the
+**map-setup** page holds the map selector, the seed field + a **re-roll die**
+button (`HudIconButton(HudIcon.Die)`, modeled on the map editor's — #5), and a
+live board thumbnail.
+
+- **Fill-to-cap surface (both orientations).** Both the portrait and landscape
+  panels are now the same centered `LandscapeMenuChrome` surface that *fills*
+  the safe area up to a cap, sized by the single `ApplyPlayConfigLayout` path
+  (shared by `FitPanels`, the `SafeArea.Changed` hook, and the keyboard-lift
+  path). Landscape caps at `920×520`; portrait at the 90° transpose `520×920`.
+  This replaced the old fixed `624×1100` portrait panel that was uniformly
+  `ScaleToFit`-shrunk — which left the portrait dialog smaller than landscape
+  on a phone. The pages are container-based (`VBox`/`HBox`/`ScrollContainer`),
+  so they fill the surface; portrait players use a two-line block (swatch +
+  name, then the dropdowns side-by-side) to fit the narrow width, and the
+  player lists carry no `ScrollContainer` (six 40-px rows fit both caps).
+
+- **Live thumbnail = offscreen `HexMapView` snapshot.** `scripts/
+  MapThumbnailView.cs` renders the *real* `HexMapView` into a hidden
+  `SubViewport` and snapshots it to a static `ImageTexture` shown in a
+  `TextureRect` — pixel-identical to what Start Game produces, but the heavy
+  view only renders on change. `RequestRandom(seed)` builds the board via the
+  shared `ProceduralGame.Build` (the same pipeline `Main` uses, so the preview
+  can't drift from the real game); `RequestMap(name)` loads a map-editor map
+  via `SaveStore.LoadMap(name).State` (full `GameState`, so neutral / gold /
+  mountain tiles preview). Requests are coalesced by a token so rapid seed
+  typing only snapshots the latest. Refreshed on re-roll, seed change, and map
+  selection; instrumented under `Display:Debug`.
+
+- **Stable, sharp, oriented framing.** The `SubViewport` is sized to the
+  *nominal grid* aspect (seed-independent, via `ThumbnailLayout.FitInside`),
+  and `HexMapView.FrameWholeGrid` frames the whole grid rectangle (not the
+  per-seed land box) so re-rolling a seed keeps the board at a fixed scale /
+  position. A **portrait** menu gives the viewport a tall aspect, which makes
+  `HexMapView` rotate the board −90° to match the in-game portrait map. The
+  viewport renders at the displayed size × the window `ContentScaleFactor`
+  (DisplayScale) × a 3× **supersample**, clamped to ~1600 px, then downsamples
+  through a mip-mapped `TextureRect` — SSAA standing in for the 2D MSAA the
+  GLES3 compatibility renderer lacks. The top hex-tessellation row is cropped
+  off the snapshot for a clean straight top edge.
 
 ## Call flows
 
@@ -3808,11 +3861,17 @@ scripts/  (split: see the three source trees listed just above)
 ├─ Main.cs                ─ play scene root; wires model + views + controller
 ├─ MainMenuScene.cs       ─ landing (Resume / Play / Play Tutorial /
 │                           Load / Map Editor / Settings + desktop-only
-│                           Exit) + play-config panels; Load Game modal;
+│                           Exit) + the paged New Game flow (player setup
+│                           / map setup, fill-to-cap surface; see "New
+│                           Game setup & map thumbnail"); Load Game modal;
 │                           instantiates SettingsPanel as a modal
 │                           overlay; Exit / landing-Escape open a
 │                           ConfirmModal before quitting; writes
 │                           GameSettings + LoadRequest
+├─ MapThumbnailView.cs    ─ New Game live board preview: renders the real
+│                           HexMapView into a hidden SubViewport and
+│                           snapshots it to a TextureRect (see "New Game
+│                           setup & map thumbnail")
 ├─ PlayTutorialScene.cs   ─ end-user "Play Tutorial" scene root; hosts
 │                           MapEditorPanel + PreviewPane + EscMenu,
 │                           loads bundled full_tutorial and plays it
