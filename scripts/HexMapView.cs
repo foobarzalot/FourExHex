@@ -2592,6 +2592,27 @@ public partial class HexMapView : Node2D, IHexMapView
         LogCameraState("set");
     }
 
+    /// <summary>Frame the full <em>nominal grid rectangle</em> (Cols×Rows
+    /// <see cref="PixelSize"/>) centered — deliberately NOT the content/land
+    /// box. Used by the main-menu map thumbnail: the land bounding box varies
+    /// per seed, but the grid rectangle is seed-independent, so this keeps the
+    /// previewed board at a fixed scale and position when the seed is re-rolled
+    /// (only the tiles inside change). Rotation-aware via
+    /// <see cref="VisualCenter"/> / <see cref="ToWorldOffset"/>.
+    /// <paramref name="overscan"/> &gt; 1 scales the board past the exact fit so
+    /// its jagged hex-tessellation perimeter spills outside the viewport and is
+    /// clipped to clean straight edges (the thumbnail uses this; the outer ring
+    /// it crops is the map's water border).</summary>
+    public void FrameWholeGrid(float overscan = 1f)
+    {
+        _zoom = _zoomMin * overscan;
+        Scale = new Vector2(_zoom, _zoom);
+        _zoomLevelIndex = ClosestLevelIndex(_zoom);
+        var gridCenter = new Vector2(PixelSize.X * 0.5f, PixelSize.Y * 0.5f);
+        Position = ClampPan(VisualCenter() - ToWorldOffset(gridCenter, _zoom));
+        LogCameraState("frame-grid");
+    }
+
     /// <summary>Center the (possibly rotated) content in the play area. Uses the
     /// content box center (not the nominal grid center) so a level whose tiles
     /// sit off-center in a padded grid still frames centered.</summary>

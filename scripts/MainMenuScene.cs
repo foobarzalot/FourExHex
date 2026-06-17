@@ -62,6 +62,20 @@ public partial class MainMenuScene : Control
     private LineEdit? _seedField;
     private Button? _startButton;
     private OptionButton? _mapSelector;
+    private HudIconButton? _rerollButton;
+    private MapThumbnailView? _thumbnail;
+
+    // The New Game flow is split into two pages (issue #40): player setup
+    // (role + difficulty per slot) and map setup (map selector, seed +
+    // re-roll, and a live thumbnail of the board the selection produces).
+    // Both page contents are built up front and parented to the play-config
+    // panel; navigation toggles their visibility (so selections survive paging
+    // back and forth). _playConfigPage persists across the orientation-flip
+    // rebuild so a flip keeps you on the same page.
+    private enum PlayConfigPage { PlayerSetup, MapSetup }
+    private PlayConfigPage _playConfigPage = PlayConfigPage.PlayerSetup;
+    private Control? _playerPageContent;
+    private Control? _mapPageContent;
     // Orientation the play-config panel was last built for; a viewport
     // resize that flips it triggers a rebuild (see FitPanels).
     private ScreenOrientation _playConfigOrientation = ScreenOrientation.Landscape;
@@ -334,6 +348,10 @@ public partial class MainMenuScene : Control
             // re-derive map-name / seed-enabled / start-gating state.
             OnMapSelectorChanged(mapSelected);
         }
+        // _playConfigPage persists across the rebuild; restore the matching page
+        // visibility and re-render the thumbnail if the map page is showing.
+        ShowCurrentPlayConfigPage();
+        RefreshThumbnail();
     }
 
     private static void ScaleToFit(Control panel, Vector2 designSize, Vector2 viewport)
@@ -663,17 +681,14 @@ public partial class MainMenuScene : Control
         }
         _playConfigSurface = null;
 
-        // Portrait: a centered fixed-size panel; each player block stacks the
-        // difficulty dropdown under the kind selector (issue #38). ScaleToFit
-        // shrinks it to fit a short viewport, and FitPanels rebuilds it into the
-        // landscape "config rail" layout when a resize flips orientation (#34).
-        const float dropdownWidth = 240f;
+        // Portrait: a centered fixed-size panel holding two pages (issue #40) —
+        // player setup and map setup — toggled by ShowCurrentPlayConfigPage.
+        // ScaleToFit shrinks it for a short viewport; FitPanels rebuilds it into
+        // the landscape layout when a resize flips orientation (#34).
         const float panelW = 624f;
         const float panelH = 1100f;
         // Center-anchored so Godot re-solves the position on every window
-        // resize (matches ModalChrome.BuildCenteredPanel). Children below
-        // are laid out in the panel's local space against the fixed
-        // panelW/panelH, so only the panel's screen position tracks resize.
+        // resize (matches ModalChrome.BuildCenteredPanel).
         var panel = new Panel
         {
             AnchorLeft = 0.5f, AnchorRight = 0.5f, AnchorTop = 0.5f, AnchorBottom = 0.5f,
@@ -684,166 +699,212 @@ public partial class MainMenuScene : Control
         };
         Log.Trace(Log.LogCategory.Render, "MainMenu: built play-config panel (center-anchored).");
 
+        _playerPageContent = BuildPortraitPlayerPage(panelW, panelH);
+        panel.AddChild(_playerPageContent);
+        _mapPageContent = BuildPortraitMapPage(panelW, panelH);
+        panel.AddChild(_mapPageContent);
+
+        RefreshStartButtonGating();
+        ShowCurrentPlayConfigPage();
+
+        Log.Debug(Log.LogCategory.Render,
+            "MainMenu: play-config built (Portrait, paged player/map setup)");
+        _playConfigDesignSize = new Vector2(panelW, panelH);
+        return panel;
+    }
+
+    // Shared portrait page metrics.
+    private const float PortraitPanelInset = 48f;
+    private const float PortraitDropdownW = 240f;
+    private const float PortraitTitleY = 34f;
+    private const float PortraitContentTop = 154f;
+    private const float PortraitButtonH = 62f;
+
+    /// <summary>A "New Game" wordmark + gold rule at the top of a portrait
+    /// page, parented to <paramref name="page"/>.</summary>
+    private void AddPortraitHeader(Control page, float panelW)
+    {
         var title = new Label
         {
             Text = "New Game",
             HorizontalAlignment = HorizontalAlignment.Center,
-            Position = new Vector2(0, 34),
+            Position = new Vector2(0, PortraitTitleY),
             Size = new Vector2(panelW, 68),
         };
         title.AddThemeFontOverride("font", SerifFont);
         title.AddThemeFontSizeOverride("font_size", 50);
-        panel.AddChild(title);
-
-        // Thin gold rule under the wordmark — matches the landing panel.
-        var goldRule = new ColorRect
+        page.AddChild(title);
+        page.AddChild(new ColorRect
         {
             Color = UiPalette.GoldDim,
             Position = new Vector2(panelW * 0.5f - 132f, 115f),
             Size = new Vector2(264f, 1f),
-        };
-        panel.AddChild(goldRule);
+        });
+    }
 
-        const float rowStartY = 154f;
+    /// <summary>Full-page Control sized to the panel; children use panel-local
+    /// (absolute) coordinates.</summary>
+    private static Control NewFullPage()
+    {
+        var page = new Control();
+        page.SetAnchorsPreset(LayoutPreset.FullRect);
+        return page;
+    }
+
+    /// <summary>Portrait player-setup page: the six role + difficulty rows, with
+    /// Back (→ landing) and Next (→ map setup) pinned at the bottom.</summary>
+    private Control BuildPortraitPlayerPage(float panelW, float panelH)
+    {
+        Control page = NewFullPage();
+        AddPortraitHeader(page, panelW);
+
         const float rowHeight = 62f;
-        const float rowInset = 48f;
         const float swatchSize = 34f;
         const float nameWidth = 144f;
-        // Headers gap between a row label's right edge and the dropdown column.
         const float headerGap = 12f;
+        float rightColX = panelW - PortraitPanelInset - PortraitDropdownW;
+        float playerBlockH = rowHeight + 50f; // kind + difficulty sub-row
 
-        float rightColX = panelW - rowInset - dropdownWidth;
-        // Player blocks are two rows tall (kind + difficulty sub-row).
-        float playerBlockH = rowHeight + 50f;
-
-        // Player rows. Each row is Swatch | Name | Kind | Difficulty
-        // (issue #38: difficulty is per-slot). Difficulty is the human
-        // player's self-imposed handicap — Recruit (easiest) … Commander
-        // (hardest); the level→cost mapping lives in DifficultyRules and
-        // item ids match the enum values. Computer slots always play the
-        // Soldier baseline, so their dropdown is locked to Soldier and
-        // disabled; flipping a row to Computer resets any other level
-        // (see ApplyDifficultyLock).
+        // Player rows: Swatch | Name | Kind | Difficulty (issue #38). Computer
+        // slots lock difficulty to Soldier (see ApplyDifficultyLock).
         for (int i = 0; i < GameSettings.PlayerConfig.Length; i++)
         {
             (string name, string hex) = GameSettings.PlayerConfig[i];
-            float rowY = rowStartY + playerBlockH * i;
+            float rowY = PortraitContentTop + playerBlockH * i;
 
-            var swatch = new ColorRect
+            page.AddChild(new ColorRect
             {
                 Color = new Color(hex),
-                Position = new Vector2(rowInset, rowY + (rowHeight - swatchSize) * 0.5f),
+                Position = new Vector2(PortraitPanelInset, rowY + (rowHeight - swatchSize) * 0.5f),
                 Size = new Vector2(swatchSize, swatchSize),
-            };
-            panel.AddChild(swatch);
+            });
 
             var nameLabel = new Label
             {
                 Text = name,
-                Position = new Vector2(rowInset + swatchSize + 19f, rowY + 17f),
+                Position = new Vector2(PortraitPanelInset + swatchSize + 19f, rowY + 17f),
                 Size = new Vector2(nameWidth, 29f),
             };
             nameLabel.AddThemeFontSizeOverride("font_size", 24);
-            panel.AddChild(nameLabel);
+            page.AddChild(nameLabel);
 
-            // Row headers: right-aligned against the dropdown column. The Type
-            // label squeezes between the name column and the dropdown; the
-            // Difficulty sub-row has the full left side.
-            float nameEndX = rowInset + swatchSize + 19f + nameWidth;
+            float nameEndX = PortraitPanelInset + swatchSize + 19f + nameWidth;
             float labelRightX = rightColX - headerGap;
-            panel.AddChild(MakeFieldHeader("Type",
+            page.AddChild(MakeFieldHeader("Type",
                 new Vector2(nameEndX, rowY + 20f),
                 new Vector2(labelRightX - nameEndX, 22f),
                 HorizontalAlignment.Right));
-            panel.AddChild(MakeFieldHeader("Difficulty",
-                new Vector2(rowInset + swatchSize + 19f, rowY + rowHeight + 8f),
-                new Vector2(labelRightX - (rowInset + swatchSize + 19f), 22f),
+            page.AddChild(MakeFieldHeader("Difficulty",
+                new Vector2(PortraitPanelInset + swatchSize + 19f, rowY + rowHeight + 8f),
+                new Vector2(labelRightX - (PortraitPanelInset + swatchSize + 19f), 22f),
                 HorizontalAlignment.Right));
 
             OptionButton dropdown = ConfigureRoleDropdown(i);
             dropdown.Position = new Vector2(rightColX, rowY + 12f);
-            dropdown.Size = new Vector2(dropdownWidth, 38f);
-            panel.AddChild(dropdown);
+            dropdown.Size = new Vector2(PortraitDropdownW, 38f);
+            page.AddChild(dropdown);
 
-            // Difficulty sub-row directly under the kind selector.
             OptionButton difficultyDropdown = ConfigureDifficultyDropdown(i);
             difficultyDropdown.Position = new Vector2(rightColX, rowY + rowHeight);
-            difficultyDropdown.Size = new Vector2(dropdownWidth, 38f);
-            panel.AddChild(difficultyDropdown);
+            difficultyDropdown.Size = new Vector2(PortraitDropdownW, 38f);
+            page.AddChild(difficultyDropdown);
 
             ApplyDifficultyLock(i);
         }
 
-        const float buttonH = 62f;
-        float buttonRowY = panelH - buttonH - 43f;
-
-        // Each button stretches under its column above so the action
-        // visually attaches to the content it relates to: Back sits
-        // under the swatch+name pair, Start Game under the dropdown.
-        // Enter is bound to Start Game (see _UnhandledInput) so the
-        // action key falls on the rightmost button.
-        float leftColX = rowInset;
+        float buttonRowY = panelH - PortraitButtonH - 43f;
         float leftColW = swatchSize + 16f + nameWidth;
+        page.AddChild(MakePortraitNavButton("Back", PortraitPanelInset, buttonRowY,
+            leftColW, OnBackPressed));
+        page.AddChild(MakePortraitNavButton("Next", rightColX, buttonRowY,
+            PortraitDropdownW, GoToMapPage));
+        return page;
+    }
 
-        // Map row sits just below the last player row. The dropdown lists
-        // "Random Map" (the default) plus every saved starting map. Picking
-        // a map disables the seed field below — the map's terrain replaces
-        // procedural generation.
-        float mapRowY = rowStartY + playerBlockH * GameSettings.PlayerConfig.Length;
+    /// <summary>Portrait map-setup page: map selector, seed + re-roll, a live
+    /// board thumbnail, and Back (→ player setup) / Start Game at the bottom.</summary>
+    private Control BuildPortraitMapPage(float panelW, float panelH)
+    {
+        Control page = NewFullPage();
+        AddPortraitHeader(page, panelW);
+
+        const float rowHeight = 62f;
+        const float swatchSize = 34f;
+        const float nameWidth = 144f;
+        float leftLabelX = PortraitPanelInset + swatchSize + 19f;
+        float rightColX = panelW - PortraitPanelInset - PortraitDropdownW;
+
+        float mapRowY = PortraitContentTop;
         var mapLabel = new Label
         {
             Text = "Map",
-            Position = new Vector2(leftColX + swatchSize + 19f, mapRowY + 17f),
+            Position = new Vector2(leftLabelX, mapRowY + 17f),
             Size = new Vector2(nameWidth, 29f),
         };
         mapLabel.AddThemeFontSizeOverride("font_size", 24);
-        panel.AddChild(mapLabel);
+        page.AddChild(mapLabel);
 
         OptionButton mapSelector = ConfigureMapSelector();
         mapSelector.Position = new Vector2(rightColX, mapRowY + 12f);
-        mapSelector.Size = new Vector2(dropdownWidth, 38f);
-        panel.AddChild(mapSelector);
+        mapSelector.Size = new Vector2(PortraitDropdownW, 38f);
+        page.AddChild(mapSelector);
 
-        // Map Seed row sits just below the Map row, aligned with the
-        // dropdown column so the input lines up with the AI selectors
-        // above it.
         float seedRowY = mapRowY + rowHeight;
         var seedLabel = new Label
         {
             Text = "Map Seed",
-            Position = new Vector2(leftColX + swatchSize + 19f, seedRowY + 17f),
+            Position = new Vector2(leftLabelX, seedRowY + 17f),
             Size = new Vector2(nameWidth, 29f),
         };
         seedLabel.AddThemeFontSizeOverride("font_size", 24);
-        panel.AddChild(seedLabel);
+        page.AddChild(seedLabel);
 
+        // Seed field shares its column with a square re-roll button (issue #5).
+        const float rerollSize = 38f;
+        const float rerollGap = 6f;
+        float seedFieldW = PortraitDropdownW - rerollSize - rerollGap;
         LineEdit seedField = ConfigureSeedField();
         seedField.Position = new Vector2(rightColX, seedRowY + 12f);
-        seedField.Size = new Vector2(dropdownWidth, 38f);
-        panel.AddChild(seedField);
+        seedField.Size = new Vector2(seedFieldW, 38f);
+        page.AddChild(seedField);
 
-        var backButton = new Button { Text = "Back" };
-        backButton.AddThemeFontSizeOverride("font_size", 29);
-        backButton.Position = new Vector2(leftColX, buttonRowY);
-        backButton.Size = new Vector2(leftColW, buttonH);
-        backButton.Pressed += OnBackPressed;
-        AudioBus.AttachClick(backButton);
-        panel.AddChild(backButton);
+        _rerollButton = MakeRerollButton();
+        // HudIconButton defaults to a 68×68 minimum; override it so the die
+        // button shrinks to match the 38px seed field instead of towering over
+        // it (issue: portrait die looked oversized).
+        _rerollButton.CustomMinimumSize = new Vector2(rerollSize, rerollSize);
+        _rerollButton.Position = new Vector2(rightColX + seedFieldW + rerollGap, seedRowY + 12f);
+        _rerollButton.Size = new Vector2(rerollSize, rerollSize);
+        page.AddChild(_rerollButton);
 
-        _startButton = new Button { Text = "Start Game" };
-        _startButton.AddThemeFontSizeOverride("font_size", 29);
-        _startButton.Position = new Vector2(rightColX, buttonRowY);
-        _startButton.Size = new Vector2(dropdownWidth, buttonH);
-        _startButton.Pressed += OnStartPressed;
-        AudioBus.AttachClick(_startButton);
-        panel.AddChild(_startButton);
+        // Live board thumbnail (issue #40): fills the tall mid-page space so the
+        // rotated portrait board reads at a usable size.
+        float thumbTop = seedRowY + rowHeight + 20f;
+        float buttonRowY = panelH - PortraitButtonH - 43f;
+        _thumbnail = BuildThumbnail();
+        _thumbnail.Position = new Vector2(PortraitPanelInset, thumbTop);
+        _thumbnail.Size = new Vector2(panelW - 2f * PortraitPanelInset, buttonRowY - thumbTop - 24f);
+        page.AddChild(_thumbnail);
 
-        RefreshStartButtonGating();
+        float leftColW = swatchSize + 16f + nameWidth;
+        page.AddChild(MakePortraitNavButton("Back", PortraitPanelInset, buttonRowY,
+            leftColW, GoToPlayerPage));
+        _startButton = MakePortraitNavButton("Start Game", rightColX, buttonRowY,
+            PortraitDropdownW, OnStartPressed);
+        page.AddChild(_startButton);
+        return page;
+    }
 
-        Log.Debug(Log.LogCategory.Render,
-            "MainMenu: play-config built (Portrait, per-row difficulty sub-rows)");
-        _playConfigDesignSize = new Vector2(panelW, panelH);
-        return panel;
+    private Button MakePortraitNavButton(
+        string text, float x, float y, float width, System.Action onPressed)
+    {
+        var button = new Button { Text = text };
+        button.AddThemeFontSizeOverride("font_size", 29);
+        button.Position = new Vector2(x, y);
+        button.Size = new Vector2(width, PortraitButtonH);
+        button.Pressed += onPressed;
+        AudioBus.AttachClick(button);
+        return button;
     }
 
     // --- Shared play-config control factories (portrait + landscape) ---
@@ -939,11 +1000,46 @@ public partial class MainMenuScene : Control
         PanelContainer surface = LandscapeMenuChrome.Build();
         _playConfigSurface = surface;
 
+        // Both pages fill the surface (PanelContainer fits every child to its
+        // content rect); ShowCurrentPlayConfigPage toggles which is visible.
+        _playerPageContent = BuildLandscapePlayerPage();
+        surface.AddChild(_playerPageContent);
+        _mapPageContent = BuildLandscapeMapPage();
+        surface.AddChild(_mapPageContent);
+
+        RefreshStartButtonGating();
+        ShowCurrentPlayConfigPage();
+        LandscapeMenuChrome.ApplyLayout(surface, GetViewportRect().Size, SafeArea.Current);
+        Log.Debug(Log.LogCategory.Render, "MainMenu: play-config built (Landscape, paged player/map setup)");
+        return surface;
+    }
+
+    /// <summary>Landscape title + gold underline at the top of a page.</summary>
+    private void AddLandscapeHeader(BoxContainer page)
+    {
+        var title = new Label { Text = "New Game", HorizontalAlignment = HorizontalAlignment.Left };
+        title.AddThemeFontOverride("font", SerifFont);
+        title.AddThemeFontSizeOverride("font_size", 38);
+        page.AddChild(title);
+        page.AddChild(new ColorRect
+        {
+            Color = UiPalette.Gold,
+            CustomMinimumSize = new Vector2(90, 3),
+            SizeFlagsHorizontal = Control.SizeFlags.ShrinkBegin,
+        });
+    }
+
+    /// <summary>Landscape player-setup page: the same rail + content split the
+    /// map page (and the original single-panel layout) use — a fixed left rail
+    /// holding the title and Next / Back, beside the full-height player list. The
+    /// nav lives in the rail rather than stacked above/below the list, so the
+    /// list keeps the whole surface height and doesn't scroll for the 6-player
+    /// roster (the ScrollContainer only engages for a taller-than-surface list).</summary>
+    private Control BuildLandscapePlayerPage()
+    {
         var hbox = new HBoxContainer();
         hbox.AddThemeConstantOverride("separation", 20);
-        surface.AddChild(hbox);
 
-        // Left rail: title, map + seed inputs, then Start / Back pinned bottom.
         var rail = new VBoxContainer
         {
             CustomMinimumSize = new Vector2(262, 0),
@@ -952,44 +1048,11 @@ public partial class MainMenuScene : Control
         rail.AddThemeConstantOverride("separation", 8);
         hbox.AddChild(rail);
 
-        var title = new Label { Text = "New Game", HorizontalAlignment = HorizontalAlignment.Left };
-        title.AddThemeFontOverride("font", SerifFont);
-        title.AddThemeFontSizeOverride("font_size", 38);
-        rail.AddChild(title);
-        rail.AddChild(new ColorRect
-        {
-            Color = UiPalette.Gold,
-            CustomMinimumSize = new Vector2(90, 3),
-            SizeFlagsHorizontal = Control.SizeFlags.ShrinkBegin,
-        });
-
-        rail.AddChild(MakeRailLabel("Map"));
-        OptionButton mapSelector = ConfigureMapSelector();
-        mapSelector.CustomMinimumSize = new Vector2(0, 44);
-        rail.AddChild(mapSelector);
-
-        rail.AddChild(MakeRailLabel("Map Seed"));
-        LineEdit seedField = ConfigureSeedField();
-        seedField.CustomMinimumSize = new Vector2(0, 44);
-        rail.AddChild(seedField);
-
+        AddLandscapeHeader(rail);
         rail.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
+        rail.AddChild(MakeLandscapeNavButton("Next", GoToMapPage));
+        rail.AddChild(MakeLandscapeNavButton("Back", OnBackPressed));
 
-        _startButton = new Button { Text = "Start Game", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-        _startButton.AddThemeFontSizeOverride("font_size", 27);
-        _startButton.CustomMinimumSize = new Vector2(0, 54);
-        _startButton.Pressed += OnStartPressed;
-        AudioBus.AttachClick(_startButton);
-        rail.AddChild(_startButton);
-
-        var backButton = new Button { Text = "Back", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-        backButton.AddThemeFontSizeOverride("font_size", 24);
-        backButton.CustomMinimumSize = new Vector2(0, 48);
-        backButton.Pressed += OnBackPressed;
-        AudioBus.AttachClick(backButton);
-        rail.AddChild(backButton);
-
-        // Hairline divider between the rail and the player list.
         hbox.AddChild(new ColorRect
         {
             Color = UiPalette.LineSoft,
@@ -1005,12 +1068,7 @@ public partial class MainMenuScene : Control
         rightCol.AddThemeConstantOverride("separation", 6);
         hbox.AddChild(rightCol);
 
-        // Column header row mirrors the player-row layout so TYPE / DIFFICULTY
-        // line up over the two dropdown columns.
         rightCol.AddChild(MakePlayerColumnHeader());
-
-        // Scroll the list so a build with more than six players still fits; the
-        // rail stays pinned (design handoff).
         var scroll = new ScrollContainer
         {
             SizeFlagsVertical = Control.SizeFlags.ExpandFill,
@@ -1021,16 +1079,85 @@ public partial class MainMenuScene : Control
         var list = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         list.AddThemeConstantOverride("separation", 9);
         scroll.AddChild(list);
-
         for (int i = 0; i < GameSettings.PlayerConfig.Length; i++)
         {
             list.AddChild(MakePlayerRow(i));
         }
+        return hbox;
+    }
 
-        RefreshStartButtonGating();
-        LandscapeMenuChrome.ApplyLayout(surface, GetViewportRect().Size, SafeArea.Current);
-        Log.Debug(Log.LogCategory.Render, "MainMenu: play-config built (Landscape config-rail)");
-        return surface;
+    /// <summary>Landscape map-setup page: a left rail (map selector, seed +
+    /// re-roll, Back / Start) beside a large live board thumbnail.</summary>
+    private Control BuildLandscapeMapPage()
+    {
+        var hbox = new HBoxContainer();
+        hbox.AddThemeConstantOverride("separation", 20);
+
+        // Narrow rail (shifted left, controls compressed horizontally) so the
+        // thumbnail gets most of the surface width — closer to the portrait
+        // preview's size.
+        var rail = new VBoxContainer
+        {
+            CustomMinimumSize = new Vector2(190, 0),
+            SizeFlagsVertical = Control.SizeFlags.Fill,
+        };
+        rail.AddThemeConstantOverride("separation", 8);
+        hbox.AddChild(rail);
+
+        AddLandscapeHeader(rail);
+
+        rail.AddChild(MakeRailLabel("Map"));
+        OptionButton mapSelector = ConfigureMapSelector();
+        mapSelector.CustomMinimumSize = new Vector2(0, 44);
+        rail.AddChild(mapSelector);
+
+        rail.AddChild(MakeRailLabel("Map Seed"));
+        // Seed field + square re-roll button on one row (issue #5).
+        var seedRow = new HBoxContainer();
+        seedRow.AddThemeConstantOverride("separation", 6);
+        LineEdit seedField = ConfigureSeedField();
+        seedField.CustomMinimumSize = new Vector2(0, 44);
+        seedField.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        seedRow.AddChild(seedField);
+        _rerollButton = MakeRerollButton();
+        _rerollButton.CustomMinimumSize = new Vector2(44, 44);
+        seedRow.AddChild(_rerollButton);
+        rail.AddChild(seedRow);
+
+        rail.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
+
+        _startButton = new Button { Text = "Start Game", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        _startButton.AddThemeFontSizeOverride("font_size", 27);
+        _startButton.CustomMinimumSize = new Vector2(0, 54);
+        _startButton.Pressed += OnStartPressed;
+        AudioBus.AttachClick(_startButton);
+        rail.AddChild(_startButton);
+
+        rail.AddChild(MakeLandscapeNavButton("Back", GoToPlayerPage));
+
+        // Hairline divider between the rail and the thumbnail.
+        hbox.AddChild(new ColorRect
+        {
+            Color = UiPalette.LineSoft,
+            CustomMinimumSize = new Vector2(1, 0),
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+        });
+
+        _thumbnail = BuildThumbnail();
+        _thumbnail.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        _thumbnail.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+        hbox.AddChild(_thumbnail);
+        return hbox;
+    }
+
+    private Button MakeLandscapeNavButton(string text, System.Action onPressed)
+    {
+        var button = new Button { Text = text, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        button.AddThemeFontSizeOverride("font_size", 24);
+        button.CustomMinimumSize = new Vector2(0, 48);
+        button.Pressed += onPressed;
+        AudioBus.AttachClick(button);
+        return button;
     }
 
     /// <summary>One landscape player row: swatch | name | Type | Difficulty.</summary>
@@ -1160,6 +1287,7 @@ public partial class MainMenuScene : Control
             SetSeedFieldEnabled(false);
         }
         RefreshStartButtonGating();
+        RefreshThumbnail();
     }
 
     /// <summary>
@@ -1174,6 +1302,8 @@ public partial class MainMenuScene : Control
         _seedField.Editable = enabled;
         _seedField.FocusMode = enabled ? Control.FocusModeEnum.All : Control.FocusModeEnum.None;
         if (!enabled && _seedField.HasFocus()) _seedField.ReleaseFocus();
+        // The seed is inert while a saved map drives the terrain — re-roll too.
+        if (_rerollButton != null) _rerollButton.Disabled = !enabled;
     }
 
     /// <summary>
@@ -1272,6 +1402,73 @@ public partial class MainMenuScene : Control
     {
         if (_landingPanel != null) _landingPanel.Visible = false;
         if (_playConfigPanel != null) _playConfigPanel.Visible = true;
+        // A fresh entry always starts on the player-setup page (selections are
+        // preserved, but the flow begins at page 1).
+        _playConfigPage = PlayConfigPage.PlayerSetup;
+        ShowCurrentPlayConfigPage();
+    }
+
+    // --- Paged New Game navigation (issue #40) ---
+
+    private void ShowCurrentPlayConfigPage()
+    {
+        if (_playerPageContent != null)
+            _playerPageContent.Visible = _playConfigPage == PlayConfigPage.PlayerSetup;
+        if (_mapPageContent != null)
+            _mapPageContent.Visible = _playConfigPage == PlayConfigPage.MapSetup;
+    }
+
+    private void GoToMapPage()
+    {
+        _playConfigPage = PlayConfigPage.MapSetup;
+        ShowCurrentPlayConfigPage();
+        Log.Debug(Log.LogCategory.Input, "MainMenu: New Game → map setup page");
+        RefreshThumbnail();
+    }
+
+    private void GoToPlayerPage()
+    {
+        _playConfigPage = PlayConfigPage.PlayerSetup;
+        ShowCurrentPlayConfigPage();
+        Log.Debug(Log.LogCategory.Input, "MainMenu: New Game → player setup page");
+    }
+
+    /// <summary>Re-render the live thumbnail from the current selection. No-op
+    /// unless the map-setup page is showing (the seed field only lives there).</summary>
+    private void RefreshThumbnail()
+    {
+        if (_thumbnail == null || _playConfigPage != PlayConfigPage.MapSetup) return;
+        if (_selectedMapName != null) _thumbnail.RequestMap(_selectedMapName);
+        else if (SeedFormat.TryParseHex(_seedField?.Text, out int seed)) _thumbnail.RequestRandom(seed);
+    }
+
+    private MapThumbnailView BuildThumbnail()
+    {
+        var thumb = new MapThumbnailView();
+        thumb.SetSaveStore(_saveStore);
+        return thumb;
+    }
+
+    /// <summary>Re-roll the seed in place (issue #5), modeled on the map
+    /// editor's die button. Setting LineEdit.Text programmatically doesn't fire
+    /// text_changed, so dependent state is refreshed explicitly.</summary>
+    private HudIconButton MakeRerollButton()
+    {
+        var button = new HudIconButton(HudIcon.Die) { FocusMode = Control.FocusModeEnum.None };
+        button.Pressed += OnReRollSeedPressed;
+        AudioBus.AttachClick(button);
+        return button;
+    }
+
+    private void OnReRollSeedPressed()
+    {
+        if (_seedField == null) return;
+        int seed = SeedFormat.NextSeed(new System.Random());
+        _seedField.Text = SeedFormat.ToHex(seed);
+        _rerollButton?.FlashPress();
+        Log.Debug(Log.LogCategory.Input, $"MainMenu: reroll seed={SeedFormat.ToHex(seed)}");
+        RefreshStartButtonGating();
+        RefreshThumbnail();
     }
 
     private void OnPlayPressed()
@@ -1338,6 +1535,7 @@ public partial class MainMenuScene : Control
             _seedField.CaretColumn = System.Math.Min(caret, filtered.Length);
         }
         RefreshStartButtonGating();
+        RefreshThumbnail();
     }
 
     private void OnSeedFieldGuiInput(InputEvent @event)
@@ -1601,19 +1799,32 @@ public partial class MainMenuScene : Control
 
         if (keyEvent.Echo) return;
 
+        // Escape and Enter mirror the per-page Back / forward buttons (issue
+        // #40): on the player page Enter advances to map setup and Escape
+        // returns to the landing menu; on the map page Enter starts the game
+        // and Escape returns to player setup.
+        bool onPlayerPage = _playConfigPage == PlayConfigPage.PlayerSetup;
+
         if (keyEvent.Keycode == Key.Escape)
         {
-            OnBackPressed();
+            if (onPlayerPage) OnBackPressed();
+            else GoToPlayerPage();
             GetViewport()?.SetInputAsHandled();
             return;
         }
 
         if (keyEvent.Keycode != Key.Enter && keyEvent.Keycode != Key.KpEnter) return;
 
-        // The Load Game dialog handles its own input via the Window
-        // focus chain, so when it's open _UnhandledInput won't see the
-        // key — Enter dismisses or activates the dialog as expected.
-        OnStartPressed();
+        if (onPlayerPage)
+        {
+            GoToMapPage();
+        }
+        else
+        {
+            // The Load Game dialog handles its own input via the Window focus
+            // chain, so when it's open _UnhandledInput won't see the key.
+            OnStartPressed();
+        }
         // OnStartPressed queues a scene change; if the input event is
         // delivered after Godot has already orphaned this node from the
         // tree, GetViewport() returns null. Null-conditional keeps the

@@ -1,0 +1,114 @@
+using System.Collections.Generic;
+using Xunit;
+
+namespace FourExHex.Tests;
+
+/// <summary>
+/// Characterization + determinism tests for <see cref="ProceduralGame.Build"/>,
+/// the shared procedural-game builder used by both the play scene and the
+/// main-menu map thumbnail. The headline guarantees: same seed → identical
+/// state, and the builder reproduces the exact inline pipeline the play scene
+/// used before extraction (so the thumbnail can't drift from Start Game).
+/// </summary>
+public class ProceduralGameTests
+{
+    private const int Cols = 20;
+    private const int Rows = 15;
+
+    private static IReadOnlyList<Player> SixPlayers()
+    {
+        var list = new List<Player>();
+        for (int i = 0; i < GameSettings.PlayerConfig.Length; i++)
+        {
+            (string name, _) = GameSettings.PlayerConfig[i];
+            list.Add(new Player(name, PlayerId.FromIndex(i), PlayerKind.Computer));
+        }
+        return list;
+    }
+
+    /// <summary>The inline pipeline Main.cs ran before extraction.</summary>
+    private static GameState InlineReference(int seed)
+    {
+        IReadOnlyList<Player> players = SixPlayers();
+        var turnState = new TurnState(players);
+        var treasury = new Treasury();
+        MapGenResult mapGen = MapGenerator.BuildInitialGrid(Cols, Rows, players, seed);
+        HexGrid grid = mapGen.Grid;
+        IReadOnlyList<Territory> territories = TerritoryFinder.Recompute(
+            grid, new List<Territory>());
+        return new GameState(grid, territories, players, turnState, treasury, mapGen.WaterCoords);
+    }
+
+    private static void AssertTilesEqual(HexGrid a, HexGrid b)
+    {
+        Assert.Equal(a.Count, b.Count);
+        foreach (HexTile tA in a.Tiles)
+        {
+            HexTile? tB = b.Get(tA.Coord);
+            Assert.NotNull(tB);
+            Assert.Equal(tA.Owner, tB!.Owner);
+            Assert.Equal(tA.IsGold, tB.IsGold);
+            Assert.Equal(tA.IsMountain, tB.IsMountain);
+            Assert.Equal(tA.Occupant?.GetType(), tB.Occupant?.GetType());
+        }
+    }
+
+    private static void AssertTerritoriesEqual(
+        IReadOnlyList<Territory> a, IReadOnlyList<Territory> b)
+    {
+        Assert.Equal(a.Count, b.Count);
+        for (int i = 0; i < a.Count; i++)
+        {
+            Assert.Equal(a[i].Owner, b[i].Owner);
+            Assert.Equal(a[i].Capital, b[i].Capital);
+            Assert.Equal(new HashSet<HexCoord>(a[i].Coords), new HashSet<HexCoord>(b[i].Coords));
+        }
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(4242)]
+    [InlineData(9999)]
+    public void SameSeedProducesIdenticalState(int seed)
+    {
+        GameState a = ProceduralGame.Build(Cols, Rows, SixPlayers(), seed);
+        GameState b = ProceduralGame.Build(Cols, Rows, SixPlayers(), seed);
+
+        AssertTilesEqual(a.Grid, b.Grid);
+        AssertTerritoriesEqual(a.Territories, b.Territories);
+        Assert.Equal(new HashSet<HexCoord>(a.WaterCoords), new HashSet<HexCoord>(b.WaterCoords));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(4242)]
+    [InlineData(9999)]
+    public void MatchesInlinePipeline(int seed)
+    {
+        GameState actual = ProceduralGame.Build(Cols, Rows, SixPlayers(), seed);
+        GameState reference = InlineReference(seed);
+
+        AssertTilesEqual(reference.Grid, actual.Grid);
+        AssertTerritoriesEqual(reference.Territories, actual.Territories);
+        Assert.Equal(
+            new HashSet<HexCoord>(reference.WaterCoords),
+            new HashSet<HexCoord>(actual.WaterCoords));
+    }
+
+    [Fact]
+    public void StartsAtTurnOneWithEmptyTreasuryAndGivenPlayers()
+    {
+        IReadOnlyList<Player> players = SixPlayers();
+        GameState state = ProceduralGame.Build(Cols, Rows, players, 1234);
+
+        Assert.Equal(1, state.Turns.TurnNumber);
+        Assert.Same(players, state.Players);
+        // Empty treasury at game start (starting gold is seeded later by the
+        // controller, not by the world build).
+        foreach (Territory t in state.Territories)
+        {
+            if (t.HasCapital)
+                Assert.Equal(0, state.Treasury.GetGold(t.Capital!.Value));
+        }
+    }
+}

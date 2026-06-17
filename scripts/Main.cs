@@ -243,13 +243,7 @@ public partial class Main : Node2D
         else
         {
             _players = Player.BuildRoster();
-            var turnState = new TurnState(_players);
-            var treasury = new Treasury();
-            MapGenResult mapGen = MapGenerator.BuildInitialGrid(cols, rows, _players, seed);
-            HexGrid grid = mapGen.Grid;
-            IReadOnlyList<Territory> territories = TerritoryFinder.Recompute(
-                grid, new List<Territory>());
-            _state = new GameState(grid, territories, _players, turnState, treasury, mapGen.WaterCoords);
+            _state = ProceduralGame.Build(cols, rows, _players, seed);
             _maxTurnNumber = quickDiagMode ? 200
                 : fullDiagMode ? 500
                 : int.MaxValue;
