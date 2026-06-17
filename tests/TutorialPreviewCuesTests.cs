@@ -409,7 +409,7 @@ public class TutorialPreviewCuesTests
     }
 
     [Fact]
-    public void MoveBeat_NoMode_HighlightsFromTileWithUnitLevel()
+    public void MoveBeat_NoMode_FlashesSelectCueOnFromTile_NotMoveRings()
     {
         var f0 = new Fixture(new List<ReplayBeat>());
         HexCoord redCapital = f0.RedTerritory.Capital!.Value;
@@ -426,15 +426,16 @@ public class TutorialPreviewCuesTests
             },
         };
         var f = new Fixture(script);
-        // Place a Soldier at 'From' so the cue can read its level.
         f.State.Grid.Get(from)!.Occupant = new Unit(Red, UnitLevel.Soldier);
 
         f.Cues.Apply();
 
         Assert.Equal(f.RedTerritory, f.Session.SelectedTerritory);
-        Assert.Single(f.Map.LastMoveTargets);
-        Assert.Equal(from, f.Map.LastMoveTargets[0]);
-        Assert.Equal(UnitLevel.Soldier, f.Map.LastMoveTargetsLevel);
+        // The "pick me up" cue is now the flashing select-unit highlight on
+        // the source tile — NOT the green move-target rings (which mean
+        // "move TO here" and stay reserved for the destination).
+        Assert.Equal(from, f.Map.LastSelectUnitCue);
+        Assert.Empty(f.Map.LastMoveTargets);
         Assert.Equal("Tap the highlighted unit to pick it up.", f.Hud.CurrentTutorialMessage);
     }
 
@@ -464,7 +465,25 @@ public class TutorialPreviewCuesTests
         Assert.Single(f.Map.LastMoveTargets);
         Assert.Equal(to, f.Map.LastMoveTargets[0]);
         Assert.Equal(UnitLevel.Captain, f.Map.LastMoveTargetsLevel);
+        // Once the unit is picked up, the select-unit cue lifts so only the
+        // destination move-target rings remain.
+        Assert.Null(f.Map.LastSelectUnitCue);
         Assert.Equal("Move the unit to the highlighted tile.", f.Hud.CurrentTutorialMessage);
+    }
+
+    [Fact]
+    public void NonMoveBeat_LeavesSelectUnitCueClear()
+    {
+        var f0 = new Fixture(new List<ReplayBeat>());
+        var script = new List<ReplayBeat>
+        {
+            new ReplayEndTurnBeat { Index = 0, Turn = 1, Actor = 0 },
+        };
+        var f = new Fixture(script);
+
+        f.Cues.Apply();
+
+        Assert.Null(f.Map.LastSelectUnitCue);
     }
 
     [Fact]
@@ -747,8 +766,10 @@ public class TutorialPreviewCuesTests
 
         Assert.Equal(1, f.CancelActionCalls);
         Assert.Equal(SessionState.ActionMode.None, f.Session.Mode);
-        Assert.Single(f.Map.LastMoveTargets);
-        Assert.Equal(from, f.Map.LastMoveTargets[0]);
+        // Back in None mode, the "pick me up" affordance is the flashing
+        // select-unit cue on the source — not green move-target rings.
+        Assert.Equal(from, f.Map.LastSelectUnitCue);
+        Assert.Empty(f.Map.LastMoveTargets);
     }
 
     [Fact]

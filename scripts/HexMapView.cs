@@ -223,6 +223,27 @@ public partial class HexMapView : Node2D, IHexMapView
     // Tune ~0.45-0.65 for ring contrast vs. feature visibility.
     private static readonly Color SelectionBackdropColor = new Color(0f, 0f, 0f, 0.42f);
 
+    // Tutorial "tap this unit to pick it up" cue (issue #49). A flashing
+    // CTA-style highlight on the source unit's own tile — a white hex with
+    // a black border whose alpha pulses, mirroring the HUD's tutorial-CTA
+    // button flash (see HudView.StartCtaPulse). Deliberately distinct from
+    // the green ShowMoveTargets rings, which mean "move TO here." Driven by
+    // the controller via ShowSelectUnitCue; null in ordinary play.
+    private HexCoord? _selectCueUnit;
+    private Node2D? _selectCueNode;
+    private Tween? _selectCueTween;
+    private static readonly Color SelectCueFillColor = new Color(1f, 1f, 1f, 1f);
+    private static readonly Color SelectCueBorderColor = new Color(0f, 0f, 0f, 1f);
+    private const float SelectCueBorderWidth = 3f;
+    // CTA-style flash, but only the white FILL pulses (the black border stays
+    // steady so the tile frame always reads). The fill peaks translucent —
+    // never opaque — so the actionable unit's white rings stay visible at the
+    // top of the pulse instead of washing out (issue #49). Sine, 0.55 s/leg
+    // to match HudView's CTA cadence.
+    private const float SelectCueFillMinAlpha = 0.18f;
+    private const float SelectCueFillMaxAlpha = 0.55f;
+    private const float SelectCuePulseHalfPeriod = 0.55f;
+
     // Every current-player unit that still has its move available this
     // turn. Each one pulses (scales up and back) in _Process so the
     // player can see at a glance which units are actionable. Rebuilt in
@@ -431,6 +452,11 @@ public partial class HexMapView : Node2D, IHexMapView
         _pulsingCapitals.Clear();
         _highlightedTerritory = null;
         _selectedUnit = null;
+        // Full rebuild frees every child (incl. the select-unit cue node and
+        // its tween); reset the cue state so it doesn't dangle.
+        _selectCueUnit = null;
+        _selectCueNode = null;
+        _selectCueTween = null;
 
         // Water cells + shoreline foam are STATIC (never change after init).
         // As individual Polygon2D they were ~1,870 separate canvas items =
@@ -983,6 +1009,105 @@ public partial class HexMapView : Node2D, IHexMapView
     }
 
     /// <summary>
+    /// Flash the "tap this unit to pick it up" cue on <paramref name="coord"/>
+    /// (issue #49), or clear it when null. The cue is a white hex with a
+    /// black border whose alpha pulses — the same CTA idiom as the HUD's
+    /// tutorial buttons, so it reads as "do this here" and never as the
+    /// green "move TO here" rings. Excludes the cued unit from the
+    /// scale-pulse set so the only motion is the alpha flash; restores the
+    /// previously-cued unit to the pulse if it's still actionable.
+    /// </summary>
+    public void ShowSelectUnitCue(HexCoord? coord)
+    {
+        if (Equals(_selectCueUnit, coord)) return;
+
+        HexCoord? previous = _selectCueUnit;
+        _selectCueUnit = coord;
+
+        if (previous.HasValue && IsActionableUnit(previous.Value))
+        {
+            _pulsingUnits.Add(previous.Value);
+        }
+
+        if (coord.HasValue) ApplySelectCueVisual();
+        else ClearSelectCueVisual();
+
+        Log.Debug(Log.LogCategory.Render,
+            $"ShowSelectUnitCue: prev={previous?.ToString() ?? "none"} next={coord?.ToString() ?? "none"} " +
+            $"node={(_selectCueNode != null ? "flashing" : "cleared")}");
+    }
+
+    /// <summary>
+    /// Build (or rebuild) the flashing select-unit cue node for
+    /// <c>_selectCueUnit</c> and start its alpha-pulse tween. Tears down
+    /// any prior node/tween first. No-op if no cue is active. Called from
+    /// <see cref="ShowSelectUnitCue"/> and re-invoked by
+    /// <see cref="RefreshOccupantVisuals"/> after the units layer rebuild
+    /// frees the old node (parallel to <see cref="ApplySelectionAffordance"/>).
+    /// </summary>
+    private void ApplySelectCueVisual()
+    {
+        ClearSelectCueVisual();
+        if (!_selectCueUnit.HasValue) return;
+        HexCoord coord = _selectCueUnit.Value;
+
+        // Out of the scale-pulse set so the alpha flash is the only motion.
+        _pulsingUnits.Remove(coord);
+
+        Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(coord, HexSize);
+        Vector2[] verts = HexVertices();
+        var cue = new Node2D { Position = center };
+        // White fill: this is the part that flashes (modulate alpha tween).
+        var fill = new Polygon2D
+        {
+            Color = SelectCueFillColor,
+            Polygon = verts,
+            Modulate = new Color(1f, 1f, 1f, SelectCueFillMaxAlpha),
+        };
+        cue.AddChild(fill);
+        // Black border: steady (sibling of the fill, not a child) so the tile
+        // frame stays crisp even at the fill's translucent trough.
+        cue.AddChild(BuildClosedOutline(verts, SelectCueBorderWidth, SelectCueBorderColor));
+        _unitsLayer?.AddChild(cue);
+
+        if (_unitsLayer != null
+            && _unitVisuals.TryGetValue(coord, out Node2D? visual) && visual != null)
+        {
+            // Beneath the unit visual (later children draw on top) so the
+            // unit reads as sitting on the flashing CTA tile.
+            _unitsLayer.MoveChild(cue, visual.GetIndex());
+            visual.Scale = Vector2.One;
+        }
+        _selectCueNode = cue;
+
+        // Flash only the fill's alpha — max (translucent) ↔ min — so the unit
+        // never washes out. Same sine cadence as HudView.StartCtaPulse.
+        Tween tween = fill.CreateTween();
+        tween.SetLoops();
+        tween.TweenProperty(fill, "modulate:a", SelectCueFillMinAlpha, SelectCuePulseHalfPeriod)
+            .SetTrans(Tween.TransitionType.Sine);
+        tween.TweenProperty(fill, "modulate:a", SelectCueFillMaxAlpha, SelectCuePulseHalfPeriod)
+            .SetTrans(Tween.TransitionType.Sine);
+        _selectCueTween = tween;
+    }
+
+    /// <summary>
+    /// Kill the select-unit cue's pulse tween and free its node. Defensive
+    /// against a node already freed by a layer rebuild (guarded null/valid
+    /// checks).
+    /// </summary>
+    private void ClearSelectCueVisual()
+    {
+        if (_selectCueTween != null && _selectCueTween.IsValid()) _selectCueTween.Kill();
+        _selectCueTween = null;
+        if (_selectCueNode != null)
+        {
+            _selectCueNode.QueueFree();
+            _selectCueNode = null;
+        }
+    }
+
+    /// <summary>
     /// True iff the live unit at <paramref name="coord"/> belongs to
     /// the current turn's player and still has its move available
     /// this turn. Reads <c>_currentPlayer</c> cached by the most
@@ -1025,6 +1150,10 @@ public partial class HexMapView : Node2D, IHexMapView
         // to free it again later. ApplySelectionAffordance below
         // re-attaches a fresh shadow if _selectedUnit still exists.
         _selectionBackdrop = null;
+        // Same story for the flashing select-unit cue node — it's a child of
+        // the units layer that's about to be cleared. Drop the stale handle;
+        // ApplySelectCueVisual below rebuilds it if a cue is still active.
+        _selectCueNode = null;
         // Detect Unit→Grave transitions BEFORE the units layer is cleared.
         // Each dying unit's visual is reparented to _deathsLayer and
         // tweened out so the grave underneath can grow into view. The
@@ -1219,6 +1348,10 @@ public partial class HexMapView : Node2D, IHexMapView
         // is a no-op if there's no selection or if the unit's visual
         // is missing.
         ApplySelectionAffordance();
+
+        // Re-arm the flashing select-unit cue (its node was a child of the
+        // just-rebuilt units layer). No-op if no cue is active.
+        if (_selectCueUnit.HasValue) ApplySelectCueVisual();
 
         // Proves the actionable→white rule actually ran and reports
         // the selection state alongside it. Enable with

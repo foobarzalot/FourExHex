@@ -47,6 +47,9 @@ public class MockHexMapView : IHexMapView
     public HexCoord? LastMoveSource { get; private set; }
     public void ShowMoveSource(HexCoord? coord) => LastMoveSource = coord;
 
+    public HexCoord? LastSelectUnitCue { get; private set; }
+    public void ShowSelectUnitCue(HexCoord? coord) => LastSelectUnitCue = coord;
+
     public Territory? LastHighlight { get; private set; }
     public bool HighlightWasCleared { get; private set; }
     public void ShowHighlight(Territory? selected)

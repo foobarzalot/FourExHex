@@ -94,6 +94,7 @@ public sealed class TutorialPreviewCues
             _map.ShowMoveTargets(Array.Empty<HexCoord>(), UnitLevel.Recruit);
             _map.ShowTowerTargets(Array.Empty<HexCoord>());
             _map.ShowTowerCoverage(Array.Empty<HexCoord>());
+            _map.ShowSelectUnitCue(null);
             return;
         }
 
@@ -135,6 +136,9 @@ public sealed class TutorialPreviewCues
         }
 
         ClearAllCtas();
+        // Lift any prior select-unit flash; ApplyMoveCue re-arms it for the
+        // not-yet-picked-up move case below.
+        _map.ShowSelectUnitCue(null);
 
         switch (next)
         {
@@ -229,18 +233,22 @@ public sealed class TutorialPreviewCues
             _selectTerritory(territory);
         }
 
-        // Already picked up the source unit → point at the destination.
-        // Otherwise point at the source so the player picks it up first.
+        // Already picked up the source unit → point at the destination with
+        // the green move-target rings, and lift the select-unit cue. Otherwise
+        // flash the distinct "tap this unit" CTA-style highlight on the source
+        // tile so it never reads as a green "move TO here" target.
         if (_session.Mode == SessionState.ActionMode.MovingUnit
             && _session.MoveSource == mv.From)
         {
             UnitLevel moveLevel = LevelAtOrRecruit(mv.From);
+            _map.ShowSelectUnitCue(null);
             _map.ShowMoveTargets(new[] { mv.To }, moveLevel);
         }
         else
         {
-            UnitLevel fromLevel = LevelAtOrRecruit(mv.From);
-            _map.ShowMoveTargets(new[] { mv.From }, fromLevel);
+            _map.ShowSelectUnitCue(mv.From);
+            Log.Debug(Log.LogCategory.Tutorial,
+                $"[Cues] move beat not picked up → flashing select-unit cue on {mv.From}");
         }
     }
 

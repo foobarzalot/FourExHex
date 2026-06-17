@@ -72,11 +72,22 @@ public interface IHexMapView
     void ShowMoveSource(HexCoord? coord);
 
     /// <summary>
+    /// Mark the unit at <paramref name="coord"/> as "tap this unit to
+    /// pick it up" — a flashing CTA-style highlight on the unit's own
+    /// tile (white box / black border, pulsing alpha), mirroring the
+    /// HUD's tutorial-CTA button flash. Deliberately distinct from the
+    /// green <see cref="ShowMoveTargets"/> rings, which mean "move TO
+    /// here." Used only by Tutorial Preview's "select this unit" cue;
+    /// pass null to clear.
+    /// </summary>
+    void ShowSelectUnitCue(HexCoord? coord);
+
+    /// <summary>
     /// Clear every preview overlay at once: move/tower targets, tower
-    /// coverage, and the move-source pickup indicator. Default
-    /// implementation calls the four single-overlay clears in
+    /// coverage, the move-source pickup indicator, and the select-unit
+    /// cue. Default implementation calls the single-overlay clears in
     /// sequence — that's the right thing for almost every consumer,
-    /// since pending-action lifetime spans all four. Sites that
+    /// since pending-action lifetime spans all of them. Sites that
     /// genuinely want to clear only some overlays should keep doing
     /// it inline.
     /// </summary>
@@ -86,6 +97,7 @@ public interface IHexMapView
         ShowTowerTargets(System.Array.Empty<HexCoord>());
         ShowTowerCoverage(System.Array.Empty<HexCoord>());
         ShowMoveSource(null);
+        ShowSelectUnitCue(null);
     }
 
     /// <summary>
