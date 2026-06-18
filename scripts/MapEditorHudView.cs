@@ -236,7 +236,10 @@ public partial class MapEditorHudView : OrientationHud
         _paintCluster.AddChild(goldButton);
         _palette[goldIndex] = goldButton;
 
-        // Mountain-tile toggle (issue #37) — defensive terrain.
+        // Mountain-tile toggle (issue #37) — defensive terrain. Squared slate
+        // button like the other paint tools; the grey mountain glyph is drawn
+        // by HudIcons.DrawMountain (issue #52). Fill color is unused for an
+        // icon'd squared button.
         int mountainIndex = MountainPaletteIndex;
         var mountainButton = new HexPaletteButton(
             BoardPalette.MountainRock, HexPaletteIcon.Mountain, squared: true);

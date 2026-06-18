@@ -674,10 +674,17 @@ tile can be a gold mountain).
   per-cell placement sound additionally checks the painted tile's gold/mountain
   flags. Both flag brushes now record undo and play the sound.
 - **Rendering.** `HexMapView`'s `MountainsLayer` (`Node2D`) draws one
-  `Polygon2D` peak glyph (grey rock + white snow cap, `HudIcons.DrawMountain`)
-  per mountain tile, layered above the gold borders but below occupants so a
+  `Polygon2D` peak glyph per mountain tile (`CreateMountainVisual`): a
+  translucent dark-tinted outlined peak (no snow cap) so the tile's owner color
+  shows through, layered above the gold borders but below occupants so a
   unit/capital on the tile draws on top. Counter-rotated by `ApplyGlyphUpright`
-  to stay upright on a rotated board.
+  to stay upright on a rotated board. The silhouette is shared with the editor
+  brush button (issue #52): the geometry — `HudIcons.MountainPeakVerts` — is the
+  single source of truth both consume, so the two shapes can't drift. They
+  differ only in color: the tile uses `HudIcons.MountainFill` (translucent) +
+  `MountainStroke` (BgDeep); the immediate-mode button (`HudIcons.DrawMountain`,
+  a squared slate `HexPaletteButton`) draws the same peak in opaque grey so it
+  reads against the dark slate backdrop.
 
 ## Display scaling (autoload)
 

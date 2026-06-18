@@ -64,35 +64,47 @@ public static class HudIcons
     }
 
     /// <summary>
-    /// Mountain glyph (issue #37) for the editor's mountain brush and the
-    /// on-tile terrain marker: a Tolkien-map-style grey rock peak with a white
-    /// snow cap, plus a smaller back peak for a "range" silhouette. Reads
-    /// distinctly from the gold coin and the conifer tree.
+    /// Colors for the on-tile mountain glyph (HexMapView.CreateMountainVisual),
+    /// issue #52: a translucent dark fill so the tile's owner color shows
+    /// through, with a BgDeep stroke matching the board's other outlines. The
+    /// editor brush button (<see cref="DrawMountain"/>) draws the same
+    /// silhouette but in opaque grey, so it shares the geometry
+    /// (<see cref="MountainPeakVerts"/>) — the single source of truth for the
+    /// shape — not these colors.
+    /// </summary>
+    public static readonly Color MountainFill = new Color(0f, 0f, 0f, 0.18f);
+    public static readonly Color MountainStroke = UiPalette.BgDeep;
+
+    // Apex, baseR, baseL of a peak of half-extent `r` centered at `center`.
+    // The single source of truth for the mountain shape, shared by the on-tile
+    // Polygon2D glyph and the editor brush button so the two can't drift.
+    public static Vector2[] MountainPeakVerts(Vector2 center, float r) => new[]
+    {
+        center + new Vector2(0f, -0.85f * r),
+        center + new Vector2(0.82f * r, 0.62f * r),
+        center + new Vector2(-0.82f * r, 0.62f * r),
+    };
+
+    /// <summary>
+    /// Mountain glyph (issue #37) for the editor's mountain brush button: a
+    /// solid grey outlined peak (no snow cap). Shares its silhouette
+    /// (<see cref="MountainPeakVerts"/>) with the on-tile glyph so the shapes
+    /// can't drift, but is drawn in opaque grey rather than the tile's
+    /// translucent dark tint so it reads against the button's dark slate
+    /// backdrop (issue #52). Reads distinctly from the gold coin and the
+    /// conifer tree.
     /// </summary>
     public static void DrawMountain(CanvasItem t, Vector2 center, float radius, Color modulate)
     {
         float r = radius * 0.9f;
-        Color rock = BoardPalette.MountainRock * modulate;
-        Color snow = BoardPalette.MountainSnow * modulate;
+        Vector2[] verts = MountainPeakVerts(center, r);
+        Color rock = new Color(0.72f, 0.72f, 0.76f, 1f) * modulate;   // grey, reads on dark slate
         Color outline = Outline * modulate;
-
-        // A single centered peak.
-        Vector2 apex = center + new Vector2(0f, -0.85f * r);
-        Vector2 baseL = center + new Vector2(-0.82f * r, 0.62f * r);
-        Vector2 baseR = center + new Vector2(0.82f * r, 0.62f * r);
-        t.DrawColoredPolygon(new Vector2[] { apex, baseR, baseL }, rock);
-
-        // Snow cap: apex down each slope ~42%, dipping lower at the center
-        // for the classic snowline notch.
-        Vector2 leftSlope = apex.Lerp(baseL, 0.42f);
-        Vector2 rightSlope = apex.Lerp(baseR, 0.42f);
-        Vector2 notch = apex.Lerp((baseL + baseR) * 0.5f, 0.52f);
-        t.DrawColoredPolygon(new Vector2[] { apex, rightSlope, notch, leftSlope }, snow);
-
-        // Peak silhouette outline.
-        t.DrawLine(apex, baseL, outline, OutlineWidth);
-        t.DrawLine(apex, baseR, outline, OutlineWidth);
-        t.DrawLine(baseL, baseR, outline, OutlineWidth);
+        t.DrawColoredPolygon(verts, rock);
+        for (int i = 0; i < 3; i++)
+        {
+            t.DrawLine(verts[i], verts[(i + 1) % 3], outline, OutlineWidth);
+        }
     }
 
     public static void DrawCapital(CanvasItem t, Vector2 center, float radius, Color modulate)

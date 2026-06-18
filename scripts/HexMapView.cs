@@ -3114,9 +3114,6 @@ public partial class HexMapView : Node2D, IHexMapView
             builder.Points.ToArray(), builder.Colors.ToArray(), builder.Indices.ToArray());
     }
 
-    private static readonly Color MountainRockColor = BoardPalette.MountainRock;
-    private static readonly Color MountainSnowColor = BoardPalette.MountainSnow;
-    private static readonly Color MountainStrokeColor = UiPalette.BgDeep;
 
     /// <summary>
     /// Rebuild the on-tile mountain glyphs (issue #37): one Tolkien-map peak
@@ -3145,25 +3142,21 @@ public partial class HexMapView : Node2D, IHexMapView
     }
 
     /// <summary>
-    /// A grey rock peak with a white snow cap plus a smaller back peak, drawn
-    /// as <see cref="Polygon2D"/> nodes to match the other on-tile glyphs.
-    /// Same silhouette as the editor swatch (<see cref="HudIcons.DrawMountain"/>).
+    /// A translucent dark-tinted outlined peak (no snow cap), drawn as a
+    /// <see cref="Polygon2D"/> node to match the other on-tile glyphs. The
+    /// mostly-transparent fill lets the hex's owner color show through. Shares
+    /// its silhouette (vertex math + colors) with the editor swatch via
+    /// <see cref="HudIcons.MountainPeakVerts"/> / <see cref="HudIcons.MountainFill"/>
+    /// / <see cref="HudIcons.MountainStroke"/> so the two can't drift (issue #52).
     /// </summary>
     private Node2D CreateMountainVisual()
     {
         float r = HexSize * 0.675f;   // 10% smaller than the original 0.75f
         var node = new Node2D();
 
-        // A single centered peak.
-        var apex = new Vector2(0f, -0.85f * r);
-        var baseL = new Vector2(-0.82f * r, 0.62f * r);
-        var baseR = new Vector2(0.82f * r, 0.62f * r);
-        var mainVerts = new[] { apex, baseR, baseL };
-        // Mostly-transparent fill (issue: legibility) so the hex's owner color
-        // still shows through, with a slight dark tint to set the triangle off
-        // from the tile beneath. Reads as a translucent outlined peak.
-        var main = new Polygon2D { Color = new Color(0f, 0f, 0f, 0.18f), Polygon = mainVerts };
-        main.AddChild(BuildClosedOutline(mainVerts, 3.0f, MountainStrokeColor));
+        Vector2[] verts = HudIcons.MountainPeakVerts(Vector2.Zero, r);
+        var main = new Polygon2D { Color = HudIcons.MountainFill, Polygon = verts };
+        main.AddChild(BuildClosedOutline(verts, 3.0f, HudIcons.MountainStroke));
         node.AddChild(main);
 
         return node;
