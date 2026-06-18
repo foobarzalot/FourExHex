@@ -30,6 +30,10 @@ public enum HudIcon
 public partial class HudIconButton : Button
 {
     private readonly HudIcon _icon;
+    // True when this chip renders a font glyph via Button.Text instead of a
+    // programmatic _Draw glyph (e.g. the "?" map-gen options affordance). Keeps
+    // the shared slate chip chrome while showing a real typographic character.
+    private readonly bool _textMode;
     private bool _selected;
     private bool _ctaActive;
     private bool _hero;
@@ -162,6 +166,24 @@ public partial class HudIconButton : Button
         ApplyBaseStylebox();
     }
 
+    /// <summary>Build a chip that renders a typographic character (via the
+    /// button's own Text) instead of a programmatic glyph — same slate chrome,
+    /// hover/press, and 68×68 size as the icon chips. Used for the "?" map-gen
+    /// options affordance so it reads as a real question mark on mobile.</summary>
+    public HudIconButton(string text, Font font, int fontSize)
+    {
+        _icon = HudIcon.Die; // unused — _textMode short-circuits _Draw
+        _textMode = true;
+        Text = text;
+        AddThemeFontOverride("font", font);
+        AddThemeFontSizeOverride("font_size", fontSize);
+        CustomMinimumSize = new Vector2(68, 68);
+        FocusMode = Control.FocusModeEnum.None;
+        ButtonDown += OnButtonDown;
+        ButtonUp += OnButtonUp;
+        ApplyBaseStylebox();
+    }
+
     /// <summary>Default chrome — dark-slate fill, 2-px black border, 10-px
     /// rounded corners. Every HudIconButton wears this in its normal /
     /// hover / pressed / disabled states; the hero (terracotta) and CTA
@@ -270,6 +292,8 @@ public partial class HudIconButton : Button
 
     public override void _Draw()
     {
+        // Text-mode chips render their character through Button.Text; no glyph.
+        if (_textMode) return;
         Vector2 center = Size * 0.5f;
         float r = Mathf.Min(Size.X, Size.Y) * 0.5f;
         // The HUD bar is near-black and the default Button stylebox is
