@@ -1765,6 +1765,17 @@ live board thumbnail.
   GLES3 compatibility renderer lacks. The top hex-tessellation row is cropped
   off the snapshot for a clean straight top edge.
 
+- **Campaign reuse (issue #51).** Tapping a level on the campaign ladder opens
+  `CampaignConfirmSheet` — a confirm dialog (`MainMenuScene.OnCampaignLevelTapped`)
+  that embeds the same `MapThumbnailView`, previewing the level's board via
+  `RequestRandom(CampaignProgress.SeedForLevel(level))` (campaign maps are
+  procedural: level N = seed N, the exact board `Main` launches). The sheet
+  reuses the `LandscapeMenuChrome` fill-to-cap surface, so it fills a phone (big,
+  legible preview) but caps to the New Game dialog footprint on desktop; portrait
+  is a single centered column and landscape mirrors the map-config page's
+  rail-beside-thumbnail. `Escape` cancels the sheet and, on the ladder itself,
+  backs out to the landing menu.
+
 ## Call flows
 
 ### Click → select (normal case)

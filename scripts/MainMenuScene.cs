@@ -38,6 +38,10 @@ public partial class MainMenuScene : Control
     private Control? _landingPanel;
     private Control? _playConfigPanel;
     private CampaignPanel? _campaignPanel;
+    // The level "Play?" confirm sheet while it's open (issue #51), so the
+    // Escape handler can let the sheet consume Escape (cancel) instead of
+    // backing out of the whole campaign ladder.
+    private CampaignConfirmSheet? _campaignSheet;
     // Design (unscaled) size of the landing panel, recorded at build time so
     // FitPanels can scale it down to fit a smaller-than-design viewport. (The
     // play-config panel is now a fill-to-cap surface and needs no design size.)
@@ -1282,18 +1286,12 @@ public partial class MainMenuScene : Control
     /// builds its UI once in _Ready.</summary>
     private void OnCampaignLevelTapped(int level)
     {
-        string status = CampaignStore.Progress.StatusOf(level) switch
-        {
-            CampaignLevelStatus.Won => "Already won — replaying can't lose it.",
-            CampaignLevelStatus.Lost => "Attempted, not yet won.",
-            _ => "Not yet attempted.",
-        };
-        var sheet = new ConfirmModal(
-            $"Level {CampaignProgress.LabelFor(level)}",
-            $"{CampaignProgress.DifficultyForLevel(level)} tier · {status}",
-            "Play");
+        // Confirm sheet with a live thumbnail of the level's board (issue #51).
+        // The sheet derives title/status/seed from the level itself.
+        var sheet = new CampaignConfirmSheet(level);
+        _campaignSheet = sheet;
         sheet.Confirmed += () => LaunchCampaignLevel(level);
-        sheet.Canceled += sheet.QueueFree;
+        sheet.Canceled += () => { _campaignSheet = null; sheet.QueueFree(); };
         AddChild(sheet);
         sheet.Open();
     }
@@ -1683,11 +1681,26 @@ public partial class MainMenuScene : Control
         // it consume the key instead of the landing handler re-opening it.
         if (_quitConfirmModal != null && _quitConfirmModal.IsOpen) return;
 
+        // The campaign level confirm sheet owns its own Escape (cancel) while
+        // open — don't also back out of the ladder underneath it.
+        if (_campaignSheet != null && _campaignSheet.IsOpen) return;
+
         // Per-panel input dispatch: each panel only sees the keys that
         // make sense while it's the visible one.
         if (_playConfigPanel != null && _playConfigPanel.Visible)
         {
             HandlePlayConfigKey(keyEvent);
+            return;
+        }
+        // Campaign ladder: Escape backs out to the landing menu (mirrors the
+        // panel's Back button).
+        if (_campaignPanel != null && _campaignPanel.Visible)
+        {
+            if (keyEvent.Keycode == Key.Escape && !keyEvent.Echo)
+            {
+                ShowLanding();
+                GetViewport()?.SetInputAsHandled();
+            }
             return;
         }
         if (_landingPanel != null && _landingPanel.Visible)
