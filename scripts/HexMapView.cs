@@ -2102,7 +2102,10 @@ public partial class HexMapView : Node2D, IHexMapView
     // (outer thickest, inner thinnest) so the concentric rings read as a
     // single graphic instead of three independent circles.
     private static readonly float[] UnitRingRadii = { 0.50f, 0.34f, 0.20f };
-    private static readonly float[] UnitRingWidthFactors = { 0.06f, 0.05f, 0.045f };
+    // Outermost ring is thicker than the inner rings so the unit silhouette
+    // reads clearly on top of busy terrain (mountain glyphs, #50). Inner
+    // rings stay thin to keep the level-count legible.
+    private static readonly float[] UnitRingWidthFactors = { 0.10f, 0.05f, 0.045f };
     private const float UnitDotRadius = 0.08f;
     private const int UnitRingSegments = 28;
 
