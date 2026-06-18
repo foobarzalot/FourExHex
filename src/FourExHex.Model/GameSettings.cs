@@ -79,6 +79,16 @@ public static class GameSettings
     public static bool IncludeMountains = false;
 
     /// <summary>
+    /// Whether a freshly-generated map should scatter gold clusters (issue #48,
+    /// Phase 2). Companion to <see cref="IncludeMountains"/>: written by the same
+    /// "Map Generation" options panel, read by <see cref="Main"/> /
+    /// the map thumbnail / the editor die into the <c>MapGenOptions</c> passed to
+    /// <c>MapGenerator</c>. Defaults off so a fresh launch generates the pre-#48
+    /// baseline map.
+    /// </summary>
+    public static bool IncludeGold = false;
+
+    /// <summary>
     /// Campaign level index (0..255) when the next game is a campaign
     /// launch (issue #2), null for freeform games. Written by the
     /// campaign screen alongside <see cref="MasterSeed"/> (identity

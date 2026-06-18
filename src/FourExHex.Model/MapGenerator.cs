@@ -71,6 +71,14 @@ public static class MapGenerator
             ScatterMountainRanges(grid, land, rng);
         }
 
+        // Gold clusters (issue #48), gated the same way. Placed after mountains
+        // so cluster seeds can be biased toward mountain tiles, and before the
+        // tree scatter so trees avoid the fresh gold tiles.
+        if (options.IncludeGold)
+        {
+            ScatterGoldClusters(grid, land, rng);
+        }
+
         // Water = every coord in the rectangle that isn't land.
         var water = new HashSet<HexCoord>();
         for (int row = 0; row < rows; row++)
@@ -94,7 +102,7 @@ public static class MapGenerator
             HexCoord pick = landCoordList[idx];
             landCoordList.RemoveAt(idx);
             HexTile? t = grid.Get(pick);
-            if (t != null && t.Occupant == null && !t.IsMountain)
+            if (t != null && t.Occupant == null && !t.IsMountain && !t.IsGold)
             {
                 t.Occupant = new Tree();
             }
@@ -176,6 +184,90 @@ public static class MapGenerator
         t.IsMountain = true;
         t.Owner = PlayerId.None;
         if (t.Occupant is Tree) t.Occupant = null;
+        return 1;
+    }
+
+    // Gold-cluster scatter (issue #48, Phase 2). Gold is a sparse, contested
+    // resource: small neutral clusters (a seed tile plus a few grown neighbors)
+    // rather than ranges. When mountains were also generated, cluster seeds are
+    // biased toward mountain tiles so gold tends to co-locate / overlap with the
+    // ranges (a valid gold-on-mountain tile — the flags are independent). All
+    // draws are integer rng.Next and every sampled list is sorted, so it stays
+    // deterministic in the seed.
+    private const int GoldLandPercent = 3;       // target gold coverage of land
+    private const int GoldMinCluster = 2;        // min tiles per cluster (>=2 → no speckle)
+    private const int GoldMaxCluster = 4;
+    private const int GoldOnMountainPercent = 55; // chance a cluster seed lands on a mountain
+
+    private static void ScatterGoldClusters(HexGrid grid, HashSet<HexCoord> land, Random rng)
+    {
+        if (land.Count == 0) return;
+
+        int target = land.Count * GoldLandPercent / 100;
+        if (target <= 0) return;
+
+        var landList = new List<HexCoord>(land);
+        landList.Sort();
+
+        // Mountain tiles available for the co-location bias (empty if the mountain
+        // pass was off). Sorted for deterministic sampling.
+        var mountainList = new List<HexCoord>();
+        foreach (HexTile t in grid.Tiles)
+        {
+            if (t.IsMountain) mountainList.Add(t.Coord);
+        }
+        mountainList.Sort();
+
+        int placed = 0;
+        int attempts = 0;
+        int maxAttempts = target * 5;
+        while (placed < target && attempts < maxAttempts)
+        {
+            attempts++;
+
+            HexCoord seed = mountainList.Count > 0 && rng.Next(100) < GoldOnMountainPercent
+                ? mountainList[rng.Next(mountainList.Count)]
+                : landList[rng.Next(landList.Count)];
+
+            int size = rng.Next(GoldMinCluster, GoldMaxCluster + 1);
+            var cluster = new HashSet<HexCoord> { seed };
+            placed += MarkGold(grid, seed);
+
+            while (cluster.Count < size && placed < target)
+            {
+                // Land neighbors of the cluster not already in it.
+                var cands = new List<HexCoord>();
+                var seen = new HashSet<HexCoord>();
+                foreach (HexCoord c in cluster)
+                {
+                    foreach (HexCoord nb in c.Neighbors())
+                    {
+                        if (!land.Contains(nb)) continue;
+                        if (cluster.Contains(nb)) continue;
+                        if (seen.Add(nb)) cands.Add(nb);
+                    }
+                }
+                if (cands.Count == 0) break;
+                cands.Sort();
+                HexCoord pick = cands[rng.Next(cands.Count)];
+                cluster.Add(pick);
+                placed += MarkGold(grid, pick);
+            }
+        }
+
+        Log.Debug(Log.LogCategory.MapGen,
+            $"[mapgen] gold: placed {placed} across {attempts} clusters, target {target} (land {land.Count})");
+    }
+
+    // Set the gold flag on a land tile and forfeit ownership — generated gold is a
+    // neutral, contested resource players must capture. Leaves IsMountain alone (a
+    // gold-on-mountain tile keeps both flags). Returns 1 if newly marked, else 0.
+    private static int MarkGold(HexGrid grid, HexCoord coord)
+    {
+        HexTile? t = grid.Get(coord);
+        if (t == null || t.IsGold) return 0;
+        t.IsGold = true;
+        t.Owner = PlayerId.None;
         return 1;
     }
 

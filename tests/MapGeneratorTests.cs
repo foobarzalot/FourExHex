@@ -42,6 +42,16 @@ public class MapGeneratorTests
         return n;
     }
 
+    private static int CountGold(MapGenResult result)
+    {
+        int n = 0;
+        foreach (HexTile t in result.Grid.Tiles)
+        {
+            if (t.IsGold) n++;
+        }
+        return n;
+    }
+
     private static IEnumerable<HexCoord> RimCoords()
     {
         for (int col = 0; col < Cols; col++)
@@ -422,5 +432,160 @@ public class MapGeneratorTests
         // Most mountain tiles (here: > half) should touch another mountain.
         Assert.True(withMountainNeighbor * 2 > mountains.Count,
             $"Only {withMountainNeighbor}/{mountains.Count} mountains are part of a range (seed {seed})");
+    }
+
+    // ── Gold scatter (issue #48, Phase 2) ───────────────────────────────────
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(42)]
+    [InlineData(9999)]
+    public void GoldOff_NoGoldTiles(int seed)
+    {
+        Assert.Equal(0, CountGold(Build(seed)));
+        Assert.Equal(0, CountGold(BuildWith(seed, new MapGenOptions(IncludeGold: false))));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(42)]
+    [InlineData(9999)]
+    public void GoldOff_ByteIdenticalToBaseline(int seed)
+    {
+        MapGenResult baseline = Build(seed);
+        MapGenResult off = BuildWith(seed, new MapGenOptions(IncludeGold: false));
+
+        Assert.Equal(baseline.Grid.Count, off.Grid.Count);
+        foreach (HexTile tA in baseline.Grid.Tiles)
+        {
+            HexTile? tB = off.Grid.Get(tA.Coord);
+            Assert.NotNull(tB);
+            Assert.Equal(tA.Owner, tB!.Owner);
+            Assert.Equal(tA.Occupant is Tree, tB.Occupant is Tree);
+            Assert.Equal(tA.IsGold, tB.IsGold);
+        }
+        Assert.Equal(baseline.WaterCoords, off.WaterCoords);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(42)]
+    [InlineData(9999)]
+    public void GoldOn_PlacesGoldInSaneBand(int seed)
+    {
+        MapGenResult result = BuildWith(seed, new MapGenOptions(IncludeGold: true));
+        int gold = CountGold(result);
+
+        Assert.True(gold > 0, $"Expected some gold for seed {seed}");
+        // Target is ~3% of land; cap generously at 12% to catch a paving bug.
+        Assert.True(gold <= (result.Grid.Count * 12) / 100,
+            $"Gold {gold} exceeds 12% of {result.Grid.Count} land tiles (seed {seed})");
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(42)]
+    [InlineData(9999)]
+    public void GoldOn_SameSeedIdenticalGoldSet(int seed)
+    {
+        var opts = new MapGenOptions(IncludeGold: true);
+        MapGenResult a = BuildWith(seed, opts);
+        MapGenResult b = BuildWith(seed, opts);
+
+        foreach (HexTile tA in a.Grid.Tiles)
+        {
+            HexTile? tB = b.Grid.Get(tA.Coord);
+            Assert.NotNull(tB);
+            Assert.Equal(tA.IsGold, tB!.IsGold);
+        }
+    }
+
+    [Fact]
+    public void GoldOn_DifferentSeedsProduceDifferentGold()
+    {
+        var opts = new MapGenOptions(IncludeGold: true);
+        MapGenResult a = BuildWith(1, opts);
+        MapGenResult b = BuildWith(2, opts);
+
+        var goldA = new HashSet<HexCoord>();
+        foreach (HexTile t in a.Grid.Tiles)
+        {
+            if (t.IsGold) goldA.Add(t.Coord);
+        }
+        bool anyDifference = false;
+        foreach (HexTile t in b.Grid.Tiles)
+        {
+            if (t.IsGold != goldA.Contains(t.Coord)) { anyDifference = true; break; }
+        }
+        Assert.True(anyDifference, "Seeds 1 and 2 should produce different gold layouts");
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(42)]
+    [InlineData(9999)]
+    public void GoldOn_TilesAreNeutral(int seed)
+    {
+        // Generated gold is a contested objective — unowned until captured.
+        MapGenResult result = BuildWith(seed, new MapGenOptions(IncludeGold: true));
+        foreach (HexTile t in result.Grid.Tiles)
+        {
+            if (!t.IsGold) continue;
+            Assert.True(t.Owner.IsNone, $"Gold tile {t.Coord} should be neutral (seed {seed})");
+        }
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(42)]
+    [InlineData(9999)]
+    public void GoldOn_FormsClustersNotSpeckle(int seed)
+    {
+        // Min cluster size 2 means every gold tile touches another gold tile.
+        MapGenResult result = BuildWith(seed, new MapGenOptions(IncludeGold: true));
+        var gold = new HashSet<HexCoord>();
+        foreach (HexTile t in result.Grid.Tiles)
+        {
+            if (t.IsGold) gold.Add(t.Coord);
+        }
+        Assert.NotEmpty(gold);
+
+        int withGoldNeighbor = 0;
+        foreach (HexCoord g in gold)
+        {
+            foreach (HexCoord n in g.Neighbors())
+            {
+                if (gold.Contains(n)) { withGoldNeighbor++; break; }
+            }
+        }
+        Assert.True(withGoldNeighbor * 2 > gold.Count,
+            $"Only {withGoldNeighbor}/{gold.Count} gold tiles are part of a cluster (seed {seed})");
+    }
+
+    [Fact]
+    public void GoldOn_WithMountains_BiasesGoldOntoMountains()
+    {
+        // With both passes on, gold cluster seeds are biased toward mountain tiles,
+        // so the share of gold tiles that are also mountains sits well above the
+        // ~9% mountain land coverage. Aggregate over seeds for a stable fraction.
+        int goldTotal = 0;
+        int goldOnMountain = 0;
+        var opts = new MapGenOptions(IncludeMountains: true, IncludeGold: true);
+        foreach (int seed in new[] { 1, 7, 42, 100, 9999 })
+        {
+            MapGenResult result = BuildWith(seed, opts);
+            foreach (HexTile t in result.Grid.Tiles)
+            {
+                if (!t.IsGold) continue;
+                goldTotal++;
+                if (t.IsMountain) goldOnMountain++;
+            }
+        }
+        Assert.True(goldTotal > 0, "Expected gold tiles across the sampled seeds");
+        // Well above 9% chance coverage — the seed bias should land many gold
+        // clusters on or beside mountains.
+        Assert.True(goldOnMountain * 100 > goldTotal * 20,
+            $"Only {goldOnMountain}/{goldTotal} gold tiles are also mountains — bias not evident");
     }
 }

@@ -131,6 +131,41 @@ public class ProceduralGameTests
         }
     }
 
+    [Theory]
+    [InlineData(1)]
+    [InlineData(4242)]
+    [InlineData(9999)]
+    public void WithGoldAndMountains_BuildsValidStateWithNeutralFeatures(int seed)
+    {
+        // Gold (and mountains) are neutral, flowing through TerritoryFinder /
+        // CapitalReconciler as capital-less neutral regions. Guard the full
+        // pipeline: it doesn't throw, gold tiles are neutral, and no capital
+        // lands on a neutral gold tile.
+        GameState state = ProceduralGame.Build(
+            Cols, Rows, SixPlayers(), seed,
+            new MapGenOptions(IncludeMountains: true, IncludeGold: true));
+
+        int gold = 0;
+        foreach (HexTile t in state.Grid.Tiles)
+        {
+            if (!t.IsGold) continue;
+            gold++;
+            Assert.True(t.Owner.IsNone, $"Gold tile {t.Coord} should be neutral");
+        }
+        Assert.True(gold > 0, $"Expected gold for seed {seed}");
+
+        foreach (Territory territory in state.Territories)
+        {
+            if (!territory.HasCapital) continue;
+            Assert.False(territory.Owner.IsNone,
+                "A capital-bearing territory must be owned, never neutral");
+            HexTile? capTile = state.Grid.Get(territory.Capital!.Value);
+            Assert.NotNull(capTile);
+            Assert.False(capTile!.IsGold && capTile.Owner.IsNone,
+                "A capital must never sit on a neutral gold tile");
+        }
+    }
+
     [Fact]
     public void StartsAtTurnOneWithEmptyTreasuryAndGivenPlayers()
     {

@@ -538,9 +538,12 @@ public partial class MapEditorHudView : OrientationHud
         // accidentally repainting the fresh map.
         int seed = SeedFormat.NextSeed(new System.Random());
         _generateButton.FlashPress();
-        var options = new MapGenOptions(IncludeMountains: GameSettings.IncludeMountains);
+        var options = new MapGenOptions(
+            IncludeMountains: GameSettings.IncludeMountains,
+            IncludeGold: GameSettings.IncludeGold);
         Log.Debug(Log.LogCategory.Input,
-            $"[MapEditor] die press → seed={SeedFormat.ToHex(seed)} mountains={options.IncludeMountains}");
+            $"[MapEditor] die press → seed={SeedFormat.ToHex(seed)} " +
+            $"mountains={options.IncludeMountains} gold={options.IncludeGold}");
         GenerateRequested?.Invoke(seed, options);
         SelectHand();
     }

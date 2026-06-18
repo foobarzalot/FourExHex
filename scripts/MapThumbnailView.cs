@@ -106,7 +106,9 @@ public partial class MapThumbnailView : Control
         Log.Debug(Log.LogCategory.Display,
             $"MapThumbnail: request random seed={SeedFormat.ToHex(seed)} token={token}");
         // Mirror the New Game map toggles so the preview matches Start Game.
-        var options = new MapGenOptions(IncludeMountains: GameSettings.IncludeMountains);
+        var options = new MapGenOptions(
+            IncludeMountains: GameSettings.IncludeMountains,
+            IncludeGold: GameSettings.IncludeGold);
         _ = RenderAsync(() => ProceduralGame.Build(BoardCols, BoardRows, Player.BuildRoster(), seed, options),
             $"random seed={SeedFormat.ToHex(seed)}", token);
     }

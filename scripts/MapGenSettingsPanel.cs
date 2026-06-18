@@ -24,6 +24,7 @@ public sealed partial class MapGenSettingsPanel : CanvasLayer
     private ColorRect _backdrop = null!;
     private PanelContainer _panel = null!;
     private Button _mountainsBox = null!;
+    private Button _goldBox = null!;
 
     private static readonly Font _serifFont =
         GD.Load<FontFile>("res://fonts/DMSerifDisplay-Regular.ttf");
@@ -83,6 +84,8 @@ public sealed partial class MapGenSettingsPanel : CanvasLayer
 
         vbox.AddChild(UiToggle.BuildCheckRow(
             "Mountains", GameSettings.IncludeMountains, OnMountainsToggled, out _mountainsBox));
+        vbox.AddChild(UiToggle.BuildCheckRow(
+            "Gold", GameSettings.IncludeGold, OnGoldToggled, out _goldBox));
 
         var back = new Button
         {
@@ -101,9 +104,11 @@ public sealed partial class MapGenSettingsPanel : CanvasLayer
     public void Open()
     {
         if (IsOpen) return;
-        _mountainsBox.ButtonPressed = GameSettings.IncludeMountains;
         // ButtonPressed set programmatically does not raise Toggled — restyle by hand.
+        _mountainsBox.ButtonPressed = GameSettings.IncludeMountains;
         UiToggle.ApplyStyle(_mountainsBox, GameSettings.IncludeMountains);
+        _goldBox.ButtonPressed = GameSettings.IncludeGold;
+        UiToggle.ApplyStyle(_goldBox, GameSettings.IncludeGold);
         IsOpen = true;
         Visible = true;
         Log.Debug(Log.LogCategory.MapGen, "MapGenSettingsPanel: opened");
@@ -120,6 +125,12 @@ public sealed partial class MapGenSettingsPanel : CanvasLayer
     {
         GameSettings.IncludeMountains = pressed;
         Log.Debug(Log.LogCategory.MapGen, $"MapGenSettingsPanel: IncludeMountains -> {pressed}");
+    }
+
+    private void OnGoldToggled(bool pressed)
+    {
+        GameSettings.IncludeGold = pressed;
+        Log.Debug(Log.LogCategory.MapGen, $"MapGenSettingsPanel: IncludeGold -> {pressed}");
     }
 
     public override void _UnhandledInput(InputEvent @event)

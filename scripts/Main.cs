@@ -244,7 +244,9 @@ public partial class Main : Node2D
         {
             _players = Player.BuildRoster();
             _state = ProceduralGame.Build(cols, rows, _players, seed,
-                new MapGenOptions(IncludeMountains: GameSettings.IncludeMountains));
+                new MapGenOptions(
+                    IncludeMountains: GameSettings.IncludeMountains,
+                    IncludeGold: GameSettings.IncludeGold));
             _maxTurnNumber = quickDiagMode ? 200
                 : fullDiagMode ? 500
                 : int.MaxValue;
