@@ -1756,9 +1756,10 @@ live board thumbnail.
   shared `ProceduralGame.Build` (the same pipeline `Main` uses, so the preview
   can't drift from the real game); `RequestMap(name)` loads a map-editor map
   via `SaveStore.LoadMap(name).State` (full `GameState`, so neutral / gold /
-  mountain tiles preview). Requests are coalesced by a token so rapid seed
-  typing only snapshots the latest. Refreshed on re-roll, seed change, and map
-  selection; instrumented under `Display:Debug`.
+  mountain tiles preview); `RequestSlot(name)` loads an in-progress save via
+  `SaveStore.LoadSlot(name).State` (the Load Game dialog, #55). Requests are
+  coalesced by a token so rapid seed typing only snapshots the latest. Refreshed
+  on re-roll, seed change, and map selection; instrumented under `Display:Debug`.
 
 - **Stable, sharp, oriented framing.** The `SubViewport` is sized to the
   *nominal grid* aspect (seed-independent, via `ThumbnailLayout.FitInside`),
@@ -1782,6 +1783,22 @@ live board thumbnail.
   is a single centered column and landscape mirrors the map-config page's
   rail-beside-thumbnail. `Escape` cancels the sheet and, on the ladder itself,
   backs out to the landing menu.
+
+- **Load Game preview (issue #55).** `SlotPickerDialog` (the modal shared by
+  main-menu / in-game Load Game, map-editor Load Map, tutorial-builder Load
+  Tutorial) has two bodies, chosen per-open by `ShowSlots`'s optional
+  `thumbnailStore`. **Text-only** (editor / tutorial hosts, no store) keeps the
+  small fixed centered modal of click-to-load buttons, scale-to-fit on a narrow
+  viewport. **Preview** (the two game-save hosts pass `_saveStore`) switches to a
+  `LandscapeMenuChrome` fill-to-cap surface mirroring the map-config page: a
+  selectable slot list (toggle buttons in a `ButtonGroup`) beside one large
+  `MapThumbnailView` of the selected save (`RequestSlot`), plus Cancel / Load.
+  Like the New Game page it has distinct portrait (list-above-preview) and
+  landscape (list-rail | preview) layouts, rebuilt on an orientation flip and
+  capped at `520×920` / `920×520`. Selecting a slot re-points the single preview;
+  the preview render is deferred one frame so it sizes against its laid-out rect.
+  A missing/corrupt save degrades to a blank preview (the row stays loadable) via
+  `MapThumbnailView`'s existing log-and-bail.
 
 ## Call flows
 

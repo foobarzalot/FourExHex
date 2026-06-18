@@ -690,7 +690,8 @@ public partial class Main : Node2D
             info => info.IsAutosave
                 ? $"[Autosave] turn {info.TurnNumber} — {SlotPickerDialog.FormatTimestamp(info.SavedAtUnix)}"
                 : $"{info.SlotName} — turn {info.TurnNumber} — {SlotPickerDialog.FormatTimestamp(info.SavedAtUnix)}",
-            OnLoadSlotPressedFromPause);
+            OnLoadSlotPressedFromPause,
+            thumbnailStore: _saveStore);
     }
 
     private void OnLoadDialogClosedDuringPause()

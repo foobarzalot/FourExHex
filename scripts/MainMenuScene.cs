@@ -1565,7 +1565,8 @@ public partial class MainMenuScene : Control
             info => info.IsAutosave
                 ? $"[Autosave] turn {info.TurnNumber} — {SlotPickerDialog.FormatTimestamp(info.SavedAtUnix)}"
                 : $"{info.SlotName} — turn {info.TurnNumber} — {SlotPickerDialog.FormatTimestamp(info.SavedAtUnix)}",
-            OnLoadSlotPressed);
+            OnLoadSlotPressed,
+            thumbnailStore: _saveStore);
     }
 
     private void OnLoadSlotPressed(string slotName)
