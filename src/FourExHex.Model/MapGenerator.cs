@@ -43,8 +43,10 @@ public static class MapGenerator
     private const int MinLandCount = 30;
     private const int MaxRetries = 8;
 
-    public static MapGenResult BuildInitialGrid(int cols, int rows, IReadOnlyList<Player> players, int seed)
+    public static MapGenResult BuildInitialGrid(
+        int cols, int rows, IReadOnlyList<Player> players, int seed, MapGenOptions? options = null)
     {
+        options ??= MapGenOptions.None;
         var rng = new Random(seed);
 
         HashSet<HexCoord> land = new();
@@ -59,6 +61,14 @@ public static class MapGenerator
         {
             PlayerId owner = players[rng.Next(players.Count)].Id;
             grid.Add(new HexTile(coord, owner));
+        }
+
+        // Mountain ranges (issue #48), gated so a disabled pass makes zero RNG
+        // draws and the map stays byte-identical to the no-options baseline.
+        // Placed before the tree scatter so trees simply avoid mountain tiles.
+        if (options.IncludeMountains)
+        {
+            ScatterMountainRanges(grid, land, rng);
         }
 
         // Water = every coord in the rectangle that isn't land.
@@ -84,13 +94,89 @@ public static class MapGenerator
             HexCoord pick = landCoordList[idx];
             landCoordList.RemoveAt(idx);
             HexTile? t = grid.Get(pick);
-            if (t != null && t.Occupant == null)
+            if (t != null && t.Occupant == null && !t.IsMountain)
             {
                 t.Occupant = new Tree();
             }
         }
 
         return new MapGenResult(grid, water);
+    }
+
+    // Mountain-range scatter (issue #48, Phase 1). Each "range" is a biased
+    // random walk (a "mountain agent"): pick a land start tile and a hex
+    // direction, then walk a chain that mostly continues straight but
+    // occasionally veers ±1, marking each tile a mountain. Each spine tile also
+    // has a chance to drop one perpendicular "foothill" neighbor, giving 1–2-wide
+    // ranges rather than 1-wide lines or random speckle. Repeat ranges until ~9%
+    // of land is mountain. All draws are integer rng.Next (no floats — Model
+    // assembly rule) and the start-tile list is sorted, so it stays deterministic
+    // in the seed.
+    private const int MountainLandPercent = 9; // target mountain coverage of land
+    private const int MinRangeLen = 4;
+    private const int MaxRangeLen = 9;
+    private const int TurnPercent = 22;    // per-step chance to veer one hex CCW (and again CW)
+    private const int ThickenPercent = 45; // per-spine-tile chance to add a side foothill
+
+    private static void ScatterMountainRanges(HexGrid grid, HashSet<HexCoord> land, Random rng)
+    {
+        if (land.Count == 0) return;
+
+        int target = land.Count * MountainLandPercent / 100;
+        if (target <= 0) return;
+
+        // Sorted start-tile list keeps sampling deterministic regardless of the
+        // HashSet's internal ordering.
+        var landList = new List<HexCoord>(land);
+        landList.Sort();
+
+        int placed = 0;
+        int attempts = 0;
+        int maxAttempts = target * 4;
+        while (placed < target && attempts < maxAttempts)
+        {
+            attempts++;
+            HexCoord cur = landList[rng.Next(landList.Count)];
+            int dir = rng.Next(6);
+            int len = rng.Next(MinRangeLen, MaxRangeLen + 1);
+            for (int step = 0; step <= len && placed < target; step++)
+            {
+                if (!land.Contains(cur)) break; // walked off the landmass — end the range
+                placed += MarkMountain(grid, cur);
+
+                // Thicken: occasional foothill on one (roughly perpendicular) side.
+                if (rng.Next(100) < ThickenPercent)
+                {
+                    int sideDir = (dir + (rng.Next(2) == 0 ? 2 : 4)) % 6;
+                    HexCoord side = cur.Neighbor(sideDir);
+                    if (land.Contains(side)) placed += MarkMountain(grid, side);
+                }
+
+                // Advance with an occasional ±1 veer so the spine bends.
+                int v = rng.Next(100);
+                if (v < TurnPercent) dir = (dir + 5) % 6;
+                else if (v < 2 * TurnPercent) dir = (dir + 1) % 6;
+                cur = cur.Neighbor(dir);
+            }
+        }
+
+        Log.Debug(Log.LogCategory.MapGen,
+            $"[mapgen] mountains: placed {placed} across {attempts} ranges, target {target} (land {land.Count})");
+    }
+
+    // Set the mountain flag on a land tile, clearing any tree (mountain and tree
+    // are mutually exclusive) and forfeiting ownership — a generated range is
+    // neutral terrain players must capture, not pre-owned land. Returns 1 if the
+    // tile was newly marked, else 0 so the caller can count real coverage without
+    // double-counting overlaps.
+    private static int MarkMountain(HexGrid grid, HexCoord coord)
+    {
+        HexTile? t = grid.Get(coord);
+        if (t == null || t.IsMountain) return 0;
+        t.IsMountain = true;
+        t.Owner = PlayerId.None;
+        if (t.Occupant is Tree) t.Occupant = null;
+        return 1;
     }
 
     /// <summary>

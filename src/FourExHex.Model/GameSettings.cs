@@ -69,6 +69,16 @@ public static class GameSettings
     public static int? MasterSeed = null;
 
     /// <summary>
+    /// Whether a freshly-generated map should scatter mountain ranges
+    /// (issue #48, Phase 1). Written by the New Game "Map Setup" checkbox
+    /// (and mirrored by the map editor's own toggle); read by <see cref="Main"/>
+    /// to build the <c>MapGenOptions</c> it passes to
+    /// <c>ProceduralGame.Build</c>. Defaults off so a fresh launch / skipped
+    /// menu generates the pre-#48 baseline map.
+    /// </summary>
+    public static bool IncludeMountains = false;
+
+    /// <summary>
     /// Campaign level index (0..255) when the next game is a campaign
     /// launch (issue #2), null for freeform games. Written by the
     /// campaign screen alongside <see cref="MasterSeed"/> (identity

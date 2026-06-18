@@ -67,6 +67,7 @@ public partial class MainMenuScene : Control
     private Button? _startButton;
     private OptionButton? _mapSelector;
     private HudIconButton? _rerollButton;
+    private Button? _mountainsCheck;
     private MapThumbnailView? _thumbnail;
 
     // The New Game flow is split into two pages (issue #40): player setup
@@ -838,6 +839,9 @@ public partial class MainMenuScene : Control
         seedRow.AddChild(_rerollButton);
         col.AddChild(seedRow);
 
+        // Mountain-range generation toggle (issue #48).
+        col.AddChild(ConfigureMountainsRow());
+
         // Live board thumbnail (issue #40) — expands to fill the mid-page space.
         _thumbnail = BuildThumbnail();
         _thumbnail.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
@@ -936,6 +940,28 @@ public partial class MainMenuScene : Control
         _seedField = field;
         _seedLift = new KeyboardLiftController(field, ApplyPlayConfigLayout, KeyboardLiftMargin, "MainMenu");
         return field;
+    }
+
+    /// <summary>"Include Mountains" toggle (issue #48): when on, a fresh
+    /// procedural map scatters mountain ranges. Writes
+    /// <see cref="GameSettings.IncludeMountains"/> and re-renders the thumbnail so
+    /// the preview matches Start Game. Re-created per orientation flip; reads its
+    /// state back from GameSettings so the rebuild restores it.</summary>
+    private Control ConfigureMountainsRow()
+    {
+        HBoxContainer row = UiToggle.BuildCheckRow(
+            "Include Mountains",
+            GameSettings.IncludeMountains,
+            on =>
+            {
+                GameSettings.IncludeMountains = on;
+                Log.Debug(Log.LogCategory.MapGen, $"MainMenu: IncludeMountains -> {on}");
+                RefreshThumbnail();
+            },
+            out Button box,
+            captionFontSize: 21);
+        _mountainsCheck = box;
+        return row;
     }
 
     /// <summary>"Config rail + player list" landscape New Game (issue #34): a
@@ -1065,6 +1091,9 @@ public partial class MainMenuScene : Control
         _rerollButton.CustomMinimumSize = new Vector2(44, 44);
         seedRow.AddChild(_rerollButton);
         rail.AddChild(seedRow);
+
+        // Mountain-range generation toggle (issue #48).
+        rail.AddChild(ConfigureMountainsRow());
 
         rail.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
 

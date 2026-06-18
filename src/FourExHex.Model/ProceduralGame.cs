@@ -17,11 +17,12 @@ public static class ProceduralGame
     /// capitals), and wrap it in a turn-1 <see cref="GameState"/> with an empty
     /// treasury. Same (cols, rows, players, seed) → identical state.
     /// </summary>
-    public static GameState Build(int cols, int rows, IReadOnlyList<Player> players, int seed)
+    public static GameState Build(
+        int cols, int rows, IReadOnlyList<Player> players, int seed, MapGenOptions? options = null)
     {
         var turnState = new TurnState(players);
         var treasury = new Treasury();
-        MapGenResult mapGen = MapGenerator.BuildInitialGrid(cols, rows, players, seed);
+        MapGenResult mapGen = MapGenerator.BuildInitialGrid(cols, rows, players, seed, options);
         HexGrid grid = mapGen.Grid;
         IReadOnlyList<Territory> territories = TerritoryFinder.Recompute(
             grid, new List<Territory>());

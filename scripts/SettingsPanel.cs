@@ -467,42 +467,8 @@ public sealed partial class SettingsPanel : CanvasLayer
     /// toggle Button so Open() can re-sync its pressed state. RebuildBody
     /// parents the row into the current single/two-column arrangement.
     /// </summary>
-    private HBoxContainer BuildCheckRow(string label, bool initial, Action<bool> onToggled, out Button box)
-    {
-        var row = new HBoxContainer();
-        row.AddThemeConstantOverride("separation", 12);
-
-        var caption = new Label
-        {
-            Text = label,
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        caption.AddThemeFontSizeOverride("font_size", 24);
-        caption.AddThemeColorOverride("font_color", UiPalette.InkSoft);
-        row.AddChild(caption);
-
-        box = new Button
-        {
-            ToggleMode = true,
-            ButtonPressed = initial,
-            FocusMode = Control.FocusModeEnum.None,
-            CustomMinimumSize = new Vector2(32, 32),
-            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
-        };
-        Button boxLocal = box;
-        boxLocal.AddThemeFontSizeOverride("font_size", 22);
-        boxLocal.Toggled += pressed =>
-        {
-            ApplyCheckBoxStyle(boxLocal, pressed);
-            onToggled(pressed);
-        };
-        AudioBus.AttachClick(boxLocal);
-        ApplyCheckBoxStyle(boxLocal, initial);
-        row.AddChild(boxLocal);
-
-        return row;
-    }
+    private HBoxContainer BuildCheckRow(string label, bool initial, Action<bool> onToggled, out Button box) =>
+        UiToggle.BuildCheckRow(label, initial, onToggled, out box);
 
     /// <summary>
     /// Build one parentless four-button speed radio row (Slow / Normal / Fast /
@@ -542,48 +508,8 @@ public sealed partial class SettingsPanel : CanvasLayer
         return row;
     }
 
-    /// <summary>
-    /// Repaint the square toggle: gold filled with a dark check when on,
-    /// dark with a light border when off. Hover only brightens the
-    /// border/fill — because the box holds nothing but a centered glyph,
-    /// no caption or content shifts under the cursor.
-    /// </summary>
-    private static void ApplyCheckBoxStyle(Button box, bool pressed)
-    {
-        box.Text = pressed ? "✓" : "";
-
-        StyleBoxFlat Build(Color bg, Color border) => new StyleBoxFlat
-        {
-            BgColor = bg,
-            BorderColor = border,
-            BorderWidthLeft = 2,
-            BorderWidthRight = 2,
-            BorderWidthTop = 2,
-            BorderWidthBottom = 2,
-            CornerRadiusTopLeft = 4,
-            CornerRadiusTopRight = 4,
-            CornerRadiusBottomLeft = 4,
-            CornerRadiusBottomRight = 4,
-        };
-
-        StyleBoxFlat normal = pressed
-            ? Build(UiPalette.Gold, UiPalette.GoldDeep)
-            : Build(UiPalette.BgElev, UiPalette.LineHard);
-        StyleBoxFlat hover = pressed
-            ? Build(UiPalette.Gold, UiPalette.Ink)
-            : Build(UiPalette.BgElev, UiPalette.Ink);
-
-        box.AddThemeStyleboxOverride("normal", normal);
-        box.AddThemeStyleboxOverride("pressed", normal);
-        box.AddThemeStyleboxOverride("hover", hover);
-        box.AddThemeStyleboxOverride("hover_pressed", hover);
-
-        Color tick = pressed ? UiPalette.BgDeep : UiPalette.InkSoft;
-        box.AddThemeColorOverride("font_color", tick);
-        box.AddThemeColorOverride("font_hover_color", tick);
-        box.AddThemeColorOverride("font_pressed_color", tick);
-        box.AddThemeColorOverride("font_hover_pressed_color", tick);
-    }
+    private static void ApplyCheckBoxStyle(Button box, bool pressed) =>
+        UiToggle.ApplyStyle(box, pressed);
 
     private static string SpeedLabel(PlaybackSpeed speed) => speed switch
     {

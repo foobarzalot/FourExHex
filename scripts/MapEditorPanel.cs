@@ -78,10 +78,10 @@ public sealed partial class MapEditorPanel : Node2D
         Map.DragMode = DragModeFor(index);
     }
 
-    public void GenerateMap(int seed)
+    public void GenerateMap(int seed, MapGenOptions options)
     {
         _mapSeed = seed;
-        MapGenResult mapGen = MapGenerator.BuildInitialGrid(Map.Cols, Map.Rows, Players, seed);
+        MapGenResult mapGen = MapGenerator.BuildInitialGrid(Map.Cols, Map.Rows, Players, seed, options);
         _grid = mapGen.Grid;
         _water = new HashSet<HexCoord>(mapGen.WaterCoords);
         // Reset the territory thread on regen — the previous list points

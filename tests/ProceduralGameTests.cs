@@ -95,6 +95,42 @@ public class ProceduralGameTests
             new HashSet<HexCoord>(actual.WaterCoords));
     }
 
+    [Theory]
+    [InlineData(1)]
+    [InlineData(4242)]
+    [InlineData(9999)]
+    public void WithMountains_BuildsValidStateWithNeutralRanges(int seed)
+    {
+        // Mountains are placed neutral, so they flow through TerritoryFinder /
+        // CapitalReconciler as capital-less neutral regions. Guard that the full
+        // pipeline (Build → Recompute) stays valid: it doesn't throw, mountains
+        // are neutral, and every capital-bearing territory is owned (no capital
+        // ever lands on neutral mountain land).
+        GameState state = ProceduralGame.Build(
+            Cols, Rows, SixPlayers(), seed, new MapGenOptions(IncludeMountains: true));
+
+        int mountains = 0;
+        foreach (HexTile t in state.Grid.Tiles)
+        {
+            if (!t.IsMountain) continue;
+            mountains++;
+            Assert.True(t.Owner.IsNone, $"Mountain tile {t.Coord} should be neutral");
+        }
+        Assert.True(mountains > 0, $"Expected mountains for seed {seed}");
+
+        foreach (Territory territory in state.Territories)
+        {
+            if (territory.HasCapital)
+            {
+                Assert.False(territory.Owner.IsNone,
+                    "A capital-bearing territory must be owned, never neutral");
+                HexTile? capTile = state.Grid.Get(territory.Capital!.Value);
+                Assert.NotNull(capTile);
+                Assert.False(capTile!.IsMountain, "A capital must never sit on a mountain");
+            }
+        }
+    }
+
     [Fact]
     public void StartsAtTurnOneWithEmptyTreasuryAndGivenPlayers()
     {

@@ -105,7 +105,9 @@ public partial class MapThumbnailView : Control
         int token = ++_renderToken;
         Log.Debug(Log.LogCategory.Display,
             $"MapThumbnail: request random seed={SeedFormat.ToHex(seed)} token={token}");
-        _ = RenderAsync(() => ProceduralGame.Build(BoardCols, BoardRows, Player.BuildRoster(), seed),
+        // Mirror the New Game map toggles so the preview matches Start Game.
+        var options = new MapGenOptions(IncludeMountains: GameSettings.IncludeMountains);
+        _ = RenderAsync(() => ProceduralGame.Build(BoardCols, BoardRows, Player.BuildRoster(), seed, options),
             $"random seed={SeedFormat.ToHex(seed)}", token);
     }
 

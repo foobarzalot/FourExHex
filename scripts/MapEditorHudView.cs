@@ -48,7 +48,7 @@ public partial class MapEditorHudView : OrientationHud
     public static int MountainPaletteIndex => 7 + GameSettings.PlayerConfig.Length;
 
     public event Action? EscRequested;
-    public event Action<int>? GenerateRequested;
+    public event Action<int, MapGenOptions>? GenerateRequested;
     public event Action<int>? PaletteSelectionChanged;
     public event Action? UndoLastClicked;
     public event Action? UndoAllClicked;
@@ -73,6 +73,7 @@ public partial class MapEditorHudView : OrientationHud
     public int SelectedPaletteIndex { get; private set; }
 
     private HudIconButton _generateButton = null!;
+    private Button _mountainsCheck = null!;
     private HexPaletteButton[] _palette = null!;
     private HudIconButton _undoLastButton = null!;
     private HudIconButton _redoLastButton = null!;
@@ -124,6 +125,13 @@ public partial class MapEditorHudView : OrientationHud
         AudioBus.AttachClick(_generateButton);
         Log.Info(Log.LogCategory.Render,
             "MapEditorHudView: seed LineEdit removed; die-only randomize wired.");
+
+        // Mountain-range generation toggle (issue #48) — a square gold ✓ box
+        // (shared UiToggle look) read by the die press and folded into the
+        // MapGenOptions handed to GenerateRequested. State read on demand, so the
+        // toggle callback is a no-op.
+        _mountainsCheck = UiToggle.BuildToggleBox(initial: false, onToggled: _ => { }, size: 44f);
+        _mountainsCheck.TooltipText = "Scatter mountain ranges when regenerating (the die)";
 
         // Palette array: 0 = hand, 1..N = land color swatches, then neutral
         // (unowned land), water, tree, capital, tower, gold. _palette is
@@ -258,6 +266,7 @@ public partial class MapEditorHudView : OrientationHud
         _toolsCluster.AddChild(handButton);
         _palette[HandPaletteIndex] = handButton;
         _toolsCluster.AddChild(_generateButton);
+        _toolsCluster.AddChild(_mountainsCheck);
 
         SelectPalette(HandPaletteIndex, fireEvent: false);
 
@@ -527,9 +536,10 @@ public partial class MapEditorHudView : OrientationHud
         // accidentally repainting the fresh map.
         int seed = SeedFormat.NextSeed(new System.Random());
         _generateButton.FlashPress();
+        var options = new MapGenOptions(IncludeMountains: _mountainsCheck.ButtonPressed);
         Log.Debug(Log.LogCategory.Input,
-            $"[MapEditor] die press → seed={SeedFormat.ToHex(seed)}");
-        GenerateRequested?.Invoke(seed);
+            $"[MapEditor] die press → seed={SeedFormat.ToHex(seed)} mountains={options.IncludeMountains}");
+        GenerateRequested?.Invoke(seed, options);
         SelectHand();
     }
 
