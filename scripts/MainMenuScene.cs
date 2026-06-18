@@ -92,14 +92,14 @@ public partial class MainMenuScene : Control
     // never-connected signal).
     private bool _viewportResizeHooked;
 
-    // Mobile keyboard avoidance for the seed field (issue #4).
-    // FOUREXHEX_FAKE_KB=<physical px> simulates an on-screen keyboard on
-    // desktop (and forces the mobile Return-dismisses behavior) so the
-    // lift is testable without a device.
+    // Mobile keyboard avoidance for the seed field (issue #4). The shared
+    // KeyboardLiftController (scripts/KeyboardLiftController.cs) owns the
+    // per-frame poll + lift state and reads FOUREXHEX_FAKE_KB; this scene
+    // just drives Poll() from _Process while the seed field is focused and
+    // supplies ApplyPlayConfigLayout as the apply hook. Rebuilt alongside the
+    // seed field in BuildSeedField (an orientation flip frees the old field).
     private const float KeyboardLiftMargin = 16f;
-    private float _fakeKeyboardPhysicalHeight;
-    private bool _mobileSeedFieldBehavior;
-    private float _keyboardLift;
+    private KeyboardLiftController? _seedLift;
 
     public override void _Ready()
     {
@@ -129,13 +129,6 @@ public partial class MainMenuScene : Control
 #if DEBUG
         CheatMenu.Attach(this);
 #endif
-
-        string fakeKb = OS.GetEnvironment("FOUREXHEX_FAKE_KB");
-        if (fakeKb.Length > 0 && float.TryParse(fakeKb, out float fakeKbHeight))
-        {
-            _fakeKeyboardPhysicalHeight = fakeKbHeight;
-        }
-        _mobileSeedFieldBehavior = OS.HasFeature("mobile") || _fakeKeyboardPhysicalHeight > 0f;
 
         // Stretch to fill the viewport so the scrim/background and
         // centered content behave predictably.
@@ -231,7 +224,7 @@ public partial class MainMenuScene : Control
         // Both orientations use the fill-to-cap surface now; ApplyPlayConfigLayout
         // picks the orientation cap and carries any active seed-field keyboard
         // lift so a resize while the keyboard is up doesn't snap it back down.
-        if (_playConfigSurface != null) ApplyPlayConfigLayout(_keyboardLift);
+        if (_playConfigSurface != null) ApplyPlayConfigLayout(_seedLift?.CurrentLift ?? 0f);
         // The campaign panel is NOT scaled — it fills the viewport and
         // scrolls (anchors re-solve on resize on their own; an orientation
         // flip rebuilds it via RebuildCampaignOnOrientationFlip below).
@@ -244,7 +237,7 @@ public partial class MainMenuScene : Control
     {
         Vector2 viewport = GetViewportRect().Size;
         if (_landingSurface != null) LandscapeMenuChrome.ApplyLayout(_landingSurface, viewport, s);
-        if (_playConfigSurface != null) ApplyPlayConfigLayout(_keyboardLift);
+        if (_playConfigSurface != null) ApplyPlayConfigLayout(_seedLift?.CurrentLift ?? 0f);
     }
 
     /// <summary>Rebuild the landing panel when a viewport resize flips the
@@ -323,10 +316,11 @@ public partial class MainMenuScene : Control
 
         // The freed seed field never fires FocusExited, so stop the
         // keyboard-lift polling it may have left running. The new panel
-        // starts with default anchor offsets, i.e. zero lift.
+        // starts with default anchor offsets, i.e. zero lift. (BuildSeedField
+        // replaces _seedLift with a fresh controller for the new field.)
         SetProcess(false);
         SetProcessInput(false);
-        _keyboardLift = 0f;
+        _seedLift?.Reset();
 
         Control old = _playConfigPanel;
         int treeIndex = old.GetIndex();
@@ -940,6 +934,7 @@ public partial class MainMenuScene : Control
         // printable-key events before _UnhandledInput sees them.
         field.GuiInput += OnSeedFieldGuiInput;
         _seedField = field;
+        _seedLift = new KeyboardLiftController(field, ApplyPlayConfigLayout, KeyboardLiftMargin, "MainMenu");
         return field;
     }
 
@@ -1482,24 +1477,13 @@ public partial class MainMenuScene : Control
         {
             // LineEdit consumes Enter by default, so without this hook
             // _UnhandledInput would never see it while the seed field
-            // is focused.
+            // is focused. Enter never starts the game — it just dismisses
+            // the on-screen keyboard and stays on the config screen so the
+            // rest of the settings remain adjustable (issues #4, #57).
             _seedField?.AcceptEvent();
-            if (_mobileSeedFieldBehavior)
-            {
-                // Mobile: Return dismisses the on-screen keyboard and stays
-                // on the config screen so the rest of the settings remain
-                // adjustable (issue #4).
-                Log.Debug(Log.LogCategory.Input,
-                    "MainMenu: seed-field Return (mobile) -> dismiss keyboard");
-                _seedField?.ReleaseFocus();
-            }
-            else
-            {
-                // Desktop: mirror the unfocused behavior — start the game.
-                Log.Debug(Log.LogCategory.Input,
-                    "MainMenu: seed-field Enter (desktop) -> start game");
-                OnStartPressed();
-            }
+            Log.Debug(Log.LogCategory.Input,
+                "MainMenu: seed-field Enter -> dismiss keyboard");
+            _seedField?.ReleaseFocus();
         }
     }
 
@@ -1536,12 +1520,13 @@ public partial class MainMenuScene : Control
             "MainMenu: seed field unfocused; keyboard-lift polling off");
         SetProcess(false);
         SetProcessInput(false);
-        ApplyKeyboardLift(0f);
+        _seedLift?.Reset();
     }
 
     public override void _Process(double delta)
     {
-        UpdateKeyboardLift();
+        if (_seedField == null || _playConfigPanel == null) return;
+        _seedLift?.Poll(GetViewportRect().Size.Y, GetWindow().ContentScaleFactor);
     }
 
     /// <summary>A press that lands outside the focused seed field dismisses
@@ -1563,37 +1548,6 @@ public partial class MainMenuScene : Control
         Log.Debug(Log.LogCategory.Input,
             "MainMenu: tap outside seed field -> dismiss keyboard");
         _seedField.ReleaseFocus();
-    }
-
-    private void UpdateKeyboardLift()
-    {
-        if (_seedField == null || _playConfigPanel == null) return;
-        float physicalHeight = _fakeKeyboardPhysicalHeight > 0f
-            ? _fakeKeyboardPhysicalHeight
-            : DisplayServer.VirtualKeyboardGetHeight();
-        float scaleFactor = GetWindow().ContentScaleFactor;
-        float logicalHeight = scaleFactor > 0f ? physicalHeight / scaleFactor : physicalHeight;
-        // Measure the field's unlifted bottom edge (add back the applied
-        // lift) so the lift doesn't feed back into its own input.
-        float fieldBottomY = _seedField.GetGlobalRect().End.Y + _keyboardLift;
-        float lift = KeyboardAvoidance.LiftFor(
-            fieldBottomY, GetViewportRect().Size.Y, logicalHeight, KeyboardLiftMargin);
-        ApplyKeyboardLift(lift);
-    }
-
-    /// <summary>Translate the play-config surface up by <paramref name="lift"/>
-    /// logical px so the on-screen keyboard never covers the seed field. Both
-    /// orientations re-lay out the centered fill surface with the lift applied
-    /// (FitPanels / safe-area changes re-pass <see cref="_keyboardLift"/>, so
-    /// they don't snap it back down).</summary>
-    private void ApplyKeyboardLift(float lift)
-    {
-        if (_playConfigSurface == null) return;
-        if (Mathf.IsEqualApprox(lift, _keyboardLift)) return;
-        _keyboardLift = lift;
-        ApplyPlayConfigLayout(lift);
-        Log.Debug(Log.LogCategory.Display,
-            $"MainMenu: keyboard lift -> {lift:0.#} logical px ({_playConfigOrientation})");
     }
 
     private void BuildLoadDialog()

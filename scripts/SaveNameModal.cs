@@ -35,6 +35,13 @@ public sealed partial class SaveNameModal : CanvasLayer
 
     private LineEdit _lineEdit = null!;
     private ColorRect _backdrop = null!;
+    private PanelContainer _panel = null!;
+
+    // On-screen-keyboard avoidance for the slot-name field (issue #57): lift
+    // the centered panel so the keyboard never covers the field. Shared poller
+    // (scripts/KeyboardLiftController.cs); driven from _Process while focused.
+    private const float KeyboardLiftMargin = 16f;
+    private KeyboardLiftController _lift = null!;
 
     private Label _errorBodyLabel = null!;
     private PanelContainer _errorPanel = null!;
@@ -48,6 +55,9 @@ public sealed partial class SaveNameModal : CanvasLayer
         // Always — Save Game is reached from the pause menu where
         // GetTree().Paused is true; default Inherit would freeze the modal.
         ProcessMode = ProcessModeEnum.Always;
+        // Keyboard-lift polling runs only while the field has focus
+        // (re-enabled in the field's FocusEntered handler).
+        SetProcess(false);
 
         Vector2 viewport = GetViewport().GetVisibleRect().Size;
 
@@ -55,15 +65,15 @@ public sealed partial class SaveNameModal : CanvasLayer
         _backdrop.GuiInput += OnBackdropInput;
         AddChild(_backdrop);
 
-        PanelContainer panel = ModalChrome.BuildCenteredPanel();
-        AddChild(panel);
+        _panel = ModalChrome.BuildCenteredPanel();
+        AddChild(_panel);
 
         var vbox = new VBoxContainer
         {
             CustomMinimumSize = new Vector2(420, 0),
         };
         vbox.AddThemeConstantOverride("separation", 18);
-        panel.AddChild(vbox);
+        _panel.AddChild(vbox);
 
         vbox.AddChild(ModalChrome.BuildSerifTitle(_title));
 
@@ -82,7 +92,23 @@ public sealed partial class SaveNameModal : CanvasLayer
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
         };
         _lineEdit.AddThemeFontSizeOverride("font_size", 22);
-        _lineEdit.TextSubmitted += _ => Confirm();
+        // Enter/Return never saves — it just dismisses the on-screen keyboard
+        // (issue #57). Saving requires an explicit Save-button tap.
+        _lineEdit.TextSubmitted += _ =>
+        {
+            Log.Debug(Log.LogCategory.Input, "SaveNameModal: Enter -> dismiss keyboard");
+            _lineEdit.ReleaseFocus();
+        };
+        // Keyboard-lift polling runs only while the field is focused; shift the
+        // centered panel up via its anchor offsets (anchors 0.5, GrowDirection
+        // Both -> symmetric negative offsets translate the panel up by `lift`).
+        _lift = new KeyboardLiftController(
+            _lineEdit,
+            lift => { _panel.OffsetTop = -lift; _panel.OffsetBottom = -lift; },
+            KeyboardLiftMargin,
+            "SaveNameModal");
+        _lineEdit.FocusEntered += () => SetProcess(true);
+        _lineEdit.FocusExited += () => { SetProcess(false); _lift.Reset(); };
         vbox.AddChild(_lineEdit);
 
         var buttonRow = new HBoxContainer
@@ -139,6 +165,9 @@ public sealed partial class SaveNameModal : CanvasLayer
         IsOpen = false;
         Visible = false;
         HideError();
+        // Stop keyboard-lift polling and drop any lift before hiding (the
+        // hidden field wouldn't otherwise fire FocusExited).
+        _lineEdit.ReleaseFocus();
         Log.Debug(Log.LogCategory.Input, "SaveNameModal.Close");
         Closed?.Invoke();
     }
@@ -153,6 +182,11 @@ public sealed partial class SaveNameModal : CanvasLayer
         _errorBackdrop.Visible = true;
         _errorPanel.Visible = true;
         Log.Debug(Log.LogCategory.Input, $"SaveNameModal.ShowError '{message}'");
+    }
+
+    public override void _Process(double delta)
+    {
+        _lift.Poll(GetViewport().GetVisibleRect().Size.Y, GetWindow().ContentScaleFactor);
     }
 
     private void Confirm()
