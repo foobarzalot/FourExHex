@@ -243,10 +243,18 @@ public partial class Main : Node2D
         else
         {
             _players = Player.BuildRoster();
-            _state = ProceduralGame.Build(cols, rows, _players, seed,
-                new MapGenOptions(
+            // Campaign levels derive their terrain features from the level number
+            // (fixed + reproducible, independent of the freeform New Game
+            // toggles); freeform games use the player's chosen toggles.
+            MapGenOptions mapGenOptions = _campaignLevel is int featureLvl
+                ? CampaignProgress.MapGenOptionsForLevel(featureLvl)
+                : new MapGenOptions(
                     IncludeMountains: GameSettings.IncludeMountains,
-                    IncludeGold: GameSettings.IncludeGold));
+                    IncludeGold: GameSettings.IncludeGold);
+            Log.Info(Log.LogCategory.MapGen,
+                $"Main: map-gen options mountains={mapGenOptions.IncludeMountains} " +
+                $"gold={mapGenOptions.IncludeGold} (campaign={_campaignLevel?.ToString() ?? "no"})");
+            _state = ProceduralGame.Build(cols, rows, _players, seed, mapGenOptions);
             _maxTurnNumber = quickDiagMode ? 200
                 : fullDiagMode ? 500
                 : int.MaxValue;

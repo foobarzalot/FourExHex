@@ -163,4 +163,61 @@ public class CampaignProgressTests
         Assert.Throws<ArgumentOutOfRangeException>(() => CampaignProgress.DifficultyForLevel(level));
         Assert.Throws<ArgumentOutOfRangeException>(() => CampaignProgress.LabelFor(level));
     }
+
+    // ── Per-level map-generation features (issue #48) ───────────────────────
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(42)]
+    [InlineData(255)]
+    public void MapGenOptionsForLevel_IsDeterministic(int level)
+    {
+        MapGenOptions a = CampaignProgress.MapGenOptionsForLevel(level);
+        MapGenOptions b = CampaignProgress.MapGenOptionsForLevel(level);
+        Assert.Equal(a.IncludeMountains, b.IncludeMountains);
+        Assert.Equal(a.IncludeGold, b.IncludeGold);
+    }
+
+    [Fact]
+    public void MapGenOptionsForLevel_VariesAcrossTheLadder()
+    {
+        int mtnOn = 0, mtnOff = 0, goldOn = 0, goldOff = 0;
+        for (int level = 0; level < CampaignProgress.LevelCount; level++)
+        {
+            MapGenOptions o = CampaignProgress.MapGenOptionsForLevel(level);
+            if (o.IncludeMountains) mtnOn++; else mtnOff++;
+            if (o.IncludeGold) goldOn++; else goldOff++;
+        }
+        // Both flags should appear on and off across the 256 levels — neither
+        // pinned, neither absent.
+        Assert.True(mtnOn > 0 && mtnOff > 0, $"mountains on={mtnOn} off={mtnOff}");
+        Assert.True(goldOn > 0 && goldOff > 0, $"gold on={goldOn} off={goldOff}");
+    }
+
+    [Fact]
+    public void MapGenOptionsForLevel_MountainsAndGoldAreNotPerfectlyCorrelated()
+    {
+        // The two flags are drawn independently, so the ladder should contain at
+        // least one level of each of the four combinations.
+        bool both = false, neither = false, mtnOnly = false, goldOnly = false;
+        for (int level = 0; level < CampaignProgress.LevelCount; level++)
+        {
+            MapGenOptions o = CampaignProgress.MapGenOptionsForLevel(level);
+            if (o.IncludeMountains && o.IncludeGold) both = true;
+            else if (!o.IncludeMountains && !o.IncludeGold) neither = true;
+            else if (o.IncludeMountains) mtnOnly = true;
+            else goldOnly = true;
+        }
+        Assert.True(both && neither && mtnOnly && goldOnly,
+            $"combos both={both} neither={neither} mtnOnly={mtnOnly} goldOnly={goldOnly}");
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(256)]
+    public void MapGenOptionsForLevel_RejectsOutOfRange(int level)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => CampaignProgress.MapGenOptionsForLevel(level));
+    }
 }

@@ -99,16 +99,22 @@ public partial class MapThumbnailView : Control
     /// called before <see cref="RequestMap"/>.</summary>
     public void SetSaveStore(SaveStore store) => _saveStore = store;
 
-    /// <summary>Preview the board the given seed would procedurally generate.</summary>
-    public void RequestRandom(int seed)
+    /// <summary>Preview the board the given seed would procedurally generate,
+    /// mirroring the New Game map toggles so the preview matches Start Game.</summary>
+    public void RequestRandom(int seed) =>
+        RequestRandom(seed, new MapGenOptions(
+            IncludeMountains: GameSettings.IncludeMountains,
+            IncludeGold: GameSettings.IncludeGold));
+
+    /// <summary>Preview the board for an explicit set of generation options —
+    /// used by the campaign confirm sheet, which derives its level's fixed
+    /// terrain features rather than reading the freeform toggles.</summary>
+    public void RequestRandom(int seed, MapGenOptions options)
     {
         int token = ++_renderToken;
         Log.Debug(Log.LogCategory.Display,
-            $"MapThumbnail: request random seed={SeedFormat.ToHex(seed)} token={token}");
-        // Mirror the New Game map toggles so the preview matches Start Game.
-        var options = new MapGenOptions(
-            IncludeMountains: GameSettings.IncludeMountains,
-            IncludeGold: GameSettings.IncludeGold);
+            $"MapThumbnail: request random seed={SeedFormat.ToHex(seed)} token={token} " +
+            $"mountains={options.IncludeMountains} gold={options.IncludeGold}");
         _ = RenderAsync(() => ProceduralGame.Build(BoardCols, BoardRows, Player.BuildRoster(), seed, options),
             $"random seed={SeedFormat.ToHex(seed)}", token);
     }

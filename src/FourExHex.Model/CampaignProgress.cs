@@ -166,6 +166,28 @@ public sealed class CampaignProgress
         return level;
     }
 
+    // Per-level map-generation features (issue #48). Each campaign level gets a
+    // fixed, reproducible mountains/gold mix derived from the level number —
+    // independent of the freeform New Game toggles and varied across the ladder.
+    private const int CampaignMountainChance = 55; // %; mountains slightly common
+    private const int CampaignGoldChance = 45;     // %; gold the rarer prize
+
+    /// <summary>The mountains/gold generation features for a campaign level
+    /// (issue #48). Deterministic — same level always yields the same options —
+    /// and decorrelated from both the freeform toggles and the map seed, so a
+    /// level's terrain is a fixed part of its identity.</summary>
+    public static MapGenOptions MapGenOptionsForLevel(int level)
+    {
+        ValidateLevel(level);
+        // Deterministic per-level draw, offset off the level number so it doesn't
+        // track the map seed (= level). Two sequential draws give independent
+        // mountains/gold flags. Integer-only (no floats — Model assembly rule).
+        var rng = new Random(unchecked(level * 2671 + 40503));
+        bool mountains = rng.Next(100) < CampaignMountainChance;
+        bool gold = rng.Next(100) < CampaignGoldChance;
+        return new MapGenOptions(IncludeMountains: mountains, IncludeGold: gold);
+    }
+
     private static void ValidateLevel(int level)
     {
         if (level is < 0 or >= LevelCount)

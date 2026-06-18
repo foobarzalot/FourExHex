@@ -215,7 +215,10 @@ public sealed partial class CampaignConfirmSheet : CanvasLayer
         if (IsOpen) return;
         IsOpen = true;
         Visible = true;
-        _thumbnail.RequestRandom(_seed);
+        // Preview the level's fixed terrain features (issue #48) — derived from
+        // the level, not the freeform New Game toggles — so the preview matches
+        // what the campaign game actually builds.
+        _thumbnail.RequestRandom(_seed, CampaignProgress.MapGenOptionsForLevel(_level));
         Log.Debug(Log.LogCategory.Display,
             $"CampaignConfirmSheet.Open level={CampaignProgress.LabelFor(_level)} " +
             $"seed={_seed} orient={_orientation}");
