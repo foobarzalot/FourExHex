@@ -1018,8 +1018,9 @@ public partial class MainMenuScene : Control
 
         AddLandscapeHeader(rail);
         rail.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
-        rail.AddChild(MakeLandscapeNavButton("Next", GoToMapPage));
+        // Back above the forward action (Next) in the vertical rail.
         rail.AddChild(MakeLandscapeNavButton("Back", OnBackPressed));
+        rail.AddChild(MakeLandscapeNavButton("Next", GoToMapPage));
 
         hbox.AddChild(new ColorRect
         {
@@ -1091,14 +1092,15 @@ public partial class MainMenuScene : Control
 
         rail.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
 
+        // Back above the forward action (Start Game) in the vertical rail.
+        rail.AddChild(MakeLandscapeNavButton("Back", GoToPlayerPage));
+
         _startButton = new Button { Text = "Start Game", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         _startButton.AddThemeFontSizeOverride("font_size", 27);
         _startButton.CustomMinimumSize = new Vector2(0, 54);
         _startButton.Pressed += OnStartPressed;
         AudioBus.AttachClick(_startButton);
         rail.AddChild(_startButton);
-
-        rail.AddChild(MakeLandscapeNavButton("Back", GoToPlayerPage));
 
         // Hairline divider between the rail and the thumbnail.
         hbox.AddChild(new ColorRect

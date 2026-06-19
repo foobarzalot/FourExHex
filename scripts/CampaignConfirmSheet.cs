@@ -135,8 +135,9 @@ public sealed partial class CampaignConfirmSheet : CanvasLayer
         rail.AddChild(MakeGoldRule(Control.SizeFlags.ShrinkBegin));
         rail.AddChild(MakeStatus(HorizontalAlignment.Left));
         rail.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
-        rail.AddChild(MakeSheetButton("Play", Confirm));
+        // Cancel above the forward action (Play) in the vertical rail.
         rail.AddChild(MakeSheetButton("Cancel", Cancel));
+        rail.AddChild(MakeSheetButton("Play", Confirm));
 
         hbox.AddChild(new ColorRect
         {
