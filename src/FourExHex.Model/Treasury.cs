@@ -4,13 +4,9 @@ using System.Collections.Generic;
 /// <summary>
 /// Holds the gold balance for every capital hex on the map, keyed by capital
 /// coord. Gold survives re-running TerritoryFinder as long as the capital's
-/// coordinate is still a capital in the new partition.
-///
-/// TODO (Step 10): add ReconcileAfterRecompute(oldTerritories, newTerritories)
-/// to handle captures. When two old capitals end up in the same new territory
-/// (merge), their gold should sum. When an old capital's hex gets captured by
-/// a different color, that gold is lost (consistent with Slay's rule that
-/// taking an enemy capital destroys the treasury).
+/// coordinate is still a capital in the new partition. Captures are reconciled
+/// by <see cref="ReconcileAfterCapture"/> (merge sums gold; a capital captured
+/// by a different color forfeits its gold, per Slay's rule).
 /// </summary>
 public class Treasury
 {

@@ -131,9 +131,9 @@ Consequences for the rest of this doc:
 - **`Log` is Godot-free** — the master logging system routes through
   an injectable `Log.Sink` that `Main` wires to `GD.Print`. See
   **Logging** below.
-- **Save format is v9.** Ownership is a player index on the wire (−1 =
+- **Save format is v10.** Ownership is a player index on the wire (−1 =
   `None`); claim-victory tiers are persisted by player index
-  (palette-independent). v2–v9 still load; v2–v4 migrate their legacy
+  (palette-independent). v2–v10 still load; v2–v4 migrate their legacy
   color-hex claim data via `GameSettings` palette matching. v6 renamed
   the unit levels (Peasant/Spearman/Knight/Baron →
   Recruit/Soldier/Captain/Commander); pre-v6 level names still load via
