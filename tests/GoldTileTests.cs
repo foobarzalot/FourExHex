@@ -5,8 +5,8 @@ namespace FourExHex.Tests;
 
 /// <summary>
 /// Gold hex tiles (issue #45): a per-tile <see cref="HexTile.IsGold"/> flag
-/// that doubles a tile's per-turn income (2 gp instead of 1) via the single
-/// income chokepoint <see cref="IncomeRules.IncomeFor"/>.
+/// that pays a tile 5x the ordinary per-turn income (5 gp instead of 1) via the
+/// single income chokepoint <see cref="IncomeRules.IncomeFor"/>.
 /// </summary>
 public class GoldTileTests
 {
@@ -58,7 +58,7 @@ public class GoldTileTests
         Assert.Equal(1, TreeRules.CountGoldIncomeTiles(territory, grid));
     }
 
-    // --- IncomeFor: the 2x bonus -----------------------------------------
+    // --- IncomeFor: the 5x bonus -----------------------------------------
 
     [Fact]
     public void IncomeFor_AllOrdinaryTiles_Unchanged()
@@ -70,14 +70,14 @@ public class GoldTileTests
     }
 
     [Fact]
-    public void IncomeFor_OneGoldTile_PaysDouble()
+    public void IncomeFor_OneGoldTile_Pays5x()
     {
-        // 3 tiles, one gold → 2 + 1 + 1 = 4.
+        // 3 tiles, one gold → 5 + 1 + 1 = 7.
         HexGrid grid = BuildRow(0, 2);
         grid.Get(new HexCoord(0, 0))!.IsGold = true;
         var territory = RowTerritory(0, 2);
 
-        Assert.Equal(4, IncomeRules.IncomeFor(territory, grid));
+        Assert.Equal(7, IncomeRules.IncomeFor(territory, grid));
     }
 
     [Theory]
@@ -85,7 +85,7 @@ public class GoldTileTests
     [InlineData("unit")]
     [InlineData("capital")]
     [InlineData("tower")]
-    public void IncomeFor_GoldWithNonBlockingOccupant_Pays2(string? occupant)
+    public void IncomeFor_GoldWithNonBlockingOccupant_Pays5(string? occupant)
     {
         HexGrid grid = BuildRow(0, 0);
         HexTile tile = grid.Get(new HexCoord(0, 0))!;
@@ -99,7 +99,7 @@ public class GoldTileTests
         };
         var territory = RowTerritory(0, 0);
 
-        Assert.Equal(2, IncomeRules.IncomeFor(territory, grid));
+        Assert.Equal(5, IncomeRules.IncomeFor(territory, grid));
     }
 
     [Theory]
@@ -121,7 +121,7 @@ public class GoldTileTests
     {
         // 5 tiles: 2 gold (one empty, one with a unit), 1 gold+tree (excluded),
         // 2 ordinary. Base income-producing tiles = 4 (gold+tree excluded);
-        // gold income tiles = 2 → total 4 + 2 = 6.
+        // gold income tiles = 2 → total 4 + 2*4 = 12.
         HexGrid grid = BuildRow(0, 4);
         grid.Get(new HexCoord(0, 0))!.IsGold = true;
         grid.Get(new HexCoord(1, 0))!.IsGold = true;
@@ -130,7 +130,7 @@ public class GoldTileTests
         grid.Get(new HexCoord(2, 0))!.Occupant = new Tree();
         var territory = RowTerritory(0, 4);
 
-        Assert.Equal(6, IncomeRules.IncomeFor(territory, grid));
+        Assert.Equal(12, IncomeRules.IncomeFor(territory, grid));
     }
 
     // --- Snapshot deep-copy (undo/redo) ----------------------------------

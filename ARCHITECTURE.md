@@ -578,16 +578,16 @@ Consequences for the rest of this doc:
 
 ## Gold tiles (issue #45)
 
-A **gold tile** is an income hotspot that pays its controlling player double
-the per-turn income of an ordinary tile (2 gp vs 1). Implemented as a single
+A **gold tile** is an income hotspot that pays its controlling player 5x
+the per-turn income of an ordinary tile (5 gp vs 1). Implemented as a single
 per-tile attribute that threads through every layer:
 
 - **Model.** `HexTile.IsGold` (bool, defaults false) — a terrain attribute
   orthogonal to `Owner` and `Occupant`: a gold tile can be owned by any player
   or neutral and hold any occupant.
-- **Income.** The 2× bonus lives in the single income chokepoint
+- **Income.** The 5× bonus lives in the single income chokepoint
   `IncomeRules.IncomeFor` = `TreeRules.CountIncomeProducingTiles` +
-  `CountGoldIncomeTiles · IncomeRules.GoldTileBonus` (bonus = 1, the one knob
+  `CountGoldIncomeTiles · IncomeRules.GoldTileBonus` (bonus = 4, the one knob
   to retune the gold earn rate). A gold tile under a `Tree`/`Grave` pays
   nothing — it's excluded from both counts, same as any dead-ground tile. Real
   play (`Treasury.CollectIncomeFor`) and the AI lookahead

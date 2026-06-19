@@ -9,11 +9,11 @@ public static class IncomeRules
 {
     /// <summary>
     /// Extra gold a gold tile (issue #45) yields per turn on top of the
-    /// ordinary 1 gp every income-producing tile pays. A bonus of 1 makes a
-    /// gold tile worth 2 gp/turn (double). Single integer constant — the one
+    /// ordinary 1 gp every income-producing tile pays. A bonus of 4 makes a
+    /// gold tile worth 5 gp/turn (5x). Single integer constant — the one
     /// place to retune the gold earn rate.
     /// </summary>
-    public const int GoldTileBonus = 1;
+    public const int GoldTileBonus = 4;
 
     /// <summary>
     /// Gold a territory yields in one turn: the count of income-producing
