@@ -151,10 +151,11 @@ public sealed partial class CreditsPanel : CanvasLayer
 
     private void OnSafeAreaChanged(LogicalSafeInsets _) => FitPanel();
 
-    /// <summary>Scale the fixed-size panel down (never up) so it fits within the
-    /// safe viewport — the same shrink-to-fit the main menu uses. In a short
-    /// landscape safe area the whole panel (and its scrolling credits body)
-    /// scales uniformly instead of clipping Back (issue #17).</summary>
+    /// <summary>Fit the panel to the safe viewport while keeping the credits at a
+    /// constant width and font size across orientations. Scale is driven by
+    /// <b>width only</b> (clamped ≤ 1), so a short landscape viewport doesn't
+    /// shrink the text — instead the panel's height is capped to fit and the
+    /// inner <see cref="ScrollContainer"/> simply scrolls further (issue #17).</summary>
     private void FitPanel()
     {
         Vector2 vp = GetViewport().GetVisibleRect().Size;
@@ -162,13 +163,25 @@ public sealed partial class CreditsPanel : CanvasLayer
         float availW = vp.X - safe.Left - safe.Right - ViewportMargin * 2f;
         float availH = vp.Y - safe.Top - safe.Bottom - ViewportMargin * 2f;
 
-        float scale = Mathf.Min(1f, Mathf.Min(availW / DesignWidth, availH / DesignHeight));
-        _panel.PivotOffset = new Vector2(DesignWidth, DesignHeight) * 0.5f;
+        // Width-only scale keeps the portrait width + font sizes in landscape.
+        // (Only a viewport narrower than the design width shrinks anything, the
+        // same as portrait on a very narrow phone.)
+        float scale = Mathf.Min(1f, availW / DesignWidth);
+
+        // Cap the (pre-scale) panel height so its scaled height fits the safe
+        // viewport; the scroll body absorbs the reduction by scrolling further.
+        float maxLogicalH = scale > 0f ? availH / scale : DesignHeight;
+        float panelH = Mathf.Min(DesignHeight, maxLogicalH);
+        _panel.OffsetTop = -panelH * 0.5f;
+        _panel.OffsetBottom = panelH * 0.5f;
+
+        _panel.PivotOffset = new Vector2(DesignWidth, panelH) * 0.5f;
         _panel.Scale = new Vector2(scale, scale);
 
         Log.Debug(Log.LogCategory.Render,
             $"CreditsPanel: fit viewport={vp.X:0}x{vp.Y:0} " +
-            $"safe=(t{safe.Top:0},b{safe.Bottom:0},l{safe.Left:0},r{safe.Right:0}) scale={scale:0.00}");
+            $"safe=(t{safe.Top:0},b{safe.Bottom:0},l{safe.Left:0},r{safe.Right:0}) " +
+            $"scale={scale:0.00} panelH={panelH:0}");
     }
 
     private void OnMetaClicked(Variant meta)
