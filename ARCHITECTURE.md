@@ -450,8 +450,9 @@ Consequences for the rest of this doc:
 │   MovementRules.ValidTargets / Move / PlaceNew /                         │
 │                  ArrivalConsumesAction (capture/tree/grave → true)        │
 │   DefenseRules.Defense(coord, grid, territory)                           │
-│   TreeRules.RunStartOfTurnGrowth / ConvertGravesToTrees /                │
-│             CountIncomeProducingTiles / CountGoldIncomeTiles             │
+│   TreeRules.RunStartOfTurnGrowth / RunNeutralGrowth /                    │
+│             ConvertGravesToTrees / CountIncomeProducingTiles /           │
+│             CountGoldIncomeTiles                                         │
 │   IncomeRules.IncomeFor (base tiles + GoldTileBonus per gold tile)       │
 │   UpkeepRules.UpkeepFor / TotalUpkeepFor / ApplyUpkeep / ApplyUpkeepFor  │
 │               / ForecastBankruptNextTurn / Classify -> EconomyOutlook    │
@@ -1524,7 +1525,19 @@ Runs in this fixed order for the now-current player:
 2. **Tree growth** — `TreeRules.RunStartOfTurnGrowth` (skipped during
    round 1, i.e. while `TurnNumber == 1`). Graves on the current
    player's tiles become trees; empty cells of their color with ≥2
-   neighboring trees become trees.
+   neighboring trees become trees. **Neutral-ground growth** runs in
+   the same beat but on its own cadence (issue #69):
+   `RunNeutralGrowthAtRoundStart` fires `TreeRules.RunNeutralGrowth`
+   (= `RunStartOfTurnGrowth` with `PlayerId.None`) **once per round**,
+   not once per player — gated to `TurnNumber > 1 && CurrentPlayerIndex
+   == 0` so neutral ground doesn't grow N× faster on an N-player map.
+   It's anchored to slot 0's visit each round (this `StartPlayerTurn`
+   when player 0 is active, or the phantom-turn branch of
+   `AdvanceToNextActivePlayer` when player 0 is eliminated), and is
+   stateless — needs no persisted marker because `TurnState`
+   (`TurnNumber` + `CurrentPlayerIndex`) already reconstructs the
+   anchor across save/load and undo. Logged once per round under
+   `Log.LogCategory.Turn`.
 3. **Reset movement** — `HasMovedThisTurn` cleared on the current
    player's units.
 4. **Collect income** — `Treasury.CollectIncomeFor` (skipped during
@@ -2877,10 +2890,11 @@ edits look identical to in-game terrain.
   predicate), and once captured it becomes ordinary owned land.
   Neutral placement is **editor-only** — `MapGenerator` never produces
   a `None`-owned tile. `PaintNeutral` sets the tile's owner to `None`
-  and **clears its occupant** (a neutral hex is empty unowned land), so
-  a player-bound occupant can't be stranded there; the tower tool can
-  then add a tower on top, which protects/radiates over the neutral
-  region as usual. Neutral tiles flood-fill into their own `None`-owned
+  and **clears only player-bound occupants** — a `Capital` (so none is
+  stranded on neutral land, the invariant `CapitalReconciler` enforces)
+  or a `Unit`. Terrain-like, owner-agnostic occupants (`Tower`, `Tree`,
+  `Grave`) **survive the repaint**: neutral ground legitimately holds
+  them — trees spread onto and graves rot on neutral tiles (issue #69). Neutral tiles flood-fill into their own `None`-owned
   `Territory`, which generates no income (`Treasury.CollectIncomeFor`
   skips non-owned, capital-less territories) and never gets a capital —
   `CapitalReconciler.Reconcile` short-circuits a `None`-owned territory

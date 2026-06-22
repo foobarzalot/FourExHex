@@ -215,14 +215,16 @@ public static class MapEditPaint
     /// <see cref="PlayerId.None"/>) — a land tile owned by no player, but
     /// capturable by any adjacent player (issue #39). Creates a tile (and
     /// removes the coord from <paramref name="water"/>) if it was water;
-    /// reassigns an existing tile in place otherwise. The tile's occupant
-    /// is cleared: a neutral hex is empty unowned land, so any player-bound
-    /// occupant (Capital, Unit) — and, like <see cref="PaintWater"/>, any
-    /// Tower/Tree/Grave — is discarded. Clearing the occupant is what keeps
-    /// a capital off neutral land (the invariant
-    /// <see cref="CapitalReconciler.Reconcile"/> enforces). Out-of-bounds
-    /// coords are no-ops. Returns the up-to-date territory list to thread
-    /// into the next call.
+    /// reassigns an existing tile in place otherwise. Only player-bound
+    /// occupants are discarded: a <see cref="Capital"/> (the invariant
+    /// <see cref="CapitalReconciler.Reconcile"/> enforces — no capital on
+    /// neutral land) or a <see cref="Unit"/> (owned by a specific player).
+    /// Terrain-like, owner-agnostic occupants — <see cref="Tower"/>,
+    /// <see cref="Tree"/>, <see cref="Grave"/> — survive the repaint:
+    /// neutral ground legitimately holds them (trees spread onto and
+    /// graves rot on neutral tiles, issue #69). Out-of-bounds coords are
+    /// no-ops. Returns the up-to-date territory list to thread into the
+    /// next call.
     /// </summary>
     public static IReadOnlyList<Territory> PaintNeutral(
         HexGrid grid,
@@ -238,7 +240,12 @@ public static class MapEditPaint
         if (existing != null)
         {
             existing.Owner = PlayerId.None;
-            existing.Occupant = null;
+            // Drop only player-bound occupants — neutral land keeps its
+            // terrain (Tower/Tree/Grave) but can't hold a Capital or Unit.
+            if (existing.Occupant is Capital || existing.Occupant is Unit)
+            {
+                existing.Occupant = null;
+            }
         }
         else
         {

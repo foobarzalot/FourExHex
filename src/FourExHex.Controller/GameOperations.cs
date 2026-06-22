@@ -363,6 +363,7 @@ public class GameOperations
         while (WinConditionRules.IsEliminated(_state.Turns.CurrentPlayer.Id, _state.Grid))
         {
             Player ghost = _state.Turns.CurrentPlayer;
+            RunNeutralGrowthAtRoundStart();
             if (_state.Turns.TurnNumber > 1)
             {
                 TreeRules.RunStartOfTurnGrowth(
@@ -394,6 +395,8 @@ public class GameOperations
         // Toggle the view's silent flag for the player about to act,
         // BEFORE PlayBankruptcy below.
         RefreshSilentMode();
+
+        RunNeutralGrowthAtRoundStart();
 
         if (_state.Turns.TurnNumber > 1)
         {
@@ -433,6 +436,28 @@ public class GameOperations
             HumanTurnFiredForCurrentTurn = true;
             _onHumanTurnStarted();
         }
+    }
+
+    /// <summary>
+    /// Neutral-ground tree growth (<see cref="TreeRules.RunNeutralGrowth"/>):
+    /// graves on unowned tiles rot to trees and trees spread onto empty
+    /// unowned tiles. Neutral tiles belong to no player's turn, so this
+    /// must fire exactly once per round rather than once per player —
+    /// otherwise neutral ground would grow N× faster on an N-player map.
+    /// Anchored to slot 0's visit each round (active <see cref="StartPlayerTurn"/>
+    /// or the phantom-turn branch in <see cref="AdvanceToNextActivePlayer"/>,
+    /// whichever handles player index 0), and skipped on round 1 to match
+    /// the per-player growth's <c>TurnNumber &gt; 1</c> guard.
+    /// </summary>
+    private void RunNeutralGrowthAtRoundStart()
+    {
+        if (_state.Turns.TurnNumber <= 1 || _state.Turns.CurrentPlayerIndex != 0)
+        {
+            return;
+        }
+        Log.Info(Log.LogCategory.Turn,
+            $"[T{_state.Turns.TurnNumber}] neutral growth phase (once per round)");
+        TreeRules.RunNeutralGrowth(_state.Grid, _state.WaterCoords);
     }
 
     /// <summary>

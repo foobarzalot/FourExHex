@@ -535,6 +535,82 @@ public class MapEditPaintTests
     }
 
     [Fact]
+    public void PaintNeutral_OverTreeTile_PreservesTree()
+    {
+        // Painting a tile neutral must NOT wipe a tree — neutral ground
+        // legitimately holds trees (they spread there, issue #69). Only
+        // the owner changes.
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = PlayerId.FromIndex(0);
+        var coord = HexCoord.FromOffset(2, 3);
+        IReadOnlyList<Territory> territories = MapEditPaint.PaintLand(
+            grid, water, new List<Territory>(), Cols, Rows, coord, color);
+        territories = MapEditPaint.PaintTreeToggle(
+            grid, water, territories, Cols, Rows, coord);
+        Assert.IsType<Tree>(grid.Get(coord)!.Occupant);
+
+        MapEditPaint.PaintNeutral(grid, water, territories, Cols, Rows, coord);
+
+        Assert.True(grid.Get(coord)!.Owner.IsNone);
+        Assert.IsType<Tree>(grid.Get(coord)!.Occupant);
+    }
+
+    [Fact]
+    public void PaintNeutral_OverTowerTile_PreservesTower()
+    {
+        // Painting a tile neutral must NOT wipe a tower.
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = PlayerId.FromIndex(0);
+        var coord = HexCoord.FromOffset(2, 3);
+        IReadOnlyList<Territory> territories = MapEditPaint.PaintLand(
+            grid, water, new List<Territory>(), Cols, Rows, coord, color);
+        territories = MapEditPaint.PaintTowerToggle(
+            grid, water, territories, Cols, Rows, coord);
+        Assert.IsType<Tower>(grid.Get(coord)!.Occupant);
+
+        MapEditPaint.PaintNeutral(grid, water, territories, Cols, Rows, coord);
+
+        Assert.True(grid.Get(coord)!.Owner.IsNone);
+        Assert.IsType<Tower>(grid.Get(coord)!.Occupant);
+    }
+
+    [Fact]
+    public void PaintNeutral_OverGraveTile_PreservesGrave()
+    {
+        // Graves are owner-agnostic terrain; a neutral grave is valid
+        // (it rots to a tree, issue #69), so neutral paint keeps it.
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = PlayerId.FromIndex(0);
+        var coord = HexCoord.FromOffset(2, 3);
+        IReadOnlyList<Territory> territories = MapEditPaint.PaintLand(
+            grid, water, new List<Territory>(), Cols, Rows, coord, color);
+        grid.Get(coord)!.Occupant = new Grave();
+
+        MapEditPaint.PaintNeutral(grid, water, territories, Cols, Rows, coord);
+
+        Assert.True(grid.Get(coord)!.Owner.IsNone);
+        Assert.IsType<Grave>(grid.Get(coord)!.Occupant);
+    }
+
+    [Fact]
+    public void PaintNeutral_OverUnitTile_ClearsUnit()
+    {
+        // Units are player-bound and cannot sit on neutral land — paint
+        // neutral drops them (mirrors the capital case).
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = PlayerId.FromIndex(0);
+        var coord = HexCoord.FromOffset(2, 3);
+        IReadOnlyList<Territory> territories = MapEditPaint.PaintLand(
+            grid, water, new List<Territory>(), Cols, Rows, coord, color);
+        grid.Get(coord)!.Occupant = new Unit(color);
+
+        MapEditPaint.PaintNeutral(grid, water, territories, Cols, Rows, coord);
+
+        Assert.True(grid.Get(coord)!.Owner.IsNone);
+        Assert.Null(grid.Get(coord)!.Occupant);
+    }
+
+    [Fact]
     public void PaintNeutral_RoundTripsThroughEditorSnapshot()
     {
         (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();

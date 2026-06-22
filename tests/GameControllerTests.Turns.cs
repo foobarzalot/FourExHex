@@ -7,6 +7,47 @@ namespace FourExHex.Tests;
 
 public partial class GameControllerTests
 {
+    // --- Neutral-ground growth (issue #69) -------------------------------
+
+    [Fact]
+    public void NeutralGrowth_FiresOncePerRound_NotOncePerPlayer()
+    {
+        // Neutral ground grows once per round, anchored to slot 0
+        // (Red), NOT once per player. Distinguishing cascade scenario:
+        //   P = neutral tree at (1,0), G = neutral grave at (3,0),
+        //   E = empty neutral tile at (2,0), adjacent to BOTH P and G.
+        // Round 2 slot 0 (Red): snapshot = {P}, so G rots to a tree but
+        // E (1 snapshot tree) stays empty. If growth also ran on Blue's
+        // turn (slot 1) the snapshot would now be {P, G-as-tree} and E
+        // would spread that same round — so E staying empty through
+        // Blue's turn proves growth did NOT run per player. E only
+        // spreads on round 3 slot 0.
+        var g = new TestGame();
+        g.Tile(1, 0).Owner = PlayerId.None; // P
+        g.Tile(2, 0).Owner = PlayerId.None; // E
+        g.Tile(3, 0).Owner = PlayerId.None; // G
+        g.Tile(1, 0).Occupant = new Tree();
+        g.Tile(3, 0).Occupant = new Grave();
+
+        g.Hud.ClickEndTurn(); // Red t1 -> Blue t1  (TurnNumber 1, no growth)
+
+        Assert.IsType<Grave>(g.Tile(3, 0).Occupant);
+        Assert.Null(g.Tile(2, 0).Occupant);
+
+        g.Hud.ClickEndTurn(); // Blue t1 -> Red t2 (slot 0): neutral phase R2
+
+        Assert.IsType<Tree>(g.Tile(3, 0).Occupant); // grave rotted
+        Assert.Null(g.Tile(2, 0).Occupant);         // E still empty (1 snapshot tree)
+
+        g.Hud.ClickEndTurn(); // Red t2 -> Blue t2 (slot 1): NO neutral phase
+
+        Assert.Null(g.Tile(2, 0).Occupant);         // proves slot 1 did not grow
+
+        g.Hud.ClickEndTurn(); // Blue t2 -> Red t3 (slot 0): neutral phase R3
+
+        Assert.IsType<Tree>(g.Tile(2, 0).Occupant);  // now P + G = 2 neighbors -> spreads
+    }
+
     // --- End turn ---------------------------------------------------------
 
     [Fact]
