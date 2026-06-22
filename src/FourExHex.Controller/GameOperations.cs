@@ -363,16 +363,8 @@ public class GameOperations
         while (WinConditionRules.IsEliminated(_state.Turns.CurrentPlayer.Id, _state.Grid))
         {
             Player ghost = _state.Turns.CurrentPlayer;
-            RunNeutralGrowthAtRoundStart();
-            if (_state.Turns.TurnNumber > 1)
-            {
-                TreeRules.RunStartOfTurnGrowth(
-                    _state.Grid, ghost.Id, _state.WaterCoords);
-            }
-            UpkeepRules.ApplyUpkeepFor(
-                ghost, _state.Territories, _state.Grid, _state.Treasury);
-            Log.Info(Log.LogCategory.Turn, $"[T{_state.Turns.TurnNumber}] phantom turn for eliminated " +
-                $"player {ghost.Name} (tree growth + upkeep)");
+            RunNeutralPhantomTurnIfRoundStart();
+            RunPhantomTurnFor(ghost.Id, ghost.Difficulty, ghost.Name);
             _state.Turns.EndTurn();
         }
     }
@@ -396,7 +388,7 @@ public class GameOperations
         // BEFORE PlayBankruptcy below.
         RefreshSilentMode();
 
-        RunNeutralGrowthAtRoundStart();
+        RunNeutralPhantomTurnIfRoundStart();
 
         if (_state.Turns.TurnNumber > 1)
         {
@@ -439,25 +431,46 @@ public class GameOperations
     }
 
     /// <summary>
-    /// Neutral-ground tree growth (<see cref="TreeRules.RunNeutralGrowth"/>):
-    /// graves on unowned tiles rot to trees and trees spread onto empty
-    /// unowned tiles. Neutral tiles belong to no player's turn, so this
-    /// must fire exactly once per round rather than once per player —
-    /// otherwise neutral ground would grow N× faster on an N-player map.
-    /// Anchored to slot 0's visit each round (active <see cref="StartPlayerTurn"/>
-    /// or the phantom-turn branch in <see cref="AdvanceToNextActivePlayer"/>,
-    /// whichever handles player index 0), and skipped on round 1 to match
-    /// the per-player growth's <c>TurnNumber &gt; 1</c> guard.
+    /// Start-of-turn processing for a territory-less owner that takes no
+    /// real turn: tree growth (skipped round 1) + upkeep + log. Shared by
+    /// the phantom-turn loop in <see cref="AdvanceToNextActivePlayer"/>
+    /// (eliminated roster players) and the neutral owner
+    /// (<see cref="PlayerId.None"/>), which is permanently in this state —
+    /// it owns ground but never a capital, so it never takes a real turn yet
+    /// its graves should still rot and its trees still spread. Upkeep is a
+    /// no-op for neutral (its territories hold no units) but is run anyway so
+    /// neutral goes through the exact same path as an eliminated player.
     /// </summary>
-    private void RunNeutralGrowthAtRoundStart()
+    private void RunPhantomTurnFor(PlayerId ownerId, Difficulty difficulty, string name)
+    {
+        if (_state.Turns.TurnNumber > 1)
+        {
+            TreeRules.RunStartOfTurnGrowth(_state.Grid, ownerId, _state.WaterCoords);
+        }
+        UpkeepRules.ApplyUpkeepFor(
+            ownerId, difficulty, _state.Territories, _state.Grid, _state.Treasury);
+        Log.Info(Log.LogCategory.Turn,
+            $"[T{_state.Turns.TurnNumber}] phantom turn for {name} (tree growth + upkeep)");
+    }
+
+    /// <summary>
+    /// Neutral ground (<see cref="PlayerId.None"/>) is a permanently
+    /// territory-less owner, so it takes a phantom turn (tree growth +
+    /// no-op upkeep) once per round rather than once per player —
+    /// otherwise neutral ground would grow N× faster on an N-player map.
+    /// Anchored to slot 0's visit each round (active
+    /// <see cref="StartPlayerTurn"/> or the phantom-turn branch in
+    /// <see cref="AdvanceToNextActivePlayer"/>, whichever handles player
+    /// index 0), and skipped on round 1 to match the per-player growth's
+    /// <c>TurnNumber &gt; 1</c> guard.
+    /// </summary>
+    private void RunNeutralPhantomTurnIfRoundStart()
     {
         if (_state.Turns.TurnNumber <= 1 || _state.Turns.CurrentPlayerIndex != 0)
         {
             return;
         }
-        Log.Info(Log.LogCategory.Turn,
-            $"[T{_state.Turns.TurnNumber}] neutral growth phase (once per round)");
-        TreeRules.RunNeutralGrowth(_state.Grid, _state.WaterCoords);
+        RunPhantomTurnFor(PlayerId.None, Difficulty.Soldier, "Neutral");
     }
 
     /// <summary>

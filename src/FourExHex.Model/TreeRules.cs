@@ -114,25 +114,6 @@ public static class TreeRules
 
 
     /// <summary>
-    /// Start-of-round growth for neutral ground — tiles with
-    /// <c>Owner == PlayerId.None</c>, which belong to no player's turn
-    /// and so are never visited by the per-player
-    /// <see cref="RunStartOfTurnGrowth"/>. Graves on neutral tiles rot
-    /// into trees and trees spread onto empty neutral tiles under the
-    /// exact same inland (>= 2 tree neighbors) / coastal (>= 1 tree and
-    /// >= 1 water neighbor) predicate, never onto mountains (#37), with
-    /// the same start-of-phase snapshot semantics. This is a thin alias
-    /// for <see cref="RunStartOfTurnGrowth"/> with
-    /// <see cref="PlayerId.None"/> as the owner — the owner filter and
-    /// grave conversion already match neutral tiles when passed None, so
-    /// no spread logic is duplicated. The caller fires this once per
-    /// round (see <c>GameOperations</c>), not once per player, so
-    /// neutral ground doesn't grow N× faster on a 6-player map.
-    /// </summary>
-    public static void RunNeutralGrowth(HexGrid grid, IReadOnlySet<HexCoord> waterCoords)
-        => RunStartOfTurnGrowth(grid, PlayerId.None, waterCoords);
-
-    /// <summary>
     /// Number of tiles in <paramref name="territory"/> that produce
     /// income for their owner. Tree and grave tiles are excluded —
     /// they are dead ground and pay nothing. Units, capitals, towers,

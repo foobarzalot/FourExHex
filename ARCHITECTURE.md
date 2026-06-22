@@ -450,9 +450,8 @@ Consequences for the rest of this doc:
 │   MovementRules.ValidTargets / Move / PlaceNew /                         │
 │                  ArrivalConsumesAction (capture/tree/grave → true)        │
 │   DefenseRules.Defense(coord, grid, territory)                           │
-│   TreeRules.RunStartOfTurnGrowth / RunNeutralGrowth /                    │
-│             ConvertGravesToTrees / CountIncomeProducingTiles /           │
-│             CountGoldIncomeTiles                                         │
+│   TreeRules.RunStartOfTurnGrowth / ConvertGravesToTrees /                │
+│             CountIncomeProducingTiles / CountGoldIncomeTiles             │
 │   IncomeRules.IncomeFor (base tiles + GoldTileBonus per gold tile)       │
 │   UpkeepRules.UpkeepFor / TotalUpkeepFor / ApplyUpkeep / ApplyUpkeepFor  │
 │               / ForecastBankruptNextTurn / Classify -> EconomyOutlook    │
@@ -1525,19 +1524,20 @@ Runs in this fixed order for the now-current player:
 2. **Tree growth** — `TreeRules.RunStartOfTurnGrowth` (skipped during
    round 1, i.e. while `TurnNumber == 1`). Graves on the current
    player's tiles become trees; empty cells of their color with ≥2
-   neighboring trees become trees. **Neutral-ground growth** runs in
-   the same beat but on its own cadence (issue #69):
-   `RunNeutralGrowthAtRoundStart` fires `TreeRules.RunNeutralGrowth`
-   (= `RunStartOfTurnGrowth` with `PlayerId.None`) **once per round**,
-   not once per player — gated to `TurnNumber > 1 && CurrentPlayerIndex
-   == 0` so neutral ground doesn't grow N× faster on an N-player map.
-   It's anchored to slot 0's visit each round (this `StartPlayerTurn`
-   when player 0 is active, or the phantom-turn branch of
-   `AdvanceToNextActivePlayer` when player 0 is eliminated), and is
-   stateless — needs no persisted marker because `TurnState`
-   (`TurnNumber` + `CurrentPlayerIndex`) already reconstructs the
-   anchor across save/load and undo. Logged once per round under
-   `Log.LogCategory.Turn`.
+   neighboring trees become trees. **Neutral ground** (issue #69) is
+   handled as a *territory-less owner*, not a bespoke growth stage:
+   `PlayerId.None` owns ground but never a capital, so it takes a
+   **phantom turn** — the same `RunPhantomTurnFor` path used for
+   eliminated roster players (tree growth + no-op upkeep + log) —
+   exactly once per round. `RunNeutralPhantomTurnIfRoundStart` anchors
+   it to slot 0's visit each round (this `StartPlayerTurn` when player 0
+   is active, or the phantom-turn branch of `AdvanceToNextActivePlayer`
+   when player 0 is eliminated), gated to `TurnNumber > 1 &&
+   CurrentPlayerIndex == 0` so neutral ground doesn't grow N× faster on
+   an N-player map. Stateless — `TurnState` (`TurnNumber` +
+   `CurrentPlayerIndex`) reconstructs the anchor across save/load and
+   undo. Logged once per round under `Log.LogCategory.Turn` as a phantom
+   turn for "Neutral".
 3. **Reset movement** — `HasMovedThisTurn` cleared on the current
    player's units.
 4. **Collect income** — `Treasury.CollectIncomeFor` (skipped during

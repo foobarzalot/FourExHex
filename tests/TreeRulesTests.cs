@@ -381,10 +381,10 @@ public class TreeRulesTests
         Assert.Equal(3, grid.Tiles.Count(t => t.Occupant is Tree));
     }
 
-    // --- RunNeutralGrowth (unowned ground, Owner == PlayerId.None) --------
+    // --- NeutralGrowth (unowned ground, Owner == PlayerId.None) --------
 
     [Fact]
-    public void RunNeutralGrowth_ConvertsNeutralGraveToTree()
+    public void NeutralGrowth_ConvertsNeutralGraveToTree()
     {
         // A grave on neutral ground rots into a tree, just like an
         // owned grave does at its owner's turn start.
@@ -392,13 +392,13 @@ public class TreeRulesTests
         grid.Get(new HexCoord(0, 0))!.Owner = Neutral;
         grid.Get(new HexCoord(0, 0))!.Occupant = new Grave();
 
-        TreeRules.RunNeutralGrowth(grid, NoWater);
+        TreeRules.RunStartOfTurnGrowth(grid, Neutral, NoWater);
 
         Assert.IsType<Tree>(grid.Get(new HexCoord(0, 0))!.Occupant);
     }
 
     [Fact]
-    public void RunNeutralGrowth_EmptyNeutralTileWithTwoTreeNeighbors_Spreads()
+    public void NeutralGrowth_EmptyNeutralTileWithTwoTreeNeighbors_Spreads()
     {
         // Empty neutral cell (1,-1) is adjacent to both trees — inland
         // rule (>= 2 tree neighbors) fires on neutral ground.
@@ -407,13 +407,13 @@ public class TreeRulesTests
         PlantTree(grid, new HexCoord(0, 0));
         PlantTree(grid, new HexCoord(1, 0));
 
-        TreeRules.RunNeutralGrowth(grid, NoWater);
+        TreeRules.RunStartOfTurnGrowth(grid, Neutral, NoWater);
 
         Assert.True(IsTree(grid, new HexCoord(1, -1)));
     }
 
     [Fact]
-    public void RunNeutralGrowth_NeutralCoastalTile_Spreads()
+    public void NeutralGrowth_NeutralCoastalTile_Spreads()
     {
         // (1,-1) is neutral with a single tree neighbor (0,0) and a
         // water neighbor (2,-1). Coastal rule (1 tree + 1 water) fires.
@@ -422,13 +422,13 @@ public class TreeRulesTests
         PlantTree(grid, new HexCoord(0, 0));
         var water = new HashSet<HexCoord> { new HexCoord(2, -1) };
 
-        TreeRules.RunNeutralGrowth(grid, water);
+        TreeRules.RunStartOfTurnGrowth(grid, Neutral, water);
 
         Assert.True(IsTree(grid, new HexCoord(1, -1)));
     }
 
     [Fact]
-    public void RunNeutralGrowth_NeutralMountain_NeverSpreads()
+    public void NeutralGrowth_NeutralMountain_NeverSpreads()
     {
         // (1,-1) is a neutral mountain with 2 tree neighbors. Trees
         // never spread onto mountains (issue #37) — the exclusion holds
@@ -439,13 +439,13 @@ public class TreeRulesTests
         PlantTree(grid, new HexCoord(0, 0));
         PlantTree(grid, new HexCoord(1, 0));
 
-        TreeRules.RunNeutralGrowth(grid, NoWater);
+        TreeRules.RunStartOfTurnGrowth(grid, Neutral, NoWater);
 
         Assert.Null(grid.Get(new HexCoord(1, -1))!.Occupant);
     }
 
     [Fact]
-    public void RunNeutralGrowth_NewlyConvertedGraveDoesNotSeedSpread()
+    public void NeutralGrowth_NewlyConvertedGraveDoesNotSeedSpread()
     {
         // Snapshot semantics on neutral ground: a neutral grave that
         // becomes a tree this phase does NOT count toward another
@@ -459,16 +459,16 @@ public class TreeRulesTests
         PlantTree(grid, new HexCoord(0, 0));
         grid.Get(new HexCoord(1, 0))!.Occupant = new Grave();
 
-        TreeRules.RunNeutralGrowth(grid, NoWater);
+        TreeRules.RunStartOfTurnGrowth(grid, Neutral, NoWater);
 
         Assert.IsType<Tree>(grid.Get(new HexCoord(1, 0))!.Occupant); // grave converted
         Assert.Null(grid.Get(new HexCoord(1, -1))!.Occupant);        // no cascade
     }
 
     [Fact]
-    public void RunNeutralGrowth_LeavesOwnedTilesUntouched()
+    public void NeutralGrowth_LeavesOwnedTilesUntouched()
     {
-        // RunNeutralGrowth only touches neutral ground: a Red grave
+        // NeutralGrowth only touches neutral ground: a Red grave
         // stays a grave, and an empty Red cell with 2 tree neighbors
         // does NOT spread.
         HexGrid grid = BuildAxialGrid(-1, 2, -1, 2);
@@ -476,10 +476,10 @@ public class TreeRulesTests
         PlantTree(grid, new HexCoord(-1, 1));
         PlantTree(grid, new HexCoord(0, 1));
         // (0,0) is Red and adjacent to both trees — would spread under
-        // an owned phase, but RunNeutralGrowth ignores it. It holds the
+        // an owned phase, but NeutralGrowth ignores it. It holds the
         // grave, so assert the grave survives untouched.
 
-        TreeRules.RunNeutralGrowth(grid, NoWater);
+        TreeRules.RunStartOfTurnGrowth(grid, Neutral, NoWater);
 
         Assert.IsType<Grave>(grid.Get(new HexCoord(0, 0))!.Occupant);
     }

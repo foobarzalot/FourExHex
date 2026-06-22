@@ -194,12 +194,24 @@ public static class UpkeepRules
     /// audio cue at turn-start.
     /// </summary>
     public static bool ApplyUpkeepFor(Player player, IEnumerable<Territory> territories, HexGrid grid, Treasury treasury)
+        => ApplyUpkeepFor(player.Id, player.Difficulty, territories, grid, treasury);
+
+    /// <summary>
+    /// Owner-id overload of <see cref="ApplyUpkeepFor(Player, IEnumerable{Territory}, HexGrid, Treasury)"/>,
+    /// for callers that hold an owner without a <see cref="Player"/> object —
+    /// notably the neutral owner (<see cref="PlayerId.None"/>), which takes a
+    /// phantom turn each round. Neutral territories never hold units, so this
+    /// is a no-op for them (nothing owed), but it lets neutral go through the
+    /// exact same phantom-turn path as an eliminated player.
+    /// </summary>
+    public static bool ApplyUpkeepFor(
+        PlayerId ownerId, Difficulty difficulty, IEnumerable<Territory> territories, HexGrid grid, Treasury treasury)
     {
         bool anyBankrupt = false;
         foreach (Territory territory in territories)
         {
-            if (territory.Owner != player.Id) continue;
-            if (!ApplyUpkeep(territory, grid, treasury, player.Difficulty))
+            if (territory.Owner != ownerId) continue;
+            if (!ApplyUpkeep(territory, grid, treasury, difficulty))
             {
                 anyBankrupt = true;
             }
