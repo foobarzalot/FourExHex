@@ -832,12 +832,15 @@ public static class SaveSerializer
     /// mapped to the slot index that inherited the identity. Consulted as a
     /// fallback by <see cref="TryPlayerForHex"/> so legacy v2..v4 claim-victory
     /// data keyed by a retired color still resolves to the right player.
-    /// "e3bc3b" was slot 3's Yellow before it was recolored Brown (issue #44).
+    /// "e3bc3b" was slot 3's Yellow before it was recolored Brown (issue #44);
+    /// "8a5a2b" was slot 3's Brown before it was re-tuned to a saturated
+    /// chocolate for on-tile glyph contrast (issue #62).
     /// </summary>
     private static readonly Dictionary<string, int> RetiredHexAliases =
         new(StringComparer.OrdinalIgnoreCase)
         {
             ["e3bc3b"] = 3,
+            ["8a5a2b"] = 3,
         };
 
     /// <summary>

@@ -27,7 +27,7 @@ public static class PlayerPalette
         new Color("5c201c"), // Red dk
         new Color("183856"), // Blue dk
         new Color("244429"), // Green dk
-        new Color("3e2813"), // Brown dk
+        new Color("492714"), // Brown dk
         new Color("3b1941"), // Purple dk
         new Color("633a0f"), // Orange dk
     };

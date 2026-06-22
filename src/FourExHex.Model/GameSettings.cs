@@ -16,13 +16,20 @@ public static class GameSettings
     // (Red e53935 etc.) and the fully-heraldic muted palette (Gules
     // b65649 etc.) — restoring enough chroma that the colors don't read
     // as washed-out while keeping them noticeably calmer than the
-    // original neon primaries.
+    // original neon primaries. Brown was re-tuned so the dark on-tile
+    // glyphs — black units, the slate tower, grey mountain rock — read
+    // clearly on top (issue #62). Rather than a plain lift (which drifted
+    // toward the warm neutral grey 888378), it was made a saturated, lighter
+    // version of its original hue: Brown 8a5a2b -> a3582c (chocolate
+    // red-brown). Its PlayerDark border companion was re-derived to match in
+    // PlayerPalette, and the old hex is aliased for legacy save migration in
+    // SaveSerializer.RetiredHexAliases.
     public static readonly (string Name, string Hex)[] PlayerConfig =
     {
         ("Red",    "cd473f"),
         ("Blue",   "367cbf"),
         ("Green",  "50985c"),
-        ("Brown",  "8a5a2b"),
+        ("Brown",  "a3582c"),
         ("Purple", "843890"),
         ("Orange", "db8221"),
     };

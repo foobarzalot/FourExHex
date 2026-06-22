@@ -166,6 +166,30 @@ public class SaveMigrationTests
     }
 
     [Fact]
+    public void V4_RetiredBrownHex_MigratesToBrownSlot()
+    {
+        // Brown (slot 3) was re-tuned to a saturated chocolate for on-tile
+        // glyph contrast (issue #62). Tile ownership is index-based and
+        // unaffected, but v2-v4 claim-victory data is keyed by the live
+        // palette hex. A legacy save still carries the old "8a5a2b" fill;
+        // it must alias to slot 3 rather than being dropped. The hex is a
+        // literal on purpose — PlayerConfig no longer holds it.
+        (GameState s, IReadOnlyList<Player> p) = BuildState();
+        string json = SaveSerializer.Serialize(s, 1, p, "slot", 100);
+
+        string cur = $"\"FormatVersion\": {SaveSerializer.CurrentFormatVersion}";
+        const string oldBrownHex = "8a5a2b";
+        string v4 = json
+            .Replace(cur, "\"FormatVersion\": 4")
+            .Replace("\"FormatVersion\": 4,",
+                "\"FormatVersion\": 4,\n  \"ClaimVictoryPromptedHighestByColorHex\": {\""
+                + oldBrownHex + "\": 60},");
+
+        LoadedSave loaded = SaveSerializer.Deserialize(v4);
+        Assert.Equal(60, loaded.ClaimVictoryPromptedHighestThreshold[PlayerId.FromIndex(3)]);
+    }
+
+    [Fact]
     public void V3_FlatColorHexes_MapToFiftyPercent()
     {
         (GameState s, IReadOnlyList<Player> p) = BuildState();
