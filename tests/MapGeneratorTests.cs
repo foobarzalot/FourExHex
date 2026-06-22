@@ -52,6 +52,20 @@ public class MapGeneratorTests
         return n;
     }
 
+    private static int CountTrees(MapGenResult result)
+    {
+        int n = 0;
+        foreach (HexTile t in result.Grid.Tiles)
+        {
+            if (t.Occupant is Tree) n++;
+        }
+        return n;
+    }
+
+    // Representative "on" densities (percent of land) for the feature-on tests.
+    private const int MountainOnDensity = 10;
+    private const int GoldOnDensity = 5;
+
     private static IEnumerable<HexCoord> RimCoords()
     {
         for (int col = 0; col < Cols; col++)
@@ -272,10 +286,10 @@ public class MapGeneratorTests
     [InlineData(9999)]
     public void MountainsOff_NoMountainTiles(int seed)
     {
-        // Default (no options) and an explicit IncludeMountains:false must both
+        // Default (no options) and an explicit MountainDensity:0 must both
         // leave every tile flat.
         Assert.Equal(0, CountMountains(Build(seed)));
-        Assert.Equal(0, CountMountains(BuildWith(seed, new MapGenOptions(IncludeMountains: false))));
+        Assert.Equal(0, CountMountains(BuildWith(seed, new MapGenOptions(MountainDensity: 0))));
     }
 
     [Theory]
@@ -286,9 +300,9 @@ public class MapGeneratorTests
     {
         // The #20 determinism baseline: turning the (off) mountain pass into a
         // no-op must not perturb owner assignment, tree scatter, or water — i.e.
-        // no stray RNG draws happen when IncludeMountains is false.
+        // no stray RNG draws happen when MountainDensity is 0.
         MapGenResult baseline = Build(seed);
-        MapGenResult off = BuildWith(seed, new MapGenOptions(IncludeMountains: false));
+        MapGenResult off = BuildWith(seed, new MapGenOptions(MountainDensity: 0));
 
         Assert.Equal(baseline.Grid.Count, off.Grid.Count);
         foreach (HexTile tA in baseline.Grid.Tiles)
@@ -308,12 +322,12 @@ public class MapGeneratorTests
     [InlineData(9999)]
     public void MountainsOn_PlacesMountainsInSaneBand(int seed)
     {
-        MapGenResult result = BuildWith(seed, new MapGenOptions(IncludeMountains: true));
+        MapGenResult result = BuildWith(seed, new MapGenOptions(MountainDensity: MountainOnDensity));
         int mountains = CountMountains(result);
 
         Assert.True(mountains > 0, $"Expected some mountains for seed {seed}");
-        // Density target is ~9% of land; cap the assertion generously at 25% so
-        // a mis-tuned pass that paves the map fails loudly.
+        // Density target is MountainOnDensity% of land; cap the assertion generously
+        // at 25% so a mis-tuned pass that paves the map fails loudly.
         Assert.True(mountains <= result.Grid.Count / 4,
             $"Mountains {mountains} exceed 25% of {result.Grid.Count} land tiles (seed {seed})");
     }
@@ -324,7 +338,7 @@ public class MapGeneratorTests
     [InlineData(9999)]
     public void MountainsOn_SameSeedIdenticalMountainSet(int seed)
     {
-        var opts = new MapGenOptions(IncludeMountains: true);
+        var opts = new MapGenOptions(MountainDensity: MountainOnDensity);
         MapGenResult a = BuildWith(seed, opts);
         MapGenResult b = BuildWith(seed, opts);
 
@@ -339,7 +353,7 @@ public class MapGeneratorTests
     [Fact]
     public void MountainsOn_DifferentSeedsProduceDifferentMountains()
     {
-        var opts = new MapGenOptions(IncludeMountains: true);
+        var opts = new MapGenOptions(MountainDensity: MountainOnDensity);
         MapGenResult a = BuildWith(1, opts);
         MapGenResult b = BuildWith(2, opts);
 
@@ -363,7 +377,7 @@ public class MapGeneratorTests
     public void MountainsOn_NeverCoexistWithTrees(int seed)
     {
         // Mountain and tree are mutually exclusive (matches the editor brush rule).
-        MapGenResult result = BuildWith(seed, new MapGenOptions(IncludeMountains: true));
+        MapGenResult result = BuildWith(seed, new MapGenOptions(MountainDensity: MountainOnDensity));
         foreach (HexTile t in result.Grid.Tiles)
         {
             Assert.False(t.IsMountain && t.Occupant is Tree,
@@ -377,7 +391,7 @@ public class MapGeneratorTests
     [InlineData(9999)]
     public void MountainsOn_OnlyOnLand(int seed)
     {
-        MapGenResult result = BuildWith(seed, new MapGenOptions(IncludeMountains: true));
+        MapGenResult result = BuildWith(seed, new MapGenOptions(MountainDensity: MountainOnDensity));
         foreach (HexTile t in result.Grid.Tiles)
         {
             if (!t.IsMountain) continue;
@@ -394,7 +408,7 @@ public class MapGeneratorTests
     {
         // Generated mountain ranges are neutral terrain players must capture, not
         // pre-owned land. Every non-mountain land tile keeps a real owner.
-        MapGenResult result = BuildWith(seed, new MapGenOptions(IncludeMountains: true));
+        MapGenResult result = BuildWith(seed, new MapGenOptions(MountainDensity: MountainOnDensity));
         foreach (HexTile t in result.Grid.Tiles)
         {
             if (t.IsMountain)
@@ -413,7 +427,7 @@ public class MapGeneratorTests
         // Mountains should generate in connected ranges: the bulk of mountain
         // tiles must have at least one mountain neighbor. A purely random
         // speckle would leave most tiles isolated.
-        MapGenResult result = BuildWith(seed, new MapGenOptions(IncludeMountains: true));
+        MapGenResult result = BuildWith(seed, new MapGenOptions(MountainDensity: MountainOnDensity));
         var mountains = new HashSet<HexCoord>();
         foreach (HexTile t in result.Grid.Tiles)
         {
@@ -444,7 +458,7 @@ public class MapGeneratorTests
     public void GoldOff_NoGoldTiles(int seed)
     {
         Assert.Equal(0, CountGold(Build(seed)));
-        Assert.Equal(0, CountGold(BuildWith(seed, new MapGenOptions(IncludeGold: false))));
+        Assert.Equal(0, CountGold(BuildWith(seed, new MapGenOptions(GoldDensity: 0))));
     }
 
     [Theory]
@@ -454,7 +468,7 @@ public class MapGeneratorTests
     public void GoldOff_ByteIdenticalToBaseline(int seed)
     {
         MapGenResult baseline = Build(seed);
-        MapGenResult off = BuildWith(seed, new MapGenOptions(IncludeGold: false));
+        MapGenResult off = BuildWith(seed, new MapGenOptions(GoldDensity: 0));
 
         Assert.Equal(baseline.Grid.Count, off.Grid.Count);
         foreach (HexTile tA in baseline.Grid.Tiles)
@@ -474,11 +488,11 @@ public class MapGeneratorTests
     [InlineData(9999)]
     public void GoldOn_PlacesGoldInSaneBand(int seed)
     {
-        MapGenResult result = BuildWith(seed, new MapGenOptions(IncludeGold: true));
+        MapGenResult result = BuildWith(seed, new MapGenOptions(GoldDensity: GoldOnDensity));
         int gold = CountGold(result);
 
         Assert.True(gold > 0, $"Expected some gold for seed {seed}");
-        // Target is ~3% of land; cap generously at 12% to catch a paving bug.
+        // Target is GoldOnDensity% of land; cap generously at 12% to catch a paving bug.
         Assert.True(gold <= (result.Grid.Count * 12) / 100,
             $"Gold {gold} exceeds 12% of {result.Grid.Count} land tiles (seed {seed})");
     }
@@ -489,7 +503,7 @@ public class MapGeneratorTests
     [InlineData(9999)]
     public void GoldOn_SameSeedIdenticalGoldSet(int seed)
     {
-        var opts = new MapGenOptions(IncludeGold: true);
+        var opts = new MapGenOptions(GoldDensity: GoldOnDensity);
         MapGenResult a = BuildWith(seed, opts);
         MapGenResult b = BuildWith(seed, opts);
 
@@ -504,7 +518,7 @@ public class MapGeneratorTests
     [Fact]
     public void GoldOn_DifferentSeedsProduceDifferentGold()
     {
-        var opts = new MapGenOptions(IncludeGold: true);
+        var opts = new MapGenOptions(GoldDensity: GoldOnDensity);
         MapGenResult a = BuildWith(1, opts);
         MapGenResult b = BuildWith(2, opts);
 
@@ -528,7 +542,7 @@ public class MapGeneratorTests
     public void GoldOn_TilesAreNeutral(int seed)
     {
         // Generated gold is a contested objective — unowned until captured.
-        MapGenResult result = BuildWith(seed, new MapGenOptions(IncludeGold: true));
+        MapGenResult result = BuildWith(seed, new MapGenOptions(GoldDensity: GoldOnDensity));
         foreach (HexTile t in result.Grid.Tiles)
         {
             if (!t.IsGold) continue;
@@ -543,7 +557,7 @@ public class MapGeneratorTests
     public void GoldOn_FormsClustersNotSpeckle(int seed)
     {
         // Min cluster size 2 means every gold tile touches another gold tile.
-        MapGenResult result = BuildWith(seed, new MapGenOptions(IncludeGold: true));
+        MapGenResult result = BuildWith(seed, new MapGenOptions(GoldDensity: GoldOnDensity));
         var gold = new HashSet<HexCoord>();
         foreach (HexTile t in result.Grid.Tiles)
         {
@@ -571,7 +585,7 @@ public class MapGeneratorTests
         // ~9% mountain land coverage. Aggregate over seeds for a stable fraction.
         int goldTotal = 0;
         int goldOnMountain = 0;
-        var opts = new MapGenOptions(IncludeMountains: true, IncludeGold: true);
+        var opts = new MapGenOptions(MountainDensity: MountainOnDensity, GoldDensity: GoldOnDensity);
         foreach (int seed in new[] { 1, 7, 42, 100, 9999 })
         {
             MapGenResult result = BuildWith(seed, opts);
@@ -587,5 +601,97 @@ public class MapGeneratorTests
         // clusters on or beside mountains.
         Assert.True(goldOnMountain * 100 > goldTotal * 20,
             $"Only {goldOnMountain}/{goldTotal} gold tiles are also mountains — bias not evident");
+    }
+
+    // ── Tree density (issue #66) ────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(42)]
+    [InlineData(9999)]
+    public void DefaultOptions_ByteIdenticalToBaseline(int seed)
+    {
+        // The default MapGenOptions (trees 5, no mountains/gold) must reproduce the
+        // no-options baseline exactly — owners, trees, mountains, gold, and water.
+        // This pins the #20 determinism reference: the density rewrite is a no-op at
+        // defaults.
+        MapGenResult baseline = Build(seed);
+        MapGenResult deflt = BuildWith(seed, new MapGenOptions());
+
+        Assert.Equal(baseline.Grid.Count, deflt.Grid.Count);
+        foreach (HexTile tA in baseline.Grid.Tiles)
+        {
+            HexTile? tB = deflt.Grid.Get(tA.Coord);
+            Assert.NotNull(tB);
+            Assert.Equal(tA.Owner, tB!.Owner);
+            Assert.Equal(tA.Occupant is Tree, tB.Occupant is Tree);
+            Assert.Equal(tA.IsMountain, tB.IsMountain);
+            Assert.Equal(tA.IsGold, tB.IsGold);
+        }
+        Assert.Equal(baseline.WaterCoords, deflt.WaterCoords);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(42)]
+    [InlineData(9999)]
+    public void TreeDensity_DefaultReproducesHistoricalScatter(int seed)
+    {
+        // The historical scatter placed grid.Count / 20 trees. With no occupants to
+        // dodge (default: no mountains/gold), the default 5% density places exactly
+        // that many — the byte-identical-tree-baseline guarantee.
+        MapGenResult result = Build(seed);
+        Assert.Equal(result.Grid.Count / 20, CountTrees(result));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(42)]
+    [InlineData(9999)]
+    public void TreesOff_NoTreeTiles(int seed)
+    {
+        // TreeDensity 0 turns the forest scatter off entirely.
+        Assert.Equal(0, CountTrees(BuildWith(seed, new MapGenOptions(TreeDensity: 0))));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(42)]
+    [InlineData(9999)]
+    public void TreeDensity_HigherPlacesMoreTrees(int seed)
+    {
+        // Denser settings place proportionally more forest. With no occupants to
+        // dodge, the count equals land.Count * density / 100.
+        int sparse = CountTrees(BuildWith(seed, new MapGenOptions(TreeDensity: 5)));
+        int dense = CountTrees(BuildWith(seed, new MapGenOptions(TreeDensity: 20)));
+        Assert.True(dense > sparse,
+            $"TreeDensity 20 ({dense}) should place more than 5 ({sparse}) for seed {seed}");
+    }
+
+    // ── Mountain / gold density scaling (issue #66) ─────────────────────────
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(42)]
+    [InlineData(9999)]
+    public void MountainDensity_HigherPlacesMoreMountains(int seed)
+    {
+        int sparse = CountMountains(BuildWith(seed, new MapGenOptions(MountainDensity: 5)));
+        int dense = CountMountains(BuildWith(seed, new MapGenOptions(MountainDensity: 20)));
+        Assert.True(dense > sparse,
+            $"MountainDensity 20 ({dense}) should place more than 5 ({sparse}) for seed {seed}");
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(42)]
+    [InlineData(9999)]
+    public void GoldDensity_HigherPlacesMoreGold(int seed)
+    {
+        int sparse = CountGold(BuildWith(seed, new MapGenOptions(GoldDensity: 5)));
+        int dense = CountGold(BuildWith(seed, new MapGenOptions(GoldDensity: 20)));
+        Assert.True(dense > sparse,
+            $"GoldDensity 20 ({dense}) should place more than 5 ({sparse}) for seed {seed}");
     }
 }

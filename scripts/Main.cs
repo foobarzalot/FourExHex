@@ -243,17 +243,19 @@ public partial class Main : Node2D
         else
         {
             _players = Player.BuildRoster();
-            // Campaign levels derive their terrain features from the level number
+            // Campaign levels derive their terrain densities from the level number
             // (fixed + reproducible, independent of the freeform New Game
-            // toggles); freeform games use the player's chosen toggles.
+            // steppers); freeform games use the player's chosen densities.
             MapGenOptions mapGenOptions = _campaignLevel is int featureLvl
                 ? CampaignProgress.MapGenOptionsForLevel(featureLvl)
                 : new MapGenOptions(
-                    IncludeMountains: GameSettings.IncludeMountains,
-                    IncludeGold: GameSettings.IncludeGold);
+                    TreeDensity: GameSettings.TreeDensity,
+                    MountainDensity: GameSettings.MountainDensity,
+                    GoldDensity: GameSettings.GoldDensity);
             Log.Info(Log.LogCategory.MapGen,
-                $"Main: map-gen options mountains={mapGenOptions.IncludeMountains} " +
-                $"gold={mapGenOptions.IncludeGold} (campaign={_campaignLevel?.ToString() ?? "no"})");
+                $"Main: map-gen densities trees={mapGenOptions.TreeDensity} " +
+                $"mtn={mapGenOptions.MountainDensity} gold={mapGenOptions.GoldDensity} " +
+                $"(campaign={_campaignLevel?.ToString() ?? "no"})");
             _state = ProceduralGame.Build(cols, rows, _players, seed, mapGenOptions);
             _maxTurnNumber = quickDiagMode ? 200
                 : fullDiagMode ? 500

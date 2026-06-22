@@ -100,11 +100,12 @@ public partial class MapThumbnailView : Control
     public void SetSaveStore(SaveStore store) => _saveStore = store;
 
     /// <summary>Preview the board the given seed would procedurally generate,
-    /// mirroring the New Game map toggles so the preview matches Start Game.</summary>
+    /// mirroring the New Game map densities so the preview matches Start Game.</summary>
     public void RequestRandom(int seed) =>
         RequestRandom(seed, new MapGenOptions(
-            IncludeMountains: GameSettings.IncludeMountains,
-            IncludeGold: GameSettings.IncludeGold));
+            TreeDensity: GameSettings.TreeDensity,
+            MountainDensity: GameSettings.MountainDensity,
+            GoldDensity: GameSettings.GoldDensity));
 
     /// <summary>Preview the board for an explicit set of generation options —
     /// used by the campaign confirm sheet, which derives its level's fixed
@@ -114,7 +115,7 @@ public partial class MapThumbnailView : Control
         int token = ++_renderToken;
         Log.Debug(Log.LogCategory.Display,
             $"MapThumbnail: request random seed={SeedFormat.ToHex(seed)} token={token} " +
-            $"mountains={options.IncludeMountains} gold={options.IncludeGold}");
+            $"trees={options.TreeDensity} mtn={options.MountainDensity} gold={options.GoldDensity}");
         _ = RenderAsync(() => ProceduralGame.Build(BoardCols, BoardRows, Player.BuildRoster(), seed, options),
             $"random seed={SeedFormat.ToHex(seed)}", token);
     }

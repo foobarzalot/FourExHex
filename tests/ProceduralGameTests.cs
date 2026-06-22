@@ -107,7 +107,7 @@ public class ProceduralGameTests
         // are neutral, and every capital-bearing territory is owned (no capital
         // ever lands on neutral mountain land).
         GameState state = ProceduralGame.Build(
-            Cols, Rows, SixPlayers(), seed, new MapGenOptions(IncludeMountains: true));
+            Cols, Rows, SixPlayers(), seed, new MapGenOptions(MountainDensity: 10));
 
         int mountains = 0;
         foreach (HexTile t in state.Grid.Tiles)
@@ -143,7 +143,7 @@ public class ProceduralGameTests
         // lands on a neutral gold tile.
         GameState state = ProceduralGame.Build(
             Cols, Rows, SixPlayers(), seed,
-            new MapGenOptions(IncludeMountains: true, IncludeGold: true));
+            new MapGenOptions(MountainDensity: 10, GoldDensity: 5));
 
         int gold = 0;
         foreach (HexTile t in state.Grid.Tiles)

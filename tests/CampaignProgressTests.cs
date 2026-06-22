@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Xunit;
 
@@ -164,7 +165,7 @@ public class CampaignProgressTests
         Assert.Throws<ArgumentOutOfRangeException>(() => CampaignProgress.LabelFor(level));
     }
 
-    // ── Per-level map-generation features (issue #48) ───────────────────────
+    // ── Per-level map-generation densities (issue #48 / #66) ────────────────
 
     [Theory]
     [InlineData(0)]
@@ -175,42 +176,62 @@ public class CampaignProgressTests
     {
         MapGenOptions a = CampaignProgress.MapGenOptionsForLevel(level);
         MapGenOptions b = CampaignProgress.MapGenOptionsForLevel(level);
-        Assert.Equal(a.IncludeMountains, b.IncludeMountains);
-        Assert.Equal(a.IncludeGold, b.IncludeGold);
+        Assert.Equal(a.TreeDensity, b.TreeDensity);
+        Assert.Equal(a.MountainDensity, b.MountainDensity);
+        Assert.Equal(a.GoldDensity, b.GoldDensity);
     }
 
     [Fact]
     public void MapGenOptionsForLevel_VariesAcrossTheLadder()
     {
         int mtnOn = 0, mtnOff = 0, goldOn = 0, goldOff = 0;
+        var treeValues = new HashSet<int>();
         for (int level = 0; level < CampaignProgress.LevelCount; level++)
         {
             MapGenOptions o = CampaignProgress.MapGenOptionsForLevel(level);
-            if (o.IncludeMountains) mtnOn++; else mtnOff++;
-            if (o.IncludeGold) goldOn++; else goldOff++;
+            if (o.MountainDensity > 0) mtnOn++; else mtnOff++;
+            if (o.GoldDensity > 0) goldOn++; else goldOff++;
+            treeValues.Add(o.TreeDensity);
         }
-        // Both flags should appear on and off across the 256 levels — neither
-        // pinned, neither absent.
+        // Mountains and gold should appear present and absent across the 256 levels —
+        // neither pinned, neither absent — and tree density should genuinely vary.
         Assert.True(mtnOn > 0 && mtnOff > 0, $"mountains on={mtnOn} off={mtnOff}");
         Assert.True(goldOn > 0 && goldOff > 0, $"gold on={goldOn} off={goldOff}");
+        Assert.True(treeValues.Count > 1, $"tree density did not vary: {string.Join(",", treeValues)}");
     }
 
     [Fact]
     public void MapGenOptionsForLevel_MountainsAndGoldAreNotPerfectlyCorrelated()
     {
-        // The two flags are drawn independently, so the ladder should contain at
+        // The presence draws are independent, so the ladder should contain at
         // least one level of each of the four combinations.
         bool both = false, neither = false, mtnOnly = false, goldOnly = false;
         for (int level = 0; level < CampaignProgress.LevelCount; level++)
         {
             MapGenOptions o = CampaignProgress.MapGenOptionsForLevel(level);
-            if (o.IncludeMountains && o.IncludeGold) both = true;
-            else if (!o.IncludeMountains && !o.IncludeGold) neither = true;
-            else if (o.IncludeMountains) mtnOnly = true;
+            bool mtn = o.MountainDensity > 0;
+            bool gold = o.GoldDensity > 0;
+            if (mtn && gold) both = true;
+            else if (!mtn && !gold) neither = true;
+            else if (mtn) mtnOnly = true;
             else goldOnly = true;
         }
         Assert.True(both && neither && mtnOnly && goldOnly,
             $"combos both={both} neither={neither} mtnOnly={mtnOnly} goldOnly={goldOnly}");
+    }
+
+    [Fact]
+    public void MapGenOptionsForLevel_DensitiesStayWithinTheirAllowedSets()
+    {
+        // Mountains/gold use a single "on" density (or 0); trees vary across
+        // {0, 5, 10}. Pin those sets so a retune is a deliberate, visible change.
+        for (int level = 0; level < CampaignProgress.LevelCount; level++)
+        {
+            MapGenOptions o = CampaignProgress.MapGenOptionsForLevel(level);
+            Assert.Contains(o.MountainDensity, new[] { 0, 10 });
+            Assert.Contains(o.GoldDensity, new[] { 0, 5 });
+            Assert.Contains(o.TreeDensity, new[] { 0, 5, 10 });
+        }
     }
 
     [Theory]

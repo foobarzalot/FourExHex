@@ -948,14 +948,9 @@ public partial class MainMenuScene : Control
         return field;
     }
 
-    /// <summary>"Include Mountains" toggle (issue #48): when on, a fresh
-    /// procedural map scatters mountain ranges. Writes
-    /// <see cref="GameSettings.IncludeMountains"/> and re-renders the thumbnail so
-    /// the preview matches Start Game. Re-created per orientation flip; reads its
-    /// state back from GameSettings so the rebuild restores it.</summary>
     /// <summary>The "?" glyph that opens the shared Map Generation options panel
-    /// (issue #48). Sits beside the seed re-roll die; same button/panel as the
-    /// map editor's.</summary>
+    /// (issue #48 / #66). Sits beside the seed re-roll die; same button/panel as
+    /// the map editor's.</summary>
     private HudIconButton MakeMapGenSettingsButton() =>
         MapGenSettingsPanel.MakeOpenButton(() => _mapGenSettingsPanel?.Open(), size: 44f, fontSize: 30);
 

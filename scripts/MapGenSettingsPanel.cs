@@ -2,29 +2,34 @@ using System;
 using Godot;
 
 /// <summary>
-/// Reusable "Map Generation" modal (issue #48): the randomization options that
-/// shape a freshly-generated (random) map — currently the "Mountains" toggle,
-/// with "Gold" to follow in Phase 2. Summoned by the "?" glyph button next to
-/// the die in the map editor and on the New Game map-setup page; both hosts open
-/// the same panel, and it reads/writes the single process-wide
-/// <see cref="GameSettings"/> flags, so the choice is shared across the menu and
-/// the editor.
+/// Reusable "Map Generation" modal (issue #48 / #66): the density controls that
+/// shape a freshly-generated (random) map — Trees, Mountains, and Gold, each a
+/// 0..25% (of land) stepper. Summoned by the "?" glyph button next to the die in
+/// the map editor and on the New Game map-setup page; both hosts open the same
+/// panel, and it reads/writes the single process-wide <see cref="GameSettings"/>
+/// densities, so the choice is shared across the menu and the editor.
 ///
 /// Backdrop + content-sized centered panel, mirroring <see cref="EscMenu"/>.
-/// <see cref="Open"/>/<see cref="Close"/> drive visibility. Toggling a setting
+/// <see cref="Open"/>/<see cref="Close"/> drive visibility. Changing a density
 /// here writes <see cref="GameSettings"/> immediately but deliberately does NOT
 /// re-render any host preview — the New Game thumbnail updates only when the die
-/// is pressed (a fresh seed), so flipping a generation option doesn't churn the
-/// preview under the open panel.
+/// is pressed (a fresh seed), so adjusting a density doesn't churn the preview
+/// under the open panel.
 /// </summary>
 public sealed partial class MapGenSettingsPanel : CanvasLayer
 {
     public bool IsOpen { get; private set; }
 
+    // Density range surfaced by every stepper: 0..25% of land, in steps of 5.
+    private const int DensityMin = 0;
+    private const int DensityMax = 25;
+    private const int DensityStep = 5;
+
     private ColorRect _backdrop = null!;
     private PanelContainer _panel = null!;
-    private Button _mountainsBox = null!;
-    private Button _goldBox = null!;
+    private LineEdit _treesField = null!;
+    private LineEdit _mountainsField = null!;
+    private LineEdit _goldField = null!;
 
     private static readonly Font _serifFont =
         GD.Load<FontFile>("res://fonts/DMSerifDisplay-Regular.ttf");
@@ -82,10 +87,15 @@ public sealed partial class MapGenSettingsPanel : CanvasLayer
             SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter,
         });
 
-        vbox.AddChild(UiToggle.BuildCheckRow(
-            "Mountains", GameSettings.IncludeMountains, OnMountainsToggled, out _mountainsBox));
-        vbox.AddChild(UiToggle.BuildCheckRow(
-            "Gold", GameSettings.IncludeGold, OnGoldToggled, out _goldBox));
+        vbox.AddChild(UiStepper.BuildStepperRow(
+            "Trees", GameSettings.TreeDensity, DensityMin, DensityMax, DensityStep,
+            OnTreesChanged, out _treesField));
+        vbox.AddChild(UiStepper.BuildStepperRow(
+            "Mountains", GameSettings.MountainDensity, DensityMin, DensityMax, DensityStep,
+            OnMountainsChanged, out _mountainsField));
+        vbox.AddChild(UiStepper.BuildStepperRow(
+            "Gold", GameSettings.GoldDensity, DensityMin, DensityMax, DensityStep,
+            OnGoldChanged, out _goldField));
 
         var back = new Button
         {
@@ -99,16 +109,14 @@ public sealed partial class MapGenSettingsPanel : CanvasLayer
         vbox.AddChild(back);
     }
 
-    /// <summary>Show the panel, re-syncing the toggle from
+    /// <summary>Show the panel, re-syncing each stepper from
     /// <see cref="GameSettings"/> (the other host may have changed it).</summary>
     public void Open()
     {
         if (IsOpen) return;
-        // ButtonPressed set programmatically does not raise Toggled — restyle by hand.
-        _mountainsBox.ButtonPressed = GameSettings.IncludeMountains;
-        UiToggle.ApplyStyle(_mountainsBox, GameSettings.IncludeMountains);
-        _goldBox.ButtonPressed = GameSettings.IncludeGold;
-        UiToggle.ApplyStyle(_goldBox, GameSettings.IncludeGold);
+        UiStepper.Resync(_treesField, GameSettings.TreeDensity);
+        UiStepper.Resync(_mountainsField, GameSettings.MountainDensity);
+        UiStepper.Resync(_goldField, GameSettings.GoldDensity);
         IsOpen = true;
         Visible = true;
         Log.Debug(Log.LogCategory.MapGen, "MapGenSettingsPanel: opened");
@@ -121,16 +129,22 @@ public sealed partial class MapGenSettingsPanel : CanvasLayer
         Visible = false;
     }
 
-    private void OnMountainsToggled(bool pressed)
+    private void OnTreesChanged(int density)
     {
-        GameSettings.IncludeMountains = pressed;
-        Log.Debug(Log.LogCategory.MapGen, $"MapGenSettingsPanel: IncludeMountains -> {pressed}");
+        GameSettings.TreeDensity = density;
+        Log.Debug(Log.LogCategory.MapGen, $"MapGenSettingsPanel: TreeDensity -> {density}");
     }
 
-    private void OnGoldToggled(bool pressed)
+    private void OnMountainsChanged(int density)
     {
-        GameSettings.IncludeGold = pressed;
-        Log.Debug(Log.LogCategory.MapGen, $"MapGenSettingsPanel: IncludeGold -> {pressed}");
+        GameSettings.MountainDensity = density;
+        Log.Debug(Log.LogCategory.MapGen, $"MapGenSettingsPanel: MountainDensity -> {density}");
+    }
+
+    private void OnGoldChanged(int density)
+    {
+        GameSettings.GoldDensity = density;
+        Log.Debug(Log.LogCategory.MapGen, $"MapGenSettingsPanel: GoldDensity -> {density}");
     }
 
     public override void _UnhandledInput(InputEvent @event)

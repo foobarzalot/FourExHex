@@ -539,11 +539,12 @@ public partial class MapEditorHudView : OrientationHud
         int seed = SeedFormat.NextSeed(new System.Random());
         _generateButton.FlashPress();
         var options = new MapGenOptions(
-            IncludeMountains: GameSettings.IncludeMountains,
-            IncludeGold: GameSettings.IncludeGold);
+            TreeDensity: GameSettings.TreeDensity,
+            MountainDensity: GameSettings.MountainDensity,
+            GoldDensity: GameSettings.GoldDensity);
         Log.Debug(Log.LogCategory.Input,
             $"[MapEditor] die press → seed={SeedFormat.ToHex(seed)} " +
-            $"mountains={options.IncludeMountains} gold={options.IncludeGold}");
+            $"trees={options.TreeDensity} mtn={options.MountainDensity} gold={options.GoldDensity}");
         GenerateRequested?.Invoke(seed, options);
         SelectHand();
     }

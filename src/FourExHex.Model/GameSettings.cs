@@ -76,24 +76,28 @@ public static class GameSettings
     public static int? MasterSeed = null;
 
     /// <summary>
-    /// Whether a freshly-generated map should scatter mountain ranges
-    /// (issue #48, Phase 1). Written by the New Game "Map Setup" checkbox
-    /// (and mirrored by the map editor's own toggle); read by <see cref="Main"/>
-    /// to build the <c>MapGenOptions</c> it passes to
-    /// <c>ProceduralGame.Build</c>. Defaults off so a fresh launch / skipped
+    /// Forest density (percent of land) for a freshly-generated map (issue #66).
+    /// Written by the New Game "Map Setup" stepper (and the map editor's own
+    /// stepper); read by <see cref="Main"/> / the map thumbnail / the editor die
+    /// into the <c>MapGenOptions</c> passed to <c>MapGenerator</c>. Defaults to 5
+    /// (the historical <c>grid.Count / 20</c> scatter) so a fresh launch / skipped
     /// menu generates the pre-#48 baseline map.
     /// </summary>
-    public static bool IncludeMountains = false;
+    public static int TreeDensity = 5;
 
     /// <summary>
-    /// Whether a freshly-generated map should scatter gold clusters (issue #48,
-    /// Phase 2). Companion to <see cref="IncludeMountains"/>: written by the same
-    /// "Map Generation" options panel, read by <see cref="Main"/> /
-    /// the map thumbnail / the editor die into the <c>MapGenOptions</c> passed to
-    /// <c>MapGenerator</c>. Defaults off so a fresh launch generates the pre-#48
-    /// baseline map.
+    /// Mountain-range density (percent of land) for a freshly-generated map
+    /// (issue #48 / #66). Defaults to 0 (off) so a fresh launch generates the
+    /// pre-#48 baseline map. See <see cref="TreeDensity"/> for the write/read path.
     /// </summary>
-    public static bool IncludeGold = false;
+    public static int MountainDensity = 0;
+
+    /// <summary>
+    /// Gold-cluster density (percent of land) for a freshly-generated map
+    /// (issue #48 / #66). Defaults to 0 (off). See <see cref="TreeDensity"/> for
+    /// the write/read path.
+    /// </summary>
+    public static int GoldDensity = 0;
 
     /// <summary>
     /// Campaign level index (0..255) when the next game is a campaign

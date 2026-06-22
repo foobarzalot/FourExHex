@@ -497,8 +497,8 @@ Consequences for the rest of this doc:
 │                  by the editor with EditorSnapshot)                      │
 │   TerritoryLookup — FindContaining / FindOwnedContaining /              │
 │                     FindByCapital / OwnedCapitalBearing helpers         │
-│   MapGenerator — CA land/water carve + tree scatter + optional neutral   │
-│                  mountain-range / gold-cluster passes (MapGenOptions)     │
+│   MapGenerator — CA land/water carve + density-driven tree / mountain /  │
+│                  gold scatter passes (MapGenOptions densities)            │
 │   GameSettings — global PlayerConfig (name, color hex) + PlayerKinds     │
 │                  + Difficulties (per-slot) + optional MasterSeed;        │
 │                  written by MainMenuScene, read by Main                   │
@@ -601,9 +601,9 @@ per-tile attribute that threads through every layer:
   brush (`MapEditPaint.PaintGoldToggle`, palette glyph `HexPaletteIcon.Gold`)
   that flips `IsGold` without disturbing owner/occupant, with the same
   drag-stroke add/erase locking as the tree/tower brushes — **and**
-  procedurally by `MapGenerator` when `MapGenOptions.IncludeGold` is set (see
-  "Procedural mountains & gold" below). Generated gold is sparse **neutral**
-  clusters.
+  procedurally by `MapGenerator` when `MapGenOptions.GoldDensity > 0` (see
+  "Procedural trees, mountains & gold" below). Generated gold is sparse
+  **neutral** clusters.
 - **Rendering.** `HexMapView`'s `GoldBordersLayer` (a `TriangleSoup` batch)
   draws an inset gold hex-ring band per gold tile, layered above the territory
   borders but below all occupants so it coexists with any player color and any
@@ -669,7 +669,7 @@ tile can be a gold mountain).
   a **tower coexists** with a mountain (#47 — neither brush clears the other);
   the capital brush refuses a mountain tile and vice-versa; gold is
   independent. Mountains are **also** generated procedurally by `MapGenerator`
-  when `MapGenOptions.IncludeMountains` is set (see "Procedural mountains &
+  when `MapGenOptions.MountainDensity > 0` (see "Procedural trees, mountains &
   gold" below); generated ranges are **neutral**.
 - **Editor undo/sound for flag paints.** Mountain and gold paints leave the
   territory partition untouched, so the editor's old "territory-list reference
@@ -691,48 +691,64 @@ tile can be a gold mountain).
   a squared slate `HexPaletteButton`) draws the same peak in opaque grey so it
   reads against the dark slate backdrop.
 
-## Procedural mountains & gold (issue #48)
+## Procedural trees, mountains & gold (issue #48 / #66)
 
-`MapGenerator.BuildInitialGrid` can scatter mountains and gold onto a
-freshly-generated map, each gated by a flag on the `MapGenOptions` record
-(`MapGenOptions(IncludeMountains, IncludeGold)`, both default **off**). The
+`MapGenerator.BuildInitialGrid` scatters trees, mountains, and gold onto a
+freshly-generated map, each driven by an integer **density** (percent of land)
+on the `MapGenOptions` record
+(`MapGenOptions(TreeDensity = 5, MountainDensity = 0, GoldDensity = 0)`). The
 record threads through `BuildInitialGrid(... , MapGenOptions? options = null)`
-and `ProceduralGame.Build(... , options)`; the no-options overload (tests,
-replay) and both-off are **byte-identical to the pre-#48 baseline** — each pass
-is fully gated so a disabled pass makes zero RNG draws, preserving the #20
-determinism reference. All scatter math is integer (no floats — Model rule) and
-deterministic in the seed.
+and `ProceduralGame.Build(... , options)`. `MapGenOptions.None` (and the
+no-options overload used by tests/replay) is **byte-identical to the pre-#48
+baseline**: density 0 for mountains/gold leaves their passes fully gated (zero
+RNG draws), and the **tree default of 5%** reproduces the historical
+`grid.Count / 20` scatter exactly — `grid` holds exactly the land tiles, so
+`land.Count * 5 / 100 == grid.Count / 20` byte-for-byte. This preserves the #20
+determinism reference. All densities are a single base (percent of `land.Count`);
+all scatter math is integer (no floats — Model rule) and deterministic in the
+seed.
 
-- **Mountains** — `ScatterMountainRanges`: a biased random-walk "ridge agent"
-  per range (pick a hex direction, walk mostly-straight with occasional ±1
-  veers, dropping an occasional perpendicular foothill → 1–2-wide ranges, not
-  speckle), to ~9% of land. `MarkMountain` sets `IsMountain`, **forfeits
-  ownership (`PlayerId.None`)**, and clears any tree.
-- **Gold** — `ScatterGoldClusters` (runs after mountains, before the tree
-  scatter): sparse (~3% of land) small **neutral** clusters (a seed tile grown
-  into a 2–4-tile blob). When mountains were also generated, cluster seeds are
-  biased (~55%) toward mountain tiles, so gold tends to co-locate / overlap with
-  ranges (a valid gold-on-mountain — the flags are independent). `MarkGold` sets
-  `IsGold` + `PlayerId.None`.
+- **Trees** — the tree scatter places `land.Count * TreeDensity / 100` trees
+  (default 5%), skipping mountain/gold/occupied tiles so they stay readable.
+  Density 0 places none.
+- **Mountains** — `ScatterMountainRanges(grid, land, density, rng)`: a biased
+  random-walk "ridge agent" per range (pick a hex direction, walk
+  mostly-straight with occasional ±1 veers, dropping an occasional perpendicular
+  foothill → 1–2-wide ranges, not speckle), to `MountainDensity`% of land.
+  `MarkMountain` sets `IsMountain`, **forfeits ownership (`PlayerId.None`)**, and
+  clears any tree. Gated on `MountainDensity > 0`.
+- **Gold** — `ScatterGoldClusters(grid, land, density, rng)` (runs after
+  mountains, before the tree scatter): sparse small **neutral** clusters (a seed
+  tile grown into a 2–4-tile blob), to `GoldDensity`% of land. When mountains
+  were also generated, cluster seeds are biased (~55%) toward mountain tiles, so
+  gold tends to co-locate / overlap with ranges (a valid gold-on-mountain — the
+  densities are independent). `MarkGold` sets `IsGold` + `PlayerId.None`. Gated on
+  `GoldDensity > 0`.
 - Generated mountains and gold are **neutral terrain players must capture**
   (a neutral gold tile pays nobody until owned). They flow through
   `TerritoryFinder` / `CapitalReconciler` as capital-less neutral regions;
   `CapitalPlacer` already skips neutral and mountain tiles, so no capital lands
   on them. The tree scatter skips mountain and gold tiles so both stay readable.
 - **Surfacing.** A shared `MapGenSettingsPanel` (Godot modal, opened by a serif
-  "?" chip — `HudIconButton` text mode) carries the two toggles, summoned from
-  both the New Game map-setup page and the map editor (next to the die). It
-  reads/writes the process-wide `GameSettings.IncludeMountains` /
-  `IncludeGold`; `Main`, the map thumbnail, and the editor die build their
-  `MapGenOptions` from those for **freeform** games. The square gold-✓ toggle
-  rows come from the shared `UiToggle` helper (also used by `SettingsPanel`).
-- **Campaign terrain is per-level, not the freeform toggles.**
-  `CampaignProgress.MapGenOptionsForLevel(level)` derives a level's mountains/gold
-  mix deterministically from the level number (≈55% / ≈45%, independent), so a
-  level's terrain is fixed and reproducible regardless of UI state. `Main` uses
-  it whenever `GameSettings.CampaignLevel` is set (freeform falls back to the
-  toggles), and the campaign confirm-sheet preview renders the same derivation
-  via `MapThumbnailView.RequestRandom(seed, options)`.
+  "?" chip — `HudIconButton` text mode) carries three **density steppers**
+  (Trees / Mountains / Gold, each 0..25% in steps of 5), summoned from both the
+  New Game map-setup page and the map editor (next to the die). It reads/writes
+  the process-wide `GameSettings.TreeDensity` / `MountainDensity` / `GoldDensity`;
+  `Main`, the map thumbnail, and the editor die build their `MapGenOptions` from
+  those for **freeform** games. The `−`/value/`+` stepper rows (value editable by
+  typing, clamped + snapped on commit) come from the shared `UiStepper` helper
+  (sibling of `UiToggle`).
+- **Campaign terrain is per-level, not the freeform steppers.**
+  `CampaignProgress.MapGenOptionsForLevel(level)` derives a level's densities
+  deterministically from the level number: mountains present ≈55% (density 10
+  when present, else 0), gold present ≈45% (density 5 when present, else 0), and
+  trees vary across {0, 5, 10}% — so a level's terrain is fixed and reproducible
+  regardless of UI state. This **re-baselines campaign maps** vs the old on/off
+  flags (campaign is not part of the #20 byte-identical reference; only the
+  freeform default is). `Main` uses it whenever `GameSettings.CampaignLevel` is
+  set (freeform falls back to the steppers), and the campaign confirm-sheet
+  preview renders the same derivation via
+  `MapThumbnailView.RequestRandom(seed, options)`.
 
 ## Display scaling (autoload)
 

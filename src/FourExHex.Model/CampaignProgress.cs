@@ -166,26 +166,35 @@ public sealed class CampaignProgress
         return level;
     }
 
-    // Per-level map-generation features (issue #48). Each campaign level gets a
-    // fixed, reproducible mountains/gold mix derived from the level number —
-    // independent of the freeform New Game toggles and varied across the ladder.
+    // Per-level map-generation densities (issue #48 / #66). Each campaign level
+    // gets a fixed, reproducible tree/mountain/gold mix derived from the level
+    // number — independent of the freeform New Game steppers and varied across
+    // the ladder. Mountains/gold keep the present/absent odds and use a single
+    // "on" density; trees vary across a small set so forest cover is part of a
+    // level's identity too.
     private const int CampaignMountainChance = 55; // %; mountains slightly common
     private const int CampaignGoldChance = 45;     // %; gold the rarer prize
+    private const int CampaignMountainOnDensity = 10; // % of land when mountains present
+    private const int CampaignGoldOnDensity = 5;      // % of land when gold present
 
-    /// <summary>The mountains/gold generation features for a campaign level
-    /// (issue #48). Deterministic — same level always yields the same options —
-    /// and decorrelated from both the freeform toggles and the map seed, so a
-    /// level's terrain is a fixed part of its identity.</summary>
+    /// <summary>The tree/mountain/gold generation densities for a campaign level
+    /// (issue #48 / #66). Deterministic — same level always yields the same options
+    /// — and decorrelated from both the freeform steppers and the map seed, so a
+    /// level's terrain is a fixed part of its identity. Mountains/gold are present
+    /// at fixed odds (and a fixed density when present); trees vary across
+    /// {0, 5, 10}% of land.</summary>
     public static MapGenOptions MapGenOptionsForLevel(int level)
     {
         ValidateLevel(level);
         // Deterministic per-level draw, offset off the level number so it doesn't
-        // track the map seed (= level). Two sequential draws give independent
-        // mountains/gold flags. Integer-only (no floats — Model assembly rule).
+        // track the map seed (= level). Sequential draws give independent
+        // mountain/gold/tree densities. Integer-only (no floats — Model rule).
         var rng = new Random(unchecked(level * 2671 + 40503));
-        bool mountains = rng.Next(100) < CampaignMountainChance;
-        bool gold = rng.Next(100) < CampaignGoldChance;
-        return new MapGenOptions(IncludeMountains: mountains, IncludeGold: gold);
+        int mountains = rng.Next(100) < CampaignMountainChance ? CampaignMountainOnDensity : 0;
+        int gold = rng.Next(100) < CampaignGoldChance ? CampaignGoldOnDensity : 0;
+        int trees = 5 * rng.Next(0, 3); // {0, 5, 10}
+        return new MapGenOptions(
+            TreeDensity: trees, MountainDensity: mountains, GoldDensity: gold);
     }
 
     private static void ValidateLevel(int level)

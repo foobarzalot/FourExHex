@@ -63,20 +63,20 @@ public static class MapGenerator
             grid.Add(new HexTile(coord, owner));
         }
 
-        // Mountain ranges (issue #48), gated so a disabled pass makes zero RNG
-        // draws and the map stays byte-identical to the no-options baseline.
-        // Placed before the tree scatter so trees simply avoid mountain tiles.
-        if (options.IncludeMountains)
+        // Mountain ranges (issue #48), gated on density > 0 so a disabled pass
+        // makes zero RNG draws and the map stays byte-identical to the no-options
+        // baseline. Placed before the tree scatter so trees simply avoid mountains.
+        if (options.MountainDensity > 0)
         {
-            ScatterMountainRanges(grid, land, rng);
+            ScatterMountainRanges(grid, land, options.MountainDensity, rng);
         }
 
         // Gold clusters (issue #48), gated the same way. Placed after mountains
         // so cluster seeds can be biased toward mountain tiles, and before the
         // tree scatter so trees avoid the fresh gold tiles.
-        if (options.IncludeGold)
+        if (options.GoldDensity > 0)
         {
-            ScatterGoldClusters(grid, land, rng);
+            ScatterGoldClusters(grid, land, options.GoldDensity, rng);
         }
 
         // Water = every coord in the rectangle that isn't land.
@@ -90,11 +90,17 @@ public static class MapGenerator
             }
         }
 
-        // Scatter initial trees on land — roughly 5% of land tiles. Mirrors
-        // Slay's behavior of starting boards with visible forest. Tree
-        // placement is bounded by available occupant-free land; with sparse
-        // maps the loop just stops short of the target rather than retrying.
-        int treeTarget = grid.Count / 20;
+        // Scatter initial trees on land — TreeDensity percent of land tiles
+        // (default 5%). Mirrors Slay's behavior of starting boards with visible
+        // forest. `grid` holds exactly the land tiles (one per land coord, none
+        // added/removed since), so land.Count is the single density base shared
+        // with the mountain/gold passes; at density 5 this equals the historical
+        // grid.Count / 20 byte-for-byte. Tree placement is bounded by available
+        // occupant-free land; sparse maps just stop short of the target.
+        int treeTarget = land.Count * options.TreeDensity / 100;
+        Log.Debug(Log.LogCategory.MapGen,
+            $"[mapgen] densities trees={options.TreeDensity} mtn={options.MountainDensity} " +
+            $"gold={options.GoldDensity} (land {land.Count}, treeTarget {treeTarget})");
         var landCoordList = new List<HexCoord>(land);
         for (int i = 0; i < treeTarget && landCoordList.Count > 0; i++)
         {
@@ -116,21 +122,21 @@ public static class MapGenerator
     // direction, then walk a chain that mostly continues straight but
     // occasionally veers ±1, marking each tile a mountain. Each spine tile also
     // has a chance to drop one perpendicular "foothill" neighbor, giving 1–2-wide
-    // ranges rather than 1-wide lines or random speckle. Repeat ranges until ~9%
-    // of land is mountain. All draws are integer rng.Next (no floats — Model
-    // assembly rule) and the start-tile list is sorted, so it stays deterministic
-    // in the seed.
-    private const int MountainLandPercent = 9; // target mountain coverage of land
+    // ranges rather than 1-wide lines or random speckle. Repeat ranges until the
+    // density target (percent of land) is met. All draws are integer rng.Next (no
+    // floats — Model assembly rule) and the start-tile list is sorted, so it stays
+    // deterministic in the seed.
     private const int MinRangeLen = 4;
     private const int MaxRangeLen = 9;
     private const int TurnPercent = 22;    // per-step chance to veer one hex CCW (and again CW)
     private const int ThickenPercent = 45; // per-spine-tile chance to add a side foothill
 
-    private static void ScatterMountainRanges(HexGrid grid, HashSet<HexCoord> land, Random rng)
+    private static void ScatterMountainRanges(
+        HexGrid grid, HashSet<HexCoord> land, int density, Random rng)
     {
         if (land.Count == 0) return;
 
-        int target = land.Count * MountainLandPercent / 100;
+        int target = land.Count * density / 100;
         if (target <= 0) return;
 
         // Sorted start-tile list keeps sampling deterministic regardless of the
@@ -194,16 +200,16 @@ public static class MapGenerator
     // ranges (a valid gold-on-mountain tile — the flags are independent). All
     // draws are integer rng.Next and every sampled list is sorted, so it stays
     // deterministic in the seed.
-    private const int GoldLandPercent = 3;       // target gold coverage of land
     private const int GoldMinCluster = 2;        // min tiles per cluster (>=2 → no speckle)
     private const int GoldMaxCluster = 4;
     private const int GoldOnMountainPercent = 55; // chance a cluster seed lands on a mountain
 
-    private static void ScatterGoldClusters(HexGrid grid, HashSet<HexCoord> land, Random rng)
+    private static void ScatterGoldClusters(
+        HexGrid grid, HashSet<HexCoord> land, int density, Random rng)
     {
         if (land.Count == 0) return;
 
-        int target = land.Count * GoldLandPercent / 100;
+        int target = land.Count * density / 100;
         if (target <= 0) return;
 
         var landList = new List<HexCoord>(land);
