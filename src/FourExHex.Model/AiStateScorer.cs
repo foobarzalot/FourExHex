@@ -116,20 +116,11 @@ public static class AiStateScorer
 
     // Standing reward per point of defense on an OWN tile that borders an
     // enemy (one-sided, applied in Score() like UndefendedBorderPenalty).
-    // This values *holding* a strong frontier — a defender stays put rather
-    // than wandering, and capturing/holding a mountain reads better because
-    // DefenseRules.Defense bakes in the +1 high-ground. A *per-action*
-    // arrival bonus was tried instead (to dodge the perverse-capture penalty
-    // the BuildTowerCoverageBonus comment documents) but it rewarded the act
-    // of moving onto a border with no credit for the border already held —
-    // luring a well-placed defender into pointless lateral shuffles and
-    // giving zero standing value to remaining. A standing term values the
-    // *state* (a lateral move between two equally-covered borders nets zero),
-    // so it has no shuffle. Its one cost is that perverse-capture dip, but at
-    // this small weight (≤ cap×weight = 6 per border) it is dwarfed by the
-    // TileWeight + EnemyEdgePenalty gains of the concavity-filling captures
-    // it would touch. Bounded by board geometry, so no #19 stasis (it cancels
-    // in the 1-ply diff for any action that doesn't change border defense).
+    // Values *holding* a strong frontier, so a defender stays put rather than
+    // wandering, and holding/capturing a mountain reads better because
+    // DefenseRules.Defense bakes in the +1 high-ground. Kept small so it
+    // stays a tie-breaker between defensive positions, not a driver that
+    // crowds out captures (the #19 stasis guard).
     private const int ContestedDefenseWeight = 2;
 
     // Ceiling on the defense counted by ContestedDefenseWeight. A tile at
