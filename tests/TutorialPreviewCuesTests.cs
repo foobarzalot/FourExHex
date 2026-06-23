@@ -411,6 +411,7 @@ public class TutorialPreviewCuesTests
     [Fact]
     public void MoveBeat_NoMode_FlashesSelectCueOnFromTile_NotMoveRings()
     {
+        InteractionVerb.Configure(isMobile: true);
         var f0 = new Fixture(new List<ReplayBeat>());
         HexCoord redCapital = f0.RedTerritory.Capital!.Value;
         HexCoord from = AnyOtherCoord(f0.RedTerritory, redCapital);

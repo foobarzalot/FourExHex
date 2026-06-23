@@ -302,8 +302,9 @@ public class TutorialInstructionTextTests
     }
 
     [Fact]
-    public void MoveBeat_ModeNone_PromptsSourcePickup()
+    public void MoveBeat_ModeNone_PromptsSourcePickup_Mobile()
     {
+        InteractionVerb.Configure(isMobile: true);
         var session = new SessionState { Mode = SessionState.ActionMode.None };
         string text = TutorialInstructionText.For(
             new ReplayMoveBeat
@@ -316,10 +317,26 @@ public class TutorialInstructionTextTests
     }
 
     [Fact]
+    public void MoveBeat_ModeNone_PromptsSourcePickup_Desktop()
+    {
+        InteractionVerb.Configure(isMobile: false);
+        var session = new SessionState { Mode = SessionState.ActionMode.None };
+        string text = TutorialInstructionText.For(
+            new ReplayMoveBeat
+            {
+                Index = 0, Turn = 1, Actor = 0,
+                From = A, To = B,
+            },
+            EmptyState(), session);
+        Assert.Equal("Click the highlighted unit to pick it up.", text);
+    }
+
+    [Fact]
     public void MoveBeat_MovingUnitWrongSource_StillPromptsSourcePickup()
     {
         // Player has picked up a different unit than the script wants;
         // re-prompt them to grab the highlighted one.
+        InteractionVerb.Configure(isMobile: true);
         var session = new SessionState
         {
             Mode = SessionState.ActionMode.MovingUnit,

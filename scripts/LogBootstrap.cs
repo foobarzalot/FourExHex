@@ -38,12 +38,22 @@ public partial class LogBootstrap : Node
         // (every category defaults to Off).
         Log.Configure(OS.GetEnvironment("FOUREXHEX_LOG"));
 
+        bool isMobile = OS.HasFeature("mobile");
+
+        // Platform-aware interaction verb: "Tap" on mobile, "Click" on desktop.
+        // Godot-free static (see InteractionVerb), so it must be pushed the
+        // platform flag here at startup — before any scene's instructional /
+        // tooltip text is built — the same way Log is configured above.
+        InteractionVerb.Configure(isMobile);
+        Log.Info(Log.LogCategory.Display,
+            $"InteractionVerb: mobile={isMobile} -> \"{InteractionVerb.Capitalized}\"");
+
         // Mobile (Android/iOS) can't set the FOUREXHEX_LOG env var, so turn
         // every category fully verbose for logcat. Desktop keeps env-var-driven
         // gating (above). Trace/Debug/Info are compiled out of release builds
         // regardless of level, so in a release build this only surfaces
         // Warn/Error in the field — intentional for device diagnostics.
-        if (OS.HasFeature("mobile"))
+        if (isMobile)
         {
             foreach (Log.LogCategory cat in System.Enum.GetValues<Log.LogCategory>())
             {

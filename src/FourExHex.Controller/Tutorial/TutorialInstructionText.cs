@@ -38,7 +38,7 @@ public static class TutorialInstructionText
             && session.MoveSource.Value.Equals(mv.From);
         if (!inMovingMode)
         {
-            return "Tap the highlighted unit to pick it up.";
+            return $"{InteractionVerb.Capitalized} the highlighted unit to pick it up.";
         }
 
         HexTile? srcTile = state.Grid.Get(mv.From);

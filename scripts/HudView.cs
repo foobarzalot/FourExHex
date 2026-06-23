@@ -993,7 +993,7 @@ public partial class HudView : OrientationHud, IHudView
         // visual cue.
         _continueHint = new Label
         {
-            Text = "Click anywhere to continue",
+            Text = $"{InteractionVerb.Capitalized} anywhere to continue",
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
             AnchorLeft = 0f,
@@ -1796,7 +1796,7 @@ public partial class HudView : OrientationHud, IHudView
         _buildTowerButton.Disabled = !building && !canAffordTower;
         _buildTowerButton.Selected = building;
         _buildTowerButton.TooltipText = building
-            ? "Click a tile... — T"
+            ? $"{InteractionVerb.Capitalized} a tile... — T"
             : canAffordTower
                 ? HudIconButton.DefaultTooltip(HudIcon.Tower)
                 : DisabledBuyReason(selected, hasCapital, "a tower", PurchaseRules.TowerCostFor(buyerDifficulty));
@@ -2004,13 +2004,13 @@ public partial class HudView : OrientationHud, IHudView
         UnitLevel? buyLevel = SessionState.BuyModeLevel(session.Mode);
         if (buyLevel.HasValue)
         {
-            return $"Click to place a {buyLevel.Value}";
+            return $"{InteractionVerb.Capitalized} to place a {buyLevel.Value}";
         }
         if (session.Mode == SessionState.ActionMode.MovingUnit && session.MoveSource.HasValue)
         {
             HexTile? src = state.Grid.Get(session.MoveSource.Value);
             UnitLevel level = (src?.Unit?.Level) ?? UnitLevel.Recruit;
-            return $"Click to move the {level}";
+            return $"{InteractionVerb.Capitalized} to move the {level}";
         }
         // Bankruptcy warning now flows through the red bankruptcy-toast
         // widget (built by BuildBankruptToast / toggled in Refresh) —
