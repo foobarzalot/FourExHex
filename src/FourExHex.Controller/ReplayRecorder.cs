@@ -12,6 +12,16 @@ using System.Collections.Generic;
 public enum InstantStep { Continued, TurnBoundary, Exhausted }
 
 /// <summary>
+/// Result of the replay divergence check (issue #77): set when a loaded
+/// replay, re-executed under the current rules, lands on a board whose
+/// <see cref="GameStateChecksum"/> differs from the recorded final board.
+/// Both checksums are computed by the current binary, so a divergence
+/// reflects a genuine board difference (e.g. a gameplay-rule change since
+/// the replay was recorded), not a checksum-format change.
+/// </summary>
+public sealed record ReplayDivergence(string Expected, string Actual);
+
+/// <summary>
 /// Replay subsystem extracted from <see cref="GameController"/>. Owns
 /// the recorded <see cref="ReplayBeat"/> log (the parallel-to-undo
 /// action history), the per-game initial snapshot used to rewind
@@ -62,6 +72,19 @@ public class ReplayRecorder
     private bool _replayMode;
     private int _replayIndex;
     private bool _replayInstantActive;
+
+    // #77: divergence detection. Captured once at the first BeginReplay
+    // (before the rewind) from the recorded end board — loaded.State for
+    // a save, or the finished live board. EndReplay recomputes the
+    // replayed board and compares. Capturing once (and only here) keeps
+    // the baseline stable across repeated replays of the same game. The
+    // canonical string is kept alongside the hash purely for the Debug
+    // first-difference diagnostic.
+    private string? _expectedEndChecksum;
+    private string? _expectedEndCanonical;
+    /// <summary>Set by <see cref="EndReplay"/> when the replayed end board
+    /// does not match the recorded one; null after a faithful replay.</summary>
+    public ReplayDivergence? LastDivergence { get; private set; }
 
     // Parallel bookkeeping for undo/redo: track the beat-list size at
     // the moment each UndoEntry was pushed, so undo can trim
@@ -304,6 +327,17 @@ public class ReplayRecorder
         _ops.GameEndedFired = false;
         _ops.HumanTurnFiredForCurrentTurn = false;
 
+        // #77: snapshot the recorded end board's checksum BEFORE the rewind
+        // below overwrites it. Captured once (??=) so a re-replay still
+        // compares against the original recording, not the prior playback.
+        // Skipped in preview mode (authored tutorials have no played-out
+        // end state to reproduce).
+        if (!_previewMode && _expectedEndChecksum == null)
+        {
+            _expectedEndChecksum = GameStateChecksum.Compute(_state);
+            _expectedEndCanonical = GameStateChecksum.Stringify(_state);
+        }
+
         _state.Territories = _initialSnapshot.ApplyTo(_state.Grid, _state.Treasury);
         _state.Turns.Reset(_initialCurrentPlayerIndex, _initialTurnNumber);
         _session.Winner = null;
@@ -509,6 +543,50 @@ public class ReplayRecorder
         if (wasInstant) _map.RebuildAfterTerritoryChange();
         _map.ShowHighlight(null);
         _ops.RefreshViews();
+
+        // #77: compare the replayed board against the recorded end board.
+        // Only on a clean finish (all beats consumed, or a beat ended the
+        // game) so an aborted mid-replay can't falsely diverge.
+        bool cleanFinish = _replayIndex >= _replayBeats.Count || _session.IsGameOver;
+        if (_expectedEndChecksum != null && cleanFinish)
+        {
+            string actual = GameStateChecksum.Compute(_state);
+            if (actual != _expectedEndChecksum)
+            {
+                LastDivergence = new ReplayDivergence(_expectedEndChecksum, actual);
+                Log.Warn(Log.LogCategory.Replay,
+                    $"Replay diverged from recording: expected {_expectedEndChecksum}, " +
+                    $"got {actual}. Recorded under different gameplay rules? (issue #77)");
+                Log.Debug(Log.LogCategory.Replay,
+                    "First diff " + FirstDifference(
+                        _expectedEndCanonical ?? "", GameStateChecksum.Stringify(_state)));
+            }
+            else
+            {
+                LastDivergence = null;
+                Log.Debug(Log.LogCategory.Replay,
+                    $"Replay end board matches recording (no divergence): {actual}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// First differing line between the recorded and replayed canonical
+    /// state strings, for the divergence Debug log. Mirrors the diagnostic
+    /// in AiSimulatorDriftTests.
+    /// </summary>
+    private static string FirstDifference(string recorded, string replayed)
+    {
+        string[] a = recorded.Split('\n');
+        string[] b = replayed.Split('\n');
+        int n = Math.Max(a.Length, b.Length);
+        for (int i = 0; i < n; i++)
+        {
+            string ra = i < a.Length ? a[i] : "<missing>";
+            string rb = i < b.Length ? b[i] : "<missing>";
+            if (ra != rb) return $"at line {i}: recorded [{ra}] vs replayed [{rb}]";
+        }
+        return "<identical>";
     }
 
     /// <summary>

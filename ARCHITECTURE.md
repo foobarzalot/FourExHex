@@ -1011,11 +1011,33 @@ recorder owns recording, paced playback, and the instant-step function.
   transition; called by `StepReplayExecute` and by `RunInstantTick`'s
   `reschedule` callback for instant replay), private
   `ResolveReplayActingTerritory`.
+- **Divergence detection** (issue #77): a replay re-executes its beats
+  through the *current* rules, so a gameplay-rule change since recording
+  can make an old replay land on a different board (silent desync) or throw
+  mid-replay. `BeginReplay` captures the recorded end board's
+  `GameStateChecksum` **once, before the rewind** (`_expectedEndChecksum`,
+  guarded `??=` so a re-replay still compares against the original
+  recording; skipped in `_previewMode`, where authored tutorials have no
+  played-out end state). The recorded board is exactly the already-loaded
+  top-level `GameState` (`loaded.State`, or the finished live board), so
+  nothing extra is persisted — no checksum stored in the save, no format
+  bump. `EndReplay` recomputes the replayed board's checksum on a **clean
+  finish only** (all beats consumed or a beat ended the game — so an aborted
+  mid-replay can't false-positive) and, on mismatch, sets
+  `LastDivergence` (an `Expected`/`Actual` `ReplayDivergence` record) and
+  logs `Log.LogCategory.Replay` Warn + a first-differing-line Debug; a
+  faithful replay clears it to null and logs a Debug confirmation. Both
+  checksums are computed by the same binary, so format/additive changes to
+  `GameStateChecksum.Stringify` cancel out — only a genuine board difference
+  flags. Developer-facing only (no user-facing UI); pinned by
+  `ReplayFidelityTests` (happy path asserts no divergence; a deliberate
+  tampered-end-state case asserts detection).
 - **Public read surface** (consumed by `Main.cs` and `RecordPane.cs` via
   thin forwarders on `GameController`): `Beats`, `BeatsCount`,
   `InitialSnapshot`, `InitialTurnNumber`, `InitialCurrentPlayerIndex`,
   `IsCompleteFromStart`, `HasInitialSnapshot`, `IsReplaying`,
-  `IsInstantModeActive`, plus the bookkeeping depths `UndoBatchDepth` /
+  `IsInstantModeActive`, `LastDivergence` (forwarded as
+  `LastReplayDivergence`), plus the bookkeeping depths `UndoBatchDepth` /
   `RedoBatchDepth` (forwarded as `UndoBeatBatchDepth` /
   `RedoBeatBatchDepth`; consumed by the sync tests).
 
@@ -1047,7 +1069,7 @@ recorder owns recording, paced playback, and the instant-step function.
 - Public API forwarders to the recorder: `BeginReplay`,
   `RecordTutorialOnlyBeat`, `ReplayBeats`, `InitialReplaySnapshot`,
   `InitialReplayTurnNumber`, `InitialReplayCurrentPlayerIndex`,
-  `ReplayDataIsCompleteFromStart`, `IsReplayMode`.
+  `ReplayDataIsCompleteFromStart`, `IsReplayMode`, `LastReplayDivergence`.
 
 ### Construction
 
@@ -4333,7 +4355,8 @@ scripts/  (split: see the three source trees listed just above)
 ├─ ZoomMath.cs            ─ pixel↔hex helpers used by HexMapView
 ├─ GameStateSnapshot.cs   ─
 ├─ GameStateChecksum.cs   ─ SHA-256 digest over tiles/gold/territories/
-│                           turn state; used by replay-fidelity tests
+│                           turn state; used by replay-fidelity tests and
+│                           the live replay divergence check (#77)
 └─ UndoStack.cs           ─ generic two-sided history (used by both play
                             and editor)
 

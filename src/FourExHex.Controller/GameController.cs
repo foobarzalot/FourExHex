@@ -412,6 +412,12 @@ public class GameController
     /// Input handlers early-return when this is set; autosave is
     /// suppressed.</summary>
     public bool IsReplayMode => _recorder.IsReplaying;
+    /// <summary>Set when the most recent completed replay landed on a board
+    /// that differs from the recorded final board (issue #77) — e.g. a
+    /// gameplay rule changed since the replay was recorded; null after a
+    /// faithful replay. Developer-facing detection (also logged at
+    /// <see cref="Log.LogCategory.Replay"/>); no user-facing UI.</summary>
+    public ReplayDivergence? LastReplayDivergence => _recorder.LastDivergence;
     /// <summary>Depth of the recorder's undo beat-count stack. Invariant:
     /// equals <c>SessionState.Undo.UndoCount</c> at every quiescent point
     /// (pinned by UndoReplayBeatSyncTests).</summary>

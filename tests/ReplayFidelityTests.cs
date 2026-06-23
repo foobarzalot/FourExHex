@@ -73,6 +73,79 @@ public class ReplayFidelityTests
 
         string replayChecksum = GameStateChecksum.Compute(loaded.State);
         Assert.Equal(liveChecksum, replayChecksum);
+
+        // A faithful replay reproduces the recorded end board, so the
+        // engine's own divergence check (recorded-vs-replayed checksum,
+        // #77) must flag nothing.
+        Assert.Null(replayController.LastReplayDivergence);
+    }
+
+    /// <summary>
+    /// #77: a replay that does NOT reproduce the recorded final board is
+    /// detected. We can't stage a real rule change inside one binary, so we
+    /// simulate it: load a save, then mutate the recorded end state
+    /// (<see cref="GameController.BeginReplay"/> captures its checksum as the
+    /// baseline) before replaying. The rewind+beats reproduce the original
+    /// board, which now differs from the tampered baseline, so the controller
+    /// must surface a <see cref="ReplayDivergence"/>.
+    /// </summary>
+    [Fact]
+    public void Replay_DivergentEndState_IsDetected()
+    {
+        const int MasterSeed = 12345;
+        const int MaxTurns = 30;
+        const int Cols = 18;
+        const int Rows = 13;
+
+        IReadOnlyList<Player> players = BuildSixComputerPlayers();
+        (GameState liveState, var liveController, _, _) =
+            BuildHeadlessGame(players, MasterSeed, MaxTurns, Cols, Rows);
+        liveController.StartGame();
+        Assert.True(liveController.ReplayBeats.Count > 0);
+
+        Replay replayPayload = new Replay(
+            liveController.InitialReplaySnapshot!,
+            liveController.InitialReplayTurnNumber,
+            liveController.InitialReplayCurrentPlayerIndex,
+            liveController.ReplayBeats);
+        string json = SaveSerializer.Serialize(liveState, MasterSeed, players,
+            "divergence", MaxTurns, replay: replayPayload);
+        LoadedSave loaded = SaveSerializer.Deserialize(json);
+        Assert.NotNull(loaded.Replay);
+
+        // Tamper the recorded end board with a checksum-visible change that
+        // the beat log will NOT reproduce: bump a capital's treasury gold.
+        HexCoord capital = FindAnyCapital(loaded.State);
+        loaded.State.Treasury.SetGold(capital,
+            loaded.State.Treasury.GetGold(capital) + 9999);
+        string tamperedChecksum = GameStateChecksum.Compute(loaded.State);
+
+        var replayController = new GameController(
+            loaded.State, new SessionState(),
+            new MockHexMapView(), new MockHudView(),
+            seed: loaded.MasterSeed,
+            aiPacer: new SynchronousAiPacer(),
+            aiChooser: AiDispatcher.ChooseForCurrentPlayer,
+            maxTurnNumber: loaded.MaxTurnNumber,
+            loadedReplay: loaded.Replay);
+        replayController.BeginReplay();
+
+        ReplayDivergence? divergence = replayController.LastReplayDivergence;
+        Assert.NotNull(divergence);
+        // Baseline (Expected) is the tampered board; replay (Actual) is the
+        // faithful reproduction — they must differ.
+        Assert.Equal(tamperedChecksum, divergence!.Expected);
+        Assert.NotEqual(divergence.Expected, divergence.Actual);
+    }
+
+    private static HexCoord FindAnyCapital(GameState state)
+    {
+        foreach (Territory t in state.Territories)
+        {
+            if (t.HasCapital) return t.Capital!.Value;
+        }
+        throw new System.InvalidOperationException(
+            "Expected at least one territory with a capital.");
     }
 
     private static IReadOnlyList<Player> BuildSixComputerPlayers()
