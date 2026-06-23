@@ -27,8 +27,9 @@ public class HexTile
     /// neutral, and may hold any occupant. The bonus is applied in
     /// <see cref="IncomeRules.IncomeFor"/>; like every income-producing tile,
     /// a gold tile occupied by a <see cref="Tree"/>/<see cref="Grave"/> pays
-    /// nothing. Authored only via the map editor; never created by
-    /// <c>MapGenerator</c>. Defaults <c>false</c>; plain state — changing it
+    /// nothing. Authored via the map editor and scattered as contested gold
+    /// clusters by <c>MapGenerator</c> when its gold density is &gt; 0
+    /// (issue #48). Defaults <c>false</c>; plain state — changing it
     /// does not repaint anything.
     /// </summary>
     public bool IsGold { get; set; }
@@ -43,8 +44,9 @@ public class HexTile
     /// through, and die on it without leaving a grave), and may also be gold.
     /// Mountains never hold a capital or tower, trees never spread onto them,
     /// and a Captain/Commander can capture one without destroying it. No income
-    /// behavior of its own. Authored only via the map editor; never created by
-    /// <c>MapGenerator</c>. Defaults <c>false</c>; plain state — changing it
+    /// behavior of its own. Authored via the map editor and scattered as
+    /// mountain ranges by <c>MapGenerator</c> when its mountain density is
+    /// &gt; 0 (issue #48). Defaults <c>false</c>; plain state — changing it
     /// does not repaint anything.
     /// </summary>
     public bool IsMountain { get; set; }

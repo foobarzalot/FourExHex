@@ -177,6 +177,23 @@ public partial class Main : Node2D
             envSeed = parsedSeed;
             if (diagnosticMode) GD.Print($"=== FOUREXHEX_SEED={parsedSeed} ===");
         }
+
+        // Diagnostic terrain overrides (mirror FOUREXHEX_SEED): lock map-gen
+        // densities for headless verification runs — e.g. exercising the
+        // gold/mountain AI scoring (#61) under FOUREXHEX_6AI without editing
+        // code or visiting the menu. Each, when set to a valid non-negative
+        // int, wins over the menu/default GameSettings value; absent vars
+        // (empty string → TryParse false) are no-ops. The effective densities
+        // are reported by the Log.Info(MapGen) line below. Only the freeform/
+        // diagnostic path reads these GameSettings (campaign levels derive
+        // their own densities), which is exactly the 6AI path.
+        if (int.TryParse(OS.GetEnvironment("FOUREXHEX_TREE_DENSITY"), out int envTree) && envTree >= 0)
+            GameSettings.TreeDensity = envTree;
+        if (int.TryParse(OS.GetEnvironment("FOUREXHEX_MTN_DENSITY"), out int envMtn) && envMtn >= 0)
+            GameSettings.MountainDensity = envMtn;
+        if (int.TryParse(OS.GetEnvironment("FOUREXHEX_GOLD_DENSITY"), out int envGold) && envGold >= 0)
+            GameSettings.GoldDensity = envGold;
+
         int seed = envSeed
                 ?? pendingLoad?.MasterSeed
                 ?? GameSettings.MasterSeed

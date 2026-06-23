@@ -2370,7 +2370,32 @@ single beat).
   territory the +1 income is clamped) stays positive even when the
   chopping unit uncovers up to three border tiles — i.e. chops dominate
   the border-exposure they incur, fixing the tree-spread "treeopocalypse"
-  stalemates. Gold contributes zero to standing value (see #19).
+  stalemates. Treasury **gold hoards** contribute zero to standing value
+  (see #19 — a static gold term collapsed the AI into do-nothing stasis).
+  **Gold tiles**, by contrast, carry a durable two-sided standing premium of
+  `TileWeight × IncomeRules.GoldTileBonus` per income-producing gold tile
+  (#61): a gold tile earns 5× an ordinary tile (`1 + GoldTileBonus`), so it
+  is worth 5× `TileWeight`. The premium is added in `TerritoryValue`
+  (subtracted for enemies, so capturing enemy gold reads as doubly good),
+  un-gated by bankruptcy (durable terrain worth, surviving the temporary
+  bankruptcy that zeroes the income blip), and counted via
+  `TreeRules.CountGoldIncomeTiles` — so a tree-blocked gold tile reads as
+  ordinary land until the tree is chopped, making gold-trees the most
+  desirable chops (clearing one unlocks the full +`TileWeight × GoldTileBonus`).
+  **Mountains** are valued through a *per-action* `BorderDefenseBonus`
+  (`ContestedDefenseWeight` 2 × `min(Defense, ContestedDefenseCap 3)`) rather
+  than a standing term (#61). It is added to the candidate delta in
+  `ComputerAi.BestPositiveDelta` next to `BuildTowerBonus`, for move / buy /
+  buy-combine destinations that are own contested-border tiles, evaluated on
+  the *after-action* state since a capture flips ownership. Per-action by the
+  same reasoning `BuildTowerCoverageBonus` is: a *standing* border-defense
+  reward would re-create the perverse-capture penalty (a capture turning a
+  defended border into an interior tile would lose the reward, dragging good
+  captures negative). Destination-only, it never penalizes captures. The
+  mountain `+1` high-ground already lives inside `DefenseRules.Defense`, so the
+  scorer needs no `IsMountain` reference — mountains win simply by reading
+  higher defense at the destination; the cap (≥ 3) keeps the soldier-onto-
+  mountain bump (defense 2→3) rewarded while clamping over-garrison overkill.
 - **`ReplayDrivenAi`** — script-driven chooser used only by the
   TutorialBuilder's Preview mode. Replays recorded non-player-0
   `ReplayBeat`s through the standard AI step machine via a shared

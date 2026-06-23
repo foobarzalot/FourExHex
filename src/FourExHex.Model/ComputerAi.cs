@@ -213,6 +213,24 @@ public static class ComputerAi
             if (candidate.Action is AiBuildTowerAction bt)
                 delta += AiStateScorer.BuildTowerBonus(bt.Destination, state, forPlayer);
 
+            // Per-action defense incentive (#61): reward landing a defender
+            // on a contested-border tile, scaled by its (capped) defense —
+            // evaluated on the AFTER state since a capture flips ownership.
+            // This is how mountains get sought: the +1 high-ground shows up
+            // as higher Defense at the destination. Mirrors the tower bonus.
+            switch (candidate.Action)
+            {
+                case AiMoveAction mv:
+                    delta += AiStateScorer.BorderDefenseBonus(mv.Destination, clone, forPlayer);
+                    break;
+                case AiBuyUnitAction bu:
+                    delta += AiStateScorer.BorderDefenseBonus(bu.Destination, clone, forPlayer);
+                    break;
+                case AiBuyCombineAction bc:
+                    delta += AiStateScorer.BorderDefenseBonus(bc.CombineTarget, clone, forPlayer);
+                    break;
+            }
+
             if (delta > 0) positiveCandidates++;
             if (delta > observedBestDelta)
             {

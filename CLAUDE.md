@@ -72,6 +72,8 @@ Two flavors:
 
 **Seed lock (`FOUREXHEX_SEED`)**: setting `FOUREXHEX_SEED=<int>` overrides the master-seed selection (which otherwise falls back through saved-load → `GameSettings.MasterSeed` → `Random.Shared.Next()`). Two runs of the same mode with the same `FOUREXHEX_SEED` produce byte-identical output (modulo the `[ai-prof]` / `[hitch]` ms timing lines), which is how the no-floats determinism check from issue #20 is verified.
 
+**Terrain density overrides (`FOUREXHEX_TREE_DENSITY` / `FOUREXHEX_MTN_DENSITY` / `FOUREXHEX_GOLD_DENSITY`)**: each, set to a non-negative int (percent of land), overrides the corresponding `GameSettings.*Density` before map generation (same precedence idea as `FOUREXHEX_SEED`; absent vars are no-ops). Needed because `MapGenerator` only scatters mountains/gold when their density is `> 0` (issue #48) and the densities default to 0, so a plain `FOUREXHEX_6AI` run generates *no* gold or mountain tiles. Enable them to exercise terrain-dependent AI behaviour headlessly — e.g. verifying the gold/mountain scoring (#61): `FOUREXHEX_6AI_QUICK=1 FOUREXHEX_SEED=42 FOUREXHEX_MTN_DENSITY=6 FOUREXHEX_GOLD_DENSITY=5 …` then grep the `[gold-premium]` / `[border-defense]` log lines. Wired in `Main.cs` next to the seed handling; only the freeform/diagnostic map-gen path reads these (campaign levels derive their own densities).
+
 Typical invocations:
 
 ```

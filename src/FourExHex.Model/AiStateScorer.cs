@@ -114,6 +114,25 @@ public static class AiStateScorer
     // territory.
     private const int BuildTowerCoverageBonus = 10;
 
+    // Reward per point of defense on an own tile that borders an enemy,
+    // awarded PER-ACTION (see BorderDefenseBonus) when an action lands a
+    // defender there — never as a standing term. A standing border-defense
+    // reward would re-create the perverse-capture penalty the
+    // BuildTowerCoverageBonus comment documents (a capture that turns a
+    // defended border into an interior tile would lose the reward, dragging
+    // good captures negative). Kept small so captures (~+20) stay dominant
+    // over defensive positioning — the issue-#19/#22 stasis/turtle guard.
+    private const int ContestedDefenseWeight = 2;
+
+    // Ceiling on the defense counted by ContestedDefenseWeight. A tile at
+    // defense 4 is already uncapturable (no level-5 attacker exists), so
+    // paying linearly past that rewards safety that can't be threatened and
+    // nudges over-garrisoning. Set to 3 — the lowest cap that still rewards
+    // the bread-and-butter soldier-onto-mountain play (defense 2→3); it
+    // clamps captain/commander to the same ceiling so stacking strength past
+    // it stops paying. Must stay ≥ 3 or the mountain +1 goes invisible.
+    private const int ContestedDefenseCap = 3;
+
     /// <summary>
     /// One-shot scoring delta awarded for the act of placing a
     /// tower at <paramref name="placement"/>. Counts border tiles
@@ -175,6 +194,38 @@ public static class AiStateScorer
             if (nt?.Occupant is Tower) return false;
         }
         return true;
+    }
+
+    /// <summary>
+    /// One-shot scoring delta (#61) for the act of landing a defender on
+    /// <paramref name="destination"/> in the resulting (after-action)
+    /// <paramref name="afterState"/>: <see cref="ContestedDefenseWeight"/> ×
+    /// the tile's <see cref="DefenseRules.Defense"/> (capped at
+    /// <see cref="ContestedDefenseCap"/>), but only when the tile is an own
+    /// tile that borders an enemy — otherwise 0. Defense magnitude already
+    /// folds in the mountain +1, so a defender on a frontier mountain
+    /// out-scores the adjacent plain with no <c>IsMountain</c> reference
+    /// here. Per-action like <see cref="BuildTowerBonus"/> (never a standing
+    /// term) so it can't penalize captures that turn borders into interior.
+    /// Evaluated on the AFTER state because a capture flips the
+    /// destination's ownership.
+    /// </summary>
+    public static int BorderDefenseBonus(HexCoord destination, GameState afterState, PlayerId owner)
+    {
+        Territory? territory = TerritoryLookup.FindOwnedContaining(
+            afterState.Territories, owner, destination);
+        if (territory == null) return 0;
+        if (!AiCommon.IsBorderTile(destination, afterState.Grid, owner)) return 0;
+
+        int defense = DefenseRules.Defense(destination, afterState.Grid, territory);
+        int bonus = ContestedDefenseWeight * System.Math.Min(defense, ContestedDefenseCap);
+        if (bonus > 0)
+        {
+            Log.Debug(Log.LogCategory.Ai,
+                $"[border-defense] dest={destination} defense={defense} " +
+                $"capped={System.Math.Min(defense, ContestedDefenseCap)} bonus={bonus}");
+        }
+        return bonus;
     }
 
     /// <summary>
@@ -319,8 +370,32 @@ public static class AiStateScorer
             }
         }
 
+        // Gold earning premium (#61). A gold tile earns 5× an ordinary
+        // tile (1 + IncomeRules.GoldTileBonus), so its territorial worth is
+        // 5× TileWeight: the base TileWeight above is unconditional (every
+        // tile, like ordinary land), and this adds the extra
+        // TileWeight × GoldTileBonus on top — derived from the same lever
+        // so it auto-rescales, no new magic constant. Two-sided (this whole
+        // value is subtracted for enemies) so capturing an enemy gold tile
+        // reads as doubly good. Counted via CountGoldIncomeTiles, so it is
+        // gated only on the tile actually earning (a tree/grave-blocked gold
+        // tile contributes nothing and reads as ordinary land — clearing the
+        // tree unlocks the premium, making gold-trees the most desirable
+        // chops). NOT gated by bankruptcy: the premium is durable terrain
+        // worth, the whole point of the issue — it survives a temporary
+        // bankruptcy that zeroes the income blip below.
+        int goldIncomeTiles = TreeRules.CountGoldIncomeTiles(territory, state.Grid);
+        int goldPremium = goldIncomeTiles * TileWeight * IncomeRules.GoldTileBonus;
+        if (goldPremium > 0)
+        {
+            Log.Debug(Log.LogCategory.Ai,
+                $"[gold-premium] cap={territory.Capital} goldTiles={goldIncomeTiles} " +
+                $"premium={goldPremium}");
+        }
+
         int effectiveNetIncome = System.Math.Max(0, netIncome);
         int value = tiles * TileWeight
+                    + goldPremium
                     + effectiveNetIncome * NetIncomeWeight
                     + unitValue
                     - FragmentationPenalty;

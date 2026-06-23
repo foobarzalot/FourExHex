@@ -642,6 +642,99 @@ public class ComputerAiTests
         Assert.Equal(0.0, bonus);
     }
 
+    // --- BorderDefenseBonus: per-action mountain/defense incentive (#61) --
+    // Rewards landing a defender on a contested-border tile, scaled by its
+    // defense magnitude (capped). Mountains win because DefenseRules.Defense
+    // already bakes in the +1 high-ground bonus. ContestedDefenseWeight = 2,
+    // ContestedDefenseCap = 3 (private).
+
+    [Fact]
+    public void BorderDefenseBonus_MountainBorderBeatsAdjacentPlainBorder()
+    {
+        // 5-wide Red strip in a Blue field. (2,0) is a border tile (Blue
+        // neighbors in row 1). A Soldier (defense 2) there scores 2*2=4;
+        // on a mountain it reads defense 3, scoring 2*3=6.
+        GameState BuildWith(bool mountain)
+        {
+            var grid = TestHelpers.BuildRectGrid(5, 3, Blue);
+            for (int col = 0; col < 5; col++)
+                grid.Get(HexCoord.FromOffset(col, 0))!.Owner = Red;
+            HexTile tile = grid.Get(HexCoord.FromOffset(2, 0))!;
+            tile.Occupant = new Unit(Red, UnitLevel.Soldier);
+            tile.IsMountain = mountain;
+            return BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
+        }
+
+        int plain = AiStateScorer.BorderDefenseBonus(HexCoord.FromOffset(2, 0), BuildWith(false), Red);
+        int mountainBonus = AiStateScorer.BorderDefenseBonus(HexCoord.FromOffset(2, 0), BuildWith(true), Red);
+
+        Assert.Equal(4, plain);
+        Assert.Equal(6, mountainBonus);
+        Assert.True(mountainBonus > plain);
+    }
+
+    [Fact]
+    public void BorderDefenseBonus_ZeroForNonBorderDestination()
+    {
+        // Isolated 3x3 Red island, no Blue anywhere. The centre (1,1) has
+        // a Soldier but no enemy neighbor → not a contested border → 0.
+        var grid = TestHelpers.BuildRectGrid(3, 3, Red);
+        grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = new Unit(Red, UnitLevel.Soldier);
+        GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
+
+        int bonus = AiStateScorer.BorderDefenseBonus(HexCoord.FromOffset(1, 1), state, Red);
+
+        Assert.Equal(0, bonus);
+    }
+
+    [Fact]
+    public void BorderDefenseBonus_CapsDefenseSoOverkillDoesNotKeepPaying()
+    {
+        // A Commander on a border mountain reads defense 5, but the cap (3)
+        // clamps it: bonus = 2*min(5,3) = 6 — same as a soldier on a
+        // mountain, so stacking strength past the cap stops paying.
+        var grid = TestHelpers.BuildRectGrid(5, 3, Blue);
+        for (int col = 0; col < 5; col++)
+            grid.Get(HexCoord.FromOffset(col, 0))!.Owner = Red;
+        HexTile tile = grid.Get(HexCoord.FromOffset(2, 0))!;
+        tile.Occupant = new Unit(Red, UnitLevel.Commander);
+        tile.IsMountain = true;
+        GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
+
+        int bonus = AiStateScorer.BorderDefenseBonus(HexCoord.FromOffset(2, 0), state, Red);
+
+        Assert.Equal(6, bonus);
+    }
+
+    [Fact]
+    public void BorderDefenseBonus_CapturingEnemyMountain_BeatsCapturingPlain()
+    {
+        // Red strip over a Blue field with a Soldier at (2,0). Capturing
+        // the Blue tile below lands the Soldier on it; when that tile is a
+        // mountain the capture's total delta (score + bonus) is higher
+        // than capturing an otherwise-identical plain tile.
+        int CaptureDelta(bool mountain)
+        {
+            var grid = TestHelpers.BuildRectGrid(5, 4, Blue);
+            for (int col = 0; col < 5; col++)
+                grid.Get(HexCoord.FromOffset(col, 0))!.Owner = Red;
+            grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(Red, UnitLevel.Soldier);
+            HexCoord target = HexCoord.FromOffset(2, 1);
+            grid.Get(target)!.IsMountain = mountain;
+            GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
+
+            int baseScore = AiStateScorer.Score(state, Red);
+            GameState clone = AiSimulator.Clone(state);
+            var move = new AiMoveAction(HexCoord.FromOffset(2, 0), target);
+            AiSimulator.Apply(move, clone);
+            return AiStateScorer.Score(clone, Red) - baseScore
+                 + AiStateScorer.BorderDefenseBonus(target, clone, Red);
+        }
+
+        Assert.True(CaptureDelta(true) > CaptureDelta(false),
+            $"expected mountain capture {CaptureDelta(true)} > plain capture {CaptureDelta(false)}");
+    }
+
     // ChooseNextAction_BuildsTower_OnContestedBorderWithSpareGold was removed:
     // under phase ordering, buy-capture (phase 3) fires before tower (phase 4)
     // when both are available. The new ChooseNextAction_Phase4TowerWhenNoBuyCaptureAvailable
