@@ -59,10 +59,12 @@ public static class CampaignStore
     {
         GameSettings.CampaignLevel = level;
         GameSettings.MasterSeed = CampaignProgress.SeedForLevel(level);
+        int playerCount = GameSettings.PlayerKinds.Length;
+        int humanSlot = CampaignProgress.HumanSlotForLevel(level, playerCount);
         for (int i = 0; i < GameSettings.PlayerKinds.Length; i++)
         {
-            GameSettings.PlayerKinds[i] = i == 0 ? PlayerKind.Human : PlayerKind.Computer;
-            GameSettings.Difficulties[i] = i == 0
+            GameSettings.PlayerKinds[i] = i == humanSlot ? PlayerKind.Human : PlayerKind.Computer;
+            GameSettings.Difficulties[i] = i == humanSlot
                 ? CampaignProgress.DifficultyForLevel(level)
                 : Difficulty.Soldier;
         }
@@ -70,7 +72,9 @@ public static class CampaignStore
         MarkAttempted(level);
         Log.Info(Log.LogCategory.Campaign,
             $"CampaignStore: launching level {CampaignProgress.LabelFor(level)} " +
-            $"(seed {GameSettings.MasterSeed}, human difficulty {GameSettings.Difficulties[0]})");
+            $"(seed {GameSettings.MasterSeed}, human slot {humanSlot} " +
+            $"({GameSettings.PlayerConfig[humanSlot].Name}), " +
+            $"human difficulty {GameSettings.Difficulties[humanSlot]})");
     }
 
     /// <summary>Mark a level won (terminal) and persist if anything

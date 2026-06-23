@@ -197,6 +197,29 @@ public sealed class CampaignProgress
             TreeDensity: trees, MountainDensity: mountains, GoldDensity: gold);
     }
 
+    /// <summary>Which roster slot the human occupies for a campaign level
+    /// (issue #74). Deterministic and stable forever, always in
+    /// <c>[0, playerCount)</c>, spread across slots (no trivial 0,1,2… cycle),
+    /// so a given level always plays byte-identically while the human's start
+    /// varies across the ladder. <paramref name="playerCount"/> is the active
+    /// roster size; the result is always a real color slot, never neutral
+    /// (<c>PlayerId.None</c> is not a roster slot). Integer-only (no floats —
+    /// Model rule).</summary>
+    public static int HumanSlotForLevel(int level, int playerCount)
+    {
+        ValidateLevel(level);
+        if (playerCount < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(playerCount), playerCount,
+                "Player count must be >= 1.");
+        }
+        // Knuth-style multiplicative hash, decorrelated from the map seed
+        // (= level) and from the per-level map-gen draw, mod playerCount for a
+        // stable spread across slots.
+        uint h = unchecked((uint)level * 2654435761u);
+        return (int)(h % (uint)playerCount);
+    }
+
     private static void ValidateLevel(int level)
     {
         if (level is < 0 or >= LevelCount)

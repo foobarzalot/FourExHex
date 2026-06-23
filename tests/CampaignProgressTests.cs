@@ -241,4 +241,75 @@ public class CampaignProgressTests
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => CampaignProgress.MapGenOptionsForLevel(level));
     }
+
+    // ── Per-level human slot assignment (issue #74) ─────────────────────────
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(42)]
+    [InlineData(171)]
+    [InlineData(255)]
+    public void HumanSlotForLevel_IsDeterministic(int level)
+    {
+        int a = CampaignProgress.HumanSlotForLevel(level, 6);
+        int b = CampaignProgress.HumanSlotForLevel(level, 6);
+        Assert.Equal(a, b);
+    }
+
+    [Theory]
+    [InlineData(2)]
+    [InlineData(4)]
+    [InlineData(6)]
+    public void HumanSlotForLevel_StaysInRangeForEveryLevel(int playerCount)
+    {
+        for (int level = 0; level < CampaignProgress.LevelCount; level++)
+        {
+            int slot = CampaignProgress.HumanSlotForLevel(level, playerCount);
+            Assert.InRange(slot, 0, playerCount - 1);
+        }
+    }
+
+    [Fact]
+    public void HumanSlotForLevel_SpreadsAcrossAllSlots()
+    {
+        const int playerCount = 6;
+        var hit = new HashSet<int>();
+        for (int level = 0; level < CampaignProgress.LevelCount; level++)
+        {
+            hit.Add(CampaignProgress.HumanSlotForLevel(level, playerCount));
+        }
+        // Every real color slot should be the human's at least once across the
+        // ladder — it must not collapse to one slot (e.g. always 0).
+        Assert.Equal(playerCount, hit.Count);
+    }
+
+    [Fact]
+    public void HumanSlotForLevel_DoesNotTriviallyCycle()
+    {
+        // Guard against accidentally shipping plain `level % playerCount`,
+        // which would map levels 0..5 to exactly 0,1,2,3,4,5.
+        int[] firstSix = Enumerable.Range(0, 6)
+            .Select(level => CampaignProgress.HumanSlotForLevel(level, 6))
+            .ToArray();
+        Assert.NotEqual(new[] { 0, 1, 2, 3, 4, 5 }, firstSix);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(256)]
+    public void HumanSlotForLevel_RejectsOutOfRangeLevel(int level)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => CampaignProgress.HumanSlotForLevel(level, 6));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void HumanSlotForLevel_RejectsNonPositivePlayerCount(int playerCount)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => CampaignProgress.HumanSlotForLevel(0, playerCount));
+    }
 }

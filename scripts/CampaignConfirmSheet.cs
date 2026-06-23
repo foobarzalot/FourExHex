@@ -36,6 +36,8 @@ public sealed partial class CampaignConfirmSheet : CanvasLayer
     private readonly int _seed;
     private readonly string _title;
     private readonly string _status;
+    private readonly string _playingAs;
+    private readonly Color _playerColor;
 
     private PanelContainer _surface = null!;
     private BoxContainer _body = null!;
@@ -55,6 +57,14 @@ public sealed partial class CampaignConfirmSheet : CanvasLayer
             _ => "Not yet attempted.",
         };
         _status = $"{CampaignProgress.DifficultyForLevel(level)} tier · {status}";
+
+        // Which color the human plays this level (issue #74): a deterministic
+        // per-level slot, so the same level always hands the human the same
+        // color. Surface it here so the player knows before launching.
+        int humanSlot = CampaignProgress.HumanSlotForLevel(level, GameSettings.PlayerConfig.Length);
+        (string colorName, string colorHex) = GameSettings.PlayerConfig[humanSlot];
+        _playingAs = $"You will be playing as the {colorName} player.";
+        _playerColor = new Color(colorHex);
     }
 
     public override void _Ready()
@@ -106,6 +116,7 @@ public sealed partial class CampaignConfirmSheet : CanvasLayer
         col.AddChild(MakeTitle(HorizontalAlignment.Center, 36));
         col.AddChild(MakeGoldRule(Control.SizeFlags.ShrinkCenter));
         col.AddChild(MakeStatus(HorizontalAlignment.Center));
+        col.AddChild(MakePlayingAs(HorizontalAlignment.Center));
         _thumbnail = MakeThumbnail();
         col.AddChild(_thumbnail);
 
@@ -134,6 +145,7 @@ public sealed partial class CampaignConfirmSheet : CanvasLayer
         rail.AddChild(MakeTitle(HorizontalAlignment.Left, 32));
         rail.AddChild(MakeGoldRule(Control.SizeFlags.ShrinkBegin));
         rail.AddChild(MakeStatus(HorizontalAlignment.Left));
+        rail.AddChild(MakePlayingAs(HorizontalAlignment.Left));
         rail.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
         // Cancel above the forward action (Play) in the vertical rail.
         rail.AddChild(MakeSheetButton("Cancel", Cancel));
@@ -177,6 +189,21 @@ public sealed partial class CampaignConfirmSheet : CanvasLayer
         status.AddThemeFontSizeOverride("font_size", 22);
         status.AddThemeColorOverride("font_color", UiPalette.InkSoft);
         return status;
+    }
+
+    private Label MakePlayingAs(HorizontalAlignment align)
+    {
+        var label = new Label
+        {
+            Text = _playingAs,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            HorizontalAlignment = align,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+        };
+        label.AddThemeFontSizeOverride("font_size", 22);
+        // Tint the line with the player's own color so the color reads at a glance.
+        label.AddThemeColorOverride("font_color", _playerColor);
+        return label;
     }
 
     private static MapThumbnailView MakeThumbnail() => new()

@@ -2557,7 +2557,12 @@ graph:
     (terminal), `WonCount`, `TierWonCount`, `NextUp` (lowest non-won,
     null when all won), and the statics `DifficultyForLevel`
     (`(Difficulty)(level / 64)`), `LabelFor` (`"4F"`), `SeedForLevel`
-    (identity). **Mark-at-launch semantics:** starting a level marks it
+    (identity), and `HumanSlotForLevel(level, playerCount)` (issue #74 —
+    a deterministic, stable-forever integer hash mod `playerCount` giving
+    which roster slot the human plays, spread across all real colors and
+    never neutral; same level always yields the same slot, so the game
+    stays byte-identical, only the human's starting color varies across
+    the ladder). **Mark-at-launch semantics:** starting a level marks it
     Lost so an abandon or crash already counts as an attempt with no
     extra bookkeeping; winning flips it to Won, which a later loss can't
     revert.
@@ -2580,7 +2585,10 @@ graph:
     transition** (never "on exit", so a crash can't lose a result),
     `GD.PushWarning` + fresh fallback on a corrupt/missing file.
     `PrepareLaunch(level)` centralizes the seed/roster/difficulty setup
-    and the mark-attempted, shared by both launch entry points.
+    and the mark-attempted, shared by both launch entry points. The human
+    is placed in `CampaignProgress.HumanSlotForLevel(level, playerCount)`
+    (issue #74 — any real color, not always slot 0), with the tier
+    difficulty applied to *that* slot (all others Computer/Soldier).
   - `CampaignPanel` (`scripts/CampaignPanel.cs`) — the campaign screen:
     fixed header (back, `won / 256`, progress bar) over a
     `ScrollContainer` of four tier sections. Each tier is **one**
@@ -2595,7 +2603,10 @@ graph:
     landing/play-config), rebuilt on an orientation flip like the
     play-config panel. Tapping a hex opens a `ConfirmModal` (level, tier,
     status, Play/Cancel); Play calls `CampaignStore.PrepareLaunch` and
-    changes scene to `main.tscn`. The one-shot static
+    changes scene to `main.tscn`. The confirm sheet also shows a
+    "You will be playing as the &lt;Color&gt; player." line (issue #74),
+    tinted in that slot's color via `HumanSlotForLevel`, so the human
+    knows their color before launching. The one-shot static
     `MainMenuScene.OpenCampaignOnArrival` makes the menu open straight to
     the campaign screen when returning from a campaign game.
 
