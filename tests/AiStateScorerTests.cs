@@ -191,4 +191,88 @@ public class AiStateScorerTests
         Assert.True(redOwns - blueOwns >= 2 * 10 * IncomeRules.GoldTileBonus,
             $"expected swing {redOwns - blueOwns} >= {2 * 10 * IncomeRules.GoldTileBonus}");
     }
+
+    // --- Standing contested-border defense magnitude (#61) ---------------
+    // A one-sided term in Score(): each own tile bordering an enemy adds
+    // ContestedDefenseWeight × min(Defense, ContestedDefenseCap). It values
+    // *holding* a strong defensive position (so a defender stays put rather
+    // than chasing a per-action arrival bonus), and mountains win because
+    // DefenseRules.Defense bakes in the +1 high-ground. All tests below vary
+    // exactly one flag on a fixed board so economy/unit-value cancel and the
+    // delta is purely the defense term.
+
+    // Build a Red strip (row 0) over a Blue field with a unit on a Red
+    // contested-border tile (1,0); capital lands on (0,0) (smallest empty).
+    private static int ScoreWithDefender(UnitLevel level, bool mountain)
+    {
+        HexGrid grid = TestHelpers.BuildRectGrid(4, 3, Blue);
+        for (int col = 0; col < 4; col++)
+            grid.Get(HexCoord.FromOffset(col, 0))!.Owner = Red;
+        HexTile tile = grid.Get(HexCoord.FromOffset(1, 0))!;
+        tile.Occupant = new Unit(Red, level);
+        tile.IsMountain = mountain;
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var players = new List<Player>
+        {
+            new Player("Red", Red, PlayerKind.Computer, Difficulty.Soldier),
+            new Player("Blue", Blue, PlayerKind.Computer),
+        };
+        return AiStateScorer.Score(
+            new GameState(grid, territories, players, new TurnState(players), new Treasury()), Red);
+    }
+
+    [Fact]
+    public void Score_MountainUnderContestedDefender_RaisesScoreViaDefenseMagnitude()
+    {
+        // The only difference is the mountain flag under the same Soldier on
+        // the same contested-border tile: defense 2 → 3 raises the score.
+        Assert.True(ScoreWithDefender(UnitLevel.Soldier, mountain: true)
+                  > ScoreWithDefender(UnitLevel.Soldier, mountain: false));
+    }
+
+    [Fact]
+    public void Score_DefenseCap_ClampsMountainBonusForHighLevelDefender()
+    {
+        // Soldier: mountain lifts defense 2 → 3 (under cap 3) → score rises.
+        // Captain: 3 → 4 but clamped to 3 → no change. Demonstrates the cap
+        // stops over-strong defenders from reading ever-higher.
+        int soldierGain = ScoreWithDefender(UnitLevel.Soldier, true)
+                        - ScoreWithDefender(UnitLevel.Soldier, false);
+        int captainGain = ScoreWithDefender(UnitLevel.Captain, true)
+                        - ScoreWithDefender(UnitLevel.Captain, false);
+
+        Assert.True(soldierGain > 0, $"expected soldier gain {soldierGain} > 0");
+        Assert.Equal(0, captainGain);
+    }
+
+    [Fact]
+    public void Score_LateralRepositionBetweenCoveredBorders_LeavesScoreUnchanged()
+    {
+        // The anti-shuffle guard: a standing term values the *state*, so
+        // sliding the lone defender between two mutually-covering border
+        // tiles changes nothing — there's no arrival bonus to chase, so the
+        // AI won't pointlessly reposition an already-well-placed unit.
+        // Red rows 0-2 over Blue row 3; the four row-2 tiles are the borders.
+        int ScoreWithUnitAt(HexCoord unitTile)
+        {
+            HexGrid grid = TestHelpers.BuildRectGrid(4, 4, Blue);
+            for (int r = 0; r < 3; r++)
+                for (int col = 0; col < 4; col++)
+                    grid.Get(HexCoord.FromOffset(col, r))!.Owner = Red;
+            grid.Get(unitTile)!.Occupant = new Unit(Red, UnitLevel.Soldier);
+            IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+            var players = new List<Player>
+            {
+                new Player("Red", Red, PlayerKind.Computer, Difficulty.Soldier),
+                new Player("Blue", Blue, PlayerKind.Computer),
+            };
+            return AiStateScorer.Score(
+                new GameState(grid, territories, players, new TurnState(players), new Treasury()), Red);
+        }
+
+        // (1,2) and (2,2) each cover three of the four border tiles, leaving
+        // one undefended — symmetric, so both Score identically.
+        Assert.Equal(ScoreWithUnitAt(HexCoord.FromOffset(1, 2)),
+                     ScoreWithUnitAt(HexCoord.FromOffset(2, 2)));
+    }
 }

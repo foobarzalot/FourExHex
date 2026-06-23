@@ -114,14 +114,22 @@ public static class AiStateScorer
     // territory.
     private const int BuildTowerCoverageBonus = 10;
 
-    // Reward per point of defense on an own tile that borders an enemy,
-    // awarded PER-ACTION (see BorderDefenseBonus) when an action lands a
-    // defender there — never as a standing term. A standing border-defense
-    // reward would re-create the perverse-capture penalty the
-    // BuildTowerCoverageBonus comment documents (a capture that turns a
-    // defended border into an interior tile would lose the reward, dragging
-    // good captures negative). Kept small so captures (~+20) stay dominant
-    // over defensive positioning — the issue-#19/#22 stasis/turtle guard.
+    // Standing reward per point of defense on an OWN tile that borders an
+    // enemy (one-sided, applied in Score() like UndefendedBorderPenalty).
+    // This values *holding* a strong frontier — a defender stays put rather
+    // than wandering, and capturing/holding a mountain reads better because
+    // DefenseRules.Defense bakes in the +1 high-ground. A *per-action*
+    // arrival bonus was tried instead (to dodge the perverse-capture penalty
+    // the BuildTowerCoverageBonus comment documents) but it rewarded the act
+    // of moving onto a border with no credit for the border already held —
+    // luring a well-placed defender into pointless lateral shuffles and
+    // giving zero standing value to remaining. A standing term values the
+    // *state* (a lateral move between two equally-covered borders nets zero),
+    // so it has no shuffle. Its one cost is that perverse-capture dip, but at
+    // this small weight (≤ cap×weight = 6 per border) it is dwarfed by the
+    // TileWeight + EnemyEdgePenalty gains of the concavity-filling captures
+    // it would touch. Bounded by board geometry, so no #19 stasis (it cancels
+    // in the 1-ply diff for any action that doesn't change border defense).
     private const int ContestedDefenseWeight = 2;
 
     // Ceiling on the defense counted by ContestedDefenseWeight. A tile at
@@ -197,38 +205,6 @@ public static class AiStateScorer
     }
 
     /// <summary>
-    /// One-shot scoring delta (#61) for the act of landing a defender on
-    /// <paramref name="destination"/> in the resulting (after-action)
-    /// <paramref name="afterState"/>: <see cref="ContestedDefenseWeight"/> ×
-    /// the tile's <see cref="DefenseRules.Defense"/> (capped at
-    /// <see cref="ContestedDefenseCap"/>), but only when the tile is an own
-    /// tile that borders an enemy — otherwise 0. Defense magnitude already
-    /// folds in the mountain +1, so a defender on a frontier mountain
-    /// out-scores the adjacent plain with no <c>IsMountain</c> reference
-    /// here. Per-action like <see cref="BuildTowerBonus"/> (never a standing
-    /// term) so it can't penalize captures that turn borders into interior.
-    /// Evaluated on the AFTER state because a capture flips the
-    /// destination's ownership.
-    /// </summary>
-    public static int BorderDefenseBonus(HexCoord destination, GameState afterState, PlayerId owner)
-    {
-        Territory? territory = TerritoryLookup.FindOwnedContaining(
-            afterState.Territories, owner, destination);
-        if (territory == null) return 0;
-        if (!AiCommon.IsBorderTile(destination, afterState.Grid, owner)) return 0;
-
-        int defense = DefenseRules.Defense(destination, afterState.Grid, territory);
-        int bonus = ContestedDefenseWeight * System.Math.Min(defense, ContestedDefenseCap);
-        if (bonus > 0)
-        {
-            Log.Debug(Log.LogCategory.Ai,
-                $"[border-defense] dest={destination} defense={defense} " +
-                $"capped={System.Math.Min(defense, ContestedDefenseCap)} bonus={bonus}");
-        }
-        return bonus;
-    }
-
-    /// <summary>
     /// Score the board from <paramref name="forPlayer"/>'s
     /// perspective: sum of own territory values minus sum of enemy
     /// territory values. Higher = better for this player.
@@ -245,6 +221,7 @@ public static class AiStateScorer
                 total -= OwnTreePenalty * CountTreesAndGravesIn(t, state.Grid);
                 total -= EnemyEdgePenalty * CountEnemyEdges(t, state.Grid, forPlayer);
                 total -= UndefendedBorderPenalty * CountUndefendedBorderTiles(t, state.Grid, forPlayer);
+                total += ContestedDefenseWeight * SumCappedContestedBorderDefense(t, state.Grid, forPlayer);
             }
             else
             {
@@ -316,6 +293,29 @@ public static class AiStateScorer
             }
         }
         return count;
+    }
+
+    /// <summary>
+    /// Sum of (capped) defense over this territory's tiles that border an
+    /// enemy — the standing reward backing <see cref="ContestedDefenseWeight"/>.
+    /// Each contested-border tile contributes
+    /// <c>min(Defense, ContestedDefenseCap)</c>, so holding a stronger
+    /// frontier (e.g. a defender on a mountain, +1 via
+    /// <see cref="DefenseRules.Defense"/>) reads as more valuable, up to the
+    /// cap. Mirrors the contested-border predicate
+    /// <see cref="CountUndefendedBorderTiles"/> uses (off-map neighbours don't
+    /// count); shares <see cref="AiCommon.IsBorderTile"/> for that test.
+    /// </summary>
+    private static int SumCappedContestedBorderDefense(Territory territory, HexGrid grid, PlayerId forPlayer)
+    {
+        int sum = 0;
+        foreach (HexCoord coord in territory.Coords)
+        {
+            if (!AiCommon.IsBorderTile(coord, grid, forPlayer)) continue;
+            int defense = DefenseRules.Defense(coord, grid, territory);
+            sum += System.Math.Min(defense, ContestedDefenseCap);
+        }
+        return sum;
     }
 
     /// <summary>

@@ -2382,20 +2382,26 @@ single beat).
   `TreeRules.CountGoldIncomeTiles` — so a tree-blocked gold tile reads as
   ordinary land until the tree is chopped, making gold-trees the most
   desirable chops (clearing one unlocks the full +`TileWeight × GoldTileBonus`).
-  **Mountains** are valued through a *per-action* `BorderDefenseBonus`
-  (`ContestedDefenseWeight` 2 × `min(Defense, ContestedDefenseCap 3)`) rather
-  than a standing term (#61). It is added to the candidate delta in
-  `ComputerAi.BestPositiveDelta` next to `BuildTowerBonus`, for move / buy /
-  buy-combine destinations that are own contested-border tiles, evaluated on
-  the *after-action* state since a capture flips ownership. Per-action by the
-  same reasoning `BuildTowerCoverageBonus` is: a *standing* border-defense
-  reward would re-create the perverse-capture penalty (a capture turning a
-  defended border into an interior tile would lose the reward, dragging good
-  captures negative). Destination-only, it never penalizes captures. The
-  mountain `+1` high-ground already lives inside `DefenseRules.Defense`, so the
-  scorer needs no `IsMountain` reference — mountains win simply by reading
-  higher defense at the destination; the cap (≥ 3) keeps the soldier-onto-
-  mountain bump (defense 2→3) rewarded while clamping over-garrison overkill.
+  **Mountains** are valued through a standing, one-sided defense-magnitude
+  term (#61): each own tile that borders an enemy adds
+  `ContestedDefenseWeight` (2) × `min(Defense, ContestedDefenseCap 3)` in
+  `Score()` (alongside `UndefendedBorderPenalty`). It rewards *holding* a
+  strong frontier, and mountains win for free because `DefenseRules.Defense`
+  bakes in the `+1` high-ground — the scorer needs no `IsMountain` reference.
+  A *per-action* arrival bonus (added to the candidate delta like
+  `BuildTowerBonus`) was tried first to dodge the perverse-capture penalty
+  the `BuildTowerCoverageBonus` comment documents, but rewarding the *act* of
+  moving onto a border — with no credit for the border already held — lured a
+  well-placed defender into pointless lateral *shuffles* and gave zero value
+  to remaining. A standing term values the *state*, so a lateral move between
+  two equally-covered borders nets zero delta (no shuffle) while moving onto a
+  mountain is a genuine 2→3 improvement that then stays (reverse is negative).
+  Its one cost is the perverse-capture dip, but at this small weight
+  (≤ `cap×weight` = 6 per border) it is dwarfed by the `TileWeight` +
+  `EnemyEdgePenalty` gains of the captures it touches; the cap (≥ 3) keeps the
+  soldier-onto-mountain bump rewarded while clamping over-garrison overkill.
+  Bounded by board geometry, so it cancels in the 1-ply diff for any action
+  that doesn't change border defense (no #19 stasis).
 - **`ReplayDrivenAi`** — script-driven chooser used only by the
   TutorialBuilder's Preview mode. Replays recorded non-player-0
   `ReplayBeat`s through the standard AI step machine via a shared
