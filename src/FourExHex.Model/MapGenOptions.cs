@@ -24,4 +24,13 @@ public sealed record MapGenOptions(
     /// <summary>Default densities — trees at the historical 5%, no mountains or
     /// gold. The backward-compatible baseline.</summary>
     public static readonly MapGenOptions None = new();
+
+    /// <summary>The selectable <see cref="ClumpingFactor"/> values, ascending. The
+    /// single source of truth for both the New Game / map-editor stepper and the
+    /// per-level campaign draw (<c>CampaignProgress.MapGenOptionsForLevel</c>). The
+    /// spacing is deliberately nonlinear (bunched near the top): the visible
+    /// difference between clumping levels grows toward 100 — the seed count drops
+    /// geometrically — so even spacing would waste the low half on indistinguishable
+    /// noise (issue #72).</summary>
+    public static readonly int[] ClumpingFactorStops = { 0, 50, 75, 90, 95, 100 };
 }

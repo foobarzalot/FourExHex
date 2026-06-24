@@ -177,24 +177,30 @@ public sealed class CampaignProgress
     private const int CampaignMountainOnDensity = 10; // % of land when mountains present
     private const int CampaignGoldOnDensity = 5;      // % of land when gold present
 
-    /// <summary>The tree/mountain/gold generation densities for a campaign level
-    /// (issue #48 / #66). Deterministic — same level always yields the same options
-    /// — and decorrelated from both the freeform steppers and the map seed, so a
-    /// level's terrain is a fixed part of its identity. Mountains/gold are present
-    /// at fixed odds (and a fixed density when present); trees vary across
-    /// {0, 5, 10}% of land.</summary>
+    /// <summary>The tree/mountain/gold densities and territory clumping for a campaign
+    /// level (issue #48 / #66 / #72). Deterministic — same level always yields the same
+    /// options — and decorrelated from both the freeform steppers and the map seed, so a
+    /// level's terrain is a fixed part of its identity. Mountains/gold are present at
+    /// fixed odds (and a fixed density when present); trees vary across {0, 5, 10}% of
+    /// land; clumping is drawn from the shared nonlinear stop set so each level's
+    /// sparse↔clumped feel is part of its identity too.</summary>
     public static MapGenOptions MapGenOptionsForLevel(int level)
     {
         ValidateLevel(level);
         // Deterministic per-level draw, offset off the level number so it doesn't
         // track the map seed (= level). Sequential draws give independent
-        // mountain/gold/tree densities. Integer-only (no floats — Model rule).
+        // mountain/gold/tree/clumping values. Integer-only (no floats — Model rule).
+        // The clumping draw goes last so adding it leaves the existing
+        // mountain/gold/tree values for every level byte-unchanged.
         var rng = new Random(unchecked(level * 2671 + 40503));
         int mountains = rng.Next(100) < CampaignMountainChance ? CampaignMountainOnDensity : 0;
         int gold = rng.Next(100) < CampaignGoldChance ? CampaignGoldOnDensity : 0;
         int trees = 5 * rng.Next(0, 3); // {0, 5, 10}
+        int clumping = MapGenOptions.ClumpingFactorStops[
+            rng.Next(MapGenOptions.ClumpingFactorStops.Length)];
         return new MapGenOptions(
-            TreeDensity: trees, MountainDensity: mountains, GoldDensity: gold);
+            TreeDensity: trees, MountainDensity: mountains, GoldDensity: gold,
+            ClumpingFactor: clumping);
     }
 
     /// <summary>Which roster slot the human occupies for a campaign level

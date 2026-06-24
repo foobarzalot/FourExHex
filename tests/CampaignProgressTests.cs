@@ -179,6 +179,35 @@ public class CampaignProgressTests
         Assert.Equal(a.TreeDensity, b.TreeDensity);
         Assert.Equal(a.MountainDensity, b.MountainDensity);
         Assert.Equal(a.GoldDensity, b.GoldDensity);
+        Assert.Equal(a.ClumpingFactor, b.ClumpingFactor);
+    }
+
+    [Fact]
+    public void MapGenOptionsForLevel_ClumpingStaysWithinStops()
+    {
+        // Each level's clumping is drawn from the shared nonlinear stop set (#72
+        // follow-up); pin membership so a retune is a deliberate, visible change.
+        for (int level = 0; level < CampaignProgress.LevelCount; level++)
+        {
+            MapGenOptions o = CampaignProgress.MapGenOptionsForLevel(level);
+            Assert.Contains(o.ClumpingFactor, MapGenOptions.ClumpingFactorStops);
+        }
+    }
+
+    [Fact]
+    public void MapGenOptionsForLevel_ClumpingVariesAcrossTheLadder()
+    {
+        // Clumping should genuinely vary level-to-level — and over 256 levels every
+        // stop should turn up, so no clumping degree is unreachable in the campaign.
+        var seen = new HashSet<int>();
+        for (int level = 0; level < CampaignProgress.LevelCount; level++)
+        {
+            seen.Add(CampaignProgress.MapGenOptionsForLevel(level).ClumpingFactor);
+        }
+        foreach (int stop in MapGenOptions.ClumpingFactorStops)
+        {
+            Assert.Contains(stop, seen);
+        }
     }
 
     [Fact]

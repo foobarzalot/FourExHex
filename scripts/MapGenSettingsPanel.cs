@@ -27,10 +27,9 @@ public sealed partial class MapGenSettingsPanel : CanvasLayer
     private const int DensityStep = 5;
 
     // Clumping factor (issue #72) spans 0 (fragmented baseline) to 100 (one
-    // contiguous blob per player). Nonlinear stops: the seed count drops
-    // geometrically toward 100, so the visible change is bunched near the top —
-    // even spacing would waste the low half on indistinguishable noise.
-    private static readonly int[] ClumpStops = { 0, 50, 75, 90, 95, 100 };
+    // contiguous blob per player), drawn from the shared nonlinear stop set in
+    // MapGenOptions (also used by the per-level campaign draw).
+    private static readonly int[] ClumpStops = MapGenOptions.ClumpingFactorStops;
 
     private ColorRect _backdrop = null!;
     private PanelContainer _panel = null!;
