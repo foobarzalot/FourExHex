@@ -694,4 +694,159 @@ public class MapGeneratorTests
         Assert.True(dense > sparse,
             $"GoldDensity 20 ({dense}) should place more than 5 ({sparse}) for seed {seed}");
     }
+
+    // ── Clumping factor (issue #72) ─────────────────────────────────────────
+
+    /// <summary>Fraction (as integer percent) of land–land adjacencies whose two
+    /// tiles share an owner. Higher = more spatially contiguous (clumped); the
+    /// salt-and-pepper baseline scores low (≈ 1/playerCount). Integer-only so the
+    /// metric itself doesn't smuggle a float into a test of a no-floats subsystem.</summary>
+    private static int SameOwnerNeighborPercent(MapGenResult result)
+    {
+        int sameOwner = 0;
+        int adjacencies = 0;
+        foreach (HexTile tile in result.Grid.Tiles)
+        {
+            foreach (HexCoord nb in tile.Coord.Neighbors())
+            {
+                HexTile? other = result.Grid.Get(nb);
+                if (other == null) continue;
+                adjacencies++;
+                if (other.Owner == tile.Owner) sameOwner++;
+            }
+        }
+        return adjacencies == 0 ? 0 : sameOwner * 100 / adjacencies;
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(42)]
+    [InlineData(9999)]
+    public void ClumpingZero_ByteIdenticalToBaseline(int seed)
+    {
+        // Factor 0 must reproduce today's per-cell random owner assignment exactly —
+        // zero extra RNG draws, so owners, trees, and water all match the no-options
+        // baseline. This pins the #20/#72 determinism reference: clumping is a no-op
+        // at 0 (gated like the mountain/gold passes).
+        MapGenResult baseline = Build(seed);
+        MapGenResult zero = BuildWith(seed, new MapGenOptions(ClumpingFactor: 0));
+
+        Assert.Equal(baseline.Grid.Count, zero.Grid.Count);
+        foreach (HexTile tA in baseline.Grid.Tiles)
+        {
+            HexTile? tB = zero.Grid.Get(tA.Coord);
+            Assert.NotNull(tB);
+            Assert.Equal(tA.Owner, tB!.Owner);
+            Assert.Equal(tA.Occupant is Tree, tB.Occupant is Tree);
+        }
+        Assert.Equal(baseline.WaterCoords, zero.WaterCoords);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(42)]
+    [InlineData(9999)]
+    public void MaxClumping_IsMoreContiguous(int seed)
+    {
+        // "Clumping actually clumps": at factor 100 each player owns a coherent blob,
+        // so the share of same-owner adjacencies is far above the fragmented baseline
+        // (which sits near 1/6 ≈ 17% for six players).
+        int baseline = SameOwnerNeighborPercent(BuildWith(seed, new MapGenOptions(ClumpingFactor: 0)));
+        int clumped = SameOwnerNeighborPercent(BuildWith(seed, new MapGenOptions(ClumpingFactor: 100)));
+
+        Assert.True(clumped > baseline + 20,
+            $"Max clumping ({clumped}%) should be well above baseline ({baseline}%) for seed {seed}");
+        Assert.True(clumped >= 60,
+            $"Max clumping ({clumped}%) should be strongly contiguous for seed {seed}");
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(42)]
+    [InlineData(9999)]
+    public void MaxClumping_DistributesLandFairly(int seed)
+    {
+        // Fairness (#72 follow-up): seeds start farthest-point apart, then two Lloyd
+        // relaxation passes re-center them on their region centroids, so at factor 100
+        // the one-region-per-player Voronoi keeps every player's land within a sane
+        // band of the fair average. The band is a gross-unfairness guard
+        // (fair/3 .. 5/2×fair), not a tight equality claim — a few point-seeds over a
+        // jagged small continent can't carve perfectly equal areas (a pinched
+        // peninsula region stays small) — but it rejects the clustered-random-seed
+        // splits this fix targets, which starved players below a third while hogging
+        // well over double. Larger maps tighten the band further.
+        MapGenResult result = BuildWith(seed, new MapGenOptions(ClumpingFactor: 100));
+        var counts = new Dictionary<PlayerId, int>();
+        foreach (Player p in SixPlayers()) counts[p.Id] = 0;
+        foreach (HexTile tile in result.Grid.Tiles) counts[tile.Owner]++;
+
+        int fair = result.Grid.Count / counts.Count;
+        foreach (KeyValuePair<PlayerId, int> kv in counts)
+        {
+            Assert.True(kv.Value >= fair / 3,
+                $"{kv.Key} starved with {kv.Value} of fair {fair} land (seed {seed})");
+            Assert.True(kv.Value <= fair * 5 / 2,
+                $"{kv.Key} hogged {kv.Value} of fair {fair} land (seed {seed})");
+        }
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(42)]
+    [InlineData(9999)]
+    public void SameSeedSameClumping_ProducesIdenticalGrid(int seed)
+    {
+        // Determinism in the new clumped path: a fixed seed + fixed factor reproduces
+        // the same owner assignment and tree scatter byte-for-byte.
+        var opts = new MapGenOptions(ClumpingFactor: 60);
+        MapGenResult a = BuildWith(seed, opts);
+        MapGenResult b = BuildWith(seed, opts);
+
+        Assert.Equal(a.Grid.Count, b.Grid.Count);
+        foreach (HexTile tA in a.Grid.Tiles)
+        {
+            HexTile? tB = b.Grid.Get(tA.Coord);
+            Assert.NotNull(tB);
+            Assert.Equal(tA.Owner, tB!.Owner);
+            Assert.Equal(tA.Occupant is Tree, tB.Occupant is Tree);
+        }
+        Assert.Equal(a.WaterCoords, b.WaterCoords);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(42)]
+    [InlineData(9999)]
+    public void Clumped_OwnersOnlyOnLandAndAmongPlayers(int seed)
+    {
+        // Clumping reassigns owners but must never introduce neutral/unowned land or
+        // a stray id: every land tile still carries one of the player colors (#39).
+        MapGenResult result = BuildWith(seed, new MapGenOptions(ClumpingFactor: 100));
+        var validColors = new HashSet<PlayerId>();
+        foreach (Player p in SixPlayers()) validColors.Add(p.Id);
+        foreach (HexTile tile in result.Grid.Tiles)
+        {
+            Assert.False(tile.Owner.IsNone, $"Tile {tile.Coord} is neutral under clumping (seed {seed})");
+            Assert.Contains(tile.Owner, validColors);
+        }
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(42)]
+    [InlineData(9999)]
+    public void Clumped_CapitalsPlaceable(int seed)
+    {
+        // Fairness / capital-placeability (#70/#72): a fully clumped map must still
+        // reconcile into territories with a capital on every multi-hex region.
+        MapGenResult result = BuildWith(seed, new MapGenOptions(ClumpingFactor: 100));
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(result.Grid);
+        foreach (Territory t in territories)
+        {
+            if (t.Owner.IsNone) continue; // neutral regions never get capitals
+            if (t.Size < 2) continue;     // singletons are capital-less by rule
+            Assert.True(t.HasCapital,
+                $"Multi-hex territory of {t.Owner} (size {t.Size}) lacks a capital (seed {seed})");
+        }
+    }
 }

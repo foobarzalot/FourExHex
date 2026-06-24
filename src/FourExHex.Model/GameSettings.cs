@@ -100,6 +100,16 @@ public static class GameSettings
     public static int GoldDensity = 0;
 
     /// <summary>
+    /// Player-territory clumping factor (0..100) for a freshly-generated map
+    /// (issue #72). 0 = today's fragmented salt-and-pepper assignment (the
+    /// pre-#72 baseline); higher values seed fewer, larger contiguous regions
+    /// (seed-flood Voronoi), 100 = one blob per player. Defaults to 0 so a fresh
+    /// launch / skipped menu reproduces the baseline. See <see cref="TreeDensity"/>
+    /// for the write/read path; threaded into <c>MapGenOptions.ClumpingFactor</c>.
+    /// </summary>
+    public static int ClumpingFactor = 0;
+
+    /// <summary>
     /// Campaign level index (0..255) when the next game is a campaign
     /// launch (issue #2), null for freeform games. Written by the
     /// campaign screen alongside <see cref="MasterSeed"/> (identity

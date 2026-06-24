@@ -43,6 +43,15 @@ public static class MapGenerator
     private const int MinLandCount = 30;
     private const int MaxRetries = 8;
 
+    // Clumped owner assignment (#72). Lloyd relaxation passes that re-center seeds
+    // on their region centroids to even out Voronoi areas, and the gate that runs
+    // them only in the few-seeds regime — when the average region is at least this
+    // many cells, so centroids are meaningful and the fairness actually bites. At
+    // high seed counts (low clumping) regions are tiny and Lloyd is a no-op, so we
+    // skip the work.
+    private const int LloydPasses = 2;
+    private const int LloydMinRegionSize = 6;
+
     public static MapGenResult BuildInitialGrid(
         int cols, int rows, IReadOnlyList<Player> players, int seed, MapGenOptions? options = null)
     {
@@ -57,10 +66,21 @@ public static class MapGenerator
         }
 
         var grid = new HexGrid();
-        foreach (HexCoord coord in land)
+        if (options.ClumpingFactor <= 0)
         {
-            PlayerId owner = players[rng.Next(players.Count)].Id;
-            grid.Add(new HexTile(coord, owner));
+            // Factor 0: today's per-cell random assignment, verbatim — one
+            // rng.Next(players.Count) draw per land cell in HashSet order. Gated
+            // like the mountain/gold passes so a disabled clumping pass makes the
+            // map byte-identical to the pre-#72 baseline (the #20 determinism ref).
+            foreach (HexCoord coord in land)
+            {
+                PlayerId owner = players[rng.Next(players.Count)].Id;
+                grid.Add(new HexTile(coord, owner));
+            }
+        }
+        else
+        {
+            AssignClumpedOwners(grid, land, players, options.ClumpingFactor, rng);
         }
 
         // Mountain ranges (issue #48), gated on density > 0 so a disabled pass
@@ -115,6 +135,173 @@ public static class MapGenerator
         }
 
         return new MapGenResult(grid, water);
+    }
+
+    // Clumped owner assignment (issue #72) — seed-flood Voronoi. Instead of an
+    // independent random owner per cell (the fragmented baseline), scatter a few
+    // owned "seed" cells and flood-fill ownership outward so each player ends up
+    // with one or more coherent contiguous regions. The clumping factor (1..100)
+    // controls how many seeds: fewer seeds → larger blobs. At 100 there is exactly
+    // one seed per player (one blob each); as the factor drops, the seed count
+    // rises toward land.Count, shrinking blobs back toward salt-and-pepper noise.
+    //
+    // Fairness: seeds start farthest-point (spread as far apart as the landmass
+    // allows), then — in the few-seeds regime — two Lloyd relaxation passes re-center
+    // each seed on its region centroid and re-flood, so the Voronoi regions come out
+    // near-equal in AREA, not just equal in count. Clustered random seeds were the
+    // source of wildly unfair splits (one player a sliver, another a basin) at the
+    // high end. Owners are assigned round-robin, so every player gets a balanced
+    // share and clumped starts stay capital-placeable for any player count (#70).
+    // Determinism: the candidate order is sorted (HexCoord.CompareTo) so every tie
+    // (farthest cell, contested flood cell, centroid-nearest cell) breaks lex-min,
+    // and the only rng draw is the first seed — same seed + factor reproduces the
+    // map. Integer-only (no floats — Model rule).
+    private static void AssignClumpedOwners(
+        HexGrid grid, HashSet<HexCoord> land, IReadOnlyList<Player> players, int clump, Random rng)
+    {
+        clump = Math.Clamp(clump, 1, 100);
+        int playerCount = players.Count;
+
+        // Deterministic universe of candidate cells; sorted = stable lex order used
+        // for every tie-break below.
+        var ordered = new List<HexCoord>(land);
+        ordered.Sort();
+
+        // Interpolate seed count: clump 100 → playerCount seeds (max blob), clump→1
+        // → ≈land.Count seeds (noise). Clamp to [playerCount, land.Count].
+        int seedCount = playerCount + (ordered.Count - playerCount) * (100 - clump) / 100;
+        seedCount = Math.Clamp(seedCount, Math.Min(playerCount, ordered.Count), ordered.Count);
+
+        // Farthest-point seed placement. `dist[c]` is the hop distance from c to the
+        // nearest seed chosen so far; each new seed is the cell currently farthest
+        // from every seed (ties → lex-min). The first seed is one seeded-rng pick so
+        // different game seeds still produce different (but equally fair) layouts.
+        var dist = new Dictionary<HexCoord, int>(ordered.Count);
+        foreach (HexCoord c in ordered) dist[c] = int.MaxValue;
+        var seeds = new List<HexCoord>(seedCount);
+
+        void AddSeed(HexCoord s)
+        {
+            seeds.Add(s);
+            dist[s] = 0;
+            // Bounded BFS: relax distances outward, stopping where this seed no
+            // longer beats an already-nearer seed.
+            var q = new Queue<HexCoord>();
+            q.Enqueue(s);
+            while (q.Count > 0)
+            {
+                HexCoord cur = q.Dequeue();
+                int nd = dist[cur] + 1;
+                foreach (HexCoord nb in cur.Neighbors())
+                {
+                    if (!land.Contains(nb) || dist[nb] <= nd) continue;
+                    dist[nb] = nd;
+                    q.Enqueue(nb);
+                }
+            }
+        }
+
+        AddSeed(ordered[rng.Next(ordered.Count)]);
+        while (seeds.Count < seedCount)
+        {
+            HexCoord best = ordered[0];
+            int bestDist = -1;
+            foreach (HexCoord c in ordered) // sorted → the first cell at the max wins (lex-min)
+            {
+                if (dist[c] > bestDist) { bestDist = dist[c]; best = c; }
+            }
+            AddSeed(best);
+        }
+
+        // Multi-source BFS Voronoi flood, labelling each cell with the index of the
+        // seed that claims it. Seeds enter the frontier in sorted order so a cell
+        // reached by two wavefronts at the same depth resolves to the lex-min seed —
+        // stable and rng-independent. Returns the cell→seedIndex region map.
+        Dictionary<HexCoord, int> Flood()
+        {
+            var order = new List<int>(seeds.Count);
+            for (int i = 0; i < seeds.Count; i++) order.Add(i);
+            order.Sort((a, b) => seeds[a].CompareTo(seeds[b]));
+
+            var region = new Dictionary<HexCoord, int>(ordered.Count);
+            var frontier = new Queue<HexCoord>();
+            foreach (int i in order) { region[seeds[i]] = i; frontier.Enqueue(seeds[i]); }
+            while (frontier.Count > 0)
+            {
+                HexCoord cur = frontier.Dequeue();
+                int r = region[cur];
+                foreach (HexCoord nb in cur.Neighbors())
+                {
+                    if (!land.Contains(nb) || region.ContainsKey(nb)) continue;
+                    region[nb] = r;
+                    frontier.Enqueue(nb);
+                }
+            }
+            return region;
+        }
+
+        Dictionary<HexCoord, int> regionOf = Flood();
+
+        // Lloyd relaxation (gated to the few-seeds regime): re-center each seed on its
+        // region's centroid and re-flood, so the Voronoi areas even out instead of
+        // skewing with the landmass shape. Two passes capture most of the benefit;
+        // bail early if a pass moves nothing. Skipped when regions are already tiny
+        // (high seed count) — there centroids add nothing and area is balanced.
+        bool fewSeeds = seedCount > 0 && land.Count >= seedCount * LloydMinRegionSize;
+        if (fewSeeds)
+        {
+            for (int pass = 0; pass < LloydPasses; pass++)
+            {
+                // Integer centroid of each region: mean axial (Q, R) over its cells.
+                long[] sumQ = new long[seeds.Count];
+                long[] sumR = new long[seeds.Count];
+                int[] cnt = new int[seeds.Count];
+                foreach (KeyValuePair<HexCoord, int> kv in regionOf)
+                {
+                    sumQ[kv.Value] += kv.Key.Q;
+                    sumR[kv.Value] += kv.Key.R;
+                    cnt[kv.Value]++;
+                }
+
+                // Move each seed to the region cell nearest its centroid (ties →
+                // lex-min, via the sorted scan). cnt is ≥1: a seed is in its own region.
+                var nearest = new HexCoord[seeds.Count];
+                int[] bestHexDist = new int[seeds.Count];
+                for (int i = 0; i < seeds.Count; i++) bestHexDist[i] = int.MaxValue;
+                foreach (HexCoord c in ordered)
+                {
+                    int r = regionOf[c];
+                    var centroid = new HexCoord((int)(sumQ[r] / cnt[r]), (int)(sumR[r] / cnt[r]));
+                    int d = HexCoord.Distance(c, centroid);
+                    if (d < bestHexDist[r]) { bestHexDist[r] = d; nearest[r] = c; }
+                }
+
+                bool moved = false;
+                for (int i = 0; i < seeds.Count; i++)
+                {
+                    if (!nearest[i].Equals(seeds[i])) { seeds[i] = nearest[i]; moved = true; }
+                }
+                if (!moved) break;
+                regionOf = Flood();
+            }
+        }
+
+        // Materialize: owner = round-robin over the seed index that claimed the cell.
+        // Every land cell is reachable from a seed (the landmass is one connected
+        // component — the LandIsContiguous guarantee); the fallback is purely
+        // defensive so grid.Add never sees a gap.
+        int fallback = 0;
+        foreach (HexCoord coord in land)
+        {
+            PlayerId owner = regionOf.TryGetValue(coord, out int r2)
+                ? players[r2 % playerCount].Id
+                : players[fallback++ % playerCount].Id;
+            grid.Add(new HexTile(coord, owner));
+        }
+
+        Log.Debug(Log.LogCategory.MapGen,
+            $"[mapgen] clumped owners: factor={clump} land={land.Count} seeds={seedCount} " +
+            $"lloyd={(fewSeeds ? LloydPasses : 0)}" + (fallback > 0 ? $" fallback={fallback}" : ""));
     }
 
     // Mountain-range scatter (issue #48, Phase 1). Each "range" is a biased

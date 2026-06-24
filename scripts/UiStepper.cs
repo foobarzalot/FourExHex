@@ -22,6 +22,9 @@ public static class UiStepper
     /// [−] button, an editable value field (shown as "N%"), and a [+] button. The
     /// value field is handed back via <paramref name="field"/> so callers can
     /// re-sync it from their model on open (see <see cref="Resync"/>).
+    ///
+    /// Linear mode: values snap to a multiple of <paramref name="step"/> within
+    /// <c>[min, max]</c>, and [−]/[+] move by one <paramref name="step"/>.
     /// </summary>
     public static HBoxContainer BuildStepperRow(
         string label,
@@ -33,6 +36,38 @@ public static class UiStepper
         out LineEdit field,
         int captionFontSize = 24,
         Color? captionColor = null)
+        => BuildRow(label, initial, min, max, step, stops: null,
+            onChanged, out field, captionFontSize, captionColor);
+
+    /// <summary>
+    /// Explicit-stops variant: the value can only land on one of <paramref name="stops"/>
+    /// (which must be ascending), [−]/[+] move to the neighbouring stop, and typed
+    /// input snaps to the nearest stop. Use when the useful values aren't evenly
+    /// spaced — e.g. the #72 clumping factor, whose visible effect is bunched near
+    /// the top (0, 50, 75, 90, 95, 100).
+    /// </summary>
+    public static HBoxContainer BuildStepperRow(
+        string label,
+        int initial,
+        int[] stops,
+        Action<int> onChanged,
+        out LineEdit field,
+        int captionFontSize = 24,
+        Color? captionColor = null)
+        => BuildRow(label, initial, stops[0], stops[^1], step: 0, stops,
+            onChanged, out field, captionFontSize, captionColor);
+
+    private static HBoxContainer BuildRow(
+        string label,
+        int initial,
+        int min,
+        int max,
+        int step,
+        int[]? stops,
+        Action<int> onChanged,
+        out LineEdit field,
+        int captionFontSize,
+        Color? captionColor)
     {
         var row = new HBoxContainer();
         row.AddThemeConstantOverride("separation", 12);
@@ -51,12 +86,13 @@ public static class UiStepper
         valueField.SetMeta("min", min);
         valueField.SetMeta("max", max);
         valueField.SetMeta("step", step);
+        if (stops != null) valueField.SetMeta("stops", Variant.From(stops));
         field = valueField;
 
         void Commit(int raw) => CommitValue(valueField, raw, onChanged);
 
-        Button minus = BuildStepButton("−", () => Commit(CurrentValue(valueField) - step));
-        Button plus = BuildStepButton("+", () => Commit(CurrentValue(valueField) + step));
+        Button minus = BuildStepButton("−", () => Commit(Neighbor(valueField, -1)));
+        Button plus = BuildStepButton("+", () => Commit(Neighbor(valueField, +1)));
 
         // Commit on Enter (release focus so the new text "sticks") and on focus loss
         // so a typed-then-tapped-away value is honored, not silently discarded.
@@ -94,16 +130,45 @@ public static class UiStepper
         field.Text = $"{clamped}%";
     }
 
-    // Snap to the nearest multiple of step (integer rounding, values are >= 0 here),
-    // then clamp into [min, max].
+    // Snap to a legal value: the nearest explicit stop if this row has a stops list,
+    // otherwise the nearest multiple of step, then clamp into [min, max].
     private static int Clamp(LineEdit field, int value)
     {
         int min = (int)field.GetMeta("min", 0);
         int max = (int)field.GetMeta("max", 100);
-        int step = (int)field.GetMeta("step", 1);
         if (value < 0) value = 0;
+
+        int[]? stops = GetStops(field);
+        if (stops != null) return stops[NearestStopIndex(stops, value)];
+
+        int step = (int)field.GetMeta("step", 1);
         int snapped = step > 0 ? ((value + step / 2) / step) * step : value;
         return Math.Clamp(snapped, min, max);
+    }
+
+    private static int[]? GetStops(LineEdit field) =>
+        field.HasMeta("stops") ? field.GetMeta("stops").AsInt32Array() : null;
+
+    // Index of the stop closest to value; ties go to the lower stop. Stops are ascending.
+    private static int NearestStopIndex(int[] stops, int value)
+    {
+        int best = 0;
+        for (int i = 1; i < stops.Length; i++)
+        {
+            if (Math.Abs(stops[i] - value) < Math.Abs(stops[best] - value)) best = i;
+        }
+        return best;
+    }
+
+    // The committed value moved one step in direction dir (−1 down, +1 up): the
+    // adjacent stop for a stops row, else current ± step. Clamp() bounds the result.
+    private static int Neighbor(LineEdit field, int dir)
+    {
+        int cur = CurrentValue(field);
+        int[]? stops = GetStops(field);
+        if (stops == null) return cur + dir * (int)field.GetMeta("step", 1);
+        int idx = NearestStopIndex(stops, cur);
+        return stops[Math.Clamp(idx + dir, 0, stops.Length - 1)];
     }
 
     // Pull the digits out of arbitrary typed text ("12", "12%", "x12" → 12). Empty →

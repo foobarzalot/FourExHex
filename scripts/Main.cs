@@ -193,6 +193,8 @@ public partial class Main : Node2D
             GameSettings.MountainDensity = envMtn;
         if (int.TryParse(OS.GetEnvironment("FOUREXHEX_GOLD_DENSITY"), out int envGold) && envGold >= 0)
             GameSettings.GoldDensity = envGold;
+        if (int.TryParse(OS.GetEnvironment("FOUREXHEX_CLUMP_FACTOR"), out int envClump) && envClump >= 0)
+            GameSettings.ClumpingFactor = envClump;
 
         int seed = envSeed
                 ?? pendingLoad?.MasterSeed
@@ -268,10 +270,12 @@ public partial class Main : Node2D
                 : new MapGenOptions(
                     TreeDensity: GameSettings.TreeDensity,
                     MountainDensity: GameSettings.MountainDensity,
-                    GoldDensity: GameSettings.GoldDensity);
+                    GoldDensity: GameSettings.GoldDensity,
+                    ClumpingFactor: GameSettings.ClumpingFactor);
             Log.Info(Log.LogCategory.MapGen,
                 $"Main: map-gen densities trees={mapGenOptions.TreeDensity} " +
                 $"mtn={mapGenOptions.MountainDensity} gold={mapGenOptions.GoldDensity} " +
+                $"clump={mapGenOptions.ClumpingFactor} " +
                 $"(campaign={_campaignLevel?.ToString() ?? "no"})");
             _state = ProceduralGame.Build(cols, rows, _players, seed, mapGenOptions);
             _maxTurnNumber = quickDiagMode ? 200

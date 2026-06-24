@@ -12,8 +12,14 @@
 /// the historical <c>grid.Count / 20</c> tree scatter exactly.</param>
 /// <param name="MountainDensity">Mountain-range coverage, percent of land. 0 = none.</param>
 /// <param name="GoldDensity">Gold-cluster coverage, percent of land. 0 = none.</param>
+/// <param name="ClumpingFactor">Sparse↔clumped player-territory assignment (issue #72),
+/// 0..100. <c>0</c> = today's per-cell random (fragmented "salt-and-pepper") owner
+/// assignment exactly — zero extra RNG draws, byte-identical to the pre-#72 baseline.
+/// Higher values seed fewer, larger contiguous regions (seed-flood Voronoi); <c>100</c>
+/// = one contiguous blob per player. Affects only owner assignment, never land shape or
+/// the tree/mountain/gold scatter.</param>
 public sealed record MapGenOptions(
-    int TreeDensity = 5, int MountainDensity = 0, int GoldDensity = 0)
+    int TreeDensity = 5, int MountainDensity = 0, int GoldDensity = 0, int ClumpingFactor = 0)
 {
     /// <summary>Default densities — trees at the historical 5%, no mountains or
     /// gold. The backward-compatible baseline.</summary>

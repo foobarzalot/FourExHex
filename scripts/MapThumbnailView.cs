@@ -105,7 +105,8 @@ public partial class MapThumbnailView : Control
         RequestRandom(seed, new MapGenOptions(
             TreeDensity: GameSettings.TreeDensity,
             MountainDensity: GameSettings.MountainDensity,
-            GoldDensity: GameSettings.GoldDensity));
+            GoldDensity: GameSettings.GoldDensity,
+            ClumpingFactor: GameSettings.ClumpingFactor));
 
     /// <summary>Preview the board for an explicit set of generation options —
     /// used by the campaign confirm sheet, which derives its level's fixed

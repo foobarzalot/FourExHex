@@ -2,9 +2,10 @@ using System;
 using Godot;
 
 /// <summary>
-/// Reusable "Map Generation" modal (issue #48 / #66): the density controls that
-/// shape a freshly-generated (random) map — Trees, Mountains, and Gold, each a
-/// 0..25% (of land) stepper. Summoned by the "?" glyph button next to the die in
+/// Reusable "Map Generation" modal (issue #48 / #66 / #72): the controls that
+/// shape a freshly-generated (random) map — Trees, Mountains, and Gold (each a
+/// 0..25%-of-land density stepper) plus Clumping (a 0..100 sparse↔clumped
+/// territory-assignment factor). Summoned by the "?" glyph button next to the die in
 /// the map editor and on the New Game map-setup page; both hosts open the same
 /// panel, and it reads/writes the single process-wide <see cref="GameSettings"/>
 /// densities, so the choice is shared across the menu and the editor.
@@ -25,11 +26,18 @@ public sealed partial class MapGenSettingsPanel : CanvasLayer
     private const int DensityMax = 25;
     private const int DensityStep = 5;
 
+    // Clumping factor (issue #72) spans 0 (fragmented baseline) to 100 (one
+    // contiguous blob per player). Nonlinear stops: the seed count drops
+    // geometrically toward 100, so the visible change is bunched near the top —
+    // even spacing would waste the low half on indistinguishable noise.
+    private static readonly int[] ClumpStops = { 0, 50, 75, 90, 95, 100 };
+
     private ColorRect _backdrop = null!;
     private PanelContainer _panel = null!;
     private LineEdit _treesField = null!;
     private LineEdit _mountainsField = null!;
     private LineEdit _goldField = null!;
+    private LineEdit _clumpingField = null!;
 
     private static readonly Font _serifFont =
         GD.Load<FontFile>("res://fonts/DMSerifDisplay-Regular.ttf");
@@ -96,6 +104,9 @@ public sealed partial class MapGenSettingsPanel : CanvasLayer
         vbox.AddChild(UiStepper.BuildStepperRow(
             "Gold", GameSettings.GoldDensity, DensityMin, DensityMax, DensityStep,
             OnGoldChanged, out _goldField));
+        vbox.AddChild(UiStepper.BuildStepperRow(
+            "Clumping", GameSettings.ClumpingFactor, ClumpStops,
+            OnClumpingChanged, out _clumpingField));
 
         var back = new Button
         {
@@ -117,6 +128,7 @@ public sealed partial class MapGenSettingsPanel : CanvasLayer
         UiStepper.Resync(_treesField, GameSettings.TreeDensity);
         UiStepper.Resync(_mountainsField, GameSettings.MountainDensity);
         UiStepper.Resync(_goldField, GameSettings.GoldDensity);
+        UiStepper.Resync(_clumpingField, GameSettings.ClumpingFactor);
         IsOpen = true;
         Visible = true;
         Log.Debug(Log.LogCategory.MapGen, "MapGenSettingsPanel: opened");
@@ -145,6 +157,12 @@ public sealed partial class MapGenSettingsPanel : CanvasLayer
     {
         GameSettings.GoldDensity = density;
         Log.Debug(Log.LogCategory.MapGen, $"MapGenSettingsPanel: GoldDensity -> {density}");
+    }
+
+    private void OnClumpingChanged(int factor)
+    {
+        GameSettings.ClumpingFactor = factor;
+        Log.Debug(Log.LogCategory.MapGen, $"MapGenSettingsPanel: ClumpingFactor -> {factor}");
     }
 
     public override void _UnhandledInput(InputEvent @event)

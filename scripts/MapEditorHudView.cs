@@ -541,10 +541,12 @@ public partial class MapEditorHudView : OrientationHud
         var options = new MapGenOptions(
             TreeDensity: GameSettings.TreeDensity,
             MountainDensity: GameSettings.MountainDensity,
-            GoldDensity: GameSettings.GoldDensity);
+            GoldDensity: GameSettings.GoldDensity,
+            ClumpingFactor: GameSettings.ClumpingFactor);
         Log.Debug(Log.LogCategory.Input,
             $"[MapEditor] die press → seed={SeedFormat.ToHex(seed)} " +
-            $"trees={options.TreeDensity} mtn={options.MountainDensity} gold={options.GoldDensity}");
+            $"trees={options.TreeDensity} mtn={options.MountainDensity} gold={options.GoldDensity} " +
+            $"clump={options.ClumpingFactor}");
         GenerateRequested?.Invoke(seed, options);
         SelectHand();
     }
