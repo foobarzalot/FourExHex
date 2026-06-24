@@ -691,22 +691,24 @@ tile can be a gold mountain).
   a squared slate `HexPaletteButton`) draws the same peak in opaque grey so it
   reads against the dark slate backdrop.
 
-## Procedural trees, mountains & gold (issue #48 / #66)
+## Procedural trees, mountains, gold & territory clumping (issue #48 / #66 / #72)
 
 `MapGenerator.BuildInitialGrid` scatters trees, mountains, and gold onto a
 freshly-generated map, each driven by an integer **density** (percent of land)
-on the `MapGenOptions` record
-(`MapGenOptions(TreeDensity = 5, MountainDensity = 0, GoldDensity = 0)`). The
-record threads through `BuildInitialGrid(... , MapGenOptions? options = null)`
+on the `MapGenOptions` record, plus a fourth knob — **`ClumpingFactor`** (0..100)
+— that shapes how player ownership is assigned across the land
+(`MapGenOptions(TreeDensity = 5, MountainDensity = 0, GoldDensity = 0, ClumpingFactor = 0)`).
+The record threads through `BuildInitialGrid(... , MapGenOptions? options = null)`
 and `ProceduralGame.Build(... , options)`. `MapGenOptions.None` (and the
 no-options overload used by tests/replay) is **byte-identical to the pre-#48
 baseline**: density 0 for mountains/gold leaves their passes fully gated (zero
-RNG draws), and the **tree default of 5%** reproduces the historical
+RNG draws), `ClumpingFactor 0` keeps the per-cell-random owner assignment gated
+the same way, and the **tree default of 5%** reproduces the historical
 `grid.Count / 20` scatter exactly — `grid` holds exactly the land tiles, so
 `land.Count * 5 / 100 == grid.Count / 20` byte-for-byte. This preserves the #20
 determinism reference. All densities are a single base (percent of `land.Count`);
-all scatter math is integer (no floats — Model rule) and deterministic in the
-seed.
+all scatter and clumping math is integer (no floats — Model rule) and
+deterministic in the seed.
 
 - **Trees** — the tree scatter places `land.Count * TreeDensity / 100` trees
   (default 5%), skipping mountain/gold/occupied tiles so they stay readable.
@@ -729,23 +731,49 @@ seed.
   `TerritoryFinder` / `CapitalReconciler` as capital-less neutral regions;
   `CapitalPlacer` already skips neutral and mountain tiles, so no capital lands
   on them. The tree scatter skips mountain and gold tiles so both stay readable.
+- **Clumping** — `ClumpingFactor` controls the **owner-assignment** step (which
+  runs after land shape, before the mountain/gold/tree scatter), on a
+  sparse↔clumped spectrum. `0` is the historical per-cell uniform-random
+  assignment (the deliberately fragmented "salt-and-pepper" look), fully gated so
+  it makes zero extra RNG draws. `> 0` runs `AssignClumpedOwners` — a **seed-flood
+  Voronoi**: pick a seed count that interpolates with the factor (`100` → one seed
+  per player, lower → toward `land.Count`, i.e. back to noise), place the seeds
+  **farthest-point apart**, assign owners round-robin (balanced share), then a
+  multi-source BFS floods every land cell to its nearest seed. In the **few-seeds
+  regime** (`land ≥ seeds × 6`) two **Lloyd relaxation** passes re-center each seed
+  on its region centroid and re-flood, so Voronoi **areas** come out near-equal
+  (not just counts) — this is what keeps high-clumping starts fair instead of
+  handing one player a basin and another a sliver. Regions stay contiguous and
+  capital-placeable. Deterministic: candidate cells are sorted so every tie
+  (farthest cell, contested flood cell, centroid-nearest cell) breaks lex-min, and
+  the only RNG draw is the first seed. Reuses `HexCoord.Distance`. The instrumented
+  `[mapgen] clumped owners: factor=… seeds=… lloyd=…` Debug line (category `MapGen`)
+  reports each generation.
 - **Surfacing.** A shared `MapGenSettingsPanel` (Godot modal, opened by a serif
   "?" chip — `HudIconButton` text mode) carries three **density steppers**
-  (Trees / Mountains / Gold, each 0..25% in steps of 5), summoned from both the
-  New Game map-setup page and the map editor (next to the die). It reads/writes
-  the process-wide `GameSettings.TreeDensity` / `MountainDensity` / `GoldDensity`;
-  `Main`, the map thumbnail, and the editor die build their `MapGenOptions` from
-  those for **freeform** games. The `−`/value/`+` stepper rows (value editable by
-  typing, clamped + snapped on commit) come from the shared `UiStepper` helper
-  (sibling of `UiToggle`).
+  (Trees / Mountains / Gold, each 0..25% in steps of 5) plus a **Clumping**
+  stepper, summoned from both the New Game map-setup page and the map editor (next
+  to the die). It reads/writes the process-wide `GameSettings.TreeDensity` /
+  `MountainDensity` / `GoldDensity` / `ClumpingFactor`; `Main`, the map thumbnail,
+  and the editor die build their `MapGenOptions` from those for **freeform** games.
+  The `−`/value/`+` stepper rows (value editable by typing, clamped + snapped on
+  commit) come from the shared `UiStepper` helper (sibling of `UiToggle`), which
+  supports a **linear** mode (the density rows) and an **explicit-stops** mode used
+  by the Clumping row — its nonlinear stops `{0, 50, 75, 90, 95, 100}` live as the
+  single source of truth in `MapGenOptions.ClumpingFactorStops` (the visible effect
+  bunches near the top, so even spacing would waste the low half).
 - **Campaign terrain is per-level, not the freeform steppers.**
   `CampaignProgress.MapGenOptionsForLevel(level)` derives a level's densities
   deterministically from the level number: mountains present ≈55% (density 10
-  when present, else 0), gold present ≈45% (density 5 when present, else 0), and
-  trees vary across {0, 5, 10}% — so a level's terrain is fixed and reproducible
-  regardless of UI state. This **re-baselines campaign maps** vs the old on/off
-  flags (campaign is not part of the #20 byte-identical reference; only the
-  freeform default is). `Main` uses it whenever `GameSettings.CampaignLevel` is
+  when present, else 0), gold present ≈45% (density 5 when present, else 0),
+  trees vary across {0, 5, 10}%, and **clumping is drawn from the shared
+  `ClumpingFactorStops`** (#72) — so a level's terrain *and* its sparse↔clumped
+  feel are fixed and reproducible regardless of UI state (same level → same
+  options → same seed → same map). The clumping draw is sequenced last so adding
+  it left every level's existing tree/mountain/gold values byte-unchanged. This
+  **re-baselines campaign maps** vs the old on/off flags (campaign is not part of
+  the #20 byte-identical reference; only the freeform default is). `Main` uses it
+  whenever `GameSettings.CampaignLevel` is
   set (freeform falls back to the steppers), and the campaign confirm-sheet
   preview renders the same derivation via
   `MapThumbnailView.RequestRandom(seed, options)`.
