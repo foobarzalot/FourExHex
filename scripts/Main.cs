@@ -242,11 +242,14 @@ public partial class Main : Node2D
         {
             // Starting-map flow: terrain (grid, water, territories,
             // pre-placed trees/towers/capitals) comes from the saved
-            // map, but everything player-ish is fresh. Players come
-            // from the menu's role config — the saved map intentionally
-            // doesn't carry kinds. Turn state starts at turn 1, player 0
-            // (red goes first) and the treasury is empty.
-            _players = Player.BuildRoster();
+            // map. Since #70 the map bakes its own roster (kinds + difficulty,
+            // None excluded on load), so play exactly that. A pre-#70 map
+            // carries no roster intent, so fall back to the legacy default:
+            // 6 players, Red human, the rest Computer, all Soldier. Turn state
+            // starts at turn 1, player 0 (red first) and the treasury is empty.
+            _players = pendingLoad.MapHasBakedKinds
+                ? pendingLoad.Players
+                : LegacyDefaultRoster();
             _state = new GameState(
                 pendingLoad.State.Grid,
                 pendingLoad.State.Territories,
@@ -479,6 +482,23 @@ public partial class Main : Node2D
 #if DEBUG
         CheatMenu.Attach(this);
 #endif
+    }
+
+    /// <summary>The canonical 6-player roster a pre-#70 starting map (which
+    /// baked no kinds) plays under: Red human, the rest Computer, all Soldier
+    /// (issue #70). Painted colors that own no tiles simply start eliminated.</summary>
+    private static List<Player> LegacyDefaultRoster()
+    {
+        var players = new List<Player>();
+        for (int i = 0; i < GameSettings.PlayerConfig.Length; i++)
+        {
+            players.Add(new Player(
+                GameSettings.PlayerConfig[i].Name,
+                PlayerId.FromIndex(i),
+                i == 0 ? PlayerKind.Human : PlayerKind.Computer,
+                Difficulty.Soldier));
+        }
+        return players;
     }
 
     /// <summary>

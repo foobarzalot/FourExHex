@@ -74,7 +74,9 @@ public partial class MainMenuScene : Control
     // The level "Play?" confirm sheet while it's open (issue #51), so the
     // Escape handler can let the sheet consume Escape (cancel) instead of
     // backing out of the whole campaign ladder.
-    private CampaignConfirmSheet? _campaignSheet;
+    private MapInfoSheet? _campaignSheet;
+    // New Game / Map Editor source chooser (New Map | Load …), issue #70.
+    private EscMenu? _sourceChooser;
     // Design (unscaled) size of the landing panel, recorded at build time so
     // FitPanels can scale it down to fit a smaller-than-design viewport. (The
     // play-config panel is now a fill-to-cap surface and needs no design size.)
@@ -209,6 +211,10 @@ public partial class MainMenuScene : Control
 
         BuildLoadDialog();
         BuildQuitConfirmDialog();
+
+        // Shared modal for the New Game / Map Editor "New Map | Load …" choice.
+        _sourceChooser = new EscMenu();
+        AddChild(_sourceChooser);
 
         if (OpenCampaignOnArrival)
         {
@@ -860,7 +866,10 @@ public partial class MainMenuScene : Control
         col.AddThemeConstantOverride("separation", 10);
         AddPortraitHeader(col);
 
-        col.AddChild(MakePortraitFieldRow("Map", ConfigureMapSelector()));
+        // Procedural-only map page (issue #70): loading a saved starting map is
+        // now its own branch off the New Game source chooser, so the map page
+        // is just seed + preview. (_mapSelector / _selectedMapName stay null,
+        // which every reader already treats as "Random Map".)
 
         // Seed field + square re-roll die share a row.
         var seedRow = new HBoxContainer();
@@ -941,25 +950,6 @@ public partial class MainMenuScene : Control
         SelectItemById(dropdown, (int)currentDifficulty);
         _difficultyButtons[slot] = dropdown;
         return dropdown;
-    }
-
-    private OptionButton ConfigureMapSelector()
-    {
-        var selector = new OptionButton();
-        selector.AddThemeFontSizeOverride("font_size", 21);
-        selector.GetPopup().AddThemeFontSizeOverride("font_size", 21);
-        // Item 0 is the default — generates a fresh procedural map from the
-        // seed. Subsequent items (id == index in ListMaps) are saved maps.
-        selector.AddItem("Random Map", 0);
-        System.Collections.Generic.IReadOnlyList<SaveSlotInfo> mapSlots = _saveStore.ListMaps();
-        for (int i = 0; i < mapSlots.Count; i++)
-        {
-            selector.AddItem(mapSlots[i].SlotName, i + 1);
-        }
-        selector.Selected = 0;
-        selector.ItemSelected += OnMapSelectorChanged;
-        _mapSelector = selector;
-        return selector;
     }
 
     private LineEdit ConfigureSeedField()
@@ -1108,10 +1098,8 @@ public partial class MainMenuScene : Control
 
         AddLandscapeHeader(rail);
 
-        rail.AddChild(MakeRailLabel("Map"));
-        OptionButton mapSelector = ConfigureMapSelector();
-        mapSelector.CustomMinimumSize = new Vector2(0, 44);
-        rail.AddChild(mapSelector);
+        // Procedural-only map page (issue #70): saved-map loading moved to the
+        // New Game source chooser, so no map selector here — just seed + preview.
 
         rail.AddChild(MakeRailLabel("Map Seed"));
         // Seed field + square re-roll button on one row (issue #5).
@@ -1348,7 +1336,7 @@ public partial class MainMenuScene : Control
     {
         // Confirm sheet with a live thumbnail of the level's board (issue #51).
         // The sheet derives title/status/seed from the level itself.
-        var sheet = new CampaignConfirmSheet(level);
+        MapInfoSheet sheet = CampaignConfirmSheet.Create(level);
         _campaignSheet = sheet;
         sheet.Confirmed += () => LaunchCampaignLevel(level);
         sheet.Canceled += () => { _campaignSheet = null; sheet.QueueFree(); };
@@ -1496,12 +1484,56 @@ public partial class MainMenuScene : Control
 
     private void OnPlayPressed()
     {
-        ShowPlayConfig();
+        // New Game source chooser (issue #70): configure a fresh procedural
+        // game, or load a saved starting map and play its baked roster.
+        Log.Info(Log.LogCategory.Input, "MainMenu: Play Game → source chooser");
+        _sourceChooser?.Show("New Game", new[]
+        {
+            new EscMenu.Option("New Map", ShowPlayConfig),
+            new EscMenu.Option("Load Starting Map", OpenLoadStartingMapToPlay),
+        });
     }
 
     private void OnMapEditorPressed()
     {
         GetTree().ChangeSceneToFile("res://scenes/map_editor.tscn");
+    }
+
+    /// <summary>Load-starting-map-to-play branch of the New Game chooser
+    /// (issue #70): pick a saved map, preview it + who you're playing as in the
+    /// shared <see cref="MapInfoSheet"/>, then launch the game on its baked
+    /// roster.</summary>
+    private void OpenLoadStartingMapToPlay()
+    {
+        if (_loadDialog == null) return;
+        Log.Info(Log.LogCategory.Input, "MainMenu: New Game → load starting map");
+        _loadDialog.ShowSlots(
+            _saveStore.ListMaps(),
+            "No starting maps found.",
+            info => info.SlotName,
+            OnPickStartingMapToPlay,
+            thumbnailStore: _saveStore,
+            previewMaps: true);
+    }
+
+    private void OnPickStartingMapToPlay(string mapName)
+    {
+        LoadedSave loaded;
+        try
+        {
+            loaded = _saveStore.LoadMap(mapName);
+        }
+        catch (System.Exception ex)
+        {
+            _loadDialog?.ShowError($"Could not load map '{mapName}': {ex.Message}");
+            return;
+        }
+        // The picker already previews the board, so launch straight into the
+        // game on the map's baked roster (issue #70) — no extra confirm step.
+        LoadRequest.Pending = loaded;
+        GameSettings.MasterSeed = loaded.MasterSeed;
+        Log.Info(Log.LogCategory.Input, $"MainMenu: launch starting map \"{mapName}\"");
+        GetTree().ChangeSceneToFile("res://scenes/main.tscn");
     }
 
     private void OnSettingsPressed()
@@ -1741,6 +1773,10 @@ public partial class MainMenuScene : Control
         // The campaign level confirm sheet owns its own Escape (cancel) while
         // open — don't also back out of the ladder underneath it.
         if (_campaignSheet != null && _campaignSheet.IsOpen) return;
+
+        // The New Game / Map Editor source chooser owns its own Escape while
+        // open (issue #70).
+        if (_sourceChooser != null && _sourceChooser.IsOpen) return;
 
         // Per-panel input dispatch: each panel only sees the keys that
         // make sense while it's the visible one.

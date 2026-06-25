@@ -49,6 +49,7 @@ public sealed partial class SlotPickerDialog : CanvasLayer
     private Func<SaveSlotInfo, string> _labelFor = _ => "";
     private Action<string> _onPicked = _ => { };
     private SaveStore? _thumbnailStore;
+    private bool _previewUsesMaps;
 
     // Preview-mode state.
     private MapThumbnailView? _preview;
@@ -197,16 +198,29 @@ public sealed partial class SlotPickerDialog : CanvasLayer
         string emptyMessage,
         Func<SaveSlotInfo, string> labelFor,
         Action<string> onPicked,
-        SaveStore? thumbnailStore = null)
+        SaveStore? thumbnailStore = null,
+        bool previewMaps = false)
     {
         _slots = slots;
         _emptyMessage = emptyMessage;
         _labelFor = labelFor;
         _onPicked = onPicked;
         _thumbnailStore = thumbnailStore;
+        // Maps live in a different directory than game saves; the preview must
+        // load from the right one (issue #70).
+        _previewUsesMaps = previewMaps;
         _selectedSlot = null;
         BuildBody();
         Visible = true;
+    }
+
+    /// <summary>Render the selected slot's preview from the correct store —
+    /// the maps directory in map-picker mode, the saves directory otherwise.</summary>
+    private void RequestPreview(string slotName)
+    {
+        if (_preview == null) return;
+        if (_previewUsesMaps) _preview.RequestMap(slotName);
+        else _preview.RequestSlot(slotName);
     }
 
     /// <summary>(Re)build the main panel + body for the current slots +
@@ -414,9 +428,9 @@ public sealed partial class SlotPickerDialog : CanvasLayer
     {
         _selectedSlot = slotName;
         if (_loadButton != null) _loadButton.Disabled = false;
-        // RequestSlot coalesces via its own token, so rapid taps only snapshot
-        // the latest. Layout is stable after the first frame, so request now.
-        _preview?.RequestSlot(slotName);
+        // The preview request coalesces via its own token, so rapid taps only
+        // snapshot the latest. Layout is stable after the first frame, so now.
+        RequestPreview(slotName);
     }
 
     private void OnLoadPressed()
@@ -431,7 +445,7 @@ public sealed partial class SlotPickerDialog : CanvasLayer
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
         if (token != _previewToken || _preview == null || _selectedSlot == null) return;
         if (!GodotObject.IsInstanceValid(_preview)) return;
-        _preview.RequestSlot(_selectedSlot);
+        RequestPreview(_selectedSlot);
     }
 
     private bool SlotPresent(string name)
