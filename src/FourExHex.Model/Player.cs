@@ -9,6 +9,17 @@ public enum PlayerKind
 {
     Human,
     Computer,
+
+    /// <summary>
+    /// An empty slot: this color does not take part in the game.
+    /// <see cref="Player.BuildRoster"/> filters <c>None</c> slots out entirely,
+    /// so a <c>None</c> player never enters a live <see cref="TurnState"/> —
+    /// it owns no capital, never takes a turn, and is excluded from the win
+    /// check. The value exists only as roster-build input and as map-save
+    /// metadata (a starting map bakes each color's kind, including which are
+    /// <c>None</c>). Lets a match run with 2–6 players (issue #70).
+    /// </summary>
+    None,
 }
 
 /// <summary>
@@ -76,6 +87,11 @@ public class Player
             PlayerKind kind = i < GameSettings.PlayerKinds.Length
                 ? GameSettings.PlayerKinds[i]
                 : PlayerKind.Computer;
+            // A None slot is absent from the match (issue #70): skip it so the
+            // roster compacts to the active players only. Survivors keep their
+            // original slot index via PlayerId.FromIndex(i), so display colors
+            // (PlayerPalette indexes PlayerConfig by Id.Index) stay correct.
+            if (kind == PlayerKind.None) continue;
             Difficulty difficulty = i < GameSettings.Difficulties.Length
                 ? GameSettings.Difficulties[i]
                 : Difficulty.Soldier;

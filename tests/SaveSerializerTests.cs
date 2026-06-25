@@ -57,15 +57,16 @@ public class SaveSerializerTests
     }
 
     [Fact]
-    public void SerializeMap_OmitsKindFieldFromJson()
+    public void SerializeMap_BakesKindFieldIntoJson()
     {
-        // Starting maps must not record per-color roles — those are set
-        // at play time via the Play Game config menu.
+        // Since #70 starting maps record each color's role (Human/Computer/None)
+        // so a loaded map restores its exact roster.
         (GameState state, IReadOnlyList<Player> players) = BuildRichState();
 
         string json = SaveSerializer.SerializeMap(state, 42, players, "m");
 
-        Assert.DoesNotContain("\"Kind\"", json);
+        Assert.Contains("\"Kind\": \"Human\"", json);
+        Assert.Contains("\"Kind\": \"Computer\"", json);
     }
 
     [Fact]
@@ -87,14 +88,18 @@ public class SaveSerializerTests
     [Fact]
     public void Deserialize_PlayerWithMissingKind_DefaultsToHuman()
     {
-        // A starting map's JSON has no "Kind" field per player. The
-        // loader must not throw — it should treat missing kind as a
-        // "needs assignment" placeholder, which we represent as Human.
+        // A pre-#70 starting map's JSON has no "Kind" field per player. The
+        // loader must not throw — it treats missing kind as Human (the legacy
+        // placeholder; the play-scene load path then applies the default roster).
         (GameState state, IReadOnlyList<Player> players) = BuildRichState();
         string json = SaveSerializer.SerializeMap(state, 42, players, "m");
+        // Strip the baked Kind fields to simulate the pre-#70 file shape.
+        string legacy = System.Text.RegularExpressions.Regex.Replace(
+            json, ",\\s*\"Kind\": \"[A-Za-z]+\"", string.Empty);
 
-        LoadedSave loaded = SaveSerializer.Deserialize(json);
+        LoadedSave loaded = SaveSerializer.Deserialize(legacy);
 
+        Assert.False(loaded.MapHasBakedKinds);
         foreach (Player p in loaded.Players)
         {
             Assert.Equal(PlayerKind.Human, p.Kind);
@@ -114,9 +119,9 @@ public class SaveSerializerTests
     }
 
     [Fact]
-    public void CurrentFormatVersion_IsTen_ForMountainTiles()
+    public void CurrentFormatVersion_IsEleven()
     {
-        Assert.Equal(10, SaveSerializer.CurrentFormatVersion);
+        Assert.Equal(11, SaveSerializer.CurrentFormatVersion);
     }
 
     [Fact]
@@ -233,15 +238,15 @@ public class SaveSerializerTests
     }
 
     [Fact]
-    public void SerializeMap_OmitsDifficultyFieldFromJson()
+    public void SerializeMap_BakesDifficultyFieldIntoJson()
     {
-        // Starting maps don't commit to a roster, so no per-color
-        // difficulty is baked in — it's assigned at the play-config menu.
+        // Since #70 starting maps bake per-color difficulty alongside kind, so
+        // a loaded map restores its exact roster.
         (GameState state, IReadOnlyList<Player> players) = BuildRichState();
 
         string json = SaveSerializer.SerializeMap(state, 42, players, "m");
 
-        Assert.DoesNotContain("\"Difficulty\"", json);
+        Assert.Contains("\"Difficulty\": \"Soldier\"", json);
     }
 
     [Fact]

@@ -49,4 +49,69 @@ public class PlayerRosterTests
             GameSettings.Difficulties = saved;
         }
     }
+
+    [Fact]
+    public void BuildRoster_AllNonNone_ReturnsAllSixInSlotOrder()
+    {
+        // Regression: the default 6-player setup is unchanged — every slot
+        // present, in order, each player's Id matching its slot index.
+        PlayerKind[] saved = GameSettings.PlayerKinds;
+        try
+        {
+            GameSettings.PlayerKinds = new[]
+            {
+                PlayerKind.Human, PlayerKind.Computer, PlayerKind.Computer,
+                PlayerKind.Computer, PlayerKind.Computer, PlayerKind.Computer,
+            };
+
+            List<Player> roster = Player.BuildRoster();
+
+            Assert.Equal(6, roster.Count);
+            for (int i = 0; i < roster.Count; i++)
+            {
+                Assert.Equal(i, roster[i].Id.Index);
+            }
+        }
+        finally
+        {
+            GameSettings.PlayerKinds = saved;
+        }
+    }
+
+    [Fact]
+    public void BuildRoster_ExcludesNoneSlots_AndPreservesSlotIndices()
+    {
+        // None slots are dropped entirely; survivors keep their original
+        // slot index (so colors stay correct) and the list compacts.
+        PlayerKind[] savedKinds = GameSettings.PlayerKinds;
+        Difficulty[] savedDiff = GameSettings.Difficulties;
+        try
+        {
+            GameSettings.PlayerKinds = new[]
+            {
+                PlayerKind.Human, PlayerKind.None, PlayerKind.Computer,
+                PlayerKind.None, PlayerKind.Computer, PlayerKind.None,
+            };
+            GameSettings.Difficulties = new[]
+            {
+                Difficulty.Captain, Difficulty.Soldier, Difficulty.Soldier,
+                Difficulty.Soldier, Difficulty.Commander, Difficulty.Soldier,
+            };
+
+            List<Player> roster = Player.BuildRoster();
+
+            Assert.Equal(3, roster.Count);
+            Assert.Equal(new[] { 0, 2, 4 }, roster.ConvertAll(p => p.Id.Index));
+            Assert.Equal(PlayerKind.Human, roster[0].Kind);
+            Assert.Equal(PlayerKind.Computer, roster[1].Kind);
+            Assert.Equal(Difficulty.Captain, roster[0].Difficulty);   // slot 0
+            Assert.Equal(Difficulty.Commander, roster[2].Difficulty); // slot 4
+            Assert.DoesNotContain(roster, p => p.Kind == PlayerKind.None);
+        }
+        finally
+        {
+            GameSettings.PlayerKinds = savedKinds;
+            GameSettings.Difficulties = savedDiff;
+        }
+    }
 }

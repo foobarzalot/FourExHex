@@ -18,6 +18,14 @@ public sealed class LoadedSave
     public string SlotName { get; }
 
     /// <summary>
+    /// True iff the file carried explicit per-player kinds (issue #70). In-progress
+    /// saves and post-#70 starting maps bake kinds; pre-#70 starting maps did not.
+    /// The starting-map load path uses this to decide between the baked roster and
+    /// the legacy default (6 players, Red human, the rest Computer, all Soldier).
+    /// </summary>
+    public bool MapHasBakedKinds { get; }
+
+    /// <summary>
     /// Name of the starting map this game was launched from, or null if
     /// it was a procedural (Random Map) game. Carried across save/load so
     /// the in-game label can keep showing "Map: foo" after a reload.
@@ -68,7 +76,8 @@ public sealed class LoadedSave
         IReadOnlyDictionary<PlayerId, int>? claimVictoryPromptedHighestThreshold = null,
         Tutorial? tutorial = null,
         Replay? replay = null,
-        int? campaignLevel = null)
+        int? campaignLevel = null,
+        bool mapHasBakedKinds = false)
     {
         State = state;
         Players = players;
@@ -76,6 +85,7 @@ public sealed class LoadedSave
         MaxTurnNumber = maxTurnNumber;
         SlotName = slotName;
         OriginMapName = originMapName;
+        MapHasBakedKinds = mapHasBakedKinds;
         ClaimVictoryPromptedHighestThreshold = claimVictoryPromptedHighestThreshold
             ?? new Dictionary<PlayerId, int>();
         Tutorial = tutorial;
@@ -105,7 +115,7 @@ public static class SaveSerializer
     /// Bump on any breaking schema change. <see cref="Deserialize"/>
     /// rejects mismatched values rather than attempting migration.
     /// </summary>
-    public const int CurrentFormatVersion = 10;
+    public const int CurrentFormatVersion = 11;
 
     public static string Serialize(
         GameState state,
@@ -127,12 +137,15 @@ public static class SaveSerializer
             campaignLevel: campaignLevel);
 
     /// <summary>
-    /// Serialize a starting map — same JSON format as <see cref="Serialize"/>,
-    /// but the per-player <c>Kind</c> field is omitted. Editor maps don't
-    /// commit to a roster; the Play Game config menu assigns roles at play
-    /// time. Optional <paramref name="tutorial"/> attaches an authored
-    /// tutorial to the file (used by <see cref="SaveStore.WriteTutorial"/>);
-    /// regular starting maps pass null.
+    /// Serialize a starting map — same JSON format as <see cref="Serialize"/>.
+    /// Since #70 the per-color kind (Human/Computer/None) and difficulty are
+    /// baked in (<paramref name="players"/> carries the chosen roster, including
+    /// <see cref="PlayerKind.None"/> slots), so a loaded map restores its exact
+    /// player setup. Pre-#70 maps omitted these fields; they still load (every
+    /// color defaults via the legacy default roster — see
+    /// <see cref="LoadedSave.MapHasBakedKinds"/>). Optional
+    /// <paramref name="tutorial"/> attaches an authored tutorial to the file
+    /// (used by <see cref="SaveStore.WriteTutorial"/>); regular maps pass null.
     /// </summary>
     public static string SerializeMap(
         GameState state,
@@ -141,7 +154,7 @@ public static class SaveSerializer
         string slotName,
         Tutorial? tutorial = null)
         => SerializeInternal(state, masterSeed, players, slotName,
-            maxTurnNumber: int.MaxValue, includeKind: false,
+            maxTurnNumber: int.MaxValue, includeKind: true,
             originMapName: null, claimVictoryPromptedHighestThreshold: null,
             tutorial: tutorial,
             replay: null,
@@ -243,6 +256,7 @@ public static class SaveSerializer
         }
 
         IReadOnlyList<Player> players = DeserializePlayers(data.Players);
+        bool mapHasBakedKinds = AnyBakedKinds(data.Players);
         var turnState = new TurnState(
             players,
             currentPlayerIndex: data.CurrentPlayerIndex,
@@ -296,7 +310,8 @@ public static class SaveSerializer
             claimVictoryPromptedHighestThreshold: prompted,
             tutorial: tutorial,
             replay: replay,
-            campaignLevel: data.CampaignLevel);
+            campaignLevel: data.CampaignLevel,
+            mapHasBakedKinds: mapHasBakedKinds);
     }
 
     /// <summary>
@@ -369,21 +384,38 @@ public static class SaveSerializer
     private static List<PlayerDto> SerializePlayers(IReadOnlyList<Player> players, bool includeKind)
     {
         var dtos = new List<PlayerDto>(players.Count);
-        for (int i = 0; i < players.Count; i++)
+        foreach (Player p in players)
         {
-            Player p = players[i];
+            // Index and color track the player's SLOT (PlayerId.Index), not its
+            // position in the (possibly compacted) roster list — a 2–6 player
+            // game keeps each survivor on its own color (issue #70). For a full
+            // 6-player roster slot == list position, so the wire format is
+            // byte-identical to the pre-#70 output.
+            int slot = p.Id.Index;
             dtos.Add(new PlayerDto
             {
-                Index = i,
+                Index = slot,
                 Name = p.Name,
-                ColorHex = GameSettings.PlayerConfig[i].Hex,
-                // Null is omitted from JSON via JsonOptions, so starting
-                // maps have no per-color role baked into the file.
+                ColorHex = GameSettings.PlayerConfig[slot].Hex,
+                // Null is omitted from JSON via JsonOptions, so pre-#70 starting
+                // maps had no per-color role baked into the file.
                 Kind = includeKind ? p.Kind.ToString() : null,
                 Difficulty = includeKind ? p.Difficulty.ToString() : null,
             });
         }
         return dtos;
+    }
+
+    /// <summary>True iff any player dto carried an explicit kind — i.e. an
+    /// in-progress save or a post-#70 starting map (vs. a pre-#70 map that
+    /// baked no roles). Drives <see cref="LoadedSave.MapHasBakedKinds"/>.</summary>
+    private static bool AnyBakedKinds(List<PlayerDto> dtos)
+    {
+        foreach (PlayerDto dto in dtos)
+        {
+            if (!string.IsNullOrEmpty(dto.Kind)) return true;
+        }
+        return false;
     }
 
     private static IReadOnlyList<Player> DeserializePlayers(List<PlayerDto> dtos)
@@ -392,6 +424,11 @@ public static class SaveSerializer
         foreach (PlayerDto dto in dtos)
         {
             PlayerKind kind = ParsePlayerKind(dto.Kind);
+            // A None slot is not a live player (issue #70): drop it so the
+            // active roster compacts. Tiles owned by it never appear in a
+            // valid file (the editor's save validation enforces that), and
+            // OwnerIndexToId resolves any stray owner to neutral defensively.
+            if (kind == PlayerKind.None) continue;
             Difficulty difficulty = ParseDifficulty(dto.Difficulty);
             list.Add(new Player(dto.Name, PlayerId.FromIndex(dto.Index), kind, difficulty));
         }
@@ -816,15 +853,20 @@ public static class SaveSerializer
     // than throwing (the v4 behavior).
     private static int IdToOwnerIndex(PlayerId id) => id.IsNone ? -1 : id.Index;
 
+    // The stored owner index is a SLOT (PlayerId.Index), not a position in the
+    // roster list. With a 2–6 player game the roster is compacted (e.g. slots
+    // 0,2,4), so we match by slot rather than indexing the list (issue #70). For
+    // a full 6-player roster slot == list position, so this is unchanged. A slot
+    // absent from the active roster resolves to neutral defensively (a valid
+    // file never references a None slot's color).
     private static PlayerId OwnerIndexToId(int index, IReadOnlyList<Player> players)
     {
         if (index < 0) return PlayerId.None;
-        if (index >= players.Count)
+        foreach (Player p in players)
         {
-            throw new InvalidOperationException(
-                $"Owner index {index} out of range for {players.Count}-player roster.");
+            if (p.Id.Index == index) return p.Id;
         }
-        return players[index].Id;
+        return PlayerId.None;
     }
 
     /// <summary>

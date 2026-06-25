@@ -24,9 +24,9 @@ public class TutorialSerializerTests
     }
 
     [Fact]
-    public void CurrentFormatVersion_IsTen()
+    public void CurrentFormatVersion_IsEleven()
     {
-        Assert.Equal(10, SaveSerializer.CurrentFormatVersion);
+        Assert.Equal(11, SaveSerializer.CurrentFormatVersion);
     }
 
     [Fact]
