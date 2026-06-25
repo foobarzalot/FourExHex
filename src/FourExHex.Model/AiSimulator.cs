@@ -115,7 +115,7 @@ public static class AiSimulator
 
         bool wasReposition = IsRepositionTarget(destination, territory.Owner, state);
 
-        Difficulty difficulty = state.Players[territory.Owner.Index].Difficulty;
+        Difficulty difficulty = state.DifficultyOf(territory.Owner);
         state.Treasury.SetGold(
             capital, state.Treasury.GetGold(capital) - PurchaseRules.CostFor(level, difficulty));
         var unit = new Unit(territory.Owner, level);
@@ -162,7 +162,7 @@ public static class AiSimulator
     {
         Territory? territory = TerritoryLookup.FindByCapital(state.Territories, capital);
         if (territory == null) return;
-        Difficulty difficulty = state.Players[territory.Owner.Index].Difficulty;
+        Difficulty difficulty = state.DifficultyOf(territory.Owner);
         state.Treasury.SetGold(
             capital, state.Treasury.GetGold(capital) - PurchaseRules.CostFor(level, difficulty));
         var unit = new Unit(territory.Owner, level);
@@ -183,7 +183,7 @@ public static class AiSimulator
         state.Treasury.SetGold(
             capital,
             state.Treasury.GetGold(capital)
-                - PurchaseRules.TowerCostFor(state.Players[territory.Owner.Index].Difficulty));
+                - PurchaseRules.TowerCostFor(state.DifficultyOf(territory.Owner)));
         dst.Occupant = new Tower();
     }
 

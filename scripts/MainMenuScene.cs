@@ -16,6 +16,39 @@ public partial class MainMenuScene : Control
     // GetSelectedId() regardless of reordering.
     private const int HumanId = 0;
     private const int ComputerId = 1;
+    // "None" disables the slot entirely (issue #70) — Player.BuildRoster drops
+    // it, so the game runs with only the active (non-None) players.
+    private const int NoneId = 2;
+
+    /// <summary>Map a role dropdown's selected item ID to a kind, and back.
+    /// Single source of truth so the dropdown init, the orientation-flip
+    /// snapshot, and the Start handler all agree on the None/Human/Computer
+    /// mapping.</summary>
+    private static PlayerKind KindFromRoleId(int id) => id switch
+    {
+        ComputerId => PlayerKind.Computer,
+        NoneId => PlayerKind.None,
+        _ => PlayerKind.Human,
+    };
+
+    private static int RoleIdForKind(PlayerKind kind) => kind switch
+    {
+        PlayerKind.Computer => ComputerId,
+        PlayerKind.None => NoneId,
+        _ => HumanId,
+    };
+
+    /// <summary>Number of active (non-None) slots currently selected on the
+    /// player-setup page. A valid game needs at least 2 (issue #70).</summary>
+    private int ActivePlayerCount()
+    {
+        int n = 0;
+        foreach (OptionButton role in _roleButtons)
+        {
+            if (role != null && role.GetSelectedId() != NoneId) n++;
+        }
+        return n;
+    }
 
     // The master seed is a full 32-bit value entered as 8 hex digits.
     private const int SeedHexDigits = 8;
@@ -65,6 +98,9 @@ public partial class MainMenuScene : Control
 
     private LineEdit? _seedField;
     private Button? _startButton;
+    // The player-page "Next" button (one is live at a time per orientation);
+    // disabled when fewer than 2 active players are selected (issue #70).
+    private Button? _playerNextButton;
     private OptionButton? _mapSelector;
     private HudIconButton? _rerollButton;
     private MapGenSettingsPanel? _mapGenSettingsPanel;
@@ -311,13 +347,7 @@ public partial class MainMenuScene : Control
         Log.Debug(Log.LogCategory.Render,
             $"MainMenu: orientation flip {_playConfigOrientation} -> {next}; rebuilding play-config panel");
 
-        for (int i = 0; i < _roleButtons.Length; i++)
-        {
-            GameSettings.PlayerKinds[i] = _roleButtons[i].GetSelectedId() == ComputerId
-                ? PlayerKind.Computer
-                : PlayerKind.Human;
-            GameSettings.Difficulties[i] = (Difficulty)_difficultyButtons[i].GetSelectedId();
-        }
+        PersistRosterSelections();
         string seedText = _seedField?.Text ?? "";
         int mapSelected = _mapSelector?.Selected ?? 0;
         bool wasVisible = _playConfigPanel.Visible;
@@ -759,8 +789,10 @@ public partial class MainMenuScene : Control
         var nav = new HBoxContainer();
         nav.AddThemeConstantOverride("separation", 12);
         nav.AddChild(MakeLandscapeNavButton("Back", OnBackPressed));
-        nav.AddChild(MakeLandscapeNavButton("Next", GoToMapPage));
+        _playerNextButton = MakeLandscapeNavButton("Next", GoToMapPage);
+        nav.AddChild(_playerNextButton);
         col.AddChild(nav);
+        RefreshPlayerNextGating();
         return col;
     }
 
@@ -876,13 +908,19 @@ public partial class MainMenuScene : Control
         dropdown.GetPopup().AddThemeFontSizeOverride("font_size", 21);
         dropdown.AddItem("Human", HumanId);
         dropdown.AddItem("Computer", ComputerId);
+        dropdown.AddItem("None", NoneId);
         PlayerKind currentKind = slot < GameSettings.PlayerKinds.Length
             ? GameSettings.PlayerKinds[slot]
             : PlayerKind.Computer;
-        SelectItemById(dropdown, currentKind == PlayerKind.Computer ? ComputerId : HumanId);
+        SelectItemById(dropdown, RoleIdForKind(currentKind));
         _roleButtons[slot] = dropdown;
-        // Lock the difficulty dropdown whenever the row is a Computer slot.
-        dropdown.ItemSelected += _ => ApplyDifficultyLock(slot);
+        // Lock the difficulty dropdown for non-Human rows, and re-gate the
+        // forward (Next) button whenever the active-player count can change.
+        dropdown.ItemSelected += _ =>
+        {
+            ApplyDifficultyLock(slot);
+            RefreshPlayerNextGating();
+        };
         return dropdown;
     }
 
@@ -1015,7 +1053,8 @@ public partial class MainMenuScene : Control
         rail.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
         // Back above the forward action (Next) in the vertical rail.
         rail.AddChild(MakeLandscapeNavButton("Back", OnBackPressed));
-        rail.AddChild(MakeLandscapeNavButton("Next", GoToMapPage));
+        _playerNextButton = MakeLandscapeNavButton("Next", GoToMapPage);
+        rail.AddChild(_playerNextButton);
 
         hbox.AddChild(new ColorRect
         {
@@ -1042,6 +1081,10 @@ public partial class MainMenuScene : Control
         {
             list.AddChild(MakePlayerRow(i));
         }
+        // Gate Next only after every role dropdown exists (the rail — and its
+        // Next button — is built above before the rows, so _roleButtons are
+        // still null at that point).
+        RefreshPlayerNextGating();
         return hbox;
     }
 
@@ -1194,15 +1237,17 @@ public partial class MainMenuScene : Control
     private void ApplyDifficultyLock(int slot)
     {
         OptionButton difficultyDropdown = _difficultyButtons[slot];
-        bool isComputer = _roleButtons[slot].GetSelectedId() == ComputerId;
-        if (isComputer && (Difficulty)difficultyDropdown.GetSelectedId() != Difficulty.Soldier)
+        // Only a Human slot picks its own difficulty; Computer pins to Soldier
+        // and None has no difficulty at all — both disable the dropdown.
+        bool isHuman = _roleButtons[slot].GetSelectedId() == HumanId;
+        if (!isHuman && (Difficulty)difficultyDropdown.GetSelectedId() != Difficulty.Soldier)
         {
             SelectItemById(difficultyDropdown, (int)Difficulty.Soldier);
             Log.Debug(Log.LogCategory.Input,
                 $"MainMenu: {GameSettings.PlayerConfig[slot].Name} difficulty reset to "
-                + "Soldier (Computer slot)");
+                + "Soldier (non-Human slot)");
         }
-        difficultyDropdown.Disabled = isComputer;
+        difficultyDropdown.Disabled = !isHuman;
     }
 
     /// <summary>Select the OptionButton entry whose item ID matches
@@ -1361,10 +1406,47 @@ public partial class MainMenuScene : Control
 
     private void GoToMapPage()
     {
+        // Gate forward navigation on a valid roster (issue #70): a game needs
+        // at least 2 active players. The Next button is also disabled in this
+        // state, but the Enter-key path routes here directly, so guard centrally.
+        if (ActivePlayerCount() < 2)
+        {
+            Log.Info(Log.LogCategory.Input,
+                $"MainMenu: blocked New Game → map (only {ActivePlayerCount()} active player(s); need 2)");
+            return;
+        }
+        // Commit the dropdown selections before the map page renders: the
+        // thumbnail builds its preview from Player.BuildRoster(), which reads
+        // GameSettings.PlayerKinds — so a None slot must be persisted here or
+        // the preview shows colors the actual game won't have (issue #70).
+        PersistRosterSelections();
         _playConfigPage = PlayConfigPage.MapSetup;
         ShowCurrentPlayConfigPage();
         Log.Debug(Log.LogCategory.Input, "MainMenu: New Game → map setup page");
         RefreshThumbnail();
+    }
+
+    /// <summary>Write the current player-row dropdown selections (kind incl.
+    /// None, and difficulty) into <see cref="GameSettings"/> — the single
+    /// persist path shared by the map-page transition, the Start handler, and
+    /// the orientation-flip snapshot.</summary>
+    private void PersistRosterSelections()
+    {
+        for (int i = 0; i < _roleButtons.Length; i++)
+        {
+            GameSettings.PlayerKinds[i] = KindFromRoleId(_roleButtons[i].GetSelectedId());
+            GameSettings.Difficulties[i] = (Difficulty)_difficultyButtons[i].GetSelectedId();
+        }
+    }
+
+    /// <summary>Disable the player-page "Next" button when fewer than 2 active
+    /// players are selected (issue #70), so a 0/1-player game can't be started.</summary>
+    private void RefreshPlayerNextGating()
+    {
+        if (_playerNextButton != null)
+        {
+            _playerNextButton.Disabled = ActivePlayerCount() < 2;
+        }
     }
 
     private void GoToPlayerPage()
@@ -1770,14 +1852,7 @@ public partial class MainMenuScene : Control
         // roles). Difficulty is stored per-slot (issue #38) so mixed
         // configurations land directly on the roster and round-trip
         // through the save.
-        for (int i = 0; i < _roleButtons.Length; i++)
-        {
-            int selectedId = _roleButtons[i].GetSelectedId();
-            GameSettings.PlayerKinds[i] = selectedId == ComputerId
-                ? PlayerKind.Computer
-                : PlayerKind.Human;
-            GameSettings.Difficulties[i] = (Difficulty)_difficultyButtons[i].GetSelectedId();
-        }
+        PersistRosterSelections();
         Log.Info(Log.LogCategory.Input,
             "MainMenu: start — " + string.Join(", ",
                 GameSettings.PlayerConfig.Select((config, i) =>

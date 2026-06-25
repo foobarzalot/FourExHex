@@ -283,6 +283,12 @@ public partial class Main : Node2D
                 : int.MaxValue;
             _originMapName = null;
         }
+        // Roster summary (issue #70): which colors are active and which slots
+        // were dropped as None. Active count drives turn order / capitals / win.
+        Log.Info(Log.LogCategory.MapGen,
+            $"Main: roster {_players.Count} player(s) ["
+            + string.Join(",", _players.Select(p => GameSettings.PlayerConfig[p.Id.Index].Name))
+            + "]");
         _session = new SessionState();
         // Resumed games carry the per-player highest claim-victory tier
         // already dismissed — persist across save/load so the prompt

@@ -1713,7 +1713,7 @@ public partial class HudView : OrientationHud, IHudView
             // Difficulty-scaled economics: difficulty is the human's own
             // upkeep handicap, so on Captain/Commander the label genuinely
             // shows the higher costs the player is paying.
-            Difficulty ownerDifficulty = state.Players[selected.Owner.Index].Difficulty;
+            Difficulty ownerDifficulty = state.DifficultyOf(selected.Owner);
             int income = IncomeRules.IncomeFor(selected, state.Grid);
             int upkeep = UpkeepRules.TotalUpkeepFor(selected, state.Grid, ownerDifficulty);
             int net = income - upkeep;
@@ -1961,7 +1961,7 @@ public partial class HudView : OrientationHud, IHudView
         if (t.Capital != coord) return false;
         if (!IsHumanOwned(state, t)) return false;
         return UpkeepRules.Classify(t, state.Grid, state.Treasury,
-            state.Players[t.Owner.Index].Difficulty) == expected;
+            state.DifficultyOf(t.Owner)) == expected;
     }
 
     public HexCoord? SummonedCapitalAlertCoord => _summonedAlertCoord;

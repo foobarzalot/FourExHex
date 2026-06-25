@@ -34,6 +34,26 @@ public class GameState
     /// </summary>
     public IReadOnlyList<Territory> Territories { get; set; }
 
+    /// <summary>
+    /// Difficulty of the player owning <paramref name="id"/>, resolved by SLOT
+    /// (<see cref="PlayerId.Index"/>) rather than by indexing <see cref="Players"/>
+    /// at that slot. With a 2–6 player game the roster is compacted (e.g. slots
+    /// 0, 2, 5), so a player's slot index is NOT its position in the list (issue
+    /// #70). Returns <see cref="Difficulty.Soldier"/> for neutral land or an id
+    /// not in the roster — the baseline AIs always play at.
+    /// </summary>
+    public Difficulty DifficultyOf(PlayerId id)
+    {
+        if (!id.IsNone)
+        {
+            foreach (Player p in Players)
+            {
+                if (p.Id == id) return p.Difficulty;
+            }
+        }
+        return Difficulty.Soldier;
+    }
+
     public GameState(
         HexGrid grid,
         IReadOnlyList<Territory> territories,

@@ -79,7 +79,7 @@ public static class AiCommon
     private static (Difficulty Difficulty, int NetBefore) EconomyBefore(
         Territory territory, GameState state)
     {
-        Difficulty difficulty = state.Players[territory.Owner.Index].Difficulty;
+        Difficulty difficulty = state.DifficultyOf(territory.Owner);
         int income = IncomeRules.IncomeFor(territory, state.Grid);
         int upkeep = UpkeepRules.TotalUpkeepFor(territory, state.Grid, difficulty);
         return (difficulty, income - upkeep);

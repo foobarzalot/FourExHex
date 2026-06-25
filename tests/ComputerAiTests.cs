@@ -474,6 +474,32 @@ public class ComputerAiTests
     }
 
     [Fact]
+    public void ChooseNextAction_SparseRoster_DoesNotThrow()
+    {
+        // Full 1-ply lookahead for a player whose slot index (5) exceeds the
+        // compact roster size (slots 0 and 5 present; 1–4 are None — issue
+        // #70). Exercises AiCommon.Enumerate, AiSimulator.Clone/mutate, and
+        // AiStateScorer.Score — every one of which resolved the owner's
+        // difficulty by slot, throwing IndexOutOfRange before the fix.
+        PlayerId orange = PlayerId.FromIndex(5);
+        var grid = new HexGrid();
+        for (int col = 0; col < 6; col++)
+            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), orange));
+        grid.Add(new HexTile(HexCoord.FromOffset(6, 0), Red));
+        grid.Get(HexCoord.FromOffset(4, 0))!.Occupant = new Unit(orange);
+        grid.Get(HexCoord.FromOffset(5, 0))!.Occupant = new Unit(orange);
+        GameState state = BuildState(grid,
+            new Player("Red", Red), new Player("Orange", orange, PlayerKind.Computer));
+
+        AiAction? result = ComputerAi.ChooseNextAction(
+            state, orange, new HashSet<HexCoord>(), new Random(0));
+
+        // The lookahead must run without throwing; the score-positive capture
+        // of the lone Red tile is the expected pick.
+        Assert.NotNull(result);
+    }
+
+    [Fact]
     public void Score_PenalizesOwnTrees()
     {
         // Same Red territory, one with a tree occupant and one

@@ -275,4 +275,35 @@ public class AiStateScorerTests
         Assert.Equal(ScoreWithUnitAt(HexCoord.FromOffset(1, 2)),
                      ScoreWithUnitAt(HexCoord.FromOffset(2, 2)));
     }
+
+    [Fact]
+    public void Score_SparseRoster_ResolvesOwnerDifficultyBySlot()
+    {
+        // Compact roster with a gap: slots 0, 2, 5 present (1,3,4 are None —
+        // issue #70). The whole board belongs to the slot-5 player, whose
+        // position in the 3-element roster is 2. Scoring must resolve the
+        // owner's difficulty by SLOT, not by indexing the roster at slot 5
+        // (which threw IndexOutOfRange before the fix).
+        PlayerId orange = PlayerId.FromIndex(5);
+        GameState BuildSparse(Difficulty d)
+        {
+            HexGrid grid = TestHelpers.BuildRectGrid(4, 3, orange);
+            grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = new Unit(orange, UnitLevel.Soldier);
+            IReadOnlyList<Territory> terr = TestHelpers.BuildTerritoriesFromGrid(grid);
+            var players = new List<Player>
+            {
+                new Player("Red", PlayerId.FromIndex(0), PlayerKind.Human),
+                new Player("Green", PlayerId.FromIndex(2), PlayerKind.Computer),
+                new Player("Orange", orange, PlayerKind.Computer, d),
+            };
+            return new GameState(grid, terr, players, new TurnState(players), new Treasury());
+        }
+
+        int recruit = AiStateScorer.Score(BuildSparse(Difficulty.Recruit), orange);
+        int commander = AiStateScorer.Score(BuildSparse(Difficulty.Commander), orange);
+
+        // No throw, and the slot-5 owner's difficulty actually drives the
+        // upkeep handicap: harder difficulty → lower score.
+        Assert.True(recruit > commander, $"expected recruit {recruit} > commander {commander}");
+    }
 }
