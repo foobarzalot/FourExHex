@@ -484,7 +484,7 @@ Consequences for the rest of this doc:
 │   Territory — Owner, Coords, Capital (immutable)                         │
 │   TerritoryExtensions — BuildTileIndex                                   │
 │   Player — Name, Id, Kind (PlayerKind), IsAi                             │
-│   PlayerKind — Human, Computer                                           │
+│   PlayerKind — Human, Computer, None (None = absent; #70)                │
 │   TurnState — Players[], CurrentPlayerIndex, TurnNumber                  │
 │   Treasury — Dictionary<HexCoord, int>; CollectIncomeFor;                │
 │              ReconcileAfterCapture (forfeits enemy gold on capture)      │
@@ -510,9 +510,10 @@ Consequences for the rest of this doc:
 │                WriteMapSlot / ListMaps / LoadMap / LoadBundledMap;       │
 │                reserved "autosave" slot                                  │
 │   SaveSerializer — JSON (de)serializer for the full game state +         │
-│                    starting maps (Kind omitted; OriginMapName carried)   │
+│                    starting maps (v11: maps bake Kind+Difficulty; slot-  │
+│                    keyed owners for 2–6 players; OriginMapName carried)   │
 │   LoadedSave — bundle of (state, players, master seed, max-turn cap,     │
-│                slot name, optional OriginMapName)                        │
+│                slot name, OriginMapName?, MapHasBakedKinds)              │
 │   SaveSlotInfo — slot listing metadata (name, time, turn, isAutosave)    │
 │   UserSettings — static class; SfxEnabled / VfxEnabled / AiSpeed /       │
 │                  ReplaySpeed preferences persisted to                    │
@@ -1852,16 +1853,41 @@ tables — retuning a level is a one-table edit:
   constructor logs a one-shot `difficulties: Red=…, …` line
   (`Turn:Info`) whenever any slot is non-Soldier.
 
-## New Game setup & map thumbnail (issues #40, #5)
+## New Game setup & map thumbnail (issues #40, #5, #70)
 
-The New Game flow in `MainMenuScene` is **two paged screens** toggled by
+Clicking **Play Game** first opens a **source chooser** (a reused `EscMenu`
+modal, `_sourceChooser`): **New Map** (configure a fresh procedural game) or
+**Load Starting Map** (play a saved map on its baked roster — see below). The
+Map Editor button opens the same kind of chooser (**New Map** / **Load Map**),
+so the two flows share both the chooser idiom and the player-setup screen.
+
+**New Map** runs the **two paged screens** in `MainMenuScene` toggled by
 `_playConfigPage` (`PlayerSetup` / `MapSetup`); both page contents are built
 up front and their visibility flipped (so selections survive paging), with
-`Enter`/`Esc` and Back/Next wired per page (`GoToMapPage` / `GoToPlayerPage`).
-The **player-setup** page holds the six role + difficulty rows; the
-**map-setup** page holds the map selector, the seed field + a **re-roll die**
-button (`HudIconButton(HudIcon.Die)`, modeled on the map editor's — #5), and a
-live board thumbnail.
+`Enter`/`Esc` and Back/forward wired per page. The **player-setup** page holds
+the six role + difficulty rows; the **map-setup** page is **procedural-only** —
+the seed field + a **re-roll die** button (`HudIconButton(HudIcon.Die)`, #5) +
+a live board thumbnail. (There is no longer a saved-map dropdown on the map
+page; loading a map is its own source-chooser branch.)
+
+- **Per-slot role incl. `None`, min 2 (issue #70).** Each role dropdown offers
+  Human / Computer / **None**; `None` excludes the slot from the match (see
+  *Player roster* below). The player-page forward button (`OnPlayerPageForward`)
+  is gated to **≥2 active** players (disabled below 2; the `Enter` path guards
+  too). Selections persist into `GameSettings.PlayerKinds` / `Difficulties` via
+  `PersistRosterSelections` at every forward step — so the map thumbnail (built
+  from `Player.BuildRoster()`) reflects the active colors, not a stale roster.
+
+- **Shared player-setup screen.** The same page (`_playConfigPurpose` =
+  `NewGame` | `EditorNewMap`) feeds either the procedural map page ("Next") or a
+  new map editor session ("Create Map" → `LaunchEditorNewMap`, handing the
+  chosen kinds/difficulties to the editor via `MapEditorRequest`). Difficulty is
+  shown in both; only the forward action differs.
+
+- **Load Starting Map / Load Map.** Both load branches use the same map picker
+  (`SlotPickerDialog` with `previewMaps: true`, see below) and launch straight
+  into play (`LoadRequest.Pending` → game scene, on the map's baked roster) or
+  the editor (`MapEditorRequest.Pending = LoadMap`). No intermediate confirm.
 
 - **Fill-to-cap surface (both orientations).** Both the portrait and landscape
   panels are now the same centered `LandscapeMenuChrome` surface that *fills*
@@ -1900,32 +1926,74 @@ live board thumbnail.
   GLES3 compatibility renderer lacks. The top hex-tessellation row is cropped
   off the snapshot for a clean straight top edge.
 
-- **Campaign reuse (issue #51).** Tapping a level on the campaign ladder opens
-  `CampaignConfirmSheet` — a confirm dialog (`MainMenuScene.OnCampaignLevelTapped`)
-  that embeds the same `MapThumbnailView`, previewing the level's board via
-  `RequestRandom(CampaignProgress.SeedForLevel(level))` (campaign maps are
-  procedural: level N = seed N, the exact board `Main` launches). The sheet
-  reuses the `LandscapeMenuChrome` fill-to-cap surface, so it fills a phone (big,
-  legible preview) but caps to the New Game dialog footprint on desktop; portrait
-  is a single centered column and landscape mirrors the map-config page's
-  rail-beside-thumbnail. `Escape` cancels the sheet and, on the ladder itself,
-  backs out to the landing menu.
+- **`MapInfoSheet` — the shared "play this board?" sheet (issues #51, #70).**
+  `scripts/MapInfoSheet.cs` is the reusable confirm dialog: serif title, status
+  line, a **"who you're playing as"** block (renders **one / many / none** human
+  identities — a tinted sentence for one, swatch+name chips for many, an
+  all-Computer note for none), a large `MapThumbnailView`, and Cancel/confirm.
+  The caller supplies the title, status, human list, and a thumbnail-request
+  delegate (it owns no seed-vs-saved-map knowledge). `CampaignConfirmSheet` is
+  now a thin **factory** (`CampaignConfirmSheet.Create(level)`) that builds a
+  `MapInfoSheet` with the level's single human and `RequestRandom(seed, opts)`
+  preview — campaign maps are procedural (level N = seed N), so the preview is
+  the exact board `Main` launches, and the campaign sheet looks/behaves as
+  before. It reuses the `LandscapeMenuChrome` fill-to-cap surface (phone-filling,
+  desktop-capped; portrait column / landscape rail-beside-thumbnail). `Escape`
+  cancels; on the ladder it backs out to the landing menu.
 
-- **Load Game preview (issue #55).** `SlotPickerDialog` (the modal shared by
-  main-menu / in-game Load Game, map-editor Load Map, tutorial-builder Load
-  Tutorial) has two bodies, chosen per-open by `ShowSlots`'s optional
-  `thumbnailStore`. **Text-only** (editor / tutorial hosts, no store) keeps the
-  small fixed centered modal of click-to-load buttons, scale-to-fit on a narrow
-  viewport. **Preview** (the two game-save hosts pass `_saveStore`) switches to a
-  `LandscapeMenuChrome` fill-to-cap surface mirroring the map-config page: a
-  selectable slot list (toggle buttons in a `ButtonGroup`) beside one large
-  `MapThumbnailView` of the selected save (`RequestSlot`), plus Cancel / Load.
+- **Load Game / Load Map preview (issues #55, #70).** `SlotPickerDialog` (the
+  modal shared by main-menu / in-game Load Game, the Load Starting Map / Load
+  Map branches, map-editor Load Map, tutorial-builder Load Tutorial) has two
+  bodies, chosen per-open by `ShowSlots`'s optional `thumbnailStore`.
+  **Text-only** (tutorial host, no store) keeps the small fixed centered modal of
+  click-to-load buttons, scale-to-fit on a narrow viewport. **Preview** (game-save
+  and map hosts pass `_saveStore`) switches to a `LandscapeMenuChrome` fill-to-cap
+  surface mirroring the map-config page: a selectable slot list (toggle buttons in
+  a `ButtonGroup`) beside one large `MapThumbnailView` of the selected entry, plus
+  Cancel / Load. The `previewMaps` flag picks the directory the preview reads —
+  `RequestMap` (`user://maps/`) for map pickers, else `RequestSlot`
+  (`user://saves/`).
   Like the New Game page it has distinct portrait (list-above-preview) and
   landscape (list-rail | preview) layouts, rebuilt on an orientation flip and
   capped at `520×920` / `920×520`. Selecting a slot re-points the single preview;
   the preview render is deferred one frame so it sizes against its laid-out rect.
   A missing/corrupt save degrades to a blank preview (the row stays loadable) via
   `MapThumbnailView`'s existing log-and-bail.
+
+## Player roster (2–6 players, `PlayerKind.None`) — issue #70
+
+`PlayerKind` is `{ Human, Computer, None }`. The roster the game runs on is a
+**variable-length list of the *active* players**, and almost everything already
+keys off that list, not a fixed 6:
+
+- **`Player.BuildRoster()`** iterates the six `GameSettings.PlayerConfig` slots
+  but **skips `None`**, returning a compact 2–6 player list. Each survivor keeps
+  its **original slot index** via `PlayerId.FromIndex(slot)`, so a player's
+  *color* is its slot (`PlayerPalette.ColorFor` indexes `PlayerConfig[id.Index]`)
+  regardless of how the list compacts. A `None` player never enters a live
+  `TurnState`. Turn rotation, capital placement (`CapitalPlacer`), win checks
+  (`WinConditionRules`), and map-gen owner assignment (`MapGenerator`, which
+  draws `rng.Next(players.Count)`) all consume the roster list as-is and so need
+  no count-specific code.
+- **Slot ≠ list position.** Because the roster can be compacted (e.g. slots
+  `0,2,5` present), code must never index the roster by a *slot* index. The one
+  place that did — looking up a tile owner's difficulty — is now
+  **`GameState.DifficultyOf(PlayerId)`**, which resolves by matching `id` across
+  the roster (Soldier for neutral / not-found). All AI scoring/simulation
+  (`AiStateScorer`, `AiSimulator`, `AiCommon`) and `HudView` go through it; the
+  old `state.Players[owner.Index]` form threw `IndexOutOfRange` on a sparse
+  roster (it would hang every AI turn).
+- **`Player.BuildAllHumanRoster()`** (all six Human) is unchanged — used by the
+  tutorial builder's preview/record harness.
+- **`Player.BuildCampaignRoster(level)`** builds the full 6-slot campaign roster
+  *from the level alone* (see *Campaign mode*), so a campaign launch never reads
+  or writes the freeform `GameSettings.PlayerKinds`.
+- **Validation.** `MapRosterRules.ValidateForSave(territories, kinds)` (pure,
+  in Model) is the editor's save gate: a color owning land must be active, every
+  active color must own land, and ≥2 must be active. See *Map editor*.
+
+The save-format consequences (decoupling list position from color slot, baking
+map kinds, `None` on load) are in *Save / load*.
 
 ## Call flows
 
@@ -2560,11 +2628,27 @@ just `Tutorial.json`, loaded via `LoadBundledMap`). It exposes
 `user://maps/` then falls back to `res://tutorials/` — used by the
 Play Again restart flow), plus `SanitizeSlotName` for
 filesystem-safe slot names. `SaveSerializer` is the JSON layer
-(format version 8; accepts v2–v7 on read so existing autosaves keep
-loading after each cutover); `Serialize` writes the player roster's
-`Kind` and `Difficulty` fields, `SerializeMap` omits both (the
-editor's saved maps don't bake a player config — roles and
-difficulty are assigned at play time from the menu).
+(format **version 11**; accepts v2–v10 on read so existing autosaves keep
+loading after each cutover). Both `Serialize` (in-progress games) and — since
+#70 — `SerializeMap` (starting maps) write each player's `Kind` and `Difficulty`,
+so a saved map **bakes its exact roster** and a load restores it.
+
+**Variable player count (issue #70, v11).** Two coupled changes let a save hold
+a 2–6 player game:
+
+- **Slot, not list position.** A `PlayerDto`'s `Index` and `ColorHex` are
+  derived from the player's **slot** (`PlayerId.Index`), not its position in the
+  (possibly compacted) roster list; `OwnerIndexToId` resolves a tile's stored
+  owner-slot back to the active player by **matching slot**, not by indexing the
+  list (an owner-slot absent from the active roster → neutral, defensively). For
+  a full 6-player roster slot == list position, so the wire format is
+  **byte-identical** to pre-#70.
+- **`None` + baked maps.** `SerializeMap` serializes all six colors' kinds
+  (including `None`); `DeserializePlayers` **excludes `None`** from the returned
+  active roster and sets `LoadedSave.MapHasBakedKinds`. The starting-map load
+  path (`Main`) plays `loaded.Players` when kinds were baked, else the legacy
+  default (`Player.LegacyDefaultRoster` — 6 players, Red human, rest Computer,
+  Soldier) so **pre-#70 maps load unchanged**.
 
 **iOS AOT constraint: source-generated `JsonSerializerContext`.** iOS
 forbids JIT, so .NET on iOS is AOT-compiled and `System.Text.Json`'s
@@ -2622,10 +2706,11 @@ menu's **Campaign** button, with persistent per-level win/loss
 tracking. Levels split into four tiers of 64 that line up with the
 high hex digit and map straight onto the existing `Difficulty` enum:
 Recruit `00–3F`, Soldier `40–7F`, Captain `80–BF`, Commander `C0–FF`.
-Every level is one Human (Red) + five Computer on a procedural map; the
-**human's difficulty handicap = the tier** (AIs stay Soldier), and the
-level→seed mapping is identity (`MasterSeed = level`). Same handicap
-machinery as the per-player difficulty lever — no new rules.
+Every level is one Human + five Computer on a procedural map (the human's
+color is the level's `HumanSlotForLevel`, #74); the **human's difficulty
+handicap = the tier** (AIs stay Soldier), and the level→seed mapping is identity
+(`MasterSeed = level`). Same handicap machinery as the per-player difficulty
+lever — no new rules.
 
 The feature spans all four layers, respecting the one-way dependency
 graph:
@@ -2665,11 +2750,14 @@ graph:
     load, atomic tmp+rename write **immediately on every status
     transition** (never "on exit", so a crash can't lose a result),
     `GD.PushWarning` + fresh fallback on a corrupt/missing file.
-    `PrepareLaunch(level)` centralizes the seed/roster/difficulty setup
-    and the mark-attempted, shared by both launch entry points. The human
-    is placed in `CampaignProgress.HumanSlotForLevel(level, playerCount)`
-    (issue #74 — any real color, not always slot 0), with the tier
-    difficulty applied to *that* slot (all others Computer/Soldier).
+    `PrepareLaunch(level)` sets `GameSettings.CampaignLevel` + `MasterSeed` and
+    marks-attempted, shared by both launch entry points. It does **not** write
+    the roster: `Main` builds the campaign roster from the level via
+    `Player.BuildCampaignRoster(level)` (human at
+    `CampaignProgress.HumanSlotForLevel(level, count)` with the tier difficulty,
+    rest Computer/Soldier). Keeping the roster out of `GameSettings.PlayerKinds`
+    means a campaign launch can't clobber the freeform New Game default for the
+    session (issue #70 bleed fix).
   - `CampaignPanel` (`scripts/CampaignPanel.cs`) — the campaign screen:
     fixed header (back, `won / 256`, progress bar) over a
     `ScrollContainer` of four tier sections. Each tier is **one**
@@ -2881,6 +2969,21 @@ lets the user paint a starting map by hand and save it to
 nothing about it is turn- or rules-driven — but it does reuse the
 view layer (`HexMapView` + a sibling `MapEditorHudView`) so map
 edits look identical to in-game terrain.
+
+- **Up-front roster + bake-on-save (issue #70).** The editor is entered via
+  `MapEditorRequest.Pending` (set by the menu's Map Editor source chooser): a
+  **New Map** carries the per-color kinds + difficulties chosen on the shared
+  player-setup screen; a **Load Map** carries a slot name (the editor loads it
+  and derives the roster from the file, defaulting pre-#70 maps to the legacy
+  Red-human roster). `MapEditorScene` resolves the request in `_Ready` into
+  `_rosterKinds` / `_rosterDifficulties`. The live **preview** roster
+  (`_panel.Players`) is the **active (non-None) colors, all Human** — so no AI
+  runs and `Generate` paints only colors in play. `MapEditorHudView.ApplyRosterKinds`
+  hides `None` color swatches (unpaintable) and draws a white **pip** on the
+  Human ones (`HexPaletteButton.IsHuman`). **Save** runs
+  `MapRosterRules.ValidateForSave` (block + inline error on a mismatch) then
+  serializes a 6-slot roster carrying the chosen kinds/difficulties, so the file
+  bakes the exact roster.
 
 - **Scene/panel split.** `MapEditorScene` is a thin chrome host: it
   owns the `MapEditorHudView`, the `SaveStore`, the Save / Load
@@ -4077,6 +4180,12 @@ scripts/  (split: see the three source trees listed just above)
 │                           HexMapView into a hidden SubViewport and
 │                           snapshots it to a TextureRect (see "New Game
 │                           setup & map thumbnail")
+├─ MapInfoSheet.cs        ─ reusable "play this board?" sheet (title,
+│                           status, who-you-play-as for 1/many/none humans,
+│                           thumbnail, Cancel/confirm); campaign confirm
+│                           sheet is a factory over it (CampaignConfirmSheet)
+├─ MapEditorRequest.cs    ─ static menu→editor handoff (NewMap kinds /
+│                           LoadMap slot), like LoadRequest (#70)
 ├─ PlayTutorialScene.cs   ─ end-user "Play Tutorial" scene root; hosts
 │                           MapEditorPanel + PreviewPane + EscMenu,
 │                           loads bundled full_tutorial and plays it
@@ -4377,7 +4486,10 @@ scripts/  (split: see the three source trees listed just above)
 ├─ Tree.cs                ─
 ├─ Grave.cs               ─
 ├─ Territory.cs           ─ + TerritoryExtensions
-├─ Player.cs              ─ + PlayerKind
+├─ Player.cs              ─ + PlayerKind {Human,Computer,None}; BuildRoster
+│                           (skips None), BuildCampaignRoster (#70)
+├─ MapRosterRules.cs      ─ pure editor-save validation (active⇔owns-land,
+│                           ≥2 players) for baked map rosters (#70)
 ├─ TurnState.cs           ─
 ├─ Treasury.cs            ─
 ├─ ZoomMath.cs            ─ pixel↔hex helpers used by HexMapView
