@@ -131,9 +131,9 @@ Consequences for the rest of this doc:
 - **`Log` is Godot-free** — the master logging system routes through
   an injectable `Log.Sink` that `Main` wires to `GD.Print`. See
   **Logging** below.
-- **Save format is v10.** Ownership is a player index on the wire (−1 =
+- **Save format is v13.** Ownership is a player index on the wire (−1 =
   `None`); claim-victory tiers are persisted by player index
-  (palette-independent). v2–v10 still load; v2–v4 migrate their legacy
+  (palette-independent). v2–v13 still load; v2–v4 migrate their legacy
   color-hex claim data via `GameSettings` palette matching. v6 renamed
   the unit levels (Peasant/Spearman/Knight/Baron →
   Recruit/Soldier/Captain/Commander); pre-v6 level names still load via
@@ -143,8 +143,15 @@ Consequences for the rest of this doc:
   added the optional `CampaignLevel` pointer. v9 added the per-tile
   `IsGold` flag (gold tiles, issue #45); v10 added the per-tile
   `IsMountain` flag (mountain tiles, issue #37); both absent in pre-bump
-  saves → `false` (an ordinary tile). All added fields are default-absent, so pre-bump
-  files load unchanged.
+  saves → `false` (an ordinary tile). v11 baked per-color kind+difficulty
+  into starting maps; v12 added the optional Rising Tides `Mode` flag
+  (issue #56). v13 made gold and mountain **mutually exclusive** (issue
+  #81): a tile is gold *or* mountain, never both, so a legacy tile
+  carrying both flags is **normalized to mountain-only on load** (mountain
+  wins; counted + logged). The wire still carries the two bools, but the
+  in-memory model is a single `HexTile.Feature` enum that can't represent
+  both (see **Mountain tiles** below). All added fields are default-absent,
+  so pre-bump files load unchanged.
 - **`.cs.uid` sidecars**: the moved model files are not Godot
   resources, so theirs were removed; `src/**` is `.gdignore`d. Files
   still in `scripts/` keep their tracked `.cs.uid`.
@@ -471,7 +478,8 @@ Consequences for the rest of this doc:
 │                                                                          │
 │   HexCoord (struct, IEquatable, IComparable)                             │
 │   HexGrid — Dictionary<HexCoord, HexTile>                                │
-│   HexTile — Coord, Owner, Occupant, IsGold, IsMountain (pure model)      │
+│   HexTile — Coord, Owner, Occupant, Feature (None/Gold/Mountain enum;   │
+│            IsGold/IsMountain are accessors over it) (pure model)         │
 │   HexOccupant (abstract)                                                 │
 │     ├─ Unit — Owner, Level, HasMovedThisTurn                             │
 │     ├─ Capital — marker                                                  │
@@ -583,9 +591,12 @@ A **gold tile** is an income hotspot that pays its controlling player 5x
 the per-turn income of an ordinary tile (5 gp vs 1). Implemented as a single
 per-tile attribute that threads through every layer:
 
-- **Model.** `HexTile.IsGold` (bool, defaults false) — a terrain attribute
-  orthogonal to `Owner` and `Occupant`: a gold tile can be owned by any player
-  or neutral and hold any occupant.
+- **Model.** `HexTile.IsGold` — a terrain attribute orthogonal to `Owner` and
+  `Occupant`: a gold tile can be owned by any player or neutral and hold any
+  occupant. **Mutually exclusive with `IsMountain`** (issue #81): `IsGold` is an
+  accessor over the single `HexTile.Feature` enum (`None`/`Gold`/`Mountain`), so
+  setting it `true` retargets `Feature` to `Gold` and clears any mountain — both
+  flags can never be set at once.
 - **Income.** The 5× bonus lives in the single income chokepoint
   `IncomeRules.IncomeFor` = `TreeRules.CountIncomeProducingTiles` +
   `CountGoldIncomeTiles · IncomeRules.GoldTileBonus` (bonus = 4, the one knob
@@ -618,60 +629,62 @@ per-tile attribute that threads through every layer:
   the landscape left rail widens (via the new `HudBars.MakeRail` `width` param +
   the `OrientationHud.LeftRailWidth` virtual hook) to fit the wrapped grid.
 
-## Mountain tiles (issues #37, #47)
+## Mountain tiles (issues #37, #47, #81)
 
-A **mountain tile** is high ground: it gives **no defense on its own**, but a
-unit or tower standing on it gains a **+1 bonus that radiates** to friendly
+A **mountain tile** is high ground: it gives **no defense on its own**, but any
+defender standing on it gains a **+1 bonus that radiates** to friendly
 neighbors. Capturable without being destroyed; an *empty* mountain is
-defenseless. Like gold it is a single per-tile attribute threaded through every
-layer, but defensive rather than economic — the two flags are independent (a
-tile can be a gold mountain).
+defenseless. Like gold it is a single per-tile terrain attribute threaded
+through every layer, but defensive rather than economic. Gold and mountain are
+**mutually exclusive** (issue #81 — see below); trees, graves, units, towers,
+and capitals all coexist with a mountain.
 
-- **Model.** `HexTile.IsMountain` (bool, defaults false) — orthogonal to
-  `Owner`, `Occupant`, and `IsGold`. A mountain can be neutral or owned by any
-  player and is **passable**: units move onto, through, and die on it. It has
-  no income behavior of its own (a controlled mountain pays the ordinary 1 gp;
-  a gold mountain still pays the gold bonus).
-- **Defense.** `DefenseRules.Defense` gives a `Unit` or `Tower` on a mountain
-  `DefenseRules.MountainBonus` (+1) on top of its contribution (folded in by the
-  private `ContributionAt` helper); an **empty mountain contributes nothing**.
-  The boosted value radiates to same-territory neighbors like any other
-  defender, so a Soldier/Tower on a mountain protects at 3 and a Commander at 5.
-  Contributions are still `max`, not cumulative. Because empty mountains no
-  longer defend, an empty neutral mountain is capturable by any level (even a
-  Recruit), while a defended one raises the capture threshold by 1.
-  `BlockingDefenders` mirrors this (via the same `ContributionAt`) for the
-  view's red-flash. Capture (`MovementRules.ResolveArrival`) transfers ownership
-  but leaves `IsMountain` set — the terrain persists, so the new owner's
-  occupant earns the bonus; a `Log.LogCategory.Capture` line records it.
-- **Rule guards.** Trees never spread onto mountains
-  (`TreeRules.RunStartOfTurnGrowth`); **towers may be built on mountains**
-  (`PurchaseRules.IsValidTowerLocation` — the +1 is the point), with a
-  `Log.LogCategory.Capture` `[tower] placed on mountain` line on the human
-  build path; a unit that dies on a mountain leaves **no grave**
-  (`UpkeepRules.ApplyUpkeep` empties the tile instead).
-- **No-capital edge case.** Capitals are never placed on mountains
-  (`CapitalPlacer.Choose` skips them). A connected same-owner region made
-  **entirely** of mountains therefore has no legal capital site, so
-  `CapitalReconciler` leaves it capital-less — it is *not* a territory in the
-  economic sense (no treasury/income/upkeep, skipped by the AI), exactly like
-  the existing singleton / neutral capital-less regions, yet it still renders
-  in the owner's color and still radiates its mountain defense. Every
-  territory consumer already guards on `HasCapital`, so this needed no new
-  branch beyond the `CapitalPlacer` skip. A `Turn` log marks the case.
-- **Persistence + undo.** Carried as `TileDto.IsMountain` (save format **v10**;
-  absent in pre-v10 saves → false), through replay-initial snapshots
-  (`GameStateSnapshot.EnumerateTiles`), and in both deep-copy snapshots
-  (`GameStateSnapshot` / `EditorSnapshot`).
-- **Authoring.** Placed **only via the map editor** — a toggle brush
+- **Model.** `HexTile.Feature` is the single source of truth: an enum
+  `TerrainFeature` (`None`/`Gold`/`Mountain`) so a tile can't be gold *and*
+  mountain. `IsGold`/`IsMountain` are convenience accessors over it — their
+  setters retarget `Feature`, so setting one clears the other automatically
+  (issue #81). A mountain can be neutral or owned by any player and is
+  **passable**: units move onto, through, and die on it. It has no income
+  behavior of its own (a controlled mountain pays the ordinary 1 gp; gold and
+  mountain can't share a tile, so there's no "gold mountain").
+- **Defense.** `DefenseRules.Defense` gives **any defender** — `Unit`, `Tower`,
+  or `Capital` — on a mountain `DefenseRules.MountainBonus` (+1) on top of its
+  contribution (folded in by the private `ContributionAt` helper, which applies
+  the bonus to any positive-contribution occupant); an **empty mountain — or one
+  holding only a tree/grave — contributes nothing**. The boosted value radiates
+  to same-territory neighbors like any other defender, so a Soldier/Tower on a
+  mountain protects at 3, a Commander at 5, and a Capital at 2 (issue #81).
+  Contributions are still `max`, not cumulative. Because empty mountains don't
+  defend, an empty neutral mountain is capturable by any level (even a Recruit),
+  while a defended one raises the capture threshold by 1. `BlockingDefenders`
+  mirrors this (via the same `ContributionAt`) for the view's red-flash. Capture
+  (`MovementRules.ResolveArrival`) transfers ownership but leaves the mountain
+  set — the terrain persists, so the new owner's occupant earns the bonus.
+- **Rule guards.** Trees, graves, towers, **and capitals all coexist** with a
+  mountain (issue #81): trees spread onto mountains
+  (`TreeRules.RunStartOfTurnGrowth`), a unit dying on a mountain leaves a grave
+  (`UpkeepRules.ApplyUpkeep`), towers may be built on one
+  (`PurchaseRules.IsValidTowerLocation` — the +1 is the point), and a capital may
+  sit on one. Gold placement is the only exclusion: it can't share the tile.
+- **Capital placement.** Capitals sit on mountains like any other terrain
+  (issue #81 — `CapitalPlacer.Choose` no longer skips them), so any 2+ owned
+  region always gets a capital. The old mountains-only "capital-less multi-hex
+  region" carve-out in `CapitalReconciler` is gone; its null guard now only
+  covers the impossible all-Capital case.
+- **Persistence + undo.** Carried as `TileDto.IsMountain` (save format v10),
+  through replay-initial snapshots (`GameStateSnapshot.EnumerateTiles`), and in
+  both deep-copy snapshots (`GameStateSnapshot` / `EditorSnapshot`). A legacy
+  tile with **both** gold and mountain set normalizes to mountain-only on load
+  (v13, mountain wins — see **Save format** above).
+- **Authoring.** Placed via the map editor — a toggle brush
   (`MapEditPaint.PaintMountainToggle`, palette glyph `HexPaletteIcon.Mountain`)
   with the same drag-stroke add/erase locking as the tree/tower/gold brushes.
-  Mountain and **tree** are mutually exclusive (painting one clears the other);
-  a **tower coexists** with a mountain (#47 — neither brush clears the other);
-  the capital brush refuses a mountain tile and vice-versa; gold is
-  independent. Mountains are **also** generated procedurally by `MapGenerator`
-  when `MapGenOptions.MountainDensity > 0` (see "Procedural trees, mountains &
-  gold" below); generated ranges are **neutral**.
+  Painting a mountain leaves any tree/grave/tower/capital in place and **clears
+  any gold** (and `PaintGoldToggle` clears any mountain) — the mutual exclusion
+  falls out of the `Feature` accessor (issue #81). Mountains are **also**
+  generated procedurally by `MapGenerator` when `MapGenOptions.MountainDensity >
+  0` (see "Procedural trees, mountains & gold" below); generated ranges are
+  **neutral**, and generated gold skips mountain tiles.
 - **Editor undo/sound for flag paints.** Mountain and gold paints leave the
   territory partition untouched, so the editor's old "territory-list reference
   changed" heuristic missed them. The undo push now compares the pre-stroke
@@ -679,18 +692,18 @@ tile can be a gold mountain).
   unit-tested grid diff over owner/occupant/gold/mountain/water), and the
   per-cell placement sound additionally checks the painted tile's gold/mountain
   flags. Both flag brushes now record undo and play the sound.
-- **Rendering.** `HexMapView`'s `MountainsLayer` (`Node2D`) draws one
-  `Polygon2D` peak glyph per mountain tile (`CreateMountainVisual`): a
-  translucent dark-tinted outlined peak (no snow cap) so the tile's owner color
-  shows through, layered above the gold borders but below occupants so a
-  unit/capital on the tile draws on top. Counter-rotated by `ApplyGlyphUpright`
-  to stay upright on a rotated board. The silhouette is shared with the editor
-  brush button (issue #52): the geometry — `HudIcons.MountainPeakVerts` — is the
-  single source of truth both consume, so the two shapes can't drift. They
-  differ only in color: the tile uses `HudIcons.MountainFill` (translucent) +
-  `MountainStroke` (BgDeep); the immediate-mode button (`HudIcons.DrawMountain`,
-  a squared slate `HexPaletteButton`) draws the same peak in opaque grey so it
-  reads against the dark slate backdrop.
+- **Rendering.** The peak glyph is retired (issue #81). `HexMapView`'s
+  `MountainBordersLayer` (a `TriangleSoup` batch, same z-band as the gold
+  channel) draws an inset hex-ring band per mountain tile (`DrawMountains`),
+  **differentially shaded as a raised "plateau"**: a near-black outer
+  drop-shadow skirt under a bright inner top rim that brightens toward a
+  top-left light, via the per-vertex colors `TriangleSoupBuilder.AddPolygon`
+  already supports. The light is baked **screen-fixed** (counter-rotated by the
+  map angle, with a rebake on a portrait/landscape flip) so the highlight stays
+  anchored to the screen's top-left in both orientations. The band sits below
+  occupants so a unit/capital/tree on the tile draws on top. The editor brush
+  **button** keeps its peak glyph (`HudIcons.MountainPeakVerts` /
+  `DrawMountain`) — only the on-map glyph is gone.
 
 ## Procedural trees, mountains, gold & territory clumping (issue #48 / #66 / #72)
 
@@ -712,21 +725,21 @@ all scatter and clumping math is integer (no floats — Model rule) and
 deterministic in the seed.
 
 - **Trees** — the tree scatter places `land.Count * TreeDensity / 100` trees
-  (default 5%), skipping mountain/gold/occupied tiles so they stay readable.
-  Density 0 places none.
+  (default 5%), skipping gold/occupied tiles. Trees **may** land on mountains
+  (issue #81 — the two coexist). Density 0 places none.
 - **Mountains** — `ScatterMountainRanges(grid, land, density, rng)`: a biased
   random-walk "ridge agent" per range (pick a hex direction, walk
   mostly-straight with occasional ±1 veers, dropping an occasional perpendicular
   foothill → 1–2-wide ranges, not speckle), to `MountainDensity`% of land.
-  `MarkMountain` sets `IsMountain`, **forfeits ownership (`PlayerId.None`)**, and
-  clears any tree. Gated on `MountainDensity > 0`.
+  `MarkMountain` sets the mountain feature and **forfeits ownership
+  (`PlayerId.None`)** (any occupant is left in place — trees/graves coexist now).
+  Gated on `MountainDensity > 0`.
 - **Gold** — `ScatterGoldClusters(grid, land, density, rng)` (runs after
   mountains, before the tree scatter): sparse small **neutral** clusters (a seed
-  tile grown into a 2–4-tile blob), to `GoldDensity`% of land. When mountains
-  were also generated, cluster seeds are biased (~55%) toward mountain tiles, so
-  gold tends to co-locate / overlap with ranges (a valid gold-on-mountain — the
-  densities are independent). `MarkGold` sets `IsGold` + `PlayerId.None`. Gated on
-  `GoldDensity > 0`.
+  tile grown into a 2–4-tile blob), to `GoldDensity`% of land. Gold and mountain
+  are mutually exclusive (issue #81), so `MarkGold` **skips mountain tiles**
+  (mountain wins) — the old gold-on-mountain seed bias was removed. `MarkGold`
+  sets the gold feature + `PlayerId.None`. Gated on `GoldDensity > 0`.
 - Generated mountains and gold are **neutral terrain players must capture**
   (a neutral gold tile pays nobody until owned). They flow through
   `TerritoryFinder` / `CapitalReconciler` as capital-less neutral regions;
