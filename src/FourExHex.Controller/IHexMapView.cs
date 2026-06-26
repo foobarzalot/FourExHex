@@ -196,6 +196,7 @@ public enum SoundEffect
     GameWon,
     Rally,
     PlayerDefeated,
+    TileSubmerged,
 }
 
 /// <summary>

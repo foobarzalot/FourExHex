@@ -28,6 +28,7 @@ public partial class AudioBus : Node
     private AudioStreamPlayer _gameWonPlayer = null!;
     private AudioStreamPlayer _rallyPlayer = null!;
     private AudioStreamPlayer _playerDefeatedPlayer = null!;
+    private AudioStreamPlayer _tileSubmergedPlayer = null!;
     private AudioStreamPlayer _rejectGenericPlayer = null!;
     private AudioStreamPlayer _rejectDefendedPlayer = null!;
 
@@ -151,6 +152,15 @@ public partial class AudioBus : Node
             VolumeDb = -10f,
         };
         AddChild(_playerDefeatedPlayer);
+
+        _tileSubmergedPlayer = new AudioStreamPlayer
+        {
+            Stream = GD.Load<AudioStream>("res://assets/audio/tile_submerged.wav"),
+            // Soft watery glug for a Rising Tides tile sinking (issue #56).
+            // Quiet — it can fire every turn, so it must not dominate.
+            VolumeDb = -8f,
+        };
+        AddChild(_tileSubmergedPlayer);
 
         _rejectGenericPlayer = new AudioStreamPlayer
         {
@@ -298,6 +308,18 @@ public partial class AudioBus : Node
         if (!UserSettings.SfxEnabled) return;
         _playerDefeatedPlayer.Stop();
         _playerDefeatedPlayer.Play();
+    }
+
+    /// <summary>
+    /// Soft watery glug when a Rising Tides shore tile sinks under the sea
+    /// (issue #56). Gated by the SFX toggle; silent-mode suppression (Instant
+    /// AI / instant replay) is handled upstream in <c>HexMapView.PlaySound</c>.
+    /// </summary>
+    public void PlayTileSubmerged()
+    {
+        if (!UserSettings.SfxEnabled) return;
+        _tileSubmergedPlayer.Stop();
+        _tileSubmergedPlayer.Play();
     }
 
     /// <summary>

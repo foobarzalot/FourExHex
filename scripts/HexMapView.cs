@@ -160,6 +160,11 @@ public partial class HexMapView : Node2D, IHexMapView
     // Tides (issue #56) grows WaterCoords as shores submerge, so the reference
     // is kept to re-bake it in place (preserving z-order) on a structural change.
     private TriangleSoup? _waterFoamBake;
+    // Mountain coords as of the last rebuild, for the Rising Tides demote effect
+    // (issue #56): a demoted shore mountain stays in the grid (only loses its
+    // mountain flag), so it can't be found by the drowned-tile diff — instead
+    // EmitRisingTidesFx diffs this against the current mountain set.
+    private readonly HashSet<HexCoord> _lastMountainCoords = new();
     private Node2D? _mountainsLayer;
     private Node2D? _capitalsLayer;
     private Node2D? _rejectionsLayer;
@@ -490,6 +495,14 @@ public partial class HexMapView : Node2D, IHexMapView
             AddChild(fill);
         }
 
+        // Rising Tides (issue #56): baseline the mountain set so the first
+        // demotion after a build/load is detected by EmitRisingTidesFx.
+        _lastMountainCoords.Clear();
+        foreach (HexTile tile in _state.Grid.Tiles)
+        {
+            if (tile.IsMountain) _lastMountainCoords.Add(tile.Coord);
+        }
+
         // Gold-tile inner borders (issue #45): drawn just above the tile fills
         // but BELOW the per-tile outlines and territory borders, so both the
         // thin cell-to-cell outline and the thick boundary lines draw on top of
@@ -723,6 +736,96 @@ public partial class HexMapView : Node2D, IHexMapView
             $"rebaked water ({_state.WaterCoords.Count} coords)");
     }
 
+    // Rising Tides FX (issue #56) captured at the top of a rebuild but spawned
+    // only at the very end — RebuildAfterTerritoryChange does ClearLayer(
+    // _deathsLayer) mid-method to cancel stale death animations, which would
+    // wipe an effect spawned earlier in the same call. So capture the coords
+    // (and the submerged tiles' fill colors, before the prune frees them) up
+    // front, then flush the spawns after that clear (the same lifecycle slot
+    // the controller's PlayDestructionEffect uses).
+    private readonly List<(HexCoord Coord, Color LandColor)> _pendingSubmergeFx = new();
+    private readonly List<HexCoord> _pendingDemoteFx = new();
+
+    /// <summary>
+    /// Detect what submerged / demoted since the last rebuild and stash it for
+    /// <see cref="FlushRisingTidesFx"/>. Submerged tiles are those in
+    /// <see cref="_tileVisuals"/> no longer in the grid (capture their fill color
+    /// now — the prune frees them next); demoted mountains were mountains last
+    /// rebuild, still in the grid, no longer flagged. <see cref="_lastMountainCoords"/>
+    /// is refreshed every call (even when silent) so a later rebuild can't
+    /// re-fire a stale demote. When silent (Instant AI / instant replay) nothing
+    /// is stashed — the effect is suppressed.
+    /// </summary>
+    private void CaptureRisingTidesFx()
+    {
+        _pendingSubmergeFx.Clear();
+        _pendingDemoteFx.Clear();
+
+        var submerged = new List<HexCoord>();
+        foreach (KeyValuePair<HexCoord, Polygon2D> kv in _tileVisuals)
+        {
+            if (!_state.Grid.Contains(kv.Key)) submerged.Add(kv.Key);
+        }
+
+        var currentMountains = new HashSet<HexCoord>();
+        foreach (HexTile t in _state.Grid.Tiles)
+        {
+            if (t.IsMountain) currentMountains.Add(t.Coord);
+        }
+        var demoted = new List<HexCoord>();
+        foreach (HexCoord c in _lastMountainCoords)
+        {
+            if (!currentMountains.Contains(c) && _state.Grid.Contains(c)) demoted.Add(c);
+        }
+        _lastMountainCoords.Clear();
+        _lastMountainCoords.UnionWith(currentMountains);
+
+        if (submerged.Count == 0 && demoted.Count == 0) return;
+
+        Log.Debug(Log.LogCategory.Tide,
+            $"[tide-fx] submerged={submerged.Count} demoted={demoted.Count} " +
+            $"silent={_silentMode} vfx={UserSettings.VfxEnabled} sfx={UserSettings.SfxEnabled}");
+
+        // Instant AI / instant replay: suppress entirely (don't stash).
+        if (_silentMode) return;
+
+        foreach (HexCoord coord in submerged)
+        {
+            Color landColor =
+                _tileVisuals.TryGetValue(coord, out Polygon2D? fill) && fill != null
+                    ? fill.Color
+                    : WaterColor;
+            _pendingSubmergeFx.Add((coord, landColor));
+        }
+        _pendingDemoteFx.AddRange(demoted);
+    }
+
+    /// <summary>
+    /// Spawn the FX stashed by <see cref="CaptureRisingTidesFx"/>. Called at the
+    /// end of the rebuild, after <c>ClearLayer(_deathsLayer)</c>, so the fresh
+    /// nodes survive. One SFX per event type (not per tile) so a future
+    /// multi-tile budget doesn't smear the sound.
+    /// </summary>
+    private void FlushRisingTidesFx()
+    {
+        if (_pendingSubmergeFx.Count == 0 && _pendingDemoteFx.Count == 0) return;
+
+        foreach ((HexCoord coord, Color landColor) in _pendingSubmergeFx)
+        {
+            PlaySubmergeEffect(coord, landColor);
+        }
+        if (_pendingSubmergeFx.Count > 0) PlaySound(SoundEffect.TileSubmerged);
+
+        foreach (HexCoord coord in _pendingDemoteFx)
+        {
+            PlayMountainDemoteEffect(coord);
+        }
+        if (_pendingDemoteFx.Count > 0) PlaySound(SoundEffect.TowerDestroyed);
+
+        _pendingSubmergeFx.Clear();
+        _pendingDemoteFx.Clear();
+    }
+
     /// <summary>
     /// Rebuild derived view state after the territory list has changed
     /// (capture, undo, redo). Clears and redraws borders + resets the
@@ -732,6 +835,11 @@ public partial class HexMapView : Node2D, IHexMapView
     /// </summary>
     public void RebuildAfterTerritoryChange()
     {
+        // Rising Tides: detect submerge / mountain-demote FIRST, while the drowned
+        // tiles' fills are still present (the prune frees them next) and before
+        // DrawMountains repaints — but defer SPAWNING the effects to the end (see
+        // FlushRisingTidesFx), past the ClearLayer(_deathsLayer) below.
+        CaptureRisingTidesFx();
         // Rising Tides: drop drowned tiles' land fills and re-bake water before
         // the fill/border resync below re-reads the (now smaller) grid.
         PruneSubmergedTilesAndRebakeWater();
@@ -805,6 +913,10 @@ public partial class HexMapView : Node2D, IHexMapView
         // belonged to a state that no longer applies.
         ClearLayer(_deathsLayer);
         Log.Since(Log.LogCategory.Capture, "[hitch] tree/grave teardown", tTeardown);
+
+        // Rising Tides: spawn the submerge / demote FX now, after the deaths-layer
+        // clear, so they aren't wiped (they live on _deathsLayer too).
+        FlushRisingTidesFx();
     }
 
     /// <summary>
@@ -1543,6 +1655,10 @@ public partial class HexMapView : Node2D, IHexMapView
     private const int UnitShardCount = 14;
     private const int TowerShardCount = 20;
     private const int TreeShardCount = 16;
+    // Rising Tides submerge effect (issue #56): a land hex sinking + fading
+    // under the sea, with an expanding water-tinted ripple ring on top.
+    private const double SubmergeSinkDuration = 0.6;
+    private const double SubmergeRippleDuration = 0.75;
     private static readonly Random DestructionRng = new Random();
 
     /// <summary>
@@ -1576,8 +1692,6 @@ public partial class HexMapView : Node2D, IHexMapView
         if (destroyed is Grave) return;
         if (_deathsLayer == null) return;
 
-        Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(coord, HexSize);
-
         Color shardColor = destroyed switch
         {
             Unit u => PlayerPalette.ColorFor(u.Owner),
@@ -1592,13 +1706,102 @@ public partial class HexMapView : Node2D, IHexMapView
             _ => UnitShardCount,
         };
 
+        SpawnDestruction(coord, shardColor, shardCount);
+        ApplyGlyphUpright();
+    }
+
+    // The grey rock color used for a demoting mountain's destruction shards —
+    // matches the Tower shard tint (both are stone), pairing with the reused
+    // TowerDestroyed sound.
+    private static readonly Color MountainRockColor = new Color(0.72f, 0.72f, 0.76f, 1f);
+
+    /// <summary>
+    /// Rising Tides (issue #56): a shore mountain demotes (loses its mountain
+    /// status) before it can sink. Reuse the standard destruction burst with
+    /// grey rock shards — paired with the <c>TowerDestroyed</c> sound — so the
+    /// crumble reads clearly. Gated like every other cue by the VFX toggle and
+    /// silent mode (Instant AI / instant replay).
+    /// </summary>
+    public void PlayMountainDemoteEffect(HexCoord coord)
+    {
+        if (!UserSettings.VfxEnabled) return;
+        if (_silentMode) return;
+        if (_deathsLayer == null) return;
+        SpawnDestruction(coord, MountainRockColor, TowerShardCount);
+        ApplyGlyphUpright();
+    }
+
+    // Shared flash + shockwave + shard burst on _deathsLayer, used by both the
+    // occupant-destruction effect and the Rising Tides mountain-demote effect.
+    private void SpawnDestruction(HexCoord coord, Color shardColor, int shardCount)
+    {
+        Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(coord, HexSize);
         SpawnDestructionFlash(center);
         SpawnDestructionShockwave(center, shardColor);
         for (int i = 0; i < shardCount; i++)
         {
             SpawnDestructionShard(center, shardColor, i, shardCount);
         }
-        ApplyGlyphUpright();
+    }
+
+    /// <summary>
+    /// Rising Tides (issue #56): a shore tile sinking under the sea. The land
+    /// hex (in <paramref name="landColor"/>, the owner's fill) scales inward and
+    /// fades to nothing, with one expanding water-tinted ripple ring on top.
+    /// Gated by the VFX toggle and silent mode like every other cue.
+    /// </summary>
+    private void PlaySubmergeEffect(HexCoord coord, Color landColor)
+    {
+        if (!UserSettings.VfxEnabled) return;
+        if (_silentMode) return;
+        if (_deathsLayer == null) return;
+
+        Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(coord, HexSize);
+
+        // Sink-fade: the owner's color shrinks toward the tile center and fades,
+        // reading as the land slipping under the surface.
+        var sink = CreateHexVisual(center,
+            new Color(landColor.R, landColor.G, landColor.B, 0.9f));
+        _deathsLayer.AddChild(sink);
+        Tween sinkTween = sink.CreateTween();
+        sinkTween.TweenProperty(sink, "scale", new Vector2(0.5f, 0.5f), SubmergeSinkDuration)
+            .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.In);
+        sinkTween.Parallel()
+            .TweenProperty(sink, "modulate", new Color(1f, 1f, 1f, 0f), SubmergeSinkDuration)
+            .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.In);
+        sinkTween.Finished += sink.QueueFree;
+
+        // Ripple: an expanding foam-tinted ring spreading from the sunk tile.
+        SpawnSubmergeRipple(center, WaterColor.Lerp(ShoreFoamColor, 0.6f));
+    }
+
+    private void SpawnSubmergeRipple(Vector2 center, Color color)
+    {
+        const int segments = 36;
+        float startRadius = HexSize * 0.2f;
+        var points = new Vector2[segments + 1];
+        for (int i = 0; i <= segments; i++)
+        {
+            float a = Mathf.Tau * i / segments;
+            points[i] = new Vector2(startRadius * Mathf.Cos(a), startRadius * Mathf.Sin(a));
+        }
+        var ring = new Line2D
+        {
+            Position = center,
+            Points = points,
+            Width = 6f,
+            DefaultColor = color,
+        };
+        _deathsLayer!.AddChild(ring);
+
+        const float endScale = 1.6f / 0.2f; // 0.2 → 1.6 hex radii
+        Tween tween = ring.CreateTween();
+        tween.TweenProperty(ring, "scale", new Vector2(endScale, endScale), SubmergeRippleDuration)
+            .SetTrans(Tween.TransitionType.Cubic).SetEase(Tween.EaseType.Out);
+        tween.Parallel()
+            .TweenProperty(ring, "modulate", new Color(1f, 1f, 1f, 0f), SubmergeRippleDuration)
+            .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.In);
+        tween.Finished += ring.QueueFree;
     }
 
     /// <summary>
@@ -1628,6 +1831,7 @@ public partial class HexMapView : Node2D, IHexMapView
             case SoundEffect.GameWon: AudioBus.Instance.PlayGameWon(); break;
             case SoundEffect.Rally: AudioBus.Instance.PlayRally(); break;
             case SoundEffect.PlayerDefeated: AudioBus.Instance.PlayPlayerDefeated(); break;
+            case SoundEffect.TileSubmerged: AudioBus.Instance.PlayTileSubmerged(); break;
         }
     }
 

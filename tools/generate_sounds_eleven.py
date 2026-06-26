@@ -142,6 +142,15 @@ MANIFEST: List[Entry] = [
         1.5,
         0.75,
     ),
+    (
+        "tile_submerged.wav",
+        "A single chunk of land sinking and submerging under water: a "
+        "soft watery glug and gulp with a brief bubbling gurgle and a "
+        "small gentle splash, wet and rounded, brief, no music, no "
+        "voice, no reverb tail.",
+        0.7,
+        0.75,
+    ),
 ]
 
 
