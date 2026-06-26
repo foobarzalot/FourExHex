@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Godot;
 
 /// <summary>
@@ -19,12 +20,26 @@ public partial class MapEditorScene : Node2D
     private SaveNameModal? _saveModal;
     private SlotPickerDialog? _loadDialog;
 
+    // The per-color roster the map will bake (issue #70): kinds (incl. None)
+    // and difficulties, chosen up-front for a New Map or derived from the file
+    // for a Load Map. The editor's live preview roster (_players) stays all-Human
+    // so no AI drives turns; these drive palette gating and the saved file.
+    private PlayerKind[] _rosterKinds = null!;
+    private Difficulty[] _rosterDifficulties = null!;
+    private LoadedSave? _pendingMapToLoad;
+
     public override void _Ready()
     {
-        _players = Player.BuildAllHumanRoster();
+        _saveStore = new SaveStore();
+        ResolveEditorRequest();
+        // Preview roster = the active (non-None) colors, all forced Human so no
+        // AI drives turns and Generate only paints colors that are in play
+        // (issue #70). The baked kinds/difficulties live in _rosterKinds.
+        _players = BuildEditorPreviewRoster();
 
         _panel = new MapEditorPanel { Players = _players };
         AddChild(_panel);
+        if (_pendingMapToLoad != null) _panel.LoadFromMap(_pendingMapToLoad);
 
         _hud = new MapEditorHudView();
         // Relay the HUD's reserved map insets to the editor map. Subscribe
@@ -44,7 +59,10 @@ public partial class MapEditorScene : Node2D
             _hud.SetUndoState(_panel.CanUndo, _panel.CanRedo);
         _hud.SetUndoState(canUndo: false, canRedo: false);
 
-        _saveStore = new SaveStore();
+        // Gate the land palette to the active colors and mark the human ones
+        // (issue #70). The HUD's palette is built in its _Ready, run above.
+        _hud.ApplyRosterKinds(_rosterKinds);
+
         BuildSaveDialog();
         BuildLoadDialog();
 
@@ -108,15 +126,33 @@ public partial class MapEditorScene : Node2D
     {
         if (_saveModal == null) return;
         string name = SaveStore.SanitizeSlotName(rawName);
+        GameState state = _panel.BuildSaveState();
+
+        // Validate the painted board against the chosen roster (issue #70): a
+        // color that owns land must be active, every active color must own land,
+        // and at least two players must be present.
+        System.Collections.Generic.IReadOnlyList<string> problems =
+            MapRosterRules.ValidateForSave(state.Territories, _rosterKinds);
+        if (problems.Count > 0)
+        {
+            Log.Info(Log.LogCategory.Display, "MapEditor: save blocked — " + string.Join("; ", problems));
+            _saveModal.ShowError(string.Join("\n", problems));
+            return;
+        }
+
         try
         {
-            _saveStore.WriteMapSlot(name, _panel.BuildSaveState(), _panel.CurrentSeed, _players);
+            // Bake the chosen kinds + difficulties into the file by serializing a
+            // 6-slot roster carrying them (vs. the all-Human preview roster).
+            _saveStore.WriteMapSlot(name, state, _panel.CurrentSeed, BuildBakeRoster());
         }
         catch (System.Exception ex)
         {
             _saveModal.ShowError($"Could not save: {ex.Message}");
             return;
         }
+        Log.Info(Log.LogCategory.Display,
+            $"MapEditor: saved map \"{name}\" kinds=[{string.Join(",", _rosterKinds)}]");
         _saveModal.Close();
     }
 
@@ -141,13 +177,111 @@ public partial class MapEditorScene : Node2D
         try
         {
             LoadedSave loaded = _saveStore.LoadMap(slotName);
+            // Adopt the loaded map's baked roster (issue #70) so the palette
+            // gates to its colors, Generate paints only them, and a re-save
+            // preserves them.
+            DeriveRosterFromLoad(loaded, out _rosterKinds, out _rosterDifficulties);
+            _players = BuildEditorPreviewRoster();
+            _panel.Players = _players;
             _panel.LoadFromMap(loaded);
+            _hud.ApplyRosterKinds(_rosterKinds);
             _loadDialog?.Hide();
         }
         catch (System.Exception ex)
         {
             _loadDialog?.ShowError($"Could not load '{slotName}': {ex.Message}");
         }
+    }
+
+    /// <summary>Resolve the menu's <see cref="MapEditorRequest"/> into the
+    /// editor's baked roster (issue #70). New Map uses the chosen kinds; Load
+    /// Map defers the load to <c>_Ready</c> (via <see cref="_pendingMapToLoad"/>)
+    /// and derives the roster from the file; a direct launch (diagnostics / no
+    /// request) defaults to the all-Human 6-player roster, unchanged from before.</summary>
+    private void ResolveEditorRequest()
+    {
+        MapEditorRequest.Request? req = MapEditorRequest.Pending;
+        MapEditorRequest.Pending = null;
+
+        if (req is { Source: MapEditorRequest.Source.LoadMap, MapName: { } mapName })
+        {
+            _pendingMapToLoad = _saveStore.LoadMap(mapName);
+            DeriveRosterFromLoad(_pendingMapToLoad, out _rosterKinds, out _rosterDifficulties);
+            Log.Info(Log.LogCategory.Display, $"MapEditor: load map \"{mapName}\" for editing");
+            return;
+        }
+
+        if (req is { Source: MapEditorRequest.Source.NewMap, Kinds: { } kinds })
+        {
+            _rosterKinds = kinds;
+            _rosterDifficulties = req.Difficulties
+                ?? Enumerable.Repeat(Difficulty.Soldier, kinds.Length).ToArray();
+            Log.Info(Log.LogCategory.Display,
+                $"MapEditor: new map kinds=[{string.Join(",", _rosterKinds)}]");
+            return;
+        }
+
+        // No request (diagnostics / direct scene load): all-Human, all paintable.
+        _rosterKinds = System.Linq.Enumerable
+            .Repeat(PlayerKind.Human, GameSettings.PlayerConfig.Length).ToArray();
+        _rosterDifficulties = System.Linq.Enumerable
+            .Repeat(Difficulty.Soldier, GameSettings.PlayerConfig.Length).ToArray();
+    }
+
+    /// <summary>Derive a 6-slot kinds/difficulties pair from a loaded map. A
+    /// post-#70 map carries baked kinds (slots absent from the active roster are
+    /// None); a pre-#70 map has none, so default to the legacy roster: Red
+    /// Human, the rest Computer, all Soldier (issue #70).</summary>
+    private static void DeriveRosterFromLoad(
+        LoadedSave loaded, out PlayerKind[] kinds, out Difficulty[] difficulties)
+    {
+        int n = GameSettings.PlayerConfig.Length;
+        kinds = new PlayerKind[n];
+        difficulties = new Difficulty[n];
+        for (int i = 0; i < n; i++)
+        {
+            kinds[i] = loaded.MapHasBakedKinds ? PlayerKind.None
+                : i == 0 ? PlayerKind.Human : PlayerKind.Computer;
+            difficulties[i] = Difficulty.Soldier;
+        }
+        if (loaded.MapHasBakedKinds)
+        {
+            foreach (Player p in loaded.Players)
+            {
+                kinds[p.Id.Index] = p.Kind;
+                difficulties[p.Id.Index] = p.Difficulty;
+            }
+        }
+    }
+
+    /// <summary>The editor's live preview roster: the active (non-None) colors,
+    /// all Human so no AI runs and Generate paints only colors in play (#70).</summary>
+    private List<Player> BuildEditorPreviewRoster()
+    {
+        var roster = new List<Player>();
+        for (int i = 0; i < GameSettings.PlayerConfig.Length; i++)
+        {
+            if (_rosterKinds[i] == PlayerKind.None) continue;
+            roster.Add(new Player(
+                GameSettings.PlayerConfig[i].Name, PlayerId.FromIndex(i), PlayerKind.Human));
+        }
+        return roster;
+    }
+
+    /// <summary>The 6-slot roster (carrying the chosen kinds + difficulties,
+    /// including None) serialized into the saved map so a load restores it.</summary>
+    private List<Player> BuildBakeRoster()
+    {
+        var roster = new System.Collections.Generic.List<Player>();
+        for (int i = 0; i < GameSettings.PlayerConfig.Length; i++)
+        {
+            roster.Add(new Player(
+                GameSettings.PlayerConfig[i].Name,
+                PlayerId.FromIndex(i),
+                _rosterKinds[i],
+                _rosterDifficulties[i]));
+        }
+        return roster;
     }
 
     private void ReturnToMainMenu()

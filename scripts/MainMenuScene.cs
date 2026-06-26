@@ -116,6 +116,12 @@ public partial class MainMenuScene : Control
     // back and forth). _playConfigPage persists across the orientation-flip
     // rebuild so a flip keeps you on the same page.
     private enum PlayConfigPage { PlayerSetup, MapSetup }
+
+    // What the player-setup screen feeds into (issue #70): a new procedural
+    // game, or a new map editor session. The kinds screen is shared; only the
+    // forward action differs.
+    private enum PlayConfigPurpose { NewGame, EditorNewMap }
+    private PlayConfigPurpose _playConfigPurpose = PlayConfigPurpose.NewGame;
     private PlayConfigPage _playConfigPage = PlayConfigPage.PlayerSetup;
     private Control? _playerPageContent;
     private Control? _mapPageContent;
@@ -795,7 +801,7 @@ public partial class MainMenuScene : Control
         var nav = new HBoxContainer();
         nav.AddThemeConstantOverride("separation", 12);
         nav.AddChild(MakeLandscapeNavButton("Back", OnBackPressed));
-        _playerNextButton = MakeLandscapeNavButton("Next", GoToMapPage);
+        _playerNextButton = MakeLandscapeNavButton("Next", OnPlayerPageForward);
         nav.AddChild(_playerNextButton);
         col.AddChild(nav);
         RefreshPlayerNextGating();
@@ -1043,7 +1049,7 @@ public partial class MainMenuScene : Control
         rail.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
         // Back above the forward action (Next) in the vertical rail.
         rail.AddChild(MakeLandscapeNavButton("Back", OnBackPressed));
-        _playerNextButton = MakeLandscapeNavButton("Next", GoToMapPage);
+        _playerNextButton = MakeLandscapeNavButton("Next", OnPlayerPageForward);
         rail.AddChild(_playerNextButton);
 
         hbox.AddChild(new ColorRect
@@ -1372,10 +1378,20 @@ public partial class MainMenuScene : Control
         }
     }
 
-    private void ShowPlayConfig()
+    private void ShowPlayConfig() => ShowPlayConfig(PlayConfigPurpose.NewGame);
+
+    private void ShowPlayConfig(PlayConfigPurpose purpose)
     {
+        _playConfigPurpose = purpose;
         if (_landingPanel != null) _landingPanel.Visible = false;
         if (_playConfigPanel != null) _playConfigPanel.Visible = true;
+        // The shared player-setup screen feeds either a procedural game ("Next"
+        // → map page) or a new editor map ("Create Map" → launch editor).
+        if (_playerNextButton != null)
+        {
+            _playerNextButton.Text = purpose == PlayConfigPurpose.EditorNewMap
+                ? "Create Map" : "Next";
+        }
         // A fresh entry always starts on the player-setup page (selections are
         // preserved, but the flow begins at page 1).
         _playConfigPage = PlayConfigPage.PlayerSetup;
@@ -1383,6 +1399,43 @@ public partial class MainMenuScene : Control
     }
 
     // --- Paged New Game navigation (issue #40) ---
+
+    /// <summary>Forward action of the shared player-setup page (issue #70):
+    /// gate on >=2 active players, persist the selections, then either advance
+    /// to the procedural map page (New Game) or launch the editor (New Map).
+    /// The Next button is disabled below 2 players, but the Enter key routes
+    /// here directly, so the guard lives here.</summary>
+    private void OnPlayerPageForward()
+    {
+        if (ActivePlayerCount() < 2)
+        {
+            Log.Info(Log.LogCategory.Input,
+                $"MainMenu: blocked forward (only {ActivePlayerCount()} active player(s); need 2)");
+            return;
+        }
+        // Commit the dropdown selections first: the map thumbnail builds from
+        // Player.BuildRoster() (reads GameSettings.PlayerKinds), and the editor
+        // launch snapshots the same arrays (issue #70).
+        PersistRosterSelections();
+        if (_playConfigPurpose == PlayConfigPurpose.EditorNewMap) LaunchEditorNewMap();
+        else GoToMapPage();
+    }
+
+    /// <summary>Launch the map editor for a fresh map, handing it the per-color
+    /// kinds + difficulties chosen on the shared player-setup screen (issue #70).</summary>
+    private void LaunchEditorNewMap()
+    {
+        MapEditorRequest.Pending = new MapEditorRequest.Request
+        {
+            Source = MapEditorRequest.Source.NewMap,
+            Kinds = (PlayerKind[])GameSettings.PlayerKinds.Clone(),
+            Difficulties = (Difficulty[])GameSettings.Difficulties.Clone(),
+        };
+        Log.Info(Log.LogCategory.Input,
+            "MainMenu: Map Editor new map — " + string.Join(", ",
+                GameSettings.PlayerConfig.Select((c, i) => $"{c.Name}={GameSettings.PlayerKinds[i]}")));
+        GetTree().ChangeSceneToFile("res://scenes/map_editor.tscn");
+    }
 
     private void ShowCurrentPlayConfigPage()
     {
@@ -1394,20 +1447,6 @@ public partial class MainMenuScene : Control
 
     private void GoToMapPage()
     {
-        // Gate forward navigation on a valid roster (issue #70): a game needs
-        // at least 2 active players. The Next button is also disabled in this
-        // state, but the Enter-key path routes here directly, so guard centrally.
-        if (ActivePlayerCount() < 2)
-        {
-            Log.Info(Log.LogCategory.Input,
-                $"MainMenu: blocked New Game → map (only {ActivePlayerCount()} active player(s); need 2)");
-            return;
-        }
-        // Commit the dropdown selections before the map page renders: the
-        // thumbnail builds its preview from Player.BuildRoster(), which reads
-        // GameSettings.PlayerKinds — so a None slot must be persisted here or
-        // the preview shows colors the actual game won't have (issue #70).
-        PersistRosterSelections();
         _playConfigPage = PlayConfigPage.MapSetup;
         ShowCurrentPlayConfigPage();
         Log.Debug(Log.LogCategory.Input, "MainMenu: New Game → map setup page");
@@ -1496,6 +1535,40 @@ public partial class MainMenuScene : Control
 
     private void OnMapEditorPressed()
     {
+        // Map Editor source chooser (issue #70): describe the players up-front
+        // for a fresh map, or open a saved map for further editing.
+        Log.Info(Log.LogCategory.Input, "MainMenu: Map Editor → source chooser");
+        _sourceChooser?.Show("Map Editor", new[]
+        {
+            new EscMenu.Option("New Map", () => ShowPlayConfig(PlayConfigPurpose.EditorNewMap)),
+            new EscMenu.Option("Load Map", OpenLoadMapToEdit),
+        });
+    }
+
+    /// <summary>Load-map-to-edit branch of the Map Editor chooser (issue #70):
+    /// the same map picker as the play flow; selection launches the editor with
+    /// the map loaded.</summary>
+    private void OpenLoadMapToEdit()
+    {
+        if (_loadDialog == null) return;
+        Log.Info(Log.LogCategory.Input, "MainMenu: Map Editor → load map");
+        _loadDialog.ShowSlots(
+            _saveStore.ListMaps(),
+            "No starting maps found.",
+            info => info.SlotName,
+            OnPickMapToEdit,
+            thumbnailStore: _saveStore,
+            previewMaps: true);
+    }
+
+    private void OnPickMapToEdit(string mapName)
+    {
+        MapEditorRequest.Pending = new MapEditorRequest.Request
+        {
+            Source = MapEditorRequest.Source.LoadMap,
+            MapName = mapName,
+        };
+        Log.Info(Log.LogCategory.Input, $"MainMenu: open map \"{mapName}\" in editor");
         GetTree().ChangeSceneToFile("res://scenes/map_editor.tscn");
     }
 
@@ -1840,7 +1913,7 @@ public partial class MainMenuScene : Control
 
         if (onPlayerPage)
         {
-            GoToMapPage();
+            OnPlayerPageForward();
         }
         else
         {

@@ -44,6 +44,22 @@ public partial class HexPaletteButton : Control
         }
     }
 
+    private bool _isHuman;
+
+    /// <summary>When true, the swatch draws a small white pip (issue #70) so the
+    /// map editor can show at a glance which player colors are human-controlled.
+    /// Only meaningful on the non-squared land swatches.</summary>
+    public bool IsHuman
+    {
+        get => _isHuman;
+        set
+        {
+            if (_isHuman == value) return;
+            _isHuman = value;
+            QueueRedraw();
+        }
+    }
+
     /// <summary>
     /// The hex fill color. Settable so a single button can repaint as it
     /// cycles through colors (the map editor's collapsed land swatch).
@@ -123,6 +139,16 @@ public partial class HexPaletteButton : Control
         for (int i = 0; i < 6; i++)
         {
             DrawLine(verts[i], verts[(i + 1) % 6], outlineColor, outlineWidth);
+        }
+
+        // Human marker (issue #70): a small white pip with a dark ring near the
+        // top of the hex, so a human-controlled color reads at a glance.
+        if (_isHuman)
+        {
+            float pipR = radius * 0.24f;
+            Vector2 pip = center + new Vector2(0f, -radius * 0.52f);
+            DrawCircle(pip, pipR, new Color(1f, 1f, 1f));
+            DrawArc(pip, pipR, 0f, Mathf.Tau, 18, new Color(0f, 0f, 0f), 1.5f);
         }
     }
 

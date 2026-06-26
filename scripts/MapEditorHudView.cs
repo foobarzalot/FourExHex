@@ -87,6 +87,11 @@ public partial class MapEditorHudView : OrientationHud
     private HexPaletteButton _landCycleButton = null!;
     private int _lastLandPaletteIndex = 1;
 
+    // Per-slot kinds the editor map will bake (issue #70). None colors are
+    // hidden from the palette (not paintable); Human colors get a pip marker.
+    // Empty until the host calls ApplyRosterKinds (defaults to all paintable).
+    private PlayerKind[] _rosterKinds = System.Array.Empty<PlayerKind>();
+
     // Persistent clusters reparented per orientation. The two BoxContainers
     // flip Vertical/horizontal on landscape↔portrait so the same buttons
     // stack as a rail column or sit as a bar row.
@@ -599,9 +604,59 @@ public partial class MapEditorHudView : OrientationHud
         index >= 1 && index <= NeutralPaletteIndex;
 
     // Wrap forward through the owner indices (1..N colors, then neutral at
-    // N+1), neutral -> first color.
-    private static int NextLandIndex(int index) =>
-        index >= NeutralPaletteIndex ? 1 : index + 1;
+    // N+1), neutral -> first color. Skips None colors (issue #70) so the
+    // compact cycle button never lands on a disabled, unpaintable color.
+    private int NextLandIndex(int index)
+    {
+        int next = index;
+        for (int step = 0; step <= GameSettings.PlayerConfig.Length; step++)
+        {
+            next = next >= NeutralPaletteIndex ? 1 : next + 1;
+            if (next == NeutralPaletteIndex || !IsColorNone(next)) return next;
+        }
+        return NeutralPaletteIndex;
+    }
+
+    private bool IsColorNone(int paletteIndex)
+    {
+        int slot = paletteIndex - 1;
+        return slot >= 0 && slot < _rosterKinds.Length
+            && _rosterKinds[slot] == PlayerKind.None;
+    }
+
+    /// <summary>Apply the chosen per-slot roster kinds (issue #70): hide None
+    /// color swatches (so they can't be painted), pip the Human ones, and move
+    /// the active/last land selection off any now-disabled color.</summary>
+    public void ApplyRosterKinds(PlayerKind[] kinds)
+    {
+        _rosterKinds = kinds ?? System.Array.Empty<PlayerKind>();
+        for (int i = 0; i < GameSettings.PlayerConfig.Length; i++)
+        {
+            HexPaletteButton swatch = _palette[i + 1];
+            bool none = i < _rosterKinds.Length && _rosterKinds[i] == PlayerKind.None;
+            bool human = i < _rosterKinds.Length && _rosterKinds[i] == PlayerKind.Human;
+            swatch.Visible = !none;
+            swatch.IsHuman = human;
+            string name = GameSettings.PlayerConfig[i].Name;
+            swatch.TooltipText = none ? $"{name} — disabled (None)"
+                : human ? $"Paint land — {name} (Human)"
+                : $"Paint land — {name} (Computer)";
+        }
+
+        // If the current/last land color is now disabled, advance to a live one.
+        if (IsColorNone(_lastLandPaletteIndex))
+        {
+            _lastLandPaletteIndex = NextLandIndex(_lastLandPaletteIndex);
+        }
+        if (IsColorNone(SelectedPaletteIndex))
+        {
+            SelectPalette(_lastLandPaletteIndex);
+        }
+        else
+        {
+            RefreshLandCycleVisual();
+        }
+    }
 
     /// <summary>
     /// Select-first-then-cycle: if land isn't the active tool, the first press
