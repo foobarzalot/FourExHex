@@ -14,7 +14,8 @@ public static class MapRosterRules
     /// painted <paramref name="territories"/> and the chosen per-slot
     /// <paramref name="kinds"/>; an empty list means the map is valid to save.
     /// Flags: a color that owns land but is <see cref="PlayerKind.None"/>; a
-    /// non-<c>None</c> color that owns no land (it would start eliminated);
+    /// non-<c>None</c> color that owns no land (it would start eliminated); a
+    /// non-<c>None</c> color that owns land but holds no capital (issue #82);
     /// and fewer than two active (non-<c>None</c>) colors.
     /// </summary>
     public static IReadOnlyList<string> ValidateForSave(
@@ -23,9 +24,12 @@ public static class MapRosterRules
         var problems = new List<string>();
 
         var owned = new HashSet<int>();
+        var hasCapital = new HashSet<int>();
         foreach (Territory t in territories)
         {
-            if (!t.Owner.IsNone) owned.Add(t.Owner.Index);
+            if (t.Owner.IsNone) continue;
+            owned.Add(t.Owner.Index);
+            if (t.HasCapital) hasCapital.Add(t.Owner.Index);
         }
 
         int active = 0;
@@ -45,6 +49,10 @@ public static class MapRosterRules
             else if (!isNone && !ownsLand)
             {
                 problems.Add($"{name} is set to play but owns no territory.");
+            }
+            else if (!isNone && ownsLand && !hasCapital.Contains(slot))
+            {
+                problems.Add($"{name} is set to play but has no capital.");
             }
         }
 

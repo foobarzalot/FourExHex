@@ -2071,7 +2071,10 @@ keys off that list, not a fixed 6:
   campaign launch never reads or writes the freeform `GameSettings.PlayerKinds`.
 - **Validation.** `MapRosterRules.ValidateForSave(territories, kinds)` (pure,
   in Model) is the editor's save gate: a color owning land must be active, every
-  active color must own land, and ≥2 must be active. See *Map editor*.
+  active color must own land, every active color that owns land must hold ≥1
+  capital (#82), and ≥2 must be active. The capital check is mutually exclusive
+  with the owns-no-land check (a landless slot is flagged once, not twice). See
+  *Map editor*.
 
 The save-format consequences (decoupling list position from color slot, baking
 map kinds, `None` on load) are in *Save / load*.
@@ -4589,7 +4592,8 @@ scripts/  (split: see the three source trees listed just above)
 ├─ Player.cs              ─ + PlayerKind {Human,Computer,None}; BuildRoster
 │                           (skips None), BuildCampaignRoster (#70/#80)
 ├─ MapRosterRules.cs      ─ pure editor-save validation (active⇔owns-land,
-│                           ≥2 players) for baked map rosters (#70)
+│                           ≥1 capital per active color (#82), ≥2 players) for
+│                           baked map rosters (#70)
 ├─ TurnState.cs           ─
 ├─ Treasury.cs            ─
 ├─ ZoomMath.cs            ─ pixel↔hex helpers used by HexMapView

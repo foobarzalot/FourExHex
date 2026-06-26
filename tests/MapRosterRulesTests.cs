@@ -7,7 +7,8 @@ namespace FourExHex.Tests;
 public class MapRosterRulesTests
 {
     // A grid where the listed slots each own one tile; the per-slot kinds
-    // are supplied separately so the test can create (in)consistencies.
+    // are supplied separately so the test can create (in)consistencies. Each
+    // territory gets a capital by default (real saved maps always have one).
     private static IReadOnlyList<Territory> TerritoriesOwnedBy(params int[] slots)
     {
         var terr = new List<Territory>();
@@ -16,7 +17,27 @@ public class MapRosterRulesTests
         {
             terr.Add(new Territory(
                 PlayerId.FromIndex(slot),
-                new List<HexCoord> { new HexCoord(q, 0), new HexCoord(q, 1) }));
+                new List<HexCoord> { new HexCoord(q, 0), new HexCoord(q, 1) },
+                capital: new HexCoord(q, 0)));
+            q += 2;
+        }
+        return terr;
+    }
+
+    // Like TerritoriesOwnedBy but the slots listed in capitalless own no
+    // capital (their territory's Capital is null), to exercise the #82 check.
+    private static IReadOnlyList<Territory> TerritoriesOwnedBy(
+        int[] slots, params int[] capitalless)
+    {
+        var skip = new HashSet<int>(capitalless);
+        var terr = new List<Territory>();
+        int q = 0;
+        foreach (int slot in slots)
+        {
+            terr.Add(new Territory(
+                PlayerId.FromIndex(slot),
+                new List<HexCoord> { new HexCoord(q, 0), new HexCoord(q, 1) },
+                capital: skip.Contains(slot) ? (HexCoord?)null : new HexCoord(q, 0)));
             q += 2;
         }
         return terr;
@@ -72,6 +93,46 @@ public class MapRosterRulesTests
 
         IReadOnlyList<string> problems = MapRosterRules.ValidateForSave(terr, kinds);
         Assert.Contains(problems, m => m.Contains("at least 2"));
+    }
+
+    [Fact]
+    public void ActiveColorWithLandButNoCapital_IsFlagged()
+    {
+        // Slots 0,1 are active and own land, but slot 1 (Blue) has no capital.
+        IReadOnlyList<Territory> terr = TerritoriesOwnedBy(new[] { 0, 1 }, 1);
+        PlayerKind[] kinds = Kinds(
+            PlayerKind.Human, PlayerKind.Computer, PlayerKind.None,
+            PlayerKind.None, PlayerKind.None, PlayerKind.None);
+
+        IReadOnlyList<string> problems = MapRosterRules.ValidateForSave(terr, kinds);
+        Assert.Contains(problems, m => m.Contains("Blue") && m.Contains("capital"));
+    }
+
+    [Fact]
+    public void ActiveColorWithCapital_IsNotFlaggedForCapital()
+    {
+        IReadOnlyList<Territory> terr = TerritoriesOwnedBy(0, 1);
+        PlayerKind[] kinds = Kinds(
+            PlayerKind.Human, PlayerKind.Computer, PlayerKind.None,
+            PlayerKind.None, PlayerKind.None, PlayerKind.None);
+
+        IReadOnlyList<string> problems = MapRosterRules.ValidateForSave(terr, kinds);
+        Assert.DoesNotContain(problems, m => m.Contains("capital"));
+    }
+
+    [Fact]
+    public void ActiveColorWithNoLand_NotDoubleFlaggedForCapital()
+    {
+        // Slot 2 (Green) is set to play but owns no land. It should be flagged
+        // for owning no territory, but NOT also for having no capital.
+        IReadOnlyList<Territory> terr = TerritoriesOwnedBy(0, 1);
+        PlayerKind[] kinds = Kinds(
+            PlayerKind.Human, PlayerKind.Computer, PlayerKind.Computer,
+            PlayerKind.None, PlayerKind.None, PlayerKind.None);
+
+        IReadOnlyList<string> problems = MapRosterRules.ValidateForSave(terr, kinds);
+        Assert.Contains(problems, m => m.Contains("Green") && m.Contains("owns no territory"));
+        Assert.DoesNotContain(problems, m => m.Contains("Green") && m.Contains("capital"));
     }
 
     [Fact]
