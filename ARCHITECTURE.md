@@ -779,6 +779,83 @@ deterministic in the seed.
   preview renders the same derivation via
   `MapThumbnailView.RequestRandom(seed, options)`.
 
+## Rising Tides game mode (issue #56)
+
+A selectable **game mode** — the first runtime rules variant, distinct from the
+freeform-vs-campaign split (which is carried by `GameSettings.CampaignLevel`).
+`GameMode { Freeform, RisingTides }` (Model) lives on `GameState.Mode` (default
+`Freeform`, set at construction). In Rising Tides the sea eats the map and the
+game ends only when one player is left — no early wins.
+
+**Per-turn submerge.** At the start of each owner's turn, just before tree
+growth (same `TurnNumber > 1` gate), one of *that owner's own* shore tiles
+erodes — applied to every color including neutral's once-per-round phantom turn
+and eliminated colors' leftover tiles. `RisingTidesRules.SubmergeStep(state,
+owner, rng, budget)` (Model, integer + seeded-RNG only) does it:
+
+- A **shore** tile is any land tile with **fewer than six in-grid neighbours**
+  (`ShoreTilesOf` — a missing neighbour is authored water, the rectangular map
+  edge, or beyond-bounds, none of which are in the grid). Budget is **1** today.
+- The picked tile is chosen with the per-turn reseeded RNG over the
+  `HexCoord.CompareTo`-sorted shore list (reproducible per seed). A **mountain**
+  shore *demotes* (`IsMountain = false`) and spends the budget without sinking —
+  mountains are the last land to go; a non-mountain shore is removed from the
+  grid and added to the water set, then `TerritoryFinder.Recompute(grid, terr,
+  treasury)` reconciles (the same remove-tile→add-water→recompute path the editor
+  uses in `MapEditPaint.PaintWater`).
+
+`GameState.WaterCoords` is backed by a mutable `HashSet` (exposed `IReadOnlySet`)
+with `AddWater(coord)` so the water set can grow at runtime; freeform is byte-for-
+byte unchanged because `MaybeRiseTidesFor` is a no-op outside Rising Tides and
+never draws RNG there.
+
+**Win = last player standing.** `WinConditionRules.LastPlayerStanding(territories)`
+returns the sole capital-bearing owner (else null). In Rising Tides,
+`GameOperations` routes the existing win checks to it: `HandleCapture`'s mid-turn
+domination check and `EndOfTurnProcessing`'s sole-capital check both use
+`LastPlayerStanding`; `StartPlayerTurn` runs it after the submerge+upkeep (a tile
+drowning the active player's last capital can leave a sole survivor); and
+`GameController.OnEndTurnPressed` suppresses the claim-victory tiers entirely.
+
+**Defeat on submerge.** A sinking tile that drowns a player's last capital is a
+defeat just like a capture: `GameOperations.HandleNewlyDefeated(before)` (shared
+by `HandleCapture` and `MaybeRiseTidesFor`) plays the defeat cue and raises the
+defeat overlay for a human. A human defeated by their *own* start-of-turn submerge
+is the current player, so `OnDefeatContinuePressed` ends their empty turn to
+advance past them once the overlay is dismissed.
+
+**VFX/SFX** (view, `HexMapView`). A submerge needs a structural repaint
+(`RebuildAfterTerritoryChange`) — the view re-bakes the static water/foam soup in
+place (`BuildWaterFoamSoup` → `_waterFoamBake.SetTriangles`) and drops the drowned
+tile's land fill (`PruneSubmergedTilesAndRebakeWater`). Effects are detected up
+front (`CaptureRisingTidesFx`: drowned = `_tileVisuals` keys gone from the grid;
+demoted = a `_lastMountainCoords` diff) and **flushed after** the method's
+`ClearLayer(_deathsLayer)` (`FlushRisingTidesFx`) so they aren't wiped: a ripple +
+sink-fade + `tile_submerged` sound for a submerge, the standard destruction burst
+(`SpawnDestruction`) + `TowerDestroyed` sound for a mountain demote. All gated by
+the existing `_silentMode` flag, so they play on human turns and paced AI/replay
+but are suppressed at Instant speed. The `tile_submerged.wav` SFX is generated via
+the ElevenLabs pipeline (`tools/generate_sounds_eleven.py`).
+
+**Selection & round-trip.** Freeform games pick the mode from the **Game Mode**
+selector on the Configure Game player-setup page (`GameSettings.Mode`, shared with
+the map editor's new-map flow); Quick Play resets to Freeform. The map editor
+threads `_mapMode` into `BuildSaveState`, and `Main`'s starting-map load forwards
+`pendingLoad.State.Mode`, so an authored Rising Tides map round-trips and plays as
+Rising Tides. The mode + grown water set persist through the **v12** save format
+(see *Save / load*); `FOUREXHEX_MODE=RisingTides` forces it for headless 6AI runs.
+
+**Campaign.** `CampaignProgress.ModeForLevel(level)` (deterministic, integer-only,
+same seeded-draw style as `MapGenOptionsForLevel`) makes a rare minority of
+**Soldier-tier-and-above** levels Rising Tides — flat 10% (19 of 256; never at
+Recruit). `Main` derives a campaign level's mode from it; the campaign confirm
+sheet shows a gold "Rising Tides — …" line (`MapInfoSheet`'s optional `gameMode`
+row), and the campaign grid marks those levels with a blue circle behind the level
+number (`TierGrid._Draw`).
+
+AI is crash-safe but not tide-aware (it re-enumerates from the live grid; the
+1-ply sim never submerges) — tide-aware valuation is follow-up #84.
+
 ## Display scaling (autoload)
 
 `DisplayScale` — autoload-registered Node (`project.godot` `[autoload]` entry
@@ -2597,6 +2674,13 @@ sequences.
   still knows which ladder level it is and can record the win on
   game-over. `Main._Ready` restores it into `GameSettings.CampaignLevel`
   (or clears it for a freeform/starting-map/diagnostic load).
+- **Game mode (issue #56, v12).** Saves carry an optional `Mode`
+  (`GameMode`); null/missing = `Freeform` (so all pre-v12 saves and every
+  freeform save are unchanged). Only Rising Tides games write it. The grown
+  water set rides in the existing `Water` field, so the flood progress
+  round-trips with no separate field. Deserialize feeds it into the
+  `GameState` ctor; the starting-map load path forwards it too (see *Rising
+  Tides game mode*).
 - **Load.** The main menu's Load button populates `LoadRequest.Pending`
   with a `LoadedSave` (state + players + master seed + max-turn cap +
   optional OriginMapName + optional claim-victory prompted tiers) and
@@ -2738,7 +2822,10 @@ graph:
     `HumanColorSlotForLevel` (`= active[HumanSlotForLevel(level, count)]`, the
     human's actual color slot). All draw from one seeded `Random` per level
     (integer-only; offset decorrelated from the seed and the terrain draw), so
-    a level's players are fixed forever and its terrain is unchanged. **Mark-at-launch
+    a level's players are fixed forever and its terrain is unchanged.
+    `ModeForLevel` (issue #56) likewise derives the level's `GameMode`: always
+    `Freeform` below the Soldier tier, a flat 10% of Soldier+ levels Rising
+    Tides (see *Rising Tides game mode*). **Mark-at-launch
     semantics:** starting a level marks it
     Lost so an abandon or crash already counts as an attempt with no
     extra bookkeeping; winning flips it to Won, which a later loss can't
