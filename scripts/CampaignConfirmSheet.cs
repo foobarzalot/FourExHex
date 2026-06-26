@@ -23,6 +23,14 @@ public static class CampaignConfirmSheet
         };
         string status = $"{CampaignProgress.DifficultyForLevel(level)} tier · {statusText}";
 
+        // Tell the player which game mode the level runs (issue #56). Rising
+        // Tides is the rare Soldier+ complication, so it gets an emphasized
+        // description; freeform levels get a one-liner for parity.
+        GameMode mode = CampaignProgress.ModeForLevel(level);
+        string gameMode = mode == GameMode.RisingTides
+            ? "Rising Tides — your coastline sinks a little each turn and the map shrinks; outlast the sea to be the last player standing."
+            : "Freeform — expand your territory and outlast your rivals.";
+
         // The single color the human plays this level (deterministic per level).
         int humanSlot = CampaignProgress.HumanColorSlotForLevel(level);
         (string colorName, string colorHex) = GameSettings.PlayerConfig[humanSlot];
@@ -41,6 +49,8 @@ public static class CampaignConfirmSheet
             thumb => thumb.RequestRandom(
                 seed,
                 CampaignProgress.MapGenOptionsForLevel(level),
-                Player.BuildCampaignRoster(level)));
+                Player.BuildCampaignRoster(level)),
+            gameMode: gameMode,
+            gameModeEmphasis: mode == GameMode.RisingTides);
     }
 }

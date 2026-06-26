@@ -39,6 +39,11 @@ public sealed partial class MapInfoSheet : CanvasLayer
     private readonly string _status;
     private readonly IReadOnlyList<HumanIdentity> _humans;
     private readonly string _confirmText;
+    // Optional game-mode line (issue #56): the campaign confirm sheet sets this
+    // to tell the player which mode the level plays in; _gameModeEmphasis golds
+    // the Rising Tides callout. Empty = no row (other callers unchanged).
+    private readonly string _gameMode;
+    private readonly bool _gameModeEmphasis;
     // Configure + kick off the preview render on the given thumbnail. Invoked on
     // Open and after an orientation rebuild (the thumbnail is recreated each
     // body build). Campaign passes RequestRandom(seed, opts); the load flow
@@ -56,13 +61,17 @@ public sealed partial class MapInfoSheet : CanvasLayer
         string status,
         IReadOnlyList<HumanIdentity> humans,
         Action<MapThumbnailView> requestThumbnail,
-        string confirmText = "Play")
+        string confirmText = "Play",
+        string gameMode = "",
+        bool gameModeEmphasis = false)
     {
         _title = title;
         _status = status;
         _humans = humans;
         _requestThumbnail = requestThumbnail;
         _confirmText = confirmText;
+        _gameMode = gameMode;
+        _gameModeEmphasis = gameModeEmphasis;
     }
 
     public override void _Ready()
@@ -109,6 +118,7 @@ public sealed partial class MapInfoSheet : CanvasLayer
         col.AddChild(MakeTitle(HorizontalAlignment.Center, 36));
         col.AddChild(MakeGoldRule(Control.SizeFlags.ShrinkCenter));
         if (_status.Length > 0) col.AddChild(MakeStatus(HorizontalAlignment.Center));
+        if (_gameMode.Length > 0) col.AddChild(MakeGameMode(HorizontalAlignment.Center));
         col.AddChild(MakePlayingAs(HorizontalAlignment.Center));
         _thumbnail = MakeThumbnail();
         col.AddChild(_thumbnail);
@@ -138,6 +148,7 @@ public sealed partial class MapInfoSheet : CanvasLayer
         rail.AddChild(MakeTitle(HorizontalAlignment.Left, 32));
         rail.AddChild(MakeGoldRule(Control.SizeFlags.ShrinkBegin));
         if (_status.Length > 0) rail.AddChild(MakeStatus(HorizontalAlignment.Left));
+        if (_gameMode.Length > 0) rail.AddChild(MakeGameMode(HorizontalAlignment.Left));
         rail.AddChild(MakePlayingAs(HorizontalAlignment.Left));
         rail.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
         rail.AddChild(MakeSheetButton("Cancel", Cancel));
@@ -181,6 +192,24 @@ public sealed partial class MapInfoSheet : CanvasLayer
         status.AddThemeFontSizeOverride("font_size", 22);
         status.AddThemeColorOverride("font_color", UiPalette.InkSoft);
         return status;
+    }
+
+    /// <summary>The game-mode line (issue #56). Same wrapped style as the status
+    /// row, but golded when it's the Rising Tides callout so it reads as a
+    /// distinct, important note rather than ordinary metadata.</summary>
+    private Label MakeGameMode(HorizontalAlignment align)
+    {
+        var mode = new Label
+        {
+            Text = _gameMode,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            HorizontalAlignment = align,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+        };
+        mode.AddThemeFontSizeOverride("font_size", 22);
+        mode.AddThemeColorOverride("font_color",
+            _gameModeEmphasis ? UiPalette.Gold : UiPalette.InkSoft);
+        return mode;
     }
 
     /// <summary>The "who you're playing as" block. Zero humans → a plain

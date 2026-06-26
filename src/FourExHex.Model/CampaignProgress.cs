@@ -166,6 +166,27 @@ public sealed class CampaignProgress
         return level;
     }
 
+    // Rising Tides is introduced from the Soldier tier onward and stays rarer
+    // than freeform (issue #56). The chance is per Soldier+ level.
+    private const int CampaignRisingTidesChance = 10; // %
+
+    /// <summary>Game mode (issue #56) for a campaign level. Rising Tides is a
+    /// later-game complication: never in the Recruit tier, and a rare minority
+    /// (<see cref="CampaignRisingTidesChance"/>% ) of Soldier+ levels.
+    /// Deterministic — same level always yields the same mode — drawn off the
+    /// level number with a magic offset distinct from the map-gen (2671/40503),
+    /// roster (6151/24593) and slot-hash draws so it doesn't track them.
+    /// Integer-only (no floats — Model rule).</summary>
+    public static GameMode ModeForLevel(int level)
+    {
+        ValidateLevel(level);
+        if (DifficultyForLevel(level) < Difficulty.Soldier) return GameMode.Freeform;
+        var rng = new Random(unchecked(level * 8209 + 49157));
+        return rng.Next(100) < CampaignRisingTidesChance
+            ? GameMode.RisingTides
+            : GameMode.Freeform;
+    }
+
     // Per-level map-generation densities (issue #48 / #66). Each campaign level
     // gets a fixed, reproducible tree/mountain/gold mix derived from the level
     // number — independent of the freeform New Game steppers and varied across

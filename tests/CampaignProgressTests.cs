@@ -163,6 +163,59 @@ public class CampaignProgressTests
         Assert.Throws<ArgumentOutOfRangeException>(() => p.MarkWon(level));
         Assert.Throws<ArgumentOutOfRangeException>(() => CampaignProgress.DifficultyForLevel(level));
         Assert.Throws<ArgumentOutOfRangeException>(() => CampaignProgress.LabelFor(level));
+        Assert.Throws<ArgumentOutOfRangeException>(() => CampaignProgress.ModeForLevel(level));
+    }
+
+    // ── Per-level game mode (issue #56) ─────────────────────────────────────
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(64)]
+    [InlineData(150)]
+    [InlineData(255)]
+    public void ModeForLevel_IsDeterministic(int level)
+    {
+        Assert.Equal(CampaignProgress.ModeForLevel(level), CampaignProgress.ModeForLevel(level));
+    }
+
+    [Fact]
+    public void ModeForLevel_RecruitTierIsAlwaysFreeform()
+    {
+        // The sea is a later-game complication — Rising Tides never appears in
+        // the Recruit tier (levels 0..63).
+        for (int level = 0; level < CampaignProgress.TierSize; level++)
+        {
+            Assert.Equal(GameMode.Freeform, CampaignProgress.ModeForLevel(level));
+        }
+    }
+
+    [Fact]
+    public void ModeForLevel_IntroducedInEverySoldierAndAboveTier()
+    {
+        // Rising Tides is introduced at Soldier and present in each higher tier.
+        for (int tier = 1; tier < CampaignProgress.TierCount; tier++)
+        {
+            int start = tier * CampaignProgress.TierSize;
+            int risingTides = 0;
+            for (int level = start; level < start + CampaignProgress.TierSize; level++)
+            {
+                if (CampaignProgress.ModeForLevel(level) == GameMode.RisingTides) risingTides++;
+            }
+            Assert.True(risingTides > 0, $"tier {tier} has no Rising Tides level");
+        }
+    }
+
+    [Fact]
+    public void ModeForLevel_RarerThanFreeformOverall()
+    {
+        int risingTides = 0, freeform = 0;
+        for (int level = 0; level < CampaignProgress.LevelCount; level++)
+        {
+            if (CampaignProgress.ModeForLevel(level) == GameMode.RisingTides) risingTides++;
+            else freeform++;
+        }
+        Assert.True(risingTides > 0);
+        Assert.True(risingTides < freeform, $"Rising Tides ({risingTides}) not rarer than Freeform ({freeform})");
     }
 
     // ── Per-level map-generation densities (issue #48 / #66) ────────────────

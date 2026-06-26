@@ -297,9 +297,14 @@ public partial class Main : Node2D
                 $"mtn={mapGenOptions.MountainDensity} gold={mapGenOptions.GoldDensity} " +
                 $"clump={mapGenOptions.ClumpingFactor} " +
                 $"(campaign={_campaignLevel?.ToString() ?? "no"})");
-            // Campaign always runs Freeform rules; only freeform games honor
-            // the menu's (or FOUREXHEX_MODE's) Rising Tides selection (#56).
-            GameMode mode = _campaignLevel is int ? GameMode.Freeform : GameSettings.Mode;
+            // A campaign level derives its mode from the level (Rising Tides is a
+            // rare Soldier+ complication, issue #56); freeform/diagnostic games
+            // honor the menu's (or FOUREXHEX_MODE's) selection.
+            GameMode mode = _campaignLevel is int campaignModeLevel
+                ? CampaignProgress.ModeForLevel(campaignModeLevel)
+                : GameSettings.Mode;
+            Log.Info(Log.LogCategory.Campaign,
+                $"Main: game mode = {mode} (campaign={_campaignLevel?.ToString() ?? "no"})");
             _state = ProceduralGame.Build(cols, rows, _players, seed, mapGenOptions, mode);
             _maxTurnNumber = quickDiagMode ? 200
                 : fullDiagMode ? 500

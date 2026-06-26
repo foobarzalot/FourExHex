@@ -29,6 +29,10 @@ public partial class CampaignPanel : Panel
     private static readonly Color LostOutline = UiPalette.Accent;
     private static readonly Color UntriedOutline = UiPalette.Line;
     private static readonly Color UntriedInk = UiPalette.InkMute;
+    // Rising Tides level marker (issue #56): a blue water-drop glyph drawn
+    // BEHIND the level number. Mid-blue — light enough to read as water, dark
+    // enough that the number (light/accent ink) still reads clearly on top.
+    private static readonly Color RisingTidesMarkerColor = new Color("2f6296");
 
     private static readonly Font SerifFont =
         GD.Load<FontFile>("res://fonts/DMSerifDisplay-Regular.ttf");
@@ -376,6 +380,14 @@ public partial class CampaignPanel : Panel
                 points.CopyTo(loop, 0);
                 loop[points.Length] = points[0];
                 DrawPolyline(loop, outline, outlineWidth, antialiased: true);
+
+                // Rising Tides marker (issue #56): a blue filled circle drawn
+                // BEHIND the level number (before the label) so the mode is
+                // spottable on the grid while the digits still read on top.
+                if (CampaignProgress.ModeForLevel(level) == GameMode.RisingTides)
+                {
+                    DrawCircle(new Vector2(cx, cy), HexW * 0.30f, RisingTidesMarkerColor);
+                }
 
                 string label = CampaignProgress.LabelFor(level);
                 float baseline = cy - font.GetHeight(fontSize) / 2f + font.GetAscent(fontSize);
