@@ -10,22 +10,22 @@ using System.Linq;
 ///   - <see cref="Capital"/>       -> 1
 ///   - <see cref="Tree"/> / <see cref="Grave"/> / null -> 0
 ///   - any unknown subtype        -> throws
-/// A <see cref="Unit"/> or <see cref="Tower"/> standing on a mountain
-/// (issue #37) adds <see cref="MountainBonus"/> (+1) on top of its
-/// contribution — high ground. Units, towers, and capitals all radiate
-/// their (possibly mountain-boosted) contribution to adjacent
-/// same-territory tiles. Contributions don't stack — the max single
-/// value wins.
+/// Any defender — a <see cref="Unit"/>, <see cref="Tower"/>, or
+/// <see cref="Capital"/> — standing on a mountain (issue #37, #81) adds
+/// <see cref="MountainBonus"/> (+1) on top of its contribution — high
+/// ground. Units, towers, and capitals all radiate their (possibly
+/// mountain-boosted) contribution to adjacent same-territory tiles.
+/// Contributions don't stack — the max single value wins.
 /// </summary>
 public static class DefenseRules
 {
     /// <summary>
-    /// Extra defense (issue #37) a <see cref="Unit"/> or <see cref="Tower"/>
-    /// gains from standing on a mountain — the high-ground bonus. A mountain
-    /// gives no defense on its own (an empty mountain contributes nothing); only
-    /// an occupant earns the bonus, and that boosted value radiates to
-    /// same-territory neighbors like any other defender. Contributions still
-    /// don't stack — the max wins.
+    /// Extra defense (issue #37, #81) any defender — a <see cref="Unit"/>,
+    /// <see cref="Tower"/>, or <see cref="Capital"/> — gains from standing on a
+    /// mountain: the high-ground bonus. A mountain gives no defense on its own
+    /// (an empty mountain contributes nothing); only a defending occupant earns
+    /// the bonus, and that boosted value radiates to same-territory neighbors
+    /// like any other defender. Contributions still don't stack — the max wins.
     /// </summary>
     public const int MountainBonus = 1;
 
@@ -53,13 +53,16 @@ public static class DefenseRules
 
     /// <summary>
     /// A tile's total defense contribution: its occupant's base value plus the
-    /// mountain high-ground bonus when a <see cref="Unit"/> or <see cref="Tower"/>
-    /// stands on a mountain. An empty mountain contributes nothing.
+    /// mountain high-ground bonus when any defender (a unit, tower, or capital —
+    /// anything with a positive contribution) stands on a mountain. An empty
+    /// mountain, or one holding only a tree/grave, contributes nothing.
     /// </summary>
     private static int ContributionAt(HexTile tile)
     {
         int contribution = ContributionOf(tile.Occupant);
-        if (tile.IsMountain && (tile.Occupant is Unit || tile.Occupant is Tower))
+        // Only a real defender (contribution > 0) earns the high-ground bonus;
+        // an empty mountain — or one with just a tree/grave — adds nothing.
+        if (tile.IsMountain && contribution > 0)
             contribution += MountainBonus;
         return contribution;
     }

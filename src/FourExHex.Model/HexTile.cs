@@ -64,10 +64,12 @@ public class HexTile
     /// this <c>true</c> sets <see cref="Feature"/> to
     /// <see cref="TerrainFeature.Mountain"/>, which clears any gold. Trees and
     /// graves now coexist with mountains (issue #81): trees spread onto them and
-    /// a unit dying on a mountain leaves a grave. Mountains never hold a capital,
-    /// and a Captain/Commander can capture one without destroying it. No income
-    /// behavior of its own. Authored via the map editor and scattered as mountain
-    /// ranges by <c>MapGenerator</c> when its mountain density is &gt; 0 (issue #48).
+    /// a unit dying on a mountain leaves a grave. A capital may also sit on a
+    /// mountain (issue #81), gaining the same +1 high-ground defense as any
+    /// occupant, and a Captain/Commander can capture one without destroying it.
+    /// No income behavior of its own. Authored via the map editor and scattered
+    /// as mountain ranges by <c>MapGenerator</c> when its mountain density is
+    /// &gt; 0 (issue #48).
     /// </summary>
     public bool IsMountain
     {

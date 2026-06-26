@@ -24,10 +24,11 @@ public static class CapitalPlacer
 {
     /// <summary>
     /// Returns the coord where a new capital should be placed, or null if
-    /// the territory is too small (&lt; 2) to deserve one. A
-    /// non-null return is guaranteed whenever <paramref name="coords"/>
-    /// has &gt;= 2 entries that are Empty/Unit/Grave/Tree/Tower — only
-    /// an all-Capital territory (impossible in normal play) returns null.
+    /// the territory is too small (&lt; 2) to deserve one. A non-null return
+    /// is guaranteed whenever <paramref name="coords"/> has &gt;= 2 entries
+    /// that are Empty/Unit/Grave/Tree/Tower (mountains included — capitals may
+    /// sit on them, issue #81) — only an all-Capital territory (impossible in
+    /// normal play) returns null.
     /// </summary>
     public static HexCoord? Choose(IReadOnlyCollection<HexCoord> coords, HexGrid grid)
     {
@@ -43,10 +44,8 @@ public static class CapitalPlacer
         {
             HexTile? tile = grid.Get(c);
             if (tile == null) continue;
-            // Capitals are never placed on mountains (issue #37). A region
-            // made entirely of mountains yields no candidate and Choose
-            // returns null — the reconciler then leaves it capital-less.
-            if (tile.IsMountain) continue;
+            // Capitals may sit on mountains (issue #81): a mountain tile is an
+            // ordinary candidate, tiered by its occupant like any other.
 
             if (tile.Occupant == null)
             {

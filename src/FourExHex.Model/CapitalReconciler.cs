@@ -90,13 +90,10 @@ public static class CapitalReconciler
 
             if (inheritedOldCaps.Count == 0)
             {
-                // No inherited capital — place a fresh one if the territory
-                // is big enough. May stomp a unit. Choose returns null when
-                // every tile is a mountain (issue #37): a mountains-only
-                // region has no legal capital site, so it stays capital-less
-                // and behaves like singletons (no treasury / income / upkeep,
-                // skipped by AI), though it still renders in the owner's color
-                // and radiates its mountain defense.
+                // No inherited capital — place a fresh one if the territory is
+                // big enough. May stomp a unit. Any 2+ region now has a legal
+                // site (mountains included, issue #81), so Choose returns null
+                // only for the impossible all-Capital case — guarded defensively.
                 chosenCapital = CapitalPlacer.Choose(newT.Coords, grid);
                 if (chosenCapital.HasValue)
                 {
@@ -107,8 +104,8 @@ public static class CapitalReconciler
                 else
                 {
                     Log.Debug(Log.LogCategory.Turn,
-                        $"[reconcile] mountains-only region owner={newT.Owner.Index} " +
-                        $"size={newT.Coords.Count} left capital-less (no legal capital site)");
+                        $"[reconcile] region owner={newT.Owner.Index} " +
+                        $"size={newT.Coords.Count} left capital-less (no placeable tile)");
                 }
             }
             else if (inheritedOldCaps.Count == 1)

@@ -755,10 +755,10 @@ public class MapEditPaintTests
     }
 
     [Fact]
-    public void PaintMountainToggle_OnCapital_IsNoop()
+    public void PaintMountainToggle_OnCapital_SetsMountainKeepsCapital()
     {
-        // Build a 2-tile territory so a capital can exist, move the capital
-        // onto the target tile, then try to paint it a mountain.
+        // Capitals now coexist with mountains (issue #81 followup): painting a
+        // mountain onto a capital tile sets the flag and leaves the capital.
         (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
         var color = PlayerId.FromIndex(0);
         var a = HexCoord.FromOffset(2, 2);
@@ -770,7 +770,7 @@ public class MapEditPaintTests
 
         MapEditPaint.PaintMountainToggle(grid, water, territories, Cols, Rows, a);
 
-        Assert.False(grid.Get(a)!.IsMountain);              // refused
+        Assert.True(grid.Get(a)!.IsMountain);               // mountain set
         Assert.IsType<Capital>(grid.Get(a)!.Occupant);      // capital intact
     }
 
@@ -866,8 +866,10 @@ public class MapEditPaintTests
     }
 
     [Fact]
-    public void PaintCapital_OnMountain_IsNoop()
+    public void PaintCapital_OnMountain_PlacesCapitalKeepsMountain()
     {
+        // Capitals now sit on mountains (issue #81 followup): painting a capital
+        // onto a mountain tile places it and the mountain flag stays.
         (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
         var color = PlayerId.FromIndex(0);
         var a = HexCoord.FromOffset(2, 2);
@@ -884,10 +886,10 @@ public class MapEditPaintTests
         territories = MapEditPaint.PaintCapital(
             grid, water, territories, Cols, Rows, mountainCoord);
 
-        Assert.Null(grid.Get(mountainCoord)!.Occupant);   // no capital placed on the mountain
-        Assert.True(grid.Get(mountainCoord)!.IsMountain);
-        // The capital stayed put on its original tile.
-        Assert.Equal(capCoord, territories.Single(t => t.Owner == color).Capital!.Value);
+        Assert.IsType<Capital>(grid.Get(mountainCoord)!.Occupant);   // capital placed on the mountain
+        Assert.True(grid.Get(mountainCoord)!.IsMountain);            // mountain kept
+        // The capital moved to the mountain tile.
+        Assert.Equal(mountainCoord, territories.Single(t => t.Owner == color).Capital!.Value);
     }
 
     [Fact]

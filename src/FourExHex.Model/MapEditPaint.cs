@@ -76,8 +76,7 @@ public static class MapEditPaint
         HexTile? tile = grid.Get(coord);
         if (tile == null) return previousTerritories;
         if (tile.Occupant is Capital) return previousTerritories;
-        // Capitals are never placed on mountains (issue #37).
-        if (tile.IsMountain) return previousTerritories;
+        // Capitals may sit on mountains (issue #81) — the flag is left in place.
 
         int territoryIdx = -1;
         for (int i = 0; i < previousTerritories.Count; i++)
@@ -287,13 +286,11 @@ public static class MapEditPaint
     /// <summary>
     /// Toggle the <see cref="HexTile.IsMountain"/> flag on the land tile at
     /// <paramref name="coord"/> (issue #37). Mountains are high-ground terrain
-    /// that now coexist with trees and graves (issue #81): turning a mountain ON
-    /// leaves any <see cref="Tree"/> / <see cref="Grave"/> / <see cref="Tower"/>
-    /// occupant in place. Mountains are mutually exclusive with
-    /// <see cref="HexTile.IsGold"/> (issue #81): turning a mountain ON clears any
-    /// gold on the tile (and, symmetrically, <see cref="PaintGoldToggle"/> clears
-    /// the mountain when it places gold). A tile holding a <see cref="Capital"/>
-    /// is refused (no-op) — capitals never coexist with a mountain.
+    /// that now coexist with any occupant — trees, graves, towers, and capitals
+    /// (issue #81): turning a mountain ON leaves the occupant in place. Mountains
+    /// are mutually exclusive with <see cref="HexTile.IsGold"/> (issue #81):
+    /// turning a mountain ON clears any gold on the tile (and, symmetrically,
+    /// <see cref="PaintGoldToggle"/> clears the mountain when it places gold).
     /// <see cref="HexTile.Owner"/> is preserved (a mountain may be owned by any
     /// player or neutral). No-op out of bounds or on water. The territory
     /// partition is unaffected, so the previous list is returned unchanged.
@@ -309,9 +306,6 @@ public static class MapEditPaint
         if (!InBounds(coord, cols, rows)) return previousTerritories;
         HexTile? tile = grid.Get(coord);
         if (tile == null) return previousTerritories;
-
-        // Capitals never coexist with a mountain — refuse rather than stomp.
-        if (tile.Occupant is Capital) return previousTerritories;
 
         if (tile.IsMountain)
         {

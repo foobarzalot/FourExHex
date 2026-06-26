@@ -127,6 +127,34 @@ public class MountainTileTests
     }
 
     [Fact]
+    public void Defense_CapitalOnMountain_IsTwo()
+    {
+        // A capital (1) on a mountain gets the +1 high-ground bonus like any
+        // other defender (issue #81 followup) → 2.
+        HexGrid grid = BuildRow(0, 0, Red);
+        HexTile tile = grid.Get(new HexCoord(0, 0))!;
+        tile.IsMountain = true;
+        tile.Occupant = new Capital();
+        Territory red = RowTerritory(0, 0, Red, capital: new HexCoord(0, 0));
+
+        Assert.Equal(2, DefenseRules.Defense(new HexCoord(0, 0), grid, red));
+    }
+
+    [Fact]
+    public void Defense_CapitalOnMountain_RadiatesBoostedValueToNeighbor()
+    {
+        // Capital on mountain (0,0) → 2; the boosted value radiates to the
+        // same-territory empty neighbor (1,0).
+        HexGrid grid = BuildRow(0, 1, Red);
+        HexTile tile = grid.Get(new HexCoord(0, 0))!;
+        tile.IsMountain = true;
+        tile.Occupant = new Capital();
+        Territory red = RowTerritory(0, 1, Red, capital: new HexCoord(0, 0));
+
+        Assert.Equal(2, DefenseRules.Defense(new HexCoord(1, 0), grid, red));
+    }
+
+    [Fact]
     public void Defense_UnitOnMountain_RadiatesBoostedValueToNeighbor()
     {
         // Soldier on mountain (0,0) → 3; the boosted value radiates to the
@@ -281,67 +309,54 @@ public class MountainTileTests
         Assert.IsType<Grave>(grid.Get(new HexCoord(1, 0))!.Occupant); // grave on plain land
     }
 
-    // --- Capital placement skips mountains -------------------------------
+    // --- Capital placement allowed on mountains (issue #81 followup) ------
 
     [Fact]
-    public void CapitalPlacer_SkipsMountainTiles()
+    public void CapitalPlacer_PlacesOnMountainTiles()
     {
+        // Capitals now sit on mountains like any other terrain. With a mountain
+        // at (0,0) and plain at (1,0), both empty, the lex-min (0,0) is chosen.
         HexGrid grid = BuildRow(0, 1, Red);
-        grid.Get(new HexCoord(0, 0))!.IsMountain = true;   // not a valid capital site
+        grid.Get(new HexCoord(0, 0))!.IsMountain = true;
         var coords = new[] { new HexCoord(0, 0), new HexCoord(1, 0) };
 
         HexCoord? chosen = CapitalPlacer.Choose(coords, grid);
 
-        Assert.Equal(new HexCoord(1, 0), chosen);
+        Assert.Equal(new HexCoord(0, 0), chosen);
     }
 
     [Fact]
-    public void CapitalPlacer_AllMountains_ReturnsNull()
+    public void CapitalPlacer_AllMountains_PlacesCapital()
     {
+        // An all-mountain region is now a normal territory: it gets a capital
+        // (lex-min empty tile), not null.
         HexGrid grid = BuildRow(0, 1, Red);
         grid.Get(new HexCoord(0, 0))!.IsMountain = true;
         grid.Get(new HexCoord(1, 0))!.IsMountain = true;
         var coords = new[] { new HexCoord(0, 0), new HexCoord(1, 0) };
 
-        Assert.Null(CapitalPlacer.Choose(coords, grid));
+        Assert.Equal(new HexCoord(0, 0), CapitalPlacer.Choose(coords, grid));
     }
 
     [Fact]
-    public void Reconcile_MountainsOnlyRegion_HasNoCapital()
+    public void Reconcile_MountainsOnlyRegion_FormsCapital()
     {
-        // A 2-tile owned region made entirely of mountains is not a real
-        // territory: it stays capital-less (acts as singletons).
+        // A 2-tile owned region made entirely of mountains is now a real
+        // territory and gets a capital like any other (issue #81 followup).
         HexGrid grid = BuildRow(0, 1, Red);
         grid.Get(new HexCoord(0, 0))!.IsMountain = true;
         grid.Get(new HexCoord(1, 0))!.IsMountain = true;
-
-        IReadOnlyList<Territory> reconciled = TerritoryFinder.Recompute(
-            grid, new List<Territory>(), treasury: null);
-
-        Territory redRegion = reconciled.Single(t => t.Owner == Red);
-        Assert.False(redRegion.HasCapital);
-        Assert.Equal(2, redRegion.Size);
-        // No capital occupant was placed on the grid either.
-        Assert.Null(grid.Get(new HexCoord(0, 0))!.Occupant);
-        Assert.Null(grid.Get(new HexCoord(1, 0))!.Occupant);
-    }
-
-    [Fact]
-    public void Reconcile_MountainRegionGainsLand_FormsCapital()
-    {
-        // Two mountains + one plain land tile: now there IS a legal capital
-        // site, so a real territory forms.
-        HexGrid grid = BuildRow(0, 2, Red);
-        grid.Get(new HexCoord(0, 0))!.IsMountain = true;
-        grid.Get(new HexCoord(1, 0))!.IsMountain = true;
-        // (2,0) is plain land.
 
         IReadOnlyList<Territory> reconciled = TerritoryFinder.Recompute(
             grid, new List<Territory>(), treasury: null);
 
         Territory redRegion = reconciled.Single(t => t.Owner == Red);
         Assert.True(redRegion.HasCapital);
-        Assert.Equal(new HexCoord(2, 0), redRegion.Capital!.Value);   // capital on the only land tile
+        Assert.Equal(2, redRegion.Size);
+        // A capital occupant was placed on the mountain, which keeps its flag.
+        HexTile capTile = grid.Get(redRegion.Capital!.Value)!;
+        Assert.IsType<Capital>(capTile.Occupant);
+        Assert.True(capTile.IsMountain);
     }
 
     // --- Snapshot deep-copy (undo/redo) ----------------------------------
