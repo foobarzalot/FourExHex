@@ -1985,9 +1985,9 @@ keys off that list, not a fixed 6:
   roster (it would hang every AI turn).
 - **`Player.BuildAllHumanRoster()`** (all six Human) is unchanged — used by the
   tutorial builder's preview/record harness.
-- **`Player.BuildCampaignRoster(level)`** builds the full 6-slot campaign roster
-  *from the level alone* (see *Campaign mode*), so a campaign launch never reads
-  or writes the freeform `GameSettings.PlayerKinds`.
+- **`Player.BuildCampaignRoster(level)`** builds the level's deterministic 2–6
+  player campaign roster *from the level alone* (#80; see *Campaign mode*), so a
+  campaign launch never reads or writes the freeform `GameSettings.PlayerKinds`.
 - **Validation.** `MapRosterRules.ValidateForSave(territories, kinds)` (pure,
   in Model) is the editor's save gate: a color owning land must be active, every
   active color must own land, and ≥2 must be active. See *Map editor*.
@@ -2706,8 +2706,11 @@ menu's **Campaign** button, with persistent per-level win/loss
 tracking. Levels split into four tiers of 64 that line up with the
 high hex digit and map straight onto the existing `Difficulty` enum:
 Recruit `00–3F`, Soldier `40–7F`, Captain `80–BF`, Commander `C0–FF`.
-Every level is one Human + five Computer on a procedural map (the human's
-color is the level's `HumanSlotForLevel`, #74); the **human's difficulty
+Every level is one Human + 1–5 Computer on a procedural map: the player count
+and color set are a **deterministic per-level roster** (issue #80 — uniform-ish
+2–6 biased toward more players, any color subset, human at one of them; see
+*Player roster* / `CampaignProgress` below), so not every level fields all six
+colors but the same level always plays the same roster. The **human's difficulty
 handicap = the tier** (AIs stay Soldier), and the level→seed mapping is identity
 (`MasterSeed = level`). Same handicap machinery as the per-player difficulty
 lever — no new rules.
@@ -2723,12 +2726,16 @@ graph:
     (terminal), `WonCount`, `TierWonCount`, `NextUp` (lowest non-won,
     null when all won), and the statics `DifficultyForLevel`
     (`(Difficulty)(level / 64)`), `LabelFor` (`"4F"`), `SeedForLevel`
-    (identity), and `HumanSlotForLevel(level, playerCount)` (issue #74 —
-    a deterministic, stable-forever integer hash mod `playerCount` giving
-    which roster slot the human plays, spread across all real colors and
-    never neutral; same level always yields the same slot, so the game
-    stays byte-identical, only the human's starting color varies across
-    the ladder). **Mark-at-launch semantics:** starting a level marks it
+    (identity), `HumanSlotForLevel(level, playerCount)` (issue #74 — a
+    deterministic, stable-forever integer hash mod `playerCount` giving the
+    human's index within the active roster), and the **per-level roster**
+    (issue #80) `PlayerCountForLevel` (2–6, weighted toward more players),
+    `ActiveColorSlotsForLevel` (sorted distinct color subset), and
+    `HumanColorSlotForLevel` (`= active[HumanSlotForLevel(level, count)]`, the
+    human's actual color slot). All draw from one seeded `Random` per level
+    (integer-only; offset decorrelated from the seed and the terrain draw), so
+    a level's players are fixed forever and its terrain is unchanged. **Mark-at-launch
+    semantics:** starting a level marks it
     Lost so an abandon or crash already counts as an attempt with no
     extra bookkeeping; winning flips it to Won, which a later loss can't
     revert.
@@ -2753,9 +2760,9 @@ graph:
     `PrepareLaunch(level)` sets `GameSettings.CampaignLevel` + `MasterSeed` and
     marks-attempted, shared by both launch entry points. It does **not** write
     the roster: `Main` builds the campaign roster from the level via
-    `Player.BuildCampaignRoster(level)` (human at
-    `CampaignProgress.HumanSlotForLevel(level, count)` with the tier difficulty,
-    rest Computer/Soldier). Keeping the roster out of `GameSettings.PlayerKinds`
+    `Player.BuildCampaignRoster(level)` — the level's 2–6 active color slots
+    (#80), human at `HumanColorSlotForLevel(level)` with the tier difficulty,
+    rest Computer/Soldier. Keeping the roster out of `GameSettings.PlayerKinds`
     means a campaign launch can't clobber the freeform New Game default for the
     session (issue #70 bleed fix).
   - `CampaignPanel` (`scripts/CampaignPanel.cs`) — the campaign screen:
@@ -2772,10 +2779,12 @@ graph:
     landing/play-config), rebuilt on an orientation flip like the
     play-config panel. Tapping a hex opens a `ConfirmModal` (level, tier,
     status, Play/Cancel); Play calls `CampaignStore.PrepareLaunch` and
-    changes scene to `main.tscn`. The confirm sheet also shows a
-    "You will be playing as the &lt;Color&gt; player." line (issue #74),
-    tinted in that slot's color via `HumanSlotForLevel`, so the human
-    knows their color before launching. The one-shot static
+    changes scene to `main.tscn`. Tapping a hex opens the shared `MapInfoSheet`
+    (via `CampaignConfirmSheet.Create`) whose **thumbnail previews the level's
+    actual roster** (#80) and whose "You will be playing as the &lt;Color&gt;
+    player." line (issue #74) is tinted in the human's color via
+    `HumanColorSlotForLevel`, so the human knows their color before launching.
+    The one-shot static
     `MainMenuScene.OpenCampaignOnArrival` makes the menu open straight to
     the campaign screen when returning from a campaign game.
 
@@ -4487,7 +4496,7 @@ scripts/  (split: see the three source trees listed just above)
 ├─ Grave.cs               ─
 ├─ Territory.cs           ─ + TerritoryExtensions
 ├─ Player.cs              ─ + PlayerKind {Human,Computer,None}; BuildRoster
-│                           (skips None), BuildCampaignRoster (#70)
+│                           (skips None), BuildCampaignRoster (#70/#80)
 ├─ MapRosterRules.cs      ─ pure editor-save validation (active⇔owns-land,
 │                           ≥2 players) for baked map rosters (#70)
 ├─ TurnState.cs           ─
