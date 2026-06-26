@@ -167,14 +167,15 @@ public sealed partial class MapEditorPanel : Node2D
     /// drops it into the maps directory so a Load Map entry point can
     /// tell it apart from an in-progress game.
     /// </summary>
-    public GameState BuildSaveState() =>
+    public GameState BuildSaveState(GameMode mode = GameMode.Freeform) =>
         new GameState(
             _grid,
             _territories,
             Players,
             new TurnState(Players, currentPlayerIndex: 0, turnNumber: 0),
             new Treasury(),
-            _water);
+            _water,
+            mode);
 
     private void OnCoordHovered(HexCoord? coord)
     {

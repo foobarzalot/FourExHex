@@ -262,7 +262,12 @@ public partial class Main : Node2D
                 _players,
                 new TurnState(_players),
                 new Treasury(),
-                pendingLoad.State.WaterCoords);
+                pendingLoad.State.WaterCoords,
+                // Carry the authored game mode so a Rising Tides starting map
+                // plays as Rising Tides (issue #56), not Freeform.
+                pendingLoad.State.Mode);
+            Log.Info(Log.LogCategory.Tide,
+                $"Main: starting map \"{pendingLoad.SlotName}\" mode={pendingLoad.State.Mode}");
             _maxTurnNumber = quickDiagMode ? 200
                 : fullDiagMode ? 500
                 : int.MaxValue;

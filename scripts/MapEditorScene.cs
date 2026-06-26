@@ -27,6 +27,11 @@ public partial class MapEditorScene : Node2D
     private PlayerKind[] _rosterKinds = null!;
     private Difficulty[] _rosterDifficulties = null!;
     private LoadedSave? _pendingMapToLoad;
+    // Game mode baked into a saved map (issue #56): from the New Map selector
+    // for a fresh map, from the file for a loaded one. Threaded into
+    // BuildSaveState so an authored Rising Tides map round-trips and plays as
+    // Rising Tides. Editing itself is mode-agnostic (no turns advance).
+    private GameMode _mapMode = GameMode.Freeform;
 
     public override void _Ready()
     {
@@ -126,7 +131,7 @@ public partial class MapEditorScene : Node2D
     {
         if (_saveModal == null) return;
         string name = SaveStore.SanitizeSlotName(rawName);
-        GameState state = _panel.BuildSaveState();
+        GameState state = _panel.BuildSaveState(_mapMode);
 
         // Validate the painted board against the chosen roster (issue #70): a
         // color that owns land must be active, every active color must own land,
@@ -185,6 +190,7 @@ public partial class MapEditorScene : Node2D
             // gates to its colors, Generate paints only them, and a re-save
             // preserves them.
             DeriveRosterFromLoad(loaded, out _rosterKinds, out _rosterDifficulties);
+            _mapMode = loaded.State.Mode; // preserve mode on re-save (#56)
             _players = BuildEditorPreviewRoster();
             _panel.Players = _players;
             _panel.LoadFromMap(loaded);
@@ -211,7 +217,9 @@ public partial class MapEditorScene : Node2D
         {
             _pendingMapToLoad = _saveStore.LoadMap(mapName);
             DeriveRosterFromLoad(_pendingMapToLoad, out _rosterKinds, out _rosterDifficulties);
-            Log.Info(Log.LogCategory.Display, $"MapEditor: load map \"{mapName}\" for editing");
+            _mapMode = _pendingMapToLoad.State.Mode; // preserve mode on re-save (#56)
+            Log.Info(Log.LogCategory.Display,
+                $"MapEditor: load map \"{mapName}\" for editing (mode={_mapMode})");
             return;
         }
 
@@ -220,8 +228,9 @@ public partial class MapEditorScene : Node2D
             _rosterKinds = kinds;
             _rosterDifficulties = req.Difficulties
                 ?? Enumerable.Repeat(Difficulty.Soldier, kinds.Length).ToArray();
+            _mapMode = GameSettings.Mode; // from the New Map page's Game Mode selector (#56)
             Log.Info(Log.LogCategory.Display,
-                $"MapEditor: new map kinds=[{string.Join(",", _rosterKinds)}]");
+                $"MapEditor: new map kinds=[{string.Join(",", _rosterKinds)}] mode={_mapMode}");
             return;
         }
 

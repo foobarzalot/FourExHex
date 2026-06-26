@@ -88,12 +88,11 @@ public class SaveSerializerTests
     [Fact]
     public void SerializeMap_RoundTripsRisingTidesMode()
     {
-        // Proves the *serialization* layer carries a starting map's game mode:
-        // if the editor were to author a Rising Tides map, the save format
-        // would preserve it. (The end-to-end gap is elsewhere — the editor's
-        // MapEditorPanel.BuildSaveState and Main's starting-map load path both
-        // construct the GameState with no mode arg, so they force Freeform.
-        // This test isolates that the serializer is NOT the blocker.)
+        // The serialization layer carries a starting map's game mode end to
+        // end: SerializeMap → Deserialize preserves it. The editor authoring
+        // path (MapEditorPanel.BuildSaveState ← MapEditorScene._mapMode) and
+        // Main's starting-map load both thread the mode through (issue #56), so
+        // this guards the format they rely on.
         var red = new Player("Red", PlayerId.FromIndex(0), PlayerKind.Human);
         var blue = new Player("Blue", PlayerId.FromIndex(1), PlayerKind.Computer);
         var players = new List<Player> { red, blue };
