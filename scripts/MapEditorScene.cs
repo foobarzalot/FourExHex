@@ -165,11 +165,15 @@ public partial class MapEditorScene : Node2D
     private void OpenLoadDialog()
     {
         if (_loadDialog == null) return;
+        // Match the menu's Load Map picker (issue #70): thumbnail preview from
+        // the maps directory and a short-name label.
         _loadDialog.ShowSlots(
             _saveStore.ListMaps(),
             "No maps found.",
-            info => $"{info.SlotName} — {SlotPickerDialog.FormatTimestamp(info.SavedAtUnix)}",
-            OnLoadSlotPressed);
+            info => info.SlotName,
+            OnLoadSlotPressed,
+            thumbnailStore: _saveStore,
+            previewMaps: true);
     }
 
     private void OnLoadSlotPressed(string slotName)
