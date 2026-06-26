@@ -24,7 +24,7 @@ public static class CampaignConfirmSheet
         string status = $"{CampaignProgress.DifficultyForLevel(level)} tier · {statusText}";
 
         // The single color the human plays this level (deterministic per level).
-        int humanSlot = CampaignProgress.HumanSlotForLevel(level, GameSettings.PlayerConfig.Length);
+        int humanSlot = CampaignProgress.HumanColorSlotForLevel(level);
         (string colorName, string colorHex) = GameSettings.PlayerConfig[humanSlot];
         var humans = new List<MapInfoSheet.HumanIdentity>
         {
@@ -35,8 +35,12 @@ public static class CampaignConfirmSheet
             title,
             status,
             humans,
-            // The level's fixed terrain features (issue #48) — derived from the
-            // level, not the freeform New Game toggles — so the preview matches.
-            thumb => thumb.RequestRandom(seed, CampaignProgress.MapGenOptionsForLevel(level)));
+            // Preview the exact board the level launches: its per-level roster
+            // (2–6 colors) and fixed terrain features (#48) — not the freeform
+            // roster/toggles — so the thumbnail matches the game.
+            thumb => thumb.RequestRandom(
+                seed,
+                CampaignProgress.MapGenOptionsForLevel(level),
+                Player.BuildCampaignRoster(level)));
     }
 }

@@ -81,9 +81,10 @@ public class PlayerRosterTests
     [Fact]
     public void BuildCampaignRoster_IsDerivedFromLevel_NotFreeformPlayerKinds()
     {
-        // The campaign roster must come from the level alone, so playing a
-        // campaign level never bleeds into the freeform New Game default
-        // (issue #70). Poison the freeform kinds to prove independence.
+        // The campaign roster must come from the level alone — its size, color
+        // slots, and human are the level's deterministic per-level roster, and
+        // playing a level never bleeds into the freeform New Game default
+        // (#70). Poison the freeform kinds to prove independence.
         PlayerKind[] savedKinds = GameSettings.PlayerKinds;
         try
         {
@@ -93,22 +94,23 @@ public class PlayerRosterTests
                 PlayerKind.None, PlayerKind.None, PlayerKind.Human,
             };
             int level = 0x43;
-            int count = GameSettings.PlayerConfig.Length;
-            int expectedHuman = CampaignProgress.HumanSlotForLevel(level, count);
+            int[] activeSlots = CampaignProgress.ActiveColorSlotsForLevel(level);
+            int humanSlot = CampaignProgress.HumanColorSlotForLevel(level);
 
             List<Player> roster = Player.BuildCampaignRoster(level);
 
-            Assert.Equal(count, roster.Count); // campaign is always full 6-player
+            // A compact 2–6 roster over exactly the level's active color slots.
+            Assert.Equal(activeSlots, roster.ConvertAll(p => p.Id.Index).ToArray());
+            Assert.InRange(roster.Count, 2, 6);
             Assert.Single(roster, p => p.Kind == PlayerKind.Human);
-            for (int i = 0; i < count; i++)
+            foreach (Player p in roster)
             {
-                Assert.Equal(i, roster[i].Id.Index);
+                bool isHuman = p.Id.Index == humanSlot;
+                Assert.Equal(isHuman ? PlayerKind.Human : PlayerKind.Computer, p.Kind);
                 Assert.Equal(
-                    i == expectedHuman ? PlayerKind.Human : PlayerKind.Computer,
-                    roster[i].Kind);
+                    isHuman ? CampaignProgress.DifficultyForLevel(level) : Difficulty.Soldier,
+                    p.Difficulty);
             }
-            Assert.Equal(CampaignProgress.DifficultyForLevel(level), roster[expectedHuman].Difficulty);
-            Assert.Equal(Difficulty.Soldier, roster[(expectedHuman + 1) % count].Difficulty);
         }
         finally
         {

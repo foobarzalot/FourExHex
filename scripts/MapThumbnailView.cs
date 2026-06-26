@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Godot;
 
@@ -110,14 +111,22 @@ public partial class MapThumbnailView : Control
 
     /// <summary>Preview the board for an explicit set of generation options —
     /// used by the campaign confirm sheet, which derives its level's fixed
-    /// terrain features rather than reading the freeform toggles.</summary>
-    public void RequestRandom(int seed, MapGenOptions options)
+    /// terrain features rather than reading the freeform toggles. Uses the
+    /// freeform roster (<see cref="Player.BuildRoster"/>).</summary>
+    public void RequestRandom(int seed, MapGenOptions options) =>
+        RequestRandom(seed, options, Player.BuildRoster());
+
+    /// <summary>Preview the board for an explicit roster — so a campaign level's
+    /// preview shows its actual 2–6 player color set (issue: per-level rosters),
+    /// not the freeform roster.</summary>
+    public void RequestRandom(int seed, MapGenOptions options, IReadOnlyList<Player> roster)
     {
         int token = ++_renderToken;
         Log.Debug(Log.LogCategory.Display,
             $"MapThumbnail: request random seed={SeedFormat.ToHex(seed)} token={token} " +
-            $"trees={options.TreeDensity} mtn={options.MountainDensity} gold={options.GoldDensity}");
-        _ = RenderAsync(() => ProceduralGame.Build(BoardCols, BoardRows, Player.BuildRoster(), seed, options),
+            $"players={roster.Count} trees={options.TreeDensity} " +
+            $"mtn={options.MountainDensity} gold={options.GoldDensity}");
+        _ = RenderAsync(() => ProceduralGame.Build(BoardCols, BoardRows, roster, seed, options),
             $"random seed={SeedFormat.ToHex(seed)}", token);
     }
 

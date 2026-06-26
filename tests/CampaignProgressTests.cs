@@ -341,4 +341,86 @@ public class CampaignProgressTests
         Assert.Throws<ArgumentOutOfRangeException>(
             () => CampaignProgress.HumanSlotForLevel(0, playerCount));
     }
+
+    // --- Per-level roster (deterministic player count + color set) -----------
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(42)]
+    [InlineData(255)]
+    public void PlayerCountForLevel_IsDeterministic(int level)
+    {
+        Assert.Equal(
+            CampaignProgress.PlayerCountForLevel(level),
+            CampaignProgress.PlayerCountForLevel(level));
+    }
+
+    [Fact]
+    public void PlayerCountForLevel_InRange_AndVariesAcrossLadder()
+    {
+        var counts = new HashSet<int>();
+        for (int level = 0; level < CampaignProgress.LevelCount; level++)
+        {
+            int n = CampaignProgress.PlayerCountForLevel(level);
+            Assert.InRange(n, 2, 6);
+            counts.Add(n);
+        }
+        // Every count 2..6 should occur somewhere on the ladder.
+        Assert.Equal(new HashSet<int> { 2, 3, 4, 5, 6 }, counts);
+    }
+
+    [Fact]
+    public void PlayerCountForLevel_BiasesTowardMorePlayers()
+    {
+        // Counts should descend in frequency across the ladder: 6 the plurality,
+        // then 5, 4, 3, with 2 the least common.
+        var freq = new int[7];
+        for (int level = 0; level < CampaignProgress.LevelCount; level++)
+        {
+            freq[CampaignProgress.PlayerCountForLevel(level)]++;
+        }
+        Assert.True(freq[6] > freq[5], $"6 ({freq[6]}) should beat 5 ({freq[5]})");
+        Assert.True(freq[5] > freq[4], $"5 ({freq[5]}) should beat 4 ({freq[4]})");
+        Assert.True(freq[4] > freq[3], $"4 ({freq[4]}) should beat 3 ({freq[3]})");
+        Assert.True(freq[3] > freq[2], $"3 ({freq[3]}) should beat 2 ({freq[2]})");
+    }
+
+    [Fact]
+    public void ActiveColorSlots_AreDistinctSortedInRange_SizedToCount()
+    {
+        for (int level = 0; level < CampaignProgress.LevelCount; level++)
+        {
+            int[] slots = CampaignProgress.ActiveColorSlotsForLevel(level);
+            Assert.Equal(CampaignProgress.PlayerCountForLevel(level), slots.Length);
+            Assert.Equal(slots.Length, slots.Distinct().Count());
+            Assert.True(slots.SequenceEqual(slots.OrderBy(s => s)), "slots must be sorted");
+            Assert.All(slots, s => Assert.InRange(s, 0, 5));
+        }
+    }
+
+    [Fact]
+    public void ActiveColorSlots_AreDeterministic_AndNotAlwaysTheSameSubset()
+    {
+        Assert.True(CampaignProgress.ActiveColorSlotsForLevel(42)
+            .SequenceEqual(CampaignProgress.ActiveColorSlotsForLevel(42)));
+
+        // Every color slot is active on some level — not a fixed "first N" subset.
+        var everActive = new HashSet<int>();
+        for (int level = 0; level < CampaignProgress.LevelCount; level++)
+        {
+            everActive.UnionWith(CampaignProgress.ActiveColorSlotsForLevel(level));
+        }
+        Assert.Equal(new HashSet<int> { 0, 1, 2, 3, 4, 5 }, everActive);
+    }
+
+    [Fact]
+    public void HumanColorSlot_IsDeterministic_AndAlwaysActive()
+    {
+        for (int level = 0; level < CampaignProgress.LevelCount; level++)
+        {
+            int human = CampaignProgress.HumanColorSlotForLevel(level);
+            Assert.Equal(human, CampaignProgress.HumanColorSlotForLevel(level));
+            Assert.Contains(human, CampaignProgress.ActiveColorSlotsForLevel(level));
+        }
+    }
 }

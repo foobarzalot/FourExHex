@@ -226,6 +226,77 @@ public sealed class CampaignProgress
         return (int)(h % (uint)playerCount);
     }
 
+    /// <summary>Number of players in a campaign level — a uniform-random 2..6
+    /// derived from the level, so not every level fields all six colors. Stable
+    /// forever per level.</summary>
+    public static int PlayerCountForLevel(int level)
+    {
+        ValidateLevel(level);
+        return ComputeRoster(level).ActiveSlots.Length;
+    }
+
+    /// <summary>The active color slots for a campaign level — a deterministic
+    /// sorted subset of [0,6) of size <see cref="PlayerCountForLevel"/>. Returns
+    /// a fresh array (callers may mutate).</summary>
+    public static int[] ActiveColorSlotsForLevel(int level)
+    {
+        ValidateLevel(level);
+        return ComputeRoster(level).ActiveSlots;
+    }
+
+    /// <summary>The human's actual color slot (0..5) for a campaign level —
+    /// always one of <see cref="ActiveColorSlotsForLevel"/>, picked via the #74
+    /// hash within the active set so it stays spread across the ladder.</summary>
+    public static int HumanColorSlotForLevel(int level)
+    {
+        ValidateLevel(level);
+        return ComputeRoster(level).HumanSlot;
+    }
+
+    /// <summary>Deterministic per-level roster: a uniform-random count of distinct
+    /// color slots, with the human at one of them. Integer-only (no floats — Model
+    /// rule) and reproducible forever, using the same seeded-<see cref="Random"/>
+    /// idiom as <see cref="MapGenOptionsForLevel"/> but with a distinct offset, so
+    /// the player set is decorrelated from both the map seed (= level) and the
+    /// terrain-density draw — a level's terrain is unchanged; only who plays it
+    /// varies. All draws come from one rng in a fixed order so it never shifts.</summary>
+    private static (int[] ActiveSlots, int HumanSlot) ComputeRoster(int level)
+    {
+        int slotCount = GameSettings.PlayerConfig.Length; // 6
+        var rng = new Random(unchecked(level * 6151 + 24593));
+
+        // Player count, biased toward more players: weight a count of c by (c-1),
+        // so 6 is the plurality, then 5, 4, 3, with 2 the least likely. Total
+        // weight = sum(1..slotCount-1) = slotCount*(slotCount-1)/2 (= 15 for 6).
+        // Integer-only (no floats — Model rule).
+        int totalWeight = slotCount * (slotCount - 1) / 2;
+        int draw = rng.Next(totalWeight);
+        int count = 2;
+        int acc = 0;
+        for (int c = slotCount; c >= 2; c--)
+        {
+            acc += c - 1;
+            if (draw < acc) { count = c; break; }
+        }
+
+        // Fisher–Yates shuffle of the slot indices, take the first `count`, sort
+        // ascending so the roster order (and thus map-gen owner assignment) is
+        // canonical and stable.
+        int[] order = new int[slotCount];
+        for (int i = 0; i < slotCount; i++) order[i] = i;
+        for (int i = slotCount - 1; i > 0; i--)
+        {
+            int j = rng.Next(i + 1);
+            (order[i], order[j]) = (order[j], order[i]);
+        }
+        int[] active = new int[count];
+        Array.Copy(order, active, count);
+        Array.Sort(active);
+
+        int humanSlot = active[HumanSlotForLevel(level, count)];
+        return (active, humanSlot);
+    }
+
     private static void ValidateLevel(int level)
     {
         if (level is < 0 or >= LevelCount)

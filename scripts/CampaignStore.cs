@@ -64,13 +64,13 @@ public static class CampaignStore
         // GameSettings.PlayerKinds/Difficulties — otherwise a campaign launch
         // would clobber the New Game default for the rest of the session
         // (issue #70 bleed). CampaignLevel above is the only handoff Main needs.
-        int playerCount = GameSettings.PlayerConfig.Length;
-        int humanSlot = CampaignProgress.HumanSlotForLevel(level, playerCount);
+        int humanSlot = CampaignProgress.HumanColorSlotForLevel(level);
+        int playerCount = CampaignProgress.PlayerCountForLevel(level);
         LoadRequest.Pending = null;
         MarkAttempted(level);
         Log.Info(Log.LogCategory.Campaign,
             $"CampaignStore: launching level {CampaignProgress.LabelFor(level)} " +
-            $"(seed {GameSettings.MasterSeed}, human slot {humanSlot} " +
+            $"(seed {GameSettings.MasterSeed}, {playerCount} players, human slot {humanSlot} " +
             $"({GameSettings.PlayerConfig[humanSlot].Name}), " +
             $"human difficulty {CampaignProgress.DifficultyForLevel(level)})");
     }
