@@ -115,7 +115,7 @@ public static class SaveSerializer
     /// Bump on any breaking schema change. <see cref="Deserialize"/>
     /// rejects mismatched values rather than attempting migration.
     /// </summary>
-    public const int CurrentFormatVersion = 12;
+    public const int CurrentFormatVersion = 13;
 
     public static string Serialize(
         GameState state,
@@ -252,6 +252,9 @@ public static class SaveSerializer
         // default-absent, so pre-bump files load unchanged (missing IsGold /
         // IsMountain → false, an ordinary tile). v12 added the optional
         // Rising Tides Mode flag (issue #56) — absent/null loads as Freeform.
+        // v13 made gold and mountain mutually exclusive (issue #81): a tile is
+        // gold OR mountain, never both, so a legacy tile carrying both flags is
+        // normalized to mountain-only on load (mountain wins) below.
         if (data.FormatVersion is < 2 or > CurrentFormatVersion)
         {
             throw new InvalidOperationException(
@@ -267,16 +270,31 @@ public static class SaveSerializer
             turnNumber: data.TurnNumber);
 
         var grid = new HexGrid();
+        int normalizedGoldMountain = 0;
         foreach (TileDto tile in data.Tiles)
         {
             PlayerId owner = OwnerIndexToId(tile.OwnerIndex, players);
+            // Gold and mountain are mutually exclusive (issue #81). A legacy
+            // (pre-v13) save could carry both flags on one tile; mountain wins,
+            // so set the single TerrainFeature explicitly rather than relying on
+            // accessor ordering.
+            TerrainFeature feature =
+                tile.IsMountain ? TerrainFeature.Mountain :
+                tile.IsGold ? TerrainFeature.Gold :
+                TerrainFeature.None;
+            if (tile.IsGold && tile.IsMountain) normalizedGoldMountain++;
             var hexTile = new HexTile(new HexCoord(tile.Q, tile.R), owner)
             {
                 Occupant = DeserializeOccupant(tile.Occupant, players),
-                IsGold = tile.IsGold,
-                IsMountain = tile.IsMountain,
+                Feature = feature,
             };
             grid.Add(hexTile);
+        }
+        if (normalizedGoldMountain > 0)
+        {
+            Log.Info(Log.LogCategory.MapGen,
+                $"[save] normalized {normalizedGoldMountain} legacy gold+mountain " +
+                $"tile(s) to mountain-only (issue #81)");
         }
 
         IReadOnlyList<Territory> territories = DeserializeTerritories(data.Territories, players);

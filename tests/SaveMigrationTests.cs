@@ -30,7 +30,7 @@ public class SaveMigrationTests
     }
 
     [Fact]
-    public void CurrentFormatVersion_IsTwelve()
+    public void CurrentFormatVersion_IsThirteen()
     {
         // v7 added per-player Difficulty (issue #11); v8 added the
         // optional CampaignLevel pointer (issue #2); v9 added per-tile
@@ -38,8 +38,10 @@ public class SaveMigrationTests
         // v11 bakes per-color kind+difficulty into starting maps and
         // decouples the player roster's list position from its color slot
         // so a game can have 2–6 players (issue #70); v12 added the optional
-        // Rising Tides Mode flag (issue #56).
-        Assert.Equal(12, SaveSerializer.CurrentFormatVersion);
+        // Rising Tides Mode flag (issue #56); v13 made gold and mountain
+        // mutually exclusive and normalizes any legacy both-flags tile to
+        // mountain-only on load (issue #81).
+        Assert.Equal(13, SaveSerializer.CurrentFormatVersion);
     }
 
     [Fact]
@@ -48,7 +50,7 @@ public class SaveMigrationTests
         (GameState s, IReadOnlyList<Player> p) = BuildState();
         string json = SaveSerializer.Serialize(s, 1, p, "slot", 100);
 
-        foreach (int bad in new[] { 1, 13, 99 })
+        foreach (int bad in new[] { 1, 14, 99 })
         {
             string mutated = json.Replace(
                 $"\"FormatVersion\": {SaveSerializer.CurrentFormatVersion}",
@@ -56,7 +58,7 @@ public class SaveMigrationTests
             Assert.ThrowsAny<System.Exception>(() => SaveSerializer.Deserialize(mutated));
         }
 
-        foreach (int ok in new[] { 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 })
+        foreach (int ok in new[] { 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13 })
         {
             string mutated = json.Replace(
                 $"\"FormatVersion\": {SaveSerializer.CurrentFormatVersion}",

@@ -223,10 +223,11 @@ public class MountainTileTests
     // --- Tree spread -----------------------------------------------------
 
     [Fact]
-    public void TreeSpread_SkipsMountainTile()
+    public void TreeSpread_OntoMountainTile()
     {
         // (0,0) and (2,0) trees, (1,0) empty mountain between them: with two
-        // tree neighbors it would normally spread, but the mountain blocks it.
+        // tree neighbors a tree spreads onto the mountain — trees and
+        // mountains now coexist (issue #81).
         HexGrid grid = BuildRow(0, 2, Red);
         grid.Get(new HexCoord(0, 0))!.Occupant = new Tree();
         grid.Get(new HexCoord(2, 0))!.Occupant = new Tree();
@@ -234,7 +235,8 @@ public class MountainTileTests
 
         TreeRules.RunStartOfTurnGrowth(grid, Red, new HashSet<HexCoord>());
 
-        Assert.Null(grid.Get(new HexCoord(1, 0))!.Occupant);
+        Assert.IsType<Tree>(grid.Get(new HexCoord(1, 0))!.Occupant);
+        Assert.True(grid.Get(new HexCoord(1, 0))!.IsMountain);   // terrain kept
     }
 
     // --- Tower placement -------------------------------------------------
@@ -260,10 +262,10 @@ public class MountainTileTests
     // --- Grave suppression on death --------------------------------------
 
     [Fact]
-    public void Upkeep_UnitDyingOnMountain_LeavesNoGrave()
+    public void Upkeep_UnitDyingOnMountain_LeavesGrave()
     {
-        // Bankrupt territory: unit on a mountain leaves the tile empty; unit
-        // on plain land leaves a grave.
+        // Bankrupt territory: a unit dying on a mountain now leaves a grave,
+        // same as plain land — graves and mountains coexist (issue #81).
         HexGrid grid = BuildRow(0, 1, Red);
         grid.Get(new HexCoord(0, 0))!.IsMountain = true;
         grid.Get(new HexCoord(0, 0))!.Occupant = new Unit(Red, UnitLevel.Soldier);
@@ -274,7 +276,8 @@ public class MountainTileTests
         bool solvent = UpkeepRules.ApplyUpkeep(red, grid, treasury, Difficulty.Soldier);
 
         Assert.False(solvent);
-        Assert.Null(grid.Get(new HexCoord(0, 0))!.Occupant);          // no grave on mountain
+        Assert.IsType<Grave>(grid.Get(new HexCoord(0, 0))!.Occupant); // grave on mountain
+        Assert.True(grid.Get(new HexCoord(0, 0))!.IsMountain);        // terrain kept
         Assert.IsType<Grave>(grid.Get(new HexCoord(1, 0))!.Occupant); // grave on plain land
     }
 

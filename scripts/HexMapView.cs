@@ -165,7 +165,11 @@ public partial class HexMapView : Node2D, IHexMapView
     // mountain flag), so it can't be found by the drowned-tile diff — instead
     // EmitRisingTidesFx diffs this against the current mountain set.
     private readonly HashSet<HexCoord> _lastMountainCoords = new();
-    private Node2D? _mountainsLayer;
+    // Mountain inner borders (issue #81): a black thickened hex-ring channel
+    // mirroring the gold one, drawn as a batched TriangleSoup. Replaces the old
+    // peak glyph; gold and mountain are mutually exclusive so the two rings never
+    // overlap. Sits in the same z-band as the gold channel.
+    private TriangleSoup? _mountainBordersLayer;
     private Node2D? _capitalsLayer;
     private Node2D? _rejectionsLayer;
     private Node2D? _treesLayer;
@@ -513,6 +517,13 @@ public partial class HexMapView : Node2D, IHexMapView
         _goldBordersLayer = new TriangleSoup { Name = "GoldBordersLayer" };
         AddChild(_goldBordersLayer);
 
+        // Mountain-tile inner borders (issue #81): the same hex-ring channel as
+        // gold but black and a touch thicker, in the same z-band (above fills,
+        // below outlines/borders). Gold and mountain are mutually exclusive, so
+        // the two channels never share a tile. Replaces the old peak glyph.
+        _mountainBordersLayer = new TriangleSoup { Name = "MountainBordersLayer" };
+        AddChild(_mountainBordersLayer);
+
         // All per-tile outlines go in one layer drawn after every fill,
         // so neighbor fills can never overdraw an outline. Each unique
         // edge is drawn exactly once for uniform thickness.
@@ -540,11 +551,6 @@ public partial class HexMapView : Node2D, IHexMapView
         AddChild(_towerCoverageLayer);
         _bordersLayer = new PolylineBatch { Name = "BordersLayer" };
         AddChild(_bordersLayer);
-        // Mountain glyphs (issue #37): defensive terrain. Above gold borders
-        // and tile fills, below capitals / units / trees / towers so an
-        // occupant standing on a mountain draws on top of the peak.
-        _mountainsLayer = new Node2D { Name = "MountainsLayer" };
-        AddChild(_mountainsLayer);
         _capitalsLayer = new Node2D { Name = "CapitalsLayer" };
         AddChild(_capitalsLayer);
         _treesLayer = new Node2D { Name = "TreesLayer" };
@@ -3025,7 +3031,6 @@ public partial class HexMapView : Node2D, IHexMapView
         {
             _unitsLayer, _capitalsLayer, _treesLayer, _gravesLayer,
             _deathsLayer, _warningBadgesLayer, _towerTargetsLayer,
-            _mountainsLayer,
         };
         int n = 0;
         int skipped = 0;
@@ -3335,6 +3340,13 @@ public partial class HexMapView : Node2D, IHexMapView
     private const float GoldBorderOuter = 1.0f;
     private const float GoldBorderInner = 0.74f;
 
+    // Mountain ring channel (issue #81): the same technique as gold but black and
+    // a touch thicker (smaller inner factor → wider band) so the "thickened black
+    // channel" reads as terrain distinct from the gold accent.
+    private static readonly Color MountainBorderColor = new Color(0f, 0f, 0f, 1f);
+    private const float MountainBorderOuter = 1.0f;
+    private const float MountainBorderInner = 0.68f;
+
     /// <summary>
     /// Draw a gold hex-ring band inside every <see cref="HexTile.IsGold"/>
     /// tile. Batched into one TriangleSoup like the static water; runs on the
@@ -3374,50 +3386,42 @@ public partial class HexMapView : Node2D, IHexMapView
 
 
     /// <summary>
-    /// Rebuild the on-tile mountain glyphs (issue #37): one Tolkien-map peak
-    /// per <see cref="HexTile.IsMountain"/> tile. Cleared and rebuilt wholesale
-    /// each call (mountains only change via editor / capture, which already
-    /// trigger a territory rebuild), mirroring <see cref="DrawGoldBorders"/>.
-    /// Each glyph is counter-rotated to stay upright on a rotated board, the
-    /// same as the occupant glyphs handled by <see cref="ApplyGlyphUpright"/>.
+    /// Draw a black hex-ring channel inside every <see cref="HexTile.IsMountain"/>
+    /// tile (issue #81), retiring the old peak glyph. The same batched
+    /// TriangleSoup technique as <see cref="DrawGoldBorders"/>, just black and a
+    /// touch thicker. Gold and mountain are mutually exclusive, so a tile shows
+    /// at most one of the two rings; both coexist with a tree / grave / unit /
+    /// tower drawn on top.
     /// </summary>
     private void DrawMountains()
     {
-        if (_mountainsLayer == null) return;
-        foreach (Node child in _mountainsLayer.GetChildren()) child.QueueFree();
+        if (_mountainBordersLayer == null) return;
+        Vector2[] verts = HexVertices();
+        var outer = new Vector2[6];
+        var inner = new Vector2[6];
+        for (int i = 0; i < 6; i++)
+        {
+            outer[i] = verts[i] * MountainBorderOuter;
+            inner[i] = verts[i] * MountainBorderInner;
+        }
 
+        var builder = new TriangleSoupBuilder();
         int built = 0;
         foreach (HexTile tile in Grid.Tiles)
         {
             if (!tile.IsMountain) continue;
-            Node2D glyph = CreateMountainVisual();
-            glyph.Position = FirstHexCenterOffset + HexPixel.ToPixel(tile.Coord, HexSize);
-            glyph.Rotation = -_mapAngleRad;   // upright on a rotated board
-            _mountainsLayer.AddChild(glyph);
+            Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(tile.Coord, HexSize);
+            for (int edge = 0; edge < 6; edge++)
+            {
+                int next = (edge + 1) % 6;
+                var quad = new[] { outer[edge], outer[next], inner[next], inner[edge] };
+                builder.AddPolygon(center, quad, MountainBorderColor, vertColors: null);
+            }
             built++;
         }
-        Log.Debug(Log.LogCategory.Render, $"DrawMountains: built {built} mountain outline glyphs");
-    }
-
-    /// <summary>
-    /// A translucent dark-tinted outlined peak (no snow cap), drawn as a
-    /// <see cref="Polygon2D"/> node to match the other on-tile glyphs. The
-    /// mostly-transparent fill lets the hex's owner color show through. Shares
-    /// its silhouette (vertex math + colors) with the editor swatch via
-    /// <see cref="HudIcons.MountainPeakVerts"/> / <see cref="HudIcons.MountainFill"/>
-    /// / <see cref="HudIcons.MountainStroke"/> so the two can't drift (issue #52).
-    /// </summary>
-    private Node2D CreateMountainVisual()
-    {
-        float r = HexSize * 0.675f;   // 10% smaller than the original 0.75f
-        var node = new Node2D();
-
-        Vector2[] verts = HudIcons.MountainPeakVerts(Vector2.Zero, r);
-        var main = new Polygon2D { Color = HudIcons.MountainFill, Polygon = verts };
-        main.AddChild(BuildClosedOutline(verts, 3.0f, HudIcons.MountainStroke));
-        node.AddChild(main);
-
-        return node;
+        _mountainBordersLayer.SetTriangles(
+            builder.Points.ToArray(), builder.Colors.ToArray(), builder.Indices.ToArray());
+        Log.Debug(Log.LogCategory.Render, $"DrawMountains: built {built} mountain border channels");
     }
 
     // Batched line drawer: draws ALL edge segments in a single

@@ -374,14 +374,16 @@ public class MapGeneratorTests
     [InlineData(1)]
     [InlineData(42)]
     [InlineData(9999)]
-    public void MountainsOn_NeverCoexistWithTrees(int seed)
+    public void MountainsAndGold_NeverShareTile(int seed)
     {
-        // Mountain and tree are mutually exclusive (matches the editor brush rule).
-        MapGenResult result = BuildWith(seed, new MapGenOptions(MountainDensity: MountainOnDensity));
+        // Gold and mountain are now mutually exclusive (issue #81): with both
+        // passes on, no generated tile carries both flags.
+        MapGenResult result = BuildWith(seed, new MapGenOptions(
+            MountainDensity: MountainOnDensity, GoldDensity: GoldOnDensity));
         foreach (HexTile t in result.Grid.Tiles)
         {
-            Assert.False(t.IsMountain && t.Occupant is Tree,
-                $"Tile {t.Coord} is both a mountain and a tree (seed {seed})");
+            Assert.False(t.IsMountain && t.IsGold,
+                $"Tile {t.Coord} is both a mountain and gold (seed {seed})");
         }
     }
 
@@ -578,29 +580,27 @@ public class MapGeneratorTests
     }
 
     [Fact]
-    public void GoldOn_WithMountains_BiasesGoldOntoMountains()
+    public void GoldOn_WithMountains_NeverLandsOnMountain()
     {
-        // With both passes on, gold cluster seeds are biased toward mountain tiles,
-        // so the share of gold tiles that are also mountains sits well above the
-        // ~9% mountain land coverage. Aggregate over seeds for a stable fraction.
+        // Gold and mountain are mutually exclusive (issue #81): gold never lands
+        // on a mountain tile (the old gold-on-mountain bias was removed). Both
+        // resources still appear when both passes are on.
         int goldTotal = 0;
-        int goldOnMountain = 0;
+        int mountainTotal = 0;
         var opts = new MapGenOptions(MountainDensity: MountainOnDensity, GoldDensity: GoldOnDensity);
         foreach (int seed in new[] { 1, 7, 42, 100, 9999 })
         {
             MapGenResult result = BuildWith(seed, opts);
             foreach (HexTile t in result.Grid.Tiles)
             {
-                if (!t.IsGold) continue;
-                goldTotal++;
-                if (t.IsMountain) goldOnMountain++;
+                if (t.IsGold) goldTotal++;
+                if (t.IsMountain) mountainTotal++;
+                Assert.False(t.IsGold && t.IsMountain,
+                    $"Tile {t.Coord} is both gold and mountain (seed {seed})");
             }
         }
         Assert.True(goldTotal > 0, "Expected gold tiles across the sampled seeds");
-        // Well above 9% chance coverage — the seed bias should land many gold
-        // clusters on or beside mountains.
-        Assert.True(goldOnMountain * 100 > goldTotal * 20,
-            $"Only {goldOnMountain}/{goldTotal} gold tiles are also mountains — bias not evident");
+        Assert.True(mountainTotal > 0, "Expected mountain tiles across the sampled seeds");
     }
 
     // ── Tree density (issue #66) ────────────────────────────────────────────

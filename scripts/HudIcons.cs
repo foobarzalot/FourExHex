@@ -63,21 +63,10 @@ public static class HudIcons
         }
     }
 
-    /// <summary>
-    /// Colors for the on-tile mountain glyph (HexMapView.CreateMountainVisual),
-    /// issue #52: a translucent dark fill so the tile's owner color shows
-    /// through, with a BgDeep stroke matching the board's other outlines. The
-    /// editor brush button (<see cref="DrawMountain"/>) draws the same
-    /// silhouette but in opaque grey, so it shares the geometry
-    /// (<see cref="MountainPeakVerts"/>) — the single source of truth for the
-    /// shape — not these colors.
-    /// </summary>
-    public static readonly Color MountainFill = new Color(0f, 0f, 0f, 0.18f);
-    public static readonly Color MountainStroke = UiPalette.BgDeep;
-
     // Apex, baseR, baseL of a peak of half-extent `r` centered at `center`.
-    // The single source of truth for the mountain shape, shared by the on-tile
-    // Polygon2D glyph and the editor brush button so the two can't drift.
+    // The mountain shape for the editor brush button. (The on-map mountain tile
+    // no longer uses a glyph — it renders as a black ring channel, issue #81 —
+    // so this peak silhouette now lives only on the palette button.)
     public static Vector2[] MountainPeakVerts(Vector2 center, float r) => new[]
     {
         center + new Vector2(0f, -0.85f * r),
@@ -87,12 +76,10 @@ public static class HudIcons
 
     /// <summary>
     /// Mountain glyph (issue #37) for the editor's mountain brush button: a
-    /// solid grey outlined peak (no snow cap). Shares its silhouette
-    /// (<see cref="MountainPeakVerts"/>) with the on-tile glyph so the shapes
-    /// can't drift, but is drawn in opaque grey rather than the tile's
-    /// translucent dark tint so it reads against the button's dark slate
-    /// backdrop (issue #52). Reads distinctly from the gold coin and the
-    /// conifer tree.
+    /// solid grey outlined peak (no snow cap), drawn in opaque grey so it reads
+    /// against the button's dark slate backdrop. Reads distinctly from the gold
+    /// coin and the conifer tree. (Only the palette button uses this peak; the
+    /// on-map mountain tile is a black ring channel, issue #81.)
     /// </summary>
     public static void DrawMountain(CanvasItem t, Vector2 center, float radius, Color modulate)
     {

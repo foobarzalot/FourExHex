@@ -180,10 +180,9 @@ public static class MapEditPaint
         {
             // Empty or Tower (or any other non-Capital): replace with a
             // tree. Tower → Tree is the cross-type swap; empty → Tree is
-            // the place case. A tree never coexists with a mountain
-            // (issue #37), so placing one clears the mountain flag.
+            // the place case. A tree now coexists with a mountain (issue #81),
+            // so the mountain flag is left untouched.
             tile.Occupant = new Tree();
-            tile.IsMountain = false;
         }
         return Reconcile(grid, previousTerritories);
     }
@@ -261,9 +260,11 @@ public static class MapEditPaint
     /// <paramref name="coord"/> (issue #45). Gold is a per-tile income
     /// modifier orthogonal to owner and occupant, so this preserves both — a
     /// gold tile may be owned by any player or neutral and may hold any
-    /// occupant. No-op out of bounds or on water (no tile there). The
-    /// territory partition is unaffected; the previous list is returned
-    /// unchanged for call-shape parity with the other paint helpers.
+    /// occupant. Gold and mountain are mutually exclusive (issue #81): turning
+    /// gold ON clears any mountain on the tile. No-op out of bounds or on water
+    /// (no tile there). The territory partition is unaffected; the previous
+    /// list is returned unchanged for call-shape parity with the other paint
+    /// helpers.
     /// </summary>
     public static IReadOnlyList<Territory> PaintGoldToggle(
         HexGrid grid,
@@ -277,6 +278,8 @@ public static class MapEditPaint
         HexTile? tile = grid.Get(coord);
         if (tile == null) return previousTerritories;
 
+        // Toggling gold ON retargets the tile's single TerrainFeature, so any
+        // mountain clears automatically — gold and mountain are exclusive (#81).
         tile.IsGold = !tile.IsGold;
         return previousTerritories;
     }
@@ -284,17 +287,16 @@ public static class MapEditPaint
     /// <summary>
     /// Toggle the <see cref="HexTile.IsMountain"/> flag on the land tile at
     /// <paramref name="coord"/> (issue #37). Mountains are high-ground terrain
-    /// mutually exclusive only with a <see cref="Tree"/>: turning a mountain ON
-    /// clears any tree on the tile (and, symmetrically,
-    /// <see cref="PaintTreeToggle"/> clears the mountain when it places a tree).
-    /// A <see cref="Tower"/> may coexist with a mountain (it earns the +1
-    /// high-ground bonus), so it is left in place. A tile holding a
-    /// <see cref="Capital"/> is refused (no-op) — capitals never coexist with a
-    /// mountain. <see cref="HexTile.IsGold"/> and <see cref="HexTile.Owner"/>
-    /// are preserved (the two terrain flags are independent; a mountain may be
-    /// owned by any player or neutral). No-op out of bounds or on water. The
-    /// territory partition is unaffected, so the previous list is returned
-    /// unchanged.
+    /// that now coexist with trees and graves (issue #81): turning a mountain ON
+    /// leaves any <see cref="Tree"/> / <see cref="Grave"/> / <see cref="Tower"/>
+    /// occupant in place. Mountains are mutually exclusive with
+    /// <see cref="HexTile.IsGold"/> (issue #81): turning a mountain ON clears any
+    /// gold on the tile (and, symmetrically, <see cref="PaintGoldToggle"/> clears
+    /// the mountain when it places gold). A tile holding a <see cref="Capital"/>
+    /// is refused (no-op) — capitals never coexist with a mountain.
+    /// <see cref="HexTile.Owner"/> is preserved (a mountain may be owned by any
+    /// player or neutral). No-op out of bounds or on water. The territory
+    /// partition is unaffected, so the previous list is returned unchanged.
     /// </summary>
     public static IReadOnlyList<Territory> PaintMountainToggle(
         HexGrid grid,
@@ -317,13 +319,10 @@ public static class MapEditPaint
         }
         else
         {
+            // Setting mountain retargets the tile's single TerrainFeature, so
+            // any gold clears automatically — gold and mountain are exclusive
+            // (#81). Trees, graves and towers stay — they coexist with a mountain.
             tile.IsMountain = true;
-            // Mutual exclusion: a new mountain clears a tree (trees never grow on
-            // mountains). A tower stays — towers may stand on mountains (#37).
-            if (tile.Occupant is Tree)
-            {
-                tile.Occupant = null;
-            }
         }
         return previousTerritories;
     }

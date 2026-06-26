@@ -144,9 +144,9 @@ public class SaveSerializerTests
     }
 
     [Fact]
-    public void CurrentFormatVersion_IsTwelve()
+    public void CurrentFormatVersion_IsThirteen()
     {
-        Assert.Equal(12, SaveSerializer.CurrentFormatVersion);
+        Assert.Equal(13, SaveSerializer.CurrentFormatVersion);
     }
 
     [Fact]
@@ -245,12 +245,11 @@ public class SaveSerializerTests
     public void Serialize_RoundTripPreservesMountainTiles()
     {
         (GameState state, IReadOnlyList<Player> players) = BuildRichState();
-        // Mark tiles mountain (issue #37). One empty, one also gold to prove
-        // the two terrain flags are independent.
+        // Mark tiles mountain (issue #37). Gold and mountain are now mutually
+        // exclusive (issue #81), so a mountain tile is never also gold.
         state.Grid.Get(HexCoord.FromOffset(1, 1))!.IsMountain = true;
-        HexTile goldMountain = state.Grid.Get(HexCoord.FromOffset(2, 1))!;
-        goldMountain.IsMountain = true;
-        goldMountain.IsGold = true;
+        HexTile mountain = state.Grid.Get(HexCoord.FromOffset(2, 1))!;
+        mountain.IsMountain = true;
 
         string json = SaveSerializer.Serialize(state, 42, players, "s", 100);
         LoadedSave loaded = SaveSerializer.Deserialize(json);
@@ -260,10 +259,42 @@ public class SaveSerializerTests
             HexTile? loadedTile = loaded.State.Grid.Get(orig.Coord);
             Assert.NotNull(loadedTile);
             Assert.Equal(orig.IsMountain, loadedTile!.IsMountain);
+            Assert.Equal(orig.IsGold, loadedTile.IsGold);
         }
-        HexTile loadedGoldMountain = loaded.State.Grid.Get(HexCoord.FromOffset(2, 1))!;
-        Assert.True(loadedGoldMountain.IsMountain);
-        Assert.True(loadedGoldMountain.IsGold);
+        HexTile loadedMountain = loaded.State.Grid.Get(HexCoord.FromOffset(2, 1))!;
+        Assert.True(loadedMountain.IsMountain);
+        Assert.False(loadedMountain.IsGold);
+    }
+
+    [Fact]
+    public void Deserialize_LegacyGoldAndMountainTile_NormalizesToMountain()
+    {
+        // A pre-#81 save could legally encode a tile with both IsGold and
+        // IsMountain set (the flags were independent). Under the new mutual
+        // exclusion the loader must normalize such a tile to mountain-only
+        // (mountain wins, issue #81).
+        (GameState state, IReadOnlyList<Player> players) = BuildRichState();
+        // Author a single mountain tile, then forge the now-illegal combo
+        // straight into the JSON (the model can no longer represent both).
+        var coord = HexCoord.FromOffset(2, 1);
+        state.Grid.Get(coord)!.IsMountain = true;
+        string json = SaveSerializer.Serialize(state, 42, players, "s", 100);
+
+        // The mountain tile serializes as `"IsGold": false, ... "IsMountain": true`.
+        // Flip that IsGold to true to simulate the legacy both-flags encoding
+        // (the only tile with IsMountain:true here).
+        string forged = System.Text.RegularExpressions.Regex.Replace(
+            json,
+            "\"IsGold\": false,(\\s*)\"IsMountain\": true",
+            "\"IsGold\": true,$1\"IsMountain\": true");
+        Assert.NotEqual(json, forged); // sanity: the substitution actually fired
+
+        LoadedSave loaded = SaveSerializer.Deserialize(forged);
+
+        HexTile loadedTile = loaded.State.Grid.Get(coord)!;
+        Assert.True(loadedTile.IsMountain);
+        Assert.False(loadedTile.IsGold);   // gold dropped — mountain wins
+        Assert.Equal(TerrainFeature.Mountain, loadedTile.Feature);
     }
 
     [Fact]

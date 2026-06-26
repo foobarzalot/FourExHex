@@ -428,11 +428,11 @@ public class TreeRulesTests
     }
 
     [Fact]
-    public void NeutralGrowth_NeutralMountain_NeverSpreads()
+    public void NeutralGrowth_NeutralMountain_Spreads()
     {
-        // (1,-1) is a neutral mountain with 2 tree neighbors. Trees
-        // never spread onto mountains (issue #37) — the exclusion holds
-        // for neutral ground too.
+        // (1,-1) is a neutral mountain with 2 tree neighbors. Trees now
+        // spread onto mountains (issue #81) — coexistence holds for neutral
+        // ground too, and the terrain flag survives.
         HexGrid grid = BuildAxialGrid(-1, 2, -1, 2);
         grid.Get(new HexCoord(1, -1))!.Owner = Neutral;
         grid.Get(new HexCoord(1, -1))!.IsMountain = true;
@@ -441,7 +441,8 @@ public class TreeRulesTests
 
         TreeRules.RunStartOfTurnGrowth(grid, Neutral, NoWater);
 
-        Assert.Null(grid.Get(new HexCoord(1, -1))!.Occupant);
+        Assert.True(IsTree(grid, new HexCoord(1, -1)));
+        Assert.True(grid.Get(new HexCoord(1, -1))!.IsMountain);
     }
 
     [Fact]

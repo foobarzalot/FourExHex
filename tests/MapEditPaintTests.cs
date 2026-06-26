@@ -737,8 +737,10 @@ public class MapEditPaintTests
     }
 
     [Fact]
-    public void PaintMountainToggle_OverTree_ClearsTreeAndSetsMountain()
+    public void PaintMountainToggle_OverTree_KeepsTree()
     {
+        // Trees and mountains now coexist (issue #81): painting a mountain
+        // onto a treed tile leaves the tree in place.
         (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
         var color = PlayerId.FromIndex(0);
         var coord = HexCoord.FromOffset(2, 2);
@@ -749,7 +751,7 @@ public class MapEditPaintTests
         MapEditPaint.PaintMountainToggle(grid, water, territories, Cols, Rows, coord);
 
         Assert.True(grid.Get(coord)!.IsMountain);
-        Assert.Null(grid.Get(coord)!.Occupant);   // tree cleared
+        Assert.IsType<Tree>(grid.Get(coord)!.Occupant);   // tree kept
     }
 
     [Fact]
@@ -773,8 +775,10 @@ public class MapEditPaintTests
     }
 
     [Fact]
-    public void PaintMountainToggle_PreservesGoldAndOwner()
+    public void PaintMountainToggle_OverGold_ClearsGold()
     {
+        // Gold and mountain are now mutually exclusive (issue #81): painting a
+        // mountain onto a gold tile clears the gold. Owner is preserved.
         (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
         var color = PlayerId.FromIndex(2);
         var coord = HexCoord.FromOffset(4, 4);
@@ -785,13 +789,33 @@ public class MapEditPaintTests
         MapEditPaint.PaintMountainToggle(grid, water, territories, Cols, Rows, coord);
 
         Assert.True(grid.Get(coord)!.IsMountain);
-        Assert.True(grid.Get(coord)!.IsGold);     // gold independent of mountain
+        Assert.False(grid.Get(coord)!.IsGold);    // gold cleared (mutual exclusion)
         Assert.Equal(color, grid.Get(coord)!.Owner);
     }
 
     [Fact]
-    public void PaintTreeToggle_OverMountain_ClearsMountain()
+    public void PaintGoldToggle_OverMountain_ClearsMountain()
     {
+        // The symmetric case: painting gold onto a mountain clears the mountain.
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = PlayerId.FromIndex(2);
+        var coord = HexCoord.FromOffset(4, 4);
+        IReadOnlyList<Territory> territories = MapEditPaint.PaintLand(
+            grid, water, new List<Territory>(), Cols, Rows, coord, color);
+        MapEditPaint.PaintMountainToggle(grid, water, territories, Cols, Rows, coord);
+
+        MapEditPaint.PaintGoldToggle(grid, water, territories, Cols, Rows, coord);
+
+        Assert.True(grid.Get(coord)!.IsGold);
+        Assert.False(grid.Get(coord)!.IsMountain);   // mountain cleared (mutual exclusion)
+        Assert.Equal(color, grid.Get(coord)!.Owner);
+    }
+
+    [Fact]
+    public void PaintTreeToggle_OverMountain_KeepsMountain()
+    {
+        // Trees and mountains coexist (issue #81): a tree painted onto a
+        // mountain leaves the terrain flag in place.
         (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
         var color = PlayerId.FromIndex(0);
         var coord = HexCoord.FromOffset(2, 2);
@@ -802,7 +826,7 @@ public class MapEditPaintTests
         MapEditPaint.PaintTreeToggle(grid, water, territories, Cols, Rows, coord);
 
         Assert.IsType<Tree>(grid.Get(coord)!.Occupant);
-        Assert.False(grid.Get(coord)!.IsMountain);   // mountain cleared
+        Assert.True(grid.Get(coord)!.IsMountain);   // mountain kept
     }
 
     [Fact]
