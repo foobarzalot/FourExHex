@@ -1856,12 +1856,16 @@ tables — retuning a level is a one-table edit:
 ## New Game setup & map thumbnail (issues #40, #5, #70)
 
 Clicking **Play Game** first opens a **source chooser** (a reused `EscMenu`
-modal, `_sourceChooser`): **New Map** (configure a fresh procedural game) or
-**Load Starting Map** (play a saved map on its baked roster — see below). The
-Map Editor button opens the same kind of chooser (**New Map** / **Load Map**),
+modal, `_sourceChooser`): **Configure Game** (configure a fresh procedural game),
+**Load Starting Map** (play a saved map on its baked roster — see below), or
+**Quick Play** (issue #79 — `OnQuickPlay` skips both setup pages: sets Red human
++ 5 Computer / all Soldier, resets map-gen to the default densities, clears
+`CampaignLevel`, rolls a fresh `MasterSeed`, and `LaunchGameScene`s — a
+user-triggered analogue of the `FOUREXHEX_6AI` bypass with a human in slot 0).
+The Map Editor button opens the same kind of chooser (**New Map** / **Load Map**),
 so the two flows share both the chooser idiom and the player-setup screen.
 
-**New Map** runs the **two paged screens** in `MainMenuScene` toggled by
+**Configure Game** runs the **two paged screens** in `MainMenuScene` toggled by
 `_playConfigPage` (`PlayerSetup` / `MapSetup`); both page contents are built
 up front and their visibility flipped (so selections survive paging), with
 `Enter`/`Esc` and Back/forward wired per page. The **player-setup** page holds
