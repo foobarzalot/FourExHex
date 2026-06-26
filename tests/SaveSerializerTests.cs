@@ -86,6 +86,32 @@ public class SaveSerializerTests
     }
 
     [Fact]
+    public void SerializeMap_RoundTripsRisingTidesMode()
+    {
+        // Proves the *serialization* layer carries a starting map's game mode:
+        // if the editor were to author a Rising Tides map, the save format
+        // would preserve it. (The end-to-end gap is elsewhere — the editor's
+        // MapEditorPanel.BuildSaveState and Main's starting-map load path both
+        // construct the GameState with no mode arg, so they force Freeform.
+        // This test isolates that the serializer is NOT the blocker.)
+        var red = new Player("Red", PlayerId.FromIndex(0), PlayerKind.Human);
+        var blue = new Player("Blue", PlayerId.FromIndex(1), PlayerKind.Computer);
+        var players = new List<Player> { red, blue };
+        HexGrid grid = TestHelpers.BuildRectGrid(3, 3, red.Id);
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        // Turn 0 = the on-disk "starting map" marker (see BuildSaveState).
+        var state = new GameState(
+            grid, territories, players,
+            new TurnState(players, currentPlayerIndex: 0, turnNumber: 0),
+            new Treasury(), waterCoords: null, mode: GameMode.RisingTides);
+
+        string json = SaveSerializer.SerializeMap(state, 42, players, "m");
+        LoadedSave loaded = SaveSerializer.Deserialize(json);
+
+        Assert.Equal(GameMode.RisingTides, loaded.State.Mode);
+    }
+
+    [Fact]
     public void Deserialize_PlayerWithMissingKind_DefaultsToHuman()
     {
         // A pre-#70 starting map's JSON has no "Kind" field per player. The
