@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Godot;
 
 /// <summary>
@@ -33,8 +34,10 @@ public partial class PlayTutorialScene : Node2D
         // uses; just skip every editor surface. Mirrors
         // TutorialBuilderScene._Ready's panel/pane/escmenu construction.
         // Players must be set BEFORE AddChild (MapEditorPanel._Ready
-        // asserts it). Use the all-human roster the builder uses;
-        // PreviewPane.Start overrides kinds (player 0 Human, rest Computer).
+        // asserts it). Start with the all-human 6-slot roster the builder
+        // uses; after LoadFromMap we trim it to only the colors that own
+        // land (issue #83) so landless slots don't show as players.
+        // PreviewPane.Start then overrides kinds (player 0 Human, rest Computer).
         _panel = new MapEditorPanel { Players = Player.BuildAllHumanRoster() };
         AddChild(_panel);
         _panel.PaintingEnabled = false;
@@ -70,10 +73,21 @@ public partial class PlayTutorialScene : Node2D
 
         // Load the tutorial's map into the panel, then reset the grid to
         // the recording's starting frame (mirrors
-        // TutorialBuilderScene.OnLoadSlotPressed) and start playback. The
-        // roster stays the all-human one set above — the builder likewise
-        // keeps it across LoadFromMap rather than adopting loaded.Players.
+        // TutorialBuilderScene.OnLoadSlotPressed) and start playback.
         _panel.LoadFromMap(loaded);
+
+        // Trim the roster to only the colors that actually own land on the
+        // painted board (issue #83). The bundled map declares 6 colors but
+        // only 3 hold territory; the unowned ones would otherwise render as
+        // dead swatches. PreviewPane.Start reads _panel.Players and assigns
+        // kinds by position (index 0 Human, rest Computer), so the surviving
+        // slots keep their colors and the HUD shows one swatch per owner.
+        _panel.Players = MapRosterRules.ActivePlayersForTerritories(
+            _panel.Players, loaded.State.Territories);
+        Log.Info(Log.LogCategory.Tutorial,
+            $"[PlayTutorial] roster trimmed to {_panel.Players.Count} owning players: " +
+            string.Join(",", _panel.Players.Select(p => p.Id.Index)));
+
         _panel.ResetToTutorialStart(loaded.Tutorial.Replay.InitialSnapshot);
 
         Log.Info(Log.LogCategory.Tutorial,

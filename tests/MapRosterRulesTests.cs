@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Xunit;
 
 namespace FourExHex.Tests;
@@ -71,5 +72,53 @@ public class MapRosterRulesTests
 
         IReadOnlyList<string> problems = MapRosterRules.ValidateForSave(terr, kinds);
         Assert.Contains(problems, m => m.Contains("at least 2"));
+    }
+
+    [Fact]
+    public void ActivePlayersForTerritories_DropsLandlessSlots()
+    {
+        // 6 candidate players; only slots 0,1,2 own land.
+        List<Player> candidates = Player.BuildAllHumanRoster();
+        IReadOnlyList<Territory> terr = TerritoriesOwnedBy(0, 1, 2);
+
+        List<Player> active = MapRosterRules.ActivePlayersForTerritories(candidates, terr);
+
+        Assert.Equal(new[] { 0, 1, 2 }, active.Select(p => p.Id.Index));
+    }
+
+    [Fact]
+    public void ActivePlayersForTerritories_PreservesSlotsAndOrder()
+    {
+        // Owners at non-contiguous slots: the result keeps those exact slots
+        // in candidate order, not a compacted 0,1,2.
+        List<Player> candidates = Player.BuildAllHumanRoster();
+        IReadOnlyList<Territory> terr = TerritoriesOwnedBy(4, 0, 2);
+
+        List<Player> active = MapRosterRules.ActivePlayersForTerritories(candidates, terr);
+
+        Assert.Equal(new[] { 0, 2, 4 }, active.Select(p => p.Id.Index));
+    }
+
+    [Fact]
+    public void ActivePlayersForTerritories_NoTerritories_IsEmpty()
+    {
+        List<Player> candidates = Player.BuildAllHumanRoster();
+
+        List<Player> active = MapRosterRules.ActivePlayersForTerritories(
+            candidates, new List<Territory>());
+
+        Assert.Empty(active);
+    }
+
+    [Fact]
+    public void ActivePlayersForTerritories_AllOwnLand_ReturnsAll()
+    {
+        List<Player> candidates = Player.BuildAllHumanRoster();
+        IReadOnlyList<Territory> terr = TerritoriesOwnedBy(0, 1, 2, 3, 4, 5);
+
+        List<Player> active = MapRosterRules.ActivePlayersForTerritories(candidates, terr);
+
+        Assert.Equal(candidates.Count, active.Count);
+        Assert.Equal(new[] { 0, 1, 2, 3, 4, 5 }, active.Select(p => p.Id.Index));
     }
 }

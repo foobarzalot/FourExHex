@@ -55,4 +55,31 @@ public static class MapRosterRules
 
         return problems;
     }
+
+    /// <summary>
+    /// Filter <paramref name="candidates"/> down to the players whose slot
+    /// (<see cref="PlayerId.Index"/>) owns at least one of
+    /// <paramref name="territories"/>, preserving candidate order. Used to
+    /// trim a roster (e.g. the tutorial's all-human 6) to only the colors
+    /// that actually hold land, so landless slots don't show as players
+    /// (issue #83). Slots are preserved, not compacted — a result may be
+    /// e.g. {0,2,4} if those are the owners.
+    /// </summary>
+    public static List<Player> ActivePlayersForTerritories(
+        IReadOnlyList<Player> candidates,
+        IReadOnlyCollection<Territory> territories)
+    {
+        var owned = new HashSet<int>();
+        foreach (Territory t in territories)
+        {
+            if (!t.Owner.IsNone) owned.Add(t.Owner.Index);
+        }
+
+        var active = new List<Player>(candidates.Count);
+        foreach (Player p in candidates)
+        {
+            if (owned.Contains(p.Id.Index)) active.Add(p);
+        }
+        return active;
+    }
 }
