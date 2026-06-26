@@ -62,6 +62,9 @@ public partial class MainMenuScene : Control
 
     private readonly OptionButton[] _roleButtons = new OptionButton[GameSettings.PlayerConfig.Length];
     private readonly OptionButton[] _difficultyButtons = new OptionButton[GameSettings.PlayerConfig.Length];
+    // Game-mode selector (Freeform / Rising Tides, issue #56) on the
+    // Configure Game player-setup page; rebuilt with the page each show.
+    private OptionButton? _gameModeButton;
     private static readonly Font SerifFont =
         GD.Load<FontFile>("res://fonts/DMSerifDisplay-Regular.ttf");
     private SaveStore _saveStore = null!;
@@ -777,6 +780,10 @@ public partial class MainMenuScene : Control
         col.AddThemeConstantOverride("separation", 8);
         AddPortraitHeader(col);
 
+        // Game mode row (issue #56) above the roster — part of game setup,
+        // shared with the map editor's new-map flow.
+        col.AddChild(MakePortraitFieldRow("Game Mode", ConfigureGameModeDropdown()));
+
         var list = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         list.AddThemeConstantOverride("separation", 12);
         for (int i = 0; i < GameSettings.PlayerConfig.Length; i++)
@@ -899,6 +906,27 @@ public partial class MainMenuScene : Control
     // --- Shared play-config control factories (portrait + landscape) ---
     // Each configures the control + wiring (items, selection, events) and
     // stores it in its field; the caller positions / parents it.
+
+    /// <summary>Game-mode selector (Freeform / Rising Tides, issue #56) for the
+    /// player-setup page. Items are keyed by the <see cref="GameMode"/> int so
+    /// selection round-trips through <see cref="GameSettings.Mode"/>; writes the
+    /// choice live. Shared by the new-game and map-editor new-map flows.</summary>
+    private OptionButton ConfigureGameModeDropdown()
+    {
+        var dropdown = new OptionButton();
+        dropdown.AddThemeFontSizeOverride("font_size", 21);
+        dropdown.GetPopup().AddThemeFontSizeOverride("font_size", 21);
+        dropdown.AddItem("Freeform", (int)GameMode.Freeform);
+        dropdown.AddItem("Rising Tides", (int)GameMode.RisingTides);
+        SelectItemById(dropdown, (int)GameSettings.Mode);
+        dropdown.ItemSelected += _ =>
+        {
+            GameSettings.Mode = (GameMode)dropdown.GetSelectedId();
+            Log.Debug(Log.LogCategory.Input, $"MainMenu: game mode → {GameSettings.Mode}");
+        };
+        _gameModeButton = dropdown;
+        return dropdown;
+    }
 
     private OptionButton ConfigureRoleDropdown(int slot)
     {
@@ -1032,6 +1060,12 @@ public partial class MainMenuScene : Control
         hbox.AddChild(rail);
 
         AddLandscapeHeader(rail);
+        // Game mode (issue #56) — part of game setup, shared with the map
+        // editor's new-map flow.
+        rail.AddChild(MakeRailLabel("Game Mode"));
+        OptionButton modeDropdown = ConfigureGameModeDropdown();
+        modeDropdown.CustomMinimumSize = new Vector2(0, 40);
+        rail.AddChild(modeDropdown);
         rail.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
         // Back above the forward action (Next) in the vertical rail.
         rail.AddChild(MakeLandscapeNavButton("Back", OnBackPressed));
@@ -1480,6 +1514,9 @@ public partial class MainMenuScene : Control
         Log.Info(Log.LogCategory.Input, "MainMenu: Play Game → source chooser");
         _sourceChooser?.Show("Play Game", new[]
         {
+            // Game mode (Freeform / Rising Tides, issue #56) is chosen on the
+            // Configure Game player-setup page, not here — it's part of game
+            // setup and is shared with the map editor's new-map flow.
             new EscMenu.Option("Configure Game", ShowPlayConfig),
             new EscMenu.Option("Load Starting Map", OpenLoadStartingMapToPlay),
             new EscMenu.Option("Quick Play", OnQuickPlay),
@@ -1493,6 +1530,7 @@ public partial class MainMenuScene : Control
     private void OnQuickPlay()
     {
         GameSettings.CampaignLevel = null; // freeform — no campaign result recorded
+        GameSettings.Mode = GameMode.Freeform; // Quick Play is always basic freeform (#56)
         // Set the roster explicitly so prior session / campaign / load state
         // can't leak in: Red human, the rest Computer, all Soldier.
         for (int i = 0; i < GameSettings.PlayerKinds.Length; i++)

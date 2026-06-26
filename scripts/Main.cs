@@ -195,6 +195,12 @@ public partial class Main : Node2D
             GameSettings.GoldDensity = envGold;
         if (int.TryParse(OS.GetEnvironment("FOUREXHEX_CLUMP_FACTOR"), out int envClump) && envClump >= 0)
             GameSettings.ClumpingFactor = envClump;
+        // Diagnostic game-mode override (issue #56): FOUREXHEX_MODE=RisingTides
+        // launches the headless 6AI run in Rising Tides so the flood / last-
+        // player-standing flow can be regression-tested. Absent/unknown → no-op.
+        if (System.Enum.TryParse(
+                OS.GetEnvironment("FOUREXHEX_MODE"), ignoreCase: true, out GameMode envMode))
+            GameSettings.Mode = envMode;
 
         int seed = envSeed
                 ?? pendingLoad?.MasterSeed
@@ -286,7 +292,10 @@ public partial class Main : Node2D
                 $"mtn={mapGenOptions.MountainDensity} gold={mapGenOptions.GoldDensity} " +
                 $"clump={mapGenOptions.ClumpingFactor} " +
                 $"(campaign={_campaignLevel?.ToString() ?? "no"})");
-            _state = ProceduralGame.Build(cols, rows, _players, seed, mapGenOptions);
+            // Campaign always runs Freeform rules; only freeform games honor
+            // the menu's (or FOUREXHEX_MODE's) Rising Tides selection (#56).
+            GameMode mode = _campaignLevel is int ? GameMode.Freeform : GameSettings.Mode;
+            _state = ProceduralGame.Build(cols, rows, _players, seed, mapGenOptions, mode);
             _maxTurnNumber = quickDiagMode ? 200
                 : fullDiagMode ? 500
                 : int.MaxValue;

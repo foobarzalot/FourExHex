@@ -119,9 +119,55 @@ public class SaveSerializerTests
     }
 
     [Fact]
-    public void CurrentFormatVersion_IsEleven()
+    public void CurrentFormatVersion_IsTwelve()
     {
-        Assert.Equal(11, SaveSerializer.CurrentFormatVersion);
+        Assert.Equal(12, SaveSerializer.CurrentFormatVersion);
+    }
+
+    [Fact]
+    public void Serialize_RoundTripsRisingTidesModeAndGrownWater()
+    {
+        var red = new Player("Red", PlayerId.FromIndex(0), PlayerKind.Human);
+        var blue = new Player("Blue", PlayerId.FromIndex(1), PlayerKind.Computer);
+        var players = new List<Player> { red, blue };
+        HexGrid grid = TestHelpers.BuildRectGrid(3, 3, red.Id);
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(
+            grid, territories, players, new TurnState(players), new Treasury(),
+            waterCoords: null, mode: GameMode.RisingTides);
+        // Simulate flood progress: a shore tile has submerged mid-game.
+        HexCoord drowned = HexCoord.FromOffset(0, 0);
+        state.Grid.Remove(drowned);
+        state.AddWater(drowned);
+
+        string json = SaveSerializer.Serialize(state, 42, players, "tide", 100);
+        LoadedSave loaded = SaveSerializer.Deserialize(json);
+
+        Assert.Equal(GameMode.RisingTides, loaded.State.Mode);
+        Assert.Contains(drowned, loaded.State.WaterCoords);
+        Assert.False(loaded.State.Grid.Contains(drowned));
+    }
+
+    [Fact]
+    public void Deserialize_PreV12Save_DefaultsModeToFreeform()
+    {
+        var red = new Player("Red", PlayerId.FromIndex(0), PlayerKind.Human);
+        var blue = new Player("Blue", PlayerId.FromIndex(1), PlayerKind.Computer);
+        var players = new List<Player> { red, blue };
+        HexGrid grid = TestHelpers.BuildRectGrid(2, 2, red.Id);
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(
+            grid, territories, players, new TurnState(players), new Treasury());
+
+        // A plain freeform save omits the Mode field; rewind the version to
+        // simulate a pre-#56 file.
+        string json = SaveSerializer.Serialize(state, 42, players, "f", 100)
+            .Replace("\"FormatVersion\": 12", "\"FormatVersion\": 11");
+        Assert.DoesNotContain("\"Mode\"", json); // Freeform omits the field
+
+        LoadedSave loaded = SaveSerializer.Deserialize(json);
+
+        Assert.Equal(GameMode.Freeform, loaded.State.Mode);
     }
 
     [Fact]

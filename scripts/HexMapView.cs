@@ -156,6 +156,10 @@ public partial class HexMapView : Node2D, IHexMapView
     private Node2D? _towerCoverageLayer;
     private PolylineBatch? _bordersLayer;
     private TriangleSoup? _goldBordersLayer;
+    // The baked water + shoreline-foam soup. Static in normal play, but Rising
+    // Tides (issue #56) grows WaterCoords as shores submerge, so the reference
+    // is kept to re-bake it in place (preserving z-order) on a structural change.
+    private TriangleSoup? _waterFoamBake;
     private Node2D? _mountainsLayer;
     private Node2D? _capitalsLayer;
     private Node2D? _rejectionsLayer;
@@ -467,71 +471,10 @@ public partial class HexMapView : Node2D, IHexMapView
         // one draw call. Order matters within the soup: water first (behind),
         // foam after (on top). The whole bake sits behind the land tile
         // fills added below, matching the old child z-order.
-        var bake = new TriangleSoupBuilder();
-        Vector2[] waterHex = HexVertices();
-
-        // Water cells — off-map for gameplay (not in _state.Grid), renderer
-        // only — plus a render-only ring of rim water hexes that hides the
-        // half-hex map edge at default zoom.
-        foreach (HexCoord waterCoord in _state.WaterCoords)
-        {
-            Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(waterCoord, HexSize);
-            bake.AddPolygon(center, waterHex, WaterColor, null);
-        }
-        // Rim depth (in tiles) sized to cover the ClampPan-allowed pad. Row
-        // pitch is 1.5*HexSize (see PixelSize.Y); +1 is a safety margin so
-        // the rendered water always extends beyond the reachable scroll
-        // edge in both axes and at the corners.
-        int waterRimMargin = Mathf.CeilToInt(ScrollPaddingPx / (1.5f * HexSize)) + 1;
-        for (int row = -waterRimMargin; row < Rows + waterRimMargin; row++)
-        {
-            for (int col = -waterRimMargin; col < Cols + waterRimMargin; col++)
-            {
-                if (row >= 0 && row < Rows && col >= 0 && col < Cols) continue;
-                HexCoord coord = HexCoord.FromOffset(col, row);
-                Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(coord, HexSize);
-                bake.AddPolygon(center, waterHex, WaterColor, null);
-            }
-        }
-
-        // Per-edge shoreline foam. Each shore edge gets one independent quad
-        // — concave shorelines render cleanly because no interpolation
-        // crosses between edges.
-        foreach (HexCoord waterCoord in _state.WaterCoords)
-        {
-            Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(waterCoord, HexSize);
-            AddShoreFoamStrips(bake, center, waterCoord);
-        }
-        for (int row = -waterRimMargin; row < Rows + waterRimMargin; row++)
-        {
-            for (int col = -waterRimMargin; col < Cols + waterRimMargin; col++)
-            {
-                if (row >= 0 && row < Rows && col >= 0 && col < Cols) continue;
-                HexCoord coord = HexCoord.FromOffset(col, row);
-                Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(coord, HexSize);
-                AddShoreFoamStrips(bake, center, coord);
-            }
-        }
-        // Bridge the gap between strips on adjacent water hexes around a
-        // protruding land corner. At each land vertex shared with two
-        // non-land hexes, place a small foam disk centered on the vertex.
-        Vector2[] hexVerts = HexVertices();
-        foreach (HexTile tile in _state.Grid.Tiles)
-        {
-            Vector2 landCenter = FirstHexCenterOffset + HexPixel.ToPixel(tile.Coord, HexSize);
-            for (int i = 0; i < 6; i++)
-            {
-                int dirA = EdgeToNeighborDirection[(i + 5) % 6];
-                int dirB = EdgeToNeighborDirection[i];
-                if (_state.Grid.Get(tile.Coord.Neighbor(dirA)) != null) continue;
-                if (_state.Grid.Get(tile.Coord.Neighbor(dirB)) != null) continue;
-                AddCornerFoamDisk(bake, landCenter + hexVerts[i]);
-            }
-        }
-
-        var waterFoamBake = new TriangleSoup { Name = "WaterFoamBake" };
-        AddChild(waterFoamBake);
-        waterFoamBake.SetTriangles(bake.Points.ToArray(), bake.Colors.ToArray(), bake.Indices.ToArray());
+        TriangleSoupBuilder bake = BuildWaterFoamSoup();
+        _waterFoamBake = new TriangleSoup { Name = "WaterFoamBake" };
+        AddChild(_waterFoamBake);
+        _waterFoamBake.SetTriangles(bake.Points.ToArray(), bake.Colors.ToArray(), bake.Indices.ToArray());
 
         // Tiles already exist in _state.Grid (populated by the controller
         // before AddChild). Create one Polygon2D fill per tile, owned by
@@ -677,6 +620,110 @@ public partial class HexMapView : Node2D, IHexMapView
     }
 
     /// <summary>
+    /// Bake the water cells + shoreline foam (plus the render-only rim ring)
+    /// into one vertex-colored <see cref="TriangleSoupBuilder"/> — see the long
+    /// comment in <see cref="BuildStateVisuals"/> for why this is a single draw
+    /// call. Reads only <c>_state.WaterCoords</c> and <c>_state.Grid</c>, so it
+    /// re-derives correctly after Rising Tides grows the water set.
+    /// </summary>
+    private TriangleSoupBuilder BuildWaterFoamSoup()
+    {
+        var bake = new TriangleSoupBuilder();
+        Vector2[] waterHex = HexVertices();
+
+        // Water cells — off-map for gameplay (not in _state.Grid), renderer
+        // only — plus a render-only ring of rim water hexes that hides the
+        // half-hex map edge at default zoom.
+        foreach (HexCoord waterCoord in _state.WaterCoords)
+        {
+            Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(waterCoord, HexSize);
+            bake.AddPolygon(center, waterHex, WaterColor, null);
+        }
+        // Rim depth (in tiles) sized to cover the ClampPan-allowed pad. Row
+        // pitch is 1.5*HexSize (see PixelSize.Y); +1 is a safety margin so
+        // the rendered water always extends beyond the reachable scroll
+        // edge in both axes and at the corners.
+        int waterRimMargin = Mathf.CeilToInt(ScrollPaddingPx / (1.5f * HexSize)) + 1;
+        for (int row = -waterRimMargin; row < Rows + waterRimMargin; row++)
+        {
+            for (int col = -waterRimMargin; col < Cols + waterRimMargin; col++)
+            {
+                if (row >= 0 && row < Rows && col >= 0 && col < Cols) continue;
+                HexCoord coord = HexCoord.FromOffset(col, row);
+                Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(coord, HexSize);
+                bake.AddPolygon(center, waterHex, WaterColor, null);
+            }
+        }
+
+        // Per-edge shoreline foam. Each shore edge gets one independent quad
+        // — concave shorelines render cleanly because no interpolation
+        // crosses between edges.
+        foreach (HexCoord waterCoord in _state.WaterCoords)
+        {
+            Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(waterCoord, HexSize);
+            AddShoreFoamStrips(bake, center, waterCoord);
+        }
+        for (int row = -waterRimMargin; row < Rows + waterRimMargin; row++)
+        {
+            for (int col = -waterRimMargin; col < Cols + waterRimMargin; col++)
+            {
+                if (row >= 0 && row < Rows && col >= 0 && col < Cols) continue;
+                HexCoord coord = HexCoord.FromOffset(col, row);
+                Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(coord, HexSize);
+                AddShoreFoamStrips(bake, center, coord);
+            }
+        }
+        // Bridge the gap between strips on adjacent water hexes around a
+        // protruding land corner. At each land vertex shared with two
+        // non-land hexes, place a small foam disk centered on the vertex.
+        Vector2[] hexVerts = HexVertices();
+        foreach (HexTile tile in _state.Grid.Tiles)
+        {
+            Vector2 landCenter = FirstHexCenterOffset + HexPixel.ToPixel(tile.Coord, HexSize);
+            for (int i = 0; i < 6; i++)
+            {
+                int dirA = EdgeToNeighborDirection[(i + 5) % 6];
+                int dirB = EdgeToNeighborDirection[i];
+                if (_state.Grid.Get(tile.Coord.Neighbor(dirA)) != null) continue;
+                if (_state.Grid.Get(tile.Coord.Neighbor(dirB)) != null) continue;
+                AddCornerFoamDisk(bake, landCenter + hexVerts[i]);
+            }
+        }
+        return bake;
+    }
+
+    /// <summary>
+    /// Rising Tides (issue #56): when one or more land tiles have submerged
+    /// (their coords are now in <c>_state.WaterCoords</c> and gone from the
+    /// grid), drop their stale land-fill <see cref="Polygon2D"/>s and re-bake
+    /// the water/foam soup in place so the new water actually draws. Only does
+    /// work when the grid shrank — a no-op every other call, so normal capture
+    /// repaints (which never remove tiles) pay just one count comparison.
+    /// </summary>
+    private void PruneSubmergedTilesAndRebakeWater()
+    {
+        if (_tileVisuals.Count <= _state.Grid.Count) return;
+
+        var drowned = new List<HexCoord>();
+        foreach (KeyValuePair<HexCoord, Polygon2D> kv in _tileVisuals)
+        {
+            if (!_state.Grid.Contains(kv.Key)) drowned.Add(kv.Key);
+        }
+        foreach (HexCoord coord in drowned)
+        {
+            _tileVisuals[coord]?.QueueFree();
+            _tileVisuals.Remove(coord);
+        }
+
+        TriangleSoupBuilder bake = BuildWaterFoamSoup();
+        _waterFoamBake?.SetTriangles(
+            bake.Points.ToArray(), bake.Colors.ToArray(), bake.Indices.ToArray());
+        Log.Debug(Log.LogCategory.Tide,
+            $"[tide-view] pruned {drowned.Count} drowned land fill(s); " +
+            $"rebaked water ({_state.WaterCoords.Count} coords)");
+    }
+
+    /// <summary>
     /// Rebuild derived view state after the territory list has changed
     /// (capture, undo, redo). Clears and redraws borders + resets the
     /// move-target overlay. Callers should also refresh the highlight
@@ -685,6 +732,10 @@ public partial class HexMapView : Node2D, IHexMapView
     /// </summary>
     public void RebuildAfterTerritoryChange()
     {
+        // Rising Tides: drop drowned tiles' land fills and re-bake water before
+        // the fill/border resync below re-reads the (now smaller) grid.
+        PruneSubmergedTilesAndRebakeWater();
+
         // Resync every tile fill from the model — the single coalesced
         // repaint path for ownership color (HexTile no longer pushes via
         // a setter). Under an instant fast-forward the per-capture call

@@ -43,6 +43,7 @@ public static class Log
         Campaign = 10, // campaign ladder (issue #2): store load/save, status marks, level launch, panel
         MapGen = 11,  // procedural map generation (issue #48): mountain/gold scatter passes
         Replay = 12,  // replay playback: recorded-vs-replayed end-state divergence (issue #77)
+        Tide = 13,    // Rising Tides mode (issue #56): per-turn shore submerge / mountain demote
     }
 
     /// <summary>Severity, ascending. <see cref="Off"/> disables a

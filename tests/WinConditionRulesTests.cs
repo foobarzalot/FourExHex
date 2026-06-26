@@ -186,6 +186,48 @@ public class WinConditionRulesTests
         Assert.Null(WinConditionRules.WinnerAtEndOfTurn(Red, territories));
     }
 
+    // --- LastPlayerStanding (Rising Tides win check) ---------------------
+
+    [Fact]
+    public void LastPlayerStanding_OnlyOneOwnerHasCapital_ReturnsThatOwner()
+    {
+        // Red has a 2-tile capital-bearing territory; Blue is down to a
+        // singleton orphan. Unlike WinnerAtEndOfTurn this doesn't care whose
+        // turn it is — Red is the sole survivor.
+        var grid = new HexGrid();
+        grid.Add(new HexTile(new HexCoord(0, 0), Red));
+        grid.Add(new HexTile(new HexCoord(1, 0), Red));
+        grid.Add(new HexTile(new HexCoord(5, 5), Blue));
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+
+        Assert.Equal(Red, WinConditionRules.LastPlayerStanding(territories));
+    }
+
+    [Fact]
+    public void LastPlayerStanding_TwoOwnersHaveCapitals_ReturnsNull()
+    {
+        var grid = new HexGrid();
+        grid.Add(new HexTile(new HexCoord(0, 0), Red));
+        grid.Add(new HexTile(new HexCoord(1, 0), Red));
+        grid.Add(new HexTile(new HexCoord(5, 5), Blue));
+        grid.Add(new HexTile(new HexCoord(6, 5), Blue));
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+
+        Assert.Null(WinConditionRules.LastPlayerStanding(territories));
+    }
+
+    [Fact]
+    public void LastPlayerStanding_NobodyHasCapital_ReturnsNull()
+    {
+        // Degenerate all-singletons state — no winner declared.
+        var grid = new HexGrid();
+        grid.Add(new HexTile(new HexCoord(0, 0), Red));
+        grid.Add(new HexTile(new HexCoord(5, 5), Blue));
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+
+        Assert.Null(WinConditionRules.LastPlayerStanding(territories));
+    }
+
     // --- MeetsClaimVictoryThreshold (parameterized predicate) ------------
 
     [Fact]

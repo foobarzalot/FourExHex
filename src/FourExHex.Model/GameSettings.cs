@@ -119,4 +119,15 @@ public static class GameSettings
     /// variant of the victory overlay.
     /// </summary>
     public static int? CampaignLevel = null;
+
+    /// <summary>
+    /// Selectable game mode (issue #56) for the next freeform launch. Written
+    /// by the New Game "Map Setup" stepper's mode selector; read by
+    /// <see cref="Main"/> into the <c>GameState</c> it builds. Defaults to
+    /// <see cref="GameMode.Freeform"/> and is reset to Freeform on the
+    /// freeform/Quick Play start paths (mirroring how <see cref="CampaignLevel"/>
+    /// is cleared) so an ordinary game is never accidentally a Rising Tides one.
+    /// Campaign launches always run Freeform rules.
+    /// </summary>
+    public static GameMode Mode = GameMode.Freeform;
 }

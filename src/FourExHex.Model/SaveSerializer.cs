@@ -115,7 +115,7 @@ public static class SaveSerializer
     /// Bump on any breaking schema change. <see cref="Deserialize"/>
     /// rejects mismatched values rather than attempting migration.
     /// </summary>
-    public const int CurrentFormatVersion = 11;
+    public const int CurrentFormatVersion = 12;
 
     public static string Serialize(
         GameState state,
@@ -199,6 +199,9 @@ public static class SaveSerializer
             // explicit `replay` arg (regular in-progress saves).
             Replay = SerializeReplay(tutorial?.Replay ?? replay),
             CampaignLevel = campaignLevel,
+            // Null (omitted) for Freeform so every existing freeform save's
+            // wire format is unchanged; only Rising Tides games carry it.
+            Mode = state.Mode == GameMode.Freeform ? null : state.Mode,
         };
         // Source-gen path (FourExHexJsonContext) so this works under iOS AOT,
         // where reflection-based serialization is disabled. The context's
@@ -247,7 +250,8 @@ public static class SaveSerializer
         // CampaignLevel pointer (issue #2); v9 added per-tile IsGold
         // (issue #45); v10 added per-tile IsMountain (issue #37) — all
         // default-absent, so pre-bump files load unchanged (missing IsGold /
-        // IsMountain → false, an ordinary tile).
+        // IsMountain → false, an ordinary tile). v12 added the optional
+        // Rising Tides Mode flag (issue #56) — absent/null loads as Freeform.
         if (data.FormatVersion is < 2 or > CurrentFormatVersion)
         {
             throw new InvalidOperationException(
@@ -284,7 +288,9 @@ public static class SaveSerializer
         }
 
         IReadOnlySet<HexCoord> waterCoords = DeserializeWater(data.Water);
-        var state = new GameState(grid, territories, players, turnState, treasury, waterCoords);
+        var state = new GameState(
+            grid, territories, players, turnState, treasury, waterCoords,
+            mode: data.Mode ?? GameMode.Freeform);
         IReadOnlyDictionary<PlayerId, int> prompted = DeserializeClaimVictoryPrompted(
             data.ClaimVictoryPromptedHighestByPlayerIndex,
             data.ClaimVictoryPromptedHighestByColorHex,
@@ -986,6 +992,15 @@ public sealed class SaveData
     /// all pre-v8 saves.
     /// </summary>
     public int? CampaignLevel { get; set; }
+
+    /// <summary>
+    /// v12: the selectable game mode (issue #56). Null/missing for
+    /// <see cref="GameMode.Freeform"/> games and all pre-v12 saves (which
+    /// load as Freeform); present only for Rising Tides. The grown water set
+    /// rides in <see cref="Water"/>, so no separate flood-progress field is
+    /// needed. <see cref="WaterCoords"/> is recomputed on replay anyway.
+    /// </summary>
+    public GameMode? Mode { get; set; }
 }
 
 public sealed class PlayerDto

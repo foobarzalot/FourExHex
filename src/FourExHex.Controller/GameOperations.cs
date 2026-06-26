@@ -338,8 +338,12 @@ public class GameOperations
     {
         LogGameEndDiagnostics(
             $"end-of-turn check for {_state.Turns.CurrentPlayer.Name}");
-        PlayerId? winner = WinConditionRules.WinnerAtEndOfTurn(
-            _state.Turns.CurrentPlayer.Id, _state.Territories);
+        // Rising Tides (issue #56) suppresses the sole-capital early win: the
+        // game ends only when one player is left standing.
+        PlayerId? winner = _state.Mode == GameMode.RisingTides
+            ? WinConditionRules.LastPlayerStanding(_state.Territories)
+            : WinConditionRules.WinnerAtEndOfTurn(
+                _state.Turns.CurrentPlayer.Id, _state.Territories);
         if (winner.HasValue)
         {
             Log.Info(Log.LogCategory.Turn, $"[T{_state.Turns.TurnNumber}] " +
@@ -390,6 +394,10 @@ public class GameOperations
 
         RunNeutralPhantomTurnIfRoundStart();
 
+        // Rising Tides (issue #56): the sea eats one of this player's shore
+        // tiles just before their trees grow. Mirrors the TurnNumber > 1 gate.
+        MaybeRiseTidesFor(_state.Turns.CurrentPlayer.Id);
+
         if (_state.Turns.TurnNumber > 1)
         {
             TreeRules.RunStartOfTurnGrowth(
@@ -411,6 +419,15 @@ public class GameOperations
             // One toll per turn-start regardless of how many of the
             // player's territories went bankrupt — see IHexMapView.
             _map.PlaySound(SoundEffect.Bankruptcy);
+        }
+
+        // Rising Tides: the start-of-turn submerge above can drown this
+        // player's last capital, leaving someone else the sole survivor —
+        // declare them the winner before CheckGameEndConditions fires.
+        if (_state.Mode == GameMode.RisingTides && !_session.IsGameOver)
+        {
+            PlayerId? standing = WinConditionRules.LastPlayerStanding(_state.Territories);
+            if (standing.HasValue) DeclareWinner(standing.Value);
         }
 
         LogTurnStart();
@@ -443,6 +460,10 @@ public class GameOperations
     /// </summary>
     private void RunPhantomTurnFor(PlayerId ownerId, Difficulty difficulty, string name)
     {
+        // Rising Tides erodes every color present on the map, including neutral
+        // and eliminated colors' leftover tiles, on their phantom turn.
+        MaybeRiseTidesFor(ownerId);
+
         if (_state.Turns.TurnNumber > 1)
         {
             TreeRules.RunStartOfTurnGrowth(_state.Grid, ownerId, _state.WaterCoords);
@@ -451,6 +472,28 @@ public class GameOperations
             ownerId, difficulty, _state.Territories, _state.Grid, _state.Treasury);
         Log.Info(Log.LogCategory.Turn,
             $"[T{_state.Turns.TurnNumber}] phantom turn for {name} (tree growth + upkeep)");
+    }
+
+    /// <summary>
+    /// Rising Tides (issue #56): erode one of <paramref name="owner"/>'s shore
+    /// tiles via <see cref="RisingTidesRules.SubmergeStep"/>. No-op outside
+    /// Rising Tides and on round 1 (matching the <c>TurnNumber &gt; 1</c> gate
+    /// that defers tree growth), so a freeform game's RNG stream and behaviour
+    /// are byte-for-byte unchanged. Budget is fixed at 1 for now (issue #56).
+    /// </summary>
+    private void MaybeRiseTidesFor(PlayerId owner)
+    {
+        if (_state.Mode != GameMode.RisingTides || _state.Turns.TurnNumber <= 1) return;
+        bool changed = RisingTidesRules.SubmergeStep(_state, owner, _rng, budget: 1);
+        // A submerge removes tiles (or demotes a mountain) — the land/water
+        // tessellation is structural, so it needs the coalesced repaint path,
+        // not just the per-turn RefreshOccupantVisuals. Mirror HandleCapture's
+        // SuppressMapRebuild gate so an instant fast-forward still coalesces to
+        // one rebuild at batch end.
+        if (changed && !SuppressMapRebuild)
+        {
+            _map.RebuildAfterTerritoryChange();
+        }
     }
 
     /// <summary>
@@ -996,7 +1039,11 @@ public class GameOperations
         // singletons" win path is handled at end-of-turn instead
         // (see EndOfTurnProcessing). Undo is cleared so the player
         // can't rewind past the killing blow.
-        PlayerId? winner = WinConditionRules.WinnerByDomination(_state.Grid);
+        // Rising Tides (issue #56) suppresses the mid-turn domination win:
+        // a capture only ends the game when it leaves one player standing.
+        PlayerId? winner = _state.Mode == GameMode.RisingTides
+            ? WinConditionRules.LastPlayerStanding(_state.Territories)
+            : WinConditionRules.WinnerByDomination(_state.Grid);
         if (winner.HasValue)
         {
             Log.Info(Log.LogCategory.Capture, $"[T{_state.Turns.TurnNumber}] " +

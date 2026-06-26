@@ -86,6 +86,34 @@ public static class WinConditionRules
     }
 
     /// <summary>
+    /// "Last player standing" winner check used by Rising Tides (issue #56),
+    /// where every early-win path is suppressed. Returns the sole owner that
+    /// has a capital-bearing territory iff exactly one distinct owner does;
+    /// null if two or more still hold a capital, or if none do (a degenerate
+    /// all-singletons state — no winner is declared). Mirrors
+    /// <see cref="WinnerAtEndOfTurn"/> but without the "must be the current
+    /// player" clause, and agrees with <see cref="IsEliminated"/> on the
+    /// capital-bearing definition of "still in the game".
+    /// </summary>
+    public static PlayerId? LastPlayerStanding(IReadOnlyList<Territory> territories)
+    {
+        PlayerId? sole = null;
+        foreach (Territory t in territories)
+        {
+            if (!t.HasCapital) continue;
+            if (sole == null)
+            {
+                sole = t.Owner;
+            }
+            else if (sole.Value != t.Owner)
+            {
+                return null;
+            }
+        }
+        return sole;
+    }
+
+    /// <summary>
     /// Tiers at which the End-Turn claim-victory prompt fires for a
     /// human owning strictly more than that fraction of land tiles.
     /// Each tier prompts at most once per human per game; "show only

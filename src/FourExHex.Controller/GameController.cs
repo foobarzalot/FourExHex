@@ -1920,7 +1920,10 @@ public class GameController
         // tutorial graduates to free play (see GraduateFromTutorialScripting)
         // ordinary claim-victory rules resume.
         bool previewScripted = _previewMode && !_previewScriptingComplete;
-        if (!alreadyWon && !current.IsAi && !previewScripted && !_recordingMode)
+        // Rising Tides (issue #56) suppresses all claim-victory tiers — the
+        // sea, not a territorial lead, ends the game.
+        bool risingTides = _state.Mode == GameMode.RisingTides;
+        if (!risingTides && !alreadyWon && !current.IsAi && !previewScripted && !_recordingMode)
         {
             int seen = _session.ClaimVictoryPromptedHighestThreshold
                 .TryGetValue(current.Id, out int s) ? s : 0;

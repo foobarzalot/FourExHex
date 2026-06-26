@@ -18,7 +18,8 @@ public static class ProceduralGame
     /// treasury. Same (cols, rows, players, seed) → identical state.
     /// </summary>
     public static GameState Build(
-        int cols, int rows, IReadOnlyList<Player> players, int seed, MapGenOptions? options = null)
+        int cols, int rows, IReadOnlyList<Player> players, int seed,
+        MapGenOptions? options = null, GameMode mode = GameMode.Freeform)
     {
         var turnState = new TurnState(players);
         var treasury = new Treasury();
@@ -26,6 +27,7 @@ public static class ProceduralGame
         HexGrid grid = mapGen.Grid;
         IReadOnlyList<Territory> territories = TerritoryFinder.Recompute(
             grid, new List<Territory>());
-        return new GameState(grid, territories, players, turnState, treasury, mapGen.WaterCoords);
+        return new GameState(
+            grid, territories, players, turnState, treasury, mapGen.WaterCoords, mode);
     }
 }
