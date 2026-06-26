@@ -103,18 +103,17 @@ public partial class MainMenuScene : Control
     // The player-page "Next" button (one is live at a time per orientation);
     // disabled when fewer than 2 active players are selected (issue #70).
     private Button? _playerNextButton;
-    private OptionButton? _mapSelector;
     private HudIconButton? _rerollButton;
     private MapGenSettingsPanel? _mapGenSettingsPanel;
     private MapThumbnailView? _thumbnail;
 
     // The New Game flow is split into two pages (issue #40): player setup
-    // (role + difficulty per slot) and map setup (map selector, seed +
-    // re-roll, and a live thumbnail of the board the selection produces).
-    // Both page contents are built up front and parented to the play-config
-    // panel; navigation toggles their visibility (so selections survive paging
-    // back and forth). _playConfigPage persists across the orientation-flip
-    // rebuild so a flip keeps you on the same page.
+    // (role + difficulty per slot) and map setup (seed + re-roll and a live
+    // thumbnail of the board the seed produces). Both page contents are built
+    // up front and parented to the play-config panel; navigation toggles their
+    // visibility (so selections survive paging back and forth). _playConfigPage
+    // persists across the orientation-flip rebuild so a flip keeps you on the
+    // same page.
     private enum PlayConfigPage { PlayerSetup, MapSetup }
 
     // What the player-setup screen feeds into (issue #70): a new procedural
@@ -128,10 +127,6 @@ public partial class MainMenuScene : Control
     // Orientation the play-config panel was last built for; a viewport
     // resize that flips it triggers a rebuild (see FitPanels).
     private ScreenOrientation _playConfigOrientation = ScreenOrientation.Landscape;
-    // Slot name of the selected starting map, or null when "Random Map"
-    // is chosen — that's the dropdown's first/default entry, which keeps
-    // the seed field active and triggers the procedural-generation flow.
-    private string? _selectedMapName;
     // True once _Ready hooked the viewport's SizeChanged (the diagnostic
     // 6AI branch returns before the hook; _ExitTree must not disconnect a
     // never-connected signal).
@@ -361,7 +356,6 @@ public partial class MainMenuScene : Control
 
         PersistRosterSelections();
         string seedText = _seedField?.Text ?? "";
-        int mapSelected = _mapSelector?.Selected ?? 0;
         bool wasVisible = _playConfigPanel.Visible;
 
         // The freed seed field never fires FocusExited, so stop the
@@ -382,13 +376,6 @@ public partial class MainMenuScene : Control
         MoveChild(_playConfigPanel, treeIndex);
         _playConfigPanel.Visible = wasVisible;
         if (_seedField != null) _seedField.Text = seedText;
-        if (_mapSelector != null && mapSelected < _mapSelector.ItemCount)
-        {
-            _mapSelector.Selected = mapSelected;
-            // Setting Selected programmatically doesn't fire ItemSelected;
-            // re-derive map-name / seed-enabled / start-gating state.
-            OnMapSelectorChanged(mapSelected);
-        }
         // _playConfigPage persists across the rebuild; restore the matching page
         // visibility and re-render the thumbnail if the map page is showing.
         ShowCurrentPlayConfigPage();
@@ -874,8 +861,7 @@ public partial class MainMenuScene : Control
 
         // Procedural-only map page (issue #70): loading a saved starting map is
         // now its own branch off the New Game source chooser, so the map page
-        // is just seed + preview. (_mapSelector / _selectedMapName stay null,
-        // which every reader already treats as "Random Map".)
+        // is just seed + preview.
 
         // Seed field + square re-roll die share a row.
         var seedRow = new HBoxContainer();
@@ -1259,50 +1245,14 @@ public partial class MainMenuScene : Control
         }
     }
 
-    private void OnMapSelectorChanged(long index)
-    {
-        if (_mapSelector == null) return;
-        if (index == 0)
-        {
-            _selectedMapName = null;
-            SetSeedFieldEnabled(true);
-        }
-        else
-        {
-            _selectedMapName = _mapSelector.GetItemText((int)index);
-            SetSeedFieldEnabled(false);
-        }
-        RefreshStartButtonGating();
-        RefreshThumbnail();
-    }
-
     /// <summary>
-    /// Enable/disable the seed field. When disabled, the field also drops
-    /// focus and refuses click-to-focus — Editable=false alone leaves the
-    /// LineEdit clickable and able to capture keystrokes (which the field
-    /// would just swallow), confusing the user.
-    /// </summary>
-    private void SetSeedFieldEnabled(bool enabled)
-    {
-        if (_seedField == null) return;
-        _seedField.Editable = enabled;
-        _seedField.FocusMode = enabled ? Control.FocusModeEnum.All : Control.FocusModeEnum.None;
-        if (!enabled && _seedField.HasFocus()) _seedField.ReleaseFocus();
-        // The seed is inert while a saved map drives the terrain — re-roll too.
-        if (_rerollButton != null) _rerollButton.Disabled = !enabled;
-    }
-
-    /// <summary>
-    /// Start Game is enabled when EITHER a starting map is selected
-    /// (terrain comes from disk) OR the seed field has digits (we'll
-    /// generate procedurally). Disabled only when both are absent.
+    /// Start Game is enabled when the seed field has digits (the map page is
+    /// procedural-only since #70 — loading a saved map is its own branch).
     /// </summary>
     private void RefreshStartButtonGating()
     {
         if (_startButton == null) return;
-        bool seedEmpty = string.IsNullOrEmpty(_seedField?.Text);
-        bool mapSelected = _selectedMapName != null;
-        _startButton.Disabled = seedEmpty && !mapSelected;
+        _startButton.Disabled = string.IsNullOrEmpty(_seedField?.Text);
     }
 
     /// <summary>Build the campaign screen for the current orientation and
@@ -1383,6 +1333,9 @@ public partial class MainMenuScene : Control
     private void ShowPlayConfig(PlayConfigPurpose purpose)
     {
         _playConfigPurpose = purpose;
+        Log.Info(Log.LogCategory.Input,
+            $"MainMenu: player-setup ({purpose}) defaults — " + string.Join(", ",
+                GameSettings.PlayerConfig.Select((c, i) => $"{c.Name}={GameSettings.PlayerKinds[i]}")));
         if (_landingPanel != null) _landingPanel.Visible = false;
         if (_playConfigPanel != null) _playConfigPanel.Visible = true;
         // The shared player-setup screen feeds either a procedural game ("Next"
@@ -1488,8 +1441,7 @@ public partial class MainMenuScene : Control
     private void RefreshThumbnail()
     {
         if (_thumbnail == null || _playConfigPage != PlayConfigPage.MapSetup) return;
-        if (_selectedMapName != null) _thumbnail.RequestMap(_selectedMapName);
-        else if (SeedFormat.TryParseHex(_seedField?.Text, out int seed)) _thumbnail.RequestRandom(seed);
+        if (SeedFormat.TryParseHex(_seedField?.Text, out int seed)) _thumbnail.RequestRandom(seed);
     }
 
     private MapThumbnailView BuildThumbnail()
@@ -1967,27 +1919,8 @@ public partial class MainMenuScene : Control
                 GameSettings.PlayerConfig.Select((config, i) =>
                     $"{config.Name}={GameSettings.PlayerKinds[i]}/{GameSettings.Difficulties[i]}")));
 
-        if (_selectedMapName != null)
-        {
-            // Starting-map flow: load the saved map and hand it to the
-            // game scene. Main detects TurnNumber == 0 and treats it as
-            // a fresh game (turn 1, red first) over that terrain.
-            try
-            {
-                LoadedSave loaded = _saveStore.LoadMap(_selectedMapName);
-                LoadRequest.Pending = loaded;
-                GameSettings.MasterSeed = loaded.MasterSeed;
-            }
-            catch (System.Exception ex)
-            {
-                _loadDialog?.ShowError($"Could not load map '{_selectedMapName}': {ex.Message}");
-                return;
-            }
-            GetTree().ChangeSceneToFile("res://scenes/main.tscn");
-            return;
-        }
-
-        // Random-map flow: needs a seed.
+        // Procedural map flow (loading a saved starting map is its own branch
+        // off the source chooser now, issue #70): needs a seed.
         if (_seedField == null || string.IsNullOrEmpty(_seedField.Text)) return;
         SeedFormat.TryParseHex(_seedField.Text, out int seed);
         GameSettings.MasterSeed = seed;
