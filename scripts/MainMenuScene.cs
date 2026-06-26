@@ -1475,14 +1475,43 @@ public partial class MainMenuScene : Control
 
     private void OnPlayPressed()
     {
-        // New Game source chooser (issue #70): configure a fresh procedural
-        // game, or load a saved starting map and play its baked roster.
+        // Play Game source chooser (issue #70 / #79): configure a fresh game,
+        // load a saved starting map, or jump straight into a default game.
         Log.Info(Log.LogCategory.Input, "MainMenu: Play Game → source chooser");
-        _sourceChooser?.Show("New Game", new[]
+        _sourceChooser?.Show("Play Game", new[]
         {
-            new EscMenu.Option("New Map", ShowPlayConfig),
+            new EscMenu.Option("Configure Game", ShowPlayConfig),
             new EscMenu.Option("Load Starting Map", OpenLoadStartingMapToPlay),
+            new EscMenu.Option("Quick Play", OnQuickPlay),
         });
+    }
+
+    /// <summary>Quick Play (issue #79): skip both setup pages and launch a basic
+    /// freeform game — Red human + 5 Computer (all Soldier), a fresh random seed,
+    /// default densities, not a campaign. Mirrors the FOUREXHEX_6AI bypass but
+    /// user-triggered and with a human in slot 0.</summary>
+    private void OnQuickPlay()
+    {
+        GameSettings.CampaignLevel = null; // freeform — no campaign result recorded
+        // Set the roster explicitly so prior session / campaign / load state
+        // can't leak in: Red human, the rest Computer, all Soldier.
+        for (int i = 0; i < GameSettings.PlayerKinds.Length; i++)
+        {
+            GameSettings.PlayerKinds[i] = i == 0 ? PlayerKind.Human : PlayerKind.Computer;
+            GameSettings.Difficulties[i] = Difficulty.Soldier;
+        }
+        // Reset map-gen to the documented defaults so a prior Configure-Game
+        // tweak doesn't carry into the "basic" Quick Play map.
+        GameSettings.TreeDensity = 5;
+        GameSettings.MountainDensity = 0;
+        GameSettings.GoldDensity = 0;
+        GameSettings.ClumpingFactor = 0;
+
+        int seed = SeedFormat.NextSeed(new System.Random());
+        GameSettings.MasterSeed = seed;
+        Log.Info(Log.LogCategory.Input,
+            $"MainMenu: Quick Play — seed {SeedFormat.ToHex(seed)} (Red human + 5 AI)");
+        LaunchGameScene();
     }
 
     private void OnMapEditorPressed()
