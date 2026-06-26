@@ -2984,6 +2984,10 @@ public partial class HexMapView : Node2D, IHexMapView
             // board (the old pan is meaningless under the new rotation).
             ApplyGlyphUpright();
             RecenterMap();
+            // The mountain channel's bevel shading is baked relative to the board,
+            // so rebake it to keep the light coming from the same screen direction
+            // (top-left) under the new rotation. (#81 followup)
+            DrawMountains();
         }
         else
         {
@@ -3340,12 +3344,18 @@ public partial class HexMapView : Node2D, IHexMapView
     private const float GoldBorderOuter = 1.0f;
     private const float GoldBorderInner = 0.74f;
 
-    // Mountain ring channel (issue #81): the same technique as gold but black and
-    // a touch thicker (smaller inner factor → wider band) so the "thickened black
-    // channel" reads as terrain distinct from the gold accent.
-    private static readonly Color MountainBorderColor = new Color(0f, 0f, 0f, 1f);
+    // Mountain ring channel (issue #81): a hex-ring band, a touch thicker than the
+    // gold one, shaded as a raised "plateau" (issue #81 followup) — a bright lit
+    // top rim over a near-black outer drop-shadow skirt — so the tile reads as a
+    // lifted slab rather than a flat band. See DrawMountains.
     private const float MountainBorderOuter = 1.0f;
     private const float MountainBorderInner = 0.68f;
+    // Light from the top-left (screen +y is down, so up-left is (-1,-1)); baked
+    // screen-fixed so it holds under portrait rotation (see DrawMountains).
+    private static readonly Vector2 MountainLightDir = new Vector2(-1f, -1f).Normalized();
+    private const float MountainSkirt = 0.03f;     // outer drop-shadow ring (near-black)
+    private const float MountainTopBase = 0.40f;   // lit top-rim brightness (inner edge)
+    private const float MountainTopSwing = 0.24f;  // top rim brightens toward light, darkens away
 
     /// <summary>
     /// Draw a gold hex-ring band inside every <see cref="HexTile.IsGold"/>
@@ -3386,12 +3396,14 @@ public partial class HexMapView : Node2D, IHexMapView
 
 
     /// <summary>
-    /// Draw a black hex-ring channel inside every <see cref="HexTile.IsMountain"/>
-    /// tile (issue #81), retiring the old peak glyph. The same batched
-    /// TriangleSoup technique as <see cref="DrawGoldBorders"/>, just black and a
-    /// touch thicker. Gold and mountain are mutually exclusive, so a tile shows
-    /// at most one of the two rings; both coexist with a tree / grave / unit /
-    /// tower drawn on top.
+    /// Draw a differentially-shaded hex-ring channel inside every
+    /// <see cref="HexTile.IsMountain"/> tile (issue #81), retiring the old peak
+    /// glyph. The same batched TriangleSoup technique as
+    /// <see cref="DrawGoldBorders"/>, but shaded as a raised plateau: a near-black
+    /// outer drop-shadow skirt under a bright inner top rim that brightens toward
+    /// the top-left light, so the tile reads as a lifted slab. Gold and mountain
+    /// are mutually exclusive, so a tile shows at most one of the two rings; both
+    /// coexist with a tree / grave / unit / tower drawn on top.
     /// </summary>
     private void DrawMountains()
     {
@@ -3399,10 +3411,22 @@ public partial class HexMapView : Node2D, IHexMapView
         Vector2[] verts = HexVertices();
         var outer = new Vector2[6];
         var inner = new Vector2[6];
+        // Per-corner grey shades — identical for every tile (geometry is the same,
+        // only the center offset differs), so compute once. Outer corners are the
+        // dark skirt; inner corners are the lit top rim, brightened toward the light.
+        var outerShade = new Color[6];
+        var innerShade = new Color[6];
+        // The whole node is rotated by _mapAngleRad, so counter-rotate the light
+        // into local space to keep it appearing from the same screen direction
+        // (top-left) in both landscape and portrait. (a.Rotated(θ))·L == a·(L.Rotated(−θ)).
+        Vector2 lightLocal = MountainLightDir.Rotated(-_mapAngleRad);
         for (int i = 0; i < 6; i++)
         {
             outer[i] = verts[i] * MountainBorderOuter;
             inner[i] = verts[i] * MountainBorderInner;
+            float angular = verts[i].Normalized().Dot(lightLocal);  // [-1, 1]
+            outerShade[i] = Grey(MountainSkirt);
+            innerShade[i] = Grey(MountainTopBase + MountainTopSwing * angular);
         }
 
         var builder = new TriangleSoupBuilder();
@@ -3415,13 +3439,22 @@ public partial class HexMapView : Node2D, IHexMapView
             {
                 int next = (edge + 1) % 6;
                 var quad = new[] { outer[edge], outer[next], inner[next], inner[edge] };
-                builder.AddPolygon(center, quad, MountainBorderColor, vertColors: null);
+                var quadShade = new[] { outerShade[edge], outerShade[next], innerShade[next], innerShade[edge] };
+                builder.AddPolygon(center, quad, Colors.White, quadShade);
             }
             built++;
         }
         _mountainBordersLayer.SetTriangles(
             builder.Points.ToArray(), builder.Colors.ToArray(), builder.Indices.ToArray());
-        Log.Debug(Log.LogCategory.Render, $"DrawMountains: built {built} mountain border channels");
+        Log.Debug(Log.LogCategory.Render,
+            $"DrawMountains: built {built} mountain channels (plateau, light TL)");
+    }
+
+    // Opaque grey of the given brightness, clamped to [0, 1].
+    private static Color Grey(float b)
+    {
+        float v = Mathf.Clamp(b, 0f, 1f);
+        return new Color(v, v, v, 1f);
     }
 
     // Batched line drawer: draws ALL edge segments in a single
