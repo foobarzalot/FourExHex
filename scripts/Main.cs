@@ -264,7 +264,13 @@ public partial class Main : Node2D
         }
         else
         {
-            _players = Player.BuildRoster();
+            // A campaign game's roster comes from the level (human at the
+            // level's slot, rest Computer), never the freeform PlayerKinds —
+            // so playing a campaign level can't change the New Game default
+            // (issue #70 bleed fix). Freeform games read the menu's selection.
+            _players = _campaignLevel is int campLevel
+                ? Player.BuildCampaignRoster(campLevel)
+                : Player.BuildRoster();
             // Campaign levels derive their terrain densities from the level number
             // (fixed + reproducible, independent of the freeform New Game
             // steppers); freeform games use the player's chosen densities.

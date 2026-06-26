@@ -79,6 +79,44 @@ public class PlayerRosterTests
     }
 
     [Fact]
+    public void BuildCampaignRoster_IsDerivedFromLevel_NotFreeformPlayerKinds()
+    {
+        // The campaign roster must come from the level alone, so playing a
+        // campaign level never bleeds into the freeform New Game default
+        // (issue #70). Poison the freeform kinds to prove independence.
+        PlayerKind[] savedKinds = GameSettings.PlayerKinds;
+        try
+        {
+            GameSettings.PlayerKinds = new[]
+            {
+                PlayerKind.None, PlayerKind.None, PlayerKind.None,
+                PlayerKind.None, PlayerKind.None, PlayerKind.Human,
+            };
+            int level = 0x43;
+            int count = GameSettings.PlayerConfig.Length;
+            int expectedHuman = CampaignProgress.HumanSlotForLevel(level, count);
+
+            List<Player> roster = Player.BuildCampaignRoster(level);
+
+            Assert.Equal(count, roster.Count); // campaign is always full 6-player
+            Assert.Single(roster, p => p.Kind == PlayerKind.Human);
+            for (int i = 0; i < count; i++)
+            {
+                Assert.Equal(i, roster[i].Id.Index);
+                Assert.Equal(
+                    i == expectedHuman ? PlayerKind.Human : PlayerKind.Computer,
+                    roster[i].Kind);
+            }
+            Assert.Equal(CampaignProgress.DifficultyForLevel(level), roster[expectedHuman].Difficulty);
+            Assert.Equal(Difficulty.Soldier, roster[(expectedHuman + 1) % count].Difficulty);
+        }
+        finally
+        {
+            GameSettings.PlayerKinds = savedKinds;
+        }
+    }
+
+    [Fact]
     public void BuildRoster_ExcludesNoneSlots_AndPreservesSlotIndices()
     {
         // None slots are dropped entirely; survivors keep their original

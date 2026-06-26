@@ -106,6 +106,34 @@ public class Player
     /// builder scenes use this to suppress AI turn-driving while
     /// they share the play harness for previews/recordings.
     /// </summary>
+    /// <summary>
+    /// Build the roster for a campaign level (issue #70 bleed fix): the full
+    /// 6-slot roster with the single human at the level's deterministic slot
+    /// (<see cref="CampaignProgress.HumanSlotForLevel"/>) carrying the level's
+    /// tier difficulty (<see cref="CampaignProgress.DifficultyForLevel"/>), every
+    /// other slot a Soldier Computer. Derived purely from the level, so a
+    /// campaign launch never reads or mutates the freeform
+    /// <see cref="GameSettings.PlayerKinds"/> — playing a campaign level can't
+    /// change your New Game default.
+    /// </summary>
+    public static List<Player> BuildCampaignRoster(int level)
+    {
+        int count = GameSettings.PlayerConfig.Length;
+        int humanSlot = CampaignProgress.HumanSlotForLevel(level, count);
+        Difficulty humanDifficulty = CampaignProgress.DifficultyForLevel(level);
+        var players = new List<Player>();
+        for (int i = 0; i < count; i++)
+        {
+            bool isHuman = i == humanSlot;
+            players.Add(new Player(
+                GameSettings.PlayerConfig[i].Name,
+                PlayerId.FromIndex(i),
+                isHuman ? PlayerKind.Human : PlayerKind.Computer,
+                isHuman ? humanDifficulty : Difficulty.Soldier));
+        }
+        return players;
+    }
+
     public static List<Player> BuildAllHumanRoster()
     {
         var players = new List<Player>();

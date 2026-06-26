@@ -59,22 +59,20 @@ public static class CampaignStore
     {
         GameSettings.CampaignLevel = level;
         GameSettings.MasterSeed = CampaignProgress.SeedForLevel(level);
-        int playerCount = GameSettings.PlayerKinds.Length;
+        // The campaign roster is built from the level in Main (Player.
+        // BuildCampaignRoster), NOT written into the shared freeform
+        // GameSettings.PlayerKinds/Difficulties — otherwise a campaign launch
+        // would clobber the New Game default for the rest of the session
+        // (issue #70 bleed). CampaignLevel above is the only handoff Main needs.
+        int playerCount = GameSettings.PlayerConfig.Length;
         int humanSlot = CampaignProgress.HumanSlotForLevel(level, playerCount);
-        for (int i = 0; i < GameSettings.PlayerKinds.Length; i++)
-        {
-            GameSettings.PlayerKinds[i] = i == humanSlot ? PlayerKind.Human : PlayerKind.Computer;
-            GameSettings.Difficulties[i] = i == humanSlot
-                ? CampaignProgress.DifficultyForLevel(level)
-                : Difficulty.Soldier;
-        }
         LoadRequest.Pending = null;
         MarkAttempted(level);
         Log.Info(Log.LogCategory.Campaign,
             $"CampaignStore: launching level {CampaignProgress.LabelFor(level)} " +
             $"(seed {GameSettings.MasterSeed}, human slot {humanSlot} " +
             $"({GameSettings.PlayerConfig[humanSlot].Name}), " +
-            $"human difficulty {GameSettings.Difficulties[humanSlot]})");
+            $"human difficulty {CampaignProgress.DifficultyForLevel(level)})");
     }
 
     /// <summary>Mark a level won (terminal) and persist if anything
