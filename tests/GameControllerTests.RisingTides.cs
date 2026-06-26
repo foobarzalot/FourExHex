@@ -123,6 +123,49 @@ public partial class GameControllerTests
     }
 
     [Fact]
+    public void RisingTides_SubmergeEliminatesHumanAtTurnStart_RaisesDefeatScreen()
+    {
+        // 8x1 row, three human players: Red owns 2 tiles, Blue and Green 3 each.
+        // At the start of Red's second turn the sea takes one of Red's two tiles,
+        // dropping Red to a capital-less singleton — Red is defeated, but Blue and
+        // Green remain, so the game continues and Red must see the defeat screen.
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
+        var green = new Player("Green", PlayerId.FromIndex(2));
+        var players = new List<Player> { red, blue, green };
+        var grid = TestHelpers.BuildRectGrid(8, 1, blue.Id);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(5, 0))!.Owner = green.Id;
+        grid.Get(HexCoord.FromOffset(6, 0))!.Owner = green.Id;
+        grid.Get(HexCoord.FromOffset(7, 0))!.Owner = green.Id;
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(
+            grid, territories, players, new TurnState(players), new Treasury(),
+            waterCoords: null, mode: GameMode.RisingTides);
+        var session = new SessionState();
+        var map = new MockHexMapView();
+        var hud = new MockHudView();
+        var controller = new GameController(state, session, map, hud);
+        controller.StartGame();
+
+        hud.ClickEndTurn(); // Red t1 -> Blue
+        hud.ClickEndTurn(); // Blue t1 -> Green
+        hud.ClickEndTurn(); // Green t1 -> Red t2: Red's tile sinks, Red eliminated
+
+        Assert.True(WinConditionRules.IsEliminated(red.Id, state.Grid));
+        Assert.False(session.IsGameOver); // Blue + Green remain
+        Assert.Equal(red.Id, session.PendingDefeatScreen);
+
+        // Dismissing the defeat screen advances past the eliminated human
+        // (without the fix, Red would stay the current player, stuck with an
+        // empty turn). Any later player's own submerge can legitimately raise a
+        // fresh defeat, so only assert the turn moved off Red.
+        hud.ClickDefeatContinue();
+        Assert.NotEqual(red.Id, state.Turns.CurrentPlayer.Id);
+    }
+
+    [Fact]
     public void RisingTides_UndoAfterSubmergeTurn_DoesNotResurrectDrownedTile()
     {
         // Undo is turn-local and the stack is cleared each turn, so no

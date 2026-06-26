@@ -1290,6 +1290,13 @@ public class GameController
         {
             ScheduleAiTurn(turnBoundary: false);
         }
+        else if (WinConditionRules.IsEliminated(_state.Turns.CurrentPlayer.Id, _state.Grid))
+        {
+            // Rising Tides (issue #56): the current human was defeated by their
+            // own start-of-turn submerge — they can't act, so end their (empty)
+            // turn to advance past them now that the overlay is dismissed.
+            EndTurnNow();
+        }
     }
 
     // --- Undo / redo ------------------------------------------------------

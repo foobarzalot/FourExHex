@@ -484,6 +484,7 @@ public class GameOperations
     private void MaybeRiseTidesFor(PlayerId owner)
     {
         if (_state.Mode != GameMode.RisingTides || _state.Turns.TurnNumber <= 1) return;
+        HashSet<PlayerId> colorsWithCapitalBefore = ColorsWithCapital(_state.Territories);
         bool changed = RisingTidesRules.SubmergeStep(_state, owner, _rng, budget: 1);
         // A submerge removes tiles (or demotes a mountain) — the land/water
         // tessellation is structural, so it needs the coalesced repaint path,
@@ -493,6 +494,12 @@ public class GameOperations
         if (changed && !SuppressMapRebuild)
         {
             _map.RebuildAfterTerritoryChange();
+        }
+        // A sinking shore tile can drown a player's last capital — raise the
+        // same defeat cue/overlay a capture would (issue #56).
+        if (changed)
+        {
+            HandleNewlyDefeated(colorsWithCapitalBefore);
         }
     }
 
@@ -1006,25 +1013,7 @@ public class GameOperations
         // empty is freshly defeated by this capture. At most one color
         // can transition per capture (a single move/place captures one
         // tile from one color).
-        HashSet<PlayerId> colorsWithCapitalAfter = ColorsWithCapital(_state.Territories);
-        foreach (PlayerId c in colorsWithCapitalBefore)
-        {
-            if (!colorsWithCapitalAfter.Contains(c))
-            {
-                _map.PlaySound(SoundEffect.PlayerDefeated);
-                int defeatedIndex = -1;
-                for (int i = 0; i < _state.Turns.Players.Count; i++)
-                {
-                    if (_state.Turns.Players[i].Id == c) { defeatedIndex = i; break; }
-                }
-                if (defeatedIndex >= 0
-                    && !_state.Turns.Players[defeatedIndex].IsAi
-                    && (!_recordingMode || defeatedIndex == 0))
-                {
-                    _session.PendingDefeatScreen = c;
-                }
-            }
-        }
+        HandleNewlyDefeated(colorsWithCapitalBefore);
 
         // Instant replay coalesces the structural redraw to once per
         // turn (see InstantReplayTick); skip the per-capture rebuild
@@ -1096,6 +1085,35 @@ public class GameOperations
             if (t.HasCapital) set.Add(t.Owner);
         }
         return set;
+    }
+
+    /// <summary>
+    /// For each color in <paramref name="colorsWithCapitalBefore"/> that no
+    /// longer has a capital-bearing territory, it was just defeated: play the
+    /// defeat cue and, for a non-AI human (and not a non-main recording slot),
+    /// raise the defeat overlay. Shared by <see cref="HandleCapture"/> and the
+    /// Rising Tides start-of-turn submerge (issue #56) — a sinking shore tile can
+    /// drown a player's last capital just like a capture can.
+    /// </summary>
+    private void HandleNewlyDefeated(HashSet<PlayerId> colorsWithCapitalBefore)
+    {
+        HashSet<PlayerId> colorsWithCapitalAfter = ColorsWithCapital(_state.Territories);
+        foreach (PlayerId c in colorsWithCapitalBefore)
+        {
+            if (colorsWithCapitalAfter.Contains(c)) continue;
+            _map.PlaySound(SoundEffect.PlayerDefeated);
+            int defeatedIndex = -1;
+            for (int i = 0; i < _state.Turns.Players.Count; i++)
+            {
+                if (_state.Turns.Players[i].Id == c) { defeatedIndex = i; break; }
+            }
+            if (defeatedIndex >= 0
+                && !_state.Turns.Players[defeatedIndex].IsAi
+                && (!_recordingMode || defeatedIndex == 0))
+            {
+                _session.PendingDefeatScreen = c;
+            }
+        }
     }
 
     /// <summary>
