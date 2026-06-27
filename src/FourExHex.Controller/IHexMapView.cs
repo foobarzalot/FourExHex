@@ -64,6 +64,16 @@ public interface IHexMapView
     void ShowTowerCoverage(IEnumerable<HexCoord> coords);
 
     /// <summary>
+    /// Rising Tides (issue #85): telegraph the given coords as tiles that will
+    /// submerge at the END of the current player's turn — a "this tile will sink"
+    /// cue (rippling edge + blue tint) shown for the whole turn so the player (and
+    /// the AI) can react. The controller passes the locked
+    /// <see cref="GameState.PendingTide"/> forecast each refresh; pass an empty
+    /// sequence to clear (outside Rising Tides, round 1, or after the tiles sink).
+    /// </summary>
+    void ShowTideForecast(IEnumerable<HexCoord> coords);
+
+    /// <summary>
     /// Mark the unit at <paramref name="coord"/> as "picked up" — the
     /// view may animate it (e.g. a scale pulse) to give the player
     /// visual feedback that their click registered. Pass null to

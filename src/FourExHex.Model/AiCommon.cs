@@ -479,7 +479,13 @@ public static class AiCommon
 
     /// <summary>
     /// Phase 4b: defensive repositions for a single unit — moves to empty
-    /// border tiles within the territory. No gold spent.
+    /// Reposition-class tiles within the territory. No gold spent. Normally
+    /// scoped to empty BORDER tiles (interior fortification is pointless), but
+    /// Rising Tides (issue #85) relaxes that for a unit standing on a tile that
+    /// is forecast to submerge this turn: such a doomed unit may flee to ANY
+    /// empty in-territory tile (including the safe interior), and never onto
+    /// another doomed tile. The escaping move is rewarded via
+    /// <see cref="AiStateScorer.EvacuationBonus"/> in <see cref="ComputerAi"/>.
     /// </summary>
     public static IEnumerable<AiCandidate> EnumeratePhase4bForUnit(
         HexCoord unitCoord,
@@ -487,6 +493,7 @@ public static class AiCommon
         Territory territory,
         GameState state)
     {
+        bool unitIsDoomed = IsTideDoomed(state, unitCoord);
         List<HexCoord> targets = MovementRules.ValidTargets(
             unit.Level, territory, state.Grid, state.Territories);
         foreach (HexCoord target in targets)
@@ -494,14 +501,29 @@ public static class AiCommon
             if (target.Equals(unitCoord)) continue;
             HexTile? targetTile = state.Grid.Get(target);
             if (targetTile == null) continue;
+            // Never flee a doomed tile straight into another doomed tile.
+            if (IsTideDoomed(state, target)) continue;
             if (ClassifyTarget(targetTile, territory.Owner) == TargetKind.Reposition
                 && targetTile.Occupant == null
-                && IsBorderTile(target, state.Grid, territory.Owner))
+                && (unitIsDoomed || IsBorderTile(target, state.Grid, territory.Owner)))
             {
                 yield return new AiCandidate(
                     new AiMoveAction(unitCoord, target), AiActionKind.Reposition);
             }
         }
+    }
+
+    /// <summary>
+    /// True iff <paramref name="coord"/> is in this turn's Rising Tides
+    /// submerge forecast (issue #85).
+    /// </summary>
+    private static bool IsTideDoomed(GameState state, HexCoord coord)
+    {
+        foreach (TideStep step in state.PendingTide)
+        {
+            if (step.Coord.Equals(coord)) return true;
+        }
+        return false;
     }
 
     /// <summary>

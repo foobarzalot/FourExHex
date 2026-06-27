@@ -54,6 +54,17 @@ public class GameState
     public IReadOnlyList<Territory> Territories { get; set; }
 
     /// <summary>
+    /// Rising Tides (issue #85): the erosion forecast for the CURRENT player's
+    /// turn — the shore tiles selected at turn start that will demote/submerge at
+    /// turn end. Empty outside Rising Tides, on round 1, and between turns. The
+    /// view telegraphs these tiles for the whole turn; the AI weighs them (it
+    /// evacuates units off them); the controller applies exactly this set at
+    /// end-of-turn (no re-pick, no drift). Persisted in saves so a mid-turn
+    /// save/load keeps the locked forecast.
+    /// </summary>
+    public IReadOnlyList<TideStep> PendingTide { get; set; } = System.Array.Empty<TideStep>();
+
+    /// <summary>
     /// Difficulty of the player owning <paramref name="id"/>, resolved by SLOT
     /// (<see cref="PlayerId.Index"/>) rather than by indexing <see cref="Players"/>
     /// at that slot. With a 2–6 player game the roster is compacted (e.g. slots

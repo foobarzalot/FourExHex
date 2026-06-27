@@ -336,6 +336,13 @@ public class GameOperations
     /// </summary>
     public void EndOfTurnProcessing()
     {
+        // Rising Tides (issue #85): apply the current player's locked tide
+        // forecast NOW, at turn end (it was telegraphed for the whole turn). This
+        // can drown the current player's own last capital — HandleNewlyDefeated
+        // raises the defeat cue/overlay (including for a human) and the win check
+        // below then sees the post-flood board.
+        ApplyPendingTide();
+
         LogGameEndDiagnostics(
             $"end-of-turn check for {_state.Turns.CurrentPlayer.Name}");
         // Rising Tides (issue #56) suppresses the sole-capital early win: the
@@ -394,9 +401,14 @@ public class GameOperations
 
         RunNeutralPhantomTurnIfRoundStart();
 
-        // Rising Tides (issue #56): the sea eats one of this player's shore
-        // tiles just before their trees grow. Mirrors the TurnNumber > 1 gate.
-        MaybeRiseTidesFor(_state.Turns.CurrentPlayer.Id);
+        // Rising Tides (issue #85): FORECAST (don't apply) one of this player's
+        // shore tiles at turn start, so it can be telegraphed all turn and weighed
+        // by the AI; the actual demote/submerge happens at turn END in
+        // EndOfTurnProcessing. The tide runs from turn 1 (unlike income/tree
+        // growth, which defer to turn 2) — the very first player's turn-1 forecast
+        // is seeded in GameController.Resume instead (StartPlayerTurn isn't called
+        // for the initial player).
+        ForecastTideForCurrentPlayer();
 
         if (_state.Turns.TurnNumber > 1)
         {
@@ -419,15 +431,6 @@ public class GameOperations
             // One toll per turn-start regardless of how many of the
             // player's territories went bankrupt — see IHexMapView.
             _map.PlaySound(SoundEffect.Bankruptcy);
-        }
-
-        // Rising Tides: the start-of-turn submerge above can drown this
-        // player's last capital, leaving someone else the sole survivor —
-        // declare them the winner before CheckGameEndConditions fires.
-        if (_state.Mode == GameMode.RisingTides && !_session.IsGameOver)
-        {
-            PlayerId? standing = WinConditionRules.LastPlayerStanding(_state.Territories);
-            if (standing.HasValue) DeclareWinner(standing.Value);
         }
 
         LogTurnStart();
@@ -475,11 +478,58 @@ public class GameOperations
     }
 
     /// <summary>
-    /// Rising Tides (issue #56): erode one of <paramref name="owner"/>'s shore
-    /// tiles via <see cref="RisingTidesRules.SubmergeStep"/>. No-op outside
-    /// Rising Tides and on round 1 (matching the <c>TurnNumber &gt; 1</c> gate
-    /// that defers tree growth), so a freeform game's RNG stream and behaviour
-    /// are byte-for-byte unchanged. Budget is fixed at 1 for now (issue #56).
+    /// Rising Tides (issue #85): apply the CURRENT player's locked tide forecast
+    /// at turn end — the demote/submerge for the tiles that were telegraphed all
+    /// turn (see the forecast in <see cref="StartPlayerTurn"/>). The forecasted
+    /// coords are applied exactly (no re-pick, no RNG). A submerge can drown the
+    /// current player's last capital; mirror <see cref="MaybeRiseTidesFor"/>'s
+    /// repaint + defeat handling. Clears <see cref="GameState.PendingTide"/>.
+    /// No-op outside Rising Tides or with an empty forecast.
+    /// </summary>
+    /// <summary>
+    /// Rising Tides (issue #85): forecast (but do NOT apply) one of the current
+    /// player's shore tiles for THIS turn, storing it on
+    /// <see cref="GameState.PendingTide"/> for the telegraph, the AI's evacuation
+    /// scoring, and the end-of-turn <see cref="ApplyPendingTide"/>. No
+    /// <c>TurnNumber</c> gate — the tide applies from the very first turn. No-op
+    /// outside Rising Tides. Consumes the per-turn RNG, so the caller must have
+    /// reseeded it first (<see cref="StartPlayerTurn"/> and
+    /// <c>GameController.Resume</c> both do).
+    /// </summary>
+    public void ForecastTideForCurrentPlayer()
+    {
+        if (_state.Mode != GameMode.RisingTides) return;
+        _state.PendingTide = RisingTidesRules.ForecastSubmerge(
+            _state, _state.Turns.CurrentPlayer.Id, _rng, budget: 1);
+    }
+
+    private void ApplyPendingTide()
+    {
+        if (_state.Mode != GameMode.RisingTides || _state.PendingTide.Count == 0) return;
+        PlayerId owner = _state.Turns.CurrentPlayer.Id;
+        HashSet<PlayerId> colorsWithCapitalBefore = ColorsWithCapital(_state.Territories);
+        bool changed = RisingTidesRules.ApplyForecast(_state, owner, _state.PendingTide);
+        _state.PendingTide = System.Array.Empty<TideStep>();
+        if (changed && !SuppressMapRebuild)
+        {
+            _map.RebuildAfterTerritoryChange();
+        }
+        if (changed)
+        {
+            HandleNewlyDefeated(colorsWithCapitalBefore);
+        }
+    }
+
+    /// <summary>
+    /// Rising Tides phantom-turn erosion (issue #56): forecast AND immediately
+    /// apply one of <paramref name="owner"/>'s shore tiles via
+    /// <see cref="RisingTidesRules.SubmergeStep"/>. Used only for the phantom
+    /// turns of neutral (<see cref="PlayerId.None"/>) and eliminated colors,
+    /// which have no during-turn beat to telegraph — so unlike a real player's
+    /// turn (forecast at start, apply at end) the two halves run together here.
+    /// No-op outside Rising Tides and on round 1 (matching the <c>TurnNumber &gt; 1</c>
+    /// gate that defers tree growth), so a freeform game's RNG stream and
+    /// behaviour are byte-for-byte unchanged. Budget is fixed at 1 for now.
     /// </summary>
     private void MaybeRiseTidesFor(PlayerId owner)
     {
@@ -578,6 +628,10 @@ public class GameOperations
         long tOccupants = Log.Stamp();
         _map.RefreshOccupantVisuals(_state.Turns.CurrentPlayer.Id, _state.Treasury);
         Log.Since(Log.LogCategory.Capture, "[hitch] RefreshOccupantVisuals", tOccupants);
+        // Rising Tides (issue #85): telegraph the current player's locked tide
+        // forecast for the whole turn ("these tiles submerge at turn end"). Empty
+        // outside Rising Tides / round 1, which clears any prior telegraph.
+        _map.ShowTideForecast(_state.PendingTide.Select(s => s.Coord));
         // End Turn CTA when the current player has nothing actionable
         // left. Lives here (not inside _hud.Refresh) so Tutorial Preview's
         // onAfterRefresh callback can overwrite it when the next scripted

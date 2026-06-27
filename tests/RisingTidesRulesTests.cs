@@ -146,4 +146,114 @@ public class RisingTidesRulesTests
 
         Assert.Equal(removedA, removedB);
     }
+
+    // --- ForecastSubmerge / ApplyForecast (issue #85) --------------------
+
+    [Fact]
+    public void ForecastSubmerge_DoesNotMutateGridOrWater()
+    {
+        HexGrid grid = TestHelpers.BuildRectGrid(2, 1, Red);
+        GameState state = MakeState(grid, TestHelpers.BuildTerritoriesFromGrid(grid));
+
+        IReadOnlyList<TideStep> plan =
+            RisingTidesRules.ForecastSubmerge(state, Red, new Random(1), budget: 1);
+
+        Assert.Single(plan);
+        Assert.False(plan[0].DemoteOnly);
+        // Nothing has actually changed yet — the plan is just a forecast.
+        Assert.Equal(2, state.Grid.Count);
+        Assert.Empty(state.WaterCoords);
+        Assert.True(state.Grid.Contains(plan[0].Coord));
+    }
+
+    [Fact]
+    public void ForecastSubmerge_SameSeed_PicksSameTileAsSubmergeStep()
+    {
+        HexGrid Grid() => TestHelpers.BuildRectGrid(2, 2, Red);
+
+        HexGrid gridForecast = Grid();
+        GameState forecastState = MakeState(gridForecast, TestHelpers.BuildTerritoriesFromGrid(gridForecast));
+        IReadOnlyList<TideStep> plan =
+            RisingTidesRules.ForecastSubmerge(forecastState, Red, new Random(42), budget: 1);
+
+        HexGrid gridSubmerge = Grid();
+        var origCoords = gridSubmerge.Tiles.Select(t => t.Coord).ToHashSet();
+        GameState submergeState = MakeState(gridSubmerge, TestHelpers.BuildTerritoriesFromGrid(gridSubmerge));
+        RisingTidesRules.SubmergeStep(submergeState, Red, new Random(42), budget: 1);
+        HexCoord removed = origCoords.Single(c => !submergeState.Grid.Contains(c));
+
+        Assert.Equal(removed, plan.Single().Coord);
+    }
+
+    [Fact]
+    public void ForecastSubmerge_MountainShore_FlaggedDemoteOnly()
+    {
+        HexGrid grid = TestHelpers.BuildRectGrid(5, 5, Blue);
+        HexCoord center = HexCoord.FromOffset(2, 2);
+        HexCoord shoreMtn = HexCoord.FromOffset(0, 2);
+        grid.Get(center)!.Owner = Red;
+        grid.Get(shoreMtn)!.Owner = Red;
+        grid.Get(shoreMtn)!.IsMountain = true;
+        GameState state = MakeState(grid, TestHelpers.BuildTerritoriesFromGrid(grid));
+
+        IReadOnlyList<TideStep> plan =
+            RisingTidesRules.ForecastSubmerge(state, Red, new Random(99), budget: 1);
+
+        Assert.Equal(shoreMtn, plan.Single().Coord);
+        Assert.True(plan.Single().DemoteOnly);
+        // Still nothing mutated — the mountain is intact.
+        Assert.True(state.Grid.Get(shoreMtn)!.IsMountain);
+    }
+
+    [Fact]
+    public void ApplyForecast_SubmergesPlannedTileAndReconciles()
+    {
+        HexGrid grid = TestHelpers.BuildRectGrid(2, 1, Red);
+        GameState state = MakeState(grid, TestHelpers.BuildTerritoriesFromGrid(grid));
+        IReadOnlyList<TideStep> plan =
+            RisingTidesRules.ForecastSubmerge(state, Red, new Random(1), budget: 1);
+        HexCoord doomed = plan.Single().Coord;
+
+        bool changed = RisingTidesRules.ApplyForecast(state, Red, plan);
+
+        Assert.True(changed);
+        Assert.False(state.Grid.Contains(doomed));
+        Assert.Contains(doomed, state.WaterCoords);
+        Assert.Equal(1, state.Grid.Count);
+        Assert.True(WinConditionRules.IsEliminated(Red, state.Grid));
+    }
+
+    [Fact]
+    public void ApplyForecast_MountainPlan_DemotesNotSubmerges()
+    {
+        HexGrid grid = TestHelpers.BuildRectGrid(5, 5, Blue);
+        HexCoord center = HexCoord.FromOffset(2, 2);
+        HexCoord shoreMtn = HexCoord.FromOffset(0, 2);
+        grid.Get(center)!.Owner = Red;
+        grid.Get(shoreMtn)!.Owner = Red;
+        grid.Get(shoreMtn)!.IsMountain = true;
+        GameState state = MakeState(grid, TestHelpers.BuildTerritoriesFromGrid(grid));
+        IReadOnlyList<TideStep> plan =
+            RisingTidesRules.ForecastSubmerge(state, Red, new Random(99), budget: 1);
+
+        bool changed = RisingTidesRules.ApplyForecast(state, Red, plan);
+
+        Assert.True(changed);
+        Assert.True(state.Grid.Contains(shoreMtn));
+        Assert.False(state.Grid.Get(shoreMtn)!.IsMountain);
+        Assert.Empty(state.WaterCoords);
+    }
+
+    [Fact]
+    public void ApplyForecast_EmptyPlan_IsNoOp()
+    {
+        HexGrid grid = TestHelpers.BuildRectGrid(2, 2, Red);
+        GameState state = MakeState(grid, TestHelpers.BuildTerritoriesFromGrid(grid));
+
+        bool changed = RisingTidesRules.ApplyForecast(state, Red, System.Array.Empty<TideStep>());
+
+        Assert.False(changed);
+        Assert.Equal(4, state.Grid.Count);
+        Assert.Empty(state.WaterCoords);
+    }
 }

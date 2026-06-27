@@ -267,7 +267,7 @@ public class GameController
         // player sees on their first turn. Subsequent turns credit
         // income at the END of the turn (see OnEndTurnPressed and the
         // AI turn-end path).
-        Resume();
+        Resume(freshStart: true);
     }
 
     /// <summary>
@@ -281,8 +281,15 @@ public class GameController
     /// any leading AI turns until control reaches a human (or game
     /// ends), pushes the latest state into the views, then fires
     /// <see cref="HumanTurnStarted"/> if the resumed player is human.
+    ///
+    /// <paramref name="freshStart"/> is true only for a brand-new game
+    /// (via <see cref="StartGame"/>): StartPlayerTurn isn't called for the
+    /// initial player, so Rising Tides' turn-1 forecast (issue #85) is
+    /// seeded here. A load passes false — the saved <see cref="GameState.PendingTide"/>
+    /// is restored from disk and must NOT be recomputed (re-picking would
+    /// drift the locked forecast).
     /// </summary>
-    public void Resume()
+    public void Resume(bool freshStart = false)
     {
         // Resume reached without an initial snapshot means we loaded a
         // pre-replay save (v3). Capture at load time so future replays
@@ -299,6 +306,9 @@ public class GameController
                 markCompleteFromStart: false);
         }
         _ops.ReseedRngForCurrentTurn();
+        // Rising Tides (issue #85): seed the initial player's turn-1 forecast.
+        // Only on a fresh game — a load restores PendingTide from the save.
+        if (freshStart) _ops.ForecastTideForCurrentPlayer();
         _ops.RefreshSilentMode();
         RunAiTurnsUntilHumanOrDone();
         _ops.RefreshViews();

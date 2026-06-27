@@ -115,7 +115,7 @@ public static class SaveSerializer
     /// Bump on any breaking schema change. <see cref="Deserialize"/>
     /// rejects mismatched values rather than attempting migration.
     /// </summary>
-    public const int CurrentFormatVersion = 13;
+    public const int CurrentFormatVersion = 14;
 
     public static string Serialize(
         GameState state,
@@ -202,6 +202,10 @@ public static class SaveSerializer
             // Null (omitted) for Freeform so every existing freeform save's
             // wire format is unchanged; only Rising Tides games carry it.
             Mode = state.Mode == GameMode.Freeform ? null : state.Mode,
+            // The locked tide forecast for the current turn (issue #85). Null
+            // (omitted) when empty — every freeform save and any Rising Tides save
+            // taken between turns — so the wire format stays clean.
+            PendingTide = SerializePendingTide(state.PendingTide),
         };
         // Source-gen path (FourExHexJsonContext) so this works under iOS AOT,
         // where reflection-based serialization is disabled. The context's
@@ -254,7 +258,9 @@ public static class SaveSerializer
         // Rising Tides Mode flag (issue #56) — absent/null loads as Freeform.
         // v13 made gold and mountain mutually exclusive (issue #81): a tile is
         // gold OR mountain, never both, so a legacy tile carrying both flags is
-        // normalized to mountain-only on load (mountain wins) below.
+        // normalized to mountain-only on load (mountain wins) below. v14 added the
+        // optional Rising Tides PendingTide forecast (issue #85) — absent/null
+        // loads as an empty forecast.
         if (data.FormatVersion is < 2 or > CurrentFormatVersion)
         {
             throw new InvalidOperationException(
@@ -308,7 +314,12 @@ public static class SaveSerializer
         IReadOnlySet<HexCoord> waterCoords = DeserializeWater(data.Water);
         var state = new GameState(
             grid, territories, players, turnState, treasury, waterCoords,
-            mode: data.Mode ?? GameMode.Freeform);
+            mode: data.Mode ?? GameMode.Freeform)
+        {
+            // Restore the locked tide forecast (issue #85); empty for freeform
+            // and pre-v14 saves so the reloaded game telegraphs/applies nothing.
+            PendingTide = DeserializePendingTide(data.PendingTide),
+        };
         IReadOnlyDictionary<PlayerId, int> prompted = DeserializeClaimVictoryPrompted(
             data.ClaimVictoryPromptedHighestByPlayerIndex,
             data.ClaimVictoryPromptedHighestByColorHex,
@@ -401,6 +412,30 @@ public static class SaveSerializer
             set.Add(new HexCoord(c.Q, c.R));
         }
         return set;
+    }
+
+    // --- Pending tide forecast (issue #85) -------------------------------
+
+    private static List<TideStepDto>? SerializePendingTide(IReadOnlyList<TideStep> plan)
+    {
+        if (plan.Count == 0) return null; // omit when empty (most saves)
+        var dtos = new List<TideStepDto>(plan.Count);
+        foreach (TideStep step in plan)
+        {
+            dtos.Add(new TideStepDto { Q = step.Coord.Q, R = step.Coord.R, DemoteOnly = step.DemoteOnly });
+        }
+        return dtos;
+    }
+
+    private static IReadOnlyList<TideStep> DeserializePendingTide(List<TideStepDto>? dtos)
+    {
+        if (dtos == null || dtos.Count == 0) return System.Array.Empty<TideStep>();
+        var plan = new List<TideStep>(dtos.Count);
+        foreach (TideStepDto dto in dtos)
+        {
+            plan.Add(new TideStep(new HexCoord(dto.Q, dto.R), dto.DemoteOnly));
+        }
+        return plan;
     }
 
     // --- Players ---------------------------------------------------------
@@ -1019,6 +1054,24 @@ public sealed class SaveData
     /// needed. <see cref="WaterCoords"/> is recomputed on replay anyway.
     /// </summary>
     public GameMode? Mode { get; set; }
+
+    /// <summary>
+    /// v14: the locked Rising Tides forecast (issue #85) for the current player's
+    /// turn — the tiles selected at turn start that demote/submerge at turn end.
+    /// Null/missing for freeform games, Rising Tides saves taken between turns,
+    /// and all pre-v14 saves (which load as an empty forecast).
+    /// </summary>
+    public List<TideStepDto>? PendingTide { get; set; }
+}
+
+public sealed class TideStepDto
+{
+    public int Q { get; set; }
+    public int R { get; set; }
+
+    /// <summary>True iff this step only demotes a mountain (a reprieve) rather
+    /// than submerging the tile. See <see cref="TideStep.DemoteOnly"/>.</summary>
+    public bool DemoteOnly { get; set; }
 }
 
 public sealed class PlayerDto

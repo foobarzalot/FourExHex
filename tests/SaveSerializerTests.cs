@@ -144,9 +144,52 @@ public class SaveSerializerTests
     }
 
     [Fact]
-    public void CurrentFormatVersion_IsThirteen()
+    public void CurrentFormatVersion_IsFourteen()
     {
-        Assert.Equal(13, SaveSerializer.CurrentFormatVersion);
+        Assert.Equal(14, SaveSerializer.CurrentFormatVersion);
+    }
+
+    [Fact]
+    public void Serialize_RoundTripsPendingTideForecast()
+    {
+        // Issue #85: a mid-turn save must preserve the locked tide forecast so the
+        // reloaded game telegraphs the same doomed tile and submerges exactly it.
+        var red = new Player("Red", PlayerId.FromIndex(0), PlayerKind.Human);
+        var blue = new Player("Blue", PlayerId.FromIndex(1), PlayerKind.Computer);
+        var players = new List<Player> { red, blue };
+        HexGrid grid = TestHelpers.BuildRectGrid(3, 3, red.Id);
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(
+            grid, territories, players, new TurnState(players), new Treasury(),
+            waterCoords: null, mode: GameMode.RisingTides);
+        state.PendingTide = new List<TideStep>
+        {
+            new TideStep(HexCoord.FromOffset(0, 0), DemoteOnly: false),
+            new TideStep(HexCoord.FromOffset(2, 1), DemoteOnly: true),
+        };
+
+        string json = SaveSerializer.Serialize(state, 42, players, "tide", 100);
+        LoadedSave loaded = SaveSerializer.Deserialize(json);
+
+        Assert.Equal(state.PendingTide, loaded.State.PendingTide);
+    }
+
+    [Fact]
+    public void Deserialize_PreV14Save_DefaultsPendingTideToEmpty()
+    {
+        var red = new Player("Red", PlayerId.FromIndex(0), PlayerKind.Human);
+        var blue = new Player("Blue", PlayerId.FromIndex(1), PlayerKind.Computer);
+        var players = new List<Player> { red, blue };
+        HexGrid grid = TestHelpers.BuildRectGrid(2, 2, red.Id);
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(
+            grid, territories, players, new TurnState(players), new Treasury());
+
+        // A save with no PendingTide field (pre-#85) must load as an empty forecast.
+        string json = SaveSerializer.Serialize(state, 42, players, "f", 100);
+        LoadedSave loaded = SaveSerializer.Deserialize(json);
+
+        Assert.Empty(loaded.State.PendingTide);
     }
 
     [Fact]

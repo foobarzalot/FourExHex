@@ -1542,4 +1542,102 @@ public class ComputerAiTests
         Assert.True(sourceIsRedUnit && destIsRedUnit,
             $"expected Red-unit→Red-unit combine; got {mv.Source}→{mv.Destination}");
     }
+
+    // --- Rising Tides evacuation (issue #85) -----------------------------
+
+    // A solid 5x3 Red block (one capital, no enemies/trees/graves), with a
+    // Soldier on a doomed shore corner and PendingTide marking that corner.
+    private static (GameState State, HexCoord Doomed, HexCoord Interior) DoomedUnitState(
+        bool markDoomed)
+    {
+        HexGrid grid = TestHelpers.BuildRectGrid(5, 3, Red);
+        HexCoord doomed = HexCoord.FromOffset(0, 0); // a shore (border) corner
+        grid.Get(doomed)!.Occupant = new Unit(Red, UnitLevel.Soldier);
+        GameState state = BuildState(
+            grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
+        if (markDoomed)
+        {
+            state.PendingTide = new List<TideStep> { new TideStep(doomed, DemoteOnly: false) };
+        }
+        // A genuinely interior empty Red tile (all six neighbours Red) that the
+        // old border-only reposition rule would never offer.
+        HexCoord interior = grid.Tiles
+            .First(t => t.Owner == Red && t.Occupant == null
+                        && !AiCommon.IsBorderTile(t.Coord, grid, Red)).Coord;
+        return (state, doomed, interior);
+    }
+
+    [Fact]
+    public void EvacuationBonus_EscapingMove_ReturnsUnitValue()
+    {
+        (GameState state, HexCoord doomed, HexCoord interior) = DoomedUnitState(markDoomed: true);
+
+        // Soldier is worth 12; fleeing the doomed tile saves exactly that.
+        Assert.Equal(12, AiStateScorer.EvacuationBonus(
+            new AiMoveAction(doomed, interior), state, Red));
+    }
+
+    [Fact]
+    public void EvacuationBonus_NonEscapingOrIntoDoom_ReturnsZero()
+    {
+        (GameState state, HexCoord doomed, HexCoord interior) = DoomedUnitState(markDoomed: true);
+        HexCoord otherSafe = HexCoord.FromOffset(4, 2);
+
+        // Source not doomed → no bonus.
+        Assert.Equal(0, AiStateScorer.EvacuationBonus(
+            new AiMoveAction(interior, otherSafe), state, Red));
+        // Destination is itself doomed → fleeing into the sea earns nothing.
+        state.PendingTide = new List<TideStep>
+        {
+            new TideStep(doomed, DemoteOnly: false),
+            new TideStep(otherSafe, DemoteOnly: false),
+        };
+        Assert.Equal(0, AiStateScorer.EvacuationBonus(
+            new AiMoveAction(doomed, otherSafe), state, Red));
+    }
+
+    [Fact]
+    public void EnumeratePhase4b_DoomedUnit_OffersInteriorDestination()
+    {
+        (GameState state, HexCoord doomed, HexCoord interior) = DoomedUnitState(markDoomed: true);
+        Territory terr = state.Territories.First(t => t.Owner == Red);
+        Unit unit = state.Grid.Get(doomed)!.Unit!;
+
+        var dests = AiCommon.EnumeratePhase4bForUnit(doomed, unit, terr, state)
+            .Select(c => ((AiMoveAction)c.Action).Destination)
+            .ToList();
+
+        // The doomed unit may flee inland to a non-border interior tile.
+        Assert.Contains(interior, dests);
+    }
+
+    [Fact]
+    public void EnumeratePhase4b_SafeUnit_DoesNotOfferInteriorDestination()
+    {
+        (GameState state, HexCoord doomed, HexCoord interior) = DoomedUnitState(markDoomed: false);
+        Territory terr = state.Territories.First(t => t.Owner == Red);
+        Unit unit = state.Grid.Get(doomed)!.Unit!;
+
+        var dests = AiCommon.EnumeratePhase4bForUnit(doomed, unit, terr, state)
+            .Select(c => ((AiMoveAction)c.Action).Destination)
+            .ToList();
+
+        // Not doomed: the old border-only rule still holds — no interior tile.
+        Assert.DoesNotContain(interior, dests);
+    }
+
+    [Fact]
+    public void ChooseNextAction_DoomedStationaryUnit_Evacuates()
+    {
+        (GameState state, HexCoord doomed, _) = DoomedUnitState(markDoomed: true);
+
+        AiAction? result = ComputerAi.ChooseNextAction(
+            state, Red, new HashSet<HexCoord>(), new Random(0));
+
+        // The AI moves the doomed unit off its tile to safety rather than
+        // leaving it to drown at turn end.
+        AiMoveAction mv = Assert.IsType<AiMoveAction>(result);
+        Assert.Equal(doomed, mv.Source);
+        Assert.DoesNotContain(mv.Destination, state.PendingTide.Select(s => s.Coord));
+    }
 }

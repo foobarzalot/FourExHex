@@ -393,6 +393,42 @@ public static class AiStateScorer
     }
 
     /// <summary>
+    /// Rising Tides (issue #85): per-move evacuation delta. When <paramref name="mv"/>
+    /// moves <paramref name="owner"/>'s unit OFF a tile that is forecast to submerge
+    /// this turn (in <see cref="GameState.PendingTide"/>) and onto a tile that is
+    /// NOT itself doomed, returns the unit's <see cref="UnitValue"/> — the value
+    /// saved from drowning. Returns 0 for any non-escaping move (source not doomed,
+    /// destination doomed, or no own unit at the source). Added to a candidate's
+    /// delta in <see cref="ComputerAi"/>, exactly like <see cref="BuildTowerBonus"/>,
+    /// so the absolute <see cref="Score"/> stays clean. This drives the defensive
+    /// phase to evacuate a unit that would otherwise sit still and drown; deeper
+    /// multi-turn tide valuation is follow-up #84.
+    /// </summary>
+    public static int EvacuationBonus(AiMoveAction mv, GameState state, PlayerId owner)
+    {
+        if (state.PendingTide.Count == 0) return 0;
+
+        bool sourceDoomed = false;
+        bool destDoomed = false;
+        foreach (TideStep step in state.PendingTide)
+        {
+            if (step.Coord.Equals(mv.Source)) sourceDoomed = true;
+            if (step.Coord.Equals(mv.Destination)) destDoomed = true;
+        }
+        if (!sourceDoomed || destDoomed) return 0;
+
+        if (state.Grid.Get(mv.Source)?.Occupant is not Unit unit || unit.Owner != owner)
+        {
+            return 0;
+        }
+
+        int bonus = UnitValue(unit.Level);
+        Log.Debug(Log.LogCategory.Ai,
+            $"[tide-evac] {owner} {mv.Source}->{mv.Destination} +{bonus}");
+        return bonus;
+    }
+
+    /// <summary>
     /// Strategic value of a unit by level. Roughly tracks upkeep
     /// cost but discounts higher levels so the AI doesn't
     /// over-combine when lower-level units would suffice. Recruit

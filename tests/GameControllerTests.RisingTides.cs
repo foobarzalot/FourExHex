@@ -72,34 +72,45 @@ public partial class GameControllerTests
     }
 
     [Fact]
-    public void RisingTides_StartOfSecondTurn_SubmergesOneOwnerShoreTile()
+    public void RisingTides_ForecastsAtTurnStart_SubmergesAtTurnEnd()
     {
+        // Issue #85: the erosion is telegraphed at the START of a player's turn
+        // (a PendingTide forecast, tile still present) and only actualized at the
+        // END of that same turn. The tide runs from turn 1, so the very first
+        // player already has a forecast right after the game starts.
         var g = new TidesGame(TwoBlocks(), GameMode.RisingTides);
         int before = g.State.Grid.Count; // 12
 
-        g.Hud.ClickEndTurn(); // Red t1 -> Blue t1
-        g.Hud.ClickEndTurn(); // Blue t1 -> Red t2 (Red's shore erodes)
+        // During Red's turn 1: the doomed tile is telegraphed but still on the map.
+        Assert.Equal(before, g.State.Grid.Count);
+        Assert.Empty(g.State.WaterCoords);
+        Assert.Single(g.State.PendingTide);
+        HexCoord doomed = g.State.PendingTide.Single().Coord;
+        Assert.True(g.State.Grid.Contains(doomed));
+        Assert.Equal(g.Red.Id, g.State.Grid.Get(doomed)!.Owner); // Red's own shore
+
+        g.Hud.ClickEndTurn(); // end Red t1: Red's forecast actualizes now
 
         Assert.Equal(before - 1, g.State.Grid.Count);
-        Assert.Single(g.State.WaterCoords);
-        HexCoord drowned = g.State.WaterCoords.Single();
-        Assert.False(g.State.Grid.Contains(drowned));
+        Assert.Contains(doomed, g.State.WaterCoords);
+        Assert.False(g.State.Grid.Contains(doomed));
         Assert.False(g.Session.IsGameOver); // Red still has a capital
     }
 
     [Fact]
     public void RisingTides_SubmergeDrownsLastCapital_OpponentWins()
     {
-        // Red is a 2-tile territory; Blue a solid 3-tile territory. On Red's
-        // second turn the sea takes one Red tile, dropping Red to a
-        // capital-less singleton — Blue is the last player standing.
+        // Red is a 2-tile territory; Blue a solid 3-tile territory. Red's turn-1
+        // forecast is set at game start but only applied at the END of turn 1,
+        // dropping Red to a capital-less singleton — Blue is last standing.
         var grid = TestHelpers.BuildRectGrid(5, 1, PlayerId.FromIndex(1));
         grid.Get(HexCoord.FromOffset(0, 0))!.Owner = PlayerId.FromIndex(0);
         grid.Get(HexCoord.FromOffset(1, 0))!.Owner = PlayerId.FromIndex(0);
         var g = new TidesGame(grid, GameMode.RisingTides);
 
-        g.Hud.ClickEndTurn(); // Red t1 -> Blue t1
-        g.Hud.ClickEndTurn(); // Blue t1 -> Red t2 submerge drowns Red's capital
+        Assert.False(g.Session.IsGameOver); // turn-1 forecast set but not yet applied
+
+        g.Hud.ClickEndTurn(); // end Red t1: forecast applies, drowns Red's capital
 
         Assert.True(g.Session.IsGameOver);
         Assert.Equal(g.Blue.Id, g.Session.Winner);
@@ -123,12 +134,14 @@ public partial class GameControllerTests
     }
 
     [Fact]
-    public void RisingTides_SubmergeEliminatesHumanAtTurnStart_RaisesDefeatScreen()
+    public void RisingTides_SubmergeEliminatesHumanAtTurnEnd_RaisesDefeatScreen()
     {
         // 8x1 row, three human players: Red owns 2 tiles, Blue and Green 3 each.
-        // At the start of Red's second turn the sea takes one of Red's two tiles,
-        // dropping Red to a capital-less singleton — Red is defeated, but Blue and
-        // Green remain, so the game continues and Red must see the defeat screen.
+        // Red's turn-1 forecast is set at game start and applied at the END of
+        // turn 1 — the sea takes one of Red's two tiles, dropping Red to a
+        // capital-less singleton. Red is defeated by its own end-of-turn flood,
+        // but Blue and Green remain, so the game continues and Red (a human) must
+        // see the defeat screen even though it was Red who ended the turn.
         var red = new Player("Red", PlayerId.FromIndex(0));
         var blue = new Player("Blue", PlayerId.FromIndex(1));
         var green = new Player("Green", PlayerId.FromIndex(2));
@@ -149,18 +162,19 @@ public partial class GameControllerTests
         var controller = new GameController(state, session, map, hud);
         controller.StartGame();
 
-        hud.ClickEndTurn(); // Red t1 -> Blue
-        hud.ClickEndTurn(); // Blue t1 -> Green
-        hud.ClickEndTurn(); // Green t1 -> Red t2: Red's tile sinks, Red eliminated
+        Assert.False(WinConditionRules.IsEliminated(red.Id, state.Grid)); // alive, telegraphed
+
+        hud.ClickEndTurn(); // end Red t1: forecast applies, Red drowns its own capital
 
         Assert.True(WinConditionRules.IsEliminated(red.Id, state.Grid));
         Assert.False(session.IsGameOver); // Blue + Green remain
         Assert.Equal(red.Id, session.PendingDefeatScreen);
+        // End-of-turn elimination advances off Red automatically (the AI loop and
+        // OnDefeatContinue both gate on PendingDefeatScreen), so the turn has
+        // already moved on while Red's defeat overlay is up.
+        Assert.NotEqual(red.Id, state.Turns.CurrentPlayer.Id);
 
-        // Dismissing the defeat screen advances past the eliminated human
-        // (without the fix, Red would stay the current player, stuck with an
-        // empty turn). Any later player's own submerge can legitimately raise a
-        // fresh defeat, so only assert the turn moved off Red.
+        // Dismissing the defeat screen is informational here; the turn stays off Red.
         hud.ClickDefeatContinue();
         Assert.NotEqual(red.Id, state.Turns.CurrentPlayer.Id);
     }
@@ -168,23 +182,23 @@ public partial class GameControllerTests
     [Fact]
     public void RisingTides_UndoAfterSubmergeTurn_DoesNotResurrectDrownedTile()
     {
-        // Undo is turn-local and the stack is cleared each turn, so no
-        // snapshot ever spans the start-of-turn submerge — undoing an in-turn
-        // action must not bring a drowned tile back.
+        // Undo is turn-local and the stack is cleared each turn, so no snapshot
+        // ever spans the end-of-turn submerge — undoing an in-turn action in the
+        // NEXT player's turn must not bring the just-drowned tile back.
         var g = new TidesGame(TwoBlocks(), GameMode.RisingTides);
-        g.Hud.ClickEndTurn();
-        g.Hud.ClickEndTurn(); // Red t2: one Red tile drowned
+        g.Hud.ClickEndTurn(); // end Red t1: one Red tile drowns -> Blue t1
         int afterSubmerge = g.State.Grid.Count;
         HexCoord drowned = g.State.WaterCoords.Single();
 
+        // Current player is now Blue; act + undo within Blue's turn.
         HexTile capTile = g.State.Grid.Tiles.First(
-            t => t.Owner == g.Red.Id && t.Occupant is Capital);
+            t => t.Owner == g.Blue.Id && t.Occupant is Capital);
         g.Map.SimulateClick(capTile);
         HexCoord cap = g.Session.SelectedTerritory!.Capital!.Value;
         g.State.Treasury.SetGold(cap, 15);
         g.Hud.ClickBuyRecruit();
         HexTile dest = g.State.Grid.Tiles.First(
-            t => t.Owner == g.Red.Id && t.Occupant == null);
+            t => t.Owner == g.Blue.Id && t.Occupant == null);
         g.Map.SimulateClick(dest);
         Assert.NotNull(dest.Unit);
 

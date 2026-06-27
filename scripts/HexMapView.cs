@@ -176,6 +176,7 @@ public partial class HexMapView : Node2D, IHexMapView
     private Node2D? _gravesLayer;
     private Node2D? _unitsLayer;
     private Node2D? _deathsLayer;
+    private Node2D? _tideForecastLayer;
     private Node2D? _targetsLayer;
     private Node2D? _towerTargetsLayer;
     private Node2D? _highlightLayer;
@@ -561,6 +562,11 @@ public partial class HexMapView : Node2D, IHexMapView
         AddChild(_unitsLayer);
         _deathsLayer = new Node2D { Name = "DeathsLayer" };
         AddChild(_deathsLayer);
+        // Rising Tides telegraph (issue #85): drawn above units/deaths so the
+        // "this tile will sink" cue tints the doomed tile and its occupant, but
+        // below targets so move-target rings still read on top.
+        _tideForecastLayer = new Node2D { Name = "TideForecastLayer" };
+        AddChild(_tideForecastLayer);
         _targetsLayer = new Node2D { Name = "TargetsLayer" };
         AddChild(_targetsLayer);
         _towerTargetsLayer = new Node2D { Name = "TowerTargetsLayer" };
@@ -1026,6 +1032,90 @@ public partial class HexMapView : Node2D, IHexMapView
                 Polygon = verts,
             };
             _towerCoverageLayer.AddChild(overlay);
+        }
+    }
+
+    // Rising Tides telegraph palette/cadence (issue #85). The cue is deliberately
+    // HUE-INDEPENDENT so it reads on every player color (a blue cue vanished on the
+    // blue player's blue tiles): it signals with luminance + motion, not color. The
+    // tile pulses DARKER (a near-black "going under" overlay), and the rippling edge
+    // is a dark-halo + white-core "foam" stroke — the same dual-stroke trick the
+    // selection highlight uses, so the white core reads on dark tiles and the dark
+    // halo reads on light ones. Tunable by design.
+    private static readonly Color TideForecastDarkenColor = new Color(0.02f, 0.04f, 0.09f, 1f);
+    private static readonly Color TideForecastFoamHaloColor = new Color(0f, 0f, 0f, 0.85f);
+    private static readonly Color TideForecastFoamCoreColor = new Color(1f, 1f, 1f, 0.95f);
+    private const float TideForecastDarkenMinAlpha = 0.12f;
+    private const float TideForecastDarkenMaxAlpha = 0.42f;
+    private const float TideForecastFoamHaloWidthFactor = 0.16f;
+    private const float TideForecastFoamCoreWidthFactor = 0.07f;
+    private const float TideForecastPulseHalfPeriod = 0.6f; // 1.2s full period
+    private const float TideForecastRippleScale = 1.07f;
+
+    /// <summary>
+    /// Rising Tides (issue #85): telegraph the given coords as tiles that will
+    /// submerge at the END of the current player's turn. Each doomed tile pulses
+    /// darker ("going under") and gets a rippling white-foam edge — a cue that
+    /// reads on any owner color because it signals with luminance and motion, not
+    /// hue. Pass an empty sequence to clear (the controller does this outside
+    /// Rising Tides, on round 1, and after the tiles actually sink). Tweens are
+    /// bound to their nodes, so <see cref="ClearLayer"/> frees and stops them.
+    /// </summary>
+    public void ShowTideForecast(IEnumerable<HexCoord> coords)
+    {
+        ClearLayer(_tideForecastLayer);
+        if (_tideForecastLayer == null) return;
+
+        Vector2[] verts = HexVertices();
+        // Closed perimeter (last point == first) relative to the tile centre, so
+        // the ripple scales symmetrically about the hex.
+        var ringPoints = new Vector2[7];
+        for (int i = 0; i < 6; i++) ringPoints[i] = verts[i];
+        ringPoints[6] = verts[0];
+
+        foreach (HexCoord coord in coords)
+        {
+            Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(coord, HexSize);
+
+            // Darkening overlay, pulsing alpha — a luminance drop the eye reads on
+            // any tile color (the previous blue tint vanished on the blue player).
+            Polygon2D fill = CreateHexVisual(center, TideForecastDarkenColor);
+            fill.Modulate = new Color(1f, 1f, 1f, TideForecastDarkenMinAlpha);
+            _tideForecastLayer.AddChild(fill);
+            Tween fillTween = fill.CreateTween();
+            fillTween.SetLoops();
+            fillTween.TweenProperty(fill, "modulate:a", TideForecastDarkenMaxAlpha, TideForecastPulseHalfPeriod)
+                .SetTrans(Tween.TransitionType.Sine);
+            fillTween.TweenProperty(fill, "modulate:a", TideForecastDarkenMinAlpha, TideForecastPulseHalfPeriod)
+                .SetTrans(Tween.TransitionType.Sine);
+
+            // Rippling foam edge: a dark halo under a white core (reads on any
+            // background), gently expanding then contracting so it looks like a
+            // ripple lapping the tile.
+            var ring = new Node2D { Position = center };
+            ring.AddChild(new Line2D
+            {
+                Points = ringPoints,
+                Width = HexSize * TideForecastFoamHaloWidthFactor,
+                DefaultColor = TideForecastFoamHaloColor,
+                Antialiased = true,
+                JointMode = Line2D.LineJointMode.Round,
+            });
+            ring.AddChild(new Line2D
+            {
+                Points = ringPoints,
+                Width = HexSize * TideForecastFoamCoreWidthFactor,
+                DefaultColor = TideForecastFoamCoreColor,
+                Antialiased = true,
+                JointMode = Line2D.LineJointMode.Round,
+            });
+            _tideForecastLayer.AddChild(ring);
+            Tween ringTween = ring.CreateTween();
+            ringTween.SetLoops();
+            ringTween.TweenProperty(ring, "scale", Vector2.One * TideForecastRippleScale, TideForecastPulseHalfPeriod)
+                .SetTrans(Tween.TransitionType.Sine);
+            ringTween.TweenProperty(ring, "scale", Vector2.One, TideForecastPulseHalfPeriod)
+                .SetTrans(Tween.TransitionType.Sine);
         }
     }
 

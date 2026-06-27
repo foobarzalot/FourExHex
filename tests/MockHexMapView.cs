@@ -44,6 +44,10 @@ public class MockHexMapView : IHexMapView
     public void ShowTowerCoverage(IEnumerable<HexCoord> coords) =>
         LastTowerCoverage = coords.ToList();
 
+    public List<HexCoord> LastTideForecast { get; private set; } = new();
+    public void ShowTideForecast(IEnumerable<HexCoord> coords) =>
+        LastTideForecast = coords.ToList();
+
     public HexCoord? LastMoveSource { get; private set; }
     public void ShowMoveSource(HexCoord? coord) => LastMoveSource = coord;
 

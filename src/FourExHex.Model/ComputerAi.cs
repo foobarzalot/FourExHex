@@ -212,6 +212,11 @@ public static class ComputerAi
 
             if (candidate.Action is AiBuildTowerAction bt)
                 delta += AiStateScorer.BuildTowerBonus(bt.Destination, state, forPlayer);
+            // Rising Tides (issue #85): reward moving a unit off a tile that will
+            // submerge this turn (and never onto one), so the defensive phase
+            // evacuates a unit that would otherwise sit still and drown.
+            if (candidate.Action is AiMoveAction mv)
+                delta += AiStateScorer.EvacuationBonus(mv, state, forPlayer);
 
             if (delta > 0) positiveCandidates++;
             if (delta > observedBestDelta)
