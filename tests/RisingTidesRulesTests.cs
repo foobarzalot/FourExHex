@@ -256,4 +256,81 @@ public class RisingTidesRulesTests
         Assert.Equal(4, state.Grid.Count);
         Assert.Empty(state.WaterCoords);
     }
+
+    // --- WaterBorderWeight / weighted selection (issue #85 follow-on) ----
+    //
+    // The weight is "sea-facing sides" = 6 - (in-grid neighbours). These tests
+    // assert independently hand-derived counts for layouts whose adjacency is
+    // unambiguous — NOT counts re-derived from NeighborsOf (which would be
+    // circular, since WaterBorderWeight is defined in terms of it).
+
+    [Fact]
+    public void WaterBorderWeight_IsolatedTile_IsSix()
+    {
+        // A lone tile has zero in-grid neighbours, so all six sides face sea.
+        var grid = new HexGrid();
+        grid.Add(new HexTile(HexCoord.FromOffset(0, 0), Red));
+
+        Assert.Equal(6, RisingTidesRules.WaterBorderWeight(grid, HexCoord.FromOffset(0, 0)));
+    }
+
+    [Fact]
+    public void WaterBorderWeight_SingleRowLine_EndIsFive_MiddleIsFour()
+    {
+        // A single even row (row 0 → no odd-row stagger) is a straight axial
+        // line: each tile's only possible in-grid neighbours are due E and W.
+        // An end therefore has exactly 1 land neighbour (weight 5); an interior
+        // tile has exactly 2 (weight 4). No diagonal neighbours exist — the
+        // rows above/below are empty.
+        HexGrid grid = TestHelpers.BuildRectGrid(5, 1, Red);
+
+        Assert.Equal(5, RisingTidesRules.WaterBorderWeight(grid, HexCoord.FromOffset(0, 0)));
+        Assert.Equal(5, RisingTidesRules.WaterBorderWeight(grid, HexCoord.FromOffset(4, 0)));
+        Assert.Equal(4, RisingTidesRules.WaterBorderWeight(grid, HexCoord.FromOffset(2, 0)));
+    }
+
+    [Fact]
+    public void WaterBorderWeight_SurroundedTile_IsZero()
+    {
+        // In a 3x3 block the centre (1,1) has all six neighbours in-grid
+        // (E,NE,NW,W,SW,SE all map to occupied cells), so no side faces sea.
+        HexGrid grid = TestHelpers.BuildRectGrid(3, 3, Red);
+
+        Assert.Equal(0, RisingTidesRules.WaterBorderWeight(grid, HexCoord.FromOffset(1, 1)));
+    }
+
+    [Fact]
+    public void ForecastSubmerge_SkewsTowardMoreSeaExposedTiles()
+    {
+        // Single even row of 5: the two ends are weight 5, the three middles
+        // weight 4 (hand-derived above — parity-free, only E/W neighbours). The
+        // seeded weighted draw must pick the ends more per-tile than the
+        // middles. (We assert against the KNOWN weights, not WaterBorderWeight.)
+        HexGrid Build() => TestHelpers.BuildRectGrid(5, 1, Red);
+        var ends = new HashSet<HexCoord> { HexCoord.FromOffset(0, 0), HexCoord.FromOffset(4, 0) };
+        var middles = new HashSet<HexCoord>
+        {
+            HexCoord.FromOffset(1, 0), HexCoord.FromOffset(2, 0), HexCoord.FromOffset(3, 0),
+        };
+
+        int endPicks = 0, midPicks = 0;
+        const int trials = 3000;
+        for (int seed = 0; seed < trials; seed++)
+        {
+            HexGrid g = Build();
+            GameState state = MakeState(g, TestHelpers.BuildTerritoriesFromGrid(g));
+            HexCoord picked = RisingTidesRules
+                .ForecastSubmerge(state, Red, new Random(seed), budget: 1).Single().Coord;
+            if (ends.Contains(picked)) endPicks++;
+            else if (middles.Contains(picked)) midPicks++;
+        }
+
+        // Per-tile probabilities: end 5/22≈0.227, middle 4/22≈0.182 — a 1.25×
+        // edge. Over 3000 trials the gap is many sigma; assert a safe 1.1× per
+        // tile. Uniform selection (the old behaviour) would make these equal.
+        double endPerTile = (double)endPicks / ends.Count;
+        double midPerTile = (double)midPicks / middles.Count;
+        Assert.True(endPerTile > midPerTile * 1.1,
+            $"weighting not skewing: end/tile={endPerTile:0}, middle/tile={midPerTile:0}");
+    }
 }

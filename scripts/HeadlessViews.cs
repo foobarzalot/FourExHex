@@ -26,7 +26,7 @@ public sealed class HeadlessHexMapView : IHexMapView
     public void ShowMoveTargets(IEnumerable<HexCoord> coords, UnitLevel level) { }
     public void ShowTowerTargets(IEnumerable<HexCoord> coords) { }
     public void ShowTowerCoverage(IEnumerable<HexCoord> coords) { }
-    public void ShowTideForecast(IEnumerable<HexCoord> coords) { }
+    public void ShowTideForecast(IEnumerable<TideStep> steps) { }
     public void ShowMoveSource(HexCoord? coord) { }
     public void ShowSelectUnitCue(HexCoord? coord) { }
     public void ShowHighlight(Territory? selected) { }

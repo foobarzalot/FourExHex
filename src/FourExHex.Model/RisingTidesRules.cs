@@ -52,6 +52,39 @@ public static class RisingTidesRules
     }
 
     /// <summary>
+    /// How many of <paramref name="coord"/>'s six sides face the sea — i.e.
+    /// <c>6 - (in-grid neighbours)</c> (issue #85 follow-on). A missing neighbour
+    /// is water, the map edge, or beyond-bounds — all of which render as sea — so
+    /// this is the tile's coastal exposure. An interior tile scores 0; a shore
+    /// tile scores 1..6 (a lone tile is 6). Used to weight which shore tile the
+    /// tide takes, so exposed corners/peninsulas erode before flush edges.
+    /// </summary>
+    public static int WaterBorderWeight(HexGrid grid, HexCoord coord)
+        => 6 - grid.NeighborsOf(coord).Count();
+
+    /// <summary>
+    /// Integer weighted pick: returns an index into <paramref name="weights"/>
+    /// chosen with probability proportional to its weight, drawing once from
+    /// <paramref name="rng"/>. Integer-only (no floats — this lives in the model
+    /// assembly) and deterministic for a given seed. Falls back to a uniform pick
+    /// if every weight is non-positive (shouldn't happen — shore tiles weigh ≥1).
+    /// </summary>
+    private static int WeightedPick(List<int> weights, Random rng)
+    {
+        int total = 0;
+        foreach (int w in weights) total += w;
+        if (total <= 0) return rng.Next(weights.Count);
+
+        int r = rng.Next(total);
+        for (int i = 0; i < weights.Count; i++)
+        {
+            r -= weights[i];
+            if (r < 0) return i;
+        }
+        return weights.Count - 1; // unreachable: r < total guarantees an earlier return
+    }
+
+    /// <summary>
     /// Forecast (but do NOT apply) up to <paramref name="budget"/> of
     /// <paramref name="owner"/>'s shore tiles to erode this turn, picked with
     /// <paramref name="rng"/>. The grid is left untouched — the returned plan
@@ -67,12 +100,19 @@ public static class RisingTidesRules
         var shore = new List<HexCoord>(ShoreTilesOf(state.Grid, owner));
         if (shore.Count == 0 || budget <= 0) return System.Array.Empty<TideStep>();
 
+        // Weight each shore tile by how many of its six sides face the sea
+        // (issue #85 follow-on): the more exposed a tile, the more likely the
+        // tide takes it, so coastlines crumble at their points first.
+        var weights = new List<int>(shore.Count);
+        foreach (HexCoord c in shore) weights.Add(WaterBorderWeight(state.Grid, c));
+
         var plan = new List<TideStep>();
         for (int i = 0; i < budget && shore.Count > 0; i++)
         {
-            int pick = rng.Next(shore.Count);
-            HexCoord coord = shore[pick];
-            shore.RemoveAt(pick);
+            int idx = WeightedPick(weights, rng);
+            HexCoord coord = shore[idx];
+            shore.RemoveAt(idx);
+            weights.RemoveAt(idx);
 
             HexTile? tile = state.Grid.Get(coord);
             if (tile == null) continue; // defensive: already gone

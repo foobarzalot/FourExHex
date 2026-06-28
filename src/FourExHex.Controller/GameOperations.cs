@@ -629,9 +629,9 @@ public class GameOperations
         _map.RefreshOccupantVisuals(_state.Turns.CurrentPlayer.Id, _state.Treasury);
         Log.Since(Log.LogCategory.Capture, "[hitch] RefreshOccupantVisuals", tOccupants);
         // Rising Tides (issue #85): telegraph the current player's locked tide
-        // forecast for the whole turn ("these tiles submerge at turn end"). Empty
-        // outside Rising Tides / round 1, which clears any prior telegraph.
-        _map.ShowTideForecast(_state.PendingTide.Select(s => s.Coord));
+        // forecast for the whole turn ("these tiles erode at turn end"). Empty
+        // outside Rising Tides, which clears any prior telegraph.
+        _map.ShowTideForecast(_state.PendingTide);
         // End Turn CTA when the current player has nothing actionable
         // left. Lives here (not inside _hud.Refresh) so Tutorial Preview's
         // onAfterRefresh callback can overwrite it when the next scripted

@@ -1035,88 +1035,150 @@ public partial class HexMapView : Node2D, IHexMapView
         }
     }
 
-    // Rising Tides telegraph palette/cadence (issue #85). The cue is deliberately
-    // HUE-INDEPENDENT so it reads on every player color (a blue cue vanished on the
-    // blue player's blue tiles): it signals with luminance + motion, not color. The
-    // tile pulses DARKER (a near-black "going under" overlay), and the rippling edge
-    // is a dark-halo + white-core "foam" stroke — the same dual-stroke trick the
-    // selection highlight uses, so the white core reads on dark tiles and the dark
-    // halo reads on light ones. Tunable by design.
+    // Rising Tides telegraph palette/cadence (issue #85). The cue ALTERNATES the
+    // before/after shoreline: a single group cross-fades by alpha (min↔max). For a
+    // SUBMERGING tile the group is the real water color plus, per edge, a cover
+    // quad over the OLD coastal foam (sea-facing edges) and a NEW white foam strip
+    // (land-facing edges). At trough (invisible) the real land + its baked coast
+    // show ("before"); at peak (full water) the tile is open sea with the new coast
+    // drawn ("after"). A DEMOTE-ONLY shore mountain (won't sink) uses a milder
+    // near-black darken instead — luminance erosion cue, no water/shoreline change.
     private static readonly Color TideForecastDarkenColor = new Color(0.02f, 0.04f, 0.09f, 1f);
-    private static readonly Color TideForecastFoamHaloColor = new Color(0f, 0f, 0f, 0.85f);
-    private static readonly Color TideForecastFoamCoreColor = new Color(1f, 1f, 1f, 0.95f);
     private const float TideForecastDarkenMinAlpha = 0.12f;
     private const float TideForecastDarkenMaxAlpha = 0.42f;
-    private const float TideForecastFoamHaloWidthFactor = 0.16f;
-    private const float TideForecastFoamCoreWidthFactor = 0.07f;
-    private const float TideForecastPulseHalfPeriod = 0.6f; // 1.2s full period
-    private const float TideForecastRippleScale = 1.07f;
+    private const float TideForecastSubmergeMinAlpha = 0.0f;  // land + its coast show -> "before"
+    private const float TideForecastSubmergeMaxAlpha = 1.0f;  // tile == open sea -> "after"
+    private const float TideForecastPulseHalfPeriod = 1.2f;   // 2.4s full period (slowed 50%)
 
     /// <summary>
-    /// Rising Tides (issue #85): telegraph the given coords as tiles that will
-    /// submerge at the END of the current player's turn. Each doomed tile pulses
-    /// darker ("going under") and gets a rippling white-foam edge — a cue that
-    /// reads on any owner color because it signals with luminance and motion, not
-    /// hue. Pass an empty sequence to clear (the controller does this outside
-    /// Rising Tides, on round 1, and after the tiles actually sink). Tweens are
-    /// bound to their nodes, so <see cref="ClearLayer"/> frees and stops them.
+    /// Rising Tides (issue #85): telegraph the given steps as tiles eroding at the
+    /// END of the current player's turn. A submerging tile cross-fades its overlay
+    /// between low alpha (land shows = "before") and high alpha of the real water
+    /// color (water shows = "after"); a demote-only shore mountain (won't sink this
+    /// turn) gets a milder near-black erosion pulse instead. Both carry a rippling
+    /// dark-halo/white-core foam edge so the cue reads on any owner color. Pass an
+    /// empty sequence to clear (the controller does this outside Rising Tides and
+    /// after the tiles erode). Tweens are bound to their nodes, so
+    /// <see cref="ClearLayer"/> frees and stops them.
     /// </summary>
-    public void ShowTideForecast(IEnumerable<HexCoord> coords)
+    public void ShowTideForecast(IEnumerable<TideStep> steps)
     {
         ClearLayer(_tideForecastLayer);
         if (_tideForecastLayer == null) return;
 
-        Vector2[] verts = HexVertices();
-        // Closed perimeter (last point == first) relative to the tile centre, so
-        // the ripple scales symmetrically about the hex.
-        var ringPoints = new Vector2[7];
-        for (int i = 0; i < 6; i++) ringPoints[i] = verts[i];
-        ringPoints[6] = verts[0];
-
-        foreach (HexCoord coord in coords)
+        foreach (TideStep step in steps)
         {
-            Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(coord, HexSize);
-
-            // Darkening overlay, pulsing alpha — a luminance drop the eye reads on
-            // any tile color (the previous blue tint vanished on the blue player).
-            Polygon2D fill = CreateHexVisual(center, TideForecastDarkenColor);
-            fill.Modulate = new Color(1f, 1f, 1f, TideForecastDarkenMinAlpha);
-            _tideForecastLayer.AddChild(fill);
-            Tween fillTween = fill.CreateTween();
-            fillTween.SetLoops();
-            fillTween.TweenProperty(fill, "modulate:a", TideForecastDarkenMaxAlpha, TideForecastPulseHalfPeriod)
-                .SetTrans(Tween.TransitionType.Sine);
-            fillTween.TweenProperty(fill, "modulate:a", TideForecastDarkenMinAlpha, TideForecastPulseHalfPeriod)
-                .SetTrans(Tween.TransitionType.Sine);
-
-            // Rippling foam edge: a dark halo under a white core (reads on any
-            // background), gently expanding then contracting so it looks like a
-            // ripple lapping the tile.
-            var ring = new Node2D { Position = center };
-            ring.AddChild(new Line2D
+            if (step.DemoteOnly)
             {
-                Points = ringPoints,
-                Width = HexSize * TideForecastFoamHaloWidthFactor,
-                DefaultColor = TideForecastFoamHaloColor,
-                Antialiased = true,
-                JointMode = Line2D.LineJointMode.Round,
-            });
-            ring.AddChild(new Line2D
+                // Shore mountain: erodes to lowland but stays land — darken cue,
+                // no water reveal and no shoreline change (it isn't becoming sea).
+                DrawTideTelegraphTile(step.Coord, TideForecastDarkenColor,
+                    TideForecastDarkenMinAlpha, TideForecastDarkenMaxAlpha, coverShoreline: false);
+            }
+            else
             {
-                Points = ringPoints,
-                Width = HexSize * TideForecastFoamCoreWidthFactor,
-                DefaultColor = TideForecastFoamCoreColor,
-                Antialiased = true,
-                JointMode = Line2D.LineJointMode.Round,
-            });
-            _tideForecastLayer.AddChild(ring);
-            Tween ringTween = ring.CreateTween();
-            ringTween.SetLoops();
-            ringTween.TweenProperty(ring, "scale", Vector2.One * TideForecastRippleScale, TideForecastPulseHalfPeriod)
-                .SetTrans(Tween.TransitionType.Sine);
-            ringTween.TweenProperty(ring, "scale", Vector2.One, TideForecastPulseHalfPeriod)
-                .SetTrans(Tween.TransitionType.Sine);
+                // Submerge: cross-fade the tile to the real water color, hide the
+                // OLD coastal foam, and fade in the NEW shoreline that forms once
+                // the tile is sea — so it alternates between before and after.
+                DrawTideTelegraphTile(step.Coord, WaterColor,
+                    TideForecastSubmergeMinAlpha, TideForecastSubmergeMaxAlpha, coverShoreline: true);
+            }
         }
+    }
+
+    /// <summary>
+    /// Draw one tide-telegraph tile on <see cref="_tideForecastLayer"/> as a
+    /// single alpha-pulsing "reveal" group (min↔max alpha, looping). The group is
+    /// the tile-fill hex; for a submerge (<paramref name="coverShoreline"/>) it
+    /// also carries, per edge: a cover quad over the OLD foam on each sea-facing
+    /// edge (so the current coastline vanishes at peak) and a NEW foam strip on
+    /// each land-facing edge (the coastline that forms once the tile is sea). At
+    /// trough the group is invisible — the real land + its baked coast show
+    /// ("before"); at peak the tile is open water with the new coast ("after").
+    /// Demote-only shore mountains pass <paramref name="coverShoreline"/> false:
+    /// a plain darken pulse, since the tile stays land.
+    /// </summary>
+    private void DrawTideTelegraphTile(
+        HexCoord coord, Color overlayColor, float minAlpha, float maxAlpha, bool coverShoreline)
+    {
+        if (_tideForecastLayer == null) return;
+        Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(coord, HexSize);
+        Vector2[] verts = HexVertices();
+
+        var reveal = new Node2D { Position = center, Modulate = new Color(1f, 1f, 1f, minAlpha) };
+        reveal.AddChild(new Polygon2D { Color = overlayColor, Polygon = verts });
+
+        if (coverShoreline)
+        {
+            float inset = HexSize * ShoreFoamInset;
+            var foamOuter = new Color(1f, 1f, 1f, 1f);
+            var foamInner = new Color(1f, 1f, 1f, 0f);
+            for (int edge = 0; edge < 6; edge++)
+            {
+                Vector2 a = verts[edge];
+                Vector2 b = verts[(edge + 1) % 6];
+                bool facesSea = _state.Grid.Get(coord.Neighbor(EdgeToNeighborDirection[edge])) == null;
+                if (facesSea)
+                {
+                    // Cover the OLD foam strip baked just OUTSIDE this edge so the
+                    // current shoreline disappears as the tile floods.
+                    Vector2 outward = ((a + b) * 0.5f).Normalized() * (inset * 1.35f);
+                    reveal.AddChild(new Polygon2D
+                    {
+                        Color = overlayColor,
+                        Polygon = new[] { a, b, b + outward, a + outward },
+                    });
+                }
+                else
+                {
+                    // Draw the NEW foam strip that forms INSIDE this edge once the
+                    // tile is sea and the surviving land neighbour becomes coast —
+                    // white, fading inward (mirrors AddShoreFoamStrips' gradient).
+                    Vector2 aIn = a - a.Normalized() * inset;
+                    Vector2 bIn = b - b.Normalized() * inset;
+                    reveal.AddChild(new Polygon2D
+                    {
+                        Color = ShoreFoamColor,
+                        Polygon = new[] { a, b, bIn, aIn },
+                        VertexColors = new[] { foamOuter, foamOuter, foamInner, foamInner },
+                    });
+                }
+            }
+            // Cover the OLD corner foam disks too (AddCornerFoamDisk drops one at
+            // each vertex where BOTH adjacent edges face sea), else white dots
+            // linger at the corners through the fade.
+            for (int v = 0; v < 6; v++)
+            {
+                if (_state.Grid.Get(coord.Neighbor(EdgeToNeighborDirection[v])) != null) continue;
+                if (_state.Grid.Get(coord.Neighbor(EdgeToNeighborDirection[(v + 5) % 6])) != null) continue;
+                reveal.AddChild(MakeFoamCoverDisk(verts[v], inset * 1.3f, overlayColor));
+            }
+        }
+
+        _tideForecastLayer.AddChild(reveal);
+        Tween fade = reveal.CreateTween();
+        fade.SetLoops();
+        fade.TweenProperty(reveal, "modulate:a", maxAlpha, TideForecastPulseHalfPeriod)
+            .SetTrans(Tween.TransitionType.Sine);
+        fade.TweenProperty(reveal, "modulate:a", minAlpha, TideForecastPulseHalfPeriod)
+            .SetTrans(Tween.TransitionType.Sine);
+    }
+
+    /// <summary>
+    /// A small filled convex disk (decagon) of <paramref name="color"/> centred at
+    /// <paramref name="at"/> — used to cover a corner foam disk during the tide
+    /// telegraph fade (see <see cref="DrawTideTelegraphTile"/>).
+    /// </summary>
+    private static Polygon2D MakeFoamCoverDisk(Vector2 at, float radius, Color color)
+    {
+        const int segments = 10;
+        var pts = new Vector2[segments];
+        for (int i = 0; i < segments; i++)
+        {
+            float ang = i * Mathf.Tau / segments;
+            pts[i] = at + new Vector2(Mathf.Cos(ang), Mathf.Sin(ang)) * radius;
+        }
+        return new Polygon2D { Color = color, Polygon = pts };
     }
 
     /// <summary>
