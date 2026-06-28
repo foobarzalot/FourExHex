@@ -461,6 +461,9 @@ public partial class HexMapView : Node2D, IHexMapView
         _capitalVisuals.Clear();
         _treeVisuals.Clear();
         _graveVisuals.Clear();
+        // The tide-telegraph layer is freed with every other child above; drop the
+        // diff cache so the next ShowTideForecast redraws onto the fresh layer.
+        _shownTideForecast.Clear();
         _tileVisuals.Clear();
         _pulsingUnits.Clear();
         _pulsingCapitals.Clear();
@@ -1041,39 +1044,55 @@ public partial class HexMapView : Node2D, IHexMapView
     // quad over the OLD coastal foam (sea-facing edges) and a NEW white foam strip
     // (land-facing edges). At trough (invisible) the real land + its baked coast
     // show ("before"); at peak (full water) the tile is open sea with the new coast
-    // drawn ("after"). A DEMOTE-ONLY shore mountain (won't sink) uses a milder
-    // near-black darken instead — luminance erosion cue, no water/shoreline change.
-    private static readonly Color TideForecastDarkenColor = new Color(0.02f, 0.04f, 0.09f, 1f);
-    private const float TideForecastDarkenMinAlpha = 0.12f;
-    private const float TideForecastDarkenMaxAlpha = 0.42f;
+    // drawn ("after"). A DEMOTE-ONLY shore mountain (won't sink) instead fades its
+    // mountain RING toward the tile's land color — the ring's alpha appears to
+    // animate down to "demoted to lowland" and back, in sync.
     private const float TideForecastSubmergeMinAlpha = 0.0f;  // land + its coast show -> "before"
     private const float TideForecastSubmergeMaxAlpha = 1.0f;  // tile == open sea -> "after"
     private const float TideForecastPulseHalfPeriod = 1.2f;   // 2.4s full period (slowed 50%)
+    // What the tide telegraph is currently drawing, so ShowTideForecast can diff
+    // and leave the running pulse tweens alone unless the forecast set changes
+    // (RefreshViews fires far more often on AI turns; rebuilding every call reset
+    // the cadence). Cleared by BuildStateVisuals when the layers are recreated.
+    private readonly List<TideStep> _shownTideForecast = new();
 
     /// <summary>
     /// Rising Tides (issue #85): telegraph the given steps as tiles eroding at the
-    /// END of the current player's turn. A submerging tile cross-fades its overlay
-    /// between low alpha (land shows = "before") and high alpha of the real water
-    /// color (water shows = "after"); a demote-only shore mountain (won't sink this
-    /// turn) gets a milder near-black erosion pulse instead. Both carry a rippling
-    /// dark-halo/white-core foam edge so the cue reads on any owner color. Pass an
-    /// empty sequence to clear (the controller does this outside Rising Tides and
-    /// after the tiles erode). Tweens are bound to their nodes, so
-    /// <see cref="ClearLayer"/> frees and stops them.
+    /// END of the current player's turn. A submerging tile cross-fades between its
+    /// land look (before) and the open-sea look with the new coastline (after); a
+    /// demote-only shore mountain fades its ring toward lowland and back. Pass an
+    /// empty sequence to clear.
+    ///
+    /// Two refresh-frequency guards: the whole cue is SUPPRESSED at instant speed
+    /// (<see cref="_silentMode"/> — Instant AI batch / instant replay), and
+    /// otherwise this only rebuilds when the forecast set actually CHANGES, leaving
+    /// the running pulse tweens alone across the frequent RefreshViews calls of a
+    /// turn (rebuilding every call restarted the cadence — fast on AI turns).
     /// </summary>
     public void ShowTideForecast(IEnumerable<TideStep> steps)
     {
-        ClearLayer(_tideForecastLayer);
         if (_tideForecastLayer == null) return;
 
-        foreach (TideStep step in steps)
+        // Suppress entirely at instant speed; otherwise the desired set IS the
+        // forecast. (Empty when suppressed, so the diff below clears any cue.)
+        var desired = new List<TideStep>();
+        if (!_silentMode)
+        {
+            foreach (TideStep step in steps) desired.Add(step);
+        }
+
+        if (TideForecastsEqual(_shownTideForecast, desired)) return; // unchanged: keep tweens
+        _shownTideForecast.Clear();
+        _shownTideForecast.AddRange(desired);
+
+        ClearLayer(_tideForecastLayer);
+        foreach (TideStep step in desired)
         {
             if (step.DemoteOnly)
             {
-                // Shore mountain: erodes to lowland but stays land — darken cue,
-                // no water reveal and no shoreline change (it isn't becoming sea).
-                DrawTideTelegraphTile(step.Coord, TideForecastDarkenColor,
-                    TideForecastDarkenMinAlpha, TideForecastDarkenMaxAlpha, coverShoreline: false);
+                // Shore mountain: erodes to lowland but stays land — fade its
+                // mountain ring toward the tile's land color and back, in sync.
+                DrawMountainErosionTelegraph(step.Coord);
             }
             else
             {
@@ -1081,25 +1100,34 @@ public partial class HexMapView : Node2D, IHexMapView
                 // OLD coastal foam, and fade in the NEW shoreline that forms once
                 // the tile is sea — so it alternates between before and after.
                 DrawTideTelegraphTile(step.Coord, WaterColor,
-                    TideForecastSubmergeMinAlpha, TideForecastSubmergeMaxAlpha, coverShoreline: true);
+                    TideForecastSubmergeMinAlpha, TideForecastSubmergeMaxAlpha);
             }
         }
     }
 
+    private static bool TideForecastsEqual(List<TideStep> a, List<TideStep> b)
+    {
+        if (a.Count != b.Count) return false;
+        for (int i = 0; i < a.Count; i++)
+        {
+            if (!a[i].Equals(b[i])) return false; // TideStep is a value record struct
+        }
+        return true;
+    }
+
     /// <summary>
-    /// Draw one tide-telegraph tile on <see cref="_tideForecastLayer"/> as a
-    /// single alpha-pulsing "reveal" group (min↔max alpha, looping). The group is
-    /// the tile-fill hex; for a submerge (<paramref name="coverShoreline"/>) it
-    /// also carries, per edge: a cover quad over the OLD foam on each sea-facing
-    /// edge (so the current coastline vanishes at peak) and a NEW foam strip on
-    /// each land-facing edge (the coastline that forms once the tile is sea). At
-    /// trough the group is invisible — the real land + its baked coast show
-    /// ("before"); at peak the tile is open water with the new coast ("after").
-    /// Demote-only shore mountains pass <paramref name="coverShoreline"/> false:
-    /// a plain darken pulse, since the tile stays land.
+    /// Draw a submerging tide-telegraph tile on <see cref="_tideForecastLayer"/>
+    /// as a single alpha-pulsing "reveal" group (min↔max alpha, looping). The
+    /// group is the water-fill hex plus, per edge: a cover quad over the OLD foam
+    /// on each sea-facing edge (so the current coastline vanishes at peak) and a
+    /// NEW foam strip on each land-facing edge (the coastline that forms once the
+    /// tile is sea). At trough the group is invisible — the real land + its baked
+    /// coast show ("before"); at peak the tile is open water with the new coast
+    /// ("after"). (Demote-only shore mountains use
+    /// <see cref="DrawMountainErosionTelegraph"/> instead.)
     /// </summary>
     private void DrawTideTelegraphTile(
-        HexCoord coord, Color overlayColor, float minAlpha, float maxAlpha, bool coverShoreline)
+        HexCoord coord, Color overlayColor, float minAlpha, float maxAlpha)
     {
         if (_tideForecastLayer == null) return;
         Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(coord, HexSize);
@@ -1108,7 +1136,6 @@ public partial class HexMapView : Node2D, IHexMapView
         var reveal = new Node2D { Position = center, Modulate = new Color(1f, 1f, 1f, minAlpha) };
         reveal.AddChild(new Polygon2D { Color = overlayColor, Polygon = verts });
 
-        if (coverShoreline)
         {
             float inset = HexSize * ShoreFoamInset;
             var foamOuter = new Color(1f, 1f, 1f, 1f);
@@ -1179,6 +1206,47 @@ public partial class HexMapView : Node2D, IHexMapView
             pts[i] = at + new Vector2(Mathf.Cos(ang), Mathf.Sin(ang)) * radius;
         }
         return new Polygon2D { Color = color, Polygon = pts };
+    }
+
+    /// <summary>
+    /// Telegraph a demote-only shore mountain (issue #85): cover the baked mountain
+    /// ring band (the outer→inner channel <see cref="DrawMountains"/> draws) with
+    /// the tile's land color and pulse that cover's alpha 0→1 in sync, so the
+    /// ring's alpha appears to animate down to flat "demoted to lowland" at peak
+    /// and back to the intact mountain at trough.
+    /// </summary>
+    private void DrawMountainErosionTelegraph(HexCoord coord)
+    {
+        if (_tideForecastLayer == null) return;
+        HexTile? tile = _state.Grid.Get(coord);
+        if (tile == null) return;
+        Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(coord, HexSize);
+        Vector2[] verts = HexVertices();
+        Color land = PlayerPalette.ColorFor(tile.Owner);
+
+        var reveal = new Node2D { Position = center, Modulate = new Color(1f, 1f, 1f, 0f) };
+        for (int edge = 0; edge < 6; edge++)
+        {
+            int next = (edge + 1) % 6;
+            reveal.AddChild(new Polygon2D
+            {
+                Color = land,
+                Polygon = new[]
+                {
+                    verts[edge] * MountainBorderOuter,
+                    verts[next] * MountainBorderOuter,
+                    verts[next] * MountainBorderInner,
+                    verts[edge] * MountainBorderInner,
+                },
+            });
+        }
+        _tideForecastLayer.AddChild(reveal);
+        Tween fade = reveal.CreateTween();
+        fade.SetLoops();
+        fade.TweenProperty(reveal, "modulate:a", 1f, TideForecastPulseHalfPeriod)
+            .SetTrans(Tween.TransitionType.Sine);
+        fade.TweenProperty(reveal, "modulate:a", 0f, TideForecastPulseHalfPeriod)
+            .SetTrans(Tween.TransitionType.Sine);
     }
 
     /// <summary>
