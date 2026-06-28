@@ -131,9 +131,9 @@ Consequences for the rest of this doc:
 - **`Log` is Godot-free** — the master logging system routes through
   an injectable `Log.Sink` that `Main` wires to `GD.Print`. See
   **Logging** below.
-- **Save format is v13.** Ownership is a player index on the wire (−1 =
+- **Save format is v14.** Ownership is a player index on the wire (−1 =
   `None`); claim-victory tiers are persisted by player index
-  (palette-independent). v2–v13 still load; v2–v4 migrate their legacy
+  (palette-independent). v2–v14 still load; v2–v4 migrate their legacy
   color-hex claim data via `GameSettings` palette matching. v6 renamed
   the unit levels (Peasant/Spearman/Knight/Baron →
   Recruit/Soldier/Captain/Commander); pre-v6 level names still load via
@@ -150,8 +150,11 @@ Consequences for the rest of this doc:
   carrying both flags is **normalized to mountain-only on load** (mountain
   wins; counted + logged). The wire still carries the two bools, but the
   in-memory model is a single `HexTile.Feature` enum that can't represent
-  both (see **Mountain tiles** below). All added fields are default-absent,
-  so pre-bump files load unchanged.
+  both (see **Mountain tiles** below). v14 added the optional Rising Tides
+  `PendingTide` forecast (issue #85) — the locked tiles eroding at the current
+  turn's end, so a mid-turn save/load keeps the telegraph and submerges exactly
+  them; absent → empty. All added fields are default-absent, so pre-bump files
+  load unchanged.
 - **`.cs.uid` sidecars**: the moved model files are not Godot
   resources, so theirs were removed; `src/**` is `.gdignore`d. Files
   still in `scripts/` keep their tracked `.cs.uid`.
@@ -792,7 +795,7 @@ deterministic in the seed.
   preview renders the same derivation via
   `MapThumbnailView.RequestRandom(seed, options)`.
 
-## Rising Tides game mode (issue #56)
+## Rising Tides game mode (issues #56, #85)
 
 A selectable **game mode** — the first runtime rules variant, distinct from the
 freeform-vs-campaign split (which is carried by `GameSettings.CampaignLevel`).
@@ -800,63 +803,95 @@ freeform-vs-campaign split (which is carried by `GameSettings.CampaignLevel`).
 `Freeform`, set at construction). In Rising Tides the sea eats the map and the
 game ends only when one player is left — no early wins.
 
-**Per-turn submerge.** At the start of each owner's turn, just before tree
-growth (same `TurnNumber > 1` gate), one of *that owner's own* shore tiles
-erodes — applied to every color including neutral's once-per-round phantom turn
-and eliminated colors' leftover tiles. `RisingTidesRules.SubmergeStep(state,
-owner, rng, budget)` (Model, integer + seeded-RNG only) does it:
+**Forecast at turn start, submerge at turn end (#85).** The erosion is *telegraphed*:
+selected and shown at the start of a player's turn, but only actualized at the end,
+so the player and the AI get a full turn of foreknowledge. It is split in two
+(`RisingTidesRules`, Model, integer + seeded-RNG only):
 
-- A **shore** tile is any land tile with **fewer than six in-grid neighbours**
-  (`ShoreTilesOf` — a missing neighbour is authored water, the rectangular map
-  edge, or beyond-bounds, none of which are in the grid). Budget is **1** today.
-- The picked tile is chosen with the per-turn reseeded RNG over the
-  `HexCoord.CompareTo`-sorted shore list (reproducible per seed). A **mountain**
-  shore *demotes* (`IsMountain = false`) and spends the budget without sinking —
-  mountains are the last land to go; a non-mountain shore is removed from the
-  grid and added to the water set, then `TerritoryFinder.Recompute(grid, terr,
-  treasury)` reconciles (the same remove-tile→add-water→recompute path the editor
-  uses in `MapEditPaint.PaintWater`).
+- `ForecastSubmerge(state, owner, rng, budget)` *selects* shore tiles (consuming
+  RNG) but mutates nothing, returning an `IReadOnlyList<TideStep>`
+  (`TideStep { HexCoord Coord; bool DemoteOnly }`). The plan is locked on
+  `GameState.PendingTide`.
+- `ApplyForecast(state, owner, plan)` performs the demote/submerge for exactly
+  those coords (no re-pick, no RNG, no drift) + `TerritoryFinder.Recompute` (the
+  remove-tile→add-water→recompute path the editor's `MapEditPaint.PaintWater`
+  uses). `SubmergeStep` = forecast-then-apply in one call, retained for the
+  phantom turns of neutral/eliminated colors (no during-turn beat to telegraph).
+- A **shore** tile has **<6 in-grid neighbours** (`ShoreTilesOf`). Selection is
+  **weighted by sea exposure**: `WaterBorderWeight(grid, coord) = 6 − in-grid
+  neighbours` drives an integer cumulative-weight pick, so exposed
+  corners/peninsulas erode before flush edges. A **mountain** shore *demotes*
+  (`IsMountain=false`) and spends the step without sinking; a non-mountain shore
+  is removed + watered. Budget **1**.
+- Timing (`GameOperations`): `StartPlayerTurn` calls `ForecastTideForCurrentPlayer`
+  (**no `TurnNumber` gate — the tide runs from turn 1**); the very first player's
+  turn-1 forecast is seeded in `GameController.Resume(freshStart:true)` because
+  `StartPlayerTurn` isn't called for the initial player (a load passes
+  `freshStart:false` and restores `PendingTide` from the save — never recompute,
+  or the locked forecast drifts). `EndOfTurnProcessing` runs `ApplyPendingTide`
+  (apply + structural rebuild + defeat) **before** the win check. Phantom turns
+  forecast+apply inline via `MaybeRiseTidesFor`.
 
 `GameState.WaterCoords` is backed by a mutable `HashSet` (exposed `IReadOnlySet`)
-with `AddWater(coord)` so the water set can grow at runtime; freeform is byte-for-
-byte unchanged because `MaybeRiseTidesFor` is a no-op outside Rising Tides and
-never draws RNG there.
+with `AddWater(coord)` so it can grow at runtime; freeform is byte-for-byte
+unchanged (the forecast is gated by `Mode == RisingTides`, so it never draws RNG
+in freeform).
 
 **Win = last player standing.** `WinConditionRules.LastPlayerStanding(territories)`
-returns the sole capital-bearing owner (else null). In Rising Tides,
-`GameOperations` routes the existing win checks to it: `HandleCapture`'s mid-turn
-domination check and `EndOfTurnProcessing`'s sole-capital check both use
-`LastPlayerStanding`; `StartPlayerTurn` runs it after the submerge+upkeep (a tile
-drowning the active player's last capital can leave a sole survivor); and
-`GameController.OnEndTurnPressed` suppresses the claim-victory tiers entirely.
+returns the sole capital-bearing owner (else null). `HandleCapture`'s mid-turn
+domination check and `EndOfTurnProcessing`'s sole-capital check both route to it
+(the latter now runs *after* `ApplyPendingTide`, so an end-of-turn flood that
+drowns the last capital is seen); `GameController.OnEndTurnPressed` suppresses the
+claim-victory tiers entirely.
 
-**Defeat on submerge.** A sinking tile that drowns a player's last capital is a
-defeat just like a capture: `GameOperations.HandleNewlyDefeated(before)` (shared
-by `HandleCapture` and `MaybeRiseTidesFor`) plays the defeat cue and raises the
-defeat overlay for a human. A human defeated by their *own* start-of-turn submerge
-is the current player, so `OnDefeatContinuePressed` ends their empty turn to
-advance past them once the overlay is dismissed.
+**Defeat at turn end (#85).** The end-of-turn flood can eliminate the player whose
+turn just ended — including a human. `ApplyPendingTide` calls
+`HandleNewlyDefeated(before)` (shared with `HandleCapture`), which plays the defeat
+cue and raises `PendingDefeatScreen` for a human; the win check then declares any
+sole survivor. Only the current player can be flooded out by their own tide, so
+`AdvanceToNextActivePlayer` skips them, and the AI loop + `OnDefeatContinuePressed`
+gate on `PendingDefeatScreen` so play pauses for the overlay.
 
-**VFX/SFX** (view, `HexMapView`). A submerge needs a structural repaint
-(`RebuildAfterTerritoryChange`) — the view re-bakes the static water/foam soup in
-place (`BuildWaterFoamSoup` → `_waterFoamBake.SetTriangles`) and drops the drowned
-tile's land fill (`PruneSubmergedTilesAndRebakeWater`). Effects are detected up
-front (`CaptureRisingTidesFx`: drowned = `_tileVisuals` keys gone from the grid;
-demoted = a `_lastMountainCoords` diff) and **flushed after** the method's
-`ClearLayer(_deathsLayer)` (`FlushRisingTidesFx`) so they aren't wiped: a ripple +
-sink-fade + `tile_submerged` sound for a submerge, the standard destruction burst
-(`SpawnDestruction`) + `TowerDestroyed` sound for a mountain demote. All gated by
-the existing `_silentMode` flag, so they play on human turns and paced AI/replay
-but are suppressed at Instant speed. The `tile_submerged.wav` SFX is generated via
-the ElevenLabs pipeline (`tools/generate_sounds_eleven.py`).
+**Telegraph (#85, view `HexMapView`).** `IHexMapView.ShowTideForecast(IEnumerable<TideStep>)`
+draws the locked forecast each `RefreshViews`. A **submerging** tile cross-fades on
+one alpha tween between its land look (trough = "before") and open sea (peak =
+"after"): a full water-color (`UiPalette.WaterDeep`) fill, cover quads hiding the
+OLD coastal foam (edges + corner disks), and NEW foam strips drawing the coastline
+that forms once it's sea. A **demote-only** mountain fades its ring band toward the
+tile's land color (the ring "erodes to lowland"). The cue is hue-independent so it
+reads on any owner color (the blue tint problem). Two refresh-frequency guards: it
+is **suppressed at Instant speed** (`_silentMode` — Instant AI batch / instant
+replay), and otherwise only rebuilt when the forecast set actually changes (a
+`_shownTideForecast` diff) so the cadence doesn't track `RefreshViews` frequency
+(which is far higher on AI turns).
+
+**VFX/SFX at apply** (view). The actual submerge still needs a structural repaint
+(`RebuildAfterTerritoryChange`) — re-bake the static water/foam soup
+(`BuildWaterFoamSoup` → `_waterFoamBake.SetTriangles`) and drop the drowned tile's
+fill (`PruneSubmergedTilesAndRebakeWater`); now fired at turn end. Effects are
+detected up front (`CaptureRisingTidesFx`) and **flushed after**
+`ClearLayer(_deathsLayer)` (`FlushRisingTidesFx`): ripple + sink-fade +
+`tile_submerged` for a submerge, destruction burst (`SpawnDestruction`) +
+`TowerDestroyed` for a demote. All gated by `_silentMode` (play on human/paced
+AI/replay, silent at Instant). `tile_submerged.wav` is generated via the ElevenLabs
+pipeline (`tools/generate_sounds_eleven.py`).
+
+**AI (tide-aware evacuation, #85).** The AI reads `GameState.PendingTide`. A move
+that takes a unit OFF a doomed tile to safety earns `AiStateScorer.EvacuationBonus`
+— a per-move delta added in `ComputerAi.BestPositiveDelta` exactly like
+`BuildTowerBonus`, leaving the absolute `Score` untouched — and phase-4b reposition
+enumeration is broadened so a doomed unit may flee inland (not just to border
+tiles). Net: the AI evacuates a unit that would otherwise drown. Deeper multi-turn
+tide valuation (predicting future shores, strategic retreat) remains follow-up #84.
 
 **Selection & round-trip.** Freeform games pick the mode from the **Game Mode**
 selector on the Configure Game player-setup page (`GameSettings.Mode`, shared with
 the map editor's new-map flow); Quick Play resets to Freeform. The map editor
 threads `_mapMode` into `BuildSaveState`, and `Main`'s starting-map load forwards
-`pendingLoad.State.Mode`, so an authored Rising Tides map round-trips and plays as
-Rising Tides. The mode + grown water set persist through the **v12** save format
-(see *Save / load*); `FOUREXHEX_MODE=RisingTides` forces it for headless 6AI runs.
+`pendingLoad.State.Mode`, so an authored Rising Tides map round-trips. The mode,
+the grown water set, **and the locked `PendingTide` forecast** persist through the
+**v14** save format (see *Save / load*); `FOUREXHEX_MODE=RisingTides` forces the
+mode for headless 6AI runs.
 
 **Campaign.** `CampaignProgress.ModeForLevel(level)` (deterministic, integer-only,
 same seeded-draw style as `MapGenOptionsForLevel`) makes a rare minority of
@@ -865,9 +900,6 @@ Recruit). `Main` derives a campaign level's mode from it; the campaign confirm
 sheet shows a gold "Rising Tides — …" line (`MapInfoSheet`'s optional `gameMode`
 row), and the campaign grid marks those levels with a blue circle behind the level
 number (`TierGrid._Draw`).
-
-AI is crash-safe but not tide-aware (it re-enumerates from the live grid; the
-1-ply sim never submerges) — tide-aware valuation is follow-up #84.
 
 ## Display scaling (autoload)
 
@@ -2697,6 +2729,13 @@ sequences.
   round-trips with no separate field. Deserialize feeds it into the
   `GameState` ctor; the starting-map load path forwards it too (see *Rising
   Tides game mode*).
+- **Tide forecast (issue #85, v14).** Saves carry an optional `PendingTide`
+  (list of `{Q, R, DemoteOnly}`); null/missing = empty (pre-v14 and freeform
+  saves unchanged). Only a mid-turn Rising Tides save writes it. It can't be
+  recomputed on load (RNG has advanced, the grid may have changed), so it's
+  persisted and restored onto `GameState.PendingTide` — the reloaded game shows
+  the same telegraph and erodes exactly those tiles (see *Rising Tides game
+  mode*).
 - **Load.** The main menu's Load button populates `LoadRequest.Pending`
   with a `LoadedSave` (state + players + master seed + max-turn cap +
   optional OriginMapName + optional claim-victory prompted tiers) and
