@@ -4,12 +4,13 @@ using System.Linq;
 
 /// <summary>
 /// Pure rules for the "Rising Tides" game mode (issue #56). Godot-free and
-/// integer-only (the one randomness source is an injected <see cref="Random"/>),
-/// so it lives in the model assembly and passes the no-floats check.
+/// integer-only, so it lives in the model assembly and passes the no-floats
+/// check. Coast erosion is fully deterministic — shore tiles are selected by
+/// strict exposure ordering (issue #89), no RNG involved.
 ///
 /// The erosion is split into two halves (issue #85): at the start of an owner's
 /// turn the controller calls <see cref="ForecastSubmerge"/> — which <i>selects</i>
-/// a budget of that owner's shore tiles (consuming the RNG) but mutates nothing —
+/// a budget of that owner's most sea-exposed shore tiles but mutates nothing —
 /// and locks the resulting <see cref="TideStep"/> plan on the game state so it can
 /// be telegraphed to the player and weighed by the AI. At the <i>end</i> of that
 /// same turn the controller calls <see cref="ApplyForecast"/>, which performs the
@@ -56,68 +57,41 @@ public static class RisingTidesRules
     /// <c>6 - (in-grid neighbours)</c> (issue #85 follow-on). A missing neighbour
     /// is water, the map edge, or beyond-bounds — all of which render as sea — so
     /// this is the tile's coastal exposure. An interior tile scores 0; a shore
-    /// tile scores 1..6 (a lone tile is 6). Used to weight which shore tile the
-    /// tide takes, so exposed corners/peninsulas erode before flush edges.
+    /// tile scores 1..6 (a lone tile is 6). Drives the strict erosion ordering
+    /// (issue #89): the tide always takes the highest-weight shore tile, so
+    /// exposed corners/peninsulas erode before flush edges, every time.
     /// </summary>
     public static int WaterBorderWeight(HexGrid grid, HexCoord coord)
         => 6 - grid.NeighborsOf(coord).Count();
 
     /// <summary>
-    /// Integer weighted pick: returns an index into <paramref name="weights"/>
-    /// chosen with probability proportional to its weight, drawing once from
-    /// <paramref name="rng"/>. Integer-only (no floats — this lives in the model
-    /// assembly) and deterministic for a given seed. Falls back to a uniform pick
-    /// if every weight is non-positive (shouldn't happen — shore tiles weigh ≥1).
-    /// </summary>
-    private static int WeightedPick(List<int> weights, Random rng)
-    {
-        int total = 0;
-        foreach (int w in weights) total += w;
-        if (total <= 0) return rng.Next(weights.Count);
-
-        int r = rng.Next(total);
-        for (int i = 0; i < weights.Count; i++)
-        {
-            r -= weights[i];
-            if (r < 0) return i;
-        }
-        return weights.Count - 1; // unreachable: r < total guarantees an earlier return
-    }
-
-    /// <summary>
     /// Forecast (but do NOT apply) up to <paramref name="budget"/> of
-    /// <paramref name="owner"/>'s shore tiles to erode this turn, picked with
-    /// <paramref name="rng"/>. The grid is left untouched — the returned plan
-    /// records each selected coord and whether it is currently a mountain
-    /// (<see cref="TideStep.DemoteOnly"/>, a reprieve) or a plain shore that will
-    /// submerge. RNG consumption is byte-for-byte identical to <see cref="SubmergeStep"/>
-    /// (same <see cref="ShoreTilesOf"/> order, same draws), so deferring the
-    /// mutation to <see cref="ApplyForecast"/> does not shift the seeded stream.
+    /// <paramref name="owner"/>'s shore tiles to erode this turn, selected by
+    /// strict exposure ordering (issue #89): the most sea-exposed tiles first
+    /// (highest <see cref="WaterBorderWeight"/> = fewest in-grid land neighbours),
+    /// ties broken by ascending <see cref="HexCoord"/>. No RNG is consumed — the
+    /// selection is fully deterministic from the map. The grid is left untouched —
+    /// the returned plan records each selected coord and whether it is currently a
+    /// mountain (<see cref="TideStep.DemoteOnly"/>, a reprieve) or a plain shore
+    /// that will submerge.
     /// </summary>
     public static IReadOnlyList<TideStep> ForecastSubmerge(
-        GameState state, PlayerId owner, Random rng, int budget)
+        GameState state, PlayerId owner, int budget)
     {
-        var shore = new List<HexCoord>(ShoreTilesOf(state.Grid, owner));
+        IReadOnlyList<HexCoord> shore = ShoreTilesOf(state.Grid, owner);
         if (shore.Count == 0 || budget <= 0) return System.Array.Empty<TideStep>();
 
-        // Weight each shore tile by how many of its six sides face the sea
-        // (issue #85 follow-on): the more exposed a tile, the more likely the
-        // tide takes it, so coastlines crumble at their points first.
-        var weights = new List<int>(shore.Count);
-        foreach (HexCoord c in shore) weights.Add(WaterBorderWeight(state.Grid, c));
-
-        var plan = new List<TideStep>();
-        for (int i = 0; i < budget && shore.Count > 0; i++)
-        {
-            int idx = WeightedPick(weights, rng);
-            HexCoord coord = shore[idx];
-            shore.RemoveAt(idx);
-            weights.RemoveAt(idx);
-
-            HexTile? tile = state.Grid.Get(coord);
-            if (tile == null) continue; // defensive: already gone
-            plan.Add(new TideStep(coord, DemoteOnly: tile.IsMountain));
-        }
+        // Strict erosion order (issue #89): take the most sea-exposed tiles
+        // first so coastlines crumble at their points before their flush edges.
+        // `shore` is already in ascending HexCoord order, so OrderByDescending's
+        // stable sort resolves equal-exposure ties to the smallest coord; the
+        // explicit ThenBy makes that tie-break intent unmistakable.
+        var plan = shore
+            .OrderByDescending(c => WaterBorderWeight(state.Grid, c))
+            .ThenBy(c => c)
+            .Take(budget)
+            .Select(c => new TideStep(c, DemoteOnly: state.Grid.Get(c)!.IsMountain))
+            .ToList();
 
         if (plan.Count > 0)
         {
@@ -187,6 +161,6 @@ public static class RisingTidesRules
     /// neutral/eliminated colors, which have no during-turn beat to telegraph,
     /// and for tests. Returns true iff anything changed.
     /// </summary>
-    public static bool SubmergeStep(GameState state, PlayerId owner, Random rng, int budget)
-        => ApplyForecast(state, owner, ForecastSubmerge(state, owner, rng, budget));
+    public static bool SubmergeStep(GameState state, PlayerId owner, int budget)
+        => ApplyForecast(state, owner, ForecastSubmerge(state, owner, budget));
 }

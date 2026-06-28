@@ -492,15 +492,14 @@ public class GameOperations
     /// <see cref="GameState.PendingTide"/> for the telegraph, the AI's evacuation
     /// scoring, and the end-of-turn <see cref="ApplyPendingTide"/>. No
     /// <c>TurnNumber</c> gate — the tide applies from the very first turn. No-op
-    /// outside Rising Tides. Consumes the per-turn RNG, so the caller must have
-    /// reseeded it first (<see cref="StartPlayerTurn"/> and
-    /// <c>GameController.Resume</c> both do).
+    /// outside Rising Tides. The selection is deterministic from the map (strict
+    /// exposure ordering, issue #89) and consumes no RNG.
     /// </summary>
     public void ForecastTideForCurrentPlayer()
     {
         if (_state.Mode != GameMode.RisingTides) return;
         _state.PendingTide = RisingTidesRules.ForecastSubmerge(
-            _state, _state.Turns.CurrentPlayer.Id, _rng, budget: 1);
+            _state, _state.Turns.CurrentPlayer.Id, budget: 1);
     }
 
     private void ApplyPendingTide()
@@ -535,7 +534,7 @@ public class GameOperations
     {
         if (_state.Mode != GameMode.RisingTides || _state.Turns.TurnNumber <= 1) return;
         HashSet<PlayerId> colorsWithCapitalBefore = ColorsWithCapital(_state.Territories);
-        bool changed = RisingTidesRules.SubmergeStep(_state, owner, _rng, budget: 1);
+        bool changed = RisingTidesRules.SubmergeStep(_state, owner, budget: 1);
         // A submerge removes tiles (or demotes a mountain) — the land/water
         // tessellation is structural, so it needs the coalesced repaint path,
         // not just the per-turn RefreshOccupantVisuals. Mirror HandleCapture's

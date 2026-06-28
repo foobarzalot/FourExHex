@@ -795,7 +795,7 @@ deterministic in the seed.
   preview renders the same derivation via
   `MapThumbnailView.RequestRandom(seed, options)`.
 
-## Rising Tides game mode (issues #56, #85)
+## Rising Tides game mode (issues #56, #85, #89)
 
 A selectable **game mode** — the first runtime rules variant, distinct from the
 freeform-vs-campaign split (which is carried by `GameSettings.CampaignLevel`).
@@ -806,10 +806,10 @@ game ends only when one player is left — no early wins.
 **Forecast at turn start, submerge at turn end (#85).** The erosion is *telegraphed*:
 selected and shown at the start of a player's turn, but only actualized at the end,
 so the player and the AI get a full turn of foreknowledge. It is split in two
-(`RisingTidesRules`, Model, integer + seeded-RNG only):
+(`RisingTidesRules`, Model, integer-only — selection is fully deterministic, no RNG):
 
-- `ForecastSubmerge(state, owner, rng, budget)` *selects* shore tiles (consuming
-  RNG) but mutates nothing, returning an `IReadOnlyList<TideStep>`
+- `ForecastSubmerge(state, owner, budget)` *selects* shore tiles but mutates
+  nothing, returning an `IReadOnlyList<TideStep>`
   (`TideStep { HexCoord Coord; bool DemoteOnly }`). The plan is locked on
   `GameState.PendingTide`.
 - `ApplyForecast(state, owner, plan)` performs the demote/submerge for exactly
@@ -818,14 +818,17 @@ so the player and the AI get a full turn of foreknowledge. It is split in two
   uses). `SubmergeStep` = forecast-then-apply in one call, retained for the
   phantom turns of neutral/eliminated colors (no during-turn beat to telegraph).
 - A **shore** tile has **<6 in-grid neighbours** (`ShoreTilesOf`). Selection is
-  **weighted by sea exposure**: `WaterBorderWeight(grid, coord) = 6 − in-grid
-  neighbours` drives an integer cumulative-weight pick, so exposed
-  corners/peninsulas erode before flush edges. A **mountain** shore *demotes*
-  (`IsMountain=false`) and spends the step without sinking; a non-mountain shore
-  is removed + watered. Budget **1**.
+  **strict, deterministic exposure ordering** (#89): take the most sea-exposed
+  tiles first — highest `WaterBorderWeight(grid, coord) = 6 − in-grid neighbours`
+  (fewest adjacent land hexes) — with equal-exposure ties broken by **ascending
+  `HexCoord`**. No RNG: the most exposed corners/peninsulas erode before flush
+  edges, every time, so fragmentation is fully predictable from the map. (The
+  earlier weighted-random pick, `WeightedPick`, is gone.) A **mountain** shore
+  *demotes* (`IsMountain=false`) and spends the step without sinking; a
+  non-mountain shore is removed + watered. Budget **1**.
 - Timing (`GameOperations`): `StartPlayerTurn` calls `ForecastTideForCurrentPlayer`
   (**no `TurnNumber` gate — the tide runs from turn 1**); the very first player's
-  turn-1 forecast is seeded in `GameController.Resume(freshStart:true)` because
+  turn-1 forecast is computed in `GameController.Resume(freshStart:true)` because
   `StartPlayerTurn` isn't called for the initial player (a load passes
   `freshStart:false` and restores `PendingTide` from the save — never recompute,
   or the locked forecast drifts). `EndOfTurnProcessing` runs `ApplyPendingTide`
@@ -834,8 +837,8 @@ so the player and the AI get a full turn of foreknowledge. It is split in two
 
 `GameState.WaterCoords` is backed by a mutable `HashSet` (exposed `IReadOnlySet`)
 with `AddWater(coord)` so it can grow at runtime; freeform is byte-for-byte
-unchanged (the forecast is gated by `Mode == RisingTides`, so it never draws RNG
-in freeform).
+unchanged (the forecast is gated by `Mode == RisingTides`, so it never runs in
+freeform; selection draws no RNG in either mode).
 
 **Win = last player standing.** `WinConditionRules.LastPlayerStanding(territories)`
 returns the sole capital-bearing owner (else null). `HandleCapture`'s mid-turn

@@ -68,7 +68,7 @@ public class RisingTidesRulesTests
         Assert.False(WinConditionRules.IsEliminated(Red, grid)); // had a capital
         GameState state = MakeState(grid, territories);
 
-        bool changed = RisingTidesRules.SubmergeStep(state, Red, new Random(1), budget: 1);
+        bool changed = RisingTidesRules.SubmergeStep(state, Red, budget: 1);
 
         Assert.True(changed);
         Assert.Equal(1, state.Grid.Count);
@@ -88,7 +88,7 @@ public class RisingTidesRulesTests
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         GameState state = MakeState(grid, territories);
 
-        bool changed = RisingTidesRules.SubmergeStep(state, Red, new Random(7), budget: 1);
+        bool changed = RisingTidesRules.SubmergeStep(state, Red, budget: 1);
 
         Assert.False(changed);
         Assert.Equal(25, state.Grid.Count);
@@ -99,8 +99,8 @@ public class RisingTidesRulesTests
     public void SubmergeStep_MountainShore_DemotesThenSubmergesOnLaterStep()
     {
         // Red owns the interior centre (keeps it alive) plus a single shore
-        // tile that is a mountain. With exactly one shore the RNG pick is
-        // forced, so this is deterministic regardless of seed.
+        // tile that is a mountain. With exactly one shore the selection is
+        // forced.
         HexGrid grid = TestHelpers.BuildRectGrid(5, 5, Blue);
         HexCoord center = HexCoord.FromOffset(2, 2);
         HexCoord shoreMtn = HexCoord.FromOffset(0, 2);
@@ -113,7 +113,7 @@ public class RisingTidesRulesTests
         GameState state = MakeState(grid, territories);
 
         // Step 1: mountain demotes, spends the budget, nothing submerges.
-        bool changed1 = RisingTidesRules.SubmergeStep(state, Red, new Random(99), budget: 1);
+        bool changed1 = RisingTidesRules.SubmergeStep(state, Red, budget: 1);
         Assert.True(changed1);
         Assert.Equal(25, state.Grid.Count);
         Assert.True(state.Grid.Contains(shoreMtn));
@@ -121,7 +121,7 @@ public class RisingTidesRulesTests
         Assert.Empty(state.WaterCoords);
 
         // Step 2: now a plain shore, it submerges.
-        bool changed2 = RisingTidesRules.SubmergeStep(state, Red, new Random(99), budget: 1);
+        bool changed2 = RisingTidesRules.SubmergeStep(state, Red, budget: 1);
         Assert.True(changed2);
         Assert.Equal(24, state.Grid.Count);
         Assert.False(state.Grid.Contains(shoreMtn));
@@ -129,19 +129,21 @@ public class RisingTidesRulesTests
     }
 
     [Fact]
-    public void SubmergeStep_SameSeed_PicksSameTile()
+    public void SubmergeStep_IsDeterministic_PicksSameTileEveryRun()
     {
+        // Selection is structural (no RNG, issue #89): two runs of identical
+        // state must erode the same tile, every time.
         HexGrid GridA() => TestHelpers.BuildRectGrid(2, 2, Red);
 
         HexGrid gridA = GridA();
         var origCoords = gridA.Tiles.Select(t => t.Coord).ToHashSet();
         GameState stateA = MakeState(gridA, TestHelpers.BuildTerritoriesFromGrid(gridA));
-        RisingTidesRules.SubmergeStep(stateA, Red, new Random(42), budget: 1);
+        RisingTidesRules.SubmergeStep(stateA, Red, budget: 1);
         HexCoord removedA = origCoords.Single(c => !stateA.Grid.Contains(c));
 
         HexGrid gridB = GridA();
         GameState stateB = MakeState(gridB, TestHelpers.BuildTerritoriesFromGrid(gridB));
-        RisingTidesRules.SubmergeStep(stateB, Red, new Random(42), budget: 1);
+        RisingTidesRules.SubmergeStep(stateB, Red, budget: 1);
         HexCoord removedB = origCoords.Single(c => !stateB.Grid.Contains(c));
 
         Assert.Equal(removedA, removedB);
@@ -156,7 +158,7 @@ public class RisingTidesRulesTests
         GameState state = MakeState(grid, TestHelpers.BuildTerritoriesFromGrid(grid));
 
         IReadOnlyList<TideStep> plan =
-            RisingTidesRules.ForecastSubmerge(state, Red, new Random(1), budget: 1);
+            RisingTidesRules.ForecastSubmerge(state, Red, budget: 1);
 
         Assert.Single(plan);
         Assert.False(plan[0].DemoteOnly);
@@ -167,19 +169,21 @@ public class RisingTidesRulesTests
     }
 
     [Fact]
-    public void ForecastSubmerge_SameSeed_PicksSameTileAsSubmergeStep()
+    public void ForecastSubmerge_PicksSameTileAsSubmergeStep()
     {
+        // Forecast and SubmergeStep must agree on the chosen coord — the forecast
+        // is just SubmergeStep with the apply deferred.
         HexGrid Grid() => TestHelpers.BuildRectGrid(2, 2, Red);
 
         HexGrid gridForecast = Grid();
         GameState forecastState = MakeState(gridForecast, TestHelpers.BuildTerritoriesFromGrid(gridForecast));
         IReadOnlyList<TideStep> plan =
-            RisingTidesRules.ForecastSubmerge(forecastState, Red, new Random(42), budget: 1);
+            RisingTidesRules.ForecastSubmerge(forecastState, Red, budget: 1);
 
         HexGrid gridSubmerge = Grid();
         var origCoords = gridSubmerge.Tiles.Select(t => t.Coord).ToHashSet();
         GameState submergeState = MakeState(gridSubmerge, TestHelpers.BuildTerritoriesFromGrid(gridSubmerge));
-        RisingTidesRules.SubmergeStep(submergeState, Red, new Random(42), budget: 1);
+        RisingTidesRules.SubmergeStep(submergeState, Red, budget: 1);
         HexCoord removed = origCoords.Single(c => !submergeState.Grid.Contains(c));
 
         Assert.Equal(removed, plan.Single().Coord);
@@ -197,7 +201,7 @@ public class RisingTidesRulesTests
         GameState state = MakeState(grid, TestHelpers.BuildTerritoriesFromGrid(grid));
 
         IReadOnlyList<TideStep> plan =
-            RisingTidesRules.ForecastSubmerge(state, Red, new Random(99), budget: 1);
+            RisingTidesRules.ForecastSubmerge(state, Red, budget: 1);
 
         Assert.Equal(shoreMtn, plan.Single().Coord);
         Assert.True(plan.Single().DemoteOnly);
@@ -211,7 +215,7 @@ public class RisingTidesRulesTests
         HexGrid grid = TestHelpers.BuildRectGrid(2, 1, Red);
         GameState state = MakeState(grid, TestHelpers.BuildTerritoriesFromGrid(grid));
         IReadOnlyList<TideStep> plan =
-            RisingTidesRules.ForecastSubmerge(state, Red, new Random(1), budget: 1);
+            RisingTidesRules.ForecastSubmerge(state, Red, budget: 1);
         HexCoord doomed = plan.Single().Coord;
 
         bool changed = RisingTidesRules.ApplyForecast(state, Red, plan);
@@ -234,7 +238,7 @@ public class RisingTidesRulesTests
         grid.Get(shoreMtn)!.IsMountain = true;
         GameState state = MakeState(grid, TestHelpers.BuildTerritoriesFromGrid(grid));
         IReadOnlyList<TideStep> plan =
-            RisingTidesRules.ForecastSubmerge(state, Red, new Random(99), budget: 1);
+            RisingTidesRules.ForecastSubmerge(state, Red, budget: 1);
 
         bool changed = RisingTidesRules.ApplyForecast(state, Red, plan);
 
@@ -300,37 +304,59 @@ public class RisingTidesRulesTests
     }
 
     [Fact]
-    public void ForecastSubmerge_SkewsTowardMoreSeaExposedTiles()
+    public void ForecastSubmerge_PicksMostExposedTileFirst()
     {
-        // Single even row of 5: the two ends are weight 5, the three middles
-        // weight 4 (hand-derived above — parity-free, only E/W neighbours). The
-        // seeded weighted draw must pick the ends more per-tile than the
-        // middles. (We assert against the KNOWN weights, not WaterBorderWeight.)
-        HexGrid Build() => TestHelpers.BuildRectGrid(5, 1, Red);
-        var ends = new HashSet<HexCoord> { HexCoord.FromOffset(0, 0), HexCoord.FromOffset(4, 0) };
-        var middles = new HashSet<HexCoord>
-        {
-            HexCoord.FromOffset(1, 0), HexCoord.FromOffset(2, 0), HexCoord.FromOffset(3, 0),
-        };
+        // A single even row (only E/W neighbours possible) with cols 0,1,2
+        // contiguous plus an isolated tile at col 5 (gap at 3,4). Hand-derived
+        // weights (sea-facing sides = 6 - in-grid neighbours): (0,0)=5, (1,0)=4,
+        // (2,0)=5, (5,0)=6. The unique most-exposed tile is the *largest* coord
+        // (5,0) — proving selection is by exposure, not by HexCoord order.
+        var grid = new HexGrid();
+        foreach (int col in new[] { 0, 1, 2, 5 })
+            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        GameState state = MakeState(grid, TestHelpers.BuildTerritoriesFromGrid(grid));
 
-        int endPicks = 0, midPicks = 0;
-        const int trials = 3000;
-        for (int seed = 0; seed < trials; seed++)
-        {
-            HexGrid g = Build();
-            GameState state = MakeState(g, TestHelpers.BuildTerritoriesFromGrid(g));
-            HexCoord picked = RisingTidesRules
-                .ForecastSubmerge(state, Red, new Random(seed), budget: 1).Single().Coord;
-            if (ends.Contains(picked)) endPicks++;
-            else if (middles.Contains(picked)) midPicks++;
-        }
+        IReadOnlyList<TideStep> plan =
+            RisingTidesRules.ForecastSubmerge(state, Red, budget: 1);
 
-        // Per-tile probabilities: end 5/22≈0.227, middle 4/22≈0.182 — a 1.25×
-        // edge. Over 3000 trials the gap is many sigma; assert a safe 1.1× per
-        // tile. Uniform selection (the old behaviour) would make these equal.
-        double endPerTile = (double)endPicks / ends.Count;
-        double midPerTile = (double)midPicks / middles.Count;
-        Assert.True(endPerTile > midPerTile * 1.1,
-            $"weighting not skewing: end/tile={endPerTile:0}, middle/tile={midPerTile:0}");
+        Assert.Equal(HexCoord.FromOffset(5, 0), plan.Single().Coord);
+    }
+
+    [Fact]
+    public void ForecastSubmerge_EqualExposure_TieBreaksByAscendingHexCoord()
+    {
+        // Single even row of 3: ends (0,0) and (2,0) are both weight 5 (one
+        // E/W neighbour each), middle (1,0) is weight 4. The two ends tie on
+        // exposure, so the strict tie-break must take the smaller coord (0,0).
+        HexGrid grid = TestHelpers.BuildRectGrid(3, 1, Red);
+        GameState state = MakeState(grid, TestHelpers.BuildTerritoriesFromGrid(grid));
+
+        IReadOnlyList<TideStep> plan =
+            RisingTidesRules.ForecastSubmerge(state, Red, budget: 1);
+
+        Assert.Equal(HexCoord.FromOffset(0, 0), plan.Single().Coord);
+    }
+
+    [Fact]
+    public void ForecastSubmerge_Budget_ReturnsTopNInStrictOrder()
+    {
+        // Single even row of 5: weights (0,0)=5, (1,0)=4, (2,0)=4, (3,0)=4,
+        // (4,0)=5. Strict order is descending weight then ascending coord:
+        // (0,0), (4,0) [both w5], then (1,0) [w4, smallest coord]. budget 3
+        // returns exactly that prefix in that order.
+        HexGrid grid = TestHelpers.BuildRectGrid(5, 1, Red);
+        GameState state = MakeState(grid, TestHelpers.BuildTerritoriesFromGrid(grid));
+
+        IReadOnlyList<TideStep> plan =
+            RisingTidesRules.ForecastSubmerge(state, Red, budget: 3);
+
+        Assert.Equal(
+            new[]
+            {
+                HexCoord.FromOffset(0, 0),
+                HexCoord.FromOffset(4, 0),
+                HexCoord.FromOffset(1, 0),
+            },
+            plan.Select(s => s.Coord).ToArray());
     }
 }
