@@ -2,8 +2,7 @@ using System.Linq;
 
 /// <summary>
 /// Pure rules for buying units. Callers are expected to check
-/// <see cref="CanAfford"/> and <see cref="IsValidRecruitTarget"/>
-/// before invoking the buy. Costs depend on the buyer's
+/// <see cref="CanAfford"/> before purchasing. Costs depend on the buyer's
 /// <see cref="Difficulty"/> (the human's self-imposed handicap — AIs
 /// always pay the Soldier baseline): unit cost = base × tier with the
 /// base from <see cref="DifficultyRules.UnitBaseCost"/>, towers from
@@ -60,14 +59,6 @@ public static class PurchaseRules
         return treasury.GetGold(territory.Capital!.Value) >= TowerCostFor(difficulty);
     }
 
-    public static bool IsValidRecruitTarget(HexTile tile, Territory territory)
-    {
-        // Must be placeable: empty or a grave (graves don't block
-        // placement — a new recruit buries the grave).
-        if (tile.Occupant != null && tile.Occupant is not Grave) return false;
-        return territory.Coords.Contains(tile.Coord);
-    }
-
     /// <summary>
     /// True iff a tower can be placed on <paramref name="tile"/>:
     /// the tile must be empty and inside <paramref name="territory"/>.
@@ -81,12 +72,5 @@ public static class PurchaseRules
         // Towers may be built on mountains (issue #37): the +1 high-ground bonus
         // is the whole point. The tile just has to be empty and in-territory.
         return territory.Coords.Contains(tile.Coord);
-    }
-
-    public static void BuyRecruit(HexTile tile, Territory territory, Treasury treasury, Difficulty difficulty)
-    {
-        HexCoord capital = territory.Capital!.Value;
-        treasury.SetGold(capital, treasury.GetGold(capital) - CostFor(UnitLevel.Recruit, difficulty));
-        tile.Occupant = new Unit(territory.Owner);
     }
 }

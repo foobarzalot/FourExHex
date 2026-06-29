@@ -155,42 +155,4 @@ public static class HudBars
         return (rail, group);
     }
 
-    /// <summary>Anchored region inside the portrait bottom bar (left / center
-    /// / right) so a cluster growing or vanishing doesn't shove the others
-    /// sideways. Same shape as the legacy helper.</summary>
-    public static HBoxContainer MakeAnchoredGroup(float anchorX, Control.GrowDirection grow, int separation = 14)
-    {
-        var group = new HBoxContainer
-        {
-            AnchorLeft = anchorX, AnchorRight = anchorX, AnchorTop = 0f, AnchorBottom = 1f,
-            GrowHorizontal = grow,
-            MouseFilter = Control.MouseFilterEnum.Pass,
-        };
-        group.AddThemeConstantOverride("separation", separation);
-        return group;
-    }
-
-    /// <summary>Paper-fill chip backdrop (spec §6: paper fill, 2 px ink
-    /// border, ~10 px radius). Wraps a chip's content so it stays legible
-    /// over any map color in the floating layout.</summary>
-    public static StyleBoxFlat ChipStyle()
-    {
-        return new StyleBoxFlat
-        {
-            BgColor = UiPalette.ChipFill,
-            BorderColor = UiPalette.ChipBorder,
-            BorderWidthLeft = 2,
-            BorderWidthRight = 2,
-            BorderWidthTop = 2,
-            BorderWidthBottom = 2,
-            CornerRadiusTopLeft = 10,
-            CornerRadiusTopRight = 10,
-            CornerRadiusBottomLeft = 10,
-            CornerRadiusBottomRight = 10,
-            ContentMarginLeft = 12,
-            ContentMarginRight = 12,
-            ContentMarginTop = 8,
-            ContentMarginBottom = 8,
-        };
-    }
 }

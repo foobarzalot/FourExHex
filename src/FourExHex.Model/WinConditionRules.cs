@@ -123,26 +123,6 @@ public static class WinConditionRules
     public static readonly int[] ClaimVictoryThresholdsPercent = { 50, 75, 90 };
 
     /// <summary>
-    /// True iff <paramref name="player"/> owns strictly more than
-    /// <paramref name="thresholdPercent"/> percent of the tiles in
-    /// <paramref name="grid"/>. Water (off-map blockers) is not counted
-    /// because it isn't part of the grid. Strict ">" (not ">=") so
-    /// exactly the threshold does NOT trigger.
-    /// </summary>
-    public static bool MeetsClaimVictoryThreshold(
-        PlayerId player, HexGrid grid, int thresholdPercent)
-    {
-        int owned = 0;
-        int total = 0;
-        foreach (HexTile tile in grid.Tiles)
-        {
-            total++;
-            if (tile.Owner == player) owned++;
-        }
-        return owned * 100 > total * thresholdPercent;
-    }
-
-    /// <summary>
     /// Among <see cref="ClaimVictoryThresholdsPercent"/>, return the
     /// highest tier <paramref name="player"/> meets that is strictly
     /// greater than <paramref name="highestPromptedPercent"/>, or null

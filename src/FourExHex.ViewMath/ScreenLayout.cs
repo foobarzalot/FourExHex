@@ -23,22 +23,6 @@ public static class ScreenLayout
         width >= height ? ScreenOrientation.Landscape : ScreenOrientation.Portrait;
 
     /// <summary>
-    /// Landscape reserves a single bottom strip (<paramref name="landscapeBarHeight"/>)
-    /// and nothing at the top. Portrait reserves the bottom bar always, and the
-    /// top bar only when it's currently shown (the gameplay HUD keeps it up
-    /// always now; the param stays for callers that hide it).
-    /// </summary>
-    public static MapInsets ComputeInsets(
-        ScreenOrientation orientation,
-        bool topBarVisible,
-        float landscapeBarHeight,
-        float portraitTopBarHeight,
-        float portraitBottomBarHeight) =>
-        orientation == ScreenOrientation.Landscape
-            ? new MapInsets(0f, landscapeBarHeight)
-            : new MapInsets(topBarVisible ? portraitTopBarHeight : 0f, portraitBottomBarHeight);
-
-    /// <summary>
     /// Phone↔tablet breakpoint for the responsive HUD, in logical px on the
     /// shorter viewport edge. Picked to put every phone we test on the
     /// compact side and every tablet on the expanded side:

@@ -24,9 +24,6 @@ public sealed partial class EscMenu : CanvasLayer
 {
     public sealed record Option(string Label, Action OnPressed, bool Disabled = false);
 
-    public event Action? Opened;
-    public event Action? Closed;
-
     /// <summary>
     /// Fires immediately before <see cref="Hide"/> when the user
     /// dismisses the modal with the Escape key (not when a button is
@@ -130,10 +127,8 @@ public sealed partial class EscMenu : CanvasLayer
             _buttonBox.AddChild(button);
         }
 
-        bool wasOpen = IsOpen;
         IsOpen = true;
         Visible = true;
-        if (!wasOpen) Opened?.Invoke();
     }
 
     public new void Hide()
@@ -141,7 +136,6 @@ public sealed partial class EscMenu : CanvasLayer
         if (!IsOpen) return;
         IsOpen = false;
         Visible = false;
-        Closed?.Invoke();
     }
 
     public override void _UnhandledInput(InputEvent @event)

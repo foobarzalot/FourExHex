@@ -36,7 +36,6 @@ public partial class HudIconButton : Button
     private readonly bool _textMode;
     private bool _selected;
     private bool _ctaActive;
-    private bool _hero;
     private UnitLevel _buyLevel = UnitLevel.Recruit;
 
     // Long-press (hold) support. Armed only when a LongPressed handler is
@@ -103,50 +102,12 @@ public partial class HudIconButton : Button
         }
     }
 
-    /// <summary>
-    /// D1 spec §6 "hero / priority" accent — terracotta backdrop on
-    /// always-priority actions (End Turn, the active Buy). Composes with
-    /// <see cref="CtaActive"/>: CTA's white stylebox overrides hero while
-    /// active, and the button re-applies hero when CTA flips off (see
-    /// <see cref="ReapplyHero"/>, called from <c>HudView.ApplyCtaStyle</c>).
-    /// </summary>
-    public bool Hero
-    {
-        get => _hero;
-        set
-        {
-            if (_hero == value) return;
-            _hero = value;
-            if (!_ctaActive) ApplyHeroStylebox(_hero);
-        }
-    }
-
     /// <summary>Called by HudView.ApplyCtaStyle after it clears CTA stylebox
-    /// overrides. Restores either the hero (terracotta) or the base
-    /// (slate) stylebox — both with the same black border — so the button
+    /// overrides. Restores the base (slate) bordered stylebox so the button
     /// never lands in the no-border default theme state mid-game.</summary>
-    public void ReapplyHero()
+    public void RestoreBaseStylebox()
     {
-        ApplyHeroStylebox(_hero);
-    }
-
-    private void ApplyHeroStylebox(bool on)
-    {
-        if (on)
-        {
-            // Same black border + 10-px radius as the base stylebox so the
-            // hero only swaps the FILL — buttons read as one family with a
-            // hero variant, not a different-shaped button.
-            AddThemeStyleboxOverride("normal", MakeBorderedStylebox(UiPalette.Accent));
-            AddThemeStyleboxOverride("hover", MakeBorderedStylebox(UiPalette.Accent));
-            AddThemeStyleboxOverride("pressed", MakeBorderedStylebox(UiPalette.AccentDeep));
-        }
-        else
-        {
-            // Fall back to the default bordered stylebox (constructor's
-            // base) so the black border survives the hero flip-off.
-            ApplyBaseStylebox();
-        }
+        ApplyBaseStylebox();
     }
 
     public HudIconButton(HudIcon icon)
@@ -186,9 +147,9 @@ public partial class HudIconButton : Button
 
     /// <summary>Default chrome — dark-slate fill, 2-px black border, 10-px
     /// rounded corners. Every HudIconButton wears this in its normal /
-    /// hover / pressed / disabled states; the hero (terracotta) and CTA
-    /// (white pulse) variants override on top and keep the same black
-    /// border so the buttons read as one button family.</summary>
+    /// hover / pressed / disabled states; the CTA (white pulse) variant
+    /// overrides on top and keeps the same black border so the buttons
+    /// read as one button family.</summary>
     private void ApplyBaseStylebox()
     {
         StyleBoxFlat normal = MakeBorderedStylebox(UiPalette.BgPanel);

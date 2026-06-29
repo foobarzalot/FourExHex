@@ -43,20 +43,4 @@ public static class PlayerPalette
     public static Color DarkColorFor(PlayerId id) =>
         id.IsNone ? NeutralDark : PlayerDark[id.Index];
 
-    /// <summary>
-    /// Inverse of <see cref="ColorFor"/>: the player slot whose palette
-    /// color equals <paramref name="c"/>, or <see cref="PlayerId.None"/> if
-    /// none matches (used by old-save loading and map-editor painting).
-    /// </summary>
-    public static PlayerId IdForColor(Color c)
-    {
-        for (int i = 0; i < GameSettings.PlayerConfig.Length; i++)
-        {
-            if (new Color(GameSettings.PlayerConfig[i].Hex) == c)
-            {
-                return PlayerId.FromIndex(i);
-            }
-        }
-        return PlayerId.None;
-    }
 }

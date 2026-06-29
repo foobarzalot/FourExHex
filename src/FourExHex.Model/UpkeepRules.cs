@@ -90,36 +90,9 @@ public static class UpkeepRules
     }
 
     /// <summary>
-    /// Forecast whether <paramref name="territory"/> will go bankrupt on
-    /// its owner's next turn. Mirrors the turn-start sequence in
-    /// <see cref="GameController"/>: income is collected first
-    /// (<see cref="Treasury.CollectIncomeFor"/> adds
-    /// <see cref="TreeRules.CountIncomeProducingTiles"/>), then
-    /// <see cref="ApplyUpkeep"/> runs — bankrupt iff available &lt; owed,
-    /// and owed == 0 is never bankrupt.
-    ///
-    /// Scoped to capital territories (returns false when there is no
-    /// capital): the only consumer is the economic-report HUD label,
-    /// which is itself only rendered for territories that have a capital.
-    /// This is a forecast over the current static territory — it does
-    /// not model start-of-turn tree growth or intervening captures.
-    /// </summary>
-    public static bool ForecastBankruptNextTurn(Territory territory, HexGrid grid, Treasury treasury, Difficulty difficulty)
-    {
-        if (!territory.HasCapital) return false;
-
-        int owed = TotalUpkeepFor(territory, grid, difficulty);
-        if (owed == 0) return false;
-
-        int income = IncomeRules.IncomeFor(territory, grid);
-        int available = treasury.GetGold(territory.Capital!.Value) + income;
-        return available < owed;
-    }
-
-    /// <summary>
     /// Classify <paramref name="territory"/>'s near-term economy:
-    ///   <see cref="EconomyOutlook.BankruptNextTurn"/> when
-    ///     <see cref="ForecastBankruptNextTurn"/> holds;
+    ///   <see cref="EconomyOutlook.BankruptNextTurn"/> when reserves plus
+    ///     next turn's income cannot cover upkeep;
     ///   <see cref="EconomyOutlook.NegativeDelta"/> when reserves cover
     ///     next turn but per-turn income &lt; upkeep (bleeding);
     ///   <see cref="EconomyOutlook.Healthy"/> otherwise (including

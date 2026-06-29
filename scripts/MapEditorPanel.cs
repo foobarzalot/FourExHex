@@ -7,8 +7,8 @@ using Godot;
 /// HexMapView instance, the paint-stroke state machine, the undo stack,
 /// and the hover tooltip. Hosting scenes (MapEditorScene today,
 /// TutorialBuilderScene from Phase 2) wire their HUD's events to the
-/// public methods on this panel and consume DraftChanged /
-/// UndoStateChanged for HUD enable/disable sync.
+/// public methods on this panel and consume UndoStateChanged for HUD
+/// enable/disable sync.
 ///
 /// Does NOT own scene-root chrome (Save/Load dialogs, Exit). That's the
 /// host's responsibility — Save Map vs Save Tutorial differ per host.
@@ -44,7 +44,6 @@ public sealed partial class MapEditorPanel : Node2D
     public bool PaintingEnabled { get; set; } = true;
     public int CurrentSeed => _mapSeed;
 
-    public event Action? DraftChanged;
     public event Action? UndoStateChanged;
 
     public override void _Ready()
@@ -448,7 +447,6 @@ public sealed partial class MapEditorPanel : Node2D
         // CTA pulsing fires (no "current player" exists in the editor).
         Map.RefreshOccupantVisuals(currentPlayer: null, state.Treasury);
 
-        DraftChanged?.Invoke();
         UndoStateChanged?.Invoke();
     }
 }

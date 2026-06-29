@@ -63,13 +63,6 @@ public partial class MapEditorHudView : OrientationHud
     /// </summary>
     public bool ShowSceneRootChrome { get; set; } = true;
 
-    /// <summary>
-    /// Vertical offset (in pixels) for the entire HUD strip. Default 0.
-    /// TutorialBuilderScene sets this to 60 so the strip renders below
-    /// its topbar. Must be set before <see cref="_Ready"/> runs.
-    /// </summary>
-    public int TopOffsetPx { get; set; } = 0;
-
     public int SelectedPaletteIndex { get; private set; }
 
     private HudIconButton _generateButton = null!;
@@ -352,9 +345,7 @@ public partial class MapEditorHudView : OrientationHud
         TopRightZone.AddChild(_undoCluster);
         if (_optionsButton != null) TopRightZone.AddChild(_optionsButton);
 
-        // Bottom bar — two rows. Apply TopOffsetPx as a top inset (the
-        // tutorial builder slides the editor HUD's bottom bar UP by that
-        // many px to make room for its own topbar above; legacy compat).
+        // Bottom bar — two rows.
         var inner = new VBoxContainer
         {
             AnchorLeft = 0f, AnchorRight = 1f,

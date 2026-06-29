@@ -17,7 +17,6 @@ public static class UiPalette
     public static readonly Color BgPanel = new Color("312e29"); // modal panels
     public static readonly Color BgElev  = new Color("3d3934"); // raised within panel
     public static readonly Color BgRow   = new Color("373430"); // list row
-    public static readonly Color BgRowH  = new Color("454039"); // list row hover
     public static readonly Color HudBar  = new Color("28251f"); // in-game / editor HUD bar (a touch darker than BgDeep)
 
     // Dim scrim behind every CanvasLayer modal dialog.
@@ -32,7 +31,6 @@ public static class UiPalette
     public static readonly Color Ink      = new Color("f3f1ec");
     public static readonly Color InkSoft  = new Color("d4cfc4");
     public static readonly Color InkMute  = new Color("a39d91");
-    public static readonly Color InkFaint = new Color("7a746a");
 
     // Brass / gold (primary actions, decorative rules).
     public static readonly Color Gold     = new Color("d8b65a");
@@ -46,16 +44,9 @@ public static class UiPalette
     public static readonly Color Water     = new Color("4a6488");
     public static readonly Color WaterDeep = new Color("30537e");
 
-    // D1 floating-HUD chip backdrop (spec §6: paper fill, 2 px ink
-    // border, ~10 px radius). Used by HudBars.ChipStyle().
-    public static readonly Color ChipFill   = new Color("f3f1ec"); // paper (matches Ink)
-    public static readonly Color ChipBorder = new Color("23211d"); // ink (matches BgDeep)
-
-    // Hero accent — the spec's warm terracotta for priority actions
-    // (End Turn, active Buy). Reads as oklch(0.63 0.17 25); sRGB
-    // hex equivalent.
+    // Terracotta accent — warm highlight. Used for the campaign
+    // "lost level" outline (CampaignPanel). Reads as oklch(0.63 0.17 25).
     public static readonly Color Accent     = new Color("c95a3d");
-    public static readonly Color AccentDeep = new Color("9c4128");
 
     // Selection ring — cool blue, distinct hue from the warm accent.
     // Used to mark the active brush in the map editor and (optionally)

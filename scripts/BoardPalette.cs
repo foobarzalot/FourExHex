@@ -26,7 +26,6 @@ public static class BoardPalette
     // snow cap. Shared by the on-tile mountain glyph and the editor swatch
     // (HudIcons.DrawMountain).
     public static readonly Color MountainRock = new Color("6f6a64"); // grey-brown stone
-    public static readonly Color MountainSnow = new Color("eef2f5"); // off-white snow cap
 
     // Economy status hues (selected-territory gold label + on-tile badge).
     public static readonly Color WarnRed    = Colors.Red;    // bankrupt next turn

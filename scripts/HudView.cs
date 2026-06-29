@@ -719,19 +719,6 @@ public partial class HudView : OrientationHud, IHudView
         return block;
     }
 
-    // 1×24 vertical divider in line-soft, used between the three regions
-    // of the top bar (status / palette / controls) and inside the unit
-    // palette panel to split Buy from Build.
-    private static Control BuildVerticalDivider()
-    {
-        return new ColorRect
-        {
-            Color = UiPalette.LineSoft,
-            CustomMinimumSize = new Vector2(1, 24),
-            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
-        };
-    }
-
     public event Action? TutorialMessageTapped;
 
     /// <summary>
@@ -2137,9 +2124,9 @@ public partial class HudView : OrientationHud, IHudView
             button.RemoveThemeColorOverride("font_hover_color");
             button.RemoveThemeColorOverride("font_pressed_color");
             StopCtaPulse(button);
-            // Hero (terracotta accent) survives the CTA toggle — re-apply
-            // it so End Turn / active Buy stay accented when not the CTA.
-            if (button is HudIconButton heroish) heroish.ReapplyHero();
+            // Restore the base bordered stylebox so the button keeps its
+            // black border after the CTA overrides are removed.
+            if (button is HudIconButton hudButton) hudButton.RestoreBaseStylebox();
         }
     }
 

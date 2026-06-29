@@ -113,35 +113,6 @@ public static class HudIcons
     }
 
     /// <summary>
-    /// Math-vector-style arrow used by the two "Next ..." glyphs: a
-    /// horizontal line with a filled triangular arrowhead at the right
-    /// end (→). Matches the filled-triangle arrowhead style of the
-    /// undo/redo curved arrows for icon-family consistency. Sits in the
-    /// top sliver of the button so the per-button symbol (capital star
-    /// for territory, Recruit ring for unit) can keep its original full
-    /// size below it.
-    /// </summary>
-    private static void DrawNextArrow(CanvasItem t, Vector2 center, float radius, Color stroke)
-    {
-        float y = -radius * 0.95f;
-        float xTail = -radius * 0.50f;
-        float xBase =  radius * 0.35f;   // arrowhead base / line endpoint
-        Vector2 tail = center + new Vector2(xTail, y);
-        Vector2 baseMid = center + new Vector2(xBase, y);
-        t.DrawLine(tail, baseMid, stroke, StrokeWidth);
-        // Filled triangular arrowhead, same construction as the undo/redo
-        // arrows. Sized to match the doubled-undo outer arrowhead
-        // (headLen = r*0.85 * 0.55 ≈ 0.468r, headHalf = r*0.85 * 0.30
-        // ≈ 0.255r) so the icon family reads at the same arrowhead scale.
-        float headLen = radius * 0.468f;
-        float headHalf = radius * 0.255f;
-        Vector2 apex = baseMid + new Vector2(headLen, 0f);
-        Vector2 baseUp = baseMid + new Vector2(0f, -headHalf);
-        Vector2 baseDown = baseMid + new Vector2(0f, +headHalf);
-        t.DrawColoredPolygon(new[] { apex, baseUp, baseDown }, stroke);
-    }
-
-    /// <summary>
     /// "Next unit in territory" glyph: a single Recruit-style ring (line
     /// only, matching <see cref="DrawUnit"/>'s recruit ring scale) shifted
     /// down to make room for the math-vector arrow above. Stroke-only so

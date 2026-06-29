@@ -54,8 +54,8 @@ public partial class TutorialBuilderScene : Node2D
         _panel = new MapEditorPanel { Players = _players };
         AddChild(_panel);
 
-        // 2. The Map Edit palette HUD at the top of the screen
-        //    (TopOffsetPx defaults to 0). ShowSceneRootChrome = true
+        // 2. The Map Edit palette HUD at the top of the screen.
+        //    ShowSceneRootChrome = true
         //    surfaces the right-side Options button, which raises
         //    EscRequested → OpenEscMenu. The menu populated by
         //    OpenEscMenu (mode switches + Save / Load Tutorial + Exit)

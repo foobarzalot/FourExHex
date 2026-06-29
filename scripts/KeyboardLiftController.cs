@@ -53,9 +53,6 @@ public sealed class KeyboardLiftController
     /// that's up doesn't snap back down.</summary>
     public float CurrentLift => _currentLift;
 
-    /// <summary>True when a fake keyboard is active (desktop testing).</summary>
-    public bool HasFakeKeyboard => _fakeKeyboardPhysicalHeight > 0f;
-
     /// <summary>Recompute and apply the lift for the current keyboard height.
     /// Call once per frame while the field is focused.</summary>
     public void Poll(float viewportHeight, float contentScaleFactor)
