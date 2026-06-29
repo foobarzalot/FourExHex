@@ -55,10 +55,7 @@ public static class LandscapeMenuChrome
     public static void ApplyLayout(PanelContainer surface, Vector2 viewport, LogicalSafeInsets s,
         float edge = EdgeMargin, float maxW = MaxWidth, float maxH = MaxHeight, float verticalShift = 0f)
     {
-        float availW = Mathf.Max(0f, viewport.X - s.Left - s.Right - edge * 2f);
-        float availH = Mathf.Max(0f, viewport.Y - s.Top - s.Bottom - edge * 2f);
-        float w = Mathf.Min(availW, maxW);
-        float h = Mathf.Min(availH, maxH);
+        (float w, float h) = PanelFitMath.CappedFill(viewport.X, viewport.Y, s, edge, maxW, maxH);
         surface.OffsetLeft = -w * 0.5f;
         surface.OffsetRight = w * 0.5f;
         surface.OffsetTop = -h * 0.5f - verticalShift;

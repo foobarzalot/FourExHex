@@ -351,13 +351,10 @@ public sealed partial class SettingsPanel : CanvasLayer
     {
         Vector2 vp = GetViewport().GetVisibleRect().Size;
         LogicalSafeInsets safe = SafeArea.Current;
-        float availW = vp.X - safe.Left - safe.Right - ViewportMargin * 2f;
-        float availH = vp.Y - safe.Top - safe.Bottom - ViewportMargin * 2f;
+        (float availW, float availH) = PanelFitMath.AvailableBox(vp.X, vp.Y, safe, ViewportMargin);
 
         Vector2 design = _panel.GetCombinedMinimumSize();
-        float scale = design.X > 0f && design.Y > 0f
-            ? Mathf.Min(1f, Mathf.Min(availW / design.X, availH / design.Y))
-            : 1f;
+        float scale = PanelFitMath.ScaleToFit(design.X, design.Y, availW, availH);
         _panel.PivotOffset = design * 0.5f;
         _panel.Scale = new Vector2(scale, scale);
 

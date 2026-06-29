@@ -388,9 +388,8 @@ public partial class MainMenuScene : Control
     private static void ScaleToFit(Control panel, Vector2 designSize, Vector2 viewport)
     {
         const float margin = 24f;
-        float scale = Mathf.Min(1f, Mathf.Min(
-            (viewport.X - margin) / designSize.X,
-            (viewport.Y - margin) / designSize.Y));
+        float scale = PanelFitMath.ScaleToFit(designSize.X, designSize.Y,
+            viewport.X - margin, viewport.Y - margin);
         panel.PivotOffset = designSize * 0.5f;
         panel.Scale = new Vector2(scale, scale);
     }

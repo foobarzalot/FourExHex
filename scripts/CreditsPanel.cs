@@ -159,18 +159,13 @@ public sealed partial class CreditsPanel : CanvasLayer
     {
         Vector2 vp = GetViewport().GetVisibleRect().Size;
         LogicalSafeInsets safe = SafeArea.Current;
-        float availW = vp.X - safe.Left - safe.Right - ViewportMargin * 2f;
-        float availH = vp.Y - safe.Top - safe.Bottom - ViewportMargin * 2f;
+        (float availW, float availH) = PanelFitMath.AvailableBox(vp.X, vp.Y, safe, ViewportMargin);
 
-        // Width-only scale keeps the portrait width + font sizes in landscape.
-        // (Only a viewport narrower than the design width shrinks anything, the
-        // same as portrait on a very narrow phone.)
-        float scale = Mathf.Min(1f, availW / DesignWidth);
-
-        // Cap the (pre-scale) panel height so its scaled height fits the safe
-        // viewport; the scroll body absorbs the reduction by scrolling further.
-        float maxLogicalH = scale > 0f ? availH / scale : DesignHeight;
-        float panelH = Mathf.Min(DesignHeight, maxLogicalH);
+        // Width-only scale keeps the portrait width + font sizes in landscape; the
+        // pre-scale height is capped so the scaled height fits and the scroll body
+        // absorbs the reduction by scrolling further.
+        (float scale, float panelH) =
+            PanelFitMath.WidthFitWithHeightCap(DesignWidth, DesignHeight, availW, availH);
         _panel.OffsetTop = -panelH * 0.5f;
         _panel.OffsetBottom = panelH * 0.5f;
 

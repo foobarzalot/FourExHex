@@ -157,13 +157,12 @@ public sealed partial class SlotPickerDialog : CanvasLayer
     /// centred under the 0.5 anchors.</summary>
     private static void ScaleFixedPanel(Control panel, float w, float h, Vector2 vp, LogicalSafeInsets safe)
     {
-        float availW = vp.X - safe.Left - safe.Right - ViewportMargin * 2f;
-        float availH = vp.Y - safe.Top - safe.Bottom - ViewportMargin * 2f;
+        (float availW, float availH) = PanelFitMath.AvailableBox(vp.X, vp.Y, safe, ViewportMargin);
         panel.OffsetLeft = -w * 0.5f;
         panel.OffsetRight = w * 0.5f;
         panel.OffsetTop = -h * 0.5f;
         panel.OffsetBottom = h * 0.5f;
-        float scale = Mathf.Min(1f, Mathf.Min(availW / w, availH / h));
+        float scale = PanelFitMath.ScaleToFit(w, h, availW, availH);
         panel.PivotOffset = new Vector2(w, h) * 0.5f;
         panel.Scale = new Vector2(scale, scale);
     }
