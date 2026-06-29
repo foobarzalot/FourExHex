@@ -117,7 +117,18 @@ public class GameStateSnapshot
         foreach (KeyValuePair<HexCoord, TileState> kvp in _tiles)
         {
             HexTile? tile = grid.Get(kvp.Key);
-            if (tile == null) continue;
+            if (tile == null)
+            {
+                // The tile was removed from the grid since capture — in Rising
+                // Tides a submerged shore tile is Grid.Remove'd. A replay rewind
+                // restores the full initial board onto this shrunken grid, so
+                // re-add the missing tile rather than silently skipping it
+                // (otherwise the rewound board is missing every sunk tile and
+                // the replay diverges). Non-Rising-Tides callers never hit this
+                // branch — their grid still holds every captured coord.
+                tile = new HexTile(kvp.Key, kvp.Value.Owner);
+                grid.Add(tile);
+            }
 
             tile.Owner = kvp.Value.Owner;
             // Clone again on apply so the snapshot remains independent and

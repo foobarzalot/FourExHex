@@ -46,6 +46,14 @@ public class GameState
     public void AddWater(HexCoord coord) => _water.Add(coord);
 
     /// <summary>
+    /// Un-mark <paramref name="coord"/> as water (it is land again). Used by the
+    /// replay rewind: restoring the initial board re-adds every tile that
+    /// submerged during the recorded game, so those coords must leave the water
+    /// set to keep the land/water partition consistent. Idempotent.
+    /// </summary>
+    public void RemoveWater(HexCoord coord) => _water.Remove(coord);
+
+    /// <summary>
     /// Current territory partition. Reassigned after any capture (via
     /// TerritoryFinder + CapitalReconciler) and after any undo/redo.
     /// The setter is intentionally public so the controller can swap it

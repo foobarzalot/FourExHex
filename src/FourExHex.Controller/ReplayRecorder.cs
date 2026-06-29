@@ -339,6 +339,12 @@ public class ReplayRecorder
         }
 
         _state.Territories = _initialSnapshot.ApplyTo(_state.Grid, _state.Treasury);
+        // Rising Tides (issue #85): the snapshot's ApplyTo re-grew the grid with
+        // every tile that submerged during the recording. Those coords are land
+        // again, so drop them from the water set — otherwise the rewound board
+        // keeps the recorded sinks marked as water and the replay diverges (e.g.
+        // tree growth, which reads WaterCoords). No-op for freeform (no sinks).
+        foreach (HexTile tile in _state.Grid.Tiles) _state.RemoveWater(tile.Coord);
         _state.Turns.Reset(_initialCurrentPlayerIndex, _initialTurnNumber);
         _session.Winner = null;
         _session.PendingDefeatScreen = null;
@@ -346,6 +352,15 @@ public class ReplayRecorder
         _session.ClaimVictoryPromptedHighestThreshold.Clear();
         _session.ClearPendingAction();
         _session.SelectedTerritory = null;
+        // Rising Tides (issue #85): a live fresh start seeds the first player's
+        // turn-1 tide forecast in GameController.Resume(freshStart:true). The
+        // replay rewind IS that same fresh start, so seed the same forecast
+        // here — otherwise the first end-of-turn tide erodes different tiles
+        // than the recording, the board diverges, and a later recorded action
+        // lands on a now-submerged tile (illegal placement -> exception).
+        // No-op outside Rising Tides. Mirrors Resume's reseed-then-forecast.
+        _ops.ReseedRngForCurrentTurn();
+        _ops.ForecastTideForCurrentPlayer();
         // Note: the parallel undo stack + beat-stack bookkeeping is
         // cleared by the caller (GameController.BeginReplay forwarder
         // via ClearUndoAndReplayBookkeeping) BEFORE this method runs,

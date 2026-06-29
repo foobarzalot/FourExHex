@@ -40,6 +40,28 @@ public class GameStateSnapshotTests
     }
 
     [Fact]
+    public void ApplyTo_RestoresTileRemovedSinceCapture()
+    {
+        // Rising Tides submerges tiles by REMOVING them from the grid. A replay
+        // rewind restores the initial snapshot onto the shrunken grid, so
+        // ApplyTo must RE-ADD a tile that no longer exists — not silently skip
+        // it (the cause of the Rising Tides replay desync).
+        HexGrid grid = BuildTwoTileRedGrid();
+        var treasury = new Treasury();
+        var territories = TerritoriesFor(grid);
+        GameStateSnapshot snap = GameStateSnapshot.Capture(grid, treasury, territories);
+
+        grid.Remove(new HexCoord(1, 0)); // tile "sinks"
+        Assert.Equal(1, grid.Count);
+
+        snap.ApplyTo(grid, treasury);
+
+        Assert.Equal(2, grid.Count);
+        Assert.True(grid.Contains(new HexCoord(1, 0)));
+        Assert.Equal(Red, grid.Get(new HexCoord(1, 0))!.Owner);
+    }
+
+    [Fact]
     public void Capture_PreservesTreeOccupants()
     {
         // Undo must be able to restore a tree that was on a tile —

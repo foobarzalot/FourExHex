@@ -81,6 +81,59 @@ public class ReplayFidelityTests
     }
 
     /// <summary>
+    /// Rising Tides (issues #56/#85) replay fidelity: the same end-to-end check
+    /// as the freeform case above, but the per-turn tide erosion must reproduce
+    /// exactly under replay. The first player's turn-1 forecast is seeded in
+    /// <see cref="GameController.Resume"/> on a live fresh start; replay restores
+    /// the initial snapshot via <see cref="GameController.BeginReplay"/>, which
+    /// must seed that same turn-1 forecast — otherwise the very first end-of-turn
+    /// tide submerges different tiles, the board diverges, and a recorded AI
+    /// action later lands on a now-submerged tile.
+    /// </summary>
+    [Fact]
+    public void Replay_SixComputerPlayers_RisingTides_MatchesSavedStateChecksum()
+    {
+        const int MasterSeed = 12345;
+        const int MaxTurns = 30;
+        const int Cols = 18;
+        const int Rows = 13;
+
+        IReadOnlyList<Player> players = BuildSixComputerPlayers();
+        (GameState liveState, var liveController, _, _) =
+            BuildHeadlessGame(players, MasterSeed, MaxTurns, Cols, Rows,
+                mode: GameMode.RisingTides);
+        liveController.StartGame();
+
+        string liveChecksum = GameStateChecksum.Compute(liveState);
+        Assert.True(liveController.ReplayBeats.Count > 0,
+            "Expected the Rising Tides game to produce beats; got 0.");
+
+        Replay replayPayload = new Replay(
+            liveController.InitialReplaySnapshot!,
+            liveController.InitialReplayTurnNumber,
+            liveController.InitialReplayCurrentPlayerIndex,
+            liveController.ReplayBeats);
+        string json = SaveSerializer.Serialize(liveState, MasterSeed, players,
+            "tides-fidelity", MaxTurns, replay: replayPayload);
+        LoadedSave loaded = SaveSerializer.Deserialize(json);
+        Assert.NotNull(loaded.Replay);
+
+        var replayController = new GameController(
+            loaded.State, new SessionState(),
+            new MockHexMapView(), new MockHudView(),
+            seed: loaded.MasterSeed,
+            aiPacer: new SynchronousAiPacer(),
+            aiChooser: AiDispatcher.ChooseForCurrentPlayer,
+            maxTurnNumber: loaded.MaxTurnNumber,
+            loadedReplay: loaded.Replay);
+        replayController.BeginReplay();
+
+        string replayChecksum = GameStateChecksum.Compute(loaded.State);
+        Assert.Equal(liveChecksum, replayChecksum);
+        Assert.Null(replayController.LastReplayDivergence);
+    }
+
+    /// <summary>
     /// #77: a replay that does NOT reproduce the recorded final board is
     /// detected. We can't stage a real rule change inside one binary, so we
     /// simulate it: load a save, then mutate the recorded end state
@@ -164,14 +217,14 @@ public class ReplayFidelityTests
 
     private static (GameState State, GameController Controller, MockHexMapView Map, MockHudView Hud)
         BuildHeadlessGame(IReadOnlyList<Player> players, int masterSeed,
-            int maxTurns, int cols, int rows)
+            int maxTurns, int cols, int rows, GameMode mode = GameMode.Freeform)
     {
         MapGenResult mapGen = MapGenerator.BuildInitialGrid(cols, rows, players, masterSeed);
         IReadOnlyList<Territory> raw = TerritoryFinder.FindAll(mapGen.Grid);
         IReadOnlyList<Territory> territories = CapitalReconciler.Reconcile(
             raw, new List<Territory>(), mapGen.Grid);
         var state = new GameState(mapGen.Grid, territories, players,
-            new TurnState(players), new Treasury(), mapGen.WaterCoords);
+            new TurnState(players), new Treasury(), mapGen.WaterCoords, mode: mode);
         var map = new MockHexMapView();
         var hud = new MockHudView();
         var controller = new GameController(state, new SessionState(),
