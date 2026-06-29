@@ -171,22 +171,28 @@ public class RisingTidesRulesTests
     [Fact]
     public void ForecastSubmerge_PicksSameTileAsSubmergeStep()
     {
-        // Forecast and SubmergeStep must agree on the chosen coord — the forecast
-        // is just SubmergeStep with the apply deferred.
-        HexGrid Grid() => TestHelpers.BuildRectGrid(2, 2, Red);
+        // SubmergeStep is ApplyForecast(ForecastSubmerge(...)), so asserting the two
+        // pick the *same* coord is tautological — both come from one ForecastSubmerge
+        // call. Instead anchor to the independently-known answer: on an even row of 3,
+        // ends tie on exposure (weight 5) and the strict tie-break takes the smaller
+        // coord (0,0) — see ForecastSubmerge_EqualExposure_TieBreaksByAscendingHexCoord.
+        // This verifies (a) the forecast picks that literal and (b) ApplyForecast removes
+        // exactly that literal — a wrong selection rule or a misapplied plan both fail.
+        HexCoord expected = HexCoord.FromOffset(0, 0);
+        HexGrid Grid() => TestHelpers.BuildRectGrid(3, 1, Red);
 
         HexGrid gridForecast = Grid();
         GameState forecastState = MakeState(gridForecast, TestHelpers.BuildTerritoriesFromGrid(gridForecast));
         IReadOnlyList<TideStep> plan =
             RisingTidesRules.ForecastSubmerge(forecastState, Red, budget: 1);
+        Assert.Equal(expected, plan.Single().Coord);
 
         HexGrid gridSubmerge = Grid();
         var origCoords = gridSubmerge.Tiles.Select(t => t.Coord).ToHashSet();
         GameState submergeState = MakeState(gridSubmerge, TestHelpers.BuildTerritoriesFromGrid(gridSubmerge));
         RisingTidesRules.SubmergeStep(submergeState, Red, budget: 1);
         HexCoord removed = origCoords.Single(c => !submergeState.Grid.Contains(c));
-
-        Assert.Equal(removed, plan.Single().Coord);
+        Assert.Equal(expected, removed);
     }
 
     [Fact]

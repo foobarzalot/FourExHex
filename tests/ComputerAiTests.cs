@@ -931,7 +931,10 @@ public class ComputerAiTests
         var buy = new AiBuyUnitAction(cap, HexCoord.FromOffset(3, 0), UnitLevel.Recruit);
         AiSimulator.Apply(buy, state);
 
-        Assert.Equal(10 - PurchaseRules.CostFor(UnitLevel.Recruit, Difficulty.Soldier), state.Treasury.GetGold(cap));
+        // Recruit @ Soldier costs 10 and the capital started with 10, so the literal
+        // post-buy gold is 0. Pin it rather than recompute with CostFor, the same call
+        // AiSimulator.Apply deducts with (which would shift both sides together).
+        Assert.Equal(0, state.Treasury.GetGold(cap));
         Unit placed = Assert.IsType<Unit>(state.Grid.Get(HexCoord.FromOffset(3, 0))!.Occupant);
         Assert.Equal(Red, placed.Owner);
         Assert.Equal(UnitLevel.Recruit, placed.Level);

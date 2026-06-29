@@ -6,9 +6,9 @@ namespace FourExHex.Tests;
 /// <summary>
 /// Characterization + determinism tests for <see cref="ProceduralGame.Build"/>,
 /// the shared procedural-game builder used by both the play scene and the
-/// main-menu map thumbnail. The headline guarantees: same seed → identical
-/// state, and the builder reproduces the same pipeline the play scene
-/// uses (so the thumbnail can't drift from Start Game).
+/// main-menu map thumbnail. The headline guarantee: same seed → identical
+/// state. (Play scene and thumbnail can't drift because both call
+/// <see cref="ProceduralGame.Build"/> directly — a single shared function.)
 /// </summary>
 public class ProceduralGameTests
 {
@@ -24,19 +24,6 @@ public class ProceduralGameTests
             list.Add(new Player(name, PlayerId.FromIndex(i), PlayerKind.Computer));
         }
         return list;
-    }
-
-    /// <summary>Reference: the inline pipeline Main.cs runs.</summary>
-    private static GameState InlineReference(int seed)
-    {
-        IReadOnlyList<Player> players = SixPlayers();
-        var turnState = new TurnState(players);
-        var treasury = new Treasury();
-        MapGenResult mapGen = MapGenerator.BuildInitialGrid(Cols, Rows, players, seed);
-        HexGrid grid = mapGen.Grid;
-        IReadOnlyList<Territory> territories = TerritoryFinder.Recompute(
-            grid, new List<Territory>());
-        return new GameState(grid, territories, players, turnState, treasury, mapGen.WaterCoords);
     }
 
     private static void AssertTilesEqual(HexGrid a, HexGrid b)
@@ -77,22 +64,6 @@ public class ProceduralGameTests
         AssertTilesEqual(a.Grid, b.Grid);
         AssertTerritoriesEqual(a.Territories, b.Territories);
         Assert.Equal(new HashSet<HexCoord>(a.WaterCoords), new HashSet<HexCoord>(b.WaterCoords));
-    }
-
-    [Theory]
-    [InlineData(1)]
-    [InlineData(4242)]
-    [InlineData(9999)]
-    public void MatchesInlinePipeline(int seed)
-    {
-        GameState actual = ProceduralGame.Build(Cols, Rows, SixPlayers(), seed);
-        GameState reference = InlineReference(seed);
-
-        AssertTilesEqual(reference.Grid, actual.Grid);
-        AssertTerritoriesEqual(reference.Territories, actual.Territories);
-        Assert.Equal(
-            new HashSet<HexCoord>(reference.WaterCoords),
-            new HashSet<HexCoord>(actual.WaterCoords));
     }
 
     [Theory]

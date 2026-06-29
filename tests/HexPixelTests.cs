@@ -53,22 +53,4 @@ public class HexCoordRoundTests
             }
         }
     }
-
-    [Fact]
-    public void Round_ResultSatisfiesCubeInvariant()
-    {
-        // q + r + s == 0 must hold for the rounded result for any input
-        // (this is what the largest-error re-derivation guarantees).
-        float[] qs = { 0.4f, -1.6f, 2.49f, -3.51f, 5.2f };
-        float[] rs = { 0.6f, 2.4f, -1.49f, 3.51f, -4.2f };
-        foreach (float qf in qs)
-        {
-            foreach (float rf in rs)
-            {
-                HexCoord h = HexRounding.Round(qf, rf);
-                int s = -h.Q - h.R;
-                Assert.Equal(0, h.Q + h.R + s);
-            }
-        }
-    }
 }

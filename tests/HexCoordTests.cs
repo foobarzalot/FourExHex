@@ -82,14 +82,25 @@ public class HexCoordTests
     }
 
     [Fact]
-    public void Neighbor_ByDirection_MatchesNeighborsList()
+    public void Neighbor_ByDirection_MatchesKnownOffsets()
     {
+        // Pin the six axial direction offsets (E, NE, NW, W, SW, SE) by literal
+        // so a corrupted Directions[] table is caught. Asserting against
+        // Neighbors() would be tautological — Neighbors() just yields Neighbor(0..5).
+        var expected = new[]
+        {
+            new HexCoord(1, 0),   // E
+            new HexCoord(1, -1),  // NE
+            new HexCoord(0, -1),  // NW
+            new HexCoord(-1, 0),  // W
+            new HexCoord(-1, 1),  // SW
+            new HexCoord(0, 1),   // SE
+        };
         var c = new HexCoord(0, 0);
-        var listed = c.Neighbors().ToList();
 
         for (int dir = 0; dir < 6; dir++)
         {
-            Assert.Equal(listed[dir], c.Neighbor(dir));
+            Assert.Equal(expected[dir], c.Neighbor(dir));
         }
     }
 }

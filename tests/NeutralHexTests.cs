@@ -159,12 +159,17 @@ public class NeutralHexTests
             new Player("Blue", PlayerId.FromIndex(1), PlayerKind.Computer));
 
         // Neither must throw on a map containing a None-owned territory.
-        int score = AiStateScorer.Score(state, Red);
+        int redScore = AiStateScorer.Score(state, Red);
+        int blueScore = AiStateScorer.Score(state, PlayerId.FromIndex(1));
         GameState clone = AiSimulator.Clone(state);
 
         Assert.Contains(clone.Territories, t => t.Owner.IsNone);
-        // Score is a deterministic int; just assert it computed.
-        Assert.Equal(score, AiStateScorer.Score(state, Red));
+        // Score is self_value − sum(enemy_values). Red owns the whole strip and
+        // Blue owns nothing, so Red strictly dominates: its score is positive and
+        // beats Blue's (which sees Red as a large enemy). The neutral tile is
+        // owned by neither, so it must not tip this independently-known ordering.
+        Assert.True(redScore > 0);
+        Assert.True(redScore > blueScore);
     }
 
     // --- Serialization -----------------------------------------------------

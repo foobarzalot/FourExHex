@@ -25,7 +25,9 @@ public partial class GameControllerTests
 
         Assert.NotNull(g.Tile(1, 1).Unit);
         Assert.Equal(g.Red.Id, g.Tile(1, 1).Unit!.Owner);
-        Assert.Equal(goldBefore - PurchaseRules.CostFor(UnitLevel.Recruit, Difficulty.Soldier), g.State.Treasury.GetGold(redCapital));
+        // 10 = Soldier-column Recruit cost; pin the literal so a wrong CostFor is caught
+        // (recomputing via PurchaseRules.CostFor here would be the same call production deducts with).
+        Assert.Equal(goldBefore - 10, g.State.Treasury.GetGold(redCapital));
         // Buy-on-own-tile doesn't consume the unit's action.
         Assert.False(g.Tile(1, 1).Unit!.HasMovedThisTurn);
         Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
@@ -142,7 +144,9 @@ public partial class GameControllerTests
         g.Map.SimulateClick(g.Tile(1, 1));
 
         Assert.IsType<Tower>(g.Tile(1, 1).Occupant);
-        Assert.Equal(before - PurchaseRules.TowerCostFor(Difficulty.Soldier), g.State.Treasury.GetGold(redCapital));
+        // 15 = Soldier-column tower cost (the literal the test name promises). Pin it
+        // rather than recompute with TowerCostFor, the same call production deducts with.
+        Assert.Equal(before - 15, g.State.Treasury.GetGold(redCapital));
         Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
     }
 
