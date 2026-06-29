@@ -1,5 +1,4 @@
 using System;
-using System.Text;
 using Godot;
 
 /// <summary>
@@ -96,8 +95,8 @@ public static class UiStepper
 
         // Commit on Enter (release focus so the new text "sticks") and on focus loss
         // so a typed-then-tapped-away value is honored, not silently discarded.
-        valueField.TextSubmitted += text => { Commit(ParseValue(text)); valueField.ReleaseFocus(); };
-        valueField.FocusExited += () => Commit(ParseValue(valueField.Text));
+        valueField.TextSubmitted += text => { Commit(StepperMath.ParseDigits(text)); valueField.ReleaseFocus(); };
+        valueField.FocusExited += () => Commit(StepperMath.ParseDigits(valueField.Text));
 
         row.AddChild(minus);
         row.AddChild(valueField);
@@ -120,6 +119,9 @@ public static class UiStepper
         int prev = CurrentValue(field);
         int next = Clamp(field, raw);
         SetValue(field, next);
+        Log.Debug(Log.LogCategory.Hud,
+            $"UiStepper commit: raw={raw} -> {next} (prev={prev}{(next != prev ? ", changed" : "")}" +
+            $"{(GetStops(field) != null ? ", stops" : "")})");
         if (next != prev) onChanged(next);
     }
 
@@ -130,59 +132,19 @@ public static class UiStepper
         field.Text = $"{clamped}%";
     }
 
-    // Snap to a legal value: the nearest explicit stop if this row has a stops list,
-    // otherwise the nearest multiple of step, then clamp into [min, max].
-    private static int Clamp(LineEdit field, int value)
-    {
-        int min = (int)field.GetMeta("min", 0);
-        int max = (int)field.GetMeta("max", 100);
-        if (value < 0) value = 0;
-
-        int[]? stops = GetStops(field);
-        if (stops != null) return stops[NearestStopIndex(stops, value)];
-
-        int step = (int)field.GetMeta("step", 1);
-        int snapped = step > 0 ? ((value + step / 2) / step) * step : value;
-        return Math.Clamp(snapped, min, max);
-    }
+    // Snap + clamp a value against this row's config — the math lives in the pure,
+    // unit-tested StepperMath; this only pulls min/max/step/stops from metadata.
+    private static int Clamp(LineEdit field, int value) =>
+        StepperMath.Clamp(value, (int)field.GetMeta("min", 0), (int)field.GetMeta("max", 100),
+            (int)field.GetMeta("step", 1), GetStops(field));
 
     private static int[]? GetStops(LineEdit field) =>
         field.HasMeta("stops") ? field.GetMeta("stops").AsInt32Array() : null;
 
-    // Index of the stop closest to value; ties go to the lower stop. Stops are ascending.
-    private static int NearestStopIndex(int[] stops, int value)
-    {
-        int best = 0;
-        for (int i = 1; i < stops.Length; i++)
-        {
-            if (Math.Abs(stops[i] - value) < Math.Abs(stops[best] - value)) best = i;
-        }
-        return best;
-    }
-
-    // The committed value moved one step in direction dir (−1 down, +1 up): the
-    // adjacent stop for a stops row, else current ± step. Clamp() bounds the result.
-    private static int Neighbor(LineEdit field, int dir)
-    {
-        int cur = CurrentValue(field);
-        int[]? stops = GetStops(field);
-        if (stops == null) return cur + dir * (int)field.GetMeta("step", 1);
-        int idx = NearestStopIndex(stops, cur);
-        return stops[Math.Clamp(idx + dir, 0, stops.Length - 1)];
-    }
-
-    // Pull the digits out of arbitrary typed text ("12", "12%", "x12" → 12). Empty →
-    // 0; an overflowing run of digits → int.MaxValue so it clamps to max.
-    private static int ParseValue(string text)
-    {
-        var sb = new StringBuilder();
-        foreach (char c in text)
-        {
-            if (char.IsDigit(c)) sb.Append(c);
-        }
-        if (sb.Length == 0) return 0;
-        return int.TryParse(sb.ToString(), out int v) ? v : int.MaxValue;
-    }
+    // The committed value moved one step in direction dir (−1 down, +1 up).
+    // Clamp() bounds the result on commit.
+    private static int Neighbor(LineEdit field, int dir) =>
+        StepperMath.Neighbor(CurrentValue(field), dir, (int)field.GetMeta("step", 1), GetStops(field));
 
     private static LineEdit BuildValueField()
     {
