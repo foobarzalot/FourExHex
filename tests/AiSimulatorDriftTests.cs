@@ -32,7 +32,9 @@ public class AiSimulatorDriftTests
     /// repositions, tree/grave clears, buy-place, buy-capture,
     /// buy-combine, and tower builds.
     /// </summary>
-    private static GameState BuildRichState()
+    private static GameState BuildRichState() => BuildRichState(randomized: false);
+
+    private static GameState BuildRichState(bool randomized)
     {
         var red = new Player("Red", PlayerId.FromIndex(0), PlayerKind.Computer);
         var blue = new Player("Blue", PlayerId.FromIndex(1), PlayerKind.Computer);
@@ -59,7 +61,8 @@ public class AiSimulatorDriftTests
         grid.Get(HexCoord.FromOffset(4, 3))!.Occupant = new Tower();
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
-        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury(),
+            useRandomizedSelection: randomized);
 
         foreach (Territory t in state.Territories.Where(t => t.HasCapital))
         {
@@ -188,7 +191,22 @@ public class AiSimulatorDriftTests
     [Fact]
     public void EveryEnumeratedCandidate_SimulatesIdenticallyToGameOperations()
     {
-        GameState initial = BuildRichState();
+        AssertNoDrift(BuildRichState(randomized: false));
+    }
+
+    [Fact]
+    public void EveryEnumeratedCandidate_SimulatesIdenticallyToGameOperations_WithRandomizedSelection()
+    {
+        // The fidelity gate for #91: with randomized capital placement on, a
+        // capture that relocates a capital must place it on the SAME tile in
+        // the cloned 1-ply simulation as in real play — otherwise AI scoring
+        // predicts a board that won't happen. Board-state-derived seeding makes
+        // the clone reproduce the real pick; this proves it for every candidate.
+        AssertNoDrift(BuildRichState(randomized: true));
+    }
+
+    private static void AssertNoDrift(GameState initial)
+    {
         List<AiAction> actions = AllCandidateActions(initial);
 
         foreach (AiAction action in actions)

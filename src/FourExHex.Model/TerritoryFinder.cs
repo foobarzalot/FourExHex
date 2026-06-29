@@ -26,10 +26,12 @@ public static class TerritoryFinder
     public static IReadOnlyList<Territory> Recompute(
         HexGrid grid,
         IReadOnlyList<Territory> previous,
-        Treasury? treasury = null)
+        Treasury? treasury = null,
+        bool randomizeCapital = false)
     {
         IReadOnlyList<Territory> raw = FindAll(grid);
-        IReadOnlyList<Territory> reconciled = CapitalReconciler.Reconcile(raw, previous, grid);
+        IReadOnlyList<Territory> reconciled =
+            CapitalReconciler.Reconcile(raw, previous, grid, randomizeCapital);
         treasury?.ReconcileAfterCapture(previous, reconciled);
         return reconciled;
     }

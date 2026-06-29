@@ -9,7 +9,9 @@ namespace FourExHex.Tests;
 /// </summary>
 public class SaveMigrationTests
 {
-    private static (GameState, IReadOnlyList<Player>) BuildState()
+    private static (GameState, IReadOnlyList<Player>) BuildState() => BuildState(randomized: false);
+
+    private static (GameState, IReadOnlyList<Player>) BuildState(bool randomized)
     {
         var red = new Player("Red", PlayerId.FromIndex(0), PlayerKind.Human);
         var blue = new Player("Blue", PlayerId.FromIndex(1), PlayerKind.Computer);
@@ -25,13 +27,40 @@ public class SaveMigrationTests
         var treasury = new Treasury();
         foreach (Territory t in terr)
             if (t.HasCapital) treasury.SetGold(t.Capital!.Value, 10);
-        return (new GameState(grid, terr, players, turn, treasury), players);
+        return (new GameState(grid, terr, players, turn, treasury,
+            useRandomizedSelection: randomized), players);
     }
 
     [Fact]
-    public void CurrentFormatVersion_IsFourteen()
+    public void V15_UseRandomizedSelection_RoundTripsTrue()
     {
-        Assert.Equal(14, SaveSerializer.CurrentFormatVersion);
+        (GameState s, IReadOnlyList<Player> p) = BuildState(randomized: true);
+        string json = SaveSerializer.Serialize(s, 1, p, "slot", 100);
+
+        Assert.True(SaveSerializer.Deserialize(json).State.UseRandomizedSelection);
+    }
+
+    [Fact]
+    public void PreV15Save_MissingFlag_DefaultsToFalse()
+    {
+        // A pre-15 save has no UseRandomizedSelection field. Stripping it (and
+        // stamping an older version) must load false, so the loaded game keeps
+        // the deterministic placement that its recorded replay was built on.
+        (GameState s, IReadOnlyList<Player> p) = BuildState(randomized: true);
+        string json = SaveSerializer.Serialize(s, 1, p, "slot", 100);
+        string legacy = System.Text.RegularExpressions.Regex
+            .Replace(json, ",\\s*\"UseRandomizedSelection\": (true|false)", string.Empty)
+            .Replace(
+                $"\"FormatVersion\": {SaveSerializer.CurrentFormatVersion}",
+                "\"FormatVersion\": 14");
+
+        Assert.False(SaveSerializer.Deserialize(legacy).State.UseRandomizedSelection);
+    }
+
+    [Fact]
+    public void CurrentFormatVersion_IsFifteen()
+    {
+        Assert.Equal(15, SaveSerializer.CurrentFormatVersion);
     }
 
     [Fact]
@@ -40,7 +69,7 @@ public class SaveMigrationTests
         (GameState s, IReadOnlyList<Player> p) = BuildState();
         string json = SaveSerializer.Serialize(s, 1, p, "slot", 100);
 
-        foreach (int bad in new[] { 1, 15, 99 })
+        foreach (int bad in new[] { 1, 16, 99 })
         {
             string mutated = json.Replace(
                 $"\"FormatVersion\": {SaveSerializer.CurrentFormatVersion}",
@@ -48,7 +77,7 @@ public class SaveMigrationTests
             Assert.ThrowsAny<System.Exception>(() => SaveSerializer.Deserialize(mutated));
         }
 
-        foreach (int ok in new[] { 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14 })
+        foreach (int ok in new[] { 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 })
         {
             string mutated = json.Replace(
                 $"\"FormatVersion\": {SaveSerializer.CurrentFormatVersion}",

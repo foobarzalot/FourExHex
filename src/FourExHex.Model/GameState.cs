@@ -22,6 +22,22 @@ public class GameState
     /// </summary>
     public GameMode Mode { get; }
 
+    /// <summary>
+    /// When true, the two selection points that were historically
+    /// resolved to the lex-min coord — capital placement
+    /// (<see cref="CapitalPlacer.Choose"/>) and the Rising Tides submerge
+    /// tie-break (<see cref="RisingTidesRules.ForecastSubmerge"/>) — instead
+    /// pick a seed-deterministic random candidate (capital: any tile in the
+    /// chosen occupant tier; tide: any tile sharing the maximum exposure).
+    /// Baked once at game creation and immutable: new games set it true; saves
+    /// from before the feature (where the field is absent) load it false, so
+    /// those games keep the old deterministic placement forever and their
+    /// recorded replays reproduce exactly. The flag rides through
+    /// <see cref="AiSimulator.Clone"/> so simulated and real captures pick the
+    /// same replacement capital.
+    /// </summary>
+    public bool UseRandomizedSelection { get; }
+
     // Backing store for WaterCoords. A HashSet (not the incoming set's own
     // type) so the set can grow at runtime — Rising Tides submerges shore
     // tiles mid-game via AddWater. Exposed only as IReadOnlySet so readers
@@ -99,7 +115,8 @@ public class GameState
         TurnState turns,
         Treasury treasury,
         IReadOnlySet<HexCoord>? waterCoords = null,
-        GameMode mode = GameMode.Freeform)
+        GameMode mode = GameMode.Freeform,
+        bool useRandomizedSelection = false)
     {
         Grid = grid;
         Territories = territories;
@@ -108,5 +125,6 @@ public class GameState
         Treasury = treasury;
         _water = waterCoords is null ? new HashSet<HexCoord>() : new HashSet<HexCoord>(waterCoords);
         Mode = mode;
+        UseRandomizedSelection = useRandomizedSelection;
     }
 }

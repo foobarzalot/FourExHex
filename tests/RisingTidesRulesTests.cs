@@ -343,6 +343,64 @@ public class RisingTidesRulesTests
         Assert.Equal(HexCoord.FromOffset(0, 0), plan.Single().Coord);
     }
 
+    // --- Randomized tie-break (rng-supplied) -----------------------------
+
+    [Fact]
+    public void ForecastSubmerge_WithRng_NeverPicksLowerExposureTile()
+    {
+        // Single even row of 3: ends (0,0),(2,0) are weight 5, middle (1,0) is
+        // weight 4. A randomized tie-break only reshuffles EQUAL-exposure tiles,
+        // so it must never select the strictly-less-exposed middle.
+        var ends = new[] { HexCoord.FromOffset(0, 0), HexCoord.FromOffset(2, 0) };
+        HexCoord middle = HexCoord.FromOffset(1, 0);
+
+        for (int seed = 0; seed < 30; seed++)
+        {
+            HexGrid grid = TestHelpers.BuildRectGrid(3, 1, Red);
+            GameState state = MakeState(grid, TestHelpers.BuildTerritoriesFromGrid(grid));
+
+            IReadOnlyList<TideStep> plan =
+                RisingTidesRules.ForecastSubmerge(state, Red, budget: 1, rng: new Random(seed));
+
+            Assert.Contains(plan.Single().Coord, ends);
+            Assert.NotEqual(middle, plan.Single().Coord);
+        }
+    }
+
+    [Fact]
+    public void ForecastSubmerge_WithRng_TieBreakDeviatesFromLexMin()
+    {
+        // Across seeds the chosen end is sometimes the larger coord (2,0), not
+        // always the lex-min (0,0) the deterministic path would always pick.
+        HexCoord high = HexCoord.FromOffset(2, 0);
+        bool sawHigh = false;
+        for (int seed = 0; seed < 30 && !sawHigh; seed++)
+        {
+            HexGrid grid = TestHelpers.BuildRectGrid(3, 1, Red);
+            GameState state = MakeState(grid, TestHelpers.BuildTerritoriesFromGrid(grid));
+            IReadOnlyList<TideStep> plan =
+                RisingTidesRules.ForecastSubmerge(state, Red, budget: 1, rng: new Random(seed));
+            if (plan.Single().Coord == high) sawHigh = true;
+        }
+        Assert.True(sawHigh, "Randomized tie-break never picked the non-lex-min end across 30 seeds.");
+    }
+
+    [Fact]
+    public void ForecastSubmerge_WithRng_IsDeterministicForSameSeed()
+    {
+        HexGrid gridA = TestHelpers.BuildRectGrid(3, 1, Red);
+        GameState stateA = MakeState(gridA, TestHelpers.BuildTerritoriesFromGrid(gridA));
+        IReadOnlyList<TideStep> planA =
+            RisingTidesRules.ForecastSubmerge(stateA, Red, budget: 1, rng: new Random(99));
+
+        HexGrid gridB = TestHelpers.BuildRectGrid(3, 1, Red);
+        GameState stateB = MakeState(gridB, TestHelpers.BuildTerritoriesFromGrid(gridB));
+        IReadOnlyList<TideStep> planB =
+            RisingTidesRules.ForecastSubmerge(stateB, Red, budget: 1, rng: new Random(99));
+
+        Assert.Equal(planA.Single().Coord, planB.Single().Coord);
+    }
+
     [Fact]
     public void ForecastSubmerge_Budget_ReturnsTopNInStrictOrder()
     {

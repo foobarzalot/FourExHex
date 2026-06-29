@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 /// <summary>
@@ -16,9 +17,11 @@ using System.Collections.Generic;
 ///      are a 15g investment so we destroy them only when nothing
 ///      else is available)
 ///
-/// Existing <see cref="Capital"/> occupants are never considered.
-/// Within each tier the placer picks the lex-min (R, Q) coord so the
-/// choice is deterministic across runs.
+/// Existing <see cref="Capital"/> occupants are never considered. The
+/// tier priority above always holds. WITHIN the chosen tier, the pick
+/// is the lex-min (R, Q) coord when <c>rng</c> is null (the historical
+/// deterministic choice), or a seed-deterministic random candidate when
+/// an <c>rng</c> is supplied (see <see cref="GameState.UseRandomizedSelection"/>).
 /// </summary>
 public static class CapitalPlacer
 {
@@ -28,17 +31,20 @@ public static class CapitalPlacer
     /// is guaranteed whenever <paramref name="coords"/> has &gt;= 2 entries
     /// that are Empty/Unit/Grave/Tree/Tower (mountains included — capitals may
     /// sit on them) — only an all-Capital territory (impossible in
-    /// normal play) returns null.
+    /// normal play) returns null. When <paramref name="rng"/> is non-null the
+    /// in-tier choice is randomized (reproducibly, from that rng); when null it
+    /// is the lex-min coord.
     /// </summary>
-    public static HexCoord? Choose(IReadOnlyCollection<HexCoord> coords, HexGrid grid)
+    public static HexCoord? Choose(
+        IReadOnlyCollection<HexCoord> coords, HexGrid grid, Random? rng = null)
     {
         if (coords.Count < 2) return null;
 
-        HexCoord? bestEmpty = null;
-        HexCoord? bestUnit = null;
-        HexCoord? bestGrave = null;
-        HexCoord? bestTree = null;
-        HexCoord? bestTower = null;
+        var empty = new List<HexCoord>();
+        var units = new List<HexCoord>();
+        var graves = new List<HexCoord>();
+        var trees = new List<HexCoord>();
+        var towers = new List<HexCoord>();
 
         foreach (HexCoord c in coords)
         {
@@ -47,45 +53,35 @@ public static class CapitalPlacer
             // Capitals may sit on mountains: a mountain tile is an
             // ordinary candidate, tiered by its occupant like any other.
 
-            if (tile.Occupant == null)
-            {
-                if (!bestEmpty.HasValue || c.CompareTo(bestEmpty.Value) < 0)
-                {
-                    bestEmpty = c;
-                }
-            }
-            else if (tile.Occupant is Unit)
-            {
-                if (!bestUnit.HasValue || c.CompareTo(bestUnit.Value) < 0)
-                {
-                    bestUnit = c;
-                }
-            }
-            else if (tile.Occupant is Grave)
-            {
-                if (!bestGrave.HasValue || c.CompareTo(bestGrave.Value) < 0)
-                {
-                    bestGrave = c;
-                }
-            }
-            else if (tile.Occupant is Tree)
-            {
-                if (!bestTree.HasValue || c.CompareTo(bestTree.Value) < 0)
-                {
-                    bestTree = c;
-                }
-            }
-            else if (tile.Occupant is Tower)
-            {
-                if (!bestTower.HasValue || c.CompareTo(bestTower.Value) < 0)
-                {
-                    bestTower = c;
-                }
-            }
+            if (tile.Occupant == null) empty.Add(c);
+            else if (tile.Occupant is Unit) units.Add(c);
+            else if (tile.Occupant is Grave) graves.Add(c);
+            else if (tile.Occupant is Tree) trees.Add(c);
+            else if (tile.Occupant is Tower) towers.Add(c);
             // Existing Capital occupants are ignored — placing a capital
             // on top of an existing one is never useful.
         }
 
-        return bestEmpty ?? bestUnit ?? bestGrave ?? bestTree ?? bestTower;
+        List<HexCoord> tier =
+            empty.Count > 0 ? empty :
+            units.Count > 0 ? units :
+            graves.Count > 0 ? graves :
+            trees.Count > 0 ? trees :
+            towers;
+        return PickFromTier(tier, rng);
+    }
+
+    /// <summary>
+    /// Pick one coord from a non-prioritized tier list: the lex-min coord
+    /// when <paramref name="rng"/> is null, else a uniformly random element.
+    /// The list is sorted first so the random index maps to a stable order —
+    /// the draw is reproducible regardless of how <paramref name="tier"/> was
+    /// enumerated. Returns null only for an empty list (the all-Capital case).
+    /// </summary>
+    private static HexCoord? PickFromTier(List<HexCoord> tier, Random? rng)
+    {
+        if (tier.Count == 0) return null;
+        tier.Sort();
+        return rng == null ? tier[0] : tier[rng.Next(tier.Count)];
     }
 }

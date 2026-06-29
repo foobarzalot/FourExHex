@@ -75,19 +75,28 @@ public static class RisingTidesRules
     /// that will submerge.
     /// </summary>
     public static IReadOnlyList<TideStep> ForecastSubmerge(
-        GameState state, PlayerId owner, int budget)
+        GameState state, PlayerId owner, int budget, Random? rng = null)
     {
         IReadOnlyList<HexCoord> shore = ShoreTilesOf(state.Grid, owner);
         if (shore.Count == 0 || budget <= 0) return System.Array.Empty<TideStep>();
 
-        // Strict erosion order: take the most sea-exposed tiles
-        // first so coastlines crumble at their points before their flush edges.
-        // `shore` is already in ascending HexCoord order, so OrderByDescending's
-        // stable sort resolves equal-exposure ties to the smallest coord; the
-        // explicit ThenBy makes that tie-break intent unmistakable.
-        var plan = shore
-            .OrderByDescending(c => WaterBorderWeight(state.Grid, c))
-            .ThenBy(c => c)
+        // Erosion order: take the most sea-exposed tiles first so coastlines
+        // crumble at their points before their flush edges. A more-exposed tile
+        // is NEVER passed over for a less-exposed one. The only choice is the
+        // tie-break among tiles of EQUAL exposure: lex-min when rng is null (the
+        // historical deterministic order — `shore` is already ascending, so
+        // OrderByDescending's stable sort plus the explicit ThenBy resolves ties
+        // to the smallest coord), or a seed-deterministic shuffle within each
+        // equal-exposure band when an rng is supplied.
+        IEnumerable<HexCoord> ordered = rng == null
+            ? shore
+                .OrderByDescending(c => WaterBorderWeight(state.Grid, c))
+                .ThenBy(c => c)
+            : shore
+                .GroupBy(c => WaterBorderWeight(state.Grid, c))
+                .OrderByDescending(g => g.Key)
+                .SelectMany(g => Shuffle(g, rng));
+        var plan = ordered
             .Take(budget)
             .Select(c => new TideStep(c, DemoteOnly: state.Grid.Get(c)!.IsMountain))
             .ToList();
@@ -148,7 +157,7 @@ public static class RisingTidesRules
             // relocate/strip orphaned capitals, drop occupants on vanished
             // tiles, and sync the treasury.
             state.Territories = TerritoryFinder.Recompute(
-                state.Grid, state.Territories, state.Treasury);
+                state.Grid, state.Territories, state.Treasury, state.UseRandomizedSelection);
         }
 
         return anyChange;
@@ -157,8 +166,27 @@ public static class RisingTidesRules
     /// <summary>
     /// Forecast and apply one erosion step in a single call. Used for phantom
     /// turns of neutral/eliminated colors, which have no during-turn beat to
-    /// telegraph, and for tests. Returns true iff anything changed.
+    /// telegraph, and for tests. The optional <paramref name="rng"/> is forwarded
+    /// to <see cref="ForecastSubmerge"/> for the equal-exposure tie-break.
+    /// Returns true iff anything changed.
     /// </summary>
-    public static bool SubmergeStep(GameState state, PlayerId owner, int budget)
-        => ApplyForecast(state, owner, ForecastSubmerge(state, owner, budget));
+    public static bool SubmergeStep(GameState state, PlayerId owner, int budget, Random? rng = null)
+        => ApplyForecast(state, owner, ForecastSubmerge(state, owner, budget, rng));
+
+    /// <summary>
+    /// In-place Fisher–Yates shuffle of <paramref name="source"/> using
+    /// <paramref name="rng"/>. Integer-only (the no-floats rule). The input order
+    /// is deterministic (callers pass an ascending-coord group), so a seeded rng
+    /// yields a reproducible permutation.
+    /// </summary>
+    private static List<HexCoord> Shuffle(IEnumerable<HexCoord> source, Random rng)
+    {
+        var list = new List<HexCoord>(source);
+        for (int i = list.Count - 1; i > 0; i--)
+        {
+            int j = rng.Next(i + 1);
+            (list[i], list[j]) = (list[j], list[i]);
+        }
+        return list;
+    }
 }

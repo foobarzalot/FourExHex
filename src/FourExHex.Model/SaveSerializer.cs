@@ -112,7 +112,7 @@ public static class SaveSerializer
     /// Bump on any breaking schema change. <see cref="Deserialize"/>
     /// rejects mismatched values rather than attempting migration.
     /// </summary>
-    public const int CurrentFormatVersion = 14;
+    public const int CurrentFormatVersion = 15;
 
     public static string Serialize(
         GameState state,
@@ -203,6 +203,10 @@ public static class SaveSerializer
             // (omitted) when empty — every freeform save and any Rising Tides save
             // taken between turns — so the wire format stays clean.
             PendingTide = SerializePendingTide(state.PendingTide),
+            // Baked-at-creation flag for randomized capital/tide selection.
+            // Absent in pre-15 saves → loads false → those games keep the old
+            // deterministic placement so their replays reproduce.
+            UseRandomizedSelection = state.UseRandomizedSelection,
         };
         // Source-gen path (FourExHexJsonContext) so this works under iOS AOT,
         // where reflection-based serialization is disabled. The context's
@@ -296,7 +300,8 @@ public static class SaveSerializer
         IReadOnlySet<HexCoord> waterCoords = DeserializeWater(data.Water);
         var state = new GameState(
             grid, territories, players, turnState, treasury, waterCoords,
-            mode: data.Mode ?? GameMode.Freeform)
+            mode: data.Mode ?? GameMode.Freeform,
+            useRandomizedSelection: data.UseRandomizedSelection)
         {
             // Restore the locked tide forecast; empty for freeform saves so
             // the reloaded game telegraphs/applies nothing.
@@ -1027,6 +1032,14 @@ public sealed class SaveData
     /// (which load as an empty forecast).
     /// </summary>
     public List<TideStepDto>? PendingTide { get; set; }
+
+    /// <summary>
+    /// Whether this game uses seed-deterministic randomized selection for
+    /// capital placement and the Rising Tides submerge tie-break. Baked at game
+    /// creation. Absent (false) in pre-15 saves, which keep the old lex-min
+    /// placement so their recorded replays reproduce exactly.
+    /// </summary>
+    public bool UseRandomizedSelection { get; set; }
 }
 
 public sealed class TideStepDto

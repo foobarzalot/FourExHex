@@ -27,7 +27,7 @@ Consequences:
 - **Color is view-only.** `scripts/PlayerPalette.cs` maps `PlayerId ↔ Godot.Color` from `GameSettings.PlayerConfig` hex strings.
 - **Pixel projection is view-side.** `HexRounding.Round(float qFrac, float rFrac) -> HexCoord` in `FourExHex.ViewMath` is the float→int boundary keeping `HexCoord` integer-only in Model. `scripts/HexPixel.cs` owns `ToPixel`/`FromPixel`, calls `HexRounding.Round`.
 - **`Log` is Godot-free** — routes through injectable `Log.Sink`, wired by `Main` to `GD.Print`. See **Logging**.
-- **Save format is v14.** Ownership is a player index on the wire (−1 = `None`); claim-victory tiers persist by index. Gold/mountain are mutually exclusive on the wire (two bools); a tile with both normalizes to mountain-only on load; in-memory it's one `HexTile.Feature` enum that can't hold both (see **Mountain tiles**). Saves v2–v13 still load, absent fields defaulting (`IsGold`/`IsMountain` → `false`, `Difficulty` → `Soldier`, Rising Tides `Mode`/`PendingTide` → off/empty), with legacy color-hex claim data and pre-v6 unit-level names migrated via `GameSettings` palette matching and `SaveSerializer.ParseUnitLevel`.
+- **Save format is v15.** Ownership is a player index on the wire (−1 = `None`); claim-victory tiers persist by index. Gold/mountain are mutually exclusive on the wire (two bools); a tile with both normalizes to mountain-only on load; in-memory it's one `HexTile.Feature` enum that can't hold both (see **Mountain tiles**). Saves v2–v14 still load, absent fields defaulting (`IsGold`/`IsMountain` → `false`, `Difficulty` → `Soldier`, Rising Tides `Mode`/`PendingTide` → off/empty, `UseRandomizedSelection` → `false`), with legacy color-hex claim data and pre-v6 unit-level names migrated via `GameSettings` palette matching and `SaveSerializer.ParseUnitLevel`.
 - **`.cs.uid` sidecars**: model files under `src/` aren't Godot resources → no `.cs.uid`; `src/**` is `.gdignore`d. `scripts/` files keep their tracked `.cs.uid`.
 
 ## Layered view
@@ -179,11 +179,14 @@ VIEWS (Godot Nodes)
 
 PURE RULES (static)
   TerritoryFinder.FindAll(grid) ─ flood-fill, no capitals
-  TerritoryFinder.Recompute(grid, prev, treasury?) ─ FindAll → CapitalReconciler.Reconcile → optional
-    Treasury.ReconcileAfterCapture. Single entry for post-mutation rebuilds.
-  CapitalPlacer.Choose(coords, grid) ─ empty > unit, lex-min
-  CapitalReconciler.Reconcile(raw, old, grid) ─ split/merge + stomping; None-owned (neutral) stay capital-less
-    (throws on a capital on neutral land)
+  TerritoryFinder.Recompute(grid, prev, treasury?, randomizeCapital=false) ─ FindAll →
+    CapitalReconciler.Reconcile → optional Treasury.ReconcileAfterCapture. Single entry for
+    post-mutation rebuilds. randomizeCapital forwards GameState.UseRandomizedSelection.
+  CapitalPlacer.Choose(coords, grid, rng?) ─ tier (empty>unit>grave>tree>tower); in-tier pick is
+    lex-min when rng null, else a random candidate from rng
+  CapitalReconciler.Reconcile(raw, old, grid, randomize=false) ─ split/merge + stomping; None-owned
+    (neutral) stay capital-less (throws on a capital on neutral land). randomize → fresh placement and
+    the equal-old-size merge tiebreak draw from a Random seeded by SeedFromCoords(coords)
   PurchaseRules.CostFor / CanAfford / CanAffordTower / IsValidRecruit…
   MovementRules.ValidTargets / Move / PlaceNew / ArrivalConsumesAction (capture/tree/grave → true)
   DefenseRules.Defense(coord, grid, territory)
@@ -279,7 +282,7 @@ A **mountain tile** is high ground: **no defense on its own**, but any defender 
 - **Model.** `HexTile.Feature` is the single source of truth: enum `TerrainFeature` (`None`/`Gold`/`Mountain`). `IsGold`/`IsMountain` accessors retarget `Feature`, so setting one clears the other. A mountain can be neutral or player-owned and is **passable** (units move onto, through, and die on it). No income of its own (a controlled mountain pays 1 gp).
 - **Defense.** `DefenseRules.Defense` gives **any defender** (`Unit`/`Tower`/`Capital`) on a mountain `DefenseRules.MountainBonus` (+1) on top of its contribution (folded in by private `ContributionAt`, applied to any positive-contribution occupant); an **empty mountain — or one holding only a tree/grave — contributes nothing**. Boosted value radiates to same-territory neighbors like any defender (Soldier/Tower → 3, Commander → 5, Capital → 2). Contributions are `max`, not cumulative. An empty neutral mountain is capturable by any level (even Recruit); a defended one raises the capture threshold by 1. `BlockingDefenders` mirrors this (same `ContributionAt`) for the view's red-flash. Capture (`MovementRules.ResolveArrival`) transfers ownership but leaves the mountain set.
 - **Rule guards.** Trees, graves, towers, **and capitals all coexist** with a mountain: trees spread onto mountains (`TreeRules.RunStartOfTurnGrowth`), a unit dying leaves a grave (`UpkeepRules.ApplyUpkeep`), towers may be built (`PurchaseRules.IsValidTowerLocation`), a capital may sit. Gold is the only exclusion.
-- **Capital placement.** Capitals sit on mountains like any terrain (`CapitalPlacer.Choose`), so any 2+ owned region gets a capital; `CapitalReconciler`'s null guard only covers the impossible all-Capital case.
+- **Capital placement.** Capitals sit on mountains like any terrain (`CapitalPlacer.Choose`), so any 2+ owned region gets a capital; `CapitalReconciler`'s null guard only covers the impossible all-Capital case. The occupant-tier priority always holds; the **in-tier** pick (and the equal-old-size merge tiebreak) is lex-min by default or, in a `GameState.UseRandomizedSelection` game, a seed-deterministic random candidate (see **Randomized selection**).
 - **Persistence + undo.** Carried as `TileDto.IsMountain`, through replay-initial snapshots (`GameStateSnapshot.EnumerateTiles`) and both deep-copy snapshots (`GameStateSnapshot`/`EditorSnapshot`). A tile with **both** gold and mountain set normalizes to mountain-only on load (mountain wins — see **Save format**).
 - **Authoring.** Map editor toggle brush (`MapEditPaint.PaintMountainToggle`, glyph `HexPaletteIcon.Mountain`), same drag-stroke add/erase locking. Painting a mountain leaves tree/grave/tower/capital in place and **clears any gold** (and `PaintGoldToggle` clears any mountain) — mutual exclusion falls out of the `Feature` accessor. Also generated procedurally by `MapGenerator` when `MapGenOptions.MountainDensity > 0`; generated ranges are **neutral**, and generated gold skips mountain tiles.
 - **Editor undo/sound for flag paints.** Mountain/gold paints leave the territory partition untouched. The undo push compares the pre-stroke snapshot against the live grid via `EditorSnapshot.DiffersFromGrid` (pure, unit-tested grid diff over owner/occupant/gold/mountain/water); the per-cell placement sound also checks gold/mountain flags. Both flag brushes record undo and play the sound.
@@ -301,11 +304,11 @@ A **mountain tile** is high ground: **no defense on its own**, but any defender 
 
 A selectable game mode, distinct from freeform-vs-campaign (`GameSettings.CampaignLevel`). `GameMode { Freeform, RisingTides }` (Model) on `GameState.Mode` (default `Freeform`). The sea eats the map; game ends only when one player remains.
 
-**Forecast at turn start, submerge at turn end** — erosion telegraphed a turn ahead. Split in `RisingTidesRules` (Model, integer-only, no RNG):
+**Forecast at turn start, submerge at turn end** — erosion telegraphed a turn ahead. Split in `RisingTidesRules` (Model, integer-only):
 
-- `ForecastSubmerge(state, owner, budget)` selects shore tiles, mutates nothing, returns `IReadOnlyList<TideStep>` (`TideStep { HexCoord Coord; bool DemoteOnly }`). Plan locked on `GameState.PendingTide`.
+- `ForecastSubmerge(state, owner, budget, rng?)` selects shore tiles, mutates nothing, returns `IReadOnlyList<TideStep>` (`TideStep { HexCoord Coord; bool DemoteOnly }`). Plan locked on `GameState.PendingTide`.
 - `ApplyForecast(state, owner, plan)` demotes/submerges those coords + `TerritoryFinder.Recompute` (the remove-tile→add-water→recompute path of `MapEditPaint.PaintWater`). `SubmergeStep` = forecast-then-apply, for phantom turns of neutral/eliminated colors.
-- A **shore** tile has **<6 in-grid neighbours** (`ShoreTilesOf`). Selection is strict deterministic exposure order: highest `WaterBorderWeight(grid, coord) = 6 − in-grid neighbours` first, ties broken by ascending `HexCoord`. A **mountain** shore *demotes* (`IsMountain=false`) without sinking; a non-mountain shore is removed + watered. Budget **1**.
+- A **shore** tile has **<6 in-grid neighbours** (`ShoreTilesOf`). Selection always takes the most exposed tiles first — highest `WaterBorderWeight(grid, coord) = 6 − in-grid neighbours`; a more-exposed tile is never passed over. Only the **equal-exposure tie-break** varies: ascending `HexCoord` when `rng` is null, else a seed-deterministic shuffle within each exposure band (see **Randomized selection**). `GameOperations.ForecastTideForCurrentPlayer` / `MaybeRiseTidesFor` pass `_rng` only in a `UseRandomizedSelection` game (null otherwise, so freeform/legacy streams are untouched). A **mountain** shore *demotes* (`IsMountain=false`) without sinking; a non-mountain shore is removed + watered. Budget **1**.
 - Timing (`GameOperations`): `StartPlayerTurn` calls `ForecastTideForCurrentPlayer` (no `TurnNumber` gate — runs from turn 1). The first player's turn-1 forecast is computed in `GameController.Resume(freshStart:true)` since `StartPlayerTurn` isn't called for the initial player (a load passes `freshStart:false`, restoring `PendingTide` from save). `EndOfTurnProcessing` runs `ApplyPendingTide` (apply + structural rebuild + defeat) **before** the win check. Phantom turns forecast+apply inline via `MaybeRiseTidesFor`.
 
 `GameState.WaterCoords` is a mutable `HashSet` (exposed `IReadOnlySet`) with `AddWater(coord)` so it grows at runtime. Forecast gated by `Mode == RisingTides`.
@@ -322,13 +325,18 @@ A selectable game mode, distinct from freeform-vs-campaign (`GameSettings.Campai
 
 **AI (tide-aware evacuation).** AI reads `GameState.PendingTide`. A move taking a unit OFF a doomed tile earns `AiStateScorer.EvacuationBonus` — a per-move delta in `ComputerAi.BestPositiveDelta` like `BuildTowerBonus`, leaving absolute `Score` untouched — and phase-4b reposition enumeration is broadened so a doomed unit may flee inland.
 
-**Selection & round-trip.** Freeform picks the mode from the **Game Mode** selector on the Configure Game page (`GameSettings.Mode`, shared with the map editor's new-map flow); Quick Play resets to Freeform. The editor threads `_mapMode` into `BuildSaveState`; `Main`'s starting-map load forwards `pendingLoad.State.Mode`. Mode, grown water set, and `PendingTide` persist through the **v14** save format (see *Save / load*); `FOUREXHEX_MODE=RisingTides` forces it for headless 6AI runs.
+**Selection & round-trip.** Freeform picks the mode from the **Game Mode** selector on the Configure Game page (`GameSettings.Mode`, shared with the map editor's new-map flow); Quick Play resets to Freeform. The editor threads `_mapMode` into `BuildSaveState`; `Main`'s starting-map load forwards `pendingLoad.State.Mode`. Mode, grown water set, and `PendingTide` persist through the **v15** save format (see *Save / load*); `FOUREXHEX_MODE=RisingTides` forces it for headless 6AI runs.
 
 **Replay fidelity (shrunken-grid rewind).** Replay rewinds to the recorded initial snapshot and re-runs every beat, recomputing the tide each turn. Since the board shrinks mid-game (`Grid.Remove`'d tiles), the rewind rebuilds the full board: (1) `GameStateSnapshot.ApplyTo` re-adds any captured tile missing from the live grid; (2) `ReplayRecorder.BeginReplay` drops re-grown coords from the water set (`GameState.RemoveWater`) and re-seeds the first player's turn-1 `PendingTide` (`ForecastTideForCurrentPlayer`), mirroring `Resume(freshStart:true)` — `StartPlayerTurn` re-forecasts later turns. Covered by the Rising Tides `ReplayFidelityTests` checksum.
 
 **Campaign.** `CampaignProgress.ModeForLevel(level)` (deterministic, integer-only, same seeded-draw style as `MapGenOptionsForLevel`) makes a rare minority of **Soldier-tier-and-above** levels Rising Tides — flat 10% (19 of 256; never at Recruit). `Main` derives a level's mode; the confirm sheet shows a gold "Rising Tides — …" line (`MapInfoSheet`'s optional `gameMode` row), and the campaign grid marks those levels with a blue circle behind the level number (`TierGrid._Draw`).
 
-## Display scaling (autoload)
+## Randomized selection
+
+`GameState.UseRandomizedSelection` (bool, integer-only RNG) replaces the historical always-lex-min tie-breaks at two selection points with seed-deterministic random picks: the **in-tier capital choice** (`CapitalPlacer.Choose`) and its equal-old-size merge tiebreak (`CapitalReconciler.Reconcile`), and the **equal-exposure Rising Tides submerge tie-break** (`RisingTidesRules.ForecastSubmerge`). Priority order is untouched — capitals still respect the occupant tier, tides still take the most-exposed tile; only the choice *among equals* randomizes.
+
+- **Two RNG sources, by constraint.** Capital placement seeds a local `Random` from the territory's own coords (`CapitalReconciler.SeedFromCoords`, FNV-1a + splitmix32 avalanche), so it consumes nothing from the live per-turn `_rng` stream and the AI's cloned 1-ply simulation reproduces the identical replacement capital (`AiSimulator.Clone` carries the flag; `AiSimulatorDriftTests` pins sim == real). The tide tie-break draws from `GameOperations._rng` at forecast time — the first per-turn RNG consumer, right after `ReseedRngForCurrentTurn`, so it lands at a fixed stream offset and reproduces on resume/replay; the simulator never touches tides. Still seed-deterministic since the board itself evolves from the master seed.
+- **Baked, not load-gated.** The flag is decided once at game creation and persisted (see *Save / load*), never compared at load. New games are `true`; pre-v15 saves load `false`. This is what makes re-saving safe: a game keeps its era forever, so its recorded beat log (capitals/tides re-derived during playback) never mixes old and new picks. The two paths are exercised by the `(mode × era)` matrix in `ReplayFidelityTests`.
 
 `DisplayScale` — autoload Node (`project.godot` `[autoload]` "DisplayScale", ordered after `LogBootstrap`). Keeps UI at a roughly constant physical size by reading screen DPI and driving root `Window.ContentScaleFactor`:
 
@@ -1055,6 +1063,14 @@ seed (no consumption count) and load reproduces it.
   null/missing = empty. Only a mid-turn Rising Tides save writes it. Can't be
   recomputed on load (RNG advanced, grid may have changed), so it's persisted
   and restored onto `GameState.PendingTide`.
+- **Randomized selection.** `UseRandomizedSelection` bool, baked at game
+  creation and immutable, fed into the `GameState` ctor on load. New games
+  (`ProceduralGame.Build`, starting-map launch) write `true`; absent in pre-v15
+  saves → `false`. **Re-saving preserves it** (a loaded game keeps its era), so a
+  pre-feature game stays lex-min through any number of re-saves and its recorded
+  replay reproduces — a mixed-behavior replay is impossible. The flag governs the
+  in-tier capital pick and the equal-exposure tide tie-break (see **Randomized
+  selection**).
 - **Load.** Main menu's Load button populates `LoadRequest.Pending` with a
   `LoadedSave` (state + players + master seed + max-turn cap + optional
   OriginMapName + claim-victory tiers) and changes scene to `main.tscn`.

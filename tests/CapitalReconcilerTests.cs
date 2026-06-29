@@ -324,6 +324,77 @@ public class CapitalReconcilerTests
 
     // --- Neutral (unowned) territories ---
 
+    // --- Randomized placement (board-state-derived seed) -----------------
+
+    [Fact]
+    public void Reconcile_Randomize_IsReproducibleForIdenticalBoards()
+    {
+        // The fidelity property the AI's cloned simulation depends on: two
+        // reconciles of the same board (same coords) must place the capital on
+        // the same tile, because the seed is derived purely from the coords.
+        HexCoord[] coords =
+        {
+            new HexCoord(0, 0), new HexCoord(1, 0),
+            new HexCoord(2, 0), new HexCoord(3, 0),
+        };
+
+        HexGrid gridA = BuildGrid(coords);
+        var resA = CapitalReconciler.Reconcile(
+            new[] { T(null, coords) }, new List<Territory>(), gridA, randomize: true);
+
+        HexGrid gridB = BuildGrid(coords);
+        var resB = CapitalReconciler.Reconcile(
+            new[] { T(null, coords) }, new List<Territory>(), gridB, randomize: true);
+
+        Assert.Equal(resA[0].Capital, resB[0].Capital);
+        Assert.IsType<Capital>(gridA.Get(resA[0].Capital!.Value)!.Occupant);
+    }
+
+    [Fact]
+    public void Reconcile_Randomize_OverSeveralBoards_NotAlwaysLexMin()
+    {
+        // Proves the randomization is live end-to-end: across distinct
+        // territories (each with its own coords-derived seed) the placed
+        // capital deviates from the lex-min tile for at least one board.
+        bool sawNonLexMin = false;
+        for (int n = 0; n < 12 && !sawNonLexMin; n++)
+        {
+            var coords = new[]
+            {
+                new HexCoord(n, 0), new HexCoord(n + 1, 0),
+                new HexCoord(n, 1), new HexCoord(n + 1, 1),
+            };
+            HexCoord lexMin = new HexCoord(n, 0); // (R then Q): row 0, smallest Q
+            HexGrid grid = BuildGrid(coords);
+
+            var result = CapitalReconciler.Reconcile(
+                new[] { T(null, coords) }, new List<Territory>(), grid, randomize: true);
+
+            Assert.Contains(result[0].Capital!.Value, coords);
+            if (result[0].Capital != lexMin) sawNonLexMin = true;
+        }
+
+        Assert.True(sawNonLexMin,
+            "Randomized reconcile never deviated from lex-min across 12 boards.");
+    }
+
+    [Fact]
+    public void Reconcile_RandomizeFalse_StillLexMin()
+    {
+        // The default (randomize: false) path is unchanged: lex-min placement.
+        HexCoord[] coords =
+        {
+            new HexCoord(0, 0), new HexCoord(1, 0),
+            new HexCoord(2, 0), new HexCoord(3, 0),
+        };
+        HexGrid grid = BuildGrid(coords);
+
+        var result = CapitalReconciler.Reconcile(
+            new[] { T(null, coords) }, new List<Territory>(), grid, randomize: false);
+
+        Assert.Equal(new HexCoord(0, 0), result[0].Capital);
+    }
+
     [Fact]
     public void Reconcile_MultiHexNeutralTerritory_GetsNoCapital()
     {

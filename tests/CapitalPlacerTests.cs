@@ -170,6 +170,84 @@ public class CapitalPlacerTests
         Assert.Equal(new HexCoord(1, 0), result);
     }
 
+    // --- Randomized (rng-supplied) selection -----------------------------
+
+    [Fact]
+    public void Choose_WithRng_PicksAMemberOfChosenTier()
+    {
+        // Four empty tiles. A randomized pick must still be one of them.
+        var coords = new[]
+        {
+            new HexCoord(0, 0), new HexCoord(1, 0),
+            new HexCoord(2, 0), new HexCoord(3, 0),
+        };
+        HexGrid grid = TestHelpers.BuildSpotGrid(Red, coords);
+
+        HexCoord? result = CapitalPlacer.Choose(coords, grid, new System.Random(12345));
+
+        Assert.Contains(result!.Value, coords);
+    }
+
+    [Fact]
+    public void Choose_WithRng_IsDeterministicForSameSeed()
+    {
+        var coords = new[]
+        {
+            new HexCoord(0, 0), new HexCoord(1, 0),
+            new HexCoord(2, 0), new HexCoord(3, 0),
+        };
+        HexGrid grid = TestHelpers.BuildSpotGrid(Red, coords);
+
+        HexCoord? a = CapitalPlacer.Choose(coords, grid, new System.Random(777));
+        HexCoord? b = CapitalPlacer.Choose(coords, grid, new System.Random(777));
+
+        Assert.Equal(a, b);
+    }
+
+    [Fact]
+    public void Choose_WithRng_OverManySeeds_DoesNotAlwaysPickLexMin()
+    {
+        // Proves the rng path is live: across many seeds the randomized pick
+        // lands on tiles other than the lex-min (0,0) at least sometimes.
+        var coords = new[]
+        {
+            new HexCoord(0, 0), new HexCoord(1, 0),
+            new HexCoord(2, 0), new HexCoord(3, 0),
+        };
+        HexGrid grid = TestHelpers.BuildSpotGrid(Red, coords);
+        HexCoord lexMin = new HexCoord(0, 0);
+
+        bool sawNonLexMin = false;
+        for (int seed = 0; seed < 30 && !sawNonLexMin; seed++)
+        {
+            if (CapitalPlacer.Choose(coords, grid, new System.Random(seed)) != lexMin)
+                sawNonLexMin = true;
+        }
+
+        Assert.True(sawNonLexMin, "Randomized Choose never deviated from lex-min across 30 seeds.");
+    }
+
+    [Fact]
+    public void Choose_WithRng_RespectsTierPriority_NeverStompsUnitWhenEmptyExists()
+    {
+        // (0,0) holds a unit (lex-min but occupied); (1,0),(2,0),(3,0) empty.
+        // Even randomized, the placer must pick an EMPTY tile, never the unit.
+        var coords = new[]
+        {
+            new HexCoord(0, 0), new HexCoord(1, 0),
+            new HexCoord(2, 0), new HexCoord(3, 0),
+        };
+        HexGrid grid = TestHelpers.BuildSpotGrid(Red, coords);
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Unit(Red);
+        var emptyTiles = new[] { new HexCoord(1, 0), new HexCoord(2, 0), new HexCoord(3, 0) };
+
+        for (int seed = 0; seed < 30; seed++)
+        {
+            HexCoord? result = CapitalPlacer.Choose(coords, grid, new System.Random(seed));
+            Assert.Contains(result!.Value, emptyTiles);
+        }
+    }
+
     [Fact]
     public void Choose_ExistingCapitalOccupant_IsIgnored()
     {

@@ -489,9 +489,21 @@ public class GameOperations
     public void ForecastTideForCurrentPlayer()
     {
         if (_state.Mode != GameMode.RisingTides) return;
+        // The forecast is the FIRST per-turn RNG consumer (it runs right after
+        // ReseedRngForCurrentTurn, before any capture or AI draw), so the draw
+        // lands at a fixed stream offset and reproduces on resume/replay. Only a
+        // randomized-selection game consumes it; legacy games pass null and the
+        // tie-break stays lex-min, leaving their RNG stream untouched.
         _state.PendingTide = RisingTidesRules.ForecastSubmerge(
-            _state, _state.Turns.CurrentPlayer.Id, budget: 1);
+            _state, _state.Turns.CurrentPlayer.Id, budget: 1, rng: TideTieBreakRng());
     }
+
+    /// <summary>
+    /// The RNG to use for the Rising Tides equal-exposure tie-break, or null
+    /// for the historical lex-min order. Non-null only for a randomized-selection
+    /// game (so legacy games' streams are byte-for-byte unchanged).
+    /// </summary>
+    private Random? TideTieBreakRng() => _state.UseRandomizedSelection ? _rng : null;
 
     private void ApplyPendingTide()
     {
@@ -525,7 +537,7 @@ public class GameOperations
     {
         if (_state.Mode != GameMode.RisingTides || _state.Turns.TurnNumber <= 1) return;
         HashSet<PlayerId> colorsWithCapitalBefore = ColorsWithCapital(_state.Territories);
-        bool changed = RisingTidesRules.SubmergeStep(_state, owner, budget: 1);
+        bool changed = RisingTidesRules.SubmergeStep(_state, owner, budget: 1, rng: TideTieBreakRng());
         // A submerge removes tiles (or demotes a mountain) — the land/water
         // tessellation is structural, so it needs the coalesced repaint path,
         // not just the per-turn RefreshOccupantVisuals. Mirror HandleCapture's
@@ -1027,7 +1039,8 @@ public class GameOperations
         HashSet<PlayerId> colorsWithCapitalBefore = ColorsWithCapital(previous);
 
         long tRecompute = Log.Stamp();
-        _state.Territories = TerritoryFinder.Recompute(_state.Grid, previous, _state.Treasury);
+        _state.Territories = TerritoryFinder.Recompute(
+            _state.Grid, previous, _state.Treasury, _state.UseRandomizedSelection);
         Log.Since(Log.LogCategory.Capture, "[hitch] TerritoryFinder.Recompute", tRecompute);
         Log.Debug(Log.LogCategory.Capture,
             $"[hitch] counts tiles={_state.Grid.Count} territories={_state.Territories.Count}");

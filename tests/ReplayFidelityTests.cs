@@ -18,8 +18,17 @@ namespace FourExHex.Tests;
 /// </summary>
 public class ReplayFidelityTests
 {
-    [Fact]
-    public void Replay_SixComputerPlayers_MatchesSavedStateChecksum()
+    // Both selection eras × both modes: legacy (lex-min) and randomized
+    // (#91) games must each record+serialize+replay to a byte-identical end
+    // board with no divergence. The randomized rows are the regression guard
+    // that the new capital/tide picks reproduce under replay.
+    [Theory]
+    [InlineData(GameMode.Freeform, false)]
+    [InlineData(GameMode.Freeform, true)]
+    [InlineData(GameMode.RisingTides, false)]
+    [InlineData(GameMode.RisingTides, true)]
+    public void Replay_SixComputerPlayers_MatchesSavedStateChecksum(
+        GameMode mode, bool randomized)
     {
         const int MasterSeed = 12345;
         const int MaxTurns = 30;
@@ -28,15 +37,16 @@ public class ReplayFidelityTests
 
         // --- Phase 1: live game ----------------------------------------------
         IReadOnlyList<Player> players = BuildSixComputerPlayers();
-        (GameState liveState, var liveController, var liveMap, var liveHud) =
-            BuildHeadlessGame(players, MasterSeed, MaxTurns, Cols, Rows);
+        (GameState liveState, var liveController, _, _) =
+            BuildHeadlessGame(players, MasterSeed, MaxTurns, Cols, Rows,
+                mode: mode, randomized: randomized);
         liveController.StartGame();
         // All-AI + SynchronousAiPacer → StartGame returns when GameEnded
         // (natural win) or the turn cap fires.
 
         string liveChecksum = GameStateChecksum.Compute(liveState);
         Assert.True(liveController.ReplayBeats.Count > 0,
-            $"Expected the heuristic game to produce beats; got 0.");
+            "Expected the game to produce beats; got 0.");
 
         // --- Phase 2: serialize → deserialize round-trip ---------------------
         Replay replayPayload = new Replay(
@@ -48,6 +58,9 @@ public class ReplayFidelityTests
             "fidelity", MaxTurns, replay: replayPayload);
         LoadedSave loaded = SaveSerializer.Deserialize(json);
         Assert.NotNull(loaded.Replay);
+        // The baked flag must survive the round-trip — it governs the replay's
+        // own re-derivation of capital/tide picks.
+        Assert.Equal(randomized, loaded.State.UseRandomizedSelection);
 
         string savedChecksum = GameStateChecksum.Compute(loaded.State);
         Assert.Equal(liveChecksum, savedChecksum);
@@ -57,11 +70,9 @@ public class ReplayFidelityTests
         // Don't call StartGame/Resume — both would run start-of-turn
         // bookkeeping or re-fire AI turns. BeginReplay alone restores
         // the initial snapshot and steps through the beat log.
-        var replayMap = new MockHexMapView();
-        var replayHud = new MockHudView();
         var replayController = new GameController(
             loaded.State, new SessionState(),
-            replayMap, replayHud,
+            new MockHexMapView(), new MockHudView(),
             seed: loaded.MasterSeed,
             aiPacer: new SynchronousAiPacer(),
             aiChooser: AiDispatcher.ChooseForCurrentPlayer,
@@ -77,59 +88,6 @@ public class ReplayFidelityTests
         // A faithful replay reproduces the recorded end board, so the
         // engine's own divergence check (recorded-vs-replayed checksum)
         // must flag nothing.
-        Assert.Null(replayController.LastReplayDivergence);
-    }
-
-    /// <summary>
-    /// Rising Tides replay fidelity: the same end-to-end check
-    /// as the freeform case above, but the per-turn tide erosion must reproduce
-    /// exactly under replay. The first player's turn-1 forecast is seeded in
-    /// <see cref="GameController.Resume"/> on a live fresh start; replay restores
-    /// the initial snapshot via <see cref="GameController.BeginReplay"/>, which
-    /// must seed that same turn-1 forecast — otherwise the very first end-of-turn
-    /// tide submerges different tiles, the board diverges, and a recorded AI
-    /// action later lands on a now-submerged tile.
-    /// </summary>
-    [Fact]
-    public void Replay_SixComputerPlayers_RisingTides_MatchesSavedStateChecksum()
-    {
-        const int MasterSeed = 12345;
-        const int MaxTurns = 30;
-        const int Cols = 18;
-        const int Rows = 13;
-
-        IReadOnlyList<Player> players = BuildSixComputerPlayers();
-        (GameState liveState, var liveController, _, _) =
-            BuildHeadlessGame(players, MasterSeed, MaxTurns, Cols, Rows,
-                mode: GameMode.RisingTides);
-        liveController.StartGame();
-
-        string liveChecksum = GameStateChecksum.Compute(liveState);
-        Assert.True(liveController.ReplayBeats.Count > 0,
-            "Expected the Rising Tides game to produce beats; got 0.");
-
-        Replay replayPayload = new Replay(
-            liveController.InitialReplaySnapshot!,
-            liveController.InitialReplayTurnNumber,
-            liveController.InitialReplayCurrentPlayerIndex,
-            liveController.ReplayBeats);
-        string json = SaveSerializer.Serialize(liveState, MasterSeed, players,
-            "tides-fidelity", MaxTurns, replay: replayPayload);
-        LoadedSave loaded = SaveSerializer.Deserialize(json);
-        Assert.NotNull(loaded.Replay);
-
-        var replayController = new GameController(
-            loaded.State, new SessionState(),
-            new MockHexMapView(), new MockHudView(),
-            seed: loaded.MasterSeed,
-            aiPacer: new SynchronousAiPacer(),
-            aiChooser: AiDispatcher.ChooseForCurrentPlayer,
-            maxTurnNumber: loaded.MaxTurnNumber,
-            loadedReplay: loaded.Replay);
-        replayController.BeginReplay();
-
-        string replayChecksum = GameStateChecksum.Compute(loaded.State);
-        Assert.Equal(liveChecksum, replayChecksum);
         Assert.Null(replayController.LastReplayDivergence);
     }
 
@@ -217,14 +175,16 @@ public class ReplayFidelityTests
 
     private static (GameState State, GameController Controller, MockHexMapView Map, MockHudView Hud)
         BuildHeadlessGame(IReadOnlyList<Player> players, int masterSeed,
-            int maxTurns, int cols, int rows, GameMode mode = GameMode.Freeform)
+            int maxTurns, int cols, int rows, GameMode mode = GameMode.Freeform,
+            bool randomized = false)
     {
         MapGenResult mapGen = MapGenerator.BuildInitialGrid(cols, rows, players, masterSeed);
         IReadOnlyList<Territory> raw = TerritoryFinder.FindAll(mapGen.Grid);
         IReadOnlyList<Territory> territories = CapitalReconciler.Reconcile(
-            raw, new List<Territory>(), mapGen.Grid);
+            raw, new List<Territory>(), mapGen.Grid, randomize: randomized);
         var state = new GameState(mapGen.Grid, territories, players,
-            new TurnState(players), new Treasury(), mapGen.WaterCoords, mode: mode);
+            new TurnState(players), new Treasury(), mapGen.WaterCoords, mode: mode,
+            useRandomizedSelection: randomized);
         var map = new MockHexMapView();
         var hud = new MockHudView();
         var controller = new GameController(state, new SessionState(),

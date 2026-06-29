@@ -246,7 +246,12 @@ public partial class Main : Node2D
                 pendingLoad.State.WaterCoords,
                 // Carry the authored game mode so a Rising Tides starting map
                 // plays as Rising Tides, not Freeform.
-                pendingLoad.State.Mode);
+                pendingLoad.State.Mode,
+                // A starting map launches a fresh game, so it gets the
+                // randomized capital/tide selection like any new game. The
+                // map's pre-placed capitals are unchanged; only mid-game
+                // captures and tide tie-breaks randomize from here.
+                useRandomizedSelection: true);
             Log.Info(Log.LogCategory.Tide,
                 $"Main: starting map \"{pendingLoad.SlotName}\" mode={pendingLoad.State.Mode}");
             _maxTurnNumber = quickDiagMode ? 200

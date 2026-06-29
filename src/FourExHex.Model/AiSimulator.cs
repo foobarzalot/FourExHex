@@ -42,13 +42,17 @@ public static class AiSimulator
             original.Grid, original.Treasury, original.Territories);
         IReadOnlyList<Territory> territories = snap.ApplyTo(newGrid, newTreasury);
 
+        // Mode is intentionally left at its default here (the simulator never
+        // runs tide logic); the randomized-selection flag must ride along so a
+        // simulated capture picks the same replacement capital as real play.
         return new GameState(
             newGrid,
             territories,
             original.Players,
             original.Turns,
             newTreasury,
-            original.WaterCoords);
+            original.WaterCoords,
+            useRandomizedSelection: original.UseRandomizedSelection);
     }
 
     /// <summary>
@@ -195,7 +199,7 @@ public static class AiSimulator
     private static void Reconcile(GameState state)
     {
         state.Territories = TerritoryFinder.Recompute(
-            state.Grid, state.Territories, state.Treasury);
+            state.Grid, state.Territories, state.Treasury, state.UseRandomizedSelection);
     }
 
 }

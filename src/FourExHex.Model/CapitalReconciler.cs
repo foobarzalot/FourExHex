@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 /// <summary>
@@ -14,13 +15,22 @@ using System.Collections.Generic;
 ///     the one from the largest old territory wins (tiebreaker: lex-min);
 ///     losing capitals are physically removed from the grid.
 ///   - Placement that stomps a unit: the unit is destroyed (no refund).
+///
+/// When <c>randomize</c> is true the two tie-breaks that historically
+/// resolved to the lex-min coord — fresh placement within the chosen
+/// occupant tier and the equal-old-size merge tiebreak — instead pick a
+/// seed-deterministic random candidate. The randomness is drawn from a
+/// <see cref="Random"/> seeded purely from the territory's own coords
+/// (<see cref="SeedFromCoords"/>), so it never touches the live per-turn RNG
+/// stream and the AI's cloned 1-ply simulation reproduces the identical pick.
 /// </summary>
 public static class CapitalReconciler
 {
     public static IReadOnlyList<Territory> Reconcile(
         IReadOnlyList<Territory> rawNewTerritories,
         IReadOnlyList<Territory> oldTerritories,
-        HexGrid grid)
+        HexGrid grid,
+        bool randomize = false)
     {
         // Remember each old territory's capital + size so merge ties can
         // be broken.
@@ -88,18 +98,27 @@ public static class CapitalReconciler
 
             HexCoord? chosenCapital;
 
+            // Per-territory RNG seeded from this territory's own coords, so the
+            // pick is reproducible everywhere the same board is reconciled
+            // (live capture, the AI's cloned simulation, replay re-derivation)
+            // without consuming the live per-turn stream. Null → lex-min.
+            Random? capitalRng = randomize ? new Random(SeedFromCoords(newT.Coords)) : null;
+
             if (inheritedOldCaps.Count == 0)
             {
                 // No inherited capital — place a fresh one if the territory is
                 // big enough. May stomp a unit. Any 2+ region now has a legal
                 // site (mountains included), so Choose returns null
                 // only for the impossible all-Capital case — guarded defensively.
-                chosenCapital = CapitalPlacer.Choose(newT.Coords, grid);
+                chosenCapital = CapitalPlacer.Choose(newT.Coords, grid, capitalRng);
                 if (chosenCapital.HasValue)
                 {
                     HexTile placeTile = grid.Get(chosenCapital.Value)!;
                     // Replace whatever was there (empty slot or a unit).
                     placeTile.Occupant = new Capital();
+                    Log.Debug(Log.LogCategory.Capture,
+                        $"[reconcile] owner={newT.Owner.Index} size={newT.Coords.Count} " +
+                        $"placed capital {chosenCapital.Value} ({(randomize ? "randomized" : "lex-min")})");
                 }
                 else
                 {
@@ -115,21 +134,23 @@ public static class CapitalReconciler
             }
             else
             {
-                // Merge: largest old territory's capital wins.
-                HexCoord winner = inheritedOldCaps[0];
-                for (int i = 1; i < inheritedOldCaps.Count; i++)
+                // Merge: the capital from the largest old territory wins.
+                // Among capitals tied on largest old size, the lex-min coord
+                // wins (capitalRng == null) or a random one of them does.
+                int maxOldSize = int.MinValue;
+                foreach (HexCoord cap in inheritedOldCaps)
                 {
-                    HexCoord candidate = inheritedOldCaps[i];
-                    if (oldCapitalSize[candidate] > oldCapitalSize[winner])
-                    {
-                        winner = candidate;
-                    }
-                    else if (oldCapitalSize[candidate] == oldCapitalSize[winner]
-                             && candidate.CompareTo(winner) < 0)
-                    {
-                        winner = candidate;
-                    }
+                    if (oldCapitalSize[cap] > maxOldSize) maxOldSize = oldCapitalSize[cap];
                 }
+                var topTied = new List<HexCoord>();
+                foreach (HexCoord cap in inheritedOldCaps)
+                {
+                    if (oldCapitalSize[cap] == maxOldSize) topTied.Add(cap);
+                }
+                topTied.Sort();
+                HexCoord winner = capitalRng == null
+                    ? topTied[0]
+                    : topTied[capitalRng.Next(topTied.Count)];
                 chosenCapital = winner;
 
                 // Demote losers: remove their Capital occupant so the tile
@@ -151,5 +172,35 @@ public static class CapitalReconciler
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Deterministic 32-bit seed derived purely from a territory's coords.
+    /// The coords are sorted first so the seed is independent of enumeration
+    /// order; an FNV-1a fold over (Q, R) then a splitmix32 avalanche spreads
+    /// adjacent coord sets to uncorrelated seeds. Integer-only (the no-floats
+    /// rule). Two reconciles of the same board → same coords → same seed → the
+    /// same randomized capital, which is what keeps live play, the AI's cloned
+    /// simulation, and replay re-derivation in lockstep.
+    /// </summary>
+    private static int SeedFromCoords(IReadOnlyCollection<HexCoord> coords)
+    {
+        var sorted = new List<HexCoord>(coords);
+        sorted.Sort();
+        unchecked
+        {
+            uint x = 2166136261u; // FNV-1a offset basis
+            foreach (HexCoord c in sorted)
+            {
+                x = (x ^ (uint)c.Q) * 16777619u;
+                x = (x ^ (uint)c.R) * 16777619u;
+            }
+            x ^= x >> 16;
+            x *= 0x7feb352du;
+            x ^= x >> 15;
+            x *= 0x846ca68bu;
+            x ^= x >> 16;
+            return (int)x;
+        }
     }
 }
