@@ -1217,32 +1217,18 @@ public partial class HudView : OrientationHud, IHudView
             Color fill = _fill;
             Color accent = _accent;
 
-            const float Sqrt3Over2 = 0.8660254f;
             float r = Mathf.Min(Size.X, Size.Y) * 0.45f;
-            Vector2 c = Size * 0.5f;
-            Vector2 vTop = c + new Vector2(0f, -r);
-            Vector2 vBR  = c + new Vector2( r * Sqrt3Over2, r * 0.5f);
-            Vector2 vBL  = c + new Vector2(-r * Sqrt3Over2, r * 0.5f);
+            (Vector2[] triangle, Vector2[] bar, Vector2 dotCenter, float dotRadius) =
+                HudIcons.WarningBadgeGeometry(Size * 0.5f, r);
 
-            DrawColoredPolygon(new[] { vTop, vBR, vBL }, fill);
-            DrawLine(vTop, vBR, accent, 2f, true);
-            DrawLine(vBR, vBL, accent, 2f, true);
-            DrawLine(vBL, vTop, accent, 2f, true);
+            DrawColoredPolygon(triangle, fill);
+            DrawLine(triangle[0], triangle[1], accent, 2f, true);
+            DrawLine(triangle[1], triangle[2], accent, 2f, true);
+            DrawLine(triangle[2], triangle[0], accent, 2f, true);
 
-            // Exclamation: vertical bar + dot, white. Geometry matches
-            // DrawWarningBadgeAt's per-HexSize ratios so the two badges
-            // read identically.
-            float barHalf = r * 0.11f;
-            float barTop = c.Y - r * 0.40f;
-            float barBottom = c.Y + r * 0.05f;
-            DrawColoredPolygon(new[]
-            {
-                new Vector2(c.X - barHalf, barTop),
-                new Vector2(c.X + barHalf, barTop),
-                new Vector2(c.X + barHalf, barBottom),
-                new Vector2(c.X - barHalf, barBottom),
-            }, accent);
-            DrawCircle(new Vector2(c.X, c.Y + r * 0.28f), r * 0.11f, accent);
+            // Exclamation: vertical bar + dot, accent color.
+            DrawColoredPolygon(bar, accent);
+            DrawCircle(dotCenter, dotRadius, accent);
         }
     }
 

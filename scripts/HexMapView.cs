@@ -3859,41 +3859,27 @@ public partial class HexMapView : Node2D, IHexMapView
         Log.Debug(Log.LogCategory.Render,
             $"[WarningBadge] capital={capital} offset={cornerOffset} (mapAngle {Mathf.RadToDeg(_mapAngleRad):0}°)");
 
-        // Equilateral triangle pointing up, inscribed in radius r.
-        const float Sqrt3Over2 = 0.8660254f;
-        float r = HexSize * 0.45f;
-        Vector2 vTop = new Vector2(0f, -r);
-        Vector2 vBR  = new Vector2( r * Sqrt3Over2, r * 0.5f);
-        Vector2 vBL  = new Vector2(-r * Sqrt3Over2, r * 0.5f);
+        // Shared equilateral-triangle + exclamation geometry (origin-relative;
+        // the Node2D is positioned at badgePos). Matches the HUD bankrupt-toast
+        // badge so the two read identically.
+        (Vector2[] triangle, Vector2[] bar, Vector2 dotCenter, float dotRadius) =
+            HudIcons.WarningBadgeGeometry(Vector2.Zero, HexSize * 0.45f);
 
         var badge = new Node2D { Position = badgePos };
-        badge.AddChild(new Polygon2D { Polygon = new[] { vTop, vBR, vBL }, Color = fill });
+        badge.AddChild(new Polygon2D { Polygon = triangle, Color = fill });
         // Border: closed Line2D around the triangle (Line2D has no
         // auto-close, so repeat the first vertex).
         badge.AddChild(new Line2D
         {
-            Points = new[] { vTop, vBR, vBL, vTop },
+            Points = new[] { triangle[0], triangle[1], triangle[2], triangle[0] },
             Width = 2f,
             DefaultColor = accent,
         });
 
         // Exclamation glyph: vertical bar + dot below, both accent color.
-        float barHalfWidth = r * 0.11f;
-        float barTop = -r * 0.40f;
-        float barBottom = r * 0.05f;
-        badge.AddChild(new Polygon2D
-        {
-            Polygon = new[]
-            {
-                new Vector2(-barHalfWidth, barTop),
-                new Vector2( barHalfWidth, barTop),
-                new Vector2( barHalfWidth, barBottom),
-                new Vector2(-barHalfWidth, barBottom),
-            },
-            Color = accent,
-        });
-        Polygon2D dot = CreateFilledDisc(r * 0.11f, accent);
-        dot.Position = new Vector2(0f, r * 0.28f);
+        badge.AddChild(new Polygon2D { Polygon = bar, Color = accent });
+        Polygon2D dot = CreateFilledDisc(dotRadius, accent);
+        dot.Position = dotCenter;
         badge.AddChild(dot);
 
         _warningBadgesLayer!.AddChild(badge);

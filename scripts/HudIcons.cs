@@ -74,6 +74,40 @@ public static class HudIcons
     };
 
     /// <summary>
+    /// Geometry for the "economy warning" badge: an equilateral up-pointing
+    /// triangle of radius <paramref name="r"/> centered at
+    /// <paramref name="center"/>, plus the exclamation mark (a vertical bar quad
+    /// and a dot). Shared by the HUD bankrupt-toast badge
+    /// (<c>HudView.TriangleWarningBadge</c>) and the on-map capital badge
+    /// (<c>HexMapView.DrawWarningBadgeAt</c>) so the two read identically; each
+    /// caller draws the returned verts in its own mode (immediate <c>_Draw</c>
+    /// vs <c>Node2D</c> children).
+    /// </summary>
+    public static (Vector2[] triangle, Vector2[] bar, Vector2 dotCenter, float dotRadius)
+        WarningBadgeGeometry(Vector2 center, float r)
+    {
+        const float Sqrt3Over2 = 0.8660254f;
+        Vector2[] triangle =
+        {
+            center + new Vector2(0f, -r),
+            center + new Vector2( r * Sqrt3Over2, r * 0.5f),
+            center + new Vector2(-r * Sqrt3Over2, r * 0.5f),
+        };
+        float barHalf = r * 0.11f;
+        float barTop = center.Y - r * 0.40f;
+        float barBottom = center.Y + r * 0.05f;
+        Vector2[] bar =
+        {
+            new Vector2(center.X - barHalf, barTop),
+            new Vector2(center.X + barHalf, barTop),
+            new Vector2(center.X + barHalf, barBottom),
+            new Vector2(center.X - barHalf, barBottom),
+        };
+        Vector2 dotCenter = new Vector2(center.X, center.Y + r * 0.28f);
+        return (triangle, bar, dotCenter, r * 0.11f);
+    }
+
+    /// <summary>
     /// Mountain glyph for the editor's mountain brush button: a
     /// solid grey outlined peak (no snow cap), drawn in opaque grey so it reads
     /// against the button's dark slate backdrop. Reads distinctly from the gold
@@ -94,8 +128,13 @@ public static class HudIcons
     }
 
     public static void DrawCapital(CanvasItem t, Vector2 center, float radius, Color modulate)
+        => DrawStar(t, center, radius * 0.65f, modulate);
+
+    // Five-point gold star (ten alternating outer/inner vertices, first point
+    // up), filled gold then outlined. Shared by the capital and
+    // next-territory glyphs; `inner` is a fixed 0.4 of `outer`.
+    private static void DrawStar(CanvasItem t, Vector2 center, float outer, Color modulate)
     {
-        float outer = radius * 0.65f;
         float inner = outer * 0.4f;
         var verts = new Vector2[10];
         for (int i = 0; i < 10; i++)
@@ -140,22 +179,7 @@ public static class HudIcons
     /// button. Star uses <paramref name="modulate"/> for disabled dimming.
     /// </summary>
     public static void DrawNextTerritory(CanvasItem t, Vector2 center, float radius, Color stroke, Color modulate)
-    {
-        float outer = radius * 0.82f;
-        float inner = outer * 0.4f;
-        var verts = new Vector2[10];
-        for (int i = 0; i < 10; i++)
-        {
-            float angle = -Mathf.Pi / 2f + i * Mathf.Pi / 5f;
-            float r = (i % 2 == 0) ? outer : inner;
-            verts[i] = center + new Vector2(r * Mathf.Cos(angle), r * Mathf.Sin(angle));
-        }
-        t.DrawColoredPolygon(verts, new Color(0.97f, 0.80f, 0.22f, 1f) * modulate);
-        for (int i = 0; i < 10; i++)
-        {
-            t.DrawLine(verts[i], verts[(i + 1) % 10], Outline * modulate, OutlineWidth);
-        }
-    }
+        => DrawStar(t, center, radius * 0.82f, modulate);
 
     public static void DrawHand(CanvasItem t, Vector2 center, float radius, Color modulate)
     {
