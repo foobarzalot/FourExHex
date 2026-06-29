@@ -672,7 +672,7 @@ public partial class HexMapView : Node2D, IHexMapView
         {
             for (int col = -waterRimMargin; col < Cols + waterRimMargin; col++)
             {
-                if (row >= 0 && row < Rows && col >= 0 && col < Cols) continue;
+                if (HitTestMath.InOffsetBounds(col, row, Cols, Rows)) continue;
                 HexCoord coord = HexCoord.FromOffset(col, row);
                 Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(coord, HexSize);
                 bake.AddPolygon(center, waterHex, WaterColor, null);
@@ -691,7 +691,7 @@ public partial class HexMapView : Node2D, IHexMapView
         {
             for (int col = -waterRimMargin; col < Cols + waterRimMargin; col++)
             {
-                if (row >= 0 && row < Rows && col >= 0 && col < Cols) continue;
+                if (HitTestMath.InOffsetBounds(col, row, Cols, Rows)) continue;
                 HexCoord coord = HexCoord.FromOffset(col, row);
                 Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(coord, HexSize);
                 AddShoreFoamStrips(bake, center, coord);
@@ -2959,7 +2959,7 @@ public partial class HexMapView : Node2D, IHexMapView
         Vector2 local = ToLocal(viewportPos) - FirstHexCenterOffset;
         HexCoord coord = HexPixel.FromPixel(local, HexSize);
         (int col, int row) = coord.ToOffset();
-        bool inBounds = col >= 0 && col < Cols && row >= 0 && row < Rows;
+        bool inBounds = HitTestMath.InOffsetBounds(col, row, Cols, Rows);
         CoordHovered.Invoke(inBounds ? coord : (HexCoord?)null);
     }
 
@@ -2976,7 +2976,7 @@ public partial class HexMapView : Node2D, IHexMapView
         Vector2 local = ToLocal(viewportPos) - FirstHexCenterOffset;
         HexCoord coord = HexPixel.FromPixel(local, HexSize);
         (int col, int row) = coord.ToOffset();
-        if (col < 0 || col >= Cols || row < 0 || row >= Rows) return;
+        if (!HitTestMath.InOffsetBounds(col, row, Cols, Rows)) return;
         if (!force && coord.Equals(_lastPaintedCoord)) return;
         _lastPaintedCoord = coord;
         PaintCellEntered?.Invoke(coord);
