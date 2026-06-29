@@ -1937,10 +1937,12 @@ public class GameController
         // tutorial graduates to free play (see GraduateFromTutorialScripting)
         // ordinary claim-victory rules resume.
         bool previewScripted = _previewMode && !_previewScriptingComplete;
-        // Rising Tides (issue #56) suppresses all claim-victory tiers — the
-        // sea, not a territorial lead, ends the game.
-        bool risingTides = _state.Mode == GameMode.RisingTides;
-        if (!risingTides && !alreadyWon && !current.IsAi && !previewScripted && !_recordingMode)
+        // Claim-victory tiers apply in BOTH modes (issue #88 follow-up): in
+        // Rising Tides the percentage is measured against the current,
+        // non-sunk tiles — submerged tiles are removed from the grid, so
+        // NextClaimVictoryThreshold (which counts _state.Grid) already tracks
+        // the shrinking board automatically.
+        if (!alreadyWon && !current.IsAi && !previewScripted && !_recordingMode)
         {
             int seen = _session.ClaimVictoryPromptedHighestThreshold
                 .TryGetValue(current.Id, out int s) ? s : 0;

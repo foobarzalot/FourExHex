@@ -56,19 +56,38 @@ public partial class GameControllerTests
     }
 
     [Fact]
-    public void RisingTides_EndTurnWithTerritorialLead_SuppressesClaimVictoryPrompt()
+    public void RisingTides_EndTurnWithTerritorialLead_OffersClaimVictory()
     {
-        // Control: in freeform, ending Red's turn while owning 66% trips the
-        // 50% claim-victory tier.
+        // Claim-victory tiers (50/75/90%) apply in Rising Tides too, computed
+        // over the current non-sunk tiles. Red owns 4/6 (66%) of a single
+        // connected row, so ending its turn trips the 50% tier — the same
+        // prompt freeform shows.
         var freeform = new TidesGame(LopsidedRow(), GameMode.Freeform);
         freeform.Hud.ClickEndTurn();
         Assert.NotNull(freeform.Session.PendingClaimVictory);
+        Assert.Equal(50, freeform.Session.PendingClaimVictory!.Value.ThresholdPercent);
 
-        // Rising Tides: same lead, no prompt — the turn just ends.
         var tides = new TidesGame(LopsidedRow(), GameMode.RisingTides);
         tides.Hud.ClickEndTurn();
-        Assert.Null(tides.Session.PendingClaimVictory);
-        Assert.Equal(tides.Blue.Id, tides.State.Turns.CurrentPlayer.Id);
+        Assert.NotNull(tides.Session.PendingClaimVictory);
+        Assert.Equal(50, tides.Session.PendingClaimVictory!.Value.ThresholdPercent);
+        // The offer holds the turn — still Red's until Win Now / Continue.
+        Assert.Equal(tides.Red.Id, tides.State.Turns.CurrentPlayer.Id);
+    }
+
+    [Fact]
+    public void RisingTides_ClaimVictoryWinNow_DeclaresWinner()
+    {
+        // The restored claim-victory Win Now path ends the game in Rising
+        // Tides just as it does in freeform.
+        var tides = new TidesGame(LopsidedRow(), GameMode.RisingTides);
+        tides.Hud.ClickEndTurn();
+        Assert.NotNull(tides.Session.PendingClaimVictory);
+
+        tides.Hud.ClickClaimVictoryWinNow();
+
+        Assert.True(tides.Session.IsGameOver);
+        Assert.Equal(tides.Red.Id, tides.Session.Winner);
     }
 
     [Fact]

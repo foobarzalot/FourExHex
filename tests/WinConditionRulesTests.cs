@@ -363,4 +363,23 @@ public class WinConditionRulesTests
         HexGrid grid = Build100TileGrid(95);
         Assert.Null(WinConditionRules.NextClaimVictoryThreshold(Red, grid, 90));
     }
+
+    [Fact]
+    public void NextClaimVictoryThreshold_CountsOnlyCurrentGridTiles_SunkTilesExcluded()
+    {
+        // Rising Tides (issue #88 follow-up) sinks tiles by REMOVING them from
+        // the grid, so the claim-victory denominator is automatically the count
+        // of active (non-sunk) tiles. Red owns 4 of 8 (exactly 50% — not >50%,
+        // so no tier). After a Blue tile sinks (is removed), Red owns 4 of 7
+        // (>50%), tripping the 50% tier — proving the percentage tracks the
+        // remaining-tile count, not the original board size.
+        var grid = new HexGrid();
+        for (int q = 0; q < 4; q++) grid.Add(new HexTile(new HexCoord(q, 0), Red));
+        for (int q = 0; q < 4; q++) grid.Add(new HexTile(new HexCoord(q, 2), Blue));
+        Assert.Null(WinConditionRules.NextClaimVictoryThreshold(Red, grid, 0));
+
+        grid.Remove(new HexCoord(0, 2)); // a Blue tile sinks
+
+        Assert.Equal(50, WinConditionRules.NextClaimVictoryThreshold(Red, grid, 0));
+    }
 }
