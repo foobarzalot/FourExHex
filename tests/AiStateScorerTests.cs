@@ -54,7 +54,7 @@ public class AiStateScorerTests
     {
         // Same board scored with and without a single gold tile. The gold
         // bonus flows through IncomeRules.IncomeFor into the net-income term,
-        // so the AI values the gold board strictly higher (issue #45).
+        // so the AI values the gold board strictly higher.
         GameState plain = BuildState(Difficulty.Soldier);
 
         GameState gilded = BuildState(Difficulty.Soldier);
@@ -67,7 +67,7 @@ public class AiStateScorerTests
             $"expected gold {gildedScore} > plain {plainScore}");
     }
 
-    // --- Gold standing premium (#61) -------------------------------------
+    // --- Gold standing premium -------------------------------------------
     // A gold tile earns 5x an ordinary tile (1 + GoldTileBonus), so its
     // territorial worth is 5x TileWeight: the base TileWeight is
     // unconditional (every tile) and an extra TileWeight * GoldTileBonus
@@ -192,7 +192,7 @@ public class AiStateScorerTests
             $"expected swing {redOwns - blueOwns} >= {2 * 10 * IncomeRules.GoldTileBonus}");
     }
 
-    // --- Standing contested-border defense magnitude (#61) ---------------
+    // --- Standing contested-border defense magnitude ---------------------
     // A one-sided term in Score(): each own tile bordering an enemy adds
     // ContestedDefenseWeight × min(Defense, ContestedDefenseCap). It values
     // *holding* a strong defensive position (so a defender stays put rather
@@ -279,8 +279,8 @@ public class AiStateScorerTests
     [Fact]
     public void Score_SparseRoster_ResolvesOwnerDifficultyBySlot()
     {
-        // Compact roster with a gap: slots 0, 2, 5 present (1,3,4 are None —
-        // issue #70). The whole board belongs to the slot-5 player, whose
+        // Compact roster with a gap: slots 0, 2, 5 present (1,3,4 are None).
+        // The whole board belongs to the slot-5 player, whose
         // position in the 3-element roster is 2. Scoring must resolve the
         // owner's difficulty by SLOT, not by indexing the roster at slot 5
         // (which threw IndexOutOfRange before the fix).

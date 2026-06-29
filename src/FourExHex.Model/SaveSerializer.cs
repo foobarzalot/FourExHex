@@ -18,10 +18,9 @@ public sealed class LoadedSave
     public string SlotName { get; }
 
     /// <summary>
-    /// True iff the file carried explicit per-player kinds (issue #70). In-progress
-    /// saves and post-#70 starting maps bake kinds; pre-#70 starting maps did not.
-    /// The starting-map load path uses this to decide between the baked roster and
-    /// the legacy default (6 players, Red human, the rest Computer, all Soldier).
+    /// True iff the file carries explicit per-player kinds. The starting-map
+    /// load path uses this to decide between the baked roster and the legacy
+    /// default (6 players, Red human, the rest Computer, all Soldier).
     /// </summary>
     public bool MapHasBakedKinds { get; }
 
@@ -34,10 +33,8 @@ public sealed class LoadedSave
 
     /// <summary>
     /// Highest claim-victory threshold (50/75/90) each human player has
-    /// already dismissed this game. Empty for fresh games and for
-    /// saves written before any tier was added. Saves written before
-    /// the multi-tier change carried only a flat color list; those
-    /// load with each player mapped to 50.
+    /// already dismissed this game. Empty for fresh games; legacy
+    /// flat-color-list saves load with each player mapped to 50.
     /// </summary>
     public IReadOnlyDictionary<PlayerId, int> ClaimVictoryPromptedHighestThreshold { get; }
 
@@ -60,9 +57,9 @@ public sealed class LoadedSave
 
     /// <summary>
     /// Campaign level index (0..255) this game was launched from, or
-    /// null for freeform games and pre-v8 saves. Restored into
+    /// null for freeform games. Restored into
     /// <see cref="GameSettings.CampaignLevel"/> on load so resuming an
-    /// autosaved campaign game can still record a win (issue #2).
+    /// autosaved campaign game can still record a win.
     /// </summary>
     public int? CampaignLevel { get; }
 
@@ -138,10 +135,10 @@ public static class SaveSerializer
 
     /// <summary>
     /// Serialize a starting map — same JSON format as <see cref="Serialize"/>.
-    /// Since #70 the per-color kind (Human/Computer/None) and difficulty are
+    /// The per-color kind (Human/Computer/None) and difficulty are
     /// baked in (<paramref name="players"/> carries the chosen roster, including
     /// <see cref="PlayerKind.None"/> slots), so a loaded map restores its exact
-    /// player setup. Pre-#70 maps omitted these fields; they still load (every
+    /// player setup. Maps without these fields still load (every
     /// color defaults via the legacy default roster — see
     /// <see cref="LoadedSave.MapHasBakedKinds"/>). Optional
     /// <paramref name="tutorial"/> attaches an authored tutorial to the file
@@ -202,25 +199,24 @@ public static class SaveSerializer
             // Null (omitted) for Freeform so every existing freeform save's
             // wire format is unchanged; only Rising Tides games carry it.
             Mode = state.Mode == GameMode.Freeform ? null : state.Mode,
-            // The locked tide forecast for the current turn (issue #85). Null
+            // The locked tide forecast for the current turn. Null
             // (omitted) when empty — every freeform save and any Rising Tides save
             // taken between turns — so the wire format stays clean.
             PendingTide = SerializePendingTide(state.PendingTide),
         };
         // Source-gen path (FourExHexJsonContext) so this works under iOS AOT,
         // where reflection-based serialization is disabled. The context's
-        // [JsonSourceGenerationOptions] attribute carries the same
-        // WriteIndented + IgnoreNulls options the reflection path historically
-        // used, so the JSON wire format is unchanged.
+        // [JsonSourceGenerationOptions] attribute carries WriteIndented +
+        // IgnoreNulls so the JSON wire format matches.
         return JsonSerializer.Serialize(data, FourExHexJsonContext.Default.SaveData);
     }
 
     /// <summary>
     /// Encode the prompted-tier dictionary as a hex→percent map. Returns
     /// null when empty so the field is omitted from JSON entirely (kept
-    /// clean for fresh games and starting maps). v5 keys by player index
+    /// clean for fresh games and starting maps). Keyed by player index
     /// (palette-independent); the legacy color-hex fields are read-only
-    /// on the deserialize path for v2..v4 backward compatibility.
+    /// on the deserialize path for backward compatibility.
     /// </summary>
     private static Dictionary<int, int>? SerializeClaimVictoryPrompted(
         IReadOnlyDictionary<PlayerId, int>? prompted)
@@ -242,25 +238,12 @@ public static class SaveSerializer
         {
             throw new InvalidOperationException("Save file is empty or malformed.");
         }
-        // Accept v2..v8. v2 predates the Tutorial block; v3 predates the
-        // Replay block; v4 keyed claim-victory by color hex and threw on
-        // an owner not in the roster. v5 keys claim-victory by player
-        // index and encodes "no owner" as OwnerIndex -1. v6 renamed the
-        // unit levels (Peasant/Spearman/Knight/Baron →
-        // Recruit/Soldier/Captain/Commander); pre-v6 level names still
-        // load via ParseUnitLevel. Older files also load their
-        // claim-victory data via the legacy color-hex path below.
-        // v7 added per-player Difficulty; v8 added the optional
-        // CampaignLevel pointer (issue #2); v9 added per-tile IsGold
-        // (issue #45); v10 added per-tile IsMountain (issue #37) — all
-        // default-absent, so pre-bump files load unchanged (missing IsGold /
-        // IsMountain → false, an ordinary tile). v12 added the optional
-        // Rising Tides Mode flag (issue #56) — absent/null loads as Freeform.
-        // v13 made gold and mountain mutually exclusive (issue #81): a tile is
-        // gold OR mountain, never both, so a legacy tile carrying both flags is
-        // normalized to mountain-only on load (mountain wins) below. v14 added the
-        // optional Rising Tides PendingTide forecast (issue #85) — absent/null
-        // loads as an empty forecast.
+        // Accept any version in 2..CurrentFormatVersion. Newer fields are all
+        // default-absent: missing fields fall back to legacy defaults on load
+        // (no Tutorial/Replay block, claim-victory read via the legacy color-hex
+        // path, missing IsGold/IsMountain → ordinary tile, missing Mode → Freeform,
+        // missing PendingTide → empty forecast). A tile carrying both gold and
+        // mountain flags is normalized to mountain-only below.
         if (data.FormatVersion is < 2 or > CurrentFormatVersion)
         {
             throw new InvalidOperationException(
@@ -280,10 +263,9 @@ public static class SaveSerializer
         foreach (TileDto tile in data.Tiles)
         {
             PlayerId owner = OwnerIndexToId(tile.OwnerIndex, players);
-            // Gold and mountain are mutually exclusive (issue #81). A legacy
-            // (pre-v13) save could carry both flags on one tile; mountain wins,
-            // so set the single TerrainFeature explicitly rather than relying on
-            // accessor ordering.
+            // Gold and mountain are mutually exclusive. A save carrying both
+            // flags on one tile resolves to mountain, so set the single
+            // TerrainFeature explicitly rather than relying on accessor ordering.
             TerrainFeature feature =
                 tile.IsMountain ? TerrainFeature.Mountain :
                 tile.IsGold ? TerrainFeature.Gold :
@@ -300,7 +282,7 @@ public static class SaveSerializer
         {
             Log.Info(Log.LogCategory.MapGen,
                 $"[save] normalized {normalizedGoldMountain} legacy gold+mountain " +
-                $"tile(s) to mountain-only (issue #81)");
+                $"tile(s) to mountain-only");
         }
 
         IReadOnlyList<Territory> territories = DeserializeTerritories(data.Territories, players);
@@ -316,8 +298,8 @@ public static class SaveSerializer
             grid, territories, players, turnState, treasury, waterCoords,
             mode: data.Mode ?? GameMode.Freeform)
         {
-            // Restore the locked tide forecast (issue #85); empty for freeform
-            // and pre-v14 saves so the reloaded game telegraphs/applies nothing.
+            // Restore the locked tide forecast; empty for freeform saves so
+            // the reloaded game telegraphs/applies nothing.
             PendingTide = DeserializePendingTide(data.PendingTide),
         };
         IReadOnlyDictionary<PlayerId, int> prompted = DeserializeClaimVictoryPrompted(
@@ -352,12 +334,11 @@ public static class SaveSerializer
     /// <summary>
     /// Read precedence (the three fields are NOT additive — the first
     /// present one wins):
-    ///   1. v5 <c>ByPlayerIndex</c> — palette-independent, authoritative.
-    ///   2. v4 <c>ByColorHex</c> — map each stored hex back to its slot.
-    ///   3. v2/v3 flat <c>ColorHexes</c> — each entry = "prompted at 50%".
+    ///   1. <c>ByPlayerIndex</c> — palette-independent, authoritative.
+    ///   2. <c>ByColorHex</c> — map each stored hex back to its slot.
+    ///   3. flat <c>ColorHexes</c> — each entry = "prompted at 50%".
     /// Hexes that match no current palette slot are dropped (cosmetic
-    /// palette drift between builds — same lossy behavior as the old
-    /// Godot.Color round-trip). Empty if none present.
+    /// palette drift between builds). Empty if none present.
     /// </summary>
     private static IReadOnlyDictionary<PlayerId, int> DeserializeClaimVictoryPrompted(
         Dictionary<int, int>? byIndex,
@@ -414,7 +395,7 @@ public static class SaveSerializer
         return set;
     }
 
-    // --- Pending tide forecast (issue #85) -------------------------------
+    // --- Pending tide forecast -------------------------------
 
     private static List<TideStepDto>? SerializePendingTide(IReadOnlyList<TideStep> plan)
     {
@@ -447,17 +428,16 @@ public static class SaveSerializer
         {
             // Index and color track the player's SLOT (PlayerId.Index), not its
             // position in the (possibly compacted) roster list — a 2–6 player
-            // game keeps each survivor on its own color (issue #70). For a full
-            // 6-player roster slot == list position, so the wire format is
-            // byte-identical to the pre-#70 output.
+            // game keeps each survivor on its own color. For a full 6-player
+            // roster slot == list position.
             int slot = p.Id.Index;
             dtos.Add(new PlayerDto
             {
                 Index = slot,
                 Name = p.Name,
                 ColorHex = GameSettings.PlayerConfig[slot].Hex,
-                // Null is omitted from JSON via JsonOptions, so pre-#70 starting
-                // maps had no per-color role baked into the file.
+                // Null is omitted from JSON via JsonOptions, so maps with no
+                // baked role write no Kind.
                 Kind = includeKind ? p.Kind.ToString() : null,
                 Difficulty = includeKind ? p.Difficulty.ToString() : null,
             });
@@ -465,9 +445,9 @@ public static class SaveSerializer
         return dtos;
     }
 
-    /// <summary>True iff any player dto carried an explicit kind — i.e. an
-    /// in-progress save or a post-#70 starting map (vs. a pre-#70 map that
-    /// baked no roles). Drives <see cref="LoadedSave.MapHasBakedKinds"/>.</summary>
+    /// <summary>True iff any player dto carried an explicit kind — i.e. a save
+    /// or starting map that baked an explicit kind.
+    /// Drives <see cref="LoadedSave.MapHasBakedKinds"/>.</summary>
     private static bool AnyBakedKinds(List<PlayerDto> dtos)
     {
         foreach (PlayerDto dto in dtos)
@@ -483,7 +463,7 @@ public static class SaveSerializer
         foreach (PlayerDto dto in dtos)
         {
             PlayerKind kind = ParsePlayerKind(dto.Kind);
-            // A None slot is not a live player (issue #70): drop it so the
+            // A None slot is not a live player: drop it so the
             // active roster compacts. Tiles owned by it never appear in a
             // valid file (the editor's save validation enforces that), and
             // OwnerIndexToId resolves any stray owner to neutral defensively.
@@ -498,8 +478,7 @@ public static class SaveSerializer
     /// Map a saved <see cref="PlayerDto.Kind"/> string to a
     /// <see cref="PlayerKind"/>. Missing/empty = starting map: use Human
     /// as a placeholder (the play-scene load path overrides from
-    /// GameSettings). Legacy saves predate the {Human, Computer} collapse
-    /// and stored the old AiKind names "Random"/"Heuristic" — both map to
+    /// GameSettings). Legacy "Random"/"Heuristic" kind names both map to
     /// Computer, the game's only AI.
     /// </summary>
     private static PlayerKind ParsePlayerKind(string? kind)
@@ -892,9 +871,8 @@ public static class SaveSerializer
     /// <summary>
     /// Parse a stored unit-level string into the current
     /// <see cref="UnitLevel"/>. Accepts the current names
-    /// (Recruit/Soldier/Captain/Commander, v6+) and the pre-v6 names
-    /// (Peasant/Spearman/Knight/Baron) so saves written before the unit
-    /// rename still load — the levels are unchanged, only the names are.
+    /// (Recruit/Soldier/Captain/Commander) and the legacy names
+    /// (Peasant/Spearman/Knight/Baron), mapping each to the same level.
     /// </summary>
     private static UnitLevel ParseUnitLevel(string name) => name switch
     {
@@ -907,15 +885,14 @@ public static class SaveSerializer
 
     // --- Owner/index helpers --------------------------------------------
 
-    // v5: PlayerId.None encodes as -1 (no owner). Real games never produce
+    // PlayerId.None encodes as -1 (no owner). Real games never produce
     // a None-owned tile, but the format round-trips it defensively rather
-    // than throwing (the v4 behavior).
+    // than throwing.
     private static int IdToOwnerIndex(PlayerId id) => id.IsNone ? -1 : id.Index;
 
     // The stored owner index is a SLOT (PlayerId.Index), not a position in the
     // roster list. With a 2–6 player game the roster is compacted (e.g. slots
-    // 0,2,4), so we match by slot rather than indexing the list (issue #70). For
-    // a full 6-player roster slot == list position, so this is unchanged. A slot
+    // 0,2,4), so we match by slot rather than indexing the list. A slot
     // absent from the active roster resolves to neutral defensively (a valid
     // file never references a None slot's color).
     private static PlayerId OwnerIndexToId(int index, IReadOnlyList<Player> players)
@@ -929,13 +906,10 @@ public static class SaveSerializer
     }
 
     /// <summary>
-    /// Hex strings that a palette slot used to ship with but no longer does,
-    /// mapped to the slot index that inherited the identity. Consulted as a
-    /// fallback by <see cref="TryPlayerForHex"/> so legacy v2..v4 claim-victory
-    /// data keyed by a retired color still resolves to the right player.
-    /// "e3bc3b" was slot 3's Yellow before it was recolored Brown (issue #44);
-    /// "8a5a2b" was slot 3's Brown before it was re-tuned to a saturated
-    /// chocolate for on-tile glyph contrast (issue #62).
+    /// Retired palette hex strings mapped to the slot index that inherited
+    /// their identity. Consulted as a fallback by <see cref="TryPlayerForHex"/>
+    /// so legacy claim-victory data keyed by a retired color still resolves to
+    /// the right player.
     /// </summary>
     private static readonly Dictionary<string, int> RetiredHexAliases =
         new(StringComparer.OrdinalIgnoreCase)
@@ -945,11 +919,10 @@ public static class SaveSerializer
         };
 
     /// <summary>
-    /// Map a legacy v2..v4 stored hex back to the palette slot it names — the
+    /// Map a legacy stored hex back to the palette slot it names — the
     /// live <see cref="GameSettings.PlayerConfig"/> first, then the
-    /// <see cref="RetiredHexAliases"/> table for colors a slot has since
-    /// dropped. Returns false if neither matches (genuine palette drift — the
-    /// entry is dropped, same lossy behavior as the old Godot.Color round-trip).
+    /// <see cref="RetiredHexAliases"/> table for retired colors. Returns false
+    /// if neither matches (genuine palette drift — the entry is dropped).
     /// </summary>
     private static bool TryPlayerForHex(string hex, out PlayerId id)
     {
@@ -984,8 +957,7 @@ public sealed class SaveData
 
     /// <summary>
     /// Name of the starting map this game descended from. Null for
-    /// procedural (Random Map) games and absent in saves written
-    /// before this field was added.
+    /// procedural (Random Map) games.
     /// </summary>
     public string? OriginMapName { get; set; }
 
@@ -1000,27 +972,25 @@ public sealed class SaveData
     public List<CoordDto> Water { get; set; } = new();
 
     /// <summary>
-    /// Legacy field: flat list of human color hex strings that dismissed
-    /// the End-Turn claim-victory prompt back when there was a single
-    /// 50% threshold. Read-only — new saves never populate it. Loaders
-    /// fall back to this when the per-tier field below is absent and
-    /// treat each entry as "prompted at 50%".
+    /// Legacy read-only field: flat list of human color hex strings that
+    /// dismissed the End-Turn claim-victory prompt. New saves never populate
+    /// it. Loaders fall back to this when the per-tier field below is absent
+    /// and treat each entry as "prompted at 50%".
     /// </summary>
     public List<string>? ClaimVictoryPromptedColorHexes { get; set; }
 
     /// <summary>
-    /// Legacy v4 field: highest claim-victory tier (50/75/90) each human
-    /// color hex had already dismissed. Read-only — v5 saves never write
-    /// it. Loaders use it only when
+    /// Legacy read-only field: highest claim-victory tier (50/75/90) each
+    /// human color hex had already dismissed. Used only when
     /// <see cref="ClaimVictoryPromptedHighestByPlayerIndex"/> is absent.
     /// </summary>
     public Dictionary<string, int>? ClaimVictoryPromptedHighestByColorHex { get; set; }
 
     /// <summary>
-    /// v5: highest claim-victory tier (50/75/90) each player (by roster
-    /// index) has already dismissed this game. Palette-independent —
-    /// supersedes the two legacy color-hex fields. Null/missing in v2..v4
-    /// and when the dictionary is empty (kept clean for fresh games).
+    /// Highest claim-victory tier (50/75/90) each player (by roster index)
+    /// has already dismissed this game. Palette-independent — supersedes the
+    /// two legacy color-hex fields. Null when the dictionary is empty (kept
+    /// clean for fresh games).
     /// </summary>
     public Dictionary<int, int>? ClaimVictoryPromptedHighestByPlayerIndex { get; set; }
 
@@ -1040,26 +1010,25 @@ public sealed class SaveData
     public ReplayDto? Replay { get; set; }
 
     /// <summary>
-    /// v8: campaign level index (0..255) for games launched from the
-    /// campaign screen (issue #2). Null/missing for freeform games and
-    /// all pre-v8 saves.
+    /// Campaign level index (0..255) for games launched from the
+    /// campaign screen. Null for freeform games.
     /// </summary>
     public int? CampaignLevel { get; set; }
 
     /// <summary>
-    /// v12: the selectable game mode (issue #56). Null/missing for
-    /// <see cref="GameMode.Freeform"/> games and all pre-v12 saves (which
-    /// load as Freeform); present only for Rising Tides. The grown water set
+    /// The selectable game mode. Null for
+    /// <see cref="GameMode.Freeform"/> games (which load as Freeform);
+    /// present only for Rising Tides. The grown water set
     /// rides in <see cref="Water"/>, so no separate flood-progress field is
     /// needed. <see cref="WaterCoords"/> is recomputed on replay anyway.
     /// </summary>
     public GameMode? Mode { get; set; }
 
     /// <summary>
-    /// v14: the locked Rising Tides forecast (issue #85) for the current player's
-    /// turn — the tiles selected at turn start that demote/submerge at turn end.
-    /// Null/missing for freeform games, Rising Tides saves taken between turns,
-    /// and all pre-v14 saves (which load as an empty forecast).
+    /// The locked Rising Tides forecast for the current player's turn — the
+    /// tiles selected at turn start that demote/submerge at turn end.
+    /// Null for freeform games and Rising Tides saves taken between turns
+    /// (which load as an empty forecast).
     /// </summary>
     public List<TideStepDto>? PendingTide { get; set; }
 }
@@ -1080,17 +1049,16 @@ public sealed class PlayerDto
     public string Name { get; set; } = "";
     public string ColorHex { get; set; } = "";
     /// <summary>
-    /// AI kind name (one of <see cref="PlayerKind"/>). Null/missing in
-    /// "starting map" exports from the editor — the role for each color
-    /// is assigned at play time via the Play Game config menu, not
-    /// baked into the map. Present in regular in-progress saves.
+    /// AI kind name (one of <see cref="PlayerKind"/>). Null in "starting map"
+    /// exports from the editor — the role for each color is assigned at play
+    /// time via the Play Game config menu. Present in regular in-progress saves.
     /// </summary>
     public string? Kind { get; set; }
 
     /// <summary>
-    /// Per-player <see cref="Difficulty"/> name (issue #11). Null/missing in
-    /// starting-map exports (assigned at the Play Game menu) and in pre-v7
-    /// saves; both default to <see cref="Difficulty.Soldier"/> on load.
+    /// Per-player <see cref="Difficulty"/> name. Null in starting-map exports
+    /// (assigned at the Play Game menu); defaults to
+    /// <see cref="Difficulty.Soldier"/> when absent on load.
     /// </summary>
     public string? Difficulty { get; set; }
 }
@@ -1102,10 +1070,10 @@ public sealed class TileDto
     public int OwnerIndex { get; set; }
     public OccupantDto? Occupant { get; set; }
 
-    /// <summary>Gold tile (issue #45). Absent in pre-v9 saves → false.</summary>
+    /// <summary>Gold tile; absent → false.</summary>
     public bool IsGold { get; set; }
 
-    /// <summary>Mountain tile (issue #37). Absent in pre-v10 saves → false.</summary>
+    /// <summary>Mountain tile; absent → false.</summary>
     public bool IsMountain { get; set; }
 }
 
@@ -1145,8 +1113,8 @@ public sealed class TutorialDto
 
 /// <summary>
 /// Replay payload DTO: the captured game-start snapshot plus every
-/// recorded beat. Embedded inside <see cref="SaveData.Replay"/> on
-/// v4+ saves. Mirrors the tutorial-<c>Beats</c> shape — kind-
+/// recorded beat. Embedded inside <see cref="SaveData.Replay"/>.
+/// Mirrors the tutorial-<c>Beats</c> shape — kind-
 /// discriminated DTOs round-trip through hand-written switches in
 /// <see cref="SaveSerializer"/>.
 /// </summary>

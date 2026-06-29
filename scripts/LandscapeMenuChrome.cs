@@ -1,8 +1,8 @@
 using Godot;
 
 /// <summary>
-/// Shared surface for the purpose-built <b>landscape</b> menu layouts
-/// (issue #34). Unlike the portrait menus — tall fixed-size panels that
+/// Shared surface for the purpose-built <b>landscape</b> menu layouts.
+/// Unlike the portrait menus — tall fixed-size panels that
 /// <c>ScaleToFit</c>/<c>FitPanel</c> downscale to fit a short viewport — a
 /// landscape menu reflows its content into a <i>wide-but-short</i> panel so
 /// controls stay full-size on a landscape phone.
@@ -51,7 +51,7 @@ public static class LandscapeMenuChrome
     /// cap, so it stays inside the notch / home-indicator on a phone yet remains
     /// a tidy centered panel on a large desktop window. <paramref name="verticalShift"/>
     /// lifts the whole surface up (on-screen-keyboard avoidance for the New Game
-    /// seed field, issue #34).</summary>
+    /// seed field).</summary>
     public static void ApplyLayout(PanelContainer surface, Vector2 viewport, LogicalSafeInsets s,
         float edge = EdgeMargin, float maxW = MaxWidth, float maxH = MaxHeight, float verticalShift = 0f)
     {

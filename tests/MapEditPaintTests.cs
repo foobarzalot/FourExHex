@@ -463,7 +463,7 @@ public class MapEditPaintTests
         Assert.Equal(1, CountCapitals(grid));
     }
 
-    // --- PaintNeutral (issue #39) -----------------------------------------
+    // --- PaintNeutral ---
 
     [Fact]
     public void PaintNeutral_OnWater_AddsUnownedTileAndRemovesFromWater()
@@ -538,7 +538,7 @@ public class MapEditPaintTests
     public void PaintNeutral_OverTreeTile_PreservesTree()
     {
         // Painting a tile neutral must NOT wipe a tree — neutral ground
-        // legitimately holds trees (they spread there, issue #69). Only
+        // legitimately holds trees (they spread there). Only
         // the owner changes.
         (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
         var color = PlayerId.FromIndex(0);
@@ -578,7 +578,7 @@ public class MapEditPaintTests
     public void PaintNeutral_OverGraveTile_PreservesGrave()
     {
         // Graves are owner-agnostic terrain; a neutral grave is valid
-        // (it rots to a tree, issue #69), so neutral paint keeps it.
+        // (it rots to a tree), so neutral paint keeps it.
         (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
         var color = PlayerId.FromIndex(0);
         var coord = HexCoord.FromOffset(2, 3);
@@ -628,7 +628,7 @@ public class MapEditPaintTests
         Assert.True(grid.Get(coord)!.Owner.IsNone);
     }
 
-    // --- PaintGoldToggle (issue #45) -------------------------------------
+    // --- PaintGoldToggle ---
 
     [Fact]
     public void PaintGoldToggle_OnLand_SetsGold()
@@ -679,7 +679,7 @@ public class MapEditPaintTests
     [Fact]
     public void PaintGoldToggle_OnNeutralLand_SetsGold()
     {
-        // Gold must be allowed on neutral (unowned) land (issue #45 acceptance).
+        // Gold must be allowed on neutral (unowned) land.
         (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
         var color = PlayerId.FromIndex(0);
         var coord = HexCoord.FromOffset(2, 2);
@@ -705,7 +705,7 @@ public class MapEditPaintTests
         Assert.Contains(coord, water);
     }
 
-    // --- Mountain brush (issue #37) --------------------------------------
+    // --- Mountain brush ---
 
     [Fact]
     public void PaintMountainToggle_OnEmptyLand_SetsMountain()
@@ -739,7 +739,7 @@ public class MapEditPaintTests
     [Fact]
     public void PaintMountainToggle_OverTree_KeepsTree()
     {
-        // Trees and mountains now coexist (issue #81): painting a mountain
+        // Trees and mountains coexist: painting a mountain
         // onto a treed tile leaves the tree in place.
         (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
         var color = PlayerId.FromIndex(0);
@@ -757,7 +757,7 @@ public class MapEditPaintTests
     [Fact]
     public void PaintMountainToggle_OnCapital_SetsMountainKeepsCapital()
     {
-        // Capitals now coexist with mountains (issue #81 followup): painting a
+        // Capitals coexist with mountains: painting a
         // mountain onto a capital tile sets the flag and leaves the capital.
         (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
         var color = PlayerId.FromIndex(0);
@@ -777,7 +777,7 @@ public class MapEditPaintTests
     [Fact]
     public void PaintMountainToggle_OverGold_ClearsGold()
     {
-        // Gold and mountain are now mutually exclusive (issue #81): painting a
+        // Gold and mountain are mutually exclusive: painting a
         // mountain onto a gold tile clears the gold. Owner is preserved.
         (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
         var color = PlayerId.FromIndex(2);
@@ -814,7 +814,7 @@ public class MapEditPaintTests
     [Fact]
     public void PaintTreeToggle_OverMountain_KeepsMountain()
     {
-        // Trees and mountains coexist (issue #81): a tree painted onto a
+        // Trees and mountains coexist: a tree painted onto a
         // mountain leaves the terrain flag in place.
         (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
         var color = PlayerId.FromIndex(0);
@@ -832,7 +832,7 @@ public class MapEditPaintTests
     [Fact]
     public void PaintTowerToggle_OverMountain_KeepsMountain()
     {
-        // Towers and mountains now coexist (the +1 high-ground bonus): placing a
+        // Towers and mountains coexist (the +1 high-ground bonus): placing a
         // tower on a mountain leaves the terrain flag set.
         (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
         var color = PlayerId.FromIndex(0);
@@ -868,7 +868,7 @@ public class MapEditPaintTests
     [Fact]
     public void PaintCapital_OnMountain_PlacesCapitalKeepsMountain()
     {
-        // Capitals now sit on mountains (issue #81 followup): painting a capital
+        // Capitals sit on mountains: painting a capital
         // onto a mountain tile places it and the mountain flag stays.
         (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
         var color = PlayerId.FromIndex(0);

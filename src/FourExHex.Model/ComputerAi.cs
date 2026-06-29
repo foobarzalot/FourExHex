@@ -4,7 +4,7 @@ using System.Diagnostics;
 using System.Linq;
 
 /// <summary>
-/// Stepwise-greedy 1-ply AI (issue #26). For each call, picks the
+/// Stepwise-greedy 1-ply AI. For each call, picks the
 /// largest non-exhausted owned territory then tries phases 1→4 in
 /// order:
 ///   1. Free-unit captures, chops, grave clears (existing units).
@@ -212,7 +212,7 @@ public static class ComputerAi
 
             if (candidate.Action is AiBuildTowerAction bt)
                 delta += AiStateScorer.BuildTowerBonus(bt.Destination, state, forPlayer);
-            // Rising Tides (issue #85): reward moving a unit off a tile that will
+            // Rising Tides: reward moving a unit off a tile that will
             // submerge this turn (and never onto one), so the defensive phase
             // evacuates a unit that would otherwise sit still and drown.
             if (candidate.Action is AiMoveAction mv)

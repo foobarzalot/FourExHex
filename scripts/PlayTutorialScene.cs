@@ -36,7 +36,7 @@ public partial class PlayTutorialScene : Node2D
         // Players must be set BEFORE AddChild (MapEditorPanel._Ready
         // asserts it). Start with the all-human 6-slot roster the builder
         // uses; after LoadFromMap we trim it to only the colors that own
-        // land (issue #83) so landless slots don't show as players.
+        // land so landless slots don't show as players.
         // PreviewPane.Start then overrides kinds (player 0 Human, rest Computer).
         _panel = new MapEditorPanel { Players = Player.BuildAllHumanRoster() };
         AddChild(_panel);
@@ -77,7 +77,7 @@ public partial class PlayTutorialScene : Node2D
         _panel.LoadFromMap(loaded);
 
         // Trim the roster to only the colors that actually own land on the
-        // painted board (issue #83). The bundled map declares 6 colors but
+        // painted board. The bundled map declares 6 colors but
         // only 3 hold territory; the unowned ones would otherwise render as
         // dead swatches. PreviewPane.Start reads _panel.Players and assigns
         // kinds by position (index 0 Human, rest Computer), so the surviving

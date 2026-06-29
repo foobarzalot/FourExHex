@@ -18,8 +18,7 @@ using System.Text;
 ///     last by the lex-min coord in the territory.
 /// Owners are written as player indices (<see cref="PlayerId.Index"/>,
 /// or -1 for <see cref="PlayerId.None"/>) so the digest is invariant
-/// under cosmetic color changes — same integers as before the
-/// color → PlayerId migration, so the digest is byte-stable.
+/// under cosmetic color changes.
 /// </summary>
 public static class GameStateChecksum
 {

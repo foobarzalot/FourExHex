@@ -3,7 +3,7 @@ using Godot;
 
 /// <summary>
 /// Shared on-screen-keyboard avoidance for a focused <see cref="LineEdit"/>
-/// (issue #4 main-menu seed field; issue #57 save-name modal). Owns the
+/// (main-menu seed field; save-name modal). Owns the
 /// per-frame lift loop: while the field is focused the host polls
 /// <see cref="Poll"/> each frame (Godot has no keyboard-height-changed
 /// signal and the keyboard animates in), and the controller shifts the

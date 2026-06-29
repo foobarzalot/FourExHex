@@ -6,7 +6,7 @@ namespace FourExHex.Tests;
 
 /// <summary>
 /// Save/load for variable-player-count games and starting maps that bake
-/// per-color kinds, including the <see cref="PlayerKind.None"/> slot (issue #70).
+/// per-color kinds, including the <see cref="PlayerKind.None"/> slot.
 /// </summary>
 public class PlayerCountSaveTests
 {
@@ -86,9 +86,9 @@ public class PlayerCountSaveTests
     [Fact]
     public void OldMap_NoBakedKinds_IsDetected()
     {
-        // Simulate a pre-#70 starting map by stripping the baked Kind/Difficulty
-        // fields. MapHasBakedKinds must read false (the load path then applies
-        // the legacy default roster — exercised in the scene layer).
+        // Simulate a starting map with no baked Kind/Difficulty fields.
+        // MapHasBakedKinds must read false (the load path then applies
+        // the default roster — exercised in the scene layer).
         (GameState s, IReadOnlyList<Player> p) = BuildBakedMapState();
         string json = SaveSerializer.SerializeMap(s, 42, p, "m");
         string legacy = System.Text.RegularExpressions.Regex.Replace(

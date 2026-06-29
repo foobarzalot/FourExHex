@@ -11,9 +11,7 @@ using Godot;
 /// 1 (portrait).
 ///
 /// The die is the lone randomize trigger — pressing it rolls a fresh
-/// random seed each time (the previous numeric seed LineEdit was removed
-/// per the D1 redesign so the bar isn't crowded with a status display
-/// the player never needs to read).
+/// random seed each time.
 ///
 /// Deliberately does NOT implement <see cref="IHudView"/> — that interface
 /// is the play-scene controller contract and includes events the editor
@@ -30,7 +28,7 @@ public partial class MapEditorHudView : OrientationHud
     public const int HandPaletteIndex = 0;
     /// <summary>Palette index for the neutral (unowned land) swatch. Sits
     /// with the land/owner group (right after the player colors) so it
-    /// joins the collapsed mobile cycle. Issue #39.</summary>
+    /// joins the collapsed mobile cycle.</summary>
     public static int NeutralPaletteIndex => 1 + GameSettings.PlayerConfig.Length;
     /// <summary>Palette index reserved for the water swatch.</summary>
     public static int WaterPaletteIndex => 2 + GameSettings.PlayerConfig.Length;
@@ -40,11 +38,9 @@ public partial class MapEditorHudView : OrientationHud
     public static int CapitalPaletteIndex => 4 + GameSettings.PlayerConfig.Length;
     /// <summary>Palette index reserved for the tower-toggle swatch.</summary>
     public static int TowerPaletteIndex => 5 + GameSettings.PlayerConfig.Length;
-    /// <summary>Palette index reserved for the gold-tile-toggle swatch
-    /// (issue #45).</summary>
+    /// <summary>Palette index reserved for the gold-tile-toggle swatch.</summary>
     public static int GoldPaletteIndex => 6 + GameSettings.PlayerConfig.Length;
-    /// <summary>Palette index reserved for the mountain-tile-toggle swatch
-    /// (issue #37).</summary>
+    /// <summary>Palette index reserved for the mountain-tile-toggle swatch.</summary>
     public static int MountainPaletteIndex => 7 + GameSettings.PlayerConfig.Length;
 
     public event Action? EscRequested;
@@ -80,7 +76,7 @@ public partial class MapEditorHudView : OrientationHud
     private HexPaletteButton _landCycleButton = null!;
     private int _lastLandPaletteIndex = 1;
 
-    // Per-slot kinds the editor map will bake (issue #70). None colors are
+    // Per-slot kinds the editor map will bake. None colors are
     // hidden from the palette (not paintable); Human colors get a pip marker.
     // Empty until the host calls ApplyRosterKinds (defaults to all paintable).
     private PlayerKind[] _rosterKinds = System.Array.Empty<PlayerKind>();
@@ -91,8 +87,8 @@ public partial class MapEditorHudView : OrientationHud
     private PanelContainer _landCluster = null!;   // 6 land swatches OR 1 cycle button (chip chrome)
     // Paint tools (water + tree + capital + tower + gold). A GridContainer so
     // it can wrap to a 2nd row (portrait) / column (landscape) on compact
-    // phones — five 68-px buttons no longer fit one line on a small screen
-    // (issue #45). ApplyPaintGrid sets Columns per orientation × compact.
+    // phones — five 68-px buttons don't fit one line on a small screen.
+    // ApplyPaintGrid sets Columns per orientation × compact.
     private GridContainer _paintCluster = null!;
     private BoxContainer _toolsCluster = null!;    // hand (pan) + die (random)
     private Control _undoCluster = null!;          // undo / redo
@@ -112,10 +108,7 @@ public partial class MapEditorHudView : OrientationHud
         _undoCluster = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Pass };
         _undoCluster.AddThemeConstantOverride("separation", 8);
 
-        // Die — fires a fresh random seed each press; no numeric input
-        // surfaced any more. Was previously paired with a LineEdit (seed
-        // pill); the LineEdit was removed in the D1 redesign so the bar
-        // isn't crowded with a status the player never reads.
+        // Die — fires a fresh random seed each press; no numeric seed input.
         _generateButton = new HudIconButton(HudIcon.Die)
         {
             FocusMode = Control.FocusModeEnum.None,
@@ -125,7 +118,7 @@ public partial class MapEditorHudView : OrientationHud
         Log.Info(Log.LogCategory.Render,
             "MapEditorHudView: seed LineEdit removed; die-only randomize wired.");
 
-        // Map-generation options (issue #48): a "?" glyph next to the die opens
+        // Map-generation options: a "?" glyph next to the die opens
         // the shared MapGenSettingsPanel (Mountains now, Gold in Phase 2). The
         // die reads the chosen GameSettings flags on press — the panel is the
         // single source of truth, shared with the New Game map-setup page.
@@ -167,8 +160,8 @@ public partial class MapEditorHudView : OrientationHud
             _palette[paletteIndex] = button;
         }
 
-        // Neutral (unowned land) swatch — last entry in the owner/land row
-        // (issue #39). Sharing the land panel means it inherits the panel's
+        // Neutral (unowned land) swatch — last entry in the owner/land row.
+        // Sharing the land panel means it inherits the panel's
         // active-highlight chrome and joins the collapsed mobile cycle.
         int neutralIndex = NeutralPaletteIndex;
         var neutralButton = new HexPaletteButton(PlayerPalette.Neutral)
@@ -234,7 +227,7 @@ public partial class MapEditorHudView : OrientationHud
         _paintCluster.AddChild(towerButton);
         _palette[towerIndex] = towerButton;
 
-        // Gold-tile toggle (issue #45) — a higher-income hotspot tile.
+        // Gold-tile toggle — a higher-income hotspot tile.
         int goldIndex = GoldPaletteIndex;
         var goldButton = new HexPaletteButton(
             new Color(0.97f, 0.80f, 0.22f, 1f), HexPaletteIcon.Gold, squared: true);
@@ -244,9 +237,9 @@ public partial class MapEditorHudView : OrientationHud
         _paintCluster.AddChild(goldButton);
         _palette[goldIndex] = goldButton;
 
-        // Mountain-tile toggle (issue #37) — defensive terrain. Squared slate
+        // Mountain-tile toggle — defensive terrain. Squared slate
         // button like the other paint tools; the grey mountain glyph is drawn
-        // by HudIcons.DrawMountain (issue #52). Fill color is unused for an
+        // by HudIcons.DrawMountain. Fill color is unused for an
         // icon'd squared button.
         int mountainIndex = MountainPaletteIndex;
         var mountainButton = new HexPaletteButton(
@@ -425,8 +418,8 @@ public partial class MapEditorHudView : OrientationHud
 
     /// <summary>
     /// Lay the paint tools out as a single line on roomy screens and wrap
-    /// them to a 2nd row (portrait) / column (landscape) on compact phones
-    /// (issue #45). Columns come from the unit-tested
+    /// them to a 2nd row (portrait) / column (landscape) on compact phones.
+    /// Columns come from the unit-tested
     /// <see cref="EditorPaletteLayout"/>; the bottom bar grows / the left
     /// rail widens (<see cref="LeftRailWidth"/>) to fit the extra line.
     /// </summary>
@@ -461,7 +454,7 @@ public partial class MapEditorHudView : OrientationHud
     }
 
     /// <summary>Widen the left rail on compact so the paint tools' 2nd column
-    /// fits (issue #45). Two 68-px columns + 8-px gutter + 8-px rail padding
+    /// fits. Two 68-px columns + 8-px gutter + 8-px rail padding
     /// each side = 160; the default 78 stays for the single-column case and
     /// the gameplay HUD.</summary>
     protected override float LeftRailWidth =>
@@ -527,8 +520,7 @@ public partial class MapEditorHudView : OrientationHud
 
     private void OnGeneratePressed()
     {
-        // Fresh random seed every press — the user no longer types a
-        // specific seed; the die is the lone "give me a different map"
+        // Fresh random seed every press; the die is the only regenerate
         // affordance. After regenerating, drop back to the hand tool
         // so the player can immediately pan / inspect without
         // accidentally repainting the fresh map.
@@ -590,12 +582,12 @@ public partial class MapEditorHudView : OrientationHud
     }
 
     // The owner/land group is the player colors (1..N) plus the neutral
-    // (unowned) slot at NeutralPaletteIndex (= N+1). Issue #39.
+    // (unowned) slot at NeutralPaletteIndex (= N+1).
     private static bool IsLandIndex(int index) =>
         index >= 1 && index <= NeutralPaletteIndex;
 
     // Wrap forward through the owner indices (1..N colors, then neutral at
-    // N+1), neutral -> first color. Skips None colors (issue #70) so the
+    // N+1), neutral -> first color. Skips None colors so the
     // compact cycle button never lands on a disabled, unpaintable color.
     private int NextLandIndex(int index)
     {
@@ -615,7 +607,7 @@ public partial class MapEditorHudView : OrientationHud
             && _rosterKinds[slot] == PlayerKind.None;
     }
 
-    /// <summary>Apply the chosen per-slot roster kinds (issue #70): hide None
+    /// <summary>Apply the chosen per-slot roster kinds: hide None
     /// color swatches (so they can't be painted), pip the Human ones, and move
     /// the active/last land selection off any now-disabled color.</summary>
     public void ApplyRosterKinds(PlayerKind[] kinds)

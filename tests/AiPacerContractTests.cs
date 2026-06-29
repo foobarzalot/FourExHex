@@ -39,12 +39,8 @@ public sealed class ManualTimerFactory : ITimerFactory
 /// production impl must support the Cancel-then-Schedule pattern that
 /// <c>GameController.BeginReplay</c> relies on: cancelling drops
 /// already-pending callbacks, but subsequent Schedule calls must fire
-/// normally. <see cref="GodotAiPacer"/> originally had a sticky-cancel
-/// bug (a single <c>_cancelled = true</c> flag that never reset) which
-/// caused <c>BeginReplay</c> to stall at the initial state — playback
-/// "started" but the first scheduled step's closure no-op'd. Fixed by
-/// switching to a generation counter; this test documents the contract
-/// so the bug pattern doesn't recur in a future pacer.
+/// normally. A generation-counter guard backs this: Cancel drops only
+/// already-pending callbacks, never the freshly scheduled ones.
 ///
 /// GodotAiPacer itself is test-excluded (CLAUDE.md) because it depends
 /// on Godot's SceneTree.CreateTimer; the contract is verified here
@@ -98,13 +94,9 @@ public class AiPacerContractTests
     [Fact]
     public void GodotAiPacer_AfterCancel_NewScheduleFires()
     {
-        // Regression: BeginReplay calls Cancel() to drop any straggling
-        // AI step, then Schedule() to kick off replay's first step.
-        // The original GodotAiPacer used a sticky `_cancelled = true`
-        // flag that gated EVERY future callback, including the freshly
-        // scheduled one — so Replay stalled at the initial board state.
-        // This test must be red against the sticky-flag impl and green
-        // after switching to a generation counter.
+        // BeginReplay calls Cancel() to drop any straggling AI step,
+        // then Schedule() to kick off replay's first step. Cancel()
+        // must drop stragglers but not gate the freshly scheduled step.
         var timers = new ManualTimerFactory();
         var pacer = new GodotAiPacer(timers);
 
@@ -156,9 +148,8 @@ public class AiPacerContractTests
     [Fact]
     public void GodotAiPacer_DefaultMultiplier_PassesDelayUnchanged()
     {
-        // Baseline: ctor without an explicit multiplier behaves
-        // identically to the old single-arg ctor — the new param
-        // must be additive, not breaking.
+        // Baseline: ctor without an explicit multiplier passes delays
+        // through unchanged.
         var timers = new ManualTimerFactory();
         var pacer = new GodotAiPacer(timers);
         pacer.Schedule(() => { }, 300);
@@ -211,9 +202,8 @@ public class AiPacerContractTests
     [Fact]
     public void GodotAiPacer_ScheduleUnscaled_FrameYields_NotInline()
     {
-        // Even at multiplier 0 (the value that previously trampolined
-        // Schedule), ScheduleUnscaled must defer to the timer factory,
-        // not run inline — that responsiveness is the whole point.
+        // Even at multiplier 0, ScheduleUnscaled must defer to the timer
+        // factory, not run inline — that responsiveness is the whole point.
         var timers = new ManualTimerFactory();
         var pacer = new GodotAiPacer(timers, () => 0);
         int fired = 0;

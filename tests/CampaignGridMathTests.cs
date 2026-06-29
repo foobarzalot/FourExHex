@@ -3,7 +3,7 @@ using Xunit;
 namespace FourExHex.Tests;
 
 /// <summary>
-/// Tests for <see cref="CampaignGridMath"/> (issue #2): the pointy-top
+/// Tests for <see cref="CampaignGridMath"/>: the pointy-top
 /// honeycomb layout behind the campaign screen's tier grids. One tier is
 /// a 64-cell block laid out 8 wide (portrait) or 16 wide (landscape);
 /// odd rows shift right half a cell and rows interlock at a 0.75-height

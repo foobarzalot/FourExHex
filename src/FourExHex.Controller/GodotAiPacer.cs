@@ -14,11 +14,7 @@ using System;
 /// <see cref="Schedule"/> calls — the same pacer instance survives
 /// multiple Cancel-then-reuse cycles. <c>BeginReplay</c> depends on
 /// this: it cancels any straggling AI step before scheduling its
-/// first replay step. An earlier impl used a sticky
-/// <c>_cancelled = true</c> flag that gated every future callback
-/// and broke Replay; the generation counter fixes that without losing
-/// the AbandonGame use case (the controller is gone after Abandon,
-/// so Schedule is never called again anyway).
+/// first replay step.
 /// </para>
 ///
 /// <para>

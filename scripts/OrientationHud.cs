@@ -236,8 +236,8 @@ public abstract partial class OrientationHud : CanvasLayer
 
     /// <summary>Width of the landscape side rails, logical px. Defaults to
     /// <see cref="HudBars.RailWidth"/>; a subclass overrides (e.g. the map
-    /// editor on compact, where the paint tools wrap to a second column —
-    /// issue #45) to widen one rail. Read each <see cref="ApplyLayout"/>, so
+    /// editor on compact, where the paint tools wrap to a second column)
+    /// to widen one rail. Read each <see cref="ApplyLayout"/>, so
     /// a compact flip rebuilds the rails at the new width.</summary>
     protected virtual float LeftRailWidth => HudBars.RailWidth;
     protected virtual float RightRailWidth => HudBars.RailWidth;

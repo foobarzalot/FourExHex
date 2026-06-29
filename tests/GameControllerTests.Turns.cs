@@ -7,7 +7,7 @@ namespace FourExHex.Tests;
 
 public partial class GameControllerTests
 {
-    // --- Neutral-ground growth (issue #69) -------------------------------
+    // --- Neutral-ground growth -------------------------------------------
 
     [Fact]
     public void NeutralGrowth_FiresOncePerRound_NotOncePerPlayer()
@@ -115,9 +115,9 @@ public partial class GameControllerTests
     [Fact]
     public void StartTurn_ConvertsGravesOnStartingPlayersTiles_OnTheirNextOwnTurn()
     {
-        // Trees are now created at the START of a player's turn, on
-        // tiles of that player's color, and the very first turn of
-        // each player skips the phase entirely. So a grave dropped on
+        // Trees are created at the START of a player's turn, on
+        // tiles of that player's color; each player's first turn
+        // skips the phase entirely. So a grave dropped on
         // a Red tile during Red's first turn doesn't convert when
         // Red ends — it converts on Red's NEXT start-of-turn (turn 2).
         // Use (1,1) — Red's non-capital tile (CapitalPlacer puts the
@@ -136,7 +136,7 @@ public partial class GameControllerTests
     [Fact]
     public void StartTurn_SpreadsTrees_AtStartOfOwningPlayersTurn()
     {
-        // New spread rule: an empty tile on the starting player's
+        // Spread rule: an empty tile on the starting player's
         // color with >= 2 neighboring trees (per snapshot) becomes a
         // tree. Place a Blue-tile pair so spreading flips the empty
         // Blue tile (2,1) — which is adjacent to BOTH (2,0) and (3,0).
@@ -246,7 +246,7 @@ public partial class GameControllerTests
     [Fact]
     public void StartTurn_BankruptGraves_BecomeTreesOnPlayersNextOwnTurn()
     {
-        // Full feedback loop under the new rule:
+        // Full feedback loop:
         //   1. Blue can't afford its captain; on Blue's turn-1 START
         //      the tree-growth phase is skipped (first-turn rule),
         //      then upkeep bankrupts the captain → grave.

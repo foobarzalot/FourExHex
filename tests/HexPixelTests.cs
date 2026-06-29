@@ -2,11 +2,11 @@ using Xunit;
 
 namespace FourExHex.Tests;
 
-// The pixel↔axial projection (ToPixel/FromPixel) moved to the Godot-side
-// HexPixel helper and is exercised by manual play-testing of the map (the
-// view layer is not unit-tested). What stays library-tested here is the
-// engine-free cube-rounding core, HexRounding.Round — the part whose
-// correctness the model depends on.
+// This file tests the engine-free cube-rounding core, HexRounding.Round —
+// the part whose correctness the model depends on. The pixel↔axial
+// projection (ToPixel/FromPixel) lives in the Godot-side HexPixel helper
+// and is exercised by manual play-testing of the map (the view layer is
+// not unit-tested).
 public class HexCoordRoundTests
 {
     [Theory]
@@ -31,8 +31,7 @@ public class HexCoordRoundTests
     public void Round_SmallJitterAroundCenter_ReturnsThatHex(int q, int r)
     {
         // Sub-hex jitter on each axis (well inside the rounding cell)
-        // must still resolve to the integer hex — the axial analogue of
-        // the old "near hex center" pixel test.
+        // must still resolve to the integer hex.
         const float j = 0.3f;
         Assert.Equal(new HexCoord(q, r), HexRounding.Round(q + j, r));
         Assert.Equal(new HexCoord(q, r), HexRounding.Round(q - j, r));

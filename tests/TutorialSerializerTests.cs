@@ -5,10 +5,9 @@ namespace FourExHex.Tests;
 
 /// <summary>
 /// Format-bump regression tests + tutorial round-trip for the v4
-/// schema. The v3 Tutorial-Beats system was torn down; tutorials are
-/// now <c>{ Title, Replay }</c> with the Replay block carrying every
-/// recorded action. v2/v3 saves still load (both Tutorial and Replay
-/// null on those).
+/// schema. Tutorials are <c>{ Title, Replay }</c>; the Replay block
+/// carries every recorded action. Legacy v2/v3 saves load with
+/// Tutorial and Replay null.
 /// </summary>
 public class TutorialSerializerTests
 {

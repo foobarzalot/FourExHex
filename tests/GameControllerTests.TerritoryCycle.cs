@@ -436,9 +436,9 @@ public partial class GameControllerTests
     [Fact]
     public void NextTerritory_LargerTerritoryVisitedFirst()
     {
-        // Small territory (2 tiles, capital at (0,0)) has a lower capital coord
-        // than big territory (3 tiles, capital at (5,0)). Old sort (capital coord)
-        // selects small first; new sort (size desc) selects big first.
+        // Small territory (2 tiles, capital at (0,0)) and big territory
+        // (3 tiles, capital at (5,0)). Sort is size-desc, so big is
+        // selected first.
         var g = new UnequalRedTerritoriesGame();
         g.Hud.PressNextTerritory();
         Assert.NotNull(g.Session.SelectedTerritory);
@@ -712,7 +712,7 @@ public partial class GameControllerTests
         Assert.Equal(centerAfterFirst, g.Map.CenterCount);
     }
 
-    // --- Visited-territory tracking (#35) ---------------------------------
+    // --- Visited-territory tracking ---------------------------------------
     //
     // The size-desc sort re-runs on every press, so acting on a territory
     // (changing its size) reorders the walk and could revisit an already-
@@ -723,7 +723,7 @@ public partial class GameControllerTests
     [Fact]
     public void NextTerritory_SizeChangeMidTurn_DoesNotRevisitBeforeUntouched()
     {
-        // Issue #35 repro. Equal-size territories A(0,0), B(5,0), C(10,0).
+        // Equal-size territories A(0,0), B(5,0), C(10,0).
         // Tab→A, Tab→B, then grow B by capturing (4,0): B re-sorts to the
         // front, putting visited A next in walk order. Tab must still
         // reach untouched C, not revisit A.

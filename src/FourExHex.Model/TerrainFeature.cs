@@ -1,5 +1,5 @@
 /// <summary>
-/// A tile's mutually-exclusive terrain feature (issue #81). A tile carries at
+/// A tile's mutually-exclusive terrain feature. A tile carries at
 /// most one of these: it is plain, a gold income hotspot, or a mountain — never
 /// gold <i>and</i> mountain. Modelling the pair as one enum (rather than two
 /// independent bools) makes the exclusivity structurally impossible to violate:
@@ -14,9 +14,9 @@ public enum TerrainFeature
     /// <summary>Plain ground — no gold and no mountain.</summary>
     None = 0,
 
-    /// <summary>A gold income hotspot (issue #45). See <see cref="HexTile.IsGold"/>.</summary>
+    /// <summary>A gold income hotspot. See <see cref="HexTile.IsGold"/>.</summary>
     Gold = 1,
 
-    /// <summary>Defensive high-ground terrain (issue #37). See <see cref="HexTile.IsMountain"/>.</summary>
+    /// <summary>Defensive high-ground terrain. See <see cref="HexTile.IsMountain"/>.</summary>
     Mountain = 2,
 }

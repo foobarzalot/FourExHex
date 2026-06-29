@@ -16,7 +16,7 @@ public class GameState
     public Treasury Treasury { get; }
 
     /// <summary>
-    /// Selectable runtime rules variant (issue #56). Defaults to
+    /// Selectable runtime rules variant. Defaults to
     /// <see cref="GameMode.Freeform"/> so every existing call site (which
     /// omits the new ctor arg) is unchanged.
     /// </summary>
@@ -62,7 +62,7 @@ public class GameState
     public IReadOnlyList<Territory> Territories { get; set; }
 
     /// <summary>
-    /// Rising Tides (issue #85): the erosion forecast for the CURRENT player's
+    /// Rising Tides: the erosion forecast for the CURRENT player's
     /// turn — the shore tiles selected at turn start that will demote/submerge at
     /// turn end. Empty outside Rising Tides, on round 1, and between turns. The
     /// view telegraphs these tiles for the whole turn; the AI weighs them (it
@@ -76,8 +76,8 @@ public class GameState
     /// Difficulty of the player owning <paramref name="id"/>, resolved by SLOT
     /// (<see cref="PlayerId.Index"/>) rather than by indexing <see cref="Players"/>
     /// at that slot. With a 2–6 player game the roster is compacted (e.g. slots
-    /// 0, 2, 5), so a player's slot index is NOT its position in the list (issue
-    /// #70). Returns <see cref="Difficulty.Soldier"/> for neutral land or an id
+    /// 0, 2, 5), so a player's slot index is NOT its position in the list.
+    /// Returns <see cref="Difficulty.Soldier"/> for neutral land or an id
     /// not in the roster — the baseline AIs always play at.
     /// </summary>
     public Difficulty DifficultyOf(PlayerId id)

@@ -5,10 +5,10 @@
 ///
 /// Lives in scripts/ (Godot-side), deliberately NOT in FourExHex.Model or
 /// FourExHex.Controller — version-string handling stays out of those
-/// assemblies (issue #32).
+/// assemblies.
 ///
 /// Cross-platform schema mapping (export_presets.cfg — syncing the presets to
-/// read from here is a deferred follow-up, see issue #32 Notes):
+/// read from here is a deferred follow-up):
 ///   Marketing -> iOS CFBundleShortVersionString (application/short_version)
 ///             -> Android versionName            (version/name)
 ///             -> desktop short_version

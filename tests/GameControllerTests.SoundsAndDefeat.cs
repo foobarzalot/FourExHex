@@ -324,10 +324,9 @@ public partial class GameControllerTests
     [Fact]
     public void AiTurn_WhileReplayPaused_DoesNotRunUntilResumed()
     {
-        // Regression for the Tutorial-Preview narration desync: a
-        // narration beat that lands during an opponent's turn must hold
-        // the paced AI run until the player taps it away. Modeled here
-        // with an isReplayPaused predicate the test flips by hand.
+        // A narration beat landing during an opponent's turn holds the
+        // paced AI run until the player taps it away. Modeled here with an
+        // isReplayPaused predicate the test flips by hand.
         var (state, session, map, hud, _, blue) = BuildBlueBankruptcyScenario(blueIsAi: true);
         int chooserCalls = 0;
         bool paused = true;
@@ -918,14 +917,8 @@ public partial class GameControllerTests
     [Fact]
     public void Move_OntoOwnTree_FiresDestructionEffectWithTree()
     {
-        // Chopping a tree fires a destruction effect for the Tree.
-        // Plant a tree on (1,1) — Red's own tile. Red's unit on (0,1)
-        // is the capital, which can't be moved; we need a fresh unit
-        // on a movable Red tile. (0,1) IS the capital. Move a unit
-        // from (1,1)... but the tree is there. So plant on a different
-        // tile: use a 5×3 fixture? Let's use what TestGame provides.
-        // Place a unit on (1,1) and a tree elsewhere — there's no
-        // other Red tile. Build a custom fixture inline.
+        // Custom 5×2 Red fixture: unit on (2,1), tree on (1,1); the move
+        // chops the tree and fires a destruction effect for it.
         var red = new Player("Red", PlayerId.FromIndex(0));
         var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new List<Player> { red, blue };
@@ -1163,8 +1156,7 @@ public partial class GameControllerTests
     public void BuildTower_WhileInBuyingRecruitMode_SwitchesToBuildingMode()
     {
         // Clicking a different placement button while in a placement
-        // mode should switch cleanly to the new mode. Regression lock
-        // for the sticky-mode QoL feature.
+        // mode should switch cleanly to the new mode.
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
         HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
@@ -1197,11 +1189,8 @@ public partial class GameControllerTests
     {
         var g = new TestGame();
         var unit = new Unit(g.Red.Id);
-        // Park a unit on (0,1) (capital hex is fine for manual test fixture
-        // purposes — wait, (0,1) IS Red's capital, can't hold a unit).
-        // Instead place on (1,1) and reposition back toward... hmm, Red
-        // only has 2 hexes and the other one is the capital. No valid
-        // reposition. Skip this test scenario with a bigger fixture.
+        // Red has only 2 hexes, one of which is the capital, so the unit on
+        // (1,1) has no in-territory reposition target.
         g.Tile(1, 1).Occupant = unit;
 
         g.Map.SimulateClick(g.Tile(1, 1));

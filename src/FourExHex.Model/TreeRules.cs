@@ -47,8 +47,7 @@ public static class TreeRules
     ///
     ///   1. Every <see cref="Grave"/> becomes a <see cref="Tree"/>.
     ///   2. An empty cell becomes a tree if EITHER:
-    ///        - it has two or more neighboring trees (inland spread,
-    ///          original behavior), OR
+    ///        - it has two or more neighboring trees (inland spread), OR
     ///        - it has at least one neighboring tree AND at least one
     ///          neighboring water tile (coastal spread — a single
     ///          tree neighbor next to water is enough).
@@ -88,7 +87,7 @@ public static class TreeRules
         {
             if (tile.Owner != owner) continue;
             if (tile.Occupant != null) continue;
-            // Trees spread onto mountains too — the two coexist (issue #81).
+            // Trees spread onto mountains too — the two coexist.
 
             int treeNeighbors = 0;
             bool hasWaterNeighbor = false;
@@ -135,7 +134,7 @@ public static class TreeRules
     /// Number of <see cref="HexTile.IsGold"/> tiles in <paramref name="territory"/>
     /// that actually produce income — i.e. gold tiles NOT occupied by a
     /// <see cref="Tree"/>/<see cref="Grave"/>. This is the count of tiles
-    /// eligible for the gold income bonus (issue #45); it never exceeds
+    /// eligible for the gold income bonus; it never exceeds
     /// <see cref="CountIncomeProducingTiles"/> for the same territory, and a
     /// gold tile under dead ground contributes to neither. Used by
     /// <see cref="IncomeRules.IncomeFor"/>.

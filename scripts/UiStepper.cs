@@ -3,7 +3,7 @@ using System.Text;
 using Godot;
 
 /// <summary>
-/// Shared numeric −/value/+ stepper widgets (issue #66). Godot's stock
+/// Shared numeric −/value/+ stepper widgets. Godot's stock
 /// <see cref="SpinBox"/> bundles tiny up/down arrows and a fussy default look that
 /// clashes with the large gold/dark UI; instead this pairs two fixed-size square
 /// step buttons with an editable <see cref="LineEdit"/> showing the value as a
@@ -43,7 +43,7 @@ public static class UiStepper
     /// Explicit-stops variant: the value can only land on one of <paramref name="stops"/>
     /// (which must be ascending), [−]/[+] move to the neighbouring stop, and typed
     /// input snaps to the nearest stop. Use when the useful values aren't evenly
-    /// spaced — e.g. the #72 clumping factor, whose visible effect is bunched near
+    /// spaced — e.g. the clumping factor, whose visible effect is bunched near
     /// the top (0, 50, 75, 90, 95, 100).
     /// </summary>
     public static HBoxContainer BuildStepperRow(

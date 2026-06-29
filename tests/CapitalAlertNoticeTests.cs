@@ -5,8 +5,7 @@ using Xunit;
 namespace FourExHex.Tests;
 
 /// <summary>
-/// Tests for the tap-summoned capital-alert notice — the replacement for
-/// the always-on bankruptcy toast (issue #15). The notice is summoned by
+/// Tests for the tap-summoned capital-alert notice. The notice is summoned by
 /// tapping an alerted human-owned capital and dismissed by any subsequent
 /// human action (or by re-tapping the same capital). It is view-layer
 /// state only — never pushed into the undo stack.

@@ -2,8 +2,8 @@ using Godot;
 
 /// <summary>
 /// View-layer boundary adapter: maps the Godot-free <see cref="PlayerId"/>
-/// identity to a display <see cref="Color"/> and back. The model no longer
-/// carries colors — the roster's display hex lives in
+/// identity to a display <see cref="Color"/> and back. The model carries
+/// no colors; the roster's display hex lives in
 /// <see cref="GameSettings.PlayerConfig"/> and is realized into
 /// <see cref="Godot.Color"/> only here, on the Godot side.
 /// </summary>

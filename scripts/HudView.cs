@@ -11,9 +11,8 @@ using Godot;
 /// </summary>
 public partial class HudView : OrientationHud, IHudView
 {
-    // Kept for external callers (e.g. tutorial builder chrome heights).
-    // The D1 floating layout no longer renders an opaque slate bar at this
-    // height; the value persists as a layout token only.
+    // A layout token only — kept for external callers (e.g. tutorial
+    // builder chrome heights).
     public const float HudHeight = 96f;
 
     public event Action? BuyRecruitClicked;
@@ -55,7 +54,7 @@ public partial class HudView : OrientationHud, IHudView
         GD.Load<FontFile>("res://fonts/DMSerifDisplay-Regular.ttf");
     // One radio button per buy level (Recruit / Soldier / Captain / Commander),
     // in cycle order. _buyUnitButtons[(int)level] gives the button for
-    // a given UnitLevel. _buyUnitButtons[0] = Recruit (the legacy
+    // a given UnitLevel. _buyUnitButtons[0] = Recruit (the
     // CtaButton.BuyRecruit target).
     private HudIconButton[] _buyUnitButtons = null!;
     // The four-button row and a single collapsed cycling button live side by
@@ -236,8 +235,7 @@ public partial class HudView : OrientationHud, IHudView
         };
         _collapsedBuyButton.Pressed += () => BuyRecruitClicked?.Invoke();
         AudioBus.AttachClick(_collapsedBuyButton);
-        // Sibling of paletteRow inside _actionCluster (the rounded slate
-        // wrapper that used to group them is gone). One is visible at a
+        // Sibling of paletteRow inside _actionCluster. One is visible at a
         // time — OnViewportMetricsChanged toggles paletteRow vs cycle
         // button based on Compact.
         _actionCluster.AddChild(_collapsedBuyButton);
@@ -323,9 +321,9 @@ public partial class HudView : OrientationHud, IHudView
         // landscape; the top display bar's right side in portrait, just left of
         // Options), so it isn't added to a cluster here — the Build*Bars
         // methods place it.
-        // End Turn now matches the nav buttons (Next Unit / Next Territory) —
-        // dark slate chrome with the shared black border. The white CTA pulse
-        // still kicks in when the controller flags it as the current CTA
+        // End Turn matches the nav buttons (Next Unit / Next Territory) —
+        // dark slate chrome, shared black border. The white CTA pulse
+        // kicks in when the controller flags it as the current CTA
         // (no actionable territories remain).
         _endTurnButton = new HudIconButton(HudIcon.EndTurn);
         _endTurnButton.Pressed += () => EndTurnClicked?.Invoke();
@@ -334,7 +332,7 @@ public partial class HudView : OrientationHud, IHudView
         // Single Options button — raises the same EscRequested event
         // the Escape key fires, so the scene root's pause coordinator
         // drives both paths. Save Game and Settings live inside that
-        // pause menu now rather than as standalone HUD buttons.
+        // pause menu.
         // Options is reparented per orientation (end of the controls cluster in
         // landscape; the top display bar's right side in portrait), so it isn't
         // added to a cluster here — the Build*Bars methods place it.
@@ -753,7 +751,7 @@ public partial class HudView : OrientationHud, IHudView
     {
         _externalMessageActive = true;
         _tutorialLabel.Text = text;
-        PositionTutorialOverlay(); // re-fit the panel height to this message (#18)
+        PositionTutorialOverlay(); // re-fit the panel height to this message
         _tutorialPanel.Visible = true;
         SetTutorialTapCatcherEnabled(false);
     }
@@ -762,7 +760,7 @@ public partial class HudView : OrientationHud, IHudView
     {
         _externalMessageActive = true;
         _tutorialLabel.Text = text;
-        PositionTutorialOverlay(); // re-fit the panel height to this message (#18)
+        PositionTutorialOverlay(); // re-fit the panel height to this message
         _tutorialPanel.Visible = true;
         SetTutorialTapCatcherEnabled(true);
         ShowContinueHint(true);
@@ -897,16 +895,15 @@ public partial class HudView : OrientationHud, IHudView
     /// the viewport: design-width (clamped to the viewport), with the
     /// height grown to fit the current message's wrapped text.
     /// </summary>
-    // Tutorial narration box: bottom-anchored, fixed design width, height
-    // grows past TutorialPanelH when the wrapped message needs more lines
-    // (#18). The vertical offsets are set by PositionTutorialOverlay so they
+    // Height grows past TutorialPanelH when the wrapped message needs more
+    // lines. The vertical offsets are set by PositionTutorialOverlay so they
     // can lift above the portrait bottom HUD bar; only the left/right (width)
     // offsets are inline.
     private const float TutorialPanelW = 720f;
     private const float TutorialPanelH = 120f;
     // Hairline pad between the narration box and the chrome below it (the
     // portrait bottom bar / the landscape safe-area edge). Both orientations
-    // hug the bottom (#14): every px of float margin is map the narration
+    // hug the bottom: every px of float margin is map the narration
     // box needlessly covers, and on phones the map zoom-fits the full
     // viewport height.
     private const float TutorialMarginBottom = 8f;
@@ -918,7 +915,7 @@ public partial class HudView : OrientationHud, IHudView
 
     private void BuildTutorialOverlay()
     {
-        // Width and height grew to fit the longer instruction strings
+        // Width/height sized to fit the longest instruction strings
         // ("Move the selected X onto the highlighted tile to destroy
         // the tower and capture it.") and to give the autowrapped label
         // room for two or three lines without bleeding out the panel.
@@ -974,7 +971,7 @@ public partial class HudView : OrientationHud, IHudView
 
         // Flashing "Click anywhere to continue" prompt shown only while a
         // tappable (display-text) tutorial beat is gating input. Horizontally
-        // centered, just above the bottom-hugging narration panel (#14) —
+        // centered, just above the bottom-hugging narration panel —
         // see PositionTutorialOverlay. Click-through (MouseFilter=Ignore) so
         // the tap catcher still receives the dismissing click; purely a
         // visual cue.
@@ -1011,7 +1008,7 @@ public partial class HudView : OrientationHud, IHudView
         _tutorialPanel.OffsetLeft = -width * 0.5f;
         _tutorialPanel.OffsetRight = width * 0.5f;
         // Grow the panel past its design height when the message wraps to more
-        // lines than TutorialPanelH holds (#18 — narrow portrait viewports wrap
+        // lines than TutorialPanelH holds (narrow portrait viewports wrap
         // long messages to 4+ lines at the clamped width). Measured with the
         // label's own font at its wrap width; the break flags mirror the
         // label's WordSmart autowrap, and line_spacing is the Label's per-line
@@ -1027,7 +1024,7 @@ public partial class HudView : OrientationHud, IHudView
         int lines = Mathf.Max(1, Mathf.RoundToInt(textSize.Y / font.GetHeight(fontSize)));
         float textH = textSize.Y + (lines - 1) * _tutorialLabel.GetThemeConstant("line_spacing");
         float panelH = HudPanelMath.FitHeight(textH, 8f, TutorialPanelH);
-        // The box hugs the bottom in both orientations (#14): lifted over the
+        // The box hugs the bottom in both orientations: lifted over the
         // portrait bottom bar, or just the safe-area inset in landscape
         // (pure rails, no bottom bar), plus the hairline pad.
         float lift = Orientation == ScreenOrientation.Portrait
@@ -1045,17 +1042,9 @@ public partial class HudView : OrientationHud, IHudView
         _continueHint.OffsetBottom = -bottom - panelH - 4f;
     }
 
-    // Red-pill bankruptcy warning. The redesign §8 toast spec called
-    // for a circular badge, but the in-map warning on a doomed
-    // capital is an upward-pointing equilateral triangle (white-
-    // bordered red, white "!" inside) — so the toast uses the same
-    // triangle to keep the warning glyph consistent between the
-    // capital tile and the toast. Spec colors otherwise stand: dark-
-    // red bg (oklch 0.30 0.10 25 ≈ #4a2620) at 92% alpha, 1px
-    // brighter-red border, 8px radius. Two-line text block: title
-    // in Geist 600 ink, subtitle in Geist ink-mute. Shown by
-    // Refresh() while the currently-selected territory is doomed for
-    // the human's next turn; otherwise hidden.
+    // Red-pill bankruptcy toast — uses the same upward-triangle warning
+    // glyph as the in-map capital badge. Dark-red bg @92% alpha, 1px
+    // brighter-red border, 8px radius; title Geist ink, subtitle ink-mute.
     private static readonly Color BankruptToastBg = new Color(0.290f, 0.149f, 0.125f, 0.92f);
     private static readonly Color BankruptToastBorder = new Color(0.722f, 0.314f, 0.251f, 1f);
     // Yellow (NegativeDelta) variant of the toast palette. Dark olive
@@ -1067,10 +1056,9 @@ public partial class HudView : OrientationHud, IHudView
     private static readonly Color NegativeDeltaToastBg = new Color(0.290f, 0.260f, 0.110f, 0.92f);
     private static readonly Color NegativeDeltaToastBorder = new Color(0.886f, 0.722f, 0.255f, 1f);
 
-    // 1.5x larger than the spec's reference so the toast reads at the heavier
-    // scale the rest of the redesign settled on. Lives top-center, just below
-    // the HUD bar, so it doesn't fight the tutorial action-hint panel (which
-    // lives bottom-center).
+    // Sized at the heavier scale used across the HUD. Lives top-center, just
+    // below the HUD bar, so it doesn't fight the tutorial action-hint panel
+    // (which lives bottom-center).
     private const float BankruptToastW = 660f;
     private const float BankruptToastH = 96f;
     private const float BankruptToastMarginTop = 16f;
@@ -1294,7 +1282,7 @@ public partial class HudView : OrientationHud, IHudView
         if (_replayButton != null) _replayButton.Disabled = !available;
     }
 
-    // ---- Campaign victory (issue #2) ----------------------------------
+    // ---- Campaign victory ----------------------------------
     // Main-facing like NewGameClicked / MainMenuClicked — not part of the
     // controller's IHudView contract, so GameController stays untouched.
 
@@ -1897,7 +1885,7 @@ public partial class HudView : OrientationHud, IHudView
                 if (_tutorialLabel.Text != hint)
                 {
                     _tutorialLabel.Text = hint;
-                    PositionTutorialOverlay(); // re-fit the panel height to this hint (#18)
+                    PositionTutorialOverlay(); // re-fit the panel height to this hint
                 }
                 _tutorialPanel.Visible = true;
             }
@@ -1907,8 +1895,7 @@ public partial class HudView : OrientationHud, IHudView
             }
         }
 
-        // Tap-summoned capital alert notice (issue #15) — replaces the
-        // old always-on bankruptcy toast. Visibility is driven by
+        // Tap-summoned capital alert notice. Visibility is driven by
         // _summonedAlertCoord, set by the controller's tap handler.
         // Refresh stale-guards: if the previously-summoned capital was
         // captured, eliminated, or recovered (outlook now Healthy /
@@ -1999,9 +1986,8 @@ public partial class HudView : OrientationHud, IHudView
             UnitLevel level = (src?.Unit?.Level) ?? UnitLevel.Recruit;
             return $"{InteractionVerb.Capitalized} to move the {level}";
         }
-        // Bankruptcy warning now flows through the red bankruptcy-toast
-        // widget (built by BuildBankruptToast / toggled in Refresh) —
-        // no longer competes for the tutorial panel.
+        // Bankruptcy warning is handled by the red bankruptcy-toast widget
+        // (built by BuildBankruptToast / toggled in Refresh), not this panel.
         return null;
     }
 

@@ -6,7 +6,7 @@ namespace FourExHex.Tests;
 
 public partial class GameControllerTests
 {
-    // --- Rising Tides mode (issue #56) -----------------------------------
+    // --- Rising Tides mode -----------------------------------
 
     private sealed class TidesGame
     {
@@ -93,7 +93,7 @@ public partial class GameControllerTests
     [Fact]
     public void RisingTides_ForecastsAtTurnStart_SubmergesAtTurnEnd()
     {
-        // Issue #85: the erosion is telegraphed at the START of a player's turn
+        // The erosion is telegraphed at the START of a player's turn
         // (a PendingTide forecast, tile still present) and only actualized at the
         // END of that same turn. The tide runs from turn 1, so the very first
         // player already has a forecast right after the game starts.

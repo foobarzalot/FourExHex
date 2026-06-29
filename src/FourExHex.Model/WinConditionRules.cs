@@ -86,7 +86,7 @@ public static class WinConditionRules
     }
 
     /// <summary>
-    /// "Last player standing" winner check used by Rising Tides (issue #56),
+    /// "Last player standing" winner check used by Rising Tides,
     /// where every early-win path is suppressed. Returns the sole owner that
     /// has a capital-bearing territory iff exactly one distinct owner does;
     /// null if two or more still hold a capital, or if none do (a degenerate

@@ -127,7 +127,7 @@ public class SessionState
     /// Capital coords of territories the human has visited (selected by
     /// Tab / Shift+Tab / click) this turn. Tab-cycling prefers unvisited
     /// territories so mid-turn size changes can't make the cycle revisit
-    /// a territory before every untouched one has had its chance (#35).
+    /// a territory before every untouched one has had its chance.
     /// Keyed by capital coord because territory objects are rebuilt on
     /// every mutation. Cleared at EndTurn and when a full cycle exhausts
     /// (a new round starts). Round-trips through

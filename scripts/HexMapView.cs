@@ -157,18 +157,18 @@ public partial class HexMapView : Node2D, IHexMapView
     private PolylineBatch? _bordersLayer;
     private TriangleSoup? _goldBordersLayer;
     // The baked water + shoreline-foam soup. Static in normal play, but Rising
-    // Tides (issue #56) grows WaterCoords as shores submerge, so the reference
+    // Tides grows WaterCoords as shores submerge, so the reference
     // is kept to re-bake it in place (preserving z-order) on a structural change.
     private TriangleSoup? _waterFoamBake;
-    // Mountain coords as of the last rebuild, for the Rising Tides demote effect
-    // (issue #56): a demoted shore mountain stays in the grid (only loses its
+    // Mountain coords as of the last rebuild, for the Rising Tides demote effect:
+    // a demoted shore mountain stays in the grid (only loses its
     // mountain flag), so it can't be found by the drowned-tile diff — instead
     // EmitRisingTidesFx diffs this against the current mountain set.
     private readonly HashSet<HexCoord> _lastMountainCoords = new();
-    // Mountain inner borders (issue #81): a black thickened hex-ring channel
-    // mirroring the gold one, drawn as a batched TriangleSoup. Replaces the old
-    // peak glyph; gold and mountain are mutually exclusive so the two rings never
-    // overlap. Sits in the same z-band as the gold channel.
+    // Mountain inner borders: a black thickened hex-ring channel
+    // mirroring the gold one, drawn as a batched TriangleSoup. Gold and mountain
+    // are mutually exclusive so the two rings never overlap. Sits in the same
+    // z-band as the gold channel.
     private TriangleSoup? _mountainBordersLayer;
     private Node2D? _capitalsLayer;
     private Node2D? _rejectionsLayer;
@@ -192,8 +192,8 @@ public partial class HexMapView : Node2D, IHexMapView
     private readonly Dictionary<HexCoord, Node2D> _treeVisuals = new();
     private readonly Dictionary<HexCoord, Node2D> _graveVisuals = new();
 
-    // Per-tile fill polygon, owned by the view (was HexTile.Visual on the
-    // model). Resynced from _state in RebuildAfterTerritoryChange.
+    // Per-tile fill polygon, owned by the view. Resynced from _state in
+    // RebuildAfterTerritoryChange.
     private readonly Dictionary<HexCoord, Polygon2D> _tileVisuals = new();
 
     // True except for one refresh after RebuildAfterTerritoryChange,
@@ -233,11 +233,11 @@ public partial class HexMapView : Node2D, IHexMapView
     // Selection backdrop: a translucent black tile-sized hex drawn
     // beneath the selected unit's rings. Darkens the tile enough that
     // the white rings still read, while letting the territory fill and
-    // any co-located capital/tower/tree/grave show through (issue #46).
+    // any co-located capital/tower/tree/grave show through.
     // Tune ~0.45-0.65 for ring contrast vs. feature visibility.
     private static readonly Color SelectionBackdropColor = new Color(0f, 0f, 0f, 0.42f);
 
-    // Tutorial "tap this unit to pick it up" cue (issue #49). A flashing
+    // Tutorial "tap this unit to pick it up" cue. A flashing
     // CTA-style highlight on the source unit's own tile — a white hex with
     // a black border whose alpha pulses, mirroring the HUD's tutorial-CTA
     // button flash (see HudView.StartCtaPulse). Deliberately distinct from
@@ -252,7 +252,7 @@ public partial class HexMapView : Node2D, IHexMapView
     // CTA-style flash, but only the white FILL pulses (the black border stays
     // steady so the tile frame always reads). The fill peaks translucent —
     // never opaque — so the actionable unit's white rings stay visible at the
-    // top of the pulse instead of washing out (issue #49). Sine, 0.55 s/leg
+    // top of the pulse instead of washing out. Sine, 0.55 s/leg
     // to match HudView's CTA cadence.
     private const float SelectCueFillMinAlpha = 0.18f;
     private const float SelectCueFillMaxAlpha = 0.55f;
@@ -397,8 +397,7 @@ public partial class HexMapView : Node2D, IHexMapView
 
         // Initial pan: geometric center of the map, clamped to bounds.
         // If the map fits in the viewport, ClampPan locks each axis to
-        // its centered value (matches the previous one-shot centering
-        // that lived in Main.cs).
+        // its centered value.
         RecenterMap();
     }
 
@@ -503,7 +502,7 @@ public partial class HexMapView : Node2D, IHexMapView
             AddChild(fill);
         }
 
-        // Rising Tides (issue #56): baseline the mountain set so the first
+        // Rising Tides: baseline the mountain set so the first
         // demotion after a build/load is detected by EmitRisingTidesFx.
         _lastMountainCoords.Clear();
         foreach (HexTile tile in _state.Grid.Tiles)
@@ -511,7 +510,7 @@ public partial class HexMapView : Node2D, IHexMapView
             if (tile.IsMountain) _lastMountainCoords.Add(tile.Coord);
         }
 
-        // Gold-tile inner borders (issue #45): drawn just above the tile fills
+        // Gold-tile inner borders: drawn just above the tile fills
         // but BELOW the per-tile outlines and territory borders, so both the
         // thin cell-to-cell outline and the thick boundary lines draw on top of
         // the gold accent. The gold ring reaches the tile edge, so if it sat
@@ -521,10 +520,10 @@ public partial class HexMapView : Node2D, IHexMapView
         _goldBordersLayer = new TriangleSoup { Name = "GoldBordersLayer" };
         AddChild(_goldBordersLayer);
 
-        // Mountain-tile inner borders (issue #81): the same hex-ring channel as
+        // Mountain-tile inner borders: the same hex-ring channel as
         // gold but black and a touch thicker, in the same z-band (above fills,
         // below outlines/borders). Gold and mountain are mutually exclusive, so
-        // the two channels never share a tile. Replaces the old peak glyph.
+        // the two channels never share a tile.
         _mountainBordersLayer = new TriangleSoup { Name = "MountainBordersLayer" };
         AddChild(_mountainBordersLayer);
 
@@ -534,10 +533,7 @@ public partial class HexMapView : Node2D, IHexMapView
         // Layer order on each land tile: fill → border (1.5px in this
         // tile's player-dark, full perimeter). The border sits on top
         // so seams between two players show both dk colors side-by-
-        // side without one overdrawing the other. (The earlier
-        // redesign also drew a bevel highlight + bottom-shadow chord
-        // per tile, but the lines read as paper grain and hurt
-        // readability — removed.)
+        // side without one overdrawing the other.
         _outlinesLayer = new PolylineBatch { Name = "OutlinesLayer" };
         AddChild(_outlinesLayer);
         PopulateOutlinesLayer();
@@ -565,7 +561,7 @@ public partial class HexMapView : Node2D, IHexMapView
         AddChild(_unitsLayer);
         _deathsLayer = new Node2D { Name = "DeathsLayer" };
         AddChild(_deathsLayer);
-        // Rising Tides telegraph (issue #85): drawn above units/deaths so the
+        // Rising Tides telegraph: drawn above units/deaths so the
         // "this tile will sink" cue tints the doomed tile and its occupant, but
         // below targets so move-target rings still read on top.
         _tideForecastLayer = new Node2D { Name = "TideForecastLayer" };
@@ -721,7 +717,7 @@ public partial class HexMapView : Node2D, IHexMapView
     }
 
     /// <summary>
-    /// Rising Tides (issue #56): when one or more land tiles have submerged
+    /// Rising Tides: when one or more land tiles have submerged
     /// (their coords are now in <c>_state.WaterCoords</c> and gone from the
     /// grid), drop their stale land-fill <see cref="Polygon2D"/>s and re-bake
     /// the water/foam soup in place so the new water actually draws. Only does
@@ -751,7 +747,7 @@ public partial class HexMapView : Node2D, IHexMapView
             $"rebaked water ({_state.WaterCoords.Count} coords)");
     }
 
-    // Rising Tides FX (issue #56) captured at the top of a rebuild but spawned
+    // Rising Tides FX captured at the top of a rebuild but spawned
     // only at the very end — RebuildAfterTerritoryChange does ClearLayer(
     // _deathsLayer) mid-method to cancel stale death animations, which would
     // wipe an effect spawned earlier in the same call. So capture the coords
@@ -1038,7 +1034,7 @@ public partial class HexMapView : Node2D, IHexMapView
         }
     }
 
-    // Rising Tides telegraph palette/cadence (issue #85). The cue ALTERNATES the
+    // Rising Tides telegraph palette/cadence. The cue ALTERNATES the
     // before/after shoreline: a single group cross-fades by alpha (min↔max). For a
     // SUBMERGING tile the group is the real water color plus, per edge, a cover
     // quad over the OLD coastal foam (sea-facing edges) and a NEW white foam strip
@@ -1057,7 +1053,7 @@ public partial class HexMapView : Node2D, IHexMapView
     private readonly List<TideStep> _shownTideForecast = new();
 
     /// <summary>
-    /// Rising Tides (issue #85): telegraph the given steps as tiles eroding at the
+    /// Rising Tides: telegraph the given steps as tiles eroding at the
     /// END of the current player's turn. A submerging tile cross-fades between its
     /// land look (before) and the open-sea look with the new coastline (after); a
     /// demote-only shore mountain fades its ring toward lowland and back. Pass an
@@ -1209,7 +1205,7 @@ public partial class HexMapView : Node2D, IHexMapView
     }
 
     /// <summary>
-    /// Telegraph a demote-only shore mountain (issue #85): cover the baked mountain
+    /// Telegraph a demote-only shore mountain: cover the baked mountain
     /// ring band (the outer→inner channel <see cref="DrawMountains"/> draws) with
     /// the tile's land color and pulse that cover's alpha 0→1 in sync, so the
     /// ring's alpha appears to animate down to flat "demoted to lowland" at peak
@@ -1358,7 +1354,7 @@ public partial class HexMapView : Node2D, IHexMapView
         // The backdrop is a tile-sized translucent-black hexagon at the
         // unit's center: it darkens the tile enough for the white rings
         // to read, while letting the territory fill and any co-located
-        // capital/tower/tree/grave show through (issue #46). CreateHexVisual
+        // capital/tower/tree/grave show through. CreateHexVisual
         // returns a Polygon2D, which is itself a Node2D — store it in
         // _selectionBackdrop.
         Polygon2D backdrop = CreateHexVisual(center, SelectionBackdropColor);
@@ -1398,8 +1394,8 @@ public partial class HexMapView : Node2D, IHexMapView
     }
 
     /// <summary>
-    /// Flash the "tap this unit to pick it up" cue on <paramref name="coord"/>
-    /// (issue #49), or clear it when null. The cue is a white hex with a
+    /// Flash the "tap this unit to pick it up" cue on <paramref name="coord"/>,
+    /// or clear it when null. The cue is a white hex with a
     /// black border whose alpha pulses — the same CTA idiom as the HUD's
     /// tutorial buttons, so it reads as "do this here" and never as the
     /// green "move TO here" rings. Excludes the cued unit from the
@@ -1881,7 +1877,7 @@ public partial class HexMapView : Node2D, IHexMapView
     private const int UnitShardCount = 14;
     private const int TowerShardCount = 20;
     private const int TreeShardCount = 16;
-    // Rising Tides submerge effect (issue #56): a land hex sinking + fading
+    // Rising Tides submerge effect: a land hex sinking + fading
     // under the sea, with an expanding water-tinted ripple ring on top.
     private const double SubmergeSinkDuration = 0.6;
     private const double SubmergeRippleDuration = 0.75;
@@ -1895,16 +1891,9 @@ public partial class HexMapView : Node2D, IHexMapView
     /// destruction the player needs to see. All transient nodes free
     /// themselves when their tweens finish.
     /// </summary>
-    /// <summary>True while an AI player runs under the "Instant" AI
-    /// Speed setting, or for the whole of an instant-speed replay —
-    /// gates every per-action sound/anim spawn call AND the Bankruptcy/
-    /// GameWon cues so the fast-forward is fully silent from the human's
-    /// perspective. Toggled by GameController. A human still hears their
-    /// own bankruptcy / game-won fanfare because a human's own turn is
-    /// never silent (this flag is only set while an AI acts under
-    /// Instant, or across an instant replay — never on a live human
-    /// turn). Game-over visual overlays flow through Refresh, not
-    /// PlaySound, so they render regardless.</summary>
+    /// <summary>True while an AI runs under Instant speed or during an instant
+    /// replay; gates all per-action sound/anim and bankruptcy/game-won cues.
+    /// Never set on a live human turn.</summary>
     private bool _silentMode;
     public void SetSilentMode(bool silent)
     {
@@ -1942,7 +1931,7 @@ public partial class HexMapView : Node2D, IHexMapView
     private static readonly Color MountainRockColor = new Color(0.72f, 0.72f, 0.76f, 1f);
 
     /// <summary>
-    /// Rising Tides (issue #56): a shore mountain demotes (loses its mountain
+    /// Rising Tides: a shore mountain demotes (loses its mountain
     /// status) before it can sink. Reuse the standard destruction burst with
     /// grey rock shards — paired with the <c>TowerDestroyed</c> sound — so the
     /// crumble reads clearly. Gated like every other cue by the VFX toggle and
@@ -1971,7 +1960,7 @@ public partial class HexMapView : Node2D, IHexMapView
     }
 
     /// <summary>
-    /// Rising Tides (issue #56): a shore tile sinking under the sea. The land
+    /// Rising Tides: a shore tile sinking under the sea. The land
     /// hex (in <paramref name="landColor"/>, the owner's fill) scales inward and
     /// fades to nothing, with one expanding water-tinted ripple ring on top.
     /// Gated by the VFX toggle and silent mode like every other cue.
@@ -2031,15 +2020,9 @@ public partial class HexMapView : Node2D, IHexMapView
     }
 
     /// <summary>
-    /// Single sound-dispatch entry point. The <paramref name="at"/> coord
-    /// is unused today — AudioBus plays through a single non-spatial 2D
-    /// player — but the parameter keeps room for a later positional
-    /// implementation without touching every caller. Silent-mode gates
-    /// every cue with no exceptions: a silent AI-Instant batch or an
-    /// instant replay is a fully silent fast-forward. Bankruptcy/GameWon
-    /// still reach a human because a human's own turn is never silent
-    /// (silent mode is only on while an AI acts under Instant, or for the
-    /// whole of an instant replay).
+    /// Single sound-dispatch entry point. The <paramref name="at"/> coord is
+    /// reserved for future spatial audio (AudioBus plays non-spatial 2D today).
+    /// Silent mode gates every cue with no exceptions.
     /// </summary>
     public void PlaySound(SoundEffect kind, HexCoord? at = null)
     {
@@ -2383,8 +2366,8 @@ public partial class HexMapView : Node2D, IHexMapView
         float angle = baseAngle + jitter;
         Vector2 dir = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
 
-        // Shard geometry: small irregular triangle. Roughly 2x what was
-        // there before so individual shards read against tile fills.
+        // Shard geometry: small irregular triangle, sized so shards read
+        // against tile fills.
         float r = HexSize * (0.11f + 0.06f * (float)DestructionRng.NextDouble());
         var verts = new[]
         {
@@ -2529,10 +2512,8 @@ public partial class HexMapView : Node2D, IHexMapView
     // Conifer: dark green canopy triangle with a brown trunk, both
     // stroked in BgDeep. Matches the HUD palette's tree icon
     // (HudIcons.DrawTree) so the same shape appears in the map editor
-    // toolbar swatch and on the tile itself. The redesign spec called
-    // for a single bare triangle, but the user preferred the trunked
-    // conifer — easier to read at small scales and visually consistent
-    // with the existing icon language.
+    // toolbar swatch and on the tile itself. The trunked conifer reads
+    // well at small scales and is consistent with the existing icon language.
     private static readonly Color ForestCanopyColor = BoardPalette.ForestCanopy;
     private static readonly Color ForestTrunkColor = BoardPalette.ForestTrunk;
     private static readonly Color ForestStrokeColor = UiPalette.BgDeep;
@@ -2584,7 +2565,7 @@ public partial class HexMapView : Node2D, IHexMapView
     // single graphic instead of three independent circles.
     private static readonly float[] UnitRingRadii = { 0.50f, 0.34f, 0.20f };
     // Outermost ring is thicker than the inner rings so the unit silhouette
-    // reads clearly on top of busy terrain (mountain glyphs, #50). Inner
+    // reads clearly on top of busy terrain (mountain glyphs). Inner
     // rings stay thin to keep the level-count legible.
     private static readonly float[] UnitRingWidthFactors = { 0.10f, 0.05f, 0.045f };
     private const float UnitDotRadius = 0.08f;
@@ -3022,8 +3003,7 @@ public partial class HexMapView : Node2D, IHexMapView
         float availY = vp.Y - _topInset - _bottomInset;
         // On-screen bounding box of the (scaled + rotated) full nominal grid
         // (Cols×Rows), relative to this node's origin. Pan-clamping frames the
-        // whole grid — NOT the content box — so panning stays as free as it was
-        // before content-aware framing landed: a sparsely-painted editor map or
+        // whole grid — NOT the content box — so a sparsely-painted editor map or
         // an off-center level can still pan across the full board. Initial
         // centering is content-aware separately in RecenterMap. At angle 0 this
         // reduces to (0,0,w·zoom,h·zoom), the legacy landscape clamp.
@@ -3033,7 +3013,7 @@ public partial class HexMapView : Node2D, IHexMapView
         // symmetric pad is still symmetric, so we widen the rotated AABB
         // directly instead of feeding the pad through RotatedBoardBox.
         // This lets edge hexes pan clear of the floating HUD chips/buttons
-        // that overlay the viewport corners (issue #16). Sized in board-
+        // that overlay the viewport corners. Sized in board-
         // local pixels and scaled by zoom to match the rest of the box.
         float pad = ScrollPaddingPx * _zoom;
         minX -= pad; minY -= pad; maxX += pad; maxY += pad;
@@ -3063,7 +3043,7 @@ public partial class HexMapView : Node2D, IHexMapView
     /// zoom to the allowed range and re-syncs the discrete level index, like
     /// a user gesture would. Callers use this to open a scene with a
     /// hand-tuned framing instead of the RecenterMap fit default (e.g. the
-    /// tutorial's landscape camera, #14).</summary>
+    /// tutorial's landscape camera).</summary>
     public void SetCamera(float zoom, Vector2 contentCenterOffset)
     {
         _zoom = Mathf.Clamp(zoom, _zoomMin, 1f);
@@ -3083,10 +3063,8 @@ public partial class HexMapView : Node2D, IHexMapView
     /// previewed board at a fixed scale and position when the seed is re-rolled
     /// (only the tiles inside change). Rotation-aware via
     /// <see cref="VisualCenter"/> / <see cref="ToWorldOffset"/>.
-    /// <paramref name="overscan"/> &gt; 1 scales the board past the exact fit so
-    /// its jagged hex-tessellation perimeter spills outside the viewport and is
-    /// clipped to clean straight edges (the thumbnail uses this; the outer ring
-    /// it crops is the map's water border).</summary>
+    /// <paramref name="overscan"/> &gt; 1 over-scales so the jagged perimeter is
+    /// clipped to clean edges (used by the menu thumbnail).</summary>
     public void FrameWholeGrid(float overscan = 1f)
     {
         _zoom = _zoomMin * overscan;
@@ -3206,7 +3184,7 @@ public partial class HexMapView : Node2D, IHexMapView
             RecenterMap();
             // The mountain channel's bevel shading is baked relative to the board,
             // so rebake it to keep the light coming from the same screen direction
-            // (top-left) under the new rotation. (#81 followup)
+            // (top-left) under the new rotation.
             DrawMountains();
         }
         else
@@ -3564,8 +3542,8 @@ public partial class HexMapView : Node2D, IHexMapView
     private const float GoldBorderOuter = 1.0f;
     private const float GoldBorderInner = 0.74f;
 
-    // Mountain ring channel (issue #81): a hex-ring band, a touch thicker than the
-    // gold one, shaded as a raised "plateau" (issue #81 followup) — a bright lit
+    // Mountain ring channel: a hex-ring band, a touch thicker than the
+    // gold one, shaded as a raised "plateau" — a bright lit
     // top rim over a near-black outer drop-shadow skirt — so the tile reads as a
     // lifted slab rather than a flat band. See DrawMountains.
     private const float MountainBorderOuter = 1.0f;
@@ -3617,8 +3595,7 @@ public partial class HexMapView : Node2D, IHexMapView
 
     /// <summary>
     /// Draw a differentially-shaded hex-ring channel inside every
-    /// <see cref="HexTile.IsMountain"/> tile (issue #81), retiring the old peak
-    /// glyph. The same batched TriangleSoup technique as
+    /// <see cref="HexTile.IsMountain"/> tile. The same batched TriangleSoup technique as
     /// <see cref="DrawGoldBorders"/>, but shaded as a raised plateau: a near-black
     /// outer drop-shadow skirt under a bright inner top rim that brightens toward
     /// the top-left light, so the tile reads as a lifted slab. Gold and mountain

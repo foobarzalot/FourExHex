@@ -48,8 +48,7 @@ public sealed partial class CreditsPanel : CanvasLayer
     // Fixed-size centered panel (matches SettingsPanel so switching
     // Settings↔Credits doesn't jump the box). FitPanel scales it down (never
     // up) to fit a short/narrow safe viewport, the same shrink-to-fit the main
-    // menu uses; the long credits text scrolls within the design-size panel
-    // (issue #17).
+    // menu uses; the long credits text scrolls within the design-size panel.
     private const float DesignWidth = 456f;
     private const float DesignHeight = 540f;
     private const float ViewportMargin = 24f;
@@ -113,7 +112,7 @@ public sealed partial class CreditsPanel : CanvasLayer
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
             // Pass (not the default Stop) so a touch-drag propagates up to the
             // ScrollContainer for panning instead of being swallowed here; a
-            // plain tap still reaches the [url] meta link (issue #17).
+            // plain tap still reaches the [url] meta link.
             MouseFilter = Control.MouseFilterEnum.Pass,
         };
         body.AddThemeFontSizeOverride("normal_font_size", 22);
@@ -155,7 +154,7 @@ public sealed partial class CreditsPanel : CanvasLayer
     /// constant width and font size across orientations. Scale is driven by
     /// <b>width only</b> (clamped ≤ 1), so a short landscape viewport doesn't
     /// shrink the text — instead the panel's height is capped to fit and the
-    /// inner <see cref="ScrollContainer"/> simply scrolls further (issue #17).</summary>
+    /// inner <see cref="ScrollContainer"/> simply scrolls further.</summary>
     private void FitPanel()
     {
         Vector2 vp = GetViewport().GetVisibleRect().Size;

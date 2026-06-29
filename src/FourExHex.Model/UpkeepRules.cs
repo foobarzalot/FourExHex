@@ -48,7 +48,7 @@ public static class UpkeepRules
     /// Number of upkeep steps the AI's solvency check looks ahead.
     /// One-step lookahead let the AI take buys whose post-state
     /// barely survived next upkeep but drained the treasury within
-    /// a few more turns — the #22 doom spiral. A 5-step horizon
+    /// a few more turns — the doom spiral. A 5-step horizon
     /// forces the AI to keep enough runway to absorb the new
     /// upkeep over several turns, not just one.
     /// </summary>
@@ -137,7 +137,7 @@ public static class UpkeepRules
         }
 
         // Bankrupt — every unit in the territory dies, leaving a grave.
-        // Graves and mountains now coexist (issue #81), so a unit dying on a
+        // Graves and mountains coexist, so a unit dying on a
         // mountain leaves a grave the same as ordinary ground. Capital
         // occupants and other non-unit occupants survive untouched.
         int killed = 0;

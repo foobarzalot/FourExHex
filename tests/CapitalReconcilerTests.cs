@@ -304,10 +304,8 @@ public class CapitalReconcilerTests
     [Fact]
     public void Reconcile_MultiHexTerritoryAllTrees_PlacesCapitalStompingTree()
     {
-        // Two-tile territory where every tile holds a tree. Previously
-        // CapitalPlacer skipped tree tiles entirely, leaving a 2+ hex
-        // territory with no capital (invariant violation). The fallback
-        // tier should now stomp a tree to honor the invariant.
+        // Two-tile territory where every tile holds a tree. The fallback
+        // tier stomps a tree to honor the 2+ hex capital invariant.
         HexGrid grid = BuildGrid(new HexCoord(0, 0), new HexCoord(1, 0));
         grid.Get(new HexCoord(0, 0))!.Occupant = new Tree();
         grid.Get(new HexCoord(1, 0))!.Occupant = new Tree();
@@ -324,7 +322,7 @@ public class CapitalReconcilerTests
         Assert.IsType<Tree>(grid.Get(new HexCoord(1, 0))!.Occupant);
     }
 
-    // --- Neutral (unowned) territories (issue #39) ------------------------
+    // --- Neutral (unowned) territories ---
 
     [Fact]
     public void Reconcile_MultiHexNeutralTerritory_GetsNoCapital()

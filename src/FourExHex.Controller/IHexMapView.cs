@@ -64,7 +64,7 @@ public interface IHexMapView
     void ShowTowerCoverage(IEnumerable<HexCoord> coords);
 
     /// <summary>
-    /// Rising Tides (issue #85): telegraph the given steps as tiles that will
+    /// Rising Tides: telegraph the given steps as tiles that will
     /// erode at the END of the current player's turn — a cue shown for the whole
     /// turn so the player (and the AI) can react. A submerging step
     /// (<see cref="TideStep.DemoteOnly"/> false) cross-fades the tile between its

@@ -5,8 +5,8 @@ using Xunit;
 namespace FourExHex.Tests;
 
 /// <summary>
-/// Round-trip and tolerance tests for <see cref="CampaignSerializer"/>
-/// (issue #2). The campaign sidecar file must survive corruption,
+/// Round-trip and tolerance tests for <see cref="CampaignSerializer"/>.
+/// The campaign sidecar file must survive corruption,
 /// truncation, and unknown future versions without ever crashing the
 /// menu — the store falls back to fresh progress when Deserialize throws.
 /// </summary>

@@ -1,6 +1,6 @@
 /// <summary>
 /// One-shot handoff from <see cref="MainMenuScene"/> to <see cref="MapEditorScene"/>
-/// across <c>ChangeSceneToFile</c> (issue #70). The menu's "Map Editor" source
+/// across <c>ChangeSceneToFile</c>. The menu's "Map Editor" source
 /// chooser sets <see cref="Pending"/> — either a fresh map with the per-color
 /// kinds/difficulties picked on the shared player-setup screen, or a saved map
 /// to open for editing — and the editor reads it in <c>_Ready</c> and clears it.

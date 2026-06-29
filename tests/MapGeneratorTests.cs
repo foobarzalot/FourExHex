@@ -271,13 +271,13 @@ public class MapGeneratorTests
     [InlineData(9999)]
     public void GeneratedMapHasNoNeutralTiles(int seed)
     {
-        // Issue #39: neutral (unowned) hexes are editor-only. Random
+        // Neutral (unowned) hexes are editor-only. Random
         // generation must assign every land tile to a real player.
         MapGenResult result = Build(seed);
         Assert.All(result.Grid.Tiles, t => Assert.False(t.Owner.IsNone));
     }
 
-    // ── Mountain scatter (issue #48, Phase 1) ───────────────────────────────
+    // ── Mountain scatter ───────────────────────────────
 
     [Theory]
     [InlineData(0)]
@@ -298,7 +298,7 @@ public class MapGeneratorTests
     [InlineData(9999)]
     public void MountainsOff_ByteIdenticalToBaseline(int seed)
     {
-        // The #20 determinism baseline: turning the (off) mountain pass into a
+        // The determinism baseline: turning the (off) mountain pass into a
         // no-op must not perturb owner assignment, tree scatter, or water — i.e.
         // no stray RNG draws happen when MountainDensity is 0.
         MapGenResult baseline = Build(seed);
@@ -376,7 +376,7 @@ public class MapGeneratorTests
     [InlineData(9999)]
     public void MountainsAndGold_NeverShareTile(int seed)
     {
-        // Gold and mountain are now mutually exclusive (issue #81): with both
+        // Gold and mountain are mutually exclusive: with both
         // passes on, no generated tile carries both flags.
         MapGenResult result = BuildWith(seed, new MapGenOptions(
             MountainDensity: MountainOnDensity, GoldDensity: GoldOnDensity));
@@ -450,7 +450,7 @@ public class MapGeneratorTests
             $"Only {withMountainNeighbor}/{mountains.Count} mountains are part of a range (seed {seed})");
     }
 
-    // ── Gold scatter (issue #48, Phase 2) ───────────────────────────────────
+    // ── Gold scatter ───────────────────────────────────────────
 
     [Theory]
     [InlineData(0)]
@@ -582,9 +582,9 @@ public class MapGeneratorTests
     [Fact]
     public void GoldOn_WithMountains_NeverLandsOnMountain()
     {
-        // Gold and mountain are mutually exclusive (issue #81): gold never lands
-        // on a mountain tile (the old gold-on-mountain bias was removed). Both
-        // resources still appear when both passes are on.
+        // Gold and mountain are mutually exclusive: gold never lands
+        // on a mountain tile. Both resources still appear when both passes
+        // are on.
         int goldTotal = 0;
         int mountainTotal = 0;
         var opts = new MapGenOptions(MountainDensity: MountainOnDensity, GoldDensity: GoldOnDensity);
@@ -603,7 +603,7 @@ public class MapGeneratorTests
         Assert.True(mountainTotal > 0, "Expected mountain tiles across the sampled seeds");
     }
 
-    // ── Tree density (issue #66) ────────────────────────────────────────────
+    // ── Tree density ────────────────────────────────────────────
 
     [Theory]
     [InlineData(1)]
@@ -613,8 +613,7 @@ public class MapGeneratorTests
     {
         // The default MapGenOptions (trees 5, no mountains/gold) must reproduce the
         // no-options baseline exactly — owners, trees, mountains, gold, and water.
-        // This pins the #20 determinism reference: the density rewrite is a no-op at
-        // defaults.
+        // This pins the determinism reference: density is a no-op at defaults.
         MapGenResult baseline = Build(seed);
         MapGenResult deflt = BuildWith(seed, new MapGenOptions());
 
@@ -637,9 +636,9 @@ public class MapGeneratorTests
     [InlineData(9999)]
     public void TreeDensity_DefaultReproducesHistoricalScatter(int seed)
     {
-        // The historical scatter placed grid.Count / 20 trees. With no occupants to
-        // dodge (default: no mountains/gold), the default 5% density places exactly
-        // that many — the byte-identical-tree-baseline guarantee.
+        // With no occupants to dodge (default: no mountains/gold), the default 5%
+        // density places exactly grid.Count / 20 trees — the byte-identical-tree-
+        // baseline guarantee.
         MapGenResult result = Build(seed);
         Assert.Equal(result.Grid.Count / 20, CountTrees(result));
     }
@@ -669,7 +668,7 @@ public class MapGeneratorTests
             $"TreeDensity 20 ({dense}) should place more than 5 ({sparse}) for seed {seed}");
     }
 
-    // ── Mountain / gold density scaling (issue #66) ─────────────────────────
+    // ── Mountain / gold density scaling ─────────────────────────
 
     [Theory]
     [InlineData(1)]
@@ -695,7 +694,7 @@ public class MapGeneratorTests
             $"GoldDensity 20 ({dense}) should place more than 5 ({sparse}) for seed {seed}");
     }
 
-    // ── Clumping factor (issue #72) ─────────────────────────────────────────
+    // ── Clumping factor ─────────────────────────────────────────
 
     /// <summary>Fraction (as integer percent) of land–land adjacencies whose two
     /// tiles share an owner. Higher = more spatially contiguous (clumped); the
@@ -726,7 +725,7 @@ public class MapGeneratorTests
     {
         // Factor 0 must reproduce today's per-cell random owner assignment exactly —
         // zero extra RNG draws, so owners, trees, and water all match the no-options
-        // baseline. This pins the #20/#72 determinism reference: clumping is a no-op
+        // baseline. This pins the determinism reference: clumping is a no-op
         // at 0 (gated like the mountain/gold passes).
         MapGenResult baseline = Build(seed);
         MapGenResult zero = BuildWith(seed, new MapGenOptions(ClumpingFactor: 0));
@@ -766,15 +765,10 @@ public class MapGeneratorTests
     [InlineData(9999)]
     public void MaxClumping_DistributesLandFairly(int seed)
     {
-        // Fairness (#72 follow-up): seeds start farthest-point apart, then two Lloyd
-        // relaxation passes re-center them on their region centroids, so at factor 100
-        // the one-region-per-player Voronoi keeps every player's land within a sane
-        // band of the fair average. The band is a gross-unfairness guard
-        // (fair/3 .. 5/2×fair), not a tight equality claim — a few point-seeds over a
-        // jagged small continent can't carve perfectly equal areas (a pinched
-        // peninsula region stays small) — but it rejects the clustered-random-seed
-        // splits this fix targets, which starved players below a third while hogging
-        // well over double. Larger maps tighten the band further.
+        // At factor 100 the one-region-per-player Voronoi keeps every player's land
+        // within a sane band of the fair average. The band (fair/3 .. 5/2×fair) is a
+        // gross-unfairness guard, not a tight equality claim — a few point-seeds over
+        // a jagged small continent can't carve perfectly equal areas.
         MapGenResult result = BuildWith(seed, new MapGenOptions(ClumpingFactor: 100));
         var counts = new Dictionary<PlayerId, int>();
         foreach (Player p in SixPlayers()) counts[p.Id] = 0;
@@ -820,7 +814,7 @@ public class MapGeneratorTests
     public void Clumped_OwnersOnlyOnLandAndAmongPlayers(int seed)
     {
         // Clumping reassigns owners but must never introduce neutral/unowned land or
-        // a stray id: every land tile still carries one of the player colors (#39).
+        // a stray id: every land tile still carries one of the player colors.
         MapGenResult result = BuildWith(seed, new MapGenOptions(ClumpingFactor: 100));
         var validColors = new HashSet<PlayerId>();
         foreach (Player p in SixPlayers()) validColors.Add(p.Id);
@@ -837,7 +831,7 @@ public class MapGeneratorTests
     [InlineData(9999)]
     public void Clumped_CapitalsPlaceable(int seed)
     {
-        // Fairness / capital-placeability (#70/#72): a fully clumped map must still
+        // Fairness / capital-placeability: a fully clumped map must still
         // reconcile into territories with a capital on every multi-hex region.
         MapGenResult result = BuildWith(seed, new MapGenOptions(ClumpingFactor: 100));
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(result.Grid);

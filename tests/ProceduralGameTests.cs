@@ -7,8 +7,8 @@ namespace FourExHex.Tests;
 /// Characterization + determinism tests for <see cref="ProceduralGame.Build"/>,
 /// the shared procedural-game builder used by both the play scene and the
 /// main-menu map thumbnail. The headline guarantees: same seed → identical
-/// state, and the builder reproduces the exact inline pipeline the play scene
-/// used before extraction (so the thumbnail can't drift from Start Game).
+/// state, and the builder reproduces the same pipeline the play scene
+/// uses (so the thumbnail can't drift from Start Game).
 /// </summary>
 public class ProceduralGameTests
 {
@@ -26,7 +26,7 @@ public class ProceduralGameTests
         return list;
     }
 
-    /// <summary>The inline pipeline Main.cs ran before extraction.</summary>
+    /// <summary>Reference: the inline pipeline Main.cs runs.</summary>
     private static GameState InlineReference(int seed)
     {
         IReadOnlyList<Player> players = SixPlayers();

@@ -37,7 +37,7 @@ public sealed partial class SaveNameModal : CanvasLayer
     private ColorRect _backdrop = null!;
     private PanelContainer _panel = null!;
 
-    // On-screen-keyboard avoidance for the slot-name field (issue #57): lift
+    // On-screen-keyboard avoidance for the slot-name field: lift
     // the centered panel so the keyboard never covers the field. Shared poller
     // (scripts/KeyboardLiftController.cs); driven from _Process while focused.
     private const float KeyboardLiftMargin = 16f;
@@ -92,8 +92,8 @@ public sealed partial class SaveNameModal : CanvasLayer
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
         };
         _lineEdit.AddThemeFontSizeOverride("font_size", 22);
-        // Enter/Return never saves — it just dismisses the on-screen keyboard
-        // (issue #57). Saving requires an explicit Save-button tap.
+        // Enter/Return never saves — it just dismisses the on-screen keyboard.
+        // Saving requires an explicit Save-button tap.
         _lineEdit.TextSubmitted += _ =>
         {
             Log.Debug(Log.LogCategory.Input, "SaveNameModal: Enter -> dismiss keyboard");

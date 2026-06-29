@@ -35,15 +35,14 @@ public sealed record MapGenResult(HexGrid Grid, IReadOnlySet<HexCoord> WaterCoor
 /// </summary>
 public static class MapGenerator
 {
-    // Integer percent (was a double 0.65 before issue #20's no-floats
-    // rule) — compared against rng.Next(100) below for the same
-    // 65% land seed probability with no floating-point on the path.
+    // Integer percent compared against rng.Next(100) below for the land
+    // seed probability (no floats — Model rule).
     private const int InitialLandPercent = 65;
     private const int CaIterations = 5;
     private const int MinLandCount = 30;
     private const int MaxRetries = 8;
 
-    // Clumped owner assignment (#72). Lloyd relaxation passes that re-center seeds
+    // Clumped owner assignment. Lloyd relaxation passes that re-center seeds
     // on their region centroids to even out Voronoi areas, and the gate that runs
     // them only in the few-seeds regime — when the average region is at least this
     // many cells, so centroids are meaningful and the fairness actually bites. At
@@ -68,10 +67,9 @@ public static class MapGenerator
         var grid = new HexGrid();
         if (options.ClumpingFactor <= 0)
         {
-            // Factor 0: today's per-cell random assignment, verbatim — one
+            // Factor 0: per-cell random owner assignment, one
             // rng.Next(players.Count) draw per land cell in HashSet order. Gated
-            // like the mountain/gold passes so a disabled clumping pass makes the
-            // map byte-identical to the pre-#72 baseline (the #20 determinism ref).
+            // like the mountain/gold passes so a disabled pass adds no RNG draws.
             foreach (HexCoord coord in land)
             {
                 PlayerId owner = players[rng.Next(players.Count)].Id;
@@ -83,7 +81,7 @@ public static class MapGenerator
             AssignClumpedOwners(grid, land, players, options.ClumpingFactor, rng);
         }
 
-        // Mountain ranges (issue #48), gated on density > 0 so a disabled pass
+        // Mountain ranges, gated on density > 0 so a disabled pass
         // makes zero RNG draws and the map stays byte-identical to the no-options
         // baseline. Placed before the tree scatter so trees simply avoid mountains.
         if (options.MountainDensity > 0)
@@ -91,7 +89,7 @@ public static class MapGenerator
             ScatterMountainRanges(grid, land, options.MountainDensity, rng);
         }
 
-        // Gold clusters (issue #48), gated the same way. Placed after mountains
+        // Gold clusters, gated the same way. Placed after mountains
         // so cluster seeds can be biased toward mountain tiles, and before the
         // tree scatter so trees avoid the fresh gold tiles.
         if (options.GoldDensity > 0)
@@ -114,8 +112,7 @@ public static class MapGenerator
         // (default 5%). Mirrors Slay's behavior of starting boards with visible
         // forest. `grid` holds exactly the land tiles (one per land coord, none
         // added/removed since), so land.Count is the single density base shared
-        // with the mountain/gold passes; at density 5 this equals the historical
-        // grid.Count / 20 byte-for-byte. Tree placement is bounded by available
+        // with the mountain/gold passes. Tree placement is bounded by available
         // occupant-free land; sparse maps just stop short of the target.
         int treeTarget = land.Count * options.TreeDensity / 100;
         Log.Debug(Log.LogCategory.MapGen,
@@ -128,7 +125,7 @@ public static class MapGenerator
             HexCoord pick = landCoordList[idx];
             landCoordList.RemoveAt(idx);
             HexTile? t = grid.Get(pick);
-            // Trees coexist with mountains (issue #81) but not with gold (gold
+            // Trees coexist with mountains but not with gold (gold
             // tiles stay income-clear), so only the gold flag blocks placement.
             if (t != null && t.Occupant == null && !t.IsGold)
             {
@@ -139,7 +136,7 @@ public static class MapGenerator
         return new MapGenResult(grid, water);
     }
 
-    // Clumped owner assignment (issue #72) — seed-flood Voronoi. Instead of an
+    // Clumped owner assignment — seed-flood Voronoi. Instead of an
     // independent random owner per cell (the fragmented baseline), scatter a few
     // owned "seed" cells and flood-fill ownership outward so each player ends up
     // with one or more coherent contiguous regions. The clumping factor (1..100)
@@ -150,10 +147,9 @@ public static class MapGenerator
     // Fairness: seeds start farthest-point (spread as far apart as the landmass
     // allows), then — in the few-seeds regime — two Lloyd relaxation passes re-center
     // each seed on its region centroid and re-flood, so the Voronoi regions come out
-    // near-equal in AREA, not just equal in count. Clustered random seeds were the
-    // source of wildly unfair splits (one player a sliver, another a basin) at the
-    // high end. Owners are assigned round-robin, so every player gets a balanced
-    // share and clumped starts stay capital-placeable for any player count (#70).
+    // near-equal in AREA, not just equal in count. Owners are assigned round-robin, so
+    // every player gets a balanced share and clumped starts stay capital-placeable for
+    // any player count.
     // Determinism: the candidate order is sorted (HexCoord.CompareTo) so every tie
     // (farthest cell, contested flood cell, centroid-nearest cell) breaks lex-min,
     // and the only rng draw is the first seed — same seed + factor reproduces the
@@ -306,7 +302,7 @@ public static class MapGenerator
             $"lloyd={(fewSeeds ? LloydPasses : 0)}" + (fallback > 0 ? $" fallback={fallback}" : ""));
     }
 
-    // Mountain-range scatter (issue #48, Phase 1). Each "range" is a biased
+    // Mountain-range scatter. Each "range" is a biased
     // random walk (a "mountain agent"): pick a land start tile and a hex
     // direction, then walk a chain that mostly continues straight but
     // occasionally veers ±1, marking each tile a mountain. Each spine tile also
@@ -369,7 +365,7 @@ public static class MapGenerator
 
     // Set the mountain flag on a land tile, forfeiting ownership — a generated
     // range is neutral terrain players must capture, not pre-owned land. Trees
-    // coexist with mountains (issue #81) so any occupant is left in place; gold
+    // coexist with mountains so any occupant is left in place; gold
     // is never present here (mountains are placed before gold, and ScatterGold
     // skips mountain tiles). Returns 1 if the tile was newly marked, else 0 so
     // the caller can count real coverage without double-counting overlaps.
@@ -382,11 +378,10 @@ public static class MapGenerator
         return 1;
     }
 
-    // Gold-cluster scatter (issue #48, Phase 2). Gold is a sparse, contested
+    // Gold-cluster scatter. Gold is a sparse, contested
     // resource: small neutral clusters (a seed tile plus a few grown neighbors)
-    // rather than ranges. Gold and mountain are mutually exclusive (issue #81),
-    // so gold never lands on a mountain tile (MarkGold skips them) and the old
-    // gold-on-mountain seed bias is gone. All draws are integer rng.Next and
+    // rather than ranges. Gold and mountain are mutually exclusive,
+    // so gold never lands on a mountain tile (MarkGold skips them). All draws are integer rng.Next and
     // every sampled list is sorted, so it stays deterministic in the seed.
     private const int GoldMinCluster = 2;        // min tiles per cluster (>=2 → no speckle)
     private const int GoldMaxCluster = 4;
@@ -443,7 +438,7 @@ public static class MapGenerator
 
     // Set the gold flag on a land tile and forfeit ownership — generated gold is a
     // neutral, contested resource players must capture. Gold and mountain are
-    // mutually exclusive (issue #81), so a mountain tile is skipped (mountain
+    // mutually exclusive, so a mountain tile is skipped (mountain
     // wins). Returns 1 if newly marked, else 0.
     private static int MarkGold(HexGrid grid, HexCoord coord)
     {

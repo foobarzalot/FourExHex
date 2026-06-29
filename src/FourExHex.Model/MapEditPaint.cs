@@ -76,7 +76,7 @@ public static class MapEditPaint
         HexTile? tile = grid.Get(coord);
         if (tile == null) return previousTerritories;
         if (tile.Occupant is Capital) return previousTerritories;
-        // Capitals may sit on mountains (issue #81) — the flag is left in place.
+        // Capitals may sit on mountains — the flag is left in place.
 
         int territoryIdx = -1;
         for (int i = 0; i < previousTerritories.Count; i++)
@@ -144,7 +144,7 @@ public static class MapEditPaint
         {
             // Empty or Tree (or anything else non-Capital): replace with a
             // tower. Tree → Tower is the cross-type swap; empty → Tower is the
-            // place case. A tower may coexist with a mountain (issue #37) — it
+            // place case. A tower may coexist with a mountain — it
             // earns the +1 high-ground bonus — so the mountain flag is left as-is.
             tile.Occupant = new Tower();
         }
@@ -179,7 +179,7 @@ public static class MapEditPaint
         {
             // Empty or Tower (or any other non-Capital): replace with a
             // tree. Tower → Tree is the cross-type swap; empty → Tree is
-            // the place case. A tree now coexists with a mountain (issue #81),
+            // the place case. A tree coexists with a mountain,
             // so the mountain flag is left untouched.
             tile.Occupant = new Tree();
         }
@@ -211,7 +211,7 @@ public static class MapEditPaint
     /// <summary>
     /// Set the tile at <paramref name="coord"/> to be neutral (unowned,
     /// <see cref="PlayerId.None"/>) — a land tile owned by no player, but
-    /// capturable by any adjacent player (issue #39). Creates a tile (and
+    /// capturable by any adjacent player. Creates a tile (and
     /// removes the coord from <paramref name="water"/>) if it was water;
     /// reassigns an existing tile in place otherwise. Only player-bound
     /// occupants are discarded: a <see cref="Capital"/> (the invariant
@@ -220,7 +220,7 @@ public static class MapEditPaint
     /// Terrain-like, owner-agnostic occupants — <see cref="Tower"/>,
     /// <see cref="Tree"/>, <see cref="Grave"/> — survive the repaint:
     /// neutral ground legitimately holds them (trees spread onto and
-    /// graves rot on neutral tiles, issue #69). Out-of-bounds coords are
+    /// graves rot on neutral tiles). Out-of-bounds coords are
     /// no-ops. Returns the up-to-date territory list to thread into the
     /// next call.
     /// </summary>
@@ -256,10 +256,10 @@ public static class MapEditPaint
 
     /// <summary>
     /// Toggle the <see cref="HexTile.IsGold"/> flag on the land tile at
-    /// <paramref name="coord"/> (issue #45). Gold is a per-tile income
+    /// <paramref name="coord"/>. Gold is a per-tile income
     /// modifier orthogonal to owner and occupant, so this preserves both — a
     /// gold tile may be owned by any player or neutral and may hold any
-    /// occupant. Gold and mountain are mutually exclusive (issue #81): turning
+    /// occupant. Gold and mountain are mutually exclusive: turning
     /// gold ON clears any mountain on the tile. No-op out of bounds or on water
     /// (no tile there). The territory partition is unaffected; the previous
     /// list is returned unchanged for call-shape parity with the other paint
@@ -278,17 +278,17 @@ public static class MapEditPaint
         if (tile == null) return previousTerritories;
 
         // Toggling gold ON retargets the tile's single TerrainFeature, so any
-        // mountain clears automatically — gold and mountain are exclusive (#81).
+        // mountain clears automatically — gold and mountain are exclusive.
         tile.IsGold = !tile.IsGold;
         return previousTerritories;
     }
 
     /// <summary>
     /// Toggle the <see cref="HexTile.IsMountain"/> flag on the land tile at
-    /// <paramref name="coord"/> (issue #37). Mountains are high-ground terrain
-    /// that now coexist with any occupant — trees, graves, towers, and capitals
-    /// (issue #81): turning a mountain ON leaves the occupant in place. Mountains
-    /// are mutually exclusive with <see cref="HexTile.IsGold"/> (issue #81):
+    /// <paramref name="coord"/>. Mountains are high-ground terrain
+    /// that coexist with any occupant — trees, graves, towers, and capitals:
+    /// turning a mountain ON leaves the occupant in place. Mountains
+    /// are mutually exclusive with <see cref="HexTile.IsGold"/>:
     /// turning a mountain ON clears any gold on the tile (and, symmetrically,
     /// <see cref="PaintGoldToggle"/> clears the mountain when it places gold).
     /// <see cref="HexTile.Owner"/> is preserved (a mountain may be owned by any
@@ -314,8 +314,8 @@ public static class MapEditPaint
         else
         {
             // Setting mountain retargets the tile's single TerrainFeature, so
-            // any gold clears automatically — gold and mountain are exclusive
-            // (#81). Trees, graves and towers stay — they coexist with a mountain.
+            // any gold clears automatically — gold and mountain are exclusive.
+            // Trees, graves and towers stay — they coexist with a mountain.
             tile.IsMountain = true;
         }
         return previousTerritories;

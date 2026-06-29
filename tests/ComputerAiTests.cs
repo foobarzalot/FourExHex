@@ -268,11 +268,8 @@ public class ComputerAiTests
         // Higher tiers like Commander would bankrupt this small a
         // territory before any candidate cleared the solvency gate.
         //
-        // Pre-fix the enumerator iterates territory.Coords (BFS
-        // order) so the Recruit's candidates yield first. Post-fix
-        // the shared helper orders by power descending, so Soldier
-        // candidates yield first — closing #21's tie-breaking
-        // pathology.
+        // The shared helper orders by power descending, so Soldier
+        // candidates yield first.
         var grid = new HexGrid();
         grid.Add(new HexTile(HexCoord.FromOffset(0, 0), Blue));
         for (int col = 1; col <= 5; col++)
@@ -311,11 +308,10 @@ public class ComputerAiTests
     {
         // 5-tile Red strip bordering 2-tile Blue. Red has one Recruit
         // (upkeep 2), giving income 5 / upkeep 2 / net +1. Soldier
-        // costs 15 gold (PurchaseRules.CostFor) with upkeep 6, so the
-        // old solvency gate (netBefore - upkeep_ >= 0 → +1 - 6 = -5)
-        // rejects every Soldier buy. With 200g in treasury the new
-        // gate sees (200 - 15) + (+1 - 6) = 180 ≥ 0 — Soldier buys
-        // become legal. Captain (cost 30, upkeep 18) is similar.
+        // costs 15 gold (PurchaseRules.CostFor) with upkeep 6. With
+        // 200g in treasury the solvency gate sees
+        // (200 - 15) + (+1 - 6) = 180 ≥ 0 — Soldier buys are legal.
+        // Captain (cost 30, upkeep 18) is similar.
         var grid = new HexGrid();
         for (int col = 0; col < 5; col++)
         {
@@ -360,9 +356,8 @@ public class ComputerAiTests
         Assert.False(UpkeepRules.SurvivesNextUpkeep(24, -5));
         Assert.False(UpkeepRules.SurvivesNextUpkeep(499, -100));
 
-        // Old 1-turn cases the AI would previously accept but can't
-        // actually sustain over the horizon — now correctly rejected.
-        // These are the #22 doom-spiral triggers.
+        // Cases that pass a 1-turn check but fail the 5-turn horizon —
+        // correctly rejected.
         Assert.False(UpkeepRules.SurvivesNextUpkeep(1, -1));
         Assert.False(UpkeepRules.SurvivesNextUpkeep(100, -100));
     }
@@ -373,11 +368,8 @@ public class ComputerAiTests
         // 5-tile Red strip bordering Blue with an existing Recruit
         // for +1 net income (5 income - 2 upkeep), 20g treasury.
         // Buy Soldier (cost 15g, upkeep 6) post-state is gold=5g,
-        // net=-4 (or -5 for reposition). Under the old 1-turn gate
-        // 5 + (-4) = 1 ≥ 0 — Soldier candidate generated. Under the
-        // new 5-turn gate 5 + 5*(-4) = -15 < 0 — Soldier candidate
-        // filtered. Closes #22's doom spiral: the AI no longer
-        // approves buys it can't actually sustain.
+        // net=-4 (or -5 for reposition). Under the 5-turn gate
+        // 5 + 5*(-4) = -15 < 0 — Soldier candidate filtered.
         var grid = new HexGrid();
         for (int col = 0; col < 5; col++)
         {
@@ -477,10 +469,10 @@ public class ComputerAiTests
     public void ChooseNextAction_SparseRoster_DoesNotThrow()
     {
         // Full 1-ply lookahead for a player whose slot index (5) exceeds the
-        // compact roster size (slots 0 and 5 present; 1–4 are None — issue
-        // #70). Exercises AiCommon.Enumerate, AiSimulator.Clone/mutate, and
-        // AiStateScorer.Score — every one of which resolved the owner's
-        // difficulty by slot, throwing IndexOutOfRange before the fix.
+        // compact roster size (slots 0 and 5 present; 1–4 are None).
+        // Exercises AiCommon.Enumerate, AiSimulator.Clone/mutate, and
+        // AiStateScorer.Score — each resolves the owner's difficulty by
+        // slot, which must handle the sparse roster without throwing.
         PlayerId orange = PlayerId.FromIndex(5);
         var grid = new HexGrid();
         for (int col = 0; col < 6; col++)
@@ -556,9 +548,7 @@ public class ComputerAiTests
         // A chop is worth OwnTreePenalty (tree removed) minus
         // UndefendedBorderPenalty(10) per border the chopping unit stops
         // covering, and on a bankrupt territory the +1 income gain is
-        // clamped away. At the old value (20) a chop that exposes two
-        // borders scored exactly 0 and was declined / oscillated forever
-        // (seed-4 stasis). Raise the penalty to 35 so a chop beats even a
+        // clamped away. OwnTreePenalty is 35 so a chop beats even a
         // three-border exposure (35 - 30 = +5).
         //
         // Pin it on a BANKRUPT territory (Captain upkeep 18 >> income) so
@@ -668,7 +658,7 @@ public class ComputerAiTests
         Assert.Equal(0.0, bonus);
     }
 
-    // --- Standing contested-border defense magnitude term (#61) ----------
+    // --- Standing contested-border defense magnitude term ----------------
     // Capturing an enemy mountain lands the defender on +1 high-ground, so
     // the capture's Score delta is strictly higher than capturing a plain
     // tile. (The defense magnitude lives in Score() now, not a per-action
@@ -697,25 +687,13 @@ public class ComputerAiTests
             $"expected mountain capture {CaptureDelta(true)} > plain capture {CaptureDelta(false)}");
     }
 
-    // ChooseNextAction_BuildsTower_OnContestedBorderWithSpareGold was removed:
-    // under phase ordering, buy-capture (phase 3) fires before tower (phase 4)
-    // when both are available. The new ChooseNextAction_Phase4TowerWhenNoBuyCaptureAvailable
-    // covers tower-building behavior and ChooseNextAction_Phase3BuyCaptureBeforePhase4Tower
-    // covers the phase-ordering invariant.
-
     [Fact]
     public void ChooseNextAction_TakesEnclosedEnemyCapture_DespiteSurroundingTowers()
     {
-        // Regression test for the static-tower-bonus bug: the AI
-        // used to refuse captures that turned own border tiles into
-        // interior because each such tile lost its static tower-
-        // defense bonus (~10/tile). Six Red tiles ringing a Blue
+        // A capture that turns own border tiles into interior must
+        // still go through (delta ~+25). Six Red tiles ringing a Blue
         // singleton, with one Red tile holding a Tower covering 3
         // borders, plus a Red recruit adjacent to the enclave.
-        // Under the old static-bonus model the capture's delta
-        // came out negative (~−5) and the AI passed; under the
-        // action-bonus model it scores ~+25 and the capture goes
-        // through.
         var grid = new HexGrid();
         grid.Add(new HexTile(HexCoord.FromOffset(1, 0), Red));
         grid.Add(new HexTile(HexCoord.FromOffset(2, 0), Red));
@@ -1021,10 +999,8 @@ public class ComputerAiTests
         // Two Red territories of different sizes. Both have one capture candidate
         // with identical score delta (+22). Under strict > comparison, the FIRST
         // territory visited locks in its action; the second's equal delta cannot
-        // displace it. So the result reveals visit order.
-        //
-        // Old sort (capital coord): small territory capital (10,0) < (20,0) → small first.
-        // New sort (size desc): big territory (3 cells) first.
+        // displace it. So the result reveals visit order. Sort is size desc,
+        // so the big territory (3 cells) visits first.
         //
         // Grid: 30×1, all Blue. Small Red = cols 10-11, big Red = cols 20-22.
         // Blue territories {0-9}, {12-19}, {23-29} have capitals at cols 0, 12, 23.
@@ -1038,8 +1014,7 @@ public class ComputerAiTests
         //   - Score delta is identical for both captures (+22), so the FIRST territory
         //     visited locks in the winner (strict > means equal delta can't displace it).
         //
-        // Old sort (capital coord): small capital=(11,0) < (21,0) → small visits first → Source=(10,0).
-        // New sort (size desc): big (3 cells) visits first → Source=(20,0).
+        // Sort is size desc: big (3 cells) visits first → Source=(20,0).
         var grid = TestHelpers.BuildRectGrid(30, 1, Blue);
 
         grid.Get(HexCoord.FromOffset(10, 0))!.Owner = Red;
@@ -1063,7 +1038,7 @@ public class ComputerAiTests
     }
 
     // -----------------------------------------------------------------------
-    // Phase-ordering invariants (issue #26 — stepwise-greedy AI)
+    // Phase-ordering invariants (stepwise-greedy AI)
     // -----------------------------------------------------------------------
 
     [Fact]
@@ -1460,9 +1435,8 @@ public class ComputerAiTests
         //
         // Chop delta = +20 (tree removed) +1 (chopped tile now earns income,
         // territory solvent both states) -30 (three borders go undefended)
-        // = -9 <= 0. Under the old > 0 gate phase 1 declines and (with no
-        // gold and no other candidates) ChooseNextAction returns null. After
-        // the fix phase 1 must commit to the chop regardless of sign.
+        // = -9 <= 0. Phase 1 must commit to the chop regardless of delta sign;
+        // with no gold and no other candidates the chop is the only action.
         var grid = new HexGrid();
         grid.Add(new HexTile(new HexCoord(0, 0), Red));    // Recruit
         grid.Add(new HexTile(new HexCoord(1, 0), Red));    // border (E -> Blue 2,0)
@@ -1507,8 +1481,7 @@ public class ComputerAiTests
         // exposes exactly the vacated unit's border. Combine value =
         // ΔunitValue(+4) − Δnet-upkeep(−2) = +2; minus one exposed border −10
         // = −8 <= 0 for BOTH orderings, so the best phase-2a delta is <= 0.
-        // Old gate declines -> null (no gold, no other phase). After the fix
-        // phase 2a must commit to the combine.
+        // Phase 2a must commit to the combine even at delta <= 0.
         var grid = new HexGrid();
         foreach (var c in new[]
         {
@@ -1543,7 +1516,7 @@ public class ComputerAiTests
             $"expected Red-unit→Red-unit combine; got {mv.Source}→{mv.Destination}");
     }
 
-    // --- Rising Tides evacuation (issue #85) -----------------------------
+    // --- Rising Tides evacuation -----------------------------------------
 
     // A solid 5x3 Red block (one capital, no enemies/trees/graves), with a
     // Soldier on a doomed shore corner and PendingTide marking that corner.
@@ -1559,8 +1532,7 @@ public class ComputerAiTests
         {
             state.PendingTide = new List<TideStep> { new TideStep(doomed, DemoteOnly: false) };
         }
-        // A genuinely interior empty Red tile (all six neighbours Red) that the
-        // old border-only reposition rule would never offer.
+        // A genuinely interior empty Red tile (all six neighbours Red).
         HexCoord interior = grid.Tiles
             .First(t => t.Owner == Red && t.Occupant == null
                         && !AiCommon.IsBorderTile(t.Coord, grid, Red)).Coord;
@@ -1622,7 +1594,7 @@ public class ComputerAiTests
             .Select(c => ((AiMoveAction)c.Action).Destination)
             .ToList();
 
-        // Not doomed: the old border-only rule still holds — no interior tile.
+        // Not doomed: the border-only rule holds — no interior tile offered.
         Assert.DoesNotContain(interior, dests);
     }
 

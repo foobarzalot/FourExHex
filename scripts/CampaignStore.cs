@@ -1,7 +1,7 @@
 using Godot;
 
 /// <summary>
-/// Process-wide campaign progress (issue #2), persisted to
+/// Process-wide campaign progress, persisted to
 /// <c>user://campaign.json</c> — a sidecar independent of game saves, so
 /// deleting saves never touches ladder progress. Mirrors
 /// <see cref="UserSettings"/>: lazy load on first access, atomic
@@ -62,8 +62,8 @@ public static class CampaignStore
         // The campaign roster is built from the level in Main (Player.
         // BuildCampaignRoster), NOT written into the shared freeform
         // GameSettings.PlayerKinds/Difficulties — otherwise a campaign launch
-        // would clobber the New Game default for the rest of the session
-        // (issue #70 bleed). CampaignLevel above is the only handoff Main needs.
+        // would clobber the New Game default for the rest of the session.
+        // CampaignLevel above is the only handoff Main needs.
         int humanSlot = CampaignProgress.HumanColorSlotForLevel(level);
         int playerCount = CampaignProgress.PlayerCountForLevel(level);
         LoadRequest.Pending = null;

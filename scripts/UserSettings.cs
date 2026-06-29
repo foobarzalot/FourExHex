@@ -132,7 +132,7 @@ public static partial class UserSettings
     ///
     /// Returns integer percent (50 / 100 / 200) — Slow doubles the
     /// delay, Normal is 1×, Fast halves it. Integer so the controller's
-    /// GodotAiPacer can stay float-free (issue #20).
+    /// GodotAiPacer can stay float-free.
     /// </summary>
     public static int SpeedMultiplierPercent(PlaybackSpeed speed) => speed switch
     {
@@ -146,9 +146,8 @@ public static partial class UserSettings
     {
         public bool SfxEnabled { get; set; } = true;
         public bool VfxEnabled { get; set; } = true;
-        // Property names unchanged for save-compat: existing
-        // settings.json keys "AiSpeed"/"ReplaySpeed" still bind, and
-        // PlaybackSpeed's numeric order matches the old enums'.
+        // Keys AiSpeed/ReplaySpeed bind by name; PlaybackSpeed's numeric
+        // order is load-bearing for save-compat.
         public PlaybackSpeed AiSpeed { get; set; } = PlaybackSpeed.Normal;
         public PlaybackSpeed ReplaySpeed { get; set; } = PlaybackSpeed.Normal;
     }
@@ -157,9 +156,8 @@ public static partial class UserSettings
     // UserSettings so it can reach the private SettingsDto type. Needed
     // because iOS AOT disables reflection-based JSON; the [JsonSerializable]
     // attribute below generates a JsonTypeInfo<SettingsDto> table at compile
-    // time. The [JsonSourceGenerationOptions(WriteIndented = true)] mirrors
-    // the option Save() historically passed, so settings.json stays formatted
-    // identically across the migration.
+    // time. The [JsonSourceGenerationOptions(WriteIndented = true)] keeps
+    // settings.json indented.
     [JsonSourceGenerationOptions(WriteIndented = true)]
     [JsonSerializable(typeof(SettingsDto))]
     private partial class JsonContext : JsonSerializerContext

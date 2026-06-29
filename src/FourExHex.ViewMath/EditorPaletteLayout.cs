@@ -1,5 +1,5 @@
 /// <summary>
-/// Pure layout math for the map editor's paint-tool grid (issue #45). With a
+/// Pure layout math for the map editor's paint-tool grid. With a
 /// 5th brush (gold) the paint cluster can no longer fit a single line on a
 /// compact phone (portrait bottom bar / landscape side rail are already at
 /// capacity at four 68-px buttons). This decides how many grid columns the

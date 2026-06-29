@@ -3,12 +3,10 @@ using System;
 /// <summary>
 /// Godot-free stable player identity. Wraps a single byte:
 /// <c>0</c> = <see cref="None"/> (the default value, used for
-/// unowned/neutral tiles — the explicit replacement for the old
-/// "color not in roster" → -1 sentinel); <c>1..N</c> encodes
-/// roster index + 1, so a real player never collides with the
-/// default. Value-equality and the byte ordering make it safe as
-/// a dictionary key and a deterministic tiebreaker, exactly where
-/// <c>Godot.Color</c> identity used to be threaded.
+/// unowned/neutral tiles); <c>1..N</c> encodes roster index + 1,
+/// so a real player never collides with the default.
+/// Value-equality and the byte ordering make it safe as a
+/// dictionary key and a deterministic tiebreaker.
 /// </summary>
 public readonly struct PlayerId : IEquatable<PlayerId>, IComparable<PlayerId>
 {

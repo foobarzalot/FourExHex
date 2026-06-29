@@ -3,7 +3,7 @@ using System.Diagnostics;
 
 /// <summary>
 /// Process-wide structured logging for FourExHex diagnostics.
-/// Replaces the old <c>AiLog</c>. Godot-free: messages route through
+/// Godot-free: messages route through
 /// the injectable <see cref="Sink"/> (wired to <c>GD.Print</c> by
 /// <see cref="Main"/>), so this lives in the engine-free model
 /// assembly while still reaching stdout in headless 6-AI runs.
@@ -20,9 +20,8 @@ using System.Diagnostics;
 ///      only if its level is at least the category's threshold.
 ///
 /// Defaults: every category starts at <see cref="LogLevel.Off"/>, so
-/// normal dev play is silent (parity with the old AiLog default-off)
-/// until <see cref="Configure"/> or <see cref="SetLevel"/> raises a
-/// category.
+/// normal dev play is silent until <see cref="Configure"/> or
+/// <see cref="SetLevel"/> raises a category.
 /// </summary>
 public static class Log
 {
@@ -40,10 +39,10 @@ public static class Log
         Hud = 7,      // HUD CTA / button-state transitions
         Undo = 8,     // undo/redo ↔ replay-beat bookkeeping coordinator
         Cheat = 9,    // debug cheat menu: attach/toggle/button presses
-        Campaign = 10, // campaign ladder (issue #2): store load/save, status marks, level launch, panel
-        MapGen = 11,  // procedural map generation (issue #48): mountain/gold scatter passes
-        Replay = 12,  // replay playback: recorded-vs-replayed end-state divergence (issue #77)
-        Tide = 13,    // Rising Tides mode (issue #56): per-turn shore submerge / mountain demote
+        Campaign = 10, // campaign ladder: store load/save, status marks, level launch, panel
+        MapGen = 11,  // procedural map generation: mountain/gold scatter passes
+        Replay = 12,  // replay playback: recorded-vs-replayed end-state divergence
+        Tide = 13,    // Rising Tides mode: per-turn shore submerge / mountain demote
     }
 
     /// <summary>Severity, ascending. <see cref="Off"/> disables a
@@ -61,7 +60,7 @@ public static class Log
     // Per-category minimum level, indexed by (int)LogCategory. The
     // enum is contiguous 0..N so an array is alloc-free and faster
     // than a dictionary. Every category defaults to Off — nothing
-    // prints until configured (parity with old AiLog.Enabled = false).
+    // prints until configured.
     private static readonly LogLevel[] _minLevel = NewDefaultLevels();
 
     private static LogLevel[] NewDefaultLevels()

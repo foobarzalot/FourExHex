@@ -184,11 +184,9 @@ public class TutorialPreviewTests
     [Fact]
     public void TryAccept_Player0BeatBeforePendingNarration_DoesNotFireFinished()
     {
-        // Regression: TutorialFinished must fire only when the entire
-        // script is consumed, NOT when NextPlayer0Beat returns null
-        // because a DisplayText narration beat is gating ahead. Before
-        // the fix this fired "Tutorial complete." after the very first
-        // turn whenever a narration beat followed.
+        // TutorialFinished must fire only when the entire script is
+        // consumed, NOT when NextPlayer0Beat returns null because a
+        // DisplayText narration beat is gating ahead.
         var script = new List<ReplayBeat>
         {
             new ReplayEndTurnBeat { Index = 0, Turn = 1, Actor = 0 },

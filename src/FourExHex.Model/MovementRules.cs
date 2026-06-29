@@ -46,8 +46,7 @@ public static class MovementRules
     /// one yielded first, and the human's N-key cycle steps through
     /// in the same order. Without this shared helper, the AI's
     /// `territory.Coords` BFS order would let a Recruit near the
-    /// seed tile win ties over a Commander deeper in the territory
-    /// — see issue #21.
+    /// seed tile win ties over a Commander deeper in the territory.
     /// </summary>
     public static List<HexCoord> MovableUnitsInPowerOrder(
         Territory territory, PlayerId owner, HexGrid grid)
@@ -256,7 +255,7 @@ public static class MovementRules
 
         if (wasCapture && dstTile.IsMountain)
         {
-            // Issue #37: capturing a mountain transfers ownership but leaves the
+            // Capturing a mountain transfers ownership but leaves the
             // terrain intact, so the new owner's occupant earns the +1 bonus.
             Log.Debug(Log.LogCategory.Capture,
                 $"[capture] mountain at {dstTile.Coord} → owner " +

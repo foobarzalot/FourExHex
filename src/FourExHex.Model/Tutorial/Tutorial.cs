@@ -2,10 +2,9 @@
 /// Top-level POCO for an authored tutorial: a display title plus a
 /// <see cref="Replay"/> payload that carries the full recorded
 /// playthrough (initial snapshot + every state-mutating beat). The
-/// tutorial replaces the old hand-authored Beats list — the
-/// TutorialBuilder's Record mode now plays a real game as all six
-/// humans and the controller's replay-recording machinery captures
-/// the script automatically.
+/// Replay is captured by TutorialBuilder's Record mode (a real game
+/// played as all six humans), with the controller's replay-recording
+/// machinery recording the script automatically.
 ///
 /// Serialized as an optional <c>"Tutorial"</c> block alongside the
 /// <c>"Replay"</c> block under <see cref="SaveData"/>; absent on

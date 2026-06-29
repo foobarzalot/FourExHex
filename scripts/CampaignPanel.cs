@@ -2,7 +2,7 @@ using System;
 using Godot;
 
 /// <summary>
-/// The campaign screen (issue #2): a center-anchored panel hosting a
+/// The campaign screen: a center-anchored panel hosting a
 /// fixed header (back button, total «won» / 256 stat, thin progress bar)
 /// over one vertically scrolling surface with all four difficulty tiers —
 /// each a full-width tier header bar plus a 64-cell honeycomb of hexagon
@@ -29,7 +29,7 @@ public partial class CampaignPanel : Panel
     private static readonly Color LostOutline = UiPalette.Accent;
     private static readonly Color UntriedOutline = UiPalette.Line;
     private static readonly Color UntriedInk = UiPalette.InkMute;
-    // Rising Tides level marker (issue #56): a blue water-drop glyph drawn
+    // Rising Tides level marker: a blue water-drop glyph drawn
     // BEHIND the level number. Mid-blue — light enough to read as water, dark
     // enough that the number (light/accent ink) still reads clearly on top.
     private static readonly Color RisingTidesMarkerColor = new Color("2f6296");
@@ -154,9 +154,8 @@ public partial class CampaignPanel : Panel
     {
         _backButton = new Button { Text = "← Campaign", Flat = true };
         _backButton.AddThemeFontOverride("font", SerifFont);
-        // 28 (was 34): the big serif overflowed its box toward the progress
-        // bar and its optical center sat below the smaller stat label. 28
-        // clears the bar and reads aligned with the 22px stat.
+        // Font size 28 keeps the serif clear of the progress bar and
+        // optically aligned with the 22px stat.
         _backButton.AddThemeFontSizeOverride("font_size", 28);
         _backButton.AnchorLeft = 0f; _backButton.AnchorTop = 0f;
         _backButton.AnchorRight = 0f; _backButton.AnchorBottom = 0f;
@@ -361,10 +360,8 @@ public partial class CampaignPanel : Panel
                 (float cx, float cy) = CampaignGridMath.CellCenter(
                     i, _columns, HexW, HexH, HexGap);
 
-                // No "next up" treatment: the design handoff had a thick
-                // outline on the lowest unbeaten level, but it masked the
-                // lost state of that very hex and read as confusing —
-                // status alone drives the styling now.
+                // Status alone drives styling; no special outline for the
+                // next-up level.
                 (Color fill, Color outline, Color ink, float outlineWidth) =
                     progress.StatusOf(level) switch
                 {
@@ -381,7 +378,7 @@ public partial class CampaignPanel : Panel
                 loop[points.Length] = points[0];
                 DrawPolyline(loop, outline, outlineWidth, antialiased: true);
 
-                // Rising Tides marker (issue #56): a blue filled circle drawn
+                // Rising Tides marker: a blue filled circle drawn
                 // BEHIND the level number (before the label) so the mode is
                 // spottable on the grid while the digits still read on top.
                 if (CampaignProgress.ModeForLevel(level) == GameMode.RisingTides)

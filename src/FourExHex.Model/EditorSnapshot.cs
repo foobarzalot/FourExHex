@@ -64,7 +64,7 @@ public sealed class EditorSnapshot
     /// set, per-tile owner, occupant (by kind / unit level+owner), gold flag,
     /// or mountain flag. The editor uses this to decide whether a paint stroke
     /// actually changed anything before pushing it onto the undo stack, so
-    /// flag-only paints (gold #45, mountain #37) that leave the territory
+    /// flag-only paints (gold, mountain) that leave the territory
     /// partition untouched are still recorded.
     /// </summary>
     public bool DiffersFromGrid(HexGrid grid, IReadOnlySet<HexCoord> water)

@@ -7,14 +7,6 @@ using System.Collections.Generic;
 /// <see cref="TutorialPreview"/> (human side) reference the same
 /// instance so that beats consumed by one advance the other — the
 /// script is one totally-ordered log, not two parallel streams.
-///
-/// <para>
-/// An earlier two-class design with separate internal cursors caused
-/// the AI side to stay stuck on the human's already-consumed beats
-/// after the dev finished a turn: ChooseNextAction kept seeing
-/// script[0] (a player-0 beat), returning null for every non-player-0
-/// actor, and every AI turn no-op'd in Preview.
-/// </para>
 /// </summary>
 public sealed class ScriptCursor
 {

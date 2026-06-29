@@ -12,7 +12,7 @@ public enum GameMode
     Freeform = 0,
 
     /// <summary>
-    /// "Rising Tides" (issue #56): at the start of each owner's turn a shore
+    /// "Rising Tides": at the start of each owner's turn a shore
     /// tile of theirs submerges (mountains demote first), shrinking the map.
     /// All early-win paths are suppressed; the game ends only when one player
     /// is left standing.

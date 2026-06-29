@@ -2,9 +2,9 @@ using System.Collections.Generic;
 using Godot;
 
 /// <summary>
-/// Builds the campaign level "Play?" confirm sheet (issue #51) as a configured
+/// Builds the campaign level "Play?" confirm sheet as a configured
 /// <see cref="MapInfoSheet"/>: serif title, tier/status line, the single human
-/// color for the level (issue #74), and a live preview of the level's exact
+/// color for the level, and a live preview of the level's exact
 /// procedural board (level N = seed N). The sheet UI itself is shared with the
 /// New Game / Map Editor "load starting map" flows; this factory just supplies
 /// the campaign-specific content.
@@ -23,7 +23,7 @@ public static class CampaignConfirmSheet
         };
         string status = $"{CampaignProgress.DifficultyForLevel(level)} tier · {statusText}";
 
-        // Tell the player which game mode the level runs (issue #56). Rising
+        // Tell the player which game mode the level runs. Rising
         // Tides is the rare Soldier+ complication, so it gets an emphasized
         // description; freeform levels get a one-liner for parity.
         GameMode mode = CampaignProgress.ModeForLevel(level);
@@ -44,7 +44,7 @@ public static class CampaignConfirmSheet
             status,
             humans,
             // Preview the exact board the level launches: its per-level roster
-            // (2–6 colors) and fixed terrain features (#48) — not the freeform
+            // (2–6 colors) and fixed terrain features — not the freeform
             // roster/toggles — so the thumbnail matches the game.
             thumb => thumb.RequestRandom(
                 seed,

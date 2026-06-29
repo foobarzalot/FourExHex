@@ -9,7 +9,9 @@ namespace FourExHex.Tests;
 /// <see cref="HexOccupant"/> subtype hierarchy. Adding a new
 /// <c>HexOccupant</c> subclass without updating all dispatch sites
 /// must throw <see cref="InvalidOperationException"/>, never silently
-/// produce a default value or an "Unknown:" string. Three of the five
+/// produce a default value or an "Unknown:" string. These tests cover
+/// the two dispatch sites that must throw instead of returning a silent
+/// fallback. Three of the five
 /// dispatch sites — <see cref="HexOccupant.Clone"/>,
 /// <c>SaveSerializer.SerializeOccupant</c>, and
 /// <c>SaveSerializer.DeserializeOccupant</c> — already throw via their

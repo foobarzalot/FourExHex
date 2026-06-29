@@ -4,7 +4,7 @@ using FourExHex.Model;
 
 /// <summary>
 /// JSON (de)serialization for the campaign sidecar file
-/// <c>user://campaign.json</c> (issue #2). Pure model — the Godot-side
+/// <c>user://campaign.json</c>. Pure model — the Godot-side
 /// <c>CampaignStore</c> only does file I/O around these two methods.
 /// Deserialize throws on anything unreadable (corrupt JSON, unsupported
 /// version); the store catches and falls back to fresh progress, and the

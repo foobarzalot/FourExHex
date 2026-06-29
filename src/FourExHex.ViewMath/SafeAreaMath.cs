@@ -1,8 +1,3 @@
-// Moved from FourExHex.Model to FourExHex.ViewMath as part of the no-floats
-// rule (issue #20) — LogicalSafeInsets and SafeAreaMath need float
-// precision, which is now banned in Model + Controller. Namespace dropped
-// to match the other view-math types' global-namespace style.
-
 /// <summary>
 /// Logical-pixel safe-area insets for the four edges. Top is non-zero on
 /// devices with a notch or Dynamic Island; bottom is non-zero on devices with

@@ -112,8 +112,8 @@ public class GameStateSnapshotTests
     [Fact]
     public void Capture_IncludesUnitLevel()
     {
-        // Regression: the clone used to drop Unit.Level, turning higher-
-        // level units into recruits after undo.
+        // Capture must preserve Unit.Level so undo keeps higher-level
+        // units rather than turning them into recruits.
         HexGrid grid = BuildTwoTileRedGrid();
         grid.Get(new HexCoord(0, 0))!.Occupant = new Unit(Red, UnitLevel.Captain);
         var treasury = new Treasury();

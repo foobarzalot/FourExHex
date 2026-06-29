@@ -37,7 +37,7 @@ public static class CapitalReconciler
         foreach (Territory newT in rawNewTerritories)
         {
             // Neutral (unowned) territories never get a capital — neutral
-            // land belongs to no player and produces no income (issue #39).
+            // land belongs to no player and produces no income.
             // A Capital occupant sitting on neutral land is an upstream
             // paint bug, so surface it by throwing rather than silently
             // stripping it.
@@ -92,7 +92,7 @@ public static class CapitalReconciler
             {
                 // No inherited capital — place a fresh one if the territory is
                 // big enough. May stomp a unit. Any 2+ region now has a legal
-                // site (mountains included, issue #81), so Choose returns null
+                // site (mountains included), so Choose returns null
                 // only for the impossible all-Capital case — guarded defensively.
                 chosenCapital = CapitalPlacer.Choose(newT.Coords, grid);
                 if (chosenCapital.HasValue)

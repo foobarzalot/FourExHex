@@ -131,7 +131,7 @@ public class RisingTidesRulesTests
     [Fact]
     public void SubmergeStep_IsDeterministic_PicksSameTileEveryRun()
     {
-        // Selection is structural (no RNG, issue #89): two runs of identical
+        // Selection is structural (no RNG): two runs of identical
         // state must erode the same tile, every time.
         HexGrid GridA() => TestHelpers.BuildRectGrid(2, 2, Red);
 
@@ -149,7 +149,7 @@ public class RisingTidesRulesTests
         Assert.Equal(removedA, removedB);
     }
 
-    // --- ForecastSubmerge / ApplyForecast (issue #85) --------------------
+    // --- ForecastSubmerge / ApplyForecast --------------------------------
 
     [Fact]
     public void ForecastSubmerge_DoesNotMutateGridOrWater()
@@ -261,7 +261,7 @@ public class RisingTidesRulesTests
         Assert.Empty(state.WaterCoords);
     }
 
-    // --- WaterBorderWeight / weighted selection (issue #85 follow-on) ----
+    // --- WaterBorderWeight / weighted selection --------------------------
     //
     // The weight is "sea-facing sides" = 6 - (in-grid neighbours). These tests
     // assert independently hand-derived counts for layouts whose adjacency is

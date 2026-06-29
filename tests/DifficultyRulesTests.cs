@@ -5,7 +5,7 @@ namespace FourExHex.Tests;
 
 public class DifficultyRulesTests
 {
-    // The hand-picked upkeep table (#11): rows = unit level, columns = the
+    // The hand-picked upkeep table: rows = unit level, columns = the
     // owner's difficulty. Difficulty is the HUMAN player's handicap — AI
     // opponents always play the Soldier column (the 2/6/18/54 Slay
     // baseline). Recruit = cheaper-than-AI easy mode; Captain ≈ ×1.25

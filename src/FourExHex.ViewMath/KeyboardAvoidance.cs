@@ -1,7 +1,7 @@
 /// <summary>
 /// Pure math for shifting a UI panel up while the mobile on-screen keyboard
-/// is visible, so a focused text field stays readable above it (issue #4 —
-/// the main-menu Map Seed field). Kept Godot-free in FourExHex.ViewMath so
+/// is visible, so a focused text field stays readable above it (the
+/// main-menu Map Seed field). Kept Godot-free in FourExHex.ViewMath so
 /// the math is unit-testable; called from <c>scripts/MainMenuScene.cs</c>.
 /// All values are logical pixels (physical keyboard height ÷ ContentScaleFactor).
 /// </summary>

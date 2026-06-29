@@ -199,7 +199,7 @@ public partial class GameControllerTests
         // AiCommon.Enumerate), NOT an execution legality rule — humans
         // may bunch towers, so replaying a recorded human tower-build
         // adjacent to another tower must not throw. Regression for the
-        // "about_to_win" replay desync (beat #714: human BuildTower
+        // "about_to_win" replay desync (human BuildTower
         // rejected because ExecuteAiBuildTower applied AI-only spacing).
         var red = new Player("Red", PlayerId.FromIndex(0), isAi: true);
         var blue = new Player("Blue", PlayerId.FromIndex(1));
@@ -252,11 +252,8 @@ public partial class GameControllerTests
     // --- AI turn integration ---------------------------------------------
 
     /// <summary>
-    /// 2-player fixture where Blue is an AI with a 3-tile territory
-    /// containing a recruit positioned to capture a neutral Blue tile
-    /// once it's their turn. Wait — Blue captures Blue? Let me rebuild.
-    /// This fixture has Red (human) and Blue (AI) with their own
-    /// territories; Blue's unit is adjacent to a capturable Red tile.
+    /// 2-player fixture with Red (human) and Blue (AI), each owning their
+    /// own territory; Blue's unit is adjacent to a capturable Red tile.
     /// </summary>
     private class HumanVsAiGame
     {
@@ -367,7 +364,7 @@ public partial class GameControllerTests
     [Fact]
     public void AiWin_HidesOpponentsTakingTurnsOverlay()
     {
-        // #23: when an AI wins on its own (paced) turn, the
+        // When an AI wins on its own (paced) turn, the
         // "Opponents are taking their turns…" overlay must be hidden so
         // it doesn't draw on top of the victory screen. Same one-move
         // domination fixture as AiTurn_CanCaptureLastEnemyHex_DeclaresWinner;
@@ -693,6 +690,5 @@ public partial class GameControllerTests
     // Live-AI Instant (chunked-driver) coverage — silent lifecycle,
     // "Opponents are taking their turns…" overlay, input gating,
     // per-turn sampling, no-drift vs paced, and mid-batch defeat —
-    // lives in InstantAiTests. The old background-runner dispatch
-    // tests were removed with that mechanism (replaced 1:1 there).
+    // lives in InstantAiTests.
 }

@@ -141,16 +141,11 @@ public class ReplayPlaybackTests
     [Fact]
     public void Replay_HumanBuyOntoOwnEmptyThenMoveSameUnit_ProducesSameFinalState()
     {
-        // Regression for a replay-fidelity bug uncovered during the
-        // ReplayRecorder extraction's manual smoke test: a human buys a
-        // recruit onto an own-empty tile (HasMovedThisTurn=false on the
-        // live side), then moves that recruit in the same turn (capture).
-        // During replay, ExecuteAiBuyUnit's "fresh buy consumes the
-        // unit's move" rule was applied unconditionally (no
-        // !_isReplayMode() gate analogous to ExecuteAiMove's reposition
-        // gate), so the subsequent move beat threw "unit has already
-        // moved this turn." Pre-existing in main; visible once the
-        // recorded log replays through this specific sequence.
+        // A human buy onto an own-empty tile leaves HasMovedThisTurn=false;
+        // the unit can still move/capture the same turn. Replay must not
+        // consume that move — ExecuteAiBuyUnit's "fresh buy consumes the
+        // unit's move" rule is gated off in replay mode, or the subsequent
+        // move beat throws "unit has already moved this turn."
         var f = new Fixture();
 
         // Step 1: select Red's territory, enter Buy Recruit mode, place
@@ -480,8 +475,7 @@ public class ReplayPlaybackTests
         // bankrupts on turn 2 — both during the live recording and again
         // when the recorded EndTurn beats replay it. Instant replay is a
         // silent fast-forward, so the bankruptcy bell must NOT play
-        // during playback (it leaked through the old unconditional
-        // Bankruptcy/GameWon silent-gate exemption).
+        // during playback.
         var red = new Player("Red", PlayerId.FromIndex(0));
         var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new List<Player> { red, blue };
@@ -713,8 +707,7 @@ public class ReplayPlaybackTests
         // move). ExecuteAiMove DOES consume it (an AI-loop selection
         // shim). Replaying the recorded human moves through
         // ExecuteAiMove must NOT apply that shim, or the second move
-        // throws "already moved this turn" — the about_to_win desync
-        // (beat #992).
+        // throws "already moved this turn."
         var red = new Player("Red", PlayerId.FromIndex(0));
         var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new List<Player> { red, blue };

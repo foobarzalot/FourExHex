@@ -46,7 +46,7 @@ public partial class HexPaletteButton : Control
 
     private bool _isHuman;
 
-    /// <summary>When true, the swatch draws a small white pip (issue #70) so the
+    /// <summary>When true, the swatch draws a small white pip so the
     /// map editor can show at a glance which player colors are human-controlled.
     /// Only meaningful on the non-squared land swatches.</summary>
     public bool IsHuman
@@ -141,7 +141,7 @@ public partial class HexPaletteButton : Control
             DrawLine(verts[i], verts[(i + 1) % 6], outlineColor, outlineWidth);
         }
 
-        // Human marker (issue #70): a small white pip with a dark ring near the
+        // Human marker: a small white pip with a dark ring near the
         // top of the hex, so a human-controlled color reads at a glance.
         if (_isHuman)
         {

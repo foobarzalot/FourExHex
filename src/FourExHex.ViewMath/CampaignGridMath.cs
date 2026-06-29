@@ -1,8 +1,8 @@
 using System;
 
 /// <summary>
-/// Pointy-top honeycomb layout math for the campaign screen's tier grids
-/// (issue #2). A tier is a block of 64 hex cells laid out
+/// Pointy-top honeycomb layout math for the campaign screen's tier grids.
+/// A tier is a block of 64 hex cells laid out
 /// <c>columns</c> wide (8 in portrait, 16 in landscape — at 16 each row
 /// is one 0x10 block, making the grid self-indexing). Odd rows shift
 /// right by half a column step; rows interlock at the standard honeycomb

@@ -7,9 +7,8 @@ namespace FourExHex.Tests;
 
 // AOT compatibility contract for save (de)serialization. iOS forbids JIT, so
 // .NET on iOS is AOT-compiled and reflection-based JSON throws "Reflection-
-// based serialization has been disabled for this application." (this is the
-// exact dialog Nathan's iPhone showed on save.) To survive that, every root
-// type SaveSerializer / SaveStore / UserSettings push through System.Text.Json
+// based serialization has been disabled for this application." To survive
+// that, every root type SaveSerializer / SaveStore / UserSettings push through System.Text.Json
 // must be reachable via FourExHexJsonContext's source-generated JsonTypeInfo
 // tables — no reflection fallback.
 //
@@ -62,8 +61,7 @@ public class FourExHexJsonContextTests
         // The [JsonSourceGenerationOptions] attribute on the context sets
         // WriteIndented = true + DefaultIgnoreCondition = WhenWritingNull, so
         // a SaveData with null optional fields produces a multi-line JSON that
-        // omits the null entries (matching the historical reflection-path
-        // output bit-for-bit — old saves still load through either path).
+        // omits the null entries from the indented output.
         var data = new SaveData
         {
             FormatVersion = SaveSerializer.CurrentFormatVersion,

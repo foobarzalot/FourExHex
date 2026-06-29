@@ -37,10 +37,8 @@ public static class UiPalette
     public static readonly Color GoldDeep = new Color("a38228");
     public static readonly Color GoldDim  = new Color("7a6534");
 
-    // Water (in-game board background). Lerped 50% between the
-    // original brighter blue (#336ba6) and the heraldic slate-navy
-    // (#2d3a55) — restores enough chroma that the sea reads as
-    // genuinely watery without the original's neon brightness.
+    // Water (in-game board background) — watery slate-blue, chroma
+    // pitched between brightness and the heraldic navy.
     public static readonly Color Water     = new Color("4a6488");
     public static readonly Color WaterDeep = new Color("30537e");
 

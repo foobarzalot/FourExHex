@@ -5,14 +5,9 @@ using Godot;
 /// scene. It runs before the first scene loads (Godot instantiates
 /// autoloads ahead of <c>main_scene</c>), wiring the sink to
 /// <c>GD.Print</c> and applying the <c>FOUREXHEX_LOG</c> spec exactly
-/// once.
-///
-/// Previously this lived only in <see cref="Main"/>, so <see cref="Log"/>
-/// calls from menu/editor scenes (MainMenuScene, MapEditorScene,
-/// TutorialBuilderScene) and their modals were silently dropped — the
-/// sink was null and no category was configured until the in-game scene
-/// ran. Hoisting it here closes that gap: instrumentation works
-/// everywhere, including the main menu's Settings/Credits modals.
+/// once. Runs before any scene so <see cref="Log"/> works in menu/editor
+/// scenes (MainMenuScene, MapEditorScene, TutorialBuilderScene) and their
+/// modals too.
 ///
 /// Registered as an autoload in project.godot under the name
 /// "LogBootstrap".

@@ -12,7 +12,7 @@ using System.Collections.Generic;
 public enum InstantStep { Continued, TurnBoundary, Exhausted }
 
 /// <summary>
-/// Result of the replay divergence check (issue #77): set when a loaded
+/// Result of the replay divergence check: set when a loaded
 /// replay, re-executed under the current rules, lands on a board whose
 /// <see cref="GameStateChecksum"/> differs from the recorded final board.
 /// Both checksums are computed by the current binary, so a divergence
@@ -73,7 +73,7 @@ public class ReplayRecorder
     private int _replayIndex;
     private bool _replayInstantActive;
 
-    // #77: divergence detection. Captured once at the first BeginReplay
+    // Divergence detection. Captured once at the first BeginReplay
     // (before the rewind) from the recorded end board — loaded.State for
     // a save, or the finished live board. EndReplay recomputes the
     // replayed board and compares. Capturing once (and only here) keeps
@@ -327,7 +327,7 @@ public class ReplayRecorder
         _ops.GameEndedFired = false;
         _ops.HumanTurnFiredForCurrentTurn = false;
 
-        // #77: snapshot the recorded end board's checksum BEFORE the rewind
+        // Snapshot the recorded end board's checksum BEFORE the rewind
         // below overwrites it. Captured once (??=) so a re-replay still
         // compares against the original recording, not the prior playback.
         // Skipped in preview mode (authored tutorials have no played-out
@@ -339,7 +339,7 @@ public class ReplayRecorder
         }
 
         _state.Territories = _initialSnapshot.ApplyTo(_state.Grid, _state.Treasury);
-        // Rising Tides (issue #85): the snapshot's ApplyTo re-grew the grid with
+        // Rising Tides: the snapshot's ApplyTo re-grew the grid with
         // every tile that submerged during the recording. Those coords are land
         // again, so drop them from the water set — otherwise the rewound board
         // keeps the recorded sinks marked as water and the replay diverges (e.g.
@@ -352,7 +352,7 @@ public class ReplayRecorder
         _session.ClaimVictoryPromptedHighestThreshold.Clear();
         _session.ClearPendingAction();
         _session.SelectedTerritory = null;
-        // Rising Tides (issue #85): a live fresh start seeds the first player's
+        // Rising Tides: a live fresh start seeds the first player's
         // turn-1 tide forecast in GameController.Resume(freshStart:true). The
         // replay rewind IS that same fresh start, so seed the same forecast
         // here — otherwise the first end-of-turn tide erodes different tiles
@@ -559,7 +559,7 @@ public class ReplayRecorder
         _map.ShowHighlight(null);
         _ops.RefreshViews();
 
-        // #77: compare the replayed board against the recorded end board.
+        // Compare the replayed board against the recorded end board.
         // Only on a clean finish (all beats consumed, or a beat ended the
         // game) so an aborted mid-replay can't falsely diverge.
         bool cleanFinish = _replayIndex >= _replayBeats.Count || _session.IsGameOver;
@@ -571,7 +571,7 @@ public class ReplayRecorder
                 LastDivergence = new ReplayDivergence(_expectedEndChecksum, actual);
                 Log.Warn(Log.LogCategory.Replay,
                     $"Replay diverged from recording: expected {_expectedEndChecksum}, " +
-                    $"got {actual}. Recorded under different gameplay rules? (issue #77)");
+                    $"got {actual}. Recorded under different gameplay rules?");
                 Log.Debug(Log.LogCategory.Replay,
                     "First diff " + FirstDifference(
                         _expectedEndCanonical ?? "", GameStateChecksum.Stringify(_state)));

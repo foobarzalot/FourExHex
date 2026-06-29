@@ -11,7 +11,7 @@ using System.Linq;
 ///   - <see cref="Tree"/> / <see cref="Grave"/> / null -> 0
 ///   - any unknown subtype        -> throws
 /// Any defender — a <see cref="Unit"/>, <see cref="Tower"/>, or
-/// <see cref="Capital"/> — standing on a mountain (issue #37, #81) adds
+/// <see cref="Capital"/> — standing on a mountain adds
 /// <see cref="MountainBonus"/> (+1) on top of its contribution — high
 /// ground. Units, towers, and capitals all radiate their (possibly
 /// mountain-boosted) contribution to adjacent same-territory tiles.
@@ -20,7 +20,7 @@ using System.Linq;
 public static class DefenseRules
 {
     /// <summary>
-    /// Extra defense (issue #37, #81) any defender — a <see cref="Unit"/>,
+    /// Extra defense any defender — a <see cref="Unit"/>,
     /// <see cref="Tower"/>, or <see cref="Capital"/> — gains from standing on a
     /// mountain: the high-ground bonus. A mountain gives no defense on its own
     /// (an empty mountain contributes nothing); only a defending occupant earns

@@ -12,18 +12,10 @@ public static class GameSettings
     /// menu, the game, and the turn order. Colors are stored as hex
     /// strings so this class can stay Godot-free.
     /// </summary>
-    // Each fill is a 50% lerp between the original saturated palette
-    // (Red e53935 etc.) and the fully-heraldic muted palette (Gules
-    // b65649 etc.) — restoring enough chroma that the colors don't read
-    // as washed-out while keeping them noticeably calmer than the
-    // original neon primaries. Brown was re-tuned so the dark on-tile
-    // glyphs — black units, the slate tower, grey mountain rock — read
-    // clearly on top (issue #62). Rather than a plain lift (which drifted
-    // toward the warm neutral grey 888378), it was made a saturated, lighter
-    // version of its original hue: Brown 8a5a2b -> a3582c (chocolate
-    // red-brown). Its PlayerDark border companion was re-derived to match in
-    // PlayerPalette, and the old hex is aliased for legacy save migration in
-    // SaveSerializer.RetiredHexAliases.
+    // Muted, heraldic player fills tuned so dark on-tile glyphs — black units,
+    // the slate tower, grey mountain rock — read clearly on top; Brown is a
+    // saturated chocolate red-brown. Retired hexes are aliased in
+    // SaveSerializer.RetiredHexAliases for legacy saves.
     public static readonly (string Name, string Hex)[] PlayerConfig =
     {
         ("Red",    "cd473f"),
@@ -54,7 +46,7 @@ public static class GameSettings
 
     /// <summary>
     /// One <see cref="Difficulty"/> per slot in <see cref="PlayerConfig"/>
-    /// (issue #11 difficulty lever). Read by <see cref="Player.BuildRoster"/>
+    /// (difficulty lever). Read by <see cref="Player.BuildRoster"/>
     /// onto each <see cref="Player.Difficulty"/>. The New Game panel writes the
     /// chosen level to every human slot (AIs stay Soldier); a loaded save mirrors
     /// each player's saved level here before BuildRoster. Defaults to all-Soldier
@@ -76,33 +68,31 @@ public static class GameSettings
     public static int? MasterSeed = null;
 
     /// <summary>
-    /// Forest density (percent of land) for a freshly-generated map (issue #66).
+    /// Forest density (percent of land) for a freshly-generated map.
     /// Written by the New Game "Map Setup" stepper (and the map editor's own
     /// stepper); read by <see cref="Main"/> / the map thumbnail / the editor die
     /// into the <c>MapGenOptions</c> passed to <c>MapGenerator</c>. Defaults to 5
-    /// (the historical <c>grid.Count / 20</c> scatter) so a fresh launch / skipped
-    /// menu generates the pre-#48 baseline map.
+    /// (5% of land).
     /// </summary>
     public static int TreeDensity = 5;
 
     /// <summary>
-    /// Mountain-range density (percent of land) for a freshly-generated map
-    /// (issue #48 / #66). Defaults to 0 (off) so a fresh launch generates the
-    /// pre-#48 baseline map. See <see cref="TreeDensity"/> for the write/read path.
+    /// Mountain-range density (percent of land) for a freshly-generated map.
+    /// Defaults to 0 (off). See <see cref="TreeDensity"/> for the write/read path.
     /// </summary>
     public static int MountainDensity = 0;
 
     /// <summary>
-    /// Gold-cluster density (percent of land) for a freshly-generated map
-    /// (issue #48 / #66). Defaults to 0 (off). See <see cref="TreeDensity"/> for
+    /// Gold-cluster density (percent of land) for a freshly-generated map.
+    /// Defaults to 0 (off). See <see cref="TreeDensity"/> for
     /// the write/read path.
     /// </summary>
     public static int GoldDensity = 0;
 
     /// <summary>
-    /// Player-territory clumping factor (0..100) for a freshly-generated map
-    /// (issue #72). 0 = today's fragmented salt-and-pepper assignment (the
-    /// pre-#72 baseline); higher values seed fewer, larger contiguous regions
+    /// Player-territory clumping factor (0..100) for a freshly-generated map.
+    /// 0 = fragmented salt-and-pepper assignment; higher values seed fewer,
+    /// larger contiguous regions
     /// (seed-flood Voronoi), 100 = one blob per player. Defaults to 0 so a fresh
     /// launch / skipped menu reproduces the baseline. See <see cref="TreeDensity"/>
     /// for the write/read path; threaded into <c>MapGenOptions.ClumpingFactor</c>.
@@ -111,7 +101,7 @@ public static class GameSettings
 
     /// <summary>
     /// Campaign level index (0..255) when the next game is a campaign
-    /// launch (issue #2), null for freeform games. Written by the
+    /// launch, null for freeform games. Written by the
     /// campaign screen alongside <see cref="MasterSeed"/> (identity
     /// mapping: seed = level); cleared by the freeform Start Game path
     /// so ordinary games never record campaign results. <c>Main</c>
@@ -121,7 +111,7 @@ public static class GameSettings
     public static int? CampaignLevel = null;
 
     /// <summary>
-    /// Selectable game mode (issue #56) for the next freeform launch. Written
+    /// Selectable game mode for the next freeform launch. Written
     /// by the New Game "Map Setup" stepper's mode selector; read by
     /// <see cref="Main"/> into the <c>GameState</c> it builds. Defaults to
     /// <see cref="GameMode.Freeform"/> and is reset to Freeform on the

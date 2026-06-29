@@ -7,11 +7,11 @@ using Xunit;
 
 namespace FourExHex.Tests;
 
-// Guardrail for issue #20: zero floating-point math in
+// Guardrail: zero floating-point math in
 // FourExHex.Model and FourExHex.Controller. float / double are not
 // deterministic across platforms, compilers, and JIT levels — any
 // floating-point in the game-state code path is a desync time bomb
-// for networked multiplayer (#6).
+// for networked multiplayer.
 //
 // This test scans the Model and Controller assemblies via
 // System.Reflection and fails the build if any field, property,

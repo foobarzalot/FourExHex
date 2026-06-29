@@ -75,13 +75,13 @@ public class ReplayFidelityTests
         Assert.Equal(liveChecksum, replayChecksum);
 
         // A faithful replay reproduces the recorded end board, so the
-        // engine's own divergence check (recorded-vs-replayed checksum,
-        // #77) must flag nothing.
+        // engine's own divergence check (recorded-vs-replayed checksum)
+        // must flag nothing.
         Assert.Null(replayController.LastReplayDivergence);
     }
 
     /// <summary>
-    /// Rising Tides (issues #56/#85) replay fidelity: the same end-to-end check
+    /// Rising Tides replay fidelity: the same end-to-end check
     /// as the freeform case above, but the per-turn tide erosion must reproduce
     /// exactly under replay. The first player's turn-1 forecast is seeded in
     /// <see cref="GameController.Resume"/> on a live fresh start; replay restores
@@ -134,7 +134,7 @@ public class ReplayFidelityTests
     }
 
     /// <summary>
-    /// #77: a replay that does NOT reproduce the recorded final board is
+    /// A replay that does NOT reproduce the recorded final board is
     /// detected. We can't stage a real rule change inside one binary, so we
     /// simulate it: load a save, then mutate the recorded end state
     /// (<see cref="GameController.BeginReplay"/> captures its checksum as the

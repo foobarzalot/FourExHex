@@ -3,21 +3,20 @@ using System.Collections.Generic;
 using System.Linq;
 
 /// <summary>
-/// Pure rules for the "Rising Tides" game mode (issue #56). Godot-free and
+/// Pure rules for the "Rising Tides" game mode. Godot-free and
 /// integer-only, so it lives in the model assembly and passes the no-floats
 /// check. Coast erosion is fully deterministic — shore tiles are selected by
-/// strict exposure ordering (issue #89), no RNG involved.
+/// strict exposure ordering, no RNG involved.
 ///
-/// The erosion is split into two halves (issue #85): at the start of an owner's
+/// The erosion is split into two halves: at the start of an owner's
 /// turn the controller calls <see cref="ForecastSubmerge"/> — which <i>selects</i>
 /// a budget of that owner's most sea-exposed shore tiles but mutates nothing —
 /// and locks the resulting <see cref="TideStep"/> plan on the game state so it can
 /// be telegraphed to the player and weighed by the AI. At the <i>end</i> of that
 /// same turn the controller calls <see cref="ApplyForecast"/>, which performs the
 /// actual demote/submerge for the forecasted tiles. (<see cref="SubmergeStep"/>
-/// keeps the old forecast-then-immediately-apply behaviour in one call — still
-/// used for the phantom turns of neutral/eliminated colors, which have no
-/// during-turn beat to telegraph.)
+/// forecasts and applies in one call — used for the phantom turns of
+/// neutral/eliminated colors, which have no during-turn beat to telegraph.)
 ///
 /// A shore tile is any land tile with at least one missing neighbour (water, the
 /// rectangular map edge, or beyond-bounds — none of which are in the grid). A
@@ -54,11 +53,11 @@ public static class RisingTidesRules
 
     /// <summary>
     /// How many of <paramref name="coord"/>'s six sides face the sea — i.e.
-    /// <c>6 - (in-grid neighbours)</c> (issue #85 follow-on). A missing neighbour
+    /// <c>6 - (in-grid neighbours)</c>. A missing neighbour
     /// is water, the map edge, or beyond-bounds — all of which render as sea — so
     /// this is the tile's coastal exposure. An interior tile scores 0; a shore
-    /// tile scores 1..6 (a lone tile is 6). Drives the strict erosion ordering
-    /// (issue #89): the tide always takes the highest-weight shore tile, so
+    /// tile scores 1..6 (a lone tile is 6). Drives the strict erosion ordering:
+    /// the tide always takes the highest-weight shore tile, so
     /// exposed corners/peninsulas erode before flush edges, every time.
     /// </summary>
     public static int WaterBorderWeight(HexGrid grid, HexCoord coord)
@@ -67,7 +66,7 @@ public static class RisingTidesRules
     /// <summary>
     /// Forecast (but do NOT apply) up to <paramref name="budget"/> of
     /// <paramref name="owner"/>'s shore tiles to erode this turn, selected by
-    /// strict exposure ordering (issue #89): the most sea-exposed tiles first
+    /// strict exposure ordering: the most sea-exposed tiles first
     /// (highest <see cref="WaterBorderWeight"/> = fewest in-grid land neighbours),
     /// ties broken by ascending <see cref="HexCoord"/>. No RNG is consumed — the
     /// selection is fully deterministic from the map. The grid is left untouched —
@@ -81,7 +80,7 @@ public static class RisingTidesRules
         IReadOnlyList<HexCoord> shore = ShoreTilesOf(state.Grid, owner);
         if (shore.Count == 0 || budget <= 0) return System.Array.Empty<TideStep>();
 
-        // Strict erosion order (issue #89): take the most sea-exposed tiles
+        // Strict erosion order: take the most sea-exposed tiles
         // first so coastlines crumble at their points before their flush edges.
         // `shore` is already in ascending HexCoord order, so OrderByDescending's
         // stable sort resolves equal-exposure ties to the smallest coord; the
@@ -107,8 +106,8 @@ public static class RisingTidesRules
     /// (clears <see cref="HexTile.IsMountain"/>) and spends the step without
     /// submerging; a plain shore is removed from the grid and added to the water
     /// set. The demote-vs-submerge decision is re-derived from live tile state so
-    /// it matches what <see cref="SubmergeStep"/> would have done, but the COORDS
-    /// are exactly those locked at forecast time (no re-pick, no RNG, no drift).
+    /// it matches <see cref="SubmergeStep"/>'s demote/submerge choice, but the
+    /// COORDS are exactly those locked at forecast time (no re-pick, no RNG, no drift).
     /// If any tile actually submerged, the territory partition is recomputed
     /// (capitals relocate or the territory is lost, occupants vanish, the treasury
     /// reconciles). Returns true iff anything changed.
@@ -156,10 +155,9 @@ public static class RisingTidesRules
     }
 
     /// <summary>
-    /// Forecast and immediately apply one erosion step — the original
-    /// single-call behaviour (issue #56). Retained for phantom turns of
-    /// neutral/eliminated colors, which have no during-turn beat to telegraph,
-    /// and for tests. Returns true iff anything changed.
+    /// Forecast and apply one erosion step in a single call. Used for phantom
+    /// turns of neutral/eliminated colors, which have no during-turn beat to
+    /// telegraph, and for tests. Returns true iff anything changed.
     /// </summary>
     public static bool SubmergeStep(GameState state, PlayerId owner, int budget)
         => ApplyForecast(state, owner, ForecastSubmerge(state, owner, budget));

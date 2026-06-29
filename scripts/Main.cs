@@ -24,7 +24,7 @@ public partial class Main : Node2D
     /// resumed game can keep showing "Map: foo" in the bottom-left.
     /// </summary>
     private string? _originMapName;
-    /// <summary>Campaign level (issue #2) this game plays, or null for
+    /// <summary>Campaign level this game plays, or null for
     /// freeform games. Read from GameSettings / the loaded save in _Ready;
     /// drives the win-recording GameEnded hook, the campaign victory
     /// overlay, and the CampaignLevel field of every save written.</summary>
@@ -48,28 +48,14 @@ public partial class Main : Node2D
 
     public override void _Ready()
     {
-        // Diagnostic launches: setting FOUREXHEX_6AI or FOUREXHEX_6AI_QUICK
-        // before starting Godot forces all six slots to Computer, enables
-        // verbose AI logging to stdout, runs the game synchronously (no
-        // pacing delays), and auto-quits on game over. Intended for
-        // Claude to run headless and read the logs. Log.Sink +
-        // FOUREXHEX_LOG are wired by the LogBootstrap autoload before any
-        // scene loads (see scripts/LogBootstrap.cs), so the sink and
-        // category levels are already live here. The diagnostic block
-        // below only adds its diagnostic level overrides on top.
-        //
-        // FOUREXHEX_6AI (full) uses HexMapView's default grid (30×20,
-        // 600 tiles) and a 500-turn cap — slow but faithful to a
-        // menu-launched game, which is what catches AI economic bugs
-        // (see #24 / #22). FOUREXHEX_6AI_QUICK uses an 18×13 grid (234
-        // tiles, 2.6× fewer) and a 100-turn cap — a fast smoke test for
-        // crash regressions and determinism checks. Full mode wins if
-        // both are set.
-        //
-        // FOUREXHEX_SEED=<int> locks the master seed so two runs of the
-        // same mode produce byte-identical output (the determinism check
-        // for issue #20). Falls back to the saved-load seed, then
-        // GameSettings.MasterSeed, then a fresh Random.Shared.Next().
+        // Diagnostic launches (headless regression harness): FOUREXHEX_6AI
+        // (full, 30×20, cap 500) or FOUREXHEX_6AI_QUICK (smoke, 18×13, cap
+        // 100; full wins if both are set) force all six slots to Computer,
+        // enable verbose AI logging, run synchronously, and auto-quit on
+        // game over. FOUREXHEX_SEED=<int> locks the master seed for
+        // byte-identical determinism reruns. Log.Sink + FOUREXHEX_LOG are
+        // wired by the LogBootstrap autoload; the block below adds the
+        // diagnostic level overrides on top. See CLAUDE.md for the full list.
         bool fullDiagMode = OS.GetEnvironment("FOUREXHEX_6AI").Length > 0;
         bool quickDiagMode = !fullDiagMode
             && OS.GetEnvironment("FOUREXHEX_6AI_QUICK").Length > 0;
@@ -81,7 +67,7 @@ public partial class Main : Node2D
                 GameSettings.PlayerKinds[i] = PlayerKind.Computer;
             }
             // FOUREXHEX_DIFFICULTY="recruit,soldier,captain,commander,...":
-            // per-slot difficulty levels (issue #11). Difficulty is an
+            // per-slot difficulty levels. Difficulty is an
             // upkeep HANDICAP, so a commander slot pays 1.5× upkeep and
             // should underperform in a headless 6-AI run (and a recruit
             // slot, paying less, should overperform). Comma-separated level
@@ -102,8 +88,7 @@ public partial class Main : Node2D
                             : Difficulty.Soldier;
                 }
             }
-            // Reproduce the verbose AI/turn stdout the old
-            // AiLog.Enabled=true produced. Set AFTER Configure so the
+            // Force verbose AI/turn stdout. Set AFTER Configure so the
             // headless regression harness can't be silenced by a stray
             // FOUREXHEX_LOG=*:Off.
             Log.SetLevel(Log.LogCategory.Ai, Log.LogLevel.Debug);
@@ -132,7 +117,7 @@ public partial class Main : Node2D
         if (quickDiagMode)
         {
             // Smoke-test grid (18×13, 234 tiles) — small enough that a
-            // full 100-turn 6AI game finishes in seconds. Loses #24's
+            // full 100-turn 6AI game finishes in seconds. Lacks the
             // AI-economic-bug signal (the doom-spiral bankruptcy
             // pattern needs the full 30×20 to surface), so use full
             // mode for AI-behavior checks, quick mode for crash-only
@@ -142,12 +127,9 @@ public partial class Main : Node2D
         }
         else if (fullDiagMode)
         {
-            // Match HexMapView's [Export] defaults — diverging here used to
-            // hide whole classes of AI economic bugs (see #24): the 6AI
-            // harness on 18×13 showed 0 bankruptcies in 10 runs while
-            // menu-launched 6AI on the default 30×20 showed dozens. Pull
-            // dimensions from a throwaway HexMapView instance so the two
-            // launch paths can't drift again.
+            // Match HexMapView's [Export] defaults so the two launch paths
+            // can't drift. Pull dimensions from a throwaway HexMapView
+            // instance.
             visibleMap = new HexMapView();
             cols = visibleMap.Cols;
             rows = visibleMap.Rows;
@@ -163,9 +145,8 @@ public partial class Main : Node2D
         // One seed drives both the initial grid and the GameController's
         // per-turn RNG, so the menu's "Map Seed" field is reproducible
         // end-to-end. Order of precedence:
-        //   1. FOUREXHEX_SEED env var (locks the seed for determinism
-        //      reruns — e.g. issue #20's "two FOUREXHEX_6AI_QUICK runs
-        //      must produce identical output" check).
+        //   1. FOUREXHEX_SEED env var (locks the seed for the determinism
+        //      rerun check).
         //   2. Saved-load (replays the saved game).
         //   3. Menu's selection.
         //   4. Fresh Random for the diagnostic path (FOUREXHEX_6AI never
@@ -180,7 +161,7 @@ public partial class Main : Node2D
 
         // Diagnostic terrain overrides (mirror FOUREXHEX_SEED): lock map-gen
         // densities for headless verification runs — e.g. exercising the
-        // gold/mountain AI scoring (#61) under FOUREXHEX_6AI without editing
+        // gold/mountain AI scoring under FOUREXHEX_6AI without editing
         // code or visiting the menu. Each, when set to a valid non-negative
         // int, wins over the menu/default GameSettings value; absent vars
         // (empty string → TryParse false) are no-ops. The effective densities
@@ -195,7 +176,7 @@ public partial class Main : Node2D
             GameSettings.GoldDensity = envGold;
         if (int.TryParse(OS.GetEnvironment("FOUREXHEX_CLUMP_FACTOR"), out int envClump) && envClump >= 0)
             GameSettings.ClumpingFactor = envClump;
-        // Diagnostic game-mode override (issue #56): FOUREXHEX_MODE=RisingTides
+        // Diagnostic game-mode override: FOUREXHEX_MODE=RisingTides
         // launches the headless 6AI run in Rising Tides so the flood / last-
         // player-standing flow can be regression-tested. Absent/unknown → no-op.
         if (System.Enum.TryParse(
@@ -213,7 +194,7 @@ public partial class Main : Node2D
         // play scene can do the right thing for each case.
         bool isStartingMap = pendingLoad != null && pendingLoad.State.Turns.TurnNumber == 0;
 
-        // Campaign pointer (issue #2). A fresh menu launch arrives with
+        // Campaign pointer. A fresh menu launch arrives with
         // GameSettings.CampaignLevel already set (campaign screen) or
         // cleared (freeform Start Game). Loads override it from the save:
         // a resumed campaign autosave restores its level so the win still
@@ -248,11 +229,11 @@ public partial class Main : Node2D
         {
             // Starting-map flow: terrain (grid, water, territories,
             // pre-placed trees/towers/capitals) comes from the saved
-            // map. Since #70 the map bakes its own roster (kinds + difficulty,
-            // None excluded on load), so play exactly that. A pre-#70 map
-            // carries no roster intent, so fall back to the legacy default:
-            // 6 players, Red human, the rest Computer, all Soldier. Turn state
-            // starts at turn 1, player 0 (red first) and the treasury is empty.
+            // map. A map with baked kinds (kinds + difficulty, None excluded
+            // on load) plays that roster; a map without baked kinds falls
+            // back to the default 6-player roster (Red human, rest Computer,
+            // all Soldier). Turn state starts at turn 1, player 0 (red first)
+            // and the treasury is empty.
             _players = pendingLoad.MapHasBakedKinds
                 ? pendingLoad.Players
                 : LegacyDefaultRoster();
@@ -264,7 +245,7 @@ public partial class Main : Node2D
                 new Treasury(),
                 pendingLoad.State.WaterCoords,
                 // Carry the authored game mode so a Rising Tides starting map
-                // plays as Rising Tides (issue #56), not Freeform.
+                // plays as Rising Tides, not Freeform.
                 pendingLoad.State.Mode);
             Log.Info(Log.LogCategory.Tide,
                 $"Main: starting map \"{pendingLoad.SlotName}\" mode={pendingLoad.State.Mode}");
@@ -277,8 +258,8 @@ public partial class Main : Node2D
         {
             // A campaign game's roster comes from the level (human at the
             // level's slot, rest Computer), never the freeform PlayerKinds —
-            // so playing a campaign level can't change the New Game default
-            // (issue #70 bleed fix). Freeform games read the menu's selection.
+            // so playing a campaign level can't change the New Game default.
+            // Freeform games read the menu's selection.
             _players = _campaignLevel is int campLevel
                 ? Player.BuildCampaignRoster(campLevel)
                 : Player.BuildRoster();
@@ -298,7 +279,7 @@ public partial class Main : Node2D
                 $"clump={mapGenOptions.ClumpingFactor} " +
                 $"(campaign={_campaignLevel?.ToString() ?? "no"})");
             // A campaign level derives its mode from the level (Rising Tides is a
-            // rare Soldier+ complication, issue #56); freeform/diagnostic games
+            // rare Soldier+ complication); freeform/diagnostic games
             // honor the menu's (or FOUREXHEX_MODE's) selection.
             GameMode mode = _campaignLevel is int campaignModeLevel
                 ? CampaignProgress.ModeForLevel(campaignModeLevel)
@@ -311,7 +292,7 @@ public partial class Main : Node2D
                 : int.MaxValue;
             _originMapName = null;
         }
-        // Roster summary (issue #70): which colors are active and which slots
+        // Roster summary: which colors are active and which slots
         // were dropped as None. Active count drives turn order / capitals / win.
         Log.Info(Log.LogCategory.MapGen,
             $"Main: roster {_players.Count} player(s) ["
@@ -454,7 +435,7 @@ public partial class Main : Node2D
             hud.ReplayClicked += () => _controller.BeginReplay();
             _controller.GameEnded += () =>
                 hud.SetReplayAvailable(_controller.ReplayDataIsCompleteFromStart);
-            // Campaign result (issue #2): record before the controller's
+            // Campaign result: record before the controller's
             // trailing RefreshViews paints the overlay, so the campaign
             // victory screen reads updated totals. Subscribed after the
             // replay hook; both run synchronously on GameEnded.
@@ -509,9 +490,9 @@ public partial class Main : Node2D
 #endif
     }
 
-    /// <summary>The canonical 6-player roster a pre-#70 starting map (which
-    /// baked no kinds) plays under: Red human, the rest Computer, all Soldier
-    /// (issue #70). Painted colors that own no tiles simply start eliminated.</summary>
+    /// <summary>Default roster for a starting map that baked no kinds: Red
+    /// human, the rest Computer, all Soldier. Painted colors that own no tiles
+    /// simply start eliminated.</summary>
     private static List<Player> LegacyDefaultRoster()
     {
         var players = new List<Player>();
@@ -555,7 +536,7 @@ public partial class Main : Node2D
     }
 
     /// <summary>
-    /// GameEnded hook for campaign games (issue #2): if the human won,
+    /// GameEnded hook for campaign games: if the human won,
     /// flip the level to Won (terminal) and persist. Any other outcome —
     /// AI winner, turn-cap stasis — leaves the mark-at-launch Lost status
     /// standing. No-op for freeform games (_campaignLevel null). BeginReplay

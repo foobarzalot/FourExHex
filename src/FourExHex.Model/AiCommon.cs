@@ -106,7 +106,7 @@ public static class AiCommon
         // argument is unchanged. Units are iterated in power-then-
         // coord order (Commander → Recruit, lex-min within tier) so
         // ties resolve in favor of the strongest unit — same order
-        // the human N-cycle uses. See issue #21.
+        // the human N-cycle uses.
         foreach (HexCoord coord in MovementRules.MovableUnitsInPowerOrder(territory, owner, state.Grid))
         {
             HexTile? tile = state.Grid.Get(coord);
@@ -297,7 +297,7 @@ public static class AiCommon
     }
 
     // -----------------------------------------------------------------------
-    // Phase-specific enumeration (stepwise-greedy AI, issue #26)
+    // Phase-specific enumeration (stepwise-greedy AI)
     // -----------------------------------------------------------------------
 
     /// <summary>
@@ -316,7 +316,7 @@ public static class AiCommon
         // No solvency gate: captures, chops, and grave clears don't change
         // upkeep at all (the unit was already paying upkeep). They can only
         // improve the economic situation (+1 income tile for captures/chops).
-        // Gating them was wrong — a bankrupt territory should still attack.
+        // A bankrupt territory should still attack, so these are ungated.
         List<HexCoord> targets = MovementRules.ValidTargets(
             unit.Level, territory, state.Grid, state.Territories);
         foreach (HexCoord target in targets)
@@ -481,7 +481,7 @@ public static class AiCommon
     /// Phase 4b: defensive repositions for a single unit — moves to empty
     /// Reposition-class tiles within the territory. No gold spent. Normally
     /// scoped to empty BORDER tiles (interior fortification is pointless), but
-    /// Rising Tides (issue #85) relaxes that for a unit standing on a tile that
+    /// Rising Tides relaxes that for a unit standing on a tile that
     /// is forecast to submerge this turn: such a doomed unit may flee to ANY
     /// empty in-territory tile (including the safe interior), and never onto
     /// another doomed tile. The escaping move is rewarded via
@@ -515,7 +515,7 @@ public static class AiCommon
 
     /// <summary>
     /// True iff <paramref name="coord"/> is in this turn's Rising Tides
-    /// submerge forecast (issue #85).
+    /// submerge forecast.
     /// </summary>
     private static bool IsTideDoomed(GameState state, HexCoord coord)
     {

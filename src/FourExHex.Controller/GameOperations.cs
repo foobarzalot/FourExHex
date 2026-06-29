@@ -336,7 +336,7 @@ public class GameOperations
     /// </summary>
     public void EndOfTurnProcessing()
     {
-        // Rising Tides (issue #85): apply the current player's locked tide
+        // Rising Tides: apply the current player's locked tide
         // forecast NOW, at turn end (it was telegraphed for the whole turn). This
         // can drown the current player's own last capital — HandleNewlyDefeated
         // raises the defeat cue/overlay (including for a human) and the win check
@@ -345,7 +345,7 @@ public class GameOperations
 
         LogGameEndDiagnostics(
             $"end-of-turn check for {_state.Turns.CurrentPlayer.Name}");
-        // Rising Tides (issue #56) suppresses the sole-capital early win: the
+        // Rising Tides suppresses the sole-capital early win: the
         // game ends only when one player is left standing.
         PlayerId? winner = _state.Mode == GameMode.RisingTides
             ? WinConditionRules.LastPlayerStanding(_state.Territories)
@@ -401,7 +401,7 @@ public class GameOperations
 
         RunNeutralPhantomTurnIfRoundStart();
 
-        // Rising Tides (issue #85): FORECAST (don't apply) one of this player's
+        // Rising Tides: FORECAST (don't apply) one of this player's
         // shore tiles at turn start, so it can be telegraphed all turn and weighed
         // by the AI; the actual demote/submerge happens at turn END in
         // EndOfTurnProcessing. The tide runs from turn 1 (unlike income/tree
@@ -478,22 +478,13 @@ public class GameOperations
     }
 
     /// <summary>
-    /// Rising Tides (issue #85): apply the CURRENT player's locked tide forecast
-    /// at turn end — the demote/submerge for the tiles that were telegraphed all
-    /// turn (see the forecast in <see cref="StartPlayerTurn"/>). The forecasted
-    /// coords are applied exactly (no re-pick, no RNG). A submerge can drown the
-    /// current player's last capital; mirror <see cref="MaybeRiseTidesFor"/>'s
-    /// repaint + defeat handling. Clears <see cref="GameState.PendingTide"/>.
-    /// No-op outside Rising Tides or with an empty forecast.
-    /// </summary>
-    /// <summary>
-    /// Rising Tides (issue #85): forecast (but do NOT apply) one of the current
+    /// Rising Tides: forecast (but do NOT apply) one of the current
     /// player's shore tiles for THIS turn, storing it on
     /// <see cref="GameState.PendingTide"/> for the telegraph, the AI's evacuation
     /// scoring, and the end-of-turn <see cref="ApplyPendingTide"/>. No
     /// <c>TurnNumber</c> gate — the tide applies from the very first turn. No-op
     /// outside Rising Tides. The selection is deterministic from the map (strict
-    /// exposure ordering, issue #89) and consumes no RNG.
+    /// exposure ordering) and consumes no RNG.
     /// </summary>
     public void ForecastTideForCurrentPlayer()
     {
@@ -520,7 +511,7 @@ public class GameOperations
     }
 
     /// <summary>
-    /// Rising Tides phantom-turn erosion (issue #56): forecast AND immediately
+    /// Rising Tides phantom-turn erosion: forecast AND immediately
     /// apply one of <paramref name="owner"/>'s shore tiles via
     /// <see cref="RisingTidesRules.SubmergeStep"/>. Used only for the phantom
     /// turns of neutral (<see cref="PlayerId.None"/>) and eliminated colors,
@@ -545,7 +536,7 @@ public class GameOperations
             _map.RebuildAfterTerritoryChange();
         }
         // A sinking shore tile can drown a player's last capital — raise the
-        // same defeat cue/overlay a capture would (issue #56).
+        // same defeat cue/overlay a capture would.
         if (changed)
         {
             HandleNewlyDefeated(colorsWithCapitalBefore);
@@ -627,7 +618,7 @@ public class GameOperations
         long tOccupants = Log.Stamp();
         _map.RefreshOccupantVisuals(_state.Turns.CurrentPlayer.Id, _state.Treasury);
         Log.Since(Log.LogCategory.Capture, "[hitch] RefreshOccupantVisuals", tOccupants);
-        // Rising Tides (issue #85): telegraph the current player's locked tide
+        // Rising Tides: telegraph the current player's locked tide
         // forecast for the whole turn ("these tiles erode at turn end"). Empty
         // outside Rising Tides, which clears any prior telegraph.
         _map.ShowTideForecast(_state.PendingTide);
@@ -1044,7 +1035,7 @@ public class GameOperations
         Dictionary<HexCoord, (PlayerId Owner, int Gold)> newCaps = SnapshotCapitals(_state.Territories);
         LogCaptureDiff(actionDesc, oldCaps, newCaps);
 
-        // Neutral-hex captures (issue #39): a coord that belonged to a
+        // Neutral-hex captures: a coord that belonged to a
         // None-owned (neutral) territory before the recompute and now has a
         // real owner was just captured from neutral. Logged so manual tests
         // can confirm the neutral-capture path actually executed.
@@ -1081,7 +1072,7 @@ public class GameOperations
         // singletons" win path is handled at end-of-turn instead
         // (see EndOfTurnProcessing). Undo is cleared so the player
         // can't rewind past the killing blow.
-        // Rising Tides (issue #56) suppresses the mid-turn domination win:
+        // Rising Tides suppresses the mid-turn domination win:
         // a capture only ends the game when it leaves one player standing.
         PlayerId? winner = _state.Mode == GameMode.RisingTides
             ? WinConditionRules.LastPlayerStanding(_state.Territories)
@@ -1145,7 +1136,7 @@ public class GameOperations
     /// longer has a capital-bearing territory, it was just defeated: play the
     /// defeat cue and, for a non-AI human (and not a non-main recording slot),
     /// raise the defeat overlay. Shared by <see cref="HandleCapture"/> and the
-    /// Rising Tides start-of-turn submerge (issue #56) — a sinking shore tile can
+    /// Rising Tides start-of-turn submerge — a sinking shore tile can
     /// drown a player's last capital just like a capture can.
     /// </summary>
     private void HandleNewlyDefeated(HashSet<PlayerId> colorsWithCapitalBefore)

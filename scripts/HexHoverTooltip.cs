@@ -8,18 +8,8 @@ using Godot;
 /// motion.
 ///
 /// "Lex index" = <c>row * cols + col</c>, the row-major numbering matching
-/// <see cref="HexCoord.CompareTo"/>'s lex-min ordering. It's a single int
-/// that uniquely identifies a cell on a known-size map — intended as the
-/// stable handle that future tutorial scripting will use to refer to
-/// specific cells (e.g. "capture cell 47").
-///
-/// Currently only the <see cref="MapEditorScene"/> instantiates and wires
-/// this. Breadcrumb for future agents: if more hover tooltips are needed
-/// (territory info, palette swatch help, unit details), this is the
-/// natural place to extend — either generalize this class to accept
-/// arbitrary text via a <c>Notify(string text)</c> overload, or rename
-/// it to a generic <c>HoverTooltip</c> and have specialized callers
-/// format their own strings.
+/// <see cref="HexCoord.CompareTo"/>'s lex-min ordering — a single int that
+/// uniquely identifies a cell on a known-size map.
 /// </summary>
 public partial class HexHoverTooltip : CanvasLayer
 {

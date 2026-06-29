@@ -666,9 +666,8 @@ public class MovementRulesTests
     [Fact]
     public void PlaceNew_OntoOwnRecruit_CombinesIntoSoldier()
     {
-        // Regression: PlaceNew used to overwrite the destination's
-        // occupant with the fresh unit, silently destroying any
-        // existing unit instead of combining.
+        // PlaceNew onto a friendly recruit combines into a soldier
+        // rather than overwriting the destination's occupant.
         HexGrid grid = BuildGrid(5, 1, Blue);
         foreach (var c in new[] { HexCoord.FromOffset(0, 0), HexCoord.FromOffset(1, 0), HexCoord.FromOffset(2, 0) })
         {

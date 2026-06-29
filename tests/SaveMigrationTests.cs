@@ -4,9 +4,8 @@ using Xunit;
 namespace FourExHex.Tests;
 
 /// <summary>
-/// Stage-5 format bump: v5 stores claim-victory by player index and
-/// owner-index -1 = PlayerId.None. v2/3/4 still load via the legacy
-/// color-hex path. These tests pin the migration behavior.
+/// Save-format migration tests. v5+ store claim-victory by player index
+/// and owner-index -1 = PlayerId.None; v2-4 use the color-hex path.
 /// </summary>
 public class SaveMigrationTests
 {
@@ -32,16 +31,6 @@ public class SaveMigrationTests
     [Fact]
     public void CurrentFormatVersion_IsFourteen()
     {
-        // v7 added per-player Difficulty (issue #11); v8 added the
-        // optional CampaignLevel pointer (issue #2); v9 added per-tile
-        // IsGold (issue #45); v10 added per-tile IsMountain (issue #37);
-        // v11 bakes per-color kind+difficulty into starting maps and
-        // decouples the player roster's list position from its color slot
-        // so a game can have 2–6 players (issue #70); v12 added the optional
-        // Rising Tides Mode flag (issue #56); v13 made gold and mountain
-        // mutually exclusive and normalizes any legacy both-flags tile to
-        // mountain-only on load (issue #81); v14 added the optional Rising Tides
-        // PendingTide forecast (issue #85), absent → empty.
         Assert.Equal(14, SaveSerializer.CurrentFormatVersion);
     }
 
@@ -152,12 +141,11 @@ public class SaveMigrationTests
     [Fact]
     public void V4_RetiredYellowHex_MigratesToBrownSlot()
     {
-        // Slot 3 was recolored Yellow -> Brown (issue #44). Tile ownership
+        // PlayerConfig[3] is Brown, not the legacy yellow hex. Tile ownership
         // is index-based and unaffected, but the v2-v4 claim-victory data is
         // keyed by the live palette hex. A legacy save still carries the
-        // retired yellow hex "e3bc3b"; it must alias to slot 3 (now Brown)
-        // rather than being dropped. The hex is a literal here on purpose —
-        // PlayerConfig[3] no longer holds it.
+        // yellow hex "e3bc3b"; it must alias to slot 3 rather than being
+        // dropped. The hex is a literal here on purpose.
         (GameState s, IReadOnlyList<Player> p) = BuildState();
         string json = SaveSerializer.Serialize(s, 1, p, "slot", 100);
 
@@ -175,12 +163,10 @@ public class SaveMigrationTests
     [Fact]
     public void V4_RetiredBrownHex_MigratesToBrownSlot()
     {
-        // Brown (slot 3) was re-tuned to a saturated chocolate for on-tile
-        // glyph contrast (issue #62). Tile ownership is index-based and
-        // unaffected, but v2-v4 claim-victory data is keyed by the live
-        // palette hex. A legacy save still carries the old "8a5a2b" fill;
-        // it must alias to slot 3 rather than being dropped. The hex is a
-        // literal on purpose — PlayerConfig no longer holds it.
+        // PlayerConfig[3] does not hold "8a5a2b". Tile ownership is
+        // index-based and unaffected, but v2-v4 claim-victory data is keyed
+        // by the live palette hex. A legacy save carrying "8a5a2b" must alias
+        // to slot 3 rather than being dropped. The hex is a literal on purpose.
         (GameState s, IReadOnlyList<Player> p) = BuildState();
         string json = SaveSerializer.Serialize(s, 1, p, "slot", 100);
 
@@ -218,9 +204,8 @@ public class SaveMigrationTests
     [InlineData("Heuristic")]
     public void LegacyAiKind_MigratesToComputer(string legacyKind)
     {
-        // Old saves predate the PlayerKind { Human, Computer } collapse:
-        // they stored the AiKind name "Random" or "Heuristic". Both must
-        // load as Computer rather than throwing on the gone enum names.
+        // Legacy saves store the AiKind name "Random" or "Heuristic";
+        // both must load as PlayerKind.Computer.
         (GameState s, IReadOnlyList<Player> p) = BuildState();
         string json = SaveSerializer.Serialize(s, 1, p, "slot", 100);
 

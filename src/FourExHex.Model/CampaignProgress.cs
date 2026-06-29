@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 
 /// <summary>
-/// Persistent status of one campaign level (issue #2). Member order is
+/// Persistent status of one campaign level. Member order is
 /// load-bearing: statuses persist numerically in the campaign sidecar
 /// file (<c>user://campaign.json</c>) — same convention as
 /// <c>PlaybackSpeed</c> in <c>user://settings.json</c> — so
@@ -16,16 +16,11 @@ public enum CampaignLevelStatus : byte
 }
 
 /// <summary>
-/// The campaign ladder model (issue #2): 256 levels labeled
-/// <c>00</c>–<c>FF</c>, in four tiers of 64 mapped onto
-/// <see cref="Difficulty"/> (Recruit 00–3F … Commander C0–FF).
-/// Pure model — Godot-free, persisted via <see cref="CampaignSerializer"/>.
-///
-/// Status semantics ("mark at launch"): starting a level marks it
-/// <see cref="CampaignLevelStatus.Lost"/> ("attempted, never won"), so an
-/// abandon or crash needs no extra bookkeeping; winning flips it to
-/// <see cref="CampaignLevelStatus.Won"/>, which is terminal — replaying a
-/// won level can never un-win it.
+/// The campaign ladder model: 256 levels labeled <c>00</c>–<c>FF</c>, in
+/// four tiers of 64 mapped onto <see cref="Difficulty"/> (Recruit 00–3F …
+/// Commander C0–FF). Pure model — Godot-free, persisted via
+/// <see cref="CampaignSerializer"/>. Starting a level marks it Lost
+/// ("attempted, never won"); winning flips it to Won, which is terminal.
 /// </summary>
 public sealed class CampaignProgress
 {
@@ -158,7 +153,7 @@ public sealed class CampaignProgress
         return level.ToString("X2");
     }
 
-    /// <summary>Level → master-seed mapping. Identity by design (issue #2):
+    /// <summary>Level → master-seed mapping. Identity by design:
     /// level N plays the procedural map of seed N.</summary>
     public static int SeedForLevel(int level)
     {
@@ -167,10 +162,10 @@ public sealed class CampaignProgress
     }
 
     // Rising Tides is introduced from the Soldier tier onward and stays rarer
-    // than freeform (issue #56). The chance is per Soldier+ level.
+    // than freeform. The chance is per Soldier+ level.
     private const int CampaignRisingTidesChance = 10; // %
 
-    /// <summary>Game mode (issue #56) for a campaign level. Rising Tides is a
+    /// <summary>Game mode for a campaign level. Rising Tides is a
     /// later-game complication: never in the Recruit tier, and a rare minority
     /// (<see cref="CampaignRisingTidesChance"/>% ) of Soldier+ levels.
     /// Deterministic — same level always yields the same mode — drawn off the
@@ -187,7 +182,7 @@ public sealed class CampaignProgress
             : GameMode.Freeform;
     }
 
-    // Per-level map-generation densities (issue #48 / #66). Each campaign level
+    // Per-level map-generation densities. Each campaign level
     // gets a fixed, reproducible tree/mountain/gold mix derived from the level
     // number — independent of the freeform New Game steppers and varied across
     // the ladder. Mountains/gold keep the present/absent odds and use a single
@@ -199,7 +194,7 @@ public sealed class CampaignProgress
     private const int CampaignGoldOnDensity = 5;      // % of land when gold present
 
     /// <summary>The tree/mountain/gold densities and territory clumping for a campaign
-    /// level (issue #48 / #66 / #72). Deterministic — same level always yields the same
+    /// level. Deterministic — same level always yields the same
     /// options — and decorrelated from both the freeform steppers and the map seed, so a
     /// level's terrain is a fixed part of its identity. Mountains/gold are present at
     /// fixed odds (and a fixed density when present); trees vary across {0, 5, 10}% of
@@ -224,8 +219,8 @@ public sealed class CampaignProgress
             ClumpingFactor: clumping);
     }
 
-    /// <summary>Which roster slot the human occupies for a campaign level
-    /// (issue #74). Deterministic and stable forever, always in
+    /// <summary>Which roster slot the human occupies for a campaign level.
+    /// Deterministic and stable forever, always in
     /// <c>[0, playerCount)</c>, spread across slots (no trivial 0,1,2… cycle),
     /// so a given level always plays byte-identically while the human's start
     /// varies across the ladder. <paramref name="playerCount"/> is the active
@@ -266,8 +261,8 @@ public sealed class CampaignProgress
     }
 
     /// <summary>The human's actual color slot (0..5) for a campaign level —
-    /// always one of <see cref="ActiveColorSlotsForLevel"/>, picked via the #74
-    /// hash within the active set so it stays spread across the ladder.</summary>
+    /// always one of <see cref="ActiveColorSlotsForLevel"/>, picked via the
+    /// multiplicative hash within the active set so it stays spread across the ladder.</summary>
     public static int HumanColorSlotForLevel(int level)
     {
         ValidateLevel(level);

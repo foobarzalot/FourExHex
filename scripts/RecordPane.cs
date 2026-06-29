@@ -41,10 +41,8 @@ public sealed partial class RecordPane : Control
     private bool _running;
     private CanvasLayer? _addTextDialog;
     // Pure-C# captor for the captured tutorial. Lives separately from
-    // _controller so the snapshot survives StopRecording (which nulls
-    // the controller). Without this the live bug was: SetMode runs
-    // StopRecording then reads CurrentTutorial → null → Preview
-    // never starts. See RecordingCapture + RecordPaneCaptureTests.
+    // _controller so the captured snapshot survives StopRecording (which
+    // nulls the controller).
     private readonly RecordingCapture _capture = new();
 
     public override void _Ready()

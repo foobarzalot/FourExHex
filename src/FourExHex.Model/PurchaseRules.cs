@@ -69,7 +69,7 @@ public static class PurchaseRules
     public static bool IsValidTowerLocation(HexTile tile, Territory territory, HexGrid grid)
     {
         if (tile.Occupant != null) return false;
-        // Towers may be built on mountains (issue #37): the +1 high-ground bonus
+        // Towers may be built on mountains: the +1 high-ground bonus
         // is the whole point. The tile just has to be empty and in-territory.
         return territory.Coords.Contains(tile.Coord);
     }

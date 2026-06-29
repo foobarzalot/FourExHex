@@ -2,20 +2,15 @@ using System;
 using Godot;
 
 /// <summary>
-/// Reusable "Map Generation" modal (issue #48 / #66 / #72): the controls that
-/// shape a freshly-generated (random) map — Trees, Mountains, and Gold (each a
-/// 0..25%-of-land density stepper) plus Clumping (a 0..100 sparse↔clumped
-/// territory-assignment factor). Summoned by the "?" glyph button next to the die in
-/// the map editor and on the New Game map-setup page; both hosts open the same
-/// panel, and it reads/writes the single process-wide <see cref="GameSettings"/>
-/// densities, so the choice is shared across the menu and the editor.
+/// Reusable "Map Generation" modal: the controls that shape a freshly-generated
+/// (random) map — Trees, Mountains, Gold (each a 0..25%-of-land density stepper)
+/// plus Clumping (a 0..100 sparse↔clumped territory-assignment factor). Summoned
+/// by the "?" glyph in the map editor and on the New Game page; both hosts share
+/// the single process-wide <see cref="GameSettings"/> densities.
 ///
-/// Backdrop + content-sized centered panel, mirroring <see cref="EscMenu"/>.
-/// <see cref="Open"/>/<see cref="Close"/> drive visibility. Changing a density
-/// here writes <see cref="GameSettings"/> immediately but deliberately does NOT
+/// Changing a density writes <see cref="GameSettings"/> immediately but does NOT
 /// re-render any host preview — the New Game thumbnail updates only when the die
-/// is pressed (a fresh seed), so adjusting a density doesn't churn the preview
-/// under the open panel.
+/// is pressed (a fresh seed).
 /// </summary>
 public sealed partial class MapGenSettingsPanel : CanvasLayer
 {
@@ -26,7 +21,7 @@ public sealed partial class MapGenSettingsPanel : CanvasLayer
     private const int DensityMax = 25;
     private const int DensityStep = 5;
 
-    // Clumping factor (issue #72) spans 0 (fragmented baseline) to 100 (one
+    // Clumping factor spans 0 (fragmented baseline) to 100 (one
     // contiguous blob per player), drawn from the shared nonlinear stop set in
     // MapGenOptions (also used by the per-level campaign draw).
     private static readonly int[] ClumpStops = MapGenOptions.ClumpingFactorStops;

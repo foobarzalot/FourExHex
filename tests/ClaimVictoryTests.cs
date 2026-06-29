@@ -420,11 +420,11 @@ public class ClaimVictoryTests
     [Fact]
     public void ClaimVictoryWinNow_FromRepeatedMovementMode_ClearsPendingAction()
     {
-        // Bug: pressing End Turn → claim-victory prompt → Win Now while
-        // mid-N-cycle in repeated-movement mode used to leave Mode and
-        // MoveSource set, so the HUD showed "Red Wins!" alongside the
-        // stale "Click to place a Soldier" action hint. The DeclareWinner
-        // path must clear pending-action state for all game-over paths.
+        // Win Now from repeated-movement mode (End Turn → claim-victory
+        // prompt → Win Now mid-N-cycle) must clear Mode and MoveSource so
+        // no stale "Click to place a Soldier" action hint shows alongside
+        // the win overlay. The DeclareWinner path clears pending-action
+        // state for all game-over paths.
         var g = BuildGame(redCount: 6);
         // Place a Red unit on a Red tile (BuildGame flips ownership but
         // doesn't place units). (0,0) is Red after BuildGame; pick a Red

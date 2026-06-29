@@ -5,7 +5,7 @@ using Xunit;
 namespace FourExHex.Tests;
 
 /// <summary>
-/// Mountain hex tiles (issue #37): a per-tile <see cref="HexTile.IsMountain"/>
+/// Mountain hex tiles: a per-tile <see cref="HexTile.IsMountain"/>
 /// flag — high ground that gives no defense on its own, but grants a unit or
 /// tower standing on it a <see cref="DefenseRules.MountainBonus"/> (+1) defense
 /// bonus that radiates to same-owner neighbors like any other defender.
@@ -130,7 +130,7 @@ public class MountainTileTests
     public void Defense_CapitalOnMountain_IsTwo()
     {
         // A capital (1) on a mountain gets the +1 high-ground bonus like any
-        // other defender (issue #81 followup) → 2.
+        // other defender → 2.
         HexGrid grid = BuildRow(0, 0, Red);
         HexTile tile = grid.Get(new HexCoord(0, 0))!;
         tile.IsMountain = true;
@@ -255,7 +255,7 @@ public class MountainTileTests
     {
         // (0,0) and (2,0) trees, (1,0) empty mountain between them: with two
         // tree neighbors a tree spreads onto the mountain — trees and
-        // mountains now coexist (issue #81).
+        // mountains coexist.
         HexGrid grid = BuildRow(0, 2, Red);
         grid.Get(new HexCoord(0, 0))!.Occupant = new Tree();
         grid.Get(new HexCoord(2, 0))!.Occupant = new Tree();
@@ -293,7 +293,7 @@ public class MountainTileTests
     public void Upkeep_UnitDyingOnMountain_LeavesGrave()
     {
         // Bankrupt territory: a unit dying on a mountain now leaves a grave,
-        // same as plain land — graves and mountains coexist (issue #81).
+        // same as plain land — graves and mountains coexist.
         HexGrid grid = BuildRow(0, 1, Red);
         grid.Get(new HexCoord(0, 0))!.IsMountain = true;
         grid.Get(new HexCoord(0, 0))!.Occupant = new Unit(Red, UnitLevel.Soldier);
@@ -309,7 +309,7 @@ public class MountainTileTests
         Assert.IsType<Grave>(grid.Get(new HexCoord(1, 0))!.Occupant); // grave on plain land
     }
 
-    // --- Capital placement allowed on mountains (issue #81 followup) ------
+    // --- Capital placement allowed on mountains ------
 
     [Fact]
     public void CapitalPlacer_PlacesOnMountainTiles()
@@ -342,7 +342,7 @@ public class MountainTileTests
     public void Reconcile_MountainsOnlyRegion_FormsCapital()
     {
         // A 2-tile owned region made entirely of mountains is now a real
-        // territory and gets a capital like any other (issue #81 followup).
+        // territory and gets a capital like any other.
         HexGrid grid = BuildRow(0, 1, Red);
         grid.Get(new HexCoord(0, 0))!.IsMountain = true;
         grid.Get(new HexCoord(1, 0))!.IsMountain = true;

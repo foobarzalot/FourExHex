@@ -4,7 +4,7 @@ using Xunit;
 namespace FourExHex.Tests;
 
 /// <summary>
-/// Gold hex tiles (issue #45): a per-tile <see cref="HexTile.IsGold"/> flag
+/// Gold hex tiles: a per-tile <see cref="HexTile.IsGold"/> flag
 /// that pays a tile 5x the ordinary per-turn income (5 gp instead of 1) via the
 /// single income chokepoint <see cref="IncomeRules.IncomeFor"/>.
 /// </summary>

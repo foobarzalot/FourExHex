@@ -3,7 +3,7 @@ using Xunit;
 namespace FourExHex.Tests;
 
 /// <summary>
-/// Pure layout math for the map editor's paint-tool grid (issue #45). The
+/// Pure layout math for the map editor's paint-tool grid. The
 /// grid stays a single line on roomy screens and wraps to a second row
 /// (portrait) / column (landscape) on compact phones so a 5th brush (gold)
 /// can't overflow the bottom bar / side rail.

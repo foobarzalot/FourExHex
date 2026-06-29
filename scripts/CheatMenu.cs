@@ -2,7 +2,7 @@
 using Godot;
 
 /// <summary>
-/// Debug-only cheat menu (issue #7): a button modal summoned over any
+/// Debug-only cheat menu: a button modal summoned over any
 /// screen with backquote (desktop) or a 3-finger tap (touch), reusing
 /// <see cref="EscMenu"/> for the modal chrome. Scene roots opt in with
 /// <see cref="Attach"/> inside their own <c>#if DEBUG</c> block, so

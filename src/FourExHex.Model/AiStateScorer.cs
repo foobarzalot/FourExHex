@@ -34,12 +34,8 @@ public static class AiStateScorer
     private const int TileWeight = 10;
 
     // Recurring net income is treated as a SINGLE-turn effect in the
-    // score — higher weights crushed combines and chops into
-    // permanent negative territory (a P+P→S combine costs +2 upkeep,
-    // which at weight 3 was -6 on score, while the unit-value gain
-    // was only +4). Weight 1 keeps captures dominant (+20+) but
-    // leaves combines marginally positive (~+2-4), so the AI can
-    // level up when it hits defensive stasis.
+    // score. Weight 1 keeps captures dominant while leaving combines
+    // marginally positive, so the AI can level up out of defensive stasis.
     private const int NetIncomeWeight = 1;
 
     // Fragmentation penalty: every territory pays this flat cost.
@@ -48,27 +44,14 @@ public static class AiStateScorer
     // over all territories on the board.
     private const int FragmentationPenalty = 15;
 
-    // Flat penalty per tree (or grave) in an OWN territory. Trees
-    // block income on their tile (already accounted for) and seed
-    // further growth via TreeRules.RunStartOfTurnGrowth at the
-    // start of the owner's next turn. Graves on own tiles convert
-    // unconditionally to trees on the same start-of-turn step, so
-    // they're treated as already-trees by this penalty — burying a
-    // grave is as urgent as chopping a tree. Applied in Score()
-    // rather than TerritoryValue() so it's one-sided — penalizing
-    // only our own trees/graves, not rewarding us for enemy ones
-    // (which would mean capturing an enemy tree-tile is worth less
-    // than capturing a bare tile, the opposite of what we want).
-    // Raised from 20 to 35 so a tree-chop dominates the border-exposure
-    // it can incur. A chop is worth OwnTreePenalty (tree removed) minus
-    // UndefendedBorderPenalty (10) per border the chopping unit stops
-    // covering — and on a bankrupt territory the +1 income gain clamps to
-    // 0. At 20 a chop that uncovers two borders netted exactly 0, so the
-    // AI either declined it (trees spread — treeopocalypse) or, once
-    // phases 1/2a were forced past the status quo, chopped a regrowing
-    // tree forever (seed-4 stasis). At 35 even a three-border exposure
-    // stays positive (35 - 30 = +5), so chops are taken on their own
-    // merit and clearly outrank doing nothing.
+    // Flat penalty per tree (or grave) in an OWN territory. Trees block income
+    // on their tile and seed further growth via TreeRules.RunStartOfTurnGrowth;
+    // graves on own tiles convert unconditionally to trees on the same
+    // start-of-turn step, so they count as trees here. Applied in Score() so
+    // it's one-sided — penalizing only our own trees/graves, not rewarding us
+    // for enemy ones. The value must exceed up to 3 uncovered borders (a chop
+    // is worth this minus UndefendedBorderPenalty per border the chopping unit
+    // stops covering) so chops are taken on their own merit.
     private const int OwnTreePenalty = 35;
 
     // Flat penalty per edge on our territories that faces an
@@ -82,15 +65,11 @@ public static class AiStateScorer
     // from internal into... still internal, but any enemy-facing
     // edges that were previously mid-front become back-of-blob.
     //
-    // At weight 1 this term was dominated by everything else and
-    // the AI consistently failed to capture enclosed enemy tiles
-    // or fill obvious concavities. Bumped to 3 so a fully-enclosed
-    // singleton capture (-6 edges) is worth +18 from this term
-    // alone, comparable to two tiles' worth of TileWeight, which
-    // is enough to outrun the spurious tower-defended-border-bonus
-    // loss when interior tiles stop being borders. Tuned not to go
-    // higher: at 5+ the AI starts contorting territory shape at
-    // the expense of captures that actually grow it.
+    // Weight 3 makes a fully-enclosed singleton capture (-6 edges) worth +18
+    // from this term alone, comparable to two tiles' worth of TileWeight,
+    // enough to outrun the tower-defended-border-bonus loss when interior tiles
+    // stop being borders. Past 5 the AI starts contorting territory shape at the
+    // expense of captures that actually grow it.
     private const int EnemyEdgePenalty = 3;
 
     // Flat penalty per own tile that (a) has at least one
@@ -107,11 +86,8 @@ public static class AiStateScorer
     // incentive for the act of placing the tower, not a standing
     // reward for owning towers. Without this term the scorer can't
     // see what towers are actually for and the AI never builds them.
-    // Per-action rather than static because the static form created
-    // a perverse penalty on captures that turned own border tiles
-    // into interior tiles: each such tile lost its bonus, often
-    // enough to push otherwise-good captures into negative-delta
-    // territory.
+    // Per-action rather than static so captures that turn own border tiles
+    // into interior tiles don't lose a standing bonus and read as worse.
     private const int BuildTowerCoverageBonus = 10;
 
     // Standing reward per point of defense on an OWN tile that borders an
@@ -120,7 +96,7 @@ public static class AiStateScorer
     // wandering, and holding/capturing a mountain reads better because
     // DefenseRules.Defense bakes in the +1 high-ground. Kept small so it
     // stays a tie-breaker between defensive positions, not a driver that
-    // crowds out captures (the #19 stasis guard).
+    // crowds out captures (the stasis guard).
     private const int ContestedDefenseWeight = 2;
 
     // Ceiling on the defense counted by ContestedDefenseWeight. A tile at
@@ -321,8 +297,8 @@ public static class AiStateScorer
     /// Treasury gold contributes ZERO to standing value. With a
     /// non-zero gold term the AI was reading a 1500g hoard as
     /// +450 standing score, dwarfing the +1 swing of any productive
-    /// 1-ply buy and collapsing into "do nothing" stasis (see issue
-    /// #19). Removing it makes any score-positive buy strictly
+    /// 1-ply buy and collapsing into "do nothing" stasis.
+    /// Removing it makes any score-positive buy strictly
     /// better than holding gold. The bankruptcy lookahead below
     /// still prevents buys that would push the territory into
     /// negative net income — that's the remaining cost signal.
@@ -359,7 +335,7 @@ public static class AiStateScorer
             }
         }
 
-        // Gold earning premium (#61). A gold tile earns 5× an ordinary
+        // Gold earning premium. A gold tile earns 5× an ordinary
         // tile (1 + IncomeRules.GoldTileBonus), so its territorial worth is
         // 5× TileWeight: the base TileWeight above is unconditional (every
         // tile, like ordinary land), and this adds the extra
@@ -393,7 +369,7 @@ public static class AiStateScorer
     }
 
     /// <summary>
-    /// Rising Tides (issue #85): per-move evacuation delta. When <paramref name="mv"/>
+    /// Rising Tides: per-move evacuation delta. When <paramref name="mv"/>
     /// moves <paramref name="owner"/>'s unit OFF a tile that is forecast to submerge
     /// this turn (in <see cref="GameState.PendingTide"/>) and onto a tile that is
     /// NOT itself doomed, returns the unit's <see cref="UnitValue"/> — the value
@@ -401,8 +377,7 @@ public static class AiStateScorer
     /// destination doomed, or no own unit at the source). Added to a candidate's
     /// delta in <see cref="ComputerAi"/>, exactly like <see cref="BuildTowerBonus"/>,
     /// so the absolute <see cref="Score"/> stays clean. This drives the defensive
-    /// phase to evacuate a unit that would otherwise sit still and drown; deeper
-    /// multi-turn tide valuation is follow-up #84.
+    /// phase to evacuate a unit that would otherwise sit still and drown.
     /// </summary>
     public static int EvacuationBonus(AiMoveAction mv, GameState state, PlayerId owner)
     {

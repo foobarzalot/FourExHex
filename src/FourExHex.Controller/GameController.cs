@@ -24,12 +24,10 @@ public class GameController
     private readonly GameOperations _ops;
     private readonly ReplayRecorder _recorder;
 
-    // The save/load contract requires deterministic-on-reload AI: a saved
-    // master seed plus the (turn, player) tuple uniquely determines the
-    // RNG sequence used during that player's turn. The per-turn reseed
-    // happens at the top of StartPlayerTurn — it lets a save capture
-    // just the seed (no RNG-consumption count) and still replay
-    // identically on load.
+    // A saved master seed plus the (turn, player) tuple determines the
+    // per-turn RNG sequence. The reseed happens at the top of
+    // StartPlayerTurn, so a save need only capture the seed (no
+    // RNG-consumption count) to replay identically on load.
     private readonly int _masterSeed;
     public int MasterSeed => _masterSeed;
 
@@ -187,7 +185,7 @@ public class GameController
         // victory modal would otherwise freeze further author input.
         _hud.SetVictoryOverlaySuppressed(_previewMode || _recordingMode);
 
-        // Difficulty lever instrumentation (issue #11): one-shot at game
+        // Difficulty lever instrumentation: one-shot at game
         // construction, only when some slot is non-Soldier (non-default), so a
         // FOUREXHEX_DIFFICULTY run proves which player got which level. Lands
         // in the FOUREXHEX_6AI stdout (Turn:Info is pinned there).
@@ -284,7 +282,7 @@ public class GameController
     ///
     /// <paramref name="freshStart"/> is true only for a brand-new game
     /// (via <see cref="StartGame"/>): StartPlayerTurn isn't called for the
-    /// initial player, so Rising Tides' turn-1 forecast (issue #85) is
+    /// initial player, so Rising Tides' turn-1 forecast is
     /// seeded here. A load passes false — the saved <see cref="GameState.PendingTide"/>
     /// is restored from disk and must NOT be recomputed (re-picking would
     /// drift the locked forecast).
@@ -306,7 +304,7 @@ public class GameController
                 markCompleteFromStart: false);
         }
         _ops.ReseedRngForCurrentTurn();
-        // Rising Tides (issue #85): seed the initial player's turn-1 forecast.
+        // Rising Tides: seed the initial player's turn-1 forecast.
         // Only on a fresh game — a load restores PendingTide from the save.
         if (freshStart) _ops.ForecastTideForCurrentPlayer();
         _ops.RefreshSilentMode();
@@ -355,8 +353,7 @@ public class GameController
 
     // Set inside Execute* helpers right before the first game-state
     // mutation. Read by TrackHandler at handler exit to decide whether
-    // to push an UndoEntry. Replaces the previous inline PushBefore
-    // pattern: now the wrapping handler captures and pushes once,
+    // to push an UndoEntry. The wrapping handler captures and pushes once,
     // covering both game and session state changes in a single entry.
     private bool _handlerMutatedGame;
 
@@ -423,7 +420,7 @@ public class GameController
     /// suppressed.</summary>
     public bool IsReplayMode => _recorder.IsReplaying;
     /// <summary>Set when the most recent completed replay landed on a board
-    /// that differs from the recorded final board (issue #77) — e.g. a
+    /// that differs from the recorded final board — e.g. a
     /// gameplay rule changed since the replay was recorded; null after a
     /// faithful replay. Developer-facing detection (also logged at
     /// <see cref="Log.LogCategory.Replay"/>); no user-facing UI.</summary>
@@ -776,7 +773,7 @@ public class GameController
 
     /// <summary>
     /// Record <paramref name="territory"/> as visited this turn for
-    /// Tab-cycle ordering (#35). Any selection counts — Tab, Shift+Tab,
+    /// Tab-cycle ordering. Any selection counts — Tab, Shift+Tab,
     /// or a direct click — so "untouched" means the player hasn't been
     /// there at all. Keyed by capital coord; capital-less territories
     /// (singletons) never participate in the cycle and are skipped.
@@ -1199,7 +1196,7 @@ public class GameController
         dst.Occupant = new Tower();
         if (dst.IsMountain)
         {
-            // Issue #37: towers may now stand on mountains for the +1 bonus.
+            // Towers may stand on mountains for the +1 bonus.
             Log.Debug(Log.LogCategory.Capture,
                 $"[tower] placed on mountain at {destination} → defense " +
                 $"{DefenseRules.Defense(destination, _state.Grid, _session.SelectedTerritory)}");
@@ -1302,7 +1299,7 @@ public class GameController
         }
         else if (WinConditionRules.IsEliminated(_state.Turns.CurrentPlayer.Id, _state.Grid))
         {
-            // Rising Tides (issue #56): the current human was defeated by their
+            // Rising Tides: the current human was defeated by their
             // own start-of-turn submerge — they can't act, so end their (empty)
             // turn to advance past them now that the overlay is dismissed.
             EndTurnNow();
@@ -1693,7 +1690,7 @@ public class GameController
         // one — so if the current selection is the sole actionable
         // territory the press is a no-op.
         //
-        // Two passes (#35): the sort key (Size) mutates as the player
+        // Two passes: the sort key (Size) mutates as the player
         // acts, so walk position alone can't guarantee a fair tour —
         // pass 1 only stops on territories not yet visited this turn.
         // When every actionable territory has been toured, pass 2 starts
@@ -1845,7 +1842,7 @@ public class GameController
     /// <see cref="MovementRules.MovableUnitsInPowerOrder"/>, the
     /// single source of truth shared with the AI candidate enumerator
     /// (<c>AiCommon.Enumerate</c>) so the N-cycle and the AI's
-    /// tie-breaking iteration can't drift. See issue #21.
+    /// tie-breaking iteration can't drift.
     /// </summary>
     private List<HexCoord> SortedMovableCoords(Territory territory, PlayerId color)
         => MovementRules.MovableUnitsInPowerOrder(territory, color, _state.Grid);
@@ -1937,7 +1934,7 @@ public class GameController
         // tutorial graduates to free play (see GraduateFromTutorialScripting)
         // ordinary claim-victory rules resume.
         bool previewScripted = _previewMode && !_previewScriptingComplete;
-        // Claim-victory tiers apply in BOTH modes (issue #88 follow-up): in
+        // Claim-victory tiers apply in BOTH modes: in
         // Rising Tides the percentage is measured against the current,
         // non-sunk tiles — submerged tiles are removed from the grid, so
         // NextClaimVictoryThreshold (which counts _state.Grid) already tracks
@@ -1992,7 +1989,7 @@ public class GameController
 
         CancelPendingAction();
         SetSelection(null);
-        // Visited-territory tracking is per-turn (#35): the next human
+        // Visited-territory tracking is per-turn: the next human
         // turn starts with a clean tour. AI turns never mark (they don't
         // route through SetSelection), so clearing here is sufficient.
         if (_session.VisitedTerritoryCapitals.Count > 0)
@@ -2202,7 +2199,7 @@ public class GameController
             // End-of-turn win (sole capital-bearer) declared inside
             // EndCurrentAiPlayerTurnCore: no next StartPlayerTurn fires to
             // hide the "Opponents…" overlay, so reconcile it here before
-            // the victory paint so it doesn't draw on top (#23). Mirrors
+            // the victory paint so it doesn't draw on top. Mirrors
             // the domination branch in StepAiExecute.
             if (_ops.GameEndedFired || _session.IsGameOver) _ops.RefreshSilentMode();
             ShowHighlightAndRefresh(null);
@@ -2260,7 +2257,7 @@ public class GameController
             // RefreshSilentMode first: the paced step machine has no
             // StartPlayerTurn hand-off on game-over, so this is where we
             // hide the "Opponents…" overlay (aiActing is now false) before
-            // painting the victory screen — otherwise it draws on top (#23).
+            // painting the victory screen — otherwise it draws on top.
             _ops.RefreshSilentMode();
             ShowHighlightAndRefresh(null);
             return;
@@ -2299,7 +2296,7 @@ public class GameController
     /// and the chunked <see cref="InstantAiTick"/> so the two pacing
     /// modes can't drift. Returns the action's result coord (for the
     /// paced post-action highlight) or null for an unrecognised action
-    /// kind (the old defensive <c>default: return;</c>). Does NOT run
+    /// kind. Does NOT run
     /// the game-end check or refresh views — callers own pacing.
     /// </summary>
     private HexCoord? ApplyAiActionCore(AiAction action)

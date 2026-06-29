@@ -20,14 +20,14 @@ public partial class MapEditorScene : Node2D
     private SaveNameModal? _saveModal;
     private SlotPickerDialog? _loadDialog;
 
-    // The per-color roster the map will bake (issue #70): kinds (incl. None)
+    // The per-color roster the map will bake: kinds (incl. None)
     // and difficulties, chosen up-front for a New Map or derived from the file
     // for a Load Map. The editor's live preview roster (_players) stays all-Human
     // so no AI drives turns; these drive palette gating and the saved file.
     private PlayerKind[] _rosterKinds = null!;
     private Difficulty[] _rosterDifficulties = null!;
     private LoadedSave? _pendingMapToLoad;
-    // Game mode baked into a saved map (issue #56): from the New Map selector
+    // Game mode baked into a saved map: from the New Map selector
     // for a fresh map, from the file for a loaded one. Threaded into
     // BuildSaveState so an authored Rising Tides map round-trips and plays as
     // Rising Tides. Editing itself is mode-agnostic (no turns advance).
@@ -38,8 +38,8 @@ public partial class MapEditorScene : Node2D
         _saveStore = new SaveStore();
         ResolveEditorRequest();
         // Preview roster = the active (non-None) colors, all forced Human so no
-        // AI drives turns and Generate only paints colors that are in play
-        // (issue #70). The baked kinds/difficulties live in _rosterKinds.
+        // AI drives turns and Generate only paints colors that are in play.
+        // The baked kinds/difficulties live in _rosterKinds.
         _players = BuildEditorPreviewRoster();
 
         _panel = new MapEditorPanel { Players = _players };
@@ -64,8 +64,8 @@ public partial class MapEditorScene : Node2D
             _hud.SetUndoState(_panel.CanUndo, _panel.CanRedo);
         _hud.SetUndoState(canUndo: false, canRedo: false);
 
-        // Gate the land palette to the active colors and mark the human ones
-        // (issue #70). The HUD's palette is built in its _Ready, run above.
+        // Gate the land palette to the active colors and mark the human ones.
+        // The HUD's palette is built in its _Ready, run above.
         _hud.ApplyRosterKinds(_rosterKinds);
 
         BuildSaveDialog();
@@ -133,7 +133,7 @@ public partial class MapEditorScene : Node2D
         string name = SaveStore.SanitizeSlotName(rawName);
         GameState state = _panel.BuildSaveState(_mapMode);
 
-        // Validate the painted board against the chosen roster (issue #70): a
+        // Validate the painted board against the chosen roster: a
         // color that owns land must be active, every active color must own land,
         // and at least two players must be present.
         System.Collections.Generic.IReadOnlyList<string> problems =
@@ -170,7 +170,7 @@ public partial class MapEditorScene : Node2D
     private void OpenLoadDialog()
     {
         if (_loadDialog == null) return;
-        // Match the menu's Load Map picker (issue #70): thumbnail preview from
+        // Match the menu's Load Map picker: thumbnail preview from
         // the maps directory and a short-name label.
         _loadDialog.ShowSlots(
             _saveStore.ListMaps(),
@@ -186,11 +186,11 @@ public partial class MapEditorScene : Node2D
         try
         {
             LoadedSave loaded = _saveStore.LoadMap(slotName);
-            // Adopt the loaded map's baked roster (issue #70) so the palette
+            // Adopt the loaded map's baked roster so the palette
             // gates to its colors, Generate paints only them, and a re-save
             // preserves them.
             DeriveRosterFromLoad(loaded, out _rosterKinds, out _rosterDifficulties);
-            _mapMode = loaded.State.Mode; // preserve mode on re-save (#56)
+            _mapMode = loaded.State.Mode; // preserve mode on re-save
             _players = BuildEditorPreviewRoster();
             _panel.Players = _players;
             _panel.LoadFromMap(loaded);
@@ -204,10 +204,10 @@ public partial class MapEditorScene : Node2D
     }
 
     /// <summary>Resolve the menu's <see cref="MapEditorRequest"/> into the
-    /// editor's baked roster (issue #70). New Map uses the chosen kinds; Load
+    /// editor's baked roster. New Map uses the chosen kinds; Load
     /// Map defers the load to <c>_Ready</c> (via <see cref="_pendingMapToLoad"/>)
     /// and derives the roster from the file; a direct launch (diagnostics / no
-    /// request) defaults to the all-Human 6-player roster, unchanged from before.</summary>
+    /// request) defaults to the all-Human 6-player roster.</summary>
     private void ResolveEditorRequest()
     {
         MapEditorRequest.Request? req = MapEditorRequest.Pending;
@@ -217,7 +217,7 @@ public partial class MapEditorScene : Node2D
         {
             _pendingMapToLoad = _saveStore.LoadMap(mapName);
             DeriveRosterFromLoad(_pendingMapToLoad, out _rosterKinds, out _rosterDifficulties);
-            _mapMode = _pendingMapToLoad.State.Mode; // preserve mode on re-save (#56)
+            _mapMode = _pendingMapToLoad.State.Mode; // preserve mode on re-save
             Log.Info(Log.LogCategory.Display,
                 $"MapEditor: load map \"{mapName}\" for editing (mode={_mapMode})");
             return;
@@ -228,7 +228,7 @@ public partial class MapEditorScene : Node2D
             _rosterKinds = kinds;
             _rosterDifficulties = req.Difficulties
                 ?? Enumerable.Repeat(Difficulty.Soldier, kinds.Length).ToArray();
-            _mapMode = GameSettings.Mode; // from the New Map page's Game Mode selector (#56)
+            _mapMode = GameSettings.Mode; // from the New Map page's Game Mode selector
             Log.Info(Log.LogCategory.Display,
                 $"MapEditor: new map kinds=[{string.Join(",", _rosterKinds)}] mode={_mapMode}");
             return;
@@ -241,10 +241,10 @@ public partial class MapEditorScene : Node2D
             .Repeat(Difficulty.Soldier, GameSettings.PlayerConfig.Length).ToArray();
     }
 
-    /// <summary>Derive a 6-slot kinds/difficulties pair from a loaded map. A
-    /// post-#70 map carries baked kinds (slots absent from the active roster are
-    /// None); a pre-#70 map has none, so default to the legacy roster: Red
-    /// Human, the rest Computer, all Soldier (issue #70).</summary>
+    /// <summary>Derive a 6-slot kinds/difficulties pair from a loaded map. Maps
+    /// with baked kinds carry None for slots absent from the active roster; maps
+    /// without baked kinds default to Red Human, the rest Computer, all
+    /// Soldier.</summary>
     private static void DeriveRosterFromLoad(
         LoadedSave loaded, out PlayerKind[] kinds, out Difficulty[] difficulties)
     {
@@ -268,7 +268,7 @@ public partial class MapEditorScene : Node2D
     }
 
     /// <summary>The editor's live preview roster: the active (non-None) colors,
-    /// all Human so no AI runs and Generate paints only colors in play (#70).</summary>
+    /// all Human so no AI runs and Generate paints only colors in play.</summary>
     private List<Player> BuildEditorPreviewRoster()
     {
         var roster = new List<Player>();

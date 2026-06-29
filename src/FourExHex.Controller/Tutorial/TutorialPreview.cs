@@ -4,11 +4,9 @@ using System.Collections.Generic;
 /// <summary>
 /// Player-0 input validator for Tutorial Preview. Tracks the next
 /// expected scripted beat for player 0 (the human in Preview) and
-/// matches attempted actions against it. Replaces the old
-/// <c>TutorialPlayer</c> + gated-view wrappers — the
-/// <see cref="GameController"/> now invokes this directly via its
-/// <c>humanActionValidator</c> hook, eliminating the parallel gating
-/// layer.
+/// matches attempted actions against it. The
+/// <see cref="GameController"/> invokes this directly via its
+/// <c>humanActionValidator</c> hook.
 ///
 /// <para>
 /// <see cref="TryAccept"/> returns true iff:

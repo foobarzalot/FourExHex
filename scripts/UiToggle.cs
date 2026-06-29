@@ -8,9 +8,9 @@ using Godot;
 /// tiny next to large UI fonts. These helpers instead pair a fixed-size square
 /// toggle <see cref="Button"/> (gold with a dark ✓ when on, dark with a light
 /// border when off) with a separate caption <see cref="Label"/>, so nothing
-/// shifts and the box reads at a deliberate size. Extracted from
-/// <c>SettingsPanel</c> (issue #48) so the settings screen, the New Game
-/// map-setup page, and the map editor share one look.
+/// shifts and the box reads at a deliberate size. Shared by the settings
+/// screen, the New Game map-setup page, and the map editor so they all
+/// share one look.
 /// </summary>
 public static class UiToggle
 {

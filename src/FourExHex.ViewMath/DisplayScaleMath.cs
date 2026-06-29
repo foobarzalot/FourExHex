@@ -19,19 +19,8 @@ public static class DisplayScaleMath
     public const float MaxFactor = 3.0f;
 
     /// <summary>Minimum factor the Godot adapter passes when running on a
-    /// mobile platform (<c>OS.HasFeature("mobile")</c>). Lifts touch targets
-    /// up to a tappable size on phones whose natural DPI factor underperforms
-    /// — notably iPhones, where Apple's logical-points system targets ~160 dpi
-    /// exactly so the unified mdpi/160 math floors to 1.0. Tuned to
-    /// **S9-portrait parity (≈2.22)** so the iPhone 13 mini (logical dpi
-    /// ~158.67) and the S9 portrait (natural factor 2.22) land on the same
-    /// factor — equalizing physical button size and producing near-identical
-    /// logical viewports (iPhone 507×1097, S9 486×999). Side effect on
-    /// mobile landscape: the S9's natural landscape factor (≈1.67) and the
-    /// iPhone's (≈1.0) are both lifted to 2.22, so both devices use the
-    /// width-collapsed (cycling) buy palette in landscape — a consistency win
-    /// that mirrors the long-standing S9-landscape collapse onto iPhone too.
-    /// </summary>
+    /// mobile platform (<c>OS.HasFeature("mobile")</c>): a touch-target floor
+    /// tuned to ≈2.22 so iPhone and S9 land on the same factor.</summary>
     public const float MobileMinFactor = 2.2222f;
 
     /// <summary>Scale factor for a screen density, with a default floor of
@@ -62,13 +51,9 @@ public static class DisplayScaleMath
     /// <summary>
     /// Mobile-only factor formula: <c>rawDpi / MobileReferenceDpi</c>,
     /// clamped to [<paramref name="minFactor"/>, <see cref="MaxFactor"/>].
-    /// Use this on <c>OS.HasFeature("mobile")</c> in place of
-    /// <see cref="FactorForDpi(float, float)"/> — that one divides by
-    /// <c>osScale</c>, which mis-counts iOS's retina pixel doubling and
-    /// makes high-DPI iPhones render physically smaller than mid-DPI
-    /// Androids at the same factor floor. Desktop continues to use
-    /// <see cref="FactorForDpi(float, float)"/> because retina OS-scaling
-    /// there genuinely pre-renders content at logical points.
+    /// Used on <c>OS.HasFeature("mobile")</c>; desktop keeps
+    /// <see cref="FactorForDpi(float, float)"/>, where retina OS-scaling
+    /// genuinely pre-renders content at logical points.
     /// </summary>
     public static float FactorForRawMobileDpi(float rawDpi, float minFactor)
     {

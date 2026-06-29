@@ -113,7 +113,7 @@ public class EditorSnapshotTests
 
     // --- DiffersFromGrid: change detection for the editor undo push ------
     // The editor pushes a stroke onto the undo stack iff the grid actually
-    // changed. Flag-only paints (gold #45, mountain #37) don't touch the
+    // changed. Flag-only paints (gold, mountain) don't touch the
     // territory partition, so detection must compare grid state, not the
     // territory-list reference.
 

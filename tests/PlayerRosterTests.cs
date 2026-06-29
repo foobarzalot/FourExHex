@@ -83,8 +83,8 @@ public class PlayerRosterTests
     {
         // The campaign roster must come from the level alone — its size, color
         // slots, and human are the level's deterministic per-level roster, and
-        // playing a level never bleeds into the freeform New Game default
-        // (#70). Poison the freeform kinds to prove independence.
+        // playing a level never bleeds into the freeform New Game default.
+        // Poison the freeform kinds to prove independence.
         PlayerKind[] savedKinds = GameSettings.PlayerKinds;
         try
         {

@@ -24,12 +24,10 @@ public sealed partial class SettingsPanel : CanvasLayer
     // FitPanel scales down; landscape = the rounded fill surface from
     // LandscapeMenuChrome (never scaled).
     private PanelContainer _panel = null!;
-    // The node added directly under this CanvasLayer that RebuildBody frees on
-    // an orientation flip. Portrait and landscape both add _panel directly, so
-    // this currently tracks _panel; kept distinct for symmetry with the menu.
+    // Node RebuildBody frees on an orientation flip (currently == _panel).
     private Control _panelRoot = null!;
     // Which layout the body was last built for; a resize that flips it rebuilds
-    // the body (two-zones landscape ↔ single-column portrait, issue #34).
+    // the body (two-zones landscape ↔ single-column portrait).
     private ScreenOrientation _orientation;
     // True once _Ready hooked the viewport's SizeChanged (_ExitTree must
     // not disconnect a never-connected signal).
@@ -56,7 +54,7 @@ public sealed partial class SettingsPanel : CanvasLayer
     // Single fixed-size centered panel (one column, both orientations). When
     // the safe viewport is smaller than the panel's design size — landscape on
     // a short phone — FitPanel scales the whole panel down uniformly to fit,
-    // the same shrink-to-fit the main menu uses for its panels (issue #17).
+    // the same shrink-to-fit the main menu uses for its panels.
     private const float ContentWidth = 420f;   // inner VBox min width
     private const float ViewportMargin = 24f;
 
@@ -117,7 +115,7 @@ public sealed partial class SettingsPanel : CanvasLayer
             $"SettingsPanel: built {_orientation} body (viewport {viewport.X:0}x{viewport.Y:0})");
     }
 
-    /// <summary>Original single-column layout: a content-sized centered panel
+    /// <summary>Single-column layout: a content-sized centered panel
     /// that FitPanel scales down (never up) to fit a short/narrow viewport.</summary>
     private void BuildPortraitBody()
     {
@@ -154,7 +152,7 @@ public sealed partial class SettingsPanel : CanvasLayer
         FitPanel();
     }
 
-    /// <summary>"Two zones" landscape layout (issue #34): a title row over a
+    /// <summary>"Two zones" landscape layout: a title row over a
     /// two-column body — toggles left, the two speed segmented controls right —
     /// with a Credits / Back / version footer, filling the safe rect instead of
     /// downscaling a portrait stack.</summary>
@@ -348,7 +346,7 @@ public sealed partial class SettingsPanel : CanvasLayer
     /// <summary>Scale the centered panel down (never up) so its single-column
     /// layout fits within the safe viewport — the same shrink-to-fit the main
     /// menu's <c>ScaleToFit</c> uses. In a short landscape safe area the whole
-    /// panel scales uniformly instead of scrolling or clipping (issue #17).</summary>
+    /// panel scales uniformly instead of scrolling or clipping.</summary>
     private void FitPanel()
     {
         Vector2 vp = GetViewport().GetVisibleRect().Size;

@@ -3,8 +3,8 @@ using Godot;
 
 /// <summary>
 /// HUD widget that identifies the active player by a horizontal row of
-/// color swatches — one per player in movement (turn) order — instead of
-/// the old colored name label. The current player's swatch is enlarged
+/// color swatches — one per player in movement (turn) order. The current
+/// player's swatch is enlarged
 /// and white-outlined; eliminated players are dimmed in place so the
 /// movement order stays stable and you can see who is out.
 ///

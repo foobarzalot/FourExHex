@@ -6,9 +6,8 @@ using Godot;
 /// <summary>
 /// Reusable modal that picks a save/map/tutorial slot to load. Used by four
 /// hosts (main-menu Load Game, in-game Load Game, map-editor Load Map,
-/// tutorial-builder Load Tutorial). Consolidates the previously-triplicated
-/// <c>BuildLoadDialog</c> + <c>OnLoadDialogInput</c> + <c>ShowLoadError</c> +
-/// <c>FormatTimestamp</c> boilerplate so chrome changes land in one place.
+/// tutorial-builder Load Tutorial). Centralizes the load-dialog chrome so
+/// changes land in one place.
 ///
 /// Two body layouts, chosen per-open:
 /// <list type="bullet">
@@ -17,7 +16,7 @@ using Godot;
 ///   <item><b>Preview</b> (game-save hosts, when a <see cref="SaveStore"/> is
 ///   passed to <see cref="ShowSlots"/>) — a selectable slot list beside a single
 ///   large board <see cref="MapThumbnailView"/> that updates as you pick a slot,
-///   plus Cancel / Load. Mirrors the New Game map-setup page (issue #55): a
+///   plus Cancel / Load. Mirrors the New Game map-setup page: a
 ///   distinct portrait (list-above-preview) vs landscape (list-rail | preview)
 ///   layout, rebuilt on orientation flip.</item>
 /// </list>
@@ -61,7 +60,7 @@ public sealed partial class SlotPickerDialog : CanvasLayer
     // Text-only (editor / tutorial) modal — a small fixed centered panel that
     // scales to fit. The preview (game-save) panel instead fills the safe
     // viewport up to a generous cap via LandscapeMenuChrome, matching the New
-    // Game map-setup page's footprint (issue #55).
+    // Game map-setup page's footprint.
     private const float TextPanelW = 560f, TextPanelH = 480f;
     private const float ErrorPanelW = 420f, ErrorPanelH = 200f;
     private const float ViewportMargin = 24f;
@@ -192,7 +191,7 @@ public sealed partial class SlotPickerDialog : CanvasLayer
     /// and in-game Load Game), the body switches to the preview layout: a
     /// selectable slot list beside one large board thumbnail of the selected
     /// save. Null (the map-editor / tutorial-builder hosts) keeps the text-only
-    /// click-to-load list — the preview is opt-in per-open (issue #55).</param>
+    /// click-to-load list — the preview is opt-in per-open.</param>
     public void ShowSlots(
         IReadOnlyList<SaveSlotInfo> slots,
         string emptyMessage,
@@ -207,7 +206,7 @@ public sealed partial class SlotPickerDialog : CanvasLayer
         _onPicked = onPicked;
         _thumbnailStore = thumbnailStore;
         // Maps live in a different directory than game saves; the preview must
-        // load from the right one (issue #70).
+        // load from the right one.
         _previewUsesMaps = previewMaps;
         _selectedSlot = null;
         BuildBody();

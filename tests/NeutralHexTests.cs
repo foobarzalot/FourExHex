@@ -7,7 +7,7 @@ namespace FourExHex.Tests;
 
 /// <summary>
 /// Feature-level coverage for neutral (unowned, <see cref="PlayerId.None"/>)
-/// hexes (issue #39): a land tile owned by no player, capturable by any
+/// hexes: a land tile owned by no player, capturable by any
 /// adjacent player exactly like enemy territory, but generating no income
 /// and belonging to no player's territory while neutral. Placement is
 /// editor-only (see <see cref="MapEditPaintTests"/>); these tests pin the

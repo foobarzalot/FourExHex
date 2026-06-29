@@ -430,8 +430,8 @@ public class TreeRulesTests
     [Fact]
     public void NeutralGrowth_NeutralMountain_Spreads()
     {
-        // (1,-1) is a neutral mountain with 2 tree neighbors. Trees now
-        // spread onto mountains (issue #81) — coexistence holds for neutral
+        // (1,-1) is a neutral mountain with 2 tree neighbors. Trees
+        // spread onto mountains — coexistence holds for neutral
         // ground too, and the terrain flag survives.
         HexGrid grid = BuildAxialGrid(-1, 2, -1, 2);
         grid.Get(new HexCoord(1, -1))!.Owner = Neutral;

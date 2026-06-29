@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using Godot;
 
 /// <summary>
-/// A "play this board?" confirm sheet (issue #51 / #70): a dim backdrop plus a
+/// A "play this board?" confirm sheet: a dim backdrop plus a
 /// centered dialog with a serif title, gold rule, status line, a "who you're
 /// playing as" block, a large live <see cref="MapThumbnailView"/> preview, and
 /// Cancel / confirm buttons. Generalized from the campaign confirm sheet so it
@@ -39,7 +39,7 @@ public sealed partial class MapInfoSheet : CanvasLayer
     private readonly string _status;
     private readonly IReadOnlyList<HumanIdentity> _humans;
     private readonly string _confirmText;
-    // Optional game-mode line (issue #56): the campaign confirm sheet sets this
+    // Optional game-mode line: the campaign confirm sheet sets this
     // to tell the player which mode the level plays in; _gameModeEmphasis golds
     // the Rising Tides callout. Empty = no row (other callers unchanged).
     private readonly string _gameMode;
@@ -194,7 +194,7 @@ public sealed partial class MapInfoSheet : CanvasLayer
         return status;
     }
 
-    /// <summary>The game-mode line (issue #56). Same wrapped style as the status
+    /// <summary>The game-mode line. Same wrapped style as the status
     /// row, but golded when it's the Rising Tides callout so it reads as a
     /// distinct, important note rather than ordinary metadata.</summary>
     private Label MakeGameMode(HorizontalAlignment align)

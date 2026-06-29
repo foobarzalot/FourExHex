@@ -6,7 +6,7 @@ using Xunit;
 namespace FourExHex.Tests;
 
 /// <summary>
-/// Tests for <see cref="CampaignProgress"/> (issue #2): the 256-level
+/// Tests for <see cref="CampaignProgress"/>: the 256-level
 /// campaign ladder model. Status transitions (Won is terminal),
 /// derived stats (won counts, next-up), the tier → <see cref="Difficulty"/>
 /// mapping, hex labels, and the identity level → seed mapping.
@@ -166,7 +166,7 @@ public class CampaignProgressTests
         Assert.Throws<ArgumentOutOfRangeException>(() => CampaignProgress.ModeForLevel(level));
     }
 
-    // ── Per-level game mode (issue #56) ─────────────────────────────────────
+    // ── Per-level game mode ─────────────────────────────────────
 
     [Theory]
     [InlineData(0)]
@@ -218,7 +218,7 @@ public class CampaignProgressTests
         Assert.True(risingTides < freeform, $"Rising Tides ({risingTides}) not rarer than Freeform ({freeform})");
     }
 
-    // ── Per-level map-generation densities (issue #48 / #66) ────────────────
+    // ── Per-level map-generation densities ────────────────
 
     [Theory]
     [InlineData(0)]
@@ -238,8 +238,8 @@ public class CampaignProgressTests
     [Fact]
     public void MapGenOptionsForLevel_ClumpingStaysWithinStops()
     {
-        // Each level's clumping is drawn from the shared nonlinear stop set (#72
-        // follow-up); pin membership so a retune is a deliberate, visible change.
+        // Each level's clumping is drawn from the shared nonlinear stop set;
+        // pin membership so a retune is a deliberate, visible change.
         for (int level = 0; level < CampaignProgress.LevelCount; level++)
         {
             MapGenOptions o = CampaignProgress.MapGenOptionsForLevel(level);
@@ -324,7 +324,7 @@ public class CampaignProgressTests
         Assert.Throws<ArgumentOutOfRangeException>(() => CampaignProgress.MapGenOptionsForLevel(level));
     }
 
-    // ── Per-level human slot assignment (issue #74) ─────────────────────────
+    // ── Per-level human slot assignment ─────────────────────────
 
     [Theory]
     [InlineData(0)]

@@ -19,7 +19,7 @@ namespace FourExHex.Model;
 /// <see cref="SaveSerializer"/> header) for exactly this reason.
 ///
 /// <see cref="JsonSourceGenerationOptions"/> below mirrors the options
-/// <see cref="SaveSerializer"/> historically passed via <c>JsonSerializerOptions</c>:
+/// <see cref="SaveSerializer"/> uses via <c>JsonSerializerOptions</c>:
 /// indented for human-readable saves, and skip-nulls so optional/legacy fields
 /// don't clutter the output. Any other consumer of this context inherits the
 /// same defaults.

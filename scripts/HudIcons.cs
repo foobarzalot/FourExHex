@@ -16,7 +16,7 @@ public static class HudIcons
     private const float StrokeWidth = 3f;
 
     /// <summary>
-    /// Gold-coin glyph (issue #45) for the map editor's gold-tile brush: a
+    /// Gold-coin glyph for the map editor's gold-tile brush: a
     /// filled gold disc with a darker rim and an inner ring so it reads as a
     /// coin rather than a plain color swatch (which would be mistaken for a
     /// player-land color).
@@ -64,9 +64,8 @@ public static class HudIcons
     }
 
     // Apex, baseR, baseL of a peak of half-extent `r` centered at `center`.
-    // The mountain shape for the editor brush button. (The on-map mountain tile
-    // no longer uses a glyph — it renders as a black ring channel, issue #81 —
-    // so this peak silhouette now lives only on the palette button.)
+    // The mountain shape for the editor brush button. Only the palette button
+    // uses this peak; the on-map mountain tile renders as a black ring channel.
     public static Vector2[] MountainPeakVerts(Vector2 center, float r) => new[]
     {
         center + new Vector2(0f, -0.85f * r),
@@ -75,11 +74,11 @@ public static class HudIcons
     };
 
     /// <summary>
-    /// Mountain glyph (issue #37) for the editor's mountain brush button: a
+    /// Mountain glyph for the editor's mountain brush button: a
     /// solid grey outlined peak (no snow cap), drawn in opaque grey so it reads
     /// against the button's dark slate backdrop. Reads distinctly from the gold
     /// coin and the conifer tree. (Only the palette button uses this peak; the
-    /// on-map mountain tile is a black ring channel, issue #81.)
+    /// on-map mountain tile is a black ring channel.)
     /// </summary>
     public static void DrawMountain(CanvasItem t, Vector2 center, float radius, Color modulate)
     {
@@ -139,7 +138,6 @@ public static class HudIcons
     /// <summary>
     /// "Next active territory" glyph: a gold capital star centered on the
     /// button. Star uses <paramref name="modulate"/> for disabled dimming.
-    /// The prior "next" arrow above the star has been removed.
     /// </summary>
     public static void DrawNextTerritory(CanvasItem t, Vector2 center, float radius, Color stroke, Color modulate)
     {

@@ -307,7 +307,7 @@ public class WinConditionRulesTests
     [Fact]
     public void NextClaimVictoryThreshold_CountsOnlyCurrentGridTiles_SunkTilesExcluded()
     {
-        // Rising Tides (issue #88 follow-up) sinks tiles by REMOVING them from
+        // Rising Tides sinks tiles by REMOVING them from
         // the grid, so the claim-victory denominator is automatically the count
         // of active (non-sunk) tiles. Red owns 4 of 8 (exactly 50% — not >50%,
         // so no tier). After a Blue tile sinks (is removed), Red owns 4 of 7

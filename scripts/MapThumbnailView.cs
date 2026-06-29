@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 using Godot;
 
 /// <summary>
-/// Live map preview for the New Game map-setup page (issue #40). Renders the
+/// Live map preview for the New Game map-setup page. Renders the
 /// <em>real</em> board into a hidden offscreen <see cref="SubViewport"/> and
 /// snapshots it to a static <see cref="ImageTexture"/> shown in a child
 /// <see cref="TextureRect"/> — pixel-identical to what Start Game produces, but
@@ -19,7 +19,7 @@ using Godot;
 ///   <item><see cref="RequestMap"/> — a map-editor-generated map loaded
 ///   synchronously via <see cref="SaveStore.LoadMap"/>.</item>
 ///   <item><see cref="RequestSlot"/> — a saved game's board loaded via
-///   <see cref="SaveStore.LoadSlot"/> (the Load Game dialog, issue #55).</item>
+///   <see cref="SaveStore.LoadSlot"/> (the Load Game dialog).</item>
 /// </list>
 /// Requests are coalesced by a token so rapid seed typing only snapshots the
 /// latest. Instrumented under <see cref="Log.LogCategory.Display"/>.
@@ -117,8 +117,8 @@ public partial class MapThumbnailView : Control
         RequestRandom(seed, options, Player.BuildRoster());
 
     /// <summary>Preview the board for an explicit roster — so a campaign level's
-    /// preview shows its actual 2–6 player color set (issue: per-level rosters),
-    /// not the freeform roster.</summary>
+    /// preview shows its actual 2–6 player color set, not the freeform
+    /// roster.</summary>
     public void RequestRandom(int seed, MapGenOptions options, IReadOnlyList<Player> roster)
     {
         int token = ++_renderToken;
@@ -131,7 +131,7 @@ public partial class MapThumbnailView : Control
     }
 
     /// <summary>Preview a saved game's board by save-slot name (the Load Game
-    /// dialog, issue #55). Loads the in-progress save from the save directory,
+    /// dialog). Loads the in-progress save from the save directory,
     /// versus <see cref="RequestMap"/>'s maps directory.</summary>
     public void RequestSlot(string slotName)
     {

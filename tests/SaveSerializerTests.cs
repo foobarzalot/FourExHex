@@ -59,7 +59,7 @@ public class SaveSerializerTests
     [Fact]
     public void SerializeMap_BakesKindFieldIntoJson()
     {
-        // Since #70 starting maps record each color's role (Human/Computer/None)
+        // Starting maps record each color's role (Human/Computer/None)
         // so a loaded map restores its exact roster.
         (GameState state, IReadOnlyList<Player> players) = BuildRichState();
 
@@ -91,7 +91,7 @@ public class SaveSerializerTests
         // The serialization layer carries a starting map's game mode end to
         // end: SerializeMap → Deserialize preserves it. The editor authoring
         // path (MapEditorPanel.BuildSaveState ← MapEditorScene._mapMode) and
-        // Main's starting-map load both thread the mode through (issue #56), so
+        // Main's starting-map load both thread the mode through, so
         // this guards the format they rely on.
         var red = new Player("Red", PlayerId.FromIndex(0), PlayerKind.Human);
         var blue = new Player("Blue", PlayerId.FromIndex(1), PlayerKind.Computer);
@@ -113,12 +113,12 @@ public class SaveSerializerTests
     [Fact]
     public void Deserialize_PlayerWithMissingKind_DefaultsToHuman()
     {
-        // A pre-#70 starting map's JSON has no "Kind" field per player. The
-        // loader must not throw — it treats missing kind as Human (the legacy
-        // placeholder; the play-scene load path then applies the default roster).
+        // A starting map's JSON with no "Kind" field per player. The
+        // loader must not throw — it treats missing kind as Human (the
+        // play-scene load path then applies the default roster).
         (GameState state, IReadOnlyList<Player> players) = BuildRichState();
         string json = SaveSerializer.SerializeMap(state, 42, players, "m");
-        // Strip the baked Kind fields to simulate the pre-#70 file shape.
+        // Strip the baked Kind fields to simulate a file with no Kind field.
         string legacy = System.Text.RegularExpressions.Regex.Replace(
             json, ",\\s*\"Kind\": \"[A-Za-z]+\"", string.Empty);
 
@@ -152,7 +152,7 @@ public class SaveSerializerTests
     [Fact]
     public void Serialize_RoundTripsPendingTideForecast()
     {
-        // Issue #85: a mid-turn save must preserve the locked tide forecast so the
+        // A mid-turn save must preserve the locked tide forecast so the
         // reloaded game telegraphs the same doomed tile and submerges exactly it.
         var red = new Player("Red", PlayerId.FromIndex(0), PlayerKind.Human);
         var blue = new Player("Blue", PlayerId.FromIndex(1), PlayerKind.Computer);
@@ -185,7 +185,7 @@ public class SaveSerializerTests
         var state = new GameState(
             grid, territories, players, new TurnState(players), new Treasury());
 
-        // A save with no PendingTide field (pre-#85) must load as an empty forecast.
+        // A save with no PendingTide field must load as an empty forecast.
         string json = SaveSerializer.Serialize(state, 42, players, "f", 100);
         LoadedSave loaded = SaveSerializer.Deserialize(json);
 
@@ -228,7 +228,7 @@ public class SaveSerializerTests
             grid, territories, players, new TurnState(players), new Treasury());
 
         // A plain freeform save omits the Mode field; rewind the version to
-        // simulate a pre-#56 file.
+        // simulate a pre-Mode (v11) file.
         string json = SaveSerializer.Serialize(state, 42, players, "f", 100)
             .Replace("\"FormatVersion\": 12", "\"FormatVersion\": 11");
         Assert.DoesNotContain("\"Mode\"", json); // Freeform omits the field
@@ -242,7 +242,7 @@ public class SaveSerializerTests
     public void Serialize_RoundTripPreservesGoldTiles()
     {
         (GameState state, IReadOnlyList<Player> players) = BuildRichState();
-        // Mark a couple of tiles gold (issue #45). One empty, one occupied,
+        // Mark a couple of tiles gold. One empty, one occupied,
         // to prove gold is orthogonal to the occupant.
         state.Grid.Get(HexCoord.FromOffset(1, 1))!.IsGold = true;   // empty Red tile
         state.Grid.Get(HexCoord.FromOffset(2, 1))!.IsGold = true;   // Tower tile
@@ -288,8 +288,8 @@ public class SaveSerializerTests
     public void Serialize_RoundTripPreservesMountainTiles()
     {
         (GameState state, IReadOnlyList<Player> players) = BuildRichState();
-        // Mark tiles mountain (issue #37). Gold and mountain are now mutually
-        // exclusive (issue #81), so a mountain tile is never also gold.
+        // Mark tiles mountain. Gold and mountain are mutually
+        // exclusive, so a mountain tile is never also gold.
         state.Grid.Get(HexCoord.FromOffset(1, 1))!.IsMountain = true;
         HexTile mountain = state.Grid.Get(HexCoord.FromOffset(2, 1))!;
         mountain.IsMountain = true;
@@ -312,10 +312,9 @@ public class SaveSerializerTests
     [Fact]
     public void Deserialize_LegacyGoldAndMountainTile_NormalizesToMountain()
     {
-        // A pre-#81 save could legally encode a tile with both IsGold and
-        // IsMountain set (the flags were independent). Under the new mutual
-        // exclusion the loader must normalize such a tile to mountain-only
-        // (mountain wins, issue #81).
+        // A save could encode a tile with both IsGold and
+        // IsMountain set. Under mutual exclusion the loader must
+        // normalize such a tile to mountain-only (mountain wins).
         (GameState state, IReadOnlyList<Player> players) = BuildRichState();
         // Author a single mountain tile, then forge the now-illegal combo
         // straight into the JSON (the model can no longer represent both).
@@ -385,7 +384,7 @@ public class SaveSerializerTests
     [Fact]
     public void SerializeMap_BakesDifficultyFieldIntoJson()
     {
-        // Since #70 starting maps bake per-color difficulty alongside kind, so
+        // Starting maps bake per-color difficulty alongside kind, so
         // a loaded map restores its exact roster.
         (GameState state, IReadOnlyList<Player> players) = BuildRichState();
 
@@ -866,7 +865,7 @@ public class SaveSerializerTests
     public void Serialize_RoundTripPreservesCampaignLevel()
     {
         // v8: a campaign game's level index rides along in the save so a
-        // resumed autosave still knows which campaign hex it is (issue #2).
+        // resumed autosave still knows which campaign hex it is.
         (GameState state, IReadOnlyList<Player> players) = BuildRichState();
 
         string json = SaveSerializer.Serialize(state, 42, players, "s", 100,

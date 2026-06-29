@@ -17,7 +17,7 @@ public enum PlayerKind
     /// it owns no capital, never takes a turn, and is excluded from the win
     /// check. The value exists only as roster-build input and as map-save
     /// metadata (a starting map bakes each color's kind, including which are
-    /// <c>None</c>). Lets a match run with 2–6 players (issue #70).
+    /// <c>None</c>). Lets a match run with 2–6 players.
     /// </summary>
     None,
 }
@@ -36,7 +36,7 @@ public class Player
     public PlayerKind Kind { get; }
 
     /// <summary>
-    /// Difficulty lever (issue #11): how much upkeep this player's units
+    /// Difficulty lever: how much upkeep this player's units
     /// cost per turn, via <see cref="DifficultyRules.UnitUpkeep"/>. Default
     /// <see cref="Difficulty.Soldier"/> = the baseline AIs always play at.
     /// Consumed by <see cref="UpkeepRules"/> (real charging), the AI
@@ -87,7 +87,7 @@ public class Player
             PlayerKind kind = i < GameSettings.PlayerKinds.Length
                 ? GameSettings.PlayerKinds[i]
                 : PlayerKind.Computer;
-            // A None slot is absent from the match (issue #70): skip it so the
+            // A None slot is absent from the match: skip it so the
             // roster compacts to the active players only. Survivors keep their
             // original slot index via PlayerId.FromIndex(i), so display colors
             // (PlayerPalette indexes PlayerConfig by Id.Index) stay correct.
@@ -126,7 +126,7 @@ public class Player
     /// player's original color slot (`PlayerId.FromIndex`). Derived purely from
     /// the level (never the freeform <see cref="GameSettings.PlayerKinds"/>), so
     /// the same level always plays the same players and a campaign launch can't
-    /// change your New Game default (#70 bleed fix).
+    /// change your New Game default.
     /// </summary>
     public static List<Player> BuildCampaignRoster(int level)
     {

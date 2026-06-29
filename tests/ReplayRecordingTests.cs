@@ -108,12 +108,9 @@ public class ReplayRecordingTests
     [Fact]
     public void Recording_HumanMove_AppendsReplayMoveBeat()
     {
-        // Buy a recruit onto Red's non-capital tile first (turn 1 →
-        // unit can't move yet because HasMovedThisTurn after a buy
-        // onto own empty is per the AI semantic — wait, that's AI only).
-        // For human ExecuteBuyAndPlace on own empty, MovementRules.PlaceNew
-        // does NOT mark the unit as moved. So we can buy and then move
-        // on the same turn. But end-of-turn growth doesn't trigger here.
+        // Buy a recruit onto Red's non-capital tile; a human buy onto
+        // own empty does not mark the unit moved (MovementRules.PlaceNew),
+        // so it can move the same turn.
         var f = new Fixture();
         HexCoord redCapital = f.State.Territories.First(t => t.Owner == f.Red.Id).Capital!.Value;
         HexCoord redOther = HexCoord.FromOffset(0, 1) == redCapital
@@ -194,12 +191,8 @@ public class ReplayRecordingTests
         Assert.IsType<ReplayEndTurnBeat>(first);
         Assert.Equal(1, first.Turn);
         Assert.Equal(0, first.Actor);
-        // After Red's End Turn, Blue's End Turn also runs (both human
-        // by default, so Blue's End Turn doesn't auto-fire — wait, both
-        // are human here, so Blue's turn waits for input).
-        // Actually Blue's end turn would require Blue to click. Both
-        // players are Human so the loop pauses at Blue T1. Only Red's
-        // End Turn is in the log so far.
+        // Both players are human, so the loop pauses at Blue T1; only
+        // Red's End Turn is logged.
         Assert.Single(f.Controller.ReplayBeats);
     }
 
@@ -327,11 +320,9 @@ public class ReplayRecordingTests
         f.Hud.ClickUndoLast();
         Assert.Empty(f.Controller.ReplayBeats);
 
-        // Different action: build a tower? Red has 10g but tower
-        // costs 15g. Instead, re-do the same buy — undo restored
-        // session.Mode=BuyingRecruit and the selected territory, so
-        // we can click the placement tile directly. Assert exactly
-        // one beat after.
+        // Red can't afford a tower (10g, costs 15g), so redo the same
+        // buy — undo restored Mode=BuyingRecruit and the selection, so
+        // click the placement tile directly. Assert exactly one beat.
         f.Map.SimulateClick(f.State.Grid.Get(redOther)!);
         Assert.Single(f.Controller.ReplayBeats);
     }

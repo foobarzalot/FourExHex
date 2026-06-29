@@ -16,7 +16,7 @@ public partial class MainMenuScene : Control
     // GetSelectedId() regardless of reordering.
     private const int HumanId = 0;
     private const int ComputerId = 1;
-    // "None" disables the slot entirely (issue #70) — Player.BuildRoster drops
+    // "None" disables the slot entirely — Player.BuildRoster drops
     // it, so the game runs with only the active (non-None) players.
     private const int NoneId = 2;
 
@@ -39,7 +39,7 @@ public partial class MainMenuScene : Control
     };
 
     /// <summary>Number of active (non-None) slots currently selected on the
-    /// player-setup page. A valid game needs at least 2 (issue #70).</summary>
+    /// player-setup page. A valid game needs at least 2.</summary>
     private int ActivePlayerCount()
     {
         int n = 0;
@@ -62,7 +62,7 @@ public partial class MainMenuScene : Control
 
     private readonly OptionButton[] _roleButtons = new OptionButton[GameSettings.PlayerConfig.Length];
     private readonly OptionButton[] _difficultyButtons = new OptionButton[GameSettings.PlayerConfig.Length];
-    // Game-mode selector (Freeform / Rising Tides, issue #56) on the
+    // Game-mode selector (Freeform / Rising Tides) on the
     // Configure Game player-setup page; rebuilt with the page each show.
     private OptionButton? _gameModeButton;
     private static readonly Font SerifFont =
@@ -74,11 +74,11 @@ public partial class MainMenuScene : Control
     private Control? _landingPanel;
     private Control? _playConfigPanel;
     private CampaignPanel? _campaignPanel;
-    // The level "Play?" confirm sheet while it's open (issue #51), so the
+    // The level "Play?" confirm sheet while it's open, so the
     // Escape handler can let the sheet consume Escape (cancel) instead of
     // backing out of the whole campaign ladder.
     private MapInfoSheet? _campaignSheet;
-    // New Game / Map Editor source chooser (New Map | Load …), issue #70.
+    // New Game / Map Editor source chooser (New Map | Load …).
     private EscMenu? _sourceChooser;
     // Design (unscaled) size of the landing panel, recorded at build time so
     // FitPanels can scale it down to fit a smaller-than-design viewport. (The
@@ -93,7 +93,7 @@ public partial class MainMenuScene : Control
     private Button? _landingLoadButton;
     // Orientation the landing panel was last built for. Portrait keeps the
     // original button-stack panel (ScaleToFit shrinks it); landscape uses the
-    // "split hero" fill layout (issue #34). A resize that flips it rebuilds.
+    // "split hero" fill layout. A resize that flips it rebuilds.
     private ScreenOrientation _landingOrientation = ScreenOrientation.Landscape;
     // Centered fill surfaces of the landscape menu panels (null when that panel
     // is built portrait); OnMenuSafeAreaChanged / FitPanels keep them centered +
@@ -104,13 +104,13 @@ public partial class MainMenuScene : Control
     private LineEdit? _seedField;
     private Button? _startButton;
     // The player-page "Next" button (one is live at a time per orientation);
-    // disabled when fewer than 2 active players are selected (issue #70).
+    // disabled when fewer than 2 active players are selected.
     private Button? _playerNextButton;
     private HudIconButton? _rerollButton;
     private MapGenSettingsPanel? _mapGenSettingsPanel;
     private MapThumbnailView? _thumbnail;
 
-    // The New Game flow is split into two pages (issue #40): player setup
+    // The New Game flow is split into two pages: player setup
     // (role + difficulty per slot) and map setup (seed + re-roll and a live
     // thumbnail of the board the seed produces). Both page contents are built
     // up front and parented to the play-config panel; navigation toggles their
@@ -119,7 +119,7 @@ public partial class MainMenuScene : Control
     // same page.
     private enum PlayConfigPage { PlayerSetup, MapSetup }
 
-    // What the player-setup screen feeds into (issue #70): a new procedural
+    // What the player-setup screen feeds into: a new procedural
     // game, or a new map editor session. The kinds screen is shared; only the
     // forward action differs.
     private enum PlayConfigPurpose { NewGame, EditorNewMap }
@@ -135,7 +135,7 @@ public partial class MainMenuScene : Control
     // never-connected signal).
     private bool _viewportResizeHooked;
 
-    // Mobile keyboard avoidance for the seed field (issue #4). The shared
+    // Mobile keyboard avoidance for the seed field. The shared
     // KeyboardLiftController (scripts/KeyboardLiftController.cs) owns the
     // per-frame poll + lift state and reads FOUREXHEX_FAKE_KB; this scene
     // just drives Poll() from _Process while the seed field is focused and
@@ -206,7 +206,7 @@ public partial class MainMenuScene : Control
         _settingsPanel = new SettingsPanel();
         AddChild(_settingsPanel);
 
-        // Map-generation options (issue #48), summoned by the "?" button on the
+        // Map-generation options, summoned by the "?" button on the
         // map-setup page. Toggling here does NOT re-render the thumbnail; the
         // preview refreshes only on a die press (fresh seed), which picks up the
         // current GameSettings flags.
@@ -235,7 +235,7 @@ public partial class MainMenuScene : Control
         FitPanels();
         GetViewport().SizeChanged += FitPanels;
         _viewportResizeHooked = true;
-        // The landscape fill panels (landing now; play-config in #34) inset to
+        // The landscape fill panels (landing and play-config) inset to
         // the device safe area — keep them clear of the notch / home indicator
         // when it shifts without a resize.
         SafeArea.Changed += OnMenuSafeAreaChanged;
@@ -267,7 +267,7 @@ public partial class MainMenuScene : Control
         RebuildCampaignOnOrientationFlip(viewport);
         // Portrait panels are fixed-size and ScaleToFit shrinks them to fit a
         // smaller viewport; the landscape "split hero" landing instead fills
-        // the safe rect, so it only needs its insets refreshed (issue #34).
+        // the safe rect, so it only needs its insets refreshed.
         if (_landingPanel != null)
         {
             if (_landingOrientation == ScreenOrientation.Portrait)
@@ -295,7 +295,7 @@ public partial class MainMenuScene : Control
     }
 
     /// <summary>Rebuild the landing panel when a viewport resize flips the
-    /// orientation: portrait button-stack ↔ landscape "split hero" (issue #34).
+    /// orientation: portrait button-stack ↔ landscape "split hero".
     /// Save-state button gating is re-derived from disk on every build, so a
     /// rebuild loses nothing.</summary>
     private void RebuildLandingOnOrientationFlip(Vector2 viewport)
@@ -344,8 +344,8 @@ public partial class MainMenuScene : Control
     }
 
     /// <summary>Rebuild the play-config panel when a viewport resize flips
-    /// the orientation (issue #38: portrait stacks each row's difficulty
-    /// dropdown under the kind selector; landscape puts them side by side).
+    /// the orientation: portrait stacks each row's difficulty
+    /// dropdown under the kind selector; landscape puts them side by side.
     /// Dropdown selections are written back into GameSettings — the build
     /// path initializes from there — and the seed/map controls are restored
     /// explicitly.</summary>
@@ -416,11 +416,11 @@ public partial class MainMenuScene : Control
 
         // The full stack is Resume, Play, Campaign, Play Tutorial, Load, Map
         // Editor, Settings, and Exit (8 buttons; the Tutorial Builder entry
-        // moved to the debug-only cheat menu, issue #7). On mobile the Exit
+        // lives in the debug-only cheat menu). On mobile the Exit
         // button is suppressed (Apple HIG / Google Play guidance), so the
         // panel reclaims its slot — height is computed from the actual count
         // rather than the fixed 8-button design, otherwise ScaleToFit centers
-        // against a phantom Exit slot, leaving dead space at the bottom (#42).
+        // against a phantom Exit slot, leaving dead space at the bottom.
         bool exitSuppressed = OS.HasFeature("mobile");
         int landingButtonCount = exitSuppressed ? 7 : 8;
         const float bottomMargin = 56f; // matches the desktop 8-button design (820 - 764)
@@ -485,11 +485,8 @@ public partial class MainMenuScene : Control
         panel.AddChild(_landingResumeButton);
 
         _landingPlayButton = new Button { Text = "Play Game" };
-        // Intentionally NOT brass-primary here — the redesign spec
-        // suggested it, but brass should mark terminal commit actions
-        // (Start Game in the setup panel, Resume in Pause), not menu
-        // navigation entries that the player passes through every
-        // launch. Uniform Button styling is the cleaner choice.
+        // Plain Button, not brass — brass marks terminal commit actions
+        // (Start Game, Resume in Pause), not menu navigation.
         _landingPlayButton.AddThemeFontSizeOverride("font_size", 26);
         _landingPlayButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap));
         _landingPlayButton.Size = new Vector2(buttonW, buttonH);
@@ -497,7 +494,7 @@ public partial class MainMenuScene : Control
         AudioBus.AttachClick(_landingPlayButton);
         panel.AddChild(_landingPlayButton);
 
-        // Campaign ladder (issue #2): 256 fixed-seed levels with
+        // Campaign ladder: 256 fixed-seed levels with
         // persistent progress. Sits right under Play Game — it's the
         // long-horizon progression mode.
         var campaignButton = new Button { Text = "Campaign" };
@@ -545,9 +542,7 @@ public partial class MainMenuScene : Control
         AudioBus.AttachClick(settingsButton);
         panel.AddChild(settingsButton);
 
-        // Suppress the app-quit button on mobile — Apple HIG (and Google Play
-        // guidance) discourage user-initiated quit on phones/tablets; the home
-        // gesture is the platform-native way out. Desktop builds still get it.
+        // Exit suppressed on mobile (Apple HIG / Google Play); desktop only.
         if (!exitSuppressed)
         {
             var exitButton = new Button { Text = "Exit" };
@@ -568,7 +563,7 @@ public partial class MainMenuScene : Control
         return panel;
     }
 
-    /// <summary>"Split hero" landscape landing (issue #34): a wordmark + version
+    /// <summary>"Split hero" landscape landing: a wordmark + version
     /// rail on the left, a full-width Play Game over a 2-column action grid on
     /// the right, filling the safe rect instead of downscaling the portrait
     /// button stack. Exit (desktop only) is a full-width button below the grid.</summary>
@@ -658,7 +653,7 @@ public partial class MainMenuScene : Control
         grid.AddChild(MakeGridButton("Settings", OnSettingsPressed));
 
         // Exit is suppressed on mobile (Apple HIG / Google Play); desktop gets
-        // a full-width Exit below the grid (per the #34 layout decision).
+        // a full-width Exit below the grid.
         bool exitSuppressed = OS.HasFeature("mobile");
         if (!exitSuppressed)
         {
@@ -780,7 +775,7 @@ public partial class MainMenuScene : Control
         col.AddThemeConstantOverride("separation", 8);
         AddPortraitHeader(col);
 
-        // Game mode row (issue #56) above the roster — part of game setup,
+        // Game mode row above the roster — part of game setup,
         // shared with the map editor's new-map flow.
         col.AddChild(MakePortraitFieldRow("Game Mode", ConfigureGameModeDropdown()));
 
@@ -806,7 +801,7 @@ public partial class MainMenuScene : Control
     /// role and difficulty dropdowns side-by-side on the second (each filling
     /// half the row — wide enough at portrait width, unlike a single side-by-side
     /// row with the swatch/name competing for space). Computer slots lock
-    /// difficulty to Soldier (#38).</summary>
+    /// difficulty to Soldier.</summary>
     private Control MakePortraitPlayerBlock(int slot)
     {
         (string name, string hex) = GameSettings.PlayerConfig[slot];
@@ -866,9 +861,9 @@ public partial class MainMenuScene : Control
         col.AddThemeConstantOverride("separation", 10);
         AddPortraitHeader(col);
 
-        // Procedural-only map page (issue #70): loading a saved starting map is
-        // now its own branch off the New Game source chooser, so the map page
-        // is just seed + preview.
+        // Procedural-only map page: loading a saved starting map is its own
+        // branch off the New Game source chooser, so the map page is just
+        // seed + preview.
 
         // Seed field + square re-roll die share a row.
         var seedRow = new HBoxContainer();
@@ -884,11 +879,11 @@ public partial class MainMenuScene : Control
         _rerollButton = MakeRerollButton();
         _rerollButton.CustomMinimumSize = new Vector2(44, 44);
         seedRow.AddChild(_rerollButton);
-        // "?" opens the shared Map Generation options panel (issue #48).
+        // "?" opens the shared Map Generation options panel.
         seedRow.AddChild(MakeMapGenSettingsButton());
         col.AddChild(seedRow);
 
-        // Live board thumbnail (issue #40) — expands to fill the mid-page space.
+        // Live board thumbnail — expands to fill the mid-page space.
         _thumbnail = BuildThumbnail();
         _thumbnail.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         _thumbnail.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
@@ -907,7 +902,7 @@ public partial class MainMenuScene : Control
     // Each configures the control + wiring (items, selection, events) and
     // stores it in its field; the caller positions / parents it.
 
-    /// <summary>Game-mode selector (Freeform / Rising Tides, issue #56) for the
+    /// <summary>Game-mode selector (Freeform / Rising Tides) for the
     /// player-setup page. Items are keyed by the <see cref="GameMode"/> int so
     /// selection round-trips through <see cref="GameSettings.Mode"/>; writes the
     /// choice live. Shared by the new-game and map-editor new-map flows.</summary>
@@ -980,7 +975,7 @@ public partial class MainMenuScene : Control
             Alignment = HorizontalAlignment.Right,
             Text = SeedFormat.ToHex(SeedFormat.NextSeed(new System.Random())),
             // Tapping/clicking into the field selects the existing seed so the
-            // next keystroke replaces it (issue #4).
+            // next keystroke replaces it.
             SelectAllOnFocus = true,
         };
         field.AddThemeFontSizeOverride("font_size", 21);
@@ -996,13 +991,13 @@ public partial class MainMenuScene : Control
         return field;
     }
 
-    /// <summary>The "?" glyph that opens the shared Map Generation options panel
-    /// (issue #48 / #66). Sits beside the seed re-roll die; same button/panel as
+    /// <summary>The "?" glyph that opens the shared Map Generation options panel.
+    /// Sits beside the seed re-roll die; same button/panel as
     /// the map editor's.</summary>
     private HudIconButton MakeMapGenSettingsButton() =>
         MapGenSettingsPanel.MakeOpenButton(() => _mapGenSettingsPanel?.Open(), size: 44f, fontSize: 30);
 
-    /// <summary>"Config rail + player list" landscape New Game (issue #34): a
+    /// <summary>"Config rail + player list" landscape New Game: a
     /// fixed left rail (title, map, seed, Start, Back) beside a scrolling player
     /// list (swatch | name | Type | Difficulty per row), filling a centered,
     /// size-capped surface instead of the portrait stack.</summary>
@@ -1060,7 +1055,7 @@ public partial class MainMenuScene : Control
         hbox.AddChild(rail);
 
         AddLandscapeHeader(rail);
-        // Game mode (issue #56) — part of game setup, shared with the map
+        // Game mode — part of game setup, shared with the map
         // editor's new-map flow.
         rail.AddChild(MakeRailLabel("Game Mode"));
         OptionButton modeDropdown = ConfigureGameModeDropdown();
@@ -1124,11 +1119,11 @@ public partial class MainMenuScene : Control
 
         AddLandscapeHeader(rail);
 
-        // Procedural-only map page (issue #70): saved-map loading moved to the
+        // Procedural-only map page: saved-map loading is its own branch off the
         // New Game source chooser, so no map selector here — just seed + preview.
 
         rail.AddChild(MakeRailLabel("Map Seed"));
-        // Seed field + square re-roll button on one row (issue #5).
+        // Seed field + square re-roll button on one row.
         var seedRow = new HBoxContainer();
         seedRow.AddThemeConstantOverride("separation", 6);
         LineEdit seedField = ConfigureSeedField();
@@ -1138,7 +1133,7 @@ public partial class MainMenuScene : Control
         _rerollButton = MakeRerollButton();
         _rerollButton.CustomMinimumSize = new Vector2(44, 44);
         seedRow.AddChild(_rerollButton);
-        // "?" opens the shared Map Generation options panel (issue #48).
+        // "?" opens the shared Map Generation options panel.
         seedRow.AddChild(MakeMapGenSettingsButton());
         rail.AddChild(seedRow);
 
@@ -1281,7 +1276,7 @@ public partial class MainMenuScene : Control
 
     /// <summary>
     /// Start Game is enabled when the seed field has digits (the map page is
-    /// procedural-only since #70 — loading a saved map is its own branch).
+    /// procedural-only — loading a saved map is its own branch).
     /// </summary>
     private void RefreshStartButtonGating()
     {
@@ -1324,7 +1319,7 @@ public partial class MainMenuScene : Control
     /// builds its UI once in _Ready.</summary>
     private void OnCampaignLevelTapped(int level)
     {
-        // Confirm sheet with a live thumbnail of the level's board (issue #51).
+        // Confirm sheet with a live thumbnail of the level's board.
         // The sheet derives title/status/seed from the level itself.
         MapInfoSheet sheet = CampaignConfirmSheet.Create(level);
         _campaignSheet = sheet;
@@ -1385,9 +1380,9 @@ public partial class MainMenuScene : Control
         ShowCurrentPlayConfigPage();
     }
 
-    // --- Paged New Game navigation (issue #40) ---
+    // --- Paged New Game navigation ---
 
-    /// <summary>Forward action of the shared player-setup page (issue #70):
+    /// <summary>Forward action of the shared player-setup page:
     /// gate on >=2 active players, persist the selections, then either advance
     /// to the procedural map page (New Game) or launch the editor (New Map).
     /// The Next button is disabled below 2 players, but the Enter key routes
@@ -1402,14 +1397,14 @@ public partial class MainMenuScene : Control
         }
         // Commit the dropdown selections first: the map thumbnail builds from
         // Player.BuildRoster() (reads GameSettings.PlayerKinds), and the editor
-        // launch snapshots the same arrays (issue #70).
+        // launch snapshots the same arrays.
         PersistRosterSelections();
         if (_playConfigPurpose == PlayConfigPurpose.EditorNewMap) LaunchEditorNewMap();
         else GoToMapPage();
     }
 
     /// <summary>Launch the map editor for a fresh map, handing it the per-color
-    /// kinds + difficulties chosen on the shared player-setup screen (issue #70).</summary>
+    /// kinds + difficulties chosen on the shared player-setup screen.</summary>
     private void LaunchEditorNewMap()
     {
         MapEditorRequest.Pending = new MapEditorRequest.Request
@@ -1454,7 +1449,7 @@ public partial class MainMenuScene : Control
     }
 
     /// <summary>Disable the player-page "Next" button when fewer than 2 active
-    /// players are selected (issue #70), so a 0/1-player game can't be started.</summary>
+    /// players are selected, so a 0/1-player game can't be started.</summary>
     private void RefreshPlayerNextGating()
     {
         if (_playerNextButton != null)
@@ -1485,7 +1480,7 @@ public partial class MainMenuScene : Control
         return thumb;
     }
 
-    /// <summary>Re-roll the seed in place (issue #5), modeled on the map
+    /// <summary>Re-roll the seed in place, modeled on the map
     /// editor's die button. Setting LineEdit.Text programmatically doesn't fire
     /// text_changed, so dependent state is refreshed explicitly.</summary>
     private HudIconButton MakeRerollButton()
@@ -1509,12 +1504,12 @@ public partial class MainMenuScene : Control
 
     private void OnPlayPressed()
     {
-        // Play Game source chooser (issue #70 / #79): configure a fresh game,
+        // Play Game source chooser: configure a fresh game,
         // load a saved starting map, or jump straight into a default game.
         Log.Info(Log.LogCategory.Input, "MainMenu: Play Game → source chooser");
         _sourceChooser?.Show("Play Game", new[]
         {
-            // Game mode (Freeform / Rising Tides, issue #56) is chosen on the
+            // Game mode (Freeform / Rising Tides) is chosen on the
             // Configure Game player-setup page, not here — it's part of game
             // setup and is shared with the map editor's new-map flow.
             new EscMenu.Option("Configure Game", ShowPlayConfig),
@@ -1523,14 +1518,14 @@ public partial class MainMenuScene : Control
         });
     }
 
-    /// <summary>Quick Play (issue #79): skip both setup pages and launch a basic
+    /// <summary>Quick Play: skip both setup pages and launch a basic
     /// freeform game — Red human + 5 Computer (all Soldier), a fresh random seed,
     /// default densities, not a campaign. Mirrors the FOUREXHEX_6AI bypass but
     /// user-triggered and with a human in slot 0.</summary>
     private void OnQuickPlay()
     {
         GameSettings.CampaignLevel = null; // freeform — no campaign result recorded
-        GameSettings.Mode = GameMode.Freeform; // Quick Play is always basic freeform (#56)
+        GameSettings.Mode = GameMode.Freeform; // Quick Play is always basic freeform
         // Set the roster explicitly so prior session / campaign / load state
         // can't leak in: Red human, the rest Computer, all Soldier.
         for (int i = 0; i < GameSettings.PlayerKinds.Length; i++)
@@ -1554,7 +1549,7 @@ public partial class MainMenuScene : Control
 
     private void OnMapEditorPressed()
     {
-        // Map Editor source chooser (issue #70): describe the players up-front
+        // Map Editor source chooser: describe the players up-front
         // for a fresh map, or open a saved map for further editing.
         Log.Info(Log.LogCategory.Input, "MainMenu: Map Editor → source chooser");
         _sourceChooser?.Show("Map Editor", new[]
@@ -1564,7 +1559,7 @@ public partial class MainMenuScene : Control
         });
     }
 
-    /// <summary>Load-map-to-edit branch of the Map Editor chooser (issue #70):
+    /// <summary>Load-map-to-edit branch of the Map Editor chooser:
     /// the same map picker as the play flow; selection launches the editor with
     /// the map loaded.</summary>
     private void OpenLoadMapToEdit()
@@ -1591,8 +1586,8 @@ public partial class MainMenuScene : Control
         GetTree().ChangeSceneToFile("res://scenes/map_editor.tscn");
     }
 
-    /// <summary>Load-starting-map-to-play branch of the New Game chooser
-    /// (issue #70): pick a saved map, preview it + who you're playing as in the
+    /// <summary>Load-starting-map-to-play branch of the New Game chooser:
+    /// pick a saved map, preview it + who you're playing as in the
     /// shared <see cref="MapInfoSheet"/>, then launch the game on its baked
     /// roster.</summary>
     private void OpenLoadStartingMapToPlay()
@@ -1621,7 +1616,7 @@ public partial class MainMenuScene : Control
             return;
         }
         // The picker already previews the board, so launch straight into the
-        // game on the map's baked roster (issue #70) — no extra confirm step.
+        // game on the map's baked roster — no extra confirm step.
         LoadRequest.Pending = loaded;
         GameSettings.MasterSeed = loaded.MasterSeed;
         Log.Info(Log.LogCategory.Input, $"MainMenu: launch starting map \"{mapName}\"");
@@ -1630,7 +1625,7 @@ public partial class MainMenuScene : Control
 
     private void OnSettingsPressed()
     {
-        // Settings is a modal layered over the landing page now — leaves
+        // Settings is a modal layered over the landing page; leaves
         // the landing buttons visible underneath the backdrop.
         _settingsPanel?.Open();
     }
@@ -1705,7 +1700,7 @@ public partial class MainMenuScene : Control
             // _UnhandledInput would never see it while the seed field
             // is focused. Enter never starts the game — it just dismisses
             // the on-screen keyboard and stays on the config screen so the
-            // rest of the settings remain adjustable (issues #4, #57).
+            // rest of the settings remain adjustable.
             _seedField?.AcceptEvent();
             Log.Debug(Log.LogCategory.Input,
                 "MainMenu: seed-field Enter -> dismiss keyboard");
@@ -1756,7 +1751,7 @@ public partial class MainMenuScene : Control
     }
 
     /// <summary>A press that lands outside the focused seed field dismisses
-    /// the on-screen keyboard (issue #4). Runs in _Input because the root
+    /// the on-screen keyboard. Runs in _Input because the root
     /// Control and panels have MouseFilter.Stop, so an outside tap never
     /// reaches _UnhandledInput. The event is NOT consumed — the tap still
     /// activates whatever control it landed on.</summary>
@@ -1867,7 +1862,7 @@ public partial class MainMenuScene : Control
         if (_campaignSheet != null && _campaignSheet.IsOpen) return;
 
         // The New Game / Map Editor source chooser owns its own Escape while
-        // open (issue #70).
+        // open.
         if (_sourceChooser != null && _sourceChooser.IsOpen) return;
 
         // Per-panel input dispatch: each panel only sees the keys that
@@ -1914,8 +1909,8 @@ public partial class MainMenuScene : Control
 
         if (keyEvent.Echo) return;
 
-        // Escape and Enter mirror the per-page Back / forward buttons (issue
-        // #40): on the player page Enter advances to map setup and Escape
+        // Escape and Enter mirror the per-page Back / forward buttons:
+        // on the player page Enter advances to map setup and Escape
         // returns to the landing menu; on the map page Enter starts the game
         // and Escape returns to player setup.
         bool onPlayerPage = _playConfigPage == PlayConfigPage.PlayerSetup;
@@ -1972,12 +1967,12 @@ public partial class MainMenuScene : Control
     private void OnStartPressed()
     {
         // Freeform games never record campaign results — clear any
-        // leftover campaign context from a prior launch (issue #2).
+        // leftover campaign context from a prior launch.
         GameSettings.CampaignLevel = null;
 
         // Persist the dropdown selections — kinds and per-slot difficulty
         // always come from this panel (saved maps don't carry per-color
-        // roles). Difficulty is stored per-slot (issue #38) so mixed
+        // roles). Difficulty is stored per-slot so mixed
         // configurations land directly on the roster and round-trip
         // through the save.
         PersistRosterSelections();
@@ -1987,7 +1982,7 @@ public partial class MainMenuScene : Control
                     $"{config.Name}={GameSettings.PlayerKinds[i]}/{GameSettings.Difficulties[i]}")));
 
         // Procedural map flow (loading a saved starting map is its own branch
-        // off the source chooser now, issue #70): needs a seed.
+        // off the source chooser): needs a seed.
         if (_seedField == null || string.IsNullOrEmpty(_seedField.Text)) return;
         SeedFormat.TryParseHex(_seedField.Text, out int seed);
         GameSettings.MasterSeed = seed;

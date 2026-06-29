@@ -29,7 +29,7 @@ public sealed partial class PreviewPane : Control
     /// </summary>
     public event Action? EscRequested;
 
-    // Hand-tuned opening camera for landscape tutorial playback (#14):
+    // Hand-tuned opening camera for landscape tutorial playback:
     // zoomed out a touch from the fit default and view-centered slightly
     // below-right of the content center, which shifts the board up clear of
     // the bottom-hugging narration box. Captured from a manual framing at
@@ -207,7 +207,7 @@ public sealed partial class PreviewPane : Control
         Log.Debug(Log.LogCategory.Tutorial, $"[PreviewPane] post-StartGame: turn={_previewState.Turns.TurnNumber}, currentPlayer={_previewState.Turns.CurrentPlayerIndex} ({_previewState.Turns.CurrentPlayer.Name})");
 
         // Landscape opens with the board zoomed out a touch and shifted up so
-        // the bottom-hugging narration box (#14) doesn't cover it. Deferred so
+        // the bottom-hugging narration box doesn't cover it. Deferred so
         // it lands after the ReloadState-queued RecenterMap fit default;
         // portrait keeps that default.
         Vector2 vp = GetViewport().GetVisibleRect().Size;

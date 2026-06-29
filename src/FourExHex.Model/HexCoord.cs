@@ -1,12 +1,10 @@
 using System;
 using System.Collections.Generic;
 
-// Fractional cube-rounding (the float→int boundary point) used to live
-// here as HexCoord.Round(float, float). It has been moved to
-// FourExHex.ViewMath/HexRounding.cs so this assembly stays
-// integer-only (see ARCHITECTURE.md, "No floating-point in Model or
-// Controller"). View code that needs to project a fractional axial
-// coord back to a HexCoord now calls HexRounding.Round.
+// Fractional cube-rounding lives in FourExHex.ViewMath/HexRounding.cs so this
+// assembly stays integer-only (see ARCHITECTURE.md, "No floating-point in Model
+// or Controller"). View code that needs to project a fractional axial coord back
+// to a HexCoord calls HexRounding.Round.
 
 /// <summary>
 /// Axial coordinate for a pointy-top hex. Q runs roughly east, R runs roughly

@@ -25,7 +25,7 @@ public class MapRosterRulesTests
     }
 
     // Like TerritoriesOwnedBy but the slots listed in capitalless own no
-    // capital (their territory's Capital is null), to exercise the #82 check.
+    // capital (their territory's Capital is null), to exercise the no-capital check.
     private static IReadOnlyList<Territory> TerritoriesOwnedBy(
         int[] slots, params int[] capitalless)
     {

@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 
 /// <summary>
-/// Validation for a starting map's baked player roster (issue #70). A map
+/// Validation for a starting map's baked player roster. A map
 /// editor bakes each color's <see cref="PlayerKind"/> into the saved file;
 /// for the file to describe a playable game the kinds and the painted
 /// territory must agree. Pure, Godot-free, so the editor's save path can
@@ -15,7 +15,7 @@ public static class MapRosterRules
     /// <paramref name="kinds"/>; an empty list means the map is valid to save.
     /// Flags: a color that owns land but is <see cref="PlayerKind.None"/>; a
     /// non-<c>None</c> color that owns no land (it would start eliminated); a
-    /// non-<c>None</c> color that owns land but holds no capital (issue #82);
+    /// non-<c>None</c> color that owns land but holds no capital;
     /// and fewer than two active (non-<c>None</c>) colors.
     /// </summary>
     public static IReadOnlyList<string> ValidateForSave(
@@ -69,8 +69,8 @@ public static class MapRosterRules
     /// (<see cref="PlayerId.Index"/>) owns at least one of
     /// <paramref name="territories"/>, preserving candidate order. Used to
     /// trim a roster (e.g. the tutorial's all-human 6) to only the colors
-    /// that actually hold land, so landless slots don't show as players
-    /// (issue #83). Slots are preserved, not compacted — a result may be
+    /// that actually hold land, so landless slots don't show as players.
+    /// Slots are preserved, not compacted — a result may be
     /// e.g. {0,2,4} if those are the owners.
     /// </summary>
     public static List<Player> ActivePlayersForTerritories(

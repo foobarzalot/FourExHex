@@ -235,7 +235,7 @@ public sealed partial class MapEditorPanel : Node2D
 
         // Detect a change to play the placement sound. Owner/occupant paints
         // rebuild the territory list (new reference); flag-only paints — gold
-        // (#45) and mountain (#37) — leave it untouched, so also compare the
+        // and mountain — leave it untouched, so also compare the
         // target tile's gold/mountain flags before and after.
         HexTile? preTile = _grid.Get(coord);
         bool goldBefore = preTile?.IsGold ?? false;
@@ -264,7 +264,7 @@ public sealed partial class MapEditorPanel : Node2D
         }
         // Push iff the grid actually changed since the stroke began. Comparing
         // against the pre-stroke snapshot (rather than the territory-list
-        // reference) catches flag-only paints — gold (#45) and mountain (#37) —
+        // reference) catches flag-only paints — gold and mountain —
         // that leave the territory partition untouched.
         if (_paintStrokePre is not null && _paintStrokePre.DiffersFromGrid(_grid, _water))
         {
@@ -370,7 +370,7 @@ public sealed partial class MapEditorPanel : Node2D
     }
 
     /// <summary>
-    /// Gate a per-cell gold toggle by the locked stroke direction (issue #45),
+    /// Gate a per-cell gold toggle by the locked stroke direction,
     /// mirroring <see cref="ToggleCellAllowed"/> for the gold flag: Add-mode
     /// skips already-gold tiles, Erase-mode skips non-gold tiles, so a drag
     /// stroke sets one consistent direction instead of flickering on/off.
@@ -387,8 +387,8 @@ public sealed partial class MapEditorPanel : Node2D
     }
 
     /// <summary>
-    /// Gate a per-cell mountain toggle by the locked stroke direction
-    /// (issue #37), mirroring <see cref="GoldToggleCellAllowed"/> for the
+    /// Gate a per-cell mountain toggle by the locked stroke direction,
+    /// mirroring <see cref="GoldToggleCellAllowed"/> for the
     /// mountain flag so a drag stroke sets one consistent direction.
     /// </summary>
     private bool MountainToggleCellAllowed(HexCoord coord)
