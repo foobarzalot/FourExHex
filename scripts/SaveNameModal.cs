@@ -203,52 +203,10 @@ public sealed partial class SaveNameModal : CanvasLayer
 
     private void BuildErrorOverlay(Vector2 viewport)
     {
-        _errorBackdrop = ModalChrome.BuildBackdrop(viewport);
-        _errorBackdrop.Visible = false;
+        (_errorBackdrop, _errorPanel, _, _errorBodyLabel) =
+            ModalChrome.BuildErrorOverlay(viewport, 420, 200, "Save failed", HideError);
         AddChild(_errorBackdrop);
-
-        _errorPanel = ModalChrome.BuildCenteredPanel(panelW: 420, panelH: 200);
-        _errorPanel.Visible = false;
         AddChild(_errorPanel);
-
-        var vbox = new VBoxContainer
-        {
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
-        };
-        vbox.AddThemeConstantOverride("separation", 14);
-        _errorPanel.AddChild(vbox);
-
-        var errorTitle = new Label
-        {
-            Text = "Save failed",
-            HorizontalAlignment = HorizontalAlignment.Left,
-        };
-        errorTitle.AddThemeFontSizeOverride("font_size", 22);
-        errorTitle.AddThemeColorOverride("font_color", UiPalette.InkSoft);
-        vbox.AddChild(errorTitle);
-
-        _errorBodyLabel = new Label
-        {
-            Text = "",
-            AutowrapMode = TextServer.AutowrapMode.WordSmart,
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
-        };
-        _errorBodyLabel.AddThemeFontSizeOverride("font_size", 16);
-        vbox.AddChild(_errorBodyLabel);
-
-        var actions = new HBoxContainer
-        {
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-            Alignment = BoxContainer.AlignmentMode.End,
-        };
-        var okButton = new Button { Text = "OK" };
-        okButton.AddThemeFontSizeOverride("font_size", 16);
-        okButton.Pressed += HideError;
-        AudioBus.AttachClick(okButton);
-        actions.AddChild(okButton);
-        vbox.AddChild(actions);
     }
 
     private void OnBackdropInput(InputEvent @event)

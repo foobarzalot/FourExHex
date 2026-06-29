@@ -60,6 +60,21 @@ public static class GameSettings
     };
 
     /// <summary>
+    /// Mirror a loaded save's player roster (kinds + difficulties) into
+    /// <see cref="PlayerKinds"/> / <see cref="Difficulties"/> so the menu
+    /// reflects them next open and a "Play Again" preserves the saved kinds.
+    /// Copies up to the shorter of the roster and the slot arrays.
+    /// </summary>
+    public static void AdoptRosterFrom(LoadedSave loaded)
+    {
+        for (int i = 0; i < loaded.Players.Count && i < PlayerKinds.Length; i++)
+        {
+            PlayerKinds[i] = loaded.Players[i].Kind;
+            Difficulties[i] = loaded.Players[i].Difficulty;
+        }
+    }
+
+    /// <summary>
     /// Master seed for grid generation and per-turn RNG. Written by
     /// the main menu's "Map Seed" field before scene change; null
     /// means "auto-pick" (used by the FOUREXHEX_6AI diagnostic path

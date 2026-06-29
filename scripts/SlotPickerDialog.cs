@@ -484,52 +484,10 @@ public sealed partial class SlotPickerDialog : CanvasLayer
 
     private void BuildErrorOverlay(Vector2 viewport)
     {
-        _errorBackdrop = ModalChrome.BuildBackdrop(viewport);
-        _errorBackdrop.Visible = false;
+        (_errorBackdrop, _errorPanel, _errorTitleLabel, _errorBodyLabel) =
+            ModalChrome.BuildErrorOverlay(viewport, ErrorPanelW, ErrorPanelH, _errorTitle, HideError);
         AddChild(_errorBackdrop);
-
-        _errorPanel = ModalChrome.BuildCenteredPanel(panelW: ErrorPanelW, panelH: ErrorPanelH);
-        _errorPanel.Visible = false;
         AddChild(_errorPanel);
-
-        var vbox = new VBoxContainer
-        {
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
-        };
-        vbox.AddThemeConstantOverride("separation", 14);
-        _errorPanel.AddChild(vbox);
-
-        _errorTitleLabel = new Label
-        {
-            Text = _errorTitle,
-            HorizontalAlignment = HorizontalAlignment.Left,
-        };
-        _errorTitleLabel.AddThemeFontSizeOverride("font_size", 22);
-        _errorTitleLabel.AddThemeColorOverride("font_color", UiPalette.InkSoft);
-        vbox.AddChild(_errorTitleLabel);
-
-        _errorBodyLabel = new Label
-        {
-            Text = "",
-            AutowrapMode = TextServer.AutowrapMode.WordSmart,
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
-        };
-        _errorBodyLabel.AddThemeFontSizeOverride("font_size", 16);
-        vbox.AddChild(_errorBodyLabel);
-
-        var actions = new HBoxContainer
-        {
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-            Alignment = BoxContainer.AlignmentMode.End,
-        };
-        var okButton = new Button { Text = "OK" };
-        okButton.AddThemeFontSizeOverride("font_size", 16);
-        okButton.Pressed += HideError;
-        AudioBus.AttachClick(okButton);
-        actions.AddChild(okButton);
-        vbox.AddChild(actions);
     }
 
     private void OnBackdropInput(InputEvent @event)

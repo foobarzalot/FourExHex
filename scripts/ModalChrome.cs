@@ -52,6 +52,65 @@ public static class ModalChrome
         };
     }
 
+    /// <summary>
+    /// Build the shared "save/load failed" error overlay — a dim backdrop plus
+    /// a fixed-size centered panel holding a left-aligned title, a word-wrapped
+    /// body label, and a bottom-right OK button (wired to
+    /// <paramref name="onOk"/>). Returns the pieces so the caller can stash the
+    /// references it needs and add the backdrop + panel to its own tree (both
+    /// start hidden). Shared by SlotPickerDialog and SaveNameModal.
+    /// </summary>
+    public static (ColorRect backdrop, PanelContainer panel, Label title, Label body) BuildErrorOverlay(
+        Vector2 viewport, float panelW, float panelH, string titleText, System.Action onOk)
+    {
+        ColorRect backdrop = BuildBackdrop(viewport);
+        backdrop.Visible = false;
+
+        PanelContainer panel = BuildCenteredPanel(panelW: panelW, panelH: panelH);
+        panel.Visible = false;
+
+        var vbox = new VBoxContainer
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+        };
+        vbox.AddThemeConstantOverride("separation", 14);
+        panel.AddChild(vbox);
+
+        var title = new Label
+        {
+            Text = titleText,
+            HorizontalAlignment = HorizontalAlignment.Left,
+        };
+        title.AddThemeFontSizeOverride("font_size", 22);
+        title.AddThemeColorOverride("font_color", UiPalette.InkSoft);
+        vbox.AddChild(title);
+
+        var body = new Label
+        {
+            Text = "",
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+        };
+        body.AddThemeFontSizeOverride("font_size", 16);
+        vbox.AddChild(body);
+
+        var actions = new HBoxContainer
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            Alignment = BoxContainer.AlignmentMode.End,
+        };
+        var okButton = new Button { Text = "OK" };
+        okButton.AddThemeFontSizeOverride("font_size", 16);
+        okButton.Pressed += onOk;
+        AudioBus.AttachClick(okButton);
+        actions.AddChild(okButton);
+        vbox.AddChild(actions);
+
+        return (backdrop, panel, title, body);
+    }
+
     // Large centered serif title with a decorative gold rule beneath — the
     // title block shared by the save/load modal family.
     public static Control BuildSerifTitle(string title)

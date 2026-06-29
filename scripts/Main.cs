@@ -780,11 +780,7 @@ public partial class Main : Node2D
             // Mirror the saved roster into GameSettings so a subsequent
             // Play Again preserves kinds — same pattern the main menu's
             // load uses.
-            for (int i = 0; i < loaded.Players.Count && i < GameSettings.PlayerKinds.Length; i++)
-            {
-                GameSettings.PlayerKinds[i] = loaded.Players[i].Kind;
-                GameSettings.Difficulties[i] = loaded.Players[i].Difficulty;
-            }
+            GameSettings.AdoptRosterFrom(loaded);
             _loadDialogPicked = true;
             // Drop any in-flight AI step so a stale SceneTreeTimer can't
             // fire against disposed nodes after the scene swap (same

@@ -8,28 +8,12 @@ using System.Collections.Generic;
 /// </summary>
 public class GameStateSnapshot
 {
-    private readonly struct TileState
-    {
-        public PlayerId Owner { get; }
-        public HexOccupant? Occupant { get; }
-        public bool IsGold { get; }
-        public bool IsMountain { get; }
-
-        public TileState(PlayerId owner, HexOccupant? occupant, bool isGold, bool isMountain)
-        {
-            Owner = owner;
-            Occupant = occupant;
-            IsGold = isGold;
-            IsMountain = isMountain;
-        }
-    }
-
-    private readonly Dictionary<HexCoord, TileState> _tiles;
+    private readonly Dictionary<HexCoord, SnapshotTileState> _tiles;
     private readonly Dictionary<HexCoord, int> _gold;
     private readonly IReadOnlyList<Territory> _territories;
 
     private GameStateSnapshot(
-        Dictionary<HexCoord, TileState> tiles,
+        Dictionary<HexCoord, SnapshotTileState> tiles,
         Dictionary<HexCoord, int> gold,
         IReadOnlyList<Territory> territories)
     {
@@ -47,15 +31,7 @@ public class GameStateSnapshot
         Treasury treasury,
         IReadOnlyList<Territory> territories)
     {
-        var tiles = new Dictionary<HexCoord, TileState>();
-        foreach (HexTile tile in grid.Tiles)
-        {
-            tiles[tile.Coord] = new TileState(
-                owner: tile.Owner,
-                occupant: HexOccupant.Clone(tile.Occupant),
-                isGold: tile.IsGold,
-                isMountain: tile.IsMountain);
-        }
+        var tiles = SnapshotTileState.CaptureTiles(grid);
 
         var gold = new Dictionary<HexCoord, int>();
         foreach (Territory t in territories)
@@ -82,7 +58,7 @@ public class GameStateSnapshot
     /// </summary>
     public IEnumerable<(HexCoord Coord, PlayerId Owner, HexOccupant? Occupant, bool IsGold, bool IsMountain)> EnumerateTiles()
     {
-        foreach (KeyValuePair<HexCoord, TileState> kvp in _tiles)
+        foreach (KeyValuePair<HexCoord, SnapshotTileState> kvp in _tiles)
         {
             yield return (kvp.Key, kvp.Value.Owner, kvp.Value.Occupant, kvp.Value.IsGold, kvp.Value.IsMountain);
         }
@@ -114,7 +90,7 @@ public class GameStateSnapshot
     /// </summary>
     public IReadOnlyList<Territory> ApplyTo(HexGrid grid, Treasury treasury)
     {
-        foreach (KeyValuePair<HexCoord, TileState> kvp in _tiles)
+        foreach (KeyValuePair<HexCoord, SnapshotTileState> kvp in _tiles)
         {
             HexTile? tile = grid.Get(kvp.Key);
             if (tile == null)

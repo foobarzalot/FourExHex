@@ -12,28 +12,12 @@ using System.Linq;
 /// </summary>
 public sealed class EditorSnapshot
 {
-    private readonly struct TileState
-    {
-        public PlayerId Owner { get; }
-        public HexOccupant? Occupant { get; }
-        public bool IsGold { get; }
-        public bool IsMountain { get; }
-
-        public TileState(PlayerId owner, HexOccupant? occupant, bool isGold, bool isMountain)
-        {
-            Owner = owner;
-            Occupant = occupant;
-            IsGold = isGold;
-            IsMountain = isMountain;
-        }
-    }
-
-    private readonly Dictionary<HexCoord, TileState> _tiles;
+    private readonly Dictionary<HexCoord, SnapshotTileState> _tiles;
     private readonly HashSet<HexCoord> _water;
     private readonly IReadOnlyList<Territory> _territories;
 
     private EditorSnapshot(
-        Dictionary<HexCoord, TileState> tiles,
+        Dictionary<HexCoord, SnapshotTileState> tiles,
         HashSet<HexCoord> water,
         IReadOnlyList<Territory> territories)
     {
@@ -47,11 +31,7 @@ public sealed class EditorSnapshot
         IReadOnlySet<HexCoord> water,
         IReadOnlyList<Territory> territories)
     {
-        var tiles = new Dictionary<HexCoord, TileState>();
-        foreach (HexTile tile in grid.Tiles)
-        {
-            tiles[tile.Coord] = new TileState(tile.Owner, HexOccupant.Clone(tile.Occupant), tile.IsGold, tile.IsMountain);
-        }
+        var tiles = SnapshotTileState.CaptureTiles(grid);
         return new EditorSnapshot(
             tiles,
             new HashSet<HexCoord>(water),
@@ -75,7 +55,7 @@ public sealed class EditorSnapshot
         foreach (HexTile tile in grid.Tiles)
         {
             liveCount++;
-            if (!_tiles.TryGetValue(tile.Coord, out TileState s)) return true;
+            if (!_tiles.TryGetValue(tile.Coord, out SnapshotTileState s)) return true;
             if (s.Owner != tile.Owner) return true;
             if (s.IsGold != tile.IsGold) return true;
             if (s.IsMountain != tile.IsMountain) return true;
@@ -115,7 +95,7 @@ public sealed class EditorSnapshot
         List<HexCoord> liveCoords = grid.Tiles.Select(t => t.Coord).ToList();
         foreach (HexCoord c in liveCoords) grid.Remove(c);
 
-        foreach (KeyValuePair<HexCoord, TileState> kvp in _tiles)
+        foreach (KeyValuePair<HexCoord, SnapshotTileState> kvp in _tiles)
         {
             var tile = new HexTile(kvp.Key, kvp.Value.Owner)
             {

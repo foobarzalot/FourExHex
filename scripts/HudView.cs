@@ -262,40 +262,16 @@ public partial class HudView : OrientationHud, IHudView
         // 5) Undo / Redo — two ghost icon buttons. A short click is
         // Undo/Redo Last; holding past the long-press threshold fires
         // Undo All / Redo All (the same actions Shift+Z / Shift+Y reach).
-        _undoLastButton = new HudIconButton(HudIcon.UndoLast)
-        {
-            Disabled = true,
-            TooltipText = "Undo — Z (hold for Undo All)",
-        };
-        _undoLastButton.Pressed += () =>
-        {
-            if (_undoLastButton.ConsumeLongPress()) return;
-            UndoLastClicked?.Invoke();
-        };
-        _undoLastButton.LongPressed += () =>
-        {
-            Log.Debug(Log.LogCategory.Input, "Undo button long-press -> Undo All");
-            UndoTurnClicked?.Invoke();
-        };
-        AudioBus.AttachClick(_undoLastButton);
+        _undoLastButton = MakeUndoRedoButton(
+            HudIcon.UndoLast, "Undo — Z (hold for Undo All)",
+            "Undo button long-press -> Undo All",
+            () => UndoLastClicked?.Invoke(), () => UndoTurnClicked?.Invoke());
         _undoCluster.AddChild(_undoLastButton);
 
-        _redoLastButton = new HudIconButton(HudIcon.RedoLast)
-        {
-            Disabled = true,
-            TooltipText = "Redo — Y (hold for Redo All)",
-        };
-        _redoLastButton.Pressed += () =>
-        {
-            if (_redoLastButton.ConsumeLongPress()) return;
-            RedoLastClicked?.Invoke();
-        };
-        _redoLastButton.LongPressed += () =>
-        {
-            Log.Debug(Log.LogCategory.Input, "Redo button long-press -> Redo All");
-            RedoAllClicked?.Invoke();
-        };
-        AudioBus.AttachClick(_redoLastButton);
+        _redoLastButton = MakeUndoRedoButton(
+            HudIcon.RedoLast, "Redo — Y (hold for Redo All)",
+            "Redo button long-press -> Redo All",
+            () => RedoLastClicked?.Invoke(), () => RedoAllClicked?.Invoke());
         _undoCluster.AddChild(_redoLastButton);
 
         // Next unmoved unit in the selected territory — same action as
@@ -368,6 +344,31 @@ public partial class HudView : OrientationHud, IHudView
         PositionEndgameOverlays();
         BuildTutorialOverlay();
         BuildBankruptToast();
+    }
+
+    // A ghost Undo/Redo icon button: short click fires <paramref name="shortPress"/>
+    // (swallowed when a long-press just completed), holding past the threshold
+    // logs <paramref name="logLabel"/> and fires <paramref name="longPress"/>.
+    private HudIconButton MakeUndoRedoButton(
+        HudIcon icon, string tooltip, string logLabel, Action shortPress, Action longPress)
+    {
+        var button = new HudIconButton(icon)
+        {
+            Disabled = true,
+            TooltipText = tooltip,
+        };
+        button.Pressed += () =>
+        {
+            if (button.ConsumeLongPress()) return;
+            shortPress();
+        };
+        button.LongPressed += () =>
+        {
+            Log.Debug(Log.LogCategory.Input, logLabel);
+            longPress();
+        };
+        AudioBus.AttachClick(button);
+        return button;
     }
 
     // ---- Orientation-aware layout (OrientationHud hooks) -----------------

@@ -1798,11 +1798,7 @@ public partial class MainMenuScene : Control
             // Mirror the saved player roster into GameSettings so the
             // menu reflects them next time it opens (and so re-launches
             // from a Play-Again button preserve the saved kinds).
-            for (int i = 0; i < loaded.Players.Count && i < GameSettings.PlayerKinds.Length; i++)
-            {
-                GameSettings.PlayerKinds[i] = loaded.Players[i].Kind;
-                GameSettings.Difficulties[i] = loaded.Players[i].Difficulty;
-            }
+            GameSettings.AdoptRosterFrom(loaded);
             GetTree().ChangeSceneToFile("res://scenes/main.tscn");
         }
         catch (System.Exception ex)
@@ -1818,11 +1814,7 @@ public partial class MainMenuScene : Control
         {
             LoadedSave loaded = _saveStore.LoadSlot(SaveStore.AutosaveSlotName);
             LoadRequest.Pending = loaded;
-            for (int i = 0; i < loaded.Players.Count && i < GameSettings.PlayerKinds.Length; i++)
-            {
-                GameSettings.PlayerKinds[i] = loaded.Players[i].Kind;
-                GameSettings.Difficulties[i] = loaded.Players[i].Difficulty;
-            }
+            GameSettings.AdoptRosterFrom(loaded);
             GetTree().ChangeSceneToFile("res://scenes/main.tscn");
         }
         catch (System.Exception ex)
