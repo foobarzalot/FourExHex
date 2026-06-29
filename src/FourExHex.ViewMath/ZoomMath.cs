@@ -1,7 +1,43 @@
 using System;
+using System.Collections.Generic;
 
 public static class ZoomMath
 {
+    /// <summary>
+    /// Index of the discrete zoom level nearest <paramref name="zoom"/> (a
+    /// min-abs-delta scan over <paramref name="levels"/>). Ties keep the lower
+    /// index. Used to re-sync the discrete level index after a continuous
+    /// gesture / framing change.
+    /// </summary>
+    public static int ClosestLevelIndex(IReadOnlyList<float> levels, float zoom)
+    {
+        int best = 0;
+        float bestDelta = Math.Abs(levels[0] - zoom);
+        for (int i = 1; i < levels.Count; i++)
+        {
+            float d = Math.Abs(levels[i] - zoom);
+            if (d < bestDelta)
+            {
+                bestDelta = d;
+                best = i;
+            }
+        }
+        return best;
+    }
+
+    /// <summary>
+    /// Target discrete level index after stepping <paramref name="delta"/> stops
+    /// (−1 out, +1 in) from the level nearest <paramref name="currentZoom"/>,
+    /// clamped to <c>[0, count−1]</c>. The caller decides whether the result
+    /// differs enough to apply (the view skips a no-op when already exactly on
+    /// the target stop).
+    /// </summary>
+    public static int StepLevel(IReadOnlyList<float> levels, float currentZoom, int delta)
+    {
+        int from = ClosestLevelIndex(levels, currentZoom);
+        return Math.Clamp(from + delta, 0, levels.Count - 1);
+    }
+
     /// <summary>
     /// Smallest zoom factor that keeps the entire map inside the play area
     /// (the viewport with the HUD strip subtracted off the top). Floored

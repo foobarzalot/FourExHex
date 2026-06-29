@@ -3039,7 +3039,7 @@ public partial class HexMapView : Node2D, IHexMapView
     {
         _zoom = Mathf.Clamp(zoom, _zoomMin, 1f);
         Scale = new Vector2(_zoom, _zoom);
-        _zoomLevelIndex = ClosestLevelIndex(_zoom);
+        _zoomLevelIndex = ZoomMath.ClosestLevelIndex(_zoomLevels, _zoom);
         var contentCenter = new Vector2(
             (_contentBox.minX + _contentBox.maxX) * 0.5f,
             (_contentBox.minY + _contentBox.maxY) * 0.5f) + contentCenterOffset;
@@ -3060,7 +3060,7 @@ public partial class HexMapView : Node2D, IHexMapView
     {
         _zoom = _zoomMin * overscan;
         Scale = new Vector2(_zoom, _zoom);
-        _zoomLevelIndex = ClosestLevelIndex(_zoom);
+        _zoomLevelIndex = ZoomMath.ClosestLevelIndex(_zoomLevels, _zoom);
         var gridCenter = new Vector2(PixelSize.X * 0.5f, PixelSize.Y * 0.5f);
         Position = ClampPan(VisualCenter() - ToWorldOffset(gridCenter, _zoom));
         LogCameraState("frame-grid");
@@ -3137,24 +3137,8 @@ public partial class HexMapView : Node2D, IHexMapView
         _zoomLevels = ZoomMath.BuildLevels(_zoomMin, ZoomLevelCount);
 
         _zoom = Mathf.Clamp(_zoom, _zoomMin, 1f);
-        _zoomLevelIndex = ClosestLevelIndex(_zoom);
+        _zoomLevelIndex = ZoomMath.ClosestLevelIndex(_zoomLevels, _zoom);
         Scale = new Vector2(_zoom, _zoom);
-    }
-
-    private int ClosestLevelIndex(float zoom)
-    {
-        int best = 0;
-        float bestDelta = Mathf.Abs(_zoomLevels[0] - zoom);
-        for (int i = 1; i < _zoomLevels.Length; i++)
-        {
-            float d = Mathf.Abs(_zoomLevels[i] - zoom);
-            if (d < bestDelta)
-            {
-                bestDelta = d;
-                best = i;
-            }
-        }
-        return best;
     }
 
     private void OnViewportResized()
@@ -3284,7 +3268,7 @@ public partial class HexMapView : Node2D, IHexMapView
         Scale = new Vector2(newZoom, newZoom);
         _zoom = newZoom;
         Position = ClampPan(anchorVp - ToWorldOffset(localUnderAnchor, newZoom));
-        _zoomLevelIndex = ClosestLevelIndex(_zoom);
+        _zoomLevelIndex = ZoomMath.ClosestLevelIndex(_zoomLevels, _zoom);
         LogCameraState("zoom");
     }
 
@@ -3306,8 +3290,10 @@ public partial class HexMapView : Node2D, IHexMapView
     /// keypress always moves a visible step.</summary>
     private void StepZoom(int delta, Vector2 anchorVp)
     {
-        int from = ClosestLevelIndex(_zoom);
-        int next = Mathf.Clamp(from + delta, 0, _zoomLevels.Length - 1);
+        int from = ZoomMath.ClosestLevelIndex(_zoomLevels, _zoom);
+        int next = ZoomMath.StepLevel(_zoomLevels, _zoom, delta);
+        // Skip a no-op step (already exactly on the target stop); the
+        // IsEqualApprox guard + ApplyZoom dispatch stay view-side.
         if (next == from && Mathf.IsEqualApprox(_zoom, _zoomLevels[from])) return;
         ApplyZoom(_zoomLevels[next], anchorVp);
     }

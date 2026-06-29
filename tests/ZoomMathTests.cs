@@ -156,4 +156,69 @@ public class ZoomMathTests
         Assert.Equal(0.7f, ZoomMath.PinchZoom(0.7f, prevDist: 0f, curDist: 150f), Tolerance);
         Assert.Equal(0.7f, ZoomMath.PinchZoom(0.7f, prevDist: -10f, curDist: 150f), Tolerance);
     }
+
+    // ---- ClosestLevelIndex ----------------------------------------------
+
+    private static readonly float[] Levels = { 0.5f, 0.625f, 0.75f, 0.875f, 1f };
+
+    [Fact]
+    public void ClosestLevelIndex_ExactMatch_ReturnsThatIndex()
+    {
+        Assert.Equal(0, ZoomMath.ClosestLevelIndex(Levels, 0.5f));
+        Assert.Equal(2, ZoomMath.ClosestLevelIndex(Levels, 0.75f));
+        Assert.Equal(4, ZoomMath.ClosestLevelIndex(Levels, 1f));
+    }
+
+    [Fact]
+    public void ClosestLevelIndex_BetweenStops_PicksNearest()
+    {
+        Assert.Equal(1, ZoomMath.ClosestLevelIndex(Levels, 0.6f));   // 0.6 closer to 0.625
+        Assert.Equal(3, ZoomMath.ClosestLevelIndex(Levels, 0.83f));  // closer to 0.875
+    }
+
+    [Fact]
+    public void ClosestLevelIndex_TiePrefersLowerIndex()
+    {
+        // 0.5625 is exactly between 0.5 (idx 0) and 0.625 (idx 1); strict-less
+        // keeps the earlier (lower) index.
+        Assert.Equal(0, ZoomMath.ClosestLevelIndex(Levels, 0.5625f));
+    }
+
+    [Fact]
+    public void ClosestLevelIndex_OutsideRange_ClampsToEnds()
+    {
+        Assert.Equal(0, ZoomMath.ClosestLevelIndex(Levels, 0.1f));
+        Assert.Equal(4, ZoomMath.ClosestLevelIndex(Levels, 5f));
+    }
+
+    // ---- StepLevel -------------------------------------------------------
+
+    [Fact]
+    public void StepLevel_MovesOneStopFromNearest()
+    {
+        Assert.Equal(3, ZoomMath.StepLevel(Levels, 0.75f, +1));  // idx 2 -> 3
+        Assert.Equal(1, ZoomMath.StepLevel(Levels, 0.75f, -1));  // idx 2 -> 1
+    }
+
+    [Fact]
+    public void StepLevel_StartsFromNearestWhenOffStop()
+    {
+        // 0.6 nearest is idx 1 (0.625); +1 -> 2.
+        Assert.Equal(2, ZoomMath.StepLevel(Levels, 0.6f, +1));
+    }
+
+    [Fact]
+    public void StepLevel_ClampsAtEnds()
+    {
+        Assert.Equal(0, ZoomMath.StepLevel(Levels, 0.5f, -1));   // already at bottom
+        Assert.Equal(4, ZoomMath.StepLevel(Levels, 1f, +1));     // already at top
+        Assert.Equal(0, ZoomMath.StepLevel(Levels, 0.75f, -10)); // big step floors at 0
+        Assert.Equal(4, ZoomMath.StepLevel(Levels, 0.75f, +10)); // big step caps at last
+    }
+
+    [Fact]
+    public void StepLevel_ZeroDelta_ReturnsNearest()
+    {
+        Assert.Equal(2, ZoomMath.StepLevel(Levels, 0.74f, 0));
+    }
 }
