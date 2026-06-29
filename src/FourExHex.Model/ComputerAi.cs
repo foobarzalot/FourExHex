@@ -51,14 +51,11 @@ public static class ComputerAi
         Random rng)
     {
         long methodStart = Log.Stamp();
-        long cloneTicks = 0, applyTicks = 0, scoreTicks = 0;
-        int totalCandidates = 0, positiveCandidates = 0;
-        int observedBestDelta = int.MinValue;
-        AiActionKind? observedBestKind = null;
+        var prof = new AiSearchProfile();
 
         long scoreT = Log.Stamp();
         int baseScore = AiStateScorer.Score(state, forPlayer);
-        scoreTicks += Log.Stamp() - scoreT;
+        prof.ScoreTicks += Log.Stamp() - scoreT;
 
         foreach (Territory t in state.Territories
             .OrderByDescending(terr => terr.Size)
@@ -74,94 +71,94 @@ public static class ComputerAi
             foreach (HexCoord unitCoord in MovementRules.MovableUnitsInPowerOrder(t, forPlayer, state.Grid))
             {
                 Unit unit = state.Grid.Get(unitCoord)!.Unit!;
-                AiAction? p1 = BestPositiveDelta(
-                    AiCommon.EnumeratePhase1ForUnit(unitCoord, unit, t, state),
-                    int.MinValue, // never decline a free capture/chop/grave for the status quo
-                    baseScore, forPlayer, state,
-                    ref cloneTicks, ref applyTicks, ref scoreTicks,
-                    ref totalCandidates, ref positiveCandidates,
-                    ref observedBestDelta, ref observedBestKind);
-                if (p1 != null) { EmitProfile(methodStart, cloneTicks, applyTicks, scoreTicks, totalCandidates); _ = rng; return p1; }
+                // never decline a free capture/chop/grave for the status quo
+                AiAction? p1 = TryPhase(AiCommon.EnumeratePhase1ForUnit(unitCoord, unit, t, state),
+                    int.MinValue, methodStart, baseScore, forPlayer, state, prof);
+                if (p1 != null) { _ = rng; return p1; }
             }
 
             // Phase 2a: combine-to-unlock (existing units)
             foreach (HexCoord unitCoord in MovementRules.MovableUnitsInPowerOrder(t, forPlayer, state.Grid))
             {
                 Unit unit = state.Grid.Get(unitCoord)!.Unit!;
-                AiAction? p2a = BestPositiveDelta(
-                    AiCommon.EnumeratePhase2aForUnit(unitCoord, unit, t, state),
-                    int.MinValue, // never decline an unlock-combine for the status quo
-                    baseScore, forPlayer, state,
-                    ref cloneTicks, ref applyTicks, ref scoreTicks,
-                    ref totalCandidates, ref positiveCandidates,
-                    ref observedBestDelta, ref observedBestKind);
-                if (p2a != null) { EmitProfile(methodStart, cloneTicks, applyTicks, scoreTicks, totalCandidates); _ = rng; return p2a; }
+                // never decline an unlock-combine for the status quo
+                AiAction? p2a = TryPhase(AiCommon.EnumeratePhase2aForUnit(unitCoord, unit, t, state),
+                    int.MinValue, methodStart, baseScore, forPlayer, state, prof);
+                if (p2a != null) { _ = rng; return p2a; }
             }
 
-            // Phase 2b: buy-and-combine-to-unlock
+            // Phase 2b: buy-and-combine-to-unlock (strictly-positive gate)
             {
-                AiAction? p2b = BestPositiveDelta(
-                    AiCommon.EnumeratePhase2b(t, state),
-                    0, // strictly-positive gate (buy-combine is always-positive anyway)
-                    baseScore, forPlayer, state,
-                    ref cloneTicks, ref applyTicks, ref scoreTicks,
-                    ref totalCandidates, ref positiveCandidates,
-                    ref observedBestDelta, ref observedBestKind);
-                if (p2b != null) { EmitProfile(methodStart, cloneTicks, applyTicks, scoreTicks, totalCandidates); _ = rng; return p2b; }
+                AiAction? p2b = TryPhase(AiCommon.EnumeratePhase2b(t, state),
+                    0, methodStart, baseScore, forPlayer, state, prof);
+                if (p2b != null) { _ = rng; return p2b; }
             }
 
-            // Phase 3: buy-to-capture / buy-to-chop
+            // Phase 3: buy-to-capture / buy-to-chop (strictly-positive gate)
             {
-                AiAction? p3 = BestPositiveDelta(
-                    AiCommon.EnumeratePhase3(t, state),
-                    0, // strictly-positive gate (buy-capture/chop is always-positive anyway)
-                    baseScore, forPlayer, state,
-                    ref cloneTicks, ref applyTicks, ref scoreTicks,
-                    ref totalCandidates, ref positiveCandidates,
-                    ref observedBestDelta, ref observedBestKind);
-                if (p3 != null) { EmitProfile(methodStart, cloneTicks, applyTicks, scoreTicks, totalCandidates); _ = rng; return p3; }
+                AiAction? p3 = TryPhase(AiCommon.EnumeratePhase3(t, state),
+                    0, methodStart, baseScore, forPlayer, state, prof);
+                if (p3 != null) { _ = rng; return p3; }
             }
 
-            // Phase 4a: tower placement
+            // Phase 4a: tower placement (optional — doing nothing is valid)
             {
-                AiAction? p4a = BestPositiveDelta(
-                    AiCommon.EnumeratePhase4Towers(t, state),
-                    0, // optional defensive action — doing nothing is valid
-                    baseScore, forPlayer, state,
-                    ref cloneTicks, ref applyTicks, ref scoreTicks,
-                    ref totalCandidates, ref positiveCandidates,
-                    ref observedBestDelta, ref observedBestKind);
-                if (p4a != null) { EmitProfile(methodStart, cloneTicks, applyTicks, scoreTicks, totalCandidates); _ = rng; return p4a; }
+                AiAction? p4a = TryPhase(AiCommon.EnumeratePhase4Towers(t, state),
+                    0, methodStart, baseScore, forPlayer, state, prof);
+                if (p4a != null) { _ = rng; return p4a; }
             }
 
-            // Phase 4b: defensive repositions
+            // Phase 4b: defensive repositions (optional — doing nothing is valid)
             foreach (HexCoord unitCoord in MovementRules.MovableUnitsInPowerOrder(t, forPlayer, state.Grid))
             {
                 Unit unit = state.Grid.Get(unitCoord)!.Unit!;
-                AiAction? p4b = BestPositiveDelta(
-                    AiCommon.EnumeratePhase4bForUnit(unitCoord, unit, t, state),
-                    0, // optional defensive action — doing nothing is valid
-                    baseScore, forPlayer, state,
-                    ref cloneTicks, ref applyTicks, ref scoreTicks,
-                    ref totalCandidates, ref positiveCandidates,
-                    ref observedBestDelta, ref observedBestKind);
-                if (p4b != null) { EmitProfile(methodStart, cloneTicks, applyTicks, scoreTicks, totalCandidates); _ = rng; return p4b; }
+                AiAction? p4b = TryPhase(AiCommon.EnumeratePhase4bForUnit(unitCoord, unit, t, state),
+                    0, methodStart, baseScore, forPlayer, state, prof);
+                if (p4b != null) { _ = rng; return p4b; }
             }
 
             // All phases exhausted for this territory.
-            if (totalCandidates > 0)
+            if (prof.TotalCandidates > 0)
             {
                 Log.Debug(Log.LogCategory.Ai,
-                    $"[heuristic] {forPlayer} territory={t.Capital} has {totalCandidates} candidates " +
-                    $"({positiveCandidates} positive); best delta = " +
-                    $"{observedBestDelta:+#;-#;0} ({observedBestKind?.ToString() ?? "?"})");
+                    $"[heuristic] {forPlayer} territory={t.Capital} has {prof.TotalCandidates} candidates " +
+                    $"({prof.PositiveCandidates} positive); best delta = " +
+                    $"{prof.ObservedBestDelta:+#;-#;0} ({prof.ObservedBestKind?.ToString() ?? "?"})");
             }
             visitedCapitals.Add(t.Capital!.Value);
         }
 
         _ = rng;
-        EmitProfile(methodStart, cloneTicks, applyTicks, scoreTicks, totalCandidates);
+        EmitProfile(methodStart, prof.CloneTicks, prof.ApplyTicks, prof.ScoreTicks, prof.TotalCandidates);
         return null;
+    }
+
+    /// <summary>Run one phase's candidate search and, when it yields an action,
+    /// emit the per-action profiling line before returning it. Returns null when
+    /// the phase produced no winning candidate. Accumulates counters into
+    /// <paramref name="prof"/> (shared across all phases of this call).</summary>
+    private static AiAction? TryPhase(
+        IEnumerable<AiCandidate> candidates, int threshold,
+        long methodStart, int baseScore, PlayerId forPlayer, GameState state, AiSearchProfile prof)
+    {
+        AiAction? action = BestPositiveDelta(candidates, threshold, baseScore, forPlayer, state, prof);
+        if (action != null)
+            EmitProfile(methodStart, prof.CloneTicks, prof.ApplyTicks, prof.ScoreTicks, prof.TotalCandidates);
+        return action;
+    }
+
+    /// <summary>Mutable per-<see cref="ChooseNextAction"/> search accumulators —
+    /// timing buckets, candidate counts, and the best observed delta — passed
+    /// through every phase so they accumulate across the whole call.</summary>
+    private sealed class AiSearchProfile
+    {
+        public long CloneTicks;
+        public long ApplyTicks;
+        public long ScoreTicks;
+        public int TotalCandidates;
+        public int PositiveCandidates;
+        public int ObservedBestDelta = int.MinValue;
+        public AiActionKind? ObservedBestKind;
     }
 
     /// <summary>
@@ -182,32 +179,26 @@ public static class ComputerAi
         int baseScore,
         PlayerId forPlayer,
         GameState state,
-        ref long cloneTicks,
-        ref long applyTicks,
-        ref long scoreTicks,
-        ref int totalCandidates,
-        ref int positiveCandidates,
-        ref int observedBestDelta,
-        ref AiActionKind? observedBestKind)
+        AiSearchProfile prof)
     {
         AiAction? best = null;
         int bestDelta = threshold;
 
         foreach (AiCandidate candidate in candidates)
         {
-            totalCandidates++;
+            prof.TotalCandidates++;
 
             long cloneT = Log.Stamp();
             GameState clone = AiSimulator.Clone(state);
-            cloneTicks += Log.Stamp() - cloneT;
+            prof.CloneTicks += Log.Stamp() - cloneT;
 
             long applyT = Log.Stamp();
             AiSimulator.Apply(candidate.Action, clone);
-            applyTicks += Log.Stamp() - applyT;
+            prof.ApplyTicks += Log.Stamp() - applyT;
 
             long scoreT = Log.Stamp();
             int afterScore = AiStateScorer.Score(clone, forPlayer);
-            scoreTicks += Log.Stamp() - scoreT;
+            prof.ScoreTicks += Log.Stamp() - scoreT;
             int delta = afterScore - baseScore;
 
             if (candidate.Action is AiBuildTowerAction bt)
@@ -218,11 +209,11 @@ public static class ComputerAi
             if (candidate.Action is AiMoveAction mv)
                 delta += AiStateScorer.EvacuationBonus(mv, state, forPlayer);
 
-            if (delta > 0) positiveCandidates++;
-            if (delta > observedBestDelta)
+            if (delta > 0) prof.PositiveCandidates++;
+            if (delta > prof.ObservedBestDelta)
             {
-                observedBestDelta = delta;
-                observedBestKind = candidate.Kind;
+                prof.ObservedBestDelta = delta;
+                prof.ObservedBestKind = candidate.Kind;
             }
             if (delta > bestDelta)
             {
