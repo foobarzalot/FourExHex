@@ -844,8 +844,15 @@ freeform; selection draws no RNG in either mode).
 returns the sole capital-bearing owner (else null). `HandleCapture`'s mid-turn
 domination check and `EndOfTurnProcessing`'s sole-capital check both route to it
 (the latter now runs *after* `ApplyPendingTide`, so an end-of-turn flood that
-drowns the last capital is seen); `GameController.OnEndTurnPressed` suppresses the
-claim-victory tiers entirely.
+drowns the last capital is seen). This is the only *forced* end.
+
+**Claim-victory tiers apply in Rising Tides too.** The 50/75/90% claim-victory
+offer (`OnEndTurnPressed`) is **not** suppressed in Rising Tides — a human with a
+dominant territorial lead can still take the early win. The percentage is measured
+against the **current, non-sunk** tiles automatically: a submerged tile is
+`Grid.Remove`'d, so `NextClaimVictoryThreshold` (which counts `state.Grid.Tiles`)
+tracks the shrinking board with no special-casing. See the *Claim victory prompt*
+section for the shared mechanism.
 
 **Defeat at turn end (#85).** The end-of-turn flood can eliminate the player whose
 turn just ended — including a human. `ApplyPendingTide` calls
@@ -895,6 +902,20 @@ threads `_mapMode` into `BuildSaveState`, and `Main`'s starting-map load forward
 the grown water set, **and the locked `PendingTide` forecast** persist through the
 **v14** save format (see *Save / load*); `FOUREXHEX_MODE=RisingTides` forces the
 mode for headless 6AI runs.
+
+**Replay fidelity (shrunken-grid rewind).** Replay rewinds to the recorded
+initial snapshot and re-runs every beat, recomputing the tide each turn. Rising
+Tides is the one mode where the board can *shrink* mid-game (submerged tiles are
+`Grid.Remove`'d), which broke the naive rewind: (1) `GameStateSnapshot.ApplyTo`
+used to skip any captured tile no longer in the grid, so the rewound board was
+missing every sunk tile — it now **re-adds** missing tiles (harmless for freeform,
+whose grid never shrinks); (2) `ReplayRecorder.BeginReplay` now drops the re-grown
+coords from the water set (`GameState.RemoveWater`) and re-seeds the first player's
+turn-1 `PendingTide` forecast (`ForecastTideForCurrentPlayer`), mirroring the live
+`GameController.Resume(freshStart:true)` — `StartPlayerTurn` re-forecasts every
+later turn. Without these the first end-of-turn tide eroded different tiles, the
+board diverged, and a recorded AI action replayed onto the wrong board (illegal
+placement → throw). Covered by the Rising Tides `ReplayFidelityTests` checksum.
 
 **Campaign.** `CampaignProgress.ModeForLevel(level)` (deterministic, integer-only,
 same seeded-draw style as `MapGenOptionsForLevel`) makes a rare minority of
@@ -1852,7 +1873,11 @@ Three independent tiers, defined by the constant
 which returns the **highest** tier the player meets that is strictly
 greater than the highest tier they've already dismissed (or null).
 Strict `>` semantics; water (off-map) is excluded because it isn't part
-of `state.Grid.Tiles`.
+of `state.Grid.Tiles`. The prompt fires in **both** game modes: in
+Rising Tides the same `state.Grid.Tiles` denominator means the tiers are
+measured against the current non-sunk tiles, so a player can claim once
+their share of the *remaining* board crosses a tier even as the sea
+shrinks it.
 
 If a tier is returned, `OnEndTurnPressed` sets
 `SessionState.PendingClaimVictory = (color, threshold)` and refreshes
