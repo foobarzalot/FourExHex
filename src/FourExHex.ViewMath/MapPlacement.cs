@@ -84,4 +84,23 @@ public static class MapPlacement
     public static (float minX, float minY, float maxX, float maxY) RotatedBoardBox(
         float width, float height, float zoom, float angleRad) =>
         RotatedRectBox(0f, 0f, width, height, zoom, angleRad);
+
+    /// <summary>Midpoint of the box <c>[minX,maxX]×[minY,maxY]</c> — the center
+    /// the view frames on (content box for centering, grid box for the
+    /// thumbnail).</summary>
+    public static (float x, float y) BoxCenter(float minX, float minY, float maxX, float maxY) =>
+        ((minX + maxX) * 0.5f, (minY + maxY) * 0.5f);
+
+    /// <summary>Map an unscaled local board offset to a world-space offset by
+    /// applying <paramref name="zoom"/> then rotating by
+    /// <paramref name="angleRad"/>. Uses Godot's <c>Vector2.Rotated</c>
+    /// convention (<c>x' = x·cos − y·sin, y' = x·sin + y·cos</c>) so the view can
+    /// subtract the result from a viewport-space center directly.</summary>
+    public static (float x, float y) ToWorldOffset(
+        float offsetX, float offsetY, float zoom, float angleRad)
+    {
+        float sx = offsetX * zoom, sy = offsetY * zoom;
+        float cos = MathF.Cos(angleRad), sin = MathF.Sin(angleRad);
+        return (sx * cos - sy * sin, sx * sin + sy * cos);
+    }
 }

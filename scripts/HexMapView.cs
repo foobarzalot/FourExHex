@@ -3040,9 +3040,9 @@ public partial class HexMapView : Node2D, IHexMapView
         _zoom = Mathf.Clamp(zoom, _zoomMin, 1f);
         Scale = new Vector2(_zoom, _zoom);
         _zoomLevelIndex = ZoomMath.ClosestLevelIndex(_zoomLevels, _zoom);
-        var contentCenter = new Vector2(
-            (_contentBox.minX + _contentBox.maxX) * 0.5f,
-            (_contentBox.minY + _contentBox.maxY) * 0.5f) + contentCenterOffset;
+        (float ccx, float ccy) = MapPlacement.BoxCenter(
+            _contentBox.minX, _contentBox.minY, _contentBox.maxX, _contentBox.maxY);
+        var contentCenter = new Vector2(ccx, ccy) + contentCenterOffset;
         Position = ClampPan(VisualCenter() - ToWorldOffset(contentCenter, _zoom));
         LogCameraState("set");
     }
@@ -3061,7 +3061,8 @@ public partial class HexMapView : Node2D, IHexMapView
         _zoom = _zoomMin * overscan;
         Scale = new Vector2(_zoom, _zoom);
         _zoomLevelIndex = ZoomMath.ClosestLevelIndex(_zoomLevels, _zoom);
-        var gridCenter = new Vector2(PixelSize.X * 0.5f, PixelSize.Y * 0.5f);
+        (float gcx, float gcy) = MapPlacement.BoxCenter(0f, 0f, PixelSize.X, PixelSize.Y);
+        var gridCenter = new Vector2(gcx, gcy);
         Position = ClampPan(VisualCenter() - ToWorldOffset(gridCenter, _zoom));
         LogCameraState("frame-grid");
     }
@@ -3071,9 +3072,9 @@ public partial class HexMapView : Node2D, IHexMapView
     /// sit off-center in a padded grid still frames centered.</summary>
     private void RecenterMap()
     {
-        var contentCenter = new Vector2(
-            (_contentBox.minX + _contentBox.maxX) * 0.5f,
-            (_contentBox.minY + _contentBox.maxY) * 0.5f);
+        (float ccx, float ccy) = MapPlacement.BoxCenter(
+            _contentBox.minX, _contentBox.minY, _contentBox.maxX, _contentBox.maxY);
+        var contentCenter = new Vector2(ccx, ccy);
         Position = ClampPan(VisualCenter() - ToWorldOffset(contentCenter, _zoom));
 
         // Centering instrumentation (Render:Debug, compile-stripped from
@@ -3120,8 +3121,11 @@ public partial class HexMapView : Node2D, IHexMapView
     /// <summary>Map an unscaled local board offset to a world-space offset by
     /// applying the current zoom and board rotation. (The inverse direction —
     /// world→local for input — is handled by Godot's <c>ToLocal</c>.)</summary>
-    private Vector2 ToWorldOffset(Vector2 localOffset, float zoom) =>
-        (localOffset * zoom).Rotated(_mapAngleRad);
+    private Vector2 ToWorldOffset(Vector2 localOffset, float zoom)
+    {
+        (float x, float y) = MapPlacement.ToWorldOffset(localOffset.X, localOffset.Y, zoom, _mapAngleRad);
+        return new Vector2(x, y);
+    }
 
     /// <summary>Recompute zoom range and discrete levels for the current
     /// viewport size and snap _zoom into range. Called on _Ready and
