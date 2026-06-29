@@ -2987,8 +2987,8 @@ public partial class HexMapView : Node2D, IHexMapView
     private Vector2 VisualCenter()
     {
         Vector2 vp = GetViewportRect().Size;
-        float availY = vp.Y - _topInset - _bottomInset;
-        return new Vector2(vp.X * 0.5f, _topInset + availY * 0.5f);
+        (float x, float y) = PanMath.VisualCenter(vp.X, vp.Y, _topInset, _bottomInset);
+        return new Vector2(x, y);
     }
 
     /// <summary>Clamp the proposed Position so the map can't be dragged off-
@@ -2999,8 +2999,6 @@ public partial class HexMapView : Node2D, IHexMapView
     private Vector2 ClampPan(Vector2 desired)
     {
         Vector2 vp = GetViewportRect().Size;
-        float availX = vp.X;
-        float availY = vp.Y - _topInset - _bottomInset;
         // On-screen bounding box of the (scaled + rotated) full nominal grid
         // (Cols×Rows), relative to this node's origin. Pan-clamping frames the
         // whole grid — NOT the content box — so a sparsely-painted editor map or
@@ -3010,21 +3008,14 @@ public partial class HexMapView : Node2D, IHexMapView
         (float minX, float minY, float maxX, float maxY) =
             MapPlacement.RotatedBoardBox(PixelSize.X, PixelSize.Y, _zoom, _mapAngleRad);
         // Symmetric scrollable pad applied in viewport space — a rotated
-        // symmetric pad is still symmetric, so we widen the rotated AABB
-        // directly instead of feeding the pad through RotatedBoardBox.
-        // This lets edge hexes pan clear of the floating HUD chips/buttons
-        // that overlay the viewport corners. Sized in board-
-        // local pixels and scaled by zoom to match the rest of the box.
+        // symmetric pad is still symmetric, so PanMath widens the rotated AABB
+        // directly. This lets edge hexes pan clear of the floating HUD
+        // chips/buttons that overlay the viewport corners. Sized in board-local
+        // pixels and scaled by zoom to match the rest of the box.
         float pad = ScrollPaddingPx * _zoom;
-        minX -= pad; minY -= pad; maxX += pad; maxY += pad;
-        float boxW = maxX - minX;
-        float boxH = maxY - minY;
-        float x = boxW <= availX
-            ? (availX - boxW) * 0.5f - minX
-            : Mathf.Clamp(desired.X, availX - maxX, -minX);
-        float y = boxH <= availY
-            ? _topInset + (availY - boxH) * 0.5f - minY
-            : Mathf.Clamp(desired.Y, _topInset + availY - maxY, _topInset - minY);
+        (float x, float y) = PanMath.Clamp(
+            desired.X, desired.Y, vp.X, vp.Y, _topInset, _bottomInset,
+            minX, minY, maxX, maxY, pad);
         return new Vector2(x, y);
     }
 
