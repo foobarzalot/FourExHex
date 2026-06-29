@@ -511,18 +511,25 @@ public static class SaveSerializer
         var dtos = new List<TileDto>();
         foreach (HexTile tile in grid.Tiles)
         {
-            dtos.Add(new TileDto
-            {
-                Q = tile.Coord.Q,
-                R = tile.Coord.R,
-                OwnerIndex = IdToOwnerIndex(tile.Owner),
-                Occupant = SerializeOccupant(tile.Occupant),
-                IsGold = tile.IsGold,
-                IsMountain = tile.IsMountain,
-            });
+            dtos.Add(ToTileDto(
+                tile.Coord.Q, tile.Coord.R, tile.Owner, tile.Occupant, tile.IsGold, tile.IsMountain));
         }
         return dtos;
     }
+
+    // Build a wire TileDto from a tile's fields — shared by the live-grid tile
+    // loop and the replay initial-snapshot tile loop.
+    private static TileDto ToTileDto(
+        int q, int r, PlayerId owner, HexOccupant? occupant, bool isGold, bool isMountain)
+        => new TileDto
+        {
+            Q = q,
+            R = r,
+            OwnerIndex = IdToOwnerIndex(owner),
+            Occupant = SerializeOccupant(occupant),
+            IsGold = isGold,
+            IsMountain = isMountain,
+        };
 
     // --- Occupants -------------------------------------------------------
 
@@ -576,20 +583,27 @@ public static class SaveSerializer
         var dtos = new List<TerritoryDto>(territories.Count);
         foreach (Territory t in territories)
         {
-            var coords = new List<CoordDto>(t.Coords.Count);
-            foreach (HexCoord c in t.Coords)
-            {
-                coords.Add(new CoordDto { Q = c.Q, R = c.R });
-            }
-            dtos.Add(new TerritoryDto
-            {
-                OwnerIndex = IdToOwnerIndex(t.Owner),
-                Coords = coords,
-                CapitalQ = t.Capital?.Q,
-                CapitalR = t.Capital?.R,
-            });
+            dtos.Add(ToTerritoryDto(t));
         }
         return dtos;
+    }
+
+    // Build a wire TerritoryDto from a Territory — shared by the live-state and
+    // replay initial-snapshot territory loops.
+    private static TerritoryDto ToTerritoryDto(Territory t)
+    {
+        var coords = new List<CoordDto>(t.Coords.Count);
+        foreach (HexCoord c in t.Coords)
+        {
+            coords.Add(new CoordDto { Q = c.Q, R = c.R });
+        }
+        return new TerritoryDto
+        {
+            OwnerIndex = IdToOwnerIndex(t.Owner),
+            Coords = coords,
+            CapitalQ = t.Capital?.Q,
+            CapitalR = t.Capital?.R,
+        };
     }
 
     private static IReadOnlyList<Territory> DeserializeTerritories(
@@ -598,18 +612,25 @@ public static class SaveSerializer
         var territories = new List<Territory>(dtos.Count);
         foreach (TerritoryDto dto in dtos)
         {
-            PlayerId owner = OwnerIndexToId(dto.OwnerIndex, players);
-            var coords = new List<HexCoord>(dto.Coords.Count);
-            foreach (CoordDto c in dto.Coords)
-            {
-                coords.Add(new HexCoord(c.Q, c.R));
-            }
-            HexCoord? capital = dto.CapitalQ.HasValue && dto.CapitalR.HasValue
-                ? new HexCoord(dto.CapitalQ.Value, dto.CapitalR.Value)
-                : (HexCoord?)null;
-            territories.Add(new Territory(owner, coords, capital));
+            territories.Add(FromTerritoryDto(dto, players));
         }
         return territories;
+    }
+
+    // Rebuild a Territory from a wire TerritoryDto — shared by the live-state
+    // and replay initial-snapshot territory rebuild loops.
+    private static Territory FromTerritoryDto(TerritoryDto dto, IReadOnlyList<Player> players)
+    {
+        PlayerId owner = OwnerIndexToId(dto.OwnerIndex, players);
+        var coords = new List<HexCoord>(dto.Coords.Count);
+        foreach (CoordDto c in dto.Coords)
+        {
+            coords.Add(new HexCoord(c.Q, c.R));
+        }
+        HexCoord? capital = dto.CapitalQ.HasValue && dto.CapitalR.HasValue
+            ? new HexCoord(dto.CapitalQ.Value, dto.CapitalR.Value)
+            : (HexCoord?)null;
+        return new Territory(owner, coords, capital);
     }
 
     // --- Gold ------------------------------------------------------------
@@ -640,15 +661,7 @@ public static class SaveSerializer
         var tileDtos = new List<TileDto>();
         foreach ((HexCoord coord, PlayerId owner, HexOccupant? occupant, bool isGold, bool isMountain) in replay.InitialSnapshot.EnumerateTiles())
         {
-            tileDtos.Add(new TileDto
-            {
-                Q = coord.Q,
-                R = coord.R,
-                OwnerIndex = IdToOwnerIndex(owner),
-                Occupant = SerializeOccupant(occupant),
-                IsGold = isGold,
-                IsMountain = isMountain,
-            });
+            tileDtos.Add(ToTileDto(coord.Q, coord.R, owner, occupant, isGold, isMountain));
         }
         var goldDtos = new List<CapitalGoldDto>();
         foreach ((HexCoord cap, int gold) in replay.InitialSnapshot.EnumerateGold())
@@ -658,18 +671,7 @@ public static class SaveSerializer
         var territoryDtos = new List<TerritoryDto>();
         foreach (Territory t in replay.InitialSnapshot.Territories)
         {
-            var coordDtos = new List<CoordDto>(t.Coords.Count);
-            foreach (HexCoord c in t.Coords)
-            {
-                coordDtos.Add(new CoordDto { Q = c.Q, R = c.R });
-            }
-            territoryDtos.Add(new TerritoryDto
-            {
-                OwnerIndex = IdToOwnerIndex(t.Owner),
-                Coords = coordDtos,
-                CapitalQ = t.Capital?.Q,
-                CapitalR = t.Capital?.R,
-            });
+            territoryDtos.Add(ToTerritoryDto(t));
         }
         return new ReplayDto
         {
@@ -702,13 +704,7 @@ public static class SaveSerializer
         var territories = new List<Territory>(dto.InitialState.Territories.Count);
         foreach (TerritoryDto td in dto.InitialState.Territories)
         {
-            PlayerId owner = OwnerIndexToId(td.OwnerIndex, players);
-            var coords = new List<HexCoord>(td.Coords.Count);
-            foreach (CoordDto c in td.Coords) coords.Add(new HexCoord(c.Q, c.R));
-            HexCoord? capital = td.CapitalQ.HasValue && td.CapitalR.HasValue
-                ? new HexCoord(td.CapitalQ.Value, td.CapitalR.Value)
-                : (HexCoord?)null;
-            territories.Add(new Territory(owner, coords, capital));
+            territories.Add(FromTerritoryDto(td, players));
         }
         var treasury = new Treasury();
         foreach (CapitalGoldDto g in dto.InitialState.Gold)
