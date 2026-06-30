@@ -79,10 +79,10 @@ public interface IHexMapView
     /// <summary>
     /// Fog Of War: render the board from the single human player's perspective
     /// per the given projection — tiles in <see cref="FogView.Visible"/> render
-    /// live, ever-seen tiles render their dimmed last-seen memory
-    /// (<see cref="FogView.Remembered"/>), never-seen tiles render nothing. The
-    /// controller pushes the current projection each refresh; pass <c>null</c>
-    /// (outside Fog Of War) to render everything normally.
+    /// live; seen-but-not-visible (stale) tiles render their static terrain
+    /// greyed + dimmed, with no owner colour and no occupant; never-seen tiles
+    /// render nothing. The controller pushes the current projection each refresh;
+    /// pass <c>null</c> (outside Fog Of War) to render everything normally.
     /// </summary>
     void ShowFog(FogView? fog);
 

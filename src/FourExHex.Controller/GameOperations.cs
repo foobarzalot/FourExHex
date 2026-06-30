@@ -673,7 +673,7 @@ public class GameOperations
         FogView? fog = VisibilityRules.BuildProjection(_state);
         if (fog != null)
             Log.Debug(Log.LogCategory.Fog,
-                $"[fog] visible={fog.Visible.Count} remembered={_state.Remembered.Count}");
+                $"[fog] visible={fog.Visible.Count} seen={_state.Seen.Count}");
         return fog;
     }
 

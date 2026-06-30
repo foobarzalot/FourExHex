@@ -150,7 +150,7 @@ public class SaveSerializerTests
     }
 
     [Fact]
-    public void FogMemory_RoundTripsOwnerAndOccupant()
+    public void FogSeen_RoundTripsExploredCoords()
     {
         var red = new Player("Red", PlayerId.FromIndex(0), PlayerKind.Human);
         var blue = new Player("Blue", PlayerId.FromIndex(1), PlayerKind.Computer);
@@ -162,32 +162,32 @@ public class SaveSerializerTests
             grid, territories, players, new TurnState(players), new Treasury(),
             waterCoords: null, mode: GameMode.FogOfWar);
 
-        // Remember two enemy tiles: one with a unit, one with a tower.
-        HexCoord uc = HexCoord.FromOffset(2, 1);
-        HexCoord tc = HexCoord.FromOffset(3, 2);
-        state.SetRemembered(uc, new RememberedTile(blue.Id, new Unit(blue.Id, UnitLevel.Captain)));
-        state.SetRemembered(tc, new RememberedTile(blue.Id, new Tower()));
+        // Mark a few explored coords (including a water/off-grid one).
+        HexCoord a = HexCoord.FromOffset(2, 1);
+        HexCoord b = HexCoord.FromOffset(3, 2);
+        HexCoord water = new HexCoord(-1, 0);
+        state.MarkSeen(a);
+        state.MarkSeen(b);
+        state.MarkSeen(water);
 
         string json = SaveSerializer.Serialize(state, 42, players, "fog", 100);
-        Assert.Contains("Remembered", json);
+        Assert.Contains("Seen", json);
         GameState loaded = SaveSerializer.Deserialize(json).State;
 
         Assert.Equal(GameMode.FogOfWar, loaded.Mode);
-        Assert.Equal(2, loaded.Remembered.Count);
-        Assert.Equal(blue.Id, loaded.Remembered[uc].Owner);
-        Unit? u = loaded.Remembered[uc].Occupant as Unit;
-        Assert.NotNull(u);
-        Assert.Equal(UnitLevel.Captain, u!.Level);
-        Assert.IsType<Tower>(loaded.Remembered[tc].Occupant);
+        Assert.Equal(3, loaded.Seen.Count);
+        Assert.True(loaded.IsSeen(a));
+        Assert.True(loaded.IsSeen(b));
+        Assert.True(loaded.IsSeen(water));
     }
 
     [Fact]
-    public void NonFogSave_OmitsRememberedField()
+    public void NonFogSave_OmitsSeenField()
     {
         (GameState state, IReadOnlyList<Player> players) = BuildRichState();
         string json = SaveSerializer.Serialize(state, 42, players, "s", 100);
-        Assert.DoesNotContain("Remembered", json);
-        Assert.Empty(SaveSerializer.Deserialize(json).State.Remembered);
+        Assert.DoesNotContain("Seen", json);
+        Assert.Empty(SaveSerializer.Deserialize(json).State.Seen);
     }
 
     [Fact]

@@ -92,33 +92,31 @@ public class VisibilityRulesTests
         Assert.Contains(visible, c => !grid.Contains(c)); // at least one off-grid (water) coord
     }
 
-    // --- UpdateMemory + TierOf ------------------------------------------
+    // --- UpdateSeen + TierOf --------------------------------------------
 
     [Fact]
-    public void UpdateMemory_RemembersVisibleTiles_StaleAfterOwnershipLost()
+    public void UpdateSeen_MarksVisible_StaleAfterOwnershipLost()
     {
         HexGrid grid = TestHelpers.BuildRectGrid(5, 5, Blue);
         (HexCoord a, _) = GiveRedTerritory(grid, 1, 2);
         HexCoord neighbor = a.Neighbors().First(c => grid.Contains(c) && grid.Get(c)!.Owner == Blue);
         GameState state = MakeState(grid, BuildTerr(grid));
 
-        // First sight: the neighbour is visible and remembered as Blue-owned.
-        VisibilityRules.UpdateMemory(state, Red);
-        Assert.True(state.IsRemembered(neighbor));
-        Assert.Equal(Blue, state.Remembered[neighbor].Owner);
+        // First sight: the neighbour is visible and now marked seen.
+        VisibilityRules.UpdateSeen(state, Red);
+        Assert.True(state.IsSeen(neighbor));
 
-        // Red loses the whole territory, so the neighbour leaves sight. Memory
-        // must keep the LAST-SEEN owner, not the live one. Territories are
+        // Red loses the whole territory, so the neighbour leaves sight — but it
+        // stays seen, so it degrades to Stale, not back to Fog. Territories are
         // recomputed (as the controller does after a capture).
         PlayerId green = PlayerId.FromIndex(2);
         foreach (HexTile t in grid.Tiles)
             if (t.Owner == Red) t.Owner = green;
-        grid.Get(neighbor)!.Owner = green; // live change the human can't see
         state.Territories = BuildTerr(grid);
         HashSet<HexCoord> visibleNow = VisibilityRules.ComputeVisible(state, Red);
 
+        Assert.DoesNotContain(neighbor, visibleNow);
         Assert.Equal(VisibilityTier.Stale, VisibilityRules.TierOf(neighbor, visibleNow, state));
-        Assert.Equal(Blue, state.Remembered[neighbor].Owner); // last-seen, not live green
     }
 
     [Fact]
@@ -127,50 +125,30 @@ public class VisibilityRulesTests
         HexGrid grid = TestHelpers.BuildRectGrid(5, 5, Blue);
         GiveRedTerritory(grid, 0, 0);
         GameState state = MakeState(grid, BuildTerr(grid));
-        VisibilityRules.UpdateMemory(state, Red);
+        VisibilityRules.UpdateSeen(state, Red);
 
         HexCoord far = HexCoord.FromOffset(4, 4);
         HashSet<HexCoord> visible = VisibilityRules.ComputeVisible(state, Red);
         Assert.Equal(VisibilityTier.Fog, VisibilityRules.TierOf(far, visible, state));
     }
 
-    [Fact]
-    public void UpdateMemory_RemembersOccupantSnapshot_NotLiveMutation()
-    {
-        HexGrid grid = TestHelpers.BuildRectGrid(5, 5, Blue);
-        (HexCoord a, _) = GiveRedTerritory(grid, 1, 2);
-        HexCoord neighbor = a.Neighbors().First(c => grid.Contains(c) && grid.Get(c)!.Owner == Blue);
-        GameState state = MakeState(grid, BuildTerr(grid));
-        // Set after territory build so capital reconciliation can't overwrite it.
-        grid.Get(neighbor)!.Occupant = new Unit(Blue, UnitLevel.Recruit);
-
-        VisibilityRules.UpdateMemory(state, Red);
-
-        // Mutate the live occupant after the snapshot.
-        grid.Get(neighbor)!.Occupant = new Unit(Blue, UnitLevel.Commander);
-
-        Unit? rememberedUnit = state.Remembered[neighbor].Occupant as Unit;
-        Assert.NotNull(rememberedUnit);
-        Assert.Equal(UnitLevel.Recruit, rememberedUnit!.Level); // snapshot, not live
-    }
-
     // --- Determinism guard ----------------------------------------------
 
     [Fact]
-    public void UpdateMemory_DoesNotMutateTreasuryOrTerritories()
+    public void UpdateSeen_DoesNotMutateTreasuryOrTerritories()
     {
         HexGrid grid = TestHelpers.BuildRectGrid(5, 5, Blue);
         GiveRedTerritory(grid, 2, 2);
         IReadOnlyList<Territory> territories = BuildTerr(grid);
         GameState state = MakeState(grid, territories);
 
-        VisibilityRules.UpdateMemory(state, Red);
+        VisibilityRules.UpdateSeen(state, Red);
 
         Assert.Same(territories, state.Territories); // territory list untouched
     }
 
     [Fact]
-    public void UpdateMemory_DoesNotChangeGameStateChecksum()
+    public void UpdateSeen_DoesNotChangeGameStateChecksum()
     {
         // Fog memory lives outside the checksummed game state, so enabling fog
         // can't perturb AI decisions, RNG, or replay/determinism: same seed,
@@ -180,8 +158,8 @@ public class VisibilityRulesTests
         GameState state = MakeState(grid, BuildTerr(grid));
 
         string before = GameStateChecksum.Compute(state);
-        VisibilityRules.UpdateMemory(state, Red);
-        Assert.NotEmpty(state.Remembered); // memory was actually written
+        VisibilityRules.UpdateSeen(state, Red);
+        Assert.NotEmpty(state.Seen); // memory was actually written
         Assert.Equal(before, GameStateChecksum.Compute(state));
     }
 

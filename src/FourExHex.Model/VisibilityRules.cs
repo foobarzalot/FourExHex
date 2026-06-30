@@ -41,23 +41,18 @@ public static class VisibilityRules
     }
 
     /// <summary>
-    /// Recompute the human's sight and refresh their last-seen memory for every
-    /// currently-visible tile (owner + a deep-copied occupant). Sticky: tiles
-    /// no longer in sight keep their previous snapshot. Returns the visible set
-    /// so callers (the controller) can hand it to the view without recomputing.
+    /// Recompute the human's sight and mark every currently-visible coord as
+    /// seen. Sticky: coords already seen stay seen. The stale tier shows only
+    /// static terrain (no owner, no occupant), so a seen-coord set is all that's
+    /// recorded. Returns the visible set so callers (the controller) can hand it
+    /// to the view without recomputing.
     /// </summary>
-    public static HashSet<HexCoord> UpdateMemory(GameState state, PlayerId human)
+    public static HashSet<HexCoord> UpdateSeen(GameState state, PlayerId human)
     {
         HashSet<HexCoord> visible = ComputeVisible(state, human);
         foreach (HexCoord coord in visible)
         {
-            HexTile? tile = state.Grid.Get(coord);
-            // Land tiles remember owner + occupant; water / off-map coords are
-            // remembered as "seen" only (no owner, no occupant) so they degrade
-            // to the stale tier rather than re-fogging.
-            state.SetRemembered(coord, tile != null
-                ? new RememberedTile(tile.Owner, HexOccupant.Clone(tile.Occupant))
-                : new RememberedTile(PlayerId.None, null));
+            state.MarkSeen(coord);
         }
         return visible;
     }
@@ -69,15 +64,15 @@ public static class VisibilityRules
     public static VisibilityTier TierOf(HexCoord coord, IReadOnlySet<HexCoord> visible, GameState state)
     {
         if (visible.Contains(coord)) return VisibilityTier.Visible;
-        return state.IsRemembered(coord) ? VisibilityTier.Stale : VisibilityTier.Fog;
+        return state.IsSeen(coord) ? VisibilityTier.Stale : VisibilityTier.Fog;
     }
 
     /// <summary>
     /// Build the fog projection the view renders, or null when fog doesn't apply
     /// (not Fog Of War, or not exactly one human — in which case the caller
-    /// renders everything). Updates the human's last-seen memory as a side
-    /// effect. Shared by the live controller and the menu map thumbnail so both
-    /// pick the same perspective.
+    /// renders everything). Marks the human's newly-visible coords as seen as a
+    /// side effect. Shared by the live controller and the menu map thumbnail so
+    /// both pick the same perspective.
     /// </summary>
     public static FogView? BuildProjection(GameState state)
     {
@@ -91,7 +86,7 @@ public static class VisibilityRules
         }
         if (human == null) return null;
 
-        HashSet<HexCoord> visible = UpdateMemory(state, human.Value);
-        return new FogView(visible, state.Remembered);
+        HashSet<HexCoord> visible = UpdateSeen(state, human.Value);
+        return new FogView(visible, state.Seen);
     }
 }

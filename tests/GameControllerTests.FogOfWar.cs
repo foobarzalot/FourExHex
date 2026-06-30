@@ -67,15 +67,15 @@ public partial class GameControllerTests
     }
 
     [Fact]
-    public void FogOfWar_RemembersVisibleTilesAtStart()
+    public void FogOfWar_MarksVisibleTilesSeenAtStart()
     {
         var game = new FogGame(CornerVsRest(), GameMode.FogOfWar);
 
         Assert.NotNull(game.Map.LastFog);
         foreach (HexCoord c in game.Map.LastFog!.Visible)
-            Assert.True(game.State.IsRemembered(c));
-        // Memory is the same instance the controller maintains on GameState.
-        Assert.Same(game.State.Remembered, game.Map.LastFog.Remembered);
+            Assert.True(game.State.IsSeen(c));
+        // The seen set is the same instance the controller maintains on GameState.
+        Assert.Same(game.State.Seen, game.Map.LastFog.Seen);
     }
 
     // Build a tower on one of Red's owned empty tiles and return its coord, so

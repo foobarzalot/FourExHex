@@ -207,9 +207,9 @@ public static class SaveSerializer
             // Absent in pre-15 saves → loads false → those games keep the old
             // deterministic placement so their replays reproduce.
             UseRandomizedSelection = state.UseRandomizedSelection,
-            // Fog Of War: the human's last-seen memory. Null (omitted) when
+            // Fog Of War: the human's explored coords. Null (omitted) when
             // empty — every non-fog save — so the wire format stays clean.
-            Remembered = SerializeRemembered(state.Remembered),
+            Seen = SerializeSeen(state.Seen),
         };
         // Source-gen path (FourExHexJsonContext) so this works under iOS AOT,
         // where reflection-based serialization is disabled. The context's
@@ -305,8 +305,8 @@ public static class SaveSerializer
             grid, territories, players, turnState, treasury, waterCoords,
             mode: data.Mode ?? GameMode.Freeform,
             useRandomizedSelection: data.UseRandomizedSelection,
-            // Restore the human's fog memory; empty for non-fog/pre-16 saves.
-            remembered: DeserializeRemembered(data.Remembered, players))
+            // Restore the human's explored coords; empty for non-fog/legacy saves.
+            seen: DeserializeSeen(data.Seen))
         {
             // Restore the locked tide forecast; empty for freeform saves so
             // the reloaded game telegraphs/applies nothing.
@@ -407,37 +407,28 @@ public static class SaveSerializer
 
     // --- Fog Of War memory ----------------------------------------------
 
-    // Null (omitted) when empty so non-fog saves carry no Remembered field.
-    private static List<RememberedTileDto>? SerializeRemembered(
-        IReadOnlyDictionary<HexCoord, RememberedTile> remembered)
+    // The human's explored (ever-seen) coords. Null (omitted) when empty so
+    // non-fog saves carry no Seen field. Mirrors the water coord-set shape.
+    private static List<CoordDto>? SerializeSeen(IReadOnlySet<HexCoord> seen)
     {
-        if (remembered.Count == 0) return null;
-        var dtos = new List<RememberedTileDto>(remembered.Count);
-        foreach (KeyValuePair<HexCoord, RememberedTile> kvp in remembered)
+        if (seen.Count == 0) return null;
+        var dtos = new List<CoordDto>(seen.Count);
+        foreach (HexCoord c in seen)
         {
-            dtos.Add(new RememberedTileDto
-            {
-                Q = kvp.Key.Q,
-                R = kvp.Key.R,
-                OwnerIndex = IdToOwnerIndex(kvp.Value.Owner),
-                Occupant = SerializeOccupant(kvp.Value.Occupant),
-            });
+            dtos.Add(new CoordDto { Q = c.Q, R = c.R });
         }
         return dtos;
     }
 
-    private static IReadOnlyDictionary<HexCoord, RememberedTile> DeserializeRemembered(
-        List<RememberedTileDto>? dtos, IReadOnlyList<Player> players)
+    private static IReadOnlySet<HexCoord> DeserializeSeen(List<CoordDto>? dtos)
     {
-        var map = new Dictionary<HexCoord, RememberedTile>();
-        if (dtos == null) return map;
-        foreach (RememberedTileDto d in dtos)
+        var set = new HashSet<HexCoord>();
+        if (dtos == null) return set;
+        foreach (CoordDto c in dtos)
         {
-            map[new HexCoord(d.Q, d.R)] = new RememberedTile(
-                OwnerIndexToId(d.OwnerIndex, players),
-                DeserializeOccupant(d.Occupant, players));
+            set.Add(new HexCoord(c.Q, c.R));
         }
-        return map;
+        return set;
     }
 
     // --- Pending tide forecast -------------------------------
@@ -1082,19 +1073,10 @@ public sealed class SaveData
     public bool UseRandomizedSelection { get; set; }
 
     /// <summary>
-    /// Fog Of War: the human player's last-seen memory (coord → remembered
-    /// owner + occupant). Null/omitted for non-fog games and pre-16 saves,
-    /// which load with empty memory.
+    /// Fog Of War: the human player's explored (ever-seen) coords. Null/omitted
+    /// for non-fog games and legacy saves, which load with empty memory.
     /// </summary>
-    public List<RememberedTileDto>? Remembered { get; set; }
-}
-
-public sealed class RememberedTileDto
-{
-    public int Q { get; set; }
-    public int R { get; set; }
-    public int OwnerIndex { get; set; }
-    public OccupantDto? Occupant { get; set; }
+    public List<CoordDto>? Seen { get; set; }
 }
 
 public sealed class TideStepDto
