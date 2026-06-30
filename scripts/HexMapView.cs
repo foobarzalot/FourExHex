@@ -181,6 +181,12 @@ public partial class HexMapView : Node2D, IHexMapView
     private Node2D? _towerTargetsLayer;
     private Node2D? _highlightLayer;
     private Node2D? _warningBadgesLayer;
+    // Fog Of War: remembered (stale) enemy occupants drawn as static glyphs,
+    // and the cover/dim overlay above everything. Both empty/absent outside
+    // Fog Of War. The stale layer sits below the fog overlay so the dim hex
+    // darkens the last-seen occupant beneath it.
+    private Node2D? _staleOccupantsLayer;
+    private Node2D? _fogLayer;
     private readonly Dictionary<HexCoord, Node2D> _unitVisuals = new();
     private readonly Dictionary<HexCoord, Node2D> _capitalVisuals = new();
 
@@ -497,7 +503,7 @@ public partial class HexMapView : Node2D, IHexMapView
         foreach (HexTile tile in _state.Grid.Tiles)
         {
             Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(tile.Coord, HexSize);
-            Polygon2D fill = CreateHexVisual(center, PlayerPalette.ColorFor(tile.Owner));
+            Polygon2D fill = CreateHexVisual(center, PlayerPalette.ColorFor(EffectiveOwner(tile)));
             _tileVisuals[tile.Coord] = fill;
             AddChild(fill);
         }
@@ -576,6 +582,13 @@ public partial class HexMapView : Node2D, IHexMapView
         // (including highlight, units, capitals).
         _warningBadgesLayer = new Node2D { Name = "WarningBadgesLayer" };
         AddChild(_warningBadgesLayer);
+        // Fog Of War: remembered occupants on stale tiles, then the cover/dim
+        // overlay above everything map-related so never-seen tiles are fully
+        // hidden and stale tiles read as dimmed. Both empty outside Fog Of War.
+        _staleOccupantsLayer = new Node2D { Name = "StaleOccupantsLayer" };
+        AddChild(_staleOccupantsLayer);
+        _fogLayer = new Node2D { Name = "FogLayer" };
+        AddChild(_fogLayer);
         // Rejection overlays sit on top of everything so a red flash is
         // unambiguous. Persistent — never cleared by RefreshOccupantVisuals
         // — so an in-flight tween doesn't get QueueFree'd mid-pulse.
@@ -585,6 +598,7 @@ public partial class HexMapView : Node2D, IHexMapView
         DrawTerritoryBorders();
         DrawGoldBorders();
         DrawMountains();
+        RedrawFogOverlay();
         DumpSceneComposition();
         // Occupant visuals are drawn by the controller via
         // RefreshOccupantVisuals once it knows the current player and
@@ -868,7 +882,7 @@ public partial class HexMapView : Node2D, IHexMapView
             if (_tileVisuals.TryGetValue(tile.Coord, out Polygon2D? fill)
                 && fill != null)
             {
-                fill.Color = PlayerPalette.ColorFor(tile.Owner);
+                fill.Color = PlayerPalette.ColorFor(EffectiveOwner(tile));
             }
         }
 
@@ -885,6 +899,7 @@ public partial class HexMapView : Node2D, IHexMapView
         DrawTerritoryBorders();
         DrawGoldBorders();
         DrawMountains();
+        RedrawFogOverlay();
         Log.Since(Log.LogCategory.Capture, "[hitch] DrawTerritoryBorders", tBorders);
         Log.Debug(Log.LogCategory.Capture,
             $"[hitch] strokes outlines={_outlinesLayer?.StrokeCount ?? 0} " +
@@ -1103,16 +1118,124 @@ public partial class HexMapView : Node2D, IHexMapView
 
     // Fog Of War: the current projection from the single human's perspective,
     // or null when fog is off. Set by ShowFog; consulted by the render paths to
-    // hide/dim tiles. Rendering wired in a later step.
+    // paint stale tiles from memory, hide never-seen tiles, and dim the rest.
     private FogView? _fog;
+    // Never-seen tiles are fully covered; stale (remembered) tiles are dimmed so
+    // their last-seen content reads as out of date.
+    private static readonly Color FogCoverColor = UiPalette.BgDeep;             // opaque
+    private static readonly Color FogStaleDimColor = new Color(0f, 0f, 0f, 0.5f);
 
     /// <summary>
-    /// Fog Of War: store the human's visibility projection (null = fog off) and
-    /// repaint the board to reflect it.
+    /// Fog Of War: store the human's visibility projection (null = fog off). The
+    /// fill/border/overlay repaint runs only when the visible set changes (a
+    /// territory change or the first push after a build) — the common
+    /// every-refresh call where the set is unchanged is free. Occupants are
+    /// repainted right after by the controller's RefreshViews, now seeing the
+    /// current projection.
     /// </summary>
     public void ShowFog(FogView? fog)
     {
+        bool visibilityChanged = !FogVisibleEqual(_fog, fog);
         _fog = fog;
+        if (visibilityChanged) RepaintFogVisuals();
+    }
+
+    private static bool FogVisibleEqual(FogView? a, FogView? b)
+    {
+        if (a == null && b == null) return true;
+        if (a == null || b == null) return false;
+        return a.Visible.Count == b.Visible.Count && a.Visible.SetEquals(b.Visible);
+    }
+
+    // Per-tile fog classification. With fog off (_fog == null) every tile is
+    // Visible, so all render paths behave exactly as before.
+    private VisibilityTier FogTierOf(HexCoord coord) =>
+        _fog == null ? VisibilityTier.Visible
+                     : VisibilityRules.TierOf(coord, _fog.Visible, _state);
+
+    // The owner a tile is PAINTED as: live when visible, last-seen when stale,
+    // and None when fogged (hidden by the cover). Identity outside Fog Of War.
+    private PlayerId EffectiveOwner(HexTile tile)
+    {
+        if (_fog == null) return tile.Owner;
+        switch (FogTierOf(tile.Coord))
+        {
+            case VisibilityTier.Visible: return tile.Owner;
+            case VisibilityTier.Stale:
+                return _fog.Remembered.TryGetValue(tile.Coord, out RememberedTile r)
+                    ? r.Owner : tile.Owner;
+            default: return PlayerId.None;
+        }
+    }
+
+    // Resync fills, outlines, borders, decorations, and the fog overlay to the
+    // current projection — the visual half of a visibility change, without the
+    // destructive tree/grave teardown of RebuildAfterTerritoryChange.
+    private void RepaintFogVisuals()
+    {
+        if (_tileVisuals.Count == 0) return; // not built yet
+        foreach (HexTile tile in _state.Grid.Tiles)
+        {
+            if (_tileVisuals.TryGetValue(tile.Coord, out Polygon2D? fill) && fill != null)
+                fill.Color = PlayerPalette.ColorFor(EffectiveOwner(tile));
+        }
+        PopulateOutlinesLayer();
+        DrawTerritoryBorders();
+        DrawGoldBorders();
+        DrawMountains();
+        RedrawFogOverlay();
+    }
+
+    // Repaint the cover (opaque, over never-seen tiles) + dim (translucent, over
+    // stale tiles) overlay. Cleared and empty outside Fog Of War.
+    private void RedrawFogOverlay()
+    {
+        if (_fogLayer == null) return;
+        ClearLayer(_fogLayer);
+        if (_fog == null) return;
+        foreach (HexTile tile in _state.Grid.Tiles)
+        {
+            VisibilityTier tier = FogTierOf(tile.Coord);
+            if (tier == VisibilityTier.Visible) continue;
+            Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(tile.Coord, HexSize);
+            Color c = tier == VisibilityTier.Fog ? FogCoverColor : FogStaleDimColor;
+            _fogLayer.AddChild(CreateHexVisual(center, c));
+        }
+    }
+
+    // Draw the last-seen occupant of each stale tile as a static, non-actionable
+    // glyph (the dim overlay above darkens it). Visible tiles use the live
+    // occupant pass; never-seen tiles render nothing.
+    private void DrawRememberedOccupants()
+    {
+        if (_staleOccupantsLayer == null) return;
+        ClearLayer(_staleOccupantsLayer);
+        if (_fog == null) return;
+        foreach (KeyValuePair<HexCoord, RememberedTile> kvp in _fog.Remembered)
+        {
+            HexCoord coord = kvp.Key;
+            if (FogTierOf(coord) != VisibilityTier.Stale) continue;
+            HexOccupant? occ = kvp.Value.Occupant;
+            if (occ == null) continue;
+
+            Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(coord, HexSize);
+            if (occ is Tree)
+            {
+                _staleOccupantsLayer.AddChild(BuildTreeAnchor(center));
+                continue;
+            }
+            Node2D? visual = occ switch
+            {
+                Unit u => CreateUnitVisual(false, u.Level),
+                Capital => CreateCapitalVisual(false),
+                Tower => CreateTowerVisual(),
+                Grave => CreateGraveVisual(),
+                _ => null,
+            };
+            if (visual == null) continue;
+            visual.Position = center;
+            _staleOccupantsLayer.AddChild(visual);
+        }
     }
 
     private static bool TideForecastsEqual(List<TideStep> a, List<TideStep> b)
@@ -1667,6 +1790,10 @@ public partial class HexMapView : Node2D, IHexMapView
         foreach (HexTile tile in Grid.Tiles)
         {
             if (tile.Occupant == null) continue;
+            // Fog Of War: live occupants render only on tiles in sight. Stale
+            // tiles get their last-seen occupant from DrawRememberedOccupants;
+            // never-seen tiles render nothing.
+            if (_fog != null && FogTierOf(tile.Coord) != VisibilityTier.Visible) continue;
 
             Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(tile.Coord, HexSize);
 
@@ -1734,6 +1861,8 @@ public partial class HexMapView : Node2D, IHexMapView
                 _capitalsLayer?.AddChild(visual);
             }
         }
+
+        DrawRememberedOccupants();
 
         Log.Since(Log.LogCategory.Capture, "[hitch] occupant rebuild loop", tRebuildLoop);
         Log.Debug(Log.LogCategory.Capture,
@@ -3358,7 +3487,7 @@ public partial class HexMapView : Node2D, IHexMapView
         foreach (HexTile tile in _state.Grid.Tiles)
         {
             Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(tile.Coord, HexSize);
-            Color c = PlayerPalette.DarkColorFor(tile.Owner);
+            Color c = PlayerPalette.DarkColorFor(EffectiveOwner(tile));
             for (int e = 0; e < 6; e++)
             {
                 segments.Add(center + verts[e]);
@@ -3517,7 +3646,11 @@ public partial class HexMapView : Node2D, IHexMapView
                 HexCoord neighborCoord = tile.Coord.Neighbor(dir);
                 HexTile? neighbor = Grid.Get(neighborCoord);
 
-                bool isBoundary = neighbor == null || neighbor.Owner != tile.Owner;
+                // Compare PAINTED owners so a stale tile's remembered boundary
+                // shows (and a capture out of the human's sight doesn't leak a
+                // shifted border). Identity outside Fog Of War.
+                bool isBoundary = neighbor == null
+                    || EffectiveOwner(neighbor) != EffectiveOwner(tile);
                 if (!isBoundary) continue;
 
                 segments.Add(center + verts[edge]);

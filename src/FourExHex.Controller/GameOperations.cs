@@ -627,6 +627,12 @@ public class GameOperations
         long tHud = Log.Stamp();
         _hud.Refresh(_state, _session, hasActionable);
         Log.Since(Log.LogCategory.Capture, "[hitch] HudView.Refresh", tHud);
+        // Fog Of War: render from the single human's perspective — recompute
+        // their sight, refresh last-seen memory, and push the projection BEFORE
+        // occupants so the occupant pass sees the current visibility. Keyed off
+        // the human (not the current player) so fog stays stable through AI
+        // turns. null = fog off → the view renders everything normally.
+        _map.ShowFog(ComputeFogView());
         long tOccupants = Log.Stamp();
         _map.RefreshOccupantVisuals(_state.Turns.CurrentPlayer.Id, _state.Treasury);
         Log.Since(Log.LogCategory.Capture, "[hitch] RefreshOccupantVisuals", tOccupants);
@@ -634,11 +640,6 @@ public class GameOperations
         // forecast for the whole turn ("these tiles erode at turn end"). Empty
         // outside Rising Tides, which clears any prior telegraph.
         _map.ShowTideForecast(_state.PendingTide);
-        // Fog Of War: render from the single human's perspective — recompute
-        // their sight, refresh last-seen memory, and push the projection. Keyed
-        // off the human (not the current player) so fog stays stable through AI
-        // turns. null = fog off → the view renders everything normally.
-        _map.ShowFog(ComputeFogView());
         // End Turn CTA when the current player has nothing actionable
         // left. Lives here (not inside _hud.Refresh) so Tutorial Preview's
         // onAfterRefresh callback can overwrite it when the next scripted
