@@ -670,20 +670,11 @@ public class GameOperations
     /// </summary>
     private FogView? ComputeFogView()
     {
-        if (!_state.FogEnabled) return null;
-        PlayerId? human = null;
-        foreach (Player p in _state.Players)
-        {
-            if (p.Kind != PlayerKind.Human) continue;
-            if (human != null) return null; // more than one human → no fog
-            human = p.Id;
-        }
-        if (human == null) return null;
-
-        HashSet<HexCoord> visible = VisibilityRules.UpdateMemory(_state, human.Value);
-        Log.Debug(Log.LogCategory.Fog,
-            $"[fog] visible={visible.Count} remembered={_state.Remembered.Count}");
-        return new FogView(visible, _state.Remembered);
+        FogView? fog = VisibilityRules.BuildProjection(_state);
+        if (fog != null)
+            Log.Debug(Log.LogCategory.Fog,
+                $"[fog] visible={fog.Visible.Count} remembered={_state.Remembered.Count}");
+        return fog;
     }
 
     /// <summary>

@@ -126,7 +126,9 @@ public partial class MapThumbnailView : Control
             $"MapThumbnail: request random seed={SeedFormat.ToHex(seed)} token={token} " +
             $"players={roster.Count} trees={options.TreeDensity} " +
             $"mtn={options.MountainDensity} gold={options.GoldDensity}");
-        _ = RenderAsync(() => ProceduralGame.Build(BoardCols, BoardRows, roster, seed, options),
+        _ = RenderAsync(
+            () => ProceduralGame.Build(BoardCols, BoardRows, roster, seed, options,
+                mode: GameSettings.Mode),
             $"random seed={SeedFormat.ToHex(seed)}", token);
     }
 
@@ -195,6 +197,10 @@ public partial class MapThumbnailView : Control
         {
             _map.ReloadState(state, animateNewOccupants: false);
         }
+        // Fog Of War: preview the board as the human will actually see it — their
+        // start visible, the rest fogged. Pushed before occupants so the
+        // occupant pass honours visibility; null (no-op) for non-fog maps.
+        _map.ShowFog(VisibilityRules.BuildProjection(state));
         _map.RefreshOccupantVisuals(currentPlayer: null, state.Treasury);
 
         // Let any SubViewport SizeChanged → RecomputeZoomLevels/ResolveRotation

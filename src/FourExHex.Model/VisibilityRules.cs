@@ -65,4 +65,27 @@ public static class VisibilityRules
         if (visible.Contains(coord)) return VisibilityTier.Visible;
         return state.IsRemembered(coord) ? VisibilityTier.Stale : VisibilityTier.Fog;
     }
+
+    /// <summary>
+    /// Build the fog projection the view renders, or null when fog doesn't apply
+    /// (not Fog Of War, or not exactly one human — in which case the caller
+    /// renders everything). Updates the human's last-seen memory as a side
+    /// effect. Shared by the live controller and the menu map thumbnail so both
+    /// pick the same perspective.
+    /// </summary>
+    public static FogView? BuildProjection(GameState state)
+    {
+        if (!state.FogEnabled) return null;
+        PlayerId? human = null;
+        foreach (Player p in state.Players)
+        {
+            if (p.Kind != PlayerKind.Human) continue;
+            if (human != null) return null; // more than one human → no fog
+            human = p.Id;
+        }
+        if (human == null) return null;
+
+        HashSet<HexCoord> visible = UpdateMemory(state, human.Value);
+        return new FogView(visible, state.Remembered);
+    }
 }
