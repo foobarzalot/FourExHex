@@ -1118,10 +1118,20 @@ public partial class HexMapView : Node2D, IHexMapView
     // or null when fog is off. Set by ShowFog; consulted by the render paths to
     // paint stale tiles from memory, hide never-seen tiles, and dim the rest.
     private FogView? _fog;
-    // Never-seen tiles are fully covered; stale (remembered) tiles are dimmed so
-    // their last-seen content reads as out of date.
-    private static readonly Color FogCoverColor = UiPalette.BgDeep;             // opaque
-    private static readonly Color FogStaleDimColor = new Color(0f, 0f, 0f, 0.5f);
+    // Never-seen tiles are covered with a cool dark "mist" (a touch cooler/darker
+    // than the warm BgDeep canvas, so unseen area reads as atmosphere, not a hole);
+    // kept opaque so terrain stays hidden. Stale (explored, out of sight) tiles get
+    // a translucent cool blue-grey "memory" wash over their greyed terrain — a
+    // legible, distant register clearly between vivid-live and dark-fog.
+    private static readonly Color FogCoverColor = new Color(0.09f, 0.11f, 0.15f, 1f);
+    private static readonly Color FogStaleDimColor = new Color(0.16f, 0.20f, 0.30f, 0.45f);
+    // Per-vertex alpha multiplier used to feather tier frontiers (see
+    // RedrawFogOverlay): both stale and fog fade toward transparent at vertices
+    // touching a more-revealed neighbour, so visible→stale and visible→fog read
+    // as a soft ~1-hex gradient instead of a hard hexagon. (The cost is a faint
+    // terrain hint in that one-hex band — terrain only, never ownership, which is
+    // already None on non-visible tiles.)
+    private const float FogFeatherEdge = 0f;
 
     /// <summary>
     /// Fog Of War: store the human's visibility projection (null = fog off). The
@@ -1196,6 +1206,7 @@ public partial class HexMapView : Node2D, IHexMapView
 
         Vector2[] hex = HexVertices();
         var bake = new TriangleSoupBuilder();
+        var vertAlpha = new Color[6];
         // Same extent the water/foam bake covers (board + scroll-pad rim), so
         // every cell the player could pan to is fogged until seen.
         int margin = Mathf.CeilToInt(ScrollPaddingPx / (1.5f * HexSize)) + 1;
@@ -1207,13 +1218,36 @@ public partial class HexMapView : Node2D, IHexMapView
                 VisibilityTier tier = FogTierOf(coord);
                 if (tier == VisibilityTier.Visible) continue;
                 Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(coord, HexSize);
-                Color c = tier == VisibilityTier.Fog ? FogCoverColor : FogStaleDimColor;
-                bake.AddPolygon(center, hex, c, null);
+                Color tint = tier == VisibilityTier.Fog ? FogCoverColor : FogStaleDimColor;
+                FillFeatherAlpha(coord, tier, vertAlpha);
+                bake.AddPolygon(center, hex, tint, vertAlpha);
             }
         }
         _fogLayer.SetTriangles(
             bake.Points.ToArray(), bake.Colors.ToArray(), bake.Indices.ToArray());
     }
+
+    // Soften a fog/stale hex's frontier with more-revealed neighbours by lowering
+    // the alpha of the vertices on that edge. Each vertex v is shared by the two
+    // edges meeting there, whose neighbours are EdgeToNeighborDirection[(v+5)%6]
+    // and [v]. A stale vertex touching a Visible neighbour fades fully open (clean
+    // hand-off to live terrain — already seen, nothing leaks); a fog vertex
+    // touching a Visible/Stale neighbour only softens to a floor so never-seen
+    // terrain stays hidden. Writes a white×alpha multiplier per vertex into `into`.
+    private void FillFeatherAlpha(HexCoord coord, VisibilityTier tier, Color[] into)
+    {
+        int self = TierReveal(tier);
+        for (int v = 0; v < 6; v++)
+        {
+            int nbrA = TierReveal(FogTierOf(coord.Neighbor(EdgeToNeighborDirection[(v + 5) % 6])));
+            int nbrB = TierReveal(FogTierOf(coord.Neighbor(EdgeToNeighborDirection[v])));
+            int maxNbr = Mathf.Max(nbrA, nbrB);
+            float a = maxNbr > self ? FogFeatherEdge : 1f;
+            into[v] = new Color(1f, 1f, 1f, a);
+        }
+    }
+
+    private static int TierReveal(VisibilityTier tier) => (int)tier; // Fog=0 < Stale=1 < Visible=2
 
     private static bool TideForecastsEqual(List<TideStep> a, List<TideStep> b)
     {
