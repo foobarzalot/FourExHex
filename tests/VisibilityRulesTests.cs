@@ -13,8 +13,8 @@ public class VisibilityRulesTests
     {
         var players = new List<Player>
         {
-            new Player("Red", Red),
-            new Player("Blue", Blue),
+            new Player("Red", Red, PlayerKind.Human),
+            new Player("Blue", Blue, PlayerKind.Computer),
         };
         return new GameState(
             grid, territories, players, new TurnState(players), new Treasury(),
@@ -161,6 +161,33 @@ public class VisibilityRulesTests
         VisibilityRules.UpdateSeen(state, Red);
         Assert.NotEmpty(state.Seen); // memory was actually written
         Assert.Equal(before, GameStateChecksum.Compute(state));
+    }
+
+    // --- BuildProjection (reveal on defeat) -----------------------------
+
+    [Fact]
+    public void BuildProjection_ActiveFogGame_ReturnsProjection()
+    {
+        HexGrid grid = TestHelpers.BuildRectGrid(5, 5, Blue);
+        GiveRedTerritory(grid, 1, 2); // capital-bearing → Red is in the game
+        GameState state = MakeState(grid, BuildTerr(grid));
+
+        FogView? fog = VisibilityRules.BuildProjection(state);
+        Assert.NotNull(fog);
+        Assert.NotEmpty(fog!.Visible);
+    }
+
+    [Fact]
+    public void BuildProjection_HumanEliminated_ReturnsNull()
+    {
+        // Red holds only a singleton (no capital) → eliminated → defeat reveals
+        // the whole map (BuildProjection returns null).
+        HexGrid grid = TestHelpers.BuildRectGrid(5, 5, Blue);
+        grid.Get(HexCoord.FromOffset(2, 2))!.Owner = Red; // lone tile, no capital
+        GameState state = MakeState(grid, BuildTerr(grid));
+        Assert.True(WinConditionRules.IsEliminated(Red, grid));
+
+        Assert.Null(VisibilityRules.BuildProjection(state));
     }
 
     private static IReadOnlyList<Territory> BuildTerr(HexGrid grid) =>

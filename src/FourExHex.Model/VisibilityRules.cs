@@ -85,6 +85,10 @@ public static class VisibilityRules
             human = p.Id;
         }
         if (human == null) return null;
+        // Defeat reveals the whole map: an eliminated human (no capital-bearing
+        // territory) spectates with full vision. Common in the 1-human-vs-5-AI
+        // fog roster, where the AIs play on after the human is knocked out.
+        if (WinConditionRules.IsEliminated(human.Value, state.Grid)) return null;
 
         HashSet<HexCoord> visible = UpdateSeen(state, human.Value);
         return new FogView(visible, state.Seen);

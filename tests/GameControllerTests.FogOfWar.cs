@@ -134,6 +134,21 @@ public partial class GameControllerTests
     }
 
     [Fact]
+    public void FogOfWar_Victory_RevealsWholeMap()
+    {
+        // Red (human) owns 4/6 of a connected row → can claim victory. Winning
+        // lifts the fog: the controller pushes ShowFog(null) once the game ends.
+        var game = new FogGame(LopsidedRow(), GameMode.FogOfWar);
+        Assert.NotNull(game.Map.LastFog); // fog active mid-game
+
+        game.Hud.ClickEndTurn();              // trips the 50% claim-victory offer
+        game.Hud.ClickClaimVictoryWinNow();   // declares Red the winner
+
+        Assert.True(game.Session.IsGameOver);
+        Assert.Null(game.Map.LastFog);        // fog lifted on victory
+    }
+
+    [Fact]
     public void FogOfWar_TwoHumans_FailsSafeToNullFog()
     {
         // The menu lock guarantees one human; if somehow two humans reach a

@@ -670,6 +670,13 @@ public class GameOperations
     /// </summary>
     private FogView? ComputeFogView()
     {
+        // Victory (or an opponent's decisive win) lifts the fog — reveal the
+        // whole map. Defeat by elimination is handled inside BuildProjection.
+        if (_state.FogEnabled && _session.IsGameOver)
+        {
+            Log.Debug(Log.LogCategory.Fog, "[fog] revealed (game over)");
+            return null;
+        }
         FogView? fog = VisibilityRules.BuildProjection(_state);
         if (fog != null)
             Log.Debug(Log.LogCategory.Fog,
