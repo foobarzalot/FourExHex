@@ -41,13 +41,13 @@ public sealed partial class SettingsPanel : CanvasLayer
     private Button _vfxCheckBox = null!;
     private CreditsPanel _creditsPanel = null!;
 
-    // Display order for both speed radio rows (AI Turn Speed and Replay
-    // Speed are independent settings but share the preset list). Open()
-    // re-syncs each row's pressed state from UserSettings against this.
+    // Item order for both speed dropdowns (AI Turn Speed and Replay Speed
+    // are independent settings but share the preset list). Open() re-syncs
+    // each dropdown's selection from UserSettings against this.
     private static readonly PlaybackSpeed[] SpeedOrder =
         { PlaybackSpeed.Slow, PlaybackSpeed.Normal, PlaybackSpeed.Fast, PlaybackSpeed.Instant };
-    private Button[] _aiSpeedButtons = null!;
-    private Button[] _replaySpeedButtons = null!;
+    private OptionButton _aiSpeedDropdown = null!;
+    private OptionButton _replaySpeedDropdown = null!;
     private static readonly Font _serifFont =
         GD.Load<FontFile>("res://fonts/DMSerifDisplay-Regular.ttf");
 
@@ -136,11 +136,10 @@ public sealed partial class SettingsPanel : CanvasLayer
         vbox.AddChild(BuildCheckRow("Sound Effects", UserSettings.SfxEnabled, OnSfxToggled, out _sfxCheckBox));
         vbox.AddChild(BuildCheckRow("Visual Effects", UserSettings.VfxEnabled, OnVfxToggled, out _vfxCheckBox));
 
-        vbox.AddChild(MakeSpeedLabel("Computer Player Speed"));
-        vbox.AddChild(BuildSpeedRow(UserSettings.AiSpeed, OnAiSpeedPressed, out _aiSpeedButtons));
-
-        vbox.AddChild(MakeSpeedLabel("Replay Speed"));
-        vbox.AddChild(BuildSpeedRow(UserSettings.ReplaySpeed, OnReplaySpeedPressed, out _replaySpeedButtons));
+        vbox.AddChild(BuildSpeedRow(
+            "Computer Player Speed", UserSettings.AiSpeed, OnAiSpeedPressed, out _aiSpeedDropdown));
+        vbox.AddChild(BuildSpeedRow(
+            "Replay Speed", UserSettings.ReplaySpeed, OnReplaySpeedPressed, out _replaySpeedDropdown));
 
         vbox.AddChild(MakeNavButton("Credits", OnCreditsPressed));
         vbox.AddChild(MakeNavButton("Back", Close));
@@ -216,11 +215,11 @@ public sealed partial class SettingsPanel : CanvasLayer
             SizeFlagsStretchRatio = 1.12f,
             Alignment = BoxContainer.AlignmentMode.Center,
         };
-        rightZone.AddThemeConstantOverride("separation", 10);
-        rightZone.AddChild(MakeSpeedLabel("Computer Player Speed"));
-        rightZone.AddChild(BuildSpeedRow(UserSettings.AiSpeed, OnAiSpeedPressed, out _aiSpeedButtons));
-        rightZone.AddChild(MakeSpeedLabel("Replay Speed"));
-        rightZone.AddChild(BuildSpeedRow(UserSettings.ReplaySpeed, OnReplaySpeedPressed, out _replaySpeedButtons));
+        rightZone.AddThemeConstantOverride("separation", 14);
+        rightZone.AddChild(MakeToggleCard(BuildSpeedRow(
+            "Computer Player Speed", UserSettings.AiSpeed, OnAiSpeedPressed, out _aiSpeedDropdown)));
+        rightZone.AddChild(MakeToggleCard(BuildSpeedRow(
+            "Replay Speed", UserSettings.ReplaySpeed, OnReplaySpeedPressed, out _replaySpeedDropdown)));
         body.AddChild(rightZone);
 
         // Footer: Credits | Back (equal width) + version pinned far right.
@@ -389,24 +388,8 @@ public sealed partial class SettingsPanel : CanvasLayer
         ApplyCheckBoxStyle(_sfxCheckBox, UserSettings.SfxEnabled);
         _vfxCheckBox.ButtonPressed = UserSettings.VfxEnabled;
         ApplyCheckBoxStyle(_vfxCheckBox, UserSettings.VfxEnabled);
-        PlaybackSpeed currentSpeed = UserSettings.AiSpeed;
-        for (int i = 0; i < SpeedOrder.Length; i++)
-        {
-            Button btn = _aiSpeedButtons[i];
-            bool pressed = SpeedOrder[i] == currentSpeed;
-            btn.ButtonPressed = pressed;
-            // Setting ButtonPressed programmatically does NOT raise
-            // Toggled, so refresh the stylebox by hand.
-            ApplySpeedButtonStyle(btn, pressed);
-        }
-        PlaybackSpeed currentReplaySpeed = UserSettings.ReplaySpeed;
-        for (int i = 0; i < SpeedOrder.Length; i++)
-        {
-            Button btn = _replaySpeedButtons[i];
-            bool pressed = SpeedOrder[i] == currentReplaySpeed;
-            btn.ButtonPressed = pressed;
-            ApplySpeedButtonStyle(btn, pressed);
-        }
+        SelectItemById(_aiSpeedDropdown, (int)UserSettings.AiSpeed);
+        SelectItemById(_replaySpeedDropdown, (int)UserSettings.ReplaySpeed);
     }
 
     public void Close()
@@ -445,11 +428,13 @@ public sealed partial class SettingsPanel : CanvasLayer
     private void OnAiSpeedPressed(PlaybackSpeed speed)
     {
         UserSettings.AiSpeed = speed;
+        Log.Debug(Log.LogCategory.Hud, $"[settings] AiSpeed -> {speed}");
     }
 
     private void OnReplaySpeedPressed(PlaybackSpeed speed)
     {
         UserSettings.ReplaySpeed = speed;
+        Log.Debug(Log.LogCategory.Hud, $"[settings] ReplaySpeed -> {speed}");
     }
 
     /// <summary>
@@ -466,41 +451,67 @@ public sealed partial class SettingsPanel : CanvasLayer
         UiToggle.BuildCheckRow(label, initial, onToggled, out box);
 
     /// <summary>
-    /// Build one parentless four-button speed radio row (Slow / Normal / Fast /
-    /// Instant) sharing a ButtonGroup. <paramref name="buttons"/> hands back the
-    /// buttons so Open() can re-sync pressed state. Used for both the AI-turn
-    /// and replay speed rows.
+    /// Build one parentless speed setting row: a left-aligned caption Label that
+    /// fills the row, plus a speed dropdown (Slow / Normal / Fast / Instant) on
+    /// the right. <paramref name="dropdown"/> hands back the dropdown so Open()
+    /// can re-sync its selection. Used for both the AI-turn and replay settings.
     /// </summary>
-    private HBoxContainer BuildSpeedRow(PlaybackSpeed current, Action<PlaybackSpeed> onPressed, out Button[] buttons)
+    private HBoxContainer BuildSpeedRow(
+        string caption, PlaybackSpeed current, Action<PlaybackSpeed> onSelected, out OptionButton dropdown)
     {
         var row = new HBoxContainer();
-        row.AddThemeConstantOverride("separation", 8);
-        var group = new ButtonGroup();
-        buttons = new Button[SpeedOrder.Length];
-        for (int i = 0; i < SpeedOrder.Length; i++)
-        {
-            PlaybackSpeed speed = SpeedOrder[i];
-            var btn = new Button
-            {
-                Text = SpeedLabel(speed),
-                ToggleMode = true,
-                ButtonGroup = group,
-                ButtonPressed = speed == current,
-                FocusMode = Control.FocusModeEnum.None,
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-            };
-            btn.AddThemeFontSizeOverride("font_size", 20);
-            btn.Pressed += () => onPressed(speed);
-            // Toggled fires on every pressed-state flip — including the
-            // auto-unpress the ButtonGroup triggers on siblings — so restyling
-            // here keeps every button in sync without polling.
-            btn.Toggled += pressed => ApplySpeedButtonStyle(btn, pressed);
-            AudioBus.AttachClick(btn);
-            row.AddChild(btn);
-            buttons[i] = btn;
-            ApplySpeedButtonStyle(btn, btn.ButtonPressed);
-        }
+        row.AddThemeConstantOverride("separation", 12);
+
+        Label label = MakeSpeedLabel(caption);
+        label.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        label.VerticalAlignment = VerticalAlignment.Center;
+        row.AddChild(label);
+
+        dropdown = BuildSpeedDropdown(current, onSelected);
+        dropdown.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+        row.AddChild(dropdown);
         return row;
+    }
+
+    /// <summary>
+    /// Build the speed dropdown (Slow / Normal / Fast / Instant). Item ids are
+    /// the <see cref="PlaybackSpeed"/> enum int, so selection round-trips via
+    /// <c>GetSelectedId()</c> independent of item order.
+    /// </summary>
+    private OptionButton BuildSpeedDropdown(PlaybackSpeed current, Action<PlaybackSpeed> onSelected)
+    {
+        var dropdown = new OptionButton
+        {
+            // 32px tall to match the SFX/VFX toggle box, so a speed row is the
+            // same height as a checkbox row.
+            CustomMinimumSize = new Vector2(160, 32),
+        };
+        dropdown.AddThemeFontSizeOverride("font_size", 22);
+        // The popup list is themed separately from the button; without this
+        // override the expanded items render at the tiny default size.
+        dropdown.GetPopup().AddThemeFontSizeOverride("font_size", 22);
+        foreach (PlaybackSpeed speed in SpeedOrder)
+        {
+            dropdown.AddItem(SpeedLabel(speed), (int)speed);
+        }
+        SelectItemById(dropdown, (int)current);
+        dropdown.ItemSelected += _ => onSelected((PlaybackSpeed)dropdown.GetSelectedId());
+        AudioBus.AttachClick(dropdown);
+        return dropdown;
+    }
+
+    /// <summary>Select the item whose id matches <paramref name="id"/>
+    /// (OptionButton.Selected is an index, not an id).</summary>
+    private static void SelectItemById(OptionButton dropdown, int id)
+    {
+        for (int item = 0; item < dropdown.ItemCount; item++)
+        {
+            if (dropdown.GetItemId(item) == id)
+            {
+                dropdown.Selected = item;
+                return;
+            }
+        }
     }
 
     private static void ApplyCheckBoxStyle(Button box, bool pressed) =>
@@ -515,46 +526,4 @@ public sealed partial class SettingsPanel : CanvasLayer
         _ => speed.ToString(),
     };
 
-    /// <summary>
-    /// Repaint a speed button so the selected one reads as solid white
-    /// with dark text (mirrors the CTA accent in HudView) and the
-    /// unselected ones read as dim, transparent dark with light text.
-    /// Both states keep a visible border so the four-button row reads
-    /// as a single control rather than free-floating glyphs.
-    /// </summary>
-    private static void ApplySpeedButtonStyle(Button btn, bool pressed)
-    {
-        var style = new StyleBoxFlat
-        {
-            BgColor = pressed
-                ? new Color(1f, 1f, 1f, 1f)
-                : new Color(0.15f, 0.15f, 0.18f, 1f),
-            BorderColor = pressed
-                ? new Color(0f, 0f, 0f, 1f)
-                : new Color(0.55f, 0.55f, 0.6f, 1f),
-            BorderWidthLeft = 2,
-            BorderWidthRight = 2,
-            BorderWidthTop = 2,
-            BorderWidthBottom = 2,
-            CornerRadiusTopLeft = 4,
-            CornerRadiusTopRight = 4,
-            CornerRadiusBottomLeft = 4,
-            CornerRadiusBottomRight = 4,
-            ContentMarginLeft = 10,
-            ContentMarginRight = 10,
-            ContentMarginTop = 6,
-            ContentMarginBottom = 6,
-        };
-        btn.AddThemeStyleboxOverride("normal", style);
-        btn.AddThemeStyleboxOverride("hover", style);
-        btn.AddThemeStyleboxOverride("pressed", style);
-        btn.AddThemeStyleboxOverride("hover_pressed", style);
-        Color textColor = pressed
-            ? new Color(0f, 0f, 0f, 1f)
-            : new Color(0.9f, 0.9f, 0.95f, 1f);
-        btn.AddThemeColorOverride("font_color", textColor);
-        btn.AddThemeColorOverride("font_hover_color", textColor);
-        btn.AddThemeColorOverride("font_pressed_color", textColor);
-        btn.AddThemeColorOverride("font_hover_pressed_color", textColor);
-    }
 }

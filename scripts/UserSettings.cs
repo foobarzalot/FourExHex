@@ -51,8 +51,8 @@ public static partial class UserSettings
     private static bool _isLoading;
     private static bool _sfxEnabled = true;
     private static bool _vfxEnabled = true;
-    private static PlaybackSpeed _aiSpeed = PlaybackSpeed.Normal;
-    private static PlaybackSpeed _replaySpeed = PlaybackSpeed.Normal;
+    private static PlaybackSpeed _aiSpeed = PlaybackSpeed.Fast;
+    private static PlaybackSpeed _replaySpeed = PlaybackSpeed.Fast;
 
     public static bool SfxEnabled
     {
@@ -148,8 +148,8 @@ public static partial class UserSettings
         public bool VfxEnabled { get; set; } = true;
         // Keys AiSpeed/ReplaySpeed bind by name; PlaybackSpeed's numeric
         // order is load-bearing for save-compat.
-        public PlaybackSpeed AiSpeed { get; set; } = PlaybackSpeed.Normal;
-        public PlaybackSpeed ReplaySpeed { get; set; } = PlaybackSpeed.Normal;
+        public PlaybackSpeed AiSpeed { get; set; } = PlaybackSpeed.Fast;
+        public PlaybackSpeed ReplaySpeed { get; set; } = PlaybackSpeed.Fast;
     }
 
     // Source-gen JsonSerializerContext for SettingsDto. Nested inside
