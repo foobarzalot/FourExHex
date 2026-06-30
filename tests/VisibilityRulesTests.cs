@@ -21,52 +21,74 @@ public class VisibilityRulesTests
             waterCoords: null, mode: GameMode.FogOfWar);
     }
 
+    // Give Red a 2-tile (capital-bearing) territory: an anchor + its east
+    // neighbour (same-row adjacent columns are always hex-neighbours). A 2-tile
+    // group gets a capital, so it grants sight — unlike a singleton.
+    private static (HexCoord A, HexCoord B) GiveRedTerritory(HexGrid grid, int col, int row)
+    {
+        HexCoord a = HexCoord.FromOffset(col, row);
+        HexCoord b = HexCoord.FromOffset(col + 1, row);
+        grid.Get(a)!.Owner = Red;
+        grid.Get(b)!.Owner = Red;
+        return (a, b);
+    }
+
     // --- ComputeVisible --------------------------------------------------
 
     [Fact]
-    public void ComputeVisible_OwnedTilePlusInGridNeighbors_AreVisible()
+    public void ComputeVisible_OwnedTerritory_TilesAndRingVisible()
     {
-        // 5x5 all-Blue grid; carve a single Red tile in the interior so its
-        // six neighbours are all in-grid.
         HexGrid grid = TestHelpers.BuildRectGrid(5, 5, Blue);
-        HexCoord center = HexCoord.FromOffset(2, 2);
-        grid.Get(center)!.Owner = Red;
+        (HexCoord a, HexCoord b) = GiveRedTerritory(grid, 1, 2);
 
         HashSet<HexCoord> visible = VisibilityRules.ComputeVisible(MakeState(grid, BuildTerr(grid)), Red);
 
-        Assert.Contains(center, visible);
-        foreach (HexCoord n in center.Neighbors())
+        Assert.Contains(a, visible);
+        Assert.Contains(b, visible);
+        foreach (HexCoord n in a.Neighbors())
             Assert.Contains(n, visible);
-        Assert.Equal(7, visible.Count); // the tile + its 6 neighbours
+        Assert.DoesNotContain(HexCoord.FromOffset(4, 4), visible); // far tile fogged
+    }
+
+    [Fact]
+    public void ComputeVisible_Singleton_GrantsNoVisibility()
+    {
+        // A lone owned tile is a size-1 territory with no capital — "part of no
+        // territory" — so it (and its ring) generate no sight at all.
+        HexGrid grid = TestHelpers.BuildRectGrid(5, 5, Blue);
+        HexCoord lone = HexCoord.FromOffset(2, 2);
+        grid.Get(lone)!.Owner = Red;
+
+        HashSet<HexCoord> visible = VisibilityRules.ComputeVisible(MakeState(grid, BuildTerr(grid)), Red);
+
+        Assert.Empty(visible);
+        Assert.DoesNotContain(lone, visible);
     }
 
     [Fact]
     public void ComputeVisible_TileTwoRingsAway_IsNotVisible()
     {
         HexGrid grid = TestHelpers.BuildRectGrid(7, 7, Blue);
-        HexCoord center = HexCoord.FromOffset(3, 3);
-        grid.Get(center)!.Owner = Red;
+        (HexCoord a, HexCoord b) = GiveRedTerritory(grid, 3, 3);
 
         HashSet<HexCoord> visible = VisibilityRules.ComputeVisible(MakeState(grid, BuildTerr(grid)), Red);
 
-        HexCoord far = HexCoord.FromOffset(5, 3); // 2 columns away
-        Assert.True(HexCoord.Distance(center, far) >= 2);
+        HexCoord far = HexCoord.FromOffset(6, 3); // >= 2 from both owned tiles
+        Assert.True(HexCoord.Distance(a, far) >= 2 && HexCoord.Distance(b, far) >= 2);
         Assert.DoesNotContain(far, visible);
     }
 
     [Fact]
-    public void ComputeVisible_EdgeOwnedTile_IncludesOffGridWaterNeighbors()
+    public void ComputeVisible_EdgeOwnedTerritory_IncludesOffGridWaterNeighbors()
     {
         // Water and off-map cells in the one-hex ring are in sight too, so the
         // coastline around the human's land is revealed (then remembered).
         HexGrid grid = TestHelpers.BuildRectGrid(3, 3, Blue);
-        HexCoord corner = HexCoord.FromOffset(0, 0);
-        grid.Get(corner)!.Owner = Red;
+        (HexCoord corner, _) = GiveRedTerritory(grid, 0, 0);
 
         HashSet<HexCoord> visible = VisibilityRules.ComputeVisible(MakeState(grid, BuildTerr(grid)), Red);
 
         Assert.Contains(corner, visible);
-        Assert.Equal(7, visible.Count); // the corner + all 6 ring coords
         Assert.Contains(visible, c => !grid.Contains(c)); // at least one off-grid (water) coord
     }
 
@@ -76,9 +98,8 @@ public class VisibilityRulesTests
     public void UpdateMemory_RemembersVisibleTiles_StaleAfterOwnershipLost()
     {
         HexGrid grid = TestHelpers.BuildRectGrid(5, 5, Blue);
-        HexCoord center = HexCoord.FromOffset(2, 2);
-        HexCoord neighbor = center.Neighbors().First(grid.Contains);
-        grid.Get(center)!.Owner = Red;
+        (HexCoord a, _) = GiveRedTerritory(grid, 1, 2);
+        HexCoord neighbor = a.Neighbors().First(c => grid.Contains(c) && grid.Get(c)!.Owner == Blue);
         GameState state = MakeState(grid, BuildTerr(grid));
 
         // First sight: the neighbour is visible and remembered as Blue-owned.
@@ -86,22 +107,25 @@ public class VisibilityRulesTests
         Assert.True(state.IsRemembered(neighbor));
         Assert.Equal(Blue, state.Remembered[neighbor].Owner);
 
-        // The world changes out of sight: Red loses the center, so the
-        // neighbour leaves Red's sight. Memory must keep the LAST-SEEN owner.
+        // Red loses the whole territory, so the neighbour leaves sight. Memory
+        // must keep the LAST-SEEN owner, not the live one. Territories are
+        // recomputed (as the controller does after a capture).
         PlayerId green = PlayerId.FromIndex(2);
-        grid.Get(center)!.Owner = green;
+        foreach (HexTile t in grid.Tiles)
+            if (t.Owner == Red) t.Owner = green;
         grid.Get(neighbor)!.Owner = green; // live change the human can't see
+        state.Territories = BuildTerr(grid);
         HashSet<HexCoord> visibleNow = VisibilityRules.ComputeVisible(state, Red);
 
         Assert.Equal(VisibilityTier.Stale, VisibilityRules.TierOf(neighbor, visibleNow, state));
-        Assert.Equal(Blue, state.Remembered[neighbor].Owner); // last-seen, not live Red
+        Assert.Equal(Blue, state.Remembered[neighbor].Owner); // last-seen, not live green
     }
 
     [Fact]
     public void TierOf_NeverSeenTile_IsFog()
     {
         HexGrid grid = TestHelpers.BuildRectGrid(5, 5, Blue);
-        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = Red;
+        GiveRedTerritory(grid, 0, 0);
         GameState state = MakeState(grid, BuildTerr(grid));
         VisibilityRules.UpdateMemory(state, Red);
 
@@ -114,9 +138,8 @@ public class VisibilityRulesTests
     public void UpdateMemory_RemembersOccupantSnapshot_NotLiveMutation()
     {
         HexGrid grid = TestHelpers.BuildRectGrid(5, 5, Blue);
-        HexCoord center = HexCoord.FromOffset(2, 2);
-        HexCoord neighbor = center.Neighbors().First(grid.Contains);
-        grid.Get(center)!.Owner = Red;
+        (HexCoord a, _) = GiveRedTerritory(grid, 1, 2);
+        HexCoord neighbor = a.Neighbors().First(c => grid.Contains(c) && grid.Get(c)!.Owner == Blue);
         GameState state = MakeState(grid, BuildTerr(grid));
         // Set after territory build so capital reconciliation can't overwrite it.
         grid.Get(neighbor)!.Occupant = new Unit(Blue, UnitLevel.Recruit);
@@ -126,8 +149,7 @@ public class VisibilityRulesTests
         // Mutate the live occupant after the snapshot.
         grid.Get(neighbor)!.Occupant = new Unit(Blue, UnitLevel.Commander);
 
-        HexOccupant? remembered = state.Remembered[neighbor].Occupant;
-        Unit? rememberedUnit = remembered as Unit;
+        Unit? rememberedUnit = state.Remembered[neighbor].Occupant as Unit;
         Assert.NotNull(rememberedUnit);
         Assert.Equal(UnitLevel.Recruit, rememberedUnit!.Level); // snapshot, not live
     }
@@ -138,7 +160,7 @@ public class VisibilityRulesTests
     public void UpdateMemory_DoesNotMutateTreasuryOrTerritories()
     {
         HexGrid grid = TestHelpers.BuildRectGrid(5, 5, Blue);
-        grid.Get(HexCoord.FromOffset(2, 2))!.Owner = Red;
+        GiveRedTerritory(grid, 2, 2);
         IReadOnlyList<Territory> territories = BuildTerr(grid);
         GameState state = MakeState(grid, territories);
 
@@ -154,7 +176,7 @@ public class VisibilityRulesTests
         // can't perturb AI decisions, RNG, or replay/determinism: same seed,
         // fog on vs off, produces the same game.
         HexGrid grid = TestHelpers.BuildRectGrid(5, 5, Blue);
-        grid.Get(HexCoord.FromOffset(2, 2))!.Owner = Red;
+        GiveRedTerritory(grid, 2, 2);
         GameState state = MakeState(grid, BuildTerr(grid));
 
         string before = GameStateChecksum.Compute(state);

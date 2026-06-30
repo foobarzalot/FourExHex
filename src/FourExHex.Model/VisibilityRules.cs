@@ -12,23 +12,29 @@ using System.Collections.Generic;
 public static class VisibilityRules
 {
     /// <summary>
-    /// The set of coords currently in the human's sight: every tile they own,
-    /// plus each owned tile's neighbours (a one-hex ring). Neighbours include
-    /// water and off-map coords — the coastline and ocean immediately around the
-    /// human's land are in sight; everything further out stays fogged until seen.
+    /// The set of coords currently in the human's sight: every tile in one of
+    /// their capital-bearing territories, plus each such tile's neighbours (a
+    /// one-hex ring). Singletons — size-1 territories with no capital — grant no
+    /// sight at all. Neighbours include water and off-map coords, so the
+    /// coastline and ocean immediately around the human's land are in sight;
+    /// everything further out stays fogged until seen.
     /// </summary>
     public static HashSet<HexCoord> ComputeVisible(GameState state, PlayerId human)
     {
         var visible = new HashSet<HexCoord>();
         if (human.IsNone) return visible;
 
-        foreach (HexTile tile in state.Grid.Tiles)
+        foreach (Territory territory in state.Territories)
         {
-            if (tile.Owner != human) continue;
-            visible.Add(tile.Coord);
-            foreach (HexCoord n in tile.Coord.Neighbors())
+            if (territory.Owner != human) continue;
+            if (!territory.HasCapital) continue; // singleton: part of no real territory
+            foreach (HexCoord coord in territory.Coords)
             {
-                visible.Add(n);
+                visible.Add(coord);
+                foreach (HexCoord n in coord.Neighbors())
+                {
+                    visible.Add(n);
+                }
             }
         }
         return visible;
