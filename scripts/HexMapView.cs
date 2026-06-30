@@ -186,7 +186,9 @@ public partial class HexMapView : Node2D, IHexMapView
     // Fog Of War. The stale layer sits below the fog overlay so the dim hex
     // darkens the last-seen occupant beneath it.
     private Node2D? _staleOccupantsLayer;
-    private Node2D? _fogLayer;
+    // Baked as one triangle soup (cover + dim hexes) so a full-map repaint on a
+    // visibility change is a single draw call, not hundreds of Polygon2D nodes.
+    private TriangleSoup? _fogLayer;
     private readonly Dictionary<HexCoord, Node2D> _unitVisuals = new();
     private readonly Dictionary<HexCoord, Node2D> _capitalVisuals = new();
 
@@ -587,7 +589,7 @@ public partial class HexMapView : Node2D, IHexMapView
         // hidden and stale tiles read as dimmed. Both empty outside Fog Of War.
         _staleOccupantsLayer = new Node2D { Name = "StaleOccupantsLayer" };
         AddChild(_staleOccupantsLayer);
-        _fogLayer = new Node2D { Name = "FogLayer" };
+        _fogLayer = new TriangleSoup { Name = "FogLayer" };
         AddChild(_fogLayer);
         // Rejection overlays sit on top of everything so a red flash is
         // unambiguous. Persistent — never cleared by RefreshOccupantVisuals
@@ -1186,21 +1188,41 @@ public partial class HexMapView : Node2D, IHexMapView
         RedrawFogOverlay();
     }
 
-    // Repaint the cover (opaque, over never-seen tiles) + dim (translucent, over
-    // stale tiles) overlay. Cleared and empty outside Fog Of War.
+    // Bake the cover (opaque, over never-seen cells) + dim (translucent, over
+    // stale cells) overlay across the WHOLE map extent — land, water, and the
+    // off-map rim — so unseen ocean and coastlines are hidden just like land.
+    // Empty (single empty soup) outside Fog Of War.
     private void RedrawFogOverlay()
     {
         if (_fogLayer == null) return;
-        ClearLayer(_fogLayer);
-        if (_fog == null) return;
-        foreach (HexTile tile in _state.Grid.Tiles)
+        if (_fog == null)
         {
-            VisibilityTier tier = FogTierOf(tile.Coord);
-            if (tier == VisibilityTier.Visible) continue;
-            Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(tile.Coord, HexSize);
-            Color c = tier == VisibilityTier.Fog ? FogCoverColor : FogStaleDimColor;
-            _fogLayer.AddChild(CreateHexVisual(center, c));
+            _fogLayer.SetTriangles(
+                System.Array.Empty<Vector2>(),
+                System.Array.Empty<Color>(),
+                System.Array.Empty<int>());
+            return;
         }
+
+        Vector2[] hex = HexVertices();
+        var bake = new TriangleSoupBuilder();
+        // Same extent the water/foam bake covers (board + scroll-pad rim), so
+        // every cell the player could pan to is fogged until seen.
+        int margin = Mathf.CeilToInt(ScrollPaddingPx / (1.5f * HexSize)) + 1;
+        for (int row = -margin; row < Rows + margin; row++)
+        {
+            for (int col = -margin; col < Cols + margin; col++)
+            {
+                HexCoord coord = HexCoord.FromOffset(col, row);
+                VisibilityTier tier = FogTierOf(coord);
+                if (tier == VisibilityTier.Visible) continue;
+                Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(coord, HexSize);
+                Color c = tier == VisibilityTier.Fog ? FogCoverColor : FogStaleDimColor;
+                bake.AddPolygon(center, hex, c, null);
+            }
+        }
+        _fogLayer.SetTriangles(
+            bake.Points.ToArray(), bake.Colors.ToArray(), bake.Indices.ToArray());
     }
 
     // Draw the last-seen occupant of each stale tile as a static, non-actionable

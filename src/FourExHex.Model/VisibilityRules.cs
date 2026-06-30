@@ -13,8 +13,9 @@ public static class VisibilityRules
 {
     /// <summary>
     /// The set of coords currently in the human's sight: every tile they own,
-    /// plus each owned tile's in-grid neighbours (a one-hex ring). Off-grid /
-    /// water coords are excluded (a coord is included only if it is a real tile).
+    /// plus each owned tile's neighbours (a one-hex ring). Neighbours include
+    /// water and off-map coords — the coastline and ocean immediately around the
+    /// human's land are in sight; everything further out stays fogged until seen.
     /// </summary>
     public static HashSet<HexCoord> ComputeVisible(GameState state, PlayerId human)
     {
@@ -27,7 +28,7 @@ public static class VisibilityRules
             visible.Add(tile.Coord);
             foreach (HexCoord n in tile.Coord.Neighbors())
             {
-                if (state.Grid.Contains(n)) visible.Add(n);
+                visible.Add(n);
             }
         }
         return visible;
@@ -45,8 +46,12 @@ public static class VisibilityRules
         foreach (HexCoord coord in visible)
         {
             HexTile? tile = state.Grid.Get(coord);
-            if (tile == null) continue;
-            state.SetRemembered(coord, new RememberedTile(tile.Owner, HexOccupant.Clone(tile.Occupant)));
+            // Land tiles remember owner + occupant; water / off-map coords are
+            // remembered as "seen" only (no owner, no occupant) so they degrade
+            // to the stale tier rather than re-fogging.
+            state.SetRemembered(coord, tile != null
+                ? new RememberedTile(tile.Owner, HexOccupant.Clone(tile.Occupant))
+                : new RememberedTile(PlayerId.None, null));
         }
         return visible;
     }

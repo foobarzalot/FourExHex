@@ -55,17 +55,19 @@ public class VisibilityRulesTests
     }
 
     [Fact]
-    public void ComputeVisible_EdgeOwnedTile_OffGridNeighborsExcluded()
+    public void ComputeVisible_EdgeOwnedTile_IncludesOffGridWaterNeighbors()
     {
+        // Water and off-map cells in the one-hex ring are in sight too, so the
+        // coastline around the human's land is revealed (then remembered).
         HexGrid grid = TestHelpers.BuildRectGrid(3, 3, Blue);
         HexCoord corner = HexCoord.FromOffset(0, 0);
         grid.Get(corner)!.Owner = Red;
 
         HashSet<HexCoord> visible = VisibilityRules.ComputeVisible(MakeState(grid, BuildTerr(grid)), Red);
 
-        // Every visible coord must actually exist in the grid.
-        Assert.All(visible, c => Assert.True(grid.Contains(c)));
         Assert.Contains(corner, visible);
+        Assert.Equal(7, visible.Count); // the corner + all 6 ring coords
+        Assert.Contains(visible, c => !grid.Contains(c)); // at least one off-grid (water) coord
     }
 
     // --- UpdateMemory + TierOf ------------------------------------------
