@@ -50,9 +50,6 @@ public partial class MainMenuScene : Control
         return n;
     }
 
-    // The master seed is a full 32-bit value entered as 8 hex digits.
-    private const int SeedHexDigits = 8;
-
     /// <summary>One-shot handoff: when true, the menu opens straight to
     /// the campaign screen instead of the landing page (set by
     /// <see cref="Main"/>'s "Back to campaign" path so the player returns
@@ -101,7 +98,10 @@ public partial class MainMenuScene : Control
     private PanelContainer? _landingSurface;
     private PanelContainer? _playConfigSurface;
 
-    private LineEdit? _seedField;
+    // The master seed driving the map preview. Not user-editable: re-roll
+    // picks a fresh value and Start hands it to GameSettings.MasterSeed.
+    // Initialized in _Ready and persists across orientation-flip rebuilds.
+    private int _previewSeed;
     private Button? _startButton;
     // The player-page "Next" button (one is live at a time per orientation);
     // disabled when fewer than 2 active players are selected.
@@ -111,8 +111,8 @@ public partial class MainMenuScene : Control
     private MapThumbnailView? _thumbnail;
 
     // The New Game flow is split into two pages: player setup
-    // (role + difficulty per slot) and map setup (seed + re-roll and a live
-    // thumbnail of the board the seed produces). Both page contents are built
+    // (role + difficulty per slot) and map setup (re-roll die + a live
+    // thumbnail of the board the previewed seed produces). Both page contents are built
     // up front and parented to the play-config panel; navigation toggles their
     // visibility (so selections survive paging back and forth). _playConfigPage
     // persists across the orientation-flip rebuild so a flip keeps you on the
@@ -135,21 +135,10 @@ public partial class MainMenuScene : Control
     // never-connected signal).
     private bool _viewportResizeHooked;
 
-    // Mobile keyboard avoidance for the seed field. The shared
-    // KeyboardLiftController (scripts/KeyboardLiftController.cs) owns the
-    // per-frame poll + lift state and reads FOUREXHEX_FAKE_KB; this scene
-    // just drives Poll() from _Process while the seed field is focused and
-    // supplies ApplyPlayConfigLayout as the apply hook. Rebuilt alongside the
-    // seed field in BuildSeedField (an orientation flip frees the old field).
-    private const float KeyboardLiftMargin = 16f;
-    private KeyboardLiftController? _seedLift;
-
     public override void _Ready()
     {
-        // Keyboard-lift polling and tap-outside detection run only while
-        // the seed field has focus (see OnSeedFieldFocusEntered/Exited).
-        SetProcess(false);
-        SetProcessInput(false);
+        // Seed the map-preview value once; re-roll changes it thereafter.
+        _previewSeed = SeedFormat.NextSeed(new System.Random());
 
         // Diagnostic launch: if FOUREXHEX_6AI or FOUREXHEX_6AI_QUICK
         // is set we skip the menu entirely and jump straight into the
@@ -276,9 +265,8 @@ public partial class MainMenuScene : Control
                 LandscapeMenuChrome.ApplyLayout(_landingSurface, viewport, SafeArea.Current);
         }
         // Both orientations use the fill-to-cap surface now; ApplyPlayConfigLayout
-        // picks the orientation cap and carries any active seed-field keyboard
-        // lift so a resize while the keyboard is up doesn't snap it back down.
-        if (_playConfigSurface != null) ApplyPlayConfigLayout(_seedLift?.CurrentLift ?? 0f);
+        // picks the orientation cap.
+        if (_playConfigSurface != null) ApplyPlayConfigLayout();
         // The campaign panel is NOT scaled — it fills the viewport and
         // scrolls (anchors re-solve on resize on their own; an orientation
         // flip rebuilds it via RebuildCampaignOnOrientationFlip below).
@@ -291,7 +279,7 @@ public partial class MainMenuScene : Control
     {
         Vector2 viewport = GetViewportRect().Size;
         if (_landingSurface != null) LandscapeMenuChrome.ApplyLayout(_landingSurface, viewport, s);
-        if (_playConfigSurface != null) ApplyPlayConfigLayout(_seedLift?.CurrentLift ?? 0f);
+        if (_playConfigSurface != null) ApplyPlayConfigLayout();
     }
 
     /// <summary>Rebuild the landing panel when a viewport resize flips the
@@ -347,8 +335,8 @@ public partial class MainMenuScene : Control
     /// the orientation: portrait stacks each row's difficulty
     /// dropdown under the kind selector; landscape puts them side by side.
     /// Dropdown selections are written back into GameSettings — the build
-    /// path initializes from there — and the seed/map controls are restored
-    /// explicitly.</summary>
+    /// path initializes from there — and the preview seed survives in
+    /// <see cref="_previewSeed"/> (a plain field, not a rebuilt control).</summary>
     private void RebuildPlayConfigOnOrientationFlip(Vector2 viewport)
     {
         if (_playConfigPanel == null) return;
@@ -358,16 +346,7 @@ public partial class MainMenuScene : Control
             $"MainMenu: orientation flip {_playConfigOrientation} -> {next}; rebuilding play-config panel");
 
         PersistRosterSelections();
-        string seedText = _seedField?.Text ?? "";
         bool wasVisible = _playConfigPanel.Visible;
-
-        // The freed seed field never fires FocusExited, so stop the
-        // keyboard-lift polling it may have left running. The new panel
-        // starts with default anchor offsets, i.e. zero lift. (BuildSeedField
-        // replaces _seedLift with a fresh controller for the new field.)
-        SetProcess(false);
-        SetProcessInput(false);
-        _seedLift?.Reset();
 
         Control old = _playConfigPanel;
         int treeIndex = old.GetIndex();
@@ -378,7 +357,6 @@ public partial class MainMenuScene : Control
         AddChild(_playConfigPanel);
         MoveChild(_playConfigPanel, treeIndex);
         _playConfigPanel.Visible = wasVisible;
-        if (_seedField != null) _seedField.Text = seedText;
         // _playConfigPage persists across the rebuild; restore the matching page
         // visibility and re-render the thumbnail if the map page is showing.
         ShowCurrentPlayConfigPage();
@@ -717,9 +695,8 @@ public partial class MainMenuScene : Control
         _mapPageContent = BuildPortraitMapPage();
         surface.AddChild(_mapPageContent);
 
-        RefreshStartButtonGating();
         ShowCurrentPlayConfigPage();
-        ApplyPlayConfigLayout(0f);
+        ApplyPlayConfigLayout();
         Log.Debug(Log.LogCategory.Render,
             "MainMenu: play-config built (Portrait, paged setup, fill surface)");
         return surface;
@@ -733,18 +710,15 @@ public partial class MainMenuScene : Control
 
     /// <summary>Size + center the play-config surface, filling the safe area up
     /// to the orientation-appropriate cap. The single sizing path shared by
-    /// <see cref="FitPanels"/>, the safe-area hook, and the keyboard-lift path
-    /// so they can't drift. <paramref name="verticalShift"/> lifts the surface
-    /// for on-screen-keyboard avoidance.</summary>
-    private void ApplyPlayConfigLayout(float verticalShift)
+    /// <see cref="FitPanels"/> and the safe-area hook so they can't drift.</summary>
+    private void ApplyPlayConfigLayout()
     {
         if (_playConfigSurface == null) return;
         Vector2 vp = GetViewportRect().Size;
         bool portrait = ScreenLayout.Resolve(vp.X, vp.Y) == ScreenOrientation.Portrait;
         LandscapeMenuChrome.ApplyLayout(_playConfigSurface, vp, SafeArea.Current,
             maxW: portrait ? PortraitMaxW : LandscapeMenuChrome.MaxWidth,
-            maxH: portrait ? PortraitMaxH : LandscapeMenuChrome.MaxHeight,
-            verticalShift: verticalShift);
+            maxH: portrait ? PortraitMaxH : LandscapeMenuChrome.MaxHeight);
     }
 
     /// <summary>Centered "New Game" wordmark + gold rule at the top of a portrait
@@ -838,7 +812,7 @@ public partial class MainMenuScene : Control
     }
 
     /// <summary>A labeled control row — fixed-width caption then the control
-    /// filling the rest (portrait Type / Difficulty / Map / Map Seed rows).</summary>
+    /// filling the rest (portrait Type / Difficulty / Map rows).</summary>
     private HBoxContainer MakePortraitFieldRow(string label, Control field)
     {
         var row = new HBoxContainer();
@@ -863,21 +837,14 @@ public partial class MainMenuScene : Control
 
         // Procedural-only map page: loading a saved starting map is its own
         // branch off the New Game source chooser, so the map page is just
-        // seed + preview.
+        // a re-rollable preview.
 
-        // Seed field + square re-roll die share a row.
+        // Wide re-roll die + "?" map-gen options on one row above the preview.
         var seedRow = new HBoxContainer();
         seedRow.AddThemeConstantOverride("separation", 10);
-        Label seedCaption = MakeRailLabel("Map Seed");
-        seedCaption.CustomMinimumSize = new Vector2(108, 0);
-        seedCaption.VerticalAlignment = VerticalAlignment.Center;
-        seedRow.AddChild(seedCaption);
-        LineEdit seedField = ConfigureSeedField();
-        seedField.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        seedField.CustomMinimumSize = new Vector2(0, 44);
-        seedRow.AddChild(seedField);
         _rerollButton = MakeRerollButton();
         _rerollButton.CustomMinimumSize = new Vector2(44, 44);
+        _rerollButton.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         seedRow.AddChild(_rerollButton);
         // "?" opens the shared Map Generation options panel.
         seedRow.AddChild(MakeMapGenSettingsButton());
@@ -971,30 +938,6 @@ public partial class MainMenuScene : Control
         return dropdown;
     }
 
-    private LineEdit ConfigureSeedField()
-    {
-        var field = new LineEdit
-        {
-            MaxLength = SeedHexDigits,
-            Alignment = HorizontalAlignment.Right,
-            Text = SeedFormat.ToHex(SeedFormat.NextSeed(new System.Random())),
-            // Tapping/clicking into the field selects the existing seed so the
-            // next keystroke replaces it.
-            SelectAllOnFocus = true,
-        };
-        field.AddThemeFontSizeOverride("font_size", 21);
-        field.TextChanged += OnSeedTextChanged;
-        field.FocusEntered += OnSeedFieldFocusEntered;
-        field.FocusExited += OnSeedFieldFocusExited;
-        // Intercept = / - even when the LineEdit has focus so the hotkey is
-        // focus-agnostic. Without GuiInput here, the LineEdit would consume
-        // printable-key events before _UnhandledInput sees them.
-        field.GuiInput += OnSeedFieldGuiInput;
-        _seedField = field;
-        _seedLift = new KeyboardLiftController(field, ApplyPlayConfigLayout, KeyboardLiftMargin, "MainMenu");
-        return field;
-    }
-
     /// <summary>The "?" glyph that opens the shared Map Generation options panel.
     /// Sits beside the seed re-roll die; same button/panel as
     /// the map editor's.</summary>
@@ -1017,7 +960,6 @@ public partial class MainMenuScene : Control
         _mapPageContent = BuildLandscapeMapPage();
         surface.AddChild(_mapPageContent);
 
-        RefreshStartButtonGating();
         ShowCurrentPlayConfigPage();
         LandscapeMenuChrome.ApplyLayout(surface, GetViewportRect().Size, SafeArea.Current);
         Log.Debug(Log.LogCategory.Render, "MainMenu: play-config built (Landscape, paged player/map setup)");
@@ -1125,18 +1067,15 @@ public partial class MainMenuScene : Control
         AddLandscapeHeader(rail);
 
         // Procedural-only map page: saved-map loading is its own branch off the
-        // New Game source chooser, so no map selector here — just seed + preview.
+        // New Game source chooser, so no map selector here — just a
+        // re-rollable preview.
 
-        rail.AddChild(MakeRailLabel("Map Seed"));
-        // Seed field + square re-roll button on one row.
+        // Wide re-roll die + "?" map-gen options on one row.
         var seedRow = new HBoxContainer();
         seedRow.AddThemeConstantOverride("separation", 6);
-        LineEdit seedField = ConfigureSeedField();
-        seedField.CustomMinimumSize = new Vector2(0, 44);
-        seedField.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        seedRow.AddChild(seedField);
         _rerollButton = MakeRerollButton();
         _rerollButton.CustomMinimumSize = new Vector2(44, 44);
+        _rerollButton.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         seedRow.AddChild(_rerollButton);
         // "?" opens the shared Map Generation options panel.
         seedRow.AddChild(MakeMapGenSettingsButton());
@@ -1232,7 +1171,7 @@ public partial class MainMenuScene : Control
         return row;
     }
 
-    /// <summary>Section label (Map / Map Seed / column headers) for the
+    /// <summary>Section label (Map / column headers) for the
     /// landscape config rail — title case, matching the portrait labels.</summary>
     private static Label MakeRailLabel(string text)
     {
@@ -1310,16 +1249,6 @@ public partial class MainMenuScene : Control
                 return;
             }
         }
-    }
-
-    /// <summary>
-    /// Start Game is enabled when the seed field has digits (the map page is
-    /// procedural-only — loading a saved map is its own branch).
-    /// </summary>
-    private void RefreshStartButtonGating()
-    {
-        if (_startButton == null) return;
-        _startButton.Disabled = string.IsNullOrEmpty(_seedField?.Text);
     }
 
     /// <summary>Build the campaign screen for the current orientation and
@@ -1503,12 +1432,12 @@ public partial class MainMenuScene : Control
         Log.Debug(Log.LogCategory.Input, "MainMenu: New Game → player setup page");
     }
 
-    /// <summary>Re-render the live thumbnail from the current selection. No-op
-    /// unless the map-setup page is showing (the seed field only lives there).</summary>
+    /// <summary>Re-render the live thumbnail from the current preview seed. No-op
+    /// unless the map-setup page (the only page with a thumbnail) is showing.</summary>
     private void RefreshThumbnail()
     {
         if (_thumbnail == null || _playConfigPage != PlayConfigPage.MapSetup) return;
-        if (SeedFormat.TryParseHex(_seedField?.Text, out int seed)) _thumbnail.RequestRandom(seed);
+        _thumbnail.RequestRandom(_previewSeed);
     }
 
     private MapThumbnailView BuildThumbnail()
@@ -1518,9 +1447,8 @@ public partial class MainMenuScene : Control
         return thumb;
     }
 
-    /// <summary>Re-roll the seed in place, modeled on the map
-    /// editor's die button. Setting LineEdit.Text programmatically doesn't fire
-    /// text_changed, so dependent state is refreshed explicitly.</summary>
+    /// <summary>The die button that re-rolls the preview seed, modeled on the
+    /// map editor's.</summary>
     private HudIconButton MakeRerollButton()
     {
         var button = new HudIconButton(HudIcon.Die) { FocusMode = Control.FocusModeEnum.None };
@@ -1531,12 +1459,9 @@ public partial class MainMenuScene : Control
 
     private void OnReRollSeedPressed()
     {
-        if (_seedField == null) return;
-        int seed = SeedFormat.NextSeed(new System.Random());
-        _seedField.Text = SeedFormat.ToHex(seed);
+        _previewSeed = SeedFormat.NextSeed(new System.Random());
         _rerollButton?.FlashPress();
-        Log.Debug(Log.LogCategory.Input, $"MainMenu: reroll seed={SeedFormat.ToHex(seed)}");
-        RefreshStartButtonGating();
+        Log.Debug(Log.LogCategory.Input, $"MainMenu: reroll seed={SeedFormat.ToHex(_previewSeed)}");
         RefreshThumbnail();
     }
 
@@ -1700,115 +1625,6 @@ public partial class MainMenuScene : Control
         ShowLanding();
     }
 
-    private void OnSeedTextChanged(string newText)
-    {
-        if (_seedField == null) return;
-        // Strip any non-hex characters that slipped past MaxLength
-        // (paste, IME, etc.), uppercase the rest, and keep the caret at
-        // the same logical position so typing isn't disrupted.
-        string filtered = new string(
-            newText.Where(char.IsAsciiHexDigit).ToArray()).ToUpperInvariant();
-        if (filtered != newText)
-        {
-            int caret = _seedField.CaretColumn;
-            _seedField.Text = filtered;
-            _seedField.CaretColumn = System.Math.Min(caret, filtered.Length);
-        }
-        RefreshStartButtonGating();
-        RefreshThumbnail();
-    }
-
-    private void OnSeedFieldGuiInput(InputEvent @event)
-    {
-        if (@event is not InputEventKey keyEvent || !keyEvent.Pressed) return;
-        if (IsIncrementKey(keyEvent.Keycode))
-        {
-            NudgeSeed(+1);
-            _seedField?.AcceptEvent();
-        }
-        else if (IsDecrementKey(keyEvent.Keycode))
-        {
-            NudgeSeed(-1);
-            _seedField?.AcceptEvent();
-        }
-        else if (!keyEvent.Echo
-            && (keyEvent.Keycode == Key.Enter || keyEvent.Keycode == Key.KpEnter))
-        {
-            // LineEdit consumes Enter by default, so without this hook
-            // _UnhandledInput would never see it while the seed field
-            // is focused. Enter never starts the game — it just dismisses
-            // the on-screen keyboard and stays on the config screen so the
-            // rest of the settings remain adjustable.
-            _seedField?.AcceptEvent();
-            Log.Debug(Log.LogCategory.Input,
-                "MainMenu: seed-field Enter -> dismiss keyboard");
-            _seedField?.ReleaseFocus();
-        }
-    }
-
-    private void NudgeSeed(int delta)
-    {
-        if (_seedField == null) return;
-        SeedFormat.TryParseHex(_seedField.Text, out int current);
-        // Full 32-bit range, so wrap naturally rather than clamp.
-        int next = unchecked(current + delta);
-        _seedField.Text = SeedFormat.ToHex(next);
-        _seedField.CaretColumn = _seedField.Text.Length;
-        if (_startButton != null) _startButton.Disabled = false;
-    }
-
-    private static bool IsIncrementKey(Key k) =>
-        k == Key.Equal || k == Key.Plus || k == Key.KpAdd;
-
-    private static bool IsDecrementKey(Key k) =>
-        k == Key.Minus || k == Key.KpSubtract;
-
-    private void OnSeedFieldFocusEntered()
-    {
-        Log.Debug(Log.LogCategory.Display,
-            "MainMenu: seed field focused; keyboard-lift polling on");
-        // Poll per-frame while focused: the on-screen keyboard animates in
-        // and Godot has no keyboard-height-changed signal.
-        SetProcess(true);
-        SetProcessInput(true);
-    }
-
-    private void OnSeedFieldFocusExited()
-    {
-        Log.Debug(Log.LogCategory.Display,
-            "MainMenu: seed field unfocused; keyboard-lift polling off");
-        SetProcess(false);
-        SetProcessInput(false);
-        _seedLift?.Reset();
-    }
-
-    public override void _Process(double delta)
-    {
-        if (_seedField == null || _playConfigPanel == null) return;
-        _seedLift?.Poll(GetViewportRect().Size.Y, GetWindow().ContentScaleFactor);
-    }
-
-    /// <summary>A press that lands outside the focused seed field dismisses
-    /// the on-screen keyboard. Runs in _Input because the root
-    /// Control and panels have MouseFilter.Stop, so an outside tap never
-    /// reaches _UnhandledInput. The event is NOT consumed — the tap still
-    /// activates whatever control it landed on.</summary>
-    public override void _Input(InputEvent @event)
-    {
-        if (_seedField == null || !_seedField.HasFocus()) return;
-        Vector2? pressPosition = @event switch
-        {
-            InputEventMouseButton { Pressed: true } mouse => mouse.Position,
-            InputEventScreenTouch { Pressed: true } touch => touch.Position,
-            _ => null,
-        };
-        if (pressPosition == null) return;
-        if (_seedField.GetGlobalRect().HasPoint(pressPosition.Value)) return;
-        Log.Debug(Log.LogCategory.Input,
-            "MainMenu: tap outside seed field -> dismiss keyboard");
-        _seedField.ReleaseFocus();
-    }
-
     private void BuildLoadDialog()
     {
         _loadDialog = new SlotPickerDialog("Load Game", "Load failed");
@@ -1921,22 +1737,6 @@ public partial class MainMenuScene : Control
 
     private void HandlePlayConfigKey(InputEventKey keyEvent)
     {
-        // Allow auto-repeat (Echo == true) for = / - so holding the key
-        // smoothly scrolls the seed value. Enter still rejects echoes
-        // below so a held Return doesn't double-launch the game.
-        if (IsIncrementKey(keyEvent.Keycode))
-        {
-            NudgeSeed(+1);
-            GetViewport()?.SetInputAsHandled();
-            return;
-        }
-        if (IsDecrementKey(keyEvent.Keycode))
-        {
-            NudgeSeed(-1);
-            GetViewport()?.SetInputAsHandled();
-            return;
-        }
-
         if (keyEvent.Echo) return;
 
         // Escape and Enter mirror the per-page Back / forward buttons:
@@ -2012,12 +1812,10 @@ public partial class MainMenuScene : Control
                     $"{config.Name}={GameSettings.PlayerKinds[i]}/{GameSettings.Difficulties[i]}")));
 
         // Procedural map flow (loading a saved starting map is its own branch
-        // off the source chooser): needs a seed.
-        if (_seedField == null || string.IsNullOrEmpty(_seedField.Text)) return;
-        SeedFormat.TryParseHex(_seedField.Text, out int seed);
-        GameSettings.MasterSeed = seed;
+        // off the source chooser): hand the previewed seed to the game.
+        GameSettings.MasterSeed = _previewSeed;
         Log.Debug(Log.LogCategory.Input,
-            $"MainMenu: start seed={SeedFormat.ToHex(seed)}");
+            $"MainMenu: start seed={SeedFormat.ToHex(_previewSeed)}");
         GetTree().ChangeSceneToFile("res://scenes/main.tscn");
     }
 }
