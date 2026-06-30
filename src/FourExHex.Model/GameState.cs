@@ -109,6 +109,11 @@ public class GameState
     /// <summary>Mark <paramref name="coord"/> as seen by the human. Idempotent.</summary>
     public void MarkSeen(HexCoord coord) => _seen.Add(coord);
 
+    /// <summary>Forget all fog-of-war memory. Used by the replay rewind so a
+    /// replay re-animates fog from scratch instead of inheriting the live game's
+    /// accumulated exploration.</summary>
+    public void ClearSeen() => _seen.Clear();
+
     /// <summary>True if the human has ever seen <paramref name="coord"/>.</summary>
     public bool IsSeen(HexCoord coord) => _seen.Contains(coord);
 

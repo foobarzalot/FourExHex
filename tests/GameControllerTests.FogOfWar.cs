@@ -149,6 +149,22 @@ public partial class GameControllerTests
     }
 
     [Fact]
+    public void FogOfWar_BeginReplay_ResetsFogMemory()
+    {
+        // Replay must re-animate fog from scratch, not inherit the live game's
+        // accumulated exploration. BeginReplay clears the seen set; its setup
+        // refresh re-marks only the replay's initial sight.
+        var game = new FogGame(CornerVsRest(), GameMode.FogOfWar);
+        HexCoord far = HexCoord.FromOffset(6, 1); // far from Red's starting corner
+        game.State.MarkSeen(far);                 // simulate prior exploration
+        Assert.True(game.State.IsSeen(far));
+
+        game.Controller.BeginReplay();
+
+        Assert.False(game.State.IsSeen(far)); // fog memory reset for the replay
+    }
+
+    [Fact]
     public void FogOfWar_TwoHumans_FailsSafeToNullFog()
     {
         // The menu lock guarantees one human; if somehow two humans reach a

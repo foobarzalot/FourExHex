@@ -345,6 +345,10 @@ public class ReplayRecorder
         // keeps the recorded sinks marked as water and the replay diverges (e.g.
         // tree growth, which reads WaterCoords). No-op for freeform (no sinks).
         foreach (HexTile tile in _state.Grid.Tiles) _state.RemoveWater(tile.Coord);
+        // Fog Of War: forget the recorded game's accumulated exploration so the
+        // replay re-animates fog from scratch (the setup refresh below re-marks
+        // only the initial sight). No-op outside Fog Of War.
+        _state.ClearSeen();
         _state.Turns.Reset(_initialCurrentPlayerIndex, _initialTurnNumber);
         _session.Winner = null;
         _session.PendingDefeatScreen = null;
