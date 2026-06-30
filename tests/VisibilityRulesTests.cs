@@ -145,6 +145,22 @@ public class VisibilityRulesTests
         Assert.Same(territories, state.Territories); // territory list untouched
     }
 
+    [Fact]
+    public void UpdateMemory_DoesNotChangeGameStateChecksum()
+    {
+        // Fog memory lives outside the checksummed game state, so enabling fog
+        // can't perturb AI decisions, RNG, or replay/determinism: same seed,
+        // fog on vs off, produces the same game.
+        HexGrid grid = TestHelpers.BuildRectGrid(5, 5, Blue);
+        grid.Get(HexCoord.FromOffset(2, 2))!.Owner = Red;
+        GameState state = MakeState(grid, BuildTerr(grid));
+
+        string before = GameStateChecksum.Compute(state);
+        VisibilityRules.UpdateMemory(state, Red);
+        Assert.NotEmpty(state.Remembered); // memory was actually written
+        Assert.Equal(before, GameStateChecksum.Compute(state));
+    }
+
     private static IReadOnlyList<Territory> BuildTerr(HexGrid grid) =>
         TestHelpers.BuildTerritoriesFromGrid(grid);
 }

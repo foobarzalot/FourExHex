@@ -43,6 +43,7 @@ public static class Log
         MapGen = 11,  // procedural map generation: mountain/gold scatter passes
         Replay = 12,  // replay playback: recorded-vs-replayed end-state divergence
         Tide = 13,    // Rising Tides mode: per-turn shore submerge / mountain demote
+        Fog = 14,     // Fog Of War mode: per-refresh human visibility recompute
     }
 
     /// <summary>Severity, ascending. <see cref="Off"/> disables a

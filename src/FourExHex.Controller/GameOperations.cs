@@ -681,7 +681,7 @@ public class GameOperations
         if (human == null) return null;
 
         HashSet<HexCoord> visible = VisibilityRules.UpdateMemory(_state, human.Value);
-        Log.Debug(Log.LogCategory.Turn,
+        Log.Debug(Log.LogCategory.Fog,
             $"[fog] visible={visible.Count} remembered={_state.Remembered.Count}");
         return new FogView(visible, _state.Remembered);
     }
