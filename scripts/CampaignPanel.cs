@@ -33,6 +33,9 @@ public partial class CampaignPanel : Panel
     // BEHIND the level number. Mid-blue — light enough to read as water, dark
     // enough that the number (light/accent ink) still reads clearly on top.
     private static readonly Color RisingTidesMarkerColor = new Color("2f6296");
+    // Fog Of War level marker: the same disc in black so it reads as "the
+    // unknown" and stays distinct from the tide blue.
+    private static readonly Color FogOfWarMarkerColor = new Color("000000");
 
     private static readonly Font SerifFont =
         GD.Load<FontFile>("res://fonts/DMSerifDisplay-Regular.ttf");
@@ -378,12 +381,19 @@ public partial class CampaignPanel : Panel
                 loop[points.Length] = points[0];
                 DrawPolyline(loop, outline, outlineWidth, antialiased: true);
 
-                // Rising Tides marker: a blue filled circle drawn
-                // BEHIND the level number (before the label) so the mode is
-                // spottable on the grid while the digits still read on top.
-                if (CampaignProgress.ModeForLevel(level) == GameMode.RisingTides)
+                // Game-mode marker: a filled circle drawn BEHIND the level number
+                // (before the label) so the mode is spottable on the grid while
+                // the digits still read on top — blue for Rising Tides, grey for
+                // Fog Of War, none for Freeform.
+                Color? markerColor = CampaignProgress.ModeForLevel(level) switch
                 {
-                    DrawCircle(new Vector2(cx, cy), HexW * 0.30f, RisingTidesMarkerColor);
+                    GameMode.RisingTides => RisingTidesMarkerColor,
+                    GameMode.FogOfWar => FogOfWarMarkerColor,
+                    _ => (Color?)null,
+                };
+                if (markerColor.HasValue)
+                {
+                    DrawCircle(new Vector2(cx, cy), HexW * 0.30f, markerColor.Value);
                 }
 
                 string label = CampaignProgress.LabelFor(level);

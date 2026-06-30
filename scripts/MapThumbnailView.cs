@@ -114,21 +114,26 @@ public partial class MapThumbnailView : Control
     /// terrain features rather than reading the freeform toggles. Uses the
     /// freeform roster (<see cref="Player.BuildRoster"/>).</summary>
     public void RequestRandom(int seed, MapGenOptions options) =>
-        RequestRandom(seed, options, Player.BuildRoster());
+        RequestRandom(seed, options, Player.BuildRoster(), GameSettings.Mode);
 
     /// <summary>Preview the board for an explicit roster — so a campaign level's
     /// preview shows its actual 2–6 player color set, not the freeform
-    /// roster.</summary>
-    public void RequestRandom(int seed, MapGenOptions options, IReadOnlyList<Player> roster)
+    /// roster. Uses the freeform menu mode.</summary>
+    public void RequestRandom(int seed, MapGenOptions options, IReadOnlyList<Player> roster) =>
+        RequestRandom(seed, options, roster, GameSettings.Mode);
+
+    /// <summary>Preview the board for an explicit roster AND mode — the campaign
+    /// confirm sheet passes the level's own mode (<c>ModeForLevel</c>) so a fog
+    /// level previews fogged regardless of the menu's last selection.</summary>
+    public void RequestRandom(int seed, MapGenOptions options, IReadOnlyList<Player> roster, GameMode mode)
     {
         int token = ++_renderToken;
         Log.Debug(Log.LogCategory.Display,
             $"MapThumbnail: request random seed={SeedFormat.ToHex(seed)} token={token} " +
-            $"players={roster.Count} trees={options.TreeDensity} " +
+            $"players={roster.Count} mode={mode} trees={options.TreeDensity} " +
             $"mtn={options.MountainDensity} gold={options.GoldDensity}");
         _ = RenderAsync(
-            () => ProceduralGame.Build(BoardCols, BoardRows, roster, seed, options,
-                mode: GameSettings.Mode),
+            () => ProceduralGame.Build(BoardCols, BoardRows, roster, seed, options, mode: mode),
             $"random seed={SeedFormat.ToHex(seed)}", token);
     }
 

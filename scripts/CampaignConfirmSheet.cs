@@ -23,13 +23,16 @@ public static class CampaignConfirmSheet
         };
         string status = $"{CampaignProgress.DifficultyForLevel(level)} tier · {statusText}";
 
-        // Tell the player which game mode the level runs. Rising
-        // Tides is the rare Soldier+ complication, so it gets an emphasized
-        // description; freeform levels get a one-liner for parity.
+        // Tell the player which game mode the level runs. Rising Tides and Fog Of
+        // War are the rare Soldier+ complications, so they get emphasized
+        // descriptions; freeform levels get a one-liner for parity.
         GameMode mode = CampaignProgress.ModeForLevel(level);
-        string gameMode = mode == GameMode.RisingTides
-            ? "Rising Tides — your coastline sinks a little each turn and the map shrinks; outlast the sea to be the last player standing."
-            : "Freeform — expand your territory and outlast your rivals.";
+        string gameMode = mode switch
+        {
+            GameMode.RisingTides => "Rising Tides — your coastline sinks a little each turn and the map shrinks; outlast the sea to be the last player standing.",
+            GameMode.FogOfWar => "Fog Of War — Explore to reveal the map!",
+            _ => "Freeform — expand your territory and outlast your rivals.",
+        };
 
         // The single color the human plays this level (deterministic per level).
         int humanSlot = CampaignProgress.HumanColorSlotForLevel(level);
@@ -49,8 +52,9 @@ public static class CampaignConfirmSheet
             thumb => thumb.RequestRandom(
                 seed,
                 CampaignProgress.MapGenOptionsForLevel(level),
-                Player.BuildCampaignRoster(level)),
+                Player.BuildCampaignRoster(level),
+                mode),
             gameMode: gameMode,
-            gameModeEmphasis: mode == GameMode.RisingTides);
+            gameModeEmphasis: mode != GameMode.Freeform);
     }
 }

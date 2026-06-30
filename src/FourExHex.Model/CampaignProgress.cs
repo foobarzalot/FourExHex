@@ -161,25 +161,28 @@ public sealed class CampaignProgress
         return level;
     }
 
-    // Rising Tides is introduced from the Soldier tier onward and stays rarer
-    // than freeform. The chance is per Soldier+ level.
+    // Rising Tides and Fog Of War are introduced from the Soldier tier onward and
+    // each stays rarer than freeform. The chances are per Soldier+ level.
     private const int CampaignRisingTidesChance = 10; // %
+    private const int CampaignFogOfWarChance = 10;    // % of the non-tide remainder
 
-    /// <summary>Game mode for a campaign level. Rising Tides is a
-    /// later-game complication: never in the Recruit tier, and a rare minority
-    /// (<see cref="CampaignRisingTidesChance"/>% ) of Soldier+ levels.
-    /// Deterministic — same level always yields the same mode — drawn off the
-    /// level number with a magic offset distinct from the map-gen (2671/40503),
-    /// roster (6151/24593) and slot-hash draws so it doesn't track them.
-    /// Integer-only (no floats — Model rule).</summary>
+    /// <summary>Game mode for a campaign level. Rising Tides and Fog Of War are
+    /// later-game complications: never in the Recruit tier, and each a rare
+    /// minority (<see cref="CampaignRisingTidesChance"/>% /
+    /// <see cref="CampaignFogOfWarChance"/>%) of Soldier+ levels. Deterministic —
+    /// same level always yields the same mode — drawn off the level number with a
+    /// magic offset distinct from the map-gen (2671/40503), roster (6151/24593)
+    /// and slot-hash draws so it doesn't track them. The Rising Tides draw is
+    /// taken first and unchanged, so adding Fog Of War never shifts an existing
+    /// tide level. Integer-only (no floats — Model rule).</summary>
     public static GameMode ModeForLevel(int level)
     {
         ValidateLevel(level);
         if (DifficultyForLevel(level) < Difficulty.Soldier) return GameMode.Freeform;
         var rng = new Random(unchecked(level * 8209 + 49157));
-        return rng.Next(100) < CampaignRisingTidesChance
-            ? GameMode.RisingTides
-            : GameMode.Freeform;
+        if (rng.Next(100) < CampaignRisingTidesChance) return GameMode.RisingTides;
+        if (rng.Next(100) < CampaignFogOfWarChance) return GameMode.FogOfWar;
+        return GameMode.Freeform;
     }
 
     // Per-level map-generation densities. Each campaign level

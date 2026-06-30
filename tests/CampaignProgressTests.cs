@@ -218,6 +218,60 @@ public class CampaignProgressTests
         Assert.True(risingTides < freeform, $"Rising Tides ({risingTides}) not rarer than Freeform ({freeform})");
     }
 
+    [Fact]
+    public void ModeForLevel_FogOfWar_NeverInRecruitTier()
+    {
+        for (int level = 0; level < CampaignProgress.TierSize; level++)
+        {
+            Assert.NotEqual(GameMode.FogOfWar, CampaignProgress.ModeForLevel(level));
+        }
+    }
+
+    [Fact]
+    public void ModeForLevel_FogOfWar_PresentInEverySoldierAndAboveTier()
+    {
+        for (int tier = 1; tier < CampaignProgress.TierCount; tier++)
+        {
+            int start = tier * CampaignProgress.TierSize;
+            int fog = 0;
+            for (int level = start; level < start + CampaignProgress.TierSize; level++)
+            {
+                if (CampaignProgress.ModeForLevel(level) == GameMode.FogOfWar) fog++;
+            }
+            Assert.True(fog > 0, $"tier {tier} has no Fog Of War level");
+        }
+    }
+
+    [Fact]
+    public void ModeForLevel_FogOfWar_RarerThanFreeformOverall()
+    {
+        int fog = 0, freeform = 0;
+        for (int level = 0; level < CampaignProgress.LevelCount; level++)
+        {
+            GameMode m = CampaignProgress.ModeForLevel(level);
+            if (m == GameMode.FogOfWar) fog++;
+            else if (m == GameMode.Freeform) freeform++;
+        }
+        Assert.True(fog > 0);
+        Assert.True(fog < freeform, $"Fog Of War ({fog}) not rarer than Freeform ({freeform})");
+    }
+
+    [Fact]
+    public void ModeForLevel_RisingTidesDistributionUnchanged()
+    {
+        // The Fog Of War draw is added AFTER the Rising Tides draw, so every level
+        // the original formula marked Rising Tides must still be Rising Tides
+        // (existing assignments must not shift).
+        for (int level = 0; level < CampaignProgress.LevelCount; level++)
+        {
+            bool originallyRisingTides =
+                CampaignProgress.DifficultyForLevel(level) >= Difficulty.Soldier
+                && new System.Random(unchecked(level * 8209 + 49157)).Next(100) < 10;
+            if (originallyRisingTides)
+                Assert.Equal(GameMode.RisingTides, CampaignProgress.ModeForLevel(level));
+        }
+    }
+
     // ── Per-level map-generation densities ────────────────
 
     [Theory]
