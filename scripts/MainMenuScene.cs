@@ -793,6 +793,7 @@ public partial class MainMenuScene : Control
         nav.AddChild(_playerNextButton);
         col.AddChild(nav);
         RefreshPlayerNextGating();
+        ApplyGameModeRoleLock();
         return col;
     }
 
@@ -912,11 +913,15 @@ public partial class MainMenuScene : Control
         dropdown.GetPopup().AddThemeFontSizeOverride("font_size", 21);
         dropdown.AddItem("Freeform", (int)GameMode.Freeform);
         dropdown.AddItem("Rising Tides", (int)GameMode.RisingTides);
+        dropdown.AddItem("Fog Of War", (int)GameMode.FogOfWar);
         SelectItemById(dropdown, (int)GameSettings.Mode);
         dropdown.ItemSelected += _ =>
         {
             GameSettings.Mode = (GameMode)dropdown.GetSelectedId();
             Log.Debug(Log.LogCategory.Input, $"MainMenu: game mode → {GameSettings.Mode}");
+            // Fog Of War forces exactly one human (red) + five computers; the
+            // lock is reapplied here so flipping the mode reshapes the roster.
+            ApplyGameModeRoleLock();
         };
         _gameModeButton = dropdown;
         return dropdown;
@@ -1095,6 +1100,7 @@ public partial class MainMenuScene : Control
         // Next button — is built above before the rows, so _roleButtons are
         // still null at that point).
         RefreshPlayerNextGating();
+        ApplyGameModeRoleLock();
         return hbox;
     }
 
@@ -1256,6 +1262,39 @@ public partial class MainMenuScene : Control
                 + "Soldier (non-Human slot)");
         }
         difficultyDropdown.Disabled = !isHuman;
+    }
+
+    /// <summary>Fog Of War demands exactly one human player. When that mode is
+    /// selected, slot 0 (red) is forced to Human and every other slot to
+    /// Computer, and all six role dropdowns are disabled so the roster can't be
+    /// changed — only red's difficulty stays editable (via
+    /// <see cref="ApplyDifficultyLock"/>). Any other mode re-enables the role
+    /// dropdowns, restoring free roster editing. Driven off the shared
+    /// <c>_roleButtons</c> array so it covers both the portrait and landscape
+    /// player pages. Forced <see cref="SelectItemById"/> does not raise
+    /// <c>ItemSelected</c>, so this also persists the roster and re-gates Next.</summary>
+    private void ApplyGameModeRoleLock()
+    {
+        bool fog = GameSettings.Mode == GameMode.FogOfWar;
+        for (int slot = 0; slot < _roleButtons.Length; slot++)
+        {
+            OptionButton role = _roleButtons[slot];
+            if (role == null) continue;
+            if (fog)
+            {
+                int forcedId = slot == 0 ? HumanId : ComputerId;
+                if (role.GetSelectedId() != forcedId) SelectItemById(role, forcedId);
+            }
+            role.Disabled = fog;
+            ApplyDifficultyLock(slot);
+        }
+        if (fog)
+        {
+            PersistRosterSelections();
+            RefreshPlayerNextGating();
+            Log.Debug(Log.LogCategory.Input,
+                "MainMenu: Fog Of War — roster locked to 1 human (red) + 5 computers");
+        }
     }
 
     /// <summary>Select the OptionButton entry whose item ID matches
