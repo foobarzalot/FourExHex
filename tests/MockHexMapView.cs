@@ -48,6 +48,17 @@ public class MockHexMapView : IHexMapView
     public void ShowTideForecast(IEnumerable<TideStep> steps) =>
         LastTideForecast = steps.Select(s => s.Coord).ToList();
 
+    /// <summary>The most recent fog projection the controller pushed, or null
+    /// if fog is off (the last <see cref="ShowFog"/> arg). <see cref="ShowFogCount"/>
+    /// counts calls so tests can assert it was pushed.</summary>
+    public FogView? LastFog { get; private set; }
+    public int ShowFogCount { get; private set; }
+    public void ShowFog(FogView? fog)
+    {
+        LastFog = fog;
+        ShowFogCount++;
+    }
+
     public HexCoord? LastMoveSource { get; private set; }
     public void ShowMoveSource(HexCoord? coord) => LastMoveSource = coord;
 

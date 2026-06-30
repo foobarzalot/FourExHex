@@ -77,6 +77,16 @@ public interface IHexMapView
     void ShowTideForecast(IEnumerable<TideStep> steps);
 
     /// <summary>
+    /// Fog Of War: render the board from the single human player's perspective
+    /// per the given projection — tiles in <see cref="FogView.Visible"/> render
+    /// live, ever-seen tiles render their dimmed last-seen memory
+    /// (<see cref="FogView.Remembered"/>), never-seen tiles render nothing. The
+    /// controller pushes the current projection each refresh; pass <c>null</c>
+    /// (outside Fog Of War) to render everything normally.
+    /// </summary>
+    void ShowFog(FogView? fog);
+
+    /// <summary>
     /// Mark the unit at <paramref name="coord"/> as "picked up" — the
     /// view may animate it (e.g. a scale pulse) to give the player
     /// visual feedback that their click registered. Pass null to

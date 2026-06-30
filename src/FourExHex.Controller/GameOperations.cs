@@ -634,6 +634,11 @@ public class GameOperations
         // forecast for the whole turn ("these tiles erode at turn end"). Empty
         // outside Rising Tides, which clears any prior telegraph.
         _map.ShowTideForecast(_state.PendingTide);
+        // Fog Of War: render from the single human's perspective — recompute
+        // their sight, refresh last-seen memory, and push the projection. Keyed
+        // off the human (not the current player) so fog stays stable through AI
+        // turns. null = fog off → the view renders everything normally.
+        _map.ShowFog(ComputeFogView());
         // End Turn CTA when the current player has nothing actionable
         // left. Lives here (not inside _hud.Refresh) so Tutorial Preview's
         // onAfterRefresh callback can overwrite it when the next scripted
@@ -653,6 +658,31 @@ public class GameOperations
             $"[cta] NextTerritory={nextCta} (isHuman={isHuman}, hasActionable={hasActionable}, selExhausted={selExhausted})");
         _onAfterRefresh?.Invoke();
         Log.Since(Log.LogCategory.Capture, "[hitch] RefreshViews total", tWhole);
+    }
+
+    /// <summary>
+    /// Build the fog-of-war projection for the view, or null when fog is off.
+    /// Fog requires exactly one human player (guaranteed by the Fog Of War menu
+    /// lock); anything else fails safe to null (no fog) rather than guessing a
+    /// perspective. Recomputes the human's sight and refreshes their last-seen
+    /// memory as a side effect — the only place fog memory is updated.
+    /// </summary>
+    private FogView? ComputeFogView()
+    {
+        if (!_state.FogEnabled) return null;
+        PlayerId? human = null;
+        foreach (Player p in _state.Players)
+        {
+            if (p.Kind != PlayerKind.Human) continue;
+            if (human != null) return null; // more than one human → no fog
+            human = p.Id;
+        }
+        if (human == null) return null;
+
+        HashSet<HexCoord> visible = VisibilityRules.UpdateMemory(_state, human.Value);
+        Log.Debug(Log.LogCategory.Turn,
+            $"[fog] visible={visible.Count} remembered={_state.Remembered.Count}");
+        return new FogView(visible, _state.Remembered);
     }
 
     /// <summary>

@@ -1101,6 +1101,20 @@ public partial class HexMapView : Node2D, IHexMapView
         }
     }
 
+    // Fog Of War: the current projection from the single human's perspective,
+    // or null when fog is off. Set by ShowFog; consulted by the render paths to
+    // hide/dim tiles. Rendering wired in a later step.
+    private FogView? _fog;
+
+    /// <summary>
+    /// Fog Of War: store the human's visibility projection (null = fog off) and
+    /// repaint the board to reflect it.
+    /// </summary>
+    public void ShowFog(FogView? fog)
+    {
+        _fog = fog;
+    }
+
     private static bool TideForecastsEqual(List<TideStep> a, List<TideStep> b)
     {
         if (a.Count != b.Count) return false;
