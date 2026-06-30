@@ -1206,7 +1206,7 @@ public partial class HexMapView : Node2D, IHexMapView
 
         Vector2[] hex = HexVertices();
         var bake = new TriangleSoupBuilder();
-        var vertAlpha = new Color[6];
+        var perimeter = new Color[6];
         // Same extent the water/foam bake covers (board + scroll-pad rim), so
         // every cell the player could pan to is fogged until seen.
         int margin = Mathf.CeilToInt(ScrollPaddingPx / (1.5f * HexSize)) + 1;
@@ -1219,22 +1219,23 @@ public partial class HexMapView : Node2D, IHexMapView
                 if (tier == VisibilityTier.Visible) continue;
                 Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(coord, HexSize);
                 Color tint = tier == VisibilityTier.Fog ? FogCoverColor : FogStaleDimColor;
-                FillFeatherAlpha(coord, tier, vertAlpha);
-                bake.AddPolygon(center, hex, tint, vertAlpha);
+                FillFeatherPerimeter(coord, tier, tint, perimeter);
+                // Center stays at full tint; perimeter fades at frontier vertices.
+                // Fan triangulation (shared center) keeps the gradient spike-free.
+                bake.AddFan(center, hex, tint, perimeter);
             }
         }
         _fogLayer.SetTriangles(
             bake.Points.ToArray(), bake.Colors.ToArray(), bake.Indices.ToArray());
     }
 
-    // Soften a fog/stale hex's frontier with more-revealed neighbours by lowering
-    // the alpha of the vertices on that edge. Each vertex v is shared by the two
-    // edges meeting there, whose neighbours are EdgeToNeighborDirection[(v+5)%6]
-    // and [v]. A stale vertex touching a Visible neighbour fades fully open (clean
-    // hand-off to live terrain — already seen, nothing leaks); a fog vertex
-    // touching a Visible/Stale neighbour only softens to a floor so never-seen
-    // terrain stays hidden. Writes a white×alpha multiplier per vertex into `into`.
-    private void FillFeatherAlpha(HexCoord coord, VisibilityTier tier, Color[] into)
+    // Compute the 6 perimeter colours for a fog/stale hex, fading the tint's alpha
+    // at vertices on a frontier with a more-revealed neighbour so the tier softens
+    // over ~1 hex. Each vertex v is shared by the two edges meeting there, whose
+    // neighbours are EdgeToNeighborDirection[(v+5)%6] and [v]; a vertex touching a
+    // more-revealed neighbour drops to FogFeatherEdge. (Spike-free because the
+    // hex is drawn as a fan from a full-tint center — see TriangleSoupBuilder.AddFan.)
+    private void FillFeatherPerimeter(HexCoord coord, VisibilityTier tier, Color tint, Color[] into)
     {
         int self = TierReveal(tier);
         for (int v = 0; v < 6; v++)
@@ -1242,8 +1243,8 @@ public partial class HexMapView : Node2D, IHexMapView
             int nbrA = TierReveal(FogTierOf(coord.Neighbor(EdgeToNeighborDirection[(v + 5) % 6])));
             int nbrB = TierReveal(FogTierOf(coord.Neighbor(EdgeToNeighborDirection[v])));
             int maxNbr = Mathf.Max(nbrA, nbrB);
-            float a = maxNbr > self ? FogFeatherEdge : 1f;
-            into[v] = new Color(1f, 1f, 1f, a);
+            float aMult = maxNbr > self ? FogFeatherEdge : 1f;
+            into[v] = new Color(tint.R, tint.G, tint.B, tint.A * aMult);
         }
     }
 
@@ -3875,6 +3876,30 @@ public partial class HexMapView : Node2D, IHexMapView
             else
             {
                 foreach (int t in tri) Indices.Add(b + t);
+            }
+        }
+
+        // Like AddPolygon but triangulated as a fan from an explicit CENTER
+        // vertex (centerColor) out to each perimeter vertex (perimeterColors).
+        // Every triangle shares the center, so adjacent triangles share a
+        // center→vertex edge with matching endpoint colors — the per-vertex
+        // alpha gradient stays continuous with no spanning "spike" triangles
+        // (which ear-clipping produces when interior and edge alphas differ).
+        public void AddFan(Vector2 offset, Vector2[] perimeter, Color centerColor, Color[] perimeterColors)
+        {
+            int c = Points.Count;
+            Points.Add(offset);           // perimeter is local to the hex center (origin)
+            Colors.Add(centerColor);
+            for (int i = 0; i < perimeter.Length; i++)
+            {
+                Points.Add(offset + perimeter[i]);
+                Colors.Add(perimeterColors[i]);
+            }
+            for (int i = 0; i < perimeter.Length; i++)
+            {
+                Indices.Add(c);
+                Indices.Add(c + 1 + i);
+                Indices.Add(c + 1 + ((i + 1) % perimeter.Length));
             }
         }
     }
