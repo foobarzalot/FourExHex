@@ -144,9 +144,50 @@ public class SaveSerializerTests
     }
 
     [Fact]
-    public void CurrentFormatVersion_IsFifteen()
+    public void CurrentFormatVersion_IsSixteen()
     {
-        Assert.Equal(15, SaveSerializer.CurrentFormatVersion);
+        Assert.Equal(16, SaveSerializer.CurrentFormatVersion);
+    }
+
+    [Fact]
+    public void FogMemory_RoundTripsOwnerAndOccupant()
+    {
+        var red = new Player("Red", PlayerId.FromIndex(0), PlayerKind.Human);
+        var blue = new Player("Blue", PlayerId.FromIndex(1), PlayerKind.Computer);
+        var players = new List<Player> { red, blue };
+        HexGrid grid = TestHelpers.BuildRectGrid(4, 3, blue.Id);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = red.Id;
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(
+            grid, territories, players, new TurnState(players), new Treasury(),
+            waterCoords: null, mode: GameMode.FogOfWar);
+
+        // Remember two enemy tiles: one with a unit, one with a tower.
+        HexCoord uc = HexCoord.FromOffset(2, 1);
+        HexCoord tc = HexCoord.FromOffset(3, 2);
+        state.SetRemembered(uc, new RememberedTile(blue.Id, new Unit(blue.Id, UnitLevel.Captain)));
+        state.SetRemembered(tc, new RememberedTile(blue.Id, new Tower()));
+
+        string json = SaveSerializer.Serialize(state, 42, players, "fog", 100);
+        Assert.Contains("Remembered", json);
+        GameState loaded = SaveSerializer.Deserialize(json).State;
+
+        Assert.Equal(GameMode.FogOfWar, loaded.Mode);
+        Assert.Equal(2, loaded.Remembered.Count);
+        Assert.Equal(blue.Id, loaded.Remembered[uc].Owner);
+        Unit? u = loaded.Remembered[uc].Occupant as Unit;
+        Assert.NotNull(u);
+        Assert.Equal(UnitLevel.Captain, u!.Level);
+        Assert.IsType<Tower>(loaded.Remembered[tc].Occupant);
+    }
+
+    [Fact]
+    public void NonFogSave_OmitsRememberedField()
+    {
+        (GameState state, IReadOnlyList<Player> players) = BuildRichState();
+        string json = SaveSerializer.Serialize(state, 42, players, "s", 100);
+        Assert.DoesNotContain("Remembered", json);
+        Assert.Empty(SaveSerializer.Deserialize(json).State.Remembered);
     }
 
     [Fact]

@@ -112,7 +112,7 @@ public static class SaveSerializer
     /// Bump on any breaking schema change. <see cref="Deserialize"/>
     /// rejects mismatched values rather than attempting migration.
     /// </summary>
-    public const int CurrentFormatVersion = 15;
+    public const int CurrentFormatVersion = 16;
 
     public static string Serialize(
         GameState state,
@@ -207,6 +207,9 @@ public static class SaveSerializer
             // Absent in pre-15 saves → loads false → those games keep the old
             // deterministic placement so their replays reproduce.
             UseRandomizedSelection = state.UseRandomizedSelection,
+            // Fog Of War: the human's last-seen memory. Null (omitted) when
+            // empty — every non-fog save — so the wire format stays clean.
+            Remembered = SerializeRemembered(state.Remembered),
         };
         // Source-gen path (FourExHexJsonContext) so this works under iOS AOT,
         // where reflection-based serialization is disabled. The context's
@@ -301,7 +304,9 @@ public static class SaveSerializer
         var state = new GameState(
             grid, territories, players, turnState, treasury, waterCoords,
             mode: data.Mode ?? GameMode.Freeform,
-            useRandomizedSelection: data.UseRandomizedSelection)
+            useRandomizedSelection: data.UseRandomizedSelection,
+            // Restore the human's fog memory; empty for non-fog/pre-16 saves.
+            remembered: DeserializeRemembered(data.Remembered, players))
         {
             // Restore the locked tide forecast; empty for freeform saves so
             // the reloaded game telegraphs/applies nothing.
@@ -398,6 +403,41 @@ public static class SaveSerializer
             set.Add(new HexCoord(c.Q, c.R));
         }
         return set;
+    }
+
+    // --- Fog Of War memory ----------------------------------------------
+
+    // Null (omitted) when empty so non-fog saves carry no Remembered field.
+    private static List<RememberedTileDto>? SerializeRemembered(
+        IReadOnlyDictionary<HexCoord, RememberedTile> remembered)
+    {
+        if (remembered.Count == 0) return null;
+        var dtos = new List<RememberedTileDto>(remembered.Count);
+        foreach (KeyValuePair<HexCoord, RememberedTile> kvp in remembered)
+        {
+            dtos.Add(new RememberedTileDto
+            {
+                Q = kvp.Key.Q,
+                R = kvp.Key.R,
+                OwnerIndex = IdToOwnerIndex(kvp.Value.Owner),
+                Occupant = SerializeOccupant(kvp.Value.Occupant),
+            });
+        }
+        return dtos;
+    }
+
+    private static IReadOnlyDictionary<HexCoord, RememberedTile> DeserializeRemembered(
+        List<RememberedTileDto>? dtos, IReadOnlyList<Player> players)
+    {
+        var map = new Dictionary<HexCoord, RememberedTile>();
+        if (dtos == null) return map;
+        foreach (RememberedTileDto d in dtos)
+        {
+            map[new HexCoord(d.Q, d.R)] = new RememberedTile(
+                OwnerIndexToId(d.OwnerIndex, players),
+                DeserializeOccupant(d.Occupant, players));
+        }
+        return map;
     }
 
     // --- Pending tide forecast -------------------------------
@@ -1040,6 +1080,21 @@ public sealed class SaveData
     /// placement so their recorded replays reproduce exactly.
     /// </summary>
     public bool UseRandomizedSelection { get; set; }
+
+    /// <summary>
+    /// Fog Of War: the human player's last-seen memory (coord → remembered
+    /// owner + occupant). Null/omitted for non-fog games and pre-16 saves,
+    /// which load with empty memory.
+    /// </summary>
+    public List<RememberedTileDto>? Remembered { get; set; }
+}
+
+public sealed class RememberedTileDto
+{
+    public int Q { get; set; }
+    public int R { get; set; }
+    public int OwnerIndex { get; set; }
+    public OccupantDto? Occupant { get; set; }
 }
 
 public sealed class TideStepDto
