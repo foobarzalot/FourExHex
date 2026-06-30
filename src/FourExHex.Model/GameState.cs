@@ -88,6 +88,32 @@ public class GameState
     /// </summary>
     public IReadOnlyList<TideStep> PendingTide { get; set; } = System.Array.Empty<TideStep>();
 
+    // Backing store for the human player's fog-of-war memory: the last-seen
+    // owner+occupant of every tile the human has ever had in sight. Mirrors the
+    // _water pattern — a private mutable map exposed read-only, mutated through
+    // SetRemembered. Grows monotonically (knowledge is sticky): tiles are never
+    // un-remembered, which is what keeps fog from flickering on undo. Only used
+    // when Mode == FogOfWar; excluded from undo snapshots (see GameStateSnapshot).
+    private readonly Dictionary<HexCoord, RememberedTile> _remembered;
+
+    /// <summary>
+    /// The human player's fog-of-war memory: coord → last-seen owner+occupant,
+    /// captured whenever that tile was within sight. Tiles absent from this map
+    /// have never been seen (full fog). Empty outside Fog Of War. Persisted in
+    /// saves; read only by the renderer (to draw the stale tier) — no rule
+    /// branches on it, so AI behaviour and determinism are unaffected.
+    /// </summary>
+    public IReadOnlyDictionary<HexCoord, RememberedTile> Remembered => _remembered;
+
+    /// <summary>Record/refresh the last-seen snapshot of <paramref name="coord"/>.</summary>
+    public void SetRemembered(HexCoord coord, RememberedTile tile) => _remembered[coord] = tile;
+
+    /// <summary>True if the human has ever seen <paramref name="coord"/>.</summary>
+    public bool IsRemembered(HexCoord coord) => _remembered.ContainsKey(coord);
+
+    /// <summary>Convenience: this game runs with fog-of-war visibility rules.</summary>
+    public bool FogEnabled => Mode == GameMode.FogOfWar;
+
     /// <summary>
     /// Difficulty of the player owning <paramref name="id"/>, resolved by SLOT
     /// (<see cref="PlayerId.Index"/>) rather than by indexing <see cref="Players"/>
@@ -116,7 +142,8 @@ public class GameState
         Treasury treasury,
         IReadOnlySet<HexCoord>? waterCoords = null,
         GameMode mode = GameMode.Freeform,
-        bool useRandomizedSelection = false)
+        bool useRandomizedSelection = false,
+        IReadOnlyDictionary<HexCoord, RememberedTile>? remembered = null)
     {
         Grid = grid;
         Territories = territories;
@@ -126,5 +153,8 @@ public class GameState
         _water = waterCoords is null ? new HashSet<HexCoord>() : new HashSet<HexCoord>(waterCoords);
         Mode = mode;
         UseRandomizedSelection = useRandomizedSelection;
+        _remembered = remembered is null
+            ? new Dictionary<HexCoord, RememberedTile>()
+            : new Dictionary<HexCoord, RememberedTile>(remembered);
     }
 }

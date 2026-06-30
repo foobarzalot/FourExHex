@@ -18,4 +18,13 @@ public enum GameMode
     /// is left standing.
     /// </summary>
     RisingTides = 1,
+
+    /// <summary>
+    /// "Fog Of War": exactly one human player (the rest computer). The board is
+    /// hidden from the human except their own territory plus a one-hex ring;
+    /// previously-seen tiles render as a dimmed last-seen memory, never-seen
+    /// tiles render nothing. A view-only restriction — rules, AI, and
+    /// determinism are identical to <see cref="Freeform"/>.
+    /// </summary>
+    FogOfWar = 2,
 }
