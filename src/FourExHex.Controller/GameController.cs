@@ -96,6 +96,12 @@ public class GameController
     /// </summary>
     public event Action? HumanTurnStarted;
 
+    // When true (the real-game default), a human turn opens with their
+    // first territory auto-selected (#94). Tests that exercise the
+    // no-selection / cycle-from-scratch mechanics construct with it off so
+    // the board starts unselected, the same control as seed / aiPacer.
+    private readonly bool _autoSelectFirstTerritory;
+
     public GameController(
         GameState state,
         SessionState session,
@@ -113,8 +119,10 @@ public class GameController
         Action? onAfterRefresh = null,
         Func<bool>? aiSilentMode = null,
         Func<bool>? replayIsInstantMode = null,
-        Func<bool>? isReplayPaused = null)
+        Func<bool>? isReplayPaused = null,
+        bool autoSelectFirstTerritory = true)
     {
+        _autoSelectFirstTerritory = autoSelectFirstTerritory;
         _aiSilentMode = aiSilentMode ?? (() => false);
         _isReplayPaused = isReplayPaused ?? (() => false);
         _humanActionValidator = humanActionValidator;
@@ -143,7 +151,7 @@ public class GameController
             isReplayInstantActive: () => _recorder?.IsInstantModeActive ?? false,
             clearUndoAndReplayBookkeeping: ClearUndoAndReplayBookkeeping,
             onGameEnded: () => GameEnded?.Invoke(),
-            onHumanTurnStarted: () => HumanTurnStarted?.Invoke(),
+            onHumanTurnStarted: RaiseHumanTurnStarted,
             maxTurnNumber: maxTurnNumber,
             masterSeed: _masterSeed,
             onAfterRefresh: onAfterRefresh);
@@ -327,7 +335,45 @@ public class GameController
         if (_session.IsGameOver || _ops.GameEndedFired) return;
         if (_state.Turns.CurrentPlayer.IsAi) return;
         _ops.HumanTurnFiredForCurrentTurn = true;
+        RaiseHumanTurnStarted();
+    }
+
+    /// <summary>
+    /// Single hand-off point for the start of a human player's turn:
+    /// auto-select their first territory (so they can act without a
+    /// manual click) and then raise <see cref="HumanTurnStarted"/> for
+    /// the autosave hook. Reached from every human turn-start path —
+    /// <see cref="GameOperations.StartPlayerTurn"/>'s hook and the
+    /// initial-player seam in <see cref="MaybeFireHumanTurnStartedFromStartGame"/>.
+    /// </summary>
+    private void RaiseHumanTurnStarted()
+    {
+        AutoSelectFirstTerritoryForHuman();
         HumanTurnStarted?.Invoke();
+    }
+
+    /// <summary>
+    /// Open a human turn with their "first" territory already selected,
+    /// reusing the Next-Territory cycle picker so auto-select and the Tab
+    /// button share one ordering/actionable/visited rule. From a clean
+    /// turn this lands on the largest actionable territory (capital-coord
+    /// tie-break); a no-op leaving the selection null when the player has
+    /// nothing to act on. Skipped for AI, replay, and game-over.
+    /// </summary>
+    private void AutoSelectFirstTerritoryForHuman()
+    {
+        if (!_autoSelectFirstTerritory) return;
+        if (_recorder.IsReplaying) return;
+        if (_session.IsGameOver || _ops.GameEndedFired) return;
+        if (_state.Turns.CurrentPlayer.IsAi) return;
+        Log.Debug(Log.LogCategory.Input,
+            $"[autoselect] human turn start, player={_state.Turns.CurrentPlayer.Id}");
+        // Drop any stale selection from the prior player's turn first, so a
+        // player who starts with nothing actionable (StepTerritorySelection
+        // no-ops) is left cleanly unselected rather than showing the
+        // previous player's territory. Then walk to the first actionable.
+        SetSelection(null);
+        StepTerritorySelection(forward: true);
     }
 
     /// <summary>
@@ -1994,16 +2040,16 @@ public class GameController
         }
 
         CancelPendingAction();
-        SetSelection(null);
-        // Visited-territory tracking is per-turn: the next human
-        // turn starts with a clean tour. AI turns never mark (they don't
-        // route through SetSelection), so clearing here is sufficient.
-        if (_session.VisitedTerritoryCapitals.Count > 0)
-        {
-            Log.Debug(Log.LogCategory.Input,
-                $"[visited] cleared ({_session.VisitedTerritoryCapitals.Count} entries)");
-            _session.VisitedTerritoryCapitals.Clear();
-        }
+        // Human-next: StartPlayerTurn's hand-off already auto-selected the
+        // player's first territory (which clears any stale selection
+        // itself); preserve it. Clear only when control rests on an AI (the
+        // paced hand-off auto-selects later), the game ended, or auto-select
+        // is off (then nothing set the selection, so fall back to the
+        // classic clear). The per-turn visited reset moved to StartPlayerTurn
+        // so an auto-selection's visited mark survives into the turn.
+        if (_state.Turns.CurrentPlayer.IsAi || _session.IsGameOver
+            || !_autoSelectFirstTerritory)
+            SetSelection(null);
         _ops.RefreshViews();
     }
 
@@ -2208,7 +2254,10 @@ public class GameController
             // the victory paint so it doesn't draw on top. Mirrors
             // the domination branch in StepAiExecute.
             if (_ops.GameEndedFired || _session.IsGameOver) _ops.RefreshSilentMode();
-            ShowHighlightAndRefresh(null);
+            // Human-next: StartPlayerTurn auto-selected their first
+            // territory — re-show it rather than clearing. AI-next leaves
+            // the selection null, so this clears the highlight as before.
+            ShowHighlightAndRefresh(_session.SelectedTerritory);
 
             if (_ops.GameEndedFired) return;
             if (_session.IsGameOver) return;
@@ -2646,8 +2695,10 @@ public class GameController
         // Hands control back to a human (or the game ended): lift silent
         // + hide the "Opponents…" overlay, then the single end-of-batch
         // paint the human sees (winner overlay if the game just ended).
+        // Re-show any auto-selection StartPlayerTurn made for the human
+        // now in control (null when the game just ended).
         _ops.RefreshSilentMode();
-        ShowHighlightAndRefresh(null);
+        ShowHighlightAndRefresh(_session.SelectedTerritory);
     }
 
     // --- View refresh -----------------------------------------------------

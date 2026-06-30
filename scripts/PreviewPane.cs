@@ -160,6 +160,9 @@ public sealed partial class PreviewPane : Control
             // so opponents don't drain their turns past the parked replay
             // cursor while the player reads/taps. Resumed below.
             isReplayPaused: () => narrationRef?.IsPresenting == true,
+            // The tutorial script owns selections; suppress the turn-start
+            // auto-selection (#94) so preview matches the authored flow.
+            autoSelectFirstTerritory: false,
             onAfterRefresh: () =>
             {
                 narrationRef?.Tick();

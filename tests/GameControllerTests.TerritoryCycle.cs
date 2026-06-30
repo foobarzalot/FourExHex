@@ -265,7 +265,7 @@ public partial class GameControllerTests
         public Player Red { get; }
         public Player Blue { get; }
 
-        public TwoRedTerritoriesGame()
+        public TwoRedTerritoriesGame(bool autoSelect = false)
         {
             Red = new Player("Red", PlayerId.FromIndex(0));
             Blue = new Player("Blue", PlayerId.FromIndex(1));
@@ -285,7 +285,8 @@ public partial class GameControllerTests
             Session = new SessionState();
             Map = new MockHexMapView();
             Hud = new MockHudView();
-            Controller = new GameController(State, Session, Map, Hud);
+            Controller = new GameController(State, Session, Map, Hud,
+                autoSelectFirstTerritory: autoSelect);
             Controller.StartGame();
         }
 
@@ -311,7 +312,7 @@ public partial class GameControllerTests
         public Player Red { get; }
         public Player Blue { get; }
 
-        public ThreeRedTerritoriesGame()
+        public ThreeRedTerritoriesGame(bool autoSelect = false)
         {
             Red = new Player("Red", PlayerId.FromIndex(0));
             Blue = new Player("Blue", PlayerId.FromIndex(1));
@@ -331,7 +332,8 @@ public partial class GameControllerTests
             Session = new SessionState();
             Map = new MockHexMapView();
             Hud = new MockHudView();
-            Controller = new GameController(State, Session, Map, Hud);
+            Controller = new GameController(State, Session, Map, Hud,
+                autoSelectFirstTerritory: autoSelect);
             Controller.StartGame();
         }
 
@@ -355,7 +357,7 @@ public partial class GameControllerTests
         public Player Red { get; }
         public Player Blue { get; }
 
-        public UnequalRedTerritoriesGame()
+        public UnequalRedTerritoriesGame(bool autoSelect = false)
         {
             Red = new Player("Red", PlayerId.FromIndex(0));
             Blue = new Player("Blue", PlayerId.FromIndex(1));
@@ -376,7 +378,8 @@ public partial class GameControllerTests
             Session.ClaimVictoryPromptedHighestThreshold[Blue.Id] = 90;
             Map = new MockHexMapView();
             Hud = new MockHudView();
-            Controller = new GameController(State, Session, Map, Hud);
+            Controller = new GameController(State, Session, Map, Hud,
+                autoSelectFirstTerritory: autoSelect);
             Controller.StartGame();
         }
     }

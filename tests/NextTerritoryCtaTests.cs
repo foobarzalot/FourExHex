@@ -72,7 +72,8 @@ public class NextTerritoryCtaTests
         session.ClaimVictoryPromptedHighestThreshold[blue.Id] = 90;
         var map = new MockHexMapView();
         var hud = new MockHudView();
-        var controller = new GameController(state, session, map, hud);
+        var controller = new GameController(state, session, map, hud,
+            autoSelectFirstTerritory: false); // exercise the no-selection branch
         controller.StartGame();
 
         Assert.Null(session.SelectedTerritory);
@@ -99,7 +100,8 @@ public class NextTerritoryCtaTests
         session.ClaimVictoryPromptedHighestThreshold[blue.Id] = 90;
         var map = new MockHexMapView();
         var hud = new MockHudView();
-        var controller = new GameController(state, session, map, hud);
+        var controller = new GameController(state, session, map, hud,
+            autoSelectFirstTerritory: false); // exercise the no-selection branch
         controller.StartGame();
 
         HexCoord redCapital = state.Territories.First(t => t.Owner == red.Id).Capital!.Value;

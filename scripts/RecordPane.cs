@@ -161,7 +161,10 @@ public sealed partial class RecordPane : Control
             seed: _panel.CurrentSeed,
             aiChooser: null,
             aiPacer: new SynchronousAiPacer(),
-            recordingMode: true);
+            recordingMode: true,
+            // Tutorial authoring drives its own selections; keep the
+            // turn-start auto-selection (#94) out of the recorded session.
+            autoSelectFirstTerritory: false);
 
         _savedDragMode = _panel.Map.DragMode;
         _panel.Map.DragMode = HexDragMode.Pan;
@@ -224,7 +227,8 @@ public sealed partial class RecordPane : Control
             aiChooser: null,
             aiPacer: new SynchronousAiPacer(),
             loadedReplay: previous.Replay,
-            recordingMode: true);
+            recordingMode: true,
+            autoSelectFirstTerritory: false);
 
         _savedDragMode = _panel.Map.DragMode;
         _panel.Map.DragMode = HexDragMode.Pan;

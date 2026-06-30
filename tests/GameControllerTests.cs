@@ -33,7 +33,10 @@ public partial class GameControllerTests
         public Player Red { get; }
         public Player Blue { get; }
 
-        public TestGame(IReadOnlySet<HexCoord>? waterCoords = null)
+        // autoSelect defaults off: most fixture tests predate the
+        // turn-start auto-selection (#94) and assume a fresh turn starts
+        // with nothing selected. The #94 tests opt in with autoSelect: true.
+        public TestGame(IReadOnlySet<HexCoord>? waterCoords = null, bool autoSelect = false)
         {
             Red = new Player("Red", PlayerId.FromIndex(0));
             Blue = new Player("Blue", PlayerId.FromIndex(1));
@@ -56,7 +59,8 @@ public partial class GameControllerTests
             Session.ClaimVictoryPromptedHighestThreshold[Blue.Id] = 90;
             Map = new MockHexMapView();
             Hud = new MockHudView();
-            Controller = new GameController(State, Session, Map, Hud);
+            Controller = new GameController(State, Session, Map, Hud,
+                autoSelectFirstTerritory: autoSelect);
             Controller.StartGame();
         }
 

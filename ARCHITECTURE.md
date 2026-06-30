@@ -64,9 +64,10 @@ CONTROLLER (pure C#) ─ GameController
   refs: IHexMapView _map, IHudView _hud, GameState _state, SessionState _session
   injected: master seed, aiChooser, IAiPacer, maxTurnNumber,
     aiSilentMode (Func<bool>; mute per-action AI effects, skip per-beat highlight/RefreshViews),
-    replayIsInstantMode (Func<bool>; instant replay path)
+    replayIsInstantMode (Func<bool>; instant replay path),
+    autoSelectFirstTerritory (bool, default true; off for tutorial record/preview + mechanics tests)
   exposes: MasterSeed, StartGame(), Resume(), AbandonGame()
-  events: GameEnded (once on game-over or turn cap), HumanTurnStarted (autosave seam)
+  events: GameEnded (once on game-over or turn cap), HumanTurnStarted (auto-select first territory + autosave seam)
 
   subscribes in ctor:
     map.TileClicked              → OnTileClicked
@@ -581,7 +582,7 @@ public interface ITimerFactory { void After(int delayMs, Action callback); }
 - **Controller never touches Godot Nodes directly.** It talks to views via the interfaces and to the event loop via `IAiPacer`, making `GameController` unit-testable with mocks (`tests/GameControllerTests.*.cs` partials; `TestGame` fixture in `tests/GameControllerTests.cs`).
 - **Every state change funnels through `RefreshViews()`** at handler end. One path, no drift.
 - **Snapshots capture `GameState` plus the player-intent slice of `SessionState`** (`SelectedTerritory`, `Mode`, `MoveSource`, `RepeatedMovement`, `VisitedTerritoryCapitals`) via `UndoEntry` = `(GameStateSnapshot, SessionStateSnapshot)`. `Winner`, `PendingDefeatScreen`, and the `Undo` stack stay out. Top-level human handlers wrap in `TrackHandler`: capture pre-state, run body, push one `UndoEntry` iff state changed (visited set compared by sorted-sequence equality in `SessionStateSnapshot.Equals`). Exceptions propagate without pushing.
-- **Visited-territory cycling**: `SessionState.VisitedTerritoryCapitals` records the capital of every territory the human selects this turn. `StepTerritorySelection` re-sorts by descending size each press; pass 1 stops only on actionable *unvisited* territories, pass 2 resets the set for a fresh round. Clears on `EndTurnNow`; round-trips through `SessionStateSnapshot`. AI never touches it (runs via `GameOperations.ExecuteAi*`, not `SetSelection`).
+- **Visited-territory cycling**: `SessionState.VisitedTerritoryCapitals` records the capital of every territory the human selects this turn. `StepTerritorySelection` re-sorts by descending size each press; pass 1 stops only on actionable *unvisited* territories, pass 2 resets the set for a fresh round. Cleared per-turn at the top of `StartPlayerTurn` (before that turn's auto-selection marks its pick); round-trips through `SessionStateSnapshot`. AI never touches it (runs via `GameOperations.ExecuteAi*`, not `SetSelection`).
 - **Repeated-movement** is a sticky bit on `SessionState` driving N-hotkey auto-advance. `StepUnitSelection` sets it on picking a different unit. While on, `ExecuteMove`'s tail calls `AutoAdvanceAfterMove(level, source, destination)`: power-then-coord sort of remaining movables in the (capture-rebound) selected territory, destination excluded. Clears on Esc/cancel, entry into any non-None `ActionMode`, click selection change to a different territory, long-press rally, End Turn, game-over (`GameOperations.DeclareWinner`), or auto-advance with no movables left. `ClearPendingAction` does NOT clear it — `ExecuteMove`'s `FinishPendingAction` must run with the flag alive for the auto-advance hook. Round-trips through `SessionStateSnapshot`; capture-rebind preserves it.
 - **`HexTile` is a pure model — no view coupling.** `HexTile.Owner` is plain state. The view owns the tile→fill map (`HexMapView._tileVisuals`) and resyncs fills from `_state` in `RebuildAfterTerritoryChange()`, the single coalesced repaint path. Model captures mutate `tile.Owner` with no view effect; the screen catches up only on `RebuildAfterTerritoryChange`.
 - **Undo is turn-scoped.** `OnEndTurnPressed` clears the stack — ending a turn commits everything.
@@ -597,12 +598,12 @@ A turn is sandwiched between two phases.
 
 Fixed order for the current player:
 
-1. **Reseed RNG** — `ReseedRngForCurrentTurn` derives `_rng` from `(masterSeed, turnNumber, currentPlayerIndex)`; turn RNG is reproducible from the seed.
+1. **Reseed RNG** — `ReseedRngForCurrentTurn` derives `_rng` from `(masterSeed, turnNumber, currentPlayerIndex)`; turn RNG is reproducible from the seed. Also clears `VisitedTerritoryCapitals` (per-turn Tab tour reset) before any auto-selection in step 6 marks the picked territory.
 2. **Tree growth** — `TreeRules.RunStartOfTurnGrowth` (skipped while `TurnNumber == 1`). Graves on the player's tiles become trees; empty same-color cells with ≥2 neighboring trees become trees. **Neutral ground** (`PlayerId.None`) owns ground but no capital, so it takes a **phantom turn** (`RunPhantomTurnFor`: tree growth + no-op upkeep + log) once per round. `RunNeutralPhantomTurnIfRoundStart` anchors it to slot 0's visit, gated to `TurnNumber > 1 && CurrentPlayerIndex == 0` so it doesn't grow N× faster. Stateless — `TurnState` reconstructs the anchor across save/load and undo. Logged once per round under `Log.LogCategory.Turn` as "Neutral".
 3. **Reset movement** — `HasMovedThisTurn` cleared on the player's units.
 4. **Collect income** — `Treasury.CollectIncomeFor` (skipped while `TurnNumber == 1`; `SeedStartingGold` is the round-1 bankroll). Tree and grave tiles don't pay; everything else pays 1 gold.
 5. **Apply upkeep** — `UpkeepRules.ApplyUpkeepFor`. Per-unit costs from `DifficultyRules.UnitUpkeep` (Soldier baseline: Recruit 2, Soldier 6, Captain 18, Commander 54). A territory that can't pay total upkeep goes bankrupt: every unit becomes a `Grave`, remaining gold stays. `PlaySound(Bankruptcy)` fires once per player if any of its territories went bankrupt.
-6. **Fire `HumanTurnStarted`** if the now-current player is human and the game isn't over. Autosave wires here.
+6. **Human hand-off** (`RaiseHumanTurnStarted`) if the now-current player is human and the game isn't over: **auto-select their first territory** then fire `HumanTurnStarted`. Auto-select (`AutoSelectFirstTerritoryForHuman`) reuses the Next-Territory picker — clears any stale selection, then `StepTerritorySelection(forward:true)` lands on the largest actionable territory (capital-coord tie-break), a no-op leaving the selection null when nothing is actionable. Gated off for AI, replay, game-over, and when the injected `autoSelectFirstTerritory` flag is false (tutorial record/preview and mechanics tests). Autosave also wires to `HumanTurnStarted`.
 
 Income → upkeep ordering lets the turn's income subsidize upkeep before bankruptcy is checked.
 
@@ -827,9 +828,10 @@ GameController.OnEndTurnPressed
   │ else:
   │     ├─ AdvanceToNextActivePlayer()         // skip eliminated
   │     ├─ StartPlayerTurn()                   // reseed → growth → reset → income → upkeep
-  │     │     (growth + income skipped round 1; fires HumanTurnStarted if human)
+  │     │     (growth + income skipped round 1; human hand-off auto-selects + fires HumanTurnStarted)
   │     └─ RunAiTurnsUntilHumanOrDone()        // paced AI loop if next is AI
-  ├─ CancelPendingAction(); SetSelection(null)
+  ├─ CancelPendingAction()
+  ├─ if AI-next / game-over / auto-select off: SetSelection(null)   // human-next keeps the auto-selection
   └─ RefreshViews()
 ```
 

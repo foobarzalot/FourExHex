@@ -113,7 +113,10 @@ public class InstantAiTests
             aiChooser: chooser,
             aiPacer: pacer,
             maxTurnNumber: 20,
-            aiSilentMode: aiSilentMode);
+            aiSilentMode: aiSilentMode,
+            // These tests assert the human (Red) starts unselected; the
+            // turn-start auto-selection (#94) is exercised separately.
+            autoSelectFirstTerritory: false);
     }
 
     private static List<string> BeatSignatures(IReadOnlyList<ReplayBeat> beats) =>

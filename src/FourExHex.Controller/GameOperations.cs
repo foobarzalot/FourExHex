@@ -395,6 +395,16 @@ public class GameOperations
     {
         ReseedRngForCurrentTurn();
         HumanTurnFiredForCurrentTurn = false;
+        // Per-turn visited reset: the new player starts with a clean Tab
+        // tour. Done here (the universal per-turn funnel) BEFORE the human
+        // hand-off auto-selects, so the auto-selected territory's visited
+        // mark survives into the turn. AI turns never mark.
+        if (_session.VisitedTerritoryCapitals.Count > 0)
+        {
+            Log.Debug(Log.LogCategory.Input,
+                $"[visited] cleared ({_session.VisitedTerritoryCapitals.Count} entries)");
+            _session.VisitedTerritoryCapitals.Clear();
+        }
         // Toggle the view's silent flag for the player about to act,
         // BEFORE PlayBankruptcy below.
         RefreshSilentMode();

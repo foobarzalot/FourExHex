@@ -34,7 +34,7 @@ public class CapitalAlertNoticeTests
         public HexCoord RedCapital => RedTerritory.Capital!.Value;
         public HexCoord BlueCapital => BlueTerritory.Capital!.Value;
 
-        public AlertFixture(bool redIsAi = false, bool blueIsAi = true)
+        public AlertFixture(bool redIsAi = false, bool blueIsAi = true, bool autoSelect = false)
         {
             Red = new Player("Red", PlayerId.FromIndex(0), redIsAi);
             Blue = new Player("Blue", PlayerId.FromIndex(1), blueIsAi);
@@ -52,7 +52,8 @@ public class CapitalAlertNoticeTests
             Session.ClaimVictoryPromptedHighestThreshold[Blue.Id] = 90;
             Map = new MockHexMapView();
             Hud = new MockHudView();
-            Controller = new GameController(State, Session, Map, Hud);
+            Controller = new GameController(State, Session, Map, Hud,
+                autoSelectFirstTerritory: autoSelect);
             Controller.StartGame();
         }
 

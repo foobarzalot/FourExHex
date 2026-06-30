@@ -33,7 +33,7 @@ public partial class GameControllerTests
         public Territory RedTerritory =>
             State.Territories.First(t => t.Owner == Red.Id);
 
-        public ThreeUnitsRedGame()
+        public ThreeUnitsRedGame(bool autoSelect = false)
         {
             Red = new Player("Red", PlayerId.FromIndex(0));
             Blue = new Player("Blue", PlayerId.FromIndex(1));
@@ -50,7 +50,8 @@ public partial class GameControllerTests
             Session = new SessionState();
             Map = new MockHexMapView();
             Hud = new MockHudView();
-            Controller = new GameController(State, Session, Map, Hud);
+            Controller = new GameController(State, Session, Map, Hud,
+                autoSelectFirstTerritory: autoSelect);
             Controller.StartGame();
 
             // Place the units AFTER StartGame so their HasMovedThisTurn
