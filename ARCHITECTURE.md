@@ -27,7 +27,7 @@ Consequences:
 - **Color is view-only.** `scripts/PlayerPalette.cs` maps `PlayerId ↔ Godot.Color` from `GameSettings.PlayerConfig` hex strings.
 - **Pixel projection is view-side.** `HexRounding.Round(float qFrac, float rFrac) -> HexCoord` in `FourExHex.ViewMath` is the float→int boundary keeping `HexCoord` integer-only in Model. `scripts/HexPixel.cs` owns `ToPixel`/`FromPixel`, calls `HexRounding.Round`.
 - **`Log` is Godot-free** — routes through injectable `Log.Sink`, wired by `Main` to `GD.Print`. See **Logging**.
-- **Save format is v15.** Ownership is a player index on the wire (−1 = `None`); claim-victory tiers persist by index. Gold/mountain are mutually exclusive on the wire (two bools); a tile with both normalizes to mountain-only on load; in-memory it's one `HexTile.Feature` enum that can't hold both (see **Mountain tiles**). Saves v2–v14 still load, absent fields defaulting (`IsGold`/`IsMountain` → `false`, `Difficulty` → `Soldier`, Rising Tides `Mode`/`PendingTide` → off/empty, `UseRandomizedSelection` → `false`), with legacy color-hex claim data and pre-v6 unit-level names migrated via `GameSettings` palette matching and `SaveSerializer.ParseUnitLevel`.
+- **Save format is v16.** Ownership is a player index on the wire (−1 = `None`); claim-victory tiers persist by index. Gold/mountain are mutually exclusive on the wire (two bools); a tile with both normalizes to mountain-only on load; in-memory it's one `HexTile.Feature` enum that can't hold both (see **Mountain tiles**). Saves v2–v15 still load, absent fields defaulting (`IsGold`/`IsMountain` → `false`, `Difficulty` → `Soldier`, Rising Tides `Mode`/`PendingTide` → off/empty, `UseRandomizedSelection` → `false`, Fog Of War `Seen` → empty), with legacy color-hex claim data and pre-v6 unit-level names migrated via `GameSettings` palette matching and `SaveSerializer.ParseUnitLevel`.
 - **`.cs.uid` sidecars**: model files under `src/` aren't Godot resources → no `.cs.uid`; `src/**` is `.gdignore`d. `scripts/` files keep their tracked `.cs.uid`.
 
 ## Layered view
@@ -302,7 +302,7 @@ A **mountain tile** is high ground: **no defense on its own**, but any defender 
 
 ## Rising Tides game mode
 
-A selectable game mode, distinct from freeform-vs-campaign (`GameSettings.CampaignLevel`). `GameMode { Freeform, RisingTides }` (Model) on `GameState.Mode` (default `Freeform`). The sea eats the map; game ends only when one player remains.
+A selectable game mode, distinct from freeform-vs-campaign (`GameSettings.CampaignLevel`). `GameMode { Freeform, RisingTides, FogOfWar }` (Model) on `GameState.Mode` (default `Freeform`); Fog Of War is its own section below. The sea eats the map; game ends only when one player remains.
 
 **Forecast at turn start, submerge at turn end** — erosion telegraphed a turn ahead. Split in `RisingTidesRules` (Model, integer-only):
 
@@ -325,11 +325,25 @@ A selectable game mode, distinct from freeform-vs-campaign (`GameSettings.Campai
 
 **AI (tide-aware evacuation).** AI reads `GameState.PendingTide`. A move taking a unit OFF a doomed tile earns `AiStateScorer.EvacuationBonus` — a per-move delta in `ComputerAi.BestPositiveDelta` like `BuildTowerBonus`, leaving absolute `Score` untouched — and phase-4b reposition enumeration is broadened so a doomed unit may flee inland.
 
-**Selection & round-trip.** Freeform picks the mode from the **Game Mode** selector on the Configure Game page (`GameSettings.Mode`, shared with the map editor's new-map flow); Quick Play resets to Freeform. The editor threads `_mapMode` into `BuildSaveState`; `Main`'s starting-map load forwards `pendingLoad.State.Mode`. Mode, grown water set, and `PendingTide` persist through the **v15** save format (see *Save / load*); `FOUREXHEX_MODE=RisingTides` forces it for headless 6AI runs.
+**Selection & round-trip.** Freeform picks the mode from the **Game Mode** selector on the Configure Game page (`GameSettings.Mode`, shared with the map editor's new-map flow); Quick Play resets to Freeform. The editor threads `_mapMode` into `BuildSaveState`; `Main`'s starting-map load forwards `pendingLoad.State.Mode`. Mode, grown water set, and `PendingTide` persist through the **v16** save format (see *Save / load*); `FOUREXHEX_MODE=RisingTides` forces it for headless 6AI runs.
 
 **Replay fidelity (shrunken-grid rewind).** Replay rewinds to the recorded initial snapshot and re-runs every beat, recomputing the tide each turn. Since the board shrinks mid-game (`Grid.Remove`'d tiles), the rewind rebuilds the full board: (1) `GameStateSnapshot.ApplyTo` re-adds any captured tile missing from the live grid; (2) `ReplayRecorder.BeginReplay` drops re-grown coords from the water set (`GameState.RemoveWater`) and re-seeds the first player's turn-1 `PendingTide` (`ForecastTideForCurrentPlayer`), mirroring `Resume(freshStart:true)` — `StartPlayerTurn` re-forecasts later turns. Covered by the Rising Tides `ReplayFidelityTests` checksum.
 
-**Campaign.** `CampaignProgress.ModeForLevel(level)` (deterministic, integer-only, same seeded-draw style as `MapGenOptionsForLevel`) makes a rare minority of **Soldier-tier-and-above** levels Rising Tides — flat 10% (19 of 256; never at Recruit). `Main` derives a level's mode; the confirm sheet shows a gold "Rising Tides — …" line (`MapInfoSheet`'s optional `gameMode` row), and the campaign grid marks those levels with a blue circle behind the level number (`TierGrid._Draw`).
+**Campaign.** `CampaignProgress.ModeForLevel(level)` (deterministic, integer-only, same seeded-draw style as `MapGenOptionsForLevel`) makes a rare minority of **Soldier-tier-and-above** levels a complication: a flat 10% Rising Tides draw taken first (so its assignments never shift), then a 10% Fog Of War draw on the remainder; never at Recruit. `Main` derives a level's mode; the confirm sheet shows a gold mode line (`MapInfoSheet`'s optional `gameMode` row), and the campaign grid marks complication levels behind the level number (`CampaignPanel` draw loop) — a **blue** circle for Rising Tides, **black** for Fog Of War.
+
+## Fog Of War game mode
+
+A view-only restriction (`GameMode.FogOfWar` on `GameState.Mode`): rules, AI, and determinism are identical to Freeform — nothing in `GameOperations`/`WinConditionRules` branches on it. Requires **exactly one human**; freeform Configure Game locks the roster to red-human + five computers (`MainMenuScene.ApplyGameModeRoleLock`, only the human's difficulty editable), and the single-human campaign roster satisfies it for free.
+
+**Visibility model (`VisibilityRules`, Model, integer-only).** Three tiers from the human's perspective: `VisibilityTier { Fog, Stale, Visible }`. `ComputeVisible(state, human)` = every coord in the human's **capital-bearing** territories plus each tile's neighbours (a one-hex ring, incl. water/off-map coords) — a singleton (no capital) grants no sight. `UpdateSeen` marks the visible set into `GameState.Seen` (a grow-only `HashSet<HexCoord>` exposed `IReadOnlySet`, with `MarkSeen`/`IsSeen`/`ClearSeen`, mirroring `WaterCoords`). `TierOf` = visible → Visible; else seen → Stale; else Fog. Seen memory is **excluded from undo snapshots** (sticky, like water) and so does not perturb the game-state checksum.
+
+**Projection push.** `GameOperations.ComputeFogView` calls `VisibilityRules.BuildProjection(state)` → `FogView { IReadOnlySet<HexCoord> Visible; IReadOnlySet<HexCoord> Seen }`, pushed via `IHexMapView.ShowFog(FogView?)` each `RefreshViews` **before** occupants so the occupant pass honours visibility. Keyed off the single human (not the current player), so fog is stable through AI turns. `null` = render normally (no fog). `BuildProjection` returns `null` (full reveal) when fog is off, when there isn't exactly one human, or when the human is **eliminated**; `ComputeFogView` also returns `null` once `SessionState.IsGameOver` — so **victory or defeat reveals the whole map**.
+
+**Rendering (`HexMapView`, all guarded so non-fog modes are unchanged).** Fills, outlines, and territory borders paint from `EffectiveOwner` — live owner when the tile is in current sight, else neutral `None` (stale terrain reads grey; fog tiles are hidden anyway). The occupant pass skips non-visible tiles (no owners/occupants leak). One baked `TriangleSoup` `_fogLayer` (topmost) covers the full water extent: opaque cool **mist** over never-seen cells, a translucent cool **memory wash** over stale cells; static terrain/water/decorations show (dimmed) under stale and are hidden under fog. Tier frontiers are **feathered** via per-vertex alpha, drawn as a fan from a full-tint centre vertex (`TriangleSoupBuilder.AddFan`) so the gradient stays spike-free. `ShowFog` diffs the visible set and only repaints (`RepaintFogVisuals`) when it changes.
+
+**Undo/redo disabled.** Because Seen is sticky across undo, undoing a capture after it revealed tiles would scout for free, so the four undo/redo handlers no-op and the HUD buttons grey out when `Mode == FogOfWar`.
+
+**Save / replay / thumbnail.** `Seen` round-trips as a coord list (v16, omitted when empty; reuses the water DTO shape). `ReplayRecorder.BeginReplay` calls `ClearSeen` alongside the water reset so a replay re-fogs and re-animates from the initial sight. `MapThumbnailView.RenderAsync` pushes `BuildProjection` so previews render fogged; the deepest `RequestRandom(seed, options, roster, mode)` takes an explicit mode — freeform passes `GameSettings.Mode`, the campaign confirm sheet passes `ModeForLevel(level)` — so each preview matches the board it launches.
 
 ## Randomized selection
 
@@ -431,6 +445,8 @@ void ShowHighlight(Territory? selected);
 void CenterOnTerritory(Territory territory);
 void RebuildAfterTerritoryChange();
 void RefreshOccupantVisuals(PlayerId? currentPlayer, Treasury treasury);
+void ShowTideForecast(IEnumerable<TideStep> steps);  // Rising Tides telegraph
+void ShowFog(FogView? fog);                           // Fog Of War projection (null = no fog)
 void PlayDestructionEffect(HexCoord coord, HexOccupant destroyed);
 void FlashRejection(HexCoord target, RejectionShape shape, IEnumerable<HexCoord> blockingDefenders);
 
