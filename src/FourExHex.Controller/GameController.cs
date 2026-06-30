@@ -1308,8 +1308,11 @@ public class GameController
 
     // --- Undo / redo ------------------------------------------------------
 
+    // Fog Of War disables undo/redo entirely: fog memory is sticky across undo,
+    // so undoing a capture/build after it revealed tiles would be free scouting.
     private void OnUndoLastPressed()
     {
+        if (_state.FogEnabled) return;
         if (_recorder.IsReplaying) return;
         if (_ops.InSilentAiBatch()) return;
         if (_session.IsGameOver) return;
@@ -1322,6 +1325,7 @@ public class GameController
 
     private void OnUndoTurnPressed()
     {
+        if (_state.FogEnabled) return;
         if (_recorder.IsReplaying) return;
         if (_ops.InSilentAiBatch()) return;
         if (_session.IsGameOver) return;
@@ -1338,6 +1342,7 @@ public class GameController
 
     private void OnRedoLastPressed()
     {
+        if (_state.FogEnabled) return;
         if (_recorder.IsReplaying) return;
         if (_ops.InSilentAiBatch()) return;
         if (_session.IsGameOver) return;
@@ -1350,6 +1355,7 @@ public class GameController
 
     private void OnRedoAllPressed()
     {
+        if (_state.FogEnabled) return;
         if (_recorder.IsReplaying) return;
         if (_ops.InSilentAiBatch()) return;
         if (_session.IsGameOver) return;

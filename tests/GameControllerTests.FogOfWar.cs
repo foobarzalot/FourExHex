@@ -78,6 +78,61 @@ public partial class GameControllerTests
         Assert.Same(game.State.Remembered, game.Map.LastFog.Remembered);
     }
 
+    // Build a tower on one of Red's owned empty tiles and return its coord, so
+    // the undo tests have a concrete, genuinely-undoable mutation to check.
+    private static HexCoord BuildTowerForRed(FogGame game)
+    {
+        HexTile anyRed = game.State.Grid.Get(HexCoord.FromOffset(0, 0))!;
+        game.Map.SimulateClick(anyRed);
+        HexCoord cap = game.Session.SelectedTerritory!.Capital!.Value;
+        game.State.Treasury.SetGold(cap, 30);
+
+        HexCoord towerCoord = default;
+        foreach ((int c, int r) in new[] { (0, 0), (1, 0), (0, 1), (1, 1) })
+        {
+            HexCoord coord = HexCoord.FromOffset(c, r);
+            if (coord != cap && game.State.Grid.Get(coord)!.Occupant == null)
+            {
+                towerCoord = coord;
+                break;
+            }
+        }
+        game.Hud.ClickBuildTower();
+        game.Map.SimulateClick(game.State.Grid.Get(towerCoord)!);
+        return towerCoord;
+    }
+
+    [Fact]
+    public void Freeform_UndoLast_RevertsAction()
+    {
+        // Control for the fog test below: the same build-tower action IS
+        // undoable in a normal game, so the fog assertion isn't a false pass.
+        var game = new FogGame(CornerVsRest(), GameMode.Freeform);
+        HexCoord tower = BuildTowerForRed(game);
+        Assert.IsType<Tower>(game.State.Grid.Get(tower)!.Occupant);
+
+        game.Hud.ClickUndoLast();
+        Assert.Null(game.State.Grid.Get(tower)!.Occupant);
+    }
+
+    [Fact]
+    public void FogOfWar_UndoRedo_AreBlocked_NoFreeScouting()
+    {
+        // Undo is disabled under fog: undoing a capture/build after it revealed
+        // tiles would be free scouting, because fog memory is sticky across
+        // undo. So the action must persist through undo (and redo).
+        var game = new FogGame(CornerVsRest(), GameMode.FogOfWar);
+        HexCoord tower = BuildTowerForRed(game);
+        Assert.IsType<Tower>(game.State.Grid.Get(tower)!.Occupant);
+
+        game.Hud.ClickUndoLast();
+        Assert.IsType<Tower>(game.State.Grid.Get(tower)!.Occupant); // not reverted
+        game.Hud.ClickUndoTurn();
+        Assert.IsType<Tower>(game.State.Grid.Get(tower)!.Occupant);
+        game.Hud.ClickRedoLast();
+        Assert.IsType<Tower>(game.State.Grid.Get(tower)!.Occupant);
+    }
+
     [Fact]
     public void FogOfWar_TwoHumans_FailsSafeToNullFog()
     {

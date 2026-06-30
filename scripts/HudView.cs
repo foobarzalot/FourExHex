@@ -1763,8 +1763,10 @@ public partial class HudView : OrientationHud, IHudView
                 ? HudIconButton.DefaultTooltip(HudIcon.Tower)
                 : DisabledBuyReason(selected, hasCapital, "a tower", PurchaseRules.TowerCostFor(buyerDifficulty));
 
-        _undoLastButton.Disabled = _undoRedoLocked || !session.Undo.CanUndo;
-        _redoLastButton.Disabled = _undoRedoLocked || !session.Undo.CanRedo;
+        // Fog Of War disables undo/redo entirely (sticky fog memory would let
+        // undo be used for free scouting), so the buttons stay greyed out.
+        _undoLastButton.Disabled = state.FogEnabled || _undoRedoLocked || !session.Undo.CanUndo;
+        _redoLastButton.Disabled = state.FogEnabled || _undoRedoLocked || !session.Undo.CanRedo;
         // Mirrors the End Turn CTA: disabled exactly when the current player
         // has no actionable territory left (the same flag that lights End Turn).
         _nextTerritoryButton.Disabled = !hasActionableRemaining;
