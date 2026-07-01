@@ -29,7 +29,7 @@ public static class CampaignConfirmSheet
         GameMode mode = CampaignProgress.ModeForLevel(level);
         string gameMode = mode switch
         {
-            GameMode.RisingTides => "Rising Tides — your coastline sinks a little each turn and the map shrinks; outlast the sea to be the last player standing.",
+            GameMode.RisingTides => "Rising Tides — Outlast the sea!",
             GameMode.FogOfWar => "Fog Of War — Explore to reveal the map!",
             _ => "Freeform — expand your territory and outlast your rivals.",
         };
