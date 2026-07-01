@@ -314,7 +314,7 @@ A selectable game mode, distinct from freeform-vs-campaign (`GameSettings.Campai
 
 `GameState.WaterCoords` is a mutable `HashSet` (exposed `IReadOnlySet`) with `AddWater(coord)` so it grows at runtime. Forecast gated by `Mode == RisingTides`.
 
-**Win = last player standing.** `WinConditionRules.LastPlayerStanding(territories)` returns the sole capital-bearing owner (else null). `HandleCapture`'s mid-turn domination check and `EndOfTurnProcessing`'s sole-capital check route to it; the latter runs *after* `ApplyPendingTide`, so an end-of-turn flood drowning the last capital is seen. Only forced end.
+**Win = last player standing.** The mid-turn check is `WinnerByDomination` in every mode (own every non-water tile — submerged tiles aren't in the grid), so a capture that only orphans an opponent into capital-less singletons does *not* force a win. Only `EndOfTurnProcessing`'s sole-capital check differs: it routes to `WinConditionRules.LastPlayerStanding(territories)`, which returns the sole capital-bearing owner (else null) regardless of whose turn ended — so an end-of-turn flood that drowns the current player's *own* last capital still crowns the surviving opponent. It runs *after* `ApplyPendingTide`. Only forced end.
 
 **Claim-victory tiers apply.** The 50/75/90% offer (`OnEndTurnPressed`) is not suppressed. Percentage measured against current non-sunk tiles: a submerged tile is `Grid.Remove`'d, so `NextClaimVictoryThreshold` (counts `state.Grid.Tiles`) tracks the shrinking board. See *Claim victory prompt*.
 

@@ -1119,16 +1119,14 @@ public class GameOperations
         if (!SuppressMapRebuild) _map.RebuildAfterTerritoryChange();
         Log.Since(Log.LogCategory.Capture, "[hitch] RebuildAfterTerritoryChange", tRebuild);
 
-        // Mid-turn win check: only ends the game if the current
-        // player owns every cell. The "opponent reduced to orphan
-        // singletons" win path is handled at end-of-turn instead
-        // (see EndOfTurnProcessing). Undo is cleared so the player
-        // can't rewind past the killing blow.
-        // Rising Tides suppresses the mid-turn domination win:
-        // a capture only ends the game when it leaves one player standing.
-        PlayerId? winner = _state.Mode == GameMode.RisingTides
-            ? WinConditionRules.LastPlayerStanding(_state.Territories)
-            : WinConditionRules.WinnerByDomination(_state.Grid);
+        // Mid-turn win check (identical in every mode): only ends the
+        // game if the current player owns every cell. The "opponent
+        // reduced to orphan singletons" win path is handled at
+        // end-of-turn instead (see EndOfTurnProcessing) — in Rising
+        // Tides the shrinking grid excludes submerged tiles, so
+        // "every cell" already means "every non-water tile". Undo is
+        // cleared so the player can't rewind past the killing blow.
+        PlayerId? winner = WinConditionRules.WinnerByDomination(_state.Grid);
         if (winner.HasValue)
         {
             Log.Info(Log.LogCategory.Capture, $"[T{_state.Turns.TurnNumber}] " +

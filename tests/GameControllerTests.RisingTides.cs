@@ -138,8 +138,9 @@ public partial class GameControllerTests
     [Fact]
     public void RisingTides_CaptureEliminatesLastOpponent_DeclaresWinner()
     {
-        // The mid-turn domination check is rerouted to LastPlayerStanding,
-        // so a sweep that leaves one capital-bearer still ends the game.
+        // Mid-turn win uses WinnerByDomination in every mode: Red captures Blue's
+        // only tile, so Red owns the whole (non-water) board — full domination
+        // ends the game immediately.
         var grid = TestHelpers.BuildRectGrid(4, 1, PlayerId.FromIndex(0));
         grid.Get(HexCoord.FromOffset(3, 0))!.Owner = PlayerId.FromIndex(1);
         grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(PlayerId.FromIndex(0));
@@ -150,6 +151,32 @@ public partial class GameControllerTests
 
         Assert.True(g.Session.IsGameOver);
         Assert.Equal(g.Red.Id, g.Session.Winner);
+    }
+
+    [Fact]
+    public void RisingTides_CaptureLeavesEnemyOrphanSingleton_NoMidTurnWin()
+    {
+        // 5x1 row: Red owns cols 0-2 (with a Soldier on col 2), Blue owns cols
+        // 3-4 (its only capital-bearing territory; the capital lands on the
+        // lex-min tile, col 3). Red's Soldier (level 2) captures Blue's capital
+        // on col 3 (defense 1), reducing Blue to a lone capital-less singleton on
+        // col 4 that Blue STILL owns. Red is now the sole capital-bearer, but does
+        // NOT own every tile — so the mid-turn domination check must NOT end the
+        // game. The "last player standing" force-win only resolves at end of turn.
+        var grid = TestHelpers.BuildRectGrid(5, 1, PlayerId.FromIndex(0));
+        grid.Get(HexCoord.FromOffset(3, 0))!.Owner = PlayerId.FromIndex(1);
+        grid.Get(HexCoord.FromOffset(4, 0))!.Owner = PlayerId.FromIndex(1);
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant =
+            new Unit(PlayerId.FromIndex(0), UnitLevel.Soldier);
+        var g = new TidesGame(grid, GameMode.RisingTides);
+
+        g.Map.SimulateClick(g.State.Grid.Get(HexCoord.FromOffset(2, 0)));
+        g.Map.SimulateClick(g.State.Grid.Get(HexCoord.FromOffset(3, 0)));
+
+        // Capture happened (col 3 is now Red) but Blue's orphan singleton survives.
+        Assert.Equal(g.Red.Id, g.State.Grid.Get(HexCoord.FromOffset(3, 0))!.Owner);
+        Assert.Equal(g.Blue.Id, g.State.Grid.Get(HexCoord.FromOffset(4, 0))!.Owner);
+        Assert.False(g.Session.IsGameOver);
     }
 
     [Fact]
