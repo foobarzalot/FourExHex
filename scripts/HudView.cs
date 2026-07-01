@@ -1239,6 +1239,7 @@ public partial class HudView : OrientationHud, IHudView
     /// visibility based on <see cref="SessionState.Winner"/>.
     /// </summary>
     private Button _replayButton = null!;
+    private Button _campaignReplayButton = null!;
     private bool _replayAvailable;
 
     private void BuildVictoryOverlay()
@@ -1267,6 +1268,7 @@ public partial class HudView : OrientationHud, IHudView
     {
         _replayAvailable = available;
         if (_replayButton != null) _replayButton.Disabled = !available;
+        if (_campaignReplayButton != null) _campaignReplayButton.Disabled = !available;
     }
 
     // ---- Campaign victory ----------------------------------
@@ -1301,16 +1303,23 @@ public partial class HudView : OrientationHud, IHudView
             eyebrowText: "CAMPAIGN",
             titleText: "Level won",
             titleFontSize: 52,
-            designWidth: 620f,
-            buttonMinWidth: 180f,
+            designWidth: 660f,
+            buttonMinWidth: 150f,
             buttonSpecs: new (string, Action)[]
             {
                 ("Next unbeaten level", () => CampaignNextLevelClicked?.Invoke()),
+                ("Replay", () =>
+                {
+                    Log.Debug(Log.LogCategory.Campaign, "[HudView] campaign Replay clicked");
+                    ReplayClicked?.Invoke();
+                }),
                 ("Back to campaign", () => CampaignBackClicked?.Invoke()),
             });
         _campaignVictoryOverlay = overlay;
         _campaignVictoryLabel = title;
         _campaignNextButton = buttons[0];
+        _campaignReplayButton = buttons[1];
+        _campaignReplayButton.Disabled = true;  // gated by SetReplayAvailable
 
         // Campaign-total subtitle slotted between the title and the gold
         // rule (BuildEndgameOverlay's vbox: eyebrow, title, rule, buttons).
