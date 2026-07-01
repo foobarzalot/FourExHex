@@ -729,33 +729,66 @@ public partial class HexMapView : Node2D, IHexMapView
     }
 
     /// <summary>
-    /// Rising Tides: when one or more land tiles have submerged
-    /// (their coords are now in <c>_state.WaterCoords</c> and gone from the
-    /// grid), drop their stale land-fill <see cref="Polygon2D"/>s and re-bake
-    /// the water/foam soup in place so the new water actually draws. Only does
-    /// work when the grid shrank — a no-op every other call, so normal capture
-    /// repaints (which never remove tiles) pay just one count comparison.
+    /// Rising Tides: reconcile the land-fill <see cref="Polygon2D"/>s with the
+    /// current grid and re-bake the water/foam soup in place so water/land draw
+    /// correctly after the grid changes size. Two directions:
+    ///   - <b>Shrank</b> (a tile submerged — its coord left the grid and entered
+    ///     <c>_state.WaterCoords</c>): drop the stale land fill.
+    ///   - <b>Grew</b> (tiles restored on a replay reset / undo past a tide — back
+    ///     in the grid with their water cleared): recreate the missing land fill,
+    ///     inserting it into the fill z-band (just under the gold-border layer) so
+    ///     it draws below the outlines/borders rather than on top. Without this a
+    ///     restored coord keeps the baked water hex under a freshly-stroked border
+    ///     — the "water tile with black borders" glitch.
+    /// Either way the water soup is re-baked from the (now correct)
+    /// <c>_state.WaterCoords</c>. A no-op when the counts already match, so normal
+    /// capture repaints (which never change grid size) pay one count comparison.
     /// </summary>
-    private void PruneSubmergedTilesAndRebakeWater()
+    private void SyncTileFillsToGridAndRebakeWater()
     {
-        if (_tileVisuals.Count <= _state.Grid.Count) return;
+        if (_tileVisuals.Count == _state.Grid.Count) return;
 
-        var drowned = new List<HexCoord>();
-        foreach (KeyValuePair<HexCoord, Polygon2D> kv in _tileVisuals)
+        if (_tileVisuals.Count > _state.Grid.Count)
         {
-            if (!_state.Grid.Contains(kv.Key)) drowned.Add(kv.Key);
-        }
-        foreach (HexCoord coord in drowned)
-        {
-            _tileVisuals[coord]?.QueueFree();
-            _tileVisuals.Remove(coord);
+            var drowned = new List<HexCoord>();
+            foreach (KeyValuePair<HexCoord, Polygon2D> kv in _tileVisuals)
+            {
+                if (!_state.Grid.Contains(kv.Key)) drowned.Add(kv.Key);
+            }
+            foreach (HexCoord coord in drowned)
+            {
+                _tileVisuals[coord]?.QueueFree();
+                _tileVisuals.Remove(coord);
+            }
+            TriangleSoupBuilder bake = BuildWaterFoamSoup();
+            _waterFoamBake?.SetTriangles(
+                bake.Points.ToArray(), bake.Colors.ToArray(), bake.Indices.ToArray());
+            Log.Debug(Log.LogCategory.Tide,
+                $"[tide-view] pruned {drowned.Count} drowned land fill(s); " +
+                $"rebaked water ({_state.WaterCoords.Count} coords)");
+            return;
         }
 
-        TriangleSoupBuilder bake = BuildWaterFoamSoup();
+        // Grew: recreate fills for restored coords. AddChild appends to the end
+        // (top of the z-order), so MoveChild each new fill down to the gold-border
+        // layer's slot — the boundary between the fill band and every overlay —
+        // keeping it behind the outlines, borders, units, etc.
+        int restored = 0;
+        foreach (HexTile tile in _state.Grid.Tiles)
+        {
+            if (_tileVisuals.ContainsKey(tile.Coord)) continue;
+            Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(tile.Coord, HexSize);
+            Polygon2D fill = CreateHexVisual(center, PlayerPalette.ColorFor(EffectiveOwner(tile)));
+            _tileVisuals[tile.Coord] = fill;
+            AddChild(fill);
+            if (_goldBordersLayer != null) MoveChild(fill, _goldBordersLayer.GetIndex());
+            restored++;
+        }
+        TriangleSoupBuilder regrow = BuildWaterFoamSoup();
         _waterFoamBake?.SetTriangles(
-            bake.Points.ToArray(), bake.Colors.ToArray(), bake.Indices.ToArray());
+            regrow.Points.ToArray(), regrow.Colors.ToArray(), regrow.Indices.ToArray());
         Log.Debug(Log.LogCategory.Tide,
-            $"[tide-view] pruned {drowned.Count} drowned land fill(s); " +
+            $"[tide-view] restored {restored} land fill(s); " +
             $"rebaked water ({_state.WaterCoords.Count} coords)");
     }
 
@@ -863,9 +896,10 @@ public partial class HexMapView : Node2D, IHexMapView
         // DrawMountains repaints — but defer SPAWNING the effects to the end (see
         // FlushRisingTidesFx), past the ClearLayer(_deathsLayer) below.
         CaptureRisingTidesFx();
-        // Rising Tides: drop drowned tiles' land fills and re-bake water before
-        // the fill/border resync below re-reads the (now smaller) grid.
-        PruneSubmergedTilesAndRebakeWater();
+        // Rising Tides: reconcile land fills with the grid (drop drowned tiles,
+        // or recreate restored ones on a replay/undo reset) and re-bake water
+        // before the fill/border resync below re-reads the grid.
+        SyncTileFillsToGridAndRebakeWater();
 
         // Resync every tile fill from the model — the single coalesced
         // repaint path for ownership color (HexTile no longer pushes via
