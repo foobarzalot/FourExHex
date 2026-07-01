@@ -1,3 +1,4 @@
+using System;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Godot;
@@ -53,6 +54,11 @@ public static partial class UserSettings
     private static bool _vfxEnabled = true;
     private static PlaybackSpeed _aiSpeed = PlaybackSpeed.Fast;
     private static PlaybackSpeed _replaySpeed = PlaybackSpeed.Fast;
+    // One-time "seen the intro overlay" flags per special game mode (issue
+    // #96). Persisted so the mode explainer never re-shows after the player
+    // dismisses it once. Freeform has no intro and is never tracked here.
+    private static bool _seenRisingTidesIntro;
+    private static bool _seenFogOfWarIntro;
 
     public static bool SfxEnabled
     {
@@ -119,6 +125,46 @@ public static partial class UserSettings
     }
 
     /// <summary>
+    /// Whether the player has already dismissed the one-time intro overlay
+    /// for <paramref name="mode"/> (issue #96). Freeform has no intro, so it
+    /// reports "seen" — the caller never shows an overlay for it.
+    /// </summary>
+    public static bool HasSeenModeIntro(GameMode mode)
+    {
+        EnsureLoaded();
+        return mode switch
+        {
+            GameMode.RisingTides => _seenRisingTidesIntro,
+            GameMode.FogOfWar => _seenFogOfWarIntro,
+            _ => true,
+        };
+    }
+
+    /// <summary>
+    /// Record that the player has seen the intro overlay for
+    /// <paramref name="mode"/> so it won't re-show. No-op (and no write) for
+    /// Freeform or an already-seen mode.
+    /// </summary>
+    public static void MarkModeIntroSeen(GameMode mode)
+    {
+        EnsureLoaded();
+        switch (mode)
+        {
+            case GameMode.RisingTides:
+                if (_seenRisingTidesIntro) return;
+                _seenRisingTidesIntro = true;
+                break;
+            case GameMode.FogOfWar:
+                if (_seenFogOfWarIntro) return;
+                _seenFogOfWarIntro = true;
+                break;
+            default:
+                return;
+        }
+        Save();
+    }
+
+    /// <summary>
     /// Scalar the pacer applies to step delays for a given speed:
     /// Slow doubles them, Normal leaves them, Fast halves them. Read on
     /// every <c>Schedule</c> call (via the <c>Main</c> lambda) so a
@@ -150,6 +196,10 @@ public static partial class UserSettings
         // order is load-bearing for save-compat.
         public PlaybackSpeed AiSpeed { get; set; } = PlaybackSpeed.Fast;
         public PlaybackSpeed ReplaySpeed { get; set; } = PlaybackSpeed.Fast;
+        // One-time mode-intro "seen" flags (issue #96). Absent from older
+        // settings.json files → default false → intro shows once, as intended.
+        public bool SeenRisingTidesIntro { get; set; }
+        public bool SeenFogOfWarIntro { get; set; }
     }
 
     // Source-gen JsonSerializerContext for SettingsDto. Nested inside
@@ -185,6 +235,8 @@ public static partial class UserSettings
             _vfxEnabled = dto.VfxEnabled;
             _aiSpeed = dto.AiSpeed;
             _replaySpeed = dto.ReplaySpeed;
+            _seenRisingTidesIntro = dto.SeenRisingTidesIntro;
+            _seenFogOfWarIntro = dto.SeenFogOfWarIntro;
         }
         catch (System.Exception ex)
         {
@@ -208,6 +260,8 @@ public static partial class UserSettings
                     VfxEnabled = _vfxEnabled,
                     AiSpeed = _aiSpeed,
                     ReplaySpeed = _replaySpeed,
+                    SeenRisingTidesIntro = _seenRisingTidesIntro,
+                    SeenFogOfWarIntro = _seenFogOfWarIntro,
                 },
                 JsonContext.Default.SettingsDto);
 

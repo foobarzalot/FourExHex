@@ -14,8 +14,9 @@ public enum GameMode
     /// <summary>
     /// "Rising Tides": at the start of each owner's turn a shore
     /// tile of theirs submerges (mountains demote first), shrinking the map.
-    /// All early-win paths are suppressed; the game ends only when one player
-    /// is left standing.
+    /// Ordinary win conditions apply (domination as in every mode); only the
+    /// end-of-turn check swaps to last-player-standing rather than
+    /// sole-capital, so a self-drowning tide crowns the surviving opponent.
     /// </summary>
     RisingTides = 1,
 

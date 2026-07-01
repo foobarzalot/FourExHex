@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Godot;
@@ -472,13 +473,57 @@ public partial class Main : Node2D
         // Resume only on actual in-progress loads. Starting maps need a
         // fresh game flow (turn 1, full income/upkeep cycle) on top of
         // the saved terrain.
-        if (pendingLoad != null && !isStartingMap)
+        void BeginPlay()
         {
-            _controller.Resume();
+            if (pendingLoad != null && !isStartingMap)
+            {
+                _controller.Resume();
+            }
+            else
+            {
+                _controller.StartGame();
+            }
+        }
+
+        // One-time game-mode intro (issue #96): the first time the player
+        // starts a Rising Tides / Fog Of War game — however they reached it
+        // (campaign, custom, next-unbeaten, starting map) — show a short
+        // explainer over the just-loaded board and defer the first turn until
+        // they dismiss it, so nothing advances while they read. _state.Mode is
+        // the resolved mode for every branch, so this one seam covers them all.
+        // Skipped in diagnostic mode (headless, no input to tap).
+        GameMode resolvedMode = _state.Mode;
+        if (!diagnosticMode && GameModeIntro.ShouldShow(resolvedMode))
+        {
+            UserSettings.MarkModeIntroSeen(resolvedMode);
+            Log.Info(Log.LogCategory.Campaign,
+                $"Main: showing {resolvedMode} intro overlay");
+            // Paint the board once before the overlay so it shows its real
+            // start state underneath — crucially, Fog Of War applies its cover
+            // here (fog is a RefreshViews projection), so the intro doesn't sit
+            // over a fully revealed map. StartGame stays deferred until dismiss.
+            _controller.RefreshViewsForTutorial();
+            hud.ShowTappableTutorialMessage(GameModeIntro.TextFor(resolvedMode)!);
+            Action onTap = null!;
+            onTap = () =>
+            {
+                hud.TutorialMessageTapped -= onTap;
+                hud.HideTutorialMessage();
+                Log.Info(Log.LogCategory.Campaign,
+                    "Main: mode intro dismissed, starting play");
+                BeginPlay();
+            };
+            hud.TutorialMessageTapped += onTap;
         }
         else
         {
-            _controller.StartGame();
+            if (!diagnosticMode)
+            {
+                Log.Debug(Log.LogCategory.Campaign,
+                    $"Main: no mode intro (mode={resolvedMode}, " +
+                    $"seen={UserSettings.HasSeenModeIntro(resolvedMode)})");
+            }
+            BeginPlay();
         }
 
         // Games descended from a starting map identify by name; procedural
