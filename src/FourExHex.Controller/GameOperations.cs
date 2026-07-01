@@ -300,6 +300,24 @@ public class GameOperations
             string.Join(", ", parts));
     }
 
+    /// <summary>
+    /// One-line whole-map tree/grave census — the treepocalypse-incidence
+    /// telemetry (issue #100). Emitted once per player-turn at turn end so a
+    /// sweep can chart total trees vs. turn and correlate the terminal figure
+    /// against map settings. <c>[Conditional("DEBUG")]</c> so the grid walk is
+    /// stripped from Release; in dev it's runtime-gated on
+    /// <see cref="Log.LogCategory.Tree"/> at Debug.
+    /// </summary>
+    [Conditional("DEBUG")]
+    private void LogTreeCensus()
+    {
+        TreeCensus census = TreeCensus.Of(_state.Grid);
+        Log.Debug(Log.LogCategory.Tree,
+            $"[tree-census] T{_state.Turns.TurnNumber} land={census.LandTiles} " +
+            $"trees={census.Trees} graves={census.Graves} " +
+            $"owned={census.OwnedTrees} neutral={census.NeutralTrees}");
+    }
+
     [Conditional("DEBUG")]
     private void LogTurnStart()
     {
@@ -345,6 +363,7 @@ public class GameOperations
 
         LogGameEndDiagnostics(
             $"end-of-turn check for {_state.Turns.CurrentPlayer.Name}");
+        LogTreeCensus();
         // Rising Tides suppresses the sole-capital early win: the
         // game ends only when one player is left standing.
         PlayerId? winner = _state.Mode == GameMode.RisingTides

@@ -95,6 +95,7 @@ public partial class Main : Node2D
             Log.SetLevel(Log.LogCategory.Ai, Log.LogLevel.Debug);
             Log.SetLevel(Log.LogCategory.Turn, Log.LogLevel.Info);
             Log.SetLevel(Log.LogCategory.Capture, Log.LogLevel.Debug);
+            Log.SetLevel(Log.LogCategory.Tree, Log.LogLevel.Debug);
             GD.Print(quickDiagMode
                 ? "=== FOUREXHEX_6AI_QUICK diagnostic mode (smoke test, 18×13, cap=200) ==="
                 : "=== FOUREXHEX_6AI diagnostic mode (full, 30×20, cap=500) ===");
