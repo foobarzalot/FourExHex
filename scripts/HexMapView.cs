@@ -291,6 +291,18 @@ public partial class HexMapView : Node2D, IHexMapView
     private Vector2 _dragStartScreen;
     private Vector2 _dragStartMapPosition;
 
+    // Camera-pan animation (CenterOnTerritory). Instead of snapping Position
+    // to the new anchor, ease from _panFrom to _panTo over PanAnimDurationSec
+    // via EasingMath.SmoothStep, advanced each frame in _Process. Any manual
+    // pan/zoom gesture calls StopPan() so input is never fought.
+    private const float PanAnimDurationSec = 0.22f;
+    // Below this, a re-center is imperceptible — snap instead of animating.
+    private const float PanSnapEpsilonPx = 1f;
+    private bool _panActive;
+    private Vector2 _panFrom;
+    private Vector2 _panTo;
+    private double _panElapsed;
+
     // Long-press = press held at least this long without dragging. Picks
     // the rally action instead of the normal click on release.
     private const ulong LongPressMs = 400UL;
@@ -1465,6 +1477,8 @@ public partial class HexMapView : Node2D, IHexMapView
         // Godot's redraw/flush of newly created nodes that happens after
         // our capture-path C# returns (which the inline timers miss).
         LogLongFrame(delta);
+
+        AdvancePan(delta);
 
         int targetCount = _targetsLayer?.GetChildCount() ?? 0;
         int towerTargetCount = _towerTargetsLayer?.GetChildCount() ?? 0;
@@ -2914,6 +2928,7 @@ public partial class HexMapView : Node2D, IHexMapView
             if (!_isDragging && delta.Length() > DragThresholdPx) _isDragging = true;
             if (_isDragging)
             {
+                StopPan();
                 Position = ClampPan(_dragStartMapPosition + delta);
                 GetViewport().SetInputAsHandled();
             }
@@ -2951,6 +2966,7 @@ public partial class HexMapView : Node2D, IHexMapView
             {
                 // Right/Down keys move the world view in that direction,
                 // which means translating the map node OPPOSITE.
+                StopPan();
                 Position = ClampPan(Position - panDir * KeyboardPanStepPx);
                 LogCameraState("keypan");
                 GetViewport().SetInputAsHandled();
@@ -3211,7 +3227,51 @@ public partial class HexMapView : Node2D, IHexMapView
         // The capital's pixel position is in unscaled local space; map it to a
         // world offset (zoom + rotation) before subtracting from VisualCenter.
         Vector2 localCenter = FirstHexCenterOffset + HexPixel.ToPixel(territory.Capital!.Value, HexSize);
-        Position = ClampPan(VisualCenter() - ToWorldOffset(localCenter, _zoom));
+        Vector2 target = ClampPan(VisualCenter() - ToWorldOffset(localCenter, _zoom));
+
+        // Instant AI batch / instant replay (or a target that's already here):
+        // snap so fast play never lags behind the board.
+        if (_silentMode || (target - Position).Length() < PanSnapEpsilonPx)
+        {
+            _panActive = false;
+            Position = target;
+            return;
+        }
+
+        // Start / retarget the ease. Retargeting from the *current* Position
+        // (not the old _panTo) is what makes rapid successive selections
+        // graceful — no queue buildup, no snap-back.
+        _panFrom = Position;
+        _panTo = target;
+        _panElapsed = 0;
+        _panActive = true;
+        Log.Debug(Log.LogCategory.Render,
+            $"CenterOnTerritory pan from={_panFrom} to={_panTo} dur={PanAnimDurationSec:0.00}s");
+    }
+
+    /// <summary>Abandon any in-flight camera pan so a manual drag / keyboard /
+    /// zoom gesture takes over immediately (the animation would otherwise
+    /// overwrite Position next frame in <see cref="_Process"/>).</summary>
+    private void StopPan() => _panActive = false;
+
+    /// <summary>Advance the CenterOnTerritory ease one frame. No-op unless a
+    /// pan is active. Both endpoints sit inside the axis-aligned pan-clamp
+    /// rectangle (convex), so every eased Position stays validly clamped.</summary>
+    private void AdvancePan(double delta)
+    {
+        if (!_panActive) return;
+        _panElapsed += delta;
+        if (_panElapsed >= PanAnimDurationSec)
+        {
+            Position = _panTo;
+            _panActive = false;
+            Log.Debug(Log.LogCategory.Render, $"CenterOnTerritory pan done at={Position}");
+            return;
+        }
+        float s = EasingMath.SmoothStep((float)(_panElapsed / PanAnimDurationSec));
+        Position = new Vector2(
+            EasingMath.Lerp(_panFrom.X, _panTo.X, s),
+            EasingMath.Lerp(_panFrom.Y, _panTo.Y, s));
     }
 
     /// <summary>Frame the camera at <paramref name="zoom"/> with the view
@@ -3339,6 +3399,9 @@ public partial class HexMapView : Node2D, IHexMapView
         Log.Debug(Log.LogCategory.Render,
             $"HexMapView: resize@frame={frame} t={t0}ms vp={vp.X}x{vp.Y}.");
 
+        // The viewport changed under any in-flight pan, so its target is
+        // stale — abandon it and let the re-clamp / recenter below settle.
+        StopPan();
         bool flipped = ResolveRotation();
         RecomputeZoomLevels();
         if (flipped)
@@ -3437,6 +3500,7 @@ public partial class HexMapView : Node2D, IHexMapView
         _bottomInset = bottom;
         Log.Debug(Log.LogCategory.Render, $"HexMapView: insets top={top} bottom={bottom}.");
         if (!IsInsideTree()) return;
+        StopPan();
         RecomputeZoomLevels();
         Position = ClampPan(Position);
     }
@@ -3451,6 +3515,9 @@ public partial class HexMapView : Node2D, IHexMapView
         newZoom = Mathf.Clamp(newZoom, _zoomMin, 1f);
         if (Mathf.IsEqualApprox(newZoom, _zoom)) return;
 
+        // A zoom gesture reframes the board — abandon any in-flight pan so it
+        // doesn't overwrite the zoom-anchored Position next frame.
+        StopPan();
         // ToLocal uses the current Position+Scale, so localUnderAnchor is
         // in the unscaled local frame. After we change Scale, we want
         // anchorVp == Position + localUnderAnchor * newZoom.
