@@ -412,6 +412,14 @@ public static class AiCommon
     /// Phase 3: buy-to-capture and buy-to-chop candidates — buys that land
     /// on movement-consuming targets (enemy tiles, trees, graves).
     /// Buy-reposition is excluded by design. Solvency-gated.
+    ///
+    /// Each target is offered a buy at only the <b>minimum sufficient
+    /// level</b> — the cheapest unit that can reach it (a Recruit chops any
+    /// tree; a capture needs the lowest level whose attack exceeds the
+    /// tile's defense). Levels are walked cheapest-first and a target,
+    /// once offered a buy, is skipped for pricier levels, so the AI never
+    /// buys a Captain to take a tile a Recruit could (an overkill-spend
+    /// contributor to the #108 doom spiral).
     /// </summary>
     public static IEnumerable<AiCandidate> EnumeratePhase3(
         Territory territory,
@@ -420,6 +428,10 @@ public static class AiCommon
         if (!territory.HasCapital) yield break;
         int gold = state.Treasury.GetGold(territory.Capital!.Value);
         (Difficulty difficulty, int netBefore) = EconomyBefore(territory, state);
+
+        // Targets already offered a buy at a cheaper level — never buy a
+        // pricier unit to reach the same tile.
+        var covered = new HashSet<HexCoord>();
 
         UnitLevel[] levels = { UnitLevel.Recruit, UnitLevel.Soldier, UnitLevel.Captain, UnitLevel.Commander };
         foreach (UnitLevel level in levels)
@@ -433,17 +445,24 @@ public static class AiCommon
                 level, territory, state.Grid, state.Territories);
             foreach (HexCoord target in targets)
             {
+                if (covered.Contains(target)) continue;
                 HexTile? targetTile = state.Grid.Get(target);
                 if (targetTile == null) continue;
                 TargetKind kind = ClassifyTarget(targetTile, territory.Owner);
                 if (kind == TargetKind.Capture)
+                {
+                    covered.Add(target);
                     yield return new AiCandidate(
                         new AiBuyUnitAction(territory.Capital!.Value, target, level),
                         AiActionKind.Capture);
+                }
                 else if (kind == TargetKind.Chop || kind == TargetKind.Grave)
+                {
+                    covered.Add(target);
                     yield return new AiCandidate(
                         new AiBuyUnitAction(territory.Capital!.Value, target, level),
                         AiActionKind.Chop);
+                }
             }
         }
     }

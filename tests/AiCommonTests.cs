@@ -46,6 +46,73 @@ public class AiCommonTests
         Assert.DoesNotContain(CandidatesFor(Difficulty.Commander), CommanderBuy);
     }
 
+    // --- Phase 3 buys the MINIMUM sufficient level per target (#108) -------
+
+    // Levels of the Phase-3 buys that land on a given target tile.
+    private static List<UnitLevel> Phase3BuyLevelsOnto(
+        Territory territory, GameState state, HexCoord target) =>
+        AiCommon.EnumeratePhase3(territory, state)
+            .Where(c => c.Action is AiBuyUnitAction b && b.Destination.Equals(target))
+            .Select(c => ((AiBuyUnitAction)c.Action).Level)
+            .ToList();
+
+    [Fact]
+    public void EnumeratePhase3_BuysMinimumLevelForCapture_NotOverkill()
+    {
+        // 20-tile Red territory (income 20), gold 300 so every level is
+        // affordable + solvent. One adjacent EMPTY Blue tile (defense 0) — a
+        // Recruit (level 1 > 0) already captures it, so Phase 3 must offer
+        // ONLY a Recruit buy for it, never a Soldier/Captain/Commander.
+        HexGrid grid = TestHelpers.BuildRectGrid(5, 4, Red);
+        HexCoord tgt = HexCoord.FromOffset(5, 0);
+        grid.Add(new HexTile(tgt, Blue));
+        GameState state = BuildState(grid,
+            new Player("Red", PlayerId.FromIndex(0)),
+            new Player("Blue", PlayerId.FromIndex(1)));
+        Territory red = state.Territories.First(t => t.Owner == Red);
+        state.Treasury.SetGold(red.Capital!.Value, 300);
+
+        Assert.Equal(new[] { UnitLevel.Recruit }, Phase3BuyLevelsOnto(red, state, tgt));
+    }
+
+    [Fact]
+    public void EnumeratePhase3_BuysExactLevelNeeded_ForDefendedTarget()
+    {
+        // Adjacent Blue tile holds a Blue Soldier → defense 2. Capturing
+        // needs level > 2, i.e. a Captain (3). Recruit/Soldier can't reach
+        // it; Commander (4) could but is overkill. Phase 3 must offer ONLY
+        // the Captain buy.
+        HexGrid grid = TestHelpers.BuildRectGrid(5, 4, Red);
+        HexCoord tgt = HexCoord.FromOffset(5, 0);
+        grid.Add(new HexTile(tgt, Blue));
+        grid.Get(tgt)!.Occupant = new Unit(Blue, UnitLevel.Soldier);
+        GameState state = BuildState(grid,
+            new Player("Red", PlayerId.FromIndex(0)),
+            new Player("Blue", PlayerId.FromIndex(1)));
+        Territory red = state.Territories.First(t => t.Owner == Red);
+        state.Treasury.SetGold(red.Capital!.Value, 300);
+
+        Assert.Equal(new[] { UnitLevel.Captain }, Phase3BuyLevelsOnto(red, state, tgt));
+    }
+
+    [Fact]
+    public void EnumeratePhase3_BuysRecruitToChop_NeverHigher()
+    {
+        // A tree on an own tile. Any unit clears a tree, so Phase 3 must
+        // offer only a Recruit buy-to-chop for it, never a pricier unit.
+        HexGrid grid = TestHelpers.BuildRectGrid(5, 4, Red);
+        grid.Add(new HexTile(HexCoord.FromOffset(5, 0), Blue)); // gives a border
+        HexCoord treeCoord = HexCoord.FromOffset(4, 0);
+        grid.Get(treeCoord)!.Occupant = new Tree();
+        GameState state = BuildState(grid,
+            new Player("Red", PlayerId.FromIndex(0)),
+            new Player("Blue", PlayerId.FromIndex(1)));
+        Territory red = state.Territories.First(t => t.Owner == Red);
+        state.Treasury.SetGold(red.Capital!.Value, 300);
+
+        Assert.Equal(new[] { UnitLevel.Recruit }, Phase3BuyLevelsOnto(red, state, treeCoord));
+    }
+
     [Fact]
     public void Enumerate_Yields_Move_Reposition_To_Border_Tile()
     {
