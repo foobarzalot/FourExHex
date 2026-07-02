@@ -243,8 +243,7 @@ public class GameOperations
     {
         if (!wasReposition) return;
         if (_state.Turns.CurrentPlayer.Kind != PlayerKind.Computer) return;
-        Unit? unit = _state.Grid.Get(destination)?.Unit;
-        if (unit != null) unit.HasMovedThisTurn = true;
+        AiActionCore.MarkUnitMoved(destination, _state);
     }
 
     /// <summary>
@@ -888,10 +887,7 @@ public class GameOperations
     /// combine branch — shared by all four Execute paths.
     /// </summary>
     public bool WasFriendlyUnitAt(HexCoord coord, PlayerId owner)
-    {
-        HexTile? tile = _state.Grid.Get(coord);
-        return tile != null && tile.Owner == owner && tile.Occupant is Unit;
-    }
+        => AiActionCore.IsFriendlyUnitAt(coord, owner, _state);
 
     /// <summary>
     /// Apply a recorded AI move (also used by replay playback to
@@ -936,24 +932,18 @@ public class GameOperations
                 $"legal target for a {srcTile.Unit.Level}.");
         }
 
-        HexTile? dstTile = _state.Grid.Get(destination);
-        bool wasReposition = dstTile != null
-            && dstTile.Owner == attacker.Owner
-            && dstTile.Occupant == null;
-        bool wasCombine = WasFriendlyUnitAt(destination, attacker.Owner);
-
-        MoveResult result = MovementRules.Move(source, destination, _state.Grid, attacker);
-        if (result.WasCapture)
+        AiApplyResult r = AiActionCore.Move(source, destination, _state, attacker);
+        if (r.Move.WasCapture)
         {
             HandleCapture($"Move {source}→{destination}");
         }
-        if (result.Destroyed != null)
+        if (r.Move.Destroyed != null)
         {
-            _map.PlayDestructionEffect(destination, result.Destroyed);
+            _map.PlayDestructionEffect(destination, r.Move.Destroyed);
         }
-        ConsumeRepositionMoveIfAi(destination, wasReposition);
+        ConsumeRepositionMoveIfAi(destination, r.WasReposition);
 
-        DispatchActionSound(destination, result, wasCombine);
+        DispatchActionSound(destination, r.Move, r.WasCombine);
     }
 
     /// <summary>
@@ -987,27 +977,18 @@ public class GameOperations
         // Same AI semantic as ExecuteAiMove: a buy onto an own empty tile
         // is treated as consuming the fresh unit's move so the AI doesn't
         // immediately move it again next call.
-        HexTile? dstTile = _state.Grid.Get(destination);
-        bool wasReposition = dstTile != null
-            && dstTile.Owner == attacker.Owner
-            && dstTile.Occupant == null;
-        bool wasCombine = WasFriendlyUnitAt(destination, attacker.Owner);
-
-        _state.Treasury.SetGold(
-            capital, _state.Treasury.GetGold(capital) - PurchaseRules.CostFor(level, CurrentDifficulty));
-        var unit = new Unit(attacker.Owner, level);
-        MoveResult result = MovementRules.PlaceNew(unit, destination, _state.Grid, attacker);
-        if (result.WasCapture)
+        AiApplyResult r = AiActionCore.Buy(capital, destination, level, _state, attacker);
+        if (r.Move.WasCapture)
         {
             HandleCapture($"Buy {level} → {destination}");
         }
-        if (result.Destroyed != null)
+        if (r.Move.Destroyed != null)
         {
-            _map.PlayDestructionEffect(destination, result.Destroyed);
+            _map.PlayDestructionEffect(destination, r.Move.Destroyed);
         }
-        ConsumeRepositionMoveIfAi(destination, wasReposition);
+        ConsumeRepositionMoveIfAi(destination, r.WasReposition);
 
-        DispatchActionSound(destination, result, wasCombine);
+        DispatchActionSound(destination, r.Move, r.WasCombine);
     }
 
     /// <summary>
@@ -1041,10 +1022,7 @@ public class GameOperations
                 $"AI BuyCombine to {combineTarget}: no unit on the target tile.");
         }
 
-        _state.Treasury.SetGold(
-            capital, _state.Treasury.GetGold(capital) - PurchaseRules.CostFor(level, CurrentDifficulty));
-        var unit = new Unit(attacker.Owner, level);
-        MoveResult result = MovementRules.PlaceNew(unit, combineTarget, _state.Grid, attacker);
+        MoveResult result = AiActionCore.BuyCombine(capital, combineTarget, level, _state, attacker);
         // A buy-combine onto a friendly unit is never a capture.
         if (result.Destroyed != null)
         {
@@ -1112,9 +1090,7 @@ public class GameOperations
                 $"location is invalid (occupied or out-of-territory).");
         }
 
-        _state.Treasury.SetGold(
-            capital, _state.Treasury.GetGold(capital) - PurchaseRules.TowerCostFor(CurrentDifficulty));
-        dst.Occupant = new Tower();
+        AiActionCore.BuildTower(capital, destination, _state, territory);
         _map.PlaySound(SoundEffect.TowerPlaced, destination);
     }
 

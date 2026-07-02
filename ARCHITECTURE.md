@@ -384,7 +384,7 @@ A view-only restriction (`GameMode.FogOfWar` on `GameState.Mode`): rules, AI, an
 Mutation/orchestration core (what both live AI and replay need) lives in `src/FourExHex.Controller/GameOperations.cs`, separate from `GameController` so the `ReplayRecorder` extraction creates no cycle.
 
 - **`GameOperations`** owns mutation + turn-lifecycle helpers:
-  - Per-action execute — `ExecuteAiMove`, `ExecuteAiBuyUnit`, `ExecuteAiBuyCombine`, `ExecuteAiBuildTower`, `ApplyLongPressRally`
+  - Per-action execute — `ExecuteAiMove`, `ExecuteAiBuyUnit`, `ExecuteAiBuyCombine`, `ExecuteAiBuildTower`, `ApplyLongPressRally` (validation + view/capture envelope; the bare mutation is `AiActionCore` in Model, shared with `AiSimulator`)
   - Capture aftermath — `HandleCapture` (+ private `SnapshotCapitals` / `ColorsWithCapital` / `LogCaptureDiff`), `DispatchActionSound`, `DeclareWinner`
   - Turn transitions — `ReseedRngForCurrentTurn` (+ static `MixSeed`), `EndOfTurnProcessing` (+ private `LogGameEndDiagnostics`), `AdvanceToNextActivePlayer`, `StartPlayerTurn` (+ static `ResetMovementFor`, private `LogTurnStart`)
   - Game-end — `CheckGameEndConditions` (fires `GameEnded` via the `onGameEnded` ctor callback; controller owns the public event)
@@ -1021,11 +1021,19 @@ Replay reuses the live `ExecuteAi*` helpers — same captures, FX, `HandleCaptur
   **Phases 1 and 2a take their best legal candidate regardless of delta sign**
   (`BestPositiveDelta` with `threshold = int.MinValue`); phases 2b/3/4 keep the
   strictly-positive (`> 0`) gate. Ties resolve to the first-yielded candidate.
-  `AiSimulator` mirrors the mutation logic in `GameOperations`' `ExecuteAi*`
-  paths (incl. `ExecuteAiBuyCombine`); **adding a new AI-capable action requires
-  updating both in lockstep or simulated scoring drifts from real play.**
-  Lockstep pinned by `AiSimulatorDriftTests`: every enumerated action applied
-  through both paths must produce matching `GameStateChecksum` canonical strings
+  The bare mutation per action kind lives once in **`AiActionCore`**
+  (Model: reposition/combine detection, owner-difficulty gold deduction,
+  `MovementRules` placement, the shared `MarkUnitMoved` flag-setter);
+  `AiSimulator.Apply*` and `GameOperations.ExecuteAi*` both call it and
+  differ only in their envelopes — the simulator early-returns on bad
+  lookups, reconciles captures with a bare `TerritoryFinder.Recompute`,
+  and marks repositions unconditionally; the live path validates and
+  throws, runs the full `HandleCapture` envelope, kind-gates the
+  reposition mark (`ConsumeRepositionMoveIfAi`), and fires view effects.
+  **A new AI-capable action adds its mutation to `AiActionCore` and an
+  envelope to each caller.** Envelope equivalence pinned by
+  `AiSimulatorDriftTests`: every enumerated action applied through both
+  paths must produce matching `GameStateChecksum` canonical strings
   (plus clone-fidelity and fixture-rot guards over all four action kinds).
   `AiSimulator.Apply` throws `NotSupportedException` on unmodeled kinds (Rally,
   ClaimVictory, Dismiss*) so drift surfaces loudly.
@@ -1754,6 +1762,9 @@ scripts/  (split: see the three source trees listed just above)
 ├─ AiAction.cs            ─ AiMoveAction / AiBuyUnitAction / …
 ├─ AiCommon.cs            ─ shared candidate-action enumeration
 ├─ AiDispatcher.cs        ─ routes by Player.Kind
+├─ AiActionCore.cs        ─ bare AI-action mutation core (flags, gold
+│                           deduction, placement) shared by AiSimulator
+│                           and GameOperations.ExecuteAi*
 ├─ AiSimulator.cs         ─ Clone + apply for 1-ply lookahead; throws on
 │                           unsupported AiAction kinds
 ├─ AiStateScorer.cs       ─ scoring function for ComputerAi

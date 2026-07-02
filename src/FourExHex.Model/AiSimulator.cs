@@ -9,12 +9,14 @@ using System.Linq;
 /// fresh state to score without disturbing the real one) or apply
 /// in place (used by the clone path itself).
 ///
-/// Mirrors the mutation logic in <see cref="GameController"/>'s
-/// <c>ExecuteAiMove</c> / <c>ExecuteAiBuyUnit</c> /
-/// <c>ExecuteAiBuildTower</c> methods so simulated futures match
-/// what the real harness would produce. Skips the paranoid
-/// validation — actions passed here are expected to come from
-/// <see cref="AiCommon.Enumerate"/>, which only emits legal ones.
+/// The bare mutations are <see cref="AiActionCore"/>, shared with the
+/// live <c>GameOperations.ExecuteAi*</c> paths so simulated futures
+/// match what the real harness produces. The simulator's own envelope
+/// is thin: Recompute-only capture reconciliation
+/// (<see cref="Reconcile"/>) and unconditional reposition-marking.
+/// Skips the paranoid validation — actions passed here are expected to
+/// come from <see cref="AiCommon.Enumerate"/>, which only emits legal
+/// ones.
 /// </summary>
 public static class AiSimulator
 {
@@ -98,17 +100,17 @@ public static class AiSimulator
             state.Territories, srcTile.Owner, source);
         if (attacker == null) return;
 
-        bool wasReposition = IsRepositionTarget(destination, attacker.Owner, state);
-
-        MoveResult result = MovementRules.Move(source, destination, state.Grid, attacker);
-        if (result.WasCapture)
+        AiApplyResult r = AiActionCore.Move(source, destination, state, attacker);
+        if (r.Move.WasCapture)
         {
             Reconcile(state);
         }
 
-        if (wasReposition)
+        if (r.WasReposition)
         {
-            MarkAiUnitMoved(destination, state);
+            // Unconditional mark — the simulator only ever runs for
+            // Computer actors, so no live-play kind-gate is needed here.
+            AiActionCore.MarkUnitMoved(destination, state);
         }
     }
 
@@ -117,84 +119,43 @@ public static class AiSimulator
         Territory? territory = TerritoryLookup.FindByCapital(state.Territories, capital);
         if (territory == null) return;
 
-        bool wasReposition = IsRepositionTarget(destination, territory.Owner, state);
-
-        Difficulty difficulty = state.DifficultyOf(territory.Owner);
-        state.Treasury.SetGold(
-            capital, state.Treasury.GetGold(capital) - PurchaseRules.CostFor(level, difficulty));
-        var unit = new Unit(territory.Owner, level);
-        MoveResult result = MovementRules.PlaceNew(unit, destination, state.Grid, territory);
-        if (result.WasCapture)
+        AiApplyResult r = AiActionCore.Buy(capital, destination, level, state, territory);
+        if (r.Move.WasCapture)
         {
             Reconcile(state);
         }
 
-        if (wasReposition)
+        if (r.WasReposition)
         {
-            MarkAiUnitMoved(destination, state);
+            AiActionCore.MarkUnitMoved(destination, state);
         }
-    }
-
-    /// <summary>
-    /// True iff <paramref name="destination"/> is a same-owner empty
-    /// tile — the signature of a pure reposition that
-    /// <see cref="MovementRules.ResolveArrival"/> leaves unmarked.
-    /// Must be evaluated BEFORE the move is applied.
-    /// </summary>
-    private static bool IsRepositionTarget(HexCoord destination, PlayerId owner, GameState state)
-    {
-        HexTile? dst = state.Grid.Get(destination);
-        return dst != null && dst.Owner == owner && dst.Occupant == null;
-    }
-
-    /// <summary>
-    /// AI-side rule: once the AI commits a unit to a reposition,
-    /// that unit is done for the turn. The game's underlying
-    /// movement rule leaves repositioned units actionable (so a
-    /// human can micromanage), but the AI would otherwise re-enumerate
-    /// the same unit each call and ping-pong it between border
-    /// tiles. <see cref="GameController.ExecuteAiMove"/> mirrors this
-    /// so the live state matches what the simulator predicts.
-    /// </summary>
-    private static void MarkAiUnitMoved(HexCoord destination, GameState state)
-    {
-        Unit? unit = state.Grid.Get(destination)?.Unit;
-        if (unit != null) unit.HasMovedThisTurn = true;
     }
 
     private static void ApplyBuyCombine(HexCoord capital, HexCoord combineTarget, UnitLevel level, GameState state)
     {
         Territory? territory = TerritoryLookup.FindByCapital(state.Territories, capital);
         if (territory == null) return;
-        Difficulty difficulty = state.DifficultyOf(territory.Owner);
-        state.Treasury.SetGold(
-            capital, state.Treasury.GetGold(capital) - PurchaseRules.CostFor(level, difficulty));
-        var unit = new Unit(territory.Owner, level);
-        // PlaceNew onto a friendly unit tile performs the combine.
         // The combined unit inherits the dest unit's HasMovedThisTurn=false,
-        // so no MarkAiUnitMoved — the combined unit remains actionable for
+        // so no MarkUnitMoved — the combined unit remains actionable for
         // a subsequent phase-1 capture.
-        MovementRules.PlaceNew(unit, combineTarget, state.Grid, territory);
+        AiActionCore.BuyCombine(capital, combineTarget, level, state, territory);
     }
 
     private static void ApplyBuildTower(HexCoord capital, HexCoord destination, GameState state)
     {
         Territory? territory = TerritoryLookup.FindByCapital(state.Territories, capital);
         if (territory == null) return;
-        HexTile? dst = state.Grid.Get(destination);
-        if (dst == null) return;
+        if (state.Grid.Get(destination) == null) return;
 
-        state.Treasury.SetGold(
-            capital,
-            state.Treasury.GetGold(capital)
-                - PurchaseRules.TowerCostFor(state.DifficultyOf(territory.Owner)));
-        dst.Occupant = new Tower();
+        AiActionCore.BuildTower(capital, destination, state, territory);
     }
 
     /// <summary>
     /// Rebuild territories and reconcile the treasury after a
-    /// capture. Matches <c>GameController.HandleCapture</c> exactly
-    /// so simulated and real captures produce identical states.
+    /// capture. The same <see cref="TerritoryFinder.Recompute"/> call
+    /// sits at the heart of <c>GameOperations.HandleCapture</c>, so
+    /// simulated and real captures produce identical states; the live
+    /// path merely layers view/defeat/win effects on top.
     /// </summary>
     private static void Reconcile(GameState state)
     {
