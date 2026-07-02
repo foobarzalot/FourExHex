@@ -691,6 +691,77 @@ public class GameOperations
     }
 
     /// <summary>
+    /// Set the highlight (null clears) and immediately refresh the
+    /// views. The pair appears in both the AI and replay step
+    /// machines plus several game-end / dismissal sites — a one-line
+    /// helper de-duplicates without inventing new abstraction.
+    /// </summary>
+    public void ShowHighlightAndRefresh(Territory? selected)
+    {
+        _map.ShowHighlight(selected);
+        RefreshViews();
+    }
+
+    // Max wall-clock a single instant tick may spend draining steps
+    // before it yields a frame. Small so the main thread stays
+    // responsive mid-fast-forward — input, camera pan/zoom and
+    // rendering all run between ticks. A mid-turn budget break yields
+    // WITHOUT a redraw (nothing visual changed the user needs yet);
+    // the screen is repainted only at turn boundaries. Shared by
+    // instant replay and live-AI instant.
+    private const int InstantBudgetMs = 8;
+
+    /// <summary>
+    /// Shared chunked, frame-yielded fast-forward loop behind both
+    /// instant replay (<see cref="ReplayRecorder"/>) and live-AI
+    /// instant (<see cref="AiTurnDriver"/>). Drains <paramref name="step"/>
+    /// with no per-step visual work (captures skip their rebuild via
+    /// <see cref="SuppressMapRebuild"/>; sound/VFX/tweens off via
+    /// silent mode), repaints the whole board exactly once per turn,
+    /// and caps each tick at <see cref="InstantBudgetMs"/> so a huge
+    /// turn still yields frames (pan/zoom/input stay alive) without
+    /// redrawing until that turn ends. Reschedules itself via
+    /// <c>ScheduleUnscaled</c> — the driver owns its cadence; the speed
+    /// multiplier must not touch these delays.
+    /// </summary>
+    public void RunInstantTick(
+        Func<bool> active, Func<InstantStep> step,
+        Action onExhausted, Action<bool> reschedule)
+    {
+        if (!active()) return;
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        bool turnBoundary = false;
+        SuppressMapRebuild = true;
+        while (true)
+        {
+            InstantStep s = step();
+            if (s == InstantStep.Exhausted)
+            {
+                SuppressMapRebuild = false;
+                onExhausted();
+                return;
+            }
+            if (s == InstantStep.TurnBoundary) { turnBoundary = true; break; }
+            if (sw.ElapsedMilliseconds >= InstantBudgetMs) break;
+        }
+        SuppressMapRebuild = false;
+
+        // Repaint only when a turn just completed. A budget-driven
+        // break mid-turn yields a bare frame (input/camera stay live)
+        // and resumes next tick — no redraw until the turn boundary.
+        if (turnBoundary)
+        {
+            _map.RebuildAfterTerritoryChange();
+            RefreshViews();
+        }
+        // Re-dispatch through the caller's scheduler (NOT a fixed
+        // self-reschedule) so a mid-run speed change can switch off the
+        // instant track here. The scheduler owns the delay per track.
+        reschedule(turnBoundary);
+    }
+
+    /// <summary>
     /// Build the fog-of-war projection for the view, or null when fog is off.
     /// Fog requires exactly one human player (guaranteed by the Fog Of War menu
     /// lock); anything else fails safe to null (no fog) rather than guessing a

@@ -3,11 +3,11 @@ using System.Collections.Generic;
 
 /// <summary>
 /// Return value from a single tick of the chunked instant driver
-/// (<c>GameController.RunInstantTick</c>). Used by both the live-AI
-/// instant step (<c>AiInstantStep</c>) and the replay instant step
-/// (<see cref="ReplayRecorder.ReplayInstantStep"/>) to signal whether
-/// the loop should continue draining within budget, yield at a turn
-/// boundary, or stop entirely.
+/// (<see cref="GameOperations.RunInstantTick"/>). Used by both the
+/// live-AI instant step (<c>AiTurnDriver.AiInstantStep</c>) and the
+/// replay instant step (<see cref="ReplayRecorder.ReplayInstantStep"/>)
+/// to signal whether the loop should continue draining within budget,
+/// yield at a turn boundary, or stop entirely.
 /// </summary>
 public enum InstantStep { Continued, TurnBoundary, Exhausted }
 
@@ -42,7 +42,6 @@ public class ReplayRecorder
     private readonly GameOperations _ops;
     private readonly IAiPacer _aiPacer;
     private readonly Func<bool>? _replayIsInstantMode;
-    private readonly Action _instantTickEntry;
     private readonly bool _previewMode;
 
     // Pacing constants for the paced replay step machine. Same values
@@ -51,10 +50,10 @@ public class ReplayRecorder
     private const int AiPreviewDelayMs = 350;
     private const int AiActionDelayMs = 300;
     private const int AiBetweenPlayersDelayMs = 600;
-    // Mirrors GameController.InstantTurnDelayMs (the per-turn cadence of
+    // Mirrors AiTurnDriver.InstantTurnDelayMs (the per-turn cadence of
     // the chunked instant driver). Duplicated here the same way the
     // paced delays above are, so the recorder can re-dispatch the
-    // instant track without reaching into GameController.
+    // instant track without reaching into the AI driver.
     private const int InstantTurnDelayMs = 200;
 
     // The replay log lives parallel to the per-turn undo stack: every
@@ -102,7 +101,6 @@ public class ReplayRecorder
         IAiPacer aiPacer,
         bool previewMode,
         Func<bool>? replayIsInstantMode,
-        Action instantTickEntry,
         Replay? loadedReplay)
     {
         _state = state;
@@ -112,7 +110,6 @@ public class ReplayRecorder
         _aiPacer = aiPacer;
         _previewMode = previewMode;
         _replayIsInstantMode = replayIsInstantMode;
-        _instantTickEntry = instantTickEntry;
 
         if (loadedReplay != null)
         {
@@ -422,10 +419,18 @@ public class ReplayRecorder
         // (no AI "Opponents…" overlay), mirroring BeginReplay/EndReplay.
         _map.SetSilentMode(nowInstant);
         if (nowInstant)
-            _aiPacer.ScheduleUnscaled(_instantTickEntry, turnBoundary ? InstantTurnDelayMs : 0);
+            _aiPacer.ScheduleUnscaled(InstantReplayTick, turnBoundary ? InstantTurnDelayMs : 0);
         else
             _aiPacer.Schedule(StepReplayPreview, turnBoundary ? AiBetweenPlayersDelayMs : AiActionDelayMs);
     }
+
+    /// <summary>Instant-replay driver: a thin wrapper over the shared
+    /// chunked loop <see cref="GameOperations.RunInstantTick"/>.</summary>
+    private void InstantReplayTick() => _ops.RunInstantTick(
+        active: () => _replayMode,
+        step: ReplayInstantStep,
+        onExhausted: EndReplay,
+        reschedule: ScheduleNextReplayBeat);
 
     private void StepReplayPreview()
     {
