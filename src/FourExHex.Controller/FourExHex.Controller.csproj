@@ -16,6 +16,23 @@
     <IsPackable>false</IsPackable>
     <RootNamespace>FourExHex</RootNamespace>
     <EnableDynamicLoading>true</EnableDynamicLoading>
+    <Configurations>Debug;Release;ExportDebug;ExportRelease</Configurations>
+  </PropertyGroup>
+
+  <!--
+    Godot export builds compile with -c ExportDebug / -c ExportRelease
+    (see tools/build_*.sh). Undeclared, those configuration names bypass
+    the SDK's Debug-only defaults: ExportDebug would compile WITHOUT the
+    DEBUG constant (silently stripping every [Conditional("DEBUG")]
+    Log.Trace/Debug/Info call and Debug.Assert from on-device debug
+    builds) and ExportRelease would compile with optimizations OFF.
+  -->
+  <PropertyGroup Condition="'$(Configuration)' == 'ExportDebug'">
+    <DefineConstants>$(DefineConstants);DEBUG</DefineConstants>
+    <Optimize>false</Optimize>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)' == 'ExportRelease'">
+    <Optimize>true</Optimize>
   </PropertyGroup>
 
   <ItemGroup>
