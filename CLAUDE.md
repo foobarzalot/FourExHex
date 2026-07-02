@@ -130,7 +130,7 @@ Use these for AI-behavior debugging — do **not** use them as a substitute for 
 - `GameController` takes an injected `aiChooser: Func<GameState, Color, HashSet<HexCoord>, Random, AiAction?>` and an `IAiPacer`. `Main` wires the chooser to `AiDispatcher.ChooseForCurrentPlayer`, which delegates to `ComputerAi` for a `PlayerKind.Computer` slot and returns null for a `Human` one (based on `Player.Kind`).
 - `AiCommon.Enumerate` is the single source of legal candidate actions; `ComputerAi` consumes it. Only this helper knows about rule legality — the AI owns the "which candidate?" decision.
 - `AiSimulator.Clone` + `AiStateScorer.Score` back `ComputerAi`'s 1-ply lookahead. `AiSimulator` mirrors the mutation logic in `GameOperations`' `ExecuteAi*` paths; if you add a new AI-capable action, update both in lockstep or simulated scoring will drift from real play.
-- AI turn pacing lives in `AiTurnDriver` and is split into preview/execute beats (see its `AiPreviewDelayMs` / `AiActionDelayMs` / `AiBetweenPlayersDelayMs` constants) so humans can see which territory is acting. Tests use `SynchronousAiPacer` and observe all effects inline.
+- AI turn pacing lives in `AiTurnDriver` and is split into preview/execute beats (see the shared `StepPacing` constants) so humans can see which territory is acting. Tests use `SynchronousAiPacer` and observe all effects inline.
 - Logging goes through `Log` (`src/FourExHex.Model/Log.cs`): per-category (`Ai`/`Turn`/`Capture`/…) × level, off by default. `Trace`/`Debug`/`Info` are `[Conditional("DEBUG")]` (stripped from Release); `Warn`/`Error` always compile. Enable via `FOUREXHEX_LOG="Ai:Debug,Turn:Info"`, `FOUREXHEX_6AI`, or `Log.SetLevel(...)` in a scratch test when debugging AI choices.
 
 ## Project Structure

@@ -52,24 +52,6 @@ public class AiTurnDriver
     // suppressed per-capture rebuilds skipped.
     private bool _aiTrackInstant;
 
-    // Delay (milliseconds) between AI step beats. Each AI action is
-    // split into a preview (highlight the acting territory) and an
-    // execute (run the action, re-highlight the resulting territory)
-    // so the player can see who is doing what.
-    //   AiPreviewDelayMs      — pause BEFORE executing a previewed action
-    //   AiActionDelayMs       — pause AFTER executing, before the next preview
-    //   AiBetweenPlayersDelayMs — longer pause on player change
-    private const int AiPreviewDelayMs = 350;
-    private const int AiActionDelayMs = 300;
-    private const int AiBetweenPlayersDelayMs = 600;
-
-    // Delay between a per-turn repaint and the next instant tick, so each
-    // player-turn's board lingers long enough to follow (≈5 turns/sec)
-    // instead of flipping past at frame rate. Still far faster than
-    // Fast (~325ms/beat). Mid-turn budget yields (no repaint) use 0 —
-    // an in-progress turn shouldn't be paced, only completed ones.
-    private const int InstantTurnDelayMs = 200;
-
     // Safety cap on AI actions per player turn — the visited set
     // guarantees termination in practice, but this keeps a buggy
     // chooser from pacing forever.
@@ -157,35 +139,23 @@ public class AiTurnDriver
     /// </summary>
     public void Schedule(bool turnBoundary)
     {
-        bool nowInstant = _aiSilentMode();
-        if (_aiTrackInstant && !nowInstant)
-        {
-            Log.Debug(Log.LogCategory.Ai,
-                $"[speed] AI track instant→paced mid-turn (player={_state.Turns.CurrentPlayer.Id})");
-            // Instant suppressed per-capture rebuilds; the border layer
-            // is stale before the first paced render.
-            _map.RebuildAfterTerritoryChange();
-        }
-        else if (!_aiTrackInstant && nowInstant)
-        {
-            Log.Debug(Log.LogCategory.Ai,
-                $"[speed] AI track paced→instant mid-turn (player={_state.Turns.CurrentPlayer.Id})");
-            // The instant track shows no per-action highlight, so clear
-            // the acting-territory outline the paced track last drew —
-            // otherwise it lingers through the fast-forward.
-            _map.ShowHighlight(null);
-        }
-        _aiTrackInstant = nowInstant;
-        // Sync the view's silent flag + "Opponents…" overlay to the live
-        // setting before scheduling, so the next beat renders correctly.
-        _ops.RefreshSilentMode();
-        // Delay belongs to whichever track we land on: instant runs at
-        // its own cadence (0 mid-turn, InstantTurnDelayMs at a boundary,
-        // unscaled); paced uses the multiplier-scaled step delays.
-        if (nowInstant)
-            _aiPacer.ScheduleUnscaled(InstantAiTick, turnBoundary ? InstantTurnDelayMs : 0);
-        else
-            _aiPacer.Schedule(StepAiPreview, turnBoundary ? AiBetweenPlayersDelayMs : AiActionDelayMs);
+        // The syncSilentMode hop refreshes the view's silent flag + the
+        // "Opponents…" overlay to the live setting before scheduling, so
+        // the next beat renders correctly.
+        StepPacing.Redispatch(
+            wasInstant: _aiTrackInstant,
+            nowInstant: _aiSilentMode(),
+            turnBoundary: turnBoundary,
+            map: _map,
+            pacer: _aiPacer,
+            instantTick: InstantAiTick,
+            pacedStep: StepAiPreview,
+            setTrack: v => _aiTrackInstant = v,
+            syncSilentMode: _ops.RefreshSilentMode,
+            logInstantToPaced: () => Log.Debug(Log.LogCategory.Ai,
+                $"[speed] AI track instant→paced mid-turn (player={_state.Turns.CurrentPlayer.Id})"),
+            logPacedToInstant: () => Log.Debug(Log.LogCategory.Ai,
+                $"[speed] AI track paced→instant mid-turn (player={_state.Turns.CurrentPlayer.Id})"));
     }
 
     /// <summary>
@@ -268,7 +238,7 @@ public class AiTurnDriver
         // _pendingAiAction is already chosen, so switching tracks here
         // would re-draw RNG for it. The track switch lands at the next
         // action boundary in StepAiExecute instead.
-        _aiPacer.Schedule(StepAiExecute, AiPreviewDelayMs);
+        _aiPacer.Schedule(StepAiExecute, StepPacing.AiPreviewDelayMs);
     }
 
     /// <summary>
