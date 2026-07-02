@@ -59,6 +59,11 @@ public static partial class UserSettings
     // dismisses it once. Freeform has no intro and is never tracked here.
     private static bool _seenRisingTidesIntro;
     private static bool _seenFogOfWarIntro;
+    // One-time "seen the terrain intro overlay" flags per teachable feature
+    // (issue #53): the first map that contains gold / a mountain pops a short
+    // explainer + camera pan, then never again. None is never tracked here.
+    private static bool _seenGoldIntro;
+    private static bool _seenMountainIntro;
 
     public static bool SfxEnabled
     {
@@ -165,6 +170,46 @@ public static partial class UserSettings
     }
 
     /// <summary>
+    /// Whether the player has already dismissed the one-time intro overlay for
+    /// terrain <paramref name="feature"/> (issue #53). <see cref="TerrainFeature.None"/>
+    /// has no intro, so it reports "seen" — the caller never shows one for it.
+    /// </summary>
+    public static bool HasSeenTerrainIntro(TerrainFeature feature)
+    {
+        EnsureLoaded();
+        return feature switch
+        {
+            TerrainFeature.Gold => _seenGoldIntro,
+            TerrainFeature.Mountain => _seenMountainIntro,
+            _ => true,
+        };
+    }
+
+    /// <summary>
+    /// Record that the player has seen the intro overlay for terrain
+    /// <paramref name="feature"/> so it won't re-show. No-op (and no write) for
+    /// <see cref="TerrainFeature.None"/> or an already-seen feature.
+    /// </summary>
+    public static void MarkTerrainIntroSeen(TerrainFeature feature)
+    {
+        EnsureLoaded();
+        switch (feature)
+        {
+            case TerrainFeature.Gold:
+                if (_seenGoldIntro) return;
+                _seenGoldIntro = true;
+                break;
+            case TerrainFeature.Mountain:
+                if (_seenMountainIntro) return;
+                _seenMountainIntro = true;
+                break;
+            default:
+                return;
+        }
+        Save();
+    }
+
+    /// <summary>
     /// Scalar the pacer applies to step delays for a given speed:
     /// Slow doubles them, Normal leaves them, Fast halves them. Read on
     /// every <c>Schedule</c> call (via the <c>Main</c> lambda) so a
@@ -200,6 +245,11 @@ public static partial class UserSettings
         // settings.json files → default false → intro shows once, as intended.
         public bool SeenRisingTidesIntro { get; set; }
         public bool SeenFogOfWarIntro { get; set; }
+        // One-time terrain-intro "seen" flags (issue #53). Same absent→false→
+        // shows-once semantics as the mode flags above. Appended last to keep
+        // the DTO order stable for save-compat.
+        public bool SeenGoldIntro { get; set; }
+        public bool SeenMountainIntro { get; set; }
     }
 
     // Source-gen JsonSerializerContext for SettingsDto. Nested inside
@@ -237,6 +287,8 @@ public static partial class UserSettings
             _replaySpeed = dto.ReplaySpeed;
             _seenRisingTidesIntro = dto.SeenRisingTidesIntro;
             _seenFogOfWarIntro = dto.SeenFogOfWarIntro;
+            _seenGoldIntro = dto.SeenGoldIntro;
+            _seenMountainIntro = dto.SeenMountainIntro;
         }
         catch (System.Exception ex)
         {
@@ -262,6 +314,8 @@ public static partial class UserSettings
                     ReplaySpeed = _replaySpeed,
                     SeenRisingTidesIntro = _seenRisingTidesIntro,
                     SeenFogOfWarIntro = _seenFogOfWarIntro,
+                    SeenGoldIntro = _seenGoldIntro,
+                    SeenMountainIntro = _seenMountainIntro,
                 },
                 JsonContext.Default.SettingsDto);
 

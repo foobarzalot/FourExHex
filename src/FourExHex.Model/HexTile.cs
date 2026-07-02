@@ -30,8 +30,9 @@ public class HexTile
     public TerrainFeature Feature { get; set; } = TerrainFeature.None;
 
     /// <summary>
-    /// A gold tile: an income hotspot that pays its controlling
-    /// player double the per-turn income of an ordinary tile. A convenience view
+    /// A gold tile: an income hotspot that pays its controlling player
+    /// 5 gp/turn — five times an ordinary tile (base 1 +
+    /// <see cref="IncomeRules.GoldTileBonus"/>). A convenience view
     /// over <see cref="Feature"/> — orthogonal to <see cref="Owner"/> and
     /// <see cref="Occupant"/> (a gold tile may be owned by any player or neutral
     /// and may hold any occupant), but <b>mutually exclusive with

@@ -74,11 +74,26 @@ public class MockHexMapView : IHexMapView
     }
 
     public Territory? LastCenteredTerritory { get; private set; }
+    public HexCoord? LastCenteredCoord { get; private set; }
     public int CenterCount { get; private set; }
     public void CenterOnTerritory(Territory territory)
     {
         LastCenteredTerritory = territory;
         CenterCount++;
+    }
+
+    public void CenterOnCoord(HexCoord coord)
+    {
+        LastCenteredCoord = coord;
+        CenterCount++;
+    }
+
+    public HexCoord? LastFocusPulseCoord { get; private set; }
+    public int FocusPulseCount { get; private set; }
+    public void ShowTerrainFocusPulse(HexCoord? coord)
+    {
+        LastFocusPulseCoord = coord;
+        FocusPulseCount++;
     }
 
     public int RebuildCount { get; private set; }

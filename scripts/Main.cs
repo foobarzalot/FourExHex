@@ -486,45 +486,91 @@ public partial class Main : Node2D
             }
         }
 
-        // One-time game-mode intro (issue #96): the first time the player
-        // starts a Rising Tides / Fog Of War game — however they reached it
-        // (campaign, custom, next-unbeaten, starting map) — show a short
-        // explainer over the just-loaded board and defer the first turn until
-        // they dismiss it, so nothing advances while they read. _state.Mode is
-        // the resolved mode for every branch, so this one seam covers them all.
-        // Skipped in diagnostic mode (headless, no input to tap).
+        // One-time first-encounter intros: the first time the player starts a
+        // game featuring something the board doesn't self-explain, show a short
+        // tappable overlay over the just-loaded board and defer the first turn
+        // until it's dismissed, so nothing advances while they read.
+        //   * Game modes (#96) — Rising Tides / Fog Of War change the rules.
+        //   * Terrain (#53) — the first map containing gold / a mountain teaches
+        //     it and eases the camera to a representative tile to draw the eye.
+        // All of these funnel through this single Main._Ready seam so one code
+        // flow covers every launch path (campaign, custom, next-unbeaten,
+        // starting map, resume). When several apply they chain in order: mode →
+        // gold → mountain. Skipped in diagnostic mode (headless, no tap input).
         GameMode resolvedMode = _state.Mode;
-        if (!diagnosticMode && GameModeIntro.ShouldShow(resolvedMode))
+        var intros = new List<(string text, HexCoord? focus, string label)>();
+        if (!diagnosticMode)
         {
-            UserSettings.MarkModeIntroSeen(resolvedMode);
-            Log.Info(Log.LogCategory.Campaign,
-                $"Main: showing {resolvedMode} intro overlay");
-            // Paint the board once before the overlay so it shows its real
-            // start state underneath — crucially, Fog Of War applies its cover
-            // here (fog is a RefreshViews projection), so the intro doesn't sit
-            // over a fully revealed map. StartGame stays deferred until dismiss.
-            _controller.RefreshViewsForTutorial();
-            hud.ShowTappableTutorialMessage(GameModeIntro.TextFor(resolvedMode)!);
-            Action onTap = null!;
-            onTap = () =>
+            if (GameModeIntro.ShouldShow(resolvedMode))
             {
-                hud.TutorialMessageTapped -= onTap;
-                hud.HideTutorialMessage();
-                Log.Info(Log.LogCategory.Campaign,
-                    "Main: mode intro dismissed, starting play");
-                BeginPlay();
-            };
-            hud.TutorialMessageTapped += onTap;
+                UserSettings.MarkModeIntroSeen(resolvedMode);
+                intros.Add((GameModeIntro.TextFor(resolvedMode)!, null,
+                    $"{resolvedMode} mode"));
+            }
+            foreach (TerrainFeature feature in
+                new[] { TerrainFeature.Gold, TerrainFeature.Mountain })
+            {
+                if (TerrainIntro.ShouldShow(
+                    feature, MapFeatures.Contains(_state.Grid, feature)))
+                {
+                    UserSettings.MarkTerrainIntroSeen(feature);
+                    intros.Add((TerrainIntro.TextFor(feature)!,
+                        MapFeatures.FirstTile(_state.Grid, feature),
+                        $"{feature} terrain"));
+                }
+            }
         }
-        else
+
+        if (intros.Count == 0)
         {
             if (!diagnosticMode)
             {
                 Log.Debug(Log.LogCategory.Campaign,
-                    $"Main: no mode intro (mode={resolvedMode}, " +
-                    $"seen={UserSettings.HasSeenModeIntro(resolvedMode)})");
+                    $"Main: no first-encounter intros (mode={resolvedMode}, " +
+                    $"gold={MapFeatures.Contains(_state.Grid, TerrainFeature.Gold)}, " +
+                    $"mtn={MapFeatures.Contains(_state.Grid, TerrainFeature.Mountain)})");
             }
             BeginPlay();
+        }
+        else
+        {
+            // Drive the queue one step at a time: paint the board once (so Fog
+            // Of War applies its cover and the board shows its real start state
+            // underneath), pan to the focus tile if any, show the overlay, and
+            // advance on tap. BeginPlay stays deferred until the queue drains.
+            void ShowIntro(int i)
+            {
+                (string text, HexCoord? focus, string label) = intros[i];
+                Log.Info(Log.LogCategory.Campaign,
+                    $"Main: showing {label} intro ({i + 1}/{intros.Count}, focus={focus})");
+                _controller.RefreshViewsForTutorial();
+                if (focus is HexCoord c) map.CenterOnCoord(c);
+                // Pulse the taught tile to draw the eye (no-op for the mode
+                // intro, which has no focus tile).
+                map.ShowTerrainFocusPulse(focus);
+                hud.ShowTappableTutorialMessage(text);
+                Action onTap = null!;
+                onTap = () =>
+                {
+                    hud.TutorialMessageTapped -= onTap;
+                    hud.HideTutorialMessage();
+                    map.ShowTerrainFocusPulse(null);
+                    if (i + 1 < intros.Count)
+                    {
+                        Log.Info(Log.LogCategory.Campaign,
+                            $"Main: {label} intro dismissed → next intro");
+                        ShowIntro(i + 1);
+                    }
+                    else
+                    {
+                        Log.Info(Log.LogCategory.Campaign,
+                            $"Main: {label} intro dismissed → starting play");
+                        BeginPlay();
+                    }
+                };
+                hud.TutorialMessageTapped += onTap;
+            }
+            ShowIntro(0);
         }
 
         // Games descended from a starting map identify by name; procedural

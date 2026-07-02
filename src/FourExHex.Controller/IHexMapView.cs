@@ -137,6 +137,23 @@ public interface IHexMapView
     void CenterOnTerritory(Territory territory);
 
     /// <summary>
+    /// Pan the map view so <paramref name="coord"/> is centered in the visible
+    /// area (clamped to map bounds), using the same eased motion as
+    /// <see cref="CenterOnTerritory"/>. Used to focus attention on a specific
+    /// tile — e.g. the first-encounter terrain intros drawing the eye to a
+    /// gold / mountain hex.
+    /// </summary>
+    void CenterOnCoord(HexCoord coord);
+
+    /// <summary>
+    /// Show (or, with <paramref name="coord"/> null, clear) a pulsing highlight
+    /// on a single tile to draw the eye — used by the first-encounter terrain
+    /// intros to mark the gold / mountain hex the hint is teaching. Cleared when
+    /// the player dismisses the hint.
+    /// </summary>
+    void ShowTerrainFocusPulse(HexCoord? coord);
+
+    /// <summary>
     /// Rebuild derived view state after a territory-list change
     /// (capture, undo, redo).
     /// </summary>

@@ -180,6 +180,7 @@ public partial class HexMapView : Node2D, IHexMapView
     private Node2D? _targetsLayer;
     private Node2D? _towerTargetsLayer;
     private Node2D? _highlightLayer;
+    private Node2D? _focusPulseLayer;
     private Node2D? _warningBadgesLayer;
     // Fog Of War: the cover/dim overlay above everything. Empty outside Fog Of
     // War. Baked as one triangle soup (cover + dim hexes) so a full-map repaint
@@ -263,6 +264,21 @@ public partial class HexMapView : Node2D, IHexMapView
     private const float SelectCueFillMinAlpha = 0.18f;
     private const float SelectCueFillMaxAlpha = 0.55f;
     private const float SelectCuePulseHalfPeriod = 0.55f;
+
+    // Terrain-intro focus pulse (issue #53): a standalone pulsing hex overlay
+    // that draws the eye to the gold/mountain tile the camera pans to during
+    // its first-encounter hint. Independent of the unit select cue above — no
+    // unit bookkeeping — living on its own layer and torn down when the player
+    // taps the hint away. White fill + yellow border, pulsing scale + fill
+    // alpha on the same sine cadence as the select cue.
+    private Node2D? _focusPulseNode;
+    private Tween? _focusPulseTween;
+    private static readonly Color FocusPulseFillColor = new Color(1f, 1f, 1f, 1f);
+    private static readonly Color FocusPulseBorderColor = new Color(1f, 0.85f, 0.2f, 1f);
+    private const float FocusPulseBorderWidth = 4f;
+    private const float FocusPulseFillMinAlpha = 0.15f;
+    private const float FocusPulseFillMaxAlpha = 0.55f;
+    private const float FocusPulseMaxScale = 1.15f;
 
     // Every current-player unit that still has its move available this
     // turn. Each one pulses (scales up and back) in _Process so the
@@ -491,6 +507,10 @@ public partial class HexMapView : Node2D, IHexMapView
         _selectCueUnit = null;
         _selectCueNode = null;
         _selectCueTween = null;
+        // Same for the terrain-intro focus pulse (its own layer's children are
+        // freed by the rebuild too).
+        _focusPulseNode = null;
+        _focusPulseTween = null;
 
         // Water cells + shoreline foam are STATIC (never change after init).
         // As individual Polygon2D they were ~1,870 separate canvas items =
@@ -590,6 +610,11 @@ public partial class HexMapView : Node2D, IHexMapView
         AddChild(_towerTargetsLayer);
         _highlightLayer = new Node2D { Name = "HighlightLayer" };
         AddChild(_highlightLayer);
+        // Terrain-intro focus pulse: its own layer above the highlight so the
+        // first-encounter "look here" cue is never wiped by a territory-
+        // highlight redraw (issue #53).
+        _focusPulseLayer = new Node2D { Name = "FocusPulseLayer" };
+        AddChild(_focusPulseLayer);
         // Added last so badges draw on top of every other map layer
         // (including highlight, units, capitals).
         _warningBadgesLayer = new Node2D { Name = "WarningBadgesLayer" };
@@ -1687,6 +1712,60 @@ public partial class HexMapView : Node2D, IHexMapView
             _selectCueNode.QueueFree();
             _selectCueNode = null;
         }
+    }
+
+    /// <summary>
+    /// Show (or, with <paramref name="coord"/> null, clear) the terrain-intro
+    /// focus pulse (issue #53): a pulsing white hex with a yellow border that
+    /// draws the eye to the tile the first-encounter hint is teaching. Tears
+    /// down any prior pulse first, so it's safe to call per intro step and to
+    /// clear on dismiss. No-op cue in silent/headless play.
+    /// </summary>
+    public void ShowTerrainFocusPulse(HexCoord? coord)
+    {
+        if (_focusPulseTween != null && _focusPulseTween.IsValid()) _focusPulseTween.Kill();
+        _focusPulseTween = null;
+        if (_focusPulseNode != null && IsInstanceValid(_focusPulseNode)) _focusPulseNode.QueueFree();
+        _focusPulseNode = null;
+
+        if (!coord.HasValue || _focusPulseLayer == null)
+        {
+            Log.Debug(Log.LogCategory.Render, "ShowTerrainFocusPulse: cleared");
+            return;
+        }
+
+        Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(coord.Value, HexSize);
+        Vector2[] verts = HexVertices();
+        var pulse = new Node2D { Position = center };
+        // White fill flashes; yellow border pulses in scale with the container.
+        var fill = new Polygon2D
+        {
+            Color = FocusPulseFillColor,
+            Polygon = verts,
+            Modulate = new Color(1f, 1f, 1f, FocusPulseFillMaxAlpha),
+        };
+        pulse.AddChild(fill);
+        pulse.AddChild(BuildClosedOutline(verts, FocusPulseBorderWidth, FocusPulseBorderColor));
+        _focusPulseLayer.AddChild(pulse);
+        _focusPulseNode = pulse;
+
+        // Scale + fill-alpha pulse together for a clear "look here" beat, same
+        // sine cadence as the select-unit cue. Verts are centered on the node's
+        // origin (the hex center), so scaling breathes symmetrically.
+        Tween tween = pulse.CreateTween();
+        tween.SetLoops();
+        tween.TweenProperty(pulse, "scale",
+                new Vector2(FocusPulseMaxScale, FocusPulseMaxScale), SelectCuePulseHalfPeriod)
+            .SetTrans(Tween.TransitionType.Sine);
+        tween.Parallel().TweenProperty(fill, "modulate:a", FocusPulseFillMinAlpha, SelectCuePulseHalfPeriod)
+            .SetTrans(Tween.TransitionType.Sine);
+        tween.TweenProperty(pulse, "scale", Vector2.One, SelectCuePulseHalfPeriod)
+            .SetTrans(Tween.TransitionType.Sine);
+        tween.Parallel().TweenProperty(fill, "modulate:a", FocusPulseFillMaxAlpha, SelectCuePulseHalfPeriod)
+            .SetTrans(Tween.TransitionType.Sine);
+        _focusPulseTween = tween;
+
+        Log.Debug(Log.LogCategory.Render, $"ShowTerrainFocusPulse: pulsing at {coord.Value}");
     }
 
     /// <summary>
@@ -3227,9 +3306,14 @@ public partial class HexMapView : Node2D, IHexMapView
     public void CenterOnTerritory(Territory territory)
     {
         if (!territory.HasCapital) return;
-        // The capital's pixel position is in unscaled local space; map it to a
+        CenterOnCoord(territory.Capital!.Value);
+    }
+
+    public void CenterOnCoord(HexCoord coord)
+    {
+        // The tile's pixel position is in unscaled local space; map it to a
         // world offset (zoom + rotation) before subtracting from VisualCenter.
-        Vector2 localCenter = FirstHexCenterOffset + HexPixel.ToPixel(territory.Capital!.Value, HexSize);
+        Vector2 localCenter = FirstHexCenterOffset + HexPixel.ToPixel(coord, HexSize);
         Vector2 target = ClampPan(VisualCenter() - ToWorldOffset(localCenter, _zoom));
 
         // Instant AI batch / instant replay (or a target that's already here):
@@ -3249,7 +3333,7 @@ public partial class HexMapView : Node2D, IHexMapView
         _panElapsed = 0;
         _panActive = true;
         Log.Debug(Log.LogCategory.Render,
-            $"CenterOnTerritory pan from={_panFrom} to={_panTo} dur={PanAnimDurationSec:0.00}s");
+            $"CenterOnCoord pan from={_panFrom} to={_panTo} dur={PanAnimDurationSec:0.00}s");
     }
 
     /// <summary>Abandon any in-flight camera pan so a manual drag / keyboard /
