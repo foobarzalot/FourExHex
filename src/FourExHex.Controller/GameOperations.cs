@@ -180,6 +180,45 @@ public class GameOperations
         && !_session.PendingDefeatScreen.HasValue;
 
     /// <summary>
+    /// Silent-mode policy for per-action cues: true while an AI runs under
+    /// Instant speed or during an instant-replay fast-forward. The
+    /// controller consults this before emitting any per-action sound /
+    /// destruction effect (<see cref="EmitSound"/> / <see cref="EmitDestruction"/>),
+    /// so the views just play what they're told. A human's own turn is
+    /// never silent, so a human still hears their own bankruptcy / game-won.
+    ///
+    /// Unlike <see cref="InSilentAiBatch"/> — an input/pacing gate that
+    /// opens (returns false) while a human defeat overlay is pending — this
+    /// deliberately omits the <see cref="SessionState.PendingDefeatScreen"/>
+    /// term. The AI action that defeats the human (destroying their capital)
+    /// sets that overlay mid-action, but its own crumble/sound must stay
+    /// suppressed like the rest of the silent batch.
+    /// </summary>
+    public bool IsSilent() =>
+        (_aiSilentMode() && _state.Turns.CurrentPlayer.IsAi)
+        || _isReplayInstantActive();
+
+    /// <summary>
+    /// Route a sound cue through the silent-mode gate. Dropped while
+    /// <see cref="IsSilent"/>; otherwise forwarded to the view.
+    /// </summary>
+    public void EmitSound(SoundEffect kind, HexCoord? at = null)
+    {
+        if (IsSilent()) return;
+        _map.PlaySound(kind, at);
+    }
+
+    /// <summary>
+    /// Route a destruction effect through the silent-mode gate. Dropped
+    /// while <see cref="IsSilent"/>; otherwise forwarded to the view.
+    /// </summary>
+    public void EmitDestruction(HexCoord coord, HexOccupant destroyed)
+    {
+        if (IsSilent()) return;
+        _map.PlayDestructionEffect(coord, destroyed);
+    }
+
+    /// <summary>
     /// Tell the view to enter (or leave) silent mode (Instant AI Speed,
     /// or an instant-replay fast-forward), and independently drive the
     /// "Opponents are taking their turns…" HUD overlay. The two are
@@ -191,7 +230,10 @@ public class GameOperations
     public void RefreshSilentMode()
     {
         // Instant replay also wants the view silent, and must hold it
-        // across turn boundaries.
+        // across turn boundaries. The view flag drives the view's own
+        // internal tide-FX stashing (CaptureRisingTidesFx) and is the
+        // input/pacing gate, so it keeps InSilentAiBatch's defeat-overlay
+        // term; the per-action cue gate is IsSilent() (see EmitSound).
         _map.SetSilentMode(InSilentAiBatch() || _isReplayInstantActive());
         // Tutorial Preview / Record use the tutorial-message slot for
         // their own scripted text; don't clobber it. Outside those
@@ -458,7 +500,7 @@ public class GameOperations
         {
             // One toll per turn-start regardless of how many of the
             // player's territories went bankrupt — see IHexMapView.
-            _map.PlaySound(SoundEffect.Bankruptcy);
+            EmitSound(SoundEffect.Bankruptcy);
         }
 
         LogTurnStart();
@@ -876,7 +918,7 @@ public class GameOperations
             .FirstOrDefault(p => p.Id == winnerColor);
         if (winnerPlayer != null && !winnerPlayer.IsAi)
         {
-            _map.PlaySound(SoundEffect.GameWon);
+            EmitSound(SoundEffect.GameWon);
         }
     }
 
@@ -939,7 +981,7 @@ public class GameOperations
         }
         if (r.Move.Destroyed != null)
         {
-            _map.PlayDestructionEffect(destination, r.Move.Destroyed);
+            EmitDestruction(destination, r.Move.Destroyed);
         }
         ConsumeRepositionMoveIfAi(destination, r.WasReposition);
 
@@ -984,7 +1026,7 @@ public class GameOperations
         }
         if (r.Move.Destroyed != null)
         {
-            _map.PlayDestructionEffect(destination, r.Move.Destroyed);
+            EmitDestruction(destination, r.Move.Destroyed);
         }
         ConsumeRepositionMoveIfAi(destination, r.WasReposition);
 
@@ -1026,7 +1068,7 @@ public class GameOperations
         // A buy-combine onto a friendly unit is never a capture.
         if (result.Destroyed != null)
         {
-            _map.PlayDestructionEffect(combineTarget, result.Destroyed);
+            EmitDestruction(combineTarget, result.Destroyed);
         }
         DispatchActionSound(combineTarget, result, wasCombine: true);
     }
@@ -1091,7 +1133,7 @@ public class GameOperations
         }
 
         AiActionCore.BuildTower(capital, destination, _state, territory);
-        _map.PlaySound(SoundEffect.TowerPlaced, destination);
+        EmitSound(SoundEffect.TowerPlaced, destination);
     }
 
     /// <summary>
@@ -1104,28 +1146,28 @@ public class GameOperations
     {
         if (wasCombine)
         {
-            _map.PlaySound(SoundEffect.UnitCombined, destination);
+            EmitSound(SoundEffect.UnitCombined, destination);
             return;
         }
         switch (result.Destroyed)
         {
             case Unit:
-                _map.PlaySound(SoundEffect.UnitDestroyed, destination);
+                EmitSound(SoundEffect.UnitDestroyed, destination);
                 return;
             case Tower:
-                _map.PlaySound(SoundEffect.TowerDestroyed, destination);
+                EmitSound(SoundEffect.TowerDestroyed, destination);
                 return;
             case Tree:
             case Grave:
-                _map.PlaySound(SoundEffect.TreeCleared, destination);
+                EmitSound(SoundEffect.TreeCleared, destination);
                 return;
             case Capital:
-                _map.PlaySound(SoundEffect.CapitalDestroyed, destination);
+                EmitSound(SoundEffect.CapitalDestroyed, destination);
                 return;
         }
         if (_state.Grid.Get(destination)?.Unit?.HasMovedThisTurn == true)
         {
-            _map.PlaySound(SoundEffect.UnitPlaced, destination);
+            EmitSound(SoundEffect.UnitPlaced, destination);
         }
     }
 
@@ -1261,7 +1303,7 @@ public class GameOperations
         foreach (PlayerId c in colorsWithCapitalBefore)
         {
             if (colorsWithCapitalAfter.Contains(c)) continue;
-            _map.PlaySound(SoundEffect.PlayerDefeated);
+            EmitSound(SoundEffect.PlayerDefeated);
             int defeatedIndex = -1;
             for (int i = 0; i < _state.Turns.Players.Count; i++)
             {

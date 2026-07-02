@@ -38,30 +38,18 @@ public partial class GameControllerTests
         // with nothing selected. The #94 tests opt in with autoSelect: true.
         public TestGame(IReadOnlySet<HexCoord>? waterCoords = null, bool autoSelect = false)
         {
-            Red = new Player("Red", PlayerId.FromIndex(0));
-            Blue = new Player("Blue", PlayerId.FromIndex(1));
-            var players = new List<Player> { Red, Blue };
-
-            var grid = TestHelpers.BuildRectGrid(5, 2, Blue.Id);
-            grid.Get(HexCoord.FromOffset(0, 1))!.Owner = Red.Id;
-            grid.Get(HexCoord.FromOffset(1, 1))!.Owner = Red.Id;
-
-            IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
-
-            State = new GameState(grid, territories, players, new TurnState(players), new Treasury(), waterCoords);
-            Session = new SessionState();
-            // Suppress the End-Turn claim-victory prompt for both colors:
-            // Blue starts the fixture owning 80% of the board, which would
-            // otherwise interrupt every test that cycles turns via End
-            // Turn. Tests specifically about the prompt build their own
-            // fixture (see ClaimVictoryTests).
-            Session.ClaimVictoryPromptedHighestThreshold[Red.Id] = 90;
-            Session.ClaimVictoryPromptedHighestThreshold[Blue.Id] = 90;
-            Map = new MockHexMapView();
-            Hud = new MockHudView();
-            Controller = new GameController(State, Session, Map, Hud,
-                autoSelectFirstTerritory: autoSelect);
-            Controller.StartGame();
+            // The canonical fixture is exactly BuildControllerGame's default
+            // (5×2, Red at (0,1)/(1,1), claim-victory suppressed); only the
+            // water/auto-select knobs vary here.
+            ControllerHarness h = TestHelpers.BuildControllerGame(
+                waterCoords: waterCoords, autoSelect: autoSelect);
+            State = h.State;
+            Session = h.Session;
+            Map = h.Map;
+            Hud = h.Hud;
+            Controller = h.Controller;
+            Red = h.Players[0];
+            Blue = h.Players[1];
         }
 
         public HexTile Tile(int col, int row) => State.Grid.Get(HexCoord.FromOffset(col, row))!;

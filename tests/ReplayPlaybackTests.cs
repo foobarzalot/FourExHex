@@ -38,29 +38,24 @@ public class ReplayPlaybackTests
         {
             Red = new Player("Red", PlayerId.FromIndex(0), redKind);
             Blue = new Player("Blue", PlayerId.FromIndex(1), blueKind);
-            var players = new List<Player> { Red, Blue };
-
-            HexGrid grid = TestHelpers.BuildRectGrid(5, 2, Blue.Id);
-            grid.Get(HexCoord.FromOffset(0, 1))!.Owner = Red.Id;
-            grid.Get(HexCoord.FromOffset(1, 1))!.Owner = Red.Id;
-
-            IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
-            State = new GameState(grid, territories, players, new TurnState(players), new Treasury());
-            Session = new SessionState();
-            Session.ClaimVictoryPromptedHighestThreshold[Red.Id] = 90;
-            Session.ClaimVictoryPromptedHighestThreshold[Blue.Id] = 90;
-            Map = new MockHexMapView();
-            Hud = new MockHudView();
             Pacer = new QueuedAiPacer();
-            Controller = new GameController(
-                State, Session, Map, Hud,
+
+            // Same 5×2 Red-at-(0,1)/(1,1) fixture as the canonical builder,
+            // but with an explicit roster (to carry the caller's PlayerKinds),
+            // a QueuedAiPacer for deterministic stepping, and replay knobs.
+            ControllerHarness h = TestHelpers.BuildControllerGame(
+                players: new List<Player> { Red, Blue },
                 seed: 1,
                 aiChooser: aiChooser,
                 aiPacer: Pacer,
                 maxTurnNumber: 20,
                 replayIsInstantMode: replayInstantMode
                     ?? (instantReplay ? () => true : (Func<bool>?)null));
-            Controller.StartGame();
+            State = h.State;
+            Session = h.Session;
+            Map = h.Map;
+            Hud = h.Hud;
+            Controller = h.Controller;
             // StartGame may have scheduled an AI run; drain so the
             // fixture is on a stable human turn for further driving.
             Pacer.DrainAll();

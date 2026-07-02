@@ -31,23 +31,15 @@ public partial class GameControllerTests
     public void Move_RepositionOntoOwnEmptyTile_DoesNotFireUnitPlacedSound()
     {
         // Reposition needs a third Red tile so the unit has somewhere
-        // empty to land within its own territory. Build a fresh 3-Red
-        // grid here rather than retrofitting TestGame.
+        // empty to land within its own territory.
         var red = new Player("Red", PlayerId.FromIndex(0));
         var blue = new Player("Blue", PlayerId.FromIndex(1));
-        var players = new System.Collections.Generic.List<Player> { red, blue };
-
-        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Id);
-        grid.Get(HexCoord.FromOffset(0, 1))!.Owner = red.Id;
-        grid.Get(HexCoord.FromOffset(1, 1))!.Owner = red.Id;
-        grid.Get(HexCoord.FromOffset(2, 1))!.Owner = red.Id;
-
-        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
-        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
-        var session = new SessionState();
-        var map = new MockHexMapView();
-        var controller = new GameController(state, session, map, new MockHudView());
-        controller.StartGame();
+        ControllerHarness h = TestHelpers.BuildControllerGame(
+            players: new List<Player> { red, blue },
+            ownerOverrides: new[] { (0, 1, red.Id), (1, 1, red.Id), (2, 1, red.Id) });
+        GameState state = h.State;
+        MockHexMapView map = h.Map;
+        HexGrid grid = state.Grid;
 
         // Place the unit on the middle Red tile (non-capital). The
         // capital placer picks lex-min — (0,1) — so (1,1) and (2,1)
@@ -119,18 +111,11 @@ public partial class GameControllerTests
         // adjacent non-capital tiles and combine them.
         var red = new Player("Red", PlayerId.FromIndex(0));
         var blue = new Player("Blue", PlayerId.FromIndex(1));
-        var players = new System.Collections.Generic.List<Player> { red, blue };
-        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Id);
-        grid.Get(HexCoord.FromOffset(0, 1))!.Owner = red.Id;
-        grid.Get(HexCoord.FromOffset(1, 1))!.Owner = red.Id;
-        grid.Get(HexCoord.FromOffset(2, 1))!.Owner = red.Id;
-
-        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
-        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
-        var session = new SessionState();
-        var map = new MockHexMapView();
-        var controller = new GameController(state, session, map, new MockHudView());
-        controller.StartGame();
+        ControllerHarness h = TestHelpers.BuildControllerGame(
+            players: new List<Player> { red, blue },
+            ownerOverrides: new[] { (0, 1, red.Id), (1, 1, red.Id), (2, 1, red.Id) });
+        MockHexMapView map = h.Map;
+        HexGrid grid = h.State.Grid;
 
         var moving = new Unit(red.Id, UnitLevel.Recruit);
         var stationary = new Unit(red.Id, UnitLevel.Recruit);
@@ -380,20 +365,14 @@ public partial class GameControllerTests
         // tile (3,0) becomes a singleton, capital-less → eliminated.
         var red = new Player("Red", PlayerId.FromIndex(0));
         var blue = new Player("Blue", PlayerId.FromIndex(1));
-        var players = new List<Player> { red, blue };
-
-        var grid = TestHelpers.BuildRectGrid(4, 1, blue.Id);
-        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = red.Id;
-        grid.Get(HexCoord.FromOffset(1, 0))!.Owner = red.Id;
-        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(red.Id, UnitLevel.Soldier);
-
-        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
-        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
-        var session = new SessionState();
-        var map = new MockHexMapView();
-        var hud = new MockHudView();
-        var controller = new GameController(state, session, map, hud);
-        controller.StartGame();
+        ControllerHarness h = TestHelpers.BuildControllerGame(
+            players: new List<Player> { red, blue }, cols: 4, rows: 1,
+            ownerOverrides: new[] { (0, 0, red.Id), (1, 0, red.Id) },
+            suppressClaimVictory: false,
+            beforeStart: s => s.Grid.Get(HexCoord.FromOffset(1, 0))!.Occupant =
+                new Unit(red.Id, UnitLevel.Soldier));
+        GameState state = h.State;
+        MockHexMapView map = h.Map;
 
         map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(1, 0)));
         map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(2, 0)));
@@ -415,30 +394,23 @@ public partial class GameControllerTests
         var red = new Player("Red", PlayerId.FromIndex(0));
         var green = new Player("Green", PlayerId.FromIndex(2));
         var blue = new Player("Blue", PlayerId.FromIndex(1));
-        var players = new List<Player> { red, green, blue };
-
-        var grid = TestHelpers.BuildRectGrid(6, 2, red.Id);
-        // Green territory: a 2-tile strip so they have a capital and
-        // pass IsEliminated.
-        grid.Get(HexCoord.FromOffset(0, 1))!.Owner = green.Id;
-        grid.Get(HexCoord.FromOffset(1, 1))!.Owner = green.Id;
-        // Blue orphan singleton with a Recruit — no Blue capital on
-        // the board.
         HexCoord orphanCoord = HexCoord.FromOffset(5, 1);
-        grid.Get(orphanCoord)!.Owner = blue.Id;
-        grid.Get(orphanCoord)!.Occupant = new Unit(blue.Id, UnitLevel.Recruit);
-
-        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
-        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
-        var session = new SessionState();
-        // Red owns >50% of the map; pre-dismiss every claim-victory
-        // tier so End Turn doesn't open the modal and stall the test.
-        session.ClaimVictoryPromptedHighestThreshold[red.Id] = 90;
-        session.ClaimVictoryPromptedHighestThreshold[green.Id] = 90;
-        var map = new MockHexMapView();
-        var hud = new MockHudView();
-        var controller = new GameController(state, session, map, hud);
-        controller.StartGame();
+        ControllerHarness h = TestHelpers.BuildControllerGame(
+            players: new List<Player> { red, green, blue },
+            cols: 6, rows: 2, defaultOwner: red.Id,
+            ownerOverrides: new[]
+            {
+                // Green: a 2-tile strip so it has a capital and passes IsEliminated.
+                (0, 1, green.Id), (1, 1, green.Id),
+                // Blue orphan singleton — no Blue capital on the board.
+                (5, 1, blue.Id),
+            },
+            // Red owns >50% of the map; suppress every claim-victory tier so
+            // End Turn doesn't open the modal and stall the test.
+            beforeTerritories: g => g.Get(orphanCoord)!.Occupant =
+                new Unit(blue.Id, UnitLevel.Recruit));
+        GameState state = h.State;
+        MockHudView hud = h.Hud;
 
         hud.ClickEndTurn(); // Red → Green
         hud.ClickEndTurn(); // Green → Blue phantom → Red
@@ -461,34 +433,29 @@ public partial class GameControllerTests
         var red = new Player("Red", PlayerId.FromIndex(0));
         var green = new Player("Green", PlayerId.FromIndex(2));
         var blue = new Player("Blue", PlayerId.FromIndex(1));
-        var players = new List<Player> { red, green, blue };
-
-        var grid = TestHelpers.BuildRectGrid(6, 3, red.Id);
-        // Green's 2-tile territory (so it has a capital and the
-        // end-of-turn win check doesn't fire).
-        grid.Get(HexCoord.FromOffset(0, 2))!.Owner = green.Id;
-        grid.Get(HexCoord.FromOffset(1, 2))!.Owner = green.Id;
-        // Two Red tiles flanking the Blue singleton, each with a Tree.
-        grid.Get(HexCoord.FromOffset(4, 0))!.Occupant = new Tree();
-        grid.Get(HexCoord.FromOffset(3, 2))!.Occupant = new Tree();
-        // Blue empty singleton (neighbour of both tree-holding red
-        // tiles, but not adjacent to any other blue tile).
+        // Blue empty singleton (neighbour of both tree-holding red tiles,
+        // but not adjacent to any other blue tile).
         HexCoord emptyCoord = HexCoord.FromOffset(3, 1);
-        grid.Get(emptyCoord)!.Owner = blue.Id;
-
-        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
-        var state = new GameState(grid, territories, players,
-            new TurnState(players, currentPlayerIndex: 0, turnNumber: 2),
-            new Treasury());
-        var session = new SessionState();
-        // Red owns >50% of the map; pre-dismiss every claim-victory
-        // tier so End Turn doesn't open the modal and stall the test.
-        session.ClaimVictoryPromptedHighestThreshold[red.Id] = 90;
-        session.ClaimVictoryPromptedHighestThreshold[green.Id] = 90;
-        var map = new MockHexMapView();
-        var hud = new MockHudView();
-        var controller = new GameController(state, session, map, hud);
-        controller.StartGame();
+        ControllerHarness h = TestHelpers.BuildControllerGame(
+            players: new List<Player> { red, green, blue },
+            cols: 6, rows: 3, defaultOwner: red.Id,
+            ownerOverrides: new[]
+            {
+                // Green's 2-tile territory (so it has a capital and the
+                // end-of-turn win check doesn't fire).
+                (0, 2, green.Id), (1, 2, green.Id),
+                (3, 1, blue.Id),
+            },
+            // TurnNumber > 1 lifts the round-1 tree-growth guard.
+            turnNumber: 2,
+            // Two Red tiles flanking the Blue singleton, each with a Tree.
+            beforeTerritories: g =>
+            {
+                g.Get(HexCoord.FromOffset(4, 0))!.Occupant = new Tree();
+                g.Get(HexCoord.FromOffset(3, 2))!.Occupant = new Tree();
+            });
+        GameState state = h.State;
+        MockHudView hud = h.Hud;
 
         hud.ClickEndTurn(); // Red → Green
         hud.ClickEndTurn(); // Green → Blue phantom → Red
@@ -506,20 +473,15 @@ public partial class GameControllerTests
         // — the HUD reads this to show the defeat overlay.
         var red = new Player("Red", PlayerId.FromIndex(0));
         var blue = new Player("Blue", PlayerId.FromIndex(1));
-        var players = new List<Player> { red, blue };
-
-        var grid = TestHelpers.BuildRectGrid(4, 1, blue.Id);
-        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = red.Id;
-        grid.Get(HexCoord.FromOffset(1, 0))!.Owner = red.Id;
-        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(red.Id, UnitLevel.Soldier);
-
-        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
-        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
-        var session = new SessionState();
-        var map = new MockHexMapView();
-        var hud = new MockHudView();
-        var controller = new GameController(state, session, map, hud);
-        controller.StartGame();
+        ControllerHarness h = TestHelpers.BuildControllerGame(
+            players: new List<Player> { red, blue }, cols: 4, rows: 1,
+            ownerOverrides: new[] { (0, 0, red.Id), (1, 0, red.Id) },
+            suppressClaimVictory: false,
+            beforeStart: s => s.Grid.Get(HexCoord.FromOffset(1, 0))!.Occupant =
+                new Unit(red.Id, UnitLevel.Soldier));
+        GameState state = h.State;
+        MockHexMapView map = h.Map;
+        SessionState session = h.Session;
 
         map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(1, 0)));
         map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(2, 0)));
@@ -535,20 +497,15 @@ public partial class GameControllerTests
         // keyboard for.
         var red = new Player("Red", PlayerId.FromIndex(0));
         var blue = new Player("Blue", PlayerId.FromIndex(1), isAi: true);
-        var players = new List<Player> { red, blue };
-
-        var grid = TestHelpers.BuildRectGrid(4, 1, blue.Id);
-        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = red.Id;
-        grid.Get(HexCoord.FromOffset(1, 0))!.Owner = red.Id;
-        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(red.Id, UnitLevel.Soldier);
-
-        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
-        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
-        var session = new SessionState();
-        var map = new MockHexMapView();
-        var hud = new MockHudView();
-        var controller = new GameController(state, session, map, hud);
-        controller.StartGame();
+        ControllerHarness h = TestHelpers.BuildControllerGame(
+            players: new List<Player> { red, blue }, cols: 4, rows: 1,
+            ownerOverrides: new[] { (0, 0, red.Id), (1, 0, red.Id) },
+            suppressClaimVictory: false,
+            beforeStart: s => s.Grid.Get(HexCoord.FromOffset(1, 0))!.Occupant =
+                new Unit(red.Id, UnitLevel.Soldier));
+        GameState state = h.State;
+        MockHexMapView map = h.Map;
+        SessionState session = h.Session;
 
         map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(1, 0)));
         map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(2, 0)));
@@ -565,20 +522,15 @@ public partial class GameControllerTests
         // eventual Preview playback (where the overlay wouldn't fire).
         var red = new Player("Red", PlayerId.FromIndex(0));
         var blue = new Player("Blue", PlayerId.FromIndex(1));
-        var players = new List<Player> { red, blue };
-
-        var grid = TestHelpers.BuildRectGrid(4, 1, blue.Id);
-        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = red.Id;
-        grid.Get(HexCoord.FromOffset(1, 0))!.Owner = red.Id;
-        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(red.Id, UnitLevel.Soldier);
-
-        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
-        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
-        var session = new SessionState();
-        var map = new MockHexMapView();
-        var hud = new MockHudView();
-        var controller = new GameController(state, session, map, hud, recordingMode: true);
-        controller.StartGame();
+        ControllerHarness h = TestHelpers.BuildControllerGame(
+            players: new List<Player> { red, blue }, cols: 4, rows: 1,
+            ownerOverrides: new[] { (0, 0, red.Id), (1, 0, red.Id) },
+            suppressClaimVictory: false, recordingMode: true,
+            beforeStart: s => s.Grid.Get(HexCoord.FromOffset(1, 0))!.Occupant =
+                new Unit(red.Id, UnitLevel.Soldier));
+        GameState state = h.State;
+        MockHexMapView map = h.Map;
+        SessionState session = h.Session;
 
         map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(1, 0)));
         map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(2, 0)));
@@ -595,22 +547,17 @@ public partial class GameControllerTests
         // the matching dismiss beat.
         var red = new Player("Red", PlayerId.FromIndex(0));
         var blue = new Player("Blue", PlayerId.FromIndex(1));
-        var players = new List<Player> { red, blue };
-
-        var grid = TestHelpers.BuildRectGrid(4, 1, red.Id);
-        grid.Get(HexCoord.FromOffset(2, 0))!.Owner = blue.Id;
-        grid.Get(HexCoord.FromOffset(3, 0))!.Owner = blue.Id;
-        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(blue.Id, UnitLevel.Soldier);
-
-        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
-        var state = new GameState(grid, territories, players,
-            new TurnState(players, currentPlayerIndex: 1, turnNumber: 1),
-            new Treasury());
-        var session = new SessionState();
-        var map = new MockHexMapView();
-        var hud = new MockHudView();
-        var controller = new GameController(state, session, map, hud, recordingMode: true);
-        controller.StartGame();
+        ControllerHarness h = TestHelpers.BuildControllerGame(
+            players: new List<Player> { red, blue }, cols: 4, rows: 1,
+            defaultOwner: red.Id,
+            ownerOverrides: new[] { (2, 0, blue.Id), (3, 0, blue.Id) },
+            currentPlayerIndex: 1,
+            suppressClaimVictory: false, recordingMode: true,
+            beforeStart: s => s.Grid.Get(HexCoord.FromOffset(2, 0))!.Occupant =
+                new Unit(blue.Id, UnitLevel.Soldier));
+        GameState state = h.State;
+        MockHexMapView map = h.Map;
+        SessionState session = h.Session;
 
         map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(2, 0)));
         map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(1, 0)));
@@ -629,14 +576,12 @@ public partial class GameControllerTests
             new("Red", PlayerId.FromIndex(0)),
             new("Blue", PlayerId.FromIndex(1), isAi: true),
         };
-        var grid = TestHelpers.BuildRectGrid(2, 1, players[0].Id);
-        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
-        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
-        var session = new SessionState();
-        var hud = new MockHudView();
-        _ = new GameController(state, session, new MockHexMapView(), hud, previewMode: true);
+        ControllerHarness h = TestHelpers.BuildControllerGame(
+            players: players, cols: 2, rows: 1, defaultOwner: players[0].Id,
+            ownerOverrides: System.Array.Empty<(int, int, PlayerId)>(),
+            previewMode: true, startGame: false);
 
-        Assert.True(hud.VictoryOverlaySuppressed);
+        Assert.True(h.Hud.VictoryOverlaySuppressed);
     }
 
     [Fact]
@@ -650,14 +595,12 @@ public partial class GameControllerTests
             new("Red", PlayerId.FromIndex(0)),
             new("Blue", PlayerId.FromIndex(1)),
         };
-        var grid = TestHelpers.BuildRectGrid(2, 1, players[0].Id);
-        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
-        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
-        var session = new SessionState();
-        var hud = new MockHudView();
-        _ = new GameController(state, session, new MockHexMapView(), hud, recordingMode: true);
+        ControllerHarness h = TestHelpers.BuildControllerGame(
+            players: players, cols: 2, rows: 1, defaultOwner: players[0].Id,
+            ownerOverrides: System.Array.Empty<(int, int, PlayerId)>(),
+            recordingMode: true, startGame: false);
 
-        Assert.True(hud.VictoryOverlaySuppressed);
+        Assert.True(h.Hud.VictoryOverlaySuppressed);
     }
 
     [Fact]
@@ -669,14 +612,12 @@ public partial class GameControllerTests
             new("Red", PlayerId.FromIndex(0)),
             new("Blue", PlayerId.FromIndex(1), isAi: true),
         };
-        var grid = TestHelpers.BuildRectGrid(2, 1, players[0].Id);
-        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
-        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
-        var session = new SessionState();
-        var hud = new MockHudView();
-        _ = new GameController(state, session, new MockHexMapView(), hud);
+        ControllerHarness h = TestHelpers.BuildControllerGame(
+            players: players, cols: 2, rows: 1, defaultOwner: players[0].Id,
+            ownerOverrides: System.Array.Empty<(int, int, PlayerId)>(),
+            startGame: false);
 
-        Assert.False(hud.VictoryOverlaySuppressed);
+        Assert.False(h.Hud.VictoryOverlaySuppressed);
     }
 
     [Fact]
@@ -684,20 +625,17 @@ public partial class GameControllerTests
     {
         var red = new Player("Red", PlayerId.FromIndex(0));
         var blue = new Player("Blue", PlayerId.FromIndex(1));
-        var players = new List<Player> { red, blue };
+        ControllerHarness h = TestHelpers.BuildControllerGame(
+            players: new List<Player> { red, blue }, cols: 4, rows: 1,
+            ownerOverrides: new[] { (0, 0, red.Id), (1, 0, red.Id) },
+            suppressClaimVictory: false,
+            beforeStart: s => s.Grid.Get(HexCoord.FromOffset(1, 0))!.Occupant =
+                new Unit(red.Id, UnitLevel.Soldier));
+        GameState state = h.State;
+        MockHexMapView map = h.Map;
+        MockHudView hud = h.Hud;
+        SessionState session = h.Session;
 
-        var grid = TestHelpers.BuildRectGrid(4, 1, blue.Id);
-        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = red.Id;
-        grid.Get(HexCoord.FromOffset(1, 0))!.Owner = red.Id;
-        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(red.Id, UnitLevel.Soldier);
-
-        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
-        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
-        var session = new SessionState();
-        var map = new MockHexMapView();
-        var hud = new MockHudView();
-        var controller = new GameController(state, session, map, hud);
-        controller.StartGame();
         map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(1, 0)));
         map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(2, 0)));
         Assert.Equal(blue.Id, session.PendingDefeatScreen);
@@ -730,19 +668,6 @@ public partial class GameControllerTests
         // first beat, eliminating Red. (Soldier upkeep = 6g vs
         // Blue's 15g seed, so it survives the start-of-turn upkeep
         // pass.)
-        var grid = TestHelpers.BuildRectGrid(5, 1, PlayerId.None);
-        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = blue.Id;
-        grid.Get(HexCoord.FromOffset(1, 0))!.Owner = blue.Id;
-        grid.Get(HexCoord.FromOffset(2, 0))!.Owner = blue.Id;
-        grid.Get(HexCoord.FromOffset(3, 0))!.Owner = red.Id;
-        grid.Get(HexCoord.FromOffset(4, 0))!.Owner = red.Id;
-        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(blue.Id, UnitLevel.Soldier);
-
-        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
-        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
-        var session = new SessionState();
-        var map = new MockHexMapView();
-        var hud = new MockHudView();
         // Deterministic chooser: first call returns the killing-blow
         // move, subsequent calls return null (end of AI turn). Removes
         // dependence on the heuristic's scoring behavior.
@@ -756,11 +681,21 @@ public partial class GameControllerTests
         }
 
         var pacer = new QueuedAiPacer();
-        var controller = new GameController(
-            state, session, map, hud, seed: 0,
-            aiChooser: Chooser,
-            aiPacer: pacer);
-        controller.StartGame();
+        ControllerHarness h = TestHelpers.BuildControllerGame(
+            players: new List<Player> { red, blue }, cols: 5, rows: 1,
+            defaultOwner: PlayerId.None,
+            ownerOverrides: new[]
+            {
+                (0, 0, blue.Id), (1, 0, blue.Id), (2, 0, blue.Id),
+                (3, 0, red.Id), (4, 0, red.Id),
+            },
+            seed: 0, aiChooser: Chooser, aiPacer: pacer,
+            suppressClaimVictory: false,
+            beforeStart: s => s.Grid.Get(HexCoord.FromOffset(2, 0))!.Occupant =
+                new Unit(blue.Id, UnitLevel.Soldier));
+        MockHexMapView map = h.Map;
+        MockHudView hud = h.Hud;
+        SessionState session = h.Session;
 
         // End Red's (human) turn so Blue's (AI) turn begins.
         hud.ClickEndTurn();
@@ -787,19 +722,13 @@ public partial class GameControllerTests
         // 4x1: Red {(0,0),(1,0)} adjacent to Blue {(2,0),(3,0)}.
         var red = new Player("Red", PlayerId.FromIndex(0));
         var blue = new Player("Blue", PlayerId.FromIndex(1));
-        var players = new List<Player> { red, blue };
-
-        var grid = TestHelpers.BuildRectGrid(4, 1, blue.Id);
-        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = red.Id;
-        grid.Get(HexCoord.FromOffset(1, 0))!.Owner = red.Id;
-
-        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
-        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
-        var session = new SessionState();
-        var map = new MockHexMapView();
-        var hud = new MockHudView();
-        var controller = new GameController(state, session, map, hud);
-        controller.StartGame();
+        ControllerHarness h = TestHelpers.BuildControllerGame(
+            players: new List<Player> { red, blue }, cols: 4, rows: 1,
+            ownerOverrides: new[] { (0, 0, red.Id), (1, 0, red.Id) },
+            suppressClaimVictory: false);
+        GameState state = h.State;
+        MockHexMapView map = h.Map;
+        MockHudView hud = h.Hud;
 
         // Boost Red's treasury so we can afford a Soldier (cost 20).
         HexCoord redCapital = state.Territories.First(t => t.Owner == red.Id).Capital!.Value;
@@ -824,20 +753,14 @@ public partial class GameControllerTests
         // placed → Blue is NOT eliminated.
         var red = new Player("Red", PlayerId.FromIndex(0));
         var blue = new Player("Blue", PlayerId.FromIndex(1));
-        var players = new List<Player> { red, blue };
-
-        var grid = TestHelpers.BuildRectGrid(5, 1, blue.Id);
-        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = red.Id;
-        grid.Get(HexCoord.FromOffset(1, 0))!.Owner = red.Id;
-        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(red.Id, UnitLevel.Soldier);
-
-        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
-        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
-        var session = new SessionState();
-        var map = new MockHexMapView();
-        var hud = new MockHudView();
-        var controller = new GameController(state, session, map, hud);
-        controller.StartGame();
+        ControllerHarness h = TestHelpers.BuildControllerGame(
+            players: new List<Player> { red, blue }, cols: 5, rows: 1,
+            ownerOverrides: new[] { (0, 0, red.Id), (1, 0, red.Id) },
+            suppressClaimVictory: false,
+            beforeStart: s => s.Grid.Get(HexCoord.FromOffset(1, 0))!.Occupant =
+                new Unit(red.Id, UnitLevel.Soldier));
+        GameState state = h.State;
+        MockHexMapView map = h.Map;
 
         map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(1, 0)));
         map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(2, 0)));
@@ -853,21 +776,13 @@ public partial class GameControllerTests
         // chops the tree.
         var red = new Player("Red", PlayerId.FromIndex(0));
         var blue = new Player("Blue", PlayerId.FromIndex(1));
-        var players = new System.Collections.Generic.List<Player> { red, blue };
-
-        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Id);
-        grid.Get(HexCoord.FromOffset(0, 1))!.Owner = red.Id;
-        grid.Get(HexCoord.FromOffset(1, 1))!.Owner = red.Id;
-        grid.Get(HexCoord.FromOffset(2, 1))!.Owner = red.Id;
+        ControllerHarness h = TestHelpers.BuildControllerGame(
+            players: new List<Player> { red, blue },
+            ownerOverrides: new[] { (0, 1, red.Id), (1, 1, red.Id), (2, 1, red.Id) });
+        MockHexMapView map = h.Map;
+        HexGrid grid = h.State.Grid;
         grid.Get(HexCoord.FromOffset(2, 1))!.Occupant = new Unit(red.Id);
         grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = new Tree();
-
-        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
-        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
-        var session = new SessionState();
-        var map = new MockHexMapView();
-        var controller = new GameController(state, session, map, new MockHudView());
-        controller.StartGame();
 
         map.SimulateClick(grid.Get(HexCoord.FromOffset(2, 1))); // pick up
         map.SimulateClick(grid.Get(HexCoord.FromOffset(1, 1))); // chop tree
@@ -921,24 +836,15 @@ public partial class GameControllerTests
         // chops the tree and fires a destruction effect for it.
         var red = new Player("Red", PlayerId.FromIndex(0));
         var blue = new Player("Blue", PlayerId.FromIndex(1));
-        var players = new List<Player> { red, blue };
-
-        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Id);
-        grid.Get(HexCoord.FromOffset(0, 1))!.Owner = red.Id;
-        grid.Get(HexCoord.FromOffset(1, 1))!.Owner = red.Id;
-        grid.Get(HexCoord.FromOffset(2, 1))!.Owner = red.Id;
+        ControllerHarness h = TestHelpers.BuildControllerGame(
+            players: new List<Player> { red, blue },
+            ownerOverrides: new[] { (0, 1, red.Id), (1, 1, red.Id), (2, 1, red.Id) });
+        MockHexMapView map = h.Map;
+        HexGrid grid = h.State.Grid;
         var unit = new Unit(red.Id);
         grid.Get(HexCoord.FromOffset(2, 1))!.Occupant = unit;
         var tree = new Tree();
         grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = tree;
-
-        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
-        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
-        var session = new SessionState();
-        var map = new MockHexMapView();
-        var hud = new MockHudView();
-        var controller = new GameController(state, session, map, hud);
-        controller.StartGame();
 
         map.SimulateClick(grid.Get(HexCoord.FromOffset(2, 1)));
         map.SimulateClick(grid.Get(HexCoord.FromOffset(1, 1)));

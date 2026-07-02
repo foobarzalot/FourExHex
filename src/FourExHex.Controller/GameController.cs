@@ -770,7 +770,7 @@ public class GameController
         {
             _handlerMutatedGame = true;
             _pendingHumanBeat = new ReplayLongPressRallyBeat { Target = target };
-            _map.PlaySound(SoundEffect.Rally);
+            _ops.EmitSound(SoundEffect.Rally);
             SetSelection(territory);
         }
         _ops.RefreshViews();
@@ -1045,7 +1045,7 @@ public class GameController
         // spawned capture burst if we played it before.
         if (result.Destroyed != null)
         {
-            _map.PlayDestructionEffect(destination, result.Destroyed);
+            _ops.EmitDestruction(destination, result.Destroyed);
         }
 
         _ops.DispatchActionSound(destination, result, wasCombine);
@@ -1134,7 +1134,7 @@ public class GameController
 
         if (result.Destroyed != null)
         {
-            _map.PlayDestructionEffect(destination, result.Destroyed);
+            _ops.EmitDestruction(destination, result.Destroyed);
         }
 
         _ops.DispatchActionSound(destination, result, wasCombine);
@@ -1217,7 +1217,7 @@ public class GameController
                 $"[tower] placed on mountain at {destination} → defense " +
                 $"{DefenseRules.Defense(destination, _state.Grid, _session.SelectedTerritory)}");
         }
-        _map.PlaySound(SoundEffect.TowerPlaced, destination);
+        _ops.EmitSound(SoundEffect.TowerPlaced, destination);
 
         // QoL: stay in BuildingTower mode if the territory can still
         // afford another tower. Refresh both the tower-target preview

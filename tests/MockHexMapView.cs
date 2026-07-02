@@ -93,11 +93,12 @@ public class MockHexMapView : IHexMapView
     }
 
     /// <summary>
-    /// Mirrors <c>HexMapView</c>'s silent-mode policy so controller
-    /// integration tests can verify end-to-end suppression: every Play*
-    /// call (including Bankruptcy/GameWon) and the destruction effect
-    /// drop while silent. A human still hears their own bankruptcy /
-    /// game-won because a human's own turn is never silent.
+    /// The last silent flag the controller pushed via <see cref="SetSilentMode"/>.
+    /// Purely a recorded value now — the drop decision lives controller-side
+    /// (<c>GameOperations.IsSilent</c> gates <c>EmitSound</c>/<c>EmitDestruction</c>),
+    /// so this mock plays back everything it is told. <c>InstantAiTests</c> /
+    /// <c>ReplayPlaybackTests</c> assert on this flag to verify the controller
+    /// still drives the view's silent lifecycle (Instant AI / instant replay).
     /// </summary>
     public bool SilentMode { get; private set; }
     public void SetSilentMode(bool silent) => SilentMode = silent;
@@ -105,14 +106,13 @@ public class MockHexMapView : IHexMapView
     public List<(HexCoord Coord, HexOccupant Destroyed)> DestructionEffects { get; } = new();
     public void PlayDestructionEffect(HexCoord coord, HexOccupant destroyed)
     {
-        if (SilentMode) return;
         DestructionEffects.Add((coord, destroyed));
     }
 
     // Per-sound recording surface — tests assert against these. Each
     // property records every fire of the matching SoundEffect routed
-    // through PlaySound, with the silent-mode policy applied (every cue
-    // drops while silent, no exceptions).
+    // through PlaySound. The mock records unconditionally; the controller
+    // decides whether to emit (silent-mode gating is controller-side).
     public List<HexCoord> UnitPlacedSounds { get; } = new();
     public List<HexCoord> TowerPlacedSounds { get; } = new();
     public List<HexCoord> UnitCombinedSounds { get; } = new();
@@ -127,7 +127,6 @@ public class MockHexMapView : IHexMapView
 
     public void PlaySound(SoundEffect kind, HexCoord? at = null)
     {
-        if (SilentMode) return;
         HexCoord coord = at ?? default;
         switch (kind)
         {

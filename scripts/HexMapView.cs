@@ -2102,8 +2102,10 @@ public partial class HexMapView : Node2D, IHexMapView
 
     public void PlayDestructionEffect(HexCoord coord, HexOccupant destroyed)
     {
+        // Silent-mode gating is controller-side (GameOperations.IsSilent);
+        // only the genuinely view-only gates remain (VFX toggle, graves are
+        // never shown, no deaths layer yet).
         if (!UserSettings.VfxEnabled) return;
-        if (_silentMode) return;
         if (destroyed is Grave) return;
         if (_deathsLayer == null) return;
 
@@ -2226,7 +2228,8 @@ public partial class HexMapView : Node2D, IHexMapView
     /// </summary>
     public void PlaySound(SoundEffect kind, HexCoord? at = null)
     {
-        if (_silentMode) return;
+        // Silent-mode gating is controller-side (GameOperations.IsSilent);
+        // the view plays whatever cue it's handed.
         switch (kind)
         {
             case SoundEffect.UnitPlaced: AudioBus.Instance.PlayUnitPlaced(); break;

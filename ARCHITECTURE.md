@@ -258,13 +258,20 @@ AUDIO (autoload)
   sounds + AttachClick UI clicks. Destruction VFX (HexMapView.PlayDestructionEffect: flash + shockwave +
   shards) gates on UserSettings.VfxEnabled. Pulse/shrink/grow-in animations are always on (communicate state).
 
-  HexMapView carries _silentMode (toggled by GameController via IHexMapView.SetSilentMode for AI under
-  PlaybackSpeed.Instant OR a ReplaySpeed.Instant fast-forward — RefreshSilentMode ORs in _replayInstantActive
-  so a turn boundary can't un-silence). A second gate in PlaySound drops every per-action cue AND the tree/grave
-  grow/shrink tweens in RefreshOccupantVisuals AND the tree/grave teardown in RebuildAfterTerritoryChange.
-  Every cue (incl. Bankruptcy, GameWon) obeys the silent gate with NO exceptions, so a silent AI-Instant batch
-  or instant replay is fully silent. A human still hears their own bankruptcy/game-won because a human turn is
-  never silent. Same all-cues policy mirrored in MockHexMapView for integration-test silence verification.
+  Silent-mode (Instant AI batch / instant replay) is decided controller-side. GameOperations.IsSilent() (=
+  aiSilentMode() && currentPlayer.IsAi, OR _replayInstantActive) gates the controller's own per-action cues via
+  EmitSound / EmitDestruction; the views play whatever they're handed, so HexMapView.PlaySound /
+  PlayDestructionEffect carry NO silent gate and MockHexMapView records every cue unconditionally (the seam it
+  verifies is the controller's decision, not a mirrored view policy). Every cue incl. Bankruptcy/GameWon obeys
+  the gate with no exceptions, so a silent batch is fully silent; a human still hears their own cues because a
+  human turn is never silent (currentPlayer.IsAi is false there). IsSilent() omits the PendingDefeatScreen term
+  that InSilentAiBatch() carries, so the AI blow that destroys a human's capital stays silent even as it queues
+  the defeat overlay.
+
+  HexMapView still carries _silentMode (set via IHexMapView.SetSilentMode from RefreshSilentMode = InSilentAiBatch
+  || _replayInstantActive) for the view-internal suppression that genuinely needs node/tween access: the
+  tree/grave grow-in tweens (RefreshOccupantVisuals) + tree/grave teardown (RebuildAfterTerritoryChange), the
+  Rising-Tides FX stashing (CaptureRisingTidesFx / submerge + demote), and the pan-snap shortcut.
 ```
 
 ## Gold tiles
@@ -390,7 +397,7 @@ Mutation/orchestration core (what both live AI and replay need) lives in `src/Fo
   - Game-end — `CheckGameEndConditions` (fires `GameEnded` via the `onGameEnded` ctor callback; controller owns the public event)
   - View sync — `RefreshViews`, `ShowHighlightAndRefresh`, `InvokeAfterRefresh`, private `HasAnyActionableForCurrentPlayer`
   - Shared instant loop — `RunInstantTick(active, step, onExhausted, reschedule)`, the chunked frame-yielded fast-forward behind both live-AI instant (`AiTurnDriver`) and instant replay (`ReplayRecorder`); owns `InstantBudgetMs`
-  - Silent-mode — `RefreshSilentMode`, `InSilentAiBatch`
+  - Silent-mode — `IsSilent` (per-action cue gate) + `EmitSound` / `EmitDestruction` (silent-gated wrappers over `_map.PlaySound` / `PlayDestructionEffect`, the only path controllers use); `RefreshSilentMode` (drives the view's `_silentMode` flag for view-internal tween/tide suppression), `InSilentAiBatch` (input gate)
   - Helpers — `WasFriendlyUnitAt`
   - Mutable shared state (public properties; written by the instant loop / replay reset paths) — `Rng` (read-only getter), `GameEndedFired`, `HumanTurnFiredForCurrentTurn`, `SuppressMapRebuild`
 
@@ -474,7 +481,7 @@ void FlashRejection(HexCoord target, RejectionShape shape, IEnumerable<HexCoord>
 // Audio sink → AudioBus. SoundEffect enum (UnitPlaced, TowerPlaced,
 // UnitCombined, UnitDestroyed, TowerDestroyed, TreeCleared, CapitalDestroyed,
 // Bankruptcy, GameWon, Rally, PlayerDefeated) picks the cue; coord reserved.
-// Cues drop in silent mode (AI-Instant batch / instant replay); human turn never silent.
+// Plays unconditionally — silent-mode gating is controller-side (GameOperations.EmitSound).
 void PlaySound(SoundEffect kind, HexCoord? at = null);
 ```
 
@@ -925,7 +932,7 @@ Two wrappers feed it:
 
 Chooser cost is inline within the 8 ms budget; the driver yields a real frame between ticks (`ScheduleUnscaled` → timer) so pan/zoom/input stay live. `HandleCapture.RebuildAfterTerritoryChange` is `_suppressMapRebuild`-gated, coalescing redraw + tile-fill resync to the turn-boundary / batch-end repaint. Live AI Instant is 1:1 with instant replay; one difference: the "Opponents are taking their turns…" overlay stays for live play (via `RefreshSilentMode`), replay leaves off. `ApplyAiActionCore` / `EndCurrentAiPlayerTurnCore` are shared with paced (pinned by `InstantAiTests.InstantAi_SameBeatsAndFinalStateAsPaced`).
 
-`InSilentAiBatch()` = `aiSilentMode() && currentPlayer.IsAi && !PendingDefeatScreen` (`aiSilentMode` = `!IsReplayMode && AiSpeed == PlaybackSpeed.Instant`). The **input gate** and silent-flag source: every top-level human handler (`TrackHandler`-wrapped click/key, plus `OnEndTurnPressed`, `OnUndo*`, `OnRedo*`, `OnDefeatContinuePressed`, `OnClaimVictory*`) short-circuits on it so input can't mutate `SessionState` between frame yields. `PendingDefeatScreen.HasValue` flips it false mid-batch so the overlay paints and `OnDefeatContinuePressed` dispatches; dismiss handler resumes via `AiTurnDriver.Schedule`. Game-end branches ignore it and always refresh.
+`InSilentAiBatch()` = `aiSilentMode() && currentPlayer.IsAi && !PendingDefeatScreen` (`aiSilentMode` = `!IsReplayMode && AiSpeed == PlaybackSpeed.Instant`). The **input gate** and view-flag source (`RefreshSilentMode` pushes `InSilentAiBatch || _replayInstantActive` to `_map.SetSilentMode`): every top-level human handler (`TrackHandler`-wrapped click/key, plus `OnEndTurnPressed`, `OnUndo*`, `OnRedo*`, `OnDefeatContinuePressed`, `OnClaimVictory*`) short-circuits on it so input can't mutate `SessionState` between frame yields. `PendingDefeatScreen.HasValue` flips it false mid-batch so the overlay paints and `OnDefeatContinuePressed` dispatches; dismiss handler resumes via `AiTurnDriver.Schedule`. Game-end branches ignore it and always refresh. (The per-action **cue** gate is the sibling `IsSilent()`, which drops the `!PendingDefeatScreen` term so the AI's capital-destroying blow stays silent as it queues the overlay — see the audio section.)
 
 The **overlay is decoupled from silence**: `RefreshSilentMode` shows it whenever an AI acts in live play at *any* speed (`!IsReplayMode && !GameEndedFired && !IsGameOver && currentPlayer.IsAi && !PendingDefeatScreen`), tracked by `_aiBatchOverlayShown` — so paced AI turns show it too, though only the Instant batch is silenced. (Replay never shows it.)
 
