@@ -105,6 +105,10 @@ FOUREXHEX_6AI=1 /Applications/Godot_mono.app/Contents/MacOS/Godot --headless --p
 
 Use these for AI-behavior debugging — do **not** use them as a substitute for the manual-test rule above when the change affects anything a human would see.
 
+## Campaign winnable-seed pipeline
+
+Campaign levels carry a baked, provably-winnable-at-Soldier seed table (`src/FourExHex.Model/CampaignSeeds.cs`, read by `CampaignProgress.SeedForLevel`). Changes to rules, AI, map generation, or the economy can invalidate the proofs; changes to a level's identity (mode, densities, roster derivation) invalidate that level. **See `CAMPAIGN_SEEDS.md`** for the verify/regenerate/bake runbook (env-gated harness in `tests/CampaignWinnerSweepTests.cs`).
+
 ## Code Style
 
 - `PascalCase` for C# classes, methods, properties, and Godot node names

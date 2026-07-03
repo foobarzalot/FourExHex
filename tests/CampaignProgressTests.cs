@@ -144,11 +144,27 @@ public class CampaignProgressTests
         Assert.Equal(expected, CampaignProgress.LabelFor(level));
     }
 
-    [Fact]
-    public void SeedForLevel_IsIdentity()
+    // SeedForLevel reads the baked winnable-seed table (#73): each level's
+    // seed is the first candidate whose all-AI game at Soldier is won by the
+    // level's hash-assigned human slot. Candidate 0 is the level number
+    // itself, so a level whose original map was already winnable keeps it
+    // byte-identically; the rest are re-seeded. The expectations below are
+    // facts established by the CampaignWinnerSweepTests sweep/search harness.
+    [Theory]
+    [InlineData(9)]
+    [InlineData(23)]
+    public void SeedForLevel_KeepsIdentityWhereOriginalMapIsWinnable(int level)
     {
-        Assert.Equal(0, CampaignProgress.SeedForLevel(0));
-        Assert.Equal(171, CampaignProgress.SeedForLevel(171));
+        Assert.Equal(level, CampaignProgress.SeedForLevel(level));
+    }
+
+    [Theory]
+    [InlineData(0)]   // human slot lost on the identity seed
+    [InlineData(171)] // human slot lost on the identity seed
+    [InlineData(41)]  // stasis: no winner by the turn cap on the identity seed
+    public void SeedForLevel_ReseedsLevelsWhoseOriginalMapIsNotWinnable(int level)
+    {
+        Assert.NotEqual(level, CampaignProgress.SeedForLevel(level));
     }
 
     [Theory]
@@ -164,6 +180,7 @@ public class CampaignProgressTests
         Assert.Throws<ArgumentOutOfRangeException>(() => CampaignProgress.DifficultyForLevel(level));
         Assert.Throws<ArgumentOutOfRangeException>(() => CampaignProgress.LabelFor(level));
         Assert.Throws<ArgumentOutOfRangeException>(() => CampaignProgress.ModeForLevel(level));
+        Assert.Throws<ArgumentOutOfRangeException>(() => CampaignProgress.SeedForLevel(level));
     }
 
     // ── Per-level game mode ─────────────────────────────────────

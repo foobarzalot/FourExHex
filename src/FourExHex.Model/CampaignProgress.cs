@@ -153,12 +153,16 @@ public sealed class CampaignProgress
         return level.ToString("X2");
     }
 
-    /// <summary>Level → master-seed mapping. Identity by design:
-    /// level N plays the procedural map of seed N.</summary>
+    /// <summary>Level → master-seed mapping, read from the baked winnable-seed
+    /// table (<see cref="CampaignSeeds.ByLevel"/>): every level's seed carries a
+    /// proof that the level's human slot can win at Soldier difficulty. Levels
+    /// whose original map (seed = level number) already proved winnable keep it;
+    /// the rest carry a searched replacement. See <c>CAMPAIGN_SEEDS.md</c> for
+    /// the regeneration runbook.</summary>
     public static int SeedForLevel(int level)
     {
         ValidateLevel(level);
-        return level;
+        return CampaignSeeds.ByLevel[level];
     }
 
     // Rising Tides and Fog Of War are introduced from the Soldier tier onward and

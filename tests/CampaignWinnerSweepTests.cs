@@ -31,7 +31,7 @@ namespace FourExHex.Tests;
 ///   FOUREXHEX_SWEEP_OUT=path          — optional CSV path (default %TMP%);
 ///                                       summary at path + ".summary.txt";
 ///                                       search also emits path + ".table.cs.txt"
-///   FOUREXHEX_SEARCH_MAX_ATTEMPTS=n   — search cutoff per level (default 64)
+///   FOUREXHEX_SEARCH_MAX_ATTEMPTS=n   — search cutoff per level (default 128)
 /// Invoke:
 ///   FOUREXHEX_CAMPAIGN_SWEEP=1 dotnet test --filter FullyQualifiedName~CampaignWinnerSweep
 ///
@@ -170,9 +170,12 @@ public class CampaignWinnerSweepTests
 
         (int lo, int hi) = ParseRange(
             Environment.GetEnvironmentVariable("FOUREXHEX_SWEEP_LEVELS"));
+        // Default headroom: a 2-player level with the human as second mover
+        // wins only ~6% of rolls (the observed worst case needed attempt 61),
+        // so 128 keeps even an unlucky re-search comfortably inside the cap.
         int maxAttempts = int.TryParse(
             Environment.GetEnvironmentVariable("FOUREXHEX_SEARCH_MAX_ATTEMPTS"),
-            out int parsed) ? parsed : 64;
+            out int parsed) ? parsed : 128;
         string csvPath = Environment.GetEnvironmentVariable("FOUREXHEX_SWEEP_OUT")
             ?? Path.Combine(Path.GetTempPath(), "campaign-seed-search.csv");
         string progressPath = csvPath + ".progress";
