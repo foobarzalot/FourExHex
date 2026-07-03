@@ -406,7 +406,15 @@ public partial class Main : Node2D
                 new SceneTreeTimerFactory(GetTree()),
                 () => controllerRef?.IsReplayMode == true
                     ? UserSettings.SpeedMultiplierPercent(UserSettings.ReplaySpeed)
-                    : UserSettings.SpeedMultiplierPercent(UserSettings.AiSpeed));
+                    : controllerRef?.IsAutomating == true
+                        // Automate has its own speed setting, independent of
+                        // AI turn speed. Instant maps to multiplier 0 — each
+                        // beat becomes a 0-delay timer (one frame per move),
+                        // still frame-yielded and interruptible.
+                        ? (UserSettings.AutomateSpeed == PlaybackSpeed.Instant
+                            ? 0
+                            : UserSettings.SpeedMultiplierPercent(UserSettings.AutomateSpeed))
+                        : UserSettings.SpeedMultiplierPercent(UserSettings.AiSpeed));
         // If we're resuming an in-progress save that carries a replay,
         // hand it to the controller so recording continues against the
         // same beat log (and BeginReplay can rewind to the original

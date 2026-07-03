@@ -54,6 +54,7 @@ public static partial class UserSettings
     private static bool _vfxEnabled = true;
     private static PlaybackSpeed _aiSpeed = PlaybackSpeed.Fast;
     private static PlaybackSpeed _replaySpeed = PlaybackSpeed.Fast;
+    private static PlaybackSpeed _automateSpeed = PlaybackSpeed.Fast;
     // One-time "seen the intro overlay" flags per special game mode (issue
     // #96). Persisted so the mode explainer never re-shows after the player
     // dismisses it once. Freeform has no intro and is never tracked here.
@@ -125,6 +126,28 @@ public static partial class UserSettings
             EnsureLoaded();
             if (_replaySpeed == value) return;
             _replaySpeed = value;
+            Save();
+        }
+    }
+
+    /// <summary>
+    /// Pacing for the human-turn Automate loop — independent of
+    /// <see cref="AiSpeed"/> (opponent turns) so a player can keep
+    /// opponents brisk while watching their own automated moves, or
+    /// vice-versa.
+    /// </summary>
+    public static PlaybackSpeed AutomateSpeed
+    {
+        get
+        {
+            EnsureLoaded();
+            return _automateSpeed;
+        }
+        set
+        {
+            EnsureLoaded();
+            if (_automateSpeed == value) return;
+            _automateSpeed = value;
             Save();
         }
     }
@@ -250,6 +273,9 @@ public static partial class UserSettings
         // the DTO order stable for save-compat.
         public bool SeenGoldIntro { get; set; }
         public bool SeenMountainIntro { get; set; }
+        // Human-turn Automate pacing. Appended last for save-compat; absent
+        // from older settings.json files → binds the Fast default.
+        public PlaybackSpeed AutomateSpeed { get; set; } = PlaybackSpeed.Fast;
     }
 
     // Source-gen JsonSerializerContext for SettingsDto. Nested inside
@@ -285,6 +311,7 @@ public static partial class UserSettings
             _vfxEnabled = dto.VfxEnabled;
             _aiSpeed = dto.AiSpeed;
             _replaySpeed = dto.ReplaySpeed;
+            _automateSpeed = dto.AutomateSpeed;
             _seenRisingTidesIntro = dto.SeenRisingTidesIntro;
             _seenFogOfWarIntro = dto.SeenFogOfWarIntro;
             _seenGoldIntro = dto.SeenGoldIntro;
@@ -312,6 +339,7 @@ public static partial class UserSettings
                     VfxEnabled = _vfxEnabled,
                     AiSpeed = _aiSpeed,
                     ReplaySpeed = _replaySpeed,
+                    AutomateSpeed = _automateSpeed,
                     SeenRisingTidesIntro = _seenRisingTidesIntro,
                     SeenFogOfWarIntro = _seenFogOfWarIntro,
                     SeenGoldIntro = _seenGoldIntro,

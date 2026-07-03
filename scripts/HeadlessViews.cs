@@ -60,6 +60,7 @@ public sealed class HeadlessHudView : IHudView
     public event Action? NextUnitClicked;
     public event Action? PreviousUnitClicked;
     public event Action? CancelActionPressed;
+    public event Action? AutomateClicked;
     public event Action? DefeatContinueClicked;
     public event Action? ClaimVictoryWinNowClicked;
     public event Action? ClaimVictoryContinueClicked;
@@ -79,4 +80,5 @@ public sealed class HeadlessHudView : IHudView
     public HexCoord? SummonedCapitalAlertCoord => null;
     public void SummonCapitalAlertNotice(HexCoord capital, EconomyOutlook outlook) { }
     public void DismissCapitalAlertNotice() { }
+    public void SetAutomateState(bool enabled, bool running) { }
 }

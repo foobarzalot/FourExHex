@@ -24,6 +24,7 @@ public class MockHudView : IHudView
     public event Action? NextUnitClicked;
     public event Action? PreviousUnitClicked;
     public event Action? CancelActionPressed;
+    public event Action? AutomateClicked;
     public event Action? DefeatContinueClicked;
     public event Action? ClaimVictoryWinNowClicked;
     public event Action? ClaimVictoryContinueClicked;
@@ -143,6 +144,14 @@ public class MockHudView : IHudView
     public bool ReplayAvailable { get; private set; }
     public void SetReplayAvailable(bool available) => ReplayAvailable = available;
 
+    public bool AutomateEnabled { get; private set; }
+    public bool AutomateRunning { get; private set; }
+    public void SetAutomateState(bool enabled, bool running)
+    {
+        AutomateEnabled = enabled;
+        AutomateRunning = running;
+    }
+
     public void ClickReplay() => ReplayClicked?.Invoke();
 
     public void ClickBuyRecruit() => BuyRecruitClicked?.Invoke();
@@ -160,6 +169,7 @@ public class MockHudView : IHudView
     public void ClickNewGame() => NewGameClicked?.Invoke();
     public void ClickMainMenu() => MainMenuClicked?.Invoke();
     public void PressCancelAction() => CancelActionPressed?.Invoke();
+    public void ClickAutomate() => AutomateClicked?.Invoke();
     public void ClickDefeatContinue() => DefeatContinueClicked?.Invoke();
     public void ClickClaimVictoryWinNow() => ClaimVictoryWinNowClicked?.Invoke();
     public void ClickClaimVictoryContinue() => ClaimVictoryContinueClicked?.Invoke();

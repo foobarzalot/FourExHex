@@ -48,6 +48,7 @@ public sealed partial class SettingsPanel : CanvasLayer
         { PlaybackSpeed.Slow, PlaybackSpeed.Normal, PlaybackSpeed.Fast, PlaybackSpeed.Instant };
     private OptionButton _aiSpeedDropdown = null!;
     private OptionButton _replaySpeedDropdown = null!;
+    private OptionButton _automateSpeedDropdown = null!;
     private static readonly Font _serifFont =
         GD.Load<FontFile>("res://fonts/DMSerifDisplay-Regular.ttf");
 
@@ -139,6 +140,8 @@ public sealed partial class SettingsPanel : CanvasLayer
         vbox.AddChild(BuildSpeedRow(
             "Computer Player Speed", UserSettings.AiSpeed, OnAiSpeedPressed, out _aiSpeedDropdown));
         vbox.AddChild(BuildSpeedRow(
+            "Automate Speed", UserSettings.AutomateSpeed, OnAutomateSpeedPressed, out _automateSpeedDropdown));
+        vbox.AddChild(BuildSpeedRow(
             "Replay Speed", UserSettings.ReplaySpeed, OnReplaySpeedPressed, out _replaySpeedDropdown));
 
         vbox.AddChild(MakeNavButton("Credits", OnCreditsPressed));
@@ -218,6 +221,8 @@ public sealed partial class SettingsPanel : CanvasLayer
         rightZone.AddThemeConstantOverride("separation", 14);
         rightZone.AddChild(MakeToggleCard(BuildSpeedRow(
             "Computer Player Speed", UserSettings.AiSpeed, OnAiSpeedPressed, out _aiSpeedDropdown)));
+        rightZone.AddChild(MakeToggleCard(BuildSpeedRow(
+            "Automate Speed", UserSettings.AutomateSpeed, OnAutomateSpeedPressed, out _automateSpeedDropdown)));
         rightZone.AddChild(MakeToggleCard(BuildSpeedRow(
             "Replay Speed", UserSettings.ReplaySpeed, OnReplaySpeedPressed, out _replaySpeedDropdown)));
         body.AddChild(rightZone);
@@ -389,6 +394,7 @@ public sealed partial class SettingsPanel : CanvasLayer
         _vfxCheckBox.ButtonPressed = UserSettings.VfxEnabled;
         ApplyCheckBoxStyle(_vfxCheckBox, UserSettings.VfxEnabled);
         SelectItemById(_aiSpeedDropdown, (int)UserSettings.AiSpeed);
+        SelectItemById(_automateSpeedDropdown, (int)UserSettings.AutomateSpeed);
         SelectItemById(_replaySpeedDropdown, (int)UserSettings.ReplaySpeed);
     }
 
@@ -435,6 +441,12 @@ public sealed partial class SettingsPanel : CanvasLayer
     {
         UserSettings.ReplaySpeed = speed;
         Log.Debug(Log.LogCategory.Hud, $"[settings] ReplaySpeed -> {speed}");
+    }
+
+    private void OnAutomateSpeedPressed(PlaybackSpeed speed)
+    {
+        UserSettings.AutomateSpeed = speed;
+        Log.Debug(Log.LogCategory.Hud, $"[settings] AutomateSpeed -> {speed}");
     }
 
     /// <summary>

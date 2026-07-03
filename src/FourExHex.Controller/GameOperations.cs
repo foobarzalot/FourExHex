@@ -35,6 +35,12 @@ public class GameOperations
     private readonly Func<bool> _isReplayMode;
     private readonly Action _clearUndoAndReplayBookkeeping;
     private readonly Action? _onAfterRefresh;
+    // True while the controller's Automate loop is playing the human's
+    // remaining moves — drives the Automate button's toggle state.
+    private readonly Func<bool> _isAutomating;
+    // True after automation stopped because the chooser ran dry; the
+    // button greys out until undo / a manual move / end turn un-latches.
+    private readonly Func<bool> _isAutomateExhausted;
     private readonly int _maxTurnNumber;
     private readonly Action _onGameEnded;
     private readonly Action _onHumanTurnStarted;
@@ -100,7 +106,9 @@ public class GameOperations
         Action onHumanTurnStarted,
         int maxTurnNumber,
         int masterSeed,
-        Action? onAfterRefresh)
+        Action? onAfterRefresh,
+        Func<bool>? isAutomating = null,
+        Func<bool>? isAutomateExhausted = null)
     {
         _state = state;
         _session = session;
@@ -117,6 +125,8 @@ public class GameOperations
         _maxTurnNumber = maxTurnNumber;
         _masterSeed = masterSeed;
         _onAfterRefresh = onAfterRefresh;
+        _isAutomating = isAutomating ?? (() => false);
+        _isAutomateExhausted = isAutomateExhausted ?? (() => false);
         // Initial _rng is derived from the master seed alone;
         // ReseedRngForCurrentTurn replaces it with the proper
         // per-turn reseed at the top of every StartPlayerTurn (and
@@ -727,6 +737,18 @@ public class GameOperations
         _hud.SetCta(CtaButton.NextTerritory, nextCta, pulse: false);
         Log.Debug(Log.LogCategory.Hud,
             $"[cta] NextTerritory={nextCta} (isHuman={isHuman}, hasActionable={hasActionable}, selExhausted={selExhausted})");
+        // Automate toggle: enabled on a human turn with actions remaining
+        // (or while running, so Stop stays reachable); running while the
+        // loop is active. Disabled in replay and the tutorial Record /
+        // Preview modes, where automated moves would desync the script.
+        bool automating = _isAutomating();
+        bool automateEnabled = isHuman
+            && !_session.IsGameOver && !GameEndedFired
+            && !_isReplayMode()
+            && !_previewMode && !_recordingMode
+            && !_isAutomateExhausted()
+            && (hasActionable || automating);
+        _hud.SetAutomateState(automateEnabled, automating);
         _onAfterRefresh?.Invoke();
         Log.Since(Log.LogCategory.Capture, "[hitch] RefreshViews total", tWhole);
     }

@@ -309,14 +309,15 @@ public class AiTurnDriver
     /// <summary>
     /// Apply one chosen AI action: record its replay beat (live play
     /// only) and run the same Execute* mutation the live game uses.
-    /// Shared by the paced step machine (<see cref="StepAiExecute"/>)
-    /// and the chunked <see cref="InstantAiTick"/> so the two pacing
-    /// modes can't drift. Returns the action's result coord (for the
+    /// Shared by the paced step machine (<see cref="StepAiExecute"/>),
+    /// the chunked <see cref="InstantAiTick"/>, and the controller's
+    /// human-turn Automate loop so the pacing modes can't drift.
+    /// Returns the action's result coord (for the
     /// paced post-action highlight) or null for an unrecognised action
     /// kind. Does NOT run
     /// the game-end check or refresh views — callers own pacing.
     /// </summary>
-    private HexCoord? ApplyAiActionCore(AiAction action)
+    internal HexCoord? ApplyAiActionCore(AiAction action)
     {
         _aiStepsThisPlayer++;
         LogAction(action);
@@ -470,7 +471,7 @@ public class AiTurnDriver
     /// the highlight is preferable to throwing out of a scheduled
     /// callback.
     /// </summary>
-    private Territory? ResolveAiActingTerritory(AiAction action)
+    internal Territory? ResolveAiActingTerritory(AiAction action)
     {
         PlayerId owner = _state.Turns.CurrentPlayer.Id;
         return action switch

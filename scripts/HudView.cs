@@ -30,6 +30,7 @@ public partial class HudView : OrientationHud, IHudView
     public event Action? NextUnitClicked;
     public event Action? PreviousUnitClicked;
     public event Action? CancelActionPressed;
+    public event Action? AutomateClicked;
     public event Action? EscRequested;
     public event Action? DefeatContinueClicked;
     public event Action? ClaimVictoryWinNowClicked;
@@ -71,6 +72,7 @@ public partial class HudView : OrientationHud, IHudView
     private HudIconButton _nextUnitButton = null!;
     private HudIconButton _nextTerritoryButton = null!;
     private HudIconButton _endTurnButton = null!;
+    private HudIconButton? _automateButton;
     private HudIconButton _optionsButton = null!;
     private HudIconButton _addTextButton = null!;
     private Control _victoryOverlay = null!;
@@ -305,6 +307,14 @@ public partial class HudView : OrientationHud, IHudView
         _endTurnButton.Pressed += () => EndTurnClicked?.Invoke();
         AudioBus.AttachClick(_endTurnButton);
 
+        // Automate toggle — sits beside End Turn in both orientations
+        // (reparented by the Build*Bars methods, like End Turn itself).
+        // Gear-with-play glyph; flips to gear-with-pause while the
+        // controller's automate loop runs (SetAutomateState).
+        _automateButton = new HudIconButton(HudIcon.Automate) { Disabled = true };
+        _automateButton.Pressed += () => AutomateClicked?.Invoke();
+        AudioBus.AttachClick(_automateButton);
+
         // Single Options button — raises the same EscRequested event
         // the Escape key fires, so the scene root's pause coordinator
         // drives both paths. Save Game and Settings live inside that
@@ -382,10 +392,11 @@ public partial class HudView : OrientationHud, IHudView
         HudBars.Detach(_actionCluster);
         HudBars.Detach(_undoCluster);
         HudBars.Detach(_controlsCluster);
-        // Options + End Turn migrate between zones per orientation; detach
-        // them so freeing the old zones can't free them.
+        // Options + End Turn + Automate migrate between zones per
+        // orientation; detach them so freeing the old zones can't free them.
         HudBars.Detach(_optionsButton);
         HudBars.Detach(_endTurnButton);
+        if (_automateButton != null) HudBars.Detach(_automateButton);
     }
 
     /// <summary>Landscape — D1 zones: TopLeftZone holds status + gold;
@@ -448,17 +459,31 @@ public partial class HudView : OrientationHud, IHudView
         // rails leave behind). On iPhone landscape it'll overlap the
         // home-indicator strip; iOS still routes taps through.
         float pad = 10f;
-        _endTurnButton.AnchorLeft = 1f;
-        _endTurnButton.AnchorRight = 1f;
-        _endTurnButton.AnchorTop = 1f;
-        _endTurnButton.AnchorBottom = 1f;
-        _endTurnButton.GrowHorizontal = Control.GrowDirection.Begin;
-        _endTurnButton.GrowVertical = Control.GrowDirection.Begin;
-        _endTurnButton.OffsetLeft = -pad;
-        _endTurnButton.OffsetRight = -pad;
-        _endTurnButton.OffsetTop = -pad;
-        _endTurnButton.OffsetBottom = -pad;
-        AddChild(_endTurnButton);
+        PinBottomRight(_endTurnButton, rightOffset: pad);
+        // Automate sits immediately left of End Turn — same corner strip.
+        if (_automateButton != null)
+        {
+            PinBottomRight(_automateButton, rightOffset: pad + 68f + 10f);
+        }
+    }
+
+    /// <summary>Corner-anchor a 68×68 chip to the viewport's bottom edge,
+    /// its right edge <paramref name="rightOffset"/> px in from the right,
+    /// as a direct child of this CanvasLayer (no container interference).</summary>
+    private void PinBottomRight(HudIconButton button, float rightOffset)
+    {
+        float pad = 10f;
+        button.AnchorLeft = 1f;
+        button.AnchorRight = 1f;
+        button.AnchorTop = 1f;
+        button.AnchorBottom = 1f;
+        button.GrowHorizontal = Control.GrowDirection.Begin;
+        button.GrowVertical = Control.GrowDirection.Begin;
+        button.OffsetLeft = -rightOffset;
+        button.OffsetRight = -rightOffset;
+        button.OffsetTop = -pad;
+        button.OffsetBottom = -pad;
+        AddChild(button);
     }
 
     /// <summary>Undo the corner-anchoring landscape applied, so the next
@@ -466,16 +491,22 @@ public partial class HudView : OrientationHud, IHudView
     /// anchors fighting the container's layout.</summary>
     private void ResetEndTurnAnchors()
     {
-        _endTurnButton.AnchorLeft = 0f;
-        _endTurnButton.AnchorRight = 0f;
-        _endTurnButton.AnchorTop = 0f;
-        _endTurnButton.AnchorBottom = 0f;
-        _endTurnButton.OffsetLeft = 0f;
-        _endTurnButton.OffsetRight = 0f;
-        _endTurnButton.OffsetTop = 0f;
-        _endTurnButton.OffsetBottom = 0f;
-        _endTurnButton.GrowHorizontal = Control.GrowDirection.End;
-        _endTurnButton.GrowVertical = Control.GrowDirection.End;
+        ResetCornerAnchors(_endTurnButton);
+        if (_automateButton != null) ResetCornerAnchors(_automateButton);
+    }
+
+    private static void ResetCornerAnchors(HudIconButton button)
+    {
+        button.AnchorLeft = 0f;
+        button.AnchorRight = 0f;
+        button.AnchorTop = 0f;
+        button.AnchorBottom = 0f;
+        button.OffsetLeft = 0f;
+        button.OffsetRight = 0f;
+        button.OffsetTop = 0f;
+        button.OffsetBottom = 0f;
+        button.GrowHorizontal = Control.GrowDirection.End;
+        button.GrowVertical = Control.GrowDirection.End;
     }
 
     /// <summary>Portrait — D1 zones (wireframe variant A): TopLeftZone holds
@@ -550,6 +581,7 @@ public partial class HudView : OrientationHud, IHudView
             MouseFilter = Control.MouseFilterEnum.Pass,
         };
         row2.AddChild(row2Spacer);
+        if (_automateButton != null) row2.AddChild(_automateButton);
         row2.AddChild(_endTurnButton);
         inner.AddChild(row2);
 
@@ -1969,6 +2001,18 @@ public partial class HudView : OrientationHud, IHudView
             $"[AlertNotice] dismiss (was={_summonedAlertCoord})");
         _summonedAlertCoord = null;
         _bankruptToast.Visible = false;
+    }
+
+    public void SetAutomateState(bool enabled, bool running)
+    {
+        // Button built alongside the rest of the HUD chrome; see _Ready.
+        if (_automateButton == null) return;
+        _automateButton.Disabled = !enabled;
+        _automateButton.Selected = running;
+        _automateButton.AutomateRunning = running;
+        _automateButton.TooltipText = running
+            ? "Stop automating"
+            : "Automate remaining moves";
     }
 
     private static string? ComputeActionHint(GameState state, SessionState session)

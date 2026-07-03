@@ -83,9 +83,11 @@ public class GameController
         Func<bool>? aiSilentMode = null,
         Func<bool>? replayIsInstantMode = null,
         Func<bool>? isReplayPaused = null,
-        bool autoSelectFirstTerritory = true)
+        bool autoSelectFirstTerritory = true,
+        Func<GameState, PlayerId, HashSet<HexCoord>, Random, AiAction?>? automateChooser = null)
     {
         _autoSelectFirstTerritory = autoSelectFirstTerritory;
+        _automateChooser = automateChooser ?? ComputerAi.ChooseNextAction;
         Func<bool> aiSilent = aiSilentMode ?? (() => false);
         _humanActionValidator = humanActionValidator;
         _buyLevelValidator = buyLevelValidator;
@@ -116,7 +118,9 @@ public class GameController
             onHumanTurnStarted: RaiseHumanTurnStarted,
             maxTurnNumber: maxTurnNumber,
             masterSeed: _masterSeed,
-            onAfterRefresh: onAfterRefresh);
+            onAfterRefresh: onAfterRefresh,
+            isAutomating: () => _automating,
+            isAutomateExhausted: () => _automateExhausted);
         _aiPacer = aiPacer ?? new SynchronousAiPacer();
         _recorder = new ReplayRecorder(
             state: state,
@@ -154,6 +158,7 @@ public class GameController
         _hud.NextUnitClicked += OnNextUnitPressed;
         _hud.PreviousUnitClicked += OnPreviousUnitPressed;
         _hud.CancelActionPressed += OnCancelActionPressed;
+        _hud.AutomateClicked += OnAutomatePressed;
         _hud.DefeatContinueClicked += OnDefeatContinuePressed;
         _hud.ClaimVictoryWinNowClicked += OnClaimVictoryWinNowPressed;
         _hud.ClaimVictoryContinueClicked += OnClaimVictoryContinuePressed;
@@ -192,6 +197,10 @@ public class GameController
     /// </summary>
     public void AbandonGame()
     {
+        // Flag only (no StopAutomation): the views may be mid-teardown,
+        // so no refresh — the cancelled pacer drops any in-flight beat.
+        _automating = false;
+        _pendingAutomateAction = null;
         _aiPacer.Cancel();
         // Unsubscribe from view events so a downstream click can't
         // re-enter this stale controller's handlers — relevant when
@@ -215,6 +224,7 @@ public class GameController
         _hud.NextUnitClicked -= OnNextUnitPressed;
         _hud.PreviousUnitClicked -= OnPreviousUnitPressed;
         _hud.CancelActionPressed -= OnCancelActionPressed;
+        _hud.AutomateClicked -= OnAutomatePressed;
         _hud.DefeatContinueClicked -= OnDefeatContinuePressed;
         _hud.ClaimVictoryWinNowClicked -= OnClaimVictoryWinNowPressed;
         _hud.ClaimVictoryContinueClicked -= OnClaimVictoryContinuePressed;
@@ -373,6 +383,26 @@ public class GameController
     // covering both game and session state changes in a single entry.
     private bool _handlerMutatedGame;
 
+    // --- Automate (AI finishes the human's turn) --------------------------
+    // The chooser the Automate loop asks for the current human's next
+    // action. Unlike the AI driver's chooser (production:
+    // AiDispatcher.ChooseForCurrentPlayer, which returns null for a
+    // Human slot), this one is invoked FOR a human slot, so it defaults
+    // to ComputerAi.ChooseNextAction directly. Tests inject scripts.
+    private readonly Func<GameState, PlayerId, HashSet<HexCoord>, Random, AiAction?> _automateChooser;
+    private bool _automating;
+    // Latched when automation stops because the chooser ran dry
+    // ("exhausted") — re-pressing Automate would no-op, so the button
+    // greys out. Cleared by anything that invalidates the "nothing left
+    // to automate" verdict: undo/redo (ApplySnapshot), a manual
+    // state-changing move (TrackHandler push), or ending the turn.
+    private bool _automateExhausted;
+
+    /// <summary>True while the Automate loop is playing the current
+    /// human's remaining moves. Read by Main's pacer-speed closure to
+    /// select the Automate speed setting, and by the HUD state push.</summary>
+    public bool IsAutomating => _automating;
+
     // Tutorial Preview hooks. _humanActionValidator (set via the
     // constructor's humanActionValidator param) gates every
     // state-mutating human input: input handlers build the proposed
@@ -477,6 +507,10 @@ public class GameController
         // belt-and-braces guarantee: even if Godot's input ordering
         // ever changed, the controller's invariants are protected).
         if (_ops.InSilentAiBatch()) return;
+        // Any real human input interrupts a running automation before the
+        // handler body runs — the loop's own execute step is exempt
+        // (_inAutomateStep), it IS the automation.
+        if (_automating && !_inAutomateStep) StopAutomation("input");
         int beatsBefore = _recorder.BeatsCount;
         UndoEntry pre = CaptureCurrentSnapshot();
         _handlerMutatedGame = false;
@@ -497,6 +531,15 @@ public class GameController
         {
             if (_pendingHumanBeat != null) _recorder.RecordBeat(_pendingHumanBeat);
             return;
+        }
+        // A manual game-mutating action (not the automate loop's own
+        // step) invalidates the exhausted-automation verdict. The body's
+        // own RefreshViews already ran with the latch still set, so an
+        // actual un-latch needs one more refresh to re-enable the button.
+        if (_handlerMutatedGame && !_inAutomateStep && _automateExhausted)
+        {
+            _automateExhausted = false;
+            _ops.RefreshViews();
         }
         SessionStateSnapshot postSession = SessionStateSnapshot.Capture(_session);
         bool sessionChanged = !pre.Session.Equals(postSession);
@@ -1284,6 +1327,185 @@ public class GameController
         _ops.RefreshViews();
     }
 
+    // --- Automate loop ------------------------------------------------------
+    // A human-turn analogue of AiTurnDriver's paced step machine: ask the
+    // automate chooser for the current human's next action, preview-highlight
+    // the acting territory, execute it, repeat — until the chooser returns
+    // null. Unlike the AI driver it never ends the turn, and every executed
+    // move runs through TrackHandler so it pushes its own UndoEntry (with the
+    // matching replay-beat batch) exactly like a hand-made move. Interruption
+    // is a flag checked at every beat entry: stopping between beats abandons
+    // at most an un-applied pending action, never a half-applied mutation.
+
+    // Mirrors AiTurnDriver.MaxAiStepsPerPlayer: a runaway-chooser backstop,
+    // far above any real turn's action count.
+    private const int MaxAutomateStepsPerTurn = 64;
+    private AiAction? _pendingAutomateAction;
+    private readonly HashSet<HexCoord> _automateVisited = new();
+    private int _automateSteps;
+    // True only while StepAutomateExecute's own TrackHandler call is on the
+    // stack, so the "any human input interrupts automation" hook in
+    // TrackHandler can tell the loop's moves from real input.
+    private bool _inAutomateStep;
+
+    private void OnAutomatePressed()
+    {
+        if (_recorder.IsReplaying) return;
+        if (_ops.InSilentAiBatch()) return;
+        // Tutorial Record/Preview: automated moves would bypass the
+        // script validator and desync the beat cursor.
+        if (_previewMode || _recordingMode) return;
+        if (_automating)
+        {
+            StopAutomation("user");
+            return;
+        }
+        if (_session.IsGameOver || _ops.GameEndedFired) return;
+        if (_state.Turns.CurrentPlayer.IsAi) return;
+        if (_session.PendingDefeatScreen.HasValue || _session.PendingClaimVictory.HasValue) return;
+        // Cancel any half-built intent (open buy/build/move mode) first,
+        // same as Esc — TrackHandler-wrapped so the cancel is its own
+        // undo entry (deduped away when nothing was pending).
+        TrackHandler(OnCancelActionPressedBody);
+        _automating = true;
+        _automateVisited.Clear();
+        _automateSteps = 0;
+        _pendingAutomateAction = null;
+        Log.Debug(Log.LogCategory.Automate,
+            $"[automate] start T{_state.Turns.TurnNumber} {_state.Turns.CurrentPlayer.Name} " +
+            $"undoDepth={_session.Undo.UndoCount}");
+        _ops.RefreshViews(); // Automate button flips to running/Stop
+        _aiPacer.Schedule(StepAutomatePreview, StepPacing.AiActionDelayMs);
+    }
+
+    /// <summary>
+    /// Conditions that end automation regardless of the chooser: the
+    /// game ended, control left the human (defensive), or an overlay
+    /// needs a player decision (defeat / claim-victory).
+    /// </summary>
+    private bool AutomateHalted(out string reason)
+    {
+        if (_ops.GameEndedFired || _session.IsGameOver) { reason = "game-over"; return true; }
+        if (_state.Turns.CurrentPlayer.IsAi) { reason = "not-human"; return true; }
+        if (_session.PendingDefeatScreen.HasValue || _session.PendingClaimVictory.HasValue)
+        {
+            reason = "overlay";
+            return true;
+        }
+        reason = "";
+        return false;
+    }
+
+    private void StepAutomatePreview()
+    {
+        if (!_automating) return;
+        if (AutomateHalted(out string halt)) { StopAutomation(halt); return; }
+        if (_automateSteps >= MaxAutomateStepsPerTurn) { StopAutomation("step-cap"); return; }
+        PlayerId me = _state.Turns.CurrentPlayer.Id;
+        AiAction? action = _automateChooser(_state, me, _automateVisited, _ops.Rng);
+        if (action == null)
+        {
+            StopAutomation("exhausted", exhausted: true);
+            return;
+        }
+        _pendingAutomateAction = action;
+        _ops.ShowHighlightAndRefresh(_aiDriver.ResolveAiActingTerritory(action));
+        _aiPacer.Schedule(StepAutomateExecute, StepPacing.AiPreviewDelayMs);
+    }
+
+    private void StepAutomateExecute()
+    {
+        if (!_automating) return;
+        AiAction? action = _pendingAutomateAction;
+        _pendingAutomateAction = null;
+        if (action == null) return;
+        if (AutomateHalted(out string halt)) { StopAutomation(halt); return; }
+        _automateSteps++;
+        PlayerId me = _state.Turns.CurrentPlayer.Id;
+        HexCoord? result = null;
+        _inAutomateStep = true;
+        try
+        {
+            // The move is a first-class human action: TrackHandler
+            // captures the pre-state and pushes one UndoEntry, batching
+            // the replay beat ApplyAiActionCore records inside the body.
+            TrackHandler(() =>
+            {
+                _handlerMutatedGame = true;
+                result = _aiDriver.ApplyAiActionCore(action);
+            });
+        }
+        finally
+        {
+            _inAutomateStep = false;
+        }
+        RebindSelectionAfterAutomateMove();
+        _ops.CheckGameEndConditions();
+        Log.Debug(Log.LogCategory.Automate,
+            $"[automate] move {_automateSteps}: {DescribeAutomateAction(action)} " +
+            $"undoDepth={_session.Undo.UndoCount}");
+        if (AutomateHalted(out string postHalt)) { StopAutomation(postHalt); return; }
+        Territory? after = result.HasValue
+            ? TerritoryLookup.FindOwnedContaining(_state.Territories, me, result.Value)
+            : null;
+        _ops.ShowHighlightAndRefresh(after);
+        _aiPacer.Schedule(StepAutomatePreview, StepPacing.AiActionDelayMs);
+    }
+
+    /// <summary>
+    /// End automation and hand control back to the human. Never called
+    /// mid-mutation: every caller sits between pacer beats (or at a
+    /// beat's guarded entry), so already-executed moves stay individually
+    /// undoable and the state is a clean between-moves state. Stale
+    /// scheduled beats no-op on the cleared flag, so the shared pacer is
+    /// never cancelled (an AI-driver callback could be in flight).
+    /// </summary>
+    private void StopAutomation(string reason, bool exhausted = false)
+    {
+        if (!_automating) return;
+        _automating = false;
+        _pendingAutomateAction = null;
+        _automateExhausted = exhausted;
+        Log.Debug(Log.LogCategory.Automate,
+            $"[automate] stop after {_automateSteps} move(s): {reason} " +
+            $"undoDepth={_session.Undo.UndoCount}");
+        // Restore the highlight to the player's own selection (clears
+        // the loop's acting-territory highlight) and un-toggle the button.
+        _ops.ShowHighlightAndRefresh(_session.SelectedTerritory);
+    }
+
+    /// <summary>
+    /// An automated capture recomputes the territory list, leaving
+    /// <see cref="SessionState.SelectedTerritory"/> pointing at a stale
+    /// object (manual moves rebind via
+    /// <see cref="RebindSelectionToContaining"/>; the ExecuteAi* path
+    /// never touches the selection). Re-resolve the same logical
+    /// territory by its capital so the selection border keeps tracking
+    /// the territory's current shape; a selection whose capital no
+    /// longer exists clears.
+    /// </summary>
+    private void RebindSelectionAfterAutomateMove()
+    {
+        Territory? sel = _session.SelectedTerritory;
+        if (sel == null) return;
+        foreach (Territory t in _state.Territories)
+        {
+            if (ReferenceEquals(t, sel)) return; // still current
+        }
+        _session.SelectedTerritory = sel.HasCapital
+            ? TerritoryLookup.FindByCapital(_state.Territories, sel.Capital!.Value)
+            : null;
+    }
+
+    private static string DescribeAutomateAction(AiAction action) => action switch
+    {
+        AiMoveAction mv => $"Move {mv.Source}->{mv.Destination}",
+        AiBuyUnitAction bu => $"Buy {bu.Level}@{bu.Capital}->{bu.Destination}",
+        AiBuildTowerAction bt => $"Tower@{bt.Capital}->{bt.Destination}",
+        AiBuyCombineAction bc => $"BuyCombine {bc.BuyLevel}@{bc.Capital}->{bc.CombineTarget}",
+        _ => action.GetType().Name,
+    };
+
     /// <summary>
     /// Defeat-overlay Continue handler. Clears the overlay flag and
     /// re-arms the AI loop so it picks up where it left off (defeat
@@ -1294,6 +1516,7 @@ public class GameController
     {
         if (_recorder.IsReplaying) return;
         if (_ops.InSilentAiBatch()) return;
+        if (_automating) StopAutomation("input");
         if (!_session.PendingDefeatScreen.HasValue) return;
         if (_humanActionValidator != null && !_humanActionValidator(new ReplayDismissDefeatBeat()))
         {
@@ -1331,6 +1554,7 @@ public class GameController
         if (_state.FogEnabled) return;
         if (_recorder.IsReplaying) return;
         if (_ops.InSilentAiBatch()) return;
+        if (_automating) StopAutomation("input");
         if (_session.IsGameOver) return;
         if (!_session.Undo.CanUndo) return;
         _hud.DismissCapitalAlertNotice();
@@ -1344,6 +1568,7 @@ public class GameController
         if (_state.FogEnabled) return;
         if (_recorder.IsReplaying) return;
         if (_ops.InSilentAiBatch()) return;
+        if (_automating) StopAutomation("input");
         if (_session.IsGameOver) return;
         if (!_session.Undo.CanUndo) return;
         _hud.DismissCapitalAlertNotice();
@@ -1361,6 +1586,7 @@ public class GameController
         if (_state.FogEnabled) return;
         if (_recorder.IsReplaying) return;
         if (_ops.InSilentAiBatch()) return;
+        if (_automating) StopAutomation("input");
         if (_session.IsGameOver) return;
         if (!_session.Undo.CanRedo) return;
         _hud.DismissCapitalAlertNotice();
@@ -1374,6 +1600,7 @@ public class GameController
         if (_state.FogEnabled) return;
         if (_recorder.IsReplaying) return;
         if (_ops.InSilentAiBatch()) return;
+        if (_automating) StopAutomation("input");
         if (_session.IsGameOver) return;
         if (!_session.Undo.CanRedo) return;
         _hud.DismissCapitalAlertNotice();
@@ -1419,6 +1646,9 @@ public class GameController
     /// </summary>
     private void ApplySnapshot(UndoEntry entry)
     {
+        // Undo/redo re-opens moves the exhausted automate verdict ruled
+        // out, so the Automate button un-latches.
+        _automateExhausted = false;
         _state.Territories = entry.Game.ApplyTo(_state.Grid, _state.Treasury);
         _map.RebuildAfterTerritoryChange();
         entry.Session.ApplyTo(_session, _state.Territories);
@@ -1927,6 +2157,7 @@ public class GameController
     {
         if (_recorder.IsReplaying) return;
         if (_ops.InSilentAiBatch()) return;
+        if (_automating) StopAutomation("input");
         if (_session.IsGameOver) return;
         if (_humanActionValidator != null && !_humanActionValidator(new ReplayEndTurnBeat()))
         {
@@ -1986,6 +2217,8 @@ public class GameController
     /// </summary>
     private void EndTurnNow()
     {
+        // A fresh turn starts with a fresh automate verdict.
+        _automateExhausted = false;
         // Record the end-turn beat with the *ending* player's actor /
         // turn metadata, before clearing the undo stack and advancing.
         // AI implicit end-of-turn (the driver's null-action branch)
@@ -2033,6 +2266,7 @@ public class GameController
     {
         if (_recorder.IsReplaying) return;
         if (_ops.InSilentAiBatch()) return;
+        if (_automating) StopAutomation("input");
         if (!_session.PendingClaimVictory.HasValue) return;
         (PlayerId color, int threshold) = _session.PendingClaimVictory.Value;
         if (_humanActionValidator != null && !_humanActionValidator(
@@ -2059,6 +2293,7 @@ public class GameController
     {
         if (_recorder.IsReplaying) return;
         if (_ops.InSilentAiBatch()) return;
+        if (_automating) StopAutomation("input");
         if (!_session.PendingClaimVictory.HasValue) return;
         (PlayerId color, int threshold) = _session.PendingClaimVictory.Value;
         if (_humanActionValidator != null && !_humanActionValidator(

@@ -36,6 +36,14 @@ public interface IHudView
     event Action? NextUnitClicked;
     event Action? PreviousUnitClicked;
     event Action? CancelActionPressed;
+
+    /// <summary>
+    /// Toggle button: on a human turn, starts AI-driven automation of
+    /// the player's remaining moves; pressed again while running, stops
+    /// it between moves. See <see cref="SetAutomateState"/> for the
+    /// button state the controller pushes back.
+    /// </summary>
+    event Action? AutomateClicked;
     /// <summary>
     /// Continue button on the defeat overlay. Dismisses the overlay
     /// and resumes play (paused AI loop picks up where it left off).
@@ -181,6 +189,16 @@ public interface IHudView
     /// top-level human handler so any non-tap action dismisses.
     /// </summary>
     void DismissCapitalAlertNotice();
+
+    /// <summary>
+    /// Push the Automate toggle button's state. Called from the single
+    /// RefreshViews path: <paramref name="enabled"/> when it's a human
+    /// turn with actions remaining (or automation is running, so Stop
+    /// stays reachable); <paramref name="running"/> while the automate
+    /// loop is active — the button renders pressed-in with a pause
+    /// glyph and clears automatically when automation stops.
+    /// </summary>
+    void SetAutomateState(bool enabled, bool running);
 }
 
 /// <summary>

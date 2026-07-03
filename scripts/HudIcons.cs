@@ -517,6 +517,42 @@ public static class HudIcons
         t.DrawColoredPolygon(hole, stroke);
     }
 
+    /// <summary>
+    /// Automate glyph: the settings gear with a centered play triangle
+    /// (idle: "AI plays the rest of my turn") that swaps to a pause
+    /// double-bar while automation runs ("press again to stop").
+    /// </summary>
+    public static void DrawAutomate(
+        CanvasItem t, Vector2 center, float radius, Color modulate, Color symbol, bool running)
+    {
+        DrawGear(t, center, radius, modulate);
+        // Enlarged dark hub over the gear's own (too-small) hole so the
+        // inner symbol sits on a quiet backdrop.
+        float hubR = radius * 0.70f * 0.48f;
+        const int segments = 24;
+        var hub = new Vector2[segments];
+        for (int i = 0; i < segments; i++)
+        {
+            float a = i * Mathf.Tau / segments;
+            hub[i] = center + new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * hubR;
+        }
+        t.DrawColoredPolygon(hub, Outline * modulate);
+        if (running)
+        {
+            float barH = hubR * 1.1f;
+            float barW = hubR * 0.30f;
+            float gap = hubR * 0.22f;
+            t.DrawRect(new Rect2(
+                center + new Vector2(-gap - barW, -barH * 0.5f), new Vector2(barW, barH)), symbol);
+            t.DrawRect(new Rect2(
+                center + new Vector2(gap, -barH * 0.5f), new Vector2(barW, barH)), symbol);
+        }
+        else
+        {
+            DrawEndTurnTriangle(t, center, hubR * 1.15f, symbol);
+        }
+    }
+
     // Six-sided die — used by the map editor's "Generate map" button.
     // Rendered edge-on as a standard isometric projection so the icon
     // reads as 3D: top face (1 pip), right face (2 pips), front face

@@ -45,6 +45,7 @@ public static class Log
         Tide = 13,    // Rising Tides mode: per-turn shore submerge / mountain demote
         Fog = 14,     // Fog Of War mode: per-refresh human visibility recompute
         Tree = 15,    // per-turn whole-map tree/grave incidence census (treepocalypse)
+        Automate = 16, // human-turn Automate loop: start / per-move / stop-with-reason
     }
 
     /// <summary>Severity, ascending. <see cref="Off"/> disables a

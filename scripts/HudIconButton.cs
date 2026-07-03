@@ -14,6 +14,7 @@ public enum HudIcon
     Options,
     Die,
     AddText,
+    Automate,
 }
 
 /// <summary>
@@ -98,6 +99,25 @@ public partial class HudIconButton : Button
         {
             if (_ctaActive == value) return;
             _ctaActive = value;
+            QueueRedraw();
+        }
+    }
+
+    private bool _automateRunning;
+
+    /// <summary>
+    /// For <see cref="HudIcon.Automate"/> only: while true the glyph's
+    /// inner symbol renders as a pause (double vertical bar) instead of
+    /// a play triangle, signaling "press again to stop". Driven by
+    /// <see cref="HudView.SetAutomateState"/>.
+    /// </summary>
+    public bool AutomateRunning
+    {
+        get => _automateRunning;
+        set
+        {
+            if (_automateRunning == value) return;
+            _automateRunning = value;
             QueueRedraw();
         }
     }
@@ -248,6 +268,7 @@ public partial class HudIconButton : Button
         HudIcon.Options => "Options — Esc",
         HudIcon.Die => "Generate map from seed",
         HudIcon.AddText => "Insert a tutorial-only narration beat here",
+        HudIcon.Automate => "Automate remaining moves",
         _ => "",
     };
 
@@ -285,6 +306,7 @@ public partial class HudIconButton : Button
             case HudIcon.Options: HudIcons.DrawGear(this, center, r, modulate); break;
             case HudIcon.Die: HudIcons.DrawDie(this, center, r, stroke); break;
             case HudIcon.AddText: HudIcons.DrawSpeechBubble(this, center, r, stroke); break;
+            case HudIcon.Automate: HudIcons.DrawAutomate(this, center, r, modulate, stroke, _automateRunning); break;
         }
 
         if (_selected)
