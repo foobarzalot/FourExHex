@@ -348,14 +348,14 @@ public partial class HexMapView : Node2D, IHexMapView
     private float _bottomInset = 0f;
 
     // Board-local pixel pad (pre-zoom) around the nominal grid that the
-    // player can scroll into. Sized to exceed worst-case D1 floating-HUD
-    // occlusion (portrait bottom bar 200 + tutorial 60 = 260; portrait
-    // stacked top chips ~148; landscape rails 78) so an edge hex can
-    // always be panned clear of the chips/buttons that float over it.
-    // Symmetric on all four sides — rotation flips axes so a single value
-    // covers both orientations. Drives both the water rim render and the
-    // ClampPan extent.
-    private const float ScrollPaddingPx = 300f;
+    // player can scroll into. Sized to comfortably exceed worst-case D1
+    // floating-HUD occlusion (portrait bottom bar 200 + tutorial 60 = 260;
+    // portrait stacked top chips ~148; landscape rails 78) so an edge hex can
+    // always be panned well clear of the chips/buttons that float over it,
+    // with open water to spare on device. Symmetric on all four sides —
+    // rotation flips axes so a single value covers both orientations. Drives
+    // both the water rim render and the ClampPan extent.
+    private const float ScrollPaddingPx = 600f;
 
     // Board rotation: 0 in landscape, −90° (CCW) in portrait so the wide map
     // fills a tall viewport. The whole board node rotates; icon glyphs
