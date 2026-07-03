@@ -247,6 +247,9 @@ public class AiTurnDriver
             $"[T{_state.Turns.TurnNumber}] Vikings end phase after " +
             $"{_aiStepsThisPlayer} actions " +
             $"({(action == null ? "no actions left" : "step cap reached")})");
+        // Record the phase's terminator beat (live only) — replay's
+        // ReplayVikingTurnEndBeat handler runs the same completion below.
+        if (!_recorder.IsReplaying) _recorder.RecordBeat(new ReplayVikingTurnEndBeat());
         _vikingPhase = false;
         _ops.CompleteVikingTurn();
         if (!_session.IsGameOver && !_ops.GameEndedFired)
@@ -390,11 +393,19 @@ public class AiTurnDriver
         switch (action)
         {
             case AiMoveAction mv:
-                // Viking land moves execute through the owner-aware core;
-                // their replay beats are the viking-specific kinds (not a
-                // ReplayMoveBeat, which replays as the current player).
+                // Viking land moves execute through the owner-aware core and
+                // record the viking-specific beat kind (a ReplayMoveBeat
+                // would replay as the current player's move).
                 if (_vikingPhase)
                 {
+                    if (!_recorder.IsReplaying)
+                    {
+                        _recorder.RecordBeat(new ReplayVikingMoveBeat
+                        {
+                            From = mv.Source,
+                            To = mv.Destination,
+                        });
+                    }
                     _ops.ExecuteVikingMove(mv.Source, mv.Destination);
                     return mv.Destination;
                 }
@@ -405,12 +416,28 @@ public class AiTurnDriver
                 _ops.ExecuteAiMove(mv.Source, mv.Destination);
                 return mv.Destination;
             case VikingDisembarkAction vd:
+                if (!_recorder.IsReplaying)
+                {
+                    _recorder.RecordBeat(new ReplayVikingDisembarkBeat { Sea = vd.Sea, Land = vd.Land });
+                }
                 _ops.ExecuteVikingDisembark(vd.Sea, vd.Land);
                 return vd.Land;
             case VikingPerishAtSeaAction vp:
+                if (!_recorder.IsReplaying)
+                {
+                    _recorder.RecordBeat(new ReplayVikingPerishBeat { Sea = vp.Sea });
+                }
                 _ops.ExecuteVikingPerish(vp.Sea);
                 return vp.Sea;
             case VikingSpawnWaveAction vs:
+                if (!_recorder.IsReplaying)
+                {
+                    _recorder.RecordBeat(new ReplayVikingSpawnBeat
+                    {
+                        WaveIndex = vs.WaveIndex,
+                        Spawns = vs.Spawns,
+                    });
+                }
                 _ops.ExecuteVikingSpawnWave(vs);
                 return vs.Spawns.Count > 0 ? vs.Spawns[0].Coord : new HexCoord(0, 0);
             case AiBuyUnitAction bu:

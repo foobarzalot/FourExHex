@@ -20,6 +20,36 @@ public class GameStateSnapshotTests
     private static IReadOnlyList<Territory> TerritoriesFor(HexGrid grid) =>
         TestHelpers.BuildTerritoriesFromGrid(grid);
 
+    // --- Viking-state exclusion --------------------------------------------
+
+    [Fact]
+    public void Snapshot_ExcludesVikingState()
+    {
+        // Viking Raiders state (raiders at sea + wave cursors) is deliberately
+        // NOT captured by undo snapshots: it mutates only during the viking
+        // pseudo-turn, the human undo stack clears at end of turn, landed
+        // vikings are ordinary grid occupants (snapshotted normally), and sea
+        // vikings are unreachable by any human action. This pins the design —
+        // ApplyTo must leave VikingState untouched (the replay rewind resets
+        // it separately via VikingState.Reset).
+        HexGrid grid = BuildTwoTileRedGrid();
+        var treasury = new Treasury();
+        var territories = TerritoriesFor(grid);
+        var players = new List<Player> { new Player("Red", Red) };
+        var state = new GameState(
+            grid, territories, players, new TurnState(players), treasury,
+            mode: GameMode.VikingRaiders);
+
+        GameStateSnapshot snap = GameStateSnapshot.Capture(grid, treasury, territories);
+        state.Vikings.AddAtSea(new SeaViking(new HexCoord(5, 5), UnitLevel.Captain));
+        state.Vikings.NextWaveIndex = 3;
+
+        snap.ApplyTo(grid, treasury);
+
+        Assert.Single(state.Vikings.AtSea);
+        Assert.Equal(3, state.Vikings.NextWaveIndex);
+    }
+
     // --- Capture ----------------------------------------------------------
 
     [Fact]

@@ -334,6 +334,13 @@ public class ReplayRecorder
         // replay re-animates fog from scratch (the setup refresh below re-marks
         // only the initial sight). No-op outside Fog Of War.
         _state.ClearSeen();
+        // Viking Raiders: the undo snapshot deliberately excludes viking
+        // state, so rewind it explicitly to game-start defaults (empty sea,
+        // wave cursors at 0); the recorded VikingSpawn/Disembark/... beats
+        // re-drive it from there. No-op outside Viking Raiders.
+        _state.Vikings.Reset(
+            System.Array.Empty<SeaViking>(),
+            nextWaveIndex: 0, lastCompletedRound: 0, lastSpawnRound: 0);
         _state.Turns.Reset(_initialCurrentPlayerIndex, _initialTurnNumber);
         _session.Winner = null;
         _session.PendingDefeatScreen = null;
@@ -431,7 +438,7 @@ public class ReplayRecorder
         if (_replayIndex >= _replayBeats.Count) { EndReplay(); return; }
 
         ReplayBeat beat = _replayBeats[_replayIndex++];
-        bool crossesTurn = beat is ReplayEndTurnBeat;
+        bool crossesTurn = beat is ReplayEndTurnBeat or ReplayVikingTurnEndBeat;
 
         ExecuteReplayBeat(beat);
 
@@ -484,6 +491,29 @@ public class ReplayRecorder
             case ReplayLongPressRallyBeat rally:
                 _ops.ApplyLongPressRally(rally.Target);
                 break;
+            case ReplayVikingMoveBeat vm:
+                _ops.ExecuteVikingMove(vm.From, vm.To);
+                break;
+            case ReplayVikingDisembarkBeat vd:
+                _ops.ExecuteVikingDisembark(vd.Sea, vd.Land);
+                break;
+            case ReplayVikingPerishBeat vp:
+                _ops.ExecuteVikingPerish(vp.Sea);
+                break;
+            case ReplayVikingSpawnBeat vs:
+                _ops.ExecuteVikingSpawnWave(new VikingSpawnWaveAction(vs.WaveIndex, vs.Spawns));
+                break;
+            case ReplayVikingTurnEndBeat _:
+                // Same completion the live driver's EndVikingPhaseCore runs:
+                // close the phase, then the deferred StartPlayerTurn for the
+                // waiting (non-eliminated) player.
+                _ops.CompleteVikingTurn();
+                if (!_session.IsGameOver)
+                {
+                    _ops.SkipEliminatedCurrentPlayers();
+                    _ops.StartPlayerTurn();
+                }
+                break;
             case TutorialOnlyBeat _:
                 // Tutorial-only beats (e.g., narration text) are
                 // authoring-only — the in-game Replay button silently
@@ -504,6 +534,15 @@ public class ReplayRecorder
         _ops.EndOfTurnProcessing();
         if (_session.IsGameOver) return;
         _ops.AdvanceToNextActivePlayer();
+        if (_ops.VikingTurnPending)
+        {
+            // Viking round boundary — the log carries explicit viking beats
+            // next. Enter the phase exactly like the live driver (RNG
+            // stream + move-flag reset) and defer StartPlayerTurn to the
+            // ReplayVikingTurnEndBeat.
+            _ops.BeginVikingTurn();
+            return;
+        }
         _ops.StartPlayerTurn();
     }
 
@@ -517,7 +556,7 @@ public class ReplayRecorder
     {
         if (_replayIndex >= _replayBeats.Count) return InstantStep.Exhausted;
         ReplayBeat beat = _replayBeats[_replayIndex++];
-        bool isEndTurn = beat is ReplayEndTurnBeat;
+        bool isEndTurn = beat is ReplayEndTurnBeat or ReplayVikingTurnEndBeat;
         ExecuteReplayBeat(beat);
         _ops.CheckGameEndConditions();
         if (_session.IsGameOver) return InstantStep.Exhausted;
@@ -607,6 +646,8 @@ public class ReplayRecorder
             ReplayBuyBeat bu => TerritoryLookup.FindOwnedContaining(_state.Territories, owner, bu.Capital),
             ReplayBuildTowerBeat bt => TerritoryLookup.FindOwnedContaining(_state.Territories, owner, bt.Capital),
             ReplayLongPressRallyBeat rally => TerritoryLookup.FindOwnedContaining(_state.Territories, owner, rally.Target),
+            ReplayVikingMoveBeat vm => TerritoryLookup.FindOwnedContaining(
+                _state.Territories, PlayerId.None, vm.From),
             _ => null,
         };
     }

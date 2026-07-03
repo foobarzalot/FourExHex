@@ -27,6 +27,8 @@ public class ReplayFidelityTests
     [InlineData(GameMode.Freeform, true)]
     [InlineData(GameMode.RisingTides, false)]
     [InlineData(GameMode.RisingTides, true)]
+    [InlineData(GameMode.VikingRaiders, false)]
+    [InlineData(GameMode.VikingRaiders, true)]
     public void Replay_SixComputerPlayers_MatchesSavedStateChecksum(
         GameMode mode, bool randomized)
     {

@@ -58,9 +58,9 @@ public class SaveMigrationTests
     }
 
     [Fact]
-    public void CurrentFormatVersion_IsSixteen()
+    public void CurrentFormatVersion_IsSeventeen()
     {
-        Assert.Equal(16, SaveSerializer.CurrentFormatVersion);
+        Assert.Equal(17, SaveSerializer.CurrentFormatVersion);
     }
 
     [Fact]
@@ -69,7 +69,7 @@ public class SaveMigrationTests
         (GameState s, IReadOnlyList<Player> p) = BuildState();
         string json = SaveSerializer.Serialize(s, 1, p, "slot", 100);
 
-        foreach (int bad in new[] { 1, 17, 99 })
+        foreach (int bad in new[] { 1, 18, 99 })
         {
             string mutated = json.Replace(
                 $"\"FormatVersion\": {SaveSerializer.CurrentFormatVersion}",

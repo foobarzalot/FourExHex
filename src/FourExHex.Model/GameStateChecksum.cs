@@ -98,6 +98,23 @@ public static class GameStateChecksum
             sb.Append(row).Append('\n');
         }
 
+        // Viking Raiders block — appended only when non-default, so
+        // Freeform / Rising Tides canonical strings are unchanged by the
+        // feature. AtSea is already coord-sorted (VikingState invariant).
+        VikingState vikings = state.Vikings;
+        if (vikings.AtSea.Count > 0 || vikings.NextWaveIndex > 0
+            || vikings.LastCompletedRound > 0 || vikings.LastSpawnRound > 0)
+        {
+            sb.Append("VK|").Append(vikings.NextWaveIndex)
+              .Append('|').Append(vikings.LastCompletedRound)
+              .Append('|').Append(vikings.LastSpawnRound).Append('\n');
+            foreach (SeaViking v in vikings.AtSea)
+            {
+                sb.Append("VS|").Append(v.Coord.Q).Append(',').Append(v.Coord.R)
+                  .Append('|').Append(v.Level).Append('\n');
+            }
+        }
+
         sb.Append("Turn|").Append(state.Turns.TurnNumber)
           .Append('|').Append(state.Turns.CurrentPlayerIndex).Append('\n');
 

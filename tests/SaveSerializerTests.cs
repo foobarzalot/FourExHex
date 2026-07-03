@@ -144,9 +144,81 @@ public class SaveSerializerTests
     }
 
     [Fact]
-    public void CurrentFormatVersion_IsSixteen()
+    public void CurrentFormatVersion_IsSeventeen()
     {
-        Assert.Equal(16, SaveSerializer.CurrentFormatVersion);
+        Assert.Equal(17, SaveSerializer.CurrentFormatVersion);
+    }
+
+    // --- Viking Raiders state -------------------------------------------------
+
+    private static (GameState state, List<Player> players) BuildVikingState()
+    {
+        var red = new Player("Red", PlayerId.FromIndex(0), PlayerKind.Human);
+        var blue = new Player("Blue", PlayerId.FromIndex(1), PlayerKind.Computer);
+        var players = new List<Player> { red, blue };
+        HexGrid grid = TestHelpers.BuildRectGrid(4, 3, blue.Id);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Owner = red.Id;
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(
+            grid, territories, players, new TurnState(players, 0, 7), new Treasury(),
+            waterCoords: new HashSet<HexCoord> { HexCoord.FromOffset(4, 1) },
+            mode: GameMode.VikingRaiders);
+        return (state, players);
+    }
+
+    [Fact]
+    public void Serialize_RoundTripsVikingState()
+    {
+        (GameState state, List<Player> players) = BuildVikingState();
+        state.Vikings.AddAtSea(new SeaViking(HexCoord.FromOffset(4, 1), UnitLevel.Soldier));
+        state.Vikings.NextWaveIndex = 2;
+        state.Vikings.LastCompletedRound = 6;
+        state.Vikings.LastSpawnRound = 6;
+
+        string json = SaveSerializer.Serialize(state, 42, players, "vik", 100);
+        GameState loaded = SaveSerializer.Deserialize(json).State;
+
+        Assert.Equal(GameMode.VikingRaiders, loaded.Mode);
+        SeaViking v = Assert.Single(loaded.Vikings.AtSea);
+        Assert.Equal(HexCoord.FromOffset(4, 1), v.Coord);
+        Assert.Equal(UnitLevel.Soldier, v.Level);
+        Assert.Equal(2, loaded.Vikings.NextWaveIndex);
+        Assert.Equal(6, loaded.Vikings.LastCompletedRound);
+        Assert.Equal(6, loaded.Vikings.LastSpawnRound);
+    }
+
+    [Fact]
+    public void NonVikingSave_OmitsVikingFields()
+    {
+        (GameState state, IReadOnlyList<Player> players) = BuildRichState();
+        string json = SaveSerializer.Serialize(state, 42, players, "s", 100);
+
+        Assert.DoesNotContain("Viking", json);
+        GameState loaded = SaveSerializer.Deserialize(json).State;
+        Assert.Empty(loaded.Vikings.AtSea);
+        Assert.Equal(0, loaded.Vikings.NextWaveIndex);
+        Assert.Equal(0, loaded.Vikings.LastCompletedRound);
+        Assert.Equal(0, loaded.Vikings.LastSpawnRound);
+    }
+
+    [Fact]
+    public void Checksum_IncludesVikingState_ButNotForDefaults()
+    {
+        (GameState a, _) = BuildVikingState();
+        (GameState b, _) = BuildVikingState();
+        Assert.Equal(GameStateChecksum.Compute(a), GameStateChecksum.Compute(b));
+        // Default viking state adds nothing to the canonical string, so
+        // Freeform/RisingTides digests are unchanged by the feature.
+        Assert.DoesNotContain("VK|", GameStateChecksum.Stringify(a));
+
+        b.Vikings.AddAtSea(new SeaViking(HexCoord.FromOffset(4, 1), UnitLevel.Captain));
+        Assert.NotEqual(GameStateChecksum.Compute(a), GameStateChecksum.Compute(b));
+
+        b.Vikings.RemoveAtSea(HexCoord.FromOffset(4, 1));
+        Assert.Equal(GameStateChecksum.Compute(a), GameStateChecksum.Compute(b));
+        b.Vikings.NextWaveIndex = 3;
+        Assert.NotEqual(GameStateChecksum.Compute(a), GameStateChecksum.Compute(b));
     }
 
     [Fact]

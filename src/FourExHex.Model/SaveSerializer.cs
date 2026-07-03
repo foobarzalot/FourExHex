@@ -112,7 +112,7 @@ public static class SaveSerializer
     /// Bump on any breaking schema change. <see cref="Deserialize"/>
     /// rejects mismatched values rather than attempting migration.
     /// </summary>
-    public const int CurrentFormatVersion = 16;
+    public const int CurrentFormatVersion = 17;
 
     public static string Serialize(
         GameState state,
@@ -210,6 +210,16 @@ public static class SaveSerializer
             // Fog Of War: the human's explored coords. Null (omitted) when
             // empty — every non-fog save — so the wire format stays clean.
             Seen = SerializeSeen(state.Seen),
+            // Viking Raiders: raiders at sea + wave-schedule cursors. All
+            // null (omitted) at their defaults, so non-viking saves' wire
+            // format is unchanged.
+            VikingAtSea = SerializeVikingsAtSea(state.Vikings),
+            VikingNextWave = state.Vikings.NextWaveIndex == 0
+                ? null : state.Vikings.NextWaveIndex,
+            VikingLastRound = state.Vikings.LastCompletedRound == 0
+                ? null : state.Vikings.LastCompletedRound,
+            VikingLastSpawnRound = state.Vikings.LastSpawnRound == 0
+                ? null : state.Vikings.LastSpawnRound,
         };
         // Source-gen path (FourExHexJsonContext) so this works under iOS AOT,
         // where reflection-based serialization is disabled. The context's
@@ -306,7 +316,10 @@ public static class SaveSerializer
             mode: data.Mode ?? GameMode.Freeform,
             useRandomizedSelection: data.UseRandomizedSelection,
             // Restore the human's explored coords; empty for non-fog/legacy saves.
-            seen: DeserializeSeen(data.Seen))
+            seen: DeserializeSeen(data.Seen),
+            // Restore raiders at sea + wave cursors; all-default for
+            // non-viking / pre-17 saves.
+            vikings: DeserializeVikings(data))
         {
             // Restore the locked tide forecast; empty for freeform saves so
             // the reloaded game telegraphs/applies nothing.
@@ -432,6 +445,61 @@ public static class SaveSerializer
     }
 
     // --- Pending tide forecast -------------------------------
+
+    /// <summary>Viking raiders at sea, or null (field omitted) when none —
+    /// every non-viking save and any viking save with an empty sea.</summary>
+    private static List<SeaVikingDto>? SerializeVikingsAtSea(VikingState vikings)
+    {
+        if (vikings.AtSea.Count == 0) return null;
+        return SerializeSpawnList(vikings.AtSea);
+    }
+
+    private static List<SeaVikingDto> SerializeSpawnList(IReadOnlyList<SeaViking> vikings)
+    {
+        var dtos = new List<SeaVikingDto>(vikings.Count);
+        foreach (SeaViking v in vikings)
+        {
+            dtos.Add(new SeaVikingDto { Q = v.Coord.Q, R = v.Coord.R, Level = v.Level.ToString() });
+        }
+        return dtos;
+    }
+
+    private static IReadOnlyList<SeaViking> DeserializeSpawnList(List<SeaVikingDto>? dtos)
+    {
+        if (dtos == null) return Array.Empty<SeaViking>();
+        var spawns = new List<SeaViking>(dtos.Count);
+        foreach (SeaVikingDto dto in dtos)
+        {
+            spawns.Add(new SeaViking(
+                new HexCoord(dto.Q, dto.R),
+                ParseUnitLevel(dto.Level ?? throw new InvalidOperationException(
+                    "Sea viking missing Level"))));
+        }
+        return spawns;
+    }
+
+    /// <summary>Rebuild the viking state from the save's fields; all-default
+    /// (empty sea, cursors at 0) for non-viking and pre-17 saves.</summary>
+    private static VikingState DeserializeVikings(SaveData data)
+    {
+        var vikings = new VikingState
+        {
+            NextWaveIndex = data.VikingNextWave ?? 0,
+            LastCompletedRound = data.VikingLastRound ?? 0,
+            LastSpawnRound = data.VikingLastSpawnRound ?? 0,
+        };
+        if (data.VikingAtSea != null)
+        {
+            foreach (SeaVikingDto dto in data.VikingAtSea)
+            {
+                vikings.AddAtSea(new SeaViking(
+                    new HexCoord(dto.Q, dto.R),
+                    ParseUnitLevel(dto.Level ?? throw new InvalidOperationException(
+                        "Sea viking missing Level"))));
+            }
+        }
+        return vikings;
+    }
 
     private static List<TideStepDto>? SerializePendingTide(IReadOnlyList<TideStep> plan)
     {
@@ -805,6 +873,35 @@ public static class SaveSerializer
                     ThresholdPercent = dcv.ThresholdPercent,
                 },
                 ReplayDismissDefeatBeat _ => new ReplayBeatDto { Kind = "DismissDefeat" },
+                ReplayVikingMoveBeat vm => new ReplayBeatDto
+                {
+                    Kind = "VikingMove",
+                    FromQ = vm.From.Q,
+                    FromR = vm.From.R,
+                    ToQ = vm.To.Q,
+                    ToR = vm.To.R,
+                },
+                ReplayVikingDisembarkBeat vd => new ReplayBeatDto
+                {
+                    Kind = "VikingDisembark",
+                    FromQ = vd.Sea.Q,
+                    FromR = vd.Sea.R,
+                    ToQ = vd.Land.Q,
+                    ToR = vd.Land.R,
+                },
+                ReplayVikingPerishBeat vp => new ReplayBeatDto
+                {
+                    Kind = "VikingPerish",
+                    FromQ = vp.Sea.Q,
+                    FromR = vp.Sea.R,
+                },
+                ReplayVikingSpawnBeat vs => new ReplayBeatDto
+                {
+                    Kind = "VikingSpawn",
+                    WaveIndex = vs.WaveIndex,
+                    Spawns = SerializeSpawnList(vs.Spawns),
+                },
+                ReplayVikingTurnEndBeat _ => new ReplayBeatDto { Kind = "VikingTurnEnd" },
                 ReplayDisplayTextBeat dt => new ReplayBeatDto
                 {
                     Kind = "DisplayText",
@@ -884,6 +981,44 @@ public static class SaveSerializer
                         ?? throw new InvalidOperationException("DismissClaim beat missing ThresholdPercent"),
                 },
                 "DismissDefeat" => new ReplayDismissDefeatBeat
+                {
+                    Index = dto.Index, Turn = dto.Turn, Actor = dto.Actor,
+                },
+                "VikingMove" => new ReplayVikingMoveBeat
+                {
+                    Index = dto.Index, Turn = dto.Turn, Actor = dto.Actor,
+                    From = new HexCoord(
+                        dto.FromQ ?? throw new InvalidOperationException("VikingMove beat missing FromQ"),
+                        dto.FromR ?? throw new InvalidOperationException("VikingMove beat missing FromR")),
+                    To = new HexCoord(
+                        dto.ToQ ?? throw new InvalidOperationException("VikingMove beat missing ToQ"),
+                        dto.ToR ?? throw new InvalidOperationException("VikingMove beat missing ToR")),
+                },
+                "VikingDisembark" => new ReplayVikingDisembarkBeat
+                {
+                    Index = dto.Index, Turn = dto.Turn, Actor = dto.Actor,
+                    Sea = new HexCoord(
+                        dto.FromQ ?? throw new InvalidOperationException("VikingDisembark beat missing FromQ"),
+                        dto.FromR ?? throw new InvalidOperationException("VikingDisembark beat missing FromR")),
+                    Land = new HexCoord(
+                        dto.ToQ ?? throw new InvalidOperationException("VikingDisembark beat missing ToQ"),
+                        dto.ToR ?? throw new InvalidOperationException("VikingDisembark beat missing ToR")),
+                },
+                "VikingPerish" => new ReplayVikingPerishBeat
+                {
+                    Index = dto.Index, Turn = dto.Turn, Actor = dto.Actor,
+                    Sea = new HexCoord(
+                        dto.FromQ ?? throw new InvalidOperationException("VikingPerish beat missing FromQ"),
+                        dto.FromR ?? throw new InvalidOperationException("VikingPerish beat missing FromR")),
+                },
+                "VikingSpawn" => new ReplayVikingSpawnBeat
+                {
+                    Index = dto.Index, Turn = dto.Turn, Actor = dto.Actor,
+                    WaveIndex = dto.WaveIndex
+                        ?? throw new InvalidOperationException("VikingSpawn beat missing WaveIndex"),
+                    Spawns = DeserializeSpawnList(dto.Spawns),
+                },
+                "VikingTurnEnd" => new ReplayVikingTurnEndBeat
                 {
                     Index = dto.Index, Turn = dto.Turn, Actor = dto.Actor,
                 },
@@ -1077,6 +1212,30 @@ public sealed class SaveData
     /// for non-fog games and legacy saves, which load with empty memory.
     /// </summary>
     public List<CoordDto>? Seen { get; set; }
+
+    /// <summary>Viking Raiders: raiders currently at sea. Null/omitted when
+    /// none (every non-viking save); pre-17 saves load all-default.</summary>
+    public List<SeaVikingDto>? VikingAtSea { get; set; }
+
+    /// <summary>Viking Raiders: next wave index (0-based); null/omitted at 0.</summary>
+    public int? VikingNextWave { get; set; }
+
+    /// <summary>Viking Raiders: last round whose viking pseudo-turn completed;
+    /// null/omitted at 0.</summary>
+    public int? VikingLastRound { get; set; }
+
+    /// <summary>Viking Raiders: round the most recent wave spawned in;
+    /// null/omitted at 0.</summary>
+    public int? VikingLastSpawnRound { get; set; }
+}
+
+/// <summary>A raider at sea: coord + unit level. Used by
+/// <see cref="SaveData.VikingAtSea"/> and the VikingSpawn replay beat.</summary>
+public sealed class SeaVikingDto
+{
+    public int Q { get; set; }
+    public int R { get; set; }
+    public string? Level { get; set; }
 }
 
 public sealed class TideStepDto
@@ -1196,6 +1355,12 @@ public sealed class ReplayBeatDto
     public int? FromR { get; set; }
     public int? ToQ { get; set; }
     public int? ToR { get; set; }
+
+    /// <summary>VikingSpawn beats only: the wave index.</summary>
+    public int? WaveIndex { get; set; }
+
+    /// <summary>VikingSpawn beats only: the explicit spawn placements.</summary>
+    public List<SeaVikingDto>? Spawns { get; set; }
     public int? CapitalQ { get; set; }
     public int? CapitalR { get; set; }
     public string? Level { get; set; }

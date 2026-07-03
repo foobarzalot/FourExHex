@@ -131,6 +131,64 @@ public sealed record ReplayDismissDefeatBeat : ReplayBeat
 }
 
 /// <summary>
+/// Viking Raiders: a landed viking's ordinary land move (capture or
+/// defensive reposition). A distinct beat kind from <see cref="ReplayMoveBeat"/>
+/// because that one replays as the CURRENT player's move, while viking
+/// moves belong to the neutral owner (whose pseudo-turn runs while the
+/// current player waits). Replay dispatches via
+/// <c>GameOperations.ExecuteVikingMove</c>.
+/// </summary>
+public sealed record ReplayVikingMoveBeat : ReplayBeat
+{
+    public HexCoord From { get; init; }
+    public HexCoord To { get; init; }
+}
+
+/// <summary>
+/// Viking Raiders: the sea raider at <see cref="Sea"/> disembarks onto
+/// <see cref="Land"/>. Replay dispatches via
+/// <c>GameOperations.ExecuteVikingDisembark</c>.
+/// </summary>
+public sealed record ReplayVikingDisembarkBeat : ReplayBeat
+{
+    public HexCoord Sea { get; init; }
+    public HexCoord Land { get; init; }
+}
+
+/// <summary>
+/// Viking Raiders: the sea raider at <see cref="Sea"/> perished (no
+/// landing site). Replay dispatches via
+/// <c>GameOperations.ExecuteVikingPerish</c>.
+/// </summary>
+public sealed record ReplayVikingPerishBeat : ReplayBeat
+{
+    public HexCoord Sea { get; init; }
+}
+
+/// <summary>
+/// Viking Raiders: wave <see cref="WaveIndex"/> spawned as
+/// <see cref="Spawns"/>. The placements are explicit (drawn live from the
+/// vikings' RNG stream at choose time) so replay consumes no randomness.
+/// Replay dispatches via <c>GameOperations.ExecuteVikingSpawnWave</c>.
+/// </summary>
+public sealed record ReplayVikingSpawnBeat : ReplayBeat
+{
+    public int WaveIndex { get; init; }
+    public System.Collections.Generic.IReadOnlyList<SeaViking> Spawns { get; init; }
+        = System.Array.Empty<SeaViking>();
+}
+
+/// <summary>
+/// Viking Raiders: the viking pseudo-turn ended. Replay runs the same
+/// completion the live driver does — <c>CompleteVikingTurn</c> plus the
+/// deferred <c>StartPlayerTurn</c> for the waiting (non-eliminated)
+/// player. The live side records it from the driver's EndVikingPhaseCore.
+/// </summary>
+public sealed record ReplayVikingTurnEndBeat : ReplayBeat
+{
+}
+
+/// <summary>
 /// Tutorial-only beats: not captured from gameplay, authored explicitly
 /// during Record mode (e.g., narration text inserted between game-action
 /// beats). <see cref="ReplayBeat.Actor"/> is always -1 (sentinel — no
