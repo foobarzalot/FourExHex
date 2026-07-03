@@ -186,8 +186,20 @@ public class GameOperations
     /// </summary>
     public bool InSilentAiBatch() =>
         _aiSilentMode()
-        && _state.Turns.CurrentPlayer.IsAi
+        && (_state.Turns.CurrentPlayer.IsAi || VikingPhaseActive)
         && !_session.PendingDefeatScreen.HasValue;
+
+    /// <summary>
+    /// Single input gate for every mutating human handler: input is
+    /// dropped while an Instant AI batch runs (see
+    /// <see cref="InSilentAiBatch"/>) and while the viking pseudo-turn is
+    /// mid-flight — the turn rotation has already advanced to the human,
+    /// but their <see cref="StartPlayerTurn"/> is deferred until the
+    /// raiders finish, so acting now would mutate a half-built turn.
+    /// Overlay-dismiss handlers (defeat / claim-victory Continue) do NOT
+    /// use this — they must stay live to un-pause the phase.
+    /// </summary>
+    public bool HumanInputLocked => InSilentAiBatch() || VikingPhaseActive;
 
     /// <summary>
     /// Silent-mode policy for per-action cues: true while an AI runs under
@@ -205,7 +217,7 @@ public class GameOperations
     /// suppressed like the rest of the silent batch.
     /// </summary>
     public bool IsSilent() =>
-        (_aiSilentMode() && _state.Turns.CurrentPlayer.IsAi)
+        (_aiSilentMode() && (_state.Turns.CurrentPlayer.IsAi || VikingPhaseActive))
         || _isReplayInstantActive();
 
     /// <summary>
@@ -253,7 +265,7 @@ public class GameOperations
         bool aiActing = !_isReplayMode()
             && !GameEndedFired
             && !_session.IsGameOver
-            && _state.Turns.CurrentPlayer.IsAi
+            && (_state.Turns.CurrentPlayer.IsAi || VikingPhaseActive)
             && !_session.PendingDefeatScreen.HasValue;
         if (aiActing && !_aiBatchOverlayShown)
         {
@@ -292,9 +304,20 @@ public class GameOperations
     /// pinned by <c>ReplayFidelityTests</c>.
     /// </summary>
     private void ConsumeRepositionMoveIfAi(HexCoord destination, bool wasReposition)
+        => ConsumeRepositionMove(destination, wasReposition, _state.Turns.CurrentPlayer.Id);
+
+    /// <summary>
+    /// Owner-aware core of <see cref="ConsumeRepositionMoveIfAi"/>: the
+    /// neutral (viking) actor always consumes repositions — the viking
+    /// phase runs while the CURRENT player may be a human, so the
+    /// current-player kind-gate alone would wrongly leave viking
+    /// repositions re-pickable.
+    /// </summary>
+    private void ConsumeRepositionMove(HexCoord destination, bool wasReposition, PlayerId owner)
     {
         if (!wasReposition) return;
-        if (_state.Turns.CurrentPlayer.Kind != PlayerKind.Computer) return;
+        bool aiActor = owner.IsNone || _state.Turns.CurrentPlayer.Kind == PlayerKind.Computer;
+        if (!aiActor) return;
         AiActionCore.MarkUnitMoved(destination, _state);
     }
 
@@ -416,11 +439,17 @@ public class GameOperations
             $"end-of-turn check for {_state.Turns.CurrentPlayer.Name}");
         LogTreeCensus();
         // Rising Tides suppresses the sole-capital early win: the
-        // game ends only when one player is left standing.
-        PlayerId? winner = _state.Mode == GameMode.RisingTides
-            ? WinConditionRules.LastPlayerStanding(_state.Territories)
-            : WinConditionRules.WinnerAtEndOfTurn(
-                _state.Turns.CurrentPlayer.Id, _state.Territories);
+        // game ends only when one player is left standing. Viking Raiders
+        // suppresses EVERY win while the onslaught is live (raiders at sea,
+        // landed, or in pending waves); after the threat clears, ordinary
+        // freeform rules resume.
+        PlayerId? winner =
+            _state.Mode == GameMode.RisingTides
+                ? WinConditionRules.LastPlayerStanding(_state.Territories)
+                : VikingThreatActive
+                    ? null
+                    : WinConditionRules.WinnerAtEndOfTurn(
+                        _state.Turns.CurrentPlayer.Id, _state.Territories);
         if (winner.HasValue)
         {
             Log.Info(Log.LogCategory.Turn, $"[T{_state.Turns.TurnNumber}] " +
@@ -441,6 +470,20 @@ public class GameOperations
     public void AdvanceToNextActivePlayer()
     {
         _state.Turns.EndTurn();
+        SkipEliminatedCurrentPlayers();
+    }
+
+    /// <summary>
+    /// The eliminated-player skip loop of <see cref="AdvanceToNextActivePlayer"/>,
+    /// callable on its own: while the CURRENT player is eliminated, run their
+    /// phantom turn and advance. Also used at the end of the viking
+    /// pseudo-turn, which can eliminate the very player the rotation had just
+    /// advanced to. Callers must guarantee at least one player still holds a
+    /// capital (the viking total-wipeout path declares the Vikings winners
+    /// before ever reaching this loop).
+    /// </summary>
+    public void SkipEliminatedCurrentPlayers()
+    {
         while (WinConditionRules.IsEliminated(_state.Turns.CurrentPlayer.Id, _state.Grid))
         {
             Player ghost = _state.Turns.CurrentPlayer;
@@ -653,6 +696,213 @@ public class GameOperations
             return;
         }
         RunPhantomTurnFor(PlayerId.None, Difficulty.Soldier, "Neutral");
+    }
+
+    // --- Viking Raiders pseudo-turn ----------------------------------------
+
+    /// <summary>
+    /// True while the viking pseudo-turn is mid-flight: the rotation has
+    /// advanced to the round's first player but their
+    /// <see cref="StartPlayerTurn"/> is deferred until the raiders finish.
+    /// Set/cleared by <see cref="BeginVikingTurn"/> /
+    /// <see cref="CompleteVikingTurn"/>; gates human input
+    /// (<see cref="HumanInputLocked"/>), silent mode, and the
+    /// "Opponents…" overlay.
+    /// </summary>
+    public bool VikingPhaseActive { get; private set; }
+
+    /// <summary>Live viking threat (mode-gated; always false outside
+    /// Viking Raiders). While true, every win path is suppressed.</summary>
+    public bool VikingThreatActive => VikingRaidersRules.ThreatRemains(_state);
+
+    /// <summary>
+    /// True when this round's viking pseudo-turn still has to run: Viking
+    /// Raiders mode, game live, the wave schedule has started
+    /// (round ≥ <see cref="VikingRaidersRules.FirstWaveRound"/>), this
+    /// round's phase hasn't completed, and any threat remains. Checked by
+    /// the three <c>AdvanceToNextActivePlayer(); StartPlayerTurn();</c>
+    /// seams (which defer StartPlayerTurn) and by the turn driver's
+    /// dispatch boundaries (which run the phase).
+    /// </summary>
+    public bool VikingTurnPending =>
+        _state.Mode == GameMode.VikingRaiders
+        && !GameEndedFired
+        && !_session.IsGameOver
+        && _state.Turns.TurnNumber >= VikingRaidersRules.FirstWaveRound
+        && _state.Vikings.LastCompletedRound < _state.Turns.TurnNumber
+        && VikingThreatActive;
+
+    /// <summary>
+    /// Enter the viking pseudo-turn: reseed the RNG onto the vikings' own
+    /// per-round stream (playerIndex −1 — save/load-safe regardless of how
+    /// many draws the surrounding turns consumed), un-spend the landed
+    /// raiders' moves, and flip the phase flag (input lock + overlay).
+    /// </summary>
+    public void BeginVikingTurn()
+    {
+        _rng = new Random(MixSeed(_masterSeed, _state.Turns.TurnNumber, playerIndex: -1));
+        foreach (HexTile tile in _state.Grid.Tiles)
+        {
+            if (tile.Unit is { } u && u.Owner.IsNone)
+            {
+                u.HasMovedThisTurn = false;
+            }
+        }
+        VikingPhaseActive = true;
+        RefreshSilentMode();
+        Log.Info(Log.LogCategory.Viking,
+            $"[viking] T{_state.Turns.TurnNumber} phase begin: " +
+            $"atSea={_state.Vikings.AtSea.Count} landed={CountLandedVikings()} " +
+            $"nextWave={_state.Vikings.NextWaveIndex}/{VikingRaidersRules.TotalWaves}");
+    }
+
+    /// <summary>
+    /// Finish the viking pseudo-turn: mark the round done, check for a
+    /// total wipeout (the raiders destroyed every capital → the Vikings win
+    /// outright), and drop the phase flag. The caller (turn driver) then
+    /// runs the deferred <see cref="StartPlayerTurn"/> — unless the game
+    /// just ended.
+    /// </summary>
+    public void CompleteVikingTurn()
+    {
+        _state.Vikings.LastCompletedRound = _state.Turns.TurnNumber;
+        VikingPhaseActive = false;
+        Log.Info(Log.LogCategory.Viking,
+            $"[viking] T{_state.Turns.TurnNumber} phase complete: " +
+            $"atSea={_state.Vikings.AtSea.Count} landed={CountLandedVikings()} " +
+            $"wavesLeft={VikingRaidersRules.TotalWaves - _state.Vikings.NextWaveIndex}");
+        MaybeLogVikingThreatCleared();
+        if (ColorsWithCapital(_state.Territories).Count == 0)
+        {
+            Log.Warn(Log.LogCategory.Turn,
+                $"[T{_state.Turns.TurnNumber}] the Vikings destroyed every capital — Vikings win");
+            DeclareWinner(PlayerId.None);
+            CheckGameEndConditions();
+        }
+        RefreshSilentMode();
+    }
+
+    /// <summary>
+    /// The sea raider at <paramref name="sea"/> lands on <paramref name="land"/>:
+    /// a capture when the tile is player-owned (full <see cref="HandleCapture"/>
+    /// reconcile, defeat overlays, gated domination check), a reposition-like
+    /// landing when it is already neutral. The landed unit is spent for this
+    /// phase. Validates against <see cref="VikingRaidersRules.DisembarkTargets"/>
+    /// — an illegal landing means a buggy sequencer, so it throws.
+    /// </summary>
+    public void ExecuteVikingDisembark(HexCoord sea, HexCoord land)
+    {
+        SeaViking? viking = null;
+        foreach (SeaViking v in _state.Vikings.AtSea)
+        {
+            if (v.Coord == sea) { viking = v; break; }
+        }
+        if (viking == null)
+        {
+            throw new InvalidOperationException(
+                $"Viking disembark from {sea}: no sea viking there.");
+        }
+        if (!VikingRaidersRules.DisembarkTargets(_state, sea, viking.Value.Level).Contains(land))
+        {
+            throw new InvalidOperationException(
+                $"Viking disembark {sea}→{land}: not a legal landing for a {viking.Value.Level}.");
+        }
+
+        _state.Vikings.RemoveAtSea(sea);
+        HexTile tile = _state.Grid.Get(land)!;
+        bool wasCapture = !tile.Owner.IsNone;
+        HexOccupant? displaced = tile.Occupant;
+        tile.Owner = PlayerId.None;
+        tile.Occupant = new Unit(PlayerId.None, viking.Value.Level) { HasMovedThisTurn = true };
+        Log.Info(Log.LogCategory.Viking,
+            $"[viking] disembark {viking.Value.Level} {sea}→{land}" +
+            (wasCapture ? " (capture)" : " (neutral landing)"));
+
+        if (wasCapture)
+        {
+            HandleCapture($"Viking disembark {sea}→{land}");
+        }
+        if (displaced != null)
+        {
+            EmitDestruction(land, displaced);
+        }
+        DispatchActionSound(land, new MoveResult(wasCapture, displaced), wasCombine: false);
+    }
+
+    /// <summary>The sea raider at <paramref name="sea"/> has no landing
+    /// site and dies at sea.</summary>
+    public void ExecuteVikingPerish(HexCoord sea)
+    {
+        if (!_state.Vikings.RemoveAtSea(sea))
+        {
+            throw new InvalidOperationException(
+                $"Viking perish at {sea}: no sea viking there.");
+        }
+        Log.Info(Log.LogCategory.Viking, $"[viking] perished at sea {sea} (no landing site)");
+        MaybeLogVikingThreatCleared();
+    }
+
+    /// <summary>
+    /// Spawn a wave: park the action's pre-drawn placements at sea and
+    /// advance the schedule cursor. Always the LAST action of a viking
+    /// turn, and <see cref="VikingState.LastSpawnRound"/> keeps the fresh
+    /// wave from disembarking before the next round.
+    /// </summary>
+    public void ExecuteVikingSpawnWave(VikingSpawnWaveAction action)
+    {
+        if (action.WaveIndex != _state.Vikings.NextWaveIndex)
+        {
+            throw new InvalidOperationException(
+                $"Viking spawn wave {action.WaveIndex}: schedule cursor is at " +
+                $"{_state.Vikings.NextWaveIndex}.");
+        }
+        foreach (SeaViking spawn in action.Spawns)
+        {
+            if (_state.Vikings.HasVikingAt(spawn.Coord))
+            {
+                throw new InvalidOperationException(
+                    $"Viking spawn at {spawn.Coord}: coord already holds a sea viking.");
+            }
+            _state.Vikings.AddAtSea(spawn);
+        }
+        _state.Vikings.NextWaveIndex++;
+        _state.Vikings.LastSpawnRound = _state.Turns.TurnNumber;
+        Log.Info(Log.LogCategory.Viking,
+            $"[viking] wave {action.WaveIndex} spawned: {action.Spawns.Count} raiders at " +
+            $"{string.Join(",", action.Spawns.Select(s => $"{s.Coord}:{s.Level}"))}");
+    }
+
+    /// <summary>A landed viking's ordinary land move (capture or
+    /// defensive reposition) — the viking-owner flavor of
+    /// <see cref="ExecuteAiMove"/>.</summary>
+    public void ExecuteVikingMove(HexCoord source, HexCoord destination)
+        => ExecuteMoveCore(PlayerId.None, source, destination);
+
+    private int CountLandedVikings()
+    {
+        int n = 0;
+        foreach (HexTile t in _state.Grid.Tiles)
+        {
+            if (t.Occupant is Unit u && u.Owner.IsNone) n++;
+        }
+        return n;
+    }
+
+    // One-shot "threat cleared" Info line, fired the moment the last
+    // viking (sea, landed, or scheduled) is gone. Checked from the two
+    // places the threat can end: a viking-phase step (perish / phase
+    // completion) and a player capture killing the last landed raider.
+    private bool _vikingThreatClearedLogged;
+
+    private void MaybeLogVikingThreatCleared()
+    {
+        if (_vikingThreatClearedLogged) return;
+        if (_state.Mode != GameMode.VikingRaiders) return;
+        if (VikingThreatActive) return;
+        _vikingThreatClearedLogged = true;
+        Log.Info(Log.LogCategory.Viking,
+            $"[viking] T{_state.Turns.TurnNumber} threat cleared — " +
+            "ordinary win conditions restored");
     }
 
     /// <summary>
@@ -967,14 +1217,24 @@ public class GameOperations
     /// throw.
     /// </summary>
     public void ExecuteAiMove(HexCoord source, HexCoord destination)
+        => ExecuteMoveCore(_state.Turns.CurrentPlayer.Id, source, destination);
+
+    /// <summary>
+    /// Owner-parameterized body shared by <see cref="ExecuteAiMove"/>
+    /// (owner = current player) and <see cref="ExecuteVikingMove"/>
+    /// (owner = <see cref="PlayerId.None"/>, whose phase runs while the
+    /// current player may be a human).
+    /// </summary>
+    private void ExecuteMoveCore(PlayerId owner, HexCoord source, HexCoord destination)
     {
+        string actorName = owner.IsNone ? "the Vikings" : _state.Turns.CurrentPlayer.Name;
         Territory? attacker = TerritoryLookup.FindOwnedContaining(
-            _state.Territories, _state.Turns.CurrentPlayer.Id, source);
+            _state.Territories, owner, source);
         if (attacker == null)
         {
             throw new InvalidOperationException(
                 $"AI Move from {source}: that coord is not in a territory owned by " +
-                $"{_state.Turns.CurrentPlayer.Name}.");
+                $"{actorName}.");
         }
 
         HexTile? srcTile = _state.Grid.Get(source);
@@ -1007,7 +1267,7 @@ public class GameOperations
         {
             EmitDestruction(destination, r.Move.Destroyed);
         }
-        ConsumeRepositionMoveIfAi(destination, r.WasReposition);
+        ConsumeRepositionMove(destination, r.WasReposition, owner);
 
         DispatchActionSound(destination, r.Move, r.WasCombine);
     }
@@ -1251,14 +1511,23 @@ public class GameOperations
         if (!SuppressMapRebuild) _map.RebuildAfterTerritoryChange();
         Log.Since(Log.LogCategory.Capture, "[hitch] RebuildAfterTerritoryChange", tRebuild);
 
-        // Mid-turn win check (identical in every mode): only ends the
-        // game if the current player owns every cell. The "opponent
-        // reduced to orphan singletons" win path is handled at
-        // end-of-turn instead (see EndOfTurnProcessing) — in Rising
-        // Tides the shrinking grid excludes submerged tiles, so
-        // "every cell" already means "every non-water tile". Undo is
-        // cleared so the player can't rewind past the killing blow.
-        PlayerId? winner = WinConditionRules.WinnerByDomination(_state.Grid);
+        // A capture can kill the last landed viking — check for the
+        // one-shot threat-cleared transition before the win check below.
+        MaybeLogVikingThreatCleared();
+
+        // Mid-turn win check: only ends the game if the current player
+        // owns every cell. The "opponent reduced to orphan singletons"
+        // win path is handled at end-of-turn instead (see
+        // EndOfTurnProcessing) — in Rising Tides the shrinking grid
+        // excludes submerged tiles, so "every cell" already means "every
+        // non-water tile". Viking Raiders gates domination while any
+        // threat remains: landed raiders block it structurally (their
+        // neutral tiles deny sole ownership), but raiders at sea and
+        // unspawned waves need the explicit gate. Undo is cleared so the
+        // player can't rewind past the killing blow.
+        PlayerId? winner = VikingThreatActive
+            ? null
+            : WinConditionRules.WinnerByDomination(_state.Grid);
         if (winner.HasValue)
         {
             Log.Info(Log.LogCategory.Capture, $"[T{_state.Turns.TurnNumber}] " +

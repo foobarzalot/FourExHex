@@ -44,6 +44,13 @@ public class AiTurnDriver
     // territory first, pause, then actually run the action.
     private AiAction? _pendingAiAction;
 
+    // True while the driver is running the viking pseudo-turn (Viking
+    // Raiders): the rotation has already advanced to the round's first
+    // player, their StartPlayerTurn is deferred, and the chooser is
+    // VikingAi.ChooseNext instead of the injected player chooser. Uses
+    // the same _aiVisited/_aiStepsThisPlayer/_pendingAiAction scratch.
+    private bool _vikingPhase;
+
     // Which track the live AI run is currently on (true = chunked
     // Instant, false = paced). Re-read from _aiSilentMode() at every
     // continuation point so a mid-turn Ai-Speed change switches tracks;
@@ -81,11 +88,13 @@ public class AiTurnDriver
 
     // The single game-over / human-turn gate every step-machine entry
     // consults: the run halts when the game has been announced over,
-    // the session says it's over, or control rests on a human.
+    // the session says it's over, or control rests on a human — unless
+    // the viking pseudo-turn still has to run (or is mid-flight), which
+    // proceeds even when the waiting player is human.
     private bool RunHalted =>
         _ops.GameEndedFired
         || _session.IsGameOver
-        || !_state.Turns.CurrentPlayer.IsAi;
+        || (!_state.Turns.CurrentPlayer.IsAi && !_vikingPhase && !_ops.VikingTurnPending);
 
     /// <summary>
     /// Re-kick the paced AI run after an external replay pause clears
@@ -172,10 +181,11 @@ public class AiTurnDriver
             _ops.ShowHighlightAndRefresh(null);
             return;
         }
-        if (!_state.Turns.CurrentPlayer.IsAi)
+        if (!_state.Turns.CurrentPlayer.IsAi && !_vikingPhase && !_ops.VikingTurnPending)
         {
             // Control changed out from under a scheduled callback
-            // (scene reload, test teardown). Just stop.
+            // (scene reload, test teardown). Just stop. (The viking
+            // pseudo-turn proceeds even when the waiting player is human.)
             return;
         }
 
@@ -193,8 +203,60 @@ public class AiTurnDriver
 
         // Paced path only — Instant routes to InstantAiTick via
         // Schedule and never enters this step machine.
+        MaybeBeginVikingPhase();
+        if (!_vikingPhase && !_state.Turns.CurrentPlayer.IsAi) return;
         PlayerId color = _state.Turns.CurrentPlayer.Id;
-        StepAiPreviewAfterChoose(_aiChooser(_state, color, _aiVisited, _ops.Rng), color);
+        StepAiPreviewAfterChoose(ChooseNextForCurrentActor(), color);
+    }
+
+    /// <summary>
+    /// Enter the viking pseudo-turn if it's due at this dispatch
+    /// boundary: fresh scratch state, then <see cref="GameOperations.BeginVikingTurn"/>
+    /// (RNG reseed onto the vikings' own stream + move-flag reset +
+    /// input lock).
+    /// </summary>
+    private void MaybeBeginVikingPhase()
+    {
+        if (_vikingPhase || !_ops.VikingTurnPending) return;
+        _vikingPhase = true;
+        _aiVisited.Clear();
+        _aiStepsThisPlayer = 0;
+        _pendingAiAction = null;
+        _ops.BeginVikingTurn();
+    }
+
+    /// <summary>The next action for whoever is actually acting: the
+    /// viking sequencer during the viking phase, else the injected
+    /// player chooser for the current (AI) player.</summary>
+    private AiAction? ChooseNextForCurrentActor() =>
+        _vikingPhase
+            ? VikingAi.ChooseNext(_state, _aiVisited, _ops.Rng)
+            : _aiChooser(_state, _state.Turns.CurrentPlayer.Id, _aiVisited, _ops.Rng);
+
+    /// <summary>
+    /// Mutation half of the viking phase's end: complete the phase
+    /// (round marked done, wipeout check), then run the deferred
+    /// <see cref="GameOperations.StartPlayerTurn"/> for the waiting
+    /// player — skipping them first if the raiders eliminated them
+    /// mid-phase. Mirrors <see cref="EndCurrentAiPlayerTurnCore"/>;
+    /// callers own pacing/refresh.
+    /// </summary>
+    private void EndVikingPhaseCore(AiAction? action)
+    {
+        Log.Info(Log.LogCategory.Turn,
+            $"[T{_state.Turns.TurnNumber}] Vikings end phase after " +
+            $"{_aiStepsThisPlayer} actions " +
+            $"({(action == null ? "no actions left" : "step cap reached")})");
+        _vikingPhase = false;
+        _ops.CompleteVikingTurn();
+        if (!_session.IsGameOver && !_ops.GameEndedFired)
+        {
+            _ops.SkipEliminatedCurrentPlayers();
+            _ops.StartPlayerTurn();
+        }
+        _aiVisited.Clear();
+        _aiStepsThisPlayer = 0;
+        _pendingAiAction = null;
     }
 
     private void StepAiPreviewAfterChoose(AiAction? action, PlayerId color)
@@ -208,10 +270,11 @@ public class AiTurnDriver
 
         if (action == null || _aiStepsThisPlayer >= MaxAiStepsPerPlayer)
         {
-            // Current AI player is done. Run the shared end-of-turn
+            // Current actor is done. Run the shared end-of-turn
             // mutation, clear the lingering highlight, then either stop
             // (human next) or schedule the next preview beat.
-            EndCurrentAiPlayerTurnCore(action);
+            if (_vikingPhase) EndVikingPhaseCore(action);
+            else EndCurrentAiPlayerTurnCore(action);
             // End-of-turn win (sole capital-bearer) declared inside
             // EndCurrentAiPlayerTurnCore: no next StartPlayerTurn fires to
             // hide the "Opponents…" overlay, so reconcile it here before
@@ -281,10 +344,13 @@ public class AiTurnDriver
         }
 
         // After a capture the old territory object is stale; find the
-        // AI's territory now containing the result coord and
+        // actor's territory now containing the result coord and
         // re-highlight so the outline matches the post-action board.
+        // During the viking phase the actor is the neutral owner, not
+        // the (waiting) current player.
+        PlayerId actor = _vikingPhase ? PlayerId.None : _state.Turns.CurrentPlayer.Id;
         _ops.ShowHighlightAndRefresh(TerritoryLookup.FindOwnedContaining(
-            _state.Territories, _state.Turns.CurrentPlayer.Id, resultCoord));
+            _state.Territories, actor, resultCoord));
 
         if (_session.IsGameOver)
         {
@@ -324,12 +390,29 @@ public class AiTurnDriver
         switch (action)
         {
             case AiMoveAction mv:
+                // Viking land moves execute through the owner-aware core;
+                // their replay beats are the viking-specific kinds (not a
+                // ReplayMoveBeat, which replays as the current player).
+                if (_vikingPhase)
+                {
+                    _ops.ExecuteVikingMove(mv.Source, mv.Destination);
+                    return mv.Destination;
+                }
                 if (!_recorder.IsReplaying)
                 {
                     _recorder.RecordBeat(new ReplayMoveBeat { From = mv.Source, To = mv.Destination });
                 }
                 _ops.ExecuteAiMove(mv.Source, mv.Destination);
                 return mv.Destination;
+            case VikingDisembarkAction vd:
+                _ops.ExecuteVikingDisembark(vd.Sea, vd.Land);
+                return vd.Land;
+            case VikingPerishAtSeaAction vp:
+                _ops.ExecuteVikingPerish(vp.Sea);
+                return vp.Sea;
+            case VikingSpawnWaveAction vs:
+                _ops.ExecuteVikingSpawnWave(vs);
+                return vs.Spawns.Count > 0 ? vs.Spawns[0].Coord : new HexCoord(0, 0);
             case AiBuyUnitAction bu:
                 if (!_recorder.IsReplaying)
                 {
@@ -441,7 +524,11 @@ public class AiTurnDriver
         else
         {
             _ops.AdvanceToNextActivePlayer();
-            _ops.StartPlayerTurn();
+            // Round boundary in Viking Raiders: the raiders act before
+            // the new player's turn starts. The driver's next dispatch
+            // enters the viking phase; StartPlayerTurn runs when it ends
+            // (EndVikingPhaseCore).
+            if (!_ops.VikingTurnPending) _ops.StartPlayerTurn();
         }
         _aiVisited.Clear();
         _aiStepsThisPlayer = 0;
@@ -451,16 +538,19 @@ public class AiTurnDriver
     [Conditional("DEBUG")]
     private void LogAction(AiAction action)
     {
-        Player p = _state.Turns.CurrentPlayer;
+        string actor = _vikingPhase ? "Vikings" : _state.Turns.CurrentPlayer.Name;
         string desc = action switch
         {
             AiMoveAction mv => $"Move {mv.Source}→{mv.Destination}",
             AiBuyUnitAction bu => $"Buy {bu.Level}@{bu.Capital} → {bu.Destination}",
             AiBuildTowerAction bt => $"Tower@{bt.Capital} → {bt.Destination}",
             AiBuyCombineAction bc => $"BuyCombine {bc.BuyLevel}@{bc.Capital} → {bc.CombineTarget}",
+            VikingDisembarkAction vd => $"Disembark {vd.Sea}→{vd.Land}",
+            VikingPerishAtSeaAction vp => $"Perish at sea {vp.Sea}",
+            VikingSpawnWaveAction vs => $"Spawn wave {vs.WaveIndex} ({vs.Spawns.Count} raiders)",
             _ => "?",
         };
-        Log.Info(Log.LogCategory.Ai, $"[T{_state.Turns.TurnNumber}]   {p.Name}: {desc}");
+        Log.Info(Log.LogCategory.Ai, $"[T{_state.Turns.TurnNumber}]   {actor}: {desc}");
     }
 
     /// <summary>
@@ -473,7 +563,10 @@ public class AiTurnDriver
     /// </summary>
     internal Territory? ResolveAiActingTerritory(AiAction action)
     {
-        PlayerId owner = _state.Turns.CurrentPlayer.Id;
+        // During the viking phase the actor is the neutral owner; sea
+        // actions (disembark/perish/spawn) have no acting territory —
+        // the preview highlight is simply skipped for them.
+        PlayerId owner = _vikingPhase ? PlayerId.None : _state.Turns.CurrentPlayer.Id;
         return action switch
         {
             AiMoveAction mv => TerritoryLookup.FindOwnedContaining(_state.Territories, owner, mv.Source),
@@ -505,14 +598,15 @@ public class AiTurnDriver
         if (_session.PendingDefeatScreen.HasValue
             || _session.PendingClaimVictory.HasValue) return InstantStep.Exhausted;
 
-        PlayerId color = _state.Turns.CurrentPlayer.Id;
-        AiAction? action = _aiChooser(_state, color, _aiVisited, _ops.Rng);
+        MaybeBeginVikingPhase();
+        AiAction? action = ChooseNextForCurrentActor();
         if (action == null || _aiStepsThisPlayer >= MaxAiStepsPerPlayer)
         {
-            EndCurrentAiPlayerTurnCore(action);
+            if (_vikingPhase) EndVikingPhaseCore(action);
+            else EndCurrentAiPlayerTurnCore(action);
             // Game over or next player is human → hand control back;
-            // else this AI turn just completed → repaint it and pace
-            // the next.
+            // else this actor's turn just completed → repaint it and
+            // pace the next.
             if (RunHalted) return InstantStep.Exhausted;
             return InstantStep.TurnBoundary;
         }

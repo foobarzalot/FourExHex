@@ -314,6 +314,11 @@ public class GameController
         if (_ops.HumanTurnFiredForCurrentTurn) return;
         if (_session.IsGameOver || _ops.GameEndedFired) return;
         if (_state.Turns.CurrentPlayer.IsAi) return;
+        // Viking Raiders: a paced viking phase is in flight (or about to
+        // run) — the waiting human's StartPlayerTurn fires the event when
+        // the phase completes; firing here would autosave and auto-select
+        // a pre-viking board.
+        if (_ops.VikingPhaseActive || _ops.VikingTurnPending) return;
         _ops.HumanTurnFiredForCurrentTurn = true;
         RaiseHumanTurnStarted();
     }
@@ -505,8 +510,9 @@ public class GameController
         // and mutate SessionState behind it. The gate also covers the
         // mid-mutation window inside the synchronous trampoline (a
         // belt-and-braces guarantee: even if Godot's input ordering
-        // ever changed, the controller's invariants are protected).
-        if (_ops.InSilentAiBatch()) return;
+        // ever changed, the controller's invariants are protected) and
+        // the viking pseudo-turn (the human's turn hasn't started yet).
+        if (_ops.HumanInputLocked) return;
         // Any real human input interrupts a running automation before the
         // handler body runs — the loop's own execute step is exempt
         // (_inAutomateStep), it IS the automation.
@@ -1351,7 +1357,7 @@ public class GameController
     private void OnAutomatePressed()
     {
         if (_recorder.IsReplaying) return;
-        if (_ops.InSilentAiBatch()) return;
+        if (_ops.HumanInputLocked) return;
         // Tutorial Record/Preview: automated moves would bypass the
         // script validator and desync the beat cursor.
         if (_previewMode || _recordingMode) return;
@@ -1532,8 +1538,11 @@ public class GameController
         _ops.RefreshSilentMode();
         _ops.RefreshViews();
         if (_session.IsGameOver) return;
-        if (_state.Turns.CurrentPlayer.IsAi)
+        if (_state.Turns.CurrentPlayer.IsAi || _ops.VikingPhaseActive)
         {
+            // Viking Raiders: a defeat raised mid-viking-phase pauses the
+            // phase exactly like a mid-AI-turn defeat; the same re-arm
+            // finishes it (the driver's viking scratch is still live).
             _aiDriver.Schedule(turnBoundary: false);
         }
         else if (WinConditionRules.IsEliminated(_state.Turns.CurrentPlayer.Id, _state.Grid))
@@ -1553,7 +1562,7 @@ public class GameController
     {
         if (_state.FogEnabled) return;
         if (_recorder.IsReplaying) return;
-        if (_ops.InSilentAiBatch()) return;
+        if (_ops.HumanInputLocked) return;
         if (_automating) StopAutomation("input");
         if (_session.IsGameOver) return;
         if (!_session.Undo.CanUndo) return;
@@ -1567,7 +1576,7 @@ public class GameController
     {
         if (_state.FogEnabled) return;
         if (_recorder.IsReplaying) return;
-        if (_ops.InSilentAiBatch()) return;
+        if (_ops.HumanInputLocked) return;
         if (_automating) StopAutomation("input");
         if (_session.IsGameOver) return;
         if (!_session.Undo.CanUndo) return;
@@ -1585,7 +1594,7 @@ public class GameController
     {
         if (_state.FogEnabled) return;
         if (_recorder.IsReplaying) return;
-        if (_ops.InSilentAiBatch()) return;
+        if (_ops.HumanInputLocked) return;
         if (_automating) StopAutomation("input");
         if (_session.IsGameOver) return;
         if (!_session.Undo.CanRedo) return;
@@ -1599,7 +1608,7 @@ public class GameController
     {
         if (_state.FogEnabled) return;
         if (_recorder.IsReplaying) return;
-        if (_ops.InSilentAiBatch()) return;
+        if (_ops.HumanInputLocked) return;
         if (_automating) StopAutomation("input");
         if (_session.IsGameOver) return;
         if (!_session.Undo.CanRedo) return;
@@ -2156,7 +2165,7 @@ public class GameController
     private void OnEndTurnPressed()
     {
         if (_recorder.IsReplaying) return;
-        if (_ops.InSilentAiBatch()) return;
+        if (_ops.HumanInputLocked) return;
         if (_automating) StopAutomation("input");
         if (_session.IsGameOver) return;
         if (_humanActionValidator != null && !_humanActionValidator(new ReplayEndTurnBeat()))
@@ -2192,7 +2201,10 @@ public class GameController
         // non-sunk tiles — submerged tiles are removed from the grid, so
         // NextClaimVictoryThreshold (which counts _state.Grid) already tracks
         // the shrinking board automatically.
-        if (!alreadyWon && !current.IsAi && !previewScripted && !_recordingMode)
+        // Viking Raiders: no claim while any viking threat remains — no
+        // win of any kind is possible until the onslaught is cleared.
+        if (!alreadyWon && !current.IsAi && !previewScripted && !_recordingMode
+            && !_ops.VikingThreatActive)
         {
             int seen = _session.ClaimVictoryPromptedHighestThreshold
                 .TryGetValue(current.Id, out int s) ? s : 0;
@@ -2238,7 +2250,10 @@ public class GameController
         else
         {
             _ops.AdvanceToNextActivePlayer();
-            _ops.StartPlayerTurn();
+            // Round boundary in Viking Raiders: defer StartPlayerTurn —
+            // the driver runs the viking pseudo-turn first and starts the
+            // waiting player's turn when it completes.
+            if (!_ops.VikingTurnPending) _ops.StartPlayerTurn();
             _aiDriver.RunUntilHumanOrDone();
         }
 
@@ -2251,6 +2266,7 @@ public class GameController
         // classic clear). The per-turn visited reset moved to StartPlayerTurn
         // so an auto-selection's visited mark survives into the turn.
         if (_state.Turns.CurrentPlayer.IsAi || _session.IsGameOver
+            || _ops.VikingPhaseActive || _ops.VikingTurnPending
             || !_autoSelectFirstTerritory)
             SetSelection(null);
         _ops.RefreshViews();
