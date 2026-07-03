@@ -86,6 +86,7 @@ CONTROLLER (pure C#) ─ GameController
     hud.NextUnitClicked          → OnNextUnitPressed (N: power-order cycle, lex within tier; enters repeated-move)
     hud.PreviousUnitClicked      → OnPreviousUnitPressed (Shift+N)
     hud.CancelActionPressed      → OnCancelActionPressed
+    hud.AutomateClicked          → OnAutomatePressed (toggle; see "Automate")
     hud.DefeatContinueClicked    → OnDefeatContinuePressed
     hud.ClaimVictoryWinNowClicked    → OnClaimVictoryWinNowPressed
     hud.ClaimVictoryContinueClicked  → OnClaimVictoryContinuePressed
@@ -168,7 +169,7 @@ VIEWS (Godot Nodes)
   HudView : CanvasLayer, IHudView
     events: BuyRecruit (U cycle) / BuyUnit(level) (radio) / BuildTower / UndoLast / UndoTurn / RedoLast /
       RedoAll / EndTurn / NewGame / MainMenu / NextTerritory / PreviousTerritory / NextUnit / PreviousUnit /
-      CancelAction / EscRequested (Options + ESC) / DefeatContinue / ClaimVictoryWinNow / ClaimVictoryContinue
+      CancelAction / Automate / EscRequested (Options + ESC) / DefeatContinue / ClaimVictoryWinNow / ClaimVictoryContinue
     Refresh(state, session, hasAct.) (overlay priority: Winner > PendingDefeatScreen > PendingClaimVictory)
     SetMapLabel(text) // "Map: foo" | "Seed: 1234"
     ShowTutorialMessage(text) / HideTutorialMessage() — bottom-anchored click-through popup
@@ -236,12 +237,13 @@ MODEL PRIMITIVES
     slot-keyed owners for 2–6 players; OriginMapName carried)
   LoadedSave — (state, players, master seed, max-turn cap, slot name, OriginMapName?, MapHasBakedKinds)
   SaveSlotInfo — slot listing metadata (name, time, turn, isAutosave)
-  UserSettings — static; SfxEnabled / VfxEnabled / AiSpeed / ReplaySpeed persisted to user://settings.json
-    (lazy load, atomic tmp+rename); read by AudioBus + HexMapView + GodotAiPacer + GameController, written by
-    SettingsPanel. AiSpeed + ReplaySpeed are independent settings of one shared enum PlaybackSpeed
-    {Slow,Normal,Fast,Instant} (member order load-bearing — persists numerically). SpeedMultiplier → 2/1/0.5
-    for Slow/Normal/Fast; Instant routes to chunked frame-yielded driver via the pacer's ScheduleUnscaled
-    (multiplier unused).
+  UserSettings — static; SfxEnabled / VfxEnabled / AiSpeed / AutomateSpeed / ReplaySpeed persisted to
+    user://settings.json (lazy load, atomic tmp+rename); read by AudioBus + HexMapView + GodotAiPacer +
+    GameController, written by SettingsPanel. AiSpeed + AutomateSpeed + ReplaySpeed are independent settings
+    of one shared enum PlaybackSpeed {Slow,Normal,Fast,Instant} (member order load-bearing — persists
+    numerically). SpeedMultiplierPercent → 200/100/50 for Slow/Normal/Fast; Instant routes AI/replay to the
+    chunked frame-yielded driver via the pacer's ScheduleUnscaled (multiplier unused); an Instant
+    AutomateSpeed instead maps to multiplier 0 (one paced beat per frame — see "Automate").
 
 AUDIO (autoload)
   AudioBus — autoload-registered Node singleton (project.godot [autoload] "AudioBus"). Owns AudioStreamPlayer
@@ -396,7 +398,7 @@ Mutation/orchestration core (what both live AI and replay need) lives in `src/Fo
   - Capture aftermath — `HandleCapture` (+ private `SnapshotCapitals` / `ColorsWithCapital` / `LogCaptureDiff`), `DispatchActionSound`, `DeclareWinner`
   - Turn transitions — `ReseedRngForCurrentTurn` (+ static `MixSeed`), `EndOfTurnProcessing` (+ private `LogGameEndDiagnostics`), `AdvanceToNextActivePlayer`, `StartPlayerTurn` (+ static `ResetMovementFor`, private `LogTurnStart`)
   - Game-end — `CheckGameEndConditions` (fires `GameEnded` via the `onGameEnded` ctor callback; controller owns the public event)
-  - View sync — `RefreshViews`, `ShowHighlightAndRefresh`, `InvokeAfterRefresh`, private `HasAnyActionableForCurrentPlayer`
+  - View sync — `RefreshViews` (also pushes the Automate button state via `IHudView.SetAutomateState`, reading the `isAutomating` / `isAutomateExhausted` ctor callbacks), `ShowHighlightAndRefresh`, `InvokeAfterRefresh`, private `HasAnyActionableForCurrentPlayer`
   - Shared instant loop — `RunInstantTick(active, step, onExhausted, reschedule)`, the chunked frame-yielded fast-forward behind both live-AI instant (`AiTurnDriver`) and instant replay (`ReplayRecorder`); owns `InstantBudgetMs`
   - Silent-mode — `IsSilent` (per-action cue gate) + `EmitSound` / `EmitDestruction` (silent-gated wrappers over `_map.PlaySound` / `PlayDestructionEffect`, the only path controllers use); `RefreshSilentMode` (drives the view's `_silentMode` flag for view-internal tween/tide suppression), `InSilentAiBatch` (input gate)
   - Helpers — `WasFriendlyUnitAt`
@@ -421,7 +423,7 @@ The live-AI turn driver lives in `src/FourExHex.Controller/AiTurnDriver.cs`. Sam
 - **The single game-over/human gate**: private `RunHalted` (`GameEndedFired || IsGameOver || !CurrentPlayer.IsAi`) consulted at every step-machine entry; the two paced beats that additionally clear the highlight on game-over keep that branch inline.
 - **Paced step machine**: `Schedule(turnBoundary)` (the single re-dispatching decision point; re-reads `aiSilentMode()` per beat and delegates the shared transition/dispatch skeleton to `StepPacing.Redispatch`, supplying the driver-specific callbacks: track store, `RefreshSilentMode` sync, `Ai:Debug` transition logs), private `StepAiPreview` / `StepAiPreviewAfterChoose` / `StepAiExecute`, `ResolveAiActingTerritory`.
 - **Instant driver**: private `InstantAiTick` (thin wrapper over `GameOperations.RunInstantTick`), `AiInstantStep`, `EndInstantAiBatch`.
-- **Shared mutation cores** (used by both tracks so they can't drift): `ApplyAiActionCore` (records the replay beat live-only, dispatches to the matching `_ops.ExecuteAi*` / `ApplyLongPressRally` / `DeclareWinner`), `EndCurrentAiPlayerTurnCore` (end-of-turn beat + `EndOfTurnProcessing` + advance/`StartPlayerTurn` + scratch reset), `[Conditional("DEBUG")]` `LogAction`.
+- **Shared mutation cores** (used by both tracks so they can't drift): `ApplyAiActionCore` (records the replay beat live-only, dispatches to the matching `_ops.ExecuteAi*` / `ApplyLongPressRally` / `DeclareWinner`; `internal` — the controller's Automate loop executes its per-move core through it too, as does `ResolveAiActingTerritory` for the preview highlight), `EndCurrentAiPlayerTurnCore` (end-of-turn beat + `EndOfTurnProcessing` + advance/`StartPlayerTurn` + scratch reset), `[Conditional("DEBUG")]` `LogAction`.
 - **Public entry points**: `RunUntilHumanOrDone()` (fresh run from a turn boundary; resets scratch, seeds the track), `Schedule(turnBoundary)` (defeat-dismiss resume), `ResumeAfterReplayPause()` (Tutorial-Preview narration dismissed; resumes mid-stream without resetting scratch).
 
 ### What stays on GameController
@@ -527,6 +529,9 @@ event Action? NextUnitClicked;         // N: cycle selection by (Level, HexCoord
                                        // on SessionState.RepeatedMovement.
 event Action? PreviousUnitClicked;     // Shift+N — backward
 event Action? CancelActionPressed;     // Escape with Buy/Build/Move pending
+event Action? AutomateClicked;         // Automate toggle: start AI-driven play
+                                       // of the human's remaining moves, or
+                                       // stop a running loop (see "Automate")
 event Action? EscRequested;            // Options OR Escape with nothing pending;
                                        // Main → EnterPause → EscMenu
 event Action? DefeatContinueClicked;   // dismiss defeat overlay; resume AI
@@ -564,6 +569,12 @@ void SetUndoRedoLocked(bool locked);
 // GameController latches true in its ctor when previewMode/recordingMode is on
 // — tutorial game-over flows through the bottom tutorial panel instead.
 void SetVictoryOverlaySuppressed(bool suppressed);
+
+// Automate toggle state, pushed from GameOperations.RefreshViews (the single
+// refresh path). enabled = human turn, not replay/preview/recording/game-over,
+// not exhaustion-latched, and (actions remain OR running). running flips the
+// button to pressed-in (Selected ring) with the pause glyph.
+void SetAutomateState(bool enabled, bool running);
 ```
 
 Defeat overlay: `Refresh` reads `session.PendingDefeatScreen` and shows/hides a click-blocking panel naming the eliminated player. **Continue** → `DefeatContinueClicked` (resumes the paused AI loop); **Play Again** → `NewGameClicked` (`Main.RestartCurrentGame`); **Main Menu** → `MainMenuClicked`.
@@ -579,7 +590,7 @@ Tutorial popup: bottom-anchored autowrap panel via `ShowTutorialMessage` / `Show
 
 Cues hide the panel during AI turns mid-tutorial, but leave it once the script is exhausted (`NextPlayer0Beat == null`) so the completion toast survives.
 
-**HUD icon layer.** Play HUD and map-editor HUD render action buttons through a shared `HudIconButton : Button` overriding `_Draw` to paint a programmatic glyph. Helpers live in static `HudIcons` — `DrawUnit` (1/2/3 rings + Commander dot), `DrawTower`, `DrawTree`, `DrawCapital`, `DrawHand` (all reused by `HexPaletteButton`), `DrawCurvedArrow` (single + nested-doubled for Undo Last/All / Redo Last/All), `DrawEndTurnTriangle`, `DrawGear`. The two "next" buttons (`DrawNextUnit`, `DrawNextTerritory`) share an arrow-above-symbol composition via private `DrawNextArrow`: a horizontal math-vector arrow (line + filled arrowhead, `headLen = 0.468r`, `headHalf = 0.255r`) atop the per-button symbol (Recruit ring vs gold capital star, shifted down `0.20r`). Stroke-only glyphs (recruit ring, undo/redo arrows, next-arrow line, End Turn triangle) paint white on the dark bar, flipping black via `HudIconButton.CtaActive` while the End Turn CTA stylebox is on.
+**HUD icon layer.** Play HUD and map-editor HUD render action buttons through a shared `HudIconButton : Button` overriding `_Draw` to paint a programmatic glyph. Helpers live in static `HudIcons` — `DrawUnit` (1/2/3 rings + Commander dot), `DrawTower`, `DrawTree`, `DrawCapital`, `DrawHand` (all reused by `HexPaletteButton`), `DrawCurvedArrow` (single + nested-doubled for Undo Last/All / Redo Last/All), `DrawEndTurnTriangle`, `DrawGear`, `DrawAutomate` (the gear plus an enlarged dark hub holding a play triangle, or pause bars while `HudIconButton.AutomateRunning` is set). The two "next" buttons (`DrawNextUnit`, `DrawNextTerritory`) share an arrow-above-symbol composition via private `DrawNextArrow`: a horizontal math-vector arrow (line + filled arrowhead, `headLen = 0.468r`, `headHalf = 0.255r`) atop the per-button symbol (Recruit ring vs gold capital star, shifted down `0.20r`). Stroke-only glyphs (recruit ring, undo/redo arrows, next-arrow line, End Turn triangle) paint white on the dark bar, flipping black via `HudIconButton.CtaActive` while the End Turn CTA stylebox is on.
 
 Play HUD's right-side cluster orders `NextUnit → NextTerritory → EndTurn (→ Options in landscape)`. `NextUnit` fires `NextUnitClicked` (same as N); its `Selected` mirrors `SessionState.RepeatedMovement` (gated on the button being enabled), `Disabled` mirrors `MovementRules.HasUnmovedUnitsOwnedBy` on the selected territory — greyed with tooltip "No unmoved units to cycle".
 
@@ -591,7 +602,7 @@ In a buy/move mode the active button's tooltip is cleared and the bottom tutoria
 
 **`IAiPacer`** — schedules deferred continuations for the AI and replay step machines. `GodotAiPacer` schedules via injected `ITimerFactory` (production `SceneTreeTimerFactory` wrapping `SceneTree.CreateTimer`; tests `ManualTimerFactory` storing callbacks to fire on demand). `SynchronousAiPacer` drains via a FIFO trampoline (outermost `Schedule` runs the drain loop; nested calls enqueue and return) — every queued callback fires before the outermost `Schedule` returns, but the flattened stack avoids overflow on long `StepAiPreview` ↔ `StepAiExecute` chains. `Cancel` drops pending callbacks but does **NOT** poison future `Schedule` — the same instance must survive Cancel-then-reuse because `BeginReplay` cancels straggling AI steps before scheduling. `GodotAiPacer` uses a generation counter (each `Cancel` bumps it; each `Schedule` captures it; the fired callback checks the captured gen still matches). `Main` also calls Cancel via `GameController.AbandonGame()` before swapping to the menu so an in-flight `StepAiExecute` can't fire against disposed nodes.
 
-`GodotAiPacer` also takes an optional `Func<float>` `delayMultiplier` (`Main` wires `() => IsReplayMode ? SpeedMultiplier(ReplaySpeed) : SpeedMultiplier(AiSpeed)`), read on every `Schedule` so a mid-game speed change takes effect next beat — Slow doubles, Fast halves, Normal passes through. **Instant is not a multiplier**: it routes to the chunked frame-yielded driver (`InstantAiTick` / `InstantReplayTick`) scheduling via `ScheduleUnscaled` — exact delay, bypasses the multiplier. Both methods share `Cancel`'s generation guard via one private `ScheduleTimer`; nothing runs inline (the chunked driver owns stack depth by returning between ticks). `SynchronousAiPacer` drains both inline. `AbandonGame` / `BeginReplay` call `Cancel` so an in-flight tick can't fire against disposed nodes.
+`GodotAiPacer` also takes an optional `Func<int>` `delayMultiplierPercent` (`Main` wires `IsReplayMode → ReplaySpeed; IsAutomating → AutomateSpeed (Instant → 0); else AiSpeed`, each through `UserSettings.SpeedMultiplierPercent`), read on every `Schedule` so a mid-game speed change takes effect next beat — Slow doubles (200), Fast halves (50), Normal passes through (100). **Instant is not a multiplier**: it routes to the chunked frame-yielded driver (`InstantAiTick` / `InstantReplayTick`) scheduling via `ScheduleUnscaled` — exact delay, bypasses the multiplier. Both methods share `Cancel`'s generation guard via one private `ScheduleTimer`; nothing runs inline (the chunked driver owns stack depth by returning between ticks). `SynchronousAiPacer` drains both inline. `AbandonGame` / `BeginReplay` call `Cancel` so an in-flight tick can't fire against disposed nodes.
 
 ```csharp
 void Schedule(Action callback, int delayMs);          // multiplier-scaled
@@ -936,6 +947,40 @@ Chooser cost is inline within the 8 ms budget; the driver yields a real frame be
 `InSilentAiBatch()` = `aiSilentMode() && currentPlayer.IsAi && !PendingDefeatScreen` (`aiSilentMode` = `!IsReplayMode && AiSpeed == PlaybackSpeed.Instant`). The **input gate** and view-flag source (`RefreshSilentMode` pushes `InSilentAiBatch || _replayInstantActive` to `_map.SetSilentMode`): every top-level human handler (`TrackHandler`-wrapped click/key, plus `OnEndTurnPressed`, `OnUndo*`, `OnRedo*`, `OnDefeatContinuePressed`, `OnClaimVictory*`) short-circuits on it so input can't mutate `SessionState` between frame yields. `PendingDefeatScreen.HasValue` flips it false mid-batch so the overlay paints and `OnDefeatContinuePressed` dispatches; dismiss handler resumes via `AiTurnDriver.Schedule`. Game-end branches ignore it and always refresh. (The per-action **cue** gate is the sibling `IsSilent()`, which drops the `!PendingDefeatScreen` term so the AI's capital-destroying blow stays silent as it queues the overlay — see the audio section.)
 
 The **overlay is decoupled from silence**: `RefreshSilentMode` shows it whenever an AI acts in live play at *any* speed (`!IsReplayMode && !GameEndedFired && !IsGameOver && currentPlayer.IsAi && !PendingDefeatScreen`), tracked by `_aiBatchOverlayShown` — so paced AI turns show it too, though only the Instant batch is silenced. (Replay never shows it.)
+
+### Automate (AI plays the human's remaining turn)
+
+The HUD's Automate toggle (`AutomateClicked`, gear-with-play glyph beside End Turn) runs AI decisions for the *current human* slot until the chooser runs dry — without ending the turn. The loop lives on `GameController` (it needs `TrackHandler`), a two-beat step machine mirroring the AI driver's cadence:
+
+```
+OnAutomatePressed (toggle):
+  ├─ gates: replay / silent batch / preview / recording / game-over / AI turn / overlay pending
+  ├─ if already automating: StopAutomation("user")
+  ├─ TrackHandler(OnCancelActionPressedBody)   // cancel any open buy/build/move intent (own undo entry)
+  ├─ _automating = true; reset _automateVisited/_automateSteps; RefreshViews (button → running)
+  └─ pacer.Schedule(StepAutomatePreview)
+
+StepAutomatePreview:  halt checks → action = _automateChooser(state, me, _automateVisited, ops.Rng)
+  ├─ null → StopAutomation("exhausted", latch) ; step-cap (64) → StopAutomation("step-cap")
+  └─ highlight acting territory → pacer.Schedule(StepAutomateExecute, AiPreviewDelayMs)
+
+StepAutomateExecute:
+  ├─ TrackHandler(() => { _handlerMutatedGame = true; _aiDriver.ApplyAiActionCore(action); })
+  │     // one UndoEntry per move; the beat ApplyAiActionCore records lands in the entry's batch,
+  │     // keeping the recorder's undo↔beat lockstep intact
+  ├─ RebindSelectionAfterAutomateMove()   // capture recompute leaves session.SelectedTerritory stale;
+  │     // re-resolve the same logical territory by capital (ExecuteAi* never rebinds selection)
+  ├─ CheckGameEndConditions → halt checks (overlay / game-over stop the loop)
+  └─ highlight result territory → pacer.Schedule(StepAutomatePreview, AiActionDelayMs)
+```
+
+- **Chooser**: the `automateChooser` ctor param, default `ComputerAi.ChooseNextAction` called directly — `AiDispatcher.ChooseForCurrentPlayer` would return null for a Human slot. Tests inject scripted queues. Null = "nothing left to automate" (there is no EndTurn `AiAction`).
+- **Every automated move is individually undoable** — the standard undo handlers walk them back one at a time; automation is a human-turn flow, so the "AI actions are not undoable" invariant is untouched (that covers AI *players'* turns).
+- **Interruption is a flag, never a cancel**: `_automating` is checked at every beat entry; `StopAutomation` clears it and stale scheduled beats no-op (the shared pacer is never cancelled). Every `TrackHandler`-wrapped human input stops a running loop at handler entry (`_inAutomateStep` exempts the loop's own step); the non-wrapped handlers (undo/redo ×4, End Turn, defeat/claim) carry explicit `StopAutomation("input")` calls. Stops always land *between* moves.
+- **Exhaustion latch** (`_automateExhausted`): set only by the chooser-null stop; the button greys out (re-pressing would no-op) even if manual actions remain. Cleared by `ApplySnapshot` (any undo/redo), a manual game-mutating `TrackHandler` push (which triggers one extra refresh — the body's own refresh ran pre-clear), and `EndTurnNow`. User interrupts don't latch.
+- **Pacing**: `UserSettings.AutomateSpeed`, its own Settings row, independent of AiSpeed/ReplaySpeed. The shared pacer's multiplier closure in `Main` branches on `GameController.IsAutomating`; Instant maps to multiplier 0 — one paced beat per frame, keeping the loop frame-yielded and interruptible with no silent-batch involvement (a human turn is never silent, so per-move sounds play at every speed).
+- **Instrumentation**: `Log.LogCategory.Automate` Debug — start (turn/player/undo depth), one line per move (step index, action, undo depth after push), stop with reason (`user` / `input` / `exhausted` / `step-cap` / `overlay` / `game-over` / `not-human`).
+- Pinned by `tests/GameControllerTests.Automate.cs` (undo walk-back, interrupt-between-moves via `GodotAiPacer` + `ManualTimerFactory`, beat-stack sync, exhaustion-latch lifecycle, selection rebind).
 
 Tests use `SynchronousAiPacer` (`Schedule` + `ScheduleUnscaled` drain inline) or `QueuedAiPacer` (`DrainAll`).
 
