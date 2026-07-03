@@ -392,14 +392,31 @@ public class VikingRaidersRulesTests
         vikings.AddAtSea(new SeaViking(HexCoord.FromOffset(0, 0), UnitLevel.Recruit));
         vikings.NextWaveIndex = 4;
         vikings.LastCompletedRound = 9;
+        vikings.LastSpawnRound = 9;
 
         vikings.Reset(
             new[] { new SeaViking(HexCoord.FromOffset(5, 5), UnitLevel.Captain) },
-            nextWaveIndex: 2, lastCompletedRound: 6);
+            nextWaveIndex: 2, lastCompletedRound: 6, lastSpawnRound: 3);
 
         Assert.Single(vikings.AtSea);
         Assert.Equal(HexCoord.FromOffset(5, 5), vikings.AtSea[0].Coord);
         Assert.Equal(2, vikings.NextWaveIndex);
         Assert.Equal(6, vikings.LastCompletedRound);
+        Assert.Equal(3, vikings.LastSpawnRound);
+    }
+
+    // --- WaveDue --------------------------------------------------------------
+
+    [Theory]
+    [InlineData(2, 0, false)] // before the first wave
+    [InlineData(3, 0, true)]  // wave 0 on schedule
+    [InlineData(4, 0, true)]  // wave 0 missed → catch up
+    [InlineData(5, 1, false)] // wave 1 not yet due
+    [InlineData(6, 1, true)]  // wave 1 on schedule
+    [InlineData(18, 5, true)] // last wave
+    [InlineData(50, 6, false)] // schedule exhausted (NextWaveIndex == TotalWaves)
+    public void WaveDue_FollowsScheduleWithCatchUp(int round, int nextWave, bool expected)
+    {
+        Assert.Equal(expected, VikingRaidersRules.WaveDue(round, nextWave));
     }
 }

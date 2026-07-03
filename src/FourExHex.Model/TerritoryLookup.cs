@@ -51,6 +51,29 @@ public static class TerritoryLookup
     }
 
     /// <summary>
+    /// A territory's stable identity coord: its capital, or — for the
+    /// capital-less neutral (viking) territories the AI also iterates — its
+    /// lex-min coord. Used as the visited-set key and ordering tie-break in
+    /// <see cref="ComputerAi.ChooseNextAction"/>; identical to the capital
+    /// for every capital-bearing territory, so player behavior is unchanged.
+    /// </summary>
+    public static HexCoord AnchorCoord(Territory territory)
+    {
+        if (territory.HasCapital) return territory.Capital!.Value;
+        HexCoord min = default;
+        bool first = true;
+        foreach (HexCoord c in territory.Coords)
+        {
+            if (first || c.CompareTo(min) < 0)
+            {
+                min = c;
+                first = false;
+            }
+        }
+        return min;
+    }
+
+    /// <summary>
     /// Every territory owned by <paramref name="owner"/> that still has a
     /// capital — i.e. the territories that own a treasury and can still
     /// take actions. The "alive" set from this owner's perspective:

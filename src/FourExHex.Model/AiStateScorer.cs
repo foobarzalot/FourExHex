@@ -185,7 +185,13 @@ public static class AiStateScorer
             if (t.Owner == forPlayer)
             {
                 total += value;
-                total -= OwnTreePenalty * CountTreesAndGravesIn(t, state.Grid);
+                // Vikings pay no upkeep, so trees/graves on their own neutral
+                // land are harmless — no standing penalty (which would
+                // otherwise leak a chop incentive into their capture deltas).
+                if (!forPlayer.IsNone)
+                {
+                    total -= OwnTreePenalty * CountTreesAndGravesIn(t, state.Grid);
+                }
                 total -= EnemyEdgePenalty * CountEnemyEdges(t, state.Grid, forPlayer);
                 total -= UndefendedBorderPenalty * CountUndefendedBorderTiles(t, state.Grid, forPlayer);
                 total += ContestedDefenseWeight * SumCappedContestedBorderDefense(t, state.Grid, forPlayer);
@@ -319,8 +325,12 @@ public static class AiStateScorer
         // income at all, so its units die on the next upkeep step.
         // Otherwise defer to the shared solvency primitive — the same
         // one AiCommon.Enumerate uses for its candidate-gating gates.
-        bool willBankrupt = !territory.HasCapital
-            || !UpkeepRules.SurvivesNextUpkeep(gold, netIncome);
+        // Neutral (viking) territories are upkeep-exempt and can never
+        // bankrupt, so their units always carry full value — for the
+        // vikings' own scoring AND as threats in every player's.
+        bool willBankrupt = !territory.Owner.IsNone
+            && (!territory.HasCapital
+                || !UpkeepRules.SurvivesNextUpkeep(gold, netIncome));
 
         int unitValue = 0;
         if (!willBankrupt)

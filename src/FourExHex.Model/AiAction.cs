@@ -69,3 +69,29 @@ public sealed record AiDismissClaimAction(int ThresholdPercent) : AiAction;
 /// Replay-script-only: dismiss a pending defeat overlay.
 /// </summary>
 public sealed record AiDismissDefeatAction : AiAction;
+
+/// <summary>
+/// Viking Raiders: the sea viking at <see cref="Sea"/> disembarks onto the
+/// adjacent land tile <see cref="Land"/> — a capture when the tile is
+/// player-owned, a reposition-like landing when it is already neutral.
+/// Produced only by <see cref="VikingAi.ChooseNext"/> during the viking
+/// pseudo-turn; never simulated by <see cref="AiSimulator"/>.
+/// </summary>
+public sealed record VikingDisembarkAction(HexCoord Sea, HexCoord Land) : AiAction;
+
+/// <summary>
+/// Viking Raiders: the sea viking at <see cref="Sea"/> has no landing site
+/// (every adjacent land tile too defended or blocked) and dies at sea.
+/// </summary>
+public sealed record VikingPerishAtSeaAction(HexCoord Sea) : AiAction;
+
+/// <summary>
+/// Viking Raiders: spawn wave <see cref="WaveIndex"/> as <see cref="Spawns"/>.
+/// The placements are drawn (with the turn RNG) at CHOOSE time and carried in
+/// the action, so preview/execute and replay re-execution consume no further
+/// randomness. Always the LAST action of a viking turn — a fresh wave never
+/// acts on its spawn round, giving players exactly one round of warning.
+/// </summary>
+public sealed record VikingSpawnWaveAction(
+    int WaveIndex,
+    System.Collections.Generic.IReadOnlyList<SeaViking> Spawns) : AiAction;

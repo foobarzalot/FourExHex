@@ -68,6 +68,18 @@ public static class VikingRaidersRules
     }
 
     /// <summary>
+    /// True iff wave <paramref name="nextWaveIndex"/> should spawn on
+    /// <paramref name="round"/>'s viking turn: the wave's scheduled round
+    /// (<see cref="FirstWaveRound"/> + index × <see cref="WaveIntervalRounds"/>)
+    /// has arrived or passed. The ≥ (rather than ==) makes a missed spawn
+    /// (e.g. a step-capped viking turn) catch up on the next round instead of
+    /// silently dropping the wave.
+    /// </summary>
+    public static bool WaveDue(int round, int nextWaveIndex)
+        => nextWaveIndex < TotalWaves
+           && round >= FirstWaveRound + nextWaveIndex * WaveIntervalRounds;
+
+    /// <summary>
     /// The unit levels making up wave <paramref name="waveIndex"/> on a map
     /// with <paramref name="coastalCount"/> coastal water tiles. Size =
     /// max(<see cref="MinWaveSize"/>, coastalCount / <see cref="CoastalTilesPerViking"/>)

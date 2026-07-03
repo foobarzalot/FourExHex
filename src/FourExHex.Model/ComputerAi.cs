@@ -59,53 +59,71 @@ public static class ComputerAi
 
         foreach (Territory t in state.Territories
             .OrderByDescending(terr => terr.Size)
-            .ThenBy(terr => terr.HasCapital ? terr.Capital!.Value : default(HexCoord)))
+            .ThenBy(terr => TerritoryLookup.AnchorCoord(terr)))
         {
             if (t.Owner != forPlayer) continue;
-            if (!t.HasCapital) continue;
-            if (visitedCapitals.Contains(t.Capital!.Value)) continue;
+            // Vikings (forPlayer == None) drive capital-less neutral
+            // territories; every other player needs a live capital.
+            if (!t.HasCapital && !forPlayer.IsNone) continue;
+            HexCoord anchor = TerritoryLookup.AnchorCoord(t);
+            if (visitedCapitals.Contains(anchor)) continue;
             Log.Debug(Log.LogCategory.Ai,
-                $"[territory-order] capital={t.Capital} size={t.Size}");
+                $"[territory-order] capital={anchor} size={t.Size}");
 
-            // Phase 1: free unit captures / chops / grave clears
+            // Phase 1: free unit captures / chops / grave clears.
+            // Vikings capture only — an own-territory tree/grave is harmless
+            // to an upkeep-free force, so they never chop "for its own sake"
+            // (an enemy tile carrying a tree still classifies as Capture).
             foreach (HexCoord unitCoord in MovementRules.MovableUnitsInPowerOrder(t, forPlayer, state.Grid))
             {
                 Unit unit = state.Grid.Get(unitCoord)!.Unit!;
+                IEnumerable<AiCandidate> p1Candidates =
+                    AiCommon.EnumeratePhase1ForUnit(unitCoord, unit, t, state);
+                if (forPlayer.IsNone)
+                {
+                    p1Candidates = p1Candidates.Where(c => c.Kind == AiActionKind.Capture);
+                }
                 // never decline a free capture/chop/grave for the status quo
-                AiAction? p1 = TryPhase(AiCommon.EnumeratePhase1ForUnit(unitCoord, unit, t, state),
+                AiAction? p1 = TryPhase(p1Candidates,
                     int.MinValue, methodStart, baseScore, forPlayer, state, prof);
                 if (p1 != null) { _ = rng; return p1; }
             }
 
-            // Phase 2a: combine-to-unlock (existing units)
-            foreach (HexCoord unitCoord in MovementRules.MovableUnitsInPowerOrder(t, forPlayer, state.Grid))
+            // Phases 2a–4a are the economy: combines and gold spends. Vikings
+            // have neither (no combining, no capital → no treasury), so only
+            // real players run them.
+            if (!forPlayer.IsNone)
             {
-                Unit unit = state.Grid.Get(unitCoord)!.Unit!;
-                // never decline an unlock-combine for the status quo
-                AiAction? p2a = TryPhase(AiCommon.EnumeratePhase2aForUnit(unitCoord, unit, t, state),
-                    int.MinValue, methodStart, baseScore, forPlayer, state, prof);
-                if (p2a != null) { _ = rng; return p2a; }
-            }
+                // Phase 2a: combine-to-unlock (existing units)
+                foreach (HexCoord unitCoord in MovementRules.MovableUnitsInPowerOrder(t, forPlayer, state.Grid))
+                {
+                    Unit unit = state.Grid.Get(unitCoord)!.Unit!;
+                    // never decline an unlock-combine for the status quo
+                    AiAction? p2a = TryPhase(AiCommon.EnumeratePhase2aForUnit(unitCoord, unit, t, state),
+                        int.MinValue, methodStart, baseScore, forPlayer, state, prof);
+                    if (p2a != null) { _ = rng; return p2a; }
+                }
 
-            // Phase 2b: buy-and-combine-to-unlock (strictly-positive gate)
-            {
-                AiAction? p2b = TryPhase(AiCommon.EnumeratePhase2b(t, state),
-                    0, methodStart, baseScore, forPlayer, state, prof);
-                if (p2b != null) { _ = rng; return p2b; }
-            }
+                // Phase 2b: buy-and-combine-to-unlock (strictly-positive gate)
+                {
+                    AiAction? p2b = TryPhase(AiCommon.EnumeratePhase2b(t, state),
+                        0, methodStart, baseScore, forPlayer, state, prof);
+                    if (p2b != null) { _ = rng; return p2b; }
+                }
 
-            // Phase 3: buy-to-capture / buy-to-chop (strictly-positive gate)
-            {
-                AiAction? p3 = TryPhase(AiCommon.EnumeratePhase3(t, state),
-                    0, methodStart, baseScore, forPlayer, state, prof);
-                if (p3 != null) { _ = rng; return p3; }
-            }
+                // Phase 3: buy-to-capture / buy-to-chop (strictly-positive gate)
+                {
+                    AiAction? p3 = TryPhase(AiCommon.EnumeratePhase3(t, state),
+                        0, methodStart, baseScore, forPlayer, state, prof);
+                    if (p3 != null) { _ = rng; return p3; }
+                }
 
-            // Phase 4a: tower placement (optional — doing nothing is valid)
-            {
-                AiAction? p4a = TryPhase(AiCommon.EnumeratePhase4Towers(t, state),
-                    0, methodStart, baseScore, forPlayer, state, prof);
-                if (p4a != null) { _ = rng; return p4a; }
+                // Phase 4a: tower placement (optional — doing nothing is valid)
+                {
+                    AiAction? p4a = TryPhase(AiCommon.EnumeratePhase4Towers(t, state),
+                        0, methodStart, baseScore, forPlayer, state, prof);
+                    if (p4a != null) { _ = rng; return p4a; }
+                }
             }
 
             // Phase 4b: defensive repositions (optional — doing nothing is valid)
@@ -121,11 +139,11 @@ public static class ComputerAi
             if (prof.TotalCandidates > 0)
             {
                 Log.Debug(Log.LogCategory.Ai,
-                    $"[heuristic] {forPlayer} territory={t.Capital} has {prof.TotalCandidates} candidates " +
+                    $"[heuristic] {forPlayer} territory={anchor} has {prof.TotalCandidates} candidates " +
                     $"({prof.PositiveCandidates} positive); best delta = " +
                     $"{prof.ObservedBestDelta:+#;-#;0} ({prof.ObservedBestKind?.ToString() ?? "?"})");
             }
-            visitedCapitals.Add(t.Capital!.Value);
+            visitedCapitals.Add(anchor);
         }
 
         _ = rng;

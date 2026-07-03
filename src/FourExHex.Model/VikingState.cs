@@ -42,6 +42,16 @@ public class VikingState
     /// </summary>
     public int LastCompletedRound { get; set; }
 
+    /// <summary>
+    /// The round the most recent wave spawned in; 0 initially. Raiders at sea
+    /// disembark only when this is an EARLIER round — a freshly spawned wave
+    /// (LastSpawnRound == current round) waits, giving players exactly one
+    /// round of warning. A single value suffices because <see cref="AtSea"/>
+    /// holds at most one wave (every earlier raider disembarked or perished
+    /// before a spawn is ever chosen).
+    /// </summary>
+    public int LastSpawnRound { get; set; }
+
     /// <summary>Add a raider at sea, keeping <see cref="AtSea"/> sorted by coord.</summary>
     public void AddAtSea(SeaViking viking)
     {
@@ -78,11 +88,13 @@ public class VikingState
     /// Overwrite the whole state — used by save-load and the replay rewind
     /// (mirrors <see cref="GameState.ClearSeen"/> / <see cref="GameState.RemoveWater"/>).
     /// </summary>
-    public void Reset(IEnumerable<SeaViking> atSea, int nextWaveIndex, int lastCompletedRound)
+    public void Reset(
+        IEnumerable<SeaViking> atSea, int nextWaveIndex, int lastCompletedRound, int lastSpawnRound)
     {
         _atSea.Clear();
         foreach (SeaViking v in atSea) AddAtSea(v);
         NextWaveIndex = nextWaveIndex;
         LastCompletedRound = lastCompletedRound;
+        LastSpawnRound = lastSpawnRound;
     }
 }
