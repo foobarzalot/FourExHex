@@ -28,4 +28,15 @@ public enum GameMode
     /// determinism are identical to <see cref="Freeform"/>.
     /// </summary>
     FogOfWar = 2,
+
+    /// <summary>
+    /// "Viking Raiders": neutral (<see cref="PlayerId.None"/>) raider units
+    /// arrive at the island's shores in a fixed escalating wave schedule
+    /// (see <see cref="VikingRaidersRules"/>), spawning on coastal water and
+    /// disembarking onto land one round later. Conquered tiles turn neutral;
+    /// vikings pay no upkeep, never combine, and cap at Captain. No win
+    /// condition can fire while any viking threat remains (at sea, landed, or
+    /// in pending waves); afterwards ordinary <see cref="Freeform"/> rules apply.
+    /// </summary>
+    VikingRaiders = 3,
 }

@@ -121,6 +121,15 @@ public class GameState
     public bool FogEnabled => Mode == GameMode.FogOfWar;
 
     /// <summary>
+    /// Viking Raiders mode state: raiders at sea + the wave-schedule cursor.
+    /// Always non-null; default-empty (and never mutated) outside
+    /// <see cref="GameMode.VikingRaiders"/>. Persisted in saves; excluded from
+    /// undo snapshots (it only mutates during the viking pseudo-turn, and the
+    /// undo stack clears at end of turn).
+    /// </summary>
+    public VikingState Vikings { get; }
+
+    /// <summary>
     /// Difficulty of the player owning <paramref name="id"/>, resolved by SLOT
     /// (<see cref="PlayerId.Index"/>) rather than by indexing <see cref="Players"/>
     /// at that slot. With a 2–6 player game the roster is compacted (e.g. slots
@@ -149,7 +158,8 @@ public class GameState
         IReadOnlySet<HexCoord>? waterCoords = null,
         GameMode mode = GameMode.Freeform,
         bool useRandomizedSelection = false,
-        IReadOnlySet<HexCoord>? seen = null)
+        IReadOnlySet<HexCoord>? seen = null,
+        VikingState? vikings = null)
     {
         Grid = grid;
         Territories = territories;
@@ -160,5 +170,6 @@ public class GameState
         Mode = mode;
         UseRandomizedSelection = useRandomizedSelection;
         _seen = seen is null ? new HashSet<HexCoord>() : new HashSet<HexCoord>(seen);
+        Vikings = vikings ?? new VikingState();
     }
 }

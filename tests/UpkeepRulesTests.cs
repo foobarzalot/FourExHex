@@ -377,4 +377,54 @@ public class UpkeepRulesTests
         Assert.Equal(8, treasury.GetGold(new HexCoord(0, 0)));  // Red paid 2
         Assert.Equal(10, treasury.GetGold(new HexCoord(5, 0))); // Blue untouched
     }
+
+    // --- Viking Raiders: neutral-owned units are upkeep-exempt ---------------
+
+    /// <summary>Capital-less neutral territory holding two viking units.</summary>
+    private static (HexGrid grid, Territory neutral) BuildNeutralUnitsFixture()
+    {
+        HexGrid grid = TestHelpers.BuildSpotGrid(
+            PlayerId.None, new HexCoord(0, 0), new HexCoord(1, 0));
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Unit(PlayerId.None, UnitLevel.Captain);
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(PlayerId.None);
+        Territory neutral = new Territory(
+            PlayerId.None, new[] { new HexCoord(0, 0), new HexCoord(1, 0) }, capital: null);
+        return (grid, neutral);
+    }
+
+    [Fact]
+    public void TotalUpkeepFor_NeutralTerritoryWithUnits_IsZero()
+    {
+        (HexGrid grid, Territory neutral) = BuildNeutralUnitsFixture();
+
+        Assert.Equal(0, UpkeepRules.TotalUpkeepFor(neutral, grid, Difficulty.Soldier));
+    }
+
+    [Fact]
+    public void ApplyUpkeep_NeutralTerritoryWithUnits_PaysNothing_NoGraves()
+    {
+        (HexGrid grid, Territory neutral) = BuildNeutralUnitsFixture();
+
+        bool paid = UpkeepRules.ApplyUpkeep(neutral, grid, new Treasury(), Difficulty.Soldier);
+
+        Assert.True(paid);
+        Assert.IsType<Unit>(grid.Get(new HexCoord(0, 0))!.Occupant);
+        Assert.IsType<Unit>(grid.Get(new HexCoord(1, 0))!.Occupant);
+    }
+
+    [Fact]
+    public void ApplyUpkeepFor_NeutralOwnerWithUnits_NeverBankrupts()
+    {
+        // The phantom-turn path: neutral goes through the same ApplyUpkeepFor
+        // as an eliminated player, and with viking units present it must stay
+        // a no-op (vikings pay no upkeep, never leave graves).
+        (HexGrid grid, Territory neutral) = BuildNeutralUnitsFixture();
+
+        bool anyBankrupt = UpkeepRules.ApplyUpkeepFor(
+            PlayerId.None, Difficulty.Soldier, new[] { neutral }, grid, new Treasury());
+
+        Assert.False(anyBankrupt);
+        Assert.IsType<Unit>(grid.Get(new HexCoord(0, 0))!.Occupant);
+        Assert.IsType<Unit>(grid.Get(new HexCoord(1, 0))!.Occupant);
+    }
 }

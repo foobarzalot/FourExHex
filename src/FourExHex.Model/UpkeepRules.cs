@@ -74,9 +74,14 @@ public static class UpkeepRules
         gold + UpkeepHorizon * netIncome >= 0;
 
     /// <summary>Sum of upkeep costs for every unit in <paramref name="territory"/>,
-    /// at the owner's <paramref name="difficulty"/>.</summary>
+    /// at the owner's <paramref name="difficulty"/>. Neutral
+    /// (<see cref="PlayerId.None"/>-owned) territories always owe zero: viking
+    /// units are upkeep-exempt (they never bankrupt, so they never leave
+    /// graves), and this is the single chokepoint every upkeep/solvency path
+    /// reads.</summary>
     public static int TotalUpkeepFor(Territory territory, HexGrid grid, Difficulty difficulty)
     {
+        if (territory.Owner.IsNone) return 0;
         int total = 0;
         foreach (HexCoord coord in territory.Coords)
         {

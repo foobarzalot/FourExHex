@@ -46,6 +46,7 @@ public static class Log
         Fog = 14,     // Fog Of War mode: per-refresh human visibility recompute
         Tree = 15,    // per-turn whole-map tree/grave incidence census (treepocalypse)
         Automate = 16, // human-turn Automate loop: start / per-move / stop-with-reason
+        Viking = 17,  // Viking Raiders mode: wave spawn / disembark / perish / phase census
     }
 
     /// <summary>Severity, ascending. <see cref="Off"/> disables a

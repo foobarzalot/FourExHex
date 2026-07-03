@@ -951,4 +951,60 @@ public class MovementRulesTests
 
         Assert.False(MovementRules.HasUnmovedUnitsOwnedBy(red, Red, grid));
     }
+
+    // --- Viking Raiders: neutral-owned units never combine ------------------
+
+    /// <summary>
+    /// A 3-tile neutral (PlayerId.None) territory with a Recruit on each end
+    /// tile. Neutral territories are capital-less by construction.
+    /// </summary>
+    private static (HexGrid grid, IReadOnlyList<Territory> territories, Territory neutral)
+        BuildNeutralUnitsFixture()
+    {
+        HexGrid grid = BuildGrid(3, 1, PlayerId.None);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Occupant = new Unit(PlayerId.None);
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(PlayerId.None);
+        var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        Territory neutral = territories.First(t => t.Owner.IsNone);
+        return (grid, territories, neutral);
+    }
+
+    [Fact]
+    public void ValidTargets_NeutralOwner_ExcludesCombineTargets()
+    {
+        (HexGrid grid, var territories, Territory neutral) = BuildNeutralUnitsFixture();
+
+        var targets = MovementRules.ValidTargets(UnitLevel.Recruit, neutral, grid, territories);
+
+        // The empty middle tile is a fine reposition, but the other viking's
+        // tile must NOT be offered as a combine target.
+        Assert.Contains(HexCoord.FromOffset(1, 0), targets);
+        Assert.DoesNotContain(HexCoord.FromOffset(0, 0), targets);
+        Assert.DoesNotContain(HexCoord.FromOffset(2, 0), targets);
+    }
+
+    [Fact]
+    public void ValidTargets_PlayerOwner_StillOffersCombineTargets()
+    {
+        // Control: the same layout under a real player still combines.
+        HexGrid grid = BuildGrid(3, 1, Red);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Occupant = new Unit(Red);
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(Red);
+        var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        Territory red = territories.First(t => t.Owner == Red);
+
+        var targets = MovementRules.ValidTargets(UnitLevel.Recruit, red, grid, territories);
+
+        Assert.Contains(grid.Tiles, t => t.Occupant is Unit && targets.Contains(t.Coord));
+    }
+
+    [Fact]
+    public void Move_NeutralUnitOntoNeutralUnit_Throws()
+    {
+        (HexGrid grid, _, Territory neutral) = BuildNeutralUnitsFixture();
+
+        Assert.Throws<System.InvalidOperationException>(() =>
+            MovementRules.Move(
+                HexCoord.FromOffset(0, 0), HexCoord.FromOffset(2, 0), grid, neutral));
+    }
 }

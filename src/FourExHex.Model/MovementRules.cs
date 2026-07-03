@@ -109,7 +109,11 @@ public static class MovementRules
                 continue;
             }
 
+            // Viking Raiders: neutral-owned (viking) units never combine —
+            // their army is strictly what lands, so a fellow viking's tile is
+            // not a target.
             if (tile.Occupant is Unit ownUnit
+                && !attackerTerritory.Owner.IsNone
                 && attackerLevel.CanCombineWith(ownUnit.Level))
             {
                 results.Add(coord);
@@ -223,6 +227,14 @@ public static class MovementRules
         if (dstTile.Owner == attackerTerritory.Owner
             && dstTile.Occupant is Unit destUnit)
         {
+            // Viking units can't combine, and falling through would silently
+            // replace the destination unit — an illegal action reaching this
+            // point means a caller skipped ValidTargets, so crash.
+            if (attackerTerritory.Owner.IsNone)
+            {
+                throw new System.InvalidOperationException(
+                    $"neutral (viking) units cannot combine: {dstTile.Coord}");
+            }
             var combined = new Unit(
                 attackerTerritory.Owner,
                 arrivingUnit.Level.CombinedWith(destUnit.Level))
