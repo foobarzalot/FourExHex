@@ -571,10 +571,11 @@ void SetUndoRedoLocked(bool locked);
 void SetVictoryOverlaySuppressed(bool suppressed);
 
 // Automate toggle state, pushed from GameOperations.RefreshViews (the single
-// refresh path). enabled = human turn, not replay/preview/recording/game-over,
-// not exhaustion-latched, and (actions remain OR running). running flips the
+// refresh path). visible = false in tutorial Preview/Record — the button isn't
+// drawn at all there. enabled = visible, human turn, not replay/game-over, not
+// exhaustion-latched, and (actions remain OR running). running flips the
 // button to pressed-in (Selected ring) with the pause glyph.
-void SetAutomateState(bool enabled, bool running);
+void SetAutomateState(bool enabled, bool running, bool visible);
 ```
 
 Defeat overlay: `Refresh` reads `session.PendingDefeatScreen` and shows/hides a click-blocking panel naming the eliminated player. **Continue** → `DefeatContinueClicked` (resumes the paused AI loop); **Play Again** → `NewGameClicked` (`Main.RestartCurrentGame`); **Main Menu** → `MainMenuClicked`.

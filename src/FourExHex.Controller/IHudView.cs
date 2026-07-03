@@ -197,8 +197,11 @@ public interface IHudView
     /// stays reachable); <paramref name="running"/> while the automate
     /// loop is active — the button renders pressed-in with a pause
     /// glyph and clears automatically when automation stops.
+    /// <paramref name="visible"/> is false in the tutorial Preview and
+    /// Record modes — the button isn't drawn at all there, not merely
+    /// disabled.
     /// </summary>
-    void SetAutomateState(bool enabled, bool running);
+    void SetAutomateState(bool enabled, bool running, bool visible);
 }
 
 /// <summary>

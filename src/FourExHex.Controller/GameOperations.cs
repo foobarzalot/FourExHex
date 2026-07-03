@@ -739,16 +739,18 @@ public class GameOperations
             $"[cta] NextTerritory={nextCta} (isHuman={isHuman}, hasActionable={hasActionable}, selExhausted={selExhausted})");
         // Automate toggle: enabled on a human turn with actions remaining
         // (or while running, so Stop stays reachable); running while the
-        // loop is active. Disabled in replay and the tutorial Record /
-        // Preview modes, where automated moves would desync the script.
+        // loop is active. Hidden outright (not drawn) in the tutorial
+        // Record / Preview modes, where automated moves would desync the
+        // script; disabled in replay and after the exhaustion latch.
         bool automating = _isAutomating();
-        bool automateEnabled = isHuman
+        bool automateVisible = !_previewMode && !_recordingMode;
+        bool automateEnabled = automateVisible
+            && isHuman
             && !_session.IsGameOver && !GameEndedFired
             && !_isReplayMode()
-            && !_previewMode && !_recordingMode
             && !_isAutomateExhausted()
             && (hasActionable || automating);
-        _hud.SetAutomateState(automateEnabled, automating);
+        _hud.SetAutomateState(automateEnabled, automating, automateVisible);
         _onAfterRefresh?.Invoke();
         Log.Since(Log.LogCategory.Capture, "[hitch] RefreshViews total", tWhole);
     }

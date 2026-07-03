@@ -146,10 +146,12 @@ public class MockHudView : IHudView
 
     public bool AutomateEnabled { get; private set; }
     public bool AutomateRunning { get; private set; }
-    public void SetAutomateState(bool enabled, bool running)
+    public bool AutomateVisible { get; private set; } = true;
+    public void SetAutomateState(bool enabled, bool running, bool visible)
     {
         AutomateEnabled = enabled;
         AutomateRunning = running;
+        AutomateVisible = visible;
     }
 
     public void ClickReplay() => ReplayClicked?.Invoke();

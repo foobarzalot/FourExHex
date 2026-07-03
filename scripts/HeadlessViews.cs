@@ -80,5 +80,5 @@ public sealed class HeadlessHudView : IHudView
     public HexCoord? SummonedCapitalAlertCoord => null;
     public void SummonCapitalAlertNotice(HexCoord capital, EconomyOutlook outlook) { }
     public void DismissCapitalAlertNotice() { }
-    public void SetAutomateState(bool enabled, bool running) { }
+    public void SetAutomateState(bool enabled, bool running, bool visible) { }
 }

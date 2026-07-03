@@ -2003,10 +2003,11 @@ public partial class HudView : OrientationHud, IHudView
         _bankruptToast.Visible = false;
     }
 
-    public void SetAutomateState(bool enabled, bool running)
+    public void SetAutomateState(bool enabled, bool running, bool visible)
     {
         // Button built alongside the rest of the HUD chrome; see _Ready.
         if (_automateButton == null) return;
+        _automateButton.Visible = visible;
         _automateButton.Disabled = !enabled;
         _automateButton.Selected = running;
         _automateButton.AutomateRunning = running;

@@ -298,6 +298,42 @@ public partial class GameControllerTests
     }
 
     [Fact]
+    public void Automate_InTutorialPreviewMode_ButtonHiddenAndInert()
+    {
+        ControllerHarness h = TestHelpers.BuildControllerGame(
+            previewMode: true,
+            automateChooser: AutomateScript(ThreeMoveScript()));
+
+        // Hidden — not drawn at all during the player-facing tutorial.
+        Assert.False(h.Hud.AutomateVisible);
+        // And inert even if the event fires anyway.
+        h.Hud.ClickAutomate();
+        Assert.False(h.Controller.IsAutomating);
+        Assert.Equal(0, h.Session.Undo.UndoCount);
+    }
+
+    [Fact]
+    public void Automate_InTutorialRecordingMode_ButtonHiddenAndInert()
+    {
+        ControllerHarness h = TestHelpers.BuildControllerGame(
+            recordingMode: true,
+            automateChooser: AutomateScript(ThreeMoveScript()));
+
+        Assert.False(h.Hud.AutomateVisible);
+        h.Hud.ClickAutomate();
+        Assert.False(h.Controller.IsAutomating);
+        Assert.Equal(0, h.Session.Undo.UndoCount);
+    }
+
+    [Fact]
+    public void Automate_NormalGame_ButtonVisible()
+    {
+        ControllerHarness h = BuildAutomateGame(ThreeMoveScript());
+
+        Assert.True(h.Hud.AutomateVisible);
+    }
+
+    [Fact]
     public void Automate_WithSelectedTerritory_SelectionTracksRecomputedTerritory()
     {
         ControllerHarness h = BuildAutomateGame(ThreeMoveScript());
