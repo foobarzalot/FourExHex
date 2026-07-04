@@ -52,6 +52,32 @@ public class VikingState
     /// </summary>
     public int LastSpawnRound { get; set; }
 
+    // Backing store for SeaGraves, kept lex-sorted like _atSea.
+    private readonly List<HexCoord> _seaGraves = new();
+
+    /// <summary>
+    /// Water coords where a raider perished this round — a purely cosmetic
+    /// marker (the view draws a grave that "washes away" when the next
+    /// viking turn begins; a grave on water can never become a tree).
+    /// Transient: NOT saved, NOT in the checksum, NOT snapshotted — a
+    /// replay re-derives it from the recorded perish beats, and a mid-round
+    /// load simply starts without the markers.
+    /// </summary>
+    public IReadOnlyList<HexCoord> SeaGraves => _seaGraves;
+
+    /// <summary>Mark a perish site, keeping <see cref="SeaGraves"/> sorted. Idempotent.</summary>
+    public void AddSeaGrave(HexCoord coord)
+    {
+        int i = 0;
+        while (i < _seaGraves.Count && _seaGraves[i].CompareTo(coord) < 0) i++;
+        if (i < _seaGraves.Count && _seaGraves[i] == coord) return;
+        _seaGraves.Insert(i, coord);
+    }
+
+    /// <summary>Wash away every sea grave (the next viking turn began, or
+    /// no viking turn will ever run again).</summary>
+    public void ClearSeaGraves() => _seaGraves.Clear();
+
     /// <summary>Add a raider at sea, keeping <see cref="AtSea"/> sorted by coord.</summary>
     public void AddAtSea(SeaViking viking)
     {
@@ -92,6 +118,7 @@ public class VikingState
         IEnumerable<SeaViking> atSea, int nextWaveIndex, int lastCompletedRound, int lastSpawnRound)
     {
         _atSea.Clear();
+        _seaGraves.Clear();
         foreach (SeaViking v in atSea) AddAtSea(v);
         NextWaveIndex = nextWaveIndex;
         LastCompletedRound = lastCompletedRound;

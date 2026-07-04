@@ -340,6 +340,77 @@ public partial class GameControllerTests
         Assert.Equal(3, g.State.Vikings.LastCompletedRound); // declared AT phase end
     }
 
+    /// <summary>
+    /// A round-2 board where the round-3 viking turn is forced: the Captain
+    /// at (3,1) has its only landing (2,1) blocked by a Red Commander →
+    /// perish. With <paramref name="keepThreatAlive"/>, a landed Recruit
+    /// sits boxed in on the neutral tile (2,0) — every neighbour is
+    /// defense-covered (capital radiation west, the Commander east), so it
+    /// keeps the threat alive without ever acting or capturing a capital.
+    /// </summary>
+    private static VikingGame BuildPerishGame(bool keepThreatAlive)
+    {
+        HexGrid grid = TestHelpers.BuildRectGrid(3, 3, PlayerId.FromIndex(0));
+        for (int col = 0; col < 3; col++)
+        {
+            grid.Get(HexCoord.FromOffset(col, 2))!.Owner = PlayerId.FromIndex(1);
+        }
+        grid.Get(HexCoord.FromOffset(2, 1))!.Occupant =
+            new Unit(PlayerId.FromIndex(0), UnitLevel.Commander); // defense 4: blocks Captain
+        if (keepThreatAlive)
+        {
+            grid.Get(HexCoord.FromOffset(2, 0))!.Owner = PlayerId.None;
+            grid.Get(HexCoord.FromOffset(2, 0))!.Occupant =
+                new Unit(PlayerId.None, UnitLevel.Recruit);
+        }
+        HexCoord blockedSea = HexCoord.FromOffset(3, 1);
+        return new VikingGame(
+            grid,
+            water: new HashSet<HexCoord> { blockedSea },
+            currentPlayerIndex: 1,
+            turnNumber: 2,
+            beforeStart: s => s.Vikings.Reset(
+                new[] { new SeaViking(blockedSea, UnitLevel.Captain) },
+                nextWaveIndex: VikingRaidersRules.TotalWaves, // no spawn noise
+                lastCompletedRound: 2,
+                lastSpawnRound: 2));
+    }
+
+    [Fact]
+    public void VikingRaiders_PerishLeavesSeaGrave_AndPlaysSubmergeBloop()
+    {
+        VikingGame g = BuildPerishGame(keepThreatAlive: true);
+        HexCoord blockedSea = HexCoord.FromOffset(3, 1);
+
+        g.Hud.ClickEndTurn(); // Blue ends round 2 → round-3 viking turn runs
+
+        Assert.Equal(3, g.State.Vikings.LastCompletedRound);
+        Assert.Empty(g.State.Vikings.AtSea);
+        Assert.Contains(blockedSea, g.State.Vikings.SeaGraves);
+        Assert.Contains(blockedSea, g.Map.TileSubmergedSounds);
+        Assert.DoesNotContain(blockedSea, g.Map.UnitDestroyedSounds);
+
+        // The grave washes away when the NEXT viking turn begins.
+        g.Hud.ClickEndTurn(); // Red
+        g.Hud.ClickEndTurn(); // Blue → round-4 viking turn
+        Assert.Equal(4, g.State.Vikings.LastCompletedRound);
+        Assert.Empty(g.State.Vikings.SeaGraves);
+    }
+
+    [Fact]
+    public void VikingRaiders_SeaGraveClearsImmediately_WhenPerishEndsTheThreat()
+    {
+        // The perishing Captain was the last viking anywhere — no future
+        // viking turn will run, so the grave must not linger forever.
+        VikingGame g = BuildPerishGame(keepThreatAlive: false);
+
+        g.Hud.ClickEndTurn();
+
+        Assert.Contains(HexCoord.FromOffset(3, 1), g.Map.TileSubmergedSounds);
+        Assert.Empty(g.State.Vikings.SeaGraves);
+        Assert.False(g.Session.IsGameOver); // ordinary play continues
+    }
+
     [Fact]
     public void VikingRaiders_HumanInputLockedDuringVikingPhase()
     {

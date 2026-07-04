@@ -27,7 +27,7 @@ public sealed class HeadlessHexMapView : IHexMapView
     public void ShowTowerTargets(IEnumerable<HexCoord> coords) { }
     public void ShowTowerCoverage(IEnumerable<HexCoord> coords) { }
     public void ShowTideForecast(IEnumerable<TideStep> steps) { }
-    public void ShowSeaVikings(IReadOnlyList<SeaViking> atSea) { }
+    public void ShowSeaVikings(IReadOnlyList<SeaViking> atSea, IReadOnlyList<HexCoord> seaGraves) { }
     public void ShowFog(FogView? fog) { }
     public void ShowMoveSource(HexCoord? coord) { }
     public void ShowSelectUnitCue(HexCoord? coord) { }

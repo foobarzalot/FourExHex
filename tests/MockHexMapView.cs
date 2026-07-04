@@ -48,10 +48,14 @@ public class MockHexMapView : IHexMapView
     public void ShowTideForecast(IEnumerable<TideStep> steps) =>
         LastTideForecast = steps.Select(s => s.Coord).ToList();
 
-    /// <summary>The most recent at-sea raider list the controller pushed.</summary>
+    /// <summary>The most recent at-sea raider + sea-grave lists the controller pushed.</summary>
     public List<SeaViking> LastSeaVikings { get; private set; } = new();
-    public void ShowSeaVikings(IReadOnlyList<SeaViking> atSea) =>
+    public List<HexCoord> LastSeaGraves { get; private set; } = new();
+    public void ShowSeaVikings(IReadOnlyList<SeaViking> atSea, IReadOnlyList<HexCoord> seaGraves)
+    {
         LastSeaVikings = atSea.ToList();
+        LastSeaGraves = seaGraves.ToList();
+    }
 
     /// <summary>The most recent fog projection the controller pushed, or null
     /// if fog is off (the last <see cref="ShowFog"/> arg). <see cref="ShowFogCount"/>
@@ -137,6 +141,7 @@ public class MockHexMapView : IHexMapView
     public List<HexCoord> TowerPlacedSounds { get; } = new();
     public List<HexCoord> UnitCombinedSounds { get; } = new();
     public List<HexCoord> UnitDestroyedSounds { get; } = new();
+    public List<HexCoord> TileSubmergedSounds { get; } = new();
     public List<HexCoord> TowerDestroyedSounds { get; } = new();
     public List<HexCoord> TreeClearedSounds { get; } = new();
     public List<HexCoord> CapitalDestroyedSounds { get; } = new();
@@ -154,6 +159,7 @@ public class MockHexMapView : IHexMapView
             case SoundEffect.TowerPlaced: TowerPlacedSounds.Add(coord); break;
             case SoundEffect.UnitCombined: UnitCombinedSounds.Add(coord); break;
             case SoundEffect.UnitDestroyed: UnitDestroyedSounds.Add(coord); break;
+            case SoundEffect.TileSubmerged: TileSubmergedSounds.Add(coord); break;
             case SoundEffect.TowerDestroyed: TowerDestroyedSounds.Add(coord); break;
             case SoundEffect.TreeCleared: TreeClearedSounds.Add(coord); break;
             case SoundEffect.CapitalDestroyed: CapitalDestroyedSounds.Add(coord); break;

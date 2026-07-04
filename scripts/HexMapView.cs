@@ -498,8 +498,9 @@ public partial class HexMapView : Node2D, IHexMapView
         // The tide-telegraph layer is freed with every other child above; drop the
         // diff cache so the next ShowTideForecast redraws onto the fresh layer.
         _shownTideForecast.Clear();
-        // Same for the sea-viking layer's diff cache.
-        _shownSeaVikings.Clear();
+        // Same for the sea-viking layer's diff caches.
+        _seaVikingVisuals.Clear();
+        _seaGraveVisuals.Clear();
         _tileVisuals.Clear();
         _pulsingUnits.Clear();
         _pulsingCapitals.Clear();
@@ -2188,13 +2189,14 @@ public partial class HexMapView : Node2D, IHexMapView
     /// Shrink a visual to nothing and free it. Used for unit corpses on
     /// bankruptcy and for graves being promoted into trees.
     /// </summary>
-    private static void StartShrinkAndFreeAnimation(Node2D visual)
+    private static void StartShrinkAndFreeAnimation(
+        Node2D visual, double durationSeconds = ShrinkDurationSeconds)
     {
         Tween tween = visual.CreateTween();
-        tween.TweenProperty(visual, "scale", Vector2.Zero, ShrinkDurationSeconds)
+        tween.TweenProperty(visual, "scale", Vector2.Zero, durationSeconds)
             .SetTrans(Tween.TransitionType.Sine)
             .SetEase(Tween.EaseType.In);
-        tween.Parallel().TweenProperty(visual, "modulate", new Color(1f, 1f, 1f, 0f), ShrinkDurationSeconds)
+        tween.Parallel().TweenProperty(visual, "modulate", new Color(1f, 1f, 1f, 0f), durationSeconds)
             .SetTrans(Tween.TransitionType.Sine)
             .SetEase(Tween.EaseType.In);
         tween.Finished += visual.QueueFree;
@@ -3020,38 +3022,120 @@ public partial class HexMapView : Node2D, IHexMapView
         };
     }
 
-    // Viking Raiders: what the sea-viking layer currently shows, so
-    // ShowSeaVikings can skip the rebuild across the frequent RefreshViews
-    // calls of a turn (the at-sea set only changes on viking-phase beats).
-    private readonly List<SeaViking> _shownSeaVikings = new();
+    // Viking Raiders: what the sea layer currently shows, per coord, so
+    // ShowSeaVikings diffs incrementally across the frequent RefreshViews
+    // calls of a turn (the sets only change on viking-phase beats) and can
+    // animate the shield→grave transition when a raider perishes.
+    private readonly Dictionary<HexCoord, (SeaViking Viking, Node2D Visual)> _seaVikingVisuals = new();
+    private readonly Dictionary<HexCoord, Node2D> _seaGraveVisuals = new();
+
+    // Sea graves wash away noticeably slower than the land 0.25s shrink —
+    // they disappear at the top of a busy viking turn, and at the land pace
+    // the wash-away doesn't read.
+    private const double SeaGraveWashDurationSeconds = 0.9;
 
     /// <summary>
     /// Viking Raiders: render the raiders waiting at sea — the same painted
-    /// shield a landed viking carries, on each listed water coord (the
-    /// opaque cream shield reads directly on the water). Empty list clears
-    /// the layer.
+    /// shield a landed viking carries, directly on the water — plus a grave
+    /// marker wherever a raider perished this round. A shield whose coord
+    /// now holds a sea grave gets the land bankruptcy choreography: the
+    /// shield shrinks out on the deaths layer while the grave grows in
+    /// beneath (staggered, like a corpse). Graves shrink out the same way
+    /// when their list empties (the next viking turn began) — like a land
+    /// grave being promoted, except no tree follows. Empty lists clear the
+    /// layer.
     /// </summary>
-    public void ShowSeaVikings(System.Collections.Generic.IReadOnlyList<SeaViking> atSea)
+    public void ShowSeaVikings(
+        System.Collections.Generic.IReadOnlyList<SeaViking> atSea,
+        System.Collections.Generic.IReadOnlyList<HexCoord> seaGraves)
     {
         if (_seaVikingsLayer == null) return;
-        if (_shownSeaVikings.Count == atSea.Count)
-        {
-            bool same = true;
-            for (int i = 0; i < atSea.Count; i++)
-            {
-                if (_shownSeaVikings[i] != atSea[i]) { same = false; break; }
-            }
-            if (same) return;
-        }
-        _shownSeaVikings.Clear();
-        _shownSeaVikings.AddRange(atSea);
 
-        ClearLayer(_seaVikingsLayer);
-        foreach (SeaViking viking in atSea)
+        var desired = new Dictionary<HexCoord, SeaViking>(atSea.Count);
+        foreach (SeaViking v in atSea) desired[v.Coord] = v;
+        var desiredGraves = new HashSet<HexCoord>(seaGraves);
+
+        // Shields that left the sea. One whose coord now shows a grave
+        // perished there — shrink it out like a bankrupt land unit.
+        var justPerished = new HashSet<HexCoord>();
+        var staleShields = new List<HexCoord>();
+        foreach (KeyValuePair<HexCoord, (SeaViking Viking, Node2D Visual)> kvp in _seaVikingVisuals)
         {
-            Node2D visual = CreateVikingShieldVisual(viking.Level);
-            visual.Position = FirstHexCenterOffset + HexPixel.ToPixel(viking.Coord, HexSize);
-            _seaVikingsLayer.AddChild(visual);
+            if (!desired.TryGetValue(kvp.Key, out SeaViking now) || now != kvp.Value.Viking)
+            {
+                staleShields.Add(kvp.Key);
+            }
+        }
+        foreach (HexCoord c in staleShields)
+        {
+            Node2D shield = _seaVikingVisuals[c].Visual;
+            if (!_silentMode && desiredGraves.Contains(c) && !_seaGraveVisuals.ContainsKey(c))
+            {
+                justPerished.Add(c);
+                // Animate IN PLACE (still a sea-layer child): the deaths
+                // layer is ClearLayer'd by every capture rebuild, and the
+                // next viking beat's capture would cut this tween off
+                // before it reads. Nothing clears the sea layer mid-phase.
+                StartShrinkAndFreeAnimation(shield);
+            }
+            else
+            {
+                _seaVikingsLayer.RemoveChild(shield);
+                shield.QueueFree();
+            }
+            _seaVikingVisuals.Remove(c);
+        }
+
+        // Graves that washed away: shrink out like a land grave being
+        // promoted at start-of-turn — except no tree ever follows, and at a
+        // slower, sea-specific pace so the wash-away actually reads amid
+        // the viking turn's beat traffic. In place (sea-layer child) for
+        // the same cut-off reason as the perish shrink above.
+        var staleGraves = new List<HexCoord>();
+        foreach (HexCoord c in _seaGraveVisuals.Keys)
+        {
+            if (!desiredGraves.Contains(c)) staleGraves.Add(c);
+        }
+        foreach (HexCoord c in staleGraves)
+        {
+            Node2D grave = _seaGraveVisuals[c];
+            if (_silentMode)
+            {
+                _seaVikingsLayer.RemoveChild(grave);
+                grave.QueueFree();
+            }
+            else
+            {
+                StartShrinkAndFreeAnimation(grave, SeaGraveWashDurationSeconds);
+            }
+            _seaGraveVisuals.Remove(c);
+        }
+
+        // New graves grow in — staggered after the shrink when the shield
+        // just perished there, exactly like a land grave under a corpse.
+        // Added before new shields so a later wave spawning on a grave
+        // coord draws its shield on top.
+        foreach (HexCoord c in desiredGraves)
+        {
+            if (_seaGraveVisuals.ContainsKey(c)) continue;
+            Node2D grave = CreateGraveVisual();
+            grave.Position = FirstHexCenterOffset + HexPixel.ToPixel(c, HexSize);
+            _seaVikingsLayer.AddChild(grave);
+            if (!_silentMode)
+            {
+                StartGraveGrowAnimation(grave, afterDeath: justPerished.Contains(c));
+            }
+            _seaGraveVisuals[c] = grave;
+        }
+
+        // New shields.
+        foreach (KeyValuePair<HexCoord, SeaViking> kvp in desired)
+        {
+            if (_seaVikingVisuals.ContainsKey(kvp.Key)) continue;
+            Node2D shield = CreateVikingShieldVisual(kvp.Value.Level);
+            shield.Position = FirstHexCenterOffset + HexPixel.ToPixel(kvp.Key, HexSize);
+            _seaVikingsLayer.AddChild(shield);
+            _seaVikingVisuals[kvp.Key] = (kvp.Value, shield);
         }
     }
 

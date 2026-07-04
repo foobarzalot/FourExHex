@@ -737,6 +737,8 @@ public class GameOperations
     /// </summary>
     public void BeginVikingTurn()
     {
+        // Last round's perish markers wash away as the new raider turn opens.
+        _state.Vikings.ClearSeaGraves();
         _rng = new Random(MixSeed(_masterSeed, _state.Turns.TurnNumber, playerIndex: -1));
         foreach (HexTile tile in _state.Grid.Tiles)
         {
@@ -769,6 +771,12 @@ public class GameOperations
             $"atSea={_state.Vikings.AtSea.Count} landed={CountLandedVikings()} " +
             $"wavesLeft={VikingRaidersRules.TotalWaves - _state.Vikings.NextWaveIndex}");
         MaybeLogVikingThreatCleared();
+        // No future viking turn will run once the threat is gone — don't
+        // leave this round's perish markers floating forever.
+        if (!VikingThreatActive)
+        {
+            _state.Vikings.ClearSeaGraves();
+        }
         if (ColorsWithCapital(_state.Territories).Count == 0)
         {
             Log.Warn(Log.LogCategory.Turn,
@@ -835,9 +843,14 @@ public class GameOperations
             throw new InvalidOperationException(
                 $"Viking perish at {sea}: no sea viking there.");
         }
+        // Leave a grave marker on the water (cosmetic — the view plays the
+        // same shrink-into-grave choreography a land bankruptcy does; the
+        // grave washes away when the next viking turn begins, since a grave
+        // on water can never become a tree) and sound the Rising Tides
+        // submerge "bloop".
+        _state.Vikings.AddSeaGrave(sea);
         Log.Info(Log.LogCategory.Viking, $"[viking] perished at sea {sea} (no landing site)");
-        // No bespoke audio asset yet — the generic unit-death cue reads fine.
-        EmitSound(SoundEffect.UnitDestroyed, sea);
+        EmitSound(SoundEffect.TileSubmerged, sea);
         MaybeLogVikingThreatCleared();
     }
 
@@ -974,9 +987,10 @@ public class GameOperations
         // forecast for the whole turn ("these tiles erode at turn end"). Empty
         // outside Rising Tides, which clears any prior telegraph.
         _map.ShowTideForecast(_state.PendingTide);
-        // Viking Raiders: raiders waiting at sea. Empty outside the mode
-        // (and once a wave lands), which clears any prior glyphs.
-        _map.ShowSeaVikings(_state.Vikings.AtSea);
+        // Viking Raiders: raiders waiting at sea + this round's perish
+        // markers. Empty outside the mode (and once a wave lands), which
+        // clears any prior glyphs.
+        _map.ShowSeaVikings(_state.Vikings.AtSea, _state.Vikings.SeaGraves);
         // End Turn CTA when the current player has nothing actionable
         // left. Lives here (not inside _hud.Refresh) so Tutorial Preview's
         // onAfterRefresh callback can overwrite it when the next scripted

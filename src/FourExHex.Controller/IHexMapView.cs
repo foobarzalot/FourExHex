@@ -77,12 +77,18 @@ public interface IHexMapView
     void ShowTideForecast(IEnumerable<TideStep> steps);
 
     /// <summary>
-    /// Viking Raiders: render the raiders currently waiting at sea — a
-    /// horned unit glyph on each listed water coord. The controller pushes
-    /// <see cref="GameState.Vikings"/>' at-sea list each refresh; pass an
-    /// empty list to clear (outside Viking Raiders, or once a wave lands).
+    /// Viking Raiders: render the raiders currently waiting at sea (a
+    /// painted-shield glyph per water coord) plus the grave markers where a
+    /// raider perished this round (<paramref name="seaGraves"/> — drawn
+    /// with the land bankruptcy choreography: the shield shrinks away while
+    /// the grave grows in, and the grave washes away when the list empties
+    /// at the next viking turn). The controller pushes
+    /// <see cref="GameState.Vikings"/>' lists each refresh; empty lists
+    /// clear (outside Viking Raiders, or once a wave lands).
     /// </summary>
-    void ShowSeaVikings(System.Collections.Generic.IReadOnlyList<SeaViking> atSea);
+    void ShowSeaVikings(
+        System.Collections.Generic.IReadOnlyList<SeaViking> atSea,
+        System.Collections.Generic.IReadOnlyList<HexCoord> seaGraves);
 
     /// <summary>
     /// Fog Of War: render the board from the single human player's perspective
