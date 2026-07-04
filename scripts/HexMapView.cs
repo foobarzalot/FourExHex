@@ -2944,13 +2944,14 @@ public partial class HexMapView : Node2D, IHexMapView
         return node;
     }
 
-    // Viking "painted shield" glyph (VIKING_UNIT_GLYPH.md): a cream shield
-    // seen from above, rank shown by how many painted ink wedges divide it —
-    // plain (Recruit), quartered (Soldier), eight segments (Captain). Fixed
-    // ink/cream palette, never player-colored; flat fills only; same size
-    // and anchor as an ordinary unit (outer radius = the ordinary glyph's
-    // outer ring). Spec coordinates are in glyph units where that outer
-    // radius is 16, so 1 glyph unit = HexSize * UnitRingRadii[0] / 16.
+    // Viking "painted shield" glyph (VIKING_UNIT_GLYPH.md +
+    // VIKING_RANK1_CHANGE.md): a cream shield seen from above, rank shown
+    // by a doubling ladder of painted ink segments — half-painted (Recruit),
+    // quartered (Soldier), eight segments (Captain). Fixed ink/cream
+    // palette, never player-colored; flat fills only; same size and anchor
+    // as an ordinary unit (outer radius = the ordinary glyph's outer ring).
+    // Spec coordinates are in glyph units where that outer radius is 16, so
+    // 1 glyph unit = HexSize * UnitRingRadii[0] / 16.
     private static readonly Color VikingInk = new Color("111111");
     private static readonly Color VikingCream = new Color("efe6d4");
     private const float ShieldRadiusUnits = 16f;
@@ -2963,7 +2964,7 @@ public partial class HexMapView : Node2D, IHexMapView
     {
         float unit = HexSize * UnitRingRadii[0] / ShieldRadiusUnits;
         float radius = ShieldRadiusUnits * unit;
-        // Recruit=1 wedge-free, Soldier=2 quartered, Captain=3 eight-segment.
+        // Recruit=1 half-painted, Soldier=2 quartered, Captain=3 eight-segment.
         // Commander can't occur (vikings cap at Captain); map it defensively
         // to the richest shield rather than crash a render pass.
         int rank = level switch
@@ -2977,12 +2978,18 @@ public partial class HexMapView : Node2D, IHexMapView
         // 1. Shield base.
         node.AddChild(CreateFilledDisc(radius, VikingCream));
         // 2. Rank wedges (0° = +x, increasing clockwise in y-down space).
-        if (rank == 2)
+        if (rank == 1)
+        {
+            // Half-painted: the east (x ≥ 0) half ink, sweeping from
+            // straight up through east to straight down.
+            node.AddChild(CreateSectorPolygon(radius, -90f, 90f, VikingInk));
+        }
+        else if (rank == 2)
         {
             node.AddChild(CreateSectorPolygon(radius, 0f, 90f, VikingInk));
             node.AddChild(CreateSectorPolygon(radius, 180f, 270f, VikingInk));
         }
-        else if (rank == 3)
+        else
         {
             for (int fromDeg = 0; fromDeg < 360; fromDeg += 90)
             {
@@ -2993,11 +3000,9 @@ public partial class HexMapView : Node2D, IHexMapView
         node.AddChild(CreateCircleOutline(radius, VikingInk, ShieldRimWidthUnits * unit));
         // 4. Boss.
         node.AddChild(CreateFilledDisc(ShieldBossRadiusUnits * unit, VikingInk));
-        // 5. Boss highlight — ranks 2–3 only; rank 1's boss stays solid ink.
-        if (rank >= 2)
-        {
-            node.AddChild(CreateFilledDisc(ShieldBossHighlightRadiusUnits * unit, VikingCream));
-        }
+        // 5. Boss highlight — every rank (the painted background keeps the
+        //    boss reading as a boss, not a pupil).
+        node.AddChild(CreateFilledDisc(ShieldBossHighlightRadiusUnits * unit, VikingCream));
         return node;
     }
 
