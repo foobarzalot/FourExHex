@@ -281,6 +281,33 @@ public static class VikingRaidersRules
     }
 
     /// <summary>
+    /// Rounds until the next wave spawns: the smallest k ≥ 0 such that
+    /// <see cref="WaveDue"/> holds k rounds from now, or null when no wave
+    /// is left to spawn (or outside Viking Raiders). Derives strictly
+    /// through <see cref="WaveDue"/> — never re-implementing the round
+    /// arithmetic — so schedule-shape changes (wave count, spacing,
+    /// catch-up rules) flow through automatically. Drives the HUD's
+    /// wave-countdown banner.
+    /// </summary>
+    public static int? RoundsUntilWaveDue(GameState state)
+    {
+        if (state.Mode != GameMode.VikingRaiders) return null;
+        if (state.Vikings.NextWaveIndex >= TotalWaves) return null;
+        // The wave's due round is at most FirstWaveRound + (TotalWaves-1) ×
+        // WaveIntervalRounds ahead of any live round, so this loop is small;
+        // the bound is a defensive backstop, not schedule knowledge.
+        int maxLookahead = FirstWaveRound + TotalWaves * WaveIntervalRounds;
+        for (int k = 0; k <= maxLookahead; k++)
+        {
+            if (WaveDue(state.Turns.TurnNumber + k, state.Vikings.NextWaveIndex))
+            {
+                return k;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
     /// True when this round's viking pseudo-turn is due or mid-flight:
     /// Viking Raiders mode, the schedule has started
     /// (round ≥ <see cref="FirstWaveRound"/>), this round's phase hasn't

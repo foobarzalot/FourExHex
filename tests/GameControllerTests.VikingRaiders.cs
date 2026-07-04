@@ -412,6 +412,42 @@ public partial class GameControllerTests
     }
 
     [Fact]
+    public void VikingRaiders_WaveBannerShownAtEveryHumanTurnStart()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = VikingIsland();
+        var g = new VikingGame(grid, water);
+        int total = VikingRaidersRules.TotalWaves;
+
+        // Turn 1, Red (game start counts as a human turn start).
+        Assert.Equal($"Wave 1/{total} arriving in 2 turns", g.Hud.TransientBanners.Last());
+        int seen = g.Hud.TransientBanners.Count;
+
+        g.Hud.ClickEndTurn(); // Blue's turn 1: their own banner
+        Assert.Equal(seen + 1, g.Hud.TransientBanners.Count);
+        Assert.Equal($"Wave 1/{total} arriving in 2 turns", g.Hud.TransientBanners.Last());
+
+        g.Hud.ClickEndTurn(); // Red, turn 2
+        Assert.Equal($"Wave 1/{total} arriving in 1 turn", g.Hud.TransientBanners.Last());
+
+        g.Hud.ClickEndTurn(); // Blue, turn 2
+        g.Hud.ClickEndTurn(); // round 3: wave 1 spawns, then Red's turn
+        Assert.Equal($"Wave 1/{total}", g.Hud.TransientBanners.Last());
+
+        g.Hud.ClickEndTurn(); // Blue, round 3: same spawn message
+        Assert.Equal($"Wave 1/{total}", g.Hud.TransientBanners.Last());
+    }
+
+    [Fact]
+    public void Freeform_NeverShowsWaveBanner()
+    {
+        var g = new TestGame();
+        g.Hud.ClickEndTurn();
+        g.Hud.ClickEndTurn();
+
+        Assert.Empty(g.Hud.TransientBanners);
+    }
+
+    [Fact]
     public void VikingRaiders_HumanInputLockedDuringVikingPhase()
     {
         // A queued pacer holds the viking phase open mid-flight; the human

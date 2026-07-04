@@ -365,6 +365,7 @@ public partial class HudView : OrientationHud, IHudView
         PositionEndgameOverlays();
         BuildTutorialOverlay();
         BuildBankruptToast();
+        BuildTransientBanner();
     }
 
     // A ghost Undo/Redo icon button: short click fires <paramref name="shortPress"/>
@@ -647,6 +648,7 @@ public partial class HudView : OrientationHud, IHudView
         // Re-fit width-capped overlays.
         PositionTutorialOverlay();
         PositionBankruptToast();
+        PositionTransientBanner();
         PositionEndgameOverlays();
     }
 
@@ -1225,6 +1227,114 @@ public partial class HudView : OrientationHud, IHudView
         float top = SafeArea.Current.Top + topClearance + BankruptToastMarginTop;
         _bankruptToast.OffsetTop = top;
         _bankruptToast.OffsetBottom = top + BankruptToastH;
+    }
+
+    // --- Transient announcement banner --------------------------------------
+    // A non-modal, fully click-through toast (same structure as the
+    // bankruptcy toast, neutral chrome) that fades in, holds, and fades out
+    // on its own. Sits top-center BELOW the bankruptcy toast's reserved slot
+    // so the two can never overlap. Currently used for the Viking Raiders
+    // wave countdown at human turn start.
+    private const float TransientBannerW = 560f;
+    private const float TransientBannerH = 64f;
+    private const float TransientBannerMarginTop = 12f;
+    private const double TransientBannerFadeInSeconds = 0.4;
+    private const double TransientBannerHoldSeconds = 3.5;
+    private const double TransientBannerFadeOutSeconds = 0.8;
+    private Panel _transientBanner = null!;
+    private Label _transientBannerLabel = null!;
+    private Tween? _transientBannerTween;
+    private bool _transientBannerBuilt;
+
+    private void BuildTransientBanner()
+    {
+        _transientBanner = new Panel
+        {
+            AnchorLeft = 0.5f,
+            AnchorRight = 0.5f,
+            AnchorTop = 0f,
+            AnchorBottom = 0f,
+            Visible = false,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        _transientBanner.AddThemeStyleboxOverride("panel", new StyleBoxFlat
+        {
+            BgColor = new Color(UiPalette.BgPanel, 0.92f),
+            BorderColor = UiPalette.Line,
+            BorderWidthLeft = 1,
+            BorderWidthRight = 1,
+            BorderWidthTop = 1,
+            BorderWidthBottom = 1,
+            CornerRadiusTopLeft = 8,
+            CornerRadiusTopRight = 8,
+            CornerRadiusBottomLeft = 8,
+            CornerRadiusBottomRight = 8,
+        });
+        AddChild(_transientBanner);
+
+        _transientBannerLabel = new Label
+        {
+            AnchorLeft = 0f, AnchorRight = 1f,
+            AnchorTop = 0f, AnchorBottom = 1f,
+            OffsetLeft = 16f, OffsetRight = -16f,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        _transientBannerLabel.AddThemeFontOverride("font", GeistFont);
+        _transientBannerLabel.AddThemeFontSizeOverride("font_size", 26);
+        _transientBannerLabel.AddThemeColorOverride("font_color", UiPalette.Ink);
+        _transientBanner.AddChild(_transientBannerLabel);
+
+        _transientBannerBuilt = true;
+        PositionTransientBanner();
+    }
+
+    /// <summary>Width-cap + place the banner directly below the bankruptcy
+    /// toast's reserved slot (same clearance math as
+    /// <see cref="PositionBankruptToast"/>). Re-run on resize.</summary>
+    private void PositionTransientBanner()
+    {
+        if (!_transientBannerBuilt) return;
+        float viewportW = GetViewport().GetVisibleRect().Size.X;
+        float railClearance = 0f;
+        if (Orientation == ScreenOrientation.Landscape)
+        {
+            float notch = Mathf.Max(SafeArea.Current.Left, SafeArea.Current.Right);
+            railClearance = (notch + HudBars.RailWidth + 8f) * 2f;
+        }
+        float width = HudPanelMath.ClampWidth(
+            TransientBannerW, viewportW - railClearance, HudPanelSideMargin);
+        _transientBanner.OffsetLeft = -width * 0.5f;
+        _transientBanner.OffsetRight = width * 0.5f;
+
+        float topClearance = Orientation == ScreenOrientation.Portrait ? 150f : 80f;
+        float top = SafeArea.Current.Top + topClearance + BankruptToastMarginTop
+            + BankruptToastH + TransientBannerMarginTop;
+        _transientBanner.OffsetTop = top;
+        _transientBanner.OffsetBottom = top + TransientBannerH;
+    }
+
+    /// <summary>Fade in, hold, fade out. Re-showing restarts the cycle.</summary>
+    public void ShowTransientBanner(string text)
+    {
+        if (!_transientBannerBuilt) return;
+        _transientBannerLabel.Text = text;
+        PositionTransientBanner();
+        _transientBannerTween?.Kill();
+        _transientBanner.Modulate = new Color(1f, 1f, 1f, 0f);
+        _transientBanner.Visible = true;
+        _transientBannerTween = _transientBanner.CreateTween();
+        _transientBannerTween.TweenProperty(
+                _transientBanner, "modulate:a", 1f, TransientBannerFadeInSeconds)
+            .SetTrans(Tween.TransitionType.Sine);
+        _transientBannerTween.TweenInterval(TransientBannerHoldSeconds);
+        _transientBannerTween.TweenProperty(
+                _transientBanner, "modulate:a", 0f, TransientBannerFadeOutSeconds)
+            .SetTrans(Tween.TransitionType.Sine);
+        _transientBannerTween.TweenCallback(
+            Callable.From(() => _transientBanner.Visible = false));
     }
 
     // Tiny self-drawing Control that paints the same upward-pointing

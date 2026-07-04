@@ -581,6 +581,46 @@ public class VikingRaidersRulesTests
         Assert.Equal(3, vikings.LastSpawnRound);
     }
 
+    // --- RoundsUntilWaveDue -----------------------------------------------------
+
+    [Fact]
+    public void RoundsUntilWaveDue_CountsDownToTheScheduledRound()
+    {
+        GameState state = MakeIslandState(HexCoord.FromOffset(3, 1));
+        // With FirstWaveRound = 3: turn 1 → 2 away, turn 2 → 1, turn 3 → due.
+        state.Turns.Reset(0, VikingRaidersRules.FirstWaveRound - 2);
+        Assert.Equal(2, VikingRaidersRules.RoundsUntilWaveDue(state));
+        state.Turns.Reset(0, VikingRaidersRules.FirstWaveRound - 1);
+        Assert.Equal(1, VikingRaidersRules.RoundsUntilWaveDue(state));
+        state.Turns.Reset(0, VikingRaidersRules.FirstWaveRound);
+        Assert.Equal(0, VikingRaidersRules.RoundsUntilWaveDue(state));
+    }
+
+    [Fact]
+    public void RoundsUntilWaveDue_TracksTheNextUnspawnedWave()
+    {
+        GameState state = MakeIslandState(HexCoord.FromOffset(3, 1));
+        state.Vikings.NextWaveIndex = 1; // wave 0 spawned; wave 1 due at round 6
+        state.Turns.Reset(0, VikingRaidersRules.FirstWaveRound);
+        Assert.Equal(
+            VikingRaidersRules.WaveIntervalRounds,
+            VikingRaidersRules.RoundsUntilWaveDue(state));
+    }
+
+    [Fact]
+    public void RoundsUntilWaveDue_NullWhenScheduleExhausted_OrOutsideMode()
+    {
+        GameState state = MakeIslandState(HexCoord.FromOffset(3, 1));
+        state.Vikings.NextWaveIndex = VikingRaidersRules.TotalWaves;
+        state.Turns.Reset(0, 20);
+        Assert.Null(VikingRaidersRules.RoundsUntilWaveDue(state));
+
+        HexGrid grid = TestHelpers.BuildRectGrid(3, 3, Red);
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        GameState freeform = MakeState(grid, territories, mode: GameMode.Freeform);
+        Assert.Null(VikingRaidersRules.RoundsUntilWaveDue(freeform));
+    }
+
     // --- TurnDue --------------------------------------------------------------
 
     [Fact]

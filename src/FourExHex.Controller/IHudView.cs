@@ -96,6 +96,15 @@ public interface IHudView
     void SetMapLabel(string text);
 
     /// <summary>
+    /// Show a transient, non-modal announcement banner: fades in, holds a
+    /// few seconds, fades out on its own; never blocks input (fully
+    /// click-through) and independent of the tutorial-message slot below.
+    /// Used for the Viking Raiders wave countdown at human turn start;
+    /// reusable for future announcements. Re-showing restarts the fade.
+    /// </summary>
+    void ShowTransientBanner(string text);
+
+    /// <summary>
     /// Show a non-interactive informational popup at the bottom of the
     /// screen with the given text. Used by tutorial scripting to display
     /// instructions / narration. The HUD does not auto-dismiss; the

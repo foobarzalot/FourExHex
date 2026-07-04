@@ -334,6 +334,17 @@ public class GameController
     private void RaiseHumanTurnStarted()
     {
         AutoSelectFirstTerritoryForHuman();
+        // Viking Raiders: the wave countdown / arrival banner, at every
+        // human turn start (null outside the mode or once nothing is left
+        // to announce). Suppressed in tutorial Record/Preview, whose
+        // scripted messaging owns the screen. On turn 1 this naturally
+        // sequences after the one-time mode intro — Main defers game start
+        // (and therefore this event) until the intro is tapped away.
+        string? waveBanner = VikingWaveBannerContent.For(_state);
+        if (waveBanner != null && !_previewMode && !_recordingMode)
+        {
+            _hud.ShowTransientBanner(waveBanner);
+        }
         HumanTurnStarted?.Invoke();
     }
 

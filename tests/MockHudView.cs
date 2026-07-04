@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace FourExHex.Tests;
 
@@ -69,6 +70,10 @@ public class MockHudView : IHudView
 
     public string? LastSetMapLabel { get; private set; }
     public void SetMapLabel(string text) => LastSetMapLabel = text;
+
+    /// <summary>Every transient banner the controller showed, in order.</summary>
+    public List<string> TransientBanners { get; } = new();
+    public void ShowTransientBanner(string text) => TransientBanners.Add(text);
 
     public string? CurrentTutorialMessage { get; private set; }
     public bool TutorialMessageTappable { get; private set; }
