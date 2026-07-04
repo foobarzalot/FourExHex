@@ -77,6 +77,14 @@ public interface IHexMapView
     void ShowTideForecast(IEnumerable<TideStep> steps);
 
     /// <summary>
+    /// Viking Raiders: render the raiders currently waiting at sea — a
+    /// horned unit glyph on each listed water coord. The controller pushes
+    /// <see cref="GameState.Vikings"/>' at-sea list each refresh; pass an
+    /// empty list to clear (outside Viking Raiders, or once a wave lands).
+    /// </summary>
+    void ShowSeaVikings(System.Collections.Generic.IReadOnlyList<SeaViking> atSea);
+
+    /// <summary>
     /// Fog Of War: render the board from the single human player's perspective
     /// per the given projection — tiles in <see cref="FogView.Visible"/> render
     /// live; seen-but-not-visible (stale) tiles render their static terrain

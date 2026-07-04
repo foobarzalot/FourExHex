@@ -27,6 +27,11 @@ public static class GameModeIntro
             "Fog of War — the map begins hidden. Your territories light up the " +
             "ground around them; everything else stays dark until you scout it. " +
             "Undo and Redo are disabled in this mode.",
+        GameMode.VikingRaiders =>
+            "Viking Raiders — longships mass off the coast in six escalating " +
+            "waves, landing one round after they appear. Their conquests turn " +
+            "the land neutral, and no one can win until every raider — landed, " +
+            "at sea, or still to come — is gone.",
         _ => null,
     };
 

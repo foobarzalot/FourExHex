@@ -210,6 +210,182 @@ public class VikingRaidersRulesTests
             spawns.Select(s => s.Level).OrderBy(l => l).ToList());
     }
 
+    // --- ChooseSpawns: landing-party placement -----------------------------------
+
+    /// <summary>
+    /// A straight beach: land row 1 (cols 0..9), plus the given water
+    /// coords on row 0 (or beyond the ends). A row-0 water coord at col c
+    /// has land neighbours (c,1) and (c−1,1), so interior waters see 2
+    /// landings and (10,0) sees 1. Beware the WEST end: the strip's
+    /// capital sits at lex-min (0,1), whose defense blocks Recruit
+    /// landings there — (0,0) is 0-viable for a Recruit.
+    /// </summary>
+    private static GameState MakeBeachState(params HexCoord[] water)
+    {
+        var grid = new HexGrid();
+        for (int col = 0; col < 10; col++)
+        {
+            grid.Add(new HexTile(HexCoord.FromOffset(col, 1), Red));
+        }
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        return MakeState(grid, territories, water.ToHashSet());
+    }
+
+    [Fact]
+    public void ChooseSpawns_PrefersCoordWithMostViableLandings()
+    {
+        // Candidates: one interior water (2 viable landings) among three
+        // weaker ones (1, 1, and 0) — the wave must anchor on the interior.
+        HexCoord best = HexCoord.FromOffset(4, 0);
+        GameState state = MakeBeachState(
+            best,
+            HexCoord.FromOffset(0, 0),
+            HexCoord.FromOffset(10, 0),
+            HexCoord.FromOffset(-1, 0));
+        Assert.Equal(2, VikingRaidersRules.DisembarkTargets(state, best, UnitLevel.Recruit).Count);
+
+        // Every seed must anchor on the interior water — viability is a
+        // rule, not a lucky draw.
+        for (int seed = 1; seed <= 5; seed++)
+        {
+            IReadOnlyList<SeaViking> spawns = VikingRaidersRules.ChooseSpawns(
+                state, new List<UnitLevel> { UnitLevel.Recruit }, new Random(seed));
+            Assert.Equal(best, Assert.Single(spawns).Coord);
+        }
+    }
+
+    [Fact]
+    public void ChooseSpawns_ViabilityIsJudgedAtTheRaidersOwnLevel()
+    {
+        // The interior water's two landing tiles carry Soldiers (defense 2):
+        // worthless to a Recruit (0 viable — it must take an end water with
+        // 1 undefended landing), but the best spot for a Captain (2 viable).
+        HexCoord defended = HexCoord.FromOffset(4, 0);
+        GameState state = MakeBeachState(
+            defended,
+            HexCoord.FromOffset(0, 0),
+            HexCoord.FromOffset(10, 0));
+        state.Grid.Get(HexCoord.FromOffset(4, 1))!.Occupant = new Unit(Red, UnitLevel.Soldier);
+        state.Grid.Get(HexCoord.FromOffset(3, 1))!.Occupant = new Unit(Red, UnitLevel.Soldier);
+        Assert.Equal(0, VikingRaidersRules.DisembarkTargets(state, defended, UnitLevel.Recruit).Count);
+        Assert.Equal(2, VikingRaidersRules.DisembarkTargets(state, defended, UnitLevel.Captain).Count);
+
+        IReadOnlyList<SeaViking> recruitSpawn = VikingRaidersRules.ChooseSpawns(
+            state, new List<UnitLevel> { UnitLevel.Recruit }, new Random(7));
+        IReadOnlyList<SeaViking> captainSpawn = VikingRaidersRules.ChooseSpawns(
+            state, new List<UnitLevel> { UnitLevel.Captain }, new Random(7));
+
+        Assert.NotEqual(defended, Assert.Single(recruitSpawn).Coord);
+        Assert.Equal(defended, Assert.Single(captainSpawn).Coord);
+    }
+
+    [Fact]
+    public void ChooseSpawns_ClustersWave_WithoutOverlappingLandingZones()
+    {
+        // A long straight beach: land row 1 (cols 0..9), water row 0 above
+        // it. Interior water coords tie on viability, so cohesion decides:
+        // the second raider spawns as close as possible to the first while
+        // keeping their landing sets disjoint — exactly 2 columns away on a
+        // straight coast (1 away would share a landing tile).
+        var grid = new HexGrid();
+        for (int col = 0; col < 10; col++)
+        {
+            grid.Add(new HexTile(HexCoord.FromOffset(col, 1), Red));
+        }
+        var water = new HashSet<HexCoord>();
+        for (int col = 0; col < 10; col++)
+        {
+            water.Add(HexCoord.FromOffset(col, 0));
+        }
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        GameState state = MakeState(grid, territories, water);
+
+        IReadOnlyList<SeaViking> spawns = VikingRaidersRules.ChooseSpawns(
+            state, new List<UnitLevel> { UnitLevel.Recruit, UnitLevel.Recruit }, new Random(7));
+
+        Assert.Equal(2, spawns.Count);
+        var landingsA = VikingRaidersRules.DisembarkTargets(
+            state, spawns[0].Coord, spawns[0].Level).ToHashSet();
+        var landingsB = VikingRaidersRules.DisembarkTargets(
+            state, spawns[1].Coord, spawns[1].Level).ToHashSet();
+        Assert.Empty(landingsA.Intersect(landingsB));
+        Assert.Equal(2, HexCoord.Distance(spawns[0].Coord, spawns[1].Coord));
+    }
+
+    [Fact]
+    public void ChooseSpawns_OverlapIsLastResort_EvenAtLowerViability()
+    {
+        // Waters A=(4,0) and B=(5,0) are the richest spots (2 landings
+        // each) but share the landing tile (4,1); C=(10,0) has only 1
+        // landing but overlaps nobody. A wave of two must take one of the
+        // rich spots and then C — never the A+B pair.
+        HexCoord a = HexCoord.FromOffset(4, 0);
+        HexCoord b = HexCoord.FromOffset(5, 0);
+        HexCoord c = HexCoord.FromOffset(10, 0);
+        GameState state = MakeBeachState(a, b, c);
+        Assert.Equal(
+            1, VikingRaidersRules.DisembarkTargets(state, c, UnitLevel.Recruit).Count);
+        Assert.Contains(
+            HexCoord.FromOffset(4, 1),
+            VikingRaidersRules.DisembarkTargets(state, a, UnitLevel.Recruit));
+        Assert.Contains(
+            HexCoord.FromOffset(4, 1),
+            VikingRaidersRules.DisembarkTargets(state, b, UnitLevel.Recruit));
+
+        for (int seed = 1; seed <= 5; seed++)
+        {
+            IReadOnlyList<SeaViking> spawns = VikingRaidersRules.ChooseSpawns(
+                state,
+                new List<UnitLevel> { UnitLevel.Recruit, UnitLevel.Recruit },
+                new Random(seed));
+            Assert.Contains(spawns, s => s.Coord == c);
+        }
+    }
+
+    [Fact]
+    public void ChooseSpawns_OverlappingLandableSpot_StillBeatsCertainDeath()
+    {
+        // The only non-overlapping alternative has NO viable landing at all
+        // ((-1,0) touches no land) — a guaranteed perish. An overlapping but
+        // landable spot is preferable to that.
+        HexCoord a = HexCoord.FromOffset(4, 0);
+        HexCoord b = HexCoord.FromOffset(5, 0);
+        HexCoord dead = HexCoord.FromOffset(-1, 0);
+        GameState state = MakeBeachState(a, b, dead);
+        _ = dead; // not coastal (no land neighbour) — never even a candidate
+
+        IReadOnlyList<SeaViking> spawns = VikingRaidersRules.ChooseSpawns(
+            state,
+            new List<UnitLevel> { UnitLevel.Recruit, UnitLevel.Recruit },
+            new Random(7));
+
+        Assert.Equal(2, spawns.Count);
+        Assert.Contains(spawns, s => s.Coord == a);
+        Assert.Contains(spawns, s => s.Coord == b);
+    }
+
+    [Fact]
+    public void ChooseSpawns_AllowsOverlap_WhenUnavoidable()
+    {
+        // A single land tile with two adjacent water coords: both raiders'
+        // landing sets are the same one tile. Overlap is unavoidable — the
+        // wave must still spawn in full rather than hold raiders back.
+        var grid = new HexGrid();
+        grid.Add(new HexTile(HexCoord.FromOffset(1, 1), Red));
+        var water = new HashSet<HexCoord>
+        {
+            HexCoord.FromOffset(0, 1),
+            HexCoord.FromOffset(2, 1),
+        };
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        GameState state = MakeState(grid, territories, water);
+
+        IReadOnlyList<SeaViking> spawns = VikingRaidersRules.ChooseSpawns(
+            state, new List<UnitLevel> { UnitLevel.Recruit, UnitLevel.Recruit }, new Random(7));
+
+        Assert.Equal(2, spawns.Count);
+    }
+
     // --- DisembarkTargets -------------------------------------------------------
 
     /// <summary>

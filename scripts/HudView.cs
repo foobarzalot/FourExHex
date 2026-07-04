@@ -1861,8 +1861,12 @@ public partial class HudView : OrientationHud, IHudView
             }
             else
             {
-                string name = winner?.Name ?? "Unknown";
-                _victoryLabel.Text = $"{name} wins!";
+                // Viking Raiders total wipeout: the neutral raiders destroyed
+                // every capital — Winner is PlayerId.None, which matches no
+                // roster player.
+                _victoryLabel.Text = winId.IsNone
+                    ? "The Vikings have conquered the island!"
+                    : $"{winner?.Name ?? "Unknown"} wins!";
                 _victoryLabel.AddThemeColorOverride("font_color", PlayerPalette.ColorFor(winId));
                 _victoryOverlay.Visible = true;
                 _campaignVictoryOverlay.Visible = false;

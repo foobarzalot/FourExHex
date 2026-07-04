@@ -881,6 +881,7 @@ public partial class MainMenuScene : Control
         dropdown.AddItem("Freeform", (int)GameMode.Freeform);
         dropdown.AddItem("Rising Tides", (int)GameMode.RisingTides);
         dropdown.AddItem("Fog Of War", (int)GameMode.FogOfWar);
+        dropdown.AddItem("Viking Raiders", (int)GameMode.VikingRaiders);
         SelectItemById(dropdown, (int)GameSettings.Mode);
         dropdown.ItemSelected += _ =>
         {

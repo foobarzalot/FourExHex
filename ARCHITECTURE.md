@@ -27,7 +27,7 @@ Consequences:
 - **Color is view-only.** `scripts/PlayerPalette.cs` maps `PlayerId ↔ Godot.Color` from `GameSettings.PlayerConfig` hex strings.
 - **Pixel projection is view-side.** `HexRounding.Round(float qFrac, float rFrac) -> HexCoord` in `FourExHex.ViewMath` is the float→int boundary keeping `HexCoord` integer-only in Model. `scripts/HexPixel.cs` owns `ToPixel`/`FromPixel`, calls `HexRounding.Round`.
 - **`Log` is Godot-free** — routes through injectable `Log.Sink`, wired by `Main` to `GD.Print`. See **Logging**.
-- **Save format is v16.** Ownership is a player index on the wire (−1 = `None`); claim-victory tiers persist by index. Gold/mountain are mutually exclusive on the wire (two bools); a tile with both normalizes to mountain-only on load; in-memory it's one `HexTile.Feature` enum that can't hold both (see **Mountain tiles**). Saves v2–v15 still load, absent fields defaulting (`IsGold`/`IsMountain` → `false`, `Difficulty` → `Soldier`, Rising Tides `Mode`/`PendingTide` → off/empty, `UseRandomizedSelection` → `false`, Fog Of War `Seen` → empty), with legacy color-hex claim data and pre-v6 unit-level names migrated via `GameSettings` palette matching and `SaveSerializer.ParseUnitLevel`.
+- **Save format is v17.** Ownership is a player index on the wire (−1 = `None`); claim-victory tiers persist by index. Gold/mountain are mutually exclusive on the wire (two bools); a tile with both normalizes to mountain-only on load; in-memory it's one `HexTile.Feature` enum that can't hold both (see **Mountain tiles**). Saves v2–v16 still load, absent fields defaulting (`IsGold`/`IsMountain` → `false`, `Difficulty` → `Soldier`, Rising Tides `Mode`/`PendingTide` → off/empty, `UseRandomizedSelection` → `false`, Fog Of War `Seen` → empty, Viking Raiders `VikingAtSea`/`VikingNextWave`/`VikingLastRound`/`VikingLastSpawnRound` → empty/0), with legacy color-hex claim data and pre-v6 unit-level names migrated via `GameSettings` palette matching and `SaveSerializer.ParseUnitLevel`.
 - **`.cs.uid` sidecars**: model files under `src/` aren't Godot resources → no `.cs.uid`; `src/**` is `.gdignore`d. `scripts/` files keep their tracked `.cs.uid`.
 
 ## Layered view
@@ -315,7 +315,7 @@ A **mountain tile** is high ground: **no defense on its own**, but any defender 
 
 ## Rising Tides game mode
 
-A selectable game mode, distinct from freeform-vs-campaign (`GameSettings.CampaignLevel`). `GameMode { Freeform, RisingTides, FogOfWar }` (Model) on `GameState.Mode` (default `Freeform`); Fog Of War is its own section below. The sea eats the map; game ends only when one player remains.
+A selectable game mode, distinct from freeform-vs-campaign (`GameSettings.CampaignLevel`). `GameMode { Freeform, RisingTides, FogOfWar, VikingRaiders }` (Model) on `GameState.Mode` (default `Freeform`); Fog Of War and Viking Raiders are their own sections below. The sea eats the map; game ends only when one player remains.
 
 **Forecast at turn start, submerge at turn end** — erosion telegraphed a turn ahead. Split in `RisingTidesRules` (Model, integer-only):
 
@@ -357,6 +357,22 @@ A view-only restriction (`GameMode.FogOfWar` on `GameState.Mode`): rules, AI, an
 **Undo/redo disabled.** Because Seen is sticky across undo, undoing a capture after it revealed tiles would scout for free, so the four undo/redo handlers no-op and the HUD buttons grey out when `Mode == FogOfWar`.
 
 **Save / replay / thumbnail.** `Seen` round-trips as a coord list (v16, omitted when empty; reuses the water DTO shape). `ReplayRecorder.BeginReplay` calls `ClearSeen` alongside the water reset so a replay re-fogs and re-animates from the initial sight. `MapThumbnailView.RenderAsync` pushes `BuildProjection` so previews render fogged; the deepest `RequestRandom(seed, options, roster, mode)` takes an explicit mode — freeform passes `GameSettings.Mode`, the campaign confirm sheet passes `ModeForLevel(level)` — so each preview matches the board it launches.
+
+## Viking Raiders game mode
+
+A selectable mode (`GameMode.VikingRaiders`): neutral raiders arrive at the island's shores in a fixed escalating wave schedule; **no one can win until every raider — at sea, landed, or still scheduled — is gone**, after which ordinary Freeform rules apply. Normal multiplayer configuration otherwise (no roster lock).
+
+**State.** `GameState.Vikings` (`VikingState`, always non-null, default-empty outside the mode): `AtSea` (lex-sorted `SeaViking(Coord, Level)` list — water coords have no `HexTile`, so raiders at sea live off-grid), `NextWaveIndex`, `LastCompletedRound`, `LastSpawnRound`. Excluded from undo snapshots (it mutates only during the viking pseudo-turn and the undo stack clears at end of turn; landed vikings are ordinary grid occupants and snapshot normally); the replay rewind resets it via `VikingState.Reset`.
+
+**Schedule & rules (`VikingRaidersRules`, Model, integer-only).** Waves at rounds 3, 6, …, 18 (`FirstWaveRound`/`WaveIntervalRounds`/`TotalWaves`; `WaveDue` catches up a missed spawn next round); size = `max(2, coastalWaterTiles / 8) + waveIndex`; composition escalates Recruits → Soldiers → Captains, never Commander. `CoastalWaterCoords` (water coords with a grid neighbour) hosts `ChooseSpawns` — a "landing party" placement, sequential per raider with a lexicographic preference: any viable landing at all for the raider's level first (a zero-target spot is certain death), then a landing zone that does NOT overlap the raiders already placed this wave (overlap is a last resort among landable spots), then the most viable landing neighbours, then shortest distance to the party, remaining ties drawn from the seeded rng; one raider per coord. `DisembarkTargets`: player-owned neighbours under the ordinary capture threshold (`DefenseRules.Defense < level`, radiation included), plus already-neutral neighbours with no Unit/Tower (trees/graves land like a reposition — no defense check against the vikings' own side). `ThreatRemains` = raiders at sea ∨ waves pending ∨ landed None-owned units; always false outside the mode.
+
+**The viking pseudo-turn.** Runs once per round at the round boundary, between `AdvanceToNextActivePlayer` and a **deferred** `StartPlayerTurn` — all three Advance→Start seams (`EndTurnNow`, the AI driver's end-of-turn, replay's end-turn beat) check `GameOperations.VikingTurnPending`. `AiTurnDriver` drives the phase through the same paced preview/execute machinery (and the chunked Instant track) with `VikingAi.ChooseNext` as the chooser, in strict order: disembark earlier-round raiders (best landing by 1-ply clone+score; `VikingPerishAtSeaAction` when every landing is blocked) → landed moves via `ComputerAi.ChooseNextAction(state, PlayerId.None, …)` (capital gate bypassed for None; captures + phase-4b repositions only — own-territory trees are never chopped, economy phases skipped; `MovementRules` bans None combines; `UpkeepRules.TotalUpkeepFor` returns 0 for None so vikings never bankrupt into graves; `AiStateScorer` skips the own-tree penalty and the bankruptcy zeroing for None, so viking units read as real threats in every player's scoring) → spawn a due wave **last** (`VikingState.LastSpawnRound` keeps a fresh wave from acting on its spawn round — exactly one round of warning). `BeginVikingTurn` reseeds the turn RNG from `MixSeed(masterSeed, turn, −1)` (the vikings' own stream) and un-spends None units; `CompleteVikingTurn` stamps `LastCompletedRound` and, if no capital survives, declares `PlayerId.None` the winner ("The Vikings have conquered the island!"). A viking capture that eliminates a human raises the ordinary defeat overlay and pauses the phase; Continue re-arms it (`OnDefeatContinuePressed` schedules the driver while `VikingPhaseActive`). `GameOperations.HumanInputLocked` (= `InSilentAiBatch() || VikingPhaseActive`) gates every mutating human handler mid-phase; overlay-dismiss handlers stay live.
+
+**Win gating.** While `ThreatRemains`: `EndOfTurnProcessing` returns no winner, `HandleCapture`'s domination check is suppressed (sea/scheduled raiders aren't tiles, so the explicit gate is needed on top of neutral tiles blocking sole ownership), and `OnEndTurnPressed` never offers the claim-victory prompt. A one-shot `[viking] threat cleared` Info line (category `Viking`) marks the transition back to ordinary rules.
+
+**Persistence & replay.** Save v17 carries `VikingAtSea`/`VikingNextWave`/`VikingLastRound`/`VikingLastSpawnRound` (all omitted at defaults, so non-viking saves' wire format is unchanged). Replay records viking beats — `VikingMove`/`VikingDisembark`/`VikingPerish`/`VikingSpawn` (explicit placements; playback consumes no RNG) and `VikingTurnEnd` (drives `CompleteVikingTurn` + the deferred `StartPlayerTurn`); `ReplayApplyEndTurn` enters the phase via `BeginVikingTurn` when pending, and `BeginReplay` rewinds `VikingState` to defaults. `GameStateChecksum` appends a viking block only when non-default. Pinned by the VikingRaiders `ReplayFidelityTests` rows.
+
+**Rendering & shell.** Viking units wear two horns flaring off the outer unit ring (`CreateUnitVisual(viking: true)`), identical on land and at sea. Raiders at sea render in `_seaVikingsLayer` via `IHexMapView.ShowSeaVikings` (pushed each `RefreshViews`): a neutral "raft" disc under the horned glyph, so sea and land vikings share the black-on-neutral pairing. Spawn/perish reuse the `UnitPlaced`/`UnitDestroyed` audio cues. First-encounter explainer via `GameModeIntro`; selectable from the **Game Mode** dropdown; `FOUREXHEX_MODE=VikingRaiders` forces it for headless runs.
 
 ## Randomized selection
 
@@ -477,6 +493,7 @@ void CenterOnTerritory(Territory territory);
 void RebuildAfterTerritoryChange();
 void RefreshOccupantVisuals(PlayerId? currentPlayer, Treasury treasury);
 void ShowTideForecast(IEnumerable<TideStep> steps);  // Rising Tides telegraph
+void ShowSeaVikings(IReadOnlyList<SeaViking> atSea);  // Viking Raiders: raiders waiting at sea
 void ShowFog(FogView? fog);                           // Fog Of War projection (null = no fog)
 void PlayDestructionEffect(HexCoord coord, HexOccupant destroyed);
 void FlashRejection(HexCoord target, RejectionShape shape, IEnumerable<HexCoord> blockingDefenders);
@@ -672,7 +689,7 @@ Two independent checks from different places:
 - **Mid-turn (domination)** — `WinConditionRules.WinnerByDomination` fires in `HandleCapture` after every capture. Requires one color own *every* tile. Ends the game immediately, clears undo.
 - **End-of-turn (sole capital-bearer)** — `WinConditionRules.WinnerAtEndOfTurn` fires in `EndOfTurnProcessing`. Looser, typical path: current player wins if no other player has a capital-bearing territory.
 
-`DeclareWinner` is the centralized setter for `SessionState.Winner`; fires `PlaySound(GameWon)` iff the winner is human.
+Viking Raiders suppresses **both** checks (and the claim-victory prompt) while `VikingRaidersRules.ThreatRemains` — see its section. `DeclareWinner` is the centralized setter for `SessionState.Winner`; fires `PlaySound(GameWon)` iff the winner is human. The winner may be `PlayerId.None` (a viking total wipeout), which matches no roster player — no sound, and the HUD shows the Vikings-win text.
 
 ### Claim victory prompt
 
@@ -691,7 +708,7 @@ Dismissal records only on user action (not on show), so a save+reload with the o
 
 ### Rotation
 
-`AdvanceToNextActivePlayer()` calls `TurnState.EndTurn()` (increments `TurnNumber` on wrap) then loops while `WinConditionRules.IsEliminated(currentPlayer.Id, grid)`. The eliminated player takes no input or AI action but isn't silently skipped: each iteration runs a "phantom turn" ticking tile-bound rules — `TreeRules.RunStartOfTurnGrowth` then `UpkeepRules.ApplyUpkeepFor` (orphan units bankrupt into graves). Income, view refresh, AI dispatch, and turn logging are skipped. Without this, an eliminated player's lone unit on a singleton would linger forever.
+`AdvanceToNextActivePlayer()` calls `TurnState.EndTurn()` (increments `TurnNumber` on wrap) then runs `SkipEliminatedCurrentPlayers()`: loop while `WinConditionRules.IsEliminated(currentPlayer.Id, grid)`. The eliminated player takes no input or AI action but isn't silently skipped: each iteration runs a "phantom turn" ticking tile-bound rules — `TreeRules.RunStartOfTurnGrowth` then `UpkeepRules.ApplyUpkeepFor` (orphan units bankrupt into graves). Income, view refresh, AI dispatch, and turn logging are skipped. Without this, an eliminated player's lone unit on a singleton would linger forever. In Viking Raiders, the round boundary additionally inserts the viking pseudo-turn between the advance and the new player's `StartPlayerTurn` (see that section); `SkipEliminatedCurrentPlayers` also runs standalone when the raiders eliminate the just-advanced player mid-phase.
 
 ## Difficulty (a per-player economic handicap)
 

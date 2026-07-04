@@ -839,6 +839,8 @@ public class GameOperations
                 $"Viking perish at {sea}: no sea viking there.");
         }
         Log.Info(Log.LogCategory.Viking, $"[viking] perished at sea {sea} (no landing site)");
+        // No bespoke audio asset yet — the generic unit-death cue reads fine.
+        EmitSound(SoundEffect.UnitDestroyed, sea);
         MaybeLogVikingThreatCleared();
     }
 
@@ -870,6 +872,11 @@ public class GameOperations
         Log.Info(Log.LogCategory.Viking,
             $"[viking] wave {action.WaveIndex} spawned: {action.Spawns.Count} raiders at " +
             $"{string.Join(",", action.Spawns.Select(s => $"{s.Coord}:{s.Level}"))}");
+        // One arrival cue per wave (not per raider); no bespoke asset yet.
+        if (action.Spawns.Count > 0)
+        {
+            EmitSound(SoundEffect.UnitPlaced, action.Spawns[0].Coord);
+        }
     }
 
     /// <summary>A landed viking's ordinary land move (capture or
@@ -970,6 +977,9 @@ public class GameOperations
         // forecast for the whole turn ("these tiles erode at turn end"). Empty
         // outside Rising Tides, which clears any prior telegraph.
         _map.ShowTideForecast(_state.PendingTide);
+        // Viking Raiders: raiders waiting at sea. Empty outside the mode
+        // (and once a wave lands), which clears any prior glyphs.
+        _map.ShowSeaVikings(_state.Vikings.AtSea);
         // End Turn CTA when the current player has nothing actionable
         // left. Lives here (not inside _hud.Refresh) so Tutorial Preview's
         // onAfterRefresh callback can overwrite it when the next scripted

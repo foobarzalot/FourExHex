@@ -106,10 +106,24 @@ public static class VikingRaidersRules
     }
 
     /// <summary>
-    /// Pick spawn coords for a wave: one raider per coastal water coord not
-    /// already holding a sea viking, drawn by a seed-deterministic partial
-    /// Fisher–Yates over the (ascending-ordered) candidate list. Count clamps
-    /// to the available coords. Returned sorted by coord.
+    /// Pick spawn coords for a wave — a "landing party" placement, one
+    /// raider per coastal water coord not already holding a sea viking,
+    /// placed sequentially in composition order. Each raider prefers, in
+    /// strict priority order:
+    ///   1. any viable landing at all for ITS level (a zero-target spot is
+    ///      certain death — the true last resort),
+    ///   2. a landing zone that does NOT overlap those of raiders already
+    ///      placed this wave — overlapping (competing for the same beach
+    ///      tile) is a LAST RESORT among landable spots, chosen only when
+    ///      every landable candidate overlaps,
+    ///   3. the most viable landing neighbours
+    ///      (<see cref="DisembarkTargets"/> count — maximizing the odds a
+    ///      landing survives the defenders' warning round),
+    ///   4. the shortest hex distance to the nearest already-placed raider
+    ///      (the wave clusters instead of scattering),
+    /// with remaining ties broken by a seed-deterministic rng draw over the
+    /// (ascending-ordered) tied candidates. Count clamps to the available
+    /// coords. Returned sorted by coord.
     /// </summary>
     public static IReadOnlyList<SeaViking> ChooseSpawns(
         GameState state, IReadOnlyList<UnitLevel> composition, Random rng)
@@ -122,16 +136,103 @@ public static class VikingRaidersRules
 
         int count = System.Math.Min(composition.Count, candidates.Count);
         var spawns = new List<SeaViking>(count);
-        // Partial Fisher–Yates: draw `count` coords without replacement from
-        // the ascending-ordered candidate list — deterministic in the rng seed.
+        var placed = new List<HexCoord>();
+        var claimedLandings = new HashSet<HexCoord>();
+        var taken = new HashSet<HexCoord>();
+
         for (int i = 0; i < count; i++)
         {
-            int j = i + rng.Next(candidates.Count - i);
-            (candidates[i], candidates[j]) = (candidates[j], candidates[i]);
-            spawns.Add(new SeaViking(candidates[i], composition[i]));
+            UnitLevel level = composition[i];
+            HexCoord pick = PickSpawnCoord(
+                state, candidates, taken, placed, claimedLandings, level, rng);
+            taken.Add(pick);
+            placed.Add(pick);
+            IReadOnlyList<HexCoord> pickLandings = DisembarkTargets(state, pick, level);
+            foreach (HexCoord landing in pickLandings)
+            {
+                if (claimedLandings.Contains(landing))
+                {
+                    // Overlap is a last resort — this line firing means every
+                    // landable candidate overlapped the party's landing zones.
+                    Log.Debug(Log.LogCategory.Viking,
+                        $"[viking] spawn {pick} overlaps party landing zone at {landing} (forced)");
+                    break;
+                }
+            }
+            foreach (HexCoord landing in pickLandings)
+            {
+                claimedLandings.Add(landing);
+            }
+            spawns.Add(new SeaViking(pick, level));
         }
         spawns.Sort((a, b) => a.Coord.CompareTo(b.Coord));
         return spawns;
+    }
+
+    /// <summary>
+    /// The best spawn coord for one raider under <see cref="ChooseSpawns"/>'
+    /// lexicographic preference (landable first, no-overlap second,
+    /// viable-landing count desc, distance-to-party asc, rng among ties).
+    /// Candidates are ascending-ordered, so the tie list — and therefore
+    /// the rng draw — is deterministic in the seed.
+    /// </summary>
+    private static HexCoord PickSpawnCoord(
+        GameState state,
+        List<HexCoord> candidates,
+        HashSet<HexCoord> taken,
+        List<HexCoord> placed,
+        HashSet<HexCoord> claimedLandings,
+        UnitLevel level,
+        Random rng)
+    {
+        var ties = new List<HexCoord>();
+        bool bestCanLand = false;
+        int bestViable = -1;
+        bool bestOverlaps = true;
+        int bestDistance = int.MaxValue;
+
+        foreach (HexCoord candidate in candidates)
+        {
+            if (taken.Contains(candidate)) continue;
+
+            IReadOnlyList<HexCoord> landings = DisembarkTargets(state, candidate, level);
+            int viable = landings.Count;
+            bool overlaps = false;
+            foreach (HexCoord landing in landings)
+            {
+                if (claimedLandings.Contains(landing)) { overlaps = true; break; }
+            }
+            // Distance to the nearest already-placed raider; 0 for the
+            // party's first raider (cohesion has nothing to cohere to yet).
+            int distance = 0;
+            if (placed.Count > 0)
+            {
+                distance = int.MaxValue;
+                foreach (HexCoord p in placed)
+                {
+                    int d = HexCoord.Distance(candidate, p);
+                    if (d < distance) distance = d;
+                }
+            }
+
+            bool canLand = viable > 0;
+            int cmp = canLand.CompareTo(bestCanLand);
+            if (cmp == 0) cmp = (!overlaps).CompareTo(!bestOverlaps);
+            if (cmp == 0) cmp = viable.CompareTo(bestViable);
+            if (cmp == 0) cmp = bestDistance.CompareTo(distance);
+            if (cmp < 0) continue;
+            if (cmp > 0)
+            {
+                ties.Clear();
+                bestCanLand = canLand;
+                bestViable = viable;
+                bestOverlaps = overlaps;
+                bestDistance = distance;
+            }
+            ties.Add(candidate);
+        }
+
+        return ties[rng.Next(ties.Count)];
     }
 
     /// <summary>

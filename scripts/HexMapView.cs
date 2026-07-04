@@ -175,6 +175,7 @@ public partial class HexMapView : Node2D, IHexMapView
     private Node2D? _treesLayer;
     private Node2D? _gravesLayer;
     private Node2D? _unitsLayer;
+    private Node2D? _seaVikingsLayer;
     private Node2D? _deathsLayer;
     private Node2D? _tideForecastLayer;
     private Node2D? _targetsLayer;
@@ -497,6 +498,8 @@ public partial class HexMapView : Node2D, IHexMapView
         // The tide-telegraph layer is freed with every other child above; drop the
         // diff cache so the next ShowTideForecast redraws onto the fresh layer.
         _shownTideForecast.Clear();
+        // Same for the sea-viking layer's diff cache.
+        _shownSeaVikings.Clear();
         _tileVisuals.Clear();
         _pulsingUnits.Clear();
         _pulsingCapitals.Clear();
@@ -597,6 +600,10 @@ public partial class HexMapView : Node2D, IHexMapView
         AddChild(_gravesLayer);
         _unitsLayer = new Node2D { Name = "UnitsLayer" };
         AddChild(_unitsLayer);
+        // Viking Raiders: raiders waiting at sea — same z-band as land
+        // units (the two never overlap; sea glyphs sit on water coords).
+        _seaVikingsLayer = new Node2D { Name = "SeaVikingsLayer" };
+        AddChild(_seaVikingsLayer);
         _deathsLayer = new Node2D { Name = "DeathsLayer" };
         AddChild(_deathsLayer);
         // Rising Tides telegraph: drawn above units/deaths so the
@@ -1941,7 +1948,7 @@ public partial class HexMapView : Node2D, IHexMapView
                     && unit.Owner == currentPlayer.Value
                     && !unit.HasMovedThisTurn;
                 bool selected = _selectedUnit.HasValue && _selectedUnit.Value == tile.Coord;
-                Node2D visual = CreateUnitVisual(actionable, unit.Level);
+                Node2D visual = CreateUnitVisual(actionable, unit.Level, viking: unit.Owner.IsNone);
                 visual.Position = center;
                 _unitsLayer?.AddChild(visual);
                 _unitVisuals[tile.Coord] = visual;
@@ -2853,7 +2860,7 @@ public partial class HexMapView : Node2D, IHexMapView
     private const float UnitDotRadius = 0.08f;
     private const int UnitRingSegments = 28;
 
-    private Node2D CreateUnitVisual(bool actionable, UnitLevel level)
+    private Node2D CreateUnitVisual(bool actionable, UnitLevel level, bool viking = false)
     {
         Color color = actionable ? OccupantActionableColor : OccupantDefaultColor;
         var node = new Node2D();
@@ -2878,7 +2885,102 @@ public partial class HexMapView : Node2D, IHexMapView
             node.AddChild(CreateFilledDisc(HexSize * UnitDotRadius, color));
         }
 
+        // Viking Raiders: neutral-owned raiders wear two horns flaring off
+        // the outer ring — identical glyph on land and at sea.
+        if (viking)
+        {
+            node.AddChild(CreateHornStroke(color, mirrored: false));
+            node.AddChild(CreateHornStroke(color, mirrored: true));
+        }
+
         return node;
+    }
+
+    // Viking horn geometry: each horn is a curved arc rooted on the outer
+    // unit ring — the ring reading as the helm — that BENDS AWAY from the
+    // vertical center line, devil-horn style: the left horn bows left, the
+    // right bows right, concave side facing center. Sampled from a
+    // quadratic Bezier (angles in y-down screen degrees; 270° is straight
+    // up): the base sits on the ring's shoulder, the raised TIP floats
+    // above the ring right beside the center line, and the control point
+    // is pushed far out to the SIDE (not radially up — that read as round
+    // "ears"), so the bulge is lateral. Mirrored across the vertical axis.
+    private const float HornShoulderDegrees = 234f; // lower end, on the ring's shoulder
+    private const float HornTipDegrees = 269f;      // tip, right beside the center line
+    private const float HornTipRadiusFactor = 0.74f; // tip raised well above the 0.50 ring
+    private const float HornControlDegrees = 218f;  // control pushed sideways…
+    private const float HornControlRadiusFactor = 1.15f; // …and well past the ring
+    private const float HornWidthFactor = 0.08f;
+    private const int HornSegments = 10;
+
+    private Line2D CreateHornStroke(Color color, bool mirrored)
+    {
+        float ringRadius = HexSize * UnitRingRadii[0];
+        Vector2 Polar(float radius, float degrees)
+        {
+            float rad = Mathf.DegToRad(degrees);
+            return new Vector2(radius * Mathf.Cos(rad), radius * Mathf.Sin(rad));
+        }
+        Vector2 p0 = Polar(ringRadius, HornShoulderDegrees);
+        Vector2 p2 = Polar(HexSize * HornTipRadiusFactor, HornTipDegrees);
+        Vector2 control = Polar(
+            HexSize * HornControlRadiusFactor, HornControlDegrees);
+
+        var points = new Vector2[HornSegments + 1];
+        for (int i = 0; i <= HornSegments; i++)
+        {
+            float t = (float)i / HornSegments;
+            float u = 1f - t;
+            Vector2 p = u * u * p0 + 2f * u * t * control + t * t * p2;
+            if (mirrored) p.X = -p.X;
+            points[i] = p;
+        }
+        return new Line2D
+        {
+            Points = points,
+            Width = HexSize * HornWidthFactor,
+            DefaultColor = color,
+            BeginCapMode = Line2D.LineCapMode.Round,
+            EndCapMode = Line2D.LineCapMode.Round,
+            JointMode = Line2D.LineJointMode.Round,
+        };
+    }
+
+    // Viking Raiders: what the sea-viking layer currently shows, so
+    // ShowSeaVikings can skip the rebuild across the frequent RefreshViews
+    // calls of a turn (the at-sea set only changes on viking-phase beats).
+    private readonly List<SeaViking> _shownSeaVikings = new();
+
+    /// <summary>
+    /// Viking Raiders: render the raiders waiting at sea — a neutral "raft"
+    /// disc (so the glyph gets the same black-on-neutral pairing a landed
+    /// viking has) under the horned unit glyph, on each listed water coord.
+    /// Empty list clears the layer.
+    /// </summary>
+    public void ShowSeaVikings(System.Collections.Generic.IReadOnlyList<SeaViking> atSea)
+    {
+        if (_seaVikingsLayer == null) return;
+        if (_shownSeaVikings.Count == atSea.Count)
+        {
+            bool same = true;
+            for (int i = 0; i < atSea.Count; i++)
+            {
+                if (_shownSeaVikings[i] != atSea[i]) { same = false; break; }
+            }
+            if (same) return;
+        }
+        _shownSeaVikings.Clear();
+        _shownSeaVikings.AddRange(atSea);
+
+        ClearLayer(_seaVikingsLayer);
+        foreach (SeaViking viking in atSea)
+        {
+            var visual = new Node2D();
+            visual.AddChild(CreateFilledDisc(HexSize * 0.58f, PlayerPalette.Neutral));
+            visual.AddChild(CreateUnitVisual(actionable: false, viking.Level, viking: true));
+            visual.Position = FirstHexCenterOffset + HexPixel.ToPixel(viking.Coord, HexSize);
+            _seaVikingsLayer.AddChild(visual);
+        }
     }
 
     private static Line2D CreateCircleOutline(float radius, Color color, float width)
