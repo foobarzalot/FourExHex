@@ -2862,6 +2862,12 @@ public partial class HexMapView : Node2D, IHexMapView
 
     private Node2D CreateUnitVisual(bool actionable, UnitLevel level, bool viking = false)
     {
+        // Viking Raiders: raiders carry the fixed-palette painted-shield
+        // glyph instead of the concentric rings — identical on land and at
+        // sea, and never actionability-colored (a viking is never the
+        // current player's unit).
+        if (viking) return CreateVikingShieldVisual(level);
+
         Color color = actionable ? OccupantActionableColor : OccupantDefaultColor;
         var node = new Node2D();
 
@@ -2885,64 +2891,84 @@ public partial class HexMapView : Node2D, IHexMapView
             node.AddChild(CreateFilledDisc(HexSize * UnitDotRadius, color));
         }
 
-        // Viking Raiders: neutral-owned raiders wear two horns flaring off
-        // the outer ring — identical glyph on land and at sea.
-        if (viking)
-        {
-            node.AddChild(CreateHornStroke(color, mirrored: false));
-            node.AddChild(CreateHornStroke(color, mirrored: true));
-        }
-
         return node;
     }
 
-    // Viking horn geometry: each horn is a curved arc rooted on the outer
-    // unit ring — the ring reading as the helm — that BENDS AWAY from the
-    // vertical center line, devil-horn style: the left horn bows left, the
-    // right bows right, concave side facing center. Sampled from a
-    // quadratic Bezier (angles in y-down screen degrees; 270° is straight
-    // up): the base sits on the ring's shoulder, the raised TIP floats
-    // above the ring right beside the center line, and the control point
-    // is pushed far out to the SIDE (not radially up — that read as round
-    // "ears"), so the bulge is lateral. Mirrored across the vertical axis.
-    private const float HornShoulderDegrees = 234f; // lower end, on the ring's shoulder
-    private const float HornTipDegrees = 269f;      // tip, right beside the center line
-    private const float HornTipRadiusFactor = 0.74f; // tip raised well above the 0.50 ring
-    private const float HornControlDegrees = 218f;  // control pushed sideways…
-    private const float HornControlRadiusFactor = 1.15f; // …and well past the ring
-    private const float HornWidthFactor = 0.08f;
-    private const int HornSegments = 10;
+    // Viking "painted shield" glyph (VIKING_UNIT_GLYPH.md): a cream shield
+    // seen from above, rank shown by how many painted ink wedges divide it —
+    // plain (Recruit), quartered (Soldier), eight segments (Captain). Fixed
+    // ink/cream palette, never player-colored; flat fills only; same size
+    // and anchor as an ordinary unit (outer radius = the ordinary glyph's
+    // outer ring). Spec coordinates are in glyph units where that outer
+    // radius is 16, so 1 glyph unit = HexSize * UnitRingRadii[0] / 16.
+    private static readonly Color VikingInk = new Color("111111");
+    private static readonly Color VikingCream = new Color("efe6d4");
+    private const float ShieldRadiusUnits = 16f;
+    private const float ShieldRimWidthUnits = 3.5f;
+    private const float ShieldBossRadiusUnits = 4.5f;
+    private const float ShieldBossHighlightRadiusUnits = 2f;
+    private const int ShieldSectorSteps = 12;
 
-    private Line2D CreateHornStroke(Color color, bool mirrored)
+    private Node2D CreateVikingShieldVisual(UnitLevel level)
     {
-        float ringRadius = HexSize * UnitRingRadii[0];
-        Vector2 Polar(float radius, float degrees)
+        float unit = HexSize * UnitRingRadii[0] / ShieldRadiusUnits;
+        float radius = ShieldRadiusUnits * unit;
+        // Recruit=1 wedge-free, Soldier=2 quartered, Captain=3 eight-segment.
+        // Commander can't occur (vikings cap at Captain); map it defensively
+        // to the richest shield rather than crash a render pass.
+        int rank = level switch
         {
-            float rad = Mathf.DegToRad(degrees);
-            return new Vector2(radius * Mathf.Cos(rad), radius * Mathf.Sin(rad));
-        }
-        Vector2 p0 = Polar(ringRadius, HornShoulderDegrees);
-        Vector2 p2 = Polar(HexSize * HornTipRadiusFactor, HornTipDegrees);
-        Vector2 control = Polar(
-            HexSize * HornControlRadiusFactor, HornControlDegrees);
+            UnitLevel.Recruit => 1,
+            UnitLevel.Soldier => 2,
+            _ => 3,
+        };
 
-        var points = new Vector2[HornSegments + 1];
-        for (int i = 0; i <= HornSegments; i++)
+        var node = new Node2D();
+        // 1. Shield base.
+        node.AddChild(CreateFilledDisc(radius, VikingCream));
+        // 2. Rank wedges (0° = +x, increasing clockwise in y-down space).
+        if (rank == 2)
         {
-            float t = (float)i / HornSegments;
-            float u = 1f - t;
-            Vector2 p = u * u * p0 + 2f * u * t * control + t * t * p2;
-            if (mirrored) p.X = -p.X;
-            points[i] = p;
+            node.AddChild(CreateSectorPolygon(radius, 0f, 90f, VikingInk));
+            node.AddChild(CreateSectorPolygon(radius, 180f, 270f, VikingInk));
         }
-        return new Line2D
+        else if (rank == 3)
         {
-            Points = points,
-            Width = HexSize * HornWidthFactor,
-            DefaultColor = color,
-            BeginCapMode = Line2D.LineCapMode.Round,
-            EndCapMode = Line2D.LineCapMode.Round,
-            JointMode = Line2D.LineJointMode.Round,
+            for (int fromDeg = 0; fromDeg < 360; fromDeg += 90)
+            {
+                node.AddChild(CreateSectorPolygon(radius, fromDeg, fromDeg + 45f, VikingInk));
+            }
+        }
+        // 3. Rim (stroke centered on the shield edge).
+        node.AddChild(CreateCircleOutline(radius, VikingInk, ShieldRimWidthUnits * unit));
+        // 4. Boss.
+        node.AddChild(CreateFilledDisc(ShieldBossRadiusUnits * unit, VikingInk));
+        // 5. Boss highlight — ranks 2–3 only; rank 1's boss stays solid ink.
+        if (rank >= 2)
+        {
+            node.AddChild(CreateFilledDisc(ShieldBossHighlightRadiusUnits * unit, VikingCream));
+        }
+        return node;
+    }
+
+    /// <summary>Filled circular sector (pie wedge) from the node's center
+    /// out to <paramref name="radius"/>, spanning the given angles
+    /// (degrees, 0° = +x, clockwise in y-down space).</summary>
+    private static Polygon2D CreateSectorPolygon(
+        float radius, float fromDeg, float toDeg, Color color)
+    {
+        var points = new Vector2[ShieldSectorSteps + 2];
+        points[0] = Vector2.Zero;
+        for (int i = 0; i <= ShieldSectorSteps; i++)
+        {
+            float deg = fromDeg + (toDeg - fromDeg) * i / ShieldSectorSteps;
+            float rad = Mathf.DegToRad(deg);
+            points[i + 1] = new Vector2(radius * Mathf.Cos(rad), radius * Mathf.Sin(rad));
+        }
+        return new Polygon2D
+        {
+            Color = color,
+            Polygon = points,
         };
     }
 
@@ -2952,10 +2978,10 @@ public partial class HexMapView : Node2D, IHexMapView
     private readonly List<SeaViking> _shownSeaVikings = new();
 
     /// <summary>
-    /// Viking Raiders: render the raiders waiting at sea — a neutral "raft"
-    /// disc (so the glyph gets the same black-on-neutral pairing a landed
-    /// viking has) under the horned unit glyph, on each listed water coord.
-    /// Empty list clears the layer.
+    /// Viking Raiders: render the raiders waiting at sea — the same painted
+    /// shield a landed viking carries, on each listed water coord (the
+    /// opaque cream shield reads directly on the water). Empty list clears
+    /// the layer.
     /// </summary>
     public void ShowSeaVikings(System.Collections.Generic.IReadOnlyList<SeaViking> atSea)
     {
@@ -2975,9 +3001,7 @@ public partial class HexMapView : Node2D, IHexMapView
         ClearLayer(_seaVikingsLayer);
         foreach (SeaViking viking in atSea)
         {
-            var visual = new Node2D();
-            visual.AddChild(CreateFilledDisc(HexSize * 0.58f, PlayerPalette.Neutral));
-            visual.AddChild(CreateUnitVisual(actionable: false, viking.Level, viking: true));
+            Node2D visual = CreateVikingShieldVisual(viking.Level);
             visual.Position = FirstHexCenterOffset + HexPixel.ToPixel(viking.Coord, HexSize);
             _seaVikingsLayer.AddChild(visual);
         }
