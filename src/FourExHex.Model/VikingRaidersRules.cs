@@ -281,6 +281,21 @@ public static class VikingRaidersRules
     }
 
     /// <summary>
+    /// True when this round's viking pseudo-turn is due or mid-flight:
+    /// Viking Raiders mode, the schedule has started
+    /// (round ≥ <see cref="FirstWaveRound"/>), this round's phase hasn't
+    /// completed, and any threat remains. Pure state predicate — the
+    /// controller layers its game-over gates on top
+    /// (GameOperations.VikingTurnPending), and the HUD lights the neutral
+    /// turn-order swatch from it.
+    /// </summary>
+    public static bool TurnDue(GameState state)
+        => state.Mode == GameMode.VikingRaiders
+           && state.Turns.TurnNumber >= FirstWaveRound
+           && state.Vikings.LastCompletedRound < state.Turns.TurnNumber
+           && ThreatRemains(state);
+
+    /// <summary>
     /// True while any viking threat remains: raiders at sea, un-spawned waves
     /// in the schedule, or landed <see cref="PlayerId.None"/>-owned units on
     /// the grid. Always false outside <see cref="GameMode.VikingRaiders"/>.

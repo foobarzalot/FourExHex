@@ -716,21 +716,18 @@ public class GameOperations
     public bool VikingThreatActive => VikingRaidersRules.ThreatRemains(_state);
 
     /// <summary>
-    /// True when this round's viking pseudo-turn still has to run: Viking
-    /// Raiders mode, game live, the wave schedule has started
-    /// (round ≥ <see cref="VikingRaidersRules.FirstWaveRound"/>), this
-    /// round's phase hasn't completed, and any threat remains. Checked by
-    /// the three <c>AdvanceToNextActivePlayer(); StartPlayerTurn();</c>
-    /// seams (which defer StartPlayerTurn) and by the turn driver's
-    /// dispatch boundaries (which run the phase).
+    /// True when this round's viking pseudo-turn still has to run:
+    /// <see cref="VikingRaidersRules.TurnDue"/> (the pure state predicate,
+    /// also driving the HUD's neutral turn-order swatch) plus the game-live
+    /// gates. Checked by the three
+    /// <c>AdvanceToNextActivePlayer(); StartPlayerTurn();</c> seams (which
+    /// defer StartPlayerTurn) and by the turn driver's dispatch boundaries
+    /// (which run the phase).
     /// </summary>
     public bool VikingTurnPending =>
-        _state.Mode == GameMode.VikingRaiders
-        && !GameEndedFired
+        !GameEndedFired
         && !_session.IsGameOver
-        && _state.Turns.TurnNumber >= VikingRaidersRules.FirstWaveRound
-        && _state.Vikings.LastCompletedRound < _state.Turns.TurnNumber
-        && VikingThreatActive;
+        && VikingRaidersRules.TurnDue(_state);
 
     /// <summary>
     /// Enter the viking pseudo-turn: reseed the RNG onto the vikings' own

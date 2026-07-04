@@ -581,6 +581,51 @@ public class VikingRaidersRulesTests
         Assert.Equal(3, vikings.LastSpawnRound);
     }
 
+    // --- TurnDue --------------------------------------------------------------
+
+    [Fact]
+    public void TurnDue_FalseOutsideVikingRaidersMode()
+    {
+        HexGrid grid = TestHelpers.BuildRectGrid(3, 3, Red);
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        GameState state = MakeState(grid, territories, mode: GameMode.Freeform);
+        state.Turns.Reset(0, 5);
+
+        Assert.False(VikingRaidersRules.TurnDue(state));
+    }
+
+    [Fact]
+    public void TurnDue_FalseBeforeTheFirstWaveRound()
+    {
+        GameState state = MakeIslandState(HexCoord.FromOffset(3, 1));
+        state.Turns.Reset(0, VikingRaidersRules.FirstWaveRound - 1);
+
+        Assert.False(VikingRaidersRules.TurnDue(state));
+    }
+
+    [Fact]
+    public void TurnDue_TrueAtRoundStart_FalseOnceCompleted()
+    {
+        GameState state = MakeIslandState(HexCoord.FromOffset(3, 1));
+        state.Turns.Reset(0, VikingRaidersRules.FirstWaveRound);
+
+        Assert.True(VikingRaidersRules.TurnDue(state));
+
+        state.Vikings.LastCompletedRound = VikingRaidersRules.FirstWaveRound;
+        Assert.False(VikingRaidersRules.TurnDue(state));
+    }
+
+    [Fact]
+    public void TurnDue_FalseOnceThreatIsCleared()
+    {
+        GameState state = MakeIslandState(HexCoord.FromOffset(3, 1));
+        state.Turns.Reset(0, 10);
+        state.Vikings.NextWaveIndex = VikingRaidersRules.TotalWaves;
+        state.Vikings.LastCompletedRound = 9; // this round's phase never ran
+
+        Assert.False(VikingRaidersRules.TurnDue(state));
+    }
+
     // --- WaveDue --------------------------------------------------------------
 
     [Theory]

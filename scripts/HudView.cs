@@ -43,6 +43,11 @@ public partial class HudView : OrientationHud, IHudView
 
     private Label _turnLabel = null!;       // numeric mono turn number
     private PlayerSwatchBar _playerSwatchBar = null!; // players in turn order, current highlighted
+
+    // Viking Raiders: the neutral raiders' turn-order swatch. A plain grey —
+    // deliberately not the tan neutral tile fill, so the swatch reads as
+    // "the faceless raiders" rather than a seventh player color.
+    private static readonly Color VikingSwatchGrey = new Color("7f7f7f");
     private Label _turnEyebrow = null!;     // "TURN" caption (hidden in portrait)
     private Label _goldLabel = null!;       // gold + income breakdown
     private PanelContainer _goldChip = null!;
@@ -1712,21 +1717,37 @@ public partial class HudView : OrientationHud, IHudView
         _hasPendingAction = session.Mode != SessionState.ActionMode.None;
         _turnLabel.Text = state.Turns.TurnNumber.ToString();
         IReadOnlyList<Player> roster = state.Turns.Players;
-        var swatchColors = new Color[roster.Count];
-        var swatchEliminated = new bool[roster.Count];
+        // Viking Raiders only: one extra grey swatch at the end of the turn
+        // order for the neutral raiders. It lights up while their
+        // pseudo-turn is due/mid-flight (VikingRaidersRules.TurnDue) and
+        // dims like an eliminated player once the threat is cleared.
+        bool vikingSwatch = state.Mode == GameMode.VikingRaiders;
+        int slots = roster.Count + (vikingSwatch ? 1 : 0);
+        var swatchColors = new Color[slots];
+        var swatchEliminated = new bool[slots];
         for (int i = 0; i < roster.Count; i++)
         {
             swatchColors[i] = PlayerPalette.ColorFor(roster[i].Id);
             swatchEliminated[i] = WinConditionRules.IsEliminated(roster[i].Id, state.Grid);
         }
         int currentIndex = state.Turns.CurrentPlayerIndex;
+        if (vikingSwatch)
+        {
+            swatchColors[roster.Count] = VikingSwatchGrey;
+            swatchEliminated[roster.Count] = !VikingRaidersRules.ThreatRemains(state);
+            if (!session.IsGameOver && VikingRaidersRules.TurnDue(state))
+            {
+                currentIndex = roster.Count;
+            }
+        }
         _playerSwatchBar.SetPlayers(swatchColors, swatchEliminated, currentIndex);
         if (Log.IsEnabled(Log.LogCategory.Render, Log.LogLevel.Debug))
         {
-            var parts = new List<string>(roster.Count);
-            for (int i = 0; i < roster.Count; i++)
+            var parts = new List<string>(slots);
+            for (int i = 0; i < slots; i++)
             {
-                parts.Add($"{i}:{roster[i].Name}{(swatchEliminated[i] ? "(elim)" : "")}{(i == currentIndex ? "*" : "")}");
+                string name = i < roster.Count ? roster[i].Name : "Vikings";
+                parts.Add($"{i}:{name}{(swatchEliminated[i] ? "(elim)" : "")}{(i == currentIndex ? "*" : "")}");
             }
             Log.Debug(Log.LogCategory.Render, $"[SwatchBar] current={currentIndex} [{string.Join(", ", parts)}]");
         }
