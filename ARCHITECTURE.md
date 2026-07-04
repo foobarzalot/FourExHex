@@ -689,7 +689,7 @@ Two independent checks from different places:
 - **Mid-turn (domination)** — `WinConditionRules.WinnerByDomination` fires in `HandleCapture` after every capture. Requires one color own *every* tile. Ends the game immediately, clears undo.
 - **End-of-turn (sole capital-bearer)** — `WinConditionRules.WinnerAtEndOfTurn` fires in `EndOfTurnProcessing`. Looser, typical path: current player wins if no other player has a capital-bearing territory.
 
-Viking Raiders suppresses **both** checks (and the claim-victory prompt) while `VikingRaidersRules.ThreatRemains` — see its section. `DeclareWinner` is the centralized setter for `SessionState.Winner`; fires `PlaySound(GameWon)` iff the winner is human. The winner may be `PlayerId.None` (a viking total wipeout), which matches no roster player — no sound, and the HUD shows the Vikings-win text.
+Viking Raiders suppresses **both** checks (and the claim-victory prompt) while `VikingRaidersRules.ThreatRemains` — see its section. `DeclareWinner` is the centralized setter for `SessionState.Winner`; fires `PlaySound(GameWon)` iff the winner is human. The winner may be `PlayerId.None` (a viking total wipeout), which matches no roster player — no sound, and the HUD shows a DEFEAT-framed "The Vikings have conquered the island!" overlay with no Replay offer (`EndgameOverlayContent`, unit-tested, decides the Victory-vs-Defeat framing).
 
 ### Claim victory prompt
 

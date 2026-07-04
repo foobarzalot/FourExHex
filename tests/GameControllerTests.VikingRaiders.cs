@@ -303,6 +303,44 @@ public partial class GameControllerTests
     }
 
     [Fact]
+    public void VikingRaiders_TotalWipeout_DeclaredAtPhaseEnd_EvenWithWavesPending()
+    {
+        // The Vikings-conquered declaration happens the moment the viking
+        // phase completes with no capital left standing — the usual
+        // "no win while threat remains" gate does NOT hold it back (the
+        // raiders being the only side left IS the outcome).
+        HexGrid grid = TestHelpers.BuildSpotGrid(
+            PlayerId.FromIndex(0),
+            HexCoord.FromOffset(2, 0), HexCoord.FromOffset(2, 1));
+        grid.Add(new HexTile(HexCoord.FromOffset(0, 0), PlayerId.FromIndex(1)));
+        grid.Add(new HexTile(HexCoord.FromOffset(0, 1), PlayerId.FromIndex(1)));
+        HexCoord redSea = HexCoord.FromOffset(3, 0);
+        HexCoord blueSea = HexCoord.FromOffset(-1, 0);
+        var g = new VikingGame(
+            grid,
+            water: new HashSet<HexCoord> { redSea, blueSea },
+            turnNumber: 3,
+            blueKind: PlayerKind.Computer,
+            beforeStart: s => s.Vikings.Reset(
+                new[]
+                {
+                    new SeaViking(redSea, UnitLevel.Captain),
+                    new SeaViking(blueSea, UnitLevel.Captain),
+                },
+                nextWaveIndex: 0, // waves still pending — threat clearly remains
+                lastCompletedRound: 0,
+                lastSpawnRound: 2));
+
+        Assert.Equal(g.Red.Id, g.Session.PendingDefeatScreen);
+        g.Hud.ClickDefeatContinue(); // resume: the phase finishes inline
+
+        Assert.True(g.Session.IsGameOver);
+        Assert.Equal(PlayerId.None, g.Session.Winner);
+        Assert.True(g.GameEndedRaised);
+        Assert.Equal(3, g.State.Vikings.LastCompletedRound); // declared AT phase end
+    }
+
+    [Fact]
     public void VikingRaiders_HumanInputLockedDuringVikingPhase()
     {
         // A queued pacer holds the viking phase open mid-flight; the human

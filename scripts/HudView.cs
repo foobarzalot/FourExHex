@@ -77,6 +77,11 @@ public partial class HudView : OrientationHud, IHudView
     private HudIconButton _addTextButton = null!;
     private Control _victoryOverlay = null!;
     private Label _victoryLabel = null!;
+    // Viking Raiders total wipeout: a game-over DEFEAT presentation (the
+    // raiders beat every player), distinct from the per-player defeat
+    // overlay (which offers Continue) and from the victory overlay (which
+    // offers Replay).
+    private Control _vikingsConqueredOverlay = null!;
     private Control _defeatOverlay = null!;
     private Label _defeatLabel = null!;
     private Control _claimVictoryOverlay = null!;
@@ -348,6 +353,7 @@ public partial class HudView : OrientationHud, IHudView
         InitOrientation();
 
         BuildVictoryOverlay();
+        BuildVikingsConqueredOverlay();
         BuildCampaignVictoryOverlay();
         BuildDefeatOverlay();
         BuildClaimVictoryOverlay();
@@ -1374,6 +1380,30 @@ public partial class HudView : OrientationHud, IHudView
     /// <see cref="SessionState.PendingDefeatScreen"/>. Continue dismisses
     /// the overlay (controller resumes the paused AI loop).
     /// </summary>
+    /// <summary>
+    /// Build the Viking Raiders total-wipeout overlay — the raiders
+    /// destroyed every capital, a loss for every player. Content
+    /// (DEFEAT eyebrow, title, no Replay offer) comes from the shared,
+    /// unit-tested <see cref="EndgameOverlayContent"/> decision.
+    /// </summary>
+    private void BuildVikingsConqueredOverlay()
+    {
+        EndgameOverlayContent.Content content =
+            EndgameOverlayContent.For(PlayerId.None, winnerName: "");
+        (Control overlay, Label _, Button[] _) = BuildEndgameOverlay(
+            eyebrowText: content.Eyebrow,
+            titleText: content.Title,
+            titleFontSize: 44,
+            designWidth: 620f,
+            buttonMinWidth: 150f,
+            buttonSpecs: new (string, Action)[]
+            {
+                ("Play Again", () => NewGameClicked?.Invoke()),
+                ("Main Menu", () => MainMenuClicked?.Invoke()),
+            });
+        _vikingsConqueredOverlay = overlay;
+    }
+
     private void BuildDefeatOverlay()
     {
         (Control overlay, Label title, Button[] buttons) = BuildEndgameOverlay(
@@ -1841,7 +1871,15 @@ public partial class HudView : OrientationHud, IHudView
             PlayerId winId = session.Winner.Value;
             Player? winner = state.Turns.Players
                 .FirstOrDefault(p => p.Id == winId);
-            if (_campaignLevel is int level && winner?.Kind == PlayerKind.Human)
+            if (winId.IsNone)
+            {
+                // Viking Raiders total wipeout: the raiders won — a DEFEAT
+                // for every player (no Replay offer; see EndgameOverlayContent).
+                _vikingsConqueredOverlay.Visible = true;
+                _victoryOverlay.Visible = false;
+                _campaignVictoryOverlay.Visible = false;
+            }
+            else if (_campaignLevel is int level && winner?.Kind == PlayerKind.Human)
             {
                 // Campaign win: level result + updated ladder total. The
                 // store is already updated (Main marks the win on
@@ -1855,26 +1893,25 @@ public partial class HudView : OrientationHud, IHudView
                 _campaignNextButton.Visible = progress.NextUp != null;
                 _campaignVictoryOverlay.Visible = true;
                 _victoryOverlay.Visible = false;
+                _vikingsConqueredOverlay.Visible = false;
                 Log.Debug(Log.LogCategory.Campaign,
                     $"HudView: campaign victory overlay shown for level " +
                     $"{CampaignProgress.LabelFor(level)} ({progress.WonCount} won)");
             }
             else
             {
-                // Viking Raiders total wipeout: the neutral raiders destroyed
-                // every capital — Winner is PlayerId.None, which matches no
-                // roster player.
-                _victoryLabel.Text = winId.IsNone
-                    ? "The Vikings have conquered the island!"
-                    : $"{winner?.Name ?? "Unknown"} wins!";
+                _victoryLabel.Text =
+                    EndgameOverlayContent.For(winId, winner?.Name ?? "Unknown").Title;
                 _victoryLabel.AddThemeColorOverride("font_color", PlayerPalette.ColorFor(winId));
                 _victoryOverlay.Visible = true;
+                _vikingsConqueredOverlay.Visible = false;
                 _campaignVictoryOverlay.Visible = false;
             }
         }
         else
         {
             _victoryOverlay.Visible = false;
+            _vikingsConqueredOverlay.Visible = false;
             _campaignVictoryOverlay.Visible = false;
         }
 
