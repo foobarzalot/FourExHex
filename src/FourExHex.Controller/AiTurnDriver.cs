@@ -299,7 +299,14 @@ public class AiTurnDriver
         }
 
         _pendingAiAction = action;
-        _ops.ShowHighlightAndRefresh(ResolveAiActingTerritory(action));
+        Territory? acting = ResolveAiActingTerritory(action);
+        if (_vikingPhase)
+        {
+            Log.Debug(Log.LogCategory.Viking,
+                $"[viking] preview beat {action.GetType().Name} → highlight " +
+                $"{(acting == null ? "null (clears)" : $"size={acting.Size}")}");
+        }
+        _ops.ShowHighlightAndRefresh(acting);
         // Preview→execute hop stays a direct schedule (NOT a re-dispatch):
         // _pendingAiAction is already chosen, so switching tracks here
         // would re-draw RNG for it. The track switch lands at the next
@@ -352,8 +359,15 @@ public class AiTurnDriver
         // During the viking phase the actor is the neutral owner, not
         // the (waiting) current player.
         PlayerId actor = _vikingPhase ? PlayerId.None : _state.Turns.CurrentPlayer.Id;
-        _ops.ShowHighlightAndRefresh(TerritoryLookup.FindOwnedContaining(
-            _state.Territories, actor, resultCoord));
+        Territory? result = TerritoryLookup.FindOwnedContaining(
+            _state.Territories, actor, resultCoord);
+        if (_vikingPhase)
+        {
+            Log.Debug(Log.LogCategory.Viking,
+                $"[viking] execute beat {action.GetType().Name} @{resultCoord} → highlight " +
+                $"{(result == null ? "null (clears)" : $"size={result.Size}")}");
+        }
+        _ops.ShowHighlightAndRefresh(result);
 
         if (_session.IsGameOver)
         {

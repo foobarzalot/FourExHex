@@ -1028,8 +1028,51 @@ public partial class HexMapView : Node2D, IHexMapView
     /// </summary>
     public void ShowHighlight(Territory? selected)
     {
+        // Skip the redraw when the incoming region is visually identical to
+        // the one already shown (same owner + exact coord set — a fresh
+        // Territory object from a post-capture Recompute arrives every AI
+        // preview beat). Redrawing tears down and rebuilds the outline,
+        // which overlaps old and new strokes for a frame and strobes on
+        // sustained beat sequences (the Viking Raiders phase runs dozens of
+        // consecutive beats on one growing neutral territory).
+        bool sameRegion = SameHighlightRegion(_highlightedTerritory, selected);
+        if (Log.IsEnabled(Log.LogCategory.Render, Log.LogLevel.Debug))
+        {
+            static HexCoord MinCoord(Territory t)
+            {
+                HexCoord min = default;
+                bool first = true;
+                foreach (HexCoord c in t.Coords)
+                {
+                    if (first || c.CompareTo(min) < 0) { min = c; first = false; }
+                }
+                return min;
+            }
+            Log.Debug(Log.LogCategory.Render,
+                selected == null
+                    ? $"[highlight] cleared (skip={sameRegion})"
+                    : $"[highlight] owner={selected.Owner} size={selected.Size} " +
+                      $"min={MinCoord(selected)} skip={sameRegion}");
+        }
+        // Keep the newest Territory object even when skipping — later
+        // comparisons must run against the current partition's instance.
         _highlightedTerritory = selected;
+        if (sameRegion) return;
         RedrawHighlight();
+    }
+
+    /// <summary>True iff the two highlight targets draw the same outline:
+    /// both null, or same owner and exactly the same coord set.</summary>
+    private static bool SameHighlightRegion(Territory? shown, Territory? incoming)
+    {
+        if (shown == null || incoming == null) return shown == null && incoming == null;
+        if (shown.Owner != incoming.Owner || shown.Size != incoming.Size) return false;
+        var shownCoords = new HashSet<HexCoord>(shown.Coords);
+        foreach (HexCoord c in incoming.Coords)
+        {
+            if (!shownCoords.Contains(c)) return false;
+        }
+        return true;
     }
 
     /// <summary>
@@ -1794,6 +1837,11 @@ public partial class HexMapView : Node2D, IHexMapView
         if (layer == null) return;
         foreach (Node child in layer.GetChildren())
         {
+            // Detach immediately, then free: a bare QueueFree keeps the old
+            // node RENDERING until end of frame, so a clear-and-rebuild
+            // (highlight, targets) overlaps old and new strokes for one
+            // frame — a visible brightness pop on every redraw.
+            layer.RemoveChild(child);
             child.QueueFree();
         }
     }
