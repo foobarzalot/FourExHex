@@ -85,52 +85,34 @@ public class VikingRaidersRulesTests
 
     // --- WaveComposition -----------------------------------------------------
 
+    // The fixed per-wave table (user-tuned): Recruits pinned at 5,
+    // Soldiers +1 per wave until Captains take over the increment at
+    // wave 5 (index 4). Totals run 10 → 15.
     [Theory]
-    [InlineData(0, 40, 5)]  // 40/8 = 5, + wave 0
-    [InlineData(5, 40, 10)] // 40/8 = 5, + wave 5
-    [InlineData(0, 4, 2)]   // floor(4/8)=0 → MinWaveSize
-    [InlineData(3, 0, 5)]   // MinWaveSize + wave 3
-    public void WaveComposition_SizeScalesWithCoastAndWave(int wave, int coastal, int expectedSize)
+    [InlineData(0, 5, 5, 0)]
+    [InlineData(1, 5, 6, 0)]
+    [InlineData(2, 5, 7, 0)]
+    [InlineData(3, 5, 8, 0)]
+    [InlineData(4, 5, 8, 1)]
+    [InlineData(5, 5, 8, 2)]
+    public void WaveComposition_FollowsFixedTable(
+        int wave, int recruits, int soldiers, int captains)
     {
-        Assert.Equal(expectedSize, VikingRaidersRules.WaveComposition(wave, coastal).Count);
-    }
-
-    [Theory]
-    [InlineData(0)]
-    [InlineData(1)]
-    public void WaveComposition_EarlyWaves_AllRecruits(int wave)
-    {
-        IReadOnlyList<UnitLevel> comp = VikingRaidersRules.WaveComposition(wave, 40);
-        Assert.All(comp, level => Assert.Equal(UnitLevel.Recruit, level));
-    }
-
-    [Theory]
-    [InlineData(2)]
-    [InlineData(3)]
-    public void WaveComposition_MidWaves_MixInSoldiers_NoCaptains(int wave)
-    {
-        IReadOnlyList<UnitLevel> comp = VikingRaidersRules.WaveComposition(wave, 40);
-        Assert.Contains(UnitLevel.Soldier, comp);
-        Assert.DoesNotContain(UnitLevel.Captain, comp);
-    }
-
-    [Theory]
-    [InlineData(4)]
-    [InlineData(5)]
-    public void WaveComposition_LateWaves_MixInCaptains(int wave)
-    {
-        IReadOnlyList<UnitLevel> comp = VikingRaidersRules.WaveComposition(wave, 40);
-        Assert.Contains(UnitLevel.Captain, comp);
+        IReadOnlyList<UnitLevel> comp = VikingRaidersRules.WaveComposition(wave);
+        Assert.Equal(recruits, comp.Count(l => l == UnitLevel.Recruit));
+        Assert.Equal(soldiers, comp.Count(l => l == UnitLevel.Soldier));
+        Assert.Equal(captains, comp.Count(l => l == UnitLevel.Captain));
+        Assert.Equal(recruits + soldiers + captains, comp.Count);
+        Assert.DoesNotContain(UnitLevel.Commander, comp);
     }
 
     [Fact]
-    public void WaveComposition_NeverCommander()
+    public void WaveComposition_StrongestFirst()
     {
-        for (int wave = 0; wave < VikingRaidersRules.TotalWaves; wave++)
-        {
-            IReadOnlyList<UnitLevel> comp = VikingRaidersRules.WaveComposition(wave, 200);
-            Assert.DoesNotContain(UnitLevel.Commander, comp);
-        }
+        // Placement is sequential and the first raiders claim the best
+        // landing spots, so the composition lists strongest levels first.
+        IReadOnlyList<UnitLevel> comp = VikingRaidersRules.WaveComposition(5);
+        Assert.Equal(comp.OrderByDescending(l => l).ToList(), comp);
     }
 
     // --- ChooseSpawns ---------------------------------------------------------

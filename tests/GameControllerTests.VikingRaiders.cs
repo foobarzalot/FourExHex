@@ -101,11 +101,12 @@ public partial class GameControllerTests
 
         EndRound(g); // round 2 → 3: the viking turn spawns wave 0
         Assert.Equal(3, g.State.Turns.TurnNumber);
-        // 3 coastal tiles → wave size max(2, 3/8) + 0 = 2, all Recruits.
-        Assert.Equal(2, g.State.Vikings.AtSea.Count);
+        // Wave 0 is 5 Soldiers + 5 Recruits (strongest first), clamped to
+        // this map's 3 coastal coords — 3 Soldiers spawn.
+        Assert.Equal(3, g.State.Vikings.AtSea.Count);
         // The wave's arrival is sounded with the longship cue (one per wave).
         Assert.Single(g.Map.VikingArrivalSounds);
-        Assert.All(g.State.Vikings.AtSea, v => Assert.Equal(UnitLevel.Recruit, v.Level));
+        Assert.All(g.State.Vikings.AtSea, v => Assert.Equal(UnitLevel.Soldier, v.Level));
         Assert.Equal(1, g.State.Vikings.NextWaveIndex);
         Assert.Equal(3, g.State.Vikings.LastSpawnRound);
         Assert.Equal(3, g.State.Vikings.LastCompletedRound);
@@ -126,7 +127,7 @@ public partial class GameControllerTests
 
         Assert.Equal(4, g.State.Turns.TurnNumber);
         Assert.Empty(g.State.Vikings.AtSea); // disembarked (or perished)
-        Assert.Equal(2, g.LandedVikingCount); // undefended coast: both land
+        Assert.Equal(3, g.LandedVikingCount); // undefended coast: all land
         // Every landed viking sits on a neutral tile.
         foreach (HexTile t in g.State.Grid.Tiles)
         {
@@ -145,11 +146,11 @@ public partial class GameControllerTests
 
         EndRound(g);
         EndRound(g); // round 3: wave spawned
-        Assert.Equal(2, g.State.Vikings.AtSea.Count);
+        Assert.Equal(3, g.State.Vikings.AtSea.Count);
 
         g.Hud.ClickEndTurn(); // Red ends: mid-round boundary (Blue's turn)
         // No second viking activity this round.
-        Assert.Equal(2, g.State.Vikings.AtSea.Count);
+        Assert.Equal(3, g.State.Vikings.AtSea.Count);
         Assert.Equal(3, g.State.Vikings.LastCompletedRound);
         Assert.Equal(0, g.LandedVikingCount);
     }

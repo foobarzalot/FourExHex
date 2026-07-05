@@ -152,13 +152,14 @@ public class VikingAiTests
 
         VikingSpawnWaveAction spawn = Assert.IsType<VikingSpawnWaveAction>(action);
         Assert.Equal(0, spawn.WaveIndex);
-        // Wave 0 on a 3-tile coast: composition max(2, 3/8)+0 = 2 Recruits.
-        Assert.Equal(2, spawn.Spawns.Count);
+        // Wave 0 is 5 Soldiers + 5 Recruits (strongest first), clamped to
+        // this map's 3 coastal coords — so 3 Soldiers spawn.
+        Assert.Equal(3, spawn.Spawns.Count);
         IReadOnlyList<HexCoord> coastal = VikingRaidersRules.CoastalWaterCoords(state);
         Assert.All(spawn.Spawns, s =>
         {
             Assert.Contains(s.Coord, coastal);
-            Assert.Equal(UnitLevel.Recruit, s.Level);
+            Assert.Equal(UnitLevel.Soldier, s.Level);
         });
     }
 

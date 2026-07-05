@@ -57,7 +57,7 @@ public static class VikingAi
             int waveIndex = state.Vikings.NextWaveIndex;
             IReadOnlyList<HexCoord> coastal = VikingRaidersRules.CoastalWaterCoords(state);
             IReadOnlyList<UnitLevel> composition =
-                VikingRaidersRules.WaveComposition(waveIndex, coastal.Count);
+                VikingRaidersRules.WaveComposition(waveIndex);
             IReadOnlyList<SeaViking> spawns =
                 VikingRaidersRules.ChooseSpawns(state, composition, rng);
             if (spawns.Count > 0)

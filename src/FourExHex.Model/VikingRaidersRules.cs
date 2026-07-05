@@ -23,11 +23,16 @@ public static class VikingRaidersRules
     /// <summary>Total number of waves in the fixed schedule.</summary>
     public const int TotalWaves = 6;
 
-    /// <summary>One raider per this many coastal water tiles (base wave size).</summary>
-    public const int CoastalTilesPerViking = 8;
+    /// <summary>Every wave carries this many Recruits.</summary>
+    public const int WaveRecruits = 5;
 
-    /// <summary>A wave is never smaller than this (before the per-wave growth).</summary>
-    public const int MinWaveSize = 2;
+    /// <summary>Wave 1's Soldier count; +1 per wave until Captains take
+    /// over the increment (see <see cref="WaveComposition"/>).</summary>
+    public const int WaveBaseSoldiers = 5;
+
+    /// <summary>0-based wave index at which Captains start arriving (one
+    /// more per wave from here; Soldiers stop growing).</summary>
+    public const int FirstCaptainWaveIndex = 4;
 
     /// <summary>
     /// Water coords that touch land — the tiles a wave can spawn on. Returned
@@ -80,28 +85,23 @@ public static class VikingRaidersRules
            && round >= FirstWaveRound + nextWaveIndex * WaveIntervalRounds;
 
     /// <summary>
-    /// The unit levels making up wave <paramref name="waveIndex"/> on a map
-    /// with <paramref name="coastalCount"/> coastal water tiles. Size =
-    /// max(<see cref="MinWaveSize"/>, coastalCount / <see cref="CoastalTilesPerViking"/>)
-    /// + waveIndex. Levels escalate: waves 0–1 all Recruits, 2–3 mix in
-    /// Soldiers, 4–5 mix in Captains. Never Commander.
+    /// The unit levels making up wave <paramref name="waveIndex"/> — a fixed
+    /// table, independent of map size (spawns still clamp to available
+    /// coastal water): <see cref="WaveRecruits"/> Recruits every wave;
+    /// Soldiers start at <see cref="WaveBaseSoldiers"/> and grow +1 per wave
+    /// until <see cref="FirstCaptainWaveIndex"/>, where Captains take over
+    /// the increment (+1 per wave from one). Totals run 10 → 15 across the
+    /// six waves. Never Commander. Strongest levels listed FIRST — placement
+    /// is sequential, so the strongest raiders claim the best landing spots.
     /// </summary>
-    public static IReadOnlyList<UnitLevel> WaveComposition(int waveIndex, int coastalCount)
+    public static IReadOnlyList<UnitLevel> WaveComposition(int waveIndex)
     {
-        int size = System.Math.Max(MinWaveSize, coastalCount / CoastalTilesPerViking) + waveIndex;
-        // Waves 0–1: all Recruits. 2–3: alternate Soldier/Recruit. 4–5 (and
-        // any hypothetical later): alternate Captain/Soldier. Never Commander.
-        (UnitLevel strong, UnitLevel weak) = waveIndex switch
-        {
-            <= 1 => (UnitLevel.Recruit, UnitLevel.Recruit),
-            <= 3 => (UnitLevel.Soldier, UnitLevel.Recruit),
-            _ => (UnitLevel.Captain, UnitLevel.Soldier),
-        };
-        var levels = new List<UnitLevel>(size);
-        for (int i = 0; i < size; i++)
-        {
-            levels.Add(i % 2 == 0 ? strong : weak);
-        }
+        int captains = System.Math.Max(0, waveIndex - FirstCaptainWaveIndex + 1);
+        int soldiers = WaveBaseSoldiers + System.Math.Min(waveIndex, FirstCaptainWaveIndex - 1);
+        var levels = new List<UnitLevel>(captains + soldiers + WaveRecruits);
+        for (int i = 0; i < captains; i++) levels.Add(UnitLevel.Captain);
+        for (int i = 0; i < soldiers; i++) levels.Add(UnitLevel.Soldier);
+        for (int i = 0; i < WaveRecruits; i++) levels.Add(UnitLevel.Recruit);
         return levels;
     }
 
