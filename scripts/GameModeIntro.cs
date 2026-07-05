@@ -28,10 +28,9 @@ public static class GameModeIntro
             "ground around them; everything else stays dark until you scout it. " +
             "Undo and Redo are disabled in this mode.",
         GameMode.VikingRaiders =>
-            "Viking Raiders — longships mass off the coast in six escalating " +
-            "waves, landing one round after they appear. Their conquests turn " +
-            "the land neutral, and no one can win until every raider — landed, " +
-            "at sea, or still to come — is gone.",
+            "Viking Raiders — Vikings are invading your island. Viking units " +
+            "pay no upkeep but their forces can't grow after they land on " +
+            "shore. Stand by to repel the invaders!",
         _ => null,
     };
 

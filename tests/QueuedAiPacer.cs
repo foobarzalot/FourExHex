@@ -16,9 +16,22 @@ public sealed class QueuedAiPacer : IAiPacer
 {
     private readonly Queue<Action> _queue = new();
 
-    public void Schedule(Action callback, int delayMs) => _queue.Enqueue(callback);
+    /// <summary>Every delay requested via Schedule/ScheduleUnscaled, in
+    /// order — lets tests assert cadence decisions (e.g. the viking spawn
+    /// presentation hold).</summary>
+    public List<int> ScheduledDelaysMs { get; } = new();
 
-    public void ScheduleUnscaled(Action callback, int delayMs) => _queue.Enqueue(callback);
+    public void Schedule(Action callback, int delayMs)
+    {
+        ScheduledDelaysMs.Add(delayMs);
+        _queue.Enqueue(callback);
+    }
+
+    public void ScheduleUnscaled(Action callback, int delayMs)
+    {
+        ScheduledDelaysMs.Add(delayMs);
+        _queue.Enqueue(callback);
+    }
 
     public void Cancel() => _queue.Clear();
 

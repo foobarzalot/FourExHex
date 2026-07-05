@@ -384,6 +384,20 @@ public class AiTurnDriver
             _ops.RefreshViews();
             return;
         }
+        // A wave just spawned: hold the viking phase open while the arrival
+        // presentation (ripple-rise animation + longship cue) plays, so the
+        // waiting player's turn start — auto-select, camera pan, wave
+        // banner — doesn't stomp on the moment. The spawn is always the
+        // phase's last action, so the delayed continuation lands on the
+        // phase-ending null-choose. Unscaled: the presentation runs in
+        // real time regardless of the AI-speed setting.
+        if (_vikingPhase && action is VikingSpawnWaveAction)
+        {
+            _aiPacer.ScheduleUnscaled(
+                () => Schedule(turnBoundary: false),
+                StepPacing.VikingSpawnPresentationMs);
+            return;
+        }
         // Action boundary: re-dispatch so a mid-turn Ai-Speed change
         // switches tracks for the next action.
         Schedule(turnBoundary: false);

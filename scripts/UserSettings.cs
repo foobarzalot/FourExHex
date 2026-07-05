@@ -60,6 +60,7 @@ public static partial class UserSettings
     // dismisses it once. Freeform has no intro and is never tracked here.
     private static bool _seenRisingTidesIntro;
     private static bool _seenFogOfWarIntro;
+    private static bool _seenVikingRaidersIntro;
     // One-time "seen the terrain intro overlay" flags per teachable feature
     // (issue #53): the first map that contains gold / a mountain pops a short
     // explainer + camera pan, then never again. None is never tracked here.
@@ -164,6 +165,7 @@ public static partial class UserSettings
         {
             GameMode.RisingTides => _seenRisingTidesIntro,
             GameMode.FogOfWar => _seenFogOfWarIntro,
+            GameMode.VikingRaiders => _seenVikingRaidersIntro,
             _ => true,
         };
     }
@@ -185,6 +187,10 @@ public static partial class UserSettings
             case GameMode.FogOfWar:
                 if (_seenFogOfWarIntro) return;
                 _seenFogOfWarIntro = true;
+                break;
+            case GameMode.VikingRaiders:
+                if (_seenVikingRaidersIntro) return;
+                _seenVikingRaidersIntro = true;
                 break;
             default:
                 return;
@@ -268,6 +274,7 @@ public static partial class UserSettings
         // settings.json files → default false → intro shows once, as intended.
         public bool SeenRisingTidesIntro { get; set; }
         public bool SeenFogOfWarIntro { get; set; }
+        public bool SeenVikingRaidersIntro { get; set; }
         // One-time terrain-intro "seen" flags (issue #53). Same absent→false→
         // shows-once semantics as the mode flags above. Appended last to keep
         // the DTO order stable for save-compat.
@@ -314,6 +321,7 @@ public static partial class UserSettings
             _automateSpeed = dto.AutomateSpeed;
             _seenRisingTidesIntro = dto.SeenRisingTidesIntro;
             _seenFogOfWarIntro = dto.SeenFogOfWarIntro;
+            _seenVikingRaidersIntro = dto.SeenVikingRaidersIntro;
             _seenGoldIntro = dto.SeenGoldIntro;
             _seenMountainIntro = dto.SeenMountainIntro;
         }
@@ -342,6 +350,7 @@ public static partial class UserSettings
                     AutomateSpeed = _automateSpeed,
                     SeenRisingTidesIntro = _seenRisingTidesIntro,
                     SeenFogOfWarIntro = _seenFogOfWarIntro,
+                    SeenVikingRaidersIntro = _seenVikingRaidersIntro,
                     SeenGoldIntro = _seenGoldIntro,
                     SeenMountainIntro = _seenMountainIntro,
                 },

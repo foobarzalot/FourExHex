@@ -20,6 +20,18 @@ public static class StepPacing
     public const int AiActionDelayMs = 300;
     public const int AiBetweenPlayersDelayMs = 600;
 
+    // Viking Raiders: how long the viking pseudo-turn stays open after the
+    // wave-spawn beat, so the arrival presentation (the "ripple rise"
+    // shields + rings and the longship-arrival cue — see HexMapView's
+    // SeaSpawnSlowdown-scaled timings) plays out before the waiting
+    // player's turn starts (auto-select, camera pan, wave banner).
+    // Scheduled UNSCALED — the tweens don't stretch with the AI-speed
+    // multiplier, so neither should the hold. Covers the shield rise and
+    // the arrival cue in full; the ripple rings' faint tail overlaps the
+    // hand-off. Keep roughly in sync with the view timings when retuning
+    // either.
+    public const int VikingSpawnPresentationMs = 2000;
+
     // Delay between a per-turn repaint and the next instant tick, so each
     // player-turn's board lingers long enough to follow (≈5 turns/sec)
     // instead of flipping past at frame rate. Still far faster than

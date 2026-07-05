@@ -450,6 +450,56 @@ public partial class GameControllerTests
     }
 
     [Fact]
+    public void VikingRaiders_SpawnBeatHoldsThePhase_ForTheArrivalPresentation()
+    {
+        // After the wave-spawn beat executes, the driver must schedule the
+        // phase-ending continuation with the arrival-presentation hold —
+        // NOT the ordinary between-beats delay — so the human's turn start
+        // (auto-select, camera pan, banner) waits for the animation+sound.
+        (HexGrid grid, HashSet<HexCoord> water) = VikingIsland();
+        var players = new List<Player>
+        {
+            new Player("Red", PlayerId.FromIndex(0)),
+            new Player("Blue", PlayerId.FromIndex(1)),
+        };
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(
+            grid, territories, players,
+            new TurnState(players, currentPlayerIndex: 1, turnNumber: 2), new Treasury(),
+            waterCoords: water, mode: GameMode.VikingRaiders);
+        var session = new SessionState();
+        foreach (Player p in players)
+        {
+            session.ClaimVictoryPromptedHighestThreshold[p.Id] = 90;
+        }
+        var pacer = new QueuedAiPacer();
+        var hud = new MockHudView();
+        var controller = new GameController(
+            state, session, new MockHexMapView(), hud, aiPacer: pacer);
+        controller.StartGame();
+        pacer.DrainAll();
+        _ = controller;
+
+        hud.ClickEndTurn();
+
+        // Pump one beat at a time until the spawn has executed.
+        int guard = 0;
+        while (state.Vikings.AtSea.Count == 0 && pacer.HasPending && guard++ < 20)
+        {
+            pacer.StepOne();
+        }
+        Assert.True(state.Vikings.AtSea.Count > 0, "wave never spawned");
+        // The phase is still open (its ending continuation is queued) and
+        // the just-requested delay is the presentation hold.
+        Assert.True(state.Vikings.LastCompletedRound < 3);
+        Assert.Equal(StepPacing.VikingSpawnPresentationMs, pacer.ScheduledDelaysMs.Last());
+
+        pacer.DrainAll(); // presentation over: phase completes, Red's turn starts
+        Assert.Equal(3, state.Vikings.LastCompletedRound);
+        Assert.Equal(players[0].Id, state.Turns.CurrentPlayer.Id);
+    }
+
+    [Fact]
     public void VikingRaiders_HumanInputLockedDuringVikingPhase()
     {
         // A queued pacer holds the viking phase open mid-flight; the human
