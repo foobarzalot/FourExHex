@@ -29,6 +29,7 @@ public partial class AudioBus : Node
     private AudioStreamPlayer _rallyPlayer = null!;
     private AudioStreamPlayer _playerDefeatedPlayer = null!;
     private AudioStreamPlayer _tileSubmergedPlayer = null!;
+    private AudioStreamPlayer _vikingArrivalPlayer = null!;
     private AudioStreamPlayer _rejectGenericPlayer = null!;
     private AudioStreamPlayer _rejectDefendedPlayer = null!;
 
@@ -161,6 +162,16 @@ public partial class AudioBus : Node
             VolumeDb = -8f,
         };
         AddChild(_tileSubmergedPlayer);
+
+        _vikingArrivalPlayer = new AudioStreamPlayer
+        {
+            Stream = GD.Load<AudioStream>("res://assets/audio/viking_arrival.wav"),
+            // Creaking longship for a viking wave spawning offshore. It's a
+            // once-per-wave "threat incoming" moment — present but not a
+            // fanfare.
+            VolumeDb = -6f,
+        };
+        AddChild(_vikingArrivalPlayer);
 
         _rejectGenericPlayer = new AudioStreamPlayer
         {
@@ -320,6 +331,18 @@ public partial class AudioBus : Node
         if (!UserSettings.SfxEnabled) return;
         _tileSubmergedPlayer.Stop();
         _tileSubmergedPlayer.Play();
+    }
+
+    /// <summary>
+    /// Creaking longship arriving offshore — a Viking Raiders wave spawned.
+    /// One cue per wave. Gated by the SFX toggle; silent-mode suppression is
+    /// handled upstream (controller-side EmitSound gate).
+    /// </summary>
+    public void PlayVikingArrival()
+    {
+        if (!UserSettings.SfxEnabled) return;
+        _vikingArrivalPlayer.Stop();
+        _vikingArrivalPlayer.Play();
     }
 
     /// <summary>

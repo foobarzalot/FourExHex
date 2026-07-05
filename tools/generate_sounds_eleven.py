@@ -151,6 +151,17 @@ MANIFEST: List[Entry] = [
         0.7,
         0.75,
     ),
+    (
+        "viking_arrival.wav",
+        "Two sounds in sequence: first a soft muted ocean wave breaks "
+        "gently on a beach and washes out over sand; second, a loud "
+        "slow wooden ship creak in the foreground, like a hull timber "
+        "flexing, clearly heard over the fading water. The creak must "
+        "be prominent. No wind howl, no music, no voice, no seagulls, "
+        "minimal reverb.",
+        2.5,
+        0.85,
+    ),
 ]
 
 

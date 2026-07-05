@@ -498,9 +498,12 @@ public partial class HexMapView : Node2D, IHexMapView
         // The tide-telegraph layer is freed with every other child above; drop the
         // diff cache so the next ShowTideForecast redraws onto the fresh layer.
         _shownTideForecast.Clear();
-        // Same for the sea-viking layer's diff caches.
+        // Same for the sea-viking layer's diff caches — and suppress the
+        // spawn entrance for the next ShowSeaVikings pass, which re-adds
+        // every EXISTING raider onto the fresh layer.
         _seaVikingVisuals.Clear();
         _seaGraveVisuals.Clear();
+        _animateSeaSpawns = false;
         _tileVisuals.Clear();
         _pulsingUnits.Clear();
         _pulsingCapitals.Clear();
@@ -2380,6 +2383,7 @@ public partial class HexMapView : Node2D, IHexMapView
             case SoundEffect.Rally: AudioBus.Instance.PlayRally(); break;
             case SoundEffect.PlayerDefeated: AudioBus.Instance.PlayPlayerDefeated(); break;
             case SoundEffect.TileSubmerged: AudioBus.Instance.PlayTileSubmerged(); break;
+            case SoundEffect.VikingArrival: AudioBus.Instance.PlayVikingArrival(); break;
         }
     }
 
@@ -3133,7 +3137,15 @@ public partial class HexMapView : Node2D, IHexMapView
             _seaGraveVisuals[c] = grave;
         }
 
-        // New shields.
+        // New shields — every new sea shield IS a fresh spawn (raiders only
+        // ever enter the sea via a wave), so play the "ripple rise" entrance
+        // (VIKING_SPAWN_ANIMATION.md): the unit surfaces from the deep with
+        // an overshooting scale-in while white rings ripple outward, the
+        // whole wave rising in unison. Suppressed for one pass after a full
+        // scene rebuild (_animateSeaSpawns) — re-added existing raiders must
+        // not re-rise — and entirely under silent mode (snap to full
+        // scale/alpha).
+        bool animateSpawns = _animateSeaSpawns && !_silentMode;
         foreach (KeyValuePair<HexCoord, SeaViking> kvp in desired)
         {
             if (_seaVikingVisuals.ContainsKey(kvp.Key)) continue;
@@ -3141,6 +3153,102 @@ public partial class HexMapView : Node2D, IHexMapView
             shield.Position = FirstHexCenterOffset + HexPixel.ToPixel(kvp.Key, HexSize);
             _seaVikingsLayer.AddChild(shield);
             _seaVikingVisuals[kvp.Key] = (kvp.Value, shield);
+            if (animateSpawns)
+            {
+                StartSeaSpawnAnimation(shield);
+            }
+        }
+        _animateSeaSpawns = true;
+    }
+
+    // "Ripple rise" tuning: VIKING_SPAWN_ANIMATION.md's spec timings scaled
+    // by a single slow-down factor (1.0 = spec pacing). The whole wave
+    // surfaces at once — no per-unit stagger.
+    private const double SeaSpawnSlowdown = 2.5;
+    private const double SeaSpawnScaleInSeconds = 0.9 * SeaSpawnSlowdown;
+    private const double SeaSpawnFadeInSeconds = 0.55 * SeaSpawnSlowdown;
+
+    // One-pass suppression after a full scene rebuild: BuildStateVisuals
+    // clears the sea dicts, so the next ShowSeaVikings re-adds every
+    // existing raider — those must not replay their entrance.
+    private bool _animateSeaSpawns = true;
+
+    private void StartSeaSpawnAnimation(Node2D shield)
+    {
+        shield.Scale = Vector2.Zero;
+        shield.Modulate = new Color(1f, 1f, 1f, 0f);
+        Tween tween = shield.CreateTween();
+        tween.TweenProperty(shield, "scale", Vector2.One, SeaSpawnScaleInSeconds)
+            .SetTrans(Tween.TransitionType.Back)
+            .SetEase(Tween.EaseType.Out);
+        tween.Parallel().TweenProperty(shield, "modulate:a", 1f, SeaSpawnFadeInSeconds)
+            .SetEase(Tween.EaseType.Out);
+
+        // Ripple rings are decorative — gated like other VFX.
+        if (UserSettings.VfxEnabled && _seaVikingsLayer != null)
+        {
+            var ripple = new SeaSpawnRippleRings
+            {
+                UnitRadius = HexSize * UnitRingRadii[0],
+                Position = shield.Position,
+            };
+            _seaVikingsLayer.AddChild(ripple);
+            // Beneath every shield/grave in the layer.
+            _seaVikingsLayer.MoveChild(ripple, 0);
+        }
+    }
+
+    /// <summary>
+    /// The spawn ripple: two flat white circle outlines expanding outward
+    /// from the spawn point and fading (VIKING_SPAWN_ANIMATION.md, timings ×
+    /// <see cref="SeaSpawnSlowdown"/>) — ring 2 starts a beat after ring 1,
+    /// each radius R·0.25 → ~R·1.9 ease-out with a linear alpha fade.
+    /// Constant 2.5-unit stroke via <c>_Draw</c> (scaling a Line2D would
+    /// fatten the stroke). Set <see cref="UnitRadius"/> before adding to
+    /// the tree; tweens start in <c>_Ready</c>; frees itself when done.
+    /// </summary>
+    private sealed partial class SeaSpawnRippleRings : Node2D
+    {
+        public float UnitRadius { get; set; } = 16f;
+
+        private const double RingSeconds = 1.5 * SeaSpawnSlowdown;
+        private const double Ring2DelaySeconds = 0.4 * SeaSpawnSlowdown;
+        private const float StrokeWidth = 2.5f;
+
+        private float _radius1, _alpha1, _radius2, _alpha2;
+
+        public override void _Ready()
+        {
+            Tween ring1 = CreateTween();
+            ring1.TweenMethod(Callable.From((float r) => { _radius1 = r; QueueRedraw(); }),
+                    UnitRadius * 0.25f, UnitRadius * 1.9f, RingSeconds)
+                .SetTrans(Tween.TransitionType.Cubic).SetEase(Tween.EaseType.Out);
+            ring1.Parallel().TweenMethod(Callable.From((float a) => _alpha1 = a),
+                0.8f, 0f, RingSeconds);
+
+            Tween ring2 = CreateTween();
+            ring2.TweenInterval(Ring2DelaySeconds);
+            ring2.TweenMethod(Callable.From((float r) => { _radius2 = r; QueueRedraw(); }),
+                    UnitRadius * 0.25f, UnitRadius * 1.75f, RingSeconds)
+                .SetTrans(Tween.TransitionType.Cubic).SetEase(Tween.EaseType.Out);
+            ring2.Parallel().TweenMethod(Callable.From((float a) => _alpha2 = a),
+                0.7f, 0f, RingSeconds);
+            // Ring 2 finishes last; the whole effect frees with it.
+            ring2.Finished += QueueFree;
+        }
+
+        public override void _Draw()
+        {
+            if (_alpha1 > 0f)
+            {
+                DrawArc(Vector2.Zero, _radius1, 0f, Mathf.Tau, 64,
+                    new Color(1f, 1f, 1f, _alpha1), StrokeWidth, antialiased: true);
+            }
+            if (_alpha2 > 0f)
+            {
+                DrawArc(Vector2.Zero, _radius2, 0f, Mathf.Tau, 64,
+                    new Color(1f, 1f, 1f, _alpha2), StrokeWidth, antialiased: true);
+            }
         }
     }
 

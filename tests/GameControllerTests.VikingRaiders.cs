@@ -103,6 +103,8 @@ public partial class GameControllerTests
         Assert.Equal(3, g.State.Turns.TurnNumber);
         // 3 coastal tiles → wave size max(2, 3/8) + 0 = 2, all Recruits.
         Assert.Equal(2, g.State.Vikings.AtSea.Count);
+        // The wave's arrival is sounded with the longship cue (one per wave).
+        Assert.Single(g.Map.VikingArrivalSounds);
         Assert.All(g.State.Vikings.AtSea, v => Assert.Equal(UnitLevel.Recruit, v.Level));
         Assert.Equal(1, g.State.Vikings.NextWaveIndex);
         Assert.Equal(3, g.State.Vikings.LastSpawnRound);

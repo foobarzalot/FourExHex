@@ -142,6 +142,7 @@ public class MockHexMapView : IHexMapView
     public List<HexCoord> UnitCombinedSounds { get; } = new();
     public List<HexCoord> UnitDestroyedSounds { get; } = new();
     public List<HexCoord> TileSubmergedSounds { get; } = new();
+    public List<HexCoord> VikingArrivalSounds { get; } = new();
     public List<HexCoord> TowerDestroyedSounds { get; } = new();
     public List<HexCoord> TreeClearedSounds { get; } = new();
     public List<HexCoord> CapitalDestroyedSounds { get; } = new();
@@ -160,6 +161,7 @@ public class MockHexMapView : IHexMapView
             case SoundEffect.UnitCombined: UnitCombinedSounds.Add(coord); break;
             case SoundEffect.UnitDestroyed: UnitDestroyedSounds.Add(coord); break;
             case SoundEffect.TileSubmerged: TileSubmergedSounds.Add(coord); break;
+            case SoundEffect.VikingArrival: VikingArrivalSounds.Add(coord); break;
             case SoundEffect.TowerDestroyed: TowerDestroyedSounds.Add(coord); break;
             case SoundEffect.TreeCleared: TreeClearedSounds.Add(coord); break;
             case SoundEffect.CapitalDestroyed: CapitalDestroyedSounds.Add(coord); break;

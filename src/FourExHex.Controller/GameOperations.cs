@@ -882,10 +882,10 @@ public class GameOperations
         Log.Info(Log.LogCategory.Viking,
             $"[viking] wave {action.WaveIndex} spawned: {action.Spawns.Count} raiders at " +
             $"{string.Join(",", action.Spawns.Select(s => $"{s.Coord}:{s.Level}"))}");
-        // One arrival cue per wave (not per raider); no bespoke asset yet.
+        // One longship-arrival cue per wave (not per raider).
         if (action.Spawns.Count > 0)
         {
-            EmitSound(SoundEffect.UnitPlaced, action.Spawns[0].Coord);
+            EmitSound(SoundEffect.VikingArrival, action.Spawns[0].Coord);
         }
     }
 

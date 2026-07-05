@@ -251,6 +251,8 @@ public enum SoundEffect
     Rally,
     PlayerDefeated,
     TileSubmerged,
+    /// <summary>Viking Raiders: a wave of longships arriving offshore.</summary>
+    VikingArrival,
 }
 
 /// <summary>
