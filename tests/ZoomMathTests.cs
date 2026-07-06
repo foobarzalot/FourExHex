@@ -80,6 +80,50 @@ public class ZoomMathTests
     }
 
     [Fact]
+    public void ComputeZoomMin_GraceDividesTheFit()
+    {
+        // Raw fit: X binds at 1000/2000 = 0.5 (Y-fit = 2000/1000 = 2.0).
+        // Grace 1.2 lowers the floor to 0.5/1.2 so the map sits with margin.
+        float min = ZoomMath.ComputeZoomMin(
+            viewportX: 1000f, viewportY: 2000f,
+            hudHeight: 0f,
+            mapPixelX: 2000f, mapPixelY: 1000f,
+            zoomOutGrace: 1.2f);
+
+        Assert.Equal(0.5f / 1.2f, min, Tolerance);
+    }
+
+    [Fact]
+    public void ComputeZoomMin_GraceStillCappedAtOne()
+    {
+        // Map far smaller than the viewport: raw fit = 1920/800 vs 1020/600
+        // => 1.7, and 1.7/1.2 > 1, so the 1.0 cap binds — a tiny grid that
+        // already fits comfortably gains no zoom-out from the grace.
+        float min = ZoomMath.ComputeZoomMin(
+            viewportX: 1920f, viewportY: 1080f,
+            hudHeight: 60f,
+            mapPixelX: 800f, mapPixelY: 600f,
+            zoomOutGrace: 1.2f);
+
+        Assert.Equal(1f, min, Tolerance);
+    }
+
+    [Fact]
+    public void ComputeZoomMin_GraceWithPartialSlack_AllowsSlightZoomOut()
+    {
+        // Raw fit = 1100/1000 = 1.1 (Y has more slack): the map already fits
+        // at 1x, but with less than the grace's worth of slack, so the floor
+        // drops to 1.1/1.2 ≈ 0.9167 — a small zoom-out is allowed.
+        float min = ZoomMath.ComputeZoomMin(
+            viewportX: 1100f, viewportY: 3000f,
+            hudHeight: 0f,
+            mapPixelX: 1000f, mapPixelY: 1000f,
+            zoomOutGrace: 1.2f);
+
+        Assert.Equal(1.1f / 1.2f, min, Tolerance);
+    }
+
+    [Fact]
     public void BuildLevels_FiveLevels_EndpointsExact()
     {
         float[] levels = ZoomMath.BuildLevels(zoomMin: 0.7f, count: 5);

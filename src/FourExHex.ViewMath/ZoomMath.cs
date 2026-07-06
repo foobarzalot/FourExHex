@@ -39,20 +39,23 @@ public static class ZoomMath
     }
 
     /// <summary>
-    /// Smallest zoom factor that keeps the entire map inside the play area
-    /// (the viewport with the HUD strip subtracted off the top). Floored
-    /// at 1.0 so a tiny grid that already fits at 1× can't zoom out
-    /// further — that would just inset the map for no gameplay reason.
-    /// Godot-free (plain floats) so it stays in the engine-free model.
+    /// Smallest zoom factor the camera may reach: the fit that keeps the
+    /// entire map inside the play area (the viewport with the HUD strip
+    /// subtracted off the top), divided by <paramref name="zoomOutGrace"/>
+    /// so max zoom-out leaves margin around the board instead of pressing
+    /// edge hexes against the screen edges. Capped at 1.0 so a grid that
+    /// already fits at 1× with more than the grace's worth of slack can't
+    /// zoom out further — that would just inset the map for no gameplay
+    /// reason. Godot-free (plain floats) so it stays in the engine-free model.
     /// </summary>
     public static float ComputeZoomMin(
         float viewportX, float viewportY, float hudHeight,
-        float mapPixelX, float mapPixelY)
+        float mapPixelX, float mapPixelY, float zoomOutGrace = 1f)
     {
         float availY = viewportY - hudHeight;
         float fitX = viewportX / mapPixelX;
         float fitY = availY / mapPixelY;
-        return Math.Min(1f, Math.Min(fitX, fitY));
+        return Math.Min(1f, Math.Min(fitX, fitY) / zoomOutGrace);
     }
 
     /// <summary>

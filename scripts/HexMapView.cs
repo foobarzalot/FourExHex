@@ -335,9 +335,14 @@ public partial class HexMapView : Node2D, IHexMapView
     // continuous in [_zoomMin, 1.0]. Wheel and +/- keys snap through
     // _zoomLevels (5 discrete stops); trackpad pinch and two-finger
     // scroll move _zoom continuously and re-sync the level index after.
+    // _zoomMin sits ZoomOutGrace below the exact whole-map fit (_zoomFit)
+    // so max zoom-out leaves margin around the board; _zoomFit is kept for
+    // callers that need the exact fit (FrameWholeGrid's menu thumbnail).
     private const int ZoomLevelCount = 5;
+    private const float ZoomOutGrace = 1.2f;
     private float _zoom = 1f;
     private float _zoomMin = 1f;
+    private float _zoomFit = 1f;
     private float[] _zoomLevels = new[] { 1f, 1f, 1f, 1f, 1f };
     private int _zoomLevelIndex = ZoomLevelCount - 1;
 
@@ -3762,7 +3767,7 @@ public partial class HexMapView : Node2D, IHexMapView
     /// clipped to clean edges (used by the menu thumbnail).</summary>
     public void FrameWholeGrid(float overscan = 1f)
     {
-        _zoom = _zoomMin * overscan;
+        _zoom = _zoomFit * overscan;
         Scale = new Vector2(_zoom, _zoom);
         _zoomLevelIndex = ZoomMath.ClosestLevelIndex(_zoomLevels, _zoom);
         (float gcx, float gcy) = MapPlacement.BoxCenter(0f, 0f, PixelSize.X, PixelSize.Y);
@@ -3840,13 +3845,20 @@ public partial class HexMapView : Node2D, IHexMapView
         // Fit-to-view against the ROTATED extent (width/height swap at ±90°).
         (float minX, float minY, float maxX, float maxY) =
             MapPlacement.RotatedBoardBox(PixelSize.X, PixelSize.Y, 1f, _mapAngleRad);
-        _zoomMin = ZoomMath.ComputeZoomMin(
+        _zoomFit = ZoomMath.ComputeZoomMin(
             vp.X, vp.Y, _topInset + _bottomInset, maxX - minX, maxY - minY);
+        _zoomMin = ZoomMath.ComputeZoomMin(
+            vp.X, vp.Y, _topInset + _bottomInset, maxX - minX, maxY - minY,
+            ZoomOutGrace);
         _zoomLevels = ZoomMath.BuildLevels(_zoomMin, ZoomLevelCount);
 
         _zoom = Mathf.Clamp(_zoom, _zoomMin, 1f);
         _zoomLevelIndex = ZoomMath.ClosestLevelIndex(_zoomLevels, _zoom);
         Scale = new Vector2(_zoom, _zoom);
+        Log.Debug(Log.LogCategory.Render,
+            $"RecomputeZoomLevels: vp={vp.X:0}x{vp.Y:0} insets=({_topInset:0},{_bottomInset:0}) " +
+            $"fit={_zoomFit:0.000} zoomMin={_zoomMin:0.000} " +
+            $"levels=[{string.Join(",", System.Array.ConvertAll(_zoomLevels, v => v.ToString("0.000")))}]");
     }
 
     private void OnViewportResized()
