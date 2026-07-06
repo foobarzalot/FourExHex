@@ -14,6 +14,10 @@ using System.Linq;
 ///   4a. Tower placement.
 ///   4b. Defensive reposition (existing units to border tiles).
 ///
+/// Vikings (forPlayer == <see cref="PlayerId.None"/>) run phase 1 only,
+/// restricted to captures: they have no economy (2a–4a) and never make a
+/// defensive-only move (4b) — a landed raider with no capture holds.
+///
 /// Within each phase, units are iterated in power-then-coord order;
 /// all candidates for the current unit are scored (clone+apply+score)
 /// and the best one wins. The first phase × unit combination that
@@ -89,9 +93,11 @@ public static class ComputerAi
                 if (p1 != null) { _ = rng; return p1; }
             }
 
-            // Phases 2a–4a are the economy: combines and gold spends. Vikings
-            // have neither (no combining, no capital → no treasury), so only
-            // real players run them.
+            // Phases 2a–4b run only for real players. 2a–4a are the economy:
+            // combines and gold spends — vikings have neither (no combining,
+            // no capital → no treasury). 4b is defense — vikings are a pure
+            // raiding force and never make a defensive-only move: a landed
+            // raider with no capture holds.
             if (!forPlayer.IsNone)
             {
                 // Phase 2a: combine-to-unlock (existing units)
@@ -124,15 +130,20 @@ public static class ComputerAi
                         0, methodStart, baseScore, forPlayer, state, prof);
                     if (p4a != null) { _ = rng; return p4a; }
                 }
-            }
 
-            // Phase 4b: defensive repositions (optional — doing nothing is valid)
-            foreach (HexCoord unitCoord in MovementRules.MovableUnitsInPowerOrder(t, forPlayer, state.Grid))
+                // Phase 4b: defensive repositions (optional — doing nothing is valid)
+                foreach (HexCoord unitCoord in MovementRules.MovableUnitsInPowerOrder(t, forPlayer, state.Grid))
+                {
+                    Unit unit = state.Grid.Get(unitCoord)!.Unit!;
+                    AiAction? p4b = TryPhase(AiCommon.EnumeratePhase4bForUnit(unitCoord, unit, t, state),
+                        0, methodStart, baseScore, forPlayer, state, prof);
+                    if (p4b != null) { _ = rng; return p4b; }
+                }
+            }
+            else
             {
-                Unit unit = state.Grid.Get(unitCoord)!.Unit!;
-                AiAction? p4b = TryPhase(AiCommon.EnumeratePhase4bForUnit(unitCoord, unit, t, state),
-                    0, methodStart, baseScore, forPlayer, state, prof);
-                if (p4b != null) { _ = rng; return p4b; }
+                Log.Debug(Log.LogCategory.Ai,
+                    $"[viking-hold] territory={anchor} — no capture, holding (phase 4b skipped)");
             }
 
             // All phases exhausted for this territory.

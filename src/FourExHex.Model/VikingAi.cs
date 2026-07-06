@@ -9,9 +9,10 @@ using System.Collections.Generic;
 ///      (lex by coord) one lands on its best-scoring target, or perishes if
 ///      every neighbouring land tile is blocked.
 ///   2. Landed moves: <see cref="ComputerAi.ChooseNextAction"/> for
-///      <see cref="PlayerId.None"/> — captures and defensive repositions on
-///      the capital-less neutral territories (no buys/towers/combines, and
-///      trees are chopped only as captures of enemy land).
+///      <see cref="PlayerId.None"/> — captures only on the capital-less
+///      neutral territories (no buys/towers/combines/defensive repositions,
+///      and trees are chopped only as captures of enemy land); a raider
+///      with no capture holds.
 ///   3. Spawn: if a wave is due (<see cref="VikingRaidersRules.WaveDue"/>),
 ///      spawn it LAST — a fresh wave never acts on its spawn round, so
 ///      players always get exactly one round of warning.

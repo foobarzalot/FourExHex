@@ -223,29 +223,53 @@ public class VikingAiTests
         Assert.Null(action);
     }
 
-    [Fact]
-    public void ComputerAi_NeutralOwner_RepositionsToDefendBorder()
+    /// <summary>
+    /// A 7x1 strip: columns 0-4 owned by <paramref name="stripOwner"/> with a
+    /// recruit at the far interior end, columns 5-6 Red with a Commander
+    /// guarding the shared border so no capture is legal. The strip's border
+    /// tile (4,0) is an undefended legal phase-4b reposition target (the
+    /// owner's capital, when one exists, reconciles onto the lex-min empty
+    /// tile (1,0) — its defense radiation doesn't reach the border).
+    /// </summary>
+    private static HexGrid BuildRepositionStrip(PlayerId stripOwner)
     {
-        // No capturable target (Red's border tile carries a Commander), so
-        // the viking should fall through to phase 4b and man its own border.
-        // The unit starts two tiles from the border so its defense radiation
-        // doesn't already cover the border tile from the interior.
-        HexGrid grid = TestHelpers.BuildRectGrid(5, 1, Red);
-        HexCoord interior = HexCoord.FromOffset(0, 0);
-        HexCoord border = HexCoord.FromOffset(2, 0);
-        grid.Get(interior)!.Owner = PlayerId.None;
-        grid.Get(HexCoord.FromOffset(1, 0))!.Owner = PlayerId.None;
-        grid.Get(border)!.Owner = PlayerId.None;
-        grid.Get(interior)!.Occupant = new Unit(PlayerId.None, UnitLevel.Recruit);
-        grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = new Unit(Red, UnitLevel.Commander);
-        GameState state = MakeState(grid);
+        HexGrid grid = TestHelpers.BuildRectGrid(7, 1, Red);
+        for (int col = 0; col <= 4; col++)
+            grid.Get(HexCoord.FromOffset(col, 0))!.Owner = stripOwner;
+        grid.Get(HexCoord.FromOffset(0, 0))!.Occupant = new Unit(stripOwner, UnitLevel.Recruit);
+        grid.Get(HexCoord.FromOffset(5, 0))!.Occupant = new Unit(Red, UnitLevel.Commander);
+        return grid;
+    }
+
+    [Fact]
+    public void ComputerAi_NeutralOwner_HoldsInsteadOfRepositioning()
+    {
+        // No capturable target and a legal phase-4b reposition onto the
+        // strip's border: the viking must HOLD (null) — the raiding force
+        // never makes a defensive-only move. The mirror test below proves a
+        // real player in the same position repositions, so it is the IsNone
+        // gate (not candidate enumeration) that stops the viking.
+        GameState state = MakeState(BuildRepositionStrip(PlayerId.None));
 
         AiAction? action = ComputerAi.ChooseNextAction(
             state, PlayerId.None, new HashSet<HexCoord>(), new Random(7));
 
+        Assert.Null(action);
+    }
+
+    [Fact]
+    public void ComputerAi_RealPlayer_InVikingPosition_RepositionsToDefendBorder()
+    {
+        // The same board with the strip owned by Blue (capital placed by
+        // territory reconciliation): phase 4b runs and mans the border.
+        GameState state = MakeState(BuildRepositionStrip(Blue));
+
+        AiAction? action = ComputerAi.ChooseNextAction(
+            state, Blue, new HashSet<HexCoord>(), new Random(7));
+
         AiMoveAction move = Assert.IsType<AiMoveAction>(action);
-        Assert.Equal(interior, move.Source);
-        Assert.Equal(border, move.Destination);
+        Assert.Equal(HexCoord.FromOffset(0, 0), move.Source);
+        Assert.Equal(HexCoord.FromOffset(4, 0), move.Destination);
     }
 
     // --- AiStateScorer adaptation ---------------------------------------------------
