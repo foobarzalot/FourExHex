@@ -232,13 +232,20 @@ public sealed class CampaignProgress
     private const int CampaignMountainOnDensity = 10; // % of land when mountains present
     private const int CampaignGoldOnDensity = 5;      // % of land when gold present
 
+    /// <summary>Minimum territory clumping for a Viking Raiders campaign level.
+    /// Fragmented starts are near-unwinnable in that mode (10-game all-AI
+    /// probes: AI survival ~20% at clumping ≤75, ~80% at ≥90 — every fragment
+    /// is coastline, so raiders eat the board).</summary>
+    private const int VikingMinClumpingFactor = 90;
+
     /// <summary>The tree/mountain/gold densities and territory clumping for a campaign
     /// level. Deterministic — same level always yields the same
     /// options — and decorrelated from both the freeform steppers and the map seed, so a
     /// level's terrain is a fixed part of its identity. Mountains/gold are present at
     /// fixed odds (and a fixed density when present); trees vary across {0, 5, 10}% of
     /// land; clumping is drawn from the shared nonlinear stop set so each level's
-    /// sparse↔clumped feel is part of its identity too.</summary>
+    /// sparse↔clumped feel is part of its identity too — except Viking Raiders levels,
+    /// whose draw clamps to ≥<see cref="VikingMinClumpingFactor"/>.</summary>
     public static MapGenOptions MapGenOptionsForLevel(int level)
     {
         ValidateLevel(level);
@@ -253,6 +260,12 @@ public sealed class CampaignProgress
         int trees = 5 * rng.Next(0, 3); // {0, 5, 10}
         int clumping = MapGenOptions.ClumpingFactorStops[
             rng.Next(MapGenOptions.ClumpingFactorStops.Length)];
+        // The clamp stays after the full draw so non-viking levels are
+        // byte-unchanged and 90/95/100 remain legal stop values.
+        if (ModeForLevel(level) == GameMode.VikingRaiders)
+        {
+            clumping = Math.Max(clumping, VikingMinClumpingFactor);
+        }
         return new MapGenOptions(
             TreeDensity: trees, MountainDensity: mountains, GoldDensity: gold,
             ClumpingFactor: clumping);

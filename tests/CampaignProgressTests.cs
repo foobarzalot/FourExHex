@@ -359,6 +359,30 @@ public class CampaignProgressTests
     }
 
     [Fact]
+    public void MapGenOptionsForLevel_VikingLevelsClumpingFlooredAt90()
+    {
+        // Empirically (10-game all-AI probes per clumping stop), fragmented
+        // starts are near-unwinnable in Viking Raiders — AI survival jumps
+        // from ~20% at clumping ≤75 to ~80% at ≥90. Viking levels clamp the
+        // drawn clumping to ≥90; every other level keeps its raw draw.
+        for (int level = 0; level < CampaignProgress.LevelCount; level++)
+        {
+            // The raw draw, replicated verbatim: mountain, gold, tree, then
+            // clumping off the same per-level rng.
+            var rng = new System.Random(unchecked(level * 2671 + 40503));
+            rng.Next(100); rng.Next(100); rng.Next(0, 3);
+            int rawClumping = MapGenOptions.ClumpingFactorStops[
+                rng.Next(MapGenOptions.ClumpingFactorStops.Length)];
+
+            int actual = CampaignProgress.MapGenOptionsForLevel(level).ClumpingFactor;
+            if (CampaignProgress.ModeForLevel(level) == GameMode.VikingRaiders)
+                Assert.Equal(Math.Max(rawClumping, 90), actual);
+            else
+                Assert.Equal(rawClumping, actual);
+        }
+    }
+
+    [Fact]
     public void MapGenOptionsForLevel_ClumpingStaysWithinStops()
     {
         // Each level's clumping is drawn from the shared nonlinear stop set;
