@@ -393,6 +393,10 @@ public static class AiCommon
             {
                 Unit? existingUnit = state.Grid.Get(coord)?.Unit;
                 if (existingUnit == null || existingUnit.HasMovedThisTurn) continue;
+                // Combining is only legal up to a level sum of Commander;
+                // an unchecked pair would fabricate an out-of-range level
+                // that live play executes but replay validation rejects.
+                if (!level.CanCombineWith(existingUnit.Level)) continue;
 
                 UnitLevel combinedLevel = level.CombinedWith(existingUnit.Level);
                 int upkeepDelta = UpkeepRules.UpkeepFor(combinedLevel, difficulty)

@@ -250,10 +250,12 @@ public partial class Main : Node2D
                 // plays as Rising Tides, not Freeform.
                 pendingLoad.State.Mode,
                 // A starting map launches a fresh game, so it gets the
-                // randomized capital/tide selection like any new game. The
-                // map's pre-placed capitals are unchanged; only mid-game
-                // captures and tide tie-breaks randomize from here.
-                useRandomizedSelection: true);
+                // randomized capital/tide selection and the origin-capital
+                // merge rule like any new game. The map's pre-placed capitals
+                // are unchanged; only mid-game captures and tide tie-breaks
+                // pick up the new-era behavior from here.
+                useRandomizedSelection: true,
+                useOriginMergeCapital: true);
             Log.Info(Log.LogCategory.Tide,
                 $"Main: starting map \"{pendingLoad.SlotName}\" mode={pendingLoad.State.Mode}");
             _maxTurnNumber = quickDiagMode ? 200

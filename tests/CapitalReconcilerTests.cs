@@ -210,6 +210,140 @@ public class CapitalReconcilerTests
         Assert.Equal(new HexCoord(5, 0), result[0].Capital);
     }
 
+    // --- Merges: origin-capital rule ---------------------------------------
+
+    [Fact]
+    public void Reconcile_Merge_OriginCapitalWins_EvenWhenItsTerritoryIsSmaller()
+    {
+        // Old A (size 5) with capital (0,0). Old B (size 2) with capital (5,5).
+        // The merging unit originated from B — B's capital survives despite
+        // being the smaller territory; A's capital is demoted off the grid.
+        var coordsA = new[]
+        {
+            new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(2, 0),
+            new HexCoord(3, 0), new HexCoord(4, 0),
+        };
+        var coordsB = new[] { new HexCoord(5, 5), new HexCoord(6, 5) };
+        var allCoords = coordsA.Concat(coordsB).ToArray();
+
+        HexGrid grid = BuildGrid(allCoords);
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Capital();
+        grid.Get(new HexCoord(5, 5))!.Occupant = new Capital();
+
+        var old = new[]
+        {
+            T(new HexCoord(0, 0), coordsA),
+            T(new HexCoord(5, 5), coordsB),
+        };
+        var raw = new[] { T(null, allCoords) };
+
+        var result = CapitalReconciler.Reconcile(
+            raw, old, grid, originCapital: new HexCoord(5, 5));
+
+        Assert.Single(result);
+        Assert.Equal(new HexCoord(5, 5), result[0].Capital);
+        Assert.Null(grid.Get(new HexCoord(0, 0))!.Occupant);
+        Assert.IsType<Capital>(grid.Get(new HexCoord(5, 5))!.Occupant);
+    }
+
+    [Fact]
+    public void Reconcile_Merge_OriginCapitalNotAmongInherited_FallsBackToLargest()
+    {
+        // The origin coord isn't one of the merged capitals (e.g. the merge
+        // was triggered from a capital-less singleton). Largest-wins applies.
+        var coordsA = new[]
+        {
+            new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(2, 0),
+        };
+        var coordsB = new[] { new HexCoord(5, 5), new HexCoord(6, 5) };
+        var allCoords = coordsA.Concat(coordsB).ToArray();
+
+        HexGrid grid = BuildGrid(allCoords);
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Capital();
+        grid.Get(new HexCoord(5, 5))!.Occupant = new Capital();
+
+        var old = new[]
+        {
+            T(new HexCoord(0, 0), coordsA),
+            T(new HexCoord(5, 5), coordsB),
+        };
+        var raw = new[] { T(null, allCoords) };
+
+        var result = CapitalReconciler.Reconcile(
+            raw, old, grid, originCapital: new HexCoord(9, 9));
+
+        Assert.Single(result);
+        Assert.Equal(new HexCoord(0, 0), result[0].Capital);
+    }
+
+    [Fact]
+    public void Reconcile_Merge_ThreeWay_OriginCapitalBeatsBothOthers()
+    {
+        // Three old territories merge at once; the origin's capital (7,7)
+        // wins over both a larger (0,0..4,0) and an equal-size (5,5..6,5)
+        // rival, and both losers are demoted.
+        var coordsA = new[]
+        {
+            new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(2, 0),
+            new HexCoord(3, 0), new HexCoord(4, 0),
+        };
+        var coordsB = new[] { new HexCoord(5, 5), new HexCoord(6, 5) };
+        var coordsC = new[] { new HexCoord(7, 7), new HexCoord(8, 7) };
+        var allCoords = coordsA.Concat(coordsB).Concat(coordsC).ToArray();
+
+        HexGrid grid = BuildGrid(allCoords);
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Capital();
+        grid.Get(new HexCoord(5, 5))!.Occupant = new Capital();
+        grid.Get(new HexCoord(7, 7))!.Occupant = new Capital();
+
+        var old = new[]
+        {
+            T(new HexCoord(0, 0), coordsA),
+            T(new HexCoord(5, 5), coordsB),
+            T(new HexCoord(7, 7), coordsC),
+        };
+        var raw = new[] { T(null, allCoords) };
+
+        var result = CapitalReconciler.Reconcile(
+            raw, old, grid, originCapital: new HexCoord(7, 7));
+
+        Assert.Single(result);
+        Assert.Equal(new HexCoord(7, 7), result[0].Capital);
+        Assert.Null(grid.Get(new HexCoord(0, 0))!.Occupant);
+        Assert.Null(grid.Get(new HexCoord(5, 5))!.Occupant);
+        Assert.IsType<Capital>(grid.Get(new HexCoord(7, 7))!.Occupant);
+    }
+
+    [Fact]
+    public void Reconcile_Merge_OriginCapitalWithRandomize_StillWinsDeterministically()
+    {
+        // The origin rule takes precedence over the randomized tiebreak:
+        // even with randomize on, the origin capital wins outright.
+        var coordsA = new[]
+        {
+            new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(2, 0),
+        };
+        var coordsB = new[] { new HexCoord(5, 5), new HexCoord(6, 5), new HexCoord(7, 5) };
+        var allCoords = coordsA.Concat(coordsB).ToArray();
+
+        HexGrid grid = BuildGrid(allCoords);
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Capital();
+        grid.Get(new HexCoord(5, 5))!.Occupant = new Capital();
+
+        var old = new[]
+        {
+            T(new HexCoord(0, 0), coordsA),
+            T(new HexCoord(5, 5), coordsB),
+        };
+        var raw = new[] { T(null, allCoords) };
+
+        var result = CapitalReconciler.Reconcile(
+            raw, old, grid, randomize: true, originCapital: new HexCoord(5, 5));
+
+        Assert.Single(result);
+        Assert.Equal(new HexCoord(5, 5), result[0].Capital);
+    }
+
     // --- Stomping ---------------------------------------------------------
 
     [Fact]

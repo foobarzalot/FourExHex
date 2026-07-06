@@ -18,19 +18,24 @@ namespace FourExHex.Tests;
 /// </summary>
 public class ReplayFidelityTests
 {
-    // Both selection eras × both modes: legacy (lex-min) and randomized
-    // (#91) games must each record+serialize+replay to a byte-identical end
-    // board with no divergence. The randomized rows are the regression guard
-    // that the new capital/tide picks reproduce under replay.
+    // Every era × mode: the pre-#91 era (lex-min, largest-wins merges), the
+    // randomized-selection era (#91), and the current new-game era (randomized
+    // + origin-capital merges, #117) must each record+serialize+replay to a
+    // byte-identical end board with no divergence. The flagged rows are the
+    // regression guard that the era-gated capital/tide/merge picks reproduce
+    // under replay.
     [Theory]
-    [InlineData(GameMode.Freeform, false)]
-    [InlineData(GameMode.Freeform, true)]
-    [InlineData(GameMode.RisingTides, false)]
-    [InlineData(GameMode.RisingTides, true)]
-    [InlineData(GameMode.VikingRaiders, false)]
-    [InlineData(GameMode.VikingRaiders, true)]
+    [InlineData(GameMode.Freeform, false, false)]
+    [InlineData(GameMode.Freeform, true, false)]
+    [InlineData(GameMode.Freeform, true, true)]
+    [InlineData(GameMode.RisingTides, false, false)]
+    [InlineData(GameMode.RisingTides, true, false)]
+    [InlineData(GameMode.RisingTides, true, true)]
+    [InlineData(GameMode.VikingRaiders, false, false)]
+    [InlineData(GameMode.VikingRaiders, true, false)]
+    [InlineData(GameMode.VikingRaiders, true, true)]
     public void Replay_SixComputerPlayers_MatchesSavedStateChecksum(
-        GameMode mode, bool randomized)
+        GameMode mode, bool randomized, bool originMerge)
     {
         const int MasterSeed = 12345;
         const int MaxTurns = 30;
@@ -41,7 +46,7 @@ public class ReplayFidelityTests
         IReadOnlyList<Player> players = BuildSixComputerPlayers();
         (GameState liveState, var liveController, _, _) =
             BuildHeadlessGame(players, MasterSeed, MaxTurns, Cols, Rows,
-                mode: mode, randomized: randomized);
+                mode: mode, randomized: randomized, originMerge: originMerge);
         liveController.StartGame();
         // All-AI + SynchronousAiPacer → StartGame returns when GameEnded
         // (natural win) or the turn cap fires.
@@ -60,9 +65,10 @@ public class ReplayFidelityTests
             "fidelity", MaxTurns, replay: replayPayload);
         LoadedSave loaded = SaveSerializer.Deserialize(json);
         Assert.NotNull(loaded.Replay);
-        // The baked flag must survive the round-trip — it governs the replay's
-        // own re-derivation of capital/tide picks.
+        // The baked flags must survive the round-trip — they govern the replay's
+        // own re-derivation of capital/tide/merge picks.
         Assert.Equal(randomized, loaded.State.UseRandomizedSelection);
+        Assert.Equal(originMerge, loaded.State.UseOriginMergeCapital);
 
         string savedChecksum = GameStateChecksum.Compute(loaded.State);
         Assert.Equal(liveChecksum, savedChecksum);
@@ -178,7 +184,7 @@ public class ReplayFidelityTests
     private static (GameState State, GameController Controller, MockHexMapView Map, MockHudView Hud)
         BuildHeadlessGame(IReadOnlyList<Player> players, int masterSeed,
             int maxTurns, int cols, int rows, GameMode mode = GameMode.Freeform,
-            bool randomized = false)
+            bool randomized = false, bool originMerge = false)
     {
         MapGenResult mapGen = MapGenerator.BuildInitialGrid(cols, rows, players, masterSeed);
         IReadOnlyList<Territory> raw = TerritoryFinder.FindAll(mapGen.Grid);
@@ -186,7 +192,8 @@ public class ReplayFidelityTests
             raw, new List<Territory>(), mapGen.Grid, randomize: randomized);
         var state = new GameState(mapGen.Grid, territories, players,
             new TurnState(players), new Treasury(), mapGen.WaterCoords, mode: mode,
-            useRandomizedSelection: randomized);
+            useRandomizedSelection: randomized,
+            useOriginMergeCapital: originMerge);
         var map = new MockHexMapView();
         var hud = new MockHudView();
         var controller = new GameController(state, new SessionState(),

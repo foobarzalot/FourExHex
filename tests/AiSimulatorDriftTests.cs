@@ -34,7 +34,7 @@ public class AiSimulatorDriftTests
     /// </summary>
     private static GameState BuildRichState() => BuildRichState(randomized: false);
 
-    private static GameState BuildRichState(bool randomized)
+    private static GameState BuildRichState(bool randomized, bool originMerge = false)
     {
         var red = new Player("Red", PlayerId.FromIndex(0), PlayerKind.Computer);
         var blue = new Player("Blue", PlayerId.FromIndex(1), PlayerKind.Computer);
@@ -60,9 +60,24 @@ public class AiSimulatorDriftTests
         grid.Get(HexCoord.FromOffset(5, 2))!.Occupant = new Unit(blue.Id, UnitLevel.Soldier);
         grid.Get(HexCoord.FromOffset(4, 3))!.Occupant = new Tower();
 
+        if (originMerge)
+        {
+            // Detached Red patch (4,0)-(6,0) with its own Soldier, one Blue
+            // bridge tile (3,0) away from the 12-tile main territory. The
+            // patch Soldier capturing the bridge merges patch + main with
+            // the ORIGIN (patch) being the smaller side, so the origin rule
+            // and the largest rule pick different surviving capitals — a
+            // one-sided threading of originCapital diverges the checksums.
+            grid.Get(HexCoord.FromOffset(4, 0))!.Owner = red.Id;
+            grid.Get(HexCoord.FromOffset(5, 0))!.Owner = red.Id;
+            grid.Get(HexCoord.FromOffset(6, 0))!.Owner = red.Id;
+            grid.Get(HexCoord.FromOffset(6, 0))!.Occupant = new Unit(red.Id, UnitLevel.Soldier);
+        }
+
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury(),
-            useRandomizedSelection: randomized);
+            useRandomizedSelection: randomized,
+            useOriginMergeCapital: originMerge);
 
         foreach (Territory t in state.Territories.Where(t => t.HasCapital))
         {
@@ -203,6 +218,26 @@ public class AiSimulatorDriftTests
         // predicts a board that won't happen. Board-state-derived seeding makes
         // the clone reproduce the real pick; this proves it for every candidate.
         AssertNoDrift(BuildRichState(randomized: true));
+    }
+
+    [Fact]
+    public void EveryEnumeratedCandidate_SimulatesIdenticallyToGameOperations_WithOriginMergeCapital()
+    {
+        // The fidelity gate for #117: with the origin-capital merge rule on,
+        // a capture that merges two same-owner territories must keep the SAME
+        // surviving capital in the cloned 1-ply simulation as in real play.
+        // The fixture's patch-side merge picks a different winner under the
+        // origin rule than under largest-wins, so threading originCapital
+        // through only one of the two paths fails this sweep.
+        GameState initial = BuildRichState(randomized: true, originMerge: true);
+
+        // Fixture guard: the merging capture must actually be enumerated.
+        Assert.Contains(AllCandidateActions(initial), a =>
+            a is AiMoveAction mv
+            && mv.Source == HexCoord.FromOffset(6, 0)
+            && mv.Destination == HexCoord.FromOffset(3, 0));
+
+        AssertNoDrift(initial);
     }
 
     private static void AssertNoDrift(GameState initial)

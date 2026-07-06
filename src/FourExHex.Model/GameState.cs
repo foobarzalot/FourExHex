@@ -38,6 +38,21 @@ public class GameState
     /// </summary>
     public bool UseRandomizedSelection { get; }
 
+    /// <summary>
+    /// When true, a merge of same-owner territories keeps the capital of
+    /// the territory the acting unit originated from (moves: the source
+    /// territory; buys: the purchasing capital's territory), falling back
+    /// to the largest-old-territory rule when no origin capital is among
+    /// the merged ones. When false, the largest-old-territory rule alone
+    /// applies. Baked once at game creation and immutable: new games set
+    /// it true; saves from before the feature (where the field is absent)
+    /// load it false, so those games keep the old merge rule forever and
+    /// their recorded replays reproduce exactly. The flag rides through
+    /// <see cref="AiSimulator.Clone"/> so simulated and real merges pick
+    /// the same surviving capital.
+    /// </summary>
+    public bool UseOriginMergeCapital { get; }
+
     // Backing store for WaterCoords. A HashSet (not the incoming set's own
     // type) so the set can grow at runtime — Rising Tides submerges shore
     // tiles mid-game via AddWater. Exposed only as IReadOnlySet so readers
@@ -159,7 +174,8 @@ public class GameState
         GameMode mode = GameMode.Freeform,
         bool useRandomizedSelection = false,
         IReadOnlySet<HexCoord>? seen = null,
-        VikingState? vikings = null)
+        VikingState? vikings = null,
+        bool useOriginMergeCapital = false)
     {
         Grid = grid;
         Territories = territories;
@@ -169,6 +185,7 @@ public class GameState
         _water = waterCoords is null ? new HashSet<HexCoord>() : new HashSet<HexCoord>(waterCoords);
         Mode = mode;
         UseRandomizedSelection = useRandomizedSelection;
+        UseOriginMergeCapital = useOriginMergeCapital;
         _seen = seen is null ? new HashSet<HexCoord>() : new HashSet<HexCoord>(seen);
         Vikings = vikings ?? new VikingState();
     }

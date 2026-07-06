@@ -27,7 +27,7 @@ Consequences:
 - **Color is view-only.** `scripts/PlayerPalette.cs` maps `PlayerId ↔ Godot.Color` from `GameSettings.PlayerConfig` hex strings.
 - **Pixel projection is view-side.** `HexRounding.Round(float qFrac, float rFrac) -> HexCoord` in `FourExHex.ViewMath` is the float→int boundary keeping `HexCoord` integer-only in Model. `scripts/HexPixel.cs` owns `ToPixel`/`FromPixel`, calls `HexRounding.Round`.
 - **`Log` is Godot-free** — routes through injectable `Log.Sink`, wired by `Main` to `GD.Print`. See **Logging**.
-- **Save format is v17.** Ownership is a player index on the wire (−1 = `None`); claim-victory tiers persist by index. Gold/mountain are mutually exclusive on the wire (two bools); a tile with both normalizes to mountain-only on load; in-memory it's one `HexTile.Feature` enum that can't hold both (see **Mountain tiles**). Saves v2–v16 still load, absent fields defaulting (`IsGold`/`IsMountain` → `false`, `Difficulty` → `Soldier`, Rising Tides `Mode`/`PendingTide` → off/empty, `UseRandomizedSelection` → `false`, Fog Of War `Seen` → empty, Viking Raiders `VikingAtSea`/`VikingNextWave`/`VikingLastRound`/`VikingLastSpawnRound` → empty/0), with legacy color-hex claim data and pre-v6 unit-level names migrated via `GameSettings` palette matching and `SaveSerializer.ParseUnitLevel`.
+- **Save format is v18.** Ownership is a player index on the wire (−1 = `None`); claim-victory tiers persist by index. Gold/mountain are mutually exclusive on the wire (two bools); a tile with both normalizes to mountain-only on load; in-memory it's one `HexTile.Feature` enum that can't hold both (see **Mountain tiles**). Saves v2–v17 still load, absent fields defaulting (`IsGold`/`IsMountain` → `false`, `Difficulty` → `Soldier`, Rising Tides `Mode`/`PendingTide` → off/empty, `UseRandomizedSelection` → `false`, `UseOriginMergeCapital` → `false`, Fog Of War `Seen` → empty, Viking Raiders `VikingAtSea`/`VikingNextWave`/`VikingLastRound`/`VikingLastSpawnRound` → empty/0), with legacy color-hex claim data and pre-v6 unit-level names migrated via `GameSettings` palette matching and `SaveSerializer.ParseUnitLevel`.
 - **`.cs.uid` sidecars**: model files under `src/` aren't Godot resources → no `.cs.uid`; `src/**` is `.gdignore`d. `scripts/` files keep their tracked `.cs.uid`.
 
 ## Layered view
@@ -183,14 +183,18 @@ VIEWS (Godot Nodes)
 
 PURE RULES (static)
   TerritoryFinder.FindAll(grid) ─ flood-fill, no capitals
-  TerritoryFinder.Recompute(grid, prev, treasury?, randomizeCapital=false) ─ FindAll →
+  TerritoryFinder.Recompute(grid, prev, treasury?, randomizeCapital=false, originCapital=null) ─ FindAll →
     CapitalReconciler.Reconcile → optional Treasury.ReconcileAfterCapture. Single entry for
-    post-mutation rebuilds. randomizeCapital forwards GameState.UseRandomizedSelection.
+    post-mutation rebuilds. randomizeCapital forwards GameState.UseRandomizedSelection;
+    originCapital (the acting territory's capital) forwards from HandleCapture / AiSimulator only
+    in a GameState.UseOriginMergeCapital game.
   CapitalPlacer.Choose(coords, grid, rng?) ─ tier (empty>unit>grave>tree>tower); in-tier pick is
     lex-min when rng null, else a random candidate from rng
-  CapitalReconciler.Reconcile(raw, old, grid, randomize=false) ─ split/merge + stomping; None-owned
-    (neutral) stay capital-less (throws on a capital on neutral land). randomize → fresh placement and
-    the equal-old-size merge tiebreak draw from a Random seeded by SeedFromCoords(coords)
+  CapitalReconciler.Reconcile(raw, old, grid, randomize=false, originCapital=null) ─ split/merge +
+    stomping; None-owned (neutral) stay capital-less (throws on a capital on neutral land). A merge
+    keeps originCapital when it is among the merged capitals; otherwise the largest old territory's
+    capital wins. randomize → fresh placement and the equal-old-size merge tiebreak draw from a
+    Random seeded by SeedFromCoords(coords). Logs each merge decision ([reconcile] merge, Capture:Debug).
   PurchaseRules.CostFor / CanAfford / CanAffordTower / IsValidRecruit…
   MovementRules.ValidTargets / Move / PlaceNew / ArrivalConsumesAction (capture/tree/grave → true)
   DefenseRules.Defense(coord, grid, territory)
@@ -294,7 +298,7 @@ A **mountain tile** is high ground: **no defense on its own**, but any defender 
 - **Model.** `HexTile.Feature` is the single source of truth: enum `TerrainFeature` (`None`/`Gold`/`Mountain`). `IsGold`/`IsMountain` accessors retarget `Feature`, so setting one clears the other. A mountain can be neutral or player-owned and is **passable** (units move onto, through, and die on it). No income of its own (a controlled mountain pays 1 gp).
 - **Defense.** `DefenseRules.Defense` gives **any defender** (`Unit`/`Tower`/`Capital`) on a mountain `DefenseRules.MountainBonus` (+1) on top of its contribution (folded in by private `ContributionAt`, applied to any positive-contribution occupant); an **empty mountain — or one holding only a tree/grave — contributes nothing**. Boosted value radiates to same-territory neighbors like any defender (Soldier/Tower → 3, Commander → 5, Capital → 2). Contributions are `max`, not cumulative. An empty neutral mountain is capturable by any level (even Recruit); a defended one raises the capture threshold by 1. `BlockingDefenders` mirrors this (same `ContributionAt`) for the view's red-flash. Capture (`MovementRules.ResolveArrival`) transfers ownership but leaves the mountain set.
 - **Rule guards.** Trees, graves, towers, **and capitals all coexist** with a mountain: trees spread onto mountains (`TreeRules.RunStartOfTurnGrowth`), a unit dying leaves a grave (`UpkeepRules.ApplyUpkeep`), towers may be built (`PurchaseRules.IsValidTowerLocation`), a capital may sit. Gold is the only exclusion.
-- **Capital placement.** Capitals sit on mountains like any terrain (`CapitalPlacer.Choose`), so any 2+ owned region gets a capital; `CapitalReconciler`'s null guard only covers the impossible all-Capital case. The occupant-tier priority always holds; the **in-tier** pick (and the equal-old-size merge tiebreak) is lex-min by default or, in a `GameState.UseRandomizedSelection` game, a seed-deterministic random candidate (see **Randomized selection**).
+- **Capital placement.** Capitals sit on mountains like any terrain (`CapitalPlacer.Choose`), so any 2+ owned region gets a capital; `CapitalReconciler`'s null guard only covers the impossible all-Capital case. The occupant-tier priority always holds; the **in-tier** pick (and the equal-old-size merge tiebreak) is lex-min by default or, in a `GameState.UseRandomizedSelection` game, a seed-deterministic random candidate (see **Randomized selection**). Which capital survives a same-owner **merge** is governed by `GameState.UseOriginMergeCapital` (see **Origin-capital merges**).
 - **Persistence + undo.** Carried as `TileDto.IsMountain`, through replay-initial snapshots (`GameStateSnapshot.EnumerateTiles`) and both deep-copy snapshots (`GameStateSnapshot`/`EditorSnapshot`). A tile with **both** gold and mountain set normalizes to mountain-only on load (mountain wins — see **Save format**).
 - **Authoring.** Map editor toggle brush (`MapEditPaint.PaintMountainToggle`, glyph `HexPaletteIcon.Mountain`), same drag-stroke add/erase locking. Painting a mountain leaves tree/grave/tower/capital in place and **clears any gold** (and `PaintGoldToggle` clears any mountain) — mutual exclusion falls out of the `Feature` accessor. Also generated procedurally by `MapGenerator` when `MapGenOptions.MountainDensity > 0`; generated ranges are **neutral**, and generated gold skips mountain tiles.
 - **Editor undo/sound for flag paints.** Mountain/gold paints leave the territory partition untouched. The undo push compares the pre-stroke snapshot against the live grid via `EditorSnapshot.DiffersFromGrid` (pure, unit-tested grid diff over owner/occupant/gold/mountain/water); the per-cell placement sound also checks gold/mountain flags. Both flag brushes record undo and play the sound.
@@ -380,6 +384,15 @@ A selectable mode (`GameMode.VikingRaiders`): neutral raiders arrive at the isla
 
 - **Two RNG sources, by constraint.** Capital placement seeds a local `Random` from the territory's own coords (`CapitalReconciler.SeedFromCoords`, FNV-1a + splitmix32 avalanche), so it consumes nothing from the live per-turn `_rng` stream and the AI's cloned 1-ply simulation reproduces the identical replacement capital (`AiSimulator.Clone` carries the flag; `AiSimulatorDriftTests` pins sim == real). The tide tie-break draws from `GameOperations._rng` at forecast time — the first per-turn RNG consumer, right after `ReseedRngForCurrentTurn`, so it lands at a fixed stream offset and reproduces on resume/replay; the simulator never touches tides. Still seed-deterministic since the board itself evolves from the master seed.
 - **Baked, not load-gated.** The flag is decided once at game creation and persisted (see *Save / load*), never compared at load. New games are `true`; pre-v15 saves load `false`. This is what makes re-saving safe: a game keeps its era forever, so its recorded beat log (capitals/tides re-derived during playback) never mixes old and new picks. The two paths are exercised by the `(mode × era)` matrix in `ReplayFidelityTests`.
+
+## Origin-capital merges
+
+`GameState.UseOriginMergeCapital` (bool) governs which capital survives when a capture merges two (or more) same-owner territories: the capital of the territory the acting unit **originated from** wins — for a move, the source territory; for a buy, the purchasing capital's territory. Merged gold sums onto the survivor as always (`Treasury.ReconcileAfterCapture` credits whatever capital the reconciler chose); losers are demoted off the grid.
+
+- **Threading.** The origin is the acting territory's capital, resolved before the mutation, and rides `HandleCapture(actionDesc, originCapital)` → `TerritoryFinder.Recompute(..., originCapital)` → `CapitalReconciler.Reconcile(..., originCapital)`. Callers: `GameController.ExecuteMove`/`ExecuteBuyAndPlace` (human), `GameOperations.ExecuteMoveCore`/`ExecuteAiBuyUnit` (AI + replay), and `AiSimulator.ApplyMove`/`ApplyBuy` (the 1-ply clone, so sim == live — pinned by `AiSimulatorDriftTests`). Both gates pass the origin only when the flag is set, so a legacy game's reconcile arguments are byte-identical to the pre-flag call shape.
+- **Fallback.** When no origin capital is among the merged capitals (capital-less origin singleton, editor paints, any merge not caused by a unit action), the **largest old territory's** capital wins; equal-largest ties break lex-min or seed-random per `UseRandomizedSelection`. Merges in a flag-off game always use this fallback path.
+- **Baked, not load-gated** — same era discipline as `UseRandomizedSelection`: persisted (save v18, absent → `false`), never compared at load, carried by `AiSimulator.Clone`. New games (`ProceduralGame.Build`, starting-map launch) set it `true`.
+- **Instrumentation.** Every merge decision logs `[reconcile] merge … candidates … origin … winner … rule=origin|largest|tiebreak-…` (category `Capture`, Debug).
 
 `DisplayScale` — autoload Node (`project.godot` `[autoload]` "DisplayScale", ordered after `LogBootstrap`). Keeps UI at a roughly constant physical size by reading screen DPI and driving root `Window.ContentScaleFactor`:
 
@@ -1188,6 +1201,10 @@ seed (no consumption count) and load reproduces it.
   replay reproduces — a mixed-behavior replay is impossible. The flag governs the
   in-tier capital pick and the equal-exposure tide tie-break (see **Randomized
   selection**).
+- **Origin-capital merges.** `UseOriginMergeCapital` bool, same baked-era shape:
+  fed into the `GameState` ctor on load, written `true` by new games, absent in
+  pre-v18 saves → `false` so legacy games keep largest-wins merges and their
+  recorded replays reproduce (see **Origin-capital merges**).
 - **Load.** Main menu's Load button populates `LoadRequest.Pending` with a
   `LoadedSave` (state + players + master seed + max-turn cap + optional
   OriginMapName + claim-victory tiers) and changes scene to `main.tscn`.

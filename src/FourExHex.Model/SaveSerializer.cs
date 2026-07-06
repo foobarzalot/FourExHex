@@ -112,7 +112,7 @@ public static class SaveSerializer
     /// Bump on any breaking schema change. <see cref="Deserialize"/>
     /// rejects mismatched values rather than attempting migration.
     /// </summary>
-    public const int CurrentFormatVersion = 17;
+    public const int CurrentFormatVersion = 18;
 
     public static string Serialize(
         GameState state,
@@ -207,6 +207,10 @@ public static class SaveSerializer
             // Absent in pre-15 saves → loads false → those games keep the old
             // deterministic placement so their replays reproduce.
             UseRandomizedSelection = state.UseRandomizedSelection,
+            // Baked-at-creation flag for the origin-capital merge rule.
+            // Absent in pre-18 saves → loads false → those games keep the
+            // largest-wins merge rule so their replays reproduce.
+            UseOriginMergeCapital = state.UseOriginMergeCapital,
             // Fog Of War: the human's explored coords. Null (omitted) when
             // empty — every non-fog save — so the wire format stays clean.
             Seen = SerializeSeen(state.Seen),
@@ -315,6 +319,7 @@ public static class SaveSerializer
             grid, territories, players, turnState, treasury, waterCoords,
             mode: data.Mode ?? GameMode.Freeform,
             useRandomizedSelection: data.UseRandomizedSelection,
+            useOriginMergeCapital: data.UseOriginMergeCapital,
             // Restore the human's explored coords; empty for non-fog/legacy saves.
             seen: DeserializeSeen(data.Seen),
             // Restore raiders at sea + wave cursors; all-default for
@@ -1206,6 +1211,15 @@ public sealed class SaveData
     /// placement so their recorded replays reproduce exactly.
     /// </summary>
     public bool UseRandomizedSelection { get; set; }
+
+    /// <summary>
+    /// Whether a same-owner territory merge keeps the acting unit's origin
+    /// territory's capital (falling back to largest-wins when no origin
+    /// capital is among the merged ones). Baked at game creation. Absent
+    /// (false) in pre-18 saves, which keep the largest-wins merge rule so
+    /// their recorded replays reproduce exactly.
+    /// </summary>
+    public bool UseOriginMergeCapital { get; set; }
 
     /// <summary>
     /// Fog Of War: the human player's explored (ever-seen) coords. Null/omitted

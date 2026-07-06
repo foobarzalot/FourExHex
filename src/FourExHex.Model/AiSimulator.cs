@@ -45,8 +45,9 @@ public static class AiSimulator
         IReadOnlyList<Territory> territories = snap.ApplyTo(newGrid, newTreasury);
 
         // Mode is intentionally left at its default here (the simulator never
-        // runs tide logic); the randomized-selection flag must ride along so a
-        // simulated capture picks the same replacement capital as real play.
+        // runs tide logic); the randomized-selection and origin-merge flags
+        // must ride along so a simulated capture picks the same replacement /
+        // surviving capital as real play.
         return new GameState(
             newGrid,
             territories,
@@ -54,7 +55,8 @@ public static class AiSimulator
             original.Turns,
             newTreasury,
             original.WaterCoords,
-            useRandomizedSelection: original.UseRandomizedSelection);
+            useRandomizedSelection: original.UseRandomizedSelection,
+            useOriginMergeCapital: original.UseOriginMergeCapital);
     }
 
     /// <summary>
@@ -103,7 +105,7 @@ public static class AiSimulator
         AiApplyResult r = AiActionCore.Move(source, destination, state, attacker);
         if (r.Move.WasCapture)
         {
-            Reconcile(state);
+            Reconcile(state, attacker.Capital);
         }
 
         if (r.WasReposition)
@@ -122,7 +124,7 @@ public static class AiSimulator
         AiApplyResult r = AiActionCore.Buy(capital, destination, level, state, territory);
         if (r.Move.WasCapture)
         {
-            Reconcile(state);
+            Reconcile(state, capital);
         }
 
         if (r.WasReposition)
@@ -156,11 +158,16 @@ public static class AiSimulator
     /// sits at the heart of <c>GameOperations.HandleCapture</c>, so
     /// simulated and real captures produce identical states; the live
     /// path merely layers view/defeat/win effects on top.
+    /// <paramref name="originCapital"/> is the acting territory's capital,
+    /// honored only in a <see cref="GameState.UseOriginMergeCapital"/> game
+    /// (mirroring HandleCapture's gate) so legacy simulations reconcile
+    /// with arguments identical to before the rule existed.
     /// </summary>
-    private static void Reconcile(GameState state)
+    private static void Reconcile(GameState state, HexCoord? originCapital = null)
     {
         state.Territories = TerritoryFinder.Recompute(
-            state.Grid, state.Territories, state.Treasury, state.UseRandomizedSelection);
+            state.Grid, state.Territories, state.Treasury, state.UseRandomizedSelection,
+            state.UseOriginMergeCapital ? originCapital : null);
     }
 
 }

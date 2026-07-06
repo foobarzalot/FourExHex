@@ -1282,7 +1282,7 @@ public class GameOperations
         AiApplyResult r = AiActionCore.Move(source, destination, _state, attacker);
         if (r.Move.WasCapture)
         {
-            HandleCapture($"Move {source}→{destination}");
+            HandleCapture($"Move {source}→{destination}", attacker.Capital);
         }
         if (r.Move.Destroyed != null)
         {
@@ -1327,7 +1327,7 @@ public class GameOperations
         AiApplyResult r = AiActionCore.Buy(capital, destination, level, _state, attacker);
         if (r.Move.WasCapture)
         {
-            HandleCapture($"Buy {level} → {destination}");
+            HandleCapture($"Buy {level} → {destination}", capital);
         }
         if (r.Move.Destroyed != null)
         {
@@ -1367,6 +1367,12 @@ public class GameOperations
         {
             throw new InvalidOperationException(
                 $"AI BuyCombine to {combineTarget}: no unit on the target tile.");
+        }
+        if (!level.CanCombineWith(dstTile.Unit.Level))
+        {
+            throw new InvalidOperationException(
+                $"AI BuyCombine to {combineTarget}: a {level} cannot combine with the " +
+                $"{dstTile.Unit.Level} there (level sum exceeds Commander).");
         }
 
         MoveResult result = AiActionCore.BuyCombine(capital, combineTarget, level, _state, attacker);
@@ -1482,8 +1488,13 @@ public class GameOperations
     /// someone just lost their last capital, optionally rebuild the
     /// view (suppressed mid-batch by <see cref="SuppressMapRebuild"/>),
     /// then check for a mid-turn domination win and end the game if so.
+    /// <paramref name="originCapital"/> is the acting territory's capital
+    /// (moves: the source territory's; buys: the purchasing one) — in a
+    /// <see cref="GameState.UseOriginMergeCapital"/> game a same-owner merge
+    /// keeps that capital. Honored only when the flag is set, so legacy
+    /// games reconcile with arguments identical to before the rule existed.
     /// </summary>
-    public void HandleCapture(string actionDesc)
+    public void HandleCapture(string actionDesc, HexCoord? originCapital = null)
     {
         long tWhole = Log.Stamp();
         IReadOnlyList<Territory> previous = _state.Territories;
@@ -1492,7 +1503,8 @@ public class GameOperations
 
         long tRecompute = Log.Stamp();
         _state.Territories = TerritoryFinder.Recompute(
-            _state.Grid, previous, _state.Treasury, _state.UseRandomizedSelection);
+            _state.Grid, previous, _state.Treasury, _state.UseRandomizedSelection,
+            _state.UseOriginMergeCapital ? originCapital : null);
         Log.Since(Log.LogCategory.Capture, "[hitch] TerritoryFinder.Recompute", tRecompute);
         Log.Debug(Log.LogCategory.Capture,
             $"[hitch] counts tiles={_state.Grid.Count} territories={_state.Territories.Count}");

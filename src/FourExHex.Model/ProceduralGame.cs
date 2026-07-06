@@ -20,7 +20,8 @@ public static class ProceduralGame
     public static GameState Build(
         int cols, int rows, IReadOnlyList<Player> players, int seed,
         MapGenOptions? options = null, GameMode mode = GameMode.Freeform,
-        bool useRandomizedSelection = true)
+        bool useRandomizedSelection = true,
+        bool useOriginMergeCapital = true)
     {
         var turnState = new TurnState(players);
         var treasury = new Treasury();
@@ -30,6 +31,7 @@ public static class ProceduralGame
             grid, new List<Territory>(), treasury: null, randomizeCapital: useRandomizedSelection);
         return new GameState(
             grid, territories, players, turnState, treasury, mapGen.WaterCoords, mode,
-            useRandomizedSelection);
+            useRandomizedSelection,
+            useOriginMergeCapital: useOriginMergeCapital);
     }
 }

@@ -118,7 +118,8 @@ public static class TestHelpers
         Func<bool>? replayIsInstantMode = null,
         IReadOnlySet<HexCoord>? waterCoords = null,
         Action<HexGrid>? beforeTerritories = null,
-        Action<GameState>? beforeStart = null)
+        Action<GameState>? beforeStart = null,
+        bool useOriginMergeCapital = false)
     {
         players ??= new List<Player>
         {
@@ -147,7 +148,8 @@ public static class TestHelpers
         var state = new GameState(
             grid, territories, players,
             new TurnState(players, currentPlayerIndex, turnNumber),
-            new Treasury(), waterCoords);
+            new Treasury(), waterCoords,
+            useOriginMergeCapital: useOriginMergeCapital);
         var session = new SessionState();
         if (suppressClaimVictory)
         {

@@ -12,6 +12,8 @@ using System.Collections.Generic;
 ///   - Splits: the piece containing the old capital keeps it; other
 ///     pieces get a new capital placed.
 ///   - Merges: when multiple old capitals end up in one new territory,
+///     the one matching <c>originCapital</c> (the capital of the territory
+///     the acting unit came from, when the caller supplies it) wins; else
 ///     the one from the largest old territory wins (tiebreaker: lex-min);
 ///     losing capitals are physically removed from the grid.
 ///   - Placement that stomps a unit: the unit is destroyed (no refund).
@@ -30,7 +32,8 @@ public static class CapitalReconciler
         IReadOnlyList<Territory> rawNewTerritories,
         IReadOnlyList<Territory> oldTerritories,
         HexGrid grid,
-        bool randomize = false)
+        bool randomize = false,
+        HexCoord? originCapital = null)
     {
         // Remember each old territory's capital + size so merge ties can
         // be broken.
@@ -134,24 +137,52 @@ public static class CapitalReconciler
             }
             else
             {
-                // Merge: the capital from the largest old territory wins.
-                // Among capitals tied on largest old size, the lex-min coord
-                // wins (capitalRng == null) or a random one of them does.
-                int maxOldSize = int.MinValue;
-                foreach (HexCoord cap in inheritedOldCaps)
+                // Merge: the capital of the territory the acting unit
+                // originated from wins outright when the caller supplies it.
+                // Otherwise (no unit action, or the origin had no capital
+                // among the merged ones) the capital from the largest old
+                // territory wins; among capitals tied on largest old size,
+                // the lex-min coord wins (capitalRng == null) or a random
+                // one of them does.
+                HexCoord winner;
+                string rule;
+                if (originCapital.HasValue && inheritedOldCaps.Contains(originCapital.Value))
                 {
-                    if (oldCapitalSize[cap] > maxOldSize) maxOldSize = oldCapitalSize[cap];
+                    winner = originCapital.Value;
+                    rule = "origin";
                 }
-                var topTied = new List<HexCoord>();
-                foreach (HexCoord cap in inheritedOldCaps)
+                else
                 {
-                    if (oldCapitalSize[cap] == maxOldSize) topTied.Add(cap);
+                    int maxOldSize = int.MinValue;
+                    foreach (HexCoord cap in inheritedOldCaps)
+                    {
+                        if (oldCapitalSize[cap] > maxOldSize) maxOldSize = oldCapitalSize[cap];
+                    }
+                    var topTied = new List<HexCoord>();
+                    foreach (HexCoord cap in inheritedOldCaps)
+                    {
+                        if (oldCapitalSize[cap] == maxOldSize) topTied.Add(cap);
+                    }
+                    topTied.Sort();
+                    winner = capitalRng == null
+                        ? topTied[0]
+                        : topTied[capitalRng.Next(topTied.Count)];
+                    rule = topTied.Count == 1
+                        ? "largest"
+                        : (capitalRng == null ? "tiebreak-lexmin" : "tiebreak-random");
                 }
-                topTied.Sort();
-                HexCoord winner = capitalRng == null
-                    ? topTied[0]
-                    : topTied[capitalRng.Next(topTied.Count)];
                 chosenCapital = winner;
+
+                var candidateDesc = new System.Text.StringBuilder();
+                foreach (HexCoord cap in inheritedOldCaps)
+                {
+                    if (candidateDesc.Length > 0) candidateDesc.Append(' ');
+                    candidateDesc.Append($"{cap}(size {oldCapitalSize[cap]})");
+                }
+                Log.Debug(Log.LogCategory.Capture,
+                    $"[reconcile] merge owner={newT.Owner.Index} candidates: {candidateDesc} " +
+                    $"origin={(originCapital.HasValue ? originCapital.Value.ToString() : "(none)")} " +
+                    $"winner={winner} rule={rule}");
 
                 // Demote losers: remove their Capital occupant so the tile
                 // becomes empty.

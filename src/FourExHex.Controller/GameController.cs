@@ -1095,7 +1095,7 @@ public class GameController
 
         if (result.WasCapture)
         {
-            _ops.HandleCapture($"Buy {level} → {destination}");
+            _ops.HandleCapture($"Buy {level} → {destination}", capital);
             RebindSelectionToContaining(destination);
         }
 
@@ -1183,12 +1183,13 @@ public class GameController
         // the source tile — auto-advance needs it to walk the next entry
         // in the power-then-coord order.
         UnitLevel movedLevel = _state.Grid.Get(source)!.Unit!.Level;
+        HexCoord? originCapital = _session.SelectedTerritory.Capital;
         bool wasCombine = _ops.WasFriendlyUnitAt(destination, _session.SelectedTerritory.Owner);
         MoveResult result = MovementRules.Move(source, destination, _state.Grid, _session.SelectedTerritory);
 
         if (result.WasCapture)
         {
-            _ops.HandleCapture($"Move {source}→{destination}");
+            _ops.HandleCapture($"Move {source}→{destination}", originCapital);
             RebindSelectionToContaining(destination);
         }
 

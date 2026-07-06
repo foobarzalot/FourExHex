@@ -11,7 +11,8 @@ public class SaveMigrationTests
 {
     private static (GameState, IReadOnlyList<Player>) BuildState() => BuildState(randomized: false);
 
-    private static (GameState, IReadOnlyList<Player>) BuildState(bool randomized)
+    private static (GameState, IReadOnlyList<Player>) BuildState(
+        bool randomized, bool originMerge = false)
     {
         var red = new Player("Red", PlayerId.FromIndex(0), PlayerKind.Human);
         var blue = new Player("Blue", PlayerId.FromIndex(1), PlayerKind.Computer);
@@ -28,7 +29,8 @@ public class SaveMigrationTests
         foreach (Territory t in terr)
             if (t.HasCapital) treasury.SetGold(t.Capital!.Value, 10);
         return (new GameState(grid, terr, players, turn, treasury,
-            useRandomizedSelection: randomized), players);
+            useRandomizedSelection: randomized,
+            useOriginMergeCapital: originMerge), players);
     }
 
     [Fact]
@@ -58,9 +60,35 @@ public class SaveMigrationTests
     }
 
     [Fact]
-    public void CurrentFormatVersion_IsSeventeen()
+    public void V18_UseOriginMergeCapital_RoundTripsTrue()
     {
-        Assert.Equal(17, SaveSerializer.CurrentFormatVersion);
+        (GameState s, IReadOnlyList<Player> p) = BuildState(randomized: true, originMerge: true);
+        string json = SaveSerializer.Serialize(s, 1, p, "slot", 100);
+
+        Assert.True(SaveSerializer.Deserialize(json).State.UseOriginMergeCapital);
+    }
+
+    [Fact]
+    public void PreV18Save_MissingFlag_DefaultsToFalse()
+    {
+        // A pre-18 save has no UseOriginMergeCapital field. Stripping it (and
+        // stamping an older version) must load false, so the loaded game keeps
+        // the largest-wins merge rule its recorded replay was built on.
+        (GameState s, IReadOnlyList<Player> p) = BuildState(randomized: true, originMerge: true);
+        string json = SaveSerializer.Serialize(s, 1, p, "slot", 100);
+        string legacy = System.Text.RegularExpressions.Regex
+            .Replace(json, ",\\s*\"UseOriginMergeCapital\": (true|false)", string.Empty)
+            .Replace(
+                $"\"FormatVersion\": {SaveSerializer.CurrentFormatVersion}",
+                "\"FormatVersion\": 17");
+
+        Assert.False(SaveSerializer.Deserialize(legacy).State.UseOriginMergeCapital);
+    }
+
+    [Fact]
+    public void CurrentFormatVersion_IsEighteen()
+    {
+        Assert.Equal(18, SaveSerializer.CurrentFormatVersion);
     }
 
     [Fact]
@@ -69,7 +97,7 @@ public class SaveMigrationTests
         (GameState s, IReadOnlyList<Player> p) = BuildState();
         string json = SaveSerializer.Serialize(s, 1, p, "slot", 100);
 
-        foreach (int bad in new[] { 1, 18, 99 })
+        foreach (int bad in new[] { 1, 19, 99 })
         {
             string mutated = json.Replace(
                 $"\"FormatVersion\": {SaveSerializer.CurrentFormatVersion}",
@@ -77,7 +105,7 @@ public class SaveMigrationTests
             Assert.ThrowsAny<System.Exception>(() => SaveSerializer.Deserialize(mutated));
         }
 
-        foreach (int ok in new[] { 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 })
+        foreach (int ok in new[] { 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 })
         {
             string mutated = json.Replace(
                 $"\"FormatVersion\": {SaveSerializer.CurrentFormatVersion}",
