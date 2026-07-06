@@ -165,28 +165,60 @@ public sealed class CampaignProgress
         return CampaignSeeds.ByLevel[level];
     }
 
-    // Rising Tides and Fog Of War are introduced from the Soldier tier onward and
-    // each stays rarer than freeform. The chances are per Soldier+ level.
-    private const int CampaignRisingTidesChance = 10; // %
-    private const int CampaignFogOfWarChance = 10;    // % of the non-tide remainder
+    /// <summary>Exact number of levels each complication mode gets in every
+    /// Soldier+ tier. The rotation size times this must stay ≤
+    /// <see cref="TierSize"/>.</summary>
+    public const int ComplicationLevelsPerModePerTier = 6;
 
-    /// <summary>Game mode for a campaign level. Rising Tides and Fog Of War are
-    /// later-game complications: never in the Recruit tier, and each a rare
-    /// minority (<see cref="CampaignRisingTidesChance"/>% /
-    /// <see cref="CampaignFogOfWarChance"/>%) of Soldier+ levels. Deterministic —
-    /// same level always yields the same mode — drawn off the level number with a
-    /// magic offset distinct from the map-gen (2671/40503), roster (6151/24593)
-    /// and slot-hash draws so it doesn't track them. The Rising Tides draw is
-    /// taken first and unchanged, so adding Fog Of War never shifts an existing
-    /// tide level. Integer-only (no floats — Model rule).</summary>
-    public static GameMode ModeForLevel(int level)
+    // The campaign complication rotation. Modes are assigned as consecutive
+    // ComplicationLevelsPerModePerTier-sized slices of a tier-seeded shuffle,
+    // so appending a future mode here consumes the next slice and never moves
+    // existing assignments (their baked winnable seeds stay valid).
+    private static readonly GameMode[] ComplicationModes =
+    {
+        GameMode.RisingTides,
+        GameMode.FogOfWar,
+        GameMode.VikingRaiders,
+    };
+
+    /// <summary>Game mode for a campaign level. Complication modes are
+    /// later-game challenges: never in the Recruit tier, and every Soldier+
+    /// tier holds exactly <see cref="ComplicationLevelsPerModePerTier"/> levels
+    /// of each mode in the rotation. Deterministic — same level always yields
+    /// the same mode — via a tier-seeded shuffle of the tier's level offsets
+    /// sliced per mode, with a magic offset distinct from the map-gen
+    /// (2671/40503), roster (6151/24593) and slot-hash draws so it doesn't
+    /// track them. Integer-only (no floats — Model rule).</summary>
+    public static GameMode ModeForLevel(int level) => ModeForLevel(level, ComplicationModes);
+
+    /// <summary>Rotation-explicit overload backing <see cref="ModeForLevel(int)"/>.
+    /// Public so tests can pin extension-stability: because modes take
+    /// consecutive slices of one tier shuffle, any prefix of the rotation
+    /// yields the same assignments for its modes as the full rotation.</summary>
+    public static GameMode ModeForLevel(int level, IReadOnlyList<GameMode> rotation)
     {
         ValidateLevel(level);
         if (DifficultyForLevel(level) < Difficulty.Soldier) return GameMode.Freeform;
-        var rng = new Random(unchecked(level * 8209 + 49157));
-        if (rng.Next(100) < CampaignRisingTidesChance) return GameMode.RisingTides;
-        if (rng.Next(100) < CampaignFogOfWarChance) return GameMode.FogOfWar;
-        return GameMode.Freeform;
+        int tier = level / TierSize;
+        int slot = ShuffledPositionInTier(tier, level - tier * TierSize)
+            / ComplicationLevelsPerModePerTier;
+        return slot < rotation.Count ? rotation[slot] : GameMode.Freeform;
+    }
+
+    /// <summary>Position of a tier-relative level offset in the tier's
+    /// Fisher–Yates shuffle (same seeded-<see cref="Random"/> idiom as
+    /// <see cref="ComputeRoster"/>, distinct offset domain: tier, not level).</summary>
+    private static int ShuffledPositionInTier(int tier, int offset)
+    {
+        var rng = new Random(unchecked(tier * 8209 + 49157));
+        int[] order = new int[TierSize];
+        for (int i = 0; i < TierSize; i++) order[i] = i;
+        for (int i = TierSize - 1; i > 0; i--)
+        {
+            int j = rng.Next(i + 1);
+            (order[i], order[j]) = (order[j], order[i]);
+        }
+        return Array.IndexOf(order, offset);
     }
 
     // Per-level map-generation densities. Each campaign level

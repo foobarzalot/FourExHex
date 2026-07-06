@@ -23,14 +23,15 @@ public static class CampaignConfirmSheet
         };
         string status = $"{CampaignProgress.DifficultyForLevel(level)} tier · {statusText}";
 
-        // Tell the player which game mode the level runs. Rising Tides and Fog Of
-        // War are the rare Soldier+ complications, so they get emphasized
-        // descriptions; freeform levels get a one-liner for parity.
+        // Tell the player which game mode the level runs. Complication modes
+        // are the Soldier+ minority, so they get emphasized descriptions;
+        // freeform levels get a one-liner for parity.
         GameMode mode = CampaignProgress.ModeForLevel(level);
         string gameMode = mode switch
         {
             GameMode.RisingTides => "Rising Tides — Outlast the sea!",
             GameMode.FogOfWar => "Fog Of War — Explore to reveal the map!",
+            GameMode.VikingRaiders => "Viking Raiders — Repel the invasion!",
             _ => "Freeform — expand your territory and outlast your rivals.",
         };
 

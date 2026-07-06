@@ -36,6 +36,10 @@ public partial class CampaignPanel : Panel
     // Fog Of War level marker: the same disc in black so it reads as "the
     // unknown" and stays distinct from the tide blue.
     private static readonly Color FogOfWarMarkerColor = new Color("000000");
+    // Viking Raiders level marker: the same disc in deep blood red — reads as
+    // battle, distinct from both the tide blue and the fog black, and dark
+    // enough that the level number still reads on top.
+    private static readonly Color VikingRaidersMarkerColor = new Color("8b0000");
 
     private static readonly Font SerifFont =
         GD.Load<FontFile>("res://fonts/DMSerifDisplay-Regular.ttf");
@@ -105,6 +109,26 @@ public partial class CampaignPanel : Panel
         Log.Debug(Log.LogCategory.Campaign,
             $"CampaignPanel: built ({(portrait ? "portrait" : "landscape")}, {_columns} columns, " +
             $"fit {fit:0.00}, hex {_hexW:0}×{_hexH:0}, viewport-filling)");
+        LogModeMarkerCounts();
+    }
+
+    /// <summary>One-shot ladder census of the game-mode markers the grid will
+    /// draw, so a headless log check can verify the complication rotation
+    /// (quota per mode) without seeing pixels.</summary>
+    private static void LogModeMarkerCounts()
+    {
+        int tides = 0, fog = 0, vikings = 0;
+        for (int level = 0; level < CampaignProgress.LevelCount; level++)
+        {
+            switch (CampaignProgress.ModeForLevel(level))
+            {
+                case GameMode.RisingTides: tides++; break;
+                case GameMode.FogOfWar: fog++; break;
+                case GameMode.VikingRaiders: vikings++; break;
+            }
+        }
+        Log.Debug(Log.LogCategory.Campaign,
+            $"CampaignPanel: mode markers tides={tides} fog={fog} vikings={vikings}");
     }
 
     public override void _ExitTree()
@@ -383,12 +407,13 @@ public partial class CampaignPanel : Panel
 
                 // Game-mode marker: a filled circle drawn BEHIND the level number
                 // (before the label) so the mode is spottable on the grid while
-                // the digits still read on top — blue for Rising Tides, grey for
-                // Fog Of War, none for Freeform.
+                // the digits still read on top — blue for Rising Tides, black for
+                // Fog Of War, blood red for Viking Raiders, none for Freeform.
                 Color? markerColor = CampaignProgress.ModeForLevel(level) switch
                 {
                     GameMode.RisingTides => RisingTidesMarkerColor,
                     GameMode.FogOfWar => FogOfWarMarkerColor,
+                    GameMode.VikingRaiders => VikingRaidersMarkerColor,
                     _ => (Color?)null,
                 };
                 if (markerColor.HasValue)

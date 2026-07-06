@@ -274,18 +274,70 @@ public class CampaignProgressTests
     }
 
     [Fact]
-    public void ModeForLevel_RisingTidesDistributionUnchanged()
+    public void ModeForLevel_VikingRaiders_NeverInRecruitTier()
     {
-        // The Fog Of War draw is added AFTER the Rising Tides draw, so every level
-        // the original formula marked Rising Tides must still be Rising Tides
-        // (existing assignments must not shift).
-        for (int level = 0; level < CampaignProgress.LevelCount; level++)
+        for (int level = 0; level < CampaignProgress.TierSize; level++)
         {
-            bool originallyRisingTides =
-                CampaignProgress.DifficultyForLevel(level) >= Difficulty.Soldier
-                && new System.Random(unchecked(level * 8209 + 49157)).Next(100) < 10;
-            if (originallyRisingTides)
-                Assert.Equal(GameMode.RisingTides, CampaignProgress.ModeForLevel(level));
+            Assert.NotEqual(GameMode.VikingRaiders, CampaignProgress.ModeForLevel(level));
+        }
+    }
+
+    [Fact]
+    public void ModeForLevel_ExactQuotaPerModePerTier()
+    {
+        // The complication rotation is quota-based: every Soldier+ tier holds
+        // exactly ComplicationLevelsPerModePerTier levels of each complication
+        // mode — guaranteed counts, not a probabilistic draw.
+        GameMode[] modes = { GameMode.RisingTides, GameMode.FogOfWar, GameMode.VikingRaiders };
+        for (int tier = 1; tier < CampaignProgress.TierCount; tier++)
+        {
+            int start = tier * CampaignProgress.TierSize;
+            foreach (GameMode mode in modes)
+            {
+                int count = 0;
+                for (int level = start; level < start + CampaignProgress.TierSize; level++)
+                {
+                    if (CampaignProgress.ModeForLevel(level) == mode) count++;
+                }
+                Assert.True(CampaignProgress.ComplicationLevelsPerModePerTier == count,
+                    $"tier {tier}: {mode} count {count} != quota {CampaignProgress.ComplicationLevelsPerModePerTier}");
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(0, GameMode.Freeform)]    // Recruit tier — never a complication
+    [InlineData(64, GameMode.Freeform)]   // Soldier tier, outside every mode slice
+    [InlineData(84, GameMode.RisingTides)]
+    [InlineData(74, GameMode.FogOfWar)]
+    [InlineData(79, GameMode.VikingRaiders)]
+    public void ModeForLevel_PinsKnownAssignments(int level, GameMode expected)
+    {
+        // Campaign level identity is forever: these spot pins make an accidental
+        // reshuffle of the tier-seeded slice assignment a visible test failure.
+        Assert.Equal(expected, CampaignProgress.ModeForLevel(level));
+    }
+
+    [Fact]
+    public void ModeForLevel_AppendingAModeNeverMovesExistingAssignments()
+    {
+        // Modes take consecutive slices of one tier shuffle, so any prefix of
+        // the rotation must assign its modes to exactly the same levels as the
+        // full rotation — the guarantee that lets a future mode join without
+        // invalidating existing levels' baked winnable seeds.
+        GameMode[][] prefixes =
+        {
+            new[] { GameMode.RisingTides },
+            new[] { GameMode.RisingTides, GameMode.FogOfWar },
+        };
+        foreach (GameMode[] prefix in prefixes)
+        {
+            for (int level = 0; level < CampaignProgress.LevelCount; level++)
+            {
+                GameMode withPrefix = CampaignProgress.ModeForLevel(level, prefix);
+                if (withPrefix != GameMode.Freeform)
+                    Assert.Equal(withPrefix, CampaignProgress.ModeForLevel(level));
+            }
         }
     }
 
