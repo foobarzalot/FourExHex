@@ -369,7 +369,34 @@ public class GameController
         // no-ops) is left cleanly unselected rather than showing the
         // previous player's territory. Then walk to the first actionable.
         SetSelection(null);
+        if (TryFocusPendingTide()) return;
         StepTerritorySelection(forward: true);
+    }
+
+    /// <summary>
+    /// Rising Tides turn-start focus: center the camera on the current
+    /// player's telegraphed doomed tile and select the territory containing
+    /// it, so the per-turn erosion is never off-screen. Replaces the
+    /// largest-actionable auto-select whenever a forecast exists — the
+    /// doomed territory is selected even when it has nothing actionable
+    /// (the point is to look at it); a capital-less singleton leaves
+    /// nothing selected, camera pan only. Mountain-demote steps focus the
+    /// same way — the reprieve is the same tide event. False outside
+    /// Rising Tides or with no pending forecast (normal auto-select runs).
+    /// </summary>
+    private bool TryFocusPendingTide()
+    {
+        if (_state.Mode != GameMode.RisingTides) return false;
+        if (_state.PendingTide.Count == 0) return false;
+        HexCoord doomed = _state.PendingTide[0].Coord;
+        Territory? territory = TerritoryLookup.FindOwnedContaining(
+            _state.Territories, _state.Turns.CurrentPlayer.Id, doomed);
+        if (territory is { HasCapital: true }) SetSelection(territory);
+        _map.CenterOnCoord(doomed);
+        Log.Debug(Log.LogCategory.Tide,
+            $"[tide] turn-start focus {doomed} territory=" +
+            $"{(territory?.Capital?.ToString() ?? "none")}");
+        return true;
     }
 
     /// <summary>

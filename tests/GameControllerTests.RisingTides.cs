@@ -226,6 +226,73 @@ public partial class GameControllerTests
     }
 
     [Fact]
+    public void RisingTides_HumanTurnStart_PansToDoomedTileAndSelectsItsTerritory()
+    {
+        // Issue #113: at every human turn start in Rising Tides the camera
+        // centers the telegraphed doomed tile and the auto-select picks the
+        // territory containing it (instead of the largest actionable one).
+        var g = new TidesGame(TwoBlocks(), GameMode.RisingTides);
+
+        Assert.Single(g.State.PendingTide);
+        HexCoord doomed = g.State.PendingTide[0].Coord;
+        Assert.Equal(doomed, g.Map.LastCenteredCoord);
+        Assert.NotNull(g.Session.SelectedTerritory);
+        Assert.Contains(doomed, g.Session.SelectedTerritory!.Coords);
+        Assert.Equal(g.Red.Id, g.Session.SelectedTerritory.Owner);
+
+        // Turn rotation reaches the same seam: Blue's turn start focuses
+        // Blue's own forecast tile.
+        g.Hud.ClickEndTurn();
+        Assert.Equal(g.Blue.Id, g.State.Turns.CurrentPlayer.Id);
+        Assert.Single(g.State.PendingTide);
+        HexCoord blueDoomed = g.State.PendingTide[0].Coord;
+        Assert.Equal(blueDoomed, g.Map.LastCenteredCoord);
+        Assert.NotNull(g.Session.SelectedTerritory);
+        Assert.Contains(blueDoomed, g.Session.SelectedTerritory!.Coords);
+        Assert.Equal(g.Blue.Id, g.Session.SelectedTerritory.Owner);
+    }
+
+    [Fact]
+    public void RisingTides_DoomedSingleton_PansButLeavesNothingSelected()
+    {
+        // 6x2 grid with (4,0), (4,1), (5,1) removed: Red block cols 0-1,
+        // Blue block cols 2-3, and a fully isolated Red singleton at (5,0)
+        // whose six missing neighbours give it the maximum water-border
+        // weight — the forecast deterministically dooms it. A capital-less
+        // singleton isn't selectable, so the camera pans but nothing is
+        // auto-selected.
+        var grid = TestHelpers.BuildRectGrid(6, 2, PlayerId.FromIndex(1));
+        for (int row = 0; row < 2; row++)
+            for (int col = 0; col < 2; col++)
+                grid.Get(HexCoord.FromOffset(col, row))!.Owner = PlayerId.FromIndex(0);
+        HexCoord singleton = HexCoord.FromOffset(5, 0);
+        grid.Get(singleton)!.Owner = PlayerId.FromIndex(0);
+        grid.Remove(HexCoord.FromOffset(4, 0));
+        grid.Remove(HexCoord.FromOffset(4, 1));
+        grid.Remove(HexCoord.FromOffset(5, 1));
+        var g = new TidesGame(grid, GameMode.RisingTides);
+
+        Assert.Single(g.State.PendingTide);
+        Assert.Equal(singleton, g.State.PendingTide[0].Coord);
+        Assert.Equal(singleton, g.Map.LastCenteredCoord);
+        Assert.Null(g.Session.SelectedTerritory);
+    }
+
+    [Fact]
+    public void Freeform_HumanTurnStart_KeepsLargestTerritoryAutoSelect()
+    {
+        // Outside Rising Tides the turn-start focus doesn't apply: no tide
+        // forecast, no coord-centering — auto-select still walks to the
+        // largest actionable territory and centers on it.
+        var g = new TidesGame(TwoBlocks(), GameMode.Freeform);
+
+        Assert.Empty(g.State.PendingTide);
+        Assert.Null(g.Map.LastCenteredCoord);
+        Assert.NotNull(g.Session.SelectedTerritory);
+        Assert.Same(g.Session.SelectedTerritory, g.Map.LastCenteredTerritory);
+    }
+
+    [Fact]
     public void RisingTides_UndoAfterSubmergeTurn_DoesNotResurrectDrownedTile()
     {
         // Undo is turn-local and the stack is cleared each turn, so no snapshot
