@@ -87,6 +87,10 @@ public partial class HudView : OrientationHud, IHudView
     // overlay (which offers Continue) and from the victory overlay (which
     // offers Replay).
     private Control _vikingsConqueredOverlay = null!;
+    // AI-winner game-over: an AI roster player took the island — presented
+    // as a DEFEAT for the human players (issue #121), title set per-game.
+    private Control _aiWonOverlay = null!;
+    private Label _aiWonLabel = null!;
     private Control _defeatOverlay = null!;
     private Label _defeatLabel = null!;
     private Control _claimVictoryOverlay = null!;
@@ -359,6 +363,7 @@ public partial class HudView : OrientationHud, IHudView
 
         BuildVictoryOverlay();
         BuildVikingsConqueredOverlay();
+        BuildAiWonOverlay();
         BuildCampaignVictoryOverlay();
         BuildDefeatOverlay();
         BuildClaimVictoryOverlay();
@@ -1503,8 +1508,9 @@ public partial class HudView : OrientationHud, IHudView
     /// </summary>
     private void BuildVikingsConqueredOverlay()
     {
-        EndgameOverlayContent.Content content =
-            EndgameOverlayContent.For(PlayerId.None, winnerName: "");
+        EndgameOverlayContent.Content content = EndgameOverlayContent.For(
+            PlayerId.None, winnerName: "", winnerIsHuman: false,
+            defeatedHumanName: null);
         (Control overlay, Label _, Button[] _) = BuildEndgameOverlay(
             eyebrowText: content.Eyebrow,
             titleText: content.Title,
@@ -1517,6 +1523,31 @@ public partial class HudView : OrientationHud, IHudView
                 ("Main Menu", () => MainMenuClicked?.Invoke()),
             });
         _vikingsConqueredOverlay = overlay;
+    }
+
+    /// <summary>
+    /// Build the AI-winner game-over overlay — an AI roster player took
+    /// the island, a loss for the humans. DEFEAT framing with no Replay
+    /// offer (the eyebrow/offer decision is pinned by the shared,
+    /// unit-tested <see cref="EndgameOverlayContent"/>); the title
+    /// ("&lt;Winner&gt; has taken the island") and its player color are
+    /// set per-game by <see cref="Refresh"/>.
+    /// </summary>
+    private void BuildAiWonOverlay()
+    {
+        (Control overlay, Label title, Button[] _) = BuildEndgameOverlay(
+            eyebrowText: "DEFEAT",
+            titleText: "Defeated",
+            titleFontSize: 44,
+            designWidth: 620f,
+            buttonMinWidth: 150f,
+            buttonSpecs: new (string, Action)[]
+            {
+                ("Play Again", () => NewGameClicked?.Invoke()),
+                ("Main Menu", () => MainMenuClicked?.Invoke()),
+            });
+        _aiWonOverlay = overlay;
+        _aiWonLabel = title;
     }
 
     private void BuildDefeatOverlay()
@@ -2008,6 +2039,7 @@ public partial class HudView : OrientationHud, IHudView
                 // for every player (no Replay offer; see EndgameOverlayContent).
                 _vikingsConqueredOverlay.Visible = true;
                 _victoryOverlay.Visible = false;
+                _aiWonOverlay.Visible = false;
                 _campaignVictoryOverlay.Visible = false;
             }
             else if (_campaignLevel is int level && winner?.Kind == PlayerKind.Human)
@@ -2024,6 +2056,7 @@ public partial class HudView : OrientationHud, IHudView
                 _campaignNextButton.Visible = progress.NextUp != null;
                 _campaignVictoryOverlay.Visible = true;
                 _victoryOverlay.Visible = false;
+                _aiWonOverlay.Visible = false;
                 _vikingsConqueredOverlay.Visible = false;
                 Log.Debug(Log.LogCategory.Campaign,
                     $"HudView: campaign victory overlay shown for level " +
@@ -2031,17 +2064,40 @@ public partial class HudView : OrientationHud, IHudView
             }
             else
             {
-                _victoryLabel.Text =
-                    EndgameOverlayContent.For(winId, winner?.Name ?? "Unknown").Title;
-                _victoryLabel.AddThemeColorOverride("font_color", PlayerPalette.ColorFor(winId));
-                _victoryOverlay.Visible = true;
+                // An AI winning in the same beat a human's elimination ended
+                // the game is a DEFEAT (issue #121), voiced like the mid-game
+                // elimination overlay — "<Loser> defeated" in the loser's
+                // color, no Replay offer. Every other winner (a human, or an
+                // AI that outlasted an AI-vs-AI endgame after the humans fell
+                // and dismissed their own defeat screens) gets the ordinary
+                // VICTORY announcement in the winner's color.
+                bool winnerIsHuman = winner?.Kind == PlayerKind.Human;
+                Player? defeatedHuman = winnerIsHuman
+                    ? null
+                    : EndgameOverlayContent.DefeatedHumanFor(
+                        session.PendingDefeatScreen, state.Turns.Players);
+                EndgameOverlayContent.Content content = EndgameOverlayContent.For(
+                    winId, winner?.Name ?? "Unknown", winnerIsHuman,
+                    defeatedHuman?.Name);
+                bool defeatFraming = defeatedHuman != null;
+                Label title = defeatFraming ? _aiWonLabel : _victoryLabel;
+                title.Text = content.Title;
+                title.AddThemeColorOverride("font_color", PlayerPalette.ColorFor(
+                    defeatFraming ? defeatedHuman!.Id : winId));
+                _victoryOverlay.Visible = !defeatFraming;
+                _aiWonOverlay.Visible = defeatFraming;
                 _vikingsConqueredOverlay.Visible = false;
                 _campaignVictoryOverlay.Visible = false;
+                Log.Debug(Log.LogCategory.Render,
+                    $"HudView: game-over overlay {content.Eyebrow} " +
+                    $"winner={winner?.Name ?? "Unknown"} human={winnerIsHuman} " +
+                    $"title=\"{content.Title}\"");
             }
         }
         else
         {
             _victoryOverlay.Visible = false;
+            _aiWonOverlay.Visible = false;
             _vikingsConqueredOverlay.Visible = false;
             _campaignVictoryOverlay.Visible = false;
         }
