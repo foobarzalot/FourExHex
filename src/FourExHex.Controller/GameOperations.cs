@@ -47,6 +47,10 @@ public class GameOperations
     private readonly int _masterSeed;
     private readonly Func<bool> _aiSilentMode;
     private readonly Func<bool> _isReplayInstantActive;
+    // True when the human's Automate loop should run silent + chunked
+    // (UserSettings.AutomateSpeed == Instant) — the automate analog of
+    // _aiSilentMode. Combined with _isAutomating in InSilentAutomateBatch.
+    private readonly Func<bool> _automateSilentMode;
     private readonly bool _previewMode;
     private bool _aiBatchOverlayShown;
     private Random _rng;
@@ -108,7 +112,8 @@ public class GameOperations
         int masterSeed,
         Action? onAfterRefresh,
         Func<bool>? isAutomating = null,
-        Func<bool>? isAutomateExhausted = null)
+        Func<bool>? isAutomateExhausted = null,
+        Func<bool>? automateSilentMode = null)
     {
         _state = state;
         _session = session;
@@ -127,6 +132,7 @@ public class GameOperations
         _onAfterRefresh = onAfterRefresh;
         _isAutomating = isAutomating ?? (() => false);
         _isAutomateExhausted = isAutomateExhausted ?? (() => false);
+        _automateSilentMode = automateSilentMode ?? (() => false);
         // Initial _rng is derived from the master seed alone;
         // ReseedRngForCurrentTurn replaces it with the proper
         // per-turn reseed at the top of every StartPlayerTurn (and
@@ -202,12 +208,23 @@ public class GameOperations
     public bool HumanInputLocked => InSilentAiBatch() || VikingPhaseActive;
 
     /// <summary>
+    /// True while the human's Automate loop is fast-forwarding under
+    /// Instant speed — the automate analog of <see cref="InSilentAiBatch"/>.
+    /// Feeds the cue gate (<see cref="IsSilent"/>) and the view's silent
+    /// flag, but NOT <see cref="HumanInputLocked"/>: input between the
+    /// batch's frame yields must stay live so it can stop the loop
+    /// (interruption is a flag, never a lock).
+    /// </summary>
+    public bool InSilentAutomateBatch() => _automateSilentMode() && _isAutomating();
+
+    /// <summary>
     /// Silent-mode policy for per-action cues: true while an AI runs under
-    /// Instant speed or during an instant-replay fast-forward. The
+    /// Instant speed, during an instant-replay fast-forward, or while the
+    /// human's Automate loop fast-forwards under Instant speed. The
     /// controller consults this before emitting any per-action sound /
     /// destruction effect (<see cref="EmitSound"/> / <see cref="EmitDestruction"/>),
-    /// so the views just play what they're told. A human's own turn is
-    /// never silent, so a human still hears their own bankruptcy / game-won.
+    /// so the views just play what they're told. A manually played human
+    /// turn is never silent — silence covers only the fast-forwards.
     ///
     /// Unlike <see cref="InSilentAiBatch"/> — an input/pacing gate that
     /// opens (returns false) while a human defeat overlay is pending — this
@@ -218,7 +235,8 @@ public class GameOperations
     /// </summary>
     public bool IsSilent() =>
         (_aiSilentMode() && (_state.Turns.CurrentPlayer.IsAi || VikingPhaseActive))
-        || _isReplayInstantActive();
+        || _isReplayInstantActive()
+        || InSilentAutomateBatch();
 
     /// <summary>
     /// Route a sound cue through the silent-mode gate. Dropped while
@@ -256,7 +274,8 @@ public class GameOperations
         // internal tide-FX stashing (CaptureRisingTidesFx) and is the
         // input/pacing gate, so it keeps InSilentAiBatch's defeat-overlay
         // term; the per-action cue gate is IsSilent() (see EmitSound).
-        _map.SetSilentMode(InSilentAiBatch() || _isReplayInstantActive());
+        _map.SetSilentMode(
+            InSilentAiBatch() || _isReplayInstantActive() || InSilentAutomateBatch());
         // Tutorial Preview / Record use the tutorial-message slot for
         // their own scripted text; don't clobber it. Outside those
         // modes the slot is free, so reuse it as a passive "AI is

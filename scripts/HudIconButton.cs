@@ -268,7 +268,7 @@ public partial class HudIconButton : Button
         HudIcon.Options => "Options — Esc",
         HudIcon.Die => "Generate map from seed",
         HudIcon.AddText => "Insert a tutorial-only narration beat here",
-        HudIcon.Automate => "Automate remaining moves",
+        HudIcon.Automate => "Automate remaining moves — G",
         _ => "",
     };
 

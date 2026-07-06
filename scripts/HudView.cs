@@ -1821,6 +1821,13 @@ public partial class HudView : OrientationHud, IHudView
                 BuildTowerClicked?.Invoke();
                 GetViewport().SetInputAsHandled();
                 break;
+            case Key.G:
+                // Toggle turn automation — all gating (replay, AI turn,
+                // overlays, tutorial modes) lives controller-side in
+                // OnAutomatePressed, same as the button.
+                AutomateClicked?.Invoke();
+                GetViewport().SetInputAsHandled();
+                break;
             case Key.Z:
                 if (keyEvent.ShiftPressed)
                 {
@@ -2240,8 +2247,8 @@ public partial class HudView : OrientationHud, IHudView
         _automateButton.Selected = running;
         _automateButton.AutomateRunning = running;
         _automateButton.TooltipText = running
-            ? "Stop automating"
-            : "Automate remaining moves";
+            ? "Stop automating — G"
+            : "Automate remaining moves — G";
     }
 
     private static string? ComputeActionHint(GameState state, SessionState session)

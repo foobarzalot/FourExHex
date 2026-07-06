@@ -5,18 +5,19 @@ using Godot;
 
 /// <summary>
 /// Discrete pacing presets the user picks from in the Settings panel,
-/// shared by the two independent speed settings
+/// shared by the three independent speed settings
 /// (<see cref="UserSettings.AiSpeed"/> for live AI turns,
-/// <see cref="UserSettings.ReplaySpeed"/> for replay playback).
+/// <see cref="UserSettings.ReplaySpeed"/> for replay playback,
+/// <see cref="UserSettings.AutomateSpeed"/> for human-turn automation).
 ///
 /// Slow/Normal/Fast are delay scalars — see
 /// <see cref="UserSettings.SpeedMultiplierPercent"/>. <see cref="Instant"/>
 /// is NOT a multiplier: a zero delay would freeze the main thread, so
 /// the controller routes Instant to a chunked, frame-yielded driver
-/// that fast-forwards silently and repaints once per turn (live AI and
-/// replay share that driver). Instant's delays bypass the multiplier
-/// entirely via <c>IAiPacer.ScheduleUnscaled</c>, so it has no entry
-/// in the multiplier table.
+/// that fast-forwards silently and repaints once per batch (live AI,
+/// replay, and Automate each wrap that driver). Instant's delays bypass
+/// the multiplier entirely via <c>IAiPacer.ScheduleUnscaled</c>, so it
+/// has no entry in the multiplier table.
 ///
 /// Member order is load-bearing: settings persist numerically (no
 /// JsonStringEnumConverter), so Slow=0…Instant=3 must stay fixed for

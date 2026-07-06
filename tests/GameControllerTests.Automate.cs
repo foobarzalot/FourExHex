@@ -28,11 +28,15 @@ public partial class GameControllerTests
     /// </summary>
     private static ControllerHarness BuildAutomateGame(
         AiAction[] script,
-        IAiPacer? aiPacer = null)
+        IAiPacer? aiPacer = null,
+        bool instant = false,
+        int? seed = null)
     {
         ControllerHarness h = TestHelpers.BuildControllerGame(
             aiPacer: aiPacer,
-            automateChooser: AutomateScript(script));
+            automateChooser: AutomateScript(script),
+            automateIsInstantMode: () => instant,
+            seed: seed);
         h.State.Treasury.SetGold(RedCap(h), 100);
         return h;
     }
@@ -75,8 +79,10 @@ public partial class GameControllerTests
         Assert.Same(h.Players[0], h.State.Turns.CurrentPlayer);
         // Loop stopped on the chooser's null and toggled itself off.
         Assert.False(h.Controller.IsAutomating);
-        // One undo entry per automated move.
-        Assert.Equal(3, h.Session.Undo.UndoCount);
+        // One undo entry per automated move, plus one for the loop's
+        // initial selection of the acting territory (all three moves
+        // act from the same Red territory, so one selection entry).
+        Assert.Equal(4, h.Session.Undo.UndoCount);
     }
 
     [Fact]
@@ -86,7 +92,7 @@ public partial class GameControllerTests
         string before = GameStateChecksum.Stringify(h.State);
 
         h.Hud.ClickAutomate();
-        Assert.Equal(3, h.Session.Undo.UndoCount);
+        Assert.Equal(4, h.Session.Undo.UndoCount);
 
         // Walk back one automated move at a time.
         h.Hud.ClickUndoLast(); // undo buy #2
@@ -95,13 +101,17 @@ public partial class GameControllerTests
         h.Hud.ClickUndoLast(); // undo the capture move
         Assert.Equal(h.Players[1].Id, TileAt(h, 2, 1).Owner);
         Assert.NotNull(TileAt(h, 1, 1).Unit);
-        h.Hud.ClickUndoLast(); // undo buy #1
-        Assert.Equal(0, h.Session.Undo.UndoCount);
+        h.Hud.ClickUndoLast(); // undo buy #1 — game state fully restored,
+        // the loop's selection entry remains on the stack
+        Assert.Equal(1, h.Session.Undo.UndoCount);
         Assert.Equal(before, GameStateChecksum.Stringify(h.State));
+        h.Hud.ClickUndoLast(); // undo the acting-territory selection
+        Assert.Equal(0, h.Session.Undo.UndoCount);
+        Assert.Null(h.Session.SelectedTerritory);
 
         // Redo re-applies the whole sequence.
         h.Hud.ClickRedoAll();
-        Assert.Equal(3, h.Session.Undo.UndoCount);
+        Assert.Equal(4, h.Session.Undo.UndoCount);
         Assert.Equal(h.Players[0].Id, TileAt(h, 2, 1).Owner);
         Assert.NotNull(TileAt(h, 1, 1).Unit);
         Assert.Equal(80, h.State.Treasury.GetGold(RedCap(h)));
@@ -121,9 +131,9 @@ public partial class GameControllerTests
         Assert.True(h.Controller.IsAutomating);
         Assert.True(h.Hud.AutomateRunning);
 
-        timers.FireAll(); // preview beat: choose move #1
+        timers.FireAll(); // preview beat: choose move #1 (+ selection entry)
         timers.FireAll(); // execute beat: apply move #1
-        Assert.Equal(1, h.Session.Undo.UndoCount);
+        Assert.Equal(2, h.Session.Undo.UndoCount);
 
         // Toggle off = interrupt. Halts BETWEEN moves.
         h.Hud.ClickAutomate();
@@ -134,13 +144,14 @@ public partial class GameControllerTests
         timers.FireAll();
         timers.FireAll();
         timers.FireAll();
-        Assert.Equal(1, h.Session.Undo.UndoCount);
+        Assert.Equal(2, h.Session.Undo.UndoCount);
         Assert.Equal(90, h.State.Treasury.GetGold(RedCap(h)));
         Assert.Equal(h.Players[1].Id, TileAt(h, 2, 1).Owner); // move #2 never ran
 
-        // The executed move stays individually undoable.
+        // The executed move stays individually undoable (the selection
+        // entry beneath it remains).
         h.Hud.ClickUndoLast();
-        Assert.Equal(0, h.Session.Undo.UndoCount);
+        Assert.Equal(1, h.Session.Undo.UndoCount);
         Assert.Null(TileAt(h, 1, 1).Unit);
     }
 
@@ -152,9 +163,9 @@ public partial class GameControllerTests
             ThreeMoveScript(), aiPacer: new GodotAiPacer(timers));
 
         h.Hud.ClickAutomate();
-        timers.FireAll(); // preview #1
+        timers.FireAll(); // preview #1 (+ selection entry)
         timers.FireAll(); // execute #1
-        Assert.Equal(1, h.Session.Undo.UndoCount);
+        Assert.Equal(2, h.Session.Undo.UndoCount);
 
         // A TrackHandler-wrapped human input between beats interrupts
         // automation AND is handled normally.
@@ -215,15 +226,15 @@ public partial class GameControllerTests
         ControllerHarness h = BuildAutomateGame(ThreeMoveScript());
 
         h.Hud.ClickAutomate();
-        Assert.Equal(3, h.Session.Undo.UndoCount);
-        Assert.Equal(3, h.Controller.UndoBeatBatchDepth);
+        Assert.Equal(4, h.Session.Undo.UndoCount);
+        Assert.Equal(4, h.Controller.UndoBeatBatchDepth);
 
         h.Hud.ClickUndoLast();
-        Assert.Equal(2, h.Controller.UndoBeatBatchDepth);
+        Assert.Equal(3, h.Controller.UndoBeatBatchDepth);
         Assert.Equal(1, h.Controller.RedoBeatBatchDepth);
 
         h.Hud.ClickRedoLast();
-        Assert.Equal(3, h.Controller.UndoBeatBatchDepth);
+        Assert.Equal(4, h.Controller.UndoBeatBatchDepth);
         Assert.Equal(0, h.Controller.RedoBeatBatchDepth);
     }
 
@@ -369,5 +380,210 @@ public partial class GameControllerTests
         Assert.Equal(h.Players[0].Id, TileAt(h, 2, 1).Owner);
         Assert.Equal(80, h.State.Treasury.GetGold(RedCap(h)));
         Assert.False(h.Controller.IsAutomating);
+    }
+
+    // --- Automate followups: camera pan + Instant track (#112) ------------
+
+    [Fact]
+    public void Automate_Paced_CentersCameraOnActingTerritory()
+    {
+        ControllerHarness h = BuildAutomateGame(ThreeMoveScript());
+        int centersBefore = h.Map.CenterCount;
+
+        h.Hud.ClickAutomate();
+
+        // One pan per automated move (the preview beat), aimed at the
+        // acting territory — same look/feel as pressing Next Territory.
+        Assert.Equal(centersBefore + 3, h.Map.CenterCount);
+        Assert.NotNull(h.Map.LastCenteredTerritory);
+        Assert.Equal(h.Players[0].Id, h.Map.LastCenteredTerritory!.Owner);
+    }
+
+    [Fact]
+    public void Automate_Instant_NoCameraPan()
+    {
+        ControllerHarness h = BuildAutomateGame(ThreeMoveScript(), instant: true);
+        int centersBefore = h.Map.CenterCount;
+
+        h.Hud.ClickAutomate();
+
+        // The instant track fast-forwards with no per-move presentation:
+        // the camera never moves. The moves still all landed.
+        Assert.Equal(centersBefore, h.Map.CenterCount);
+        Assert.Equal(80, h.State.Treasury.GetGold(RedCap(h)));
+        Assert.False(h.Controller.IsAutomating);
+    }
+
+    [Fact]
+    public void Automate_Instant_NoSounds_PacedStillAudible()
+    {
+        ControllerHarness instant = BuildAutomateGame(ThreeMoveScript(), instant: true);
+        instant.Hud.ClickAutomate();
+        // Two buys + a move ran, but the cue gate dropped every sound.
+        Assert.Empty(instant.Map.UnitPlacedSounds);
+        // Silence lifts once the batch ends.
+        Assert.False(instant.Map.SilentMode);
+
+        // A human turn at any paced speed keeps its per-move sounds.
+        ControllerHarness paced = BuildAutomateGame(ThreeMoveScript());
+        paced.Hud.ClickAutomate();
+        Assert.NotEmpty(paced.Map.UnitPlacedSounds);
+        Assert.False(paced.Map.SilentMode);
+    }
+
+    [Fact]
+    public void Automate_Instant_ViewSilentFlagLifecycle()
+    {
+        var timers = new ManualTimerFactory();
+        ControllerHarness h = BuildAutomateGame(
+            ThreeMoveScript(), aiPacer: new GodotAiPacer(timers), instant: true);
+
+        h.Hud.ClickAutomate();
+        // Dispatch synced the view silent before the first instant tick.
+        Assert.True(h.Map.SilentMode);
+
+        // Drain the batch (well under the per-tick budget, so one tick).
+        timers.FireAll();
+        timers.FireAll();
+        timers.FireAll();
+        Assert.False(h.Map.SilentMode);
+        Assert.False(h.Controller.IsAutomating);
+        Assert.Equal(80, h.State.Treasury.GetGold(RedCap(h)));
+    }
+
+    [Fact]
+    public void Automate_Instant_SameFinalStateAndUndoDepthAsPaced()
+    {
+        ControllerHarness paced = BuildAutomateGame(ThreeMoveScript(), seed: 42);
+        ControllerHarness instant = BuildAutomateGame(ThreeMoveScript(), seed: 42, instant: true);
+
+        paced.Hud.ClickAutomate();
+        instant.Hud.ClickAutomate();
+
+        // The instant track is a fast-forward of the paced one, not a
+        // different game: identical board and identical per-move undo
+        // (beat lockstep included).
+        Assert.Equal(
+            GameStateChecksum.Stringify(paced.State),
+            GameStateChecksum.Stringify(instant.State));
+        Assert.Equal(paced.Session.Undo.UndoCount, instant.Session.Undo.UndoCount);
+        Assert.Equal(paced.Controller.UndoBeatBatchDepth, instant.Controller.UndoBeatBatchDepth);
+    }
+
+    [Fact]
+    public void Automate_Instant_UndoWalksBackMoveByMove()
+    {
+        ControllerHarness h = BuildAutomateGame(ThreeMoveScript(), instant: true);
+        string before = GameStateChecksum.Stringify(h.State);
+
+        h.Hud.ClickAutomate();
+        Assert.Equal(4, h.Session.Undo.UndoCount);
+
+        h.Hud.ClickUndoLast();
+        h.Hud.ClickUndoLast();
+        h.Hud.ClickUndoLast();
+        h.Hud.ClickUndoLast(); // the selection entry
+        Assert.Equal(0, h.Session.Undo.UndoCount);
+        Assert.Equal(before, GameStateChecksum.Stringify(h.State));
+    }
+
+    [Fact]
+    public void Automate_SelectsActingTerritory_SelectionUndoable()
+    {
+        ControllerHarness h = BuildAutomateGame(ThreeMoveScript());
+        Assert.Null(h.Session.SelectedTerritory);
+
+        h.Hud.ClickAutomate();
+
+        // The loop selected each acting territory before its move, like
+        // the player pressing Next Territory; the last selection
+        // persists after the loop stops. All three moves act from the
+        // same Red territory, so there is one selection entry.
+        Territory? sel = h.Session.SelectedTerritory;
+        Assert.NotNull(sel);
+        Assert.Equal(h.Players[0].Id, sel!.Owner);
+        Assert.Equal(4, h.Session.Undo.UndoCount);
+
+        // Undo past the moves: the selection entry is its own step and
+        // restores the pre-automate (empty) selection.
+        h.Hud.ClickUndoLast();
+        h.Hud.ClickUndoLast();
+        h.Hud.ClickUndoLast();
+        Assert.NotNull(h.Session.SelectedTerritory);
+        h.Hud.ClickUndoLast();
+        Assert.Null(h.Session.SelectedTerritory);
+        Assert.Equal(0, h.Session.Undo.UndoCount);
+    }
+
+    [Fact]
+    public void Automate_Instant_SelectsActingTerritory_SelectionUndoable()
+    {
+        ControllerHarness h = BuildAutomateGame(ThreeMoveScript(), instant: true);
+        Assert.Null(h.Session.SelectedTerritory);
+
+        h.Hud.ClickAutomate();
+
+        // Same selection + undo entries as the paced track — the
+        // instant drain skips the visuals, not the bookkeeping.
+        Assert.NotNull(h.Session.SelectedTerritory);
+        Assert.Equal(4, h.Session.Undo.UndoCount);
+
+        h.Hud.ClickUndoLast();
+        h.Hud.ClickUndoLast();
+        h.Hud.ClickUndoLast();
+        h.Hud.ClickUndoLast();
+        Assert.Null(h.Session.SelectedTerritory);
+        Assert.Equal(0, h.Session.Undo.UndoCount);
+    }
+
+    [Fact]
+    public void Automate_Instant_OverlayThenGameOver_StopsAndLiftsSilence()
+    {
+        // Blue reduced to two tiles; the script buy-captures both. Move
+        // #1 destroys Blue's capital, so the defeat overlay halts the
+        // batch mid-run; after dismissal, re-automating plays move #2,
+        // which dominates the board and ends the game. The script list
+        // is filled after construction because the capital coord isn't
+        // known until reconciliation.
+        var script = new List<AiAction>();
+        int index = 0;
+        ControllerHarness h = TestHelpers.BuildControllerGame(
+            seed: 42,
+            defaultOwner: PlayerId.FromIndex(0),
+            ownerOverrides: new[]
+            {
+                (3, 0, PlayerId.FromIndex(1)),
+                (4, 0, PlayerId.FromIndex(1)),
+            },
+            automateChooser: (s, c, visited, rng) =>
+                index >= script.Count ? null : script[index++],
+            automateIsInstantMode: () => true);
+        h.State.Treasury.SetGold(RedCap(h), 100);
+        // Soldiers, not Recruits: Blue's capital defends its two tiles
+        // at level 1, so a Recruit buy-capture is rejected as illegal.
+        script.Add(new AiBuyUnitAction(
+            RedCap(h), HexCoord.FromOffset(3, 0), UnitLevel.Soldier));
+        script.Add(new AiBuyUnitAction(
+            RedCap(h), HexCoord.FromOffset(4, 0), UnitLevel.Soldier));
+
+        h.Hud.ClickAutomate();
+
+        // Move #1 defeated Blue: the overlay halts the batch between
+        // moves, with silence lifted so the overlay paints.
+        Assert.Equal(h.Players[1].Id, h.Session.PendingDefeatScreen);
+        Assert.False(h.Controller.IsAutomating);
+        Assert.False(h.Map.SilentMode);
+        Assert.Equal(h.Players[0].Id, TileAt(h, 3, 0).Owner);
+        Assert.Equal(h.Players[1].Id, TileAt(h, 4, 0).Owner);
+
+        // Dismiss and re-automate: move #2 wins by domination; the
+        // game-over stop also leaves the view unsilenced.
+        h.Hud.ClickDefeatContinue();
+        h.Hud.ClickAutomate();
+
+        Assert.True(h.Session.IsGameOver);
+        Assert.Equal(h.Players[0].Id, h.Session.Winner);
+        Assert.False(h.Controller.IsAutomating);
+        Assert.False(h.Map.SilentMode);
     }
 }

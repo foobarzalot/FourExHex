@@ -84,10 +84,12 @@ public class GameController
         Func<bool>? replayIsInstantMode = null,
         Func<bool>? isReplayPaused = null,
         bool autoSelectFirstTerritory = true,
-        Func<GameState, PlayerId, HashSet<HexCoord>, Random, AiAction?>? automateChooser = null)
+        Func<GameState, PlayerId, HashSet<HexCoord>, Random, AiAction?>? automateChooser = null,
+        Func<bool>? automateIsInstantMode = null)
     {
         _autoSelectFirstTerritory = autoSelectFirstTerritory;
         _automateChooser = automateChooser ?? ComputerAi.ChooseNextAction;
+        _automateIsInstantMode = automateIsInstantMode ?? (() => false);
         Func<bool> aiSilent = aiSilentMode ?? (() => false);
         _humanActionValidator = humanActionValidator;
         _buyLevelValidator = buyLevelValidator;
@@ -120,7 +122,8 @@ public class GameController
             masterSeed: _masterSeed,
             onAfterRefresh: onAfterRefresh,
             isAutomating: () => _automating,
-            isAutomateExhausted: () => _automateExhausted);
+            isAutomateExhausted: () => _automateExhausted,
+            automateSilentMode: _automateIsInstantMode);
         _aiPacer = aiPacer ?? new SynchronousAiPacer();
         _recorder = new ReplayRecorder(
             state: state,
@@ -201,6 +204,7 @@ public class GameController
         // so no refresh — the cancelled pacer drops any in-flight beat.
         _automating = false;
         _pendingAutomateAction = null;
+        _automateTrackInstant = false;
         _aiPacer.Cancel();
         // Unsubscribe from view events so a downstream click can't
         // re-enter this stale controller's handlers — relevant when
@@ -1392,6 +1396,13 @@ public class GameController
     // stack, so the "any human input interrupts automation" hook in
     // TrackHandler can tell the loop's moves from real input.
     private bool _inAutomateStep;
+    // Live speed probe (UserSettings.AutomateSpeed == Instant), the automate
+    // analog of the AI driver's _aiSilentMode: re-read at every between-moves
+    // dispatch so a mid-run Settings change switches tracks.
+    private readonly Func<bool> _automateIsInstantMode;
+    // Which track the automate loop last dispatched on; lets the shared
+    // StepPacing.Redispatch run the instant↔paced transition effects.
+    private bool _automateTrackInstant;
 
     private void OnAutomatePressed()
     {
@@ -1420,7 +1431,7 @@ public class GameController
             $"[automate] start T{_state.Turns.TurnNumber} {_state.Turns.CurrentPlayer.Name} " +
             $"undoDepth={_session.Undo.UndoCount}");
         _ops.RefreshViews(); // Automate button flips to running/Stop
-        _aiPacer.Schedule(StepAutomatePreview, StepPacing.AiActionDelayMs);
+        ScheduleAutomateStep();
     }
 
     /// <summary>
@@ -1454,8 +1465,57 @@ public class GameController
             return;
         }
         _pendingAutomateAction = action;
-        _ops.ShowHighlightAndRefresh(_aiDriver.ResolveAiActingTerritory(action));
+        Territory? acting = _aiDriver.ResolveAiActingTerritory(action);
+        if (acting != null)
+        {
+            // Mirror the player pressing Next Territory before the move:
+            // select the territory about to act (its own undo entry) and
+            // ease the camera to it. Paced tracks only — the instant
+            // track never enters this step machine, so Instant automation
+            // involves no camera movement (it still records the same
+            // selection entries; see AutomateInstantStep).
+            SelectActingTerritoryForAutomate(acting, paint: true);
+            _map.CenterOnTerritory(acting);
+            Log.Debug(Log.LogCategory.Automate, $"[automate] pan -> {acting.Capital}");
+        }
+        _ops.ShowHighlightAndRefresh(acting);
         _aiPacer.Schedule(StepAutomateExecute, StepPacing.AiPreviewDelayMs);
+    }
+
+    /// <summary>
+    /// Select the territory about to act as its own undoable step —
+    /// automation mirrors the player selecting a territory before each
+    /// move, so undo walks selection changes back exactly like it walks
+    /// the moves, on both tracks. No-op when the territory is already
+    /// selected (consecutive moves in one territory produce a single
+    /// entry). The paced track paints the selection
+    /// (<see cref="SetSelection"/>: highlight + HUD refresh); the
+    /// instant drain records the identical session change with no
+    /// per-move view work.
+    /// </summary>
+    private void SelectActingTerritoryForAutomate(Territory acting, bool paint)
+    {
+        if (ReferenceEquals(_session.SelectedTerritory, acting)) return;
+        _inAutomateStep = true;
+        try
+        {
+            TrackHandler(() =>
+            {
+                if (paint)
+                {
+                    SetSelection(acting);
+                }
+                else
+                {
+                    MarkSelectedVisited(acting);
+                    _session.SelectedTerritory = acting;
+                }
+            });
+        }
+        finally
+        {
+            _inAutomateStep = false;
+        }
     }
 
     private void StepAutomateExecute()
@@ -1465,6 +1525,20 @@ public class GameController
         _pendingAutomateAction = null;
         if (action == null) return;
         if (AutomateHalted(out string halt)) { StopAutomation(halt); return; }
+        Territory? after = ApplyOneAutomateMove(action);
+        if (AutomateHalted(out string postHalt)) { StopAutomation(postHalt); return; }
+        _ops.ShowHighlightAndRefresh(after);
+        ScheduleAutomateStep();
+    }
+
+    /// <summary>
+    /// Apply one automated move — the shared body behind the paced
+    /// execute beat and the instant drain step. Returns the territory
+    /// containing the action's resulting coord (for the paced
+    /// highlight), or null when the action produced none.
+    /// </summary>
+    private Territory? ApplyOneAutomateMove(AiAction action)
+    {
         _automateSteps++;
         PlayerId me = _state.Turns.CurrentPlayer.Id;
         HexCoord? result = null;
@@ -1489,12 +1563,88 @@ public class GameController
         Log.Debug(Log.LogCategory.Automate,
             $"[automate] move {_automateSteps}: {DescribeAutomateAction(action)} " +
             $"undoDepth={_session.Undo.UndoCount}");
-        if (AutomateHalted(out string postHalt)) { StopAutomation(postHalt); return; }
-        Territory? after = result.HasValue
+        return result.HasValue
             ? TerritoryLookup.FindOwnedContaining(_state.Territories, me, result.Value)
             : null;
-        _ops.ShowHighlightAndRefresh(after);
-        _aiPacer.Schedule(StepAutomatePreview, StepPacing.AiActionDelayMs);
+    }
+
+    /// <summary>
+    /// Between-moves dispatcher for the automate loop, the analog of
+    /// <see cref="AiTurnDriver.Schedule"/>: re-reads the Instant probe so
+    /// a mid-run Settings change switches tracks at the next beat.
+    /// Instant drains moves through the shared chunked
+    /// <see cref="GameOperations.RunInstantTick"/> loop; anything else
+    /// runs the multiplier-scaled two-beat step machine.
+    /// </summary>
+    private void ScheduleAutomateStep()
+    {
+        StepPacing.Redispatch(
+            wasInstant: _automateTrackInstant,
+            nowInstant: _automateIsInstantMode(),
+            turnBoundary: false,
+            map: _map,
+            pacer: _aiPacer,
+            instantTick: InstantAutomateTick,
+            pacedStep: StepAutomatePreview,
+            setTrack: v => _automateTrackInstant = v,
+            syncSilentMode: _ops.RefreshSilentMode,
+            logInstantToPaced: () => Log.Debug(Log.LogCategory.Automate,
+                "[automate] track instant→paced mid-run"),
+            logPacedToInstant: () => Log.Debug(Log.LogCategory.Automate,
+                "[automate] track paced→instant mid-run"));
+    }
+
+    /// <summary>
+    /// Instant-automate fast-forward: the automate wrapper around the
+    /// shared chunked loop (the third alongside
+    /// <see cref="AiTurnDriver.InstantAiTick"/> and
+    /// <see cref="ReplayRecorder.InstantReplayTick"/>). Every stop path
+    /// runs inside <see cref="StopAutomation"/>, which owns the
+    /// batch-end cleanup, so onExhausted has nothing left to do.
+    /// </summary>
+    private void InstantAutomateTick() => _ops.RunInstantTick(
+        active: () => _automating,
+        step: AutomateInstantStep,
+        onExhausted: () => { },
+        reschedule: _ => ScheduleAutomateStep());
+
+    /// <summary>
+    /// One drain step of the instant automate batch: same halt policy
+    /// as the paced machine (<see cref="AutomateHalted"/>, step cap,
+    /// chooser null), same per-move body
+    /// (<see cref="ApplyOneAutomateMove"/> — one UndoEntry per move),
+    /// no per-move presentation. Never returns TurnBoundary: automation
+    /// never ends the turn, so a budget break yields a bare frame and
+    /// the single repaint happens at the stop.
+    /// </summary>
+    private InstantStep AutomateInstantStep()
+    {
+        if (AutomateHalted(out string halt))
+        {
+            StopAutomation(halt);
+            return InstantStep.Exhausted;
+        }
+        if (_automateSteps >= MaxAutomateStepsPerTurn)
+        {
+            StopAutomation("step-cap");
+            return InstantStep.Exhausted;
+        }
+        AiAction? action = _automateChooser(
+            _state, _state.Turns.CurrentPlayer.Id, _automateVisited, _ops.Rng);
+        if (action == null)
+        {
+            StopAutomation("exhausted", exhausted: true);
+            return InstantStep.Exhausted;
+        }
+        Territory? acting = _aiDriver.ResolveAiActingTerritory(action);
+        if (acting != null) SelectActingTerritoryForAutomate(acting, paint: false);
+        ApplyOneAutomateMove(action);
+        if (AutomateHalted(out string postHalt))
+        {
+            StopAutomation(postHalt);
+            return InstantStep.Exhausted;
+        }
+        return InstantStep.Continued;
     }
 
     /// <summary>
@@ -1514,6 +1664,20 @@ public class GameController
         Log.Debug(Log.LogCategory.Automate,
             $"[automate] stop after {_automateSteps} move(s): {reason} " +
             $"undoDepth={_session.Undo.UndoCount}");
+        if (_automateTrackInstant)
+        {
+            // Batch-end cleanup for the instant track, whether the stop
+            // came from inside the drain (halt/exhausted/step-cap) or
+            // from a human input between its frame yields: the drain
+            // suppressed per-capture rebuilds, so the border layer is
+            // stale, and the view's silent flag must lift now that
+            // _automating is false.
+            _automateTrackInstant = false;
+            Log.Debug(Log.LogCategory.Automate,
+                $"[automate] instant batch end after {_automateSteps} move(s)");
+            _map.RebuildAfterTerritoryChange();
+            _ops.RefreshSilentMode();
+        }
         // Restore the highlight to the player's own selection (clears
         // the loop's acting-territory highlight) and un-toggle the button.
         _ops.ShowHighlightAndRefresh(_session.SelectedTerritory);

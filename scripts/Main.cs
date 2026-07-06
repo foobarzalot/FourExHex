@@ -410,12 +410,10 @@ public partial class Main : Node2D
                     ? UserSettings.SpeedMultiplierPercent(UserSettings.ReplaySpeed)
                     : controllerRef?.IsAutomating == true
                         // Automate has its own speed setting, independent of
-                        // AI turn speed. Instant maps to multiplier 0 — each
-                        // beat becomes a 0-delay timer (one frame per move),
-                        // still frame-yielded and interruptible.
-                        ? (UserSettings.AutomateSpeed == PlaybackSpeed.Instant
-                            ? 0
-                            : UserSettings.SpeedMultiplierPercent(UserSettings.AutomateSpeed))
+                        // AI turn speed. Instant never reaches this
+                        // multiplier — the loop routes it to the unscaled
+                        // chunked InstantAutomateTick (automateIsInstantMode).
+                        ? UserSettings.SpeedMultiplierPercent(UserSettings.AutomateSpeed)
                         : UserSettings.SpeedMultiplierPercent(UserSettings.AiSpeed));
         // If we're resuming an in-progress save that carries a replay,
         // hand it to the controller so recording continues against the
@@ -439,7 +437,11 @@ public partial class Main : Node2D
             // Consulted once per BeginReplay (the only caller, fired by
             // the post-game Replay button) to pick the chunked
             // fast-forward path instead of the paced step machine.
-            replayIsInstantMode: () => UserSettings.ReplaySpeed == PlaybackSpeed.Instant);
+            replayIsInstantMode: () => UserSettings.ReplaySpeed == PlaybackSpeed.Instant,
+            // Re-read at every between-moves automate dispatch: Instant
+            // selects the silent chunked InstantAutomateTick track, so a
+            // mid-run Settings change switches tracks at the next beat.
+            automateIsInstantMode: () => UserSettings.AutomateSpeed == PlaybackSpeed.Instant);
         controllerRef = _controller;
 
         if (!diagnosticMode)

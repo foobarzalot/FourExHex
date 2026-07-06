@@ -245,9 +245,9 @@ MODEL PRIMITIVES
     user://settings.json (lazy load, atomic tmp+rename); read by AudioBus + HexMapView + GodotAiPacer +
     GameController, written by SettingsPanel. AiSpeed + AutomateSpeed + ReplaySpeed are independent settings
     of one shared enum PlaybackSpeed {Slow,Normal,Fast,Instant} (member order load-bearing — persists
-    numerically). SpeedMultiplierPercent → 200/100/50 for Slow/Normal/Fast; Instant routes AI/replay to the
-    chunked frame-yielded driver via the pacer's ScheduleUnscaled (multiplier unused); an Instant
-    AutomateSpeed instead maps to multiplier 0 (one paced beat per frame — see "Automate").
+    numerically). SpeedMultiplierPercent → 200/100/50 for Slow/Normal/Fast; Instant routes AI, replay, AND
+    Automate to the chunked frame-yielded driver via the pacer's ScheduleUnscaled (multiplier unused —
+    "Instant is not a multiplier"; see "Automate" for the automate wrapper).
 
 AUDIO (autoload)
   AudioBus — autoload-registered Node singleton (project.godot [autoload] "AudioBus"). Owns AudioStreamPlayer
@@ -264,18 +264,19 @@ AUDIO (autoload)
   sounds + AttachClick UI clicks. Destruction VFX (HexMapView.PlayDestructionEffect: flash + shockwave +
   shards) gates on UserSettings.VfxEnabled. Pulse/shrink/grow-in animations are always on (communicate state).
 
-  Silent-mode (Instant AI batch / instant replay) is decided controller-side. GameOperations.IsSilent() (=
-  aiSilentMode() && currentPlayer.IsAi, OR _replayInstantActive) gates the controller's own per-action cues via
+  Silent-mode (Instant AI batch / instant replay / Instant automate) is decided controller-side.
+  GameOperations.IsSilent() (= aiSilentMode() && currentPlayer.IsAi, OR _replayInstantActive, OR
+  InSilentAutomateBatch()) gates the controller's own per-action cues via
   EmitSound / EmitDestruction; the views play whatever they're handed, so HexMapView.PlaySound /
   PlayDestructionEffect carry NO silent gate and MockHexMapView records every cue unconditionally (the seam it
   verifies is the controller's decision, not a mirrored view policy). Every cue incl. Bankruptcy/GameWon obeys
-  the gate with no exceptions, so a silent batch is fully silent; a human still hears their own cues because a
-  human turn is never silent (currentPlayer.IsAi is false there). IsSilent() omits the PendingDefeatScreen term
+  the gate with no exceptions, so a silent batch is fully silent; a manually played human turn is never silent —
+  silence covers only the fast-forwards. IsSilent() omits the PendingDefeatScreen term
   that InSilentAiBatch() carries, so the AI blow that destroys a human's capital stays silent even as it queues
   the defeat overlay.
 
   HexMapView still carries _silentMode (set via IHexMapView.SetSilentMode from RefreshSilentMode = InSilentAiBatch
-  || _replayInstantActive) for the view-internal suppression that genuinely needs node/tween access: the
+  || _replayInstantActive || InSilentAutomateBatch) for the view-internal suppression that genuinely needs node/tween access: the
   tree/grave grow-in tweens (RefreshOccupantVisuals) + tree/grave teardown (RebuildAfterTerritoryChange), the
   Rising-Tides FX stashing (CaptureRisingTidesFx / submerge + demote), and the pan-snap shortcut.
 ```
@@ -561,9 +562,9 @@ event Action? NextUnitClicked;         // N: cycle selection by (Level, HexCoord
                                        // on SessionState.RepeatedMovement.
 event Action? PreviousUnitClicked;     // Shift+N — backward
 event Action? CancelActionPressed;     // Escape with Buy/Build/Move pending
-event Action? AutomateClicked;         // Automate toggle: start AI-driven play
-                                       // of the human's remaining moves, or
-                                       // stop a running loop (see "Automate")
+event Action? AutomateClicked;         // G; Automate toggle: start AI-driven
+                                       // play of the human's remaining moves,
+                                       // or stop a running loop (see "Automate")
 event Action? EscRequested;            // Options OR Escape with nothing pending;
                                        // Main → EnterPause → EscMenu
 event Action? DefeatContinueClicked;   // dismiss defeat overlay; resume AI
@@ -985,7 +986,7 @@ The **overlay is decoupled from silence**: `RefreshSilentMode` shows it whenever
 
 ### Automate (AI plays the human's remaining turn)
 
-The HUD's Automate toggle (`AutomateClicked`, gear-with-play glyph beside End Turn) runs AI decisions for the *current human* slot until the chooser runs dry — without ending the turn. The loop lives on `GameController` (it needs `TrackHandler`), a two-beat step machine mirroring the AI driver's cadence:
+The HUD's Automate toggle (`AutomateClicked`, gear-with-play glyph beside End Turn; `G` hotkey) runs AI decisions for the *current human* slot until the chooser runs dry — without ending the turn. The loop lives on `GameController` (it needs `TrackHandler`). Between moves it dispatches through `ScheduleAutomateStep` — the automate analog of `AiTurnDriver.Schedule`, built on the same `StepPacing.Redispatch` — which re-reads the `automateIsInstantMode` probe (`UserSettings.AutomateSpeed == Instant`, injected by `Main`) so a mid-run Settings change switches tracks at the next beat. Paced speeds run a two-beat step machine mirroring the AI driver's cadence; Instant drains through the shared chunked loop:
 
 ```
 OnAutomatePressed (toggle):
@@ -993,29 +994,43 @@ OnAutomatePressed (toggle):
   ├─ if already automating: StopAutomation("user")
   ├─ TrackHandler(OnCancelActionPressedBody)   // cancel any open buy/build/move intent (own undo entry)
   ├─ _automating = true; reset _automateVisited/_automateSteps; RefreshViews (button → running)
-  └─ pacer.Schedule(StepAutomatePreview)
+  └─ ScheduleAutomateStep()   // paced → StepAutomatePreview; Instant → InstantAutomateTick
 
 StepAutomatePreview:  halt checks → action = _automateChooser(state, me, _automateVisited, ops.Rng)
   ├─ null → StopAutomation("exhausted", latch) ; step-cap (64) → StopAutomation("step-cap")
+  ├─ SelectActingTerritoryForAutomate(acting, paint: true)   // select the territory about to act —
+  │     // its own UndoEntry, like the player pressing Next Territory; no-op if already selected
+  ├─ CenterOnTerritory(acting)   // ease the camera to it, same feel as Next Territory
   └─ highlight acting territory → pacer.Schedule(StepAutomateExecute, AiPreviewDelayMs)
 
 StepAutomateExecute:
-  ├─ TrackHandler(() => { _handlerMutatedGame = true; _aiDriver.ApplyAiActionCore(action); })
-  │     // one UndoEntry per move; the beat ApplyAiActionCore records lands in the entry's batch,
-  │     // keeping the recorder's undo↔beat lockstep intact
-  ├─ RebindSelectionAfterAutomateMove()   // capture recompute leaves session.SelectedTerritory stale;
-  │     // re-resolve the same logical territory by capital (ExecuteAi* never rebinds selection)
-  ├─ CheckGameEndConditions → halt checks (overlay / game-over stop the loop)
-  └─ highlight result territory → pacer.Schedule(StepAutomatePreview, AiActionDelayMs)
+  ├─ ApplyOneAutomateMove(action)   // shared with the instant drain:
+  │     // TrackHandler(() => { _handlerMutatedGame = true; ApplyAiActionCore(action); })
+  │     //   — one UndoEntry per move; the beat ApplyAiActionCore records lands in the entry's
+  │     //     batch, keeping the recorder's undo↔beat lockstep intact
+  │     // RebindSelectionAfterAutomateMove()  — capture recompute leaves session.SelectedTerritory
+  │     //   stale; re-resolve the same logical territory by capital (ExecuteAi* never rebinds)
+  │     // CheckGameEndConditions
+  ├─ halt checks (overlay / game-over stop the loop)
+  └─ highlight result territory → ScheduleAutomateStep()
+
+InstantAutomateTick = ops.RunInstantTick(active: _automating, step: AutomateInstantStep,
+                                         onExhausted: no-op, reschedule: ScheduleAutomateStep)
+AutomateInstantStep:  halt / step-cap / chooser-null → StopAutomation(...) → Exhausted
+  ├─ SelectActingTerritoryForAutomate(acting, paint: false)   // same UndoEntry, no view work
+  ├─ ApplyOneAutomateMove(action) → post-move halt check → Exhausted or Continued
+  └─ never TurnBoundary (automation never ends the turn): budget breaks yield a bare frame,
+        the single repaint happens at the stop
 ```
 
 - **Chooser**: the `automateChooser` ctor param, default `ComputerAi.ChooseNextAction` called directly — `AiDispatcher.ChooseForCurrentPlayer` would return null for a Human slot. Tests inject scripted queues. Null = "nothing left to automate" (there is no EndTurn `AiAction`).
-- **Every automated move is individually undoable** — the standard undo handlers walk them back one at a time; automation is a human-turn flow, so the "AI actions are not undoable" invariant is untouched (that covers AI *players'* turns).
-- **Interruption is a flag, never a cancel**: `_automating` is checked at every beat entry; `StopAutomation` clears it and stale scheduled beats no-op (the shared pacer is never cancelled). Every `TrackHandler`-wrapped human input stops a running loop at handler entry (`_inAutomateStep` exempts the loop's own step); the non-wrapped handlers (undo/redo ×4, End Turn, defeat/claim) carry explicit `StopAutomation("input")` calls. Stops always land *between* moves.
+- **Every automated step is individually undoable** — selections and moves alike; the standard undo handlers walk them back one at a time (undo re-centers the camera through the acting territories). Automation is a human-turn flow, so the "AI actions are not undoable" invariant is untouched (that covers AI *players'* turns). Both tracks record identical undo/beat stacks — Instant skips the presentation, not the bookkeeping (pinned by `Automate_Instant_SameFinalStateAndUndoDepthAsPaced`).
+- **Interruption is a flag, never a cancel**: `_automating` is checked at every beat entry (and gates the instant drain via `RunInstantTick`'s `active`); `StopAutomation` clears it and stale scheduled beats no-op (the shared pacer is never cancelled). Every `TrackHandler`-wrapped human input stops a running loop at handler entry (`_inAutomateStep` exempts the loop's own selection + move steps); the non-wrapped handlers (undo/redo ×4, End Turn, defeat/claim) carry explicit `StopAutomation("input")` calls. Stops always land *between* moves. When the stop ends an instant batch (`_automateTrackInstant`), `StopAutomation` also runs the batch-end cleanup: structural rebuild (the drain suppressed per-capture rebuilds) + `RefreshSilentMode` (lifts the view's silent flag).
 - **Exhaustion latch** (`_automateExhausted`): set only by the chooser-null stop; the button greys out (re-pressing would no-op) even if manual actions remain. Cleared by `ApplySnapshot` (any undo/redo), a manual game-mutating `TrackHandler` push (which triggers one extra refresh — the body's own refresh ran pre-clear), and `EndTurnNow`. User interrupts don't latch.
-- **Pacing**: `UserSettings.AutomateSpeed`, its own Settings row, independent of AiSpeed/ReplaySpeed. The shared pacer's multiplier closure in `Main` branches on `GameController.IsAutomating`; Instant maps to multiplier 0 — one paced beat per frame, keeping the loop frame-yielded and interruptible with no silent-batch involvement (a human turn is never silent, so per-move sounds play at every speed).
-- **Instrumentation**: `Log.LogCategory.Automate` Debug — start (turn/player/undo depth), one line per move (step index, action, undo depth after push), stop with reason (`user` / `input` / `exhausted` / `step-cap` / `overlay` / `game-over` / `not-human`).
-- Pinned by `tests/GameControllerTests.Automate.cs` (undo walk-back, interrupt-between-moves via `GodotAiPacer` + `ManualTimerFactory`, beat-stack sync, exhaustion-latch lifecycle, selection rebind).
+- **Pacing**: `UserSettings.AutomateSpeed`, its own Settings row, independent of AiSpeed/ReplaySpeed. The shared pacer's multiplier closure in `Main` branches on `GameController.IsAutomating` for the paced speeds; Instant never reaches the multiplier — `ScheduleAutomateStep` routes it to the unscaled chunked track, making Automate the third `RunInstantTick` wrapper alongside live-AI Instant and instant replay.
+- **Silence**: `GameOperations.InSilentAutomateBatch()` (= `automateSilentMode() && isAutomating()`) joins the cue gate (`IsSilent`) and the view flag (`RefreshSilentMode`), so an Instant batch plays no sounds/VFX/tweens and never pans. It deliberately does NOT join `HumanInputLocked` — input between the drain's frame yields stays live so it can stop the loop. Paced automate is never silent: per-move sounds and the camera pan play at every paced speed.
+- **Instrumentation**: `Log.LogCategory.Automate` Debug — start (turn/player/undo depth), one `pan ->` line per paced preview, one line per move (step index, action, undo depth after push), track transitions (`paced→instant` / `instant→paced`), stop with reason (`user` / `input` / `exhausted` / `step-cap` / `overlay` / `game-over` / `not-human`), and `instant batch end` with the move count.
+- Pinned by `tests/GameControllerTests.Automate.cs` (undo walk-back incl. selection entries, interrupt-between-moves via `GodotAiPacer` + `ManualTimerFactory`, beat-stack sync, exhaustion-latch lifecycle, selection rebind, camera pan, instant silence/no-pan/parity/overlay-stop).
 
 Tests use `SynchronousAiPacer` (`Schedule` + `ScheduleUnscaled` drain inline) or `QueuedAiPacer` (`DrainAll`).
 
