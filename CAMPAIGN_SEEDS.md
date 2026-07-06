@@ -96,5 +96,11 @@ Bake the results:
 - **Fog Of War levels**: AIs plan with full vision (fog blinds only the human
   view), so a fog level's proof is "winnable with full vision" — weaker than
   the freeform/tides proof.
+- **Viking Raiders levels**: no win can fire while any viking threat remains
+  (`VikingRaidersRules.ThreatRemains`), so a proof game must survive all six
+  waves, clear the board of raiders, and then win the ordinary endgame —
+  expect longer games and higher attempt counts. Viking levels clamp their
+  clumping draw to ≥90 (`MapGenOptionsForLevel`); fragmented starts make the
+  mode near-unwinnable for the AI at any seed.
 - Games are capped at 500 turns (`DidNotResolve` / stasis). A capped game is
   treated as a loss by the search.
