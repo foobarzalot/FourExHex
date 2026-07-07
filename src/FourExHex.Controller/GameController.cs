@@ -1007,8 +1007,8 @@ public class GameController
         // A non-adjacent click is a "too far" rejection regardless of
         // what's defending the far hex.
         bool inFrontier = _session.SelectedTerritory != null
-            && (_session.SelectedTerritory.Coords.Contains(coord)
-                || coord.Neighbors().Any(n => _session.SelectedTerritory.Coords.Contains(n)));
+            && (_session.SelectedTerritory.Contains(coord)
+                || coord.Neighbors().Any(n => _session.SelectedTerritory.Contains(n)));
 
         System.Collections.Generic.IEnumerable<HexCoord> defenders =
             inFrontier && targetTerritory != null && targetTerritory.Owner != currentColor
@@ -1086,7 +1086,7 @@ public class GameController
         if (tile == null) return "off-map";
         Territory? sel = _session.SelectedTerritory;
         if (sel == null) return "no selected territory";
-        if (!sel.Coords.Contains(coord))
+        if (!sel.Contains(coord))
             return $"tile not in selected territory (tile color={tile.Owner}, sel owner={sel.Owner})";
         if (tile.Occupant != null)
             return $"tile occupied by {tile.Occupant.GetType().Name}";
@@ -1261,7 +1261,7 @@ public class GameController
         Territory? match = null;
         foreach (Territory t in _state.Territories)
         {
-            if (t.Coords.Contains(coord))
+            if (t.Contains(coord))
             {
                 match = t;
                 break;
@@ -2274,7 +2274,7 @@ public class GameController
     /// </summary>
     private static bool IsCoordReachableForUnitAction(HexCoord coord, Territory territory)
     {
-        if (territory.Coords.Contains(coord)) return true;
+        if (territory.Contains(coord)) return true;
         foreach (HexCoord own in territory.Coords)
         {
             foreach (HexCoord neighbor in own.Neighbors())
@@ -2296,7 +2296,7 @@ public class GameController
     /// </summary>
     private static bool IsCoordReachableForTowerAction(HexCoord coord, Territory territory)
     {
-        return territory.Coords.Contains(coord);
+        return territory.Contains(coord);
     }
 
     /// <summary>

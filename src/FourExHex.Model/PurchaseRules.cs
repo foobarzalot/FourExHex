@@ -71,6 +71,6 @@ public static class PurchaseRules
         if (tile.Occupant != null) return false;
         // Towers may be built on mountains: the +1 high-ground bonus
         // is the whole point. The tile just has to be empty and in-territory.
-        return territory.Coords.Contains(tile.Coord);
+        return territory.Contains(tile.Coord);
     }
 }

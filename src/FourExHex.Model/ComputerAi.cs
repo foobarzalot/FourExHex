@@ -61,6 +61,11 @@ public static class ComputerAi
         int baseScore = AiStateScorer.Score(state, forPlayer);
         prof.ScoreTicks += Log.Stamp() - scoreT;
 
+        // Whole-board tile->territory lookup shared by every phase
+        // enumeration below. Valid for the entire decision: the search
+        // only mutates clones, never `state` itself.
+        Dictionary<HexCoord, Territory> tileIndex = state.Territories.BuildTileIndex();
+
         foreach (Territory t in state.Territories
             .OrderByDescending(terr => terr.Size)
             .ThenBy(terr => TerritoryLookup.AnchorCoord(terr)))
@@ -82,7 +87,7 @@ public static class ComputerAi
             {
                 Unit unit = state.Grid.Get(unitCoord)!.Unit!;
                 IEnumerable<AiCandidate> p1Candidates =
-                    AiCommon.EnumeratePhase1ForUnit(unitCoord, unit, t, state);
+                    AiCommon.EnumeratePhase1ForUnit(unitCoord, unit, t, state, tileIndex);
                 if (forPlayer.IsNone)
                 {
                     p1Candidates = p1Candidates.Where(c => c.Kind == AiActionKind.Capture);
@@ -105,21 +110,21 @@ public static class ComputerAi
                 {
                     Unit unit = state.Grid.Get(unitCoord)!.Unit!;
                     // never decline an unlock-combine for the status quo
-                    AiAction? p2a = TryPhase(AiCommon.EnumeratePhase2aForUnit(unitCoord, unit, t, state),
+                    AiAction? p2a = TryPhase(AiCommon.EnumeratePhase2aForUnit(unitCoord, unit, t, state, tileIndex),
                         int.MinValue, methodStart, baseScore, forPlayer, state, prof);
                     if (p2a != null) { _ = rng; return p2a; }
                 }
 
                 // Phase 2b: buy-and-combine-to-unlock (strictly-positive gate)
                 {
-                    AiAction? p2b = TryPhase(AiCommon.EnumeratePhase2b(t, state),
+                    AiAction? p2b = TryPhase(AiCommon.EnumeratePhase2b(t, state, tileIndex),
                         0, methodStart, baseScore, forPlayer, state, prof);
                     if (p2b != null) { _ = rng; return p2b; }
                 }
 
                 // Phase 3: buy-to-capture / buy-to-chop (strictly-positive gate)
                 {
-                    AiAction? p3 = TryPhase(AiCommon.EnumeratePhase3(t, state),
+                    AiAction? p3 = TryPhase(AiCommon.EnumeratePhase3(t, state, tileIndex),
                         0, methodStart, baseScore, forPlayer, state, prof);
                     if (p3 != null) { _ = rng; return p3; }
                 }
@@ -135,7 +140,7 @@ public static class ComputerAi
                 foreach (HexCoord unitCoord in MovementRules.MovableUnitsInPowerOrder(t, forPlayer, state.Grid))
                 {
                     Unit unit = state.Grid.Get(unitCoord)!.Unit!;
-                    AiAction? p4b = TryPhase(AiCommon.EnumeratePhase4bForUnit(unitCoord, unit, t, state),
+                    AiAction? p4b = TryPhase(AiCommon.EnumeratePhase4bForUnit(unitCoord, unit, t, state, tileIndex),
                         0, methodStart, baseScore, forPlayer, state, prof);
                     if (p4b != null) { _ = rng; return p4b; }
                 }

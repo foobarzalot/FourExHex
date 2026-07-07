@@ -19,7 +19,7 @@ public static class TerritoryLookup
     {
         foreach (Territory t in territories)
         {
-            if (t.Coords.Contains(coord)) return t;
+            if (t.Contains(coord)) return t;
         }
         return null;
     }
@@ -29,7 +29,7 @@ public static class TerritoryLookup
     {
         foreach (Territory t in territories)
         {
-            if (t.Owner == owner && t.Coords.Contains(coord))
+            if (t.Owner == owner && t.Contains(coord))
             {
                 return t;
             }

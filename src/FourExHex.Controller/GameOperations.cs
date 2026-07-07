@@ -1443,7 +1443,7 @@ public class GameOperations
                 $"AI BuildTower from capital {capital}: territory cannot afford a tower " +
                 $"(treasury = {_state.Treasury.GetGold(capital)}g).");
         }
-        if (!territory.Coords.Contains(destination))
+        if (!territory.Contains(destination))
         {
             throw new InvalidOperationException(
                 $"AI BuildTower at {destination} from capital {capital}: destination is " +

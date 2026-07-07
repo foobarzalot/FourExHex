@@ -81,7 +81,7 @@ public static class MapEditPaint
         int territoryIdx = -1;
         for (int i = 0; i < previousTerritories.Count; i++)
         {
-            if (previousTerritories[i].Coords.Contains(coord))
+            if (previousTerritories[i].Contains(coord))
             {
                 territoryIdx = i;
                 break;

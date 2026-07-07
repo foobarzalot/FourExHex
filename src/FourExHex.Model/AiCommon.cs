@@ -90,6 +90,10 @@ public static class AiCommon
         PlayerId owner = territory.Owner;
         (Difficulty difficulty, int netBefore) = EconomyBefore(territory, state);
 
+        // Shared whole-board lookup for every ValidTargets call below —
+        // the state is not mutated during enumeration.
+        Dictionary<HexCoord, Territory> tileIndex = state.Territories.BuildTileIndex();
+
         // Treasury is consulted by every solvency gate below. A
         // capital-less territory can't hold gold and can't collect
         // income — it dies on the next upkeep step regardless, so
@@ -117,7 +121,7 @@ public static class AiCommon
 
             Unit sourceUnit = tile.Unit;
             List<HexCoord> targets = MovementRules.ValidTargets(
-                sourceUnit.Level, territory, state.Grid, state.Territories);
+                sourceUnit.Level, territory, state.Grid, state.Territories, tileIndex);
 
             foreach (HexCoord target in targets)
             {
@@ -199,7 +203,7 @@ public static class AiCommon
             if (!captureSolvent && !repositionSolvent) continue;
 
             List<HexCoord> buyTargets = MovementRules.ValidTargets(
-                level, territory, state.Grid, state.Territories);
+                level, territory, state.Grid, state.Territories, tileIndex);
             foreach (HexCoord target in buyTargets)
             {
                 HexTile? targetTile = state.Grid.Get(target);
@@ -311,14 +315,15 @@ public static class AiCommon
         HexCoord unitCoord,
         Unit unit,
         Territory territory,
-        GameState state)
+        GameState state,
+        IReadOnlyDictionary<HexCoord, Territory>? tileIndex = null)
     {
         // No solvency gate: captures, chops, and grave clears don't change
         // upkeep at all (the unit was already paying upkeep). They can only
         // improve the economic situation (+1 income tile for captures/chops).
         // A bankrupt territory should still attack, so these are ungated.
         List<HexCoord> targets = MovementRules.ValidTargets(
-            unit.Level, territory, state.Grid, state.Territories);
+            unit.Level, territory, state.Grid, state.Territories, tileIndex);
         foreach (HexCoord target in targets)
         {
             if (target.Equals(unitCoord)) continue;
@@ -343,13 +348,14 @@ public static class AiCommon
         HexCoord unitCoord,
         Unit unit,
         Territory territory,
-        GameState state)
+        GameState state,
+        IReadOnlyDictionary<HexCoord, Territory>? tileIndex = null)
     {
         int gold = territory.HasCapital ? state.Treasury.GetGold(territory.Capital!.Value) : 0;
         (Difficulty difficulty, int netBefore) = EconomyBefore(territory, state);
 
         List<HexCoord> targets = MovementRules.ValidTargets(
-            unit.Level, territory, state.Grid, state.Territories);
+            unit.Level, territory, state.Grid, state.Territories, tileIndex);
         foreach (HexCoord target in targets)
         {
             if (target.Equals(unitCoord)) continue;
@@ -363,7 +369,7 @@ public static class AiCommon
                               - UpkeepRules.UpkeepFor(unit.Level, difficulty)
                               - UpkeepRules.UpkeepFor(destUnit.Level, difficulty);
             if (!UpkeepRules.SurvivesNextUpkeep(gold, netBefore - upkeepDelta)) continue;
-            if (!UnlocksMovementConsumingTarget(unit.Level, destUnit.Level, territory, state)) continue;
+            if (!UnlocksMovementConsumingTarget(unit.Level, destUnit.Level, territory, state, tileIndex)) continue;
 
             yield return new AiCandidate(new AiMoveAction(unitCoord, target), AiActionKind.Combine);
         }
@@ -376,7 +382,8 @@ public static class AiCommon
     /// </summary>
     public static IEnumerable<AiCandidate> EnumeratePhase2b(
         Territory territory,
-        GameState state)
+        GameState state,
+        IReadOnlyDictionary<HexCoord, Territory>? tileIndex = null)
     {
         if (!territory.HasCapital) yield break;
         int gold = state.Treasury.GetGold(territory.Capital!.Value);
@@ -403,7 +410,7 @@ public static class AiCommon
                                   - UpkeepRules.UpkeepFor(existingUnit.Level, difficulty)
                                   - buyUpkeep;
                 if (!UpkeepRules.SurvivesNextUpkeep(gold - cost, netBefore - upkeepDelta)) continue;
-                if (!UnlocksMovementConsumingTarget(level, existingUnit.Level, territory, state)) continue;
+                if (!UnlocksMovementConsumingTarget(level, existingUnit.Level, territory, state, tileIndex)) continue;
 
                 yield return new AiCandidate(
                     new AiBuyCombineAction(territory.Capital!.Value, coord, level),
@@ -427,7 +434,8 @@ public static class AiCommon
     /// </summary>
     public static IEnumerable<AiCandidate> EnumeratePhase3(
         Territory territory,
-        GameState state)
+        GameState state,
+        IReadOnlyDictionary<HexCoord, Territory>? tileIndex = null)
     {
         if (!territory.HasCapital) yield break;
         int gold = state.Treasury.GetGold(territory.Capital!.Value);
@@ -446,7 +454,7 @@ public static class AiCommon
             if (!UpkeepRules.SurvivesNextUpkeep(gold - cost, netBefore + 1 - levelUpkeep)) continue;
 
             List<HexCoord> targets = MovementRules.ValidTargets(
-                level, territory, state.Grid, state.Territories);
+                level, territory, state.Grid, state.Territories, tileIndex);
             foreach (HexCoord target in targets)
             {
                 if (covered.Contains(target)) continue;
@@ -514,11 +522,12 @@ public static class AiCommon
         HexCoord unitCoord,
         Unit unit,
         Territory territory,
-        GameState state)
+        GameState state,
+        IReadOnlyDictionary<HexCoord, Territory>? tileIndex = null)
     {
         bool unitIsDoomed = IsTideDoomed(state, unitCoord);
         List<HexCoord> targets = MovementRules.ValidTargets(
-            unit.Level, territory, state.Grid, state.Territories);
+            unit.Level, territory, state.Grid, state.Territories, tileIndex);
         foreach (HexCoord target in targets)
         {
             if (target.Equals(unitCoord)) continue;
@@ -560,17 +569,18 @@ public static class AiCommon
         UnitLevel sourceLevel,
         UnitLevel destLevel,
         Territory territory,
-        GameState state)
+        GameState state,
+        IReadOnlyDictionary<HexCoord, Territory>? tileIndex = null)
     {
         UnitLevel combinedLevel = sourceLevel.CombinedWith(destLevel);
         if (combinedLevel == sourceLevel && combinedLevel == destLevel) return false;
 
         var preCombine = new System.Collections.Generic.HashSet<HexCoord>(
-            MovementConsumingTargets(sourceLevel, territory, state));
-        foreach (HexCoord c in MovementConsumingTargets(destLevel, territory, state))
+            MovementConsumingTargets(sourceLevel, territory, state, tileIndex));
+        foreach (HexCoord c in MovementConsumingTargets(destLevel, territory, state, tileIndex))
             preCombine.Add(c);
 
-        foreach (HexCoord c in MovementConsumingTargets(combinedLevel, territory, state))
+        foreach (HexCoord c in MovementConsumingTargets(combinedLevel, territory, state, tileIndex))
         {
             if (!preCombine.Contains(c)) return true;
         }
@@ -578,10 +588,11 @@ public static class AiCommon
     }
 
     private static IEnumerable<HexCoord> MovementConsumingTargets(
-        UnitLevel level, Territory territory, GameState state)
+        UnitLevel level, Territory territory, GameState state,
+        IReadOnlyDictionary<HexCoord, Territory>? tileIndex = null)
     {
         foreach (HexCoord target in MovementRules.ValidTargets(
-            level, territory, state.Grid, state.Territories))
+            level, territory, state.Grid, state.Territories, tileIndex))
         {
             HexTile? tile = state.Grid.Get(target);
             if (tile == null) continue;

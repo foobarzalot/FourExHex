@@ -75,20 +75,25 @@ public static class MovementRules
     /// in <paramref name="attackerTerritory"/> could legally move to.
     /// The <paramref name="allTerritories"/> list is used to determine
     /// which territory each neighbor coord belongs to (needed for defense
-    /// radiation).
+    /// radiation). Callers that invoke this repeatedly against an
+    /// unchanged state (the AI's per-decision enumeration) pass a shared
+    /// <paramref name="tileIndex"/> to avoid rebuilding the whole-board
+    /// lookup per call; when null it is built here.
     /// </summary>
     public static List<HexCoord> ValidTargets(
         UnitLevel attackerLevel,
         Territory attackerTerritory,
         HexGrid grid,
-        IReadOnlyList<Territory> allTerritories)
+        IReadOnlyList<Territory> allTerritories,
+        IReadOnlyDictionary<HexCoord, Territory>? tileIndex = null)
     {
         var results = new List<HexCoord>();
         var own = new HashSet<HexCoord>(attackerTerritory.Coords);
 
         // tile -> territory lookup, for computing radiated defense on
         // potential capture targets.
-        Dictionary<HexCoord, Territory> tileToTerritory = allTerritories.BuildTileIndex();
+        IReadOnlyDictionary<HexCoord, Territory> tileToTerritory =
+            tileIndex ?? allTerritories.BuildTileIndex();
 
         // 1. Repositions inside own territory: empty tiles, graves, or
         //    trees. Graves don't block placement (a unit buries them);

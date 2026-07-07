@@ -132,7 +132,7 @@ public static class AiStateScorer
         }
         foreach (HexCoord neighbor in placement.Neighbors())
         {
-            if (!territory.Coords.Contains(neighbor)) continue;
+            if (!territory.Contains(neighbor)) continue;
             if (CoverageTileQualifies(neighbor, placement, territory, state.Grid, owner))
             {
                 count++;
@@ -164,7 +164,7 @@ public static class AiStateScorer
         foreach (HexCoord neighbor in tile.Neighbors())
         {
             if (neighbor.Equals(placement)) continue;
-            if (!territory.Coords.Contains(neighbor)) continue;
+            if (!territory.Contains(neighbor)) continue;
             HexTile? nt = grid.Get(neighbor);
             if (nt?.Occupant is Tower) return false;
         }

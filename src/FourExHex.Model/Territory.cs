@@ -14,12 +14,20 @@ public class Territory
 
     public bool HasCapital => Capital.HasValue;
 
+    // Membership only — iteration must go through Coords, whose order is a
+    // determinism-load-bearing tie-breaker and the save wire order.
+    private readonly HashSet<HexCoord> _coordSet;
+
     public Territory(PlayerId owner, IReadOnlyCollection<HexCoord> coords, HexCoord? capital = null)
     {
         Owner = owner;
         Coords = coords;
         Capital = capital;
+        _coordSet = new HashSet<HexCoord>(coords);
     }
+
+    /// <summary>O(1) membership test; equivalent to <c>Coords.Contains</c>.</summary>
+    public bool Contains(HexCoord coord) => _coordSet.Contains(coord);
 }
 
 public static class TerritoryExtensions

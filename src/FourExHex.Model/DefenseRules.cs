@@ -42,7 +42,7 @@ public static class DefenseRules
 
         foreach (HexCoord neighbor in coord.Neighbors())
         {
-            if (!territory.Coords.Contains(neighbor)) continue;
+            if (!territory.Contains(neighbor)) continue;
             HexTile? neighborTile = grid.Get(neighbor);
             if (neighborTile == null) continue;
             max = System.Math.Max(max, ContributionAt(neighborTile));
@@ -99,7 +99,7 @@ public static class DefenseRules
 
         HexTile? targetTile = grid.Get(target);
         if (targetTile != null
-            && targetTerritory.Coords.Contains(target)
+            && targetTerritory.Contains(target)
             && ContributionAt(targetTile) >= threshold)
         {
             yield return target;
@@ -107,7 +107,7 @@ public static class DefenseRules
 
         foreach (HexCoord neighbor in target.Neighbors())
         {
-            if (!targetTerritory.Coords.Contains(neighbor)) continue;
+            if (!targetTerritory.Contains(neighbor)) continue;
             HexTile? neighborTile = grid.Get(neighbor);
             if (neighborTile == null) continue;
             if (ContributionAt(neighborTile) >= threshold)

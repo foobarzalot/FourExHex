@@ -67,7 +67,7 @@ public sealed record SessionStateSnapshot(
             HexCoord anchor = SelectedAnchor.Value;
             foreach (Territory t in restoredTerritories)
             {
-                if (t.Coords.Contains(anchor))
+                if (t.Contains(anchor))
                 {
                     match = t;
                     break;
