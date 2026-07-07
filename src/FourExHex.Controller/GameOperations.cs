@@ -457,8 +457,10 @@ public class GameOperations
         LogGameEndDiagnostics(
             $"end-of-turn check for {_state.Turns.CurrentPlayer.Name}");
         LogTreeCensus();
-        // Rising Tides suppresses the sole-capital early win: the
-        // game ends only when one player is left standing. Viking Raiders
+        // Rising Tides swaps the end-of-turn sole-capital win for
+        // last-player-standing; the mid-turn domination check (HandleCapture)
+        // and the human claim-victory prompt still fire, so this is not the
+        // only end. Viking Raiders
         // suppresses EVERY win while the onslaught is live (raiders at sea,
         // landed, or in pending waves); after the threat clears, ordinary
         // freeform rules resume.

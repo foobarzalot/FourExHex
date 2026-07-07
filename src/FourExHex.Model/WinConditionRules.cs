@@ -86,8 +86,12 @@ public static class WinConditionRules
     }
 
     /// <summary>
-    /// "Last player standing" winner check used by Rising Tides,
-    /// where every early-win path is suppressed. Returns the sole owner that
+    /// "Last player standing" winner check used by Rising Tides in place
+    /// of the end-of-turn sole-capital <see cref="WinnerAtEndOfTurn"/> check.
+    /// Only that one path is swapped: Rising Tides still fires the mid-turn
+    /// <see cref="WinnerByDomination"/> check and the human claim-victory
+    /// prompt, so this is not the mode's only way to win. Returns the sole
+    /// owner that
     /// has a capital-bearing territory iff exactly one distinct owner does;
     /// null if two or more still hold a capital, or if none do (a degenerate
     /// all-singletons state — no winner is declared). Mirrors
