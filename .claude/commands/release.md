@@ -69,7 +69,24 @@ the commit/push and note that in the report.
   prerequisite errors in the script header and surface them if they occur.
 - Output: `build/android/FourExHex-release.apk`.
 
-## 6. Report
+## 6. Publish the APK as a GitHub Release — ALWAYS
+The release APK is `.gitignore`d (`build/`) and must never be committed into the
+repo tree — it's 80+ MB, git history is forever, and GitHub hard-rejects single
+files over 100 MB on push. The correct home for it is a **GitHub Release asset**
+(stored outside the git object database, up to 2 GB each). Always publish it here
+so testers have a stable download link:
+
+- Run `gh release create build-<N> build/android/FourExHex-release.apk --title "Build <N> (v<Marketing>)" --notes "Android release APK, build <N> (v<Marketing>). iOS build <N> is on TestFlight. Install: adb install -r FourExHex-release.apk"`
+  — where `<N>` is the build number from step 1 and `<Marketing>` is the
+  `AppVersion.Marketing` string.
+- If the `build-<N>` tag/release already exists (e.g. a re-run), upload the APK to
+  it instead of failing: `gh release upload build-<N> build/android/FourExHex-release.apk --clobber`.
+- Skip this step only if the Android build in step 5 failed (there's no APK to
+  publish) — note that in the report.
+- Confirm the asset attached (`gh release view build-<N> --json assets`) and
+  capture the release URL for the report.
+
+## 7. Report
 - State the single new build number both artifacts carry.
 - **iOS**: the TestFlight upload succeeded and sits in App Store Connect →
   TestFlight under "Processing" ~15–30 min before internal testers see it.
@@ -78,6 +95,8 @@ the commit/push and note that in the report.
   its `file -b` type line, and the install one-liner (uninstall first when
   switching from a debug-signed build):
   `"$HOME/Library/Android/sdk/platform-tools/adb" install -r build/android/FourExHex-release.apk`
+- **GitHub Release**: the `build-<N>` release URL with the APK attached as a
+  downloadable asset (from step 6).
 - If either platform's build/upload failed, report which step failed and the
   relevant log output — do not claim success. Note that a partial result is
   possible (e.g. iOS uploaded, Android failed): report each platform's outcome
