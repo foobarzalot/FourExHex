@@ -35,25 +35,7 @@ public static class UiStepper
         out LineEdit field,
         int captionFontSize = 24,
         Color? captionColor = null)
-        => BuildRow(label, initial, min, max, step, stops: null,
-            onChanged, out field, captionFontSize, captionColor);
-
-    /// <summary>
-    /// Explicit-stops variant: the value can only land on one of <paramref name="stops"/>
-    /// (which must be ascending), [−]/[+] move to the neighbouring stop, and typed
-    /// input snaps to the nearest stop. Use when the useful values aren't evenly
-    /// spaced — e.g. the clumping factor, whose visible effect is bunched near
-    /// the top (0, 50, 75, 90, 95, 100).
-    /// </summary>
-    public static HBoxContainer BuildStepperRow(
-        string label,
-        int initial,
-        int[] stops,
-        Action<int> onChanged,
-        out LineEdit field,
-        int captionFontSize = 24,
-        Color? captionColor = null)
-        => BuildRow(label, initial, stops[0], stops[^1], step: 0, stops,
+        => BuildRow(label, initial, min, max, step,
             onChanged, out field, captionFontSize, captionColor);
 
     private static HBoxContainer BuildRow(
@@ -62,7 +44,6 @@ public static class UiStepper
         int min,
         int max,
         int step,
-        int[]? stops,
         Action<int> onChanged,
         out LineEdit field,
         int captionFontSize,
@@ -85,7 +66,6 @@ public static class UiStepper
         valueField.SetMeta("min", min);
         valueField.SetMeta("max", max);
         valueField.SetMeta("step", step);
-        if (stops != null) valueField.SetMeta("stops", Variant.From(stops));
         field = valueField;
 
         void Commit(int raw) => CommitValue(valueField, raw, onChanged);
@@ -120,8 +100,7 @@ public static class UiStepper
         int next = Clamp(field, raw);
         SetValue(field, next);
         Log.Debug(Log.LogCategory.Hud,
-            $"UiStepper commit: raw={raw} -> {next} (prev={prev}{(next != prev ? ", changed" : "")}" +
-            $"{(GetStops(field) != null ? ", stops" : "")})");
+            $"UiStepper commit: raw={raw} -> {next} (prev={prev}{(next != prev ? ", changed" : "")})");
         if (next != prev) onChanged(next);
     }
 
@@ -133,18 +112,15 @@ public static class UiStepper
     }
 
     // Snap + clamp a value against this row's config — the math lives in the pure,
-    // unit-tested StepperMath; this only pulls min/max/step/stops from metadata.
+    // unit-tested StepperMath; this only pulls min/max/step from metadata.
     private static int Clamp(LineEdit field, int value) =>
         StepperMath.Clamp(value, (int)field.GetMeta("min", 0), (int)field.GetMeta("max", 100),
-            (int)field.GetMeta("step", 1), GetStops(field));
-
-    private static int[]? GetStops(LineEdit field) =>
-        field.HasMeta("stops") ? field.GetMeta("stops").AsInt32Array() : null;
+            (int)field.GetMeta("step", 1));
 
     // The committed value moved one step in direction dir (−1 down, +1 up).
     // Clamp() bounds the result on commit.
     private static int Neighbor(LineEdit field, int dir) =>
-        StepperMath.Neighbor(CurrentValue(field), dir, (int)field.GetMeta("step", 1), GetStops(field));
+        StepperMath.Neighbor(CurrentValue(field), dir, (int)field.GetMeta("step", 1));
 
     private static LineEdit BuildValueField()
     {

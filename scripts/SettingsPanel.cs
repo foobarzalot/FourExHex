@@ -393,9 +393,9 @@ public sealed partial class SettingsPanel : CanvasLayer
         ApplyCheckBoxStyle(_sfxCheckBox, UserSettings.SfxEnabled);
         _vfxCheckBox.ButtonPressed = UserSettings.VfxEnabled;
         ApplyCheckBoxStyle(_vfxCheckBox, UserSettings.VfxEnabled);
-        SelectItemById(_aiSpeedDropdown, (int)UserSettings.AiSpeed);
-        SelectItemById(_automateSpeedDropdown, (int)UserSettings.AutomateSpeed);
-        SelectItemById(_replaySpeedDropdown, (int)UserSettings.ReplaySpeed);
+        UiDropdown.SelectItemById(_aiSpeedDropdown, (int)UserSettings.AiSpeed);
+        UiDropdown.SelectItemById(_automateSpeedDropdown, (int)UserSettings.AutomateSpeed);
+        UiDropdown.SelectItemById(_replaySpeedDropdown, (int)UserSettings.ReplaySpeed);
     }
 
     public void Close()
@@ -506,24 +506,10 @@ public sealed partial class SettingsPanel : CanvasLayer
         {
             dropdown.AddItem(SpeedLabel(speed), (int)speed);
         }
-        SelectItemById(dropdown, (int)current);
+        UiDropdown.SelectItemById(dropdown, (int)current);
         dropdown.ItemSelected += _ => onSelected((PlaybackSpeed)dropdown.GetSelectedId());
         AudioBus.AttachClick(dropdown);
         return dropdown;
-    }
-
-    /// <summary>Select the item whose id matches <paramref name="id"/>
-    /// (OptionButton.Selected is an index, not an id).</summary>
-    private static void SelectItemById(OptionButton dropdown, int id)
-    {
-        for (int item = 0; item < dropdown.ItemCount; item++)
-        {
-            if (dropdown.GetItemId(item) == id)
-            {
-                dropdown.Selected = item;
-                return;
-            }
-        }
     }
 
     private static void ApplyCheckBoxStyle(Button box, bool pressed) =>

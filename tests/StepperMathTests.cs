@@ -14,7 +14,7 @@ public class StepperMathTests
     [InlineData(7, 0, 100, 1, 7)]     // step 1 is identity within range
     public void Clamp_Linear_SnapsToNearestStep(int value, int min, int max, int step, int expected)
     {
-        Assert.Equal(expected, StepperMath.Clamp(value, min, max, step, stops: null));
+        Assert.Equal(expected, StepperMath.Clamp(value, min, max, step));
     }
 
     [Theory]
@@ -23,48 +23,15 @@ public class StepperMathTests
     [InlineData(-50, 0, 100, 5, 0)]   // negative -> 0 guard then snap/clamp
     public void Clamp_Linear_ClampsIntoRange(int value, int min, int max, int step, int expected)
     {
-        Assert.Equal(expected, StepperMath.Clamp(value, min, max, step, stops: null));
+        Assert.Equal(expected, StepperMath.Clamp(value, min, max, step));
     }
 
     [Fact]
     public void Clamp_Linear_StepZeroLeavesValueUnsnappedButClamped()
     {
         // step 0 disables snapping; value still clamps to [min,max].
-        Assert.Equal(37, StepperMath.Clamp(37, 0, 100, 0, stops: null));
-        Assert.Equal(100, StepperMath.Clamp(250, 0, 100, 0, stops: null));
-    }
-
-    // ---- Clamp: explicit stops ------------------------------------------
-
-    [Theory]
-    [InlineData(0, 0)]
-    [InlineData(63, 75)]   // |50-63|=13 > |75-63|=12 -> 75
-    [InlineData(88, 90)]
-    [InlineData(1000, 100)] // beyond top stop -> top
-    [InlineData(-10, 0)]    // negative guard -> nearest is 0
-    public void Clamp_Stops_SnapsToNearestStop(int value, int expected)
-    {
-        int[] stops = { 0, 50, 75, 90, 95, 100 };
-        Assert.Equal(expected, StepperMath.Clamp(value, stops[0], stops[^1], step: 0, stops));
-    }
-
-    [Fact]
-    public void Clamp_Stops_TiePrefersLowerStop()
-    {
-        // value 25 is equidistant from 0 and 50; strict-less tie-break keeps the lower.
-        int[] stops = { 0, 50, 75, 90, 95, 100 };
-        Assert.Equal(0, StepperMath.Clamp(25, 0, 100, 0, stops));
-    }
-
-    // ---- NearestStopIndex ------------------------------------------------
-
-    [Fact]
-    public void NearestStopIndex_ReturnsClosestAscendingIndex()
-    {
-        int[] stops = { 0, 50, 75, 90, 95, 100 };
-        Assert.Equal(0, StepperMath.NearestStopIndex(stops, 10));
-        Assert.Equal(2, StepperMath.NearestStopIndex(stops, 80));
-        Assert.Equal(5, StepperMath.NearestStopIndex(stops, 200));
+        Assert.Equal(37, StepperMath.Clamp(37, 0, 100, 0));
+        Assert.Equal(100, StepperMath.Clamp(250, 0, 100, 0));
     }
 
     // ---- Neighbor: linear ------------------------------------------------
@@ -75,27 +42,7 @@ public class StepperMathTests
     public void Neighbor_Linear_MovesOneStep(int cur, int dir, int step, int expected)
     {
         // Neighbor does NOT clamp (the caller re-Clamps); it just offsets.
-        Assert.Equal(expected, StepperMath.Neighbor(cur, dir, step, stops: null));
-    }
-
-    // ---- Neighbor: stops -------------------------------------------------
-
-    [Fact]
-    public void Neighbor_Stops_MovesToAdjacentStopAndClampsAtEnds()
-    {
-        int[] stops = { 0, 50, 75, 90, 95, 100 };
-        Assert.Equal(75, StepperMath.Neighbor(50, +1, 0, stops));  // 50 -> next stop 75
-        Assert.Equal(50, StepperMath.Neighbor(75, -1, 0, stops));  // 75 -> prev stop 50
-        Assert.Equal(100, StepperMath.Neighbor(100, +1, 0, stops)); // top stop holds
-        Assert.Equal(0, StepperMath.Neighbor(0, -1, 0, stops));    // bottom stop holds
-    }
-
-    [Fact]
-    public void Neighbor_Stops_StartsFromNearestStopWhenCurrentIsOffGrid()
-    {
-        // cur 60 nearest is 50 (idx 1); +1 -> 75.
-        int[] stops = { 0, 50, 75, 90, 95, 100 };
-        Assert.Equal(75, StepperMath.Neighbor(60, +1, 0, stops));
+        Assert.Equal(expected, StepperMath.Neighbor(cur, dir, step));
     }
 
     // ---- ParseDigits -----------------------------------------------------

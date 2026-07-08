@@ -143,7 +143,7 @@ public sealed partial class MapGenSettingsPanel : CanvasLayer
         UiStepper.Resync(_treesField, GameSettings.TreeDensity);
         UiStepper.Resync(_mountainsField, GameSettings.MountainDensity);
         UiStepper.Resync(_goldField, GameSettings.GoldDensity);
-        UiDropdown.Resync(_clumpingField, GameSettings.ClumpingFactor);
+        UiDropdown.SelectItemById(_clumpingField, GameSettings.ClumpingFactor);
         IsOpen = true;
         Visible = true;
         Log.Debug(Log.LogCategory.MapGen, "MapGenSettingsPanel: opened");

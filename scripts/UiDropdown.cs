@@ -11,7 +11,8 @@ using Godot;
 ///
 /// Each item's <b>id is its underlying value</b>, so the selection round-trips via
 /// <see cref="OptionButton.GetSelectedId"/> independent of item order, and
-/// <see cref="Resync"/> can re-select by value without firing the change callback.
+/// <see cref="SelectItemById"/> can (re-)select by value without firing the change
+/// callback — the shared home for that scan, used by every OptionButton host.
 /// </summary>
 public static class UiDropdown
 {
@@ -50,10 +51,6 @@ public static class UiDropdown
         return row;
     }
 
-    /// <summary>Re-select the item whose id matches <paramref name="id"/> without
-    /// firing the change callback (mirrors <see cref="UiStepper.Resync"/>).</summary>
-    public static void Resync(OptionButton dropdown, int id) => SelectItemById(dropdown, id);
-
     private static OptionButton BuildDropdown(
         (string label, int id)[] items, int initialId, Action<int> onSelected)
     {
@@ -83,8 +80,11 @@ public static class UiDropdown
     }
 
     /// <summary>Select the item whose id matches <paramref name="id"/>
-    /// (<see cref="OptionButton.Selected"/> is an index, not an id).</summary>
-    private static void SelectItemById(OptionButton dropdown, int id)
+    /// (<see cref="OptionButton.Selected"/> is an index, not an id). Setting
+    /// <c>Selected</c> does not raise <c>ItemSelected</c>, so this is safe for
+    /// (re-)syncing a dropdown to a model value without firing the change
+    /// callback.</summary>
+    public static void SelectItemById(OptionButton dropdown, int id)
     {
         for (int item = 0; item < dropdown.ItemCount; item++)
         {

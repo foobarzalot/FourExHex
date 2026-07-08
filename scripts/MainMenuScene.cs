@@ -882,7 +882,7 @@ public partial class MainMenuScene : Control
         dropdown.AddItem("Rising Tides", (int)GameMode.RisingTides);
         dropdown.AddItem("Fog Of War", (int)GameMode.FogOfWar);
         dropdown.AddItem("Viking Raiders", (int)GameMode.VikingRaiders);
-        SelectItemById(dropdown, (int)GameSettings.Mode);
+        UiDropdown.SelectItemById(dropdown, (int)GameSettings.Mode);
         dropdown.ItemSelected += _ =>
         {
             GameSettings.Mode = (GameMode)dropdown.GetSelectedId();
@@ -908,7 +908,7 @@ public partial class MainMenuScene : Control
         PlayerKind currentKind = slot < GameSettings.PlayerKinds.Length
             ? GameSettings.PlayerKinds[slot]
             : PlayerKind.Computer;
-        SelectItemById(dropdown, RoleIdForKind(currentKind));
+        UiDropdown.SelectItemById(dropdown, RoleIdForKind(currentKind));
         _roleButtons[slot] = dropdown;
         // Lock the difficulty dropdown for non-Human rows, and re-gate the
         // forward (Next) button whenever the active-player count can change.
@@ -934,7 +934,7 @@ public partial class MainMenuScene : Control
         Difficulty currentDifficulty = slot < GameSettings.Difficulties.Length
             ? GameSettings.Difficulties[slot]
             : Difficulty.Soldier;
-        SelectItemById(dropdown, (int)currentDifficulty);
+        UiDropdown.SelectItemById(dropdown, (int)currentDifficulty);
         _difficultyButtons[slot] = dropdown;
         return dropdown;
     }
@@ -1196,7 +1196,7 @@ public partial class MainMenuScene : Control
         bool isHuman = _roleButtons[slot].GetSelectedId() == HumanId;
         if (!isHuman && (Difficulty)difficultyDropdown.GetSelectedId() != Difficulty.Soldier)
         {
-            SelectItemById(difficultyDropdown, (int)Difficulty.Soldier);
+            UiDropdown.SelectItemById(difficultyDropdown, (int)Difficulty.Soldier);
             Log.Debug(Log.LogCategory.Input,
                 $"MainMenu: {GameSettings.PlayerConfig[slot].Name} difficulty reset to "
                 + "Soldier (non-Human slot)");
@@ -1211,7 +1211,7 @@ public partial class MainMenuScene : Control
     /// <see cref="ApplyDifficultyLock"/>). Any other mode re-enables the role
     /// dropdowns, restoring free roster editing. Driven off the shared
     /// <c>_roleButtons</c> array so it covers both the portrait and landscape
-    /// player pages. Forced <see cref="SelectItemById"/> does not raise
+    /// player pages. Forced <see cref="UiDropdown.SelectItemById"/> does not raise
     /// <c>ItemSelected</c>, so this also persists the roster and re-gates Next.</summary>
     private void ApplyGameModeRoleLock()
     {
@@ -1223,7 +1223,7 @@ public partial class MainMenuScene : Control
             if (fog)
             {
                 int forcedId = slot == 0 ? HumanId : ComputerId;
-                if (role.GetSelectedId() != forcedId) SelectItemById(role, forcedId);
+                if (role.GetSelectedId() != forcedId) UiDropdown.SelectItemById(role, forcedId);
             }
             role.Disabled = fog;
             ApplyDifficultyLock(slot);
@@ -1237,20 +1237,6 @@ public partial class MainMenuScene : Control
         }
     }
 
-    /// <summary>Select the OptionButton entry whose item ID matches
-    /// <paramref name="id"/>. Selected is an index, so callers can't
-    /// assume item order == id order.</summary>
-    private static void SelectItemById(OptionButton button, int id)
-    {
-        for (int item = 0; item < button.ItemCount; item++)
-        {
-            if (button.GetItemId(item) == id)
-            {
-                button.Selected = item;
-                return;
-            }
-        }
-    }
 
     /// <summary>Build the campaign screen for the current orientation and
     /// wire its navigation. Hidden until <see cref="ShowCampaign"/>.</summary>
