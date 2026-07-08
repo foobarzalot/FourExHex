@@ -1149,9 +1149,13 @@ Replay reuses the live `ExecuteAi*` helpers — same captures, FX, `HandleCaptur
   phases **1 → 2a → 2b → 3 → 4a → 4b**, committing to the first yielding an
   action; a territory is visited only when all phases empty. Within a phase,
   units iterate power-then-coord order, all candidates scored, best delta wins.
-  **Phases 1 and 2a take their best legal candidate regardless of delta sign**
-  (`BestPositiveDelta` with `threshold = int.MinValue`); phases 2b/3/4 keep the
-  strictly-positive (`> 0`) gate. Ties resolve to the first-yielded candidate.
+  **Phases 1, 2a, 2b, and 3 take their best legal candidate regardless of
+  delta sign** (`BestPositiveDelta` with `threshold = int.MinValue`) — an
+  offensive/unlock action is never declined for the status quo; the spend
+  phases' economics are guarded by the enumerators' solvency gates, not the
+  score. Only the defense-only phases 4a/4b keep the strictly-positive (`> 0`)
+  gate (doing nothing is a valid defensive choice). Ties resolve to the
+  first-yielded candidate.
   `BestPositiveDelta` logs one `[candidate]` verdict per scored candidate
   (phase, action, delta, threshold, accepted/rejected) at **Ai:Trace** — the
   firehose tier, deliberately below the `Ai:Debug` that `FOUREXHEX_6AI` pins;

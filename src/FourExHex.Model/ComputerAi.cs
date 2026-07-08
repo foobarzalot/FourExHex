@@ -24,15 +24,16 @@ using System.Linq;
 /// yields an action returns immediately — lower phases never run for
 /// that territory in that call.
 ///
-/// Phases 1 and 2a (free captures/chops/grave-clears and
-/// combine-to-unlock) commit to their best legal candidate
+/// Phases 1, 2a, 2b, and 3 (free captures/chops/grave-clears,
+/// combines, and buy-to-attack) commit to their best legal candidate
 /// REGARDLESS of delta sign — an offensive or unlock action is never
 /// declined in favor of the status quo, even when exposing a border
-/// makes the immediate delta ≤ 0 (chopping a tree off a defended tile,
-/// for example). Phases 2b/3/4 keep the strictly-positive (> 0) gate:
-/// 2b (buy-combine) and 3 (buy-capture/chop) are always-positive under
-/// AiStateScorer anyway, and 4a/4b (towers, defensive repositions) are
-/// genuinely optional, so doing nothing is a valid choice for them.
+/// or forfeiting an enemy fragment's negative value makes the
+/// immediate delta ≤ 0. The enumerators' solvency gates
+/// (CanAfford + SurvivesNextUpkeep), not the score, are what guard
+/// the economics of the spend phases. Only phases 4a/4b (towers,
+/// defensive repositions) keep the strictly-positive (> 0) gate:
+/// defense is genuinely optional, so doing nothing is a valid choice.
 ///
 /// A territory is marked visited (exhausted) only when all phases
 /// produce no candidate, ensuring that a later territory's action
@@ -43,10 +44,11 @@ public static class ComputerAi
     /// <summary>
     /// Pick the best single action for <paramref name="forPlayer"/>
     /// under the stepwise-greedy phase ordering, or null if no
-    /// unvisited territory has any legal positive-delta action.
+    /// unvisited territory yields an action (no legal candidate in
+    /// phases 1–3, no positive-delta candidate in phase 4).
     /// <paramref name="visitedCapitals"/> is mutated: territories
-    /// with no positive-delta action in any phase are recorded so
-    /// subsequent calls skip them.
+    /// yielding no action in any phase are recorded so subsequent
+    /// calls skip them.
     /// </summary>
     public static AiAction? ChooseNextAction(
         GameState state,
@@ -115,17 +117,19 @@ public static class ComputerAi
                     if (p2a != null) { _ = rng; return p2a; }
                 }
 
-                // Phase 2b: buy-and-combine-to-unlock (strictly-positive gate)
+                // Phase 2b: buy-and-combine-to-unlock — never declined for
+                // the status quo (solvency lives in the enumerator's gates)
                 {
                     AiAction? p2b = TryPhase("p2b", AiCommon.EnumeratePhase2b(t, state, tileIndex),
-                        0, methodStart, baseScore, forPlayer, state, prof);
+                        int.MinValue, methodStart, baseScore, forPlayer, state, prof);
                     if (p2b != null) { _ = rng; return p2b; }
                 }
 
-                // Phase 3: buy-to-capture / buy-to-chop (strictly-positive gate)
+                // Phase 3: buy-to-capture / buy-to-chop — never declined for
+                // the status quo (solvency lives in the enumerator's gates)
                 {
                     AiAction? p3 = TryPhase("p3", AiCommon.EnumeratePhase3(t, state, tileIndex),
-                        0, methodStart, baseScore, forPlayer, state, prof);
+                        int.MinValue, methodStart, baseScore, forPlayer, state, prof);
                     if (p3 != null) { _ = rng; return p3; }
                 }
 
@@ -199,10 +203,12 @@ public static class ComputerAi
     /// Score every candidate and return the action with the best delta
     /// that strictly exceeds <paramref name="threshold"/>, or null if
     /// none does. Pass <c>0</c> for the strictly-positive gate (a
-    /// candidate must improve the score to win); pass
+    /// candidate must improve the score to win) — used by the
+    /// defense-only phases 4a/4b, where doing nothing is valid; pass
     /// <see cref="int.MinValue"/> to force the best legal candidate
-    /// regardless of sign — used by phases 1 and 2a so an offensive /
-    /// unlock action is never declined in favor of the status quo.
+    /// regardless of sign — used by phases 1, 2a, 2b, and 3 so an
+    /// offensive / unlock action is never declined in favor of the
+    /// status quo.
     /// Ties resolve to the first-yielded candidate (preserving
     /// power-then-coord order). Accumulates profiling counters in the
     /// caller's locals via ref.
@@ -253,7 +259,7 @@ public static class ComputerAi
             bool accepted = delta > bestDelta;
             // Per-candidate verdict — the ground truth for "why did the
             // AI decline this action". A candidate is rejected either by
-            // the phase threshold (strictly-positive gate for the spend
+            // the phase threshold (strictly-positive gate for the defense
             // phases) or by a better sibling in the same phase. Trace,
             // not Debug: one line per scored candidate is a firehose
             // that would bloat FOUREXHEX_6AI logs (which pin Ai:Debug);

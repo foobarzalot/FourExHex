@@ -1419,11 +1419,15 @@ public class ComputerAiTests
     }
 
     // -----------------------------------------------------------------------
-    // Phases 1 & 2a never decline a legal action for the status quo.
-    // A free chop / unlock-combine must be taken even when its score delta is
-    // <= 0 (the status quo must never win over an offensive/unlock action).
-    // Phases 2b/3 are provably always-positive under the scorer, so they keep
-    // the strictly-positive gate and have no red->green test here.
+    // Phases 1, 2a, 2b, and 3 never decline a legal action for the status
+    // quo: a free chop / unlock-combine / spend-to-attack must be taken even
+    // when its score delta is <= 0. Only phase 4 (towers, defensive
+    // repositions) keeps the strictly-positive gate — doing nothing is a
+    // valid defensive choice. Phase 2b has no red->green test because no
+    // negative-delta buy-combine state is constructible under the scorer
+    // (no tile is vacated and no enemy territory is touched, so the
+    // unit-value gain always beats the clamped income loss); its threshold
+    // expresses intent and guards against future scorer changes.
     // -----------------------------------------------------------------------
 
     [Fact]
@@ -1517,6 +1521,72 @@ public class ComputerAiTests
         bool destIsRedUnit = grid.Get(mv.Destination)?.Unit?.Owner == Red;
         Assert.True(sourceIsRedUnit && destIsRedUnit,
             $"expected Red-unit→Red-unit combine; got {mv.Source}→{mv.Destination}");
+    }
+
+    [Fact]
+    public void ChooseNextAction_Phase3ForcesBuyCaptureEvenWhenDeltaNotPositive()
+    {
+        // Issue #129 analog: the only phase-3 candidate is a buy-Recruit
+        // capture of a Blue SINGLETON fragment, and its delta is negative —
+        // the strictly-positive gate used to decline it and the AI idled
+        // with an affordable capture on the board.
+        //
+        // Red strip (0,0)..(3,0) — capital (0,0), tower (2,0) so border
+        // (3,0) is defended in both states. Blue singleton X=(4,0). Green
+        // (third player) owns X's five other neighbors; the two that touch
+        // Red — (4,-1),(3,1) — carry Green Recruits (defense 1) so a Red
+        // Recruit can't capture them: X is the ONLY capture target. Gold 10
+        // affords exactly a Recruit (tower 15 and Soldier 20 are out).
+        //
+        // Delta for buy-Recruit onto X: +10 tile, +4 recruit value,
+        // -1 net income (+1 tile, -2 upkeep), -12 enemy-edge exposure
+        // (3 edges before, 7 after — X faces five Green tiles), +2 contested
+        // defense (X at defense 1), -4 fragment forfeiture (the singleton's
+        // 10+1-15=-4 value stops being subtracted) = -1. Phase 3 must commit
+        // to it anyway: a spend-to-attack is never declined for the status quo.
+        var grid = new HexGrid();
+        grid.Add(new HexTile(new HexCoord(0, 0), Red));    // capital (lex-min empty)
+        grid.Add(new HexTile(new HexCoord(1, 0), Red));
+        grid.Add(new HexTile(new HexCoord(2, 0), Red));    // tower
+        grid.Add(new HexTile(new HexCoord(3, 0), Red));    // border
+        grid.Add(new HexTile(new HexCoord(4, 0), Blue));   // X — the singleton
+        PlayerId green = PlayerId.FromIndex(2);
+        grid.Add(new HexTile(new HexCoord(5, 0), green));
+        grid.Add(new HexTile(new HexCoord(4, 1), green));
+        grid.Add(new HexTile(new HexCoord(5, -1), green));
+        grid.Add(new HexTile(new HexCoord(4, -1), green)); // touches Red (3,0)
+        grid.Add(new HexTile(new HexCoord(3, 1), green));  // touches Red (3,0)
+        grid.Get(new HexCoord(2, 0))!.Occupant = new Tower();
+        grid.Get(new HexCoord(4, -1))!.Occupant = new Unit(green, UnitLevel.Recruit);
+        grid.Get(new HexCoord(3, 1))!.Occupant = new Unit(green, UnitLevel.Recruit);
+
+        GameState state = BuildState(grid,
+            new Player("Red", PlayerId.FromIndex(0)),
+            new Player("Blue", PlayerId.FromIndex(1)),
+            new Player("Green", green));
+        Territory red = state.Territories.First(t => t.Owner == Red);
+        state.Treasury.SetGold(red.Capital!.Value, 10);
+
+        // Premise guards: X's capture is the sole phase-3 candidate, and its
+        // simulated delta is <= 0 (otherwise this test isn't exercising the
+        // gate at all and the fixture has drifted).
+        List<AiCandidate> p3 = AiCommon.EnumeratePhase3(red, state).ToList();
+        AiCandidate only = Assert.Single(p3);
+        AiBuyUnitAction buy = Assert.IsType<AiBuyUnitAction>(only.Action);
+        Assert.Equal(new HexCoord(4, 0), buy.Destination);
+        int baseScore = AiStateScorer.Score(state, Red);
+        GameState clone = AiSimulator.Clone(state);
+        AiSimulator.Apply(only.Action, clone);
+        int delta = AiStateScorer.Score(clone, Red) - baseScore;
+        Assert.True(delta <= 0,
+            $"fixture drift: expected a non-positive phase-3 delta, got {delta}");
+
+        AiAction? result = ComputerAi.ChooseNextAction(
+            state, Red, new HashSet<HexCoord>(), new Random(0));
+
+        AiBuyUnitAction chosen = Assert.IsType<AiBuyUnitAction>(result);
+        Assert.Equal(new HexCoord(4, 0), chosen.Destination);
+        Assert.Equal(UnitLevel.Recruit, chosen.Level);
     }
 
     // --- Rising Tides evacuation -----------------------------------------
