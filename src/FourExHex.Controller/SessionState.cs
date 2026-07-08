@@ -135,6 +135,41 @@ public class SessionState
     /// </summary>
     public HashSet<HexCoord> VisitedTerritoryCapitals { get; } = new HashSet<HexCoord>();
 
+    /// <summary>
+    /// Capital coords of every territory the human has selected this
+    /// turn — the turn-scoped "visited" record behind the visited
+    /// capital-highlight suppression and the all-visited End Turn CTA.
+    /// Unlike <see cref="VisitedTerritoryCapitals"/> (the Tab-cycle
+    /// round tracker, which resets whenever a full cycle exhausts),
+    /// this set is cleared only at the start of a player's turn;
+    /// mid-turn the only way back is undo. Keyed by capital coord
+    /// because territory objects are rebuilt on every mutation.
+    /// Round-trips through <see cref="SessionStateSnapshot"/> for
+    /// undo/redo.
+    /// </summary>
+    public HashSet<HexCoord> VisitedThisTurnCapitals { get; } = new HashSet<HexCoord>();
+
+    /// <summary>
+    /// True while the current selection targeted a territory that was
+    /// already in <see cref="VisitedThisTurnCapitals"/> when it was
+    /// selected — a revisit. Drives the Next-Territory CTA ("you've
+    /// been here already; move on"). False for first visits and null
+    /// selections. Round-trips through <see cref="SessionStateSnapshot"/>
+    /// for undo/redo.
+    /// </summary>
+    public bool SelectionWasRevisit { get; set; }
+
+    /// <summary>
+    /// Sticky End Turn CTA: set the first time the End Turn highlight
+    /// condition holds on a human turn (every actionable territory
+    /// visited and the selected one exhausted/deselected — or nothing
+    /// actionable at all), and kept lit from then on regardless of
+    /// later selections. Cleared only at the start of a player's turn
+    /// or by undo unwinding past the step that lit it (it round-trips
+    /// through <see cref="SessionStateSnapshot"/>).
+    /// </summary>
+    public bool EndTurnCtaLatched { get; set; }
+
     /// <summary>Turn-scoped undo history. Cleared at EndTurn.</summary>
     public UndoStack<UndoEntry> Undo { get; } = new UndoStack<UndoEntry>();
 

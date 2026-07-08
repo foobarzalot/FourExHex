@@ -445,7 +445,8 @@ public sealed partial class MapEditorPanel : Node2D
         // capitals come from RefreshOccupantVisuals, which is normally
         // driven by GameController. Pass null currentPlayer so no
         // CTA pulsing fires (no "current player" exists in the editor).
-        Map.RefreshOccupantVisuals(currentPlayer: null, state.Treasury);
+        Map.RefreshOccupantVisuals(currentPlayer: null, state.Treasury,
+            new HashSet<HexCoord>());
 
         UndoStateChanged?.Invoke();
     }

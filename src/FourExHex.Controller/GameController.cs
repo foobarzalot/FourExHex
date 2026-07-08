@@ -879,19 +879,45 @@ public class GameController
     }
 
     /// <summary>
-    /// Record <paramref name="territory"/> as visited this turn for
-    /// Tab-cycle ordering. Any selection counts — Tab, Shift+Tab,
-    /// or a direct click — so "untouched" means the player hasn't been
-    /// there at all. Keyed by capital coord; capital-less territories
-    /// (singletons) never participate in the cycle and are skipped.
+    /// Record <paramref name="territory"/> as visited this turn — in the
+    /// Tab-cycle round set (<see cref="SessionState.VisitedTerritoryCapitals"/>,
+    /// drives unvisited-first ordering) AND the turn-scoped set
+    /// (<see cref="SessionState.VisitedThisTurnCapitals"/>, drives the
+    /// capital-highlight suppression and the all-visited End Turn CTA).
+    /// Any selection counts — Tab, Shift+Tab, or a direct click — so
+    /// "untouched" means the player hasn't been there at all. Also
+    /// maintains <see cref="SessionState.SelectionWasRevisit"/>: the flag
+    /// flips only when the selection changes territory (clicks within
+    /// the already-selected territory preserve it), and is true iff the
+    /// newly selected territory was already visited this turn. Keyed by
+    /// capital coord; capital-less territories (singletons) never
+    /// participate and clear the revisit flag like a null selection.
     /// </summary>
     private void MarkSelectedVisited(Territory? territory)
     {
-        if (territory?.Capital is not HexCoord capital) return;
+        if (territory?.Capital is not HexCoord capital)
+        {
+            _session.SelectionWasRevisit = false;
+            return;
+        }
+        bool sameAsCurrent = _session.SelectedTerritory?.Capital == capital;
+        if (!sameAsCurrent)
+        {
+            _session.SelectionWasRevisit = _session.VisitedThisTurnCapitals.Contains(capital);
+            if (_session.SelectionWasRevisit)
+            {
+                Log.Debug(Log.LogCategory.Input, $"[visited] revisit of capital {capital}");
+            }
+        }
         if (_session.VisitedTerritoryCapitals.Add(capital))
         {
             Log.Debug(Log.LogCategory.Input,
-                $"[visited] += capital {capital} ({_session.VisitedTerritoryCapitals.Count} this turn)");
+                $"[visited] += capital {capital} ({_session.VisitedTerritoryCapitals.Count} this cycle round)");
+        }
+        if (_session.VisitedThisTurnCapitals.Add(capital))
+        {
+            Log.Debug(Log.LogCategory.Input,
+                $"[visited] turn-visited += capital {capital} ({_session.VisitedThisTurnCapitals.Count} this turn)");
         }
     }
 
@@ -1678,9 +1704,43 @@ public class GameController
             _map.RebuildAfterTerritoryChange();
             _ops.RefreshSilentMode();
         }
+        // Automation ran to completion: it has toured (or declined)
+        // every remaining action, so mark every still-actionable
+        // territory visited — the all-visited End Turn CTA must light
+        // even for territories the chooser never acted on. TrackHandler-
+        // wrapped so the marking is one undoable step like the loop's
+        // own selections.
+        if (exhausted && !_state.Turns.CurrentPlayer.IsAi)
+        {
+            TrackHandler(MarkAllActionableVisitedOnExhaustion);
+        }
         // Restore the highlight to the player's own selection (clears
         // the loop's acting-territory highlight) and un-toggle the button.
         _ops.ShowHighlightAndRefresh(_session.SelectedTerritory);
+    }
+
+    /// <summary>
+    /// Union every actionable current-player territory into the
+    /// turn-scoped visited set. Only called when automation stops on
+    /// "exhausted" (the chooser returned null with actions possibly
+    /// still available).
+    /// </summary>
+    private void MarkAllActionableVisitedOnExhaustion()
+    {
+        int added = 0;
+        foreach (Territory territory in _state.Territories)
+        {
+            if (territory.Owner != _state.Turns.CurrentPlayer.Id) continue;
+            if (territory.Capital is not HexCoord capital) continue;
+            if (!_ops.TerritoryHasAvailableAction(territory)) continue;
+            if (_session.VisitedThisTurnCapitals.Add(capital)) added++;
+        }
+        if (added > 0)
+        {
+            Log.Debug(Log.LogCategory.Automate,
+                $"[automate] exhausted → turn-visited += {added} actionable territories " +
+                $"({_session.VisitedThisTurnCapitals.Count} total)");
+        }
     }
 
     /// <summary>

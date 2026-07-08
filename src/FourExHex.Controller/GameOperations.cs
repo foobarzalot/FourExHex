@@ -539,6 +539,18 @@ public class GameOperations
                 $"[visited] cleared ({_session.VisitedTerritoryCapitals.Count} entries)");
             _session.VisitedTerritoryCapitals.Clear();
         }
+        // The turn-scoped visited set (capital-highlight suppression +
+        // all-visited End Turn CTA) resets on the same per-turn funnel.
+        // Unlike the cycle set above, nothing else clears it mid-turn —
+        // only undo can shrink it once the turn is underway.
+        if (_session.VisitedThisTurnCapitals.Count > 0)
+        {
+            Log.Debug(Log.LogCategory.Input,
+                $"[visited] turn-visited cleared ({_session.VisitedThisTurnCapitals.Count} entries)");
+            _session.VisitedThisTurnCapitals.Clear();
+        }
+        _session.SelectionWasRevisit = false;
+        _session.EndTurnCtaLatched = false;
         // Toggle the view's silent flag for the player about to act,
         // BEFORE PlayBankruptcy below.
         RefreshSilentMode();
@@ -1002,7 +1014,22 @@ public class GameOperations
         // turns. null = fog off → the view renders everything normally.
         _map.ShowFog(ComputeFogView());
         long tOccupants = Log.Stamp();
-        _map.RefreshOccupantVisuals(_state.Turns.CurrentPlayer.Id, _state.Treasury);
+        // Visited capitals lose their pending-action highlight — except
+        // the one the player is actively working: a newly-visited (not
+        // revisited) selected territory keeps its capital lit until its
+        // actions run out (the view's own affordability check ends the
+        // pulse) or it stops being the selection.
+        IReadOnlySet<HexCoord> suppressedCapitals = _session.VisitedThisTurnCapitals;
+        if (!_session.SelectionWasRevisit
+            && _session.SelectedTerritory?.Capital is HexCoord workedCapital
+            && suppressedCapitals.Contains(workedCapital))
+        {
+            var minusWorked = new HashSet<HexCoord>(suppressedCapitals);
+            minusWorked.Remove(workedCapital);
+            suppressedCapitals = minusWorked;
+        }
+        _map.RefreshOccupantVisuals(_state.Turns.CurrentPlayer.Id, _state.Treasury,
+            suppressedCapitals);
         Log.Since(Log.LogCategory.Capture, "[hitch] RefreshOccupantVisuals", tOccupants);
         // Rising Tides: telegraph the current player's locked tide
         // forecast for the whole turn ("these tiles erode at turn end"). Empty
@@ -1013,22 +1040,51 @@ public class GameOperations
         // clears any prior glyphs.
         _map.ShowSeaVikings(_state.Vikings.AtSea, _state.Vikings.SeaGraves);
         // End Turn CTA when the current player has nothing actionable
-        // left. Lives here (not inside _hud.Refresh) so Tutorial Preview's
-        // onAfterRefresh callback can overwrite it when the next scripted
-        // beat is End Turn — "last write wins" with the preview cue.
-        _hud.SetCta(CtaButton.EndTurn, !hasActionable, pulse: false);
-        // Next-Territory CTA: highlight the star when the current human
-        // player has somewhere actionable to jump to but their current
-        // selection (if any) is itself exhausted. Suppressed on AI turns
-        // — the star is a human-input affordance. Same "last write wins"
-        // policy as EndTurn so Tutorial Preview can override.
+        // left, OR (human only) when every actionable territory has been
+        // visited this turn AND the player isn't still working the
+        // selected one — "you've seen everything and finished (or left)
+        // the last stop; end the turn". A completed automation run
+        // (exhausted latch) counts as finished regardless of what it
+        // left selected; the latch clears on any manual mutation, undo/
+        // redo, or turn end. Lives here (not inside _hud.Refresh) so
+        // Tutorial Preview's onAfterRefresh callback can overwrite it
+        // when the next scripted beat is End Turn — "last write wins"
+        // with the preview cue.
         bool isHuman = !_state.Turns.CurrentPlayer.IsAi;
         Territory? sel = _session.SelectedTerritory;
         bool selExhausted = sel == null || !TerritoryHasAvailableAction(sel);
-        bool nextCta = isHuman && hasActionable && selExhausted;
+        bool allVisited = isHuman && hasActionable && AllActionableTerritoriesVisited();
+        bool endTurnShouldLight = !hasActionable
+            || (allVisited && (selExhausted || _isAutomateExhausted()));
+        // Sticky: once lit on a human turn the CTA latches, surviving
+        // later selections. The latch lives in SessionState and rides
+        // the undo snapshot, so undoing past the step that lit it (or
+        // starting the next turn) is the only way back to dark.
+        if (isHuman && endTurnShouldLight && !_session.EndTurnCtaLatched)
+        {
+            _session.EndTurnCtaLatched = true;
+            Log.Debug(Log.LogCategory.Hud, "[cta] EndTurn latched");
+        }
+        // Human-only, like every HUD affordance: AI turns keep the CTA
+        // dark even when the AI has nothing actionable.
+        bool endTurnCta = isHuman && (endTurnShouldLight || _session.EndTurnCtaLatched);
+        _hud.SetCta(CtaButton.EndTurn, endTurnCta, pulse: false);
+        // Next-Territory CTA: highlight the star when the current human
+        // player has somewhere actionable to jump to but their current
+        // selection (if any) is itself exhausted or is a revisit of a
+        // territory already toured this turn. Suppressed on AI turns —
+        // the star is a human-input affordance — and whenever the End
+        // Turn CTA holds (one clear signal wins). Same "last write wins"
+        // policy as EndTurn so Tutorial Preview can override.
+        bool nextCta = isHuman && hasActionable
+            && (selExhausted || _session.SelectionWasRevisit)
+            && !endTurnCta;
         _hud.SetCta(CtaButton.NextTerritory, nextCta, pulse: false);
         Log.Debug(Log.LogCategory.Hud,
-            $"[cta] NextTerritory={nextCta} (isHuman={isHuman}, hasActionable={hasActionable}, selExhausted={selExhausted})");
+            $"[cta] EndTurn={endTurnCta} NextTerritory={nextCta} (isHuman={isHuman}, " +
+            $"hasActionable={hasActionable}, allVisited={allVisited}, " +
+            $"selExhausted={selExhausted}, revisit={_session.SelectionWasRevisit}, " +
+            $"automateExhausted={_isAutomateExhausted()})");
         // Automate toggle: enabled on a human turn with actions remaining
         // (or while running, so Stop stays reachable); running while the
         // loop is active. Hidden outright (not drawn) in the tutorial
@@ -1207,6 +1263,30 @@ public class GameOperations
             }
         }
         return false;
+    }
+
+    /// <summary>
+    /// True iff every current-player territory that still has an
+    /// available action (<see cref="TerritoryHasAvailableAction"/>) has
+    /// been visited this turn. Vacuously true with nothing actionable.
+    /// A capital-less (singleton) territory with an unmoved unit can
+    /// never be visited, so it conservatively holds the CTA off until
+    /// the unit moves.
+    /// </summary>
+    private bool AllActionableTerritoriesVisited()
+    {
+        PlayerId color = _state.Turns.CurrentPlayer.Id;
+        foreach (Territory territory in _state.Territories)
+        {
+            if (territory.Owner != color) continue;
+            if (!TerritoryHasAvailableAction(territory)) continue;
+            if (territory.Capital is not HexCoord capital
+                || !_session.VisitedThisTurnCapitals.Contains(capital))
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     /// <summary>

@@ -108,7 +108,10 @@ public class SessionStateSnapshotTests
             Mode: SessionState.ActionMode.BuyingRecruit,
             MoveSource: null,
             RepeatedMovement: false,
-            VisitedCapitals: System.Array.Empty<HexCoord>());
+            VisitedCapitals: System.Array.Empty<HexCoord>(),
+            VisitedThisTurnCapitals: System.Array.Empty<HexCoord>(),
+            SelectionWasRevisit: false,
+            EndTurnCtaLatched: false);
 
         (_, IReadOnlyList<Territory> territories) = BuildTwoColorGrid();
         var session = new SessionState();
@@ -125,10 +128,10 @@ public class SessionStateSnapshotTests
         // Record equality is what powers TrackHandler's de-dup check.
         var a = new SessionStateSnapshot(
             new HexCoord(1, 2), SessionState.ActionMode.BuyingSoldier, new HexCoord(3, 4), false,
-            System.Array.Empty<HexCoord>());
+            System.Array.Empty<HexCoord>(), System.Array.Empty<HexCoord>(), false, false);
         var b = new SessionStateSnapshot(
             new HexCoord(1, 2), SessionState.ActionMode.BuyingSoldier, new HexCoord(3, 4), false,
-            System.Array.Empty<HexCoord>());
+            System.Array.Empty<HexCoord>(), System.Array.Empty<HexCoord>(), false, false);
 
         Assert.Equal(a, b);
     }
@@ -137,9 +140,11 @@ public class SessionStateSnapshotTests
     public void Equals_TreatsDifferentModes_AsUnequal()
     {
         var a = new SessionStateSnapshot(
-            null, SessionState.ActionMode.None, null, false, System.Array.Empty<HexCoord>());
+            null, SessionState.ActionMode.None, null, false, System.Array.Empty<HexCoord>(),
+            System.Array.Empty<HexCoord>(), false, false);
         var b = new SessionStateSnapshot(
-            null, SessionState.ActionMode.BuyingRecruit, null, false, System.Array.Empty<HexCoord>());
+            null, SessionState.ActionMode.BuyingRecruit, null, false, System.Array.Empty<HexCoord>(),
+            System.Array.Empty<HexCoord>(), false, false);
 
         Assert.NotEqual(a, b);
     }
@@ -151,13 +156,16 @@ public class SessionStateSnapshotTests
         // equal (TrackHandler's de-dup) and differing contents unequal.
         var a = new SessionStateSnapshot(
             null, SessionState.ActionMode.None, null, false,
-            new[] { new HexCoord(1, 2), new HexCoord(3, 4) });
+            new[] { new HexCoord(1, 2), new HexCoord(3, 4) },
+            System.Array.Empty<HexCoord>(), false, false);
         var same = new SessionStateSnapshot(
             null, SessionState.ActionMode.None, null, false,
-            new[] { new HexCoord(1, 2), new HexCoord(3, 4) });
+            new[] { new HexCoord(1, 2), new HexCoord(3, 4) },
+            System.Array.Empty<HexCoord>(), false, false);
         var different = new SessionStateSnapshot(
             null, SessionState.ActionMode.None, null, false,
-            new[] { new HexCoord(1, 2) });
+            new[] { new HexCoord(1, 2) },
+            System.Array.Empty<HexCoord>(), false, false);
 
         Assert.Equal(a, same);
         Assert.NotEqual(a, different);
@@ -181,5 +189,50 @@ public class SessionStateSnapshotTests
         Assert.Equal(
             new HashSet<HexCoord> { new HexCoord(1, 2), new HexCoord(3, 4) },
             session.VisitedTerritoryCapitals);
+    }
+
+    [Fact]
+    public void Capture_Then_Apply_RoundTripsVisitedThisTurnAndRevisitAndLatch()
+    {
+        var session = new SessionState();
+        session.VisitedThisTurnCapitals.Add(new HexCoord(1, 2));
+        session.VisitedThisTurnCapitals.Add(new HexCoord(3, 4));
+        session.SelectionWasRevisit = true;
+        session.EndTurnCtaLatched = true;
+
+        SessionStateSnapshot snap = SessionStateSnapshot.Capture(session);
+
+        session.VisitedThisTurnCapitals.Clear();
+        session.VisitedThisTurnCapitals.Add(new HexCoord(9, 9));
+        session.SelectionWasRevisit = false;
+        session.EndTurnCtaLatched = false;
+
+        (_, IReadOnlyList<Territory> territories) = BuildTwoColorGrid();
+        snap.ApplyTo(session, territories);
+
+        Assert.Equal(
+            new HashSet<HexCoord> { new HexCoord(1, 2), new HexCoord(3, 4) },
+            session.VisitedThisTurnCapitals);
+        Assert.True(session.SelectionWasRevisit);
+        Assert.True(session.EndTurnCtaLatched);
+    }
+
+    [Fact]
+    public void Equals_DetectsVisitedThisTurnAndRevisitAndLatchDifferences()
+    {
+        // TrackHandler's pushed-iff-changed de-dup must see a visited-
+        // this-turn mark (or a revisit/latch flip) as a session change.
+        var baseline = new SessionState();
+        SessionStateSnapshot a = SessionStateSnapshot.Capture(baseline);
+
+        var visitedDiffers = new SessionState();
+        visitedDiffers.VisitedThisTurnCapitals.Add(new HexCoord(1, 2));
+        Assert.NotEqual(a, SessionStateSnapshot.Capture(visitedDiffers));
+
+        var revisitDiffers = new SessionState { SelectionWasRevisit = true };
+        Assert.NotEqual(a, SessionStateSnapshot.Capture(revisitDiffers));
+
+        var latchDiffers = new SessionState { EndTurnCtaLatched = true };
+        Assert.NotEqual(a, SessionStateSnapshot.Capture(latchDiffers));
     }
 }

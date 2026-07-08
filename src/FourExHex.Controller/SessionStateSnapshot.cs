@@ -6,8 +6,10 @@ using System.Linq;
 /// Immutable capture of the player-intent slice of <see cref="SessionState"/>:
 /// the selected territory (by anchor coord, not reference, so it survives
 /// territory rebuilds), the pending <see cref="SessionState.ActionMode"/>,
-/// the move source (if any), the repeated-movement sticky bit, and the
-/// visited-territory capitals that drive Tab-cycle ordering.
+/// the move source (if any), the repeated-movement sticky bit, the
+/// visited-territory capitals that drive Tab-cycle ordering, and the
+/// turn-scoped visited set + revisit flag that drive the visited
+/// capital-highlight suppression and CTAs.
 /// Pairs with <see cref="GameStateSnapshot"/> inside an <see cref="UndoEntry"/>
 /// so undo/redo can restore where the player was, not just what was on the
 /// board.
@@ -17,7 +19,10 @@ public sealed record SessionStateSnapshot(
     SessionState.ActionMode Mode,
     HexCoord? MoveSource,
     bool RepeatedMovement,
-    IReadOnlyList<HexCoord> VisitedCapitals)
+    IReadOnlyList<HexCoord> VisitedCapitals,
+    IReadOnlyList<HexCoord> VisitedThisTurnCapitals,
+    bool SelectionWasRevisit,
+    bool EndTurnCtaLatched)
 {
     /// <summary>
     /// Snapshot the player-intent fields of <paramref name="session"/>.
@@ -47,8 +52,10 @@ public sealed record SessionStateSnapshot(
             }
         }
         HexCoord[] visited = session.VisitedTerritoryCapitals.OrderBy(c => c).ToArray();
+        HexCoord[] visitedThisTurn = session.VisitedThisTurnCapitals.OrderBy(c => c).ToArray();
         return new SessionStateSnapshot(
-            anchor, session.Mode, session.MoveSource, session.RepeatedMovement, visited);
+            anchor, session.Mode, session.MoveSource, session.RepeatedMovement, visited,
+            visitedThisTurn, session.SelectionWasRevisit, session.EndTurnCtaLatched);
     }
 
     /// <summary>
@@ -80,6 +87,10 @@ public sealed record SessionStateSnapshot(
         session.RepeatedMovement = RepeatedMovement;
         session.VisitedTerritoryCapitals.Clear();
         session.VisitedTerritoryCapitals.UnionWith(VisitedCapitals);
+        session.VisitedThisTurnCapitals.Clear();
+        session.VisitedThisTurnCapitals.UnionWith(VisitedThisTurnCapitals);
+        session.SelectionWasRevisit = SelectionWasRevisit;
+        session.EndTurnCtaLatched = EndTurnCtaLatched;
     }
 
     /// <summary>
@@ -93,7 +104,10 @@ public sealed record SessionStateSnapshot(
         && Mode == other.Mode
         && Nullable.Equals(MoveSource, other.MoveSource)
         && RepeatedMovement == other.RepeatedMovement
-        && VisitedCapitals.SequenceEqual(other.VisitedCapitals);
+        && VisitedCapitals.SequenceEqual(other.VisitedCapitals)
+        && VisitedThisTurnCapitals.SequenceEqual(other.VisitedThisTurnCapitals)
+        && SelectionWasRevisit == other.SelectionWasRevisit
+        && EndTurnCtaLatched == other.EndTurnCtaLatched;
 
     public override int GetHashCode()
     {
@@ -106,6 +120,12 @@ public sealed record SessionStateSnapshot(
         {
             hash.Add(c);
         }
+        foreach (HexCoord c in VisitedThisTurnCapitals)
+        {
+            hash.Add(c);
+        }
+        hash.Add(SelectionWasRevisit);
+        hash.Add(EndTurnCtaLatched);
         return hash.ToHashCode();
     }
 }

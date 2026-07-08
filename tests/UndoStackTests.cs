@@ -15,7 +15,8 @@ public class UndoStackTests
         treasury.SetGold(territories[0].Capital!.Value, goldValue);
         GameStateSnapshot game = GameStateSnapshot.Capture(grid, treasury, territories);
         var session = new SessionStateSnapshot(
-            null, SessionState.ActionMode.None, null, false, System.Array.Empty<HexCoord>());
+            null, SessionState.ActionMode.None, null, false, System.Array.Empty<HexCoord>(),
+            System.Array.Empty<HexCoord>(), false, false);
         return new UndoEntry(game, session);
     }
 

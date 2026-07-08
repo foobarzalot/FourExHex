@@ -175,9 +175,13 @@ public interface IHexMapView
 
     /// <summary>
     /// Redraw every occupant visual (units + capitals) with the CTA
-    /// coloring rules.
+    /// coloring rules. A capital in <paramref name="visitedCapitals"/>
+    /// (the territories the player has already selected this turn)
+    /// never gets the actionable white/pulse treatment — the highlight
+    /// only points at territories the player hasn't looked at yet.
     /// </summary>
-    void RefreshOccupantVisuals(PlayerId? currentPlayer, Treasury treasury);
+    void RefreshOccupantVisuals(PlayerId? currentPlayer, Treasury treasury,
+        IReadOnlySet<HexCoord> visitedCapitals);
 
     /// <summary>
     /// Suppress (true) or restore (false) AI/replay fast-forward

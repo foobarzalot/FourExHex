@@ -131,9 +131,16 @@ CONTROLLER (pure C#) ─ GameController
 
   single UI update path:
     RefreshViews() → _hud.Refresh(state, session, hasActionable)
-      → _map.RefreshOccupantVisuals(currentPlayer, tr.)
-      → _hud.SetCta(EndTurn, !hasActionable)
-      → _hud.SetCta(NextTerritory, isHuman && hasActionable && selExhausted)
+      → _map.RefreshOccupantVisuals(currentPlayer, tr., visitedCapitals)
+           // visitedCapitals = VisitedThisTurnCapitals minus the selected
+           // first-visit ("worked") territory's capital — its pulse stays
+           // until exhausted or deselected; revisits stay suppressed
+      → _hud.SetCta(EndTurn, isHuman && (shouldLight || EndTurnCtaLatched))
+           // shouldLight = !hasActionable || (all actionable territories
+           // visited && (selection exhausted/null || automate-exhausted));
+           // first light sets EndTurnCtaLatched (sticky; see SessionState)
+      → _hud.SetCta(NextTerritory, isHuman && hasActionable
+           && (selExhausted || SelectionWasRevisit) && !endTurnCta)
       → _onAfterRefresh?.Invoke() (Preview cue hook; null in ordinary play)
 
 MODEL / STATE (pure C#)
@@ -144,7 +151,14 @@ MODEL / STATE (pure C#)
     PendingClaimVictory ((PlayerId,percent)? — claim overlay; percent∈{50,75,90}; human-only)
     ClaimVictoryPromptedHighestThreshold (Dict<PlayerId,int>; player→top tier dismissed; persists across save/load)
     SelectedTerritory, Mode (enum), MoveSource
-    VisitedTerritoryCapitals (per-turn Tab-cycle set)
+    VisitedTerritoryCapitals (Tab-cycle round set; resets when a full cycle wraps)
+    VisitedThisTurnCapitals (turn-scoped visited set — capital-highlight
+      suppression + all-visited End Turn CTA; cleared only at StartPlayerTurn
+      or by undo restore)
+    SelectionWasRevisit (current selection targeted an already-visited
+      territory — lights the Next-Territory CTA)
+    EndTurnCtaLatched (sticky End Turn CTA: set on first light, cleared only
+      by StartPlayerTurn or undo unwinding past the lighting step)
     Undo (UndoStack of UndoEntry = GameStateSnapshot + SessionStateSnapshot)
 
 VIEWS (Godot Nodes)
@@ -161,7 +175,8 @@ VIEWS (Godot Nodes)
       ShowTowerCoverage(coords), ShowMoveSource(coord?), CenterOnTerritory(territory) (eases the
         camera to the anchor via EasingMath.SmoothStep in _Process; retargets on rapid re-center,
         bails on any manual pan/zoom, snaps instantly under _silentMode),
-      RebuildAfterTerritoryChange(), RefreshOccupantVisuals(color, tr.), PlayDestructionEffect(coord, occ.)
+      RebuildAfterTerritoryChange(), RefreshOccupantVisuals(color, tr., visitedCapitals),
+      PlayDestructionEffect(coord, occ.)
     Play{UnitPlaced, TowerPlaced, UnitCombined, UnitDestroyed, TowerDestroyed, TreeCleared, CapitalDestroyed,
       Bankruptcy, GameWon, Rally, PlayerDefeated} — audio sinks → AudioBus
     layers: borders / gold / capitals / units / towers / trees / graves / targets / highlight
@@ -179,6 +194,10 @@ VIEWS (Godot Nodes)
       Disabled-reason tooltips name the blocker (no selection / no capital / can't afford <level>). In buy/move
       mode the active button's tooltip clears; bottom panel shows "Click to place a X" / "Click to move the X"
       (gated by _externalMessageActive so it can't clobber tutorial / AI-batch text).
+    Non-human-turn lockdown: while an AI acts (and the game isn't over) Refresh
+      force-disables every action button and clears their active rings — only
+      the Options gear stays live; overlay buttons gate on their own state.
+      Logs "[hud] ai-turn lockdown engaged/released" (Hud:Debug) on transition.
     HeadlessHexMapView / HeadlessHudView — no-op stubs for diagnostic mode
 
 PURE RULES (static)
@@ -507,7 +526,10 @@ void ShowMoveSource(HexCoord? coord);
 void ShowHighlight(Territory? selected);
 void CenterOnTerritory(Territory territory);
 void RebuildAfterTerritoryChange();
-void RefreshOccupantVisuals(PlayerId? currentPlayer, Treasury treasury);
+void RefreshOccupantVisuals(PlayerId? currentPlayer, Treasury treasury,
+                            IReadOnlySet<HexCoord> visitedCapitals);
+     // capitals in visitedCapitals never get the actionable white/pulse
+     // treatment — the highlight only points at unvisited territories
 void ShowTideForecast(IEnumerable<TideStep> steps);  // Rising Tides telegraph
 void ShowSeaVikings(IReadOnlyList<SeaViking> atSea);  // Viking Raiders: raiders waiting at sea
 void ShowFog(FogView? fog);                           // Fog Of War projection (null = no fog)
@@ -588,9 +610,12 @@ void SetReplayAvailable(bool available); // toggle victory-overlay Replay button
 // CTA highlights (white bg + black border + black text). CtaButton enum
 // (BuyRecruit, EndTurn, BuildTower, ClaimVictoryWinNow, ClaimVictoryContinue,
 // DefeatContinue, NextTerritory). pulse: game-side steady (false) — EndTurn
-// when human out of moves, NextTerritory when an actionable territory exists
-// but the selection is exhausted; Tutorial Preview beats pulse (Tween on
-// Modulate.a, 1.0↔0.55). claim/defeat/build CTAs are Preview-only, default true.
+// when the human is out of moves OR has visited every actionable territory
+// and finished/left the last one (sticky once lit; see EndTurnCtaLatched),
+// NextTerritory when an actionable territory exists and the selection is
+// exhausted or a revisit — suppressed while the EndTurn CTA holds; Tutorial
+// Preview beats pulse (Tween on Modulate.a, 1.0↔0.55). claim/defeat/build
+// CTAs are Preview-only, default true. Both game-side CTAs are human-only.
 void SetCta(CtaButton button, bool isCta, bool pulse = true);
 
 // Force-disable the Undo/Redo row regardless of session.Undo. Tutorial
@@ -654,8 +679,9 @@ public interface ITimerFactory { void After(int delayMs, Action callback); }
 - **Views never mutate the model.** View-looking methods (`ShowHighlight`, `RebuildAfterTerritoryChange`) touch only view state.
 - **Controller never touches Godot Nodes directly.** It talks to views via the interfaces and to the event loop via `IAiPacer`, making `GameController` unit-testable with mocks (`tests/GameControllerTests.*.cs` partials; `TestGame` fixture in `tests/GameControllerTests.cs`).
 - **Every state change funnels through `RefreshViews()`** at handler end. One path, no drift.
-- **Snapshots capture `GameState` plus the player-intent slice of `SessionState`** (`SelectedTerritory`, `Mode`, `MoveSource`, `RepeatedMovement`, `VisitedTerritoryCapitals`) via `UndoEntry` = `(GameStateSnapshot, SessionStateSnapshot)`. `Winner`, `PendingDefeatScreen`, and the `Undo` stack stay out. Top-level human handlers wrap in `TrackHandler`: capture pre-state, run body, push one `UndoEntry` iff state changed (visited set compared by sorted-sequence equality in `SessionStateSnapshot.Equals`). Exceptions propagate without pushing.
+- **Snapshots capture `GameState` plus the player-intent slice of `SessionState`** (`SelectedTerritory`, `Mode`, `MoveSource`, `RepeatedMovement`, `VisitedTerritoryCapitals`, `VisitedThisTurnCapitals`, `SelectionWasRevisit`, `EndTurnCtaLatched`) via `UndoEntry` = `(GameStateSnapshot, SessionStateSnapshot)`. `Winner`, `PendingDefeatScreen`, and the `Undo` stack stay out. Top-level human handlers wrap in `TrackHandler`: capture pre-state, run body, push one `UndoEntry` iff state changed (visited sets compared by sorted-sequence equality in `SessionStateSnapshot.Equals`). Exceptions propagate without pushing.
 - **Visited-territory cycling**: `SessionState.VisitedTerritoryCapitals` records the capital of every territory the human selects this turn. `StepTerritorySelection` re-sorts by descending size each press; pass 1 stops only on actionable *unvisited* territories, pass 2 resets the set for a fresh round. Cleared per-turn at the top of `StartPlayerTurn` (before that turn's auto-selection marks its pick); round-trips through `SessionStateSnapshot`. AI never touches it (runs via `GameOperations.ExecuteAi*`, not `SetSelection`).
+- **Turn-scoped visited state (the CTA driver)**: `MarkSelectedVisited` (the `SetSelection` funnel — click, Tab, rally, auto-select, automate) also adds the capital to `SessionState.VisitedThisTurnCapitals` and maintains `SelectionWasRevisit` (true iff the selection *changed* onto an already-visited territory; same-territory re-clicks preserve it, null/capital-less selections clear it). Unlike the cycle set, this one never resets mid-turn — only `StartPlayerTurn` and undo restore shrink it. It suppresses visited capitals' pending-action pulse (except the currently-worked first-visit selection), lights Next-Territory on revisits, and — once every actionable territory is visited and the selected one is exhausted/deselected (or automation exhausted) — lights the End Turn CTA, which latches via `EndTurnCtaLatched` until the turn ends or undo unwinds past the lighting step. A capital-less singleton holding an unmoved unit can't be visited, so it conservatively holds the End Turn CTA off until the unit moves.
 - **Repeated-movement** is a sticky bit on `SessionState` driving N-hotkey auto-advance. `StepUnitSelection` sets it on picking a different unit. While on, `ExecuteMove`'s tail calls `AutoAdvanceAfterMove(level, source, destination)`: power-then-coord sort of remaining movables in the (capture-rebound) selected territory, destination excluded. Clears on Esc/cancel, entry into any non-None `ActionMode`, click selection change to a different territory, long-press rally, End Turn, game-over (`GameOperations.DeclareWinner`), or auto-advance with no movables left. `ClearPendingAction` does NOT clear it — `ExecuteMove`'s `FinishPendingAction` must run with the flag alive for the auto-advance hook. Round-trips through `SessionStateSnapshot`; capture-rebind preserves it.
 - **`HexTile` is a pure model — no view coupling.** `HexTile.Owner` is plain state. The view owns the tile→fill map (`HexMapView._tileVisuals`) and resyncs fills from `_state` in `RebuildAfterTerritoryChange()`, the single coalesced repaint path. Model captures mutate `tile.Owner` with no view effect; the screen catches up only on `RebuildAfterTerritoryChange`.
 - **Undo is turn-scoped.** `OnEndTurnPressed` clears the stack — ending a turn commits everything.
@@ -671,7 +697,7 @@ A turn is sandwiched between two phases.
 
 Fixed order for the current player:
 
-1. **Reseed RNG** — `ReseedRngForCurrentTurn` derives `_rng` from `(masterSeed, turnNumber, currentPlayerIndex)`; turn RNG is reproducible from the seed. Also clears `VisitedTerritoryCapitals` (per-turn Tab tour reset) before any auto-selection in step 6 marks the picked territory.
+1. **Reseed RNG** — `ReseedRngForCurrentTurn` derives `_rng` from `(masterSeed, turnNumber, currentPlayerIndex)`; turn RNG is reproducible from the seed. Also clears `VisitedTerritoryCapitals` (per-turn Tab tour reset), `VisitedThisTurnCapitals`, `SelectionWasRevisit`, and `EndTurnCtaLatched` before any auto-selection in step 6 marks the picked territory.
 2. **Tree growth** — `TreeRules.RunStartOfTurnGrowth` (skipped while `TurnNumber == 1`). Graves on the player's tiles become trees; empty same-color cells with ≥2 neighboring trees become trees. **Neutral ground** (`PlayerId.None`) owns ground but no capital, so it takes a **phantom turn** (`RunPhantomTurnFor`: tree growth + no-op upkeep + log) once per round. `RunNeutralPhantomTurnIfRoundStart` anchors it to slot 0's visit, gated to `TurnNumber > 1 && CurrentPlayerIndex == 0` so it doesn't grow N× faster. Stateless — `TurnState` reconstructs the anchor across save/load and undo. Logged once per round under `Log.LogCategory.Turn` as "Neutral".
 3. **Reset movement** — `HasMovedThisTurn` cleared on the player's units.
 4. **Collect income** — `Treasury.CollectIncomeFor` (skipped while `TurnNumber == 1`; `SeedStartingGold` is the round-1 bankroll). Tree and grave tiles don't pay; everything else pays 1 gold.
@@ -997,7 +1023,8 @@ OnAutomatePressed (toggle):
   └─ ScheduleAutomateStep()   // paced → StepAutomatePreview; Instant → InstantAutomateTick
 
 StepAutomatePreview:  halt checks → action = _automateChooser(state, me, _automateVisited, ops.Rng)
-  ├─ null → StopAutomation("exhausted", latch) ; step-cap (64) → StopAutomation("step-cap")
+  ├─ null → StopAutomation("exhausted", latch + mark all actionable visited) ;
+  │     step-cap (64) → StopAutomation("step-cap")
   ├─ SelectActingTerritoryForAutomate(acting, paint: true)   // select the territory about to act —
   │     // its own UndoEntry, like the player pressing Next Territory; no-op if already selected
   ├─ CenterOnTerritory(acting)   // ease the camera to it, same feel as Next Territory
@@ -1027,6 +1054,7 @@ AutomateInstantStep:  halt / step-cap / chooser-null → StopAutomation(...) →
 - **Every automated step is individually undoable** — selections and moves alike; the standard undo handlers walk them back one at a time (undo re-centers the camera through the acting territories). Automation is a human-turn flow, so the "AI actions are not undoable" invariant is untouched (that covers AI *players'* turns). Both tracks record identical undo/beat stacks — Instant skips the presentation, not the bookkeeping (pinned by `Automate_Instant_SameFinalStateAndUndoDepthAsPaced`).
 - **Interruption is a flag, never a cancel**: `_automating` is checked at every beat entry (and gates the instant drain via `RunInstantTick`'s `active`); `StopAutomation` clears it and stale scheduled beats no-op (the shared pacer is never cancelled). Every `TrackHandler`-wrapped human input stops a running loop at handler entry (`_inAutomateStep` exempts the loop's own selection + move steps); the non-wrapped handlers (undo/redo ×4, End Turn, defeat/claim) carry explicit `StopAutomation("input")` calls. Stops always land *between* moves. When the stop ends an instant batch (`_automateTrackInstant`), `StopAutomation` also runs the batch-end cleanup: structural rebuild (the drain suppressed per-capture rebuilds) + `RefreshSilentMode` (lifts the view's silent flag).
 - **Exhaustion latch** (`_automateExhausted`): set only by the chooser-null stop; the button greys out (re-pressing would no-op) even if manual actions remain. Cleared by `ApplySnapshot` (any undo/redo), a manual game-mutating `TrackHandler` push (which triggers one extra refresh — the body's own refresh ran pre-clear), and `EndTurnNow`. User interrupts don't latch.
+- **Exhaustion lights End Turn**: the chooser-null stop also unions every still-actionable territory's capital into `VisitedThisTurnCapitals` (one `TrackHandler` entry, undoable; no-op when the loop's own selections already visited them), and the latch counts as "finished the last territory" in the End Turn CTA condition — so a completed automation run always leaves End Turn lit even when the chooser declined an affordable action or left an actionable territory selected. Logged as `[automate] exhausted → turn-visited += N`.
 - **Pacing**: `UserSettings.AutomateSpeed`, its own Settings row, independent of AiSpeed/ReplaySpeed. The shared pacer's multiplier closure in `Main` branches on `GameController.IsAutomating` for the paced speeds; Instant never reaches the multiplier — `ScheduleAutomateStep` routes it to the unscaled chunked track, making Automate the third `RunInstantTick` wrapper alongside live-AI Instant and instant replay.
 - **Silence**: `GameOperations.InSilentAutomateBatch()` (= `automateSilentMode() && isAutomating()`) joins the cue gate (`IsSilent`) and the view flag (`RefreshSilentMode`), so an Instant batch plays no sounds/VFX/tweens and never pans. It deliberately does NOT join `HumanInputLocked` — input between the drain's frame yields stays live so it can stop the loop. Paced automate is never silent: per-move sounds and the camera pan play at every paced speed.
 - **Instrumentation**: `Log.LogCategory.Automate` Debug — start (turn/player/undo depth), one `pan ->` line per paced preview, one line per move (step index, action, undo depth after push), track transitions (`paced→instant` / `instant→paced`), stop with reason (`user` / `input` / `exhausted` / `step-cap` / `overlay` / `game-over` / `not-human`), and `instant batch end` with the move count.
@@ -1124,6 +1152,10 @@ Replay reuses the live `ExecuteAi*` helpers — same captures, FX, `HandleCaptur
   **Phases 1 and 2a take their best legal candidate regardless of delta sign**
   (`BestPositiveDelta` with `threshold = int.MinValue`); phases 2b/3/4 keep the
   strictly-positive (`> 0`) gate. Ties resolve to the first-yielded candidate.
+  `BestPositiveDelta` logs one `[candidate]` verdict per scored candidate
+  (phase, action, delta, threshold, accepted/rejected) at **Ai:Trace** — the
+  firehose tier, deliberately below the `Ai:Debug` that `FOUREXHEX_6AI` pins;
+  the per-territory `[heuristic]` best-delta summary stays at Debug.
   The bare mutation per action kind lives once in **`AiActionCore`**
   (Model: reposition/combine detection, owner-difficulty gold deduction,
   `MovementRules` placement, the shared `MarkUnitMoved` flag-setter);

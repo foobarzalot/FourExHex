@@ -74,6 +74,8 @@ public partial class HudView : OrientationHud, IHudView
     private HudIconButton _redoLastButton = null!;
     private bool _undoRedoLocked;
     private bool _victoryOverlaySuppressed;
+    // Last-seen AI-turn lockdown state, only to log the transition once.
+    private bool _aiTurnLockdownActive;
     private HudIconButton _nextUnitButton = null!;
     private HudIconButton _nextTerritoryButton = null!;
     private HudIconButton _endTurnButton = null!;
@@ -2030,6 +2032,39 @@ public partial class HudView : OrientationHud, IHudView
         // post-Refresh so Tutorial Preview's onAfterRefresh callback can
         // overwrite it (e.g. light it for an EndTurn scripted beat even
         // when the player still has actionable territories).
+
+        // Non-human-turn lockdown: while an AI acts, every action button
+        // is disabled (the CTAs are kept dark controller-side) — only
+        // the Options gear stays live. The per-button logic above still
+        // runs first so its state is correct the moment a human turn
+        // refresh re-enables things. Overlay buttons (defeat / claim /
+        // victory) are deliberately exempt: they gate on their own
+        // pending-overlay state.
+        bool aiTurnLockdown = state.Turns.CurrentPlayer.IsAi && !session.IsGameOver;
+        if (aiTurnLockdown)
+        {
+            foreach (HudIconButton button in _buyUnitButtons)
+            {
+                button.Disabled = true;
+                button.Selected = false;
+            }
+            _collapsedBuyButton.Disabled = true;
+            _collapsedBuyButton.Selected = false;
+            _buildTowerButton.Disabled = true;
+            _buildTowerButton.Selected = false;
+            _undoLastButton.Disabled = true;
+            _redoLastButton.Disabled = true;
+            _nextUnitButton.Disabled = true;
+            _nextUnitButton.Selected = false;
+            _nextTerritoryButton.Disabled = true;
+        }
+        _endTurnButton.Disabled = aiTurnLockdown;
+        if (aiTurnLockdown != _aiTurnLockdownActive)
+        {
+            _aiTurnLockdownActive = aiTurnLockdown;
+            Log.Debug(Log.LogCategory.Hud,
+                $"[hud] ai-turn lockdown {(aiTurnLockdown ? "engaged" : "released")}");
+        }
 
         // Victory overlay: show iff a winner has been declared and the
         // overlay isn't suppressed (Tutorial Preview / Record set the

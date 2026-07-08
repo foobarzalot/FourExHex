@@ -110,10 +110,14 @@ public class MockHexMapView : IHexMapView
 
     public int RefreshOccupantCount { get; private set; }
     public PlayerId? LastOccupantRefreshPlayer { get; private set; }
-    public void RefreshOccupantVisuals(PlayerId? currentPlayer, Treasury treasury)
+    public IReadOnlyCollection<HexCoord> LastVisitedCapitals { get; private set; } =
+        System.Array.Empty<HexCoord>();
+    public void RefreshOccupantVisuals(PlayerId? currentPlayer, Treasury treasury,
+        IReadOnlySet<HexCoord> visitedCapitals)
     {
         RefreshOccupantCount++;
         LastOccupantRefreshPlayer = currentPlayer;
+        LastVisitedCapitals = visitedCapitals.ToArray();
     }
 
     /// <summary>

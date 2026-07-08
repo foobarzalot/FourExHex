@@ -36,7 +36,8 @@ public sealed class HeadlessHexMapView : IHexMapView
     public void CenterOnCoord(HexCoord coord) { }
     public void ShowTerrainFocusPulse(HexCoord? coord) { }
     public void RebuildAfterTerritoryChange() { }
-    public void RefreshOccupantVisuals(PlayerId? currentPlayer, Treasury treasury) { }
+    public void RefreshOccupantVisuals(PlayerId? currentPlayer, Treasury treasury,
+        IReadOnlySet<HexCoord> visitedCapitals) { }
     public void SetSilentMode(bool silent) { }
     public void PlayDestructionEffect(HexCoord coord, HexOccupant destroyed) { }
     public void PlaySound(SoundEffect kind, HexCoord? at = null) { }

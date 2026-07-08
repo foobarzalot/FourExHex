@@ -198,7 +198,7 @@ public partial class GameControllerTests
     }
 
     [Fact]
-    public void Automate_NoLegalActions_StopsImmediately_NoUndoEntries()
+    public void Automate_NoLegalActions_StopsImmediately_NoGameMutations()
     {
         ControllerHarness h = BuildAutomateGame(Array.Empty<AiAction>());
 
@@ -206,8 +206,19 @@ public partial class GameControllerTests
 
         Assert.False(h.Controller.IsAutomating);
         Assert.False(h.Hud.AutomateRunning);
-        Assert.Equal(0, h.Session.Undo.UndoCount);
+        // No game mutation — but running to completion marks the
+        // still-actionable territory visited (#126: exhausted automation
+        // always lights End Turn), and that session change is one
+        // undoable step.
         Assert.Equal(100, h.State.Treasury.GetGold(RedCap(h)));
+        Assert.Equal(1, h.Session.Undo.UndoCount);
+        Assert.Contains(RedCap(h), h.Session.VisitedThisTurnCapitals);
+        Assert.True(h.Hud.EndTurnCtaActive);
+
+        // Undo unwinds the marking like any other step.
+        h.Hud.ClickUndoLast();
+        Assert.Empty(h.Session.VisitedThisTurnCapitals);
+        Assert.False(h.Hud.EndTurnCtaActive);
     }
 
     [Fact]

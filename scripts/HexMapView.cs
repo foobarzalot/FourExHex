@@ -1861,8 +1861,12 @@ public partial class HexMapView : Node2D, IHexMapView
     /// white interior, everything else gets black. All shapes have a
     /// black border. Pass <paramref name="currentPlayer"/> = null to
     /// render everything non-CTA (e.g., while no turn is active).
+    /// Capitals in <paramref name="visitedCapitals"/> are excluded from
+    /// the actionable treatment — once the player has selected a
+    /// territory this turn, its capital stops calling for attention.
     /// </summary>
-    public void RefreshOccupantVisuals(PlayerId? currentPlayer, Treasury treasury)
+    public void RefreshOccupantVisuals(PlayerId? currentPlayer, Treasury treasury,
+        IReadOnlySet<HexCoord> visitedCapitals)
     {
         // Cache for IsActionableUnit so it can recompute the
         // actionable predicate without the controller passing the
@@ -1926,6 +1930,7 @@ public partial class HexMapView : Node2D, IHexMapView
                 // difficulty (base < tower cost in every column), so
                 // recruit-affordability is a sufficient proxy for "this
                 // territory can spend gold".
+                if (visitedCapitals.Contains(territory.Capital!.Value)) continue;
                 if (PurchaseRules.CanAffordRecruit(territory, treasury,
                         _state.Turns.CurrentPlayer.Difficulty))
                 {

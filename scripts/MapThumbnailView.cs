@@ -206,7 +206,8 @@ public partial class MapThumbnailView : Control
         // start visible, the rest fogged. Pushed before occupants so the
         // occupant pass honours visibility; null (no-op) for non-fog maps.
         _map.ShowFog(VisibilityRules.BuildProjection(state));
-        _map.RefreshOccupantVisuals(currentPlayer: null, state.Treasury);
+        _map.RefreshOccupantVisuals(currentPlayer: null, state.Treasury,
+            new HashSet<HexCoord>());
 
         // Let any SubViewport SizeChanged → RecomputeZoomLevels/ResolveRotation
         // settle, then frame the full grid rectangle (NOT the per-seed land box)
