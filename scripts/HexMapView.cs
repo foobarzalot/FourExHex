@@ -4518,6 +4518,11 @@ public partial class HexMapView : Node2D, IHexMapView
     private const float SelectionCoreWidthFactor = 0.10f;
     private static readonly Color SelectionHaloColor = new Color(1f, 1f, 1f, 0.35f);
     private static readonly Color SelectionCoreColor = new Color(0.98f, 0.97f, 0.92f, 1f);
+    // Rising Tides: the selection outline around a tile that's forecast to
+    // SUBMERGE this turn pulses inversely to its tide telegraph — fully drawn
+    // at the "land" trough, faded to this alpha at the flooded peak — so the
+    // ring recedes as the tile floods instead of sitting static over water.
+    private const float DoomedHighlightMinAlpha = 0.0f;
 
     private void RedrawHighlight()
     {
@@ -4532,9 +4537,28 @@ public partial class HexMapView : Node2D, IHexMapView
         float haloWidth = HexSize * SelectionHaloWidthFactor;
         float coreWidth = HexSize * SelectionCoreWidthFactor;
 
+        // Rising Tides: tiles forecast to SUBMERGE this turn (not demote-only
+        // mountains, which stay land) get their perimeter strokes grouped under
+        // a per-tile node that pulses inversely to the tide telegraph, so the
+        // ring recedes as the tile floods rather than sitting static. Empty in
+        // every other mode, so the fast path below is unchanged.
+        var doomed = new HashSet<HexCoord>();
+        foreach (TideStep step in _state.PendingTide)
+        {
+            if (!step.DemoteOnly) doomed.Add(step.Coord);
+        }
+
         foreach (HexCoord coord in _highlightedTerritory.Coords)
         {
             Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(coord, HexSize);
+
+            // A doomed tile's edges go into their own group so one pulse tween
+            // covers the whole ring; every other tile strokes straight onto the
+            // layer (static). The group is added only if it actually has edges.
+            bool isDoomed = doomed.Contains(coord);
+            Node2D? group = isDoomed ? new Node2D() : null;
+            Node2D parent = group ?? _highlightLayer;
+            int edgesDrawn = 0;
 
             for (int edge = 0; edge < 6; edge++)
             {
@@ -4546,7 +4570,7 @@ public partial class HexMapView : Node2D, IHexMapView
                 Vector2 a = center + verts[edge];
                 Vector2 b = center + verts[(edge + 1) % 6];
 
-                _highlightLayer.AddChild(new Line2D
+                parent.AddChild(new Line2D
                 {
                     Points = new[] { a, b },
                     Width = haloWidth,
@@ -4555,7 +4579,7 @@ public partial class HexMapView : Node2D, IHexMapView
                     BeginCapMode = Line2D.LineCapMode.Round,
                     EndCapMode = Line2D.LineCapMode.Round,
                 });
-                _highlightLayer.AddChild(new Line2D
+                parent.AddChild(new Line2D
                 {
                     Points = new[] { a, b },
                     Width = coreWidth,
@@ -4564,8 +4588,42 @@ public partial class HexMapView : Node2D, IHexMapView
                     BeginCapMode = Line2D.LineCapMode.Round,
                     EndCapMode = Line2D.LineCapMode.Round,
                 });
+                edgesDrawn++;
+            }
+
+            if (group != null)
+            {
+                if (edgesDrawn > 0)
+                {
+                    _highlightLayer.AddChild(group);
+                    PulseDoomedHighlightGroup(group);
+                    Log.Debug(Log.LogCategory.Render,
+                        $"[highlight] doomed-tile pulse @{coord} ({edgesDrawn} edge(s))");
+                }
+                else
+                {
+                    group.Free();
+                }
             }
         }
+    }
+
+    /// <summary>
+    /// Loop a doomed tile's selection-outline group inversely to its tide
+    /// telegraph (<see cref="DrawTideTelegraphTile"/>): fully drawn at the land
+    /// trough, fading to <see cref="DoomedHighlightMinAlpha"/> at the flooded
+    /// peak. Same Sine half-period, started from the visible/land state, so the
+    /// ring stays in phase with the telegraph from turn-start focus.
+    /// </summary>
+    private void PulseDoomedHighlightGroup(Node2D group)
+    {
+        group.Modulate = new Color(1f, 1f, 1f, 1f);
+        Tween pulse = group.CreateTween();
+        pulse.SetLoops();
+        pulse.TweenProperty(group, "modulate:a", DoomedHighlightMinAlpha, TideForecastPulseHalfPeriod)
+            .SetTrans(Tween.TransitionType.Sine);
+        pulse.TweenProperty(group, "modulate:a", 1f, TideForecastPulseHalfPeriod)
+            .SetTrans(Tween.TransitionType.Sine);
     }
 
     // Stamp a warning-sign triangle on the capital of every affected
