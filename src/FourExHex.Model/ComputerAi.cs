@@ -93,7 +93,7 @@ public static class ComputerAi
                     p1Candidates = p1Candidates.Where(c => c.Kind == AiActionKind.Capture);
                 }
                 // never decline a free capture/chop/grave for the status quo
-                AiAction? p1 = TryPhase(p1Candidates,
+                AiAction? p1 = TryPhase("p1", p1Candidates,
                     int.MinValue, methodStart, baseScore, forPlayer, state, prof);
                 if (p1 != null) { _ = rng; return p1; }
             }
@@ -110,28 +110,28 @@ public static class ComputerAi
                 {
                     Unit unit = state.Grid.Get(unitCoord)!.Unit!;
                     // never decline an unlock-combine for the status quo
-                    AiAction? p2a = TryPhase(AiCommon.EnumeratePhase2aForUnit(unitCoord, unit, t, state, tileIndex),
+                    AiAction? p2a = TryPhase("p2a", AiCommon.EnumeratePhase2aForUnit(unitCoord, unit, t, state, tileIndex),
                         int.MinValue, methodStart, baseScore, forPlayer, state, prof);
                     if (p2a != null) { _ = rng; return p2a; }
                 }
 
                 // Phase 2b: buy-and-combine-to-unlock (strictly-positive gate)
                 {
-                    AiAction? p2b = TryPhase(AiCommon.EnumeratePhase2b(t, state, tileIndex),
+                    AiAction? p2b = TryPhase("p2b", AiCommon.EnumeratePhase2b(t, state, tileIndex),
                         0, methodStart, baseScore, forPlayer, state, prof);
                     if (p2b != null) { _ = rng; return p2b; }
                 }
 
                 // Phase 3: buy-to-capture / buy-to-chop (strictly-positive gate)
                 {
-                    AiAction? p3 = TryPhase(AiCommon.EnumeratePhase3(t, state, tileIndex),
+                    AiAction? p3 = TryPhase("p3", AiCommon.EnumeratePhase3(t, state, tileIndex),
                         0, methodStart, baseScore, forPlayer, state, prof);
                     if (p3 != null) { _ = rng; return p3; }
                 }
 
                 // Phase 4a: tower placement (optional — doing nothing is valid)
                 {
-                    AiAction? p4a = TryPhase(AiCommon.EnumeratePhase4Towers(t, state),
+                    AiAction? p4a = TryPhase("p4a", AiCommon.EnumeratePhase4Towers(t, state),
                         0, methodStart, baseScore, forPlayer, state, prof);
                     if (p4a != null) { _ = rng; return p4a; }
                 }
@@ -140,7 +140,7 @@ public static class ComputerAi
                 foreach (HexCoord unitCoord in MovementRules.MovableUnitsInPowerOrder(t, forPlayer, state.Grid))
                 {
                     Unit unit = state.Grid.Get(unitCoord)!.Unit!;
-                    AiAction? p4b = TryPhase(AiCommon.EnumeratePhase4bForUnit(unitCoord, unit, t, state, tileIndex),
+                    AiAction? p4b = TryPhase("p4b", AiCommon.EnumeratePhase4bForUnit(unitCoord, unit, t, state, tileIndex),
                         0, methodStart, baseScore, forPlayer, state, prof);
                     if (p4b != null) { _ = rng; return p4b; }
                 }
@@ -172,10 +172,10 @@ public static class ComputerAi
     /// the phase produced no winning candidate. Accumulates counters into
     /// <paramref name="prof"/> (shared across all phases of this call).</summary>
     private static AiAction? TryPhase(
-        IEnumerable<AiCandidate> candidates, int threshold,
+        string phase, IEnumerable<AiCandidate> candidates, int threshold,
         long methodStart, int baseScore, PlayerId forPlayer, GameState state, AiSearchProfile prof)
     {
-        AiAction? action = BestPositiveDelta(candidates, threshold, baseScore, forPlayer, state, prof);
+        AiAction? action = BestPositiveDelta(phase, candidates, threshold, baseScore, forPlayer, state, prof);
         if (action != null)
             EmitProfile(methodStart, prof.CloneTicks, prof.ApplyTicks, prof.ScoreTicks, prof.TotalCandidates);
         return action;
@@ -208,6 +208,7 @@ public static class ComputerAi
     /// caller's locals via ref.
     /// </summary>
     private static AiAction? BestPositiveDelta(
+        string phase,
         IEnumerable<AiCandidate> candidates,
         int threshold,
         int baseScore,
@@ -249,7 +250,20 @@ public static class ComputerAi
                 prof.ObservedBestDelta = delta;
                 prof.ObservedBestKind = candidate.Kind;
             }
-            if (delta > bestDelta)
+            bool accepted = delta > bestDelta;
+            // Per-candidate verdict — the ground truth for "why did the
+            // AI decline this action". A candidate is rejected either by
+            // the phase threshold (strictly-positive gate for the spend
+            // phases) or by a better sibling in the same phase. Trace,
+            // not Debug: one line per scored candidate is a firehose
+            // that would bloat FOUREXHEX_6AI logs (which pin Ai:Debug);
+            // opt in with FOUREXHEX_LOG="Ai:Trace". The per-territory
+            // [heuristic] summary remains the Debug-level view.
+            Log.Trace(Log.LogCategory.Ai,
+                $"[candidate] {phase} {candidate.Kind} {candidate.Action} " +
+                $"delta={delta} threshold={threshold} → " +
+                (accepted ? "best-so-far" : "rejected"));
+            if (accepted)
             {
                 bestDelta = delta;
                 best = candidate.Action;
