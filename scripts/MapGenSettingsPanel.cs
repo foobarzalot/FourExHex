@@ -4,9 +4,10 @@ using Godot;
 /// <summary>
 /// Reusable "Map Generation" modal: the controls that shape a freshly-generated
 /// (random) map — Trees, Mountains, Gold (each a 0..25%-of-land density stepper)
-/// plus Clumping (a 0..100 sparse↔clumped territory-assignment factor). Summoned
-/// by the "?" glyph in the map editor and on the New Game page; both hosts share
-/// the single process-wide <see cref="GameSettings"/> densities.
+/// plus Territories (a named dropdown over the sparse↔clumped owner-assignment
+/// factor, running many→one as the factor climbs 0→100). Summoned by the "?" glyph
+/// in the map editor and on the New Game page; both hosts share the single
+/// process-wide <see cref="GameSettings"/> densities.
 ///
 /// Changing a density writes <see cref="GameSettings"/> immediately but does NOT
 /// re-render any host preview — the New Game thumbnail updates only when the die
@@ -21,17 +22,37 @@ public sealed partial class MapGenSettingsPanel : CanvasLayer
     private const int DensityMax = 25;
     private const int DensityStep = 5;
 
-    // Clumping factor spans 0 (fragmented baseline) to 100 (one
-    // contiguous blob per player), drawn from the shared nonlinear stop set in
-    // MapGenOptions (also used by the per-level campaign draw).
-    private static readonly int[] ClumpStops = MapGenOptions.ClumpingFactorStops;
+    // The "Territories" dropdown names the shared nonlinear clumping stops (also
+    // used by the per-level campaign draw). Names run many→one as the factor climbs:
+    // factor 0 = many fragmented territories, factor 100 = one contiguous blob per
+    // player. Kept index-parallel to MapGenOptions.ClumpingFactorStops.
+    private static readonly string[] TerritoryNames =
+        { "Many", "Several", "Some", "Few", "Very Few", "One" };
+    private static readonly (string label, int id)[] TerritoryItems = BuildTerritoryItems();
 
     private ColorRect _backdrop = null!;
     private PanelContainer _panel = null!;
     private LineEdit _treesField = null!;
     private LineEdit _mountainsField = null!;
     private LineEdit _goldField = null!;
-    private LineEdit _clumpingField = null!;
+    private OptionButton _clumpingField = null!;
+
+    private static (string label, int id)[] BuildTerritoryItems()
+    {
+        int[] stops = MapGenOptions.ClumpingFactorStops;
+        if (stops.Length != TerritoryNames.Length)
+        {
+            throw new InvalidOperationException(
+                $"TerritoryNames ({TerritoryNames.Length}) must stay index-parallel to " +
+                $"ClumpingFactorStops ({stops.Length}).");
+        }
+        var items = new (string, int)[stops.Length];
+        for (int i = 0; i < stops.Length; i++)
+        {
+            items[i] = (TerritoryNames[i], stops[i]);
+        }
+        return items;
+    }
 
     private static readonly Font _serifFont =
         GD.Load<FontFile>("res://fonts/DMSerifDisplay-Regular.ttf");
@@ -98,8 +119,8 @@ public sealed partial class MapGenSettingsPanel : CanvasLayer
         vbox.AddChild(UiStepper.BuildStepperRow(
             "Gold", GameSettings.GoldDensity, DensityMin, DensityMax, DensityStep,
             OnGoldChanged, out _goldField));
-        vbox.AddChild(UiStepper.BuildStepperRow(
-            "Clumping", GameSettings.ClumpingFactor, ClumpStops,
+        vbox.AddChild(UiDropdown.BuildDropdownRow(
+            "Territories", GameSettings.ClumpingFactor, TerritoryItems,
             OnClumpingChanged, out _clumpingField));
 
         var back = new Button
@@ -122,7 +143,7 @@ public sealed partial class MapGenSettingsPanel : CanvasLayer
         UiStepper.Resync(_treesField, GameSettings.TreeDensity);
         UiStepper.Resync(_mountainsField, GameSettings.MountainDensity);
         UiStepper.Resync(_goldField, GameSettings.GoldDensity);
-        UiStepper.Resync(_clumpingField, GameSettings.ClumpingFactor);
+        UiDropdown.Resync(_clumpingField, GameSettings.ClumpingFactor);
         IsOpen = true;
         Visible = true;
         Log.Debug(Log.LogCategory.MapGen, "MapGenSettingsPanel: opened");
