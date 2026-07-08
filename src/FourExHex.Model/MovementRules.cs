@@ -211,6 +211,31 @@ public static class MovementRules
     }
 
     /// <summary>
+    /// The subset of <see cref="ValidTargets"/> whose arrival would consume
+    /// the attacker's action: enemy tiles we can capture, plus own-territory
+    /// tiles whose tree/grave the unit would clear. Empty same-color
+    /// repositions and friendly combines are legal targets but excluded here
+    /// (they don't consume the action). Shared by the controller's move-target
+    /// preview and the HUD's "no capture targets" hint so both agree.
+    /// </summary>
+    public static IEnumerable<HexCoord> ActionConsumingTargets(
+        UnitLevel attackerLevel,
+        Territory attackerTerritory,
+        HexGrid grid,
+        IReadOnlyList<Territory> allTerritories)
+    {
+        foreach (HexCoord coord in ValidTargets(attackerLevel, attackerTerritory, grid, allTerritories))
+        {
+            HexTile? tile = grid.Get(coord);
+            if (tile == null) continue;
+            if (ArrivalConsumesAction(tile, attackerTerritory))
+            {
+                yield return coord;
+            }
+        }
+    }
+
+    /// <summary>
     /// Shared logic for "a unit arrives at a destination tile". Handles
     /// three cases:
     ///   - Combine: destination has a friendly unit → produce a higher

@@ -2184,6 +2184,7 @@ public partial class HudView : OrientationHud, IHudView
             {
                 if (_tutorialLabel.Text != hint)
                 {
+                    Log.Debug(Log.LogCategory.Hud, $"[ActionHint] {hint}");
                     _tutorialLabel.Text = hint;
                     PositionTutorialOverlay(); // re-fit the panel height to this hint
                 }
@@ -2291,17 +2292,38 @@ public partial class HudView : OrientationHud, IHudView
         UnitLevel? buyLevel = SessionState.BuyModeLevel(session.Mode);
         if (buyLevel.HasValue)
         {
-            return $"{InteractionVerb.Capitalized} to place a {buyLevel.Value}";
+            return NoCaptureTargets(state, session, buyLevel.Value)
+                ? $"No capture targets for {buyLevel.Value}"
+                : $"{InteractionVerb.Capitalized} to place a {buyLevel.Value}";
         }
         if (session.Mode == SessionState.ActionMode.MovingUnit && session.MoveSource.HasValue)
         {
             HexTile? src = state.Grid.Get(session.MoveSource.Value);
             UnitLevel level = (src?.Unit?.Level) ?? UnitLevel.Recruit;
-            return $"{InteractionVerb.Capitalized} to move the {level}";
+            return NoCaptureTargets(state, session, level)
+                ? $"No capture targets for {level}"
+                : $"{InteractionVerb.Capitalized} to move the {level}";
         }
         // Bankruptcy warning is handled by the red bankruptcy-toast widget
         // (built by BuildBankruptToast / toggled in Refresh), not this panel.
         return null;
+    }
+
+    /// <summary>
+    /// True when the selected territory has zero action-consuming targets for
+    /// a unit of <paramref name="level"/> — no captures, tree-clears, or
+    /// grave-burials, only empty same-color repositions / friendly combines.
+    /// Drives the "No capture targets" hint so a boxed-in unit (or a purchase
+    /// with nothing to attack) isn't told to hunt for a capture that can't
+    /// happen. Null selection → false so the caller keeps its normal CTA.
+    /// Mirrors the controller's move-target preview via the shared
+    /// <see cref="MovementRules.ActionConsumingTargets"/>.
+    /// </summary>
+    private static bool NoCaptureTargets(GameState state, SessionState session, UnitLevel level)
+    {
+        Territory? attacker = session.SelectedTerritory;
+        return attacker != null
+            && !MovementRules.ActionConsumingTargets(level, attacker, state.Grid, state.Territories).Any();
     }
 
     /// <summary>

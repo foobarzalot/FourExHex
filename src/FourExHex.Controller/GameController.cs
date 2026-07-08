@@ -996,18 +996,8 @@ public class GameController
     /// own-territory repositions and friendly combines are legal but not
     /// highlighted — they don't consume the unit's action.
     /// </summary>
-    private IEnumerable<HexCoord> ActionConsumingTargets(UnitLevel attackerLevel, Territory territory)
-    {
-        foreach (HexCoord coord in MovementRules.ValidTargets(attackerLevel, territory, _state.Grid, _state.Territories))
-        {
-            HexTile? tile = _state.Grid.Get(coord);
-            if (tile == null) continue;
-            if (MovementRules.ArrivalConsumesAction(tile, territory))
-            {
-                yield return coord;
-            }
-        }
-    }
+    private IEnumerable<HexCoord> ActionConsumingTargets(UnitLevel attackerLevel, Territory territory) =>
+        MovementRules.ActionConsumingTargets(attackerLevel, territory, _state.Grid, _state.Territories);
 
     private bool IsValidTarget(UnitLevel attackerLevel, HexCoord coord)
     {

@@ -160,6 +160,70 @@ public class MovementRulesTests
         Assert.DoesNotContain(HexCoord.FromOffset(2, 0), targets);
     }
 
+    // --- ActionConsumingTargets -------------------------------------------
+
+    [Fact]
+    public void ActionConsumingTargets_IncludesCapturableEnemyTile()
+    {
+        // Same fixture as ValidTargets_IncludesAdjacentZeroDefenseEnemyTile:
+        // Red at (0,1),(1,1); (2,0) is a capturable non-capital Blue tile.
+        HexGrid grid = BuildGrid(5, 2, Blue);
+        SetTile(grid, HexCoord.FromOffset(0, 1), Red);
+        SetTile(grid, HexCoord.FromOffset(1, 1), Red);
+        var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        Territory red = territories.First(t => t.Owner == Red);
+
+        var consuming = MovementRules.ActionConsumingTargets(UnitLevel.Recruit, red, grid, territories);
+
+        Assert.Contains(HexCoord.FromOffset(2, 0), consuming);
+    }
+
+    [Fact]
+    public void ActionConsumingTargets_IncludesOwnTree()
+    {
+        // Red owns (0,0),(1,0),(2,0) in a 5x1 Blue grid; a tree sits on (1,0).
+        // Clearing it consumes the action, so it's an action-consuming target.
+        // Blue's remaining tiles form a capital-defended border (not capturable
+        // by a Recruit), so the tree is the only consuming target.
+        HexGrid grid = BuildGrid(5, 1, Blue);
+        foreach (var c in new[] { HexCoord.FromOffset(0, 0), HexCoord.FromOffset(1, 0), HexCoord.FromOffset(2, 0) })
+        {
+            SetTile(grid, c, Red);
+        }
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Tree();
+
+        var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        Territory red = territories.First(t => t.Owner == Red);
+
+        var consuming = MovementRules.ActionConsumingTargets(UnitLevel.Recruit, red, grid, territories);
+
+        Assert.Contains(HexCoord.FromOffset(1, 0), consuming);
+    }
+
+    [Fact]
+    public void ActionConsumingTargets_EmptyWhenOnlyRepositionsRemain()
+    {
+        // The core issue-#54 scenario: Red owns (0,0),(1,0),(2,0) in a 5x1
+        // Blue grid with no trees/graves. The only Blue tiles adjacent to Red
+        // form Blue's capital-defended border (defense 1, uncapturable by a
+        // Recruit), so no captures/tree-clears/graves exist — only empty
+        // same-color repositions. ValidTargets is non-empty; the
+        // action-consuming subset is empty.
+        HexGrid grid = BuildGrid(5, 1, Blue);
+        foreach (var c in new[] { HexCoord.FromOffset(0, 0), HexCoord.FromOffset(1, 0), HexCoord.FromOffset(2, 0) })
+        {
+            SetTile(grid, c, Red);
+        }
+        var territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        Territory red = territories.First(t => t.Owner == Red);
+
+        var valid = MovementRules.ValidTargets(UnitLevel.Recruit, red, grid, territories);
+        var consuming = MovementRules.ActionConsumingTargets(UnitLevel.Recruit, red, grid, territories);
+
+        Assert.NotEmpty(valid);
+        Assert.Empty(consuming);
+    }
+
     [Fact]
     public void ValidTargets_ExcludesNonAdjacentEnemyTile()
     {
