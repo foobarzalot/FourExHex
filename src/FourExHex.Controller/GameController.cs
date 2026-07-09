@@ -159,6 +159,7 @@ public class GameController
         _hud.NextTerritoryClicked += OnNextTerritoryPressed;
         _hud.PreviousTerritoryClicked += OnPreviousTerritoryPressed;
         _hud.NextUnitClicked += OnNextUnitPressed;
+        _hud.NextUnitTierClicked += OnNextUnitTierPressed;
         _hud.PreviousUnitClicked += OnPreviousUnitPressed;
         _hud.CancelActionPressed += OnCancelActionPressed;
         _hud.AutomateClicked += OnAutomatePressed;
@@ -226,6 +227,7 @@ public class GameController
         _hud.NextTerritoryClicked -= OnNextTerritoryPressed;
         _hud.PreviousTerritoryClicked -= OnPreviousTerritoryPressed;
         _hud.NextUnitClicked -= OnNextUnitPressed;
+        _hud.NextUnitTierClicked -= OnNextUnitTierPressed;
         _hud.PreviousUnitClicked -= OnPreviousUnitPressed;
         _hud.CancelActionPressed -= OnCancelActionPressed;
         _hud.AutomateClicked -= OnAutomatePressed;
@@ -2273,8 +2275,49 @@ public class GameController
     private void OnNextUnitPressed() =>
         TrackHandler(() => StepUnitSelection(forward: true));
 
+    private void OnNextUnitTierPressed() =>
+        TrackHandler(StepUnitTierSelection);
+
     private void OnPreviousUnitPressed() =>
         TrackHandler(() => StepUnitSelection(forward: false));
+
+    /// <summary>
+    /// Long-press on the next-unit button: skip the move-source to the
+    /// first movable unit of the next-higher power tier, wrapping to the
+    /// lowest tier after the highest (no source picked yet starts at the
+    /// lowest tier). No-op when the selection has fewer than two movable
+    /// tiers — there is nowhere to skip to.
+    /// </summary>
+    private void StepUnitTierSelection()
+    {
+        if (_session.IsGameOver) return;
+        Territory? selected = _session.SelectedTerritory;
+        if (selected == null) return;
+
+        PlayerId color = _state.Turns.CurrentPlayer.Id;
+        List<(UnitLevel Level, HexCoord Coord)> tiers =
+            AiCommon.MovableUnitTiersWeakestFirst(selected, color, _state.Grid);
+        if (tiers.Count < 2) return; // nowhere to skip to
+
+        // Current tier = the picked-up unit's level; -1 (no source, or a
+        // source whose tier vanished) advances to the lowest tier.
+        int currentIndex = -1;
+        if (_session.Mode == SessionState.ActionMode.MovingUnit
+            && _session.MoveSource.HasValue)
+        {
+            UnitLevel? sourceLevel = _state.Grid.Get(_session.MoveSource.Value)?.Unit?.Level;
+            if (sourceLevel is UnitLevel level)
+            {
+                currentIndex = tiers.FindIndex(t => t.Level == level);
+            }
+        }
+        int nextIndex = (currentIndex + 1) % tiers.Count;
+
+        (UnitLevel pickedLevel, HexCoord target) = tiers[nextIndex];
+        Log.Debug(Log.LogCategory.Input,
+            $"[N-tier] fromIdx={currentIndex} pickedIdx={nextIndex} coord={target} level={pickedLevel} tiers={tiers.Count} → RepeatedMovement on");
+        EnterMovingUnitOn(target, pickedLevel, selected);
+    }
 
     private void StepUnitSelection(bool forward)
     {
@@ -2299,12 +2342,24 @@ public class GameController
 
         HexCoord target = movable[nextIndex];
         Unit chosen = _state.Grid.Get(target)!.Unit!;
+        Log.Debug(Log.LogCategory.Input,
+            $"[N-cycle] forward={forward} count={movable.Count} pickedIdx={nextIndex} coord={target} level={chosen.Level} → RepeatedMovement on");
+        EnterMovingUnitOn(target, chosen.Level, selected);
+    }
+
+    /// <summary>
+    /// Shared tail of the unit steppers (<see cref="StepUnitSelection"/>,
+    /// <see cref="StepUnitTierSelection"/>): pick up the unit at
+    /// <paramref name="target"/> as the sticky repeated-movement source,
+    /// re-emit the move-target ring, and clear any tower overlays left by
+    /// a BuildingTower exit.
+    /// </summary>
+    private void EnterMovingUnitOn(HexCoord target, UnitLevel level, Territory selected)
+    {
         _session.Mode = SessionState.ActionMode.MovingUnit;
         _session.MoveSource = target;
         _session.RepeatedMovement = true;
-        Log.Debug(Log.LogCategory.Input,
-            $"[N-cycle] forward={forward} count={movable.Count} pickedIdx={nextIndex} coord={target} level={chosen.Level} → RepeatedMovement on");
-        _map.ShowMoveTargets(ActionConsumingTargets(chosen.Level, selected), chosen.Level);
+        _map.ShowMoveTargets(ActionConsumingTargets(level, selected), level);
         // Defensive: clear tower overlays in case we're transitioning out
         // of BuildingTower mode.
         _map.ShowTowerTargets(System.Array.Empty<HexCoord>());

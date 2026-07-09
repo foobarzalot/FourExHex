@@ -28,6 +28,7 @@ public partial class HudView : OrientationHud, IHudView
     public event Action? NextTerritoryClicked;
     public event Action? PreviousTerritoryClicked;
     public event Action? NextUnitClicked;
+    public event Action? NextUnitTierClicked;
     public event Action? PreviousUnitClicked;
     public event Action? CancelActionPressed;
     public event Action? AutomateClicked;
@@ -280,26 +281,31 @@ public partial class HudView : OrientationHud, IHudView
         // 5) Undo / Redo — two ghost icon buttons. A short click is
         // Undo/Redo Last; holding past the long-press threshold fires
         // Undo All / Redo All (the same actions Shift+Z / Shift+Y reach).
-        _undoLastButton = MakeUndoRedoButton(
+        _undoLastButton = MakeLongPressButton(
             HudIcon.UndoLast, "Undo — Z (hold for Undo All)",
             "Undo button long-press -> Undo All",
-            () => UndoLastClicked?.Invoke(), () => UndoTurnClicked?.Invoke());
+            () => UndoLastClicked?.Invoke(), () => UndoTurnClicked?.Invoke(),
+            startDisabled: true);
         _undoCluster.AddChild(_undoLastButton);
 
-        _redoLastButton = MakeUndoRedoButton(
+        _redoLastButton = MakeLongPressButton(
             HudIcon.RedoLast, "Redo — Y (hold for Redo All)",
             "Redo button long-press -> Redo All",
-            () => RedoLastClicked?.Invoke(), () => RedoAllClicked?.Invoke());
+            () => RedoLastClicked?.Invoke(), () => RedoAllClicked?.Invoke(),
+            startDisabled: true);
         _undoCluster.AddChild(_redoLastButton);
 
         // Next unmoved unit in the selected territory — same action as
-        // the N hotkey. Sits to the LEFT of Next Territory so the two
-        // "next ..." buttons read as a stepped pair. Disabled when no
-        // unmoved units remain in the selection; highlighted while
-        // SessionState.RepeatedMovement is on.
-        _nextUnitButton = new HudIconButton(HudIcon.NextUnit);
-        _nextUnitButton.Pressed += () => NextUnitClicked?.Invoke();
-        AudioBus.AttachClick(_nextUnitButton);
+        // the N hotkey; holding past the long-press threshold skips to
+        // the next unit power tier instead. Sits to the LEFT of Next
+        // Territory so the two "next ..." buttons read as a stepped
+        // pair. Disabled when no unmoved units remain in the selection;
+        // highlighted while SessionState.RepeatedMovement is on.
+        _nextUnitButton = MakeLongPressButton(
+            HudIcon.NextUnit, "Next Unit — N (hold for next tier)",
+            "Next Unit button long-press -> next tier",
+            () => NextUnitClicked?.Invoke(), () => NextUnitTierClicked?.Invoke(),
+            startDisabled: false);
         _controlsCluster.AddChild(_nextUnitButton);
 
         // Next active territory — same action as the Tab hotkey. Disabled
@@ -375,15 +381,17 @@ public partial class HudView : OrientationHud, IHudView
         BuildTransientBanner();
     }
 
-    // A ghost Undo/Redo icon button: short click fires <paramref name="shortPress"/>
+    // An icon button with a hold gesture: short click fires <paramref name="shortPress"/>
     // (swallowed when a long-press just completed), holding past the threshold
     // logs <paramref name="logLabel"/> and fires <paramref name="longPress"/>.
-    private HudIconButton MakeUndoRedoButton(
-        HudIcon icon, string tooltip, string logLabel, Action shortPress, Action longPress)
+    // Undo/Redo start disabled (nothing to undo yet); Next Unit starts enabled.
+    private HudIconButton MakeLongPressButton(
+        HudIcon icon, string tooltip, string logLabel, Action shortPress, Action longPress,
+        bool startDisabled)
     {
         var button = new HudIconButton(icon)
         {
-            Disabled = true,
+            Disabled = startDisabled,
             TooltipText = tooltip,
         };
         button.Pressed += () =>
