@@ -83,8 +83,8 @@ CONTROLLER (pure C#) ─ GameController
     hud.NextTerritoryClicked     → OnNextTerritoryPressed (Tab: descending-size, capital-coord tie-break;
                                    unvisited-this-turn first, then fresh round)
     hud.PreviousTerritoryClicked → OnPreviousTerritoryPressed
-    hud.NextUnitClicked          → OnNextUnitPressed (N: power-order cycle, lex within tier; enters repeated-move)
-    hud.PreviousUnitClicked      → OnPreviousUnitPressed (Shift+N)
+    hud.NextUnitClicked          → OnNextUnitPressed (N: weakest-first cycle, lex within tier; enters repeated-move)
+    hud.PreviousUnitClicked      → OnPreviousUnitPressed (Shift+N: strongest-first)
     hud.CancelActionPressed      → OnCancelActionPressed
     hud.AutomateClicked          → OnAutomatePressed (toggle; see "Automate")
     hud.DefeatContinueClicked    → OnDefeatContinuePressed
@@ -682,7 +682,7 @@ public interface ITimerFactory { void After(int delayMs, Action callback); }
 - **Snapshots capture `GameState` plus the player-intent slice of `SessionState`** (`SelectedTerritory`, `Mode`, `MoveSource`, `RepeatedMovement`, `VisitedTerritoryCapitals`, `VisitedThisTurnCapitals`, `SelectionWasRevisit`, `EndTurnCtaLatched`) via `UndoEntry` = `(GameStateSnapshot, SessionStateSnapshot)`. `Winner`, `PendingDefeatScreen`, and the `Undo` stack stay out. Top-level human handlers wrap in `TrackHandler`: capture pre-state, run body, push one `UndoEntry` iff state changed (visited sets compared by sorted-sequence equality in `SessionStateSnapshot.Equals`). Exceptions propagate without pushing.
 - **Visited-territory cycling**: `SessionState.VisitedTerritoryCapitals` records the capital of every territory the human selects this turn. `StepTerritorySelection` re-sorts by descending size each press; pass 1 stops only on actionable *unvisited* territories, pass 2 resets the set for a fresh round. Cleared per-turn at the top of `StartPlayerTurn` (before that turn's auto-selection marks its pick); round-trips through `SessionStateSnapshot`. AI never touches it (runs via `GameOperations.ExecuteAi*`, not `SetSelection`).
 - **Turn-scoped visited state (the CTA driver)**: `MarkSelectedVisited` (the `SetSelection` funnel — click, Tab, rally, auto-select, automate) also adds the capital to `SessionState.VisitedThisTurnCapitals` and maintains `SelectionWasRevisit` (true iff the selection *changed* onto an already-visited territory; same-territory re-clicks preserve it, null/capital-less selections clear it). Unlike the cycle set, this one never resets mid-turn — only `StartPlayerTurn` and undo restore shrink it. It suppresses visited capitals' pending-action pulse (except the currently-worked first-visit selection), lights Next-Territory on revisits, and — once every actionable territory is visited and the selected one is exhausted/deselected (or automation exhausted) — lights the End Turn CTA, which latches via `EndTurnCtaLatched` until the turn ends or undo unwinds past the lighting step. A capital-less singleton holding an unmoved unit can't be visited, so it conservatively holds the End Turn CTA off until the unit moves.
-- **Repeated-movement** is a sticky bit on `SessionState` driving N-hotkey auto-advance. `StepUnitSelection` sets it on picking a different unit. While on, `ExecuteMove`'s tail calls `AutoAdvanceAfterMove(level, source, destination)`: power-then-coord sort of remaining movables in the (capture-rebound) selected territory, destination excluded. Clears on Esc/cancel, entry into any non-None `ActionMode`, click selection change to a different territory, long-press rally, End Turn, game-over (`GameOperations.DeclareWinner`), or auto-advance with no movables left. `ClearPendingAction` does NOT clear it — `ExecuteMove`'s `FinishPendingAction` must run with the flag alive for the auto-advance hook. Round-trips through `SessionStateSnapshot`; capture-rebind preserves it.
+- **Repeated-movement** is a sticky bit on `SessionState` driving N-hotkey auto-advance. `StepUnitSelection` sets it on picking a different unit. While on, `ExecuteMove`'s tail calls `AutoAdvanceAfterMove(level, source, destination)`: weakest-first sort (`MovementRules.MovableUnitsWeakestFirst`, level ascending then coord-lex — the same order as the N-cycle and the AI's capture phases) of remaining movables in the (capture-rebound) selected territory, destination excluded, picking the first strictly after the moved unit's (level, source) key. Clears on Esc/cancel, entry into any non-None `ActionMode`, click selection change to a different territory, long-press rally, End Turn, game-over (`GameOperations.DeclareWinner`), or auto-advance with no movables left. `ClearPendingAction` does NOT clear it — `ExecuteMove`'s `FinishPendingAction` must run with the flag alive for the auto-advance hook. Round-trips through `SessionStateSnapshot`; capture-rebind preserves it.
 - **`HexTile` is a pure model — no view coupling.** `HexTile.Owner` is plain state. The view owns the tile→fill map (`HexMapView._tileVisuals`) and resyncs fills from `_state` in `RebuildAfterTerritoryChange()`, the single coalesced repaint path. Model captures mutate `tile.Owner` with no view effect; the screen catches up only on `RebuildAfterTerritoryChange`.
 - **Undo is turn-scoped.** `OnEndTurnPressed` clears the stack — ending a turn commits everything.
 - **AI actions are not undoable**; AI execute methods validate preconditions before mutating — an illegal action throws and halts rather than corrupting state.
@@ -1132,10 +1132,19 @@ Replay reuses the live `ExecuteAi*` helpers — same captures, FX, `HandleCaptur
   one enumerator per phase: `EnumeratePhase1ForUnit`
   (captures/chops/grave-clears), `EnumeratePhase2aForUnit` (combine-to-unlock,
   existing units), `EnumeratePhase2b` (buy-and-combine-to-unlock),
-  `EnumeratePhase3` (buy-to-capture/chop), `EnumeratePhase4Towers`,
-  `EnumeratePhase4bForUnit` (defensive repositions to border tiles). Shared
-  filter `UnlocksMovementConsumingTarget` admits a 2a/2b combine only when the
-  combined level reaches a movement-consuming target neither source could. Only
+  `EnumeratePhase3ForLevel` (buy-to-capture/chop for one purchase tier; the
+  all-tiers `EnumeratePhase3` wrapper walks levels cheapest-first with a
+  min-sufficient-level `covered` dedup for its non-phase consumers),
+  `EnumeratePhase4Towers`, `EnumeratePhase4bForUnit` (defensive repositions to
+  border tiles). Shared filter `UnlocksMovementConsumingTarget` admits a 2a/2b
+  combine only when the combined level reaches a movement-consuming target
+  neither source could; **both combine phases require an unmoved target** —
+  the combined unit inherits the destination's `HasMovedThisTurn`
+  (`ResolveArrival`), so merging into an exhausted unit would bill the upkeep
+  increase immediately for zero benefit this turn (deferring the combine
+  dominates). `MovableUnitTiersWeakestFirst` yields one (level, coord) entry
+  per distinct movable tier, ascending — one representative suffices because
+  `ValidTargets` depends only on level + territory, never unit position. Only
   these helpers know rule legality. **Solvency gating applies to
   upkeep-increasing actions only** — buys/combines/towers defer to
   `UpkeepRules.SurvivesNextUpkeep(gold, netIncome)` (treasury +
@@ -1147,8 +1156,18 @@ Replay reuses the live `ExecuteAi*` helpers — same captures, FX, `HandleCaptur
   **Stepwise-greedy:** each `ChooseNextAction` picks the largest non-exhausted
   owned territory (descending cell-count, capital-coord tie-break) and tries
   phases **1 → 2a → 2b → 3 → 4a → 4b**, committing to the first yielding an
-  action; a territory is visited only when all phases empty. Within a phase,
-  units iterate power-then-coord order, all candidates scored, best delta wins.
+  action; a territory is visited only when all phases empty. The offensive
+  phases (1, 3) route through the shared `TryTiersWeakestFirst` loop: tiers
+  walk weakest→strongest (phase 1 one representative unit per movable tier
+  via `MovableUnitTiersWeakestFirst`, phase 3 purchase levels
+  Recruit→Commander via `EnumeratePhase3ForLevel`), committing to the best
+  candidate of the first tier that yields any — the cheapest sufficient unit
+  takes each tile, a dry tier is skipped for the rest of the call
+  (`[tier]`/`[tier-skip]` at Ai:Debug), and the driver's re-entry per applied
+  action restarts the scan from the weakest tier once the board changes. The
+  strength-concentrating phases (2a, 4b) iterate units power-then-coord
+  (`MovableUnitsInPowerOrder`). Within a tier or unit, all candidates are
+  scored and the best delta wins.
   **Phases 1, 2a, 2b, and 3 take their best legal candidate regardless of
   delta sign** (`BestPositiveDelta` with `threshold = int.MinValue`) — an
   offensive/unlock action is never declined for the status quo; the spend
