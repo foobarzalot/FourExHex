@@ -97,7 +97,7 @@ public partial class GameControllerTests
     }
 
     [Fact]
-    public void NextUnit_NoSourcePickedYet_PicksHighestPowerMovableUnit()
+    public void NextUnit_NoSourcePickedYet_PicksFirstUnitInCycleOrder()
     {
         var g = new ThreeUnitsRedGame();
         g.SelectRed();
@@ -112,7 +112,7 @@ public partial class GameControllerTests
     }
 
     [Fact]
-    public void PreviousUnit_NoSourcePickedYet_PicksLowestPowerMovableUnit()
+    public void PreviousUnit_NoSourcePickedYet_PicksLastUnitInCycleOrder()
     {
         var g = new ThreeUnitsRedGame();
         g.SelectRed();
@@ -258,10 +258,12 @@ public partial class GameControllerTests
     // --- N / Shift+N: power-ordered cycle ---------------------------------
 
     [Fact]
-    public void NextUnit_PowerOrder_DescendsByLevel()
+    public void NextUnit_PowerOrder_AscendsByLevel()
     {
         // Replace the three Recruits with a Recruit, a Soldier, and a
-        // Captain. N walks them strongest-first.
+        // Captain. N walks them weakest-first — the same order the AI's
+        // capture phases spend units, so the cheapest sufficient unit is
+        // offered first.
         var g = new ThreeUnitsRedGame();
         g.State.Grid.Get(g.UnitA)!.Occupant = new Unit(g.Red.Id, UnitLevel.Recruit);
         g.State.Grid.Get(g.UnitB)!.Occupant = new Unit(g.Red.Id, UnitLevel.Soldier);
@@ -269,20 +271,20 @@ public partial class GameControllerTests
         g.SelectRed();
 
         g.Hud.PressNextUnit();
-        Assert.Equal(g.UnitC, g.Session.MoveSource); // Captain (highest)
+        Assert.Equal(g.UnitA, g.Session.MoveSource); // Recruit (lowest)
         g.Hud.PressNextUnit();
         Assert.Equal(g.UnitB, g.Session.MoveSource); // Soldier
         g.Hud.PressNextUnit();
-        Assert.Equal(g.UnitA, g.Session.MoveSource); // Recruit
+        Assert.Equal(g.UnitC, g.Session.MoveSource); // Captain
         g.Hud.PressNextUnit();
-        Assert.Equal(g.UnitC, g.Session.MoveSource); // wraps back to Captain
+        Assert.Equal(g.UnitA, g.Session.MoveSource); // wraps back to Recruit
     }
 
     [Fact]
     public void NextUnit_PowerOrder_LexTiebreakerWithinTier()
     {
-        // Level-desc-then-coord-lex-asc: with two Recruits and one Soldier,
-        // cycle goes Soldier-B → Recruit-A → Recruit-C → wrap.
+        // Level-asc-then-coord-lex-asc: with two Recruits and one Soldier,
+        // cycle goes Recruit-A → Recruit-C → Soldier-B → wrap.
         var g = new ThreeUnitsRedGame();
         g.State.Grid.Get(g.UnitA)!.Occupant = new Unit(g.Red.Id, UnitLevel.Recruit);
         g.State.Grid.Get(g.UnitB)!.Occupant = new Unit(g.Red.Id, UnitLevel.Soldier);
@@ -290,15 +292,15 @@ public partial class GameControllerTests
         g.SelectRed();
 
         g.Hud.PressNextUnit();
-        Assert.Equal(g.UnitB, g.Session.MoveSource); // Soldier (highest tier)
-        g.Hud.PressNextUnit();
-        Assert.Equal(g.UnitA, g.Session.MoveSource); // Recruit at (1,1) — next tier, lex first
+        Assert.Equal(g.UnitA, g.Session.MoveSource); // Recruit at (1,1) — lowest tier, lex first
         g.Hud.PressNextUnit();
         Assert.Equal(g.UnitC, g.Session.MoveSource); // Recruit at (3,1) — same tier, lex next
+        g.Hud.PressNextUnit();
+        Assert.Equal(g.UnitB, g.Session.MoveSource); // Soldier (highest tier)
     }
 
     [Fact]
-    public void PreviousUnit_PowerOrder_WalksLevelAscending()
+    public void PreviousUnit_PowerOrder_WalksLevelDescending()
     {
         var g = new ThreeUnitsRedGame();
         g.State.Grid.Get(g.UnitA)!.Occupant = new Unit(g.Red.Id, UnitLevel.Recruit);
@@ -307,13 +309,13 @@ public partial class GameControllerTests
         g.SelectRed();
 
         g.Hud.PressPreviousUnit();
-        Assert.Equal(g.UnitA, g.Session.MoveSource); // Recruit (lowest)
+        Assert.Equal(g.UnitC, g.Session.MoveSource); // Captain (highest)
         g.Hud.PressPreviousUnit();
         Assert.Equal(g.UnitB, g.Session.MoveSource); // Soldier
         g.Hud.PressPreviousUnit();
-        Assert.Equal(g.UnitC, g.Session.MoveSource); // Captain
+        Assert.Equal(g.UnitA, g.Session.MoveSource); // Recruit
         g.Hud.PressPreviousUnit();
-        Assert.Equal(g.UnitA, g.Session.MoveSource); // wraps to Recruit
+        Assert.Equal(g.UnitC, g.Session.MoveSource); // wraps to Captain
     }
 
     // --- Repeated-movement mode: flag, auto-advance, exits ---------------
@@ -348,6 +350,29 @@ public partial class GameControllerTests
         Assert.True(g.Session.RepeatedMovement);
         Assert.Equal(SessionState.ActionMode.MovingUnit, g.Session.Mode);
         Assert.Equal(g.UnitB, g.Session.MoveSource);
+    }
+
+    [Fact]
+    public void RepeatedMovement_AfterMove_AutoAdvancesToNextHigherTier()
+    {
+        // Mixed tiers: Recruit A, Soldier B, Captain C. N picks the Recruit
+        // (weakest); after it repositions, auto-advance must step UP to the
+        // Soldier — the next tier in weakest-first order — not jump to the
+        // Captain.
+        var g = new ThreeUnitsRedGame();
+        g.State.Grid.Get(g.UnitA)!.Occupant = new Unit(g.Red.Id, UnitLevel.Recruit);
+        g.State.Grid.Get(g.UnitB)!.Occupant = new Unit(g.Red.Id, UnitLevel.Soldier);
+        g.State.Grid.Get(g.UnitC)!.Occupant = new Unit(g.Red.Id, UnitLevel.Captain);
+        g.SelectRed();
+        g.Hud.PressNextUnit(); // weakest first → Recruit A
+        Assert.Equal(g.UnitA, g.Session.MoveSource);
+
+        // (4,1) is empty Red — a valid in-territory move target.
+        g.Map.SimulateClick(g.State.Grid.Get(HexCoord.FromOffset(4, 1)));
+
+        Assert.True(g.Session.RepeatedMovement);
+        Assert.Equal(SessionState.ActionMode.MovingUnit, g.Session.Mode);
+        Assert.Equal(g.UnitB, g.Session.MoveSource); // Soldier, not Captain
     }
 
     [Fact]

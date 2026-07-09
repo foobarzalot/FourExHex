@@ -254,6 +254,94 @@ public class ComputerAiTests
         Assert.Empty(wrongOwner);
     }
 
+    // --- MovementRules.MovableUnitsWeakestFirst ----------------------------
+
+    [Fact]
+    public void MovableUnitsWeakestFirst_AscendsByLevel()
+    {
+        // 3-tile Red strip with Recruit / Soldier / Captain across the
+        // tiles. Helper must return them in power-ascending order:
+        // Recruit first, then Soldier, then Captain.
+        var grid = new HexGrid();
+        grid.Add(new HexTile(HexCoord.FromOffset(0, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(1, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(2, 0), Red));
+        GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
+        Territory red = state.Territories.First(t => t.Owner == Red);
+        HexCoord cap = red.Capital!.Value;
+        HexCoord[] offCap = red.Coords.Where(c => !c.Equals(cap)).Take(2).ToArray();
+        grid.Get(offCap[0])!.Occupant = new Unit(Red, UnitLevel.Recruit);
+        grid.Get(offCap[1])!.Occupant = new Unit(Red, UnitLevel.Soldier);
+        grid.Get(cap)!.Occupant = new Unit(Red, UnitLevel.Captain);
+
+        List<HexCoord> ordered = MovementRules.MovableUnitsWeakestFirst(red, Red, grid);
+
+        Assert.Equal(3, ordered.Count);
+        Assert.Equal(offCap[0], ordered[0]); // Recruit
+        Assert.Equal(offCap[1], ordered[1]); // Soldier
+        Assert.Equal(cap, ordered[2]);       // Captain
+    }
+
+    [Fact]
+    public void MovableUnitsWeakestFirst_LexTiebreakerWithinTier_AndExcludesMoved()
+    {
+        // Two fresh Soldiers tie on level → lex-min coord first (same
+        // tiebreak as the power-descending helper). An already-moved
+        // Recruit is excluded by the shared gather scan.
+        var grid = new HexGrid();
+        grid.Add(new HexTile(HexCoord.FromOffset(0, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(1, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(2, 0), Red));
+        GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
+        Territory red = state.Territories.First(t => t.Owner == Red);
+        HexCoord a = HexCoord.FromOffset(0, 0);
+        HexCoord b = HexCoord.FromOffset(2, 0);
+        grid.Get(a)!.Occupant = new Unit(Red, UnitLevel.Soldier);
+        grid.Get(b)!.Occupant = new Unit(Red, UnitLevel.Soldier);
+        var movedRecruit = new Unit(Red, UnitLevel.Recruit) { HasMovedThisTurn = true };
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = movedRecruit;
+
+        List<HexCoord> ordered = MovementRules.MovableUnitsWeakestFirst(red, Red, grid);
+
+        Assert.Equal(2, ordered.Count);
+        HexCoord first = a.CompareTo(b) < 0 ? a : b;
+        HexCoord second = a.CompareTo(b) < 0 ? b : a;
+        Assert.Equal(first, ordered[0]);
+        Assert.Equal(second, ordered[1]);
+    }
+
+    // --- AiCommon.MovableUnitTiersWeakestFirst ------------------------------
+
+    [Fact]
+    public void MovableUnitTiersWeakestFirst_OneEntryPerLevelAscending()
+    {
+        // Two Recruits and a Soldier → exactly one entry per distinct
+        // level, ascending, each represented by its tier's lex-min unit.
+        // This is the structural tier-skip guarantee: within one
+        // ChooseNextAction call, each tier is scanned once, not once per
+        // unit (same-level units share an identical ValidTargets set).
+        var grid = new HexGrid();
+        for (int col = 0; col < 4; col++)
+            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
+        Territory red = state.Territories.First(t => t.Owner == Red);
+        HexCoord recruitA = HexCoord.FromOffset(1, 0);
+        HexCoord recruitB = HexCoord.FromOffset(3, 0);
+        HexCoord soldier = HexCoord.FromOffset(2, 0);
+        grid.Get(recruitA)!.Occupant = new Unit(Red, UnitLevel.Recruit);
+        grid.Get(recruitB)!.Occupant = new Unit(Red, UnitLevel.Recruit);
+        grid.Get(soldier)!.Occupant = new Unit(Red, UnitLevel.Soldier);
+
+        List<(UnitLevel Level, HexCoord Coord)> tiers =
+            AiCommon.MovableUnitTiersWeakestFirst(red, Red, grid);
+
+        Assert.Equal(2, tiers.Count);
+        Assert.Equal(UnitLevel.Recruit, tiers[0].Level);
+        Assert.Equal(recruitA, tiers[0].Coord); // lex-min of the two Recruits
+        Assert.Equal(UnitLevel.Soldier, tiers[1].Level);
+        Assert.Equal(soldier, tiers[1].Coord);
+    }
+
     [Fact]
     public void Enumerate_FirstMoveCandidateIsHighestPowerUnit()
     {
@@ -1587,6 +1675,163 @@ public class ComputerAiTests
         AiBuyUnitAction chosen = Assert.IsType<AiBuyUnitAction>(result);
         Assert.Equal(new HexCoord(4, 0), chosen.Destination);
         Assert.Equal(UnitLevel.Recruit, chosen.Level);
+    }
+
+    // -----------------------------------------------------------------------
+    // Weakest-first capture phases (issue #130): the offensive phases (1, 3)
+    // iterate tiers weakest→strongest so the cheapest sufficient unit takes
+    // each tile, restarting from the weakest tier after every action.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void ChooseNextAction_Phase1_WeakestUnitTakesCapture()
+    {
+        // Red strip with an unmoved Commander AND Recruit; one undefended
+        // Blue singleton adjacent to the territory. Both units can reach it
+        // (capture targets are territory-adjacency based), so phase 1 must
+        // spend the Recruit, not waste the Commander.
+        var grid = new HexGrid();
+        for (int col = 0; col < 5; col++)
+            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(5, 0), Blue)); // undefended
+        HexCoord commanderCoord = HexCoord.FromOffset(1, 0);
+        HexCoord recruitCoord = HexCoord.FromOffset(2, 0);
+        grid.Get(commanderCoord)!.Occupant = new Unit(Red, UnitLevel.Commander);
+        grid.Get(recruitCoord)!.Occupant = new Unit(Red, UnitLevel.Recruit);
+        GameState state = BuildState(grid,
+            new Player("Red", PlayerId.FromIndex(0)),
+            new Player("Blue", PlayerId.FromIndex(1)));
+
+        AiAction? result = ComputerAi.ChooseNextAction(
+            state, Red, new HashSet<HexCoord>(), new Random(0));
+
+        AiMoveAction mv = Assert.IsType<AiMoveAction>(result);
+        Assert.Equal(recruitCoord, mv.Source);
+        Assert.Equal(HexCoord.FromOffset(5, 0), mv.Destination);
+    }
+
+    [Fact]
+    public void ChooseNextAction_Phase1_CapturesLowestTierFirstAcrossTurn()
+    {
+        // Recruit + Soldier; two capture targets: an undefended Blue
+        // singleton at (5,0) and a defense-1 Blue tile at (-1,0) (a Blue
+        // Recruit stands on it) that only the Soldier can take. The turn
+        // must unfold weakest-first with a restart after the capture:
+        // call 1 → Recruit takes (5,0); call 2 → Soldier takes (-1,0).
+        var grid = new HexGrid();
+        for (int col = 0; col < 5; col++)
+            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(5, 0), Blue));  // undefended
+        grid.Add(new HexTile(HexCoord.FromOffset(-1, 0), Blue)); // defense 1
+        grid.Get(HexCoord.FromOffset(-1, 0))!.Occupant = new Unit(Blue, UnitLevel.Recruit);
+        HexCoord recruitCoord = HexCoord.FromOffset(1, 0);
+        HexCoord soldierCoord = HexCoord.FromOffset(2, 0);
+        grid.Get(recruitCoord)!.Occupant = new Unit(Red, UnitLevel.Recruit);
+        grid.Get(soldierCoord)!.Occupant = new Unit(Red, UnitLevel.Soldier);
+        GameState state = BuildState(grid,
+            new Player("Red", PlayerId.FromIndex(0)),
+            new Player("Blue", PlayerId.FromIndex(1)));
+        var visited = new HashSet<HexCoord>();
+
+        AiAction? first = ComputerAi.ChooseNextAction(state, Red, visited, new Random(0));
+
+        AiMoveAction firstMv = Assert.IsType<AiMoveAction>(first);
+        Assert.Equal(recruitCoord, firstMv.Source);
+        Assert.Equal(HexCoord.FromOffset(5, 0), firstMv.Destination);
+
+        // Apply the capture and restart — mirrors AiTurnDriver's loop.
+        AiSimulator.Apply(first!, state);
+
+        AiAction? second = ComputerAi.ChooseNextAction(state, Red, visited, new Random(0));
+
+        AiMoveAction secondMv = Assert.IsType<AiMoveAction>(second);
+        Assert.Equal(soldierCoord, secondMv.Source);
+        Assert.Equal(HexCoord.FromOffset(-1, 0), secondMv.Destination);
+    }
+
+    [Fact]
+    public void ChooseNextAction_Phase3_BuysCheapestSufficientTierFirst()
+    {
+        // No Red units, gold for a Recruit or a Soldier. Two buy-capture
+        // targets: a plain undefended Blue singleton at (5,0)
+        // (Recruit-capturable) and a defense-1 Blue GOLD tile at (-1,0)
+        // (Blue Recruit on it — needs a Soldier) whose capture out-scores
+        // the plain one. Phase 3 must commit to the cheapest sufficient
+        // tier — the Recruit buy — and leave the Soldier buy for the
+        // restarted next call, instead of picking the best delta across
+        // all tiers.
+        var grid = new HexGrid();
+        for (int col = 0; col < 5; col++)
+            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(5, 0), Blue));  // undefended, plain
+        grid.Add(new HexTile(HexCoord.FromOffset(-1, 0), Blue)); // defense 1, gold
+        grid.Get(HexCoord.FromOffset(-1, 0))!.IsGold = true;
+        grid.Get(HexCoord.FromOffset(-1, 0))!.Occupant = new Unit(Blue, UnitLevel.Recruit);
+        GameState state = BuildState(grid,
+            new Player("Red", PlayerId.FromIndex(0)),
+            new Player("Blue", PlayerId.FromIndex(1)));
+        Territory red = state.Territories.First(t => t.Owner == Red);
+        state.Treasury.SetGold(red.Capital!.Value, 20); // Recruit(10) + Soldier(20) affordable
+
+        // Premise guard: the Soldier buy-capture of the gold tile must
+        // out-delta the Recruit buy-capture of the plain tile, otherwise
+        // this fixture isn't exercising tier priority over score at all.
+        int baseScore = AiStateScorer.Score(state, Red);
+        int DeltaOf(AiAction action)
+        {
+            GameState clone = AiSimulator.Clone(state);
+            AiSimulator.Apply(action, clone);
+            return AiStateScorer.Score(clone, Red) - baseScore;
+        }
+        int recruitDelta = DeltaOf(new AiBuyUnitAction(
+            red.Capital!.Value, HexCoord.FromOffset(5, 0), UnitLevel.Recruit));
+        int soldierDelta = DeltaOf(new AiBuyUnitAction(
+            red.Capital!.Value, HexCoord.FromOffset(-1, 0), UnitLevel.Soldier));
+        Assert.True(soldierDelta > recruitDelta,
+            $"fixture drift: soldier-buy delta ({soldierDelta}) must exceed recruit-buy delta ({recruitDelta})");
+
+        AiAction? result = ComputerAi.ChooseNextAction(
+            state, Red, new HashSet<HexCoord>(), new Random(0));
+
+        AiBuyUnitAction buy = Assert.IsType<AiBuyUnitAction>(result);
+        Assert.Equal(UnitLevel.Recruit, buy.Level);
+        Assert.Equal(HexCoord.FromOffset(5, 0), buy.Destination);
+    }
+
+    [Fact]
+    public void EnumeratePhase3ForLevel_YieldsOnlyThatLevelsAffordableCaptures()
+    {
+        // Same board as the tier-priority test. Per-level enumeration:
+        // the Recruit tier reaches only the undefended tile; the Soldier
+        // tier reaches both (no cross-tier "covered" dedup at this layer —
+        // the sequential tier walk in ChooseNextAction subsumes it). An
+        // unaffordable tier yields nothing.
+        var grid = new HexGrid();
+        for (int col = 0; col < 5; col++)
+            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(5, 0), Blue));
+        grid.Add(new HexTile(HexCoord.FromOffset(-1, 0), Blue));
+        grid.Get(HexCoord.FromOffset(-1, 0))!.Occupant = new Unit(Blue, UnitLevel.Recruit);
+        GameState state = BuildState(grid,
+            new Player("Red", PlayerId.FromIndex(0)),
+            new Player("Blue", PlayerId.FromIndex(1)));
+        Territory red = state.Territories.First(t => t.Owner == Red);
+        state.Treasury.SetGold(red.Capital!.Value, 20);
+
+        List<AiCandidate> recruitTier =
+            AiCommon.EnumeratePhase3ForLevel(red, state, UnitLevel.Recruit).ToList();
+        List<AiCandidate> soldierTier =
+            AiCommon.EnumeratePhase3ForLevel(red, state, UnitLevel.Soldier).ToList();
+        List<AiCandidate> commanderTier =
+            AiCommon.EnumeratePhase3ForLevel(red, state, UnitLevel.Commander).ToList();
+
+        AiCandidate recruitOnly = Assert.Single(recruitTier);
+        Assert.Equal(HexCoord.FromOffset(5, 0),
+            Assert.IsType<AiBuyUnitAction>(recruitOnly.Action).Destination);
+        Assert.Equal(2, soldierTier.Count);
+        Assert.All(soldierTier, c =>
+            Assert.Equal(UnitLevel.Soldier, Assert.IsType<AiBuyUnitAction>(c.Action).Level));
+        Assert.Empty(commanderTier); // 40g > 20g treasury
     }
 
     // --- Rising Tides evacuation -----------------------------------------

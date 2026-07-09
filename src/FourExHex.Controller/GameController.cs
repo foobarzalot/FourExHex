@@ -2264,8 +2264,8 @@ public class GameController
     /// <summary>
     /// Cycle the move-source through the current player's unmoved units
     /// inside <see cref="SessionState.SelectedTerritory"/>. N goes forward
-    /// (highest-power first when nothing is picked up; coord-lex within
-    /// a tier); Shift+N goes backward (lowest-power first). Acts exactly
+    /// (lowest-power first when nothing is picked up; coord-lex within
+    /// a tier); Shift+N goes backward (highest-power first). Acts exactly
     /// like clicking the next unit: enters MovingUnit mode and re-emits
     /// the move-target ring. Does not pan the camera — the territory is
     /// already in view.
@@ -2351,20 +2351,20 @@ public class GameController
 
     /// <summary>
     /// Movable units in <paramref name="territory"/> owned by
-    /// <paramref name="color"/> with HasMovedThisTurn=false, returned in
-    /// power-then-coord order. Thin forwarder to
-    /// <see cref="MovementRules.MovableUnitsInPowerOrder"/>, the
-    /// single source of truth shared with the AI candidate enumerator
-    /// (<c>AiCommon.Enumerate</c>) so the N-cycle and the AI's
-    /// tie-breaking iteration can't drift.
+    /// <paramref name="color"/> with HasMovedThisTurn=false, returned
+    /// weakest-first (level ascending, coord-lex within a tier). Thin
+    /// forwarder to <see cref="MovementRules.MovableUnitsWeakestFirst"/>,
+    /// the single source of truth shared with the AI's capture phases
+    /// (<c>AiCommon.MovableUnitTiersWeakestFirst</c>) so the N-cycle and
+    /// the AI spend units in the same order.
     /// </summary>
     private List<HexCoord> SortedMovableCoords(Territory territory, PlayerId color)
-        => MovementRules.MovableUnitsInPowerOrder(territory, color, _state.Grid);
+        => MovementRules.MovableUnitsWeakestFirst(territory, color, _state.Grid);
 
     /// <summary>
     /// Repeated-movement auto-advance: called after a successful
     /// <see cref="ExecuteMove"/> while <see cref="SessionState.RepeatedMovement"/>
-    /// is on. Picks the next movable unit in power-then-coord order
+    /// is on. Picks the next movable unit in weakest-first order
     /// strictly after the moved unit's (Level, source) key, wrapping to
     /// the first if none qualify. If no movable units remain in the
     /// (possibly capture-rebound) selected territory, clears the flag.
@@ -2393,13 +2393,14 @@ public class GameController
                 "[AutoAdvance] no movable units remaining → RepeatedMovement cleared");
             return;
         }
-        // Find first entry with (Level, Coord) strictly > (movedLevel,
-        // movedSource); else wrap to first.
+        // Find first entry strictly after (movedLevel, movedSource) in the
+        // weakest-first order (level ascending, coord-lex within a tier);
+        // else wrap to first.
         HexCoord pick = movable[0];
         foreach (HexCoord c in movable)
         {
             Unit u = _state.Grid.Get(c)!.Unit!;
-            int byLevel = movedLevel.CompareTo(u.Level);
+            int byLevel = u.Level.CompareTo(movedLevel);
             int cmp = byLevel != 0 ? byLevel : c.CompareTo(movedSource);
             if (cmp > 0) { pick = c; break; }
         }

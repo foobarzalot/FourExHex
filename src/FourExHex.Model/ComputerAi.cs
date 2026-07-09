@@ -18,11 +18,22 @@ using System.Linq;
 /// restricted to captures: they have no economy (2a–4a) and never make a
 /// defensive-only move (4b) — a landed raider with no capture holds.
 ///
-/// Within each phase, units are iterated in power-then-coord order;
-/// all candidates for the current unit are scored (clone+apply+score)
-/// and the best one wins. The first phase × unit combination that
-/// yields an action returns immediately — lower phases never run for
-/// that territory in that call.
+/// The offensive phases (1 and 3) iterate tiers weakest→strongest so
+/// the cheapest sufficient unit takes each tile: phase 1 scans one
+/// representative unit per distinct level (same-level units share an
+/// identical candidate set — see
+/// <see cref="AiCommon.MovableUnitTiersWeakestFirst"/>), phase 3 walks
+/// purchase levels Recruit→Commander, and both commit to the first
+/// tier that yields any candidate — a tier that yields nothing is
+/// skipped for the rest of the call. Because the driver re-enters
+/// ChooseNextAction after every applied action, the scan naturally
+/// restarts from the weakest tier on each capture. The
+/// strength-concentrating phases (2a combines, 4b defensive
+/// repositions) iterate units in power-then-coord order instead.
+/// Within a tier or unit, all candidates are scored
+/// (clone+apply+score) and the best one wins. The first phase × tier
+/// combination that yields an action returns immediately — lower
+/// phases never run for that territory in that call.
 ///
 /// Phases 1, 2a, 2b, and 3 (free captures/chops/grave-clears,
 /// combines, and buy-to-attack) commit to their best legal candidate
@@ -81,22 +92,27 @@ public static class ComputerAi
             Log.Debug(Log.LogCategory.Ai,
                 $"[territory-order] capital={anchor} size={t.Size}");
 
-            // Phase 1: free unit captures / chops / grave clears.
+            // Phase 1: free unit captures / chops / grave clears —
+            // weakest tier first, one representative unit per tier.
             // Vikings capture only — an own-territory tree/grave is harmless
             // to an upkeep-free force, so they never chop "for its own sake"
             // (an enemy tile carrying a tree still classifies as Capture).
-            foreach (HexCoord unitCoord in MovementRules.MovableUnitsInPowerOrder(t, forPlayer, state.Grid))
             {
-                Unit unit = state.Grid.Get(unitCoord)!.Unit!;
-                IEnumerable<AiCandidate> p1Candidates =
-                    AiCommon.EnumeratePhase1ForUnit(unitCoord, unit, t, state, tileIndex);
-                if (forPlayer.IsNone)
-                {
-                    p1Candidates = p1Candidates.Where(c => c.Kind == AiActionKind.Capture);
-                }
-                // never decline a free capture/chop/grave for the status quo
-                AiAction? p1 = TryPhase("p1", p1Candidates,
-                    int.MinValue, methodStart, baseScore, forPlayer, state, prof);
+                List<(UnitLevel Level, HexCoord Coord)> tiers =
+                    AiCommon.MovableUnitTiersWeakestFirst(t, forPlayer, state.Grid);
+                AiAction? p1 = TryTiersWeakestFirst("p1",
+                    tiers.Select(tier => tier.Level),
+                    level =>
+                    {
+                        HexCoord unitCoord = tiers.First(tier => tier.Level == level).Coord;
+                        Unit unit = state.Grid.Get(unitCoord)!.Unit!;
+                        IEnumerable<AiCandidate> candidates =
+                            AiCommon.EnumeratePhase1ForUnit(unitCoord, unit, t, state, tileIndex);
+                        return forPlayer.IsNone
+                            ? candidates.Where(c => c.Kind == AiActionKind.Capture)
+                            : candidates;
+                    },
+                    methodStart, baseScore, forPlayer, state, prof);
                 if (p1 != null) { _ = rng; return p1; }
             }
 
@@ -125,11 +141,15 @@ public static class ComputerAi
                     if (p2b != null) { _ = rng; return p2b; }
                 }
 
-                // Phase 3: buy-to-capture / buy-to-chop — never declined for
-                // the status quo (solvency lives in the enumerator's gates)
+                // Phase 3: buy-to-capture / buy-to-chop — cheapest tier
+                // first, committing to the first tier with any candidate;
+                // never declined for the status quo (solvency lives in the
+                // enumerator's gates)
                 {
-                    AiAction? p3 = TryPhase("p3", AiCommon.EnumeratePhase3(t, state, tileIndex),
-                        int.MinValue, methodStart, baseScore, forPlayer, state, prof);
+                    AiAction? p3 = TryTiersWeakestFirst("p3",
+                        new[] { UnitLevel.Recruit, UnitLevel.Soldier, UnitLevel.Captain, UnitLevel.Commander },
+                        level => AiCommon.EnumeratePhase3ForLevel(t, state, level, tileIndex),
+                        methodStart, baseScore, forPlayer, state, prof);
                     if (p3 != null) { _ = rng; return p3; }
                 }
 
@@ -168,6 +188,35 @@ public static class ComputerAi
 
         _ = rng;
         EmitProfile(methodStart, prof.CloneTicks, prof.ApplyTicks, prof.ScoreTicks, prof.TotalCandidates);
+        return null;
+    }
+
+    /// <summary>
+    /// The shared weakest-first tier loop behind both offensive phases
+    /// (1 free captures, 3 buy-to-capture). Walks
+    /// <paramref name="tiersAscending"/> weakest→strongest and commits to
+    /// the best candidate of the first tier that yields any (threshold
+    /// <see cref="int.MinValue"/> — an offensive action is never declined
+    /// for the status quo, so "tier returned null" means "tier has zero
+    /// candidates"). A dry tier is skipped for the rest of this call; the
+    /// driver's re-entry after each applied action is what restarts the
+    /// scan from the weakest tier once the board changes.
+    /// </summary>
+    private static AiAction? TryTiersWeakestFirst(
+        string phase,
+        IEnumerable<UnitLevel> tiersAscending,
+        Func<UnitLevel, IEnumerable<AiCandidate>> enumerateTier,
+        long methodStart, int baseScore, PlayerId forPlayer, GameState state, AiSearchProfile prof)
+    {
+        foreach (UnitLevel level in tiersAscending)
+        {
+            Log.Debug(Log.LogCategory.Ai, $"[tier] {phase} level={level} scanning");
+            AiAction? action = TryPhase(phase, enumerateTier(level),
+                int.MinValue, methodStart, baseScore, forPlayer, state, prof);
+            if (action != null) return action;
+            Log.Debug(Log.LogCategory.Ai,
+                $"[tier-skip] {phase} level={level} no targets — advancing");
+        }
         return null;
     }
 

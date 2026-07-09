@@ -36,19 +36,60 @@ public static class MovementRules
     /// <paramref name="territory"/>, returned in **power-then-coord
     /// order**: <see cref="UnitLevel"/> descending (Commander →
     /// Recruit), <see cref="HexCoord"/> lex ascending within each
-    /// tier. The single source of truth for "consider the strongest
-    /// unit first" iteration, used by both the human N-cycle (via
-    /// <c>GameController.SortedMovableCoords</c>) and the AI
-    /// candidate enumerator (<see cref="AiCommon.Enumerate"/>).
-    ///
-    /// Both call sites must agree on the order — when two units have
-    /// equal-scoring moves the AI's first-wins tiebreak picks the
-    /// one yielded first, and the human's N-key cycle steps through
-    /// in the same order. Without this shared helper, the AI's
-    /// `territory.Coords` BFS order would let a Recruit near the
-    /// seed tile win ties over a Commander deeper in the territory.
+    /// tier. The "consider the strongest unit first" iteration, used
+    /// by the AI's strength-concentrating phases (combine-to-unlock,
+    /// defensive reposition) and the all-in-one candidate enumerator
+    /// (<see cref="AiCommon.Enumerate"/>): a deterministic order so
+    /// the AI's first-wins tiebreak can't drift with `territory.Coords`
+    /// BFS order.
     /// </summary>
     public static List<HexCoord> MovableUnitsInPowerOrder(
+        Territory territory, PlayerId owner, HexGrid grid)
+    {
+        List<(HexCoord Coord, UnitLevel Level)> movable = GatherMovable(territory, owner, grid);
+        movable.Sort((a, b) =>
+        {
+            int byLevel = b.Level.CompareTo(a.Level);
+            return byLevel != 0 ? byLevel : a.Coord.CompareTo(b.Coord);
+        });
+        var result = new List<HexCoord>(movable.Count);
+        foreach ((HexCoord c, _) in movable) result.Add(c);
+        return result;
+    }
+
+    /// <summary>
+    /// Coords of unmoved units owned by <paramref name="owner"/> in
+    /// <paramref name="territory"/>, returned **weakest-first**:
+    /// <see cref="UnitLevel"/> ascending (Recruit → Commander),
+    /// <see cref="HexCoord"/> lex ascending within each tier. The
+    /// single source of truth for "spend the cheapest sufficient unit
+    /// first" iteration, shared by the human N-cycle (via
+    /// <c>GameController.SortedMovableCoords</c>) and the AI's capture
+    /// phases (via <c>AiCommon.MovableUnitTiersWeakestFirst</c>).
+    ///
+    /// Both call sites must agree on the order — the AI spends its
+    /// units weakest-first, and the human's N-key cycle steps through
+    /// in the same order, so what the player sees matches what the AI
+    /// would do.
+    /// </summary>
+    public static List<HexCoord> MovableUnitsWeakestFirst(
+        Territory territory, PlayerId owner, HexGrid grid)
+    {
+        List<(HexCoord Coord, UnitLevel Level)> movable = GatherMovable(territory, owner, grid);
+        movable.Sort((a, b) =>
+        {
+            int byLevel = a.Level.CompareTo(b.Level);
+            return byLevel != 0 ? byLevel : a.Coord.CompareTo(b.Coord);
+        });
+        var result = new List<HexCoord>(movable.Count);
+        foreach ((HexCoord c, _) in movable) result.Add(c);
+        return result;
+    }
+
+    /// <summary>Shared gather scan for the two movable-unit orderings:
+    /// every unmoved unit owned by <paramref name="owner"/> in
+    /// <paramref name="territory"/>, unsorted.</summary>
+    private static List<(HexCoord Coord, UnitLevel Level)> GatherMovable(
         Territory territory, PlayerId owner, HexGrid grid)
     {
         var movable = new List<(HexCoord Coord, UnitLevel Level)>();
@@ -60,14 +101,7 @@ public static class MovementRules
                 movable.Add((coord, unit.Level));
             }
         }
-        movable.Sort((a, b) =>
-        {
-            int byLevel = b.Level.CompareTo(a.Level);
-            return byLevel != 0 ? byLevel : a.Coord.CompareTo(b.Coord);
-        });
-        var result = new List<HexCoord>(movable.Count);
-        foreach ((HexCoord c, _) in movable) result.Add(c);
-        return result;
+        return movable;
     }
 
     /// <summary>

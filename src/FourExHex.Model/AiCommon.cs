@@ -305,6 +305,32 @@ public static class AiCommon
     // -----------------------------------------------------------------------
 
     /// <summary>
+    /// One (level, coord) entry per distinct unmoved-unit tier in
+    /// <paramref name="territory"/>, levels ascending; each tier is
+    /// represented by its first unit in
+    /// <see cref="MovementRules.MovableUnitsWeakestFirst"/> order (lex-min
+    /// coord). One representative per tier suffices for the capture
+    /// phases: <see cref="MovementRules.ValidTargets"/> depends only on
+    /// level + territory — never unit position — so same-level units have
+    /// identical candidate sets, and scanning one unit per tier IS the
+    /// "skip an exhausted tier" optimization.
+    /// </summary>
+    public static List<(UnitLevel Level, HexCoord Coord)> MovableUnitTiersWeakestFirst(
+        Territory territory, PlayerId owner, HexGrid grid)
+    {
+        var tiers = new List<(UnitLevel Level, HexCoord Coord)>();
+        UnitLevel? seen = null;
+        foreach (HexCoord coord in MovementRules.MovableUnitsWeakestFirst(territory, owner, grid))
+        {
+            UnitLevel level = grid.Get(coord)!.Unit!.Level;
+            if (seen == level) continue;
+            seen = level;
+            tiers.Add((level, coord));
+        }
+        return tiers;
+    }
+
+    /// <summary>
     /// Phase 1: captures, tree chops, and grave clears available to
     /// <paramref name="unitCoord"/>/<paramref name="unit"/> in
     /// <paramref name="territory"/>. All are movement-consuming and cost
@@ -437,10 +463,6 @@ public static class AiCommon
         GameState state,
         IReadOnlyDictionary<HexCoord, Territory>? tileIndex = null)
     {
-        if (!territory.HasCapital) yield break;
-        int gold = state.Treasury.GetGold(territory.Capital!.Value);
-        (Difficulty difficulty, int netBefore) = EconomyBefore(territory, state);
-
         // Targets already offered a buy at a cheaper level — never buy a
         // pricier unit to reach the same tile.
         var covered = new HashSet<HexCoord>();
@@ -448,33 +470,57 @@ public static class AiCommon
         UnitLevel[] levels = { UnitLevel.Recruit, UnitLevel.Soldier, UnitLevel.Captain, UnitLevel.Commander };
         foreach (UnitLevel level in levels)
         {
-            if (!PurchaseRules.CanAfford(territory, state.Treasury, level, difficulty)) continue;
-            int cost = PurchaseRules.CostFor(level, difficulty);
-            int levelUpkeep = UpkeepRules.UpkeepFor(level, difficulty);
-            if (!UpkeepRules.SurvivesNextUpkeep(gold - cost, netBefore + 1 - levelUpkeep)) continue;
-
-            List<HexCoord> targets = MovementRules.ValidTargets(
-                level, territory, state.Grid, state.Territories, tileIndex);
-            foreach (HexCoord target in targets)
+            foreach (AiCandidate candidate in EnumeratePhase3ForLevel(territory, state, level, tileIndex))
             {
-                if (covered.Contains(target)) continue;
-                HexTile? targetTile = state.Grid.Get(target);
-                if (targetTile == null) continue;
-                TargetKind kind = ClassifyTarget(targetTile, territory.Owner);
-                if (kind == TargetKind.Capture)
-                {
-                    covered.Add(target);
-                    yield return new AiCandidate(
-                        new AiBuyUnitAction(territory.Capital!.Value, target, level),
-                        AiActionKind.Capture);
-                }
-                else if (kind == TargetKind.Chop || kind == TargetKind.Grave)
-                {
-                    covered.Add(target);
-                    yield return new AiCandidate(
-                        new AiBuyUnitAction(territory.Capital!.Value, target, level),
-                        AiActionKind.Chop);
-                }
+                HexCoord target = ((AiBuyUnitAction)candidate.Action).Destination;
+                if (!covered.Add(target)) continue;
+                yield return candidate;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Phase 3, one tier: the buy-to-capture / buy-to-chop candidates for a
+    /// single <paramref name="level"/> — empty when the tier is
+    /// unaffordable or insolvent. The per-tier unit of the AI's
+    /// weakest-first capture loop: <c>ComputerAi</c> walks tiers ascending
+    /// and commits to the first tier that yields anything, so no cross-tier
+    /// "covered" dedup is needed there (a pricier tier is only reached when
+    /// every cheaper affordable tier yielded zero candidates).
+    /// </summary>
+    public static IEnumerable<AiCandidate> EnumeratePhase3ForLevel(
+        Territory territory,
+        GameState state,
+        UnitLevel level,
+        IReadOnlyDictionary<HexCoord, Territory>? tileIndex = null)
+    {
+        if (!territory.HasCapital) yield break;
+        int gold = state.Treasury.GetGold(territory.Capital!.Value);
+        (Difficulty difficulty, int netBefore) = EconomyBefore(territory, state);
+
+        if (!PurchaseRules.CanAfford(territory, state.Treasury, level, difficulty)) yield break;
+        int cost = PurchaseRules.CostFor(level, difficulty);
+        int levelUpkeep = UpkeepRules.UpkeepFor(level, difficulty);
+        if (!UpkeepRules.SurvivesNextUpkeep(gold - cost, netBefore + 1 - levelUpkeep)) yield break;
+
+        List<HexCoord> targets = MovementRules.ValidTargets(
+            level, territory, state.Grid, state.Territories, tileIndex);
+        foreach (HexCoord target in targets)
+        {
+            HexTile? targetTile = state.Grid.Get(target);
+            if (targetTile == null) continue;
+            TargetKind kind = ClassifyTarget(targetTile, territory.Owner);
+            if (kind == TargetKind.Capture)
+            {
+                yield return new AiCandidate(
+                    new AiBuyUnitAction(territory.Capital!.Value, target, level),
+                    AiActionKind.Capture);
+            }
+            else if (kind == TargetKind.Chop || kind == TargetKind.Grave)
+            {
+                yield return new AiCandidate(
+                    new AiBuyUnitAction(territory.Capital!.Value, target, level),
+                    AiActionKind.Chop);
             }
         }
     }
