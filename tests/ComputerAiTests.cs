@@ -1307,6 +1307,132 @@ public class ComputerAiTests
             $"expected Red-unit→Red-unit combine; got {mv.Source}→{mv.Destination}");
     }
 
+    // -----------------------------------------------------------------------
+    // Never combine into an exhausted unit (issue #132): the combined unit
+    // inherits the destination's HasMovedThisTurn, so a combine into a moved
+    // unit is unusable this turn while its upkeep increase bills immediately
+    // — strictly worse than deferring the same combine to next turn.
+    // -----------------------------------------------------------------------
+
+    /// <summary>The CombineWhenUnlocks fixture with the Red Soldier already
+    /// moved: 8-tile Red strip, unmoved Recruit + MOVED Soldier, Blue Soldier
+    /// (defense 2) at (8,0), 80g. Without the moved-target filter, the
+    /// Recruit→moved-Soldier combine passes the unlock filter and solvency.</summary>
+    private static (GameState State, Territory Red, HexCoord RecruitCoord, HexCoord MovedSoldierCoord)
+        MovedCombineTargetState()
+    {
+        var grid = new HexGrid();
+        for (int col = 0; col < 8; col++)
+            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(8, 0), Blue));
+        grid.Get(HexCoord.FromOffset(8, 0))!.Occupant = new Unit(Blue, UnitLevel.Soldier);
+        GameState state = BuildState(grid,
+            new Player("Red", PlayerId.FromIndex(0)),
+            new Player("Blue", PlayerId.FromIndex(1)));
+        Territory red = state.Territories.First(t => t.Owner == Red);
+        HexCoord cap = red.Capital!.Value;
+        List<HexCoord> nonCap = red.Coords.Where(c => !c.Equals(cap)).Take(2).ToList();
+        grid.Get(nonCap[0])!.Occupant = new Unit(Red, UnitLevel.Recruit);
+        grid.Get(nonCap[1])!.Occupant =
+            new Unit(Red, UnitLevel.Soldier) { HasMovedThisTurn = true };
+        state.Treasury.SetGold(cap, 80);
+        return (state, red, nonCap[0], nonCap[1]);
+    }
+
+    [Fact]
+    public void EnumeratePhase2aForUnit_SkipsCombineIntoMovedUnit()
+    {
+        (GameState state, Territory red, HexCoord recruitCoord, HexCoord movedSoldierCoord) =
+            MovedCombineTargetState();
+        Unit recruit = state.Grid.Get(recruitCoord)!.Unit!;
+
+        List<AiCandidate> candidates = AiCommon.EnumeratePhase2aForUnit(
+            recruitCoord, recruit, red, state).ToList();
+
+        Assert.DoesNotContain(candidates,
+            c => c.Action is AiMoveAction mv && mv.Destination.Equals(movedSoldierCoord));
+        Assert.Empty(candidates); // the moved Soldier was the only combine partner
+    }
+
+    [Fact]
+    public void ChooseNextAction_NeverCombinesIntoMovedUnit()
+    {
+        (GameState state, Territory _, HexCoord _, HexCoord _) = MovedCombineTargetState();
+
+        AiAction? result = ComputerAi.ChooseNextAction(
+            state, Red, new HashSet<HexCoord>(), new Random(0));
+
+        // Whatever the AI picks (or null), it must never land a combine on
+        // an already-moved friendly unit.
+        HexCoord? combineDest = result switch
+        {
+            AiMoveAction mv => mv.Destination,
+            AiBuyCombineAction bc => bc.CombineTarget,
+            _ => null,
+        };
+        if (combineDest is HexCoord dest)
+        {
+            Unit? destUnit = state.Grid.Get(dest)?.Unit;
+            Assert.False(destUnit != null && destUnit.Owner == Red && destUnit.HasMovedThisTurn,
+                $"AI combined into an exhausted unit at {dest} via {result}");
+        }
+    }
+
+    [Fact]
+    public void EnumeratePhase2aForUnit_LogsSkipAtTraceLevel()
+    {
+        // Pins the [p2a] skip instrumentation: the 6AI harness pins Ai to
+        // Debug (so the line can't be observed there); this sink capture is
+        // the verification that the skip path emits under Ai:Trace.
+        Action<string>? savedSink = Log.Sink;
+        try
+        {
+            Log.ResetLevels();
+            var seen = new List<string>();
+            Log.Sink = seen.Add;
+            Log.SetLevel(Log.LogCategory.Ai, Log.LogLevel.Trace);
+
+            (GameState state, Territory red, HexCoord recruitCoord, HexCoord _) =
+                MovedCombineTargetState();
+            Unit recruit = state.Grid.Get(recruitCoord)!.Unit!;
+            _ = AiCommon.EnumeratePhase2aForUnit(recruitCoord, recruit, red, state).ToList();
+
+            Assert.Contains(seen, line => line.Contains("[p2a] skip combine"));
+        }
+        finally
+        {
+            Log.Sink = savedSink;
+            Log.ResetLevels();
+        }
+    }
+
+    [Fact]
+    public void EnumeratePhase2b_SkipsCombineIntoMovedUnit()
+    {
+        // Pins the existing moved-target exclusion in phase 2b: a MOVED Red
+        // Soldier is the only combine partner; buying a Recruit to merge
+        // (→ Captain) would pass the unlock filter and solvency, so without
+        // the HasMovedThisTurn check a candidate WOULD be emitted.
+        var grid = new HexGrid();
+        for (int col = 0; col < 8; col++)
+            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(8, 0), Blue));
+        grid.Get(HexCoord.FromOffset(8, 0))!.Occupant = new Unit(Blue, UnitLevel.Soldier);
+        GameState state = BuildState(grid,
+            new Player("Red", PlayerId.FromIndex(0)),
+            new Player("Blue", PlayerId.FromIndex(1)));
+        Territory red = state.Territories.First(t => t.Owner == Red);
+        HexCoord cap = red.Capital!.Value;
+        HexCoord soldierCoord = red.Coords.First(c => !c.Equals(cap));
+        grid.Get(soldierCoord)!.Occupant =
+            new Unit(Red, UnitLevel.Soldier) { HasMovedThisTurn = true };
+        state.Treasury.SetGold(cap, 80);
+
+        List<AiCandidate> candidates = AiCommon.EnumeratePhase2b(red, state).ToList();
+
+        Assert.Empty(candidates);
+    }
+
     [Fact]
     public void EnumeratePhase1ForUnit_ReturnsCapture_EvenWhenTerritoryBankrupt()
     {

@@ -368,7 +368,11 @@ public static class AiCommon
     /// name="unit"/> that pass the unlock filter — the combined unit must
     /// reach a movement-consuming target that neither source individually
     /// could. No gold spent; solvency-gated on the upkeep delta of the
-    /// combine.
+    /// combine. Targets must be unmoved: the combined unit inherits the
+    /// destination's move state (<c>MovementRules.ResolveArrival</c>), so a
+    /// combine into an exhausted unit would be unusable this turn while its
+    /// upkeep increase bills immediately — strictly worse than deferring
+    /// the same combine to next turn (mirrors phase 2b's exclusion).
     /// </summary>
     public static IEnumerable<AiCandidate> EnumeratePhase2aForUnit(
         HexCoord unitCoord,
@@ -390,6 +394,15 @@ public static class AiCommon
             if (ClassifyTarget(targetTile, territory.Owner) != TargetKind.Combine) continue;
 
             Unit destUnit = (Unit)targetTile.Occupant!;
+            // Never combine into an exhausted unit: the combined unit
+            // inherits HasMovedThisTurn, so the merge would give nothing
+            // this turn while its upkeep increase bills immediately.
+            if (destUnit.HasMovedThisTurn)
+            {
+                Log.Trace(Log.LogCategory.Ai,
+                    $"[p2a] skip combine {unitCoord}→{target}: destination unit already moved");
+                continue;
+            }
             UnitLevel combinedLevel = unit.Level.CombinedWith(destUnit.Level);
             int upkeepDelta = UpkeepRules.UpkeepFor(combinedLevel, difficulty)
                               - UpkeepRules.UpkeepFor(unit.Level, difficulty)
