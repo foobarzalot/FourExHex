@@ -33,6 +33,11 @@ public partial class HudView : OrientationHud, IHudView
     public event Action? CancelActionPressed;
     public event Action? AutomateClicked;
     public event Action? EscRequested;
+    // The "?" help button opens the guided UI tour (issue #101). Raised so
+    // the scene root can auto-select a territory (via the controller) before
+    // the tour builds — the tour itself is view-side. Not on IHudView (like
+    // EscRequested): GameController stays tour-agnostic.
+    public event Action? TourStartRequested;
     public event Action? DefeatContinueClicked;
     public event Action? ClaimVictoryWinNowClicked;
     public event Action? ClaimVictoryContinueClicked;
@@ -82,7 +87,14 @@ public partial class HudView : OrientationHud, IHudView
     private HudIconButton _endTurnButton = null!;
     private HudIconButton? _automateButton;
     private HudIconButton _optionsButton = null!;
+    private HudIconButton _helpButton = null!;
     private HudIconButton _addTextButton = null!;
+
+    // Guided UI tour (issue #101). Non-null while the tour overlay is up.
+    private HudTour? _hudTour;
+    // Translucent scrim over the map (behind the HUD widgets) shown while the
+    // tour is up, so the board recedes and the toured elements stand out.
+    private ColorRect _mapDim = null!;
     private Control _victoryOverlay = null!;
     private Label _victoryLabel = null!;
     // Viking Raiders total wipeout: a game-over DEFEAT presentation (the
@@ -348,6 +360,17 @@ public partial class HudView : OrientationHud, IHudView
         _optionsButton.Pressed += () => EscRequested?.Invoke();
         AudioBus.AttachClick(_optionsButton);
 
+        // Help "?" — opens the guided UI tour. A real serif question mark
+        // (matching the map-gen options affordance) so it reads on mobile with
+        // no tooltip. Reparented per orientation next to Options by the
+        // Build*Bars methods, so it isn't added to a cluster here.
+        _helpButton = new HudIconButton("?", SerifFont, 34)
+        {
+            TooltipText = "How to play — guided tour",
+        };
+        _helpButton.Pressed += EnterTour;
+        AudioBus.AttachClick(_helpButton);
+
         // Read-only seed / map-name display tucked in the bottom-left
         // safe-area strip — below the action buttons, sharing the iOS
         // home-indicator strip on notched devices. Click-through so taps
@@ -379,6 +402,22 @@ public partial class HudView : OrientationHud, IHudView
         BuildTutorialOverlay();
         BuildBankruptToast();
         BuildTransientBanner();
+
+        // Map dim for the guided UI tour — a translucent scrim moved to the
+        // first child slot, so it draws behind every HUD widget but in front
+        // of the map: opening the tour recedes the board while the toured HUD
+        // elements stay bright. Click-through; the tour's own catcher (a higher
+        // CanvasLayer) handles input.
+        _mapDim = new ColorRect
+        {
+            Color = new Color(0f, 0f, 0f, 0.5f),
+            AnchorRight = 1f,
+            AnchorBottom = 1f,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+            Visible = false,
+        };
+        AddChild(_mapDim);
+        MoveChild(_mapDim, 0);
     }
 
     // An icon button with a hold gesture: short click fires <paramref name="shortPress"/>
@@ -408,6 +447,92 @@ public partial class HudView : OrientationHud, IHudView
         return button;
     }
 
+    // ---- Guided UI tour (issue #101) -------------------------------------
+
+    /// <summary>
+    /// Open the guided UI tour. Raises <see cref="TourStartRequested"/> first
+    /// so the scene root can auto-select a territory (making the profit/loss
+    /// chip visible), then builds the tour from the currently-visible HUD
+    /// elements and shows the overlay. No-op if a tour is already up or there
+    /// is nothing to show.
+    /// </summary>
+    private void EnterTour()
+    {
+        if (_hudTour != null) return;
+        TourStartRequested?.Invoke();
+
+        List<HudTour.Entry> steps = BuildTourSteps();
+        if (steps.Count == 0)
+        {
+            Log.Debug(Log.LogCategory.Hud, "[tour] no visible elements — not opening");
+            return;
+        }
+
+        _mapDim.Visible = true;
+        _hudTour = new HudTour(steps);
+        _hudTour.Closed += ExitTour;
+        AddChild(_hudTour);
+    }
+
+    private void ExitTour()
+    {
+        if (_hudTour == null) return;
+        _hudTour.QueueFree();
+        _hudTour = null;
+        _mapDim.Visible = false;
+    }
+
+    /// <summary>
+    /// The ordered, visibility-filtered tour steps: each currently-visible HUD
+    /// element paired with its title/description copy. The four buy buttons
+    /// collapse to a single "Buy units" step (whichever of the four-radio row
+    /// or the collapsed cycle button is showing).
+    /// </summary>
+    private List<HudTour.Entry> BuildTourSteps()
+    {
+        var steps = new List<HudTour.Entry>();
+        void Add(HudTourStep step, Control? node, string title, string body)
+        {
+            if (node != null && node.Visible && node.IsInsideTree())
+            {
+                steps.Add(new HudTour.Entry(step, node, title, body));
+            }
+        }
+
+        // When the buy UI collapses to a single cycling button, the copy
+        // teaches the cycle gesture (platform verb: "tap" on touch, "click" on
+        // desktop) instead of naming the four separate buttons.
+        bool buyCollapsed = !_paletteRow.Visible;
+        Control buyNode = buyCollapsed ? _collapsedBuyButton : _paletteRow;
+        string buyBody = buyCollapsed
+            ? $"Buy a unit — {InteractionVerb.Lowercase} repeatedly to cycle unit type. Upgrade toward Soldier, Captain, and Commander by merging with a previously placed unit."
+            : "Buy a unit, or upgrade toward Soldier, Captain, and Commander by merging with a previously placed unit.";
+
+        Add(HudTourStep.TurnCounter, _statusChip, "Turn & players",
+            "The current turn number and player color.");
+        Add(HudTourStep.ProfitLoss, _goldChip, "Treasury & balance",
+            "The selected territory's gold, income, and upkeep. Yellow if the territory is losing gold. Red if the territory is bankrupt next turn.");
+        Add(HudTourStep.BuyUnits, buyNode, "Buy units", buyBody);
+        Add(HudTourStep.BuildTower, _buildTowerButton, "Build tower",
+            "Buy a defensive tower on one of your hexes, defending the hexes around it against capture.");
+        Add(HudTourStep.UndoRedo, _undoCluster, "Undo & redo",
+            "Step back or forward through this turn's moves. Hold either button to undo or redo the whole turn at once.");
+        Add(HudTourStep.NextUnit, _nextUnitButton, "Next unit",
+            "Select your next unmoved unit in the selected territory. Hold to skip to the next power tier.");
+        Add(HudTourStep.NextTerritory, _nextTerritoryButton, "Next territory",
+            "Select your next territory that still has an action available. It glows once the current territory's actions are exhausted.");
+        Add(HudTourStep.EndTurn, _endTurnButton, "End turn",
+            "Finish your turn and pass play on. It glows once all territories have been visited.");
+        Add(HudTourStep.Automate, _automateButton, "Automate",
+            "Automate the rest of the turn. All actions are added to the undo stack.");
+        Add(HudTourStep.Options, _optionsButton, "Options",
+            "Pause to save, load, change settings, or exit to the menu.");
+        Add(HudTourStep.Help, _helpButton, "Help",
+            $"Use Next and Back to step through the HUD UI elements. {InteractionVerb.Capitalized} any element to select it. Close returns to play.");
+
+        return steps;
+    }
+
     // ---- Orientation-aware layout (OrientationHud hooks) -----------------
 
     protected override void DetachClusters()
@@ -422,6 +547,7 @@ public partial class HudView : OrientationHud, IHudView
         // Options + End Turn + Automate migrate between zones per
         // orientation; detach them so freeing the old zones can't free them.
         HudBars.Detach(_optionsButton);
+        HudBars.Detach(_helpButton);
         HudBars.Detach(_endTurnButton);
         if (_automateButton != null) HudBars.Detach(_automateButton);
     }
@@ -443,8 +569,9 @@ public partial class HudView : OrientationHud, IHudView
         TopLeftZone.AddChild(_statusChip);
         TopLeftZone.AddChild(_goldChip);
 
-        // Top-right: undo cluster + options gear.
+        // Top-right: undo cluster + help + options gear.
         TopRightZone.AddChild(_undoCluster);
+        TopRightZone.AddChild(_helpButton);
         TopRightZone.AddChild(_optionsButton);
 
         // Left rail: buy palette + Build Tower, vertically centered.
@@ -566,8 +693,9 @@ public partial class HudView : OrientationHud, IHudView
         tlStack.AddChild(_goldChip);
         TopLeftZone.AddChild(tlStack);
 
-        // Top-right: undo + options.
+        // Top-right: undo + help + options.
         TopRightZone.AddChild(_undoCluster);
+        TopRightZone.AddChild(_helpButton);
         TopRightZone.AddChild(_optionsButton);
 
         // Bottom bar — full-width transparent strip; two rows of buttons,

@@ -934,6 +934,53 @@ public class GameController
     public void SelectTerritoryForTutorial(Territory? territory) => SetSelection(territory);
 
     /// <summary>
+    /// The current player's capital-bearing territories, sorted largest-first
+    /// (capital-coord tie-break). Shared by <see cref="StepTerritorySelection"/>
+    /// (its tour order) and <see cref="EnsureTerritorySelectedForTour"/> (its
+    /// fallback pick).
+    /// </summary>
+    private List<Territory> OwnedTerritoriesLargestFirst()
+    {
+        PlayerId color = _state.Turns.CurrentPlayer.Id;
+        List<Territory> owned = TerritoryLookup
+            .OwnedCapitalBearing(_state.Territories, color)
+            .ToList();
+        owned.Sort((a, b) =>
+        {
+            int sizeComp = b.Size.CompareTo(a.Size);
+            return sizeComp != 0 ? sizeComp : a.Capital!.Value.CompareTo(b.Capital!.Value);
+        });
+        return owned;
+    }
+
+    /// <summary>
+    /// Ensure a territory is selected so the HUD's profit/loss readout has
+    /// something to show when the UI tour opens. No-op if one is already
+    /// selected (or the game is over). Otherwise prefer the first actionable
+    /// territory (same walk as Next-Territory), falling back to the largest
+    /// capital-bearing territory when none is actionable — so a territory is
+    /// *always* selected. Bypasses TrackHandler: no undo entry (the tour isn't
+    /// undoable), matching <see cref="SelectTerritoryForTutorial"/> /
+    /// AutoSelectFirstTerritoryForHuman.
+    /// </summary>
+    public void EnsureTerritorySelectedForTour()
+    {
+        if (_session.SelectedTerritory != null || _session.IsGameOver) return;
+
+        StepTerritorySelection(forward: true);
+        if (_session.SelectedTerritory == null)
+        {
+            List<Territory> owned = OwnedTerritoriesLargestFirst();
+            if (owned.Count > 0)
+            {
+                SetSelection(owned[0]);
+                _map.CenterOnTerritory(owned[0]);
+            }
+        }
+        _ops.RefreshViews();
+    }
+
+    /// <summary>
     /// Public cancel-pending-action entry point for tutorial Preview
     /// orchestration. Clears <see cref="SessionState.Mode"/> / MoveSource
     /// and the associated map overlays, then refreshes views. Bypasses
@@ -2173,16 +2220,8 @@ public class GameController
     {
         if (_session.IsGameOver) return;
 
-        PlayerId color = _state.Turns.CurrentPlayer.Id;
-        List<Territory> owned = TerritoryLookup
-            .OwnedCapitalBearing(_state.Territories, color)
-            .ToList();
+        List<Territory> owned = OwnedTerritoriesLargestFirst();
         if (owned.Count == 0) return;
-        owned.Sort((a, b) =>
-        {
-            int sizeComp = b.Size.CompareTo(a.Size);
-            return sizeComp != 0 ? sizeComp : a.Capital!.Value.CompareTo(b.Capital!.Value);
-        });
         Log.Debug(Log.LogCategory.Input,
             $"StepTerritorySelection: {owned.Count} territories, largest first = capital {owned[0].Capital} size={owned[0].Size}");
 

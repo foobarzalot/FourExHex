@@ -385,6 +385,11 @@ public partial class Main : Node2D
 
             visibleHud.EscRequested += EnterPause;
 
+            // The "?" HUD button opens the guided UI tour. Entering it
+            // auto-selects a territory (if none is) so the profit/loss readout
+            // renders; the tour overlay itself lives view-side in HudView/HudTour.
+            visibleHud.TourStartRequested += () => _controller.EnsureTerritorySelectedForTour();
+
             map = visibleMap;
             hud = visibleHud;
         }
