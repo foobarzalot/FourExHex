@@ -1561,7 +1561,7 @@ _hud.ShowTutorialMessage(TutorialInstructionText.For(next, _state, _session));
 
 `TutorialInstructionText.For(ReplayBeat, GameState, SessionState)` is a pure helper switching on the next beat kind and current `SessionState.Mode` / destination occupant for sub-step-aware strings:
 
-- **Buy beat** — escalates: Mode=None → "Press the Buy Recruit button."; Mode=BuyingX below target → upgrade prompt; matching mode → "Place the {Level} at the highlighted tile{suffix}." (suffix names combine / tree-clear / grave-remove / capture outcomes by To-tile occupant and same/enemy color).
+- **Buy beat** — escalates: Mode=None → "Press the Buy Recruit button."; Mode=BuyingX below target → upgrade prompt; matching mode → a destination-aware placement prompt ("Place the {level} at the highlighted hex …" — the `tutorial.place.*` key picked by To-tile occupant and same/enemy color: combine / tree-clear / grave-remove / capture variants).
 - **Move beat** — pickup vs placement; placement varies by destination occupant (friendly combine, same-color tree/grave clearance, enemy capture incl. capture-with-clear / capture-with-destroy).
 - **BuildTower / EndTurn / Rally / Claim / Dismiss** — fixed text per kind.
 

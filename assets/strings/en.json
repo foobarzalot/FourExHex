@@ -3,29 +3,25 @@
   "verb.capitalized.mobile": "Tap",
   "verb.lowercase.desktop": "click",
   "verb.lowercase.mobile": "tap",
-
   "unit.recruit": "Recruit",
   "unit.soldier": "Soldier",
   "unit.captain": "Captain",
   "unit.commander": "Commander",
-
   "endgame.defeat.eyebrow": "DEFEAT",
   "endgame.victory.eyebrow": "VICTORY",
   "endgame.viking_conquest.title": "The Vikings have conquered the island!",
   "endgame.defeated.title": "{name} defeated",
   "endgame.victory.title": "{name} wins!",
-
   "viking.wave.final_spawned": "Final wave",
   "viking.wave.spawned": "Wave {index}/{total}",
   "viking.wave.final_incoming": "Final wave arriving in {turns}",
   "viking.wave.incoming": "Wave {index}/{total} arriving in {turns}",
   "viking.turns.one": "1 turn",
   "viking.turns.many": "{n} turns",
-
   "tutorial.end_turn": "Press End Turn.",
-  "tutorial.tower.place": "Place the tower at the highlighted tile.",
+  "tutorial.tower.place": "Place the tower at the highlighted hex.",
   "tutorial.tower.press_button": "Press the Build Tower button.",
-  "tutorial.rally": "Long-press the highlighted tile to rally recruits there.",
+  "tutorial.rally": "Long-press the highlighted hex to rally recruits there.",
   "tutorial.claim.win_now": "Press Win Now to claim victory.",
   "tutorial.claim.continue": "Press Continue Playing to keep going.",
   "tutorial.defeat.continue": "Press Continue.",
@@ -33,26 +29,23 @@
   "tutorial.move.combine": "Move the selected {level} onto the target {target} to combine them into a {combined}.",
   "tutorial.move.clear_tree": "Move the selected {level} onto the tree to clear it.",
   "tutorial.move.remove_grave": "Move the selected {level} onto the grave to remove it.",
-  "tutorial.move.capture_tower": "Move the selected {level} onto the highlighted tile to destroy the tower and capture the tile.",
-  "tutorial.move.capture_tree": "Move the selected {level} onto the highlighted tile to clear the tree and capture the tile.",
-  "tutorial.move.capture": "Move the selected {level} onto the highlighted tile to capture it.",
-  "tutorial.move.generic": "Move the unit to the highlighted tile.",
+  "tutorial.move.capture_tower": "Move the selected {level} onto the highlighted hex to destroy the tower and capture the hex.",
+  "tutorial.move.capture_tree": "Move the selected {level} onto the highlighted hex to clear the tree and capture the hex.",
+  "tutorial.move.capture": "Move the selected {level} onto the highlighted hex to capture it.",
+  "tutorial.move.generic": "Move the unit to the highlighted hex.",
   "tutorial.buy.press_recruit": "Press the Buy Recruit button.",
   "tutorial.buy.upgrade": "Now press the Buy Recruit button again to upgrade to a {level}.",
   "tutorial.buy.cycle": "Press the Buy Recruit button to cycle to a {level}.",
   "tutorial.place.combine": "Place the {level} onto the target {target} to combine them into a {combined}.",
-  "tutorial.place.generic": "Place the {level} at the highlighted tile.",
-  "tutorial.place.capture_tower": "Place the {level} at the highlighted tile to destroy the tower and capture the tile.",
-  "tutorial.place.capture_tree": "Place the {level} at the highlighted tile to clear the tree and capture the tile.",
-  "tutorial.place.capture_grave": "Place the {level} at the highlighted tile to remove the grave and capture the tile.",
-  "tutorial.place.capture": "Place the {level} at the highlighted tile to capture it.",
-  "tutorial.place.clear_tree": "Place the {level} at the highlighted tile to clear the tree.",
-  "tutorial.place.remove_grave": "Place the {level} at the highlighted tile to remove the grave.",
-
+  "tutorial.place.generic": "Place the {level} at the highlighted hex.",
+  "tutorial.place.capture_tower": "Place the {level} at the highlighted hex to destroy the tower and capture the hex.",
+  "tutorial.place.capture_tree": "Place the {level} at the highlighted hex to clear the tree and capture the hex.",
+  "tutorial.place.capture_grave": "Place the {level} at the highlighted hex to remove the grave and capture the hex.",
+  "tutorial.place.capture": "Place the {level} at the highlighted hex to capture it.",
+  "tutorial.place.clear_tree": "Place the {level} at the highlighted hex to clear the tree.",
+  "tutorial.place.remove_grave": "Place the {level} at the highlighted hex to remove the grave.",
   "player.unknown": "Unknown",
-
   "hud.eyebrow.turn": "TURN",
-
   "hud.tooltip.buy_recruit": "Buy Recruit (10g) — U",
   "hud.tooltip.build_tower": "Build Tower (15g) — T",
   "hud.tooltip.undo_last": "Undo Last — Z",
@@ -74,7 +67,6 @@
   "hud.tooltip.help": "How to play — guided tour",
   "hud.tooltip.no_unmoved_units": "No unmoved units to cycle",
   "hud.tooltip.buy_unit": "Buy {level} ({cost}g) — U",
-
   "hud.disabled.no_selection": "No territory selected",
   "hud.disabled.no_capital": "Selected territory has no capital",
   "hud.disabled.cant_afford": "Selected territory can't afford {action} ({cost}g)",
@@ -84,20 +76,16 @@
   "hud.action.a_commander": "a commander",
   "hud.action.a_unit": "a unit",
   "hud.action.a_tower": "a tower",
-
   "hud.chip.gold": "{gold}g ({income}-{upkeep}={sign}{net})",
-
   "hud.bankrupt.title": "Bankrupt next turn",
   "hud.bankrupt.body": "All units in this territory will die",
   "hud.losing_gold.title": "Losing gold",
   "hud.losing_gold.body": "This territory spends more than it earns each turn",
-
   "hud.overlay.checkpoint.eyebrow": "CHECKPOINT",
   "hud.overlay.claim_victory.title": "Claim Victory?",
   "hud.overlay.campaign.eyebrow": "CAMPAIGN",
   "hud.campaign.level_won": "Level {level} — won",
   "hud.campaign.progress": "{won} / {total} won",
-
   "hud.button.play_again": "Play Again",
   "hud.button.replay": "Replay",
   "hud.button.main_menu": "Main Menu",
@@ -106,7 +94,6 @@
   "hud.button.continue_playing": "Continue Playing",
   "hud.button.next_unbeaten": "Next unbeaten level",
   "hud.button.back_to_campaign": "Back to campaign",
-
   "hud.tour.turn.title": "Turn & players",
   "hud.tour.turn.body": "The current turn number and player color.",
   "hud.tour.treasury.title": "Treasury & balance",
@@ -130,15 +117,12 @@
   "hud.tour.options.body": "Pause to save, load, change settings, or exit to the menu.",
   "hud.tour.help.title": "Help",
   "hud.tour.help.body": "Use Next and Back to step through the HUD UI elements. {Verb} any element to select it. Close returns to play.",
-
   "hud.continue_hint": "{Verb} anywhere to continue",
-  "hud.hint.tower_pick_tile": "{Verb} a tile... — T",
+  "hud.hint.tower_pick_tile": "{Verb} a hex... — T",
   "hud.hint.place_unit": "{Verb} to place a {level}",
   "hud.hint.move_unit": "{Verb} to move the {level}",
   "hud.hint.no_capture_targets": "No capture targets for {level}",
-
   "editor.tooltip.paint_land_cycle": "Paint land — {verb} to cycle player color",
-
   "menu.wordmark": "FourExHex",
   "menu.resume": "Resume",
   "menu.play_game": "Play Game",
@@ -168,34 +152,28 @@
   "menu.could_not_load": "Could not load '{name}': {error}",
   "menu.exit_title": "Exit FourExHex?",
   "menu.exit_body": "Are you sure you want to exit?",
-
   "mode.freeform": "Freeform",
   "mode.rising_tides": "Rising Tides",
   "mode.fog_of_war": "Fog Of War",
   "mode.viking_raiders": "Viking Raiders",
-
   "player_kind.human": "Human",
   "player_kind.computer": "Computer",
   "player_kind.none": "None",
-
   "settings.sound_effects": "Sound Effects",
   "settings.visual_effects": "Visual Effects",
   "settings.ai_speed": "Computer Player Speed",
   "settings.automate_speed": "Automate Speed",
   "settings.replay_speed": "Replay Speed",
   "settings.credits": "Credits",
-
   "speed.slow": "Slow",
   "speed.normal": "Normal",
   "speed.fast": "Fast",
   "speed.instant": "Instant",
-
   "button.cancel": "Cancel",
   "button.ok": "OK",
   "button.save": "Save",
   "button.load": "Load",
   "button.play": "Play",
-
   "save.title_game": "Save Game",
   "save.slot_name": "Slot name:",
   "save.failed": "Save failed",
@@ -203,13 +181,10 @@
   "save.reserved_name": "'autosave' is reserved. Please pick a different name.",
   "save.slot_row": "{name} — turn {turn} — {time}",
   "save.autosave_row": "[Autosave] turn {turn} — {time}",
-
   "credits.body": "[center]FourExHex\n\nCreated by [url={url}][color=#d8b65a]FooBarzalot[/color][/url]\n\nInspired by Slay by Sean O'Connor\n\nBuilt with Godot 4.6\n\nCoding assistance: Claude Code\n\nUI Design: Claude Design\n\nSFX: ElevenLabs\n\nFonts:\n  DM Serif Display\n  Geist\n  JetBrains Mono[/center]",
-
   "mapinfo.playing_as_heading": "You will be playing as:",
   "mapinfo.playing_as": "You will be playing as the {name} player.",
   "mapinfo.all_computer": "All players are Computer.",
-
   "campaign.back_button": "← Campaign",
   "campaign.level_title": "Level {level}",
   "campaign.tier_status": "{tier} tier · {status}",
@@ -220,19 +195,15 @@
   "campaign.blurb.rising_tides": "Rising Tides — Outlast the sea!",
   "campaign.blurb.fog_of_war": "Fog Of War — Explore to reveal the map!",
   "campaign.blurb.viking_raiders": "Viking Raiders — Repel the invasion!",
-
-  "intro.rising_tides": "Rising Tides — the sea rises every turn. Coastal tiles submerge and the map keeps shrinking, so ground you hold now can vanish beneath the waves.",
+  "intro.rising_tides": "Rising Tides — the sea rises every turn. Coastal hexes submerge and the map keeps shrinking, so ground you hold now can vanish beneath the waves.",
   "intro.fog_of_war": "Fog of War — the map begins hidden. Your territories light up the ground around them; everything else stays dark until you scout it. Undo and Redo are disabled in this mode.",
   "intro.viking_raiders": "Viking Raiders — Vikings are invading your island. Viking units pay no upkeep but their forces can't grow after they land on shore. Stand by to repel the invaders!",
-  "intro.gold_hex": "Gold hex — this tile earns 5× the gold of an ordinary hex for the controlling player.",
+  "intro.gold_hex": "Gold hex — this hex earns 5× the gold of an ordinary hex for the controlling player.",
   "intro.mountain_hex": "Mountain hex — a unit or tower on a mountain hex gains +1 defensive bonus — so a Recruit on a mountain defends like a Soldier.",
-
   "main.map_label": "Map: {name}",
   "main.seed_label": "Seed: {seed}",
-
   "pause.title": "Paused",
   "pause.exit_game": "Exit Game",
-
   "editor.menu_title": "Menu",
   "editor.save_map": "Save Map",
   "editor.no_maps_found": "No maps found.",
@@ -242,13 +213,12 @@
   "editor.tooltip.tree": "Place / remove a tree",
   "editor.tooltip.capital": "Place a capital",
   "editor.tooltip.tower": "Place / remove a tower",
-  "editor.tooltip.gold": "Place / remove a gold tile (2× income)",
+  "editor.tooltip.gold": "Place / remove a gold hex (2× income)",
   "editor.tooltip.mountain": "Place / remove a mountain (tower-strength defense)",
   "editor.tooltip.pan": "Pan",
   "editor.tooltip.swatch_disabled": "{name} — disabled (None)",
   "editor.tooltip.swatch_human": "Paint land — {name} (Human)",
   "editor.tooltip.swatch_computer": "Paint land — {name} (Computer)",
-
   "builder.map_edit": "Map Edit",
   "builder.record": "Record",
   "builder.preview": "Preview",
@@ -261,9 +231,8 @@
   "builder.discard_body": "Switching to Map Edit will clear the current tutorial recording. Continue?",
   "builder.discard_confirm": "Discard",
   "builder.narration_prompt": "Narration text for this tutorial beat:",
-  "builder.narration_placeholder": "e.g., Move your recruit to the highlighted tile.",
+  "builder.narration_placeholder": "e.g., Move your recruit to the highlighted hex.",
   "builder.insert": "Insert",
-
   "mapgen.title": "Map Generation",
   "mapgen.tooltip_options": "Map generation options",
   "mapgen.trees": "Trees",
@@ -276,7 +245,6 @@
   "mapgen.clump.few": "Few",
   "mapgen.clump.very_few": "Very Few",
   "mapgen.clump.one": "One",
-
   "cheat.title": "Cheats",
   "cheat.tutorial_builder": "Tutorial Builder",
   "cheat.close": "Close"

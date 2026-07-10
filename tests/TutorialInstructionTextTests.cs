@@ -102,13 +102,13 @@ public class TutorialInstructionTextTests : System.IDisposable
 
     [Theory]
     [InlineData(UnitLevel.Recruit, SessionState.ActionMode.BuyingRecruit,
-        "Place the Recruit at the highlighted tile.")]
+        "Place the Recruit at the highlighted hex.")]
     [InlineData(UnitLevel.Soldier, SessionState.ActionMode.BuyingSoldier,
-        "Place the Soldier at the highlighted tile.")]
+        "Place the Soldier at the highlighted hex.")]
     [InlineData(UnitLevel.Captain, SessionState.ActionMode.BuyingCaptain,
-        "Place the Captain at the highlighted tile.")]
+        "Place the Captain at the highlighted hex.")]
     [InlineData(UnitLevel.Commander, SessionState.ActionMode.BuyingCommander,
-        "Place the Commander at the highlighted tile.")]
+        "Place the Commander at the highlighted hex.")]
     public void BuyBeat_MatchingBuyMode_PromptsPlacement(
         UnitLevel level, SessionState.ActionMode mode, string expected)
     {
@@ -137,7 +137,7 @@ public class TutorialInstructionTextTests : System.IDisposable
                 Capital = A, To = B, Level = UnitLevel.Recruit,
             },
             StateWithGrid(grid), session);
-        Assert.Equal("Place the Recruit at the highlighted tile to remove the grave.", text);
+        Assert.Equal("Place the Recruit at the highlighted hex to remove the grave.", text);
     }
 
     [Fact]
@@ -154,7 +154,7 @@ public class TutorialInstructionTextTests : System.IDisposable
                 Capital = A, To = B, Level = UnitLevel.Recruit,
             },
             StateWithGrid(grid), session);
-        Assert.Equal("Place the Recruit at the highlighted tile to clear the tree.", text);
+        Assert.Equal("Place the Recruit at the highlighted hex to clear the tree.", text);
     }
 
     [Theory]
@@ -195,7 +195,7 @@ public class TutorialInstructionTextTests : System.IDisposable
                 Capital = A, To = B, Level = UnitLevel.Recruit,
             },
             StateWithGrid(grid), session);
-        Assert.Equal("Place the Recruit at the highlighted tile to capture it.", text);
+        Assert.Equal("Place the Recruit at the highlighted hex to capture it.", text);
     }
 
     [Fact]
@@ -213,7 +213,7 @@ public class TutorialInstructionTextTests : System.IDisposable
             },
             StateWithGrid(grid), session);
         Assert.Equal(
-            "Place the Recruit at the highlighted tile to clear the tree and capture the tile.",
+            "Place the Recruit at the highlighted hex to clear the tree and capture the hex.",
             text);
     }
 
@@ -232,7 +232,7 @@ public class TutorialInstructionTextTests : System.IDisposable
             },
             StateWithGrid(grid), session);
         Assert.Equal(
-            "Place the Recruit at the highlighted tile to remove the grave and capture the tile.",
+            "Place the Recruit at the highlighted hex to remove the grave and capture the hex.",
             text);
     }
 
@@ -251,7 +251,7 @@ public class TutorialInstructionTextTests : System.IDisposable
             },
             StateWithGrid(grid), session);
         Assert.Equal(
-            "Place the Commander at the highlighted tile to destroy the tower and capture the tile.",
+            "Place the Commander at the highlighted hex to destroy the tower and capture the hex.",
             text);
     }
 
@@ -302,7 +302,7 @@ public class TutorialInstructionTextTests : System.IDisposable
                 Capital = A, To = B,
             },
             EmptyState(), session);
-        Assert.Equal("Place the tower at the highlighted tile.", text);
+        Assert.Equal("Place the tower at the highlighted hex.", text);
     }
 
     [Fact]
@@ -373,7 +373,7 @@ public class TutorialInstructionTextTests : System.IDisposable
                 From = A, To = B,
             },
             EmptyState(), session);
-        Assert.Equal("Move the unit to the highlighted tile.", text);
+        Assert.Equal("Move the unit to the highlighted hex.", text);
     }
 
     [Theory]
@@ -465,7 +465,7 @@ public class TutorialInstructionTextTests : System.IDisposable
                 From = A, To = B,
             },
             StateWithGrid(grid), session);
-        Assert.Equal("Move the selected Captain onto the highlighted tile to capture it.", text);
+        Assert.Equal("Move the selected Captain onto the highlighted hex to capture it.", text);
     }
 
     [Fact]
@@ -487,7 +487,7 @@ public class TutorialInstructionTextTests : System.IDisposable
             },
             StateWithGrid(grid), session);
         Assert.Equal(
-            "Move the selected Captain onto the highlighted tile to destroy the tower and capture the tile.",
+            "Move the selected Captain onto the highlighted hex to destroy the tower and capture the hex.",
             text);
     }
 
@@ -510,7 +510,7 @@ public class TutorialInstructionTextTests : System.IDisposable
             },
             StateWithGrid(grid), session);
         Assert.Equal(
-            "Move the selected Recruit onto the highlighted tile to clear the tree and capture the tile.",
+            "Move the selected Recruit onto the highlighted hex to clear the tree and capture the hex.",
             text);
     }
 
@@ -525,7 +525,7 @@ public class TutorialInstructionTextTests : System.IDisposable
                 Target = A,
             },
             EmptyState(), session);
-        Assert.Equal("Long-press the highlighted tile to rally recruits there.", text);
+        Assert.Equal("Long-press the highlighted hex to rally recruits there.", text);
     }
 
     [Fact]

@@ -332,7 +332,7 @@ public class TutorialPreviewCuesTests : IDisposable
         Assert.Single(f.Map.LastMoveTargets);
         Assert.Equal(destination, f.Map.LastMoveTargets[0]);
         Assert.Equal(UnitLevel.Captain, f.Map.LastMoveTargetsLevel);
-        Assert.Equal("Place the Captain at the highlighted tile.", f.Hud.CurrentTutorialMessage);
+        Assert.Equal("Place the Captain at the highlighted hex.", f.Hud.CurrentTutorialMessage);
     }
 
     [Fact]
@@ -408,7 +408,7 @@ public class TutorialPreviewCuesTests : IDisposable
         Assert.False(f.Hud.BuildTowerCtaActive);
         Assert.Single(f.Map.LastTowerTargets);
         Assert.Equal(destination, f.Map.LastTowerTargets[0]);
-        Assert.Equal("Place the tower at the highlighted tile.", f.Hud.CurrentTutorialMessage);
+        Assert.Equal("Place the tower at the highlighted hex.", f.Hud.CurrentTutorialMessage);
     }
 
     [Fact]
@@ -472,7 +472,7 @@ public class TutorialPreviewCuesTests : IDisposable
         // Once the unit is picked up, the select-unit cue lifts so only the
         // destination move-target rings remain.
         Assert.Null(f.Map.LastSelectUnitCue);
-        Assert.Equal("Move the unit to the highlighted tile.", f.Hud.CurrentTutorialMessage);
+        Assert.Equal("Move the unit to the highlighted hex.", f.Hud.CurrentTutorialMessage);
     }
 
     [Fact]
@@ -512,7 +512,7 @@ public class TutorialPreviewCuesTests : IDisposable
         Assert.Single(f.Map.LastMoveTargets);
         Assert.Equal(target, f.Map.LastMoveTargets[0]);
         Assert.Equal(UnitLevel.Recruit, f.Map.LastMoveTargetsLevel);
-        Assert.Equal("Long-press the highlighted tile to rally recruits there.",
+        Assert.Equal("Long-press the highlighted hex to rally recruits there.",
             f.Hud.CurrentTutorialMessage);
     }
 
