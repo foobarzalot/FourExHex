@@ -43,6 +43,35 @@ public partial class LogBootstrap : Node
         Log.Info(Log.LogCategory.Display,
             $"InteractionVerb: mobile={isMobile} -> \"{InteractionVerb.Capitalized}\"");
 
+        // User-facing string table: the Godot-free Strings store can't read
+        // res:// itself, so load assets/strings/en.json here and push the
+        // text in — the same configure-at-boot pattern as Log above. res://
+        // resolves into the PCK in exported builds and the project tree in
+        // the editor (the file must be in export_presets.cfg include_filter
+        // — plain .json isn't a Godot-imported resource). A missing or
+        // malformed file leaves the store empty, so every lookup renders
+        // its key and the game still runs.
+        using FileAccess? stringsFile =
+            FileAccess.Open("res://assets/strings/en.json", FileAccess.ModeFlags.Read);
+        if (stringsFile == null)
+        {
+            Log.Error(Log.LogCategory.Hud,
+                $"[strings] failed to open res://assets/strings/en.json: {FileAccess.GetOpenError()}");
+        }
+        else
+        {
+            try
+            {
+                Strings.Configure(stringsFile.GetAsText(), isMobile);
+                Log.Info(Log.LogCategory.Hud, $"[strings] loaded {Strings.Count} keys");
+            }
+            catch (System.Text.Json.JsonException e)
+            {
+                Log.Error(Log.LogCategory.Hud,
+                    $"[strings] failed to parse en.json: {e.Message}");
+            }
+        }
+
         // Mobile (Android/iOS) can't set the FOUREXHEX_LOG env var, so turn
         // every category fully verbose for logcat. Desktop keeps env-var-driven
         // gating (above). Trace/Debug/Info are compiled out of release builds

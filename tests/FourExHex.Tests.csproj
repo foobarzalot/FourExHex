@@ -19,6 +19,16 @@
   </ItemGroup>
 
   <!--
+    The shipped string table is copied beside the test binaries so the
+    copy-helper tests assert the REAL user-facing English (TestStrings
+    configures the store from it once per run) and StringKeysParityTests
+    can pin code↔JSON key parity.
+  -->
+  <ItemGroup>
+    <Content Include="..\assets\strings\en.json" Link="assets\strings\en.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!--
     The model under test is the Godot-free FourExHex.Model library. There
     is intentionally NO GodotSharp PackageReference and NO per-file
     <Compile Include="..\scripts\*"> list: if these tests compile and pass
