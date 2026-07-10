@@ -8,10 +8,13 @@ namespace FourExHex.Tests;
 /// Tests for <see cref="TutorialPreviewCues"/> — the visual-cue driver
 /// for Tutorial Preview. Each test sets up a script whose next player-0
 /// beat is the one under test, calls <c>Apply()</c>, and asserts the
-/// right HUD / map calls were issued.
+/// right HUD / map calls were issued. Mobile-verb tests reconfigure the
+/// process-wide string store; Dispose restores the desktop fixture.
 /// </summary>
-public class TutorialPreviewCuesTests
+public class TutorialPreviewCuesTests : IDisposable
 {
+    public void Dispose() => TestStrings.ConfigureFromFixture();
+
     private static readonly PlayerId Red = PlayerId.FromIndex(0);
     private static readonly PlayerId Blue = PlayerId.FromIndex(1);
 
@@ -411,7 +414,7 @@ public class TutorialPreviewCuesTests
     [Fact]
     public void MoveBeat_NoMode_FlashesSelectCueOnFromTile_NotMoveRings()
     {
-        InteractionVerb.Configure(isMobile: true);
+        TestStrings.ConfigureFromFixture(isMobile: true);
         var f0 = new Fixture(new List<ReplayBeat>());
         HexCoord redCapital = f0.RedTerritory.Capital!.Value;
         HexCoord from = AnyOtherCoord(f0.RedTerritory, redCapital);

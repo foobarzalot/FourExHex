@@ -30,6 +30,10 @@ public static class Strings
     public static string Get(string key, params (string Name, string Value)[] tokens)
         => _table.Get(key, tokens);
 
+    /// <summary>Display name for a unit level (<c>unit.*</c> keys) —
+    /// the shared spelling for tooltips, hints, and tutorial copy.</summary>
+    public static string UnitName(UnitLevel level) => Get(StringKeys.ForUnit(level));
+
     /// <summary>Entries in the active table (0 until configured).</summary>
     public static int Count => _table.Count;
 }

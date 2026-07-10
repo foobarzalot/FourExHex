@@ -43,18 +43,18 @@ public static class EndgameOverlayContent
         if (winner.IsNone)
         {
             return new Content(
-                Eyebrow: "DEFEAT",
-                Title: "The Vikings have conquered the island!",
+                Eyebrow: Strings.Get(StringKeys.EndgameDefeatEyebrow),
+                Title: Strings.Get(StringKeys.EndgameVikingConquestTitle),
                 OfferReplay: false);
         }
         return !winnerIsHuman && defeatedHumanName != null
             ? new Content(
-                Eyebrow: "DEFEAT",
-                Title: $"{defeatedHumanName} defeated",
+                Eyebrow: Strings.Get(StringKeys.EndgameDefeatEyebrow),
+                Title: Strings.Get(StringKeys.EndgameDefeatedTitle, ("name", defeatedHumanName)),
                 OfferReplay: false)
             : new Content(
-                Eyebrow: "VICTORY",
-                Title: $"{winnerName} wins!",
+                Eyebrow: Strings.Get(StringKeys.EndgameVictoryEyebrow),
+                Title: Strings.Get(StringKeys.EndgameVictoryTitle, ("name", winnerName)),
                 OfferReplay: true);
     }
 }

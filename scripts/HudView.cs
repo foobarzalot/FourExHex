@@ -505,7 +505,7 @@ public partial class HudView : OrientationHud, IHudView
         bool buyCollapsed = !_paletteRow.Visible;
         Control buyNode = buyCollapsed ? _collapsedBuyButton : _paletteRow;
         string buyBody = buyCollapsed
-            ? $"Buy a unit — {InteractionVerb.Lowercase} repeatedly to cycle unit type. Upgrade toward Soldier, Captain, and Commander by merging with a previously placed unit."
+            ? Strings.Get(StringKeys.HudTourBuyBodyCollapsed)
             : "Buy a unit, or upgrade toward Soldier, Captain, and Commander by merging with a previously placed unit.";
 
         Add(HudTourStep.TurnCounter, _statusChip, "Turn & players",
@@ -528,7 +528,7 @@ public partial class HudView : OrientationHud, IHudView
         Add(HudTourStep.Options, _optionsButton, "Options",
             "Pause to save, load, change settings, or exit to the menu.");
         Add(HudTourStep.Help, _helpButton, "Help",
-            $"Use Next and Back to step through the HUD UI elements. {InteractionVerb.Capitalized} any element to select it. Close returns to play.");
+            Strings.Get(StringKeys.HudTourHelpBody));
 
         return steps;
     }
@@ -1166,7 +1166,7 @@ public partial class HudView : OrientationHud, IHudView
         // visual cue.
         _continueHint = new Label
         {
-            Text = $"{InteractionVerb.Capitalized} anywhere to continue",
+            Text = Strings.Get(StringKeys.HudContinueHint),
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
             AnchorLeft = 0f,
@@ -2136,7 +2136,7 @@ public partial class HudView : OrientationHud, IHudView
         _buildTowerButton.Disabled = !building && !canAffordTower;
         _buildTowerButton.Selected = building;
         _buildTowerButton.TooltipText = building
-            ? $"{InteractionVerb.Capitalized} a tile... — T"
+            ? Strings.Get(StringKeys.HudHintTowerPickTile)
             : canAffordTower
                 ? HudIconButton.DefaultTooltip(HudIcon.Tower)
                 : DisabledBuyReason(selected, hasCapital, "a tower", PurchaseRules.TowerCostFor(buyerDifficulty));
@@ -2430,7 +2430,8 @@ public partial class HudView : OrientationHud, IHudView
         {
             return NoCaptureTargets(state, session, buyLevel.Value)
                 ? $"No capture targets for {buyLevel.Value}"
-                : $"{InteractionVerb.Capitalized} to place a {buyLevel.Value}";
+                : Strings.Get(StringKeys.HudHintPlaceUnit,
+                    ("level", Strings.UnitName(buyLevel.Value)));
         }
         if (session.Mode == SessionState.ActionMode.MovingUnit && session.MoveSource.HasValue)
         {
@@ -2438,7 +2439,8 @@ public partial class HudView : OrientationHud, IHudView
             UnitLevel level = (src?.Unit?.Level) ?? UnitLevel.Recruit;
             return NoCaptureTargets(state, session, level)
                 ? $"No capture targets for {level}"
-                : $"{InteractionVerb.Capitalized} to move the {level}";
+                : Strings.Get(StringKeys.HudHintMoveUnit,
+                    ("level", Strings.UnitName(level)));
         }
         // Bankruptcy warning is handled by the red bankruptcy-toast widget
         // (built by BuildBankruptToast / toggled in Refresh), not this panel.

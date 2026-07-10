@@ -20,6 +20,6 @@ internal static class TestStrings
     [ModuleInitializer]
     internal static void Init() => ConfigureFromFixture();
 
-    internal static void ConfigureFromFixture()
-        => Strings.Configure(File.ReadAllText(FixturePath), isMobile: false);
+    internal static void ConfigureFromFixture(bool isMobile = false)
+        => Strings.Configure(File.ReadAllText(FixturePath), isMobile);
 }

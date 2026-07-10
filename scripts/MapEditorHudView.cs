@@ -181,7 +181,7 @@ public partial class MapEditorHudView : OrientationHud
         _landCycleButton = new HexPaletteButton(
             new Color(GameSettings.PlayerConfig[0].Hex), squared: true)
         {
-            TooltipText = $"Paint land — {InteractionVerb.Lowercase} to cycle player color",
+            TooltipText = Strings.Get(StringKeys.EditorTooltipPaintLandCycle),
             Visible = false,
         };
         _landCycleButton.Pressed += _ => OnLandCyclePressed();

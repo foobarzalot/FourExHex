@@ -35,17 +35,11 @@ public partial class LogBootstrap : Node
 
         bool isMobile = OS.HasFeature("mobile");
 
-        // Platform-aware interaction verb: "Tap" on mobile, "Click" on desktop.
-        // Godot-free static (see InteractionVerb), so it must be pushed the
-        // platform flag here at startup — before any scene's instructional /
-        // tooltip text is built — the same way Log is configured above.
-        InteractionVerb.Configure(isMobile);
-        Log.Info(Log.LogCategory.Display,
-            $"InteractionVerb: mobile={isMobile} -> \"{InteractionVerb.Capitalized}\"");
-
         // User-facing string table: the Godot-free Strings store can't read
         // res:// itself, so load assets/strings/en.json here and push the
-        // text in — the same configure-at-boot pattern as Log above. res://
+        // text in — the same configure-at-boot pattern as Log above, and it
+        // must happen before any scene builds instructional / tooltip text.
+        // isMobile selects the Tap/Click verb variants (data-driven). res://
         // resolves into the PCK in exported builds and the project tree in
         // the editor (the file must be in export_presets.cfg include_filter
         // — plain .json isn't a Godot-imported resource). A missing or

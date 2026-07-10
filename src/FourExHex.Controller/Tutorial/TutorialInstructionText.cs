@@ -7,21 +7,25 @@
 /// progress through each multi-step beat (e.g. Buy beat shows
 /// "Press the Buy Recruit button." then "Place the recruit at the
 /// highlighted tile." once the player enters buy mode).
+///
+/// This class owns only the WHICH-message logic — the English itself
+/// lives in the string store (<c>tutorial.*</c> keys), with unit levels
+/// injected via <see cref="Strings.UnitName"/> tokens.
 /// </summary>
 public static class TutorialInstructionText
 {
     public static string For(ReplayBeat next, GameState state, SessionState session) => next switch
     {
-        ReplayEndTurnBeat _ => "Press End Turn.",
+        ReplayEndTurnBeat _ => Strings.Get(StringKeys.TutorialEndTurn),
         ReplayBuyBeat bu => ForBuy(bu, state, session),
         ReplayBuildTowerBeat _ => session.Mode == SessionState.ActionMode.BuildingTower
-            ? "Place the tower at the highlighted tile."
-            : "Press the Build Tower button.",
+            ? Strings.Get(StringKeys.TutorialTowerPlace)
+            : Strings.Get(StringKeys.TutorialTowerPressButton),
         ReplayMoveBeat mv => ForMove(mv, state, session),
-        ReplayLongPressRallyBeat _ => "Long-press the highlighted tile to rally recruits there.",
-        ReplayClaimVictoryBeat _ => "Press Win Now to claim victory.",
-        ReplayDismissClaimBeat _ => "Press Continue Playing to keep going.",
-        ReplayDismissDefeatBeat _ => "Press Continue.",
+        ReplayLongPressRallyBeat _ => Strings.Get(StringKeys.TutorialRally),
+        ReplayClaimVictoryBeat _ => Strings.Get(StringKeys.TutorialClaimWinNow),
+        ReplayDismissClaimBeat _ => Strings.Get(StringKeys.TutorialClaimContinue),
+        ReplayDismissDefeatBeat _ => Strings.Get(StringKeys.TutorialDefeatContinue),
         _ => "",
     };
 
@@ -38,43 +42,45 @@ public static class TutorialInstructionText
             && session.MoveSource.Value.Equals(mv.From);
         if (!inMovingMode)
         {
-            return $"{InteractionVerb.Capitalized} the highlighted unit to pick it up.";
+            return Strings.Get(StringKeys.TutorialMovePickUp);
         }
 
         HexTile? srcTile = state.Grid.Get(mv.From);
         HexTile? dstTile = state.Grid.Get(mv.To);
         if (srcTile?.Occupant is Unit srcUnit && dstTile != null)
         {
+            (string, string) level = ("level", Strings.UnitName(srcUnit.Level));
             if (dstTile.Owner == srcTile.Owner)
             {
                 if (dstTile.Occupant is Unit dstUnit
                     && srcUnit.Level.CanCombineWith(dstUnit.Level))
                 {
                     UnitLevel combined = srcUnit.Level.CombinedWith(dstUnit.Level);
-                    return $"Move the selected {srcUnit.Level} onto the target {dstUnit.Level} "
-                        + $"to combine them into a {combined}.";
+                    return Strings.Get(StringKeys.TutorialMoveCombine, level,
+                        ("target", Strings.UnitName(dstUnit.Level)),
+                        ("combined", Strings.UnitName(combined)));
                 }
                 if (dstTile.Occupant is Tree)
                 {
-                    return $"Move the selected {srcUnit.Level} onto the tree to clear it.";
+                    return Strings.Get(StringKeys.TutorialMoveClearTree, level);
                 }
                 if (dstTile.Occupant is Grave)
                 {
-                    return $"Move the selected {srcUnit.Level} onto the grave to remove it.";
+                    return Strings.Get(StringKeys.TutorialMoveRemoveGrave, level);
                 }
             }
             else
             {
-                string suffix = dstTile.Occupant switch
+                string key = dstTile.Occupant switch
                 {
-                    Tower => "to destroy the tower and capture the tile.",
-                    Tree => "to clear the tree and capture the tile.",
-                    _ => "to capture it.",
+                    Tower => StringKeys.TutorialMoveCaptureTower,
+                    Tree => StringKeys.TutorialMoveCaptureTree,
+                    _ => StringKeys.TutorialMoveCapture,
                 };
-                return $"Move the selected {srcUnit.Level} onto the highlighted tile " + suffix;
+                return Strings.Get(key, level);
             }
         }
-        return "Move the unit to the highlighted tile.";
+        return Strings.Get(StringKeys.TutorialMoveGeneric);
     }
 
     // The Buy button is single — pressing it cycles Recruit → Soldier →
@@ -94,17 +100,19 @@ public static class TutorialInstructionText
             // First press always lands on Recruit regardless of eventual
             // target — the BuyingRecruit follow-up beat introduces the
             // upgrade-to-X messaging when needed.
-            return "Press the Buy Recruit button.";
+            return Strings.Get(StringKeys.TutorialBuyPressRecruit);
         }
         if ((int)current.Value < (int)bu.Level)
         {
             UnitLevel nextLevel = NextLevelUp(current.Value);
-            return $"Now press the Buy Recruit button again to upgrade to a {nextLevel}.";
+            return Strings.Get(StringKeys.TutorialBuyUpgrade,
+                ("level", Strings.UnitName(nextLevel)));
         }
         // Wrap-around case (target is at or below current cycle position
         // but not equal — e.g. mode=BuyingCaptain, target=Recruit). The
         // cycle eventually loops back; the dev presses through.
-        return $"Press the Buy Recruit button to cycle to a {bu.Level}.";
+        return Strings.Get(StringKeys.TutorialBuyCycle,
+            ("level", Strings.UnitName(bu.Level)));
     }
 
     private static UnitLevel NextLevelUp(UnitLevel current) => current switch
@@ -123,11 +131,12 @@ public static class TutorialInstructionText
     // notable occupant or the grid lookup fails.
     private static string ForBuyPlacement(ReplayBuyBeat bu, GameState state)
     {
+        (string, string) level = ("level", Strings.UnitName(bu.Level));
         HexTile? toTile = state.Grid.Get(bu.To);
         HexTile? capTile = state.Grid.Get(bu.Capital);
         if (toTile == null || capTile == null)
         {
-            return $"Place the {bu.Level} at the highlighted tile.";
+            return Strings.Get(StringKeys.TutorialPlaceGeneric, level);
         }
         bool isCapture = toTile.Owner != capTile.Owner;
         HexOccupant? occ = toTile.Occupant;
@@ -135,20 +144,21 @@ public static class TutorialInstructionText
         if (!isCapture && occ is Unit existing && bu.Level.CanCombineWith(existing.Level))
         {
             UnitLevel combined = bu.Level.CombinedWith(existing.Level);
-            return $"Place the {bu.Level} onto the target {existing.Level} "
-                + $"to combine them into a {combined}.";
+            return Strings.Get(StringKeys.TutorialPlaceCombine, level,
+                ("target", Strings.UnitName(existing.Level)),
+                ("combined", Strings.UnitName(combined)));
         }
 
-        string suffix = (occ, isCapture) switch
+        string key = (occ, isCapture) switch
         {
-            (Tower, true) => " to destroy the tower and capture the tile",
-            (Tree, true) => " to clear the tree and capture the tile",
-            (Grave, true) => " to remove the grave and capture the tile",
-            (_, true) => " to capture it",
-            (Tree, false) => " to clear the tree",
-            (Grave, false) => " to remove the grave",
-            _ => "",
+            (Tower, true) => StringKeys.TutorialPlaceCaptureTower,
+            (Tree, true) => StringKeys.TutorialPlaceCaptureTree,
+            (Grave, true) => StringKeys.TutorialPlaceCaptureGrave,
+            (_, true) => StringKeys.TutorialPlaceCapture,
+            (Tree, false) => StringKeys.TutorialPlaceClearTree,
+            (Grave, false) => StringKeys.TutorialPlaceRemoveGrave,
+            _ => StringKeys.TutorialPlaceGeneric,
         };
-        return $"Place the {bu.Level} at the highlighted tile{suffix}.";
+        return Strings.Get(key, level);
     }
 }

@@ -8,9 +8,13 @@ namespace FourExHex.Tests;
 /// English-instruction lookup driven from the next expected player-0
 /// beat, the current <see cref="SessionState"/>, and (for Move beats)
 /// the destination occupant read from <see cref="GameState.Grid"/>.
+/// Mobile-verb tests reconfigure the process-wide string store; Dispose
+/// restores the desktop fixture so later test classes see "Click".
 /// </summary>
-public class TutorialInstructionTextTests
+public class TutorialInstructionTextTests : System.IDisposable
 {
+    public void Dispose() => TestStrings.ConfigureFromFixture();
+
     private static readonly HexCoord A = new(0, 0);
     private static readonly HexCoord B = new(1, 0);
     private static readonly HexCoord C = new(2, 0);
@@ -304,7 +308,7 @@ public class TutorialInstructionTextTests
     [Fact]
     public void MoveBeat_ModeNone_PromptsSourcePickup_Mobile()
     {
-        InteractionVerb.Configure(isMobile: true);
+        TestStrings.ConfigureFromFixture(isMobile: true);
         var session = new SessionState { Mode = SessionState.ActionMode.None };
         string text = TutorialInstructionText.For(
             new ReplayMoveBeat
@@ -319,7 +323,7 @@ public class TutorialInstructionTextTests
     [Fact]
     public void MoveBeat_ModeNone_PromptsSourcePickup_Desktop()
     {
-        InteractionVerb.Configure(isMobile: false);
+        TestStrings.ConfigureFromFixture(isMobile: false);
         var session = new SessionState { Mode = SessionState.ActionMode.None };
         string text = TutorialInstructionText.For(
             new ReplayMoveBeat
@@ -336,7 +340,7 @@ public class TutorialInstructionTextTests
     {
         // Player has picked up a different unit than the script wants;
         // re-prompt them to grab the highlighted one.
-        InteractionVerb.Configure(isMobile: true);
+        TestStrings.ConfigureFromFixture(isMobile: true);
         var session = new SessionState
         {
             Mode = SessionState.ActionMode.MovingUnit,

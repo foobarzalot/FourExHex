@@ -29,15 +29,22 @@ public static class VikingWaveBannerContent
         if (vikings.LastSpawnRound == state.Turns.TurnNumber && vikings.AtSea.Count > 0)
         {
             return vikings.NextWaveIndex == total
-                ? "Final wave"
-                : $"Wave {vikings.NextWaveIndex}/{total}";
+                ? Strings.Get(StringKeys.VikingWaveFinalSpawned)
+                : Strings.Get(StringKeys.VikingWaveSpawned,
+                    ("index", vikings.NextWaveIndex.ToString()),
+                    ("total", total.ToString()));
         }
 
         int? rounds = VikingRaidersRules.RoundsUntilWaveDue(state);
         if (rounds == null) return null;
-        string turns = rounds == 1 ? "1 turn" : $"{rounds} turns";
+        string turns = rounds == 1
+            ? Strings.Get(StringKeys.VikingTurnsOne)
+            : Strings.Get(StringKeys.VikingTurnsMany, ("n", rounds.Value.ToString()));
         return vikings.NextWaveIndex == total - 1
-            ? $"Final wave arriving in {turns}"
-            : $"Wave {vikings.NextWaveIndex + 1}/{total} arriving in {turns}";
+            ? Strings.Get(StringKeys.VikingWaveFinalIncoming, ("turns", turns))
+            : Strings.Get(StringKeys.VikingWaveIncoming,
+                ("index", (vikings.NextWaveIndex + 1).ToString()),
+                ("total", total.ToString()),
+                ("turns", turns));
     }
 }
