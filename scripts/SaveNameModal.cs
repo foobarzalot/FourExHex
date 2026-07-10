@@ -26,9 +26,9 @@ public sealed partial class SaveNameModal : CanvasLayer
 
     /// <param name="title">Serif panel title — e.g. "Save Game", "Save Map",
     /// "Save Tutorial". Defaults to "Save Game" for the in-game save flow.</param>
-    public SaveNameModal(string title = "Save Game")
+    public SaveNameModal(string? title = null)
     {
-        _title = title;
+        _title = title ?? Strings.Get(StringKeys.SaveTitleGame);
     }
 
     private readonly string _title;
@@ -79,7 +79,7 @@ public sealed partial class SaveNameModal : CanvasLayer
 
         var label = new Label
         {
-            Text = "Slot name:",
+            Text = Strings.Get(StringKeys.SaveSlotName),
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
         };
         label.AddThemeFontSizeOverride("font_size", 22);
@@ -120,7 +120,7 @@ public sealed partial class SaveNameModal : CanvasLayer
 
         var cancelButton = new Button
         {
-            Text = "Cancel",
+            Text = Strings.Get(StringKeys.ButtonCancel),
             FocusMode = Control.FocusModeEnum.None,
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
         };
@@ -131,7 +131,7 @@ public sealed partial class SaveNameModal : CanvasLayer
 
         var saveButton = new Button
         {
-            Text = "Save",
+            Text = Strings.Get(StringKeys.ButtonSave),
             FocusMode = Control.FocusModeEnum.None,
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
         };
@@ -204,7 +204,7 @@ public sealed partial class SaveNameModal : CanvasLayer
     private void BuildErrorOverlay(Vector2 viewport)
     {
         (_errorBackdrop, _errorPanel, _, _errorBodyLabel) =
-            ModalChrome.BuildErrorOverlay(viewport, 420, 200, "Save failed", HideError);
+            ModalChrome.BuildErrorOverlay(viewport, 420, 200, Strings.Get(StringKeys.SaveFailed), HideError);
         AddChild(_errorBackdrop);
         AddChild(_errorPanel);
     }

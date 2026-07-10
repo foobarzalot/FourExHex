@@ -14,26 +14,29 @@ public static class CampaignConfirmSheet
     public static MapInfoSheet Create(int level)
     {
         int seed = CampaignProgress.SeedForLevel(level);
-        string title = $"Level {CampaignProgress.LabelFor(level)}";
+        string title = Strings.Get(StringKeys.CampaignLevelTitle,
+            ("level", CampaignProgress.LabelFor(level)));
         string statusText = CampaignStore.Progress.StatusOf(level) switch
         {
-            CampaignLevelStatus.Won => "Already won — replaying can't lose it.",
-            CampaignLevelStatus.Lost => "Attempted, not yet won.",
-            _ => "Not yet attempted.",
+            CampaignLevelStatus.Won => Strings.Get(StringKeys.CampaignStatusWon),
+            CampaignLevelStatus.Lost => Strings.Get(StringKeys.CampaignStatusLost),
+            _ => Strings.Get(StringKeys.CampaignStatusUnattempted),
         };
-        string status = $"{CampaignProgress.DifficultyForLevel(level)} tier · {statusText}";
+        string status = Strings.Get(StringKeys.CampaignTierStatus,
+            ("tier", Strings.Get(StringKeys.ForDifficulty(CampaignProgress.DifficultyForLevel(level)))),
+            ("status", statusText));
 
         // Tell the player which game mode the level runs. Complication modes
         // are the Soldier+ minority, so they get emphasized descriptions;
         // freeform levels get a one-liner for parity.
         GameMode mode = CampaignProgress.ModeForLevel(level);
-        string gameMode = mode switch
+        string gameMode = Strings.Get(mode switch
         {
-            GameMode.RisingTides => "Rising Tides — Outlast the sea!",
-            GameMode.FogOfWar => "Fog Of War — Explore to reveal the map!",
-            GameMode.VikingRaiders => "Viking Raiders — Repel the invasion!",
-            _ => "Freeform — expand your territory and outlast your rivals.",
-        };
+            GameMode.RisingTides => StringKeys.CampaignBlurbRisingTides,
+            GameMode.FogOfWar => StringKeys.CampaignBlurbFogOfWar,
+            GameMode.VikingRaiders => StringKeys.CampaignBlurbVikingRaiders,
+            _ => StringKeys.CampaignBlurbFreeform,
+        });
 
         // The single color the human plays this level (deterministic per level).
         int humanSlot = CampaignProgress.HumanColorSlotForLevel(level);

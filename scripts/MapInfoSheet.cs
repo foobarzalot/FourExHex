@@ -61,7 +61,7 @@ public sealed partial class MapInfoSheet : CanvasLayer
         string status,
         IReadOnlyList<HumanIdentity> humans,
         Action<MapThumbnailView> requestThumbnail,
-        string confirmText = "Play",
+        string? confirmText = null,
         string gameMode = "",
         bool gameModeEmphasis = false)
     {
@@ -69,7 +69,7 @@ public sealed partial class MapInfoSheet : CanvasLayer
         _status = status;
         _humans = humans;
         _requestThumbnail = requestThumbnail;
-        _confirmText = confirmText;
+        _confirmText = confirmText ?? Strings.Get(StringKeys.ButtonPlay);
         _gameMode = gameMode;
         _gameModeEmphasis = gameModeEmphasis;
     }
@@ -126,7 +126,7 @@ public sealed partial class MapInfoSheet : CanvasLayer
         var buttonRow = new HBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         buttonRow.AddThemeConstantOverride("separation", 12);
         col.AddChild(buttonRow);
-        buttonRow.AddChild(MakeSheetButton("Cancel", Cancel));
+        buttonRow.AddChild(MakeSheetButton(Strings.Get(StringKeys.ButtonCancel), Cancel));
         buttonRow.AddChild(MakeSheetButton(_confirmText, Confirm));
     }
 
@@ -151,7 +151,7 @@ public sealed partial class MapInfoSheet : CanvasLayer
         if (_gameMode.Length > 0) rail.AddChild(MakeGameMode(HorizontalAlignment.Left));
         rail.AddChild(MakePlayingAs(HorizontalAlignment.Left));
         rail.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
-        rail.AddChild(MakeSheetButton("Cancel", Cancel));
+        rail.AddChild(MakeSheetButton(Strings.Get(StringKeys.ButtonCancel), Cancel));
         rail.AddChild(MakeSheetButton(_confirmText, Confirm));
 
         hbox.AddChild(new ColorRect
@@ -222,7 +222,7 @@ public sealed partial class MapInfoSheet : CanvasLayer
         {
             var none = new Label
             {
-                Text = "All players are Computer.",
+                Text = Strings.Get(StringKeys.MapInfoAllComputer),
                 AutowrapMode = TextServer.AutowrapMode.WordSmart,
                 HorizontalAlignment = align,
                 SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
@@ -237,7 +237,7 @@ public sealed partial class MapInfoSheet : CanvasLayer
             HumanIdentity h = _humans[0];
             var label = new Label
             {
-                Text = $"You will be playing as the {h.Name} player.",
+                Text = Strings.Get(StringKeys.MapInfoPlayingAs, ("name", h.Name)),
                 AutowrapMode = TextServer.AutowrapMode.WordSmart,
                 HorizontalAlignment = align,
                 SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
@@ -251,7 +251,7 @@ public sealed partial class MapInfoSheet : CanvasLayer
         col.AddThemeConstantOverride("separation", 6);
         var lead = new Label
         {
-            Text = "You will be playing as:",
+            Text = Strings.Get(StringKeys.MapInfoPlayingAsHeading),
             HorizontalAlignment = align,
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
         };

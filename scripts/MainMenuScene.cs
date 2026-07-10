@@ -422,7 +422,7 @@ public partial class MainMenuScene : Control
 
         var title = new Label
         {
-            Text = "FourExHex",
+            Text = Strings.Get(StringKeys.MenuWordmark),
             HorizontalAlignment = HorizontalAlignment.Center,
             Position = new Vector2(0, 36),
             Size = new Vector2(panelW, 68),
@@ -452,7 +452,7 @@ public partial class MainMenuScene : Control
         // Resume sits above Play Game so a returning player hits the
         // one-click path first; new players see it disabled and fall to
         // Play Game directly below.
-        _landingResumeButton = new Button { Text = "Resume" };
+        _landingResumeButton = new Button { Text = Strings.Get(StringKeys.MenuResume) };
         _landingResumeButton.AddThemeFontSizeOverride("font_size", 26);
         _landingResumeButton.Position = new Vector2(buttonInset, firstButtonY);
         _landingResumeButton.Size = new Vector2(buttonW, buttonH);
@@ -461,7 +461,7 @@ public partial class MainMenuScene : Control
         _landingResumeButton.Disabled = !slots.Any(s => s.IsAutosave);
         panel.AddChild(_landingResumeButton);
 
-        _landingPlayButton = new Button { Text = "Play Game" };
+        _landingPlayButton = new Button { Text = Strings.Get(StringKeys.MenuPlayGame) };
         // Plain Button, not brass — brass marks terminal commit actions
         // (Start Game, Resume in Pause), not menu navigation.
         _landingPlayButton.AddThemeFontSizeOverride("font_size", 26);
@@ -474,7 +474,7 @@ public partial class MainMenuScene : Control
         // Campaign ladder: 256 fixed-seed levels with
         // persistent progress. Sits right under Play Game — it's the
         // long-horizon progression mode.
-        var campaignButton = new Button { Text = "Campaign" };
+        var campaignButton = new Button { Text = Strings.Get(StringKeys.MenuCampaign) };
         campaignButton.AddThemeFontSizeOverride("font_size", 26);
         campaignButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 2);
         campaignButton.Size = new Vector2(buttonW, buttonH);
@@ -484,7 +484,7 @@ public partial class MainMenuScene : Control
 
         // The end-user-facing tutorial entry point (the authoring tool
         // lives in the debug-only cheat menu).
-        var playTutorialButton = new Button { Text = "Play Tutorial" };
+        var playTutorialButton = new Button { Text = Strings.Get(StringKeys.MenuPlayTutorial) };
         playTutorialButton.AddThemeFontSizeOverride("font_size", 26);
         playTutorialButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 3);
         playTutorialButton.Size = new Vector2(buttonW, buttonH);
@@ -492,7 +492,7 @@ public partial class MainMenuScene : Control
         AudioBus.AttachClick(playTutorialButton);
         panel.AddChild(playTutorialButton);
 
-        _landingLoadButton = new Button { Text = "Load Game" };
+        _landingLoadButton = new Button { Text = Strings.Get(StringKeys.MenuLoadGame) };
         _landingLoadButton.AddThemeFontSizeOverride("font_size", 26);
         _landingLoadButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 4);
         _landingLoadButton.Size = new Vector2(buttonW, buttonH);
@@ -503,7 +503,7 @@ public partial class MainMenuScene : Control
         _landingLoadButton.Disabled = slots.Count == 0;
         panel.AddChild(_landingLoadButton);
 
-        var mapEditorButton = new Button { Text = "Map Editor" };
+        var mapEditorButton = new Button { Text = Strings.Get(StringKeys.MenuMapEditor) };
         mapEditorButton.AddThemeFontSizeOverride("font_size", 26);
         mapEditorButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 5);
         mapEditorButton.Size = new Vector2(buttonW, buttonH);
@@ -511,7 +511,7 @@ public partial class MainMenuScene : Control
         AudioBus.AttachClick(mapEditorButton);
         panel.AddChild(mapEditorButton);
 
-        var settingsButton = new Button { Text = "Settings" };
+        var settingsButton = new Button { Text = Strings.Get(StringKeys.MenuSettings) };
         settingsButton.AddThemeFontSizeOverride("font_size", 26);
         settingsButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 6);
         settingsButton.Size = new Vector2(buttonW, buttonH);
@@ -522,7 +522,7 @@ public partial class MainMenuScene : Control
         // Exit suppressed on mobile (Apple HIG / Google Play); desktop only.
         if (!exitSuppressed)
         {
-            var exitButton = new Button { Text = "Exit" };
+            var exitButton = new Button { Text = Strings.Get(StringKeys.MenuExit) };
             exitButton.AddThemeFontSizeOverride("font_size", 26);
             exitButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 7);
             exitButton.Size = new Vector2(buttonW, buttonH);
@@ -563,7 +563,7 @@ public partial class MainMenuScene : Control
         leftCol.AddThemeConstantOverride("separation", 6);
         leftCol.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
         // Single-line wordmark, centered in the rail, at the portrait font size.
-        var wordmark = new Label { Text = "FourExHex", HorizontalAlignment = HorizontalAlignment.Center };
+        var wordmark = new Label { Text = Strings.Get(StringKeys.MenuWordmark), HorizontalAlignment = HorizontalAlignment.Center };
         wordmark.AddThemeFontOverride("font", SerifFont);
         wordmark.AddThemeFontSizeOverride("font_size", 56);
         leftCol.AddChild(wordmark);
@@ -598,7 +598,7 @@ public partial class MainMenuScene : Control
         hbox.AddChild(rightCol);
 
         // Play Game sits on top, full width; the grid fills the rest.
-        _landingPlayButton = MakeLandingButton("Play Game", OnPlayPressed, 26);
+        _landingPlayButton = MakeLandingButton(Strings.Get(StringKeys.MenuPlayGame), OnPlayPressed, 26);
         _landingPlayButton.CustomMinimumSize = new Vector2(0, 62);
         rightCol.AddChild(_landingPlayButton);
 
@@ -618,23 +618,23 @@ public partial class MainMenuScene : Control
 
         // Resume / Load render disabled but keep their grid slots so the grid
         // never reflows when a save exists (design handoff).
-        _landingResumeButton = MakeGridButton("Resume", OnResumePressed);
+        _landingResumeButton = MakeGridButton(Strings.Get(StringKeys.MenuResume), OnResumePressed);
         _landingResumeButton.Disabled = !slots.Any(s => s.IsAutosave);
         grid.AddChild(_landingResumeButton);
-        grid.AddChild(MakeGridButton("Campaign", OnCampaignPressed));
-        grid.AddChild(MakeGridButton("Play Tutorial", OnPlayTutorialPressed));
-        _landingLoadButton = MakeGridButton("Load Game", OnLoadPressed);
+        grid.AddChild(MakeGridButton(Strings.Get(StringKeys.MenuCampaign), OnCampaignPressed));
+        grid.AddChild(MakeGridButton(Strings.Get(StringKeys.MenuPlayTutorial), OnPlayTutorialPressed));
+        _landingLoadButton = MakeGridButton(Strings.Get(StringKeys.MenuLoadGame), OnLoadPressed);
         _landingLoadButton.Disabled = slots.Count == 0;
         grid.AddChild(_landingLoadButton);
-        grid.AddChild(MakeGridButton("Map Editor", OnMapEditorPressed));
-        grid.AddChild(MakeGridButton("Settings", OnSettingsPressed));
+        grid.AddChild(MakeGridButton(Strings.Get(StringKeys.MenuMapEditor), OnMapEditorPressed));
+        grid.AddChild(MakeGridButton(Strings.Get(StringKeys.MenuSettings), OnSettingsPressed));
 
         // Exit is suppressed on mobile (Apple HIG / Google Play); desktop gets
         // a full-width Exit below the grid.
         bool exitSuppressed = OS.HasFeature("mobile");
         if (!exitSuppressed)
         {
-            Button exitButton = MakeLandingButton("Exit", OnExitPressed, 26);
+            Button exitButton = MakeLandingButton(Strings.Get(StringKeys.MenuExit), OnExitPressed, 26);
             exitButton.CustomMinimumSize = new Vector2(0, 52);
             rightCol.AddChild(exitButton);
         }
@@ -725,7 +725,7 @@ public partial class MainMenuScene : Control
     /// page.</summary>
     private void AddPortraitHeader(BoxContainer page)
     {
-        var title = new Label { Text = "New Game", HorizontalAlignment = HorizontalAlignment.Center };
+        var title = new Label { Text = Strings.Get(StringKeys.MenuNewGame), HorizontalAlignment = HorizontalAlignment.Center };
         title.AddThemeFontOverride("font", SerifFont);
         title.AddThemeFontSizeOverride("font_size", 40);
         page.AddChild(title);
@@ -750,7 +750,7 @@ public partial class MainMenuScene : Control
 
         // Game mode row above the roster — part of game setup,
         // shared with the map editor's new-map flow.
-        col.AddChild(MakePortraitFieldRow("Game Mode", ConfigureGameModeDropdown()));
+        col.AddChild(MakePortraitFieldRow(Strings.Get(StringKeys.MenuGameMode), ConfigureGameModeDropdown()));
 
         var list = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         list.AddThemeConstantOverride("separation", 12);
@@ -762,8 +762,8 @@ public partial class MainMenuScene : Control
 
         var nav = new HBoxContainer();
         nav.AddThemeConstantOverride("separation", 12);
-        nav.AddChild(MakeLandscapeNavButton("Back", OnBackPressed));
-        _playerNextButton = MakeLandscapeNavButton("Next", OnPlayerPageForward);
+        nav.AddChild(MakeLandscapeNavButton(Strings.Get(StringKeys.MenuBack), OnBackPressed));
+        _playerNextButton = MakeLandscapeNavButton(Strings.Get(StringKeys.MenuNext), OnPlayerPageForward);
         nav.AddChild(_playerNextButton);
         col.AddChild(nav);
         RefreshPlayerNextGating();
@@ -858,8 +858,8 @@ public partial class MainMenuScene : Control
 
         var nav = new HBoxContainer();
         nav.AddThemeConstantOverride("separation", 12);
-        nav.AddChild(MakeLandscapeNavButton("Back", GoToPlayerPage));
-        _startButton = MakeLandscapeNavButton("Start Game", OnStartPressed);
+        nav.AddChild(MakeLandscapeNavButton(Strings.Get(StringKeys.MenuBack), GoToPlayerPage));
+        _startButton = MakeLandscapeNavButton(Strings.Get(StringKeys.MenuStartGame), OnStartPressed);
         nav.AddChild(_startButton);
         col.AddChild(nav);
         return col;
@@ -878,10 +878,10 @@ public partial class MainMenuScene : Control
         var dropdown = new OptionButton();
         dropdown.AddThemeFontSizeOverride("font_size", 21);
         dropdown.GetPopup().AddThemeFontSizeOverride("font_size", 21);
-        dropdown.AddItem("Freeform", (int)GameMode.Freeform);
-        dropdown.AddItem("Rising Tides", (int)GameMode.RisingTides);
-        dropdown.AddItem("Fog Of War", (int)GameMode.FogOfWar);
-        dropdown.AddItem("Viking Raiders", (int)GameMode.VikingRaiders);
+        dropdown.AddItem(Strings.Get(StringKeys.ModeFreeform), (int)GameMode.Freeform);
+        dropdown.AddItem(Strings.Get(StringKeys.ModeRisingTides), (int)GameMode.RisingTides);
+        dropdown.AddItem(Strings.Get(StringKeys.ModeFogOfWar), (int)GameMode.FogOfWar);
+        dropdown.AddItem(Strings.Get(StringKeys.ModeVikingRaiders), (int)GameMode.VikingRaiders);
         UiDropdown.SelectItemById(dropdown, (int)GameSettings.Mode);
         dropdown.ItemSelected += _ =>
         {
@@ -902,9 +902,9 @@ public partial class MainMenuScene : Control
         // The button face and its drop-down popup are themed separately;
         // without this the expanded item list renders at the tiny default size.
         dropdown.GetPopup().AddThemeFontSizeOverride("font_size", 21);
-        dropdown.AddItem("Human", HumanId);
-        dropdown.AddItem("Computer", ComputerId);
-        dropdown.AddItem("None", NoneId);
+        dropdown.AddItem(Strings.Get(StringKeys.PlayerKindHuman), HumanId);
+        dropdown.AddItem(Strings.Get(StringKeys.PlayerKindComputer), ComputerId);
+        dropdown.AddItem(Strings.Get(StringKeys.PlayerKindNone), NoneId);
         PlayerKind currentKind = slot < GameSettings.PlayerKinds.Length
             ? GameSettings.PlayerKinds[slot]
             : PlayerKind.Computer;
@@ -925,10 +925,10 @@ public partial class MainMenuScene : Control
         var dropdown = new OptionButton();
         dropdown.AddThemeFontSizeOverride("font_size", 21);
         dropdown.GetPopup().AddThemeFontSizeOverride("font_size", 21);
-        dropdown.AddItem("Recruit", (int)Difficulty.Recruit);
-        dropdown.AddItem("Soldier", (int)Difficulty.Soldier);
-        dropdown.AddItem("Captain", (int)Difficulty.Captain);
-        dropdown.AddItem("Commander", (int)Difficulty.Commander);
+        dropdown.AddItem(Strings.Get(StringKeys.UnitRecruit), (int)Difficulty.Recruit);
+        dropdown.AddItem(Strings.Get(StringKeys.UnitSoldier), (int)Difficulty.Soldier);
+        dropdown.AddItem(Strings.Get(StringKeys.UnitCaptain), (int)Difficulty.Captain);
+        dropdown.AddItem(Strings.Get(StringKeys.UnitCommander), (int)Difficulty.Commander);
         // Initialize from GameSettings (mirrors the kind dropdown) so loaded
         // saves / Play Again round-trip per-slot levels.
         Difficulty currentDifficulty = slot < GameSettings.Difficulties.Length
@@ -970,7 +970,7 @@ public partial class MainMenuScene : Control
     /// <summary>Landscape title + gold underline at the top of a page.</summary>
     private void AddLandscapeHeader(BoxContainer page)
     {
-        var title = new Label { Text = "New Game", HorizontalAlignment = HorizontalAlignment.Left };
+        var title = new Label { Text = Strings.Get(StringKeys.MenuNewGame), HorizontalAlignment = HorizontalAlignment.Left };
         title.AddThemeFontOverride("font", SerifFont);
         title.AddThemeFontSizeOverride("font_size", 38);
         page.AddChild(title);
@@ -1004,14 +1004,14 @@ public partial class MainMenuScene : Control
         AddLandscapeHeader(rail);
         // Game mode — part of game setup, shared with the map
         // editor's new-map flow.
-        rail.AddChild(MakeRailLabel("Game Mode"));
+        rail.AddChild(MakeRailLabel(Strings.Get(StringKeys.MenuGameMode)));
         OptionButton modeDropdown = ConfigureGameModeDropdown();
         modeDropdown.CustomMinimumSize = new Vector2(0, 40);
         rail.AddChild(modeDropdown);
         rail.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
         // Back above the forward action (Next) in the vertical rail.
-        rail.AddChild(MakeLandscapeNavButton("Back", OnBackPressed));
-        _playerNextButton = MakeLandscapeNavButton("Next", OnPlayerPageForward);
+        rail.AddChild(MakeLandscapeNavButton(Strings.Get(StringKeys.MenuBack), OnBackPressed));
+        _playerNextButton = MakeLandscapeNavButton(Strings.Get(StringKeys.MenuNext), OnPlayerPageForward);
         rail.AddChild(_playerNextButton);
 
         hbox.AddChild(new ColorRect
@@ -1085,9 +1085,9 @@ public partial class MainMenuScene : Control
         rail.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
 
         // Back above the forward action (Start Game) in the vertical rail.
-        rail.AddChild(MakeLandscapeNavButton("Back", GoToPlayerPage));
+        rail.AddChild(MakeLandscapeNavButton(Strings.Get(StringKeys.MenuBack), GoToPlayerPage));
 
-        _startButton = new Button { Text = "Start Game", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        _startButton = new Button { Text = Strings.Get(StringKeys.MenuStartGame), SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         _startButton.AddThemeFontSizeOverride("font_size", 27);
         _startButton.CustomMinimumSize = new Vector2(0, 54);
         _startButton.Pressed += OnStartPressed;
@@ -1163,10 +1163,10 @@ public partial class MainMenuScene : Control
         row.AddThemeConstantOverride("separation", 10);
         row.AddChild(new Control { CustomMinimumSize = new Vector2(22, 0) });
         row.AddChild(new Control { CustomMinimumSize = new Vector2(82, 0) });
-        Label type = MakeRailLabel("Type");
+        Label type = MakeRailLabel(Strings.Get(StringKeys.MenuType));
         type.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         row.AddChild(type);
-        Label difficulty = MakeRailLabel("Difficulty");
+        Label difficulty = MakeRailLabel(Strings.Get(StringKeys.MenuDifficulty));
         difficulty.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         row.AddChild(difficulty);
         return row;
@@ -1326,7 +1326,7 @@ public partial class MainMenuScene : Control
         if (_playerNextButton != null)
         {
             _playerNextButton.Text = purpose == PlayConfigPurpose.EditorNewMap
-                ? "Create Map" : "Next";
+                ? Strings.Get(StringKeys.MenuCreateMap) : Strings.Get(StringKeys.MenuNext);
         }
         // A fresh entry always starts on the player-setup page (selections are
         // preserved, but the flow begins at page 1).
@@ -1457,14 +1457,14 @@ public partial class MainMenuScene : Control
         // Play Game source chooser: configure a fresh game,
         // load a saved starting map, or jump straight into a default game.
         Log.Info(Log.LogCategory.Input, "MainMenu: Play Game → source chooser");
-        _sourceChooser?.Show("Play Game", new[]
+        _sourceChooser?.Show(Strings.Get(StringKeys.MenuPlayGame), new[]
         {
             // Game mode (Freeform / Rising Tides) is chosen on the
             // Configure Game player-setup page, not here — it's part of game
             // setup and is shared with the map editor's new-map flow.
-            new EscMenu.Option("Configure Game", ShowPlayConfig),
-            new EscMenu.Option("Load Starting Map", OpenLoadStartingMapToPlay),
-            new EscMenu.Option("Quick Play", OnQuickPlay),
+            new EscMenu.Option(Strings.Get(StringKeys.MenuConfigureGame), ShowPlayConfig),
+            new EscMenu.Option(Strings.Get(StringKeys.MenuLoadStartingMap), OpenLoadStartingMapToPlay),
+            new EscMenu.Option(Strings.Get(StringKeys.MenuQuickPlay), OnQuickPlay),
         });
     }
 
@@ -1502,10 +1502,10 @@ public partial class MainMenuScene : Control
         // Map Editor source chooser: describe the players up-front
         // for a fresh map, or open a saved map for further editing.
         Log.Info(Log.LogCategory.Input, "MainMenu: Map Editor → source chooser");
-        _sourceChooser?.Show("Map Editor", new[]
+        _sourceChooser?.Show(Strings.Get(StringKeys.MenuMapEditor), new[]
         {
-            new EscMenu.Option("New Map", () => ShowPlayConfig(PlayConfigPurpose.EditorNewMap)),
-            new EscMenu.Option("Load Map", OpenLoadMapToEdit),
+            new EscMenu.Option(Strings.Get(StringKeys.MenuNewMap), () => ShowPlayConfig(PlayConfigPurpose.EditorNewMap)),
+            new EscMenu.Option(Strings.Get(StringKeys.MenuLoadMap), OpenLoadMapToEdit),
         });
     }
 
@@ -1518,7 +1518,7 @@ public partial class MainMenuScene : Control
         Log.Info(Log.LogCategory.Input, "MainMenu: Map Editor → load map");
         _loadDialog.ShowSlots(
             _saveStore.ListMaps(),
-            "No starting maps found.",
+            Strings.Get(StringKeys.MenuNoMapsFound),
             info => info.SlotName,
             OnPickMapToEdit,
             thumbnailStore: _saveStore,
@@ -1546,7 +1546,7 @@ public partial class MainMenuScene : Control
         Log.Info(Log.LogCategory.Input, "MainMenu: New Game → load starting map");
         _loadDialog.ShowSlots(
             _saveStore.ListMaps(),
-            "No starting maps found.",
+            Strings.Get(StringKeys.MenuNoMapsFound),
             info => info.SlotName,
             OnPickStartingMapToPlay,
             thumbnailStore: _saveStore,
@@ -1562,7 +1562,8 @@ public partial class MainMenuScene : Control
         }
         catch (System.Exception ex)
         {
-            _loadDialog?.ShowError($"Could not load map '{mapName}': {ex.Message}");
+            _loadDialog?.ShowError(Strings.Get(StringKeys.MenuCouldNotLoadMap,
+                ("name", mapName), ("error", ex.Message)));
             return;
         }
         // The picker already previews the board, so launch straight into the
@@ -1588,7 +1589,7 @@ public partial class MainMenuScene : Control
     private void BuildQuitConfirmDialog()
     {
         _quitConfirmModal = new ConfirmModal(
-            "Exit FourExHex?", "Are you sure you want to exit?", "Exit");
+            Strings.Get(StringKeys.MenuExitTitle), Strings.Get(StringKeys.MenuExitBody), Strings.Get(StringKeys.MenuExit));
         _quitConfirmModal.Confirmed += OnQuitConfirmed;
         AddChild(_quitConfirmModal);
     }
@@ -1614,7 +1615,7 @@ public partial class MainMenuScene : Control
 
     private void BuildLoadDialog()
     {
-        _loadDialog = new SlotPickerDialog("Load Game", "Load failed");
+        _loadDialog = new SlotPickerDialog(Strings.Get(StringKeys.MenuLoadGame), Strings.Get(StringKeys.MenuLoadFailed));
         _loadDialog.Attach(this);
     }
 
@@ -1623,10 +1624,15 @@ public partial class MainMenuScene : Control
         if (_loadDialog == null) return;
         _loadDialog.ShowSlots(
             _saveStore.ListSlots(),
-            "No save files found.",
+            Strings.Get(StringKeys.MenuNoSavesFound),
             info => info.IsAutosave
-                ? $"[Autosave] turn {info.TurnNumber} — {SlotPickerDialog.FormatTimestamp(info.SavedAtUnix)}"
-                : $"{info.SlotName} — turn {info.TurnNumber} — {SlotPickerDialog.FormatTimestamp(info.SavedAtUnix)}",
+                ? Strings.Get(StringKeys.SaveAutosaveRow,
+                    ("turn", info.TurnNumber.ToString()),
+                    ("time", SlotPickerDialog.FormatTimestamp(info.SavedAtUnix)))
+                : Strings.Get(StringKeys.SaveSlotRow,
+                    ("name", info.SlotName),
+                    ("turn", info.TurnNumber.ToString()),
+                    ("time", SlotPickerDialog.FormatTimestamp(info.SavedAtUnix))),
             OnLoadSlotPressed,
             thumbnailStore: _saveStore);
     }
@@ -1645,7 +1651,8 @@ public partial class MainMenuScene : Control
         }
         catch (System.Exception ex)
         {
-            _loadDialog?.ShowError($"Could not load '{slotName}': {ex.Message}");
+            _loadDialog?.ShowError(Strings.Get(StringKeys.MenuCouldNotLoad,
+                ("name", slotName), ("error", ex.Message)));
         }
     }
 

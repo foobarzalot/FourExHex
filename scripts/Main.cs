@@ -593,8 +593,9 @@ public partial class Main : Node2D
         // Games descended from a starting map identify by name; procedural
         // games show the seed driving the per-turn RNG.
         string mapLabel = _originMapName != null
-            ? $"Map: {_originMapName}"
-            : $"Seed: {SeedFormat.ToHex(_controller.MasterSeed)}";
+            ? Strings.Get(StringKeys.MainMapLabel, ("name", _originMapName))
+            : Strings.Get(StringKeys.MainSeedLabel,
+                ("seed", SeedFormat.ToHex(_controller.MasterSeed)));
         hud.SetMapLabel(mapLabel);
         Log.Info(Log.LogCategory.Turn,
             $"Main: master seed {SeedFormat.ToHex(_controller.MasterSeed)}");
@@ -776,7 +777,8 @@ public partial class Main : Node2D
         }
         catch (System.Exception ex)
         {
-            _saveModal.ShowError($"Could not save: {ex.Message}");
+            _saveModal.ShowError(Strings.Get(StringKeys.SaveCouldNotSave,
+                ("error", ex.Message)));
             return;
         }
         _saveModal.Close();
@@ -815,13 +817,13 @@ public partial class Main : Node2D
 
     private void ShowPauseMenu()
     {
-        _escMenu.Show("Paused", new[]
+        _escMenu.Show(Strings.Get(StringKeys.PauseTitle), new[]
         {
-            new EscMenu.Option("Resume", ExitPause),
-            new EscMenu.Option("Save Game", OpenSaveDialogFromPause),
-            new EscMenu.Option("Load Game", OpenLoadDialogFromPause),
-            new EscMenu.Option("Settings", OpenSettingsFromPause),
-            new EscMenu.Option("Exit Game", ExitGameFromPause),
+            new EscMenu.Option(Strings.Get(StringKeys.MenuResume), ExitPause),
+            new EscMenu.Option(Strings.Get(StringKeys.SaveTitleGame), OpenSaveDialogFromPause),
+            new EscMenu.Option(Strings.Get(StringKeys.MenuLoadGame), OpenLoadDialogFromPause),
+            new EscMenu.Option(Strings.Get(StringKeys.MenuSettings), OpenSettingsFromPause),
+            new EscMenu.Option(Strings.Get(StringKeys.PauseExitGame), ExitGameFromPause),
         });
     }
 
@@ -866,10 +868,15 @@ public partial class Main : Node2D
         _loadDialog.VisibilityChanged += OnLoadDialogClosedDuringPause;
         _loadDialog.ShowSlots(
             _saveStore.ListSlots(),
-            "No save files found.",
+            Strings.Get(StringKeys.MenuNoSavesFound),
             info => info.IsAutosave
-                ? $"[Autosave] turn {info.TurnNumber} — {SlotPickerDialog.FormatTimestamp(info.SavedAtUnix)}"
-                : $"{info.SlotName} — turn {info.TurnNumber} — {SlotPickerDialog.FormatTimestamp(info.SavedAtUnix)}",
+                ? Strings.Get(StringKeys.SaveAutosaveRow,
+                    ("turn", info.TurnNumber.ToString()),
+                    ("time", SlotPickerDialog.FormatTimestamp(info.SavedAtUnix)))
+                : Strings.Get(StringKeys.SaveSlotRow,
+                    ("name", info.SlotName),
+                    ("turn", info.TurnNumber.ToString()),
+                    ("time", SlotPickerDialog.FormatTimestamp(info.SavedAtUnix))),
             OnLoadSlotPressedFromPause,
             thumbnailStore: _saveStore);
     }
@@ -906,7 +913,8 @@ public partial class Main : Node2D
         }
         catch (System.Exception ex)
         {
-            _loadDialog?.ShowError($"Could not load '{slotName}': {ex.Message}");
+            _loadDialog?.ShowError(Strings.Get(StringKeys.MenuCouldNotLoad,
+                ("name", slotName), ("error", ex.Message)));
             // Picker stays open; user can retry or close to return to
             // the pause menu via OnLoadDialogClosedDuringPause.
         }
@@ -914,7 +922,8 @@ public partial class Main : Node2D
 
     private void BuildLoadDialog()
     {
-        _loadDialog = new SlotPickerDialog("Load Game", "Load failed");
+        _loadDialog = new SlotPickerDialog(
+            Strings.Get(StringKeys.MenuLoadGame), Strings.Get(StringKeys.MenuLoadFailed));
         _loadDialog.Attach(this);
     }
 

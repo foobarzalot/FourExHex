@@ -403,7 +403,7 @@ public sealed partial class SlotPickerDialog : CanvasLayer
         var actions = new HBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         actions.AddThemeConstantOverride("separation", 12);
 
-        var cancel = new Button { Text = "Cancel", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        var cancel = new Button { Text = Strings.Get(StringKeys.ButtonCancel), SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         cancel.AddThemeFontSizeOverride("font_size", 18);
         cancel.Pressed += Hide;
         AudioBus.AttachClick(cancel);
@@ -411,7 +411,7 @@ public sealed partial class SlotPickerDialog : CanvasLayer
 
         _loadButton = new Button
         {
-            Text = "Load",
+            Text = Strings.Get(StringKeys.ButtonLoad),
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
             Disabled = _selectedSlot == null,
         };

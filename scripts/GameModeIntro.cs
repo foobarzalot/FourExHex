@@ -19,18 +19,9 @@ public static class GameModeIntro
     /// </summary>
     public static string? TextFor(GameMode mode) => mode switch
     {
-        GameMode.RisingTides =>
-            "Rising Tides — the sea rises every turn. Coastal tiles submerge " +
-            "and the map keeps shrinking, so ground you hold now can vanish " +
-            "beneath the waves.",
-        GameMode.FogOfWar =>
-            "Fog of War — the map begins hidden. Your territories light up the " +
-            "ground around them; everything else stays dark until you scout it. " +
-            "Undo and Redo are disabled in this mode.",
-        GameMode.VikingRaiders =>
-            "Viking Raiders — Vikings are invading your island. Viking units " +
-            "pay no upkeep but their forces can't grow after they land on " +
-            "shore. Stand by to repel the invaders!",
+        GameMode.RisingTides => Strings.Get(StringKeys.IntroRisingTides),
+        GameMode.FogOfWar => Strings.Get(StringKeys.IntroFogOfWar),
+        GameMode.VikingRaiders => Strings.Get(StringKeys.IntroVikingRaiders),
         _ => null,
     };
 

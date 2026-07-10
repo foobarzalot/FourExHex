@@ -19,19 +19,10 @@ public sealed partial class CreditsPanel : CanvasLayer
 
     // BBCode (RichTextLabel) so the author name can be a clickable link
     // to the repo. The [url] meta is the URL itself; OnMetaClicked hands
-    // it to OS.ShellOpen.
-    private const string CreditsText =
-        "[center]FourExHex\n\n" +
-        "Created by [url=" + RepoUrl + "][color=#d8b65a]FooBarzalot[/color][/url]\n\n" +
-        "Inspired by Slay by Sean O'Connor\n\n" +
-        "Built with Godot 4.6\n\n" +
-        "Coding assistance: Claude Code\n\n" +
-        "UI Design: Claude Design\n\n" +
-        "SFX: ElevenLabs\n\n" +
-        "Fonts:\n" +
-        "  DM Serif Display\n" +
-        "  Geist\n" +
-        "  JetBrains Mono[/center]";
+    // it to OS.ShellOpen. The markup lives in the string store with the
+    // repo link injected as {url}.
+    private static string CreditsText
+        => Strings.Get(StringKeys.CreditsBody, ("url", RepoUrl));
 
     public event Action? Closed;
 
@@ -78,7 +69,7 @@ public sealed partial class CreditsPanel : CanvasLayer
 
         var title = new Label
         {
-            Text = "Credits",
+            Text = Strings.Get(StringKeys.SettingsCredits),
             HorizontalAlignment = HorizontalAlignment.Center,
         };
         title.AddThemeFontOverride("font", _serifFont);
@@ -122,7 +113,7 @@ public sealed partial class CreditsPanel : CanvasLayer
 
         var backButton = new Button
         {
-            Text = "Back",
+            Text = Strings.Get(StringKeys.MenuBack),
             FocusMode = Control.FocusModeEnum.None,
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
         };

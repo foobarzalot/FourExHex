@@ -20,12 +20,8 @@ public static class TerrainIntro
     /// </summary>
     public static string? TextFor(TerrainFeature feature) => feature switch
     {
-        TerrainFeature.Gold =>
-            "Gold hex — this tile earns 5× the gold of an ordinary hex for the " +
-            "controlling player.",
-        TerrainFeature.Mountain =>
-            "Mountain hex — a unit or tower on a mountain hex gains +1 defensive " +
-            "bonus — so a Recruit on a mountain defends like a Soldier.",
+        TerrainFeature.Gold => Strings.Get(StringKeys.IntroGoldHex),
+        TerrainFeature.Mountain => Strings.Get(StringKeys.IntroMountainHex),
         _ => null,
     };
 

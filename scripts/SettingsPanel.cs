@@ -134,18 +134,18 @@ public sealed partial class SettingsPanel : CanvasLayer
         vbox.AddChild(MakeTitle());
         vbox.AddChild(MakeGoldRule());
 
-        vbox.AddChild(BuildCheckRow("Sound Effects", UserSettings.SfxEnabled, OnSfxToggled, out _sfxCheckBox));
-        vbox.AddChild(BuildCheckRow("Visual Effects", UserSettings.VfxEnabled, OnVfxToggled, out _vfxCheckBox));
+        vbox.AddChild(BuildCheckRow(Strings.Get(StringKeys.SettingsSoundEffects), UserSettings.SfxEnabled, OnSfxToggled, out _sfxCheckBox));
+        vbox.AddChild(BuildCheckRow(Strings.Get(StringKeys.SettingsVisualEffects), UserSettings.VfxEnabled, OnVfxToggled, out _vfxCheckBox));
 
         vbox.AddChild(BuildSpeedRow(
-            "Computer Player Speed", UserSettings.AiSpeed, OnAiSpeedPressed, out _aiSpeedDropdown));
+            Strings.Get(StringKeys.SettingsAiSpeed), UserSettings.AiSpeed, OnAiSpeedPressed, out _aiSpeedDropdown));
         vbox.AddChild(BuildSpeedRow(
-            "Automate Speed", UserSettings.AutomateSpeed, OnAutomateSpeedPressed, out _automateSpeedDropdown));
+            Strings.Get(StringKeys.SettingsAutomateSpeed), UserSettings.AutomateSpeed, OnAutomateSpeedPressed, out _automateSpeedDropdown));
         vbox.AddChild(BuildSpeedRow(
-            "Replay Speed", UserSettings.ReplaySpeed, OnReplaySpeedPressed, out _replaySpeedDropdown));
+            Strings.Get(StringKeys.SettingsReplaySpeed), UserSettings.ReplaySpeed, OnReplaySpeedPressed, out _replaySpeedDropdown));
 
-        vbox.AddChild(MakeNavButton("Credits", OnCreditsPressed));
-        vbox.AddChild(MakeNavButton("Back", Close));
+        vbox.AddChild(MakeNavButton(Strings.Get(StringKeys.SettingsCredits), OnCreditsPressed));
+        vbox.AddChild(MakeNavButton(Strings.Get(StringKeys.MenuBack), Close));
 
         // Unobtrusive build stamp at the foot of the panel so testers can
         // report which version they're on.
@@ -198,9 +198,9 @@ public sealed partial class SettingsPanel : CanvasLayer
         };
         leftZone.AddThemeConstantOverride("separation", 14);
         leftZone.AddChild(MakeToggleCard(
-            BuildCheckRow("Sound Effects", UserSettings.SfxEnabled, OnSfxToggled, out _sfxCheckBox)));
+            BuildCheckRow(Strings.Get(StringKeys.SettingsSoundEffects), UserSettings.SfxEnabled, OnSfxToggled, out _sfxCheckBox)));
         leftZone.AddChild(MakeToggleCard(
-            BuildCheckRow("Visual Effects", UserSettings.VfxEnabled, OnVfxToggled, out _vfxCheckBox)));
+            BuildCheckRow(Strings.Get(StringKeys.SettingsVisualEffects), UserSettings.VfxEnabled, OnVfxToggled, out _vfxCheckBox)));
         body.AddChild(leftZone);
 
         body.AddChild(new ColorRect
@@ -220,18 +220,18 @@ public sealed partial class SettingsPanel : CanvasLayer
         };
         rightZone.AddThemeConstantOverride("separation", 14);
         rightZone.AddChild(MakeToggleCard(BuildSpeedRow(
-            "Computer Player Speed", UserSettings.AiSpeed, OnAiSpeedPressed, out _aiSpeedDropdown)));
+            Strings.Get(StringKeys.SettingsAiSpeed), UserSettings.AiSpeed, OnAiSpeedPressed, out _aiSpeedDropdown)));
         rightZone.AddChild(MakeToggleCard(BuildSpeedRow(
-            "Automate Speed", UserSettings.AutomateSpeed, OnAutomateSpeedPressed, out _automateSpeedDropdown)));
+            Strings.Get(StringKeys.SettingsAutomateSpeed), UserSettings.AutomateSpeed, OnAutomateSpeedPressed, out _automateSpeedDropdown)));
         rightZone.AddChild(MakeToggleCard(BuildSpeedRow(
-            "Replay Speed", UserSettings.ReplaySpeed, OnReplaySpeedPressed, out _replaySpeedDropdown)));
+            Strings.Get(StringKeys.SettingsReplaySpeed), UserSettings.ReplaySpeed, OnReplaySpeedPressed, out _replaySpeedDropdown)));
         body.AddChild(rightZone);
 
         // Footer: Credits | Back (equal width) + version pinned far right.
         var footer = new HBoxContainer();
         footer.AddThemeConstantOverride("separation", 14);
-        footer.AddChild(MakeNavButton("Credits", OnCreditsPressed));
-        footer.AddChild(MakeNavButton("Back", Close));
+        footer.AddChild(MakeNavButton(Strings.Get(StringKeys.SettingsCredits), OnCreditsPressed));
+        footer.AddChild(MakeNavButton(Strings.Get(StringKeys.MenuBack), Close));
         Label version = MakeVersionLabel();
         version.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
         footer.AddChild(version);
@@ -244,7 +244,7 @@ public sealed partial class SettingsPanel : CanvasLayer
     {
         var title = new Label
         {
-            Text = "Settings",
+            Text = Strings.Get(StringKeys.MenuSettings),
             HorizontalAlignment = HorizontalAlignment.Center,
         };
         title.AddThemeFontOverride("font", _serifFont);
@@ -517,10 +517,10 @@ public sealed partial class SettingsPanel : CanvasLayer
 
     private static string SpeedLabel(PlaybackSpeed speed) => speed switch
     {
-        PlaybackSpeed.Slow => "Slow",
-        PlaybackSpeed.Normal => "Normal",
-        PlaybackSpeed.Fast => "Fast",
-        PlaybackSpeed.Instant => "Instant",
+        PlaybackSpeed.Slow => Strings.Get(StringKeys.SpeedSlow),
+        PlaybackSpeed.Normal => Strings.Get(StringKeys.SpeedNormal),
+        PlaybackSpeed.Fast => Strings.Get(StringKeys.SpeedFast),
+        PlaybackSpeed.Instant => Strings.Get(StringKeys.SpeedInstant),
         _ => speed.ToString(),
     };
 

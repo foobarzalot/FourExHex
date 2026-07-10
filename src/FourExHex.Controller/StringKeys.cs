@@ -185,4 +185,123 @@ public static class StringKeys
 
     // Map editor.
     public const string EditorTooltipPaintLandCycle = "editor.tooltip.paint_land_cycle";
+
+    // Main menu (landing, New Game setup, source choosers, dialogs).
+    public const string MenuWordmark = "menu.wordmark";
+    public const string MenuResume = "menu.resume";
+    public const string MenuPlayGame = "menu.play_game";
+    public const string MenuCampaign = "menu.campaign";
+    public const string MenuPlayTutorial = "menu.play_tutorial";
+    public const string MenuLoadGame = "menu.load_game";
+    public const string MenuMapEditor = "menu.map_editor";
+    public const string MenuSettings = "menu.settings";
+    public const string MenuExit = "menu.exit";
+    public const string MenuNewGame = "menu.new_game";
+    public const string MenuBack = "menu.back";
+    public const string MenuNext = "menu.next";
+    public const string MenuStartGame = "menu.start_game";
+    public const string MenuCreateMap = "menu.create_map";
+    public const string MenuGameMode = "menu.game_mode";
+    public const string MenuType = "menu.type";
+    public const string MenuDifficulty = "menu.difficulty";
+    public const string MenuConfigureGame = "menu.configure_game";
+    public const string MenuLoadStartingMap = "menu.load_starting_map";
+    public const string MenuQuickPlay = "menu.quick_play";
+    public const string MenuNewMap = "menu.new_map";
+    public const string MenuLoadMap = "menu.load_map";
+    public const string MenuNoMapsFound = "menu.no_maps_found";
+    public const string MenuNoSavesFound = "menu.no_saves_found";
+    public const string MenuLoadFailed = "menu.load_failed";
+    public const string MenuCouldNotLoadMap = "menu.could_not_load_map";
+    public const string MenuCouldNotLoad = "menu.could_not_load";
+    public const string MenuExitTitle = "menu.exit_title";
+    public const string MenuExitBody = "menu.exit_body";
+
+    // Game-mode display names (setup dropdown).
+    public const string ModeFreeform = "mode.freeform";
+    public const string ModeRisingTides = "mode.rising_tides";
+    public const string ModeFogOfWar = "mode.fog_of_war";
+    public const string ModeVikingRaiders = "mode.viking_raiders";
+
+    /// <summary>The display-name key for a game mode.</summary>
+    public static string ForMode(GameMode mode) => mode switch
+    {
+        GameMode.RisingTides => ModeRisingTides,
+        GameMode.FogOfWar => ModeFogOfWar,
+        GameMode.VikingRaiders => ModeVikingRaiders,
+        _ => ModeFreeform,
+    };
+
+    // Player-kind display names (setup dropdown).
+    public const string PlayerKindHuman = "player_kind.human";
+    public const string PlayerKindComputer = "player_kind.computer";
+    public const string PlayerKindNone = "player_kind.none";
+
+    /// <summary>The display-name key for a difficulty tier (tiers share
+    /// the unit-level names).</summary>
+    public static string ForDifficulty(Difficulty difficulty) => difficulty switch
+    {
+        Difficulty.Recruit => UnitRecruit,
+        Difficulty.Soldier => UnitSoldier,
+        Difficulty.Captain => UnitCaptain,
+        _ => UnitCommander,
+    };
+
+    // Settings panel.
+    public const string SettingsSoundEffects = "settings.sound_effects";
+    public const string SettingsVisualEffects = "settings.visual_effects";
+    public const string SettingsAiSpeed = "settings.ai_speed";
+    public const string SettingsAutomateSpeed = "settings.automate_speed";
+    public const string SettingsReplaySpeed = "settings.replay_speed";
+    public const string SettingsCredits = "settings.credits";
+    public const string SpeedSlow = "speed.slow";
+    public const string SpeedNormal = "speed.normal";
+    public const string SpeedFast = "speed.fast";
+    public const string SpeedInstant = "speed.instant";
+
+    // Shared dialog buttons.
+    public const string ButtonCancel = "button.cancel";
+    public const string ButtonSave = "button.save";
+    public const string ButtonLoad = "button.load";
+    public const string ButtonPlay = "button.play";
+
+    // Save/load dialogs.
+    public const string SaveTitleGame = "save.title_game";
+    public const string SaveSlotName = "save.slot_name";
+    public const string SaveFailed = "save.failed";
+    public const string SaveCouldNotSave = "save.could_not_save";
+    public const string SaveSlotRow = "save.slot_row";
+    public const string SaveAutosaveRow = "save.autosave_row";
+
+    // Credits panel ({url} = repo link).
+    public const string CreditsBody = "credits.body";
+
+    // Map-info / play-confirm sheet.
+    public const string MapInfoPlayingAsHeading = "mapinfo.playing_as_heading";
+    public const string MapInfoPlayingAs = "mapinfo.playing_as";
+    public const string MapInfoAllComputer = "mapinfo.all_computer";
+
+    // Campaign confirm sheet.
+    public const string CampaignLevelTitle = "campaign.level_title";
+    public const string CampaignTierStatus = "campaign.tier_status";
+    public const string CampaignStatusWon = "campaign.status.won";
+    public const string CampaignStatusLost = "campaign.status.lost";
+    public const string CampaignStatusUnattempted = "campaign.status.unattempted";
+    public const string CampaignBlurbFreeform = "campaign.blurb.freeform";
+    public const string CampaignBlurbRisingTides = "campaign.blurb.rising_tides";
+    public const string CampaignBlurbFogOfWar = "campaign.blurb.fog_of_war";
+    public const string CampaignBlurbVikingRaiders = "campaign.blurb.viking_raiders";
+
+    // First-encounter intros (game modes + terrain features).
+    public const string IntroRisingTides = "intro.rising_tides";
+    public const string IntroFogOfWar = "intro.fog_of_war";
+    public const string IntroVikingRaiders = "intro.viking_raiders";
+    public const string IntroGoldHex = "intro.gold_hex";
+    public const string IntroMountainHex = "intro.mountain_hex";
+
+    // In-game chrome owned by Main.
+    public const string MainMapLabel = "main.map_label";
+    public const string MainSeedLabel = "main.seed_label";
+    public const string PauseTitle = "pause.title";
+    public const string PauseExitGame = "pause.exit_game";
 }
