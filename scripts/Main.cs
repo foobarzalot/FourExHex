@@ -765,7 +765,7 @@ public partial class Main : Node2D
         {
             // Don't let the user manually overwrite the autosave slot
             // — its purpose is to stay an automated checkpoint.
-            _saveModal.ShowError("'autosave' is reserved. Please pick a different name.");
+            _saveModal.ShowError(Strings.Get(StringKeys.SaveReservedName));
             return;
         }
         try

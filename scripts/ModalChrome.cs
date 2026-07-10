@@ -101,7 +101,7 @@ public static class ModalChrome
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
             Alignment = BoxContainer.AlignmentMode.End,
         };
-        var okButton = new Button { Text = "OK" };
+        var okButton = new Button { Text = Strings.Get(StringKeys.ButtonOk) };
         okButton.AddThemeFontSizeOverride("font_size", 16);
         okButton.Pressed += onOk;
         AudioBus.AttachClick(okButton);

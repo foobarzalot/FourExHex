@@ -102,10 +102,10 @@ public partial class PlayTutorialScene : Node2D
     private void OpenPauseMenu()
     {
         Log.Info(Log.LogCategory.Tutorial, "[PlayTutorial] pause menu opened");
-        _escMenu.Show("Paused", new List<EscMenu.Option>
+        _escMenu.Show(Strings.Get(StringKeys.PauseTitle), new List<EscMenu.Option>
         {
-            new("Resume", () => { }),
-            new("Main Menu", ReturnToMainMenu),
+            new(Strings.Get(StringKeys.MenuResume), () => { }),
+            new(Strings.Get(StringKeys.HudButtonMainMenu), ReturnToMainMenu),
         });
     }
 

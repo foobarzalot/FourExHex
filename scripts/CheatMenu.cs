@@ -66,12 +66,12 @@ public sealed partial class CheatMenu : Node
             return;
         }
         Log.Debug(Log.LogCategory.Cheat, $"CheatMenu: opened ({gesture}).");
-        _menu.Show("Cheats", new EscMenu.Option[]
+        _menu.Show(Strings.Get(StringKeys.CheatTitle), new EscMenu.Option[]
         {
-            new("Tutorial Builder", OpenTutorialBuilder),
+            new(Strings.Get(StringKeys.CheatTutorialBuilder), OpenTutorialBuilder),
             // EscMenu hides itself before invoking the callback, so
             // Close is just a logged no-op.
-            new("Close", () => Log.Debug(Log.LogCategory.Cheat, "CheatMenu: closed (Close button).")),
+            new(Strings.Get(StringKeys.CheatClose), () => Log.Debug(Log.LogCategory.Cheat, "CheatMenu: closed (Close button).")),
         });
     }
 

@@ -90,7 +90,7 @@ public sealed partial class ConfirmModal : CanvasLayer
 
         var cancelButton = new Button
         {
-            Text = "Cancel",
+            Text = Strings.Get(StringKeys.ButtonCancel),
             FocusMode = Control.FocusModeEnum.None,
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
         };

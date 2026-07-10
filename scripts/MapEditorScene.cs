@@ -100,12 +100,12 @@ public partial class MapEditorScene : Node2D
 
     private void OpenEscMenu()
     {
-        _escMenu.Show("Menu", new[]
+        _escMenu.Show(Strings.Get(StringKeys.EditorMenuTitle), new[]
         {
-            new EscMenu.Option("Resume", () => { }),
-            new EscMenu.Option("Save Map", OpenSaveDialog),
-            new EscMenu.Option("Load Map", OpenLoadDialog),
-            new EscMenu.Option("Exit", ReturnToMainMenu),
+            new EscMenu.Option(Strings.Get(StringKeys.MenuResume), () => { }),
+            new EscMenu.Option(Strings.Get(StringKeys.EditorSaveMap), OpenSaveDialog),
+            new EscMenu.Option(Strings.Get(StringKeys.MenuLoadMap), OpenLoadDialog),
+            new EscMenu.Option(Strings.Get(StringKeys.MenuExit), ReturnToMainMenu),
         });
     }
 
@@ -115,7 +115,7 @@ public partial class MapEditorScene : Node2D
         // Its built-in ShowError overlay replaces the old separate error
         // dialog; Confirmed does NOT auto-close, so the host closes on
         // success or shows an inline error on failure.
-        _saveModal = new SaveNameModal("Save Map");
+        _saveModal = new SaveNameModal(Strings.Get(StringKeys.EditorSaveMap));
         _saveModal.Confirmed += OnSaveNameConfirmed;
         AddChild(_saveModal);
     }
@@ -153,7 +153,8 @@ public partial class MapEditorScene : Node2D
         }
         catch (System.Exception ex)
         {
-            _saveModal.ShowError($"Could not save: {ex.Message}");
+            _saveModal.ShowError(Strings.Get(StringKeys.SaveCouldNotSave,
+                ("error", ex.Message)));
             return;
         }
         Log.Info(Log.LogCategory.Display,
@@ -163,7 +164,7 @@ public partial class MapEditorScene : Node2D
 
     private void BuildLoadDialog()
     {
-        _loadDialog = new SlotPickerDialog("Load Map", "Load failed");
+        _loadDialog = new SlotPickerDialog(Strings.Get(StringKeys.MenuLoadMap), Strings.Get(StringKeys.MenuLoadFailed));
         _loadDialog.Attach(this);
     }
 
@@ -174,7 +175,7 @@ public partial class MapEditorScene : Node2D
         // the maps directory and a short-name label.
         _loadDialog.ShowSlots(
             _saveStore.ListMaps(),
-            "No maps found.",
+            Strings.Get(StringKeys.EditorNoMapsFound),
             info => info.SlotName,
             OnLoadSlotPressed,
             thumbnailStore: _saveStore,
@@ -199,7 +200,8 @@ public partial class MapEditorScene : Node2D
         }
         catch (System.Exception ex)
         {
-            _loadDialog?.ShowError($"Could not load '{slotName}': {ex.Message}");
+            _loadDialog?.ShowError(Strings.Get(StringKeys.MenuCouldNotLoad,
+                ("name", slotName), ("error", ex.Message)));
         }
     }
 

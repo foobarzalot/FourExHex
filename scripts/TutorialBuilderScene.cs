@@ -223,9 +223,9 @@ public partial class TutorialBuilderScene : Node2D
         // panel + serif title) so it matches Settings / Save Game / the slot
         // picker rather than Godot's unstyled ConfirmationDialog.
         _discardConfirmDialog = new ConfirmModal(
-            "Discard recording?",
-            "Switching to Map Edit will clear the current tutorial recording. Continue?",
-            "Discard");
+            Strings.Get(StringKeys.BuilderDiscardTitle),
+            Strings.Get(StringKeys.BuilderDiscardBody),
+            Strings.Get(StringKeys.BuilderDiscardConfirm));
         _discardConfirmDialog.Confirmed += () =>
         {
             System.Action? a = _onDiscardConfirmed;
@@ -276,18 +276,18 @@ public partial class TutorialBuilderScene : Node2D
     {
         var options = new List<EscMenu.Option>
         {
-            new("Resume", () => { }),
-            new("Map Edit", () => SetMode(TutorialMode.MapEdit),
+            new(Strings.Get(StringKeys.MenuResume), () => { }),
+            new(Strings.Get(StringKeys.BuilderMapEdit), () => SetMode(TutorialMode.MapEdit),
                 Disabled: _currentMode == TutorialMode.MapEdit),
-            new("Record", () => SetMode(TutorialMode.Record),
+            new(Strings.Get(StringKeys.BuilderRecord), () => SetMode(TutorialMode.Record),
                 Disabled: _currentMode == TutorialMode.Record),
-            new("Preview", () => SetMode(TutorialMode.Preview),
+            new(Strings.Get(StringKeys.BuilderPreview), () => SetMode(TutorialMode.Preview),
                 Disabled: _currentMode == TutorialMode.Preview),
-            new("Save Tutorial", OpenSaveDialog),
-            new("Load Tutorial", OpenLoadDialog),
-            new("Exit", ReturnToMainMenu),
+            new(Strings.Get(StringKeys.BuilderSaveTutorial), OpenSaveDialog),
+            new(Strings.Get(StringKeys.BuilderLoadTutorial), OpenLoadDialog),
+            new(Strings.Get(StringKeys.MenuExit), ReturnToMainMenu),
         };
-        _escMenu.Show("Menu", options);
+        _escMenu.Show(Strings.Get(StringKeys.EditorMenuTitle), options);
     }
 
     private void ReturnToMainMenu()
@@ -301,7 +301,7 @@ public partial class TutorialBuilderScene : Node2D
         // Its built-in ShowError overlay replaces the old separate error
         // dialog; Confirmed does NOT auto-close, so the host closes on
         // success or shows an inline error on failure.
-        _saveModal = new SaveNameModal("Save Tutorial");
+        _saveModal = new SaveNameModal(Strings.Get(StringKeys.BuilderSaveTutorial));
         _saveModal.Confirmed += OnSaveNameConfirmed;
         AddChild(_saveModal);
     }
@@ -326,7 +326,7 @@ public partial class TutorialBuilderScene : Node2D
             Tutorial? authored = _recordPane.CurrentTutorial;
             if (authored == null)
             {
-                _saveModal.ShowError("Nothing recorded yet. Switch to Record and play a turn first.");
+                _saveModal.ShowError(Strings.Get(StringKeys.BuilderNothingRecorded));
                 return;
             }
             _saveStore.WriteTutorial(
@@ -338,7 +338,8 @@ public partial class TutorialBuilderScene : Node2D
         }
         catch (System.Exception ex)
         {
-            _saveModal.ShowError($"Could not save: {ex.Message}");
+            _saveModal.ShowError(Strings.Get(StringKeys.SaveCouldNotSave,
+                ("error", ex.Message)));
             return;
         }
         _saveModal.Close();
@@ -347,7 +348,7 @@ public partial class TutorialBuilderScene : Node2D
     private void BuildLoadDialog()
     {
         _loadDialog = new SlotPickerDialog(
-            "Load Tutorial", "Load failed", disableHorizontalScroll: true);
+            Strings.Get(StringKeys.BuilderLoadTutorial), Strings.Get(StringKeys.MenuLoadFailed), disableHorizontalScroll: true);
         _loadDialog.Attach(this);
     }
 
@@ -356,8 +357,10 @@ public partial class TutorialBuilderScene : Node2D
         if (_loadDialog == null) return;
         _loadDialog.ShowSlots(
             _saveStore.ListTutorials(),
-            "No tutorials found.",
-            info => $"{info.SlotName} — {SlotPickerDialog.FormatTimestamp(info.SavedAtUnix)}",
+            Strings.Get(StringKeys.BuilderNoTutorialsFound),
+            info => Strings.Get(StringKeys.BuilderSlotRow,
+                ("name", info.SlotName),
+                ("time", SlotPickerDialog.FormatTimestamp(info.SavedAtUnix))),
             OnLoadSlotPressed);
     }
 
@@ -390,7 +393,8 @@ public partial class TutorialBuilderScene : Node2D
         }
         catch (System.Exception ex)
         {
-            _loadDialog?.ShowError($"Could not load '{slotName}': {ex.Message}");
+            _loadDialog?.ShowError(Strings.Get(StringKeys.MenuCouldNotLoad,
+                ("name", slotName), ("error", ex.Message)));
         }
     }
 }

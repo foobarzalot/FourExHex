@@ -344,7 +344,7 @@ public sealed partial class RecordPane : Control
 
         var label = new Label
         {
-            Text = "Narration text for this tutorial beat:",
+            Text = Strings.Get(StringKeys.BuilderNarrationPrompt),
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
         };
         label.AddThemeFontSizeOverride("font_size", 22);
@@ -353,7 +353,7 @@ public sealed partial class RecordPane : Control
 
         var lineEdit = new LineEdit
         {
-            PlaceholderText = "e.g., Move your recruit to the highlighted tile.",
+            PlaceholderText = Strings.Get(StringKeys.BuilderNarrationPlaceholder),
             CustomMinimumSize = new Vector2(0, 36),
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
         };
@@ -369,7 +369,7 @@ public sealed partial class RecordPane : Control
 
         var cancelButton = new Button
         {
-            Text = "Cancel",
+            Text = Strings.Get(StringKeys.ButtonCancel),
             FocusMode = Control.FocusModeEnum.None,
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
         };
@@ -379,7 +379,7 @@ public sealed partial class RecordPane : Control
 
         var insertButton = new Button
         {
-            Text = "Insert",
+            Text = Strings.Get(StringKeys.BuilderInsert),
             FocusMode = Control.FocusModeEnum.None,
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
         };

@@ -153,7 +153,7 @@ public partial class MapEditorHudView : OrientationHud
             (_, string hex) = GameSettings.PlayerConfig[i];
             var button = new HexPaletteButton(new Color(hex));
             int paletteIndex = i + 1;
-            button.TooltipText = "Paint land for a player color";
+            button.TooltipText = Strings.Get(StringKeys.EditorTooltipPaintLandPlayer);
             button.Pressed += _ => SelectPalette(paletteIndex);
             AudioBus.AttachClick(button);
             _landRow.AddChild(button);
@@ -166,7 +166,7 @@ public partial class MapEditorHudView : OrientationHud
         int neutralIndex = NeutralPaletteIndex;
         var neutralButton = new HexPaletteButton(PlayerPalette.Neutral)
         {
-            TooltipText = "Paint neutral (unowned)",
+            TooltipText = Strings.Get(StringKeys.EditorTooltipPaintNeutral),
         };
         neutralButton.Pressed += _ => SelectPalette(neutralIndex);
         AudioBus.AttachClick(neutralButton);
@@ -194,7 +194,7 @@ public partial class MapEditorHudView : OrientationHud
         // Paint cluster — the four terrain tools.
         int waterIndex = WaterPaletteIndex;
         var waterButton = new HexPaletteButton(UiPalette.WaterDeep, squared: true);
-        waterButton.TooltipText = "Paint water";
+        waterButton.TooltipText = Strings.Get(StringKeys.EditorTooltipPaintWater);
         waterButton.Pressed += _ => SelectPalette(waterIndex);
         AudioBus.AttachClick(waterButton);
         _paintCluster.AddChild(waterButton);
@@ -203,7 +203,7 @@ public partial class MapEditorHudView : OrientationHud
         int treeIndex = TreePaletteIndex;
         var treeButton = new HexPaletteButton(
             new Color(0.42f, 0.30f, 0.18f, 1f), HexPaletteIcon.Tree, squared: true);
-        treeButton.TooltipText = "Place / remove a tree";
+        treeButton.TooltipText = Strings.Get(StringKeys.EditorTooltipTree);
         treeButton.Pressed += _ => SelectPalette(treeIndex);
         AudioBus.AttachClick(treeButton);
         _paintCluster.AddChild(treeButton);
@@ -212,7 +212,7 @@ public partial class MapEditorHudView : OrientationHud
         int capitalIndex = CapitalPaletteIndex;
         var capitalButton = new HexPaletteButton(
             new Color(0.36f, 0.32f, 0.50f, 1f), HexPaletteIcon.Capital, squared: true);
-        capitalButton.TooltipText = "Place a capital";
+        capitalButton.TooltipText = Strings.Get(StringKeys.EditorTooltipCapital);
         capitalButton.Pressed += _ => SelectPalette(capitalIndex);
         AudioBus.AttachClick(capitalButton);
         _paintCluster.AddChild(capitalButton);
@@ -221,7 +221,7 @@ public partial class MapEditorHudView : OrientationHud
         int towerIndex = TowerPaletteIndex;
         var towerButton = new HexPaletteButton(
             new Color(0.45f, 0.45f, 0.50f, 1f), HexPaletteIcon.Tower, squared: true);
-        towerButton.TooltipText = "Place / remove a tower";
+        towerButton.TooltipText = Strings.Get(StringKeys.EditorTooltipTower);
         towerButton.Pressed += _ => SelectPalette(towerIndex);
         AudioBus.AttachClick(towerButton);
         _paintCluster.AddChild(towerButton);
@@ -231,7 +231,7 @@ public partial class MapEditorHudView : OrientationHud
         int goldIndex = GoldPaletteIndex;
         var goldButton = new HexPaletteButton(
             new Color(0.97f, 0.80f, 0.22f, 1f), HexPaletteIcon.Gold, squared: true);
-        goldButton.TooltipText = "Place / remove a gold tile (2× income)";
+        goldButton.TooltipText = Strings.Get(StringKeys.EditorTooltipGold);
         goldButton.Pressed += _ => SelectPalette(goldIndex);
         AudioBus.AttachClick(goldButton);
         _paintCluster.AddChild(goldButton);
@@ -244,7 +244,7 @@ public partial class MapEditorHudView : OrientationHud
         int mountainIndex = MountainPaletteIndex;
         var mountainButton = new HexPaletteButton(
             BoardPalette.MountainRock, HexPaletteIcon.Mountain, squared: true);
-        mountainButton.TooltipText = "Place / remove a mountain (tower-strength defense)";
+        mountainButton.TooltipText = Strings.Get(StringKeys.EditorTooltipMountain);
         mountainButton.Pressed += _ => SelectPalette(mountainIndex);
         AudioBus.AttachClick(mountainButton);
         _paintCluster.AddChild(mountainButton);
@@ -253,7 +253,7 @@ public partial class MapEditorHudView : OrientationHud
         // Tools cluster — hand (pan, no-paint) + die (random regenerate).
         var handButton = new HexPaletteButton(
             new Color(0.32f, 0.34f, 0.38f, 1f), HexPaletteIcon.Hand, squared: true);
-        handButton.TooltipText = "Pan";
+        handButton.TooltipText = Strings.Get(StringKeys.EditorTooltipPan);
         handButton.Pressed += _ => SelectPalette(HandPaletteIndex);
         AudioBus.AttachClick(handButton);
         _toolsCluster.AddChild(handButton);
@@ -265,11 +265,11 @@ public partial class MapEditorHudView : OrientationHud
 
         // Undo / redo cluster.
         _undoLastButton = MakeUndoButton(
-            HudIcon.UndoLast, "Undo — Z (hold for Undo All)",
+            HudIcon.UndoLast, Strings.Get(StringKeys.HudTooltipUndoHold),
             () => UndoLastClicked?.Invoke(), () => UndoAllClicked?.Invoke());
         _undoCluster.AddChild(_undoLastButton);
         _redoLastButton = MakeUndoButton(
-            HudIcon.RedoLast, "Redo — Y (hold for Redo All)",
+            HudIcon.RedoLast, Strings.Get(StringKeys.HudTooltipRedoHold),
             () => RedoLastClicked?.Invoke(), () => RedoAllClicked?.Invoke());
         _undoCluster.AddChild(_redoLastButton);
 
@@ -621,9 +621,11 @@ public partial class MapEditorHudView : OrientationHud
             swatch.Visible = !none;
             swatch.IsHuman = human;
             string name = GameSettings.PlayerConfig[i].Name;
-            swatch.TooltipText = none ? $"{name} — disabled (None)"
-                : human ? $"Paint land — {name} (Human)"
-                : $"Paint land — {name} (Computer)";
+            swatch.TooltipText = Strings.Get(
+                none ? StringKeys.EditorTooltipSwatchDisabled
+                : human ? StringKeys.EditorTooltipSwatchHuman
+                : StringKeys.EditorTooltipSwatchComputer,
+                ("name", name));
         }
 
         // If the current/last land color is now disabled, advance to a live one.

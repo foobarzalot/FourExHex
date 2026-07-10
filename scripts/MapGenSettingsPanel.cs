@@ -23,11 +23,16 @@ public sealed partial class MapGenSettingsPanel : CanvasLayer
     private const int DensityStep = 5;
 
     // The "Territories" dropdown names the shared nonlinear clumping stops (also
-    // used by the per-level campaign draw). Names run many→one as the factor climbs:
-    // factor 0 = many fragmented territories, factor 100 = one contiguous blob per
-    // player. Kept index-parallel to MapGenOptions.ClumpingFactorStops.
+    // used by the per-level campaign draw). String-store keys, resolved in
+    // BuildTerritoryItems; names run many→one as the factor climbs: factor 0 =
+    // many fragmented territories, factor 100 = one contiguous blob per player.
+    // Kept index-parallel to MapGenOptions.ClumpingFactorStops.
     private static readonly string[] TerritoryNames =
-        { "Many", "Several", "Some", "Few", "Very Few", "One" };
+    {
+        StringKeys.MapGenClumpMany, StringKeys.MapGenClumpSeveral,
+        StringKeys.MapGenClumpSome, StringKeys.MapGenClumpFew,
+        StringKeys.MapGenClumpVeryFew, StringKeys.MapGenClumpOne,
+    };
     private static readonly (string label, int id)[] TerritoryItems = BuildTerritoryItems();
 
     private ColorRect _backdrop = null!;
@@ -49,7 +54,7 @@ public sealed partial class MapGenSettingsPanel : CanvasLayer
         var items = new (string, int)[stops.Length];
         for (int i = 0; i < stops.Length; i++)
         {
-            items[i] = (TerritoryNames[i], stops[i]);
+            items[i] = (Strings.Get(TerritoryNames[i]), stops[i]);
         }
         return items;
     }
@@ -67,7 +72,7 @@ public sealed partial class MapGenSettingsPanel : CanvasLayer
         var button = new HudIconButton("?", _serifFont, fontSize ?? (int)(size * 0.5f))
         {
             CustomMinimumSize = new Vector2(size, size),
-            TooltipText = "Map generation options",
+            TooltipText = Strings.Get(StringKeys.MapGenTooltipOptions),
         };
         button.Pressed += () => onPressed();
         AudioBus.AttachClick(button);
@@ -96,7 +101,7 @@ public sealed partial class MapGenSettingsPanel : CanvasLayer
 
         var title = new Label
         {
-            Text = "Map Generation",
+            Text = Strings.Get(StringKeys.MapGenTitle),
             HorizontalAlignment = HorizontalAlignment.Center,
         };
         title.AddThemeFontOverride("font", _serifFont);
@@ -111,21 +116,21 @@ public sealed partial class MapGenSettingsPanel : CanvasLayer
         });
 
         vbox.AddChild(UiStepper.BuildStepperRow(
-            "Trees", GameSettings.TreeDensity, DensityMin, DensityMax, DensityStep,
+            Strings.Get(StringKeys.MapGenTrees), GameSettings.TreeDensity, DensityMin, DensityMax, DensityStep,
             OnTreesChanged, out _treesField));
         vbox.AddChild(UiStepper.BuildStepperRow(
-            "Mountains", GameSettings.MountainDensity, DensityMin, DensityMax, DensityStep,
+            Strings.Get(StringKeys.MapGenMountains), GameSettings.MountainDensity, DensityMin, DensityMax, DensityStep,
             OnMountainsChanged, out _mountainsField));
         vbox.AddChild(UiStepper.BuildStepperRow(
-            "Gold", GameSettings.GoldDensity, DensityMin, DensityMax, DensityStep,
+            Strings.Get(StringKeys.MapGenGold), GameSettings.GoldDensity, DensityMin, DensityMax, DensityStep,
             OnGoldChanged, out _goldField));
         vbox.AddChild(UiDropdown.BuildDropdownRow(
-            "Territories", GameSettings.ClumpingFactor, TerritoryItems,
+            Strings.Get(StringKeys.MapGenTerritories), GameSettings.ClumpingFactor, TerritoryItems,
             OnClumpingChanged, out _clumpingField));
 
         var back = new Button
         {
-            Text = "Back",
+            Text = Strings.Get(StringKeys.MenuBack),
             FocusMode = Control.FocusModeEnum.None,
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
         };

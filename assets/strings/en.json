@@ -191,6 +191,7 @@
   "speed.instant": "Instant",
 
   "button.cancel": "Cancel",
+  "button.ok": "OK",
   "button.save": "Save",
   "button.load": "Load",
   "button.play": "Play",
@@ -199,6 +200,7 @@
   "save.slot_name": "Slot name:",
   "save.failed": "Save failed",
   "save.could_not_save": "Could not save: {error}",
+  "save.reserved_name": "'autosave' is reserved. Please pick a different name.",
   "save.slot_row": "{name} — turn {turn} — {time}",
   "save.autosave_row": "[Autosave] turn {turn} — {time}",
 
@@ -208,6 +210,7 @@
   "mapinfo.playing_as": "You will be playing as the {name} player.",
   "mapinfo.all_computer": "All players are Computer.",
 
+  "campaign.back_button": "← Campaign",
   "campaign.level_title": "Level {level}",
   "campaign.tier_status": "{tier} tier · {status}",
   "campaign.status.won": "Already won — replaying can't lose it.",
@@ -228,5 +231,53 @@
   "main.seed_label": "Seed: {seed}",
 
   "pause.title": "Paused",
-  "pause.exit_game": "Exit Game"
+  "pause.exit_game": "Exit Game",
+
+  "editor.menu_title": "Menu",
+  "editor.save_map": "Save Map",
+  "editor.no_maps_found": "No maps found.",
+  "editor.tooltip.paint_land_player": "Paint land for a player color",
+  "editor.tooltip.paint_neutral": "Paint neutral (unowned)",
+  "editor.tooltip.paint_water": "Paint water",
+  "editor.tooltip.tree": "Place / remove a tree",
+  "editor.tooltip.capital": "Place a capital",
+  "editor.tooltip.tower": "Place / remove a tower",
+  "editor.tooltip.gold": "Place / remove a gold tile (2× income)",
+  "editor.tooltip.mountain": "Place / remove a mountain (tower-strength defense)",
+  "editor.tooltip.pan": "Pan",
+  "editor.tooltip.swatch_disabled": "{name} — disabled (None)",
+  "editor.tooltip.swatch_human": "Paint land — {name} (Human)",
+  "editor.tooltip.swatch_computer": "Paint land — {name} (Computer)",
+
+  "builder.map_edit": "Map Edit",
+  "builder.record": "Record",
+  "builder.preview": "Preview",
+  "builder.save_tutorial": "Save Tutorial",
+  "builder.load_tutorial": "Load Tutorial",
+  "builder.no_tutorials_found": "No tutorials found.",
+  "builder.slot_row": "{name} — {time}",
+  "builder.nothing_recorded": "Nothing recorded yet. Switch to Record and play a turn first.",
+  "builder.discard_title": "Discard recording?",
+  "builder.discard_body": "Switching to Map Edit will clear the current tutorial recording. Continue?",
+  "builder.discard_confirm": "Discard",
+  "builder.narration_prompt": "Narration text for this tutorial beat:",
+  "builder.narration_placeholder": "e.g., Move your recruit to the highlighted tile.",
+  "builder.insert": "Insert",
+
+  "mapgen.title": "Map Generation",
+  "mapgen.tooltip_options": "Map generation options",
+  "mapgen.trees": "Trees",
+  "mapgen.mountains": "Mountains",
+  "mapgen.gold": "Gold",
+  "mapgen.territories": "Territories",
+  "mapgen.clump.many": "Many",
+  "mapgen.clump.several": "Several",
+  "mapgen.clump.some": "Some",
+  "mapgen.clump.few": "Few",
+  "mapgen.clump.very_few": "Very Few",
+  "mapgen.clump.one": "One",
+
+  "cheat.title": "Cheats",
+  "cheat.tutorial_builder": "Tutorial Builder",
+  "cheat.close": "Close"
 }

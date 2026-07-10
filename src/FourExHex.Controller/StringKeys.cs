@@ -261,6 +261,7 @@ public static class StringKeys
 
     // Shared dialog buttons.
     public const string ButtonCancel = "button.cancel";
+    public const string ButtonOk = "button.ok";
     public const string ButtonSave = "button.save";
     public const string ButtonLoad = "button.load";
     public const string ButtonPlay = "button.play";
@@ -270,6 +271,7 @@ public static class StringKeys
     public const string SaveSlotName = "save.slot_name";
     public const string SaveFailed = "save.failed";
     public const string SaveCouldNotSave = "save.could_not_save";
+    public const string SaveReservedName = "save.reserved_name";
     public const string SaveSlotRow = "save.slot_row";
     public const string SaveAutosaveRow = "save.autosave_row";
 
@@ -282,6 +284,7 @@ public static class StringKeys
     public const string MapInfoAllComputer = "mapinfo.all_computer";
 
     // Campaign confirm sheet.
+    public const string CampaignBackButton = "campaign.back_button";
     public const string CampaignLevelTitle = "campaign.level_title";
     public const string CampaignTierStatus = "campaign.tier_status";
     public const string CampaignStatusWon = "campaign.status.won";
@@ -304,4 +307,56 @@ public static class StringKeys
     public const string MainSeedLabel = "main.seed_label";
     public const string PauseTitle = "pause.title";
     public const string PauseExitGame = "pause.exit_game";
+
+    // Map editor scene + palette.
+    public const string EditorMenuTitle = "editor.menu_title";
+    public const string EditorSaveMap = "editor.save_map";
+    public const string EditorNoMapsFound = "editor.no_maps_found";
+    public const string EditorTooltipPaintLandPlayer = "editor.tooltip.paint_land_player";
+    public const string EditorTooltipPaintNeutral = "editor.tooltip.paint_neutral";
+    public const string EditorTooltipPaintWater = "editor.tooltip.paint_water";
+    public const string EditorTooltipTree = "editor.tooltip.tree";
+    public const string EditorTooltipCapital = "editor.tooltip.capital";
+    public const string EditorTooltipTower = "editor.tooltip.tower";
+    public const string EditorTooltipGold = "editor.tooltip.gold";
+    public const string EditorTooltipMountain = "editor.tooltip.mountain";
+    public const string EditorTooltipPan = "editor.tooltip.pan";
+    public const string EditorTooltipSwatchDisabled = "editor.tooltip.swatch_disabled";
+    public const string EditorTooltipSwatchHuman = "editor.tooltip.swatch_human";
+    public const string EditorTooltipSwatchComputer = "editor.tooltip.swatch_computer";
+
+    // Tutorial builder (dev tool).
+    public const string BuilderMapEdit = "builder.map_edit";
+    public const string BuilderRecord = "builder.record";
+    public const string BuilderPreview = "builder.preview";
+    public const string BuilderSaveTutorial = "builder.save_tutorial";
+    public const string BuilderLoadTutorial = "builder.load_tutorial";
+    public const string BuilderNoTutorialsFound = "builder.no_tutorials_found";
+    public const string BuilderSlotRow = "builder.slot_row";
+    public const string BuilderNothingRecorded = "builder.nothing_recorded";
+    public const string BuilderDiscardTitle = "builder.discard_title";
+    public const string BuilderDiscardBody = "builder.discard_body";
+    public const string BuilderDiscardConfirm = "builder.discard_confirm";
+    public const string BuilderNarrationPrompt = "builder.narration_prompt";
+    public const string BuilderNarrationPlaceholder = "builder.narration_placeholder";
+    public const string BuilderInsert = "builder.insert";
+
+    // Map-generation options modal.
+    public const string MapGenTitle = "mapgen.title";
+    public const string MapGenTooltipOptions = "mapgen.tooltip_options";
+    public const string MapGenTrees = "mapgen.trees";
+    public const string MapGenMountains = "mapgen.mountains";
+    public const string MapGenGold = "mapgen.gold";
+    public const string MapGenTerritories = "mapgen.territories";
+    public const string MapGenClumpMany = "mapgen.clump.many";
+    public const string MapGenClumpSeveral = "mapgen.clump.several";
+    public const string MapGenClumpSome = "mapgen.clump.some";
+    public const string MapGenClumpFew = "mapgen.clump.few";
+    public const string MapGenClumpVeryFew = "mapgen.clump.very_few";
+    public const string MapGenClumpOne = "mapgen.clump.one";
+
+    // Debug cheat menu.
+    public const string CheatTitle = "cheat.title";
+    public const string CheatTutorialBuilder = "cheat.tutorial_builder";
+    public const string CheatClose = "cheat.close";
 }

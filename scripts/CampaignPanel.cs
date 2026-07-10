@@ -179,7 +179,7 @@ public partial class CampaignPanel : Panel
     // only the anchors and static properties here.
     private void BuildHeader()
     {
-        _backButton = new Button { Text = "← Campaign", Flat = true };
+        _backButton = new Button { Text = Strings.Get(StringKeys.CampaignBackButton), Flat = true };
         _backButton.AddThemeFontOverride("font", SerifFont);
         // Font size 28 keeps the serif clear of the progress bar and
         // optically aligned with the 22px stat.
