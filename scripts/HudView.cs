@@ -181,7 +181,7 @@ public partial class HudView : OrientationHud, IHudView
         // 2) Turn block — small "TURN" eyebrow over a mono number. Sits
         // immediately right of the swatch row (no divider) so the turn
         // counter reads as part of the active-player display.
-        Control turnBlock = BuildEyebrowBlock("TURN", out _turnLabel, mono: true, valueColor: UiPalette.Ink, out _turnEyebrow);
+        Control turnBlock = BuildEyebrowBlock(Strings.Get(StringKeys.HudEyebrowTurn), out _turnLabel, mono: true, valueColor: UiPalette.Ink, out _turnEyebrow);
         SetClickThrough(turnBlock);
         _statusCluster.AddChild(turnBlock);
         _turnLabel.Text = "1";
@@ -261,7 +261,7 @@ public partial class HudView : OrientationHud, IHudView
         {
             Disabled = true,
             BuyLevel = UnitLevel.Recruit,
-            TooltipText = "Buy unit — cycles affordable levels (U)",
+            TooltipText = Strings.Get(StringKeys.HudTooltipBuyCycle),
             Visible = false,
         };
         _collapsedBuyButton.Pressed += () => BuyRecruitClicked?.Invoke();
@@ -294,14 +294,14 @@ public partial class HudView : OrientationHud, IHudView
         // Undo/Redo Last; holding past the long-press threshold fires
         // Undo All / Redo All (the same actions Shift+Z / Shift+Y reach).
         _undoLastButton = MakeLongPressButton(
-            HudIcon.UndoLast, "Undo — Z (hold for Undo All)",
+            HudIcon.UndoLast, Strings.Get(StringKeys.HudTooltipUndoHold),
             "Undo button long-press -> Undo All",
             () => UndoLastClicked?.Invoke(), () => UndoTurnClicked?.Invoke(),
             startDisabled: true);
         _undoCluster.AddChild(_undoLastButton);
 
         _redoLastButton = MakeLongPressButton(
-            HudIcon.RedoLast, "Redo — Y (hold for Redo All)",
+            HudIcon.RedoLast, Strings.Get(StringKeys.HudTooltipRedoHold),
             "Redo button long-press -> Redo All",
             () => RedoLastClicked?.Invoke(), () => RedoAllClicked?.Invoke(),
             startDisabled: true);
@@ -314,7 +314,7 @@ public partial class HudView : OrientationHud, IHudView
         // pair. Disabled when no unmoved units remain in the selection;
         // highlighted while SessionState.RepeatedMovement is on.
         _nextUnitButton = MakeLongPressButton(
-            HudIcon.NextUnit, "Next Unit — N (hold for next tier)",
+            HudIcon.NextUnit, Strings.Get(StringKeys.HudTooltipNextUnitHold),
             "Next Unit button long-press -> next tier",
             () => NextUnitClicked?.Invoke(), () => NextUnitTierClicked?.Invoke(),
             startDisabled: false);
@@ -366,7 +366,7 @@ public partial class HudView : OrientationHud, IHudView
         // Build*Bars methods, so it isn't added to a cluster here.
         _helpButton = new HudIconButton("?", SerifFont, 34)
         {
-            TooltipText = "How to play — guided tour",
+            TooltipText = Strings.Get(StringKeys.HudTooltipHelp),
         };
         _helpButton.Pressed += EnterTour;
         AudioBus.AttachClick(_helpButton);
@@ -504,30 +504,41 @@ public partial class HudView : OrientationHud, IHudView
         // desktop) instead of naming the four separate buttons.
         bool buyCollapsed = !_paletteRow.Visible;
         Control buyNode = buyCollapsed ? _collapsedBuyButton : _paletteRow;
-        string buyBody = buyCollapsed
-            ? Strings.Get(StringKeys.HudTourBuyBodyCollapsed)
-            : "Buy a unit, or upgrade toward Soldier, Captain, and Commander by merging with a previously placed unit.";
+        string buyBody = Strings.Get(buyCollapsed
+            ? StringKeys.HudTourBuyBodyCollapsed
+            : StringKeys.HudTourBuyBody);
 
-        Add(HudTourStep.TurnCounter, _statusChip, "Turn & players",
-            "The current turn number and player color.");
-        Add(HudTourStep.ProfitLoss, _goldChip, "Treasury & balance",
-            "The selected territory's gold, income, and upkeep. Yellow if the territory is losing gold. Red if the territory is bankrupt next turn.");
-        Add(HudTourStep.BuyUnits, buyNode, "Buy units", buyBody);
-        Add(HudTourStep.BuildTower, _buildTowerButton, "Build tower",
-            "Buy a defensive tower on one of your hexes, defending the hexes around it against capture.");
-        Add(HudTourStep.UndoRedo, _undoCluster, "Undo & redo",
-            "Step back or forward through this turn's moves. Hold either button to undo or redo the whole turn at once.");
-        Add(HudTourStep.NextUnit, _nextUnitButton, "Next unit",
-            "Select your next unmoved unit in the selected territory. Hold to skip to the next power tier.");
-        Add(HudTourStep.NextTerritory, _nextTerritoryButton, "Next territory",
-            "Select your next territory that still has an action available. It glows once the current territory's actions are exhausted.");
-        Add(HudTourStep.EndTurn, _endTurnButton, "End turn",
-            "Finish your turn and pass play on. It glows once all territories have been visited.");
-        Add(HudTourStep.Automate, _automateButton, "Automate",
-            "Automate the rest of the turn. All actions are added to the undo stack.");
-        Add(HudTourStep.Options, _optionsButton, "Options",
-            "Pause to save, load, change settings, or exit to the menu.");
-        Add(HudTourStep.Help, _helpButton, "Help",
+        Add(HudTourStep.TurnCounter, _statusChip,
+            Strings.Get(StringKeys.HudTourTurnTitle),
+            Strings.Get(StringKeys.HudTourTurnBody));
+        Add(HudTourStep.ProfitLoss, _goldChip,
+            Strings.Get(StringKeys.HudTourTreasuryTitle),
+            Strings.Get(StringKeys.HudTourTreasuryBody));
+        Add(HudTourStep.BuyUnits, buyNode,
+            Strings.Get(StringKeys.HudTourBuyTitle), buyBody);
+        Add(HudTourStep.BuildTower, _buildTowerButton,
+            Strings.Get(StringKeys.HudTourTowerTitle),
+            Strings.Get(StringKeys.HudTourTowerBody));
+        Add(HudTourStep.UndoRedo, _undoCluster,
+            Strings.Get(StringKeys.HudTourUndoTitle),
+            Strings.Get(StringKeys.HudTourUndoBody));
+        Add(HudTourStep.NextUnit, _nextUnitButton,
+            Strings.Get(StringKeys.HudTourNextUnitTitle),
+            Strings.Get(StringKeys.HudTourNextUnitBody));
+        Add(HudTourStep.NextTerritory, _nextTerritoryButton,
+            Strings.Get(StringKeys.HudTourNextTerritoryTitle),
+            Strings.Get(StringKeys.HudTourNextTerritoryBody));
+        Add(HudTourStep.EndTurn, _endTurnButton,
+            Strings.Get(StringKeys.HudTourEndTurnTitle),
+            Strings.Get(StringKeys.HudTourEndTurnBody));
+        Add(HudTourStep.Automate, _automateButton,
+            Strings.Get(StringKeys.HudTourAutomateTitle),
+            Strings.Get(StringKeys.HudTourAutomateBody));
+        Add(HudTourStep.Options, _optionsButton,
+            Strings.Get(StringKeys.HudTourOptionsTitle),
+            Strings.Get(StringKeys.HudTourOptionsBody));
+        Add(HudTourStep.Help, _helpButton,
+            Strings.Get(StringKeys.HudTourHelpTitle),
             Strings.Get(StringKeys.HudTourHelpBody));
 
         return steps;
@@ -1310,7 +1321,7 @@ public partial class HudView : OrientationHud, IHudView
 
         _bankruptTitleLabel = new Label
         {
-            Text = "Bankrupt next turn",
+            Text = Strings.Get(StringKeys.HudBankruptTitle),
             // Wrap rather than overflow the box when the toast is width-capped
             // on a narrow/scaled viewport (see PositionBankruptToast).
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
@@ -1323,7 +1334,7 @@ public partial class HudView : OrientationHud, IHudView
 
         _bankruptSubLabel = new Label
         {
-            Text = "All units in this territory will die",
+            Text = Strings.Get(StringKeys.HudBankruptBody),
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
             MouseFilter = Control.MouseFilterEnum.Ignore,
         };
@@ -1543,16 +1554,16 @@ public partial class HudView : OrientationHud, IHudView
         // VICTORY eyebrow + DM Serif "<Player> wins!" (color set by Refresh)
         // + gold rule + three-button row (Play Again / Replay / Main Menu).
         (Control overlay, Label title, Button[] buttons) = BuildEndgameOverlay(
-            eyebrowText: "VICTORY",
-            titleText: "Victory!",
+            eyebrowText: Strings.Get(StringKeys.EndgameVictoryEyebrow),
+            titleText: "",  // always set from EndgameOverlayContent by Refresh
             titleFontSize: 52,
             designWidth: 580f,
             buttonMinWidth: 150f,
             buttonSpecs: new (string, Action)[]
             {
-                ("Play Again", () => NewGameClicked?.Invoke()),
-                ("Replay", () => ReplayClicked?.Invoke()),
-                ("Main Menu", () => MainMenuClicked?.Invoke()),
+                (Strings.Get(StringKeys.HudButtonPlayAgain), () => NewGameClicked?.Invoke()),
+                (Strings.Get(StringKeys.HudButtonReplay), () => ReplayClicked?.Invoke()),
+                (Strings.Get(StringKeys.HudButtonMainMenu), () => MainMenuClicked?.Invoke()),
             });
         _victoryOverlay = overlay;
         _victoryLabel = title;
@@ -1596,20 +1607,20 @@ public partial class HudView : OrientationHud, IHudView
     private void BuildCampaignVictoryOverlay()
     {
         (Control overlay, Label title, Button[] buttons) = BuildEndgameOverlay(
-            eyebrowText: "CAMPAIGN",
-            titleText: "Level won",
+            eyebrowText: Strings.Get(StringKeys.HudOverlayCampaignEyebrow),
+            titleText: "",  // always set to the level-won line by Refresh
             titleFontSize: 52,
             designWidth: 660f,
             buttonMinWidth: 150f,
             buttonSpecs: new (string, Action)[]
             {
-                ("Next unbeaten level", () => CampaignNextLevelClicked?.Invoke()),
-                ("Replay", () =>
+                (Strings.Get(StringKeys.HudButtonNextUnbeaten), () => CampaignNextLevelClicked?.Invoke()),
+                (Strings.Get(StringKeys.HudButtonReplay), () =>
                 {
                     Log.Debug(Log.LogCategory.Campaign, "[HudView] campaign Replay clicked");
                     ReplayClicked?.Invoke();
                 }),
-                ("Back to campaign", () => CampaignBackClicked?.Invoke()),
+                (Strings.Get(StringKeys.HudButtonBackToCampaign), () => CampaignBackClicked?.Invoke()),
             });
         _campaignVictoryOverlay = overlay;
         _campaignVictoryLabel = title;
@@ -1657,8 +1668,8 @@ public partial class HudView : OrientationHud, IHudView
             buttonMinWidth: 150f,
             buttonSpecs: new (string, Action)[]
             {
-                ("Play Again", () => NewGameClicked?.Invoke()),
-                ("Main Menu", () => MainMenuClicked?.Invoke()),
+                (Strings.Get(StringKeys.HudButtonPlayAgain), () => NewGameClicked?.Invoke()),
+                (Strings.Get(StringKeys.HudButtonMainMenu), () => MainMenuClicked?.Invoke()),
             });
         _vikingsConqueredOverlay = overlay;
     }
@@ -1674,15 +1685,15 @@ public partial class HudView : OrientationHud, IHudView
     private void BuildAiWonOverlay()
     {
         (Control overlay, Label title, Button[] _) = BuildEndgameOverlay(
-            eyebrowText: "DEFEAT",
-            titleText: "Defeated",
+            eyebrowText: Strings.Get(StringKeys.EndgameDefeatEyebrow),
+            titleText: "",  // always set from EndgameOverlayContent by Refresh
             titleFontSize: 44,
             designWidth: 620f,
             buttonMinWidth: 150f,
             buttonSpecs: new (string, Action)[]
             {
-                ("Play Again", () => NewGameClicked?.Invoke()),
-                ("Main Menu", () => MainMenuClicked?.Invoke()),
+                (Strings.Get(StringKeys.HudButtonPlayAgain), () => NewGameClicked?.Invoke()),
+                (Strings.Get(StringKeys.HudButtonMainMenu), () => MainMenuClicked?.Invoke()),
             });
         _aiWonOverlay = overlay;
         _aiWonLabel = title;
@@ -1691,16 +1702,16 @@ public partial class HudView : OrientationHud, IHudView
     private void BuildDefeatOverlay()
     {
         (Control overlay, Label title, Button[] buttons) = BuildEndgameOverlay(
-            eyebrowText: "DEFEAT",
-            titleText: "Defeated",
+            eyebrowText: Strings.Get(StringKeys.EndgameDefeatEyebrow),
+            titleText: "",  // always set to "<Loser> defeated" by Refresh
             titleFontSize: 48,
             designWidth: 540f,
             buttonMinWidth: 140f,
             buttonSpecs: new (string, Action)[]
             {
-                ("Continue", () => DefeatContinueClicked?.Invoke()),
-                ("Play Again", () => NewGameClicked?.Invoke()),
-                ("Main Menu", () => MainMenuClicked?.Invoke()),
+                (Strings.Get(StringKeys.HudButtonContinue), () => DefeatContinueClicked?.Invoke()),
+                (Strings.Get(StringKeys.HudButtonPlayAgain), () => NewGameClicked?.Invoke()),
+                (Strings.Get(StringKeys.HudButtonMainMenu), () => MainMenuClicked?.Invoke()),
             });
         _defeatOverlay = overlay;
         _defeatLabel = title;
@@ -1717,15 +1728,15 @@ public partial class HudView : OrientationHud, IHudView
     private void BuildClaimVictoryOverlay()
     {
         (Control overlay, Label _, Button[] buttons) = BuildEndgameOverlay(
-            eyebrowText: "CHECKPOINT",
-            titleText: "Claim Victory?",
+            eyebrowText: Strings.Get(StringKeys.HudOverlayCheckpointEyebrow),
+            titleText: Strings.Get(StringKeys.HudOverlayClaimVictoryTitle),
             titleFontSize: 44,
             designWidth: 540f,
             buttonMinWidth: 200f,
             buttonSpecs: new (string, Action)[]
             {
-                ("Win Now", () => ClaimVictoryWinNowClicked?.Invoke()),
-                ("Continue Playing", () => ClaimVictoryContinueClicked?.Invoke()),
+                (Strings.Get(StringKeys.HudButtonWinNow), () => ClaimVictoryWinNowClicked?.Invoke()),
+                (Strings.Get(StringKeys.HudButtonContinuePlaying), () => ClaimVictoryContinueClicked?.Invoke()),
             });
         _claimVictoryOverlay = overlay;
         _claimWinNowButton = buttons[0];
@@ -2058,7 +2069,9 @@ public partial class HudView : OrientationHud, IHudView
             int upkeep = UpkeepRules.TotalUpkeepFor(selected, state.Grid, ownerDifficulty);
             int net = income - upkeep;
             string sign = net >= 0 ? "+" : "";
-            _goldLabel.Text = $"{gold}g ({income}-{upkeep}={sign}{net})";
+            _goldLabel.Text = Strings.Get(StringKeys.HudChipGold,
+                ("gold", gold.ToString()), ("income", income.ToString()),
+                ("upkeep", upkeep.ToString()), ("sign", sign), ("net", net.ToString()));
 
             // Economic-report severity for a human-owned territory:
             //   red    — forecast bankrupt next turn (every unit dies at
@@ -2112,8 +2125,10 @@ public partial class HudView : OrientationHud, IHudView
             button.TooltipText = isActive
                 ? ""
                 : canAffordThis
-                    ? $"Buy {level} ({cost}g) — U"
-                    : DisabledBuyReason(selected, hasCapital, $"a {level.ToString().ToLowerInvariant()}", cost);
+                    ? Strings.Get(StringKeys.HudTooltipBuyUnit,
+                        ("level", Strings.UnitName(level)), ("cost", cost.ToString()))
+                    : DisabledBuyReason(selected, hasCapital,
+                        Strings.Get(StringKeys.ForBuyAction(level)), cost);
         }
 
         // Collapsed single button (shown when narrow): mirror the active buy
@@ -2127,8 +2142,10 @@ public partial class HudView : OrientationHud, IHudView
         _collapsedBuyButton.TooltipText = currentBuyLevel != null
             ? ""
             : anyBuyAffordable
-                ? "Buy unit — cycles affordable levels (U)"
-                : DisabledBuyReason(selected, hasCapital, "a unit", PurchaseRules.CostFor(UnitLevel.Recruit, buyerDifficulty));
+                ? Strings.Get(StringKeys.HudTooltipBuyCycle)
+                : DisabledBuyReason(selected, hasCapital,
+                    Strings.Get(StringKeys.HudActionAUnit),
+                    PurchaseRules.CostFor(UnitLevel.Recruit, buyerDifficulty));
 
         bool building = session.Mode == SessionState.ActionMode.BuildingTower;
         bool canAffordTower = hasCapital && PurchaseRules.CanAffordTower(selected!, state.Treasury, buyerDifficulty);
@@ -2139,7 +2156,9 @@ public partial class HudView : OrientationHud, IHudView
             ? Strings.Get(StringKeys.HudHintTowerPickTile)
             : canAffordTower
                 ? HudIconButton.DefaultTooltip(HudIcon.Tower)
-                : DisabledBuyReason(selected, hasCapital, "a tower", PurchaseRules.TowerCostFor(buyerDifficulty));
+                : DisabledBuyReason(selected, hasCapital,
+                    Strings.Get(StringKeys.HudActionATower),
+                    PurchaseRules.TowerCostFor(buyerDifficulty));
 
         // Fog Of War disables undo/redo entirely (sticky fog memory would let
         // undo be used for free scouting), so the buttons stay greyed out.
@@ -2163,7 +2182,7 @@ public partial class HudView : OrientationHud, IHudView
         _nextUnitButton.Selected = hasMovableInSelection && session.RepeatedMovement;
         _nextUnitButton.TooltipText = hasMovableInSelection
             ? HudIconButton.DefaultTooltip(HudIcon.NextUnit)
-            : "No unmoved units to cycle";
+            : Strings.Get(StringKeys.HudTooltipNoUnmovedUnits);
         // End Turn CTA styling is driven by GameController.RefreshViews
         // post-Refresh so Tutorial Preview's onAfterRefresh callback can
         // overwrite it (e.g. light it for an EndTurn scripted beat even
@@ -2226,10 +2245,11 @@ public partial class HudView : OrientationHud, IHudView
                 // store is already updated (Main marks the win on
                 // GameEnded, before this Refresh runs).
                 CampaignProgress progress = CampaignStore.Progress;
-                _campaignVictoryLabel.Text =
-                    $"Level {CampaignProgress.LabelFor(level)} — won";
-                _campaignVictorySubtitle.Text =
-                    $"{progress.WonCount} / {CampaignProgress.LevelCount} won";
+                _campaignVictoryLabel.Text = Strings.Get(StringKeys.HudCampaignLevelWon,
+                    ("level", CampaignProgress.LabelFor(level)));
+                _campaignVictorySubtitle.Text = Strings.Get(StringKeys.HudCampaignProgress,
+                    ("won", progress.WonCount.ToString()),
+                    ("total", CampaignProgress.LevelCount.ToString()));
                 // All 256 won: nothing left for "Next unbeaten level".
                 _campaignNextButton.Visible = progress.NextUp != null;
                 _campaignVictoryOverlay.Visible = true;
@@ -2255,7 +2275,7 @@ public partial class HudView : OrientationHud, IHudView
                     : EndgameOverlayContent.DefeatedHumanFor(
                         session.PendingDefeatScreen, state.Turns.Players);
                 EndgameOverlayContent.Content content = EndgameOverlayContent.For(
-                    winId, winner?.Name ?? "Unknown", winnerIsHuman,
+                    winId, winner?.Name ?? Strings.Get(StringKeys.PlayerUnknown), winnerIsHuman,
                     defeatedHuman?.Name);
                 bool defeatFraming = defeatedHuman != null;
                 Label title = defeatFraming ? _aiWonLabel : _victoryLabel;
@@ -2288,8 +2308,8 @@ public partial class HudView : OrientationHud, IHudView
             PlayerId loseId = session.PendingDefeatScreen.Value;
             Player? loser = state.Turns.Players
                 .FirstOrDefault(p => p.Id == loseId);
-            string name = loser?.Name ?? "Unknown";
-            _defeatLabel.Text = $"{name} defeated";
+            string name = loser?.Name ?? Strings.Get(StringKeys.PlayerUnknown);
+            _defeatLabel.Text = Strings.Get(StringKeys.EndgameDefeatedTitle, ("name", name));
             _defeatLabel.AddThemeColorOverride("font_color", PlayerPalette.ColorFor(loseId));
             _defeatOverlay.Visible = true;
         }
@@ -2385,15 +2405,15 @@ public partial class HudView : OrientationHud, IHudView
         {
             _bankruptToastStyle.BgColor = NegativeDeltaToastBg;
             _bankruptToastStyle.BorderColor = NegativeDeltaToastBorder;
-            _bankruptTitleLabel.Text = "Losing gold";
-            _bankruptSubLabel.Text = "This territory spends more than it earns each turn";
+            _bankruptTitleLabel.Text = Strings.Get(StringKeys.HudLosingGoldTitle);
+            _bankruptSubLabel.Text = Strings.Get(StringKeys.HudLosingGoldBody);
         }
         else
         {
             _bankruptToastStyle.BgColor = BankruptToastBg;
             _bankruptToastStyle.BorderColor = BankruptToastBorder;
-            _bankruptTitleLabel.Text = "Bankrupt next turn";
-            _bankruptSubLabel.Text = "All units in this territory will die";
+            _bankruptTitleLabel.Text = Strings.Get(StringKeys.HudBankruptTitle);
+            _bankruptSubLabel.Text = Strings.Get(StringKeys.HudBankruptBody);
         }
         _bankruptToastBadge.SetVariant(outlook);
         _bankruptToast.Visible = true;
@@ -2418,9 +2438,9 @@ public partial class HudView : OrientationHud, IHudView
         _automateButton.Disabled = !enabled;
         _automateButton.Selected = running;
         _automateButton.AutomateRunning = running;
-        _automateButton.TooltipText = running
-            ? "Stop automating — G"
-            : "Automate remaining moves — G";
+        _automateButton.TooltipText = Strings.Get(running
+            ? StringKeys.HudTooltipAutomateStop
+            : StringKeys.HudTooltipAutomate);
     }
 
     private static string? ComputeActionHint(GameState state, SessionState session)
@@ -2429,7 +2449,8 @@ public partial class HudView : OrientationHud, IHudView
         if (buyLevel.HasValue)
         {
             return NoCaptureTargets(state, session, buyLevel.Value)
-                ? $"No capture targets for {buyLevel.Value}"
+                ? Strings.Get(StringKeys.HudHintNoCaptureTargets,
+                    ("level", Strings.UnitName(buyLevel.Value)))
                 : Strings.Get(StringKeys.HudHintPlaceUnit,
                     ("level", Strings.UnitName(buyLevel.Value)));
         }
@@ -2438,7 +2459,8 @@ public partial class HudView : OrientationHud, IHudView
             HexTile? src = state.Grid.Get(session.MoveSource.Value);
             UnitLevel level = (src?.Unit?.Level) ?? UnitLevel.Recruit;
             return NoCaptureTargets(state, session, level)
-                ? $"No capture targets for {level}"
+                ? Strings.Get(StringKeys.HudHintNoCaptureTargets,
+                    ("level", Strings.UnitName(level)))
                 : Strings.Get(StringKeys.HudHintMoveUnit,
                     ("level", Strings.UnitName(level)));
         }
@@ -2473,9 +2495,10 @@ public partial class HudView : OrientationHud, IHudView
     /// </summary>
     private static string DisabledBuyReason(Territory? selected, bool hasCapital, string actionLabel, int cost)
     {
-        if (selected == null) return "No territory selected";
-        if (!hasCapital) return "Selected territory has no capital";
-        return $"Selected territory can't afford {actionLabel} ({cost}g)";
+        if (selected == null) return Strings.Get(StringKeys.HudDisabledNoSelection);
+        if (!hasCapital) return Strings.Get(StringKeys.HudDisabledNoCapital);
+        return Strings.Get(StringKeys.HudDisabledCantAfford,
+            ("action", actionLabel), ("cost", cost.ToString()));
     }
 
     public void SetCta(CtaButton button, bool isCta, bool pulse = true)

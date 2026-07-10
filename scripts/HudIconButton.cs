@@ -256,19 +256,19 @@ public partial class HudIconButton : Button
     /// </summary>
     public static string DefaultTooltip(HudIcon icon) => icon switch
     {
-        HudIcon.Recruit => "Buy Recruit (10g) — U",
-        HudIcon.Tower => "Build Tower (15g) — T",
-        HudIcon.UndoLast => "Undo Last — Z",
-        HudIcon.UndoAll => "Undo All — Shift+Z",
-        HudIcon.RedoLast => "Redo Last — Y",
-        HudIcon.RedoAll => "Redo All — Shift+Y",
-        HudIcon.EndTurn => "End Turn — Enter",
-        HudIcon.NextUnit => "Next Unit — N",
-        HudIcon.NextTerritory => "Next Territory — Tab",
-        HudIcon.Options => "Options — Esc",
-        HudIcon.Die => "Generate map from seed",
-        HudIcon.AddText => "Insert a tutorial-only narration beat here",
-        HudIcon.Automate => "Automate remaining moves — G",
+        HudIcon.Recruit => Strings.Get(StringKeys.HudTooltipBuyRecruit),
+        HudIcon.Tower => Strings.Get(StringKeys.HudTooltipBuildTower),
+        HudIcon.UndoLast => Strings.Get(StringKeys.HudTooltipUndoLast),
+        HudIcon.UndoAll => Strings.Get(StringKeys.HudTooltipUndoAll),
+        HudIcon.RedoLast => Strings.Get(StringKeys.HudTooltipRedoLast),
+        HudIcon.RedoAll => Strings.Get(StringKeys.HudTooltipRedoAll),
+        HudIcon.EndTurn => Strings.Get(StringKeys.HudTooltipEndTurn),
+        HudIcon.NextUnit => Strings.Get(StringKeys.HudTooltipNextUnit),
+        HudIcon.NextTerritory => Strings.Get(StringKeys.HudTooltipNextTerritory),
+        HudIcon.Options => Strings.Get(StringKeys.HudTooltipOptions),
+        HudIcon.Die => Strings.Get(StringKeys.HudTooltipGenerateMap),
+        HudIcon.AddText => Strings.Get(StringKeys.HudTooltipAddNarration),
+        HudIcon.Automate => Strings.Get(StringKeys.HudTooltipAutomate),
         _ => "",
     };
 

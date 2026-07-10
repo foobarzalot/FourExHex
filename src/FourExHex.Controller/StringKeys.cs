@@ -77,13 +77,111 @@ public static class StringKeys
     public const string TutorialPlaceClearTree = "tutorial.place.clear_tree";
     public const string TutorialPlaceRemoveGrave = "tutorial.place.remove_grave";
 
-    // HUD verb-carrying copy (tour bodies, prompts, action hints).
+    // Roster fallback when a player id has no roster entry.
+    public const string PlayerUnknown = "player.unknown";
+
+    // HUD chrome.
+    public const string HudEyebrowTurn = "hud.eyebrow.turn";
+    public const string HudChipGold = "hud.chip.gold";
+
+    // HUD button tooltips (HudIconButton.DefaultTooltip + HudView state
+    // overrides).
+    public const string HudTooltipBuyRecruit = "hud.tooltip.buy_recruit";
+    public const string HudTooltipBuildTower = "hud.tooltip.build_tower";
+    public const string HudTooltipUndoLast = "hud.tooltip.undo_last";
+    public const string HudTooltipUndoAll = "hud.tooltip.undo_all";
+    public const string HudTooltipRedoLast = "hud.tooltip.redo_last";
+    public const string HudTooltipRedoAll = "hud.tooltip.redo_all";
+    public const string HudTooltipEndTurn = "hud.tooltip.end_turn";
+    public const string HudTooltipNextUnit = "hud.tooltip.next_unit";
+    public const string HudTooltipNextTerritory = "hud.tooltip.next_territory";
+    public const string HudTooltipOptions = "hud.tooltip.options";
+    public const string HudTooltipGenerateMap = "hud.tooltip.generate_map";
+    public const string HudTooltipAddNarration = "hud.tooltip.add_narration";
+    public const string HudTooltipAutomate = "hud.tooltip.automate";
+    public const string HudTooltipAutomateStop = "hud.tooltip.automate_stop";
+    public const string HudTooltipBuyCycle = "hud.tooltip.buy_cycle";
+    public const string HudTooltipUndoHold = "hud.tooltip.undo_hold";
+    public const string HudTooltipRedoHold = "hud.tooltip.redo_hold";
+    public const string HudTooltipNextUnitHold = "hud.tooltip.next_unit_hold";
+    public const string HudTooltipHelp = "hud.tooltip.help";
+    public const string HudTooltipNoUnmovedUnits = "hud.tooltip.no_unmoved_units";
+    public const string HudTooltipBuyUnit = "hud.tooltip.buy_unit";
+
+    // Disabled-reason tooltips + their {action} fragments.
+    public const string HudDisabledNoSelection = "hud.disabled.no_selection";
+    public const string HudDisabledNoCapital = "hud.disabled.no_capital";
+    public const string HudDisabledCantAfford = "hud.disabled.cant_afford";
+    public const string HudActionARecruit = "hud.action.a_recruit";
+    public const string HudActionASoldier = "hud.action.a_soldier";
+    public const string HudActionACaptain = "hud.action.a_captain";
+    public const string HudActionACommander = "hud.action.a_commander";
+    public const string HudActionAUnit = "hud.action.a_unit";
+    public const string HudActionATower = "hud.action.a_tower";
+
+    /// <summary>The "a recruit"-style {action} fragment key for buying a
+    /// unit of <paramref name="level"/>.</summary>
+    public static string ForBuyAction(UnitLevel level) => level switch
+    {
+        UnitLevel.Recruit => HudActionARecruit,
+        UnitLevel.Soldier => HudActionASoldier,
+        UnitLevel.Captain => HudActionACaptain,
+        _ => HudActionACommander,
+    };
+
+    // Economy toast.
+    public const string HudBankruptTitle = "hud.bankrupt.title";
+    public const string HudBankruptBody = "hud.bankrupt.body";
+    public const string HudLosingGoldTitle = "hud.losing_gold.title";
+    public const string HudLosingGoldBody = "hud.losing_gold.body";
+
+    // Endgame / claim overlays (HudView-built chrome; the winner-dependent
+    // eyebrow/title come from EndgameOverlayContent's endgame.* keys).
+    public const string HudOverlayCheckpointEyebrow = "hud.overlay.checkpoint.eyebrow";
+    public const string HudOverlayClaimVictoryTitle = "hud.overlay.claim_victory.title";
+    public const string HudOverlayCampaignEyebrow = "hud.overlay.campaign.eyebrow";
+    public const string HudCampaignLevelWon = "hud.campaign.level_won";
+    public const string HudCampaignProgress = "hud.campaign.progress";
+    public const string HudButtonPlayAgain = "hud.button.play_again";
+    public const string HudButtonReplay = "hud.button.replay";
+    public const string HudButtonMainMenu = "hud.button.main_menu";
+    public const string HudButtonContinue = "hud.button.continue";
+    public const string HudButtonWinNow = "hud.button.win_now";
+    public const string HudButtonContinuePlaying = "hud.button.continue_playing";
+    public const string HudButtonNextUnbeaten = "hud.button.next_unbeaten";
+    public const string HudButtonBackToCampaign = "hud.button.back_to_campaign";
+
+    // Guided UI tour (HudView.BuildTourSteps).
+    public const string HudTourTurnTitle = "hud.tour.turn.title";
+    public const string HudTourTurnBody = "hud.tour.turn.body";
+    public const string HudTourTreasuryTitle = "hud.tour.treasury.title";
+    public const string HudTourTreasuryBody = "hud.tour.treasury.body";
+    public const string HudTourBuyTitle = "hud.tour.buy.title";
+    public const string HudTourBuyBody = "hud.tour.buy.body";
     public const string HudTourBuyBodyCollapsed = "hud.tour.buy.body.collapsed";
+    public const string HudTourTowerTitle = "hud.tour.tower.title";
+    public const string HudTourTowerBody = "hud.tour.tower.body";
+    public const string HudTourUndoTitle = "hud.tour.undo.title";
+    public const string HudTourUndoBody = "hud.tour.undo.body";
+    public const string HudTourNextUnitTitle = "hud.tour.next_unit.title";
+    public const string HudTourNextUnitBody = "hud.tour.next_unit.body";
+    public const string HudTourNextTerritoryTitle = "hud.tour.next_territory.title";
+    public const string HudTourNextTerritoryBody = "hud.tour.next_territory.body";
+    public const string HudTourEndTurnTitle = "hud.tour.end_turn.title";
+    public const string HudTourEndTurnBody = "hud.tour.end_turn.body";
+    public const string HudTourAutomateTitle = "hud.tour.automate.title";
+    public const string HudTourAutomateBody = "hud.tour.automate.body";
+    public const string HudTourOptionsTitle = "hud.tour.options.title";
+    public const string HudTourOptionsBody = "hud.tour.options.body";
+    public const string HudTourHelpTitle = "hud.tour.help.title";
     public const string HudTourHelpBody = "hud.tour.help.body";
+
+    // Bottom-panel prompts / action hints.
     public const string HudContinueHint = "hud.continue_hint";
     public const string HudHintTowerPickTile = "hud.hint.tower_pick_tile";
     public const string HudHintPlaceUnit = "hud.hint.place_unit";
     public const string HudHintMoveUnit = "hud.hint.move_unit";
+    public const string HudHintNoCaptureTargets = "hud.hint.no_capture_targets";
 
     // Map editor.
     public const string EditorTooltipPaintLandCycle = "editor.tooltip.paint_land_cycle";
