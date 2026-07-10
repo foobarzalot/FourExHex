@@ -62,14 +62,15 @@ public sealed partial class MapGenSettingsPanel : CanvasLayer
     private static readonly Font _serifFont =
         GD.Load<FontFile>("res://fonts/DMSerifDisplay-Regular.ttf");
 
-    /// <summary>Build the square "?" chip that summons this panel — a real
-    /// typographic question mark (serif), so it reads on mobile with no tooltip.
-    /// Same affordance on the New Game map-setup page and in the map editor; the
-    /// host wires <paramref name="onPressed"/> to its own panel's
-    /// <see cref="Open"/>.</summary>
-    public static HudIconButton MakeOpenButton(Action onPressed, float size = 68f, int? fontSize = null)
+    /// <summary>Build the square chip that summons this panel — a gear-with-die
+    /// glyph (settings gear + random-generation die), so it reads as "configure
+    /// the randomly generated map" with no tooltip. Same affordance on the New
+    /// Game map-setup page and in the map editor; the host wires
+    /// <paramref name="onPressed"/> to its own panel's <see cref="Open"/>.</summary>
+    public static HudIconButton MakeOpenButton(Action onPressed, float size = 68f)
     {
-        var button = new HudIconButton("?", _serifFont, fontSize ?? (int)(size * 0.5f))
+        Log.Debug(Log.LogCategory.Hud, "MakeOpenButton: gear-with-die map-gen options chip");
+        var button = new HudIconButton(HudIcon.MapGenOptions)
         {
             CustomMinimumSize = new Vector2(size, size),
             TooltipText = Strings.Get(StringKeys.MapGenTooltipOptions),

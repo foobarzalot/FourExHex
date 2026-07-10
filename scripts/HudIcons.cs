@@ -553,6 +553,34 @@ public static class HudIcons
         }
     }
 
+    /// <summary>
+    /// Map-generation options glyph: the settings gear with a die seated in
+    /// its center hub ("configure the randomly generated map"). Same
+    /// gear-plus-hub idiom as <see cref="DrawAutomate"/> — an enlarged dark
+    /// hub disc backs the stroke-only die so its light strokes read against
+    /// the gear body.
+    /// </summary>
+    public static void DrawMapGenOptions(
+        CanvasItem t, Vector2 center, float radius, Color modulate, Color symbol)
+    {
+        // DrawAutomate's gear-plus-hub idiom, but the gear is enlarged 1.5×
+        // and its dark inner hub is enlarged to fill the gear's flat inner
+        // disc (up to just inside the tooth valley), giving the die a generous
+        // dark backdrop. The die itself keeps the Automate hub/symbol scale.
+        float gearRadius = radius * 1.5f;
+        DrawGear(t, center, gearRadius, modulate);
+        float hubR = gearRadius * 0.45f;
+        const int segments = 24;
+        var hub = new Vector2[segments];
+        for (int i = 0; i < segments; i++)
+        {
+            float a = i * Mathf.Tau / segments;
+            hub[i] = center + new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * hubR;
+        }
+        t.DrawColoredPolygon(hub, Outline * modulate);
+        DrawDie(t, center, radius * 0.70f * 0.48f * 1.15f * 1.3f, symbol);
+    }
+
     // Six-sided die — used by the map editor's "Generate map" button.
     // Rendered edge-on as a standard isometric projection so the icon
     // reads as 3D: top face (1 pip), right face (2 pips), front face

@@ -15,6 +15,7 @@ public enum HudIcon
     Die,
     AddText,
     Automate,
+    MapGenOptions,
 }
 
 /// <summary>
@@ -269,6 +270,7 @@ public partial class HudIconButton : Button
         HudIcon.Die => Strings.Get(StringKeys.HudTooltipGenerateMap),
         HudIcon.AddText => Strings.Get(StringKeys.HudTooltipAddNarration),
         HudIcon.Automate => Strings.Get(StringKeys.HudTooltipAutomate),
+        HudIcon.MapGenOptions => Strings.Get(StringKeys.MapGenTooltipOptions),
         _ => "",
     };
 
@@ -307,6 +309,7 @@ public partial class HudIconButton : Button
             case HudIcon.Die: HudIcons.DrawDie(this, center, r, stroke); break;
             case HudIcon.AddText: HudIcons.DrawSpeechBubble(this, center, r, stroke); break;
             case HudIcon.Automate: HudIcons.DrawAutomate(this, center, r, modulate, stroke, _automateRunning); break;
+            case HudIcon.MapGenOptions: HudIcons.DrawMapGenOptions(this, center, r, modulate, stroke); break;
         }
 
         if (_selected)

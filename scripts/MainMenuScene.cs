@@ -943,7 +943,7 @@ public partial class MainMenuScene : Control
     /// Sits beside the seed re-roll die; same button/panel as
     /// the map editor's.</summary>
     private HudIconButton MakeMapGenSettingsButton() =>
-        MapGenSettingsPanel.MakeOpenButton(() => _mapGenSettingsPanel?.Open(), size: 44f, fontSize: 30);
+        MapGenSettingsPanel.MakeOpenButton(() => _mapGenSettingsPanel?.Open(), size: 44f);
 
     /// <summary>"Config rail + player list" landscape New Game: a
     /// fixed left rail (title, map, seed, Start, Back) beside a scrolling player
