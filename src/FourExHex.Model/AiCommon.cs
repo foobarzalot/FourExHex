@@ -214,8 +214,9 @@ public static class AiCommon
         // Towers have no upkeep and don't change income, so post-net
         // equals netBefore; the action just drains TowerCost gold.
         // Only considered for border tiles — an interior tower defends
-        // nothing. A tile holding an own unmoved unit qualifies via the
-        // push-out rule (IsValidTowerLocationWithPush).
+        // nothing. A tile holding an own unmoved unit with an escape
+        // enumerates as a make-way intent (IsValidTowerLocationWithPush),
+        // lowered by the controller into a reposition + build pair.
         if (PurchaseRules.CanAffordTower(territory, state.Treasury, difficulty)
             && UpkeepRules.SurvivesNextUpkeep(gold - PurchaseRules.TowerCostFor(difficulty), netBefore))
         {
@@ -515,11 +516,13 @@ public static class AiCommon
 
     /// <summary>
     /// Phase 4a: tower placements — border tiles that pass the gold
-    /// solvency gate, including tiles holding an own unmoved unit that
-    /// a push-out build would relocate
-    /// (<see cref="PurchaseRules.IsValidTowerLocationWithPush"/>).
-    /// Proximity to existing towers is not filtered here; overlap is
-    /// discounted by <see cref="AiStateScorer.BuildTowerBonus"/>.
+    /// solvency gate. A tile holding an own unmoved unit with an escape
+    /// (<see cref="PurchaseRules.IsValidTowerLocationWithPush"/>)
+    /// enumerates as a make-way *intent*: the controller's chooser
+    /// wrapper lowers a chosen intent into the reposition-then-build
+    /// pair of discrete actions. Proximity to existing towers is not
+    /// filtered here; overlap is discounted by
+    /// <see cref="AiStateScorer.BuildTowerBonus"/>.
     /// </summary>
     public static IEnumerable<AiCandidate> EnumeratePhase4Towers(
         Territory territory,

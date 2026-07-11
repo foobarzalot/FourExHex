@@ -13,7 +13,8 @@ using System.Linq;
 /// live <c>GameOperations.ExecuteAi*</c> paths so simulated futures
 /// match what the real harness produces. The simulator's own envelope
 /// is thin: Recompute-only capture reconciliation
-/// (<see cref="Reconcile"/>) and unconditional reposition-marking.
+/// (<see cref="Reconcile"/>) and the atomic mirror of the controller's
+/// make-way lowering for tower intents on unit-held tiles.
 /// Skips the paranoid validation — actions passed here are expected to
 /// come from <see cref="AiCommon.Enumerate"/>, which only emits legal
 /// ones.
@@ -131,9 +132,9 @@ public static class AiSimulator
     {
         Territory? territory = TerritoryLookup.FindByCapital(state.Territories, capital);
         if (territory == null) return;
-        // The combined unit inherits the dest unit's HasMovedThisTurn=false,
-        // so no MarkUnitMoved — the combined unit remains actionable for
-        // a subsequent phase-1 capture.
+        // The combined unit inherits the dest unit's HasMovedThisTurn=false
+        // (ResolveArrival), so it remains actionable for a subsequent
+        // phase-1 capture.
         AiActionCore.BuyCombine(capital, combineTarget, level, state, territory);
     }
 

@@ -1292,12 +1292,11 @@ public class GameOperations
     /// Apply a recorded AI move (also used by replay playback to
     /// re-execute a recorded move beat). Throws if the source has no
     /// unit, the unit has already moved, or the destination isn't a
-    /// legal target — defense in depth against a buggy chooser. A
-    /// reposition onto an own-empty cell normally consumes the unit's
-    /// move so the chooser doesn't re-pick the same unit, but this
-    /// "consumes the move" rule is skipped during replay so a recorded
-    /// HUMAN reposition followed by another move of that unit doesn't
-    /// throw.
+    /// legal target — defense in depth against a buggy chooser.
+    /// <see cref="Unit.HasMovedThisTurn"/> changes only through
+    /// <see cref="MovementRules.ResolveArrival"/> (movement-consuming
+    /// arrivals), so a reposition leaves the unit actionable for every
+    /// actor and replays with no special casing.
     /// </summary>
     public void ExecuteAiMove(HexCoord source, HexCoord destination)
         => ExecuteMoveCore(_state.Turns.CurrentPlayer.Id, source, destination);

@@ -223,11 +223,12 @@ public class AiCommonTests
     }
 
     [Fact]
-    public void EnumeratePhase4Towers_Emits_PushableUnitTile()
+    public void EnumeratePhase4Towers_Emits_MakeWayIntentOnFreeUnitTile()
     {
         // The border tile (5,0) holds an unmoved Red recruit with an
-        // empty in-territory neighbor (4,0) — a push-out build is
-        // legal, so the tile must appear as a tower candidate.
+        // empty in-territory neighbor (4,0) — eligible as a make-way
+        // intent (the controller lowers it into a reposition + build
+        // pair), so the tile must appear as a tower candidate.
         var grid = new HexGrid();
         for (int col = 0; col <= 5; col++)
             grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
@@ -248,7 +249,7 @@ public class AiCommonTests
     public void EnumeratePhase4Towers_Skips_BoxedInUnitTile()
     {
         // Same shape, but the recruit's only in-territory neighbor
-        // (4,0) is blocked by a tree — no escape, no push, no candidate.
+        // (4,0) is blocked by a tree — no escape, no make-way intent.
         var grid = new HexGrid();
         for (int col = 0; col <= 5; col++)
             grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));

@@ -188,10 +188,11 @@ public partial class GameControllerTests
     [Fact]
     public void BuildTower_OnOwnFreeUnitTile_IsRejectedForHumans()
     {
-        // The AI's push-out rule must never leak into the click path: a
-        // human tower click on an own unmoved unit's tile is rejected
-        // exactly like any occupied tile — no tower, no push, no gold
-        // spent (in-range near-miss keeps BuildingTower mode).
+        // The AI's make-way intent eligibility must never leak into the
+        // click path: a human tower click on an own unmoved unit's tile
+        // is rejected exactly like any occupied tile — no tower, no
+        // unit displacement, no gold spent (in-range near-miss keeps
+        // BuildingTower mode).
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
         HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;

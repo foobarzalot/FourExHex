@@ -554,7 +554,7 @@ public class ComputerAiTests
     }
 
     [Fact]
-    public void ChooseNextAction_LoneBorderTileHeldByFreeUnit_ChoosesPushOutTowerBuild()
+    public void ChooseNextAction_LoneBorderTileHeldByFreeUnit_ChoosesMakeWayTowerIntent()
     {
         // Red strip (0,0)-(5,0); the ONLY border tile (5,0) holds an
         // unmoved Red recruit, and the Blue tile beyond it carries a
@@ -562,8 +562,9 @@ public class ComputerAiTests
         // (recruit can't take defense 2), 2a (no combine partner), 2b
         // (a combined Soldier still doesn't beat defense 2), and 3
         // (16g can't buy a Captain) are all dry. Phase 4a must then
-        // choose the push-out tower on (5,0) — the recruit steps to
-        // (4,0) with its move intact.
+        // emit the make-way tower intent on (5,0); the simulator's
+        // atomic mirror steps the recruit to (4,0) with its move intact
+        // (live play lowers the intent into two discrete beats).
         var grid = new HexGrid();
         for (int col = 0; col < 6; col++)
             grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));

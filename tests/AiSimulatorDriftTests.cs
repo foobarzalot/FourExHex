@@ -213,8 +213,9 @@ public class AiSimulatorDriftTests
         Assert.Contains(actions, a => a is AiBuyUnitAction);
         Assert.Contains(actions, a => a is AiBuyCombineAction);
         Assert.Contains(actions, a => a is AiBuildTowerAction);
-        // Push-out builds (tower onto an own unmoved unit's tile) must be
-        // part of the sweep so the drift check covers the push mutation.
+        // Make-way tower intents (build targeting an own unmoved unit's
+        // tile) must be part of the sweep so the drift check covers the
+        // simulator's atomic mirror of the two-beat lowering.
         Assert.Contains(actions, a =>
             a is AiBuildTowerAction bt && initial.Grid.Get(bt.Destination)!.Occupant is Unit);
         Assert.True(actions.Count >= 20,
@@ -259,12 +260,13 @@ public class AiSimulatorDriftTests
     }
 
     [Fact]
-    public void BuildTower_OnFreeUnitTile_PushesUnitAside_SimAndRealAgree()
+    public void MakeWayTowerIntent_SimAtomicMirror_MatchesTwoBeatExecution()
     {
-        // Push-out build: a tower dropped on a tile holding an own
-        // unmoved unit relocates the unit to its deterministic push
-        // destination without consuming its move — identically in the
-        // simulator and the real ExecuteAiBuildTower path.
+        // A tower intent on a tile holding an own unmoved unit really
+        // executes as two discrete beats (make-way reposition, then the
+        // build); the simulator applies the same net outcome atomically.
+        // Both must land the unit on the deterministic escape with its
+        // move intact and produce checksum-identical states.
         GameState initial = BuildRichState();
         PlayerId red = initial.Players[0].Id;
         Territory redTerr = initial.Territories.First(t => t.Owner == red);

@@ -136,11 +136,12 @@ public class ReplayPlaybackTests
     [Fact]
     public void Replay_HumanBuyOntoOwnEmptyThenMoveSameUnit_ProducesSameFinalState()
     {
-        // A human buy onto an own-empty tile leaves HasMovedThisTurn=false;
-        // the unit can still move/capture the same turn. Replay must not
-        // consume that move — ExecuteAiBuyUnit's "fresh buy consumes the
-        // unit's move" rule is gated off in replay mode, or the subsequent
-        // move beat throws "unit has already moved this turn."
+        // A buy onto an own-empty tile leaves HasMovedThisTurn=false —
+        // the flag changes only through movement-consuming arrivals
+        // (MovementRules.ResolveArrival) — so the unit can still
+        // move/capture the same turn. Replay must preserve that:
+        // re-executing the buy beat leaves the unit actionable, or the
+        // subsequent move beat throws "unit has already moved this turn."
         var f = new Fixture();
 
         // Step 1: select Red's territory, enter Buy Recruit mode, place

@@ -1089,9 +1089,10 @@ public class GameController
 
     /// <summary>
     /// Tower placement target for a human click: an empty tile inside
-    /// the currently selected territory. Delegates to the strict
-    /// <see cref="PurchaseRules.IsValidTowerLocation"/> — the push-out
-    /// rule is AI/automate-only and never offered to clicks.
+    /// the currently selected territory, per the universal
+    /// <see cref="PurchaseRules.IsValidTowerLocation"/> rule. (The AI's
+    /// make-way *intent* eligibility is a chooser-level concept only —
+    /// clicks never see it.)
     /// </summary>
     private bool IsValidTowerTarget(HexCoord coord)
     {
@@ -1366,9 +1367,8 @@ public class GameController
             Capital = capital,
             To = destination,
         };
-        // Shared bare mutation (gold deduct + tower drop). The strict
-        // IsValidTowerTarget gate upstream guarantees the destination is
-        // empty, so the core's push-out branch never fires for a click.
+        // Shared bare mutation (gold deduct + tower drop); the strict
+        // IsValidTowerTarget gate upstream guaranteed an empty tile.
         AiActionCore.BuildTower(capital, destination, _state, _session.SelectedTerritory);
 
         HexTile dst = _state.Grid.Get(destination)!;

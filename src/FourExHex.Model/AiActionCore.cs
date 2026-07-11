@@ -1,11 +1,10 @@
 /// <summary>
 /// One applied AI action's outcome: the <see cref="MovementRules"/>
-/// result plus the two pre-move flags the live envelope needs. Both
-/// flags are computed BEFORE the mutation — a reposition target is
-/// same-owner-and-empty, and a combine target holds a friendly unit,
-/// only until the arriving unit lands.
+/// result plus the pre-move combine flag the live envelope needs
+/// (computed BEFORE the mutation — a combine target holds a friendly
+/// unit only until the arriving unit lands).
 /// </summary>
-public readonly record struct AiApplyResult(MoveResult Move, bool WasReposition, bool WasCombine);
+public readonly record struct AiApplyResult(MoveResult Move, bool WasCombine);
 
 /// <summary>
 /// The bare mutation core for AI actions — the single source of truth
@@ -13,16 +12,14 @@ public readonly record struct AiApplyResult(MoveResult Move, bool WasReposition,
 /// <c>GameOperations.ExecuteAi*</c> (live play + replay), so simulated
 /// futures and real play cannot drift.
 ///
-/// Deliberately does ONLY the mutation: reposition/combine detection,
-/// gold deduction (owner-based difficulty via
+/// Deliberately does ONLY the mutation: combine detection, gold
+/// deduction (owner-based difficulty via
 /// <see cref="GameState.DifficultyOf"/>), and
 /// <see cref="MovementRules"/> placement. Everything caller-specific
 /// stays with the caller: legality validation (the simulator trusts
 /// <see cref="AiCommon.Enumerate"/> and early-returns; GameOperations
 /// throws), capture reconciliation (Recompute-only vs the full
-/// <c>HandleCapture</c> envelope), the reposition-mark gate
-/// (unconditional in simulation; live play skips non-Computer actors so
-/// a replayed human reposition stays actionable), and all view effects.
+/// <c>HandleCapture</c> envelope), and all view effects.
 /// </summary>
 public static class AiActionCore
 {
@@ -33,10 +30,9 @@ public static class AiActionCore
         HexCoord source, HexCoord destination, GameState state, Territory attacker)
     {
         Log.Trace(Log.LogCategory.Ai, $"[core] move {source}→{destination}");
-        bool wasReposition = IsRepositionTarget(destination, attacker.Owner, state);
         bool wasCombine = IsFriendlyUnitAt(destination, attacker.Owner, state);
         MoveResult result = MovementRules.Move(source, destination, state.Grid, attacker);
-        return new AiApplyResult(result, wasReposition, wasCombine);
+        return new AiApplyResult(result, wasCombine);
     }
 
     /// <summary>Buy a <paramref name="level"/> unit from
@@ -48,12 +44,11 @@ public static class AiActionCore
         GameState state, Territory territory)
     {
         Log.Trace(Log.LogCategory.Ai, $"[core] buy {level}@{capital}→{destination}");
-        bool wasReposition = IsRepositionTarget(destination, territory.Owner, state);
         bool wasCombine = IsFriendlyUnitAt(destination, territory.Owner, state);
         DeductGold(capital, PurchaseRules.CostFor(level, state.DifficultyOf(territory.Owner)), state);
         var unit = new Unit(territory.Owner, level);
         MoveResult result = MovementRules.PlaceNew(unit, destination, state.Grid, territory);
-        return new AiApplyResult(result, wasReposition, wasCombine);
+        return new AiApplyResult(result, wasCombine);
     }
 
     /// <summary>Buy a <paramref name="level"/> unit and combine it onto
