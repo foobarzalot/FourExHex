@@ -301,7 +301,7 @@ public class MountainTileTests
         Territory red = RowTerritory(0, 1, Red, capital: new HexCoord(1, 0));
         var treasury = new Treasury();            // no gold → bankrupt
 
-        bool solvent = UpkeepRules.ApplyUpkeep(red, grid, treasury, Difficulty.Soldier);
+        bool solvent = UpkeepRules.ApplyUpkeep(red, grid, treasury);
 
         Assert.False(solvent);
         Assert.IsType<Grave>(grid.Get(new HexCoord(0, 0))!.Occupant); // grave on mountain

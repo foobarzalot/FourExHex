@@ -7,10 +7,8 @@ using System.Collections.Generic;
 /// the territory dies (the territory is "bankrupt"). The remaining gold
 /// stays in the treasury.
 ///
-/// Upkeep values depend on the owner's <see cref="Difficulty"/> via the
-/// table in <see cref="DifficultyRules.UnitUpkeep"/>; the Soldier-difficulty
-/// baseline is per Slay: Recruit = 2, Soldier = 6, Captain = 18,
-/// Commander = 54.
+/// Upkeep is a flat per-level table (per Slay): Recruit = 2, Soldier = 6,
+/// Captain = 18, Commander = 54 — the same for every player.
 /// </summary>
 /// <summary>
 /// Outlook of a territory's near-term economy. Pure economic facts —
@@ -34,15 +32,20 @@ public enum EconomyOutlook
 public static class UpkeepRules
 {
     /// <summary>
-    /// The upkeep cost a single unit of the given level demands per turn,
-    /// for an owner at the given difficulty. The values live in
-    /// <see cref="DifficultyRules.UnitUpkeep"/> (all difficulty tuning in one
-    /// file); this is per-unit (not per-territory-total) so AiCommon's
+    /// The upkeep cost a single unit of the given level demands per turn.
+    /// Explicit hand-picked integers (no percent formula, no truncation
+    /// arithmetic); this is per-unit (not per-territory-total) so AiCommon's
     /// combine/buy upkeep-delta arithmetic stays exactly consistent with
     /// totals and real charging.
     /// </summary>
-    public static int UpkeepFor(UnitLevel level, Difficulty difficulty) =>
-        DifficultyRules.UnitUpkeep(level, difficulty);
+    public static int UpkeepFor(UnitLevel level) => level switch
+    {
+        UnitLevel.Recruit => 2,
+        UnitLevel.Soldier => 6,
+        UnitLevel.Captain => 18,
+        UnitLevel.Commander => 54,
+        _ => 0,
+    };
 
     /// <summary>
     /// Number of upkeep steps the AI's solvency check looks ahead.
@@ -73,13 +76,12 @@ public static class UpkeepRules
     public static bool SurvivesNextUpkeep(int gold, int netIncome) =>
         gold + UpkeepHorizon * netIncome >= 0;
 
-    /// <summary>Sum of upkeep costs for every unit in <paramref name="territory"/>,
-    /// at the owner's <paramref name="difficulty"/>. Neutral
-    /// (<see cref="PlayerId.None"/>-owned) territories always owe zero: viking
-    /// units are upkeep-exempt (they never bankrupt, so they never leave
+    /// <summary>Sum of upkeep costs for every unit in <paramref name="territory"/>.
+    /// Neutral (<see cref="PlayerId.None"/>-owned) territories always owe zero:
+    /// viking units are upkeep-exempt (they never bankrupt, so they never leave
     /// graves), and this is the single chokepoint every upkeep/solvency path
     /// reads.</summary>
-    public static int TotalUpkeepFor(Territory territory, HexGrid grid, Difficulty difficulty)
+    public static int TotalUpkeepFor(Territory territory, HexGrid grid)
     {
         if (territory.Owner.IsNone) return 0;
         int total = 0;
@@ -88,7 +90,7 @@ public static class UpkeepRules
             HexTile? tile = grid.Get(coord);
             if (tile?.Occupant is Unit u)
             {
-                total += UpkeepFor(u.Level, difficulty);
+                total += UpkeepFor(u.Level);
             }
         }
         return total;
@@ -105,11 +107,11 @@ public static class UpkeepRules
     /// Pure economic facts; the view decides which outlooks deserve a
     /// warning tint based on owner kind.
     /// </summary>
-    public static EconomyOutlook Classify(Territory territory, HexGrid grid, Treasury treasury, Difficulty difficulty)
+    public static EconomyOutlook Classify(Territory territory, HexGrid grid, Treasury treasury)
     {
         if (!territory.HasCapital) return EconomyOutlook.Healthy;
 
-        int owed = TotalUpkeepFor(territory, grid, difficulty);
+        int owed = TotalUpkeepFor(territory, grid);
         if (owed == 0) return EconomyOutlook.Healthy;
 
         int income = IncomeRules.IncomeFor(territory, grid);
@@ -126,9 +128,9 @@ public static class UpkeepRules
     /// no treasury), every unit in the territory is destroyed (set to
     /// null) and returns false. The remaining gold is left untouched.
     /// </summary>
-    public static bool ApplyUpkeep(Territory territory, HexGrid grid, Treasury treasury, Difficulty difficulty)
+    public static bool ApplyUpkeep(Territory territory, HexGrid grid, Treasury treasury)
     {
-        int owed = TotalUpkeepFor(territory, grid, difficulty);
+        int owed = TotalUpkeepFor(territory, grid);
         if (owed == 0) return true; // nothing to pay
 
         int available = territory.HasCapital
@@ -172,7 +174,7 @@ public static class UpkeepRules
     /// audio cue at turn-start.
     /// </summary>
     public static bool ApplyUpkeepFor(Player player, IEnumerable<Territory> territories, HexGrid grid, Treasury treasury)
-        => ApplyUpkeepFor(player.Id, player.Difficulty, territories, grid, treasury);
+        => ApplyUpkeepFor(player.Id, territories, grid, treasury);
 
     /// <summary>
     /// Owner-id overload of <see cref="ApplyUpkeepFor(Player, IEnumerable{Territory}, HexGrid, Treasury)"/>,
@@ -183,13 +185,13 @@ public static class UpkeepRules
     /// exact same phantom-turn path as an eliminated player.
     /// </summary>
     public static bool ApplyUpkeepFor(
-        PlayerId ownerId, Difficulty difficulty, IEnumerable<Territory> territories, HexGrid grid, Treasury treasury)
+        PlayerId ownerId, IEnumerable<Territory> territories, HexGrid grid, Treasury treasury)
     {
         bool anyBankrupt = false;
         foreach (Territory territory in territories)
         {
             if (territory.Owner != ownerId) continue;
-            if (!ApplyUpkeep(territory, grid, treasury, difficulty))
+            if (!ApplyUpkeep(territory, grid, treasury))
             {
                 anyBankrupt = true;
             }

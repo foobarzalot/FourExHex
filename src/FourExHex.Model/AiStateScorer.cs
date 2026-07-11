@@ -312,9 +312,8 @@ public static class AiStateScorer
     private static int TerritoryValue(Territory territory, GameState state)
     {
         int tiles = territory.Coords.Count;
-        Difficulty difficulty = state.DifficultyOf(territory.Owner);
         int income = IncomeRules.IncomeFor(territory, state.Grid);
-        int upkeep = UpkeepRules.TotalUpkeepFor(territory, state.Grid, difficulty);
+        int upkeep = UpkeepRules.TotalUpkeepFor(territory, state.Grid);
         int netIncome = income - upkeep;
 
         int gold = territory.HasCapital

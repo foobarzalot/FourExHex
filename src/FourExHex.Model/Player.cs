@@ -36,11 +36,11 @@ public class Player
     public PlayerKind Kind { get; }
 
     /// <summary>
-    /// Difficulty lever: how much upkeep this player's units
-    /// cost per turn, via <see cref="DifficultyRules.UnitUpkeep"/>. Default
+    /// Difficulty lever: what this player pays to buy units and towers, via
+    /// <see cref="DifficultyRules.UnitBaseCost"/> /
+    /// <see cref="DifficultyRules.TowerCost"/>. Default
     /// <see cref="Difficulty.Soldier"/> = the baseline AIs always play at.
-    /// Consumed by <see cref="UpkeepRules"/> (real charging), the AI
-    /// solvency gates, and the lookahead scorer.
+    /// Consumed by <see cref="PurchaseRules"/> and the AI buy gates.
     /// </summary>
     public Difficulty Difficulty { get; }
 

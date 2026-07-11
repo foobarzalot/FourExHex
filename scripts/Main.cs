@@ -68,8 +68,8 @@ public partial class Main : Node2D
                 GameSettings.PlayerKinds[i] = PlayerKind.Computer;
             }
             // FOUREXHEX_DIFFICULTY="recruit,soldier,captain,commander,...":
-            // per-slot difficulty levels. Difficulty is an
-            // upkeep HANDICAP, so a commander slot pays 1.5× upkeep and
+            // per-slot difficulty levels. Difficulty is a purchase-cost
+            // HANDICAP, so a commander slot pays 1.5× for units/towers and
             // should underperform in a headless 6-AI run (and a recruit
             // slot, paying less, should overperform). Comma-separated level
             // names, case-insensitive, up to 6; missing or unknown slots

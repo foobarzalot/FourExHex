@@ -754,8 +754,7 @@ public class GameController
                 && priorAlertCoord != tile.Coord)
             {
                 EconomyOutlook outlook = UpkeepRules.Classify(
-                    alertTerritory, _state.Grid, _state.Treasury,
-                    _state.Turns.CurrentPlayer.Difficulty);
+                    alertTerritory, _state.Grid, _state.Treasury);
                 if (outlook != EconomyOutlook.Healthy)
                 {
                     _hud.SummonCapitalAlertNotice(tile.Coord, outlook);

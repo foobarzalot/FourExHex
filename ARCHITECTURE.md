@@ -715,7 +715,7 @@ Fixed order for the current player:
 2. **Tree growth** — `TreeRules.RunStartOfTurnGrowth` (skipped while `TurnNumber == 1`). Graves on the player's tiles become trees; empty same-color cells with ≥2 neighboring trees become trees. **Neutral ground** (`PlayerId.None`) owns ground but no capital, so it takes a **phantom turn** (`RunPhantomTurnFor`: tree growth + no-op upkeep + log) once per round. `RunNeutralPhantomTurnIfRoundStart` anchors it to slot 0's visit, gated to `TurnNumber > 1 && CurrentPlayerIndex == 0` so it doesn't grow N× faster. Stateless — `TurnState` reconstructs the anchor across save/load and undo. Logged once per round under `Log.LogCategory.Turn` as "Neutral".
 3. **Reset movement** — `HasMovedThisTurn` cleared on the player's units.
 4. **Collect income** — `Treasury.CollectIncomeFor` (skipped while `TurnNumber == 1`; `SeedStartingGold` is the round-1 bankroll). Tree and grave tiles don't pay; everything else pays 1 gold.
-5. **Apply upkeep** — `UpkeepRules.ApplyUpkeepFor`. Per-unit costs from `DifficultyRules.UnitUpkeep` (Soldier baseline: Recruit 2, Soldier 6, Captain 18, Commander 54). A territory that can't pay total upkeep goes bankrupt: every unit becomes a `Grave`, remaining gold stays. `PlaySound(Bankruptcy)` fires once per player if any of its territories went bankrupt.
+5. **Apply upkeep** — `UpkeepRules.ApplyUpkeepFor`. Per-unit costs from the flat `UpkeepRules.UpkeepFor` table (Recruit 2, Soldier 6, Captain 18, Commander 54). A territory that can't pay total upkeep goes bankrupt: every unit becomes a `Grave`, remaining gold stays. `PlaySound(Bankruptcy)` fires once per player if any of its territories went bankrupt.
 6. **Human hand-off** (`RaiseHumanTurnStarted`) if the now-current player is human and the game isn't over: **auto-select their first territory** then fire `HumanTurnStarted`. Auto-select (`AutoSelectFirstTerritoryForHuman`) clears any stale selection, then branches: in Rising Tides with a pending forecast, `TryFocusPendingTide` selects the territory containing the doomed tile and centers the camera on it (see *Rising Tides — Turn-start focus*); otherwise it reuses the Next-Territory picker — `StepTerritorySelection(forward:true)` lands on the largest actionable territory (capital-coord tie-break), a no-op leaving the selection null when nothing is actionable. Gated off for AI, replay, game-over, and when the injected `autoSelectFirstTerritory` flag is false (tutorial record/preview and mechanics tests). Autosave also wires to `HumanTurnStarted`.
 
 Income → upkeep ordering lets the turn's income subsidize upkeep before bankruptcy is checked.
@@ -770,19 +770,19 @@ Dismissal records only on user action (not on show), so a save+reload with the o
 
 ## Difficulty (a per-player economic handicap)
 
-Economic handicap on whoever owns it, per slot, selectable per Human row; defaults `Soldier`. Levels by unit rank: `Recruit` (easiest) … `Commander` (hardest); higher = your own units cost more to buy/keep. Computer slots always `Soldier` — raising an AI's level *weakens* it into bankruptcy, so the UI locks AI rows to baseline (model still supports per-slot AI levels for `FOUREXHEX_DIFFICULTY`). Income is **never** scaled; only upkeep and unit/tower cost.
+Economic handicap on whoever owns it, per slot, selectable per Human row; defaults `Soldier`. Levels by unit rank: `Recruit` (easiest) … `Commander` (hardest); higher = your own units and towers cost more to buy. Computer slots always `Soldier` — the UI locks AI rows to baseline (model still supports per-slot AI levels for `FOUREXHEX_DIFFICULTY`). Purchase cost is the **only** lever: income and upkeep are never scaled (upkeep is the flat per-level table in `UpkeepRules.UpkeepFor`).
 
 Tuning lives in `DifficultyRules` (Model) as integer tables:
 
-| your difficulty | unit upkeep/turn (per tier) | unit cost (`UnitBaseCost` × tier 1–4) | tower |
-|---|---|---|---|
-| Recruit   | 1 / 4 / 13 / 40 | 8 / 16 / 24 / 32  | 12 |
-| Soldier   | 2 / 6 / 18 / 54 | 10 / 20 / 30 / 40 | 15 |
-| Captain   | 3 / 8 / 23 / 68 | 13 / 26 / 39 / 52 | 18 |
-| Commander | 3 / 9 / 27 / 81 | 15 / 30 / 45 / 60 | 20 |
+| your difficulty | unit cost (`UnitBaseCost` × tier 1–4) | tower |
+|---|---|---|
+| Recruit   | 8 / 16 / 24 / 32  | 12 |
+| Soldier   | 10 / 20 / 30 / 40 | 15 |
+| Captain   | 13 / 26 / 39 / 52 | 18 |
+| Commander | 15 / 30 / 45 / 60 | 20 |
 
 - **Plumbing.** `Player.Difficulty` (default `Soldier`), populated by `Player.BuildRoster` from `GameSettings.Difficulties`. Each player row gets a level dropdown; a Computer row pins to Soldier disabled, Human→Computer resets others to Soldier (`MainMenuScene.ApplyDifficultyLock`). `OnStartPressed` writes each row into `GameSettings.Difficulties[i]`. Dropdowns live on the player-setup page: landscape = one row each (swatch | name | role | difficulty); portrait = two-line block. A resize flipping `ScreenLayout.Resolve` rebuilds in place, round-tripping selections through the `GameSettings` arrays.
-- **Lockstep invariant.** `UpkeepRules` and `PurchaseRules` take a `Difficulty` parameter with **no default**, surfacing every consumer. Real charging (`ApplyUpkeepFor` uses `player.Difficulty`; buy paths the current player's), AI solvency gates (`AiCommon.EconomyBefore` + per-unit deltas), `AiSimulator`, `AiStateScorer`, and the HUD economy label / buy-button prices all derive from the same tables.
+- **Lockstep invariant.** `PurchaseRules` takes a `Difficulty` parameter with **no default**, surfacing every consumer. Real buys (the current player's `Difficulty`), the AI buy gates (`AiCommon`), `AiActionCore`'s gold deduction, and the HUD buy-button prices all derive from the same tables via `GameState.DifficultyOf`.
 - **Persistence.** Saved per player in save v7 (`PlayerDto.Difficulty`); missing defaults `Soldier`. Load mirrors it into `GameSettings.Difficulties` before `BuildRoster`.
 - **Diagnostics.** `FOUREXHEX_DIFFICULTY="recruit,…,commander"` sets per-slot levels in the 6AI harness. `GameController` ctor logs a one-shot `difficulties: Red=…` line (`Turn:Info`) when any slot is non-Soldier.
 

@@ -91,8 +91,8 @@ Bake the results:
   proofs are reproducible and the search/sweep runs are restartable.
 - The winner is an **AI proxy at Soldier**: proof means "a baseline AI wins
   from the human's slot," a strong indicator — not a guarantee — that a human
-  can. Tier handicaps (Captain/Commander upkeep) are deliberately absent: the
-  table proves map fairness, not the difficulty curve.
+  can. Tier handicaps (Captain/Commander purchase costs) are deliberately
+  absent: the table proves map fairness, not the difficulty curve.
 - **Fog Of War levels**: AIs plan with full vision (fog blinds only the human
   view), so a fog level's proof is "winnable with full vision" — weaker than
   the freeform/tides proof.

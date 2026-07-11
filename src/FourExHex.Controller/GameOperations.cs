@@ -425,7 +425,7 @@ public class GameOperations
             ownedTerritories++;
             tiles += t.Coords.Count;
             int income = IncomeRules.IncomeFor(t, _state.Grid);
-            int upkeep = UpkeepRules.TotalUpkeepFor(t, _state.Grid, p.Difficulty);
+            int upkeep = UpkeepRules.TotalUpkeepFor(t, _state.Grid);
             totalNet += income - upkeep;
             if (t.HasCapital)
             {
@@ -509,7 +509,7 @@ public class GameOperations
         {
             Player ghost = _state.Turns.CurrentPlayer;
             RunNeutralPhantomTurnIfRoundStart();
-            RunPhantomTurnFor(ghost.Id, ghost.Difficulty, ghost.Name);
+            RunPhantomTurnFor(ghost.Id, ghost.Name);
             _state.Turns.EndTurn();
         }
     }
@@ -617,7 +617,7 @@ public class GameOperations
     /// no-op for neutral (its territories hold no units) but is run anyway so
     /// neutral goes through the exact same path as an eliminated player.
     /// </summary>
-    private void RunPhantomTurnFor(PlayerId ownerId, Difficulty difficulty, string name)
+    private void RunPhantomTurnFor(PlayerId ownerId, string name)
     {
         // Rising Tides erodes every color present on the map, including neutral
         // and eliminated colors' leftover tiles, on their phantom turn.
@@ -628,7 +628,7 @@ public class GameOperations
             TreeRules.RunStartOfTurnGrowth(_state.Grid, ownerId, _state.WaterCoords);
         }
         UpkeepRules.ApplyUpkeepFor(
-            ownerId, difficulty, _state.Territories, _state.Grid, _state.Treasury);
+            ownerId, _state.Territories, _state.Grid, _state.Treasury);
         Log.Info(Log.LogCategory.Turn,
             $"[T{_state.Turns.TurnNumber}] phantom turn for {name} (tree growth + upkeep)");
     }
@@ -728,7 +728,7 @@ public class GameOperations
         {
             return;
         }
-        RunPhantomTurnFor(PlayerId.None, Difficulty.Soldier, "Neutral");
+        RunPhantomTurnFor(PlayerId.None, "Neutral");
     }
 
     // --- Viking Raiders pseudo-turn ----------------------------------------

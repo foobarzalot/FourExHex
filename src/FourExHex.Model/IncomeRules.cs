@@ -20,10 +20,10 @@ public static class IncomeRules
     /// tiles (<see cref="TreeRules.CountIncomeProducingTiles"/> — trees and
     /// graves don't pay) plus <see cref="GoldTileBonus"/> for each gold
     /// income-tile (<see cref="TreeRules.CountGoldIncomeTiles"/>). Income is
-    /// NOT difficulty-scaled: the difficulty handicap acts purely through unit
-    /// upkeep (<see cref="DifficultyRules.UnitUpkeep"/>). The gold earn-rate
-    /// lever lives here so every consumer (real play + AI lookahead) inherits
-    /// it.
+    /// NOT difficulty-scaled: the difficulty handicap acts purely through
+    /// purchase costs (<see cref="DifficultyRules.UnitBaseCost"/> /
+    /// <see cref="DifficultyRules.TowerCost"/>). The gold earn-rate lever
+    /// lives here so every consumer (real play + AI lookahead) inherits it.
     /// </summary>
     public static int IncomeFor(Territory territory, HexGrid grid)
     {

@@ -70,10 +70,10 @@ public static class AiCommon
     /// AND spacing-checked via <see cref="MeetsAiTowerSpacing"/>.
     /// </summary>
     /// <summary>
-    /// The owner's difficulty plus the territory's net
-    /// income (income − upkeep), exactly as real play will charge it.
-    /// Single helper shared by every enumerator so the solvency gates
-    /// can't drift from each other or from <see cref="Treasury"/> /
+    /// The owner's difficulty (for purchase-cost checks) plus the
+    /// territory's net income (income − upkeep), exactly as real play will
+    /// charge it. Single helper shared by every enumerator so the solvency
+    /// gates can't drift from each other or from <see cref="Treasury"/> /
     /// <see cref="UpkeepRules.ApplyUpkeepFor"/>.
     /// </summary>
     private static (Difficulty Difficulty, int NetBefore) EconomyBefore(
@@ -81,7 +81,7 @@ public static class AiCommon
     {
         Difficulty difficulty = state.DifficultyOf(territory.Owner);
         int income = IncomeRules.IncomeFor(territory, state.Grid);
-        int upkeep = UpkeepRules.TotalUpkeepFor(territory, state.Grid, difficulty);
+        int upkeep = UpkeepRules.TotalUpkeepFor(territory, state.Grid);
         return (difficulty, income - upkeep);
     }
 
@@ -155,9 +155,9 @@ public static class AiCommon
                     case TargetKind.Combine:
                         Unit destUnit = (Unit)targetTile.Occupant!;
                         UnitLevel combinedLevel = sourceUnit.Level.CombinedWith(destUnit.Level);
-                        int upkeepDelta = UpkeepRules.UpkeepFor(combinedLevel, difficulty)
-                                          - UpkeepRules.UpkeepFor(sourceUnit.Level, difficulty)
-                                          - UpkeepRules.UpkeepFor(destUnit.Level, difficulty);
+                        int upkeepDelta = UpkeepRules.UpkeepFor(combinedLevel)
+                                          - UpkeepRules.UpkeepFor(sourceUnit.Level)
+                                          - UpkeepRules.UpkeepFor(destUnit.Level);
                         if (UpkeepRules.SurvivesNextUpkeep(gold, netBefore - upkeepDelta))
                         {
                             yield return new AiCandidate(
@@ -196,7 +196,7 @@ public static class AiCommon
         foreach (UnitLevel level in buyLevels)
         {
             if (!PurchaseRules.CanAfford(territory, state.Treasury, level, difficulty)) continue;
-            int upkeep_ = UpkeepRules.UpkeepFor(level, difficulty);
+            int upkeep_ = UpkeepRules.UpkeepFor(level);
             int cost = PurchaseRules.CostFor(level, difficulty);
             bool captureSolvent = UpkeepRules.SurvivesNextUpkeep(gold - cost, netBefore + 1 - upkeep_);
             bool repositionSolvent = UpkeepRules.SurvivesNextUpkeep(gold - cost, netBefore - upkeep_);
@@ -404,9 +404,9 @@ public static class AiCommon
                 continue;
             }
             UnitLevel combinedLevel = unit.Level.CombinedWith(destUnit.Level);
-            int upkeepDelta = UpkeepRules.UpkeepFor(combinedLevel, difficulty)
-                              - UpkeepRules.UpkeepFor(unit.Level, difficulty)
-                              - UpkeepRules.UpkeepFor(destUnit.Level, difficulty);
+            int upkeepDelta = UpkeepRules.UpkeepFor(combinedLevel)
+                              - UpkeepRules.UpkeepFor(unit.Level)
+                              - UpkeepRules.UpkeepFor(destUnit.Level);
             if (!UpkeepRules.SurvivesNextUpkeep(gold, netBefore - upkeepDelta)) continue;
             if (!UnlocksMovementConsumingTarget(unit.Level, destUnit.Level, territory, state, tileIndex)) continue;
 
@@ -433,7 +433,7 @@ public static class AiCommon
         {
             if (!PurchaseRules.CanAfford(territory, state.Treasury, level, difficulty)) continue;
             int cost = PurchaseRules.CostFor(level, difficulty);
-            int buyUpkeep = UpkeepRules.UpkeepFor(level, difficulty);
+            int buyUpkeep = UpkeepRules.UpkeepFor(level);
 
             foreach (HexCoord coord in territory.Coords)
             {
@@ -445,8 +445,8 @@ public static class AiCommon
                 if (!level.CanCombineWith(existingUnit.Level)) continue;
 
                 UnitLevel combinedLevel = level.CombinedWith(existingUnit.Level);
-                int upkeepDelta = UpkeepRules.UpkeepFor(combinedLevel, difficulty)
-                                  - UpkeepRules.UpkeepFor(existingUnit.Level, difficulty)
+                int upkeepDelta = UpkeepRules.UpkeepFor(combinedLevel)
+                                  - UpkeepRules.UpkeepFor(existingUnit.Level)
                                   - buyUpkeep;
                 if (!UpkeepRules.SurvivesNextUpkeep(gold - cost, netBefore - upkeepDelta)) continue;
                 if (!UnlocksMovementConsumingTarget(level, existingUnit.Level, territory, state, tileIndex)) continue;
@@ -513,7 +513,7 @@ public static class AiCommon
 
         if (!PurchaseRules.CanAfford(territory, state.Treasury, level, difficulty)) yield break;
         int cost = PurchaseRules.CostFor(level, difficulty);
-        int levelUpkeep = UpkeepRules.UpkeepFor(level, difficulty);
+        int levelUpkeep = UpkeepRules.UpkeepFor(level);
         if (!UpkeepRules.SurvivesNextUpkeep(gold - cost, netBefore + 1 - levelUpkeep)) yield break;
 
         List<HexCoord> targets = MovementRules.ValidTargets(

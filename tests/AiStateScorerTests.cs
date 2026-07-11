@@ -9,7 +9,7 @@ public class AiStateScorerTests
     private static readonly PlayerId Red = PlayerId.FromIndex(0);
     private static readonly PlayerId Blue = PlayerId.FromIndex(1);
 
-    private static GameState BuildState(Difficulty redDifficulty)
+    private static GameState BuildState()
     {
         // An all-Red 12-tile board → one Red territory. Blue exists only
         // so the roster has two index-ordered slots for the owner lookup.
@@ -17,36 +17,10 @@ public class AiStateScorerTests
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var players = new List<Player>
         {
-            new Player("Red", Red, PlayerKind.Computer, redDifficulty),
+            new Player("Red", Red, PlayerKind.Computer),
             new Player("Blue", Blue, PlayerKind.Computer),
         };
         return new GameState(grid, territories, players, new TurnState(players), new Treasury());
-    }
-
-    [Fact]
-    public void Score_UpkeepHandicap_LowersScoreAsDifficultyRises()
-    {
-        // Same 12-tile board with a Soldier unit (base upkeep 6), zero gold.
-        // Net income per difficulty (income flat 12):
-        //   Recruit:   12 − 4 = 8   (cheaper-than-baseline easy mode)
-        //   Soldier:   12 − 6 = 6   (baseline)
-        //   Commander: 12 − 9 = 3   (1.5× handicap)
-        // All solvent, so the score differs purely via recurring net income
-        // and must fall strictly as difficulty rises.
-        int ScoreFor(Difficulty d)
-        {
-            GameState state = BuildState(d);
-            state.Grid.Get(HexCoord.FromOffset(1, 1))!.Occupant =
-                new Unit(Red, UnitLevel.Soldier);
-            return AiStateScorer.Score(state, Red);
-        }
-
-        int recruit = ScoreFor(Difficulty.Recruit);
-        int soldier = ScoreFor(Difficulty.Soldier);
-        int commander = ScoreFor(Difficulty.Commander);
-
-        Assert.True(recruit > soldier, $"expected recruit {recruit} > soldier {soldier}");
-        Assert.True(soldier > commander, $"expected soldier {soldier} > commander {commander}");
     }
 
     [Fact]
@@ -55,9 +29,9 @@ public class AiStateScorerTests
         // Same board scored with and without a single gold tile. The gold
         // bonus flows through IncomeRules.IncomeFor into the net-income term,
         // so the AI values the gold board strictly higher.
-        GameState plain = BuildState(Difficulty.Soldier);
+        GameState plain = BuildState();
 
-        GameState gilded = BuildState(Difficulty.Soldier);
+        GameState gilded = BuildState();
         gilded.Grid.Get(HexCoord.FromOffset(1, 1))!.IsGold = true;
 
         int plainScore = AiStateScorer.Score(plain, Red);
@@ -80,8 +54,8 @@ public class AiStateScorerTests
         // +GoldTileBonus income blip the existing test covers, the gold
         // tile must add the durable standing premium = TileWeight(10) *
         // GoldTileBonus on top, so the delta clears that floor.
-        GameState plain = BuildState(Difficulty.Soldier);
-        GameState gilded = BuildState(Difficulty.Soldier);
+        GameState plain = BuildState();
+        GameState gilded = BuildState();
         gilded.Grid.Get(HexCoord.FromOffset(1, 1))!.IsGold = true;
 
         int delta = AiStateScorer.Score(gilded, Red) - AiStateScorer.Score(plain, Red);
@@ -138,7 +112,7 @@ public class AiStateScorerTests
     {
         int ScoreWith(bool gold, bool tree)
         {
-            GameState s = BuildState(Difficulty.Soldier);
+            GameState s = BuildState();
             HexTile tile = s.Grid.Get(HexCoord.FromOffset(1, 1))!;
             tile.IsGold = gold;
             if (tree) tile.Occupant = new Tree();
@@ -277,33 +251,28 @@ public class AiStateScorerTests
     }
 
     [Fact]
-    public void Score_SparseRoster_ResolvesOwnerDifficultyBySlot()
+    public void Score_SparseRoster_ScoresSlotFivesBoardWithoutThrowing()
     {
         // Compact roster with a gap: slots 0, 2, 5 present (1,3,4 are None).
-        // The whole board belongs to the slot-5 player, whose
-        // position in the 3-element roster is 2. Scoring must resolve the
-        // owner's difficulty by SLOT, not by indexing the roster at slot 5
-        // (which threw IndexOutOfRange before the fix).
+        // The whole board belongs to the slot-5 player, whose position in
+        // the 3-element roster is 2. Scoring must resolve owners by SLOT,
+        // not by indexing the roster at slot 5 (which threw
+        // IndexOutOfRange before the fix).
         PlayerId orange = PlayerId.FromIndex(5);
-        GameState BuildSparse(Difficulty d)
+        HexGrid grid = TestHelpers.BuildRectGrid(4, 3, orange);
+        grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = new Unit(orange, UnitLevel.Soldier);
+        IReadOnlyList<Territory> terr = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var players = new List<Player>
         {
-            HexGrid grid = TestHelpers.BuildRectGrid(4, 3, orange);
-            grid.Get(HexCoord.FromOffset(1, 1))!.Occupant = new Unit(orange, UnitLevel.Soldier);
-            IReadOnlyList<Territory> terr = TestHelpers.BuildTerritoriesFromGrid(grid);
-            var players = new List<Player>
-            {
-                new Player("Red", PlayerId.FromIndex(0), PlayerKind.Human),
-                new Player("Green", PlayerId.FromIndex(2), PlayerKind.Computer),
-                new Player("Orange", orange, PlayerKind.Computer, d),
-            };
-            return new GameState(grid, terr, players, new TurnState(players), new Treasury());
-        }
+            new Player("Red", PlayerId.FromIndex(0), PlayerKind.Human),
+            new Player("Green", PlayerId.FromIndex(2), PlayerKind.Computer),
+            new Player("Orange", orange, PlayerKind.Computer),
+        };
+        var state = new GameState(grid, terr, players, new TurnState(players), new Treasury());
 
-        int recruit = AiStateScorer.Score(BuildSparse(Difficulty.Recruit), orange);
-        int commander = AiStateScorer.Score(BuildSparse(Difficulty.Commander), orange);
+        int score = AiStateScorer.Score(state, orange);
 
-        // No throw, and the slot-5 owner's difficulty actually drives the
-        // upkeep handicap: harder difficulty → lower score.
-        Assert.True(recruit > commander, $"expected recruit {recruit} > commander {commander}");
+        // 12 owned tiles with positive net income must score positive.
+        Assert.True(score > 0, $"expected sparse-roster score {score} > 0");
     }
 }

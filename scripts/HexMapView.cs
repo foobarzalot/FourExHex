@@ -4644,7 +4644,7 @@ public partial class HexMapView : Node2D, IHexMapView
             if (t.Owner != current.Id) continue;
             if (!t.HasCapital) continue;
             EconomyOutlook outlook = UpkeepRules.Classify(
-                t, _state.Grid, _state.Treasury, current.Difficulty);
+                t, _state.Grid, _state.Treasury);
             if (outlook == EconomyOutlook.Healthy) continue;
             DrawWarningBadgeAt(t.Capital!.Value, outlook);
         }

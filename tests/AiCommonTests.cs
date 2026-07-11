@@ -17,16 +17,16 @@ public class AiCommonTests
     }
 
     [Fact]
-    public void Enumerate_BuyGate_SeesDifficultyScaledUpkeep()
+    public void Enumerate_BuyGate_SeesDifficultyScaledCost()
     {
-        // 20-tile Red territory (income 20, flat at every difficulty), gold
-        // 250, one adjacent Blue tile so buy targets exist. A Commander
-        // unit costs 40 / upkeep 54 at Soldier difficulty, but 60 / 81 at
-        // Commander difficulty (cost base 15 × tier 4; the handicap
-        // tables). Capture solvency gate: gold-cost + 5×(net+1) ≥ 0:
-        //   Soldier:   210 + 5×(21-54) =  +45 → enumerated
-        //   Commander: 190 + 5×(21-81) = -110 → gated out
-        // Same board, only the owner's difficulty differs.
+        // 20-tile Red territory, gold 210, one adjacent Blue tile so buy
+        // targets exist. A Commander unit's upkeep is a flat 54, but its
+        // cost is 40 at Soldier difficulty vs 60 at Commander (cost base
+        // 15 × tier 4; the handicap table). Capture solvency gate:
+        // gold-cost + 5×(net+1) ≥ 0:
+        //   Soldier:   170 + 5×(21-54) =  +5 → enumerated
+        //   Commander: 150 + 5×(21-54) = -15 → gated out
+        // Same board, only the owner's difficulty (and thus cost) differs.
         List<AiCandidate> CandidatesFor(Difficulty d)
         {
             HexGrid grid = TestHelpers.BuildRectGrid(5, 4, Red);
@@ -35,7 +35,7 @@ public class AiCommonTests
                 new Player("Red", PlayerId.FromIndex(0), PlayerKind.Computer, d),
                 new Player("Blue", PlayerId.FromIndex(1), PlayerKind.Computer));
             Territory red = state.Territories.First(t => t.Owner == Red);
-            state.Treasury.SetGold(red.Capital!.Value, 250);
+            state.Treasury.SetGold(red.Capital!.Value, 210);
             return AiCommon.Enumerate(red, state).ToList();
         }
 
