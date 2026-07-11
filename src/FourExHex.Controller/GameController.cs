@@ -1547,9 +1547,14 @@ public class GameController
             // track never enters this step machine, so Instant automation
             // involves no camera movement (it still records the same
             // selection entries; see AutomateInstantStep).
-            SelectActingTerritoryForAutomate(acting, paint: true);
-            _map.CenterOnTerritory(acting);
-            Log.Debug(Log.LogCategory.Automate, $"[automate] pan -> {acting.Capital}");
+            // Only ease the camera when autoplay actually moves to a
+            // different territory — leave it where the user last put it
+            // while one territory takes several consecutive actions.
+            if (SelectActingTerritoryForAutomate(acting, paint: true))
+            {
+                _map.CenterOnTerritory(acting);
+                Log.Debug(Log.LogCategory.Automate, $"[automate] pan -> {acting.Capital}");
+            }
         }
         _ops.ShowHighlightAndRefresh(acting);
         _aiPacer.Schedule(StepAutomateExecute, StepPacing.AiPreviewDelayMs);
@@ -1564,11 +1569,14 @@ public class GameController
     /// entry). The paced track paints the selection
     /// (<see cref="SetSelection"/>: highlight + HUD refresh); the
     /// instant drain records the identical session change with no
-    /// per-move view work.
+    /// per-move view work. Returns true iff the selection actually
+    /// changed — the paced track pans only on a genuine change so it
+    /// doesn't yank the camera back during consecutive same-territory
+    /// moves; the instant track discards the result.
     /// </summary>
-    private void SelectActingTerritoryForAutomate(Territory acting, bool paint)
+    private bool SelectActingTerritoryForAutomate(Territory acting, bool paint)
     {
-        if (ReferenceEquals(_session.SelectedTerritory, acting)) return;
+        if (ReferenceEquals(_session.SelectedTerritory, acting)) return false;
         _inAutomateStep = true;
         try
         {
@@ -1589,6 +1597,7 @@ public class GameController
         {
             _inAutomateStep = false;
         }
+        return true;
     }
 
     private void StepAutomateExecute()

@@ -444,11 +444,57 @@ public partial class GameControllerTests
 
         h.Hud.ClickAutomate();
 
-        // One pan per automated move (the preview beat), aimed at the
-        // acting territory — same look/feel as pressing Next Territory.
-        Assert.Equal(centersBefore + 3, h.Map.CenterCount);
+        // One pan when the acting territory is first selected — same
+        // look/feel as pressing Next Territory. All three scripted moves
+        // act from the SAME Red territory, so the camera eases there once
+        // and then stays put (no re-pan while the selection is unchanged).
+        Assert.Equal(centersBefore + 1, h.Map.CenterCount);
         Assert.NotNull(h.Map.LastCenteredTerritory);
         Assert.Equal(h.Players[0].Id, h.Map.LastCenteredTerritory!.Owner);
+    }
+
+    [Fact]
+    public void Automate_Paced_RepansWhenActingTerritoryChanges()
+    {
+        // Red owns two disconnected territories: {(0,1),(1,1)} and
+        // {(3,0),(4,0)}. The chooser buys a Recruit in each in turn, so the
+        // acting territory CHANGES between the two automate steps — the
+        // camera eases once per distinct territory (guards against an
+        // over-fix that never re-pans).
+        PlayerId red = PlayerId.FromIndex(0);
+        int step = 0;
+        ControllerHarness h = TestHelpers.BuildControllerGame(
+            ownerOverrides: new[]
+            {
+                (0, 1, red), (1, 1, red),
+                (3, 0, red), (4, 0, red),
+            },
+            beforeStart: s =>
+            {
+                foreach (Territory t in s.Territories)
+                {
+                    if (t.Owner == red) s.Treasury.SetGold(t.Capital!.Value, 100);
+                }
+            },
+            automateChooser: (s, c, visited, ru, rng) =>
+            {
+                var reds = s.Territories
+                    .Where(t => t.Owner == red)
+                    .OrderBy(t => t.Capital!.Value)
+                    .ToList();
+                if (step >= reds.Count) return null;
+                Territory terr = reds[step++];
+                HexCoord cap = terr.Capital!.Value;
+                HexCoord dest = terr.Coords.First(
+                    x => !x.Equals(cap) && s.Grid.Get(x)!.Occupant == null);
+                return new AiBuyUnitAction(cap, dest, UnitLevel.Recruit);
+            });
+        int centersBefore = h.Map.CenterCount;
+
+        h.Hud.ClickAutomate();
+
+        // Two distinct acting territories → two eases.
+        Assert.Equal(centersBefore + 2, h.Map.CenterCount);
     }
 
     [Fact]
