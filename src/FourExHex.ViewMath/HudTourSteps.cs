@@ -8,6 +8,12 @@ using System.Collections.Generic;
 /// </summary>
 public enum HudTourStep
 {
+    /// <summary>Opening page: explains how to drive the tour. Highlights no
+    /// HUD element (its entry carries no node).</summary>
+    Intro,
+    /// <summary>The ? button — second, right after the intro, so the tour
+    /// teaches where help lives before walking the play controls.</summary>
+    Help,
     TurnCounter,
     ProfitLoss,
     BuyUnits,
@@ -18,7 +24,6 @@ public enum HudTourStep
     EndTurn,
     Automate,
     Options,
-    Help,
 }
 
 /// <summary>

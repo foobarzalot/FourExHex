@@ -152,6 +152,8 @@ public static class StringKeys
     public const string HudButtonBackToCampaign = "hud.button.back_to_campaign";
 
     // Guided UI tour (HudView.BuildTourSteps).
+    public const string HudTourIntroTitle = "hud.tour.intro.title";
+    public const string HudTourIntroBody = "hud.tour.intro.body";
     public const string HudTourTurnTitle = "hud.tour.turn.title";
     public const string HudTourTurnBody = "hud.tour.turn.body";
     public const string HudTourTreasuryTitle = "hud.tour.treasury.title";
@@ -175,6 +177,12 @@ public static class StringKeys
     public const string HudTourOptionsBody = "hud.tour.options.body";
     public const string HudTourHelpTitle = "hud.tour.help.title";
     public const string HudTourHelpBody = "hud.tour.help.body";
+
+    // Help menu (HudView.OpenHelpMenu, the ? button).
+    public const string HudHelpTitle = "hud.help.title";
+    public const string HudHelpInstructions = "hud.help.instructions";
+    public const string HudHelpTour = "hud.help.tour";
+    public const string HudHelpClose = "hud.help.close";
 
     // Bottom-panel prompts / action hints.
     public const string HudContinueHint = "hud.continue_hint";

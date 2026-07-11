@@ -90,6 +90,9 @@ public partial class HudView : OrientationHud, IHudView
     private HudIconButton _helpButton = null!;
     private HudIconButton _addTextButton = null!;
 
+    // Help menu opened by the ? button — offers Instructions and the guided
+    // UI tour. Built once in BuildUi, shown/hidden on demand.
+    private EscMenu _helpMenu = null!;
     // Guided UI tour (issue #101). Non-null while the tour overlay is up.
     private HudTour? _hudTour;
     // Translucent scrim over the map (behind the HUD widgets) shown while the
@@ -360,16 +363,24 @@ public partial class HudView : OrientationHud, IHudView
         _optionsButton.Pressed += () => EscRequested?.Invoke();
         AudioBus.AttachClick(_optionsButton);
 
-        // Help "?" — opens the guided UI tour. A real serif question mark
-        // (matching the map-gen options affordance) so it reads on mobile with
-        // no tooltip. Reparented per orientation next to Options by the
-        // Build*Bars methods, so it isn't added to a cluster here.
+        // Help "?" — opens the Help menu (Instructions / guided UI tour). A
+        // real serif question mark (matching the map-gen options affordance)
+        // so it reads on mobile with no tooltip. Reparented per orientation
+        // next to Options by the Build*Bars methods, so it isn't added to a
+        // cluster here.
         _helpButton = new HudIconButton("?", SerifFont, 34)
         {
             TooltipText = Strings.Get(StringKeys.HudTooltipHelp),
         };
-        _helpButton.Pressed += EnterTour;
+        _helpButton.Pressed += OpenHelpMenu;
         AudioBus.AttachClick(_helpButton);
+
+        // The Help menu itself: an EscMenu with full key-swallowing (the HUD
+        // doesn't pause while it's up, so hotkeys must not fire underneath).
+        _helpMenu = new EscMenu { SwallowAllKeysWhileOpen = true };
+        _helpMenu.EscapeClosed += () =>
+            Log.Info(Log.LogCategory.Hud, "[help] close (escape)");
+        AddChild(_helpMenu);
 
         // Read-only seed / map-name display tucked in the bottom-left
         // safe-area strip — below the action buttons, sharing the iOS
@@ -447,6 +458,32 @@ public partial class HudView : OrientationHud, IHudView
         return button;
     }
 
+    // ---- Help menu (issue #134) ------------------------------------------
+
+    /// <summary>
+    /// Open the Help menu: Instructions (paged rules explainer — not yet
+    /// implemented) and the guided UI tour. No-op while the tour or the menu
+    /// itself is already up.
+    /// </summary>
+    private void OpenHelpMenu()
+    {
+        if (_hudTour != null || _helpMenu.IsOpen) return;
+
+        _helpMenu.Show(Strings.Get(StringKeys.HudHelpTitle), new EscMenu.Option[]
+        {
+            new(Strings.Get(StringKeys.HudHelpInstructions), () =>
+                Log.Info(Log.LogCategory.Hud, "[help] chose instructions (phase-2 stub)")),
+            new(Strings.Get(StringKeys.HudHelpTour), () =>
+            {
+                Log.Info(Log.LogCategory.Hud, "[help] chose tour");
+                EnterTour();
+            }),
+            new(Strings.Get(StringKeys.HudHelpClose), () =>
+                Log.Info(Log.LogCategory.Hud, "[help] close (button)")),
+        });
+        Log.Info(Log.LogCategory.Hud, "[help] menu open");
+    }
+
     // ---- Guided UI tour (issue #101) -------------------------------------
 
     /// <summary>
@@ -462,7 +499,9 @@ public partial class HudView : OrientationHud, IHudView
         TourStartRequested?.Invoke();
 
         List<HudTour.Entry> steps = BuildTourSteps();
-        if (steps.Count == 0)
+        // The nodeless intro page is always present; anything less than one
+        // real element besides it means there is nothing to tour.
+        if (steps.Count <= 1)
         {
             Log.Debug(Log.LogCategory.Hud, "[tour] no visible elements — not opening");
             return;
@@ -483,10 +522,11 @@ public partial class HudView : OrientationHud, IHudView
     }
 
     /// <summary>
-    /// The ordered, visibility-filtered tour steps: each currently-visible HUD
-    /// element paired with its title/description copy. The four buy buttons
-    /// collapse to a single "Buy units" step (whichever of the four-radio row
-    /// or the collapsed cycle button is showing).
+    /// The ordered tour steps: the always-present nodeless intro page, then
+    /// each currently-visible HUD element (? button first) paired with its
+    /// title/description copy. The four buy buttons collapse to a single
+    /// "Buy units" step (whichever of the four-radio row or the collapsed
+    /// cycle button is showing).
     /// </summary>
     private List<HudTour.Entry> BuildTourSteps()
     {
@@ -508,6 +548,16 @@ public partial class HudView : OrientationHud, IHudView
             ? StringKeys.HudTourBuyBodyCollapsed
             : StringKeys.HudTourBuyBody);
 
+        // Intro page — always present (no node, so no highlight ring): the
+        // "how to drive this tour" text the overlay opens on.
+        steps.Add(new HudTour.Entry(HudTourStep.Intro, null,
+            Strings.Get(StringKeys.HudTourIntroTitle),
+            Strings.Get(StringKeys.HudTourIntroBody)));
+        // The ? button comes right after the intro so the tour teaches where
+        // help lives before walking the play controls.
+        Add(HudTourStep.Help, _helpButton,
+            Strings.Get(StringKeys.HudTourHelpTitle),
+            Strings.Get(StringKeys.HudTourHelpBody));
         Add(HudTourStep.TurnCounter, _statusChip,
             Strings.Get(StringKeys.HudTourTurnTitle),
             Strings.Get(StringKeys.HudTourTurnBody));
@@ -537,9 +587,6 @@ public partial class HudView : OrientationHud, IHudView
         Add(HudTourStep.Options, _optionsButton,
             Strings.Get(StringKeys.HudTourOptionsTitle),
             Strings.Get(StringKeys.HudTourOptionsBody));
-        Add(HudTourStep.Help, _helpButton,
-            Strings.Get(StringKeys.HudTourHelpTitle),
-            Strings.Get(StringKeys.HudTourHelpBody));
 
         return steps;
     }
@@ -1975,6 +2022,11 @@ public partial class HudView : OrientationHud, IHudView
                 // overlays, tutorial modes) lives controller-side in
                 // OnAutomatePressed, same as the button.
                 AutomateClicked?.Invoke();
+                GetViewport().SetInputAsHandled();
+                break;
+            case Key.H:
+                // Same path as the ? button (view-local, no controller event).
+                OpenHelpMenu();
                 GetViewport().SetInputAsHandled();
                 break;
             case Key.Z:

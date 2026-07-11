@@ -21,8 +21,9 @@ using Godot;
 public sealed partial class HudTour : CanvasLayer
 {
     /// <summary>One toured HUD element: the step id, the live node to point at
-    /// (read for its global rect), and the copy shown in the dialog.</summary>
-    public readonly record struct Entry(HudTourStep Step, Control Node, string Title, string Body);
+    /// (read for its global rect; null for the intro page, which highlights
+    /// nothing), and the copy shown in the dialog.</summary>
+    public readonly record struct Entry(HudTourStep Step, Control? Node, string Title, string Body);
 
     /// <summary>Raised once when the tour closes (Close button or Escape).
     /// The host frees this node.</summary>
@@ -88,9 +89,9 @@ public sealed partial class HudTour : CanvasLayer
         //    elements stay visible.
         AddChild(BuildDialog());
 
-        // Always open on the Help step (it explains how to drive the tour);
-        // Next from there wraps to the first element.
-        _cursor.JumpTo(HudTourStep.Help);
+        // Always open on the intro page (it explains how to drive the tour,
+        // highlighting nothing); Next from there steps into the elements.
+        _cursor.JumpTo(HudTourStep.Intro);
         ShowCurrent("enter");
         Log.Info(Log.LogCategory.Hud,
             $"[tour] enter: {_cursor.Count} elements, start={_cursor.Current}");
@@ -156,8 +157,8 @@ public sealed partial class HudTour : CanvasLayer
     {
         // Track the highlight ring to the current element's live rect so it
         // follows layout changes (a newly-visible chip, an orientation flip).
-        Control node = _entries[_cursor.Index].Node;
-        if (node.IsInsideTree() && node.Visible)
+        Control? node = _entries[_cursor.Index].Node;
+        if (node != null && node.IsInsideTree() && node.Visible)
         {
             Rect2 rect = node.GetGlobalRect();
             _ring.Visible = true;
@@ -199,8 +200,9 @@ public sealed partial class HudTour : CanvasLayer
         Vector2 pos = mb.Position;
         for (int i = 0; i < _entries.Count; i++)
         {
-            Control node = _entries[i].Node;
-            if (node.IsInsideTree() && node.Visible && node.GetGlobalRect().HasPoint(pos))
+            Control? node = _entries[i].Node;
+            if (node != null && node.IsInsideTree() && node.Visible
+                && node.GetGlobalRect().HasPoint(pos))
             {
                 if (i != _cursor.Index && _cursor.JumpTo(_entries[i].Step))
                 {

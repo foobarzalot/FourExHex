@@ -34,6 +34,15 @@ public sealed partial class EscMenu : CanvasLayer
     /// </summary>
     public event Action? EscapeClosed;
 
+    /// <summary>
+    /// When true, every key event is consumed in <see cref="_Input"/> while
+    /// the modal is open (Escape still closes it) — matching the guided
+    /// tour's key-swallowing, for hosts that don't pause the tree (the HUD
+    /// Help menu). Default false: pause-driven hosts rely on
+    /// <c>GetTree().Paused</c> and only Escape is intercepted.
+    /// </summary>
+    public bool SwallowAllKeysWhileOpen { get; set; }
+
     public bool IsOpen { get; private set; }
 
     private ColorRect _backdrop = null!;
@@ -145,6 +154,25 @@ public sealed partial class EscMenu : CanvasLayer
         if (keyEvent.Keycode != Key.Escape) return;
         EscapeClosed?.Invoke();
         Hide();
+        GetViewport().SetInputAsHandled();
+    }
+
+    /// <summary>
+    /// Full key-swallow path (<see cref="SwallowAllKeysWhileOpen"/> only).
+    /// Runs before any <c>_UnhandledInput</c>, so HUD hotkeys and map
+    /// shortcuts can't fire underneath the modal — same contract as
+    /// <c>HudTour._Input</c>.
+    /// </summary>
+    public override void _Input(InputEvent @event)
+    {
+        if (!IsOpen || !SwallowAllKeysWhileOpen) return;
+        if (@event is not InputEventKey keyEvent || !keyEvent.Pressed) return;
+
+        if (keyEvent.Keycode == Key.Escape && !keyEvent.Echo)
+        {
+            EscapeClosed?.Invoke();
+            Hide();
+        }
         GetViewport().SetInputAsHandled();
     }
 }
