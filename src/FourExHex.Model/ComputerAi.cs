@@ -230,7 +230,11 @@ public static class ComputerAi
     {
         AiAction? action = BestPositiveDelta(phase, candidates, threshold, baseScore, forPlayer, state, prof);
         if (action != null)
+        {
+            Log.Debug(Log.LogCategory.Ai,
+                $"[chose] {forPlayer} phase={phase} kind={prof.ChosenKind} {action} delta={prof.ChosenDelta}");
             EmitProfile(methodStart, prof.CloneTicks, prof.ApplyTicks, prof.ScoreTicks, prof.TotalCandidates);
+        }
         return action;
     }
 
@@ -246,6 +250,10 @@ public static class ComputerAi
         public int PositiveCandidates;
         public int ObservedBestDelta = int.MinValue;
         public AiActionKind? ObservedBestKind;
+        // Winning candidate of the phase that returns an action — the last
+        // accepted candidate is by construction the one TryPhase returns.
+        public AiActionKind? ChosenKind;
+        public int ChosenDelta;
     }
 
     /// <summary>
@@ -322,6 +330,8 @@ public static class ComputerAi
             {
                 bestDelta = delta;
                 best = candidate.Action;
+                prof.ChosenKind = candidate.Kind;
+                prof.ChosenDelta = delta;
             }
         }
 
