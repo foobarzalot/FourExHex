@@ -75,7 +75,7 @@ public class SaveLoadEquivalenceTests
         // load boundaries don't accidentally let the AI exceed it.
         int currentTurnKey = -1;
         int actionsThisTurn = 0;
-        AiAction? CappedChooser(GameState s, PlayerId c, HashSet<HexCoord> visited, Random rng)
+        AiAction? CappedChooser(GameState s, PlayerId c, HashSet<HexCoord> visited, HashSet<HexCoord> ru, Random rng)
         {
             int key = s.Turns.TurnNumber * 100 + s.Turns.CurrentPlayerIndex;
             if (key != currentTurnKey)
@@ -84,7 +84,7 @@ public class SaveLoadEquivalenceTests
                 actionsThisTurn = 0;
             }
             if (actionsThisTurn >= 1) return null;
-            AiAction? action = ComputerAi.ChooseNextAction(s, c, visited, rng);
+            AiAction? action = ComputerAi.ChooseNextAction(s, c, visited, ru, rng);
             if (action != null) actionsThisTurn++;
             return action;
         }

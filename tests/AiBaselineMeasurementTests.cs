@@ -148,9 +148,9 @@ public class AiBaselineMeasurementTests
         var actionsByType = new Dictionary<string, int>();
         var towerBuilds = new List<TowerBuild>();
         AiAction? TallyingChooser(
-            GameState s, PlayerId forPlayer, HashSet<HexCoord> visited, Random rng)
+            GameState s, PlayerId forPlayer, HashSet<HexCoord> visited, HashSet<HexCoord> repositionedUnits, Random rng)
         {
-            AiAction? action = AiDispatcher.ChooseForCurrentPlayer(s, forPlayer, visited, rng);
+            AiAction? action = AiDispatcher.ChooseForCurrentPlayer(s, forPlayer, visited, repositionedUnits, rng);
             if (action != null)
             {
                 string type = action.GetType().Name;

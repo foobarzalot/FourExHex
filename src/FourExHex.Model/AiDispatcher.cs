@@ -23,6 +23,7 @@ public static class AiDispatcher
         GameState state,
         PlayerId forPlayer,
         HashSet<HexCoord> visitedCapitals,
+        HashSet<HexCoord> repositionedUnits,
         Random rng)
     {
         // The controller guarantees forPlayer == CurrentPlayer.Id
@@ -30,7 +31,7 @@ public static class AiDispatcher
         // current player.
         Player current = state.Turns.CurrentPlayer;
         return current.Kind == PlayerKind.Computer
-            ? ComputerAi.ChooseNextAction(state, forPlayer, visitedCapitals, rng)
+            ? ComputerAi.ChooseNextAction(state, forPlayer, visitedCapitals, repositionedUnits, rng)
             : null;
     }
 }

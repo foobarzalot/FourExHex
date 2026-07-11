@@ -302,45 +302,6 @@ public class GameOperations
     }
 
     /// <summary>
-    /// Mark the unit at <paramref name="destination"/> as having spent
-    /// its action this turn, but only when (a) the just-landed action
-    /// was a pure reposition (own-empty target — captures, chops, and
-    /// combines are already handled by MovementRules.ResolveArrival)
-    /// AND (b) the current player is an AI.
-    ///
-    /// Humans get the relaxed rule (chain a reposition into a move via
-    /// long-press rally or repeat-action), but AIs treat each
-    /// reposition as a consumed action so the multi-action turn loop
-    /// doesn't re-pick the same unit. The gate is on actor KIND, not
-    /// replay-mode, so live and replay agree: a recorded AI reposition
-    /// sets the flag in both paths, a recorded HUMAN one in neither.
-    /// CurrentPlayer is the actor during both live AI execution and
-    /// replay (the replay step machine advances turn state before each
-    /// action beat lands).
-    ///
-    /// Shared by <see cref="ExecuteAiMove"/> and
-    /// <see cref="ExecuteAiBuyUnit"/>; the live↔replay parity is
-    /// pinned by <c>ReplayFidelityTests</c>.
-    /// </summary>
-    private void ConsumeRepositionMoveIfAi(HexCoord destination, bool wasReposition)
-        => ConsumeRepositionMove(destination, wasReposition, _state.Turns.CurrentPlayer.Id);
-
-    /// <summary>
-    /// Owner-aware core of <see cref="ConsumeRepositionMoveIfAi"/>: the
-    /// neutral (viking) actor always consumes repositions — the viking
-    /// phase runs while the CURRENT player may be a human, so the
-    /// current-player kind-gate alone would wrongly leave viking
-    /// repositions re-pickable.
-    /// </summary>
-    private void ConsumeRepositionMove(HexCoord destination, bool wasReposition, PlayerId owner)
-    {
-        if (!wasReposition) return;
-        bool aiActor = owner.IsNone || _state.Turns.CurrentPlayer.Kind == PlayerKind.Computer;
-        if (!aiActor) return;
-        AiActionCore.MarkUnitMoved(destination, _state);
-    }
-
-    /// <summary>
     /// Reset HasMovedThisTurn on every unit owned by
     /// <paramref name="player"/>. Called at the start of that
     /// player's turn.
@@ -1389,7 +1350,6 @@ public class GameOperations
         {
             EmitDestruction(destination, r.Move.Destroyed);
         }
-        ConsumeRepositionMove(destination, r.WasReposition, owner);
 
         DispatchActionSound(destination, r.Move, r.WasCombine);
     }
@@ -1422,9 +1382,6 @@ public class GameOperations
                 $"not a legal {level} placement target.");
         }
 
-        // Same AI semantic as ExecuteAiMove: a buy onto an own empty tile
-        // is treated as consuming the fresh unit's move so the AI doesn't
-        // immediately move it again next call.
         AiApplyResult r = AiActionCore.Buy(capital, destination, level, _state, attacker);
         if (r.Move.WasCapture)
         {
@@ -1434,7 +1391,6 @@ public class GameOperations
         {
             EmitDestruction(destination, r.Move.Destroyed);
         }
-        ConsumeRepositionMoveIfAi(destination, r.WasReposition);
 
         DispatchActionSound(destination, r.Move, r.WasCombine);
     }
@@ -1507,9 +1463,12 @@ public class GameOperations
 
     /// <summary>
     /// Apply a recorded AI tower build (also used by replay playback).
-    /// Only enforces real legality (territory ownership, gold, occupancy);
-    /// AI tower-spacing heuristics live in AiCommon.Enumerate at candidate
-    /// generation time, never gated here — humans aren't bound by them.
+    /// Enforces the universal placement rule
+    /// (<see cref="PurchaseRules.IsValidTowerLocation"/>: empty +
+    /// in-territory) for every actor. The AI's make-way sequence moves
+    /// a resident unit aside as its own discrete beat before this one
+    /// (lowered at the chooser boundary), so an occupied destination
+    /// here is always a bug.
     /// </summary>
     public void ExecuteAiBuildTower(HexCoord capital, HexCoord destination)
     {

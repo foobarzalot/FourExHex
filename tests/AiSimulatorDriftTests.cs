@@ -152,6 +152,19 @@ public class AiSimulatorDriftTests
                 ops.ExecuteAiBuyCombine(bc.Capital, bc.CombineTarget, bc.BuyLevel);
                 break;
             case AiBuildTowerAction bt:
+                // Mirror AiActionLowering: a tower intent on an own
+                // unmoved unit's tile executes as TWO discrete beats —
+                // the make-way reposition to the deterministic escape,
+                // then the build on the vacated tile. The simulator
+                // applies the same net outcome atomically; this sweep
+                // pins that the two-beat real path matches it.
+                if (real.Grid.Get(bt.Destination)?.Occupant is Unit)
+                {
+                    Territory terr = real.Territories.First(t => t.Contains(bt.Destination));
+                    HexCoord escape = PurchaseRules.TowerPushDestination(
+                        bt.Destination, terr, real.Grid)!.Value;
+                    ops.ExecuteAiMove(bt.Destination, escape);
+                }
                 ops.ExecuteAiBuildTower(bt.Capital, bt.Destination);
                 break;
             default:
@@ -194,11 +207,16 @@ public class AiSimulatorDriftTests
         // Fixture-rot guard: if a rules change quietly stops the rich
         // state from producing some action kind, the drift sweep below
         // would still pass while covering less than it claims.
-        List<AiAction> actions = AllCandidateActions(BuildRichState());
+        GameState initial = BuildRichState();
+        List<AiAction> actions = AllCandidateActions(initial);
         Assert.Contains(actions, a => a is AiMoveAction);
         Assert.Contains(actions, a => a is AiBuyUnitAction);
         Assert.Contains(actions, a => a is AiBuyCombineAction);
         Assert.Contains(actions, a => a is AiBuildTowerAction);
+        // Push-out builds (tower onto an own unmoved unit's tile) must be
+        // part of the sweep so the drift check covers the push mutation.
+        Assert.Contains(actions, a =>
+            a is AiBuildTowerAction bt && initial.Grid.Get(bt.Destination)!.Occupant is Unit);
         Assert.True(actions.Count >= 20,
             $"Expected a rich candidate set, got only {actions.Count}.");
     }
@@ -238,6 +256,39 @@ public class AiSimulatorDriftTests
             && mv.Destination == HexCoord.FromOffset(3, 0));
 
         AssertNoDrift(initial);
+    }
+
+    [Fact]
+    public void BuildTower_OnFreeUnitTile_PushesUnitAside_SimAndRealAgree()
+    {
+        // Push-out build: a tower dropped on a tile holding an own
+        // unmoved unit relocates the unit to its deterministic push
+        // destination without consuming its move — identically in the
+        // simulator and the real ExecuteAiBuildTower path.
+        GameState initial = BuildRichState();
+        PlayerId red = initial.Players[0].Id;
+        Territory redTerr = initial.Territories.First(t => t.Owner == red);
+        HexCoord cap = redTerr.Capital!.Value;
+        HexCoord unitTile = HexCoord.FromOffset(1, 1);
+        Assert.IsType<Unit>(initial.Grid.Get(unitTile)!.Occupant); // fixture guard
+        HexCoord expectedEscape = PurchaseRules.TowerPushDestination(
+            unitTile, redTerr, initial.Grid)!.Value;
+
+        var action = new AiBuildTowerAction(cap, unitTile);
+        GameState sim = AiSimulator.Clone(initial);
+        AiSimulator.Apply(action, sim);
+        GameState real = ExecuteViaGameOperations(initial, action);
+
+        foreach (GameState after in new[] { sim, real })
+        {
+            Assert.IsType<Tower>(after.Grid.Get(unitTile)!.Occupant);
+            Unit pushed = Assert.IsType<Unit>(after.Grid.Get(expectedEscape)!.Occupant);
+            Assert.Equal(UnitLevel.Recruit, pushed.Level);
+            Assert.False(pushed.HasMovedThisTurn);
+            Assert.Equal(RedGold - PurchaseRules.TowerCostFor(Difficulty.Soldier),
+                after.Treasury.GetGold(cap));
+        }
+        Assert.Equal(GameStateChecksum.Stringify(sim), GameStateChecksum.Stringify(real));
     }
 
     private static void AssertNoDrift(GameState initial)

@@ -34,18 +34,38 @@ public static class DefenseRules
     /// capture this tile, the attacker's level must be strictly greater.
     /// </summary>
     public static int Defense(HexCoord coord, HexGrid grid, Territory territory)
+        => MaxContribution(coord, grid, territory, committedOnly: false, ignoring: null);
+
+    /// <summary>
+    /// Defense covering <paramref name="coord"/> from occupants that are
+    /// settled for the turn: towers, capitals, and units that have
+    /// already spent their move. A unit with a free move contributes
+    /// nothing — it may march away next action. Same max-over-tile-and-
+    /// same-territory-neighbors scan as <see cref="Defense"/>.
+    /// <paramref name="ignoring"/>, when set, excludes that coord's
+    /// occupant from the scan — AI tower scoring passes the placement
+    /// tile so a candidate tower never disqualifies its own coverage.
+    /// </summary>
+    public static int CommittedDefense(
+        HexCoord coord, HexGrid grid, Territory territory, HexCoord? ignoring = null)
+        => MaxContribution(coord, grid, territory, committedOnly: true, ignoring);
+
+    private static int MaxContribution(
+        HexCoord coord, HexGrid grid, Territory territory, bool committedOnly, HexCoord? ignoring)
     {
         int max = 0;
 
         HexTile? tile = grid.Get(coord);
-        if (tile != null) max = System.Math.Max(max, ContributionAt(tile));
+        if (tile != null && !coord.Equals(ignoring))
+            max = System.Math.Max(max, ContributionAt(tile, committedOnly));
 
         foreach (HexCoord neighbor in coord.Neighbors())
         {
+            if (neighbor.Equals(ignoring)) continue;
             if (!territory.Contains(neighbor)) continue;
             HexTile? neighborTile = grid.Get(neighbor);
             if (neighborTile == null) continue;
-            max = System.Math.Max(max, ContributionAt(neighborTile));
+            max = System.Math.Max(max, ContributionAt(neighborTile, committedOnly));
         }
 
         return max;
@@ -55,11 +75,16 @@ public static class DefenseRules
     /// A tile's total defense contribution: its occupant's base value plus the
     /// mountain high-ground bonus when any defender (a unit, tower, or capital —
     /// anything with a positive contribution) stands on a mountain. An empty
-    /// mountain, or one holding only a tree/grave, contributes nothing.
+    /// mountain, or one holding only a tree/grave, contributes nothing. With
+    /// <paramref name="committedOnly"/>, a unit that still has its move
+    /// contributes nothing (and therefore earns no high-ground bonus either).
     /// </summary>
-    private static int ContributionAt(HexTile tile)
+    private static int ContributionAt(HexTile tile, bool committedOnly = false)
     {
-        int contribution = ContributionOf(tile.Occupant);
+        int contribution =
+            committedOnly && tile.Occupant is Unit u && !u.HasMovedThisTurn
+                ? 0
+                : ContributionOf(tile.Occupant);
         // Only a real defender (contribution > 0) earns the high-ground bonus;
         // an empty mountain — or one with just a tree/grave — adds nothing.
         if (tile.IsMountain && contribution > 0)

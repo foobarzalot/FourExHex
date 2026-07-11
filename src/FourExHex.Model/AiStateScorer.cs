@@ -82,13 +82,31 @@ public static class AiStateScorer
 
     // Bonus awarded per border tile that a newly-placed tower
     // covers, counted only at the moment of the BuildTower action.
-    // Pre-existing towers contribute zero — the bonus is a one-shot
-    // incentive for the act of placing the tower, not a standing
-    // reward for owning towers. Without this term the scorer can't
-    // see what towers are actually for and the AI never builds them.
-    // Per-action rather than static so captures that turn own border tiles
-    // into interior tiles don't lose a standing bonus and read as worse.
+    // Tiles whose committed defense is already tower-grade contribute
+    // zero — the bonus is a one-shot incentive for the act of placing
+    // the tower, not a standing reward for owning towers. Without this
+    // term the scorer can't see what towers are actually for and the
+    // AI never builds them. Per-action rather than static so captures
+    // that turn own border tiles into interior tiles don't lose a
+    // standing bonus and read as worse.
     private const int BuildTowerCoverageBonus = 10;
+
+    // Committed defense at or above this makes a covered border tile
+    // not worth a tower: 2 is a tower's own contribution, so anything
+    // durably defended at tower grade (an existing tower's radius, a
+    // locked soldier+, a locked recruit on a mountain) gains nothing
+    // from another tower. Below it (capital's 1, a locked recruit's 1,
+    // any free-move unit's 0) the tile still counts as coverable.
+    private const int TowerGradeDefense = 2;
+
+    // Extra per-tile credit when a qualifying covered tile currently
+    // reads as defended in Score() (DefenseRules.Defense > 0 — e.g. a
+    // free-move unit, a capital, a weak locked unit). Such a tile gets
+    // no UndefendedBorderPenalty relief from the tower in the base
+    // delta, so without this credit the transiently-defended border
+    // would score half of a naked one. Sized to UndefendedBorderPenalty
+    // so both cases read identically overall.
+    private const int TransientDefenseCredit = UndefendedBorderPenalty;
 
     // Standing reward per point of defense on an OWN tile that borders an
     // enemy (one-sided, applied in Score() like UndefendedBorderPenalty).
@@ -112,12 +130,20 @@ public static class AiStateScorer
     /// One-shot scoring delta awarded for the act of placing a
     /// tower at <paramref name="placement"/>. Counts border tiles
     /// in the new tower's coverage area (the placement tile + its
-    /// same-territory neighbors that border an enemy) and skips
-    /// any that are already tower-defended by some pre-existing
-    /// tower. Returns count × <see cref="BuildTowerCoverageBonus"/>.
-    /// Returns 0 if <paramref name="placement"/> is not in an own
-    /// territory (defensive — callers should only invoke for valid
-    /// BuildTower candidates).
+    /// same-territory neighbors that border an enemy) whose
+    /// committed defense (<see cref="DefenseRules.CommittedDefense"/>,
+    /// ignoring the placement tile so the candidate never
+    /// disqualifies its own coverage) is below
+    /// <see cref="TowerGradeDefense"/>. Each such tile earns
+    /// <see cref="BuildTowerCoverageBonus"/>, plus
+    /// <see cref="TransientDefenseCredit"/> when the tile currently
+    /// reads as defended in <see cref="Score"/> (so the tower's base
+    /// delta sees no penalty relief there). Free-move units never
+    /// count as defense here — they may march away; only towers,
+    /// capitals, and already-moved units are committed. Returns 0 if
+    /// <paramref name="placement"/> is not in an own territory
+    /// (defensive — callers should only invoke for valid BuildTower
+    /// candidates).
     /// </summary>
     public static int BuildTowerBonus(HexCoord placement, GameState state, PlayerId owner)
     {
@@ -125,50 +151,51 @@ public static class AiStateScorer
             state.Territories, owner, placement);
         if (territory == null) return 0;
 
-        int count = 0;
-        if (CoverageTileQualifies(placement, placement, territory, state.Grid, owner))
-        {
-            count++;
-        }
+        int qualifying = 0;
+        int credited = 0;
+        CountCoverageTile(placement, placement, territory, state.Grid, owner,
+            ref qualifying, ref credited);
         foreach (HexCoord neighbor in placement.Neighbors())
         {
             if (!territory.Contains(neighbor)) continue;
-            if (CoverageTileQualifies(neighbor, placement, territory, state.Grid, owner))
-            {
-                count++;
-            }
+            CountCoverageTile(neighbor, placement, territory, state.Grid, owner,
+                ref qualifying, ref credited);
         }
-        return count * BuildTowerCoverageBonus;
+
+        int bonus = qualifying * BuildTowerCoverageBonus + credited * TransientDefenseCredit;
+        if (bonus > 0)
+        {
+            Log.Debug(Log.LogCategory.Ai,
+                $"[tower-bonus] placement={placement} qualifying={qualifying} " +
+                $"credited={credited} bonus={bonus}");
+        }
+        return bonus;
     }
 
     /// <summary>
-    /// True iff <paramref name="tile"/> is a border tile (has at
-    /// least one enemy-colored neighbor) that the tower at
-    /// <paramref name="placement"/> would be the first/only tower
-    /// to cover. We exclude any tower that lives at
-    /// <paramref name="placement"/> itself (the new tower we're
-    /// scoring) so the new tower never disqualifies its own tiles.
+    /// Classify one coverage tile for <see cref="BuildTowerBonus"/>:
+    /// a border tile whose committed defense (placement excluded) is
+    /// below tower grade bumps <paramref name="qualifying"/>, and
+    /// additionally bumps <paramref name="credited"/> when any
+    /// defense — committed or transient — already covers it.
     /// </summary>
-    private static bool CoverageTileQualifies(
+    private static void CountCoverageTile(
         HexCoord tile,
         HexCoord placement,
         Territory territory,
         HexGrid grid,
-        PlayerId owner)
+        PlayerId owner,
+        ref int qualifying,
+        ref int credited)
     {
-        if (!AiCommon.IsBorderTile(tile, grid, owner)) return false;
-
-        HexTile? selfTile = grid.Get(tile);
-        if (!tile.Equals(placement) && selfTile?.Occupant is Tower) return false;
-
-        foreach (HexCoord neighbor in tile.Neighbors())
+        if (!AiCommon.IsBorderTile(tile, grid, owner)) return;
+        if (DefenseRules.CommittedDefense(tile, grid, territory, ignoring: placement)
+            >= TowerGradeDefense)
         {
-            if (neighbor.Equals(placement)) continue;
-            if (!territory.Contains(neighbor)) continue;
-            HexTile? nt = grid.Get(neighbor);
-            if (nt?.Occupant is Tower) return false;
+            return;
         }
-        return true;
+        qualifying++;
+        if (DefenseRules.Defense(tile, grid, territory) > 0) credited++;
     }
 
     /// <summary>

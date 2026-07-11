@@ -34,40 +34,16 @@ public readonly record struct AiCandidate(AiAction Action, AiActionKind Kind);
 public static class AiCommon
 {
     /// <summary>
-    /// Minimum hex distance between two AI-built towers in the same
-    /// territory. 3 means a gap of two tiles must lie between any two
-    /// friendly towers — purely an AI heuristic to prevent redundant
-    /// clustering on the same border. Humans aren't bound by it.
-    /// </summary>
-    public const int MinTowerSpacing = 3;
-
-    /// <summary>
-    /// True iff <paramref name="coord"/> is at least
-    /// <see cref="MinTowerSpacing"/> hex distance from every existing
-    /// same-territory tower. Used to filter AI tower-placement
-    /// candidates so the AI doesn't cluster towers redundantly.
-    /// </summary>
-    public static bool MeetsAiTowerSpacing(HexCoord coord, Territory territory, HexGrid grid)
-    {
-        foreach (HexCoord c in territory.Coords)
-        {
-            if (c.Equals(coord)) continue;
-            HexTile? other = grid.Get(c);
-            if (other?.Occupant is not Tower) continue;
-            if (HexCoord.Distance(coord, c) < MinTowerSpacing) return false;
-        }
-        return true;
-    }
-
-    /// <summary>
     /// Every legal, solvent AI action in <paramref name="territory"/>
     /// for the current game state. Results are tagged with an
     /// <see cref="AiActionKind"/> so callers can group / score
     /// without re-classifying. Self-combine moves (source == dest,
     /// which <see cref="MovementRules.ValidTargets"/> trivially
     /// includes because a unit can "combine with itself") are
-    /// filtered out. Tower builds are restricted to border tiles
-    /// AND spacing-checked via <see cref="MeetsAiTowerSpacing"/>.
+    /// filtered out. Tower builds are restricted to border tiles;
+    /// proximity to existing towers is a scoring concern
+    /// (<see cref="AiStateScorer.BuildTowerBonus"/> discounts
+    /// already-covered tiles), never a legality filter.
     /// </summary>
     /// <summary>
     /// The owner's difficulty (for purchase-cost checks) plus the
@@ -238,8 +214,8 @@ public static class AiCommon
         // Towers have no upkeep and don't change income, so post-net
         // equals netBefore; the action just drains TowerCost gold.
         // Only considered for border tiles — an interior tower defends
-        // nothing — and AI-only spacing (MeetsAiTowerSpacing) prevents
-        // redundant towers clustered on the same border.
+        // nothing. A tile holding an own unmoved unit qualifies via the
+        // push-out rule (IsValidTowerLocationWithPush).
         if (PurchaseRules.CanAffordTower(territory, state.Treasury, difficulty)
             && UpkeepRules.SurvivesNextUpkeep(gold - PurchaseRules.TowerCostFor(difficulty), netBefore))
         {
@@ -248,8 +224,7 @@ public static class AiCommon
                 HexTile? tile = state.Grid.Get(coord);
                 if (tile == null) continue;
                 if (!IsBorderTile(coord, state.Grid, owner)) continue;
-                if (!PurchaseRules.IsValidTowerLocation(tile, territory, state.Grid)) continue;
-                if (!MeetsAiTowerSpacing(coord, territory, state.Grid)) continue;
+                if (!PurchaseRules.IsValidTowerLocationWithPush(tile, territory, state.Grid)) continue;
                 yield return new AiCandidate(
                     new AiBuildTowerAction(territory.Capital!.Value, coord),
                     AiActionKind.Tower);
@@ -539,8 +514,12 @@ public static class AiCommon
     }
 
     /// <summary>
-    /// Phase 4a: tower placements — border tiles that pass
-    /// <see cref="MeetsAiTowerSpacing"/> and the gold solvency gate.
+    /// Phase 4a: tower placements — border tiles that pass the gold
+    /// solvency gate, including tiles holding an own unmoved unit that
+    /// a push-out build would relocate
+    /// (<see cref="PurchaseRules.IsValidTowerLocationWithPush"/>).
+    /// Proximity to existing towers is not filtered here; overlap is
+    /// discounted by <see cref="AiStateScorer.BuildTowerBonus"/>.
     /// </summary>
     public static IEnumerable<AiCandidate> EnumeratePhase4Towers(
         Territory territory,
@@ -559,8 +538,7 @@ public static class AiCommon
             HexTile? tile = state.Grid.Get(coord);
             if (tile == null) continue;
             if (!IsBorderTile(coord, state.Grid, territory.Owner)) continue;
-            if (!PurchaseRules.IsValidTowerLocation(tile, territory, state.Grid)) continue;
-            if (!MeetsAiTowerSpacing(coord, territory, state.Grid)) continue;
+            if (!PurchaseRules.IsValidTowerLocationWithPush(tile, territory, state.Grid)) continue;
             yield return new AiCandidate(
                 new AiBuildTowerAction(territory.Capital!.Value, coord),
                 AiActionKind.Tower);

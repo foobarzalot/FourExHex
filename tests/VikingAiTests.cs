@@ -199,7 +199,7 @@ public class VikingAiTests
         GameState state = MakeState(grid);
 
         AiAction? action = ComputerAi.ChooseNextAction(
-            state, PlayerId.None, new HashSet<HexCoord>(), new Random(7));
+            state, PlayerId.None, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new Random(7));
 
         AiMoveAction move = Assert.IsType<AiMoveAction>(action);
         Assert.Equal(vikingTile, move.Source);
@@ -218,7 +218,7 @@ public class VikingAiTests
         GameState state = MakeState(grid);
 
         AiAction? action = ComputerAi.ChooseNextAction(
-            state, PlayerId.None, new HashSet<HexCoord>(), new Random(7));
+            state, PlayerId.None, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new Random(7));
 
         Assert.Null(action);
     }
@@ -252,7 +252,7 @@ public class VikingAiTests
         GameState state = MakeState(BuildRepositionStrip(PlayerId.None));
 
         AiAction? action = ComputerAi.ChooseNextAction(
-            state, PlayerId.None, new HashSet<HexCoord>(), new Random(7));
+            state, PlayerId.None, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new Random(7));
 
         Assert.Null(action);
     }
@@ -265,7 +265,7 @@ public class VikingAiTests
         GameState state = MakeState(BuildRepositionStrip(Blue));
 
         AiAction? action = ComputerAi.ChooseNextAction(
-            state, Blue, new HashSet<HexCoord>(), new Random(7));
+            state, Blue, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new Random(7));
 
         AiMoveAction move = Assert.IsType<AiMoveAction>(action);
         Assert.Equal(HexCoord.FromOffset(0, 0), move.Source);

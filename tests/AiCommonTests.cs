@@ -197,22 +197,18 @@ public class AiCommonTests
     }
 
     [Fact]
-    public void Enumerate_Skips_Tower_Within_MinSpacing_Of_Friendly_Tower()
+    public void Enumerate_Emits_Tower_Candidate_Adjacent_To_Friendly_Tower()
     {
-        // 6-tile Red strip cols 0..5 + Blue col 6 so every Red tile
-        // except (0,0) is on a path toward the border. An existing
-        // Red tower sits at (1,0). With ample gold and a recruit on
-        // (5,0) (so net income is non-negative), the tower-build
-        // candidates should NOT include any coord at distance < 3
-        // from (1,0) — i.e., (0,0), (2,0), and (3,0) must be absent.
-        // (4,0) and (5,0) are at distance >= 3 and may appear (if
-        // they're border tiles and pass the other checks).
+        // Overlap with an existing tower is a SCORING concern
+        // (AiStateScorer.BuildTowerBonus discounts already-covered
+        // tiles), not a legality filter: the border tile (5,0) must
+        // enumerate even though a friendly tower sits right next to
+        // it at (4,0).
         var grid = new HexGrid();
         for (int col = 0; col <= 5; col++)
             grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
         grid.Add(new HexTile(HexCoord.FromOffset(6, 0), Blue));
-        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Tower();
-        grid.Get(HexCoord.FromOffset(5, 0))!.Occupant = new Unit(Red);
+        grid.Get(HexCoord.FromOffset(4, 0))!.Occupant = new Tower();
         GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
         HexCoord cap = state.Territories.First(t => t.Owner == Red).Capital!.Value;
         state.Treasury.SetGold(cap, 100);
@@ -223,13 +219,51 @@ public class AiCommonTests
             .Select(c => (AiBuildTowerAction)c.Action)
             .ToList();
 
-        foreach (AiBuildTowerAction t in towers)
-        {
-            int dist = HexCoord.Distance(t.Destination, HexCoord.FromOffset(1, 0));
-            Assert.True(dist >= AiCommon.MinTowerSpacing,
-                $"AI tower candidate at {t.Destination} is distance {dist} from existing tower at (1,0); " +
-                $"must be >= {AiCommon.MinTowerSpacing}.");
-        }
+        Assert.Contains(towers, t => t.Destination == HexCoord.FromOffset(5, 0));
+    }
+
+    [Fact]
+    public void EnumeratePhase4Towers_Emits_PushableUnitTile()
+    {
+        // The border tile (5,0) holds an unmoved Red recruit with an
+        // empty in-territory neighbor (4,0) — a push-out build is
+        // legal, so the tile must appear as a tower candidate.
+        var grid = new HexGrid();
+        for (int col = 0; col <= 5; col++)
+            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(6, 0), Blue));
+        grid.Get(HexCoord.FromOffset(5, 0))!.Occupant = new Unit(Red);
+        GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
+        HexCoord cap = state.Territories.First(t => t.Owner == Red).Capital!.Value;
+        state.Treasury.SetGold(cap, 100);
+
+        Territory red = state.Territories.First(t => t.Owner == Red);
+        List<AiCandidate> candidates = AiCommon.EnumeratePhase4Towers(red, state).ToList();
+
+        Assert.Contains(candidates, c =>
+            c.Action is AiBuildTowerAction bt && bt.Destination == HexCoord.FromOffset(5, 0));
+    }
+
+    [Fact]
+    public void EnumeratePhase4Towers_Skips_BoxedInUnitTile()
+    {
+        // Same shape, but the recruit's only in-territory neighbor
+        // (4,0) is blocked by a tree — no escape, no push, no candidate.
+        var grid = new HexGrid();
+        for (int col = 0; col <= 5; col++)
+            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(6, 0), Blue));
+        grid.Get(HexCoord.FromOffset(4, 0))!.Occupant = new Tree();
+        grid.Get(HexCoord.FromOffset(5, 0))!.Occupant = new Unit(Red);
+        GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
+        HexCoord cap = state.Territories.First(t => t.Owner == Red).Capital!.Value;
+        state.Treasury.SetGold(cap, 100);
+
+        Territory red = state.Territories.First(t => t.Owner == Red);
+        List<AiCandidate> candidates = AiCommon.EnumeratePhase4Towers(red, state).ToList();
+
+        Assert.DoesNotContain(candidates, c =>
+            c.Action is AiBuildTowerAction bt && bt.Destination == HexCoord.FromOffset(5, 0));
     }
 
     [Fact]

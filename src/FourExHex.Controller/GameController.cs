@@ -71,7 +71,7 @@ public class GameController
         IHexMapView map,
         IHudView hud,
         int? seed = null,
-        Func<GameState, PlayerId, HashSet<HexCoord>, Random, AiAction?>? aiChooser = null,
+        Func<GameState, PlayerId, HashSet<HexCoord>, HashSet<HexCoord>, Random, AiAction?>? aiChooser = null,
         IAiPacer? aiPacer = null,
         int maxTurnNumber = int.MaxValue,
         Replay? loadedReplay = null,
@@ -84,11 +84,15 @@ public class GameController
         Func<bool>? replayIsInstantMode = null,
         Func<bool>? isReplayPaused = null,
         bool autoSelectFirstTerritory = true,
-        Func<GameState, PlayerId, HashSet<HexCoord>, Random, AiAction?>? automateChooser = null,
+        Func<GameState, PlayerId, HashSet<HexCoord>, HashSet<HexCoord>, Random, AiAction?>? automateChooser = null,
         Func<bool>? automateIsInstantMode = null)
     {
         _autoSelectFirstTerritory = autoSelectFirstTerritory;
-        _automateChooser = automateChooser ?? ComputerAi.ChooseNextAction;
+        // Both chooser tracks run through AiActionLowering: it owns the
+        // AI's per-turn decision state (make-way tower lowering + the
+        // reposition loop-guard set) so drivers and replay never see it.
+        _automateLowering = new AiActionLowering(automateChooser ?? ComputerAi.ChooseNextAction);
+        _automateChooser = _automateLowering.Choose;
         _automateIsInstantMode = automateIsInstantMode ?? (() => false);
         Func<bool> aiSilent = aiSilentMode ?? (() => false);
         _humanActionValidator = humanActionValidator;
@@ -141,7 +145,7 @@ public class GameController
             ops: _ops,
             recorder: _recorder,
             aiPacer: _aiPacer,
-            aiChooser: aiChooser ?? ComputerAi.ChooseNextAction,
+            aiChooser: new AiActionLowering(aiChooser ?? ComputerAi.ChooseNextAction).Choose,
             aiSilentMode: aiSilent,
             isReplayPaused: isReplayPaused ?? (() => false));
 
@@ -434,10 +438,12 @@ public class GameController
 
     // --- Automate (AI finishes the human's turn) --------------------------
     // The chooser the Automate loop asks for the current human's next
-    // action. Unlike the AI driver's chooser (production:
+    // action — the AiActionLowering wrap over the injected inner chooser.
+    // Unlike the AI driver's chooser (production:
     // AiDispatcher.ChooseForCurrentPlayer, which returns null for a
-    // Human slot), this one is invoked FOR a human slot, so it defaults
-    // to ComputerAi.ChooseNextAction directly. Tests inject scripts.
+    // Human slot), this one is invoked FOR a human slot, so the inner
+    // default is ComputerAi.ChooseNextAction directly. Tests inject scripts.
+    private readonly AiActionLowering _automateLowering;
     private readonly Func<GameState, PlayerId, HashSet<HexCoord>, Random, AiAction?> _automateChooser;
     private bool _automating;
     // Latched when automation stops because the chooser ran dry
@@ -1082,11 +1088,10 @@ public class GameController
     }
 
     /// <summary>
-    /// Tower placement target: an empty tile inside the currently
-    /// selected territory, at least
-    /// <see cref="PurchaseRules.MinTowerSpacing"/> hexes from any
-    /// existing same-territory tower. Delegates to
-    /// <see cref="PurchaseRules.IsValidTowerLocation"/>.
+    /// Tower placement target for a human click: an empty tile inside
+    /// the currently selected territory. Delegates to the strict
+    /// <see cref="PurchaseRules.IsValidTowerLocation"/> — the push-out
+    /// rule is AI/automate-only and never offered to clicks.
     /// </summary>
     private bool IsValidTowerTarget(HexCoord coord)
     {
@@ -1361,11 +1366,12 @@ public class GameController
             Capital = capital,
             To = destination,
         };
-        _state.Treasury.SetGold(
-            capital, _state.Treasury.GetGold(capital) - PurchaseRules.TowerCostFor(CurrentDifficulty));
+        // Shared bare mutation (gold deduct + tower drop). The strict
+        // IsValidTowerTarget gate upstream guarantees the destination is
+        // empty, so the core's push-out branch never fires for a click.
+        AiActionCore.BuildTower(capital, destination, _state, _session.SelectedTerritory);
 
         HexTile dst = _state.Grid.Get(destination)!;
-        dst.Occupant = new Tower();
         if (dst.IsMountain)
         {
             // Towers may stand on mountains for the +1 bonus.
@@ -1489,6 +1495,9 @@ public class GameController
         TrackHandler(OnCancelActionPressedBody);
         _automating = true;
         _automateVisited.Clear();
+        // Fresh session: same-turn restarts (after an interruption or
+        // undo) must not inherit a stale make-way stash or loop-guard.
+        _automateLowering.Reset();
         _automateSteps = 0;
         _pendingAutomateAction = null;
         Log.Debug(Log.LogCategory.Automate,

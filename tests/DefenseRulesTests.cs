@@ -277,6 +277,87 @@ public class DefenseRulesTests
         Assert.Equal(2, DefenseRules.Defense(new HexCoord(1, 0), grid, territory));
     }
 
+    // --- CommittedDefense -------------------------------------------------
+    //
+    // Defense from occupants that are settled for the turn: towers,
+    // capitals, and units that have already spent their move. Units with a
+    // free move contribute nothing — they may march away. Used by AI tower
+    // scoring to decide whether a border tile is already durably covered.
+
+    [Fact]
+    public void CommittedDefense_IgnoresFreeUnit()
+    {
+        (HexGrid grid, Territory territory) = BuildBlob(
+            Red, null,
+            new HexCoord(0, 0), new HexCoord(1, 0));
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Unit(Red, UnitLevel.Soldier);
+
+        Assert.Equal(2, DefenseRules.Defense(new HexCoord(0, 0), grid, territory));
+        Assert.Equal(0, DefenseRules.CommittedDefense(new HexCoord(0, 0), grid, territory));
+        Assert.Equal(0, DefenseRules.CommittedDefense(new HexCoord(1, 0), grid, territory));
+    }
+
+    [Fact]
+    public void CommittedDefense_CountsLockedUnit_IncludingRadiation()
+    {
+        (HexGrid grid, Territory territory) = BuildBlob(
+            Red, null,
+            new HexCoord(0, 0), new HexCoord(1, 0));
+        grid.Get(new HexCoord(0, 0))!.Occupant =
+            new Unit(Red, UnitLevel.Soldier) { HasMovedThisTurn = true };
+
+        Assert.Equal(2, DefenseRules.CommittedDefense(new HexCoord(0, 0), grid, territory));
+        Assert.Equal(2, DefenseRules.CommittedDefense(new HexCoord(1, 0), grid, territory));
+    }
+
+    [Fact]
+    public void CommittedDefense_LockedRecruitOnMountain_EarnsHighGround()
+    {
+        // Locked recruit (1) + mountain (+1) = 2; the same recruit with
+        // its move intact contributes nothing, mountain or not.
+        (HexGrid grid, Territory territory) = BuildBlob(
+            Red, null,
+            new HexCoord(0, 0), new HexCoord(1, 0));
+        grid.Get(new HexCoord(0, 0))!.IsMountain = true;
+        grid.Get(new HexCoord(0, 0))!.Occupant =
+            new Unit(Red) { HasMovedThisTurn = true };
+
+        Assert.Equal(2, DefenseRules.CommittedDefense(new HexCoord(0, 0), grid, territory));
+
+        grid.Get(new HexCoord(0, 0))!.Unit!.HasMovedThisTurn = false;
+        Assert.Equal(0, DefenseRules.CommittedDefense(new HexCoord(0, 0), grid, territory));
+    }
+
+    [Fact]
+    public void CommittedDefense_CountsTowersAndCapitals()
+    {
+        (HexGrid grid, Territory territory) = BuildBlob(
+            Red, new HexCoord(0, 0),
+            new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(2, 0));
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Capital();
+        grid.Get(new HexCoord(2, 0))!.Occupant = new Tower();
+
+        Assert.Equal(1, DefenseRules.CommittedDefense(new HexCoord(0, 0), grid, territory));
+        Assert.Equal(2, DefenseRules.CommittedDefense(new HexCoord(1, 0), grid, territory));
+    }
+
+    [Fact]
+    public void CommittedDefense_IgnoringCoord_ExcludesThatContribution()
+    {
+        // With the tower's coord ignored, nothing else defends: the
+        // scorer uses this to keep a new tower from disqualifying its
+        // own coverage tiles.
+        (HexGrid grid, Territory territory) = BuildBlob(
+            Red, null,
+            new HexCoord(0, 0), new HexCoord(1, 0));
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Tower();
+
+        Assert.Equal(0, DefenseRules.CommittedDefense(
+            new HexCoord(1, 0), grid, territory, ignoring: new HexCoord(0, 0)));
+        Assert.Equal(0, DefenseRules.CommittedDefense(
+            new HexCoord(0, 0), grid, territory, ignoring: new HexCoord(0, 0)));
+    }
+
     // --- BlockingDefenders ----------------------------------------------
     //
     // Identifies the specific defender coords whose contribution >= attacker

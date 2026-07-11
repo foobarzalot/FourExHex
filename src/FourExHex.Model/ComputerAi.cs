@@ -59,12 +59,19 @@ public static class ComputerAi
     /// phases 1–3, no positive-delta candidate in phase 4).
     /// <paramref name="visitedCapitals"/> is mutated: territories
     /// yielding no action in any phase are recorded so subsequent
-    /// calls skip them.
+    /// calls skip them. <paramref name="repositionedUnits"/> is
+    /// caller-owned AI decision state (the controller's loop guard):
+    /// coords of units already repositioned this turn, excluded from
+    /// phase 4b so the search can't ping-pong a unit between border
+    /// tiles — repositions never set <see cref="Unit.HasMovedThisTurn"/>
+    /// (that flag is the real movement-consumption rule), so without
+    /// this set 4b would re-enumerate them forever.
     /// </summary>
     public static AiAction? ChooseNextAction(
         GameState state,
         PlayerId forPlayer,
         HashSet<HexCoord> visitedCapitals,
+        HashSet<HexCoord> repositionedUnits,
         Random rng)
     {
         long methodStart = Log.Stamp();
@@ -163,6 +170,9 @@ public static class ComputerAi
                 // Phase 4b: defensive repositions (optional — doing nothing is valid)
                 foreach (HexCoord unitCoord in MovementRules.MovableUnitsInPowerOrder(t, forPlayer, state.Grid))
                 {
+                    // Loop guard: a unit the caller already repositioned
+                    // this turn is settled — never re-reposition it.
+                    if (repositionedUnits.Contains(unitCoord)) continue;
                     Unit unit = state.Grid.Get(unitCoord)!.Unit!;
                     AiAction? p4b = TryPhase("p4b", AiCommon.EnumeratePhase4bForUnit(unitCoord, unit, t, state, tileIndex),
                         0, methodStart, baseScore, forPlayer, state, prof);

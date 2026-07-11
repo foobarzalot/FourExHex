@@ -37,9 +37,9 @@ public class GameControllerRngTests
         var map = new MockHexMapView();
         var hud = new MockHudView();
         var log = new List<string>();
-        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> visited, Random rng)
+        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> visited, HashSet<HexCoord> ru, Random rng)
         {
-            AiAction? action = ComputerAi.ChooseNextAction(s, c, visited, rng);
+            AiAction? action = ComputerAi.ChooseNextAction(s, c, visited, ru, rng);
             log.Add(action?.ToString() ?? "<end>");
             return action;
         }

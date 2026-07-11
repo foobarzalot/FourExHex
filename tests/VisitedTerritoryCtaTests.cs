@@ -353,7 +353,7 @@ public class VisitedTerritoryCtaTests
                 (0, 1, red), (1, 1, red),
                 (3, 1, red), (4, 1, red),
             },
-            automateChooser: (s, c, visited, rng) => null);
+            automateChooser: (s, c, visited, ru, rng) => null);
 
         h.Hud.ClickAutomate();
 
@@ -383,7 +383,7 @@ public class VisitedTerritoryCtaTests
         // Skip StartGame (no gold seeded, AI loop dormant) and refresh.
         var controller = new GameController(
             state, session, map, hud,
-            aiChooser: (_, _, _, _) => null,
+            aiChooser: (_, _, _, _, _) => null,
             aiPacer: new QueuedAiPacer());
 
         controller.RefreshViewsForTutorial();
@@ -406,7 +406,7 @@ public class VisitedTerritoryCtaTests
         int played = 0;
         ControllerHarness h = TestHelpers.BuildControllerGame(
             ownerOverrides: new[] { (0, 1, red), (1, 1, red) },
-            automateChooser: (s, c, visited, rng) => played++ == 0
+            automateChooser: (s, c, visited, ru, rng) => played++ == 0
                 ? new AiBuyUnitAction(
                     HexCoord.FromOffset(0, 1), HexCoord.FromOffset(1, 1), UnitLevel.Recruit)
                 : null);

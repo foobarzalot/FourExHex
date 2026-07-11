@@ -40,7 +40,7 @@ public class GameControllerAbandonTests
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
 
         DeferredAiPacer pacer = new();
-        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> visited, Random rng) => null;
+        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> visited, HashSet<HexCoord> ru, Random rng) => null;
         var controller = new GameController(
             state, new SessionState(), new MockHexMapView(), new MockHudView(),
             seed: 1, aiPacer: pacer, aiChooser: Chooser);

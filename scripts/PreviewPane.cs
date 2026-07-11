@@ -144,8 +144,10 @@ public sealed partial class PreviewPane : Control
             // While the script has beats, opponents replay their recorded
             // moves; once it's exhausted the session graduates to free
             // play and real AI (AiDispatcher) takes over the opponents.
-            aiChooser: (s, c, v, r) => _preview!.IsComplete
-                ? AiDispatcher.ChooseForCurrentPlayer(s, c, v, r)
+            // (ru = the controller's reposition loop-guard set; the
+            // scripted replayer doesn't decide anything, so it ignores it.)
+            aiChooser: (s, c, v, ru, r) => _preview!.IsComplete
+                ? AiDispatcher.ChooseForCurrentPlayer(s, c, v, ru, r)
                 : _replayAi!.ChooseNextAction(s, c, v, r),
             aiPacer: new GodotAiPacer(new SceneTreeTimerFactory(GetTree())),
             humanActionValidator: _preview.TryAccept,

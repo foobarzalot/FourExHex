@@ -107,13 +107,10 @@ public static class AiSimulator
         {
             Reconcile(state, attacker.Capital);
         }
-
-        if (r.WasReposition)
-        {
-            // Unconditional mark — the simulator only ever runs for
-            // Computer actors, so no live-play kind-gate is needed here.
-            AiActionCore.MarkUnitMoved(destination, state);
-        }
+        // A pure reposition leaves HasMovedThisTurn=false — the flag is
+        // the real movement-consumption rule, matching live execution.
+        // The AI's own "don't re-pick this unit" bookkeeping is the
+        // controller-owned repositionedUnits set, not model state.
     }
 
     private static void ApplyBuy(HexCoord capital, HexCoord destination, UnitLevel level, GameState state)
@@ -126,11 +123,8 @@ public static class AiSimulator
         {
             Reconcile(state, capital);
         }
-
-        if (r.WasReposition)
-        {
-            AiActionCore.MarkUnitMoved(destination, state);
-        }
+        // A buy onto own-empty is a reposition-class arrival: the fresh
+        // unit stays actionable, exactly as live execution leaves it.
     }
 
     private static void ApplyBuyCombine(HexCoord capital, HexCoord combineTarget, UnitLevel level, GameState state)
@@ -147,7 +141,24 @@ public static class AiSimulator
     {
         Territory? territory = TerritoryLookup.FindByCapital(state.Territories, capital);
         if (territory == null) return;
-        if (state.Grid.Get(destination) == null) return;
+        HexTile? dst = state.Grid.Get(destination);
+        if (dst == null) return;
+
+        // Mirror the controller's make-way lowering: a tower intent on a
+        // tile holding an own unmoved unit really executes as TWO beats
+        // (reposition to the deterministic escape, then the build). The
+        // 1-ply simulation applies the same net outcome so scoring
+        // predicts exactly what the two real beats produce — the moved
+        // unit keeps its move (repositions never consume the flag).
+        if (dst.Occupant is Unit resident)
+        {
+            HexCoord? escape = PurchaseRules.TowerPushDestination(destination, territory, state.Grid);
+            if (escape == null) return; // no escape → intent illegal; simulate as no-op
+            state.Grid.Get(escape.Value)!.Occupant = resident;
+            dst.Occupant = null;
+            Log.Trace(Log.LogCategory.Ai,
+                $"[sim-make-way] at={destination} unit={resident.Level} to={escape}");
+        }
 
         AiActionCore.BuildTower(capital, destination, state, territory);
     }

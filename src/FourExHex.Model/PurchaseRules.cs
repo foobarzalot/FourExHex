@@ -60,11 +60,10 @@ public static class PurchaseRules
     }
 
     /// <summary>
-    /// True iff a tower can be placed on <paramref name="tile"/>:
-    /// the tile must be empty and inside <paramref name="territory"/>.
-    /// The AI imposes an additional spacing rule of its own (see
-    /// <c>AiCommon.MinTowerSpacing</c>) to avoid redundant clustering;
-    /// human players are not bound by it.
+    /// The universal tower placement rule, enforced for every actor at
+    /// execution time: the tile must be empty and inside
+    /// <paramref name="territory"/>. No player — AI included — may drop
+    /// a tower on an occupied tile.
     /// </summary>
     public static bool IsValidTowerLocation(HexTile tile, Territory territory, HexGrid grid)
     {
@@ -72,5 +71,46 @@ public static class PurchaseRules
         // Towers may be built on mountains: the +1 high-ground bonus
         // is the whole point. The tile just has to be empty and in-territory.
         return territory.Contains(tile.Coord);
+    }
+
+    /// <summary>
+    /// AI tower-site *intent* eligibility — NOT an execution rule.
+    /// Everything <see cref="IsValidTowerLocation"/> accepts, plus a
+    /// tile holding an own unmoved unit with a
+    /// <see cref="TowerPushDestination"/> escape. The AI enumerates such
+    /// tiles as build intents; the controller's chooser wrapper
+    /// (<c>AiActionLowering</c>) lowers an intent into two discrete
+    /// legal actions — the make-way reposition, then the build on the
+    /// vacated tile — so execution only ever sees the strict rule.
+    /// </summary>
+    public static bool IsValidTowerLocationWithPush(HexTile tile, Territory territory, HexGrid grid)
+    {
+        if (IsValidTowerLocation(tile, territory, grid)) return true;
+        if (!territory.Contains(tile.Coord)) return false;
+        if (tile.Occupant is not Unit unit) return false;
+        if (unit.Owner != territory.Owner) return false;
+        if (unit.HasMovedThisTurn) return false;
+        return TowerPushDestination(tile.Coord, territory, grid) != null;
+    }
+
+    /// <summary>
+    /// Where a make-way move ahead of a tower build at
+    /// <paramref name="coord"/> sends the resident unit: the
+    /// lex-smallest (by <see cref="HexCoord.CompareTo"/>) adjacent empty
+    /// in-territory tile, or null when the unit is boxed in.
+    /// Deterministic on purpose — the simulator's scoring mirror and the
+    /// controller's lowering must derive the same destination.
+    /// </summary>
+    public static HexCoord? TowerPushDestination(HexCoord coord, Territory territory, HexGrid grid)
+    {
+        HexCoord? best = null;
+        foreach (HexCoord neighbor in coord.Neighbors())
+        {
+            if (!territory.Contains(neighbor)) continue;
+            HexTile? tile = grid.Get(neighbor);
+            if (tile == null || tile.Occupant != null) continue;
+            if (best == null || neighbor.CompareTo(best.Value) < 0) best = neighbor;
+        }
+        return best;
     }
 }

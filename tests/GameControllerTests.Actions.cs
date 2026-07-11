@@ -186,6 +186,30 @@ public partial class GameControllerTests
     }
 
     [Fact]
+    public void BuildTower_OnOwnFreeUnitTile_IsRejectedForHumans()
+    {
+        // The AI's push-out rule must never leak into the click path: a
+        // human tower click on an own unmoved unit's tile is rejected
+        // exactly like any occupied tile — no tower, no push, no gold
+        // spent (in-range near-miss keeps BuildingTower mode).
+        var g = new TestGame();
+        g.Map.SimulateClick(g.Tile(0, 1));
+        HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(redCapital, 20);
+        g.Tile(1, 1).Occupant = new Unit(g.State.Players[0].Id);
+
+        g.Hud.ClickBuildTower();
+        Assert.Equal(SessionState.ActionMode.BuildingTower, g.Session.Mode);
+
+        g.Map.SimulateClick(g.Tile(1, 1));
+
+        Unit resident = Assert.IsType<Unit>(g.Tile(1, 1).Occupant);
+        Assert.False(resident.HasMovedThisTurn);
+        Assert.Equal(20, g.State.Treasury.GetGold(redCapital));
+        Assert.Equal(SessionState.ActionMode.BuildingTower, g.Session.Mode);
+    }
+
+    [Fact]
     public void BuildTower_OnEnemyTile_ClearsModeAndDeselects()
     {
         // Rejected tower placement on enemy territory flashes feedback

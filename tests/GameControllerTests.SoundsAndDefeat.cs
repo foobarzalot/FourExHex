@@ -266,7 +266,7 @@ public partial class GameControllerTests
         var (state, session, map, hud, _, blue) = BuildBlueBankruptcyScenario(blueIsAi: true);
         var controller = new GameController(
             state, session, map, hud, seed: 0,
-            aiChooser: (s, c, v, r) => null,
+            aiChooser: (s, c, v, ru, r) => null,
             aiPacer: new SynchronousAiPacer(),
             aiSilentMode: () => true);
         controller.StartGame();
@@ -291,7 +291,7 @@ public partial class GameControllerTests
         var (state, session, map, hud, _, blue) = BuildBlueBankruptcyScenario(blueIsAi: false);
         var controller = new GameController(
             state, session, map, hud, seed: 0,
-            aiChooser: (s, c, v, r) => null,
+            aiChooser: (s, c, v, ru, r) => null,
             aiPacer: new SynchronousAiPacer(),
             aiSilentMode: () => true);
         controller.StartGame();
@@ -317,7 +317,7 @@ public partial class GameControllerTests
         bool paused = true;
         var controller = new GameController(
             state, session, map, hud, seed: 0,
-            aiChooser: (s, c, v, r) => { chooserCalls++; return null; },
+            aiChooser: (s, c, v, ru, r) => { chooserCalls++; return null; },
             aiPacer: new SynchronousAiPacer(),
             isReplayPaused: () => paused);
         controller.StartGame();
@@ -673,7 +673,7 @@ public partial class GameControllerTests
         // dependence on the heuristic's scoring behavior.
         AiAction? scriptedKill = new AiMoveAction(
             HexCoord.FromOffset(2, 0), HexCoord.FromOffset(3, 0));
-        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> v, Random r)
+        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> v, HashSet<HexCoord> ru, Random r)
         {
             AiAction? next = scriptedKill;
             scriptedKill = null;

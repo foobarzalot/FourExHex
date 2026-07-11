@@ -32,7 +32,7 @@ public class ReplayPlaybackTests
         public Player Blue { get; }
 
         public Fixture(PlayerKind redKind = PlayerKind.Human, PlayerKind blueKind = PlayerKind.Human,
-            Func<GameState, PlayerId, HashSet<HexCoord>, Random, AiAction?>? aiChooser = null,
+            Func<GameState, PlayerId, HashSet<HexCoord>, HashSet<HexCoord>, Random, AiAction?>? aiChooser = null,
             bool instantReplay = false,
             Func<bool>? replayInstantMode = null)
         {
@@ -261,7 +261,7 @@ public class ReplayPlaybackTests
         bool blueActed = false;
         HexCoord? buyCapital = null;
         HexCoord? buyDest = null;
-        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> visited, Random rng)
+        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> visited, HashSet<HexCoord> ru, Random rng)
         {
             if (c != PlayerId.FromIndex(1)) return null;
             if (blueActed) return null;
@@ -565,7 +565,7 @@ public class ReplayPlaybackTests
         var hud = new MockHudView();
 
         int moveIdx = 0;
-        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> v, Random r)
+        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> v, HashSet<HexCoord> ru, Random r)
         {
             if (c != blue.Id) return null;
             if (moveIdx >= captures.Count) return null;

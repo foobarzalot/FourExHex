@@ -106,23 +106,6 @@ public static class AiActionCore
         return tile != null && tile.Owner == owner && tile.Occupant is Unit;
     }
 
-    /// <summary>
-    /// AI-side rule: once the AI commits a unit to a reposition, that
-    /// unit is done for the turn. The game's underlying movement rule
-    /// leaves repositioned units actionable (so a human can
-    /// micromanage), but the AI would otherwise re-enumerate the same
-    /// unit each call and ping-pong it between border tiles. The gate
-    /// deciding WHEN to mark is caller-side: the simulator marks
-    /// unconditionally (it only ever simulates Computer actors); live
-    /// play marks only for Computer actors so a replayed human
-    /// reposition doesn't consume the move.
-    /// </summary>
-    public static void MarkUnitMoved(HexCoord destination, GameState state)
-    {
-        Unit? unit = state.Grid.Get(destination)?.Unit;
-        if (unit != null) unit.HasMovedThisTurn = true;
-    }
-
     private static void DeductGold(HexCoord capital, int cost, GameState state)
         => state.Treasury.SetGold(capital, state.Treasury.GetGold(capital) - cost);
 }

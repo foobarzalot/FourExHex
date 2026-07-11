@@ -30,10 +30,10 @@ public class ReplayRecordingTests
         public GameController Controller { get; }
         public Player Red { get; }
         public Player Blue { get; }
-        public Func<GameState, PlayerId, HashSet<HexCoord>, Random, AiAction?>? AiChooser { get; set; }
+        public Func<GameState, PlayerId, HashSet<HexCoord>, HashSet<HexCoord>, Random, AiAction?>? AiChooser { get; set; }
 
         public Fixture(PlayerKind redKind = PlayerKind.Human, PlayerKind blueKind = PlayerKind.Human,
-            Func<GameState, PlayerId, HashSet<HexCoord>, Random, AiAction?>? aiChooser = null)
+            Func<GameState, PlayerId, HashSet<HexCoord>, HashSet<HexCoord>, Random, AiAction?>? aiChooser = null)
         {
             Red = new Player("Red", PlayerId.FromIndex(0), redKind);
             Blue = new Player("Blue", PlayerId.FromIndex(1), blueKind);
@@ -340,7 +340,7 @@ public class ReplayRecordingTests
         bool blueActed = false;
         HexCoord? blueCapital = null;
         HexCoord? blueEmpty = null;
-        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> visited, Random rng)
+        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> visited, HashSet<HexCoord> ru, Random rng)
         {
             if (c != PlayerId.FromIndex(1)) return null;
             if (blueActed) return null;
@@ -372,7 +372,7 @@ public class ReplayRecordingTests
     public void Recording_AiImplicitEndTurn_AppendsReplayEndTurnBeat()
     {
         // Chooser always returns null → Blue's AI immediately ends turn.
-        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> visited, Random rng) => null;
+        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> visited, HashSet<HexCoord> ru, Random rng) => null;
         var f = new Fixture(redKind: PlayerKind.Human, blueKind: PlayerKind.Computer, aiChooser: Chooser);
         int before = f.Controller.ReplayBeats.Count;
         f.Hud.ClickEndTurn();   // Red ends. Blue runs AI (null action → EndTurn).

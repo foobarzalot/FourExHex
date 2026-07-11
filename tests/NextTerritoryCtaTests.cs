@@ -205,7 +205,7 @@ public class NextTerritoryCtaTests
         var hud = new MockHudView();
         var controller = new GameController(
             state, session, map, hud,
-            aiChooser: (_, _, _, _) => null,
+            aiChooser: (_, _, _, _, _) => null,
             aiPacer: new QueuedAiPacer());
 
         controller.RefreshViewsForTutorial();

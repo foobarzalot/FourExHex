@@ -236,4 +236,123 @@ public class PurchaseRulesTests
         Assert.True(PurchaseRules.IsValidTowerLocation(tile, territory, grid));
     }
 
+    // --- IsValidTowerLocationWithPush / TowerPushDestination ---------------
+
+    [Fact]
+    public void IsValidTowerLocation_RejectsOwnFreeUnitTile()
+    {
+        // The strict rule is the human click/preview gate: even a unit
+        // that could be pushed aside keeps the tile invalid for humans.
+        (HexGrid grid, Territory territory) = BuildLinearStrip(4, new HexCoord(3, 0));
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red);
+        HexTile tile = grid.Get(new HexCoord(1, 0))!;
+
+        Assert.False(PurchaseRules.IsValidTowerLocation(tile, territory, grid));
+    }
+
+    [Fact]
+    public void IsValidTowerLocationWithPush_AcceptsEmptyTile()
+    {
+        (HexGrid grid, Territory territory) = BuildLinearStrip(4, new HexCoord(3, 0));
+        HexTile tile = grid.Get(new HexCoord(1, 0))!;
+
+        Assert.True(PurchaseRules.IsValidTowerLocationWithPush(tile, territory, grid));
+    }
+
+    [Fact]
+    public void IsValidTowerLocationWithPush_AcceptsOwnFreeUnitTileWithEscape()
+    {
+        (HexGrid grid, Territory territory) = BuildLinearStrip(4, new HexCoord(3, 0));
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red);
+        HexTile tile = grid.Get(new HexCoord(1, 0))!;
+
+        Assert.True(PurchaseRules.IsValidTowerLocationWithPush(tile, territory, grid));
+    }
+
+    [Fact]
+    public void IsValidTowerLocationWithPush_RejectsMovedUnitTile()
+    {
+        (HexGrid grid, Territory territory) = BuildLinearStrip(4, new HexCoord(3, 0));
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red) { HasMovedThisTurn = true };
+        HexTile tile = grid.Get(new HexCoord(1, 0))!;
+
+        Assert.False(PurchaseRules.IsValidTowerLocationWithPush(tile, territory, grid));
+    }
+
+    [Fact]
+    public void IsValidTowerLocationWithPush_RejectsFreeUnitTileWithNoEscape()
+    {
+        // Strip is one tile wide, so (1,0)'s only in-territory
+        // neighbors are (0,0) and (2,0); block both.
+        (HexGrid grid, Territory territory) = BuildLinearStrip(4, new HexCoord(3, 0));
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Tree();
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red);
+        grid.Get(new HexCoord(2, 0))!.Occupant = new Tree();
+        HexTile tile = grid.Get(new HexCoord(1, 0))!;
+
+        Assert.False(PurchaseRules.IsValidTowerLocationWithPush(tile, territory, grid));
+    }
+
+    [Fact]
+    public void IsValidTowerLocationWithPush_RejectsNonUnitOccupants()
+    {
+        (HexGrid grid, Territory territory) = BuildLinearStrip(4, new HexCoord(3, 0));
+        HexTile tile = grid.Get(new HexCoord(1, 0))!;
+
+        tile.Occupant = new Tree();
+        Assert.False(PurchaseRules.IsValidTowerLocationWithPush(tile, territory, grid));
+        tile.Occupant = new Grave();
+        Assert.False(PurchaseRules.IsValidTowerLocationWithPush(tile, territory, grid));
+        tile.Occupant = new Tower();
+        Assert.False(PurchaseRules.IsValidTowerLocationWithPush(tile, territory, grid));
+        tile.Occupant = new Capital();
+        Assert.False(PurchaseRules.IsValidTowerLocationWithPush(tile, territory, grid));
+    }
+
+    [Fact]
+    public void IsValidTowerLocationWithPush_RejectsForeignUnitTile()
+    {
+        // Defensive: a unit whose owner differs from the territory's
+        // is never pushed (shouldn't arise on own-territory tiles).
+        (HexGrid grid, Territory territory) = BuildLinearStrip(4, new HexCoord(3, 0));
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(PlayerId.FromIndex(1));
+        HexTile tile = grid.Get(new HexCoord(1, 0))!;
+
+        Assert.False(PurchaseRules.IsValidTowerLocationWithPush(tile, territory, grid));
+    }
+
+    [Fact]
+    public void TowerPushDestination_PicksLexMinEligibleNeighbor()
+    {
+        // (1,0)'s in-territory empty neighbors are (0,0) and (2,0);
+        // HexCoord orders by R then Q, so (0,0) wins.
+        (HexGrid grid, Territory territory) = BuildLinearStrip(4, new HexCoord(3, 0));
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red);
+
+        Assert.Equal(new HexCoord(0, 0),
+            PurchaseRules.TowerPushDestination(new HexCoord(1, 0), territory, grid));
+    }
+
+    [Fact]
+    public void TowerPushDestination_SkipsOccupiedNeighbors()
+    {
+        (HexGrid grid, Territory territory) = BuildLinearStrip(4, new HexCoord(3, 0));
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Tree();
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red);
+
+        Assert.Equal(new HexCoord(2, 0),
+            PurchaseRules.TowerPushDestination(new HexCoord(1, 0), territory, grid));
+    }
+
+    [Fact]
+    public void TowerPushDestination_NullWhenBoxedIn()
+    {
+        (HexGrid grid, Territory territory) = BuildLinearStrip(4, new HexCoord(3, 0));
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Tree();
+        grid.Get(new HexCoord(1, 0))!.Occupant = new Unit(Red);
+        grid.Get(new HexCoord(2, 0))!.Occupant = new Tree();
+
+        Assert.Null(PurchaseRules.TowerPushDestination(new HexCoord(1, 0), territory, grid));
+    }
+
 }

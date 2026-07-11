@@ -22,7 +22,7 @@ public partial class GameControllerTests
         params AiAction?[] actions)
     {
         int index = 0;
-        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> visited, Random rng)
+        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> visited, HashSet<HexCoord> ru, Random rng)
         {
             if (index >= actions.Length) return null;
             return actions[index++];
@@ -182,10 +182,14 @@ public partial class GameControllerTests
     [Fact]
     public void ExecuteAiBuildTower_DestinationOccupied_Throws()
     {
+        // The tower rule is universal: no actor may drop a tower on an
+        // occupied tile. AiActionLowering only lowers intents targeting
+        // an own UNMOVED unit; this recruit has spent its move, so the
+        // bad intent passes through untouched and execution rejects it.
         (GameState state, MockHexMapView map, MockHudView hud) = BuildAiFixture();
         HexCoord cap = RedCapital(state);
         state.Treasury.SetGold(cap, 20);
-        // (1,1) has the recruit — occupied.
+        state.Grid.Get(HexCoord.FromOffset(1, 1))!.Unit!.HasMovedThisTurn = true;
         var bad = new AiBuildTowerAction(cap, HexCoord.FromOffset(1, 1));
         GameController c = BuildHarnessWithStubAi(state, map, hud, bad);
 
@@ -193,14 +197,47 @@ public partial class GameControllerTests
     }
 
     [Fact]
-    public void ExecuteAiBuildTower_NearExistingTower_DoesNotThrowOnSpacing()
+    public void StubTowerIntentOnFreeUnitTile_LowersToMakeWayMoveThenBuild()
     {
-        // Tower spacing is an AI *selection* heuristic (filtered in
-        // AiCommon.Enumerate), NOT an execution legality rule — humans
-        // may bunch towers, so replaying a recorded human tower-build
-        // adjacent to another tower must not throw. Regression for the
-        // "about_to_win" replay desync (human BuildTower
-        // rejected because ExecuteAiBuildTower applied AI-only spacing).
+        // A tower intent on an own free unit's tile is lowered at the
+        // chooser boundary into TWO discrete beats: the make-way
+        // reposition (move intact — repositions never consume), then
+        // the build on the vacated tile. The recorder log must show
+        // them as separate ordinary beats.
+        (GameState state, MockHexMapView map, MockHudView hud) = BuildAiFixture();
+        HexCoord cap = RedCapital(state);
+        state.Treasury.SetGold(cap, 20);
+        HexCoord unitTile = HexCoord.FromOffset(1, 1);
+        Territory redTerr = state.Territories.First(t => t.Owner == state.Players[0].Id);
+        HexCoord escape = PurchaseRules.TowerPushDestination(unitTile, redTerr, state.Grid)!.Value;
+        var intent = new AiBuildTowerAction(cap, unitTile);
+        GameController c = BuildHarnessWithStubAi(state, map, hud, intent);
+
+        c.StartGame();
+
+        Assert.IsType<Tower>(state.Grid.Get(unitTile)!.Occupant);
+        Unit pushed = Assert.IsType<Unit>(state.Grid.Get(escape)!.Occupant);
+        Assert.False(pushed.HasMovedThisTurn);
+        // Beat order: the make-way move precedes the build.
+        int moveIdx = c.ReplayBeats.ToList().FindIndex(b =>
+            b is ReplayMoveBeat mb && mb.From == unitTile && mb.To == escape);
+        int buildIdx = c.ReplayBeats.ToList().FindIndex(b =>
+            b is ReplayBuildTowerBeat tb && tb.To == unitTile);
+        Assert.True(moveIdx >= 0, "make-way ReplayMoveBeat not recorded");
+        Assert.True(buildIdx >= 0, "ReplayBuildTowerBeat not recorded");
+        Assert.True(moveIdx < buildIdx,
+            $"make-way move (beat {moveIdx}) must precede the build (beat {buildIdx})");
+    }
+
+    [Fact]
+    public void ExecuteAiBuildTower_NearExistingTower_DoesNotThrow()
+    {
+        // Towers may be bunched freely — proximity to another tower is
+        // never an execution legality rule (overlap is only discounted
+        // in AI scoring), so replaying a recorded tower-build adjacent
+        // to another tower must not throw. Regression for the
+        // "about_to_win" replay desync (human BuildTower once rejected
+        // by an execution-side placement filter).
         var red = new Player("Red", PlayerId.FromIndex(0), isAi: true);
         var blue = new Player("Blue", PlayerId.FromIndex(1));
         var players = new List<Player> { red, blue };
@@ -218,12 +255,12 @@ public partial class GameControllerTests
         HexCoord cap = redTerr.Capital!.Value;
         state.Treasury.SetGold(cap, 20);
         // Pre-place a Red tower and target a second tower one hex away —
-        // distance 1 < MinTowerSpacing (3), but otherwise fully legal.
+        // bunched, but fully legal: overlap is a scoring concern, never
+        // an execution constraint.
         HexCoord existing = HexCoord.FromOffset(1, 0);
         HexCoord target = HexCoord.FromOffset(2, 0);
         Assert.NotEqual(cap, existing);
         Assert.NotEqual(cap, target);
-        Assert.True(HexCoord.Distance(existing, target) < AiCommon.MinTowerSpacing);
         grid.Get(existing)!.Occupant = new Tower();
 
         var build = new AiBuildTowerAction(cap, target);
@@ -607,7 +644,7 @@ public partial class GameControllerTests
 
         AiAction? scripted = new AiMoveAction(
             HexCoord.FromOffset(2, 0), HexCoord.FromOffset(3, 0));
-        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> v, Random r)
+        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> v, HashSet<HexCoord> ru, Random r)
         {
             AiAction? next = scripted;
             scripted = null;
@@ -642,7 +679,7 @@ public partial class GameControllerTests
 
         AiAction? scripted = new AiMoveAction(
             HexCoord.FromOffset(2, 0), HexCoord.FromOffset(3, 0));
-        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> v, Random r)
+        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> v, HashSet<HexCoord> ru, Random r)
         {
             AiAction? next = scripted;
             scripted = null;
@@ -671,7 +708,7 @@ public partial class GameControllerTests
 
         AiAction? scripted = new AiMoveAction(
             HexCoord.FromOffset(2, 0), HexCoord.FromOffset(3, 0));
-        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> v, Random r)
+        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> v, HashSet<HexCoord> ru, Random r)
         {
             AiAction? next = scripted;
             scripted = null;

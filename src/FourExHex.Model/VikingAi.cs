@@ -21,6 +21,10 @@ using System.Collections.Generic;
 /// </summary>
 public static class VikingAi
 {
+    // Vikings never reposition, so ComputerAi's loop-guard parameter is
+    // moot for them; one shared empty set avoids a per-call allocation.
+    private static readonly HashSet<HexCoord> NoRepositionedUnits = new();
+
     /// <summary>
     /// Pick the next viking action, or null when the viking turn is over.
     /// <paramref name="visitedAnchors"/> is the same per-turn exhausted-set
@@ -47,7 +51,10 @@ public static class VikingAi
         }
 
         // 2. Landed moves: the ordinary AI driving the neutral territories.
-        AiAction? landed = ComputerAi.ChooseNextAction(state, PlayerId.None, visitedAnchors, rng);
+        //    Vikings never reposition (captures only, 4b skipped), so the
+        //    loop-guard set is irrelevant — pass a throwaway.
+        AiAction? landed = ComputerAi.ChooseNextAction(
+            state, PlayerId.None, visitedAnchors, NoRepositionedUnits, rng);
         if (landed != null) return landed;
 
         // 3. Spawn a due wave LAST, so it never acts on its spawn round. The

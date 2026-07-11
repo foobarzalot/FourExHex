@@ -14,11 +14,11 @@ public partial class GameControllerTests
     /// call, then null (the "nothing left to do" terminal signal the
     /// automate loop stops on).
     /// </summary>
-    private static Func<GameState, PlayerId, HashSet<HexCoord>, Random, AiAction?> AutomateScript(
+    private static Func<GameState, PlayerId, HashSet<HexCoord>, HashSet<HexCoord>, Random, AiAction?> AutomateScript(
         params AiAction[] actions)
     {
         int index = 0;
-        return (s, c, visited, rng) => index >= actions.Length ? null : actions[index++];
+        return (s, c, visited, ru, rng) => index >= actions.Length ? null : actions[index++];
     }
 
     /// <summary>
@@ -83,6 +83,47 @@ public partial class GameControllerTests
         // initial selection of the acting territory (all three moves
         // act from the same Red territory, so one selection entry).
         Assert.Equal(4, h.Session.Undo.UndoCount);
+    }
+
+    [Fact]
+    public void Automate_MakeWayTowerBuild_IsTwoDiscreteUndoableMoves()
+    {
+        // A tower intent on Red's free recruit at (2,1) is lowered into
+        // TWO first-class automate moves: the make-way reposition to
+        // (1,1), then the build on the vacated tile — each with its own
+        // undo entry, peelable one at a time. The recruit's move is
+        // never consumed (repositions don't touch HasMovedThisTurn).
+        HexCoord unitTile = HexCoord.FromOffset(2, 1);
+        ControllerHarness h = TestHelpers.BuildControllerGame(
+            ownerOverrides: new[]
+            {
+                (0, 1, PlayerId.FromIndex(0)),
+                (1, 1, PlayerId.FromIndex(0)),
+                (2, 1, PlayerId.FromIndex(0)),
+            },
+            beforeStart: s => s.Grid.Get(unitTile)!.Occupant =
+                new Unit(PlayerId.FromIndex(0)),
+            automateChooser: AutomateScript(
+                new AiBuildTowerAction(HexCoord.FromOffset(0, 1), unitTile)));
+        h.State.Treasury.SetGold(RedCap(h), 100);
+
+        h.Hud.ClickAutomate();
+
+        Assert.IsType<Tower>(TileAt(h, 2, 1).Occupant);
+        Unit pushed = Assert.IsType<Unit>(TileAt(h, 1, 1).Occupant);
+        Assert.False(pushed.HasMovedThisTurn);
+        Assert.False(h.Controller.IsAutomating);
+        // Selection entry + make-way move + build = three undo entries.
+        Assert.Equal(3, h.Session.Undo.UndoCount);
+
+        // Undo peels the build first — the unit stays aside...
+        h.Hud.ClickUndoLast();
+        Assert.Null(TileAt(h, 2, 1).Occupant);
+        Assert.IsType<Unit>(TileAt(h, 1, 1).Occupant);
+        // ...then the make-way move — the unit is back on its tile.
+        h.Hud.ClickUndoLast();
+        Assert.IsType<Unit>(TileAt(h, 2, 1).Occupant);
+        Assert.Null(TileAt(h, 1, 1).Occupant);
     }
 
     [Fact]
@@ -566,7 +607,7 @@ public partial class GameControllerTests
                 (3, 0, PlayerId.FromIndex(1)),
                 (4, 0, PlayerId.FromIndex(1)),
             },
-            automateChooser: (s, c, visited, rng) =>
+            automateChooser: (s, c, visited, ru, rng) =>
                 index >= script.Count ? null : script[index++],
             automateIsInstantMode: () => true);
         h.State.Treasury.SetGold(RedCap(h), 100);

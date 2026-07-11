@@ -1064,7 +1064,7 @@ AutomateInstantStep:  halt / step-cap / chooser-null → StopAutomation(...) →
         the single repaint happens at the stop
 ```
 
-- **Chooser**: the `automateChooser` ctor param, default `ComputerAi.ChooseNextAction` called directly — `AiDispatcher.ChooseForCurrentPlayer` would return null for a Human slot. Tests inject scripted queues. Null = "nothing left to automate" (there is no EndTurn `AiAction`).
+- **Chooser**: the `automateChooser` ctor param, default `ComputerAi.ChooseNextAction` — `AiDispatcher.ChooseForCurrentPlayer` would return null for a Human slot. Wrapped in its own `AiActionLowering` instance (make-way lowering + reposition loop-guard; `Reset()` on every Automate press), so a make-way tower lands as two individually-undoable moves. Tests inject scripted queues. Null = "nothing left to automate" (there is no EndTurn `AiAction`).
 - **Every automated step is individually undoable** — selections and moves alike; the standard undo handlers walk them back one at a time (undo re-centers the camera through the acting territories). Automation is a human-turn flow, so the "AI actions are not undoable" invariant is untouched (that covers AI *players'* turns). Both tracks record identical undo/beat stacks — Instant skips the presentation, not the bookkeeping (pinned by `Automate_Instant_SameFinalStateAndUndoDepthAsPaced`).
 - **Interruption is a flag, never a cancel**: `_automating` is checked at every beat entry (and gates the instant drain via `RunInstantTick`'s `active`); `StopAutomation` clears it and stale scheduled beats no-op (the shared pacer is never cancelled). Every `TrackHandler`-wrapped human input stops a running loop at handler entry (`_inAutomateStep` exempts the loop's own selection + move steps); the non-wrapped handlers (undo/redo ×4, End Turn, defeat/claim) carry explicit `StopAutomation("input")` calls. Stops always land *between* moves. When the stop ends an instant batch (`_automateTrackInstant`), `StopAutomation` also runs the batch-end cleanup: structural rebuild (the drain suppressed per-capture rebuilds) + `RefreshSilentMode` (lifts the view's silent flag).
 - **Exhaustion latch** (`_automateExhausted`): set only by the chooser-null stop; the button greys out (re-pressing would no-op) even if manual actions remain. Cleared by `ApplySnapshot` (any undo/redo), a manual game-mutating `TrackHandler` push (which triggers one extra refresh — the body's own refresh ran pre-clear), and `EndTurnNow`. User interrupts don't latch.
@@ -1131,7 +1131,7 @@ Bypasses the multiplier via `ScheduleUnscaled` (no Instant arm) and yields a rea
 
 Replay reuses the live `ExecuteAi*` helpers — same captures, FX, `HandleCapture` reconciliation. The actor per beat isn't passed: `BeginReplay` restored `CurrentPlayerIndex`, and every `ReplayEndTurnBeat` steps it forward, so `_state.Turns.CurrentPlayer` is right when each `ExecuteAi*` fires.
 
-**Invariant — no AI-only rules in the replay execute path.** `ExecuteAi*` replay *every* beat, including human ones, so they enforce only game legality, never AI *selection* heuristics (else a recorded human beat would throw). Two excluded: (1) tower spacing — `AiCommon.MeetsAiTowerSpacing` filtered in `AiCommon.EnumeratePhase4Towers`, NOT gated in `ExecuteAiBuildTower`. (2) "reposition onto own-empty consumes the move" — gated on actor kind (`CurrentPlayer.Kind == PlayerKind.Computer`) via `ConsumeRepositionMoveIfAi`, shared by `ExecuteAiMove` / `ExecuteAiBuyUnit` (pinned by `ReplayFidelityTests`). Actor-kind is correct because the step machine advances turn state before each action beat. New AI-only constraints: enforce at candidate enumeration or via an actor-kind gate, never a replay-mode gate.
+**Invariant — no AI-only rules in the replay execute path.** `ExecuteAi*` replay *every* beat, including human ones, so they enforce only game legality, never AI *selection* heuristics (else a recorded human beat would throw). The canonical example is the make-way tower build: `ComputerAi` may emit an `AiBuildTowerAction` *intent* targeting a tile that holds an own unmoved unit, but that intent never reaches execution — `AiActionLowering` (the controller-side chooser wrapper) lowers it into two ordinary discrete actions, a reposition to `PurchaseRules.TowerPushDestination` followed by the build on the vacated tile, each recorded as its own replay beat and (during automation) its own undo entry. `ExecuteAiBuildTower` enforces the universal strict rule (`PurchaseRules.IsValidTowerLocation`: empty + in-territory) for every actor. Related boundary: `Unit.HasMovedThisTurn` is the *game's* movement-consumption rule (set only by movement-consuming arrivals in `MovementRules.ResolveArrival`); repositions never set it, for any actor, so replay needs no AI knowledge — the AI's own "already repositioned this unit, don't loop" bookkeeping is `AiActionLowering`'s controller-owned set, passed into the chooser. New AI-only constraints: enforce at candidate enumeration or in the chooser wrapper — never a replay-mode gate, never model state.
 
 **Recording vs. playback.** Every beat-recording site is gated on `!_replayMode`. Human input handlers (`TrackHandler`-wrapped + overlay handlers) early-return on `_replayMode`. The `StartPlayerTurn` autosave gate adds `&& !_replayMode`.
 
@@ -1149,8 +1149,17 @@ Replay reuses the live `ExecuteAi*` helpers — same captures, FX, `HandleCaptur
   `EnumeratePhase3ForLevel` (buy-to-capture/chop for one purchase tier; the
   all-tiers `EnumeratePhase3` wrapper walks levels cheapest-first with a
   min-sufficient-level `covered` dedup for its non-phase consumers),
-  `EnumeratePhase4Towers`, `EnumeratePhase4bForUnit` (defensive repositions to
-  border tiles). Shared filter `UnlocksMovementConsumingTarget` admits a 2a/2b
+  `EnumeratePhase4Towers` (solvent tower sites on border tiles — empty, or
+  a make-way *intent* on a tile holding an own unmoved unit with an escape,
+  per `PurchaseRules.IsValidTowerLocationWithPush`; `AiActionLowering`
+  lowers a chosen intent into the reposition-then-build pair, and the
+  simulator's `ApplyBuildTower` mirrors that pair atomically so 1-ply
+  scoring predicts the two real beats; proximity to existing towers is
+  never filtered — overlap is discounted by
+  `AiStateScorer.BuildTowerBonus`), `EnumeratePhase4bForUnit` (defensive
+  repositions to border tiles; units in the caller-owned
+  `repositionedUnits` loop-guard set are skipped). Shared filter
+  `UnlocksMovementConsumingTarget` admits a 2a/2b
   combine only when the combined level reaches a movement-consuming target
   neither source could; **both combine phases require an unmoved target** —
   the combined unit inherits the destination's `HasMovedThisTurn`
@@ -1195,18 +1204,21 @@ Replay reuses the live `ExecuteAi*` helpers — same captures, FX, `HandleCaptur
   the per-territory `[heuristic]` best-delta summary stays at Debug.
   The bare mutation per action kind lives once in **`AiActionCore`**
   (Model: reposition/combine detection, owner-difficulty gold deduction,
-  `MovementRules` placement, the shared `MarkUnitMoved` flag-setter);
-  `AiSimulator.Apply*` and `GameOperations.ExecuteAi*` both call it and
-  differ only in their envelopes — the simulator early-returns on bad
-  lookups, reconciles captures with a bare `TerritoryFinder.Recompute`,
-  and marks repositions unconditionally; the live path validates and
-  throws, runs the full `HandleCapture` envelope, kind-gates the
-  reposition mark (`ConsumeRepositionMoveIfAi`), and fires view effects.
+  `MovementRules` placement); `AiSimulator.Apply*` and
+  `GameOperations.ExecuteAi*` both call it and differ only in their
+  envelopes — the simulator early-returns on bad lookups and reconciles
+  captures with a bare `TerritoryFinder.Recompute`; the live path
+  validates and throws, runs the full `HandleCapture` envelope, and
+  fires view effects. `Unit.HasMovedThisTurn` is set exclusively by
+  movement-consuming arrivals inside `MovementRules.ResolveArrival` —
+  repositions leave it false on every path, so simulator, live play,
+  and replay agree by construction.
   **A new AI-capable action adds its mutation to `AiActionCore` and an
   envelope to each caller.** Envelope equivalence pinned by
   `AiSimulatorDriftTests`: every enumerated action applied through both
   paths must produce matching `GameStateChecksum` canonical strings
-  (plus clone-fidelity and fixture-rot guards over all four action kinds).
+  (plus clone-fidelity and fixture-rot guards over all four action kinds;
+  make-way tower intents run the real side as the lowered two-beat pair).
   `AiSimulator.Apply` throws `NotSupportedException` on unmodeled kinds (Rally,
   ClaimVictory, Dismiss*) so drift surfaces loudly.
 - **`AiStateScorer`** — pure `GameState → int` (self value minus enemy values).
@@ -1224,6 +1236,19 @@ Replay reuses the live `ExecuteAi*` helpers — same captures, FX, `HandleCaptur
   in `Score()`. Free because `DefenseRules.Defense` bakes in the `+1`
   high-ground (no `IsMountain` reference). Cap (≥ 3) clamps over-garrison; cancels
   in the 1-ply diff when border defense is unchanged.
+  **Towers** valued per-action by `BuildTowerBonus` (added to the candidate's
+  delta in `ComputerAi`, like `EvacuationBonus`; absolute `Score` untouched).
+  Each covered border tile (placement + same-territory neighbors) whose
+  *committed* defense is below tower grade (`TowerGradeDefense` 2) earns
+  `BuildTowerCoverageBonus` 10 — committed = towers, capitals, and
+  already-moved units (`DefenseRules.CommittedDefense`, placement coord
+  excluded so a candidate never disqualifies its own coverage); a free-move
+  unit is transient and never counts. A qualifying tile that nonetheless reads
+  as defended in `Score` (free-move unit, capital, weak locked unit) adds
+  `TransientDefenseCredit` 10, compensating for the `UndefendedBorderPenalty`
+  relief the diff won't show — so transiently-defended borders are worth the
+  same as naked ones, and tiles already covered by a tower-grade committed
+  defender are worth nothing.
 - **`ReplayDrivenAi`** — script-driven chooser, used only by TutorialBuilder
   Preview. Replays recorded non-player-0 `ReplayBeat`s through the AI step
   machine via a shared `ScriptCursor` (also referenced by `TutorialPreview`, so
@@ -1232,6 +1257,18 @@ Replay reuses the live `ExecuteAi*` helpers — same captures, FX, `HandleCaptur
 - **`AiDispatcher.ChooseForCurrentPlayer`** — returns `ComputerAi`'s choice for
   a `Computer` slot, null for a `Human` one, by `Player.Kind`. Wired into
   `GameController` as the single `aiChooser` for normal play.
+- **`AiActionLowering`** (Controller) — `GameController` wraps every injected
+  chooser (AI-turn and Automate tracks, one instance each) with this class;
+  the drivers consume its 4-arg `Choose` while the inner chooser takes the
+  5-arg form ending in the `repositionedUnits` set. It owns the AI's
+  per-(turn, player) decision state: the reposition loop-guard set (fed to
+  phase 4b; ordinary repositions enter it, make-way moves deliberately
+  don't) and the make-way stash — a chosen tower intent on an own unmoved
+  unit's tile comes back as the reposition first, then the build on the
+  next call, re-validated against live state and dropped if stale.
+  `[make-way]` logs at Ai:Debug. Automate's start pressing `Reset()` covers
+  same-turn restarts; turn/player key changes reset automatically. Vikings
+  bypass it (`VikingAi`; they never build).
 - **AI tracing** lives in `Log.LogCategory.Ai` / `Turn` / `Capture` (candidate
   diagnostics, per-turn headers + end-turn + action lines, capture diffs). Off
   by default; enable via `FOUREXHEX_LOG` or `FOUREXHEX_6AI`. See **Logging**.
