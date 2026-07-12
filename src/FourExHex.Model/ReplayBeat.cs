@@ -211,3 +211,17 @@ public sealed record ReplayDisplayTextBeat : TutorialOnlyBeat
 {
     public string Text { get; init; } = "";
 }
+
+/// <summary>
+/// Tutorial-only: select (and highlight) the territory containing
+/// <see cref="Anchor"/>, as if the player had clicked it. Authored from
+/// RecordPane's "+ Select" button; honored by hands-free replay playback
+/// (the Instructions demo animations), where it drives the same
+/// selection visuals a live click would. The anchor is any tile of the
+/// territory — territory objects aren't stable across snapshots, so the
+/// territory is resolved from the anchor at playback time.
+/// </summary>
+public sealed record ReplaySelectTerritoryBeat : TutorialOnlyBeat
+{
+    public HexCoord Anchor { get; init; }
+}

@@ -46,6 +46,10 @@ public partial class HudView : OrientationHud, IHudView
     // is hidden by default and revealed via SetAddTextButtonVisible, so
     // it never shows in normal play or preview.
     public event Action? AddTextClicked;
+    // Tutorial-recorder only: the Add Select button (◎ glyph) captures
+    // the current selection as a tutorial-only select beat. Same
+    // hidden-by-default lifecycle as Add Text.
+    public event Action? AddSelectClicked;
 
     private Label _turnLabel = null!;       // numeric mono turn number
     private PlayerSwatchBar _playerSwatchBar = null!; // players in turn order, current highlighted
@@ -89,6 +93,7 @@ public partial class HudView : OrientationHud, IHudView
     private HudIconButton _optionsButton = null!;
     private HudIconButton _helpButton = null!;
     private HudIconButton _addTextButton = null!;
+    private HudIconButton _addSelectButton = null!;
 
     // Help menu opened by the ? button — offers Instructions and the guided
     // UI tour. Built once in BuildUi, shown/hidden on demand.
@@ -293,6 +298,18 @@ public partial class HudView : OrientationHud, IHudView
         AudioBus.AttachClick(_addTextButton);
         _actionCluster.AddChild(_addTextButton);
 
+        // Second recorder affordance: capture the current selection as a
+        // tutorial-only select beat (Instructions demos, issue #134).
+        // Same hidden-by-default lifecycle as the Add Text button.
+        _addSelectButton = new HudIconButton("◎", SerifFont, 30)
+        {
+            Visible = false,
+            TooltipText = Strings.Get(StringKeys.HudTooltipAddSelect),
+        };
+        _addSelectButton.Pressed += () => AddSelectClicked?.Invoke();
+        AudioBus.AttachClick(_addSelectButton);
+        _actionCluster.AddChild(_addSelectButton);
+
         // 5) Undo / Redo — two ghost icon buttons. A short click is
         // Undo/Redo Last; holding past the long-press threshold fires
         // Undo All / Redo All (the same actions Shift+Z / Shift+Y reach).
@@ -472,7 +489,10 @@ public partial class HudView : OrientationHud, IHudView
         _helpMenu.Show(Strings.Get(StringKeys.HudHelpTitle), new EscMenu.Option[]
         {
             new(Strings.Get(StringKeys.HudHelpInstructions), () =>
-                Log.Info(Log.LogCategory.Hud, "[help] chose instructions (phase-2 stub)")),
+            {
+                Log.Info(Log.LogCategory.Hud, "[help] chose instructions");
+                OpenInstructions();
+            }),
             new(Strings.Get(StringKeys.HudHelpTour), () =>
             {
                 Log.Info(Log.LogCategory.Hud, "[help] chose tour");
@@ -482,6 +502,26 @@ public partial class HudView : OrientationHud, IHudView
                 Log.Info(Log.LogCategory.Hud, "[help] close (button)")),
         });
         Log.Info(Log.LogCategory.Hud, "[help] menu open");
+    }
+
+    // The Instructions modal (issue #134). Non-null while it's up.
+    private InstructionsPanel? _instructionsPanel;
+
+    /// <summary>Open the paged Instructions viewer (rules explainer with
+    /// looping mini-board demos). No-op if it's already up.</summary>
+    private void OpenInstructions()
+    {
+        if (_instructionsPanel != null) return;
+        _instructionsPanel = new InstructionsPanel();
+        _instructionsPanel.Closed += ExitInstructions;
+        AddChild(_instructionsPanel);
+    }
+
+    private void ExitInstructions()
+    {
+        if (_instructionsPanel == null) return;
+        _instructionsPanel.QueueFree();
+        _instructionsPanel = null;
     }
 
     // ---- Guided UI tour (issue #101) -------------------------------------
@@ -924,6 +964,16 @@ public partial class HudView : OrientationHud, IHudView
     {
         _addTextButton.Visible = visible;
         Log.Debug(Log.LogCategory.Tutorial, $"[HudView] Add Text button visible={visible}");
+    }
+
+    /// <summary>
+    /// Reveal (or hide) the tutorial-recorder Add Select button. Only the
+    /// tutorial RecordPane calls this; normal play leaves it hidden.
+    /// </summary>
+    public void SetAddSelectButtonVisible(bool visible)
+    {
+        _addSelectButton.Visible = visible;
+        Log.Debug(Log.LogCategory.Tutorial, $"[HudView] Add Select button visible={visible}");
     }
 
     // Small uppercase "TURN" / "TO PLAY" eyebrow label sitting side-by-

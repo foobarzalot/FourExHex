@@ -36,6 +36,12 @@ public sealed record ReplayDivergence(string Expected, string Actual);
 /// </summary>
 public class ReplayRecorder
 {
+    /// <summary>Raised at the end of <see cref="EndReplay"/> — playback
+    /// finished (beat log exhausted, game-over, or aborted). Forwarded by
+    /// <c>GameController.ReplayEnded</c>; the Instructions demo player
+    /// uses it to loop playback.</summary>
+    public event Action? ReplayEnded;
+
     private readonly GameState _state;
     private readonly SessionState _session;
     private readonly IHexMapView _map;
@@ -428,7 +434,12 @@ public class ReplayRecorder
         _map.ShowHighlight(ResolveReplayActingTerritory(beat));
         _ops.RefreshViews();
 
-        int delay = beat is ReplayEndTurnBeat ? StepPacing.AiActionDelayMs : StepPacing.AiPreviewDelayMs;
+        // Select beats get the longer action delay so authored selection
+        // sequences (the Instructions demos) read slowly, like a player
+        // deliberately clicking territories.
+        int delay = beat is ReplayEndTurnBeat or ReplaySelectTerritoryBeat
+            ? StepPacing.AiActionDelayMs
+            : StepPacing.AiPreviewDelayMs;
         _aiPacer.Schedule(StepReplayExecute, delay);
     }
 
@@ -514,8 +525,18 @@ public class ReplayRecorder
                     _ops.StartPlayerTurn();
                 }
                 break;
+            case ReplaySelectTerritoryBeat sel:
+                // Authored selection (Instructions demos): anchor → the
+                // territory containing it, applied like a live selection
+                // click. Resolved against current state — territory
+                // objects aren't stable across the rewind.
+                Territory? selected = TerritoryLookup.FindContaining(
+                    _state.Territories, sel.Anchor);
+                _session.SelectedTerritory = selected;
+                _map.ShowHighlight(selected);
+                break;
             case TutorialOnlyBeat _:
-                // Tutorial-only beats (e.g., narration text) are
+                // Remaining tutorial-only beats (e.g., narration text) are
                 // authoring-only — the in-game Replay button silently
                 // skips them. Tutorial Preview consumes them through
                 // TutorialNarrationDriver instead.
@@ -611,6 +632,8 @@ public class ReplayRecorder
                     $"Replay end board matches recording (no divergence): {actual}");
             }
         }
+
+        ReplayEnded?.Invoke();
     }
 
     /// <summary>
@@ -648,6 +671,11 @@ public class ReplayRecorder
             ReplayLongPressRallyBeat rally => TerritoryLookup.FindOwnedContaining(_state.Territories, owner, rally.Target),
             ReplayVikingMoveBeat vm => TerritoryLookup.FindOwnedContaining(
                 _state.Territories, PlayerId.None, vm.From),
+            // Authored select beats highlight their target during the
+            // preview phase too, so back-to-back selects don't flicker
+            // through a no-highlight gap.
+            ReplaySelectTerritoryBeat sel => TerritoryLookup.FindContaining(
+                _state.Territories, sel.Anchor),
             _ => null,
         };
     }

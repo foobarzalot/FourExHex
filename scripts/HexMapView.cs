@@ -2375,10 +2375,22 @@ public partial class HexMapView : Node2D, IHexMapView
     /// reserved for future spatial audio (AudioBus plays non-spatial 2D today).
     /// Silent mode gates every cue with no exceptions.
     /// </summary>
+    // Pinned mute: hard-off switch for every AudioBus cue this view can
+    // emit, independent of the controller-side silent gating (which paced
+    // replay actively lifts). The Instructions demo board sets it so its
+    // looping playback never sounds over the live game. Audio only —
+    // animations/VFX stay on so the demo reads like live play.
+    private bool _mutePinned;
+    public void SetMutePinned(bool pinned)
+    {
+        _mutePinned = pinned;
+    }
+
     public void PlaySound(SoundEffect kind, HexCoord? at = null)
     {
         // Silent-mode gating is controller-side (GameOperations.IsSilent);
-        // the view plays whatever cue it's handed.
+        // the view plays whatever cue it's handed — unless muted (pinned).
+        if (_mutePinned) return;
         switch (kind)
         {
             case SoundEffect.UnitPlaced: AudioBus.Instance.PlayUnitPlaced(); break;
@@ -2410,6 +2422,7 @@ public partial class HexMapView : Node2D, IHexMapView
             SpawnDefenderArrow(coord, target);
         }
 
+        if (_mutePinned) return;
         if (defenders.Length > 0)
         {
             AudioBus.Instance.PlayRejectDefended();

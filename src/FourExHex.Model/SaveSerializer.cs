@@ -912,6 +912,12 @@ public static class SaveSerializer
                     Kind = "DisplayText",
                     Text = dt.Text,
                 },
+                ReplaySelectTerritoryBeat sel => new ReplayBeatDto
+                {
+                    Kind = "SelectTerritory",
+                    ToQ = sel.Anchor.Q,
+                    ToR = sel.Anchor.R,
+                },
                 _ => throw new InvalidOperationException(
                     $"Unknown replay beat kind for serialization: {beat.GetType()}"),
             };
@@ -1031,6 +1037,13 @@ public static class SaveSerializer
                 {
                     Index = dto.Index, Turn = dto.Turn, Actor = dto.Actor,
                     Text = dto.Text ?? "",
+                },
+                "SelectTerritory" => new ReplaySelectTerritoryBeat
+                {
+                    Index = dto.Index, Turn = dto.Turn, Actor = dto.Actor,
+                    Anchor = new HexCoord(
+                        dto.ToQ ?? throw new InvalidOperationException("SelectTerritory beat missing ToQ"),
+                        dto.ToR ?? throw new InvalidOperationException("SelectTerritory beat missing ToR")),
                 },
                 _ => throw new InvalidOperationException(
                     $"Unknown replay beat kind in save: {dto.Kind}"),

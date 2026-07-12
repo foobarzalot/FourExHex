@@ -51,6 +51,14 @@ public class GameController
     public event Action? GameEnded;
 
     /// <summary>
+    /// Fired each time <see cref="BeginReplay"/> playback finishes (beat
+    /// log exhausted, game-over reached, or playback otherwise ended).
+    /// The Instructions demo player subscribes to loop its animation by
+    /// re-calling <see cref="BeginReplay"/>.
+    /// </summary>
+    public event Action? ReplayEnded;
+
+    /// <summary>
     /// Fired at the start of every human player's turn, after start-of-turn
     /// bookkeeping (tree growth, income, upkeep) and after
     /// <see cref="GameOperations.RefreshViews"/>. Save/load wires the autosave path to
@@ -138,6 +146,7 @@ public class GameController
             previewMode: previewMode,
             replayIsInstantMode: replayIsInstantMode,
             loadedReplay: loadedReplay);
+        _recorder.ReplayEnded += () => ReplayEnded?.Invoke();
         _aiDriver = new AiTurnDriver(
             state: state,
             session: session,

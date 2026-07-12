@@ -37,6 +37,9 @@ public sealed partial class RecordPane : Control
     private HudView? _hud;
     private GameController? _controller;
     private GameState? _recordState;
+    // Kept so the Add Select button can read the current selection —
+    // the controller doesn't expose it.
+    private SessionState? _recordSession;
     private HexDragMode _savedDragMode;
     private bool _running;
     private CanvasLayer? _addTextDialog;
@@ -152,10 +155,13 @@ public sealed partial class RecordPane : Control
         _hud.EscRequested += () => EscRequested?.Invoke();
         _hud.AddTextClicked += OpenAddTextDialog;
         _hud.SetAddTextButtonVisible(true);
+        _hud.AddSelectClicked += RecordSelectBeat;
+        _hud.SetAddSelectButtonVisible(true);
 
+        _recordSession = new SessionState();
         _controller = new GameController(
             _recordState,
-            new SessionState(),
+            _recordSession,
             _panel.Map,
             _hud,
             seed: _panel.CurrentSeed,
@@ -217,10 +223,13 @@ public sealed partial class RecordPane : Control
         _hud.EscRequested += () => EscRequested?.Invoke();
         _hud.AddTextClicked += OpenAddTextDialog;
         _hud.SetAddTextButtonVisible(true);
+        _hud.AddSelectClicked += RecordSelectBeat;
+        _hud.SetAddSelectButtonVisible(true);
 
+        _recordSession = new SessionState();
         _controller = new GameController(
             _recordState,
-            new SessionState(),
+            _recordSession,
             _panel.Map,
             _hud,
             seed: _panel.CurrentSeed,
@@ -289,7 +298,32 @@ public sealed partial class RecordPane : Control
 
         _controller = null;
         _recordState = null;
+        _recordSession = null;
         _running = false;
+    }
+
+    /// <summary>
+    /// The Add Select button: capture the currently selected territory
+    /// as a <see cref="ReplaySelectTerritoryBeat"/> (anchored at its
+    /// capital), so hands-free demo playback re-selects it. No-op with
+    /// a log when nothing is selected.
+    /// </summary>
+    private void RecordSelectBeat()
+    {
+        if (_controller == null || _recordSession == null) return;
+        Territory? selected = _recordSession.SelectedTerritory;
+        if (selected is not { HasCapital: true })
+        {
+            Log.Debug(Log.LogCategory.Tutorial,
+                "[RecordPane] Add Select pressed with no selected territory — ignored");
+            return;
+        }
+
+        HexCoord anchor = selected.Capital!.Value;
+        _controller.RecordTutorialOnlyBeat(new ReplaySelectTerritoryBeat { Anchor = anchor });
+        _capture.SetBeats(new List<ReplayBeat>(_controller.ReplayBeats));
+        Log.Debug(Log.LogCategory.Tutorial,
+            $"[RecordPane] Authored SelectTerritory beat: anchor={anchor}");
     }
 
     /// <summary>
