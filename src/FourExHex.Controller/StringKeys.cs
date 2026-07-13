@@ -188,6 +188,8 @@ public static class StringKeys
     // Instructions pages (InstructionsPanel).
     public const string HudInstrTerritoriesTitle = "hud.instructions.page.territories.title";
     public const string HudInstrTerritoriesBody = "hud.instructions.page.territories.body";
+    public const string HudInstrRecruitTitle = "hud.instructions.page.recruit.title";
+    public const string HudInstrRecruitBody = "hud.instructions.page.recruit.body";
 
     // Bottom-panel prompts / action hints.
     public const string HudContinueHint = "hud.continue_hint";

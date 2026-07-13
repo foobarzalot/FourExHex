@@ -432,11 +432,14 @@ public class ReplayRecorder
 
         ReplayBeat beat = _replayBeats[_replayIndex];
         _map.ShowHighlight(ResolveReplayActingTerritory(beat));
+        // A move's preview shows the unit being picked up — the same
+        // pickup pulse a live player sees when selecting a unit to move —
+        // so playback reads "select, then move" instead of teleporting.
+        if (beat is ReplayMoveBeat mv) _map.ShowMoveSource(mv.From);
         _ops.RefreshViews();
 
-        // Select beats get the longer action delay so authored selection
-        // sequences (the Instructions demos) read slowly, like a player
-        // deliberately clicking territories.
+        // Select beats pace like EndTurn (a beat with no board mutation
+        // to watch); everything else holds the standard preview pause.
         int delay = beat is ReplayEndTurnBeat or ReplaySelectTerritoryBeat
             ? StepPacing.AiActionDelayMs
             : StepPacing.AiPreviewDelayMs;
@@ -452,6 +455,9 @@ public class ReplayRecorder
         bool crossesTurn = beat is ReplayEndTurnBeat or ReplayVikingTurnEndBeat;
 
         ExecuteReplayBeat(beat);
+        // The pickup pulse shown by this beat's preview is done — the
+        // move landed.
+        if (beat is ReplayMoveBeat) _map.ShowMoveSource(null);
 
         _ops.CheckGameEndConditions();
         _ops.RefreshViews();
@@ -606,6 +612,7 @@ public class ReplayRecorder
         // capture, so this is instant-only.
         if (wasInstant) _map.RebuildAfterTerritoryChange();
         _map.ShowHighlight(null);
+        _map.ShowMoveSource(null);
         _ops.RefreshViews();
 
         // Compare the replayed board against the recorded end board.
