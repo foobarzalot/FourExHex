@@ -743,6 +743,18 @@ public class GameController
             if (sourceUnit != null)
             {
                 EmitRejection(sourceUnit.Level, tile.Coord);
+                // Tutorial authoring: a failed attempt is demo material
+                // ("this unit isn't strong enough") — auto-capture it as a
+                // tutorial-only beat. Recording mode only; live games
+                // never log rejections.
+                if (_recordingMode)
+                {
+                    _recorder.RecordTutorialOnlyBeat(new ReplayRejectedMoveBeat
+                    {
+                        From = _session.MoveSource.Value,
+                        To = tile.Coord,
+                    });
+                }
             }
             if (IsCoordReachableForUnitAction(tile.Coord, _session.SelectedTerritory))
             {

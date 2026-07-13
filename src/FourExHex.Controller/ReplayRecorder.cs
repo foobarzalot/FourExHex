@@ -435,7 +435,13 @@ public class ReplayRecorder
         // A move's preview shows the unit being picked up — the same
         // pickup pulse a live player sees when selecting a unit to move —
         // so playback reads "select, then move" instead of teleporting.
-        if (beat is ReplayMoveBeat mv) _map.ShowMoveSource(mv.From);
+        // Authored rejected attempts get the same pickup beat before
+        // their flash.
+        switch (beat)
+        {
+            case ReplayMoveBeat mv: _map.ShowMoveSource(mv.From); break;
+            case ReplayRejectedMoveBeat rj: _map.ShowMoveSource(rj.From); break;
+        }
         _ops.RefreshViews();
 
         // Select beats pace like EndTurn (a beat with no board mutation
@@ -456,8 +462,8 @@ public class ReplayRecorder
 
         ExecuteReplayBeat(beat);
         // The pickup pulse shown by this beat's preview is done — the
-        // move landed.
-        if (beat is ReplayMoveBeat) _map.ShowMoveSource(null);
+        // move landed (or, for a rejected attempt, bounced).
+        if (beat is ReplayMoveBeat or ReplayRejectedMoveBeat) _map.ShowMoveSource(null);
 
         _ops.CheckGameEndConditions();
         _ops.RefreshViews();
@@ -530,6 +536,25 @@ public class ReplayRecorder
                     _ops.SkipEliminatedCurrentPlayers();
                     _ops.StartPlayerTurn();
                 }
+                break;
+            case ReplayRejectedMoveBeat rejected:
+                // Authored rejection: mutate nothing, just re-present the
+                // live rejection flash. Shape and defenders are re-derived
+                // from current state (the recorded attempt was made from
+                // exactly this board position, so they match the original).
+                Unit? attacker = _state.Grid.Get(rejected.From)?.Unit;
+                UnitLevel attackerLevel = attacker?.Level ?? UnitLevel.Recruit;
+                Territory? rejectedTarget = TerritoryLookup.FindContaining(
+                    _state.Territories, rejected.To);
+                System.Collections.Generic.IEnumerable<HexCoord> defenders =
+                    rejectedTarget != null && rejectedTarget.Owner != _state.Turns.CurrentPlayer.Id
+                        ? DefenseRules.BlockingDefenders(
+                            rejected.To, attackerLevel, _state.Grid, rejectedTarget)
+                        : System.Array.Empty<HexCoord>();
+                _map.FlashRejection(
+                    rejected.To,
+                    RejectionShapeExtensions.FromUnitLevel(attackerLevel),
+                    defenders);
                 break;
             case ReplaySelectTerritoryBeat sel:
                 // Authored selection (Instructions demos): anchor → the
@@ -683,6 +708,8 @@ public class ReplayRecorder
             // through a no-highlight gap.
             ReplaySelectTerritoryBeat sel => TerritoryLookup.FindContaining(
                 _state.Territories, sel.Anchor),
+            ReplayRejectedMoveBeat rj => TerritoryLookup.FindOwnedContaining(
+                _state.Territories, owner, rj.From),
             _ => null,
         };
     }

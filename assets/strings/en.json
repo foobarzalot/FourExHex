@@ -128,6 +128,8 @@
   "hud.instructions.page.territories.body": "Your land is divided into territories — connected groups of hexes of your color. Each territory has a capital, which stores that territory's gold. {Verb} any hex of a territory to select it — the bright outline shows which territory is selected. Each territory earns, spends, and fights on its own.",
   "hud.instructions.page.recruit.title": "Recruits",
   "hud.instructions.page.recruit.body": "The first unit you can buy is a Recruit, represented by a circle. You can place it anywhere in your territory and reposition it as desired. The Recruit's circle will pulse as long as it has an unconsumed action. Chopping trees and capturing territory will consume an action.",
+  "hud.instructions.page.defense.title": "Defense",
+  "hud.instructions.page.defense.body": "Pieces (units, capitals, and towers) will defend the hex they are on and the 6 surrounding hexes. When capturing territory you'll need to use a unit that's strong enough to overcome defense. In this example, we need a Captain (two circles) to capture a tile defended by a Capital.",
   "hud.continue_hint": "{Verb} anywhere to continue",
   "hud.hint.tower_pick_tile": "{Verb} a hex... — T",
   "hud.hint.place_unit": "{Verb} to place a {level}",

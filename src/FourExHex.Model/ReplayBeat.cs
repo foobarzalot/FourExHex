@@ -225,3 +225,17 @@ public sealed record ReplaySelectTerritoryBeat : TutorialOnlyBeat
 {
     public HexCoord Anchor { get; init; }
 }
+
+/// <summary>
+/// Tutorial-only: a unit-move attempt that the rules rejected (e.g. a
+/// Recruit clicking an over-defended tile). Auto-recorded during
+/// Record mode only — live games never log these. Hands-free replay
+/// re-presents it as pickup pulse on <see cref="From"/> then the
+/// rejection flash at <see cref="To"/>, mutating nothing, so
+/// Instructions demos can show "this unit isn't strong enough".
+/// </summary>
+public sealed record ReplayRejectedMoveBeat : TutorialOnlyBeat
+{
+    public HexCoord From { get; init; }
+    public HexCoord To { get; init; }
+}

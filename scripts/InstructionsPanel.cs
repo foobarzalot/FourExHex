@@ -31,6 +31,9 @@ public sealed partial class InstructionsPanel : CanvasLayer
         new(StringKeys.HudInstrRecruitTitle,
             StringKeys.HudInstrRecruitBody,
             "instr_recruit"),
+        new(StringKeys.HudInstrDefenseTitle,
+            StringKeys.HudInstrDefenseBody,
+            "instr_defense"),
     };
 
     /// <summary>Raised once when the panel closes (Close button or
