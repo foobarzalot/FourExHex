@@ -194,6 +194,54 @@ public sealed partial class HudTour : CanvasLayer
     public override void _Input(InputEvent @event)
     {
         if (_closed) return;
+
+        // Swipe machinery lives HERE (pre-GUI) rather than on the catcher's
+        // GuiInput, so a swipe can begin anywhere — including over the
+        // dialog, whose panel and buttons would otherwise eat the press.
+        // Observe-only for presses/motion (taps continue on to buttons and
+        // the catcher); only a completed swipe or spring-back consumes its
+        // release so nothing underneath treats the drag-end as a click.
+        if (@event is InputEventMouseMotion mm)
+        {
+            if (_transitioning) return;
+            // Live tracking: the dialog follows the finger once the gesture
+            // locks horizontal (vertical-locked drags never move it).
+            float offset = _swipe.Drag(mm.Position.X, mm.Position.Y);
+            if (_swipe.IsTrackingHorizontal)
+            {
+                _dialogSlider.Position = new Vector2(offset, 0f);
+            }
+            return;
+        }
+        if (@event is InputEventMouseButton mb && mb.ButtonIndex == MouseButton.Left)
+        {
+            if (mb.Pressed)
+            {
+                if (!_transitioning) _swipe.Press(mb.Position.X, mb.Position.Y);
+                return;
+            }
+            // Page-turning: finger left = Next, finger right = Back. A
+            // sub-threshold horizontal drag springs the dialog back instead.
+            bool wasTracking = _swipe.IsTrackingHorizontal;
+            switch (_swipe.Release(mb.Position.X, mb.Position.Y))
+            {
+                case SwipeDirection.Left:
+                    Step(forward: true, via: "swipe");
+                    GetViewport().SetInputAsHandled();
+                    return;
+                case SwipeDirection.Right:
+                    Step(forward: false, via: "swipe");
+                    GetViewport().SetInputAsHandled();
+                    return;
+            }
+            if (wasTracking)
+            {
+                SpringBack();
+                GetViewport().SetInputAsHandled();
+            }
+            return;
+        }
+
         if (@event is not InputEventKey key || !key.Pressed || key.Echo) return;
 
         switch (key.Keycode)
@@ -209,49 +257,15 @@ public sealed partial class HudTour : CanvasLayer
 
     private void OnCatcherInput(InputEvent @event)
     {
-        // Live tracking: the dialog follows the finger once the gesture
-        // locks horizontal (vertical-locked drags never move it).
-        if (@event is InputEventMouseMotion mm)
-        {
-            if (_transitioning) return;
-            float offset = _swipe.Drag(mm.Position.X, mm.Position.Y);
-            if (_swipe.IsTrackingHorizontal)
-            {
-                _dialogSlider.Position = new Vector2(offset, 0f);
-            }
-            return;
-        }
-
-        if (@event is not InputEventMouseButton mb || mb.ButtonIndex != MouseButton.Left)
+        // Tap release on the catcher (swipe releases were consumed in
+        // _Input and never reach the GUI): click-to-jump — hit-test
+        // against each element's rect. The catcher already ate the click,
+        // so the underlying button never fires.
+        if (@event is not InputEventMouseButton mb || mb.Pressed
+            || mb.ButtonIndex != MouseButton.Left)
         {
             return;
         }
-
-        // Press arms the swipe recognizer; everything is judged at release
-        // (standard button semantics — a tap that turns into a drag isn't a
-        // click). Touch reaches here as emulated finger-0 mouse events.
-        if (mb.Pressed)
-        {
-            if (!_transitioning) _swipe.Press(mb.Position.X, mb.Position.Y);
-            return;
-        }
-
-        // Page-turning: finger left = Next, finger right = Back. A
-        // sub-threshold horizontal drag springs the dialog back instead.
-        bool wasTracking = _swipe.IsTrackingHorizontal;
-        switch (_swipe.Release(mb.Position.X, mb.Position.Y))
-        {
-            case SwipeDirection.Left: Step(forward: true, via: "swipe"); return;
-            case SwipeDirection.Right: Step(forward: false, via: "swipe"); return;
-        }
-        if (wasTracking)
-        {
-            SpringBack();
-            return;
-        }
-
-        // Tap: click-to-jump — hit-test against each element's rect. The
-        // catcher already ate the click, so the underlying button never fires.
         Vector2 pos = mb.Position;
         for (int i = 0; i < _entries.Count; i++)
         {
