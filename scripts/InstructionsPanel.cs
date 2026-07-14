@@ -46,6 +46,9 @@ public sealed partial class InstructionsPanel : CanvasLayer
         new(StringKeys.HudInstrTreesTitle,
             StringKeys.HudInstrTreesBody,
             "instr_trees"),
+        new(StringKeys.HudInstrWinningTitle,
+            StringKeys.HudInstrWinningBody,
+            "instr_winning"),
     };
 
     /// <summary>Raised once when the panel closes (Close button or

@@ -201,6 +201,8 @@ public static class StringKeys
     public const string HudInstrIncomeBody = "hud.instructions.page.income.body";
     public const string HudInstrTreesTitle = "hud.instructions.page.trees.title";
     public const string HudInstrTreesBody = "hud.instructions.page.trees.body";
+    public const string HudInstrWinningTitle = "hud.instructions.page.winning.title";
+    public const string HudInstrWinningBody = "hud.instructions.page.winning.body";
 
     // Bottom-panel prompts / action hints.
     public const string HudContinueHint = "hud.continue_hint";

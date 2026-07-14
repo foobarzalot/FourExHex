@@ -139,6 +139,8 @@
   "hud.instructions.page.income.body": "Every hex in a territory earns gold each turn, stored in its capital. Units cost upkeep each turn: the stronger the unit, the higher the cost. The treasury readout shows gold, income, and upkeep. It turns yellow when the territory is losing gold, and red when bankruptcy is expected next turn. When a territory goes bankrupt, all its units die.",
   "hud.instructions.page.trees.title": "Trees",
   "hud.instructions.page.trees.body": "Graves turn into trees the following turn. Trees spread to adjacent hexes at the start of each turn: an empty hex with two or more neighboring trees, or one neighboring tree and a water hex, will spawn a tree.",
+  "hud.instructions.page.winning.title": "Winning the Game",
+  "hud.instructions.page.winning.body": "To win the game you must take control of the island. When you control more than half of the hexes on the map you can claim victory, or you can continue playing until you have eliminated every other player and achieved total domination.",
   "hud.continue_hint": "{Verb} anywhere to continue",
   "hud.hint.tower_pick_tile": "{Verb} a hex... — T",
   "hud.hint.place_unit": "{Verb} to place a {level}",
