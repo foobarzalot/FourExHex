@@ -42,6 +42,12 @@ public partial class HudView : OrientationHud, IHudView
     public event Action? ClaimVictoryWinNowClicked;
     public event Action? ClaimVictoryContinueClicked;
     public event Action? ReplayClicked;
+    // Raised when the Help family (menu, guided tour, Instructions)
+    // becomes active or fully inactive. Main pauses the game while a
+    // help session is up — like the pause menu, opponent turns / replay
+    // / automation freeze while the player reads.
+    public event Action<bool>? HelpSessionChanged;
+
     // Tutorial-recorder only: the Add Text button (speech-bubble glyph)
     // is hidden by default and revealed via SetAddTextButtonVisible, so
     // it never shows in normal play or preview.
@@ -411,7 +417,10 @@ public partial class HudView : OrientationHud, IHudView
         // doesn't pause while it's up, so hotkeys must not fire underneath).
         _helpMenu = new EscMenu { SwallowAllKeysWhileOpen = true };
         _helpMenu.EscapeClosed += () =>
+        {
             Log.Info(Log.LogCategory.Hud, "[help] close (escape)");
+            UpdateHelpSession();
+        };
         AddChild(_helpMenu);
 
         // Read-only seed / map-name display tucked in the bottom-left
@@ -492,9 +501,25 @@ public partial class HudView : OrientationHud, IHudView
 
     // ---- Help menu (issue #134) ------------------------------------------
 
+    // True while any of the Help family is up (menu, tour, Instructions).
+    // Drives HelpSessionChanged so Main can hold the game paused for the
+    // whole session, not per-modal.
+    private bool _helpSessionActive;
+
+    /// <summary>Recompute the help-session flag and notify Main on
+    /// transitions. Called after every open/close of the Help family.</summary>
+    private void UpdateHelpSession()
+    {
+        bool active = _helpMenu.IsOpen || _hudTour != null || _instructionsPanel != null;
+        if (active == _helpSessionActive) return;
+        _helpSessionActive = active;
+        Log.Info(Log.LogCategory.Hud, $"[help] session {(active ? "start (pausing)" : "end (unpausing)")}");
+        HelpSessionChanged?.Invoke(active);
+    }
+
     /// <summary>
-    /// Open the Help menu: Instructions (paged rules explainer — not yet
-    /// implemented) and the guided UI tour. No-op while the tour or the menu
+    /// Open the Help menu: Instructions (paged rules explainer with looping
+    /// demos) and the guided UI tour. No-op while the tour or the menu
     /// itself is already up.
     /// </summary>
     private void OpenHelpMenu()
@@ -507,16 +532,24 @@ public partial class HudView : OrientationHud, IHudView
             {
                 Log.Info(Log.LogCategory.Hud, "[help] chose instructions");
                 OpenInstructions();
+                UpdateHelpSession();
             }),
             new(Strings.Get(StringKeys.HudHelpTour), () =>
             {
                 Log.Info(Log.LogCategory.Hud, "[help] chose tour");
                 EnterTour();
+                // EnterTour can decline (no visible elements) — recompute
+                // rather than assume the tour opened.
+                UpdateHelpSession();
             }),
             new(Strings.Get(StringKeys.HudHelpClose), () =>
-                Log.Info(Log.LogCategory.Hud, "[help] close (button)")),
+            {
+                Log.Info(Log.LogCategory.Hud, "[help] close (button)");
+                UpdateHelpSession();
+            }),
         });
         Log.Info(Log.LogCategory.Hud, "[help] menu open");
+        UpdateHelpSession();
     }
 
     // The Instructions modal (issue #134). Non-null while it's up.
@@ -537,6 +570,7 @@ public partial class HudView : OrientationHud, IHudView
         if (_instructionsPanel == null) return;
         _instructionsPanel.QueueFree();
         _instructionsPanel = null;
+        UpdateHelpSession();
     }
 
     // ---- Guided UI tour (issue #101) -------------------------------------
@@ -574,6 +608,7 @@ public partial class HudView : OrientationHud, IHudView
         _hudTour.QueueFree();
         _hudTour = null;
         _mapDim.Visible = false;
+        UpdateHelpSession();
     }
 
     /// <summary>

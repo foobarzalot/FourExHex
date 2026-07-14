@@ -43,7 +43,11 @@ public partial class Main : Node2D
     // misinterpreting the close as "user wants to unpause." _escMenu
     // and _settingsPanel are only constructed in non-diagnostic mode —
     // FOUREXHEX_6AI runs headless with no HUD to raise EscRequested.
+    // _helpPauseActive is the Help family's independent hold on the
+    // pause (menu / tour / Instructions freeze the game like the pause
+    // menu, minus its UI); the tree is paused while EITHER flag is set.
     private bool _isPaused;
+    private bool _helpPauseActive;
     private EscMenu _escMenu = null!;
     private SettingsPanel _settingsPanel = null!;
 
@@ -385,9 +389,13 @@ public partial class Main : Node2D
 
             visibleHud.EscRequested += EnterPause;
 
-            // The "?" HUD button opens the guided UI tour. Entering it
-            // auto-selects a territory (if none is) so the profit/loss readout
-            // renders; the tour overlay itself lives view-side in HudView/HudTour.
+            // The Help family (menu / tour / Instructions, behind the "?"
+            // button) freezes the game like the pause menu while it's up.
+            visibleHud.HelpSessionChanged += OnHelpSessionChanged;
+
+            // Choosing the guided UI tour from the Help menu auto-selects a
+            // territory (if none is) so the profit/loss readout renders; the
+            // tour overlay itself lives view-side in HudView/HudTour.
             visibleHud.TourStartRequested += () => _controller.EnsureTerritorySelectedForTour();
 
             map = visibleMap;
@@ -804,7 +812,7 @@ public partial class Main : Node2D
     {
         if (_isPaused) return;
         _isPaused = true;
-        GetTree().Paused = true;
+        ApplyPauseState();
         ShowPauseMenu();
     }
 
@@ -812,7 +820,26 @@ public partial class Main : Node2D
     {
         if (!_isPaused) return;
         _isPaused = false;
-        GetTree().Paused = false;
+        ApplyPauseState();
+    }
+
+    // The Help family (menu / guided tour / Instructions) holds the same
+    // freeze as the pause menu while it's up — opponent turns, replay,
+    // and automation stop while the player reads. Raised by HudView on
+    // session start/end transitions.
+    private void OnHelpSessionChanged(bool active)
+    {
+        _helpPauseActive = active;
+        ApplyPauseState();
+    }
+
+    // Single writer for GetTree().Paused: paused while either the pause
+    // menu or a help session holds it, so the two modal families can't
+    // clobber each other's freeze (they're mutually exclusive in the UI,
+    // but the pause state must not depend on that).
+    private void ApplyPauseState()
+    {
+        GetTree().Paused = _isPaused || _helpPauseActive;
     }
 
     private void ShowPauseMenu()

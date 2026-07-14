@@ -106,13 +106,15 @@ public sealed partial class InstructionDemoView : Control
         // preview mode (no divergence checksum against the starting map,
         // no beat recording), pinned to the paced track so the demo
         // always animates regardless of the user's Replay Speed setting.
+        // processAlways: the Help family pauses the tree while it's up —
+        // the demo must keep animating behind that freeze.
         _controller = new GameController(
             state,
             session,
             _map,
             new HeadlessHudView(),
             seed: loaded.MasterSeed,
-            aiPacer: new GodotAiPacer(new SceneTreeTimerFactory(GetTree())),
+            aiPacer: new GodotAiPacer(new SceneTreeTimerFactory(GetTree(), processAlways: true)),
             previewMode: true,
             loadedReplay: tutorial.Replay,
             replayIsInstantMode: () => false,

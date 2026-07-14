@@ -11,20 +11,28 @@ using Godot;
 public sealed class SceneTreeTimerFactory : ITimerFactory
 {
     private readonly SceneTree _tree;
+    private readonly bool _processAlways;
 
-    public SceneTreeTimerFactory(SceneTree tree)
+    /// <param name="processAlways">
+    /// False (default): timers freeze while <c>GetTree().Paused</c> — what
+    /// every live-game pacer wants (the pause and Help modals expect AI
+    /// pacing to halt). True: timers keep firing while paused — for pacing
+    /// that must survive a paused tree (the Instructions demo board, which
+    /// keeps animating behind the pausing Help family).
+    /// </param>
+    public SceneTreeTimerFactory(SceneTree tree, bool processAlways = false)
     {
         _tree = tree;
+        _processAlways = processAlways;
     }
 
     public void After(int delayMs, Action callback)
     {
         double seconds = delayMs / 1000.0;
-        // processAlways: false — SceneTreeTimer defaults to true, which
-        // keeps firing even when GetTree().Paused is true. The in-game
-        // pause menu sets Paused = true and expects AI pacing to halt;
-        // without this argument the AI keeps moving behind the modal.
-        SceneTreeTimer timer = _tree.CreateTimer(seconds, processAlways: false);
+        // SceneTreeTimer's own default is processAlways: true (keeps firing
+        // while GetTree().Paused) — the wrong default for gameplay pacing,
+        // so this factory defaults it off.
+        SceneTreeTimer timer = _tree.CreateTimer(seconds, processAlways: _processAlways);
         timer.Timeout += () => callback();
     }
 }
