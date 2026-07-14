@@ -43,6 +43,9 @@ public sealed partial class HudTour : CanvasLayer
     private Label _titleLabel = null!;
     private Label _bodyLabel = null!;
     private bool _closed;
+    // Horizontal-swipe paging on the catcher (page-turning: left = Next,
+    // right = Back). Pure ViewMath recognizer fed press/release positions.
+    private readonly SwipeDetector _swipe = new SwipeDetector();
 
     public HudTour(IReadOnlyList<Entry> entries)
     {
@@ -189,13 +192,28 @@ public sealed partial class HudTour : CanvasLayer
 
     private void OnCatcherInput(InputEvent @event)
     {
-        if (@event is not InputEventMouseButton mb || !mb.Pressed
-            || mb.ButtonIndex != MouseButton.Left)
+        if (@event is not InputEventMouseButton mb || mb.ButtonIndex != MouseButton.Left)
         {
             return;
         }
 
-        // Click-to-jump: hit-test the click against each element's rect. The
+        // Press arms the swipe recognizer; everything is judged at release
+        // (standard button semantics — a tap that turns into a drag isn't a
+        // click). Touch reaches here as emulated finger-0 mouse events.
+        if (mb.Pressed)
+        {
+            _swipe.Press(mb.Position.X, mb.Position.Y);
+            return;
+        }
+
+        // Page-turning: finger left = Next, finger right = Back.
+        switch (_swipe.Release(mb.Position.X, mb.Position.Y))
+        {
+            case SwipeDirection.Left: Step(forward: true, via: "swipe"); return;
+            case SwipeDirection.Right: Step(forward: false, via: "swipe"); return;
+        }
+
+        // Tap: click-to-jump — hit-test against each element's rect. The
         // catcher already ate the click, so the underlying button never fires.
         Vector2 pos = mb.Position;
         for (int i = 0; i < _entries.Count; i++)
@@ -213,11 +231,11 @@ public sealed partial class HudTour : CanvasLayer
         }
     }
 
-    private void Step(bool forward)
+    private void Step(bool forward, string? via = null)
     {
         if (forward) _cursor.Next();
         else _cursor.Prev();
-        ShowCurrent(forward ? "next" : "back");
+        ShowCurrent(via ?? (forward ? "next" : "back"));
     }
 
     private void ShowCurrent(string via)

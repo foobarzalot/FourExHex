@@ -70,6 +70,10 @@ public sealed partial class InstructionsPanel : CanvasLayer
     private BoxContainer _split = null!;
     private int _index;
     private bool _closed;
+    // Horizontal-swipe paging anywhere over the panel (page-turning:
+    // left = Next, right = Back). Pure ViewMath recognizer fed
+    // press/release positions observed in _Input.
+    private readonly SwipeDetector _swipe = new SwipeDetector();
 
     public override void _Ready()
     {
@@ -179,11 +183,11 @@ public sealed partial class InstructionsPanel : CanvasLayer
         _split.Vertical = ScreenLayout.Resolve(vp.X, vp.Y) == ScreenOrientation.Portrait;
     }
 
-    private void Step(bool forward)
+    private void Step(bool forward, string? via = null)
     {
         int count = Pages.Length;
         ShowPage(((_index + (forward ? 1 : -1)) % count + count) % count,
-            forward ? "next" : "back");
+            via ?? (forward ? "next" : "back"));
     }
 
     private void ShowPage(int index, string via)
@@ -213,10 +217,33 @@ public sealed partial class InstructionsPanel : CanvasLayer
 
     /// <summary>Swallow every key while the panel is up (same contract as
     /// the tour): Escape closes, Left/Right page, everything else is
-    /// eaten so HUD hotkeys can't fire underneath.</summary>
+    /// eaten so HUD hotkeys can't fire underneath. Mouse presses are
+    /// observed (not consumed) to recognize swipe paging anywhere over
+    /// the panel; touch arrives here as emulated finger-0 mouse events.</summary>
     public override void _Input(InputEvent @event)
     {
         if (_closed) return;
+
+        if (@event is InputEventMouseButton mb && mb.ButtonIndex == MouseButton.Left)
+        {
+            if (mb.Pressed)
+            {
+                // Observe only — the press continues on to the buttons.
+                _swipe.Press(mb.Position.X, mb.Position.Y);
+                return;
+            }
+            SwipeDirection dir = _swipe.Release(mb.Position.X, mb.Position.Y);
+            if (dir != SwipeDirection.None)
+            {
+                // Page-turning: finger left = Next, finger right = Back.
+                Step(forward: dir == SwipeDirection.Left, via: "swipe");
+                // A drag-release isn't a click anyone needs — eat it so no
+                // button underneath fires. Taps pass through untouched.
+                GetViewport().SetInputAsHandled();
+            }
+            return;
+        }
+
         if (@event is not InputEventKey key || !key.Pressed || key.Echo) return;
 
         switch (key.Keycode)
