@@ -65,6 +65,13 @@ public sealed partial class InstructionDemoView : Control
             HandleInputLocally = false,
         };
         AddChild(_viewport);
+
+        GetViewport().SizeChanged += OnHostResized;
+    }
+
+    public override void _ExitTree()
+    {
+        GetViewport().SizeChanged -= OnHostResized;
     }
 
     /// <summary>
@@ -162,12 +169,24 @@ public sealed partial class InstructionDemoView : Control
 
     // Offscreen render target sized to the board's nominal pixel aspect
     // (content-independent, like MapThumbnailView), long edge clamped.
+    // In portrait the aspect is swapped tall, which makes the HexMapView
+    // inside rotate the board −90° — the same rule as the in-game map.
     private void SizeViewportToGrid()
     {
-        Vector2 grid = _map!.PixelSize;
-        float scale = MaxRenderPx / Mathf.Max(grid.X, grid.Y);
-        _viewport.Size = new Vector2I(
-            Mathf.Max(1, Mathf.RoundToInt(grid.X * scale)),
-            Mathf.Max(1, Mathf.RoundToInt(grid.Y * scale)));
+        if (_map == null) return;
+        Vector2 grid = _map.PixelSize;
+        Vector2 vp = GetViewport().GetVisibleRect().Size;
+        bool portrait = ScreenLayout.Resolve(vp.X, vp.Y) == ScreenOrientation.Portrait;
+        (float w, float h) = ThumbnailLayout.OrientedFit(
+            grid.X, grid.Y, portrait, MaxRenderPx, MaxRenderPx);
+        var size = new Vector2I(
+            Mathf.Max(1, Mathf.RoundToInt(w)),
+            Mathf.Max(1, Mathf.RoundToInt(h)));
+        if (_viewport.Size != size) _viewport.Size = size;
     }
+
+    // Track host-window resizes/rotations: re-shape the offscreen
+    // viewport, and the HexMapView inside re-resolves its own rotation
+    // and framing from its viewport's SizeChanged.
+    private void OnHostResized() => SizeViewportToGrid();
 }

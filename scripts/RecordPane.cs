@@ -157,6 +157,8 @@ public sealed partial class RecordPane : Control
         _hud.SetAddTextButtonVisible(true);
         _hud.AddSelectClicked += RecordSelectBeat;
         _hud.SetAddSelectButtonVisible(true);
+        _hud.AddDemoStartClicked += RecordDemoStartBeat;
+        _hud.SetAddDemoStartButtonVisible(true);
 
         _recordSession = new SessionState();
         _controller = new GameController(
@@ -225,6 +227,8 @@ public sealed partial class RecordPane : Control
         _hud.SetAddTextButtonVisible(true);
         _hud.AddSelectClicked += RecordSelectBeat;
         _hud.SetAddSelectButtonVisible(true);
+        _hud.AddDemoStartClicked += RecordDemoStartBeat;
+        _hud.SetAddDemoStartButtonVisible(true);
 
         _recordSession = new SessionState();
         _controller = new GameController(
@@ -324,6 +328,21 @@ public sealed partial class RecordPane : Control
         _capture.SetBeats(new List<ReplayBeat>(_controller.ReplayBeats));
         Log.Debug(Log.LogCategory.Tutorial,
             $"[RecordPane] Authored SelectTerritory beat: anchor={anchor}");
+    }
+
+    /// <summary>
+    /// The Demo Start button: mark this point in the script as where
+    /// instruction playback begins — everything recorded before it
+    /// fast-forwards instantly on every loop. Playback honors the FIRST
+    /// marker; pressing it again later is recorded but has no effect.
+    /// </summary>
+    private void RecordDemoStartBeat()
+    {
+        if (_controller == null) return;
+        _controller.RecordTutorialOnlyBeat(new ReplayDemoStartBeat());
+        _capture.SetBeats(new List<ReplayBeat>(_controller.ReplayBeats));
+        Log.Debug(Log.LogCategory.Tutorial,
+            $"[RecordPane] Authored DemoStart beat at index {_controller.ReplayBeats.Count - 1}");
     }
 
     /// <summary>

@@ -50,6 +50,9 @@ public partial class HudView : OrientationHud, IHudView
     // the current selection as a tutorial-only select beat. Same
     // hidden-by-default lifecycle as Add Text.
     public event Action? AddSelectClicked;
+    // Tutorial-recorder only: the Demo Start button (» glyph) marks
+    // where instruction playback fast-forwards to. Same lifecycle.
+    public event Action? AddDemoStartClicked;
 
     private Label _turnLabel = null!;       // numeric mono turn number
     private PlayerSwatchBar _playerSwatchBar = null!; // players in turn order, current highlighted
@@ -94,6 +97,7 @@ public partial class HudView : OrientationHud, IHudView
     private HudIconButton _helpButton = null!;
     private HudIconButton _addTextButton = null!;
     private HudIconButton _addSelectButton = null!;
+    private HudIconButton _addDemoStartButton = null!;
 
     // Help menu opened by the ? button — offers Instructions and the guided
     // UI tour. Built once in BuildUi, shown/hidden on demand.
@@ -309,6 +313,17 @@ public partial class HudView : OrientationHud, IHudView
         _addSelectButton.Pressed += () => AddSelectClicked?.Invoke();
         AudioBus.AttachClick(_addSelectButton);
         _actionCluster.AddChild(_addSelectButton);
+
+        // Third recorder affordance: mark the demo-start beat that
+        // instruction playback fast-forwards to (issue #134).
+        _addDemoStartButton = new HudIconButton("»", SerifFont, 30)
+        {
+            Visible = false,
+            TooltipText = Strings.Get(StringKeys.HudTooltipAddDemoStart),
+        };
+        _addDemoStartButton.Pressed += () => AddDemoStartClicked?.Invoke();
+        AudioBus.AttachClick(_addDemoStartButton);
+        _actionCluster.AddChild(_addDemoStartButton);
 
         // 5) Undo / Redo — two ghost icon buttons. A short click is
         // Undo/Redo Last; holding past the long-press threshold fires
@@ -974,6 +989,16 @@ public partial class HudView : OrientationHud, IHudView
     {
         _addSelectButton.Visible = visible;
         Log.Debug(Log.LogCategory.Tutorial, $"[HudView] Add Select button visible={visible}");
+    }
+
+    /// <summary>
+    /// Reveal (or hide) the tutorial-recorder Demo Start button. Only the
+    /// tutorial RecordPane calls this; normal play leaves it hidden.
+    /// </summary>
+    public void SetAddDemoStartButtonVisible(bool visible)
+    {
+        _addDemoStartButton.Visible = visible;
+        Log.Debug(Log.LogCategory.Tutorial, $"[HudView] Demo Start button visible={visible}");
     }
 
     // Small uppercase "TURN" / "TO PLAY" eyebrow label sitting side-by-

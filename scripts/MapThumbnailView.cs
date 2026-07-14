@@ -249,13 +249,11 @@ public partial class MapThumbnailView : Control
     {
         // Nominal grid pixel box (depends only on Cols/Rows/HexSize, not the
         // map content), so the aspect is identical for every seed → a stable
-        // frame. In portrait, swap to a tall aspect so HexMapView rotates the
-        // board to match the in-game portrait orientation.
+        // frame. OrientedFit swaps to a tall aspect in portrait so HexMapView
+        // rotates the board to match the in-game portrait orientation.
         Vector2 grid = _map.PixelSize;
         bool portrait = ScreenLayout.Resolve(
             GetViewportRect().Size.X, GetViewportRect().Size.Y) == ScreenOrientation.Portrait;
-        float aw = portrait ? grid.Y : grid.X;
-        float ah = portrait ? grid.X : grid.Y;
 
         // Render budget = this control's on-screen pixel size (logical × the
         // window ContentScaleFactor DisplayScale set) × supersample, clamped.
@@ -267,7 +265,7 @@ public partial class MapThumbnailView : Control
         budgetW = Mathf.Min(budgetW, MaxRenderClamp);
         budgetH = Mathf.Min(budgetH, MaxRenderClamp);
 
-        (float w, float h) = ThumbnailLayout.FitInside(aw, ah, budgetW, budgetH);
+        (float w, float h) = ThumbnailLayout.OrientedFit(grid.X, grid.Y, portrait, budgetW, budgetH);
         var size = new Vector2I(
             Mathf.Max(1, Mathf.RoundToInt(w)),
             Mathf.Max(1, Mathf.RoundToInt(h)));

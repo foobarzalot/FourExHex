@@ -239,3 +239,15 @@ public sealed record ReplayRejectedMoveBeat : TutorialOnlyBeat
     public HexCoord From { get; init; }
     public HexCoord To { get; init; }
 }
+
+/// <summary>
+/// Tutorial-only: marks where the demo proper begins. Paced replay
+/// playback executes every beat before the first marker instantly and
+/// silently (the author's staging — banking gold over pass turns,
+/// placing the opposing pieces), then paces normally from here; each
+/// loop restart re-runs the fast-forward. Authored from RecordPane's
+/// demo-start button. No marker = play everything paced, as before.
+/// </summary>
+public sealed record ReplayDemoStartBeat : TutorialOnlyBeat
+{
+}

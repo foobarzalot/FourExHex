@@ -376,6 +376,36 @@ public class ReplayRecorder
         // Set silent BEFORE the setup refresh so even the rewind paint
         // skips tweens. Instant playback never shows per-beat highlights.
         if (_replayInstantActive) _map.SetSilentMode(true);
+
+        // Authored demo-start marker: execute everything before (and
+        // including) the first marker instantly and silently — the
+        // author's staging (pass turns banking gold, opposing pieces
+        // placed) — so paced playback and every loop restart begin at
+        // the marked beat. Instant playback needs no skip.
+        if (!_replayInstantActive)
+        {
+            int marker = -1;
+            for (int i = 0; i < _replayBeats.Count; i++)
+            {
+                if (_replayBeats[i] is ReplayDemoStartBeat) { marker = i; break; }
+            }
+            if (marker >= 0)
+            {
+                _map.SetSilentMode(true);
+                _ops.SuppressMapRebuild = true;
+                while (_replayIndex <= marker && !_session.IsGameOver)
+                {
+                    ExecuteReplayBeat(_replayBeats[_replayIndex++]);
+                    _ops.CheckGameEndConditions();
+                }
+                _ops.SuppressMapRebuild = false;
+                _map.SetSilentMode(false);
+                _map.RebuildAfterTerritoryChange();
+                Log.Debug(Log.LogCategory.Replay,
+                    $"[replay] fast-forwarded {_replayIndex} setup beats to demo start");
+            }
+        }
+
         _ops.RefreshViews();
 
         // First dispatch is a turn boundary; the track was just seeded

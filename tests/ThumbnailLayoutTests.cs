@@ -51,6 +51,28 @@ public class ThumbnailLayoutTests
         Assert.Equal(202.5f, w, Tol);
     }
 
+    [Fact]
+    public void OrientedFit_Landscape_MatchesPlainFit()
+    {
+        // Landscape passes the grid box through unchanged.
+        (float w, float h) = ThumbnailLayout.OrientedFit(
+            400f, 100f, portrait: false, 200f, 200f);
+        Assert.Equal(200f, w, Tol);
+        Assert.Equal(50f, h, Tol);
+    }
+
+    [Fact]
+    public void OrientedFit_Portrait_SwapsGridAspect()
+    {
+        // Portrait swaps the grid box to a tall aspect (the HexMapView
+        // inside a tall viewport rotates the board −90°, matching the
+        // in-game portrait map): 400×100 grid → 100×400 content → 50×200.
+        (float w, float h) = ThumbnailLayout.OrientedFit(
+            400f, 100f, portrait: true, 200f, 200f);
+        Assert.Equal(50f, w, Tol);
+        Assert.Equal(200f, h, Tol);
+    }
+
     [Theory]
     [InlineData(0f, 100f, 200f, 200f)]
     [InlineData(100f, 0f, 200f, 200f)]

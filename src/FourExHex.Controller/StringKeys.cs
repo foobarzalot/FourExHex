@@ -99,6 +99,7 @@ public static class StringKeys
     public const string HudTooltipGenerateMap = "hud.tooltip.generate_map";
     public const string HudTooltipAddNarration = "hud.tooltip.add_narration";
     public const string HudTooltipAddSelect = "hud.tooltip.add_select";
+    public const string HudTooltipAddDemoStart = "hud.tooltip.add_demo_start";
     public const string HudTooltipAutomate = "hud.tooltip.automate";
     public const string HudTooltipAutomateStop = "hud.tooltip.automate_stop";
     public const string HudTooltipBuyCycle = "hud.tooltip.buy_cycle";
@@ -192,6 +193,10 @@ public static class StringKeys
     public const string HudInstrRecruitBody = "hud.instructions.page.recruit.body";
     public const string HudInstrDefenseTitle = "hud.instructions.page.defense.title";
     public const string HudInstrDefenseBody = "hud.instructions.page.defense.body";
+    public const string HudInstrTowersTitle = "hud.instructions.page.towers.title";
+    public const string HudInstrTowersBody = "hud.instructions.page.towers.body";
+    public const string HudInstrCommanderTitle = "hud.instructions.page.commander.title";
+    public const string HudInstrCommanderBody = "hud.instructions.page.commander.body";
 
     // Bottom-panel prompts / action hints.
     public const string HudContinueHint = "hud.continue_hint";

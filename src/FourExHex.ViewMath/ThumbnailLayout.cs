@@ -27,4 +27,19 @@ public static class ThumbnailLayout
         float scale = scaleX < scaleY ? scaleX : scaleY;
         return (contentW * scale, contentH * scale);
     }
+
+    /// <summary>
+    /// <see cref="FitInside"/> with the grid box swapped to a tall aspect
+    /// when <paramref name="portrait"/> — an offscreen board viewport
+    /// sized this way makes the <c>HexMapView</c> inside rotate the board
+    /// −90°, matching the in-game portrait map. Shared by the map
+    /// thumbnail and the Instructions demo view.
+    /// </summary>
+    public static (float width, float height) OrientedFit(
+        float gridW, float gridH, bool portrait, float maxW, float maxH)
+    {
+        return portrait
+            ? FitInside(gridH, gridW, maxW, maxH)
+            : FitInside(gridW, gridH, maxW, maxH);
+    }
 }

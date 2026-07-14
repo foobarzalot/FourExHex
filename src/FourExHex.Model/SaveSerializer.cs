@@ -926,6 +926,7 @@ public static class SaveSerializer
                     ToQ = rj.To.Q,
                     ToR = rj.To.R,
                 },
+                ReplayDemoStartBeat _ => new ReplayBeatDto { Kind = "DemoStart" },
                 _ => throw new InvalidOperationException(
                     $"Unknown replay beat kind for serialization: {beat.GetType()}"),
             };
@@ -1062,6 +1063,10 @@ public static class SaveSerializer
                     To = new HexCoord(
                         dto.ToQ ?? throw new InvalidOperationException("RejectedMove beat missing ToQ"),
                         dto.ToR ?? throw new InvalidOperationException("RejectedMove beat missing ToR")),
+                },
+                "DemoStart" => new ReplayDemoStartBeat
+                {
+                    Index = dto.Index, Turn = dto.Turn, Actor = dto.Actor,
                 },
                 _ => throw new InvalidOperationException(
                     $"Unknown replay beat kind in save: {dto.Kind}"),
