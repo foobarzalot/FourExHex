@@ -127,6 +127,20 @@ public partial class MainMenuScene : Control
     private PlayConfigPage _playConfigPage = PlayConfigPage.PlayerSetup;
     private Control? _playerPageContent;
     private Control? _mapPageContent;
+    // Clipping wrapper both page contents live in (full-rect anchored),
+    // so the swipe carousel can slide them side by side without the
+    // PanelContainer surface re-fitting positions and without content
+    // overhanging the panel. Rebuilt with the panel per orientation.
+    private Control? _pageClip;
+    // Swipe paging between the two config pages (page-turning: left =
+    // forward to map setup, right = back to player setup), with the same
+    // finger-tracking + slide animation as the Instructions panel.
+    // Durations mirrored in InstructionsPanel/HudTour — keep in step.
+    private readonly SwipeDetector _configSwipe = new SwipeDetector();
+    private const float ConfigSlideSec = 0.18f;
+    private const float ConfigSpringBackSec = 0.15f;
+    private Tween? _configSlideTween;
+    private bool _configTransitioning;
     // Orientation the play-config panel was last built for; a viewport
     // resize that flips it triggers a rebuild (see FitPanels).
     private ScreenOrientation _playConfigOrientation = ScreenOrientation.Landscape;
@@ -691,9 +705,8 @@ public partial class MainMenuScene : Control
         _playConfigSurface = surface;
 
         _playerPageContent = BuildPortraitPlayerPage();
-        surface.AddChild(_playerPageContent);
         _mapPageContent = BuildPortraitMapPage();
-        surface.AddChild(_mapPageContent);
+        MountPagedContent(surface);
 
         ShowCurrentPlayConfigPage();
         ApplyPlayConfigLayout();
@@ -719,6 +732,9 @@ public partial class MainMenuScene : Control
         LandscapeMenuChrome.ApplyLayout(_playConfigSurface, vp, SafeArea.Current,
             maxW: portrait ? PortraitMaxW : LandscapeMenuChrome.MaxWidth,
             maxH: portrait ? PortraitMaxH : LandscapeMenuChrome.MaxHeight);
+        // Debug: dump resolved geometry once the deferred container sort has
+        // run, to compare against the pre-swipe baseline.
+        Callable.From(() => LayoutDump.Dump(_playConfigSurface, "play-config")).CallDeferred();
     }
 
     /// <summary>Centered "New Game" wordmark + gold rule at the top of a portrait
@@ -954,16 +970,16 @@ public partial class MainMenuScene : Control
         PanelContainer surface = LandscapeMenuChrome.Build();
         _playConfigSurface = surface;
 
-        // Both pages fill the surface (PanelContainer fits every child to its
-        // content rect); ShowCurrentPlayConfigPage toggles which is visible.
+        // Both pages fill the surface via the paged-content clip;
+        // ShowCurrentPlayConfigPage toggles which is visible.
         _playerPageContent = BuildLandscapePlayerPage();
-        surface.AddChild(_playerPageContent);
         _mapPageContent = BuildLandscapeMapPage();
-        surface.AddChild(_mapPageContent);
+        MountPagedContent(surface);
 
         ShowCurrentPlayConfigPage();
         LandscapeMenuChrome.ApplyLayout(surface, GetViewportRect().Size, SafeArea.Current);
         Log.Debug(Log.LogCategory.Render, "MainMenu: play-config built (Landscape, paged player/map setup)");
+        Callable.From(() => LayoutDump.Dump(_playConfigSurface, "play-config")).CallDeferred();
         return surface;
     }
 
@@ -1373,21 +1389,280 @@ public partial class MainMenuScene : Control
         GetTree().ChangeSceneToFile("res://scenes/map_editor.tscn");
     }
 
+    /// <summary>Parent both prebuilt page contents into a clipping wrapper
+    /// under <paramref name="surface"/> so the swipe carousel can slide
+    /// them side by side (a PanelContainer would re-fit their positions).
+    /// Also resets any swipe/transition state a prior panel left behind
+    /// (orientation rebuilds tear the old pages down mid-anything).</summary>
+    private void MountPagedContent(PanelContainer surface)
+    {
+        _configSlideTween?.Kill();
+        _configSlideTween = null;
+        _configTransitioning = false;
+        _configSwipe.Cancel();
+
+        _pageClip = new Control
+        {
+            ClipContents = true,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        surface.AddChild(_pageClip);
+        // AND-offsets: the pages arrive carrying offsets from their
+        // pre-mount layout; anchors alone would keep them, sizing the
+        // pages past the clip.
+        _playerPageContent!.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+        _mapPageContent!.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+        _pageClip.AddChild(_playerPageContent);
+        _pageClip.AddChild(_mapPageContent);
+        // A resize re-resolves the pages' full-rect anchors (zeroing any
+        // slide offset), which is exactly right outside a transition.
+        _pageClip.Resized += () =>
+        {
+            if (!_configTransitioning) ResetConfigPagePositions();
+        };
+    }
+
+    /// <summary>Horizontal placement for a full-rect-anchored page: shift
+    /// via matching left/right offsets so the page keeps the clip's size.
+    /// (Writing <c>Position</c> instead would bake the control's current
+    /// effective size — its minimum, while the clip is still unsized —
+    /// into the offsets, inflating the page past the clip.)</summary>
+    private static void PlaceConfigPage(Control page, float x)
+    {
+        page.OffsetLeft = x;
+        page.OffsetRight = x;
+        page.OffsetTop = 0f;
+        page.OffsetBottom = 0f;
+    }
+
+    private void ResetConfigPagePositions()
+    {
+        if (_playerPageContent != null) PlaceConfigPage(_playerPageContent, 0f);
+        if (_mapPageContent != null) PlaceConfigPage(_mapPageContent, 0f);
+    }
+
     private void ShowCurrentPlayConfigPage()
     {
         if (_playerPageContent != null)
             _playerPageContent.Visible = _playConfigPage == PlayConfigPage.PlayerSetup;
         if (_mapPageContent != null)
             _mapPageContent.Visible = _playConfigPage == PlayConfigPage.MapSetup;
+        if (!_configTransitioning) ResetConfigPagePositions();
+    }
+
+    /// <summary>
+    /// Animated page change (shared by swipe commits, the nav buttons,
+    /// and Enter/Escape): the current page slides off from wherever the
+    /// drag left it, the other page slides in beside it. Falls back to an
+    /// instant switch when the pages aren't mounted.
+    /// </summary>
+    private void AnimateConfigPage(bool forward)
+    {
+        Control? from = forward ? _playerPageContent : _mapPageContent;
+        Control? to = forward ? _mapPageContent : _playerPageContent;
+        PlayConfigPage target = forward ? PlayConfigPage.MapSetup : PlayConfigPage.PlayerSetup;
+        if (from == null || to == null || _pageClip == null)
+        {
+            _playConfigPage = target;
+            ShowCurrentPlayConfigPage();
+            if (forward) RefreshThumbnail();
+            return;
+        }
+        if (_configTransitioning) return;
+        _configTransitioning = true;
+
+        // Commit the logical page up front: RefreshThumbnail (and the
+        // Enter/Escape key mapping) key off it, and the slide is just
+        // presentation from here.
+        _playConfigPage = target;
+
+        float w = _pageClip.Size.X;
+        float sign = forward ? -1f : 1f;   // current page exits left going forward
+        float fromX = from.OffsetLeft;
+        to.Visible = true;
+        PlaceConfigPage(to, fromX - sign * w);
+        if (forward) RefreshThumbnail();   // render while it slides in
+
+        Control fromPage = from;
+        Control toPage = to;
+        _configSlideTween?.Kill();
+        _configSlideTween = CreateTween();
+        _configSlideTween.SetParallel(true);
+        _configSlideTween.TweenMethod(
+                Callable.From((float x) => PlaceConfigPage(fromPage, x)),
+                fromX, sign * w, ConfigSlideSec)
+            .SetTrans(Tween.TransitionType.Quad).SetEase(Tween.EaseType.Out);
+        _configSlideTween.TweenMethod(
+                Callable.From((float x) => PlaceConfigPage(toPage, x)),
+                fromX - sign * w, 0f, ConfigSlideSec)
+            .SetTrans(Tween.TransitionType.Quad).SetEase(Tween.EaseType.Out);
+        _configSlideTween.Chain().TweenCallback(Callable.From(() =>
+        {
+            _configTransitioning = false;
+            ShowCurrentPlayConfigPage();
+        }));
+    }
+
+    // Sub-threshold drag: ease both pages home, no page change.
+    private void ConfigSpringBack()
+    {
+        Control? from = _playConfigPage == PlayConfigPage.PlayerSetup
+            ? _playerPageContent : _mapPageContent;
+        Control? neighbor = _playConfigPage == PlayConfigPage.PlayerSetup
+            ? _mapPageContent : _playerPageContent;
+        if (from == null || neighbor == null || _pageClip == null) return;
+
+        float w = _pageClip.Size.X;
+        float neighborHome = neighbor == _mapPageContent ? w : -w;
+        Control fromPage = from;
+        Control neighborPage = neighbor;
+        _configSlideTween?.Kill();
+        _configSlideTween = CreateTween();
+        _configSlideTween.SetParallel(true);
+        _configSlideTween.TweenMethod(
+                Callable.From((float x) => PlaceConfigPage(fromPage, x)),
+                from.OffsetLeft, 0f, ConfigSpringBackSec)
+            .SetTrans(Tween.TransitionType.Quad).SetEase(Tween.EaseType.Out);
+        _configSlideTween.TweenMethod(
+                Callable.From((float x) => PlaceConfigPage(neighborPage, x)),
+                neighbor.OffsetLeft, neighborHome, ConfigSpringBackSec)
+            .SetTrans(Tween.TransitionType.Quad).SetEase(Tween.EaseType.Out);
+        _configSlideTween.Chain().TweenCallback(Callable.From(ShowCurrentPlayConfigPage));
     }
 
     private void GoToMapPage()
     {
-        _playConfigPage = PlayConfigPage.MapSetup;
-        ShowCurrentPlayConfigPage();
         Log.Debug(Log.LogCategory.Input, "MainMenu: New Game → map setup page");
-        RefreshThumbnail();
+        AnimateConfigPage(forward: true);
     }
+
+    // --- Config-page swipe input -------------------------------------------
+    //
+    // Observed pre-GUI (like InstructionsPanel/HudTour) so a swipe can begin
+    // over the page content, including its buttons. Presses/motion are
+    // observe-only; only a completed swipe or spring-back consumes its
+    // release. Touch arrives as emulated finger-0 mouse events.
+
+    public override void _Input(InputEvent @event)
+    {
+        if (!ConfigSwipeEligible())
+        {
+            _configSwipe.Cancel();
+            return;
+        }
+
+        if (@event is InputEventMouseMotion mm)
+        {
+            if (_configTransitioning) return;
+            float offset = _configSwipe.Drag(mm.Position.X, mm.Position.Y);
+            if (_configSwipe.IsTrackingHorizontal) UpdateConfigDrag(offset);
+            return;
+        }
+
+        if (@event is not InputEventMouseButton mb || mb.ButtonIndex != MouseButton.Left) return;
+
+        if (mb.Pressed)
+        {
+            if (_configTransitioning) return;
+            if (_pageClip == null || !_pageClip.GetGlobalRect().HasPoint(mb.Position)) return;
+            // Controls that own horizontal drags keep them: LineEdit text
+            // selection is a horizontal drag, and OptionButton pops its
+            // list on press (a swipe from it would strand the popup).
+            if (StartsOnHorizontalDragControl(GetViewport().GuiGetHoveredControl())) return;
+            _configSwipe.Press(mb.Position.X, mb.Position.Y);
+            return;
+        }
+
+        bool wasTracking = _configSwipe.IsTrackingHorizontal;
+        SwipeDirection dir = _configSwipe.Release(mb.Position.X, mb.Position.Y);
+        bool onPlayerPage = _playConfigPage == PlayConfigPage.PlayerSetup;
+        // Page-turning: left = forward to map setup — never into the map
+        // editor (a swipe must not launch a scene; that stays on the
+        // explicit Create Map button).
+        if (dir == SwipeDirection.Left && onPlayerPage
+            && _playConfigPurpose == PlayConfigPurpose.NewGame)
+        {
+            OnPlayerPageForward();                        // gates <2 players + persists
+            if (!_configTransitioning) ConfigSpringBack(); // gate refused the page turn
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+        if (dir == SwipeDirection.Right && !onPlayerPage)
+        {
+            GoToPlayerPage();
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+        if (wasTracking)
+        {
+            ConfigSpringBack();
+            GetViewport().SetInputAsHandled();
+        }
+    }
+
+    // Swipes only make sense while the play-config panel is the active
+    // surface and nothing modal floats above it (this scene's _Input sees
+    // every event, including ones aimed at overlays).
+    private bool ConfigSwipeEligible() =>
+        _playConfigPanel is { Visible: true }
+        && _pageClip != null
+        && !(_settingsPanel?.IsOpen ?? false)
+        && !(_quitConfirmModal?.IsOpen ?? false)
+        && !(_campaignSheet?.IsOpen ?? false)
+        && !(_sourceChooser?.IsOpen ?? false)
+        && !(_mapGenSettingsPanel?.IsOpen ?? false)
+        && !(_loadDialog?.Visible ?? false);
+
+    private static bool StartsOnHorizontalDragControl(Control? hovered)
+    {
+        for (Control? c = hovered; c != null; c = c.GetParentOrNull<Control>())
+        {
+            if (c is LineEdit or OptionButton or HSlider or SpinBox) return true;
+        }
+        return false;
+    }
+
+    /// <summary>Live drag: the current page follows the finger (clamped to
+    /// directions that actually have a destination — no wiggle toward a
+    /// missing or gated neighbor), with the neighbor page tracking beside
+    /// it like a carousel.</summary>
+    private void UpdateConfigDrag(float rawOffset)
+    {
+        if (_pageClip == null || _playerPageContent == null || _mapPageContent == null) return;
+        bool onPlayerPage = _playConfigPage == PlayConfigPage.PlayerSetup;
+        bool forwardAllowed = onPlayerPage
+            && _playConfigPurpose == PlayConfigPurpose.NewGame
+            && ActivePlayerCount() >= 2;
+        bool backAllowed = !onPlayerPage;
+
+        float offset = rawOffset;
+        if (offset < 0f && !forwardAllowed) offset = 0f;
+        if (offset > 0f && !backAllowed) offset = 0f;
+
+        Control current = onPlayerPage ? _playerPageContent : _mapPageContent;
+        Control neighbor = onPlayerPage ? _mapPageContent : _playerPageContent;
+        float w = _pageClip.Size.X;
+        PlaceConfigPage(current, offset);
+        PlaceConfigPage(neighbor, onPlayerPage ? offset + w : offset - w);
+        neighbor.Visible = offset != 0f;
+        if (neighbor == _mapPageContent && neighbor.Visible && _playConfigPage != PlayConfigPage.MapSetup)
+        {
+            // Peeking at the map page mid-drag: give the thumbnail the
+            // current roster so it doesn't slide in stale. Cheap and
+            // token-coalesced in MapThumbnailView; only worth it once per
+            // drag, so gate on the first reveal.
+            if (!_dragThumbnailRefreshed)
+            {
+                _dragThumbnailRefreshed = true;
+                PersistRosterSelections();
+                _thumbnail?.RequestRandom(_previewSeed);
+            }
+        }
+        if (offset == 0f) _dragThumbnailRefreshed = false;
+    }
+
+    // One thumbnail refresh per drag-reveal of the map page (see above).
+    private bool _dragThumbnailRefreshed;
 
     /// <summary>Write the current player-row dropdown selections (kind incl.
     /// None, and difficulty) into <see cref="GameSettings"/> — the single
@@ -1414,8 +1689,7 @@ public partial class MainMenuScene : Control
 
     private void GoToPlayerPage()
     {
-        _playConfigPage = PlayConfigPage.PlayerSetup;
-        ShowCurrentPlayConfigPage();
+        AnimateConfigPage(forward: false);
         Log.Debug(Log.LogCategory.Input, "MainMenu: New Game → player setup page");
     }
 
