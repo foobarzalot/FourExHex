@@ -197,6 +197,8 @@ public static class StringKeys
     public const string HudInstrTowersBody = "hud.instructions.page.towers.body";
     public const string HudInstrCommanderTitle = "hud.instructions.page.commander.title";
     public const string HudInstrCommanderBody = "hud.instructions.page.commander.body";
+    public const string HudInstrIncomeTitle = "hud.instructions.page.income.title";
+    public const string HudInstrIncomeBody = "hud.instructions.page.income.body";
 
     // Bottom-panel prompts / action hints.
     public const string HudContinueHint = "hud.continue_hint";
