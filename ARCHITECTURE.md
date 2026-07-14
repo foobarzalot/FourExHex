@@ -9,7 +9,7 @@ Four C# projects, layered Model → Controller → game (test project alongside)
 - **`src/FourExHex.Model/FourExHex.Model.csproj`** — plain `Microsoft.NET.Sdk`, **no GodotSharp, no controller reference**. Pure model: state types, static rules, AI subsystem (incl. `AiDispatcher`), generic `UndoStack<T>` + `GameStateSnapshot`, save serialization (`SaveSerializer`, `Replay`, `ReplayBeat`, `Tutorial` POCO), `MapGenerator` / `MapEditPaint` / `EditorSnapshot`, and `ProceduralGame` (shared seed→`GameState` pipeline for play scene + menu thumbnail).
 - **`src/FourExHex.Controller/FourExHex.Controller.csproj`** — plain `Microsoft.NET.Sdk`, `<ProjectReference>`s **only** `FourExHex.Model` (one-way). Orchestration: `GameController` (input handling + turn rotation), `GameOperations`, `AiTurnDriver`, `ReplayRecorder`, `StepPacing` (shared step-beat delay constants + instant↔paced re-dispatch skeleton); UI-scoped `SessionState` + `SessionStateSnapshot` + `UndoEntry`; `InstantStep` enum (shared by AI + replay step machines); `IHexMapView` / `IHudView` / `IAiPacer` interfaces; AI pacers (`AiPacer` / `GodotAiPacer`); the user-facing string store (`Strings` facade + `StringTable` + `StringKeys` — see **User-facing strings**); `Tutorial/` Record/Preview helpers (all of `Tutorial/` except the model-side `Tutorial` POCO).
 - GodotSharp on neither graph → both physically can't depend on Godot (`using Godot;` won't compile). Model lacks a Controller reference → can't name `GameController` / `SessionState` / view interfaces (`CS0246`). Both compiler-enforced.
-- **`src/FourExHex.ViewMath/FourExHex.ViewMath.csproj`** — plain `Microsoft.NET.Sdk`, **no GodotSharp**, one-way `<ProjectReference>` to `FourExHex.Model` (primitives like `HexCoord`). Godot-free view math needing floats: `DisplayScaleMath`, `SafeAreaMath`, `MapPlacement`, `PanMath` (inset-aware play-area center + pan clamp: centered-axis lock / padded-rotated-AABB clamp), `ZoomMath`, `ScreenLayout`, `HudPanelMath` (HUD-panel sizing: width clamped to viewport, height to fit wrapped text), `KeyboardAvoidance` (mobile keyboard panel lift), `MultiTouchTapDetector` (3-finger-tap debug cheat menu; fires on third concurrent touch, re-arms after all lift), `EditorPaletteLayout` (brush-grid column wrapping), `ThumbnailLayout` (contain-fit for New Game thumbnail viewport), `StepperMath` (integer −/value/+ stepper logic: snap-to-step clamp, neighbour offset, digit parse), `HudTourSteps` (wrap-around cursor over the ordered guided-UI-tour steps — `Next`/`Prev` wrap, `JumpTo(step)` for click-to-jump), `PanelFitMath` (centered-panel shrink-to-fit: `AvailableBox` / `ScaleToFit` (never upscale) / `WidthFitWithHeightCap` (Credits) / `CappedFill` (landscape chrome) — shared by MainMenuScene, SlotPickerDialog, SettingsPanel, CreditsPanel, LandscapeMenuChrome), `HitTestMath` (`InOffsetBounds(col, row, cols, rows)`: is an offset coord on the Cols×Rows board — hover/paint gating + water-rim skip), `EasingMath` (`SmoothStep(t)` clamped-`[0,1]` ease-in/out + `Lerp(a, b, t)`, driving HexMapView's camera-pan animation), `HexRounding.Round(float, float)`. Pressure-relief valve for the no-floats rule below.
+- **`src/FourExHex.ViewMath/FourExHex.ViewMath.csproj`** — plain `Microsoft.NET.Sdk`, **no GodotSharp**, one-way `<ProjectReference>` to `FourExHex.Model` (primitives like `HexCoord`). Godot-free view math needing floats: `DisplayScaleMath`, `SafeAreaMath`, `MapPlacement`, `PanMath` (inset-aware play-area center + pan clamp: centered-axis lock / padded-rotated-AABB clamp), `ZoomMath`, `ScreenLayout`, `HudPanelMath` (HUD-panel sizing: width clamped to viewport, height to fit wrapped text), `KeyboardAvoidance` (mobile keyboard panel lift), `MultiTouchTapDetector` (3-finger-tap debug cheat menu; fires on third concurrent touch, re-arms after all lift), `EditorPaletteLayout` (brush-grid column wrapping), `ThumbnailLayout` (contain-fit for offscreen board viewports — `FitInside` plus `OrientedFit`, which swaps the grid aspect tall in portrait so the hosted HexMapView rotates like the in-game map; shared by the New Game thumbnail and the Instructions demo view), `StepperMath` (integer −/value/+ stepper logic: snap-to-step clamp, neighbour offset, digit parse), `HudTourSteps` (wrap-around cursor over the ordered guided-UI-tour steps — `Next`/`Prev` wrap, `JumpTo(step)` for click-to-jump), `PanelFitMath` (centered-panel shrink-to-fit: `AvailableBox` / `ScaleToFit` (never upscale) / `WidthFitWithHeightCap` (Credits) / `CappedFill` (landscape chrome) — shared by MainMenuScene, SlotPickerDialog, SettingsPanel, CreditsPanel, LandscapeMenuChrome), `HitTestMath` (`InOffsetBounds(col, row, cols, rows)`: is an offset coord on the Cols×Rows board — hover/paint gating + water-rim skip), `EasingMath` (`SmoothStep(t)` clamped-`[0,1]` ease-in/out + `Lerp(a, b, t)`, driving HexMapView's camera-pan animation), `HexRounding.Round(float, float)`. Pressure-relief valve for the no-floats rule below.
 - **`FourExHex.csproj`** (`Godot.NET.Sdk`) — the game. `<ProjectReference>`s **all three** Godot-free libs; adds `src/**/*` to `DefaultItemExcludes` (else the Godot glob recompiles moved sources, duplicating types). Only Godot `Node`/scene/view code in `scripts/`: scene roots, `HexMapView`/`HudView`, editor + tutorial-builder panels, `SaveStore`, `AudioBus`, `SceneTreeTimerFactory`, `HeadlessViews`, the two view-boundary adapters below.
 - **`tests/FourExHex.Tests.csproj`** — `<ProjectReference>`s **all three**, **no GodotSharp, no `<Compile Include>`**. Compiling/passing with zero Godot on its graph is the compile-time purity proof.
 
@@ -200,17 +200,25 @@ VIEWS (Godot Nodes)
       force-disables every action button and clears their active rings — only
       the Options gear stays live; overlay buttons gate on their own state.
       Logs "[hud] ai-turn lockdown engaged/released" (Hud:Debug) on transition.
-    Guided UI tour ("?" help button, serif-glyph HudIconButton beside Options):
+    Help menu ("?" button, serif-glyph HudIconButton beside Options; H hotkey):
+      OpenHelpMenu shows a HudView-owned EscMenu (SwallowAllKeysWhileOpen — an
+      _Input override eats every key while open since the HUD doesn't pause; Escape
+      closes) with three options: Instructions (opens InstructionsPanel — see the
+      Instructions viewer section), UI Guided Tour (EnterTour), Close. Logs
+      "[help] menu open / chose … / close" (Hud).
+    Guided UI tour (from the Help menu):
       EnterTour raises TourStartRequested (HudView-only, like EscRequested; Main →
       GameController.EnsureTerritorySelectedForTour picks a territory without an undo
       entry so the gold chip renders), then shows HudTour — a CanvasLayer with a
       full-viewport click-catcher (hit-tests each element's rect → jump; eats clicks
       so real buttons and the click-through readouts don't fire), a pulsing gold ring
       tracked to the current element in _Process, and a Back/Next/Close dialog. Opens
-      on the Help step; a _mapDim scrim (HudView's first child, behind the widgets)
-      dims the board while toured elements stay bright; Escape/keys swallowed while up.
-      Step list + copy built in HudView.BuildTourSteps (visibility-filtered; buy row
-      collapses to one step); order cursor is HudTourSteps (ViewMath). Logs
+      on the nodeless Intro page (Entry.Node null — no ring; explains how to drive
+      the tour), then the ? button second, then the play controls; a _mapDim scrim
+      (HudView's first child, behind the widgets) dims the board while toured
+      elements stay bright; Escape/keys swallowed while up. Step list + copy built
+      in HudView.BuildTourSteps (intro always present; visibility-filtered elements;
+      buy row collapses to one step); order cursor is HudTourSteps (ViewMath). Logs
       "[tour] enter/step/exit" (Hud).
     HeadlessHexMapView / HeadlessHudView — no-op stubs for diagnostic mode
 
@@ -302,7 +310,10 @@ AUDIO (autoload)
   InSilentAutomateBatch()) gates the controller's own per-action cues via
   EmitSound / EmitDestruction; the views play whatever they're handed, so HexMapView.PlaySound /
   PlayDestructionEffect carry NO silent gate and MockHexMapView records every cue unconditionally (the seam it
-  verifies is the controller's decision, not a mirrored view policy). Every cue incl. Bankruptcy/GameWon obeys
+  verifies is the controller's decision, not a mirrored view policy). The one view-owned exception is the
+  pinned mute (HexMapView.SetMutePinned): a hard audio-off on PlaySound / FlashRejection's AudioBus dispatch,
+  set by the Instructions demo board so its looping playback never sounds over the live game — audio only,
+  animations/VFX unaffected, orthogonal to _silentMode. Every cue incl. Bankruptcy/GameWon obeys
   the gate with no exceptions, so a silent batch is fully silent; a manually played human turn is never silent —
   silence covers only the fast-forwards. IsSilent() omits the PendingDefeatScreen term
   that InSilentAiBatch() carries, so the AI blow that destroys a human's capital stays silent even as it queues
@@ -512,13 +523,14 @@ The replay subsystem lives in `src/FourExHex.Controller/ReplayRecorder.cs`. Same
 - **Playback methods**: `BeginReplay`, `EndReplay`, `StepReplayPreview`, `StepReplayExecute`, `ExecuteReplayBeat`, `ReplayApplyEndTurn`, `ReplayInstantStep` + the private `InstantReplayTick` wrapper over `GameOperations.RunInstantTick`, `ScheduleNextReplayBeat(turnBoundary)` (mirror of `AiTurnDriver.Schedule`: re-reads `_replayIsInstantMode` each beat and delegates the shared transition/dispatch skeleton to `StepPacing.Redispatch`, supplying the replay-specific callbacks: track store, `SetSilentMode` sync, `Turn:Info` transition logs; called by `StepReplayExecute` and `RunInstantTick`'s `reschedule` callback), private `ResolveReplayActingTerritory`.
 - **Divergence detection**: a replay re-executes beats through *current* rules, so a rule change since recording can land on a different board or throw. `BeginReplay` captures the recorded end board's `GameStateChecksum` once before the rewind (`_expectedEndChecksum`, guarded `??=` so re-replay still compares against the original; skipped in `_previewMode`). The recorded board is the already-loaded top-level `GameState` (`loaded.State`, or finished live board). `EndReplay` recomputes the replayed checksum on a clean finish only (all beats consumed or a beat ended the game); on mismatch sets `LastDivergence` (an `Expected`/`Actual` `ReplayDivergence` record) and logs `Log.LogCategory.Replay` Warn + first-differing-line Debug; a faithful replay clears it to null. Both checksums from the same binary, so additive changes to `GameStateChecksum.Stringify` cancel. Developer-facing; pinned by `ReplayFidelityTests`.
 - **Public read surface** (consumed by `Main.cs` / `RecordPane.cs` via thin `GameController` forwarders): `Beats`, `BeatsCount`, `InitialSnapshot`, `InitialTurnNumber`, `InitialCurrentPlayerIndex`, `IsCompleteFromStart`, `HasInitialSnapshot`, `IsReplaying`, `IsInstantModeActive`, `LastDivergence` (forwarded as `LastReplayDivergence`), plus `UndoBatchDepth` / `RedoBatchDepth` (forwarded as `UndoBeatBatchDepth` / `RedoBeatBatchDepth`).
+- **`ReplayEnded` event** — raised at the end of `EndReplay` (log exhausted, game-over, or aborted), forwarded as `GameController.ReplayEnded`; the Instructions demo player loops on it.
 
 ### What stays on GameController
 
 - All input event handlers and the `TrackHandler` wrapper. The `_pendingHumanBeat` buffer stays with the handlers; `TrackHandler` post-body calls `_recorder.CommitHumanHandler(pre, beatsBefore)` and `_recorder.RecordBeat(...)`.
 - Undo/redo input handlers (`OnUndoLastPressed`, etc.) — gating, `ApplySnapshot`, view centering only; mechanics are one `_recorder.UndoOneStep` / `RedoOneStep` per step.
 - `ClearUndoAndReplayBookkeeping()` — forwarder to `_recorder.ClearUndoAndBookkeeping()` (ctor callback target for `GameOperations`).
-- Public events (`GameEnded`, `HumanTurnStarted`).
+- Public events (`GameEnded`, `HumanTurnStarted`, and the `ReplayEnded` forward).
 - Public API forwarders: `BeginReplay`, `RecordTutorialOnlyBeat`, `ReplayBeats`, `InitialReplaySnapshot`, `InitialReplayTurnNumber`, `InitialReplayCurrentPlayerIndex`, `ReplayDataIsCompleteFromStart`, `IsReplayMode`, `LastReplayDivergence`.
 
 ### Construction
@@ -1091,6 +1103,10 @@ BeginReplay (public, called from victory-overlay Replay button):
   ├─ _replayInstantActive = replayIsInstantMode?()  (UserSettings.ReplaySpeed
   │     == Instant; injected by Main)
   ├─ if instant: _map.SetSilentMode(true)  (sound/VFX/tweens off)
+  ├─ if paced AND the log carries a ReplayDemoStartBeat: fast-forward —
+  │     execute every beat up to and including the first marker inline,
+  │     silent + rebuild-suppressed, then one RebuildAfterTerritoryChange
+  │     (the author's staging; each loop restart re-runs this)
   ├─ map.RebuildAfterTerritoryChange + overlay clears + RefreshViews
   └─ if instant: ScheduleUnscaled(InstantReplayTick, 0)
        else schedule StepReplayPreview after AiBetweenPlayersDelayMs
@@ -1098,10 +1114,14 @@ BeginReplay (public, called from victory-overlay Replay button):
 StepReplayPreview:
   ├─ if _replayIndex >= _replayBeats.Count → EndReplay
   ├─ resolve acting territory (TerritoryLookup.FindOwnedContaining
-  │     on beat's source/capital coord)
-  ├─ _map.ShowHighlight(acting); RefreshViews
+  │     on beat's source/capital coord; select beats resolve their anchor's
+  │     territory so back-to-back selects don't flicker)
+  ├─ _map.ShowHighlight(acting)
+  ├─ Move / RejectedMove beats: _map.ShowMoveSource(From) — the live
+  │     pickup pulse, so playback reads "select, then move"
+  ├─ RefreshViews
   └─ schedule StepReplayExecute after AiPreviewDelayMs
-       (or AiActionDelayMs if next beat is ReplayEndTurnBeat)
+       (or AiActionDelayMs if beat is EndTurn / SelectTerritory)
 
 StepReplayExecute:
   ├─ dispatch by record type:
@@ -1115,14 +1135,25 @@ StepReplayExecute:
   │    ReplayDismissDefeat   → clear PendingDefeatScreen flag (silent)
   │    ReplayLongPressRallyBeat → ApplyLongPressRally (re-derives moves
   │                            deterministically from state)
-  │    TutorialOnlyBeat       → silently skip (authored-only narration; Replay
-  │                            viewer ignores, Tutorial Preview consumes via
+  │    ReplaySelectTerritoryBeat → resolve territory containing Anchor;
+  │                            session.SelectedTerritory + ShowHighlight
+  │                            (authored selection, like a live click)
+  │    ReplayRejectedMoveBeat → FlashRejection at To (shape from the unit at
+  │                            From, defenders re-derived via DefenseRules);
+  │                            mutates nothing
+  │    other TutorialOnlyBeat → silently skip (narration + demo-start marker;
+  │                            Tutorial Preview consumes narration via
   │                            TutorialNarrationDriver)
+  ├─ Move / RejectedMove: _map.ShowMoveSource(null)  (pickup done)
   ├─ CheckGameEndConditions; RefreshViews
   ├─ if IsGameOver → EndReplay (recorded game-ending beat re-fired GameEnded;
   │     Main re-runs SetReplayAvailable)
   └─ schedule next StepReplayPreview after
        AiBetweenPlayersDelayMs (if beat was EndTurn) else AiActionDelayMs
+
+EndReplay raises ReplayEnded (recorder event, forwarded as
+GameController.ReplayEnded) — the Instructions demo player loops by
+re-calling BeginReplay on it.
 ```
 
 **Instant replay (`ReplaySpeed.Instant`).** `BeginReplay` schedules `InstantReplayTick` via `ScheduleUnscaled` — the replay wrapper over `RunInstantTick` (`ReplayInstantStep` drains beats, `TurnBoundary` on each `ReplayEndTurnBeat`; `onExhausted` = `EndReplay`). Silent, per-turn-sampled fast-forward.
@@ -1348,10 +1379,12 @@ seed (no consumption count) and load reproduces it.
   fall through to procedural with the preserved seed.
 
 `SaveStore` reads/writes `user://saves/`, `user://maps/`, `user://tutorials/`,
-and reads `res://tutorials/` (bundled maps — currently `Tutorial.json`, via
-`LoadBundledMap`). Exposes `WriteAutosave`, `WriteSlot`, `WriteMapSlot`,
+and reads `res://tutorials/` (bundled, read-only: `Tutorial.json` starting map,
+`full_tutorial.json`, and the `instr_*.json` Instructions demos). Exposes
+`WriteAutosave`, `WriteSlot`, `WriteMapSlot`,
 `WriteTutorial`, `ListSlots`, `ListMaps`, `ListTutorials`, `LoadSlot`, `LoadMap`,
-`LoadTutorial`, `LoadBundledMap`, `LoadStartingMap` (tries `user://maps/` then
+`LoadTutorial`, `LoadBundledMap`, `LoadBundledTutorial`, `LoadStartingMap`
+(tries `user://maps/` then
 `res://tutorials/`; used by Play Again), `SanitizeSlotName`. `SaveSerializer` is
 the JSON layer. Both `Serialize` (in-progress) and `SerializeMap` (starting
 maps) write each player's `Kind` and `Difficulty`, so a saved map **bakes its
@@ -1508,7 +1541,7 @@ A thin input listener (`_Input`, not `_UnhandledInput`, so the summon gesture wi
 `TutorialMode { MapEdit, Record, Preview }`. Mode switching, Save/Load Tutorial, and Exit all flow through the shared `EscMenu` modal — no top strip, no 1/2/3 hotkeys. The modal's button for the current mode is `Disabled = true`.
 
 - **Map Edit** — `panel.PaintingEnabled = true`; chrome-trimmed `MapEditorHudView` (palette + seed + Generate + undo bar) at y=0..60.
-- **Record** — `panel.PaintingEnabled = false`; `RecordPane` builds a transient `GameController` over the draft with all six players forced `PlayerKind.Human`. Its `HudView` occupies y=0..60. Dev plays hot-seat; the recording pipeline (`_replayBeats` via `TrackHandler` / `AiTurnDriver.ApplyAiActionCore`) captures game-action beats automatically. A **`+ Text`** button below the HUD strip authors tutorial-only beats (`ReplayDisplayTextBeat`) inline.
+- **Record** — `panel.PaintingEnabled = false`; `RecordPane` builds a transient `GameController` over the draft with all six players forced `PlayerKind.Human`. Its `HudView` occupies y=0..60. Dev plays hot-seat; the recording pipeline (`_replayBeats` via `TrackHandler` / `AiTurnDriver.ApplyAiActionCore`) captures game-action beats automatically — including rejected unit-move attempts, auto-captured as `ReplayRejectedMoveBeat`s (recording mode only). Three HUD authoring buttons (hidden outside Record; revealed via `SetAdd*ButtonVisible`) author the other tutorial-only beats inline: **`+ Text`** (narration dialog → `ReplayDisplayTextBeat`), **`◎`** (current selection → `ReplaySelectTerritoryBeat` anchored at its capital), **`»`** (`ReplayDemoStartBeat` fast-forward marker).
 - **Preview** — `panel.PaintingEnabled = false`; `PreviewPane` builds a transient `GameController` where player 0 is Human (dev plays Red) and 1-5 are AI driven by a `ReplayDrivenAi` chooser replaying the recorded non-player-0 beats.
 
 ESC opens the shared `EscMenu` in every submode. In Map Edit ESC first drops a non-hand palette to hand; second press with hand opens the modal. `RecordPane` / `PreviewPane` forward their inner `HudView`'s `EscRequested` up to the scene.
@@ -1536,7 +1569,7 @@ Both paths share the rest:
 
 `RecordPane.PrimeForContinue(Tutorial)` pre-populates the capture from a loaded Tutorial without starting a session. Used by `OnLoadSlotPressed`: after Load Tutorial the scene calls `PrimeForContinue` (if the file has beats) then `SetMode(TutorialMode.Record)`. `ApplyModeSwitch`'s Record branch inspects `CurrentTutorial`; non-empty triggers `ContinueRecording`, else `StartRecording`.
 
-**Authoring tutorial-only beats.** While recording, a `+ Text` button under the HUD strip opens a modal (`LineEdit` + Insert / Cancel). Submit calls `controller.RecordTutorialOnlyBeat(new ReplayDisplayTextBeat { Text = ... })`, which stamps `Index` + `Turn` and forces `Actor = -1`. Beats append at the current end — no in-line insertion; to add narration before turn N, author it before pressing End Turn into N+1. Button + dialog torn down in `StopRecording`.
+**Authoring tutorial-only beats.** While recording, three HUD buttons author them via `controller.RecordTutorialOnlyBeat(...)` (stamps `Index` + `Turn`, forces `Actor = -1`): `+ Text` opens a modal (`LineEdit` + Insert / Cancel) → `ReplayDisplayTextBeat`; `◎` captures the currently selected territory as a `ReplaySelectTerritoryBeat` (no-op with a log when nothing is selected); `»` drops a `ReplayDemoStartBeat` marker (playback honors the first one). Rejected unit-move attempts need no button — the move-rejection branch in `OnTileClickedBody` auto-records a `ReplayRejectedMoveBeat` when `_recordingMode` is set. Beats append at the current end — no in-line insertion; to add narration before turn N, author it before pressing End Turn into N+1. Buttons + dialog torn down in `StopRecording`.
 
 `RecordPane.StopRecording` (on `SetMode(out of Record)`):
 
@@ -1606,7 +1639,14 @@ When `Apply` returns early (opponent turn), cues call `HideTutorialMessage`; onc
 
 ### Tutorial-only beats
 
-A second `ReplayBeat` sub-hierarchy under `TutorialOnlyBeat` carries beats NOT captured from gameplay — authored during Record mode, presentation-only (no state mutation, no player ownership). First kind: `ReplayDisplayTextBeat { Text }` (narration). Future kinds (tile/territory highlight with arrow, pan/zoom camera, HUD callout) are structured so the dispatcher accepts them without rework.
+A second `ReplayBeat` sub-hierarchy under `TutorialOnlyBeat` carries beats NOT captured from normal gameplay — authored during Record mode, presentation-only (no state mutation, no player ownership). Four kinds:
+
+- **`ReplayDisplayTextBeat { Text }`** — narration, presented by `TutorialNarrationDriver` during interactive Preview; skipped by hands-free replay.
+- **`ReplaySelectTerritoryBeat { Anchor }`** — hands-free replay resolves the territory containing `Anchor` (any tile of it — territory objects aren't snapshot-stable), sets `session.SelectedTerritory`, and shows the live selection highlight, like a player's click. Paced on the EndTurn delay. Authored via the `◎` button.
+- **`ReplayRejectedMoveBeat { From, To }`** — a rules-rejected unit-move attempt; hands-free replay shows the pickup pulse on `From` then the live rejection flash at `To` (shape from the unit's level, defenders re-derived via `DefenseRules.BlockingDefenders`), mutating nothing. Auto-recorded by the move-rejection branch when `_recordingMode` — the only tutorial-only beat not button-authored.
+- **`ReplayDemoStartBeat`** — fast-forward marker: paced `BeginReplay` executes everything up to and including the first marker instantly and silently, then paces from there; every loop restart re-runs the skip. Authored via the `»` button.
+
+The dispatcher accepts future kinds (camera pan/zoom, HUD callout) without rework — unhandled tutorial-only beats fall through the skip arms.
 
 **Identity.** `TutorialOnlyBeat` carries `Actor = -1` (sentinel — no owner). The abstract `TutorialOnlyBeat` record is the discriminator dispatch and the cursor skip-scan key off.
 
@@ -1627,11 +1667,11 @@ A second `ReplayBeat` sub-hierarchy under `TutorialOnlyBeat` carries beats NOT c
 
 **Tap-anywhere dismissal.** `HudView`'s `ShowTappableTutorialMessage` builds a single full-viewport invisible `Control` (lazy, retained), moves it topmost via `MoveChild`, sets `MouseFilter = Stop`. Clicks anywhere route to `TutorialMessageTapped`, so the player can't hit Buy Recruit / End Turn while a narration beat is gated. `HideTutorialMessage` hides the catcher and sets `MouseFilter = Ignore`.
 
-**In-game Replay.** The victory overlay's "Replay" button runs `GameController.BeginReplay` → `StepReplayExecute`, whose switch silently skips `TutorialOnlyBeat`s — the in-game replay viewer ignores display-text.
+**In-game Replay.** The victory overlay's "Replay" button runs `GameController.BeginReplay` → `StepReplayExecute`, whose switch honors the select / rejected-move / demo-start kinds (see the paced-replay flow) and silently skips display-text. Normal recordings never contain tutorial-only beats, so live-game replays are unaffected.
 
 **Recording.** `GameController.RecordTutorialOnlyBeat(TutorialOnlyBeat)` is the public entry point. Stamps `Index` + `Turn` like the private `RecordBeat`, forces `Actor = -1`. Gated on `!_replayMode && !_previewMode` so playback / Preview can't inject authored beats.
 
-**Serialization.** Round-trips through the same v4 `BeatDto` pipeline: `Kind = "DisplayText"` discriminator, `Text` field on `BeatDto`. Actor stored literally (-1) — no color-by-index lookup.
+**Serialization.** Round-trips through the same v4 `BeatDto` pipeline: discriminators `"DisplayText"` (`Text` field), `"SelectTerritory"` (anchor in `ToQ`/`ToR`), `"RejectedMove"` (`FromQ`/`FromR`/`ToQ`/`ToR`), `"DemoStart"` (no payload). Actor stored literally (-1) — no color-by-index lookup.
 
 ### Gating lives in GameController
 
@@ -1640,6 +1680,21 @@ Preview gating lives in `GameController` via the single `humanActionValidator` h
 ### Tutorial file format
 
 Same v4 schema as in-progress saves. A tutorial file is a v4 save with BOTH a `Tutorial { Title }` block AND a `Replay { ... }` block. Deserialize throws if the Tutorial block is present without a Replay block. The `Tutorial` class is `{ Title, Replay }` — no `StartTurn` / `StartPlayer` / `Beats` (the Replay carries those).
+
+## Instructions viewer
+
+The Help menu's Instructions option opens `InstructionsPanel` (`scripts/InstructionsPanel.cs`) — a paged, near-fullscreen rules explainer where every page pairs explanatory text with a looping mini-board animation demonstrating the rule.
+
+**`InstructionsPanel`** — `CanvasLayer` (Layer 100, `ProcessMode = Always`), owned by `HudView` (`OpenInstructions` / `ExitInstructions`, freed on `Closed`). `ModalChrome.BuildBackdrop` + an edge-anchored slate panel (~12 px margins). The static `Pages` table maps each page to string-store title/body keys plus the bundled tutorial name driving its demo (null = text-only page). The two sub-panels live in one `BoxContainer` whose `Vertical` flag follows `ScreenLayout.Resolve` on viewport resize: portrait stacks the demo above the text, landscape puts the demo left. Back/Next wrap; Close/Escape exit; Left/Right page; an `_Input` override swallows every key while up (same contract as `HudTour`). Page changes `Stop()` the current demo and `Play()` the next via `SaveStore.LoadBundledTutorial`; a missing/corrupt bundle logs a warning and shows the page text-only. Logs `[instr] open / page -> n (key) / close` (Hud).
+
+**`InstructionDemoView`** (`scripts/InstructionDemoView.cs`) — the graphics sub-panel: a complete second (model, controller, view) stack playing a recorded tutorial hands-free, on a loop.
+
+- **Second stack.** `Play(LoadedSave)` builds its own `GameState` (the bundle's map + roster) + fresh `SessionState`, a new `HexMapView`, a `HeadlessHudView` (that's the "no HUD"), and a new `GameController` constructed with `loadedReplay: tutorial.Replay`, `previewMode: true` (no divergence checksum, no beat recording), its own `GodotAiPacer`, `replayIsInstantMode: () => false` (pinned paced — the demo always animates regardless of the user's Replay Speed), and `autoSelectFirstTerritory: false`. No input events are wired and no `StartGame` is called — the controller is purely a replay-playback engine driven by `BeginReplay()`. Same multi-instance pattern as `PreviewPane`; nothing is shared with the live game behind the modal.
+- **Display.** The map renders inside a `SubViewport` (`RenderTargetUpdateMode.Always`, `GuiDisableInput`, `HandleInputLocally = false`, transparent) shown live through a `TextureRect` bound to its `ViewportTexture` — the `MapThumbnailView` hosting pattern minus the snapshot. The viewport is sized by `ThumbnailLayout.OrientedFit` (grid box, aspect swapped tall in portrait so the `HexMapView` inside rotates −90° exactly like the in-game map; shared with the thumbnail) and re-shaped on window resize.
+- **Audio.** `HexMapView.SetMutePinned(true)` — a hard audio-off flag gating the view's `AudioBus` dispatch points (`PlaySound`, `FlashRejection`), independent of the controller-driven `_silentMode`, which paced replay actively lifts. Animations/VFX stay on.
+- **Loop.** `GameController.ReplayEnded` → a ~1.5 s still-frame `SceneTreeTimer` → `BeginReplay()` again (a generation counter drops stale timers after `Stop`). A `ReplayDemoStartBeat` in the recording makes every iteration fast-forward the author's staging. Logs `[instr] demo start / loop restart / stop` (Tutorial).
+
+**Content pipeline.** Each page's demo is authored in the tutorial builder (small painted map + recorded beats, incl. the tutorial-only kinds above), saved to `user://tutorials/`, and bundled by copying the JSON into `res://tutorials/` as `instr_<page>.json` (`instr_territories`, `instr_recruit`, `instr_defense`, `instr_towers`, `instr_commander`, `instr_income`, `instr_trees`, `instr_winning`). Page copy lives in the string store (`hud.instructions.page.*`). The `export_presets.cfg` `tutorials/*.json` include filter ships them.
 
 ## Renderer
 
@@ -1890,6 +1945,13 @@ scripts/  (split: see the three source trees listed just above)
 ├─ PreviewPane.cs         ─ Preview-mode chrome: real GameController with
 │                           ReplayDrivenAi + TutorialPreview +
 │                           humanActionValidator; PreviewSetup resets state
+├─ InstructionsPanel.cs   ─ paged near-fullscreen rules explainer (Help menu →
+│                           Instructions); per-page text + demo, orientation-
+│                           aware split, tour-style keys
+├─ InstructionDemoView.cs ─ Instructions graphics panel: second game stack
+│                           (own GameState/Controller/HexMapView + headless
+│                           HUD) looping a bundled tutorial in an input-
+│                           isolated SubViewport, pinned mute
 ├─ MapEditPaint.cs        ─ pure paint helpers (Land / Neutral / Capital /
 │                           Tower / Tree / Water)
 ├─ EditorSnapshot.cs      ─ deep copy of editor draft (grid + water + terr.)
