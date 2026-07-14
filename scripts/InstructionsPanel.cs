@@ -68,12 +68,22 @@ public sealed partial class InstructionsPanel : CanvasLayer
     private Label _bodyLabel = null!;
     private Label _pageLabel = null!;
     private BoxContainer _split = null!;
+    private Control _pageClip = null!;
+    private Control _pageSlider = null!;
     private int _index;
     private bool _closed;
     // Horizontal-swipe paging anywhere over the panel (page-turning:
     // left = Next, right = Back). Pure ViewMath recognizer fed
-    // press/release positions observed in _Input.
+    // press/move/release positions observed in _Input; the slider tracks
+    // its Drag offset live.
     private readonly SwipeDetector _swipe = new SwipeDetector();
+    // Page-change slide animation (shared by swipe commit, buttons, and
+    // arrow keys). Durations mirrored in HudTour — keep in step.
+    private const float SlideOutSec = 0.18f;
+    private const float SlideInSec = 0.18f;
+    private const float SpringBackSec = 0.15f;
+    private Tween? _slideTween;
+    private bool _transitioning;
 
     public override void _Ready()
     {
@@ -112,15 +122,28 @@ public sealed partial class InstructionsPanel : CanvasLayer
             SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter,
         });
 
+        // Page region: a clipping wrapper (so sliding content never
+        // overhangs the panel) around a manually-positioned slider whose
+        // Position.X follows the finger / the page-change animation. The
+        // title and button row stay fixed; only this region slides.
+        _pageClip = new Control
+        {
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+            ClipContents = true,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        root.AddChild(_pageClip);
+        _pageSlider = new Control { MouseFilter = Control.MouseFilterEnum.Ignore };
+        _pageClip.AddChild(_pageSlider);
+        _pageClip.Resized += SyncPageSliderRect;
+
         // The two sub-panels. One BoxContainer whose Vertical flag flips
         // with the viewport orientation: portrait = demo above text,
         // landscape = demo left of text.
-        _split = new BoxContainer
-        {
-            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
-        };
+        _split = new BoxContainer();
+        _split.SetAnchorsPreset(Control.LayoutPreset.FullRect);
         _split.AddThemeConstantOverride("separation", 14);
-        root.AddChild(_split);
+        _pageSlider.AddChild(_split);
 
         _demo = new InstructionDemoView
         {
@@ -183,11 +206,50 @@ public sealed partial class InstructionsPanel : CanvasLayer
         _split.Vertical = ScreenLayout.Resolve(vp.X, vp.Y) == ScreenOrientation.Portrait;
     }
 
+    // Keep the slider matched to the clip rect; a mid-transition resize
+    // (orientation flip) snaps the slider home rather than stranding it.
+    private void SyncPageSliderRect()
+    {
+        _pageSlider.Size = _pageClip.Size;
+        if (!_transitioning) _pageSlider.Position = Vector2.Zero;
+    }
+
+    /// <summary>
+    /// Animated page change, shared by swipe commits, the Back/Next
+    /// buttons, and the arrow keys: the current page slides off in the
+    /// travel direction (from wherever the drag left it), the new page
+    /// slides in from the opposite side.
+    /// </summary>
     private void Step(bool forward, string? via = null)
     {
-        int count = Pages.Length;
-        ShowPage(((_index + (forward ? 1 : -1)) % count + count) % count,
-            via ?? (forward ? "next" : "back"));
+        if (_transitioning || _closed) return;
+        _transitioning = true;
+        float w = _pageClip.Size.X;
+        float outX = forward ? -w : w;
+
+        _slideTween?.Kill();
+        _slideTween = CreateTween();
+        _slideTween.TweenProperty(_pageSlider, "position:x", outX, SlideOutSec)
+            .SetTrans(Tween.TransitionType.Quad).SetEase(Tween.EaseType.In);
+        _slideTween.TweenCallback(Callable.From(() =>
+        {
+            int count = Pages.Length;
+            ShowPage(((_index + (forward ? 1 : -1)) % count + count) % count,
+                via ?? (forward ? "next" : "back"));
+            _pageSlider.Position = new Vector2(-outX, 0f);
+        }));
+        _slideTween.TweenProperty(_pageSlider, "position:x", 0f, SlideInSec)
+            .SetTrans(Tween.TransitionType.Quad).SetEase(Tween.EaseType.Out);
+        _slideTween.TweenCallback(Callable.From(() => _transitioning = false));
+    }
+
+    // Sub-threshold drag: ease the page back to center, no page change.
+    private void SpringBack()
+    {
+        _slideTween?.Kill();
+        _slideTween = CreateTween();
+        _slideTween.TweenProperty(_pageSlider, "position:x", 0f, SpringBackSec)
+            .SetTrans(Tween.TransitionType.Quad).SetEase(Tween.EaseType.Out);
     }
 
     private void ShowPage(int index, string via)
@@ -229,9 +291,11 @@ public sealed partial class InstructionsPanel : CanvasLayer
             if (mb.Pressed)
             {
                 // Observe only — the press continues on to the buttons.
-                _swipe.Press(mb.Position.X, mb.Position.Y);
+                // Mid-transition presses don't arm (no drag-during-slide).
+                if (!_transitioning) _swipe.Press(mb.Position.X, mb.Position.Y);
                 return;
             }
+            bool wasTracking = _swipe.IsTrackingHorizontal;
             SwipeDirection dir = _swipe.Release(mb.Position.X, mb.Position.Y);
             if (dir != SwipeDirection.None)
             {
@@ -240,6 +304,24 @@ public sealed partial class InstructionsPanel : CanvasLayer
                 // A drag-release isn't a click anyone needs — eat it so no
                 // button underneath fires. Taps pass through untouched.
                 GetViewport().SetInputAsHandled();
+            }
+            else if (wasTracking)
+            {
+                SpringBack();
+                GetViewport().SetInputAsHandled();
+            }
+            return;
+        }
+
+        // Live tracking: the page region follows the finger once the
+        // gesture locks horizontal (vertical-locked drags never move it).
+        if (@event is InputEventMouseMotion mm)
+        {
+            if (_transitioning) return;
+            float offset = _swipe.Drag(mm.Position.X, mm.Position.Y);
+            if (_swipe.IsTrackingHorizontal)
+            {
+                _pageSlider.Position = new Vector2(offset, 0f);
             }
             return;
         }

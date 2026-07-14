@@ -44,8 +44,19 @@ public sealed partial class HudTour : CanvasLayer
     private Label _bodyLabel = null!;
     private bool _closed;
     // Horizontal-swipe paging on the catcher (page-turning: left = Next,
-    // right = Back). Pure ViewMath recognizer fed press/release positions.
+    // right = Back). Pure ViewMath recognizer fed press/move/release
+    // positions; the dialog tracks its Drag offset live.
     private readonly SwipeDetector _swipe = new SwipeDetector();
+    // Manually-positioned wrapper the dialog centers inside — its
+    // Position.X is the drag/animation target (the center-anchored dialog
+    // itself can't be safely position-animated; layout would fight it).
+    private Control _dialogSlider = null!;
+    // Slide animation constants mirrored in InstructionsPanel — keep in step.
+    private const float SlideOutSec = 0.18f;
+    private const float SlideInSec = 0.18f;
+    private const float SpringBackSec = 0.15f;
+    private Tween? _slideTween;
+    private bool _transitioning;
 
     public HudTour(IReadOnlyList<Entry> entries)
     {
@@ -89,8 +100,14 @@ public sealed partial class HudTour : CanvasLayer
 
         // 3) Centered dialog (top of this layer so its buttons beat the
         //    catcher). No dim backdrop — keep the HUD bright so highlighted
-        //    elements stay visible.
-        AddChild(BuildDialog());
+        //    elements stay visible. It centers inside a manually-sized,
+        //    click-through slider wrapper whose Position.X carries the
+        //    swipe drag and the page-change slide.
+        _dialogSlider = new Control { MouseFilter = Control.MouseFilterEnum.Ignore };
+        AddChild(_dialogSlider);
+        _dialogSlider.AddChild(BuildDialog());
+        SyncDialogSliderRect();
+        GetViewport().SizeChanged += SyncDialogSliderRect;
 
         // Always open on the intro page (it explains how to drive the tour,
         // highlighting nothing); Next from there steps into the elements.
@@ -192,6 +209,19 @@ public sealed partial class HudTour : CanvasLayer
 
     private void OnCatcherInput(InputEvent @event)
     {
+        // Live tracking: the dialog follows the finger once the gesture
+        // locks horizontal (vertical-locked drags never move it).
+        if (@event is InputEventMouseMotion mm)
+        {
+            if (_transitioning) return;
+            float offset = _swipe.Drag(mm.Position.X, mm.Position.Y);
+            if (_swipe.IsTrackingHorizontal)
+            {
+                _dialogSlider.Position = new Vector2(offset, 0f);
+            }
+            return;
+        }
+
         if (@event is not InputEventMouseButton mb || mb.ButtonIndex != MouseButton.Left)
         {
             return;
@@ -202,15 +232,22 @@ public sealed partial class HudTour : CanvasLayer
         // click). Touch reaches here as emulated finger-0 mouse events.
         if (mb.Pressed)
         {
-            _swipe.Press(mb.Position.X, mb.Position.Y);
+            if (!_transitioning) _swipe.Press(mb.Position.X, mb.Position.Y);
             return;
         }
 
-        // Page-turning: finger left = Next, finger right = Back.
+        // Page-turning: finger left = Next, finger right = Back. A
+        // sub-threshold horizontal drag springs the dialog back instead.
+        bool wasTracking = _swipe.IsTrackingHorizontal;
         switch (_swipe.Release(mb.Position.X, mb.Position.Y))
         {
             case SwipeDirection.Left: Step(forward: true, via: "swipe"); return;
             case SwipeDirection.Right: Step(forward: false, via: "swipe"); return;
+        }
+        if (wasTracking)
+        {
+            SpringBack();
+            return;
         }
 
         // Tap: click-to-jump — hit-test against each element's rect. The
@@ -231,11 +268,57 @@ public sealed partial class HudTour : CanvasLayer
         }
     }
 
+    // Keep the slider matched to the viewport; a mid-transition resize
+    // snaps it home rather than stranding the dialog off-center.
+    private void SyncDialogSliderRect()
+    {
+        _dialogSlider.Size = GetViewport().GetVisibleRect().Size;
+        if (!_transitioning) _dialogSlider.Position = Vector2.Zero;
+    }
+
+    public override void _ExitTree()
+    {
+        GetViewport().SizeChanged -= SyncDialogSliderRect;
+    }
+
+    /// <summary>
+    /// Animated step, shared by swipe commits, the Back/Next buttons, and
+    /// the arrow keys: the dialog slides off in the travel direction
+    /// (from wherever the drag left it) and re-enters from the opposite
+    /// side around the cursor advance. Tap-to-jump stays instant.
+    /// </summary>
     private void Step(bool forward, string? via = null)
     {
-        if (forward) _cursor.Next();
-        else _cursor.Prev();
-        ShowCurrent(via ?? (forward ? "next" : "back"));
+        if (_transitioning || _closed) return;
+        _transitioning = true;
+        // Slide most of a viewport width — enough to clear the centered
+        // dialog past the edge in either orientation.
+        float w = GetViewport().GetVisibleRect().Size.X;
+        float outX = forward ? -w : w;
+
+        _slideTween?.Kill();
+        _slideTween = CreateTween();
+        _slideTween.TweenProperty(_dialogSlider, "position:x", outX, SlideOutSec)
+            .SetTrans(Tween.TransitionType.Quad).SetEase(Tween.EaseType.In);
+        _slideTween.TweenCallback(Callable.From(() =>
+        {
+            if (forward) _cursor.Next();
+            else _cursor.Prev();
+            ShowCurrent(via ?? (forward ? "next" : "back"));
+            _dialogSlider.Position = new Vector2(-outX, 0f);
+        }));
+        _slideTween.TweenProperty(_dialogSlider, "position:x", 0f, SlideInSec)
+            .SetTrans(Tween.TransitionType.Quad).SetEase(Tween.EaseType.Out);
+        _slideTween.TweenCallback(Callable.From(() => _transitioning = false));
+    }
+
+    // Sub-threshold drag: ease the dialog back to center, no step.
+    private void SpringBack()
+    {
+        _slideTween?.Kill();
+        _slideTween = CreateTween();
+        _slideTween.TweenProperty(_dialogSlider, "position:x", 0f, SpringBackSec)
+            .SetTrans(Tween.TransitionType.Quad).SetEase(Tween.EaseType.Out);
     }
 
     private void ShowCurrent(string via)

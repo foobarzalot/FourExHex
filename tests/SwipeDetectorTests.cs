@@ -95,4 +95,60 @@ public class SwipeDetectorTests
         d.Press(300f, 100f);
         Assert.Equal(SwipeDirection.Right, d.Release(400f, 100f));
     }
+
+    // --- Live tracking (Drag / axis lock) --------------------------------
+
+    [Fact]
+    public void Drag_BeforeAxisLock_IsZero()
+    {
+        var d = new SwipeDetector();
+        d.Press(100f, 100f);
+        Assert.Equal(0f, d.Drag(100f + SwipeDetector.AxisLockPx - 1f, 100f));
+        Assert.False(d.IsTrackingHorizontal);
+    }
+
+    [Fact]
+    public void Drag_HorizontalLock_ReturnsRawDx()
+    {
+        var d = new SwipeDetector();
+        d.Press(100f, 100f);
+        Assert.Equal(15f, d.Drag(115f, 102f));      // locks horizontal, tracks
+        Assert.True(d.IsTrackingHorizontal);
+        Assert.Equal(-10f, d.Drag(90f, 105f));      // keeps tracking raw dx
+    }
+
+    [Fact]
+    public void Drag_VerticalLock_StaysZero_AndReleaseIsNone()
+    {
+        var d = new SwipeDetector();
+        d.Press(100f, 100f);
+        Assert.Equal(0f, d.Drag(102f, 115f));       // locks vertical
+        Assert.False(d.IsTrackingHorizontal);
+        Assert.Equal(0f, d.Drag(250f, 120f));       // later horizontal hook: still 0
+        // Even though the final dx would qualify, a vertical-locked
+        // gesture never pages.
+        Assert.Equal(SwipeDirection.None, d.Release(250f, 120f));
+    }
+
+    [Fact]
+    public void Drag_Unarmed_IsZero()
+    {
+        var d = new SwipeDetector();
+        Assert.Equal(0f, d.Drag(500f, 500f));
+        Assert.False(d.IsTrackingHorizontal);
+    }
+
+    [Fact]
+    public void AxisLock_ResetsOnNextPress()
+    {
+        var d = new SwipeDetector();
+        d.Press(100f, 100f);
+        d.Drag(100f, 130f);                          // vertical lock
+        d.Release(100f, 130f);
+
+        d.Press(100f, 100f);
+        Assert.Equal(20f, d.Drag(120f, 100f));       // fresh horizontal lock
+        Assert.True(d.IsTrackingHorizontal);
+        Assert.Equal(SwipeDirection.Right, d.Release(200f, 100f));
+    }
 }
