@@ -137,6 +137,8 @@
   "hud.instructions.page.commander.body": "The most powerful unit is the Commander, represented by four concentric circles. Only a Commander can capture a hex protected by an enemy Captain. But beware — the Commander also has the highest upkeep costs...",
   "hud.instructions.page.income.title": "Income & Upkeep",
   "hud.instructions.page.income.body": "Every hex in a territory earns gold each turn, stored in its capital. Units cost upkeep each turn: the stronger the unit, the higher the cost. The treasury readout shows gold, income, and upkeep. It turns yellow when the territory is losing gold, and red when bankruptcy is expected next turn. When a territory goes bankrupt, all its units die.",
+  "hud.instructions.page.trees.title": "Trees",
+  "hud.instructions.page.trees.body": "Graves turn into trees the following turn. Trees spread to adjacent hexes at the start of each turn: an empty hex with two or more neighboring trees, or one neighboring tree and a water hex, will spawn a tree.",
   "hud.continue_hint": "{Verb} anywhere to continue",
   "hud.hint.tower_pick_tile": "{Verb} a hex... — T",
   "hud.hint.place_unit": "{Verb} to place a {level}",
