@@ -1,7 +1,7 @@
 {
   "FormatVersion": 18,
-  "SavedAtUnix": 1783820173,
-  "SlotName": "tutorial_selection",
+  "SavedAtUnix": 1783994645,
+  "SlotName": "instr_territories",
   "MasterSeed": 0,
   "TurnNumber": 0,
   "CurrentPlayerIndex": 0,
@@ -52,8 +52,8 @@
   ],
   "Tiles": [
     {
-      "Q": 8,
-      "R": 8,
+      "Q": 9,
+      "R": 7,
       "OwnerIndex": 0,
       "Occupant": {
         "Type": "Capital"
@@ -62,8 +62,29 @@
       "IsMountain": false
     },
     {
+      "Q": 8,
+      "R": 8,
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
       "Q": 9,
       "R": 8,
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 10,
+      "R": 7,
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 8,
+      "R": 9,
       "OwnerIndex": 0,
       "IsGold": false,
       "IsMountain": false
@@ -76,8 +97,8 @@
       "IsMountain": false
     },
     {
-      "Q": 8,
-      "R": 9,
+      "Q": 7,
+      "R": 10,
       "OwnerIndex": 0,
       "IsGold": false,
       "IsMountain": false
@@ -90,19 +111,19 @@
       "IsMountain": false
     },
     {
-      "Q": 7,
-      "R": 10,
-      "OwnerIndex": 0,
-      "IsGold": false,
-      "IsMountain": false
-    },
-    {
-      "Q": 10,
-      "R": 8,
+      "Q": 11,
+      "R": 7,
       "OwnerIndex": 1,
       "Occupant": {
         "Type": "Capital"
       },
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 12,
+      "R": 7,
+      "OwnerIndex": 1,
       "IsGold": false,
       "IsMountain": false
     },
@@ -114,8 +135,8 @@
       "IsMountain": false
     },
     {
-      "Q": 9,
-      "R": 9,
+      "Q": 10,
+      "R": 8,
       "OwnerIndex": 1,
       "IsGold": false,
       "IsMountain": false
@@ -123,31 +144,66 @@
     {
       "Q": 10,
       "R": 9,
-      "OwnerIndex": 1,
+      "OwnerIndex": 0,
+      "Occupant": {
+        "Type": "Unit",
+        "OwnerIndex": 0,
+        "Level": "Recruit",
+        "HasMovedThisTurn": true
+      },
       "IsGold": false,
       "IsMountain": false
     },
     {
-      "Q": 8,
-      "R": 10,
-      "OwnerIndex": 1,
+      "Q": 9,
+      "R": 9,
+      "OwnerIndex": 0,
+      "Occupant": {
+        "Type": "Unit",
+        "OwnerIndex": 0,
+        "Level": "Recruit",
+        "HasMovedThisTurn": true
+      },
       "IsGold": false,
       "IsMountain": false
     },
     {
       "Q": 9,
       "R": 10,
-      "OwnerIndex": 1,
+      "OwnerIndex": 0,
+      "Occupant": {
+        "Type": "Unit",
+        "OwnerIndex": 0,
+        "Level": "Recruit",
+        "HasMovedThisTurn": true
+      },
       "IsGold": false,
       "IsMountain": false
     },
     {
-      "Q": 12,
-      "R": 8,
+      "Q": 8,
+      "R": 10,
       "OwnerIndex": 0,
       "Occupant": {
-        "Type": "Capital"
+        "Type": "Unit",
+        "OwnerIndex": 0,
+        "Level": "Recruit",
+        "HasMovedThisTurn": true
       },
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 13,
+      "R": 7,
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 14,
+      "R": 7,
+      "OwnerIndex": 0,
       "IsGold": false,
       "IsMountain": false
     },
@@ -159,8 +215,8 @@
       "IsMountain": false
     },
     {
-      "Q": 11,
-      "R": 9,
+      "Q": 12,
+      "R": 8,
       "OwnerIndex": 0,
       "IsGold": false,
       "IsMountain": false
@@ -173,8 +229,8 @@
       "IsMountain": false
     },
     {
-      "Q": 10,
-      "R": 10,
+      "Q": 11,
+      "R": 9,
       "OwnerIndex": 0,
       "IsGold": false,
       "IsMountain": false
@@ -185,12 +241,27 @@
       "OwnerIndex": 0,
       "IsGold": false,
       "IsMountain": false
+    },
+    {
+      "Q": 10,
+      "R": 10,
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
     }
   ],
   "Territories": [
     {
       "OwnerIndex": 0,
       "Coords": [
+        {
+          "Q": 9,
+          "R": 7
+        },
+        {
+          "Q": 10,
+          "R": 7
+        },
         {
           "Q": 8,
           "R": 8
@@ -216,12 +287,20 @@
           "R": 10
         }
       ],
-      "CapitalQ": 8,
-      "CapitalR": 8
+      "CapitalQ": 9,
+      "CapitalR": 7
     },
     {
       "OwnerIndex": 1,
       "Coords": [
+        {
+          "Q": 11,
+          "R": 7
+        },
+        {
+          "Q": 12,
+          "R": 7
+        },
         {
           "Q": 10,
           "R": 8
@@ -247,12 +326,20 @@
           "R": 10
         }
       ],
-      "CapitalQ": 10,
-      "CapitalR": 8
+      "CapitalQ": 11,
+      "CapitalR": 7
     },
     {
       "OwnerIndex": 0,
       "Coords": [
+        {
+          "Q": 13,
+          "R": 7
+        },
+        {
+          "Q": 14,
+          "R": 7
+        },
         {
           "Q": 12,
           "R": 8
@@ -278,24 +365,24 @@
           "R": 10
         }
       ],
-      "CapitalQ": 12,
-      "CapitalR": 8
+      "CapitalQ": 13,
+      "CapitalR": 7
     }
   ],
   "Gold": [
     {
-      "Q": 8,
-      "R": 8,
+      "Q": 9,
+      "R": 7,
       "Gold": 0
     },
     {
-      "Q": 10,
-      "R": 8,
+      "Q": 11,
+      "R": 7,
       "Gold": 0
     },
     {
-      "Q": 12,
-      "R": 8,
+      "Q": 13,
+      "R": 7,
       "Gold": 0
     }
   ],
@@ -1186,30 +1273,6 @@
     },
     {
       "Q": 8,
-      "R": 7
-    },
-    {
-      "Q": 9,
-      "R": 7
-    },
-    {
-      "Q": 10,
-      "R": 7
-    },
-    {
-      "Q": 11,
-      "R": 7
-    },
-    {
-      "Q": 12,
-      "R": 7
-    },
-    {
-      "Q": 13,
-      "R": 7
-    },
-    {
-      "Q": 14,
       "R": 7
     },
     {
@@ -2638,8 +2701,8 @@
       "CurrentPlayerIndex": 0,
       "Tiles": [
         {
-          "Q": 8,
-          "R": 8,
+          "Q": 9,
+          "R": 7,
           "OwnerIndex": 0,
           "Occupant": {
             "Type": "Capital"
@@ -2648,8 +2711,29 @@
           "IsMountain": false
         },
         {
+          "Q": 8,
+          "R": 8,
+          "OwnerIndex": 0,
+          "IsGold": false,
+          "IsMountain": false
+        },
+        {
           "Q": 9,
           "R": 8,
+          "OwnerIndex": 0,
+          "IsGold": false,
+          "IsMountain": false
+        },
+        {
+          "Q": 10,
+          "R": 7,
+          "OwnerIndex": 0,
+          "IsGold": false,
+          "IsMountain": false
+        },
+        {
+          "Q": 8,
+          "R": 9,
           "OwnerIndex": 0,
           "IsGold": false,
           "IsMountain": false
@@ -2662,8 +2746,8 @@
           "IsMountain": false
         },
         {
-          "Q": 8,
-          "R": 9,
+          "Q": 7,
+          "R": 10,
           "OwnerIndex": 0,
           "IsGold": false,
           "IsMountain": false
@@ -2676,15 +2760,8 @@
           "IsMountain": false
         },
         {
-          "Q": 7,
-          "R": 10,
-          "OwnerIndex": 0,
-          "IsGold": false,
-          "IsMountain": false
-        },
-        {
-          "Q": 10,
-          "R": 8,
+          "Q": 11,
+          "R": 7,
           "OwnerIndex": 1,
           "Occupant": {
             "Type": "Capital"
@@ -2693,8 +2770,29 @@
           "IsMountain": false
         },
         {
+          "Q": 12,
+          "R": 7,
+          "OwnerIndex": 1,
+          "IsGold": false,
+          "IsMountain": false
+        },
+        {
           "Q": 11,
           "R": 8,
+          "OwnerIndex": 1,
+          "IsGold": false,
+          "IsMountain": false
+        },
+        {
+          "Q": 10,
+          "R": 8,
+          "OwnerIndex": 1,
+          "IsGold": false,
+          "IsMountain": false
+        },
+        {
+          "Q": 10,
+          "R": 9,
           "OwnerIndex": 1,
           "IsGold": false,
           "IsMountain": false
@@ -2707,8 +2805,8 @@
           "IsMountain": false
         },
         {
-          "Q": 10,
-          "R": 9,
+          "Q": 9,
+          "R": 10,
           "OwnerIndex": 1,
           "IsGold": false,
           "IsMountain": false
@@ -2721,19 +2819,19 @@
           "IsMountain": false
         },
         {
-          "Q": 9,
-          "R": 10,
-          "OwnerIndex": 1,
-          "IsGold": false,
-          "IsMountain": false
-        },
-        {
-          "Q": 12,
-          "R": 8,
+          "Q": 13,
+          "R": 7,
           "OwnerIndex": 0,
           "Occupant": {
             "Type": "Capital"
           },
+          "IsGold": false,
+          "IsMountain": false
+        },
+        {
+          "Q": 14,
+          "R": 7,
+          "OwnerIndex": 0,
           "IsGold": false,
           "IsMountain": false
         },
@@ -2745,8 +2843,8 @@
           "IsMountain": false
         },
         {
-          "Q": 11,
-          "R": 9,
+          "Q": 12,
+          "R": 8,
           "OwnerIndex": 0,
           "IsGold": false,
           "IsMountain": false
@@ -2759,8 +2857,8 @@
           "IsMountain": false
         },
         {
-          "Q": 10,
-          "R": 10,
+          "Q": 11,
+          "R": 9,
           "OwnerIndex": 0,
           "IsGold": false,
           "IsMountain": false
@@ -2771,12 +2869,27 @@
           "OwnerIndex": 0,
           "IsGold": false,
           "IsMountain": false
+        },
+        {
+          "Q": 10,
+          "R": 10,
+          "OwnerIndex": 0,
+          "IsGold": false,
+          "IsMountain": false
         }
       ],
       "Territories": [
         {
           "OwnerIndex": 0,
           "Coords": [
+            {
+              "Q": 9,
+              "R": 7
+            },
+            {
+              "Q": 10,
+              "R": 7
+            },
             {
               "Q": 8,
               "R": 8
@@ -2802,12 +2915,20 @@
               "R": 10
             }
           ],
-          "CapitalQ": 8,
-          "CapitalR": 8
+          "CapitalQ": 9,
+          "CapitalR": 7
         },
         {
           "OwnerIndex": 1,
           "Coords": [
+            {
+              "Q": 11,
+              "R": 7
+            },
+            {
+              "Q": 12,
+              "R": 7
+            },
             {
               "Q": 10,
               "R": 8
@@ -2833,12 +2954,20 @@
               "R": 10
             }
           ],
-          "CapitalQ": 10,
-          "CapitalR": 8
+          "CapitalQ": 11,
+          "CapitalR": 7
         },
         {
           "OwnerIndex": 0,
           "Coords": [
+            {
+              "Q": 13,
+              "R": 7
+            },
+            {
+              "Q": 14,
+              "R": 7
+            },
             {
               "Q": 12,
               "R": 8
@@ -2864,25 +2993,25 @@
               "R": 10
             }
           ],
-          "CapitalQ": 12,
-          "CapitalR": 8
+          "CapitalQ": 13,
+          "CapitalR": 7
         }
       ],
       "Gold": [
         {
-          "Q": 8,
-          "R": 8,
-          "Gold": 30
+          "Q": 9,
+          "R": 7,
+          "Gold": 40
         },
         {
-          "Q": 10,
-          "R": 8,
-          "Gold": 30
+          "Q": 11,
+          "R": 7,
+          "Gold": 40
         },
         {
-          "Q": 12,
-          "R": 8,
-          "Gold": 30
+          "Q": 13,
+          "R": 7,
+          "Gold": 40
         }
       ]
     },
@@ -2890,18 +3019,46 @@
       {
         "Index": 0,
         "Turn": 1,
-        "Actor": -1,
-        "Kind": "SelectTerritory",
+        "Actor": 0,
+        "Kind": "BuyUnit",
         "ToQ": 8,
-        "ToR": 8
+        "ToR": 10,
+        "CapitalQ": 9,
+        "CapitalR": 7,
+        "Level": "Recruit"
       },
       {
         "Index": 1,
         "Turn": 1,
-        "Actor": -1,
-        "Kind": "SelectTerritory",
-        "ToQ": 12,
-        "ToR": 8
+        "Actor": 0,
+        "Kind": "BuyUnit",
+        "ToQ": 10,
+        "ToR": 9,
+        "CapitalQ": 13,
+        "CapitalR": 7,
+        "Level": "Recruit"
+      },
+      {
+        "Index": 2,
+        "Turn": 1,
+        "Actor": 0,
+        "Kind": "BuyUnit",
+        "ToQ": 9,
+        "ToR": 9,
+        "CapitalQ": 13,
+        "CapitalR": 7,
+        "Level": "Recruit"
+      },
+      {
+        "Index": 3,
+        "Turn": 1,
+        "Actor": 0,
+        "Kind": "BuyUnit",
+        "ToQ": 9,
+        "ToR": 10,
+        "CapitalQ": 9,
+        "CapitalR": 7,
+        "Level": "Recruit"
       }
     ]
   },
