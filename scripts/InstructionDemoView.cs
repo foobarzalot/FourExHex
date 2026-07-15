@@ -41,6 +41,13 @@ public sealed partial class InstructionDemoView : Control
     // Generation counter: bumped by every Stop so a loop-pause timer
     // armed by an older session can't restart a torn-down replay.
     private int _generation;
+    // Frozen: display holds its last rendered frame (viewport stops
+    // updating) and replay playback parks via the controller's
+    // isReplayPaused hook — the swipe carousel freezes the outgoing
+    // demo during a drag and thaws it seamlessly on spring-back.
+    private bool _frozen;
+    // A loop restart that came due while frozen; runs on thaw.
+    private bool _pendingLoopRestart;
 
     public override void _Ready()
     {
@@ -94,6 +101,10 @@ public sealed partial class InstructionDemoView : Control
         GameState state = loaded.State;
         var session = new SessionState();
 
+        _frozen = false;
+        _pendingLoopRestart = false;
+        _viewport.RenderTargetUpdateMode = SubViewport.UpdateMode.Always;
+
         _map = new HexMapView();
         _map.Init(state);
         SizeViewportToGrid();
@@ -118,6 +129,7 @@ public sealed partial class InstructionDemoView : Control
             previewMode: true,
             loadedReplay: tutorial.Replay,
             replayIsInstantMode: () => false,
+            isReplayPaused: () => _frozen,
             autoSelectFirstTerritory: false);
         _controller.ReplayEnded += OnReplayEnded;
 
@@ -154,9 +166,34 @@ public sealed partial class InstructionDemoView : Control
         _running = false;
     }
 
+    /// <summary>
+    /// Freeze/thaw the demo in place: frozen, the display keeps its last
+    /// rendered frame and playback parks (via the controller's pause
+    /// hook); thawed, rendering and playback resume exactly where they
+    /// stopped. Used by the swipe carousel while pages are in motion.
+    /// </summary>
+    public void SetFrozen(bool frozen)
+    {
+        if (_frozen == frozen || !_running) return;
+        _frozen = frozen;
+        _viewport.RenderTargetUpdateMode = frozen
+            ? SubViewport.UpdateMode.Disabled
+            : SubViewport.UpdateMode.Always;
+        if (frozen) return;
+
+        _controller?.ResumeReplayAfterPause();
+        if (_pendingLoopRestart && _controller != null)
+        {
+            _pendingLoopRestart = false;
+            Log.Info(Log.LogCategory.Tutorial, "[instr] demo loop restart");
+            _controller.BeginReplay();
+        }
+    }
+
     // Loop: hold the final frame briefly, then rewind and replay. The
     // generation guard drops the restart if Stop/Play happened while the
-    // pause timer was pending.
+    // pause timer was pending; a restart that comes due while frozen
+    // waits for the thaw.
     private void OnReplayEnded()
     {
         if (!_running) return;
@@ -164,6 +201,11 @@ public sealed partial class InstructionDemoView : Control
         GetTree().CreateTimer(LoopPauseSec).Timeout += () =>
         {
             if (!_running || generation != _generation || _controller == null) return;
+            if (_frozen)
+            {
+                _pendingLoopRestart = true;
+                return;
+            }
             Log.Info(Log.LogCategory.Tutorial, "[instr] demo loop restart");
             _controller.BeginReplay();
         };

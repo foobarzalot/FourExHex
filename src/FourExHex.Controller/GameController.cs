@@ -145,7 +145,8 @@ public class GameController
             aiPacer: _aiPacer,
             previewMode: previewMode,
             replayIsInstantMode: replayIsInstantMode,
-            loadedReplay: loadedReplay);
+            loadedReplay: loadedReplay,
+            isReplayPaused: isReplayPaused);
         _recorder.ReplayEnded += () => ReplayEnded?.Invoke();
         _aiDriver = new AiTurnDriver(
             state: state,
@@ -2748,5 +2749,10 @@ public class GameController
         ClearUndoAndReplayBookkeeping();
         _recorder.BeginReplay();
     }
+
+    /// <summary>Re-kick paced replay playback after the
+    /// <c>isReplayPaused</c> hook clears (the Instructions demo thawing
+    /// after a swipe drag). No-op unless the step machine parked.</summary>
+    public void ResumeReplayAfterPause() => _recorder.ResumeReplayAfterPause();
 
 }

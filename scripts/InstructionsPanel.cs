@@ -12,7 +12,10 @@ using Godot;
 /// Interaction model matches the guided tour (<see cref="HudTour"/>):
 /// Back / Next wrap through the pages, Close or Escape exits, and every
 /// key is swallowed while the panel is up so HUD hotkeys can't mutate
-/// the live game underneath.
+/// the live game underneath. Paging is a two-panel carousel
+/// (<see cref="PageCarousel"/>): swipes track the finger with the
+/// neighboring page peeking in beside the current one, and commits
+/// slide both together; buttons and arrow keys ride the same slide.
 /// </summary>
 public sealed partial class InstructionsPanel : CanvasLayer
 {
@@ -63,27 +66,31 @@ public sealed partial class InstructionsPanel : CanvasLayer
 
     private readonly SaveStore _saveStore = new SaveStore();
 
-    private InstructionDemoView _demo = null!;
-    private Label _titleLabel = null!;
-    private Label _bodyLabel = null!;
+    /// <summary>One carousel slot's widgets: a full-rect root holding the
+    /// page's own title, split region, demo, and body — everything that
+    /// slides with the page (only the button row stays fixed).</summary>
+    private sealed class PageView
+    {
+        public Control Root = null!;
+        public Label Title = null!;
+        public Label Body = null!;
+        public BoxContainer Split = null!;
+        public InstructionDemoView Demo = null!;
+    }
+
+    private readonly PageView[] _views = new PageView[2];
+    private PageCarousel _carousel = null!;
     private Label _pageLabel = null!;
-    private BoxContainer _split = null!;
-    private Control _pageClip = null!;
-    private Control _pageSlider = null!;
     private int _index;
+    // Page index currently populated into the carousel's back view for a
+    // drag peek; -1 when the back view holds nothing meaningful.
+    private int _peekIndex = -1;
     private bool _closed;
     // Horizontal-swipe paging anywhere over the panel (page-turning:
     // left = Next, right = Back). Pure ViewMath recognizer fed
-    // press/move/release positions observed in _Input; the slider tracks
-    // its Drag offset live.
+    // press/move/release positions observed in _Input; the carousel
+    // tracks its Drag offset live.
     private readonly SwipeDetector _swipe = new SwipeDetector();
-    // Page-change slide animation (shared by swipe commit, buttons, and
-    // arrow keys). Durations mirrored in HudTour — keep in step.
-    private const float SlideOutSec = 0.18f;
-    private const float SlideInSec = 0.18f;
-    private const float SpringBackSec = 0.15f;
-    private Tween? _slideTween;
-    private bool _transitioning;
 
     public override void _Ready()
     {
@@ -110,62 +117,16 @@ public sealed partial class InstructionsPanel : CanvasLayer
         root.AddThemeConstantOverride("separation", 10);
         panel.AddChild(root);
 
-        // Serif page title + gold rule, matching the tour dialog.
-        _titleLabel = new Label { HorizontalAlignment = HorizontalAlignment.Center };
-        _titleLabel.AddThemeFontOverride("font", SerifFont);
-        _titleLabel.AddThemeFontSizeOverride("font_size", 32);
-        root.AddChild(_titleLabel);
-        root.AddChild(new ColorRect
-        {
-            Color = UiPalette.GoldDim,
-            CustomMinimumSize = new Vector2(200, 1),
-            SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter,
-        });
-
-        // Page region: a clipping wrapper (so sliding content never
-        // overhangs the panel) around a manually-positioned slider whose
-        // Position.X follows the finger / the page-change animation. The
-        // title and button row stay fixed; only this region slides.
-        _pageClip = new Control
+        _views[0] = BuildPageView();
+        _views[1] = BuildPageView();
+        _carousel = new PageCarousel(_views[0].Root, _views[1].Root)
         {
             SizeFlagsVertical = Control.SizeFlags.ExpandFill,
-            ClipContents = true,
-            MouseFilter = Control.MouseFilterEnum.Ignore,
         };
-        root.AddChild(_pageClip);
-        _pageSlider = new Control { MouseFilter = Control.MouseFilterEnum.Ignore };
-        _pageClip.AddChild(_pageSlider);
-        _pageClip.Resized += SyncPageSliderRect;
-
-        // The two sub-panels. One BoxContainer whose Vertical flag flips
-        // with the viewport orientation: portrait = demo above text,
-        // landscape = demo left of text.
-        _split = new BoxContainer();
-        _split.SetAnchorsPreset(Control.LayoutPreset.FullRect);
-        _split.AddThemeConstantOverride("separation", 14);
-        _pageSlider.AddChild(_split);
-
-        _demo = new InstructionDemoView
-        {
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
-            SizeFlagsStretchRatio = 1.3f,
-        };
-        _split.AddChild(_demo);
-
-        _bodyLabel = new Label
-        {
-            AutowrapMode = TextServer.AutowrapMode.WordSmart,
-            VerticalAlignment = VerticalAlignment.Center,
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
-        };
-        _bodyLabel.AddThemeFontSizeOverride("font_size", 20);
-        _bodyLabel.AddThemeColorOverride("font_color", UiPalette.InkSoft);
-        _split.AddChild(_bodyLabel);
+        root.AddChild(_carousel);
 
         // Button row: Back / Next / Close plus the page indicator —
-        // same controls as the tour dialog.
+        // same controls as the tour dialog. Fixed; only pages slide.
         var buttonRow = new HBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         buttonRow.AddThemeConstantOverride("separation", 12);
         root.AddChild(buttonRow);
@@ -183,7 +144,62 @@ public sealed partial class InstructionsPanel : CanvasLayer
         ApplyOrientation();
 
         Log.Info(Log.LogCategory.Hud, $"[instr] open: {Pages.Length} pages");
-        ShowPage(0, "open");
+        Populate(_views[0], 0);
+        StartDemo(_views[0], 0);
+        _pageLabel.Text = $"1 / {Pages.Length}";
+        Log.Info(Log.LogCategory.Hud,
+            $"[instr] page -> 1/{Pages.Length} ({Pages[0].TitleKey}) (via open)");
+    }
+
+    // One carousel slot: full-rect root → vbox → serif title + gold rule
+    // + the orientation-aware demo/text split.
+    private PageView BuildPageView()
+    {
+        var view = new PageView { Root = new Control() };
+
+        var vbox = new VBoxContainer();
+        vbox.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+        vbox.AddThemeConstantOverride("separation", 10);
+        view.Root.AddChild(vbox);
+
+        view.Title = new Label { HorizontalAlignment = HorizontalAlignment.Center };
+        view.Title.AddThemeFontOverride("font", SerifFont);
+        view.Title.AddThemeFontSizeOverride("font_size", 32);
+        vbox.AddChild(view.Title);
+        vbox.AddChild(new ColorRect
+        {
+            Color = UiPalette.GoldDim,
+            CustomMinimumSize = new Vector2(200, 1),
+            SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter,
+        });
+
+        view.Split = new BoxContainer
+        {
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+        };
+        view.Split.AddThemeConstantOverride("separation", 14);
+        vbox.AddChild(view.Split);
+
+        view.Demo = new InstructionDemoView
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+            SizeFlagsStretchRatio = 1.3f,
+        };
+        view.Split.AddChild(view.Demo);
+
+        view.Body = new Label
+        {
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            VerticalAlignment = VerticalAlignment.Center,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+        };
+        view.Body.AddThemeFontSizeOverride("font_size", 20);
+        view.Body.AddThemeColorOverride("font_color", UiPalette.InkSoft);
+        view.Split.AddChild(view.Body);
+
+        return view;
     }
 
     private static Button MakeButton(string text, Action onPressed)
@@ -203,78 +219,94 @@ public sealed partial class InstructionsPanel : CanvasLayer
     private void ApplyOrientation()
     {
         Vector2 vp = GetViewport().GetVisibleRect().Size;
-        _split.Vertical = ScreenLayout.Resolve(vp.X, vp.Y) == ScreenOrientation.Portrait;
-    }
-
-    // Keep the slider matched to the clip rect; a mid-transition resize
-    // (orientation flip) snaps the slider home rather than stranding it.
-    private void SyncPageSliderRect()
-    {
-        _pageSlider.Size = _pageClip.Size;
-        if (!_transitioning) _pageSlider.Position = Vector2.Zero;
-    }
-
-    /// <summary>
-    /// Animated page change, shared by swipe commits, the Back/Next
-    /// buttons, and the arrow keys: the current page slides off in the
-    /// travel direction (from wherever the drag left it), the new page
-    /// slides in from the opposite side.
-    /// </summary>
-    private void Step(bool forward, string? via = null)
-    {
-        if (_transitioning || _closed) return;
-        _transitioning = true;
-        float w = _pageClip.Size.X;
-        float outX = forward ? -w : w;
-
-        _slideTween?.Kill();
-        _slideTween = CreateTween();
-        _slideTween.TweenProperty(_pageSlider, "position:x", outX, SlideOutSec)
-            .SetTrans(Tween.TransitionType.Quad).SetEase(Tween.EaseType.In);
-        _slideTween.TweenCallback(Callable.From(() =>
+        bool portrait = ScreenLayout.Resolve(vp.X, vp.Y) == ScreenOrientation.Portrait;
+        foreach (PageView view in _views)
         {
-            int count = Pages.Length;
-            ShowPage(((_index + (forward ? 1 : -1)) % count + count) % count,
-                via ?? (forward ? "next" : "back"));
-            _pageSlider.Position = new Vector2(-outX, 0f);
-        }));
-        _slideTween.TweenProperty(_pageSlider, "position:x", 0f, SlideInSec)
-            .SetTrans(Tween.TransitionType.Quad).SetEase(Tween.EaseType.Out);
-        _slideTween.TweenCallback(Callable.From(() => _transitioning = false));
+            view.Split.Vertical = portrait;
+        }
     }
 
-    // Sub-threshold drag: ease the page back to center, no page change.
-    private void SpringBack()
-    {
-        _slideTween?.Kill();
-        _slideTween = CreateTween();
-        _slideTween.TweenProperty(_pageSlider, "position:x", 0f, SpringBackSec)
-            .SetTrans(Tween.TransitionType.Quad).SetEase(Tween.EaseType.Out);
-    }
+    private static int WrapIndex(int index) =>
+        ((index % Pages.Length) + Pages.Length) % Pages.Length;
 
-    private void ShowPage(int index, string via)
+    private PageView ViewOf(Control root) =>
+        _views[0].Root == root ? _views[0] : _views[1];
+
+    // Fill a view's text from a page — without starting its demo (peeks
+    // stay cheap; the demo starts when the page actually lands).
+    private void Populate(PageView view, int index)
     {
-        _index = index;
         InstructionPage page = Pages[index];
-        _titleLabel.Text = Strings.Get(page.TitleKey);
-        _bodyLabel.Text = Strings.Get(page.BodyKey);
-        _pageLabel.Text = $"{index + 1} / {Pages.Length}";
-        Log.Info(Log.LogCategory.Hud,
-            $"[instr] page -> {index + 1}/{Pages.Length} ({page.TitleKey}) (via {via})");
+        view.Title.Text = Strings.Get(page.TitleKey);
+        view.Body.Text = Strings.Get(page.BodyKey);
+    }
 
-        _demo.Stop();
-        if (page.TutorialName == null) return;
+    private void StartDemo(PageView view, int index)
+    {
+        string? tutorial = Pages[index].TutorialName;
+        if (tutorial == null) return;
         try
         {
-            _demo.Play(_saveStore.LoadBundledTutorial(page.TutorialName));
+            view.Demo.Play(_saveStore.LoadBundledTutorial(tutorial));
         }
         catch (Exception ex)
         {
             // A missing/corrupt bundled demo shouldn't take down the help
             // dialog — the page still shows its text.
             Log.Warn(Log.LogCategory.Hud,
-                $"[instr] demo \"{page.TutorialName}\" failed to load: {ex.Message}");
+                $"[instr] demo \"{tutorial}\" failed to load: {ex.Message}");
         }
+    }
+
+    // Populate the back view for the neighbor a drag is revealing (or
+    // re-populate when the drag flips sides mid-gesture) — with its demo
+    // playing live. The front demo is frozen for the whole drag, so only
+    // one demo renders and paces at a time.
+    private void EnsurePeek(float offset)
+    {
+        if (offset == 0f) return;
+        int target = WrapIndex(_index + (offset < 0f ? 1 : -1));
+        if (target == _peekIndex) return;
+        PageView back = ViewOf(_carousel.Back);
+        back.Demo.Stop();   // side flip mid-gesture: drop the other neighbor's stack
+        _peekIndex = target;
+        Populate(back, target);
+        StartDemo(back, target);
+        Log.Debug(Log.LogCategory.Hud, $"[instr] peek -> {target + 1}/{Pages.Length}");
+    }
+
+    /// <summary>
+    /// Animated page change, shared by swipe commits, the Back/Next
+    /// buttons, and the arrow keys: the current page slides off (from
+    /// wherever the drag left it) while the new page slides in beside
+    /// it; the incoming demo starts as the slide begins so it's playing
+    /// when the page lands.
+    /// </summary>
+    private void Step(bool forward, string? via = null)
+    {
+        if (_carousel.Transitioning || _closed) return;
+        int target = WrapIndex(_index + (forward ? 1 : -1));
+
+        // A drag peek already has the target populated and its demo
+        // playing; button/key paging populates and starts it here.
+        PageView incoming = ViewOf(_carousel.Back);
+        bool peeked = _peekIndex == target;
+        _peekIndex = -1;
+        ViewOf(_carousel.Front).Demo.Stop();
+        if (!peeked)
+        {
+            Populate(incoming, target);
+            StartDemo(incoming, target);
+        }
+
+        _index = target;
+        _carousel.Commit(forward, onLanded: () =>
+        {
+            _pageLabel.Text = $"{target + 1} / {Pages.Length}";
+        });
+        Log.Info(Log.LogCategory.Hud,
+            $"[instr] page -> {target + 1}/{Pages.Length} ({Pages[target].TitleKey}) " +
+            $"(via {via ?? (forward ? "next" : "back")})");
     }
 
     /// <summary>Swallow every key while the panel is up (same contract as
@@ -292,7 +324,7 @@ public sealed partial class InstructionsPanel : CanvasLayer
             {
                 // Observe only — the press continues on to the buttons.
                 // Mid-transition presses don't arm (no drag-during-slide).
-                if (!_transitioning) _swipe.Press(mb.Position.X, mb.Position.Y);
+                if (!_carousel.Transitioning) _swipe.Press(mb.Position.X, mb.Position.Y);
                 return;
             }
             bool wasTracking = _swipe.IsTrackingHorizontal;
@@ -307,21 +339,30 @@ public sealed partial class InstructionsPanel : CanvasLayer
             }
             else if (wasTracking)
             {
-                SpringBack();
+                // Cancel: drop the peeked stack, thaw the front demo in
+                // place (it resumes mid-loop where it froze).
+                _peekIndex = -1;
+                ViewOf(_carousel.Back).Demo.Stop();
+                ViewOf(_carousel.Front).Demo.SetFrozen(false);
+                _carousel.SpringBack();
                 GetViewport().SetInputAsHandled();
             }
             return;
         }
 
-        // Live tracking: the page region follows the finger once the
+        // Live tracking: the page carousel follows the finger once the
         // gesture locks horizontal (vertical-locked drags never move it).
+        // The visible demo freezes for the duration of the gesture; the
+        // peeked neighbor's demo plays live.
         if (@event is InputEventMouseMotion mm)
         {
-            if (_transitioning) return;
+            if (_carousel.Transitioning) return;
             float offset = _swipe.Drag(mm.Position.X, mm.Position.Y);
             if (_swipe.IsTrackingHorizontal)
             {
-                _pageSlider.Position = new Vector2(offset, 0f);
+                ViewOf(_carousel.Front).Demo.SetFrozen(true);
+                EnsurePeek(offset);
+                _carousel.Track(offset);
             }
             return;
         }
@@ -341,7 +382,7 @@ public sealed partial class InstructionsPanel : CanvasLayer
     {
         if (_closed) return;
         _closed = true;
-        _demo.Stop();
+        foreach (PageView view in _views) view.Demo.Stop();
         Log.Info(Log.LogCategory.Hud, $"[instr] close ({reason})");
         Closed?.Invoke();
     }

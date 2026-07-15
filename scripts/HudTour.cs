@@ -40,23 +40,28 @@ public sealed partial class HudTour : CanvasLayer
     private readonly HudTourSteps _cursor;
 
     private Panel _ring = null!;
-    private Label _titleLabel = null!;
-    private Label _bodyLabel = null!;
     private bool _closed;
     // Horizontal-swipe paging on the catcher (page-turning: left = Next,
     // right = Back). Pure ViewMath recognizer fed press/move/release
-    // positions; the dialog tracks its Drag offset live.
+    // positions; the dialog carousel tracks its Drag offset live.
     private readonly SwipeDetector _swipe = new SwipeDetector();
-    // Manually-positioned wrapper the dialog centers inside — its
-    // Position.X is the drag/animation target (the center-anchored dialog
-    // itself can't be safely position-animated; layout would fight it).
-    private Control _dialogSlider = null!;
-    // Slide animation constants mirrored in InstructionsPanel — keep in step.
-    private const float SlideOutSec = 0.18f;
-    private const float SlideInSec = 0.18f;
-    private const float SpringBackSec = 0.15f;
-    private Tween? _slideTween;
-    private bool _transitioning;
+
+    // One carousel slot: a viewport-sized click-through page with the
+    // dialog center-anchored inside, plus its label refs.
+    private sealed class DialogView
+    {
+        public Control Root = null!;
+        public Label Title = null!;
+        public Label Body = null!;
+    }
+
+    // Two dialogs slide as a carousel so the incoming step's dialog is
+    // visible beside the outgoing one throughout a page turn.
+    private readonly DialogView[] _dialogs = new DialogView[2];
+    private PageCarousel _carousel = null!;
+    // Entry index currently populated into the carousel's back dialog for
+    // a drag peek; -1 when the back dialog holds nothing meaningful.
+    private int _peekIndex = -1;
 
     public HudTour(IReadOnlyList<Entry> entries)
     {
@@ -98,16 +103,16 @@ public sealed partial class HudTour : CanvasLayer
         pulse.TweenProperty(_ring, "modulate:a", 0.72f, 0.55).SetTrans(Tween.TransitionType.Sine);
         pulse.TweenProperty(_ring, "modulate:a", 1.0f, 0.55).SetTrans(Tween.TransitionType.Sine);
 
-        // 3) Centered dialog (top of this layer so its buttons beat the
+        // 3) Centered dialogs (top of this layer so their buttons beat the
         //    catcher). No dim backdrop — keep the HUD bright so highlighted
-        //    elements stay visible. It centers inside a manually-sized,
-        //    click-through slider wrapper whose Position.X carries the
-        //    swipe drag and the page-change slide.
-        _dialogSlider = new Control { MouseFilter = Control.MouseFilterEnum.Ignore };
-        AddChild(_dialogSlider);
-        _dialogSlider.AddChild(BuildDialog());
-        SyncDialogSliderRect();
-        GetViewport().SizeChanged += SyncDialogSliderRect;
+        //    elements stay visible. Two dialog instances ride a
+        //    manually-sized carousel so page turns show both at once.
+        _dialogs[0] = BuildDialogPage();
+        _dialogs[1] = BuildDialogPage();
+        _carousel = new PageCarousel(_dialogs[0].Root, _dialogs[1].Root);
+        AddChild(_carousel);
+        SyncCarouselRect();
+        GetViewport().SizeChanged += SyncCarouselRect;
 
         // Always open on the intro page (it explains how to drive the tour,
         // highlighting nothing); Next from there steps into the elements.
@@ -117,18 +122,23 @@ public sealed partial class HudTour : CanvasLayer
             $"[tour] enter: {_cursor.Count} elements, start={_cursor.Current}");
     }
 
-    private Control BuildDialog()
+    // One carousel slot: a click-through page holding the centered dialog
+    // panel; both slots' buttons drive the same step/close handlers.
+    private DialogView BuildDialogPage()
     {
+        var view = new DialogView { Root = new Control() };
+
         PanelContainer panel = ModalChrome.BuildCenteredPanel();
+        view.Root.AddChild(panel);
 
         var vbox = new VBoxContainer { CustomMinimumSize = new Vector2(440, 0) };
         vbox.AddThemeConstantOverride("separation", 16);
         panel.AddChild(vbox);
 
-        _titleLabel = new Label { HorizontalAlignment = HorizontalAlignment.Center };
-        _titleLabel.AddThemeFontOverride("font", SerifFont);
-        _titleLabel.AddThemeFontSizeOverride("font_size", 32);
-        vbox.AddChild(_titleLabel);
+        view.Title = new Label { HorizontalAlignment = HorizontalAlignment.Center };
+        view.Title.AddThemeFontOverride("font", SerifFont);
+        view.Title.AddThemeFontSizeOverride("font_size", 32);
+        vbox.AddChild(view.Title);
 
         var goldRule = new ColorRect
         {
@@ -138,15 +148,15 @@ public sealed partial class HudTour : CanvasLayer
         };
         vbox.AddChild(goldRule);
 
-        _bodyLabel = new Label
+        view.Body = new Label
         {
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
             HorizontalAlignment = HorizontalAlignment.Center,
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
         };
-        _bodyLabel.AddThemeFontSizeOverride("font_size", 20);
-        _bodyLabel.AddThemeColorOverride("font_color", UiPalette.InkSoft);
-        vbox.AddChild(_bodyLabel);
+        view.Body.AddThemeFontSizeOverride("font_size", 20);
+        view.Body.AddThemeColorOverride("font_color", UiPalette.InkSoft);
+        vbox.AddChild(view.Body);
 
         var buttonRow = new HBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         buttonRow.AddThemeConstantOverride("separation", 12);
@@ -156,8 +166,11 @@ public sealed partial class HudTour : CanvasLayer
         buttonRow.AddChild(MakeButton("Next", () => Step(forward: true)));
         buttonRow.AddChild(MakeButton("Close", () => Close("button")));
 
-        return panel;
+        return view;
     }
+
+    private DialogView ViewOf(Control root) =>
+        _dialogs[0].Root == root ? _dialogs[0] : _dialogs[1];
 
     private static Button MakeButton(string text, Action onPressed)
     {
@@ -203,13 +216,14 @@ public sealed partial class HudTour : CanvasLayer
         // release so nothing underneath treats the drag-end as a click.
         if (@event is InputEventMouseMotion mm)
         {
-            if (_transitioning) return;
-            // Live tracking: the dialog follows the finger once the gesture
-            // locks horizontal (vertical-locked drags never move it).
+            if (_carousel.Transitioning) return;
+            // Live tracking: the dialogs follow the finger once the gesture
+            // locks horizontal (vertical-locked drags never move them).
             float offset = _swipe.Drag(mm.Position.X, mm.Position.Y);
             if (_swipe.IsTrackingHorizontal)
             {
-                _dialogSlider.Position = new Vector2(offset, 0f);
+                EnsurePeek(offset);
+                _carousel.Track(offset);
             }
             return;
         }
@@ -217,11 +231,11 @@ public sealed partial class HudTour : CanvasLayer
         {
             if (mb.Pressed)
             {
-                if (!_transitioning) _swipe.Press(mb.Position.X, mb.Position.Y);
+                if (!_carousel.Transitioning) _swipe.Press(mb.Position.X, mb.Position.Y);
                 return;
             }
             // Page-turning: finger left = Next, finger right = Back. A
-            // sub-threshold horizontal drag springs the dialog back instead.
+            // sub-threshold horizontal drag springs the dialogs back instead.
             bool wasTracking = _swipe.IsTrackingHorizontal;
             switch (_swipe.Release(mb.Position.X, mb.Position.Y))
             {
@@ -236,7 +250,8 @@ public sealed partial class HudTour : CanvasLayer
             }
             if (wasTracking)
             {
-                SpringBack();
+                _peekIndex = -1;
+                _carousel.SpringBack();
                 GetViewport().SetInputAsHandled();
             }
             return;
@@ -282,64 +297,69 @@ public sealed partial class HudTour : CanvasLayer
         }
     }
 
-    // Keep the slider matched to the viewport; a mid-transition resize
-    // snaps it home rather than stranding the dialog off-center.
-    private void SyncDialogSliderRect()
+    // Keep the carousel matched to the viewport; its Resized handler
+    // re-homes the dialogs when not transitioning.
+    private void SyncCarouselRect()
     {
-        _dialogSlider.Size = GetViewport().GetVisibleRect().Size;
-        if (!_transitioning) _dialogSlider.Position = Vector2.Zero;
+        _carousel.Size = GetViewport().GetVisibleRect().Size;
     }
 
     public override void _ExitTree()
     {
-        GetViewport().SizeChanged -= SyncDialogSliderRect;
+        GetViewport().SizeChanged -= SyncCarouselRect;
+    }
+
+    private int WrapIndex(int index) =>
+        ((index % _cursor.Count) + _cursor.Count) % _cursor.Count;
+
+    // Fill a dialog's labels from the entry at an index — a peek doesn't
+    // move the HudTourSteps cursor.
+    private void PopulateDialog(DialogView view, int index)
+    {
+        view.Title.Text = _entries[index].Title;
+        view.Body.Text = _entries[index].Body;
+    }
+
+    // Populate the back dialog for the neighbor a drag is revealing (or
+    // re-populate when the drag flips sides mid-gesture).
+    private void EnsurePeek(float offset)
+    {
+        if (offset == 0f) return;
+        int target = WrapIndex(_cursor.Index + (offset < 0f ? 1 : -1));
+        if (target == _peekIndex) return;
+        _peekIndex = target;
+        PopulateDialog(ViewOf(_carousel.Back), target);
     }
 
     /// <summary>
     /// Animated step, shared by swipe commits, the Back/Next buttons, and
-    /// the arrow keys: the dialog slides off in the travel direction
-    /// (from wherever the drag left it) and re-enters from the opposite
-    /// side around the cursor advance. Tap-to-jump stays instant.
+    /// the arrow keys: the outgoing and incoming dialogs slide together
+    /// as one page turn (from wherever the drag left them); the cursor —
+    /// and with it the highlight ring — advances as the incoming dialog
+    /// lands. Tap-to-jump stays instant.
     /// </summary>
     private void Step(bool forward, string? via = null)
     {
-        if (_transitioning || _closed) return;
-        _transitioning = true;
-        // Slide most of a viewport width — enough to clear the centered
-        // dialog past the edge in either orientation.
-        float w = GetViewport().GetVisibleRect().Size.X;
-        float outX = forward ? -w : w;
+        if (_carousel.Transitioning || _closed) return;
+        int target = WrapIndex(_cursor.Index + (forward ? 1 : -1));
 
-        _slideTween?.Kill();
-        _slideTween = CreateTween();
-        _slideTween.TweenProperty(_dialogSlider, "position:x", outX, SlideOutSec)
-            .SetTrans(Tween.TransitionType.Quad).SetEase(Tween.EaseType.In);
-        _slideTween.TweenCallback(Callable.From(() =>
+        if (_peekIndex != target) PopulateDialog(ViewOf(_carousel.Back), target);
+        _peekIndex = -1;
+
+        _carousel.Commit(forward, onLanded: () =>
         {
             if (forward) _cursor.Next();
             else _cursor.Prev();
             ShowCurrent(via ?? (forward ? "next" : "back"));
-            _dialogSlider.Position = new Vector2(-outX, 0f);
-        }));
-        _slideTween.TweenProperty(_dialogSlider, "position:x", 0f, SlideInSec)
-            .SetTrans(Tween.TransitionType.Quad).SetEase(Tween.EaseType.Out);
-        _slideTween.TweenCallback(Callable.From(() => _transitioning = false));
-    }
-
-    // Sub-threshold drag: ease the dialog back to center, no step.
-    private void SpringBack()
-    {
-        _slideTween?.Kill();
-        _slideTween = CreateTween();
-        _slideTween.TweenProperty(_dialogSlider, "position:x", 0f, SpringBackSec)
-            .SetTrans(Tween.TransitionType.Quad).SetEase(Tween.EaseType.Out);
+        });
     }
 
     private void ShowCurrent(string via)
     {
         Entry e = _entries[_cursor.Index];
-        _titleLabel.Text = e.Title;
-        _bodyLabel.Text = e.Body;
+        DialogView front = ViewOf(_carousel.Front);
+        front.Title.Text = e.Title;
+        front.Body.Text = e.Body;
         Log.Debug(Log.LogCategory.Hud,
             $"[tour] step -> {e.Step} (via {via}) [{_cursor.Index + 1}/{_cursor.Count}]");
     }

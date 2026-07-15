@@ -48,7 +48,11 @@ public class ReplayRecorder
     private readonly GameOperations _ops;
     private readonly IAiPacer _aiPacer;
     private readonly Func<bool>? _replayIsInstantMode;
+    private readonly Func<bool> _isReplayPaused;
     private readonly bool _previewMode;
+    // True when the paced step machine hit the pause hook and stopped
+    // scheduling; ResumeReplayAfterPause restarts exactly one chain.
+    private bool _replayParked;
 
     // The replay log lives parallel to the per-turn undo stack: every
     // state-mutating action by every player (human and AI) appends a
@@ -95,7 +99,8 @@ public class ReplayRecorder
         IAiPacer aiPacer,
         bool previewMode,
         Func<bool>? replayIsInstantMode,
-        Replay? loadedReplay)
+        Replay? loadedReplay,
+        Func<bool>? isReplayPaused = null)
     {
         _state = state;
         _session = session;
@@ -104,6 +109,7 @@ public class ReplayRecorder
         _aiPacer = aiPacer;
         _previewMode = previewMode;
         _replayIsInstantMode = replayIsInstantMode;
+        _isReplayPaused = isReplayPaused ?? (() => false);
 
         if (loadedReplay != null)
         {
@@ -460,6 +466,15 @@ public class ReplayRecorder
         if (!_replayMode) return;
         if (_replayIndex >= _replayBeats.Count) { EndReplay(); return; }
 
+        // External pause (the Instructions demo frozen mid-drag): park —
+        // stop scheduling — and let ResumeReplayAfterPause restart the
+        // chain from this same beat.
+        if (_isReplayPaused())
+        {
+            _replayParked = true;
+            return;
+        }
+
         ReplayBeat beat = _replayBeats[_replayIndex];
         _map.ShowHighlight(ResolveReplayActingTerritory(beat));
         // A move's preview shows the unit being picked up — the same
@@ -480,6 +495,16 @@ public class ReplayRecorder
             ? StepPacing.AiActionDelayMs
             : StepPacing.AiPreviewDelayMs;
         _aiPacer.Schedule(StepReplayExecute, delay);
+    }
+
+    /// <summary>Restart the paced chain after the pause hook clears. Only
+    /// acts when <see cref="StepReplayPreview"/> parked — a stray resume
+    /// during normal playback must not inject a second chain.</summary>
+    public void ResumeReplayAfterPause()
+    {
+        if (!_replayParked || !_replayMode || _isReplayPaused()) return;
+        _replayParked = false;
+        StepReplayPreview();
     }
 
     private void StepReplayExecute()

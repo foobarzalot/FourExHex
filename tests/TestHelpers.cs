@@ -117,6 +117,7 @@ public static class TestHelpers
         bool startGame = true,
         Func<bool>? aiSilentMode = null,
         Func<bool>? replayIsInstantMode = null,
+        Func<bool>? isReplayPaused = null,
         IReadOnlySet<HexCoord>? waterCoords = null,
         Action<HexGrid>? beforeTerritories = null,
         Action<GameState>? beforeStart = null,
@@ -180,6 +181,7 @@ public static class TestHelpers
             previewMode: previewMode,
             aiSilentMode: aiSilentMode,
             replayIsInstantMode: replayIsInstantMode,
+            isReplayPaused: isReplayPaused,
             autoSelectFirstTerritory: autoSelect);
         // startGame:false is for the construct-only tests that assert what the
         // constructor told the views, isolating it from StartGame's effects.
