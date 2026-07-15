@@ -34,24 +34,38 @@
 #   - cmdline-tools           (sdkmanager + accepted licenses)
 #   - JDK >= 17               (JDK 21 satisfies the gradle validateJavaVersion task)
 #
-# Result: build/android/FourExHex.apk (debug- or release-signed).
+# Result: build/android/FourExHex-<mode>.apk (debug- or release-signed), or
+#         build/android/FourExHex-release.aab (aab mode, for Google Play upload).
 #
-# Usage:  tools/build_android.sh [debug|release]   (default: debug)
+# Usage:  tools/build_android.sh [debug|release|aab]   (default: debug)
 #   debug   -> ExportDebug config, --export-debug   (DEBUG defined, logs/asserts on)
 #   release -> ExportRelease config, --export-release (optimized, Conditional logs stripped)
+#   aab     -> same as release, but exports an Android App Bundle (.aab) instead
+#              of an APK. Play requires .aab; the release keystore signature acts
+#              as the Play App Signing UPLOAD key. Implemented by temporarily
+#              flipping gradle_build/export_format 0->1 in export_presets.cfg
+#              (backed up + restored via EXIT trap, same pattern as the
+#              build_ios.sh team-ID injection).
 set -euo pipefail
 
 MODE="${1:-debug}"
 case "$MODE" in
   debug)   CSHARP_CONFIG="ExportDebug";   GODOT_FLAG="--export-debug" ;;
   release) CSHARP_CONFIG="ExportRelease"; GODOT_FLAG="--export-release" ;;
-  *) echo "ERROR: unknown mode '$MODE' (use 'debug' or 'release')" >&2; exit 2 ;;
+  aab)     CSHARP_CONFIG="ExportRelease"; GODOT_FLAG="--export-release" ;;
+  *) echo "ERROR: unknown mode '$MODE' (use 'debug', 'release', or 'aab')" >&2; exit 2 ;;
 esac
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GODOT="/Applications/Godot_mono.app/Contents/MacOS/Godot"
 PRESET="Android"
-OUT="$PROJECT_DIR/build/android/FourExHex-$MODE.apk"
+if [[ "$MODE" == "aab" ]]; then
+  OUT="$PROJECT_DIR/build/android/FourExHex-release.aab"
+else
+  OUT="$PROJECT_DIR/build/android/FourExHex-$MODE.apk"
+fi
+PRESETS_CFG="$PROJECT_DIR/export_presets.cfg"
+PRESETS_BAK="$PROJECT_DIR/export_presets.cfg.bak.$$"
 NDK_VERSION="28.1.13356709"
 COMPILE_SDK="android-35"
 
@@ -86,7 +100,7 @@ source "$CREDS"
 for v in GODOT_ANDROID_KEYSTORE_DEBUG_PATH GODOT_ANDROID_KEYSTORE_DEBUG_USER GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD; do
   [[ -n "${!v:-}" ]] || fail "$v not set by $CREDS"
 done
-if [[ "$MODE" == "release" ]]; then
+if [[ "$MODE" == "release" || "$MODE" == "aab" ]]; then
   for v in GODOT_ANDROID_KEYSTORE_RELEASE_PATH GODOT_ANDROID_KEYSTORE_RELEASE_USER GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD; do
     [[ -n "${!v:-}" ]] || fail "$v not set by $CREDS (needed for a release build)"
   done
@@ -111,11 +125,32 @@ fi
 echo "==> Syncing export_presets.cfg version from scripts/AppVersion.cs"
 "$PROJECT_DIR/tools/sync_version.sh"
 
+# ---- AAB: flip the preset's export format for the duration of the export ----
+# gradle_build/export_format is 0 (APK) in the committed preset; Play needs an
+# App Bundle (1). Sync runs BEFORE the backup so the version bump persists —
+# the trap restore only scrubs this transient format flip.
+if [[ "$MODE" == "aab" ]]; then
+  restore_presets() {
+    if [[ -f "$PRESETS_BAK" ]]; then
+      mv "$PRESETS_BAK" "$PRESETS_CFG"
+    fi
+  }
+  trap restore_presets EXIT
+  cp "$PRESETS_CFG" "$PRESETS_BAK"
+  sed -i '' "s|^gradle_build/export_format=0\$|gradle_build/export_format=1|" "$PRESETS_CFG"
+  grep -q "^gradle_build/export_format=1\$" "$PRESETS_CFG" \
+    || fail "export_format substitution into $PRESETS_CFG failed — preset may have moved"
+fi
+
 echo "==> Building C# assemblies (Debug for editor load + $CSHARP_CONFIG for the export)"
 dotnet build "$PROJECT_DIR/FourExHex.csproj" -c Debug            >/dev/null
 dotnet build "$PROJECT_DIR/FourExHex.csproj" -c "$CSHARP_CONFIG" >/dev/null
 
-echo "==> Exporting Android APK ($MODE, headless, gradle build)"
+if [[ "$MODE" == "aab" ]]; then
+  echo "==> Exporting Android App Bundle (release, headless, gradle build)"
+else
+  echo "==> Exporting Android APK ($MODE, headless, gradle build)"
+fi
 echo "    (first run downloads gradle 8.11.1 + AGP deps — this can take several minutes)"
 mkdir -p "$PROJECT_DIR/build/android"
 rm -f "$OUT"
@@ -126,5 +161,10 @@ rm -f "$OUT"
 [[ -f "$OUT" ]] || fail "export did not produce $OUT"
 
 echo "==> Built: $(file -b "$OUT")"
-echo "==> Done. Install on a connected device with:"
-echo "    \"$ANDROID_SDK/platform-tools/adb\" install -r \"$OUT\""
+if [[ "$MODE" == "aab" ]]; then
+  echo "==> Done. Upload to the Play internal-testing track with:"
+  echo "    tools/upload_play.sh \"$OUT\""
+else
+  echo "==> Done. Install on a connected device with:"
+  echo "    \"$ANDROID_SDK/platform-tools/adb\" install -r \"$OUT\""
+fi
