@@ -72,12 +72,11 @@ If verification stalls past a week, the user should check the email Google sent 
 | Field | Value |
 | --- | --- |
 | App name | `FourExHex` |
+| Package name | `com.foobarzalot.fourexhex` — **permanent**, must match the AAB's `package/unique_name` exactly |
 | Default language | English (United States) |
 | App or game | **Game** |
 | Free or paid | **Free** (irreversible once published — confirm with the user, but Free is the plan) |
 | Declarations | tick the developer-policies and US-export-laws checkboxes after the user reads them |
-
-**Note on the package name:** the package name (`com.foobarzalot.fourexhex`) is NOT entered on this form — Play locks it in from the **first uploaded AAB** (Step 4). Do not look for a package-name field here.
 
 ### Verification
 

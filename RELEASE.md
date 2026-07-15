@@ -312,8 +312,10 @@ upload bundle → point the `internal` track at the new versionCode → commit) 
 deletes the edit on failure so retries start clean. Internal-track rollouts are
 live immediately — no review, no processing delay. Testers install via the
 opt-in link (Play Console → Testing → Internal testing → Testers); the link is
-stable across builds. Bump `AppVersion.Build` before each upload — Play rejects
-a versionCode it has already seen.
+stable across builds and only works for accounts on the tester list:
+https://play.google.com/apps/internaltest/4701398035076861773
+Bump `AppVersion.Build` before each upload — Play rejects a versionCode it has
+already seen.
 
 **Google Play helpers:**
 - `tools/play_api.sh` — mints an OAuth token from the service-account
