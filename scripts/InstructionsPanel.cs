@@ -191,6 +191,19 @@ public sealed partial class InstructionsPanel : CanvasLayer
         };
         view.Split.AddChild(view.Demo);
 
+        // The body rides a vertical scroll: an autowrap Label's minimum
+        // height is its full wrapped text, which on a short viewport
+        // (phone landscape) exceeds the page region and would overflow
+        // into the clip. The scroll collapses that minimum — short pages
+        // show no scrollbar, long ones scroll instead of clipping.
+        var bodyScroll = new ScrollContainer
+        {
+            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+        };
+        view.Split.AddChild(bodyScroll);
+
         view.Body = new Label
         {
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
@@ -198,9 +211,8 @@ public sealed partial class InstructionsPanel : CanvasLayer
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
             SizeFlagsVertical = Control.SizeFlags.ExpandFill,
         };
-        view.Body.AddThemeFontSizeOverride("font_size", 20);
         view.Body.AddThemeColorOverride("font_color", UiPalette.InkSoft);
-        view.Split.AddChild(view.Body);
+        bodyScroll.AddChild(view.Body);
 
         return view;
     }
@@ -226,6 +238,9 @@ public sealed partial class InstructionsPanel : CanvasLayer
         foreach (PageView view in _views)
         {
             view.Split.Vertical = portrait;
+            // Landscape height is scarce (phone: ~half of portrait's) —
+            // a smaller body keeps most pages scroll-free there.
+            view.Body.AddThemeFontSizeOverride("font_size", portrait ? 20 : 18);
         }
     }
 
