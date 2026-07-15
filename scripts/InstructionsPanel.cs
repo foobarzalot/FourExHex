@@ -79,6 +79,7 @@ public sealed partial class InstructionsPanel : CanvasLayer
     }
 
     private readonly PageView[] _views = new PageView[2];
+    private PanelContainer _panel = null!;
     private PageCarousel _carousel = null!;
     private Label _pageLabel = null!;
     private int _index;
@@ -104,18 +105,20 @@ public sealed partial class InstructionsPanel : CanvasLayer
 
         // Near-fullscreen slate panel (theme Panel stylebox, like the
         // rest of the modal family, but edge-anchored instead of
-        // content-sized).
-        var panel = new PanelContainer
+        // content-sized). Edge offsets fold in the safe-area insets so
+        // the panel clears the notch / home indicator; re-applied when
+        // rotation moves them.
+        _panel = new PanelContainer
         {
             AnchorLeft = 0f, AnchorRight = 1f, AnchorTop = 0f, AnchorBottom = 1f,
-            OffsetLeft = EdgeMarginPx, OffsetRight = -EdgeMarginPx,
-            OffsetTop = EdgeMarginPx, OffsetBottom = -EdgeMarginPx,
         };
-        AddChild(panel);
+        ApplySafeAreaInsets(SafeArea.Current);
+        SafeArea.Changed += ApplySafeAreaInsets;
+        AddChild(_panel);
 
         var root = new VBoxContainer();
         root.AddThemeConstantOverride("separation", 10);
-        panel.AddChild(root);
+        _panel.AddChild(root);
 
         _views[0] = BuildPageView();
         _views[1] = BuildPageView();
@@ -224,6 +227,21 @@ public sealed partial class InstructionsPanel : CanvasLayer
         {
             view.Split.Vertical = portrait;
         }
+    }
+
+    // Inset the panel from every edge by the safe area plus the margin,
+    // so no content sits under the notch or the home indicator.
+    private void ApplySafeAreaInsets(LogicalSafeInsets safe)
+    {
+        _panel.OffsetLeft = EdgeMarginPx + safe.Left;
+        _panel.OffsetTop = EdgeMarginPx + safe.Top;
+        _panel.OffsetRight = -(EdgeMarginPx + safe.Right);
+        _panel.OffsetBottom = -(EdgeMarginPx + safe.Bottom);
+    }
+
+    public override void _ExitTree()
+    {
+        SafeArea.Changed -= ApplySafeAreaInsets;
     }
 
     private static int WrapIndex(int index) =>
