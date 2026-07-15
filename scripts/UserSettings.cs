@@ -55,7 +55,7 @@ public static partial class UserSettings
     private static bool _vfxEnabled = true;
     private static PlaybackSpeed _aiSpeed = PlaybackSpeed.Fast;
     private static PlaybackSpeed _replaySpeed = PlaybackSpeed.Fast;
-    private static PlaybackSpeed _automateSpeed = PlaybackSpeed.Fast;
+    private static PlaybackSpeed _automateSpeed = PlaybackSpeed.Normal;
     // One-time "seen the intro overlay" flags per special game mode (issue
     // #96). Persisted so the mode explainer never re-shows after the player
     // dismisses it once. Freeform has no intro and is never tracked here.
@@ -282,8 +282,8 @@ public static partial class UserSettings
         public bool SeenGoldIntro { get; set; }
         public bool SeenMountainIntro { get; set; }
         // Human-turn Automate pacing. Appended last for save-compat; absent
-        // from older settings.json files → binds the Fast default.
-        public PlaybackSpeed AutomateSpeed { get; set; } = PlaybackSpeed.Fast;
+        // from older settings.json files → binds the Normal default.
+        public PlaybackSpeed AutomateSpeed { get; set; } = PlaybackSpeed.Normal;
     }
 
     // Source-gen JsonSerializerContext for SettingsDto. Nested inside
