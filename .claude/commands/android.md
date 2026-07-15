@@ -4,10 +4,12 @@ description: Build a signed release Android APK — bump build number, sync pres
 
 # /android — build a release Android APK
 
-Produce a signed **release** APK of the current tree. Follow **`RELEASE.md` §1
-(Building)** and its **Versioning** / **Android prerequisites** / **Signing**
-subsections — read them if anything below is ambiguous. Work the steps in order
-and report the outcome of each.
+Produce a signed **release** APK of the current tree (for adb/sideload
+install). For an over-the-air Google Play internal-testing release, use
+`/play` instead — it builds an AAB (`tools/build_android.sh aab`) and uploads
+it. Follow **`RELEASE.md` §1 (Building)** and its **Versioning** / **Android
+prerequisites** / **Signing** subsections — read them if anything below is
+ambiguous. Work the steps in order and report the outcome of each.
 
 ## 0. Preconditions
 - Confirm the working tree is clean (`git status`). If there are uncommitted

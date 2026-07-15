@@ -13,7 +13,7 @@ script that builds the C# assemblies and runs a headless Godot export:
 |---------|--------------------------------------|----------------------------------------------|
 | macOS   | `tools/build_macos.sh`               | `build/macos/FourExHex.app`                  |
 | Windows | `tools/build_windows.sh`             | `build/windows/FourExHex.exe`                |
-| Android | `tools/build_android.sh [debug\|release]` | `build/android/FourExHex-{debug,release}.apk` |
+| Android | `tools/build_android.sh [debug\|release\|aab]` | `build/android/FourExHex-{debug,release}.apk`, or `build/android/FourExHex-release.aab` (`aab` mode, for Play upload) |
 | iOS     | `tools/build_ios.sh [debug\|release] [--tethered\|--no-upload]` | `build/ios/FourExHex.ipa` (+ `.xcodeproj`, `.xcarchive`) |
 
 (Android defaults to `debug`; iOS defaults to `release`.) All follow the same
@@ -123,6 +123,13 @@ Support/Godot/keystores/`. Credentials are sourced from a non-committed
 at export time, so the `export_presets.cfg` keystore fields stay empty and no
 secret is committed. Debug and release are signed with **different keys** — see
 the signature-mismatch note in §2.
+
+The `aab` mode signs with the **release** keystore too; under Play App Signing
+that signature is the **upload key** (Google holds the actual app-signing key
+and re-signs what devices install). `aab` mode flips the preset's
+`gradle_build/export_format` 0→1 for the duration of the export (backup +
+EXIT-trap restore, same pattern as the iOS Team-ID injection), so the committed
+preset stays APK-format.
 
 ## 1.5. iOS prerequisites
 
@@ -288,6 +295,37 @@ testers, query state) is fully API-driven via `tools/asc_api.sh`.
   recent build's `processingState` (PROCESSING / VALID / INVALID /
   EXPIRED). Useful for poll loops between upload and tester
   visibility.
+
+### Android — Google Play internal testing
+
+The Android counterpart of TestFlight. One-time setup (Play Console account,
+app record, first manual upload, service account) is the runbook in
+**`docs/android-play-console-setup.md`**; after that, every release is:
+
+```
+tools/build_android.sh aab      # release-signed App Bundle (Play takes .aab, not .apk)
+tools/upload_play.sh            # upload + roll out to the internal track
+```
+
+`upload_play.sh` drives the Play Developer API's edits flow (open edit →
+upload bundle → point the `internal` track at the new versionCode → commit) and
+deletes the edit on failure so retries start clean. Internal-track rollouts are
+live immediately — no review, no processing delay. Testers install via the
+opt-in link (Play Console → Testing → Internal testing → Testers); the link is
+stable across builds. Bump `AppVersion.Build` before each upload — Play rejects
+a versionCode it has already seen.
+
+**Google Play helpers:**
+- `tools/play_api.sh` — mints an OAuth token from the service-account
+  JSON at `~/Library/Application Support/Godot/keystores/fourexhex-play-service-account.json`
+  (override with `PLAY_SERVICE_ACCOUNT_JSON`) and runs `curl` against
+  `androidpublisher.googleapis.com/androidpublisher/v3/applications/com.foobarzalot.fourexhex$1`.
+  `tools/play_api.sh --token` prints a bare token for callers hitting
+  other endpoints (the bundle-upload URL lives under `/upload/…`).
+  Never prints credentials.
+- `tools/check_play_status.sh` — one-shot read of the internal track's
+  releases (`versionCodes` + `status`), via a throwaway edit. Exit ≠ 0
+  on auth/API errors, so it works in poll loops like the TestFlight one.
 
 ## 3. Reading logs on the device
 
