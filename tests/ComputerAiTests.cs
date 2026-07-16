@@ -1456,6 +1456,53 @@ public class ComputerAiTests
     }
 
     [Fact]
+    public void Phase2Enumerators_SharedTargetCache_YieldsIdenticalCandidates()
+    {
+        // Pins the #150 memoization: a shared AiTargetCache must be pure
+        // acceleration — the cached and uncached paths yield byte-identical
+        // candidate sequences for phases 2a and 2b. Fixture is the
+        // CombineWhenUnlocks strip (unmoved Recruit + Soldier vs a Blue
+        // Soldier, 80g) so phase 2a is non-empty and the unlock filter
+        // actually runs.
+        var grid = new HexGrid();
+        for (int col = 0; col < 8; col++)
+            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+        grid.Add(new HexTile(HexCoord.FromOffset(8, 0), Blue));
+        grid.Get(HexCoord.FromOffset(8, 0))!.Occupant = new Unit(Blue, UnitLevel.Soldier);
+        GameState state = BuildState(grid,
+            new Player("Red", PlayerId.FromIndex(0)),
+            new Player("Blue", PlayerId.FromIndex(1)));
+        Territory red = state.Territories.First(t => t.Owner == Red);
+        HexCoord cap = red.Capital!.Value;
+        List<HexCoord> nonCap = red.Coords.Where(c => !c.Equals(cap)).Take(2).ToList();
+        grid.Get(nonCap[0])!.Occupant = new Unit(Red, UnitLevel.Recruit);
+        grid.Get(nonCap[1])!.Occupant = new Unit(Red, UnitLevel.Soldier);
+        state.Treasury.SetGold(cap, 80);
+
+        Dictionary<HexCoord, Territory> tileIndex = state.Territories.BuildTileIndex();
+        var cache = new AiTargetCache(red, state, tileIndex);
+        static List<string> Render(IEnumerable<AiCandidate> candidates) =>
+            candidates.Select(c => $"{c.Kind}:{c.Action}").ToList();
+
+        var uncached2a = new List<string>();
+        var cached2a = new List<string>();
+        foreach (HexCoord unitCoord in MovementRules.MovableUnitsInPowerOrder(red, Red, state.Grid))
+        {
+            Unit unit = state.Grid.Get(unitCoord)!.Unit!;
+            uncached2a.AddRange(Render(
+                AiCommon.EnumeratePhase2aForUnit(unitCoord, unit, red, state, tileIndex)));
+            cached2a.AddRange(Render(
+                AiCommon.EnumeratePhase2aForUnit(unitCoord, unit, red, state, tileIndex, cache)));
+        }
+        Assert.NotEmpty(cached2a); // fixture guarantees the combine unlock
+        Assert.Equal(uncached2a, cached2a);
+
+        Assert.Equal(
+            Render(AiCommon.EnumeratePhase2b(red, state, tileIndex)),
+            Render(AiCommon.EnumeratePhase2b(red, state, tileIndex, cache)));
+    }
+
+    [Fact]
     public void ChooseNextAction_NeverCombinesIntoMovedUnit()
     {
         (GameState state, Territory _, HexCoord _, HexCoord _) = MovedCombineTargetState();

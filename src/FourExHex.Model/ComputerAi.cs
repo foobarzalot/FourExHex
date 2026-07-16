@@ -130,12 +130,18 @@ public static class ComputerAi
             // raider with no capture holds.
             if (!forPlayer.IsNone)
             {
+                // Shared per-scan memo for the phase-2 target queries —
+                // ValidTargets depends only on (level, territory), so one
+                // instance serves every unit × level pair below. Must not
+                // outlive this territory scan (#150).
+                var targetCache = new AiTargetCache(t, state, tileIndex);
+
                 // Phase 2a: combine-to-unlock (existing units)
                 foreach (HexCoord unitCoord in MovementRules.MovableUnitsInPowerOrder(t, forPlayer, state.Grid))
                 {
                     Unit unit = state.Grid.Get(unitCoord)!.Unit!;
                     // never decline an unlock-combine for the status quo
-                    AiAction? p2a = TryPhase("p2a", AiCommon.EnumeratePhase2aForUnit(unitCoord, unit, t, state, tileIndex),
+                    AiAction? p2a = TryPhase("p2a", AiCommon.EnumeratePhase2aForUnit(unitCoord, unit, t, state, tileIndex, targetCache),
                         int.MinValue, methodStart, baseScore, forPlayer, state, prof);
                     if (p2a != null) { _ = rng; return p2a; }
                 }
@@ -143,7 +149,7 @@ public static class ComputerAi
                 // Phase 2b: buy-and-combine-to-unlock — never declined for
                 // the status quo (solvency lives in the enumerator's gates)
                 {
-                    AiAction? p2b = TryPhase("p2b", AiCommon.EnumeratePhase2b(t, state, tileIndex),
+                    AiAction? p2b = TryPhase("p2b", AiCommon.EnumeratePhase2b(t, state, tileIndex, targetCache),
                         int.MinValue, methodStart, baseScore, forPlayer, state, prof);
                     if (p2b != null) { _ = rng; return p2b; }
                 }
