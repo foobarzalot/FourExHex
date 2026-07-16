@@ -1197,7 +1197,13 @@ Replay reuses the live `ExecuteAi*` helpers — same captures, FX, `HandleCaptur
   the combined unit inherits the destination's `HasMovedThisTurn`
   (`ResolveArrival`), so merging into an exhausted unit would bill the upkeep
   increase immediately for zero benefit this turn (deferring the combine
-  dominates). `MovableUnitTiersWeakestFirst` yields one (level, coord) entry
+  dominates). The phase-2 enumerators and the unlock filter take an optional
+  **`AiTargetCache`** — a per-territory-scan memo of `ValidTargets` and its
+  movement-consuming subset, keyed by level (sound because `ValidTargets`
+  depends only on level + territory and the search never mutates live state;
+  an instance must not outlive its scan). `ComputerAi` shares one instance
+  across a scan's phase-2 unit × level pairs; callers that pass none get a
+  transient one. `MovableUnitTiersWeakestFirst` yields one (level, coord) entry
   per distinct movable tier, ascending — one representative suffices because
   `ValidTargets` depends only on level + territory, never unit position. Only
   these helpers know rule legality. **Solvency gating applies to
