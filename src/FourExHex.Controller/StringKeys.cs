@@ -145,6 +145,7 @@ public static class StringKeys
     public const string HudCampaignLevelWon = "hud.campaign.level_won";
     public const string HudCampaignProgress = "hud.campaign.progress";
     public const string HudButtonPlayAgain = "hud.button.play_again";
+    public const string HudButtonRestart = "hud.button.restart";
     public const string HudButtonReplay = "hud.button.replay";
     public const string HudButtonMainMenu = "hud.button.main_menu";
     public const string HudButtonContinue = "hud.button.continue";
@@ -334,6 +335,9 @@ public static class StringKeys
     public const string MainMapLabel = "main.map_label";
     public const string MainSeedLabel = "main.seed_label";
     public const string PauseTitle = "pause.title";
+    public const string PauseRestart = "pause.restart";
+    public const string PauseRestartTitle = "pause.restart_title";
+    public const string PauseRestartBody = "pause.restart_body";
     public const string PauseExitGame = "pause.exit_game";
 
     // Map editor scene + palette.

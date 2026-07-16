@@ -32,6 +32,7 @@ public partial class Main : Node2D
     private int? _campaignLevel;
     private SaveNameModal? _saveModal;
     private SlotPickerDialog? _loadDialog;
+    private ConfirmModal? _restartConfirmModal;
     // True between "user picked a slot" and the deferred scene swap —
     // signals OnLoadDialogClosedDuringPause to skip re-showing the
     // pause menu because the whole scene is about to be torn down.
@@ -496,6 +497,7 @@ public partial class Main : Node2D
         {
             BuildSaveDialog();
             BuildLoadDialog();
+            BuildRestartConfirmDialog();
             _controller.HumanTurnStarted += OnHumanTurnStartedAutosave;
             // Save / Load are invoked from the pause-menu callbacks
             // now — no standalone HUD buttons to wire up.
@@ -636,15 +638,25 @@ public partial class Main : Node2D
     }
 
     /// <summary>
-    /// Play Again handler. Reloads the play scene preserving the
-    /// just-finished game's master seed (so a procedural map
-    /// regenerates identically) and, for starting-map games,
-    /// re-populates <see cref="LoadRequest.Pending"/> with a fresh
-    /// load of the original map so <c>_Ready</c>'s starting-map
-    /// branch fires again instead of falling back to procedural.
+    /// Same-map restart, shared by the endgame overlays' Play Again,
+    /// the Defeat overlay's Restart, and the pause menu's confirmed
+    /// Restart. Reloads the play scene preserving the current game's
+    /// master seed (so a procedural map regenerates identically) and,
+    /// for starting-map games, re-populates
+    /// <see cref="LoadRequest.Pending"/> with a fresh load of the
+    /// original map so <c>_Ready</c>'s starting-map branch fires again
+    /// instead of falling back to procedural.
     /// </summary>
     private void RestartCurrentGame()
     {
+        // Mid-game callers (pause Restart, Defeat overlay) can have an
+        // AI pacer step in flight; drop it before the swap so it can't
+        // fire against disposed nodes (same teardown rationale as
+        // AbandonAndReturnToMenu). No-op for post-game-over callers.
+        _controller.AbandonGame();
+        Log.Info(Log.LogCategory.Turn,
+            $"[restart] reloading same map, seed={_controller.MasterSeed} " +
+            $"campaignLevel={_campaignLevel?.ToString() ?? "-"} originMap={_originMapName ?? "-"}");
         GameSettings.MasterSeed = _controller.MasterSeed;
         if (_originMapName != null)
         {
@@ -770,6 +782,32 @@ public partial class Main : Node2D
         _saveModal?.Open($"save_t{_state.Turns.TurnNumber}");
     }
 
+    /// <summary>
+    /// Build (once) the confirmation modal behind the pause menu's
+    /// Restart action. Confirming reloads the current map from turn 1
+    /// with the same master seed; canceling (button or Escape) returns
+    /// to the pause menu.
+    /// </summary>
+    private void BuildRestartConfirmDialog()
+    {
+        _restartConfirmModal = new ConfirmModal(
+            Strings.Get(StringKeys.PauseRestartTitle),
+            Strings.Get(StringKeys.PauseRestartBody),
+            Strings.Get(StringKeys.PauseRestart));
+        _restartConfirmModal.Confirmed += OnRestartConfirmed;
+        _restartConfirmModal.Canceled += ShowPauseMenu;
+        AddChild(_restartConfirmModal);
+    }
+
+    private void OnRestartConfirmed()
+    {
+        // Unpause before the scene swap — GetTree().Paused is
+        // process-wide, so leaving it true would freeze the reloaded
+        // scene (same rationale as ExitGameFromPause).
+        ExitPause();
+        RestartCurrentGame();
+    }
+
     private void OnSaveNameConfirmed(string rawName)
     {
         if (_saveModal == null) return;
@@ -855,8 +893,25 @@ public partial class Main : Node2D
             new EscMenu.Option(Strings.Get(StringKeys.SaveTitleGame), OpenSaveDialogFromPause),
             new EscMenu.Option(Strings.Get(StringKeys.MenuLoadGame), OpenLoadDialogFromPause),
             new EscMenu.Option(Strings.Get(StringKeys.MenuSettings), OpenSettingsFromPause),
+            new EscMenu.Option(Strings.Get(StringKeys.PauseRestart), OpenRestartConfirmFromPause),
             new EscMenu.Option(Strings.Get(StringKeys.PauseExitGame), ExitGameFromPause),
         });
+    }
+
+    private void OpenRestartConfirmFromPause()
+    {
+        if (_restartConfirmModal == null)
+        {
+            // No modal available (shouldn't happen post-
+            // BuildRestartConfirmDialog). Re-show the pause menu so the
+            // user isn't stranded with no UI.
+            ShowPauseMenu();
+            return;
+        }
+        // _isPaused stays true while the confirm takes over; Cancel
+        // re-shows the pause menu via the Canceled subscription wired
+        // in BuildRestartConfirmDialog.
+        _restartConfirmModal.Open();
     }
 
     private void OpenSaveDialogFromPause()
@@ -1024,6 +1079,14 @@ public partial class Main : Node2D
             {
                 Log.Debug(Log.LogCategory.Input, "[back] close load dialog (paused)");
                 _loadDialog.Hide();
+            }
+            else if (_restartConfirmModal is { IsOpen: true })
+            {
+                // Close-without-Canceled, so re-show the pause menu
+                // ourselves — back behaves exactly like Cancel.
+                Log.Debug(Log.LogCategory.Input, "[back] close restart confirm (paused)");
+                _restartConfirmModal.Close();
+                ShowPauseMenu();
             }
             else
             {

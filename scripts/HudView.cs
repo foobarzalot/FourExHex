@@ -1853,13 +1853,6 @@ public partial class HudView : OrientationHud, IHudView
     }
 
     /// <summary>
-    /// Build the defeat overlay: "<Player> defeated" with Continue / Play
-    /// Again / Main Menu buttons. Hidden by default; <see cref="Refresh"/>
-    /// toggles visibility based on
-    /// <see cref="SessionState.PendingDefeatScreen"/>. Continue dismisses
-    /// the overlay (controller resumes the paused AI loop).
-    /// </summary>
-    /// <summary>
     /// Build the Viking Raiders total-wipeout overlay — the raiders
     /// destroyed every capital, a loss for every player. Content
     /// (DEFEAT eyebrow, title, no Replay offer) comes from the shared,
@@ -1909,6 +1902,15 @@ public partial class HudView : OrientationHud, IHudView
         _aiWonLabel = title;
     }
 
+    /// <summary>
+    /// Build the defeat overlay: "<Player> defeated" with Continue /
+    /// Restart / Main Menu buttons. Hidden by default; <see cref="Refresh"/>
+    /// toggles visibility based on
+    /// <see cref="SessionState.PendingDefeatScreen"/>. Continue dismisses
+    /// the overlay (controller resumes the paused AI loop); Restart fires
+    /// the same NewGameClicked same-seed reload as the endgame overlays'
+    /// Play Again.
+    /// </summary>
     private void BuildDefeatOverlay()
     {
         (Control overlay, Label title, Button[] buttons) = BuildEndgameOverlay(
@@ -1920,7 +1922,7 @@ public partial class HudView : OrientationHud, IHudView
             buttonSpecs: new (string, Action)[]
             {
                 (Strings.Get(StringKeys.HudButtonContinue), () => DefeatContinueClicked?.Invoke()),
-                (Strings.Get(StringKeys.HudButtonPlayAgain), () => NewGameClicked?.Invoke()),
+                (Strings.Get(StringKeys.HudButtonRestart), () => NewGameClicked?.Invoke()),
                 (Strings.Get(StringKeys.HudButtonMainMenu), () => MainMenuClicked?.Invoke()),
             });
         _defeatOverlay = overlay;

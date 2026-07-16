@@ -55,7 +55,8 @@ SCENE ROOT (Godot) ─ Main (Node2D), play scene root (res://scenes/main.tscn). 
     8. Wire save/load + pause coordinator:
          • new SaveStore + (non-diagnostic) Save/Load dialogs + shared SettingsPanel.
          • controller.HumanTurnStarted → autosave write (passes _originMapName so resumes keep map identity).
-         • HUD EscRequested → EnterPause (GetTree().Paused = true, EscMenu: Resume/Save/Load/Settings/Exit).
+         • HUD EscRequested → EnterPause (GetTree().Paused = true, EscMenu: Resume/Save/Load/Settings/Restart/Exit;
+           Restart opens a ConfirmModal — confirm → RestartCurrentGame, cancel → back to the pause menu).
          • EscMenu.EscapeClosed → ExitPause.
     9. controller.Resume() (in-progress load) or StartGame() (fresh/starting map). Then
        hud.SetMapLabel("Map: <name>" | "Seed: <n>").
@@ -662,7 +663,7 @@ void SetVictoryOverlaySuppressed(bool suppressed);
 void SetAutomateState(bool enabled, bool running, bool visible);
 ```
 
-Defeat overlay: `Refresh` reads `session.PendingDefeatScreen` and shows/hides a click-blocking panel naming the eliminated player. **Continue** → `DefeatContinueClicked` (resumes the paused AI loop); **Play Again** → `NewGameClicked` (`Main.RestartCurrentGame`); **Main Menu** → `MainMenuClicked`.
+Defeat overlay: `Refresh` reads `session.PendingDefeatScreen` and shows/hides a click-blocking panel naming the eliminated player. **Continue** → `DefeatContinueClicked` (resumes the paused AI loop); **Restart** → `NewGameClicked` (`Main.RestartCurrentGame`, unconfirmed same-seed reload); **Main Menu** → `MainMenuClicked`.
 
 Claim-victory overlay: `Refresh` shows it iff `session.PendingClaimVictory.HasValue` and neither `Winner` nor `PendingDefeatScreen` is set (Winner > Defeat > ClaimVictory). **Win Now** → `ClaimVictoryWinNowClicked`; **Continue Playing** → `ClaimVictoryContinueClicked`. See "Claim victory prompt" under Win conditions.
 
