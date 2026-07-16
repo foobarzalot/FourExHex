@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 /// <summary>
 /// Copy for the Viking Raiders wave banner shown at each human turn start.
 /// Godot-free so the wording rules are unit-testable; the controller hands

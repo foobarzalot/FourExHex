@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 /// <summary>
 /// One-shot handoff from <see cref="MainMenuScene"/> to <see cref="MapEditorScene"/>
 /// across <c>ChangeSceneToFile</c>. The menu's "Map Editor" source

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 /// <summary>
 /// Maps the next expected player-0 <see cref="ReplayBeat"/> + current
 /// <see cref="SessionState"/> to a plain-English instruction string for

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 /// <summary>
 /// Single canonical app version. Bump these two values to release a new build;
 /// the Settings panel label reads them directly so the displayed value can

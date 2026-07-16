@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 /// <summary>
 /// The canonical list of user-facing string keys — one <c>const</c> per
 /// entry in <c>assets/strings/en.json</c>. Call sites pass these to

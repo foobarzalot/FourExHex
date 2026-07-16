@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 /// <summary>
 /// Pure orientation + HUD-inset math for the responsive (landscape/portrait)
 /// layout. Godot-free (plain floats / enums) so it lives in the engine-free

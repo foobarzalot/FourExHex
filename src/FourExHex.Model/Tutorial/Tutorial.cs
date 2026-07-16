@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 /// <summary>
 /// Top-level POCO for an authored tutorial: a display title plus a
 /// <see cref="Replay"/> payload that carries the full recorded

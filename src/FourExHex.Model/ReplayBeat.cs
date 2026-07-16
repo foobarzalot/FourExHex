@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 /// <summary>
 /// One recorded entry in a game's replay log. Most beats describe a
 /// state-mutating action an actor (player) took — a typed outcome,

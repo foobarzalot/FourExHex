@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 using Xunit;
 
 // Serialize the whole test assembly. Log (src/FourExHex.Model/Log.cs)

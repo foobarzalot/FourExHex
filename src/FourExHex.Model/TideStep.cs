@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 /// <summary>
 /// One locked-in tide action for the current player's turn. Rising
 /// Tides <i>forecasts</i> the erosion at turn start and <i>applies</i> it at

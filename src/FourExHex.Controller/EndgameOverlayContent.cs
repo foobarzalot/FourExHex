@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 /// <summary>
 /// Presentation content for the game-over overlay, decided from the declared
 /// winner. Godot-free so the Victory-vs-Defeat framing is unit-testable;

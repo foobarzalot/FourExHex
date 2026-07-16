@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 /// <summary>
 /// Copy and gate logic for the one-time terrain-feature intro overlays (issue
 /// #53). Gold tiles and mountains are shipped mechanics that nothing teaches, so

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 /// <summary>
 /// The single place the <see cref="Difficulty"/> level → behavior mapping
 /// lives, so retuning a level is one edit. Levels are named after the unit

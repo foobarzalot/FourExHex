@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 /// <summary>
 /// One applied AI action's outcome: the <see cref="MovementRules"/>
 /// result plus the pre-move combine flag the live envelope needs

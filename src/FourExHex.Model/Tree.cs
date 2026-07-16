@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 /// <summary>
 /// A tree on a hex tile. Blocks income on its tile (the tile doesn't
 /// count for its territory's gold collection) and doesn't block unit

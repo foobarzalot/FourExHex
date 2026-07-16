@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 /// <summary>
 /// Logical-pixel safe-area insets for the four edges. Top is non-zero on
 /// devices with a notch or Dynamic Island; bottom is non-zero on devices with

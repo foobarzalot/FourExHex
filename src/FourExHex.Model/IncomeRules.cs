@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 /// <summary>
 /// Single source of truth for a territory's per-turn gold income. Both real
 /// play (<see cref="Treasury.CollectIncomeFor"/>) and the AI 1-ply lookahead

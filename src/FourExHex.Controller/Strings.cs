@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 /// <summary>
 /// Process-wide facade over the user-facing string store — the single
 /// source of truth for every player-visible English string (issue-tracked

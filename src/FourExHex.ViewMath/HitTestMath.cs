@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 /// <summary>
 /// Pure hit-test predicates for the hex map view. Godot-free (plain ints) so
 /// they're unit-testable; the view converts a cursor/coord to offset

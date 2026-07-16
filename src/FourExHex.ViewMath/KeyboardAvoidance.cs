@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 /// <summary>
 /// Pure math for shifting a UI panel up while the mobile on-screen keyboard
 /// is visible, so a focused text field stays readable above it (the

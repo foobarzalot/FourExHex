@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 /// <summary>
 /// One hex on the board. Pure game-state model (coordinate, owner,
 /// occupant) — no view coupling. The rendered fill is kept in sync by the

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 /// <summary>
 /// Copy and gate logic for the one-time game-mode intro overlay (issue #96).
 /// Rising Tides and Fog Of War change how the game plays in ways that aren't

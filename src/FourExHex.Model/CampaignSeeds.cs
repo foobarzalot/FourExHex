@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 /// <summary>
 /// The baked winnable-seed table behind
 /// <see cref="CampaignProgress.SeedForLevel"/>: entry N is a master seed whose

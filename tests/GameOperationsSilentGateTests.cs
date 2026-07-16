@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 using System;
 using System.Collections.Generic;
 using Xunit;

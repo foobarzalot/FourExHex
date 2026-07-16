@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 /// <summary>
 /// Pure sizing math for the main-menu map thumbnail. The thumbnail renders the
 /// real board (a <c>HexMapView</c>) into an offscreen <c>SubViewport</c> and

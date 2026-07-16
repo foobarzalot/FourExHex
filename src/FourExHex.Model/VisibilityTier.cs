@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 /// <summary>
 /// Fog-of-war visibility of a tile from the single human player's
 /// perspective. Ordered so a higher value means more information.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 /// <summary>
 /// Process-wide game configuration shared between the main menu and
 /// the in-game scene. Pure C# (no Godot references) so it can live

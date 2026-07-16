@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 /// <summary>
 /// Marker on a tile where a unit recently died. Doesn't contribute to
 /// defense. Doesn't block placement the way a capital or tower does,

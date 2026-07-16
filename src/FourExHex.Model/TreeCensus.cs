@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 /// <summary>
 /// A whole-map snapshot of tree/grave incidence, used to quantify how far
 /// forests have overrun the board (issue #100). Pure count of the current

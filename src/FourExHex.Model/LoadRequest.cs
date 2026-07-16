@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 /// <summary>
 /// One-shot handoff from <see cref="MainMenuScene"/> to <see cref="Main"/>
 /// across <c>ChangeSceneToFile</c>. The menu deserializes a save into

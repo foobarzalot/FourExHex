@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 /// <summary>
 /// Pure camera-framing math for the hex board: the visible play-area center
 /// (inset-aware) and the pan clamp that keeps the board on-screen. Godot-free

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 /// <summary>
 /// Pure DPI → UI-scale-factor mapping for the window-level
 /// <c>ContentScaleFactor</c> applied by the Godot-side <c>DisplayScale</c>

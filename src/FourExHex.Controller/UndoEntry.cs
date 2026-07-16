@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 /// <summary>
 /// One slot in the undo/redo stack. Bundles a <see cref="GameStateSnapshot"/>
 /// (board, treasury, territories) with a <see cref="SessionStateSnapshot"/>

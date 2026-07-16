@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 /// <summary>
 /// Per-player difficulty level, named after the unit ranks
 /// (Recruit = easiest … Commander = hardest). A self-imposed handicap on the

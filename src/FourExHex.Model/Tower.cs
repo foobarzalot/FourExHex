@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 /// <summary>
 /// A defensive tower on a hex tile. Radiates defense level 2 (the
 /// same as a Soldier) to its own tile and every adjacent

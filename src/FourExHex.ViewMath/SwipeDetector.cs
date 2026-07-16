@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 /// <summary>Verdict of a completed pointer gesture: a mostly-horizontal
 /// drag long enough to page, or nothing.</summary>
 public enum SwipeDirection

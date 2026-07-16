@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 /// <summary>
 /// Selectable runtime game mode. Distinct from the freeform-vs-campaign
 /// split (which is carried by <see cref="GameSettings.CampaignLevel"/>) —

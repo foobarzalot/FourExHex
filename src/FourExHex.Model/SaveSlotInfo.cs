@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 /// <summary>
 /// Lightweight metadata describing a save slot for the load-game UI.
 /// Read by <see cref="SaveStore.ListSlots"/> from the file headers

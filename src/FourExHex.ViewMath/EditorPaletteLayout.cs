@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 /// <summary>
 /// Pure layout math for the map editor's paint-tool grid. With a
 /// 5th brush (gold) the paint cluster can no longer fit a single line on a

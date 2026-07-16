@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 /// <summary>
 /// A tile's mutually-exclusive terrain feature. A tile carries at
 /// most one of these: it is plain, a gold income hotspot, or a mountain — never

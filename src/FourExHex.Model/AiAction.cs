@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 /// <summary>
 /// A single action produced by an AI decision function. The controller
 /// executes these via dedicated <c>ExecuteAi*</c> helpers that bypass

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 /// <summary>
 /// The four Slay unit levels, ordered so that <c>(int)level</c> equals
 /// both the level number and the defense contribution.

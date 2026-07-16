@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 /// <summary>
 /// Per-feature densities for procedural map generation. Each
 /// density is a <b>percent of land tiles</b> the matching scatter pass in

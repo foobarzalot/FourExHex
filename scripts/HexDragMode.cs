@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FooBarzalot
 /// <summary>
 /// How <see cref="HexMapView"/> interprets a left-mouse-button gesture.
 /// <see cref="Pan"/> = drag pans the camera, click fires
