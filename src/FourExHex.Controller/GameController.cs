@@ -1459,6 +1459,44 @@ public class GameController
         _session.RepeatedMovement = false;
     }
 
+    /// <summary>
+    /// System back (Android back button/gesture) with the game scene
+    /// focused. Unwinds ONE controller-side layer per call: a pending
+    /// action mode first (same body as Cancel Action), then the
+    /// territory selection. Returns false when there is nothing
+    /// controller-side to unwind — game over, replay, input locked, or
+    /// simply nothing pending/selected — so the caller (Main) can
+    /// escalate to its own ladder (pause menu / game-over handling).
+    /// </summary>
+    public bool OnBackRequested()
+    {
+        if (_session.IsGameOver) return false;
+        // Mirror TrackHandler's drop conditions up front: if it would
+        // swallow the input, report unhandled so back falls through to
+        // the scene ladder instead of dying silently.
+        if (_recorder.IsReplaying || _ops.HumanInputLocked) return false;
+        if (_session.Mode == SessionState.ActionMode.None
+            && _session.SelectedTerritory == null)
+        {
+            return false;
+        }
+        TrackHandler(OnBackRequestedBody);
+        return true;
+    }
+
+    private void OnBackRequestedBody()
+    {
+        if (_session.Mode != SessionState.ActionMode.None)
+        {
+            Log.Debug(Log.LogCategory.Input, "[back] cancel pending action");
+            CancelPendingAction("system back");
+            _ops.RefreshViews();
+            return;
+        }
+        Log.Debug(Log.LogCategory.Input, "[back] deselect territory");
+        SetSelection(null);
+    }
+
     private void OnCancelActionPressed() => TrackHandler(OnCancelActionPressedBody);
 
     private void OnCancelActionPressedBody()

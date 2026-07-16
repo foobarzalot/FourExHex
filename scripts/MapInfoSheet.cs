@@ -343,6 +343,18 @@ public sealed partial class MapInfoSheet : CanvasLayer
         Canceled?.Invoke();
     }
 
+    /// <summary>
+    /// Close exactly as if the user pressed Escape on the open sheet:
+    /// hide and fire <see cref="Canceled"/> so the owner's teardown
+    /// (null-out + QueueFree) runs. Used by the Android system-back
+    /// ladder. No-op when not open.
+    /// </summary>
+    public void CloseAsCancel()
+    {
+        if (!IsOpen) return;
+        Cancel();
+    }
+
     public override void _UnhandledInput(InputEvent @event)
     {
         if (!IsOpen) return;

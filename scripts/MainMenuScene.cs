@@ -1956,6 +1956,84 @@ public partial class MainMenuScene : Control
     }
 
 
+    // --- Android system back (#149) ----------------------------------------
+    // The OS back button/gesture arrives as NOTIFICATION_WM_GO_BACK_REQUEST
+    // (quit_on_go_back=false in project.godot). One rung per press. The rungs
+    // mirror the Escape dispatch in _UnhandledInput below, with one twist:
+    // open modals consume Escape themselves via their own input handlers,
+    // but the notification never reaches them — so back closes the top
+    // modal explicitly, via the same close path its own Escape uses.
+
+    public override void _Notification(int what)
+    {
+        if (what == NotificationWMGoBackRequest) HandleSystemBack();
+    }
+
+    private void HandleSystemBack()
+    {
+        // Modals, topmost first.
+        if (_settingsPanel is { IsOpen: true })
+        {
+            Log.Debug(Log.LogCategory.Input, "[back] close settings");
+            _settingsPanel.Close();
+            return;
+        }
+        if (_quitConfirmModal is { IsOpen: true })
+        {
+            Log.Debug(Log.LogCategory.Input, "[back] cancel quit confirm");
+            _quitConfirmModal.Close();
+            return;
+        }
+        if (_campaignSheet is { IsOpen: true })
+        {
+            Log.Debug(Log.LogCategory.Input, "[back] cancel campaign sheet");
+            _campaignSheet.CloseAsCancel();
+            return;
+        }
+        if (_sourceChooser is { IsOpen: true })
+        {
+            Log.Debug(Log.LogCategory.Input, "[back] close source chooser");
+            _sourceChooser.CloseAsEscape();
+            return;
+        }
+        if (_loadDialog is { Visible: true })
+        {
+            Log.Debug(Log.LogCategory.Input, "[back] close load dialog");
+            _loadDialog.Hide();
+            return;
+        }
+
+        // Panel ladder — same rungs as the Escape keys in
+        // HandlePlayConfigKey / the campaign-panel dispatch below.
+        if (_playConfigPanel is { Visible: true })
+        {
+            if (_playConfigPage == PlayConfigPage.PlayerSetup)
+            {
+                Log.Debug(Log.LogCategory.Input, "[back] play config → landing");
+                OnBackPressed();
+            }
+            else
+            {
+                Log.Debug(Log.LogCategory.Input, "[back] map setup → player setup");
+                GoToPlayerPage();
+            }
+            return;
+        }
+        if (_campaignPanel is { Visible: true })
+        {
+            Log.Debug(Log.LogCategory.Input, "[back] campaign → landing");
+            ShowLanding();
+            return;
+        }
+
+        // Landing root: Android convention — back exits the app outright
+        // (what the engine's quit_on_go_back default did before this
+        // ladder). Desktop never receives the notification, so its Escape
+        // keeps routing through the quit-confirm modal.
+        Log.Debug(Log.LogCategory.Input, "[back] landing root → quit");
+        GetTree().Quit();
+    }
+
     public override void _UnhandledInput(InputEvent @event)
     {
         if (@event is not InputEventKey keyEvent || !keyEvent.Pressed) return;

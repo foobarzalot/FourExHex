@@ -573,6 +573,59 @@ public partial class HudView : OrientationHud, IHudView
         UpdateHelpSession();
     }
 
+    /// <summary>
+    /// System-back rung owned by the HUD (Android back ladder): dismiss
+    /// the topmost HUD-owned overlay, ONE per call. Order: tutorial
+    /// narration (acts like a tap), then the Help family (tour →
+    /// Instructions → Help menu; mutually exclusive in practice since
+    /// the menu hides before opening either), then the non-final
+    /// endgame prompts, which back answers with their non-committal
+    /// button (defeat → Continue, claim-victory → Continue Playing).
+    /// Final endgame overlays (victory/AI-won/…) are NOT handled here —
+    /// the game is over and Main's ladder routes back to the main menu.
+    /// Returns false when nothing was open so Main keeps descending.
+    /// </summary>
+    public bool TryCloseTopOverlay()
+    {
+        if (_tutorialTapCatcher != null && _tutorialTapCatcher.Visible)
+        {
+            Log.Debug(Log.LogCategory.Input, "[back] tutorial narration advanced");
+            TutorialMessageTapped?.Invoke();
+            return true;
+        }
+        if (_hudTour != null)
+        {
+            Log.Debug(Log.LogCategory.Input, "[back] close tour");
+            ExitTour();
+            return true;
+        }
+        if (_instructionsPanel != null)
+        {
+            Log.Debug(Log.LogCategory.Input, "[back] close instructions");
+            ExitInstructions();
+            return true;
+        }
+        if (_helpMenu.IsOpen)
+        {
+            Log.Debug(Log.LogCategory.Input, "[back] close help menu");
+            _helpMenu.CloseAsEscape();
+            return true;
+        }
+        if (_defeatOverlay.Visible)
+        {
+            Log.Debug(Log.LogCategory.Input, "[back] defeat overlay → continue");
+            DefeatContinueClicked?.Invoke();
+            return true;
+        }
+        if (_claimVictoryOverlay.Visible)
+        {
+            Log.Debug(Log.LogCategory.Input, "[back] claim-victory overlay → continue playing");
+            ClaimVictoryContinueClicked?.Invoke();
+            return true;
+        }
+        return false;
+    }
+
     // ---- Guided UI tour (issue #101) -------------------------------------
 
     /// <summary>

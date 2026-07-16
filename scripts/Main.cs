@@ -50,6 +50,10 @@ public partial class Main : Node2D
     private bool _helpPauseActive;
     private EscMenu _escMenu = null!;
     private SettingsPanel _settingsPanel = null!;
+    // The concrete HUD, kept for the Android system-back ladder (its
+    // overlay rungs live view-side). Null in diagnostic/headless mode,
+    // where no back input can arrive anyway.
+    private HudView? _visibleHud;
 
     public override void _Ready()
     {
@@ -400,6 +404,7 @@ public partial class Main : Node2D
 
             map = visibleMap;
             hud = visibleHud;
+            _visibleHud = visibleHud;
         }
 
         // --- Controller takes over from here -----------------------------
@@ -972,5 +977,72 @@ public partial class Main : Node2D
         // process-wide, so leaving it true would freeze the next scene.
         ExitPause();
         AbandonAndReturnToMenu();
+    }
+
+    // --- Android system back (#149) ----------------------------------------
+    // The OS back button/gesture arrives as NOTIFICATION_WM_GO_BACK_REQUEST
+    // (project.godot sets quit_on_go_back=false so the engine doesn't quit
+    // for us). One ladder rung per press, first match wins. Desktop never
+    // receives this notification, so Escape behavior is untouched.
+
+    public override void _Notification(int what)
+    {
+        if (what == NotificationWMGoBackRequest) HandleSystemBack();
+    }
+
+    private void HandleSystemBack()
+    {
+        // Headless diagnostic runs build no HUD/pause UI (and have no
+        // back-input source); everything below assumes the visible scene.
+        if (_visibleHud == null) return;
+
+        // 1. Game decided → back = the endgame overlay's Main Menu button.
+        if (_session.IsGameOver)
+        {
+            Log.Debug(Log.LogCategory.Input, "[back] game over → main menu");
+            ExitPause(); // no-op unless paused; the swap must not inherit Paused
+            AbandonAndReturnToMenu();
+            return;
+        }
+
+        // 2. Pause layer: sub-screens first, then the pause menu itself.
+        //    Each sub-screen's existing Closed/visibility handler re-shows
+        //    the pause menu, so one press peels exactly one layer.
+        if (_isPaused)
+        {
+            if (_settingsPanel.IsOpen)
+            {
+                Log.Debug(Log.LogCategory.Input, "[back] close settings (paused)");
+                _settingsPanel.Close();
+            }
+            else if (_saveModal is { IsOpen: true })
+            {
+                Log.Debug(Log.LogCategory.Input, "[back] close save dialog (paused)");
+                _saveModal.Close();
+            }
+            else if (_loadDialog is { Visible: true })
+            {
+                Log.Debug(Log.LogCategory.Input, "[back] close load dialog (paused)");
+                _loadDialog.Hide();
+            }
+            else
+            {
+                Log.Debug(Log.LogCategory.Input, "[back] close pause menu");
+                _escMenu.CloseAsEscape(); // EscapeClosed → ExitPause
+            }
+            return;
+        }
+
+        // 3. HUD-owned overlays (tutorial narration, help family,
+        //    defeat / claim-victory prompts).
+        if (_visibleHud.TryCloseTopOverlay()) return;
+
+        // 4. Controller-side unwind: pending action, then selection.
+        if (_controller.OnBackRequested()) return;
+
+        // 5. Nothing left → the pause menu doubles as the leave-game
+        //    prompt (it has Exit Game), guarding against accidental exits.
+        Log.Debug(Log.LogCategory.Input, "[back] nothing to unwind → pause menu");
+        EnterPause();
     }
 }

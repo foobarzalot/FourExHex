@@ -147,6 +147,19 @@ public sealed partial class EscMenu : CanvasLayer
         Visible = false;
     }
 
+    /// <summary>
+    /// Close exactly as if the user pressed Escape on the open menu:
+    /// fire <see cref="EscapeClosed"/> (so subscribers run their close
+    /// bookkeeping — unpause, help-session recompute) then hide. Used
+    /// by the Android system-back ladder. No-op when not open.
+    /// </summary>
+    public void CloseAsEscape()
+    {
+        if (!IsOpen) return;
+        EscapeClosed?.Invoke();
+        Hide();
+    }
+
     public override void _UnhandledInput(InputEvent @event)
     {
         if (!IsOpen) return;
