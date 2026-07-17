@@ -17,14 +17,16 @@ using Godot;
 /// </summary>
 public sealed partial class CreditsPanel : CanvasLayer
 {
-    private const string RepoUrl = "https://github.com/foobarzalot/FourExHex";
+    private const string WebsiteUrl = "https://foobarzalot.github.io/FourExHex/";
+    private const string ContactMailUrl = "mailto:foobarzalot@gmail.com?subject=FourExHex%20beta";
 
-    // BBCode (RichTextLabel) so the author name can be a clickable link
-    // to the repo. The [url] meta is the URL itself; OnMetaClicked hands
-    // it to OS.ShellOpen. The markup lives in the string store with the
-    // repo link injected as {url}.
+    // BBCode (RichTextLabel) so the game title links to the website and the
+    // author name is an email link (same targets as the landing page). The
+    // [url] meta is the URL itself; OnMetaClicked hands it to OS.ShellOpen.
+    // The markup lives in the string store with the links injected as
+    // {site} / {mail}.
     private static string CreditsText
-        => Strings.Get(StringKeys.CreditsBody, ("url", RepoUrl));
+        => Strings.Get(StringKeys.CreditsBody, ("site", WebsiteUrl), ("mail", ContactMailUrl));
 
     public event Action? Closed;
 

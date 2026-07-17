@@ -206,7 +206,7 @@
   "save.reserved_name": "'autosave' is reserved. Please pick a different name.",
   "save.slot_row": "{name} — turn {turn} — {time}",
   "save.autosave_row": "[Autosave] turn {turn} — {time}",
-  "credits.body": "[center]FourExHex\n\nCreated by [url={url}][color=#d8b65a]FooBarzalot[/color][/url]\n\nInspired by Slay by Sean O'Connor\n\nBuilt with Godot 4.6\n\nCoding assistance: Claude Code\n\nUI Design: Claude Design\n\nSFX: ElevenLabs\n\nFonts:\n  DM Serif Display\n  Geist\n  JetBrains Mono[/center]",
+  "credits.body": "[center][url={site}][color=#d8b65a]FourExHex[/color][/url]\n\nCreated by [url={mail}][color=#d8b65a]FooBarzalot[/color][/url]\n\nInspired by Slay by Sean O'Connor\n\nBuilt with Godot 4.6\n\nCoding assistance: Claude Code\n\nUI Design: Claude Design\n\nSFX: ElevenLabs\n\nFonts:\n  DM Serif Display\n  Geist\n  JetBrains Mono[/center]",
   "mapinfo.playing_as_heading": "You will be playing as:",
   "mapinfo.playing_as": "You will be playing as the {name} player.",
   "mapinfo.all_computer": "All players are Computer.",
