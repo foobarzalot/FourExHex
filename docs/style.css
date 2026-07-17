@@ -1,0 +1,239 @@
+/* FourExHex landing page — design tokens per the approved handoff.
+   Background #1B1916 · text #EAE6DC / #b5ad9d / #8a8375 · borders #33302a / #454036 */
+
+/* Variable font, wght axis 200-800 (latin subset), SIL OFL — see fonts/OFL.txt */
+@font-face {
+  font-family: 'Newsreader';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url('fonts/newsreader-var.woff2') format('woff2');
+}
+
+body {
+  margin: 0;
+  background: #1B1916;
+  color: #EAE6DC;
+  font-family: Helvetica, Arial, sans-serif;
+}
+a {
+  color: #b5ad9d;
+  text-decoration: none;
+}
+a:hover {
+  opacity: .85;
+}
+.wrap {
+  max-width: 1180px;
+  margin: 0 auto;
+}
+.hex {
+  clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
+}
+
+/* Nav */
+.nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 26px 64px;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+.brand-icon {
+  width: 44px;
+  height: 44px;
+  display: block;
+}
+.brand-name {
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: .03em;
+}
+.nav-link {
+  font-size: 13.5px;
+  color: #a39a86;
+  border-bottom: 1px solid #454036;
+}
+
+/* Hero */
+.hero {
+  display: grid;
+  grid-template-columns: 1.15fr .85fr;
+  gap: 60px;
+  align-items: center;
+  padding: 56px 64px 80px;
+}
+.hex-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 26px;
+}
+.swatch {
+  width: 16px;
+  height: 14px;
+}
+h1 {
+  margin: 0;
+  font-family: 'Newsreader', Georgia, serif;
+  font-weight: 500;
+  font-size: 64px;
+  line-height: 1.08;
+  letter-spacing: -.015em;
+  text-wrap: pretty;
+}
+.pitch {
+  margin: 24px 0 0;
+  max-width: 490px;
+  font-size: 17.5px;
+  line-height: 1.65;
+  color: #b5ad9d;
+}
+.cta-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 34px;
+}
+.cta-primary {
+  background: #F6F2E9;
+  color: #1B1916;
+  font-weight: 600;
+  font-size: 15px;
+  padding: 13px 22px;
+  border-radius: 8px;
+}
+.fine-print {
+  margin: 14px 0 0;
+  font-size: 12.5px;
+  color: #8a8375;
+}
+.phone {
+  position: relative;
+  width: 100%;
+  max-width: 330px;
+  justify-self: center;
+  border-radius: 28px;
+  box-shadow: 0 30px 60px rgba(0, 0, 0, .5);
+  overflow: hidden;
+}
+.phone img {
+  width: 100%;
+  display: block;
+}
+.notch {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 96px;
+  height: 22px;
+  background: #0c0b09;
+  border-radius: 11px;
+}
+
+/* 4X feature grid */
+.features {
+  border-top: 1px solid #33302a;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 52px 56px;
+  padding: 56px 64px 72px;
+}
+.feature {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.feature-head {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+}
+.badge {
+  flex: none;
+  width: 44px;
+  height: 39px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.badge span {
+  font-weight: 700;
+  font-size: 17px;
+  color: #1B1916;
+}
+.feature h3 {
+  margin: 0 0 8px;
+  font-family: 'Newsreader', Georgia, serif;
+  font-weight: 600;
+  font-size: 23px;
+}
+.feature p {
+  margin: 0;
+  font-size: 15.5px;
+  line-height: 1.6;
+  color: #b5ad9d;
+}
+.slot {
+  height: 220px;
+  background: repeating-linear-gradient(45deg, #24211c, #24211c 10px, #282520 10px, #282520 20px);
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: auto;
+}
+.slot span {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
+  color: #8a8375;
+}
+.slot img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Footer */
+.footer {
+  border-top: 1px solid #33302a;
+  display: flex;
+  justify-content: space-between;
+  padding: 24px 64px;
+  font-size: 13px;
+  color: #8a8375;
+}
+.footer-link {
+  color: #b5ad9d;
+  border-bottom: 1px solid #454036;
+}
+
+/* Responsive — single column below 900px */
+@media (max-width: 900px) {
+  .nav {
+    padding: 20px 24px;
+  }
+  .hero {
+    grid-template-columns: 1fr;
+    gap: 48px;
+    padding: 40px 24px 64px;
+  }
+  h1 {
+    font-size: 40px;
+  }
+  .features {
+    grid-template-columns: 1fr;
+    gap: 44px;
+    padding: 48px 24px 56px;
+  }
+  .footer {
+    flex-direction: column;
+    gap: 8px;
+    padding: 24px;
+  }
+}
