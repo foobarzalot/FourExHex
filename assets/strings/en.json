@@ -275,5 +275,7 @@
   "mapgen.clump.one": "One",
   "cheat.title": "Cheats",
   "cheat.tutorial_builder": "Tutorial Builder",
+  "cheat.recording_on": "Toggle Recording Mode On",
+  "cheat.recording_off": "Toggle Recording Mode Off",
   "cheat.close": "Close"
 }

@@ -163,6 +163,10 @@ public partial class HudView : OrientationHud, IHudView
 
     public override void _Ready()
     {
+        // Recording mode (issue #156): react to the cheat-menu toggle so
+        // chrome hides/restores immediately, not at the next state change.
+        RecordingMode.Changed += ApplyRecordingChrome;
+
         // Build the three persistent widget clusters as parentless HBoxes.
         // ApplyLayout parents them (plus the gold chip) into orientation-
         // specific bars; on a landscape↔portrait flip they're reparented,
@@ -1161,10 +1165,13 @@ public partial class HudView : OrientationHud, IHudView
 
     public void ShowTutorialMessage(string text)
     {
+        // Recording mode: keep ALL the state bookkeeping (text +
+        // _externalMessageActive) but never surface the panel — toggling
+        // recording off restores the still-active message.
         _externalMessageActive = true;
         _tutorialLabel.Text = text;
         PositionTutorialOverlay(); // re-fit the panel height to this message
-        _tutorialPanel.Visible = true;
+        _tutorialPanel.Visible = !RecordingMode.Active;
         SetTutorialTapCatcherEnabled(false);
     }
 
@@ -1173,9 +1180,11 @@ public partial class HudView : OrientationHud, IHudView
         _externalMessageActive = true;
         _tutorialLabel.Text = text;
         PositionTutorialOverlay(); // re-fit the panel height to this message
-        _tutorialPanel.Visible = true;
+        // Recording mode: panel invisible but the tap catcher stays
+        // enabled so a scripted tutorial can still be advanced by tapping.
+        _tutorialPanel.Visible = !RecordingMode.Active;
         SetTutorialTapCatcherEnabled(true);
-        ShowContinueHint(true);
+        ShowContinueHint(!RecordingMode.Active);
         Log.Debug(Log.LogCategory.Tutorial,
             $"[HudView] tappable tutorial message shown; screen dimmed; continue-hint scheduled in {ContinueHintDelaySeconds}s");
     }
@@ -1686,6 +1695,11 @@ public partial class HudView : OrientationHud, IHudView
     public void ShowTransientBanner(string text)
     {
         if (!_transientBannerBuilt) return;
+        if (RecordingMode.Active)
+        {
+            Log.Debug(Log.LogCategory.Hud, $"[recording] transient banner suppressed: {text}");
+            return;
+        }
         _transientBannerLabel.Text = text;
         PositionTransientBanner();
         _transientBannerTween?.Kill();
@@ -2228,6 +2242,45 @@ public partial class HudView : OrientationHud, IHudView
     /// controller (it's a pure predicate over game state, not HUD state)
     /// and passed in so the HUD can style the End Turn button.
     /// </summary>
+    public override void _ExitTree()
+    {
+        RecordingMode.Changed -= ApplyRecordingChrome;
+    }
+
+    /// <summary>
+    /// Recording mode (issue #156): hide the promo-noisy chrome — action
+    /// hint / tutorial panel, gold chip, turn + swatch chip, bankruptcy
+    /// toast, transient banner — or restore it. Buttons and endgame
+    /// overlays are untouched (the game stays fully playable). The action
+    /// hint and gold chip re-assert themselves on the next Refresh; an
+    /// externally-owned tutorial message (AI announcement, tutorial
+    /// narration) is re-shown here because its writers are not
+    /// per-Refresh.
+    /// </summary>
+    private void ApplyRecordingChrome()
+    {
+        bool hide = RecordingMode.Active;
+        _statusChip.Visible = !hide;
+        if (hide)
+        {
+            _tutorialPanel.Visible = false;
+            ShowContinueHint(false);
+            _goldChip.Visible = false;
+            DismissCapitalAlertNotice();
+            if (_transientBannerBuilt)
+            {
+                _transientBannerTween?.Kill();
+                _transientBanner.Visible = false;
+            }
+        }
+        else if (_externalMessageActive)
+        {
+            _tutorialPanel.Visible = true;
+        }
+        Log.Debug(Log.LogCategory.Hud,
+            $"[recording] chrome {(hide ? "hidden" : "restored")}");
+    }
+
     public void Refresh(GameState state, SessionState session, bool hasActionableRemaining)
     {
         _hasPendingAction = session.Mode != SessionState.ActionMode.None;
@@ -2257,6 +2310,9 @@ public partial class HudView : OrientationHud, IHudView
             }
         }
         _playerSwatchBar.SetPlayers(swatchColors, swatchEliminated, currentIndex);
+        // Recording mode: keep the turn/swatch chip hidden across
+        // refreshes (layout passes may otherwise re-show it).
+        _statusChip.Visible = !RecordingMode.Active;
         if (Log.IsEnabled(Log.LogCategory.Render, Log.LogLevel.Debug))
         {
             var parts = new List<string>(slots);
@@ -2276,7 +2332,7 @@ public partial class HudView : OrientationHud, IHudView
         Territory? selected = session.SelectedTerritory;
         bool hasCapital = selected?.HasCapital ?? false;
 
-        _goldChip.Visible = hasCapital;
+        _goldChip.Visible = hasCapital && !RecordingMode.Active;
         if (hasCapital)
         {
             int gold = state.Treasury.GetGold(selected!.Capital!.Value);
@@ -2547,8 +2603,13 @@ public partial class HudView : OrientationHud, IHudView
         // Gameplay action hint — surfaces "Click to place / move" prompts
         // through the bottom-anchored tutorial-message panel during buy
         // and move modes. Skipped if an external caller (tutorial step
-        // text, AI-batch announcement) currently owns the panel.
-        if (!_externalMessageActive)
+        // text, AI-batch announcement) currently owns the panel, and
+        // fully suppressed in recording mode.
+        if (RecordingMode.Active)
+        {
+            _tutorialPanel.Visible = false;
+        }
+        else if (!_externalMessageActive)
         {
             string? hint = ComputeActionHint(state, session);
             if (hint != null)
@@ -2613,6 +2674,11 @@ public partial class HudView : OrientationHud, IHudView
 
     public void SummonCapitalAlertNotice(HexCoord capital, EconomyOutlook outlook)
     {
+        if (RecordingMode.Active)
+        {
+            Log.Debug(Log.LogCategory.Hud, $"[recording] capital alert suppressed: {capital}");
+            return;
+        }
         _summonedAlertCoord = capital;
         _summonedAlertOutlook = outlook;
         if (outlook == EconomyOutlook.NegativeDelta)

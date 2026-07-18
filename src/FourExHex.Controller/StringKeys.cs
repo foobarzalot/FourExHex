@@ -392,5 +392,7 @@ public static class StringKeys
     // Debug cheat menu.
     public const string CheatTitle = "cheat.title";
     public const string CheatTutorialBuilder = "cheat.tutorial_builder";
+    public const string CheatRecordingOn = "cheat.recording_on";
+    public const string CheatRecordingOff = "cheat.recording_off";
     public const string CheatClose = "cheat.close";
 }

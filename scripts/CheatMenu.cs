@@ -71,6 +71,13 @@ public sealed partial class CheatMenu : Node
         _menu.Show(Strings.Get(StringKeys.CheatTitle), new EscMenu.Option[]
         {
             new(Strings.Get(StringKeys.CheatTutorialBuilder), OpenTutorialBuilder),
+            // Label names the ACTION: "Toggle Recording Mode On" while the
+            // mode is off, and vice versa (issue #156 clean-capture mode —
+            // HudView/HexMapView hide their promo-noisy chrome while active).
+            new(Strings.Get(RecordingMode.Active
+                    ? StringKeys.CheatRecordingOff
+                    : StringKeys.CheatRecordingOn),
+                RecordingMode.Toggle),
             // EscMenu hides itself before invoking the callback, so
             // Close is just a logged no-op.
             new(Strings.Get(StringKeys.CheatClose), () => Log.Debug(Log.LogCategory.Cheat, "CheatMenu: closed (Close button).")),

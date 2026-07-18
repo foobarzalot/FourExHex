@@ -427,6 +427,11 @@ public partial class HexMapView : Node2D, IHexMapView
 
     public override void _Ready()
     {
+        // Recording mode (issue #156): repaint the capital warning badges
+        // immediately when the cheat-menu toggle flips, so the in-map
+        // chrome hides/restores without waiting for the next state change.
+        RecordingMode.Changed += RedrawWarningBadges;
+
         BuildStateVisuals();
 
         // Resolve board rotation (portrait ⇒ −90° CCW) before the zoom/pan
@@ -448,6 +453,7 @@ public partial class HexMapView : Node2D, IHexMapView
 
     public override void _ExitTree()
     {
+        RecordingMode.Changed -= RedrawWarningBadges;
         // The root Window outlives this node across the game→menu swap;
         // without the unsubscribe a later resize invokes a handler on a
         // freed node. Guarded: disconnecting a never-connected Godot
@@ -5028,6 +5034,14 @@ public partial class HexMapView : Node2D, IHexMapView
     {
         if (_warningBadgesLayer == null) return;
         ClearLayer(_warningBadgesLayer);
+
+        // Recording mode: the badges are promo-noisy chrome — leave the
+        // layer cleared while active.
+        if (RecordingMode.Active)
+        {
+            Log.Debug(Log.LogCategory.Render, "[recording] warning badges suppressed");
+            return;
+        }
 
         Player current = _state.Turns.CurrentPlayer;
         if (current == null || current.IsAi) return;
