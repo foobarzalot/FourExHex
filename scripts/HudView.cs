@@ -959,7 +959,9 @@ public partial class HudView : OrientationHud, IHudView
     /// bottom (landscape, no bottom bar).</summary>
     protected override void OnLayoutApplied()
     {
-        _seedLabel.Visible = true;
+        // Recording mode: keep the map/level label hidden across layout
+        // passes (they'd otherwise re-show it), same as the status chip.
+        _seedLabel.Visible = !RecordingMode.Active;
         // Bottom-left, INSIDE the safe-area-bottom strip — below the
         // button rows so it sits where the iPhone home indicator lives.
         // OffsetLeft matches the bottom-bar's inner-VBox left padding
@@ -2249,8 +2251,8 @@ public partial class HudView : OrientationHud, IHudView
 
     /// <summary>
     /// Recording mode (issue #156): hide the promo-noisy chrome — action
-    /// hint / tutorial panel, gold chip, turn + swatch chip, bankruptcy
-    /// toast, transient banner — or restore it. Buttons and endgame
+    /// hint / tutorial panel, gold chip, turn + swatch chip, map/level
+    /// label, bankruptcy toast, transient banner — or restore it. Buttons and endgame
     /// overlays are untouched (the game stays fully playable). The action
     /// hint and gold chip re-assert themselves on the next Refresh; an
     /// externally-owned tutorial message (AI announcement, tutorial
@@ -2261,6 +2263,7 @@ public partial class HudView : OrientationHud, IHudView
     {
         bool hide = RecordingMode.Active;
         _statusChip.Visible = !hide;
+        _seedLabel.Visible = !hide;
         if (hide)
         {
             _tutorialPanel.Visible = false;
