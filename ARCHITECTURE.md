@@ -294,7 +294,9 @@ MODEL PRIMITIVES
 AUDIO (autoload)
   AudioBus — autoload-registered Node singleton (project.godot [autoload] "AudioBus"). Owns AudioStreamPlayer
   instances for every shared SFX — click, place/move (units, towers, combine, destroy variants), tree/grave
-  clear, capital fall, bankruptcy bell, game-won fanfare, rally whoosh, player-defeated gong. Survives scene
+  clear, capital fall, bankruptcy, game-won peal, rally, player-defeated gong. All cues are one sonic family
+  (the Guildhall palette — see docs/SOUND_DESIGN.md; generator source tools/sfx-engine.js), normalized to
+  −3 dBFS so each player's VolumeDb is the only gain knob. Survives scene
   changes so a ChangeSceneToFile button click still plays. Static AttachClick(BaseButton) /
   AttachClick(HexPaletteButton) wire a button's Pressed signal to the shared click player.
 
@@ -313,8 +315,8 @@ AUDIO (autoload)
   end-of-frame so it grabs the glyph RefreshOccupantVisuals just rebuilt — plus dust puffs and rock chips), and
   a baseline flash + white ring for None. A tower landing on a mountain fires the same mountain effect
   (EmitMountainTowerFx; plain-tile tower builds fire nothing). Gold/mountain also fire a terrain sound cue
-  (SoundEffect.GoldCaptured coin chime / MountainCaptured rocky thud, synthesized by
-  tools/generate_capture_sfx.py into assets/audio/*.wav) that LAYERS on top of the action's occupant cue
+  (SoundEffect.GoldCaptured glockenspiel chime / MountainCaptured deep drum thud) that LAYERS on top of the
+  action's occupant cue
   — the deliberate exception to DispatchActionSound's one-cue-per-action policy, since terrain is orthogonal to
   the destroyed occupant. All of it emits through the silent-gated GameOperations wrappers and scales with the
   HexMapView.CaptureFxIntensity export (design values authored against a 104px hex, scaled by HexSize/52).

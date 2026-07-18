@@ -61,9 +61,9 @@ public partial class AudioBus : Node
         _towerPlacedPlayer = new AudioStreamPlayer
         {
             Stream = GD.Load<AudioStream>("res://assets/audio/tower_place.wav"),
-            // Stone material is naturally bright and the source clip
-            // tends to come back hot, so we sit a touch under the
-            // unit-place gain.
+            // Heavier sibling of the unit-place mallet — deeper pitch
+            // and low rumble carry the weight, so it sits a touch under
+            // the unit-place gain.
             VolumeDb = -8f,
         };
         AddChild(_towerPlacedPlayer);
@@ -98,8 +98,8 @@ public partial class AudioBus : Node
         _treeClearedPlayer = new AudioStreamPlayer
         {
             Stream = GD.Load<AudioStream>("res://assets/audio/tree_cleared.wav"),
-            // Source clip's transient is hot — sit well under the
-            // unit-place thud so the chop doesn't dominate.
+            // The woodblock crack's transient is hot by design — sit
+            // well under the unit-place thud so it doesn't dominate.
             VolumeDb = -18f,
         };
         AddChild(_treeClearedPlayer);
@@ -119,8 +119,9 @@ public partial class AudioBus : Node
         {
             Stream = GD.Load<AudioStream>("res://assets/audio/bankruptcy.wav"),
             // Somber, not loud — the player should hear it but it
-            // shouldn't startle. Bell tolls have long natural sustain
-            // so a moderate gain reads as substantial without dominating.
+            // shouldn't startle. The descending womp lands on a
+            // sustained low tone, so a moderate gain reads as
+            // substantial without dominating.
             VolumeDb = -10f,
         };
         AddChild(_bankruptcyPlayer);
@@ -139,10 +140,9 @@ public partial class AudioBus : Node
         _rallyPlayer = new AudioStreamPlayer
         {
             Stream = GD.Load<AudioStream>("res://assets/audio/rally.wav"),
-            // Whoosh is naturally airy and a bit broad — sit it well
+            // The swell is naturally airy and a bit broad — sit it well
             // under the unit-place thud so a rally doesn't dominate the
             // mix when it bundles several units' worth of motion.
-            // (-6 dB from the previous -8 dB = roughly half amplitude.)
             VolumeDb = -14f,
         };
         AddChild(_rallyPlayer);
@@ -150,7 +150,7 @@ public partial class AudioBus : Node
         _playerDefeatedPlayer = new AudioStreamPlayer
         {
             Stream = GD.Load<AudioStream>("res://assets/audio/player_defeated.wav"),
-            // Heavy gong — naturally hot transient and long sustain.
+            // Heavy gong bloom with long sustain.
             // Sits at game-won level so the elimination of an enemy
             // reads as a major moment, but not louder than the win
             // fanfare.
@@ -180,10 +180,9 @@ public partial class AudioBus : Node
         _rejectGenericPlayer = new AudioStreamPlayer
         {
             Stream = GD.Load<AudioStream>("res://assets/audio/reject_generic.wav"),
-            // Generic SFX is normalized to ~-3 dB peak, well above the
-            // defended clang's natural -12 dB. Attenuate harder here so
-            // the misclick thunk sits at roughly the same perceived
-            // loudness as the metallic clang and doesn't dominate.
+            // A misclick can fire rapidly and carries little
+            // information — sit it well down so it reads as a gentle
+            // "no" under the more informative defended clang.
             VolumeDb = -17f,
         };
         AddChild(_rejectGenericPlayer);
@@ -242,8 +241,8 @@ public partial class AudioBus : Node
     }
 
     /// <summary>
-    /// Stone-on-stone clack played when a tower is built. Heavier and
-    /// grittier than the unit-place thud so the two are audibly distinct.
+    /// Deep mallet hit played when a tower is built. Heavier and
+    /// darker than the unit-place thud so the two are audibly distinct.
     /// </summary>
     public void PlayTowerPlaced()
     {
@@ -263,7 +262,7 @@ public partial class AudioBus : Node
         _unitCombinedPlayer.Play();
     }
 
-    /// <summary>Soft squelch for crushing an enemy unit.</summary>
+    /// <summary>Muted timpani hit for crushing an enemy unit.</summary>
     public void PlayUnitDestroyed()
     {
         if (!UserSettings.SfxEnabled) return;
@@ -271,7 +270,7 @@ public partial class AudioBus : Node
         _unitDestroyedPlayer.Play();
     }
 
-    /// <summary>Bursting stone for capturing/destroying an enemy tower.</summary>
+    /// <summary>Low drum drop + rubble for capturing/destroying an enemy tower.</summary>
     public void PlayTowerDestroyed()
     {
         if (!UserSettings.SfxEnabled) return;
@@ -279,7 +278,7 @@ public partial class AudioBus : Node
         _towerDestroyedPlayer.Play();
     }
 
-    /// <summary>Single axe chop for clearing a tree or burying a grave.</summary>
+    /// <summary>Woodblock crack for clearing a tree or burying a grave.</summary>
     public void PlayTreeCleared()
     {
         if (!UserSettings.SfxEnabled) return;
@@ -288,8 +287,8 @@ public partial class AudioBus : Node
     }
 
     /// <summary>
-    /// Heavy collapse + bell for capturing/destroying an enemy capital.
-    /// The heaviest cue in the library; reserved for the rarest event.
+    /// Descending drums into a minor bell for capturing/destroying an
+    /// enemy capital.
     /// </summary>
     public void PlayCapitalDestroyed()
     {
@@ -299,7 +298,7 @@ public partial class AudioBus : Node
     }
 
     /// <summary>
-    /// Single low somber bell toll for upkeep bankruptcy at turn-start.
+    /// Descending "game over" womp for upkeep bankruptcy at turn-start.
     /// </summary>
     public void PlayBankruptcy()
     {
@@ -321,7 +320,7 @@ public partial class AudioBus : Node
     }
 
     /// <summary>
-    /// Short whoosh played once per long-press rally that actually
+    /// Short airy swell played once per long-press rally that actually
     /// shifted at least one unit. One sound per gesture, not per unit
     /// — many small movements should read as one swept rally.
     /// </summary>
@@ -345,7 +344,8 @@ public partial class AudioBus : Node
     }
 
     /// <summary>
-    /// Soft watery glug when a Rising Tides shore tile sinks under the sea.
+    /// Descending harp over a watery wash when a Rising Tides shore tile
+    /// sinks under the sea.
     /// Gated by the SFX toggle; silent-mode suppression (Instant
     /// AI / instant replay) is handled upstream in <c>HexMapView.PlaySound</c>.
     /// </summary>
@@ -369,7 +369,7 @@ public partial class AudioBus : Node
     }
 
     /// <summary>
-    /// Soft wooden thunk played when the player tries to place a unit
+    /// Muted low mallet played when the player tries to place a unit
     /// or tower somewhere it's not allowed, and no enemy defender is
     /// the reason (water, distance, occupied own tile, etc.).
     /// </summary>
@@ -394,7 +394,7 @@ public partial class AudioBus : Node
     }
 
     /// <summary>
-    /// Three-note coin chime for capturing a gold tile. Layers on top of
+    /// Three-note glockenspiel chime for capturing a gold tile. Layers on top of
     /// the action's occupant cue (terrain is orthogonal to what was
     /// destroyed there).
     /// </summary>
