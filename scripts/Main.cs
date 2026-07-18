@@ -607,15 +607,17 @@ public partial class Main : Node2D
             ShowIntro(0);
         }
 
-        // Games descended from a starting map identify by name; procedural
-        // games show the seed driving the per-turn RNG.
-        string mapLabel = _originMapName != null
-            ? Strings.Get(StringKeys.MainMapLabel, ("name", _originMapName))
-            : Strings.Get(StringKeys.MainSeedLabel,
-                ("seed", SeedFormat.ToHex(_controller.MasterSeed)));
+        // Campaign → "Level XX"; starting-map/save → prettified name;
+        // procedural → nothing (the seed is not player-facing).
+        string mapLabel = _campaignLevel != null
+            ? Strings.Get(StringKeys.MainLevelLabel,
+                ("level", CampaignProgress.LabelFor(_campaignLevel.Value)))
+            : _originMapName != null
+                ? _originMapName.Replace('_', ' ')
+                : "";
         hud.SetMapLabel(mapLabel);
         Log.Info(Log.LogCategory.Turn,
-            $"Main: master seed {SeedFormat.ToHex(_controller.MasterSeed)}");
+            $"Main: master seed {SeedFormat.ToHex(_controller.MasterSeed)}, map label '{mapLabel}'");
 
 #if DEBUG
         CheatMenu.Attach(this);

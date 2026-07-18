@@ -59,7 +59,7 @@ SCENE ROOT (Godot) ─ Main (Node2D), play scene root (res://scenes/main.tscn). 
            Restart opens a ConfirmModal — confirm → RestartCurrentGame, cancel → back to the pause menu).
          • EscMenu.EscapeClosed → ExitPause.
     9. controller.Resume() (in-progress load) or StartGame() (fresh/starting map). Then
-       hud.SetMapLabel("Map: <name>" | "Seed: <n>").
+       hud.SetMapLabel(campaign "Level XX" | save name with underscores→spaces | "" for procedural).
 
 CONTROLLER (pure C#) ─ GameController
   refs: IHexMapView _map, IHudView _hud, GameState _state, SessionState _session
@@ -189,7 +189,7 @@ VIEWS (Godot Nodes)
       RedoAll / EndTurn / NewGame / MainMenu / NextTerritory / PreviousTerritory / NextUnit / PreviousUnit /
       CancelAction / Automate / EscRequested (Options + ESC) / DefeatContinue / ClaimVictoryWinNow / ClaimVictoryContinue
     Refresh(state, session, hasAct.) (overlay priority: Winner > PendingDefeatScreen > PendingClaimVictory)
-    SetMapLabel(text) // "Map: foo" | "Seed: 1234"
+    SetMapLabel(text) // campaign "Level XX" | save name (underscores→spaces) | "" procedural
     ShowTutorialMessage(text) / HideTutorialMessage() — bottom-anchored click-through popup
     Buttons are HudIconButton (Button + _Draw) painting glyphs via HudIcons. Static tooltips from
       HudIconButton.DefaultTooltip; Buy/Build override per state. Buy row = four always-visible radio buttons
@@ -639,7 +639,7 @@ event Action? ClaimVictoryContinueClicked; // dismiss, proceed End Turn
 event Action? ReplayClicked;           // victory overlay; Main → BeginReplay
 
 void Refresh(GameState state, SessionState session, bool hasActionableRemaining);
-void SetMapLabel(string text);         // one-time; "Map: foo" / "Seed: N"
+void SetMapLabel(string text);         // one-time; "Level XX" / save name / "" (procedural)
 void ShowTutorialMessage(string text); // bottom popup; click-through (Ignore)
 void ShowTappableTutorialMessage(string text); // same panel + full-viewport tap
                                        // catcher firing TutorialMessageTapped;
@@ -1353,7 +1353,7 @@ seed (no consumption count) and load reproduces it.
   button.
 - **Origin map name.** Optional `OriginMapName` identifies the starting map a
   game descended from (null for procedural); rides autosave to keep the
-  "Map: foo" label correct.
+  bottom-left save-name label correct (shown with underscores→spaces).
 - **Claim-victory prompted tiers.** Optional
   `ClaimVictoryPromptedHighestByColorHex` — hex→percent map of the highest tier
   (50/75/90) each human color has dismissed; empty/missing in fresh games and
@@ -1364,7 +1364,8 @@ seed (no consumption count) and load reproduces it.
   games; null/missing for freeform. Rides autosave so a resumed campaign game can
   record the win on game-over. `Main._Ready` restores it into
   `GameSettings.CampaignLevel` (or clears it for freeform/starting-map/diagnostic
-  loads).
+  loads), and also drives the bottom-left label as `"Level XX"`
+  (`CampaignProgress.LabelFor`, 2-digit uppercase hex).
 - **Game mode.** Optional `Mode` (`GameMode`); null/missing = `Freeform`. Only
   Rising Tides writes it. Grown water rides the existing `Water` field, so flood
   progress round-trips. Deserialize feeds it into the `GameState` ctor; the

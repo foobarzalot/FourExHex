@@ -334,8 +334,7 @@ public static class StringKeys
     public const string IntroMountainHex = "intro.mountain_hex";
 
     // In-game chrome owned by Main.
-    public const string MainMapLabel = "main.map_label";
-    public const string MainSeedLabel = "main.seed_label";
+    public const string MainLevelLabel = "main.level_label";
     public const string PauseTitle = "pause.title";
     public const string PauseRestart = "pause.restart";
     public const string PauseRestartTitle = "pause.restart_title";
