@@ -34,9 +34,7 @@ public class AiSimulatorDriftTests
     /// repositions, tree/grave clears, buy-place, buy-capture,
     /// buy-combine, and tower builds.
     /// </summary>
-    private static GameState BuildRichState() => BuildRichState(randomized: false);
-
-    private static GameState BuildRichState(bool randomized, bool originMerge = false)
+    private static GameState BuildRichState(bool withMergePatch = false)
     {
         var red = new Player("Red", PlayerId.FromIndex(0), PlayerKind.Computer);
         var blue = new Player("Blue", PlayerId.FromIndex(1), PlayerKind.Computer);
@@ -62,7 +60,7 @@ public class AiSimulatorDriftTests
         grid.Get(HexCoord.FromOffset(5, 2))!.Occupant = new Unit(blue.Id, UnitLevel.Soldier);
         grid.Get(HexCoord.FromOffset(4, 3))!.Occupant = new Tower();
 
-        if (originMerge)
+        if (withMergePatch)
         {
             // Detached Red patch (4,0)-(6,0) with its own Soldier, one Blue
             // bridge tile (3,0) away from the 12-tile main territory. The
@@ -77,9 +75,7 @@ public class AiSimulatorDriftTests
         }
 
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
-        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury(),
-            useRandomizedSelection: randomized,
-            useOriginMergeCapital: originMerge);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
 
         foreach (Territory t in state.Territories.Where(t => t.HasCapital))
         {
@@ -227,18 +223,12 @@ public class AiSimulatorDriftTests
     [Fact]
     public void EveryEnumeratedCandidate_SimulatesIdenticallyToGameOperations()
     {
-        AssertNoDrift(BuildRichState(randomized: false));
-    }
-
-    [Fact]
-    public void EveryEnumeratedCandidate_SimulatesIdenticallyToGameOperations_WithRandomizedSelection()
-    {
-        // The fidelity gate for #91: with randomized capital placement on, a
-        // capture that relocates a capital must place it on the SAME tile in
-        // the cloned 1-ply simulation as in real play — otherwise AI scoring
-        // predicts a board that won't happen. Board-state-derived seeding makes
-        // the clone reproduce the real pick; this proves it for every candidate.
-        AssertNoDrift(BuildRichState(randomized: true));
+        // Also the fidelity gate for randomized capital placement: a capture
+        // that relocates a capital must place it on the SAME tile in the
+        // cloned 1-ply simulation as in real play — otherwise AI scoring
+        // predicts a board that won't happen. Board-state-derived seeding
+        // makes the clone reproduce the real pick, for every candidate.
+        AssertNoDrift(BuildRichState());
     }
 
     [Fact]
@@ -250,7 +240,7 @@ public class AiSimulatorDriftTests
         // The fixture's patch-side merge picks a different winner under the
         // origin rule than under largest-wins, so threading originCapital
         // through only one of the two paths fails this sweep.
-        GameState initial = BuildRichState(randomized: true, originMerge: true);
+        GameState initial = BuildRichState(withMergePatch: true);
 
         // Fixture guard: the merging capture must actually be enumerated.
         Assert.Contains(AllCandidateActions(initial), a =>

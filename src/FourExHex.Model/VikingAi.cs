@@ -33,7 +33,7 @@ public static class VikingAi
     /// the player AI uses (keyed by territory anchor coord); mutated.
     /// </summary>
     public static AiAction? ChooseNext(
-        GameState state, HashSet<HexCoord> visitedAnchors, Random rng)
+        GameState state, HashSet<HexCoord> visitedAnchors, DeterministicRng rng)
     {
         if (state.Mode != GameMode.VikingRaiders) return null;
         int round = state.Turns.TurnNumber;
@@ -125,7 +125,7 @@ public static class VikingAi
         if (wasCapture)
         {
             clone.Territories = TerritoryFinder.Recompute(
-                clone.Grid, clone.Territories, clone.Treasury, clone.UseRandomizedSelection);
+                clone.Grid, clone.Territories, clone.Treasury, randomizeCapital: true);
         }
     }
 }

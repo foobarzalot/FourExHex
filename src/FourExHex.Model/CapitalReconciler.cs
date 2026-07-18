@@ -24,7 +24,7 @@ using System.Collections.Generic;
 /// resolved to the lex-min coord — fresh placement within the chosen
 /// occupant tier and the equal-old-size merge tiebreak — instead pick a
 /// seed-deterministic random candidate. The randomness is drawn from a
-/// <see cref="Random"/> seeded purely from the territory's own coords
+/// <see cref="DeterministicRng"/> seeded purely from the territory's own coords
 /// (<see cref="SeedFromCoords"/>), so it never touches the live per-turn RNG
 /// stream and the AI's cloned 1-ply simulation reproduces the identical pick.
 /// </summary>
@@ -106,8 +106,10 @@ public static class CapitalReconciler
             // Per-territory RNG seeded from this territory's own coords, so the
             // pick is reproducible everywhere the same board is reconciled
             // (live capture, the AI's cloned simulation, replay re-derivation)
-            // without consuming the live per-turn stream. Null → lex-min.
-            Random? capitalRng = randomize ? new Random(SeedFromCoords(newT.Coords)) : null;
+            // without consuming the live per-turn stream. Every in-game
+            // reconcile passes randomize: true; the null path (lex-min) is
+            // the editor/fixture affordance.
+            DeterministicRng? capitalRng = randomize ? new DeterministicRng(SeedFromCoords(newT.Coords)) : null;
 
             if (inheritedOldCaps.Count == 0)
             {
@@ -168,7 +170,7 @@ public static class CapitalReconciler
                     topTied.Sort();
                     winner = capitalRng == null
                         ? topTied[0]
-                        : topTied[capitalRng.Next(topTied.Count)];
+                        : topTied[capitalRng.NextBounded(topTied.Count)];
                     rule = topTied.Count == 1
                         ? "largest"
                         : (capitalRng == null ? "tiebreak-lexmin" : "tiebreak-random");

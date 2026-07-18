@@ -25,7 +25,7 @@ public class AiTurnDriver
     private readonly GameOperations _ops;
     private readonly ReplayRecorder _recorder;
     private readonly IAiPacer _aiPacer;
-    private readonly Func<GameState, PlayerId, HashSet<HexCoord>, Random, AiAction?> _aiChooser;
+    private readonly Func<GameState, PlayerId, HashSet<HexCoord>, DeterministicRng, AiAction?> _aiChooser;
     private readonly Func<bool> _aiSilentMode;
 
     // True while the replay must hold (a blocking Tutorial-Preview
@@ -73,7 +73,7 @@ public class AiTurnDriver
         GameOperations ops,
         ReplayRecorder recorder,
         IAiPacer aiPacer,
-        Func<GameState, PlayerId, HashSet<HexCoord>, Random, AiAction?> aiChooser,
+        Func<GameState, PlayerId, HashSet<HexCoord>, DeterministicRng, AiAction?> aiChooser,
         Func<bool> aiSilentMode,
         Func<bool> isReplayPaused)
     {

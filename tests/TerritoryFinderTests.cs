@@ -24,13 +24,13 @@ public class TerritoryFinderTests
 
     private static HexGrid BuildRandomColoredGrid(int cols, int rows, int seed)
     {
-        var rng = new System.Random(seed);
+        var rng = new DeterministicRng(seed);
         var grid = new HexGrid();
         for (int r = 0; r < rows; r++)
         {
             for (int c = 0; c < cols; c++)
             {
-                PlayerId color = Palette[rng.Next(Palette.Length)];
+                PlayerId color = Palette[rng.NextBounded(Palette.Length)];
                 grid.Add(new HexTile(HexCoord.FromOffset(c, r), color));
             }
         }

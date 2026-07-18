@@ -107,6 +107,7 @@ public partial class Main : Node2D
             Log.SetLevel(Log.LogCategory.Turn, Log.LogLevel.Info);
             Log.SetLevel(Log.LogCategory.Capture, Log.LogLevel.Debug);
             Log.SetLevel(Log.LogCategory.Tree, Log.LogLevel.Debug);
+            Log.SetLevel(Log.LogCategory.Determinism, Log.LogLevel.Debug);
             GD.Print(quickDiagMode
                 ? "=== FOUREXHEX_6AI_QUICK diagnostic mode (smoke test, 18×13, cap=200) ==="
                 : "=== FOUREXHEX_6AI diagnostic mode (full, 30×20, cap=500) ===");
@@ -259,14 +260,7 @@ public partial class Main : Node2D
                 pendingLoad.State.WaterCoords,
                 // Carry the authored game mode so a Rising Tides starting map
                 // plays as Rising Tides, not Freeform.
-                pendingLoad.State.Mode,
-                // A starting map launches a fresh game, so it gets the
-                // randomized capital/tide selection and the origin-capital
-                // merge rule like any new game. The map's pre-placed capitals
-                // are unchanged; only mid-game captures and tide tie-breaks
-                // pick up the new-era behavior from here.
-                useRandomizedSelection: true,
-                useOriginMergeCapital: true);
+                pendingLoad.State.Mode);
             Log.Info(Log.LogCategory.Tide,
                 $"Main: starting map \"{pendingLoad.SlotName}\" mode={pendingLoad.State.Mode}");
             _maxTurnNumber = quickDiagMode ? 200

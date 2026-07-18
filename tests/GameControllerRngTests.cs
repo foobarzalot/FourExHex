@@ -39,7 +39,7 @@ public class GameControllerRngTests
         var map = new MockHexMapView();
         var hud = new MockHudView();
         var log = new List<string>();
-        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> visited, HashSet<HexCoord> ru, Random rng)
+        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> visited, HashSet<HexCoord> ru, DeterministicRng rng)
         {
             AiAction? action = ComputerAi.ChooseNextAction(s, c, visited, ru, rng);
             log.Add(action?.ToString() ?? "<end>");
@@ -77,6 +77,46 @@ public class GameControllerRngTests
         List<string> second = RunAndCaptureAiActions(seed: 12345, turns: 8);
 
         Assert.Equal(first, second);
+    }
+
+    /// <summary>Run the same scripted game as RunAndCaptureAiActions and
+    /// return the controller's cumulative RNG-stream digest.</summary>
+    private static ulong RunAndGetDigest(int seed, int turns)
+    {
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1), isAi: true);
+        var players = new List<Player> { red, blue };
+        HexGrid grid = TestHelpers.BuildRectGrid(8, 2, blue.Id);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(0, 1))!.Owner = red.Id;
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        var map = new MockHexMapView();
+        var hud = new MockHudView();
+        var controller = new GameController(state, session, map, hud, seed: seed);
+        controller.StartGame();
+        for (int i = 0; i < turns; i++)
+        {
+            if (session.IsGameOver) break;
+            if (session.PendingDefeatScreen.HasValue) hud.ClickDefeatContinue();
+            hud.ClickEndTurn();
+        }
+        return controller.RngStreamDigest;
+    }
+
+    [Fact]
+    public void RngStreamDigest_SameSeedMatches_DifferentSeedDiffers()
+    {
+        // The digest is the one-line determinism proof: two runs of the
+        // same seed must digest identically, and the digest must actually
+        // depend on the seed (it folds each per-turn sub-seed, so it
+        // discriminates even when no AI draw consumes the stream).
+        ulong a1 = RunAndGetDigest(seed: 12345, turns: 8);
+        ulong a2 = RunAndGetDigest(seed: 12345, turns: 8);
+        ulong b = RunAndGetDigest(seed: 54321, turns: 8);
+        Assert.Equal(a1, a2);
+        Assert.NotEqual(a1, b);
     }
 
     [Fact]

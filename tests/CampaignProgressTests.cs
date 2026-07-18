@@ -310,9 +310,9 @@ public class CampaignProgressTests
     [Theory]
     [InlineData(0, GameMode.Freeform)]    // Recruit tier — never a complication
     [InlineData(64, GameMode.Freeform)]   // Soldier tier, outside every mode slice
-    [InlineData(84, GameMode.RisingTides)]
-    [InlineData(74, GameMode.FogOfWar)]
-    [InlineData(79, GameMode.VikingRaiders)]
+    [InlineData(71, GameMode.RisingTides)]
+    [InlineData(78, GameMode.FogOfWar)]
+    [InlineData(77, GameMode.VikingRaiders)]
     public void ModeForLevel_PinsKnownAssignments(int level, GameMode expected)
     {
         // Campaign level identity is forever: these spot pins make an accidental
@@ -371,10 +371,10 @@ public class CampaignProgressTests
         {
             // The raw draw, replicated verbatim: mountain, gold, tree, then
             // clumping off the same per-level rng.
-            var rng = new System.Random(unchecked(level * 2671 + 40503));
-            rng.Next(100); rng.Next(100); rng.Next(0, 3);
+            var rng = new DeterministicRng(unchecked(level * 2671 + 40503));
+            rng.NextBounded(100); rng.NextBounded(100); rng.NextBounded(0, 3);
             int rawClumping = MapGenOptions.ClumpingFactorStops[
-                rng.Next(MapGenOptions.ClumpingFactorStops.Length)];
+                rng.NextBounded(MapGenOptions.ClumpingFactorStops.Length)];
 
             int actual = CampaignProgress.MapGenOptionsForLevel(level).ClumpingFactor;
             if (CampaignProgress.ModeForLevel(level) == GameMode.VikingRaiders)

@@ -48,18 +48,14 @@ public static class AiSimulator
         IReadOnlyList<Territory> territories = snap.ApplyTo(newGrid, newTreasury);
 
         // Mode is intentionally left at its default here (the simulator never
-        // runs tide logic); the randomized-selection and origin-merge flags
-        // must ride along so a simulated capture picks the same replacement /
-        // surviving capital as real play.
+        // runs tide logic).
         return new GameState(
             newGrid,
             territories,
             original.Players,
             original.Turns,
             newTreasury,
-            original.WaterCoords,
-            useRandomizedSelection: original.UseRandomizedSelection,
-            useOriginMergeCapital: original.UseOriginMergeCapital);
+            original.WaterCoords);
     }
 
     /// <summary>
@@ -172,16 +168,15 @@ public static class AiSimulator
     /// sits at the heart of <c>GameOperations.HandleCapture</c>, so
     /// simulated and real captures produce identical states; the live
     /// path merely layers view/defeat/win effects on top.
-    /// <paramref name="originCapital"/> is the acting territory's capital,
-    /// honored only in a <see cref="GameState.UseOriginMergeCapital"/> game
-    /// (mirroring HandleCapture's gate) so legacy simulations reconcile
-    /// with arguments identical to before the rule existed.
+    /// <paramref name="originCapital"/> is the acting territory's capital;
+    /// a same-owner merge keeps it outright (mirroring HandleCapture), so
+    /// the simulated merge picks the same surviving capital as real play.
     /// </summary>
     private static void Reconcile(GameState state, HexCoord? originCapital = null)
     {
         state.Territories = TerritoryFinder.Recompute(
-            state.Grid, state.Territories, state.Treasury, state.UseRandomizedSelection,
-            state.UseOriginMergeCapital ? originCapital : null);
+            state.Grid, state.Territories, state.Treasury,
+            randomizeCapital: true, originCapital: originCapital);
     }
 
 }

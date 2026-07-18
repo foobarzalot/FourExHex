@@ -128,7 +128,7 @@ public static class VikingRaidersRules
     /// coords. Returned sorted by coord.
     /// </summary>
     public static IReadOnlyList<SeaViking> ChooseSpawns(
-        GameState state, IReadOnlyList<UnitLevel> composition, Random rng)
+        GameState state, IReadOnlyList<UnitLevel> composition, DeterministicRng rng)
     {
         var candidates = new List<HexCoord>();
         foreach (HexCoord coastal in CoastalWaterCoords(state))
@@ -185,7 +185,7 @@ public static class VikingRaidersRules
         List<HexCoord> placed,
         HashSet<HexCoord> claimedLandings,
         UnitLevel level,
-        Random rng)
+        DeterministicRng rng)
     {
         var ties = new List<HexCoord>();
         bool bestCanLand = false;
@@ -234,7 +234,7 @@ public static class VikingRaidersRules
             ties.Add(candidate);
         }
 
-        return ties[rng.Next(ties.Count)];
+        return ties[rng.NextBounded(ties.Count)];
     }
 
     /// <summary>

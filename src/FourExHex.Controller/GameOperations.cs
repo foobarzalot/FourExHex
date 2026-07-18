@@ -55,7 +55,7 @@ public class GameOperations
     private readonly Func<bool> _automateSilentMode;
     private readonly bool _previewMode;
     private bool _aiBatchOverlayShown;
-    private Random _rng;
+    private DeterministicRng _rng;
 
     /// <summary>
     /// The per-turn RNG, reseeded at the top of every
@@ -64,7 +64,30 @@ public class GameOperations
     /// controller's AI scheduler can pass it to the injected chooser
     /// without owning the field itself.
     /// </summary>
-    public Random Rng => _rng;
+    public DeterministicRng Rng => _rng;
+
+    /// <summary>Cumulative RNG-consumption digest for the whole game:
+    /// folds every per-turn sub-seed at reseed time plus each retired
+    /// per-turn rng's <see cref="DeterministicRng.StreamHash"/>, and
+    /// live-folds the current turn's partial stream. Two runs of the
+    /// same seed and inputs produce the same digest on any platform —
+    /// the one-line cross-runtime determinism proof (issue #59).</summary>
+    public ulong RngStreamDigest => FoldDigest(_rngStreamDigest, _rng.StreamHash);
+
+    // FNV-1a-64 accumulator over (sub-seed, retired stream hash) pairs.
+    private ulong _rngStreamDigest = 0xCBF29CE484222325UL;
+
+    private static ulong FoldDigest(ulong digest, ulong value) =>
+        unchecked((digest ^ value) * 0x00000100000001B3UL);
+
+    /// <summary>Retire the current per-turn rng into the cumulative
+    /// digest and install a fresh one for the given sub-seed.</summary>
+    private void InstallRng(int subSeed)
+    {
+        _rngStreamDigest = FoldDigest(_rngStreamDigest, _rng.StreamHash);
+        _rngStreamDigest = FoldDigest(_rngStreamDigest, (uint)subSeed);
+        _rng = new DeterministicRng(subSeed);
+    }
 
     /// <summary>
     /// Per-turn one-shot guard so <see cref="GameController.HumanTurnStarted"/>
@@ -139,11 +162,11 @@ public class GameOperations
         // ReseedRngForCurrentTurn replaces it with the proper
         // per-turn reseed at the top of every StartPlayerTurn (and
         // on Resume) before any gameplay RNG consumption.
-        _rng = new Random(masterSeed);
+        _rng = new DeterministicRng(masterSeed);
     }
 
     /// <summary>
-    /// Reset <see cref="Rng"/> to a fresh <see cref="Random"/> derived
+    /// Reset <see cref="Rng"/> to a fresh <see cref="DeterministicRng"/> derived
     /// solely from the master seed and the current (turn, player)
     /// pair. The per-turn reseed that makes save/load deterministic:
     /// a save records only the master seed, and load reproduces
@@ -156,7 +179,7 @@ public class GameOperations
             _masterSeed,
             _state.Turns.TurnNumber,
             _state.Turns.CurrentPlayerIndex);
-        _rng = new Random(subSeed);
+        InstallRng(subSeed);
     }
 
     /// <summary>
@@ -640,19 +663,14 @@ public class GameOperations
         if (_state.Mode != GameMode.RisingTides) return;
         // The forecast is the FIRST per-turn RNG consumer (it runs right after
         // ReseedRngForCurrentTurn, before any capture or AI draw), so the draw
-        // lands at a fixed stream offset and reproduces on resume/replay. Only a
-        // randomized-selection game consumes it; legacy games pass null and the
-        // tie-break stays lex-min, leaving their RNG stream untouched.
+        // lands at a fixed stream offset and reproduces on resume/replay.
         _state.PendingTide = RisingTidesRules.ForecastSubmerge(
             _state, _state.Turns.CurrentPlayer.Id, budget: 1, rng: TideTieBreakRng());
     }
 
-    /// <summary>
-    /// The RNG to use for the Rising Tides equal-exposure tie-break, or null
-    /// for the historical lex-min order. Non-null only for a randomized-selection
-    /// game (so legacy games' streams are byte-for-byte unchanged).
-    /// </summary>
-    private Random? TideTieBreakRng() => _state.UseRandomizedSelection ? _rng : null;
+    /// <summary>The RNG for the Rising Tides equal-exposure tie-break:
+    /// the live per-turn stream.</summary>
+    private DeterministicRng TideTieBreakRng() => _rng;
 
     private void ApplyPendingTide()
     {
@@ -765,7 +783,7 @@ public class GameOperations
     {
         // Last round's perish markers wash away as the new raider turn opens.
         _state.Vikings.ClearSeaGraves();
-        _rng = new Random(MixSeed(_masterSeed, _state.Turns.TurnNumber, playerIndex: -1));
+        InstallRng(MixSeed(_masterSeed, _state.Turns.TurnNumber, playerIndex: -1));
         foreach (HexTile tile in _state.Grid.Tiles)
         {
             if (tile.Unit is { } u && u.Owner.IsNone)
@@ -974,6 +992,7 @@ public class GameOperations
             Log.Warn(Log.LogCategory.Turn,
                 $"[T{_state.Turns.TurnNumber}] GAME OVER — " +
                 $"winner: {winner?.Name ?? "(none)"}");
+            LogFinalDeterminismDigest();
             GameEndedFired = true;
             _onGameEnded();
             return;
@@ -984,9 +1003,21 @@ public class GameOperations
             Log.Warn(Log.LogCategory.Turn,
                 $"[T{_state.Turns.TurnNumber}] GAME OVER — " +
                 $"turn cap {_maxTurnNumber} exceeded (stasis)");
+            LogFinalDeterminismDigest();
             GameEndedFired = true;
             _onGameEnded();
         }
+    }
+
+    /// <summary>One-line determinism proof at game end: the final state
+    /// checksum plus the cumulative RNG-consumption digest. Two runs of
+    /// the same seed — on any machine or runtime — must print identical
+    /// lines (issue #59).</summary>
+    private void LogFinalDeterminismDigest()
+    {
+        Log.Info(Log.LogCategory.Determinism,
+            $"[determinism] final checksum={GameStateChecksum.Compute(_state)} " +
+            $"rngStreamHash={RngStreamDigest:X16}");
     }
 
     /// <summary>
@@ -1602,10 +1633,10 @@ public class GameOperations
     /// view (suppressed mid-batch by <see cref="SuppressMapRebuild"/>),
     /// then check for a mid-turn domination win and end the game if so.
     /// <paramref name="originCapital"/> is the acting territory's capital
-    /// (moves: the source territory's; buys: the purchasing one) — in a
-    /// <see cref="GameState.UseOriginMergeCapital"/> game a same-owner merge
-    /// keeps that capital. Honored only when the flag is set, so legacy
-    /// games reconcile with arguments identical to before the rule existed.
+    /// (moves: the source territory's; buys: the purchasing one) — a
+    /// same-owner merge keeps that capital outright. The largest-wins
+    /// tie-break applies only when no origin capital is among the merged
+    /// ones (capital-less origin, or a merge not caused by a unit action).
     /// </summary>
     public void HandleCapture(string actionDesc, HexCoord? originCapital = null)
     {
@@ -1616,8 +1647,8 @@ public class GameOperations
 
         long tRecompute = Log.Stamp();
         _state.Territories = TerritoryFinder.Recompute(
-            _state.Grid, previous, _state.Treasury, _state.UseRandomizedSelection,
-            _state.UseOriginMergeCapital ? originCapital : null);
+            _state.Grid, previous, _state.Treasury,
+            randomizeCapital: true, originCapital: originCapital);
         Log.Since(Log.LogCategory.Capture, "[hitch] TerritoryFinder.Recompute", tRecompute);
         Log.Debug(Log.LogCategory.Capture,
             $"[hitch] counts tiles={_state.Grid.Count} territories={_state.Territories.Count}");

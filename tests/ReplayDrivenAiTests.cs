@@ -42,7 +42,7 @@ public class ReplayDrivenAiTests
         var ai = new ReplayDrivenAi(beats, roster);
         var state = TrivialState(roster);
 
-        AiAction? first = ai.ChooseNextAction(state, Blue, new HashSet<HexCoord>(), new Random(1));
+        AiAction? first = ai.ChooseNextAction(state, Blue, new HashSet<HexCoord>(), new DeterministicRng(1));
         Assert.IsType<AiMoveAction>(first);
         var mv = (AiMoveAction)first!;
         Assert.Equal(new HexCoord(0, 0), mv.Source);
@@ -51,7 +51,7 @@ public class ReplayDrivenAiTests
         // Second call: next beat is EndTurn for Blue → return null,
         // advance cursor. The AI step machine reads null as "this
         // player is done."
-        AiAction? second = ai.ChooseNextAction(state, Blue, new HashSet<HexCoord>(), new Random(1));
+        AiAction? second = ai.ChooseNextAction(state, Blue, new HashSet<HexCoord>(), new DeterministicRng(1));
         Assert.Null(second);
     }
 
@@ -69,11 +69,11 @@ public class ReplayDrivenAiTests
 
         // Ask for Red's action — next beat is Blue's. Should return
         // null and NOT consume the Blue beat.
-        AiAction? red = ai.ChooseNextAction(state, Red, new HashSet<HexCoord>(), new Random(1));
+        AiAction? red = ai.ChooseNextAction(state, Red, new HashSet<HexCoord>(), new DeterministicRng(1));
         Assert.Null(red);
 
         // Now ask for Blue — the beat should still be there.
-        AiAction? blue = ai.ChooseNextAction(state, Blue, new HashSet<HexCoord>(), new Random(1));
+        AiAction? blue = ai.ChooseNextAction(state, Blue, new HashSet<HexCoord>(), new DeterministicRng(1));
         Assert.IsType<AiMoveAction>(blue);
     }
 
@@ -84,7 +84,7 @@ public class ReplayDrivenAiTests
         var ai = new ReplayDrivenAi(new List<ReplayBeat>(), roster);
         var state = TrivialState(roster);
 
-        Assert.Null(ai.ChooseNextAction(state, Blue, new HashSet<HexCoord>(), new Random(1)));
+        Assert.Null(ai.ChooseNextAction(state, Blue, new HashSet<HexCoord>(), new DeterministicRng(1)));
     }
 
     [Fact]
@@ -99,11 +99,11 @@ public class ReplayDrivenAiTests
         var ai = new ReplayDrivenAi(beats, roster);
         var state = TrivialState(roster);
 
-        Assert.IsType<AiMoveAction>(ai.ChooseNextAction(state, Blue, new HashSet<HexCoord>(), new Random(1)));
-        Assert.Null(ai.ChooseNextAction(state, Blue, new HashSet<HexCoord>(), new Random(1)));
+        Assert.IsType<AiMoveAction>(ai.ChooseNextAction(state, Blue, new HashSet<HexCoord>(), new DeterministicRng(1)));
+        Assert.Null(ai.ChooseNextAction(state, Blue, new HashSet<HexCoord>(), new DeterministicRng(1)));
 
         ai.Reset();
-        Assert.IsType<AiMoveAction>(ai.ChooseNextAction(state, Blue, new HashSet<HexCoord>(), new Random(1)));
+        Assert.IsType<AiMoveAction>(ai.ChooseNextAction(state, Blue, new HashSet<HexCoord>(), new DeterministicRng(1)));
     }
 
     [Fact]
@@ -116,7 +116,7 @@ public class ReplayDrivenAiTests
                                   From = new HexCoord(2, 3), To = new HexCoord(4, 5) },
         };
         var ai = new ReplayDrivenAi(beats, roster);
-        var result = (AiMoveAction)ai.ChooseNextAction(TrivialState(roster), Blue, new HashSet<HexCoord>(), new Random(1))!;
+        var result = (AiMoveAction)ai.ChooseNextAction(TrivialState(roster), Blue, new HashSet<HexCoord>(), new DeterministicRng(1))!;
         Assert.Equal(new HexCoord(2, 3), result.Source);
         Assert.Equal(new HexCoord(4, 5), result.Destination);
     }
@@ -132,7 +132,7 @@ public class ReplayDrivenAiTests
                                  Level = UnitLevel.Soldier },
         };
         var ai = new ReplayDrivenAi(beats, roster);
-        var result = (AiBuyUnitAction)ai.ChooseNextAction(TrivialState(roster), Blue, new HashSet<HexCoord>(), new Random(1))!;
+        var result = (AiBuyUnitAction)ai.ChooseNextAction(TrivialState(roster), Blue, new HashSet<HexCoord>(), new DeterministicRng(1))!;
         Assert.Equal(new HexCoord(1, 1), result.Capital);
         Assert.Equal(new HexCoord(2, 2), result.Destination);
         Assert.Equal(UnitLevel.Soldier, result.Level);
@@ -148,7 +148,7 @@ public class ReplayDrivenAiTests
                                         Capital = new HexCoord(1, 1), To = new HexCoord(3, 3) },
         };
         var ai = new ReplayDrivenAi(beats, roster);
-        var result = (AiBuildTowerAction)ai.ChooseNextAction(TrivialState(roster), Blue, new HashSet<HexCoord>(), new Random(1))!;
+        var result = (AiBuildTowerAction)ai.ChooseNextAction(TrivialState(roster), Blue, new HashSet<HexCoord>(), new DeterministicRng(1))!;
         Assert.Equal(new HexCoord(1, 1), result.Capital);
         Assert.Equal(new HexCoord(3, 3), result.Destination);
     }
@@ -163,7 +163,7 @@ public class ReplayDrivenAiTests
                                             Target = new HexCoord(4, 4) },
         };
         var ai = new ReplayDrivenAi(beats, roster);
-        var result = (AiLongPressRallyAction)ai.ChooseNextAction(TrivialState(roster), Blue, new HashSet<HexCoord>(), new Random(1))!;
+        var result = (AiLongPressRallyAction)ai.ChooseNextAction(TrivialState(roster), Blue, new HashSet<HexCoord>(), new DeterministicRng(1))!;
         Assert.Equal(new HexCoord(4, 4), result.Target);
     }
 
@@ -176,7 +176,7 @@ public class ReplayDrivenAiTests
             new ReplayClaimVictoryBeat { Index = 0, Turn = 1, Actor = 1, ThresholdPercent = 75 },
         };
         var ai = new ReplayDrivenAi(beats, roster);
-        var result = (AiClaimVictoryAction)ai.ChooseNextAction(TrivialState(roster), Blue, new HashSet<HexCoord>(), new Random(1))!;
+        var result = (AiClaimVictoryAction)ai.ChooseNextAction(TrivialState(roster), Blue, new HashSet<HexCoord>(), new DeterministicRng(1))!;
         Assert.Equal(75, result.ThresholdPercent);
     }
 
@@ -189,7 +189,7 @@ public class ReplayDrivenAiTests
             new ReplayDismissClaimBeat { Index = 0, Turn = 1, Actor = 1, ThresholdPercent = 50 },
         };
         var ai = new ReplayDrivenAi(beats, roster);
-        var result = (AiDismissClaimAction)ai.ChooseNextAction(TrivialState(roster), Blue, new HashSet<HexCoord>(), new Random(1))!;
+        var result = (AiDismissClaimAction)ai.ChooseNextAction(TrivialState(roster), Blue, new HashSet<HexCoord>(), new DeterministicRng(1))!;
         Assert.Equal(50, result.ThresholdPercent);
     }
 
@@ -202,7 +202,7 @@ public class ReplayDrivenAiTests
             new ReplayDismissDefeatBeat { Index = 0, Turn = 1, Actor = 1 },
         };
         var ai = new ReplayDrivenAi(beats, roster);
-        AiAction? result = ai.ChooseNextAction(TrivialState(roster), Blue, new HashSet<HexCoord>(), new Random(1));
+        AiAction? result = ai.ChooseNextAction(TrivialState(roster), Blue, new HashSet<HexCoord>(), new DeterministicRng(1));
         Assert.IsType<AiDismissDefeatAction>(result);
     }
 
@@ -259,7 +259,7 @@ public class ReplayDrivenAiTests
         // script[0] (Red's beat) — TutorialPreview's separate cursor
         // advance didn't reach the AI.
         AiAction? blueAction = ai.ChooseNextAction(
-            state, Blue, new HashSet<HexCoord>(), new Random(1));
+            state, Blue, new HashSet<HexCoord>(), new DeterministicRng(1));
 
         Assert.IsType<AiMoveAction>(blueAction);
         var mv = (AiMoveAction)blueAction!;

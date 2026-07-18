@@ -1,6 +1,6 @@
 {
-  "FormatVersion": 18,
-  "SavedAtUnix": 1783990978,
+  "FormatVersion": 19,
+  "SavedAtUnix": 1784395885,
   "SlotName": "instructions_commander",
   "MasterSeed": 2106881103,
   "TurnNumber": 0,
@@ -5271,6 +5271,7 @@
   "Tutorial": {
     "Title": ""
   },
+  "ReplayVersion": 1,
   "Replay": {
     "InitialState": {
       "TurnNumber": 1,
@@ -9151,7 +9152,5 @@
         "ToR": 12
       }
     ]
-  },
-  "UseRandomizedSelection": false,
-  "UseOriginMergeCapital": false
+  }
 }

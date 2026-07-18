@@ -74,7 +74,7 @@ public static class ComputerAi
         PlayerId forPlayer,
         HashSet<HexCoord> visitedCapitals,
         HashSet<HexCoord> repositionedUnits,
-        Random rng)
+        DeterministicRng rng)
     {
         long methodStart = Log.Stamp();
         var prof = new AiSearchProfile();

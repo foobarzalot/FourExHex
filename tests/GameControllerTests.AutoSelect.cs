@@ -113,7 +113,7 @@ public partial class GameControllerTests
         session.ClaimVictoryPromptedHighestThreshold[blue.Id] = 90;
         var map = new MockHexMapView();
         var hud = new MockHudView();
-        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> v, HashSet<HexCoord> ru, Random r) => null;
+        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> v, HashSet<HexCoord> ru, DeterministicRng r) => null;
         var controller = new GameController(
             state, session, map, hud, seed: 0,
             aiChooser: Chooser, aiPacer: new SynchronousAiPacer());

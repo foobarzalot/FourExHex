@@ -195,7 +195,7 @@ public class UndoReplayBeatSyncTests
     public void StressInterleavedRandomOps_StaysInSyncAfterEveryOp()
     {
         var f = new Fixture(maxTurnNumber: 200);
-        var rng = new Random(42);
+        var rng = new DeterministicRng(42);
 
         // Keep both capitals funded so buys/towers regularly succeed.
         foreach (Territory t in f.State.Territories.Where(t => t.HasCapital))
@@ -211,7 +211,7 @@ public class UndoReplayBeatSyncTests
         for (int i = 0; i < 400; i++)
         {
             if (f.Session.IsGameOver) break;
-            int op = rng.Next(12);
+            int op = rng.NextBounded(12);
             string context;
             switch (op)
             {
@@ -219,8 +219,8 @@ public class UndoReplayBeatSyncTests
                 case 1:
                 case 2:
                 case 3: // random tile click (legal and illegal alike)
-                    int col = rng.Next(5);
-                    int row = rng.Next(2);
+                    int col = rng.NextBounded(5);
+                    int row = rng.NextBounded(2);
                     context = $"op {i}: click ({col},{row})";
                     f.Map.SimulateClick(f.Tile(col, row));
                     break;
@@ -229,7 +229,7 @@ public class UndoReplayBeatSyncTests
                     f.Hud.ClickBuyRecruit();
                     break;
                 case 5:
-                    UnitLevel level = levels[rng.Next(levels.Length)];
+                    UnitLevel level = levels[rng.NextBounded(levels.Length)];
                     context = $"op {i}: buy {level}";
                     f.Hud.ClickBuyUnit(level);
                     break;

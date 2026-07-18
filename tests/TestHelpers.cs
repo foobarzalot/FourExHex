@@ -107,8 +107,8 @@ public static class TestHelpers
         int currentPlayerIndex = 0,
         int turnNumber = 1,
         int? seed = null,
-        Func<GameState, PlayerId, HashSet<HexCoord>, HashSet<HexCoord>, Random, AiAction?>? aiChooser = null,
-        Func<GameState, PlayerId, HashSet<HexCoord>, HashSet<HexCoord>, Random, AiAction?>? automateChooser = null,
+        Func<GameState, PlayerId, HashSet<HexCoord>, HashSet<HexCoord>, DeterministicRng, AiAction?>? aiChooser = null,
+        Func<GameState, PlayerId, HashSet<HexCoord>, HashSet<HexCoord>, DeterministicRng, AiAction?>? automateChooser = null,
         Func<bool>? automateIsInstantMode = null,
         IAiPacer? aiPacer = null,
         int maxTurnNumber = int.MaxValue,
@@ -122,8 +122,7 @@ public static class TestHelpers
         Func<bool>? isReplayPaused = null,
         IReadOnlySet<HexCoord>? waterCoords = null,
         Action<HexGrid>? beforeTerritories = null,
-        Action<GameState>? beforeStart = null,
-        bool useOriginMergeCapital = false)
+        Action<GameState>? beforeStart = null)
     {
         players ??= new List<Player>
         {
@@ -152,8 +151,7 @@ public static class TestHelpers
         var state = new GameState(
             grid, territories, players,
             new TurnState(players, currentPlayerIndex, turnNumber),
-            new Treasury(), waterCoords,
-            useOriginMergeCapital: useOriginMergeCapital);
+            new Treasury(), waterCoords);
         var session = new SessionState();
         if (suppressClaimVictory)
         {

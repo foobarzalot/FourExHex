@@ -80,7 +80,7 @@ public class InstantAiTests
             red, blue, captures);
     }
 
-    private static Func<GameState, PlayerId, HashSet<HexCoord>, HashSet<HexCoord>, Random, AiAction?>
+    private static Func<GameState, PlayerId, HashSet<HexCoord>, HashSet<HexCoord>, DeterministicRng, AiAction?>
         SequencedCaptureChooser(PlayerId aiColor, List<(HexCoord From, HexCoord To)> captures)
     {
         int idx = 0;
@@ -95,7 +95,7 @@ public class InstantAiTests
     private static GameController NewController(
         GameState state, SessionState session, MockHexMapView map, MockHudView hud,
         QueuedAiPacer pacer,
-        Func<GameState, PlayerId, HashSet<HexCoord>, HashSet<HexCoord>, Random, AiAction?>? chooser,
+        Func<GameState, PlayerId, HashSet<HexCoord>, HashSet<HexCoord>, DeterministicRng, AiAction?>? chooser,
         bool instant)
         => NewController(state, session, map, hud, pacer, chooser,
             aiSilentMode: instant ? () => true : (Func<bool>?)null);
@@ -106,7 +106,7 @@ public class InstantAiTests
     private static GameController NewController(
         GameState state, SessionState session, MockHexMapView map, MockHudView hud,
         QueuedAiPacer pacer,
-        Func<GameState, PlayerId, HashSet<HexCoord>, HashSet<HexCoord>, Random, AiAction?>? chooser,
+        Func<GameState, PlayerId, HashSet<HexCoord>, HashSet<HexCoord>, DeterministicRng, AiAction?>? chooser,
         Func<bool>? aiSilentMode)
     {
         return new GameController(
@@ -151,7 +151,7 @@ public class InstantAiTests
     {
         var (state, session, map, hud, _, _) = BuildKillScenario();
         // Passive AI: ends its turn immediately, handing back to human.
-        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> v, HashSet<HexCoord> ru, Random r) => null;
+        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> v, HashSet<HexCoord> ru, DeterministicRng r) => null;
         var pacer = new QueuedAiPacer();
         var c = NewController(state, session, map, hud, pacer, Chooser, instant: true);
         c.StartGame();
@@ -172,7 +172,7 @@ public class InstantAiTests
     public void InstantAi_ShowsOpponentsOverlay_DuringBatch_ClearedOnHandBack()
     {
         var (state, session, map, hud, _, _) = BuildKillScenario();
-        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> v, HashSet<HexCoord> ru, Random r) => null;
+        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> v, HashSet<HexCoord> ru, DeterministicRng r) => null;
         var pacer = new QueuedAiPacer();
         var c = NewController(state, session, map, hud, pacer, Chooser, instant: true);
         c.StartGame();
@@ -196,7 +196,7 @@ public class InstantAiTests
         // AI speed, not only the silent Instant batch. The view is NOT
         // silenced for paced AI.
         var (state, session, map, hud, _, _) = BuildKillScenario();
-        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> v, HashSet<HexCoord> ru, Random r) => null;
+        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> v, HashSet<HexCoord> ru, DeterministicRng r) => null;
         var pacer = new QueuedAiPacer();
         var c = NewController(state, session, map, hud, pacer, Chooser, instant: false);
         c.StartGame();
@@ -218,7 +218,7 @@ public class InstantAiTests
         var (state, session, map, hud, _, _) = BuildKillScenario();
         // Always-move chooser: the batch never self-terminates, so it
         // stays parked on the pacer for the input assertion.
-        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> v, HashSet<HexCoord> ru, Random r) =>
+        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> v, HashSet<HexCoord> ru, DeterministicRng r) =>
             new AiMoveAction(HexCoord.FromOffset(2, 0), HexCoord.FromOffset(3, 0));
         var pacer = new QueuedAiPacer();
         var c = NewController(state, session, map, hud, pacer, Chooser, instant: true);
@@ -335,7 +335,7 @@ public class InstantAiTests
         var (state, session, map, hud, red, _) = BuildKillScenario();
         AiAction? scripted = new AiMoveAction(
             HexCoord.FromOffset(2, 0), HexCoord.FromOffset(3, 0));
-        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> v, HashSet<HexCoord> ru, Random r)
+        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> v, HashSet<HexCoord> ru, DeterministicRng r)
         {
             AiAction? next = scripted;
             scripted = null;
@@ -455,9 +455,9 @@ public class InstantAiTests
         bool instantFlag = false;
         int blueChoices = 0;
         var (state, session, map, hud, _, blue, captures) = BuildMultiCaptureScenario();
-        Func<GameState, PlayerId, HashSet<HexCoord>, HashSet<HexCoord>, Random, AiAction?> baseChooser =
+        Func<GameState, PlayerId, HashSet<HexCoord>, HashSet<HexCoord>, DeterministicRng, AiAction?> baseChooser =
             SequencedCaptureChooser(blue.Id, captures);
-        AiAction? Counting(GameState s, PlayerId col, HashSet<HexCoord> v, HashSet<HexCoord> ru, Random r)
+        AiAction? Counting(GameState s, PlayerId col, HashSet<HexCoord> v, HashSet<HexCoord> ru, DeterministicRng r)
         {
             AiAction? a = baseChooser(s, col, v, ru, r);
             if (col == blue.Id && a != null) blueChoices++;
@@ -489,7 +489,7 @@ public class InstantAiTests
         var (state, session, map, hud, red, _) = BuildKillScenario();
         AiAction? scripted = new AiMoveAction(
             HexCoord.FromOffset(2, 0), HexCoord.FromOffset(3, 0));
-        AiAction? Chooser(GameState s, PlayerId col, HashSet<HexCoord> v, HashSet<HexCoord> ru, Random r)
+        AiAction? Chooser(GameState s, PlayerId col, HashSet<HexCoord> v, HashSet<HexCoord> ru, DeterministicRng r)
         {
             AiAction? next = scripted;
             scripted = null;

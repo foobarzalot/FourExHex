@@ -165,18 +165,18 @@ public class TutorialPreviewCursorTests
 
         // Asking for Blue (or any actor) while cursor sits on a
         // tutorial-only beat must return null AND not advance.
-        AiAction? first = ai.ChooseNextAction(state, Blue, new HashSet<HexCoord>(), new Random(1));
+        AiAction? first = ai.ChooseNextAction(state, Blue, new HashSet<HexCoord>(), new DeterministicRng(1));
         Assert.Null(first);
         Assert.Equal(0, cursor.Index);
 
-        AiAction? red = ai.ChooseNextAction(state, Red, new HashSet<HexCoord>(), new Random(1));
+        AiAction? red = ai.ChooseNextAction(state, Red, new HashSet<HexCoord>(), new DeterministicRng(1));
         Assert.Null(red);
         Assert.Equal(0, cursor.Index);
 
         // After the narration driver advances past the display-text
         // beat, the AI sees Blue's move.
         cursor.Advance();
-        AiAction? blue = ai.ChooseNextAction(state, Blue, new HashSet<HexCoord>(), new Random(1));
+        AiAction? blue = ai.ChooseNextAction(state, Blue, new HashSet<HexCoord>(), new DeterministicRng(1));
         Assert.IsType<AiMoveAction>(blue);
         Assert.Equal(2, cursor.Index);
     }

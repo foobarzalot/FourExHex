@@ -340,7 +340,7 @@ public class CapitalReconcilerTests
         var raw = new[] { T(null, allCoords) };
 
         var result = CapitalReconciler.Reconcile(
-            raw, old, grid, randomize: true, originCapital: new HexCoord(5, 5));
+            raw, old, grid, originCapital: new HexCoord(5, 5));
 
         Assert.Single(result);
         Assert.Equal(new HexCoord(5, 5), result[0].Capital);
@@ -512,23 +512,6 @@ public class CapitalReconcilerTests
 
         Assert.True(sawNonLexMin,
             "Randomized reconcile never deviated from lex-min across 12 boards.");
-    }
-
-    [Fact]
-    public void Reconcile_RandomizeFalse_StillLexMin()
-    {
-        // The default (randomize: false) path is unchanged: lex-min placement.
-        HexCoord[] coords =
-        {
-            new HexCoord(0, 0), new HexCoord(1, 0),
-            new HexCoord(2, 0), new HexCoord(3, 0),
-        };
-        HexGrid grid = BuildGrid(coords);
-
-        var result = CapitalReconciler.Reconcile(
-            new[] { T(null, coords) }, new List<Territory>(), grid, randomize: false);
-
-        Assert.Equal(new HexCoord(0, 0), result[0].Capital);
     }
 
     [Fact]

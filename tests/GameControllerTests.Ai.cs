@@ -24,7 +24,7 @@ public partial class GameControllerTests
         params AiAction?[] actions)
     {
         int index = 0;
-        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> visited, HashSet<HexCoord> ru, Random rng)
+        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> visited, HashSet<HexCoord> ru, DeterministicRng rng)
         {
             if (index >= actions.Length) return null;
             return actions[index++];
@@ -646,7 +646,7 @@ public partial class GameControllerTests
 
         AiAction? scripted = new AiMoveAction(
             HexCoord.FromOffset(2, 0), HexCoord.FromOffset(3, 0));
-        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> v, HashSet<HexCoord> ru, Random r)
+        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> v, HashSet<HexCoord> ru, DeterministicRng r)
         {
             AiAction? next = scripted;
             scripted = null;
@@ -681,7 +681,7 @@ public partial class GameControllerTests
 
         AiAction? scripted = new AiMoveAction(
             HexCoord.FromOffset(2, 0), HexCoord.FromOffset(3, 0));
-        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> v, HashSet<HexCoord> ru, Random r)
+        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> v, HashSet<HexCoord> ru, DeterministicRng r)
         {
             AiAction? next = scripted;
             scripted = null;
@@ -710,7 +710,7 @@ public partial class GameControllerTests
 
         AiAction? scripted = new AiMoveAction(
             HexCoord.FromOffset(2, 0), HexCoord.FromOffset(3, 0));
-        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> v, HashSet<HexCoord> ru, Random r)
+        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> v, HashSet<HexCoord> ru, DeterministicRng r)
         {
             AiAction? next = scripted;
             scripted = null;

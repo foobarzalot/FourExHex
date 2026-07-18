@@ -7,10 +7,9 @@ using Xunit;
 namespace FourExHex.Tests;
 
 /// <summary>
-/// Origin-capital merge rule (#117): a human move that merges two
-/// same-owner territories keeps the capital of the territory the moving
-/// unit originated from — but only in a <see cref="GameState.UseOriginMergeCapital"/>
-/// game. Legacy games keep the largest-old-territory rule.
+/// Origin-capital merge rule: a human move that merges two same-owner
+/// territories keeps the capital of the territory the moving unit
+/// originated from — deterministically, regardless of territory sizes.
 /// </summary>
 public partial class GameControllerTests
 {
@@ -21,7 +20,7 @@ public partial class GameControllerTests
     /// merges A and B; B (the origin) is the smaller territory, so the
     /// origin rule and the largest rule pick different survivors.
     /// </summary>
-    private static ControllerHarness BuildMergeStrip(bool useOriginMergeCapital)
+    private static ControllerHarness BuildMergeStrip()
     {
         var red = new Player("Red", PlayerId.FromIndex(0));
         var blue = new Player("Blue", PlayerId.FromIndex(1));
@@ -35,14 +34,13 @@ public partial class GameControllerTests
             },
             beforeTerritories: grid =>
                 grid.Get(HexCoord.FromOffset(4, 0))!.Occupant =
-                    new Unit(PlayerId.FromIndex(0)),
-            useOriginMergeCapital: useOriginMergeCapital);
+                    new Unit(PlayerId.FromIndex(0)));
     }
 
     [Fact]
     public void HumanMoveMerge_OriginRule_KeepsOriginCapital_EvenThoughSmaller()
     {
-        ControllerHarness h = BuildMergeStrip(useOriginMergeCapital: true);
+        ControllerHarness h = BuildMergeStrip();
         HexCoord capitalA = HexCoord.FromOffset(0, 0);
         HexCoord capitalB = HexCoord.FromOffset(5, 0);
         Assert.IsType<Capital>(h.State.Grid.Get(capitalA)!.Occupant);
@@ -65,7 +63,7 @@ public partial class GameControllerTests
     [Fact]
     public void HumanBuyMerge_OriginRule_KeepsPurchasingTerritoryCapital()
     {
-        ControllerHarness h = BuildMergeStrip(useOriginMergeCapital: true);
+        ControllerHarness h = BuildMergeStrip();
         HexCoord capitalA = HexCoord.FromOffset(0, 0);
         HexCoord capitalB = HexCoord.FromOffset(5, 0);
 
@@ -82,19 +80,4 @@ public partial class GameControllerTests
         Assert.Null(h.State.Grid.Get(capitalA)!.Occupant);
     }
 
-    [Fact]
-    public void HumanMoveMerge_LegacyGame_KeepsLargestTerritoryCapital()
-    {
-        ControllerHarness h = BuildMergeStrip(useOriginMergeCapital: false);
-        HexCoord capitalA = HexCoord.FromOffset(0, 0);
-        HexCoord capitalB = HexCoord.FromOffset(5, 0);
-
-        h.Map.SimulateClick(h.State.Grid.Get(HexCoord.FromOffset(4, 0))!);
-        h.Map.SimulateClick(h.State.Grid.Get(HexCoord.FromOffset(3, 0))!);
-
-        Territory merged = h.State.Territories.Single(
-            t => t.Owner == h.Players[0].Id && t.Size > 1);
-        Assert.Equal(capitalA, merged.Capital);
-        Assert.Null(h.State.Grid.Get(capitalB)!.Occupant);
-    }
 }

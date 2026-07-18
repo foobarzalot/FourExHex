@@ -273,7 +273,7 @@ public class MapGeneratorTests
     [InlineData(9999)]
     public void GeneratedMapHasNoNeutralTiles(int seed)
     {
-        // Neutral (unowned) hexes are editor-only. Random
+        // Neutral (unowned) hexes are editor-only. DeterministicRng
         // generation must assign every land tile to a real player.
         MapGenResult result = Build(seed);
         Assert.All(result.Grid.Tiles, t => Assert.False(t.Owner.IsNone));

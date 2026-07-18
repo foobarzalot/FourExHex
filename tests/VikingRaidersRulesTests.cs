@@ -135,8 +135,8 @@ public class VikingRaidersRulesTests
         GameState state = MakeSpawnState();
         var comp = new List<UnitLevel> { UnitLevel.Recruit, UnitLevel.Soldier };
 
-        IReadOnlyList<SeaViking> a = VikingRaidersRules.ChooseSpawns(state, comp, new Random(7));
-        IReadOnlyList<SeaViking> b = VikingRaidersRules.ChooseSpawns(state, comp, new Random(7));
+        IReadOnlyList<SeaViking> a = VikingRaidersRules.ChooseSpawns(state, comp, new DeterministicRng(7));
+        IReadOnlyList<SeaViking> b = VikingRaidersRules.ChooseSpawns(state, comp, new DeterministicRng(7));
 
         Assert.Equal(a, b);
     }
@@ -148,7 +148,7 @@ public class VikingRaidersRulesTests
         var comp = new List<UnitLevel> { UnitLevel.Recruit, UnitLevel.Recruit, UnitLevel.Recruit };
         IReadOnlyList<HexCoord> coastal = VikingRaidersRules.CoastalWaterCoords(state);
 
-        IReadOnlyList<SeaViking> spawns = VikingRaidersRules.ChooseSpawns(state, comp, new Random(7));
+        IReadOnlyList<SeaViking> spawns = VikingRaidersRules.ChooseSpawns(state, comp, new DeterministicRng(7));
 
         Assert.Equal(comp.Count, spawns.Count);
         Assert.Equal(spawns.Count, spawns.Select(s => s.Coord).Distinct().Count());
@@ -164,7 +164,7 @@ public class VikingRaidersRulesTests
         state.Vikings.AddAtSea(new SeaViking(occupied, UnitLevel.Recruit));
         var comp = new List<UnitLevel> { UnitLevel.Recruit, UnitLevel.Recruit, UnitLevel.Recruit };
 
-        IReadOnlyList<SeaViking> spawns = VikingRaidersRules.ChooseSpawns(state, comp, new Random(7));
+        IReadOnlyList<SeaViking> spawns = VikingRaidersRules.ChooseSpawns(state, comp, new DeterministicRng(7));
 
         Assert.Equal(2, spawns.Count); // 3 coastal coords, 1 occupied
         Assert.DoesNotContain(spawns, s => s.Coord == occupied);
@@ -176,7 +176,7 @@ public class VikingRaidersRulesTests
         GameState state = MakeSpawnState();
         var comp = Enumerable.Repeat(UnitLevel.Recruit, 10).ToList();
 
-        IReadOnlyList<SeaViking> spawns = VikingRaidersRules.ChooseSpawns(state, comp, new Random(7));
+        IReadOnlyList<SeaViking> spawns = VikingRaidersRules.ChooseSpawns(state, comp, new DeterministicRng(7));
 
         Assert.Equal(3, spawns.Count);
     }
@@ -187,7 +187,7 @@ public class VikingRaidersRulesTests
         GameState state = MakeSpawnState();
         var comp = new List<UnitLevel> { UnitLevel.Captain, UnitLevel.Soldier, UnitLevel.Recruit };
 
-        IReadOnlyList<SeaViking> spawns = VikingRaidersRules.ChooseSpawns(state, comp, new Random(7));
+        IReadOnlyList<SeaViking> spawns = VikingRaidersRules.ChooseSpawns(state, comp, new DeterministicRng(7));
 
         Assert.Equal(
             comp.OrderBy(l => l).ToList(),
@@ -233,7 +233,7 @@ public class VikingRaidersRulesTests
         for (int seed = 1; seed <= 5; seed++)
         {
             IReadOnlyList<SeaViking> spawns = VikingRaidersRules.ChooseSpawns(
-                state, new List<UnitLevel> { UnitLevel.Recruit }, new Random(seed));
+                state, new List<UnitLevel> { UnitLevel.Recruit }, new DeterministicRng(seed));
             Assert.Equal(best, Assert.Single(spawns).Coord);
         }
     }
@@ -255,9 +255,9 @@ public class VikingRaidersRulesTests
         Assert.Equal(2, VikingRaidersRules.DisembarkTargets(state, defended, UnitLevel.Captain).Count);
 
         IReadOnlyList<SeaViking> recruitSpawn = VikingRaidersRules.ChooseSpawns(
-            state, new List<UnitLevel> { UnitLevel.Recruit }, new Random(7));
+            state, new List<UnitLevel> { UnitLevel.Recruit }, new DeterministicRng(7));
         IReadOnlyList<SeaViking> captainSpawn = VikingRaidersRules.ChooseSpawns(
-            state, new List<UnitLevel> { UnitLevel.Captain }, new Random(7));
+            state, new List<UnitLevel> { UnitLevel.Captain }, new DeterministicRng(7));
 
         Assert.NotEqual(defended, Assert.Single(recruitSpawn).Coord);
         Assert.Equal(defended, Assert.Single(captainSpawn).Coord);
@@ -285,7 +285,7 @@ public class VikingRaidersRulesTests
         GameState state = MakeState(grid, territories, water);
 
         IReadOnlyList<SeaViking> spawns = VikingRaidersRules.ChooseSpawns(
-            state, new List<UnitLevel> { UnitLevel.Recruit, UnitLevel.Recruit }, new Random(7));
+            state, new List<UnitLevel> { UnitLevel.Recruit, UnitLevel.Recruit }, new DeterministicRng(7));
 
         Assert.Equal(2, spawns.Count);
         var landingsA = VikingRaidersRules.DisembarkTargets(
@@ -321,7 +321,7 @@ public class VikingRaidersRulesTests
             IReadOnlyList<SeaViking> spawns = VikingRaidersRules.ChooseSpawns(
                 state,
                 new List<UnitLevel> { UnitLevel.Recruit, UnitLevel.Recruit },
-                new Random(seed));
+                new DeterministicRng(seed));
             Assert.Contains(spawns, s => s.Coord == c);
         }
     }
@@ -341,7 +341,7 @@ public class VikingRaidersRulesTests
         IReadOnlyList<SeaViking> spawns = VikingRaidersRules.ChooseSpawns(
             state,
             new List<UnitLevel> { UnitLevel.Recruit, UnitLevel.Recruit },
-            new Random(7));
+            new DeterministicRng(7));
 
         Assert.Equal(2, spawns.Count);
         Assert.Contains(spawns, s => s.Coord == a);
@@ -365,7 +365,7 @@ public class VikingRaidersRulesTests
         GameState state = MakeState(grid, territories, water);
 
         IReadOnlyList<SeaViking> spawns = VikingRaidersRules.ChooseSpawns(
-            state, new List<UnitLevel> { UnitLevel.Recruit, UnitLevel.Recruit }, new Random(7));
+            state, new List<UnitLevel> { UnitLevel.Recruit, UnitLevel.Recruit }, new DeterministicRng(7));
 
         Assert.Equal(2, spawns.Count);
     }

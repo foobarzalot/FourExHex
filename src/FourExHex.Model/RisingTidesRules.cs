@@ -77,7 +77,7 @@ public static class RisingTidesRules
     /// that will submerge.
     /// </summary>
     public static IReadOnlyList<TideStep> ForecastSubmerge(
-        GameState state, PlayerId owner, int budget, Random? rng = null)
+        GameState state, PlayerId owner, int budget, DeterministicRng? rng = null)
     {
         IReadOnlyList<HexCoord> shore = ShoreTilesOf(state.Grid, owner);
         if (shore.Count == 0 || budget <= 0) return System.Array.Empty<TideStep>();
@@ -159,7 +159,7 @@ public static class RisingTidesRules
             // relocate/strip orphaned capitals, drop occupants on vanished
             // tiles, and sync the treasury.
             state.Territories = TerritoryFinder.Recompute(
-                state.Grid, state.Territories, state.Treasury, state.UseRandomizedSelection);
+                state.Grid, state.Territories, state.Treasury, randomizeCapital: true);
         }
 
         return anyChange;
@@ -172,7 +172,7 @@ public static class RisingTidesRules
     /// to <see cref="ForecastSubmerge"/> for the equal-exposure tie-break.
     /// Returns true iff anything changed.
     /// </summary>
-    public static bool SubmergeStep(GameState state, PlayerId owner, int budget, Random? rng = null)
+    public static bool SubmergeStep(GameState state, PlayerId owner, int budget, DeterministicRng? rng = null)
         => ApplyForecast(state, owner, ForecastSubmerge(state, owner, budget, rng));
 
     /// <summary>
@@ -181,12 +181,12 @@ public static class RisingTidesRules
     /// is deterministic (callers pass an ascending-coord group), so a seeded rng
     /// yields a reproducible permutation.
     /// </summary>
-    private static List<HexCoord> Shuffle(IEnumerable<HexCoord> source, Random rng)
+    private static List<HexCoord> Shuffle(IEnumerable<HexCoord> source, DeterministicRng rng)
     {
         var list = new List<HexCoord>(source);
         for (int i = list.Count - 1; i > 0; i--)
         {
-            int j = rng.Next(i + 1);
+            int j = rng.NextBounded(i + 1);
             (list[i], list[j]) = (list[j], list[i]);
         }
         return list;

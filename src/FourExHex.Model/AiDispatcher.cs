@@ -26,7 +26,7 @@ public static class AiDispatcher
         PlayerId forPlayer,
         HashSet<HexCoord> visitedCapitals,
         HashSet<HexCoord> repositionedUnits,
-        Random rng)
+        DeterministicRng rng)
     {
         // The controller guarantees forPlayer == CurrentPlayer.Id
         // at the time of the call, so we can look up kind off the

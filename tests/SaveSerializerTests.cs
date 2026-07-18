@@ -146,9 +146,9 @@ public class SaveSerializerTests
     }
 
     [Fact]
-    public void CurrentFormatVersion_IsEighteen()
+    public void CurrentFormatVersion_IsNineteen()
     {
-        Assert.Equal(18, SaveSerializer.CurrentFormatVersion);
+        Assert.Equal(19, SaveSerializer.CurrentFormatVersion);
     }
 
     // --- Viking Raiders state -------------------------------------------------
@@ -697,7 +697,7 @@ public class SaveSerializerTests
     [Fact]
     public void Serialize_NullOriginMapName_RoundTripsAsNull()
     {
-        // Procedural (Random Map) games leave the field unset so the
+        // Procedural (DeterministicRng Map) games leave the field unset so the
         // bottom-left label falls back to the seed.
         (GameState state, IReadOnlyList<Player> players) = BuildRichState();
 

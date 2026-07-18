@@ -19,6 +19,8 @@ Four C# projects, layered Model → Controller → game (test project alongside)
 
 Enforced by `tests/NoFloatsInModelOrControllerTests.cs`: reflects over both assemblies, asserts no signature or method body mentions `float`/`double` (incl. `Nullable<>`, arrays, generic args), failing `dotnet test` with every offender listed.
 
+**Game-state RNG is `DeterministicRng`** (`src/FourExHex.Model/DeterministicRng.cs`): a splitmix64 generator with unbiased integer-only bounded draws (Lemire multiply-high with rejection) — `NextUInt()`, `NextBounded(max)`, `NextBounded(min, max)`, `NextFullRangeSeed()`, plus a `StreamHash` FNV-1a-64 digest of the consumption trace. `System.Random` is banned from Model and Controller (its `Next(max)` overloads hide a BCL `double` multiply), enforced by `tests/NoSystemRandomInModelOrControllerTests.cs` with one allowlisted exception: `SeedFormat.NextSeed(Random)`, the off-path fresh-master-seed fallback that `scripts/` feeds `Random.Shared` into. Bit-exact output vectors are pinned by `DeterministicRngTests` — they ARE the cross-runtime determinism contract.
+
 Legitimate view-side float math (DPI scaling, safe-area insets, pixel/hex geometry, zoom smoothing) lives in `FourExHex.ViewMath`. Game + tests reference all three; Model + Controller don't reference ViewMath (one-way, compiler-enforced).
 
 Consequences:
@@ -27,7 +29,7 @@ Consequences:
 - **Color is view-only.** `scripts/PlayerPalette.cs` maps `PlayerId ↔ Godot.Color` from `GameSettings.PlayerConfig` hex strings.
 - **Pixel projection is view-side.** `HexRounding.Round(float qFrac, float rFrac) -> HexCoord` in `FourExHex.ViewMath` is the float→int boundary keeping `HexCoord` integer-only in Model. `scripts/HexPixel.cs` owns `ToPixel`/`FromPixel`, calls `HexRounding.Round`.
 - **`Log` is Godot-free** — routes through injectable `Log.Sink`, wired by `Main` to `GD.Print`. See **Logging**.
-- **Save format is v18.** Ownership is a player index on the wire (−1 = `None`); claim-victory tiers persist by index. Gold/mountain are mutually exclusive on the wire (two bools); a tile with both normalizes to mountain-only on load; in-memory it's one `HexTile.Feature` enum that can't hold both (see **Mountain tiles**). Saves v2–v17 still load, absent fields defaulting (`IsGold`/`IsMountain` → `false`, `Difficulty` → `Soldier`, Rising Tides `Mode`/`PendingTide` → off/empty, `UseRandomizedSelection` → `false`, `UseOriginMergeCapital` → `false`, Fog Of War `Seen` → empty, Viking Raiders `VikingAtSea`/`VikingNextWave`/`VikingLastRound`/`VikingLastSpawnRound` → empty/0), with legacy color-hex claim data and pre-v6 unit-level names migrated via `GameSettings` palette matching and `SaveSerializer.ParseUnitLevel`.
+- **Save format is v19.** Ownership is a player index on the wire (−1 = `None`); claim-victory tiers persist by index. Gold/mountain are mutually exclusive on the wire (two bools); a tile with both normalizes to mountain-only on load; in-memory it's one `HexTile.Feature` enum that can't hold both (see **Mountain tiles**). Saves v2–v18 still load, absent fields defaulting (`IsGold`/`IsMountain` → `false`, `Difficulty` → `Soldier`, Rising Tides `Mode`/`PendingTide` → off/empty, Fog Of War `Seen` → empty, Viking Raiders `VikingAtSea`/`VikingNextWave`/`VikingLastRound`/`VikingLastSpawnRound` → empty/0), with legacy color-hex claim data and pre-v6 unit-level names migrated via `GameSettings` palette matching and `SaveSerializer.ParseUnitLevel`. A save carrying a `Replay` block also carries `ReplayVersion` (`SaveSerializer.CurrentReplayVersion`); on load a mismatched/absent stamp drops the replay (game state loads normally — the board is baked into the save), except a `Tutorial` save, whose replay is its content: that fails loudly.
 - **`.cs.uid` sidecars**: model files under `src/` aren't Godot resources → no `.cs.uid`; `src/**` is `.gdignore`d. `scripts/` files keep their tracked `.cs.uid`.
 
 ## Layered view
@@ -37,7 +39,7 @@ SCENE ROOT (Godot) ─ Main (Node2D), play scene root (res://scenes/main.tscn). 
   _Ready:
     1. Read GameSettings (player kinds + optional MasterSeed; forced all-Computer when FOUREXHEX_6AI).
     2. Consume + clear LoadRequest.Pending (menu Load flow).
-    3. Pick master seed: load > GameSettings.MasterSeed > Random.Shared.Next(). One seed drives map gen + per-turn RNG.
+    3. Pick master seed: load > GameSettings.MasterSeed > SeedFormat.NextSeed(Random.Shared). One seed drives map gen + per-turn RNG.
     4. Build model, three branches:
          • In-progress save (TurnNumber > 0): state, players, max-turn cap, OriginMapName from save.
          • Starting map (TurnNumber == 0 on disk): saved terrain; players from GameSettings; turn 1; empty
@@ -227,16 +229,16 @@ PURE RULES (static)
   TerritoryFinder.FindAll(grid) ─ flood-fill, no capitals
   TerritoryFinder.Recompute(grid, prev, treasury?, randomizeCapital=false, originCapital=null) ─ FindAll →
     CapitalReconciler.Reconcile → optional Treasury.ReconcileAfterCapture. Single entry for
-    post-mutation rebuilds. randomizeCapital forwards GameState.UseRandomizedSelection;
-    originCapital (the acting territory's capital) forwards from HandleCapture / AiSimulator only
-    in a GameState.UseOriginMergeCapital game.
+    post-mutation rebuilds. Every in-game reconcile passes randomizeCapital: true and threads
+    originCapital (the acting territory's capital) from HandleCapture / AiSimulator; the
+    lex-min default is the editor/fixture path.
   CapitalPlacer.Choose(coords, grid, rng?) ─ tier (empty>unit>grave>tree>tower); in-tier pick is
     lex-min when rng null, else a random candidate from rng
   CapitalReconciler.Reconcile(raw, old, grid, randomize=false, originCapital=null) ─ split/merge +
     stomping; None-owned (neutral) stay capital-less (throws on a capital on neutral land). A merge
     keeps originCapital when it is among the merged capitals; otherwise the largest old territory's
     capital wins. randomize → fresh placement and the equal-old-size merge tiebreak draw from a
-    Random seeded by SeedFromCoords(coords). Logs each merge decision ([reconcile] merge, Capture:Debug).
+    DeterministicRng seeded by SeedFromCoords(coords). Logs each merge decision ([reconcile] merge, Capture:Debug).
   PurchaseRules.CostFor / CanAfford / CanAffordTower / IsValidRecruit…
   MovementRules.ValidTargets / Move / PlaceNew / ArrivalConsumesAction (capture/tree/grave → true)
   DefenseRules.Defense(coord, grid, territory)
@@ -359,7 +361,7 @@ A **mountain tile** is high ground: **no defense on its own**, but any defender 
 - **Model.** `HexTile.Feature` is the single source of truth: enum `TerrainFeature` (`None`/`Gold`/`Mountain`). `IsGold`/`IsMountain` accessors retarget `Feature`, so setting one clears the other. A mountain can be neutral or player-owned and is **passable** (units move onto, through, and die on it). No income of its own (a controlled mountain pays 1 gp).
 - **Defense.** `DefenseRules.Defense` gives **any defender** (`Unit`/`Tower`/`Capital`) on a mountain `DefenseRules.MountainBonus` (+1) on top of its contribution (folded in by private `ContributionAt`, applied to any positive-contribution occupant); an **empty mountain — or one holding only a tree/grave — contributes nothing**. Boosted value radiates to same-territory neighbors like any defender (Soldier/Tower → 3, Commander → 5, Capital → 2). Contributions are `max`, not cumulative. An empty neutral mountain is capturable by any level (even Recruit); a defended one raises the capture threshold by 1. `BlockingDefenders` mirrors this (same `ContributionAt`) for the view's red-flash. Capture (`MovementRules.ResolveArrival`) transfers ownership but leaves the mountain set.
 - **Rule guards.** Trees, graves, towers, **and capitals all coexist** with a mountain: trees spread onto mountains (`TreeRules.RunStartOfTurnGrowth`), a unit dying leaves a grave (`UpkeepRules.ApplyUpkeep`), towers may be built (`PurchaseRules.IsValidTowerLocation`), a capital may sit. Gold is the only exclusion.
-- **Capital placement.** Capitals sit on mountains like any terrain (`CapitalPlacer.Choose`), so any 2+ owned region gets a capital; `CapitalReconciler`'s null guard only covers the impossible all-Capital case. The occupant-tier priority always holds; the **in-tier** pick (and the equal-old-size merge tiebreak) is lex-min by default or, in a `GameState.UseRandomizedSelection` game, a seed-deterministic random candidate (see **Randomized selection**). Which capital survives a same-owner **merge** is governed by `GameState.UseOriginMergeCapital` (see **Origin-capital merges**).
+- **Capital placement.** Capitals sit on mountains like any terrain (`CapitalPlacer.Choose`), so any 2+ owned region gets a capital; `CapitalReconciler`'s null guard only covers the impossible all-Capital case. The occupant-tier priority always holds; the **in-tier** pick (and the equal-old-size merge tiebreak) is a seed-deterministic random candidate in every game (see **Randomized selection**); the lex-min null-rng path serves editor paints and test fixtures. Which capital survives a same-owner **merge** follows the origin-capital rule (see **Origin-capital merges**).
 - **Persistence + undo.** Carried as `TileDto.IsMountain`, through replay-initial snapshots (`GameStateSnapshot.EnumerateTiles`) and both deep-copy snapshots (`GameStateSnapshot`/`EditorSnapshot`). A tile with **both** gold and mountain set normalizes to mountain-only on load (mountain wins — see **Save format**).
 - **Authoring.** Map editor toggle brush (`MapEditPaint.PaintMountainToggle`, glyph `HexPaletteIcon.Mountain`), same drag-stroke add/erase locking. Painting a mountain leaves tree/grave/tower/capital in place and **clears any gold** (and `PaintGoldToggle` clears any mountain) — mutual exclusion falls out of the `Feature` accessor. Also generated procedurally by `MapGenerator` when `MapGenOptions.MountainDensity > 0`; generated ranges are **neutral**, and generated gold skips mountain tiles.
 - **Editor undo/sound for flag paints.** Mountain/gold paints leave the territory partition untouched. The undo push compares the pre-stroke snapshot against the live grid via `EditorSnapshot.DiffersFromGrid` (pure, unit-tested grid diff over owner/occupant/gold/mountain/water); the per-cell placement sound also checks gold/mountain flags. Both flag brushes record undo and play the sound.
@@ -386,7 +388,7 @@ A selectable game mode, distinct from freeform-vs-campaign (`GameSettings.Campai
 
 - `ForecastSubmerge(state, owner, budget, rng?)` selects shore tiles, mutates nothing, returns `IReadOnlyList<TideStep>` (`TideStep { HexCoord Coord; bool DemoteOnly }`). Plan locked on `GameState.PendingTide`.
 - `ApplyForecast(state, owner, plan)` demotes/submerges those coords + `TerritoryFinder.Recompute` (the remove-tile→add-water→recompute path of `MapEditPaint.PaintWater`). `SubmergeStep` = forecast-then-apply, for phantom turns of neutral/eliminated colors.
-- A **shore** tile has **<6 in-grid neighbours** (`ShoreTilesOf`). Selection always takes the most exposed tiles first — highest `WaterBorderWeight(grid, coord) = 6 − in-grid neighbours`; a more-exposed tile is never passed over. Only the **equal-exposure tie-break** varies: ascending `HexCoord` when `rng` is null, else a seed-deterministic shuffle within each exposure band (see **Randomized selection**). `GameOperations.ForecastTideForCurrentPlayer` / `MaybeRiseTidesFor` pass `_rng` only in a `UseRandomizedSelection` game (null otherwise, so freeform/legacy streams are untouched). A **mountain** shore *demotes* (`IsMountain=false`) without sinking; a non-mountain shore is removed + watered. Budget **1**.
+- A **shore** tile has **<6 in-grid neighbours** (`ShoreTilesOf`). Selection always takes the most exposed tiles first — highest `WaterBorderWeight(grid, coord) = 6 − in-grid neighbours`; a more-exposed tile is never passed over. Only the **equal-exposure tie-break** varies: ascending `HexCoord` when `rng` is null, else a seed-deterministic shuffle within each exposure band (see **Randomized selection**). `GameOperations.ForecastTideForCurrentPlayer` / `MaybeRiseTidesFor` always pass `_rng`. A **mountain** shore *demotes* (`IsMountain=false`) without sinking; a non-mountain shore is removed + watered. Budget **1**.
 - Timing (`GameOperations`): `StartPlayerTurn` calls `ForecastTideForCurrentPlayer` (no `TurnNumber` gate — runs from turn 1). The first player's turn-1 forecast is computed in `GameController.Resume(freshStart:true)` since `StartPlayerTurn` isn't called for the initial player (a load passes `freshStart:false`, restoring `PendingTide` from save). `EndOfTurnProcessing` runs `ApplyPendingTide` (apply + structural rebuild + defeat) **before** the win check. Phantom turns forecast+apply inline via `MaybeRiseTidesFor`.
 
 `GameState.WaterCoords` is a mutable `HashSet` (exposed `IReadOnlySet`) with `AddWater(coord)` so it grows at runtime. Forecast gated by `Mode == RisingTides`.
@@ -443,18 +445,17 @@ A selectable mode (`GameMode.VikingRaiders`): neutral raiders arrive at the isla
 
 ## Randomized selection
 
-`GameState.UseRandomizedSelection` (bool, integer-only RNG) replaces the historical always-lex-min tie-breaks at two selection points with seed-deterministic random picks: the **in-tier capital choice** (`CapitalPlacer.Choose`) and its equal-old-size merge tiebreak (`CapitalReconciler.Reconcile`), and the **equal-exposure Rising Tides submerge tie-break** (`RisingTidesRules.ForecastSubmerge`). Priority order is untouched — capitals still respect the occupant tier, tides still take the most-exposed tile; only the choice *among equals* randomizes.
+Every game breaks selection ties with seed-deterministic random picks (integer-only RNG) at two selection points: the **in-tier capital choice** (`CapitalPlacer.Choose`) and its equal-old-size merge tiebreak (`CapitalReconciler.Reconcile`), and the **equal-exposure Rising Tides submerge tie-break** (`RisingTidesRules.ForecastSubmerge`). Priority order always holds — capitals respect the occupant tier, tides take the most-exposed tile; only the choice *among equals* randomizes. The lex-min null-rng path in `CapitalPlacer`/`CapitalReconciler` remains for editor paints and test fixtures; every in-game reconcile passes `randomize: true`.
 
-- **Two RNG sources, by constraint.** Capital placement seeds a local `Random` from the territory's own coords (`CapitalReconciler.SeedFromCoords`, FNV-1a + splitmix32 avalanche), so it consumes nothing from the live per-turn `_rng` stream and the AI's cloned 1-ply simulation reproduces the identical replacement capital (`AiSimulator.Clone` carries the flag; `AiSimulatorDriftTests` pins sim == real). The tide tie-break draws from `GameOperations._rng` at forecast time — the first per-turn RNG consumer, right after `ReseedRngForCurrentTurn`, so it lands at a fixed stream offset and reproduces on resume/replay; the simulator never touches tides. Still seed-deterministic since the board itself evolves from the master seed.
-- **Baked, not load-gated.** The flag is decided once at game creation and persisted (see *Save / load*), never compared at load. New games are `true`; pre-v15 saves load `false`. This is what makes re-saving safe: a game keeps its era forever, so its recorded beat log (capitals/tides re-derived during playback) never mixes old and new picks. The two paths are exercised by the `(mode × era)` matrix in `ReplayFidelityTests`.
+- **Two RNG sources, by constraint.** Capital placement seeds a local `DeterministicRng` from the territory's own coords (`CapitalReconciler.SeedFromCoords`, FNV-1a + splitmix32 avalanche), so it consumes nothing from the live per-turn `_rng` stream and the AI's cloned 1-ply simulation reproduces the identical replacement capital (`AiSimulatorDriftTests` pins sim == real). The tide tie-break draws from `GameOperations._rng` at forecast time — the first per-turn RNG consumer, right after `ReseedRngForCurrentTurn`, so it lands at a fixed stream offset and reproduces on resume/replay; the simulator never touches tides. Still seed-deterministic since the board itself evolves from the master seed.
+- **Replay compatibility is version-gated.** A recording's capitals/tides are re-derived during playback, so a replay is only faithful under the tie-break rules that recorded it — `ReplayVersion` (see *Save / load*) drops replays stamped by a different generation instead of replaying them divergently. The `(mode)` matrix in `ReplayFidelityTests` pins record → serialize → replay checksum equality; `TutorialReplayFidelityTests` drains every shipped `tutorials/*.json` demo to completion.
 
 ## Origin-capital merges
 
-`GameState.UseOriginMergeCapital` (bool) governs which capital survives when a capture merges two (or more) same-owner territories: the capital of the territory the acting unit **originated from** wins — for a move, the source territory; for a buy, the purchasing capital's territory. Merged gold sums onto the survivor as always (`Treasury.ReconcileAfterCapture` credits whatever capital the reconciler chose); losers are demoted off the grid.
+When a capture merges two (or more) same-owner territories, the capital of the territory the acting unit **originated from** wins — for a move, the source territory; for a buy, the purchasing capital's territory. Merged gold sums onto the survivor as always (`Treasury.ReconcileAfterCapture` credits whatever capital the reconciler chose); losers are demoted off the grid.
 
-- **Threading.** The origin is the acting territory's capital, resolved before the mutation, and rides `HandleCapture(actionDesc, originCapital)` → `TerritoryFinder.Recompute(..., originCapital)` → `CapitalReconciler.Reconcile(..., originCapital)`. Callers: `GameController.ExecuteMove`/`ExecuteBuyAndPlace` (human), `GameOperations.ExecuteMoveCore`/`ExecuteAiBuyUnit` (AI + replay), and `AiSimulator.ApplyMove`/`ApplyBuy` (the 1-ply clone, so sim == live — pinned by `AiSimulatorDriftTests`). Both gates pass the origin only when the flag is set, so a legacy game's reconcile arguments are byte-identical to the pre-flag call shape.
-- **Fallback.** When no origin capital is among the merged capitals (capital-less origin singleton, editor paints, any merge not caused by a unit action), the **largest old territory's** capital wins; equal-largest ties break lex-min or seed-random per `UseRandomizedSelection`. Merges in a flag-off game always use this fallback path.
-- **Baked, not load-gated** — same era discipline as `UseRandomizedSelection`: persisted (save v18, absent → `false`), never compared at load, carried by `AiSimulator.Clone`. New games (`ProceduralGame.Build`, starting-map launch) set it `true`.
+- **Threading.** The origin is the acting territory's capital, resolved before the mutation, and rides `HandleCapture(actionDesc, originCapital)` → `TerritoryFinder.Recompute(..., originCapital)` → `CapitalReconciler.Reconcile(..., originCapital)`. Callers: `GameController.ExecuteMove`/`ExecuteBuyAndPlace` (human), `GameOperations.ExecuteMoveCore`/`ExecuteAiBuyUnit` (AI + replay), and `AiSimulator.ApplyMove`/`ApplyBuy` (the 1-ply clone, so sim == live — pinned by `AiSimulatorDriftTests`).
+- **Fallback.** When no origin capital is among the merged capitals (capital-less origin singleton, editor paints, any merge not caused by a unit action), the **largest old territory's** capital wins; equal-largest ties break seed-random (lex-min when the reconcile runs without an rng — editor/fixtures).
 - **Instrumentation.** Every merge decision logs `[reconcile] merge … candidates … origin … winner … rule=origin|largest|tiebreak-…` (category `Capture`, Debug).
 
 `DisplayScale` — autoload Node (`project.godot` `[autoload]` "DisplayScale", ordered after `LogBootstrap`). Keeps UI at a roughly constant physical size by reading screen DPI and driving root `Window.ContentScaleFactor`:
@@ -1337,10 +1338,16 @@ uniquely determines the RNG sequence for that turn, so a save records only the
 seed (no consumption count) and load reproduces it.
 
 - **Master seed.** `GameController` takes a `seed:` ctor arg, exposes
-  `MasterSeed`. `_rng` reseeds from `(masterSeed, turnNumber, currentPlayerIndex)`
+  `MasterSeed`. `_rng` (a `DeterministicRng`) reseeds from
+  `(masterSeed, turnNumber, currentPlayerIndex)` via the splitmix32 `MixSeed`
   at the top of every `StartPlayerTurn` and every `Resume`
   (`ReseedRngForCurrentTurn`). `MapGenerator.BuildInitialGrid` uses the same
   seed; the menu's previewed seed is reproducible end-to-end.
+  `GameOperations.RngStreamDigest` folds every per-turn sub-seed and retired
+  stream hash into one cumulative digest; game end logs
+  `[determinism] final checksum=<GameStateChecksum> rngStreamHash=<digest>`
+  (category `Determinism`, plus a `[determinism] mapgen` line from
+  `MapGenerator`) — the one-line cross-run/cross-platform determinism diff.
 - **Autosave.** `Main` subscribes `controller.HumanTurnStarted` to a handler
   writing the `autosave` slot via `SaveStore.WriteAutosave`. Fires once per
   human turn, after start-of-turn bookkeeping; AI turns and game-over states
@@ -1376,18 +1383,12 @@ seed (no consumption count) and load reproduces it.
   null/missing = empty. Only a mid-turn Rising Tides save writes it. Can't be
   recomputed on load (RNG advanced, grid may have changed), so it's persisted
   and restored onto `GameState.PendingTide`.
-- **Randomized selection.** `UseRandomizedSelection` bool, baked at game
-  creation and immutable, fed into the `GameState` ctor on load. New games
-  (`ProceduralGame.Build`, starting-map launch) write `true`; absent in pre-v15
-  saves → `false`. **Re-saving preserves it** (a loaded game keeps its era), so a
-  pre-feature game stays lex-min through any number of re-saves and its recorded
-  replay reproduces — a mixed-behavior replay is impossible. The flag governs the
-  in-tier capital pick and the equal-exposure tide tie-break (see **Randomized
-  selection**).
-- **Origin-capital merges.** `UseOriginMergeCapital` bool, same baked-era shape:
-  fed into the `GameState` ctor on load, written `true` by new games, absent in
-  pre-v18 saves → `false` so legacy games keep largest-wins merges and their
-  recorded replays reproduce (see **Origin-capital merges**).
+- **Replay version.** A save with a `Replay` block carries `ReplayVersion`
+  (`SaveSerializer.CurrentReplayVersion`) — the stamp of the RNG + rules
+  generation that recorded it. Bumped whenever a change would derail recorded
+  beats (PRNG swap, capital/tide selection rules, movement legality). On load a
+  mismatched/absent stamp drops the replay and loads the game state normally;
+  a `Tutorial` save (replay IS the content) fails loudly instead.
 - **Load.** Main menu's Load button populates `LoadRequest.Pending` with a
   `LoadedSave` (state + players + master seed + max-turn cap + optional
   OriginMapName + claim-victory tiers) and changes scene to `main.tscn`.
@@ -1476,7 +1477,7 @@ stays disabled — the log starts after load, not at game start.
 Spans all four layers, one-way:
 
 - **Model (Godot-free, unit-tested):**
-  - `CampaignProgress` (`src/FourExHex.Model/CampaignProgress.cs`) — 256 `CampaignLevelStatus` (`Untried`/`Lost`/`Won`, member order load-bearing — persisted numerically). Exposes `StatusOf`, `MarkAttempted` (Untried→Lost, Won terminal), `MarkWon` (terminal), `WonCount`, `TierWonCount`, `NextUp` (lowest non-won, null when all won); statics `DifficultyForLevel` (`(Difficulty)(level / 64)`), `LabelFor`, `SeedForLevel` (reads the baked winnable-seed table `CampaignSeeds.ByLevel`), `HumanSlotForLevel(level, playerCount)` (stable integer hash mod `playerCount`); roster `PlayerCountForLevel` (2–6, weighted high), `ActiveColorSlotsForLevel` (sorted distinct subset), `HumanColorSlotForLevel` (`= active[HumanSlotForLevel(level, count)]`). All draw from one seeded integer-only `Random` per level (offset decorrelated from seed/terrain), fixing players and terrain forever. `ModeForLevel` derives `GameMode`: `Freeform` below Soldier tier; Soldier+ tiers each hold an exact per-mode quota of Rising Tides / Fog Of War / Viking Raiders levels via a tier-seeded shuffle sliced per mode (see the Campaign paragraph under Rising Tides). **Mark-at-launch:** starting marks Lost; winning flips to Won, which a later loss can't revert.
+  - `CampaignProgress` (`src/FourExHex.Model/CampaignProgress.cs`) — 256 `CampaignLevelStatus` (`Untried`/`Lost`/`Won`, member order load-bearing — persisted numerically). Exposes `StatusOf`, `MarkAttempted` (Untried→Lost, Won terminal), `MarkWon` (terminal), `WonCount`, `TierWonCount`, `NextUp` (lowest non-won, null when all won); statics `DifficultyForLevel` (`(Difficulty)(level / 64)`), `LabelFor`, `SeedForLevel` (reads the baked winnable-seed table `CampaignSeeds.ByLevel`), `HumanSlotForLevel(level, playerCount)` (stable integer hash mod `playerCount`); roster `PlayerCountForLevel` (2–6, weighted high), `ActiveColorSlotsForLevel` (sorted distinct subset), `HumanColorSlotForLevel` (`= active[HumanSlotForLevel(level, count)]`). All draw from one seeded `DeterministicRng` per level (offset decorrelated from seed/terrain), fixing players and terrain forever. `ModeForLevel` derives `GameMode`: `Freeform` below Soldier tier; Soldier+ tiers each hold an exact per-mode quota of Rising Tides / Fog Of War / Viking Raiders levels via a tier-seeded shuffle sliced per mode (see the Campaign paragraph under Rising Tides). **Mark-at-launch:** starting marks Lost; winning flips to Won, which a later loss can't revert.
   - `CampaignSerializer` + `CampaignData` — JSON `{ FormatVersion, Statuses[] }`, registered on `FourExHexJsonContext` for iOS AOT. Tolerant read: short arrays pad with Untried, extras past 256 ignored, out-of-range → Untried, unknown versions throw (store catches → fresh progress).
 - **ViewMath (floats OK, unit-tested):** `CampaignGridMath` (`src/FourExHex.ViewMath/CampaignGridMath.cs`) — pointy-top honeycomb geometry: `CellCenter` (odd rows shift half a step, 0.75×height pitch), `BlockSize`, `HitTest` (exact point-in-hexagon). Drives both draw and tap.
 - **Scripts (Godot view layer, test-excluded):**
@@ -1879,7 +1880,7 @@ Every player-visible English string lives in **`assets/strings/en.json`** — a 
 
 `src/FourExHex.Model/Log.cs` is the master logging system — one Godot-free static class shared by Model, Controller, and `scripts/` (no namespace, so call sites need no `using`).
 
-- **Two gates.** (1) Compile-time: `Log.Trace` / `Debug` / `Info` are `[Conditional("DEBUG")]`, so the compiler removes the call and its argument evaluation from Release builds; `Log.Warn` / `Error` always compile. (2) Runtime: each `Log.LogCategory` (`Ai`, `Turn`, `Capture`, `Tutorial`, `Render`, `Input`, `Display`, `Hud`, `Undo`, `Cheat`, `Campaign`) has an independent minimum `Log.LogLevel`; a message emits only if its level ≥ the category threshold.
+- **Two gates.** (1) Compile-time: `Log.Trace` / `Debug` / `Info` are `[Conditional("DEBUG")]`, so the compiler removes the call and its argument evaluation from Release builds; `Log.Warn` / `Error` always compile. (2) Runtime: each `Log.LogCategory` (`Ai`, `Turn`, `Capture`, `Tutorial`, `Render`, `Input`, `Display`, `Hud`, `Undo`, `Cheat`, `Campaign`, `MapGen`, `Replay`, `Tide`, `Fog`, `Tree`, `Automate`, `Viking`, `Determinism`) has an independent minimum `Log.LogLevel`; a message emits only if its level ≥ the category threshold.
 - **Default is silent** — every category defaults to `Off`.
 - **Configuration.** `LogBootstrap` (autoload) calls `Log.Configure(OS.GetEnvironment("FOUREXHEX_LOG"))`, parsing a spec like `"Ai:Debug,Turn:Info,*:Warn"` (comma-separated `category:level`, `*` = all; case-insensitive; unknown tokens ignored; never throws).
 - **Pre-computing helpers** (`GameController.LogTurnStart`, `LogAction`, `LogGameEndDiagnostics`, `LogCaptureDiff`) are themselves `[Conditional("DEBUG")]` so the body strips in Release. `Warn`/`Error` sites keep their precompute.

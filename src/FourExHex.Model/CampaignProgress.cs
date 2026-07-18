@@ -208,16 +208,16 @@ public sealed class CampaignProgress
     }
 
     /// <summary>Position of a tier-relative level offset in the tier's
-    /// Fisher–Yates shuffle (same seeded-<see cref="Random"/> idiom as
+    /// Fisher–Yates shuffle (same seeded-<see cref="DeterministicRng"/> idiom as
     /// <see cref="ComputeRoster"/>, distinct offset domain: tier, not level).</summary>
     private static int ShuffledPositionInTier(int tier, int offset)
     {
-        var rng = new Random(unchecked(tier * 8209 + 49157));
+        var rng = new DeterministicRng(unchecked(tier * 8209 + 49157));
         int[] order = new int[TierSize];
         for (int i = 0; i < TierSize; i++) order[i] = i;
         for (int i = TierSize - 1; i > 0; i--)
         {
-            int j = rng.Next(i + 1);
+            int j = rng.NextBounded(i + 1);
             (order[i], order[j]) = (order[j], order[i]);
         }
         return Array.IndexOf(order, offset);
@@ -256,12 +256,12 @@ public sealed class CampaignProgress
         // mountain/gold/tree/clumping values. Integer-only (no floats — Model rule).
         // The clumping draw goes last so adding it leaves the existing
         // mountain/gold/tree values for every level byte-unchanged.
-        var rng = new Random(unchecked(level * 2671 + 40503));
-        int mountains = rng.Next(100) < CampaignMountainChance ? CampaignMountainOnDensity : 0;
-        int gold = rng.Next(100) < CampaignGoldChance ? CampaignGoldOnDensity : 0;
-        int trees = 5 * rng.Next(0, 3); // {0, 5, 10}
+        var rng = new DeterministicRng(unchecked(level * 2671 + 40503));
+        int mountains = rng.NextBounded(100) < CampaignMountainChance ? CampaignMountainOnDensity : 0;
+        int gold = rng.NextBounded(100) < CampaignGoldChance ? CampaignGoldOnDensity : 0;
+        int trees = 5 * rng.NextBounded(0, 3); // {0, 5, 10}
         int clumping = MapGenOptions.ClumpingFactorStops[
-            rng.Next(MapGenOptions.ClumpingFactorStops.Length)];
+            rng.NextBounded(MapGenOptions.ClumpingFactorStops.Length)];
         // The clamp stays after the full draw so non-viking levels are
         // byte-unchanged and 90/95/100 remain legal stop values.
         if (ModeForLevel(level) == GameMode.VikingRaiders)
@@ -325,7 +325,7 @@ public sealed class CampaignProgress
 
     /// <summary>Deterministic per-level roster: a uniform-random count of distinct
     /// color slots, with the human at one of them. Integer-only (no floats — Model
-    /// rule) and reproducible forever, using the same seeded-<see cref="Random"/>
+    /// rule) and reproducible forever, using the same seeded-<see cref="DeterministicRng"/>
     /// idiom as <see cref="MapGenOptionsForLevel"/> but with a distinct offset, so
     /// the player set is decorrelated from both the map seed (= level) and the
     /// terrain-density draw — a level's terrain is unchanged; only who plays it
@@ -333,14 +333,14 @@ public sealed class CampaignProgress
     private static (int[] ActiveSlots, int HumanSlot) ComputeRoster(int level)
     {
         int slotCount = GameSettings.PlayerConfig.Length; // 6
-        var rng = new Random(unchecked(level * 6151 + 24593));
+        var rng = new DeterministicRng(unchecked(level * 6151 + 24593));
 
         // Player count, biased toward more players: weight a count of c by (c-1),
         // so 6 is the plurality, then 5, 4, 3, with 2 the least likely. Total
         // weight = sum(1..slotCount-1) = slotCount*(slotCount-1)/2 (= 15 for 6).
         // Integer-only (no floats — Model rule).
         int totalWeight = slotCount * (slotCount - 1) / 2;
-        int draw = rng.Next(totalWeight);
+        int draw = rng.NextBounded(totalWeight);
         int count = 2;
         int acc = 0;
         for (int c = slotCount; c >= 2; c--)
@@ -356,7 +356,7 @@ public sealed class CampaignProgress
         for (int i = 0; i < slotCount; i++) order[i] = i;
         for (int i = slotCount - 1; i > 0; i--)
         {
-            int j = rng.Next(i + 1);
+            int j = rng.NextBounded(i + 1);
             (order[i], order[j]) = (order[j], order[i]);
         }
         int[] active = new int[count];

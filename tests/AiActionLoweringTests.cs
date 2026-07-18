@@ -42,7 +42,7 @@ public class AiActionLoweringTests
 
     /// <summary>Inner chooser returning scripted actions one per call
     /// (then null), recording the loop-guard set it was handed.</summary>
-    private static (Func<GameState, PlayerId, HashSet<HexCoord>, HashSet<HexCoord>, Random, AiAction?> inner,
+    private static (Func<GameState, PlayerId, HashSet<HexCoord>, HashSet<HexCoord>, DeterministicRng, AiAction?> inner,
         List<HashSet<HexCoord>> seenSets) Script(params AiAction?[] actions)
     {
         int index = 0;
@@ -64,7 +64,7 @@ public class AiActionLoweringTests
         (var inner, _) = Script(intent);
         var lowering = new AiActionLowering(inner);
 
-        AiAction? first = lowering.Choose(state, Red, NoVisited, new Random(0));
+        AiAction? first = lowering.Choose(state, Red, NoVisited, new DeterministicRng(0));
         AiMoveAction makeWay = Assert.IsType<AiMoveAction>(first);
         Assert.Equal(unitTile, makeWay.Source);
         Assert.Equal(escape, makeWay.Destination);
@@ -72,7 +72,7 @@ public class AiActionLoweringTests
         // Apply the make-way move as execution would, then redeem.
         state.Grid.Get(escape)!.Occupant = state.Grid.Get(unitTile)!.Occupant;
         state.Grid.Get(unitTile)!.Occupant = null;
-        AiAction? second = lowering.Choose(state, Red, NoVisited, new Random(0));
+        AiAction? second = lowering.Choose(state, Red, NoVisited, new DeterministicRng(0));
         Assert.Same(intent, second);
     }
 
@@ -88,9 +88,9 @@ public class AiActionLoweringTests
         (var inner, var seen) = Script(intent, fallback);
         var lowering = new AiActionLowering(inner);
 
-        Assert.IsType<AiMoveAction>(lowering.Choose(state, Red, NoVisited, new Random(0)));
+        Assert.IsType<AiMoveAction>(lowering.Choose(state, Red, NoVisited, new DeterministicRng(0)));
         // Unit still on unitTile (move never executed) → stash invalid.
-        AiAction? second = lowering.Choose(state, Red, NoVisited, new Random(0));
+        AiAction? second = lowering.Choose(state, Red, NoVisited, new DeterministicRng(0));
         Assert.Same(fallback, second);
         Assert.Equal(2, seen.Count); // inner consulted both times
     }
@@ -103,12 +103,12 @@ public class AiActionLoweringTests
         (var inner, _) = Script(intent);
         var lowering = new AiActionLowering(inner);
 
-        lowering.Choose(state, Red, NoVisited, new Random(0));
+        lowering.Choose(state, Red, NoVisited, new DeterministicRng(0));
         state.Grid.Get(escape)!.Occupant = state.Grid.Get(unitTile)!.Occupant;
         state.Grid.Get(unitTile)!.Occupant = null;
         state.Treasury.SetGold(cap, 0); // gold gone between beats
 
-        Assert.Null(lowering.Choose(state, Red, NoVisited, new Random(0)));
+        Assert.Null(lowering.Choose(state, Red, NoVisited, new DeterministicRng(0)));
     }
 
     [Fact]
@@ -124,14 +124,14 @@ public class AiActionLoweringTests
         var lowering = new AiActionLowering(inner);
 
         // 1. Ordinary reposition → destination coord enters the guard.
-        Assert.Same(reposition, lowering.Choose(state, Red, NoVisited, new Random(0)));
+        Assert.Same(reposition, lowering.Choose(state, Red, NoVisited, new DeterministicRng(0)));
         state.Grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = state.Grid.Get(unitTile)!.Occupant;
         state.Grid.Get(unitTile)!.Occupant = null;
 
         // 2. Make-way lowering for a fresh unit back on unitTile.
         state.Grid.Get(unitTile)!.Occupant = new Unit(Red);
         AiMoveAction makeWay = Assert.IsType<AiMoveAction>(
-            lowering.Choose(state, Red, NoVisited, new Random(0)));
+            lowering.Choose(state, Red, NoVisited, new DeterministicRng(0)));
         Assert.Equal(escape, makeWay.Destination);
 
         // Inner saw the guard grow only from the ordinary reposition:
@@ -148,12 +148,12 @@ public class AiActionLoweringTests
         (var inner, var seen) = Script(reposition, null, null);
         var lowering = new AiActionLowering(inner);
 
-        lowering.Choose(state, Red, NoVisited, new Random(0));
-        lowering.Choose(state, Red, NoVisited, new Random(0));
+        lowering.Choose(state, Red, NoVisited, new DeterministicRng(0));
+        lowering.Choose(state, Red, NoVisited, new DeterministicRng(0));
         Assert.Contains(HexCoord.FromOffset(3, 0), seen[1]);
 
         // Different player → key change → guard cleared.
-        lowering.Choose(state, Blue, NoVisited, new Random(0));
+        lowering.Choose(state, Blue, NoVisited, new DeterministicRng(0));
         Assert.Empty(seen[2]);
     }
 
@@ -180,13 +180,13 @@ public class AiActionLoweringTests
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
 
         AiAction? unguarded = ComputerAi.ChooseNextAction(
-            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new Random(0));
+            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new DeterministicRng(0));
         AiMoveAction move = Assert.IsType<AiMoveAction>(unguarded);
         Assert.Equal(HexCoord.FromOffset(3, 0), move.Source);
 
         AiAction? guarded = ComputerAi.ChooseNextAction(
             state, Red, new HashSet<HexCoord>(),
-            new HashSet<HexCoord> { HexCoord.FromOffset(3, 0) }, new Random(0));
+            new HashSet<HexCoord> { HexCoord.FromOffset(3, 0) }, new DeterministicRng(0));
         Assert.Null(guarded);
     }
 }

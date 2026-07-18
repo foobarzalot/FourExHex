@@ -114,7 +114,16 @@ public static class SaveSerializer
     /// Bump on any breaking schema change. <see cref="Deserialize"/>
     /// rejects mismatched values rather than attempting migration.
     /// </summary>
-    public const int CurrentFormatVersion = 18;
+    public const int CurrentFormatVersion = 19;
+
+    /// <summary>
+    /// Version of the RNG + rules generation that recorded replays
+    /// depend on. Bump whenever a change would derail recorded beats
+    /// (PRNG swap, capital/tide selection rules, movement legality).
+    /// <see cref="Deserialize"/> drops a Replay block whose stamp
+    /// doesn't match instead of replaying it divergently.
+    /// </summary>
+    public const int CurrentReplayVersion = 1;
 
     public static string Serialize(
         GameState state,
@@ -197,6 +206,8 @@ public static class SaveSerializer
             // a tutorial, write that Replay block. Otherwise honor an
             // explicit `replay` arg (regular in-progress saves).
             Replay = SerializeReplay(tutorial?.Replay ?? replay),
+            ReplayVersion = (tutorial?.Replay ?? replay) == null
+                ? null : CurrentReplayVersion,
             CampaignLevel = campaignLevel,
             // Null (omitted) for Freeform so every existing freeform save's
             // wire format is unchanged; only Rising Tides games carry it.
@@ -205,14 +216,6 @@ public static class SaveSerializer
             // (omitted) when empty — every freeform save and any Rising Tides save
             // taken between turns — so the wire format stays clean.
             PendingTide = SerializePendingTide(state.PendingTide),
-            // Baked-at-creation flag for randomized capital/tide selection.
-            // Absent in pre-15 saves → loads false → those games keep the old
-            // deterministic placement so their replays reproduce.
-            UseRandomizedSelection = state.UseRandomizedSelection,
-            // Baked-at-creation flag for the origin-capital merge rule.
-            // Absent in pre-18 saves → loads false → those games keep the
-            // largest-wins merge rule so their replays reproduce.
-            UseOriginMergeCapital = state.UseOriginMergeCapital,
             // Fog Of War: the human's explored coords. Null (omitted) when
             // empty — every non-fog save — so the wire format stays clean.
             Seen = SerializeSeen(state.Seen),
@@ -274,6 +277,29 @@ public static class SaveSerializer
                 $"(expected 2..{CurrentFormatVersion}).");
         }
 
+        // Replay-version gate: a Replay block is only replayable by the
+        // RNG/rules generation that recorded it. A mismatched (or
+        // absent) stamp means replaying would diverge — drop the block
+        // and load the game state normally (the board is baked into the
+        // save, so nothing else is lost). A tutorial's replay IS its
+        // content, so a stale tutorial fails loudly instead.
+        if (data.Replay != null && data.ReplayVersion != CurrentReplayVersion)
+        {
+            if (data.Tutorial != null)
+            {
+                throw new InvalidOperationException(
+                    $"Tutorial '{data.Tutorial.Title}' was recorded with " +
+                    $"an incompatible replay version " +
+                    $"{data.ReplayVersion?.ToString() ?? "(none)"} " +
+                    $"(current {CurrentReplayVersion}) and cannot play.");
+            }
+            Log.Warn(Log.LogCategory.Replay,
+                $"[save] dropping stale replay (version " +
+                $"{data.ReplayVersion?.ToString() ?? "(none)"}, current " +
+                $"{CurrentReplayVersion}); game state loads normally");
+            data.Replay = null;
+        }
+
         IReadOnlyList<Player> players = DeserializePlayers(data.Players);
         bool mapHasBakedKinds = AnyBakedKinds(data.Players);
         var turnState = new TurnState(
@@ -320,8 +346,6 @@ public static class SaveSerializer
         var state = new GameState(
             grid, territories, players, turnState, treasury, waterCoords,
             mode: data.Mode ?? GameMode.Freeform,
-            useRandomizedSelection: data.UseRandomizedSelection,
-            useOriginMergeCapital: data.UseOriginMergeCapital,
             // Restore the human's explored coords; empty for non-fog/legacy saves.
             seen: DeserializeSeen(data.Seen),
             // Restore raiders at sea + wave cursors; all-default for
@@ -1211,6 +1235,11 @@ public sealed class SaveData
     /// </summary>
     public TutorialDto? Tutorial { get; set; }
 
+    /// <summary>Stamp of <see cref="SaveSerializer.CurrentReplayVersion"/>
+    /// at save time. Null/mismatched → the Replay block is stale (recorded
+    /// by an incompatible RNG/rules generation) and is dropped on load.</summary>
+    public int? ReplayVersion { get; set; }
+
     /// <summary>
     /// Recorded replay payload (initial snapshot + beat log) saved
     /// alongside the in-progress game state in v4+. Null/missing in
@@ -1241,23 +1270,6 @@ public sealed class SaveData
     /// (which load as an empty forecast).
     /// </summary>
     public List<TideStepDto>? PendingTide { get; set; }
-
-    /// <summary>
-    /// Whether this game uses seed-deterministic randomized selection for
-    /// capital placement and the Rising Tides submerge tie-break. Baked at game
-    /// creation. Absent (false) in pre-15 saves, which keep the old lex-min
-    /// placement so their recorded replays reproduce exactly.
-    /// </summary>
-    public bool UseRandomizedSelection { get; set; }
-
-    /// <summary>
-    /// Whether a same-owner territory merge keeps the acting unit's origin
-    /// territory's capital (falling back to largest-wins when no origin
-    /// capital is among the merged ones). Baked at game creation. Absent
-    /// (false) in pre-18 saves, which keep the largest-wins merge rule so
-    /// their recorded replays reproduce exactly.
-    /// </summary>
-    public bool UseOriginMergeCapital { get; set; }
 
     /// <summary>
     /// Fog Of War: the human player's explored (ever-seen) coords. Null/omitted

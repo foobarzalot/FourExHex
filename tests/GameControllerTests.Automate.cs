@@ -16,7 +16,7 @@ public partial class GameControllerTests
     /// call, then null (the "nothing left to do" terminal signal the
     /// automate loop stops on).
     /// </summary>
-    private static Func<GameState, PlayerId, HashSet<HexCoord>, HashSet<HexCoord>, Random, AiAction?> AutomateScript(
+    private static Func<GameState, PlayerId, HashSet<HexCoord>, HashSet<HexCoord>, DeterministicRng, AiAction?> AutomateScript(
         params AiAction[] actions)
     {
         int index = 0;

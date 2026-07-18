@@ -21,19 +21,15 @@ public static class ProceduralGame
     /// </summary>
     public static GameState Build(
         int cols, int rows, IReadOnlyList<Player> players, int seed,
-        MapGenOptions? options = null, GameMode mode = GameMode.Freeform,
-        bool useRandomizedSelection = true,
-        bool useOriginMergeCapital = true)
+        MapGenOptions? options = null, GameMode mode = GameMode.Freeform)
     {
         var turnState = new TurnState(players);
         var treasury = new Treasury();
         MapGenResult mapGen = MapGenerator.BuildInitialGrid(cols, rows, players, seed, options);
         HexGrid grid = mapGen.Grid;
         IReadOnlyList<Territory> territories = TerritoryFinder.Recompute(
-            grid, new List<Territory>(), treasury: null, randomizeCapital: useRandomizedSelection);
+            grid, new List<Territory>(), treasury: null, randomizeCapital: true);
         return new GameState(
-            grid, territories, players, turnState, treasury, mapGen.WaterCoords, mode,
-            useRandomizedSelection,
-            useOriginMergeCapital: useOriginMergeCapital);
+            grid, territories, players, turnState, treasury, mapGen.WaterCoords, mode);
     }
 }

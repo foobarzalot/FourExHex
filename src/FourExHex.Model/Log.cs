@@ -49,6 +49,7 @@ public static class Log
         Tree = 15,    // per-turn whole-map tree/grave incidence census (treepocalypse)
         Automate = 16, // human-turn Automate loop: start / per-move / stop-with-reason
         Viking = 17,  // Viking Raiders mode: wave spawn / disembark / perish / phase census
+        Determinism = 18, // RNG-stream + final-state digests: cross-run/cross-platform one-line diff
     }
 
     /// <summary>Severity, ascending. <see cref="Off"/> disables a

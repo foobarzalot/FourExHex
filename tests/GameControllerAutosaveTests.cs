@@ -51,7 +51,7 @@ public class GameControllerAutosaveTests
             // fixture stable across grid changes and isolates the
             // test to the turn-transition event we care about. Cap
             // turn count so the all-AI variant terminates.
-            AiAction? NoopChooser(GameState s, PlayerId c, HashSet<HexCoord> visited, HashSet<HexCoord> ru, Random rng) => null;
+            AiAction? NoopChooser(GameState s, PlayerId c, HashSet<HexCoord> visited, HashSet<HexCoord> ru, DeterministicRng rng) => null;
             Controller = new GameController(
                 State, Session, Map, Hud,
                 seed: 1, aiChooser: NoopChooser, maxTurnNumber: 5);

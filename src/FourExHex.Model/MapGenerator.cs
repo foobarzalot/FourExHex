@@ -19,7 +19,7 @@ public sealed record MapGenResult(HexGrid Grid, IReadOnlySet<HexCoord> WaterCoor
 /// the same map.
 ///
 /// Algorithm at a glance:
-///   1. Random init: rim = water, interior cells flip a coin (~45% land).
+///   1. DeterministicRng init: rim = water, interior cells flip a coin (~45% land).
 ///   2. Smooth: 5 CA passes with the "B5/S3" hex rule (water becomes land
 ///      with 5+ land neighbors; land becomes water with 2 or fewer). Cells
 ///      with 3-4 neighbors persist, which preserves peninsulas without
@@ -37,7 +37,7 @@ public sealed record MapGenResult(HexGrid Grid, IReadOnlySet<HexCoord> WaterCoor
 /// </summary>
 public static class MapGenerator
 {
-    // Integer percent compared against rng.Next(100) below for the land
+    // Integer percent compared against rng.NextBounded(100) below for the land
     // seed probability (no floats — Model rule).
     private const int InitialLandPercent = 65;
     private const int CaIterations = 5;
@@ -57,7 +57,7 @@ public static class MapGenerator
         int cols, int rows, IReadOnlyList<Player> players, int seed, MapGenOptions? options = null)
     {
         options ??= MapGenOptions.None;
-        var rng = new Random(seed);
+        var rng = new DeterministicRng(seed);
 
         HashSet<HexCoord> land = new();
         for (int retry = 0; retry < MaxRetries; retry++)
@@ -70,11 +70,11 @@ public static class MapGenerator
         if (options.ClumpingFactor <= 0)
         {
             // Factor 0: per-cell random owner assignment, one
-            // rng.Next(players.Count) draw per land cell in HashSet order. Gated
+            // rng.NextBounded(players.Count) draw per land cell in HashSet order. Gated
             // like the mountain/gold passes so a disabled pass adds no RNG draws.
             foreach (HexCoord coord in land)
             {
-                PlayerId owner = players[rng.Next(players.Count)].Id;
+                PlayerId owner = players[rng.NextBounded(players.Count)].Id;
                 grid.Add(new HexTile(coord, owner));
             }
         }
@@ -123,7 +123,7 @@ public static class MapGenerator
         var landCoordList = new List<HexCoord>(land);
         for (int i = 0; i < treeTarget && landCoordList.Count > 0; i++)
         {
-            int idx = rng.Next(landCoordList.Count);
+            int idx = rng.NextBounded(landCoordList.Count);
             HexCoord pick = landCoordList[idx];
             landCoordList.RemoveAt(idx);
             HexTile? t = grid.Get(pick);
@@ -135,6 +135,8 @@ public static class MapGenerator
             }
         }
 
+        Log.Debug(Log.LogCategory.Determinism,
+            $"[determinism] mapgen seed={seed} rngStreamHash={rng.StreamHash:X16}");
         return new MapGenResult(grid, water);
     }
 
@@ -157,7 +159,7 @@ public static class MapGenerator
     // and the only rng draw is the first seed — same seed + factor reproduces the
     // map. Integer-only (no floats — Model rule).
     private static void AssignClumpedOwners(
-        HexGrid grid, HashSet<HexCoord> land, IReadOnlyList<Player> players, int clump, Random rng)
+        HexGrid grid, HashSet<HexCoord> land, IReadOnlyList<Player> players, int clump, DeterministicRng rng)
     {
         clump = Math.Clamp(clump, 1, 100);
         int playerCount = players.Count;
@@ -201,7 +203,7 @@ public static class MapGenerator
             }
         }
 
-        AddSeed(ordered[rng.Next(ordered.Count)]);
+        AddSeed(ordered[rng.NextBounded(ordered.Count)]);
         while (seeds.Count < seedCount)
         {
             HexCoord best = ordered[0];
@@ -319,7 +321,7 @@ public static class MapGenerator
     private const int ThickenPercent = 45; // per-spine-tile chance to add a side foothill
 
     private static void ScatterMountainRanges(
-        HexGrid grid, HashSet<HexCoord> land, int density, Random rng)
+        HexGrid grid, HashSet<HexCoord> land, int density, DeterministicRng rng)
     {
         if (land.Count == 0) return;
 
@@ -337,24 +339,24 @@ public static class MapGenerator
         while (placed < target && attempts < maxAttempts)
         {
             attempts++;
-            HexCoord cur = landList[rng.Next(landList.Count)];
-            int dir = rng.Next(6);
-            int len = rng.Next(MinRangeLen, MaxRangeLen + 1);
+            HexCoord cur = landList[rng.NextBounded(landList.Count)];
+            int dir = rng.NextBounded(6);
+            int len = rng.NextBounded(MinRangeLen, MaxRangeLen + 1);
             for (int step = 0; step <= len && placed < target; step++)
             {
                 if (!land.Contains(cur)) break; // walked off the landmass — end the range
                 placed += MarkMountain(grid, cur);
 
                 // Thicken: occasional foothill on one (roughly perpendicular) side.
-                if (rng.Next(100) < ThickenPercent)
+                if (rng.NextBounded(100) < ThickenPercent)
                 {
-                    int sideDir = (dir + (rng.Next(2) == 0 ? 2 : 4)) % 6;
+                    int sideDir = (dir + (rng.NextBounded(2) == 0 ? 2 : 4)) % 6;
                     HexCoord side = cur.Neighbor(sideDir);
                     if (land.Contains(side)) placed += MarkMountain(grid, side);
                 }
 
                 // Advance with an occasional ±1 veer so the spine bends.
-                int v = rng.Next(100);
+                int v = rng.NextBounded(100);
                 if (v < TurnPercent) dir = (dir + 5) % 6;
                 else if (v < 2 * TurnPercent) dir = (dir + 1) % 6;
                 cur = cur.Neighbor(dir);
@@ -389,7 +391,7 @@ public static class MapGenerator
     private const int GoldMaxCluster = 4;
 
     private static void ScatterGoldClusters(
-        HexGrid grid, HashSet<HexCoord> land, int density, Random rng)
+        HexGrid grid, HashSet<HexCoord> land, int density, DeterministicRng rng)
     {
         if (land.Count == 0) return;
 
@@ -406,9 +408,9 @@ public static class MapGenerator
         {
             attempts++;
 
-            HexCoord seed = landList[rng.Next(landList.Count)];
+            HexCoord seed = landList[rng.NextBounded(landList.Count)];
 
-            int size = rng.Next(GoldMinCluster, GoldMaxCluster + 1);
+            int size = rng.NextBounded(GoldMinCluster, GoldMaxCluster + 1);
             var cluster = new HashSet<HexCoord> { seed };
             placed += MarkGold(grid, seed);
 
@@ -428,7 +430,7 @@ public static class MapGenerator
                 }
                 if (cands.Count == 0) break;
                 cands.Sort();
-                HexCoord pick = cands[rng.Next(cands.Count)];
+                HexCoord pick = cands[rng.NextBounded(cands.Count)];
                 cluster.Add(pick);
                 placed += MarkGold(grid, pick);
             }
@@ -457,16 +459,16 @@ public static class MapGenerator
     /// May return a too-small set if the random init was unlucky — the
     /// caller retries with a fresh draw.
     /// </summary>
-    private static HashSet<HexCoord> GenerateLandShape(int cols, int rows, Random rng)
+    private static HashSet<HexCoord> GenerateLandShape(int cols, int rows, DeterministicRng rng)
     {
         var land = new HashSet<HexCoord>();
 
-        // 1. Random init. Rim cells stay water (we only seed the interior).
+        // 1. DeterministicRng init. Rim cells stay water (we only seed the interior).
         for (int row = 1; row < rows - 1; row++)
         {
             for (int col = 1; col < cols - 1; col++)
             {
-                if (rng.Next(100) < InitialLandPercent)
+                if (rng.NextBounded(100) < InitialLandPercent)
                 {
                     land.Add(HexCoord.FromOffset(col, row));
                 }

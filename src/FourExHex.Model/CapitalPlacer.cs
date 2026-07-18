@@ -21,9 +21,9 @@ using System.Collections.Generic;
 ///
 /// Existing <see cref="Capital"/> occupants are never considered. The
 /// tier priority above always holds. WITHIN the chosen tier, the pick
-/// is the lex-min (R, Q) coord when <c>rng</c> is null (the historical
-/// deterministic choice), or a seed-deterministic random candidate when
-/// an <c>rng</c> is supplied (see <see cref="GameState.UseRandomizedSelection"/>).
+/// is a seed-deterministic random candidate when an <c>rng</c> is
+/// supplied (every in-game reconcile), or the lex-min (R, Q) coord when
+/// it is null (editor paints and test fixtures).
 /// </summary>
 public static class CapitalPlacer
 {
@@ -38,7 +38,7 @@ public static class CapitalPlacer
     /// is the lex-min coord.
     /// </summary>
     public static HexCoord? Choose(
-        IReadOnlyCollection<HexCoord> coords, HexGrid grid, Random? rng = null)
+        IReadOnlyCollection<HexCoord> coords, HexGrid grid, DeterministicRng? rng = null)
     {
         if (coords.Count < 2) return null;
 
@@ -80,10 +80,10 @@ public static class CapitalPlacer
     /// the draw is reproducible regardless of how <paramref name="tier"/> was
     /// enumerated. Returns null only for an empty list (the all-Capital case).
     /// </summary>
-    private static HexCoord? PickFromTier(List<HexCoord> tier, Random? rng)
+    private static HexCoord? PickFromTier(List<HexCoord> tier, DeterministicRng? rng)
     {
         if (tier.Count == 0) return null;
         tier.Sort();
-        return rng == null ? tier[0] : tier[rng.Next(tier.Count)];
+        return rng == null ? tier[0] : tier[rng.NextBounded(tier.Count)];
     }
 }

@@ -33,6 +33,10 @@ public class GameController
     private readonly int _masterSeed;
     public int MasterSeed => _masterSeed;
 
+    /// <summary>Cumulative RNG-consumption digest — see
+    /// <see cref="GameOperations.RngStreamDigest"/>.</summary>
+    public ulong RngStreamDigest => _ops.RngStreamDigest;
+
     private readonly IAiPacer _aiPacer;
 
     // The AI-turn driver owns the paced preview/execute step machine,
@@ -81,7 +85,7 @@ public class GameController
         IHexMapView map,
         IHudView hud,
         int? seed = null,
-        Func<GameState, PlayerId, HashSet<HexCoord>, HashSet<HexCoord>, Random, AiAction?>? aiChooser = null,
+        Func<GameState, PlayerId, HashSet<HexCoord>, HashSet<HexCoord>, DeterministicRng, AiAction?>? aiChooser = null,
         IAiPacer? aiPacer = null,
         int maxTurnNumber = int.MaxValue,
         Replay? loadedReplay = null,
@@ -94,7 +98,7 @@ public class GameController
         Func<bool>? replayIsInstantMode = null,
         Func<bool>? isReplayPaused = null,
         bool autoSelectFirstTerritory = true,
-        Func<GameState, PlayerId, HashSet<HexCoord>, HashSet<HexCoord>, Random, AiAction?>? automateChooser = null,
+        Func<GameState, PlayerId, HashSet<HexCoord>, HashSet<HexCoord>, DeterministicRng, AiAction?>? automateChooser = null,
         Func<bool>? automateIsInstantMode = null)
     {
         _autoSelectFirstTerritory = autoSelectFirstTerritory;
@@ -456,7 +460,7 @@ public class GameController
     // Human slot), this one is invoked FOR a human slot, so the inner
     // default is ComputerAi.ChooseNextAction directly. Tests inject scripts.
     private readonly AiActionLowering _automateLowering;
-    private readonly Func<GameState, PlayerId, HashSet<HexCoord>, Random, AiAction?> _automateChooser;
+    private readonly Func<GameState, PlayerId, HashSet<HexCoord>, DeterministicRng, AiAction?> _automateChooser;
     private bool _automating;
     // Latched when automation stops because the chooser ran dry
     // ("exhausted") — re-pressing Automate would no-op, so the button

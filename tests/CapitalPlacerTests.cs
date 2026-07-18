@@ -185,7 +185,7 @@ public class CapitalPlacerTests
         };
         HexGrid grid = TestHelpers.BuildSpotGrid(Red, coords);
 
-        HexCoord? result = CapitalPlacer.Choose(coords, grid, new System.Random(12345));
+        HexCoord? result = CapitalPlacer.Choose(coords, grid, new DeterministicRng(12345));
 
         Assert.Contains(result!.Value, coords);
     }
@@ -200,8 +200,8 @@ public class CapitalPlacerTests
         };
         HexGrid grid = TestHelpers.BuildSpotGrid(Red, coords);
 
-        HexCoord? a = CapitalPlacer.Choose(coords, grid, new System.Random(777));
-        HexCoord? b = CapitalPlacer.Choose(coords, grid, new System.Random(777));
+        HexCoord? a = CapitalPlacer.Choose(coords, grid, new DeterministicRng(777));
+        HexCoord? b = CapitalPlacer.Choose(coords, grid, new DeterministicRng(777));
 
         Assert.Equal(a, b);
     }
@@ -222,7 +222,7 @@ public class CapitalPlacerTests
         bool sawNonLexMin = false;
         for (int seed = 0; seed < 30 && !sawNonLexMin; seed++)
         {
-            if (CapitalPlacer.Choose(coords, grid, new System.Random(seed)) != lexMin)
+            if (CapitalPlacer.Choose(coords, grid, new DeterministicRng(seed)) != lexMin)
                 sawNonLexMin = true;
         }
 
@@ -245,7 +245,7 @@ public class CapitalPlacerTests
 
         for (int seed = 0; seed < 30; seed++)
         {
-            HexCoord? result = CapitalPlacer.Choose(coords, grid, new System.Random(seed));
+            HexCoord? result = CapitalPlacer.Choose(coords, grid, new DeterministicRng(seed));
             Assert.Contains(result!.Value, emptyTiles);
         }
     }

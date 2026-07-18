@@ -362,7 +362,7 @@ public class RisingTidesRulesTests
             GameState state = MakeState(grid, TestHelpers.BuildTerritoriesFromGrid(grid));
 
             IReadOnlyList<TideStep> plan =
-                RisingTidesRules.ForecastSubmerge(state, Red, budget: 1, rng: new Random(seed));
+                RisingTidesRules.ForecastSubmerge(state, Red, budget: 1, rng: new DeterministicRng(seed));
 
             Assert.Contains(plan.Single().Coord, ends);
             Assert.NotEqual(middle, plan.Single().Coord);
@@ -381,7 +381,7 @@ public class RisingTidesRulesTests
             HexGrid grid = TestHelpers.BuildRectGrid(3, 1, Red);
             GameState state = MakeState(grid, TestHelpers.BuildTerritoriesFromGrid(grid));
             IReadOnlyList<TideStep> plan =
-                RisingTidesRules.ForecastSubmerge(state, Red, budget: 1, rng: new Random(seed));
+                RisingTidesRules.ForecastSubmerge(state, Red, budget: 1, rng: new DeterministicRng(seed));
             if (plan.Single().Coord == high) sawHigh = true;
         }
         Assert.True(sawHigh, "Randomized tie-break never picked the non-lex-min end across 30 seeds.");
@@ -393,12 +393,12 @@ public class RisingTidesRulesTests
         HexGrid gridA = TestHelpers.BuildRectGrid(3, 1, Red);
         GameState stateA = MakeState(gridA, TestHelpers.BuildTerritoriesFromGrid(gridA));
         IReadOnlyList<TideStep> planA =
-            RisingTidesRules.ForecastSubmerge(stateA, Red, budget: 1, rng: new Random(99));
+            RisingTidesRules.ForecastSubmerge(stateA, Red, budget: 1, rng: new DeterministicRng(99));
 
         HexGrid gridB = TestHelpers.BuildRectGrid(3, 1, Red);
         GameState stateB = MakeState(gridB, TestHelpers.BuildTerritoriesFromGrid(gridB));
         IReadOnlyList<TideStep> planB =
-            RisingTidesRules.ForecastSubmerge(stateB, Red, budget: 1, rng: new Random(99));
+            RisingTidesRules.ForecastSubmerge(stateB, Red, budget: 1, rng: new DeterministicRng(99));
 
         Assert.Equal(planA.Single().Coord, planB.Single().Coord);
     }

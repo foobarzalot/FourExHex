@@ -675,7 +675,7 @@ public partial class GameControllerTests
         // dependence on the heuristic's scoring behavior.
         AiAction? scriptedKill = new AiMoveAction(
             HexCoord.FromOffset(2, 0), HexCoord.FromOffset(3, 0));
-        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> v, HashSet<HexCoord> ru, Random r)
+        AiAction? Chooser(GameState s, PlayerId c, HashSet<HexCoord> v, HashSet<HexCoord> ru, DeterministicRng r)
         {
             AiAction? next = scriptedKill;
             scriptedKill = null;

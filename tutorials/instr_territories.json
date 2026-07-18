@@ -1,6 +1,6 @@
 {
-  "FormatVersion": 18,
-  "SavedAtUnix": 1783994645,
+  "FormatVersion": 19,
+  "SavedAtUnix": 1784407467,
   "SlotName": "instr_territories",
   "MasterSeed": 0,
   "TurnNumber": 0,
@@ -2695,6 +2695,7 @@
   "Tutorial": {
     "Title": ""
   },
+  "ReplayVersion": 1,
   "Replay": {
     "InitialState": {
       "TurnNumber": 1,
@@ -3056,12 +3057,10 @@
         "Kind": "BuyUnit",
         "ToQ": 9,
         "ToR": 10,
-        "CapitalQ": 9,
+        "CapitalQ": 13,
         "CapitalR": 7,
         "Level": "Recruit"
       }
     ]
-  },
-  "UseRandomizedSelection": false,
-  "UseOriginMergeCapital": false
+  }
 }

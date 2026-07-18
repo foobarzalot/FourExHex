@@ -1,6 +1,6 @@
 {
-  "FormatVersion": 6,
-  "SavedAtUnix": 1779554838,
+  "FormatVersion": 19,
+  "SavedAtUnix": 1784395885,
   "SlotName": "full_tutorial",
   "MasterSeed": 0,
   "TurnNumber": 0,
@@ -10,32 +10,44 @@
     {
       "Index": 0,
       "Name": "Red",
-      "ColorHex": "cd473f"
+      "ColorHex": "cd473f",
+      "Kind": "Human",
+      "Difficulty": "Soldier"
     },
     {
       "Index": 1,
       "Name": "Blue",
-      "ColorHex": "367cbf"
+      "ColorHex": "367cbf",
+      "Kind": "Human",
+      "Difficulty": "Soldier"
     },
     {
       "Index": 2,
       "Name": "Green",
-      "ColorHex": "50985c"
+      "ColorHex": "50985c",
+      "Kind": "Human",
+      "Difficulty": "Soldier"
     },
     {
       "Index": 3,
       "Name": "Brown",
-      "ColorHex": "8a5a2b"
+      "ColorHex": "a3582c",
+      "Kind": "Human",
+      "Difficulty": "Soldier"
     },
     {
       "Index": 4,
       "Name": "Purple",
-      "ColorHex": "843890"
+      "ColorHex": "843890",
+      "Kind": "Human",
+      "Difficulty": "Soldier"
     },
     {
       "Index": 5,
       "Name": "Orange",
-      "ColorHex": "db8221"
+      "ColorHex": "db8221",
+      "Kind": "Human",
+      "Difficulty": "Soldier"
     }
   ],
   "Tiles": [
@@ -45,7 +57,9 @@
       "OwnerIndex": 1,
       "Occupant": {
         "Type": "Tree"
-      }
+      },
+      "IsGold": false,
+      "IsMountain": false
     },
     {
       "Q": 10,
@@ -53,7 +67,9 @@
       "OwnerIndex": 2,
       "Occupant": {
         "Type": "Tree"
-      }
+      },
+      "IsGold": false,
+      "IsMountain": false
     },
     {
       "Q": 11,
@@ -61,7 +77,9 @@
       "OwnerIndex": 0,
       "Occupant": {
         "Type": "Tree"
-      }
+      },
+      "IsGold": false,
+      "IsMountain": false
     },
     {
       "Q": 10,
@@ -69,7 +87,9 @@
       "OwnerIndex": 0,
       "Occupant": {
         "Type": "Tree"
-      }
+      },
+      "IsGold": false,
+      "IsMountain": false
     },
     {
       "Q": 10,
@@ -77,7 +97,9 @@
       "OwnerIndex": 0,
       "Occupant": {
         "Type": "Tree"
-      }
+      },
+      "IsGold": false,
+      "IsMountain": false
     },
     {
       "Q": 11,
@@ -85,7 +107,9 @@
       "OwnerIndex": 2,
       "Occupant": {
         "Type": "Tree"
-      }
+      },
+      "IsGold": false,
+      "IsMountain": false
     },
     {
       "Q": 12,
@@ -96,17 +120,23 @@
         "OwnerIndex": 0,
         "Level": "Soldier",
         "HasMovedThisTurn": true
-      }
+      },
+      "IsGold": false,
+      "IsMountain": false
     },
     {
       "Q": 11,
       "R": 8,
-      "OwnerIndex": 0
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
     },
     {
       "Q": 7,
       "R": 11,
-      "OwnerIndex": 0
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
     },
     {
       "Q": 8,
@@ -114,7 +144,9 @@
       "OwnerIndex": 2,
       "Occupant": {
         "Type": "Tree"
-      }
+      },
+      "IsGold": false,
+      "IsMountain": false
     },
     {
       "Q": 9,
@@ -125,57 +157,79 @@
         "OwnerIndex": 0,
         "Level": "Soldier",
         "HasMovedThisTurn": true
-      }
+      },
+      "IsGold": false,
+      "IsMountain": false
     },
     {
       "Q": 8,
       "R": 10,
-      "OwnerIndex": 0
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
     },
     {
       "Q": 8,
       "R": 9,
-      "OwnerIndex": 1
+      "OwnerIndex": 1,
+      "IsGold": false,
+      "IsMountain": false
     },
     {
       "Q": 9,
       "R": 9,
-      "OwnerIndex": 0
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
     },
     {
       "Q": 10,
       "R": 8,
-      "OwnerIndex": 0
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
     },
     {
       "Q": 9,
       "R": 8,
-      "OwnerIndex": 0
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
     },
     {
       "Q": 5,
       "R": 11,
-      "OwnerIndex": 0
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
     },
     {
       "Q": 6,
       "R": 11,
-      "OwnerIndex": 0
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
     },
     {
       "Q": 7,
       "R": 10,
-      "OwnerIndex": 0
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
     },
     {
       "Q": 6,
       "R": 10,
-      "OwnerIndex": 0
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
     },
     {
       "Q": 6,
       "R": 9,
-      "OwnerIndex": 0
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
     },
     {
       "Q": 7,
@@ -183,12 +237,16 @@
       "OwnerIndex": 0,
       "Occupant": {
         "Type": "Tower"
-      }
+      },
+      "IsGold": false,
+      "IsMountain": false
     },
     {
       "Q": 8,
       "R": 8,
-      "OwnerIndex": 0
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
     },
     {
       "Q": 7,
@@ -196,7 +254,9 @@
       "OwnerIndex": 0,
       "Occupant": {
         "Type": "Capital"
-      }
+      },
+      "IsGold": false,
+      "IsMountain": false
     }
   ],
   "Territories": [
@@ -2644,6 +2704,7 @@
   "Tutorial": {
     "Title": ""
   },
+  "ReplayVersion": 1,
   "Replay": {
     "InitialState": {
       "TurnNumber": 1,
@@ -2652,37 +2713,51 @@
         {
           "Q": 9,
           "R": 11,
-          "OwnerIndex": 2
+          "OwnerIndex": 2,
+          "IsGold": false,
+          "IsMountain": false
         },
         {
           "Q": 10,
           "R": 11,
-          "OwnerIndex": 2
+          "OwnerIndex": 2,
+          "IsGold": false,
+          "IsMountain": false
         },
         {
           "Q": 11,
           "R": 10,
-          "OwnerIndex": 2
+          "OwnerIndex": 2,
+          "IsGold": false,
+          "IsMountain": false
         },
         {
           "Q": 10,
           "R": 10,
-          "OwnerIndex": 2
+          "OwnerIndex": 2,
+          "IsGold": false,
+          "IsMountain": false
         },
         {
           "Q": 10,
           "R": 9,
-          "OwnerIndex": 2
+          "OwnerIndex": 2,
+          "IsGold": false,
+          "IsMountain": false
         },
         {
           "Q": 11,
           "R": 9,
-          "OwnerIndex": 2
+          "OwnerIndex": 2,
+          "IsGold": false,
+          "IsMountain": false
         },
         {
           "Q": 12,
           "R": 8,
-          "OwnerIndex": 2
+          "OwnerIndex": 2,
+          "IsGold": false,
+          "IsMountain": false
         },
         {
           "Q": 11,
@@ -2690,42 +2765,58 @@
           "OwnerIndex": 2,
           "Occupant": {
             "Type": "Capital"
-          }
+          },
+          "IsGold": false,
+          "IsMountain": false
         },
         {
           "Q": 7,
           "R": 11,
-          "OwnerIndex": 1
+          "OwnerIndex": 1,
+          "IsGold": false,
+          "IsMountain": false
         },
         {
           "Q": 8,
           "R": 11,
-          "OwnerIndex": 1
+          "OwnerIndex": 1,
+          "IsGold": false,
+          "IsMountain": false
         },
         {
           "Q": 9,
           "R": 10,
-          "OwnerIndex": 1
+          "OwnerIndex": 1,
+          "IsGold": false,
+          "IsMountain": false
         },
         {
           "Q": 8,
           "R": 10,
-          "OwnerIndex": 1
+          "OwnerIndex": 1,
+          "IsGold": false,
+          "IsMountain": false
         },
         {
           "Q": 8,
           "R": 9,
-          "OwnerIndex": 1
+          "OwnerIndex": 1,
+          "IsGold": false,
+          "IsMountain": false
         },
         {
           "Q": 9,
           "R": 9,
-          "OwnerIndex": 1
+          "OwnerIndex": 1,
+          "IsGold": false,
+          "IsMountain": false
         },
         {
           "Q": 10,
           "R": 8,
-          "OwnerIndex": 1
+          "OwnerIndex": 1,
+          "IsGold": false,
+          "IsMountain": false
         },
         {
           "Q": 9,
@@ -2733,42 +2824,58 @@
           "OwnerIndex": 1,
           "Occupant": {
             "Type": "Capital"
-          }
+          },
+          "IsGold": false,
+          "IsMountain": false
         },
         {
           "Q": 5,
           "R": 11,
-          "OwnerIndex": 0
+          "OwnerIndex": 0,
+          "IsGold": false,
+          "IsMountain": false
         },
         {
           "Q": 6,
           "R": 11,
-          "OwnerIndex": 0
+          "OwnerIndex": 0,
+          "IsGold": false,
+          "IsMountain": false
         },
         {
           "Q": 7,
           "R": 10,
-          "OwnerIndex": 0
+          "OwnerIndex": 0,
+          "IsGold": false,
+          "IsMountain": false
         },
         {
           "Q": 6,
           "R": 10,
-          "OwnerIndex": 0
+          "OwnerIndex": 0,
+          "IsGold": false,
+          "IsMountain": false
         },
         {
           "Q": 6,
           "R": 9,
-          "OwnerIndex": 0
+          "OwnerIndex": 0,
+          "IsGold": false,
+          "IsMountain": false
         },
         {
           "Q": 7,
           "R": 9,
-          "OwnerIndex": 0
+          "OwnerIndex": 0,
+          "IsGold": false,
+          "IsMountain": false
         },
         {
           "Q": 8,
           "R": 8,
-          "OwnerIndex": 0
+          "OwnerIndex": 0,
+          "IsGold": false,
+          "IsMountain": false
         },
         {
           "Q": 7,
@@ -2776,7 +2883,9 @@
           "OwnerIndex": 0,
           "Occupant": {
             "Type": "Capital"
-          }
+          },
+          "IsGold": false,
+          "IsMountain": false
         }
       ],
       "Territories": [

@@ -41,14 +41,14 @@ using System.Collections.Generic;
 /// </summary>
 public sealed class AiActionLowering
 {
-    private readonly Func<GameState, PlayerId, HashSet<HexCoord>, HashSet<HexCoord>, Random, AiAction?> _inner;
+    private readonly Func<GameState, PlayerId, HashSet<HexCoord>, HashSet<HexCoord>, DeterministicRng, AiAction?> _inner;
     private readonly HashSet<HexCoord> _repositionedUnits = new();
     private AiBuildTowerAction? _pendingBuild;
     private int _keyTurn = -1;
     private PlayerId _keyPlayer;
 
     public AiActionLowering(
-        Func<GameState, PlayerId, HashSet<HexCoord>, HashSet<HexCoord>, Random, AiAction?> inner)
+        Func<GameState, PlayerId, HashSet<HexCoord>, HashSet<HexCoord>, DeterministicRng, AiAction?> inner)
     {
         _inner = inner;
     }
@@ -69,7 +69,7 @@ public sealed class AiActionLowering
     /// the loop-guard set.
     /// </summary>
     public AiAction? Choose(
-        GameState state, PlayerId forPlayer, HashSet<HexCoord> visitedCapitals, Random rng)
+        GameState state, PlayerId forPlayer, HashSet<HexCoord> visitedCapitals, DeterministicRng rng)
     {
         if (_keyTurn != state.Turns.TurnNumber || _keyPlayer != forPlayer)
         {

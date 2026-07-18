@@ -69,7 +69,7 @@ public sealed class ReplayDrivenAi
     /// <see cref="AiAction"/> and advances the cursor past it.
     /// </summary>
     public AiAction? ChooseNextAction(GameState state, PlayerId forPlayer,
-        HashSet<HexCoord> visitedCapitals, Random rng)
+        HashSet<HexCoord> visitedCapitals, DeterministicRng rng)
     {
         if (_cursor.Index >= _script.Count)
         {

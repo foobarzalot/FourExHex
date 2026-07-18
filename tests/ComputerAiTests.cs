@@ -547,7 +547,7 @@ public class ComputerAiTests
         GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
 
         AiAction? result = ComputerAi.ChooseNextAction(
-            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new Random(0));
+            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new DeterministicRng(0));
 
         AiMoveAction move = Assert.IsType<AiMoveAction>(result);
         HexTile? dst = state.Grid.Get(move.Destination);
@@ -578,7 +578,7 @@ public class ComputerAiTests
         state.Treasury.SetGold(cap, 16);
 
         AiAction? result = ComputerAi.ChooseNextAction(
-            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new Random(0));
+            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new DeterministicRng(0));
 
         AiBuildTowerAction build = Assert.IsType<AiBuildTowerAction>(result);
         Assert.Equal(HexCoord.FromOffset(5, 0), build.Destination);
@@ -608,7 +608,7 @@ public class ComputerAiTests
             new Player("Red", Red), new Player("Orange", orange, PlayerKind.Computer));
 
         AiAction? result = ComputerAi.ChooseNextAction(
-            state, orange, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new Random(0));
+            state, orange, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new DeterministicRng(0));
 
         // The lookahead must run without throwing; the score-positive capture
         // of the lone Red tile is the expected pick.
@@ -901,7 +901,7 @@ public class ComputerAiTests
         grid.Get(HexCoord.FromOffset(0, 1))!.Occupant = new Unit(Red);
 
         AiAction? result = ComputerAi.ChooseNextAction(
-            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new Random(0));
+            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new DeterministicRng(0));
 
         AiMoveAction move = Assert.IsType<AiMoveAction>(result);
         Assert.Equal(HexCoord.FromOffset(0, 1), move.Source);
@@ -926,7 +926,7 @@ public class ComputerAiTests
         GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
 
         AiAction? result = ComputerAi.ChooseNextAction(
-            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new Random(0));
+            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new DeterministicRng(0));
 
         AiMoveAction move = Assert.IsType<AiMoveAction>(result);
         HexTile? dst = state.Grid.Get(move.Destination);
@@ -1042,7 +1042,7 @@ public class ComputerAiTests
         GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
 
         AiAction? result = ComputerAi.ChooseNextAction(
-            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new Random(0));
+            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new DeterministicRng(0));
 
         Assert.Null(result);
     }
@@ -1069,7 +1069,7 @@ public class ComputerAiTests
         GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
 
         AiAction? result = ComputerAi.ChooseNextAction(
-            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new Random(0));
+            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new DeterministicRng(0));
 
         AiMoveAction move = Assert.IsType<AiMoveAction>(result);
         Assert.Equal(HexCoord.FromOffset(0, 1), move.Source);
@@ -1175,12 +1175,12 @@ public class ComputerAiTests
         GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
 
         AiAction? first = ComputerAi.ChooseNextAction(
-            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new Random(0));
+            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new DeterministicRng(0));
         AiMoveAction firstMove = Assert.IsType<AiMoveAction>(first);
         AiSimulator.Apply(firstMove, state);
 
         AiAction? second = ComputerAi.ChooseNextAction(
-            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new Random(0));
+            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new DeterministicRng(0));
         if (second is AiMoveAction secondMove)
         {
             Assert.NotEqual(firstMove.Destination, secondMove.Source);
@@ -1225,7 +1225,7 @@ public class ComputerAiTests
             new Player("Blue", PlayerId.FromIndex(1)));
 
         AiAction? action = ComputerAi.ChooseNextAction(
-            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new Random(0));
+            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new DeterministicRng(0));
 
         AiMoveAction mv = Assert.IsType<AiMoveAction>(action);
         Assert.Equal(HexCoord.FromOffset(20, 0), mv.Source);
@@ -1252,7 +1252,7 @@ public class ComputerAiTests
         state.Treasury.SetGold(cap, PurchaseRules.TowerCostFor(Difficulty.Soldier));
 
         AiAction? result = ComputerAi.ChooseNextAction(
-            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new Random(0));
+            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new DeterministicRng(0));
 
         Assert.IsType<AiBuyUnitAction>(result);
     }
@@ -1295,7 +1295,7 @@ public class ComputerAiTests
         state.Treasury.SetGold(cap, PurchaseRules.TowerCostFor(Difficulty.Soldier));
 
         AiAction? result = ComputerAi.ChooseNextAction(
-            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new Random(0));
+            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new DeterministicRng(0));
 
         Assert.IsType<AiBuildTowerAction>(result);
     }
@@ -1325,7 +1325,7 @@ public class ComputerAiTests
         state.Treasury.SetGold(cap, 80); // enough for Commander (40g)
 
         AiAction? result = ComputerAi.ChooseNextAction(
-            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new Random(0));
+            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new DeterministicRng(0));
 
         // Phase 1 fires: Recruit free-captures (5,0).
         AiMoveAction mv = Assert.IsType<AiMoveAction>(result);
@@ -1360,7 +1360,7 @@ public class ComputerAiTests
         // No gold: eliminates phase 3 and 4a.
 
         AiAction? result = ComputerAi.ChooseNextAction(
-            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new Random(0));
+            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new DeterministicRng(0));
 
         // Both Recruits can capture (6,0) directly — there IS a phase-1 action.
         // So the result should be a capture, not null. This test verifies
@@ -1400,7 +1400,7 @@ public class ComputerAiTests
         state.Treasury.SetGold(cap, 80);
 
         AiAction? result = ComputerAi.ChooseNextAction(
-            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new Random(0));
+            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new DeterministicRng(0));
 
         // Phase 2a fires: combine Recruit+Soldier → Captain (unlocks capture).
         AiMoveAction mv = Assert.IsType<AiMoveAction>(result);
@@ -1510,7 +1510,7 @@ public class ComputerAiTests
         (GameState state, Territory _, HexCoord _, HexCoord _) = MovedCombineTargetState();
 
         AiAction? result = ComputerAi.ChooseNextAction(
-            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new Random(0));
+            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new DeterministicRng(0));
 
         // Whatever the AI picks (or null), it must never land a combine on
         // an already-moved friendly unit.
@@ -1832,7 +1832,7 @@ public class ComputerAiTests
         // gold left at 0: no phase 2b/3/4a buys.
 
         AiAction? result = ComputerAi.ChooseNextAction(
-            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new Random(0));
+            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new DeterministicRng(0));
 
         AiMoveAction mv = Assert.IsType<AiMoveAction>(result);
         Assert.Equal(new HexCoord(0, 0), mv.Source);
@@ -1877,7 +1877,7 @@ public class ComputerAiTests
         // gold left at 0: no phase 2b/3/4a.
 
         AiAction? result = ComputerAi.ChooseNextAction(
-            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new Random(0));
+            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new DeterministicRng(0));
 
         // Phase 2a fires: a Red-unit -> Red-unit combine (delta -8).
         AiMoveAction mv = Assert.IsType<AiMoveAction>(result);
@@ -1946,7 +1946,7 @@ public class ComputerAiTests
             $"fixture drift: expected a non-positive phase-3 delta, got {delta}");
 
         AiAction? result = ComputerAi.ChooseNextAction(
-            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new Random(0));
+            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new DeterministicRng(0));
 
         AiBuyUnitAction chosen = Assert.IsType<AiBuyUnitAction>(result);
         Assert.Equal(new HexCoord(4, 0), chosen.Destination);
@@ -1979,7 +1979,7 @@ public class ComputerAiTests
             new Player("Blue", PlayerId.FromIndex(1)));
 
         AiAction? result = ComputerAi.ChooseNextAction(
-            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new Random(0));
+            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new DeterministicRng(0));
 
         AiMoveAction mv = Assert.IsType<AiMoveAction>(result);
         Assert.Equal(recruitCoord, mv.Source);
@@ -2009,7 +2009,7 @@ public class ComputerAiTests
             new Player("Blue", PlayerId.FromIndex(1)));
         var visited = new HashSet<HexCoord>();
 
-        AiAction? first = ComputerAi.ChooseNextAction(state, Red, visited, new HashSet<HexCoord>(), new Random(0));
+        AiAction? first = ComputerAi.ChooseNextAction(state, Red, visited, new HashSet<HexCoord>(), new DeterministicRng(0));
 
         AiMoveAction firstMv = Assert.IsType<AiMoveAction>(first);
         Assert.Equal(recruitCoord, firstMv.Source);
@@ -2018,7 +2018,7 @@ public class ComputerAiTests
         // Apply the capture and restart — mirrors AiTurnDriver's loop.
         AiSimulator.Apply(first!, state);
 
-        AiAction? second = ComputerAi.ChooseNextAction(state, Red, visited, new HashSet<HexCoord>(), new Random(0));
+        AiAction? second = ComputerAi.ChooseNextAction(state, Red, visited, new HashSet<HexCoord>(), new DeterministicRng(0));
 
         AiMoveAction secondMv = Assert.IsType<AiMoveAction>(second);
         Assert.Equal(soldierCoord, secondMv.Source);
@@ -2067,7 +2067,7 @@ public class ComputerAiTests
             $"fixture drift: soldier-buy delta ({soldierDelta}) must exceed recruit-buy delta ({recruitDelta})");
 
         AiAction? result = ComputerAi.ChooseNextAction(
-            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new Random(0));
+            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new DeterministicRng(0));
 
         AiBuyUnitAction buy = Assert.IsType<AiBuyUnitAction>(result);
         Assert.Equal(UnitLevel.Recruit, buy.Level);
@@ -2198,7 +2198,7 @@ public class ComputerAiTests
         (GameState state, HexCoord doomed, _) = DoomedUnitState(markDoomed: true);
 
         AiAction? result = ComputerAi.ChooseNextAction(
-            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new Random(0));
+            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(), new DeterministicRng(0));
 
         // The AI moves the doomed unit off its tile to safety rather than
         // leaving it to drown at turn end.
