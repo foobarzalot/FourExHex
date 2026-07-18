@@ -34,6 +34,8 @@ public partial class AudioBus : Node
     private AudioStreamPlayer _vikingArrivalPlayer = null!;
     private AudioStreamPlayer _rejectGenericPlayer = null!;
     private AudioStreamPlayer _rejectDefendedPlayer = null!;
+    private AudioStreamPlayer _goldCapturedPlayer = null!;
+    private AudioStreamPlayer _mountainCapturedPlayer = null!;
 
     public override void _EnterTree()
     {
@@ -195,6 +197,25 @@ public partial class AudioBus : Node
             VolumeDb = -8f,
         };
         AddChild(_rejectDefendedPlayer);
+
+        _goldCapturedPlayer = new AudioStreamPlayer
+        {
+            Stream = GD.Load<AudioStream>("res://assets/audio/gold_captured.wav"),
+            // Small-reward chime that LAYERS on top of the action's
+            // occupant cue (place thud / chop) — sit at combine-chime
+            // level so the stack doesn't spike.
+            VolumeDb = -8f,
+        };
+        AddChild(_goldCapturedPlayer);
+
+        _mountainCapturedPlayer = new AudioStreamPlayer
+        {
+            Stream = GD.Load<AudioStream>("res://assets/audio/mountain_captured.wav"),
+            // Low rocky thud; layers like the gold chime, and the low end
+            // reads through the mix without much gain.
+            VolumeDb = -8f,
+        };
+        AddChild(_mountainCapturedPlayer);
     }
 
     /// <summary>
@@ -370,6 +391,29 @@ public partial class AudioBus : Node
         if (!UserSettings.SfxEnabled) return;
         _rejectDefendedPlayer.Stop();
         _rejectDefendedPlayer.Play();
+    }
+
+    /// <summary>
+    /// Three-note coin chime for capturing a gold tile. Layers on top of
+    /// the action's occupant cue (terrain is orthogonal to what was
+    /// destroyed there).
+    /// </summary>
+    public void PlayGoldCaptured()
+    {
+        if (!UserSettings.SfxEnabled) return;
+        _goldCapturedPlayer.Stop();
+        _goldCapturedPlayer.Play();
+    }
+
+    /// <summary>
+    /// Low rocky thud for capturing a mountain tile. Layers like
+    /// <see cref="PlayGoldCaptured"/>.
+    /// </summary>
+    public void PlayMountainCaptured()
+    {
+        if (!UserSettings.SfxEnabled) return;
+        _mountainCapturedPlayer.Stop();
+        _mountainCapturedPlayer.Play();
     }
 
     /// <summary>

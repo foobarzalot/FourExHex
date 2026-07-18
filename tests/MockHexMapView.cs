@@ -139,6 +139,10 @@ public class MockHexMapView : IHexMapView
         DestructionEffects.Add((coord, destroyed));
     }
 
+    public List<(HexCoord Coord, TerrainFeature Terrain)> TerrainCaptureEffects { get; } = new();
+    public void PlayTerrainCaptureEffect(HexCoord coord, TerrainFeature terrain) =>
+        TerrainCaptureEffects.Add((coord, terrain));
+
     // Per-sound recording surface — tests assert against these. Each
     // property records every fire of the matching SoundEffect routed
     // through PlaySound. The mock records unconditionally; the controller
@@ -152,6 +156,8 @@ public class MockHexMapView : IHexMapView
     public List<HexCoord> TowerDestroyedSounds { get; } = new();
     public List<HexCoord> TreeClearedSounds { get; } = new();
     public List<HexCoord> CapitalDestroyedSounds { get; } = new();
+    public List<HexCoord> GoldCapturedSounds { get; } = new();
+    public List<HexCoord> MountainCapturedSounds { get; } = new();
     public int BankruptcySoundCount { get; private set; }
     public int GameWonSoundCount { get; private set; }
     public int RallySoundCount { get; private set; }
@@ -171,6 +177,8 @@ public class MockHexMapView : IHexMapView
             case SoundEffect.TowerDestroyed: TowerDestroyedSounds.Add(coord); break;
             case SoundEffect.TreeCleared: TreeClearedSounds.Add(coord); break;
             case SoundEffect.CapitalDestroyed: CapitalDestroyedSounds.Add(coord); break;
+            case SoundEffect.GoldCaptured: GoldCapturedSounds.Add(coord); break;
+            case SoundEffect.MountainCaptured: MountainCapturedSounds.Add(coord); break;
             case SoundEffect.Bankruptcy: BankruptcySoundCount++; break;
             case SoundEffect.GameWon: GameWonSoundCount++; break;
             case SoundEffect.Rally: RallySoundCount++; break;

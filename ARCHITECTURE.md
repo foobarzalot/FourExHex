@@ -104,9 +104,9 @@ CONTROLLER (pure C#) ─ GameController
       PlaySound(Rally) once if any moved)
 
   action handlers:
-    ExecuteBuyAndPlace → debit gold + MovementRules.PlaceNew → if capture: HandleCapture → DispatchActionSound
-    ExecuteMove        → MovementRules.Move → if capture: HandleCapture → DispatchActionSound
-    ExecuteBuildTower  → debit gold + drop Tower + PlaySound(TowerPlaced)
+    ExecuteBuyAndPlace → debit gold + MovementRules.PlaceNew → if capture: HandleCapture + EmitTerrainCaptureFx → DispatchActionSound
+    ExecuteMove        → MovementRules.Move → if capture: HandleCapture + EmitTerrainCaptureFx → DispatchActionSound
+    ExecuteBuildTower  → debit gold + drop Tower + PlaySound(TowerPlaced) + EmitMountainTowerFx
 
   AI loop (AiTurnDriver, paced via IAiPacer):
     _aiDriver.RunUntilHumanOrDone → preview → execute beats (or chunked instant track)
@@ -306,6 +306,19 @@ AUDIO (autoload)
   sounds + AttachClick UI clicks. Destruction VFX (HexMapView.PlayDestructionEffect: flash + shockwave +
   shards) gates on UserSettings.VfxEnabled. Pulse/shrink/grow-in animations are always on (communicate state).
 
+  Terrain-capture feedback: every ownership change fires IHexMapView.PlayTerrainCaptureEffect(coord,
+  TerrainFeature) — gold shower (flash + gold ring burst + coin sparks) for Gold, tile shake for Mountain
+  (this tile's ring is omitted from the baked mountain batch while a ring copy on the deaths layer plus the
+  occupant glyph judder in sync — see _shakeSuppressedMountains / _hexAlignedDeathFx; the spawn is deferred to
+  end-of-frame so it grabs the glyph RefreshOccupantVisuals just rebuilt — plus dust puffs and rock chips), and
+  a baseline flash + white ring for None. A tower landing on a mountain fires the same mountain effect
+  (EmitMountainTowerFx; plain-tile tower builds fire nothing). Gold/mountain also fire a terrain sound cue
+  (SoundEffect.GoldCaptured coin chime / MountainCaptured rocky thud, synthesized by
+  tools/generate_capture_sfx.py into assets/audio/*.wav) that LAYERS on top of the action's occupant cue
+  — the deliberate exception to DispatchActionSound's one-cue-per-action policy, since terrain is orthogonal to
+  the destroyed occupant. All of it emits through the silent-gated GameOperations wrappers and scales with the
+  HexMapView.CaptureFxIntensity export (design values authored against a 104px hex, scaled by HexSize/52).
+
   Silent-mode (Instant AI batch / instant replay / Instant automate) is decided controller-side.
   GameOperations.IsSilent() (= aiSilentMode() && currentPlayer.IsAi, OR _replayInstantActive, OR
   InSilentAutomateBatch()) gates the controller's own per-action cues via
@@ -477,7 +490,7 @@ Mutation/orchestration core (what both live AI and replay need) lives in `src/Fo
   - Game-end — `CheckGameEndConditions` (fires `GameEnded` via the `onGameEnded` ctor callback; controller owns the public event)
   - View sync — `RefreshViews` (also pushes the Automate button state via `IHudView.SetAutomateState`, reading the `isAutomating` / `isAutomateExhausted` ctor callbacks), `ShowHighlightAndRefresh`, `InvokeAfterRefresh`, private `HasAnyActionableForCurrentPlayer`
   - Shared instant loop — `RunInstantTick(active, step, onExhausted, reschedule)`, the chunked frame-yielded fast-forward behind both live-AI instant (`AiTurnDriver`) and instant replay (`ReplayRecorder`); owns `InstantBudgetMs`
-  - Silent-mode — `IsSilent` (per-action cue gate) + `EmitSound` / `EmitDestruction` (silent-gated wrappers over `_map.PlaySound` / `PlayDestructionEffect`, the only path controllers use); `RefreshSilentMode` (drives the view's `_silentMode` flag for view-internal tween/tide suppression), `InSilentAiBatch` (input gate)
+  - Silent-mode — `IsSilent` (per-action cue gate) + `EmitSound` / `EmitDestruction` / `EmitTerrainCaptureFx` / `EmitMountainTowerFx` (silent-gated wrappers over `_map.PlaySound` / `PlayDestructionEffect` / `PlayTerrainCaptureEffect`, the only path controllers use); `RefreshSilentMode` (drives the view's `_silentMode` flag for view-internal tween/tide suppression), `InSilentAiBatch` (input gate)
   - Helpers — `WasFriendlyUnitAt`
   - Mutable shared state (public properties; written by the instant loop / replay reset paths) — `Rng` (read-only getter), `GameEndedFired`, `HumanTurnFiredForCurrentTurn`, `SuppressMapRebuild`
 
@@ -561,11 +574,15 @@ void ShowTideForecast(IEnumerable<TideStep> steps);  // Rising Tides telegraph
 void ShowSeaVikings(IReadOnlyList<SeaViking> atSea);  // Viking Raiders: raiders waiting at sea
 void ShowFog(FogView? fog);                           // Fog Of War projection (null = no fog)
 void PlayDestructionEffect(HexCoord coord, HexOccupant destroyed);
+void PlayTerrainCaptureEffect(HexCoord coord, TerrainFeature terrain);
+     // capture / tower-on-mountain feedback: gold shower, mountain shake,
+     // plain flash+ring — see the Sound & FX section
 void FlashRejection(HexCoord target, RejectionShape shape, IEnumerable<HexCoord> blockingDefenders);
 
 // Audio sink → AudioBus. SoundEffect enum (UnitPlaced, TowerPlaced,
 // UnitCombined, UnitDestroyed, TowerDestroyed, TreeCleared, CapitalDestroyed,
-// Bankruptcy, GameWon, Rally, PlayerDefeated) picks the cue; coord reserved.
+// Bankruptcy, GameWon, Rally, PlayerDefeated, TileSubmerged, VikingArrival,
+// GoldCaptured, MountainCaptured) picks the cue; coord reserved.
 // Plays unconditionally — silent-mode gating is controller-side (GameOperations.EmitSound).
 void PlaySound(SoundEffect kind, HexCoord? at = null);
 ```

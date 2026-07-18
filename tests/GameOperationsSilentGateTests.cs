@@ -20,7 +20,7 @@ public class GameOperationsSilentGateTests
     // silent inputs the gate reads under our control: the aiSilentMode
     // predicate, the replay-instant predicate, and which player's turn it
     // is (only an AI turn can be silenced by aiSilentMode).
-    private static (GameOperations Ops, MockHexMapView Map) BuildOps(
+    private static (GameOperations Ops, MockHexMapView Map, GameState State) BuildOps(
         bool aiSilent, bool replayInstant, bool currentPlayerIsAi)
     {
         var red = new Player("Red", PlayerId.FromIndex(0), PlayerKind.Human);
@@ -48,13 +48,13 @@ public class GameOperationsSilentGateTests
             maxTurnNumber: int.MaxValue,
             masterSeed: 0,
             onAfterRefresh: null);
-        return (ops, map);
+        return (ops, map, state);
     }
 
     [Fact]
     public void EmitSound_DropsWhileInstantAiTurn()
     {
-        (GameOperations ops, MockHexMapView map) =
+        (GameOperations ops, MockHexMapView map, GameState _) =
             BuildOps(aiSilent: true, replayInstant: false, currentPlayerIsAi: true);
 
         Assert.True(ops.IsSilent());
@@ -70,7 +70,7 @@ public class GameOperationsSilentGateTests
     {
         // Replay-instant silences even on a human turn (playback re-runs
         // recorded human actions).
-        (GameOperations ops, MockHexMapView map) =
+        (GameOperations ops, MockHexMapView map, GameState _) =
             BuildOps(aiSilent: false, replayInstant: true, currentPlayerIsAi: false);
 
         Assert.True(ops.IsSilent());
@@ -82,7 +82,7 @@ public class GameOperationsSilentGateTests
     [Fact]
     public void EmitSound_PlaysWhenNotSilent()
     {
-        (GameOperations ops, MockHexMapView map) =
+        (GameOperations ops, MockHexMapView map, GameState _) =
             BuildOps(aiSilent: false, replayInstant: false, currentPlayerIsAi: true);
 
         Assert.False(ops.IsSilent());
@@ -98,12 +98,110 @@ public class GameOperationsSilentGateTests
     {
         // The Instant setting is on (aiSilent true) but it's a human's own
         // turn — they always hear their own cues.
-        (GameOperations ops, MockHexMapView map) =
+        (GameOperations ops, MockHexMapView map, GameState _) =
             BuildOps(aiSilent: true, replayInstant: false, currentPlayerIsAi: false);
 
         Assert.False(ops.IsSilent());
         ops.EmitSound(SoundEffect.GameWon);
 
         Assert.Equal(1, map.GameWonSoundCount);
+    }
+
+    // --- Terrain-capture FX gate (issue #155) -----------------------------
+
+    [Fact]
+    public void EmitTerrainCaptureFx_DropsWhileInstantAiTurn()
+    {
+        (GameOperations ops, MockHexMapView map, GameState state) =
+            BuildOps(aiSilent: true, replayInstant: false, currentPlayerIsAi: true);
+        state.Grid.Get(HexCoord.FromOffset(0, 0))!.IsGold = true;
+        state.Grid.Get(HexCoord.FromOffset(1, 0))!.IsMountain = true;
+
+        Assert.True(ops.IsSilent());
+        ops.EmitTerrainCaptureFx(HexCoord.FromOffset(0, 0));
+        ops.EmitTerrainCaptureFx(HexCoord.FromOffset(1, 0));
+
+        Assert.Empty(map.TerrainCaptureEffects);
+        Assert.Empty(map.GoldCapturedSounds);
+        Assert.Empty(map.MountainCapturedSounds);
+    }
+
+    [Fact]
+    public void EmitTerrainCaptureFx_PlaysWhenNotSilent()
+    {
+        (GameOperations ops, MockHexMapView map, GameState state) =
+            BuildOps(aiSilent: false, replayInstant: false, currentPlayerIsAi: true);
+        state.Grid.Get(HexCoord.FromOffset(0, 0))!.IsGold = true;
+        state.Grid.Get(HexCoord.FromOffset(1, 0))!.IsMountain = true;
+
+        Assert.False(ops.IsSilent());
+        ops.EmitTerrainCaptureFx(HexCoord.FromOffset(0, 0));
+        ops.EmitTerrainCaptureFx(HexCoord.FromOffset(1, 0));
+
+        Assert.Equal(
+            new[]
+            {
+                (HexCoord.FromOffset(0, 0), TerrainFeature.Gold),
+                (HexCoord.FromOffset(1, 0), TerrainFeature.Mountain),
+            },
+            map.TerrainCaptureEffects);
+        Assert.Single(map.GoldCapturedSounds);
+        Assert.Equal(HexCoord.FromOffset(0, 0), map.GoldCapturedSounds[0]);
+        Assert.Single(map.MountainCapturedSounds);
+        Assert.Equal(HexCoord.FromOffset(1, 0), map.MountainCapturedSounds[0]);
+    }
+
+    [Fact]
+    public void EmitMountainTowerFx_MountainTile_FiresShakeAndThud()
+    {
+        (GameOperations ops, MockHexMapView map, GameState state) =
+            BuildOps(aiSilent: false, replayInstant: false, currentPlayerIsAi: true);
+        state.Grid.Get(HexCoord.FromOffset(1, 0))!.IsMountain = true;
+
+        ops.EmitMountainTowerFx(HexCoord.FromOffset(1, 0));
+
+        (HexCoord Coord, TerrainFeature Terrain) fx = Assert.Single(map.TerrainCaptureEffects);
+        Assert.Equal(TerrainFeature.Mountain, fx.Terrain);
+        Assert.Single(map.MountainCapturedSounds);
+    }
+
+    [Fact]
+    public void EmitMountainTowerFx_PlainTile_FiresNothing()
+    {
+        (GameOperations ops, MockHexMapView map, GameState _) =
+            BuildOps(aiSilent: false, replayInstant: false, currentPlayerIsAi: true);
+
+        ops.EmitMountainTowerFx(HexCoord.FromOffset(1, 0));
+
+        Assert.Empty(map.TerrainCaptureEffects);
+        Assert.Empty(map.MountainCapturedSounds);
+    }
+
+    [Fact]
+    public void EmitMountainTowerFx_DropsWhileInstantAiTurn()
+    {
+        (GameOperations ops, MockHexMapView map, GameState state) =
+            BuildOps(aiSilent: true, replayInstant: false, currentPlayerIsAi: true);
+        state.Grid.Get(HexCoord.FromOffset(1, 0))!.IsMountain = true;
+
+        Assert.True(ops.IsSilent());
+        ops.EmitMountainTowerFx(HexCoord.FromOffset(1, 0));
+
+        Assert.Empty(map.TerrainCaptureEffects);
+        Assert.Empty(map.MountainCapturedSounds);
+    }
+
+    [Fact]
+    public void EmitTerrainCaptureFx_PlainTile_FiresBaselineEffectNoSound()
+    {
+        (GameOperations ops, MockHexMapView map, GameState _) =
+            BuildOps(aiSilent: false, replayInstant: false, currentPlayerIsAi: true);
+
+        ops.EmitTerrainCaptureFx(HexCoord.FromOffset(0, 0));
+
+        (HexCoord Coord, TerrainFeature Terrain) fx = Assert.Single(map.TerrainCaptureEffects);
+        Assert.Equal(TerrainFeature.None, fx.Terrain);
+        Assert.Empty(map.GoldCapturedSounds);
+        Assert.Empty(map.MountainCapturedSounds);
     }
 }

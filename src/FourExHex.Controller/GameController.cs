@@ -1222,6 +1222,7 @@ public class GameController
         {
             _ops.HandleCapture($"Buy {level} → {destination}", capital);
             RebindSelectionToContaining(destination);
+            _ops.EmitTerrainCaptureFx(destination);
         }
 
         // Dispatch destruction FX after HandleCapture: that path's
@@ -1316,6 +1317,7 @@ public class GameController
         {
             _ops.HandleCapture($"Move {source}→{destination}", originCapital);
             RebindSelectionToContaining(destination);
+            _ops.EmitTerrainCaptureFx(destination);
         }
 
         if (result.Destroyed != null)
@@ -1404,6 +1406,7 @@ public class GameController
                 $"{DefenseRules.Defense(destination, _state.Grid, _session.SelectedTerritory)}");
         }
         _ops.EmitSound(SoundEffect.TowerPlaced, destination);
+        _ops.EmitMountainTowerFx(destination);
 
         // QoL: stay in BuildingTower mode if the territory can still
         // afford another tower. Refresh both the tower-target preview

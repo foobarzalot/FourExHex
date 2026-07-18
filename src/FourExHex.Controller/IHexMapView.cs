@@ -211,6 +211,18 @@ public interface IHexMapView
     void PlayDestructionEffect(HexCoord coord, HexOccupant destroyed);
 
     /// <summary>
+    /// Play a one-shot capture-feedback effect on a tile that just changed
+    /// owner: a coin flourish for <see cref="TerrainFeature.Gold"/>, a
+    /// shake + dust puff for <see cref="TerrainFeature.Mountain"/>, and a
+    /// baseline flash + ring for <see cref="TerrainFeature.None"/>. Called
+    /// by the controller after <c>HandleCapture</c> (so the rebuilt deaths
+    /// layer exists), only on an actual ownership change — never on
+    /// repaints, repositions, or undo/redo. Layers on top of any
+    /// destruction effect fired for the same action. Pure visual side effect.
+    /// </summary>
+    void PlayTerrainCaptureEffect(HexCoord coord, TerrainFeature terrain);
+
+    /// <summary>
     /// Play a one-shot sound cue for a game event. The optional
     /// <paramref name="at"/> coord is reserved for a future positional
     /// implementation; the current AudioBus plays through a single
@@ -259,6 +271,13 @@ public enum SoundEffect
     TileSubmerged,
     /// <summary>Viking Raiders: a wave of longships arriving offshore.</summary>
     VikingArrival,
+    /// <summary>Coin chime for capturing a gold tile. Layers on top of any
+    /// occupant cue from the same action (terrain is orthogonal to the
+    /// destroyed occupant).</summary>
+    GoldCaptured,
+    /// <summary>Rocky thud for capturing a mountain tile. Layers like
+    /// <see cref="GoldCaptured"/>.</summary>
+    MountainCaptured,
 }
 
 /// <summary>

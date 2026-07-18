@@ -193,6 +193,9 @@ public partial class HexMapView : Node2D, IHexMapView
     private TriangleSoup? _fogLayer;
     private readonly Dictionary<HexCoord, Node2D> _unitVisuals = new();
     private readonly Dictionary<HexCoord, Node2D> _capitalVisuals = new();
+    // Towers live in _capitalsLayer like capitals; tracked per-coord so
+    // the mountain-shake FX can judder the glyph standing on the tile.
+    private readonly Dictionary<HexCoord, Node2D> _towerVisuals = new();
 
     // Tree and grave visuals persist across RefreshOccupantVisuals calls
     // (units, capitals, towers all rebuild every refresh; trees and
@@ -561,6 +564,10 @@ public partial class HexMapView : Node2D, IHexMapView
         {
             if (tile.IsMountain) _lastMountainCoords.Add(tile.Coord);
         }
+        // A rebuild interrupts any in-flight capture shake; make sure no
+        // tile stays suppressed out of the baked mountain batch.
+        _shakeSuppressedMountains.Clear();
+        _hexAlignedDeathFx.Clear();
 
         // Gold-tile inner borders: drawn just above the tile fills
         // but BELOW the per-tile outlines and territory borders, so both the
@@ -983,6 +990,12 @@ public partial class HexMapView : Node2D, IHexMapView
 
         long tBorders = Log.Stamp();
         ClearLayer(_targetsLayer);
+        // The deaths-layer clear below kills any in-flight capture-shake
+        // overlay (its tween dies with the node, so its restore callback
+        // never runs) — drop the suppressions first so the DrawMountains
+        // here bakes every ring back in.
+        _shakeSuppressedMountains.Clear();
+        _hexAlignedDeathFx.Clear();
         DrawTerritoryBorders();
         DrawGoldBorders();
         DrawMountains();
@@ -1918,6 +1931,7 @@ public partial class HexMapView : Node2D, IHexMapView
         ClearLayer(_capitalsLayer);
         _unitVisuals.Clear();
         _capitalVisuals.Clear();
+        _towerVisuals.Clear();
         _pulsingUnits.Clear();
         _pulsingCapitals.Clear();
 
@@ -2068,6 +2082,7 @@ public partial class HexMapView : Node2D, IHexMapView
                 Node2D visual = CreateTowerVisual();
                 visual.Position = center;
                 _capitalsLayer?.AddChild(visual);
+                _towerVisuals[tile.Coord] = visual;
             }
         }
 
@@ -2299,6 +2314,335 @@ public partial class HexMapView : Node2D, IHexMapView
         ApplyGlyphUpright();
     }
 
+    // Capture-feedback effects (issue #155), following the design handoff:
+    // a gold shower for gold (flash + gold ring burst + coin sparks), a
+    // tile shake + dust puff + rock chips for mountains, and a baseline
+    // flash + white ring for plain tiles. The
+    // handoff's pixel values are authored against a 104px-wide hex (52px
+    // half-width), so every distance scales by HexSize / 52. All pieces
+    // are transient tween-and-free nodes; silent-mode gating is
+    // controller-side (GameOperations.EmitTerrainCaptureFx).
+    private const float CaptureFxDemoHexHalfWidth = 52f;
+    private float CaptureFxScale => HexSize / CaptureFxDemoHexHalfWidth;
+    /// <summary>Design-handoff intensity multiplier (0.5–2.0) applied to
+    /// particle counts and travel distances of the capture effects.</summary>
+    [Export] public float CaptureFxIntensity { get; set; } = 1.0f;
+    // Design tokens from the handoff.
+    private static readonly Color CaptureFlashColor = new Color(1f, 1f, 1f, 0.55f);
+    private static readonly Color CaptureGoldRingColor = new Color("#f0c33c");
+    private static readonly Color[] CaptureGoldSparkPalette =
+        { new Color("#f6cd4a"), new Color("#f0c33c"), new Color("#ffe89a") };
+    private static readonly Color[] CaptureRockChipPalette =
+        { new Color("#3f464d"), new Color("#565e66") };
+    private static readonly Color CaptureDustColor =
+        new Color(150 / 255f, 158 / 255f, 166 / 255f, 0.85f);
+    // Tile shake: a decaying side-to-side judder in demo px, linear
+    // steps, returning to origin so removing the shaken overlay reveals
+    // the identical static tile seamlessly. Slower, larger, and with more
+    // oscillations than the handoff's 320ms/±4px — the handoff shakes the
+    // whole DOM tile (contents included) while here only a terrain copy
+    // moves over a static board, which needs far more energy to read.
+    private static readonly Vector2[] CaptureShakeOffsets =
+    {
+        new Vector2(-6f, 3f),
+        new Vector2(6f, -3f),
+        new Vector2(-5f, 2f),
+        new Vector2(5f, -2f),
+        new Vector2(-3f, 1.5f),
+        new Vector2(3f, -1.5f),
+        new Vector2(-1.5f, 0.75f),
+        new Vector2(1.5f, -0.75f),
+        Vector2.Zero,
+    };
+    private const double CaptureShakeDuration = 0.72;
+    private const float CaptureShakeBoost = 1.5f;
+    private const double CaptureRingDuration = 0.45;
+    // Mountain tiles whose baked ring is temporarily omitted from
+    // DrawMountains because a capture-shake copy is animating in its
+    // place — with the static original still drawn, the moving copy
+    // reads as a ghost double-image instead of motion.
+    private readonly HashSet<HexCoord> _shakeSuppressedMountains = new();
+    // Deaths-layer FX nodes that are hex-cell-aligned (the shake ring
+    // copy) and must NOT be counter-rotated by ApplyGlyphUpright.
+    private readonly HashSet<Node2D> _hexAlignedDeathFx = new();
+
+    public void PlayTerrainCaptureEffect(HexCoord coord, TerrainFeature terrain)
+    {
+        if (!UserSettings.VfxEnabled) return;
+        if (_deathsLayer == null) return;
+
+        Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(coord, HexSize);
+        switch (terrain)
+        {
+            case TerrainFeature.Gold:
+                PlayGoldCaptureFx(center);
+                break;
+            case TerrainFeature.Mountain:
+                PlayMountainCaptureFx(coord, center);
+                break;
+            default:
+                PlayPlainCaptureFx(center);
+                break;
+        }
+        ApplyGlyphUpright();
+        Log.Debug(Log.LogCategory.Render, $"[terrain-fx] {terrain} capture fx at {coord}");
+    }
+
+    // Baseline for contrast: tile flash + one expanding white ring.
+    private void PlayPlainCaptureFx(Vector2 center)
+    {
+        SpawnDestructionFlash(center, CaptureFlashColor);
+        SpawnCaptureRing(center, new Color(1f, 1f, 1f, 0.85f), demoDiameterPx: 80f);
+    }
+
+    // Gold shower: flash + gold ring + coin sparks with slight gravity.
+    private void PlayGoldCaptureFx(Vector2 center)
+    {
+        SpawnDestructionFlash(center, CaptureFlashColor);
+        SpawnCaptureRing(center, CaptureGoldRingColor, demoDiameterPx: 90f);
+        int sparkCount = Mathf.RoundToInt(8 * CaptureFxIntensity);
+        for (int i = 0; i < sparkCount; i++)
+        {
+            SpawnCaptureSpark(center, CaptureGoldSparkPalette[i % CaptureGoldSparkPalette.Length],
+                downBias: false, demoSizePx: 8f, demoGravityPx: 30f, endScale: 0.6f);
+        }
+    }
+
+    // Dust puff: whole-tile shake + ground-hugging dust billow +
+    // downward-biased rock chips. Deliberately NO tile flash here — a
+    // bright static overlay on top of the tile masks the shake motion
+    // for its entire duration. The shake is deferred to end-of-frame:
+    // the capture handler's trailing refresh rebuilds every unit glyph
+    // (RefreshOccupantVisuals clears _unitVisuals), which would kill a
+    // tween started now on the capturing unit — deferring lets the shake
+    // grab the FRESH glyph and judder it in sync with the ring.
+    private void PlayMountainCaptureFx(HexCoord coord, Vector2 center)
+    {
+        Callable.From(() => SpawnMountainShake(coord, center)).CallDeferred();
+        SpawnDustPuffs(center);
+        int chipCount = Mathf.RoundToInt(6 * CaptureFxIntensity);
+        for (int i = 0; i < chipCount; i++)
+        {
+            SpawnCaptureSpark(center, CaptureRockChipPalette[i % CaptureRockChipPalette.Length],
+                downBias: true, demoSizePx: 7f, demoGravityPx: 40f, endScale: 0.8f);
+        }
+    }
+
+    // Expanding stroked circle: scale .35 -> 1.7 while fading .95 -> 0.
+    private void SpawnCaptureRing(Vector2 center, Color color, float demoDiameterPx)
+    {
+        float u = CaptureFxScale;
+        float radius = demoDiameterPx * 0.5f * u;
+        const int segments = 36;
+        var points = new Vector2[segments + 1];
+        for (int i = 0; i <= segments; i++)
+        {
+            float a = Mathf.Tau * i / segments;
+            points[i] = new Vector2(radius * Mathf.Cos(a), radius * Mathf.Sin(a));
+        }
+        var ring = new Line2D
+        {
+            Position = center,
+            Points = points,
+            Width = 4f * u,
+            DefaultColor = color,
+            Scale = new Vector2(0.35f, 0.35f),
+            Modulate = new Color(1f, 1f, 1f, 0.95f),
+        };
+        _deathsLayer!.AddChild(ring);
+
+        Tween tween = ring.CreateTween();
+        tween.TweenProperty(ring, "scale", new Vector2(1.7f, 1.7f), CaptureRingDuration)
+            .SetTrans(Tween.TransitionType.Cubic)
+            .SetEase(Tween.EaseType.Out);
+        tween.Parallel().TweenProperty(ring, "modulate", new Color(1f, 1f, 1f, 0f), CaptureRingDuration)
+            .SetTrans(Tween.TransitionType.Cubic)
+            .SetEase(Tween.EaseType.Out);
+        tween.Finished += ring.QueueFree;
+    }
+
+    // One coin spark / rock chip: a small square flung outward (rock chips
+    // biased into the lower half-plane), curving down under gravity while
+    // spinning and fading. Two tweens on the node: a two-leg position path
+    // (80%/70% of the travel at 55% of the timeline, per the handoff
+    // keyframes) and the rotation/scale/fade channels.
+    private void SpawnCaptureSpark(
+        Vector2 center, Color color, bool downBias,
+        float demoSizePx, float demoGravityPx, float endScale)
+    {
+        float u = CaptureFxScale;
+        float k = CaptureFxIntensity;
+        float angle = downBias
+            ? Mathf.Pi * (0.15f + 0.7f * (float)DestructionRng.NextDouble())
+            : (float)DestructionRng.NextDouble() * Mathf.Tau;
+        float travel = (40f + 55f * (float)DestructionRng.NextDouble()) * k * u;
+        float dx = Mathf.Cos(angle) * travel;
+        float dy = (downBias ? Mathf.Abs(Mathf.Sin(angle)) : Mathf.Sin(angle)) * travel;
+        float size = (demoSizePx + 5f * (float)DestructionRng.NextDouble()) * u;
+
+        float half = size / 2f;
+        var square = new[]
+        {
+            new Vector2(-half, -half), new Vector2(half, -half),
+            new Vector2(half, half), new Vector2(-half, half),
+        };
+        var spark = new Polygon2D { Position = center, Polygon = square, Color = color };
+        _deathsLayer!.AddChild(spark);
+
+        double duration = 0.55 + 0.25 * DestructionRng.NextDouble();
+        Vector2 mid = center + new Vector2(dx * 0.8f, dy * 0.7f);
+        Vector2 end = center + new Vector2(dx, dy + demoGravityPx * u);
+
+        Tween move = spark.CreateTween();
+        move.TweenProperty(spark, "position", mid, duration * 0.55)
+            .SetTrans(Tween.TransitionType.Cubic).SetEase(Tween.EaseType.Out);
+        move.TweenProperty(spark, "position", end, duration * 0.45)
+            .SetTrans(Tween.TransitionType.Cubic).SetEase(Tween.EaseType.Out);
+        move.Finished += spark.QueueFree;
+
+        Tween channels = spark.CreateTween();
+        channels.TweenProperty(spark, "rotation", Mathf.DegToRad(220f), duration)
+            .SetTrans(Tween.TransitionType.Linear);
+        channels.Parallel().TweenProperty(spark, "scale", Vector2.One * endScale, duration)
+            .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.In);
+        channels.Parallel().TweenProperty(spark, "modulate", new Color(1f, 1f, 1f, 0f), duration)
+            .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.In);
+    }
+
+    // Ground-hugging dust billow: soft radial-gradient blobs (a triangle
+    // fan whose perimeter alpha is 0) spawned slightly below center,
+    // drifting outward with vertical travel flattened to 45% plus a small
+    // sink, growing 0.6 -> 1.8 while fading.
+    private void SpawnDustPuffs(Vector2 center)
+    {
+        float u = CaptureFxScale;
+        float k = CaptureFxIntensity;
+        int count = Mathf.RoundToInt(10 * k);
+        for (int i = 0; i < count; i++)
+        {
+            float angle = (float)DestructionRng.NextDouble() * Mathf.Tau;
+            float drift = (26f + 42f * (float)DestructionRng.NextDouble()) * k * u;
+            float radius = (16f + 14f * (float)DestructionRng.NextDouble()) * u * 0.5f;
+
+            const int segments = 16;
+            var perimeter = new Vector2[segments];
+            var perimeterColors = new Color[segments];
+            Color edge = new Color(CaptureDustColor.R, CaptureDustColor.G, CaptureDustColor.B, 0f);
+            for (int s = 0; s < segments; s++)
+            {
+                float a = Mathf.Tau * s / segments;
+                perimeter[s] = new Vector2(radius * Mathf.Cos(a), radius * Mathf.Sin(a));
+                perimeterColors[s] = edge;
+            }
+            var builder = new TriangleSoupBuilder();
+            builder.AddFan(Vector2.Zero, perimeter, CaptureDustColor, perimeterColors);
+
+            var puff = new TriangleSoup
+            {
+                Position = center + new Vector2(0f, 8f * u),
+                Scale = new Vector2(0.6f, 0.6f),
+                Modulate = new Color(1f, 1f, 1f, 0.9f),
+            };
+            _deathsLayer!.AddChild(puff);
+            puff.SetTriangles(
+                builder.Points.ToArray(), builder.Colors.ToArray(), builder.Indices.ToArray());
+
+            Vector2 end = puff.Position + new Vector2(
+                Mathf.Cos(angle) * drift,
+                Mathf.Sin(angle) * drift * 0.45f + 10f * u);
+            double duration = 0.62 + 0.22 * DestructionRng.NextDouble();
+
+            Tween tween = puff.CreateTween();
+            tween.TweenProperty(puff, "position", end, duration)
+                .SetTrans(Tween.TransitionType.Cubic).SetEase(Tween.EaseType.Out);
+            tween.Parallel().TweenProperty(puff, "scale", new Vector2(1.8f, 1.8f), duration)
+                .SetTrans(Tween.TransitionType.Cubic).SetEase(Tween.EaseType.Out);
+            tween.Parallel().TweenProperty(puff, "modulate", new Color(1f, 1f, 1f, 0f), duration)
+                .SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.In);
+            tween.Finished += puff.QueueFree;
+        }
+    }
+
+    // The static mountain rings are batched into one TriangleSoup, so a
+    // single tile can't be moved there. Instead: omit this tile's ring
+    // from the baked batch for the shake's duration (rebake via
+    // DrawMountains, which consults _shakeSuppressedMountains) and shake
+    // a transient ring copy on the deaths layer — the top FX band, where
+    // every other animated capture effect provably renders. The copy is
+    // an annulus, so the occupant glyph stays visible through its hole.
+    // Registered in _hexAlignedDeathFx so ApplyGlyphUpright leaves its
+    // board alignment alone. On finish the suppression lifts and a rebake
+    // restores the identical baked ring seamlessly.
+    private void SpawnMountainShake(HexCoord coord, Vector2 center)
+    {
+        if (_deathsLayer == null) return;
+        // Deferred call — re-validate against the current model (an undo
+        // or tide step may have landed between spawn and end-of-frame).
+        if (Grid.Get(coord)?.IsMountain != true) return;
+        (Vector2[] outer, Vector2[] inner, Color[] outerShade, Color[] innerShade) =
+            MountainRingGeometry();
+        var builder = new TriangleSoupBuilder();
+        AddMountainRing(builder, Vector2.Zero, outer, inner, outerShade, innerShade);
+        var overlay = new TriangleSoup { Name = "MountainShake", Position = center };
+        _deathsLayer.AddChild(overlay);
+        overlay.SetTriangles(
+            builder.Points.ToArray(), builder.Colors.ToArray(), builder.Indices.ToArray());
+        _hexAlignedDeathFx.Add(overlay);
+
+        _shakeSuppressedMountains.Add(coord);
+        DrawMountains();
+
+        float scale = CaptureFxScale * CaptureFxIntensity * CaptureShakeBoost;
+        double stepDuration = CaptureShakeDuration / CaptureShakeOffsets.Length;
+        Tween tween = overlay.CreateTween();
+        foreach (Vector2 offset in CaptureShakeOffsets)
+        {
+            tween.TweenProperty(overlay, "position", center + offset * scale, stepDuration)
+                .SetTrans(Tween.TransitionType.Linear);
+        }
+        tween.Finished += () =>
+        {
+            _hexAlignedDeathFx.Remove(overlay);
+            // Detach immediately, then free: a bare QueueFree keeps the
+            // copy rendering until end of frame, double-drawing the ring
+            // for one frame against the rebaked original below.
+            overlay.GetParent()?.RemoveChild(overlay);
+            overlay.QueueFree();
+            // Restore the baked ring (no-ops if a rebuild already reset
+            // the suppression set mid-shake).
+            _shakeSuppressedMountains.Remove(coord);
+            DrawMountains();
+        };
+
+        // Judder the glyph standing on the tile — the capturing unit or a
+        // just-placed tower — in sync with the ring. This tweens the REAL
+        // glyph node (occupants are per-tile nodes, not batched); the
+        // offsets end at zero, so it settles back to rest. A mid-shake
+        // refresh frees the glyph and kills the tween — the rebuilt glyph
+        // simply appears at rest, which degrades gracefully.
+        Node2D? occupantVisual =
+            _unitVisuals.TryGetValue(coord, out Node2D? unitVisual) && unitVisual != null
+                ? unitVisual
+                : _towerVisuals.TryGetValue(coord, out Node2D? towerVisual) ? towerVisual : null;
+        if (occupantVisual != null)
+        {
+            Vector2 rest = occupantVisual.Position;
+            Tween occupantTween = occupantVisual.CreateTween();
+            foreach (Vector2 offset in CaptureShakeOffsets)
+            {
+                occupantTween.TweenProperty(
+                        occupantVisual, "position", rest + offset * scale, stepDuration)
+                    .SetTrans(Tween.TransitionType.Linear);
+            }
+        }
+
+        Log.Debug(Log.LogCategory.Render,
+            $"[terrain-fx] mountain shake at {coord}: baked ring suppressed, " +
+            $"{overlay.TriangleCount}-tri copy on deaths layer, " +
+            $"occupant glyph {(occupantVisual != null ? "shaking" : "absent")}, " +
+            $"first offset {CaptureShakeOffsets[0] * scale}");
+    }
+
     // Shared flash + shockwave + shard burst on _deathsLayer, used by both the
     // occupant-destruction effect and the Rising Tides mountain-demote effect.
     private void SpawnDestruction(HexCoord coord, Color shardColor, int shardCount)
@@ -2408,6 +2752,8 @@ public partial class HexMapView : Node2D, IHexMapView
             case SoundEffect.PlayerDefeated: AudioBus.Instance.PlayPlayerDefeated(); break;
             case SoundEffect.TileSubmerged: AudioBus.Instance.PlayTileSubmerged(); break;
             case SoundEffect.VikingArrival: AudioBus.Instance.PlayVikingArrival(); break;
+            case SoundEffect.GoldCaptured: AudioBus.Instance.PlayGoldCaptured(); break;
+            case SoundEffect.MountainCaptured: AudioBus.Instance.PlayMountainCaptured(); break;
         }
     }
 
@@ -2661,6 +3007,9 @@ public partial class HexMapView : Node2D, IHexMapView
     }
 
     private void SpawnDestructionFlash(Vector2 center)
+        => SpawnDestructionFlash(center, new Color(1f, 1f, 1f, 0.95f));
+
+    private void SpawnDestructionFlash(Vector2 center, Color color)
     {
         Vector2[] verts = HexVertices();
         // Inset slightly so the flash sits inside the tile borders rather
@@ -2672,7 +3021,7 @@ public partial class HexMapView : Node2D, IHexMapView
         {
             Position = center,
             Polygon = inset,
-            Color = new Color(1f, 1f, 1f, 0.95f),
+            Color = color,
         };
         _deathsLayer!.AddChild(flash);
 
@@ -3961,9 +4310,10 @@ public partial class HexMapView : Node2D, IHexMapView
             {
                 if (child is Node2D node)
                 {
-                    if (ReferenceEquals(node, _selectionBackdrop))
+                    if (ReferenceEquals(node, _selectionBackdrop)
+                        || _hexAlignedDeathFx.Contains(node))
                     {
-                        // Hex-cell-aligned overlay — must rotate with the
+                        // Hex-cell-aligned overlays — must rotate with the
                         // board, not counter to it. Leave Rotation at 0 so
                         // the parent's −90° in portrait carries through.
                         ++skipped;
@@ -4330,20 +4680,27 @@ public partial class HexMapView : Node2D, IHexMapView
     /// are mutually exclusive, so a tile shows at most one of the two rings; both
     /// coexist with a tree / grave / unit / tower drawn on top.
     /// </summary>
-    private void DrawMountains()
+    /// <summary>
+    /// Per-corner ring geometry + plateau shading for one mountain tile,
+    /// in hex-local space. Identical for every tile (only the center offset
+    /// differs), so compute once per repaint. Shared by
+    /// <see cref="DrawMountains"/> (the batched static layer) and the
+    /// capture-shake overlay (<see cref="PlayMountainCaptureEffect"/>) so
+    /// the transient copy is pixel-identical to the baked ring.
+    /// </summary>
+    private (Vector2[] Outer, Vector2[] Inner, Color[] OuterShade, Color[] InnerShade)
+        MountainRingGeometry()
     {
-        if (_mountainBordersLayer == null) return;
         Vector2[] verts = HexVertices();
         var outer = new Vector2[6];
         var inner = new Vector2[6];
-        // Per-corner grey shades — identical for every tile (geometry is the same,
-        // only the center offset differs), so compute once. Outer corners are the
-        // dark skirt; inner corners are the lit top rim, brightened toward the light.
+        // Outer corners are the dark skirt; inner corners are the lit top
+        // rim, brightened toward the light. The whole node is rotated by
+        // _mapAngleRad, so counter-rotate the light into local space to keep
+        // it appearing from the same screen direction (top-left) in both
+        // landscape and portrait. (a.Rotated(θ))·L == a·(L.Rotated(−θ)).
         var outerShade = new Color[6];
         var innerShade = new Color[6];
-        // The whole node is rotated by _mapAngleRad, so counter-rotate the light
-        // into local space to keep it appearing from the same screen direction
-        // (top-left) in both landscape and portrait. (a.Rotated(θ))·L == a·(L.Rotated(−θ)).
         Vector2 lightLocal = MountainLightDir.Rotated(-_mapAngleRad);
         for (int i = 0; i < 6; i++)
         {
@@ -4353,20 +4710,41 @@ public partial class HexMapView : Node2D, IHexMapView
             outerShade[i] = Grey(MountainSkirt);
             innerShade[i] = Grey(MountainTopBase + MountainTopSwing * angular);
         }
+        return (outer, inner, outerShade, innerShade);
+    }
+
+    // Emit the 6 trapezoid quads of one mountain plateau ring at the given
+    // center offset, from geometry produced by MountainRingGeometry.
+    private static void AddMountainRing(
+        TriangleSoupBuilder builder, Vector2 center,
+        Vector2[] outer, Vector2[] inner, Color[] outerShade, Color[] innerShade)
+    {
+        for (int edge = 0; edge < 6; edge++)
+        {
+            int next = (edge + 1) % 6;
+            var quad = new[] { outer[edge], outer[next], inner[next], inner[edge] };
+            var quadShade = new[]
+                { outerShade[edge], outerShade[next], innerShade[next], innerShade[edge] };
+            builder.AddPolygon(center, quad, Colors.White, quadShade);
+        }
+    }
+
+    private void DrawMountains()
+    {
+        if (_mountainBordersLayer == null) return;
+        (Vector2[] outer, Vector2[] inner, Color[] outerShade, Color[] innerShade) =
+            MountainRingGeometry();
 
         var builder = new TriangleSoupBuilder();
         int built = 0;
         foreach (HexTile tile in Grid.Tiles)
         {
             if (!tile.IsMountain) continue;
+            // A capture-shake copy is animating over this tile — leave its
+            // baked ring out so only the moving copy is visible.
+            if (_shakeSuppressedMountains.Contains(tile.Coord)) continue;
             Vector2 center = FirstHexCenterOffset + HexPixel.ToPixel(tile.Coord, HexSize);
-            for (int edge = 0; edge < 6; edge++)
-            {
-                int next = (edge + 1) % 6;
-                var quad = new[] { outer[edge], outer[next], inner[next], inner[edge] };
-                var quadShade = new[] { outerShade[edge], outerShade[next], innerShade[next], innerShade[edge] };
-                builder.AddPolygon(center, quad, Colors.White, quadShade);
-            }
+            AddMountainRing(builder, center, outer, inner, outerShade, innerShade);
             built++;
         }
         _mountainBordersLayer.SetTriangles(

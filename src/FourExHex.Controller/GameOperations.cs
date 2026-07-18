@@ -261,6 +261,36 @@ public class GameOperations
     }
 
     /// <summary>
+    /// Route the capture-feedback effect through the silent-mode gate.
+    /// Called from every capture site after <see cref="HandleCapture"/>
+    /// (the rebuild clears the deaths layer); reads the captured tile's
+    /// terrain and fires the matching view effect — coin flourish for
+    /// gold, shake + dust for mountain, baseline flash + ring for plain.
+    /// Gold and mountain additionally fire their terrain sound cue, which
+    /// LAYERS on top of the action's occupant cue from
+    /// <see cref="DispatchActionSound"/> (terrain is orthogonal to the
+    /// destroyed occupant); a plain capture keeps the place-thud as its
+    /// only audio.
+    /// </summary>
+    public void EmitTerrainCaptureFx(HexCoord coord)
+    {
+        if (IsSilent()) return;
+        HexTile? tile = _state.Grid.Get(coord);
+        if (tile == null) return;
+        Log.Debug(Log.LogCategory.Capture,
+            $"[terrain-fx] {tile.Feature} capture at {coord}");
+        _map.PlayTerrainCaptureEffect(coord, tile.Feature);
+        if (tile.IsGold)
+        {
+            EmitSound(SoundEffect.GoldCaptured, coord);
+        }
+        else if (tile.IsMountain)
+        {
+            EmitSound(SoundEffect.MountainCaptured, coord);
+        }
+    }
+
+    /// <summary>
     /// Tell the view to enter (or leave) silent mode (Instant AI Speed,
     /// or an instant-replay fast-forward), and independently drive the
     /// "Opponents are taking their turns…" HUD overlay. The two are
@@ -822,6 +852,7 @@ public class GameOperations
         if (wasCapture)
         {
             HandleCapture($"Viking disembark {sea}→{land}");
+            EmitTerrainCaptureFx(land);
         }
         if (displaced != null)
         {
@@ -1346,6 +1377,7 @@ public class GameOperations
         if (r.Move.WasCapture)
         {
             HandleCapture($"Move {source}→{destination}", attacker.Capital);
+            EmitTerrainCaptureFx(destination);
         }
         if (r.Move.Destroyed != null)
         {
@@ -1387,6 +1419,7 @@ public class GameOperations
         if (r.Move.WasCapture)
         {
             HandleCapture($"Buy {level} → {destination}", capital);
+            EmitTerrainCaptureFx(destination);
         }
         if (r.Move.Destroyed != null)
         {
@@ -1506,6 +1539,25 @@ public class GameOperations
 
         AiActionCore.BuildTower(capital, destination, _state, territory);
         EmitSound(SoundEffect.TowerPlaced, destination);
+        EmitMountainTowerFx(destination);
+    }
+
+    /// <summary>
+    /// A tower just landed on <paramref name="coord"/>: if it is a
+    /// mountain tile, fire the same shake + thud as a mountain capture —
+    /// the rock takes the impact either way. Non-mountain placements fire
+    /// nothing here (the plain-capture ring is capture-only). The thud
+    /// LAYERS on the TowerPlaced clack, like every terrain cue. Same
+    /// silent-mode gate as every other emitter.
+    /// </summary>
+    public void EmitMountainTowerFx(HexCoord coord)
+    {
+        if (IsSilent()) return;
+        HexTile? tile = _state.Grid.Get(coord);
+        if (tile == null || !tile.IsMountain) return;
+        Log.Debug(Log.LogCategory.Capture, $"[terrain-fx] tower on mountain at {coord}");
+        _map.PlayTerrainCaptureEffect(coord, TerrainFeature.Mountain);
+        EmitSound(SoundEffect.MountainCaptured, coord);
     }
 
     /// <summary>

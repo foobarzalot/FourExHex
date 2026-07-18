@@ -42,6 +42,7 @@ public sealed class HeadlessHexMapView : IHexMapView
         IReadOnlySet<HexCoord> visitedCapitals) { }
     public void SetSilentMode(bool silent) { }
     public void PlayDestructionEffect(HexCoord coord, HexOccupant destroyed) { }
+    public void PlayTerrainCaptureEffect(HexCoord coord, TerrainFeature terrain) { }
     public void PlaySound(SoundEffect kind, HexCoord? at = null) { }
     public void FlashRejection(HexCoord target, RejectionShape shape, IEnumerable<HexCoord> blockingDefenders) { }
 }
