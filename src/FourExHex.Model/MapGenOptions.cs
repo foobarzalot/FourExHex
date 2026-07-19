@@ -20,12 +20,30 @@
 /// Higher values seed fewer, larger contiguous regions (seed-flood Voronoi); <c>100</c>
 /// = one contiguous blob per player. Affects only owner assignment, never land shape or
 /// the tree/mountain/gold scatter.</param>
+/// <param name="NeutralDensity">Total neutral coverage target, percent of land,
+/// 0..<see cref="NeutralDensityMax"/> — the share of land left unclaimed,
+/// features included. <c>0</c> = off — zero extra RNG draws, byte-identical to
+/// the baseline. When on, generation inverts: every land tile starts neutral
+/// and the players expand into it from spread-out seeds, one cell per player
+/// per round, until each reaches an equal quota
+/// (<c>(land − land×NeutralDensity/100) / playerCount</c>, ±1 — exact balance
+/// by construction); the unclaimed remainder stays neutral. All land is
+/// claimable — mountains freely, gold only as a last resort (it should stay
+/// neutral and contested). Each player is at most two coherent regions and
+/// never a stranded single tile. <see cref="ClumpingFactor"/> still governs
+/// sparse↔clumped expansion (it sets the per-player seed count: 100 = one
+/// compact blob each).</param>
 public sealed record MapGenOptions(
-    int TreeDensity = 5, int MountainDensity = 0, int GoldDensity = 0, int ClumpingFactor = 0)
+    int TreeDensity = 5, int MountainDensity = 0, int GoldDensity = 0, int ClumpingFactor = 0,
+    int NeutralDensity = 0)
 {
     /// <summary>Default densities — trees at the historical 5%, no mountains or
     /// gold. The backward-compatible baseline.</summary>
     public static readonly MapGenOptions None = new();
+
+    /// <summary>Upper bound for <see cref="NeutralDensity"/>: at most 75% of land
+    /// may be neutral, so the players always split at least a quarter of the map.</summary>
+    public const int NeutralDensityMax = 75;
 
     /// <summary>The selectable <see cref="ClumpingFactor"/> values, ascending. The
     /// single source of truth for both the New Game / map-editor stepper and the

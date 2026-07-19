@@ -5,7 +5,8 @@ using Godot;
 
 /// <summary>
 /// Reusable "Map Generation" modal: the controls that shape a freshly-generated
-/// (random) map — Trees, Mountains, Gold (each a 0..25%-of-land density stepper)
+/// (random) map — Trees, Mountains, Gold (each a 0..25%-of-land density stepper),
+/// Neutral (total unclaimed-land share, 0..75%, features included)
 /// plus Territories (a named dropdown over the sparse↔clumped owner-assignment
 /// factor, running many→one as the factor climbs 0→100). Summoned by the "?" glyph
 /// in the map editor and on the New Game page; both hosts share the single
@@ -19,7 +20,9 @@ public sealed partial class MapGenSettingsPanel : CanvasLayer
 {
     public bool IsOpen { get; private set; }
 
-    // Density range surfaced by every stepper: 0..25% of land, in steps of 5.
+    // Density range surfaced by the feature steppers: 0..25% of land, in steps
+    // of 5. The Neutral stepper shares the min/step but runs to 75% (its cap
+    // lives on MapGenOptions so model and UI can't drift).
     private const int DensityMin = 0;
     private const int DensityMax = 25;
     private const int DensityStep = 5;
@@ -42,6 +45,7 @@ public sealed partial class MapGenSettingsPanel : CanvasLayer
     private LineEdit _treesField = null!;
     private LineEdit _mountainsField = null!;
     private LineEdit _goldField = null!;
+    private LineEdit _neutralField = null!;
     private OptionButton _clumpingField = null!;
 
     private static (string label, int id)[] BuildTerritoryItems()
@@ -127,6 +131,10 @@ public sealed partial class MapGenSettingsPanel : CanvasLayer
         vbox.AddChild(UiStepper.BuildStepperRow(
             Strings.Get(StringKeys.MapGenGold), GameSettings.GoldDensity, DensityMin, DensityMax, DensityStep,
             OnGoldChanged, out _goldField));
+        vbox.AddChild(UiStepper.BuildStepperRow(
+            Strings.Get(StringKeys.MapGenNeutral), GameSettings.NeutralDensity,
+            DensityMin, MapGenOptions.NeutralDensityMax, DensityStep,
+            OnNeutralChanged, out _neutralField));
         vbox.AddChild(UiDropdown.BuildDropdownRow(
             Strings.Get(StringKeys.MapGenTerritories), GameSettings.ClumpingFactor, TerritoryItems,
             OnClumpingChanged, out _clumpingField));
@@ -151,6 +159,7 @@ public sealed partial class MapGenSettingsPanel : CanvasLayer
         UiStepper.Resync(_treesField, GameSettings.TreeDensity);
         UiStepper.Resync(_mountainsField, GameSettings.MountainDensity);
         UiStepper.Resync(_goldField, GameSettings.GoldDensity);
+        UiStepper.Resync(_neutralField, GameSettings.NeutralDensity);
         UiDropdown.SelectItemById(_clumpingField, GameSettings.ClumpingFactor);
         IsOpen = true;
         Visible = true;
@@ -180,6 +189,12 @@ public sealed partial class MapGenSettingsPanel : CanvasLayer
     {
         GameSettings.GoldDensity = density;
         Log.Debug(Log.LogCategory.MapGen, $"MapGenSettingsPanel: GoldDensity -> {density}");
+    }
+
+    private void OnNeutralChanged(int density)
+    {
+        GameSettings.NeutralDensity = density;
+        Log.Debug(Log.LogCategory.MapGen, $"MapGenSettingsPanel: NeutralDensity -> {density}");
     }
 
     private void OnClumpingChanged(int factor)

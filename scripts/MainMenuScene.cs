@@ -1765,6 +1765,7 @@ public partial class MainMenuScene : Control
         GameSettings.MountainDensity = 0;
         GameSettings.GoldDensity = 0;
         GameSettings.ClumpingFactor = 0;
+        GameSettings.NeutralDensity = 0;
 
         int seed = SeedFormat.NextSeed(new System.Random());
         GameSettings.MasterSeed = seed;

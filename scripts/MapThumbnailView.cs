@@ -109,7 +109,8 @@ public partial class MapThumbnailView : Control
             TreeDensity: GameSettings.TreeDensity,
             MountainDensity: GameSettings.MountainDensity,
             GoldDensity: GameSettings.GoldDensity,
-            ClumpingFactor: GameSettings.ClumpingFactor));
+            ClumpingFactor: GameSettings.ClumpingFactor,
+            NeutralDensity: GameSettings.NeutralDensity));
 
     /// <summary>Preview the board for an explicit set of generation options —
     /// used by the campaign confirm sheet, which derives its level's fixed

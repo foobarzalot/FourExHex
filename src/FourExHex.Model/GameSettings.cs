@@ -107,6 +107,17 @@ public static class GameSettings
     public static int GoldDensity = 0;
 
     /// <summary>
+    /// Total neutral coverage target (percent of land, 0..75) for a
+    /// freshly-generated map: the share of land left unclaimed, features
+    /// included. Players expand from seeds into the all-neutral map to equal
+    /// quotas (claiming mountains freely, gold only as a last resort) and the
+    /// unclaimed remainder stays neutral. Defaults to 0 (off). See
+    /// <see cref="TreeDensity"/> for the write/read path; threaded into
+    /// <c>MapGenOptions.NeutralDensity</c>.
+    /// </summary>
+    public static int NeutralDensity = 0;
+
+    /// <summary>
     /// Player-territory clumping factor (0..100) for a freshly-generated map.
     /// 0 = fragmented salt-and-pepper assignment; higher values seed fewer,
     /// larger contiguous regions

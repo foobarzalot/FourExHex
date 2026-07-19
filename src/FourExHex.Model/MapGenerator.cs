@@ -71,36 +71,47 @@ public static class MapGenerator
         }
 
         var grid = new HexGrid();
-        if (options.ClumpingFactor <= 0)
+        if (options.NeutralDensity > 0)
         {
-            // Factor 0: per-cell random owner assignment, one
-            // rng.NextBounded(players.Count) draw per land cell in HashSet order. Gated
-            // like the mountain/gold passes so a disabled pass adds no RNG draws.
-            foreach (HexCoord coord in land)
-            {
-                PlayerId owner = players[rng.NextBounded(players.Count)].Id;
-                grid.Add(new HexTile(coord, owner));
-            }
+            // Neutral-region flow: features first (they are neutral and count
+            // toward the target), then the plain-neutral blob, then owners over
+            // the remainder. Gated so NeutralDensity 0 is byte-identical to the
+            // baseline flow below.
+            BuildWithNeutralRegion(grid, land, players, options, rng);
         }
         else
         {
-            AssignClumpedOwners(grid, land, players, options.ClumpingFactor, rng);
-        }
+            if (options.ClumpingFactor <= 0)
+            {
+                // Factor 0: per-cell random owner assignment, one
+                // rng.NextBounded(players.Count) draw per land cell in HashSet order. Gated
+                // like the mountain/gold passes so a disabled pass adds no RNG draws.
+                foreach (HexCoord coord in land)
+                {
+                    PlayerId owner = players[rng.NextBounded(players.Count)].Id;
+                    grid.Add(new HexTile(coord, owner));
+                }
+            }
+            else
+            {
+                AssignClumpedOwners(grid, land, players, options.ClumpingFactor, rng);
+            }
 
-        // Mountain ranges, gated on density > 0 so a disabled pass
-        // makes zero RNG draws and the map stays byte-identical to the no-options
-        // baseline. Placed before the tree scatter so trees simply avoid mountains.
-        if (options.MountainDensity > 0)
-        {
-            ScatterMountainRanges(grid, land, options.MountainDensity, rng);
-        }
+            // Mountain ranges, gated on density > 0 so a disabled pass
+            // makes zero RNG draws and the map stays byte-identical to the no-options
+            // baseline. Placed before the tree scatter so trees simply avoid mountains.
+            if (options.MountainDensity > 0)
+            {
+                ScatterMountainRanges(grid, land, options.MountainDensity, rng);
+            }
 
-        // Gold clusters, gated the same way. Placed after mountains
-        // so cluster seeds can be biased toward mountain tiles, and before the
-        // tree scatter so trees avoid the fresh gold tiles.
-        if (options.GoldDensity > 0)
-        {
-            ScatterGoldClusters(grid, land, options.GoldDensity, rng);
+            // Gold clusters, gated the same way. Placed after mountains
+            // so cluster seeds can be biased toward mountain tiles, and before the
+            // tree scatter so trees avoid the fresh gold tiles.
+            if (options.GoldDensity > 0)
+            {
+                ScatterGoldClusters(grid, land, options.GoldDensity, rng);
+            }
         }
 
         // Water = every coord in the rectangle that isn't land.
@@ -123,7 +134,8 @@ public static class MapGenerator
         int treeTarget = land.Count * options.TreeDensity / 100;
         Log.Debug(Log.LogCategory.MapGen,
             $"[mapgen] densities trees={options.TreeDensity} mtn={options.MountainDensity} " +
-            $"gold={options.GoldDensity} (land {land.Count}, treeTarget {treeTarget})");
+            $"gold={options.GoldDensity} neutral={options.NeutralDensity} " +
+            $"(land {land.Count}, treeTarget {treeTarget})");
         var landCoordList = new List<HexCoord>(land);
         for (int i = 0; i < treeTarget && landCoordList.Count > 0; i++)
         {
@@ -142,6 +154,441 @@ public static class MapGenerator
         Log.Debug(Log.LogCategory.Determinism,
             $"[determinism] mapgen seed={seed} rngStreamHash={rng.StreamHash:X16}");
         return new MapGenResult(grid, water, rng.StreamHash);
+    }
+
+    // ── Neutral-region flow ─────────────────────────────────────
+
+    // Neutral-region flow (NeutralDensity > 0). NeutralDensity is the TOTAL
+    // neutral coverage target (percent of land): the fraction of land left
+    // unclaimed, features included. The flow inverts the baseline: everything
+    // starts neutral and the players expand into it.
+    //   1. Every land tile is created neutral; mountain/gold scatter runs
+    //      exactly as in the baseline flow.
+    //   2. Each player gets an equal cell quota: (land − neutral target) split
+    //      evenly, ±1 tile — exact balance by construction.
+    //   3. Seeds spread farthest-point over the land (gold-averse); the seed
+    //      count interpolates with ClumpingFactor exactly like
+    //      AssignClumpedOwners (100 → one seed per player, lower → toward
+    //      per-cell noise). Seeds are dealt round-robin to the players.
+    //   4. Players expand in strict rotation, one adjacent unclaimed cell per
+    //      turn (rng pick from their frontier). All land is claimable —
+    //      mountains freely (the landmass is one component, so terrain can
+    //      never wall a player in), gold only as a last resort (it is the
+    //      contested prize and should stay neutral when avoidable). A player
+    //      walled in by neighbors restarts once in the largest unclaimed
+    //      region; a second walling — or a lone final cell, which would strand
+    //      a 1-tile island — forfeits the remainder instead. Guarantees: at
+    //      most two coherent regions per player, no stranded singletons.
+    //   5. Whatever stays unclaimed is the neutral territory. A rng-free
+    //      repair backstops viability (every player owning two adjacent cells).
+    private static void BuildWithNeutralRegion(
+        HexGrid grid, HashSet<HexCoord> land, IReadOnlyList<Player> players,
+        MapGenOptions options, DeterministicRng rng)
+    {
+        foreach (HexCoord coord in land)
+        {
+            grid.Add(new HexTile(coord, PlayerId.None));
+        }
+
+        if (options.MountainDensity > 0)
+        {
+            ScatterMountainRanges(grid, land, options.MountainDensity, rng);
+        }
+        if (options.GoldDensity > 0)
+        {
+            ScatterGoldClusters(grid, land, options.GoldDensity, rng);
+        }
+
+        // Every land tile is claimable; gold is tracked separately so seeds and
+        // expansion can steer around it. Sorted so every rng-coupled pick is
+        // deterministic regardless of HashSet internals.
+        var openCoords = new List<HexCoord>(land);
+        openCoords.Sort();
+        var goldSet = new HashSet<HexCoord>();
+        int featureCount = 0;
+        foreach (HexCoord coord in openCoords)
+        {
+            HexTile t = grid.Get(coord)!;
+            if (t.IsGold) goldSet.Add(coord);
+            if (t.IsGold || t.IsMountain) featureCount++;
+        }
+
+        int playerCount = players.Count;
+        int density = Math.Clamp(options.NeutralDensity, 0, MapGenOptions.NeutralDensityMax);
+        int neutralTarget = land.Count * density / 100;
+        int playerTotal = land.Count - neutralTarget;
+        // Degenerate-map guard: aim for at least a pair per player when the
+        // land allows it.
+        playerTotal = Math.Max(playerTotal, Math.Min(openCoords.Count, playerCount * 2));
+        playerTotal = Math.Min(playerTotal, openCoords.Count);
+
+        // Equal quotas, ±1: the first (playerTotal % playerCount) players take
+        // the remainder cell.
+        int[] quota = new int[playerCount];
+        for (int i = 0; i < playerCount; i++)
+        {
+            quota[i] = playerTotal / playerCount + (i < playerTotal % playerCount ? 1 : 0);
+        }
+
+        // Seed count: same clump interpolation as AssignClumpedOwners, over the
+        // player cell budget instead of the whole landmass.
+        int clump = Math.Clamp(options.ClumpingFactor, 0, 100);
+        int seedCount = playerCount + (playerTotal - playerCount) * (100 - clump) / 100;
+        seedCount = Math.Clamp(
+            seedCount, Math.Min(playerCount, playerTotal), Math.Max(playerCount, playerTotal));
+        seedCount = Math.Min(seedCount, openCoords.Count);
+
+        // Component-aware seed allocation. The generated landmass is one
+        // connected component, so this normally hands every seat to the single
+        // region — the split is purely defensive for exotic grids. Seats go
+        // out largest-remaining-share first (capacity / (seats+1)); within
+        // each region, gold-averse farthest-point spread (first seed one rng
+        // draw, ties break lex-min — the AssignClumpedOwners discipline).
+        List<List<HexCoord>> regions = SortedComponentsOf(land);
+        int[] seats = new int[regions.Count];
+        for (int s = 0; s < seedCount; s++)
+        {
+            int bestRegion = -1;
+            for (int c = 0; c < regions.Count; c++)
+            {
+                if (seats[c] >= regions[c].Count) continue;
+                if (bestRegion < 0 ||
+                    (long)regions[c].Count * (seats[bestRegion] + 1) >
+                    (long)regions[bestRegion].Count * (seats[c] + 1))
+                {
+                    bestRegion = c;
+                }
+            }
+            if (bestRegion < 0) break;
+            seats[bestRegion]++;
+        }
+
+        var seeds = new List<HexCoord>(seedCount);
+        for (int c = 0; c < regions.Count; c++)
+        {
+            if (seats[c] > 0) PlaceSeedsInRegion(regions[c], seats[c], goldSet, seeds, rng);
+        }
+
+        // Claim bookkeeping + per-player growth frontiers, gold held apart so
+        // a player only claims it when nothing else is reachable.
+        var claimed = new HashSet<HexCoord>();
+        int[] owned = new int[playerCount];
+        var frontier = new List<HexCoord>[playerCount];
+        var goldFrontier = new List<HexCoord>[playerCount];
+        var frontierSet = new HashSet<HexCoord>[playerCount];
+        for (int i = 0; i < playerCount; i++)
+        {
+            frontier[i] = new List<HexCoord>();
+            goldFrontier[i] = new List<HexCoord>();
+            frontierSet[i] = new HashSet<HexCoord>();
+        }
+
+        void Claim(int player, HexCoord cell)
+        {
+            grid.Get(cell)!.Owner = players[player].Id;
+            claimed.Add(cell);
+            owned[player]++;
+            foreach (HexCoord nb in cell.Neighbors())
+            {
+                if (!land.Contains(nb) || claimed.Contains(nb)) continue;
+                if (frontierSet[player].Add(nb))
+                {
+                    (goldSet.Contains(nb) ? goldFrontier[player] : frontier[player]).Add(nb);
+                }
+            }
+        }
+
+        void Compact(int player, List<HexCoord> list)
+        {
+            int w = 0;
+            for (int r = 0; r < list.Count; r++)
+            {
+                if (claimed.Contains(list[r])) frontierSet[player].Remove(list[r]);
+                else list[w++] = list[r];
+            }
+            list.RemoveRange(w, list.Count - w);
+        }
+
+        // Deal seeds round-robin; a player already at quota passes.
+        int next = 0;
+        foreach (HexCoord s in seeds)
+        {
+            int scanned = 0;
+            while (scanned < playerCount && owned[next] >= quota[next])
+            {
+                next = (next + 1) % playerCount;
+                scanned++;
+            }
+            if (scanned == playerCount) break;
+            Claim(next, s);
+            next = (next + 1) % playerCount;
+        }
+
+        // Strict-rotation expansion: one cell per player per round keeps the
+        // sides balanced at every moment, not just at the end. Non-gold
+        // frontier cells always win; gold is claimed only when it is the sole
+        // way forward.
+        int reseeds = 0;
+        int forfeited = 0;
+        int[] reseedsBy = new int[playerCount];
+        bool progress = true;
+        while (progress)
+        {
+            progress = false;
+            for (int i = 0; i < playerCount; i++)
+            {
+                if (owned[i] >= quota[i]) continue;
+
+                Compact(i, frontier[i]);
+                List<HexCoord> mine = frontier[i];
+                if (mine.Count == 0)
+                {
+                    Compact(i, goldFrontier[i]);
+                    mine = goldFrontier[i];
+                }
+
+                HexCoord cell;
+                if (mine.Count == 0)
+                {
+                    // Walled in by neighbors (terrain can't do it — all land is
+                    // claimable and connected). Forfeit rather than fragment
+                    // when only one cell remains (no stranded 1-tile islands)
+                    // or the player already restarted once (at most two
+                    // regions each); otherwise restart in the largest
+                    // unclaimed region, off gold when it has any other cell.
+                    if (quota[i] - owned[i] <= 1 || reseedsBy[i] >= 1)
+                    {
+                        forfeited += quota[i] - owned[i];
+                        quota[i] = owned[i];
+                        continue;
+                    }
+                    var unclaimed = new HashSet<HexCoord>();
+                    foreach (HexCoord c in openCoords)
+                    {
+                        if (!claimed.Contains(c)) unclaimed.Add(c);
+                    }
+                    if (unclaimed.Count == 0)
+                    {
+                        forfeited += quota[i] - owned[i];
+                        quota[i] = owned[i];
+                        continue;
+                    }
+                    List<HexCoord> biggest = SortedComponentsOf(unclaimed)[0];
+                    var pool = new List<HexCoord>();
+                    foreach (HexCoord c in biggest)
+                    {
+                        if (!goldSet.Contains(c)) pool.Add(c);
+                    }
+                    if (pool.Count == 0) pool = biggest;
+                    cell = pool[rng.NextBounded(pool.Count)];
+                    reseedsBy[i]++;
+                    reseeds++;
+                }
+                else
+                {
+                    int idx = rng.NextBounded(mine.Count);
+                    cell = mine[idx];
+                    mine.RemoveAt(idx);
+                    frontierSet[i].Remove(cell);
+                }
+                Claim(i, cell);
+                progress = true;
+            }
+        }
+
+        bool repaired = !AllPlayersViable(grid, players);
+        if (repaired)
+        {
+            RepairUnviablePlayers(grid, openCoords, players);
+        }
+
+        int neutralFinal = 0;
+        foreach (HexCoord coord in openCoords)
+        {
+            if (grid.Get(coord)!.Owner.IsNone) neutralFinal++;
+        }
+        Log.Debug(Log.LogCategory.MapGen,
+            $"[mapgen] neutral: density={density} neutralTarget={neutralTarget} " +
+            $"features={featureCount} playerCells={playerTotal} seeds={seeds.Count} " +
+            $"reseeds={reseeds} forfeited={forfeited} neutral={neutralFinal}" +
+            (repaired ? " repaired" : ""));
+    }
+
+    // Connected components of a cell set, each component's cells sorted
+    // lex-min first, components ordered largest-first (ties → lex-min first
+    // cell) — a deterministic ordering for seed allocation and reseed
+    // targeting.
+    private static List<List<HexCoord>> SortedComponentsOf(HashSet<HexCoord> cells)
+    {
+        var ordered = new List<HexCoord>(cells);
+        ordered.Sort();
+        var visited = new HashSet<HexCoord>();
+        var components = new List<List<HexCoord>>();
+        foreach (HexCoord start in ordered)
+        {
+            if (!visited.Add(start)) continue;
+            var component = new List<HexCoord> { start };
+            var queue = new Queue<HexCoord>();
+            queue.Enqueue(start);
+            while (queue.Count > 0)
+            {
+                HexCoord cur = queue.Dequeue();
+                foreach (HexCoord nb in cur.Neighbors())
+                {
+                    if (!cells.Contains(nb) || !visited.Add(nb)) continue;
+                    component.Add(nb);
+                    queue.Enqueue(nb);
+                }
+            }
+            component.Sort();
+            components.Add(component);
+        }
+        components.Sort((a, b) => a.Count != b.Count ? b.Count - a.Count : a[0].CompareTo(b[0]));
+        return components;
+    }
+
+    // Farthest-point placement of `count` seeds inside one connected region
+    // (its cell list sorted lex): first seed is the region's one rng draw, each
+    // later seed is the cell farthest from all earlier ones (ties lex-min).
+    // Seeds avoid the cells in `avoid` (gold — a seed there would hand a
+    // player a tile the expansion tries to keep neutral) unless the region has
+    // nothing else; distances still flow through them.
+    private static void PlaceSeedsInRegion(
+        List<HexCoord> region, int count, HashSet<HexCoord> avoid,
+        List<HexCoord> seeds, DeterministicRng rng)
+    {
+        var pool = new List<HexCoord>();
+        foreach (HexCoord c in region)
+        {
+            if (!avoid.Contains(c)) pool.Add(c);
+        }
+        if (pool.Count == 0) pool = region;
+
+        var cells = new HashSet<HexCoord>(region);
+        var dist = new Dictionary<HexCoord, int>(region.Count);
+        foreach (HexCoord c in region) dist[c] = int.MaxValue;
+
+        void Relax(HexCoord s)
+        {
+            dist[s] = 0;
+            var queue = new Queue<HexCoord>();
+            queue.Enqueue(s);
+            while (queue.Count > 0)
+            {
+                HexCoord cur = queue.Dequeue();
+                int nd = dist[cur] + 1;
+                foreach (HexCoord nb in cur.Neighbors())
+                {
+                    if (!cells.Contains(nb) || dist[nb] <= nd) continue;
+                    dist[nb] = nd;
+                    queue.Enqueue(nb);
+                }
+            }
+        }
+
+        HexCoord first = pool[rng.NextBounded(pool.Count)];
+        seeds.Add(first);
+        Relax(first);
+        for (int placed = 1; placed < count; placed++)
+        {
+            HexCoord best = pool[0];
+            int bestDist = -1;
+            foreach (HexCoord c in pool)
+            {
+                if (dist[c] > bestDist) { bestDist = dist[c]; best = c; }
+            }
+            seeds.Add(best);
+            Relax(best);
+        }
+    }
+
+    // A player is viable when they own two adjacent tiles — the seed of a
+    // capital-capable (2+) territory.
+    private static bool PlayerViable(HexGrid grid, PlayerId id)
+    {
+        foreach (HexTile t in grid.Tiles)
+        {
+            if (t.Owner != id) continue;
+            foreach (HexCoord nb in t.Coord.Neighbors())
+            {
+                HexTile? other = grid.Get(nb);
+                if (other != null && other.Owner == id) return true;
+            }
+        }
+        return false;
+    }
+
+    private static bool AllPlayersViable(HexGrid grid, IReadOnlyList<Player> players)
+    {
+        foreach (Player p in players)
+        {
+            if (!PlayerViable(grid, p.Id)) return false;
+        }
+        return true;
+    }
+
+    // Deterministic (rng-free) last resort after the retry budget: give each
+    // still-unviable player a 2+ start by flipping plain-neutral land. A player
+    // with a lone singleton gets one adjacent plain-neutral cell; a player with
+    // no cell bordering neutral land (or no cell at all) gets the lex-min
+    // adjacent plain-neutral pair. Warn when the land can't provide even that.
+    private static void RepairUnviablePlayers(
+        HexGrid grid, List<HexCoord> openCoords, IReadOnlyList<Player> players)
+    {
+        static bool IsPlainNeutral(HexTile t) => t.Owner.IsNone && !t.IsMountain && !t.IsGold;
+
+        foreach (Player p in players)
+        {
+            if (PlayerViable(grid, p.Id)) continue;
+            bool repaired = false;
+
+            // 1. Extend an existing singleton by one adjacent plain-neutral cell.
+            foreach (HexCoord coord in openCoords)
+            {
+                HexTile t = grid.Get(coord)!;
+                if (t.Owner != p.Id) continue;
+                foreach (HexCoord nb in coord.Neighbors())
+                {
+                    HexTile? other = grid.Get(nb);
+                    if (other != null && IsPlainNeutral(other))
+                    {
+                        other.Owner = p.Id;
+                        repaired = true;
+                        break;
+                    }
+                }
+                if (repaired) break;
+            }
+
+            // 2. Nothing to extend: grant a fresh plain-neutral pair.
+            if (!repaired)
+            {
+                foreach (HexCoord coord in openCoords)
+                {
+                    HexTile t = grid.Get(coord)!;
+                    if (!IsPlainNeutral(t)) continue;
+                    foreach (HexCoord nb in coord.Neighbors())
+                    {
+                        HexTile? other = grid.Get(nb);
+                        if (other != null && IsPlainNeutral(other))
+                        {
+                            t.Owner = p.Id;
+                            other.Owner = p.Id;
+                            repaired = true;
+                            break;
+                        }
+                    }
+                    if (repaired) break;
+                }
+            }
+
+            if (!repaired)
+            {
+                Log.Warn(Log.LogCategory.MapGen,
+                    $"[mapgen] neutral: no viable start possible for {p.Id} — " +
+                    "insufficient plain-neutral land");
+            }
+        }
     }
 
     // Clumped owner assignment — seed-flood Voronoi. Instead of an

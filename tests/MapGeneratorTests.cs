@@ -860,4 +860,339 @@ public class MapGeneratorTests
                 $"Multi-hex territory of {t.Owner} (size {t.Size}) lacks a capital (seed {seed})");
         }
     }
+
+    // ── Neutral density ─────────────────────────────────────────
+
+    // Representative "on" density for the neutral-on tests.
+    private const int NeutralOnDensity = 50;
+
+    // Viability repair may hand a few blob cells back to starved players (at most
+    // two per player), so count assertions allow that much slack below target.
+    private const int NeutralRepairSlack = 12;
+
+    private static bool IsPlainNeutral(HexTile t) => t.Owner.IsNone && !t.IsMountain && !t.IsGold;
+
+    private static int CountPlainNeutral(MapGenResult result)
+    {
+        int n = 0;
+        foreach (HexTile t in result.Grid.Tiles)
+        {
+            if (IsPlainNeutral(t)) n++;
+        }
+        return n;
+    }
+
+    private static HashSet<HexCoord> CoordsWhere(MapGenResult result, System.Predicate<HexTile> pred)
+    {
+        var set = new HashSet<HexCoord>();
+        foreach (HexTile t in result.Grid.Tiles)
+        {
+            if (pred(t)) set.Add(t.Coord);
+        }
+        return set;
+    }
+
+    private static List<HashSet<HexCoord>> ConnectedComponents(HashSet<HexCoord> cells)
+    {
+        var components = new List<HashSet<HexCoord>>();
+        var visited = new HashSet<HexCoord>();
+        foreach (HexCoord seed in cells)
+        {
+            if (!visited.Add(seed)) continue;
+            var component = new HashSet<HexCoord> { seed };
+            var queue = new Queue<HexCoord>();
+            queue.Enqueue(seed);
+            while (queue.Count > 0)
+            {
+                HexCoord c = queue.Dequeue();
+                foreach (HexCoord nb in c.Neighbors())
+                {
+                    if (!cells.Contains(nb) || !visited.Add(nb)) continue;
+                    component.Add(nb);
+                    queue.Enqueue(nb);
+                }
+            }
+            components.Add(component);
+        }
+        return components;
+    }
+
+    /// <summary>Same-owner share of owned–owned adjacencies, ignoring neutral
+    /// tiles — the clumping metric that stays meaningful once a neutral blob
+    /// removes land from the player pool. Integer-only.</summary>
+    private static int OwnedSameOwnerPercent(MapGenResult result)
+    {
+        int sameOwner = 0;
+        int adjacencies = 0;
+        foreach (HexTile tile in result.Grid.Tiles)
+        {
+            if (tile.Owner.IsNone) continue;
+            foreach (HexCoord nb in tile.Coord.Neighbors())
+            {
+                HexTile? other = result.Grid.Get(nb);
+                if (other == null || other.Owner.IsNone) continue;
+                adjacencies++;
+                if (other.Owner == tile.Owner) sameOwner++;
+            }
+        }
+        return adjacencies == 0 ? 0 : sameOwner * 100 / adjacencies;
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(42)]
+    [InlineData(9999)]
+    public void NeutralZero_ByteIdenticalToBaseline(int seed)
+    {
+        // The determinism baseline: NeutralDensity 0 must be a complete no-op —
+        // no stray RNG draws, no owner/tree/water perturbation.
+        MapGenResult baseline = Build(seed);
+        MapGenResult off = BuildWith(seed, new MapGenOptions(NeutralDensity: 0));
+
+        Assert.Equal(baseline.Grid.Count, off.Grid.Count);
+        foreach (HexTile tA in baseline.Grid.Tiles)
+        {
+            HexTile? tB = off.Grid.Get(tA.Coord);
+            Assert.NotNull(tB);
+            Assert.Equal(tA.Owner, tB!.Owner);
+            Assert.Equal(tA.Occupant is Tree, tB.Occupant is Tree);
+            Assert.Equal(tA.IsMountain, tB.IsMountain);
+            Assert.Equal(tA.IsGold, tB.IsGold);
+        }
+        Assert.Equal(baseline.WaterCoords, off.WaterCoords);
+        Assert.Equal(baseline.RngStreamHash, off.RngStreamHash);
+    }
+
+    [Theory]
+    [InlineData(1, 0, 0, 50)]
+    [InlineData(1, MountainOnDensity, GoldOnDensity, 50)]
+    [InlineData(1, 25, 25, 10)]
+    [InlineData(42, 0, 0, 50)]
+    [InlineData(42, MountainOnDensity, GoldOnDensity, 50)]
+    [InlineData(42, 25, 25, 10)]
+    [InlineData(9999, 0, 0, 50)]
+    [InlineData(9999, MountainOnDensity, GoldOnDensity, 50)]
+    [InlineData(9999, 25, 25, 10)]
+    public void NeutralOn_TotalNeutralMatchesTarget(int seed, int mtn, int gold, int neutral)
+    {
+        // The knob means what it says: the unclaimed (neutral) share of land —
+        // features included — comes out at the target percentage, regardless of
+        // how much terrain the feature knobs placed. Downward slack covers the
+        // rare viability repair (cells handed to players). Upward slack covers
+        // walled-in forfeits (cells left neutral); under extreme contention —
+        // features near their caps with a tiny neutral knob — the coherence
+        // guarantees (≤2 regions, no singletons) win over the exact total, so
+        // the overshoot allowance widens to a sixth of the land.
+        MapGenResult result = BuildWith(seed, new MapGenOptions(
+            MountainDensity: mtn, GoldDensity: gold, NeutralDensity: neutral));
+        int target = result.Grid.Count * neutral / 100;
+        int totalNeutral = 0;
+        foreach (HexTile t in result.Grid.Tiles)
+        {
+            if (t.Owner.IsNone) totalNeutral++;
+        }
+        int overshootAllowance = mtn + gold >= 40 ? result.Grid.Count / 6 : NeutralRepairSlack;
+        Assert.InRange(totalNeutral,
+            target - NeutralRepairSlack, target + overshootAllowance);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(42)]
+    [InlineData(9999)]
+    public void NeutralOn_MountainsAreClaimed(int seed)
+    {
+        // Mountains are ordinary claimable terrain during expansion, so blobs
+        // absorb the ranges they grow across — some mountains end up
+        // player-owned rather than walling territories apart.
+        MapGenResult result = BuildWith(seed, new MapGenOptions(
+            MountainDensity: MountainOnDensity, ClumpingFactor: 100, NeutralDensity: 50));
+        int ownedMountains = 0;
+        foreach (HexTile t in result.Grid.Tiles)
+        {
+            if (t.IsMountain && !t.Owner.IsNone) ownedMountains++;
+        }
+        Assert.True(ownedMountains > 0,
+            $"Expected expansion to claim some mountains (seed {seed})");
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(42)]
+    [InlineData(9999)]
+    public void NeutralOn_GoldStaysNeutralWhenAvoidable(int seed)
+    {
+        // Gold is the contested prize: expansion only claims a gold tile when
+        // it is the sole way forward, so on an ordinary map with a healthy
+        // neutral share the gold overwhelmingly stays neutral.
+        MapGenResult result = BuildWith(seed, new MapGenOptions(
+            MountainDensity: MountainOnDensity, GoldDensity: GoldOnDensity,
+            ClumpingFactor: 100, NeutralDensity: 50));
+        int goldTotal = 0;
+        int goldOwned = 0;
+        foreach (HexTile t in result.Grid.Tiles)
+        {
+            if (!t.IsGold) continue;
+            goldTotal++;
+            if (!t.Owner.IsNone) goldOwned++;
+        }
+        Assert.True(goldTotal > 0, $"Precondition: expected gold tiles (seed {seed})");
+        Assert.True(goldOwned * 4 <= goldTotal,
+            $"{goldOwned} of {goldTotal} gold tiles claimed despite avoidance (seed {seed})");
+    }
+
+    [Theory]
+    [InlineData(1, 0)]
+    [InlineData(1, 75)]
+    [InlineData(1, 100)]
+    [InlineData(42, 0)]
+    [InlineData(42, 75)]
+    [InlineData(42, 100)]
+    [InlineData(9999, 0)]
+    [InlineData(9999, 75)]
+    [InlineData(9999, 100)]
+    public void NeutralOn_SidesExactlyBalanced(int seed, int clump)
+    {
+        // The headline guarantee of player-expansion generation: every player
+        // claims the same quota of cells, so sides differ by at most 1 tile —
+        // plus the rare rng-free viability repair, which may hand a starved
+        // player a cell or two.
+        MapGenResult result = BuildWith(seed, new MapGenOptions(
+            ClumpingFactor: clump, NeutralDensity: NeutralOnDensity));
+        var counts = new Dictionary<PlayerId, int>();
+        foreach (Player p in SixPlayers()) counts[p.Id] = 0;
+        foreach (HexTile tile in result.Grid.Tiles)
+        {
+            if (!tile.Owner.IsNone) counts[tile.Owner]++;
+        }
+
+        int min = int.MaxValue;
+        int max = 0;
+        foreach (KeyValuePair<PlayerId, int> kv in counts)
+        {
+            if (kv.Value < min) min = kv.Value;
+            if (kv.Value > max) max = kv.Value;
+        }
+        Assert.True(min > 0, $"A player got no land (seed {seed}, clump {clump})");
+        Assert.True(max - min <= 3,
+            $"Sides unbalanced: min {min}, max {max} (seed {seed}, clump {clump})");
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(42)]
+    [InlineData(9999)]
+    public void NeutralOn_EachPlayerHasViableStart(int seed)
+    {
+        // Even at the 75% maximum every player must keep a capital-capable
+        // start: at least one territory of 2+ contiguous tiles.
+        MapGenResult result = BuildWith(seed, new MapGenOptions(
+            MountainDensity: MountainOnDensity, GoldDensity: GoldOnDensity,
+            NeutralDensity: MapGenOptions.NeutralDensityMax));
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(result.Grid);
+        foreach (Player p in SixPlayers())
+        {
+            Assert.Contains(territories, t => t.Owner == p.Id && t.Size >= 2);
+        }
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(42)]
+    [InlineData(9999)]
+    public void NeutralOn_ComposesWithClumping(int seed)
+    {
+        // Both knobs compose: the blob is carved either way, and the clumped
+        // variant is far more contiguous over the owned remainder.
+        var fragOpts = new MapGenOptions(ClumpingFactor: 0, NeutralDensity: NeutralOnDensity);
+        var clumpOpts = new MapGenOptions(ClumpingFactor: 100, NeutralDensity: NeutralOnDensity);
+        MapGenResult frag = BuildWith(seed, fragOpts);
+        MapGenResult clumped = BuildWith(seed, clumpOpts);
+
+        Assert.True(CountPlainNeutral(frag) > 0, $"Expected a neutral blob (frag, seed {seed})");
+        Assert.True(CountPlainNeutral(clumped) > 0, $"Expected a neutral blob (clumped, seed {seed})");
+
+        int fragPct = OwnedSameOwnerPercent(frag);
+        int clumpedPct = OwnedSameOwnerPercent(clumped);
+        Assert.True(clumpedPct > fragPct + 20,
+            $"Clumped ({clumpedPct}%) should be well above fragmented ({fragPct}%) for seed {seed}");
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(42)]
+    [InlineData(9999)]
+    public void NeutralOn_MaxClumping_OneBlobPerPlayer(int seed)
+    {
+        // At "One" clumping each player expands from a single seed, so their
+        // land is one contiguous blob (two at most, when a walled-in player
+        // reseeds) — never per-cell noise.
+        MapGenResult result = BuildWith(seed, new MapGenOptions(
+            ClumpingFactor: 100, NeutralDensity: NeutralOnDensity));
+        foreach (Player p in SixPlayers())
+        {
+            HashSet<HexCoord> mine = CoordsWhere(result, t => t.Owner == p.Id);
+            Assert.True(mine.Count > 0, $"{p.Id} got no land (seed {seed})");
+            int blobs = ConnectedComponents(mine).Count;
+            Assert.True(blobs <= 2,
+                $"{p.Id} fragmented into {blobs} regions (seed {seed})");
+        }
+    }
+
+    [Theory]
+    [InlineData(1, 50)]
+    [InlineData(1, 70)]
+    [InlineData(42, 50)]
+    [InlineData(42, 70)]
+    [InlineData(9999, 50)]
+    [InlineData(9999, 70)]
+    public void NeutralOn_MaxClumping_WithFeatures_StaysCoherent(int seed, int neutral)
+    {
+        // Features + high neutral carve the open land into regions. At "One"
+        // clumping seeds must land in regions large enough to hold a blob —
+        // never in tiny cut-off pockets — so each player is at most two
+        // coherent regions and never owns a stranded single tile.
+        MapGenResult result = BuildWith(seed, new MapGenOptions(
+            MountainDensity: 10, GoldDensity: 10, ClumpingFactor: 100, NeutralDensity: neutral));
+        foreach (Player p in SixPlayers())
+        {
+            HashSet<HexCoord> mine = CoordsWhere(result, t => t.Owner == p.Id);
+            Assert.True(mine.Count > 0, $"{p.Id} got no land (seed {seed}, neutral {neutral})");
+            List<HashSet<HexCoord>> blobs = ConnectedComponents(mine);
+            Assert.True(blobs.Count <= 2,
+                $"{p.Id} fragmented into {blobs.Count} regions (seed {seed}, neutral {neutral})");
+            foreach (HashSet<HexCoord> blob in blobs)
+            {
+                Assert.True(blob.Count >= 2,
+                    $"{p.Id} owns a stranded 1-tile island (seed {seed}, neutral {neutral})");
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(42)]
+    [InlineData(9999)]
+    public void NeutralOn_SameSeedIdentical(int seed)
+    {
+        // Determinism with every new knob engaged at once.
+        var opts = new MapGenOptions(
+            MountainDensity: MountainOnDensity, GoldDensity: GoldOnDensity,
+            ClumpingFactor: 75, NeutralDensity: NeutralOnDensity);
+        MapGenResult a = BuildWith(seed, opts);
+        MapGenResult b = BuildWith(seed, opts);
+
+        Assert.Equal(a.Grid.Count, b.Grid.Count);
+        foreach (HexTile tA in a.Grid.Tiles)
+        {
+            HexTile? tB = b.Grid.Get(tA.Coord);
+            Assert.NotNull(tB);
+            Assert.Equal(tA.Owner, tB!.Owner);
+            Assert.Equal(tA.Occupant is Tree, tB.Occupant is Tree);
+            Assert.Equal(tA.IsMountain, tB.IsMountain);
+            Assert.Equal(tA.IsGold, tB.IsGold);
+        }
+        Assert.Equal(a.WaterCoords, b.WaterCoords);
+        Assert.Equal(a.RngStreamHash, b.RngStreamHash);
+    }
 }

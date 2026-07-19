@@ -380,6 +380,7 @@ public static class StringKeys
     public const string MapGenTrees = "mapgen.trees";
     public const string MapGenMountains = "mapgen.mountains";
     public const string MapGenGold = "mapgen.gold";
+    public const string MapGenNeutral = "mapgen.neutral";
     public const string MapGenTerritories = "mapgen.territories";
     public const string MapGenClumpMany = "mapgen.clump.many";
     public const string MapGenClumpSeveral = "mapgen.clump.several";

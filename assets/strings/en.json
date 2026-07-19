@@ -265,6 +265,7 @@
   "mapgen.trees": "Trees",
   "mapgen.mountains": "Mountains",
   "mapgen.gold": "Gold",
+  "mapgen.neutral": "Unclaimed",
   "mapgen.territories": "Territories",
   "mapgen.clump.many": "Many",
   "mapgen.clump.several": "Several",
