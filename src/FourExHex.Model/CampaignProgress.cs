@@ -240,14 +240,36 @@ public sealed class CampaignProgress
     /// is coastline, so raiders eat the board).</summary>
     private const int VikingMinClumpingFactor = 90;
 
-    /// <summary>The tree/mountain/gold densities and territory clumping for a campaign
-    /// level. Deterministic — same level always yields the same
+    /// <summary>Territory clumping for a Fog of War campaign level. Fog plays
+    /// best as one compact blob per player exploring fogged unclaimed ground,
+    /// so fog levels ignore the drawn clumping entirely and lock to 100 —
+    /// which also pins every one of them to the top of
+    /// <see cref="NeutralForClumping"/> (75% unclaimed).</summary>
+    private const int FogClumpingFactor = 100;
+
+    /// <summary>The clumping→unclaimed coupling for campaign levels: unclaimed
+    /// (neutral) land plays well only with few, large territories, so the
+    /// unclaimed share is a pure function of the final clumping stop — no rng
+    /// draw of its own — and stops below 90 get none.</summary>
+    private static int NeutralForClumping(int clumping) => clumping switch
+    {
+        90 => 50,
+        95 => 60,
+        100 => 75,
+        _ => 0,
+    };
+
+    /// <summary>The tree/mountain/gold/unclaimed densities and territory clumping for a
+    /// campaign level. Deterministic — same level always yields the same
     /// options — and decorrelated from both the freeform steppers and the map seed, so a
     /// level's terrain is a fixed part of its identity. Mountains/gold are present at
     /// fixed odds (and a fixed density when present); trees vary across {0, 5, 10}% of
     /// land; clumping is drawn from the shared nonlinear stop set so each level's
     /// sparse↔clumped feel is part of its identity too — except Viking Raiders levels,
-    /// whose draw clamps to ≥<see cref="VikingMinClumpingFactor"/>.</summary>
+    /// whose draw clamps to ≥<see cref="VikingMinClumpingFactor"/>, and Fog of War
+    /// levels, which lock to <see cref="FogClumpingFactor"/>. Freeform and Fog of War levels then derive
+    /// their unclaimed share from the final clumping via
+    /// <see cref="NeutralForClumping"/>; the other complication modes never get any.</summary>
     public static MapGenOptions MapGenOptionsForLevel(int level)
     {
         ValidateLevel(level);
@@ -262,15 +284,23 @@ public sealed class CampaignProgress
         int trees = 5 * rng.NextBounded(0, 3); // {0, 5, 10}
         int clumping = MapGenOptions.ClumpingFactorStops[
             rng.NextBounded(MapGenOptions.ClumpingFactorStops.Length)];
-        // The clamp stays after the full draw so non-viking levels are
+        // The clamps stay after the full draw so unclamped levels are
         // byte-unchanged and 90/95/100 remain legal stop values.
-        if (ModeForLevel(level) == GameMode.VikingRaiders)
+        GameMode mode = ModeForLevel(level);
+        if (mode == GameMode.VikingRaiders)
         {
             clumping = Math.Max(clumping, VikingMinClumpingFactor);
         }
+        if (mode == GameMode.FogOfWar)
+        {
+            clumping = FogClumpingFactor;
+        }
+        int neutral = mode == GameMode.Freeform || mode == GameMode.FogOfWar
+            ? NeutralForClumping(clumping)
+            : 0;
         return new MapGenOptions(
             TreeDensity: trees, MountainDensity: mountains, GoldDensity: gold,
-            ClumpingFactor: clumping);
+            ClumpingFactor: clumping, NeutralDensity: neutral);
     }
 
     /// <summary>Which roster slot the human occupies for a campaign level.

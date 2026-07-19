@@ -358,6 +358,7 @@ public class CampaignProgressTests
         Assert.Equal(a.MountainDensity, b.MountainDensity);
         Assert.Equal(a.GoldDensity, b.GoldDensity);
         Assert.Equal(a.ClumpingFactor, b.ClumpingFactor);
+        Assert.Equal(a.NeutralDensity, b.NeutralDensity);
     }
 
     [Fact]
@@ -377,10 +378,85 @@ public class CampaignProgressTests
                 rng.NextBounded(MapGenOptions.ClumpingFactorStops.Length)];
 
             int actual = CampaignProgress.MapGenOptionsForLevel(level).ClumpingFactor;
-            if (CampaignProgress.ModeForLevel(level) == GameMode.VikingRaiders)
+            GameMode mode = CampaignProgress.ModeForLevel(level);
+            if (mode == GameMode.VikingRaiders)
                 Assert.Equal(Math.Max(rawClumping, 90), actual);
+            else if (mode == GameMode.FogOfWar)
+                Assert.Equal(100, actual);
             else
                 Assert.Equal(rawClumping, actual);
+        }
+    }
+
+    [Fact]
+    public void MapGenOptionsForLevel_FogLevels_ClumpingLockedAt100()
+    {
+        // Fog of War plays best as one compact blob per player exploring
+        // fogged unclaimed land, so fog levels ignore the drawn clumping
+        // entirely: every fog map is locked to 100.
+        int fogLevels = 0;
+        for (int level = 0; level < CampaignProgress.LevelCount; level++)
+        {
+            if (CampaignProgress.ModeForLevel(level) != GameMode.FogOfWar) continue;
+            fogLevels++;
+            Assert.Equal(100, CampaignProgress.MapGenOptionsForLevel(level).ClumpingFactor);
+        }
+        Assert.True(fogLevels > 0, "Expected fog levels on the ladder");
+    }
+
+    // The clumping→unclaimed coupling: unclaimed land plays well only with
+    // few, large territories, so NeutralDensity is a pure function of the
+    // final clumping stop — nothing below 90 gets any.
+    private static int ExpectedNeutralForClumping(int clumping) => clumping switch
+    {
+        90 => 50,
+        95 => 60,
+        100 => 75,
+        _ => 0,
+    };
+
+    [Fact]
+    public void MapGenOptionsForLevel_NeutralScalesWithClumping()
+    {
+        // Freeform and Fog of War levels derive their unclaimed share from the
+        // final clumping stop; the other complication modes never get any
+        // (Viking's ≥90 floor must not drag unclaimed land into that mode).
+        for (int level = 0; level < CampaignProgress.LevelCount; level++)
+        {
+            MapGenOptions o = CampaignProgress.MapGenOptionsForLevel(level);
+            GameMode mode = CampaignProgress.ModeForLevel(level);
+            int expected = mode == GameMode.Freeform || mode == GameMode.FogOfWar
+                ? ExpectedNeutralForClumping(o.ClumpingFactor)
+                : 0;
+            Assert.Equal(expected, o.NeutralDensity);
+        }
+    }
+
+    [Fact]
+    public void MapGenOptionsForLevel_FogLevels_AlwaysHaveNonzeroNeutral()
+    {
+        // The ≥90 clumping floor puts every fog level in the nonzero band of
+        // the clumping→unclaimed map: exploring neutral ground is part of the
+        // fog experience on every such level.
+        int fogLevels = 0;
+        for (int level = 0; level < CampaignProgress.LevelCount; level++)
+        {
+            if (CampaignProgress.ModeForLevel(level) != GameMode.FogOfWar) continue;
+            fogLevels++;
+            Assert.True(CampaignProgress.MapGenOptionsForLevel(level).NeutralDensity > 0,
+                $"Fog level {level} has no unclaimed share");
+        }
+        Assert.True(fogLevels > 0, "Expected fog levels on the ladder");
+    }
+
+    [Fact]
+    public void MapGenOptionsForLevel_VikingAndTidesLevels_NeutralZero()
+    {
+        for (int level = 0; level < CampaignProgress.LevelCount; level++)
+        {
+            GameMode mode = CampaignProgress.ModeForLevel(level);
+            if (mode != GameMode.VikingRaiders && mode != GameMode.RisingTides) continue;
+            Assert.Equal(0, CampaignProgress.MapGenOptionsForLevel(level).NeutralDensity);
         }
     }
 
@@ -462,6 +538,7 @@ public class CampaignProgressTests
             Assert.Contains(o.MountainDensity, new[] { 0, 10 });
             Assert.Contains(o.GoldDensity, new[] { 0, 5 });
             Assert.Contains(o.TreeDensity, new[] { 0, 5, 10 });
+            Assert.Contains(o.NeutralDensity, new[] { 0, 50, 60, 75 });
         }
     }
 
