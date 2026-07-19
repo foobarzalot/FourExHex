@@ -276,5 +276,7 @@
   "cheat.tutorial_builder": "Tutorial Builder",
   "cheat.recording_on": "Toggle Recording Mode On",
   "cheat.recording_off": "Toggle Recording Mode Off",
+  "cheat.determinism": "Determinism Check",
+  "cheat.determinism_title": "Determinism Check",
   "cheat.close": "Close"
 }

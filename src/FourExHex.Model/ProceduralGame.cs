@@ -22,10 +22,20 @@ public static class ProceduralGame
     public static GameState Build(
         int cols, int rows, IReadOnlyList<Player> players, int seed,
         MapGenOptions? options = null, GameMode mode = GameMode.Freeform)
+        => Build(cols, rows, players, seed, out _, options, mode);
+
+    /// <summary>Same build, additionally surfacing the map generator's
+    /// RNG stream hash (<see cref="MapGenResult.RngStreamHash"/>) for
+    /// determinism fingerprinting.</summary>
+    public static GameState Build(
+        int cols, int rows, IReadOnlyList<Player> players, int seed,
+        out ulong mapGenRngStreamHash,
+        MapGenOptions? options = null, GameMode mode = GameMode.Freeform)
     {
         var turnState = new TurnState(players);
         var treasury = new Treasury();
         MapGenResult mapGen = MapGenerator.BuildInitialGrid(cols, rows, players, seed, options);
+        mapGenRngStreamHash = mapGen.RngStreamHash;
         HexGrid grid = mapGen.Grid;
         IReadOnlyList<Territory> territories = TerritoryFinder.Recompute(
             grid, new List<Territory>(), treasury: null, randomizeCapital: true);

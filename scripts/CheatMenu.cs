@@ -78,10 +78,53 @@ public sealed partial class CheatMenu : Node
                     ? StringKeys.CheatRecordingOff
                     : StringKeys.CheatRecordingOn),
                 RecordingMode.Toggle),
+            new(Strings.Get(StringKeys.CheatDeterminism), RunDeterminismCheck),
             // EscMenu hides itself before invoking the callback, so
             // Close is just a logged no-op.
             new(Strings.Get(StringKeys.CheatClose), () => Log.Debug(Log.LogCategory.Cheat, "CheatMenu: closed (Close button).")),
         });
+    }
+
+    /// <summary>
+    /// Issue #59's in-app cross-platform proof: run the seeded all-AI
+    /// quick game inline (same fingerprint as a FOUREXHEX_6AI_QUICK
+    /// headless run) and show the digest triple. Works from any scene
+    /// the menu attaches to; on iOS/Android — where env vars can't be
+    /// set — this is the only way to capture the fingerprint. Blocks
+    /// the UI thread for a few seconds, fine for a dev tool.
+    /// </summary>
+    private void RunDeterminismCheck()
+    {
+        Log.Debug(Log.LogCategory.Cheat, "CheatMenu: Determinism Check pressed.");
+        DeterminismProbeResult r = DeterminismProbe.Run(
+            new HeadlessHexMapView(), new HeadlessHudView());
+        // One grep-able line for stdout / logcat (tag "godot") / os_log.
+        // GD.Print, not Log.Debug: must survive any build that can
+        // reach the cheat menu regardless of log-category config.
+        GD.Print(
+            $"[determinism-probe] seed={r.Seed} mapgen={r.MapGenRngStreamHash:X16} " +
+            $"rng={r.RngStreamDigest:X16} final={r.FinalChecksum} " +
+            $"turns={r.Turns} winner={r.WinnerIndex}");
+
+        var layer = new CanvasLayer { Layer = 100 };
+        var (backdrop, panel, _, body) = ModalChrome.BuildErrorOverlay(
+            GetViewport().GetVisibleRect().Size,
+            panelW: Mathf.Min(GetViewport().GetVisibleRect().Size.X * 0.9f, 560f),
+            panelH: 340f,
+            Strings.Get(StringKeys.CheatDeterminismTitle),
+            onOk: () => layer.QueueFree());
+        string winner = r.WinnerIndex < 0 ? "(none)" : $"player {r.WinnerIndex}";
+        body.Text =
+            $"seed {r.Seed} · {r.Turns} turns · winner {winner}\n\n" +
+            $"mapgen  {r.MapGenRngStreamHash:X16}\n" +
+            $"rng     {r.RngStreamDigest:X16}\n\n" +
+            $"final checksum\n" +
+            $"{r.FinalChecksum[..32]}\n{r.FinalChecksum[32..]}";
+        layer.AddChild(backdrop);
+        layer.AddChild(panel);
+        backdrop.Visible = true;
+        panel.Visible = true;
+        AddChild(layer);
     }
 
     private void OpenTutorialBuilder()

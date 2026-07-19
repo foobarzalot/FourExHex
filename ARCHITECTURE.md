@@ -1348,6 +1348,10 @@ seed (no consumption count) and load reproduces it.
   `[determinism] final checksum=<GameStateChecksum> rngStreamHash=<digest>`
   (category `Determinism`, plus a `[determinism] mapgen` line from
   `MapGenerator`) — the one-line cross-run/cross-platform determinism diff.
+  `DeterminismProbe.Run` (Controller) reproduces the same fingerprint
+  in-process (the cheat menu's Determinism Check); its expected values are
+  pinned by `DeterminismProbeTests`, which fails on any machine or runtime
+  that computes a different game.
 - **Autosave.** `Main` subscribes `controller.HumanTurnStarted` to a handler
   writing the `autosave` slot via `SaveStore.WriteAutosave`. Fires once per
   human turn, after start-of-turn bookkeeping; AI turns and game-over states
@@ -1531,7 +1535,7 @@ Map editor's `EscMenu`: **Resume / Save Map / Load Map / Exit** — Save/Load in
 
 `scripts/CheatMenu.cs` is a Debug-only modal summonable over any screen: backquote on desktop, 3-finger tap on touch (via `MultiTouchTapDetector` in ViewMath). The whole file is `#if DEBUG`; every scene root (`MainMenuScene`, `Main`, `MapEditorScene`, `TutorialBuilderScene`, `PlayTutorialScene`) calls `CheatMenu.Attach(this)` from `_Ready` inside its own `#if DEBUG` block — **no autoload registration**, so Release has no listener, menu, or call sites. `Attach` also runtime-guards on `OS.IsDebugBuild()`.
 
-A thin input listener (`_Input`, not `_UnhandledInput`, so the summon gesture wins over focused Controls) owning a private `EscMenu`. Entries: **Tutorial Builder** (`ChangeSceneToFile`, no in-progress guard), **Toggle Recording Mode On/Off** (label names the action for the current state), **Close**. Adding a cheat = adding an `EscMenu.Option` in `Toggle`. Instrumented under `Log.LogCategory.Cheat`.
+A thin input listener (`_Input`, not `_UnhandledInput`, so the summon gesture wins over focused Controls) owning a private `EscMenu`. Entries: **Tutorial Builder** (`ChangeSceneToFile`, no in-progress guard), **Toggle Recording Mode On/Off** (label names the action for the current state), **Determinism Check** (runs `DeterminismProbe.Run` inline with the Headless views and shows the digest triple in a `ModalChrome` overlay, plus one grep-able `[determinism-probe]` `GD.Print` line — the on-device equivalent of the `FOUREXHEX_6AI_QUICK` digest on targets where env vars can't be set), **Close**. Adding a cheat = adding an `EscMenu.Option` in `Toggle`. Instrumented under `Log.LogCategory.Cheat`.
 
 **Recording mode** (`scripts/RecordingMode.cs`): a session-scoped static flag (`Active` + `Changed` event, never persisted) that hides promo-noisy chrome for clean promotional captures while the game stays fully playable. Only the cheat menu flips it, so Release builds carry the flag permanently false. Subscribers react immediately on `Changed` and re-assert per-`Refresh`: `HudView` hides the action-hint/tutorial panel, gold chip, turn + swatch chip, map/level label, bankruptcy toast, and transient banner (show-sites `ShowTransientBanner` / `SummonCapitalAlertNotice` early-return while active; `ShowTutorialMessage` / `ShowTappableTutorialMessage` keep all state — `_externalMessageActive`, text, tap catcher — but leave the panel invisible, so toggling off restores an active message); `HexMapView.RedrawWarningBadges` leaves the capital warning badges cleared. Buttons and endgame overlays are untouched. View-layer only — no controller/model involvement.
 

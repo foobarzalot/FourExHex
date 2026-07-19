@@ -34,6 +34,21 @@ public class MapGeneratorTests
     private static MapGenResult BuildWith(int seed, MapGenOptions options) =>
         MapGenerator.BuildInitialGrid(Cols, Rows, SixPlayers(), seed, options);
 
+    [Fact]
+    public void RngStreamHash_IsSeedDeterministic_AndPinnedForQuickConfig()
+    {
+        // The 6AI-quick configuration (18x13, six players, default
+        // options): the pinned value is the cross-platform determinism
+        // fingerprint — the same on every machine and runtime, or the
+        // no-floats/DeterministicRng contract is broken.
+        MapGenResult a = MapGenerator.BuildInitialGrid(18, 13, SixPlayers(), seed: 42);
+        MapGenResult b = MapGenerator.BuildInitialGrid(18, 13, SixPlayers(), seed: 42);
+        Assert.Equal(a.RngStreamHash, b.RngStreamHash);
+        Assert.Equal(0x3B760EDA60BEC1F8UL, a.RngStreamHash);
+        Assert.NotEqual(a.RngStreamHash,
+            MapGenerator.BuildInitialGrid(18, 13, SixPlayers(), seed: 43).RngStreamHash);
+    }
+
     private static int CountMountains(MapGenResult result)
     {
         int n = 0;

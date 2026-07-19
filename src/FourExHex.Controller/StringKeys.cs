@@ -393,5 +393,7 @@ public static class StringKeys
     public const string CheatTutorialBuilder = "cheat.tutorial_builder";
     public const string CheatRecordingOn = "cheat.recording_on";
     public const string CheatRecordingOff = "cheat.recording_off";
+    public const string CheatDeterminism = "cheat.determinism";
+    public const string CheatDeterminismTitle = "cheat.determinism_title";
     public const string CheatClose = "cheat.close";
 }

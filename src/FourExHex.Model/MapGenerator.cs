@@ -9,7 +9,11 @@ using System.Collections.Generic;
 /// rectangular map bounds. Water coords are NOT in the grid — they are
 /// off-map for every gameplay rule and only the renderer reads them.
 /// </summary>
-public sealed record MapGenResult(HexGrid Grid, IReadOnlySet<HexCoord> WaterCoords);
+/// <param name="RngStreamHash">The map-gen rng's consumption digest
+/// (<see cref="DeterministicRng.StreamHash"/>) after the build — the
+/// cross-platform determinism fingerprint of the generation itself.</param>
+public sealed record MapGenResult(
+    HexGrid Grid, IReadOnlySet<HexCoord> WaterCoords, ulong RngStreamHash = 0);
 
 /// <summary>
 /// Builds the initial hex grid for a fresh game. Carves a single contiguous
@@ -137,7 +141,7 @@ public static class MapGenerator
 
         Log.Debug(Log.LogCategory.Determinism,
             $"[determinism] mapgen seed={seed} rngStreamHash={rng.StreamHash:X16}");
-        return new MapGenResult(grid, water);
+        return new MapGenResult(grid, water, rng.StreamHash);
     }
 
     // Clumped owner assignment — seed-flood Voronoi. Instead of an
