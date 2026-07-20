@@ -912,8 +912,9 @@ public partial class MainMenuScene : Control
         {
             GameSettings.Mode = (GameMode)dropdown.GetSelectedId();
             Log.Debug(Log.LogCategory.Input, $"MainMenu: game mode → {GameSettings.Mode}");
-            // Fog Of War forces exactly one human (red) + five computers; the
-            // lock is reapplied here so flipping the mode reshapes the roster.
+            // Fog Of War forces exactly one human (red) and restricts the other
+            // slots to Computer/None; the lock is reapplied here so flipping
+            // the mode reshapes the roster.
             ApplyGameModeRoleLock();
         };
         _gameModeButton = dropdown;
@@ -1229,33 +1230,37 @@ public partial class MainMenuScene : Control
         difficultyDropdown.Disabled = !isHuman;
     }
 
-    /// <summary>Fog Of War demands exactly one human player. When that mode is
-    /// selected, slot 0 (red) is forced to Human and every other slot to
-    /// Computer, and all six role dropdowns are disabled so the roster can't be
-    /// changed — only red's difficulty stays editable (via
-    /// <see cref="ApplyDifficultyLock"/>). Any other mode re-enables the role
-    /// dropdowns, restoring free roster editing. Driven off the shared
+    /// <summary>Fog Of War demands exactly one human player — the fog
+    /// projection follows the single human's sight. When that mode is
+    /// selected, slot 0 (red) is forced to Human and its dropdown disabled
+    /// (difficulty stays editable via <see cref="ApplyDifficultyLock"/>);
+    /// the other slots stay editable between Computer and None, with the
+    /// Human item grayed out (a slot currently on Human is forced to
+    /// Computer). Any other mode re-enables the dropdowns and the Human
+    /// items, restoring free roster editing. Driven off the shared
     /// <c>_roleButtons</c> array so it covers both the portrait and landscape
     /// player pages. Forced <see cref="UiDropdown.SelectItemById"/> does not raise
     /// <c>ItemSelected</c>, so this also persists the roster and re-gates Next.</summary>
     private void ApplyGameModeRoleLock()
     {
-        // The fog 1-human-5-computers lock is a play-time constraint; the
-        // Tutorial Builder purpose only uses kinds to pick which colors are
-        // in play (all forced Human for hot-seat recording), so a fog
-        // tutorial may use any roster size.
+        // The fog one-human lock is a play-time constraint; the Tutorial
+        // Builder purpose only uses kinds to pick which colors are in play
+        // (all forced Human for hot-seat recording), so a fog tutorial may
+        // use any roster size.
         bool fog = GameSettings.Mode == GameMode.FogOfWar
             && _playConfigPurpose != PlayConfigPurpose.TutorialBuilder;
         for (int slot = 0; slot < _roleButtons.Length; slot++)
         {
             OptionButton role = _roleButtons[slot];
             if (role == null) continue;
-            if (fog)
-            {
-                int forcedId = slot == 0 ? HumanId : ComputerId;
-                if (role.GetSelectedId() != forcedId) UiDropdown.SelectItemById(role, forcedId);
-            }
-            role.Disabled = fog;
+            if (fog && slot == 0 && role.GetSelectedId() != HumanId)
+                UiDropdown.SelectItemById(role, HumanId);
+            if (fog && slot != 0 && role.GetSelectedId() == HumanId)
+                UiDropdown.SelectItemById(role, ComputerId);
+            // Slot 0 is fully locked under fog; other slots stay editable but
+            // with the Human item grayed out (exactly-one-human invariant).
+            role.Disabled = fog && slot == 0;
+            role.SetItemDisabled(role.GetItemIndex(HumanId), fog && slot != 0);
             ApplyDifficultyLock(slot);
         }
         if (fog)
@@ -1263,7 +1268,7 @@ public partial class MainMenuScene : Control
             PersistRosterSelections();
             RefreshPlayerNextGating();
             Log.Debug(Log.LogCategory.Input,
-                "MainMenu: Fog Of War — roster locked to 1 human (red) + 5 computers");
+                "MainMenu: Fog Of War — slot 0 locked to Human; other slots Computer/None only");
         }
     }
 

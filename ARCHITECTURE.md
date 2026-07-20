@@ -416,7 +416,7 @@ A selectable game mode, distinct from freeform-vs-campaign (`GameSettings.Campai
 
 ## Fog Of War game mode
 
-A view-only restriction (`GameMode.FogOfWar` on `GameState.Mode`): rules, AI, and determinism are identical to Freeform — nothing in `GameOperations`/`WinConditionRules` branches on it. Requires **exactly one human**; freeform Configure Game locks the roster to red-human + five computers (`MainMenuScene.ApplyGameModeRoleLock`, only the human's difficulty editable), and the single-human campaign roster satisfies it for free.
+A view-only restriction (`GameMode.FogOfWar` on `GameState.Mode`): rules, AI, and determinism are identical to Freeform — nothing in `GameOperations`/`WinConditionRules` branches on it. Requires **exactly one human**; freeform Configure Game locks slot 0 to Human and restricts the other slots to Computer/None (`MainMenuScene.ApplyGameModeRoleLock` — 1–5 computer opponents), and the single-human campaign roster satisfies it for free.
 
 **Visibility model (`VisibilityRules`, Model, integer-only).** Three tiers from the human's perspective: `VisibilityTier { Fog, Stale, Visible }`. `ComputeVisible(state, human)` = every coord in the human's **capital-bearing** territories plus each tile's neighbours (a one-hex ring, incl. water/off-map coords) — a singleton (no capital) grants no sight. `UpdateSeen` marks the visible set into `GameState.Seen` (a grow-only `HashSet<HexCoord>` exposed `IReadOnlySet`, with `MarkSeen`/`IsSeen`/`ClearSeen`, mirroring `WaterCoords`). `TierOf` = visible → Visible; else seen → Stale; else Fog. Seen memory is **excluded from undo snapshots** (sticky, like water) and so does not perturb the game-state checksum.
 
