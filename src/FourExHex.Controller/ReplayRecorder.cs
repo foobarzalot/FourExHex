@@ -44,6 +44,22 @@ public class ReplayRecorder
     /// uses it to loop playback.</summary>
     public event Action? ReplayEnded;
 
+    /// <summary>Raised by the paced playback track as each beat's preview
+    /// begins (highlight/pickup shown, execute still a preview-delay
+    /// away). The instant track never raises it — instant playback does
+    /// no camera or preview work, matching instant automate. Forwarded by
+    /// <c>GameController.ReplayBeatPreviewing</c>; the demo-replay camera
+    /// follow pans to <see cref="ReplayFocus.FocusCoord"/> on it.</summary>
+    public event Action<ReplayBeat>? ReplayBeatPreviewing;
+
+    // Demo/Instructions playback only: paced playback executes turn-end
+    // beats with no preview and hurries the between-players redispatch
+    // (see StepReplayPreview / ScheduleNextReplayBeat), so idle turns
+    // flick past and contentful turns run nearly back-to-back. Never set
+    // for Main's replays or Tutorial Preview — those keep the full
+    // authored cadence.
+    private readonly bool _fastForwardIdleTurns;
+
     private readonly GameState _state;
     private readonly SessionState _session;
     private readonly IHexMapView _map;
@@ -102,8 +118,10 @@ public class ReplayRecorder
         bool previewMode,
         Func<bool>? replayIsInstantMode,
         Replay? loadedReplay,
-        Func<bool>? isReplayPaused = null)
+        Func<bool>? isReplayPaused = null,
+        bool fastForwardIdleTurns = false)
     {
+        _fastForwardIdleTurns = fastForwardIdleTurns;
         _state = state;
         _session = session;
         _map = map;
@@ -452,7 +470,12 @@ public class ReplayRecorder
             logInstantToPaced: () => Log.Info(Log.LogCategory.Turn,
                 $"[speed] replay track instant→paced at beat {_replayIndex}"),
             logPacedToInstant: () => Log.Info(Log.LogCategory.Turn,
-                $"[speed] replay track paced→instant at beat {_replayIndex}"));
+                $"[speed] replay track paced→instant at beat {_replayIndex}"),
+            // Fast-forward mode collapses the between-players pause: turn
+            // transitions read as a beat, not a wait.
+            pacedBoundaryDelayMs: _fastForwardIdleTurns
+                ? StepPacing.ReplayIdleTurnSkipMs
+                : StepPacing.AiBetweenPlayersDelayMs);
     }
 
     /// <summary>Instant-replay driver: a thin wrapper over the shared
@@ -478,6 +501,19 @@ public class ReplayRecorder
         }
 
         ReplayBeat beat = _replayBeats[_replayIndex];
+        // Turn-end fast-forward (demo/instructions playback): turn-end
+        // beats are pure transition, so they get no preview at all — no
+        // highlight flicker, no ReplayBeatPreviewing (nothing to watch,
+        // nothing to pan to) — just an immediate execute. Combined with
+        // the hurried boundary redispatch (ScheduleNextReplayBeat), idle
+        // turns flick past and contentful turns run back-to-back.
+        if (_fastForwardIdleTurns
+            && beat is ReplayEndTurnBeat or ReplayVikingTurnEndBeat)
+        {
+            _aiPacer.Schedule(StepReplayExecute, 0);
+            return;
+        }
+        ReplayBeatPreviewing?.Invoke(beat);
         _map.ShowHighlight(ResolveReplayActingTerritory(beat));
         // A move's preview shows the unit being picked up — the same
         // pickup pulse a live player sees when selecting a unit to move —

@@ -64,6 +64,11 @@ public class GameController
     /// </summary>
     public event Action? ReplayEnded;
 
+    /// <summary>Forwarded from <see cref="ReplayRecorder.ReplayBeatPreviewing"/>:
+    /// paced playback is about to play this beat. The demo-replay scene
+    /// subscribes for its camera follow.</summary>
+    public event Action<ReplayBeat>? ReplayBeatPreviewing;
+
     /// <summary>
     /// Fired at the start of every human player's turn, after start-of-turn
     /// bookkeeping (tree growth, income, upkeep) and after
@@ -97,6 +102,7 @@ public class GameController
         Func<bool>? aiSilentMode = null,
         Func<bool>? replayIsInstantMode = null,
         Func<bool>? isReplayPaused = null,
+        bool replayFastForwardsIdleTurns = false,
         bool autoSelectFirstTerritory = true,
         Func<GameState, PlayerId, HashSet<HexCoord>, HashSet<HexCoord>, DeterministicRng, AiAction?>? automateChooser = null,
         Func<bool>? automateIsInstantMode = null)
@@ -152,8 +158,10 @@ public class GameController
             previewMode: previewMode,
             replayIsInstantMode: replayIsInstantMode,
             loadedReplay: loadedReplay,
-            isReplayPaused: isReplayPaused);
+            isReplayPaused: isReplayPaused,
+            fastForwardIdleTurns: replayFastForwardsIdleTurns);
         _recorder.ReplayEnded += () => ReplayEnded?.Invoke();
+        _recorder.ReplayBeatPreviewing += b => ReplayBeatPreviewing?.Invoke(b);
         _aiDriver = new AiTurnDriver(
             state: state,
             session: session,

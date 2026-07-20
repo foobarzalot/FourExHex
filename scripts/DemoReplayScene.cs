@@ -87,7 +87,20 @@ public partial class DemoReplayScene : Node2D
             _panel.Players, loaded.State.Territories);
         _panel.ResetToTutorialStart(loaded.Tutorial.Replay.InitialSnapshot);
 
-        GameState state = _panel.BuildLiveStateWith(_panel.Players);
+        // Player 0 Human, rest Computer (mirrors PreviewPane.Start): fog
+        // only projects for a roster with exactly one human
+        // (VisibilityRules.BuildProjection), so an all-Human roster would
+        // play a Fog Of War demo fully revealed. Kinds don't affect
+        // playback — the replay log drives every player.
+        var roster = new List<Player>(_panel.Players.Count);
+        for (int i = 0; i < _panel.Players.Count; i++)
+        {
+            Player src = _panel.Players[i];
+            roster.Add(new Player(src.Name, src.Id,
+                i == 0 ? PlayerKind.Human : PlayerKind.Computer));
+        }
+
+        GameState state = _panel.BuildLiveStateWith(roster);
         PreviewSetup.Apply(_panel.Map, state, loaded.Tutorial);
 
         _hud = new HudView();
@@ -110,12 +123,28 @@ public partial class DemoReplayScene : Node2D
             _panel.Map,
             _hud,
             seed: loaded.MasterSeed,
+            // Null chooser: the Computer slots exist only for the fog
+            // perspective (roster above); if the recording ends short of
+            // game over they must idle out the end-hold, not free-play.
+            aiChooser: (s, c, v, ru, r) => null,
             aiPacer: new GodotAiPacer(new SceneTreeTimerFactory(GetTree())),
             previewMode: true,
             loadedReplay: loaded.Tutorial.Replay,
             replayIsInstantMode: () => false,
+            replayFastForwardsIdleTurns: true,
             autoSelectFirstTerritory: false);
         _controller.ReplayEnded += OnReplayEnded;
+        // Camera follow (demo playback only): as each beat previews, pan
+        // to its effect tile if it sits outside the comfort zone. Zoom is
+        // untouched — whatever the operator sets frames the capture.
+        HexMapView mapForFollow = _panel.Map;
+        _controller.ReplayBeatPreviewing += beat =>
+        {
+            if (ReplayFocus.FocusCoord(beat) is HexCoord focus)
+            {
+                mapForFollow.CenterOnCoordIfOffscreen(focus);
+            }
+        };
 
         _forcedRecording = !RecordingMode.Active;
         if (_forcedRecording) RecordingMode.Toggle();

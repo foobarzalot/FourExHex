@@ -4060,6 +4060,33 @@ public partial class HexMapView : Node2D, IHexMapView
         CenterOnCoord(territory.Capital!.Value);
     }
 
+    // Demo-replay camera follow: pan only when the action would land
+    // outside the central 60% of the visible play area, so the camera
+    // stays put for nearby actions and eases over for distant ones.
+    private const float DemoFollowComfortFrac = 0.6f;
+
+    /// <summary>
+    /// <see cref="CenterOnCoord"/>, but only if the tile currently sits
+    /// outside the comfort zone (<see cref="CameraFocusMath"/>) of the
+    /// inset-adjusted viewport. Used by the demo-replay scene to keep
+    /// playback actions on-screen without constant camera motion.
+    /// </summary>
+    public void CenterOnCoordIfOffscreen(HexCoord coord)
+    {
+        Vector2 localCenter = FirstHexCenterOffset + HexPixel.ToPixel(coord, HexSize);
+        Vector2 screen = Position + ToWorldOffset(localCenter, _zoom);
+        Vector2 vp = GetViewportRect().Size;
+        if (!CameraFocusMath.IsOutsideComfortZone(
+                vp.X, vp.Y, _topInset, _bottomInset,
+                screen.X, screen.Y, DemoFollowComfortFrac))
+        {
+            return;
+        }
+        Log.Debug(Log.LogCategory.Render,
+            $"[demo-follow] {coord} at {screen} outside comfort zone — panning");
+        CenterOnCoord(coord);
+    }
+
     public void CenterOnCoord(HexCoord coord)
     {
         // The tile's pixel position is in unscaled local space; map it to a

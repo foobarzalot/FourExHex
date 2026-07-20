@@ -132,6 +132,7 @@ public sealed partial class InstructionDemoView : Control
             loadedReplay: tutorial.Replay,
             replayIsInstantMode: () => false,
             isReplayPaused: () => _frozen,
+            replayFastForwardsIdleTurns: true,
             autoSelectFirstTerritory: false);
         _controller.ReplayEnded += OnReplayEnded;
 

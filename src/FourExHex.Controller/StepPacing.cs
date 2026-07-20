@@ -21,6 +21,11 @@ public static class StepPacing
     public const int AiPreviewDelayMs = 350;
     public const int AiActionDelayMs = 300;
     public const int AiBetweenPlayersDelayMs = 600;
+    // Demo/Instructions playback (ReplayRecorder's turn-end fast-forward):
+    // the between-players redispatch delay — a tick so consecutive turns
+    // don't visually blur, nothing more. Turn-end beats themselves execute
+    // with no preview and zero delay in that mode.
+    public const int ReplayIdleTurnSkipMs = 50;
 
     // Viking Raiders: how long the viking pseudo-turn stays open after the
     // wave-spawn beat, so the arrival presentation (the "ripple rise"
@@ -62,7 +67,8 @@ public static class StepPacing
         IHexMapView map, IAiPacer pacer,
         Action instantTick, Action pacedStep,
         Action<bool> setTrack, Action syncSilentMode,
-        Action logInstantToPaced, Action logPacedToInstant)
+        Action logInstantToPaced, Action logPacedToInstant,
+        int pacedBoundaryDelayMs = AiBetweenPlayersDelayMs)
     {
         if (wasInstant && !nowInstant)
         {
@@ -87,6 +93,6 @@ public static class StepPacing
         if (nowInstant)
             pacer.ScheduleUnscaled(instantTick, turnBoundary ? InstantTurnDelayMs : 0);
         else
-            pacer.Schedule(pacedStep, turnBoundary ? AiBetweenPlayersDelayMs : AiActionDelayMs);
+            pacer.Schedule(pacedStep, turnBoundary ? pacedBoundaryDelayMs : AiActionDelayMs);
     }
 }
