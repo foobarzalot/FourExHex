@@ -227,6 +227,27 @@ public sealed class SaveStore
     public IReadOnlyList<SaveSlotInfo> ListTutorials() => ListSlotsIn(TutorialsDirectory);
 
     /// <summary>
+    /// Slot names of the demo-replay tutorials shipped with the game:
+    /// the <c>demo_*</c> subset of <see cref="BundledMapsDirectory"/>
+    /// (see <see cref="DemoCatalog"/>). Names only — the demo picker
+    /// doesn't need headers, and bundled files carry no timestamps.
+    /// </summary>
+    public IReadOnlyList<string> ListBundledDemoNames()
+    {
+        using DirAccess? dir = DirAccess.Open(BundledMapsDirectory);
+        if (dir == null) return new List<string>();
+
+        var fileNames = new List<string>();
+        dir.ListDirBegin();
+        for (string name = dir.GetNext(); name.Length > 0; name = dir.GetNext())
+        {
+            if (!dir.CurrentIsDir()) fileNames.Add(name);
+        }
+        dir.ListDirEnd();
+        return DemoCatalog.FilterDemoNames(fileNames);
+    }
+
+    /// <summary>
     /// Load a starting map by name regardless of whether it lives in the
     /// user maps directory or the bundled tutorials directory. User maps
     /// win on name collision; falls through to bundled if not found in

@@ -277,6 +277,10 @@
   "cheat.tutorial_builder": "Tutorial Builder",
   "cheat.recording_on": "Toggle Recording Mode On",
   "cheat.recording_off": "Toggle Recording Mode Off",
+  "cheat.demo_replays": "Demo Replays",
+  "cheat.demo_title": "Demo Replays",
+  "cheat.demo_none": "No demos found",
+  "cheat.demo_back": "Back",
   "cheat.determinism": "Determinism Check",
   "cheat.determinism_title": "Determinism Check",
   "cheat.close": "Close"

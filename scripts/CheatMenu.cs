@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 FooBarzalot
 #if DEBUG
+using System.Collections.Generic;
 using Godot;
 
 /// <summary>
@@ -78,6 +79,7 @@ public sealed partial class CheatMenu : Node
                     ? StringKeys.CheatRecordingOff
                     : StringKeys.CheatRecordingOn),
                 RecordingMode.Toggle),
+            new(Strings.Get(StringKeys.CheatDemoReplays), OpenDemoPicker),
             new(Strings.Get(StringKeys.CheatDeterminism), RunDeterminismCheck),
             // EscMenu hides itself before invoking the callback, so
             // Close is just a logged no-op.
@@ -125,6 +127,41 @@ public sealed partial class CheatMenu : Node
         backdrop.Visible = true;
         panel.Visible = true;
         AddChild(layer);
+    }
+
+    /// <summary>
+    /// Second-level list of the bundled demo tutorials (issue #162):
+    /// re-Shows the same EscMenu with one option per demo_* file in
+    /// res://tutorials/ plus Back. Picking one hands the name to
+    /// <see cref="DemoReplayScene"/> and switches scenes.
+    /// </summary>
+    private void OpenDemoPicker()
+    {
+        IReadOnlyList<string> demos = new SaveStore().ListBundledDemoNames();
+        Log.Debug(Log.LogCategory.Cheat,
+            $"CheatMenu: Demo Replays pressed — {demos.Count} demo(s) bundled.");
+
+        var options = new List<EscMenu.Option>();
+        if (demos.Count == 0)
+        {
+            options.Add(new(Strings.Get(StringKeys.CheatDemoNone), () => { }, Disabled: true));
+        }
+        foreach (string demo in demos)
+        {
+            string captured = demo;
+            options.Add(new(captured, () => PlayDemo(captured)));
+        }
+        options.Add(new(Strings.Get(StringKeys.CheatDemoBack), () => Toggle("back from demos")));
+        _menu.Show(Strings.Get(StringKeys.CheatDemoTitle), options);
+    }
+
+    private void PlayDemo(string name)
+    {
+        // Same no-guard scene change as the Tutorial Builder entry: a dev
+        // tool goes where it's told, whatever scene it was summoned from.
+        Log.Debug(Log.LogCategory.Cheat, $"CheatMenu: demo '{name}' chosen.");
+        DemoReplayScene.PendingName = name;
+        GetTree().ChangeSceneToFile("res://scenes/demo_replay.tscn");
     }
 
     private void OpenTutorialBuilder()
