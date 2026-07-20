@@ -33,9 +33,11 @@ using System;
 /// </summary>
 public static class PreviewSetup
 {
-    public static void Apply(IHexMapView map, GameState state, Tutorial tutorial)
+    public static void Apply(IHexMapView map, GameState state, Tutorial tutorial) =>
+        Apply(map, state, tutorial.Replay);
+
+    public static void Apply(IHexMapView map, GameState state, Replay replay)
     {
-        Replay replay = tutorial.Replay;
         state.Territories = replay.InitialSnapshot.ApplyTo(state.Grid, state.Treasury);
         state.Turns.Reset(replay.InitialCurrentPlayerIndex, replay.InitialTurnNumber);
         map.RebuildAfterTerritoryChange();

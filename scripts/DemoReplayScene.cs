@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 FooBarzalot
 using System.Collections.Generic;
+using System.Linq;
 using Godot;
 
 /// <summary>
@@ -72,36 +73,42 @@ public partial class DemoReplayScene : Node2D
             return;
         }
 
-        if (loaded.Tutorial?.Replay == null)
+        // Any save carrying a replay is playable as a demo — a
+        // Tutorial-Builder recording or a saved real game alike (both
+        // surface it as LoadedSave.Replay, same as the fidelity tests).
+        if (loaded.Replay == null)
         {
             Log.Error(Log.LogCategory.Tutorial,
-                $"[demo] bundled save '{name}' has no tutorial/replay payload");
+                $"[demo] bundled save '{name}' has no replay payload");
             ExitToMenu();
             return;
         }
 
-        // Mirrors PlayTutorialScene: load the demo's map, trim the roster
-        // to the colors that own land, rewind to the recording's start.
         _panel.LoadFromMap(loaded);
-        _panel.Players = MapRosterRules.ActivePlayersForTerritories(
-            _panel.Players, loaded.State.Territories);
-        _panel.ResetToTutorialStart(loaded.Tutorial.Replay.InitialSnapshot);
 
-        // Player 0 Human, rest Computer (mirrors PreviewPane.Start): fog
-        // only projects for a roster with exactly one human
-        // (VisibilityRules.BuildProjection), so an all-Human roster would
-        // play a Fog Of War demo fully revealed. Kinds don't affect
-        // playback — the replay log drives every player.
-        var roster = new List<Player>(_panel.Players.Count);
-        for (int i = 0; i < _panel.Players.Count; i++)
+        // Roster: the save's own player list, so the replay's Actor
+        // indexes stay aligned with the recorded TurnState. A roster with
+        // exactly one human (a real game's save) keeps its recorded kinds
+        // — fog follows the recorded human; an all-Human Tutorial-Builder
+        // roster is re-kinded player-0-Human/rest-Computer, since fog
+        // only projects for exactly one human
+        // (VisibilityRules.BuildProjection). Kinds don't affect playback —
+        // the replay log drives every player.
+        List<Player> roster;
+        if (loaded.Players.Count(p => p.Kind == PlayerKind.Human) == 1)
         {
-            Player src = _panel.Players[i];
-            roster.Add(new Player(src.Name, src.Id,
-                i == 0 ? PlayerKind.Human : PlayerKind.Computer));
+            roster = loaded.Players.ToList();
         }
+        else
+        {
+            roster = loaded.Players.Select((p, i) => new Player(p.Name, p.Id,
+                i == 0 ? PlayerKind.Human : PlayerKind.Computer)).ToList();
+        }
+        _panel.Players = roster;
+        _panel.ResetToTutorialStart(loaded.Replay.InitialSnapshot);
 
         GameState state = _panel.BuildLiveStateWith(roster);
-        PreviewSetup.Apply(_panel.Map, state, loaded.Tutorial);
+        PreviewSetup.Apply(_panel.Map, state, loaded.Replay);
 
         _hud = new HudView();
         // Relay the HUD's reserved insets to the map so it frames the play
@@ -129,7 +136,7 @@ public partial class DemoReplayScene : Node2D
             aiChooser: (s, c, v, ru, r) => null,
             aiPacer: new GodotAiPacer(new SceneTreeTimerFactory(GetTree())),
             previewMode: true,
-            loadedReplay: loaded.Tutorial.Replay,
+            loadedReplay: loaded.Replay,
             replayIsInstantMode: () => false,
             replayFastForwardsIdleTurns: true,
             autoSelectFirstTerritory: false);
@@ -155,7 +162,7 @@ public partial class DemoReplayScene : Node2D
         _panel.Map.Init(state);
 
         Log.Info(Log.LogCategory.Tutorial,
-            $"[demo] start '{name}' ({loaded.Tutorial.Replay.Beats.Count} beats)");
+            $"[demo] start '{name}' ({loaded.Replay.Beats.Count} beats)");
         _controller.BeginReplay();
 
 #if DEBUG
