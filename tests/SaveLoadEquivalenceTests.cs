@@ -37,8 +37,8 @@ public class SaveLoadEquivalenceTests
     /// 14x3 grid. Red owns the leftmost 5 columns (15 tiles); Blue owns
     /// the right 9 columns (27 tiles). To keep the test stable across
     /// many turns, the chooser caps Blue's actions to 1 per turn —
-    /// otherwise default ComputerAi can run dozens of captures in T1
-    /// (134 starting gold + adjacent Red tiles) and end the game.
+    /// otherwise default ComputerAi can run many captures in T1
+    /// (50 starting gold + adjacent Red tiles) and end the game.
     /// </summary>
     private static GameWithObserver BuildHumanVsAi(int seed, GameState? loadedState = null)
     {

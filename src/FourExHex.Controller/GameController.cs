@@ -427,18 +427,21 @@ public class GameController
 
     /// <summary>
     /// Seed every territory's treasury to 5 × its gold-earning-cell
-    /// count. Tree-occupied cells don't earn gold, so they don't
-    /// contribute to the seed.
+    /// count, capped at 50 so a big starting region doesn't buy an
+    /// outsized bankroll. Tree-occupied cells don't earn gold, so they
+    /// don't contribute to the seed.
     /// </summary>
     private void SeedStartingGold()
     {
         const int startingGoldPerEarningCell = 5;
+        const int startingGoldCap = 50;
         foreach (Territory territory in _state.Territories)
         {
             if (!territory.HasCapital) continue;
             int earningCells = TreeRules.CountIncomeProducingTiles(territory, _state.Grid);
             _state.Treasury.SetGold(
-                territory.Capital!.Value, earningCells * startingGoldPerEarningCell);
+                territory.Capital!.Value,
+                Math.Min(earningCells * startingGoldPerEarningCell, startingGoldCap));
         }
     }
 
