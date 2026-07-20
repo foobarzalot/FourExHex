@@ -164,12 +164,20 @@ public sealed partial class CheatMenu : Node
         GetTree().ChangeSceneToFile("res://scenes/demo_replay.tscn");
     }
 
+    /// <summary>
+    /// Tutorial Builder entry (issue #164): route through the main menu's
+    /// shared play-config panel (player setup + game mode) rather than a
+    /// bespoke picker — the menu reads <see cref="TutorialBuilderRequest.ConfigRequested"/>
+    /// on arrival and its Create Tutorial action launches the builder.
+    /// No in-progress-game guard, by design: this is a dev tool and the
+    /// scene change is the requested action wherever you are.
+    /// </summary>
     private void OpenTutorialBuilder()
     {
-        // No in-progress-game guard, by design: this is a dev tool and
-        // the scene change is the requested action wherever you are.
-        Log.Debug(Log.LogCategory.Cheat, "CheatMenu: Tutorial Builder pressed.");
-        GetTree().ChangeSceneToFile("res://scenes/tutorial_builder.tscn");
+        Log.Debug(Log.LogCategory.Cheat,
+            "CheatMenu: Tutorial Builder pressed — routing to menu config.");
+        TutorialBuilderRequest.ConfigRequested = true;
+        GetTree().ChangeSceneToFile("res://scenes/main_menu.tscn");
     }
 }
 #endif

@@ -162,6 +162,7 @@
   "menu.next": "Next",
   "menu.start_game": "Start Game",
   "menu.create_map": "Create Map",
+  "menu.create_tutorial": "Create Tutorial",
   "menu.game_mode": "Game Mode",
   "menu.type": "Type",
   "menu.difficulty": "Difficulty",

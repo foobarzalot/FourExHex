@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 FooBarzalot
 using System.Collections.Generic;
+using System.Linq;
 using Godot;
 
 /// <summary>
@@ -48,12 +49,23 @@ public partial class TutorialBuilderScene : Node2D
 
     public override void _Ready()
     {
-        _players = Player.BuildAllHumanRoster();
+        // Entry config from the menu's shared player-setup page: per-color
+        // kinds (None = out of play; active slots forced Human) + the mode
+        // recordings run and save under. A direct scene launch (no
+        // request) gets the full 6-color Freeform builder.
+        TutorialBuilderRequest.Request? req = TutorialBuilderRequest.Pending;
+        TutorialBuilderRequest.Pending = null;
+        PlayerKind[] kinds = req?.Kinds
+            ?? Enumerable.Repeat(PlayerKind.Human, GameSettings.PlayerConfig.Length).ToArray();
+        _players = MapRosterRules.PreviewRosterFromKinds(kinds);
 
         // 1. The reusable Map Editor panel. Owns the map + draft state +
         //    paint stroke machine + undo. Painting starts enabled because
         //    the scene lands in Map Edit mode.
         _panel = new MapEditorPanel { Players = _players };
+        _panel.LiveMode = req?.Mode ?? GameMode.Freeform;
+        Log.Info(Log.LogCategory.Tutorial,
+            $"[builder] entry config: players={_players.Count}, mode={_panel.LiveMode}");
         AddChild(_panel);
 
         // 2. The Map Edit palette HUD at the top of the screen.
@@ -80,6 +92,9 @@ public partial class TutorialBuilderScene : Node2D
         _panel.UndoStateChanged += () =>
             _mapEditHud.SetUndoState(_panel.CanUndo, _panel.CanRedo);
         _mapEditHud.SetUndoState(canUndo: false, canRedo: false);
+        // Gate the land palette to the in-play colors (mirrors MapEditorScene;
+        // the HUD's palette is built in its _Ready, run above).
+        _mapEditHud.ApplyRosterKinds(kinds);
 
         _saveStore = new SaveStore();
         BuildSaveDialog();
@@ -333,7 +348,7 @@ public partial class TutorialBuilderScene : Node2D
             }
             _saveStore.WriteTutorial(
                 name,
-                _panel.BuildSaveState(),
+                _panel.BuildSaveState(_panel.LiveMode),
                 _panel.CurrentSeed,
                 _players,
                 authored);

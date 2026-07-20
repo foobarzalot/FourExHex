@@ -124,7 +124,7 @@ public partial class MainMenuScene : Control
     // What the player-setup screen feeds into: a new procedural
     // game, or a new map editor session. The kinds screen is shared; only the
     // forward action differs.
-    private enum PlayConfigPurpose { NewGame, EditorNewMap }
+    private enum PlayConfigPurpose { NewGame, EditorNewMap, TutorialBuilder }
     private PlayConfigPurpose _playConfigPurpose = PlayConfigPurpose.NewGame;
     private PlayConfigPage _playConfigPage = PlayConfigPage.PlayerSetup;
     private Control? _playerPageContent;
@@ -225,7 +225,14 @@ public partial class MainMenuScene : Control
         _sourceChooser = new EscMenu();
         AddChild(_sourceChooser);
 
-        if (OpenCampaignOnArrival)
+        if (TutorialBuilderRequest.ConfigRequested)
+        {
+            // Cheat-menu Tutorial Builder entry: land directly on the shared
+            // player-setup page with the builder purpose (issue #164).
+            TutorialBuilderRequest.ConfigRequested = false;
+            ShowPlayConfig(PlayConfigPurpose.TutorialBuilder);
+        }
+        else if (OpenCampaignOnArrival)
         {
             OpenCampaignOnArrival = false;
             ShowCampaign();
@@ -1233,7 +1240,12 @@ public partial class MainMenuScene : Control
     /// <c>ItemSelected</c>, so this also persists the roster and re-gates Next.</summary>
     private void ApplyGameModeRoleLock()
     {
-        bool fog = GameSettings.Mode == GameMode.FogOfWar;
+        // The fog 1-human-5-computers lock is a play-time constraint; the
+        // Tutorial Builder purpose only uses kinds to pick which colors are
+        // in play (all forced Human for hot-seat recording), so a fog
+        // tutorial may use any roster size.
+        bool fog = GameSettings.Mode == GameMode.FogOfWar
+            && _playConfigPurpose != PlayConfigPurpose.TutorialBuilder;
         for (int slot = 0; slot < _roleButtons.Length; slot++)
         {
             OptionButton role = _roleButtons[slot];
@@ -1334,6 +1346,10 @@ public partial class MainMenuScene : Control
     private void ShowPlayConfig(PlayConfigPurpose purpose)
     {
         _playConfigPurpose = purpose;
+        // The fog role lock is purpose-dependent (exempt for TutorialBuilder)
+        // and was last applied under whatever purpose was active — re-derive
+        // it for this entry.
+        ApplyGameModeRoleLock();
         Log.Info(Log.LogCategory.Input,
             $"MainMenu: player-setup ({purpose}) defaults — " + string.Join(", ",
                 GameSettings.PlayerConfig.Select((c, i) => $"{c.Name}={GameSettings.PlayerKinds[i]}")));
@@ -1343,8 +1359,12 @@ public partial class MainMenuScene : Control
         // → map page) or a new editor map ("Create Map" → launch editor).
         if (_playerNextButton != null)
         {
-            _playerNextButton.Text = purpose == PlayConfigPurpose.EditorNewMap
-                ? Strings.Get(StringKeys.MenuCreateMap) : Strings.Get(StringKeys.MenuNext);
+            _playerNextButton.Text = purpose switch
+            {
+                PlayConfigPurpose.EditorNewMap => Strings.Get(StringKeys.MenuCreateMap),
+                PlayConfigPurpose.TutorialBuilder => Strings.Get(StringKeys.MenuCreateTutorial),
+                _ => Strings.Get(StringKeys.MenuNext),
+            };
         }
         // A fresh entry always starts on the player-setup page (selections are
         // preserved, but the flow begins at page 1).
@@ -1372,6 +1392,7 @@ public partial class MainMenuScene : Control
         // launch snapshots the same arrays.
         PersistRosterSelections();
         if (_playConfigPurpose == PlayConfigPurpose.EditorNewMap) LaunchEditorNewMap();
+        else if (_playConfigPurpose == PlayConfigPurpose.TutorialBuilder) LaunchTutorialBuilderNew();
         else GoToMapPage();
     }
 
@@ -1389,6 +1410,23 @@ public partial class MainMenuScene : Control
             "MainMenu: Map Editor new map — " + string.Join(", ",
                 GameSettings.PlayerConfig.Select((c, i) => $"{c.Name}={GameSettings.PlayerKinds[i]}")));
         GetTree().ChangeSceneToFile("res://scenes/map_editor.tscn");
+    }
+
+    /// <summary>Launch the Tutorial Builder (cheat-menu entry routed through
+    /// this shared config screen — issue #164): bake the per-color kinds and
+    /// the Game Mode selection into the builder's request. Kinds only gate
+    /// which colors are in play; the builder forces active slots Human.</summary>
+    private void LaunchTutorialBuilderNew()
+    {
+        TutorialBuilderRequest.Pending = new TutorialBuilderRequest.Request
+        {
+            Kinds = (PlayerKind[])GameSettings.PlayerKinds.Clone(),
+            Mode = GameSettings.Mode,
+        };
+        Log.Info(Log.LogCategory.Input,
+            $"MainMenu: Tutorial Builder — mode={GameSettings.Mode}, kinds=[" + string.Join(",",
+                GameSettings.PlayerKinds) + "]");
+        GetTree().ChangeSceneToFile("res://scenes/tutorial_builder.tscn");
     }
 
     /// <summary>Parent both prebuilt page contents into a clipping wrapper

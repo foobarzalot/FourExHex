@@ -232,6 +232,7 @@ public static class StringKeys
     public const string MenuNext = "menu.next";
     public const string MenuStartGame = "menu.start_game";
     public const string MenuCreateMap = "menu.create_map";
+    public const string MenuCreateTutorial = "menu.create_tutorial";
     public const string MenuGameMode = "menu.game_mode";
     public const string MenuType = "menu.type";
     public const string MenuDifficulty = "menu.difficulty";

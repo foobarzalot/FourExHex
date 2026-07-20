@@ -1949,9 +1949,11 @@ public class GameController
 
     // Fog Of War disables undo/redo entirely: fog memory is sticky across undo,
     // so undoing a capture/build after it revealed tiles would be free scouting.
+    // Recording mode (tutorial authoring) is exempt — the author needs to revert
+    // mistakes, and playback re-fogs from scratch (BeginReplay clears Seen).
     private void OnUndoLastPressed()
     {
-        if (_state.FogEnabled) return;
+        if (_state.FogEnabled && !_recordingMode) return;
         if (_recorder.IsReplaying) return;
         if (_ops.HumanInputLocked) return;
         if (_automating) StopAutomation("input");
@@ -1965,7 +1967,7 @@ public class GameController
 
     private void OnUndoTurnPressed()
     {
-        if (_state.FogEnabled) return;
+        if (_state.FogEnabled && !_recordingMode) return;
         if (_recorder.IsReplaying) return;
         if (_ops.HumanInputLocked) return;
         if (_automating) StopAutomation("input");
@@ -1983,7 +1985,7 @@ public class GameController
 
     private void OnRedoLastPressed()
     {
-        if (_state.FogEnabled) return;
+        if (_state.FogEnabled && !_recordingMode) return;
         if (_recorder.IsReplaying) return;
         if (_ops.HumanInputLocked) return;
         if (_automating) StopAutomation("input");
@@ -1997,7 +1999,7 @@ public class GameController
 
     private void OnRedoAllPressed()
     {
-        if (_state.FogEnabled) return;
+        if (_state.FogEnabled && !_recordingMode) return;
         if (_recorder.IsReplaying) return;
         if (_ops.HumanInputLocked) return;
         if (_automating) StopAutomation("input");

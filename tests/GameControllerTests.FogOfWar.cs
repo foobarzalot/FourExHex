@@ -20,7 +20,10 @@ public partial class GameControllerTests
         public Player Red { get; }
         public Player Blue { get; }
 
-        public FogGame(HexGrid grid, GameMode mode, PlayerKind blueKind = PlayerKind.Computer)
+        public FogGame(
+            HexGrid grid, GameMode mode,
+            PlayerKind blueKind = PlayerKind.Computer,
+            bool recordingMode = false)
         {
             Red = new Player("Red", PlayerId.FromIndex(0), PlayerKind.Human);
             Blue = new Player("Blue", PlayerId.FromIndex(1), blueKind);
@@ -32,7 +35,8 @@ public partial class GameControllerTests
             Session = new SessionState();
             Map = new MockHexMapView();
             Hud = new MockHudView();
-            Controller = new GameController(State, Session, Map, Hud);
+            Controller = new GameController(State, Session, Map, Hud,
+                recordingMode: recordingMode);
             Controller.StartGame();
         }
     }
@@ -133,6 +137,22 @@ public partial class GameControllerTests
         Assert.IsType<Tower>(game.State.Grid.Get(tower)!.Occupant);
         game.Hud.ClickRedoLast();
         Assert.IsType<Tower>(game.State.Grid.Get(tower)!.Occupant);
+    }
+
+    [Fact]
+    public void FogOfWar_RecordingMode_UndoRedoAllowed_ForAuthoring()
+    {
+        // Tutorial authoring is exempt from the fog undo lock: the author
+        // needs to revert recording mistakes, and free scouting is moot —
+        // playback re-fogs from scratch (BeginReplay clears Seen).
+        var game = new FogGame(CornerVsRest(), GameMode.FogOfWar, recordingMode: true);
+        HexCoord tower = BuildTowerForRed(game);
+        Assert.IsType<Tower>(game.State.Grid.Get(tower)!.Occupant);
+
+        game.Hud.ClickUndoLast();
+        Assert.Null(game.State.Grid.Get(tower)!.Occupant); // reverted
+        game.Hud.ClickRedoLast();
+        Assert.IsType<Tower>(game.State.Grid.Get(tower)!.Occupant); // redone
     }
 
     [Fact]

@@ -273,17 +273,8 @@ public partial class MapEditorScene : Node2D
 
     /// <summary>The editor's live preview roster: the active (non-None) colors,
     /// all Human so no AI runs and Generate paints only colors in play.</summary>
-    private List<Player> BuildEditorPreviewRoster()
-    {
-        var roster = new List<Player>();
-        for (int i = 0; i < GameSettings.PlayerConfig.Length; i++)
-        {
-            if (_rosterKinds[i] == PlayerKind.None) continue;
-            roster.Add(new Player(
-                GameSettings.PlayerConfig[i].Name, PlayerId.FromIndex(i), PlayerKind.Human));
-        }
-        return roster;
-    }
+    private List<Player> BuildEditorPreviewRoster() =>
+        MapRosterRules.PreviewRosterFromKinds(_rosterKinds);
 
     /// <summary>The 6-slot roster (carrying the chosen kinds + difficulties,
     /// including None) serialized into the saved map so a load restores it.</summary>

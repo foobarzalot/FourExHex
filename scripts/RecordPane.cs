@@ -153,6 +153,9 @@ public sealed partial class RecordPane : Control
 
         _recordState = _panel.BuildLiveStateWith(roster);
         _hud = new HudView();
+        // Authoring exemption: the controller below runs recordingMode, whose
+        // fog undo gates are open — unlock the buttons to match.
+        _hud.SetFogUndoExempt(true);
         AddChild(_hud);
         _hud.EscRequested += () => EscRequested?.Invoke();
         _hud.AddTextClicked += OpenAddTextDialog;
@@ -223,6 +226,9 @@ public sealed partial class RecordPane : Control
 
         _recordState = _panel.BuildLiveStateWith(roster);
         _hud = new HudView();
+        // Authoring exemption: the controller below runs recordingMode, whose
+        // fog undo gates are open — unlock the buttons to match.
+        _hud.SetFogUndoExempt(true);
         AddChild(_hud);
         _hud.EscRequested += () => EscRequested?.Invoke();
         _hud.AddTextClicked += OpenAddTextDialog;

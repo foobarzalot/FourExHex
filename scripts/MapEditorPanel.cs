@@ -44,6 +44,16 @@ public sealed partial class MapEditorPanel : Node2D
     public bool CanRedo => _undoStack.CanRedo;
     public int SelectedPaletteIndex { get; private set; } = MapEditorHudView.HandPaletteIndex;
     public bool PaintingEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Mode the live (Record / Preview / demo playback) states built from
+    /// this draft run under. Set by the host scene on entry and refreshed
+    /// by <see cref="LoadFromMap"/> from the loaded save, so a tutorial
+    /// recorded under Rising Tides re-records and replays under Rising
+    /// Tides. The standalone Map Editor tracks its own mode for map saves
+    /// (<see cref="BuildSaveState"/>'s explicit argument) and ignores this.
+    /// </summary>
+    public GameMode LiveMode { get; set; } = GameMode.Freeform;
     public int CurrentSeed => _mapSeed;
 
     public event Action? UndoStateChanged;
@@ -104,6 +114,7 @@ public sealed partial class MapEditorPanel : Node2D
         _water = new HashSet<HexCoord>(loaded.State.WaterCoords);
         _territories = loaded.State.Territories;
         _mapSeed = loaded.MasterSeed;
+        LiveMode = loaded.State.Mode;
 
         // Loading is a fresh starting point, like Generate — drop the
         // undo history so subsequent paints stack cleanly on top.
@@ -160,7 +171,8 @@ public sealed partial class MapEditorPanel : Node2D
     /// </summary>
     public GameState BuildLiveStateWith(IReadOnlyList<Player> roster) =>
         new GameState(
-            _grid, _territories, roster, new TurnState(roster), new Treasury(), _water);
+            _grid, _territories, roster, new TurnState(roster), new Treasury(), _water,
+            LiveMode);
 
     /// <summary>
     /// Build a GameState whose TurnState starts at turn 0. That zero

@@ -75,6 +75,24 @@ public static class MapRosterRules
     /// Slots are preserved, not compacted — a result may be
     /// e.g. {0,2,4} if those are the owners.
     /// </summary>
+    /// <summary>
+    /// Editor/builder preview roster from a 6-slot kinds array: the active
+    /// (non-None) colors, all forced Human so no AI drives turns and
+    /// Generate only paints colors that are in play. Names/ids come from
+    /// <see cref="GameSettings.PlayerConfig"/> by slot index.
+    /// </summary>
+    public static List<Player> PreviewRosterFromKinds(IReadOnlyList<PlayerKind> kinds)
+    {
+        var roster = new List<Player>();
+        for (int i = 0; i < GameSettings.PlayerConfig.Length && i < kinds.Count; i++)
+        {
+            if (kinds[i] == PlayerKind.None) continue;
+            roster.Add(new Player(
+                GameSettings.PlayerConfig[i].Name, PlayerId.FromIndex(i), PlayerKind.Human));
+        }
+        return roster;
+    }
+
     public static List<Player> ActivePlayersForTerritories(
         IReadOnlyList<Player> candidates,
         IReadOnlyCollection<Territory> territories)

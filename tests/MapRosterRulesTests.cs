@@ -184,4 +184,34 @@ public class MapRosterRulesTests
         Assert.Equal(candidates.Count, active.Count);
         Assert.Equal(new[] { 0, 1, 2, 3, 4, 5 }, active.Select(p => p.Id.Index));
     }
+
+    [Fact]
+    public void PreviewRosterFromKinds_KeepsActiveSlotsForcedHuman()
+    {
+        var kinds = new[]
+        {
+            PlayerKind.Human, PlayerKind.None, PlayerKind.Computer,
+            PlayerKind.Human, PlayerKind.None, PlayerKind.None,
+        };
+
+        List<Player> roster = MapRosterRules.PreviewRosterFromKinds(kinds);
+
+        Assert.Equal(new[] { 0, 2, 3 }, roster.Select(p => p.Id.Index));
+        Assert.All(roster, p => Assert.Equal(PlayerKind.Human, p.Kind));
+        Assert.Equal(
+            new[] { 0, 2, 3 }.Select(i => GameSettings.PlayerConfig[i].Name),
+            roster.Select(p => p.Name));
+    }
+
+    [Fact]
+    public void PreviewRosterFromKinds_AllNone_IsEmpty()
+    {
+        var kinds = new[]
+        {
+            PlayerKind.None, PlayerKind.None, PlayerKind.None,
+            PlayerKind.None, PlayerKind.None, PlayerKind.None,
+        };
+
+        Assert.Empty(MapRosterRules.PreviewRosterFromKinds(kinds));
+    }
 }

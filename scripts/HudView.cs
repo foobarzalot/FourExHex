@@ -94,6 +94,7 @@ public partial class HudView : OrientationHud, IHudView
     private HudIconButton _undoLastButton = null!;
     private HudIconButton _redoLastButton = null!;
     private bool _undoRedoLocked;
+    private bool _fogUndoExempt;
     private bool _victoryOverlaySuppressed;
     // Last-seen AI-turn lockdown state, only to log the transition once.
     private bool _aiTurnLockdownActive;
@@ -2435,9 +2436,12 @@ public partial class HudView : OrientationHud, IHudView
                     PurchaseRules.TowerCostFor(buyerDifficulty));
 
         // Fog Of War disables undo/redo entirely (sticky fog memory would let
-        // undo be used for free scouting), so the buttons stay greyed out.
-        _undoLastButton.Disabled = state.FogEnabled || _undoRedoLocked || !session.Undo.CanUndo;
-        _redoLastButton.Disabled = state.FogEnabled || _undoRedoLocked || !session.Undo.CanRedo;
+        // undo be used for free scouting), so the buttons stay greyed out —
+        // except while authoring a recording, where the controller's fog gate
+        // is likewise exempt (see SetFogUndoExempt).
+        bool fogLock = state.FogEnabled && !_fogUndoExempt;
+        _undoLastButton.Disabled = fogLock || _undoRedoLocked || !session.Undo.CanUndo;
+        _redoLastButton.Disabled = fogLock || _undoRedoLocked || !session.Undo.CanRedo;
         // Mirrors the End Turn CTA: disabled exactly when the current player
         // has no actionable territory left (the same flag that lights End Turn).
         _nextTerritoryButton.Disabled = !hasActionableRemaining;
@@ -2818,6 +2822,16 @@ public partial class HudView : OrientationHud, IHudView
             // caller flipped this; force the hide immediately.
             _victoryOverlay.Visible = false;
         }
+    }
+
+    /// <summary>
+    /// Exempt this HUD from the Fog Of War undo/redo lock. Set by the
+    /// tutorial builder's Record pane, whose controller runs with the
+    /// matching recording-mode exemption — authoring keeps undo under fog.
+    /// </summary>
+    public void SetFogUndoExempt(bool exempt)
+    {
+        _fogUndoExempt = exempt;
     }
 
     public void SetUndoRedoLocked(bool locked)
