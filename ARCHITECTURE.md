@@ -285,9 +285,11 @@ MODEL PRIMITIVES
     slot-keyed owners for 2–6 players; OriginMapName carried)
   LoadedSave — (state, players, master seed, max-turn cap, slot name, OriginMapName?, MapHasBakedKinds)
   SaveSlotInfo — slot listing metadata (name, time, turn, isAutosave)
-  UserSettings — static; SfxEnabled / VfxEnabled / AiSpeed / AutomateSpeed / ReplaySpeed persisted to
+  UserSettings — static; SfxEnabled / VfxEnabled / AiSpeed / HumanSpeed / ReplaySpeed persisted to
     user://settings.json (lazy load, atomic tmp+rename); read by AudioBus + HexMapView + GodotAiPacer +
-    GameController, written by SettingsPanel. AiSpeed + AutomateSpeed + ReplaySpeed are independent settings
+    GameController, written by SettingsPanel. AiSpeed (Computer Player Speed) + HumanSpeed (Human Player
+    Speed: the Automate loop's cadence AND the manual click-to-move travel tween) + ReplaySpeed are
+    independent settings
     of one shared enum PlaybackSpeed {Slow,Normal,Fast,Instant} (member order load-bearing — persists
     numerically). SpeedMultiplierPercent → 200/100/50 for Slow/Normal/Fast; Instant routes AI, replay, AND
     Automate to the chunked frame-yielded driver via the pacer's ScheduleUnscaled (multiplier unused —
@@ -513,7 +515,7 @@ The live-AI turn driver lives in `src/FourExHex.Controller/AiTurnDriver.cs`. Sam
 ### What lives on AiTurnDriver
 
 - **Scratch state** (persists across paced step invocations, resets when control advances to a new player): `_aiVisited`, `_aiStepsThisPlayer`, `_pendingAiAction`, `_aiTrackInstant` (previous pacing track, for instant↔paced transition detection).
-- **Pacing**: the step-beat delay constants live once in `StepPacing` (`AiPreviewDelayMs` 350 / `AiActionDelayMs` 300 / `AiBetweenPlayersDelayMs` 600 / `InstantTurnDelayMs` 200 / `ReplayIdleTurnSkipMs` 50 — the hurried boundary delay for the replay turn-end fast-forward), shared with `ReplayRecorder` so replay matches AI cadence by construction; `StepPacing.Redispatch` takes an optional `pacedBoundaryDelayMs` override for that fast-forward. The driver keeps only the `MaxAiStepsPerPlayer` (64) safety cap.
+- **Pacing**: the step-beat delay constants live once in `StepPacing` (`AiPreviewDelayMs` 350 / `AiActionDelayMs` 300 / `AiBetweenPlayersDelayMs` 600 / `InstantTurnDelayMs` 200 / `ReplayIdleTurnSkipMs` 50 — the hurried boundary delay for the replay turn-end fast-forward), shared with `ReplayRecorder` so replay matches AI cadence by construction. Move beats are distance-paced: `StepPacing.MoveTravelBaseMs(hexDistance)` (200 for a hop, +80/hex, cap 680) is the travel tween's base duration, and `MoveSettleDelayMs(hexDistance)` (max of `AiActionDelayMs` and travel + 60 margin) is the post-move dispatch delay, so the tween always lands before the next beat's refresh rebuilds the unit layer. `StepPacing.Redispatch` takes optional `pacedBoundaryDelayMs` (fast-forward) and `pacedActionDelayMs` (per-action settle; `AiTurnDriver.SettleDelayFor(action)` maps moves to their settle, everything else to the baseline) overrides. The driver keeps only the `MaxAiStepsPerPlayer` (64) safety cap.
 - **The single game-over/human gate**: private `RunHalted` (`GameEndedFired || IsGameOver || !CurrentPlayer.IsAi`) consulted at every step-machine entry; the two paced beats that additionally clear the highlight on game-over keep that branch inline.
 - **Paced step machine**: `Schedule(turnBoundary)` (the single re-dispatching decision point; re-reads `aiSilentMode()` per beat and delegates the shared transition/dispatch skeleton to `StepPacing.Redispatch`, supplying the driver-specific callbacks: track store, `RefreshSilentMode` sync, `Ai:Debug` transition logs), private `StepAiPreview` / `StepAiPreviewAfterChoose` / `StepAiExecute`, `ResolveAiActingTerritory`.
 - **Instant driver**: private `InstantAiTick` (thin wrapper over `GameOperations.RunInstantTick`), `AiInstantStep`, `EndInstantAiBatch`.
@@ -538,7 +540,7 @@ The replay subsystem lives in `src/FourExHex.Controller/ReplayRecorder.cs`. Same
 - **Recording state**: `_replayBeats`, `_initialSnapshot`, `_initialTurnNumber`, `_initialCurrentPlayerIndex`, `_replayDataIsCompleteFromStart`, `_replayMode`, `_replayIndex`, `_replayInstantActive`, `_undoBeatCounts`, `_redoBeatLists`, `_replayIsInstantMode`.
 - **Recording methods**: `RecordBeat`, `RecordTutorialOnlyBeat`, `CaptureInitialSnapshot`.
 - **Undo/redo coordinator**: session undo stack and parallel beat stacks move in lockstep (one beat batch per undo entry); the recorder owns both sides atomically — `CommitHumanHandler(pre, beatsBefore)` (push session entry + stamp pre-handler beat count + clear redo stash), `UndoOneStep` / `RedoOneStep` (pop/restore one beat batch + matching session pop, returning the restored `UndoEntry`), `ClearUndoAndBookkeeping` (drop both sides; beat log is committed history). Single-side steps are private. Every op ends with always-on `ValidateBeatStacksInSync` that throws (with all four counts) on divergence. Pinned by `UndoReplayBeatSyncTests` (depth equality via read-only `UndoBatchDepth` / `RedoBatchDepth`) and `ReplayPlaybackTests.Replay_AfterUndoRedoChurn_ProducesSameFinalState`. Under `Log.LogCategory.Undo`.
-- **Playback methods**: `BeginReplay`, `EndReplay`, `StepReplayPreview`, `StepReplayExecute`, `ExecuteReplayBeat`, `ReplayApplyEndTurn`, `ReplayInstantStep` + the private `InstantReplayTick` wrapper over `GameOperations.RunInstantTick`, `ScheduleNextReplayBeat(turnBoundary)` (mirror of `AiTurnDriver.Schedule`: re-reads `_replayIsInstantMode` each beat and delegates the shared transition/dispatch skeleton to `StepPacing.Redispatch`, supplying the replay-specific callbacks: track store, `SetSilentMode` sync, `Turn:Info` transition logs; called by `StepReplayExecute` and `RunInstantTick`'s `reschedule` callback), private `ResolveReplayActingTerritory`.
+- **Playback methods**: `BeginReplay`, `EndReplay`, `StepReplayPreview`, `StepReplayExecute`, `ExecuteReplayBeat`, `ReplayApplyEndTurn`, `ReplayInstantStep` + the private `InstantReplayTick` wrapper over `GameOperations.RunInstantTick`, `ScheduleNextReplayBeat(turnBoundary, pacedActionDelayMs)` (mirror of `AiTurnDriver.Schedule`: re-reads `_replayIsInstantMode` each beat and delegates the shared transition/dispatch skeleton to `StepPacing.Redispatch`, supplying the replay-specific callbacks: track store, `SetSilentMode` sync, `Turn:Info` transition logs; called by `StepReplayExecute` — which passes the distance-scaled `MoveSettleDelayMs` for a `ReplayMoveBeat` — and `RunInstantTick`'s `reschedule` callback), private `ResolveReplayActingTerritory`.
 - **Divergence detection**: a replay re-executes beats through *current* rules, so a rule change since recording can land on a different board or throw. `BeginReplay` captures the recorded end board's `GameStateChecksum` once before the rewind (`_expectedEndChecksum`, guarded `??=` so re-replay still compares against the original; skipped in `_previewMode`). The recorded board is the already-loaded top-level `GameState` (`loaded.State`, or finished live board). `EndReplay` recomputes the replayed checksum on a clean finish only (all beats consumed or a beat ended the game); on mismatch sets `LastDivergence` (an `Expected`/`Actual` `ReplayDivergence` record) and logs `Log.LogCategory.Replay` Warn + first-differing-line Debug; a faithful replay clears it to null. Both checksums from the same binary, so additive changes to `GameStateChecksum.Stringify` cancel. Developer-facing; pinned by `ReplayFidelityTests`.
 - **Public read surface** (consumed by `Main.cs` / `RecordPane.cs` via thin `GameController` forwarders): `Beats`, `BeatsCount`, `InitialSnapshot`, `InitialTurnNumber`, `InitialCurrentPlayerIndex`, `IsCompleteFromStart`, `HasInitialSnapshot`, `IsReplaying`, `IsInstantModeActive`, `LastDivergence` (forwarded as `LastReplayDivergence`), plus `UndoBatchDepth` / `RedoBatchDepth` (forwarded as `UndoBeatBatchDepth` / `RedoBeatBatchDepth`).
 - **`ReplayEnded` event** — raised at the end of `EndReplay` (log exhausted, game-over, or aborted), forwarded as `GameController.ReplayEnded`; the Instructions demo player loops on it.
@@ -571,6 +573,9 @@ void ShowTowerCoverage(IEnumerable<HexCoord> coords);
 void ShowMoveSource(HexCoord? coord);
 void ShowHighlight(Territory? selected);
 void CenterOnTerritory(Territory territory);
+void AnimateUnitMove(HexCoord from, HexCoord to);
+     // move hint, registered by both move executors just before the model
+     // mutation — arms the view's arrival pipeline (see below)
 void RebuildAfterTerritoryChange();
 void RefreshOccupantVisuals(PlayerId? currentPlayer, Treasury treasury,
                             IReadOnlySet<HexCoord> visitedCapitals);
@@ -592,6 +597,8 @@ void FlashRejection(HexCoord target, RejectionShape shape, IEnumerable<HexCoord>
 // Plays unconditionally — silent-mode gating is controller-side (GameOperations.EmitSound).
 void PlaySound(SoundEffect kind, HexCoord? at = null);
 ```
+
+**Move-arrival pipeline** (view-side, keyed off `AnimateUnitMove`): on a paced move the entire destination-side application holds while the source glyph tweens to the destination — the capture rebuild (tile recolor/borders), highlight, occupant refresh, fog/tide/sea pushes, and destination-anchored FX/sounds stage themselves, then apply together when the tween lands (`CompleteArrival`), so impact happens at arrival instead of at mutation time. Travel duration is `StepPacing.MoveTravelBaseMs(distance)` × the shared speed-multiplier probe (`StepDelayMultiplierPercent`; 0 = Instant = snap), easing Sine/InOut. Snap paths (silent batch, Instant, fog-hidden source, missing glyph) apply inline — a snap IS the arrival. Async calls mid-flight (undo, input) land the travel instantly first; same-frame follow-up calls (e.g. `TrackHandler`'s trailing refresh) fold into the hold. Verified via `Render:Debug` `[move-anim] hold/travel/arrival` lines.
 
 `HexMapView._UnhandledInput` routes a left-click to one event: in-grid → `TileClicked(tile)`; off-grid (water, water rim, past map) → `OffGridClicked(coord)`; long-press → `TileLongClicked`. The controller never gets `TileClicked(null)` from real input, so it anchors water-click rejection to the raw coord.
 
@@ -678,6 +685,12 @@ void SetUndoRedoLocked(bool locked);
 // — tutorial game-over flows through the bottom tutorial panel instead.
 void SetVictoryOverlaySuppressed(bool suppressed);
 
+// Hold (true) / release (false) BOTH endgame overlays (victory + defeat).
+// Latched by the controller when a MOVE ends the game or defeats the human,
+// released by a pacer-scheduled reveal one settle delay later, so the modal
+// appears after the move's travel tween lands, never over a unit in flight.
+void SetEndgameOverlaysHeld(bool held);
+
 // Automate toggle state, pushed from GameOperations.RefreshViews (the single
 // refresh path). visible = false in tutorial Preview/Record — the button isn't
 // drawn at all there. enabled = visible, human turn, not replay/game-over, not
@@ -711,7 +724,7 @@ In a buy/move mode the active button's tooltip is cleared and the bottom tutoria
 
 **`IAiPacer`** — schedules deferred continuations for the AI and replay step machines. `GodotAiPacer` schedules via injected `ITimerFactory` (production `SceneTreeTimerFactory` wrapping `SceneTree.CreateTimer`; tests `ManualTimerFactory` storing callbacks to fire on demand). `SynchronousAiPacer` drains via a FIFO trampoline (outermost `Schedule` runs the drain loop; nested calls enqueue and return) — every queued callback fires before the outermost `Schedule` returns, but the flattened stack avoids overflow on long `StepAiPreview` ↔ `StepAiExecute` chains. `Cancel` drops pending callbacks but does **NOT** poison future `Schedule` — the same instance must survive Cancel-then-reuse because `BeginReplay` cancels straggling AI steps before scheduling. `GodotAiPacer` uses a generation counter (each `Cancel` bumps it; each `Schedule` captures it; the fired callback checks the captured gen still matches). `Main` also calls Cancel via `GameController.AbandonGame()` before swapping to the menu so an in-flight `StepAiExecute` can't fire against disposed nodes.
 
-`GodotAiPacer` also takes an optional `Func<int>` `delayMultiplierPercent` (`Main` wires `IsReplayMode → ReplaySpeed; IsAutomating → AutomateSpeed (Instant → 0); else AiSpeed`, each through `UserSettings.SpeedMultiplierPercent`), read on every `Schedule` so a mid-game speed change takes effect next beat — Slow doubles (200), Fast halves (50), Normal passes through (100). **Instant is not a multiplier**: it routes to the chunked frame-yielded driver (`InstantAiTick` / `InstantReplayTick`) scheduling via `ScheduleUnscaled` — exact delay, bypasses the multiplier. Both methods share `Cancel`'s generation guard via one private `ScheduleTimer`; nothing runs inline (the chunked driver owns stack depth by returning between ticks). `SynchronousAiPacer` drains both inline. `AbandonGame` / `BeginReplay` call `Cancel` so an in-flight tick can't fire against disposed nodes.
+`GodotAiPacer` also takes an optional `Func<int>` `delayMultiplierPercent`. `Main` wires one **actor-aware** closure, shared with `HexMapView.StepDelayMultiplierPercent` (the move-travel tween's duration probe): `IsReplayMode → ReplaySpeed`; `IsAutomating → HumanSpeed`; `IsVikingPhaseActive` or the current player is AI `→ AiSpeed` (viking beats run while the waiting, possibly human, player is current); else (a human's own manual move) `→ HumanSpeed` — each through `UserSettings.SpeedMultiplierPercent`, except **Instant, which the closure short-circuits to 0**: the pacer never consults the multiplier on an instant track, so the 0 only reaches the view, which reads it as "snap the travel tween". Read on every `Schedule` so a mid-game speed change takes effect next beat — Slow doubles (200), Fast halves (50), Normal passes through (100). **Instant is not a multiplier**: it routes to the chunked frame-yielded driver (`InstantAiTick` / `InstantReplayTick`) scheduling via `ScheduleUnscaled` — exact delay, bypasses the multiplier. Both methods share `Cancel`'s generation guard via one private `ScheduleTimer`; nothing runs inline (the chunked driver owns stack depth by returning between ticks). `SynchronousAiPacer` drains both inline. `AbandonGame` / `BeginReplay` call `Cancel` so an in-flight tick can't fire against disposed nodes.
 
 ```csharp
 void Schedule(Action callback, int delayMs);          // multiplier-scaled
@@ -1004,7 +1017,7 @@ GameController.OnUndoLastPressed
 
 ### AI turn
 
-The whole loop lives on `AiTurnDriver` (see "GameController ↔ AiTurnDriver split"). `RunUntilHumanOrDone` resets per-player bookkeeping and calls `Schedule(turnBoundary)` — the single **re-dispatching** point picking the pacing path each beat. Re-reads `aiSilentMode()`: `Instant` → `InstantAiTick` via `ScheduleUnscaled` (`InstantTurnDelayMs`/0); else paced `StepAiPreview` via multiplier-scaled `Schedule` (`AiBetweenPlayersDelayMs`/`AiActionDelayMs`). All continuations route through it (next-AI-player hop, `StepAiExecute`, the instant `reschedule`, overlay-resume sites `OnDefeatContinuePressed` / claim-victory → `EndTurnNow`) — so a mid-turn speed change **switches tracks at the next beat**. Exception: the preview→execute hop is a direct pacer `Schedule` (`_pendingAiAction` already chosen; switch lands at the next action boundary, avoiding RNG re-draw). The transition/dispatch skeleton is `StepPacing.Redispatch` (shared with replay's `ScheduleNextReplayBeat`): it syncs silent mode, forces `RebuildAfterTerritoryChange` on instant→paced, clears the highlight on paced→instant, and stores the track **before** dispatching (load-bearing under `SynchronousAiPacer`, where the dispatch runs the continuation chain inline). `_aiTrackInstant` holds the previous track to detect the transition.
+The whole loop lives on `AiTurnDriver` (see "GameController ↔ AiTurnDriver split"). `RunUntilHumanOrDone` resets per-player bookkeeping and calls `Schedule(turnBoundary)` — the single **re-dispatching** point picking the pacing path each beat. Re-reads `aiSilentMode()`: `Instant` → `InstantAiTick` via `ScheduleUnscaled` (`InstantTurnDelayMs`/0); else paced `StepAiPreview` via multiplier-scaled `Schedule` (`AiBetweenPlayersDelayMs` at a boundary, else the per-action delay — `SettleDelayFor(action)`: `MoveSettleDelayMs` for moves so the travel tween lands first, `AiActionDelayMs` for everything else). All continuations route through it (next-AI-player hop, `StepAiExecute`, the instant `reschedule`, overlay-resume sites `OnDefeatContinuePressed` / claim-victory → `EndTurnNow`) — so a mid-turn speed change **switches tracks at the next beat**. Exception: the preview→execute hop is a direct pacer `Schedule` (`_pendingAiAction` already chosen; switch lands at the next action boundary, avoiding RNG re-draw). The transition/dispatch skeleton is `StepPacing.Redispatch` (shared with replay's `ScheduleNextReplayBeat`): it syncs silent mode, forces `RebuildAfterTerritoryChange` on instant→paced, clears the highlight on paced→instant, and stores the track **before** dispatching (load-bearing under `SynchronousAiPacer`, where the dispatch runs the continuation chain inline). `_aiTrackInstant` holds the previous track to detect the transition.
 
 **Paced (Slow/Normal/Fast)** — a preview/execute step machine:
 
@@ -1027,10 +1040,16 @@ StepAiExecute:
   ├─ ApplyAiActionCore(action)   ── shared mutation core: record beat (live only)
   │     + ExecuteAiMove/BuyUnit/BuildTower/… ; returns result coord
   │     (null = unrecognised → defensive return)
-  ├─ CheckGameEndConditions; ShowHighlightAndRefresh(resulting terr.)
+  ├─ CheckGameEndConditions
+  ├─ if the beat was a MOVE that ended the game or set PendingDefeatScreen:
+  │     HoldEndgameOverlays (hud gate) BEFORE any refresh paints, and
+  │     schedule RevealEndgameOverlays after SettleDelayFor(action) — the
+  │     modal appears once the travel tween has landed
+  ├─ ShowHighlightAndRefresh(resulting terr.)
   ├─ if PendingDefeatScreen: RefreshSilentMode + RefreshViews, return
-  │     without scheduling — dismissal handler resumes via Schedule
-  └─ schedule next StepAiPreview after AiActionDelayMs
+  │     without scheduling next beat — dismissal handler resumes via Schedule
+  └─ schedule next StepAiPreview after SettleDelayFor(action)
+       (MoveSettleDelayMs for moves, AiActionDelayMs otherwise)
 ```
 
 **Instant fast-forward (shared loop).** Live AI Instant and instant replay share one chunked, frame-yielded loop, `GameOperations.RunInstantTick(active, step, onExhausted, reschedule)`:
@@ -1062,7 +1081,7 @@ The **overlay is decoupled from silence**: `RefreshSilentMode` shows it whenever
 
 ### Automate (AI plays the human's remaining turn)
 
-The HUD's Automate toggle (`AutomateClicked`, gear-with-play glyph beside End Turn; `G` hotkey) runs AI decisions for the *current human* slot until the chooser runs dry — without ending the turn. The loop lives on `GameController` (it needs `TrackHandler`). Between moves it dispatches through `ScheduleAutomateStep` — the automate analog of `AiTurnDriver.Schedule`, built on the same `StepPacing.Redispatch` — which re-reads the `automateIsInstantMode` probe (`UserSettings.AutomateSpeed == Instant`, injected by `Main`) so a mid-run Settings change switches tracks at the next beat. Paced speeds run a two-beat step machine mirroring the AI driver's cadence; Instant drains through the shared chunked loop:
+The HUD's Automate toggle (`AutomateClicked`, gear-with-play glyph beside End Turn; `G` hotkey) runs AI decisions for the *current human* slot until the chooser runs dry — without ending the turn. The loop lives on `GameController` (it needs `TrackHandler`). Between moves it dispatches through `ScheduleAutomateStep` — the automate analog of `AiTurnDriver.Schedule`, built on the same `StepPacing.Redispatch`, taking the same per-action settle delay (moves pass `SettleDelayFor`) — which re-reads the `automateIsInstantMode` probe (`UserSettings.HumanSpeed == Instant`, injected by `Main`) so a mid-run Settings change switches tracks at the next beat. Paced speeds run a two-beat step machine mirroring the AI driver's cadence; Instant drains through the shared chunked loop:
 
 ```
 OnAutomatePressed (toggle):
@@ -1105,7 +1124,7 @@ AutomateInstantStep:  halt / step-cap / chooser-null → StopAutomation(...) →
 - **Interruption is a flag, never a cancel**: `_automating` is checked at every beat entry (and gates the instant drain via `RunInstantTick`'s `active`); `StopAutomation` clears it and stale scheduled beats no-op (the shared pacer is never cancelled). Every `TrackHandler`-wrapped human input stops a running loop at handler entry (`_inAutomateStep` exempts the loop's own selection + move steps); the non-wrapped handlers (undo/redo ×4, End Turn, defeat/claim) carry explicit `StopAutomation("input")` calls. Stops always land *between* moves. When the stop ends an instant batch (`_automateTrackInstant`), `StopAutomation` also runs the batch-end cleanup: structural rebuild (the drain suppressed per-capture rebuilds) + `RefreshSilentMode` (lifts the view's silent flag).
 - **Exhaustion latch** (`_automateExhausted`): set only by the chooser-null stop; the button greys out (re-pressing would no-op) even if manual actions remain. Cleared by `ApplySnapshot` (any undo/redo), a manual game-mutating `TrackHandler` push (which triggers one extra refresh — the body's own refresh ran pre-clear), and `EndTurnNow`. User interrupts don't latch.
 - **Exhaustion lights End Turn**: the chooser-null stop also unions every still-actionable territory's capital into `VisitedThisTurnCapitals` (one `TrackHandler` entry, undoable; no-op when the loop's own selections already visited them), and the latch counts as "finished the last territory" in the End Turn CTA condition — so a completed automation run always leaves End Turn lit even when the chooser declined an affordable action or left an actionable territory selected. Logged as `[automate] exhausted → turn-visited += N`.
-- **Pacing**: `UserSettings.AutomateSpeed`, its own Settings row, independent of AiSpeed/ReplaySpeed. The shared pacer's multiplier closure in `Main` branches on `GameController.IsAutomating` for the paced speeds; Instant never reaches the multiplier — `ScheduleAutomateStep` routes it to the unscaled chunked track, making Automate the third `RunInstantTick` wrapper alongside live-AI Instant and instant replay.
+- **Pacing**: `UserSettings.HumanSpeed` (the "Human Player Speed" Settings row — it also scales the manual click-to-move travel tween), independent of AiSpeed/ReplaySpeed. The shared pacer's multiplier closure in `Main` branches on `GameController.IsAutomating` for the paced speeds; Instant never reaches the multiplier — `ScheduleAutomateStep` routes it to the unscaled chunked track, making Automate the third `RunInstantTick` wrapper alongside live-AI Instant and instant replay. A winning automate move latches the same endgame-overlay hold + scheduled reveal as the AI driver (`MaybeHoldOverlayForWinningMove`, shared with the manual-move path).
 - **Silence**: `GameOperations.InSilentAutomateBatch()` (= `automateSilentMode() && isAutomating()`) joins the cue gate (`IsSilent`) and the view flag (`RefreshSilentMode`), so an Instant batch plays no sounds/VFX/tweens and never pans. It deliberately does NOT join `HumanInputLocked` — input between the drain's frame yields stays live so it can stop the loop. Paced automate is never silent: per-move sounds and the camera pan play at every paced speed.
 - **Instrumentation**: `Log.LogCategory.Automate` Debug — start (turn/player/undo depth), one `pan ->` line per paced preview, one line per move (step index, action, undo depth after push), track transitions (`paced→instant` / `instant→paced`), stop with reason (`user` / `input` / `exhausted` / `step-cap` / `overlay` / `game-over` / `not-human`), and `instant batch end` with the move count.
 - Pinned by `tests/GameControllerTests.Automate.cs` (undo walk-back incl. selection entries, interrupt-between-moves via `GodotAiPacer` + `ManualTimerFactory`, beat-stack sync, exhaustion-latch lifecycle, selection rebind, camera pan, instant silence/no-pan/parity/overlay-stop).
@@ -1173,7 +1192,9 @@ StepReplayExecute:
   ├─ if IsGameOver → EndReplay (recorded game-ending beat re-fired GameEnded;
   │     Main re-runs SetReplayAvailable)
   └─ schedule next StepReplayPreview after
-       AiBetweenPlayersDelayMs (if beat was EndTurn) else AiActionDelayMs
+       AiBetweenPlayersDelayMs (if beat was EndTurn),
+       MoveSettleDelayMs(distance) (if beat was a Move — covers the
+       travel tween), else AiActionDelayMs
 
 EndReplay raises ReplayEnded (recorder event, forwarded as
 GameController.ReplayEnded) — the Instructions demo player loops by
