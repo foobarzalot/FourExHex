@@ -224,7 +224,9 @@ public partial class HexMapView : Node2D, IHexMapView
     // Held/staged application, populated while a hint is pending (and, for
     // the fog/tide/sea trio, also mid-flight — they trail the refresh
     // inside the same RefreshViews). Applied by CompleteArrival or the
-    // snap path, whichever comes first.
+    // snap path, whichever comes first, in inline-RefreshViews order:
+    // rebuild + highlight, then fog, then the occupant refresh, then
+    // tide/sea and one-shot FX.
     private bool _stagedRebuild;
     private bool _stagedHighlightSet;
     private Territory? _stagedHighlight;
@@ -1033,7 +1035,13 @@ public partial class HexMapView : Node2D, IHexMapView
         RebuildAfterTerritoryChangeCore();
     }
 
-    private void RebuildAfterTerritoryChangeCore()
+    /// <param name="preserveTargets">True when applying a rebuild that was
+    /// staged behind a move travel (issue #166): any target previews alive
+    /// now were painted AFTER the hold began (the handler's overlay clear
+    /// applies inline even during a hold), so they are fresher than this
+    /// rebuild and must survive it. The inline path keeps the clear — there
+    /// the rebuild always precedes the handler's target repaint.</param>
+    private void RebuildAfterTerritoryChangeCore(bool preserveTargets = false)
     {
         // Rising Tides: detect submerge / mountain-demote FIRST, while the drowned
         // tiles' fills are still present (the prune frees them next) and before
@@ -1071,7 +1079,24 @@ public partial class HexMapView : Node2D, IHexMapView
         Log.Since(Log.LogCategory.Capture, "[hitch] PopulateOutlinesLayer", tOutlines);
 
         long tBorders = Log.Stamp();
-        ClearLayer(_targetsLayer);
+        int liveTargets = _targetsLayer?.GetChildCount() ?? 0;
+        if (preserveTargets)
+        {
+            if (liveTargets > 0)
+            {
+                Log.Debug(Log.LogCategory.Render,
+                    $"[targets] rebuild-core preserving n={liveTargets}");
+            }
+        }
+        else
+        {
+            if (liveTargets > 0)
+            {
+                Log.Debug(Log.LogCategory.Render,
+                    $"[targets] rebuild-core wiping n={liveTargets}");
+            }
+            ClearLayer(_targetsLayer);
+        }
         // The deaths-layer clear below kills any in-flight capture-shake
         // overlay (its tween dies with the node, so its restore callback
         // never runs) — drop the suppressions first so the DrawMountains
@@ -1250,6 +1275,9 @@ public partial class HexMapView : Node2D, IHexMapView
             }
             _targetsLayer.AddChild(preview);
         }
+        Log.Debug(Log.LogCategory.Render,
+            $"[targets] paint n={_targetsLayer.GetChildCount()} level={level} " +
+            $"holding={HoldingForPendingMove} inFlight={_inFlightArrival != null}");
     }
 
     /// <summary>
@@ -1412,6 +1440,9 @@ public partial class HexMapView : Node2D, IHexMapView
     {
         if ((HoldingForPendingMove || _inFlightArrival != null) && !_silentMode)
         {
+            Log.Debug(Log.LogCategory.Fog,
+                $"[fog] staged visible={fog?.Visible.Count ?? -1} " +
+                $"(holding={HoldingForPendingMove} inFlight={_inFlightArrival != null})");
             _stagedFogSet = true;
             _stagedFog = fog;
             return;
@@ -1422,6 +1453,8 @@ public partial class HexMapView : Node2D, IHexMapView
     private void ShowFogCore(FogView? fog)
     {
         bool visibilityChanged = !FogVisibleEqual(_fog, fog);
+        Log.Debug(Log.LogCategory.Fog,
+            $"[fog] apply visible={fog?.Visible.Count ?? -1} changed={visibilityChanged}");
         _fog = fog;
         if (visibilityChanged) RepaintFogVisuals();
     }
@@ -2107,8 +2140,10 @@ public partial class HexMapView : Node2D, IHexMapView
         _inFlightArrival = null;
         Log.Debug(Log.LogCategory.Render,
             $"[move-anim] arrival {r.From}->{r.To} ({reason}) " +
-            $"rebuild={_stagedRebuild} fx={_heldFx.Count}");
+            $"rebuild={_stagedRebuild} fx={_heldFx.Count} " +
+            $"targets={_targetsLayer?.GetChildCount() ?? 0}");
         ApplyStagedPrimary();
+        ApplyStagedFog();
         RefreshOccupantVisualsCore(r.RefreshPlayer, r.RefreshTreasury, r.RefreshVisited);
         ApplyStagedSecondaryAndFx();
     }
@@ -2120,7 +2155,7 @@ public partial class HexMapView : Node2D, IHexMapView
         if (_stagedRebuild)
         {
             _stagedRebuild = false;
-            RebuildAfterTerritoryChangeCore();
+            RebuildAfterTerritoryChangeCore(preserveTargets: true);
         }
         if (_stagedHighlightSet)
         {
@@ -2131,9 +2166,12 @@ public partial class HexMapView : Node2D, IHexMapView
         }
     }
 
-    /// <summary>Held fog/tide/sea pushes and one-shot FX — the calls that
-    /// land AFTER the occupant refresh.</summary>
-    private void ApplyStagedSecondaryAndFx()
+    /// <summary>Held fog push — must land BEFORE the occupant refresh so
+    /// the occupant pass paints under the new projection (same ordering as
+    /// the inline RefreshViews: fog, then occupants). Applying it after
+    /// left units on newly revealed tiles invisible until the next
+    /// refresh (issue #167).</summary>
+    private void ApplyStagedFog()
     {
         if (_stagedFogSet)
         {
@@ -2142,6 +2180,12 @@ public partial class HexMapView : Node2D, IHexMapView
             _stagedFog = null;
             ShowFogCore(fog);
         }
+    }
+
+    /// <summary>Held tide/sea pushes and one-shot FX — the calls that
+    /// land AFTER the occupant refresh.</summary>
+    private void ApplyStagedSecondaryAndFx()
+    {
         if (_stagedTideSet)
         {
             _stagedTideSet = false;
@@ -2184,6 +2228,7 @@ public partial class HexMapView : Node2D, IHexMapView
         // Snap: a snap IS the arrival — apply anything staged during the
         // hold phase around the real refresh, then flush held FX.
         ApplyStagedPrimary();
+        ApplyStagedFog();
         RefreshOccupantVisualsCore(currentPlayer, treasury, visitedCapitals);
         _pendingMoveAnims.Clear();
         ApplyStagedSecondaryAndFx();
