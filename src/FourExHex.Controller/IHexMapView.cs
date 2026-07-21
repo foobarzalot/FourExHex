@@ -200,6 +200,18 @@ public interface IHexMapView
     void SetSilentMode(bool silent);
 
     /// <summary>
+    /// Hint that the unit about to appear at <paramref name="to"/> on the
+    /// next <see cref="RefreshOccupantVisuals"/> moved there from
+    /// <paramref name="from"/>, so the view may animate the rebuilt glyph
+    /// traveling between the two tiles instead of snapping. Called by the
+    /// shared AI/replay move executor just before the model mutation;
+    /// consumed (or discarded) by the next occupant refresh. Purely a
+    /// presentation hint — silent/instant mode ignores it and keeps the
+    /// hard snap.
+    /// </summary>
+    void AnimateUnitMove(HexCoord from, HexCoord to);
+
+    /// <summary>
     /// Play a one-shot destruction effect at <paramref name="coord"/> for
     /// the displaced occupant. Called by the controller after a
     /// movement-rule-driven capture, tree chop, or grave burial — once

@@ -188,7 +188,7 @@
   "settings.sound_effects": "Sound Effects",
   "settings.visual_effects": "Visual Effects",
   "settings.ai_speed": "Computer Player Speed",
-  "settings.automate_speed": "Automate Speed",
+  "settings.human_speed": "Human Player Speed",
   "settings.replay_speed": "Replay Speed",
   "settings.credits": "Credits",
   "speed.slow": "Slow",

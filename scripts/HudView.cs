@@ -96,6 +96,10 @@ public partial class HudView : OrientationHud, IHudView
     private bool _undoRedoLocked;
     private bool _fogUndoExempt;
     private bool _victoryOverlaySuppressed;
+    // Endgame overlays held for one post-move settle delay so the
+    // victory/defeat modal doesn't pop while the winning move's travel
+    // tween is mid-flight. Latched + released by the controller.
+    private bool _endgameOverlaysHeld;
     // Last-seen AI-turn lockdown state, only to log the transition once.
     private bool _aiTurnLockdownActive;
     private HudIconButton _nextUnitButton = null!;
@@ -2503,7 +2507,8 @@ public partial class HudView : OrientationHud, IHudView
         // overlay isn't suppressed (Tutorial Preview / Record set the
         // suppress flag; the tutorial-message panel handles game-over
         // signaling in those modes).
-        if (session.Winner.HasValue && !_victoryOverlaySuppressed)
+        if (session.Winner.HasValue && !_victoryOverlaySuppressed
+            && !_endgameOverlaysHeld)
         {
             PlayerId winId = session.Winner.Value;
             Player? winner = state.Turns.Players
@@ -2581,7 +2586,8 @@ public partial class HudView : OrientationHud, IHudView
         // Defeat overlay: show iff a human just lost their last capital
         // and hasn't dismissed the screen yet. Suppressed when Winner
         // is set so the game-over screen takes precedence.
-        if (session.PendingDefeatScreen.HasValue && !session.Winner.HasValue)
+        if (session.PendingDefeatScreen.HasValue && !session.Winner.HasValue
+            && !_endgameOverlaysHeld)
         {
             PlayerId loseId = session.PendingDefeatScreen.Value;
             Player? loser = state.Turns.Players
@@ -2821,6 +2827,18 @@ public partial class HudView : OrientationHud, IHudView
             // Refresh() may have already painted the overlay before the
             // caller flipped this; force the hide immediately.
             _victoryOverlay.Visible = false;
+        }
+    }
+
+    public void SetEndgameOverlaysHeld(bool held)
+    {
+        _endgameOverlaysHeld = held;
+        if (held)
+        {
+            // Mirror SetVictoryOverlaySuppressed: hide immediately in
+            // case a refresh painted before the controller latched.
+            _victoryOverlay.Visible = false;
+            _defeatOverlay.Visible = false;
         }
     }
 

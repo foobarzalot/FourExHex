@@ -283,7 +283,7 @@ public static class StringKeys
     public const string SettingsSoundEffects = "settings.sound_effects";
     public const string SettingsVisualEffects = "settings.visual_effects";
     public const string SettingsAiSpeed = "settings.ai_speed";
-    public const string SettingsAutomateSpeed = "settings.automate_speed";
+    public const string SettingsHumanSpeed = "settings.human_speed";
     public const string SettingsReplaySpeed = "settings.replay_speed";
     public const string SettingsCredits = "settings.credits";
     public const string SpeedSlow = "speed.slow";

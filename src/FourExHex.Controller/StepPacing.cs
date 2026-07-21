@@ -39,6 +39,41 @@ public static class StepPacing
     // either.
     public const int VikingSpawnPresentationMs = 2000;
 
+    // Distance-scaled move travel: base + per-hex time, capped so a
+    // board-crossing move doesn't drag the beat out indefinitely. The
+    // per-hex term is what makes long moves read as travel instead of a
+    // teleport — a fixed duration crams any distance into the same slice
+    // and the eye loses it.
+    private const int MoveTravelFloorMs = 120;
+    private const int MoveTravelPerHexMs = 80;
+    private const int MoveTravelCapMs = 680;
+    // Headroom between the tween landing and the next beat's refresh
+    // (which rebuilds the unit layer and would kill an in-flight tween).
+    private const int MoveSettleMarginMs = 60;
+
+    /// <summary>
+    /// Base (Normal-speed) duration of the unit move-travel tween for a
+    /// move of <paramref name="hexDistance"/> hexes. The view scales it
+    /// by the same speed-multiplier percent the pacer applies to beat
+    /// delays, so travel and cadence stretch together. Degenerate
+    /// distances clamp to one hex.
+    /// </summary>
+    public static int MoveTravelBaseMs(int hexDistance) =>
+        Math.Min(MoveTravelFloorMs + MoveTravelPerHexMs * Math.Max(1, hexDistance),
+            MoveTravelCapMs);
+
+    /// <summary>
+    /// Post-execute beat delay for a move of <paramref name="hexDistance"/>
+    /// hexes: at least <see cref="AiActionDelayMs"/> (short moves keep the
+    /// baseline cadence), stretched to cover
+    /// <see cref="MoveTravelBaseMs"/> plus a margin so the travel tween
+    /// always finishes before the next beat's refresh rebuilds the unit
+    /// layer. Both sides scale by the same speed multiplier downstream,
+    /// so the guarantee holds at every paced speed.
+    /// </summary>
+    public static int MoveSettleDelayMs(int hexDistance) =>
+        Math.Max(AiActionDelayMs, MoveTravelBaseMs(hexDistance) + MoveSettleMarginMs);
+
     // Delay between a per-turn repaint and the next instant tick, so each
     // player-turn's board lingers long enough to follow (≈5 turns/sec)
     // instead of flipping past at frame rate. Still far faster than
@@ -68,7 +103,8 @@ public static class StepPacing
         Action instantTick, Action pacedStep,
         Action<bool> setTrack, Action syncSilentMode,
         Action logInstantToPaced, Action logPacedToInstant,
-        int pacedBoundaryDelayMs = AiBetweenPlayersDelayMs)
+        int pacedBoundaryDelayMs = AiBetweenPlayersDelayMs,
+        int pacedActionDelayMs = AiActionDelayMs)
     {
         if (wasInstant && !nowInstant)
         {
@@ -89,10 +125,13 @@ public static class StepPacing
         syncSilentMode();
         // Delay belongs to whichever track we land on: instant runs at
         // its own cadence (0 mid-turn, InstantTurnDelayMs at a boundary,
-        // unscaled); paced uses the multiplier-scaled step delays.
+        // unscaled); paced uses the multiplier-scaled step delays. The
+        // non-boundary delay is per-action: a just-executed move passes
+        // MoveSettleDelayMs so its travel tween finishes before the next
+        // beat's refresh; everything else keeps AiActionDelayMs.
         if (nowInstant)
             pacer.ScheduleUnscaled(instantTick, turnBoundary ? InstantTurnDelayMs : 0);
         else
-            pacer.Schedule(pacedStep, turnBoundary ? pacedBoundaryDelayMs : AiActionDelayMs);
+            pacer.Schedule(pacedStep, turnBoundary ? pacedBoundaryDelayMs : pacedActionDelayMs);
     }
 }

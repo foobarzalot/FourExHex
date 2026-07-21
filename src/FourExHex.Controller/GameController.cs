@@ -482,8 +482,14 @@ public class GameController
 
     /// <summary>True while the Automate loop is playing the current
     /// human's remaining moves. Read by Main's pacer-speed closure to
-    /// select the Automate speed setting, and by the HUD state push.</summary>
+    /// select the human speed setting, and by the HUD state push.</summary>
     public bool IsAutomating => _automating;
+
+    /// <summary>True while the viking pseudo-turn is mid-flight. Read by
+    /// Main's playback-speed closure so viking beats — which run while
+    /// the waiting (possibly human) player is current — pace and animate
+    /// at the Computer Player Speed, not the human's.</summary>
+    public bool IsVikingPhaseActive => _ops.VikingPhaseActive;
 
     // Tutorial Preview hooks. _humanActionValidator (set via the
     // constructor's humanActionValidator param) gates every
@@ -1326,6 +1332,12 @@ public class GameController
         UnitLevel movedLevel = _state.Grid.Get(source)!.Unit!.Level;
         HexCoord? originCapital = _session.SelectedTerritory.Capital;
         bool wasCombine = _ops.WasFriendlyUnitAt(destination, _session.SelectedTerritory.Owner);
+        // Hint the view before mutating: the next occupant refresh may
+        // animate the rebuilt glyph traveling source→destination instead
+        // of snapping. Unconditional, like the FX/sound emitters — the
+        // duration (and the Instant snap) follow the Human Player Speed
+        // setting view-side.
+        _map.AnimateUnitMove(source, destination);
         MoveResult result = MovementRules.Move(source, destination, _state.Grid, _session.SelectedTerritory);
 
         if (result.WasCapture)
@@ -1341,6 +1353,11 @@ public class GameController
         }
 
         _ops.DispatchActionSound(destination, result, wasCombine);
+
+        // A winning move holds the victory overlay until the travel tween
+        // settles — latched before FinishPendingAction / TrackHandler's
+        // trailing refresh can paint it.
+        MaybeHoldOverlayForWinningMove(source, destination);
 
         FinishPendingAction();
 
@@ -1546,7 +1563,7 @@ public class GameController
     // stack, so the "any human input interrupts automation" hook in
     // TrackHandler can tell the loop's moves from real input.
     private bool _inAutomateStep;
-    // Live speed probe (UserSettings.AutomateSpeed == Instant), the automate
+    // Live speed probe (UserSettings.HumanSpeed == Instant), the automate
     // analog of the AI driver's _aiSilentMode: re-read at every between-moves
     // dispatch so a mid-run Settings change switches tracks.
     private readonly Func<bool> _automateIsInstantMode;
@@ -1690,7 +1707,9 @@ public class GameController
         Territory? after = ApplyOneAutomateMove(action);
         if (AutomateHalted(out string postHalt)) { StopAutomation(postHalt); return; }
         _ops.ShowHighlightAndRefresh(after);
-        ScheduleAutomateStep();
+        // Moves stretch the next-beat delay so their travel tween lands
+        // before the next beat's refresh rebuilds the unit layer.
+        ScheduleAutomateStep(AiTurnDriver.SettleDelayFor(action));
     }
 
     /// <summary>
@@ -1714,6 +1733,13 @@ public class GameController
             {
                 _handlerMutatedGame = true;
                 result = _aiDriver.ApplyAiActionCore(action);
+                // Latched INSIDE the tracked body: TrackHandler's trailing
+                // refresh would otherwise paint a winning move's victory
+                // overlay before the travel tween settles.
+                if (action is AiMoveAction amv)
+                {
+                    MaybeHoldOverlayForWinningMove(amv.Source, amv.Destination);
+                }
             });
         }
         finally
@@ -1731,6 +1757,23 @@ public class GameController
     }
 
     /// <summary>
+    /// Human-track twin of the AI driver's overlay hold: if the move
+    /// that just executed ended the game, hold the victory overlay and
+    /// schedule its reveal one settle delay later so it doesn't pop over
+    /// the still-traveling glyph. No-op when the game didn't end or the
+    /// human speed is Instant (the view snaps — no travel to wait for).
+    /// A human's own move can never raise the defeat screen, so only the
+    /// game-end case is covered here.
+    /// </summary>
+    private void MaybeHoldOverlayForWinningMove(HexCoord source, HexCoord destination)
+    {
+        if (!_ops.GameEndedFired || _automateIsInstantMode()) return;
+        _ops.HoldEndgameOverlays();
+        _aiPacer.Schedule(_ops.RevealEndgameOverlays,
+            StepPacing.MoveSettleDelayMs(HexCoord.Distance(source, destination)));
+    }
+
+    /// <summary>
     /// Between-moves dispatcher for the automate loop, the analog of
     /// <see cref="AiTurnDriver.Schedule"/>: re-reads the Instant probe so
     /// a mid-run Settings change switches tracks at the next beat.
@@ -1738,7 +1781,7 @@ public class GameController
     /// <see cref="GameOperations.RunInstantTick"/> loop; anything else
     /// runs the multiplier-scaled two-beat step machine.
     /// </summary>
-    private void ScheduleAutomateStep()
+    private void ScheduleAutomateStep(int pacedActionDelayMs = StepPacing.AiActionDelayMs)
     {
         StepPacing.Redispatch(
             wasInstant: _automateTrackInstant,
@@ -1753,7 +1796,8 @@ public class GameController
             logInstantToPaced: () => Log.Debug(Log.LogCategory.Automate,
                 "[automate] track instant→paced mid-run"),
             logPacedToInstant: () => Log.Debug(Log.LogCategory.Automate,
-                "[automate] track paced→instant mid-run"));
+                "[automate] track paced→instant mid-run"),
+            pacedActionDelayMs: pacedActionDelayMs);
     }
 
     /// <summary>

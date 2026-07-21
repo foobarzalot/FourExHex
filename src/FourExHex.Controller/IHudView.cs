@@ -177,6 +177,17 @@ public interface IHudView
     void SetVictoryOverlaySuppressed(bool suppressed);
 
     /// <summary>
+    /// Hold (true) or release (false) the victory AND defeat overlays
+    /// even when their session flags are set. The controller latches
+    /// this for one settle delay after a game-ending / defeating MOVE so
+    /// the overlay doesn't pop while the unit's travel tween is still in
+    /// flight; the scheduled reveal releases it and refreshes. Distinct
+    /// from <see cref="SetVictoryOverlaySuppressed"/>, which is owned by
+    /// the Tutorial Preview/Record flow and latches for a whole session.
+    /// </summary>
+    void SetEndgameOverlaysHeld(bool held);
+
+    /// <summary>
     /// Coord of the capital whose tap-summoned alert notice is
     /// currently visible, or null when no notice is showing. Read by
     /// the controller's tap handler to implement toggle-off-on-re-tap

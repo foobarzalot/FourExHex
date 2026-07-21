@@ -10,16 +10,18 @@ using Godot;
 /// shared by the three independent speed settings
 /// (<see cref="UserSettings.AiSpeed"/> for live AI turns,
 /// <see cref="UserSettings.ReplaySpeed"/> for replay playback,
-/// <see cref="UserSettings.AutomateSpeed"/> for human-turn automation).
+/// <see cref="UserSettings.HumanSpeed"/> for the human player's own
+/// moves — Automate pacing and the manual click-to-move travel tween).
 ///
 /// Slow/Normal/Fast are delay scalars — see
 /// <see cref="UserSettings.SpeedMultiplierPercent"/>. <see cref="Instant"/>
 /// is NOT a multiplier: a zero delay would freeze the main thread, so
 /// the controller routes Instant to a chunked, frame-yielded driver
 /// that fast-forwards silently and repaints once per batch (live AI,
-/// replay, and Automate each wrap that driver). Instant's delays bypass
-/// the multiplier entirely via <c>IAiPacer.ScheduleUnscaled</c>, so it
-/// has no entry in the multiplier table.
+/// replay, and Automate each wrap that driver; a manual human move
+/// under Instant simply skips its travel tween). Instant's delays
+/// bypass the multiplier entirely via <c>IAiPacer.ScheduleUnscaled</c>,
+/// so it has no entry in the multiplier table.
 ///
 /// Member order is load-bearing: settings persist numerically (no
 /// JsonStringEnumConverter), so Slow=0…Instant=3 must stay fixed for
@@ -57,7 +59,7 @@ public static partial class UserSettings
     private static bool _vfxEnabled = true;
     private static PlaybackSpeed _aiSpeed = PlaybackSpeed.Fast;
     private static PlaybackSpeed _replaySpeed = PlaybackSpeed.Fast;
-    private static PlaybackSpeed _automateSpeed = PlaybackSpeed.Normal;
+    private static PlaybackSpeed _humanSpeed = PlaybackSpeed.Normal;
     // One-time "seen the intro overlay" flags per special game mode (issue
     // #96). Persisted so the mode explainer never re-shows after the player
     // dismisses it once. Freeform has no intro and is never tracked here.
@@ -135,23 +137,25 @@ public static partial class UserSettings
     }
 
     /// <summary>
-    /// Pacing for the human-turn Automate loop — independent of
-    /// <see cref="AiSpeed"/> (opponent turns) so a player can keep
-    /// opponents brisk while watching their own automated moves, or
-    /// vice-versa.
+    /// Pacing for the human player's own moves — the Automate loop's
+    /// beat cadence and the travel tween of a manual click-to-move.
+    /// Independent of <see cref="AiSpeed"/> (opponent turns) so a
+    /// player can keep opponents brisk while watching their own moves,
+    /// or vice-versa. Instant drains Automate through the unscaled
+    /// chunked track and snaps manual moves with no travel tween.
     /// </summary>
-    public static PlaybackSpeed AutomateSpeed
+    public static PlaybackSpeed HumanSpeed
     {
         get
         {
             EnsureLoaded();
-            return _automateSpeed;
+            return _humanSpeed;
         }
         set
         {
             EnsureLoaded();
-            if (_automateSpeed == value) return;
-            _automateSpeed = value;
+            if (_humanSpeed == value) return;
+            _humanSpeed = value;
             Save();
         }
     }
@@ -251,7 +255,9 @@ public static partial class UserSettings
     /// here. Instant routes to the chunked frame-yielded driver, which
     /// schedules via <c>IAiPacer.ScheduleUnscaled</c> (multiplier
     /// bypassed); no scaled <c>Schedule</c> runs during an Instant
-    /// game. The <c>_ =&gt; 100</c> default is a harmless safety net.
+    /// game. <c>Main</c>'s closure short-circuits Instant to 0 before
+    /// calling here — the view's move-travel tween reads that 0 as
+    /// "snap". The <c>_ =&gt; 100</c> default is a harmless safety net.
     ///
     /// Returns integer percent (50 / 100 / 200) — Slow doubles the
     /// delay, Normal is 1×, Fast halves it. Integer so the controller's
@@ -283,9 +289,10 @@ public static partial class UserSettings
         // the DTO order stable for save-compat.
         public bool SeenGoldIntro { get; set; }
         public bool SeenMountainIntro { get; set; }
-        // Human-turn Automate pacing. Appended last for save-compat; absent
-        // from older settings.json files → binds the Normal default.
-        public PlaybackSpeed AutomateSpeed { get; set; } = PlaybackSpeed.Normal;
+        // Human-player pacing (Automate cadence + manual move tween).
+        // Appended last for save-compat; absent from older settings.json
+        // files → binds the Normal default.
+        public PlaybackSpeed HumanSpeed { get; set; } = PlaybackSpeed.Normal;
     }
 
     // Source-gen JsonSerializerContext for SettingsDto. Nested inside
@@ -321,7 +328,7 @@ public static partial class UserSettings
             _vfxEnabled = dto.VfxEnabled;
             _aiSpeed = dto.AiSpeed;
             _replaySpeed = dto.ReplaySpeed;
-            _automateSpeed = dto.AutomateSpeed;
+            _humanSpeed = dto.HumanSpeed;
             _seenRisingTidesIntro = dto.SeenRisingTidesIntro;
             _seenFogOfWarIntro = dto.SeenFogOfWarIntro;
             _seenVikingRaidersIntro = dto.SeenVikingRaidersIntro;
@@ -350,7 +357,7 @@ public static partial class UserSettings
                     VfxEnabled = _vfxEnabled,
                     AiSpeed = _aiSpeed,
                     ReplaySpeed = _replaySpeed,
-                    AutomateSpeed = _automateSpeed,
+                    HumanSpeed = _humanSpeed,
                     SeenRisingTidesIntro = _seenRisingTidesIntro,
                     SeenFogOfWarIntro = _seenFogOfWarIntro,
                     SeenVikingRaidersIntro = _seenVikingRaidersIntro,

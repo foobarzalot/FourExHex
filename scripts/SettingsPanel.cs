@@ -50,7 +50,7 @@ public sealed partial class SettingsPanel : CanvasLayer
         { PlaybackSpeed.Slow, PlaybackSpeed.Normal, PlaybackSpeed.Fast, PlaybackSpeed.Instant };
     private OptionButton _aiSpeedDropdown = null!;
     private OptionButton _replaySpeedDropdown = null!;
-    private OptionButton _automateSpeedDropdown = null!;
+    private OptionButton _humanSpeedDropdown = null!;
     private static readonly Font _serifFont =
         GD.Load<FontFile>("res://fonts/DMSerifDisplay-Regular.ttf");
 
@@ -142,7 +142,7 @@ public sealed partial class SettingsPanel : CanvasLayer
         vbox.AddChild(BuildSpeedRow(
             Strings.Get(StringKeys.SettingsAiSpeed), UserSettings.AiSpeed, OnAiSpeedPressed, out _aiSpeedDropdown));
         vbox.AddChild(BuildSpeedRow(
-            Strings.Get(StringKeys.SettingsAutomateSpeed), UserSettings.AutomateSpeed, OnAutomateSpeedPressed, out _automateSpeedDropdown));
+            Strings.Get(StringKeys.SettingsHumanSpeed), UserSettings.HumanSpeed, OnHumanSpeedPressed, out _humanSpeedDropdown));
         vbox.AddChild(BuildSpeedRow(
             Strings.Get(StringKeys.SettingsReplaySpeed), UserSettings.ReplaySpeed, OnReplaySpeedPressed, out _replaySpeedDropdown));
 
@@ -224,7 +224,7 @@ public sealed partial class SettingsPanel : CanvasLayer
         rightZone.AddChild(MakeToggleCard(BuildSpeedRow(
             Strings.Get(StringKeys.SettingsAiSpeed), UserSettings.AiSpeed, OnAiSpeedPressed, out _aiSpeedDropdown)));
         rightZone.AddChild(MakeToggleCard(BuildSpeedRow(
-            Strings.Get(StringKeys.SettingsAutomateSpeed), UserSettings.AutomateSpeed, OnAutomateSpeedPressed, out _automateSpeedDropdown)));
+            Strings.Get(StringKeys.SettingsHumanSpeed), UserSettings.HumanSpeed, OnHumanSpeedPressed, out _humanSpeedDropdown)));
         rightZone.AddChild(MakeToggleCard(BuildSpeedRow(
             Strings.Get(StringKeys.SettingsReplaySpeed), UserSettings.ReplaySpeed, OnReplaySpeedPressed, out _replaySpeedDropdown)));
         body.AddChild(rightZone);
@@ -396,7 +396,7 @@ public sealed partial class SettingsPanel : CanvasLayer
         _vfxCheckBox.ButtonPressed = UserSettings.VfxEnabled;
         ApplyCheckBoxStyle(_vfxCheckBox, UserSettings.VfxEnabled);
         UiDropdown.SelectItemById(_aiSpeedDropdown, (int)UserSettings.AiSpeed);
-        UiDropdown.SelectItemById(_automateSpeedDropdown, (int)UserSettings.AutomateSpeed);
+        UiDropdown.SelectItemById(_humanSpeedDropdown, (int)UserSettings.HumanSpeed);
         UiDropdown.SelectItemById(_replaySpeedDropdown, (int)UserSettings.ReplaySpeed);
     }
 
@@ -445,10 +445,10 @@ public sealed partial class SettingsPanel : CanvasLayer
         Log.Debug(Log.LogCategory.Hud, $"[settings] ReplaySpeed -> {speed}");
     }
 
-    private void OnAutomateSpeedPressed(PlaybackSpeed speed)
+    private void OnHumanSpeedPressed(PlaybackSpeed speed)
     {
-        UserSettings.AutomateSpeed = speed;
-        Log.Debug(Log.LogCategory.Hud, $"[settings] AutomateSpeed -> {speed}");
+        UserSettings.HumanSpeed = speed;
+        Log.Debug(Log.LogCategory.Hud, $"[settings] HumanSpeed -> {speed}");
     }
 
     /// <summary>

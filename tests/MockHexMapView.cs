@@ -133,6 +133,13 @@ public class MockHexMapView : IHexMapView
     public bool SilentMode { get; private set; }
     public void SetSilentMode(bool silent) => SilentMode = silent;
 
+    /// <summary>Every (from, to) pair the controller passed to
+    /// <see cref="AnimateUnitMove"/>. The mock records unconditionally;
+    /// the paced-vs-instant gate lives view-side (silent mode).</summary>
+    public List<(HexCoord From, HexCoord To)> AnimatedMoves { get; } = new();
+    public void AnimateUnitMove(HexCoord from, HexCoord to) =>
+        AnimatedMoves.Add((from, to));
+
     public List<(HexCoord Coord, HexOccupant Destroyed)> DestructionEffects { get; } = new();
     public void PlayDestructionEffect(HexCoord coord, HexOccupant destroyed)
     {

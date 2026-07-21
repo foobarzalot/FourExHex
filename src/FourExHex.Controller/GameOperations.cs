@@ -50,7 +50,7 @@ public class GameOperations
     private readonly Func<bool> _aiSilentMode;
     private readonly Func<bool> _isReplayInstantActive;
     // True when the human's Automate loop should run silent + chunked
-    // (UserSettings.AutomateSpeed == Instant) — the automate analog of
+    // (UserSettings.HumanSpeed == Instant) — the automate analog of
     // _aiSilentMode. Combined with _isAutomating in InSilentAutomateBatch.
     private readonly Func<bool> _automateSilentMode;
     private readonly bool _previewMode;
@@ -1404,6 +1404,12 @@ public class GameOperations
                 $"legal target for a {srcTile.Unit.Level}.");
         }
 
+        // Hint the view before mutating: the next occupant refresh may
+        // animate the rebuilt glyph traveling source→destination instead
+        // of snapping. Unconditional, like the FX/sound emitters below —
+        // the paced-vs-instant gate lives view-side (silent mode).
+        _map.AnimateUnitMove(source, destination);
+
         AiApplyResult r = AiActionCore.Move(source, destination, _state, attacker);
         if (r.Move.WasCapture)
         {
@@ -1597,6 +1603,33 @@ public class GameOperations
     /// occupant type) > generic place (only if the move was consumed).
     /// Reposition onto own-empty stays silent.
     /// </summary>
+    /// <summary>
+    /// Latch the HUD's endgame-overlay hold: a game-ending / defeating
+    /// MOVE keeps its victory/defeat modal hidden while the travel tween
+    /// is in flight. Must run BEFORE the beat's refresh paints. Paired
+    /// with a pacer-scheduled <see cref="RevealEndgameOverlays"/> one
+    /// settle delay later.
+    /// </summary>
+    public void HoldEndgameOverlays()
+    {
+        Log.Debug(Log.LogCategory.Hud, "[overlay] hold endgame overlays (move in flight)");
+        _hud.SetEndgameOverlaysHeld(true);
+    }
+
+    /// <summary>
+    /// Release the endgame-overlay hold and repaint so the
+    /// victory/defeat modal appears — scheduled by the move's executor
+    /// to land after <see cref="StepPacing.MoveSettleDelayMs"/>, i.e.
+    /// after the travel tween has settled.
+    /// </summary>
+    public void RevealEndgameOverlays()
+    {
+        Log.Debug(Log.LogCategory.Hud, "[overlay] reveal endgame overlays");
+        _hud.SetEndgameOverlaysHeld(false);
+        RefreshSilentMode();
+        RefreshViews();
+    }
+
     public void DispatchActionSound(HexCoord destination, MoveResult result, bool wasCombine)
     {
         if (wasCombine)

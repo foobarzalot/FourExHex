@@ -192,6 +192,57 @@ public partial class HexMapView : Node2D, IHexMapView
     // occupant glyphs — so there is no separate stale-occupant layer.
     private TriangleSoup? _fogLayer;
     private readonly Dictionary<HexCoord, Node2D> _unitVisuals = new();
+    // ---- Arrival-synced move application (issue #163 family) ----
+    // On a paced move the ENTIRE destination-side application — capture
+    // rebuild (fills/borders), highlight, occupant refresh, fog/tide/sea
+    // pushes, one-shot FX/sounds — is held while the source glyph travels,
+    // and applied together when the tween lands, so impact happens at
+    // arrival instead of at mutation time. Lifecycle: AnimateUnitMove
+    // registers a hint (destination → source); calls arriving while the
+    // hint is pending stage themselves; the next RefreshOccupantVisuals
+    // starts the travel (consuming the hint) and CompleteArrival applies
+    // everything on tween-finish. Snap paths (silent / Instant / fog /
+    // missing glyph) apply inline — a snap IS the arrival. Async calls
+    // during flight (undo, input) land the travel instantly first.
+    private readonly Dictionary<HexCoord, HexCoord> _pendingMoveAnims = new();
+    private sealed class ArrivalRecord
+    {
+        public HexCoord From;
+        public HexCoord To;
+        public Node2D Glyph = null!;
+        public PlayerId? RefreshPlayer;
+        public Treasury RefreshTreasury = null!;
+        public IReadOnlySet<HexCoord> RefreshVisited = null!;
+        // Process frame the travel started on. Follow-up calls in the
+        // SAME frame (TrackHandler's trailing refresh, the defeat/win
+        // branches' second refresh) belong to the same beat and fold
+        // into the held application; a LATER frame's call is a genuine
+        // async pre-empt (undo, input) and lands the travel first.
+        public ulong StartFrame;
+    }
+    private ArrivalRecord? _inFlightArrival;
+    // Held/staged application, populated while a hint is pending (and, for
+    // the fog/tide/sea trio, also mid-flight — they trail the refresh
+    // inside the same RefreshViews). Applied by CompleteArrival or the
+    // snap path, whichever comes first.
+    private bool _stagedRebuild;
+    private bool _stagedHighlightSet;
+    private Territory? _stagedHighlight;
+    private bool _stagedFogSet;
+    private FogView? _stagedFog;
+    private bool _stagedTideSet;
+    private List<TideStep> _stagedTide = new();
+    private bool _stagedSeaSet;
+    private IReadOnlyList<SeaViking> _stagedAtSea = System.Array.Empty<SeaViking>();
+    private IReadOnlyList<HexCoord> _stagedSeaGraves = System.Array.Empty<HexCoord>();
+    private readonly List<Action> _heldFx = new();
+    // Scales the move tween to the governing playback speed — the same
+    // actor-aware percent closure Main hands the pacer (replay / human /
+    // computer setting as appropriate; Slow=200 / Normal=100 / Fast=50),
+    // so the travel reads as one motion inside the beat window at every
+    // speed. Returns 0 when the governing speed is Instant → hard snap.
+    // Null (editor/headless contexts) = 100.
+    public Func<int>? StepDelayMultiplierPercent { get; set; }
     private readonly Dictionary<HexCoord, Node2D> _capitalVisuals = new();
     // Towers live in _capitalsLayer like capitals; tracked per-coord so
     // the mountain-shake FX can judder the glyph standing on the tile.
@@ -959,6 +1010,31 @@ public partial class HexMapView : Node2D, IHexMapView
     /// </summary>
     public void RebuildAfterTerritoryChange()
     {
+        if (_inFlightArrival != null)
+        {
+            if (Engine.GetProcessFrames() == _inFlightArrival.StartFrame)
+            {
+                // Same-beat follow-up — fold into the held application.
+                _stagedRebuild = true;
+                return;
+            }
+            // Async structural rebuild (undo, batch-end) while a travel
+            // is mid-flight: land it now, then apply this one normally.
+            CompleteArrival("rebuild-preempt");
+        }
+        else if (HoldingForPendingMove)
+        {
+            // The capture rebuild of the move being staged this beat —
+            // held so tiles recolor at impact, not while the unit flies.
+            Log.Debug(Log.LogCategory.Render, "[move-anim] hold rebuild");
+            _stagedRebuild = true;
+            return;
+        }
+        RebuildAfterTerritoryChangeCore();
+    }
+
+    private void RebuildAfterTerritoryChangeCore()
+    {
         // Rising Tides: detect submerge / mountain-demote FIRST, while the drowned
         // tiles' fills are still present (the prune frees them next) and before
         // DrawMountains repaints — but defer SPAWNING the effects to the end (see
@@ -1057,6 +1133,33 @@ public partial class HexMapView : Node2D, IHexMapView
     /// state — the controller calls this on every change.
     /// </summary>
     public void ShowHighlight(Territory? selected)
+    {
+        if (_inFlightArrival != null)
+        {
+            if (Engine.GetProcessFrames() == _inFlightArrival.StartFrame)
+            {
+                // Same-beat follow-up (e.g. the win branch's clear) —
+                // fold into the held application; latest wins.
+                _stagedHighlightSet = true;
+                _stagedHighlight = selected;
+                return;
+            }
+            // Async highlight while a travel is mid-flight: land it, then
+            // apply. (The next beat's own highlight arrives after the
+            // settle delay, i.e. post-arrival — this is for input paths.)
+            CompleteArrival("highlight-preempt");
+        }
+        else if (HoldingForPendingMove)
+        {
+            Log.Debug(Log.LogCategory.Render, "[move-anim] hold highlight");
+            _stagedHighlightSet = true;
+            _stagedHighlight = selected;
+            return;
+        }
+        ShowHighlightCore(selected);
+    }
+
+    private void ShowHighlightCore(Territory? selected)
     {
         // Skip the redraw when the incoming region is visually identical to
         // the one already shown (same owner + exact coord set — a fresh
@@ -1231,6 +1334,19 @@ public partial class HexMapView : Node2D, IHexMapView
     /// </summary>
     public void ShowTideForecast(IEnumerable<TideStep> steps)
     {
+        if ((HoldingForPendingMove || _inFlightArrival != null) && !_silentMode)
+        {
+            // Materialize: the controller may pass a live collection.
+            _stagedTide = new List<TideStep>();
+            foreach (TideStep s in steps) _stagedTide.Add(s);
+            _stagedTideSet = true;
+            return;
+        }
+        ShowTideForecastCore(steps);
+    }
+
+    private void ShowTideForecastCore(IEnumerable<TideStep> steps)
+    {
         if (_tideForecastLayer == null) return;
 
         // Suppress entirely at instant speed; otherwise the desired set IS the
@@ -1293,6 +1409,17 @@ public partial class HexMapView : Node2D, IHexMapView
     /// current projection.
     /// </summary>
     public void ShowFog(FogView? fog)
+    {
+        if ((HoldingForPendingMove || _inFlightArrival != null) && !_silentMode)
+        {
+            _stagedFogSet = true;
+            _stagedFog = fog;
+            return;
+        }
+        ShowFogCore(fog);
+    }
+
+    private void ShowFogCore(FogView? fog)
     {
         bool visibilityChanged = !FogVisibleEqual(_fog, fog);
         _fog = fog;
@@ -1886,7 +2013,183 @@ public partial class HexMapView : Node2D, IHexMapView
     /// the actionable treatment — once the player has selected a
     /// territory this turn, its capital stops calling for attention.
     /// </summary>
+    /// <summary>
+    /// Register a unit-move hint (see <see cref="IHexMapView.AnimateUnitMove"/>):
+    /// the next <see cref="RefreshOccupantVisuals"/> starts the source
+    /// glyph traveling to <paramref name="to"/> and everything
+    /// destination-side holds until it lands. A new hint while a previous
+    /// travel is still mid-flight (rapid human moves) lands the old one
+    /// instantly first.
+    /// </summary>
+    public void AnimateUnitMove(HexCoord from, HexCoord to)
+    {
+        CompleteArrival("new-move");
+        _pendingMoveAnims[to] = from;
+    }
+
+    /// <summary>True while calls staged for a pending (not yet flying)
+    /// move hint should hold rather than apply.</summary>
+    private bool HoldingForPendingMove => _pendingMoveAnims.Count > 0 && !_silentMode;
+
+    /// <summary>A destination coord whose one-shot FX should be held for
+    /// the arrival — either the pending hint's or the in-flight travel's.</summary>
+    private bool IsHeldCoord(HexCoord c) =>
+        !_silentMode
+        && (_pendingMoveAnims.ContainsKey(c)
+            || (_inFlightArrival != null && _inFlightArrival.To.Equals(c)));
+
+    /// <summary>
+    /// Begin the travel for the single pending hint, capturing the refresh
+    /// args for <see cref="CompleteArrival"/>. Returns false when the move
+    /// must snap instead: silent mode, Instant speed (multiplier probe 0),
+    /// a fog-hidden source (animating would leak the mover's origin), a
+    /// missing source glyph, or anything other than exactly one hint.
+    /// </summary>
+    private bool TryBeginMoveTravel(PlayerId? currentPlayer, Treasury treasury,
+        IReadOnlySet<HexCoord> visitedCapitals)
+    {
+        if (_silentMode || _pendingMoveAnims.Count != 1) return false;
+        HexCoord to = default, from = default;
+        foreach (KeyValuePair<HexCoord, HexCoord> hint in _pendingMoveAnims)
+        {
+            to = hint.Key;
+            from = hint.Value;
+        }
+        if (_fog != null && FogTierOf(from) != VisibilityTier.Visible) return false;
+        if (!_unitVisuals.TryGetValue(from, out Node2D? glyph) || glyph == null) return false;
+        int percent = StepDelayMultiplierPercent?.Invoke() ?? 100;
+        if (percent <= 0) return false;
+
+        _pendingMoveAnims.Clear();
+        _inFlightArrival = new ArrivalRecord
+        {
+            From = from,
+            To = to,
+            Glyph = glyph,
+            RefreshPlayer = currentPlayer,
+            RefreshTreasury = treasury,
+            RefreshVisited = visitedCapitals,
+            StartFrame = Engine.GetProcessFrames(),
+        };
+
+        // Normalize: the glyph may carry a pulse scale or a selection lift.
+        _pulsingUnits.Remove(from);
+        glyph.Scale = Vector2.One;
+        glyph.Position = FirstHexCenterOffset + HexPixel.ToPixel(from, HexSize);
+
+        Vector2 toCenter = FirstHexCenterOffset + HexPixel.ToPixel(to, HexSize);
+        int dist = HexCoord.Distance(from, to);
+        // Duration scales with hex distance (StepPacing.MoveTravelBaseMs;
+        // the paced beat's settle delay stretches with the same curve, so
+        // the tween lands before the next beat). Sine/InOut keeps peak
+        // velocity mid-flight and moderate so the eye can track the travel.
+        float durMs = StepPacing.MoveTravelBaseMs(dist) * percent / 100f;
+        Tween moveTween = glyph.CreateTween();
+        moveTween.TweenProperty(glyph, "position", toCenter, durMs / 1000f)
+            .SetTrans(Tween.TransitionType.Sine)
+            .SetEase(Tween.EaseType.InOut);
+        moveTween.Finished += () => CompleteArrival("arrival");
+        Log.Debug(Log.LogCategory.Render,
+            $"[move-anim] travel {from}->{to} dist={dist} durMs={(int)durMs}");
+        return true;
+    }
+
+    /// <summary>
+    /// Land the in-flight travel: apply the held rebuild + highlight, run
+    /// the real occupant refresh (which frees the traveled glyph and
+    /// paints post-move truth), then the trailing fog/tide/sea pushes and
+    /// the held one-shot FX. Idempotent — no-op when nothing is in flight.
+    /// </summary>
+    private void CompleteArrival(string reason)
+    {
+        ArrivalRecord? r = _inFlightArrival;
+        if (r == null) return;
+        _inFlightArrival = null;
+        Log.Debug(Log.LogCategory.Render,
+            $"[move-anim] arrival {r.From}->{r.To} ({reason}) " +
+            $"rebuild={_stagedRebuild} fx={_heldFx.Count}");
+        ApplyStagedPrimary();
+        RefreshOccupantVisualsCore(r.RefreshPlayer, r.RefreshTreasury, r.RefreshVisited);
+        ApplyStagedSecondaryAndFx();
+    }
+
+    /// <summary>Held capture rebuild + highlight — the calls that must
+    /// land BEFORE the occupant refresh repaints.</summary>
+    private void ApplyStagedPrimary()
+    {
+        if (_stagedRebuild)
+        {
+            _stagedRebuild = false;
+            RebuildAfterTerritoryChangeCore();
+        }
+        if (_stagedHighlightSet)
+        {
+            _stagedHighlightSet = false;
+            Territory? highlight = _stagedHighlight;
+            _stagedHighlight = null;
+            ShowHighlightCore(highlight);
+        }
+    }
+
+    /// <summary>Held fog/tide/sea pushes and one-shot FX — the calls that
+    /// land AFTER the occupant refresh.</summary>
+    private void ApplyStagedSecondaryAndFx()
+    {
+        if (_stagedFogSet)
+        {
+            _stagedFogSet = false;
+            FogView? fog = _stagedFog;
+            _stagedFog = null;
+            ShowFogCore(fog);
+        }
+        if (_stagedTideSet)
+        {
+            _stagedTideSet = false;
+            ShowTideForecastCore(_stagedTide);
+        }
+        if (_stagedSeaSet)
+        {
+            _stagedSeaSet = false;
+            ShowSeaVikingsCore(_stagedAtSea, _stagedSeaGraves);
+        }
+        if (_heldFx.Count > 0)
+        {
+            List<Action> fx = new(_heldFx);
+            _heldFx.Clear();
+            foreach (Action play in fx) play();
+        }
+    }
+
     public void RefreshOccupantVisuals(PlayerId? currentPlayer, Treasury treasury,
+        IReadOnlySet<HexCoord> visitedCapitals)
+    {
+        ArrivalRecord? inFlight = _inFlightArrival;
+        if (inFlight != null)
+        {
+            if (Engine.GetProcessFrames() == inFlight.StartFrame)
+            {
+                // Same-beat follow-up refresh (TrackHandler's trailing
+                // RefreshViews, the defeat/win branches' second paint) —
+                // fold into the held application; latest args win.
+                inFlight.RefreshPlayer = currentPlayer;
+                inFlight.RefreshTreasury = treasury;
+                inFlight.RefreshVisited = visitedCapitals;
+                return;
+            }
+            // Async refresh while a travel is mid-flight (undo, input):
+            // land it now, then apply this one normally below.
+            CompleteArrival("refresh-preempt");
+        }
+        if (TryBeginMoveTravel(currentPlayer, treasury, visitedCapitals)) return;
+        // Snap: a snap IS the arrival — apply anything staged during the
+        // hold phase around the real refresh, then flush held FX.
+        ApplyStagedPrimary();
+        RefreshOccupantVisualsCore(currentPlayer, treasury, visitedCapitals);
+        _pendingMoveAnims.Clear();
+        ApplyStagedSecondaryAndFx();
+    }
+
+    private void RefreshOccupantVisualsCore(PlayerId? currentPlayer, Treasury treasury,
         IReadOnlySet<HexCoord> visitedCapitals)
     {
         // Cache for IsActionableUnit so it can recompute the
@@ -2269,10 +2572,25 @@ public partial class HexMapView : Node2D, IHexMapView
     private bool _silentMode;
     public void SetSilentMode(bool silent)
     {
+        // Entering a silent batch mid-flight: land the travel instantly —
+        // silent means no animation, and the queued application must not
+        // wait on a tween that silent-track refreshes would orphan.
+        if (silent) CompleteArrival("silent");
         _silentMode = silent;
     }
 
     public void PlayDestructionEffect(HexCoord coord, HexOccupant destroyed)
+    {
+        if (IsHeldCoord(coord))
+        {
+            Log.Debug(Log.LogCategory.Render, $"[move-anim] hold destruction at {coord}");
+            _heldFx.Add(() => PlayDestructionEffectCore(coord, destroyed));
+            return;
+        }
+        PlayDestructionEffectCore(coord, destroyed);
+    }
+
+    private void PlayDestructionEffectCore(HexCoord coord, HexOccupant destroyed)
     {
         // Silent-mode gating is controller-side (GameOperations.IsSilent);
         // only the genuinely view-only gates remain (VFX toggle, graves are
@@ -2373,6 +2691,17 @@ public partial class HexMapView : Node2D, IHexMapView
     private readonly HashSet<Node2D> _hexAlignedDeathFx = new();
 
     public void PlayTerrainCaptureEffect(HexCoord coord, TerrainFeature terrain)
+    {
+        if (IsHeldCoord(coord))
+        {
+            Log.Debug(Log.LogCategory.Render, $"[move-anim] hold terrain-fx {terrain} at {coord}");
+            _heldFx.Add(() => PlayTerrainCaptureEffectCore(coord, terrain));
+            return;
+        }
+        PlayTerrainCaptureEffectCore(coord, terrain);
+    }
+
+    private void PlayTerrainCaptureEffectCore(HexCoord coord, TerrainFeature terrain)
     {
         if (!UserSettings.VfxEnabled) return;
         if (_deathsLayer == null) return;
@@ -2739,6 +3068,18 @@ public partial class HexMapView : Node2D, IHexMapView
     }
 
     public void PlaySound(SoundEffect kind, HexCoord? at = null)
+    {
+        if (at.HasValue && IsHeldCoord(at.Value))
+        {
+            Log.Debug(Log.LogCategory.Render, $"[move-anim] hold sound {kind} at {at.Value}");
+            HexCoord held = at.Value;
+            _heldFx.Add(() => PlaySoundCore(kind, held));
+            return;
+        }
+        PlaySoundCore(kind, at);
+    }
+
+    private void PlaySoundCore(SoundEffect kind, HexCoord? at = null)
     {
         // Silent-mode gating is controller-side (GameOperations.IsSilent);
         // the view plays whatever cue it's handed — unless muted (pinned).
@@ -3435,6 +3776,20 @@ public partial class HexMapView : Node2D, IHexMapView
     /// layer.
     /// </summary>
     public void ShowSeaVikings(
+        System.Collections.Generic.IReadOnlyList<SeaViking> atSea,
+        System.Collections.Generic.IReadOnlyList<HexCoord> seaGraves)
+    {
+        if ((HoldingForPendingMove || _inFlightArrival != null) && !_silentMode)
+        {
+            _stagedAtSea = atSea;
+            _stagedSeaGraves = seaGraves;
+            _stagedSeaSet = true;
+            return;
+        }
+        ShowSeaVikingsCore(atSea, seaGraves);
+    }
+
+    private void ShowSeaVikingsCore(
         System.Collections.Generic.IReadOnlyList<SeaViking> atSea,
         System.Collections.Generic.IReadOnlyList<HexCoord> seaGraves)
     {

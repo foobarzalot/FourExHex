@@ -131,6 +131,9 @@ public class MockHudView : IHudView
     public bool VictoryOverlaySuppressed { get; private set; }
     public void SetVictoryOverlaySuppressed(bool suppressed) => VictoryOverlaySuppressed = suppressed;
 
+    public bool EndgameOverlaysHeld { get; private set; }
+    public void SetEndgameOverlaysHeld(bool held) => EndgameOverlaysHeld = held;
+
     public HexCoord? SummonedCapitalAlertCoord { get; private set; }
     public EconomyOutlook? LastSummonedAlertOutlook { get; private set; }
     public int SummonAlertCallCount { get; private set; }

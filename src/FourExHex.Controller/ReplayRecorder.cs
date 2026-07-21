@@ -450,7 +450,8 @@ public class ReplayRecorder
     /// and on an instant→paced transition forces the structural rebuild
     /// the instant track's suppressed per-capture rebuilds skipped.
     /// </summary>
-    public void ScheduleNextReplayBeat(bool turnBoundary)
+    public void ScheduleNextReplayBeat(bool turnBoundary,
+        int pacedActionDelayMs = StepPacing.AiActionDelayMs)
     {
         if (!_replayMode) return;
         bool nowInstant = _replayIsInstantMode?.Invoke() == true;
@@ -475,7 +476,8 @@ public class ReplayRecorder
             // transitions read as a beat, not a wait.
             pacedBoundaryDelayMs: _fastForwardIdleTurns
                 ? StepPacing.ReplayIdleTurnSkipMs
-                : StepPacing.AiBetweenPlayersDelayMs);
+                : StepPacing.AiBetweenPlayersDelayMs,
+            pacedActionDelayMs: pacedActionDelayMs);
     }
 
     /// <summary>Instant-replay driver: a thin wrapper over the shared
@@ -484,7 +486,7 @@ public class ReplayRecorder
         active: () => _replayMode,
         step: ReplayInstantStep,
         onExhausted: EndReplay,
-        reschedule: ScheduleNextReplayBeat);
+        reschedule: turnBoundary => ScheduleNextReplayBeat(turnBoundary));
 
     private void StepReplayPreview()
     {
@@ -564,8 +566,12 @@ public class ReplayRecorder
         if (_session.IsGameOver) { EndReplay(); return; }
 
         // Beat boundary: re-dispatch so a mid-replay Replay-Speed change
-        // switches tracks for the next beat.
-        ScheduleNextReplayBeat(turnBoundary: crossesTurn);
+        // switches tracks for the next beat. Move beats stretch the delay
+        // so their travel tween lands before the next beat's refresh.
+        ScheduleNextReplayBeat(turnBoundary: crossesTurn,
+            pacedActionDelayMs: beat is ReplayMoveBeat mv
+                ? StepPacing.MoveSettleDelayMs(HexCoord.Distance(mv.From, mv.To))
+                : StepPacing.AiActionDelayMs);
     }
 
     /// <summary>

@@ -148,7 +148,7 @@ public class AiTurnDriver
     /// forces the structural rebuild instant's suppressed per-capture
     /// rebuilds skipped.
     /// </summary>
-    public void Schedule(bool turnBoundary)
+    public void Schedule(bool turnBoundary, int pacedActionDelayMs = StepPacing.AiActionDelayMs)
     {
         // The syncSilentMode hop refreshes the view's silent flag + the
         // "Opponents…" overlay to the live setting before scheduling, so
@@ -166,8 +166,26 @@ public class AiTurnDriver
             logInstantToPaced: () => Log.Debug(Log.LogCategory.Ai,
                 $"[speed] AI track instant→paced mid-turn (player={_state.Turns.CurrentPlayer.Id})"),
             logPacedToInstant: () => Log.Debug(Log.LogCategory.Ai,
-                $"[speed] AI track paced→instant mid-turn (player={_state.Turns.CurrentPlayer.Id})"));
+                $"[speed] AI track paced→instant mid-turn (player={_state.Turns.CurrentPlayer.Id})"),
+            pacedActionDelayMs: pacedActionDelayMs);
     }
+
+    /// <summary>
+    /// Post-execute dispatch delay for the just-executed action: moves
+    /// stretch the beat to cover their distance-scaled travel tween
+    /// (<see cref="StepPacing.MoveSettleDelayMs"/>); everything else
+    /// keeps the baseline cadence.
+    /// </summary>
+    internal static int SettleDelayFor(AiAction action) =>
+        action is AiMoveAction mv
+            ? StepPacing.MoveSettleDelayMs(HexCoord.Distance(mv.Source, mv.Destination))
+            : StepPacing.AiActionDelayMs;
+
+    /// <summary>Schedule the endgame-overlay reveal to land after the
+    /// executed move's settle delay (multiplier-scaled, matching the
+    /// travel tween's own scaling).</summary>
+    private void ScheduleOverlayReveal(AiAction action) =>
+        _aiPacer.Schedule(_ops.RevealEndgameOverlays, SettleDelayFor(action));
 
     /// <summary>
     /// Preview beat: pick the next AI action, highlight the territory
@@ -338,6 +356,15 @@ public class AiTurnDriver
         HexCoord resultCoord = rc.Value;
 
         _ops.CheckGameEndConditions();
+        // A game-ending / human-defeating MOVE holds its modal until the
+        // travel tween settles — the overlay must not pop over a unit
+        // still in flight. Latched before any refresh below can paint;
+        // released by the scheduled reveal one settle delay later.
+        // Non-move actions (no travel) keep the inline paint.
+        bool holdOverlay = action is AiMoveAction
+            && !_aiSilentMode()
+            && (_ops.GameEndedFired || _session.PendingDefeatScreen.HasValue);
+        if (holdOverlay) _ops.HoldEndgameOverlays();
         if (_ops.GameEndedFired)
         {
             // Domination fired inside the action we just executed
@@ -352,6 +379,7 @@ public class AiTurnDriver
             // painting the victory screen — otherwise it draws on top.
             _ops.RefreshSilentMode();
             _ops.ShowHighlightAndRefresh(null);
+            if (holdOverlay) ScheduleOverlayReveal(action);
             return;
         }
 
@@ -384,6 +412,7 @@ public class AiTurnDriver
         {
             _ops.RefreshSilentMode();
             _ops.RefreshViews();
+            if (holdOverlay) ScheduleOverlayReveal(action);
             return;
         }
         // A wave just spawned: hold the viking phase open while the arrival
@@ -401,8 +430,9 @@ public class AiTurnDriver
             return;
         }
         // Action boundary: re-dispatch so a mid-turn Ai-Speed change
-        // switches tracks for the next action.
-        Schedule(turnBoundary: false);
+        // switches tracks for the next action. Moves stretch the delay
+        // so their travel tween lands before the next beat's refresh.
+        Schedule(turnBoundary: false, pacedActionDelayMs: SettleDelayFor(action));
     }
 
     /// <summary>
@@ -645,7 +675,7 @@ public class AiTurnDriver
         active: () => !RunHalted,
         step: AiInstantStep,
         onExhausted: EndInstantAiBatch,
-        reschedule: Schedule);
+        reschedule: turnBoundary => Schedule(turnBoundary));
 
     private InstantStep AiInstantStep()
     {

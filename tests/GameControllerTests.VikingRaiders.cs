@@ -547,4 +547,43 @@ public partial class GameControllerTests
         Assert.Equal(3, state.Vikings.LastCompletedRound);
         Assert.Equal(players[0].Id, state.Turns.CurrentPlayer.Id); // Red's turn began
     }
+
+    [Fact]
+    public void VikingRaiders_IsVikingPhaseActiveProbe_TracksThePhase()
+    {
+        // Main's playback-speed closure uses this probe to keep viking
+        // beats (which run while the waiting player may be human) on the
+        // Computer Player Speed instead of the human's.
+        (HexGrid grid, HashSet<HexCoord> water) = VikingIsland();
+        var players = new List<Player>
+        {
+            new Player("Red", PlayerId.FromIndex(0)),
+            new Player("Blue", PlayerId.FromIndex(1)),
+        };
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(
+            grid, territories, players,
+            new TurnState(players, currentPlayerIndex: 1, turnNumber: 2), new Treasury(),
+            waterCoords: water, mode: GameMode.VikingRaiders);
+        var session = new SessionState();
+        foreach (Player p in players)
+        {
+            session.ClaimVictoryPromptedHighestThreshold[p.Id] = 90;
+        }
+        var map = new MockHexMapView();
+        var hud = new MockHudView();
+        var pacer = new QueuedAiPacer();
+        var controller = new GameController(state, session, map, hud, aiPacer: pacer);
+        controller.StartGame();
+        pacer.DrainAll();
+
+        Assert.False(controller.IsVikingPhaseActive); // ordinary human turn
+
+        hud.ClickEndTurn(); // Blue ends round 2 → round-3 viking phase (paced)
+        pacer.StepOne();    // first viking beat only — phase mid-flight
+        Assert.True(controller.IsVikingPhaseActive);
+
+        pacer.DrainAll();   // phase completes, Red's turn begins
+        Assert.False(controller.IsVikingPhaseActive);
+    }
 }

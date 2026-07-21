@@ -41,6 +41,7 @@ public sealed class HeadlessHexMapView : IHexMapView
     public void RefreshOccupantVisuals(PlayerId? currentPlayer, Treasury treasury,
         IReadOnlySet<HexCoord> visitedCapitals) { }
     public void SetSilentMode(bool silent) { }
+    public void AnimateUnitMove(HexCoord from, HexCoord to) { }
     public void PlayDestructionEffect(HexCoord coord, HexOccupant destroyed) { }
     public void PlayTerrainCaptureEffect(HexCoord coord, TerrainFeature terrain) { }
     public void PlaySound(SoundEffect kind, HexCoord? at = null) { }
@@ -84,6 +85,7 @@ public sealed class HeadlessHudView : IHudView
     public void SetReplayAvailable(bool available) { }
     public void SetUndoRedoLocked(bool locked) { }
     public void SetVictoryOverlaySuppressed(bool suppressed) { }
+    public void SetEndgameOverlaysHeld(bool held) { }
     public HexCoord? SummonedCapitalAlertCoord => null;
     public void SummonCapitalAlertNotice(HexCoord capital, EconomyOutlook outlook) { }
     public void DismissCapitalAlertNotice() { }

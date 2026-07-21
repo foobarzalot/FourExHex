@@ -420,19 +420,35 @@ public partial class Main : Node2D
         // silent-mode predicate both consult IsReplayMode at call
         // time without a forward-reference cycle.
         GameController? controllerRef = null;
+        // Actor-aware playback speed: replay → Replay Speed; Automate and
+        // a human's own manual moves → Human Player Speed; live AI turns
+        // AND the viking pseudo-turn (which runs while the waiting,
+        // possibly human, player is current) → Computer Player Speed.
+        // Instant returns 0: the pacer never consults the multiplier on
+        // an instant track (those route through ScheduleUnscaled), so the
+        // 0 only reaches the view's move-travel tween, which reads
+        // percent <= 0 as "snap".
+        Func<int> speedMultiplierPercent = () =>
+        {
+            PlaybackSpeed speed =
+                controllerRef?.IsReplayMode == true ? UserSettings.ReplaySpeed
+                : controllerRef?.IsAutomating == true ? UserSettings.HumanSpeed
+                : controllerRef?.IsVikingPhaseActive == true
+                    || _state.Turns.CurrentPlayer.IsAi ? UserSettings.AiSpeed
+                : UserSettings.HumanSpeed;
+            return speed == PlaybackSpeed.Instant
+                ? 0
+                : UserSettings.SpeedMultiplierPercent(speed);
+        };
         IAiPacer pacer = diagnosticMode
             ? new SynchronousAiPacer()
             : new GodotAiPacer(
                 new SceneTreeTimerFactory(GetTree()),
-                () => controllerRef?.IsReplayMode == true
-                    ? UserSettings.SpeedMultiplierPercent(UserSettings.ReplaySpeed)
-                    : controllerRef?.IsAutomating == true
-                        // Automate has its own speed setting, independent of
-                        // AI turn speed. Instant never reaches this
-                        // multiplier — the loop routes it to the unscaled
-                        // chunked InstantAutomateTick (automateIsInstantMode).
-                        ? UserSettings.SpeedMultiplierPercent(UserSettings.AutomateSpeed)
-                        : UserSettings.SpeedMultiplierPercent(UserSettings.AiSpeed));
+                speedMultiplierPercent);
+        // The move-travel tween stretches with the same playback-speed
+        // multiplier as the pacer's beat delays, so the motion fills the
+        // beat window at every paced speed.
+        if (visibleMap != null) visibleMap.StepDelayMultiplierPercent = speedMultiplierPercent;
         // If we're resuming an in-progress save that carries a replay,
         // hand it to the controller so recording continues against the
         // same beat log (and BeginReplay can rewind to the original
@@ -459,7 +475,7 @@ public partial class Main : Node2D
             // Re-read at every between-moves automate dispatch: Instant
             // selects the silent chunked InstantAutomateTick track, so a
             // mid-run Settings change switches tracks at the next beat.
-            automateIsInstantMode: () => UserSettings.AutomateSpeed == PlaybackSpeed.Instant);
+            automateIsInstantMode: () => UserSettings.HumanSpeed == PlaybackSpeed.Instant);
         controllerRef = _controller;
 
         if (!diagnosticMode)
