@@ -356,6 +356,40 @@ public partial class HexMapView : Node2D, IHexMapView
     private const float PulseAmplitude = 0.18f;
     private const float PulseRate = 8.0f; // rad/sec; ~1.3 Hz
 
+    /// <summary>
+    /// Scale of the shared actionable pulse at the current phase. sin
+    /// returns [-1,1]; shift to [0,1] and map to scale [1, 1 + amplitude]
+    /// so the pulse only grows outward, in sync across every actionable
+    /// occupant and target ring. Every visual that joins the pulse
+    /// population mid-phase (occupant rebuild, deselection, target
+    /// previews) must be seeded with this scale at creation — a fresh
+    /// node's default scale 1 would otherwise render for a frame before
+    /// _Process reapplies the mid-phase scale, a visible snap (#168).
+    /// </summary>
+    private Vector2 CurrentPulseScale()
+    {
+        float phase = (float)System.Math.Sin(_pulseTime * PulseRate) * 0.5f + 0.5f;
+        float scale = 1f + PulseAmplitude * phase;
+        return new Vector2(scale, scale);
+    }
+
+    /// <summary>
+    /// Re-join <paramref name="coord"/>'s unit to the shared pulse at the
+    /// current phase (see <see cref="CurrentPulseScale"/>). Used when a
+    /// previously-selected or previously-cued unit goes back to plain
+    /// actionable.
+    /// </summary>
+    private void RestorePulse(HexCoord coord)
+    {
+        _pulsingUnits.Add(coord);
+        if (_unitVisuals.TryGetValue(coord, out Node2D? visual) && visual != null)
+        {
+            visual.Scale = CurrentPulseScale();
+        }
+        Log.Debug(Log.LogCategory.Render,
+            $"[pulse] restore {coord} scale={CurrentPulseScale().X:F3}");
+    }
+
     // Pan/drag state. The map renders in this Node2D's local space, so
     // panning is just translating Position. ToLocal() in mouse-to-hex
     // already accounts for this transform — no other math changes.
@@ -1273,6 +1307,7 @@ public partial class HexMapView : Node2D, IHexMapView
             {
                 preview.AddChild(CreateFilledDisc(HexSize * UnitDotRadius, color));
             }
+            preview.Scale = CurrentPulseScale();
             _targetsLayer.AddChild(preview);
         }
         Log.Debug(Log.LogCategory.Render,
@@ -1294,6 +1329,7 @@ public partial class HexMapView : Node2D, IHexMapView
         {
             Node2D preview = CreateTowerPreviewVisual();
             preview.Position = FirstHexCenterOffset + HexPixel.ToPixel(coord, HexSize);
+            preview.Scale = CurrentPulseScale();
             _towerTargetsLayer.AddChild(preview);
         }
         // Tower previews are built outside the RefreshOccupantVisuals pass, so
@@ -1723,7 +1759,7 @@ public partial class HexMapView : Node2D, IHexMapView
         if (previous.HasValue)
         {
             ClearSelectionAffordance(previous.Value);
-            if (IsActionableUnit(previous.Value)) _pulsingUnits.Add(previous.Value);
+            if (IsActionableUnit(previous.Value)) RestorePulse(previous.Value);
         }
         if (coord.HasValue)
         {
@@ -1753,12 +1789,7 @@ public partial class HexMapView : Node2D, IHexMapView
             && towerTargetCount == 0) return;
 
         _pulseTime += delta;
-        // sin returns [-1,1]; shift to [0,1] and map to scale
-        // [1, 1 + amplitude] so the pulse only grows outward, in
-        // sync across every actionable occupant and target ring.
-        float phase = (float)System.Math.Sin(_pulseTime * PulseRate) * 0.5f + 0.5f;
-        float scale = 1f + PulseAmplitude * phase;
-        var pulsedScale = new Vector2(scale, scale);
+        Vector2 pulsedScale = CurrentPulseScale();
         foreach (HexCoord coord in _pulsingUnits)
         {
             if (_unitVisuals.TryGetValue(coord, out Node2D? visual) && visual != null)
@@ -1837,7 +1868,8 @@ public partial class HexMapView : Node2D, IHexMapView
     /// <summary>
     /// Reverse <see cref="ApplySelectionAffordance"/> for the given
     /// (previously-selected) coord: free the shadow and reset the
-    /// unit's scale so the next pulse tick starts from identity. The
+    /// unit's scale to identity (callers that return the unit to the
+    /// pulse re-seed the shared phase via <see cref="RestorePulse"/>). The
     /// unit's color and position are unaffected — color stays white
     /// as long as it's still actionable, and the unit was never
     /// moved by the affordance.
@@ -1873,7 +1905,7 @@ public partial class HexMapView : Node2D, IHexMapView
 
         if (previous.HasValue && IsActionableUnit(previous.Value))
         {
-            _pulsingUnits.Add(previous.Value);
+            RestorePulse(previous.Value);
         }
 
         if (coord.HasValue) ApplySelectCueVisual();
@@ -2390,7 +2422,11 @@ public partial class HexMapView : Node2D, IHexMapView
                 // ApplySelectionAffordance below. Pulsing the selected
                 // unit on top of the lift looked like a bug, so we
                 // exclude it.
-                if (actionable && !selected) _pulsingUnits.Add(tile.Coord);
+                if (actionable && !selected)
+                {
+                    _pulsingUnits.Add(tile.Coord);
+                    visual.Scale = CurrentPulseScale();
+                }
             }
             else if (tile.Occupant is Capital)
             {
@@ -2400,7 +2436,11 @@ public partial class HexMapView : Node2D, IHexMapView
                 _capitalsLayer?.AddChild(visual);
                 _capitalVisuals[tile.Coord] = visual;
 
-                if (actionable) _pulsingCapitals.Add(tile.Coord);
+                if (actionable)
+                {
+                    _pulsingCapitals.Add(tile.Coord);
+                    visual.Scale = CurrentPulseScale();
+                }
             }
             else if (tile.Occupant is Grave)
             {
@@ -2465,6 +2505,12 @@ public partial class HexMapView : Node2D, IHexMapView
         Log.Debug(Log.LogCategory.Render,
             $"RefreshOccupantVisuals: actionable(white)={actionableCount} other(black)={otherUnitCount} " +
             $"selected={_selectedUnit?.ToString() ?? "none"} currentPlayer={currentPlayer?.ToString() ?? "none"}");
+        // Proves the rebuilt pulsing visuals were seeded at the current
+        // shared phase instead of default scale 1 (#168): scale here is
+        // mid-pulse whenever _pulseTime isn't at a trough.
+        Log.Debug(Log.LogCategory.Render,
+            $"[pulse] re-seed units={_pulsingUnits.Count} capitals={_pulsingCapitals.Count} " +
+            $"scale={CurrentPulseScale().X:F3} t={_pulseTime:F2}");
 
         // Repaint warning badges on every refresh: the human just
         // bought / moved / undid something that could have flipped a
