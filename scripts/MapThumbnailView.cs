@@ -190,6 +190,20 @@ public partial class MapThumbnailView : Control
         int tiles = 0;
         foreach (HexTile _ in state.Grid.Tiles) tiles++;
 
+        // Size the offscreen board to the state being previewed — authored
+        // maps may be any size (procedural previews infer their full
+        // BoardCols x BoardRows rectangle, so this is a no-op for them).
+        (int stateCols, int stateRows) = MapBounds.Infer(
+            state.Grid, state.WaterCoords);
+        if (stateCols > 0 && stateRows > 0
+            && (_map.Cols != stateCols || _map.Rows != stateRows))
+        {
+            _map.Cols = stateCols;
+            _map.Rows = stateRows;
+            Log.Debug(Log.LogCategory.Display,
+                $"MapThumbnail: board sized {stateCols}x{stateRows} for {label}");
+        }
+
         // Size the offscreen viewport to the nominal GRID aspect in the current
         // screen orientation — seed-independent, so re-rolls never resize the
         // frame. A portrait orientation gives the viewport a tall aspect, which

@@ -338,6 +338,21 @@ public partial class Main : Node2D
         }
         else
         {
+            // Size the board to the state actually being played, not the
+            // view's exported 30x20 defaults — authored maps carry no
+            // explicit dimensions and may be any size (e.g. the bundled
+            // 22x17 atoll-6p). Procedural and resumed games cover their
+            // full rectangle with land-or-water, so inference is exact
+            // for them too.
+            (int stateCols, int stateRows) = MapBounds.Infer(
+                _state.Grid, _state.WaterCoords);
+            if (stateCols > 0 && stateRows > 0)
+            {
+                visibleMap!.Cols = stateCols;
+                visibleMap.Rows = stateRows;
+                Log.Debug(Log.LogCategory.Render,
+                    $"Main: board sized {stateCols}x{stateRows} from loaded state");
+            }
             visibleMap!.Init(_state);
             AddChild(visibleMap);
             // HexMapView._Ready owns its initial Position now (clamped

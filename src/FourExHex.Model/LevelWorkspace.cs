@@ -219,12 +219,8 @@ public sealed class LevelWorkspace
     public static LevelWorkspace FromJson(string json)
     {
         LoadedSave loaded = SaveSerializer.Deserialize(json);
-
-        int cols = 0, rows = 0;
-        foreach (HexTile tile in loaded.State.Grid.Tiles)
-            GrowBounds(tile.Coord, ref cols, ref rows);
-        foreach (HexCoord coord in loaded.State.WaterCoords)
-            GrowBounds(coord, ref cols, ref rows);
+        (int cols, int rows) = MapBounds.Infer(
+            loaded.State.Grid, loaded.State.WaterCoords);
 
         var ws = new LevelWorkspace(
             cols, rows, loaded.State.Grid,
@@ -251,13 +247,6 @@ public sealed class LevelWorkspace
                 ws._kinds[slot] = slot == 0 ? PlayerKind.Human : PlayerKind.Computer;
         }
         return ws;
-    }
-
-    private static void GrowBounds(HexCoord coord, ref int cols, ref int rows)
-    {
-        (int col, int row) = coord.ToOffset();
-        if (col + 1 > cols) cols = col + 1;
-        if (row + 1 > rows) rows = row + 1;
     }
 
     public static IEnumerable<HexCoord> RectCoords(int col1, int row1, int col2, int row2)
