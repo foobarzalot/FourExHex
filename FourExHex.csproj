@@ -9,9 +9,10 @@
       sources out of the main game assembly. The src/** exclude is
       mandatory: without it the Godot SDK glob would also compile the
       moved sources into FourExHex.dll, duplicating every model type
-      (CS0436) since the library already defines them.
+      (CS0436) since the library already defines them. tools/** likewise
+      keeps the level-designer CLI's Program out of the game assembly.
     -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);tests/**/*;src/**/*</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);tests/**/*;src/**/*;tools/**/*</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>

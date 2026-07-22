@@ -105,6 +105,10 @@ FOUREXHEX_6AI=1 /Applications/Godot_mono.app/Contents/MacOS/Godot --headless --p
 
 Use these for AI-behavior debugging — do **not** use them as a substitute for the manual-test rule above when the change affects anything a human would see.
 
+## Level-design harness
+
+Authored starting maps can be created, edited, validated, and playtested entirely headlessly via the CLI in `tools/FourExHex.LevelDesigner/` (`new` / `show` / `edit` / `roster` / `validate` / `playtest`), backed by `LevelWorkspace` + `MapTextRenderer` (Model) and `LevelPlaytest` (Controller). **See `LEVEL_DESIGN.md`** for the agent runbook (design loop, edit-op grammar, metric targets). Maps land in the game's `user://maps/` dir and load via Play Game → Load Starting Map. `FOUREXHEX_LOG="LevelDesign:Debug"` traces ops; playtests are all-AI, in-process, and byte-identical per seed.
+
 ## Campaign winnable-seed pipeline
 
 Campaign levels carry a baked, provably-winnable-at-Soldier seed table (`src/FourExHex.Model/CampaignSeeds.cs`, read by `CampaignProgress.SeedForLevel`). Changes to rules, AI, map generation, or the economy can invalidate the proofs; changes to a level's identity (mode, densities, roster derivation) invalidate that level. **See `CAMPAIGN_SEEDS.md`** for the verify/regenerate/bake runbook (env-gated harness in `tests/CampaignWinnerSweepTests.cs`).

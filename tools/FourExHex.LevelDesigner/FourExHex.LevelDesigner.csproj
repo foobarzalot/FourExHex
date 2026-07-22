@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Headless level-design CLI (issue #179): create / edit / validate /
+    playtest authored starting maps without Godot, driving the same
+    Model + Controller code paths the game uses. See LEVEL_DESIGN.md
+    for the agent runbook. Not part of the game build — FourExHex.csproj
+    excludes tools/** from the Godot compile glob and the sibling
+    .gdignore keeps the editor from scanning this directory.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>12</LangVersion>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>FourExHex</RootNamespace>
+    <Configurations>Debug;Release;ExportDebug;ExportRelease</Configurations>
+  </PropertyGroup>
+
+  <!-- Same export-config hygiene as the src libraries: declare the Godot
+       export configuration names so a solution-level export build doesn't
+       fall through to the SDK's undeclared-config defaults. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'ExportDebug'">
+    <DefineConstants>$(DefineConstants);DEBUG</DefineConstants>
+    <Optimize>false</Optimize>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)' == 'ExportRelease'">
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\FourExHex.Model\FourExHex.Model.csproj" />
+    <ProjectReference Include="..\..\src\FourExHex.Controller\FourExHex.Controller.csproj" />
+  </ItemGroup>
+
+</Project>

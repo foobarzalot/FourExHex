@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 FooBarzalot
 using System.Collections.Generic;
-using System.Text.RegularExpressions;
 using Godot;
 
 /// <summary>
@@ -324,17 +323,8 @@ public sealed class SaveStore
     }
 
     /// <summary>
-    /// Replace anything that isn't <c>[A-Za-z0-9_-]</c> with an
-    /// underscore. Keeps slot names safe for file systems and avoids
-    /// directory traversal attempts. Truncates to 64 chars; refuses
-    /// empty results (caller falls back to a default).
+    /// See <see cref="SaveNames.Sanitize"/> — shared with the headless
+    /// level-design CLI so both produce identical on-disk names.
     /// </summary>
-    public static string SanitizeSlotName(string raw)
-    {
-        if (string.IsNullOrWhiteSpace(raw)) return "save";
-        string cleaned = Regex.Replace(raw.Trim(), "[^A-Za-z0-9_-]", "_");
-        if (cleaned.Length > 64) cleaned = cleaned.Substring(0, 64);
-        if (cleaned.Length == 0) cleaned = "save";
-        return cleaned;
-    }
+    public static string SanitizeSlotName(string raw) => SaveNames.Sanitize(raw);
 }
