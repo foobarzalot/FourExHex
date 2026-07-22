@@ -1799,7 +1799,7 @@ Every modal (Settings, EscMenu/pause, SlotPickerDialog) uses the same three-piec
 2. **`ColorRect`** backdrop sized to viewport, painted `UiPalette.ModalBackdrop`, `MouseFilter = Stop`. (`SlotPickerDialog` wires backdrop `GuiInput` to close on click; `SettingsPanel`/`CreditsPanel`/`EscMenu` don't.)
 3. **`PanelContainer`** centered via `AnchorLeft/Right/Top/Bottom = 0.5` + `GrowDirection.Both`, picking up the theme's `Panel/styles/panel` stylebox. Content in a `VBoxContainer` child.
 
-Shared builders in **`scripts/ModalChrome.cs`** (static): `BuildBackdrop(viewport)`, `BuildCenteredPanel(panelW, panelH)` (fixed pixel — slot picker), parameterless overload `BuildCenteredPanel()` (content-sized — Settings/Credits/EscMenu), `BuildPanelHead` (uppercase title + close × + 1-px line-soft divider). `ModalChrome` also exposes `PalettePanelStyle()`, the rounded slate `StyleBoxFlat` shared by HudView's and MapEditorHudView's palette-group panels.
+Shared builders in **`scripts/ModalChrome.cs`** (static): `BuildBackdrop(viewport)`, `BuildCenteredPanel(panelW, panelH)` (fixed pixel — slot picker), parameterless overload `BuildCenteredPanel()` (content-sized — Settings/Credits/EscMenu), `BuildPanelHead` (uppercase title + close × + 1-px line-soft divider), `GoldRule()` (the 200×1 gold title divider shared by the menu/modal panel family — ConfirmModal, EscMenu, CreditsPanel, HudTour, SettingsPanel, `BuildSerifTitle`). `ModalChrome` also exposes `PalettePanelStyle()`, the rounded slate `StyleBoxFlat` shared by HudView's and MapEditorHudView's palette-group panels.
 
 ### HUD shape
 
