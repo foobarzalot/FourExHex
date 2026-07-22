@@ -586,4 +586,48 @@ public partial class GameControllerTests
         pacer.DrainAll();   // phase completes, Red's turn begins
         Assert.False(controller.IsVikingPhaseActive);
     }
+
+    /// <summary>
+    /// The viking phase must never show the territory-selection highlight
+    /// on a neutral territory: alternating sea-action previews (null) with
+    /// landing/move highlights (non-null) reads as a rapid select/unselect
+    /// blink on the neutral land (#169). The raiders' shield visuals carry
+    /// the action; the highlight stays absent for the whole phase.
+    /// </summary>
+    [Fact]
+    public void VikingRaiders_VikingPhaseNeverHighlightsNeutralTerritory()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = VikingIsland();
+        var g = new VikingGame(grid, water);
+
+        // Rounds: 3 = spawn, 4 = disembark, 5+ = landed raiders move.
+        for (int i = 0; i < 6; i++) EndRound(g);
+        Assert.True(g.LandedVikingCount > 0); // the flow exercised landed moves
+
+        Assert.All(
+            g.Map.HighlightCalls,
+            t => Assert.False(
+                t != null && t.Owner.IsNone,
+                $"neutral territory (size={t?.Size}) was highlighted"));
+    }
+
+    /// <summary>Replay playback of a viking phase holds the same rule:
+    /// no beat's preview highlight lands on a neutral territory (#169).</summary>
+    [Fact]
+    public void VikingRaiders_ReplayNeverHighlightsNeutralTerritory()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = VikingIsland();
+        var g = new VikingGame(grid, water);
+        for (int i = 0; i < 6; i++) EndRound(g);
+        Assert.Contains(g.Controller.ReplayBeats, b => b is ReplayVikingMoveBeat);
+
+        g.Map.HighlightCalls.Clear();
+        g.Controller.BeginReplay(); // synchronous pacer drains playback inline
+
+        Assert.All(
+            g.Map.HighlightCalls,
+            t => Assert.False(
+                t != null && t.Owner.IsNone,
+                $"neutral territory (size={t?.Size}) was highlighted during replay"));
+    }
 }

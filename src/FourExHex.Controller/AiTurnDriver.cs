@@ -323,8 +323,7 @@ public class AiTurnDriver
         if (_vikingPhase)
         {
             Log.Debug(Log.LogCategory.Viking,
-                $"[viking] preview beat {action.GetType().Name} → highlight " +
-                $"{(acting == null ? "null (clears)" : $"size={acting.Size}")}");
+                $"[viking] preview beat {action.GetType().Name} → highlight suppressed");
         }
         _ops.ShowHighlightAndRefresh(acting);
         // Preview→execute hop stays a direct schedule (NOT a re-dispatch):
@@ -386,16 +385,16 @@ public class AiTurnDriver
         // After a capture the old territory object is stale; find the
         // actor's territory now containing the result coord and
         // re-highlight so the outline matches the post-action board.
-        // During the viking phase the actor is the neutral owner, not
-        // the (waiting) current player.
-        PlayerId actor = _vikingPhase ? PlayerId.None : _state.Turns.CurrentPlayer.Id;
-        Territory? result = TerritoryLookup.FindOwnedContaining(
-            _state.Territories, actor, resultCoord);
+        // The viking phase keeps the highlight suppressed (see
+        // ResolveAiActingTerritory) — this refresh repaints the board only.
+        Territory? result = _vikingPhase
+            ? null
+            : TerritoryLookup.FindOwnedContaining(
+                _state.Territories, _state.Turns.CurrentPlayer.Id, resultCoord);
         if (_vikingPhase)
         {
             Log.Debug(Log.LogCategory.Viking,
-                $"[viking] execute beat {action.GetType().Name} @{resultCoord} → highlight " +
-                $"{(result == null ? "null (clears)" : $"size={result.Size}")}");
+                $"[viking] execute beat {action.GetType().Name} @{resultCoord} → highlight suppressed");
         }
         _ops.ShowHighlightAndRefresh(result);
 
@@ -650,10 +649,14 @@ public class AiTurnDriver
     /// </summary>
     internal Territory? ResolveAiActingTerritory(AiAction action)
     {
-        // During the viking phase the actor is the neutral owner; sea
-        // actions (disembark/perish/spawn) have no acting territory —
-        // the preview highlight is simply skipped for them.
-        PlayerId owner = _vikingPhase ? PlayerId.None : _state.Turns.CurrentPlayer.Id;
+        // The viking phase shows no acting-territory highlight at all:
+        // sea beats (disembark/perish/spawn) resolve no territory while
+        // landed-move beats would highlight neutral land, and the
+        // alternation reads as a rapid select/unselect blink on the
+        // neutral territory. The raiders' shield visuals and travel
+        // tweens carry the action instead.
+        if (_vikingPhase) return null;
+        PlayerId owner = _state.Turns.CurrentPlayer.Id;
         return action switch
         {
             AiMoveAction mv => TerritoryLookup.FindOwnedContaining(_state.Territories, owner, mv.Source),

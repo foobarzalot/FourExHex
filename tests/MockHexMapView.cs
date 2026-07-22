@@ -78,10 +78,15 @@ public class MockHexMapView : IHexMapView
 
     public Territory? LastHighlight { get; private set; }
     public bool HighlightWasCleared { get; private set; }
+    /// <summary>Every value passed to <see cref="ShowHighlight"/>, in call
+    /// order (nulls included). Lets tests assert what was highlighted over
+    /// a whole flow (e.g. the viking phase), not just the final value.</summary>
+    public List<Territory?> HighlightCalls { get; } = new();
     public void ShowHighlight(Territory? selected)
     {
         LastHighlight = selected;
         HighlightWasCleared = selected == null;
+        HighlightCalls.Add(selected);
     }
 
     public Territory? LastCenteredTerritory { get; private set; }

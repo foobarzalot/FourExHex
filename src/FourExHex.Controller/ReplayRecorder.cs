@@ -800,8 +800,10 @@ public class ReplayRecorder
             ReplayBuyBeat bu => TerritoryLookup.FindOwnedContaining(_state.Territories, owner, bu.Capital),
             ReplayBuildTowerBeat bt => TerritoryLookup.FindOwnedContaining(_state.Territories, owner, bt.Capital),
             ReplayLongPressRallyBeat rally => TerritoryLookup.FindOwnedContaining(_state.Territories, owner, rally.Target),
-            ReplayVikingMoveBeat vm => TerritoryLookup.FindOwnedContaining(
-                _state.Territories, PlayerId.None, vm.From),
+            // Viking beats resolve null like the live phase: highlighting
+            // neutral land between the sea beats' no-highlight previews
+            // reads as a rapid select/unselect blink (see
+            // AiTurnDriver.ResolveAiActingTerritory).
             // Authored select beats highlight their target during the
             // preview phase too, so back-to-back selects don't flicker
             // through a no-highlight gap.
