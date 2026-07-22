@@ -33,9 +33,9 @@ public class DeterminismProbeTests
         DeterminismProbeResult r = Run();
         Assert.Equal(0x3B760EDA60BEC1F8UL, r.MapGenRngStreamHash);
         Assert.Equal(
-            "146cddab06758cffb74a3a6afb7fa5298917cc180d9a72755da41c8c37c870cf",
+            "3900adad80540bfa4a3f0ae8b05aa74f1bd62f366dd303c4f28df4b9cc89ae10",
             r.FinalChecksum);
-        Assert.Equal(0x731BAAB018CEC4AAUL, r.RngStreamDigest);
+        Assert.Equal(0xF8072E108AE317DFUL, r.RngStreamDigest);
     }
 
     [Fact]

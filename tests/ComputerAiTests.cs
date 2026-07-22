@@ -2206,4 +2206,90 @@ public class ComputerAiTests
         Assert.Equal(doomed, mv.Source);
         Assert.DoesNotContain(mv.Destination, state.PendingTide.Select(s => s.Coord));
     }
+
+    // --- ComputerAi: seeded tie-break among equal-scored candidates -------
+
+    private static readonly HexCoord TieTargetNorth = new HexCoord(3, -1);
+    private static readonly HexCoord TieTargetSouth = new HexCoord(3, 1);
+
+    /// <summary>
+    /// A board whose single phase-1 scan yields exactly two capture
+    /// candidates with equal score deltas: a 7-tile Red strip (axial
+    /// (0,0)..(6,0)) with a recruit at (3,0) and neutral tiles at
+    /// (3,-1)/(3,1). The two targets are 180°-rotation images of each
+    /// other about the unit, so either capture produces a point-symmetric
+    /// after-state and an identical delta. The lex-min capital lands at
+    /// (0,0), whose defense radius ((0,0)+(1,0)) touches no post-capture
+    /// border tile, so it cannot break the symmetry.
+    /// </summary>
+    private static GameState BuildTiedCapturesState()
+    {
+        var grid = new HexGrid();
+        for (int q = 0; q < 7; q++)
+        {
+            grid.Add(new HexTile(new HexCoord(q, 0), Red));
+        }
+        grid.Add(new HexTile(TieTargetNorth, PlayerId.None));
+        grid.Add(new HexTile(TieTargetSouth, PlayerId.None));
+        grid.Get(new HexCoord(3, 0))!.Occupant = new Unit(Red);
+        return BuildState(grid, new Player("Red", Red), new Player("Blue", Blue));
+    }
+
+    [Fact]
+    public void ChooseNextAction_EqualScoredCaptures_VaryAcrossSeeds()
+    {
+        GameState state = BuildTiedCapturesState();
+
+        var chosen = new HashSet<HexCoord>();
+        for (int seed = 0; seed < 30; seed++)
+        {
+            AiAction? result = ComputerAi.ChooseNextAction(
+                state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(),
+                new DeterministicRng(seed));
+            AiMoveAction move = Assert.IsType<AiMoveAction>(result);
+            Assert.Contains(move.Destination, new[] { TieTargetNorth, TieTargetSouth });
+            chosen.Add(move.Destination);
+        }
+
+        // The seed must be able to flip an exact score tie: across 30 seeds
+        // both tied captures must be chosen at least once (a first-yielded
+        // argmax returns the same one for every seed).
+        Assert.True(chosen.Count >= 2,
+            $"expected both tied captures across seeds, got only {chosen.First()}");
+    }
+
+    [Fact]
+    public void ChooseNextAction_EqualScoredCaptures_SameSeedIsDeterministic()
+    {
+        GameState state = BuildTiedCapturesState();
+
+        foreach (int seed in new[] { 0, 7, 13 })
+        {
+            AiMoveAction first = Assert.IsType<AiMoveAction>(ComputerAi.ChooseNextAction(
+                state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(),
+                new DeterministicRng(seed)));
+            AiMoveAction second = Assert.IsType<AiMoveAction>(ComputerAi.ChooseNextAction(
+                state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(),
+                new DeterministicRng(seed)));
+            Assert.Equal(first.Destination, second.Destination);
+        }
+    }
+
+    [Fact]
+    public void ChooseNextAction_StrictlyBetterCapture_WinsForEverySeed()
+    {
+        // Same symmetric board, but the south target carries gold — its
+        // capture earns the gold premium, so it is strictly better and the
+        // tie-break must never fire: every seed picks it.
+        for (int seed = 0; seed < 30; seed++)
+        {
+            GameState state = BuildTiedCapturesState();
+            state.Grid.Get(TieTargetSouth)!.IsGold = true;
+
+            AiMoveAction move = Assert.IsType<AiMoveAction>(ComputerAi.ChooseNextAction(
+                state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(),
+                new DeterministicRng(seed)));
+            Assert.Equal(TieTargetSouth, move.Destination);
+        }
+    }
 }

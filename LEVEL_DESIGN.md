@@ -97,12 +97,12 @@ closeness comfortably above zero. Deliberately asymmetric levels (a doomed
 underdog scenario, a king-of-the-hill gold rush) should instead *confirm* their
 intended asymmetry — the metrics verify intent, they don't impose one shape.
 
-**Seed caveat:** on a fixed map, `ComputerAi` currently consumes no randomness
-when choosing actions, so games often play out identically across seeds
-(seed-driven variance enters only through in-game capital-merge tie-breaks and
-mode randomness like Rising Tides). Identical per-seed rows are normal — treat
-a multi-seed batch as a cheap invariance check, not a distribution, and prefer
-varying the *map* (or difficulty mix) to probe robustness.
+**Seeds:** `ComputerAi` breaks exact score ties with a seeded draw (plus the
+in-game capital-merge tie-breaks and mode randomness like Rising Tides), so
+different seeds play meaningfully different games on the same map — an N-seed
+batch measures a real outcome distribution (winner spread, length variance).
+Seeds only diverge where ties actually fire, so a handful of identical rows in
+a batch is unremarkable; widen `--games` before reading anything into spread.
 
 Determinism: same map + same seeds → byte-identical report.
 

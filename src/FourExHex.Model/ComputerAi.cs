@@ -121,8 +121,8 @@ public static class ComputerAi
                             ? candidates.Where(c => c.Kind == AiActionKind.Capture)
                             : candidates;
                     },
-                    methodStart, baseScore, forPlayer, state, prof);
-                if (p1 != null) { _ = rng; return p1; }
+                    methodStart, baseScore, forPlayer, state, rng, prof);
+                if (p1 != null) return p1;
             }
 
             // Phases 2a–4b run only for real players. 2a–4a are the economy:
@@ -144,16 +144,16 @@ public static class ComputerAi
                     Unit unit = state.Grid.Get(unitCoord)!.Unit!;
                     // never decline an unlock-combine for the status quo
                     AiAction? p2a = TryPhase("p2a", AiCommon.EnumeratePhase2aForUnit(unitCoord, unit, t, state, tileIndex, targetCache),
-                        int.MinValue, methodStart, baseScore, forPlayer, state, prof);
-                    if (p2a != null) { _ = rng; return p2a; }
+                        int.MinValue, methodStart, baseScore, forPlayer, state, rng, prof);
+                    if (p2a != null) return p2a;
                 }
 
                 // Phase 2b: buy-and-combine-to-unlock — never declined for
                 // the status quo (solvency lives in the enumerator's gates)
                 {
                     AiAction? p2b = TryPhase("p2b", AiCommon.EnumeratePhase2b(t, state, tileIndex, targetCache),
-                        int.MinValue, methodStart, baseScore, forPlayer, state, prof);
-                    if (p2b != null) { _ = rng; return p2b; }
+                        int.MinValue, methodStart, baseScore, forPlayer, state, rng, prof);
+                    if (p2b != null) return p2b;
                 }
 
                 // Phase 3: buy-to-capture / buy-to-chop — cheapest tier
@@ -164,15 +164,15 @@ public static class ComputerAi
                     AiAction? p3 = TryTiersWeakestFirst("p3",
                         new[] { UnitLevel.Recruit, UnitLevel.Soldier, UnitLevel.Captain, UnitLevel.Commander },
                         level => AiCommon.EnumeratePhase3ForLevel(t, state, level, tileIndex),
-                        methodStart, baseScore, forPlayer, state, prof);
-                    if (p3 != null) { _ = rng; return p3; }
+                        methodStart, baseScore, forPlayer, state, rng, prof);
+                    if (p3 != null) return p3;
                 }
 
                 // Phase 4a: tower placement (optional — doing nothing is valid)
                 {
                     AiAction? p4a = TryPhase("p4a", AiCommon.EnumeratePhase4Towers(t, state),
-                        0, methodStart, baseScore, forPlayer, state, prof);
-                    if (p4a != null) { _ = rng; return p4a; }
+                        0, methodStart, baseScore, forPlayer, state, rng, prof);
+                    if (p4a != null) return p4a;
                 }
 
                 // Phase 4b: defensive repositions (optional — doing nothing is valid)
@@ -183,8 +183,8 @@ public static class ComputerAi
                     if (repositionedUnits.Contains(unitCoord)) continue;
                     Unit unit = state.Grid.Get(unitCoord)!.Unit!;
                     AiAction? p4b = TryPhase("p4b", AiCommon.EnumeratePhase4bForUnit(unitCoord, unit, t, state, tileIndex),
-                        0, methodStart, baseScore, forPlayer, state, prof);
-                    if (p4b != null) { _ = rng; return p4b; }
+                        0, methodStart, baseScore, forPlayer, state, rng, prof);
+                    if (p4b != null) return p4b;
                 }
             }
             else
@@ -204,7 +204,6 @@ public static class ComputerAi
             visitedCapitals.Add(anchor);
         }
 
-        _ = rng;
         EmitProfile(methodStart, prof.CloneTicks, prof.ApplyTicks, prof.ScoreTicks, prof.TotalCandidates);
         return null;
     }
@@ -224,13 +223,14 @@ public static class ComputerAi
         string phase,
         IEnumerable<UnitLevel> tiersAscending,
         Func<UnitLevel, IEnumerable<AiCandidate>> enumerateTier,
-        long methodStart, int baseScore, PlayerId forPlayer, GameState state, AiSearchProfile prof)
+        long methodStart, int baseScore, PlayerId forPlayer, GameState state,
+        DeterministicRng rng, AiSearchProfile prof)
     {
         foreach (UnitLevel level in tiersAscending)
         {
             Log.Debug(Log.LogCategory.Ai, $"[tier] {phase} level={level} scanning");
             AiAction? action = TryPhase(phase, enumerateTier(level),
-                int.MinValue, methodStart, baseScore, forPlayer, state, prof);
+                int.MinValue, methodStart, baseScore, forPlayer, state, rng, prof);
             if (action != null) return action;
             Log.Debug(Log.LogCategory.Ai,
                 $"[tier-skip] {phase} level={level} no targets — advancing");
@@ -244,13 +244,15 @@ public static class ComputerAi
     /// <paramref name="prof"/> (shared across all phases of this call).</summary>
     private static AiAction? TryPhase(
         string phase, IEnumerable<AiCandidate> candidates, int threshold,
-        long methodStart, int baseScore, PlayerId forPlayer, GameState state, AiSearchProfile prof)
+        long methodStart, int baseScore, PlayerId forPlayer, GameState state,
+        DeterministicRng rng, AiSearchProfile prof)
     {
-        AiAction? action = BestPositiveDelta(phase, candidates, threshold, baseScore, forPlayer, state, prof);
+        AiAction? action = BestPositiveDelta(phase, candidates, threshold, baseScore, forPlayer, state, rng, prof);
         if (action != null)
         {
             Log.Debug(Log.LogCategory.Ai,
-                $"[chose] {forPlayer} phase={phase} kind={prof.ChosenKind} {action} delta={prof.ChosenDelta}");
+                $"[chose] {forPlayer} phase={phase} kind={prof.ChosenKind} {action} " +
+                $"delta={prof.ChosenDelta} ties={prof.ChosenTies}");
             EmitProfile(methodStart, prof.CloneTicks, prof.ApplyTicks, prof.ScoreTicks, prof.TotalCandidates);
         }
         return action;
@@ -268,10 +270,12 @@ public static class ComputerAi
         public int PositiveCandidates;
         public int ObservedBestDelta = int.MinValue;
         public AiActionKind? ObservedBestKind;
-        // Winning candidate of the phase that returns an action — the last
-        // accepted candidate is by construction the one TryPhase returns.
+        // Winning candidate of the phase that returns an action, plus how
+        // many candidates tied at its delta (1 = an outright winner; >1
+        // means the seeded tie-break picked among them).
         public AiActionKind? ChosenKind;
         public int ChosenDelta;
+        public int ChosenTies;
     }
 
     /// <summary>
@@ -284,9 +288,12 @@ public static class ComputerAi
     /// regardless of sign — used by phases 1, 2a, 2b, and 3 so an
     /// offensive / unlock action is never declined in favor of the
     /// status quo.
-    /// Ties resolve to the first-yielded candidate (preserving
-    /// power-then-coord order). Accumulates profiling counters in the
-    /// caller's locals via ref.
+    /// Equal-delta candidates tie-break by a single seeded draw from
+    /// <paramref name="rng"/> — a uniform pick among the tied set, so
+    /// different master seeds play differently on identical boards. A
+    /// sole winner consumes no rng (the stream advances only when a
+    /// real tie fired). Accumulates profiling counters in the caller's
+    /// locals via ref.
     /// </summary>
     private static AiAction? BestPositiveDelta(
         string phase,
@@ -295,10 +302,15 @@ public static class ComputerAi
         int baseScore,
         PlayerId forPlayer,
         GameState state,
+        DeterministicRng rng,
         AiSearchProfile prof)
     {
-        AiAction? best = null;
         int bestDelta = threshold;
+        // Every candidate tying the current best delta, in yield order.
+        // Cleared whenever a strictly better delta appears; empty means
+        // nothing beat the threshold yet (a candidate merely equaling
+        // the threshold stays rejected — the gate is strict).
+        var tied = new List<(AiAction Action, AiActionKind Kind)>();
 
         foreach (AiCandidate candidate in candidates)
         {
@@ -331,7 +343,8 @@ public static class ComputerAi
                 prof.ObservedBestDelta = delta;
                 prof.ObservedBestKind = candidate.Kind;
             }
-            bool accepted = delta > bestDelta;
+            bool newBest = delta > bestDelta;
+            bool tiesBest = !newBest && delta == bestDelta && tied.Count > 0;
             // Per-candidate verdict — the ground truth for "why did the
             // AI decline this action". A candidate is rejected either by
             // the phase threshold (strictly-positive gate for the defense
@@ -343,17 +356,33 @@ public static class ComputerAi
             Log.Trace(Log.LogCategory.Ai,
                 $"[candidate] {phase} {candidate.Kind} {candidate.Action} " +
                 $"delta={delta} threshold={threshold} → " +
-                (accepted ? "best-so-far" : "rejected"));
-            if (accepted)
+                (newBest ? "best-so-far" : tiesBest ? "tied-best" : "rejected"));
+            if (newBest)
             {
                 bestDelta = delta;
-                best = candidate.Action;
-                prof.ChosenKind = candidate.Kind;
-                prof.ChosenDelta = delta;
+                tied.Clear();
+                tied.Add((candidate.Action, candidate.Kind));
+            }
+            else if (tiesBest)
+            {
+                tied.Add((candidate.Action, candidate.Kind));
             }
         }
 
-        return best;
+        if (tied.Count == 0) return null;
+        int pick = 0;
+        if (tied.Count > 1)
+        {
+            pick = rng.NextBounded(tied.Count);
+            Log.Debug(Log.LogCategory.Ai,
+                $"[tie-break] {phase} {forPlayer} picked {pick + 1}/{tied.Count} " +
+                $"at delta={bestDelta}");
+        }
+        (AiAction action, AiActionKind kind) = tied[pick];
+        prof.ChosenKind = kind;
+        prof.ChosenDelta = bestDelta;
+        prof.ChosenTies = tied.Count;
+        return action;
     }
 
     private static void EmitProfile(
