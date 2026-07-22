@@ -142,13 +142,7 @@ public sealed partial class HudTour : CanvasLayer
         view.Title.AddThemeFontSizeOverride("font_size", 32);
         vbox.AddChild(view.Title);
 
-        var goldRule = new ColorRect
-        {
-            Color = UiPalette.GoldDim,
-            CustomMinimumSize = new Vector2(200, 1),
-            SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter,
-        };
-        vbox.AddChild(goldRule);
+        vbox.AddChild(ModalChrome.GoldRule());
 
         view.Body = new Label
         {

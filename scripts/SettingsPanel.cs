@@ -134,7 +134,7 @@ public sealed partial class SettingsPanel : CanvasLayer
         _panel.AddChild(vbox);
 
         vbox.AddChild(MakeTitle());
-        vbox.AddChild(MakeGoldRule());
+        vbox.AddChild(ModalChrome.GoldRule());
 
         vbox.AddChild(BuildCheckRow(Strings.Get(StringKeys.SettingsSoundEffects), UserSettings.SfxEnabled, OnSfxToggled, out _sfxCheckBox));
         vbox.AddChild(BuildCheckRow(Strings.Get(StringKeys.SettingsVisualEffects), UserSettings.VfxEnabled, OnVfxToggled, out _vfxCheckBox));
@@ -253,14 +253,6 @@ public sealed partial class SettingsPanel : CanvasLayer
         title.AddThemeFontSizeOverride("font_size", 36);
         return title;
     }
-
-    // Decorative gold rule under the title — matches the menu panels.
-    private static ColorRect MakeGoldRule() => new ColorRect
-    {
-        Color = UiPalette.GoldDim,
-        CustomMinimumSize = new Vector2(200, 1),
-        SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter,
-    };
 
     private static Label MakeSpeedLabel(string text)
     {

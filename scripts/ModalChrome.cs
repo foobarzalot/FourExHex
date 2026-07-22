@@ -132,17 +132,19 @@ public static class ModalChrome
         titleLabel.AddThemeFontOverride("font", SerifFont);
         titleLabel.AddThemeFontSizeOverride("font_size", 36);
         head.AddChild(titleLabel);
-
-        var goldRule = new ColorRect
-        {
-            Color = UiPalette.GoldDim,
-            CustomMinimumSize = new Vector2(200, 1),
-            SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter,
-        };
-        head.AddChild(goldRule);
+        head.AddChild(GoldRule());
 
         return head;
     }
+
+    // Decorative gold rule under a panel title — the shared divider used by
+    // the menu/modal panel family.
+    public static ColorRect GoldRule() => new ColorRect
+    {
+        Color = UiPalette.GoldDim,
+        CustomMinimumSize = new Vector2(200, 1),
+        SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter,
+    };
 
     // Rounded slate panel stylebox for the in-game / map-editor palette
     // groups (HudView, MapEditorHudView). Border 1, radius 10, snug margins.

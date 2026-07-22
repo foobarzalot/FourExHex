@@ -88,14 +88,7 @@ public sealed partial class EscMenu : CanvasLayer
         _titleLabel.AddThemeFontSizeOverride("font_size", 36);
         vbox.AddChild(_titleLabel);
 
-        // Decorative gold rule under the title — matches the menu panels.
-        var goldRule = new ColorRect
-        {
-            Color = UiPalette.GoldDim,
-            CustomMinimumSize = new Vector2(200, 1),
-            SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter,
-        };
-        vbox.AddChild(goldRule);
+        vbox.AddChild(ModalChrome.GoldRule());
 
         _buttonBox = new VBoxContainer();
         _buttonBox.AddThemeConstantOverride("separation", 10);

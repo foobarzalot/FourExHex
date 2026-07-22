@@ -80,14 +80,7 @@ public sealed partial class CreditsPanel : CanvasLayer
         title.AddThemeFontSizeOverride("font_size", 36);
         vbox.AddChild(title);
 
-        // Decorative gold rule under the title — matches the menu panels.
-        var goldRule = new ColorRect
-        {
-            Color = UiPalette.GoldDim,
-            CustomMinimumSize = new Vector2(200, 1),
-            SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter,
-        };
-        vbox.AddChild(goldRule);
+        vbox.AddChild(ModalChrome.GoldRule());
 
         // Scrollable body so long credits don't blow out the panel.
         var scroll = new ScrollContainer
