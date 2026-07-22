@@ -106,6 +106,25 @@ varying the *map* (or difficulty mix) to probe robustness.
 
 Determinism: same map + same seeds → byte-identical report.
 
+## Shipping a map in the build
+
+Maps committed to the repo's `maps/` directory (= `res://maps/`) ship inside
+the game. To promote a finished map:
+
+1. Copy its JSON into `maps/<name>.json` (final roster baked — usually
+   `roster NAME --slot 0=Human` first) and verify:
+   `dotnet run --project tools/FourExHex.LevelDesigner -- validate <name> --dir maps`.
+2. Add `<name>` to `StartingMapCatalog.Names`
+   (`src/FourExHex.Model/StartingMapCatalog.cs`). The catalog, not a directory
+   scan, defines the shipped set — res:// listing is unreliable in exported
+   builds.
+
+Bundled maps appear in Play Game → Load Starting Map tagged "built-in"; a
+user-saved map with the same name shadows the bundled one everywhere
+(listing, loading, thumbnail). The export presets already ship `maps/*.json`
+on all platforms. The map editor's Load Map lists user maps only — bundled
+maps are read-only.
+
 ## Layer map
 
 - `src/FourExHex.Model/LevelWorkspace.cs` — authoring session (blank/procedural

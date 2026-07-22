@@ -1865,9 +1865,11 @@ public partial class MainMenuScene : Control
         if (_loadDialog == null) return;
         Log.Info(Log.LogCategory.Input, "MainMenu: New Game → load starting map");
         _loadDialog.ShowSlots(
-            _saveStore.ListMaps(),
+            _saveStore.ListStartingMaps(),
             Strings.Get(StringKeys.MenuNoMapsFound),
-            info => info.SlotName,
+            info => info.IsBundled
+                ? $"{info.SlotName} ({Strings.Get(StringKeys.MenuBundledMapTag)})"
+                : info.SlotName,
             OnPickStartingMapToPlay,
             thumbnailStore: _saveStore,
             previewMaps: true);
@@ -1878,7 +1880,7 @@ public partial class MainMenuScene : Control
         LoadedSave loaded;
         try
         {
-            loaded = _saveStore.LoadMap(mapName);
+            loaded = _saveStore.LoadStartingMap(mapName);
         }
         catch (System.Exception ex)
         {

@@ -107,7 +107,7 @@ Use these for AI-behavior debugging — do **not** use them as a substitute for 
 
 ## Level-design harness
 
-Authored starting maps can be created, edited, validated, and playtested entirely headlessly via the CLI in `tools/FourExHex.LevelDesigner/` (`new` / `show` / `edit` / `roster` / `validate` / `playtest`), backed by `LevelWorkspace` + `MapTextRenderer` (Model) and `LevelPlaytest` (Controller). **See `LEVEL_DESIGN.md`** for the agent runbook (design loop, edit-op grammar, metric targets). Maps land in the game's `user://maps/` dir and load via Play Game → Load Starting Map. `FOUREXHEX_LOG="LevelDesign:Debug"` traces ops; playtests are all-AI, in-process, and byte-identical per seed.
+Authored starting maps can be created, edited, validated, and playtested entirely headlessly via the CLI in `tools/FourExHex.LevelDesigner/` (`new` / `show` / `edit` / `roster` / `validate` / `playtest`), backed by `LevelWorkspace` + `MapTextRenderer` (Model) and `LevelPlaytest` (Controller). **See `LEVEL_DESIGN.md`** for the agent runbook (design loop, edit-op grammar, metric targets). Maps land in the game's `user://maps/` dir and load via Play Game → Load Starting Map. `FOUREXHEX_LOG="LevelDesign:Debug"` traces ops; playtests are all-AI, in-process, and byte-identical per seed. Finished maps ship in the build via the repo `maps/` dir + `StartingMapCatalog.Names` (see the runbook's "Shipping a map in the build").
 
 ## Campaign winnable-seed pipeline
 

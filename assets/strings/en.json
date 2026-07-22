@@ -172,6 +172,7 @@
   "menu.new_map": "New Map",
   "menu.load_map": "Load Map",
   "menu.no_maps_found": "No starting maps found.",
+  "menu.bundled_map_tag": "built-in",
   "menu.no_saves_found": "No save files found.",
   "menu.load_failed": "Load failed",
   "menu.could_not_load_map": "Could not load map '{name}': {error}",

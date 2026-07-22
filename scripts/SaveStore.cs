@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 FooBarzalot
 using System.Collections.Generic;
+using System.Linq;
 using Godot;
 
 /// <summary>
@@ -22,6 +23,10 @@ public sealed class SaveStore
     // res:// resolves into the PCK in exported builds and into the
     // project tree in the editor — FileAccess handles both transparently.
     public const string BundledMapsDirectory = "res://tutorials/";
+    // Authored starting maps shipped with the game, named by
+    // StartingMapCatalog (never directory-scanned — res:// listing is
+    // unreliable inside an exported PCK; reading known paths is fine).
+    public const string BundledStartingMapsDirectory = "res://maps/";
     public const string AutosaveSlotName = "autosave";
     private const string SaveExtension = ".json";
     private const string TempExtension = ".json.tmp";
@@ -213,6 +218,32 @@ public sealed class SaveStore
     /// <summary>Load a map shipped with the game from <see cref="BundledMapsDirectory"/>.</summary>
     public LoadedSave LoadBundledMap(string slotName) => LoadSlotIn(BundledMapsDirectory, slotName);
 
+    /// <summary>Load an authored starting map shipped with the game from
+    /// <see cref="BundledStartingMapsDirectory"/> (res://maps/). The shipped
+    /// set is named by <see cref="StartingMapCatalog"/>.</summary>
+    public LoadedSave LoadBundledStartingMap(string slotName) =>
+        LoadSlotIn(BundledStartingMapsDirectory, slotName);
+
+    /// <summary>
+    /// The Load Starting Map listing: the user's maps (recency-sorted,
+    /// as <see cref="ListMaps"/>) plus the bundled catalog maps not
+    /// shadowed by a same-named user map, each header-read from
+    /// <see cref="BundledStartingMapsDirectory"/> and flagged
+    /// <see cref="SaveSlotInfo.IsBundled"/>. Catalog-driven rather than a
+    /// res:// directory scan — listing inside an exported PCK is
+    /// unreliable; reading known paths is not.
+    /// </summary>
+    public IReadOnlyList<SaveSlotInfo> ListStartingMaps()
+    {
+        IReadOnlyList<SaveSlotInfo> merged = StartingMapCatalog.MergeWithUser(
+            ListMaps(),
+            name => TryReadHeader(BundledStartingMapsDirectory, name, isBundled: true));
+        Log.Debug(Log.LogCategory.LevelDesign,
+            $"[maps] starting-map list: {merged.Count} total, "
+            + $"{merged.Count(i => i.IsBundled)} bundled");
+        return merged;
+    }
+
     /// <summary>Load a tutorial by sanitized name from <see cref="TutorialsDirectory"/>.</summary>
     public LoadedSave LoadTutorial(string slotName) => LoadSlotIn(TutorialsDirectory, slotName);
 
@@ -247,18 +278,27 @@ public sealed class SaveStore
     }
 
     /// <summary>
-    /// Load a starting map by name regardless of whether it lives in the
-    /// user maps directory or the bundled tutorials directory. User maps
-    /// win on name collision; falls through to bundled if not found in
-    /// <see cref="MapsDirectory"/>.
+    /// Load a starting map by name from wherever it lives: the user maps
+    /// directory, the bundled starting maps (res://maps/), or the bundled
+    /// tutorials directory (some saves' origin maps are tutorial files).
+    /// User maps win on name collision, mirroring
+    /// <see cref="ListStartingMaps"/>'s shadowing.
     /// </summary>
     public LoadedSave LoadStartingMap(string slotName)
     {
         string sanitized = SanitizeSlotName(slotName);
-        string userPath = MapsDirectory + sanitized + SaveExtension;
-        return FileAccess.FileExists(userPath)
-            ? LoadMap(slotName)
-            : LoadBundledMap(slotName);
+        string source =
+            FileAccess.FileExists(MapsDirectory + sanitized + SaveExtension) ? "user"
+            : FileAccess.FileExists(BundledStartingMapsDirectory + sanitized + SaveExtension) ? "bundled"
+            : "tutorial";
+        Log.Debug(Log.LogCategory.LevelDesign,
+            $"[maps] load starting map '{sanitized}' -> {source}");
+        return source switch
+        {
+            "user" => LoadMap(slotName),
+            "bundled" => LoadBundledStartingMap(slotName),
+            _ => LoadBundledMap(slotName),
+        };
     }
 
     private LoadedSave LoadSlotIn(string directory, string slotName)
@@ -280,7 +320,8 @@ public sealed class SaveStore
         return SaveSerializer.Deserialize(json);
     }
 
-    private SaveSlotInfo? TryReadHeader(string directory, string slotName)
+    private SaveSlotInfo? TryReadHeader(string directory, string slotName,
+        bool isBundled = false)
     {
         string path = directory + slotName + SaveExtension;
         try
@@ -302,7 +343,8 @@ public sealed class SaveStore
                 slotName: save.SlotName,
                 savedAtUnix: savedAt,
                 turnNumber: save.State.Turns.TurnNumber,
-                isAutosave: save.SlotName == AutosaveSlotName);
+                isAutosave: save.SlotName == AutosaveSlotName,
+                isBundled: isBundled);
         }
         catch (System.Exception ex)
         {

@@ -19,11 +19,18 @@ public sealed class SaveSlotInfo
     /// <summary>True if this is the autosave slot (special name).</summary>
     public bool IsAutosave { get; }
 
-    public SaveSlotInfo(string slotName, long savedAtUnix, int turnNumber, bool isAutosave)
+    /// <summary>True for a map shipped inside the build
+    /// (<c>res://maps/</c>, via <see cref="StartingMapCatalog"/>) rather
+    /// than saved by the user.</summary>
+    public bool IsBundled { get; }
+
+    public SaveSlotInfo(string slotName, long savedAtUnix, int turnNumber, bool isAutosave,
+        bool isBundled = false)
     {
         SlotName = slotName;
         SavedAtUnix = savedAtUnix;
         TurnNumber = turnNumber;
         IsAutosave = isAutosave;
+        IsBundled = isBundled;
     }
 }

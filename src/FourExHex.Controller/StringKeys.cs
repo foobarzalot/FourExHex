@@ -242,6 +242,7 @@ public static class StringKeys
     public const string MenuNewMap = "menu.new_map";
     public const string MenuLoadMap = "menu.load_map";
     public const string MenuNoMapsFound = "menu.no_maps_found";
+    public const string MenuBundledMapTag = "menu.bundled_map_tag";
     public const string MenuNoSavesFound = "menu.no_saves_found";
     public const string MenuLoadFailed = "menu.load_failed";
     public const string MenuCouldNotLoadMap = "menu.could_not_load_map";

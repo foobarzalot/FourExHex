@@ -156,7 +156,10 @@ public partial class MapThumbnailView : Control
         }, $"slot=\"{slotName}\"", token);
     }
 
-    /// <summary>Preview a map-editor-generated map by slot name.</summary>
+    /// <summary>Preview a starting map by slot name. Resolves through
+    /// <see cref="SaveStore.LoadStartingMap"/> (user maps win, bundled
+    /// fallback) so bundled catalog rows preview too; for the editor's
+    /// user-only lists the resolution is identical to the maps dir.</summary>
     public void RequestMap(string mapName)
     {
         int token = ++_renderToken;
@@ -166,7 +169,7 @@ public partial class MapThumbnailView : Control
         {
             if (_saveStore == null)
                 throw new InvalidOperationException("MapThumbnailView.SetSaveStore not called");
-            return _saveStore.LoadMap(mapName).State;
+            return _saveStore.LoadStartingMap(mapName).State;
         }, $"map=\"{mapName}\"", token);
     }
 
