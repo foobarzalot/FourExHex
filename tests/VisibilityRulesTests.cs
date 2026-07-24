@@ -11,16 +11,21 @@ public class VisibilityRulesTests
     private static readonly PlayerId Red = PlayerId.FromIndex(0);
     private static readonly PlayerId Blue = PlayerId.FromIndex(1);
 
-    private static GameState MakeState(HexGrid grid, IReadOnlyList<Territory> territories)
+    private static GameState MakeState(
+        HexGrid grid, IReadOnlyList<Territory> territories,
+        GameMode mode = GameMode.FogOfWar,
+        PlayerKind redKind = PlayerKind.Human,
+        PlayerKind blueKind = PlayerKind.Computer,
+        IReadOnlySet<HexCoord>? waterCoords = null)
     {
         var players = new List<Player>
         {
-            new Player("Red", Red, PlayerKind.Human),
-            new Player("Blue", Blue, PlayerKind.Computer),
+            new Player("Red", Red, redKind),
+            new Player("Blue", Blue, blueKind),
         };
         return new GameState(
             grid, territories, players, new TurnState(players), new Treasury(),
-            waterCoords: null, mode: GameMode.FogOfWar);
+            waterCoords: waterCoords, mode: mode);
     }
 
     // Give Red a 2-tile (capital-bearing) territory: an anchor + its east
@@ -190,6 +195,150 @@ public class VisibilityRulesTests
         Assert.True(WinConditionRules.IsEliminated(Red, grid));
 
         Assert.Null(VisibilityRules.BuildProjection(state));
+    }
+
+    // --- HiddenLandRemains (win gating) ---------------------------------
+
+    [Fact]
+    public void HiddenLandRemains_TileNeverSeen_True()
+    {
+        HexGrid grid = TestHelpers.BuildRectGrid(5, 5, Blue);
+        GiveRedTerritory(grid, 0, 0);
+        GameState state = MakeState(grid, BuildTerr(grid));
+        VisibilityRules.UpdateSeen(state, Red);
+
+        // The far corner is out of sight and was never seen — the map is not
+        // fully revealed, so no win may be declared or claimed.
+        Assert.Equal(VisibilityTier.Fog, VisibilityRules.TierOf(
+            HexCoord.FromOffset(4, 4), VisibilityRules.ComputeVisible(state, Red), state));
+        Assert.True(VisibilityRules.HiddenLandRemains(state));
+    }
+
+    [Fact]
+    public void HiddenLandRemains_WholeGridSeen_False()
+    {
+        HexGrid grid = TestHelpers.BuildRectGrid(5, 5, Blue);
+        GiveRedTerritory(grid, 0, 0);
+        GameState state = MakeState(grid, BuildTerr(grid));
+
+        TestHelpers.RevealWholeGrid(state);
+
+        Assert.False(VisibilityRules.HiddenLandRemains(state));
+        Assert.Equal(0, VisibilityRules.HiddenLandCount(state));
+    }
+
+    [Fact]
+    public void HiddenLandCount_CountsOnlyFullyHiddenLand()
+    {
+        HexGrid grid = TestHelpers.BuildRectGrid(5, 5, Blue);
+        GiveRedTerritory(grid, 0, 0);
+        GameState state = MakeState(grid, BuildTerr(grid));
+
+        // Reveal everything except three far tiles, all well out of Red's sight.
+        var withheld = new HashSet<HexCoord>
+        {
+            HexCoord.FromOffset(4, 3), HexCoord.FromOffset(3, 4), HexCoord.FromOffset(4, 4),
+        };
+        foreach (HexTile tile in grid.Tiles)
+            if (!withheld.Contains(tile.Coord)) state.MarkSeen(tile.Coord);
+
+        Assert.Equal(3, VisibilityRules.HiddenLandCount(state));
+    }
+
+    [Fact]
+    public void HiddenLandRemains_OutsideFogOfWar_False()
+    {
+        // No fog, nothing hidden: the other modes keep full-grid win semantics.
+        HexGrid grid = TestHelpers.BuildRectGrid(5, 5, Blue);
+        GiveRedTerritory(grid, 0, 0);
+
+        foreach (GameMode mode in new[]
+                 { GameMode.Freeform, GameMode.RisingTides, GameMode.VikingRaiders })
+        {
+            GameState state = MakeState(grid, BuildTerr(grid), mode: mode);
+            Assert.False(VisibilityRules.HiddenLandRemains(state));
+        }
+    }
+
+    [Fact]
+    public void HiddenLandRemains_NoHumanPerspective_False()
+    {
+        // The three cases where BuildProjection declines to pick a perspective
+        // must all leave the win checks ungated — an all-AI fog run (the
+        // FOUREXHEX_6AI diagnostic mode, the campaign winner sweep) never marks
+        // anything seen, so a gate here would stall it until the turn cap.
+        HexGrid noHumans = TestHelpers.BuildRectGrid(5, 5, Blue);
+        GiveRedTerritory(noHumans, 0, 0);
+        Assert.False(VisibilityRules.HiddenLandRemains(
+            MakeState(noHumans, BuildTerr(noHumans), redKind: PlayerKind.Computer)));
+
+        HexGrid twoHumans = TestHelpers.BuildRectGrid(5, 5, Blue);
+        GiveRedTerritory(twoHumans, 0, 0);
+        Assert.False(VisibilityRules.HiddenLandRemains(
+            MakeState(twoHumans, BuildTerr(twoHumans), blueKind: PlayerKind.Human)));
+
+        // Eliminated human: defeat already reveals the whole map, and the
+        // surviving AIs must still be able to win.
+        HexGrid eliminated = TestHelpers.BuildRectGrid(5, 5, Blue);
+        eliminated.Get(HexCoord.FromOffset(2, 2))!.Owner = Red; // singleton, no capital
+        GameState state = MakeState(eliminated, BuildTerr(eliminated));
+        Assert.True(WinConditionRules.IsEliminated(Red, eliminated));
+        Assert.False(VisibilityRules.HiddenLandRemains(state));
+    }
+
+    [Fact]
+    public void HiddenLandRemains_UnseenWater_DoesNotCount()
+    {
+        // Only land gates a win. Water coords are not in the grid at all, so an
+        // unexplored ocean can never block victory.
+        HexGrid grid = TestHelpers.BuildSpotGrid(
+            Blue,
+            HexCoord.FromOffset(0, 0), HexCoord.FromOffset(1, 0), HexCoord.FromOffset(2, 0));
+        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = Red;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Owner = Red;
+        var water = new HashSet<HexCoord> { HexCoord.FromOffset(9, 9) };
+        GameState state = MakeState(grid, BuildTerr(grid), waterCoords: water);
+
+        TestHelpers.RevealWholeGrid(state);
+
+        Assert.False(state.IsSeen(HexCoord.FromOffset(9, 9))); // ocean still dark
+        Assert.False(VisibilityRules.HiddenLandRemains(state));
+    }
+
+    [Fact]
+    public void HiddenLandRemains_UnseenTileOwnedByHuman_DoesNotCount()
+    {
+        // You cannot have unknown land you own. Sight comes only from
+        // capital-bearing territories, so a human's isolated singleton is owned
+        // but never seen — it must not lock them out of victory forever.
+        HexGrid grid = TestHelpers.BuildRectGrid(5, 5, Blue);
+        GiveRedTerritory(grid, 0, 0);
+        HexCoord island = HexCoord.FromOffset(4, 4);
+        grid.Get(island)!.Owner = Red;
+        GameState state = MakeState(grid, BuildTerr(grid));
+        foreach (HexTile tile in grid.Tiles)
+            if (tile.Coord != island) state.MarkSeen(tile.Coord);
+
+        Assert.False(state.IsSeen(island));
+        Assert.False(VisibilityRules.HiddenLandRemains(state));
+
+        // Control: the same never-seen tile in enemy hands does gate the win.
+        grid.Get(island)!.Owner = Blue;
+        state.Territories = BuildTerr(grid);
+        Assert.True(VisibilityRules.HiddenLandRemains(state));
+    }
+
+    [Fact]
+    public void HiddenLandRemains_DoesNotMarkAnythingSeen()
+    {
+        // A pure predicate: asking whether the map is revealed must not reveal
+        // any of it (the win checks call this on every capture).
+        HexGrid grid = TestHelpers.BuildRectGrid(5, 5, Blue);
+        GiveRedTerritory(grid, 0, 0);
+        GameState state = MakeState(grid, BuildTerr(grid));
+
+        Assert.True(VisibilityRules.HiddenLandRemains(state));
+        Assert.Empty(state.Seen);
     }
 
     private static IReadOnlyList<Territory> BuildTerr(HexGrid grid) =>

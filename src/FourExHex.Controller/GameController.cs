@@ -2700,18 +2700,30 @@ public class GameController
         // the shrinking board automatically.
         // Viking Raiders: no claim while any viking threat remains — no
         // win of any kind is possible until the onslaught is cleared.
+        // Fog Of War: no claim while any land tile is still fully hidden. The
+        // tier math is untouched — the reveal is a precondition, so you can't
+        // declare the board yours over ground you've never laid eyes on.
         if (!alreadyWon && !current.IsAi && !previewScripted && !_recordingMode
             && !_ops.VikingThreatActive)
         {
-            int seen = _session.ClaimVictoryPromptedHighestThreshold
-                .TryGetValue(current.Id, out int s) ? s : 0;
-            int? next = WinConditionRules.NextClaimVictoryThreshold(
-                current.Id, _state.Grid, seen);
-            if (next.HasValue)
+            int hiddenLand = VisibilityRules.HiddenLandCount(_state);
+            if (hiddenLand > 0)
             {
-                _session.PendingClaimVictory = (current.Id, next.Value);
-                _ops.RefreshViews();
-                return;
+                Log.Debug(Log.LogCategory.Fog,
+                    $"[fog] claim-victory suppressed: {hiddenLand} land tiles still hidden");
+            }
+            else
+            {
+                int highestPrompted = _session.ClaimVictoryPromptedHighestThreshold
+                    .TryGetValue(current.Id, out int s) ? s : 0;
+                int? next = WinConditionRules.NextClaimVictoryThreshold(
+                    current.Id, _state.Grid, highestPrompted);
+                if (next.HasValue)
+                {
+                    _session.PendingClaimVictory = (current.Id, next.Value);
+                    _ops.RefreshViews();
+                    return;
+                }
             }
         }
 

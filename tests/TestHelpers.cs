@@ -59,6 +59,20 @@ public static class TestHelpers
     }
 
     /// <summary>
+    /// Mark every land tile as seen — the fog-of-war precondition the win
+    /// checks gate on (see <see cref="VisibilityRules.HiddenLandRemains"/>).
+    /// Water is never in the grid, so the ocean stays dark, which is exactly
+    /// what the gate ignores.
+    /// </summary>
+    public static void RevealWholeGrid(GameState state)
+    {
+        foreach (HexTile tile in state.Grid.Tiles)
+        {
+            state.MarkSeen(tile.Coord);
+        }
+    }
+
+    /// <summary>
     /// Run <see cref="TerritoryFinder.FindAll"/> followed by
     /// <see cref="CapitalReconciler.Reconcile"/> against no prior
     /// territories, producing a territory list with capitals placed.

@@ -70,13 +70,15 @@ public static class VisibilityRules
     }
 
     /// <summary>
-    /// Build the fog projection the view renders, or null when fog doesn't apply
-    /// (not Fog Of War, or not exactly one human — in which case the caller
-    /// renders everything). Marks the human's newly-visible coords as seen as a
-    /// side effect. Shared by the live controller and the menu map thumbnail so
-    /// both pick the same perspective.
+    /// The single human the fog is drawn through, or null when fog doesn't
+    /// apply and the whole map is rendered: not Fog Of War, not exactly one
+    /// human, or that human is eliminated (no capital-bearing territory —
+    /// defeat reveals everything, so they spectate the surviving AIs with full
+    /// vision). A null perspective also means the win checks are ungated, which
+    /// is what keeps all-AI runs (the FOUREXHEX_6AI diagnostic modes, the
+    /// campaign winner sweep) on ordinary full-grid rules.
     /// </summary>
-    public static FogView? BuildProjection(GameState state)
+    private static PlayerId? SoleHumanPerspective(GameState state)
     {
         if (!state.FogEnabled) return null;
         PlayerId? human = null;
@@ -87,10 +89,58 @@ public static class VisibilityRules
             human = p.Id;
         }
         if (human == null) return null;
-        // Defeat reveals the whole map: an eliminated human (no capital-bearing
-        // territory) spectates with full vision. Common in the 1-human-vs-5-AI
-        // fog roster, where the AIs play on after the human is knocked out.
         if (WinConditionRules.IsEliminated(human.Value, state.Grid)) return null;
+        return human;
+    }
+
+    /// <summary>
+    /// How many land tiles are still fully hidden from the human: at
+    /// <see cref="VisibilityTier.Fog"/> and not owned by them. Owning a tile is
+    /// knowing it — sight comes only from capital-bearing territories, so an
+    /// isolated singleton is owned yet never seen, and counting it would strand
+    /// a player who has taken the whole map. Water is excluded structurally
+    /// (water coords are not in the grid), so an unexplored ocean never counts.
+    /// Always 0 when <see cref="SoleHumanPerspective"/> is null. Pure — unlike
+    /// <see cref="UpdateSeen"/> this marks nothing, so the win checks can call
+    /// it after every capture without granting free sight.
+    /// </summary>
+    public static int HiddenLandCount(GameState state)
+    {
+        PlayerId? human = SoleHumanPerspective(state);
+        if (human == null) return 0;
+
+        HashSet<HexCoord> visible = ComputeVisible(state, human.Value);
+        int hidden = 0;
+        foreach (HexTile tile in state.Grid.Tiles)
+        {
+            if (tile.Owner == human.Value) continue;
+            if (TierOf(tile.Coord, visible, state) == VisibilityTier.Fog) hidden++;
+        }
+        return hidden;
+    }
+
+    /// <summary>
+    /// True while any land tile remains fully hidden from the human
+    /// (<see cref="HiddenLandCount"/> &gt; 0). Always false outside
+    /// <see cref="GameMode.FogOfWar"/>. While true, no win condition may fire
+    /// and the claim-victory prompt is never offered — see the mode-branched
+    /// checks in GameOperations / GameController, which gate on this the same
+    /// way Viking Raiders gates on
+    /// <see cref="VikingRaidersRules.ThreatRemains"/>.
+    /// </summary>
+    public static bool HiddenLandRemains(GameState state) => HiddenLandCount(state) > 0;
+
+    /// <summary>
+    /// Build the fog projection the view renders, or null when fog doesn't apply
+    /// (see <see cref="SoleHumanPerspective"/> — in which case the caller
+    /// renders everything). Marks the human's newly-visible coords as seen as a
+    /// side effect. Shared by the live controller and the menu map thumbnail so
+    /// both pick the same perspective.
+    /// </summary>
+    public static FogView? BuildProjection(GameState state)
+    {
+        PlayerId? human = SoleHumanPerspective(state);
+        if (human == null) return null;
 
         HashSet<HexCoord> visible = UpdateSeen(state, human.Value);
         return new FogView(visible, state.Seen);

@@ -545,6 +545,7 @@ public class GameOperations
     {
         ReseedRngForCurrentTurn();
         HumanTurnFiredForCurrentTurn = false;
+        MaybeLogFogFullyRevealed();
         // Per-turn visited reset: the new player starts with a clean Tab
         // tour. Done here (the universal per-turn funnel) BEFORE the human
         // hand-off auto-selects, so the auto-selected territory's visited
@@ -759,6 +760,11 @@ public class GameOperations
     /// Viking Raiders). While true, every win path is suppressed.</summary>
     public bool VikingThreatActive => VikingRaidersRules.ThreatRemains(_state);
 
+    /// <summary>Land the human has never laid eyes on (mode-gated; always
+    /// false outside Fog Of War, and whenever no single-human fog perspective
+    /// applies). While true, the claim-victory prompt is withheld.</summary>
+    public bool HiddenLandActive => VisibilityRules.HiddenLandRemains(_state);
+
     /// <summary>
     /// True when this round's viking pseudo-turn still has to run:
     /// <see cref="VikingRaidersRules.TurnDue"/> (the pure state predicate,
@@ -965,6 +971,32 @@ public class GameOperations
         Log.Info(Log.LogCategory.Viking,
             $"[viking] T{_state.Turns.TurnNumber} threat cleared — " +
             "ordinary win conditions restored");
+    }
+
+    // One-shot "map fully revealed" Info line, marking the turn the human's
+    // knowledge finally covers the board and the claim-victory prompt becomes
+    // available again. Checked at turn start, off the capture path — the
+    // prompt is only ever evaluated at End Turn, so turn granularity is all it
+    // needs. Only a real transition prints: a game with no fog perspective at
+    // all (all-AI, two humans, an eliminated human) never has hidden land to
+    // reveal, so it stays silent.
+    private bool _fogFullyRevealedLogged;
+    private bool _fogHadHiddenLand;
+
+    private void MaybeLogFogFullyRevealed()
+    {
+        if (_fogFullyRevealedLogged) return;
+        if (!_state.FogEnabled) return;
+        if (HiddenLandActive)
+        {
+            _fogHadHiddenLand = true;
+            return;
+        }
+        if (!_fogHadHiddenLand) return;
+        _fogFullyRevealedLogged = true;
+        Log.Info(Log.LogCategory.Fog,
+            $"[fog] T{_state.Turns.TurnNumber} map fully revealed — " +
+            "claim victory available");
     }
 
     /// <summary>
@@ -1733,8 +1765,10 @@ public class GameOperations
         // non-water tile". Viking Raiders gates domination while any
         // threat remains: landed raiders block it structurally (their
         // neutral tiles deny sole ownership), but raiders at sea and
-        // unspawned waves need the explicit gate. Undo is cleared so the
-        // player can't rewind past the killing blow.
+        // unspawned waves need the explicit gate. Fog Of War needs no gate
+        // here: owning every tile means owning every hidden one, and an AI can
+        // only sweep the board once the human is eliminated — which reveals the
+        // map. Undo is cleared so the player can't rewind past the killing blow.
         PlayerId? winner = VikingThreatActive
             ? null
             : WinConditionRules.WinnerByDomination(_state.Grid);

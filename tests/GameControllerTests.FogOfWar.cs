@@ -155,6 +155,74 @@ public partial class GameControllerTests
         Assert.IsType<Tower>(game.State.Grid.Get(tower)!.Occupant); // redone
     }
 
+    // --- Win gating: no victory over ground the human has never seen ------
+
+    [Fact]
+    public void FogOfWar_ClaimVictoryPrompt_SuppressedWhileLandHidden()
+    {
+        // Red owns 4/6 of the row — well past the 50% tier — but col 5 lies
+        // outside Red's sight and has never been seen. End Turn just ends the
+        // turn: you can't claim a victory over ground you've never laid eyes on.
+        var game = new FogGame(LopsidedRow(), GameMode.FogOfWar);
+        Assert.False(game.State.IsSeen(HexCoord.FromOffset(5, 0)));
+
+        game.Hud.ClickEndTurn();
+
+        Assert.Null(game.Session.PendingClaimVictory);
+        Assert.False(game.Session.IsGameOver);
+    }
+
+    [Fact]
+    public void FogOfWar_ClaimVictoryPrompt_FiresOnceMapFullyRevealed()
+    {
+        // Same board, same ownership share: the tier math is untouched, the
+        // reveal is only a precondition. Once the last tile is known, the 50%
+        // offer appears exactly as it does in freeform.
+        var game = new FogGame(LopsidedRow(), GameMode.FogOfWar);
+        TestHelpers.RevealWholeGrid(game.State);
+
+        game.Hud.ClickEndTurn();
+
+        Assert.NotNull(game.Session.PendingClaimVictory);
+        Assert.Equal(50, game.Session.PendingClaimVictory!.Value.ThresholdPercent);
+    }
+
+    // Red's mainland (cols 0-1, capital-bearing) plus one Blue tile at col 2,
+    // and a lone Red island at col 4 — col 3 is water, so the island is never
+    // adjacent to Red's sight and stays unseen for the whole game. A Red
+    // recruit on col 1 can capture col 2, which hands Red every tile.
+    private static HexGrid IslandDomination()
+    {
+        PlayerId red = PlayerId.FromIndex(0);
+        HexGrid grid = TestHelpers.BuildSpotGrid(
+            red,
+            HexCoord.FromOffset(0, 0), HexCoord.FromOffset(1, 0),
+            HexCoord.FromOffset(2, 0), HexCoord.FromOffset(4, 0));
+        grid.Get(HexCoord.FromOffset(2, 0))!.Owner = PlayerId.FromIndex(1);
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(red);
+        return grid;
+    }
+
+    [Fact]
+    public void FogOfWar_DominationWin_NotGatedByFog()
+    {
+        // Only the claim-victory prompt waits on a revealed map; the domination
+        // win never does. Sight comes only from capital-bearing territories, so
+        // Red's lone island is owned yet never seen — and the sweep still ends
+        // the game, or a player who had taken the whole map would be stranded
+        // with nothing left to capture.
+        var game = new FogGame(IslandDomination(), GameMode.FogOfWar);
+        HexCoord island = HexCoord.FromOffset(4, 0);
+        Assert.False(game.State.IsSeen(island));
+
+        game.Map.SimulateClick(game.State.Grid.Get(HexCoord.FromOffset(1, 0)));
+        game.Map.SimulateClick(game.State.Grid.Get(HexCoord.FromOffset(2, 0)));
+
+        Assert.False(game.State.IsSeen(island)); // still never laid eyes on it
+        Assert.True(game.Session.IsGameOver);
+        Assert.Equal(game.Red.Id, game.Session.Winner);
+    }
+
     [Fact]
     public void FogOfWar_Victory_RevealsWholeMap()
     {
@@ -162,6 +230,9 @@ public partial class GameControllerTests
         // lifts the fog: the controller pushes ShowFog(null) once the game ends.
         var game = new FogGame(LopsidedRow(), GameMode.FogOfWar);
         Assert.NotNull(game.Map.LastFog); // fog active mid-game
+        // Claiming requires a fully-revealed map (see the win-gating facts
+        // above), so the far end of the row has to be known first.
+        TestHelpers.RevealWholeGrid(game.State);
 
         game.Hud.ClickEndTurn();              // trips the 50% claim-victory offer
         game.Hud.ClickClaimVictoryWinNow();   // declares Red the winner
