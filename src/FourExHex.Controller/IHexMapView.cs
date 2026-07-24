@@ -153,6 +153,15 @@ public interface IHexMapView
     void CenterOnTerritory(Territory territory);
 
     /// <summary>
+    /// Pan the map view to the territory's capital (as
+    /// <see cref="CenterOnTerritory"/>) only when no part of the territory is
+    /// currently on screen; leave the camera untouched when any of its tiles
+    /// is visible. Driven by the controller's start-of-turn auto-selection so
+    /// an already-visible territory doesn't yank the player's framing.
+    /// </summary>
+    void CenterOnTerritoryIfFullyOffscreen(Territory territory);
+
+    /// <summary>
     /// Pan the map view so <paramref name="coord"/> is centered in the visible
     /// area (clamped to map bounds), using the same eased motion as
     /// <see cref="CenterOnTerritory"/>. Used to focus attention on a specific

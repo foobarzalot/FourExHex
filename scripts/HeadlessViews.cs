@@ -35,6 +35,7 @@ public sealed class HeadlessHexMapView : IHexMapView
     public void ShowSelectUnitCue(HexCoord? coord) { }
     public void ShowHighlight(Territory? selected) { }
     public void CenterOnTerritory(Territory territory) { }
+    public void CenterOnTerritoryIfFullyOffscreen(Territory territory) { }
     public void CenterOnCoord(HexCoord coord) { }
     public void ShowTerrainFocusPulse(HexCoord? coord) { }
     public void RebuildAfterTerritoryChange() { }

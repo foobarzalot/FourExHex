@@ -104,6 +104,14 @@ public class MockHexMapView : IHexMapView
         CenterCount++;
     }
 
+    public Territory? LastConditionalCenteredTerritory { get; private set; }
+    public int ConditionalCenterCount { get; private set; }
+    public void CenterOnTerritoryIfFullyOffscreen(Territory territory)
+    {
+        LastConditionalCenteredTerritory = territory;
+        ConditionalCenterCount++;
+    }
+
     public HexCoord? LastFocusPulseCoord { get; private set; }
     public int FocusPulseCount { get; private set; }
     public void ShowTerrainFocusPulse(HexCoord? coord)

@@ -62,6 +62,35 @@ public partial class GameControllerTests
     }
 
     [Fact]
+    public void TurnStart_AutoSelect_PansOnlyIfFullyOffscreen()
+    {
+        // Turn-start auto-selection must not yank the camera when the
+        // territory is already visible: it goes through the conditional
+        // center path, never the unconditional one (#182).
+        var g = new UnequalRedTerritoriesGame(autoSelect: true);
+
+        Assert.Equal(1, g.Map.ConditionalCenterCount);
+        Assert.Same(g.Session.SelectedTerritory, g.Map.LastConditionalCenteredTerritory);
+        Assert.Equal(0, g.Map.CenterCount);
+    }
+
+    [Fact]
+    public void NextTerritory_AfterAutoSelect_StillCentersUnconditionally()
+    {
+        // Tab is a deliberate navigation gesture — it keeps the
+        // unconditional centering even though turn-start auto-select is
+        // conditional.
+        var g = new UnequalRedTerritoriesGame(autoSelect: true);
+        int centerBaseline = g.Map.CenterCount;
+        int conditionalBaseline = g.Map.ConditionalCenterCount;
+
+        g.Hud.PressNextTerritory();
+
+        Assert.Equal(centerBaseline + 1, g.Map.CenterCount);
+        Assert.Equal(conditionalBaseline, g.Map.ConditionalCenterCount);
+    }
+
+    [Fact]
     public void EndTurn_AutoSelectsForNextHumanPlayer()
     {
         // Two human players. After Red ends its turn, Blue's turn opens

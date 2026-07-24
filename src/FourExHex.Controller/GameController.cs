@@ -404,7 +404,10 @@ public class GameController
         // previous player's territory. Then walk to the first actionable.
         SetSelection(null);
         if (TryFocusPendingTide()) return;
-        StepTerritorySelection(forward: true);
+        // Turn-start selection preserves the player's framing: only pan
+        // when the picked territory is entirely offscreen (#182 semantics —
+        // the view owns the visibility test).
+        StepTerritorySelection(forward: true, centerOnlyIfFullyOffscreen: true);
     }
 
     /// <summary>
@@ -2359,7 +2362,7 @@ public class GameController
     private void OnPreviousTerritoryPressed() =>
         TrackHandler(() => StepTerritorySelection(forward: false));
 
-    private void StepTerritorySelection(bool forward)
+    private void StepTerritorySelection(bool forward, bool centerOnlyIfFullyOffscreen = false)
     {
         if (_session.IsGameOver) return;
 
@@ -2440,9 +2443,12 @@ public class GameController
         }
         CancelPendingAction();
         SetSelection(owned[pick]);
-        _map.CenterOnTerritory(owned[pick]);
+        if (centerOnlyIfFullyOffscreen)
+            _map.CenterOnTerritoryIfFullyOffscreen(owned[pick]);
+        else
+            _map.CenterOnTerritory(owned[pick]);
         Log.Debug(Log.LogCategory.Input,
-            $"StepTerritorySelection(forward={forward}) -> selected capital {owned[pick].Capital} ({(newRound ? "new round" : "unvisited")})");
+            $"StepTerritorySelection(forward={forward}) -> selected capital {owned[pick].Capital} ({(newRound ? "new round" : "unvisited")}, centerMode={(centerOnlyIfFullyOffscreen ? "conditional" : "always")})");
     }
 
     /// <summary>

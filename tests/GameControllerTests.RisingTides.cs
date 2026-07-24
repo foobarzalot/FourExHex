@@ -285,13 +285,14 @@ public partial class GameControllerTests
     {
         // Outside Rising Tides the turn-start focus doesn't apply: no tide
         // forecast, no coord-centering — auto-select still walks to the
-        // largest actionable territory and centers on it.
+        // largest actionable territory and centers on it (conditionally,
+        // via the fully-offscreen-only pan).
         var g = new TidesGame(TwoBlocks(), GameMode.Freeform);
 
         Assert.Empty(g.State.PendingTide);
         Assert.Null(g.Map.LastCenteredCoord);
         Assert.NotNull(g.Session.SelectedTerritory);
-        Assert.Same(g.Session.SelectedTerritory, g.Map.LastCenteredTerritory);
+        Assert.Same(g.Session.SelectedTerritory, g.Map.LastConditionalCenteredTerritory);
     }
 
     [Fact]
