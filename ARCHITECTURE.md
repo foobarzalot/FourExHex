@@ -181,6 +181,9 @@ VIEWS (Godot Nodes)
       ShowTowerCoverage(coords), ShowMoveSource(coord?), CenterOnTerritory(territory) (eases the
         camera to the anchor via EasingMath.SmoothStep in _Process; retargets on rapid re-center,
         bails on any manual pan/zoom, snaps instantly under _silentMode),
+      CenterOnTerritoryIfFullyOffscreen(territory) (turn-start auto-select variant: pans only when
+        no tile center of the territory is inside the inset-adjusted viewport —
+        CameraFocusMath.IsOutsideComfortZone with comfortFrac 1 per tile; logs [turnstart-pan]),
       RebuildAfterTerritoryChange(), RefreshOccupantVisuals(color, tr., visitedCapitals),
       PlayDestructionEffect(coord, occ.)
     Play{UnitPlaced, TowerPlaced, UnitCombined, UnitDestroyed, TowerDestroyed, TreeCleared, CapitalDestroyed,
@@ -574,6 +577,9 @@ void ShowTowerCoverage(IEnumerable<HexCoord> coords);
 void ShowMoveSource(HexCoord? coord);
 void ShowHighlight(Territory? selected);
 void CenterOnTerritory(Territory territory);
+void CenterOnTerritoryIfFullyOffscreen(Territory territory);
+     // turn-start auto-select camera: skip the pan when any part of the
+     // territory is already on screen, else center on its capital
 void AnimateUnitMove(HexCoord from, HexCoord to);
      // move hint, registered by both move executors just before the model
      // mutation — arms the view's arrival pipeline (see below)
@@ -766,7 +772,7 @@ Fixed order for the current player:
 3. **Reset movement** — `HasMovedThisTurn` cleared on the player's units.
 4. **Collect income** — `Treasury.CollectIncomeFor` (skipped while `TurnNumber == 1`; `SeedStartingGold` is the round-1 bankroll). Tree and grave tiles don't pay; everything else pays 1 gold.
 5. **Apply upkeep** — `UpkeepRules.ApplyUpkeepFor`. Per-unit costs from the flat `UpkeepRules.UpkeepFor` table (Recruit 2, Soldier 6, Captain 18, Commander 54). A territory that can't pay total upkeep goes bankrupt: every unit becomes a `Grave`, remaining gold stays. `PlaySound(Bankruptcy)` fires once per player if any of its territories went bankrupt.
-6. **Human hand-off** (`RaiseHumanTurnStarted`) if the now-current player is human and the game isn't over: **auto-select their first territory** then fire `HumanTurnStarted`. Auto-select (`AutoSelectFirstTerritoryForHuman`) clears any stale selection, then branches: in Rising Tides with a pending forecast, `TryFocusPendingTide` selects the territory containing the doomed tile and centers the camera on it (see *Rising Tides — Turn-start focus*); otherwise it reuses the Next-Territory picker — `StepTerritorySelection(forward:true)` lands on the largest actionable territory (capital-coord tie-break), a no-op leaving the selection null when nothing is actionable. Gated off for AI, replay, game-over, and when the injected `autoSelectFirstTerritory` flag is false (tutorial record/preview and mechanics tests). Autosave also wires to `HumanTurnStarted`.
+6. **Human hand-off** (`RaiseHumanTurnStarted`) if the now-current player is human and the game isn't over: **auto-select their first territory** then fire `HumanTurnStarted`. Auto-select (`AutoSelectFirstTerritoryForHuman`) clears any stale selection, then branches: in Rising Tides with a pending forecast, `TryFocusPendingTide` selects the territory containing the doomed tile and centers the camera on it (see *Rising Tides — Turn-start focus*); otherwise it reuses the Next-Territory picker — `StepTerritorySelection(forward:true, centerOnlyIfFullyOffscreen:true)` lands on the largest actionable territory (capital-coord tie-break), a no-op leaving the selection null when nothing is actionable. The `centerOnlyIfFullyOffscreen` flag routes the camera through `IHexMapView.CenterOnTerritoryIfFullyOffscreen`, which preserves the player's framing when any part of the picked territory is already visible; manual Tab/Shift-Tab presses omit the flag and keep unconditional `CenterOnTerritory` centering. Gated off for AI, replay, game-over, and when the injected `autoSelectFirstTerritory` flag is false (tutorial record/preview and mechanics tests). Autosave also wires to `HumanTurnStarted`.
 
 Income → upkeep ordering lets the turn's income subsidize upkeep before bankruptcy is checked.
 
