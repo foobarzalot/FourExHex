@@ -522,6 +522,76 @@ public class VikingRaidersRulesTests
         Assert.False(VikingRaidersRules.ThreatRemains(state));
     }
 
+    // --- TurnDue outside Viking Raiders -----------------------------------
+    // An authored map can seed raiders on any mode. They have no wave
+    // schedule there, but they still take their turn.
+
+    /// <summary>3×3 Red board on <paramref name="mode"/> with a landed
+    /// raider at (1,1) and the round advanced to <paramref name="round"/>.</summary>
+    private static GameState MakeRaiderState(GameMode mode, int round)
+    {
+        HexGrid grid = TestHelpers.BuildRectGrid(3, 3, Red);
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        GameState state = MakeState(grid, territories, mode: mode);
+        HexCoord landed = HexCoord.FromOffset(1, 1);
+        state.Grid.Get(landed)!.Owner = PlayerId.None;
+        state.Grid.Get(landed)!.Occupant = new Unit(PlayerId.None, UnitLevel.Soldier);
+        while (state.Turns.TurnNumber < round)
+        {
+            state.Turns.EndTurn();
+        }
+        return state;
+    }
+
+    [Fact]
+    public void TurnDue_FreeformWithLandedRaider_IsTrue()
+    {
+        GameState state = MakeRaiderState(GameMode.Freeform, round: 4);
+
+        Assert.True(VikingRaidersRules.TurnDue(state));
+    }
+
+    [Fact]
+    public void TurnDue_FreeformWithLandedRaider_IgnoresTheWaveSchedule()
+    {
+        // No waves outside Viking Raiders, so FirstWaveRound doesn't gate:
+        // a pre-placed raider acts from round 1.
+        GameState state = MakeRaiderState(GameMode.Freeform, round: 1);
+
+        Assert.True(VikingRaidersRules.TurnDue(state));
+    }
+
+    [Fact]
+    public void TurnDue_FreeformWithNoRaiders_IsFalse()
+    {
+        HexGrid grid = TestHelpers.BuildRectGrid(3, 3, Red);
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        GameState state = MakeState(grid, territories, mode: GameMode.Freeform);
+
+        Assert.False(VikingRaidersRules.TurnDue(state));
+    }
+
+    [Fact]
+    public void TurnDue_FreeformRaider_FalseOnceTheRoundIsComplete()
+    {
+        GameState state = MakeRaiderState(GameMode.Freeform, round: 4);
+        state.Vikings.LastCompletedRound = state.Turns.TurnNumber;
+
+        Assert.False(VikingRaidersRules.TurnDue(state));
+    }
+
+    [Fact]
+    public void ThreatRemains_FreeformWithLandedRaider_StaysFalse()
+    {
+        // ThreatRemains is the win-suppression predicate. A stray raider on
+        // a Freeform map must never make the game unwinnable — it takes its
+        // turn (TurnDue) without blocking victory.
+        GameState state = MakeRaiderState(GameMode.Freeform, round: 4);
+
+        Assert.False(VikingRaidersRules.ThreatRemains(state));
+        Assert.True(VikingRaidersRules.TurnDue(state));
+    }
+
     // --- VikingState ------------------------------------------------------------
 
     [Fact]

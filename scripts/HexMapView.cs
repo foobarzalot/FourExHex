@@ -95,6 +95,17 @@ public partial class HexMapView : Node2D, IHexMapView
     /// </summary>
     public HexDragMode DragMode { get; set; } = HexDragMode.Pan;
 
+    /// <summary>
+    /// True while this view renders an authoring draft rather than a live
+    /// game — set by <see cref="MapEditorPanel"/> from its
+    /// <c>PaintingEnabled</c> bit. Suppresses play-only chrome that reads the
+    /// draft <see cref="GameState"/> as if it were a running game: the
+    /// capital economy warning badges. A draft has no turns and an empty
+    /// treasury, so every painted garrison would otherwise stamp a permanent
+    /// bankruptcy triangle on its capital.
+    /// </summary>
+    public bool EditorMode { get; set; }
+
     [Export] public int Cols { get; set; } = 30;
     [Export] public int Rows { get; set; } = 20;
     [Export] public float HexSize { get; set; } = 48f;
@@ -5538,6 +5549,14 @@ public partial class HexMapView : Node2D, IHexMapView
     {
         if (_warningBadgesLayer == null) return;
         ClearLayer(_warningBadgesLayer);
+
+        // Authoring draft: no turns, no treasury — the outlook a painted
+        // garrison classifies to is meaningless, so never badge one.
+        if (EditorMode)
+        {
+            Log.Debug(Log.LogCategory.Render, "[editor] warning badges suppressed");
+            return;
+        }
 
         // Recording mode: the badges are promo-noisy chrome — leave the
         // layer cleared while active.

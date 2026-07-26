@@ -24,6 +24,9 @@ public enum HexPaletteIcon
     Hand,
     Gold,
     Mountain,
+    /// <summary>A unit, drawn at <see cref="HexPaletteButton.Level"/> —
+    /// one icon value, four glyphs, mirroring the play HUD's buy buttons.</summary>
+    Unit,
 }
 
 public partial class HexPaletteButton : Control
@@ -73,6 +76,25 @@ public partial class HexPaletteButton : Control
         {
             if (_fillColor == value) return;
             _fillColor = value;
+            QueueRedraw();
+        }
+    }
+
+    private UnitLevel _level = UnitLevel.Recruit;
+
+    /// <summary>
+    /// The unit level drawn for <see cref="HexPaletteIcon.Unit"/> — the icon
+    /// IS the payload, so the compact cycle button repaints itself as it
+    /// cycles. Mirrors <c>HudIconButton.BuyLevel</c>. Ignored by every other
+    /// icon.
+    /// </summary>
+    public UnitLevel Level
+    {
+        get => _level;
+        set
+        {
+            if (_level == value) return;
+            _level = value;
             QueueRedraw();
         }
     }
@@ -134,6 +156,7 @@ public partial class HexPaletteButton : Control
             case HexPaletteIcon.Hand: HudIcons.DrawHand(this, center, radius, Colors.White); break;
             case HexPaletteIcon.Gold: HudIcons.DrawGold(this, center, radius, Colors.White); break;
             case HexPaletteIcon.Mountain: HudIcons.DrawMountain(this, center, radius, Colors.White); break;
+            case HexPaletteIcon.Unit: HudIcons.DrawUnit(this, center, radius, _level, Colors.White); break;
         }
 
         Color outlineColor = _isSelected ? new Color(1f, 1f, 1f) : new Color(0f, 0f, 0f);
@@ -186,6 +209,7 @@ public partial class HexPaletteButton : Control
             case HexPaletteIcon.Hand:    HudIcons.DrawHand(this, center, radius, Colors.White); break;
             case HexPaletteIcon.Gold:    HudIcons.DrawGold(this, center, radius, Colors.White); break;
             case HexPaletteIcon.Mountain: HudIcons.DrawMountain(this, center, radius, Colors.White); break;
+            case HexPaletteIcon.Unit:    HudIcons.DrawUnit(this, center, radius, _level, Colors.White); break;
             case HexPaletteIcon.None:
                 // Icon-less squared variant (water paint, land cycle):
                 // inscribe a pointy-top hex polygon in the FillColor so

@@ -30,6 +30,8 @@ internal static class Program
                    water C,R...       paint water          (also: rect C,R C,R)
                    capital C,R        move a territory's capital
                    tree|tower|gold|mountain C,R...   toggle feature/occupant
+                   unit LEVEL C,R...  toggle a starting unit (level 1-4;
+                                      neutral tiles yield viking raiders)
               --script FILE           read ops from FILE (one op per line, # comments)
           roster <name> --slot I=KIND[:DIFFICULTY] ...
                                       set slots, e.g. --slot 0=Human --slot 1=Computer:Commander
@@ -225,6 +227,7 @@ internal static class Program
         var opNames = new HashSet<string>
         {
             "land", "neutral", "water", "capital", "tree", "tower", "gold", "mountain",
+            "unit",
         };
         int applied = 0;
         int i = 0;
@@ -243,6 +246,16 @@ internal static class Program
                 i++;
             }
 
+            var level = UnitLevel.Recruit;
+            if (op == "unit")
+            {
+                if (i >= tokens.Count || !int.TryParse(tokens[i], out int levelArg)
+                    || levelArg < 1 || levelArg > (int)UnitLevel.Commander)
+                    throw new CliError("'unit' needs a level 1-4 before its coords");
+                level = (UnitLevel)levelArg;
+                i++;
+            }
+
             List<HexCoord> coords = ParseCoords(tokens, ref i, op, opNames);
             foreach (HexCoord coord in coords)
             {
@@ -256,6 +269,7 @@ internal static class Program
                     case "tower": ws.ToggleTower(coord); break;
                     case "gold": ws.ToggleGold(coord); break;
                     case "mountain": ws.ToggleMountain(coord); break;
+                    case "unit": ws.PlaceUnit(level, coord); break;
                 }
                 applied++;
             }

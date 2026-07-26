@@ -44,6 +44,29 @@ public partial class MapEditorHudView : OrientationHud
     public static int GoldPaletteIndex => 6 + GameSettings.PlayerConfig.Length;
     /// <summary>Palette index reserved for the mountain-tile-toggle swatch.</summary>
     public static int MountainPaletteIndex => 7 + GameSettings.PlayerConfig.Length;
+    /// <summary>First of the four starting-garrison swatches, one per
+    /// <see cref="UnitLevel"/> in ascending order — Recruit at this index,
+    /// Commander at +3. Mirrors the play HUD's four buy buttons.</summary>
+    public static int UnitPaletteIndex => 8 + GameSettings.PlayerConfig.Length;
+
+    /// <summary>The unit level a unit-palette index paints.</summary>
+    public static UnitLevel UnitLevelForPalette(int index) =>
+        (UnitLevel)(index - UnitPaletteIndex + 1);
+
+    /// <summary>True for the four starting-garrison swatches.</summary>
+    public static bool IsUnitIndex(int index) =>
+        index >= UnitPaletteIndex
+        && index < UnitPaletteIndex + UnitLevelCount;
+
+    private const int UnitLevelCount = 4;
+
+    /// <summary>
+    /// True where the four unit swatches fit: the portrait bottom bar at a
+    /// non-compact width. Everywhere else — the 78-px landscape rail at any
+    /// width, and compact portrait — shows the single cycling button instead.
+    /// </summary>
+    private bool ExpandedUnitPalette =>
+        Orientation == ScreenOrientation.Portrait && !Compact;
 
     public event Action? EscRequested;
     public event Action<int, MapGenOptions>? GenerateRequested;
@@ -78,6 +101,15 @@ public partial class MapEditorHudView : OrientationHud
     private HexPaletteButton _landCycleButton = null!;
     private int _lastLandPaletteIndex = 1;
 
+    // Unit palette state, mirroring the land pair: the four level swatches
+    // (expanded, matching the play HUD's buy row) and the single cycling
+    // button (compact, matching the HUD's collapsed buy button). Exactly one
+    // is visible, driven by Compact. _lastUnitPaletteIndex is the level the
+    // cycle button shows / will paint with.
+    private BoxContainer _unitRow = null!;
+    private HexPaletteButton _unitCycleButton = null!;
+    private int _lastUnitPaletteIndex;
+
     // Per-slot kinds the editor map will bake. None colors are
     // hidden from the palette (not paintable); Human colors get a pip marker.
     // Empty until the host calls ApplyRosterKinds (defaults to all paintable).
@@ -87,6 +119,7 @@ public partial class MapEditorHudView : OrientationHud
     // flip Vertical/horizontal on landscape↔portrait so the same buttons
     // stack as a rail column or sit as a bar row.
     private PanelContainer _landCluster = null!;   // 6 land swatches OR 1 cycle button (chip chrome)
+    private PanelContainer _unitCluster = null!;   // 4 unit swatches OR 1 cycle button (chip chrome)
     // Paint tools (water + tree + capital + tower + gold). A GridContainer so
     // it can wrap to a 2nd row (portrait) / column (landscape) on compact
     // phones — five 68-px buttons don't fit one line on a small screen.
@@ -131,7 +164,8 @@ public partial class MapEditorHudView : OrientationHud
         // Palette array: 0 = hand, 1..N = land color swatches, then neutral
         // (unowned land), water, tree, capital, tower, gold. _palette is
         // indexed by these slots.
-        _palette = new HexPaletteButton[GameSettings.PlayerConfig.Length + 8];
+        _palette = new HexPaletteButton[GameSettings.PlayerConfig.Length + 8 + UnitLevelCount];
+        _lastUnitPaletteIndex = UnitPaletteIndex;
 
         // Land cluster — a PanelContainer (chip chrome) wrapping a flippable
         // row: full 1×6 land swatches OR a single cycle button (Compact).
@@ -252,6 +286,53 @@ public partial class MapEditorHudView : OrientationHud
         _paintCluster.AddChild(mountainButton);
         _palette[mountainIndex] = mountainButton;
 
+        // Unit cluster — starting garrisons, one swatch per level, in the
+        // same chip chrome as the land cluster. The play HUD shows four buy
+        // buttons when there's room and collapses to one cycling button on a
+        // phone; the editor mirrors that split exactly.
+        _unitCluster = new PanelContainer
+        {
+            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
+            SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter,
+        };
+        _unitCluster.AddThemeStyleboxOverride("panel", ModalChrome.PalettePanelStyle());
+        var unitGroup = new BoxContainer();
+        _unitCluster.AddChild(unitGroup);
+
+        _unitRow = new BoxContainer();
+        _unitRow.AddThemeConstantOverride("separation", 4);
+        unitGroup.AddChild(_unitRow);
+
+        for (int i = 0; i < UnitLevelCount; i++)
+        {
+            int paletteIndex = UnitPaletteIndex + i;
+            var button = new HexPaletteButton(
+                BoardPalette.MountainRock, HexPaletteIcon.Unit, squared: true)
+            {
+                // The icon IS the payload — the glyph's ring count is the level.
+                Level = UnitLevelForPalette(paletteIndex),
+                TooltipText = Strings.Get(UnitTooltipKeyFor(paletteIndex)),
+            };
+            button.Pressed += _ => SelectPalette(paletteIndex);
+            AudioBus.AttachClick(button);
+            _unitRow.AddChild(button);
+            _palette[paletteIndex] = button;
+        }
+
+        // Compact counterpart: one squared button cycling Recruit → Commander
+        // on each press, repainting its glyph to the armed level. Sits as a
+        // sibling of _unitCluster (no surrounding frame chrome), exactly like
+        // the land cycle button.
+        _unitCycleButton = new HexPaletteButton(
+            BoardPalette.MountainRock, HexPaletteIcon.Unit, squared: true)
+        {
+            Level = UnitLevel.Recruit,
+            TooltipText = Strings.Get(StringKeys.EditorTooltipUnitCycle),
+            Visible = false,
+        };
+        _unitCycleButton.Pressed += _ => OnUnitCyclePressed();
+        AudioBus.AttachClick(_unitCycleButton);
+
         // Tools cluster — hand (pan, no-paint) + die (random regenerate).
         var handButton = new HexPaletteButton(
             new Color(0.32f, 0.34f, 0.38f, 1f), HexPaletteIcon.Hand, squared: true);
@@ -291,6 +372,8 @@ public partial class MapEditorHudView : OrientationHud
     {
         HudBars.Detach(_landCluster);
         HudBars.Detach(_landCycleButton);
+        HudBars.Detach(_unitCluster);
+        HudBars.Detach(_unitCycleButton);
         HudBars.Detach(_paintCluster);
         HudBars.Detach(_toolsCluster);
         HudBars.Detach(_undoCluster);
@@ -316,6 +399,8 @@ public partial class MapEditorHudView : OrientationHud
         // button (mutually exclusive) + terrain paint tools.
         LeftRailGroup!.AddChild(_landCluster);
         LeftRailGroup!.AddChild(_landCycleButton);
+        LeftRailGroup!.AddChild(_unitCluster);
+        LeftRailGroup!.AddChild(_unitCycleButton);
         LeftRailGroup!.AddChild(_paintCluster);
 
         // Right rail (command/tools): hand + die.
@@ -370,6 +455,8 @@ public partial class MapEditorHudView : OrientationHud
         row2.AddThemeConstantOverride("separation", 14);
         row2.AddChild(_landCluster);
         row2.AddChild(_landCycleButton);
+        row2.AddChild(_unitCluster);
+        row2.AddChild(_unitCycleButton);
         row2.AddChild(_paintCluster);
         inner.AddChild(row2);
 
@@ -398,19 +485,29 @@ public partial class MapEditorHudView : OrientationHud
         // appear inside the panel's chrome frame.
         _landCluster.Visible = !compact;
         _landCycleButton.Visible = compact;
+        // The unit palette expands only where there is room for a fourth
+        // group of buttons: the portrait bottom bar. The landscape left rail
+        // is 78 px wide and already carries the land swatches plus the paint
+        // tools in one column, so it takes the cycle button at every width.
+        bool expandedUnits = ExpandedUnitPalette;
+        _unitCluster.Visible = expandedUnits;
+        _unitCycleButton.Visible = !expandedUnits;
         RefreshLandCycleVisual();
+        RefreshUnitCycleVisual();
         // Re-wrap the paint grid for the new compact state (a width-only
         // change that doesn't flip orientation won't have rebuilt the bars).
         ApplyPaintGrid();
         Log.Debug(Log.LogCategory.Render,
             $"MapEditorHudView: metrics orient={Orientation} compact={compact} " +
-            $"land={(compact ? "cycle (bare)" : "1x6 panel")}");
+            $"land={(compact ? "cycle (bare)" : "1x6 panel")} " +
+            $"unit={(expandedUnits ? "1x4 panel" : "cycle (bare)")}");
     }
 
     private void SetClusterVertical(bool vertical)
     {
         _toolsCluster.Vertical = vertical;
         _landRow.Vertical = vertical;
+        _unitRow.Vertical = vertical;
         // _paintCluster is a GridContainer (not a BoxContainer): its axis is
         // set via Columns in ApplyPaintGrid, not a Vertical flag.
         // The landGroup wrapper (parent of _landRow + _landCycleButton)
@@ -556,6 +653,7 @@ public partial class MapEditorHudView : OrientationHud
         if (index == SelectedPaletteIndex && _palette[index].IsSelected)
         {
             RefreshLandCycleVisual();
+            RefreshUnitCycleVisual();
             return;
         }
 
@@ -563,8 +661,11 @@ public partial class MapEditorHudView : OrientationHud
         SelectedPaletteIndex = index;
         _palette[index].IsSelected = true;
         if (IsLandIndex(index)) _lastLandPaletteIndex = index;
+        if (IsUnitIndex(index)) _lastUnitPaletteIndex = index;
         RefreshLandCycleVisual();
+        RefreshUnitCycleVisual();
         RefreshLandPanelSelectionStyle();
+        RefreshUnitPanelSelectionStyle();
         if (fireEvent) PaletteSelectionChanged?.Invoke(index);
     }
 
@@ -582,6 +683,20 @@ public partial class MapEditorHudView : OrientationHud
             style.SetBorderWidthAll(3);
         }
         _landCluster.AddThemeStyleboxOverride("panel", style);
+    }
+
+    /// <summary>The unit panel's counterpart to
+    /// <see cref="RefreshLandPanelSelectionStyle"/> — ring the whole group
+    /// while any garrison level is the active brush.</summary>
+    private void RefreshUnitPanelSelectionStyle()
+    {
+        StyleBoxFlat style = ModalChrome.PalettePanelStyle();
+        if (IsUnitIndex(SelectedPaletteIndex))
+        {
+            style.BorderColor = UiPalette.SelectionRing;
+            style.SetBorderWidthAll(3);
+        }
+        _unitCluster.AddThemeStyleboxOverride("panel", style);
     }
 
     // The owner/land group is the player colors (1..N) plus the neutral
@@ -670,5 +785,45 @@ public partial class MapEditorHudView : OrientationHud
             ? PlayerPalette.Neutral
             : new Color(GameSettings.PlayerConfig[_lastLandPaletteIndex - 1].Hex);
         _landCycleButton.IsSelected = IsLandIndex(SelectedPaletteIndex);
+    }
+
+    /// <summary>
+    /// Select-first-then-cycle, mirroring <see cref="OnLandCyclePressed"/>:
+    /// the first press arms the unit brush at the last-used level, each
+    /// further press advances Recruit → Soldier → Captain → Commander and
+    /// wraps.
+    /// </summary>
+    private void OnUnitCyclePressed()
+    {
+        bool wasUnit = IsUnitIndex(SelectedPaletteIndex);
+        if (wasUnit) _lastUnitPaletteIndex = NextUnitIndex(_lastUnitPaletteIndex);
+        Log.Debug(Log.LogCategory.Input,
+            $"[UnitCycle] press -> select {_lastUnitPaletteIndex} " +
+            $"level={UnitLevelForPalette(_lastUnitPaletteIndex)} (wasUnit={wasUnit})");
+        SelectPalette(_lastUnitPaletteIndex);
+    }
+
+    private static string UnitTooltipKeyFor(int paletteIndex) =>
+        UnitLevelForPalette(paletteIndex) switch
+        {
+            UnitLevel.Soldier => StringKeys.EditorTooltipUnitSoldier,
+            UnitLevel.Captain => StringKeys.EditorTooltipUnitCaptain,
+            UnitLevel.Commander => StringKeys.EditorTooltipUnitCommander,
+            _ => StringKeys.EditorTooltipUnitRecruit,
+        };
+
+    private static int NextUnitIndex(int index)
+    {
+        int next = index + 1;
+        return next >= UnitPaletteIndex + UnitLevelCount ? UnitPaletteIndex : next;
+    }
+
+    /// <summary>Keep the collapsed cycle button's glyph + selection outline in
+    /// sync with the remembered level and the current tool. The glyph IS the
+    /// level (ring count), same as the play HUD's collapsed buy button.</summary>
+    private void RefreshUnitCycleVisual()
+    {
+        _unitCycleButton.Level = UnitLevelForPalette(_lastUnitPaletteIndex);
+        _unitCycleButton.IsSelected = IsUnitIndex(SelectedPaletteIndex);
     }
 }

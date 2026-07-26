@@ -319,10 +319,30 @@ public static class VikingRaidersRules
     /// turn-order swatch from it.
     /// </summary>
     public static bool TurnDue(GameState state)
-        => state.Mode == GameMode.VikingRaiders
-           && state.Turns.TurnNumber >= FirstWaveRound
-           && state.Vikings.LastCompletedRound < state.Turns.TurnNumber
-           && ThreatRemains(state);
+    {
+        if (state.Vikings.LastCompletedRound >= state.Turns.TurnNumber) return false;
+        if (state.Mode == GameMode.VikingRaiders)
+        {
+            return state.Turns.TurnNumber >= FirstWaveRound && ThreatRemains(state);
+        }
+        // Other modes have no wave schedule, so nothing spawns and
+        // FirstWaveRound doesn't apply — but an authored map may seed
+        // raiders with the editor's unit brush, and those still take a turn.
+        return LandedRaidersExist(state);
+    }
+
+    /// <summary>
+    /// True when any <see cref="PlayerId.None"/>-owned unit stands on the
+    /// grid — the landed half of the raider population, in every mode.
+    /// </summary>
+    public static bool LandedRaidersExist(GameState state)
+    {
+        foreach (HexTile tile in state.Grid.Tiles)
+        {
+            if (tile.Occupant is Unit u && u.Owner.IsNone) return true;
+        }
+        return false;
+    }
 
     /// <summary>
     /// True while any viking threat remains: raiders at sea, un-spawned waves
@@ -336,10 +356,6 @@ public static class VikingRaidersRules
         if (state.Mode != GameMode.VikingRaiders) return false;
         if (state.Vikings.AtSea.Count > 0) return true;
         if (state.Vikings.NextWaveIndex < TotalWaves) return true;
-        foreach (HexTile tile in state.Grid.Tiles)
-        {
-            if (tile.Occupant is Unit u && u.Owner.IsNone) return true;
-        }
-        return false;
+        return LandedRaidersExist(state);
     }
 }

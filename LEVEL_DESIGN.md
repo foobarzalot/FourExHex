@@ -43,11 +43,27 @@ neutral C,R ...        unowned land            (accepts: rect)
 water C,R ...          back to water           (accepts: rect)
 capital C,R            move the territory's capital to this tile
 tree|tower|gold|mountain C,R ...   toggle that feature/occupant
+unit LEVEL C,R ...     toggle a starting unit, level 1-4 (Recruit..Commander)
 ```
 
 Painting land for a dormant slot auto-activates it as `Computer:Soldier`; an
 explicit `roster` choice is never overridden. Capitals are placed automatically
 whenever a 2+ tile region forms — use `capital` only to move one deliberately.
+
+A unit's owner comes from the tile it stands on, never chosen separately, and
+stays derived from it: recolor a garrisoned tile and the unit changes hands.
+On neutral land a unit is a **viking raider** — so `unit 2 4,3` on a neutral
+tile seeds a level-2 raider. Rejected placements (`unit` no-ops, and a
+garrison a later edit invalidates is removed):
+
+- water, and tiles holding a capital or a tower;
+- a **non-neutral singleton** — a one-tile territory has no capital and so no
+  treasury, and its garrison would bankrupt on the first upkeep tick;
+- **Commander on neutral** — viking waves are never Commander, so there is no
+  level-4 raider. Recoloring a Commander's tile neutral removes it.
+
+Starting garrisons pay no upkeep through round 1; charging begins at the start
+of round 2, alongside the first income credit.
 
 ### Board text
 

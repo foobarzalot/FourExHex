@@ -135,6 +135,59 @@ public class VikingAiTests
             state.Grid.Get(move.Destination)!.Owner);
     }
 
+    // --- raiders outside Viking Raiders mode ------------------------------
+    // An authored map can seed raiders on any mode. They act exactly as
+    // landed raiders do, but there is no wave schedule to advance.
+
+    [Fact]
+    public void ChooseNext_FreeformLandedRaider_StillCaptures()
+    {
+        HexGrid grid = TestHelpers.BuildRectGrid(3, 3, Red);
+        HexCoord vikingTile = HexCoord.FromOffset(0, 0);
+        grid.Get(vikingTile)!.Owner = PlayerId.None;
+        grid.Get(vikingTile)!.Occupant = new Unit(PlayerId.None, UnitLevel.Soldier);
+        GameState state = MakeState(grid, mode: GameMode.Freeform);
+
+        AiAction? action = Choose(state);
+
+        AiMoveAction move = Assert.IsType<AiMoveAction>(action);
+        Assert.Equal(vikingTile, move.Source);
+    }
+
+    [Fact]
+    public void ChooseNext_FreeformNeverSpawnsWaves()
+    {
+        // Round 4 with NextWaveIndex 0 would be wave-due in Viking Raiders,
+        // and the map has coastal water to spawn onto — but Freeform has no
+        // schedule, so the turn simply ends.
+        HexGrid grid = TestHelpers.BuildRectGrid(3, 3, Red);
+        var water = new HashSet<HexCoord>
+        {
+            HexCoord.FromOffset(3, 0),
+            HexCoord.FromOffset(3, 1),
+            HexCoord.FromOffset(3, 2),
+        };
+        GameState state = MakeState(grid, water, mode: GameMode.Freeform);
+
+        Assert.Null(Choose(state));
+        Assert.Equal(0, state.Vikings.NextWaveIndex);
+    }
+
+    [Fact]
+    public void ChooseNext_FreeformIgnoresRaidersAtSea()
+    {
+        // Sea raiders can only exist in Viking Raiders (nothing spawns them
+        // elsewhere); if one is somehow present it must not disembark here.
+        HexGrid grid = TestHelpers.BuildRectGrid(3, 3, Red);
+        HexCoord sea = HexCoord.FromOffset(3, 1);
+        GameState state = MakeState(
+            grid, new HashSet<HexCoord> { sea }, mode: GameMode.Freeform);
+        state.Vikings.AddAtSea(new SeaViking(sea, UnitLevel.Soldier));
+        state.Vikings.LastSpawnRound = 0;
+
+        Assert.Null(Choose(state));
+    }
+
     // --- sequencer phase 3: spawn last ------------------------------------------
 
     [Fact]

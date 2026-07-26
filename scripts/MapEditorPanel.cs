@@ -43,7 +43,24 @@ public sealed partial class MapEditorPanel : Node2D
     public bool CanUndo => _undoStack.CanUndo;
     public bool CanRedo => _undoStack.CanRedo;
     public int SelectedPaletteIndex { get; private set; } = MapEditorHudView.HandPaletteIndex;
-    public bool PaintingEnabled { get; set; } = true;
+    private bool _paintingEnabled = true;
+
+    /// <summary>
+    /// True while this panel is an authoring surface (the map editor, the
+    /// tutorial builder's Map Edit mode); false when it is only hosting the
+    /// map for scripted playback. Besides gating the paint handlers it drives
+    /// <see cref="HexMapView.EditorMode"/>, so a draft board never shows the
+    /// play-only economy warning badges.
+    /// </summary>
+    public bool PaintingEnabled
+    {
+        get => _paintingEnabled;
+        set
+        {
+            _paintingEnabled = value;
+            if (Map != null) Map.EditorMode = value;
+        }
+    }
 
     /// <summary>
     /// Mode the live (Record / Preview / demo playback) states built from
@@ -67,6 +84,7 @@ public sealed partial class MapEditorPanel : Node2D
         }
 
         Map = new HexMapView();
+        Map.EditorMode = _paintingEnabled;
         InitWaterOnly(Map.Cols, Map.Rows);
         Map.Init(BuildLiveState());
         AddChild(Map);
@@ -331,6 +349,14 @@ public sealed partial class MapEditorPanel : Node2D
                 _grid, _water, _territories, Map.Cols, Map.Rows, coord);
             return;
         }
+        if (MapEditorHudView.IsUnitIndex(idx))
+        {
+            UnitLevel level = MapEditorHudView.UnitLevelForPalette(idx);
+            if (!UnitToggleCellAllowed(coord, level)) return;
+            _territories = MapEditPaint.PaintUnitToggle(
+                _grid, _water, _territories, Map.Cols, Map.Rows, coord, level);
+            return;
+        }
         // Color swatch: idx 1..PlayerConfig.Length. Index 0 is the hand
         // (Pan mode, never reaches here).
         PlayerId owner = PlayerId.FromIndex(idx - 1);
@@ -349,7 +375,8 @@ public sealed partial class MapEditorPanel : Node2D
         if (idx != MapEditorHudView.TreePaletteIndex
             && idx != MapEditorHudView.TowerPaletteIndex
             && idx != MapEditorHudView.GoldPaletteIndex
-            && idx != MapEditorHudView.MountainPaletteIndex)
+            && idx != MapEditorHudView.MountainPaletteIndex
+            && !MapEditorHudView.IsUnitIndex(idx))
         {
             return null;
         }
@@ -359,6 +386,11 @@ public sealed partial class MapEditorPanel : Node2D
         if (idx == MapEditorHudView.TreePaletteIndex) present = tile.Occupant is Tree;
         else if (idx == MapEditorHudView.TowerPaletteIndex) present = tile.Occupant is Tower;
         else if (idx == MapEditorHudView.MountainPaletteIndex) present = tile.IsMountain;
+        else if (MapEditorHudView.IsUnitIndex(idx))
+        {
+            present = tile.Occupant is Unit u
+                && u.Level == MapEditorHudView.UnitLevelForPalette(idx);
+        }
         else present = tile.IsGold; // GoldPaletteIndex
         return present ? ToggleStrokeMode.Erase : ToggleStrokeMode.Add;
     }
@@ -408,6 +440,23 @@ public sealed partial class MapEditorPanel : Node2D
     private bool MountainToggleCellAllowed(HexCoord coord)
     {
         bool present = _grid.Get(coord)?.IsMountain ?? false;
+        return _toggleStrokeMode switch
+        {
+            ToggleStrokeMode.Add => !present,
+            ToggleStrokeMode.Erase => present,
+            _ => true,
+        };
+    }
+
+    /// <summary>
+    /// Gate a per-cell unit toggle by the locked stroke direction, mirroring
+    /// <see cref="ToggleCellAllowed"/>: a place-stroke skips tiles that
+    /// already hold that level (so dragging across a garrison doesn't erase
+    /// it), an erase-stroke skips tiles that don't.
+    /// </summary>
+    private bool UnitToggleCellAllowed(HexCoord coord, UnitLevel level)
+    {
+        bool present = _grid.Get(coord)?.Occupant is Unit u && u.Level == level;
         return _toggleStrokeMode switch
         {
             ToggleStrokeMode.Add => !present,

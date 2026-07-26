@@ -225,4 +225,68 @@ public class LevelWorkspaceTests
         Assert.Equal(PlayerKind.Computer, a.KindFor(2));
         Assert.Equal(PlayerKind.None, a.KindFor(3));
     }
+
+    // --- PlaceUnit --------------------------------------------------------
+
+    [Fact]
+    public void PlaceUnit_OnOwnedTile_PlacesUnitOwnedByTheTerritory()
+    {
+        var ws = new LevelWorkspace(6, 4);
+        ws.PaintLand(0, At(1, 1));
+        ws.PaintLand(0, At(2, 1));
+        ws.PaintLand(0, At(3, 1));
+        ws.PaintCapital(At(1, 1));
+
+        ws.PlaceUnit(UnitLevel.Soldier, At(3, 1));
+
+        var unit = Assert.IsType<Unit>(ws.Grid.Get(At(3, 1))!.Occupant);
+        Assert.Equal(PlayerId.FromIndex(0), unit.Owner);
+        Assert.Equal(UnitLevel.Soldier, unit.Level);
+    }
+
+    [Fact]
+    public void PlaceUnit_OnNeutralTile_PlacesVikingRaider()
+    {
+        var ws = new LevelWorkspace(6, 4);
+        ws.PaintNeutral(At(1, 1));
+        ws.PaintNeutral(At(2, 1));
+
+        ws.PlaceUnit(UnitLevel.Captain, At(2, 1));
+
+        var unit = Assert.IsType<Unit>(ws.Grid.Get(At(2, 1))!.Occupant);
+        Assert.True(unit.Owner.IsNone);
+    }
+
+    [Fact]
+    public void PlaceUnit_RendersAsItsLevelDigit()
+    {
+        var ws = new LevelWorkspace(6, 4);
+        ws.PaintLand(0, At(1, 1));
+        ws.PaintLand(0, At(2, 1));
+        ws.PaintLand(0, At(3, 1));
+        ws.PaintCapital(At(1, 1));
+
+        ws.PlaceUnit(UnitLevel.Captain, At(3, 1));
+
+        Assert.Contains("3", ws.RenderText());
+    }
+
+    [Fact]
+    public void PlaceUnit_RoundTripsThroughJson()
+    {
+        var ws = new LevelWorkspace(6, 4);
+        ws.PaintLand(0, At(1, 1));
+        ws.PaintLand(0, At(2, 1));
+        ws.PaintLand(0, At(3, 1));
+        ws.PaintCapital(At(1, 1));
+        ws.PaintLand(1, At(1, 3));
+        ws.PaintLand(1, At(2, 3));
+        ws.PlaceUnit(UnitLevel.Soldier, At(3, 1));
+
+        LoadedSave loaded = SaveSerializer.Deserialize(ws.ToJson("garrison"));
+
+        var unit = Assert.IsType<Unit>(loaded.State.Grid.Get(At(3, 1))!.Occupant);
+        Assert.Equal(PlayerId.FromIndex(0), unit.Owner);
+        Assert.Equal(UnitLevel.Soldier, unit.Level);
+    }
 }

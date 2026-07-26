@@ -208,17 +208,18 @@ public partial class GameControllerTests
     [Fact]
     public void StartPlayerTurn_BankruptcyOccurs_FiresBankruptcySoundOnce()
     {
-        // StartGame doesn't run StartPlayerTurn for the initial human
-        // player — upkeep first applies on the *next* turn-start. Set
-        // up a Captain on a Blue tile, zero the Blue treasury, then end
-        // Red's turn so Blue's StartPlayerTurn runs and bankrupts.
+        // Upkeep first applies on Blue's round-2 turn-start (round 1 is
+        // free). Set up a Captain on a Blue tile, zero the Blue treasury,
+        // then run the rotation until Blue's T2 StartPlayerTurn bankrupts.
         var g = new TestGame();
         g.Tile(3, 0).Occupant = new Unit(g.Blue.Id, UnitLevel.Captain);
         Territory blueT = g.State.Territories.First(t => t.Owner == g.Blue.Id);
         HexCoord blueCapital = blueT.Capital!.Value;
         g.State.Treasury.SetGold(blueCapital, 0);
 
-        g.Hud.ClickEndTurn();
+        g.Hud.ClickEndTurn(); // Red T1 -> Blue T1 (free)
+        g.Hud.ClickEndTurn(); // Blue T1 -> Red T2
+        g.Hud.ClickEndTurn(); // Red T2 -> Blue T2
 
         Assert.Equal(1, g.Map.BankruptcySoundCount);
         Assert.IsType<Grave>(g.Tile(3, 0).Occupant);
@@ -277,7 +278,11 @@ public partial class GameControllerTests
         state.Grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = new Unit(blue.Id, UnitLevel.Captain);
         state.Treasury.SetGold(blueCapital, 0);
 
-        hud.ClickEndTurn(); // Red ends → Blue (AI) StartPlayerTurn bankrupts
+        // Round 1 charges no upkeep, so the bankruptcy lands on Blue's T2.
+        // Blue is AI: each ClickEndTurn plays Blue's whole turn and hands
+        // control back to Red.
+        hud.ClickEndTurn(); // Red T1 → Blue T1 (free) → Red T2
+        hud.ClickEndTurn(); // Red T2 → Blue T2 StartPlayerTurn bankrupts
 
         Assert.IsType<Grave>(state.Grid.Get(HexCoord.FromOffset(3, 0))!.Occupant);
         Assert.Equal(0, map.BankruptcySoundCount);
@@ -302,7 +307,10 @@ public partial class GameControllerTests
         state.Grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = new Unit(blue.Id, UnitLevel.Captain);
         state.Treasury.SetGold(blueCapital, 0);
 
-        hud.ClickEndTurn(); // Red ends → Blue (human) StartPlayerTurn bankrupts
+        // Round 1 charges no upkeep, so the bankruptcy lands on Blue's T2.
+        hud.ClickEndTurn(); // Red T1 → Blue T1 (free)
+        hud.ClickEndTurn(); // Blue T1 → Red T2
+        hud.ClickEndTurn(); // Red T2 → Blue (human) T2 StartPlayerTurn bankrupts
 
         Assert.IsType<Grave>(state.Grid.Get(HexCoord.FromOffset(3, 0))!.Occupant);
         Assert.Equal(1, map.BankruptcySoundCount);
@@ -414,8 +422,10 @@ public partial class GameControllerTests
         GameState state = h.State;
         MockHudView hud = h.Hud;
 
-        hud.ClickEndTurn(); // Red → Green
-        hud.ClickEndTurn(); // Green → Blue phantom → Red
+        hud.ClickEndTurn(); // Red T1 → Green T1
+        hud.ClickEndTurn(); // Green T1 → Blue phantom (round 1: free) → Red T2
+        hud.ClickEndTurn(); // Red T2 → Green T2
+        hud.ClickEndTurn(); // Green T2 → Blue phantom (round 2: upkeep) → Red T3
 
         HexTile orphan = state.Grid.Get(orphanCoord)!;
         Assert.Equal(blue.Id, orphan.Owner);

@@ -79,38 +79,68 @@ public partial class GameControllerTests
     public void EndTurn_PaysUpkeep_FromNewPlayerTerritories()
     {
         var g = new TestGame();
-        // Put a Blue recruit on a non-capital Blue tile so Blue has
-        // upkeep to pay when Blue's turn begins. Round 1 has no income
-        // (every player's first turn skips income), so Blue's only
-        // treasury change at the start of its first turn is upkeep.
+        // Put a Blue recruit on a non-capital Blue tile so Blue has upkeep
+        // to pay when Blue's turn begins. Round 1 is free, so the charge
+        // lands on Blue's T2 — alongside that turn's income credit.
         g.Tile(3, 0).Occupant = new Unit(g.Blue.Id);
+        int blueSize = g.State.Territories
+            .First(t => t.Owner == g.Blue.Id).Size;
+        HexCoord blueCapital = g.State.Territories
+            .First(t => t.Owner == g.Blue.Id).Capital!.Value;
+
+        g.Hud.ClickEndTurn(); // Red T1 -> Blue T1 (free)
+        g.Hud.ClickEndTurn(); // Blue T1 -> Red T2
+        g.State.Treasury.SetGold(blueCapital, 20);
+
+        g.Hud.ClickEndTurn(); // Red T2 -> Blue T2: Blue collects income, then pays upkeep.
+
+        Assert.Equal(20 + blueSize - 2, g.State.Treasury.GetGold(blueCapital));
+        // Recruit survived because Blue could afford it.
+        Assert.NotNull(g.Tile(3, 0).Unit);
+    }
+
+    [Fact]
+    public void StartTurn_Round1_ChargesNoUpkeep()
+    {
+        // Editor-placed starting garrisons are free through round 1 and
+        // start paying at the start of round 2 — matching the income and
+        // tree-growth gates. Blue holds a captain (upkeep 18) with only
+        // 20g: it survives round 1 untouched, then pays on Blue's T2.
+        var g = new TestGame();
+        g.Tile(3, 0).Occupant = new Unit(g.Blue.Id, UnitLevel.Captain);
         HexCoord blueCapital = g.State.Territories
             .First(t => t.Owner == g.Blue.Id).Capital!.Value;
         g.State.Treasury.SetGold(blueCapital, 20);
 
-        g.Hud.ClickEndTurn(); // Red -> Blue: Blue pays upkeep, no income (round 1).
+        g.Hud.ClickEndTurn(); // Red T1 -> Blue T1: no income, no upkeep.
 
-        Assert.Equal(20 - 2, g.State.Treasury.GetGold(blueCapital));
-        // Recruit survived because Blue could afford it.
-        Assert.NotNull(g.Tile(3, 0).Unit);
+        Assert.Equal(20, g.State.Treasury.GetGold(blueCapital));
+        Assert.IsType<Unit>(g.Tile(3, 0).Occupant);
+
+        g.Hud.ClickEndTurn(); // Blue T1 -> Red T2
+        g.Hud.ClickEndTurn(); // Red T2 -> Blue T2: income (8) then upkeep (18).
+
+        Assert.Equal(20 + 8 - 18, g.State.Treasury.GetGold(blueCapital));
+        Assert.IsType<Unit>(g.Tile(3, 0).Occupant);
     }
 
     [Fact]
     public void EndTurn_BankruptTerritory_LeavesGraves()
     {
         var g = new TestGame();
-        // Give Blue a captain (upkeep 18) it can't pay. Blue has 0 gold
-        // and round 1 skips the income credit, so upkeep goes straight
-        // to bankruptcy.
+        // Give Blue a captain (upkeep 18) it can't pay. Round 1 is free;
+        // on Blue's T2 the income credit (8 tiles) still falls short.
         g.Tile(3, 0).Occupant = new Unit(g.Blue.Id, UnitLevel.Captain);
         HexCoord blueCapital = g.State.Territories
             .First(t => t.Owner == g.Blue.Id).Capital!.Value;
         g.State.Treasury.SetGold(blueCapital, 0);
 
-        g.Hud.ClickEndTurn(); // advance to Blue
+        g.Hud.ClickEndTurn(); // Red T1 -> Blue T1 (free)
+        g.Hud.ClickEndTurn(); // Blue T1 -> Red T2
+        g.Hud.ClickEndTurn(); // Red T2 -> Blue T2
 
-        // Blue has 0g and owes 18 upkeep → bankrupt. Captain dies and
-        // leaves a grave behind (not a null tile).
+        // Blue has 8g of income against 18 owed → bankrupt. Captain dies
+        // and leaves a grave behind (not a null tile).
         Assert.IsType<Grave>(g.Tile(3, 0).Occupant);
     }
 
@@ -187,8 +217,8 @@ public partial class GameControllerTests
     [Fact]
     public void StartTurn_BankruptcyGraveBecomesTreeBeforeIncomeCredit()
     {
-        // End-to-end ordering check: a bankruptcy grave from Blue T1
-        // is converted to a tree by tree-growth at Blue T2 start, and
+        // End-to-end ordering check: a bankruptcy grave from Blue T2
+        // is converted to a tree by tree-growth at Blue T3 start, and
         // the same turn's income credit then excludes that (now-tree)
         // tile. This pins the start-of-turn order: tree-growth →
         // income → upkeep.
@@ -200,15 +230,19 @@ public partial class GameControllerTests
             .First(t => t.Owner == g.Blue.Id).Capital!.Value;
         g.State.Treasury.SetGold(blueCapital, 0);
 
-        g.Hud.ClickEndTurn(); // Red T1 → Blue T1: captain bankrupts → grave on (3,0)
-        Assert.IsType<Grave>(g.Tile(3, 0).Occupant);
-        Assert.Equal(0, g.State.Treasury.GetGold(blueCapital));
+        g.Hud.ClickEndTurn(); // Red T1 → Blue T1: round 1 is free, captain survives.
+        Assert.IsType<Unit>(g.Tile(3, 0).Occupant);
 
-        g.Hud.ClickEndTurn(); // Blue T1 → Red T2 (Red collects income, not Blue).
-        Assert.Equal(0, g.State.Treasury.GetGold(blueCapital));
+        g.Hud.ClickEndTurn(); // Blue T1 → Red T2
+        g.Hud.ClickEndTurn(); // Red T2 → Blue T2: income falls short → grave on (3,0).
         Assert.IsType<Grave>(g.Tile(3, 0).Occupant);
 
-        g.Hud.ClickEndTurn(); // Red T2 → Blue T2: growth converts grave→tree, then income.
+        g.Hud.ClickEndTurn(); // Blue T2 → Red T3 (Red collects income, not Blue).
+        Assert.IsType<Grave>(g.Tile(3, 0).Occupant);
+
+        // Zero the treasury so the final assertion measures the T3 credit alone.
+        g.State.Treasury.SetGold(blueCapital, 0);
+        g.Hud.ClickEndTurn(); // Red T3 → Blue T3: growth converts grave→tree, then income.
 
         Assert.IsType<Tree>(g.Tile(3, 0).Occupant);
         // Income excludes the (now-tree) tile. No remaining units → no upkeep.
@@ -249,12 +283,14 @@ public partial class GameControllerTests
     public void StartTurn_BankruptGraves_BecomeTreesOnPlayersNextOwnTurn()
     {
         // Full feedback loop:
-        //   1. Blue can't afford its captain; on Blue's turn-1 START
-        //      the tree-growth phase is skipped (first-turn rule),
-        //      then upkeep bankrupts the captain → grave.
-        //   2. Red's turn 2 starts: phase runs but only on Red tiles,
+        //   1. Blue can't afford its captain, but round 1 charges no
+        //      upkeep — the captain survives Blue's turn 1.
+        //   2. Blue's turn 2 starts: income falls short of the captain's
+        //      upkeep, so it bankrupts → grave. The tree-growth phase ran
+        //      before upkeep, so the fresh grave stays a grave.
+        //   3. Red's turn 3 starts: phase runs but only on Red tiles,
         //      so the Blue grave is unaffected.
-        //   3. Blue's turn 2 starts: phase runs on Blue tiles, so
+        //   4. Blue's turn 3 starts: phase runs on Blue tiles, so
         //      the bankruptcy grave converts into a tree.
         var g = new TestGame();
         g.Tile(3, 0).Occupant = new Unit(g.Blue.Id, UnitLevel.Captain);
@@ -262,13 +298,17 @@ public partial class GameControllerTests
             .First(t => t.Owner == g.Blue.Id).Capital!.Value;
         g.State.Treasury.SetGold(blueCapital, 0);
 
-        g.Hud.ClickEndTurn(); // Red -> Blue (turn 1): skip phase, upkeep bankrupts.
+        g.Hud.ClickEndTurn(); // Red -> Blue (turn 1): no upkeep, captain survives.
+        Assert.IsType<Unit>(g.Tile(3, 0).Occupant);
+
+        g.Hud.ClickEndTurn(); // Blue -> Red (turn 2).
+        g.Hud.ClickEndTurn(); // Red -> Blue (turn 2): upkeep bankrupts.
         Assert.IsType<Grave>(g.Tile(3, 0).Occupant);
 
-        g.Hud.ClickEndTurn(); // Blue -> Red (turn 2): phase on Red tiles only.
+        g.Hud.ClickEndTurn(); // Blue -> Red (turn 3): phase on Red tiles only.
         Assert.IsType<Grave>(g.Tile(3, 0).Occupant);
 
-        g.Hud.ClickEndTurn(); // Red -> Blue (turn 2): phase on Blue tiles.
+        g.Hud.ClickEndTurn(); // Red -> Blue (turn 3): phase on Blue tiles.
         Assert.IsType<Tree>(g.Tile(3, 0).Occupant);
     }
 
@@ -383,26 +423,27 @@ public partial class GameControllerTests
             .First(t => t.Owner == g.Blue.Id).Capital!.Value;
         g.State.Treasury.SetGold(blueCapital, 0);
 
-        // Skip Blue's first turn so the phase actually fires the
-        // next time Blue starts a turn. We re-place the unbankrupted
-        // captain afterward to drive bankruptcy on Blue's turn 2 with
-        // the phase running first.
-        g.Hud.ClickEndTurn(); // Red -> Blue (turn 1, skip; captain goes bankrupt → grave)
+        // Round 1 is free, so drive the first bankruptcy on Blue's turn 2.
+        // We re-place an unbankrupted captain afterward to drive a second
+        // bankruptcy on Blue's turn 3 with the phase running first.
+        g.Hud.ClickEndTurn(); // Red -> Blue (turn 1, no upkeep; captain survives)
+        g.Hud.ClickEndTurn(); // Blue -> Red (turn 2)
+        g.Hud.ClickEndTurn(); // Red -> Blue (turn 2; captain goes bankrupt → grave)
         Assert.IsType<Grave>(g.Tile(3, 0).Occupant);
 
-        // Plant a fresh captain that will bankrupt on Blue's turn 2.
+        // Plant a fresh captain that will bankrupt on Blue's turn 3.
         // The previous bankruptcy grave is still there; on Blue's
-        // turn 2 it should convert to a tree (rule 1) BEFORE upkeep
+        // turn 3 it should convert to a tree (rule 1) BEFORE upkeep
         // bankrupts the new captain. We can't put a captain directly
         // on the grave tile, so use (4,0).
         g.Tile(4, 0).Occupant = new Unit(g.Blue.Id, UnitLevel.Captain);
         g.State.Treasury.SetGold(blueCapital, 0);
 
-        g.Hud.ClickEndTurn(); // Blue -> Red (turn 2, Red tiles only)
+        g.Hud.ClickEndTurn(); // Blue -> Red (turn 3, Red tiles only)
         // Grave still there (Red's phase doesn't touch Blue tiles).
         Assert.IsType<Grave>(g.Tile(3, 0).Occupant);
 
-        g.Hud.ClickEndTurn(); // Red -> Blue (turn 2, runs on Blue tiles)
+        g.Hud.ClickEndTurn(); // Red -> Blue (turn 3, runs on Blue tiles)
         // Old grave became a tree (growth ran first).
         Assert.IsType<Tree>(g.Tile(3, 0).Occupant);
         // Fresh captain became a grave (upkeep ran AFTER growth, so

@@ -35,12 +35,16 @@ public static class VikingAi
     public static AiAction? ChooseNext(
         GameState state, HashSet<HexCoord> visitedAnchors, DeterministicRng rng)
     {
-        if (state.Mode != GameMode.VikingRaiders) return null;
         int round = state.Turns.TurnNumber;
+        // Only Viking Raiders runs the sea half of the invasion — the wave
+        // schedule and the disembark beat. Every other mode reaches this
+        // sequencer solely for raiders an authored map placed on land, which
+        // move through step 2 exactly as landed raiders always have.
+        bool seaborne = state.Mode == GameMode.VikingRaiders;
 
         // 1. Disembark raiders that arrived in an earlier round (a wave
         //    spawned THIS round waits — one round of warning).
-        if (state.Vikings.AtSea.Count > 0 && state.Vikings.LastSpawnRound < round)
+        if (seaborne && state.Vikings.AtSea.Count > 0 && state.Vikings.LastSpawnRound < round)
         {
             SeaViking viking = state.Vikings.AtSea[0];
             IReadOnlyList<HexCoord> targets =
@@ -62,7 +66,7 @@ public static class VikingAi
         // 3. Spawn a due wave LAST, so it never acts on its spawn round. The
         //    placements are drawn here (the turn's only RNG consumers) and
         //    carried in the action.
-        if (VikingRaidersRules.WaveDue(round, state.Vikings.NextWaveIndex))
+        if (seaborne && VikingRaidersRules.WaveDue(round, state.Vikings.NextWaveIndex))
         {
             int waveIndex = state.Vikings.NextWaveIndex;
             IReadOnlyList<HexCoord> coastal = VikingRaidersRules.CoastalWaterCoords(state);

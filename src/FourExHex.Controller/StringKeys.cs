@@ -355,6 +355,11 @@ public static class StringKeys
     public const string EditorTooltipTower = "editor.tooltip.tower";
     public const string EditorTooltipGold = "editor.tooltip.gold";
     public const string EditorTooltipMountain = "editor.tooltip.mountain";
+    public const string EditorTooltipUnitRecruit = "editor.tooltip.unit_recruit";
+    public const string EditorTooltipUnitSoldier = "editor.tooltip.unit_soldier";
+    public const string EditorTooltipUnitCaptain = "editor.tooltip.unit_captain";
+    public const string EditorTooltipUnitCommander = "editor.tooltip.unit_commander";
+    public const string EditorTooltipUnitCycle = "editor.tooltip.unit_cycle";
     public const string EditorTooltipPan = "editor.tooltip.pan";
     public const string EditorTooltipSwatchDisabled = "editor.tooltip.swatch_disabled";
     public const string EditorTooltipSwatchHuman = "editor.tooltip.swatch_human";

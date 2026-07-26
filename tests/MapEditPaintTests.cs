@@ -595,24 +595,6 @@ public class MapEditPaintTests
     }
 
     [Fact]
-    public void PaintNeutral_OverUnitTile_ClearsUnit()
-    {
-        // Units are player-bound and cannot sit on neutral land — paint
-        // neutral drops them (mirrors the capital case).
-        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
-        var color = PlayerId.FromIndex(0);
-        var coord = HexCoord.FromOffset(2, 3);
-        IReadOnlyList<Territory> territories = MapEditPaint.PaintLand(
-            grid, water, new List<Territory>(), Cols, Rows, coord, color);
-        grid.Get(coord)!.Occupant = new Unit(color);
-
-        MapEditPaint.PaintNeutral(grid, water, territories, Cols, Rows, coord);
-
-        Assert.True(grid.Get(coord)!.Owner.IsNone);
-        Assert.Null(grid.Get(coord)!.Occupant);
-    }
-
-    [Fact]
     public void PaintNeutral_RoundTripsThroughEditorSnapshot()
     {
         (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
@@ -904,5 +886,359 @@ public class MapEditPaintTests
 
         Assert.False(grid.Contains(coord));
         Assert.Contains(coord, water);
+    }
+
+    // --- PaintUnitToggle -------------------------------------------------
+
+    /// <summary>
+    /// Paint a horizontal run of <paramref name="count"/> tiles for
+    /// <paramref name="owner"/> starting at offset (col, row), then pin the
+    /// capital to the first tile so the remaining coords are free for units.
+    /// </summary>
+    private static IReadOnlyList<Territory> PaintRun(
+        HexGrid grid,
+        HashSet<HexCoord> water,
+        IReadOnlyList<Territory> territories,
+        PlayerId owner,
+        int col,
+        int row,
+        int count)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            territories = MapEditPaint.PaintLand(
+                grid, water, territories, Cols, Rows,
+                HexCoord.FromOffset(col + i, row), owner);
+        }
+        if (!owner.IsNone && count > 1)
+        {
+            territories = MapEditPaint.PaintCapital(
+                grid, water, territories, Cols, Rows, HexCoord.FromOffset(col, row));
+        }
+        return territories;
+    }
+
+    [Fact]
+    public void PaintUnitToggle_OnOwnedTile_PlacesUnitOwnedByTileOwner()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = PlayerId.FromIndex(0);
+        var coord = HexCoord.FromOffset(3, 3);
+        IReadOnlyList<Territory> territories =
+            PaintRun(grid, water, new List<Territory>(), color, 2, 3, 3);
+
+        territories = MapEditPaint.PaintUnitToggle(
+            grid, water, territories, Cols, Rows, coord, UnitLevel.Soldier);
+
+        var unit = Assert.IsType<Unit>(grid.Get(coord)!.Occupant);
+        Assert.Equal(color, unit.Owner);
+        Assert.Equal(UnitLevel.Soldier, unit.Level);
+        Assert.False(unit.HasMovedThisTurn);
+    }
+
+    [Fact]
+    public void PaintUnitToggle_OnNeutralTile_PlacesVikingRaider()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var coord = HexCoord.FromOffset(3, 3);
+        IReadOnlyList<Territory> territories =
+            PaintRun(grid, water, new List<Territory>(), PlayerId.None, 2, 3, 3);
+
+        territories = MapEditPaint.PaintUnitToggle(
+            grid, water, territories, Cols, Rows, coord, UnitLevel.Captain);
+
+        var unit = Assert.IsType<Unit>(grid.Get(coord)!.Occupant);
+        Assert.True(unit.Owner.IsNone);
+        Assert.Equal(UnitLevel.Captain, unit.Level);
+    }
+
+    [Fact]
+    public void PaintUnitToggle_CommanderOnNeutral_IsRejected()
+    {
+        // Viking waves are never Commander (VikingRaidersRules.WaveComposition),
+        // so there is no valid level-4 neutral unit to create.
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var coord = HexCoord.FromOffset(3, 3);
+        IReadOnlyList<Territory> territories =
+            PaintRun(grid, water, new List<Territory>(), PlayerId.None, 2, 3, 3);
+
+        IReadOnlyList<Territory> after = MapEditPaint.PaintUnitToggle(
+            grid, water, territories, Cols, Rows, coord, UnitLevel.Commander);
+
+        Assert.Null(grid.Get(coord)!.Occupant);
+        Assert.Same(territories, after);
+    }
+
+    [Fact]
+    public void PaintUnitToggle_OnNonNeutralSingleton_IsRejected()
+    {
+        // A singleton has no capital, so no treasury — a unit there would
+        // bankrupt-grave on the first upkeep tick.
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = PlayerId.FromIndex(0);
+        var coord = HexCoord.FromOffset(2, 3);
+        IReadOnlyList<Territory> territories = MapEditPaint.PaintLand(
+            grid, water, new List<Territory>(), Cols, Rows, coord, color);
+
+        IReadOnlyList<Territory> after = MapEditPaint.PaintUnitToggle(
+            grid, water, territories, Cols, Rows, coord, UnitLevel.Recruit);
+
+        Assert.Null(grid.Get(coord)!.Occupant);
+        Assert.Same(territories, after);
+    }
+
+    [Fact]
+    public void PaintUnitToggle_OnNeutralSingleton_PlacesViking()
+    {
+        // Vikings are upkeep-exempt, so the singleton guard doesn't apply.
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var coord = HexCoord.FromOffset(2, 3);
+        IReadOnlyList<Territory> territories = MapEditPaint.PaintNeutral(
+            grid, water, new List<Territory>(), Cols, Rows, coord);
+
+        MapEditPaint.PaintUnitToggle(
+            grid, water, territories, Cols, Rows, coord, UnitLevel.Recruit);
+
+        var unit = Assert.IsType<Unit>(grid.Get(coord)!.Occupant);
+        Assert.True(unit.Owner.IsNone);
+    }
+
+    [Fact]
+    public void PaintUnitToggle_OnWater_IsNoop()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var coord = HexCoord.FromOffset(2, 2);
+        IReadOnlyList<Territory> territories = new List<Territory>();
+
+        IReadOnlyList<Territory> after = MapEditPaint.PaintUnitToggle(
+            grid, water, territories, Cols, Rows, coord, UnitLevel.Recruit);
+
+        Assert.False(grid.Contains(coord));
+        Assert.Same(territories, after);
+    }
+
+    [Fact]
+    public void PaintUnitToggle_OutOfBounds_IsNoop()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        IReadOnlyList<Territory> territories =
+            PaintRun(grid, water, new List<Territory>(), PlayerId.FromIndex(0), 2, 3, 3);
+
+        IReadOnlyList<Territory> after = MapEditPaint.PaintUnitToggle(
+            grid, water, territories, Cols, Rows,
+            HexCoord.FromOffset(-1, 0), UnitLevel.Recruit);
+
+        Assert.Same(territories, after);
+    }
+
+    [Fact]
+    public void PaintUnitToggle_OverCapital_IsNoop()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = PlayerId.FromIndex(0);
+        IReadOnlyList<Territory> territories =
+            PaintRun(grid, water, new List<Territory>(), color, 2, 3, 3);
+        HexCoord capital = territories.Single(t => t.Owner == color).Capital!.Value;
+
+        IReadOnlyList<Territory> after = MapEditPaint.PaintUnitToggle(
+            grid, water, territories, Cols, Rows, capital, UnitLevel.Recruit);
+
+        Assert.IsType<Capital>(grid.Get(capital)!.Occupant);
+        Assert.Same(territories, after);
+    }
+
+    [Fact]
+    public void PaintUnitToggle_OverTower_IsNoop()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = PlayerId.FromIndex(0);
+        var coord = HexCoord.FromOffset(3, 3);
+        IReadOnlyList<Territory> territories =
+            PaintRun(grid, water, new List<Territory>(), color, 2, 3, 3);
+        territories = MapEditPaint.PaintTowerToggle(
+            grid, water, territories, Cols, Rows, coord);
+
+        IReadOnlyList<Territory> after = MapEditPaint.PaintUnitToggle(
+            grid, water, territories, Cols, Rows, coord, UnitLevel.Recruit);
+
+        Assert.IsType<Tower>(grid.Get(coord)!.Occupant);
+        Assert.Same(territories, after);
+    }
+
+    [Fact]
+    public void PaintUnitToggle_SameLevelTwice_ClearsUnit()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = PlayerId.FromIndex(0);
+        var coord = HexCoord.FromOffset(3, 3);
+        IReadOnlyList<Territory> territories =
+            PaintRun(grid, water, new List<Territory>(), color, 2, 3, 3);
+        territories = MapEditPaint.PaintUnitToggle(
+            grid, water, territories, Cols, Rows, coord, UnitLevel.Soldier);
+
+        territories = MapEditPaint.PaintUnitToggle(
+            grid, water, territories, Cols, Rows, coord, UnitLevel.Soldier);
+
+        Assert.Null(grid.Get(coord)!.Occupant);
+    }
+
+    [Fact]
+    public void PaintUnitToggle_DifferentLevel_ReplacesUnit()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = PlayerId.FromIndex(0);
+        var coord = HexCoord.FromOffset(3, 3);
+        IReadOnlyList<Territory> territories =
+            PaintRun(grid, water, new List<Territory>(), color, 2, 3, 3);
+        territories = MapEditPaint.PaintUnitToggle(
+            grid, water, territories, Cols, Rows, coord, UnitLevel.Recruit);
+
+        territories = MapEditPaint.PaintUnitToggle(
+            grid, water, territories, Cols, Rows, coord, UnitLevel.Commander);
+
+        var unit = Assert.IsType<Unit>(grid.Get(coord)!.Occupant);
+        Assert.Equal(UnitLevel.Commander, unit.Level);
+    }
+
+    [Fact]
+    public void PaintUnitToggle_OverTree_ReplacesTree()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = PlayerId.FromIndex(0);
+        var coord = HexCoord.FromOffset(3, 3);
+        IReadOnlyList<Territory> territories =
+            PaintRun(grid, water, new List<Territory>(), color, 2, 3, 3);
+        territories = MapEditPaint.PaintTreeToggle(
+            grid, water, territories, Cols, Rows, coord);
+
+        territories = MapEditPaint.PaintUnitToggle(
+            grid, water, territories, Cols, Rows, coord, UnitLevel.Recruit);
+
+        Assert.IsType<Unit>(grid.Get(coord)!.Occupant);
+    }
+
+    // --- unit validity reconcile ----------------------------------------
+
+    [Fact]
+    public void PaintLand_OverUnitTile_ReownsUnitToNewOwner()
+    {
+        // Ownership is derived from the territory, continuously — a recolor
+        // flips the garrison rather than deleting it.
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var red = PlayerId.FromIndex(0);
+        var blue = PlayerId.FromIndex(1);
+        var unitCoord = HexCoord.FromOffset(3, 3);
+        IReadOnlyList<Territory> territories =
+            PaintRun(grid, water, new List<Territory>(), red, 1, 3, 3);
+        territories = PaintRun(grid, water, territories, blue, 4, 3, 2);
+        territories = MapEditPaint.PaintUnitToggle(
+            grid, water, territories, Cols, Rows, unitCoord, UnitLevel.Soldier);
+
+        // Recolor the garrisoned tile into the adjacent blue territory.
+        territories = MapEditPaint.PaintLand(
+            grid, water, territories, Cols, Rows, unitCoord, blue);
+
+        var unit = Assert.IsType<Unit>(grid.Get(unitCoord)!.Occupant);
+        Assert.Equal(blue, unit.Owner);
+        Assert.Equal(UnitLevel.Soldier, unit.Level);
+    }
+
+    [Fact]
+    public void PaintNeutral_OverUnitTile_ConvertsToVikingRaider()
+    {
+        // Neutral land legitimately holds a unit — it becomes a viking raider.
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = PlayerId.FromIndex(0);
+        var coord = HexCoord.FromOffset(3, 3);
+        IReadOnlyList<Territory> territories =
+            PaintRun(grid, water, new List<Territory>(), color, 2, 3, 3);
+        territories = MapEditPaint.PaintUnitToggle(
+            grid, water, territories, Cols, Rows, coord, UnitLevel.Soldier);
+
+        MapEditPaint.PaintNeutral(grid, water, territories, Cols, Rows, coord);
+
+        Assert.True(grid.Get(coord)!.Owner.IsNone);
+        var unit = Assert.IsType<Unit>(grid.Get(coord)!.Occupant);
+        Assert.True(unit.Owner.IsNone);
+        Assert.Equal(UnitLevel.Soldier, unit.Level);
+    }
+
+    [Fact]
+    public void PaintNeutral_OverCommanderTile_RemovesUnit()
+    {
+        // No level-4 viking exists, so the Commander can't be re-owned.
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = PlayerId.FromIndex(0);
+        var coord = HexCoord.FromOffset(3, 3);
+        IReadOnlyList<Territory> territories =
+            PaintRun(grid, water, new List<Territory>(), color, 2, 3, 3);
+        territories = MapEditPaint.PaintUnitToggle(
+            grid, water, territories, Cols, Rows, coord, UnitLevel.Commander);
+
+        MapEditPaint.PaintNeutral(grid, water, territories, Cols, Rows, coord);
+
+        Assert.True(grid.Get(coord)!.Owner.IsNone);
+        Assert.Null(grid.Get(coord)!.Occupant);
+    }
+
+    [Fact]
+    public void PaintWater_OverUnitTile_RemovesTileAndUnit()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = PlayerId.FromIndex(0);
+        var coord = HexCoord.FromOffset(3, 3);
+        IReadOnlyList<Territory> territories =
+            PaintRun(grid, water, new List<Territory>(), color, 2, 3, 3);
+        territories = MapEditPaint.PaintUnitToggle(
+            grid, water, territories, Cols, Rows, coord, UnitLevel.Soldier);
+
+        MapEditPaint.PaintWater(grid, water, territories, Cols, Rows, coord);
+
+        Assert.False(grid.Contains(coord));
+        Assert.Contains(coord, water);
+    }
+
+    [Fact]
+    public void PaintWater_StrandingUnitInNonNeutralSingleton_RemovesUnit()
+    {
+        // Cutting the middle out of a 3-tile run leaves two singletons; the
+        // garrison on one of them is no longer sustainable.
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = PlayerId.FromIndex(0);
+        var unitCoord = HexCoord.FromOffset(4, 3);
+        IReadOnlyList<Territory> territories =
+            PaintRun(grid, water, new List<Territory>(), color, 2, 3, 3);
+        territories = MapEditPaint.PaintUnitToggle(
+            grid, water, territories, Cols, Rows, unitCoord, UnitLevel.Soldier);
+        Assert.IsType<Unit>(grid.Get(unitCoord)!.Occupant);
+
+        MapEditPaint.PaintWater(
+            grid, water, territories, Cols, Rows, HexCoord.FromOffset(3, 3));
+
+        Assert.Null(grid.Get(unitCoord)!.Occupant);
+    }
+
+    [Fact]
+    public void PaintUnitToggle_RoundTripsThroughEditorSnapshot()
+    {
+        (HexGrid grid, HashSet<HexCoord> water) = MakeBlankBoard();
+        var color = PlayerId.FromIndex(0);
+        var coord = HexCoord.FromOffset(3, 3);
+        IReadOnlyList<Territory> territories =
+            PaintRun(grid, water, new List<Territory>(), color, 2, 3, 3);
+        EditorSnapshot pre = EditorSnapshot.Capture(grid, water, territories);
+        territories = MapEditPaint.PaintUnitToggle(
+            grid, water, territories, Cols, Rows, coord, UnitLevel.Captain);
+        EditorSnapshot post = EditorSnapshot.Capture(grid, water, territories);
+
+        Assert.True(pre.DiffersFromGrid(grid, water));
+
+        // Undo back to the pre-paint board, then redo.
+        pre.ApplyTo(grid, water);
+        Assert.Null(grid.Get(coord)!.Occupant);
+        post.ApplyTo(grid, water);
+        var unit = Assert.IsType<Unit>(grid.Get(coord)!.Occupant);
+        Assert.Equal(UnitLevel.Captain, unit.Level);
+        Assert.Equal(color, unit.Owner);
     }
 }

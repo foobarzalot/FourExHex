@@ -287,7 +287,10 @@ public partial class GameControllerTests
             .First(t => t.Owner == g.Blue.Id).Capital!.Value;
         g.State.Treasury.SetGold(blueCapital, 0);
 
-        g.Hud.ClickEndTurn(); // advance to Blue: income then upkeep
+        // Round 1 charges no upkeep, so the bankruptcy lands on Blue's T2.
+        g.Hud.ClickEndTurn(); // Red T1 -> Blue T1 (free)
+        g.Hud.ClickEndTurn(); // Blue T1 -> Red T2
+        g.Hud.ClickEndTurn(); // Red T2 -> Blue T2: income then upkeep
 
         // Captain went bankrupt → grave.
         Assert.IsType<Grave>(g.Tile(3, 0).Occupant);

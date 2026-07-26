@@ -153,6 +153,19 @@ public sealed class LevelWorkspace
         LogPaint("tower", coord);
     }
 
+    /// <summary>
+    /// Toggle a starting garrison unit of <paramref name="level"/> onto
+    /// <paramref name="coord"/>. The unit's owner comes from the tile — a
+    /// neutral tile yields a viking raider. See
+    /// <see cref="MapEditPaint.PaintUnitToggle"/> for the rejection rules.
+    /// </summary>
+    public void PlaceUnit(UnitLevel level, HexCoord coord)
+    {
+        _territories = MapEditPaint.PaintUnitToggle(
+            _grid, _water, _territories, Cols, Rows, coord, level);
+        LogPaint("unit", coord, (int)level, "level");
+    }
+
     public void ToggleGold(HexCoord coord)
     {
         _territories = MapEditPaint.PaintGoldToggle(
@@ -258,11 +271,12 @@ public sealed class LevelWorkspace
                 yield return HexCoord.FromOffset(col, row);
     }
 
-    private void LogPaint(string op, HexCoord coord, int? slot = null)
+    private void LogPaint(
+        string op, HexCoord coord, int? arg = null, string argName = "slot")
     {
         if (!Log.IsEnabled(Log.LogCategory.LevelDesign, Log.LogLevel.Debug)) return;
         (int col, int row) = coord.ToOffset();
-        string target = slot.HasValue ? $" slot={slot.Value}" : "";
+        string target = arg.HasValue ? $" {argName}={arg.Value}" : "";
         Log.Debug(Log.LogCategory.LevelDesign,
             $"[level] paint {op} {col},{row}{target} -> territories={_territories.Count}");
     }

@@ -597,8 +597,12 @@ public class GameOperations
                 _state.Turns.CurrentPlayer, _state.Territories, _state.Grid);
         }
 
-        bool anyBankrupt = UpkeepRules.ApplyUpkeepFor(
-            _state.Turns.CurrentPlayer, _state.Territories, _state.Grid, _state.Treasury);
+        // Upkeep defers to round 2 alongside income: an authored map's
+        // starting garrison is free through round 1, so it can't bankrupt
+        // before its owner has collected a single coin.
+        bool anyBankrupt = _state.Turns.TurnNumber > 1
+            && UpkeepRules.ApplyUpkeepFor(
+                _state.Turns.CurrentPlayer, _state.Territories, _state.Grid, _state.Treasury);
         if (anyBankrupt)
         {
             // One toll per turn-start regardless of how many of the
@@ -643,9 +647,9 @@ public class GameOperations
         if (_state.Turns.TurnNumber > 1)
         {
             TreeRules.RunStartOfTurnGrowth(_state.Grid, ownerId, _state.WaterCoords);
+            UpkeepRules.ApplyUpkeepFor(
+                ownerId, _state.Territories, _state.Grid, _state.Treasury);
         }
-        UpkeepRules.ApplyUpkeepFor(
-            ownerId, _state.Territories, _state.Grid, _state.Treasury);
         Log.Info(Log.LogCategory.Turn,
             $"[T{_state.Turns.TurnNumber}] phantom turn for {name} (tree growth + upkeep)");
     }
