@@ -9,7 +9,8 @@ obj/
 *.user
 
 # Godot export output
-build/
+build/*
+!build/.gdignore
 
 # Test output / coverage
 TestResults/
