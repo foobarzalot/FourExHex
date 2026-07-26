@@ -248,7 +248,7 @@
   "editor.tooltip.unit_soldier": "Place / remove a starting Soldier",
   "editor.tooltip.unit_captain": "Place / remove a starting Captain",
   "editor.tooltip.unit_commander": "Place / remove a starting Commander",
-  "editor.tooltip.unit_cycle": "Place a starting unit — press again to cycle level",
+  "editor.tooltip.unit_cycle": "Place a starting unit — {verb} to cycle level",
   "editor.tooltip.pan": "Pan",
   "editor.tooltip.swatch_disabled": "{name} — disabled (None)",
   "editor.tooltip.swatch_human": "Paint land — {name} (Human)",
