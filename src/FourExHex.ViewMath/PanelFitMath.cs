@@ -69,4 +69,38 @@ public static class PanelFitMath
         float availH = MathF.Max(0f, vpHeight - s.Top - s.Bottom - edge * 2f);
         return (MathF.Min(availW, maxW), MathF.Min(availH, maxH));
     }
+
+    /// <summary>
+    /// Shrink-only content scale for a panel whose content is rebuilt at the
+    /// returned scale (fonts / row heights / separations multiplied through),
+    /// rather than transform-scaled. <paramref name="measuredH"/> is the
+    /// content's measured minimum height at the scale it was last built at
+    /// (<paramref name="measuredAtScale"/>); dividing recovers the scale-1
+    /// design height so repeated measure→rebuild passes converge instead of
+    /// compounding. Returns 1 when the design fits (never upscales); otherwise
+    /// the fit ratio floor-quantized to <paramref name="step"/> (stability
+    /// across re-measurement and drag-resize) and clamped to
+    /// <paramref name="minScale"/> (legibility floor). Growing back toward 1
+    /// requires the design to fit with a <paramref name="growMargin"/> of
+    /// headroom: scaled content measures slightly smaller than
+    /// scale × design (per-metric flooring), so an on-boundary recovered
+    /// design would otherwise oscillate grow→doesn't-fit→shrink forever.
+    /// Inside the margin band the built scale holds.
+    /// </summary>
+    public static float ContentShrinkScale(
+        float measuredH, float measuredAtScale, float availH,
+        float step = 0.05f, float minScale = 0.65f, float growMargin = 1.02f)
+    {
+        if (measuredH <= 0f) return 1f;
+        float designH = measuredAtScale > 0f ? measuredH / measuredAtScale : measuredH;
+        if (designH <= availH)
+        {
+            if (measuredAtScale >= 1f || designH * growMargin <= availH) return 1f;
+            return measuredAtScale;
+        }
+        // Epsilon before flooring so an exactly-on-boundary ratio (e.g. 0.85)
+        // doesn't float-floor to the next quantum down.
+        float quantized = MathF.Floor((availH / designH + 1e-4f) / step) * step;
+        return MathF.Max(minScale, quantized);
+    }
 }

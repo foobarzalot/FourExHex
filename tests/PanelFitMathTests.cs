@@ -132,4 +132,108 @@ public class PanelFitMathTests
         Assert.Equal(920f, w, Tolerance);
         Assert.Equal(520f, h, Tolerance);
     }
+
+    // ---- ContentShrinkScale ----------------------------------------------
+
+    [Fact]
+    public void ContentShrinkScale_MiniLandscape_ShrinksToQuantizedFit()
+    {
+        // iPhone 13 mini landscape: play-config interior ~325px vs ~360px of
+        // content minimum => ratio 0.9027 => floor-quantized to 0.90.
+        Assert.Equal(0.90f, PanelFitMath.ContentShrinkScale(360f, 1f, 325f), Tolerance);
+    }
+
+    [Fact]
+    public void ContentShrinkScale_ComposesWithCappedFill_MiniLandscapeNumbers()
+    {
+        // Mini landscape logical 921x425, safe insets (t0 b21 l47 r47), edge 12:
+        // surface h = min(425-0-21-24, 520) = 380; interior = 380 - 2*26 = 328.
+        var safe = new LogicalSafeInsets(0f, 21f, 47f, 47f);
+        var (_, h) = PanelFitMath.CappedFill(921f, 425f, safe, 12f, 920f, 520f);
+        Assert.Equal(380f, h, Tolerance);
+        float interior = h - 52f;
+        // measured 365 => ratio 0.8987 => quantized down to 0.85.
+        Assert.Equal(0.85f, PanelFitMath.ContentShrinkScale(365f, 1f, interior), Tolerance);
+    }
+
+    [Fact]
+    public void ContentShrinkScale_ContentFits_ReturnsOne()
+    {
+        // Mini portrait: content 743 fits interior 753 => no shrink.
+        Assert.Equal(1f, PanelFitMath.ContentShrinkScale(743f, 1f, 753f), Tolerance);
+    }
+
+    [Fact]
+    public void ContentShrinkScale_ContentJustOverflows_ShrinksOneQuantum()
+    {
+        // 780 into 753 => ratio 0.9654 => quantized to 0.95.
+        Assert.Equal(0.95f, PanelFitMath.ContentShrinkScale(780f, 1f, 753f), Tolerance);
+    }
+
+    [Fact]
+    public void ContentShrinkScale_StableUnderRemeasurement()
+    {
+        // Re-measuring a shrunk panel and mapping back through the scale it was
+        // built at must converge, not oscillate: 706 measured at 0.95 recovers
+        // design ~743 => target 0.90; the 0.90-built panel measures ~669 and
+        // recovers the same design => target stays 0.90.
+        Assert.Equal(0.90f, PanelFitMath.ContentShrinkScale(706f, 0.95f, 700f), Tolerance);
+        Assert.Equal(0.90f, PanelFitMath.ContentShrinkScale(669f, 0.90f, 700f), Tolerance);
+    }
+
+    [Fact]
+    public void ContentShrinkScale_NeverUpscales()
+    {
+        // Plenty of room (desktop window): stays at 1, never grows past design.
+        Assert.Equal(1f, PanelFitMath.ContentShrinkScale(743f, 1f, 868f), Tolerance);
+    }
+
+    [Theory]
+    [InlineData(100f)] // far too small => raw ratio 0.14 clamps up to the floor
+    [InlineData(0f)]   // degenerate zero-height interior
+    public void ContentShrinkScale_ClampsToMinScale(float availH)
+    {
+        Assert.Equal(0.65f, PanelFitMath.ContentShrinkScale(700f, 1f, availH), Tolerance);
+    }
+
+    [Fact]
+    public void ContentShrinkScale_ExactQuantumBoundary_DoesNotFloatFloorDown()
+    {
+        // 340/400 = 0.85 exactly: the epsilon keeps float noise from flooring
+        // an on-boundary ratio to the next quantum down (0.80).
+        Assert.Equal(0.85f, PanelFitMath.ContentShrinkScale(400f, 1f, 340f), Tolerance);
+    }
+
+    [Fact]
+    public void ContentShrinkScale_DegenerateMeasurement_ReturnsOne()
+    {
+        Assert.Equal(1f, PanelFitMath.ContentShrinkScale(0f, 1f, 500f), Tolerance);
+    }
+
+    [Fact]
+    public void ContentShrinkScale_ZeroMeasuredAtScale_TreatsMeasuredAsDesign()
+    {
+        // Guard: a 0 built-at scale can't divide; the measurement stands in for
+        // the design height directly. 360 into 325 => 0.90 as usual.
+        Assert.Equal(0.90f, PanelFitMath.ContentShrinkScale(360f, 0f, 325f), Tolerance);
+    }
+
+    [Fact]
+    public void ContentShrinkScale_HoldsBuiltScale_WhenGrowthWouldBeMarginal()
+    {
+        // Floored scaled metrics under-report the design height: true design
+        // 757 measures 716 at 0.95 (recovered ~753.7). With avail 754 the
+        // recovered design "fits" by a hair, but growing to 1 would measure
+        // 757, not fit, shrink again — an endless oscillation. Growth needs
+        // margin; inside the hysteresis band the built scale holds.
+        Assert.Equal(0.95f, PanelFitMath.ContentShrinkScale(716f, 0.95f, 754f), Tolerance);
+    }
+
+    [Fact]
+    public void ContentShrinkScale_GrowsBack_WhenFitsWithMargin()
+    {
+        // Same shrunk panel, but the window grew: recovered design ~753.7 fits
+        // avail 800 with room beyond the hysteresis margin => back to 1.
+        Assert.Equal(1f, PanelFitMath.ContentShrinkScale(716f, 0.95f, 800f), Tolerance);
+    }
 }

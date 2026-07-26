@@ -146,6 +146,16 @@ public partial class MainMenuScene : Control
     // Orientation the play-config panel was last built for; a viewport
     // resize that flips it triggers a rebuild (see FitPanels).
     private ScreenOrientation _playConfigOrientation = ScreenOrientation.Landscape;
+    // Shrink-to-fit content scale the play-config pages were last built at:
+    // 1 on roomy screens; on a small safe area (iPhone 13 mini) the deferred
+    // fit check in ApplyPlayConfigLayout measures the pages against the
+    // surface interior and rebuilds them at the quantized scale that fits,
+    // keeping the bottom nav on screen. Every fixed metric in the page
+    // builders routes through Sc / ScFont so the whole tree shrinks together.
+    private float _configContentScale = 1f;
+    // Consecutive fit-driven rebuilds; bounds a non-converging
+    // measure→rebuild loop (Warn + keep current scale after 3).
+    private int _configFitRebuildChain;
     // True once _Ready hooked the viewport's SizeChanged (the diagnostic
     // 6AI branch returns before the hook; _ExitTree must not disconnect a
     // never-connected signal).
@@ -367,7 +377,20 @@ public partial class MainMenuScene : Control
         if (next == _playConfigOrientation) return;
         Log.Debug(Log.LogCategory.Render,
             $"MainMenu: orientation flip {_playConfigOrientation} -> {next}; rebuilding play-config panel");
+        // The new orientation has its own content budget: build full-size and
+        // let the deferred fit check apply that orientation's shrink scale.
+        _configContentScale = 1f;
+        _configFitRebuildChain = 0;
+        RebuildPlayConfigPanel();
+    }
 
+    /// <summary>Tear down and rebuild the play-config panel in place (same
+    /// tree index, visibility, and page), persisting roster selections through
+    /// the GameSettings arrays. Shared by the orientation-flip path and the
+    /// content-fit rebuild.</summary>
+    private void RebuildPlayConfigPanel()
+    {
+        if (_playConfigPanel == null) return;
         PersistRosterSelections();
         bool wasVisible = _playConfigPanel.Visible;
 
@@ -738,13 +761,69 @@ public partial class MainMenuScene : Control
         if (_playConfigSurface == null) return;
         Vector2 vp = GetViewportRect().Size;
         bool portrait = ScreenLayout.Resolve(vp.X, vp.Y) == ScreenOrientation.Portrait;
-        LandscapeMenuChrome.ApplyLayout(_playConfigSurface, vp, SafeArea.Current,
+        (_, float surfaceH) = LandscapeMenuChrome.ApplyLayout(_playConfigSurface, vp, SafeArea.Current,
             maxW: portrait ? PortraitMaxW : LandscapeMenuChrome.MaxWidth,
             maxH: portrait ? PortraitMaxH : LandscapeMenuChrome.MaxHeight);
-        // Debug: dump resolved geometry once the deferred container sort has
-        // run, to compare against the pre-swipe baseline.
-        Callable.From(() => LayoutDump.Dump(_playConfigSurface, "play-config")).CallDeferred();
+        // Deferred so the container sort has run: dump resolved geometry and
+        // re-check that the page content still fits the surface interior at
+        // the current content scale.
+        Callable.From(() =>
+        {
+            LayoutDump.Dump(_playConfigSurface, "play-config");
+            CheckPlayConfigContentFit(surfaceH);
+        }).CallDeferred();
     }
+
+    /// <summary>Content-fit check: measure both pages' minimum height against
+    /// the surface interior and rebuild the panel at the quantized shrink scale
+    /// when it changes, so every control (especially the bottom nav) stays on
+    /// screen on small safe areas instead of clipping below the surface.</summary>
+    private void CheckPlayConfigContentFit(float surfaceH)
+    {
+        if (_playConfigSurface == null || !IsInstanceValid(_playConfigSurface)) return;
+        // Mid-swipe the pages carry slide offsets; skip and let the next
+        // layout event re-check.
+        if (_configTransitioning) return;
+        if (_playerPageContent == null || _mapPageContent == null) return;
+        float interiorH = surfaceH - 2f * LandscapeMenuChrome.ContentPadding;
+        // Both pages share the clip, so the taller one sets the budget
+        // (minimum size is measurable on the hidden page too).
+        float measuredH = Mathf.Max(
+            _playerPageContent.GetCombinedMinimumSize().Y,
+            _mapPageContent.GetCombinedMinimumSize().Y);
+        float target = PanelFitMath.ContentShrinkScale(measuredH, _configContentScale, interiorH);
+        if (Mathf.IsEqualApprox(target, _configContentScale))
+        {
+            _configFitRebuildChain = 0;
+            Log.Debug(Log.LogCategory.Render,
+                $"MainMenu: play-config fit — interiorH={interiorH:0} measuredH={measuredH:0} "
+                + $"scale={_configContentScale:0.00} (stable)");
+            return;
+        }
+        if (_configFitRebuildChain >= 3)
+        {
+            Log.Warn(Log.LogCategory.Render,
+                "MainMenu: play-config fit did not converge after 3 rebuilds "
+                + $"(scale={_configContentScale:0.00} target={target:0.00}); keeping current scale");
+            return;
+        }
+        _configFitRebuildChain++;
+        Log.Debug(Log.LogCategory.Render,
+            $"MainMenu: play-config fit — interiorH={interiorH:0} measuredH={measuredH:0} "
+            + $"scale={_configContentScale:0.00} target={target:0.00} → rebuild");
+        _configContentScale = target;
+        RebuildPlayConfigPanel();
+    }
+
+    /// <summary>Scale a play-config metric (min heights, widths, separations)
+    /// by the content scale — floored so the scaled parts never sum past the
+    /// budget the fit check computed.</summary>
+    private int Sc(int v) => Mathf.Max(1, Mathf.FloorToInt(v * _configContentScale));
+
+    /// <summary>Scale a play-config font size, floored at 12pt for legibility.
+    /// Apply to an OptionButton's face AND its <c>GetPopup()</c> so the button
+    /// and its open item list never diverge.</summary>
+    private int ScFont(int v) => Mathf.Max(12, Mathf.RoundToInt(v * _configContentScale));
 
     /// <summary>Centered "New Game" wordmark + gold rule at the top of a portrait
     /// page.</summary>
@@ -752,7 +831,7 @@ public partial class MainMenuScene : Control
     {
         var title = new Label { Text = Strings.Get(StringKeys.MenuNewGame), HorizontalAlignment = HorizontalAlignment.Center };
         title.AddThemeFontOverride("font", SerifFont);
-        title.AddThemeFontSizeOverride("font_size", 40);
+        title.AddThemeFontSizeOverride("font_size", ScFont(40));
         page.AddChild(title);
         page.AddChild(new ColorRect
         {
@@ -770,7 +849,7 @@ public partial class MainMenuScene : Control
     private Control BuildPortraitPlayerPage()
     {
         var col = new VBoxContainer { SizeFlagsVertical = Control.SizeFlags.Fill };
-        col.AddThemeConstantOverride("separation", 8);
+        col.AddThemeConstantOverride("separation", Sc(8));
         AddPortraitHeader(col);
 
         // Game mode row above the roster — part of game setup,
@@ -778,7 +857,7 @@ public partial class MainMenuScene : Control
         col.AddChild(MakePortraitFieldRow(Strings.Get(StringKeys.MenuGameMode), ConfigureGameModeDropdown()));
 
         var list = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-        list.AddThemeConstantOverride("separation", 12);
+        list.AddThemeConstantOverride("separation", Sc(12));
         for (int i = 0; i < GameSettings.PlayerConfig.Length; i++)
             list.AddChild(MakePortraitPlayerBlock(i));
         col.AddChild(list);
@@ -786,7 +865,7 @@ public partial class MainMenuScene : Control
         col.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
 
         var nav = new HBoxContainer();
-        nav.AddThemeConstantOverride("separation", 12);
+        nav.AddThemeConstantOverride("separation", Sc(12));
         nav.AddChild(MakeLandscapeNavButton(Strings.Get(StringKeys.MenuBack), OnBackPressed));
         _playerNextButton = MakeLandscapeNavButton(Strings.Get(StringKeys.MenuNext), OnPlayerPageForward);
         nav.AddChild(_playerNextButton);
@@ -805,30 +884,30 @@ public partial class MainMenuScene : Control
     {
         (string name, string hex) = GameSettings.PlayerConfig[slot];
         var block = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-        block.AddThemeConstantOverride("separation", 4);
+        block.AddThemeConstantOverride("separation", Sc(4));
 
         var idRow = new HBoxContainer();
-        idRow.AddThemeConstantOverride("separation", 10);
+        idRow.AddThemeConstantOverride("separation", Sc(10));
         idRow.AddChild(new ColorRect
         {
             Color = new Color(hex),
-            CustomMinimumSize = new Vector2(22, 22),
+            CustomMinimumSize = new Vector2(Sc(22), Sc(22)),
             SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
         });
         var nameLabel = new Label { Text = name, VerticalAlignment = VerticalAlignment.Center };
-        nameLabel.AddThemeFontSizeOverride("font_size", 22);
+        nameLabel.AddThemeFontSizeOverride("font_size", ScFont(22));
         idRow.AddChild(nameLabel);
         block.AddChild(idRow);
 
         var ctrlRow = new HBoxContainer();
-        ctrlRow.AddThemeConstantOverride("separation", 10);
+        ctrlRow.AddThemeConstantOverride("separation", Sc(10));
         OptionButton role = ConfigureRoleDropdown(slot);
         role.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        role.CustomMinimumSize = new Vector2(0, 40);
+        role.CustomMinimumSize = new Vector2(0, Sc(40));
         ctrlRow.AddChild(role);
         OptionButton difficulty = ConfigureDifficultyDropdown(slot);
         difficulty.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        difficulty.CustomMinimumSize = new Vector2(0, 40);
+        difficulty.CustomMinimumSize = new Vector2(0, Sc(40));
         ctrlRow.AddChild(difficulty);
         block.AddChild(ctrlRow);
 
@@ -841,13 +920,13 @@ public partial class MainMenuScene : Control
     private HBoxContainer MakePortraitFieldRow(string label, Control field)
     {
         var row = new HBoxContainer();
-        row.AddThemeConstantOverride("separation", 10);
+        row.AddThemeConstantOverride("separation", Sc(10));
         Label caption = MakeRailLabel(label);
-        caption.CustomMinimumSize = new Vector2(108, 0);
+        caption.CustomMinimumSize = new Vector2(Sc(108), 0);
         caption.VerticalAlignment = VerticalAlignment.Center;
         row.AddChild(caption);
         field.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        field.CustomMinimumSize = new Vector2(0, 44);
+        field.CustomMinimumSize = new Vector2(0, Sc(44));
         row.AddChild(field);
         return row;
     }
@@ -857,7 +936,7 @@ public partial class MainMenuScene : Control
     private Control BuildPortraitMapPage()
     {
         var col = new VBoxContainer { SizeFlagsVertical = Control.SizeFlags.Fill };
-        col.AddThemeConstantOverride("separation", 10);
+        col.AddThemeConstantOverride("separation", Sc(10));
         AddPortraitHeader(col);
 
         // Procedural-only map page: loading a saved starting map is its own
@@ -866,9 +945,9 @@ public partial class MainMenuScene : Control
 
         // Wide re-roll die + "?" map-gen options on one row above the preview.
         var seedRow = new HBoxContainer();
-        seedRow.AddThemeConstantOverride("separation", 10);
+        seedRow.AddThemeConstantOverride("separation", Sc(10));
         _rerollButton = MakeRerollButton();
-        _rerollButton.CustomMinimumSize = new Vector2(44, 44);
+        _rerollButton.CustomMinimumSize = new Vector2(Sc(44), Sc(44));
         _rerollButton.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         seedRow.AddChild(_rerollButton);
         // "?" opens the shared Map Generation options panel.
@@ -882,7 +961,7 @@ public partial class MainMenuScene : Control
         col.AddChild(_thumbnail);
 
         var nav = new HBoxContainer();
-        nav.AddThemeConstantOverride("separation", 12);
+        nav.AddThemeConstantOverride("separation", Sc(12));
         nav.AddChild(MakeLandscapeNavButton(Strings.Get(StringKeys.MenuBack), GoToPlayerPage));
         _startButton = MakeLandscapeNavButton(Strings.Get(StringKeys.MenuStartGame), OnStartPressed);
         nav.AddChild(_startButton);
@@ -901,8 +980,8 @@ public partial class MainMenuScene : Control
     private OptionButton ConfigureGameModeDropdown()
     {
         var dropdown = new OptionButton();
-        dropdown.AddThemeFontSizeOverride("font_size", 21);
-        dropdown.GetPopup().AddThemeFontSizeOverride("font_size", 21);
+        dropdown.AddThemeFontSizeOverride("font_size", ScFont(21));
+        dropdown.GetPopup().AddThemeFontSizeOverride("font_size", ScFont(21));
         dropdown.AddItem(Strings.Get(StringKeys.ModeFreeform), (int)GameMode.Freeform);
         dropdown.AddItem(Strings.Get(StringKeys.ModeRisingTides), (int)GameMode.RisingTides);
         dropdown.AddItem(Strings.Get(StringKeys.ModeFogOfWar), (int)GameMode.FogOfWar);
@@ -924,10 +1003,10 @@ public partial class MainMenuScene : Control
     private OptionButton ConfigureRoleDropdown(int slot)
     {
         var dropdown = new OptionButton();
-        dropdown.AddThemeFontSizeOverride("font_size", 21);
+        dropdown.AddThemeFontSizeOverride("font_size", ScFont(21));
         // The button face and its drop-down popup are themed separately;
         // without this the expanded item list renders at the tiny default size.
-        dropdown.GetPopup().AddThemeFontSizeOverride("font_size", 21);
+        dropdown.GetPopup().AddThemeFontSizeOverride("font_size", ScFont(21));
         dropdown.AddItem(Strings.Get(StringKeys.PlayerKindHuman), HumanId);
         dropdown.AddItem(Strings.Get(StringKeys.PlayerKindComputer), ComputerId);
         dropdown.AddItem(Strings.Get(StringKeys.PlayerKindNone), NoneId);
@@ -949,8 +1028,8 @@ public partial class MainMenuScene : Control
     private OptionButton ConfigureDifficultyDropdown(int slot)
     {
         var dropdown = new OptionButton();
-        dropdown.AddThemeFontSizeOverride("font_size", 21);
-        dropdown.GetPopup().AddThemeFontSizeOverride("font_size", 21);
+        dropdown.AddThemeFontSizeOverride("font_size", ScFont(21));
+        dropdown.GetPopup().AddThemeFontSizeOverride("font_size", ScFont(21));
         dropdown.AddItem(Strings.Get(StringKeys.UnitRecruit), (int)Difficulty.Recruit);
         dropdown.AddItem(Strings.Get(StringKeys.UnitSoldier), (int)Difficulty.Soldier);
         dropdown.AddItem(Strings.Get(StringKeys.UnitCaptain), (int)Difficulty.Captain);
@@ -969,7 +1048,7 @@ public partial class MainMenuScene : Control
     /// Sits beside the seed re-roll die; same button/panel as
     /// the map editor's.</summary>
     private HudIconButton MakeMapGenSettingsButton() =>
-        MapGenSettingsPanel.MakeOpenButton(() => _mapGenSettingsPanel?.Open(), size: 44f);
+        MapGenSettingsPanel.MakeOpenButton(() => _mapGenSettingsPanel?.Open(), size: Sc(44));
 
     /// <summary>"Config rail + player list" landscape New Game: a
     /// fixed left rail (title, map, seed, Start, Back) beside a scrolling player
@@ -987,9 +1066,8 @@ public partial class MainMenuScene : Control
         MountPagedContent(surface);
 
         ShowCurrentPlayConfigPage();
-        LandscapeMenuChrome.ApplyLayout(surface, GetViewportRect().Size, SafeArea.Current);
+        ApplyPlayConfigLayout();
         Log.Debug(Log.LogCategory.Render, "MainMenu: play-config built (Landscape, paged player/map setup)");
-        Callable.From(() => LayoutDump.Dump(_playConfigSurface, "play-config")).CallDeferred();
         return surface;
     }
 
@@ -998,33 +1076,33 @@ public partial class MainMenuScene : Control
     {
         var title = new Label { Text = Strings.Get(StringKeys.MenuNewGame), HorizontalAlignment = HorizontalAlignment.Left };
         title.AddThemeFontOverride("font", SerifFont);
-        title.AddThemeFontSizeOverride("font_size", 38);
+        title.AddThemeFontSizeOverride("font_size", ScFont(38));
         page.AddChild(title);
         page.AddChild(new ColorRect
         {
             Color = UiPalette.Gold,
-            CustomMinimumSize = new Vector2(90, 3),
+            CustomMinimumSize = new Vector2(Sc(90), 3),
             SizeFlagsHorizontal = Control.SizeFlags.ShrinkBegin,
         });
     }
 
     /// <summary>Landscape player-setup page: the same rail + content split the
     /// map page (and the original single-panel layout) use — a fixed left rail
-    /// holding the title and Next / Back, beside the full-height player list. The
-    /// nav lives in the rail rather than stacked above/below the list, so the
-    /// list keeps the whole surface height and doesn't scroll for the 6-player
-    /// roster (the ScrollContainer only engages for a taller-than-surface list).</summary>
+    /// holding the title and Next / Back, beside the full-height player list.
+    /// The nav lives in the rail rather than stacked above/below the list, so
+    /// the list keeps the whole surface height; the shrink-to-fit content
+    /// scale keeps all six rows inside it on small safe areas.</summary>
     private Control BuildLandscapePlayerPage()
     {
         var hbox = new HBoxContainer();
-        hbox.AddThemeConstantOverride("separation", 20);
+        hbox.AddThemeConstantOverride("separation", Sc(20));
 
         var rail = new VBoxContainer
         {
-            CustomMinimumSize = new Vector2(262, 0),
+            CustomMinimumSize = new Vector2(Sc(262), 0),
             SizeFlagsVertical = Control.SizeFlags.Fill,
         };
-        rail.AddThemeConstantOverride("separation", 8);
+        rail.AddThemeConstantOverride("separation", Sc(8));
         hbox.AddChild(rail);
 
         AddLandscapeHeader(rail);
@@ -1032,7 +1110,7 @@ public partial class MainMenuScene : Control
         // editor's new-map flow.
         rail.AddChild(MakeRailLabel(Strings.Get(StringKeys.MenuGameMode)));
         OptionButton modeDropdown = ConfigureGameModeDropdown();
-        modeDropdown.CustomMinimumSize = new Vector2(0, 40);
+        modeDropdown.CustomMinimumSize = new Vector2(0, Sc(40));
         rail.AddChild(modeDropdown);
         rail.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
         // Back above the forward action (Next) in the vertical rail.
@@ -1052,14 +1130,14 @@ public partial class MainMenuScene : Control
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
             SizeFlagsVertical = Control.SizeFlags.Fill,
         };
-        rightCol.AddThemeConstantOverride("separation", 6);
+        rightCol.AddThemeConstantOverride("separation", Sc(6));
         hbox.AddChild(rightCol);
 
         rightCol.AddChild(MakePlayerColumnHeader());
-        // No ScrollContainer: the six 40px rows fit the surface in both
-        // orientations, so a plain list never shows a scrollbar.
+        // No ScrollContainer: the six Sc(40)px rows always fit because the
+        // shrink-to-fit content scale resizes them to the surface interior.
         var list = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-        list.AddThemeConstantOverride("separation", 4);
+        list.AddThemeConstantOverride("separation", Sc(4));
         rightCol.AddChild(list);
         for (int i = 0; i < GameSettings.PlayerConfig.Length; i++)
         {
@@ -1078,17 +1156,17 @@ public partial class MainMenuScene : Control
     private Control BuildLandscapeMapPage()
     {
         var hbox = new HBoxContainer();
-        hbox.AddThemeConstantOverride("separation", 20);
+        hbox.AddThemeConstantOverride("separation", Sc(20));
 
         // Narrow rail (shifted left, controls compressed horizontally) so the
         // thumbnail gets most of the surface width — closer to the portrait
         // preview's size.
         var rail = new VBoxContainer
         {
-            CustomMinimumSize = new Vector2(190, 0),
+            CustomMinimumSize = new Vector2(Sc(190), 0),
             SizeFlagsVertical = Control.SizeFlags.Fill,
         };
-        rail.AddThemeConstantOverride("separation", 8);
+        rail.AddThemeConstantOverride("separation", Sc(8));
         hbox.AddChild(rail);
 
         AddLandscapeHeader(rail);
@@ -1099,9 +1177,9 @@ public partial class MainMenuScene : Control
 
         // Wide re-roll die + "?" map-gen options on one row.
         var seedRow = new HBoxContainer();
-        seedRow.AddThemeConstantOverride("separation", 6);
+        seedRow.AddThemeConstantOverride("separation", Sc(6));
         _rerollButton = MakeRerollButton();
-        _rerollButton.CustomMinimumSize = new Vector2(44, 44);
+        _rerollButton.CustomMinimumSize = new Vector2(Sc(44), Sc(44));
         _rerollButton.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         seedRow.AddChild(_rerollButton);
         // "?" opens the shared Map Generation options panel.
@@ -1114,8 +1192,8 @@ public partial class MainMenuScene : Control
         rail.AddChild(MakeLandscapeNavButton(Strings.Get(StringKeys.MenuBack), GoToPlayerPage));
 
         _startButton = new Button { Text = Strings.Get(StringKeys.MenuStartGame), SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-        _startButton.AddThemeFontSizeOverride("font_size", 27);
-        _startButton.CustomMinimumSize = new Vector2(0, 54);
+        _startButton.AddThemeFontSizeOverride("font_size", ScFont(27));
+        _startButton.CustomMinimumSize = new Vector2(0, Sc(54));
         _startButton.Pressed += OnStartPressed;
         AudioBus.AttachClick(_startButton);
         rail.AddChild(_startButton);
@@ -1138,8 +1216,8 @@ public partial class MainMenuScene : Control
     private Button MakeLandscapeNavButton(string text, System.Action onPressed)
     {
         var button = new Button { Text = text, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-        button.AddThemeFontSizeOverride("font_size", 24);
-        button.CustomMinimumSize = new Vector2(0, 48);
+        button.AddThemeFontSizeOverride("font_size", ScFont(24));
+        button.CustomMinimumSize = new Vector2(0, Sc(48));
         button.Pressed += onPressed;
         AudioBus.AttachClick(button);
         return button;
@@ -1149,25 +1227,25 @@ public partial class MainMenuScene : Control
     private HBoxContainer MakePlayerRow(int slot)
     {
         (string name, string hex) = GameSettings.PlayerConfig[slot];
-        // 40px keeps all six rows inside the short phone-landscape surface
-        // without a scrollbar (and there's ample room in portrait).
-        var row = new HBoxContainer { CustomMinimumSize = new Vector2(0, 40) };
-        row.AddThemeConstantOverride("separation", 10);
+        // The shrink-to-fit content scale sizes the row so all six fit the
+        // short phone-landscape surface without a scrollbar.
+        var row = new HBoxContainer { CustomMinimumSize = new Vector2(0, Sc(40)) };
+        row.AddThemeConstantOverride("separation", Sc(10));
 
         row.AddChild(new ColorRect
         {
             Color = new Color(hex),
-            CustomMinimumSize = new Vector2(22, 22),
+            CustomMinimumSize = new Vector2(Sc(22), Sc(22)),
             SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter,
             SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
         });
         var nameLabel = new Label
         {
             Text = name,
-            CustomMinimumSize = new Vector2(82, 0),
+            CustomMinimumSize = new Vector2(Sc(82), 0),
             VerticalAlignment = VerticalAlignment.Center,
         };
-        nameLabel.AddThemeFontSizeOverride("font_size", 22);
+        nameLabel.AddThemeFontSizeOverride("font_size", ScFont(22));
         row.AddChild(nameLabel);
 
         OptionButton role = ConfigureRoleDropdown(slot);
@@ -1186,9 +1264,9 @@ public partial class MainMenuScene : Control
     private HBoxContainer MakePlayerColumnHeader()
     {
         var row = new HBoxContainer();
-        row.AddThemeConstantOverride("separation", 10);
-        row.AddChild(new Control { CustomMinimumSize = new Vector2(22, 0) });
-        row.AddChild(new Control { CustomMinimumSize = new Vector2(82, 0) });
+        row.AddThemeConstantOverride("separation", Sc(10));
+        row.AddChild(new Control { CustomMinimumSize = new Vector2(Sc(22), 0) });
+        row.AddChild(new Control { CustomMinimumSize = new Vector2(Sc(82), 0) });
         Label type = MakeRailLabel(Strings.Get(StringKeys.MenuType));
         type.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         row.AddChild(type);
@@ -1200,10 +1278,10 @@ public partial class MainMenuScene : Control
 
     /// <summary>Section label (Map / column headers) for the
     /// landscape config rail — title case, matching the portrait labels.</summary>
-    private static Label MakeRailLabel(string text)
+    private Label MakeRailLabel(string text)
     {
         var label = new Label { Text = text };
-        label.AddThemeFontSizeOverride("font_size", 18);
+        label.AddThemeFontSizeOverride("font_size", ScFont(18));
         label.AddThemeColorOverride("font_color", UiPalette.InkSoft);
         return label;
     }

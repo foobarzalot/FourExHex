@@ -32,10 +32,15 @@ public static class LandscapeMenuChrome
     public const float MaxWidth = 920f;
     public const float MaxHeight = 520f;
 
+    /// <summary>Default interior padding of the surface stylebox, per side.
+    /// Callers fitting content to the surface subtract 2× this from the
+    /// <see cref="ApplyLayout"/> size to get the interior box.</summary>
+    public const float ContentPadding = 26f;
+
     /// <summary>Build the centered surface. The caller adds it directly to its
     /// CanvasLayer / scene and fills it; call <see cref="ApplyLayout"/> once
     /// after building and on every safe-area / resize change.</summary>
-    public static PanelContainer Build(float contentPadding = 26f)
+    public static PanelContainer Build(float contentPadding = ContentPadding)
     {
         var surface = new PanelContainer
         {
@@ -53,8 +58,9 @@ public static class LandscapeMenuChrome
     /// cap, so it stays inside the notch / home-indicator on a phone yet remains
     /// a tidy centered panel on a large desktop window. <paramref name="verticalShift"/>
     /// lifts the whole surface up (on-screen-keyboard avoidance for the New Game
-    /// seed field).</summary>
-    public static void ApplyLayout(PanelContainer surface, Vector2 viewport, LogicalSafeInsets s,
+    /// seed field). Returns the applied surface size so callers can fit their
+    /// content to it.</summary>
+    public static (float w, float h) ApplyLayout(PanelContainer surface, Vector2 viewport, LogicalSafeInsets s,
         float edge = EdgeMargin, float maxW = MaxWidth, float maxH = MaxHeight, float verticalShift = 0f)
     {
         (float w, float h) = PanelFitMath.CappedFill(viewport.X, viewport.Y, s, edge, maxW, maxH);
@@ -66,6 +72,7 @@ public static class LandscapeMenuChrome
         Log.Debug(Log.LogCategory.Render,
             $"LandscapeMenuChrome: laid out {w:0}x{h:0} shift={verticalShift:0} "
             + $"(viewport {viewport.X:0}x{viewport.Y:0}, safe t{s.Top:0} b{s.Bottom:0} l{s.Left:0} r{s.Right:0})");
+        return (w, h);
     }
 
     /// <summary>Rounded warm-slate surface (design: #322e28, radius 22, hairline
