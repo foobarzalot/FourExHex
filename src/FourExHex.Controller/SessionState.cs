@@ -114,8 +114,8 @@ public class SessionState
     /// Sticky bit: when on, a successful unit move auto-picks the next
     /// movable unit in power-then-lex order so the human can place a run
     /// of units without re-pressing N each time. Set by
-    /// <see cref="GameController.StepUnitSelection"/> whenever it
-    /// successfully picks a different unit; cleared by Esc, entry into
+    /// <see cref="GameController.StepUnitTierSelection"/> whenever it
+    /// picks a unit; cleared by its off step, Esc, entry into
     /// any non-None action mode, a manual selection change, end-of-turn,
     /// or running out of movable units after an auto-advance.
     /// Deliberately NOT cleared by <see cref="ClearPendingAction"/>: the

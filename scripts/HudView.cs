@@ -30,7 +30,6 @@ public partial class HudView : OrientationHud, IHudView
     public event Action? NextTerritoryClicked;
     public event Action? PreviousTerritoryClicked;
     public event Action? NextUnitClicked;
-    public event Action? NextUnitTierClicked;
     public event Action? PreviousUnitClicked;
     public event Action? CancelActionPressed;
     public event Action? AutomateClicked;
@@ -359,17 +358,17 @@ public partial class HudView : OrientationHud, IHudView
             startDisabled: true);
         _undoCluster.AddChild(_redoLastButton);
 
-        // Next unmoved unit in the selected territory — same action as
-        // the N hotkey; holding past the long-press threshold skips to
-        // the next unit power tier instead. Sits to the LEFT of Next
-        // Territory so the two "next ..." buttons read as a stepped
-        // pair. Disabled when no unmoved units remain in the selection;
-        // highlighted while SessionState.RepeatedMovement is on.
-        _nextUnitButton = MakeLongPressButton(
-            HudIcon.NextUnit, Strings.Get(StringKeys.HudTooltipNextUnitHold),
-            "Next Unit button long-press -> next tier",
-            () => NextUnitClicked?.Invoke(), () => NextUnitTierClicked?.Invoke(),
-            startDisabled: false);
+        // Next unit power tier in the selected territory — same action as
+        // the N hotkey. Sits to the LEFT of Next Territory so the two
+        // "next ..." buttons read as a stepped pair. Disabled when no
+        // unmoved units remain in the selection; highlighted while
+        // SessionState.RepeatedMovement is on.
+        _nextUnitButton = new HudIconButton(HudIcon.NextUnit)
+        {
+            TooltipText = Strings.Get(StringKeys.HudTooltipNextUnit),
+        };
+        _nextUnitButton.Pressed += () => NextUnitClicked?.Invoke();
+        AudioBus.AttachClick(_nextUnitButton);
         _controlsCluster.AddChild(_nextUnitButton);
 
         // Next active territory — same action as the Tab hotkey. Disabled

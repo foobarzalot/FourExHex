@@ -36,9 +36,6 @@ public interface IHudView
     event Action? NextTerritoryClicked;
     event Action? PreviousTerritoryClicked;
     event Action? NextUnitClicked;
-    /// <summary>Raised by the next-unit button's long-press: skip to the
-    /// first movable unit of the next-higher power tier (wrapping).</summary>
-    event Action? NextUnitTierClicked;
     event Action? PreviousUnitClicked;
     event Action? CancelActionPressed;
 

@@ -107,7 +107,6 @@ public static class StringKeys
     public const string HudTooltipBuyCycle = "hud.tooltip.buy_cycle";
     public const string HudTooltipUndoHold = "hud.tooltip.undo_hold";
     public const string HudTooltipRedoHold = "hud.tooltip.redo_hold";
-    public const string HudTooltipNextUnitHold = "hud.tooltip.next_unit_hold";
     public const string HudTooltipHelp = "hud.tooltip.help";
     public const string HudTooltipNoUnmovedUnits = "hud.tooltip.no_unmoved_units";
     public const string HudTooltipBuyUnit = "hud.tooltip.buy_unit";
