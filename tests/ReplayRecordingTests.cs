@@ -379,13 +379,14 @@ public class ReplayRecordingTests
         int before = f.Controller.ReplayBeats.Count;
         f.Hud.ClickEndTurn();   // Red ends. Blue runs AI (null action → EndTurn).
 
-        // Beats since Red's end turn: at minimum Red EndTurn + Blue
-        // EndTurn. (Beats from any AI Move don't apply here; chooser
-        // returns null.)
+        // Beats since Red's end turn: Red EndTurn + Blue EndTurn + the
+        // neutral seat's EndTurn (the round's final seat, Actor = the
+        // seat index past the roster). (Beats from any AI Move don't
+        // apply here; chooser returns null.)
         IEnumerable<ReplayEndTurnBeat> endTurnBeats = f.Controller.ReplayBeats
             .Skip(before)
             .OfType<ReplayEndTurnBeat>();
-        Assert.Equal(2, endTurnBeats.Count());
-        Assert.Equal(new[] { 0, 1 }, endTurnBeats.Select(b => b.Actor).ToArray());
+        Assert.Equal(3, endTurnBeats.Count());
+        Assert.Equal(new[] { 0, 1, 2 }, endTurnBeats.Select(b => b.Actor).ToArray());
     }
 }

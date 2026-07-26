@@ -6394,7 +6394,7 @@
   "Tutorial": {
     "Title": ""
   },
-  "ReplayVersion": 1,
+  "ReplayVersion": 2,
   "Replay": {
     "InitialState": {
       "TurnNumber": 1,
@@ -11699,6 +11699,12 @@
         "Index": 7,
         "Turn": 1,
         "Actor": 5,
+        "Kind": "EndTurn"
+      },
+      {
+        "Index": 8,
+        "Turn": 1,
+        "Actor": 6,
         "Kind": "EndTurn"
       }
     ]

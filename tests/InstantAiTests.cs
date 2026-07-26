@@ -278,11 +278,13 @@ public class InstantAiTests
         int refreshDelta = map.RefreshOccupantCount - refreshBefore;
 
         int actionBeats = c.ReplayBeats.Count(b => b is ReplayMoveBeat);
-        // O(turns), not O(actions): one AI turn here, so a couple of
-        // refreshes at most — never one per capturing move.
-        Assert.True(refreshDelta < actionBeats,
-            $"Expected ≈one refresh for the AI turn, got {refreshDelta} "
-            + $"for {actionBeats} action beats.");
+        // O(turns), not O(actions): the click crosses Blue's turn plus the
+        // round's neutral seat, so allow a couple of refreshes per crossed
+        // turn boundary — never one per capturing move on top of that.
+        int turnBoundaries = c.ReplayBeats.Count(b => b is ReplayEndTurnBeat);
+        Assert.True(refreshDelta <= 2 * turnBoundaries,
+            $"Expected O(turns) refreshes ({turnBoundaries} boundaries), got "
+            + $"{refreshDelta} for {actionBeats} action beats.");
     }
 
     // --- No drift vs the paced step machine -----------------------------

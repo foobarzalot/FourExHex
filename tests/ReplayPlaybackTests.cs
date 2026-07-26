@@ -606,12 +606,15 @@ public class ReplayPlaybackTests
         pacer.DrainAll();
         int rebuildDelta = map.RebuildCount - rebuildBefore;
 
-        // The five captures all fall in Blue's single turn. Per-capture
-        // rebuild ⇒ delta ≈ 5; per-turn sampled redraw ⇒ delta well
-        // under the capture count (≈ one redraw per turn boundary).
-        Assert.True(rebuildDelta < captureBeats,
+        // The captures all fall in Blue's single turn. Per-capture
+        // rebuild ⇒ delta ≈ captures + boundaries; per-turn sampled
+        // redraw ⇒ ≈ one rebuild per crossed turn boundary (Red, Blue,
+        // and the round's neutral seat) plus the end-of-replay rebuild.
+        int turnBoundaries = controller.ReplayBeats.Count(b => b is ReplayEndTurnBeat);
+        Assert.True(rebuildDelta <= turnBoundaries + 1,
             $"Instant replay rebuilt the map {rebuildDelta}× for {captureBeats} "
-            + "captures — expected once per turn, not once per capture.");
+            + $"captures across {turnBoundaries} turn boundaries — expected "
+            + "once per turn, not once per capture.");
 
         // Fidelity must still hold.
         var refTiles = new Dictionary<HexCoord, (PlayerId, string?)>();

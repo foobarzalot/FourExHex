@@ -5271,7 +5271,7 @@
   "Tutorial": {
     "Title": ""
   },
-  "ReplayVersion": 1,
+  "ReplayVersion": 2,
   "Replay": {
     "InitialState": {
       "TurnNumber": 1,
@@ -9105,12 +9105,18 @@
       },
       {
         "Index": 7,
+        "Turn": 1,
+        "Actor": 6,
+        "Kind": "EndTurn"
+      },
+      {
+        "Index": 8,
         "Turn": 2,
         "Actor": -1,
         "Kind": "DemoStart"
       },
       {
-        "Index": 8,
+        "Index": 9,
         "Turn": 2,
         "Actor": 0,
         "Kind": "BuyUnit",
@@ -9121,7 +9127,7 @@
         "Level": "Captain"
       },
       {
-        "Index": 9,
+        "Index": 10,
         "Turn": 2,
         "Actor": -1,
         "Kind": "RejectedMove",
@@ -9131,7 +9137,7 @@
         "ToR": 12
       },
       {
-        "Index": 10,
+        "Index": 11,
         "Turn": 2,
         "Actor": 0,
         "Kind": "BuyUnit",
@@ -9142,7 +9148,7 @@
         "Level": "Recruit"
       },
       {
-        "Index": 11,
+        "Index": 12,
         "Turn": 2,
         "Actor": 0,
         "Kind": "Move",

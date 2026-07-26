@@ -348,11 +348,6 @@ public class GameController
         if (_ops.HumanTurnFiredForCurrentTurn) return;
         if (_session.IsGameOver || _ops.GameEndedFired) return;
         if (_state.Turns.CurrentPlayer.IsAi) return;
-        // Viking Raiders: a paced viking phase is in flight (or about to
-        // run) — the waiting human's StartPlayerTurn fires the event when
-        // the phase completes; firing here would autosave and auto-select
-        // a pre-viking board.
-        if (_ops.VikingPhaseActive || _ops.VikingTurnPending) return;
         _ops.HumanTurnFiredForCurrentTurn = true;
         RaiseHumanTurnStarted();
     }
@@ -487,12 +482,6 @@ public class GameController
     /// human's remaining moves. Read by Main's pacer-speed closure to
     /// select the human speed setting, and by the HUD state push.</summary>
     public bool IsAutomating => _automating;
-
-    /// <summary>True while the viking pseudo-turn is mid-flight. Read by
-    /// Main's playback-speed closure so viking beats — which run while
-    /// the waiting (possibly human) player is current — pace and animate
-    /// at the Computer Player Speed, not the human's.</summary>
-    public bool IsVikingPhaseActive => _ops.VikingPhaseActive;
 
     // Tutorial Preview hooks. _humanActionValidator (set via the
     // constructor's humanActionValidator param) gates every
@@ -1984,11 +1973,10 @@ public class GameController
         _ops.RefreshSilentMode();
         _ops.RefreshViews();
         if (_session.IsGameOver) return;
-        if (_state.Turns.CurrentPlayer.IsAi || _ops.VikingPhaseActive)
+        if (_state.Turns.CurrentPlayer.IsAi)
         {
-            // Viking Raiders: a defeat raised mid-viking-phase pauses the
-            // phase exactly like a mid-AI-turn defeat; the same re-arm
-            // finishes it (the driver's viking scratch is still live).
+            // A defeat raised mid-AI-turn (including the neutral seat's
+            // raider actions) paused the batch; the same re-arm finishes it.
             _aiDriver.Schedule(turnBoundary: false);
         }
         else if (WinConditionRules.IsEliminated(_state.Turns.CurrentPlayer.Id, _state.Grid))
@@ -2759,10 +2747,7 @@ public class GameController
         else
         {
             _ops.AdvanceToNextActivePlayer();
-            // Round boundary in Viking Raiders: defer StartPlayerTurn —
-            // the driver runs the viking pseudo-turn first and starts the
-            // waiting player's turn when it completes.
-            if (!_ops.VikingTurnPending) _ops.StartPlayerTurn();
+            _ops.StartPlayerTurn();
             _aiDriver.RunUntilHumanOrDone();
         }
 
@@ -2775,7 +2760,6 @@ public class GameController
         // classic clear). The per-turn visited reset moved to StartPlayerTurn
         // so an auto-selection's visited mark survives into the turn.
         if (_state.Turns.CurrentPlayer.IsAi || _session.IsGameOver
-            || _ops.VikingPhaseActive || _ops.VikingTurnPending
             || !_autoSelectFirstTerritory)
             SetSelection(null);
         _ops.RefreshViews();

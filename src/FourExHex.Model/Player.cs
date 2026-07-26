@@ -22,6 +22,15 @@ public enum PlayerKind
     /// <c>None</c>). Lets a match run with 2–6 players.
     /// </summary>
     None,
+
+    /// <summary>
+    /// The world itself: the seventh seat at the end of every rotation,
+    /// represented by the <see cref="Player.Neutral"/> singleton. Never a
+    /// roster slot — <see cref="TurnState"/> synthesizes the seat after the
+    /// colored players. Neutral's turn runs tree growth, upkeep, and any
+    /// viking-raider actions for <see cref="PlayerId.None"/>-owned pieces.
+    /// </summary>
+    Neutral,
 }
 
 /// <summary>
@@ -52,6 +61,15 @@ public class Player
     /// <see cref="GameController"/>'s "auto-drive AI players" loop.
     /// </summary>
     public bool IsAi => Kind != PlayerKind.Human;
+
+    /// <summary>
+    /// The singleton player behind the neutral seat: owns
+    /// <see cref="PlayerId.None"/> pieces (unclaimed land, landed raiders)
+    /// and is AI-driven (<see cref="VikingAi"/> chooses its actions).
+    /// Never appears in <see cref="TurnState.Players"/>.
+    /// </summary>
+    public static readonly Player Neutral =
+        new("Neutral", PlayerId.None, PlayerKind.Neutral);
 
     public Player(string name, PlayerId id, PlayerKind kind = PlayerKind.Human, Difficulty difficulty = Difficulty.Soldier)
     {

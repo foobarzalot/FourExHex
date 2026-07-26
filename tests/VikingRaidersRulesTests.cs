@@ -69,17 +69,16 @@ public class VikingRaidersRulesTests
     [Theory]
     [InlineData(0, null)]
     [InlineData(1, null)]
-    [InlineData(2, null)]
-    [InlineData(3, 0)]
+    [InlineData(2, 0)]
+    [InlineData(3, null)]
     [InlineData(4, null)]
-    [InlineData(5, null)]
-    [InlineData(6, 1)]
-    [InlineData(9, 2)]
-    [InlineData(12, 3)]
-    [InlineData(15, 4)]
-    [InlineData(18, 5)]
-    [InlineData(21, null)] // schedule exhausted
-    [InlineData(24, null)]
+    [InlineData(5, 1)]
+    [InlineData(8, 2)]
+    [InlineData(11, 3)]
+    [InlineData(14, 4)]
+    [InlineData(17, 5)]
+    [InlineData(20, null)] // schedule exhausted
+    [InlineData(23, null)]
     public void WaveIndexForRound_FollowsFixedSchedule(int round, int? expected)
     {
         Assert.Equal(expected, VikingRaidersRules.WaveIndexForRound(round));
@@ -544,40 +543,24 @@ public class VikingRaidersRulesTests
     }
 
     [Fact]
-    public void TurnDue_FreeformWithLandedRaider_IsTrue()
+    public void LandedRaidersExist_FreeformWithLandedRaider_IsTrue()
     {
+        // A pre-placed raider on an authored map acts on the neutral seat
+        // in every mode — LandedRaidersExist is what the HUD's neutral
+        // swatch and the seat's viking diagnostics key on.
         GameState state = MakeRaiderState(GameMode.Freeform, round: 4);
 
-        Assert.True(VikingRaidersRules.TurnDue(state));
+        Assert.True(VikingRaidersRules.LandedRaidersExist(state));
     }
 
     [Fact]
-    public void TurnDue_FreeformWithLandedRaider_IgnoresTheWaveSchedule()
-    {
-        // No waves outside Viking Raiders, so FirstWaveRound doesn't gate:
-        // a pre-placed raider acts from round 1.
-        GameState state = MakeRaiderState(GameMode.Freeform, round: 1);
-
-        Assert.True(VikingRaidersRules.TurnDue(state));
-    }
-
-    [Fact]
-    public void TurnDue_FreeformWithNoRaiders_IsFalse()
+    public void LandedRaidersExist_FreeformWithNoRaiders_IsFalse()
     {
         HexGrid grid = TestHelpers.BuildRectGrid(3, 3, Red);
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         GameState state = MakeState(grid, territories, mode: GameMode.Freeform);
 
-        Assert.False(VikingRaidersRules.TurnDue(state));
-    }
-
-    [Fact]
-    public void TurnDue_FreeformRaider_FalseOnceTheRoundIsComplete()
-    {
-        GameState state = MakeRaiderState(GameMode.Freeform, round: 4);
-        state.Vikings.LastCompletedRound = state.Turns.TurnNumber;
-
-        Assert.False(VikingRaidersRules.TurnDue(state));
+        Assert.False(VikingRaidersRules.LandedRaidersExist(state));
     }
 
     [Fact]
@@ -585,11 +568,10 @@ public class VikingRaidersRulesTests
     {
         // ThreatRemains is the win-suppression predicate. A stray raider on
         // a Freeform map must never make the game unwinnable — it takes its
-        // turn (TurnDue) without blocking victory.
+        // neutral-seat turn without blocking victory.
         GameState state = MakeRaiderState(GameMode.Freeform, round: 4);
 
         Assert.False(VikingRaidersRules.ThreatRemains(state));
-        Assert.True(VikingRaidersRules.TurnDue(state));
     }
 
     // --- VikingState ------------------------------------------------------------
@@ -641,7 +623,8 @@ public class VikingRaidersRulesTests
     public void RoundsUntilWaveDue_CountsDownToTheScheduledRound()
     {
         GameState state = MakeIslandState(HexCoord.FromOffset(3, 1));
-        // With FirstWaveRound = 3: turn 1 → 2 away, turn 2 → 1, turn 3 → due.
+        // Two rounds before FirstWaveRound → 2 away, one before → 1, the
+        // due round itself → 0 (the wave spawns at this round's seat).
         state.Turns.Reset(0, VikingRaidersRules.FirstWaveRound - 2);
         Assert.Equal(2, VikingRaidersRules.RoundsUntilWaveDue(state));
         state.Turns.Reset(0, VikingRaidersRules.FirstWaveRound - 1);
@@ -675,60 +658,15 @@ public class VikingRaidersRulesTests
         Assert.Null(VikingRaidersRules.RoundsUntilWaveDue(freeform));
     }
 
-    // --- TurnDue --------------------------------------------------------------
-
-    [Fact]
-    public void TurnDue_FalseOutsideVikingRaidersMode()
-    {
-        HexGrid grid = TestHelpers.BuildRectGrid(3, 3, Red);
-        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
-        GameState state = MakeState(grid, territories, mode: GameMode.Freeform);
-        state.Turns.Reset(0, 5);
-
-        Assert.False(VikingRaidersRules.TurnDue(state));
-    }
-
-    [Fact]
-    public void TurnDue_FalseBeforeTheFirstWaveRound()
-    {
-        GameState state = MakeIslandState(HexCoord.FromOffset(3, 1));
-        state.Turns.Reset(0, VikingRaidersRules.FirstWaveRound - 1);
-
-        Assert.False(VikingRaidersRules.TurnDue(state));
-    }
-
-    [Fact]
-    public void TurnDue_TrueAtRoundStart_FalseOnceCompleted()
-    {
-        GameState state = MakeIslandState(HexCoord.FromOffset(3, 1));
-        state.Turns.Reset(0, VikingRaidersRules.FirstWaveRound);
-
-        Assert.True(VikingRaidersRules.TurnDue(state));
-
-        state.Vikings.LastCompletedRound = VikingRaidersRules.FirstWaveRound;
-        Assert.False(VikingRaidersRules.TurnDue(state));
-    }
-
-    [Fact]
-    public void TurnDue_FalseOnceThreatIsCleared()
-    {
-        GameState state = MakeIslandState(HexCoord.FromOffset(3, 1));
-        state.Turns.Reset(0, 10);
-        state.Vikings.NextWaveIndex = VikingRaidersRules.TotalWaves;
-        state.Vikings.LastCompletedRound = 9; // this round's phase never ran
-
-        Assert.False(VikingRaidersRules.TurnDue(state));
-    }
-
     // --- WaveDue --------------------------------------------------------------
 
     [Theory]
-    [InlineData(2, 0, false)] // before the first wave
-    [InlineData(3, 0, true)]  // wave 0 on schedule
-    [InlineData(4, 0, true)]  // wave 0 missed → catch up
-    [InlineData(5, 1, false)] // wave 1 not yet due
-    [InlineData(6, 1, true)]  // wave 1 on schedule
-    [InlineData(18, 5, true)] // last wave
+    [InlineData(1, 0, false)] // before the first wave
+    [InlineData(2, 0, true)]  // wave 0 on schedule (spawns at round 2's neutral seat)
+    [InlineData(3, 0, true)]  // wave 0 missed → catch up
+    [InlineData(4, 1, false)] // wave 1 not yet due
+    [InlineData(5, 1, true)]  // wave 1 on schedule
+    [InlineData(17, 5, true)] // last wave
     [InlineData(50, 6, false)] // schedule exhausted (NextWaveIndex == TotalWaves)
     public void WaveDue_FollowsScheduleWithCatchUp(int round, int nextWave, bool expected)
     {

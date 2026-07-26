@@ -92,16 +92,17 @@ public partial class GameControllerTests
     }
 
     [Fact]
-    public void VikingRaiders_FirstWaveSpawnsAtRoundThreeStart()
+    public void VikingRaiders_FirstWaveSpawnsAtRoundTwoEnd()
     {
         (HexGrid grid, HashSet<HexCoord> water) = VikingIsland();
         var g = new VikingGame(grid, water);
 
-        EndRound(g); // round 1 → 2
-        Assert.Empty(g.State.Vikings.AtSea);
+        EndRound(g); // round 1 (both players + the neutral seat)
+        Assert.Equal(2, g.State.Turns.TurnNumber);
+        Assert.Empty(g.State.Vikings.AtSea); // wave 0 is a round-2 wave
         Assert.Equal(0, g.State.Vikings.NextWaveIndex);
 
-        EndRound(g); // round 2 → 3: the viking turn spawns wave 0
+        EndRound(g); // round 2: the neutral seat spawns wave 0 at round end
         Assert.Equal(3, g.State.Turns.TurnNumber);
         // Wave 0 is 5 Soldiers + 5 Recruits (strongest first), clamped to
         // this map's 3 coastal coords — 3 Soldiers spawn.
@@ -110,11 +111,11 @@ public partial class GameControllerTests
         Assert.Single(g.Map.VikingArrivalSounds);
         Assert.All(g.State.Vikings.AtSea, v => Assert.Equal(UnitLevel.Soldier, v.Level));
         Assert.Equal(1, g.State.Vikings.NextWaveIndex);
-        Assert.Equal(3, g.State.Vikings.LastSpawnRound);
-        Assert.Equal(3, g.State.Vikings.LastCompletedRound);
-        // Control has come back to Red, whose turn started AFTER the phase.
+        Assert.Equal(2, g.State.Vikings.LastSpawnRound);
+        Assert.Equal(2, g.State.Vikings.LastCompletedRound);
+        // Control has come back to Red, who sees the wave offshore in round 3.
         Assert.Equal(g.Red.Id, g.State.Turns.CurrentPlayer.Id);
-        Assert.Equal(0, g.LandedVikingCount); // spawn round: nobody lands yet
+        Assert.Equal(0, g.LandedVikingCount); // offshore round: nobody lands yet
     }
 
     [Fact]
@@ -124,8 +125,8 @@ public partial class GameControllerTests
         var g = new VikingGame(grid, water);
 
         EndRound(g);
-        EndRound(g); // wave 0 spawned at round-3 start
-        EndRound(g); // round 3 → 4: the wave lands
+        EndRound(g); // wave 0 spawned at round-2 end
+        EndRound(g); // round 3's neutral seat: the wave lands
 
         Assert.Equal(4, g.State.Turns.TurnNumber);
         Assert.Empty(g.State.Vikings.AtSea); // disembarked (or perished)
@@ -147,13 +148,13 @@ public partial class GameControllerTests
         var g = new VikingGame(grid, water);
 
         EndRound(g);
-        EndRound(g); // round 3: wave spawned
+        EndRound(g); // wave spawned at round-2 end
         Assert.Equal(3, g.State.Vikings.AtSea.Count);
 
         g.Hud.ClickEndTurn(); // Red ends: mid-round boundary (Blue's turn)
-        // No second viking activity this round.
+        // No viking activity mid-round — only the round's neutral seat acts.
         Assert.Equal(3, g.State.Vikings.AtSea.Count);
-        Assert.Equal(3, g.State.Vikings.LastCompletedRound);
+        Assert.Equal(2, g.State.Vikings.LastCompletedRound);
         Assert.Equal(0, g.LandedVikingCount);
     }
 
@@ -247,25 +248,26 @@ public partial class GameControllerTests
             beforeStart: s => s.Vikings.Reset(
                 new[] { new SeaViking(sea, UnitLevel.Captain) },
                 nextWaveIndex: VikingRaidersRules.TotalWaves, // isolate: no more spawns
-                lastCompletedRound: 2,
-                lastSpawnRound: 2));
+                lastCompletedRound: 1,
+                lastSpawnRound: 1)); // arrived last round: lands this round
 
         Assert.Equal(redCapital,
             g.State.Territories.First(t => t.Owner == g.Red.Id).Capital);
 
-        g.Hud.ClickEndTurn(); // Blue ends round 2 → round-3 viking turn
+        g.Hud.ClickEndTurn(); // Blue ends round 2 → the round-2 neutral seat
 
         // The disembark captured Red's capital → Red (human) defeated;
-        // the phase pauses on the overlay before Red's turn can start.
+        // the neutral turn pauses on the overlay.
         Assert.Equal(g.Red.Id, g.Session.PendingDefeatScreen);
         Assert.True(g.State.Grid.Get(redCapital)!.Owner.IsNone);
         Assert.Equal(1, g.LandedVikingCount);
 
         g.Hud.ClickDefeatContinue();
 
-        // Phase finished; eliminated Red was skipped; Blue's turn started.
+        // Neutral turn finished; eliminated Red was skipped as round 3
+        // opened; Blue's turn started.
         Assert.Null(g.Session.PendingDefeatScreen);
-        Assert.Equal(3, g.State.Vikings.LastCompletedRound);
+        Assert.Equal(2, g.State.Vikings.LastCompletedRound);
         Assert.Equal(g.Blue.Id, g.State.Turns.CurrentPlayer.Id);
         Assert.False(g.Session.IsGameOver); // Blue survives; threat remains
     }
@@ -286,7 +288,7 @@ public partial class GameControllerTests
         var g = new VikingGame(
             grid,
             water: new HashSet<HexCoord> { redSea, blueSea },
-            turnNumber: 3, // viking turn pending immediately at game start
+            turnNumber: 3,
             blueKind: PlayerKind.Computer, // only one human defeat overlay
             beforeStart: s => s.Vikings.Reset(
                 new[]
@@ -298,7 +300,14 @@ public partial class GameControllerTests
                 lastCompletedRound: 0,
                 lastSpawnRound: 2));
 
-        // The Red (human) defeat pauses the phase; dismiss to finish it.
+        // Neutral is the round's FINAL seat: nothing viking happens before
+        // Red's own turn, even with raiders waiting offshore.
+        Assert.Null(g.Session.PendingDefeatScreen);
+        Assert.False(g.Session.IsGameOver);
+
+        g.Hud.ClickEndTurn(); // Red ends → Blue AI → the neutral seat raids
+
+        // The Red (human) defeat pauses the neutral turn; dismiss to finish.
         Assert.Equal(g.Red.Id, g.Session.PendingDefeatScreen);
         g.Hud.ClickDefeatContinue();
 
@@ -308,10 +317,10 @@ public partial class GameControllerTests
     }
 
     [Fact]
-    public void VikingRaiders_TotalWipeout_DeclaredAtPhaseEnd_EvenWithWavesPending()
+    public void VikingRaiders_TotalWipeout_DeclaredAtNeutralTurnEnd_EvenWithWavesPending()
     {
-        // The Vikings-conquered declaration happens the moment the viking
-        // phase completes with no capital left standing — the usual
+        // The Vikings-conquered declaration happens the moment the neutral
+        // seat's turn completes with no capital left standing — the usual
         // "no win while threat remains" gate does NOT hold it back (the
         // raiders being the only side left IS the outcome).
         HexGrid grid = TestHelpers.BuildSpotGrid(
@@ -336,22 +345,27 @@ public partial class GameControllerTests
                 lastCompletedRound: 0,
                 lastSpawnRound: 2));
 
+        Assert.Null(g.Session.PendingDefeatScreen); // Red's turn comes first
+
+        g.Hud.ClickEndTurn(); // Red ends → Blue AI → the neutral seat raids
+
         Assert.Equal(g.Red.Id, g.Session.PendingDefeatScreen);
-        g.Hud.ClickDefeatContinue(); // resume: the phase finishes inline
+        g.Hud.ClickDefeatContinue(); // resume: the neutral turn finishes inline
 
         Assert.True(g.Session.IsGameOver);
         Assert.Equal(PlayerId.None, g.Session.Winner);
         Assert.True(g.GameEndedRaised);
-        Assert.Equal(3, g.State.Vikings.LastCompletedRound); // declared AT phase end
+        Assert.Equal(3, g.State.Vikings.LastCompletedRound); // declared AT turn end
     }
 
     /// <summary>
-    /// A round-2 board where the round-3 viking turn is forced: the Captain
-    /// at (3,1) has its only landing (2,1) blocked by a Red Commander →
-    /// perish. With <paramref name="keepThreatAlive"/>, a landed Recruit
-    /// sits boxed in on the neutral tile (2,0) — every neighbour is
-    /// defense-covered (capital radiation west, the Commander east), so it
-    /// keeps the threat alive without ever acting or capturing a capital.
+    /// A round-2 board where the round-2 neutral seat's perish is forced:
+    /// the Captain at (3,1) — offshore since round 1 — has its only landing
+    /// (2,1) blocked by a Red Commander → perish. With
+    /// <paramref name="keepThreatAlive"/>, a landed Recruit sits boxed in on
+    /// the neutral tile (2,0) — every neighbour is defense-covered (capital
+    /// radiation west, the Commander east), so it keeps the threat alive
+    /// without ever acting or capturing a capital.
     /// </summary>
     private static VikingGame BuildPerishGame(bool keepThreatAlive)
     {
@@ -377,8 +391,8 @@ public partial class GameControllerTests
             beforeStart: s => s.Vikings.Reset(
                 new[] { new SeaViking(blockedSea, UnitLevel.Captain) },
                 nextWaveIndex: VikingRaidersRules.TotalWaves, // no spawn noise
-                lastCompletedRound: 2,
-                lastSpawnRound: 2));
+                lastCompletedRound: 1,
+                lastSpawnRound: 1)); // offshore since round 1: acts this round
     }
 
     [Fact]
@@ -387,18 +401,18 @@ public partial class GameControllerTests
         VikingGame g = BuildPerishGame(keepThreatAlive: true);
         HexCoord blockedSea = HexCoord.FromOffset(3, 1);
 
-        g.Hud.ClickEndTurn(); // Blue ends round 2 → round-3 viking turn runs
+        g.Hud.ClickEndTurn(); // Blue ends round 2 → the neutral seat's perish
 
-        Assert.Equal(3, g.State.Vikings.LastCompletedRound);
+        Assert.Equal(2, g.State.Vikings.LastCompletedRound);
         Assert.Empty(g.State.Vikings.AtSea);
         Assert.Contains(blockedSea, g.State.Vikings.SeaGraves);
         Assert.Contains(blockedSea, g.Map.TileSubmergedSounds);
         Assert.DoesNotContain(blockedSea, g.Map.UnitDestroyedSounds);
 
-        // The grave washes away when the NEXT viking turn begins.
+        // The grave washes away when the NEXT neutral turn begins.
         g.Hud.ClickEndTurn(); // Red
-        g.Hud.ClickEndTurn(); // Blue → round-4 viking turn
-        Assert.Equal(4, g.State.Vikings.LastCompletedRound);
+        g.Hud.ClickEndTurn(); // Blue → round-3 neutral turn
+        Assert.Equal(3, g.State.Vikings.LastCompletedRound);
         Assert.Empty(g.State.Vikings.SeaGraves);
     }
 
@@ -435,10 +449,10 @@ public partial class GameControllerTests
         Assert.Equal($"Wave 1/{total} arriving in 1 turn", g.Hud.TransientBanners.Last());
 
         g.Hud.ClickEndTurn(); // Blue, turn 2
-        g.Hud.ClickEndTurn(); // round 3: wave 1 spawns, then Red's turn
+        g.Hud.ClickEndTurn(); // round-2 neutral seat spawns wave 1 → Red, turn 3
         Assert.Equal($"Wave 1/{total}", g.Hud.TransientBanners.Last());
 
-        g.Hud.ClickEndTurn(); // Blue, round 3: same spawn message
+        g.Hud.ClickEndTurn(); // Blue, round 3: the wave is still offshore
         Assert.Equal($"Wave 1/{total}", g.Hud.TransientBanners.Last());
     }
 
@@ -453,12 +467,13 @@ public partial class GameControllerTests
     }
 
     [Fact]
-    public void VikingRaiders_SpawnBeatHoldsThePhase_ForTheArrivalPresentation()
+    public void VikingRaiders_SpawnBeatHoldsTheTurn_ForTheArrivalPresentation()
     {
         // After the wave-spawn beat executes, the driver must schedule the
-        // phase-ending continuation with the arrival-presentation hold —
-        // NOT the ordinary between-beats delay — so the human's turn start
-        // (auto-select, camera pan, banner) waits for the animation+sound.
+        // neutral turn's ending continuation with the arrival-presentation
+        // hold — NOT the ordinary between-beats delay — so the next human
+        // turn start (auto-select, camera pan, banner) waits for the
+        // animation+sound.
         (HexGrid grid, HashSet<HexCoord> water) = VikingIsland();
         var players = new List<Player>
         {
@@ -492,21 +507,22 @@ public partial class GameControllerTests
             pacer.StepOne();
         }
         Assert.True(state.Vikings.AtSea.Count > 0, "wave never spawned");
-        // The phase is still open (its ending continuation is queued) and
+        // The turn is still open (its ending continuation is queued) and
         // the just-requested delay is the presentation hold.
-        Assert.True(state.Vikings.LastCompletedRound < 3);
+        Assert.True(state.Vikings.LastCompletedRound < 2);
         Assert.Equal(StepPacing.VikingSpawnPresentationMs, pacer.ScheduledDelaysMs.Last());
 
-        pacer.DrainAll(); // presentation over: phase completes, Red's turn starts
-        Assert.Equal(3, state.Vikings.LastCompletedRound);
+        pacer.DrainAll(); // presentation over: turn completes, Red's turn starts
+        Assert.Equal(2, state.Vikings.LastCompletedRound);
         Assert.Equal(players[0].Id, state.Turns.CurrentPlayer.Id);
     }
 
     [Fact]
-    public void VikingRaiders_HumanInputLockedDuringVikingPhase()
+    public void VikingRaiders_HumanInputLockedDuringNeutralTurn()
     {
-        // A queued pacer holds the viking phase open mid-flight; the human
-        // (whose StartPlayerTurn hasn't run yet) must not be able to act.
+        // A queued pacer holds the neutral seat's turn open mid-flight; a
+        // human must not be able to act (or end the seat's turn) while the
+        // raiders play out.
         (HexGrid grid, HashSet<HexCoord> water) = VikingIsland();
         var players = new List<Player>
         {
@@ -531,29 +547,32 @@ public partial class GameControllerTests
         pacer.DrainAll(); // settle any startup scheduling
         _ = controller;
 
-        hud.ClickEndTurn(); // Blue ends round 2 → round-3 viking phase (paced)
-        pacer.StepOne();    // first viking beat only — phase mid-flight
-        Assert.True(pacer.HasPending); // phase genuinely open
+        hud.ClickEndTurn(); // Blue ends round 2 → the neutral seat (paced)
+        pacer.StepOne();    // first viking beat only — turn mid-flight
+        Assert.True(pacer.HasPending); // turn genuinely open
+        Assert.True(state.Turns.IsNeutralSeat);
 
         int undoDepthBefore = session.Undo.UndoCount;
-        // Try to act as the human mid-phase: click a tile, press End Turn.
+        // Try to act as a human mid-turn: click a tile, press End Turn.
         map.SimulateClick(state.Grid.Get(HexCoord.FromOffset(0, 0)));
         hud.ClickEndTurn();
 
         Assert.Equal(undoDepthBefore, session.Undo.UndoCount); // nothing tracked
         Assert.Null(session.SelectedTerritory);                // click ignored
+        Assert.True(state.Turns.IsNeutralSeat);                // End Turn ignored
 
-        pacer.DrainAll(); // let the phase finish
-        Assert.Equal(3, state.Vikings.LastCompletedRound);
+        pacer.DrainAll(); // let the neutral turn finish
+        Assert.Equal(2, state.Vikings.LastCompletedRound);
         Assert.Equal(players[0].Id, state.Turns.CurrentPlayer.Id); // Red's turn began
     }
 
     [Fact]
-    public void VikingRaiders_IsVikingPhaseActiveProbe_TracksThePhase()
+    public void VikingRaiders_NeutralSeatMidFlight_ReadsAsAiTurn()
     {
-        // Main's playback-speed closure uses this probe to keep viking
-        // beats (which run while the waiting player may be human) on the
-        // Computer Player Speed instead of the human's.
+        // Main's playback-speed closure keys on CurrentPlayer.IsAi to keep
+        // viking beats on the Computer Player Speed. The neutral seat is a
+        // real rotation seat, so while its paced beats are mid-flight the
+        // current player is the AI-driven Player.Neutral.
         (HexGrid grid, HashSet<HexCoord> water) = VikingIsland();
         var players = new List<Player>
         {
@@ -577,14 +596,17 @@ public partial class GameControllerTests
         controller.StartGame();
         pacer.DrainAll();
 
-        Assert.False(controller.IsVikingPhaseActive); // ordinary human turn
+        Assert.False(state.Turns.IsNeutralSeat); // ordinary human turn
+        Assert.False(state.Turns.CurrentPlayer.IsAi);
 
-        hud.ClickEndTurn(); // Blue ends round 2 → round-3 viking phase (paced)
-        pacer.StepOne();    // first viking beat only — phase mid-flight
-        Assert.True(controller.IsVikingPhaseActive);
+        hud.ClickEndTurn(); // Blue ends round 2 → the neutral seat (paced)
+        pacer.StepOne();    // first viking beat only — turn mid-flight
+        Assert.True(state.Turns.IsNeutralSeat);
+        Assert.True(state.Turns.CurrentPlayer.IsAi);
 
-        pacer.DrainAll();   // phase completes, Red's turn begins
-        Assert.False(controller.IsVikingPhaseActive);
+        pacer.DrainAll();   // neutral turn completes, Red's round-3 turn begins
+        Assert.False(state.Turns.IsNeutralSeat);
+        Assert.Equal(players[0].Id, state.Turns.CurrentPlayer.Id);
     }
 
     /// <summary>
@@ -600,7 +622,7 @@ public partial class GameControllerTests
         (HexGrid grid, HashSet<HexCoord> water) = VikingIsland();
         var g = new VikingGame(grid, water);
 
-        // Rounds: 3 = spawn, 4 = disembark, 5+ = landed raiders move.
+        // Round-end seats: 2 = spawn, 3 = disembark, 4+ = landed raiders move.
         for (int i = 0; i < 6; i++) EndRound(g);
         Assert.True(g.LandedVikingCount > 0); // the flow exercised landed moves
 

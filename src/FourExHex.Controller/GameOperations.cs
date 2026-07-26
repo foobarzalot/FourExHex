@@ -217,20 +217,21 @@ public class GameOperations
     /// </summary>
     public bool InSilentAiBatch() =>
         _aiSilentMode()
-        && (_state.Turns.CurrentPlayer.IsAi || VikingPhaseActive)
+        && _state.Turns.CurrentPlayer.IsAi
         && !_session.PendingDefeatScreen.HasValue;
 
     /// <summary>
     /// Single input gate for every mutating human handler: input is
     /// dropped while an Instant AI batch runs (see
-    /// <see cref="InSilentAiBatch"/>) and while the viking pseudo-turn is
-    /// mid-flight — the turn rotation has already advanced to the human,
-    /// but their <see cref="StartPlayerTurn"/> is deferred until the
-    /// raiders finish, so acting now would mutate a half-built turn.
-    /// Overlay-dismiss handlers (defeat / claim-victory Continue) do NOT
-    /// use this — they must stay live to un-pause the phase.
+    /// <see cref="InSilentAiBatch"/>) and for the whole of the neutral
+    /// seat's turn — unlike a colored AI's paced turn (where browsing
+    /// clicks stay live), the raider beats deliberately keep the board
+    /// untouchable. Overlay-dismiss handlers (defeat / claim-victory
+    /// Continue) do NOT use this — they must stay live to un-pause the
+    /// batch.
     /// </summary>
-    public bool HumanInputLocked => InSilentAiBatch() || VikingPhaseActive;
+    public bool HumanInputLocked =>
+        InSilentAiBatch() || _state.Turns.IsNeutralSeat;
 
     /// <summary>
     /// True while the human's Automate loop is fast-forwarding under
@@ -259,7 +260,7 @@ public class GameOperations
     /// suppressed like the rest of the silent batch.
     /// </summary>
     public bool IsSilent() =>
-        (_aiSilentMode() && (_state.Turns.CurrentPlayer.IsAi || VikingPhaseActive))
+        (_aiSilentMode() && _state.Turns.CurrentPlayer.IsAi)
         || _isReplayInstantActive()
         || InSilentAutomateBatch();
 
@@ -339,7 +340,7 @@ public class GameOperations
         bool aiActing = !_isReplayMode()
             && !GameEndedFired
             && !_session.IsGameOver
-            && (_state.Turns.CurrentPlayer.IsAi || VikingPhaseActive)
+            && _state.Turns.CurrentPlayer.IsAi
             && !_session.PendingDefeatScreen.HasValue;
         if (aiActing && !_aiBatchOverlayShown)
         {
@@ -494,6 +495,38 @@ public class GameOperations
                 $"{_state.Turns.Players.FirstOrDefault(p => p.Id == winner.Value)?.Name ?? "?"}");
             DeclareWinner(winner.Value);
         }
+
+        // The neutral seat closes its round: stamp the viking bookkeeping
+        // and check for a total wipeout (the raiders destroyed every
+        // capital → the Vikings win outright). Declared HERE, before the
+        // advance seam, so the eliminated-skip loop never spins on an
+        // all-dead roster.
+        if (_state.Turns.IsNeutralSeat && !_session.IsGameOver)
+        {
+            _state.Vikings.LastCompletedRound = _state.Turns.TurnNumber;
+            if (_state.Mode == GameMode.VikingRaiders
+                || VikingRaidersRules.LandedRaidersExist(_state))
+            {
+                Log.Info(Log.LogCategory.Viking,
+                    $"[viking] T{_state.Turns.TurnNumber} turn complete: " +
+                    $"atSea={_state.Vikings.AtSea.Count} landed={CountLandedVikings()} " +
+                    $"wavesLeft={VikingRaidersRules.TotalWaves - _state.Vikings.NextWaveIndex}");
+            }
+            MaybeLogVikingThreatCleared();
+            // No future viking action will run once the threat is gone —
+            // don't leave this round's perish markers floating forever.
+            if (!VikingThreatActive)
+            {
+                _state.Vikings.ClearSeaGraves();
+            }
+            if (ColorsWithCapital(_state.Territories).Count == 0)
+            {
+                Log.Warn(Log.LogCategory.Turn,
+                    $"[T{_state.Turns.TurnNumber}] the Vikings destroyed every capital — Vikings win");
+                DeclareWinner(PlayerId.None);
+                CheckGameEndConditions();
+            }
+        }
     }
 
     /// <summary>
@@ -511,20 +544,21 @@ public class GameOperations
     }
 
     /// <summary>
-    /// The eliminated-player skip loop of <see cref="AdvanceToNextActivePlayer"/>,
-    /// callable on its own: while the CURRENT player is eliminated, run their
-    /// phantom turn and advance. Also used at the end of the viking
-    /// pseudo-turn, which can eliminate the very player the rotation had just
-    /// advanced to. Callers must guarantee at least one player still holds a
-    /// capital (the viking total-wipeout path declares the Vikings winners
-    /// before ever reaching this loop).
+    /// The eliminated-player skip loop of <see cref="AdvanceToNextActivePlayer"/>:
+    /// while the CURRENT player is eliminated, run their phantom turn and
+    /// advance. The neutral seat is exempt — neutral never owns a capital
+    /// (<see cref="WinConditionRules.IsEliminated"/> is always true for it)
+    /// but its seat is a real turn, not a skippable ghost. Callers must
+    /// guarantee at least one player still holds a capital (the viking
+    /// total-wipeout path declares the Vikings winners at the neutral
+    /// seat's end-of-turn, before ever reaching this loop).
     /// </summary>
     public void SkipEliminatedCurrentPlayers()
     {
-        while (WinConditionRules.IsEliminated(_state.Turns.CurrentPlayer.Id, _state.Grid))
+        while (!_state.Turns.IsNeutralSeat
+            && WinConditionRules.IsEliminated(_state.Turns.CurrentPlayer.Id, _state.Grid))
         {
             Player ghost = _state.Turns.CurrentPlayer;
-            RunNeutralPhantomTurnIfRoundStart();
             RunPhantomTurnFor(ghost.Id, ghost.Name);
             _state.Turns.EndTurn();
         }
@@ -572,7 +606,22 @@ public class GameOperations
         // BEFORE PlayBankruptcy below.
         RefreshSilentMode();
 
-        RunNeutralPhantomTurnIfRoundStart();
+        // The neutral seat opens its turn with the viking bookkeeping the
+        // raiders need: last round's perish markers wash away, and (in
+        // Viking Raiders, or with brushed raiders on an authored map) the
+        // phase-begin diagnostic prints.
+        if (_state.Turns.IsNeutralSeat)
+        {
+            _state.Vikings.ClearSeaGraves();
+            if (_state.Mode == GameMode.VikingRaiders
+                || VikingRaidersRules.LandedRaidersExist(_state))
+            {
+                Log.Info(Log.LogCategory.Viking,
+                    $"[viking] T{_state.Turns.TurnNumber} turn begin: " +
+                    $"atSea={_state.Vikings.AtSea.Count} landed={CountLandedVikings()} " +
+                    $"nextWave={_state.Vikings.NextWaveIndex}/{VikingRaidersRules.TotalWaves}");
+            }
+        }
 
         // Rising Tides: FORECAST (don't apply) one of this player's
         // shore tiles at turn start, so it can be telegraphed all turn and weighed
@@ -583,7 +632,14 @@ public class GameOperations
         // for the initial player).
         ForecastTideForCurrentPlayer();
 
-        if (_state.Turns.TurnNumber > 1)
+        // The round-1 free pass applies to players only: the neutral seat
+        // closes round 1 with a full round of play behind it (its seat is
+        // the same board instant a start-of-round-2 phase would be), so its
+        // growth and upkeep run from round 1.
+        bool firstRoundFreePass =
+            _state.Turns.TurnNumber <= 1 && !_state.Turns.IsNeutralSeat;
+
+        if (!firstRoundFreePass)
         {
             TreeRules.RunStartOfTurnGrowth(
                 _state.Grid, _state.Turns.CurrentPlayer.Id, _state.WaterCoords);
@@ -600,7 +656,7 @@ public class GameOperations
         // Upkeep defers to round 2 alongside income: an authored map's
         // starting garrison is free through round 1, so it can't bankrupt
         // before its owner has collected a single coin.
-        bool anyBankrupt = _state.Turns.TurnNumber > 1
+        bool anyBankrupt = !firstRoundFreePass
             && UpkeepRules.ApplyUpkeepFor(
                 _state.Turns.CurrentPlayer, _state.Territories, _state.Grid, _state.Treasury);
         if (anyBankrupt)
@@ -628,15 +684,13 @@ public class GameOperations
     }
 
     /// <summary>
-    /// Start-of-turn processing for a territory-less owner that takes no
-    /// real turn: tree growth (skipped round 1) + upkeep + log. Shared by
-    /// the phantom-turn loop in <see cref="AdvanceToNextActivePlayer"/>
-    /// (eliminated roster players) and the neutral owner
-    /// (<see cref="PlayerId.None"/>), which is permanently in this state —
-    /// it owns ground but never a capital, so it never takes a real turn yet
-    /// its graves should still rot and its trees still spread. Upkeep is a
-    /// no-op for neutral (its territories hold no units) but is run anyway so
-    /// neutral goes through the exact same path as an eliminated player.
+    /// Start-of-turn processing for an eliminated roster player, run by
+    /// the skip loop in <see cref="AdvanceToNextActivePlayer"/>: tree
+    /// growth (skipped round 1) + upkeep + log. An eliminated color owns
+    /// no capital and takes no real turn, but its graves should still rot,
+    /// its trees still spread, and its orphan units still bankrupt.
+    /// (Neutral ground needs none of this — the neutral seat at the end of
+    /// each round is a real turn through <see cref="StartPlayerTurn"/>.)
     /// </summary>
     private void RunPhantomTurnFor(PlayerId ownerId, string name)
     {
@@ -727,38 +781,7 @@ public class GameOperations
         }
     }
 
-    /// <summary>
-    /// Neutral ground (<see cref="PlayerId.None"/>) is a permanently
-    /// territory-less owner, so it takes a phantom turn (tree growth +
-    /// no-op upkeep) once per round rather than once per player —
-    /// otherwise neutral ground would grow N× faster on an N-player map.
-    /// Anchored to slot 0's visit each round (active
-    /// <see cref="StartPlayerTurn"/> or the phantom-turn branch in
-    /// <see cref="AdvanceToNextActivePlayer"/>, whichever handles player
-    /// index 0), and skipped on round 1 to match the per-player growth's
-    /// <c>TurnNumber &gt; 1</c> guard.
-    /// </summary>
-    private void RunNeutralPhantomTurnIfRoundStart()
-    {
-        if (_state.Turns.TurnNumber <= 1 || _state.Turns.CurrentPlayerIndex != 0)
-        {
-            return;
-        }
-        RunPhantomTurnFor(PlayerId.None, "Neutral");
-    }
-
-    // --- Viking Raiders pseudo-turn ----------------------------------------
-
-    /// <summary>
-    /// True while the viking pseudo-turn is mid-flight: the rotation has
-    /// advanced to the round's first player but their
-    /// <see cref="StartPlayerTurn"/> is deferred until the raiders finish.
-    /// Set/cleared by <see cref="BeginVikingTurn"/> /
-    /// <see cref="CompleteVikingTurn"/>; gates human input
-    /// (<see cref="HumanInputLocked"/>), silent mode, and the
-    /// "Opponents…" overlay.
-    /// </summary>
-    public bool VikingPhaseActive { get; private set; }
+    // --- Viking Raiders (the neutral seat's raider actions) ----------------
 
     /// <summary>Live viking threat (mode-gated; always false outside
     /// Viking Raiders). While true, every win path is suppressed.</summary>
@@ -768,78 +791,6 @@ public class GameOperations
     /// false outside Fog Of War, and whenever no single-human fog perspective
     /// applies). While true, the claim-victory prompt is withheld.</summary>
     public bool HiddenLandActive => VisibilityRules.HiddenLandRemains(_state);
-
-    /// <summary>
-    /// True when this round's viking pseudo-turn still has to run:
-    /// <see cref="VikingRaidersRules.TurnDue"/> (the pure state predicate,
-    /// also driving the HUD's neutral turn-order swatch) plus the game-live
-    /// gates. Checked by the three
-    /// <c>AdvanceToNextActivePlayer(); StartPlayerTurn();</c> seams (which
-    /// defer StartPlayerTurn) and by the turn driver's dispatch boundaries
-    /// (which run the phase).
-    /// </summary>
-    public bool VikingTurnPending =>
-        !GameEndedFired
-        && !_session.IsGameOver
-        && VikingRaidersRules.TurnDue(_state);
-
-    /// <summary>
-    /// Enter the viking pseudo-turn: reseed the RNG onto the vikings' own
-    /// per-round stream (playerIndex −1 — save/load-safe regardless of how
-    /// many draws the surrounding turns consumed), un-spend the landed
-    /// raiders' moves, and flip the phase flag (input lock + overlay).
-    /// </summary>
-    public void BeginVikingTurn()
-    {
-        // Last round's perish markers wash away as the new raider turn opens.
-        _state.Vikings.ClearSeaGraves();
-        InstallRng(MixSeed(_masterSeed, _state.Turns.TurnNumber, playerIndex: -1));
-        foreach (HexTile tile in _state.Grid.Tiles)
-        {
-            if (tile.Unit is { } u && u.Owner.IsNone)
-            {
-                u.HasMovedThisTurn = false;
-            }
-        }
-        VikingPhaseActive = true;
-        RefreshSilentMode();
-        Log.Info(Log.LogCategory.Viking,
-            $"[viking] T{_state.Turns.TurnNumber} phase begin: " +
-            $"atSea={_state.Vikings.AtSea.Count} landed={CountLandedVikings()} " +
-            $"nextWave={_state.Vikings.NextWaveIndex}/{VikingRaidersRules.TotalWaves}");
-    }
-
-    /// <summary>
-    /// Finish the viking pseudo-turn: mark the round done, check for a
-    /// total wipeout (the raiders destroyed every capital → the Vikings win
-    /// outright), and drop the phase flag. The caller (turn driver) then
-    /// runs the deferred <see cref="StartPlayerTurn"/> — unless the game
-    /// just ended.
-    /// </summary>
-    public void CompleteVikingTurn()
-    {
-        _state.Vikings.LastCompletedRound = _state.Turns.TurnNumber;
-        VikingPhaseActive = false;
-        Log.Info(Log.LogCategory.Viking,
-            $"[viking] T{_state.Turns.TurnNumber} phase complete: " +
-            $"atSea={_state.Vikings.AtSea.Count} landed={CountLandedVikings()} " +
-            $"wavesLeft={VikingRaidersRules.TotalWaves - _state.Vikings.NextWaveIndex}");
-        MaybeLogVikingThreatCleared();
-        // No future viking turn will run once the threat is gone — don't
-        // leave this round's perish markers floating forever.
-        if (!VikingThreatActive)
-        {
-            _state.Vikings.ClearSeaGraves();
-        }
-        if (ColorsWithCapital(_state.Territories).Count == 0)
-        {
-            Log.Warn(Log.LogCategory.Turn,
-                $"[T{_state.Turns.TurnNumber}] the Vikings destroyed every capital — Vikings win");
-            DeclareWinner(PlayerId.None);
-            CheckGameEndConditions();
-        }
-        RefreshSilentMode();
-    }
 
     /// <summary>
     /// The sea raider at <paramref name="sea"/> lands on <paramref name="land"/>:

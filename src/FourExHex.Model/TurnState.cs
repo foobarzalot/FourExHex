@@ -12,7 +12,20 @@ public class TurnState
     public int CurrentPlayerIndex { get; private set; }
     public int TurnNumber { get; private set; }
 
-    public Player CurrentPlayer => Players[CurrentPlayerIndex];
+    /// <summary>
+    /// Number of seats in one full round: every colored player plus the
+    /// trailing neutral seat (<see cref="Player.Neutral"/>).
+    /// </summary>
+    public int SeatCount => Players.Count + 1;
+
+    /// <summary>
+    /// True while the rotation sits on the neutral seat — the round's final
+    /// seat, where tree growth, upkeep, and viking-raider actions run.
+    /// </summary>
+    public bool IsNeutralSeat => CurrentPlayerIndex == Players.Count;
+
+    public Player CurrentPlayer =>
+        IsNeutralSeat ? Player.Neutral : Players[CurrentPlayerIndex];
 
     public TurnState(IReadOnlyList<Player> players)
         : this(players, currentPlayerIndex: 0, turnNumber: 1)
@@ -32,13 +45,15 @@ public class TurnState
     }
 
     /// <summary>
-    /// Advance to the next player. Wrapping back to the first player
-    /// increments <see cref="TurnNumber"/>.
+    /// Advance to the next seat. The rotation runs every colored player and
+    /// then the neutral seat; wrapping from the neutral seat back to the
+    /// first player increments <see cref="TurnNumber"/>, so neutral's turn
+    /// is the final seat of its round.
     /// </summary>
     public void EndTurn()
     {
         CurrentPlayerIndex++;
-        if (CurrentPlayerIndex >= Players.Count)
+        if (CurrentPlayerIndex >= SeatCount)
         {
             CurrentPlayerIndex = 0;
             TurnNumber++;

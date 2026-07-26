@@ -16,8 +16,10 @@ using System.Collections.Generic;
 /// </summary>
 public static class VikingRaidersRules
 {
-    /// <summary>Round (turn number) at whose viking turn the first wave spawns.</summary>
-    public const int FirstWaveRound = 3;
+    /// <summary>Round at whose neutral seat the first wave spawns. The
+    /// seat closes its round, so a round-2 spawn puts the wave visibly
+    /// offshore for the whole of round 3 and ashore at round 3's end.</summary>
+    public const int FirstWaveRound = 2;
 
     /// <summary>Rounds between wave spawns.</summary>
     public const int WaveIntervalRounds = 3;
@@ -307,28 +309,6 @@ public static class VikingRaidersRules
             }
         }
         return null;
-    }
-
-    /// <summary>
-    /// True when this round's viking pseudo-turn is due or mid-flight:
-    /// Viking Raiders mode, the schedule has started
-    /// (round ≥ <see cref="FirstWaveRound"/>), this round's phase hasn't
-    /// completed, and any threat remains. Pure state predicate — the
-    /// controller layers its game-over gates on top
-    /// (GameOperations.VikingTurnPending), and the HUD lights the neutral
-    /// turn-order swatch from it.
-    /// </summary>
-    public static bool TurnDue(GameState state)
-    {
-        if (state.Vikings.LastCompletedRound >= state.Turns.TurnNumber) return false;
-        if (state.Mode == GameMode.VikingRaiders)
-        {
-            return state.Turns.TurnNumber >= FirstWaveRound && ThreatRemains(state);
-        }
-        // Other modes have no wave schedule, so nothing spawns and
-        // FirstWaveRound doesn't apply — but an authored map may seed
-        // raiders with the editor's unit brush, and those still take a turn.
-        return LandedRaidersExist(state);
     }
 
     /// <summary>

@@ -437,8 +437,8 @@ public partial class Main : Node2D
         GameController? controllerRef = null;
         // Actor-aware playback speed: replay → Replay Speed; Automate and
         // a human's own manual moves → Human Player Speed; live AI turns
-        // AND the viking pseudo-turn (which runs while the waiting,
-        // possibly human, player is current) → Computer Player Speed.
+        // (including the neutral seat, whose CurrentPlayer.IsAi is true)
+        // → Computer Player Speed.
         // Instant returns 0: the pacer never consults the multiplier on
         // an instant track (those route through ScheduleUnscaled), so the
         // 0 only reaches the view's move-travel tween, which reads
@@ -448,8 +448,7 @@ public partial class Main : Node2D
             PlaybackSpeed speed =
                 controllerRef?.IsReplayMode == true ? UserSettings.ReplaySpeed
                 : controllerRef?.IsAutomating == true ? UserSettings.HumanSpeed
-                : controllerRef?.IsVikingPhaseActive == true
-                    || _state.Turns.CurrentPlayer.IsAi ? UserSettings.AiSpeed
+                : _state.Turns.CurrentPlayer.IsAi ? UserSettings.AiSpeed
                 : UserSettings.HumanSpeed;
             return speed == PlaybackSpeed.Instant
                 ? 0

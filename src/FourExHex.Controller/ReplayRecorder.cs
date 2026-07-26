@@ -509,8 +509,7 @@ public class ReplayRecorder
         // nothing to pan to) — just an immediate execute. Combined with
         // the hurried boundary redispatch (ScheduleNextReplayBeat), idle
         // turns flick past and contentful turns run back-to-back.
-        if (_fastForwardIdleTurns
-            && beat is ReplayEndTurnBeat or ReplayVikingTurnEndBeat)
+        if (_fastForwardIdleTurns && beat is ReplayEndTurnBeat)
         {
             _aiPacer.Schedule(StepReplayExecute, 0);
             return;
@@ -553,7 +552,7 @@ public class ReplayRecorder
         if (_replayIndex >= _replayBeats.Count) { EndReplay(); return; }
 
         ReplayBeat beat = _replayBeats[_replayIndex++];
-        bool crossesTurn = beat is ReplayEndTurnBeat or ReplayVikingTurnEndBeat;
+        bool crossesTurn = beat is ReplayEndTurnBeat;
 
         ExecuteReplayBeat(beat);
         // The pickup pulse shown by this beat's preview is done — the
@@ -625,17 +624,6 @@ public class ReplayRecorder
             case ReplayVikingSpawnBeat vs:
                 _ops.ExecuteVikingSpawnWave(new VikingSpawnWaveAction(vs.WaveIndex, vs.Spawns));
                 break;
-            case ReplayVikingTurnEndBeat _:
-                // Same completion the live driver's EndVikingPhaseCore runs:
-                // close the phase, then the deferred StartPlayerTurn for the
-                // waiting (non-eliminated) player.
-                _ops.CompleteVikingTurn();
-                if (!_session.IsGameOver)
-                {
-                    _ops.SkipEliminatedCurrentPlayers();
-                    _ops.StartPlayerTurn();
-                }
-                break;
             case ReplayRejectedMoveBeat rejected:
                 // Authored rejection: mutate nothing, just re-present the
                 // live rejection flash. Shape and defenders are re-derived
@@ -685,15 +673,6 @@ public class ReplayRecorder
         _ops.EndOfTurnProcessing();
         if (_session.IsGameOver) return;
         _ops.AdvanceToNextActivePlayer();
-        if (_ops.VikingTurnPending)
-        {
-            // Viking round boundary — the log carries explicit viking beats
-            // next. Enter the phase exactly like the live driver (RNG
-            // stream + move-flag reset) and defer StartPlayerTurn to the
-            // ReplayVikingTurnEndBeat.
-            _ops.BeginVikingTurn();
-            return;
-        }
         _ops.StartPlayerTurn();
     }
 
@@ -707,7 +686,7 @@ public class ReplayRecorder
     {
         if (_replayIndex >= _replayBeats.Count) return InstantStep.Exhausted;
         ReplayBeat beat = _replayBeats[_replayIndex++];
-        bool isEndTurn = beat is ReplayEndTurnBeat or ReplayVikingTurnEndBeat;
+        bool isEndTurn = beat is ReplayEndTurnBeat;
         ExecuteReplayBeat(beat);
         _ops.CheckGameEndConditions();
         if (_session.IsGameOver) return InstantStep.Exhausted;

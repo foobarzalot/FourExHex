@@ -2707,7 +2707,7 @@
   "Tutorial": {
     "Title": ""
   },
-  "ReplayVersion": 1,
+  "ReplayVersion": 2,
   "Replay": {
     "InitialState": {
       "TurnNumber": 1,
@@ -3164,6 +3164,12 @@
       },
       {
         "Index": 10,
+        "Turn": 1,
+        "Actor": 6,
+        "Kind": "EndTurn"
+      },
+      {
+        "Index": 11,
         "Turn": 2,
         "Actor": 0,
         "Kind": "Move",
@@ -3173,7 +3179,7 @@
         "ToR": 9
       },
       {
-        "Index": 11,
+        "Index": 12,
         "Turn": 2,
         "Actor": 0,
         "Kind": "Move",
@@ -3183,7 +3189,7 @@
         "ToR": 9
       },
       {
-        "Index": 12,
+        "Index": 13,
         "Turn": 2,
         "Actor": 0,
         "Kind": "Move",
@@ -3193,7 +3199,7 @@
         "ToR": 9
       },
       {
-        "Index": 13,
+        "Index": 14,
         "Turn": 2,
         "Actor": 0,
         "Kind": "Move",
@@ -3203,7 +3209,7 @@
         "ToR": 9
       },
       {
-        "Index": 14,
+        "Index": 15,
         "Turn": 2,
         "Actor": 0,
         "Kind": "BuyUnit",
@@ -3214,7 +3220,7 @@
         "Level": "Recruit"
       },
       {
-        "Index": 15,
+        "Index": 16,
         "Turn": 2,
         "Actor": 0,
         "Kind": "Move",
@@ -3224,19 +3230,25 @@
         "ToR": 8
       },
       {
-        "Index": 16,
+        "Index": 17,
         "Turn": 2,
         "Actor": 0,
         "Kind": "EndTurn"
       },
       {
-        "Index": 17,
+        "Index": 18,
         "Turn": 2,
         "Actor": 1,
         "Kind": "EndTurn"
       },
       {
-        "Index": 18,
+        "Index": 19,
+        "Turn": 2,
+        "Actor": 6,
+        "Kind": "EndTurn"
+      },
+      {
+        "Index": 20,
         "Turn": 3,
         "Actor": 0,
         "Kind": "Move",
@@ -3246,7 +3258,7 @@
         "ToR": 7
       },
       {
-        "Index": 19,
+        "Index": 21,
         "Turn": 3,
         "Actor": 0,
         "Kind": "Move",

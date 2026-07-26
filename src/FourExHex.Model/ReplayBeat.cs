@@ -42,7 +42,9 @@ public abstract record ReplayBeat
     public int Turn { get; init; }
 
     /// <summary>Index into <see cref="GameState.Turns"/>'s player list
-    /// for the player who took the action.</summary>
+    /// for the player who took the action. The neutral seat's beats
+    /// (its EndTurn and any viking actions) carry the seat index past
+    /// the roster: <c>Players.Count</c>.</summary>
     public int Actor { get; init; }
 }
 
@@ -181,10 +183,12 @@ public sealed record ReplayVikingSpawnBeat : ReplayBeat
 }
 
 /// <summary>
-/// Viking Raiders: the viking pseudo-turn ended. Replay runs the same
-/// completion the live driver does — <c>CompleteVikingTurn</c> plus the
-/// deferred <c>StartPlayerTurn</c> for the waiting (non-eliminated)
-/// player. The live side records it from the driver's EndVikingPhaseCore.
+/// Replay-version-1 artifact: the terminator of the old round-boundary
+/// viking phase. The current rotation gives neutral a real seat whose
+/// turn ends with an ordinary <see cref="ReplayEndTurnBeat"/>, so this
+/// beat is never recorded and playback ignores it. The type (and its
+/// "VikingTurnEnd" serializer case) remains so a v1 file materializes
+/// cleanly before the replay-version gate rejects it.
 /// </summary>
 public sealed record ReplayVikingTurnEndBeat : ReplayBeat
 {

@@ -2704,7 +2704,7 @@
   "Tutorial": {
     "Title": ""
   },
-  "ReplayVersion": 1,
+  "ReplayVersion": 2,
   "Replay": {
     "InitialState": {
       "TurnNumber": 1,
@@ -3171,20 +3171,26 @@
       },
       {
         "Index": 16,
-        "Turn": 2,
-        "Actor": -1,
-        "Kind": "DisplayText",
-        "Text": "The Green player split the Blue territory in two! All their units are now in a territory that\u0027s too weak to sustain them."
+        "Turn": 1,
+        "Actor": 6,
+        "Kind": "EndTurn"
       },
       {
         "Index": 17,
         "Turn": 2,
         "Actor": -1,
         "Kind": "DisplayText",
-        "Text": "At the start of Blue\u0027s next turn they will all die!"
+        "Text": "The Green player split the Blue territory in two! All their units are now in a territory that's too weak to sustain them."
       },
       {
         "Index": 18,
+        "Turn": 2,
+        "Actor": -1,
+        "Kind": "DisplayText",
+        "Text": "At the start of Blue's next turn they will all die!"
+      },
+      {
+        "Index": 19,
         "Turn": 2,
         "Actor": 0,
         "Kind": "Move",
@@ -3194,21 +3200,21 @@
         "ToR": 10
       },
       {
-        "Index": 19,
+        "Index": 20,
         "Turn": 2,
         "Actor": -1,
         "Kind": "DisplayText",
-        "Text": "The Blue cells that remain are defended. A Recruit isn\u0027t strong enough to take these cells."
+        "Text": "The Blue cells that remain are defended. A Recruit isn't strong enough to take these cells."
       },
       {
-        "Index": 20,
+        "Index": 21,
         "Turn": 2,
         "Actor": -1,
         "Kind": "DisplayText",
         "Text": "Buy another Recruit and place it on the active unit to create a Soldier."
       },
       {
-        "Index": 21,
+        "Index": 22,
         "Turn": 2,
         "Actor": 0,
         "Kind": "BuyUnit",
@@ -3219,14 +3225,14 @@
         "Level": "Recruit"
       },
       {
-        "Index": 22,
+        "Index": 23,
         "Turn": 2,
         "Actor": -1,
         "Kind": "DisplayText",
         "Text": "Now capture the enemy capital!"
       },
       {
-        "Index": 23,
+        "Index": 24,
         "Turn": 2,
         "Actor": 0,
         "Kind": "Move",
@@ -3236,19 +3242,19 @@
         "ToR": 8
       },
       {
-        "Index": 24,
+        "Index": 25,
         "Turn": 2,
         "Actor": 0,
         "Kind": "EndTurn"
       },
       {
-        "Index": 25,
+        "Index": 26,
         "Turn": 2,
         "Actor": 1,
         "Kind": "EndTurn"
       },
       {
-        "Index": 26,
+        "Index": 27,
         "Turn": 2,
         "Actor": 2,
         "Kind": "Move",
@@ -3258,27 +3264,33 @@
         "ToR": 10
       },
       {
-        "Index": 27,
+        "Index": 28,
         "Turn": 2,
         "Actor": 2,
         "Kind": "EndTurn"
       },
       {
-        "Index": 28,
+        "Index": 29,
+        "Turn": 2,
+        "Actor": 6,
+        "Kind": "EndTurn"
+      },
+      {
+        "Index": 30,
         "Turn": 3,
         "Actor": -1,
         "Kind": "DisplayText",
         "Text": "Destroy the Blue territory by splitting it into singleton hexes."
       },
       {
-        "Index": 29,
+        "Index": 31,
         "Turn": 3,
         "Actor": -1,
         "Kind": "DisplayText",
-        "Text": "If a hex has no neighbor of the same color, it\u0027s not part of any territory."
+        "Text": "If a hex has no neighbor of the same color, it's not part of any territory."
       },
       {
-        "Index": 30,
+        "Index": 32,
         "Turn": 3,
         "Actor": 0,
         "Kind": "Move",
@@ -3288,14 +3300,14 @@
         "ToR": 9
       },
       {
-        "Index": 31,
+        "Index": 33,
         "Turn": 3,
         "Actor": -1,
         "Kind": "DisplayText",
         "Text": "Now capture a singleton"
       },
       {
-        "Index": 32,
+        "Index": 34,
         "Turn": 3,
         "Actor": 0,
         "Kind": "Move",
@@ -3305,26 +3317,26 @@
         "ToR": 8
       },
       {
-        "Index": 33,
+        "Index": 35,
         "Turn": 3,
         "Actor": 0,
         "Kind": "EndTurn"
       },
       {
-        "Index": 34,
+        "Index": 36,
         "Turn": 3,
         "Actor": -1,
         "Kind": "DisplayText",
         "Text": "Note how the Blue unit graves become trees. Trees can spread, but units can chop them down."
       },
       {
-        "Index": 35,
+        "Index": 37,
         "Turn": 3,
         "Actor": 1,
         "Kind": "EndTurn"
       },
       {
-        "Index": 36,
+        "Index": 38,
         "Turn": 3,
         "Actor": 2,
         "Kind": "Move",
@@ -3334,34 +3346,40 @@
         "ToR": 11
       },
       {
-        "Index": 37,
+        "Index": 39,
         "Turn": 3,
         "Actor": -1,
         "Kind": "DisplayText",
         "Text": "Green has defeated Blue! Blue has no territories remaining on the map."
       },
       {
-        "Index": 38,
+        "Index": 40,
         "Turn": 3,
         "Actor": 2,
         "Kind": "EndTurn"
       },
       {
-        "Index": 39,
+        "Index": 41,
+        "Turn": 3,
+        "Actor": 6,
+        "Kind": "EndTurn"
+      },
+      {
+        "Index": 42,
         "Turn": 4,
         "Actor": -1,
         "Kind": "DisplayText",
-        "Text": "Uh-oh, the trees are spreading. Hexes with trees on them don\u0027t earn any gold."
+        "Text": "Uh-oh, the trees are spreading. Hexes with trees on them don't earn any gold."
       },
       {
-        "Index": 40,
+        "Index": 43,
         "Turn": 4,
         "Actor": -1,
         "Kind": "DisplayText",
         "Text": "Better chop them down before they get out of control."
       },
       {
-        "Index": 41,
+        "Index": 44,
         "Turn": 4,
         "Actor": 0,
         "Kind": "Move",
@@ -3371,21 +3389,21 @@
         "ToR": 11
       },
       {
-        "Index": 42,
+        "Index": 45,
         "Turn": 4,
         "Actor": -1,
         "Kind": "DisplayText",
         "Text": "The tower is too strong for your Soldier to capture."
       },
       {
-        "Index": 43,
+        "Index": 46,
         "Turn": 4,
         "Actor": -1,
         "Kind": "DisplayText",
         "Text": "Purchase another Recruit and place it on the Soldier to form a Captain, and then use it to destroy the tower!"
       },
       {
-        "Index": 44,
+        "Index": 47,
         "Turn": 4,
         "Actor": 0,
         "Kind": "BuyUnit",
@@ -3396,7 +3414,7 @@
         "Level": "Recruit"
       },
       {
-        "Index": 45,
+        "Index": 48,
         "Turn": 4,
         "Actor": 0,
         "Kind": "Move",
@@ -3406,20 +3424,20 @@
         "ToR": 9
       },
       {
-        "Index": 46,
+        "Index": 49,
         "Turn": 4,
         "Actor": -1,
         "Kind": "DisplayText",
         "Text": "Oh no, now your territory is scheduled for bankruptcy next turn!"
       },
       {
-        "Index": 47,
+        "Index": 50,
         "Turn": 4,
         "Actor": 0,
         "Kind": "EndTurn"
       },
       {
-        "Index": 48,
+        "Index": 51,
         "Turn": 4,
         "Actor": 2,
         "Kind": "Move",
@@ -3429,27 +3447,33 @@
         "ToR": 11
       },
       {
-        "Index": 49,
+        "Index": 52,
         "Turn": 4,
         "Actor": 2,
         "Kind": "EndTurn"
       },
       {
-        "Index": 50,
+        "Index": 53,
+        "Turn": 4,
+        "Actor": 6,
+        "Kind": "EndTurn"
+      },
+      {
+        "Index": 54,
         "Turn": 5,
         "Actor": -1,
         "Kind": "DisplayText",
-        "Text": "Your unit died but now that you don\u0027t need to pay its upkeep, you have enough gold earned to buy another unit."
+        "Text": "Your unit died but now that you don't need to pay its upkeep, you have enough gold earned to buy another unit."
       },
       {
-        "Index": 51,
+        "Index": 55,
         "Turn": 5,
         "Actor": -1,
         "Kind": "DisplayText",
-        "Text": "Note that you didn\u0027t lose your tower - towers don\u0027t have any upkeep cost."
+        "Text": "Note that you didn't lose your tower - towers don't have any upkeep cost."
       },
       {
-        "Index": 52,
+        "Index": 56,
         "Turn": 5,
         "Actor": 0,
         "Kind": "BuyUnit",
@@ -3460,33 +3484,39 @@
         "Level": "Recruit"
       },
       {
-        "Index": 53,
+        "Index": 57,
         "Turn": 5,
         "Actor": 0,
         "Kind": "EndTurn"
       },
       {
-        "Index": 54,
+        "Index": 58,
         "Turn": 5,
         "Actor": -1,
         "Kind": "DisplayText",
-        "Text": "You split Green\u0027s territory and its unit died."
+        "Text": "You split Green's territory and its unit died."
       },
       {
-        "Index": 55,
+        "Index": 59,
         "Turn": 5,
         "Actor": 2,
         "Kind": "EndTurn"
       },
       {
-        "Index": 56,
+        "Index": 60,
+        "Turn": 5,
+        "Actor": 6,
+        "Kind": "EndTurn"
+      },
+      {
+        "Index": 61,
         "Turn": 6,
         "Actor": -1,
         "Kind": "DisplayText",
         "Text": "The grave of your Captain became a tree. Chop it down before it spreads."
       },
       {
-        "Index": 57,
+        "Index": 62,
         "Turn": 6,
         "Actor": 0,
         "Kind": "Move",
@@ -3496,7 +3526,7 @@
         "ToR": 9
       },
       {
-        "Index": 58,
+        "Index": 63,
         "Turn": 6,
         "Actor": 0,
         "Kind": "BuyUnit",
@@ -3507,26 +3537,32 @@
         "Level": "Recruit"
       },
       {
-        "Index": 59,
+        "Index": 64,
         "Turn": 6,
         "Actor": 0,
         "Kind": "EndTurn"
       },
       {
-        "Index": 60,
+        "Index": 65,
         "Turn": 6,
         "Actor": 2,
         "Kind": "EndTurn"
       },
       {
-        "Index": 61,
+        "Index": 66,
+        "Turn": 6,
+        "Actor": 6,
+        "Kind": "EndTurn"
+      },
+      {
+        "Index": 67,
         "Turn": 7,
         "Actor": -1,
         "Kind": "DisplayText",
-        "Text": "Combine your Recruits to form a Soldier and capture the Green capital. Don\u0027t forget to keep chopping trees!"
+        "Text": "Combine your Recruits to form a Soldier and capture the Green capital. Don't forget to keep chopping trees!"
       },
       {
-        "Index": 62,
+        "Index": 68,
         "Turn": 7,
         "Actor": 0,
         "Kind": "Move",
@@ -3536,7 +3572,7 @@
         "ToR": 9
       },
       {
-        "Index": 63,
+        "Index": 69,
         "Turn": 7,
         "Actor": 0,
         "Kind": "Move",
@@ -3546,55 +3582,8 @@
         "ToR": 8
       },
       {
-        "Index": 64,
-        "Turn": 7,
-        "Actor": 0,
-        "Kind": "BuyUnit",
-        "ToQ": 7,
-        "ToR": 11,
-        "CapitalQ": 7,
-        "CapitalR": 8,
-        "Level": "Recruit"
-      },
-      {
-        "Index": 65,
-        "Turn": 7,
-        "Actor": 0,
-        "Kind": "EndTurn"
-      },
-      {
-        "Index": 66,
-        "Turn": 7,
-        "Actor": 2,
-        "Kind": "EndTurn"
-      },
-      {
-        "Index": 67,
-        "Turn": 8,
-        "Actor": -1,
-        "Kind": "DisplayText",
-        "Text": "When you capture an enemy capital, the territory will form a new capital, if it has at least two adjacent cells."
-      },
-      {
-        "Index": 68,
-        "Turn": 8,
-        "Actor": -1,
-        "Kind": "DisplayText",
-        "Text": "Now finish off Green to win the game!"
-      },
-      {
-        "Index": 69,
-        "Turn": 8,
-        "Actor": 0,
-        "Kind": "Move",
-        "FromQ": 11,
-        "FromR": 8,
-        "ToQ": 12,
-        "ToR": 8
-      },
-      {
         "Index": 70,
-        "Turn": 8,
+        "Turn": 7,
         "Actor": 0,
         "Kind": "BuyUnit",
         "ToQ": 7,
@@ -3605,6 +3594,59 @@
       },
       {
         "Index": 71,
+        "Turn": 7,
+        "Actor": 0,
+        "Kind": "EndTurn"
+      },
+      {
+        "Index": 72,
+        "Turn": 7,
+        "Actor": 2,
+        "Kind": "EndTurn"
+      },
+      {
+        "Index": 73,
+        "Turn": 7,
+        "Actor": 6,
+        "Kind": "EndTurn"
+      },
+      {
+        "Index": 74,
+        "Turn": 8,
+        "Actor": -1,
+        "Kind": "DisplayText",
+        "Text": "When you capture an enemy capital, the territory will form a new capital, if it has at least two adjacent cells."
+      },
+      {
+        "Index": 75,
+        "Turn": 8,
+        "Actor": -1,
+        "Kind": "DisplayText",
+        "Text": "Now finish off Green to win the game!"
+      },
+      {
+        "Index": 76,
+        "Turn": 8,
+        "Actor": 0,
+        "Kind": "Move",
+        "FromQ": 11,
+        "FromR": 8,
+        "ToQ": 12,
+        "ToR": 8
+      },
+      {
+        "Index": 77,
+        "Turn": 8,
+        "Actor": 0,
+        "Kind": "BuyUnit",
+        "ToQ": 7,
+        "ToR": 11,
+        "CapitalQ": 7,
+        "CapitalR": 8,
+        "Level": "Recruit"
+      },
+      {
+        "Index": 78,
         "Turn": 8,
         "Actor": 0,
         "Kind": "Move",
@@ -3614,7 +3656,7 @@
         "ToR": 10
       },
       {
-        "Index": 72,
+        "Index": 79,
         "Turn": 8,
         "Actor": 0,
         "Kind": "EndTurn"

@@ -76,8 +76,8 @@ public class ReplayDemoStartBeatTests
         h.Map.SimulateClick(h.State.Grid.Get(to)!);
         pacer.DrainAll();
 
-        // [Buy, EndTurn, EndTurn, DemoStart, Move]
-        Assert.Equal(5, h.Controller.ReplayBeats.Count);
+        // [Buy, EndTurn(Red), EndTurn(Blue), EndTurn(Neutral), DemoStart, Move]
+        Assert.Equal(6, h.Controller.ReplayBeats.Count);
 
         int ended = 0;
         h.Controller.ReplayEnded += () => ended++;

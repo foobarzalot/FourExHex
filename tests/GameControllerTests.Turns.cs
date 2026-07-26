@@ -50,6 +50,49 @@ public partial class GameControllerTests
         Assert.IsType<Tree>(g.Tile(2, 0).Occupant);  // now P + G = 2 neighbors -> spreads
     }
 
+    [Fact]
+    public void BrushedRaider_ActsOnNeutralSeat_NotBeforeFirstPlayer()
+    {
+        // Authored Freeform map carrying a landed raider (map-editor unit
+        // brush): neutral is a real seat at the END of the rotation, so the
+        // raider must not act at game start — Red moves first, then Blue,
+        // and only then does neutral's turn move the raider (issue #186).
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
+        HexCoord raiderCoord = HexCoord.FromOffset(4, 0);
+        ControllerHarness h = TestHelpers.BuildControllerGame(
+            players: new List<Player> { red, blue },
+            ownerOverrides: new[]
+            {
+                (0, 1, red.Id), (1, 1, red.Id),
+                (4, 0, PlayerId.None),
+            },
+            beforeTerritories: g => g.Get(raiderCoord)!.Occupant =
+                new Unit(PlayerId.None, UnitLevel.Soldier));
+
+        // Game start: Red's turn, the raider has not moved.
+        Assert.Equal(red.Id, h.State.Turns.CurrentPlayer.Id);
+        Assert.Equal(1, h.State.Turns.TurnNumber);
+        Assert.IsType<Unit>(h.State.Grid.Get(raiderCoord)!.Occupant);
+
+        h.Hud.ClickEndTurn(); // Red T1 → Blue T1: still no raider activity.
+        Assert.IsType<Unit>(h.State.Grid.Get(raiderCoord)!.Occupant);
+
+        h.Hud.ClickEndTurn(); // Blue T1 → neutral seat (raider acts) → Red T2.
+
+        Assert.Equal(2, h.State.Turns.TurnNumber);
+        Assert.Equal(red.Id, h.State.Turns.CurrentPlayer.Id);
+        // The raider captured an adjacent tile: it left its brush tile and
+        // neutral now owns two tiles (the vacated one and the captured one).
+        Assert.Null(h.State.Grid.Get(raiderCoord)!.Occupant);
+        int neutralTiles = 0;
+        foreach (HexTile t in h.State.Grid.Tiles)
+        {
+            if (t.Owner.IsNone) neutralTiles++;
+        }
+        Assert.Equal(2, neutralTiles);
+    }
+
     // --- End turn ---------------------------------------------------------
 
     [Fact]

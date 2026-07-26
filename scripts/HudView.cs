@@ -2294,12 +2294,15 @@ public partial class HudView : OrientationHud, IHudView
         _hasPendingAction = session.Mode != SessionState.ActionMode.None;
         _turnLabel.Text = state.Turns.TurnNumber.ToString();
         IReadOnlyList<Player> roster = state.Turns.Players;
-        // Viking Raiders only: one extra grey swatch at the end of the turn
-        // order for the neutral raiders. It lights up while their
-        // pseudo-turn is due/mid-flight (VikingRaidersRules.TurnDue) and
-        // dims like an eliminated player once the threat is cleared.
-        bool vikingSwatch = state.Mode == GameMode.VikingRaiders;
-        int slots = roster.Count + (vikingSwatch ? 1 : 0);
+        // The neutral seat is the rotation's final seat in every mode, but
+        // its grey swatch renders only where neutral visibly acts: Viking
+        // Raiders (dimmed like an eliminated player once the threat is
+        // cleared) or a map carrying brushed raiders. The highlight tracks
+        // the real CurrentPlayerIndex, which equals roster.Count while the
+        // neutral seat plays.
+        bool neutralSwatch = state.Mode == GameMode.VikingRaiders
+            || VikingRaidersRules.LandedRaidersExist(state);
+        int slots = roster.Count + (neutralSwatch ? 1 : 0);
         var swatchColors = new Color[slots];
         var swatchEliminated = new bool[slots];
         for (int i = 0; i < roster.Count; i++)
@@ -2307,16 +2310,16 @@ public partial class HudView : OrientationHud, IHudView
             swatchColors[i] = PlayerPalette.ColorFor(roster[i].Id);
             swatchEliminated[i] = WinConditionRules.IsEliminated(roster[i].Id, state.Grid);
         }
-        int currentIndex = state.Turns.CurrentPlayerIndex;
-        if (vikingSwatch)
+        if (neutralSwatch)
         {
             swatchColors[roster.Count] = VikingSwatchGrey;
-            swatchEliminated[roster.Count] = !VikingRaidersRules.ThreatRemains(state);
-            if (!session.IsGameOver && VikingRaidersRules.TurnDue(state))
-            {
-                currentIndex = roster.Count;
-            }
+            swatchEliminated[roster.Count] =
+                state.Mode == GameMode.VikingRaiders
+                && !VikingRaidersRules.ThreatRemains(state);
         }
+        // Clamp for the hidden-swatch case (e.g. Freeform's instant
+        // neutral turn): never point the highlight past the rendered bar.
+        int currentIndex = System.Math.Min(state.Turns.CurrentPlayerIndex, slots - 1);
         _playerSwatchBar.SetPlayers(swatchColors, swatchEliminated, currentIndex);
         // Recording mode: keep the turn/swatch chip hidden across
         // refreshes (layout passes may otherwise re-show it).
@@ -2326,7 +2329,7 @@ public partial class HudView : OrientationHud, IHudView
             var parts = new List<string>(slots);
             for (int i = 0; i < slots; i++)
             {
-                string name = i < roster.Count ? roster[i].Name : "Vikings";
+                string name = i < roster.Count ? roster[i].Name : Player.Neutral.Name;
                 parts.Add($"{i}:{name}{(swatchEliminated[i] ? "(elim)" : "")}{(i == currentIndex ? "*" : "")}");
             }
             Log.Debug(Log.LogCategory.Render, $"[SwatchBar] current={currentIndex} [{string.Join(", ", parts)}]");
