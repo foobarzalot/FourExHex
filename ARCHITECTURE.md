@@ -99,21 +99,33 @@ CONTROLLER (pure C#) ─ GameController
      from EscMenu callbacks)
 
   click policy state machine:
-    OnTileClicked → pending-mode branch (buy/build/move) or SetSelection branch. Rejected clicks: in-range
-      near-miss flashes + stays in mode; out-of-range flashes + cancels + reselects. "In range" for
-      buy/move = own territory or border-adjacent; for tower = own territory only.
+    OnTileClicked → pending-mode branch (buy/build/move) or SetSelection branch. The buy and move branches
+      share one reject-or-execute policy, TryHandlePendingUnitAction; the tower branch is
+      TryHandlePendingTowerAction (its own reachability/flash/log). Both return true when the click was
+      consumed, false when the mode was cancelled and the caller falls through to selection.
+      Rejected clicks: in-range near-miss flashes + stays in mode; out-of-range flashes + cancels +
+      reselects. "In range" for buy/move = own territory or border-adjacent; for tower = own territory only.
     OnTileLongClicked → rally: free-reposition every unmoved unit toward target (single undo step,
       PlaySound(Rally) once if any moved)
 
   action handlers:
-    ExecuteBuyAndPlace → debit gold + MovementRules.PlaceNew → if capture: HandleCapture + EmitTerrainCaptureFx → DispatchActionSound
-    ExecuteMove        → MovementRules.Move → if capture: HandleCapture + EmitTerrainCaptureFx → DispatchActionSound
+    ExecuteBuyAndPlace → debit gold + MovementRules.PlaceNew → ApplyActionAftermath
+    ExecuteMove        → MovementRules.Move → ApplyActionAftermath → MaybeHoldOverlayForWinningMove
     ExecuteBuildTower  → debit gold + drop Tower + PlaySound(TowerPlaced) + EmitMountainTowerFx
 
   AI loop (AiTurnDriver, paced via IAiPacer):
     _aiDriver.RunUntilHumanOrDone → preview → execute beats (or chunked instant track)
     GameOperations.ExecuteAiMove / ExecuteAiBuyUnit / ExecuteAiBuildTower — validate then mutate (illegal action throws)
     Pauses on SessionState.PendingDefeatScreen; resumes from OnDefeatContinuePressed → _aiDriver.Schedule
+
+  post-action effects (GameOperations.ApplyActionAftermath — the one implementation, called by all six
+  executors: human ExecuteMove/ExecuteBuyAndPlace, AI/replay ExecuteMoveCore/ExecuteAiBuyUnit/
+  ExecuteAiBuyCombine, and ExecuteVikingDisembark):
+    if capture: HandleCapture(actionDesc, originCapital) → onCaptured hook → EmitTerrainCaptureFx
+    → if Destroyed != null: EmitDestruction  → DispatchActionSound
+    Destruction fires after HandleCapture because that path's RebuildAfterTerritoryChange clears the
+      deaths layer, which would also wipe a capture burst spawned before it.
+    onCaptured is the human track's RebindSelectionToContaining (the AI track has no selection to keep).
 
   capture reconciliation:
     HandleCapture → TerritoryFinder.Recompute(grid, prev, treasury) (= FindAll → CapitalReconciler.Reconcile
@@ -468,7 +480,7 @@ Every game breaks selection ties with seed-deterministic random picks (integer-o
 
 When a capture merges two (or more) same-owner territories, the capital of the territory the acting unit **originated from** wins — for a move, the source territory; for a buy, the purchasing capital's territory. Merged gold sums onto the survivor as always (`Treasury.ReconcileAfterCapture` credits whatever capital the reconciler chose); losers are demoted off the grid.
 
-- **Threading.** The origin is the acting territory's capital, resolved before the mutation, and rides `HandleCapture(actionDesc, originCapital)` → `TerritoryFinder.Recompute(..., originCapital)` → `CapitalReconciler.Reconcile(..., originCapital)`. Callers: `GameController.ExecuteMove`/`ExecuteBuyAndPlace` (human), `GameOperations.ExecuteMoveCore`/`ExecuteAiBuyUnit` (AI + replay), and `AiSimulator.ApplyMove`/`ApplyBuy` (the 1-ply clone, so sim == live — pinned by `AiSimulatorDriftTests`).
+- **Threading.** The origin is the acting territory's capital, resolved before the mutation, and rides `HandleCapture(actionDesc, originCapital)` → `TerritoryFinder.Recompute(..., originCapital)` → `CapitalReconciler.Reconcile(..., originCapital)`. Callers reach it through `ApplyActionAftermath`: `GameController.ExecuteMove`/`ExecuteBuyAndPlace` (human) and `GameOperations.ExecuteMoveCore`/`ExecuteAiBuyUnit` (AI + replay) pass the acting capital; `AiSimulator.ApplyMove`/`ApplyBuy` thread the same origin through the 1-ply clone, so sim == live (pinned by `AiSimulatorDriftTests`).
 - **Fallback.** When no origin capital is among the merged capitals (capital-less origin singleton, editor paints, any merge not caused by a unit action), the **largest old territory's** capital wins; equal-largest ties break seed-random (lex-min when the reconcile runs without an rng — editor/fixtures).
 - **Instrumentation.** Every merge decision logs `[reconcile] merge … candidates … origin … winner … rule=origin|largest|tiebreak-…` (category `Capture`, Debug).
 
@@ -502,7 +514,7 @@ Mutation/orchestration core (what both live AI and replay need) lives in `src/Fo
 
 - **`GameOperations`** owns mutation + turn-lifecycle helpers:
   - Per-action execute — `ExecuteAiMove`, `ExecuteAiBuyUnit`, `ExecuteAiBuyCombine`, `ExecuteAiBuildTower`, `ApplyLongPressRally` (validation + view/capture envelope; the bare mutation is `AiActionCore` in Model, shared with `AiSimulator`)
-  - Capture aftermath — `HandleCapture` (+ private `SnapshotCapitals` / `ColorsWithCapital` / `LogCaptureDiff`), `DispatchActionSound`, `DeclareWinner`
+  - Capture aftermath — `ApplyActionAftermath` (the shared post-action effects sequence), `HandleCapture` (+ private `SnapshotCapitals` / `ColorsWithCapital` / `LogCaptureDiff`), `DispatchActionSound`, `DeclareWinner`
   - Turn transitions — `ReseedRngForCurrentTurn` (+ static `MixSeed`), `EndOfTurnProcessing` (+ private `LogGameEndDiagnostics`), `AdvanceToNextActivePlayer`, `StartPlayerTurn` (+ static `ResetMovementFor`, private `LogTurnStart`)
   - Game-end — `CheckGameEndConditions` (fires `GameEnded` via the `onGameEnded` ctor callback; controller owns the public event)
   - View sync — `RefreshViews` (also pushes the Automate button state via `IHudView.SetAutomateState`, reading the `isAutomating` / `isAutomateExhausted` ctor callbacks), `ShowHighlightAndRefresh`, `InvokeAfterRefresh`, private `HasAnyActionableForCurrentPlayer`
@@ -618,7 +630,7 @@ void PlaySound(SoundEffect kind, HexCoord? at = null);
 
 `FlashRejection` is the single sink for rejected-click feedback: draws the forbidden-slash overlay (red silhouette + outlined-red circle + diagonal slash), animates a black arrow from each blocking defender, and plays `AudioBus.PlayRejectDefended()` / `PlayRejectGeneric()` per whether the defender set is non-empty. Overlays live in a persistent `_rejectionsLayer` that `RefreshOccupantVisuals` does not clear, so mid-pulse tweens survive refreshes; each ghost/arrow `QueueFree`s itself on its tween's `Finished`. Assets: `assets/audio/reject_generic.wav`, `reject_defended.wav`.
 
-**Invalid-tap policy (flash then cancel).** A tap on an invalid target with a buy/build-tower/move action pending flashes rejection, then calls `CancelPendingAction()` (clears `Mode`/`MoveSource` + preview overlays, like Escape). In-grid taps fall through to the normal-selection block, re-processed as a fresh click; off-grid taps cancel then deselect. Applies in both `OnTileClickedBody` and `OnOffGridClickedBody`.
+**Invalid-tap policy (flash then cancel).** A tap on an invalid target with a buy/build-tower/move action pending flashes rejection, then calls `CancelPendingAction()` (clears `Mode`/`MoveSource` + preview overlays, like Escape). In-grid taps fall through to the normal-selection block, re-processed as a fresh click; off-grid taps cancel then deselect. `OnTileClickedBody` routes the decision through `TryHandlePendingUnitAction` (buy + move) / `TryHandlePendingTowerAction`; `OnOffGridClickedBody` has its own branches (no validity or reachability step — an off-grid coord is never a legal target).
 
 `ShowMoveTargets` takes the unit level so the preview renders at the correct size (recruit=1 ring, soldier=2, captain=3, commander=3+dot). Audio fires from the controller right after the mutation; `DispatchActionSound` picks one cue per resolution (combine > destruction-by-type > generic place).
 
@@ -916,25 +928,29 @@ GameController.OnTileClicked  ── wrapped in TrackHandler:
   pre = CaptureCurrentSnapshot()       // game + session, BEFORE body
   └─ OnTileClickedBody(tile)
         ├─ session.Mode == MovingUnit
-        ├─ IsValidTarget(level, coord) == true
+        ├─ TryHandlePendingUnitAction(level, coord, …) — IsValidTarget == true
         └─ ExecuteMove(source, destination)
               ├─ _handlerMutatedGame = true
               ├─ wasCombine = WasFriendlyUnitAt(dst, owner)
               ├─ MovementRules.Move → dst.Owner = attacker; dst.Occupant = unit;
               │                      unit.HasMovedThisTurn = true
-              ├─ if WasCapture:
-              │     ├─ HandleCapture(...)
-              │     │     ├─ state.Territories = TerritoryFinder.Recompute(
-              │     │     │       state.Grid, prev, state.Treasury)
-              │     │     │     (FindAll + CapitalReconciler.Reconcile +
-              │     │     │       Treasury.ReconcileAfterCapture)
-              │     │     ├─ if a color lost its last capital:
-              │     │     │     PlaySound(PlayerDefeated); human → PendingDefeatScreen
-              │     │     ├─ _map.RebuildAfterTerritoryChange()
-              │     │     └─ if WinConditionRules.WinnerByDomination → DeclareWinner, clear undo
-              │     └─ RebindSelectionToContaining(destination)
-              ├─ if MoveResult.Destroyed != null: _map.PlayDestructionEffect(dst, occ.)
-              ├─ DispatchActionSound(dst, result, wasCombine)
+              ├─ ApplyActionAftermath(desc, originCapital, dst, result, wasCombine,
+              │  │                    onCaptured: RebindSelectionToContaining)
+              │  ├─ if WasCapture:
+              │  │     ├─ HandleCapture(...)
+              │  │     │     ├─ state.Territories = TerritoryFinder.Recompute(
+              │  │     │     │       state.Grid, prev, state.Treasury)
+              │  │     │     │     (FindAll + CapitalReconciler.Reconcile +
+              │  │     │     │       Treasury.ReconcileAfterCapture)
+              │  │     │     ├─ if a color lost its last capital:
+              │  │     │     │     PlaySound(PlayerDefeated); human → PendingDefeatScreen
+              │  │     │     ├─ _map.RebuildAfterTerritoryChange()
+              │  │     │     └─ if WinConditionRules.WinnerByDomination → DeclareWinner, clear undo
+              │  │     ├─ RebindSelectionToContaining(destination)   // the onCaptured hook
+              │  │     └─ EmitTerrainCaptureFx(dst)
+              │  ├─ if MoveResult.Destroyed != null: _map.PlayDestructionEffect(dst, occ.)
+              │  └─ DispatchActionSound(dst, result, wasCombine)
+              ├─ MaybeHoldOverlayForWinningMove(source, destination)
               └─ FinishPendingAction()
                     ├─ session.ClearPendingAction()
                     ├─ _map.ShowMoveTargets([], …)
@@ -955,8 +971,11 @@ GameController  ── wrapped in TrackHandler:
   └─ body (one of):
         OnTileClickedBody(tile)  — in-grid click
           ├─ session.Mode == BuyingX/MovingUnit/BuildingTower
-          ├─ rule check fails (IsValidTarget / IsValidTowerTarget)
-          └─ EmitRejection(level, tile.Coord) → return  // STAY in mode
+          └─ TryHandlePendingUnitAction (buy/move) or TryHandlePendingTowerAction
+                ├─ rule check fails (IsValidTarget / IsValidTowerTarget)
+                ├─ EmitRejection(level, tile.Coord)  (tower: FlashRejection, no defenders)
+                └─ reachable ? return true            // STAY in mode
+                             : CancelPendingAction() → return false  // fall through to selection
         OnOffGridClickedBody(coord)  — water / off-grid click
           ├─ session.Mode != None
           └─ EmitRejection(level, coord) → return       // STAY in mode
