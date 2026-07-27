@@ -863,12 +863,7 @@ public class GameOperations
             $"[viking] disembark {viking.Value.Level} {sea}→{land}" +
             (wasCapture ? " (capture)" : " (neutral landing)"));
 
-        if (wasCapture)
-        {
-            HandleCapture($"Viking disembark {sea}→{land}");
-            EmitTerrainCaptureFx(land);
-        }
-        else
+        if (!wasCapture)
         {
             // A neutral landing skips the capture reconcile, but the raider
             // may have joined a passive barbarian territory — spread aggro.
@@ -879,11 +874,10 @@ public class GameOperations
                     $"[barb] aggro after landing at {land}: contact={flips.Spread}");
             }
         }
-        if (displaced != null)
-        {
-            EmitDestruction(land, displaced);
-        }
-        DispatchActionSound(land, new MoveResult(wasCapture, displaced), wasCombine: false);
+
+        ApplyActionAftermath(
+            $"Viking disembark {sea}→{land}", originCapital: null, land,
+            new MoveResult(wasCapture, displaced), wasCombine: false);
     }
 
     /// <summary>The sea raider at <paramref name="sea"/> has no landing
@@ -1444,17 +1438,9 @@ public class GameOperations
         _map.AnimateUnitMove(source, destination);
 
         AiApplyResult r = AiActionCore.Move(source, destination, _state, attacker);
-        if (r.Move.WasCapture)
-        {
-            HandleCapture($"Move {source}→{destination}", attacker.Capital);
-            EmitTerrainCaptureFx(destination);
-        }
-        if (r.Move.Destroyed != null)
-        {
-            EmitDestruction(destination, r.Move.Destroyed);
-        }
-
-        DispatchActionSound(destination, r.Move, r.WasCombine);
+        ApplyActionAftermath(
+            $"Move {source}→{destination}", attacker.Capital, destination,
+            r.Move, r.WasCombine);
     }
 
     /// <summary>
@@ -1486,17 +1472,9 @@ public class GameOperations
         }
 
         AiApplyResult r = AiActionCore.Buy(capital, destination, level, _state, attacker);
-        if (r.Move.WasCapture)
-        {
-            HandleCapture($"Buy {level} → {destination}", capital);
-            EmitTerrainCaptureFx(destination);
-        }
-        if (r.Move.Destroyed != null)
-        {
-            EmitDestruction(destination, r.Move.Destroyed);
-        }
-
-        DispatchActionSound(destination, r.Move, r.WasCombine);
+        ApplyActionAftermath(
+            $"Buy {level} → {destination}", capital, destination,
+            r.Move, r.WasCombine);
     }
 
     /// <summary>
@@ -1537,12 +1515,12 @@ public class GameOperations
         }
 
         MoveResult result = AiActionCore.BuyCombine(capital, combineTarget, level, _state, attacker);
-        // A buy-combine onto a friendly unit is never a capture.
-        if (result.Destroyed != null)
-        {
-            EmitDestruction(combineTarget, result.Destroyed);
-        }
-        DispatchActionSound(combineTarget, result, wasCombine: true);
+        // A buy-combine onto a friendly unit is never a capture, so the
+        // aftermath's capture branch (and its action description) is inert
+        // here — only the destruction FX and the combine chime can fire.
+        ApplyActionAftermath(
+            $"BuyCombine {level} → {combineTarget}", capital, combineTarget,
+            result, wasCombine: true);
     }
 
     /// <summary>
@@ -1661,6 +1639,44 @@ public class GameOperations
         _hud.SetEndgameOverlaysHeld(false);
         RefreshSilentMode();
         RefreshViews();
+    }
+
+    /// <summary>
+    /// The post-action effects sequence shared by every human, AI, replay
+    /// and viking action: capture reconcile + terrain FX, then destruction
+    /// FX, then the action sound. Destruction fires AFTER
+    /// <see cref="HandleCapture"/> on purpose — that path's
+    /// RebuildAfterTerritoryChange clears the deaths layer to cancel stale
+    /// corpse animations, which would also wipe a capture burst spawned
+    /// before it. <paramref name="onCaptured"/> runs between the reconcile
+    /// and the terrain FX: the human track rebinds its selection to the
+    /// territory now containing <paramref name="destination"/> there.
+    /// </summary>
+    public void ApplyActionAftermath(
+        string actionDesc,
+        HexCoord? originCapital,
+        HexCoord destination,
+        MoveResult result,
+        bool wasCombine,
+        Action<HexCoord>? onCaptured = null)
+    {
+        Log.Trace(Log.LogCategory.Capture,
+            $"[aftermath] {actionDesc} capture={result.WasCapture} " +
+            $"destroyed={result.Destroyed?.GetType().Name ?? "none"} combine={wasCombine}");
+
+        if (result.WasCapture)
+        {
+            HandleCapture(actionDesc, originCapital);
+            onCaptured?.Invoke(destination);
+            EmitTerrainCaptureFx(destination);
+        }
+
+        if (result.Destroyed != null)
+        {
+            EmitDestruction(destination, result.Destroyed);
+        }
+
+        DispatchActionSound(destination, result, wasCombine);
     }
 
     public void DispatchActionSound(HexCoord destination, MoveResult result, bool wasCombine)

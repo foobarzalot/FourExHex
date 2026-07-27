@@ -712,73 +712,45 @@ public class GameController
         UnitLevel? buyLevel = SessionState.BuyModeLevel(_session.Mode);
         if (buyLevel.HasValue && tile != null && _session.SelectedTerritory != null)
         {
-            if (IsValidTarget(buyLevel.Value, tile.Coord))
+            HexCoord coord = tile.Coord;
+            if (TryHandlePendingUnitAction(
+                    buyLevel.Value, coord, _session.SelectedTerritory, "buy",
+                    execute: () => ExecuteBuyAndPlace(buyLevel.Value, coord)))
             {
-                ExecuteBuyAndPlace(buyLevel.Value, tile.Coord);
                 return;
             }
-            EmitRejection(buyLevel.Value, tile.Coord);
-            if (IsCoordReachableForUnitAction(tile.Coord, _session.SelectedTerritory))
-            {
-                Log.Debug(Log.LogCategory.Input,
-                    $"[Click] in-range invalid buy target at {tile.Coord} → flash + stay in buy mode");
-                return;
-            }
-            Log.Debug(Log.LogCategory.Input,
-                $"[Click] out-of-range invalid buy target at {tile.Coord} → flash + cancel mode, re-processing as selection");
-            CancelPendingAction();
         }
         else if (_session.Mode == SessionState.ActionMode.BuildingTower && tile != null && _session.SelectedTerritory != null)
         {
-            if (IsValidTowerTarget(tile.Coord))
+            if (TryHandlePendingTowerAction(tile.Coord, _session.SelectedTerritory))
             {
-                ExecuteBuildTower(tile.Coord);
                 return;
             }
-            _map.FlashRejection(tile.Coord, RejectionShape.Tower, System.Array.Empty<HexCoord>());
-            if (IsCoordReachableForTowerAction(tile.Coord, _session.SelectedTerritory))
-            {
-                Log.Debug(Log.LogCategory.Input,
-                    $"[Click] in-territory invalid build-tower target at {tile.Coord} ({DescribeInvalidTowerReason(tile.Coord)}) → flash + stay in build mode");
-                return;
-            }
-            Log.Debug(Log.LogCategory.Input,
-                $"[Click] out-of-territory invalid build-tower target at {tile.Coord} ({DescribeInvalidTowerReason(tile.Coord)}) → flash + cancel mode, re-processing as selection");
-            CancelPendingAction();
         }
         else if (_session.Mode == SessionState.ActionMode.MovingUnit && tile != null && _session.SelectedTerritory != null && _session.MoveSource.HasValue)
         {
-            Unit? sourceUnit = _state.Grid.Get(_session.MoveSource.Value)?.Unit;
-            if (sourceUnit != null && IsValidTarget(sourceUnit.Level, tile.Coord))
-            {
-                ExecuteMove(_session.MoveSource.Value, tile.Coord);
-                return;
-            }
-            if (sourceUnit != null)
-            {
-                EmitRejection(sourceUnit.Level, tile.Coord);
-                // Tutorial authoring: a failed attempt is demo material
-                // ("this unit isn't strong enough") — auto-capture it as a
-                // tutorial-only beat. Recording mode only; live games
-                // never log rejections.
-                if (_recordingMode)
-                {
-                    _recorder.RecordTutorialOnlyBeat(new ReplayRejectedMoveBeat
+            HexCoord coord = tile.Coord;
+            HexCoord source = _session.MoveSource.Value;
+            Unit? sourceUnit = _state.Grid.Get(source)?.Unit;
+            if (TryHandlePendingUnitAction(
+                    sourceUnit?.Level, coord, _session.SelectedTerritory, "move",
+                    execute: () => ExecuteMove(source, coord),
+                    // Tutorial authoring: a failed attempt is demo material
+                    // ("this unit isn't strong enough") — auto-capture it as a
+                    // tutorial-only beat. Recording mode only; live games
+                    // never log rejections.
+                    onRejected: () =>
                     {
-                        From = _session.MoveSource.Value,
-                        To = tile.Coord,
-                    });
-                }
-            }
-            if (IsCoordReachableForUnitAction(tile.Coord, _session.SelectedTerritory))
+                        if (!_recordingMode) return;
+                        _recorder.RecordTutorialOnlyBeat(new ReplayRejectedMoveBeat
+                        {
+                            From = source,
+                            To = coord,
+                        });
+                    }))
             {
-                Log.Debug(Log.LogCategory.Input,
-                    $"[Click] in-range invalid move target at {tile.Coord} → flash + stay in move mode");
                 return;
             }
-            Log.Debug(Log.LogCategory.Input,
-                $"[Click] out-of-range invalid move target at {tile.Coord} → flash + cancel mode, re-processing as selection");
-            CancelPendingAction();
         }
 
         // Tap-summoned capital-alert notice. TrackHandler has already
@@ -1198,6 +1170,82 @@ public class GameController
         return "(would have been valid — diagnostic stale?)";
     }
 
+    /// <summary>
+    /// The shared reject-or-execute policy for the buy and move pending
+    /// modes. Returns true when the click was consumed — either the action
+    /// executed, or the target was invalid but in range, so we flash and
+    /// stay in mode for the user to adjust. Returns false when the target
+    /// was out of range: the mode is cancelled and the caller falls through
+    /// to re-process the click as a normal selection.
+    /// A null <paramref name="level"/> (stale MoveSource — the unit died,
+    /// moved, or the grid was rebuilt) skips the flash and the
+    /// <paramref name="onRejected"/> hook but keeps the same stay-or-cancel
+    /// decision.
+    /// </summary>
+    private bool TryHandlePendingUnitAction(
+        UnitLevel? level, HexCoord coord, Territory territory,
+        string modeNoun, Action execute, Action? onRejected = null)
+    {
+        bool valid = level.HasValue && IsValidTarget(level.Value, coord);
+        bool reachable = IsCoordReachableForUnitAction(coord, territory);
+        Log.Trace(Log.LogCategory.Input,
+            $"[pending] {modeNoun} @{coord} level={level?.ToString() ?? "none"} " +
+            $"valid={valid} reachable={reachable}");
+
+        if (valid)
+        {
+            execute();
+            return true;
+        }
+        if (level.HasValue)
+        {
+            EmitRejection(level.Value, coord);
+            onRejected?.Invoke();
+        }
+        if (reachable)
+        {
+            Log.Debug(Log.LogCategory.Input,
+                $"[Click] in-range invalid {modeNoun} target at {coord} → flash + stay in {modeNoun} mode");
+            return true;
+        }
+        Log.Debug(Log.LogCategory.Input,
+            $"[Click] out-of-range invalid {modeNoun} target at {coord} → flash + cancel mode, re-processing as selection");
+        CancelPendingAction();
+        return false;
+    }
+
+    /// <summary>
+    /// Same reject-or-execute contract as
+    /// <see cref="TryHandlePendingUnitAction"/> for the BuildingTower mode,
+    /// which differs in all three of its tests: in-territory (not adjacency)
+    /// is the reachability bar, the flash is the generic tower shape with no
+    /// defenders to reveal, and the log names the failing rule.
+    /// </summary>
+    private bool TryHandlePendingTowerAction(HexCoord coord, Territory territory)
+    {
+        bool valid = IsValidTowerTarget(coord);
+        bool reachable = IsCoordReachableForTowerAction(coord, territory);
+        Log.Trace(Log.LogCategory.Input,
+            $"[pending] tower @{coord} valid={valid} reachable={reachable}");
+
+        if (valid)
+        {
+            ExecuteBuildTower(coord);
+            return true;
+        }
+        _map.FlashRejection(coord, RejectionShape.Tower, System.Array.Empty<HexCoord>());
+        if (reachable)
+        {
+            Log.Debug(Log.LogCategory.Input,
+                $"[Click] in-territory invalid build-tower target at {coord} ({DescribeInvalidTowerReason(coord)}) → flash + stay in build mode");
+            return true;
+        }
+        Log.Debug(Log.LogCategory.Input,
+            $"[Click] out-of-territory invalid build-tower target at {coord} ({DescribeInvalidTowerReason(coord)}) → flash + cancel mode, re-processing as selection");
+        CancelPendingAction();
+        return false;
+    }
+
     // --- Buy / move / capture --------------------------------------------
 
     private void ExecuteBuyAndPlace(UnitLevel level, HexCoord destination)
@@ -1229,23 +1277,9 @@ public class GameController
         bool wasCombine = _ops.WasFriendlyUnitAt(destination, _session.SelectedTerritory.Owner);
         MoveResult result = MovementRules.PlaceNew(unit, destination, _state.Grid, _session.SelectedTerritory);
 
-        if (result.WasCapture)
-        {
-            _ops.HandleCapture($"Buy {level} → {destination}", capital);
-            RebindSelectionToContaining(destination);
-            _ops.EmitTerrainCaptureFx(destination);
-        }
-
-        // Dispatch destruction FX after HandleCapture: that path's
-        // RebuildAfterTerritoryChange clears the deaths layer to cancel
-        // stale corpse animations, which would also wipe a freshly-
-        // spawned capture burst if we played it before.
-        if (result.Destroyed != null)
-        {
-            _ops.EmitDestruction(destination, result.Destroyed);
-        }
-
-        _ops.DispatchActionSound(destination, result, wasCombine);
+        _ops.ApplyActionAftermath(
+            $"Buy {level} → {destination}", capital, destination,
+            result, wasCombine, onCaptured: RebindSelectionToContaining);
 
         // Combining is an explicit punctuation point in a streak of buys:
         // even with gold left, exit the mode so the player re-presses the
@@ -1330,19 +1364,9 @@ public class GameController
         _map.AnimateUnitMove(source, destination);
         MoveResult result = MovementRules.Move(source, destination, _state.Grid, _session.SelectedTerritory);
 
-        if (result.WasCapture)
-        {
-            _ops.HandleCapture($"Move {source}→{destination}", originCapital);
-            RebindSelectionToContaining(destination);
-            _ops.EmitTerrainCaptureFx(destination);
-        }
-
-        if (result.Destroyed != null)
-        {
-            _ops.EmitDestruction(destination, result.Destroyed);
-        }
-
-        _ops.DispatchActionSound(destination, result, wasCombine);
+        _ops.ApplyActionAftermath(
+            $"Move {source}→{destination}", originCapital, destination,
+            result, wasCombine, onCaptured: RebindSelectionToContaining);
 
         // A winning move holds the victory overlay until the travel tween
         // settles — latched before FinishPendingAction / TrackHandler's
