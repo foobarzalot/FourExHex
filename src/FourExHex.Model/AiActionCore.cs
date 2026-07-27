@@ -9,10 +9,16 @@
 public readonly record struct AiApplyResult(MoveResult Move, bool WasCombine);
 
 /// <summary>
-/// The bare mutation core for AI actions — the single source of truth
-/// shared by <see cref="AiSimulator"/> (1-ply lookahead scoring) and
-/// <c>GameOperations.ExecuteAi*</c> (live play + replay), so simulated
-/// futures and real play cannot drift.
+/// The bare mutation core for a unit/tower action — the single source of
+/// truth shared by <see cref="AiSimulator"/> (1-ply lookahead scoring),
+/// <c>GameOperations.ExecuteAi*</c> (AI play + replay) and the human
+/// handlers in <c>GameController</c>, so no two of them can drift.
+///
+/// Purchase prices come from the difficulty of the player who OWNS the
+/// paying territory (<see cref="GameState.DifficultyOf"/>), never from
+/// whoever's turn it is. That is the authoritative expression across the
+/// codebase: every affordability gate in the controller layer uses it too,
+/// so a purchase can never be offered at one price and charged another.
 ///
 /// Deliberately does ONLY the mutation: combine detection, gold
 /// deduction (owner-based difficulty via

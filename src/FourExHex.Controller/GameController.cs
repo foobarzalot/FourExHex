@@ -17,9 +17,13 @@ public class GameController
 {
     private readonly GameState _state;
 
-    /// <summary>Purchase costs depend on the buyer; in every controller
-    /// path the buyer is the current player.</summary>
-    private Difficulty CurrentDifficulty => _state.Turns.CurrentPlayer.Difficulty;
+    /// <summary>The price a purchase from <paramref name="territory"/>
+    /// costs: the difficulty of the player who OWNS it, never whoever's
+    /// turn it happens to be. Matches <see cref="AiActionCore"/>, which
+    /// performs the deduction — an affordability gate reading a different
+    /// player would offer a purchase at one price and charge another.</summary>
+    private Difficulty DifficultyFor(Territory territory) =>
+        _state.DifficultyOf(territory.Owner);
     private readonly SessionState _session;
     private readonly IHexMapView _map;
     private readonly IHudView _hud;
@@ -1268,18 +1272,19 @@ public class GameController
             To = destination,
             Level = level,
         };
-        _state.Treasury.SetGold(capital, _state.Treasury.GetGold(capital) - PurchaseRules.CostFor(level, CurrentDifficulty));
-        var unit = new Unit(_session.SelectedTerritory.Owner, level);
-        // Detect combine before the rule mutates the destination — a
-        // friendly Unit at the dst tile means MovementRules will merge
-        // them, and we want to fire the level-up chime instead of the
-        // place thud.
-        bool wasCombine = _ops.WasFriendlyUnitAt(destination, _session.SelectedTerritory.Owner);
-        MoveResult result = MovementRules.PlaceNew(unit, destination, _state.Grid, _session.SelectedTerritory);
+        // Shared bare mutation (combine detection, gold deduct at the
+        // territory owner's difficulty, placement) — same core the AI,
+        // replay and 1-ply lookahead use, so human play can't drift from
+        // them. It detects the combine before mutating the destination: a
+        // friendly Unit there means MovementRules merges them, and we want
+        // the level-up chime instead of the place thud.
+        AiApplyResult r = AiActionCore.Buy(
+            capital, destination, level, _state, _session.SelectedTerritory);
+        bool wasCombine = r.WasCombine;
 
         _ops.ApplyActionAftermath(
             $"Buy {level} → {destination}", capital, destination,
-            result, wasCombine, onCaptured: RebindSelectionToContaining);
+            r.Move, wasCombine, onCaptured: RebindSelectionToContaining);
 
         // Combining is an explicit punctuation point in a streak of buys:
         // even with gold left, exit the mode so the player re-presses the
@@ -1327,7 +1332,7 @@ public class GameController
         for (int i = (int)ceiling; i >= (int)UnitLevel.Recruit; i--)
         {
             UnitLevel candidate = (UnitLevel)i;
-            if (PurchaseRules.CanAfford(territory, _state.Treasury, candidate, CurrentDifficulty))
+            if (PurchaseRules.CanAfford(territory, _state.Treasury, candidate, DifficultyFor(territory)))
             {
                 return candidate;
             }
@@ -1355,18 +1360,21 @@ public class GameController
         // in the power-then-coord order.
         UnitLevel movedLevel = _state.Grid.Get(source)!.Unit!.Level;
         HexCoord? originCapital = _session.SelectedTerritory.Capital;
-        bool wasCombine = _ops.WasFriendlyUnitAt(destination, _session.SelectedTerritory.Owner);
         // Hint the view before mutating: the next occupant refresh may
         // animate the rebuilt glyph traveling source→destination instead
         // of snapping. Unconditional, like the FX/sound emitters — the
         // duration (and the Instant snap) follow the Human Player Speed
         // setting view-side.
         _map.AnimateUnitMove(source, destination);
-        MoveResult result = MovementRules.Move(source, destination, _state.Grid, _session.SelectedTerritory);
+        // Shared bare mutation — same core the AI, replay and 1-ply
+        // lookahead use, so human play can't drift from them.
+        AiApplyResult r = AiActionCore.Move(
+            source, destination, _state, _session.SelectedTerritory);
+        bool wasCombine = r.WasCombine;
 
         _ops.ApplyActionAftermath(
             $"Move {source}→{destination}", originCapital, destination,
-            result, wasCombine, onCaptured: RebindSelectionToContaining);
+            r.Move, wasCombine, onCaptured: RebindSelectionToContaining);
 
         // A winning move holds the victory overlay until the travel tween
         // settles — latched before FinishPendingAction / TrackHandler's
@@ -1458,7 +1466,7 @@ public class GameController
         // afford another tower. Refresh both the tower-target preview
         // and the coverage tint — the just-placed tower expands the
         // covered set and removes its own tile from the legal set.
-        if (PurchaseRules.CanAffordTower(_session.SelectedTerritory, _state.Treasury, CurrentDifficulty))
+        if (PurchaseRules.CanAffordTower(_session.SelectedTerritory, _state.Treasury, DifficultyFor(_session.SelectedTerritory)))
         {
             _session.Mode = SessionState.ActionMode.BuildingTower;
             _session.MoveSource = null;
@@ -2223,7 +2231,7 @@ public class GameController
             _ops.RefreshViews();
             return;
         }
-        if (!PurchaseRules.CanAfford(_session.SelectedTerritory, _state.Treasury, level, CurrentDifficulty)) return;
+        if (!PurchaseRules.CanAfford(_session.SelectedTerritory, _state.Treasury, level, DifficultyFor(_session.SelectedTerritory))) return;
         // Tutorial Preview: refuse the switch if the script's next beat
         // isn't a buy at this level. Lets the dev only enter the
         // mode the tutorial expects.
@@ -2311,7 +2319,7 @@ public class GameController
         for (int i = startIndex; i < BuyCycleOrder.Length; i++)
         {
             UnitLevel candidate = BuyCycleOrder[i];
-            if (PurchaseRules.CanAfford(selected, _state.Treasury, candidate, CurrentDifficulty))
+            if (PurchaseRules.CanAfford(selected, _state.Treasury, candidate, DifficultyFor(selected)))
             {
                 return candidate;
             }
@@ -2335,7 +2343,7 @@ public class GameController
             _ops.RefreshViews();
             return;
         }
-        if (!PurchaseRules.CanAffordTower(_session.SelectedTerritory, _state.Treasury, CurrentDifficulty)) return;
+        if (!PurchaseRules.CanAffordTower(_session.SelectedTerritory, _state.Treasury, DifficultyFor(_session.SelectedTerritory))) return;
 
         _session.Mode = SessionState.ActionMode.BuildingTower;
         _session.MoveSource = null;

@@ -2389,9 +2389,13 @@ public partial class HudView : OrientationHud, IHudView
             _goldLabel.RemoveThemeColorOverride("font_color");
         }
 
-        // Costs depend on the buyer: the HUD's buy buttons always act for
-        // the current (human) player.
-        Difficulty buyerDifficulty = state.Turns.CurrentPlayer.Difficulty;
+        // Costs depend on the buyer, which is the player who OWNS the
+        // selected territory — the same expression the controller's gates
+        // and AiActionCore's deduction use, so the price shown on a button
+        // is always the price actually charged.
+        Difficulty buyerDifficulty = selected != null
+            ? state.DifficultyOf(selected.Owner)
+            : state.Turns.CurrentPlayer.Difficulty;
         UnitLevel? currentBuyLevel = SessionState.BuyModeLevel(session.Mode);
         foreach (HudIconButton button in _buyUnitButtons)
         {

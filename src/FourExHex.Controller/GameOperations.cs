@@ -27,9 +27,14 @@ public class GameOperations
 
     private readonly GameState _state;
 
-    /// <summary>Purchase costs depend on the buyer; in every operations
-    /// path the buyer is the current player.</summary>
-    private Difficulty CurrentDifficulty => _state.Turns.CurrentPlayer.Difficulty;
+    /// <summary>The price a purchase from <paramref name="territory"/>
+    /// costs: the difficulty of the player who OWNS it, never whoever's
+    /// turn it happens to be. Matters here because the ExecuteAi* methods
+    /// resolve their territory by capital with no owner filter, while
+    /// <see cref="AiActionCore"/> charges owner-derived — a gate reading a
+    /// different player would validate at one price and charge another.</summary>
+    private Difficulty DifficultyFor(Territory territory) =>
+        _state.DifficultyOf(territory.Owner);
     private readonly SessionState _session;
     private readonly IHexMapView _map;
     private readonly IHudView _hud;
@@ -1276,7 +1281,7 @@ public class GameOperations
         foreach (Territory territory in _state.Territories)
         {
             if (territory.Owner != color) continue;
-            if (PurchaseRules.CanAffordRecruit(territory, _state.Treasury, CurrentDifficulty))
+            if (PurchaseRules.CanAffordRecruit(territory, _state.Treasury, DifficultyFor(territory)))
             {
                 return true;
             }
@@ -1299,7 +1304,7 @@ public class GameOperations
     /// </summary>
     internal bool TerritoryHasAvailableAction(Territory territory)
     {
-        if (PurchaseRules.CanAffordRecruit(territory, _state.Treasury, CurrentDifficulty))
+        if (PurchaseRules.CanAffordRecruit(territory, _state.Treasury, DifficultyFor(territory)))
         {
             return true;
         }
@@ -1455,11 +1460,11 @@ public class GameOperations
             throw new InvalidOperationException(
                 $"AI BuyUnit with capital {capital}: no territory has that capital.");
         }
-        if (!PurchaseRules.CanAfford(attacker, _state.Treasury, level, CurrentDifficulty))
+        if (!PurchaseRules.CanAfford(attacker, _state.Treasury, level, DifficultyFor(attacker)))
         {
             throw new InvalidOperationException(
                 $"AI BuyUnit from capital {capital}: territory cannot afford a {level} " +
-                $"(treasury = {_state.Treasury.GetGold(capital)}g, cost = {PurchaseRules.CostFor(level, CurrentDifficulty)}g).");
+                $"(treasury = {_state.Treasury.GetGold(capital)}g, cost = {PurchaseRules.CostFor(level, DifficultyFor(attacker))}g).");
         }
 
         List<HexCoord> legalTargets = MovementRules.ValidTargets(
@@ -1495,11 +1500,11 @@ public class GameOperations
             throw new InvalidOperationException(
                 $"AI BuyCombine with capital {capital}: no territory has that capital.");
         }
-        if (!PurchaseRules.CanAfford(attacker, _state.Treasury, level, CurrentDifficulty))
+        if (!PurchaseRules.CanAfford(attacker, _state.Treasury, level, DifficultyFor(attacker)))
         {
             throw new InvalidOperationException(
                 $"AI BuyCombine from capital {capital}: territory cannot afford a {level} " +
-                $"(treasury = {_state.Treasury.GetGold(capital)}g, cost = {PurchaseRules.CostFor(level, CurrentDifficulty)}g).");
+                $"(treasury = {_state.Treasury.GetGold(capital)}g, cost = {PurchaseRules.CostFor(level, DifficultyFor(attacker))}g).");
         }
         HexTile? dstTile = _state.Grid.Get(combineTarget);
         if (dstTile?.Unit == null)
@@ -1560,7 +1565,7 @@ public class GameOperations
             throw new InvalidOperationException(
                 $"AI BuildTower with capital {capital}: no territory has that capital.");
         }
-        if (!PurchaseRules.CanAffordTower(territory, _state.Treasury, CurrentDifficulty))
+        if (!PurchaseRules.CanAffordTower(territory, _state.Treasury, DifficultyFor(territory)))
         {
             throw new InvalidOperationException(
                 $"AI BuildTower from capital {capital}: territory cannot afford a tower " +

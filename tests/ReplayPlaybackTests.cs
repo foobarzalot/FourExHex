@@ -33,12 +33,25 @@ public class ReplayPlaybackTests
         public Player Red { get; }
         public Player Blue { get; }
 
+        // redDifficulty exists so a scripted human buy can be charged a
+        // NON-baseline price and still round-trip through replay, which
+        // re-executes the recorded beat via ExecuteAi* / AiActionCore. Use
+        // Difficulty.Recruit (unit base 8) rather than an above-baseline
+        // tier: this fixture seeds 5 × 2 tree-free cells = 10 gold and
+        // SeedStartingGold overwrites anything staged beforehand, so a
+        // 13-gold Captain recruit is simply unaffordable here.
+        // Scope note: Red is both the current player and the territory owner
+        // in this fixture, so this does NOT discriminate between the
+        // current-player and owner-derived difficulty expressions — see
+        // PurchaseDifficultySourceTests for that. It guards the narrower
+        // property that a non-baseline human price replays identically.
         public Fixture(PlayerKind redKind = PlayerKind.Human, PlayerKind blueKind = PlayerKind.Human,
             Func<GameState, PlayerId, HashSet<HexCoord>, HashSet<HexCoord>, DeterministicRng, AiAction?>? aiChooser = null,
             bool instantReplay = false,
-            Func<bool>? replayInstantMode = null)
+            Func<bool>? replayInstantMode = null,
+            Difficulty redDifficulty = Difficulty.Soldier)
         {
-            Red = new Player("Red", PlayerId.FromIndex(0), redKind);
+            Red = new Player("Red", PlayerId.FromIndex(0), redKind, redDifficulty);
             Blue = new Player("Blue", PlayerId.FromIndex(1), blueKind);
             Pacer = new QueuedAiPacer();
 
@@ -107,16 +120,27 @@ public class ReplayPlaybackTests
 
     // --- Round-trip determinism -------------------------------------------
 
-    [Fact]
-    public void Replay_PlaysHumanBuyThenEndTurn_ToSameFinalState()
+    // Difficulty.Recruit charges a non-baseline price (8 vs Soldier's 10):
+    // the live beat comes from ExecuteBuyAndPlace and playback re-executes it
+    // through ExecuteAiBuyUnit, so any cost divergence between the two shows
+    // up as a gold mismatch here.
+    [Theory]
+    [InlineData(Difficulty.Soldier)]
+    [InlineData(Difficulty.Recruit)]
+    public void Replay_PlaysHumanBuyThenEndTurn_ToSameFinalState(Difficulty redDifficulty)
     {
-        var f = new Fixture();
+        var f = new Fixture(redDifficulty: redDifficulty);
 
         // Play a scripted game: Red buys a recruit, ends turn, Blue
         // ends turn (Blue is human; no input so manual ClickEndTurn).
         f.Map.SimulateClick(f.State.Grid.Get(f.RedCapital)!);
         f.Hud.ClickBuyRecruit();
         f.Map.SimulateClick(f.State.Grid.Get(f.RedOther)!);
+        // Guard: an unaffordable buy is silently refused, which would leave
+        // this test asserting a state match over a beat log that never
+        // contained the buy at all.
+        Assert.True(f.State.Grid.Get(f.RedOther)!.Occupant is Unit,
+            "Buy should have placed a recruit on RedOther.");
         f.Hud.ClickEndTurn();
         f.Pacer.DrainAll();
         f.Hud.ClickEndTurn();  // Blue ends, hands back to Red for turn 2.
@@ -135,8 +159,11 @@ public class ReplayPlaybackTests
         f.AssertStateMatches(liveFinal);
     }
 
-    [Fact]
-    public void Replay_HumanBuyOntoOwnEmptyThenMoveSameUnit_ProducesSameFinalState()
+    [Theory]
+    [InlineData(Difficulty.Soldier)]
+    [InlineData(Difficulty.Recruit)]
+    public void Replay_HumanBuyOntoOwnEmptyThenMoveSameUnit_ProducesSameFinalState(
+        Difficulty redDifficulty)
     {
         // A buy onto an own-empty tile leaves HasMovedThisTurn=false —
         // the flag changes only through movement-consuming arrivals
@@ -144,7 +171,7 @@ public class ReplayPlaybackTests
         // move/capture the same turn. Replay must preserve that:
         // re-executing the buy beat leaves the unit actionable, or the
         // subsequent move beat throws "unit has already moved this turn."
-        var f = new Fixture();
+        var f = new Fixture(redDifficulty: redDifficulty);
 
         // Step 1: select Red's territory, enter Buy Recruit mode, place
         // recruit onto own-empty RedOther.
