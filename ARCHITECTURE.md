@@ -513,7 +513,7 @@ When a capture merges two (or more) same-owner territories, the capital of the t
 Mutation/orchestration core (what both live AI and replay need) lives in `src/FourExHex.Controller/GameOperations.cs`, separate from `GameController` so the `ReplayRecorder` extraction creates no cycle.
 
 - **`GameOperations`** owns mutation + turn-lifecycle helpers:
-  - Per-action execute — `ExecuteAiMove`, `ExecuteAiBuyUnit`, `ExecuteAiBuyCombine`, `ExecuteAiBuildTower`, `ApplyLongPressRally` (validation + view/capture envelope; the bare mutation is `AiActionCore` in Model, shared with `AiSimulator`)
+  - Per-action execute — `ExecuteAiMove`, `ExecuteAiBuyUnit`, `ExecuteAiBuyCombine`, `ExecuteAiBuildTower`, `ApplyLongPressRally` (validation + view/capture envelope; the bare mutation is `AiActionCore` in Model, shared with `AiSimulator` and the human handlers)
   - Capture aftermath — `ApplyActionAftermath` (the shared post-action effects sequence), `HandleCapture` (+ private `SnapshotCapitals` / `ColorsWithCapital` / `LogCaptureDiff`), `DispatchActionSound`, `DeclareWinner`
   - Turn transitions — `ReseedRngForCurrentTurn` (+ static `MixSeed`), `EndOfTurnProcessing` (+ private `LogGameEndDiagnostics`), `AdvanceToNextActivePlayer`, `StartPlayerTurn` (+ static `ResetMovementFor`, private `LogTurnStart`)
   - Game-end — `CheckGameEndConditions` (fires `GameEnded` via the `onGameEnded` ctor callback; controller owns the public event)
@@ -858,7 +858,7 @@ Tuning lives in `DifficultyRules` (Model) as integer tables:
 | Commander | 15 / 30 / 45 / 60 | 20 |
 
 - **Plumbing.** `Player.Difficulty` (default `Soldier`), populated by `Player.BuildRoster` from `GameSettings.Difficulties`. Each player row gets a level dropdown; a Computer row pins to Soldier disabled, Human→Computer resets others to Soldier (`MainMenuScene.ApplyDifficultyLock`). `OnStartPressed` writes each row into `GameSettings.Difficulties[i]`. Dropdowns live on the player-setup page: landscape = one row each (swatch | name | role | difficulty); portrait = two-line block. A resize flipping `ScreenLayout.Resolve` rebuilds in place, round-tripping selections through the `GameSettings` arrays.
-- **Lockstep invariant.** `PurchaseRules` takes a `Difficulty` parameter with **no default**, surfacing every consumer. Real buys (the current player's `Difficulty`), the AI buy gates (`AiCommon`), `AiActionCore`'s gold deduction, and the HUD buy-button prices all derive from the same tables via `GameState.DifficultyOf`.
+- **Lockstep invariant.** `PurchaseRules` takes a `Difficulty` parameter with **no default**, surfacing every consumer. The price is always the difficulty of the player who **owns** the paying territory, resolved through `GameState.DifficultyOf(territory.Owner)` — never whoever's turn it is. Human buys, the AI buy gates (`AiCommon`), `AiActionCore`'s gold deduction, every affordability gate in `GameController` / `GameOperations` (all via a local `DifficultyFor(territory)` helper), and the HUD buy-button prices derive from that one expression, so a purchase can never be offered at one price and charged another. `PurchaseDifficultySourceTests` pins it, including the case where the owner is not the current player.
 - **Persistence.** Saved per player in save v7 (`PlayerDto.Difficulty`); missing defaults `Soldier`. Load mirrors it into `GameSettings.Difficulties` before `BuildRoster`.
 - **Diagnostics.** `FOUREXHEX_DIFFICULTY="recruit,…,commander"` sets per-slot levels in the 6AI harness. `GameController` ctor logs a one-shot `difficulties: Red=…` line (`Turn:Info`) when any slot is non-Soldier.
 
@@ -891,7 +891,7 @@ Tuning lives in `DifficultyRules` (Model) as integer tables:
 `PlayerKind` is `{ Human, Computer, None, Neutral }`. `None` marks an absent slot; `Neutral` belongs solely to the `Player.Neutral` singleton behind the rotation's trailing seat and never appears in the roster. The roster is a **variable-length list of *active* players**; almost everything keys off it, not a fixed 6:
 
 - **`Player.BuildRoster()`** iterates six `GameSettings.PlayerConfig` slots but **skips `None`**, returning a compact 2–6 list. Each survivor keeps its **original slot index** via `PlayerId.FromIndex(slot)`, so color = slot (`PlayerPalette.ColorFor` indexes `PlayerConfig[id.Index]`) regardless of compaction. A `None` player never enters a live `TurnState`. Turn rotation, `CapitalPlacer`, `WinConditionRules`, and `MapGenerator` owner assignment (draws `rng.Next(players.Count)`) consume the roster as-is.
-- **Slot ≠ list position.** Roster compacts (e.g. slots `0,2,5`), so never index it by *slot*. Tile-owner difficulty resolves via **`GameState.DifficultyOf(PlayerId)`**, matching `id` across the roster (Soldier for neutral / not-found). All AI scoring/simulation (`AiStateScorer`, `AiSimulator`, `AiCommon`) and `HudView` go through it.
+- **Slot ≠ list position.** Roster compacts (e.g. slots `0,2,5`), so never index it by *slot*. Tile-owner difficulty resolves via **`GameState.DifficultyOf(PlayerId)`**, matching `id` across the roster (Soldier for neutral / not-found). All AI scoring/simulation (`AiStateScorer`, `AiSimulator`, `AiCommon`), the controller's purchase gates, and `HudView` go through it.
 - **`Player.BuildAllHumanRoster()`** (all six Human) — tutorial builder's preview/record harness.
 - **`Player.BuildCampaignRoster(level)`** builds the level's deterministic 2–6 player campaign roster *from the level alone*, so a campaign launch never touches the freeform `GameSettings.PlayerKinds`.
 - **Validation.** `MapRosterRules.ValidateForSave(territories, kinds)` (pure, Model) is the editor's save gate: a color owning land must be active, every active color must own land, every active color owning land must hold ≥1 capital, ≥2 must be active. Capital check is mutually exclusive with owns-no-land (a landless slot flagged once). See *Map editor*.
@@ -1324,8 +1324,10 @@ Replay reuses the live `ExecuteAi*` helpers — same captures, FX, `HandleCaptur
   the per-territory `[heuristic]` best-delta summary stays at Debug.
   The bare mutation per action kind lives once in **`AiActionCore`**
   (Model: reposition/combine detection, owner-difficulty gold deduction,
-  `MovementRules` placement); `AiSimulator.Apply*` and
-  `GameOperations.ExecuteAi*` both call it and differ only in their
+  `MovementRules` placement); `AiSimulator.Apply*`,
+  `GameOperations.ExecuteAi*` and the human handlers
+  (`GameController.ExecuteMove` / `ExecuteBuyAndPlace` /
+  `ExecuteBuildTower`) all call it and differ only in their
   envelopes — the simulator early-returns on bad lookups and reconciles
   captures with a bare `TerritoryFinder.Recompute`; the live path
   validates and throws, runs the full `HandleCapture` envelope, and
