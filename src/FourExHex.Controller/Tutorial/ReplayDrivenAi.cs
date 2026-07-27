@@ -104,6 +104,42 @@ public sealed class ReplayDrivenAi
         return ToAiAction(next);
     }
 
+    /// <summary>
+    /// Consume script beats owned by the neutral seat once that seat's
+    /// turn has elapsed. The neutral seat is a real turn in the rotation,
+    /// so a recording carries a beat per neutral turn — but its live turn
+    /// is driven by the viking sequencer, not by this chooser, so nothing
+    /// else ever advances the cursor past those beats. Left parked, the
+    /// cursor points at a non-player-0 beat when control returns to the
+    /// human and every input is rejected as a desync.
+    ///
+    /// <para>
+    /// A beat belongs to the neutral seat when its actor index is at or
+    /// past the roster size: the seat always sits last, and a recording
+    /// made against a wider roster (the tutorial builder's six slots vs.
+    /// the trimmed play-time roster) stamps a correspondingly higher
+    /// index. Players trimmed out of the play roster never acted, so they
+    /// contribute no beats to confuse the test. Called from the preview's
+    /// after-refresh chain, ahead of the narration driver, so the beat
+    /// behind an elapsed neutral turn presents on the same refresh.
+    /// </para>
+    /// </summary>
+    public void ConsumeElapsedNeutralSeatBeats(GameState state)
+    {
+        // Still the seat's own turn: its beats are not elapsed yet.
+        if (state.Turns.IsNeutralSeat) return;
+        while (_cursor.Index < _script.Count)
+        {
+            ReplayBeat beat = _script[_cursor.Index];
+            if (beat is TutorialOnlyBeat || beat.Actor < _rosterSize) return;
+            Log.Info(Log.LogCategory.Tutorial,
+                $"[ReplayDrivenAi] consumed elapsed neutral-seat beat #{beat.Index} "
+                + $"{beat.GetType().Name} actor{beat.Actor} "
+                + $"(cursor {_cursor.Index}→{_cursor.Index + 1}/{_script.Count})");
+            _cursor.Advance();
+        }
+    }
+
     /// <summary>Reset the cursor to the start. Used when restarting Preview.</summary>
     public void Reset() => _cursor.Reset();
 

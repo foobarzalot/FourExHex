@@ -169,6 +169,12 @@ public sealed partial class PreviewPane : Control
             autoSelectFirstTerritory: false,
             onAfterRefresh: () =>
             {
+                // Drop the beats no live actor consumes — an elapsed
+                // neutral-seat turn, which the viking sequencer plays
+                // rather than the scripted chooser — before the narration
+                // driver reads the cursor, so the beat behind them
+                // presents on this same refresh.
+                _replayAi!.ConsumeElapsedNeutralSeatBeats(_previewState!);
                 narrationRef?.Tick();
                 cuesRef?.Apply();
             });
