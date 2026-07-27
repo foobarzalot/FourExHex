@@ -492,15 +492,25 @@ public partial class HexMapView : Node2D, IHexMapView
     private bool _gestureWasPinch;
 
     /// <summary>Pixel bounding box of the rendered grid, for centering.</summary>
-    public Vector2 PixelSize => new Vector2(
-        (Cols + 0.5f) * Mathf.Sqrt(3f) * HexSize,
-        (1.5f * Rows + 0.5f) * HexSize);
+    public Vector2 PixelSize
+    {
+        get
+        {
+            (float w, float h) = HexProjection.GridPixelSize(Cols, Rows, HexSize);
+            return new Vector2(w, h);
+        }
+    }
 
     // The first hex (axial 0,0) is drawn at this offset from the view's
     // origin so the grid's visual bounding box starts at (0,0) local.
-    private Vector2 FirstHexCenterOffset => new Vector2(
-        0.5f * Mathf.Sqrt(3f) * HexSize,
-        HexSize);
+    private Vector2 FirstHexCenterOffset
+    {
+        get
+        {
+            (float x, float y) = HexProjection.FirstHexCenterOffset(HexSize);
+            return new Vector2(x, y);
+        }
+    }
 
     // Unscaled board-pixel bounding box of the playable tiles (not the padded
     // nominal grid), cached when the state is set. Centering + pan-clamping
@@ -516,9 +526,11 @@ public partial class HexMapView : Node2D, IHexMapView
             ? MapPlacement.ContentPixelBounds(coords, HexSize)
             : (0f, 0f, PixelSize.X, PixelSize.Y); // degenerate: fall back to grid
         int waterRimTiles = Mathf.CeilToInt(ScrollPaddingPx / (1.5f * HexSize)) + 1;
+        Vector2 firstHexOffset = FirstHexCenterOffset;
         Log.Debug(Log.LogCategory.Render,
             $"HexMapView: content box=({_contentBox.minX:0},{_contentBox.minY:0})-" +
             $"({_contentBox.maxX:0},{_contentBox.maxY:0}) vs grid PixelSize=({PixelSize.X:0},{PixelSize.Y:0}) " +
+            $"hexSize={HexSize:0.###} firstHexOffset=({firstHexOffset.X:0.###},{firstHexOffset.Y:0.###}) " +
             $"scrollPad={ScrollPaddingPx:0} waterRimTiles={waterRimTiles} " +
             $"over {coords.Count} tiles.");
     }
@@ -4424,6 +4436,9 @@ public partial class HexMapView : Node2D, IHexMapView
         // centering offset so the result is in axial-origin coordinates.
         Vector2 local = ToLocal(mouse.Position) - FirstHexCenterOffset;
         HexCoord coord = HexPixel.FromPixel(local, HexSize);
+        Log.Trace(Log.LogCategory.Render,
+            $"[hit-test] viewport=({mouse.Position.X:0.#},{mouse.Position.Y:0.#}) " +
+            $"local=({local.X:0.#},{local.Y:0.#}) hexSize={HexSize:0.###} -> {coord}");
 
         // CoordClicked fires on every click that wasn't a drag, regardless
         // of whether the coord is in the grid — the editor needs to know

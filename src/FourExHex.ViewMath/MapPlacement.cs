@@ -15,20 +15,17 @@ public static class MapPlacement
     /// <summary>
     /// Unscaled board-pixel bounding box of <paramref name="coords"/>, in the
     /// same local space as <c>HexMapView.PixelSize</c> (origin at 0,0, with the
-    /// first-hex offset folded in). Mirrors the view's
-    /// <c>FirstHexCenterOffset + HexPixel.ToPixel</c> for pointy-top hexes plus
-    /// the hex extent (half-width √3·s/2, half-height s). Used for content-aware
-    /// centering: pass the playable (non-water) tile coords to frame the content
-    /// rather than the padded grid. Empty input returns a zero box.
+    /// first-hex offset folded in). Projects through <see cref="HexProjection"/>,
+    /// the same source the view draws through, so the framed box and the drawn
+    /// board cannot disagree. Used for content-aware centering: pass the playable
+    /// (non-water) tile coords to frame the content rather than the padded grid.
+    /// Empty input returns a zero box.
     /// </summary>
     public static (float minX, float minY, float maxX, float maxY) ContentPixelBounds(
         IEnumerable<HexCoord> coords, float hexSize)
     {
-        float sqrt3 = MathF.Sqrt(3f);
-        float offX = 0.5f * sqrt3 * hexSize;  // FirstHexCenterOffset.X
-        float offY = hexSize;                 // FirstHexCenterOffset.Y
-        float halfW = 0.5f * sqrt3 * hexSize; // pointy-top hex half-width
-        float halfH = hexSize;                // pointy-top hex half-height
+        (float offX, float offY) = HexProjection.FirstHexCenterOffset(hexSize);
+        (float halfW, float halfH) = HexProjection.HexExtent(hexSize);
 
         float minX = float.MaxValue, minY = float.MaxValue;
         float maxX = float.MinValue, maxY = float.MinValue;
@@ -36,8 +33,9 @@ public static class MapPlacement
         foreach (HexCoord c in coords)
         {
             any = true;
-            float cx = offX + hexSize * sqrt3 * (c.Q + c.R * 0.5f);
-            float cy = offY + hexSize * 1.5f * c.R;
+            (float px, float py) = HexProjection.ToPixel(c, hexSize);
+            float cx = offX + px;
+            float cy = offY + py;
             minX = MathF.Min(minX, cx - halfW);
             maxX = MathF.Max(maxX, cx + halfW);
             minY = MathF.Min(minY, cy - halfH);

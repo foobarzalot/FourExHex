@@ -4,11 +4,10 @@ using Xunit;
 
 namespace FourExHex.Tests;
 
-// This file tests the engine-free cube-rounding core, HexRounding.Round —
-// the part whose correctness the model depends on. The pixel↔axial
-// projection (ToPixel/FromPixel) lives in the Godot-side HexPixel helper
-// and is exercised by manual play-testing of the map (the view layer is
-// not unit-tested).
+// This file covers HexRounding.Round only — the cube-rounding rule that picks
+// the correct hex near an edge or corner, where rounding q and r independently
+// would not. The pixel↔axial projection it sits underneath is pinned separately
+// in HexProjectionTests.
 public class HexCoordRoundTests
 {
     [Theory]
