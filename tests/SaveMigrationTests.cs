@@ -37,6 +37,9 @@ public class SaveMigrationTests
 
 
 
+    // The suite's single deliberate version pin: bumping the save format
+    // must consciously touch exactly this one assertion (every other test
+    // derives its version values from the constant).
     [Fact]
     public void CurrentFormatVersion_IsTwenty()
     {
@@ -49,7 +52,10 @@ public class SaveMigrationTests
         (GameState s, IReadOnlyList<Player> p) = BuildState();
         string json = SaveSerializer.Serialize(s, 1, p, "slot", 100);
 
-        foreach (int bad in new[] { 1, 21, 99 })
+        // Boundary values derive from the constant so a version bump only
+        // ever touches the single pin above: one-past-current is rejected,
+        // every legacy version back to 2 is accepted.
+        foreach (int bad in new[] { 1, SaveSerializer.CurrentFormatVersion + 1, 99 })
         {
             string mutated = json.Replace(
                 $"\"FormatVersion\": {SaveSerializer.CurrentFormatVersion}",
@@ -57,7 +63,7 @@ public class SaveMigrationTests
             Assert.ThrowsAny<System.Exception>(() => SaveSerializer.Deserialize(mutated));
         }
 
-        foreach (int ok in new[] { 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 })
+        for (int ok = 2; ok < SaveSerializer.CurrentFormatVersion; ok++)
         {
             string mutated = json.Replace(
                 $"\"FormatVersion\": {SaveSerializer.CurrentFormatVersion}",

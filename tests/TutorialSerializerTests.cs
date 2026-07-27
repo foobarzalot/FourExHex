@@ -25,12 +25,6 @@ public class TutorialSerializerTests
     }
 
     [Fact]
-    public void CurrentFormatVersion_IsTwenty()
-    {
-        Assert.Equal(20, SaveSerializer.CurrentFormatVersion);
-    }
-
-    [Fact]
     public void Deserialize_AcceptsLegacyV2Json()
     {
         (GameState state, IReadOnlyList<Player> players) = BuildMinimalState();

@@ -145,12 +145,6 @@ public class SaveSerializerTests
         Assert.Contains("\"Kind\"", json);
     }
 
-    [Fact]
-    public void CurrentFormatVersion_IsTwenty()
-    {
-        Assert.Equal(20, SaveSerializer.CurrentFormatVersion);
-    }
-
     // --- Viking Raiders state -------------------------------------------------
 
     private static (GameState state, List<Player> players) BuildVikingState()
