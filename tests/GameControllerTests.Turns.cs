@@ -67,8 +67,11 @@ public partial class GameControllerTests
                 (0, 1, red.Id), (1, 1, red.Id),
                 (4, 0, PlayerId.None),
             },
+            // Aggro so the seat's action is a visible capture — a passive
+            // barbarian would wander instead (#188), and this test pins the
+            // seat TIMING, not the aggression rules.
             beforeTerritories: g => g.Get(raiderCoord)!.Occupant =
-                new Unit(PlayerId.None, UnitLevel.Soldier));
+                new Unit(PlayerId.None, UnitLevel.Soldier) { IsAggro = true });
 
         // Game start: Red's turn, the raider has not moved.
         Assert.Equal(red.Id, h.State.Turns.CurrentPlayer.Id);

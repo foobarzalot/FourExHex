@@ -336,6 +336,15 @@ public static class ComputerAi
             // evacuates a unit that would otherwise sit still and drown.
             if (candidate.Action is AiMoveAction mv)
                 delta += AiStateScorer.EvacuationBonus(mv, state, forPlayer);
+            // Waking passive barbarians has a cost the 1-ply score can't
+            // see; charge captures into their territory (move or buy) so a
+            // comparable non-provoking option outranks them.
+            if (candidate.Action is AiMoveAction provokeMove)
+                delta -= AiStateScorer.BarbarianProvokePenalty(
+                    provokeMove.Destination, state, forPlayer);
+            else if (candidate.Action is AiBuyUnitAction provokeBuy)
+                delta -= AiStateScorer.BarbarianProvokePenalty(
+                    provokeBuy.Destination, state, forPlayer);
 
             if (delta > 0) prof.PositiveCandidates++;
             if (delta > prof.ObservedBestDelta)

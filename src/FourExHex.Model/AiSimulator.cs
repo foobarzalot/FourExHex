@@ -174,9 +174,13 @@ public static class AiSimulator
     /// </summary>
     private static void Reconcile(GameState state, HexCoord? originCapital = null)
     {
+        IReadOnlyList<Territory> previous = state.Territories;
         state.Territories = TerritoryFinder.Recompute(
-            state.Grid, state.Territories, state.Treasury,
+            state.Grid, previous, state.Treasury,
             randomizeCapital: true, originCapital: originCapital);
+        // Mirror HandleCapture's barbarian aggro pass so simulated captures
+        // into neutral territories predict the flip the live path performs.
+        BarbarianRules.PropagateAggro(state, previous);
     }
 
 }

@@ -136,6 +136,9 @@ public static class GameStateChecksum
                 sb.Append("Unit:").Append(OwnerIndex(u.Owner))
                   .Append(':').Append(u.Level)
                   .Append(':').Append(u.HasMovedThisTurn);
+                // Appended only when aggro so passive units' rows (i.e.
+                // every pre-existing digest) are byte-identical.
+                if (u.IsAggro) sb.Append(":aggro");
                 return;
             case Capital:
                 sb.Append("Capital");

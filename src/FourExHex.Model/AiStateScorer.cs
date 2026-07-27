@@ -417,6 +417,50 @@ public static class AiStateScorer
     /// so the absolute <see cref="Score"/> stays clean. This drives the defensive
     /// phase to evacuate a unit that would otherwise sit still and drown.
     /// </summary>
+    /// <summary>
+    /// Cost of provoking passive barbarians: capturing into a non-aggro
+    /// barbarian territory (see
+    /// <see cref="BarbarianRules.IsNonAggroBarbarianTerritory"/>) flips its
+    /// units hostile, so the action is charged
+    /// <see cref="BarbarianProvokeWeight"/> x the value of every unit that
+    /// would wake. Subtracted from a candidate's delta in
+    /// <see cref="ComputerAi"/> like the bonuses above — ranking-only, so a
+    /// lone provoking capture is still taken when nothing safer exists.
+    /// </summary>
+    public static int BarbarianProvokePenalty(
+        HexCoord destination, GameState state, PlayerId owner)
+    {
+        if (owner.IsNone) return 0;
+        HexTile? tile = state.Grid.Get(destination);
+        if (tile == null || !tile.Owner.IsNone) return 0;
+        Territory? territory = TerritoryLookup.FindOwnedContaining(
+            state.Territories, PlayerId.None, destination);
+        if (territory == null) return 0;
+        if (!BarbarianRules.IsNonAggroBarbarianTerritory(territory, state.Grid)) return 0;
+
+        int wokenValue = 0;
+        foreach (HexCoord coord in territory.Coords)
+        {
+            if (state.Grid.Get(coord)?.Occupant is Unit unit)
+            {
+                wokenValue += UnitValue(unit.Level);
+            }
+        }
+        int penalty = BarbarianProvokeWeight * wokenValue;
+        Log.Debug(Log.LogCategory.Ai,
+            $"[barb-avoid] {owner} -> {destination} would wake barbarians: -{penalty}");
+        return penalty;
+    }
+
+    /// <summary>
+    /// Multiplier on the woken units' value in
+    /// <see cref="BarbarianProvokePenalty"/>. At 2x, waking even a single
+    /// Recruit (value 4) costs most of a captured tile's worth
+    /// (<see cref="TileWeight"/> 10), so a comparable non-provoking capture
+    /// always wins, while a genuinely better provoking one still can.
+    /// </summary>
+    private const int BarbarianProvokeWeight = 2;
+
     public static int EvacuationBonus(AiMoveAction mv, GameState state, PlayerId owner)
     {
         if (state.PendingTide.Count == 0) return 0;

@@ -10,7 +10,11 @@ using System.Collections.Generic;
 ///   1. Disembark: while raiders from an EARLIER round sit at sea, the first
 ///      (lex by coord) one lands on its best-scoring target, or perishes if
 ///      every neighbouring land tile is blocked.
-///   2. Landed moves: <see cref="ComputerAi.ChooseNextAction"/> for
+///   2. Landed moves, split by <see cref="Unit.IsAggro"/>:
+///      passive barbarian territories wander — each unit takes at most one
+///      random in-territory reposition per turn (staying put is part of the
+///      draw; a tide-doomed unit always retreats), never a capture — while
+///      aggro territories run <see cref="ComputerAi.ChooseNextAction"/> for
 ///      <see cref="PlayerId.None"/> — captures only on the capital-less
 ///      neutral territories (no buys/towers/combines/defensive repositions,
 ///      and trees are chopped only as captures of enemy land); a raider
@@ -31,9 +35,15 @@ public static class VikingAi
     /// Pick the next viking action, or null when the viking turn is over.
     /// <paramref name="visitedAnchors"/> is the same per-turn exhausted-set
     /// the player AI uses (keyed by territory anchor coord); mutated.
+    /// <paramref name="wanderedUnits"/> is the passive-wander loop guard
+    /// (one beat per unit per turn, keyed by the unit's post-beat coord;
+    /// caller-owned, reset each turn) — without it a reposition, which
+    /// never sets <see cref="Unit.HasMovedThisTurn"/>, would be re-chosen
+    /// until the driver's step backstop.
     /// </summary>
     public static AiAction? ChooseNext(
-        GameState state, HashSet<HexCoord> visitedAnchors, DeterministicRng rng)
+        GameState state, HashSet<HexCoord> visitedAnchors, DeterministicRng rng,
+        HashSet<HexCoord> wanderedUnits)
     {
         int round = state.Turns.TurnNumber;
         // Only Viking Raiders runs the sea half of the invasion — the wave
@@ -56,9 +66,24 @@ public static class VikingAi
             return new VikingDisembarkAction(viking.Coord, BestLanding(state, viking, targets));
         }
 
-        // 2. Landed moves: the ordinary AI driving the neutral territories.
-        //    Vikings never reposition (captures only, 4b skipped), so the
-        //    loop-guard set is irrelevant — pass a throwaway.
+        // 2a. Passive barbarians wander (or hold) within their own
+        //     territory — never expanding.
+        AiAction? wander = ChooseWander(state, wanderedUnits, rng);
+        if (wander != null) return wander;
+
+        // 2b. Aggro landed moves: the ordinary AI driving the neutral
+        //     territories. Passive territories are masked off via the
+        //     visited set so ComputerAi never enumerates their captures.
+        //     Aggro vikings never reposition (captures only, 4b skipped),
+        //     so ComputerAi's loop-guard set is irrelevant — pass a
+        //     throwaway.
+        foreach (Territory t in state.Territories)
+        {
+            if (t.Owner.IsNone && BarbarianRules.IsNonAggroBarbarianTerritory(t, state.Grid))
+            {
+                visitedAnchors.Add(TerritoryLookup.AnchorCoord(t));
+            }
+        }
         AiAction? landed = ComputerAi.ChooseNextAction(
             state, PlayerId.None, visitedAnchors, NoRepositionedUnits, rng);
         if (landed != null) return landed;
@@ -85,6 +110,61 @@ public static class VikingAi
             return new VikingSpawnWaveAction(waveIndex, spawns);
         }
 
+        return null;
+    }
+
+    /// <summary>
+    /// One passive-wander beat: the first (territory order, then lex coord)
+    /// passive barbarian not yet in <paramref name="wanderedUnits"/> draws
+    /// uniformly among its legal in-territory destinations plus one "hold"
+    /// slot. A tide-doomed unit never draws hold and never flees onto a
+    /// doomed tile (the truly cornered case was already aggroed at the
+    /// seat's turn start). Holds mark the unit spent and keep scanning;
+    /// a move is returned as a plain <see cref="AiMoveAction"/> (executed
+    /// and replayed through the existing viking-move path).
+    /// </summary>
+    private static AiAction? ChooseWander(
+        GameState state, HashSet<HexCoord> wanderedUnits, DeterministicRng rng)
+    {
+        HashSet<HexCoord> doomed = BarbarianRules.TideDoomedCoords(state);
+        foreach (Territory territory in state.Territories)
+        {
+            if (!territory.Owner.IsNone) continue;
+            if (!BarbarianRules.IsNonAggroBarbarianTerritory(territory, state.Grid)) continue;
+            foreach (HexCoord coord in territory.Coords)
+            {
+                if (state.Grid.Get(coord)?.Occupant is not Unit { IsAggro: false } unit) continue;
+                if (wanderedUnits.Contains(coord)) continue;
+
+                List<HexCoord> destinations = BarbarianRules.WanderDestinations(
+                    state, territory, coord, unit.Level, doomed);
+                if (destinations.Count == 0)
+                {
+                    wanderedUnits.Add(coord);
+                    Log.Debug(Log.LogCategory.Viking,
+                        $"[barb] hold unit={coord} (no open ground)");
+                    continue;
+                }
+
+                bool unitDoomed = doomed.Contains(coord);
+                int pick = unitDoomed
+                    ? rng.NextBounded(destinations.Count)
+                    : rng.NextBounded(destinations.Count + 1);
+                if (pick == destinations.Count)
+                {
+                    wanderedUnits.Add(coord);
+                    Log.Debug(Log.LogCategory.Viking, $"[barb] hold unit={coord}");
+                    continue;
+                }
+
+                HexCoord dest = destinations[pick];
+                wanderedUnits.Add(dest);
+                Log.Debug(Log.LogCategory.Viking,
+                    $"[barb] wander unit={coord} -> {dest}" +
+                    (unitDoomed ? " (tide retreat)" : ""));
+                return new AiMoveAction(coord, dest);
+            }
+        }
         return null;
     }
 
@@ -124,12 +204,20 @@ public static class VikingAi
     {
         HexTile tile = clone.Grid.Get(land)!;
         bool wasCapture = !tile.Owner.IsNone;
+        IReadOnlyList<Territory> previous = clone.Territories;
         tile.Owner = PlayerId.None;
-        tile.Occupant = new Unit(PlayerId.None, level) { HasMovedThisTurn = true };
+        tile.Occupant = new Unit(PlayerId.None, level)
+        {
+            HasMovedThisTurn = true,
+            IsAggro = true,
+        };
         if (wasCapture)
         {
             clone.Territories = TerritoryFinder.Recompute(
-                clone.Grid, clone.Territories, clone.Treasury, randomizeCapital: true);
+                clone.Grid, previous, clone.Treasury, randomizeCapital: true);
         }
+        // Mirror the live envelope's barbarian aggro pass (HandleCapture on
+        // a capture, the explicit spread on a neutral landing).
+        BarbarianRules.PropagateAggro(clone, previous);
     }
 }

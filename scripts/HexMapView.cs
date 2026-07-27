@@ -2423,7 +2423,10 @@ public partial class HexMapView : Node2D, IHexMapView
                     && unit.Owner == currentPlayer.Value
                     && !unit.HasMovedThisTurn;
                 bool selected = _selectedUnit.HasValue && _selectedUnit.Value == tile.Coord;
-                Node2D visual = CreateUnitVisual(actionable, unit.Level, viking: unit.Owner.IsNone);
+                Node2D visual = CreateUnitVisual(
+                    actionable, unit.Level,
+                    viking: unit.Owner.IsNone,
+                    vikingAggro: unit.Owner.IsNone && unit.IsAggro);
                 visual.Position = center;
                 _unitsLayer?.AddChild(visual);
                 _unitVisuals[tile.Coord] = visual;
@@ -3737,13 +3740,14 @@ public partial class HexMapView : Node2D, IHexMapView
     private const float UnitDotRadius = 0.08f;
     private const int UnitRingSegments = 28;
 
-    private Node2D CreateUnitVisual(bool actionable, UnitLevel level, bool viking = false)
+    private Node2D CreateUnitVisual(
+        bool actionable, UnitLevel level, bool viking = false, bool vikingAggro = false)
     {
         // Viking Raiders: raiders carry the fixed-palette painted-shield
         // glyph instead of the concentric rings — identical on land and at
         // sea, and never actionability-colored (a viking is never the
         // current player's unit).
-        if (viking) return CreateVikingShieldVisual(level);
+        if (viking) return CreateVikingShieldVisual(level, vikingAggro);
 
         Color color = actionable ? OccupantActionableColor : OccupantDefaultColor;
         var node = new Node2D();
@@ -3781,14 +3785,24 @@ public partial class HexMapView : Node2D, IHexMapView
     // 1 glyph unit = HexSize * UnitRingRadii[0] / 16.
     private static readonly Color VikingInk = new Color("111111");
     private static readonly Color VikingCream = new Color("efe6d4");
+    // Aggro tell: the painted rank wedges swap from ink to a bright battle
+    // red; the rim, boss, and cream base are identical between passive and
+    // aggro. Brighter than the campaign marker's 8b0000 so the wedges read
+    // against the ink rim/boss at map zoom.
+    private static readonly Color VikingAggroRed = new Color("d92b2b");
     private const float ShieldRadiusUnits = 16f;
     private const float ShieldRimWidthUnits = 3.5f;
     private const float ShieldBossRadiusUnits = 4.5f;
     private const float ShieldBossHighlightRadiusUnits = 2f;
     private const int ShieldSectorSteps = 12;
 
-    private Node2D CreateVikingShieldVisual(UnitLevel level)
+    private Node2D CreateVikingShieldVisual(UnitLevel level, bool aggro = false)
     {
+        // Aggro tell: the rank wedges paint blood red instead of ink; the
+        // rim, boss, and cream base are identical in both states.
+        Color wedge = aggro ? VikingAggroRed : VikingInk;
+        Log.Trace(Log.LogCategory.Viking,
+            $"[barb] shield level={level} aggro={aggro}");
         float unit = HexSize * UnitRingRadii[0] / ShieldRadiusUnits;
         float radius = ShieldRadiusUnits * unit;
         // Recruit=1 half-painted, Soldier=2 quartered, Captain=3 eight-segment.
@@ -3807,23 +3821,24 @@ public partial class HexMapView : Node2D, IHexMapView
         // 2. Rank wedges (0° = +x, increasing clockwise in y-down space).
         if (rank == 1)
         {
-            // Half-painted: the east (x ≥ 0) half ink, sweeping from
+            // Half-painted: the east (x ≥ 0) half, sweeping from
             // straight up through east to straight down.
-            node.AddChild(CreateSectorPolygon(radius, -90f, 90f, VikingInk));
+            node.AddChild(CreateSectorPolygon(radius, -90f, 90f, wedge));
         }
         else if (rank == 2)
         {
-            node.AddChild(CreateSectorPolygon(radius, 0f, 90f, VikingInk));
-            node.AddChild(CreateSectorPolygon(radius, 180f, 270f, VikingInk));
+            node.AddChild(CreateSectorPolygon(radius, 0f, 90f, wedge));
+            node.AddChild(CreateSectorPolygon(radius, 180f, 270f, wedge));
         }
         else
         {
             for (int fromDeg = 0; fromDeg < 360; fromDeg += 90)
             {
-                node.AddChild(CreateSectorPolygon(radius, fromDeg, fromDeg + 45f, VikingInk));
+                node.AddChild(CreateSectorPolygon(radius, fromDeg, fromDeg + 45f, wedge));
             }
         }
-        // 3. Rim (stroke centered on the shield edge).
+        // 3. Rim (stroke centered on the shield edge) — always ink, so the
+        //    silhouette stays crisp in both states.
         node.AddChild(CreateCircleOutline(radius, VikingInk, ShieldRimWidthUnits * unit));
         // 4. Boss.
         node.AddChild(CreateFilledDisc(ShieldBossRadiusUnits * unit, VikingInk));
@@ -3986,7 +4001,9 @@ public partial class HexMapView : Node2D, IHexMapView
         foreach (KeyValuePair<HexCoord, SeaViking> kvp in desired)
         {
             if (_seaVikingVisuals.ContainsKey(kvp.Key)) continue;
-            Node2D shield = CreateVikingShieldVisual(kvp.Value.Level);
+            // Raiders at sea are aggro by definition (they exist to land
+            // and raid), so the sea layer always paints the red variant.
+            Node2D shield = CreateVikingShieldVisual(kvp.Value.Level, aggro: true);
             shield.Position = FirstHexCenterOffset + HexPixel.ToPixel(kvp.Key, HexSize);
             _seaVikingsLayer.AddChild(shield);
             _seaVikingVisuals[kvp.Key] = (kvp.Value, shield);

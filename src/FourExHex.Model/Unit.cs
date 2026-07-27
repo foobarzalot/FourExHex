@@ -30,6 +30,17 @@ public class Unit : HexOccupant
     /// </summary>
     public bool HasMovedThisTurn { get; set; }
 
+    /// <summary>
+    /// Barbarian aggression state; meaningful only for
+    /// <see cref="PlayerId.None"/>-owned units. A passive (non-aggro)
+    /// barbarian only wanders within its own neutral territory; an aggro
+    /// one runs the full viking expansion logic. Flips one way
+    /// (passive → aggro) via <see cref="BarbarianRules.PropagateAggro"/>;
+    /// Viking Raiders wave raiders spawn aggro. Player-owned units ignore
+    /// it (always false).
+    /// </summary>
+    public bool IsAggro { get; set; }
+
     public Unit(PlayerId owner, UnitLevel level = UnitLevel.Recruit)
     {
         Owner = owner;

@@ -1195,4 +1195,87 @@ public class MapGeneratorTests
         Assert.Equal(a.WaterCoords, b.WaterCoords);
         Assert.Equal(a.RngStreamHash, b.RngStreamHash);
     }
+
+    // ── Barbarian scatter (#188) ───────────────────────────────
+
+    private const int BarbarianOnDensity = 10;
+
+    private static List<Unit> NeutralUnits(MapGenResult result)
+    {
+        var units = new List<Unit>();
+        foreach (HexTile t in result.Grid.Tiles)
+        {
+            if (t.Occupant is Unit u) units.Add(u);
+        }
+        return units;
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(42)]
+    [InlineData(9999)]
+    public void BarbariansOff_NoUnits(int seed)
+    {
+        // Mapgen never places units unless the barbarian pass is on.
+        Assert.Empty(NeutralUnits(Build(seed)));
+        Assert.Empty(NeutralUnits(BuildWith(
+            seed, new MapGenOptions(NeutralDensity: 30, BarbarianDensity: 0))));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(42)]
+    public void BarbariansOn_WithoutNeutralLand_ByteIdenticalToBaseline(int seed)
+    {
+        // No neutral land ⇒ nowhere to put barbarians ⇒ the pass makes zero
+        // RNG draws and the map is byte-identical to the baseline.
+        MapGenResult baseline = Build(seed);
+        MapGenResult on = BuildWith(
+            seed, new MapGenOptions(BarbarianDensity: BarbarianOnDensity));
+
+        Assert.Empty(NeutralUnits(on));
+        Assert.Equal(baseline.RngStreamHash, on.RngStreamHash);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(42)]
+    [InlineData(9999)]
+    public void BarbariansOn_PlacesPassiveNeutralRecruits_OnOpenNeutralLand(int seed)
+    {
+        MapGenResult result = BuildWith(seed, new MapGenOptions(
+            NeutralDensity: 30, BarbarianDensity: BarbarianOnDensity));
+
+        List<Unit> units = NeutralUnits(result);
+        Assert.NotEmpty(units);
+        foreach (HexTile t in result.Grid.Tiles)
+        {
+            if (t.Occupant is not Unit unit) continue;
+            Assert.Equal(PlayerId.None, unit.Owner);
+            Assert.Equal(UnitLevel.Recruit, unit.Level);
+            Assert.False(unit.IsAggro);
+            Assert.True(t.Owner.IsNone, $"barbarian on owned tile {t.Coord}");
+            Assert.False(t.IsGold, $"barbarian on gold tile {t.Coord}");
+        }
+    }
+
+    [Fact]
+    public void BarbariansOn_SameSeed_IsDeterministic()
+    {
+        var opts = new MapGenOptions(
+            NeutralDensity: 30, BarbarianDensity: BarbarianOnDensity);
+        MapGenResult a = BuildWith(42, opts);
+        MapGenResult b = BuildWith(42, opts);
+
+        var coordsA = new List<HexCoord>();
+        var coordsB = new List<HexCoord>();
+        foreach (HexTile t in a.Grid.Tiles) if (t.Occupant is Unit) coordsA.Add(t.Coord);
+        foreach (HexTile t in b.Grid.Tiles) if (t.Occupant is Unit) coordsB.Add(t.Coord);
+        coordsA.Sort();
+        coordsB.Sort();
+
+        Assert.NotEmpty(coordsA);
+        Assert.Equal(coordsA, coordsB);
+        Assert.Equal(a.RngStreamHash, b.RngStreamHash);
+    }
 }

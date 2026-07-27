@@ -151,6 +151,37 @@ public static class MapGenerator
             }
         }
 
+        // Passive barbarians on neutral land — BarbarianDensity percent of
+        // the neutral tiles gain a non-aggro neutral Recruit. Runs after the
+        // tree scatter so occupied tiles are simply skipped; gated like the
+        // mountain/gold passes (zero RNG draws when off or when the board
+        // has no neutral land), so existing maps are byte-identical.
+        if (options.BarbarianDensity > 0)
+        {
+            int neutralLand = 0;
+            var openNeutral = new List<HexCoord>();
+            foreach (HexCoord coord in land)
+            {
+                HexTile? t = grid.Get(coord);
+                if (t == null || !t.Owner.IsNone) continue;
+                neutralLand++;
+                if (t.Occupant == null && !t.IsGold) openNeutral.Add(coord);
+            }
+            int barbTarget = neutralLand * options.BarbarianDensity / 100;
+            int placed = 0;
+            while (placed < barbTarget && openNeutral.Count > 0)
+            {
+                int idx = rng.NextBounded(openNeutral.Count);
+                HexCoord pick = openNeutral[idx];
+                openNeutral.RemoveAt(idx);
+                grid.Get(pick)!.Occupant = new Unit(PlayerId.None, UnitLevel.Recruit);
+                placed++;
+            }
+            Log.Debug(Log.LogCategory.MapGen,
+                $"[mapgen] barbarians: density={options.BarbarianDensity}% " +
+                $"neutralLand={neutralLand} target={barbTarget} placed={placed}");
+        }
+
         Log.Debug(Log.LogCategory.Determinism,
             $"[determinism] mapgen seed={seed} rngStreamHash={rng.StreamHash:X16}");
         return new MapGenResult(grid, water, rng.StreamHash);

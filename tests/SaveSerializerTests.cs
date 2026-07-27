@@ -146,9 +146,9 @@ public class SaveSerializerTests
     }
 
     [Fact]
-    public void CurrentFormatVersion_IsNineteen()
+    public void CurrentFormatVersion_IsTwenty()
     {
-        Assert.Equal(19, SaveSerializer.CurrentFormatVersion);
+        Assert.Equal(20, SaveSerializer.CurrentFormatVersion);
     }
 
     // --- Viking Raiders state -------------------------------------------------
@@ -221,6 +221,61 @@ public class SaveSerializerTests
         Assert.Equal(GameStateChecksum.Compute(a), GameStateChecksum.Compute(b));
         b.Vikings.NextWaveIndex = 3;
         Assert.NotEqual(GameStateChecksum.Compute(a), GameStateChecksum.Compute(b));
+    }
+
+    // --- Barbarian aggro flag -------------------------------------------------
+
+    [Fact]
+    public void Serialize_RoundTripsUnitAggroFlag()
+    {
+        (GameState state, List<Player> players) = BuildVikingState();
+        state.Grid.Get(HexCoord.FromOffset(2, 1))!.Owner = PlayerId.None;
+        state.Grid.Get(HexCoord.FromOffset(2, 1))!.Occupant =
+            new Unit(PlayerId.None, UnitLevel.Soldier) { IsAggro = true };
+        state.Grid.Get(HexCoord.FromOffset(2, 2))!.Owner = PlayerId.None;
+        state.Grid.Get(HexCoord.FromOffset(2, 2))!.Occupant =
+            new Unit(PlayerId.None, UnitLevel.Recruit);
+
+        string json = SaveSerializer.Serialize(state, 42, players, "barb", 100);
+        GameState loaded = SaveSerializer.Deserialize(json).State;
+
+        Assert.True(loaded.Grid.Get(HexCoord.FromOffset(2, 1))!.Unit!.IsAggro);
+        Assert.False(loaded.Grid.Get(HexCoord.FromOffset(2, 2))!.Unit!.IsAggro);
+    }
+
+    [Fact]
+    public void Save_OmitsAggroFieldAtDefault()
+    {
+        // Non-aggro units (i.e. every unit in every pre-existing save)
+        // serialize without the field, keeping the wire format unchanged.
+        (GameState state, List<Player> players) = BuildVikingState();
+        state.Grid.Get(HexCoord.FromOffset(2, 1))!.Occupant =
+            new Unit(state.Grid.Get(HexCoord.FromOffset(2, 1))!.Owner, UnitLevel.Recruit);
+
+        string json = SaveSerializer.Serialize(state, 42, players, "s", 100);
+
+        Assert.DoesNotContain("IsAggro", json);
+    }
+
+    [Fact]
+    public void Checksum_IncludesUnitAggro_ButNotForDefaults()
+    {
+        (GameState a, _) = BuildVikingState();
+        (GameState b, _) = BuildVikingState();
+        foreach (GameState s in new[] { a, b })
+        {
+            s.Grid.Get(HexCoord.FromOffset(2, 1))!.Owner = PlayerId.None;
+            s.Grid.Get(HexCoord.FromOffset(2, 1))!.Occupant =
+                new Unit(PlayerId.None, UnitLevel.Soldier);
+        }
+        Assert.Equal(GameStateChecksum.Compute(a), GameStateChecksum.Compute(b));
+        // A passive unit's canonical row is byte-identical to the pre-feature
+        // format, so existing digests are unchanged.
+        Assert.DoesNotContain(":aggro", GameStateChecksum.Stringify(a));
+
+        b.Grid.Get(HexCoord.FromOffset(2, 1))!.Unit!.IsAggro = true;
+        Assert.NotEqual(GameStateChecksum.Compute(a), GameStateChecksum.Compute(b));
+        Assert.Contains(":aggro", GameStateChecksum.Stringify(b));
     }
 
     [Fact]

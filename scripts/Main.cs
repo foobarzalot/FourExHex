@@ -192,6 +192,8 @@ public partial class Main : Node2D
             GameSettings.ClumpingFactor = envClump;
         if (int.TryParse(OS.GetEnvironment("FOUREXHEX_NEUTRAL_DENSITY"), out int envNeutral) && envNeutral >= 0)
             GameSettings.NeutralDensity = envNeutral;
+        if (int.TryParse(OS.GetEnvironment("FOUREXHEX_BARBARIAN_DENSITY"), out int envBarb) && envBarb >= 0)
+            GameSettings.BarbarianDensity = envBarb;
         // Diagnostic game-mode override: FOUREXHEX_MODE=RisingTides
         // launches the headless 6AI run in Rising Tides so the flood / last-
         // player-standing flow can be regression-tested. Absent/unknown → no-op.
@@ -289,11 +291,13 @@ public partial class Main : Node2D
                     MountainDensity: GameSettings.MountainDensity,
                     GoldDensity: GameSettings.GoldDensity,
                     ClumpingFactor: GameSettings.ClumpingFactor,
-                    NeutralDensity: GameSettings.NeutralDensity);
+                    NeutralDensity: GameSettings.NeutralDensity,
+                    BarbarianDensity: GameSettings.BarbarianDensity);
             Log.Info(Log.LogCategory.MapGen,
                 $"Main: map-gen densities trees={mapGenOptions.TreeDensity} " +
                 $"mtn={mapGenOptions.MountainDensity} gold={mapGenOptions.GoldDensity} " +
                 $"clump={mapGenOptions.ClumpingFactor} neutral={mapGenOptions.NeutralDensity} " +
+                $"barb={mapGenOptions.BarbarianDensity} " +
                 $"(campaign={_campaignLevel?.ToString() ?? "no"})");
             // A campaign level derives its mode from the level (Rising Tides is a
             // rare Soldier+ complication); freeform/diagnostic games

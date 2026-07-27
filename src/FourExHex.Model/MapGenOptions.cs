@@ -33,9 +33,14 @@
 /// never a stranded single tile. <see cref="ClumpingFactor"/> still governs
 /// sparse↔clumped expansion (it sets the per-player seed count: 100 = one
 /// compact blob each).</param>
+/// <param name="BarbarianDensity">Passive barbarian coverage, percent of
+/// <b>neutral</b> land seeded with neutral Recruit units (non-aggro; see
+/// <c>Unit.IsAggro</c>). <c>0</c> = off — zero extra RNG draws, byte-identical
+/// to the baseline; likewise when the board has no neutral land to seed.
+/// Runs after the tree scatter, on occupant-free non-gold neutral tiles.</param>
 public sealed record MapGenOptions(
     int TreeDensity = 5, int MountainDensity = 0, int GoldDensity = 0, int ClumpingFactor = 0,
-    int NeutralDensity = 0)
+    int NeutralDensity = 0, int BarbarianDensity = 0)
 {
     /// <summary>Default densities — trees at the historical 5%, no mountains or
     /// gold. The backward-compatible baseline.</summary>

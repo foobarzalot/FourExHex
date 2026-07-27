@@ -277,4 +277,59 @@ public class AiStateScorerTests
         // 12 owned tiles with positive net income must score positive.
         Assert.True(score > 0, $"expected sparse-roster score {score} > 0");
     }
+
+    // --- Barbarian provoke penalty (#188) ---------------------------------
+
+    /// <summary>
+    /// 5x1 strip: (0,0)-(2,0) neutral holding a passive Recruit and
+    /// Soldier, (3,0)-(4,0) Red.
+    /// </summary>
+    private static GameState BuildProvokeState(bool aggro = false)
+    {
+        HexGrid grid = TestHelpers.BuildRectGrid(5, 1, Red);
+        for (int col = 0; col <= 2; col++)
+            grid.Get(HexCoord.FromOffset(col, 0))!.Owner = PlayerId.None;
+        grid.Get(HexCoord.FromOffset(0, 0))!.Occupant =
+            new Unit(PlayerId.None, UnitLevel.Recruit) { IsAggro = aggro };
+        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant =
+            new Unit(PlayerId.None, UnitLevel.Soldier) { IsAggro = aggro };
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var players = new List<Player>
+        {
+            new Player("Red", Red, PlayerKind.Computer),
+            new Player("Blue", Blue, PlayerKind.Computer),
+        };
+        return new GameState(grid, territories, players, new TurnState(players), new Treasury());
+    }
+
+    [Fact]
+    public void BarbarianProvokePenalty_ChargesPerFlippedUnitValue()
+    {
+        // Capturing into the passive territory would flip a Recruit (4)
+        // and a Soldier (12): penalty = BarbarianProvokeWeight (2) x 16.
+        GameState state = BuildProvokeState();
+
+        int penalty = AiStateScorer.BarbarianProvokePenalty(
+            HexCoord.FromOffset(2, 0), state, Red);
+
+        Assert.Equal(32, penalty);
+    }
+
+    [Fact]
+    public void BarbarianProvokePenalty_ZeroWhenNotProvoking()
+    {
+        // An already-aggro territory costs nothing extra to attack…
+        GameState aggro = BuildProvokeState(aggro: true);
+        Assert.Equal(0, AiStateScorer.BarbarianProvokePenalty(
+            HexCoord.FromOffset(2, 0), aggro, Red));
+
+        GameState state = BuildProvokeState();
+        // …nor does a player-owned destination…
+        Assert.Equal(0, AiStateScorer.BarbarianProvokePenalty(
+            HexCoord.FromOffset(4, 0), state, Red));
+        // …and the neutral actor itself never pays it (its own tiles are
+        // not captures for it in the first place).
+        Assert.Equal(0, AiStateScorer.BarbarianProvokePenalty(
+            HexCoord.FromOffset(2, 0), state, PlayerId.None));
+    }
 }

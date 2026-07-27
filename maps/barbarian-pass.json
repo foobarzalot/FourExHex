@@ -1,0 +1,877 @@
+{
+  "FormatVersion": 20,
+  "SavedAtUnix": 1785118744,
+  "SlotName": "barbarian-pass",
+  "MasterSeed": 0,
+  "TurnNumber": 0,
+  "CurrentPlayerIndex": 0,
+  "MaxTurnNumber": 2147483647,
+  "Players": [
+    {
+      "Index": 0,
+      "Name": "Red",
+      "ColorHex": "cd473f",
+      "Kind": "Human",
+      "Difficulty": "Soldier"
+    },
+    {
+      "Index": 1,
+      "Name": "Blue",
+      "ColorHex": "367cbf",
+      "Kind": "Computer",
+      "Difficulty": "Soldier"
+    },
+    {
+      "Index": 2,
+      "Name": "Green",
+      "ColorHex": "50985c",
+      "Kind": "None",
+      "Difficulty": "Soldier"
+    },
+    {
+      "Index": 3,
+      "Name": "Brown",
+      "ColorHex": "a3582c",
+      "Kind": "None",
+      "Difficulty": "Soldier"
+    },
+    {
+      "Index": 4,
+      "Name": "Purple",
+      "ColorHex": "843890",
+      "Kind": "None",
+      "Difficulty": "Soldier"
+    },
+    {
+      "Index": 5,
+      "Name": "Orange",
+      "ColorHex": "db8221",
+      "Kind": "None",
+      "Difficulty": "Soldier"
+    }
+  ],
+  "Tiles": [
+    {
+      "Q": 0,
+      "R": 0,
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 1,
+      "R": 0,
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 2,
+      "R": 0,
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 3,
+      "R": 0,
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 4,
+      "R": 0,
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 0,
+      "R": 1,
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 1,
+      "R": 1,
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 2,
+      "R": 1,
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 3,
+      "R": 1,
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 4,
+      "R": 1,
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": -1,
+      "R": 2,
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 0,
+      "R": 2,
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 1,
+      "R": 2,
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 2,
+      "R": 2,
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 3,
+      "R": 2,
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": -1,
+      "R": 3,
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 0,
+      "R": 3,
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 1,
+      "R": 3,
+      "OwnerIndex": 0,
+      "Occupant": {
+        "Type": "Capital"
+      },
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 2,
+      "R": 3,
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 3,
+      "R": 3,
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": -2,
+      "R": 4,
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": -1,
+      "R": 4,
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 0,
+      "R": 4,
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 1,
+      "R": 4,
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 2,
+      "R": 4,
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": -2,
+      "R": 5,
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": -1,
+      "R": 5,
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 0,
+      "R": 5,
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 1,
+      "R": 5,
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 2,
+      "R": 5,
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": -3,
+      "R": 6,
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": -2,
+      "R": 6,
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": -1,
+      "R": 6,
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 0,
+      "R": 6,
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 1,
+      "R": 6,
+      "OwnerIndex": 0,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 5,
+      "R": 0,
+      "OwnerIndex": 1,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 6,
+      "R": 0,
+      "OwnerIndex": 1,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 7,
+      "R": 0,
+      "OwnerIndex": 1,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 8,
+      "R": 0,
+      "OwnerIndex": 1,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 9,
+      "R": 0,
+      "OwnerIndex": 1,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 5,
+      "R": 1,
+      "OwnerIndex": -1,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 6,
+      "R": 1,
+      "OwnerIndex": 1,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 7,
+      "R": 1,
+      "OwnerIndex": 1,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 8,
+      "R": 1,
+      "OwnerIndex": 1,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 9,
+      "R": 1,
+      "OwnerIndex": 1,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 4,
+      "R": 2,
+      "OwnerIndex": -1,
+      "Occupant": {
+        "Type": "Unit",
+        "OwnerIndex": -1,
+        "Level": "Soldier",
+        "HasMovedThisTurn": false
+      },
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 5,
+      "R": 2,
+      "OwnerIndex": 1,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 6,
+      "R": 2,
+      "OwnerIndex": 1,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 7,
+      "R": 2,
+      "OwnerIndex": 1,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 8,
+      "R": 2,
+      "OwnerIndex": 1,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 4,
+      "R": 3,
+      "OwnerIndex": -1,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 5,
+      "R": 3,
+      "OwnerIndex": 1,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 6,
+      "R": 3,
+      "OwnerIndex": 1,
+      "Occupant": {
+        "Type": "Capital"
+      },
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 7,
+      "R": 3,
+      "OwnerIndex": 1,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 8,
+      "R": 3,
+      "OwnerIndex": 1,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 3,
+      "R": 4,
+      "OwnerIndex": -1,
+      "Occupant": {
+        "Type": "Unit",
+        "OwnerIndex": -1,
+        "Level": "Soldier",
+        "HasMovedThisTurn": false
+      },
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 4,
+      "R": 4,
+      "OwnerIndex": 1,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 5,
+      "R": 4,
+      "OwnerIndex": 1,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 6,
+      "R": 4,
+      "OwnerIndex": 1,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 7,
+      "R": 4,
+      "OwnerIndex": 1,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 3,
+      "R": 5,
+      "OwnerIndex": -1,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 4,
+      "R": 5,
+      "OwnerIndex": 1,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 5,
+      "R": 5,
+      "OwnerIndex": 1,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 6,
+      "R": 5,
+      "OwnerIndex": 1,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 7,
+      "R": 5,
+      "OwnerIndex": 1,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 2,
+      "R": 6,
+      "OwnerIndex": 1,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 3,
+      "R": 6,
+      "OwnerIndex": 1,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 4,
+      "R": 6,
+      "OwnerIndex": 1,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 5,
+      "R": 6,
+      "OwnerIndex": 1,
+      "IsGold": false,
+      "IsMountain": false
+    },
+    {
+      "Q": 6,
+      "R": 6,
+      "OwnerIndex": 1,
+      "IsGold": false,
+      "IsMountain": false
+    }
+  ],
+  "Territories": [
+    {
+      "OwnerIndex": 0,
+      "Coords": [
+        {
+          "Q": 0,
+          "R": 0
+        },
+        {
+          "Q": 1,
+          "R": 0
+        },
+        {
+          "Q": 0,
+          "R": 1
+        },
+        {
+          "Q": 2,
+          "R": 0
+        },
+        {
+          "Q": 1,
+          "R": 1
+        },
+        {
+          "Q": -1,
+          "R": 2
+        },
+        {
+          "Q": 0,
+          "R": 2
+        },
+        {
+          "Q": 3,
+          "R": 0
+        },
+        {
+          "Q": 2,
+          "R": 1
+        },
+        {
+          "Q": 1,
+          "R": 2
+        },
+        {
+          "Q": -1,
+          "R": 3
+        },
+        {
+          "Q": 0,
+          "R": 3
+        },
+        {
+          "Q": 4,
+          "R": 0
+        },
+        {
+          "Q": 3,
+          "R": 1
+        },
+        {
+          "Q": 2,
+          "R": 2
+        },
+        {
+          "Q": 1,
+          "R": 3
+        },
+        {
+          "Q": -2,
+          "R": 4
+        },
+        {
+          "Q": -1,
+          "R": 4
+        },
+        {
+          "Q": 0,
+          "R": 4
+        },
+        {
+          "Q": 4,
+          "R": 1
+        },
+        {
+          "Q": 3,
+          "R": 2
+        },
+        {
+          "Q": 2,
+          "R": 3
+        },
+        {
+          "Q": 1,
+          "R": 4
+        },
+        {
+          "Q": -2,
+          "R": 5
+        },
+        {
+          "Q": -1,
+          "R": 5
+        },
+        {
+          "Q": 0,
+          "R": 5
+        },
+        {
+          "Q": 3,
+          "R": 3
+        },
+        {
+          "Q": 2,
+          "R": 4
+        },
+        {
+          "Q": 1,
+          "R": 5
+        },
+        {
+          "Q": -3,
+          "R": 6
+        },
+        {
+          "Q": -2,
+          "R": 6
+        },
+        {
+          "Q": -1,
+          "R": 6
+        },
+        {
+          "Q": 0,
+          "R": 6
+        },
+        {
+          "Q": 2,
+          "R": 5
+        },
+        {
+          "Q": 1,
+          "R": 6
+        }
+      ],
+      "CapitalQ": 1,
+      "CapitalR": 3
+    },
+    {
+      "OwnerIndex": 1,
+      "Coords": [
+        {
+          "Q": 5,
+          "R": 0
+        },
+        {
+          "Q": 6,
+          "R": 0
+        },
+        {
+          "Q": 7,
+          "R": 0
+        },
+        {
+          "Q": 6,
+          "R": 1
+        },
+        {
+          "Q": 8,
+          "R": 0
+        },
+        {
+          "Q": 7,
+          "R": 1
+        },
+        {
+          "Q": 5,
+          "R": 2
+        },
+        {
+          "Q": 6,
+          "R": 2
+        },
+        {
+          "Q": 9,
+          "R": 0
+        },
+        {
+          "Q": 8,
+          "R": 1
+        },
+        {
+          "Q": 7,
+          "R": 2
+        },
+        {
+          "Q": 5,
+          "R": 3
+        },
+        {
+          "Q": 6,
+          "R": 3
+        },
+        {
+          "Q": 9,
+          "R": 1
+        },
+        {
+          "Q": 8,
+          "R": 2
+        },
+        {
+          "Q": 7,
+          "R": 3
+        },
+        {
+          "Q": 4,
+          "R": 4
+        },
+        {
+          "Q": 5,
+          "R": 4
+        },
+        {
+          "Q": 6,
+          "R": 4
+        },
+        {
+          "Q": 8,
+          "R": 3
+        },
+        {
+          "Q": 7,
+          "R": 4
+        },
+        {
+          "Q": 4,
+          "R": 5
+        },
+        {
+          "Q": 5,
+          "R": 5
+        },
+        {
+          "Q": 6,
+          "R": 5
+        },
+        {
+          "Q": 7,
+          "R": 5
+        },
+        {
+          "Q": 3,
+          "R": 6
+        },
+        {
+          "Q": 4,
+          "R": 6
+        },
+        {
+          "Q": 5,
+          "R": 6
+        },
+        {
+          "Q": 6,
+          "R": 6
+        },
+        {
+          "Q": 2,
+          "R": 6
+        }
+      ],
+      "CapitalQ": 6,
+      "CapitalR": 3
+    },
+    {
+      "OwnerIndex": -1,
+      "Coords": [
+        {
+          "Q": 5,
+          "R": 1
+        },
+        {
+          "Q": 4,
+          "R": 2
+        },
+        {
+          "Q": 4,
+          "R": 3
+        },
+        {
+          "Q": 3,
+          "R": 4
+        },
+        {
+          "Q": 3,
+          "R": 5
+        }
+      ]
+    }
+  ],
+  "Gold": [
+    {
+      "Q": 1,
+      "R": 3,
+      "Gold": 0
+    },
+    {
+      "Q": 6,
+      "R": 3,
+      "Gold": 0
+    }
+  ],
+  "Water": []
+}

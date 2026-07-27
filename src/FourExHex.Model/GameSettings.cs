@@ -118,6 +118,15 @@ public static class GameSettings
     public static int NeutralDensity = 0;
 
     /// <summary>
+    /// Passive-barbarian density (percent of neutral land) for a
+    /// freshly-generated map: neutral Recruit units seeded on open neutral
+    /// tiles (needs <see cref="NeutralDensity"/> &gt; 0 to have any effect).
+    /// Defaults to 0 (off). See <see cref="TreeDensity"/> for the write/read
+    /// path; threaded into <c>MapGenOptions.BarbarianDensity</c>.
+    /// </summary>
+    public static int BarbarianDensity = 0;
+
+    /// <summary>
     /// Player-territory clumping factor (0..100) for a freshly-generated map.
     /// 0 = fragmented salt-and-pepper assignment; higher values seed fewer,
     /// larger contiguous regions

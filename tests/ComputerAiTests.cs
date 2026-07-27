@@ -2292,4 +2292,75 @@ public class ComputerAiTests
             Assert.Equal(TieTargetSouth, move.Destination);
         }
     }
+
+    // --- Barbarian provoke avoidance (#188) --------------------------------
+
+    /// <summary>
+    /// 9x1 strip, mirror-symmetric around Red's center territory
+    /// (3,0)-(5,0): Soldiers at both ends (3,0)/(5,0) force the capital
+    /// onto the center (4,0), and both flanking neutral territories hold a
+    /// Recruit at the outer end — so the two reachable captures, (2,0)
+    /// left and (6,0) right, have identical score deltas and only the
+    /// provoke penalty can split them. The left barbarians are passive;
+    /// the right ones are aggro.
+    /// </summary>
+    private static GameState BuildProvokeChoiceState()
+    {
+        HexGrid grid = TestHelpers.BuildRectGrid(9, 1, Red);
+        foreach (int col in new[] { 0, 1, 2, 6, 7, 8 })
+            grid.Get(HexCoord.FromOffset(col, 0))!.Owner = PlayerId.None;
+        grid.Get(HexCoord.FromOffset(0, 0))!.Occupant =
+            new Unit(PlayerId.None, UnitLevel.Recruit);
+        grid.Get(HexCoord.FromOffset(8, 0))!.Occupant =
+            new Unit(PlayerId.None, UnitLevel.Recruit) { IsAggro = true };
+        grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = new Unit(Red, UnitLevel.Soldier);
+        grid.Get(HexCoord.FromOffset(5, 0))!.Occupant = new Unit(Red, UnitLevel.Soldier);
+        return BuildState(
+            grid,
+            new Player("Red", Red, PlayerKind.Computer),
+            new Player("Blue", Blue, PlayerKind.Computer));
+    }
+
+    [Fact]
+    public void ChooseNextAction_PrefersAggroSideCapture_OverProvokingPassiveBarbarians()
+    {
+        // Equal-delta captures left (wakes passive barbarians) and right
+        // (already-aggro): the provoke penalty must break the tie toward
+        // the right for EVERY seed — a tie-break flake would pass some
+        // seeds without the penalty.
+        for (int seed = 0; seed < 30; seed++)
+        {
+            GameState state = BuildProvokeChoiceState();
+
+            AiMoveAction move = Assert.IsType<AiMoveAction>(ComputerAi.ChooseNextAction(
+                state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(),
+                new DeterministicRng(seed)));
+
+            Assert.Equal(HexCoord.FromOffset(6, 0), move.Destination);
+        }
+    }
+
+    [Fact]
+    public void ChooseNextAction_LoneProvokingCapture_IsStillTaken()
+    {
+        // When the only offensive option provokes, the AI still takes it —
+        // the penalty re-ranks, it never suppresses (phases 1/3 accept the
+        // best candidate regardless of delta sign).
+        HexGrid grid = TestHelpers.BuildRectGrid(4, 1, Red);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = PlayerId.None;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Owner = PlayerId.None;
+        grid.Get(HexCoord.FromOffset(0, 0))!.Occupant =
+            new Unit(PlayerId.None, UnitLevel.Recruit);
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(Red, UnitLevel.Soldier);
+        GameState state = BuildState(
+            grid,
+            new Player("Red", Red, PlayerKind.Computer),
+            new Player("Blue", Blue, PlayerKind.Computer));
+
+        AiMoveAction move = Assert.IsType<AiMoveAction>(ComputerAi.ChooseNextAction(
+            state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(),
+            new DeterministicRng(7)));
+
+        Assert.Equal(HexCoord.FromOffset(1, 0), move.Destination);
+    }
 }

@@ -168,6 +168,93 @@ public class ReplayFidelityTests
         return list;
     }
 
+    /// <summary>
+    /// Passive-barbarian wander beats (#188) record and replay faithfully.
+    /// A hand-built "barbarian pass": two computer players separated by a
+    /// neutral strip garrisoned by two passive Soldiers whose radiation
+    /// keeps round-1 recruit buys out — so the neutral seat records real
+    /// wander beats (RNG drawn at choose time, destination baked into
+    /// <see cref="ReplayVikingMoveBeat"/>) before anyone provokes the strip.
+    /// Procedural quick boards can't pin this: their barbarians share the
+    /// players' expansion zone and aggro in round 1 before ever wandering.
+    /// </summary>
+    [Fact]
+    public void Replay_WithPassiveBarbarianWanders_MatchesSavedStateChecksum()
+    {
+        const int MasterSeed = 4747;
+        const int MaxTurns = 12;
+        var red = new Player("Red", PlayerId.FromIndex(0), PlayerKind.Computer);
+        var blue = new Player("Blue", PlayerId.FromIndex(1), PlayerKind.Computer);
+        var players = new List<Player> { red, blue };
+
+        HexGrid grid = TestHelpers.BuildRectGrid(10, 7, red.Id);
+        for (int row = 0; row < 7; row++)
+        {
+            for (int col = 5; col <= 9; col++)
+            {
+                grid.Get(HexCoord.FromOffset(col, row))!.Owner = blue.Id;
+            }
+        }
+        foreach (int row in new[] { 1, 2, 3, 4, 5 })
+        {
+            grid.Get(HexCoord.FromOffset(5, row))!.Owner = PlayerId.None;
+        }
+        grid.Get(HexCoord.FromOffset(5, 2))!.Occupant =
+            new Unit(PlayerId.None, UnitLevel.Soldier);
+        grid.Get(HexCoord.FromOffset(5, 4))!.Occupant =
+            new Unit(PlayerId.None, UnitLevel.Soldier);
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var liveState = new GameState(grid, territories, players,
+            new TurnState(players), new Treasury());
+        var liveController = new GameController(liveState, new SessionState(),
+            new MockHexMapView(), new MockHudView(),
+            seed: MasterSeed,
+            aiPacer: new SynchronousAiPacer(),
+            aiChooser: AiDispatcher.ChooseForCurrentPlayer,
+            maxTurnNumber: MaxTurns);
+        liveController.StartGame();
+
+        // The scenario actually exercised the wander path: at least one
+        // neutral-seat move stayed inside the strip (a wander, not a capture).
+        bool sawWander = false;
+        foreach (ReplayBeat beat in liveController.ReplayBeats)
+        {
+            if (beat is ReplayVikingMoveBeat mv
+                && mv.From.ToOffset().Col == 5 && mv.To.ToOffset().Col == 5)
+            {
+                sawWander = true;
+                break;
+            }
+        }
+        Assert.True(sawWander, "expected at least one recorded wander beat");
+
+        string liveChecksum = GameStateChecksum.Compute(liveState);
+        Replay replayPayload = new Replay(
+            liveController.InitialReplaySnapshot!,
+            liveController.InitialReplayTurnNumber,
+            liveController.InitialReplayCurrentPlayerIndex,
+            liveController.ReplayBeats);
+        string json = SaveSerializer.Serialize(liveState, MasterSeed, players,
+            "barb-fidelity", MaxTurns, replay: replayPayload);
+        LoadedSave loaded = SaveSerializer.Deserialize(json);
+        Assert.NotNull(loaded.Replay);
+        Assert.Equal(liveChecksum, GameStateChecksum.Compute(loaded.State));
+
+        var replayController = new GameController(
+            loaded.State, new SessionState(),
+            new MockHexMapView(), new MockHudView(),
+            seed: loaded.MasterSeed,
+            aiPacer: new SynchronousAiPacer(),
+            aiChooser: AiDispatcher.ChooseForCurrentPlayer,
+            maxTurnNumber: loaded.MaxTurnNumber,
+            loadedReplay: loaded.Replay);
+        replayController.BeginReplay();
+
+        Assert.Equal(liveChecksum, GameStateChecksum.Compute(loaded.State));
+        Assert.Null(replayController.LastReplayDivergence);
+    }
+
     private static (GameState State, GameController Controller, MockHexMapView Map, MockHudView Hud)
         BuildHeadlessGame(IReadOnlyList<Player> players, int masterSeed,
             int maxTurns, int cols, int rows, GameMode mode = GameMode.Freeform)

@@ -18,7 +18,11 @@ public abstract class HexOccupant
     /// </summary>
     public static HexOccupant? Clone(HexOccupant? occupant) => occupant switch
     {
-        Unit u => new Unit(u.Owner, u.Level) { HasMovedThisTurn = u.HasMovedThisTurn },
+        Unit u => new Unit(u.Owner, u.Level)
+        {
+            HasMovedThisTurn = u.HasMovedThisTurn,
+            IsAggro = u.IsAggro,
+        },
         Capital => new Capital(),
         Grave => new Grave(),
         Tree => new Tree(),

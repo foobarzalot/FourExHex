@@ -616,9 +616,17 @@ public class GameOperations
             if (_state.Mode == GameMode.VikingRaiders
                 || VikingRaidersRules.LandedRaidersExist(_state))
             {
+                int landedAggro = 0;
+                int landedPassive = 0;
+                foreach (HexTile t in _state.Grid.Tiles)
+                {
+                    if (t.Occupant is not Unit u || !u.Owner.IsNone) continue;
+                    if (u.IsAggro) landedAggro++; else landedPassive++;
+                }
                 Log.Info(Log.LogCategory.Viking,
                     $"[viking] T{_state.Turns.TurnNumber} turn begin: " +
-                    $"atSea={_state.Vikings.AtSea.Count} landed={CountLandedVikings()} " +
+                    $"atSea={_state.Vikings.AtSea.Count} landed={landedAggro + landedPassive} " +
+                    $"aggro={landedAggro} passive={landedPassive} " +
                     $"nextWave={_state.Vikings.NextWaveIndex}/{VikingRaidersRules.TotalWaves}");
             }
         }
@@ -631,6 +639,7 @@ public class GameOperations
         // is seeded in GameController.Resume instead (StartPlayerTurn isn't called
         // for the initial player).
         ForecastTideForCurrentPlayer();
+        MaybeAggroTideCorneredBarbarians();
 
         // The round-1 free pass applies to players only: the neutral seat
         // closes round 1 with a full round of play behind it (its seat is
@@ -731,6 +740,26 @@ public class GameOperations
     /// the live per-turn stream.</summary>
     private DeterministicRng TideTieBreakRng() => _rng;
 
+    /// <summary>
+    /// Rising Tides, neutral seat only: with the seat's forecast locked, a
+    /// passive barbarian on a doomed tile with no in-territory escape is
+    /// certain to be lost — that pressure counts as a compromise and its
+    /// territory aggros (retreat first, aggro only when cornered). Runs in
+    /// live play and replay alike, so no beat is recorded for the flip.
+    /// </summary>
+    private void MaybeAggroTideCorneredBarbarians()
+    {
+        if (_state.Mode != GameMode.RisingTides) return;
+        if (!_state.Turns.IsNeutralSeat) return;
+        int flipped = BarbarianRules.AggroCorneredByTide(_state);
+        if (flipped > 0)
+        {
+            Log.Debug(Log.LogCategory.Viking,
+                $"[barb] aggro cause=cornered units={flipped} " +
+                $"(tide leaves no in-territory escape)");
+        }
+    }
+
     private void ApplyPendingTide()
     {
         if (_state.Mode != GameMode.RisingTides || _state.PendingTide.Count == 0) return;
@@ -823,7 +852,13 @@ public class GameOperations
         bool wasCapture = !tile.Owner.IsNone;
         HexOccupant? displaced = tile.Occupant;
         tile.Owner = PlayerId.None;
-        tile.Occupant = new Unit(PlayerId.None, viking.Value.Level) { HasMovedThisTurn = true };
+        // Raiders come ashore already hostile — a wave viking IS an
+        // aggro-state barbarian.
+        tile.Occupant = new Unit(PlayerId.None, viking.Value.Level)
+        {
+            HasMovedThisTurn = true,
+            IsAggro = true,
+        };
         Log.Info(Log.LogCategory.Viking,
             $"[viking] disembark {viking.Value.Level} {sea}→{land}" +
             (wasCapture ? " (capture)" : " (neutral landing)"));
@@ -832,6 +867,17 @@ public class GameOperations
         {
             HandleCapture($"Viking disembark {sea}→{land}");
             EmitTerrainCaptureFx(land);
+        }
+        else
+        {
+            // A neutral landing skips the capture reconcile, but the raider
+            // may have joined a passive barbarian territory — spread aggro.
+            AggroFlipResult flips = BarbarianRules.PropagateAggro(_state, _state.Territories);
+            if (flips.Any)
+            {
+                Log.Debug(Log.LogCategory.Viking,
+                    $"[barb] aggro after landing at {land}: contact={flips.Spread}");
+            }
         }
         if (displaced != null)
         {
@@ -1692,6 +1738,18 @@ public class GameOperations
                         $"[capture] neutral hex {c} -> {nowOwner}");
                 }
             }
+        }
+
+        // Barbarian aggro: a capture compromising a neutral territory flips
+        // its units hostile, and an aggro unit merging into a passive
+        // territory spreads the state (the simulator's Reconcile runs the
+        // same pass, so 1-ply lookahead predicts the flip).
+        AggroFlipResult barbFlips = BarbarianRules.PropagateAggro(_state, previous);
+        if (barbFlips.Any)
+        {
+            Log.Debug(Log.LogCategory.Viking,
+                $"[barb] aggro after {actionDesc}: " +
+                $"compromise={barbFlips.Compromised} contact={barbFlips.Spread}");
         }
 
         // A player whose set of capital-bearing territories drops to

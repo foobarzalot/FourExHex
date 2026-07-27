@@ -39,6 +39,9 @@ public class AiTurnDriver
     // paced StepAi invocations and resets whenever control advances
     // to a new player.
     private readonly HashSet<HexCoord> _aiVisited = new();
+    // Passive-barbarian wander guard for the neutral seat (one wander beat
+    // per unit per turn); reset alongside _aiVisited.
+    private readonly HashSet<HexCoord> _vikingWandered = new();
     private int _aiStepsThisPlayer;
 
     // The action chosen during the "preview" beat and carried into
@@ -118,6 +121,7 @@ public class AiTurnDriver
         if (RunHalted) return;
 
         _aiVisited.Clear();
+        _vikingWandered.Clear();
         _aiStepsThisPlayer = 0;
         _pendingAiAction = null;
         // Seed the track from the live setting so the first dispatch
@@ -224,7 +228,7 @@ public class AiTurnDriver
     /// chooser for the current (AI) player.</summary>
     private AiAction? ChooseNextForCurrentActor() =>
         _state.Turns.IsNeutralSeat
-            ? VikingAi.ChooseNext(_state, _aiVisited, _ops.Rng)
+            ? VikingAi.ChooseNext(_state, _aiVisited, _ops.Rng, _vikingWandered)
             : _aiChooser(_state, _state.Turns.CurrentPlayer.Id, _aiVisited, _ops.Rng);
 
     private void StepAiPreviewAfterChoose(AiAction? action, PlayerId color)
@@ -557,6 +561,7 @@ public class AiTurnDriver
             _ops.StartPlayerTurn();
         }
         _aiVisited.Clear();
+        _vikingWandered.Clear();
         _aiStepsThisPlayer = 0;
         _pendingAiAction = null;
     }

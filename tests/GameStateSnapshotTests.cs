@@ -186,6 +186,32 @@ public class GameStateSnapshotTests
     }
 
     [Fact]
+    public void Capture_IncludesUnitAggroFlag()
+    {
+        // A human capture can flip barbarians aggro mid-turn; undoing that
+        // capture must restore the passive state, so the snapshot carries
+        // the flag (via HexOccupant.Clone, like HasMovedThisTurn).
+        HexGrid grid = BuildTwoTileRedGrid();
+        grid.Get(new HexCoord(0, 0))!.Owner = PlayerId.None;
+        grid.Get(new HexCoord(0, 0))!.Occupant = new Unit(PlayerId.None)
+        {
+            IsAggro = true,
+        };
+        var treasury = new Treasury();
+        var territories = TerritoriesFor(grid);
+
+        GameStateSnapshot snap = GameStateSnapshot.Capture(grid, treasury, territories);
+
+        // Corrupt the live flag; restore must bring the aggro state back
+        // (a dropped flag would silently restore to the false default).
+        grid.Get(new HexCoord(0, 0))!.Unit!.IsAggro = false;
+
+        snap.ApplyTo(grid, treasury);
+
+        Assert.True(grid.Get(new HexCoord(0, 0))!.Unit!.IsAggro);
+    }
+
+    [Fact]
     public void Capture_IncludesTreasuryBalances()
     {
         HexGrid grid = BuildTwoTileRedGrid();

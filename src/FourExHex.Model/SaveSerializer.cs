@@ -114,7 +114,7 @@ public static class SaveSerializer
     /// Bump on any breaking schema change. <see cref="Deserialize"/>
     /// rejects mismatched values rather than attempting migration.
     /// </summary>
-    public const int CurrentFormatVersion = 19;
+    public const int CurrentFormatVersion = 20;
 
     /// <summary>
     /// Version of the RNG + rules generation that recorded replays
@@ -679,6 +679,9 @@ public static class SaveSerializer
                 OwnerIndex = IdToOwnerIndex(u.Owner),
                 Level = u.Level.ToString(),
                 HasMovedThisTurn = u.HasMovedThisTurn,
+                // Omitted (null) when passive so pre-aggro saves' wire
+                // format is unchanged.
+                IsAggro = u.IsAggro ? true : null,
             },
             Capital => new OccupantDto { Type = "Capital" },
             Tower => new OccupantDto { Type = "Tower" },
@@ -700,6 +703,7 @@ public static class SaveSerializer
                 ParseUnitLevel(dto.Level ?? nameof(UnitLevel.Recruit)))
             {
                 HasMovedThisTurn = dto.HasMovedThisTurn ?? false,
+                IsAggro = dto.IsAggro ?? false,
             },
             "Capital" => new Capital(),
             "Tower" => new Tower(),
@@ -1352,6 +1356,9 @@ public sealed class OccupantDto
     public int? OwnerIndex { get; set; }
     public string? Level { get; set; }
     public bool? HasMovedThisTurn { get; set; }
+
+    /// <summary>Aggro barbarian unit; absent → false (passive).</summary>
+    public bool? IsAggro { get; set; }
 }
 
 public sealed class TerritoryDto

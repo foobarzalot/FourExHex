@@ -36,7 +36,9 @@ public class VikingAiTests
     }
 
     private static AiAction? Choose(GameState state, int seed = 7) =>
-        VikingAi.ChooseNext(state, new HashSet<HexCoord>(), new DeterministicRng(seed));
+        VikingAi.ChooseNext(
+            state, new HashSet<HexCoord>(), new DeterministicRng(seed),
+            new HashSet<HexCoord>());
 
     // --- sequencer phase 1: disembark ------------------------------------------
 
@@ -123,7 +125,10 @@ public class VikingAiTests
         HexGrid grid = TestHelpers.BuildRectGrid(3, 3, Red);
         HexCoord vikingTile = HexCoord.FromOffset(0, 0);
         grid.Get(vikingTile)!.Owner = PlayerId.None;
-        grid.Get(vikingTile)!.Occupant = new Unit(PlayerId.None, UnitLevel.Soldier);
+        // Aggro: a landed WAVE raider (they come ashore hostile). Passive
+        // barbarians wander instead — see the #188 tests below.
+        grid.Get(vikingTile)!.Occupant =
+            new Unit(PlayerId.None, UnitLevel.Soldier) { IsAggro = true };
         GameState state = MakeState(grid);
         state.Vikings.NextWaveIndex = VikingRaidersRules.TotalWaves;
 
@@ -136,8 +141,9 @@ public class VikingAiTests
     }
 
     // --- raiders outside Viking Raiders mode ------------------------------
-    // An authored map can seed raiders on any mode. They act exactly as
-    // landed raiders do, but there is no wave schedule to advance.
+    // An authored map can seed raiders on any mode. An AGGRO raider acts
+    // exactly as a landed wave raider does (there is just no wave schedule
+    // to advance); passive barbarians only wander — see the #188 tests.
 
     [Fact]
     public void ChooseNext_FreeformLandedRaider_StillCaptures()
@@ -145,7 +151,8 @@ public class VikingAiTests
         HexGrid grid = TestHelpers.BuildRectGrid(3, 3, Red);
         HexCoord vikingTile = HexCoord.FromOffset(0, 0);
         grid.Get(vikingTile)!.Owner = PlayerId.None;
-        grid.Get(vikingTile)!.Occupant = new Unit(PlayerId.None, UnitLevel.Soldier);
+        grid.Get(vikingTile)!.Occupant =
+            new Unit(PlayerId.None, UnitLevel.Soldier) { IsAggro = true };
         GameState state = MakeState(grid, mode: GameMode.Freeform);
 
         AiAction? action = Choose(state);
@@ -325,6 +332,151 @@ public class VikingAiTests
         AiMoveAction move = Assert.IsType<AiMoveAction>(action);
         Assert.Equal(HexCoord.FromOffset(0, 0), move.Source);
         Assert.Equal(HexCoord.FromOffset(4, 0), move.Destination);
+    }
+
+    // --- non-aggro barbarian wander (#188) -------------------------------------
+
+    /// <summary>
+    /// 4x1 strip: (0,0)/(1,0) neutral with a barbarian Soldier at (0,0),
+    /// (2,0)/(3,0) Red — (2,0), the only tile bordering the barbarian
+    /// territory, is under capital-grade defense only, so the Soldier has
+    /// a legal, tempting capture right next door.
+    /// </summary>
+    private static HexGrid BuildPassiveBarbarianBoard(bool aggro = false)
+    {
+        HexGrid grid = TestHelpers.BuildRectGrid(4, 1, Red);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = PlayerId.None;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Owner = PlayerId.None;
+        grid.Get(HexCoord.FromOffset(0, 0))!.Occupant =
+            new Unit(PlayerId.None, UnitLevel.Soldier) { IsAggro = aggro };
+        return grid;
+    }
+
+    [Fact]
+    public void ChooseNext_PassiveBarbarians_WanderInsteadOfCapturing()
+    {
+        // A passive barbarian never expands: for every seed the action is
+        // either an in-territory reposition to (1,0) or a hold (null) —
+        // never the undefended Red capture. Both wander outcomes must
+        // actually occur across seeds (the "may hold" draw).
+        int moves = 0;
+        int holds = 0;
+        for (int seed = 0; seed < 20; seed++)
+        {
+            GameState state = MakeState(
+                BuildPassiveBarbarianBoard(), mode: GameMode.Freeform);
+            AiAction? action = Choose(state, seed);
+            if (action == null)
+            {
+                holds++;
+                continue;
+            }
+            AiMoveAction move = Assert.IsType<AiMoveAction>(action);
+            Assert.Equal(HexCoord.FromOffset(0, 0), move.Source);
+            Assert.Equal(HexCoord.FromOffset(1, 0), move.Destination);
+            moves++;
+        }
+        Assert.True(moves > 0, "no seed produced a wander move");
+        Assert.True(holds > 0, "no seed produced a hold");
+    }
+
+    [Fact]
+    public void ChooseNext_AggroBarbarians_StillExpand()
+    {
+        // The same board with the flag set runs today's expansion path.
+        GameState state = MakeState(
+            BuildPassiveBarbarianBoard(aggro: true), mode: GameMode.Freeform);
+
+        AiMoveAction move = Assert.IsType<AiMoveAction>(Choose(state));
+
+        Assert.Equal(HexCoord.FromOffset(2, 0), move.Destination);
+    }
+
+    [Fact]
+    public void ChooseNext_PassiveWander_IsDeterministicPerSeed()
+    {
+        for (int seed = 0; seed < 10; seed++)
+        {
+            GameState a = MakeState(
+                BuildPassiveBarbarianBoard(), mode: GameMode.Freeform);
+            GameState b = MakeState(
+                BuildPassiveBarbarianBoard(), mode: GameMode.Freeform);
+            Assert.Equal(Choose(a, seed), Choose(b, seed));
+        }
+    }
+
+    [Fact]
+    public void ChooseNext_WanderGuard_OneBeatPerUnitPerTurn()
+    {
+        // The per-turn guard set caps each passive unit at one wander beat;
+        // without it a reposition (which never sets HasMovedThisTurn) would
+        // be re-chosen until the driver's 64-step backstop.
+        var visited = new HashSet<HexCoord>();
+        var wandered = new HashSet<HexCoord>();
+        bool sawMove = false;
+        for (int seed = 0; seed < 20 && !sawMove; seed++)
+        {
+            visited.Clear();
+            wandered.Clear();
+            GameState state = MakeState(
+                BuildPassiveBarbarianBoard(), mode: GameMode.Freeform);
+            AiAction? action = VikingAi.ChooseNext(
+                state, visited, new DeterministicRng(seed), wandered);
+            if (action is not AiMoveAction move) continue;
+            sawMove = true;
+
+            // Apply the reposition the way ExecuteVikingMove would.
+            state.Grid.Get(move.Destination)!.Occupant =
+                state.Grid.Get(move.Source)!.Occupant;
+            state.Grid.Get(move.Source)!.Occupant = null;
+
+            // Every follow-up call this turn holds: the unit already moved.
+            for (int next = 0; next < 3; next++)
+            {
+                Assert.Null(VikingAi.ChooseNext(
+                    state, visited, new DeterministicRng(seed), wandered));
+            }
+        }
+        Assert.True(sawMove, "no seed produced a wander move to guard");
+    }
+
+    [Fact]
+    public void ChooseNext_TideDoomedPassiveUnit_AlwaysRetreats()
+    {
+        // Rising Tides: the barbarian's tile is forecast to sink but the
+        // territory still has dry ground — for EVERY seed the unit flees
+        // (no hold slot for a doomed unit, never onto a doomed tile).
+        for (int seed = 0; seed < 20; seed++)
+        {
+            GameState state = MakeState(
+                BuildPassiveBarbarianBoard(), mode: GameMode.RisingTides);
+            state.PendingTide = new[] { new TideStep(HexCoord.FromOffset(0, 0), false) };
+
+            AiAction? action = Choose(state, seed);
+
+            AiMoveAction move = Assert.IsType<AiMoveAction>(action);
+            Assert.Equal(HexCoord.FromOffset(0, 0), move.Source);
+            Assert.Equal(HexCoord.FromOffset(1, 0), move.Destination);
+        }
+    }
+
+    [Fact]
+    public void ChooseNext_PassiveBarbarians_WanderInVikingRaidersToo()
+    {
+        // Map-authored barbarians stay passive even in Viking Raiders (wave
+        // raiders spawn aggro; these were never provoked). Schedule
+        // exhausted so no spawn beat can mask the wander/hold outcome.
+        for (int seed = 0; seed < 20; seed++)
+        {
+            GameState state = MakeState(BuildPassiveBarbarianBoard());
+            state.Vikings.NextWaveIndex = VikingRaidersRules.TotalWaves;
+
+            AiAction? action = Choose(state, seed);
+
+            if (action == null) continue;
+            AiMoveAction move = Assert.IsType<AiMoveAction>(action);
+            Assert.Equal(HexCoord.FromOffset(1, 0), move.Destination);
+        }
     }
 
     // --- AiStateScorer adaptation ---------------------------------------------------
