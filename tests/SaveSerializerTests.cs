@@ -504,6 +504,41 @@ public class SaveSerializerTests
     }
 
     [Fact]
+    public void DeserializeReplay_LegacyGoldAndMountainTile_NormalizesToMountain()
+    {
+        // Same legacy both-flags encoding as the live-grid test above, but
+        // inside a replay's initial snapshot. That grid feeds every replay
+        // rewind, so it must normalize through the identical read path —
+        // not by accident of accessor assignment order.
+        (GameState state, IReadOnlyList<Player> players) = BuildRichState();
+        var coord = HexCoord.FromOffset(2, 1);
+        state.Grid.Get(coord)!.IsMountain = true;
+        GameStateSnapshot snapshot = GameStateSnapshot.Capture(
+            state.Grid, state.Treasury, state.Territories);
+        var replay = new Replay(snapshot, 1, 0, new List<ReplayBeat>());
+        string json = SaveSerializer.Serialize(state, 42, players, "s", 100,
+            replay: replay);
+
+        string forged = System.Text.RegularExpressions.Regex.Replace(
+            json,
+            "\"IsGold\": false,(\\s*)\"IsMountain\": true",
+            "\"IsGold\": true,$1\"IsMountain\": true");
+        Assert.NotEqual(json, forged); // sanity: the substitution actually fired
+
+        LoadedSave loaded = SaveSerializer.Deserialize(forged);
+
+        Assert.NotNull(loaded.Replay);
+        var freshGrid = new HexGrid();
+        foreach (HexTile t in state.Grid.Tiles) freshGrid.Add(new HexTile(t.Coord, t.Owner));
+        loaded.Replay!.InitialSnapshot.ApplyTo(freshGrid, new Treasury());
+
+        HexTile replayTile = freshGrid.Get(coord)!;
+        Assert.Equal(TerrainFeature.Mountain, replayTile.Feature);
+        Assert.True(replayTile.IsMountain);
+        Assert.False(replayTile.IsGold);   // gold dropped — mountain wins
+    }
+
+    [Fact]
     public void Deserialize_PreV10Save_DefaultsMountainToFalse()
     {
         // A pre-mountain save (v9) has no IsMountain field on any tile. The
@@ -958,6 +993,10 @@ public class SaveSerializerTests
     public void SaveRoundTrip_PreservesInitialSnapshotTilesAndGold()
     {
         (GameState state, IReadOnlyList<Player> players) = BuildRichState();
+        // Terrain too: the replay snapshot drives every rewind, so its
+        // gold/mountain fidelity is part of the round-trip contract.
+        state.Grid.Get(HexCoord.FromOffset(1, 2))!.IsGold = true;
+        state.Grid.Get(HexCoord.FromOffset(2, 2))!.IsMountain = true;
         GameStateSnapshot snapshot = GameStateSnapshot.Capture(
             state.Grid, state.Treasury, state.Territories);
         var replay = new Replay(snapshot, 1, 0, new List<ReplayBeat>());
@@ -982,6 +1021,7 @@ public class SaveSerializerTests
             HexTile? restored = freshGrid.Get(original.Coord);
             Assert.NotNull(restored);
             Assert.Equal(original.Owner, restored!.Owner);
+            Assert.Equal(original.Feature, restored.Feature);
             AssertOccupantsEqual(original.Occupant, restored.Occupant);
         }
         foreach (Territory t in state.Territories)

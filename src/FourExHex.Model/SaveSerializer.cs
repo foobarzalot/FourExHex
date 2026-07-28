@@ -311,28 +311,9 @@ public static class SaveSerializer
         int normalizedGoldMountain = 0;
         foreach (TileDto tile in data.Tiles)
         {
-            PlayerId owner = OwnerIndexToId(tile.OwnerIndex, players);
-            // Gold and mountain are mutually exclusive. A save carrying both
-            // flags on one tile resolves to mountain, so set the single
-            // TerrainFeature explicitly rather than relying on accessor ordering.
-            TerrainFeature feature =
-                tile.IsMountain ? TerrainFeature.Mountain :
-                tile.IsGold ? TerrainFeature.Gold :
-                TerrainFeature.None;
-            if (tile.IsGold && tile.IsMountain) normalizedGoldMountain++;
-            var hexTile = new HexTile(new HexCoord(tile.Q, tile.R), owner)
-            {
-                Occupant = DeserializeOccupant(tile.Occupant, players),
-                Feature = feature,
-            };
-            grid.Add(hexTile);
+            grid.Add(FromTileDto(tile, players, ref normalizedGoldMountain));
         }
-        if (normalizedGoldMountain > 0)
-        {
-            Log.Info(Log.LogCategory.MapGen,
-                $"[save] normalized {normalizedGoldMountain} legacy gold+mountain " +
-                $"tile(s) to mountain-only");
-        }
+        LogGoldMountainNormalization("live grid", normalizedGoldMountain);
 
         IReadOnlyList<Territory> territories = DeserializeTerritories(data.Territories, players);
 
@@ -666,6 +647,40 @@ public static class SaveSerializer
             IsMountain = isMountain,
         };
 
+    /// <summary>
+    /// Read-side twin of <see cref="ToTileDto"/>: build a <see cref="HexTile"/>
+    /// from a wire <see cref="TileDto"/>. Gold and mountain are mutually
+    /// exclusive, so a legacy save carrying both flags on one tile resolves to
+    /// mountain — set explicitly via the single <see cref="HexTile.Feature"/>
+    /// rather than by the order two bool accessors happen to be assigned in.
+    /// Increments <paramref name="normalizedGoldMountain"/> per normalized
+    /// tile; callers log one aggregate line via
+    /// <see cref="LogGoldMountainNormalization"/>.
+    /// </summary>
+    private static HexTile FromTileDto(
+        TileDto tile, IReadOnlyList<Player> players, ref int normalizedGoldMountain)
+    {
+        if (tile.IsGold && tile.IsMountain) normalizedGoldMountain++;
+        return new HexTile(
+            new HexCoord(tile.Q, tile.R), OwnerIndexToId(tile.OwnerIndex, players))
+        {
+            Occupant = DeserializeOccupant(tile.Occupant, players),
+            Feature =
+                tile.IsMountain ? TerrainFeature.Mountain :
+                tile.IsGold ? TerrainFeature.Gold :
+                TerrainFeature.None,
+        };
+    }
+
+    /// <summary>One aggregate line per load, only when something normalized.</summary>
+    private static void LogGoldMountainNormalization(string source, int count)
+    {
+        if (count <= 0) return;
+        Log.Info(Log.LogCategory.MapGen,
+            $"[save] {source}: normalized {count} legacy gold+mountain " +
+            $"tile(s) to mountain-only");
+    }
+
     // --- Occupants -------------------------------------------------------
 
     private static OccupantDto? SerializeOccupant(HexOccupant? occupant)
@@ -830,16 +845,12 @@ public static class SaveSerializer
     {
         if (dto == null) return null;
         var grid = new HexGrid();
+        int normalizedGoldMountain = 0;
         foreach (TileDto t in dto.InitialState.Tiles)
         {
-            PlayerId owner = OwnerIndexToId(t.OwnerIndex, players);
-            grid.Add(new HexTile(new HexCoord(t.Q, t.R), owner)
-            {
-                Occupant = DeserializeOccupant(t.Occupant, players),
-                IsGold = t.IsGold,
-                IsMountain = t.IsMountain,
-            });
+            grid.Add(FromTileDto(t, players, ref normalizedGoldMountain));
         }
+        LogGoldMountainNormalization("replay initial state", normalizedGoldMountain);
         var territories = new List<Territory>(dto.InitialState.Territories.Count);
         foreach (TerritoryDto td in dto.InitialState.Territories)
         {
