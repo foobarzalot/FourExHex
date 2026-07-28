@@ -397,7 +397,7 @@ public partial class HexMapView : Node2D, IHexMapView
         {
             visual.Scale = CurrentPulseScale();
         }
-        Log.Debug(Log.LogCategory.Render,
+        Log.Debug(Log.LogCategory.Anim,
             $"[pulse] restore {coord} scale={CurrentPulseScale().X:F3}");
     }
 
@@ -1085,7 +1085,7 @@ public partial class HexMapView : Node2D, IHexMapView
         {
             // The capture rebuild of the move being staged this beat —
             // held so tiles recolor at impact, not while the unit flies.
-            Log.Debug(Log.LogCategory.Render, "[move-anim] hold rebuild");
+            Log.Debug(Log.LogCategory.Anim, "[move-anim] hold rebuild");
             _stagedRebuild = true;
             return;
         }
@@ -1141,7 +1141,7 @@ public partial class HexMapView : Node2D, IHexMapView
         {
             if (liveTargets > 0)
             {
-                Log.Debug(Log.LogCategory.Render,
+                Log.Debug(Log.LogCategory.Input,
                     $"[targets] rebuild-core preserving n={liveTargets}");
             }
         }
@@ -1149,7 +1149,7 @@ public partial class HexMapView : Node2D, IHexMapView
         {
             if (liveTargets > 0)
             {
-                Log.Debug(Log.LogCategory.Render,
+                Log.Debug(Log.LogCategory.Input,
                     $"[targets] rebuild-core wiping n={liveTargets}");
             }
             ClearLayer(_targetsLayer);
@@ -1233,7 +1233,7 @@ public partial class HexMapView : Node2D, IHexMapView
         }
         else if (HoldingForPendingMove)
         {
-            Log.Debug(Log.LogCategory.Render, "[move-anim] hold highlight");
+            Log.Debug(Log.LogCategory.Anim, "[move-anim] hold highlight");
             _stagedHighlightSet = true;
             _stagedHighlight = selected;
             return;
@@ -1251,7 +1251,7 @@ public partial class HexMapView : Node2D, IHexMapView
         // sustained beat sequences (the Viking Raiders phase runs dozens of
         // consecutive beats on one growing neutral territory).
         bool sameRegion = SameHighlightRegion(_highlightedTerritory, selected);
-        if (Log.IsEnabled(Log.LogCategory.Render, Log.LogLevel.Debug))
+        if (Log.IsEnabled(Log.LogCategory.Input, Log.LogLevel.Debug))
         {
             static HexCoord MinCoord(Territory t)
             {
@@ -1263,7 +1263,7 @@ public partial class HexMapView : Node2D, IHexMapView
                 }
                 return min;
             }
-            Log.Debug(Log.LogCategory.Render,
+            Log.Debug(Log.LogCategory.Input,
                 selected == null
                     ? $"[highlight] cleared (skip={sameRegion})"
                     : $"[highlight] owner={selected.Owner} size={selected.Size} " +
@@ -1333,7 +1333,7 @@ public partial class HexMapView : Node2D, IHexMapView
             preview.Scale = CurrentPulseScale();
             _targetsLayer.AddChild(preview);
         }
-        Log.Debug(Log.LogCategory.Render,
+        Log.Debug(Log.LogCategory.Input,
             $"[targets] paint n={_targetsLayer.GetChildCount()} level={level} " +
             $"holding={HoldingForPendingMove} inFlight={_inFlightArrival != null}");
     }
@@ -1790,7 +1790,7 @@ public partial class HexMapView : Node2D, IHexMapView
             ApplySelectionAffordance();
         }
 
-        Log.Debug(Log.LogCategory.Render,
+        Log.Debug(Log.LogCategory.Input,
             $"ShowMoveSource: prev={previous?.ToString() ?? "none"} next={coord?.ToString() ?? "none"} " +
             $"backdrop={(_selectionBackdrop != null ? $"attached(a={SelectionBackdropColor.A})" : "cleared")}");
     }
@@ -1934,7 +1934,7 @@ public partial class HexMapView : Node2D, IHexMapView
         if (coord.HasValue) ApplySelectCueVisual();
         else ClearSelectCueVisual();
 
-        Log.Debug(Log.LogCategory.Render,
+        Log.Debug(Log.LogCategory.Input,
             $"ShowSelectUnitCue: prev={previous?.ToString() ?? "none"} next={coord?.ToString() ?? "none"} " +
             $"node={(_selectCueNode != null ? "flashing" : "cleared")}");
     }
@@ -2025,7 +2025,7 @@ public partial class HexMapView : Node2D, IHexMapView
 
         if (!coord.HasValue || _focusPulseLayer == null)
         {
-            Log.Debug(Log.LogCategory.Render, "ShowTerrainFocusPulse: cleared");
+            Log.Debug(Log.LogCategory.Anim, "ShowTerrainFocusPulse: cleared");
             return;
         }
 
@@ -2060,7 +2060,7 @@ public partial class HexMapView : Node2D, IHexMapView
             .SetTrans(Tween.TransitionType.Sine);
         _focusPulseTween = tween;
 
-        Log.Debug(Log.LogCategory.Render, $"ShowTerrainFocusPulse: pulsing at {coord.Value}");
+        Log.Debug(Log.LogCategory.Anim, $"ShowTerrainFocusPulse: pulsing at {coord.Value}");
     }
 
     /// <summary>
@@ -2177,7 +2177,7 @@ public partial class HexMapView : Node2D, IHexMapView
             .SetTrans(Tween.TransitionType.Sine)
             .SetEase(Tween.EaseType.InOut);
         moveTween.Finished += () => CompleteArrival("arrival");
-        Log.Debug(Log.LogCategory.Render,
+        Log.Debug(Log.LogCategory.Anim,
             $"[move-anim] travel {from}->{to} dist={dist} durMs={(int)durMs}");
         return true;
     }
@@ -2193,7 +2193,7 @@ public partial class HexMapView : Node2D, IHexMapView
         ArrivalRecord? r = _inFlightArrival;
         if (r == null) return;
         _inFlightArrival = null;
-        Log.Debug(Log.LogCategory.Render,
+        Log.Debug(Log.LogCategory.Anim,
             $"[move-anim] arrival {r.From}->{r.To} ({reason}) " +
             $"rebuild={_stagedRebuild} fx={_heldFx.Count} " +
             $"targets={_targetsLayer?.GetChildCount() ?? 0}");
@@ -2534,7 +2534,7 @@ public partial class HexMapView : Node2D, IHexMapView
         // Proves the rebuilt pulsing visuals were seeded at the current
         // shared phase instead of default scale 1 (#168): scale here is
         // mid-pulse whenever _pulseTime isn't at a trough.
-        Log.Debug(Log.LogCategory.Render,
+        Log.Debug(Log.LogCategory.Anim,
             $"[pulse] re-seed units={_pulsingUnits.Count} capitals={_pulsingCapitals.Count} " +
             $"scale={CurrentPulseScale().X:F3} t={_pulseTime:F2}");
 
@@ -2700,7 +2700,7 @@ public partial class HexMapView : Node2D, IHexMapView
     {
         if (IsHeldCoord(coord))
         {
-            Log.Debug(Log.LogCategory.Render, $"[move-anim] hold destruction at {coord}");
+            Log.Debug(Log.LogCategory.Anim, $"[move-anim] hold destruction at {coord}");
             _heldFx.Add(() => PlayDestructionEffectCore(coord, destroyed));
             return;
         }
@@ -2811,7 +2811,7 @@ public partial class HexMapView : Node2D, IHexMapView
     {
         if (IsHeldCoord(coord))
         {
-            Log.Debug(Log.LogCategory.Render, $"[move-anim] hold terrain-fx {terrain} at {coord}");
+            Log.Debug(Log.LogCategory.Anim, $"[move-anim] hold terrain-fx {terrain} at {coord}");
             _heldFx.Add(() => PlayTerrainCaptureEffectCore(coord, terrain));
             return;
         }
@@ -2837,7 +2837,7 @@ public partial class HexMapView : Node2D, IHexMapView
                 break;
         }
         ApplyGlyphUpright();
-        Log.Debug(Log.LogCategory.Render, $"[terrain-fx] {terrain} capture fx at {coord}");
+        Log.Debug(Log.LogCategory.Anim, $"[terrain-fx] {terrain} capture fx at {coord}");
     }
 
     // Baseline for contrast: tile flash + one expanding white ring.
@@ -3088,7 +3088,7 @@ public partial class HexMapView : Node2D, IHexMapView
             }
         }
 
-        Log.Debug(Log.LogCategory.Render,
+        Log.Debug(Log.LogCategory.Anim,
             $"[terrain-fx] mountain shake at {coord}: baked ring suppressed, " +
             $"{overlay.TriangleCount}-tri copy on deaths layer, " +
             $"occupant glyph {(occupantVisual != null ? "shaking" : "absent")}, " +
@@ -3188,7 +3188,7 @@ public partial class HexMapView : Node2D, IHexMapView
     {
         if (at.HasValue && IsHeldCoord(at.Value))
         {
-            Log.Debug(Log.LogCategory.Render, $"[move-anim] hold sound {kind} at {at.Value}");
+            Log.Debug(Log.LogCategory.Anim, $"[move-anim] hold sound {kind} at {at.Value}");
             HexCoord held = at.Value;
             _heldFx.Add(() => PlaySoundCore(kind, held));
             return;
@@ -4436,7 +4436,7 @@ public partial class HexMapView : Node2D, IHexMapView
         // centering offset so the result is in axial-origin coordinates.
         Vector2 local = ToLocal(mouse.Position) - FirstHexCenterOffset;
         HexCoord coord = HexPixel.FromPixel(local, HexSize);
-        Log.Trace(Log.LogCategory.Render,
+        Log.Trace(Log.LogCategory.Input,
             $"[hit-test] viewport=({mouse.Position.X:0.#},{mouse.Position.Y:0.#}) " +
             $"local=({local.X:0.#},{local.Y:0.#}) hexSize={HexSize:0.###} -> {coord}");
 
@@ -4571,11 +4571,11 @@ public partial class HexMapView : Node2D, IHexMapView
         }
         if (visible > 0)
         {
-            Log.Debug(Log.LogCategory.Render,
+            Log.Debug(Log.LogCategory.Anim,
                 $"[turnstart-pan] territory cap={territory.Capital} tiles={territory.Size} -> skip (visible)");
             return;
         }
-        Log.Debug(Log.LogCategory.Render,
+        Log.Debug(Log.LogCategory.Anim,
             $"[turnstart-pan] territory cap={territory.Capital} tiles={territory.Size} -> pan (fully offscreen)");
         CenterOnCoord(territory.Capital!.Value);
     }
@@ -4602,7 +4602,7 @@ public partial class HexMapView : Node2D, IHexMapView
         {
             return;
         }
-        Log.Debug(Log.LogCategory.Render,
+        Log.Debug(Log.LogCategory.Anim,
             $"[demo-follow] {coord} at {screen} outside comfort zone — panning");
         CenterOnCoord(coord);
     }
@@ -4630,7 +4630,7 @@ public partial class HexMapView : Node2D, IHexMapView
         _panTo = target;
         _panElapsed = 0;
         _panActive = true;
-        Log.Debug(Log.LogCategory.Render,
+        Log.Debug(Log.LogCategory.Anim,
             $"CenterOnCoord pan from={_panFrom} to={_panTo} dur={PanAnimDurationSec:0.00}s");
     }
 
@@ -4650,7 +4650,7 @@ public partial class HexMapView : Node2D, IHexMapView
         {
             Position = _panTo;
             _panActive = false;
-            Log.Debug(Log.LogCategory.Render, $"CenterOnTerritory pan done at={Position}");
+            Log.Debug(Log.LogCategory.Anim, $"CenterOnTerritory pan done at={Position}");
             return;
         }
         float s = EasingMath.SmoothStep((float)(_panElapsed / PanAnimDurationSec));
@@ -5543,8 +5543,8 @@ public partial class HexMapView : Node2D, IHexMapView
                 {
                     _highlightLayer.AddChild(group);
                     PulseDoomedHighlightGroup(group);
-                    Log.Debug(Log.LogCategory.Render,
-                        $"[highlight] doomed-tile pulse @{coord} ({edgesDrawn} edge(s))");
+                    Log.Debug(Log.LogCategory.Anim,
+                        $"[doomed-pulse] @{coord} ({edgesDrawn} edge(s))");
                 }
                 else
                 {

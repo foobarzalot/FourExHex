@@ -35,8 +35,8 @@ public static class Log
         Turn = 1,     // turn begin/end, end-of-turn winner, phantom turn, game-end, stasis
         Capture = 2,  // post-capture domination winner + capture capital/gold diff
         Tutorial = 3, // RecordPane / PreviewPane / TutorialBuilderScene dev traces
-        Render = 4,   // HexMapView "rendering N tiles" line
-        Input = 5,    // BuildTower click-rejection diagnostic
+        Render = 4,   // what got built/drawn: HexMapView tile+territory render, board geometry (content box, PixelSize, insets, RecenterMap), occupant-visual refresh, and HUD / menu / editor panel layout + fit
+        Input = 5,    // what a gesture resolved to: hit-test coord, selection highlight, move-target overlay, BuildTower click-rejection
         Display = 6,  // DisplayScale autoload: DPI → ContentScaleFactor
         Hud = 7,      // HUD CTA / button-state transitions
         Undo = 8,     // undo/redo ↔ replay-beat bookkeeping coordinator
@@ -51,6 +51,7 @@ public static class Log
         Viking = 17,  // Viking Raiders mode: wave spawn / disembark / perish / phase census
         Determinism = 18, // RNG-stream + final-state digests: cross-run/cross-platform one-line diff
         LevelDesign = 19, // authored-maps pipeline: harness edits/validation/playtests + bundled starting-map list/load
+        Anim = 20,    // per-frame / tween churn, split from Render so it can be silenced: unit+capital pulse, move-anim beat holds and travel/arrival, terrain capture fx, camera pan and demo-follow
     }
 
     /// <summary>Severity, ascending. <see cref="Off"/> disables a
