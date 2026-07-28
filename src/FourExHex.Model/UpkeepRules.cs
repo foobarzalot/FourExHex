@@ -70,8 +70,8 @@ public static class UpkeepRules
     ///
     /// The single shared solvency predicate used by
     /// <see cref="AiStateScorer"/>'s bankruptcy lookahead and by every
-    /// gate in <see cref="AiCommon.Enumerate"/>. Both layers must
-    /// agree on what counts as solvent — otherwise the scorer
+    /// solvency gate in <see cref="AiCommon"/>'s phase enumerators. Both
+    /// layers must agree on what counts as solvent — otherwise the scorer
     /// approves actions the enumerator never proposes, or vice versa.
     /// Tuning the horizon (or moving to a graduated discount) is a
     /// one-line edit here that the entire system inherits.

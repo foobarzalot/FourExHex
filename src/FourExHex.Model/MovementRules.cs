@@ -40,8 +40,7 @@ public static class MovementRules
     /// Recruit), <see cref="HexCoord"/> lex ascending within each
     /// tier. The "consider the strongest unit first" iteration, used
     /// by the AI's strength-concentrating phases (combine-to-unlock,
-    /// defensive reposition) and the all-in-one candidate enumerator
-    /// (<see cref="AiCommon.Enumerate"/>): a deterministic order so
+    /// defensive reposition): a deterministic order so
     /// the AI's first-wins tiebreak can't drift with `territory.Coords`
     /// BFS order.
     /// </summary>

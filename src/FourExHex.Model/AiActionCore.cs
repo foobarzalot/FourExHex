@@ -25,7 +25,7 @@ public readonly record struct AiApplyResult(MoveResult Move, bool WasCombine);
 /// <see cref="GameState.DifficultyOf"/>), and
 /// <see cref="MovementRules"/> placement. Everything caller-specific
 /// stays with the caller: legality validation (the simulator trusts
-/// <see cref="AiCommon.Enumerate"/> and early-returns; GameOperations
+/// <see cref="AiCommon"/>'s enumerators and early-returns; GameOperations
 /// throws), capture reconciliation (Recompute-only vs the full
 /// <c>HandleCapture</c> envelope), and all view effects.
 /// </summary>

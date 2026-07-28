@@ -144,7 +144,9 @@ public class NeutralHexTests
             new Player("Blue", PlayerId.FromIndex(1), PlayerKind.Computer));
         Territory red = state.Territories.First(t => t.Owner == Red);
 
-        List<AiCandidate> candidates = AiCommon.Enumerate(red, state).ToList();
+        HexCoord unitCoord = HexCoord.FromOffset(3, 0);
+        List<AiCandidate> candidates = AiCommon.EnumeratePhase1ForUnit(
+            unitCoord, state.Grid.Get(unitCoord)!.Unit!, red, state).ToList();
 
         Assert.Contains(candidates, c =>
             c.Kind == AiActionKind.Capture

@@ -24,9 +24,9 @@ public readonly record struct AiCandidate(AiAction Action, AiActionKind Kind);
 
 /// <summary>
 /// Shared AI plumbing: legality + solvency enumeration and helpers.
-/// <see cref="ComputerAi"/> calls into <see cref="Enumerate"/> as its
-/// single source of truth for "what moves are available" — it then
-/// decides how to pick among them.
+/// The <c>EnumeratePhase*</c> methods are the single source of legal
+/// candidate actions, one enumerator per phase; <see cref="ComputerAi"/>
+/// drives them in phase order and decides how to pick among them.
 ///
 /// The enumeration here encodes the game-mechanical rules about what
 /// a player *could* do (and what wouldn't bankrupt them); it says
@@ -35,18 +35,6 @@ public readonly record struct AiCandidate(AiAction Action, AiActionKind Kind);
 /// </summary>
 public static class AiCommon
 {
-    /// <summary>
-    /// Every legal, solvent AI action in <paramref name="territory"/>
-    /// for the current game state. Results are tagged with an
-    /// <see cref="AiActionKind"/> so callers can group / score
-    /// without re-classifying. Self-combine moves (source == dest,
-    /// which <see cref="MovementRules.ValidTargets"/> trivially
-    /// includes because a unit can "combine with itself") are
-    /// filtered out. Tower builds are restricted to border tiles;
-    /// proximity to existing towers is a scoring concern
-    /// (<see cref="AiStateScorer.BuildTowerBonus"/> discounts
-    /// already-covered tiles), never a legality filter.
-    /// </summary>
     /// <summary>
     /// The owner's difficulty (for purchase-cost checks) plus the
     /// territory's net income (income − upkeep), exactly as real play will
@@ -61,178 +49,6 @@ public static class AiCommon
         int income = IncomeRules.IncomeFor(territory, state.Grid);
         int upkeep = UpkeepRules.TotalUpkeepFor(territory, state.Grid);
         return (difficulty, income - upkeep);
-    }
-
-    public static IEnumerable<AiCandidate> Enumerate(Territory territory, GameState state)
-    {
-        PlayerId owner = territory.Owner;
-        (Difficulty difficulty, int netBefore) = EconomyBefore(territory, state);
-
-        // Shared whole-board lookup for every ValidTargets call below —
-        // the state is not mutated during enumeration.
-        Dictionary<HexCoord, Territory> tileIndex = state.Territories.BuildTileIndex();
-
-        // Treasury is consulted by every solvency gate below. A
-        // capital-less territory can't hold gold and can't collect
-        // income — it dies on the next upkeep step regardless, so
-        // SurvivesNextUpkeep(0, …) below will reject everything for
-        // it, which is the right behavior.
-        int gold = territory.HasCapital
-            ? state.Treasury.GetGold(territory.Capital!.Value)
-            : 0;
-
-        // --- Move actions: capture, chop, or combine ---
-        // Each gate asks the shared SurvivesNextUpkeep predicate
-        // whether the post-action (gold, netIncome) pair clears
-        // next upkeep. Move actions don't spend gold, so the gold
-        // argument is unchanged. Units are iterated in power-then-
-        // coord order (Commander → Recruit, lex-min within tier) so
-        // ties resolve in favor of the strongest unit — same order
-        // the human N-cycle uses.
-        foreach (HexCoord coord in MovementRules.MovableUnitsInPowerOrder(territory, owner, state.Grid))
-        {
-            HexTile? tile = state.Grid.Get(coord);
-            // Defensive: helper already filtered by owner +
-            // !HasMovedThisTurn, but the unit could theoretically be
-            // gone in a state we don't trust. Belt-and-braces.
-            if (tile?.Unit == null) continue;
-
-            Unit sourceUnit = tile.Unit;
-            List<HexCoord> targets = MovementRules.ValidTargets(
-                sourceUnit.Level, territory, state.Grid, state.Territories, tileIndex);
-
-            foreach (HexCoord target in targets)
-            {
-                // ValidTargets lists the source's own tile as a
-                // combine target (P.CanCombineWith(P) is trivially
-                // true for a unit against itself). Skip it.
-                if (target.Equals(coord)) continue;
-
-                HexTile? targetTile = state.Grid.Get(target);
-                if (targetTile == null) continue;
-
-                TargetKind kind = ClassifyTarget(targetTile, owner);
-                switch (kind)
-                {
-                    case TargetKind.Capture:
-                        if (UpkeepRules.SurvivesNextUpkeep(gold, netBefore + 1))
-                        {
-                            yield return new AiCandidate(
-                                new AiMoveAction(coord, target),
-                                AiActionKind.Capture);
-                        }
-                        break;
-                    case TargetKind.Chop:
-                        if (UpkeepRules.SurvivesNextUpkeep(gold, netBefore + 1))
-                        {
-                            yield return new AiCandidate(
-                                new AiMoveAction(coord, target),
-                                AiActionKind.Chop);
-                        }
-                        break;
-                    case TargetKind.Combine:
-                        Unit destUnit = (Unit)targetTile.Occupant!;
-                        UnitLevel combinedLevel = sourceUnit.Level.CombinedWith(destUnit.Level);
-                        int upkeepDelta = UpkeepRules.UpkeepFor(combinedLevel)
-                                          - UpkeepRules.UpkeepFor(sourceUnit.Level)
-                                          - UpkeepRules.UpkeepFor(destUnit.Level);
-                        if (UpkeepRules.SurvivesNextUpkeep(gold, netBefore - upkeepDelta))
-                        {
-                            yield return new AiCandidate(
-                                new AiMoveAction(coord, target),
-                                AiActionKind.Combine);
-                        }
-                        break;
-                    case TargetKind.Reposition:
-                        // Repositioning a unit within friendly tiles
-                        // doesn't change income or upkeep. Only worth
-                        // enumerating for border destinations — moving
-                        // to an interior tile gains nothing the scorer
-                        // can see. Empty target only (capitals/towers/
-                        // graves are filtered to Reposition by
-                        // ClassifyTarget but aren't legal placement
-                        // tiles for a moving unit, and ValidTargets
-                        // already excludes them).
-                        if (targetTile.Occupant == null
-                            && IsBorderTile(target, state.Grid, owner))
-                        {
-                            yield return new AiCandidate(
-                                new AiMoveAction(coord, target),
-                                AiActionKind.Reposition);
-                        }
-                        break;
-                }
-            }
-        }
-
-        // --- Buy actions: buy-capture, buy-chop, or buy-reposition ---
-        // A buy spends `cost` gold and adds `upkeep_` upkeep. Capture
-        // also gains +1 tile (+1 income). Each gate passes the
-        // post-action (gold - cost, netBefore + Δ) pair through
-        // SurvivesNextUpkeep. Buy-to-combine isn't considered.
-        UnitLevel[] buyLevels = { UnitLevel.Recruit, UnitLevel.Soldier, UnitLevel.Captain, UnitLevel.Commander };
-        foreach (UnitLevel level in buyLevels)
-        {
-            if (!PurchaseRules.CanAfford(territory, state.Treasury, level, difficulty)) continue;
-            int upkeep_ = UpkeepRules.UpkeepFor(level);
-            int cost = PurchaseRules.CostFor(level, difficulty);
-            bool captureSolvent = UpkeepRules.SurvivesNextUpkeep(gold - cost, netBefore + 1 - upkeep_);
-            bool repositionSolvent = UpkeepRules.SurvivesNextUpkeep(gold - cost, netBefore - upkeep_);
-            if (!captureSolvent && !repositionSolvent) continue;
-
-            List<HexCoord> buyTargets = MovementRules.ValidTargets(
-                level, territory, state.Grid, state.Territories, tileIndex);
-            foreach (HexCoord target in buyTargets)
-            {
-                HexTile? targetTile = state.Grid.Get(target);
-                if (targetTile == null) continue;
-
-                TargetKind kind = ClassifyTarget(targetTile, owner);
-                if (kind == TargetKind.Capture && captureSolvent)
-                {
-                    yield return new AiCandidate(
-                        new AiBuyUnitAction(territory.Capital!.Value, target, level),
-                        AiActionKind.Capture);
-                }
-                else if (kind == TargetKind.Chop && captureSolvent)
-                {
-                    yield return new AiCandidate(
-                        new AiBuyUnitAction(territory.Capital!.Value, target, level),
-                        AiActionKind.Chop);
-                }
-                else if (kind == TargetKind.Reposition
-                         && repositionSolvent
-                         && targetTile.Occupant == null
-                         && IsBorderTile(target, state.Grid, owner))
-                {
-                    yield return new AiCandidate(
-                        new AiBuyUnitAction(territory.Capital!.Value, target, level),
-                        AiActionKind.Reposition);
-                }
-            }
-        }
-
-        // --- Build-tower actions ---
-        // Towers have no upkeep and don't change income, so post-net
-        // equals netBefore; the action just drains TowerCost gold.
-        // Only considered for border tiles — an interior tower defends
-        // nothing. A tile holding an own unmoved unit with an escape
-        // enumerates as a make-way intent (IsValidTowerLocationWithPush),
-        // lowered by the controller into a reposition + build pair.
-        if (PurchaseRules.CanAffordTower(territory, state.Treasury, difficulty)
-            && UpkeepRules.SurvivesNextUpkeep(gold - PurchaseRules.TowerCostFor(difficulty), netBefore))
-        {
-            foreach (HexCoord coord in territory.Coords)
-            {
-                HexTile? tile = state.Grid.Get(coord);
-                if (tile == null) continue;
-                if (!IsBorderTile(coord, state.Grid, owner)) continue;
-                if (!PurchaseRules.IsValidTowerLocationWithPush(tile, territory, state.Grid)) continue;
-                yield return new AiCandidate(
-                    new AiBuildTowerAction(territory.Capital!.Value, coord),
-                    AiActionKind.Tower);
-            }
-        }
     }
 
     private enum TargetKind

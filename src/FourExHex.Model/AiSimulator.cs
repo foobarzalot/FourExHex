@@ -18,8 +18,8 @@ using System.Linq;
 /// (<see cref="Reconcile"/>) and the atomic mirror of the controller's
 /// make-way lowering for tower intents on unit-held tiles.
 /// Skips the paranoid validation — actions passed here are expected to
-/// come from <see cref="AiCommon.Enumerate"/>, which only emits legal
-/// ones.
+/// come from <see cref="AiCommon"/>'s phase enumerators, which only
+/// emit legal ones.
 /// </summary>
 public static class AiSimulator
 {
@@ -84,7 +84,7 @@ public static class AiSimulator
             default:
                 // Rally / ClaimVictory / DismissClaim / DismissDefeat are
                 // replay-script-only actions emitted by ReplayDrivenAi,
-                // not by AiCommon.Enumerate. Scoring a future built on
+                // not by AiCommon's phase enumerators. Scoring a future built on
                 // them would silently disagree with live play, so any
                 // attempt to simulate one is a programmer error.
                 throw new NotSupportedException(

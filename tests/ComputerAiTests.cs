@@ -344,53 +344,6 @@ public class ComputerAiTests
         Assert.Equal(soldier, tiers[1].Coord);
     }
 
-    [Fact]
-    public void Enumerate_FirstMoveCandidateIsHighestPowerUnit()
-    {
-        // 5-tile Red strip sandwiched between two Blue singletons
-        // so the strip's outer Red tiles have enemy adjacency on
-        // each end and both unit placements can generate at least
-        // one Capture candidate against defense-0 Blue.
-        //
-        // Soldier (level 2, upkeep 6) and Recruit (level 1, upkeep 2)
-        // keep the territory solvent: income 5, upkeep 8, net -3, and
-        // 30g treasury covers the 5-turn horizon (30 + 5 × -3 = 15 ≥ 0).
-        // Higher tiers like Commander would bankrupt this small a
-        // territory before any candidate cleared the solvency gate.
-        //
-        // The shared helper orders by power descending, so Soldier
-        // candidates yield first.
-        var grid = new HexGrid();
-        grid.Add(new HexTile(HexCoord.FromOffset(0, 0), Blue));
-        for (int col = 1; col <= 5; col++)
-        {
-            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
-        }
-        grid.Add(new HexTile(HexCoord.FromOffset(6, 0), Blue));
-        GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
-        Territory red = state.Territories.First(t => t.Owner == Red);
-
-        HexCoord cap = red.Capital!.Value;
-        List<HexCoord> nonCap = red.Coords.Where(c => !c.Equals(cap)).ToList();
-        HexCoord recruitTile = nonCap.First();
-        HexCoord soldierTile = nonCap.Last();
-        Assert.NotEqual(recruitTile, soldierTile);
-        grid.Get(recruitTile)!.Occupant = new Unit(Red, UnitLevel.Recruit);
-        grid.Get(soldierTile)!.Occupant = new Unit(Red, UnitLevel.Soldier);
-        state.Treasury.SetGold(cap, 30);
-
-        List<AiMoveAction> moves = AiCommon.Enumerate(red, state)
-            .Select(c => c.Action)
-            .OfType<AiMoveAction>()
-            .ToList();
-        // Sanity: both units contributed candidates so the ordering
-        // assertion below isn't trivially satisfied by either having
-        // zero moves.
-        Assert.Contains(moves, m => m.Source.Equals(recruitTile));
-        Assert.Contains(moves, m => m.Source.Equals(soldierTile));
-        Assert.Equal(soldierTile, moves[0].Source);
-    }
-
     // --- AiCommon: treasury-aware enumerator solvency ---------------------
 
     [Fact]
@@ -418,7 +371,8 @@ public class ComputerAiTests
         state.Grid.Get(recruitTile)!.Occupant = new Unit(Red);
         state.Treasury.SetGold(cap, 200);
 
-        List<AiCandidate> candidates = AiCommon.Enumerate(red, state).ToList();
+        List<AiCandidate> candidates = AiCommon
+            .EnumeratePhase3ForLevel(red, state, UnitLevel.Soldier).ToList();
         Assert.True(
             candidates.Any(c => c.Action is AiBuyUnitAction b && b.Level == UnitLevel.Soldier),
             $"expected at least one Buy-Soldier candidate with 200g treasury; got: " +
@@ -474,7 +428,8 @@ public class ComputerAiTests
         state.Grid.Get(recruitTile)!.Occupant = new Unit(Red);
         state.Treasury.SetGold(cap, 20);
 
-        List<AiCandidate> candidates = AiCommon.Enumerate(red, state).ToList();
+        List<AiCandidate> candidates = AiCommon
+            .EnumeratePhase3ForLevel(red, state, UnitLevel.Soldier).ToList();
         Assert.DoesNotContain(candidates,
             c => c.Action is AiBuyUnitAction b && b.Level == UnitLevel.Soldier);
     }
@@ -594,7 +549,7 @@ public class ComputerAiTests
     {
         // Full 1-ply lookahead for a player whose slot index (5) exceeds the
         // compact roster size (slots 0 and 5 present; 1–4 are None).
-        // Exercises AiCommon.Enumerate, AiSimulator.Clone/mutate, and
+        // Exercises AiCommon's enumerators, AiSimulator.Clone/mutate, and
         // AiStateScorer.Score — each resolves the owner's difficulty by
         // slot, which must handle the sparse roster without throwing.
         PlayerId orange = PlayerId.FromIndex(5);
@@ -1138,7 +1093,7 @@ public class ComputerAiTests
     public void Simulator_Apply_ThrowsOnUnsupportedActionKind(AiAction action)
     {
         // Defense in depth: AiSimulator.Apply only models the three
-        // mutation kinds that AiCommon.Enumerate emits. If the
+        // mutation kinds that AiCommon's enumerators emit. If the
         // enumerator (or a future AI) ever produces another kind, we
         // want a loud crash rather than a silent no-op that would
         // make scored futures disagree with live play.

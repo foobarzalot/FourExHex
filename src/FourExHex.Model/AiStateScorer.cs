@@ -352,7 +352,7 @@ public static class AiStateScorer
         // Bankruptcy lookahead: a capital-less territory can't collect
         // income at all, so its units die on the next upkeep step.
         // Otherwise defer to the shared solvency primitive — the same
-        // one AiCommon.Enumerate uses for its candidate-gating gates.
+        // one AiCommon's phase enumerators use to gate candidates.
         // Neutral (viking) territories are upkeep-exempt and can never
         // bankrupt, so their units always carry full value — for the
         // vikings' own scoring AND as threats in every player's.

@@ -19,7 +19,7 @@ public class AiCommonTests
     }
 
     [Fact]
-    public void Enumerate_BuyGate_SeesDifficultyScaledCost()
+    public void Phase3Buy_Gate_SeesDifficultyScaledCost()
     {
         // 20-tile Red territory, gold 210, one adjacent Blue tile so buy
         // targets exist. A Commander unit's upkeep is a flat 54, but its
@@ -38,7 +38,8 @@ public class AiCommonTests
                 new Player("Blue", PlayerId.FromIndex(1), PlayerKind.Computer));
             Territory red = state.Territories.First(t => t.Owner == Red);
             state.Treasury.SetGold(red.Capital!.Value, 210);
-            return AiCommon.Enumerate(red, state).ToList();
+            return AiCommon.EnumeratePhase3ForLevel(
+                red, state, UnitLevel.Commander).ToList();
         }
 
         bool CommanderBuy(AiCandidate c) =>
@@ -116,7 +117,7 @@ public class AiCommonTests
     }
 
     [Fact]
-    public void Enumerate_Yields_Move_Reposition_To_Border_Tile()
+    public void Phase4b_Yields_Move_Reposition_To_Border_Tile()
     {
         // 4-tile Red strip cols 0..3 + Blue tile col 4. Red border
         // tile is col 3 (adjacent to Blue at col 4); cols 0..2 are
@@ -130,7 +131,9 @@ public class AiCommonTests
         GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
 
         Territory red = state.Territories.First(t => t.Owner == Red);
-        List<AiCandidate> candidates = AiCommon.Enumerate(red, state).ToList();
+        HexCoord unitCoord = HexCoord.FromOffset(0, 0);
+        List<AiCandidate> candidates = AiCommon.EnumeratePhase4bForUnit(
+            unitCoord, state.Grid.Get(unitCoord)!.Unit!, red, state).ToList();
 
         AiCandidate reposition = candidates.First(c =>
             c.Kind == AiActionKind.Reposition && c.Action is AiMoveAction);
@@ -140,7 +143,7 @@ public class AiCommonTests
     }
 
     [Fact]
-    public void Enumerate_Skips_Move_Reposition_To_Interior_Tile()
+    public void Phase4b_Skips_Move_Reposition_To_Interior_Tile()
     {
         // Same 4-tile strip + Blue. Cols 1 and 2 are interior Red
         // tiles (no enemy neighbor) — they must NOT be reposition
@@ -153,53 +156,20 @@ public class AiCommonTests
         GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
 
         Territory red = state.Territories.First(t => t.Owner == Red);
-        List<AiCandidate> candidates = AiCommon.Enumerate(red, state).ToList();
+        HexCoord unitCoord = HexCoord.FromOffset(0, 0);
+        List<AiCandidate> candidates = AiCommon.EnumeratePhase4bForUnit(
+            unitCoord, state.Grid.Get(unitCoord)!.Unit!, red, state).ToList();
 
         foreach (AiCandidate c in candidates.Where(c => c.Kind == AiActionKind.Reposition))
         {
-            switch (c.Action)
-            {
-                case AiMoveAction mv:
-                    Assert.True(AiCommon.IsBorderTile(mv.Destination, state.Grid, Red),
-                        $"reposition move target {mv.Destination} should be a border tile");
-                    break;
-                case AiBuyUnitAction bu:
-                    Assert.True(AiCommon.IsBorderTile(bu.Destination, state.Grid, Red),
-                        $"reposition buy target {bu.Destination} should be a border tile");
-                    break;
-            }
+            AiMoveAction mv = Assert.IsType<AiMoveAction>(c.Action);
+            Assert.True(AiCommon.IsBorderTile(mv.Destination, state.Grid, Red),
+                $"reposition move target {mv.Destination} should be a border tile");
         }
     }
 
     [Fact]
-    public void Enumerate_Yields_Buy_Reposition_To_Border_Tile()
-    {
-        // 4-tile Red strip cols 0..3 + Blue col 4 with a Soldier
-        // (defense 2) — a fresh recruit cannot buy-capture col 4.
-        // Treasury has enough for a recruit. Border tile is col 3,
-        // empty. Net income 4, upkeep 0 → buy-reposition post-net
-        // = 4 - 2 = 2 ≥ 0, solvent.
-        var grid = new HexGrid();
-        for (int col = 0; col <= 3; col++)
-            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
-        grid.Add(new HexTile(HexCoord.FromOffset(4, 0), Blue));
-        grid.Get(HexCoord.FromOffset(4, 0))!.Occupant = new Unit(Blue, UnitLevel.Soldier);
-        GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
-        HexCoord cap = state.Territories.First(t => t.Owner == Red).Capital!.Value;
-        state.Treasury.SetGold(cap, 10);
-
-        Territory red = state.Territories.First(t => t.Owner == Red);
-        List<AiCandidate> candidates = AiCommon.Enumerate(red, state).ToList();
-
-        AiCandidate buyReposition = candidates.First(c =>
-            c.Kind == AiActionKind.Reposition && c.Action is AiBuyUnitAction);
-        AiBuyUnitAction buy = Assert.IsType<AiBuyUnitAction>(buyReposition.Action);
-        Assert.Equal(HexCoord.FromOffset(3, 0), buy.Destination);
-        Assert.Equal(UnitLevel.Recruit, buy.Level);
-    }
-
-    [Fact]
-    public void Enumerate_Emits_Tower_Candidate_Adjacent_To_Friendly_Tower()
+    public void Phase4Towers_Emits_Candidate_Adjacent_To_Friendly_Tower()
     {
         // Overlap with an existing tower is a SCORING concern
         // (AiStateScorer.BuildTowerBonus discounts already-covered
@@ -216,7 +186,7 @@ public class AiCommonTests
         state.Treasury.SetGold(cap, 100);
 
         Territory red = state.Territories.First(t => t.Owner == Red);
-        List<AiBuildTowerAction> towers = AiCommon.Enumerate(red, state)
+        List<AiBuildTowerAction> towers = AiCommon.EnumeratePhase4Towers(red, state)
             .Where(c => c.Action is AiBuildTowerAction)
             .Select(c => (AiBuildTowerAction)c.Action)
             .ToList();
@@ -270,30 +240,39 @@ public class AiCommonTests
     }
 
     [Fact]
-    public void Enumerate_Skips_Buy_Reposition_When_Insolvent()
+    public void Phase3Buy_Gate_RejectsUnaffordableBuy()
     {
         // 5-tile Red strip cols 0..4 + Blue col 5. Two existing
         // recruits on cols 0, 1 (upkeep 4). Income 5, net = 1.
-        // Buy-recruit-capture: post-net = 1 + 1 - 2 = 0 → solvent.
-        // Buy-recruit-reposition: post-net = 1 - 2 = -1 → insolvent.
-        // Confirm the test scenario actually has a buy-capture
-        // available (sanity), then assert no buy-reposition.
-        var grid = new HexGrid();
-        for (int col = 0; col <= 4; col++)
-            grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
-        grid.Add(new HexTile(HexCoord.FromOffset(5, 0), Blue));
-        grid.Get(HexCoord.FromOffset(0, 0))!.Occupant = new Unit(Red);
-        grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(Red);
-        GameState state = BuildState(grid, new Player("Red", PlayerId.FromIndex(0)), new Player("Blue", PlayerId.FromIndex(1)));
-        HexCoord cap = state.Territories.First(t => t.Owner == Red).Capital!.Value;
-        state.Treasury.SetGold(cap, 10);
+        // Buy-recruit-capture: post-net = 1 + 1 - 2 = 0 → solvent, so
+        // the capture buy enumerates. Emptying the treasury gates it out.
+        GameState BuildStrip(int gold)
+        {
+            var grid = new HexGrid();
+            for (int col = 0; col <= 4; col++)
+                grid.Add(new HexTile(HexCoord.FromOffset(col, 0), Red));
+            grid.Add(new HexTile(HexCoord.FromOffset(5, 0), Blue));
+            grid.Get(HexCoord.FromOffset(0, 0))!.Occupant = new Unit(Red);
+            grid.Get(HexCoord.FromOffset(1, 0))!.Occupant = new Unit(Red);
+            GameState st = BuildState(grid,
+                new Player("Red", PlayerId.FromIndex(0)),
+                new Player("Blue", PlayerId.FromIndex(1)));
+            st.Treasury.SetGold(
+                st.Territories.First(t => t.Owner == Red).Capital!.Value, gold);
+            return st;
+        }
 
-        Territory red = state.Territories.First(t => t.Owner == Red);
-        List<AiCandidate> candidates = AiCommon.Enumerate(red, state).ToList();
+        GameState solvent = BuildStrip(10);
+        Assert.Contains(
+            AiCommon.EnumeratePhase3ForLevel(
+                solvent.Territories.First(t => t.Owner == Red),
+                solvent, UnitLevel.Recruit),
+            c => c.Kind == AiActionKind.Capture && c.Action is AiBuyUnitAction);
 
-        Assert.Contains(candidates, c =>
-            c.Kind == AiActionKind.Capture && c.Action is AiBuyUnitAction);
-        Assert.DoesNotContain(candidates, c =>
-            c.Kind == AiActionKind.Reposition && c.Action is AiBuyUnitAction);
+        GameState broke = BuildStrip(0);
+        Assert.Empty(
+            AiCommon.EnumeratePhase3ForLevel(
+                broke.Territories.First(t => t.Owner == Red),
+                broke, UnitLevel.Recruit));
     }
 }

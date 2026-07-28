@@ -86,9 +86,9 @@ public class AiSimulatorDriftTests
 
     /// <summary>
     /// Every distinct action any enumerator emits for the current
-    /// player: the all-in-one <see cref="AiCommon.Enumerate"/> plus the
-    /// phase-specific enumerators ComputerAi actually drives, so kinds
-    /// only a phase helper emits (e.g. buy-combine) are covered too.
+    /// player: every phase-specific enumerator ComputerAi drives, so
+    /// kinds only one phase emits (e.g. buy-combine) are covered too,
+    /// plus a hand-built buy-place the AI itself never proposes.
     /// </summary>
     private static List<AiAction> AllCandidateActions(GameState state)
     {
@@ -96,7 +96,6 @@ public class AiSimulatorDriftTests
         var candidates = new List<AiCandidate>();
         foreach (Territory t in state.Territories.Where(t => t.Owner == current))
         {
-            candidates.AddRange(AiCommon.Enumerate(t, state));
             candidates.AddRange(AiCommon.EnumeratePhase2b(t, state));
             candidates.AddRange(AiCommon.EnumeratePhase3(t, state));
             candidates.AddRange(AiCommon.EnumeratePhase4Towers(t, state));
@@ -107,6 +106,23 @@ public class AiSimulatorDriftTests
                     candidates.AddRange(AiCommon.EnumeratePhase1ForUnit(c, u, t, state));
                     candidates.AddRange(AiCommon.EnumeratePhase2aForUnit(c, u, t, state));
                     candidates.AddRange(AiCommon.EnumeratePhase4bForUnit(c, u, t, state));
+                }
+            }
+            // Buy-place — buying onto an empty own border tile — is a
+            // human-path shape (ExecuteBuyAndPlace) that no phase
+            // enumerator proposes: Phase 3 excludes buy-reposition by
+            // design. Added by hand so the sweep still pins
+            // ExecuteAiBuyUnit's onto-empty envelope against the simulator.
+            if (t.HasCapital)
+            {
+                foreach (HexCoord c in t.Coords)
+                {
+                    if (state.Grid.Get(c)?.Occupant != null) continue;
+                    if (!AiCommon.IsBorderTile(c, state.Grid, current)) continue;
+                    candidates.Add(new AiCandidate(
+                        new AiBuyUnitAction(t.Capital!.Value, c, UnitLevel.Recruit),
+                        AiActionKind.Reposition));
+                    break;
                 }
             }
         }
