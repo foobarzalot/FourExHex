@@ -653,12 +653,23 @@ public class ReplayRecorder
                 _session.SelectedTerritory = selected;
                 _map.ShowHighlight(selected);
                 break;
+            case ReplayVikingTurnEndBeat _:
+                // Replay-version-1 artifact (see ReplayBeat.cs): never
+                // recorded, playback ignores it. Explicit so a v1 file
+                // materializes cleanly rather than hitting the throw below.
+                break;
             case TutorialOnlyBeat _:
                 // Remaining tutorial-only beats (e.g., narration text) are
                 // authoring-only — the in-game Replay button silently
                 // skips them. Tutorial Preview consumes them through
                 // TutorialNarrationDriver instead.
                 break;
+            default:
+                // A beat kind with no dispatch arm would silently vanish
+                // from playback, diverging the replay with no proximate
+                // error. Match ReplayDrivenAi.ToAiAction and fail loudly.
+                throw new System.InvalidOperationException(
+                    $"Unmapped replay beat kind: {beat.GetType().Name}");
         }
     }
 

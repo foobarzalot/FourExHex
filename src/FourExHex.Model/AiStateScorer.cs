@@ -545,6 +545,7 @@ public static class AiStateScorer
         UnitLevel.Soldier => 12,
         UnitLevel.Captain => 30,
         UnitLevel.Commander => 70,
-        _ => 0,
+        _ => throw new System.InvalidOperationException(
+            $"Unmapped UnitLevel for scoring: {level}"),
     };
 }

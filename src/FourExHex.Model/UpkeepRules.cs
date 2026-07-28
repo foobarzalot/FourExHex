@@ -46,7 +46,8 @@ public static class UpkeepRules
         UnitLevel.Soldier => 6,
         UnitLevel.Captain => 18,
         UnitLevel.Commander => 54,
-        _ => 0,
+        _ => throw new System.InvalidOperationException(
+            $"Unmapped UnitLevel for upkeep: {level}"),
     };
 
     /// <summary>

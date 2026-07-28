@@ -298,9 +298,7 @@ public class AiTurnDriver
         _pendingAiAction = null;
         if (action == null) return; // defensive; shouldn't happen
 
-        HexCoord? rc = ApplyAiActionCore(action);
-        if (rc == null) return; // defensive; unrecognised action kind
-        HexCoord resultCoord = rc.Value;
+        HexCoord resultCoord = ApplyAiActionCore(action);
 
         _ops.CheckGameEndConditions();
         // A game-ending / human-defeating MOVE holds its modal until the
@@ -388,12 +386,11 @@ public class AiTurnDriver
     /// Shared by the paced step machine (<see cref="StepAiExecute"/>),
     /// the chunked <see cref="InstantAiTick"/>, and the controller's
     /// human-turn Automate loop so the pacing modes can't drift.
-    /// Returns the action's result coord (for the
-    /// paced post-action highlight) or null for an unrecognised action
-    /// kind. Does NOT run
+    /// Returns the action's result coord (for the paced post-action
+    /// highlight); an unrecognised action kind throws. Does NOT run
     /// the game-end check or refresh views — callers own pacing.
     /// </summary>
-    internal HexCoord? ApplyAiActionCore(AiAction action)
+    internal HexCoord ApplyAiActionCore(AiAction action)
     {
         _aiStepsThisPlayer++;
         LogAction(action);
@@ -527,7 +524,11 @@ public class AiTurnDriver
                 _session.PendingDefeatScreen = null;
                 return new HexCoord(0, 0);
             default:
-                return null;
+                // An action kind with no execution arm would burn the
+                // per-player step budget on no-ops (instant track) or stall
+                // the loop without rescheduling (paced track) — both silent.
+                throw new System.InvalidOperationException(
+                    $"Unmapped AiAction kind: {action.GetType().Name}");
         }
     }
 
@@ -644,8 +645,7 @@ public class AiTurnDriver
             return InstantStep.TurnBoundary;
         }
 
-        HexCoord? rc = ApplyAiActionCore(action);
-        if (rc == null) return InstantStep.Continued; // defensive
+        ApplyAiActionCore(action);
         _ops.CheckGameEndConditions();
         if (_ops.GameEndedFired || _session.IsGameOver) return InstantStep.Exhausted;
         if (_session.PendingDefeatScreen.HasValue) return InstantStep.Exhausted;

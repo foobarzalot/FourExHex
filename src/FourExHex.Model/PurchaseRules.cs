@@ -25,11 +25,10 @@ public static class PurchaseRules
             UnitLevel.Soldier => 2,
             UnitLevel.Captain => 3,
             UnitLevel.Commander => 4,
-            _ => int.MaxValue,
+            _ => throw new System.InvalidOperationException(
+                $"Unmapped UnitLevel for purchase cost: {level}"),
         };
-        return tier == int.MaxValue
-            ? int.MaxValue
-            : DifficultyRules.UnitBaseCost(difficulty) * tier;
+        return DifficultyRules.UnitBaseCost(difficulty) * tier;
     }
 
     /// <summary>Tower cost for a buyer at the given difficulty.</summary>
