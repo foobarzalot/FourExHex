@@ -157,4 +157,47 @@ public static class GameSettings
     /// Campaign launches always run Freeform rules.
     /// </summary>
     public static GameMode Mode = GameMode.Freeform;
+
+    /// <summary>
+    /// Default score credit for capturing a tile that holds an enemy tower
+    /// (<see cref="AiStateScorer.TowerRemovalCredit"/>), and the value used
+    /// for the neutral (viking) seat, which has no slot of its own.
+    ///
+    /// This is an empirical ceiling, not a derived price: 4 is the largest
+    /// credit that still lets the AI convert a decisive material advantage.
+    /// The credit only exists to break near-ties toward a tower the score
+    /// cannot see, and measurement shows essentially all of that benefit is
+    /// already present by 2 — raising it further does not buy better tower
+    /// behavior so much as override genuine positional judgement. At 10+ an
+    /// AI holding 2.5x its opponent's territory drops from winning every
+    /// game to a coin flip, because a strong position has the most to lose
+    /// from taking distorted captures (pinned by the lopsided-map fixture in
+    /// LevelPlaytestTests).
+    /// </summary>
+    public const int DefaultTowerKillValue = 4;
+
+    /// <summary>
+    /// One tower-destruction credit per slot in <see cref="PlayerConfig"/>
+    /// (see <see cref="AiStateScorer.TowerRemovalCredit"/>). Per-slot rather
+    /// than process-wide so a measurement sweep can hand the credit to some
+    /// AIs and withhold it from others, which is the only way to tell
+    /// whether it makes an AI *stronger* — in an all-same-settings game
+    /// every player benefits equally and win counts say nothing.
+    /// <c>Main</c> overrides from <c>FOUREXHEX_TOWER_KILL_VALUE</c> (one
+    /// value, all slots) or <c>FOUREXHEX_TOWER_KILL_VALUES</c> (per-slot
+    /// comma list).
+    /// </summary>
+    public static int[] TowerKillValues =
+    {
+        DefaultTowerKillValue, DefaultTowerKillValue, DefaultTowerKillValue,
+        DefaultTowerKillValue, DefaultTowerKillValue, DefaultTowerKillValue,
+    };
+
+    /// <summary>Tower-destruction credit for <paramref name="player"/>, falling
+    /// back to <see cref="DefaultTowerKillValue"/> for the neutral (viking)
+    /// seat and any slot outside the array.</summary>
+    public static int TowerKillValueFor(PlayerId player) =>
+        player.IsNone || player.Index < 0 || player.Index >= TowerKillValues.Length
+            ? DefaultTowerKillValue
+            : TowerKillValues[player.Index];
 }

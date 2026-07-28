@@ -345,6 +345,11 @@ public static class ComputerAi
             else if (candidate.Action is AiBuyUnitAction provokeBuy)
                 delta -= AiStateScorer.BarbarianProvokePenalty(
                     provokeBuy.Destination, state, forPlayer);
+            // An enemy tower is invisible to Score — it carries no standing
+            // value — so without this credit capturing one is priced exactly
+            // like taking a bare tile and the AI walks past it.
+            if (candidate.Action is AiMoveAction or AiBuyUnitAction)
+                delta += AiStateScorer.TowerRemovalCredit(candidate.Action, state, forPlayer);
 
             if (delta > 0) prof.PositiveCandidates++;
             if (delta > prof.ObservedBestDelta)

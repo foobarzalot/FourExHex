@@ -278,6 +278,178 @@ public class AiStateScorerTests
         Assert.True(score > 0, $"expected sparse-roster score {score} > 0");
     }
 
+    // --- Tower-removal credit (#198) ----------------------------------------
+
+    /// <summary>
+    /// 6x1 strip: (0,0)-(2,0) Blue (a 3-tile territory, so the reconciler
+    /// gives it a real capital), (3,0)-(5,0) Red. Red's attacker sits at
+    /// (3,0); (2,0) is the contested tile every case decorates.
+    /// </summary>
+    private static GameState BuildDestructionState()
+    {
+        HexGrid grid = TestHelpers.BuildRectGrid(6, 1, Red);
+        for (int col = 0; col <= 2; col++)
+            grid.Get(HexCoord.FromOffset(col, 0))!.Owner = Blue;
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var players = new List<Player>
+        {
+            new Player("Red", Red, PlayerKind.Computer),
+            new Player("Blue", Blue, PlayerKind.Computer),
+        };
+        return new GameState(grid, territories, players, new TurnState(players), new Treasury());
+    }
+
+    private static AiMoveAction CaptureOf(HexCoord target) =>
+        new AiMoveAction(HexCoord.FromOffset(3, 0), target);
+
+    [Fact]
+    public void TowerRemovalCredit_EnemyTower_ReturnsTowerKillValue()
+    {
+        GameState state = BuildDestructionState();
+        HexCoord target = HexCoord.FromOffset(2, 0);
+        state.Grid.Get(target)!.Occupant = new Tower();
+
+        Assert.Equal(
+            GameSettings.TowerKillValueFor(Red),
+            AiStateScorer.TowerRemovalCredit(CaptureOf(target), state, Red));
+    }
+
+    [Fact]
+    public void TowerRemovalCredit_EnemyUnit_ReturnsZero()
+    {
+        // Deliberate: Score already credits a kill through the drop in the
+        // victim territory's unit value. Crediting it again here would make
+        // the AI overpay for kills, so units are worth nothing to this term.
+        GameState state = BuildDestructionState();
+        HexCoord target = HexCoord.FromOffset(2, 0);
+        state.Grid.Get(target)!.Occupant = new Unit(Blue, UnitLevel.Commander);
+
+        Assert.Equal(0, AiStateScorer.TowerRemovalCredit(CaptureOf(target), state, Red));
+    }
+
+    [Fact]
+    public void TowerRemovalCredit_BuyOntoEnemyTower_ReturnsTowerKillValue()
+    {
+        // The buy-to-capture arm destroys exactly what the move arm does.
+        GameState state = BuildDestructionState();
+        HexCoord target = HexCoord.FromOffset(2, 0);
+        state.Grid.Get(target)!.Occupant = new Tower();
+        HexCoord cap = state.Territories.First(t => t.Owner == Red).Capital!.Value;
+
+        Assert.Equal(
+            GameSettings.TowerKillValueFor(Red),
+            AiStateScorer.TowerRemovalCredit(
+                new AiBuyUnitAction(cap, target, UnitLevel.Captain), state, Red));
+    }
+
+    [Fact]
+    public void TowerRemovalCredit_NonDestructiveActions_ReturnZero()
+    {
+        GameState state = BuildDestructionState();
+        HexCoord red = HexCoord.FromOffset(3, 0);
+        HexCoord cap = state.Territories.First(t => t.Owner == Red).Capital!.Value;
+
+        // An empty enemy tile — a capture that destroys no tower.
+        Assert.Equal(0, AiStateScorer.TowerRemovalCredit(
+            CaptureOf(HexCoord.FromOffset(2, 0)), state, Red));
+
+        // An enemy CAPITAL is not a tower and earns nothing: capital
+        // destruction was measured to cost win rate and is not credited.
+        Assert.Equal(0, AiStateScorer.TowerRemovalCredit(
+            CaptureOf(state.Territories.First(t => t.Owner == Blue).Capital!.Value),
+            state, Red));
+
+        // An own-territory tree chop is not a destruction…
+        state.Grid.Get(HexCoord.FromOffset(5, 0))!.Occupant = new Tree();
+        Assert.Equal(0, AiStateScorer.TowerRemovalCredit(
+            new AiMoveAction(red, HexCoord.FromOffset(5, 0)), state, Red));
+
+        // …nor is a tower build or a buy-combine (both target own tiles)…
+        Assert.Equal(0, AiStateScorer.TowerRemovalCredit(
+            new AiBuildTowerAction(cap, HexCoord.FromOffset(5, 0)), state, Red));
+        Assert.Equal(0, AiStateScorer.TowerRemovalCredit(
+            new AiBuyCombineAction(cap, red, UnitLevel.Recruit), state, Red));
+
+        // …and an off-map destination is inert.
+        Assert.Equal(0, AiStateScorer.TowerRemovalCredit(
+            new AiMoveAction(red, HexCoord.FromOffset(99, 99)), state, Red));
+    }
+
+    [Fact]
+    public void TowerRemovalCredit_IsPerPlayer()
+    {
+        // Asymmetric credits are how a sweep measures whether the credit
+        // makes an AI stronger: give it to some slots, withhold it from
+        // others, and compare win rates. So the value is read per actor,
+        // not process-wide.
+        int[] towers = (int[])GameSettings.TowerKillValues.Clone();
+        try
+        {
+            GameSettings.TowerKillValues[Red.Index] = 40;
+            GameSettings.TowerKillValues[Blue.Index] = 0;
+
+            // Red's territory faces Blue's; give Blue an attacker of its own
+            // so the same tile can be evaluated from both sides.
+            GameState state = BuildDestructionState();
+            HexCoord blueTile = HexCoord.FromOffset(2, 0);
+            HexCoord redTile = HexCoord.FromOffset(3, 0);
+            state.Grid.Get(blueTile)!.Occupant = new Tower();
+            state.Grid.Get(redTile)!.Occupant = new Tower();
+
+            // Red capturing Blue's tower earns Red's value…
+            Assert.Equal(40, AiStateScorer.TowerRemovalCredit(
+                new AiMoveAction(redTile, blueTile), state, Red));
+            // …and Blue capturing Red's tower earns Blue's (zero).
+            Assert.Equal(0, AiStateScorer.TowerRemovalCredit(
+                new AiMoveAction(blueTile, redTile), state, Blue));
+        }
+        finally
+        {
+            GameSettings.TowerKillValues = towers;
+        }
+    }
+
+    [Fact]
+    public void TowerRemovalCredit_NeutralActorUsesDefaults()
+    {
+        // Vikings (PlayerId.None) have no slot, so they fall back to the
+        // defaults rather than indexing off the end of the array.
+        GameState state = BuildDestructionState();
+        HexCoord target = HexCoord.FromOffset(2, 0);
+        state.Grid.Get(target)!.Occupant = new Tower();
+
+        Assert.Equal(
+            GameSettings.DefaultTowerKillValue,
+            AiStateScorer.TowerRemovalCredit(
+                new AiMoveAction(HexCoord.FromOffset(3, 0), target), state, PlayerId.None));
+    }
+
+    [Fact]
+    public void TowerRemovalCredit_HonorsGameSettingsOverride()
+    {
+        // The tuning knobs are what the sweep runs move, so the term must
+        // read them rather than bake in its defaults.
+        int[] tower = (int[])GameSettings.TowerKillValues.Clone();
+        try
+        {
+            GameSettings.TowerKillValues[Red.Index] = 99;
+
+            GameState state = BuildDestructionState();
+            HexCoord cap = state.Territories.First(t => t.Owner == Blue).Capital!.Value;
+            HexCoord towerTile = state.Territories.First(t => t.Owner == Blue)
+                .Coords.First(c => !c.Equals(cap));
+            state.Grid.Get(towerTile)!.Occupant = new Tower();
+
+            Assert.Equal(99, AiStateScorer.TowerRemovalCredit(
+                CaptureOf(towerTile), state, Red));
+            Assert.Equal(0, AiStateScorer.TowerRemovalCredit(CaptureOf(cap), state, Red));
+        }
+        finally
+        {
+            GameSettings.TowerKillValues = tower;
+        }
+    }
+
     // --- Barbarian provoke penalty (#188) ---------------------------------
 
     /// <summary>

@@ -1378,6 +1378,25 @@ Replay reuses the live `ExecuteAi*` helpers — same captures, FX, `HandleCaptur
   `ComputerAi`, the negative sibling of the bonuses above — ranking-only, so
   a lone provoking capture is still taken. See **Barbarian aggro** under
   Viking Raiders.
+  **Enemy towers** earn `TowerRemovalCredit`, *added* to move and buy-unit
+  candidate deltas in `ComputerAi` (`[tower-kill]` at Debug):
+  `GameSettings.TowerKillValueFor(owner)` — per-slot, default 4 — for capturing
+  a tile holding an enemy tower, 0 for any own-territory destination. A tower is
+  invisible to `Score` (`TerritoryValue` counts only units, and the defense terms
+  are one-sided over own territory), so without the credit taking one is priced
+  exactly like taking a bare tile and the AI walks past towers it could capture.
+  **Enemy units earn nothing here**: `Score` already credits a kill via the drop
+  in the victim's unit value, and crediting twice would make the AI overpay.
+  4 is an empirical ceiling rather than a derived price — the credit exists to
+  break near-ties, essentially all of that benefit is present by 2, and at 10+
+  the distortion costs a leading AI its ability to convert a decisive material
+  advantage (pinned by the lopsided-map fixture in `LevelPlaytestTests`).
+  Per-slot so a sweep can hand the credit to some AIs and withhold it from
+  others — the only way to measure whether it makes an AI stronger. Tuning knobs
+  `FOUREXHEX_TOWER_KILL_VALUE` (all slots) / `FOUREXHEX_TOWER_KILL_VALUES`
+  (per-slot comma list), applied in `Main`; `AiBaselineMeasurementTests` reports
+  tower lifetime (build→destroyed turns) and a credited-vs-uncredited win split,
+  so a sweep has numbers to move.
 - **`ReplayDrivenAi`** — script-driven chooser, used only by TutorialBuilder
   Preview. Replays recorded non-player-0 `ReplayBeat`s through the AI step
   machine via a shared `ScriptCursor` (also referenced by `TutorialPreview`, so

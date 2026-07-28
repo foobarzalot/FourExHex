@@ -486,6 +486,52 @@ public static class AiStateScorer
     }
 
     /// <summary>
+    /// <see cref="GameSettings.TowerKillValueFor"/> when <paramref name="action"/>
+    /// captures a tile holding an enemy tower, else 0. Added to a candidate's
+    /// delta in <see cref="ComputerAi"/> like <see cref="BuildTowerBonus"/>, so
+    /// the absolute <see cref="Score"/> stays clean.
+    ///
+    /// Exists because <see cref="Score"/> cannot see a tower at all —
+    /// <c>TerritoryValue</c> counts only units, and the defense terms are
+    /// one-sided over own territory — so without this credit taking a tower is
+    /// priced exactly like taking a bare tile, and the AI walks past towers it
+    /// could capture.
+    ///
+    /// <b>Enemy units earn nothing here.</b> <see cref="Score"/> already credits
+    /// a kill through the drop in the victim territory's unit value; crediting
+    /// it again would make the AI overpay for kills.
+    ///
+    /// Must be evaluated BEFORE the action is applied, like
+    /// <see cref="AiActionCore.IsFriendlyUnitAt"/> — the destination holds the
+    /// doomed tower only until the arriving unit lands.
+    /// </summary>
+    public static int TowerRemovalCredit(AiAction action, GameState state, PlayerId owner)
+    {
+        HexCoord destination;
+        switch (action)
+        {
+            case AiMoveAction move: destination = move.Destination; break;
+            case AiBuyUnitAction buy: destination = buy.Destination; break;
+            default: return 0;
+        }
+
+        HexTile? tile = state.Grid.Get(destination);
+        // Own-territory destinations destroy nothing: the same
+        // `Owner != owner` test AiCommon.ClassifyTarget uses to call a
+        // destination a capture in the first place.
+        if (tile == null || tile.Owner == owner) return 0;
+        if (tile.Occupant is not Tower) return 0;
+
+        int credit = GameSettings.TowerKillValueFor(owner);
+        if (credit != 0)
+        {
+            Log.Debug(Log.LogCategory.Ai,
+                $"[tower-kill] {owner} -> {destination} +{credit}");
+        }
+        return credit;
+    }
+
+    /// <summary>
     /// Strategic value of a unit by level. Roughly tracks upkeep
     /// cost but discounts higher levels so the AI doesn't
     /// over-combine when lower-level units would suffice. Recruit

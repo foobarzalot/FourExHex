@@ -2293,6 +2293,103 @@ public class ComputerAiTests
         }
     }
 
+    // --- Tower-removal credit (#198) -----------------------------------------
+
+    /// <summary>
+    /// The <see cref="BuildTiedCapturesState"/> geometry with a stronger
+    /// attacker: a 7-tile Red strip (0,0)..(6,0) holding one
+    /// <paramref name="attacker"/> at (3,0), and targets at (3,-1)/(3,1) that
+    /// are 180°-rotation images of each other about the unit (the strip maps
+    /// onto itself under (q,r) → (6-q,-r)), so either capture yields a
+    /// point-symmetric after-state and an identical base delta. The lex-min
+    /// capital lands at (0,0), whose defense radius ((0,0)+(1,0)) touches no
+    /// post-capture border tile, so it cannot break the symmetry. A tower
+    /// changes neither income nor upkeep, so decorating one target with one
+    /// leaves the deltas tied — only the destruction credit separates them.
+    /// </summary>
+    private static GameState BuildDestroyTieState(
+        HexOccupant? southOccupant,
+        UnitLevel attacker = UnitLevel.Captain)
+    {
+        var grid = new HexGrid();
+        for (int q = 0; q < 7; q++)
+        {
+            grid.Add(new HexTile(new HexCoord(q, 0), Red));
+        }
+        grid.Add(new HexTile(TieTargetNorth, PlayerId.None));
+        grid.Add(new HexTile(TieTargetSouth, PlayerId.None));
+        grid.Get(new HexCoord(3, 0))!.Occupant = new Unit(Red, attacker);
+        grid.Get(TieTargetSouth)!.Occupant = southOccupant;
+        GameState state = BuildState(grid, new Player("Red", Red), new Player("Blue", Blue));
+        // Keep Red solvent so the scorer's bankruptcy lookahead doesn't zero
+        // out its own unit value; gold itself contributes nothing to Score.
+        state.Treasury.SetGold(state.Territories.First(t => t.Owner == Red).Capital!.Value, 100);
+        return state;
+    }
+
+    [Fact]
+    public void ChooseNextAction_PrefersTowerRemovalOverEqualScoreCapture()
+    {
+        // Towers carry no standing score value, so capturing the bare north
+        // tile and capturing the tower-held south tile tie on base delta.
+        // The destruction credit must take the tower for EVERY seed — the
+        // rng tie-break must never get a say.
+        for (int seed = 0; seed < 30; seed++)
+        {
+            GameState state = BuildDestroyTieState(new Tower());
+
+            AiMoveAction move = Assert.IsType<AiMoveAction>(ComputerAi.ChooseNextAction(
+                state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(),
+                new DeterministicRng(seed)));
+            Assert.Equal(TieTargetSouth, move.Destination);
+        }
+    }
+
+    [Fact]
+    public void ChooseNextAction_TowerCreditIsWhatFlipsTheChoice()
+    {
+        // Same board with the credit zeroed reproduces the old behavior: the
+        // two captures tie and the seeded draw decides, so across 30 seeds
+        // both targets get picked. That pins the credit — not some incidental
+        // asymmetry — as the thing deciding the test above.
+        int[] tower = (int[])GameSettings.TowerKillValues.Clone();
+        try
+        {
+            GameSettings.TowerKillValues[Red.Index] = 0;
+            var chosen = new HashSet<HexCoord>();
+            for (int seed = 0; seed < 30; seed++)
+            {
+                GameState state = BuildDestroyTieState(new Tower());
+                chosen.Add(Assert.IsType<AiMoveAction>(ComputerAi.ChooseNextAction(
+                    state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(),
+                    new DeterministicRng(seed))).Destination);
+            }
+            Assert.Equal(2, chosen.Count);
+        }
+        finally
+        {
+            GameSettings.TowerKillValues = tower;
+        }
+    }
+
+    [Fact]
+    public void ChooseNextAction_StrictlyBetterCapture_BeatsTowerRemovalCredit()
+    {
+        // Same tower board, but the bare north target carries gold — its
+        // capture earns the gold premium (40), comfortably clear of the
+        // tower credit (15), so the credit must not override it.
+        for (int seed = 0; seed < 30; seed++)
+        {
+            GameState state = BuildDestroyTieState(new Tower());
+            state.Grid.Get(TieTargetNorth)!.IsGold = true;
+
+            AiMoveAction move = Assert.IsType<AiMoveAction>(ComputerAi.ChooseNextAction(
+                state, Red, new HashSet<HexCoord>(), new HashSet<HexCoord>(),
+                new DeterministicRng(seed)));
+            Assert.Equal(TieTargetNorth, move.Destination);
+        }
+    }
+
     // --- Barbarian provoke avoidance (#188) --------------------------------
 
     /// <summary>

@@ -200,6 +200,17 @@ public partial class Main : Node2D
         if (System.Enum.TryParse(
                 OS.GetEnvironment("FOUREXHEX_MODE"), ignoreCase: true, out GameMode envMode))
             GameSettings.Mode = envMode;
+        // AI destruction-credit tuning knobs (same precedence idea as the
+        // densities above): what the AI scores for destroying an enemy tower
+        // or capital, both invisible to AiStateScorer.Score on their own.
+        // Set to 0 to disable a credit entirely. Model itself never reads the
+        // environment, so a plain `dotnet test` always sees the defaults and
+        // the DeterminismProbe goldens stay stable.
+        // The scalar form sets every slot; the plural form takes a per-slot
+        // comma list ("15,15,15,0,0,0") so a sweep can hand the credit to
+        // some AIs and withhold it from others and compare win rates.
+        ApplyKillValueEnv("FOUREXHEX_TOWER_KILL_VALUE", "FOUREXHEX_TOWER_KILL_VALUES",
+            GameSettings.TowerKillValues);
 
         int seed = envSeed
                 ?? pendingLoad?.MasterSeed
@@ -653,6 +664,32 @@ public partial class Main : Node2D
 #if DEBUG
         CheatMenu.Attach(this);
 #endif
+    }
+
+    /// <summary>
+    /// Apply the AI tower-kill-credit env override into <paramref name="slots"/>.
+    /// <paramref name="scalarVar"/> ("15") sets every slot;
+    /// <paramref name="listVar"/> ("15,15,15,0,0,0") sets them individually,
+    /// left to right, ignoring extras and leaving unlisted slots alone. The
+    /// list wins when both are set. Absent, malformed, or negative entries
+    /// are no-ops, matching the density overrides.
+    /// </summary>
+    private static void ApplyKillValueEnv(string scalarVar, string listVar, int[] slots)
+    {
+        string list = OS.GetEnvironment(listVar);
+        if (!string.IsNullOrEmpty(list))
+        {
+            string[] parts = list.Split(',');
+            for (int i = 0; i < parts.Length && i < slots.Length; i++)
+            {
+                if (int.TryParse(parts[i].Trim(), out int v) && v >= 0) slots[i] = v;
+            }
+            return;
+        }
+        if (int.TryParse(OS.GetEnvironment(scalarVar), out int all) && all >= 0)
+        {
+            for (int i = 0; i < slots.Length; i++) slots[i] = all;
+        }
     }
 
     /// <summary>Default roster for a starting map that baked no kinds: Red

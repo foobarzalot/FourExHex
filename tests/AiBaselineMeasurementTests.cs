@@ -64,7 +64,10 @@ public class AiBaselineMeasurementTests
         int[] TowersBuilt, int[] TowersStanding,
         int[] ActionsBySlot, int[] ActionsByRank,
         Dictionary<string, int> ActionsByType,
-        List<TowerBuild> TowerBuilds);
+        List<TowerBuild> TowerBuilds,
+        int[] TowersDestroyed,
+        List<int> TowerLifetimes, List<int> TowerExposureLatency,
+        List<int> SurvivingTowerAges);
 
     [Fact]
     public void AiBaselineMeasurement_TowerAndPhaseDistribution()
@@ -79,6 +82,14 @@ public class AiBaselineMeasurementTests
             Environment.GetEnvironmentVariable("FOUREXHEX_MEASURE_SEEDS"), 101, 110);
         string outPath = Environment.GetEnvironmentVariable("FOUREXHEX_MEASURE_OUT")
             ?? Path.Combine(Path.GetTempPath(), "ai-baseline-138.txt");
+
+        // #198 destruction-credit sweep knobs. Model never reads the
+        // environment, so the harness applies them here — once, before the
+        // Parallel.For below, since every game shares the static. Sweep by
+        // re-invoking with different values, not by varying them mid-run.
+        int[] previousTowerKill = (int[])GameSettings.TowerKillValues.Clone();
+        ApplyKillEnv("FOUREXHEX_TOWER_KILL_VALUE", "FOUREXHEX_TOWER_KILL_VALUES",
+            GameSettings.TowerKillValues);
 
         // Phase/kind tallies come from ComputerAi's "[chose] {player}
         // phase={p} kind={k} {action} delta={d}" Debug line, captured via
@@ -115,6 +126,29 @@ public class AiBaselineMeasurementTests
         {
             Log.Sink = previousSink;
             Log.SetLevel(Log.LogCategory.Ai, Log.LogLevel.Off);
+            GameSettings.TowerKillValues = previousTowerKill;
+        }
+    }
+
+    /// <summary>Mirror of <c>Main.ApplyKillValueEnv</c> for the harness: the
+    /// scalar var sets every slot, the plural var takes a per-slot comma list
+    /// and wins when both are set. Applied once before the parallel block —
+    /// every game in a run shares these statics.</summary>
+    private static void ApplyKillEnv(string scalarVar, string listVar, int[] slots)
+    {
+        string? list = Environment.GetEnvironmentVariable(listVar);
+        if (!string.IsNullOrEmpty(list))
+        {
+            string[] parts = list.Split(',');
+            for (int i = 0; i < parts.Length && i < slots.Length; i++)
+            {
+                if (int.TryParse(parts[i].Trim(), out int v) && v >= 0) slots[i] = v;
+            }
+            return;
+        }
+        if (int.TryParse(Environment.GetEnvironmentVariable(scalarVar), out int all) && all >= 0)
+        {
+            for (int i = 0; i < slots.Length; i++) slots[i] = all;
         }
     }
 
@@ -149,14 +183,72 @@ public class AiBaselineMeasurementTests
         var actionsByRank = new int[PlayerCount];
         var actionsByType = new Dictionary<string, int>();
         var towerBuilds = new List<TowerBuild>();
+        // Enemy assets destroyed — the signal the #198 destruction-credit
+        // tuning runs move. Counted at choose time, when `s` is still the
+        // pre-action state holding the doomed occupant.
+        var towersDestroyed = new int[PlayerCount];
+        // How PROMPTLY towers die, which is what the credit is really for —
+        // a count alone can't distinguish "took it sooner" from "there were
+        // more of them". Lifetime is turns from build to destruction;
+        // exposure latency is turns from the tower first bordering an enemy
+        // (i.e. becoming a plausible target) to its destruction, which
+        // isolates AI hesitation from board dynamics. Towers still standing
+        // at game end are censored — their ages are reported separately so a
+        // drop in mean lifetime can't be mistaken for progress when it just
+        // means fewer towers died.
+        var towerBuiltTurn = new Dictionary<HexCoord, int>();
+        var towerExposedTurn = new Dictionary<HexCoord, int>();
+        var towerLifetimes = new List<int>();
+        var towerExposureLatency = new List<int>();
         AiAction? TallyingChooser(
             GameState s, PlayerId forPlayer, HashSet<HexCoord> visited, HashSet<HexCoord> repositionedUnits, DeterministicRng rng)
         {
             AiAction? action = AiDispatcher.ChooseForCurrentPlayer(s, forPlayer, visited, repositionedUnits, rng);
+            int turn = s.Turns.TurnNumber;
+            // Mark newly-exposed towers: the first turn a tracked tower has a
+            // neighbor owned by anyone else, it is a plausible target.
+            foreach (HexCoord tc in towerBuiltTurn.Keys)
+            {
+                if (towerExposedTurn.ContainsKey(tc)) continue;
+                if (s.Grid.Get(tc) is not HexTile tt || tt.Occupant is not Tower) continue;
+                foreach (HexCoord n in tc.Neighbors())
+                {
+                    if (s.Grid.Get(n) is HexTile nt && nt.Owner != tt.Owner)
+                    {
+                        towerExposedTurn[tc] = turn;
+                        break;
+                    }
+                }
+            }
             if (action != null)
             {
                 string type = action.GetType().Name;
                 actionsByType[type] = actionsByType.GetValueOrDefault(type) + 1;
+                // Tower lifetime bookkeeping runs for EVERY actor, vikings
+                // included — a raider's kill still ends that tower's life.
+                HexCoord? hitAt = action switch
+                {
+                    AiMoveAction m => m.Destination,
+                    AiBuyUnitAction b => b.Destination,
+                    _ => null,
+                };
+                if (hitAt != null
+                    && s.Grid.Get(hitAt.Value) is HexTile hit
+                    && hit.Occupant is Tower
+                    && hit.Owner != forPlayer
+                    && towerBuiltTurn.TryGetValue(hitAt.Value, out int built))
+                {
+                    towerLifetimes.Add(turn - built);
+                    if (towerExposedTurn.TryGetValue(hitAt.Value, out int exposed))
+                        towerExposureLatency.Add(turn - exposed);
+                    towerBuiltTurn.Remove(hitAt.Value);
+                    towerExposedTurn.Remove(hitAt.Value);
+                }
+                if (action is AiBuildTowerAction built2)
+                {
+                    towerBuiltTurn[built2.Destination] = turn;
+                    towerExposedTurn.Remove(built2.Destination);
+                }
                 if (!forPlayer.IsNone)
                 {
                     (int rank, int alive) = RankByTiles(s, forPlayer.Index);
@@ -167,6 +259,12 @@ public class AiBaselineMeasurementTests
                         towersBuilt[forPlayer.Index]++;
                         towerBuilds.Add(new TowerBuild(
                             forPlayer.Index, rank, alive, s.Turns.TurnNumber));
+                    }
+                    if (hitAt != null
+                        && s.Grid.Get(hitAt.Value) is HexTile dst
+                        && dst.Owner != forPlayer)
+                    {
+                        if (dst.Occupant is Tower) towersDestroyed[forPlayer.Index]++;
                     }
                 }
             }
@@ -189,10 +287,20 @@ public class AiBaselineMeasurementTests
                 towersStanding[tile.Owner.Index]++;
         }
 
+        // Censoring: towers alive at the final whistle never got a chance to
+        // die, so their ages are reported apart from the lifetimes above.
+        var survivingAges = new List<int>();
+        foreach (KeyValuePair<HexCoord, int> kvp in towerBuiltTurn)
+        {
+            if (state.Grid.Get(kvp.Key)?.Occupant is Tower)
+                survivingAges.Add(state.Turns.TurnNumber - kvp.Value);
+        }
+
         return new GameResult(
             seed, session.Winner?.Index ?? -1, state.Turns.TurnNumber,
             towersBuilt, towersStanding, actionsBySlot, actionsByRank,
-            actionsByType, towerBuilds);
+            actionsByType, towerBuilds, towersDestroyed,
+            towerLifetimes, towerExposureLatency, survivingAges);
     }
 
     /// <summary>
@@ -248,6 +356,61 @@ public class AiBaselineMeasurementTests
         sb.AppendLine($"Games with >=1 tower built: {gamesWithTower}/{results.Length}");
         sb.AppendLine($"Towers built total: {totalTowers} " +
             $"(mean per game: {(results.Length > 0 ? totalTowers * 100 / results.Length : 0) / 100.0:0.00})");
+
+        // #198 destruction credit: the counters the tuning sweep moves.
+        int towersKilled = results.Sum(r => r.TowersDestroyed.Sum());
+        sb.AppendLine($"Enemy towers destroyed " +
+            $"(credit per slot: [{string.Join(' ', GameSettings.TowerKillValues)}]): " +
+            $"{towersKilled}");
+
+        // Head-to-head strength: only meaningful when slots differ. With every
+        // slot on the same values each player benefits equally and win counts
+        // reflect map/seat asymmetry, not the credit — so say so rather than
+        // reporting a number that invites the wrong conclusion.
+        var credited = new List<int>();
+        var uncredited = new List<int>();
+        for (int i = 0; i < PlayerCount; i++)
+        {
+            bool hasCredit = GameSettings.TowerKillValues[i] > 0;
+            (hasCredit ? credited : uncredited).Add(i);
+        }
+        if (credited.Count > 0 && uncredited.Count > 0)
+        {
+            int cw = results.Count(r => credited.Contains(r.WinnerSlot));
+            int uw = results.Count(r => uncredited.Contains(r.WinnerSlot));
+            int decided = cw + uw;
+            sb.AppendLine($"Head-to-head: credited slots [{string.Join(' ', credited)}] " +
+                $"won {cw}/{decided}" +
+                (decided > 0 ? $" ({cw * 100 / decided}%)" : "") +
+                $"; uncredited [{string.Join(' ', uncredited)}] won {uw}" +
+                $"  (even split would be {credited.Count * 100 / PlayerCount}%)");
+            sb.AppendLine("  NOTE: seats are not symmetric on a procedural map — " +
+                "run the mirrored assignment too and combine before concluding.");
+        }
+        else
+        {
+            sb.AppendLine("Head-to-head: n/a — every slot has the same credits, so " +
+                "win counts measure seat/map asymmetry, not the credit's strength.");
+        }
+        // How PROMPTLY towers die — the metric the credit actually targets.
+        // A count can rise simply because more towers existed; latency can't.
+        List<int> allLifetimes = results.SelectMany(r => r.TowerLifetimes).ToList();
+        List<int> allLatency = results.SelectMany(r => r.TowerExposureLatency).ToList();
+        List<int> allSurviving = results.SelectMany(r => r.SurvivingTowerAges).ToList();
+        static string Stat(List<int> v)
+        {
+            if (v.Count == 0) return "n=0";
+            var sorted = v.OrderBy(x => x).ToList();
+            int median = sorted[sorted.Count / 2];
+            return $"n={v.Count} mean={v.Sum() * 100 / v.Count / 100.0:0.00} " +
+                $"median={median} p90={sorted[(int)(sorted.Count * 0.9)]} max={sorted[^1]}";
+        }
+        sb.AppendLine($"  tower lifetime (build->destroyed, turns): {Stat(allLifetimes)}");
+        sb.AppendLine($"  tower exposure latency (bordered enemy->destroyed): {Stat(allLatency)}");
+        sb.AppendLine($"  surviving tower age at game end (censored): {Stat(allSurviving)}");
+        int builtAll = results.Sum(r => r.TowersBuilt.Sum());
+        sb.AppendLine($"  towers destroyed / built: {allLifetimes.Count}/{builtAll}" +
+            (builtAll > 0 ? $" ({allLifetimes.Count * 100 / builtAll}%)" : ""));
 
         sb.AppendLine($"Executed-action mix ({totalActions} actions):");
         var mergedTypes = new SortedDictionary<string, int>();
