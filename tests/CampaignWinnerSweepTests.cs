@@ -48,6 +48,17 @@ public class CampaignWinnerSweepTests
     private const int Rows = 20;
     private const int MaxTurns = 500;
 
+    /// <summary>
+    /// One game per core. A level's search is minutes of allocation-heavy
+    /// simulation, so the thread pool's default growth would otherwise inject
+    /// a thread per level and run all 256 at once — measured at a third of the
+    /// aggregate throughput of a core-bounded run, since the games then
+    /// contend for GC instead of progressing. Per-level results are
+    /// independent and deterministic, so the bound changes only wall time.
+    /// </summary>
+    private static readonly ParallelOptions BoundedToCores =
+        new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount };
+
     private readonly ITestOutputHelper _output;
 
     public CampaignWinnerSweepTests(ITestOutputHelper output)
@@ -81,7 +92,7 @@ public class CampaignWinnerSweepTests
         object progressLock = new object();
         long startTicks = Environment.TickCount64;
 
-        Parallel.For(lo, hi + 1, level =>
+        Parallel.For(lo, hi + 1, BoundedToCores, level =>
         {
             results[level - lo] = RunLevel(level);
             int finished = Interlocked.Increment(ref done);
@@ -200,7 +211,7 @@ public class CampaignWinnerSweepTests
         object writeLock = new object();
         long startTicks = Environment.TickCount64;
 
-        Parallel.For(lo, hi + 1, level =>
+        Parallel.For(lo, hi + 1, BoundedToCores, level =>
         {
             lock (writeLock) { if (results.ContainsKey(level)) return; }
             int humanSlot = CampaignProgress.HumanColorSlotForLevel(level);

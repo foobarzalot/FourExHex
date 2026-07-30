@@ -50,9 +50,9 @@ public static class CampaignStore
 
     /// <summary>
     /// Configure <see cref="GameSettings"/> for a campaign launch and mark
-    /// the level attempted: master seed pinned to the level (identity
-    /// mapping), roster locked to 1 Human + 5 Computer with the human's
-    /// handicap set to the tier difficulty (AIs stay Soldier), any stale
+    /// the level attempted: master seed taken from the level's baked
+    /// winnable-seed table entry, roster locked to 1 Human + 5 Computer with
+    /// the human's handicap set to the tier difficulty (AIs stay Soldier), any stale
     /// starting-map handoff cleared. Shared by the campaign screen's Play
     /// button and the victory overlay's "Next unbeaten level" button; the
     /// caller performs the scene change.

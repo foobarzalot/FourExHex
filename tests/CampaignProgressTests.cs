@@ -153,17 +153,17 @@ public class CampaignProgressTests
     // byte-identically; the rest are re-seeded. The expectations below are
     // facts established by the CampaignWinnerSweepTests sweep/search harness.
     [Theory]
+    [InlineData(3)]
     [InlineData(9)]
-    [InlineData(23)]
     public void SeedForLevel_KeepsIdentityWhereOriginalMapIsWinnable(int level)
     {
         Assert.Equal(level, CampaignProgress.SeedForLevel(level));
     }
 
     [Theory]
-    [InlineData(0)]   // human slot lost on the identity seed
-    [InlineData(171)] // human slot lost on the identity seed
-    [InlineData(41)]  // stasis: no winner by the turn cap on the identity seed
+    [InlineData(23)]  // won on the next candidate after the identity seed
+    [InlineData(41)]  // won on candidate 4
+    [InlineData(140)] // deepest search in the table: candidate 94
     public void SeedForLevel_ReseedsLevelsWhoseOriginalMapIsNotWinnable(int level)
     {
         Assert.NotEqual(level, CampaignProgress.SeedForLevel(level));
