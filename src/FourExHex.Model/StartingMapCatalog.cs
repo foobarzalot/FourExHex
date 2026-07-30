@@ -16,6 +16,7 @@ public static class StartingMapCatalog
     public static readonly IReadOnlyList<string> Names = new[]
     {
         "atoll-6p",
+        "fog-frontier",
     };
 
     /// <summary>

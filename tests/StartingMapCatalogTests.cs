@@ -30,6 +30,12 @@ public class StartingMapCatalogTests
     }
 
     [Fact]
+    public void Names_ContainFogFrontier()
+    {
+        Assert.Contains("fog-frontier", StartingMapCatalog.Names);
+    }
+
+    [Fact]
     public void MergeWithUser_AppendsBundledAfterUserRows()
     {
         var user = new List<SaveSlotInfo> { User("beach"), User("alpha") };
