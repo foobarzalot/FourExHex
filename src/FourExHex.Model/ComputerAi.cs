@@ -247,7 +247,7 @@ public static class ComputerAi
         long methodStart, int baseScore, PlayerId forPlayer, GameState state,
         DeterministicRng rng, AiSearchProfile prof)
     {
-        AiAction? action = BestPositiveDelta(phase, candidates, threshold, baseScore, forPlayer, state, rng, prof);
+        AiAction? action = BestDeltaAboveThreshold(phase, candidates, threshold, baseScore, forPlayer, state, rng, prof);
         if (action != null)
         {
             Log.Debug(Log.LogCategory.Ai,
@@ -295,7 +295,7 @@ public static class ComputerAi
     /// real tie fired). Accumulates profiling counters in the caller's
     /// locals via ref.
     /// </summary>
-    private static AiAction? BestPositiveDelta(
+    private static AiAction? BestDeltaAboveThreshold(
         string phase,
         IEnumerable<AiCandidate> candidates,
         int threshold,
