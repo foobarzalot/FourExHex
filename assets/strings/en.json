@@ -108,7 +108,7 @@
   "hud.tour.undo.title": "Undo & redo",
   "hud.tour.undo.body": "Step back or forward through this turn's moves. Hold either button to undo or redo the whole turn at once.",
   "hud.tour.next_unit.title": "Next unit",
-  "hud.tour.next_unit.body": "Select your next unit power tier in the selected territory, weakest first. After the strongest, one more tap clears the selection.",
+  "hud.tour.next_unit.body": "Move units — {verb} repeatedly to cycle unit type.",
   "hud.tour.next_territory.title": "Next territory",
   "hud.tour.next_territory.body": "Select your next territory that still has an action available. It glows once the current territory's actions are exhausted.",
   "hud.tour.end_turn.title": "End turn",
