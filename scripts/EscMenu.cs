@@ -47,6 +47,10 @@ public sealed partial class EscMenu : CanvasLayer
 
     public bool IsOpen { get; private set; }
 
+    /// <summary>Breathing room between the panel and the safe-area edge —
+    /// the margin the rest of the centered-modal family fits against.</summary>
+    private const float ViewportMargin = 24f;
+
     private ColorRect _backdrop = null!;
     private PanelContainer _panel = null!;
     private Label _titleLabel = null!;
@@ -93,6 +97,17 @@ public sealed partial class EscMenu : CanvasLayer
         _buttonBox = new VBoxContainer();
         _buttonBox.AddThemeConstantOverride("separation", 10);
         vbox.AddChild(_buttonBox);
+
+        // Rotation resizes the viewport; a notch/status-bar toggle can shift
+        // the safe rect without one. Either can change what fits.
+        GetViewport().SizeChanged += FitPanel;
+        SafeArea.Changed += OnSafeAreaChanged;
+    }
+
+    public override void _ExitTree()
+    {
+        GetViewport().SizeChanged -= FitPanel;
+        SafeArea.Changed -= OnSafeAreaChanged;
     }
 
     private static readonly Font _serifFont =
@@ -108,6 +123,10 @@ public sealed partial class EscMenu : CanvasLayer
 
         foreach (Node child in _buttonBox.GetChildren())
         {
+            // Detach before the queued free: QueueFree alone leaves the old
+            // buttons in the tree until end of frame, so the fit pass below
+            // would measure the outgoing list on top of the incoming one.
+            _buttonBox.RemoveChild(child);
             child.QueueFree();
         }
 
@@ -133,7 +152,39 @@ public sealed partial class EscMenu : CanvasLayer
 
         IsOpen = true;
         Visible = true;
+        // The button list just changed, so the panel's design height is only
+        // knowable after this frame's layout — fit a frame later.
+        Callable.From(FitPanel).CallDeferred();
     }
+
+    /// <summary>
+    /// Shrink the centered panel (never grow it) so a long option list fits
+    /// the safe viewport instead of running off the bottom edge — the same
+    /// uniform shrink <see cref="SettingsPanel"/> uses. A button stack has
+    /// nothing to reflow, so scaling is the whole fit.
+    /// </summary>
+    private void FitPanel()
+    {
+        if (!IsOpen || !IsInsideTree()) return;
+
+        Vector2 vp = GetViewport().GetVisibleRect().Size;
+        LogicalSafeInsets safe = SafeArea.Current;
+        (float availW, float availH) = PanelFitMath.AvailableBox(vp.X, vp.Y, safe, ViewportMargin);
+
+        // Transform-independent, so this measures the design size no matter
+        // what scale a previous fit left behind.
+        Vector2 design = _panel.GetCombinedMinimumSize();
+        float scale = PanelFitMath.ScaleToFit(design.X, design.Y, availW, availH);
+        _panel.PivotOffset = design * 0.5f;
+        _panel.Scale = new Vector2(scale, scale);
+
+        Log.Debug(Log.LogCategory.Render,
+            $"EscMenu: fit viewport={vp.X:0}x{vp.Y:0} " +
+            $"safe=(t{safe.Top:0},b{safe.Bottom:0},l{safe.Left:0},r{safe.Right:0}) " +
+            $"avail={availW:0}x{availH:0} design={design.X:0}x{design.Y:0} scale={scale:0.00}");
+    }
+
+    private void OnSafeAreaChanged(LogicalSafeInsets _) => FitPanel();
 
     public new void Hide()
     {

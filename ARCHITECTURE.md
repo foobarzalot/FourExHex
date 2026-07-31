@@ -1591,6 +1591,8 @@ Spans all four layers, one-way:
 
 A single **Options** button on each scene's HUD (and Escape when no Buy/Build/Move is pending) opens that scene's `EscMenu` with the scene's own option list. Three scenes: gameplay (`Main`), map editor (`MapEditorScene`), tutorial builder (`TutorialBuilderScene`).
 
+`EscMenu.FitPanel` keeps a long option list inside the safe area: the shrink-only `PanelFitMath.AvailableBox` + `ScaleToFit` pass (as `SettingsPanel`), pivoted on the panel center, run deferred at the end of `Show` (the option list sets the height) and on viewport resize / `SafeArea.Changed`. `Show` detaches outgoing buttons before queueing their free so the fit measures only the incoming list.
+
 ### Gameplay pause coordinator (`Main`)
 
 `Main` owns `_isPaused` plus `EnterPause`, `ExitPause`, `ShowPauseMenu`. Entering pause sets `GetTree().Paused = true`, halting every `SceneTreeTimer` (the heartbeat of `GodotAiPacer`) so the AI loop freezes mid-step. Menu:
