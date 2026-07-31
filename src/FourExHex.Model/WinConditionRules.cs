@@ -121,12 +121,15 @@ public static class WinConditionRules
 
     /// <summary>
     /// Tiers at which the End-Turn claim-victory prompt fires for a
-    /// human owning strictly more than that fraction of land tiles.
-    /// Each tier prompts at most once per human per game; "show only
-    /// highest unseen" means a single End Turn that crosses multiple
-    /// tiers shows just the topmost not-yet-dismissed one.
+    /// human owning strictly more than that fraction of land tiles. The
+    /// lowest tier sits well above a bare majority: a low-player-count
+    /// board starts near parity, so a 50% tier would offer the win
+    /// before the game is decided. Each tier prompts at most once per
+    /// human per game; "show only highest unseen" means a single End
+    /// Turn that crosses multiple tiers shows just the topmost
+    /// not-yet-dismissed one.
     /// </summary>
-    public static readonly int[] ClaimVictoryThresholdsPercent = { 50, 75, 90 };
+    public static readonly int[] ClaimVictoryThresholdsPercent = { 75, 90 };
 
     /// <summary>
     /// Among <see cref="ClaimVictoryThresholdsPercent"/>, return the

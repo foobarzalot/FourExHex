@@ -169,8 +169,8 @@ public partial class GameControllerTests
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
         var session = new SessionState();
         // Suppress the End-Turn claim-victory prompt: this test exercises
-        // the end-of-turn sole-capital-bearer winner path, not the new
-        // human-at->50% prompt that would otherwise interject.
+        // the end-of-turn sole-capital-bearer winner path, not the
+        // claim-victory prompt that would otherwise interject.
         session.ClaimVictoryPromptedHighestThreshold[red.Id] = 90;
         var map = new MockHexMapView();
         var hud = new MockHudView();

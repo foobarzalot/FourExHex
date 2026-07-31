@@ -166,7 +166,7 @@ MODEL / STATE (pure C#)
   SessionState ─
     Winner (PlayerId?)
     PendingDefeatScreen (PlayerId? — defeat overlay)
-    PendingClaimVictory ((PlayerId,percent)? — claim overlay; percent∈{50,75,90}; human-only)
+    PendingClaimVictory ((PlayerId,percent)? — claim overlay; percent∈{75,90}; human-only)
     ClaimVictoryPromptedHighestThreshold (Dict<PlayerId,int>; player→top tier dismissed; persists across save/load)
     SelectedTerritory, Mode (enum), MoveSource
     VisitedTerritoryCapitals (Tab-cycle round set; resets when a full cycle wraps)
@@ -268,8 +268,8 @@ PURE RULES (static)
     Classify -> EconomyOutlook (Healthy / NegativeDelta / BankruptNextTurn) /
     SurvivesNextUpkeep(gold, netIncome) — shared solvency primitive (AI scorer + enumerator)
   WinConditionRules.WinnerByDomination (mid-turn) / .WinnerAtEndOfTurn (sole capital-bearer) / .IsEliminated /
-    .NextClaimVictoryThreshold (50/75/90 tiers) /
-    .ClaimVictoryThresholdsPercent (constant: {50,75,90})
+    .NextClaimVictoryThreshold (75/90 tiers) /
+    .ClaimVictoryThresholdsPercent (constant: {75,90})
 
 MODEL PRIMITIVES
   HexCoord (struct, IEquatable, IComparable)
@@ -421,7 +421,7 @@ A selectable game mode, distinct from freeform-vs-campaign (`GameSettings.Campai
 
 **Win = last player standing.** The mid-turn check is `WinnerByDomination` in every mode (own every non-water tile — submerged tiles aren't in the grid), so a capture that only orphans an opponent into capital-less singletons does *not* force a win. Only `EndOfTurnProcessing`'s sole-capital check differs: it routes to `WinConditionRules.LastPlayerStanding(territories)`, which returns the sole capital-bearing owner (else null) regardless of whose turn ended — so an end-of-turn flood that drowns the current player's *own* last capital still crowns the surviving opponent. It runs *after* `ApplyPendingTide`. Only forced end.
 
-**Claim-victory tiers apply.** The 50/75/90% offer (`OnEndTurnPressed`) is not suppressed. Percentage measured against current non-sunk tiles: a submerged tile is `Grid.Remove`'d, so `NextClaimVictoryThreshold` (counts `state.Grid.Tiles`) tracks the shrinking board. See *Claim victory prompt*.
+**Claim-victory tiers apply.** The 75/90% offer (`OnEndTurnPressed`) is not suppressed. Percentage measured against current non-sunk tiles: a submerged tile is `Grid.Remove`'d, so `NextClaimVictoryThreshold` (counts `state.Grid.Tiles`) tracks the shrinking board. See *Claim victory prompt*.
 
 **Defeat at turn end.** The flood can eliminate the player whose turn just ended, including a human. `ApplyPendingTide` calls `HandleNewlyDefeated(before)` (shared with `HandleCapture`): plays the defeat cue and raises `PendingDefeatScreen` for a human; the win check then declares any sole survivor. Only the current player can be flooded by their own tide, so `AdvanceToNextActivePlayer` skips them, and the AI loop + `OnDefeatContinuePressed` gate on `PendingDefeatScreen`.
 
@@ -831,7 +831,7 @@ Viking Raiders suppresses **both** checks (and the claim-victory prompt) while `
 
 ### Claim victory prompt
 
-Three tiers from `WinConditionRules.ClaimVictoryThresholdsPercent = {50, 75, 90}`. When a **human** presses End Turn, `OnEndTurnPressed` consults `WinConditionRules.NextClaimVictoryThreshold(color, grid, highestSeen)`, returning the highest tier met strictly greater than the highest already dismissed (or null). Water excluded (not in `state.Grid.Tiles`). In Rising Tides the `state.Grid.Tiles` denominator is current non-sunk tiles, so a player claims once their share of the *remaining* board crosses a tier. Fog Of War leaves the tiers alone but adds a precondition — the prompt is withheld while any land is still fully hidden (see its *Win gating*), logged under `Fog` as `[fog] claim-victory suppressed: N land tiles still hidden`.
+Two tiers from `WinConditionRules.ClaimVictoryThresholdsPercent = {75, 90}` — the floor sits well above a bare majority, since a low-player-count board starts near parity. When a **human** presses End Turn, `OnEndTurnPressed` consults `WinConditionRules.NextClaimVictoryThreshold(color, grid, highestSeen)`, returning the highest tier met strictly greater than the highest already dismissed (or null). Water excluded (not in `state.Grid.Tiles`). In Rising Tides the `state.Grid.Tiles` denominator is current non-sunk tiles, so a player claims once their share of the *remaining* board crosses a tier. Fog Of War leaves the tiers alone but adds a precondition — the prompt is withheld while any land is still fully hidden (see its *Win gating*), logged under `Fog` as `[fog] claim-victory suppressed: N land tiles still hidden`.
 
 If a tier returns, `OnEndTurnPressed` sets `SessionState.PendingClaimVictory = (color, threshold)` and refreshes; the HUD shows a centered "Claim Victory?" overlay with **Win Now** and **Continue Playing**. Wording is identical at every tier; one End Turn crossing multiple tiers skips to the topmost unseen. Pending End Turn is held until the user picks:
 
@@ -1465,7 +1465,7 @@ seed (no consumption count) and load reproduces it.
   bottom-left save-name label correct (shown with underscores→spaces).
 - **Claim-victory prompted tiers.** Optional
   `ClaimVictoryPromptedHighestByColorHex` — hex→percent map of the highest tier
-  (50/75/90) each human color has dismissed; empty/missing in fresh games and
+  each human color has dismissed; empty/missing in fresh games and
   starting maps. `Main` seeds
   `SessionState.ClaimVictoryPromptedHighestThreshold` from it on load so the
   per-tier once-per-game invariant survives reloads.
@@ -1577,7 +1577,7 @@ stays disabled — the log starts after load, not at game start.
 Spans all four layers, one-way:
 
 - **Model (Godot-free, unit-tested):**
-  - `CampaignProgress` (`src/FourExHex.Model/CampaignProgress.cs`) — 256 `CampaignLevelStatus` (`Untried`/`Lost`/`Won`, member order load-bearing — persisted numerically). Exposes `StatusOf`, `MarkAttempted` (Untried→Lost, Won terminal), `MarkWon` (terminal), `WonCount`, `TierWonCount`, `NextUp` (lowest non-won, null when all won); statics `DifficultyForLevel` (`(Difficulty)(level / 64)`), `LabelFor`, `SeedForLevel` (reads the baked winnable-seed table `CampaignSeeds.ByLevel`), `HumanSlotForLevel(level, playerCount)` (stable integer hash mod `playerCount`); roster `PlayerCountForLevel` (3–6, weighted high; the weighted draw's 2s are re-apportioned across the four sizes in ladder order, since a 2-player start sits at the >50% claim-victory tier from turn 1), `ActiveColorSlotsForLevel` (sorted distinct subset), `HumanColorSlotForLevel` (`= active[HumanSlotForLevel(level, count)]`). All draw from one seeded `DeterministicRng` per level (offset decorrelated from seed/terrain), fixing players and terrain forever. `ModeForLevel` derives `GameMode`: `Freeform` below Soldier tier; Soldier+ tiers each hold an exact per-mode quota of Rising Tides / Fog Of War / Viking Raiders levels via a tier-seeded shuffle sliced per mode (see the Campaign paragraph under Rising Tides). **Mark-at-launch:** starting marks Lost; winning flips to Won, which a later loss can't revert.
+  - `CampaignProgress` (`src/FourExHex.Model/CampaignProgress.cs`) — 256 `CampaignLevelStatus` (`Untried`/`Lost`/`Won`, member order load-bearing — persisted numerically). Exposes `StatusOf`, `MarkAttempted` (Untried→Lost, Won terminal), `MarkWon` (terminal), `WonCount`, `TierWonCount`, `NextUp` (lowest non-won, null when all won); statics `DifficultyForLevel` (`(Difficulty)(level / 64)`), `LabelFor`, `SeedForLevel` (reads the baked winnable-seed table `CampaignSeeds.ByLevel`), `HumanSlotForLevel(level, playerCount)` (stable integer hash mod `playerCount`); roster `PlayerCountForLevel` (3–6, weighted high; the weighted draw's 2s are re-apportioned across the four sizes in ladder order, since a 2-player start splits the board at parity from turn 1), `ActiveColorSlotsForLevel` (sorted distinct subset), `HumanColorSlotForLevel` (`= active[HumanSlotForLevel(level, count)]`). All draw from one seeded `DeterministicRng` per level (offset decorrelated from seed/terrain), fixing players and terrain forever. `ModeForLevel` derives `GameMode`: `Freeform` below Soldier tier; Soldier+ tiers each hold an exact per-mode quota of Rising Tides / Fog Of War / Viking Raiders levels via a tier-seeded shuffle sliced per mode (see the Campaign paragraph under Rising Tides). **Mark-at-launch:** starting marks Lost; winning flips to Won, which a later loss can't revert.
   - `CampaignSerializer` + `CampaignData` — JSON `{ FormatVersion, Statuses[] }`, registered on `FourExHexJsonContext` for iOS AOT. Tolerant read: short arrays pad with Untried, extras past 256 ignored, out-of-range → Untried, unknown versions throw (store catches → fresh progress).
 - **ViewMath (floats OK, unit-tested):** `CampaignGridMath` (`src/FourExHex.ViewMath/CampaignGridMath.cs`) — pointy-top honeycomb geometry: `CellCenter` (odd rows shift half a step, 0.75×height pitch), `BlockSize`, `HitTest` (exact point-in-hexagon). Drives both draw and tap.
 - **Scripts (Godot view layer, test-excluded):**

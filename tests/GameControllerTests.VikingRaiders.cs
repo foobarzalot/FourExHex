@@ -211,12 +211,12 @@ public partial class GameControllerTests
     [Fact]
     public void VikingRaiders_ClaimVictoryPromptSuppressedWhileThreatRemains()
     {
-        // Red owns 4/6 tiles (66%) — freeform would offer the 50% claim tier
+        // Red owns 8/10 tiles (80%) — freeform would offer the 75% claim tier
         // on End Turn; Viking Raiders never offers a claim while the
         // onslaught is live.
-        HexGrid grid = TestHelpers.BuildRectGrid(6, 1, PlayerId.FromIndex(0));
-        grid.Get(HexCoord.FromOffset(4, 0))!.Owner = PlayerId.FromIndex(1);
-        grid.Get(HexCoord.FromOffset(5, 0))!.Owner = PlayerId.FromIndex(1);
+        HexGrid grid = TestHelpers.BuildRectGrid(10, 1, PlayerId.FromIndex(0));
+        grid.Get(HexCoord.FromOffset(8, 0))!.Owner = PlayerId.FromIndex(1);
+        grid.Get(HexCoord.FromOffset(9, 0))!.Owner = PlayerId.FromIndex(1);
         var g = new VikingGame(grid, suppressClaimVictory: false);
 
         g.Hud.ClickEndTurn();

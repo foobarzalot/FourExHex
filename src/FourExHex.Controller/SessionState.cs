@@ -38,7 +38,7 @@ public class SessionState
     /// Color of a human player who just pressed End Turn while crossing
     /// a claim-victory tier in
     /// <see cref="WinConditionRules.ClaimVictoryThresholdsPercent"/>,
-    /// paired with the threshold percent (50, 75, or 90) being prompted.
+    /// paired with the threshold percent (75 or 90) being prompted.
     /// The HUD shows the claim-victory overlay while this is non-null.
     /// The pending End Turn is held until the human picks Win Now or
     /// Continue Playing. Suppressed by
@@ -50,8 +50,8 @@ public class SessionState
     /// <summary>
     /// Highest claim-victory tier each human player has already
     /// dismissed (via Win Now or Continue Playing). Absence means
-    /// "never prompted". A player whose entry is 90 has seen all three
-    /// tiers and won't be prompted again this game. Persisted across
+    /// "never prompted". A player whose entry is 90 has seen every
+    /// tier and won't be prompted again this game. Persisted across
     /// save/load (see <see cref="SaveSerializer"/>) so the
     /// once-per-tier-per-game invariant survives reloads.
     /// </summary>

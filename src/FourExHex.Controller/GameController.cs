@@ -2723,6 +2723,10 @@ public class GameController
                     .TryGetValue(current.Id, out int s) ? s : 0;
                 int? next = WinConditionRules.NextClaimVictoryThreshold(
                     current.Id, _state.Grid, highestPrompted);
+                Log.Debug(Log.LogCategory.Turn,
+                    $"[claim] {current.Name}: " +
+                    (next.HasValue ? $"{next.Value}% tier offered" : "no unseen tier met") +
+                    $" (highest dismissed {highestPrompted})");
                 if (next.HasValue)
                 {
                     _session.PendingClaimVictory = (current.Id, next.Value);

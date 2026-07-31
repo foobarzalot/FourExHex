@@ -255,16 +255,16 @@ public class WinConditionRulesTests
     }
 
     [Fact]
-    public void NextClaimVictoryThreshold_AtSixty_NoPriors_Returns50()
+    public void NextClaimVictoryThreshold_AtSixty_NoPriors_ReturnsNull()
     {
+        // A bare majority is not a decided game — the lowest tier is 75%.
         HexGrid grid = Build100TileGrid(60);
-        Assert.Equal(50, WinConditionRules.NextClaimVictoryThreshold(Red, grid, 0));
+        Assert.Null(WinConditionRules.NextClaimVictoryThreshold(Red, grid, 0));
     }
 
     [Fact]
     public void NextClaimVictoryThreshold_AtEighty_NoPriors_Returns75()
     {
-        // Show only highest unseen — jumping past 50% lands on 75%.
         HexGrid grid = Build100TileGrid(80);
         Assert.Equal(75, WinConditionRules.NextClaimVictoryThreshold(Red, grid, 0));
     }
@@ -277,18 +277,11 @@ public class WinConditionRulesTests
     }
 
     [Fact]
-    public void NextClaimVictoryThreshold_AtSixty_Prior50_ReturnsNull()
+    public void ClaimVictoryThresholds_StartAboveABareMajority()
     {
-        // Already prompted at 50; doesn't meet 75 or 90.
-        HexGrid grid = Build100TileGrid(60);
-        Assert.Null(WinConditionRules.NextClaimVictoryThreshold(Red, grid, 50));
-    }
-
-    [Fact]
-    public void NextClaimVictoryThreshold_AtEighty_Prior50_Returns75()
-    {
-        HexGrid grid = Build100TileGrid(80);
-        Assert.Equal(75, WinConditionRules.NextClaimVictoryThreshold(Red, grid, 50));
+        // A 2-player board starts near parity, so a >50% tier would offer the
+        // win before the game is decided.
+        Assert.Equal(new[] { 75, 90 }, WinConditionRules.ClaimVictoryThresholdsPercent);
     }
 
     [Fact]
@@ -311,17 +304,17 @@ public class WinConditionRulesTests
     {
         // Rising Tides sinks tiles by REMOVING them from
         // the grid, so the claim-victory denominator is automatically the count
-        // of active (non-sunk) tiles. Red owns 4 of 8 (exactly 50% — not >50%,
-        // so no tier). After a Blue tile sinks (is removed), Red owns 4 of 7
-        // (>50%), tripping the 50% tier — proving the percentage tracks the
+        // of active (non-sunk) tiles. Red owns 6 of 8 (exactly 75% — not >75%,
+        // so no tier). After a Blue tile sinks (is removed), Red owns 6 of 7
+        // (>75%), tripping the 75% tier — proving the percentage tracks the
         // remaining-tile count, not the original board size.
         var grid = new HexGrid();
-        for (int q = 0; q < 4; q++) grid.Add(new HexTile(new HexCoord(q, 0), Red));
-        for (int q = 0; q < 4; q++) grid.Add(new HexTile(new HexCoord(q, 2), Blue));
+        for (int q = 0; q < 6; q++) grid.Add(new HexTile(new HexCoord(q, 0), Red));
+        for (int q = 0; q < 2; q++) grid.Add(new HexTile(new HexCoord(q, 2), Blue));
         Assert.Null(WinConditionRules.NextClaimVictoryThreshold(Red, grid, 0));
 
         grid.Remove(new HexCoord(0, 2)); // a Blue tile sinks
 
-        Assert.Equal(50, WinConditionRules.NextClaimVictoryThreshold(Red, grid, 0));
+        Assert.Equal(75, WinConditionRules.NextClaimVictoryThreshold(Red, grid, 0));
     }
 }

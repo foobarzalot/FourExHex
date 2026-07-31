@@ -160,11 +160,11 @@ public partial class GameControllerTests
     [Fact]
     public void FogOfWar_ClaimVictoryPrompt_SuppressedWhileLandHidden()
     {
-        // Red owns 4/6 of the row — well past the 50% tier — but col 5 lies
+        // Red owns 8/10 of the row — well past the 75% tier — but col 9 lies
         // outside Red's sight and has never been seen. End Turn just ends the
         // turn: you can't claim a victory over ground you've never laid eyes on.
         var game = new FogGame(LopsidedRow(), GameMode.FogOfWar);
-        Assert.False(game.State.IsSeen(HexCoord.FromOffset(5, 0)));
+        Assert.False(game.State.IsSeen(HexCoord.FromOffset(9, 0)));
 
         game.Hud.ClickEndTurn();
 
@@ -176,7 +176,7 @@ public partial class GameControllerTests
     public void FogOfWar_ClaimVictoryPrompt_FiresOnceMapFullyRevealed()
     {
         // Same board, same ownership share: the tier math is untouched, the
-        // reveal is only a precondition. Once the last tile is known, the 50%
+        // reveal is only a precondition. Once the last tile is known, the 75%
         // offer appears exactly as it does in freeform.
         var game = new FogGame(LopsidedRow(), GameMode.FogOfWar);
         TestHelpers.RevealWholeGrid(game.State);
@@ -184,7 +184,7 @@ public partial class GameControllerTests
         game.Hud.ClickEndTurn();
 
         Assert.NotNull(game.Session.PendingClaimVictory);
-        Assert.Equal(50, game.Session.PendingClaimVictory!.Value.ThresholdPercent);
+        Assert.Equal(75, game.Session.PendingClaimVictory!.Value.ThresholdPercent);
     }
 
     // Red's mainland (cols 0-1, capital-bearing) plus one Blue tile at col 2,
@@ -226,7 +226,7 @@ public partial class GameControllerTests
     [Fact]
     public void FogOfWar_Victory_RevealsWholeMap()
     {
-        // Red (human) owns 4/6 of a connected row → can claim victory. Winning
+        // Red (human) owns 8/10 of a connected row → can claim victory. Winning
         // lifts the fog: the controller pushes ShowFog(null) once the game ends.
         var game = new FogGame(LopsidedRow(), GameMode.FogOfWar);
         Assert.NotNull(game.Map.LastFog); // fog active mid-game
@@ -234,7 +234,7 @@ public partial class GameControllerTests
         // above), so the far end of the row has to be known first.
         TestHelpers.RevealWholeGrid(game.State);
 
-        game.Hud.ClickEndTurn();              // trips the 50% claim-victory offer
+        game.Hud.ClickEndTurn();              // trips the 75% claim-victory offer
         game.Hud.ClickClaimVictoryWinNow();   // declares Red the winner
 
         Assert.True(game.Session.IsGameOver);

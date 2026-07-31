@@ -13,7 +13,7 @@ public partial class GameControllerTests
     // Record a short hot-seat session with one real action and three
     // idle turns: Red builds a tower and ends, Blue and Green each end
     // with no action; the round's neutral seat then ends its own (empty)
-    // turn. Every slot stays under the 50% claim-victory threshold
+    // turn. Every slot stays under the lowest claim-victory threshold
     // (8/8/2 of 18 tiles) so no overlay interrupts the EndTurn clicks.
     // Beat log:
     //   [BuildTower, EndTurn(Red), EndTurn(Blue), EndTurn(Green),

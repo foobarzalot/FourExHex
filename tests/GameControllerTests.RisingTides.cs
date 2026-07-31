@@ -37,12 +37,12 @@ public partial class GameControllerTests
         }
     }
 
-    // A 6x1 row: Red owns cols 0-3 (66%), Blue cols 4-5. Both have capitals.
+    // A 10x1 row: Red owns cols 0-7 (80%), Blue cols 8-9. Both have capitals.
     private static HexGrid LopsidedRow()
     {
-        var grid = TestHelpers.BuildRectGrid(6, 1, PlayerId.FromIndex(0));
-        grid.Get(HexCoord.FromOffset(4, 0))!.Owner = PlayerId.FromIndex(1);
-        grid.Get(HexCoord.FromOffset(5, 0))!.Owner = PlayerId.FromIndex(1);
+        var grid = TestHelpers.BuildRectGrid(10, 1, PlayerId.FromIndex(0));
+        grid.Get(HexCoord.FromOffset(8, 0))!.Owner = PlayerId.FromIndex(1);
+        grid.Get(HexCoord.FromOffset(9, 0))!.Owner = PlayerId.FromIndex(1);
         return grid;
     }
 
@@ -60,19 +60,19 @@ public partial class GameControllerTests
     [Fact]
     public void RisingTides_EndTurnWithTerritorialLead_OffersClaimVictory()
     {
-        // Claim-victory tiers (50/75/90%) apply in Rising Tides too, computed
-        // over the current non-sunk tiles. Red owns 4/6 (66%) of a single
-        // connected row, so ending its turn trips the 50% tier — the same
+        // Claim-victory tiers (75/90%) apply in Rising Tides too, computed
+        // over the current non-sunk tiles. Red owns 8/10 (80%) of a single
+        // connected row, so ending its turn trips the 75% tier — the same
         // prompt freeform shows.
         var freeform = new TidesGame(LopsidedRow(), GameMode.Freeform);
         freeform.Hud.ClickEndTurn();
         Assert.NotNull(freeform.Session.PendingClaimVictory);
-        Assert.Equal(50, freeform.Session.PendingClaimVictory!.Value.ThresholdPercent);
+        Assert.Equal(75, freeform.Session.PendingClaimVictory!.Value.ThresholdPercent);
 
         var tides = new TidesGame(LopsidedRow(), GameMode.RisingTides);
         tides.Hud.ClickEndTurn();
         Assert.NotNull(tides.Session.PendingClaimVictory);
-        Assert.Equal(50, tides.Session.PendingClaimVictory!.Value.ThresholdPercent);
+        Assert.Equal(75, tides.Session.PendingClaimVictory!.Value.ThresholdPercent);
         // The offer holds the turn — still Red's until Win Now / Continue.
         Assert.Equal(tides.Red.Id, tides.State.Turns.CurrentPlayer.Id);
     }
