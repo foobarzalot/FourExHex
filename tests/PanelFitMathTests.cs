@@ -133,6 +133,50 @@ public class PanelFitMathTests
         Assert.Equal(520f, h, Tolerance);
     }
 
+    // ---- CardInteriorWidth -----------------------------------------------
+
+    [Fact]
+    public void CardInteriorWidth_MiniPortrait_ShrinksBelowDesign()
+    {
+        // iPhone 13 mini portrait logical 425x921, no horizontal insets,
+        // margin 24 => availW 377; panel chrome 18+18 => interior 341, well
+        // under the 440 design the tour card is authored at.
+        Assert.Equal(341f, PanelFitMath.CardInteriorWidth(440f, 377f, 36f), Tolerance);
+    }
+
+    [Fact]
+    public void CardInteriorWidth_MiniLandscape_KeepsDesignWidth()
+    {
+        // Mini landscape leaves 773 of usable width — far more than the card
+        // needs. It never grows past the authored design.
+        Assert.Equal(440f, PanelFitMath.CardInteriorWidth(440f, 773f, 36f), Tolerance);
+    }
+
+    [Fact]
+    public void CardInteriorWidth_TinyViewport_FloorsAtMinimum()
+    {
+        // A degenerate box would leave 100-36 = 64 px; the floor keeps the
+        // card legible instead of collapsing it.
+        Assert.Equal(200f, PanelFitMath.CardInteriorWidth(440f, 100f, 36f), Tolerance);
+    }
+
+    [Fact]
+    public void CardInteriorWidth_ExactFit_ReturnsDesign()
+    {
+        // Available width is exactly design + chrome: no reduction.
+        Assert.Equal(440f, PanelFitMath.CardInteriorWidth(440f, 476f, 36f), Tolerance);
+    }
+
+    [Fact]
+    public void CardInteriorWidth_ComposesWithAvailableBox_MiniPortraitNumbers()
+    {
+        // The real call shape: viewport + safe area -> AvailableBox -> card.
+        var safe = new LogicalSafeInsets(18f, 13f, 0f, 0f);
+        (float availW, _) = PanelFitMath.AvailableBox(425f, 921f, safe, 24f);
+        Assert.Equal(377f, availW, Tolerance);
+        Assert.Equal(341f, PanelFitMath.CardInteriorWidth(440f, availW, 36f), Tolerance);
+    }
+
     // ---- ContentShrinkScale ----------------------------------------------
 
     [Fact]

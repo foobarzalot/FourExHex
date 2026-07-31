@@ -38,6 +38,13 @@ public sealed partial class HudTour : CanvasLayer
     private static readonly Color RingColor = UiPalette.Gold;
     private const float RingInset = 4f;   // grow the ring a touch past the element
 
+    // Authored card width. The card reflows narrower when the safe box can't
+    // afford it (small phones) and never grows past it on a roomy screen.
+    private const float DesignCardWidth = 440f;
+    // Breathing room between the card and the safe-area edge — the same margin
+    // the rest of the centered-modal family fits against.
+    private const float ViewportMargin = 24f;
+
     private readonly List<Entry> _entries;
     private readonly HudTourSteps _cursor;
 
@@ -53,6 +60,8 @@ public sealed partial class HudTour : CanvasLayer
     private sealed class DialogView
     {
         public Control Root = null!;
+        public PanelContainer Panel = null!;
+        public VBoxContainer Box = null!;
         public Label Title = null!;
         public Label Body = null!;
     }
@@ -113,8 +122,11 @@ public sealed partial class HudTour : CanvasLayer
         _dialogs[1] = BuildDialogPage();
         _carousel = new PageCarousel(_dialogs[0].Root, _dialogs[1].Root);
         AddChild(_carousel);
-        SyncCarouselRect();
-        GetViewport().SizeChanged += SyncCarouselRect;
+        SyncLayout();
+        GetViewport().SizeChanged += SyncLayout;
+        // A notch/status-bar toggle can shift the safe rect without resizing
+        // the viewport, so the card re-fits on that too.
+        SafeArea.Changed += OnSafeAreaChanged;
 
         // Always open on the intro page (it explains how to drive the tour,
         // highlighting nothing); Next from there steps into the elements.
@@ -131,10 +143,13 @@ public sealed partial class HudTour : CanvasLayer
         var view = new DialogView { Root = new Control() };
 
         PanelContainer panel = ModalChrome.BuildCenteredPanel();
+        view.Panel = panel;
         view.Root.AddChild(panel);
 
-        var vbox = new VBoxContainer { CustomMinimumSize = new Vector2(440, 0) };
+        // Design width; FitCards narrows it to whatever the safe box affords.
+        var vbox = new VBoxContainer { CustomMinimumSize = new Vector2(DesignCardWidth, 0) };
         vbox.AddThemeConstantOverride("separation", 16);
+        view.Box = vbox;
         panel.AddChild(vbox);
 
         view.Title = new Label { HorizontalAlignment = HorizontalAlignment.Center };
@@ -293,16 +308,75 @@ public sealed partial class HudTour : CanvasLayer
         }
     }
 
-    // Keep the carousel matched to the viewport; its Resized handler
-    // re-homes the dialogs when not transitioning.
-    private void SyncCarouselRect()
+    // Keep the carousel matched to the viewport (its Resized handler re-homes
+    // the dialogs when not transitioning) and re-fit the cards inside it.
+    private void SyncLayout()
     {
         _carousel.Size = GetViewport().GetVisibleRect().Size;
+        FitCards();
+    }
+
+    private void OnSafeAreaChanged(LogicalSafeInsets _) => FitCards();
+
+    /// <summary>
+    /// Size both carousel cards to the safe box. The card reflows first — its
+    /// body label word-wraps at whatever interior width
+    /// <see cref="PanelFitMath.CardInteriorWidth"/> allows — and a uniform
+    /// shrink backstops the residual cases reflow can't fix (a tall body in a
+    /// short landscape safe area, or the button row's own minimum width on a
+    /// very narrow screen). Without this the fixed design width overflows a
+    /// small phone and the carousel's ClipContents shears it off at both edges.
+    /// </summary>
+    private void FitCards()
+    {
+        Vector2 vp = GetViewport().GetVisibleRect().Size;
+        LogicalSafeInsets safe = SafeArea.Current;
+        (float availW, float availH) = PanelFitMath.AvailableBox(vp.X, vp.Y, safe, ViewportMargin);
+
+        // The panel's own stylebox margins are part of its width budget.
+        StyleBox chrome = _dialogs[0].Panel.GetThemeStylebox("panel");
+        float chromeW = chrome.GetMargin(Side.Left) + chrome.GetMargin(Side.Right);
+        float interiorW = PanelFitMath.CardInteriorWidth(DesignCardWidth, availW, chromeW);
+
+        foreach (DialogView view in _dialogs)
+        {
+            view.Box.CustomMinimumSize = new Vector2(interiorW, 0);
+            // Clear any prior shrink so the deferred pass measures the design.
+            view.Panel.Scale = Vector2.One;
+        }
+
+        Log.Debug(Log.LogCategory.Hud,
+            $"[tour] fit viewport={vp.X:0}x{vp.Y:0} " +
+            $"safe=(t{safe.Top:0},b{safe.Bottom:0},l{safe.Left:0},r{safe.Right:0}) " +
+            $"avail={availW:0}x{availH:0} chrome={chromeW:0} interior={interiorW:0}");
+
+        // The reflowed height is only knowable once the new width has laid
+        // out, so the shrink backstop runs a frame later. Scale is a transform
+        // and doesn't feed back into the measurement, so one pass settles it.
+        Callable.From(() => ApplyShrinkBackstop(availW, availH)).CallDeferred();
+    }
+
+    private void ApplyShrinkBackstop(float availW, float availH)
+    {
+        if (_closed || !IsInsideTree()) return;
+        foreach (DialogView view in _dialogs)
+        {
+            Vector2 design = view.Panel.GetCombinedMinimumSize();
+            float scale = PanelFitMath.ScaleToFit(design.X, design.Y, availW, availH);
+            view.Panel.PivotOffset = design * 0.5f;
+            view.Panel.Scale = new Vector2(scale, scale);
+            if (view == _dialogs[0])
+            {
+                Log.Debug(Log.LogCategory.Hud,
+                    $"[tour] fit card={design.X:0}x{design.Y:0} scale={scale:0.00}");
+            }
+        }
     }
 
     public override void _ExitTree()
     {
-        GetViewport().SizeChanged -= SyncCarouselRect;
+        GetViewport().SizeChanged -= SyncLayout;
+        SafeArea.Changed -= OnSafeAreaChanged;
     }
 
     private int WrapIndex(int index) =>

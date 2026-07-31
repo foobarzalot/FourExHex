@@ -71,6 +71,20 @@ public static class PanelFitMath
     }
 
     /// <summary>
+    /// Interior content width for a centered card that reflows rather than
+    /// clips: the authored <paramref name="designInteriorW"/>, reduced to
+    /// whatever the available box leaves once the panel's own
+    /// <paramref name="chromeW"/> (stylebox content margins, both sides) is
+    /// paid, floored at <paramref name="minInteriorW"/> so a degenerate
+    /// viewport can't produce a zero/negative width.
+    /// </summary>
+    public static float CardInteriorWidth(
+        float designInteriorW, float availW, float chromeW, float minInteriorW = 200f)
+    {
+        return MathF.Max(minInteriorW, MathF.Min(designInteriorW, availW - chromeW));
+    }
+
+    /// <summary>
     /// Shrink-only content scale for a panel whose content is rebuilt at the
     /// returned scale (fonts / row heights / separations multiplied through),
     /// rather than transform-scaled. <paramref name="measuredH"/> is the
