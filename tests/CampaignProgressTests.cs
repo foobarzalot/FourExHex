@@ -153,8 +153,8 @@ public class CampaignProgressTests
     // byte-identically; the rest are re-seeded. The expectations below are
     // facts established by the CampaignWinnerSweepTests sweep/search harness.
     [Theory]
-    [InlineData(3)]
     [InlineData(9)]
+    [InlineData(47)]
     public void SeedForLevel_KeepsIdentityWhereOriginalMapIsWinnable(int level)
     {
         Assert.Equal(level, CampaignProgress.SeedForLevel(level));
@@ -641,18 +641,18 @@ public class CampaignProgressTests
         for (int level = 0; level < CampaignProgress.LevelCount; level++)
         {
             int n = CampaignProgress.PlayerCountForLevel(level);
-            Assert.InRange(n, 2, 6);
+            Assert.InRange(n, CampaignProgress.MinPlayers, 6);
             counts.Add(n);
         }
-        // Every count 2..6 should occur somewhere on the ladder.
-        Assert.Equal(new HashSet<int> { 2, 3, 4, 5, 6 }, counts);
+        // Every count 3..6 should occur somewhere on the ladder.
+        Assert.Equal(new HashSet<int> { 3, 4, 5, 6 }, counts);
     }
 
     [Fact]
     public void PlayerCountForLevel_BiasesTowardMorePlayers()
     {
         // Counts should descend in frequency across the ladder: 6 the plurality,
-        // then 5, 4, 3, with 2 the least common.
+        // then 5, 4, 3 — and 2 never.
         var freq = new int[7];
         for (int level = 0; level < CampaignProgress.LevelCount; level++)
         {
@@ -661,7 +661,72 @@ public class CampaignProgressTests
         Assert.True(freq[6] > freq[5], $"6 ({freq[6]}) should beat 5 ({freq[5]})");
         Assert.True(freq[5] > freq[4], $"5 ({freq[5]}) should beat 4 ({freq[4]})");
         Assert.True(freq[4] > freq[3], $"4 ({freq[4]}) should beat 3 ({freq[3]})");
-        Assert.True(freq[3] > freq[2], $"3 ({freq[3]}) should beat 2 ({freq[2]})");
+        Assert.Equal(0, freq[2]);
+    }
+
+    [Fact]
+    public void PlayerCountForLevel_NeverFieldsTwoPlayers()
+    {
+        // A 2-player start splits the board at parity, so the >50%
+        // claim-victory tier is reachable almost immediately (#205). The
+        // weighted draw can still land on 2; those levels are re-apportioned.
+        for (int level = 0; level < CampaignProgress.LevelCount; level++)
+        {
+            Assert.True(
+                CampaignProgress.PlayerCountForLevel(level) >= CampaignProgress.MinPlayers,
+                $"level {CampaignProgress.LabelFor(level)} fields " +
+                $"{CampaignProgress.PlayerCountForLevel(level)} players");
+        }
+    }
+
+    // The levels whose weighted count draw lands on 2 — the ones re-apportioned
+    // across the four legal roster sizes.
+    private static readonly int[] ReapportionedLevels =
+        { 3, 9, 15, 24, 47, 52, 74, 77, 78, 95, 111, 122, 184, 207, 250 };
+
+    [Fact]
+    public void PlayerCountForLevel_SpreadsReapportionedLevelsAcrossSizes()
+    {
+        var freq = new Dictionary<int, int> { [3] = 0, [4] = 0, [5] = 0, [6] = 0 };
+        foreach (int level in ReapportionedLevels)
+        {
+            freq[CampaignProgress.PlayerCountForLevel(level)]++;
+        }
+        // Dealt in turn, so the four sizes are within one of each other
+        // (15 levels → 4/4/4/3), never piled onto one size.
+        Assert.True(freq.Values.Max() - freq.Values.Min() <= 1,
+            "re-apportioned sizes: " +
+            string.Join(", ", freq.Select(kv => $"{kv.Key}p={kv.Value}")));
+    }
+
+    [Theory]
+    // The re-apportioned levels, dealt 3/4/5/6 in ladder order.
+    [InlineData(3, new[] { 0, 1, 4 }, 4)]
+    [InlineData(9, new[] { 1, 3, 4, 5 }, 3)]
+    [InlineData(15, new[] { 0, 1, 2, 3, 4 }, 1)]
+    [InlineData(24, new[] { 0, 1, 2, 3, 4, 5 }, 4)]
+    [InlineData(47, new[] { 0, 1, 5 }, 0)]
+    [InlineData(250, new[] { 0, 1, 2, 4, 5 }, 1)]
+    public void ActiveColorSlots_ReapportionedLevels(
+        int level, int[] expectedSlots, int expectedHuman)
+    {
+        Assert.Equal(expectedSlots, CampaignProgress.ActiveColorSlotsForLevel(level));
+        Assert.Equal(expectedHuman, CampaignProgress.HumanColorSlotForLevel(level));
+    }
+
+    [Theory]
+    // Goldens captured before the re-apportionment: levels whose draw never
+    // hit 2 keep their exact roster, so their baked winnable seeds stay valid.
+    [InlineData(1, new[] { 0, 1, 2, 3, 5 }, 1)]
+    [InlineData(6, new[] { 0, 4, 5 }, 0)]
+    [InlineData(13, new[] { 1, 2, 4, 5 }, 2)]
+    [InlineData(100, new[] { 1, 2, 3, 4 }, 1)]
+    [InlineData(199, new[] { 2, 3, 4, 5 }, 5)]
+    public void ActiveColorSlots_UnchangedForLevelsThatNeverDrewTwo(
+        int level, int[] expectedSlots, int expectedHuman)
+    {
+        Assert.Equal(expectedSlots, CampaignProgress.ActiveColorSlotsForLevel(level));
+        Assert.Equal(expectedHuman, CampaignProgress.HumanColorSlotForLevel(level));
     }
 
     [Fact]

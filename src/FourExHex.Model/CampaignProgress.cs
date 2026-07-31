@@ -326,7 +326,15 @@ public sealed class CampaignProgress
         return (int)(h % (uint)playerCount);
     }
 
-    /// <summary>Number of players in a campaign level — a uniform-random 2..6
+    /// <summary>Smallest campaign roster. A 2-player start splits the board at
+    /// parity, so the &gt;50% claim-victory tier is reachable almost
+    /// immediately; three players keep the ladder a real game at every rung.</summary>
+    public const int MinPlayers = 3;
+
+    /// <summary>How many roster sizes the ladder fields (3..6).</summary>
+    private const int RosterSizeCount = 4;
+
+    /// <summary>Number of players in a campaign level — a weighted-random 3..6
     /// derived from the level, so not every level fields all six colors. Stable
     /// forever per level.</summary>
     public static int PlayerCountForLevel(int level)
@@ -353,30 +361,71 @@ public sealed class CampaignProgress
         return ComputeRoster(level).HumanSlot;
     }
 
-    /// <summary>Deterministic per-level roster: a uniform-random count of distinct
-    /// color slots, with the human at one of them. Integer-only (no floats — Model
-    /// rule) and reproducible forever, using the same seeded-<see cref="DeterministicRng"/>
-    /// idiom as <see cref="MapGenOptionsForLevel"/> but with a distinct offset, so
-    /// the player set is decorrelated from both the map seed (= level) and the
-    /// terrain-density draw — a level's terrain is unchanged; only who plays it
-    /// varies. All draws come from one rng in a fixed order so it never shifts.</summary>
-    private static (int[] ActiveSlots, int HumanSlot) ComputeRoster(int level)
+    /// <summary>The per-level roster rng: same seeded-<see cref="DeterministicRng"/>
+    /// idiom as <see cref="MapGenOptionsForLevel"/> with a distinct offset, so the
+    /// player set is decorrelated from both the map seed (= level) and the
+    /// terrain-density draw.</summary>
+    private static DeterministicRng RosterRng(int level) =>
+        new DeterministicRng(unchecked(level * 6151 + 24593));
+
+    /// <summary>The level's weighted player-count draw, before the
+    /// <see cref="MinPlayers"/> re-apportionment: weight a count of c by (c-1),
+    /// so 6 is the plurality, then 5, 4, 3, with 2 the least likely. Total
+    /// weight = sum(1..slotCount-1) = slotCount*(slotCount-1)/2 (= 15 for 6).
+    /// It is the roster rng's first draw, so <see cref="ComputeRoster"/> reads
+    /// it straight off the shared stream. Integer-only (no floats — Model
+    /// rule).</summary>
+    private static int RawPlayerCountDraw(int level) =>
+        RawPlayerCountDraw(RosterRng(level));
+
+    private static int RawPlayerCountDraw(DeterministicRng rng)
     {
         int slotCount = GameSettings.PlayerConfig.Length; // 6
-        var rng = new DeterministicRng(unchecked(level * 6151 + 24593));
-
-        // Player count, biased toward more players: weight a count of c by (c-1),
-        // so 6 is the plurality, then 5, 4, 3, with 2 the least likely. Total
-        // weight = sum(1..slotCount-1) = slotCount*(slotCount-1)/2 (= 15 for 6).
-        // Integer-only (no floats — Model rule).
         int totalWeight = slotCount * (slotCount - 1) / 2;
         int draw = rng.NextBounded(totalWeight);
-        int count = 2;
         int acc = 0;
         for (int c = slotCount; c >= 2; c--)
         {
             acc += c - 1;
-            if (draw < acc) { count = c; break; }
+            if (draw < acc) return c;
+        }
+        return 2;
+    }
+
+    /// <summary>Rank of a level among the ladder's two-drawing levels (0 for
+    /// the lowest such level), which deals them their replacement sizes in
+    /// turn. Only meaningful for a level that drew 2.</summary>
+    private static int TwoDrawOrdinal(int level)
+    {
+        int ordinal = 0;
+        for (int i = 0; i < level; i++)
+        {
+            if (RawPlayerCountDraw(i) < MinPlayers) ordinal++;
+        }
+        return ordinal;
+    }
+
+    /// <summary>Deterministic per-level roster: a weighted-random count of distinct
+    /// color slots, with the human at one of them. Integer-only (no floats — Model
+    /// rule) and reproducible forever — a level's terrain is unchanged by it; only
+    /// who plays the level varies. All draws come from one <see cref="RosterRng"/>
+    /// in a fixed order so the stream never shifts.</summary>
+    private static (int[] ActiveSlots, int HumanSlot) ComputeRoster(int level)
+    {
+        int slotCount = GameSettings.PlayerConfig.Length; // 6
+        DeterministicRng rng = RosterRng(level);
+        int count = RawPlayerCountDraw(rng);
+
+        // The weighted draw can land on 2, a size the ladder does not field
+        // (see MinPlayers). Those levels are dealt the four legal sizes in
+        // turn — the nth two-drawing level takes 3 + n % 4 — so the
+        // replacements spread evenly instead of piling onto one size. Applied
+        // after the draw, like the clumping clamps in MapGenOptionsForLevel,
+        // and the shuffle below consumes a fixed number of draws whatever the
+        // count, so every other level's roster is untouched.
+        if (count < MinPlayers)
+        {
+            count = MinPlayers + TwoDrawOrdinal(level) % RosterSizeCount;
         }
 
         // Fisher–Yates shuffle of the slot indices, take the first `count`, sort

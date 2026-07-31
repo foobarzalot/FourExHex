@@ -101,9 +101,9 @@ public class PlayerRosterTests
 
             List<Player> roster = Player.BuildCampaignRoster(level);
 
-            // A compact 2–6 roster over exactly the level's active color slots.
+            // A compact 3–6 roster over exactly the level's active color slots.
             Assert.Equal(activeSlots, roster.ConvertAll(p => p.Id.Index).ToArray());
-            Assert.InRange(roster.Count, 2, 6);
+            Assert.InRange(roster.Count, CampaignProgress.MinPlayers, 6);
             Assert.Single(roster, p => p.Kind == PlayerKind.Human);
             foreach (Player p in roster)
             {

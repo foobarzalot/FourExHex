@@ -68,13 +68,16 @@ public static class CampaignStore
         // CampaignLevel above is the only handoff Main needs.
         int humanSlot = CampaignProgress.HumanColorSlotForLevel(level);
         int playerCount = CampaignProgress.PlayerCountForLevel(level);
+        MapGenOptions options = CampaignProgress.MapGenOptionsForLevel(level);
         LoadRequest.Pending = null;
         MarkAttempted(level);
         Log.Info(Log.LogCategory.Campaign,
             $"CampaignStore: launching level {CampaignProgress.LabelFor(level)} " +
             $"(seed {GameSettings.MasterSeed}, {playerCount} players, human slot {humanSlot} " +
             $"({GameSettings.PlayerConfig[humanSlot].Name}), " +
-            $"human difficulty {CampaignProgress.DifficultyForLevel(level)})");
+            $"human difficulty {CampaignProgress.DifficultyForLevel(level)}, " +
+            $"mode {CampaignProgress.ModeForLevel(level)}, " +
+            $"clumping {options.ClumpingFactor}, neutral {options.NeutralDensity}%)");
     }
 
     /// <summary>Mark a level won (terminal) and persist if anything

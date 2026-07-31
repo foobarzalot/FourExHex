@@ -36,7 +36,7 @@ Both halves of the pipeline are env-gated xUnit facts in
 |---|---|
 | `FOUREXHEX_CAMPAIGN_SWEEP=1` | run the verify sweep |
 | `FOUREXHEX_CAMPAIGN_SEED_SEARCH=1` | run the seed search |
-| `FOUREXHEX_SWEEP_LEVELS=a-b` (or `n`) | level range, default `0-255` |
+| `FOUREXHEX_SWEEP_LEVELS=a-b` (or `n`, or a comma list like `3,9,100-104`) | levels to cover, default `0-255` |
 | `FOUREXHEX_SWEEP_OUT=path` | CSV output path (default under `$TMPDIR`); summary at `path.summary.txt`, search table at `path.table.cs.txt`, live progress at `path.progress` |
 | `FOUREXHEX_SEARCH_MAX_ATTEMPTS=n` | per-level search cutoff, default 128 |
 
@@ -72,9 +72,9 @@ investigate the level's config).
 
 Bake the results:
 
-1. Take `<out>.table.cs.txt` (a 256-entry C# initializer; for a partial-range
-   search, splice just the changed levels' entries) and update the array in
-   `src/FourExHex.Model/CampaignSeeds.cs`.
+1. Take `<out>.table.cs.txt` — a 256-entry C# initializer for a full-ladder
+   search, or one `// level N (XX): <seed>` line per level for a partial one —
+   and update the array in `src/FourExHex.Model/CampaignSeeds.cs`.
 2. `dotnet build && dotnet test` — unit tests pin table shape and known
    identity-kept/re-seeded levels.
 3. Run **verify** and confirm the acceptance line.
