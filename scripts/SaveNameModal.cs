@@ -28,12 +28,20 @@ public sealed partial class SaveNameModal : CanvasLayer
 
     /// <param name="title">Serif panel title — e.g. "Save Game", "Save Map",
     /// "Save Tutorial". Defaults to "Save Game" for the in-game save flow.</param>
-    public SaveNameModal(string? title = null)
+    /// <param name="fieldLabel">Label above the text field. Defaults to
+    /// "Slot name:"; the map-export author prompt overrides it.</param>
+    /// <param name="confirmLabel">Confirm-button text. Defaults to "Save".</param>
+    public SaveNameModal(string? title = null, string? fieldLabel = null,
+        string? confirmLabel = null)
     {
         _title = title ?? Strings.Get(StringKeys.SaveTitleGame);
+        _fieldLabel = fieldLabel ?? Strings.Get(StringKeys.SaveSlotName);
+        _confirmLabel = confirmLabel ?? Strings.Get(StringKeys.ButtonSave);
     }
 
     private readonly string _title;
+    private readonly string _fieldLabel;
+    private readonly string _confirmLabel;
 
     private LineEdit _lineEdit = null!;
     private ColorRect _backdrop = null!;
@@ -81,7 +89,7 @@ public sealed partial class SaveNameModal : CanvasLayer
 
         var label = new Label
         {
-            Text = Strings.Get(StringKeys.SaveSlotName),
+            Text = _fieldLabel,
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
         };
         label.AddThemeFontSizeOverride("font_size", 22);
@@ -133,7 +141,7 @@ public sealed partial class SaveNameModal : CanvasLayer
 
         var saveButton = new Button
         {
-            Text = Strings.Get(StringKeys.ButtonSave),
+            Text = _confirmLabel,
             FocusMode = Control.FocusModeEnum.None,
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
         };

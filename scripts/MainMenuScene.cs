@@ -1904,7 +1904,61 @@ public partial class MainMenuScene : Control
         {
             new EscMenu.Option(Strings.Get(StringKeys.MenuNewMap), () => ShowPlayConfig(PlayConfigPurpose.EditorNewMap)),
             new EscMenu.Option(Strings.Get(StringKeys.MenuLoadMap), OpenLoadMapToEdit),
+            new EscMenu.Option(Strings.Get(StringKeys.MenuImportMap), OpenImportMap),
         });
+    }
+
+    /// <summary>Import branch of the Map Editor chooser: pick a
+    /// <c>.fxhmap</c> file, run it through <see cref="MapImport.Validate"/>
+    /// (untrusted input — never written without passing), then show the
+    /// refreshed map list with a success/renamed/failure notice on top.</summary>
+    private void OpenImportMap()
+    {
+        Log.Info(Log.LogCategory.Input, "MainMenu: Map Editor → import map");
+        MapFileDialogs.ShowImport(this, OnImportFileChosen);
+    }
+
+    private void OnImportFileChosen(string path)
+    {
+        string json;
+        using (FileAccess f = FileAccess.Open(path, FileAccess.ModeFlags.Read))
+        {
+            if (f == null)
+            {
+                Log.Warn(Log.LogCategory.Share,
+                    $"[share] import could not read '{path}': {FileAccess.GetOpenError()}");
+                ShowImportNotice(Strings.Get(StringKeys.ImportErrorMalformed));
+                return;
+            }
+            json = f.GetAsText();
+        }
+
+        MapImportResult result = MapImport.Validate(json, _saveStore.UserMapNames());
+        if (!result.Ok)
+        {
+            Log.Warn(Log.LogCategory.Share,
+                $"[share] import rejected: {result.Error} — {result.ErrorDetail}");
+            ShowImportNotice(Strings.Get(MapImportStrings.KeyFor(result.Error!.Value),
+                ("problems", result.ErrorDetail ?? "")));
+            return;
+        }
+
+        _saveStore.ImportMap(result.NormalizedJson!, result.FinalName);
+        Log.Info(Log.LogCategory.Share,
+            $"[share] import '{path}' -> ok name='{result.FinalName}' " +
+            $"renamed={result.Renamed}");
+        ShowImportNotice(Strings.Get(
+            result.Renamed ? StringKeys.ImportRenamed : StringKeys.ImportSuccess,
+            ("name", result.FinalName)));
+    }
+
+    /// <summary>Show the (refreshed) editable-map list with the import
+    /// outcome as an overlay notice on top — dismissing it reveals the
+    /// list, where a successful import is now visible.</summary>
+    private void ShowImportNotice(string message)
+    {
+        OpenLoadMapToEdit();
+        _loadDialog?.ShowNotice(Strings.Get(StringKeys.MenuImportMap), message);
     }
 
     /// <summary>Load-map-to-edit branch of the Map Editor chooser:
@@ -1917,7 +1971,7 @@ public partial class MainMenuScene : Control
         _loadDialog.ShowSlots(
             _saveStore.ListMaps(),
             Strings.Get(StringKeys.MenuNoMapsFound),
-            info => info.SlotName,
+            info => info.SlotName + SlotPickerDialog.AuthorSuffix(info),
             OnPickMapToEdit,
             thumbnailStore: _saveStore,
             previewMaps: true);
@@ -1945,9 +1999,9 @@ public partial class MainMenuScene : Control
         _loadDialog.ShowSlots(
             _saveStore.ListStartingMaps(),
             Strings.Get(StringKeys.MenuNoMapsFound),
-            info => info.IsBundled
+            info => (info.IsBundled
                 ? $"{info.SlotName} ({Strings.Get(StringKeys.MenuBundledMapTag)})"
-                : info.SlotName,
+                : info.SlotName) + SlotPickerDialog.AuthorSuffix(info),
             OnPickStartingMapToPlay,
             thumbnailStore: _saveStore,
             previewMaps: true);

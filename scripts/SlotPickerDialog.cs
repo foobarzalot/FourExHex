@@ -462,16 +462,29 @@ public sealed partial class SlotPickerDialog : CanvasLayer
         return label;
     }
 
+    /// <summary>Label suffix crediting a shared map's author (" — by X"),
+    /// empty for maps without one. Shared by every map-list labelFor
+    /// lambda so attribution renders identically everywhere.</summary>
+    public static string AuthorSuffix(SaveSlotInfo info) =>
+        info.Author == null
+            ? ""
+            : " — " + Strings.Get(StringKeys.MenuMapAuthorTag, ("author", info.Author));
+
     /// <summary>Display a "Load failed" error inside the picker. Falls back to
     /// <see cref="GD.PushError"/> if the dialog isn't in the tree yet.</summary>
-    public void ShowError(string message)
+    public void ShowError(string message) => ShowNotice(_errorTitle, message);
+
+    /// <summary>Same overlay as <see cref="ShowError"/> under a custom
+    /// title — used for notices that aren't load failures (e.g. the map
+    /// import success/renamed messages, issue #92).</summary>
+    public void ShowNotice(string title, string message)
     {
         if (!IsInsideTree())
         {
             GD.PushError(message);
             return;
         }
-        _errorTitleLabel.Text = _errorTitle;
+        _errorTitleLabel.Text = title;
         _errorBodyLabel.Text = message;
         Visible = true;
         _errorBackdrop.Visible = true;

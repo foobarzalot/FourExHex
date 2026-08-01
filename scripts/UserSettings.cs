@@ -71,6 +71,9 @@ public static partial class UserSettings
     // explainer + camera pan, then never again. None is never tracked here.
     private static bool _seenGoldIntro;
     private static bool _seenMountainIntro;
+    // Remembered map-export attribution (issue #92): pre-fills the author
+    // prompt so the player types their name once. Empty = never set.
+    private static string _authorName = "";
 
     public static bool SfxEnabled
     {
@@ -246,6 +249,27 @@ public static partial class UserSettings
     }
 
     /// <summary>
+    /// Remembered map-export attribution: pre-fills the export author
+    /// prompt. Trimmed; empty means "never set" (export omits the field).
+    /// </summary>
+    public static string AuthorName
+    {
+        get
+        {
+            EnsureLoaded();
+            return _authorName;
+        }
+        set
+        {
+            EnsureLoaded();
+            string trimmed = (value ?? "").Trim();
+            if (_authorName == trimmed) return;
+            _authorName = trimmed;
+            Save();
+        }
+    }
+
+    /// <summary>
     /// Scalar the pacer applies to step delays for a given speed:
     /// Slow doubles them, Normal leaves them, Fast halves them. Read on
     /// every <c>Schedule</c> call (via the <c>Main</c> lambda) so a
@@ -293,6 +317,9 @@ public static partial class UserSettings
         // Appended last for save-compat; absent from older settings.json
         // files → binds the Normal default.
         public PlaybackSpeed HumanSpeed { get; set; } = PlaybackSpeed.Normal;
+        // Map-export attribution (issue #92). Appended last for save-compat;
+        // absent from older settings.json files → binds "".
+        public string AuthorName { get; set; } = "";
     }
 
     // Source-gen JsonSerializerContext for SettingsDto. Nested inside
@@ -334,6 +361,7 @@ public static partial class UserSettings
             _seenVikingRaidersIntro = dto.SeenVikingRaidersIntro;
             _seenGoldIntro = dto.SeenGoldIntro;
             _seenMountainIntro = dto.SeenMountainIntro;
+            _authorName = (dto.AuthorName ?? "").Trim();
         }
         catch (System.Exception ex)
         {
@@ -363,6 +391,7 @@ public static partial class UserSettings
                     SeenVikingRaidersIntro = _seenVikingRaidersIntro,
                     SeenGoldIntro = _seenGoldIntro,
                     SeenMountainIntro = _seenMountainIntro,
+                    AuthorName = _authorName,
                 },
                 JsonContext.Default.SettingsDto);
 

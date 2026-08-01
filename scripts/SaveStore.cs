@@ -83,12 +83,54 @@ public sealed class SaveStore
         string slotName,
         GameState state,
         int masterSeed,
-        IReadOnlyList<Player> players)
+        IReadOnlyList<Player> players,
+        string? author = null)
     {
         EnsureDirectory(MapsDirectory);
         string sanitized = SanitizeSlotName(slotName);
-        string json = SaveSerializer.SerializeMap(state, masterSeed, players, sanitized);
+        string json = SaveSerializer.SerializeMap(state, masterSeed, players, sanitized,
+            author: author);
         AtomicWrite(MapsDirectory, sanitized, json);
+    }
+
+    /// <summary>
+    /// Persist an imported map payload that already passed
+    /// <see cref="MapImport.Validate"/> (which sanitized and
+    /// collision-resolved <paramref name="finalName"/> and rewrote the
+    /// JSON's SlotName to match). The extra Sanitize here is belt-and-braces
+    /// against a caller handing an unvalidated name.
+    /// </summary>
+    public void ImportMap(string normalizedJson, string finalName)
+    {
+        EnsureDirectory(MapsDirectory);
+        string sanitized = SanitizeSlotName(finalName);
+        AtomicWrite(MapsDirectory, sanitized, normalizedJson);
+        Log.Info(Log.LogCategory.Share,
+            $"[share] import wrote '{sanitized}' ({normalizedJson.Length} chars)");
+    }
+
+    /// <summary>
+    /// The name-collision set for <see cref="MapImport.Validate"/>: every
+    /// user map basename plus the bundled catalog names, so an import can
+    /// never overwrite a local map nor shadow a shipped one.
+    /// </summary>
+    public IReadOnlyCollection<string> UserMapNames()
+    {
+        var names = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+        if (DirAccess.DirExistsAbsolute(MapsDirectory))
+        {
+            using DirAccess dir = DirAccess.Open(MapsDirectory)!;
+            dir.ListDirBegin();
+            for (string name = dir.GetNext(); name.Length > 0; name = dir.GetNext())
+            {
+                if (dir.CurrentIsDir()) continue;
+                if (!name.EndsWith(SaveExtension)) continue;
+                names.Add(name.Substring(0, name.Length - SaveExtension.Length));
+            }
+            dir.ListDirEnd();
+        }
+        foreach (string bundled in StartingMapCatalog.Names) names.Add(bundled);
+        return names;
     }
 
     /// <summary>
@@ -344,7 +386,8 @@ public sealed class SaveStore
                 savedAtUnix: savedAt,
                 turnNumber: save.State.Turns.TurnNumber,
                 isAutosave: save.SlotName == AutosaveSlotName,
-                isBundled: isBundled);
+                isBundled: isBundled,
+                author: save.Author);
         }
         catch (System.Exception ex)
         {

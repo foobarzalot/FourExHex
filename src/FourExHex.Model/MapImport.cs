@@ -86,6 +86,11 @@ public static class MapImport
     public const int MaxRows = 128;
     public const int MaxCells = MaxCols * MaxRows;
 
+    /// <summary>Display cap for the free-text author field — matches the
+    /// export prompt's cap, and bounds what a hostile file can smuggle
+    /// into the map list.</summary>
+    public const int MaxAuthorLength = 40;
+
     public static MapImportResult Validate(
         string json, IReadOnlyCollection<string> existingMapNames)
     {
@@ -199,6 +204,17 @@ public static class MapImport
         string baseName = SaveNames.Sanitize(data.SlotName);
         string finalName = ResolveName(baseName, existingMapNames);
         data.SlotName = finalName;
+        // Author is untrusted free text — trim and cap it so the list UI
+        // never renders a hostile payload; empty collapses to omitted.
+        if (data.Author != null)
+        {
+            string author = data.Author.Trim();
+            if (author.Length > MaxAuthorLength)
+            {
+                author = author.Substring(0, MaxAuthorLength);
+            }
+            data.Author = author.Length == 0 ? null : author;
+        }
         string normalized = JsonSerializer.Serialize(
             data, FourExHexJsonContext.Default.SaveData);
         return MapImportResult.Success(

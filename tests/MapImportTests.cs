@@ -323,6 +323,21 @@ public class MapImportTests
         Assert.DoesNotContain("..", result.FinalName);
     }
 
+    [Fact]
+    public void Validate_OversizedAuthor_TruncatedInNormalizedJson()
+    {
+        // Author is display-only free text from an untrusted file — cap it
+        // so a hostile payload can't smuggle megabytes into the map list.
+        string json = BuildValidMapJson(author: new string('x', 500));
+
+        MapImportResult result = MapImport.Validate(json, NoExisting);
+
+        Assert.True(result.Ok);
+        LoadedSave reloaded = SaveSerializer.Deserialize(result.NormalizedJson!);
+        Assert.NotNull(reloaded.Author);
+        Assert.Equal(MapImport.MaxAuthorLength, reloaded.Author!.Length);
+    }
+
     // --- ResolveName ----------------------------------------------------
 
     [Fact]

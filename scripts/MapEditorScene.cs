@@ -20,7 +20,12 @@ public partial class MapEditorScene : Node2D
 
     private SaveStore _saveStore = null!;
     private SaveNameModal? _saveModal;
+    private SaveNameModal? _exportModal;
     private SlotPickerDialog? _loadDialog;
+    // Export state stashed between the author prompt and the file dialog
+    // (both are modal, so the board can't change in between).
+    private GameState? _pendingExportState;
+    private string _pendingExportAuthor = "";
 
     // The per-color roster the map will bake: kinds (incl. None)
     // and difficulties, chosen up-front for a New Map or derived from the file
@@ -71,6 +76,7 @@ public partial class MapEditorScene : Node2D
         _hud.ApplyRosterKinds(_rosterKinds);
 
         BuildSaveDialog();
+        BuildExportDialog();
         BuildLoadDialog();
 
         _escMenu = new EscMenu();
@@ -88,6 +94,7 @@ public partial class MapEditorScene : Node2D
         // These modals handle their own ESC-to-close.
         if (_escMenu.IsOpen) return;
         if (_saveModal?.IsOpen == true) return;
+        if (_exportModal?.IsOpen == true) return;
         GetViewport()?.SetInputAsHandled();
         // Escape ladders out: a non-hand palette drops to hand first
         // (canceling whatever paint mode is selected); ESC with hand
@@ -106,6 +113,7 @@ public partial class MapEditorScene : Node2D
         {
             new EscMenu.Option(Strings.Get(StringKeys.MenuResume), () => { }),
             new EscMenu.Option(Strings.Get(StringKeys.EditorSaveMap), OpenSaveDialog),
+            new EscMenu.Option(Strings.Get(StringKeys.EditorExportMap), OpenExportDialog),
             new EscMenu.Option(Strings.Get(StringKeys.MenuLoadMap), OpenLoadDialog),
             new EscMenu.Option(Strings.Get(StringKeys.MenuExit), ReturnToMainMenu),
         });
@@ -164,6 +172,81 @@ public partial class MapEditorScene : Node2D
         _saveModal.Close();
     }
 
+    private void BuildExportDialog()
+    {
+        // The author prompt doubles as the export flow's error surface:
+        // it stays open across the file dialog and only closes on success.
+        _exportModal = new SaveNameModal(
+            Strings.Get(StringKeys.EditorExportMap),
+            fieldLabel: Strings.Get(StringKeys.ExportAuthorLabel),
+            confirmLabel: Strings.Get(StringKeys.ButtonOk));
+        _exportModal.Confirmed += OnExportAuthorConfirmed;
+        _exportModal.Closed += () => { _pendingExportState = null; };
+        AddChild(_exportModal);
+    }
+
+    private void OpenExportDialog()
+    {
+        _exportModal?.Open(UserSettings.AuthorName);
+    }
+
+    private void OnExportAuthorConfirmed(string rawAuthor)
+    {
+        if (_exportModal == null) return;
+        GameState state = _panel.BuildSaveState(_mapMode);
+
+        // Same playability gate as Save Map — an unplayable map is not
+        // worth sharing, and import validation on the other end would
+        // reject it anyway.
+        System.Collections.Generic.IReadOnlyList<string> problems =
+            MapRosterRules.ValidateForSave(state.Territories, _rosterKinds);
+        if (problems.Count > 0)
+        {
+            Log.Info(Log.LogCategory.Share,
+                "[share] export blocked — " + string.Join("; ", problems));
+            _exportModal.ShowError(string.Join("\n", problems));
+            return;
+        }
+
+        string author = rawAuthor.Trim();
+        if (author.Length > MapImport.MaxAuthorLength)
+        {
+            author = author.Substring(0, MapImport.MaxAuthorLength);
+        }
+        UserSettings.AuthorName = author; // remember for next export
+        _pendingExportAuthor = author;
+        _pendingExportState = state;
+
+        int seed = _panel.CurrentSeed;
+        string defaultName =
+            (seed > 0 ? $"map_seed{seed}" : "map") + MapFileDialogs.Extension;
+        MapFileDialogs.ShowExport(this, defaultName, OnExportPathChosen);
+    }
+
+    private void OnExportPathChosen(string path)
+    {
+        if (_exportModal == null || _pendingExportState == null) return;
+        string name = SaveStore.SanitizeSlotName(
+            System.IO.Path.GetFileNameWithoutExtension(path));
+        string json = SaveSerializer.SerializeMap(
+            _pendingExportState, _panel.CurrentSeed, BuildBakeRoster(), name,
+            author: _pendingExportAuthor.Length > 0 ? _pendingExportAuthor : null);
+        using FileAccess f = FileAccess.Open(path, FileAccess.ModeFlags.Write);
+        if (f == null)
+        {
+            Log.Warn(Log.LogCategory.Share,
+                $"[share] export write failed: {FileAccess.GetOpenError()} at '{path}'");
+            _exportModal.ShowError(Strings.Get(StringKeys.ExportFailed,
+                ("error", FileAccess.GetOpenError().ToString())));
+            return;
+        }
+        f.StoreString(json);
+        Log.Info(Log.LogCategory.Share,
+            $"[share] exported '{name}' by '{_pendingExportAuthor}' -> {path} " +
+            $"({json.Length} chars)");
+        _exportModal.Close();
+    }
+
     private void BuildLoadDialog()
     {
         _loadDialog = new SlotPickerDialog(Strings.Get(StringKeys.MenuLoadMap), Strings.Get(StringKeys.MenuLoadFailed));
@@ -178,7 +261,7 @@ public partial class MapEditorScene : Node2D
         _loadDialog.ShowSlots(
             _saveStore.ListMaps(),
             Strings.Get(StringKeys.EditorNoMapsFound),
-            info => info.SlotName,
+            info => info.SlotName + SlotPickerDialog.AuthorSuffix(info),
             OnLoadSlotPressed,
             thumbnailStore: _saveStore,
             previewMaps: true);
@@ -219,12 +302,25 @@ public partial class MapEditorScene : Node2D
 
         if (req is { Source: MapEditorRequest.Source.LoadMap, MapName: { } mapName })
         {
-            _pendingMapToLoad = _saveStore.LoadMap(mapName);
-            DeriveRosterFromLoad(_pendingMapToLoad, out _rosterKinds, out _rosterDifficulties);
-            _mapMode = _pendingMapToLoad.State.Mode; // preserve mode on re-save
-            Log.Info(Log.LogCategory.Display,
-                $"MapEditor: load map \"{mapName}\" for editing (mode={_mapMode})");
-            return;
+            // A corrupt file here (hand-dropped or imported into user://maps/)
+            // must not crash the scene during _Ready — fall through to the
+            // default all-Human new-map roster instead.
+            try
+            {
+                _pendingMapToLoad = _saveStore.LoadMap(mapName);
+                DeriveRosterFromLoad(_pendingMapToLoad, out _rosterKinds, out _rosterDifficulties);
+                _mapMode = _pendingMapToLoad.State.Mode; // preserve mode on re-save
+                Log.Info(Log.LogCategory.Display,
+                    $"MapEditor: load map \"{mapName}\" for editing (mode={_mapMode})");
+                return;
+            }
+            catch (System.Exception ex)
+            {
+                Log.Warn(Log.LogCategory.Share,
+                    $"[share] editor could not load map '{mapName}': {ex.Message}; " +
+                    "falling back to a new map");
+                _pendingMapToLoad = null;
+            }
         }
 
         if (req is { Source: MapEditorRequest.Source.NewMap, Kinds: { } kinds })
