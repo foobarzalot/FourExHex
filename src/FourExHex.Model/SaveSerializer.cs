@@ -65,6 +65,13 @@ public sealed class LoadedSave
     /// </summary>
     public int? CampaignLevel { get; }
 
+    /// <summary>
+    /// Display-only attribution baked into shared starting maps at
+    /// export. Null for in-progress saves, legacy files, and maps whose
+    /// author was never set — the UI keys attribution off null.
+    /// </summary>
+    public string? Author { get; }
+
     public LoadedSave(
         GameState state,
         IReadOnlyList<Player> players,
@@ -76,7 +83,8 @@ public sealed class LoadedSave
         Tutorial? tutorial = null,
         Replay? replay = null,
         int? campaignLevel = null,
-        bool mapHasBakedKinds = false)
+        bool mapHasBakedKinds = false,
+        string? author = null)
     {
         State = state;
         Players = players;
@@ -90,6 +98,7 @@ public sealed class LoadedSave
         Tutorial = tutorial;
         Replay = replay;
         CampaignLevel = campaignLevel;
+        Author = author;
     }
 }
 
@@ -160,13 +169,15 @@ public static class SaveSerializer
         int masterSeed,
         IReadOnlyList<Player> players,
         string slotName,
-        Tutorial? tutorial = null)
+        Tutorial? tutorial = null,
+        string? author = null)
         => SerializeInternal(state, masterSeed, players, slotName,
             maxTurnNumber: int.MaxValue, includeKind: true,
             originMapName: null, claimVictoryPromptedHighestThreshold: null,
             tutorial: tutorial,
             replay: null,
-            campaignLevel: null);
+            campaignLevel: null,
+            author: author);
 
     private static string SerializeInternal(
         GameState state,
@@ -179,7 +190,8 @@ public static class SaveSerializer
         IReadOnlyDictionary<PlayerId, int>? claimVictoryPromptedHighestThreshold,
         Tutorial? tutorial,
         Replay? replay,
-        int? campaignLevel)
+        int? campaignLevel,
+        string? author = null)
     {
         var data = new SaveData
         {
@@ -229,6 +241,9 @@ public static class SaveSerializer
                 ? null : state.Vikings.LastCompletedRound,
             VikingLastSpawnRound = state.Vikings.LastSpawnRound == 0
                 ? null : state.Vikings.LastSpawnRound,
+            // Attribution for shared maps. Null (omitted) when unset, so
+            // author-less files' wire format is unchanged.
+            Author = string.IsNullOrEmpty(author) ? null : author,
         };
         // Source-gen path (FourExHexJsonContext) so this works under iOS AOT,
         // where reflection-based serialization is disabled. The context's
@@ -363,7 +378,8 @@ public static class SaveSerializer
             tutorial: tutorial,
             replay: replay,
             campaignLevel: data.CampaignLevel,
-            mapHasBakedKinds: mapHasBakedKinds);
+            mapHasBakedKinds: mapHasBakedKinds,
+            author: string.IsNullOrEmpty(data.Author) ? null : data.Author);
     }
 
     /// <summary>
@@ -1306,6 +1322,11 @@ public sealed class SaveData
     /// <summary>Viking Raiders: round the most recent wave spawned in;
     /// null/omitted at 0.</summary>
     public int? VikingLastSpawnRound { get; set; }
+
+    /// <summary>Display-only attribution baked into shared starting maps
+    /// at export. Null/omitted for in-progress saves, legacy files, and
+    /// maps whose author was never set.</summary>
+    public string? Author { get; set; }
 }
 
 /// <summary>A raider at sea: coord + unit level. Used by

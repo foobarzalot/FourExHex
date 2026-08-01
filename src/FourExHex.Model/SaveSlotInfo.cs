@@ -24,13 +24,18 @@ public sealed class SaveSlotInfo
     /// than saved by the user.</summary>
     public bool IsBundled { get; }
 
+    /// <summary>Display-only attribution for shared maps
+    /// (<see cref="SaveData.Author"/>). Null when the file carries none.</summary>
+    public string? Author { get; }
+
     public SaveSlotInfo(string slotName, long savedAtUnix, int turnNumber, bool isAutosave,
-        bool isBundled = false)
+        bool isBundled = false, string? author = null)
     {
         SlotName = slotName;
         SavedAtUnix = savedAtUnix;
         TurnNumber = turnNumber;
         IsAutosave = isAutosave;
         IsBundled = isBundled;
+        Author = author;
     }
 }

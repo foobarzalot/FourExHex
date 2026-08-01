@@ -249,6 +249,21 @@ public static class StringKeys
     public const string MenuExitTitle = "menu.exit_title";
     public const string MenuExitBody = "menu.exit_body";
 
+    // Map sharing: .fxhmap export/import.
+    public const string EditorExportMap = "editor.export_map";
+    public const string MenuImportMap = "menu.import_map";
+    public const string MenuMapAuthorTag = "menu.map_author_tag";
+    public const string ExportAuthorLabel = "export.author_label";
+    public const string ExportFailed = "export.failed";
+    public const string ExportSuccess = "export.success";
+    public const string ImportSuccess = "import.success";
+    public const string ImportRenamed = "import.renamed";
+    public const string ImportErrorMalformed = "import.error.malformed";
+    public const string ImportErrorVersion = "import.error.version";
+    public const string ImportErrorNotStartingMap = "import.error.not_starting_map";
+    public const string ImportErrorTooLarge = "import.error.too_large";
+    public const string ImportErrorInvalid = "import.error.invalid";
+
     // Game-mode display names (setup dropdown).
     public const string ModeFreeform = "mode.freeform";
     public const string ModeRisingTides = "mode.rising_tides";

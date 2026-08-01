@@ -52,6 +52,7 @@ public static class Log
         Determinism = 18, // RNG-stream + final-state digests: cross-run/cross-platform one-line diff
         LevelDesign = 19, // authored-maps pipeline: harness edits/validation/playtests + bundled starting-map list/load
         Anim = 20,    // per-frame / tween churn, split from Render so it can be silenced: unit+capital pulse, move-anim beat holds and travel/arrival, terrain capture fx, camera pan and demo-follow
+        Share = 21,   // map sharing: export/import validate/write results, file-dialog outcomes, share-sheet hand-off
     }
 
     /// <summary>Severity, ascending. <see cref="Off"/> disables a

@@ -88,6 +88,44 @@ public class SaveSerializerTests
     }
 
     [Fact]
+    public void SerializeMap_WithAuthor_RoundTripsAuthor()
+    {
+        // Shared maps carry attribution: SerializeMap bakes the author
+        // string and Deserialize surfaces it on LoadedSave.
+        (GameState state, IReadOnlyList<Player> players) = BuildRichState();
+
+        string json = SaveSerializer.SerializeMap(state, 42, players, "m", author: "Nathan");
+        LoadedSave loaded = SaveSerializer.Deserialize(json);
+
+        Assert.Equal("Nathan", loaded.Author);
+    }
+
+    [Fact]
+    public void SerializeMap_NoAuthor_OmitsField()
+    {
+        // Wire-format stability: author-less maps (every existing map)
+        // serialize byte-identically to before the field existed.
+        (GameState state, IReadOnlyList<Player> players) = BuildRichState();
+
+        string json = SaveSerializer.SerializeMap(state, 42, players, "m");
+
+        Assert.DoesNotContain("\"Author\"", json);
+    }
+
+    [Fact]
+    public void Deserialize_FileWithoutAuthor_AuthorNull()
+    {
+        // Legacy files (and any file whose author was never set) load
+        // with Author == null, not "" — the UI keys attribution off null.
+        (GameState state, IReadOnlyList<Player> players) = BuildRichState();
+
+        string json = SaveSerializer.SerializeMap(state, 42, players, "m");
+        LoadedSave loaded = SaveSerializer.Deserialize(json);
+
+        Assert.Null(loaded.Author);
+    }
+
+    [Fact]
     public void SerializeMap_RoundTripsRisingTidesMode()
     {
         // The serialization layer carries a starting map's game mode end to

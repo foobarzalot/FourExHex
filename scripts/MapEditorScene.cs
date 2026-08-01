@@ -245,31 +245,12 @@ public partial class MapEditorScene : Node2D
             .Repeat(Difficulty.Soldier, GameSettings.PlayerConfig.Length).ToArray();
     }
 
-    /// <summary>Derive a 6-slot kinds/difficulties pair from a loaded map. Maps
-    /// with baked kinds carry None for slots absent from the active roster; maps
-    /// without baked kinds default to Red Human, the rest Computer, all
-    /// Soldier.</summary>
+    /// <summary>Derive a 6-slot kinds/difficulties pair from a loaded map
+    /// (shared with import validation — see
+    /// <see cref="MapRosterRules.DeriveKindsFromLoad"/>).</summary>
     private static void DeriveRosterFromLoad(
         LoadedSave loaded, out PlayerKind[] kinds, out Difficulty[] difficulties)
-    {
-        int n = GameSettings.PlayerConfig.Length;
-        kinds = new PlayerKind[n];
-        difficulties = new Difficulty[n];
-        for (int i = 0; i < n; i++)
-        {
-            kinds[i] = loaded.MapHasBakedKinds ? PlayerKind.None
-                : i == 0 ? PlayerKind.Human : PlayerKind.Computer;
-            difficulties[i] = Difficulty.Soldier;
-        }
-        if (loaded.MapHasBakedKinds)
-        {
-            foreach (Player p in loaded.Players)
-            {
-                kinds[p.Id.Index] = p.Kind;
-                difficulties[p.Id.Index] = p.Difficulty;
-            }
-        }
-    }
+        => MapRosterRules.DeriveKindsFromLoad(loaded, out kinds, out difficulties);
 
     /// <summary>The editor's live preview roster: the active (non-None) colors,
     /// all Human so no AI runs and Generate paints only colors in play.</summary>

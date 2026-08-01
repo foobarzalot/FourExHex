@@ -75,6 +75,33 @@ public static class MapRosterRules
     /// Slots are preserved, not compacted — a result may be
     /// e.g. {0,2,4} if those are the owners.
     /// </summary>
+    /// <summary>Derive a 6-slot kinds/difficulties pair from a loaded map.
+    /// Maps with baked kinds carry <see cref="PlayerKind.None"/> for slots
+    /// absent from the active roster; maps without baked kinds default to
+    /// slot 0 Human, the rest Computer, all Soldier (the legacy default
+    /// roster). Shared by the editor's load path and import validation.</summary>
+    public static void DeriveKindsFromLoad(
+        LoadedSave loaded, out PlayerKind[] kinds, out Difficulty[] difficulties)
+    {
+        int n = GameSettings.PlayerConfig.Length;
+        kinds = new PlayerKind[n];
+        difficulties = new Difficulty[n];
+        for (int i = 0; i < n; i++)
+        {
+            kinds[i] = loaded.MapHasBakedKinds ? PlayerKind.None
+                : i == 0 ? PlayerKind.Human : PlayerKind.Computer;
+            difficulties[i] = Difficulty.Soldier;
+        }
+        if (loaded.MapHasBakedKinds)
+        {
+            foreach (Player p in loaded.Players)
+            {
+                kinds[p.Id.Index] = p.Kind;
+                difficulties[p.Id.Index] = p.Difficulty;
+            }
+        }
+    }
+
     /// <summary>
     /// Editor/builder preview roster from a 6-slot kinds array: the active
     /// (non-None) colors, all forced Human so no AI drives turns and
