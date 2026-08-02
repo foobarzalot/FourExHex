@@ -3,7 +3,7 @@
 # Build an Android APK of FourExHex from this Mac.
 #
 # Why this script exists / the non-obvious bits it papers over:
-#   1. .NET TFM trap (the big one). Godot 4.6.1's PREBUILT Android template
+#   1. .NET TFM trap (the big one). Godot 4.7.1's PREBUILT Android template
 #      hardcodes net9.0 as the only supported C# target framework, but this
 #      project pins net8.0 (and the Godot editor's own runtime is net8.0, so a
 #      net9 game assembly would no longer load in the editor / desktop builds).
@@ -21,15 +21,15 @@
 #      time; we source them from a creds file next to the keystores (outside
 #      the repo). The export_presets.cfg keystore fields stay empty.
 #   4. Godot reads the Android SDK / JDK locations from the editor settings
-#      (~/Library/Application Support/Godot/editor_settings-4.6.tres), and the
+#      (~/Library/Application Support/Godot/editor_settings-4.7.tres), and the
 #      Gradle wrapper (gradle-8.11.1) downloads itself + AGP 8.6.1 deps on the
 #      first build (network required once). This script does NOT install the
 #      SDK/NDK — it only checks they're present.
 #
-# Toolchain the SDK must provide (Godot 4.6.1 android build template):
-#   - platforms;android-35   (compileSdk/targetSdk 35)
-#   - build-tools;35.x        (apksigner + zipalign)
-#   - ndk;28.1.13356709       (exact version pinned by config.gradle)
+# Toolchain the SDK must provide (Godot 4.7.1 android build template):
+#   - platforms;android-36   (compileSdk/targetSdk 36)
+#   - build-tools;36.x        (apksigner + zipalign)
+#   - ndk;29.0.14206865       (exact version pinned by config.gradle)
 #   - platform-tools          (adb)
 #   - cmdline-tools           (sdkmanager + accepted licenses)
 #   - JDK >= 17               (JDK 21 satisfies the gradle validateJavaVersion task)
@@ -66,8 +66,8 @@ else
 fi
 PRESETS_CFG="$PROJECT_DIR/export_presets.cfg"
 PRESETS_BAK="$PROJECT_DIR/export_presets.cfg.bak.$$"
-NDK_VERSION="28.1.13356709"
-COMPILE_SDK="android-35"
+NDK_VERSION="29.0.14206865"
+COMPILE_SDK="android-36"
 
 # Default SDK location matches the editor-settings android_sdk_path; override
 # with ANDROID_SDK_ROOT / ANDROID_HOME if you installed it elsewhere.
@@ -86,7 +86,7 @@ fail() { echo "ERROR: $1" >&2; exit 1; }
 [[ -x "$GODOT" ]] || fail "Godot not found at $GODOT"
 [[ -d "$ANDROID_SDK" ]] || fail "Android SDK not found at $ANDROID_SDK (set ANDROID_SDK_ROOT or install it there)"
 [[ -x "$ANDROID_SDK/platform-tools/adb" ]] || fail "adb missing — install platform-tools into $ANDROID_SDK"
-[[ -d "$ANDROID_SDK/platforms/$COMPILE_SDK" ]] || fail "platform $COMPILE_SDK missing — install platforms;$COMPILE_SDK (compileSdk 35)"
+[[ -d "$ANDROID_SDK/platforms/$COMPILE_SDK" ]] || fail "platform $COMPILE_SDK missing — install platforms;$COMPILE_SDK (compileSdk 36)"
 [[ -d "$ANDROID_SDK/ndk/$NDK_VERSION" ]] || fail "NDK $NDK_VERSION missing — install ndk;$NDK_VERSION (exact version pinned by the build template)"
 BTDIR="$(ls -d "$ANDROID_SDK"/build-tools/* 2>/dev/null | sort -V | tail -1 || true)"
 [[ -n "$BTDIR" && -x "$BTDIR/apksigner" && -x "$BTDIR/zipalign" ]] \

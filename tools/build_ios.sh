@@ -165,6 +165,8 @@ mkdir -p "$BUILD_DIR"
 # "Apple Development" — matches auto-signing's archive pick).
 sed -i '' 's|CODE_SIGN_IDENTITY = "Apple Distribution";|CODE_SIGN_IDENTITY = "";|g' \
   "$XCODEPROJ/project.pbxproj"
+grep -q 'CODE_SIGN_IDENTITY = "";' "$XCODEPROJ/project.pbxproj" \
+  || fail "CODE_SIGN_IDENTITY blanking in project.pbxproj failed — the exporter may no longer hardcode 'Apple Distribution'; re-check whether this sed is still needed"
 
 echo "==> Archiving with xcodebuild (this is the slow step, several minutes)"
 # Archive uses auto-signing (Apple Development for both Debug and Release —

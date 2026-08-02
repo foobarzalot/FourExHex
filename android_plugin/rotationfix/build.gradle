@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace 'net.sitkoff.fourexhex.rotationfix'
-    compileSdk 35
+    compileSdk 36
 
     defaultConfig {
         minSdk 24
@@ -24,5 +24,5 @@ android {
 dependencies {
     // Provided at runtime by the engine; compile against the exact version this
     // project exports with (matches android/build/config.gradle's godot lib).
-    compileOnly 'org.godotengine:godot:4.6.1.stable'
+    compileOnly 'org.godotengine:godot:4.7.1.stable'
 }
