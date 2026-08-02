@@ -28,6 +28,9 @@ public sealed class KeyboardLiftController
     private readonly float _margin;
     private readonly string _label;
     private readonly float _fakeKeyboardPhysicalHeight;
+    // Querying keyboard height on a display server without virtual-keyboard
+    // support warns (with a backtrace) on every call — gate it.
+    private readonly bool _hasVirtualKeyboard;
     private float _currentLift;
 
     /// <param name="field">The focused field to keep clear of the keyboard.</param>
@@ -48,6 +51,12 @@ public sealed class KeyboardLiftController
         {
             _fakeKeyboardPhysicalHeight = fakeKbHeight;
         }
+
+        _hasVirtualKeyboard = DisplayServer.HasFeature(DisplayServer.Feature.VirtualKeyboard);
+        if (!_hasVirtualKeyboard)
+        {
+            Log.Debug(Log.LogCategory.Display, $"{_label}: no virtual keyboard on this display server; lift stays 0");
+        }
     }
 
     /// <summary>Current applied lift in logical px (0 = unlifted). Hosts re-pass
@@ -61,7 +70,7 @@ public sealed class KeyboardLiftController
     {
         float physicalHeight = _fakeKeyboardPhysicalHeight > 0f
             ? _fakeKeyboardPhysicalHeight
-            : DisplayServer.VirtualKeyboardGetHeight();
+            : _hasVirtualKeyboard ? DisplayServer.VirtualKeyboardGetHeight() : 0f;
         float logicalHeight = contentScaleFactor > 0f
             ? physicalHeight / contentScaleFactor
             : physicalHeight;
