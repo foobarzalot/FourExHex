@@ -32,6 +32,9 @@ using Godot;
 public sealed partial class SlotPickerDialog : CanvasLayer
 {
     private readonly string _title;
+    // Title for the current open: the ctor title unless ShowSlots overrode
+    // it (used by BuildBody, which also re-runs on orientation flips).
+    private string _activeTitle = "";
     private ColorRect _backdrop = null!;
     private PanelContainer? _panel;
     private VBoxContainer _body = null!;
@@ -199,7 +202,8 @@ public sealed partial class SlotPickerDialog : CanvasLayer
         Func<SaveSlotInfo, string> labelFor,
         Action<string> onPicked,
         SaveStore? thumbnailStore = null,
-        bool previewMaps = false)
+        bool previewMaps = false,
+        string? titleOverride = null)
     {
         _slots = slots;
         _emptyMessage = emptyMessage;
@@ -209,6 +213,9 @@ public sealed partial class SlotPickerDialog : CanvasLayer
         // Maps live in a different directory than game saves; the preview must
         // load from the right one.
         _previewUsesMaps = previewMaps;
+        // A shared instance serves multiple flows (Load Game vs the map
+        // import file listing); the override retitles this open only.
+        _activeTitle = titleOverride ?? _title;
         _selectedSlot = null;
         BuildBody();
         Visible = true;
@@ -254,7 +261,8 @@ public sealed partial class SlotPickerDialog : CanvasLayer
         _body.AddThemeConstantOverride("separation", 12);
         _panel.AddChild(_body);
 
-        _body.AddChild(ModalChrome.BuildSerifTitle(_title));
+        _body.AddChild(ModalChrome.BuildSerifTitle(
+            _activeTitle.Length > 0 ? _activeTitle : _title));
 
         if (!preview)
         {
@@ -457,7 +465,14 @@ public sealed partial class SlotPickerDialog : CanvasLayer
 
     private static Label MakeMessageLabel(string text)
     {
-        var label = new Label { Text = text };
+        // Autowrap so a long empty-state message wraps instead of driving
+        // the surrounding ScrollContainer sideways.
+        var label = new Label
+        {
+            Text = text,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+        };
         label.AddThemeFontSizeOverride("font_size", 18);
         return label;
     }
@@ -471,20 +486,16 @@ public sealed partial class SlotPickerDialog : CanvasLayer
             : " — " + Strings.Get(StringKeys.MenuMapAuthorTag, ("author", info.Author));
 
     /// <summary>Display a "Load failed" error inside the picker. Falls back to
-    /// <see cref="GD.PushError"/> if the dialog isn't in the tree yet.</summary>
-    public void ShowError(string message) => ShowNotice(_errorTitle, message);
-
-    /// <summary>Same overlay as <see cref="ShowError"/> under a custom
-    /// title — used for notices that aren't load failures (e.g. the map
-    /// import success/renamed messages, issue #92).</summary>
-    public void ShowNotice(string title, string message)
+    /// <see cref="GD.PushError"/> if the dialog isn't in the tree yet.
+    /// Standalone messages belong in <see cref="NoticeModal"/>, not here.</summary>
+    public void ShowError(string message)
     {
         if (!IsInsideTree())
         {
             GD.PushError(message);
             return;
         }
-        _errorTitleLabel.Text = title;
+        _errorTitleLabel.Text = _errorTitle;
         _errorBodyLabel.Text = message;
         Visible = true;
         _errorBackdrop.Visible = true;

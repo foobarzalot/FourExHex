@@ -1615,15 +1615,17 @@ display-only attribution, rendered as "— by X" in every map picker via
   (`SaveStore.WriteExportTemp`) and hands off to the OS share sheet.
 - **Import.** Main-menu Map Editor chooser → Import Map. Desktop: native open
   dialog (`MapFileDialogs.ShowImport`). Platforms without
-  `DisplayServer.Feature.NativeDialogFile` (iOS): a text-mode
-  `SlotPickerDialog` over the `user://import/` drop folder
-  (`SaveStore.ListImportFolder`; the iOS preset's
-  `user_data/accessible_from_files_app` exposes `user://` in the Files app, and
-  the empty-list message is the copy-files-here hint), with drop files deleted
-  on successful import. Both paths funnel into `Validate` →
-  `SaveStore.ImportMap` (atomic write, never overwrites) → the refreshed
-  editable-map list with the outcome (imported / renamed / rejected) as a
-  `SlotPickerDialog.ShowNotice` overlay. Corrupt files that reach `user://maps/`
+  `DisplayServer.Feature.NativeDialogFile` (iOS; forceable on desktop via
+  `FOUREXHEX_FORCE_FOLDER_IMPORT` for testing): the `user://import/` drop
+  folder (`SaveStore.ListImportFolder`; the iOS preset's
+  `user_data/accessible_from_files_app` exposes `user://` in the Files app) —
+  empty folder shows the copy-files-here hint in a `NoticeModal`; otherwise
+  the `.fxhmap` files list in a text-mode `SlotPickerDialog` retitled via
+  `ShowSlots`' `titleOverride`, with drop files deleted on successful import.
+  Both paths funnel into `Validate` → `SaveStore.ImportMap` (atomic write,
+  never overwrites) → the outcome (imported / renamed / rejected) in a
+  `NoticeModal`; dismissing a success opens the refreshed editable-map list.
+  Corrupt files that reach `user://maps/`
   outside this path degrade rather than crash: `MapEditorScene.
   ResolveEditorRequest` falls back to a new map, `TryReadHeader` drops the row.
 - **Platform pieces.** `MapFileDialogs` wraps an in-tree `FileDialog` with
@@ -2168,9 +2170,13 @@ scripts/  (split: see the three source trees listed just above)
 │                           ctor takes title/message/confirm-label;
 │                           Confirmed/Canceled; Escape cancels, Enter confirms.
 │                           Used by MainMenuScene's Exit flow
+├─ NoticeModal.cs         ─ reusable single-button message modal (ModalChrome
+│                           family); Show(title, message), wrapping body,
+│                           Closed event. Used for map-import outcomes/hints
 ├─ SlotPickerDialog.cs    ─ reusable load-slot picker on the shared modal
 │                           shell; ShowSlots(slots, emptyMsg, labelFor,
-│                           onPicked) + ShowError/ShowNotice + AuthorSuffix;
+│                           onPicked, …, titleOverride) + ShowError +
+│                           AuthorSuffix;
 │                           ProcessMode = Always. Built
 │                           from ModalChrome. Used by MainMenuScene,
 │                           MapEditorScene, TutorialBuilderScene, Main

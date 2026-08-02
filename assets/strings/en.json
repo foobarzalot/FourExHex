@@ -191,7 +191,7 @@
   "import.error.not_starting_map": "This file is an in-progress game, not a starting map.",
   "import.error.too_large": "This map is too large to load.",
   "import.error.invalid": "This map is not playable: {problems}",
-  "import.folder_hint": "No maps found. Copy .fxhmap files into the FourExHex folder in the Files app, then reopen this list.",
+  "import.folder_hint": "No maps found. Copy .fxhmap files into the FourExHex import folder in the Files app, then import again.",
   "mode.freeform": "Freeform",
   "mode.rising_tides": "Rising Tides",
   "mode.fog_of_war": "Fog Of War",

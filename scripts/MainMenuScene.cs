@@ -69,6 +69,7 @@ public partial class MainMenuScene : Control
     private SaveStore _saveStore = null!;
     private SlotPickerDialog? _loadDialog;
     private ConfirmModal? _quitConfirmModal;
+    private NoticeModal? _noticeModal;
 
     private Control? _landingPanel;
     private Control? _playConfigPanel;
@@ -230,6 +231,10 @@ public partial class MainMenuScene : Control
 
         BuildLoadDialog();
         BuildQuitConfirmDialog();
+
+        // Shared single-button message modal (import outcomes / hints).
+        _noticeModal = new NoticeModal();
+        AddChild(_noticeModal);
 
         // Shared modal for the New Game / Map Editor "New Map | Load …" choice.
         _sourceChooser = new EscMenu();
@@ -1917,8 +1922,14 @@ public partial class MainMenuScene : Control
         Log.Info(Log.LogCategory.Input, "MainMenu: Map Editor → import map");
         // Platforms without a native file picker (iOS) import from the
         // user://import/ drop folder, which accessible_from_files_app
-        // exposes in the Files app.
-        if (!DisplayServer.HasFeature(DisplayServer.Feature.NativeDialogFile))
+        // exposes in the Files app. FOUREXHEX_FORCE_FOLDER_IMPORT forces
+        // that branch on desktop so the mobile UI is testable there.
+        bool forceFolder = OS.GetEnvironment("FOUREXHEX_FORCE_FOLDER_IMPORT").Length > 0;
+        if (forceFolder)
+        {
+            Log.Debug(Log.LogCategory.Share, "[share] folder-import branch forced by env");
+        }
+        if (forceFolder || !DisplayServer.HasFeature(DisplayServer.Feature.NativeDialogFile))
         {
             OpenImportFromFolder();
             return;
@@ -1926,16 +1937,23 @@ public partial class MainMenuScene : Control
         MapFileDialogs.ShowImport(this, OnImportFileChosen);
     }
 
-    /// <summary>List the drop folder's <c>.fxhmap</c> files in a text-mode
-    /// picker; the empty message doubles as the "copy files here" hint.
-    /// Selection funnels into the same validate-then-write path as the
-    /// desktop file dialog.</summary>
+    /// <summary>Import from the drop folder: an empty folder shows the
+    /// copy-files-here hint in a <see cref="NoticeModal"/> (no picker);
+    /// otherwise the <c>.fxhmap</c> files list in a text-mode picker
+    /// titled "Import Map". Selection funnels into the same
+    /// validate-then-write path as the desktop file dialog.</summary>
     private void OpenImportFromFolder()
     {
         System.Collections.Generic.IReadOnlyList<string> files =
             _saveStore.ListImportFolder();
         Log.Debug(Log.LogCategory.Share,
             $"[share] import folder picker: {files.Count} file(s)");
+        if (files.Count == 0)
+        {
+            _noticeModal?.Show(Strings.Get(StringKeys.MenuImportMap),
+                Strings.Get(StringKeys.ImportFolderHint));
+            return;
+        }
         var rows = new System.Collections.Generic.List<SaveSlotInfo>();
         foreach (string file in files)
         {
@@ -1946,7 +1964,8 @@ public partial class MainMenuScene : Control
             rows,
             Strings.Get(StringKeys.ImportFolderHint),
             info => info.SlotName,
-            fileName => OnImportFileChosen(SaveStore.ImportDirectory + fileName));
+            fileName => OnImportFileChosen(SaveStore.ImportDirectory + fileName),
+            titleOverride: Strings.Get(StringKeys.MenuImportMap));
     }
 
     private void OnImportFileChosen(string path)
@@ -1986,16 +2005,27 @@ public partial class MainMenuScene : Control
         }
         ShowImportNotice(Strings.Get(
             result.Renamed ? StringKeys.ImportRenamed : StringKeys.ImportSuccess,
-            ("name", result.FinalName)));
+            ("name", result.FinalName)),
+            showMapListOnClose: true);
     }
 
-    /// <summary>Show the (refreshed) editable-map list with the import
-    /// outcome as an overlay notice on top — dismissing it reveals the
-    /// list, where a successful import is now visible.</summary>
-    private void ShowImportNotice(string message)
+    /// <summary>Show an import outcome in the shared <see cref="NoticeModal"/>.
+    /// On success, dismissing the notice opens the refreshed editable-map
+    /// list so the user sees the imported map landed.</summary>
+    private void ShowImportNotice(string message, bool showMapListOnClose = false)
     {
-        OpenLoadMapToEdit();
-        _loadDialog?.ShowNotice(Strings.Get(StringKeys.MenuImportMap), message);
+        if (_noticeModal == null) return;
+        _loadDialog?.Hide();
+        if (showMapListOnClose)
+        {
+            void OpenListOnce()
+            {
+                _noticeModal.Closed -= OpenListOnce;
+                OpenLoadMapToEdit();
+            }
+            _noticeModal.Closed += OpenListOnce;
+        }
+        _noticeModal.Show(Strings.Get(StringKeys.MenuImportMap), message);
     }
 
     /// <summary>Load-map-to-edit branch of the Map Editor chooser:
