@@ -7,7 +7,7 @@ Current snapshot; start here. MVC split (Main → GameController → views / mod
 C# projects layered Model → Controller → game (test project and the headless level-designer CLI alongside):
 
 - **`src/FourExHex.Model/FourExHex.Model.csproj`** — plain `Microsoft.NET.Sdk`, **no GodotSharp, no controller reference**. Pure model: state types, static rules, AI subsystem (incl. `AiDispatcher`), generic `UndoStack<T>` + `GameStateSnapshot`, save serialization (`SaveSerializer`, `Replay`, `ReplayBeat`, `Tutorial` POCO), `MapGenerator` / `MapEditPaint` / `EditorSnapshot`, `ProceduralGame` (shared seed→`GameState` pipeline for play scene + menu thumbnail), and the level-design harness's authoring side — `LevelWorkspace` (headless map-editor draft), `MapTextRenderer` (ASCII board), `SaveNames` (slot-name sanitation shared with `SaveStore`), `MapBounds` (Cols×Rows inference from tiles + water for loaded states, which carry no explicit dimensions).
-- **`src/FourExHex.Controller/FourExHex.Controller.csproj`** — plain `Microsoft.NET.Sdk`, `<ProjectReference>`s **only** `FourExHex.Model` (one-way). Orchestration: `GameController` (input handling + turn rotation), `GameOperations`, `AiTurnDriver`, `ReplayRecorder`, `StepPacing` (shared step-beat delay constants + instant↔paced re-dispatch skeleton); UI-scoped `SessionState` + `SessionStateSnapshot` + `UndoEntry`; `InstantStep` enum (shared by AI + replay step machines); `IHexMapView` / `IHudView` / `IAiPacer` interfaces; AI pacers (`AiPacer` / `GodotAiPacer`); the user-facing string store (`Strings` facade + `StringTable` + `StringKeys` — see **User-facing strings**); `Tutorial/` Record/Preview helpers (all of `Tutorial/` except the model-side `Tutorial` POCO); `LevelPlaytest` + `PlaytestMetrics` (headless all-AI playtests of authored maps — see **Level-design harness**).
+- **`src/FourExHex.Controller/FourExHex.Controller.csproj`** — plain `Microsoft.NET.Sdk`, `<ProjectReference>`s **only** `FourExHex.Model` (one-way). Orchestration: `GameController` (input handling + turn rotation), `GameOperations`, `AiTurnDriver`, `ReplayRecorder`, `StepPacing` (shared step-beat delay constants + instant↔paced re-dispatch skeleton); UI-scoped `SessionState` + `SessionStateSnapshot` + `UndoEntry`; `InstantStep` enum (shared by AI + replay step machines); `IHexMapView` / `IHudView` / `IAiPacer` interfaces; AI pacers (`AiPacer` / `GodotAiPacer`); the user-facing string store (`Strings` facade + `StringTable` + `StringKeys` + `MapImportStrings` — see **User-facing strings**); `Tutorial/` Record/Preview helpers (all of `Tutorial/` except the model-side `Tutorial` POCO); `LevelPlaytest` + `PlaytestMetrics` (headless all-AI playtests of authored maps — see **Level-design harness**).
 - GodotSharp on neither graph → both physically can't depend on Godot (`using Godot;` won't compile). Model lacks a Controller reference → can't name `GameController` / `SessionState` / view interfaces (`CS0246`). Both compiler-enforced.
 - **`src/FourExHex.ViewMath/FourExHex.ViewMath.csproj`** — plain `Microsoft.NET.Sdk`, **no GodotSharp**, one-way `<ProjectReference>` to `FourExHex.Model` (primitives like `HexCoord`). Godot-free view math needing floats: `DisplayScaleMath`, `SafeAreaMath`, `MapPlacement`, `PanMath` (inset-aware play-area center + pan clamp: centered-axis lock / padded-rotated-AABB clamp), `CameraFocusMath` (comfort-zone test for the demo-replay camera follow), `ZoomMath`, `ScreenLayout`, `HudPanelMath` (HUD-panel sizing: width clamped to viewport, height to fit wrapped text), `KeyboardAvoidance` (mobile keyboard panel lift), `MultiTouchTapDetector` (3-finger-tap debug cheat menu; fires on third concurrent touch, re-arms after all lift), `EditorPaletteLayout` (brush-grid column wrapping), `ThumbnailLayout` (contain-fit for offscreen board viewports — `FitInside` plus `OrientedFit`, which swaps the grid aspect tall in portrait so the hosted HexMapView rotates like the in-game map; shared by the New Game thumbnail and the Instructions demo view), `StepperMath` (integer −/value/+ stepper logic: snap-to-step clamp, neighbour offset, digit parse), `HudTourSteps` (wrap-around cursor over the ordered guided-UI-tour steps — `Next`/`Prev` wrap, `JumpTo(step)` for click-to-jump), `PanelFitMath` (centered-panel shrink-to-fit: `AvailableBox` / `ScaleToFit` (never upscale) / `WidthFitWithHeightCap` (Credits) / `CappedFill` (landscape chrome) / `ContentShrinkScale` (quantized play-config content scale with grow hysteresis) / `CardInteriorWidth` (reflow-to-safe-box card width, floored — the guided tour) — shared by MainMenuScene, SlotPickerDialog, SettingsPanel, CreditsPanel, LandscapeMenuChrome, HudTour), `HitTestMath` (`InOffsetBounds(col, row, cols, rows)`: is an offset coord on the Cols×Rows board — hover/paint gating + water-rim skip), `EasingMath` (`SmoothStep(t)` clamped-`[0,1]` ease-in/out + `Lerp(a, b, t)`, driving HexMapView's camera-pan animation), `HexRounding.Round(float, float)`, `HexProjection` (pointy-top pixel↔axial board geometry: `ToPixel`/`FromPixelFrac`/`FromPixel`, `FirstHexCenterOffset`, `HexExtent`, `GridPixelSize` — the single source the view draws, frames, and hit-tests through). Pressure-relief valve for the no-floats rule below.
 - **`FourExHex.csproj`** (`Godot.NET.Sdk`) — the game. `<ProjectReference>`s **all three** Godot-free libs; adds `src/**/*` and `tools/**/*` to `DefaultItemExcludes` (else the Godot glob recompiles those sources, duplicating types). Only Godot `Node`/scene/view code in `scripts/`: scene roots, `HexMapView`/`HudView`, editor + tutorial-builder panels, `SaveStore`, `AudioBus`, `SceneTreeTimerFactory`, `HeadlessViews`, the two view-boundary adapters below.
@@ -1507,17 +1507,23 @@ seed (no consumption count) and load reproduces it.
   fall through to procedural with the preserved seed.
 
 `SaveStore` reads/writes `user://saves/`, `user://maps/`, `user://tutorials/`,
-and reads `res://tutorials/` (bundled, read-only: `Tutorial.json` starting map,
-`full_tutorial.json`, and the `instr_*.json` Instructions demos). Exposes
-`WriteAutosave`, `WriteSlot`, `WriteMapSlot`,
-`WriteTutorial`, `ListSlots`, `ListMaps`, `ListTutorials`, `LoadSlot`, `LoadMap`,
+the map-sharing staging dirs `user://export/` / `user://import/` (see **Map
+sharing**), and reads `res://tutorials/` (bundled, read-only: `Tutorial.json`
+starting map, `full_tutorial.json`, and the `instr_*.json` Instructions demos).
+Exposes `WriteAutosave`, `WriteSlot`, `WriteMapSlot` (optional `author`),
+`WriteTutorial`, `ImportMap` / `UserMapNames` / `WriteExportTemp` /
+`ListImportFolder` (map sharing), `ListSlots`, `ListMaps`, `ListTutorials`,
+`LoadSlot`, `LoadMap`,
 `LoadTutorial`, `LoadBundledMap`, `LoadBundledTutorial`, `LoadStartingMap`
 (tries `user://maps/` then
 `res://tutorials/`; used by Play Again), `SanitizeSlotName`. `SaveSerializer` is
 the JSON layer. Both `Serialize` (in-progress) and `SerializeMap` (starting
 maps) write each player's `Kind` and `Difficulty`, so a saved map **bakes its
-exact roster**. Older saves load with absent fields defaulting (`Mode` →
-`Freeform`; `PendingTide`/`CampaignLevel`/`OriginMapName` empty/null).
+exact roster**; `SerializeMap` also takes an optional display-only `author`
+(`SaveData.Author` → `LoadedSave.Author` → `SaveSlotInfo.Author`; absent ⇒
+null, no format bump — unknown members are skipped on old builds). Older saves
+load with absent fields defaulting (`Mode` →
+`Freeform`; `PendingTide`/`CampaignLevel`/`OriginMapName`/`Author` empty/null).
 
 **Variable player count.** Two coupled mechanisms let a save hold a 2–6 player
 game:
@@ -1569,6 +1575,72 @@ loads with the controller capturing a `_initialSnapshot` at load time (so future
 autosaves can carry replay data) and setting
 `_replayDataIsCompleteFromStart = false` so the victory-overlay Replay button
 stays disabled — the log starts after load, not at game start.
+
+## Map sharing (`.fxhmap`)
+
+A shared map is the starting-map JSON under a `.fxhmap` extension — same
+format, same `FormatVersion` gate, so round-trip fidelity is `SaveSerializer`'s
+existing contract. The optional `Author` field (see **Save / load**) carries
+display-only attribution, rendered as "— by X" in every map picker via
+`SlotPickerDialog.AuthorSuffix`.
+
+- **Validation (`MapImport`, Model, unit-tested).** Imported files are
+  untrusted input on the deterministic game-state path.
+  `MapImport.Validate(json, existingMapNames)` checks, in order:
+  well-formedness (`JsonException` wrapped, never thrown), version
+  (`MapImportError.TooNew` above `CurrentFormatVersion` — a distinct
+  "update the app" message), starting-map discriminator (`TurnNumber == 0` and
+  `MaxTurnNumber == int.MaxValue`, else `NotStartingMap`), offset-coord bounds
+  (`0 ≤ col,row < MaxCols/MaxRows = 128`, cell count ≤ `MaxCells` — checked on
+  the raw DTO **before** full deserialize, since `MapBounds.Infer` accepts any
+  coord and hostile values would explode view allocations; negative offsets
+  rejected explicitly), full `Deserialize` in a catch-all (unknown occupants,
+  duplicate coords), roster playability
+  (`MapRosterRules.DeriveKindsFromLoad` — shared with the editor's load path —
+  feeding `ValidateForSave` for baked-kind maps; ≥2 landed capitals for legacy
+  kind-less ones), author trim/cap (`MaxAuthorLength = 40`), and destination
+  naming — `SaveNames.Sanitize` (traversal defense) then `ResolveName`
+  auto-suffix on collision (`map` → `map-2` → `map-3`, length-capped, never
+  overwrite), with the JSON's `SlotName` rewritten to the final name because
+  list labels come from the header, not the filename. Returns
+  `MapImportResult { Ok, Loaded, NormalizedJson, FinalName, Renamed, Error?,
+  ErrorDetail }`; `MapImportStrings.KeyFor` (Controller) maps each
+  `MapImportError` to its `StringKeys` message — Model never holds string keys.
+- **Export.** Map editor Esc menu → Export Map: author prompt (`SaveNameModal`
+  with field/confirm label overrides, pre-filled from and persisted to
+  `UserSettings.AuthorName`; the modal doubles as the flow's error surface) →
+  the `MapRosterRules.ValidateForSave` gate → on desktop a native save dialog
+  (`MapFileDialogs.ShowExport`) and a `SerializeMap` write to the chosen path;
+  on mobile (`ShareBridge.Available`) the file stages to `user://export/`
+  (`SaveStore.WriteExportTemp`) and hands off to the OS share sheet.
+- **Import.** Main-menu Map Editor chooser → Import Map. Desktop: native open
+  dialog (`MapFileDialogs.ShowImport`). Platforms without
+  `DisplayServer.Feature.NativeDialogFile` (iOS): a text-mode
+  `SlotPickerDialog` over the `user://import/` drop folder
+  (`SaveStore.ListImportFolder`; the iOS preset's
+  `user_data/accessible_from_files_app` exposes `user://` in the Files app, and
+  the empty-list message is the copy-files-here hint), with drop files deleted
+  on successful import. Both paths funnel into `Validate` →
+  `SaveStore.ImportMap` (atomic write, never overwrites) → the refreshed
+  editable-map list with the outcome (imported / renamed / rejected) as a
+  `SlotPickerDialog.ShowNotice` overlay. Corrupt files that reach `user://maps/`
+  outside this path degrade rather than crash: `MapEditorScene.
+  ResolveEditorRequest` falls back to a new map, `TryReadHeader` drops the row.
+- **Platform pieces.** `MapFileDialogs` wraps an in-tree `FileDialog` with
+  `UseNativeDialog` on — native picker where the OS supports it, Godot's own
+  dialog elsewhere, one signal path either way. `ShareBridge` (static, C#)
+  fronts the vendored godot-share plugin's `SharePlugin` Engine singleton —
+  `addons/SharePlugin/` (Android AARs + the enabled editor plugin that injects
+  them at export) and `ios/plugins/` (gdip + xcframeworks, enabled via the iOS
+  preset's `plugins/SharePlugin`); `Available` is false on desktop (the
+  `IosLog` harmless-on-other-platforms pattern), share outcomes arrive as
+  singleton signals and are logged. Only outgoing `share(Dictionary)` is
+  wrapped; share-target/receiving and OS file-type registration are not part
+  of this surface.
+
+Instrumented under `Log.LogCategory.Share`: `[share] exported …`,
+`[share] import … ok/rejected`, dialog open/result/cancel, share-sheet
+completion/failure.
 
 ## Campaign mode
 
@@ -1650,7 +1722,7 @@ The scene plays **any save carrying a replay** — a Tutorial-Builder recording 
 `MapEditorScene` (root of `res://scenes/map_editor.tscn`, from the menu's "Map Editor" button) paints a starting map by hand and saves to `user://maps/`. No `GameController`, but reuses the view layer (`HexMapView` + `MapEditorHudView`) so edits match in-game terrain.
 
 - **Up-front roster + bake-on-save.** Entered via `MapEditorRequest.Pending`: **New Map** carries per-color kinds + difficulties; **Load Map** carries a slot name (roster derived from the file). `_Ready` resolves it into `_rosterKinds` / `_rosterDifficulties`. The preview roster (`_panel.Players`) is the active (non-`None`) colors, all Human. `MapEditorHudView.ApplyRosterKinds` hides `None` swatches and draws a white pip on Human ones (`HexPaletteButton.IsHuman`). **Save** runs `MapRosterRules.ValidateForSave` (block + inline error on mismatch), then serializes a 6-slot roster with the chosen kinds/difficulties.
-- **Scene/panel split.** `MapEditorScene` is a thin chrome host: owns `MapEditorHudView`, `SaveStore`, Save/Load dialogs, the `EscMenu` modal, the Escape→hand→modal ladder, `ReturnToMainMenu`. The body is `MapEditorPanel : Node2D` — a reusable Node owning the `HexMapView` instance, draft grid/water/territory state, paint-stroke state machine, undo stack, hover tooltip. The scene wires HUD events (`PaletteSelectionChanged`, `GenerateRequested`, `UndoLast/All`, `RedoLast/All`, `EscRequested`) to panel methods (`SetSelectedPalette`, `GenerateMap`, `UndoLast/All`) and to `OpenEscMenu` (Resume / Save / Load / Exit → `OpenSaveDialog` / `OpenLoadDialog`), and listens to `panel.UndoStateChanged`. The split lets `tutorial_builder.tscn` host the same panel under different chrome. The panel exposes `PaintingEnabled` (gates all paint events; off in Build/Preview hosts), `SnapshotDraft` / `RestoreDraft` (Preview cloning), `BuildLiveState` / `BuildSaveState` (host serializes without poking internals).
+- **Scene/panel split.** `MapEditorScene` is a thin chrome host: owns `MapEditorHudView`, `SaveStore`, Save/Load dialogs, the `EscMenu` modal, the Escape→hand→modal ladder, `ReturnToMainMenu`. The body is `MapEditorPanel : Node2D` — a reusable Node owning the `HexMapView` instance, draft grid/water/territory state, paint-stroke state machine, undo stack, hover tooltip. The scene wires HUD events (`PaletteSelectionChanged`, `GenerateRequested`, `UndoLast/All`, `RedoLast/All`, `EscRequested`) to panel methods (`SetSelectedPalette`, `GenerateMap`, `UndoLast/All`) and to `OpenEscMenu` (Resume / Save / Export / Load / Exit → `OpenSaveDialog` / `OpenExportDialog` / `OpenLoadDialog` — Export is the map-sharing flow, see **Map sharing**), and listens to `panel.UndoStateChanged`. The split lets `tutorial_builder.tscn` host the same panel under different chrome. The panel exposes `PaintingEnabled` (gates all paint events; off in Build/Preview hosts), `SnapshotDraft` / `RestoreDraft` (Preview cloning), `BuildLiveState` / `BuildSaveState` (host serializes without poking internals).
 - **HUD configurability.** `MapEditorHudView` exposes one knob hosts set before `AddChild`:
   - `ShowSceneRootChrome` (default `true`) — whether the HUD's right strip ends with an **Options** button raising `EscRequested`. Both scenes set `true`; each scene's `OpenEscMenu` decides the modal contents.
 - **Draft state.** Panel owns a mutable `HexGrid`, water set, territory list, plus `UndoStack<EditorSnapshot>`. `EditorSnapshot.Capture` deep-copies all three; `ApplyTo` rebuilds the grid from scratch (paints add and remove tiles, so `GameStateSnapshot`'s in-place updates aren't enough).
@@ -2006,7 +2078,7 @@ Every player-visible English string lives in **`assets/strings/en.json`** — a 
 
 `src/FourExHex.Model/Log.cs` is the master logging system — one Godot-free static class shared by Model, Controller, and `scripts/` (no namespace, so call sites need no `using`).
 
-- **Two gates.** (1) Compile-time: `Log.Trace` / `Debug` / `Info` are `[Conditional("DEBUG")]`, so the compiler removes the call and its argument evaluation from Release builds; `Log.Warn` / `Error` always compile. (2) Runtime: each `Log.LogCategory` (`Ai`, `Turn`, `Capture`, `Tutorial`, `Render`, `Anim`, `Input`, `Display`, `Hud`, `Undo`, `Cheat`, `Campaign`, `MapGen`, `Replay`, `Tide`, `Fog`, `Tree`, `Automate`, `Viking`, `Determinism`, `LevelDesign`) has an independent minimum `Log.LogLevel`; a message emits only if its level ≥ the category threshold.
+- **Two gates.** (1) Compile-time: `Log.Trace` / `Debug` / `Info` are `[Conditional("DEBUG")]`, so the compiler removes the call and its argument evaluation from Release builds; `Log.Warn` / `Error` always compile. (2) Runtime: each `Log.LogCategory` (`Ai`, `Turn`, `Capture`, `Tutorial`, `Render`, `Anim`, `Input`, `Display`, `Hud`, `Undo`, `Cheat`, `Campaign`, `MapGen`, `Replay`, `Tide`, `Fog`, `Tree`, `Automate`, `Viking`, `Determinism`, `LevelDesign`, `Share`) has an independent minimum `Log.LogLevel`; a message emits only if its level ≥ the category threshold.
 - **Default is silent** — every category defaults to `Off`.
 - **View-side categories split by question asked**, so one concern can be read without the others drowning it: `Render` = what got built/drawn (tile+territory render, board geometry — content box, `PixelSize`, insets, `RecenterMap` — occupant-visual refresh, HUD/menu/editor panel layout and fit); `Anim` = per-frame and tween churn (unit/capital `[pulse]`, `[move-anim]` beat holds and travel/arrival, `[terrain-fx]`, `[doomed-pulse]`, `[turnstart-pan]` and demo-follow camera pans); `Input` = what a gesture resolved to (`[hit-test]`, `[highlight]`, `[targets]`, selection cues, pinch begin/update/end, BuildTower click-rejection). `Anim` is the high-volume one — leave it `Off` unless animation timing is the subject.
 - **Configuration.** `LogBootstrap` (autoload) calls `Log.Configure(OS.GetEnvironment("FOUREXHEX_LOG"))`, parsing a spec like `"Ai:Debug,Turn:Info,*:Warn"` (comma-separated `category:level`, `*` = all; case-insensitive; unknown tokens ignored; never throws).
@@ -2035,7 +2107,7 @@ FOUREXHEX_6AI=1 /Applications/Godot_mono.app/Contents/MacOS/Godot \
 Files grouped by responsibility; the **project** a file belongs to follows "Project structure & the Godot-free model" above. Three source trees:
 
 - `scripts/` (the `FourExHex` Godot project) — `Node`/scene/view/filesystem code plus the `PlayerPalette` / `HexPixel` view adapters.
-- `src/FourExHex.Model/` — pure model, rules, AI (incl. `AiDispatcher`), `UndoStack<T>` + `GameStateSnapshot`, save serialization (`SaveSerializer`, `Replay`, `ReplayBeat`, the `Tutorial` POCO), `MapGenerator` / `MapEditPaint` / `EditorSnapshot`, `LevelWorkspace` / `MapTextRenderer` / `SaveNames` / `MapBounds`, `PlayerId`.
+- `src/FourExHex.Model/` — pure model, rules, AI (incl. `AiDispatcher`), `UndoStack<T>` + `GameStateSnapshot`, save serialization (`SaveSerializer`, `Replay`, `ReplayBeat`, the `Tutorial` POCO), `MapGenerator` / `MapEditPaint` / `EditorSnapshot`, `LevelWorkspace` / `MapTextRenderer` / `SaveNames` / `MapBounds` / `MapImport`, `PlayerId`.
 - `src/FourExHex.Controller/` (references Model one-way) — `GameController`, `SessionState` / `SessionStateSnapshot` / `UndoEntry`, the `IHexMapView` / `IHudView` / `IAiPacer` interfaces, `AiPacer` / `GodotAiPacer`, `LevelPlaytest`, and the `Tutorial/` Record/Preview scripting helpers (everything in `Tutorial/` except the `Tutorial` POCO).
 - `tools/FourExHex.LevelDesigner/` (references Model + Controller) — the headless level-design CLI (`Program.cs` only).
 
@@ -2098,9 +2170,15 @@ scripts/  (split: see the three source trees listed just above)
 │                           Used by MainMenuScene's Exit flow
 ├─ SlotPickerDialog.cs    ─ reusable load-slot picker on the shared modal
 │                           shell; ShowSlots(slots, emptyMsg, labelFor,
-│                           onPicked) + ShowError; ProcessMode = Always. Built
+│                           onPicked) + ShowError/ShowNotice + AuthorSuffix;
+│                           ProcessMode = Always. Built
 │                           from ModalChrome. Used by MainMenuScene,
 │                           MapEditorScene, TutorialBuilderScene, Main
+├─ MapFileDialogs.cs      ─ .fxhmap save/open dialogs (FileDialog with
+│                           UseNativeDialog; throwaway node per call). See
+│                           "Map sharing"
+├─ ShareBridge.cs         ─ C# face of the vendored SharePlugin singleton
+│                           (share sheet); Available=false on desktop
 ├─ RecordPane.cs          ─ Record-mode chrome: real GameController over the
 │                           draft, all six players Human; captures via
 │                           RecordingCapture. ContinueRecording resumes a
@@ -2195,7 +2273,8 @@ scripts/  (split: see the three source trees listed just above)
 │                           surviving scene changes; each Play* gates on
 │                           UserSettings.SfxEnabled
 ├─ UserSettings.cs        ─ static; SfxEnabled / VfxEnabled / AiSpeed /
-│                           ReplaySpeed persisted to user://settings.json
+│                           ReplaySpeed / AuthorName (map-export attribution)
+│                           persisted to user://settings.json
 │                           (lazy load, atomic tmp+rename save). AiSpeed/
 │                           ReplaySpeed share one PlaybackSpeed enum.
 │                           SpeedMultiplier maps Slow/Normal/Fast → 2/1/0.5;
@@ -2240,8 +2319,11 @@ scripts/  (split: see the three source trees listed just above)
 ├─ WinConditionRules.cs   ─
 │
 ├─ SaveStore.cs           ─ user://saves/ + user://maps/ + user://tutorials/
-│                           slot CRUD; res://tutorials/ read-only bundled maps
-│                           + ListBundledDemoNames (demo_* picker scan)
+│                           slot CRUD; user://export/ + user://import/ map-
+│                           sharing staging; res://tutorials/ read-only bundled
+│                           maps + ListBundledDemoNames (demo_* picker scan)
+├─ MapImport.cs           ─ validate-before-load for shared .fxhmap payloads
+│                           (bounds/version/roster/collision). See "Map sharing"
 ├─ SaveSerializer.cs      ─ JSON (de)serializer for game state + maps +
 │                           optional Tutorial + optional Replay block (v4;
 │                           still reads v2/v3)
