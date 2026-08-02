@@ -1640,9 +1640,10 @@ display-only attribution, rendered as "— by X" in every map picker via
   them at export) and `ios/plugins/` (gdip + xcframeworks, enabled via the iOS
   preset's `plugins/SharePlugin`); `Available` is false on desktop (the
   `IosLog` harmless-on-other-platforms pattern), share outcomes arrive as
-  singleton signals and are logged. Only outgoing `share(Dictionary)` is
-  wrapped; share-target/receiving and OS file-type registration are not part
-  of this surface.
+  singleton signals and are logged. The vendored plugin (v6.0) also exposes a
+  share-receiving surface (`share_received`, `set_share_target()`), but only
+  outgoing `share(Dictionary)` is wrapped; share-target/receiving and OS
+  file-type registration are not part of this surface.
 
 Instrumented under `Log.LogCategory.Share`: `[share] exported …`,
 `[share] import … ok/rejected`, dialog open/result/cancel, share-sheet
@@ -1934,7 +1935,7 @@ The Help menu's Instructions option opens `InstructionsPanel` (`scripts/Instruct
 
 Pinned to **GL Compatibility** (`project.godot`: `config/features` has `"GL Compatibility"`, `rendering/renderer/rendering_method="gl_compatibility"`). 2D-only — `Polygon2D` fills + batched immediate-mode primitives, no shaders/3D. Portable; required for web export.
 
-2D MSAA on at 2× (`rendering/anti_aliasing/quality/msaa_2d=1`) smooths the batched non-AA lines; per-primitive AA off (defeats batching). One renderer everywhere, no per-platform override. Web export blocked: Godot 4.6.1 .NET (mono) ships no Web templates.
+2D MSAA on at 2× (`rendering/anti_aliasing/quality/msaa_2d=1`) smooths the batched non-AA lines; per-primitive AA off (defeats batching). One renderer everywhere, no per-platform override. Web export blocked: Godot 4.7.1 .NET (mono) ships no Web templates.
 
 ### Draw-call batching (Android performance)
 
@@ -2060,7 +2061,7 @@ A rotation triggers an Android display freeze: `startFreezingDisplayLocked` snap
 
 Workaround: a Godot v2 Android plugin, `RotationFix`:
 
-- **Source:** `android_plugin/rotationfix/` — Kotlin `RotationFixPlugin : GodotPlugin`, built to an AAR by `tools/build_android_plugin.sh` (own gradle project, compiles against `org.godotengine:godot:4.6.1.stable`).
+- **Source:** `android_plugin/rotationfix/` — Kotlin `RotationFixPlugin : GodotPlugin`, built to an AAR by `tools/build_android_plugin.sh` (own gradle project, compiles against `org.godotengine:godot:4.7.1.stable`).
 - **Wiring:** `addons/rotationfix/` — `plugin.cfg` + an `EditorExportPlugin` (`rotation_fix_export.gd`) whose `_get_android_libraries` links the AAR; enabled in `project.godot` `[editor_plugins]`. `tools/build_android.sh` auto-builds the AAR on first run if missing (gitignored `bin/` artifact). Discovered via the AAR manifest's `org.godotengine.plugin.v2.RotationFix` meta-data.
 - **Behavior:** watches the physical orientation sensor (`OrientationEventListener`) — the only signal arriving before the freeze — and on crossing a band drops an opaque black `TYPE_APPLICATION_PANEL` window over the surface, so the OS snapshots black. Removed `DISPLAY_SETTLE_MS` (600ms) after the rotation lands (`DisplayManager.DisplayListener.onDisplayChanged`), with a `FALLBACK_MS` (1000ms) safety net. Self-skips when auto-rotate is off.
 

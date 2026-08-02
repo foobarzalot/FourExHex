@@ -8,15 +8,15 @@ At the very start of a new session — before exploring code, running commands, 
 
 ## Project Overview
 
-FourExHex is a hex-based 4X strategy game built with Godot 4.6 and C#.
+FourExHex is a hex-based 4X strategy game built with Godot 4.7 and C#.
 
 **Start here**: `ARCHITECTURE.md` has the current layered view (Main → GameController → views/model/rules), key contracts (`IHexMapView`, `IHudView`), invariants, and call flows (click→select, click→capture, undo, end turn). Read it before making non-trivial changes.
 
 ## Tech Stack
 
-- **Engine**: Godot 4.6.1 (.NET / mono build) — installed at `/Applications/Godot_mono.app`
+- **Engine**: Godot 4.7.1 (.NET / mono build) — installed at `/Applications/Godot_mono.app`
 - **Language**: C# (not GDScript) — target framework `net8.0`
-- **SDK pin**: `Godot.NET.Sdk/4.6.1` (see `FourExHex.csproj`)
+- **SDK pin**: `Godot.NET.Sdk/4.7.1` (see `FourExHex.csproj`)
 - **.NET SDK**: 8.0.x, installed to `$HOME/.dotnet` (not system-wide). Ensure `$HOME/.dotnet` is on `PATH` and `DOTNET_ROOT=$HOME/.dotnet`.
 
 ## Commands

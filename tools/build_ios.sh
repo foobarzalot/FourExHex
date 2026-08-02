@@ -16,10 +16,6 @@
 #      altool finds the .p8 in ~/.appstoreconnect/private_keys/AuthKey_<KeyID>.p8
 #      (a standard search path); the creds file just provides the Key ID and
 #      Issuer ID env vars.
-#   4. The Godot 4.6.1 .NET-on-iOS export prints "Exporting to an Apple
-#      Embedded platform when using C#/.NET is experimental" as a WARNING but
-#      not a hard error (verified during the Phase 1 spike). The export still
-#      succeeds and the Xcode project compiles cleanly.
 #
 # Toolchain prerequisites (the script does NOT install these — it checks):
 #   - Full Xcode at /Applications/Xcode.app (xcodebuild -version succeeds)

@@ -53,15 +53,15 @@ Build — e.g. `1.0` + `6` → `1.0.0.6` — and writes it to both
 ### Android prerequisites
 
 The `build_android.sh` fail-fast checks require (it installs nothing): Android
-SDK at `~/Library/Android/sdk` with `platforms;android-35`, `build-tools;35.x`,
-`ndk;28.1.13356709` (exact), `platform-tools`, `cmdline-tools`; JDK ≥ 17 (the
+SDK at `~/Library/Android/sdk` with `platforms;android-36`, `build-tools;36.x`,
+`ndk;29.0.14206865` (exact), `platform-tools`, `cmdline-tools`; JDK ≥ 17 (the
 machine's JDK 21 is fine); and the signing creds file (see Signing below). The
 first gradle run downloads Gradle 8.11.1 + AGP 8.6.1 deps (one-time, network;
 takes a few minutes).
 
 ### The net8-vs-net9 constraint (why Android uses a gradle build)
 
-Godot 4.6.1's **prebuilt** Android template hardcodes **net9.0** as the only
+Godot 4.7.1's **prebuilt** Android template hardcodes **net9.0** as the only
 supported C# target framework (the string is baked into the engine binary), but
 this project pins **net8.0** across all four csprojs — and the editor's own
 runtime (`GodotPlugins`/`GodotTools`) is net8.0, so a net9 game assembly would no
@@ -172,7 +172,7 @@ checked in. The committed file always has `application/app_store_team_id=""`.
 
 ### iOS targeted_device_family enum gotcha
 
-Godot 4.6.1's iOS preset writes `TARGETED_DEVICE_FAMILY = ""` (empty string) if
+Godot 4.7.1's iOS preset writes `TARGETED_DEVICE_FAMILY = ""` (empty string) if
 the enum value is out of range — which produces an Xcode project that matches
 no device family, so Xcode silently refuses to install with "doesn't match any
 of FourExHex.app's targeted device families". The right values are
@@ -181,12 +181,10 @@ Our preset is `application/targeted_device_family=2`.
 
 ### iOS net8 (no net9 issue)
 
-Unlike the Android prebuilt template (which forces net9.0), Godot 4.6.1's iOS
+Unlike the Android prebuilt template (which forces net9.0), Godot 4.7.1's iOS
 export generates an Xcode project whose own build phases run `dotnet publish`
 for the iOS RID against the project's own `net8.0`, so no Gradle-style workaround
-is needed. The export DOES print a "Exporting to an Apple Embedded platform when
-using C#/.NET is experimental" warning — it's just a warning; the export
-succeeds. No `dotnet workload install ios` was needed; Godot's iOS export uses
+is needed. No `dotnet workload install ios` was needed; Godot's iOS export uses
 the system .NET (10.x at `/usr/local/share/dotnet`) for the publish step, and
 the project's own `$HOME/.dotnet` (8.x) for the editor / desktop builds. Both
 pipelines coexist.
