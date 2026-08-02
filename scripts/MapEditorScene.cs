@@ -265,7 +265,10 @@ public partial class MapEditorScene : Node2D
             $"[share] exported '{name}' by '{_pendingExportAuthor}' -> share sheet " +
             $"({json.Length} chars)");
         _exportModal.Close();
-        ShareBridge.ShareFile(absolutePath, "application/octet-stream", name);
+        // Title doubles as the receiver-side filename in share targets that
+        // ignore the provider's DISPLAY_NAME — keep the extension on it.
+        ShareBridge.ShareFile(absolutePath, "application/octet-stream",
+            name + MapFileDialogs.Extension);
     }
 
     private void OnExportPathChosen(string path)
