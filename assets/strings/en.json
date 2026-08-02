@@ -181,6 +181,7 @@
   "editor.export_map": "Export Map",
   "menu.import_map": "Import Map",
   "menu.map_author_tag": "by {author}",
+  "export.name_label": "Map name:",
   "export.author_label": "Author (shown to other players):",
   "export.failed": "Could not export: {error}",
   "export.success": "Exported '{name}'",

@@ -1606,13 +1606,17 @@ display-only attribution, rendered as "— by X" in every map picker via
   `MapImportResult { Ok, Loaded, NormalizedJson, FinalName, Renamed, Error?,
   ErrorDetail }`; `MapImportStrings.KeyFor` (Controller) maps each
   `MapImportError` to its `StringKeys` message — Model never holds string keys.
-- **Export.** Map editor Esc menu → Export Map: author prompt (`SaveNameModal`
-  with field/confirm label overrides, pre-filled from and persisted to
-  `UserSettings.AuthorName`; the modal doubles as the flow's error surface) →
-  the `MapRosterRules.ValidateForSave` gate → on desktop a native save dialog
-  (`MapFileDialogs.ShowExport`) and a `SerializeMap` write to the chosen path;
-  on mobile (`ShareBridge.Available`) the file stages to `user://export/`
-  (`SaveStore.WriteExportTemp`) and hands off to the OS share sheet.
+- **Export.** Map editor Esc menu → Export Map: a two-field prompt
+  (`SaveNameModal` with its optional secondary field) — map name, pre-filled
+  from the editor's last loaded/saved slot name (seed default for a fresh
+  map), and author, pre-filled from and persisted to
+  `UserSettings.AuthorName`; the modal doubles as the flow's error surface —
+  then the `MapRosterRules.ValidateForSave` gate → on desktop a native save
+  dialog (`MapFileDialogs.ShowExport`) pre-filled with the entered name
+  (the dialog's filename wins) and a `SerializeMap` write to the chosen path;
+  on mobile (`ShareBridge.Available`) the prompt's name is final — the file
+  stages to `user://export/` (`SaveStore.WriteExportTemp`) and hands off to
+  the OS share sheet.
 - **Import.** Main-menu Map Editor chooser → Import Map. Desktop: native open
   dialog (`MapFileDialogs.ShowImport`). Platforms without
   `DisplayServer.Feature.NativeDialogFile` (iOS; forceable on desktop via

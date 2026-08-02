@@ -22,10 +22,13 @@ public partial class MapEditorScene : Node2D
     private SaveNameModal? _saveModal;
     private SaveNameModal? _exportModal;
     private SlotPickerDialog? _loadDialog;
-    // Export state stashed between the author prompt and the file dialog
+    // Export state stashed between the export prompt and the file dialog
     // (both are modal, so the board can't change in between).
     private GameState? _pendingExportState;
     private string _pendingExportAuthor = "";
+    // The map's last loaded/saved slot name — the export prompt's default.
+    // Null for a fresh unsaved map (falls back to the seed-based default).
+    private string? _currentMapName;
 
     // The per-color roster the map will bake: kinds (incl. None)
     // and difficulties, chosen up-front for a New Map or derived from the file
@@ -169,28 +172,35 @@ public partial class MapEditorScene : Node2D
         }
         Log.Info(Log.LogCategory.Display,
             $"MapEditor: saved map \"{name}\" kinds=[{string.Join(",", _rosterKinds)}]");
+        _currentMapName = name;
         _saveModal.Close();
     }
 
     private void BuildExportDialog()
     {
-        // The author prompt doubles as the export flow's error surface:
-        // it stays open across the file dialog and only closes on success.
+        // Two-field export prompt: map name (primary) + author (secondary).
+        // It doubles as the export flow's error surface: it stays open
+        // across the file dialog and only closes on success.
         _exportModal = new SaveNameModal(
             Strings.Get(StringKeys.EditorExportMap),
-            fieldLabel: Strings.Get(StringKeys.ExportAuthorLabel),
-            confirmLabel: Strings.Get(StringKeys.ButtonOk));
-        _exportModal.Confirmed += OnExportAuthorConfirmed;
+            fieldLabel: Strings.Get(StringKeys.ExportNameLabel),
+            confirmLabel: Strings.Get(StringKeys.ButtonOk),
+            secondaryFieldLabel: Strings.Get(StringKeys.ExportAuthorLabel));
+        _exportModal.Confirmed += OnExportConfirmed;
         _exportModal.Closed += () => { _pendingExportState = null; };
         AddChild(_exportModal);
     }
 
     private void OpenExportDialog()
     {
-        _exportModal?.Open(UserSettings.AuthorName);
+        if (_exportModal == null) return;
+        int seed = _panel.CurrentSeed;
+        string defaultName = _currentMapName
+            ?? (seed > 0 ? $"map_seed{seed}" : "map");
+        _exportModal.Open(defaultName, UserSettings.AuthorName);
     }
 
-    private void OnExportAuthorConfirmed(string rawAuthor)
+    private void OnExportConfirmed(string rawName)
     {
         if (_exportModal == null) return;
         GameState state = _panel.BuildSaveState(_mapMode);
@@ -208,7 +218,8 @@ public partial class MapEditorScene : Node2D
             return;
         }
 
-        string author = rawAuthor.Trim();
+        string name = SaveStore.SanitizeSlotName(rawName);
+        string author = _exportModal.SecondaryText.Trim();
         if (author.Length > MapImport.MaxAuthorLength)
         {
             author = author.Substring(0, MapImport.MaxAuthorLength);
@@ -217,18 +228,16 @@ public partial class MapEditorScene : Node2D
         _pendingExportAuthor = author;
         _pendingExportState = state;
 
-        int seed = _panel.CurrentSeed;
-        string defaultName = seed > 0 ? $"map_seed{seed}" : "map";
-
         // Mobile (share plugin present): stage the file and hand it to the
-        // OS share sheet — there's no meaningful "save as..." on iOS/Android.
-        // Desktop: native save dialog.
+        // OS share sheet — there's no meaningful "save as..." on iOS/Android,
+        // so the prompt's name is final. Desktop: native save dialog,
+        // pre-filled with the name; the filename picked there wins.
         if (ShareBridge.Available)
         {
-            ExportViaShareSheet(defaultName);
+            ExportViaShareSheet(name);
             return;
         }
-        MapFileDialogs.ShowExport(this, defaultName + MapFileDialogs.Extension,
+        MapFileDialogs.ShowExport(this, name + MapFileDialogs.Extension,
             OnExportPathChosen);
     }
 
@@ -313,6 +322,7 @@ public partial class MapEditorScene : Node2D
             // preserves them.
             DeriveRosterFromLoad(loaded, out _rosterKinds, out _rosterDifficulties);
             _mapMode = loaded.State.Mode; // preserve mode on re-save
+            _currentMapName = SaveStore.SanitizeSlotName(slotName);
             _players = BuildEditorPreviewRoster();
             _panel.Players = _players;
             _panel.LoadFromMap(loaded);
@@ -346,6 +356,7 @@ public partial class MapEditorScene : Node2D
                 _pendingMapToLoad = _saveStore.LoadMap(mapName);
                 DeriveRosterFromLoad(_pendingMapToLoad, out _rosterKinds, out _rosterDifficulties);
                 _mapMode = _pendingMapToLoad.State.Mode; // preserve mode on re-save
+                _currentMapName = SaveStore.SanitizeSlotName(mapName);
                 Log.Info(Log.LogCategory.Display,
                     $"MapEditor: load map \"{mapName}\" for editing (mode={_mapMode})");
                 return;

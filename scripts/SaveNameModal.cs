@@ -29,21 +29,32 @@ public sealed partial class SaveNameModal : CanvasLayer
     /// <param name="title">Serif panel title — e.g. "Save Game", "Save Map",
     /// "Save Tutorial". Defaults to "Save Game" for the in-game save flow.</param>
     /// <param name="fieldLabel">Label above the text field. Defaults to
-    /// "Slot name:"; the map-export author prompt overrides it.</param>
+    /// "Slot name:"; the map-export prompt overrides it.</param>
     /// <param name="confirmLabel">Confirm-button text. Defaults to "Save".</param>
+    /// <param name="secondaryFieldLabel">When non-null, a second labeled text
+    /// field is added below the first (the map-export prompt's Author field).
+    /// Its value is read from <see cref="SecondaryText"/> after
+    /// <see cref="Confirmed"/> fires.</param>
     public SaveNameModal(string? title = null, string? fieldLabel = null,
-        string? confirmLabel = null)
+        string? confirmLabel = null, string? secondaryFieldLabel = null)
     {
         _title = title ?? Strings.Get(StringKeys.SaveTitleGame);
         _fieldLabel = fieldLabel ?? Strings.Get(StringKeys.SaveSlotName);
         _confirmLabel = confirmLabel ?? Strings.Get(StringKeys.ButtonSave);
+        _secondaryFieldLabel = secondaryFieldLabel;
     }
 
     private readonly string _title;
     private readonly string _fieldLabel;
     private readonly string _confirmLabel;
+    private readonly string? _secondaryFieldLabel;
+
+    /// <summary>The secondary field's current text ("" when the modal was
+    /// built without one). Read by the host on <see cref="Confirmed"/>.</summary>
+    public string SecondaryText => _secondaryLineEdit?.Text ?? "";
 
     private LineEdit _lineEdit = null!;
+    private LineEdit? _secondaryLineEdit;
     private ColorRect _backdrop = null!;
     private PanelContainer _panel = null!;
 
@@ -52,6 +63,7 @@ public sealed partial class SaveNameModal : CanvasLayer
     // (scripts/KeyboardLiftController.cs); driven from _Process while focused.
     private const float KeyboardLiftMargin = 16f;
     private KeyboardLiftController _lift = null!;
+    private KeyboardLiftController? _secondaryLift;
 
     private Label _errorBodyLabel = null!;
     private PanelContainer _errorPanel = null!;
@@ -121,6 +133,43 @@ public sealed partial class SaveNameModal : CanvasLayer
         _lineEdit.FocusExited += () => { SetProcess(false); _lift.Reset(); };
         vbox.AddChild(_lineEdit);
 
+        if (_secondaryFieldLabel != null)
+        {
+            var secondaryLabel = new Label
+            {
+                Text = _secondaryFieldLabel,
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            };
+            secondaryLabel.AddThemeFontSizeOverride("font_size", 22);
+            secondaryLabel.AddThemeColorOverride("font_color", UiPalette.InkSoft);
+            vbox.AddChild(secondaryLabel);
+
+            _secondaryLineEdit = new LineEdit
+            {
+                CustomMinimumSize = new Vector2(0, 36),
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            };
+            _secondaryLineEdit.AddThemeFontSizeOverride("font_size", 22);
+            _secondaryLineEdit.TextSubmitted += _ =>
+            {
+                Log.Debug(Log.LogCategory.Input,
+                    "SaveNameModal: Enter (secondary) -> dismiss keyboard");
+                _secondaryLineEdit.ReleaseFocus();
+            };
+            _secondaryLift = new KeyboardLiftController(
+                _secondaryLineEdit,
+                lift => { _panel.OffsetTop = -lift; _panel.OffsetBottom = -lift; },
+                KeyboardLiftMargin,
+                "SaveNameModal.secondary");
+            _secondaryLineEdit.FocusEntered += () => SetProcess(true);
+            _secondaryLineEdit.FocusExited += () =>
+            {
+                SetProcess(false);
+                _secondaryLift.Reset();
+            };
+            vbox.AddChild(_secondaryLineEdit);
+        }
+
         var buttonRow = new HBoxContainer
         {
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
@@ -156,14 +205,20 @@ public sealed partial class SaveNameModal : CanvasLayer
     /// <summary>
     /// Pop the modal with <paramref name="defaultName"/> pre-filled and
     /// selected so the user can overtype or accept it.
+    /// <paramref name="secondaryDefault"/> pre-fills the secondary field
+    /// when the modal was built with one (ignored otherwise).
     /// </summary>
-    public void Open(string defaultName)
+    public void Open(string defaultName, string? secondaryDefault = null)
     {
         if (IsOpen) return;
         IsOpen = true;
         Visible = true;
         HideError();
         _lineEdit.Text = defaultName;
+        if (_secondaryLineEdit != null)
+        {
+            _secondaryLineEdit.Text = secondaryDefault ?? "";
+        }
         _lineEdit.GrabFocus();
         _lineEdit.SelectAll();
         Log.Debug(Log.LogCategory.Input, $"SaveNameModal.Open default='{defaultName}'");
@@ -178,6 +233,7 @@ public sealed partial class SaveNameModal : CanvasLayer
         // Stop keyboard-lift polling and drop any lift before hiding (the
         // hidden field wouldn't otherwise fire FocusExited).
         _lineEdit.ReleaseFocus();
+        _secondaryLineEdit?.ReleaseFocus();
         Log.Debug(Log.LogCategory.Input, "SaveNameModal.Close");
         Closed?.Invoke();
     }
@@ -196,7 +252,18 @@ public sealed partial class SaveNameModal : CanvasLayer
 
     public override void _Process(double delta)
     {
-        _lift.Poll(GetViewport().GetVisibleRect().Size.Y, GetWindow().ContentScaleFactor);
+        // Poll only the focused field's lift — Poll itself doesn't check
+        // focus, and both controllers write the same panel offsets.
+        float viewportY = GetViewport().GetVisibleRect().Size.Y;
+        float scale = GetWindow().ContentScaleFactor;
+        if (_secondaryLineEdit?.HasFocus() == true)
+        {
+            _secondaryLift!.Poll(viewportY, scale);
+        }
+        else
+        {
+            _lift.Poll(viewportY, scale);
+        }
     }
 
     private void Confirm()

@@ -253,6 +253,7 @@ public static class StringKeys
     public const string EditorExportMap = "editor.export_map";
     public const string MenuImportMap = "menu.import_map";
     public const string MenuMapAuthorTag = "menu.map_author_tag";
+    public const string ExportNameLabel = "export.name_label";
     public const string ExportAuthorLabel = "export.author_label";
     public const string ExportFailed = "export.failed";
     public const string ExportSuccess = "export.success";
