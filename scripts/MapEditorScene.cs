@@ -218,9 +218,45 @@ public partial class MapEditorScene : Node2D
         _pendingExportState = state;
 
         int seed = _panel.CurrentSeed;
-        string defaultName =
-            (seed > 0 ? $"map_seed{seed}" : "map") + MapFileDialogs.Extension;
-        MapFileDialogs.ShowExport(this, defaultName, OnExportPathChosen);
+        string defaultName = seed > 0 ? $"map_seed{seed}" : "map";
+
+        // Mobile (share plugin present): stage the file and hand it to the
+        // OS share sheet — there's no meaningful "save as..." on iOS/Android.
+        // Desktop: native save dialog.
+        if (ShareBridge.Available)
+        {
+            ExportViaShareSheet(defaultName);
+            return;
+        }
+        MapFileDialogs.ShowExport(this, defaultName + MapFileDialogs.Extension,
+            OnExportPathChosen);
+    }
+
+    private void ExportViaShareSheet(string name)
+    {
+        if (_exportModal == null || _pendingExportState == null) return;
+        string json = SaveSerializer.SerializeMap(
+            _pendingExportState, _panel.CurrentSeed, BuildBakeRoster(), name,
+            author: _pendingExportAuthor.Length > 0 ? _pendingExportAuthor : null);
+        string absolutePath;
+        try
+        {
+            absolutePath = _saveStore.WriteExportTemp(
+                name + MapFileDialogs.Extension, json);
+        }
+        catch (System.Exception ex)
+        {
+            Log.Warn(Log.LogCategory.Share,
+                $"[share] export staging failed: {ex.Message}");
+            _exportModal.ShowError(Strings.Get(StringKeys.ExportFailed,
+                ("error", ex.Message)));
+            return;
+        }
+        Log.Info(Log.LogCategory.Share,
+            $"[share] exported '{name}' by '{_pendingExportAuthor}' -> share sheet " +
+            $"({json.Length} chars)");
+        _exportModal.Close();
+        ShareBridge.ShareFile(absolutePath, "application/octet-stream", name);
     }
 
     private void OnExportPathChosen(string path)

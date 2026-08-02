@@ -1915,7 +1915,38 @@ public partial class MainMenuScene : Control
     private void OpenImportMap()
     {
         Log.Info(Log.LogCategory.Input, "MainMenu: Map Editor → import map");
+        // Platforms without a native file picker (iOS) import from the
+        // user://import/ drop folder, which accessible_from_files_app
+        // exposes in the Files app.
+        if (!DisplayServer.HasFeature(DisplayServer.Feature.NativeDialogFile))
+        {
+            OpenImportFromFolder();
+            return;
+        }
         MapFileDialogs.ShowImport(this, OnImportFileChosen);
+    }
+
+    /// <summary>List the drop folder's <c>.fxhmap</c> files in a text-mode
+    /// picker; the empty message doubles as the "copy files here" hint.
+    /// Selection funnels into the same validate-then-write path as the
+    /// desktop file dialog.</summary>
+    private void OpenImportFromFolder()
+    {
+        System.Collections.Generic.IReadOnlyList<string> files =
+            _saveStore.ListImportFolder();
+        Log.Debug(Log.LogCategory.Share,
+            $"[share] import folder picker: {files.Count} file(s)");
+        var rows = new System.Collections.Generic.List<SaveSlotInfo>();
+        foreach (string file in files)
+        {
+            rows.Add(new SaveSlotInfo(file, savedAtUnix: 0, turnNumber: 0,
+                isAutosave: false));
+        }
+        _loadDialog?.ShowSlots(
+            rows,
+            Strings.Get(StringKeys.ImportFolderHint),
+            info => info.SlotName,
+            fileName => OnImportFileChosen(SaveStore.ImportDirectory + fileName));
     }
 
     private void OnImportFileChosen(string path)
@@ -1947,6 +1978,12 @@ public partial class MainMenuScene : Control
         Log.Info(Log.LogCategory.Share,
             $"[share] import '{path}' -> ok name='{result.FinalName}' " +
             $"renamed={result.Renamed}");
+        // Consume drop-folder sources so the folder picker doesn't re-list
+        // (and re-suffix) files that already made it into user://maps/.
+        if (path.StartsWith(SaveStore.ImportDirectory))
+        {
+            DirAccess.RemoveAbsolute(ProjectSettings.GlobalizePath(path));
+        }
         ShowImportNotice(Strings.Get(
             result.Renamed ? StringKeys.ImportRenamed : StringKeys.ImportSuccess,
             ("name", result.FinalName)));

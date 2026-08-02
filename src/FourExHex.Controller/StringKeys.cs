@@ -263,6 +263,7 @@ public static class StringKeys
     public const string ImportErrorNotStartingMap = "import.error.not_starting_map";
     public const string ImportErrorTooLarge = "import.error.too_large";
     public const string ImportErrorInvalid = "import.error.invalid";
+    public const string ImportFolderHint = "import.folder_hint";
 
     // Game-mode display names (setup dropdown).
     public const string ModeFreeform = "mode.freeform";

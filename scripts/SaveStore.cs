@@ -28,6 +28,13 @@ public sealed class SaveStore
     // unreliable inside an exported PCK; reading known paths is fine).
     public const string BundledStartingMapsDirectory = "res://maps/";
     public const string AutosaveSlotName = "autosave";
+    // Map-sharing staging dirs (issue #92). Export holds files being handed
+    // to the OS share sheet; Import is the drop folder users copy .fxhmap
+    // files into on platforms without a native file picker (visible in the
+    // iOS Files app via the accessible_from_files_app export flag).
+    public const string ExportDirectory = "user://export/";
+    public const string ImportDirectory = "user://import/";
+    public const string MapFileExtension = ".fxhmap";
     private const string SaveExtension = ".json";
     private const string TempExtension = ".json.tmp";
 
@@ -107,6 +114,48 @@ public sealed class SaveStore
         AtomicWrite(MapsDirectory, sanitized, normalizedJson);
         Log.Info(Log.LogCategory.Share,
             $"[share] import wrote '{sanitized}' ({normalizedJson.Length} chars)");
+    }
+
+    /// <summary>
+    /// Stage a <c>.fxhmap</c> payload for the OS share sheet. Returns the
+    /// absolute (globalized) path the share plugin needs.
+    /// </summary>
+    public string WriteExportTemp(string fileName, string json)
+    {
+        EnsureDirectory(ExportDirectory);
+        string path = ExportDirectory + fileName;
+        using FileAccess f = FileAccess.Open(path, FileAccess.ModeFlags.Write);
+        if (f == null)
+        {
+            throw new System.IO.IOException(
+                $"Could not open {path} for writing: {FileAccess.GetOpenError()}");
+        }
+        f.StoreString(json);
+        return ProjectSettings.GlobalizePath(path);
+    }
+
+    /// <summary>
+    /// Create-if-missing and list the import drop folder's <c>.fxhmap</c>
+    /// files (sorted for a stable listing). Creating the folder up front is
+    /// what makes it appear in the iOS Files app for users to drop into.
+    /// </summary>
+    public IReadOnlyList<string> ListImportFolder()
+    {
+        EnsureDirectory(ImportDirectory);
+        var names = new List<string>();
+        using DirAccess dir = DirAccess.Open(ImportDirectory)!;
+        if (dir == null) return names;
+        dir.ListDirBegin();
+        for (string name = dir.GetNext(); name.Length > 0; name = dir.GetNext())
+        {
+            if (dir.CurrentIsDir()) continue;
+            if (!name.EndsWith(MapFileExtension, System.StringComparison.OrdinalIgnoreCase))
+                continue;
+            names.Add(name);
+        }
+        dir.ListDirEnd();
+        names.Sort(System.StringComparer.OrdinalIgnoreCase);
+        return names;
     }
 
     /// <summary>
