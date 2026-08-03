@@ -3449,8 +3449,15 @@ public partial class HexMapView : Node2D, IHexMapView
     {
         if (_rejectionsLayer == null) return;
         ghost.Position = FirstHexCenterOffset + HexPixel.ToPixel(coord, HexSize);
+        // _rejectionsLayer is skipped by ApplyGlyphUpright (its defender
+        // arrows must rotate with the board), so upright the ghost here.
+        // Spawn-time only: the pulse dies in ~1.3s, so an orientation flip
+        // mid-pulse isn't worth tracking.
+        ghost.Rotation = -_mapAngleRad;
         ghost.Modulate = new Color(1f, 1f, 1f, 0.9f);
         _rejectionsLayer.AddChild(ghost);
+        Log.Debug(Log.LogCategory.Render,
+            $"HexMapView: rejection ghost at {coord} (counter {Mathf.RadToDeg(-_mapAngleRad):0}°).");
 
         // Two pulses over ~1.3s, with a slow final fade so the ghost
         // lingers long enough to read at a glance:
@@ -4841,7 +4848,9 @@ public partial class HexMapView : Node2D, IHexMapView
     /// foam, tower coverage, selection highlight, the symmetric move-target
     /// rings) are intentionally NOT touched — they rotate with the cells to
     /// stay aligned. The rejection layer is also excluded: its defender arrows
-    /// are directional and must rotate with the board to keep pointing. The
+    /// are directional and must rotate with the board to keep pointing, while
+    /// the rejection ghost counter-rotates itself at spawn
+    /// (<see cref="SpawnRejectionPulse"/>). The
     /// move-source selection backdrop lives inside <c>_unitsLayer</c> (so it
     /// draws right beneath the selected unit's rings) but is hex-cell-aligned,
     /// not directional — skip it so its edges keep matching the underlying
