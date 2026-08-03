@@ -30,6 +30,13 @@ public partial class ShareInbox : Node
     private const string SharePluginSingleton = "SharePlugin";
     private const string FileOpenSingleton = "FileOpen";
     private const double ResumePollDelaySeconds = 0.25;
+    // iOS copies every opened document into the sandbox Documents/Inbox
+    // before launching/foregrounding the app (we don't declare
+    // LSSupportsOpeningDocumentsInPlace), and user:// is the Documents dir
+    // on iOS — so tapped files are always waiting here, even when no URL
+    // callback reaches the share plugin (cold-start URLs arrive in the
+    // scene connection options, before the plugin exists).
+    private const string IosInboxDirectory = "user://Inbox/";
 
     private static string? _pendingMessage;
     private static bool _pendingOk;
@@ -71,9 +78,15 @@ public partial class ShareInbox : Node
             plugin.Call("set_share_target", true);
             Log.Info(Log.LogCategory.Share,
                 "[share] inbox: share target enabled (SharePlugin)");
-            plugin.Connect("share_received", Callable.From(
-                (Godot.Collections.Dictionary payload) => HandleSharePayload(payload)));
-            PollSharePlugin("cold-start");
+            // iOS document-opens all land in Documents/Inbox (scanned below);
+            // consuming the plugin payload there too would double-import the
+            // warm-delivery case, so the plugin receive path is Android-only.
+            if (!OS.HasFeature("ios"))
+            {
+                plugin.Connect("share_received", Callable.From(
+                    (Godot.Collections.Dictionary payload) => HandleSharePayload(payload)));
+                PollSharePlugin("cold-start");
+            }
         }
 
         if (Engine.HasSingleton(FileOpenSingleton))
@@ -85,6 +98,31 @@ public partial class ShareInbox : Node
                 (string path) => HandlePaths(new[] { path }, deleteSources: true)));
             PollFileOpen("cold-start");
         }
+
+        ScanIosInbox("cold-start");
+    }
+
+    private void ScanIosInbox(string reason)
+    {
+        if (!OS.HasFeature("ios")) return;
+        using DirAccess dir = DirAccess.Open(IosInboxDirectory);
+        if (dir == null) return;
+        List<string> paths = new();
+        foreach (string name in dir.GetFiles())
+        {
+            paths.Add(ProjectSettings.GlobalizePath(IosInboxDirectory + name));
+        }
+        if (paths.Count == 0)
+        {
+            Log.Debug(Log.LogCategory.Share,
+                $"[share] inbox: {reason} iOS Inbox — empty");
+            return;
+        }
+        Log.Info(Log.LogCategory.Share,
+            $"[share] inbox: {reason} iOS Inbox — {paths.Count} file(s)");
+        // Non-map files are deleted too: iOS re-delivers nothing, and a
+        // stale Inbox copy would otherwise be re-logged on every resume.
+        HandlePaths(paths.ToArray(), deleteSources: true, deleteIgnored: true);
     }
 
     public override void _Notification(int what)
@@ -99,11 +137,13 @@ public partial class ShareInbox : Node
         {
             PollSharePlugin("resume");
             PollFileOpen("resume");
+            ScanIosInbox("resume");
         };
     }
 
     private void PollSharePlugin(string reason)
     {
+        if (OS.HasFeature("ios")) return;
         if (!Engine.HasSingleton(SharePluginSingleton)) return;
         Godot.Collections.Dictionary payload = Engine.GetSingleton(SharePluginSingleton)
             .Call("get_received_data").AsGodotDictionary();
@@ -137,7 +177,7 @@ public partial class ShareInbox : Node
         HandlePaths(files, deleteSources: true);
     }
 
-    private void HandlePaths(string[] paths, bool deleteSources)
+    private void HandlePaths(string[] paths, bool deleteSources, bool deleteIgnored = false)
     {
         IReadOnlyList<string> accepted = ShareReceiveRules.FxhmapPaths(paths);
         HashSet<string> acceptedSet = new(accepted, StringComparer.Ordinal);
@@ -147,6 +187,7 @@ public partial class ShareInbox : Node
             {
                 Log.Info(Log.LogCategory.Share,
                     $"[share] inbox: ignored non-map '{path}'");
+                if (deleteIgnored) DirAccess.RemoveAbsolute(path);
             }
         }
         if (accepted.Count == 0) return;
