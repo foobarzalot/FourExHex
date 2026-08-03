@@ -17,6 +17,12 @@
   stripSwiftSymbols = true: standard for any iOS distribution.
   uploadSymbols = true: ship dSYMs so App Store Connect can symbolicate
     crash reports (no-op for development builds, but harmless).
+  manageAppVersionAndBuildNumber = false: xcodebuild defaults this to TRUE,
+    which makes -exportArchive consult App Store Connect and silently rewrite
+    CFBundleVersion to the next free number when the archive's build number is
+    already taken — shipping an .ipa stamped with a number the repo never
+    recorded. AppVersion.Build is the single monotonic counter for both
+    platforms, so a collision must fail loudly at upload instead.
 -->
 <plist version="1.0">
 <dict>
@@ -34,6 +40,9 @@
 
     <key>uploadSymbols</key>
     <true/>
+
+    <key>manageAppVersionAndBuildNumber</key>
+    <false/>
 
     <key>destination</key>
     <string>export</string>

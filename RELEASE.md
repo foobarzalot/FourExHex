@@ -273,6 +273,26 @@ source — `build_ios.sh` syncs it into the iOS preset's
 `application/version` automatically; see §1 Versioning). Apple Apple ID
 `6774765597`, bundle `com.foobarzalot.fourexhex`.
 
+**A duplicate build number fails loudly; it is never renumbered.**
+`xcodebuild -exportArchive` defaults `manageAppVersionAndBuildNumber` to
+true, which makes it ask App Store Connect whether the archive's
+`CFBundleVersion` is taken and silently bump it to the next free number —
+shipping an .ipa under a build number no commit records, and desyncing the
+counter `AppVersion.Build` shares with Android. `tools/ios_export_options.plist`
+sets that key `false`, and after export `build_ios.sh` extracts the .ipa's
+`CFBundleVersion` and aborts unless it equals `AppVersion.Build` (the check
+runs in every mode, so a `--no-upload` dry run catches it too). A genuine
+collision therefore surfaces as an Apple rejection at upload — bump
+`AppVersion.Build` and re-run.
+
+**Interrupting the build stops the whole pipeline.** `build_ios.sh` re-execs
+itself as a process-group leader (via perl's `setpgrp` — macOS has no
+`setsid`), traps INT/TERM/HUP to `kill -- -$$`, and runs every slow step as a
+backgrounded child it `wait`s on, since bash defers a trapped signal until the
+running foreground command returns. So `kill <pid>` takes xcodebuild and altool
+down with the script — nothing survives to upload a build after a stop — and
+the EXIT trap still restores `export_presets.cfg`.
+
 `tools/build_ios.sh debug --no-upload` does the local build through .ipa and
 stops — useful for verifying signing locally without burning an upload slot.
 

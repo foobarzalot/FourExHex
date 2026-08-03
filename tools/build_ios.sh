@@ -16,6 +16,18 @@
 #      altool finds the .p8 in ~/.appstoreconnect/private_keys/AuthKey_<KeyID>.p8
 #      (a standard search path); the creds file just provides the Key ID and
 #      Issuer ID env vars.
+#   4. Interrupting the script must stop the WHOLE pipeline, or an orphaned
+#      xcodebuild/altool can upload a build minutes after the "stop". Three
+#      pieces cooperate: the script re-execs itself as a process-group leader
+#      (macOS has no setsid, so perl's setpgrp does it), traps INT/TERM/HUP to
+#      kill that group, and runs every slow step as a backgrounded child it
+#      `wait`s on — bash defers a trapped signal until the running foreground
+#      command finishes, so without the `wait` the handler wouldn't run until
+#      the archive completed on its own.
+#   5. The .ipa's CFBundleVersion is asserted against AppVersion.Build before
+#      upload, so a build number that doesn't match the repo's counter fails
+#      here rather than shipping (see manageAppVersionAndBuildNumber in
+#      tools/ios_export_options.plist).
 #
 # Toolchain prerequisites (the script does NOT install these — it checks):
 #   - Full Xcode at /Applications/Xcode.app (xcodebuild -version succeeds)
@@ -40,6 +52,34 @@
 #                install onto the connected USB device via `xcrun devicectl`.
 #                Device must be in Developer Mode and trusted on this Mac.
 set -euo pipefail
+
+# ---- Own process group, so a kill takes the whole build tree down ----
+# `kill -- -$$` only reaps our descendants if $$ IS the process-group id; when
+# launched from a shell we inherit the caller's group, where that kill would
+# either hit the caller or nothing at all. macOS ships no setsid; stock perl
+# can call setpgrp(2) and exec us back. Re-exec exactly once.
+if [[ "${BUILD_IOS_PGLEADER:-}" != "1" ]]; then
+  export BUILD_IOS_PGLEADER=1
+  exec perl -e 'setpgrp(0,0); exec @ARGV' -- bash "$0" "$@"
+fi
+
+kill_group() {
+  trap '' TERM   # our own group-kill must not re-enter this handler
+  echo "" >&2
+  echo "==> Interrupted — killing build process group (pgid $$)" >&2
+  kill -TERM -- -$$ 2>/dev/null || true
+  exit 130       # falls through to the EXIT trap, which restores the presets
+}
+trap kill_group INT TERM HUP
+
+# Run a long command as a backgrounded child and wait on it. `wait` is
+# interruptible, so a trapped signal reaches kill_group immediately instead of
+# after the step finishes. Pipelines can't go through this helper (a pipe can't
+# be passed as arguments) — those use the inline `… & wait $! || fail` form.
+run_step() {
+  "$@" &
+  wait $!
+}
 
 MODE="${1:-release}"
 UPLOAD=1
@@ -140,14 +180,17 @@ echo "==> Team ID:  $IOS_TEAM_ID"
 echo "==> Output:   $IPA"
 
 echo "==> Building C# assemblies (Debug for editor load + $CSHARP_CONFIG for the export)"
-dotnet build "$PROJECT_DIR/FourExHex.csproj" -c Debug            >/dev/null
-dotnet build "$PROJECT_DIR/FourExHex.csproj" -c "$CSHARP_CONFIG" >/dev/null
+run_step dotnet build "$PROJECT_DIR/FourExHex.csproj" -c Debug            >/dev/null \
+  || fail "dotnet build -c Debug failed"
+run_step dotnet build "$PROJECT_DIR/FourExHex.csproj" -c "$CSHARP_CONFIG" >/dev/null \
+  || fail "dotnet build -c $CSHARP_CONFIG failed"
 
 echo "==> Exporting iOS Xcode project ($MODE, headless)"
 rm -rf "$BUILD_DIR/FourExHex.xcodeproj" "$BUILD_DIR/FourExHex" "$BUILD_DIR/FourExHex.pck" \
        "$BUILD_DIR/FourExHex.xcframework" "$XCARCHIVE" "$IPA"
 mkdir -p "$BUILD_DIR"
-"$GODOT" --headless --path "$PROJECT_DIR" "$GODOT_FLAG" "$PRESET" "$XCODEPROJ"
+run_step "$GODOT" --headless --path "$PROJECT_DIR" "$GODOT_FLAG" "$PRESET" "$XCODEPROJ" \
+  || fail "Godot iOS export failed"
 [[ -d "$XCODEPROJ" ]] || fail "Godot export did not produce $XCODEPROJ"
 
 # Godot's iOS exporter hardcodes CODE_SIGN_IDENTITY = "Apple Distribution"
@@ -177,7 +220,8 @@ xcodebuild \
   -allowProvisioningUpdates \
   DEVELOPMENT_TEAM="$IOS_TEAM_ID" \
   archive \
-  | sed -E 's/^/    /'
+  | sed -E 's/^/    /' &
+wait $! || fail "xcodebuild archive failed"
 [[ -d "$XCARCHIVE" ]] || fail "xcodebuild archive did not produce $XCARCHIVE"
 
 # Materialize ExportOptions.plist with the real Team ID + method substituted in.
@@ -191,10 +235,26 @@ xcodebuild \
   -exportPath "$BUILD_DIR" \
   -exportOptionsPlist "$EXPORT_OPTIONS_LIVE" \
   -allowProvisioningUpdates \
-  | sed -E 's/^/    /'
+  | sed -E 's/^/    /' &
+wait $! || fail "xcodebuild -exportArchive failed"
 [[ -f "$IPA" ]] || fail "xcodebuild -exportArchive did not produce $IPA"
 
 echo "==> Built: $(file -b "$IPA")"
+
+# The .ipa's build number must be exactly AppVersion.Build — that const is the
+# single monotonic counter both platforms ship under. Anything else means the
+# number was rewritten between the preset sync and the export (see
+# manageAppVersionAndBuildNumber in tools/ios_export_options.plist), and
+# uploading it would put a build on App Store Connect that no commit records.
+# Same parse as tools/sync_version.sh, against the same canonical file.
+EXPECTED_BUILD="$(grep -oE 'Build[[:space:]]*=[[:space:]]*[0-9]+' \
+  "$PROJECT_DIR/scripts/AppVersion.cs" | grep -oE '[0-9]+$')"
+[[ -n "$EXPECTED_BUILD" ]] || fail "could not parse 'Build = <int>' from $PROJECT_DIR/scripts/AppVersion.cs"
+IPA_BUILD="$(unzip -p "$IPA" 'Payload/*.app/Info.plist' \
+  | plutil -extract CFBundleVersion raw -o - -)"
+[[ "$IPA_BUILD" == "$EXPECTED_BUILD" ]] \
+  || fail "IPA is stamped CFBundleVersion $IPA_BUILD but AppVersion.Build is $EXPECTED_BUILD — the build number was rewritten during export; check manageAppVersionAndBuildNumber in tools/ios_export_options.plist"
+echo "==> Verified CFBundleVersion: $IPA_BUILD (matches AppVersion.Build)"
 
 if (( TETHERED )); then
   echo "==> Installing onto tethered iOS device via xcrun devicectl"
@@ -223,7 +283,8 @@ for d in data.get("result", {}).get("devices", []):
   fi
   echo "    Device: $DEVICE_UDID"
   xcrun devicectl device install app --device "$DEVICE_UDID" "$IPA" \
-    | sed -E 's/^/    /'
+    | sed -E 's/^/    /' &
+  wait $! || fail "devicectl install failed"
   echo "==> Done. App is installed; launch it from the home screen."
   echo "    Read live device logs with:"
   echo "      xcrun devicectl device process launch --console --device $DEVICE_UDID com.foobarzalot.fourexhex"
@@ -244,6 +305,7 @@ echo "    (build will be in 'Processing' for ~15-30 minutes before appearing in 
 xcrun altool --upload-app --type ios -f "$IPA" \
   --apiKey "$ASC_API_KEY_ID" \
   --apiIssuer "$ASC_API_ISSUER_ID" \
-  | sed -E 's/^/    /'
+  | sed -E 's/^/    /' &
+wait $! || fail "altool upload failed"
 
 echo "==> Done. Watch App Store Connect → My Apps → FourExHex → TestFlight for the build to appear."
