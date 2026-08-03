@@ -662,11 +662,10 @@ public class GameController
 
     /// <summary>
     /// Handle a click whose coord is outside the land grid (water, etc.).
-    /// In a pending placement mode (buy/move/tower) it's a rejected click
-    /// just like a far in-grid click: flash + sound, then cancel the mode
-    /// (like Escape) and deselect — off-grid "re-selection" is the
-    /// long-standing "click off-grid to deselect" UX. Outside of a
-    /// placement mode the click simply clears selection.
+    /// In a pending placement mode (buy/move/tower) it's a rejected click:
+    /// flash + sound, then cancel the mode with Escape semantics — the
+    /// selection stays. With no placement mode pending the click clears
+    /// the selection (the long-standing "click off-grid to deselect" UX).
     /// </summary>
     private void OnOffGridClickedBody(HexCoord coord)
     {
@@ -677,17 +676,21 @@ public class GameController
         {
             EmitRejection(buyLevel.Value, coord);
             Log.Debug(Log.LogCategory.Input,
-                $"[Click] off-grid buy click at {coord} → flash + cancel mode, deselecting");
+                $"[Click] off-grid buy click at {coord} → flash + cancel mode, keep selection");
             CancelPendingAction();
+            _ops.RefreshViews();
+            return;
         }
-        else if (_session.Mode == SessionState.ActionMode.BuildingTower && _session.SelectedTerritory != null)
+        if (_session.Mode == SessionState.ActionMode.BuildingTower && _session.SelectedTerritory != null)
         {
             _map.FlashRejection(coord, RejectionShape.Tower, System.Array.Empty<HexCoord>());
             Log.Debug(Log.LogCategory.Input,
-                $"[Click] off-grid build-tower click at {coord} → flash + cancel mode, deselecting");
+                $"[Click] off-grid build-tower click at {coord} → flash + cancel mode, keep selection");
             CancelPendingAction();
+            _ops.RefreshViews();
+            return;
         }
-        else if (_session.Mode == SessionState.ActionMode.MovingUnit && _session.MoveSource.HasValue)
+        if (_session.Mode == SessionState.ActionMode.MovingUnit && _session.MoveSource.HasValue)
         {
             Unit? sourceUnit = _state.Grid.Get(_session.MoveSource.Value)?.Unit;
             if (sourceUnit != null)
@@ -695,8 +698,10 @@ public class GameController
                 EmitRejection(sourceUnit.Level, coord);
             }
             Log.Debug(Log.LogCategory.Input,
-                $"[Click] off-grid move click at {coord} → flash + cancel mode, deselecting");
+                $"[Click] off-grid move click at {coord} → flash + cancel mode, keep selection");
             CancelPendingAction();
+            _ops.RefreshViews();
+            return;
         }
 
         SetSelection(null);
@@ -711,8 +716,10 @@ public class GameController
         // adjacent over-defended enemy) flashes + stays in mode so the
         // user can adjust without re-pressing the button; "out of range"
         // (no shared border with the selected territory; for tower,
-        // outside the selected territory entirely) cancels the mode and
-        // falls through to the normal selection branch.
+        // outside the selected territory entirely) flashes + cancels the
+        // mode with Escape semantics — the selection stays — except when
+        // the click landed on another territory the player owns, where it
+        // falls through to the normal selection branch (quick redirect).
         UnitLevel? buyLevel = SessionState.BuyModeLevel(_session.Mode);
         if (buyLevel.HasValue && tile != null && _session.SelectedTerritory != null)
         {
@@ -1176,15 +1183,18 @@ public class GameController
 
     /// <summary>
     /// The shared reject-or-execute policy for the buy and move pending
-    /// modes. Returns true when the click was consumed — either the action
-    /// executed, or the target was invalid but in range, so we flash and
-    /// stay in mode for the user to adjust. Returns false when the target
-    /// was out of range: the mode is cancelled and the caller falls through
-    /// to re-process the click as a normal selection.
+    /// modes. Returns true when the click was consumed — the action
+    /// executed, or the target was invalid but in range (own-territory
+    /// occupant, adjacent over-defended enemy) so we flash and stay in
+    /// mode for the user to adjust, or the target was out of range and
+    /// the mode cancelled with Escape semantics (selection untouched).
+    /// Returns false only when an out-of-range invalid click landed on
+    /// another territory the current player owns — the caller falls
+    /// through to re-process the click as a normal selection (the
+    /// quick-redirect convenience).
     /// A null <paramref name="level"/> (stale MoveSource — the unit died,
     /// moved, or the grid was rebuilt) skips the flash and the
-    /// <paramref name="onRejected"/> hook but keeps the same stay-or-cancel
-    /// decision.
+    /// <paramref name="onRejected"/> hook but keeps the same routing.
     /// </summary>
     private bool TryHandlePendingUnitAction(
         UnitLevel? level, HexCoord coord, Territory territory,
@@ -1212,10 +1222,7 @@ public class GameController
                 $"[Click] in-range invalid {modeNoun} target at {coord} → flash + stay in {modeNoun} mode");
             return true;
         }
-        Log.Debug(Log.LogCategory.Input,
-            $"[Click] out-of-range invalid {modeNoun} target at {coord} → flash + cancel mode, re-processing as selection");
-        CancelPendingAction();
-        return false;
+        return CancelModeAndConsumeUnlessOwnRedirect(coord, modeNoun);
     }
 
     /// <summary>
@@ -1245,9 +1252,36 @@ public class GameController
             return true;
         }
         Log.Debug(Log.LogCategory.Input,
-            $"[Click] out-of-territory invalid build-tower target at {coord} ({DescribeInvalidTowerReason(coord)}) → flash + cancel mode, re-processing as selection");
+            $"[Click] out-of-territory invalid build-tower target at {coord} ({DescribeInvalidTowerReason(coord)})");
+        return CancelModeAndConsumeUnlessOwnRedirect(coord, "build-tower");
+    }
+
+    /// <summary>
+    /// Post-rejection routing shared by the pending buy/move/tower
+    /// handlers for out-of-range invalid clicks: cancel the pending mode
+    /// (Escape semantics), then decide where the click goes. A click
+    /// landing on another territory the current player owns returns false
+    /// so the caller falls through to normal selection processing
+    /// (redirect); anything else — enemy or neutral land — is consumed
+    /// and the selection stays untouched.
+    /// </summary>
+    private bool CancelModeAndConsumeUnlessOwnRedirect(HexCoord coord, string modeNoun)
+    {
         CancelPendingAction();
-        return false;
+        Territory? clicked = TerritoryLookup.FindContaining(_state.Territories, coord);
+        bool redirect = clicked != null
+            && clicked.Owner == _state.Turns.CurrentPlayer.Id
+            && !ReferenceEquals(clicked, _session.SelectedTerritory);
+        if (redirect)
+        {
+            Log.Debug(Log.LogCategory.Input,
+                $"[Click] invalid {modeNoun} target at {coord} → flash + cancel mode, redirect selection to clicked own territory");
+            return false;
+        }
+        Log.Debug(Log.LogCategory.Input,
+            $"[Click] invalid {modeNoun} target at {coord} → flash + cancel mode, keep selection");
+        _ops.RefreshViews();
+        return true;
     }
 
     // --- Buy / move / capture --------------------------------------------

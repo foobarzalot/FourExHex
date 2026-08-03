@@ -167,7 +167,7 @@ public partial class GameControllerTests
     }
 
     [Fact]
-    public void BuildTower_OnOccupiedTile_ClearsMode()
+    public void BuildTower_OnOccupiedTile_StaysInMode()
     {
         // Rejected tower placement on an in-territory occupied tile
         // flashes feedback but stays in BuildingTower mode (in-range
@@ -213,12 +213,11 @@ public partial class GameControllerTests
     }
 
     [Fact]
-    public void BuildTower_OnEnemyTile_ClearsModeAndDeselects()
+    public void BuildTower_OnEnemyTile_ClearsMode_KeepsSelection()
     {
         // Rejected tower placement on enemy territory flashes feedback
-        // then cancels BuildingTower mode (like Escape) and re-processes
-        // the tap as a selection click — an enemy tile deselects. Gold
-        // unchanged.
+        // then cancels BuildingTower mode (like Escape); the enemy tile
+        // is no redirect target, so the selection stays. Gold unchanged.
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
         HexCoord redCapital = g.Session.SelectedTerritory!.Capital!.Value;
@@ -230,7 +229,7 @@ public partial class GameControllerTests
         g.Map.SimulateClick(g.Tile(3, 0));
 
         Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
-        Assert.Null(g.Session.SelectedTerritory);
+        Assert.Same(g.RedTerritory, g.Session.SelectedTerritory);
         Assert.Equal(20, g.State.Treasury.GetGold(redCapital));
     }
 

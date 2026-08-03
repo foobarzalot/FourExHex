@@ -21,12 +21,11 @@ public partial class GameControllerTests
     }
 
     [Fact]
-    public void Click_InvalidTargetDuringBuyingMode_FlashesThenClearsMode()
+    public void Click_InvalidTargetDuringBuyingMode_FlashesThenClearsMode_KeepsSelection()
     {
         // Rejected buy click flashes feedback then cancels the buy mode
-        // (just like pressing Escape), and re-processes the tap as a
-        // normal selection click — here a non-adjacent enemy tile, so it
-        // deselects.
+        // (just like pressing Escape). The click landed on enemy ground,
+        // not another own territory, so the selection stays put.
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
         g.Hud.ClickBuyRecruit();
@@ -37,16 +36,16 @@ public partial class GameControllerTests
         g.Map.SimulateClick(g.Tile(3, 0));
 
         Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
-        Assert.Null(g.Session.SelectedTerritory);
+        Assert.Same(g.RedTerritory, g.Session.SelectedTerritory);
         Assert.Single(g.Map.Rejections);
     }
 
     [Fact]
-    public void Click_InvalidTargetDuringMovingMode_FlashesThenClearsMode()
+    public void Click_InvalidTargetDuringMovingMode_FlashesThenClearsMode_KeepsSelection()
     {
         // Rejected move click flashes feedback then drops out of
-        // MovingUnit mode (like Escape) and re-processes the tap as a
-        // selection click (a non-adjacent enemy tile deselects).
+        // MovingUnit mode (like Escape); the enemy tile it landed on is
+        // no redirect target, so the selection stays.
         var g = new TestGame();
         var unit = new Unit(g.Red.Id);
         g.Tile(1, 1).Occupant = unit;
@@ -58,13 +57,14 @@ public partial class GameControllerTests
 
         Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
         Assert.Null(g.Session.MoveSource);
+        Assert.Same(g.RedTerritory, g.Session.SelectedTerritory);
         Assert.Single(g.Map.Rejections);
     }
 
     [Fact]
     public void Click_InvalidInTerritoryTowerSite_FlashesAndStaysInMode()
     {
-        // In-range invalid clicks now flash + stay so the user can adjust
+        // In-range invalid clicks flash + stay so the user can adjust
         // without losing their mode. The capital tile sits inside the
         // selected territory (the tower's allowed range) but is occupied,
         // so it's an in-range near-miss → keep BuildingTower.
@@ -78,7 +78,7 @@ public partial class GameControllerTests
         g.Map.SimulateClick(g.Tile(0, 1)); // capital — in-territory but occupied
 
         Assert.Equal(SessionState.ActionMode.BuildingTower, g.Session.Mode);
-        Assert.NotNull(g.Session.SelectedTerritory);
+        Assert.Same(g.RedTerritory, g.Session.SelectedTerritory);
         Assert.Single(g.Map.Rejections);
         Assert.Equal(RejectionShape.Tower, g.Map.LastRejection!.Value.Shape);
     }
@@ -87,9 +87,8 @@ public partial class GameControllerTests
     public void Click_TowerSiteOutsideTerritory_FlashesAndCancelsMode()
     {
         // A tower site outside the selected territory is genuinely out of
-        // range (tower can only build on own land), so the mode cancels
-        // and the fall-through reselects the clicked territory or
-        // deselects.
+        // range (tower can only build on own land): the mode cancels and,
+        // since the click landed on enemy land, the selection stays.
         var g = new TestGame();
         g.Map.SimulateClick(g.Tile(0, 1));
         HexCoord redCapital = g.RedTerritory.Capital!.Value;
@@ -101,6 +100,7 @@ public partial class GameControllerTests
         g.Map.SimulateClick(g.Tile(2, 0));
 
         Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
+        Assert.Same(g.RedTerritory, g.Session.SelectedTerritory);
         Assert.Single(g.Map.Rejections);
         Assert.Equal(RejectionShape.Tower, g.Map.LastRejection!.Value.Shape);
     }
@@ -123,7 +123,7 @@ public partial class GameControllerTests
         g.Map.SimulateClick(g.Tile(1, 1)); // own Commander — recruit can't combine
 
         Assert.Equal(SessionState.ActionMode.BuyingRecruit, g.Session.Mode);
-        Assert.NotNull(g.Session.SelectedTerritory);
+        Assert.Same(g.RedTerritory, g.Session.SelectedTerritory);
         Assert.Single(g.Map.Rejections);
     }
 
@@ -144,6 +144,7 @@ public partial class GameControllerTests
         g.Map.SimulateClick(g.State.Grid.Get(blueT.Capital!.Value));
 
         Assert.Equal(SessionState.ActionMode.BuyingRecruit, g.Session.Mode);
+        Assert.Same(g.RedTerritory, g.Session.SelectedTerritory);
         Assert.Single(g.Map.Rejections);
     }
 
@@ -161,7 +162,35 @@ public partial class GameControllerTests
 
         Assert.Equal(SessionState.ActionMode.MovingUnit, g.Session.Mode);
         Assert.Equal(HexCoord.FromOffset(1, 1), g.Session.MoveSource);
+        Assert.Same(g.RedTerritory, g.Session.SelectedTerritory);
         Assert.Single(g.Map.Rejections);
+    }
+
+    [Fact]
+    public void Click_FailedBuyOnOtherOwnTerritory_CancelsModeAndRedirectsSelection()
+    {
+        // A failed placement click that lands on ANOTHER territory the
+        // player owns keeps the quick-redirect convenience: the mode
+        // cancels and the clicked territory becomes the selection.
+        PlayerId red = PlayerId.FromIndex(0);
+        ControllerHarness h = TestHelpers.BuildControllerGame(ownerOverrides: new[]
+        {
+            (0, 1, red), (1, 1, red), // first Red territory
+            (4, 0, red), (4, 1, red), // detached second Red territory
+        });
+        h.Map.SimulateClick(h.State.Grid.Get(HexCoord.FromOffset(0, 1)));
+        Territory first = h.Session.SelectedTerritory!;
+        h.State.Treasury.SetGold(first.Capital!.Value, 20);
+        h.Hud.ClickBuyRecruit();
+        Assert.Equal(SessionState.ActionMode.BuyingRecruit, h.Session.Mode);
+
+        h.Map.SimulateClick(h.State.Grid.Get(HexCoord.FromOffset(4, 1)));
+
+        Assert.Equal(SessionState.ActionMode.None, h.Session.Mode);
+        Assert.NotNull(h.Session.SelectedTerritory);
+        Assert.NotSame(first, h.Session.SelectedTerritory);
+        Assert.True(h.Session.SelectedTerritory!.Contains(HexCoord.FromOffset(4, 1)));
+        Assert.Single(h.Map.Rejections);
     }
 
     [Fact]
@@ -555,12 +584,13 @@ public partial class GameControllerTests
     }
 
     [Fact]
-    public void BuyRejected_OnOffGridWaterCoord_FlashesGenericRecruitShape_ThenClearsMode()
+    public void BuyRejected_OnOffGridWaterCoord_FlashesGenericRecruitShape_ThenClearsMode_KeepsSelection()
     {
         // Off-grid clicks (water, edge of viewport) during placement
         // mode flash a generic-rejection recruit ghost on the off-grid
-        // coord, then cancel the buy mode and deselect (off-grid taps
-        // re-process as the long-standing click-off-to-deselect UX).
+        // coord, then cancel the buy mode like Escape — the selection
+        // stays. (Click-water-to-deselect still applies when no
+        // placement mode is active.)
         var g = new TestGame();
         HexCoord redCapital = g.RedTerritory.Capital!.Value;
         g.State.Treasury.SetGold(redCapital, 20);
@@ -573,7 +603,7 @@ public partial class GameControllerTests
         g.Map.SimulateOffGridClick(offGrid);
 
         Assert.Equal(SessionState.ActionMode.None, g.Session.Mode);
-        Assert.Null(g.Session.SelectedTerritory);
+        Assert.Same(g.RedTerritory, g.Session.SelectedTerritory);
         Assert.Single(g.Map.Rejections);
         var rejection = g.Map.LastRejection!.Value;
         Assert.Equal(offGrid, rejection.Target);

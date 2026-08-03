@@ -358,7 +358,11 @@ public class CapitalAlertNoticeTests
         HexTile capTile = f.State.Grid.Get(f.RedCapital)!;
         // Pre-select the territory so the tap is a same-territory re-tap
         // (no SetSelection state change → no undo push from the click body).
+        // The only non-capital tile holds the bankrupting Captain, so the
+        // pre-select click also picks it up — drop it (Escape) so the
+        // capital taps below aren't rejected-move clicks.
         f.Map.SimulateClick(f.State.Grid.Get(f.RedTerritory.Coords.First(c => c != f.RedCapital))!);
+        f.Hud.PressCancelAction();
         int undoBefore = f.Session.Undo.UndoCount;
 
         f.Map.SimulateClick(capTile); // summon
