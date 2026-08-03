@@ -1626,12 +1626,42 @@ display-only attribution, rendered as "— by X" in every map picker via
   empty folder shows the copy-files-here hint in a `NoticeModal`; otherwise
   the `.fxhmap` files list in a text-mode `SlotPickerDialog` retitled via
   `ShowSlots`' `titleOverride`, with drop files deleted on successful import.
-  Both paths funnel into `Validate` → `SaveStore.ImportMap` (atomic write,
-  never overwrites) → the outcome (imported / renamed / rejected) in a
-  `NoticeModal`; dismissing a success opens the refreshed editable-map list.
-  Corrupt files that reach `user://maps/`
+  All import paths funnel into `MapImportFlow.ImportAtPath` (scene-free:
+  read → `Validate` → `SaveStore.ImportMap` atomic write, never overwrites,
+  drop-folder sources consumed on success) → the outcome (imported / renamed /
+  rejected) in a `NoticeModal`; dismissing a success opens the refreshed
+  editable-map list. Corrupt files that reach `user://maps/`
   outside this path degrade rather than crash: `MapEditorScene.
   ResolveEditorRequest` falls back to a new map, `TryReadHeader` drops the row.
+- **Tap-to-import (OS file association).** `.fxhmap` is registered with both
+  mobile OSes, so tapping an attachment or sharing a file to FourExHex
+  imports it. `ShareInbox` (autoload) owns the receiving side: it polls its
+  sources one deferred frame after boot and ~0.25 s after every
+  `NotificationApplicationResumed`, filters paths through
+  `ShareReceiveRules.FxhmapPaths` (Controller, pure), imports immediately via
+  `MapImportFlow` (no live scene needed), deletes the received copies, and
+  buffers the outcome; `MainMenuScene` drains it on `_Ready` / via
+  `ShareInbox.OutcomeReady` into the shared import `NoticeModal`.
+  `FOUREXHEX_FAKE_SHARE_RECEIVE=<path>` simulates a receive on desktop.
+  - iOS: the preset's `application/additional_plist_content` declares the
+    `com.foobarzalot.fourexhex.map` UTI (`fxhmap` extension, Owner-ranked
+    document type). Opened documents are copied by the OS into
+    `Documents/Inbox` (`user://Inbox/` — `user://` is Documents on iOS), which
+    `ShareInbox` scans directly; no URL callback is involved (cold-start
+    `UIOpenURLAction` deliveries predate plugin init, so URL interception
+    cannot be relied on).
+  - Android: `addons/fileopen/` + `android_plugin/fileopen/` — an invisible
+    exported `FileOpenActivity` (declared with its VIEW + SEND intent-filters
+    in the AAR's manifest, merged at build) receives the delivery, copies the
+    content URI into `cache/open_received/`, parks the path in the `FileOpen`
+    Godot plugin's consume-once slot (`get_pending_open_path()`), and
+    re-launches the app via its plain launcher intent — icon-tap semantics,
+    required because addressing the `singleInstancePerTask` engine activity
+    (or its launcher alias) directly with a data intent spawns a second,
+    black-screen engine instance. The VIEW filters match
+    `application/octet-stream` content URIs (mail attachments carry no
+    filename, so FourExHex is offered for unknown binaries generally; non-maps
+    fail into the normal rejection notice) plus `.fxhmap` path patterns.
 - **Platform pieces.** `MapFileDialogs` wraps an in-tree `FileDialog` with
   `UseNativeDialog` on — native picker where the OS supports it, Godot's own
   dialog elsewhere, one signal path either way. `ShareBridge` (static, C#)
@@ -1640,13 +1670,13 @@ display-only attribution, rendered as "— by X" in every map picker via
   them at export) and `ios/plugins/` (gdip + xcframeworks, enabled via the iOS
   preset's `plugins/SharePlugin`); `Available` is false on desktop (the
   `IosLog` harmless-on-other-platforms pattern), share outcomes arrive as
-  singleton signals and are logged. The vendored plugin (v6.0) also exposes a
-  share-receiving surface (`share_received`, `set_share_target()`), but only
-  outgoing `share(Dictionary)` is wrapped; share-target/receiving and OS
-  file-type registration are not part of this surface.
+  singleton signals and are logged. Only outgoing `share(Dictionary)` is
+  consumed from this plugin; incoming files ride the tap-to-import surfaces
+  above.
 
 Instrumented under `Log.LogCategory.Share`: `[share] exported …`,
-`[share] import … ok/rejected`, dialog open/result/cancel, share-sheet
+`[share] import … ok/rejected`, `[share] inbox: …` (polls, accepted/ignored
+paths, consumed sources), dialog open/result/cancel, share-sheet
 completion/failure.
 
 ## Campaign mode
@@ -2190,6 +2220,12 @@ scripts/  (split: see the three source trees listed just above)
 │                           "Map sharing"
 ├─ ShareBridge.cs         ─ C# face of the vendored SharePlugin singleton
 │                           (share sheet); Available=false on desktop
+├─ ShareInbox.cs          ─ autoload: OS-received .fxhmap files → import on
+│                           arrival (iOS Inbox scan, Android FileOpen poll);
+│                           see "Map sharing"
+├─ MapImportFlow.cs       ─ scene-free import core (read → MapImport.Validate
+│                           → SaveStore.ImportMap → outcome message); used by
+│                           MainMenuScene dialogs and ShareInbox
 ├─ RecordPane.cs          ─ Record-mode chrome: real GameController over the
 │                           draft, all six players Human; captures via
 │                           RecordingCapture. ContinueRecording resumes a
