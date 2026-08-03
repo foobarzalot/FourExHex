@@ -71,7 +71,7 @@ CONTROLLER (pure C#) ─ GameController
     replayIsInstantMode (Func<bool>; instant replay path),
     autoSelectFirstTerritory (bool, default true; off for tutorial record/preview + mechanics tests)
   exposes: MasterSeed, StartGame(), Resume(), AbandonGame()
-  events: GameEnded (once on game-over or turn cap), HumanTurnStarted (auto-select first territory + autosave seam)
+  events: GameEnded (once on game-over or turn cap), HumanTurnStarted (turn-start selection + autosave seam)
 
   subscribes in ctor:
     map.TileClicked              → OnTileClicked
@@ -84,8 +84,8 @@ CONTROLLER (pure C#) ─ GameController
     hud.RedoLastClicked          → OnRedoLastPressed
     hud.RedoAllClicked           → OnRedoAllPressed
     hud.EndTurnClicked           → OnEndTurnPressed
-    hud.NextTerritoryClicked     → OnNextTerritoryPressed (Tab: descending-size, capital-coord tie-break;
-                                   unvisited-this-turn first, then fresh round)
+    hud.NextTerritoryClicked     → OnNextTerritoryPressed (Tab: lexicographic capital-coord order,
+                                   wrapping; skips non-actionable; Shift+Tab is its exact inverse)
     hud.PreviousTerritoryClicked → OnPreviousTerritoryPressed
     hud.NextUnitClicked          → OnNextUnitPressed (N / button: tier cycle, weakest first, then an "off"
                                    step after the highest; enters repeated-move on each tier pick)
@@ -171,7 +171,11 @@ MODEL / STATE (pure C#)
     PendingClaimVictory ((PlayerId,percent)? — claim overlay; percent∈{75,90}; human-only)
     ClaimVictoryPromptedHighestThreshold (Dict<PlayerId,int>; player→top tier dismissed; persists across save/load)
     SelectedTerritory, Mode (enum), MoveSource
-    VisitedTerritoryCapitals (Tab-cycle round set; resets when a full cycle wraps)
+    LastSelectedCapitalByPlayer (Dict<PlayerId,HexCoord?>; per-player selection
+      memory — capital selected when that player last ended a turn, null =
+      ended unselected; no entry = never ended a turn. Written only by
+      EndTurnNow after the undo stack clears, so it stays outside
+      SessionStateSnapshot; session-only, not saved)
     VisitedThisTurnCapitals (turn-scoped visited set — capital-highlight
       suppression + all-visited End Turn CTA; cleared only at StartPlayerTurn
       or by undo restore)
@@ -195,9 +199,6 @@ VIEWS (Godot Nodes)
       ShowTowerCoverage(coords), ShowMoveSource(coord?), CenterOnTerritory(territory) (eases the
         camera to the anchor via EasingMath.SmoothStep in _Process; retargets on rapid re-center,
         bails on any manual pan/zoom, snaps instantly under _silentMode),
-      CenterOnTerritoryIfFullyOffscreen(territory) (turn-start auto-select variant: pans only when
-        no tile center of the territory is inside the inset-adjusted viewport —
-        CameraFocusMath.IsOutsideComfortZone with comfortFrac 1 per tile; logs [turnstart-pan]),
       RebuildAfterTerritoryChange(), RefreshOccupantVisuals(color, tr., visitedCapitals),
       PlayDestructionEffect(coord, occ.)
     Play{UnitPlaced, TowerPlaced, UnitCombined, UnitDestroyed, TowerDestroyed, TreeCleared, CapitalDestroyed,
@@ -431,7 +432,7 @@ A selectable game mode, distinct from freeform-vs-campaign (`GameSettings.Campai
 
 **VFX/SFX at apply** (view). The submerge needs a structural repaint (`RebuildAfterTerritoryChange`): re-bake water/foam soup (`BuildWaterFoamSoup` → `_waterFoamBake.SetTriangles`) and reconcile land fills with the grid (`SyncTileFillsToGridAndRebakeWater`), at turn end. That reconcile is symmetric on grid size: it drops a drowned tile's fill when the grid shrinks, and — on a **replay/undo reset that re-grows the grid** — recreates each restored tile's fill (inserted into the fill z-band under the gold-border layer) and re-bakes water, so a resurfaced tile draws as land instead of a stale water hex under freshly-stroked borders. Effects detected up front (`CaptureRisingTidesFx`) and flushed after `ClearLayer(_deathsLayer)` (`FlushRisingTidesFx`): ripple + sink-fade + `tile_submerged` for a submerge; destruction burst (`SpawnDestruction`) + `TowerDestroyed` for a demote. Gated by `_silentMode`. `tile_submerged.wav` from `tools/generate_sounds_eleven.py`.
 
-**Turn-start focus (human).** At every human turn start with a pending forecast, `GameController.TryFocusPendingTide` (branched to from `AutoSelectFirstTerritoryForHuman`) selects the territory containing the doomed tile — in place of the largest-actionable pick — and centers the camera on the tile via `IHexMapView.CenterOnCoord`, so the per-turn erosion is never off-screen. The territory is selected even when it has nothing actionable; a capital-less singleton pans without selecting; mountain-demote steps focus the same way. Logs `[tide] turn-start focus` under `Tide`.
+**Turn-start focus (human).** At every human turn start with a pending forecast, `GameController.TryFocusPendingTide` (branched to from `SelectTerritoryForHumanTurnStart`, winning over the restore-or-fallback selection) selects the territory containing the doomed tile and centers the camera on the tile via `IHexMapView.CenterOnCoord`, so the per-turn erosion is never off-screen. This is the only camera movement any human turn start makes. The territory is selected even when it has nothing actionable; a capital-less singleton pans without selecting; mountain-demote steps focus the same way. Logs `[tide] turn-start focus` under `Tide`.
 
 **AI (tide-aware evacuation).** AI reads `GameState.PendingTide`. A move taking a unit OFF a doomed tile earns `AiStateScorer.EvacuationBonus` — a per-move delta in `ComputerAi.BestDeltaAboveThreshold` like `BuildTowerBonus`, leaving absolute `Score` untouched — and phase-4b reposition enumeration is broadened so a doomed unit may flee inland.
 
@@ -602,9 +603,6 @@ void ShowTowerCoverage(IEnumerable<HexCoord> coords);
 void ShowMoveSource(HexCoord? coord);
 void ShowHighlight(Territory? selected);
 void CenterOnTerritory(Territory territory);
-void CenterOnTerritoryIfFullyOffscreen(Territory territory);
-     // turn-start auto-select camera: skip the pan when any part of the
-     // territory is already on screen, else center on its capital
 void AnimateUnitMove(HexCoord from, HexCoord to);
      // move hint, registered by both move executors just before the model
      // mutation — arms the view's arrival pipeline (see below)
@@ -775,9 +773,9 @@ public interface ITimerFactory { void After(int delayMs, Action callback); }
 - **Views never mutate the model.** View-looking methods (`ShowHighlight`, `RebuildAfterTerritoryChange`) touch only view state.
 - **Controller never touches Godot Nodes directly.** It talks to views via the interfaces and to the event loop via `IAiPacer`, making `GameController` unit-testable with mocks (`tests/GameControllerTests.*.cs` partials; `TestGame` fixture in `tests/GameControllerTests.cs`).
 - **Every state change funnels through `RefreshViews()`** at handler end. One path, no drift.
-- **Snapshots capture `GameState` plus the player-intent slice of `SessionState`** (`SelectedTerritory`, `Mode`, `MoveSource`, `RepeatedMovement`, `VisitedTerritoryCapitals`, `VisitedThisTurnCapitals`, `SelectionWasRevisit`, `EndTurnCtaLatched`) via `UndoEntry` = `(GameStateSnapshot, SessionStateSnapshot)`. `Winner`, `PendingDefeatScreen`, and the `Undo` stack stay out. Top-level human handlers wrap in `TrackHandler`: capture pre-state, run body, push one `UndoEntry` iff state changed (visited sets compared by sorted-sequence equality in `SessionStateSnapshot.Equals`). Exceptions propagate without pushing.
-- **Visited-territory cycling**: `SessionState.VisitedTerritoryCapitals` records the capital of every territory the human selects this turn. `StepTerritorySelection` re-sorts by descending size each press; pass 1 stops only on actionable *unvisited* territories, pass 2 resets the set for a fresh round. Cleared per-turn at the top of `StartPlayerTurn` (before that turn's auto-selection marks its pick); round-trips through `SessionStateSnapshot`. AI never touches it (runs via `GameOperations.ExecuteAi*`, not `SetSelection`).
-- **Turn-scoped visited state (the CTA driver)**: `MarkSelectedVisited` (the `SetSelection` funnel — click, Tab, rally, auto-select, automate) also adds the capital to `SessionState.VisitedThisTurnCapitals` and maintains `SelectionWasRevisit` (true iff the selection *changed* onto an already-visited territory; same-territory re-clicks preserve it, null/capital-less selections clear it). Unlike the cycle set, this one never resets mid-turn — only `StartPlayerTurn` and undo restore shrink it. It suppresses visited capitals' pending-action pulse (except the currently-worked first-visit selection), lights Next-Territory on revisits, and — once every actionable territory is visited and the selected one is exhausted/deselected (or automation exhausted) — lights the End Turn CTA, which latches via `EndTurnCtaLatched` until the turn ends or undo unwinds past the lighting step. A capital-less singleton holding an unmoved unit can't be visited, so it conservatively holds the End Turn CTA off until the unit moves.
+- **Snapshots capture `GameState` plus the player-intent slice of `SessionState`** (`SelectedTerritory`, `Mode`, `MoveSource`, `RepeatedMovement`, `VisitedThisTurnCapitals`, `SelectionWasRevisit`, `EndTurnCtaLatched`) via `UndoEntry` = `(GameStateSnapshot, SessionStateSnapshot)`. `Winner`, `PendingDefeatScreen`, and the `Undo` stack stay out. Top-level human handlers wrap in `TrackHandler`: capture pre-state, run body, push one `UndoEntry` iff state changed (the visited set compared by sorted-sequence equality in `SessionStateSnapshot.Equals`). Exceptions propagate without pushing.
+- **Territory cycling**: `StepTerritorySelection` is a pure positional walk over the capital-lex order (`OwnedTerritoriesByCapital`), wrapping, stopping on the first actionable territory — Tab and Shift+Tab are exact inverses. The current position is located by capital coord (territory objects are rebuilt on every mutation), so the walk is stable across mid-turn captures. A press with no reachable actionable territory is a true no-op (no selection churn, no undo entry).
+- **Turn-scoped visited state (the CTA driver)**: `MarkSelectedVisited` (the `SetSelection` funnel — click, Tab, rally, turn-start selection, automate) also adds the capital to `SessionState.VisitedThisTurnCapitals` and maintains `SelectionWasRevisit` (true iff the selection *changed* onto an already-visited territory; same-territory re-clicks preserve it, null/capital-less selections clear it). It never resets mid-turn — only `StartPlayerTurn` and undo restore shrink it. It suppresses visited capitals' pending-action pulse (except the currently-worked first-visit selection), lights Next-Territory on revisits, and — once every actionable territory is visited and the selected one is exhausted/deselected (or automation exhausted) — lights the End Turn CTA, which latches via `EndTurnCtaLatched` until the turn ends or undo unwinds past the lighting step. A capital-less singleton holding an unmoved unit can't be visited, so it conservatively holds the End Turn CTA off until the unit moves.
 - **Repeated-movement** is a sticky bit on `SessionState` driving N-hotkey auto-advance. The tier stepper `StepUnitTierSelection` (N / Shift+N / next-unit button; forward and backward over the movable power tiers plus one "off" position) sets it on each tier pick via the `EnterMovingUnitOn` tail (mode, source, flag, move-target ring) and clears it on the off step (`CancelPendingAction`). While on, `ExecuteMove`'s tail calls `AutoAdvanceAfterMove(level, source, destination)`: weakest-first sort (`MovementRules.MovableUnitsWeakestFirst`, level ascending then coord-lex — the same order the tier cycle and the AI's capture phases draw from) of remaining movables in the (capture-rebound) selected territory, destination excluded, picking the first strictly after the moved unit's (level, source) key. Clears on Esc/cancel, entry into any non-None `ActionMode`, click selection change to a different territory, long-press rally, End Turn, game-over (`GameOperations.DeclareWinner`), or auto-advance with no movables left. `ClearPendingAction` does NOT clear it — `ExecuteMove`'s `FinishPendingAction` must run with the flag alive for the auto-advance hook. Round-trips through `SessionStateSnapshot`; capture-rebind preserves it.
 - **`HexTile` is a pure model — no view coupling.** `HexTile.Owner` is plain state. The view owns the tile→fill map (`HexMapView._tileVisuals`) and resyncs fills from `_state` in `RebuildAfterTerritoryChange()`, the single coalesced repaint path. Model captures mutate `tile.Owner` with no view effect; the screen catches up only on `RebuildAfterTerritoryChange`.
 - **Undo is turn-scoped.** `OnEndTurnPressed` clears the stack — ending a turn commits everything.
@@ -793,12 +791,12 @@ A turn is sandwiched between two phases.
 
 Fixed order for the current player:
 
-1. **Reseed RNG** — `ReseedRngForCurrentTurn` derives `_rng` from `(masterSeed, turnNumber, currentPlayerIndex)`; turn RNG is reproducible from the seed. Also clears `VisitedTerritoryCapitals` (per-turn Tab tour reset), `VisitedThisTurnCapitals`, `SelectionWasRevisit`, and `EndTurnCtaLatched` before any auto-selection in step 6 marks the picked territory.
+1. **Reseed RNG** — `ReseedRngForCurrentTurn` derives `_rng` from `(masterSeed, turnNumber, currentPlayerIndex)`; turn RNG is reproducible from the seed. Also clears `VisitedThisTurnCapitals`, `SelectionWasRevisit`, and `EndTurnCtaLatched` before the turn-start selection in step 6 marks its pick.
 2. **Tree growth** — `TreeRules.RunStartOfTurnGrowth`. Graves on the player's tiles become trees; empty same-color cells with ≥2 neighboring trees become trees. Colored players skip it on round 1; the **neutral seat** runs it from its round-1 turn — the seat closes each round, so a full round of play already precedes it, and neutral ground (`PlayerId.None`) grows exactly once per round without an extra anchor.
 3. **Reset movement** — `HasMovedThisTurn` cleared on the player's units.
 4. **Collect income** — `Treasury.CollectIncomeFor` (skipped while `TurnNumber == 1`; `SeedStartingGold` is the round-1 bankroll). Tree and grave tiles don't pay; everything else pays 1 gold.
 5. **Apply upkeep** — `UpkeepRules.ApplyUpkeepFor` (colored players skip it on round 1, alongside income: an authored map's starting garrison is free through round 1, so it can't bankrupt before its owner has collected a coin; the neutral seat runs it from round 1 like growth — a no-op for None, kept for path parity). Per-unit costs from the flat `UpkeepRules.UpkeepFor` table (Recruit 2, Soldier 6, Captain 18, Commander 54). A territory that can't pay total upkeep goes bankrupt: every unit becomes a `Grave`, remaining gold stays. `PlaySound(Bankruptcy)` fires once per player if any of its territories went bankrupt.
-6. **Human hand-off** (`RaiseHumanTurnStarted`) if the now-current player is human and the game isn't over: **auto-select their first territory** then fire `HumanTurnStarted`. Auto-select (`AutoSelectFirstTerritoryForHuman`) clears any stale selection, then branches: in Rising Tides with a pending forecast, `TryFocusPendingTide` selects the territory containing the doomed tile and centers the camera on it (see *Rising Tides — Turn-start focus*); otherwise it reuses the Next-Territory picker — `StepTerritorySelection(forward:true, centerOnlyIfFullyOffscreen:true)` lands on the largest actionable territory (capital-coord tie-break), a no-op leaving the selection null when nothing is actionable. The `centerOnlyIfFullyOffscreen` flag routes the camera through `IHexMapView.CenterOnTerritoryIfFullyOffscreen`, which preserves the player's framing when any part of the picked territory is already visible; manual Tab/Shift-Tab presses omit the flag and keep unconditional `CenterOnTerritory` centering. Gated off for AI, replay, game-over, and when the injected `autoSelectFirstTerritory` flag is false (tutorial record/preview and mechanics tests). Autosave also wires to `HumanTurnStarted`.
+6. **Human hand-off** (`RaiseHumanTurnStarted`) if the now-current player is human and the game isn't over: run the **turn-start selection** then fire `HumanTurnStarted`. `SelectTerritoryForHumanTurnStart` clears any stale selection, then branches: in Rising Tides with a pending forecast, `TryFocusPendingTide` selects the territory containing the doomed tile and centers the camera on it (see *Rising Tides — Turn-start focus*); otherwise it consults `SessionState.LastSelectedCapitalByPlayer` — an entry means the player has ended a turn before, so their remembered territory is reselected with **no camera movement** (a null entry, or a remembered capital that no longer matches one of their capital-bearing territories, leaves the turn unselected); no entry (first turn of a fresh or loaded game) falls back to the Next-Territory picker — `StepTerritorySelection(forward:true)` lands on the lex-min actionable territory and pans to it via `CenterOnTerritory`, a no-op leaving the selection null when nothing is actionable. Logs `[turnstart-select] restore/remembered=none/remembered capital gone/first-turn fallback` (Input, Debug). Gated off for AI, replay, game-over, and when the injected `autoSelectFirstTerritory` flag is false (tutorial record/preview and mechanics tests). Autosave also wires to `HumanTurnStarted`.
 
 Income → upkeep ordering lets the turn's income subsidize upkeep before bankruptcy is checked.
 
@@ -1038,10 +1036,10 @@ GameController.OnEndTurnPressed
   │     ├─ AdvanceToNextActivePlayer()         // skip eliminated (neutral seat exempt)
   │     ├─ StartPlayerTurn()                   // reseed → growth → reset → income → upkeep
   │     │     (growth + income skipped round 1 for players — the neutral seat runs from round 1;
-  │     │      human hand-off auto-selects + fires HumanTurnStarted)
+  │     │      human hand-off runs turn-start selection + fires HumanTurnStarted)
   │     └─ _aiDriver.RunUntilHumanOrDone()     // AI loop if next is AI (incl. the neutral seat)
   ├─ CancelPendingAction()
-  ├─ if AI-next / game-over / auto-select off: SetSelection(null)   // human-next keeps the auto-selection
+  ├─ if AI-next / game-over / turn-start selection off: SetSelection(null)   // human-next keeps its turn-start selection
   └─ RefreshViews()
 ```
 
@@ -2121,7 +2119,7 @@ Every player-visible English string lives in **`assets/strings/en.json`** — a 
 
 - **Two gates.** (1) Compile-time: `Log.Trace` / `Debug` / `Info` are `[Conditional("DEBUG")]`, so the compiler removes the call and its argument evaluation from Release builds; `Log.Warn` / `Error` always compile. (2) Runtime: each `Log.LogCategory` (`Ai`, `Turn`, `Capture`, `Tutorial`, `Render`, `Anim`, `Input`, `Display`, `Hud`, `Undo`, `Cheat`, `Campaign`, `MapGen`, `Replay`, `Tide`, `Fog`, `Tree`, `Automate`, `Viking`, `Determinism`, `LevelDesign`, `Share`) has an independent minimum `Log.LogLevel`; a message emits only if its level ≥ the category threshold.
 - **Default is silent** — every category defaults to `Off`.
-- **View-side categories split by question asked**, so one concern can be read without the others drowning it: `Render` = what got built/drawn (tile+territory render, board geometry — content box, `PixelSize`, insets, `RecenterMap` — occupant-visual refresh, HUD/menu/editor panel layout and fit); `Anim` = per-frame and tween churn (unit/capital `[pulse]`, `[move-anim]` beat holds and travel/arrival, `[terrain-fx]`, `[doomed-pulse]`, `[turnstart-pan]` and demo-follow camera pans); `Input` = what a gesture resolved to (`[hit-test]`, `[highlight]`, `[targets]`, selection cues, pinch begin/update/end, BuildTower click-rejection). `Anim` is the high-volume one — leave it `Off` unless animation timing is the subject.
+- **View-side categories split by question asked**, so one concern can be read without the others drowning it: `Render` = what got built/drawn (tile+territory render, board geometry — content box, `PixelSize`, insets, `RecenterMap` — occupant-visual refresh, HUD/menu/editor panel layout and fit); `Anim` = per-frame and tween churn (unit/capital `[pulse]`, `[move-anim]` beat holds and travel/arrival, `[terrain-fx]`, `[doomed-pulse]`, demo-follow camera pans); `Input` = what a gesture resolved to (`[hit-test]`, `[highlight]`, `[targets]`, selection cues, pinch begin/update/end, BuildTower click-rejection). `Anim` is the high-volume one — leave it `Off` unless animation timing is the subject.
 - **Configuration.** `LogBootstrap` (autoload) calls `Log.Configure(OS.GetEnvironment("FOUREXHEX_LOG"))`, parsing a spec like `"Ai:Debug,Turn:Info,*:Warn"` (comma-separated `category:level`, `*` = all; case-insensitive; unknown tokens ignored; never throws).
 - **Pre-computing helpers** (`GameController.LogTurnStart`, `LogAction`, `LogGameEndDiagnostics`, `LogCaptureDiff`) are themselves `[Conditional("DEBUG")]` so the body strips in Release. `Warn`/`Error` sites keep their precompute.
 - `GD.PushWarning` / `GD.PushError` (developer-facing failure diagnostics) are deliberately not routed through `Log`.

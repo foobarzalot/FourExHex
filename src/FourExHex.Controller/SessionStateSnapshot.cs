@@ -8,8 +8,7 @@ using System.Linq;
 /// Immutable capture of the player-intent slice of <see cref="SessionState"/>:
 /// the selected territory (by anchor coord, not reference, so it survives
 /// territory rebuilds), the pending <see cref="SessionState.ActionMode"/>,
-/// the move source (if any), the repeated-movement sticky bit, the
-/// visited-territory capitals that drive Tab-cycle ordering, and the
+/// the move source (if any), the repeated-movement sticky bit, and the
 /// turn-scoped visited set + revisit flag that drive the visited
 /// capital-highlight suppression and CTAs.
 /// Pairs with <see cref="GameStateSnapshot"/> inside an <see cref="UndoEntry"/>
@@ -21,7 +20,6 @@ public sealed record SessionStateSnapshot(
     SessionState.ActionMode Mode,
     HexCoord? MoveSource,
     bool RepeatedMovement,
-    IReadOnlyList<HexCoord> VisitedCapitals,
     IReadOnlyList<HexCoord> VisitedThisTurnCapitals,
     bool SelectionWasRevisit,
     bool EndTurnCtaLatched)
@@ -53,10 +51,9 @@ public sealed record SessionStateSnapshot(
                 }
             }
         }
-        HexCoord[] visited = session.VisitedTerritoryCapitals.OrderBy(c => c).ToArray();
         HexCoord[] visitedThisTurn = session.VisitedThisTurnCapitals.OrderBy(c => c).ToArray();
         return new SessionStateSnapshot(
-            anchor, session.Mode, session.MoveSource, session.RepeatedMovement, visited,
+            anchor, session.Mode, session.MoveSource, session.RepeatedMovement,
             visitedThisTurn, session.SelectionWasRevisit, session.EndTurnCtaLatched);
     }
 
@@ -87,8 +84,6 @@ public sealed record SessionStateSnapshot(
         session.Mode = Mode;
         session.MoveSource = MoveSource;
         session.RepeatedMovement = RepeatedMovement;
-        session.VisitedTerritoryCapitals.Clear();
-        session.VisitedTerritoryCapitals.UnionWith(VisitedCapitals);
         session.VisitedThisTurnCapitals.Clear();
         session.VisitedThisTurnCapitals.UnionWith(VisitedThisTurnCapitals);
         session.SelectionWasRevisit = SelectionWasRevisit;
@@ -106,7 +101,6 @@ public sealed record SessionStateSnapshot(
         && Mode == other.Mode
         && Nullable.Equals(MoveSource, other.MoveSource)
         && RepeatedMovement == other.RepeatedMovement
-        && VisitedCapitals.SequenceEqual(other.VisitedCapitals)
         && VisitedThisTurnCapitals.SequenceEqual(other.VisitedThisTurnCapitals)
         && SelectionWasRevisit == other.SelectionWasRevisit
         && EndTurnCtaLatched == other.EndTurnCtaLatched;
@@ -118,10 +112,6 @@ public sealed record SessionStateSnapshot(
         hash.Add(Mode);
         hash.Add(MoveSource);
         hash.Add(RepeatedMovement);
-        foreach (HexCoord c in VisitedCapitals)
-        {
-            hash.Add(c);
-        }
         foreach (HexCoord c in VisitedThisTurnCapitals)
         {
             hash.Add(c);

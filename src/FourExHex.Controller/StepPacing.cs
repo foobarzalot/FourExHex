@@ -31,7 +31,7 @@ public static class StepPacing
     // wave-spawn beat, so the arrival presentation (the "ripple rise"
     // shields + rings and the longship-arrival cue — see HexMapView's
     // SeaSpawnSlowdown-scaled timings) plays out before the waiting
-    // player's turn starts (auto-select, camera pan, wave banner).
+    // player's turn starts (turn-start selection, wave banner).
     // Scheduled UNSCALED — the tweens don't stretch with the AI-speed
     // multiplier, so neither should the hold. Covers the shield rise and
     // the arrival cue in full; the ripple rings' faint tail overlaps the

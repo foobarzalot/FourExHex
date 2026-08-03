@@ -99,6 +99,24 @@ public class SessionState
     public Territory? SelectedTerritory { get; set; }
 
     /// <summary>
+    /// Per-player selection memory: the capital coord of the territory
+    /// each human had selected when they last ended a turn, or null if
+    /// they ended with nothing selected (or a capital-less selection).
+    /// A player with NO entry has never ended a turn this session — their
+    /// turn opens with the lex-min actionable territory (panned to);
+    /// a player WITH an entry gets that territory reselected without any
+    /// camera movement, or nothing if the capital no longer matches one
+    /// of their territories. Keyed by capital coord because territory
+    /// objects are rebuilt on every mutation. Written only by EndTurn
+    /// (after the undo stack is cleared), so it stays outside
+    /// <see cref="SessionStateSnapshot"/>. Session-only: not persisted
+    /// by <see cref="SaveSerializer"/> — a loaded game starts every
+    /// player from the no-entry fallback.
+    /// </summary>
+    public Dictionary<PlayerId, HexCoord?> LastSelectedCapitalByPlayer { get; }
+        = new Dictionary<PlayerId, HexCoord?>();
+
+    /// <summary>
     /// Whether the controller is waiting for the player to click a target
     /// for a pending action (buy or move).
     /// </summary>
@@ -126,28 +144,13 @@ public class SessionState
     public bool RepeatedMovement { get; set; }
 
     /// <summary>
-    /// Capital coords of territories the human has visited (selected by
-    /// Tab / Shift+Tab / click) this turn. Tab-cycling prefers unvisited
-    /// territories so mid-turn size changes can't make the cycle revisit
-    /// a territory before every untouched one has had its chance.
-    /// Keyed by capital coord because territory objects are rebuilt on
-    /// every mutation. Cleared at EndTurn and when a full cycle exhausts
-    /// (a new round starts). Round-trips through
-    /// <see cref="SessionStateSnapshot"/> for undo/redo.
-    /// </summary>
-    public HashSet<HexCoord> VisitedTerritoryCapitals { get; } = new HashSet<HexCoord>();
-
-    /// <summary>
     /// Capital coords of every territory the human has selected this
     /// turn — the turn-scoped "visited" record behind the visited
     /// capital-highlight suppression and the all-visited End Turn CTA.
-    /// Unlike <see cref="VisitedTerritoryCapitals"/> (the Tab-cycle
-    /// round tracker, which resets whenever a full cycle exhausts),
-    /// this set is cleared only at the start of a player's turn;
-    /// mid-turn the only way back is undo. Keyed by capital coord
-    /// because territory objects are rebuilt on every mutation.
-    /// Round-trips through <see cref="SessionStateSnapshot"/> for
-    /// undo/redo.
+    /// Cleared only at the start of a player's turn; mid-turn the only
+    /// way back is undo. Keyed by capital coord because territory
+    /// objects are rebuilt on every mutation. Round-trips through
+    /// <see cref="SessionStateSnapshot"/> for undo/redo.
     /// </summary>
     public HashSet<HexCoord> VisitedThisTurnCapitals { get; } = new HashSet<HexCoord>();
 

@@ -17,9 +17,7 @@ namespace FourExHex.Tests;
 ///     territory is re-selected (a revisit), and
 /// (c) lights the End Turn CTA once every actionable territory has
 ///     been visited — taking priority over the Next-Territory CTA.
-/// Undo unwinds the visited state; the Tab-cycle's own round tracker
-/// (<see cref="SessionState.VisitedTerritoryCapitals"/>) keeps its
-/// mid-turn reset behavior untouched.
+/// Undo unwinds the visited state.
 /// </summary>
 public class VisitedTerritoryCtaTests
 {
@@ -279,16 +277,14 @@ public class VisitedTerritoryCtaTests
     }
 
     [Fact]
-    public void TabCycleNewRound_DoesNotClearVisitedThisTurn()
+    public void TabWrap_KeepsVisitedThisTurn()
     {
         ControllerHarness h = BuildFourRedTerritories();
 
-        // Four presses tour every territory; the fifth wraps into a new
-        // Tab round, which resets the CYCLE set — the turn-scoped
-        // visited set must survive that reset.
+        // Four presses tour every territory; the fifth wraps around —
+        // the turn-scoped visited set keeps all four entries.
         for (int i = 0; i < 5; i++) h.Hud.PressNextTerritory();
 
-        Assert.True(h.Session.VisitedTerritoryCapitals.Count < 4); // cycle set was reset
         Assert.Equal(4, h.Session.VisitedThisTurnCapitals.Count);
         // The wrap landed on a revisited, still-actionable territory:
         // star on, End Turn waiting for exhaust-or-deselect.

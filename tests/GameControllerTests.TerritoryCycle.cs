@@ -347,7 +347,7 @@ public partial class GameControllerTests
     /// <summary>
     /// Two Red territories of DIFFERENT sizes: small (2 tiles at cols 0-1, capital
     /// at (0,0)) and big (3 tiles at cols 5-7, capital at (5,0)). Used to verify
-    /// that next-territory cycling visits the larger territory first.
+    /// that next-territory cycling ignores size and walks capital-lex order.
     /// </summary>
     private class UnequalRedTerritoriesGame
     {
@@ -439,15 +439,46 @@ public partial class GameControllerTests
     }
 
     [Fact]
-    public void NextTerritory_LargerTerritoryVisitedFirst()
+    public void NextTerritory_LexMinVisitedFirst_RegardlessOfSize()
     {
         // Small territory (2 tiles, capital at (0,0)) and big territory
-        // (3 tiles, capital at (5,0)). Sort is size-desc, so big is
-        // selected first.
+        // (3 tiles, capital at (5,0)). The cycle order is capital-lex
+        // only — size never enters the sort — so the small territory's
+        // lower capital coord wins the first press.
         var g = new UnequalRedTerritoriesGame();
         g.Hud.PressNextTerritory();
         Assert.NotNull(g.Session.SelectedTerritory);
+        Assert.Contains(HexCoord.FromOffset(0, 0), g.Session.SelectedTerritory!.Coords);
+    }
+
+    [Fact]
+    public void TabThenShiftTab_AreExactInverses()
+    {
+        // Tab and Shift+Tab walk the same fixed lex order in opposite
+        // directions: Tab→A, Tab→B, then Shift+Tab must return to A —
+        // never jump ahead to C.
+        var g = new ThreeRedTerritoriesGame();
+        g.Hud.PressNextTerritory(); // → A
+        g.Hud.PressNextTerritory(); // → B
         Assert.Contains(HexCoord.FromOffset(5, 0), g.Session.SelectedTerritory!.Coords);
+
+        g.Hud.PressPreviousTerritory();
+
+        Assert.Contains(HexCoord.FromOffset(0, 0), g.Session.SelectedTerritory!.Coords);
+    }
+
+    [Fact]
+    public void ShiftTabThenTab_AreExactInverses()
+    {
+        // Mirror: Shift+Tab→C, Shift+Tab→B, then Tab must return to C.
+        var g = new ThreeRedTerritoriesGame();
+        g.Hud.PressPreviousTerritory(); // → C
+        g.Hud.PressPreviousTerritory(); // → B
+        Assert.Contains(HexCoord.FromOffset(5, 0), g.Session.SelectedTerritory!.Coords);
+
+        g.Hud.PressNextTerritory();
+
+        Assert.Contains(HexCoord.FromOffset(10, 0), g.Session.SelectedTerritory!.Coords);
     }
 
     [Fact]
@@ -717,21 +748,18 @@ public partial class GameControllerTests
         Assert.Equal(centerAfterFirst, g.Map.CenterCount);
     }
 
-    // --- Visited-territory tracking ---------------------------------------
+    // --- Cycle-order stability ---------------------------------------------
     //
-    // The size-desc sort re-runs on every press, so acting on a territory
-    // (changing its size) reorders the walk and could revisit an already-
-    // toured territory before untouched ones. SessionState tracks visited
-    // capitals per turn; Tab prefers unvisited, and starts a fresh round
-    // once every actionable territory has been toured.
+    // The capital-lex order never reshuffles as the player acts, so the
+    // walk position is stable: growing or shrinking a territory mid-turn
+    // doesn't change where Tab / Shift+Tab go next.
 
     [Fact]
-    public void NextTerritory_SizeChangeMidTurn_DoesNotRevisitBeforeUntouched()
+    public void NextTerritory_SizeChangeMidTurn_KeepsStableOrder()
     {
         // Equal-size territories A(0,0), B(5,0), C(10,0).
-        // Tab→A, Tab→B, then grow B by capturing (4,0): B re-sorts to the
-        // front, putting visited A next in walk order. Tab must still
-        // reach untouched C, not revisit A.
+        // Tab→A, Tab→B, then grow B by capturing (4,0). B's capital (and
+        // so its cycle position) is unchanged — Tab continues to C.
         var g = new ThreeRedTerritoriesGame();
         g.State.Grid.Get(HexCoord.FromOffset(6, 0))!.Occupant = new Unit(g.Red.Id);
 
@@ -750,48 +778,11 @@ public partial class GameControllerTests
     }
 
     [Fact]
-    public void NextTerritory_ClickedTerritoryCountsAsVisited()
+    public void PreviousTerritory_SizeChangeMidTurn_KeepsStableOrder()
     {
-        // Clicking a territory marks it visited just like Tab does. Click
-        // the big territory (which sorts first), deselect, then Tab: the
-        // cycle must prefer the untouched small one over the visited big.
-        var g = new UnequalRedTerritoriesGame();
-        g.Map.SimulateClick(g.State.Grid.Get(HexCoord.FromOffset(5, 0))!); // big
-        Assert.Contains(HexCoord.FromOffset(5, 0), g.Session.SelectedTerritory!.Coords);
-        g.Map.SimulateClick(g.State.Grid.Get(HexCoord.FromOffset(3, 0))!); // Blue → deselect
-        Assert.Null(g.Session.SelectedTerritory);
-
-        g.Hud.PressNextTerritory();
-
-        Assert.Contains(HexCoord.FromOffset(0, 0), g.Session.SelectedTerritory!.Coords);
-    }
-
-    [Fact]
-    public void NextTerritory_AllVisited_StartsNewRound()
-    {
-        // Once every actionable territory has been toured, the next press
-        // starts a fresh round: selection wraps and the visited set is
-        // reset to contain only the new pick — so round 2 carries the
-        // same no-revisit-before-untouched guarantee as round 1.
-        var g = new ThreeRedTerritoriesGame();
-        g.Hud.PressNextTerritory(); // → A
-        g.Hud.PressNextTerritory(); // → B
-        g.Hud.PressNextTerritory(); // → C: all three visited
-
-        g.Hud.PressNextTerritory(); // exhausted → new round → A
-
-        Assert.Contains(HexCoord.FromOffset(0, 0), g.Session.SelectedTerritory!.Coords);
-        Assert.Equal(
-            new HashSet<HexCoord> { g.Session.SelectedTerritory!.Capital!.Value },
-            g.Session.VisitedTerritoryCapitals);
-    }
-
-    [Fact]
-    public void PreviousTerritory_PrefersUnvisited()
-    {
-        // Backward mirror of the size-change repro: Shift+Tab→C, →B, grow
-        // B to the front of the sort, Shift+Tab again — must reach
-        // untouched A, not revisit C.
+        // Backward mirror: Shift+Tab→C, →B, grow B by capturing (4,0).
+        // B's capital (and so its cycle position) is unchanged —
+        // Shift+Tab continues to A.
         var g = new ThreeRedTerritoriesGame();
         g.State.Grid.Get(HexCoord.FromOffset(6, 0))!.Occupant = new Unit(g.Red.Id);
 
@@ -811,7 +802,7 @@ public partial class GameControllerTests
     public void NextTerritory_NoOpPress_PushesNoUndoEntry()
     {
         // The sole-actionable no-op must stay a true no-op: no selection
-        // change, no visited-set churn, no undo entry.
+        // change, no undo entry.
         var g = new ThreeRedTerritoriesGame();
         g.State.Treasury.SetGold(g.RedTerritoryAt(5, 0).Capital!.Value, 0);
         g.State.Treasury.SetGold(g.RedTerritoryAt(10, 0).Capital!.Value, 0);

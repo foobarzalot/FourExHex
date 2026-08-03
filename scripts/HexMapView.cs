@@ -4556,37 +4556,6 @@ public partial class HexMapView : Node2D, IHexMapView
         CenterOnCoord(territory.Capital!.Value);
     }
 
-    public void CenterOnTerritoryIfFullyOffscreen(Territory territory)
-    {
-        if (!territory.HasCapital) return;
-        Vector2 vp = GetViewportRect().Size;
-        int visible = 0;
-        foreach (HexCoord coord in territory.Coords)
-        {
-            Vector2 localCenter = FirstHexCenterOffset + HexPixel.ToPixel(coord, HexSize);
-            Vector2 screen = Position + ToWorldOffset(localCenter, _zoom);
-            // comfortFrac 1f = the whole inset-adjusted play area: a tile
-            // center inside it means the territory is (at least partly)
-            // on screen, so the player's framing is preserved.
-            if (!CameraFocusMath.IsOutsideComfortZone(
-                    vp.X, vp.Y, _topInset, _bottomInset,
-                    screen.X, screen.Y, comfortFrac: 1f))
-            {
-                visible++;
-                break;
-            }
-        }
-        if (visible > 0)
-        {
-            Log.Debug(Log.LogCategory.Anim,
-                $"[turnstart-pan] territory cap={territory.Capital} tiles={territory.Size} -> skip (visible)");
-            return;
-        }
-        Log.Debug(Log.LogCategory.Anim,
-            $"[turnstart-pan] territory cap={territory.Capital} tiles={territory.Size} -> pan (fully offscreen)");
-        CenterOnCoord(territory.Capital!.Value);
-    }
-
     // Demo-replay camera follow: pan only when the action would land
     // outside the central 60% of the visible play area, so the camera
     // stays put for nearby actions and eases over for distant ones.

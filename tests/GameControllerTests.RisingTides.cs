@@ -281,18 +281,37 @@ public partial class GameControllerTests
     }
 
     [Fact]
-    public void Freeform_HumanTurnStart_KeepsLargestTerritoryAutoSelect()
+    public void Freeform_HumanTurnStart_FirstTurnSelectsAndPans()
     {
-        // Outside Rising Tides the turn-start focus doesn't apply: no tide
-        // forecast, no coord-centering — auto-select still walks to the
-        // largest actionable territory and centers on it (conditionally,
-        // via the fully-offscreen-only pan).
+        // Outside Rising Tides the doomed-tile focus doesn't apply: no
+        // tide forecast, no coord-centering — the first-turn fallback
+        // selects the lex-min actionable territory and pans to it.
         var g = new TidesGame(TwoBlocks(), GameMode.Freeform);
 
         Assert.Empty(g.State.PendingTide);
         Assert.Null(g.Map.LastCenteredCoord);
         Assert.NotNull(g.Session.SelectedTerritory);
-        Assert.Same(g.Session.SelectedTerritory, g.Map.LastConditionalCenteredTerritory);
+        Assert.Same(g.Session.SelectedTerritory, g.Map.LastCenteredTerritory);
+        Assert.Equal(1, g.Map.CenterCount);
+    }
+
+    [Fact]
+    public void RisingTides_LaterTurnStart_DoomedFocusBeatsSelectionMemory()
+    {
+        // The doomed-hex focus is the one turn-start pan that survives
+        // #209 — and it wins over the restore path even once the player
+        // HAS a remembered selection: Red's second turn still pans to
+        // (and selects the territory of) the fresh forecast tile.
+        var g = new TidesGame(TwoBlocks(), GameMode.RisingTides);
+        g.Hud.ClickEndTurn(); // end Red t1 (memory recorded, tide applied)
+        g.Hud.ClickEndTurn(); // end Blue t1 → Red's second turn
+
+        Assert.Equal(g.Red.Id, g.State.Turns.CurrentPlayer.Id);
+        Assert.Single(g.State.PendingTide);
+        HexCoord doomed = g.State.PendingTide[0].Coord;
+        Assert.Equal(doomed, g.Map.LastCenteredCoord);
+        Assert.NotNull(g.Session.SelectedTerritory);
+        Assert.Contains(doomed, g.Session.SelectedTerritory!.Coords);
     }
 
     [Fact]

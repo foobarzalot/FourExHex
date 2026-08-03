@@ -585,20 +585,12 @@ public class GameOperations
         ReseedRngForCurrentTurn();
         HumanTurnFiredForCurrentTurn = false;
         MaybeLogFogFullyRevealed();
-        // Per-turn visited reset: the new player starts with a clean Tab
-        // tour. Done here (the universal per-turn funnel) BEFORE the human
-        // hand-off auto-selects, so the auto-selected territory's visited
-        // mark survives into the turn. AI turns never mark.
-        if (_session.VisitedTerritoryCapitals.Count > 0)
-        {
-            Log.Debug(Log.LogCategory.Input,
-                $"[visited] cleared ({_session.VisitedTerritoryCapitals.Count} entries)");
-            _session.VisitedTerritoryCapitals.Clear();
-        }
-        // The turn-scoped visited set (capital-highlight suppression +
-        // all-visited End Turn CTA) resets on the same per-turn funnel.
-        // Unlike the cycle set above, nothing else clears it mid-turn —
-        // only undo can shrink it once the turn is underway.
+        // Per-turn reset of the turn-scoped visited set (capital-highlight
+        // suppression + all-visited End Turn CTA). Done here (the
+        // universal per-turn funnel) BEFORE the human hand-off runs the
+        // turn-start selection, so that territory's visited mark survives
+        // into the turn. Nothing else clears it mid-turn — only undo can
+        // shrink it once the turn is underway. AI turns never mark.
         if (_session.VisitedThisTurnCapitals.Count > 0)
         {
             Log.Debug(Log.LogCategory.Input,

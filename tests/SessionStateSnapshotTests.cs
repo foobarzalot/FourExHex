@@ -110,7 +110,6 @@ public class SessionStateSnapshotTests
             Mode: SessionState.ActionMode.BuyingRecruit,
             MoveSource: null,
             RepeatedMovement: false,
-            VisitedCapitals: System.Array.Empty<HexCoord>(),
             VisitedThisTurnCapitals: System.Array.Empty<HexCoord>(),
             SelectionWasRevisit: false,
             EndTurnCtaLatched: false);
@@ -130,10 +129,10 @@ public class SessionStateSnapshotTests
         // Record equality is what powers TrackHandler's de-dup check.
         var a = new SessionStateSnapshot(
             new HexCoord(1, 2), SessionState.ActionMode.BuyingSoldier, new HexCoord(3, 4), false,
-            System.Array.Empty<HexCoord>(), System.Array.Empty<HexCoord>(), false, false);
+            System.Array.Empty<HexCoord>(), false, false);
         var b = new SessionStateSnapshot(
             new HexCoord(1, 2), SessionState.ActionMode.BuyingSoldier, new HexCoord(3, 4), false,
-            System.Array.Empty<HexCoord>(), System.Array.Empty<HexCoord>(), false, false);
+            System.Array.Empty<HexCoord>(), false, false);
 
         Assert.Equal(a, b);
     }
@@ -142,55 +141,32 @@ public class SessionStateSnapshotTests
     public void Equals_TreatsDifferentModes_AsUnequal()
     {
         var a = new SessionStateSnapshot(
-            null, SessionState.ActionMode.None, null, false, System.Array.Empty<HexCoord>(),
+            null, SessionState.ActionMode.None, null, false,
             System.Array.Empty<HexCoord>(), false, false);
         var b = new SessionStateSnapshot(
-            null, SessionState.ActionMode.BuyingRecruit, null, false, System.Array.Empty<HexCoord>(),
+            null, SessionState.ActionMode.BuyingRecruit, null, false,
             System.Array.Empty<HexCoord>(), false, false);
 
         Assert.NotEqual(a, b);
     }
 
     [Fact]
-    public void Equals_ComparesVisitedCapitalsBySequence_NotReference()
+    public void Equals_ComparesVisitedThisTurnBySequence_NotReference()
     {
         // Distinct array instances with the same contents must compare
         // equal (TrackHandler's de-dup) and differing contents unequal.
         var a = new SessionStateSnapshot(
             null, SessionState.ActionMode.None, null, false,
-            new[] { new HexCoord(1, 2), new HexCoord(3, 4) },
-            System.Array.Empty<HexCoord>(), false, false);
+            new[] { new HexCoord(1, 2), new HexCoord(3, 4) }, false, false);
         var same = new SessionStateSnapshot(
             null, SessionState.ActionMode.None, null, false,
-            new[] { new HexCoord(1, 2), new HexCoord(3, 4) },
-            System.Array.Empty<HexCoord>(), false, false);
+            new[] { new HexCoord(1, 2), new HexCoord(3, 4) }, false, false);
         var different = new SessionStateSnapshot(
             null, SessionState.ActionMode.None, null, false,
-            new[] { new HexCoord(1, 2) },
-            System.Array.Empty<HexCoord>(), false, false);
+            new[] { new HexCoord(1, 2) }, false, false);
 
         Assert.Equal(a, same);
         Assert.NotEqual(a, different);
-    }
-
-    [Fact]
-    public void Capture_Then_Apply_RoundTripsVisitedCapitals()
-    {
-        var session = new SessionState();
-        session.VisitedTerritoryCapitals.Add(new HexCoord(1, 2));
-        session.VisitedTerritoryCapitals.Add(new HexCoord(3, 4));
-
-        SessionStateSnapshot snap = SessionStateSnapshot.Capture(session);
-
-        session.VisitedTerritoryCapitals.Clear();
-        session.VisitedTerritoryCapitals.Add(new HexCoord(9, 9));
-
-        (_, IReadOnlyList<Territory> territories) = BuildTwoColorGrid();
-        snap.ApplyTo(session, territories);
-
-        Assert.Equal(
-            new HashSet<HexCoord> { new HexCoord(1, 2), new HexCoord(3, 4) },
-            session.VisitedTerritoryCapitals);
     }
 
     [Fact]

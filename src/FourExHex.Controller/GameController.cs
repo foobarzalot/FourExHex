@@ -82,10 +82,12 @@ public class GameController
     /// </summary>
     public event Action? HumanTurnStarted;
 
-    // When true (the real-game default), a human turn opens with their
-    // first territory auto-selected (#94). Tests that exercise the
-    // no-selection / cycle-from-scratch mechanics construct with it off so
-    // the board starts unselected, the same control as seed / aiPacer.
+    // When true (the real-game default), a human turn opens via
+    // SelectTerritoryForHumanTurnStart — their prior-turn selection
+    // restored, or the lex-min actionable territory on their first turn.
+    // Tests that exercise the no-selection / cycle-from-scratch mechanics
+    // construct with it off so the board starts unselected, the same
+    // control as seed / aiPacer.
     private readonly bool _autoSelectFirstTerritory;
 
     public GameController(
@@ -356,15 +358,15 @@ public class GameController
 
     /// <summary>
     /// Single hand-off point for the start of a human player's turn:
-    /// auto-select their first territory (so they can act without a
-    /// manual click) and then raise <see cref="HumanTurnStarted"/> for
-    /// the autosave hook. Reached from every human turn-start path —
+    /// run the turn-start selection (restore their prior-turn pick, or
+    /// the first-turn fallback) and then raise
+    /// <see cref="HumanTurnStarted"/> for the autosave hook. Reached from every human turn-start path —
     /// <see cref="GameOperations.StartPlayerTurn"/>'s hook and the
     /// initial-player seam in <see cref="MaybeFireHumanTurnStartedFromStartGame"/>.
     /// </summary>
     private void RaiseHumanTurnStarted()
     {
-        AutoSelectFirstTerritoryForHuman();
+        SelectTerritoryForHumanTurnStart();
         // Viking Raiders: the wave countdown / arrival banner, at every
         // human turn start (null outside the mode or once nothing is left
         // to announce). Suppressed in tutorial Record/Preview, whose
@@ -380,43 +382,66 @@ public class GameController
     }
 
     /// <summary>
-    /// Open a human turn with their "first" territory already selected,
-    /// reusing the Next-Territory cycle picker so auto-select and the Tab
-    /// button share one ordering/actionable/visited rule. From a clean
-    /// turn this lands on the largest actionable territory (capital-coord
-    /// tie-break); a no-op leaving the selection null when the player has
-    /// nothing to act on. Skipped for AI, replay, and game-over.
+    /// Open a human turn on the territory they had selected when they
+    /// last ended a turn (<see cref="SessionState.LastSelectedCapitalByPlayer"/>),
+    /// with no camera movement — the player left the view where they
+    /// wanted it. A remembered "nothing selected" (or a remembered
+    /// capital that no longer matches one of their territories) opens
+    /// the turn unselected. A player with no memory at all (first turn
+    /// of a fresh or loaded game) falls back to the Next-Territory cycle
+    /// picker: lex-min actionable territory, panned to. Rising Tides'
+    /// doomed-hex focus (<see cref="TryFocusPendingTide"/>) wins over
+    /// all of this. Skipped for AI, replay, and game-over.
     /// </summary>
-    private void AutoSelectFirstTerritoryForHuman()
+    private void SelectTerritoryForHumanTurnStart()
     {
         if (!_autoSelectFirstTerritory) return;
         if (_recorder.IsReplaying) return;
         if (_session.IsGameOver || _ops.GameEndedFired) return;
         if (_state.Turns.CurrentPlayer.IsAi) return;
-        Log.Debug(Log.LogCategory.Input,
-            $"[autoselect] human turn start, player={_state.Turns.CurrentPlayer.Id}");
-        // Drop any stale selection from the prior player's turn first, so a
-        // player who starts with nothing actionable (StepTerritorySelection
-        // no-ops) is left cleanly unselected rather than showing the
-        // previous player's territory. Then walk to the first actionable.
+        PlayerId player = _state.Turns.CurrentPlayer.Id;
+        // Drop any stale selection from the prior player's turn first, so
+        // every no-select path below leaves the board cleanly unselected
+        // rather than showing the previous player's territory.
         SetSelection(null);
         if (TryFocusPendingTide()) return;
-        // Turn-start selection preserves the player's framing: only pan
-        // when the picked territory is entirely offscreen (#182 semantics —
-        // the view owns the visibility test).
-        StepTerritorySelection(forward: true, centerOnlyIfFullyOffscreen: true);
+        if (_session.LastSelectedCapitalByPlayer.TryGetValue(player, out HexCoord? remembered))
+        {
+            if (remembered == null)
+            {
+                Log.Debug(Log.LogCategory.Input,
+                    $"[turnstart-select] remembered=none player={player}");
+                return;
+            }
+            Territory? territory = OwnedTerritoriesByCapital()
+                .Find(t => t.Capital!.Value.Equals(remembered.Value));
+            if (territory == null)
+            {
+                Log.Debug(Log.LogCategory.Input,
+                    $"[turnstart-select] remembered capital {remembered} gone player={player}");
+                return;
+            }
+            Log.Debug(Log.LogCategory.Input,
+                $"[turnstart-select] restore capital={remembered} player={player}");
+            SetSelection(territory);
+            return;
+        }
+        Log.Debug(Log.LogCategory.Input,
+            $"[turnstart-select] first-turn fallback player={player}");
+        StepTerritorySelection(forward: true);
     }
 
     /// <summary>
     /// Rising Tides turn-start focus: center the camera on the current
     /// player's telegraphed doomed tile and select the territory containing
-    /// it, so the per-turn erosion is never off-screen. Replaces the
-    /// largest-actionable auto-select whenever a forecast exists — the
-    /// doomed territory is selected even when it has nothing actionable
-    /// (the point is to look at it); a capital-less singleton leaves
-    /// nothing selected, camera pan only. Mountain-demote steps focus the
-    /// same way — the reprieve is the same tide event. False outside
-    /// Rising Tides or with no pending forecast (normal auto-select runs).
+    /// it, so the per-turn erosion is never off-screen. Wins over the
+    /// restore-or-fallback turn-start selection whenever a forecast
+    /// exists — the doomed territory is selected even when it has nothing
+    /// actionable (the point is to look at it); a capital-less singleton
+    /// leaves nothing selected, camera pan only. Mountain-demote steps
+    /// focus the same way — the reprieve is the same tide event. False
+    /// outside Rising Tides or with no pending forecast (the normal
+    /// turn-start selection runs).
     /// </summary>
     private bool TryFocusPendingTide()
     {
@@ -904,10 +929,8 @@ public class GameController
     }
 
     /// <summary>
-    /// Record <paramref name="territory"/> as visited this turn — in the
-    /// Tab-cycle round set (<see cref="SessionState.VisitedTerritoryCapitals"/>,
-    /// drives unvisited-first ordering) AND the turn-scoped set
-    /// (<see cref="SessionState.VisitedThisTurnCapitals"/>, drives the
+    /// Record <paramref name="territory"/> as visited this turn in
+    /// <see cref="SessionState.VisitedThisTurnCapitals"/> (drives the
     /// capital-highlight suppression and the all-visited End Turn CTA).
     /// Any selection counts — Tab, Shift+Tab, or a direct click — so
     /// "untouched" means the player hasn't been there at all. Also
@@ -934,11 +957,6 @@ public class GameController
                 Log.Debug(Log.LogCategory.Input, $"[visited] revisit of capital {capital}");
             }
         }
-        if (_session.VisitedTerritoryCapitals.Add(capital))
-        {
-            Log.Debug(Log.LogCategory.Input,
-                $"[visited] += capital {capital} ({_session.VisitedTerritoryCapitals.Count} this cycle round)");
-        }
         if (_session.VisitedThisTurnCapitals.Add(capital))
         {
             Log.Debug(Log.LogCategory.Input,
@@ -957,22 +975,20 @@ public class GameController
     public void SelectTerritoryForTutorial(Territory? territory) => SetSelection(territory);
 
     /// <summary>
-    /// The current player's capital-bearing territories, sorted largest-first
-    /// (capital-coord tie-break). Shared by <see cref="StepTerritorySelection"/>
-    /// (its tour order) and <see cref="EnsureTerritorySelectedForTour"/> (its
-    /// fallback pick).
+    /// The current player's capital-bearing territories in lexicographic
+    /// capital-coord order — a stable cycle order that doesn't reshuffle
+    /// as the player acts. Shared by <see cref="StepTerritorySelection"/>
+    /// (its tour order), <see cref="SelectTerritoryForHumanTurnStart"/>
+    /// (its restore lookup), and <see cref="EnsureTerritorySelectedForTour"/>
+    /// (its fallback pick).
     /// </summary>
-    private List<Territory> OwnedTerritoriesLargestFirst()
+    private List<Territory> OwnedTerritoriesByCapital()
     {
         PlayerId color = _state.Turns.CurrentPlayer.Id;
         List<Territory> owned = TerritoryLookup
             .OwnedCapitalBearing(_state.Territories, color)
             .ToList();
-        owned.Sort((a, b) =>
-        {
-            int sizeComp = b.Size.CompareTo(a.Size);
-            return sizeComp != 0 ? sizeComp : a.Capital!.Value.CompareTo(b.Capital!.Value);
-        });
+        owned.Sort((a, b) => a.Capital!.Value.CompareTo(b.Capital!.Value));
         return owned;
     }
 
@@ -980,11 +996,11 @@ public class GameController
     /// Ensure a territory is selected so the HUD's profit/loss readout has
     /// something to show when the UI tour opens. No-op if one is already
     /// selected (or the game is over). Otherwise prefer the first actionable
-    /// territory (same walk as Next-Territory), falling back to the largest
+    /// territory (same walk as Next-Territory), falling back to the lex-min
     /// capital-bearing territory when none is actionable — so a territory is
     /// *always* selected. Bypasses TrackHandler: no undo entry (the tour isn't
     /// undoable), matching <see cref="SelectTerritoryForTutorial"/> /
-    /// AutoSelectFirstTerritoryForHuman.
+    /// <see cref="SelectTerritoryForHumanTurnStart"/>.
     /// </summary>
     public void EnsureTerritorySelectedForTour()
     {
@@ -993,7 +1009,7 @@ public class GameController
         StepTerritorySelection(forward: true);
         if (_session.SelectedTerritory == null)
         {
-            List<Territory> owned = OwnedTerritoriesLargestFirst();
+            List<Territory> owned = OwnedTerritoriesByCapital();
             if (owned.Count > 0)
             {
                 SetSelection(owned[0]);
@@ -2414,72 +2430,47 @@ public class GameController
     private void OnPreviousTerritoryPressed() =>
         TrackHandler(() => StepTerritorySelection(forward: false));
 
-    private void StepTerritorySelection(bool forward, bool centerOnlyIfFullyOffscreen = false)
+    private void StepTerritorySelection(bool forward)
     {
         if (_session.IsGameOver) return;
 
-        List<Territory> owned = OwnedTerritoriesLargestFirst();
+        List<Territory> owned = OwnedTerritoriesByCapital();
         if (owned.Count == 0) return;
         Log.Debug(Log.LogCategory.Input,
-            $"StepTerritorySelection: {owned.Count} territories, largest first = capital {owned[0].Capital} size={owned[0].Size}");
+            $"StepTerritorySelection: {owned.Count} territories, lex first = capital {owned[0].Capital}");
 
+        // Locate the current selection by capital coord — territory
+        // objects are rebuilt on every mutation, so reference identity
+        // wouldn't survive a mid-turn capture.
         int currentIndex = -1;
-        if (_session.SelectedTerritory != null)
+        HexCoord? selectedCapital = _session.SelectedTerritory?.Capital;
+        if (selectedCapital.HasValue)
         {
-            for (int i = 0; i < owned.Count; i++)
-            {
-                if (ReferenceEquals(owned[i], _session.SelectedTerritory))
-                {
-                    currentIndex = i;
-                    break;
-                }
-            }
+            currentIndex = owned.FindIndex(
+                t => t.Capital!.Value.Equals(selectedCapital.Value));
         }
 
         // Walk forward/backward from the current index, stopping on the
-        // first actionable territory. With a null selection the walk
-        // visits every territory once; with one selected it visits every
-        // OTHER territory exactly once and never revisits the current
-        // one — so if the current selection is the sole actionable
-        // territory the press is a no-op.
-        //
-        // Two passes: the sort key (Size) mutates as the player
-        // acts, so walk position alone can't guarantee a fair tour —
-        // pass 1 only stops on territories not yet visited this turn.
-        // When every actionable territory has been toured, pass 2 starts
-        // a fresh round: reset the visited set and stop on the first
-        // actionable territory regardless. The reset only happens when
-        // pass 2 actually has somewhere to land, so a press with no
-        // reachable territory stays a true no-op (no set churn, no
-        // undo entry).
+        // first actionable territory — a pure positional walk over the
+        // stable lex order, so Tab and Shift+Tab are exact inverses.
+        // With a null selection the walk visits every territory once;
+        // with one selected it visits every OTHER territory exactly once
+        // and never revisits the current one — so if the current
+        // selection is the sole actionable territory the press is a
+        // no-op (no selection churn, no undo entry).
         int step = forward ? 1 : -1;
         int startIndex = currentIndex == -1
             ? (forward ? -1 : owned.Count)
             : currentIndex;
         int maxOffset = currentIndex == -1 ? owned.Count : owned.Count - 1;
 
-        int Find(bool skipVisited)
+        int pick = -1;
+        for (int offset = 1; offset <= maxOffset; offset++)
         {
-            for (int offset = 1; offset <= maxOffset; offset++)
-            {
-                int idx = ((startIndex + step * offset) % owned.Count + owned.Count) % owned.Count;
-                if (!_ops.TerritoryHasAvailableAction(owned[idx])) continue;
-                if (skipVisited
-                    && _session.VisitedTerritoryCapitals.Contains(owned[idx].Capital!.Value))
-                {
-                    continue;
-                }
-                return idx;
-            }
-            return -1;
-        }
-
-        int pick = Find(skipVisited: true);
-        bool newRound = false;
-        if (pick == -1)
-        {
-            pick = Find(skipVisited: false);
-            newRound = pick != -1;
+            int idx = ((startIndex + step * offset) % owned.Count + owned.Count) % owned.Count;
+            if (!_ops.TerritoryHasAvailableAction(owned[idx])) continue;
+            pick = idx;
+            break;
         }
         if (pick == -1)
         {
@@ -2487,20 +2478,11 @@ public class GameController
                 $"StepTerritorySelection(forward={forward}) -> no actionable territory (no-op)");
             return;
         }
-        if (newRound)
-        {
-            Log.Debug(Log.LogCategory.Input,
-                $"[visited] new round: set reset ({_session.VisitedTerritoryCapitals.Count} entries dropped)");
-            _session.VisitedTerritoryCapitals.Clear();
-        }
         CancelPendingAction();
         SetSelection(owned[pick]);
-        if (centerOnlyIfFullyOffscreen)
-            _map.CenterOnTerritoryIfFullyOffscreen(owned[pick]);
-        else
-            _map.CenterOnTerritory(owned[pick]);
+        _map.CenterOnTerritory(owned[pick]);
         Log.Debug(Log.LogCategory.Input,
-            $"StepTerritorySelection(forward={forward}) -> selected capital {owned[pick].Capital} ({(newRound ? "new round" : "unvisited")}, centerMode={(centerOnlyIfFullyOffscreen ? "conditional" : "always")})");
+            $"StepTerritorySelection(forward={forward}) -> selected capital {owned[pick].Capital}");
     }
 
     /// <summary>
@@ -2783,6 +2765,15 @@ public class GameController
     {
         // A fresh turn starts with a fresh automate verdict.
         _automateExhausted = false;
+        // Selection memory: remember what the ENDING player had selected
+        // (null if nothing / a capital-less selection) so their next turn
+        // can reopen on it — must run before AdvanceToNextActivePlayer
+        // rotates CurrentPlayer. Written after the undo stack is cleared
+        // below, so undo never needs to unwind it.
+        _session.LastSelectedCapitalByPlayer[_state.Turns.CurrentPlayer.Id] =
+            _session.SelectedTerritory is { HasCapital: true } endingSelection
+                ? endingSelection.Capital
+                : null;
         // Record the end-turn beat with the *ending* player's actor /
         // turn metadata, before clearing the undo stack and advancing.
         // AI implicit end-of-turn (the driver's null-action branch)
@@ -2807,13 +2798,14 @@ public class GameController
         }
 
         CancelPendingAction();
-        // Human-next: StartPlayerTurn's hand-off already auto-selected the
-        // player's first territory (which clears any stale selection
-        // itself); preserve it. Clear only when control rests on an AI (the
-        // paced hand-off auto-selects later), the game ended, or auto-select
-        // is off (then nothing set the selection, so fall back to the
-        // classic clear). The per-turn visited reset moved to StartPlayerTurn
-        // so an auto-selection's visited mark survives into the turn.
+        // Human-next: StartPlayerTurn's hand-off already ran the restore-
+        // or-fallback turn-start selection (which clears any stale
+        // selection itself); preserve its result. Clear only when control
+        // rests on an AI (the paced hand-off selects later), the game
+        // ended, or turn-start selection is off (then nothing set the
+        // selection, so fall back to the classic clear). The per-turn
+        // visited reset lives in StartPlayerTurn so the turn-start
+        // selection's visited mark survives into the turn.
         if (_state.Turns.CurrentPlayer.IsAi || _session.IsGameOver
             || !_autoSelectFirstTerritory)
             SetSelection(null);

@@ -252,9 +252,10 @@ public class AiTurnDriver
             // the victory paint so it doesn't draw on top. Mirrors
             // the domination branch in StepAiExecute.
             if (_ops.GameEndedFired || _session.IsGameOver) _ops.RefreshSilentMode();
-            // Human-next: StartPlayerTurn auto-selected their first
-            // territory — re-show it rather than clearing. AI-next leaves
-            // the selection null, so this clears the highlight as before.
+            // Human-next: StartPlayerTurn ran the turn-start selection
+            // (restore or first-turn fallback) — re-show it rather than
+            // clearing. AI-next leaves the selection null, so this clears
+            // the highlight as before.
             _ops.ShowHighlightAndRefresh(_session.SelectedTerritory);
 
             if (!RunHalted)
@@ -362,7 +363,7 @@ public class AiTurnDriver
         }
         // A wave just spawned: hold the neutral turn open while the arrival
         // presentation (ripple-rise animation + longship cue) plays, so the
-        // next player's turn start — auto-select, camera pan, wave
+        // next player's turn start — turn-start selection, wave
         // banner — doesn't stomp on the moment. The spawn is always the
         // neutral turn's last action, so the delayed continuation lands on
         // the turn-ending null-choose. Unscaled: the presentation runs in
@@ -674,8 +675,8 @@ public class AiTurnDriver
         // Hands control back to a human (or the game ended): lift silent
         // + hide the "Opponents…" overlay, then the single end-of-batch
         // paint the human sees (winner overlay if the game just ended).
-        // Re-show any auto-selection StartPlayerTurn made for the human
-        // now in control (null when the game just ended).
+        // Re-show any turn-start selection StartPlayerTurn made for the
+        // human now in control (null when the game just ended).
         _ops.RefreshSilentMode();
         _ops.ShowHighlightAndRefresh(_session.SelectedTerritory);
     }

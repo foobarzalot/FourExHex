@@ -314,22 +314,18 @@ public partial class GameControllerTests
     }
 
     [Fact]
-    public void Undo_RestoresVisitedTerritories()
+    public void Undo_RestoresSelection_TabContinuesFromIt()
     {
-        // Tab→A, Tab→B, undo. The undo rewinds B's visit along with the
-        // selection — so the next Tab returns to B (untouched again), not
-        // C. Without snapshot round-tripping the set would still contain
-        // B and Tab would skip ahead.
+        // Tab→A, Tab→B, undo: selection is back on A, and the next Tab
+        // walks forward from the RESTORED position — B again, not C.
         var g = new ThreeRedTerritoriesGame();
         g.Hud.PressNextTerritory(); // → A
         HexCoord aCapital = g.Session.SelectedTerritory!.Capital!.Value;
         g.Hud.PressNextTerritory(); // → B
 
-        g.Hud.ClickUndoLast();      // selection back to A, B's visit undone
+        g.Hud.ClickUndoLast();      // selection back to A
 
-        Assert.Equal(
-            new HashSet<HexCoord> { aCapital },
-            g.Session.VisitedTerritoryCapitals);
+        Assert.Equal(aCapital, g.Session.SelectedTerritory!.Capital!.Value);
 
         g.Hud.PressNextTerritory();
 
