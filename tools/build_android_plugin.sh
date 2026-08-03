@@ -20,7 +20,6 @@ set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PLUGIN_DIR="$PROJECT_DIR/android_plugin"
-ADDON_BIN="$PROJECT_DIR/addons/rotationfix/bin"
 ANDROID_SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Library/Android/sdk}}"
 JAVA_HOME_DEFAULT="/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"
 
@@ -32,16 +31,21 @@ fail() { echo "ERROR: $1" >&2; exit 1; }
 [[ -d "$ANDROID_SDK" ]] || fail "Android SDK not found at $ANDROID_SDK"
 [[ -x "$JAVA_HOME/bin/java" ]] || fail "JDK not found at JAVA_HOME=$JAVA_HOME"
 
-echo "==> Building RotationFix AAR (gradle assembleRelease)"
-( cd "$PLUGIN_DIR" && ./gradlew :rotationfix:assembleRelease )
+echo "==> Building RotationFix + FileOpen AARs (gradle assembleRelease)"
+( cd "$PLUGIN_DIR" && ./gradlew :rotationfix:assembleRelease :fileopen:assembleRelease )
 
-AAR="$PLUGIN_DIR/rotationfix/build/outputs/aar/rotationfix-release.aar"
-[[ -f "$AAR" ]] || fail "gradle did not produce $AAR"
+# module-dir:addon-dir:AAR-name — plugin code is build-type independent, so
+# one release AAR fills both the debug and release slots.
+for spec in "rotationfix:rotationfix:RotationFix" "fileopen:fileopen:FileOpen"; do
+  MODULE="${spec%%:*}"; rest="${spec#*:}"; ADDON="${rest%%:*}"; NAME="${rest#*:}"
+  AAR="$PLUGIN_DIR/$MODULE/build/outputs/aar/$MODULE-release.aar"
+  [[ -f "$AAR" ]] || fail "gradle did not produce $AAR"
+  ADDON_BIN="$PROJECT_DIR/addons/$ADDON/bin"
+  echo "==> Staging $NAME.aar into addons/$ADDON/bin/{debug,release}"
+  mkdir -p "$ADDON_BIN/debug" "$ADDON_BIN/release"
+  cp "$AAR" "$ADDON_BIN/debug/$NAME.aar"
+  cp "$AAR" "$ADDON_BIN/release/$NAME.aar"
+  ls -la "$ADDON_BIN/debug/$NAME.aar" "$ADDON_BIN/release/$NAME.aar"
+done
 
-echo "==> Staging AAR into addons/rotationfix/bin/{debug,release}"
-mkdir -p "$ADDON_BIN/debug" "$ADDON_BIN/release"
-cp "$AAR" "$ADDON_BIN/debug/RotationFix.aar"
-cp "$AAR" "$ADDON_BIN/release/RotationFix.aar"
-
-echo "==> Done:"
-ls -la "$ADDON_BIN/debug/RotationFix.aar" "$ADDON_BIN/release/RotationFix.aar"
+echo "==> Done."

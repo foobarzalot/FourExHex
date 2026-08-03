@@ -8,12 +8,11 @@ using Godot;
 
 /// <summary>
 /// Autoload that owns the OS-incoming-file surfaces and turns them into map
-/// imports. Two native sources feed it: the godot-share plugin's
-/// share-target payload (share sheet → app) and the FileOpen plugin's
-/// ACTION_VIEW path (tap a .fxhmap → app). Android pushes via signals; iOS
-/// only parks a pending payload, so the inbox also polls at startup and
-/// ~0.25 s after every application-resume (Files-app URL delivery can lag
-/// foregrounding).
+/// imports. Android: the FileOpen plugin's activity receives tap-to-open and
+/// share-to-app intents and parks the copied file's path for polling. iOS:
+/// opened documents land in Documents/Inbox, scanned directly. Both sources
+/// are polled at startup and ~0.25 s after every application-resume (every
+/// delivery foregrounds the app; iOS file delivery can lag foregrounding).
 ///
 /// Paths are filtered through <see cref="ShareReceiveRules.FxhmapPaths"/>
 /// and imported immediately via <see cref="MapImportFlow.ImportAtPath"/> —
@@ -27,7 +26,6 @@ using Godot;
 /// </summary>
 public partial class ShareInbox : Node
 {
-    private const string SharePluginSingleton = "SharePlugin";
     private const string FileOpenSingleton = "FileOpen";
     private const double ResumePollDelaySeconds = 0.25;
     // iOS copies every opened document into the sandbox Documents/Inbox
@@ -72,33 +70,7 @@ public partial class ShareInbox : Node
             HandlePaths(new[] { fake }, deleteSources: false);
         }
 
-        if (Engine.HasSingleton(SharePluginSingleton))
-        {
-            GodotObject plugin = Engine.GetSingleton(SharePluginSingleton);
-            plugin.Call("set_share_target", true);
-            Log.Info(Log.LogCategory.Share,
-                "[share] inbox: share target enabled (SharePlugin)");
-            // iOS document-opens all land in Documents/Inbox (scanned below);
-            // consuming the plugin payload there too would double-import the
-            // warm-delivery case, so the plugin receive path is Android-only.
-            if (!OS.HasFeature("ios"))
-            {
-                plugin.Connect("share_received", Callable.From(
-                    (Godot.Collections.Dictionary payload) => HandleSharePayload(payload)));
-                PollSharePlugin("cold-start");
-            }
-        }
-
-        if (Engine.HasSingleton(FileOpenSingleton))
-        {
-            GodotObject plugin = Engine.GetSingleton(FileOpenSingleton);
-            Log.Info(Log.LogCategory.Share,
-                "[share] inbox: open-with source connected (FileOpen)");
-            plugin.Connect("file_open_received", Callable.From(
-                (string path) => HandlePaths(new[] { path }, deleteSources: true)));
-            PollFileOpen("cold-start");
-        }
-
+        PollFileOpen("cold-start");
         ScanIosInbox("cold-start");
     }
 
@@ -128,32 +100,14 @@ public partial class ShareInbox : Node
     public override void _Notification(int what)
     {
         if (what != NotificationApplicationResumed) return;
-        if (!Engine.HasSingleton(SharePluginSingleton)
-            && !Engine.HasSingleton(FileOpenSingleton)) return;
-        // iOS parks incoming URLs slightly after foregrounding; poll on a
-        // short delay instead of immediately (mirrors the plugin's own
-        // GDScript wrapper).
+        if (!Engine.HasSingleton(FileOpenSingleton) && !OS.HasFeature("ios")) return;
+        // iOS file delivery lags foregrounding slightly; poll on a short
+        // delay instead of immediately.
         GetTree().CreateTimer(ResumePollDelaySeconds).Timeout += () =>
         {
-            PollSharePlugin("resume");
             PollFileOpen("resume");
             ScanIosInbox("resume");
         };
-    }
-
-    private void PollSharePlugin(string reason)
-    {
-        if (OS.HasFeature("ios")) return;
-        if (!Engine.HasSingleton(SharePluginSingleton)) return;
-        Godot.Collections.Dictionary payload = Engine.GetSingleton(SharePluginSingleton)
-            .Call("get_received_data").AsGodotDictionary();
-        if (payload.Count == 0)
-        {
-            Log.Debug(Log.LogCategory.Share, $"[share] inbox: {reason} poll — empty");
-            return;
-        }
-        Log.Debug(Log.LogCategory.Share, $"[share] inbox: {reason} poll — payload");
-        HandleSharePayload(payload);
     }
 
     private void PollFileOpen(string reason)
@@ -161,20 +115,14 @@ public partial class ShareInbox : Node
         if (!Engine.HasSingleton(FileOpenSingleton)) return;
         string path = Engine.GetSingleton(FileOpenSingleton)
             .Call("get_pending_open_path").AsString();
-        if (path.Length == 0) return;
-        Log.Debug(Log.LogCategory.Share, $"[share] inbox: {reason} open-with '{path}'");
+        if (path.Length == 0)
+        {
+            Log.Debug(Log.LogCategory.Share,
+                $"[share] inbox: {reason} open-with poll — empty");
+            return;
+        }
+        Log.Info(Log.LogCategory.Share, $"[share] inbox: {reason} open-with '{path}'");
         HandlePaths(new[] { path }, deleteSources: true);
-    }
-
-    private void HandleSharePayload(Godot.Collections.Dictionary payload)
-    {
-        string mime = payload.TryGetValue("mime_type", out Variant m) ? m.AsString() : "";
-        string[] files = payload.TryGetValue("file_paths", out Variant f)
-            ? f.AsStringArray()
-            : Array.Empty<string>();
-        Log.Debug(Log.LogCategory.Share,
-            $"[share] inbox: payload mime='{mime}' files={files.Length}");
-        HandlePaths(files, deleteSources: true);
     }
 
     private void HandlePaths(string[] paths, bool deleteSources, bool deleteIgnored = false)

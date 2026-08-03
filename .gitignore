@@ -9,6 +9,8 @@ obj/
 *.user
 # Vendored godot-share AARs (no local build script, unlike rotationfix)
 !addons/SharePlugin/bin/
+# Staged FileOpen AARs (built by tools/build_android_plugin.sh, shipped in git)
+!addons/fileopen/bin/
 
 # Godot export output
 build/*

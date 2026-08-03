@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Godot v2 Android plugin discovery: the engine scans merged manifest
+             meta-data named org.godotengine.plugin.v2.<PluginName> and
+             instantiates the named class. Without this, the plugin never loads. -->
+        <meta-data
+            android:name="org.godotengine.plugin.v2.FileOpen"
+            android:value="net.sitkoff.fourexhex.FileOpenPlugin" />
+
+        <!-- Invisible receiver for .fxhmap deliveries. Fully-qualified name:
+             the merged manifest resolves relative names against the app
+             package, not this library's. Two VIEW filters because mail-app
+             content URIs match by MIME only (no filename in the path; .fxhmap
+             has no registered MIME, so attachments arrive as
+             application/octet-stream), while file-manager URIs carry the name
+             and match by pathPattern (repeated variants: pathPattern's '.*'
+             does not cross extra dots). -->
+        <activity
+            android:name="net.sitkoff.fourexhex.FileOpenActivity"
+            android:exported="true"
+            android:noHistory="true"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.NoDisplay">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:mimeType="application/octet-stream" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:host="*" />
+                <data android:mimeType="*/*" />
+                <data android:pathPattern=".*\\.fxhmap" />
+                <data android:pathPattern=".*\\..*\\.fxhmap" />
+                <data android:pathPattern=".*\\..*\\..*\\.fxhmap" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/octet-stream" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

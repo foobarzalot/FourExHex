@@ -42,7 +42,7 @@ project/assembly_name="FourExHex"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/rotationfix/plugin.cfg", "res://addons/SharePlugin/plugin.cfg")
+enabled=PackedStringArray("res://addons/rotationfix/plugin.cfg", "res://addons/SharePlugin/plugin.cfg", "res://addons/fileopen/plugin.cfg")
 
 [gui]
 
