@@ -34,7 +34,8 @@ public sealed class SaveStore
     // iOS Files app via the accessible_from_files_app export flag).
     public const string ExportDirectory = "user://export/";
     public const string ImportDirectory = "user://import/";
-    public const string MapFileExtension = ".fxhmap";
+    public const string MapFileExtension =
+        FourExHex.Controller.ShareReceiveRules.MapFileExtension;
     private const string SaveExtension = ".json";
     private const string TempExtension = ".json.tmp";
 

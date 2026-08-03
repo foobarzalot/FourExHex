@@ -1970,43 +1970,8 @@ public partial class MainMenuScene : Control
 
     private void OnImportFileChosen(string path)
     {
-        string json;
-        using (FileAccess f = FileAccess.Open(path, FileAccess.ModeFlags.Read))
-        {
-            if (f == null)
-            {
-                Log.Warn(Log.LogCategory.Share,
-                    $"[share] import could not read '{path}': {FileAccess.GetOpenError()}");
-                ShowImportNotice(Strings.Get(StringKeys.ImportErrorMalformed));
-                return;
-            }
-            json = f.GetAsText();
-        }
-
-        MapImportResult result = MapImport.Validate(json, _saveStore.UserMapNames());
-        if (!result.Ok)
-        {
-            Log.Warn(Log.LogCategory.Share,
-                $"[share] import rejected: {result.Error} — {result.ErrorDetail}");
-            ShowImportNotice(Strings.Get(MapImportStrings.KeyFor(result.Error!.Value),
-                ("problems", result.ErrorDetail ?? "")));
-            return;
-        }
-
-        _saveStore.ImportMap(result.NormalizedJson!, result.FinalName);
-        Log.Info(Log.LogCategory.Share,
-            $"[share] import '{path}' -> ok name='{result.FinalName}' " +
-            $"renamed={result.Renamed}");
-        // Consume drop-folder sources so the folder picker doesn't re-list
-        // (and re-suffix) files that already made it into user://maps/.
-        if (path.StartsWith(SaveStore.ImportDirectory))
-        {
-            DirAccess.RemoveAbsolute(ProjectSettings.GlobalizePath(path));
-        }
-        ShowImportNotice(Strings.Get(
-            result.Renamed ? StringKeys.ImportRenamed : StringKeys.ImportSuccess,
-            ("name", result.FinalName)),
-            showMapListOnClose: true);
+        MapImportFlow.Outcome outcome = MapImportFlow.ImportAtPath(_saveStore, path);
+        ShowImportNotice(outcome.Message, showMapListOnClose: outcome.Ok);
     }
 
     /// <summary>Show an import outcome in the shared <see cref="NoticeModal"/>.
