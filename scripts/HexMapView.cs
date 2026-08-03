@@ -3804,9 +3804,10 @@ public partial class HexMapView : Node2D, IHexMapView
     // 1 glyph unit = HexSize * UnitRingRadii[0] / 16.
     private static readonly Color VikingInk = new Color("111111");
     private static readonly Color VikingCream = new Color("efe6d4");
-    // Aggro tell: the painted rank wedges swap from ink to a bright battle
-    // red; the rim, boss, and cream base are identical between passive and
-    // aggro. Brighter than the campaign marker's 8b0000 so the wedges read
+    // Aggro tell: the cream portions (base disc + boss highlight) swap to a
+    // bright battle red, so the whole shield reads bloody at every rank; the
+    // ink rank wedges, rim, and boss are identical between passive and
+    // aggro. Brighter than the campaign marker's 8b0000 so the base reads
     // against the ink rim/boss at map zoom.
     private static readonly Color VikingAggroRed = new Color("d92b2b");
     private const float ShieldRadiusUnits = 16f;
@@ -3817,9 +3818,9 @@ public partial class HexMapView : Node2D, IHexMapView
 
     private Node2D CreateVikingShieldVisual(UnitLevel level, bool aggro = false)
     {
-        // Aggro tell: the rank wedges paint blood red instead of ink; the
-        // rim, boss, and cream base are identical in both states.
-        Color wedge = aggro ? VikingAggroRed : VikingInk;
+        // Aggro tell: the cream base and boss highlight paint blood red; the
+        // ink wedges, rim, and boss are identical in both states.
+        Color baseFill = aggro ? VikingAggroRed : VikingCream;
         Log.Trace(Log.LogCategory.Viking,
             $"[barb] shield level={level} aggro={aggro}");
         float unit = HexSize * UnitRingRadii[0] / ShieldRadiusUnits;
@@ -3836,24 +3837,24 @@ public partial class HexMapView : Node2D, IHexMapView
 
         var node = new Node2D();
         // 1. Shield base.
-        node.AddChild(CreateFilledDisc(radius, VikingCream));
+        node.AddChild(CreateFilledDisc(radius, baseFill));
         // 2. Rank wedges (0° = +x, increasing clockwise in y-down space).
         if (rank == 1)
         {
             // Half-painted: the east (x ≥ 0) half, sweeping from
             // straight up through east to straight down.
-            node.AddChild(CreateSectorPolygon(radius, -90f, 90f, wedge));
+            node.AddChild(CreateSectorPolygon(radius, -90f, 90f, VikingInk));
         }
         else if (rank == 2)
         {
-            node.AddChild(CreateSectorPolygon(radius, 0f, 90f, wedge));
-            node.AddChild(CreateSectorPolygon(radius, 180f, 270f, wedge));
+            node.AddChild(CreateSectorPolygon(radius, 0f, 90f, VikingInk));
+            node.AddChild(CreateSectorPolygon(radius, 180f, 270f, VikingInk));
         }
         else
         {
             for (int fromDeg = 0; fromDeg < 360; fromDeg += 90)
             {
-                node.AddChild(CreateSectorPolygon(radius, fromDeg, fromDeg + 45f, wedge));
+                node.AddChild(CreateSectorPolygon(radius, fromDeg, fromDeg + 45f, VikingInk));
             }
         }
         // 3. Rim (stroke centered on the shield edge) — always ink, so the
@@ -3863,7 +3864,7 @@ public partial class HexMapView : Node2D, IHexMapView
         node.AddChild(CreateFilledDisc(ShieldBossRadiusUnits * unit, VikingInk));
         // 5. Boss highlight — every rank (the painted background keeps the
         //    boss reading as a boss, not a pupil).
-        node.AddChild(CreateFilledDisc(ShieldBossHighlightRadiusUnits * unit, VikingCream));
+        node.AddChild(CreateFilledDisc(ShieldBossHighlightRadiusUnits * unit, baseFill));
         return node;
     }
 
