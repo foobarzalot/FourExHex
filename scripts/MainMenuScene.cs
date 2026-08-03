@@ -266,10 +266,26 @@ public partial class MainMenuScene : Control
         // the device safe area — keep them clear of the notch / home indicator
         // when it shifts without a resize.
         SafeArea.Changed += OnMenuSafeAreaChanged;
+
+        // OS-delivered map files (share sheet / tap-to-open) are imported by
+        // ShareInbox as they arrive; the menu owns showing the outcome.
+        ShareInbox.OutcomeReady += OnShareOutcomeReady;
+        DrainShareInbox();
+    }
+
+    private void OnShareOutcomeReady() => CallDeferred(MethodName.DrainShareInbox);
+
+    private void DrainShareInbox()
+    {
+        if (ShareInbox.TryTakeOutcome(out string message, out bool ok))
+        {
+            ShowImportNotice(message, showMapListOnClose: ok);
+        }
     }
 
     public override void _ExitTree()
     {
+        ShareInbox.OutcomeReady -= OnShareOutcomeReady;
         SafeArea.Changed -= OnMenuSafeAreaChanged;
         // The root Window outlives this scene across the menu→game swap;
         // without the unsubscribe a later resize invokes FitPanels on a
