@@ -1883,8 +1883,18 @@ public partial class MainMenuScene : Control
             new EscMenu.Option(Strings.Get(StringKeys.MenuConfigureGame), ShowPlayConfig),
             new EscMenu.Option(Strings.Get(StringKeys.MenuLoadStartingMap), OpenLoadStartingMapToPlay),
             new EscMenu.Option(Strings.Get(StringKeys.MenuQuickPlay), OnQuickPlay),
+            BackOption("Play Game"),
         });
     }
+
+    /// <summary>Trailing "Back" option for a source chooser: dismisses the
+    /// modal and leaves the landing page as it was. Touch platforms have no
+    /// Escape key, so a visible option is the only way out of the chooser.
+    /// <see cref="EscMenu"/> hides itself before invoking the callback, so
+    /// the body only has to record that the player backed out.</summary>
+    private static EscMenu.Option BackOption(string chooser) => new(
+        Strings.Get(StringKeys.MenuBack),
+        () => Log.Info(Log.LogCategory.Input, $"MainMenu: {chooser} chooser → Back (dismissed)"));
 
     /// <summary>Quick Play: skip both setup pages and launch a basic
     /// freeform game — Red human + 5 Computer (all Soldier), a fresh random seed,
@@ -1926,6 +1936,7 @@ public partial class MainMenuScene : Control
             new EscMenu.Option(Strings.Get(StringKeys.MenuNewMap), () => ShowPlayConfig(PlayConfigPurpose.EditorNewMap)),
             new EscMenu.Option(Strings.Get(StringKeys.MenuLoadMap), OpenLoadMapToEdit),
             new EscMenu.Option(Strings.Get(StringKeys.MenuImportMap), OpenImportMap),
+            BackOption("Map Editor"),
         });
     }
 
