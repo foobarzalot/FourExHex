@@ -14,7 +14,7 @@ using Godot;
 /// Two body layouts, chosen per-open:
 /// <list type="bullet">
 ///   <item><b>Text-only</b> (editor / tutorial hosts) — a scrollable column of
-///   click-to-load buttons. Unchanged behaviour.</item>
+///   click-to-load buttons.</item>
 ///   <item><b>Preview</b> (game-save hosts, when a <see cref="SaveStore"/> is
 ///   passed to <see cref="ShowSlots"/>) — a selectable slot list beside a single
 ///   large board <see cref="MapThumbnailView"/> that updates as you pick a slot,
@@ -22,6 +22,11 @@ using Godot;
 ///   distinct portrait (list-above-preview) vs landscape (list-rail | preview)
 ///   layout, rebuilt on orientation flip.</item>
 /// </list>
+///
+/// Keyboard: Up / Down move the selection between rows (both layouts, ends are
+/// walls), Enter loads the selected slot, Escape backs out. Row buttons carry
+/// <c>FocusMode = None</c> like the rest of the UI, so the arrows reach
+/// <see cref="_UnhandledInput"/> instead of driving Godot's focus navigation.
 ///
 /// Built on a <see cref="CanvasLayer"/> + dim backdrop + centered
 /// <see cref="PanelContainer"/> (same pattern as <see cref="SettingsPanel"/>) so
@@ -60,6 +65,28 @@ public sealed partial class SlotPickerDialog : CanvasLayer
     private Button? _loadButton;
     private string? _selectedSlot;
     private int _previewToken;
+
+    // Keyboard-navigation state, rebuilt with the body in both modes: the row
+    // buttons in _slots order and the scroller they live in, so Up / Down can
+    // move the selection and keep it on screen.
+    private readonly List<Button> _rowButtons = new();
+    private ScrollContainer? _rowScroll;
+
+    // Held-arrow auto-repeat, driven from _Process rather than the platform's
+    // key echoes — see KeyRepeater.
+    private const float ArrowRepeatDelaySec = 0.25f;
+    private const float ArrowRepeatIntervalSec = 0.05f;
+    private readonly KeyRepeater _arrowRepeat = new(ArrowRepeatDelaySec, ArrowRepeatIntervalSec);
+    private int _arrowDelta;
+    private Key _arrowKey = Key.None;
+
+    // Rendering a board thumbnail deserializes the save and rebuilds the whole
+    // map's visuals, so it must not run once per row while arrowing through the
+    // list. The selection moves immediately; the preview follows once the
+    // selection has been still this long. Negative = nothing pending.
+    private const float PreviewSettleSec = 0.12f;
+    private float _previewSettleRemaining = -1f;
+    private string? _previewPendingSlot;
     private ScreenOrientation _orientation = ScreenOrientation.Landscape;
 
     // Text-only (editor / tutorial) modal — a small fixed centered panel that
@@ -172,6 +199,63 @@ public sealed partial class SlotPickerDialog : CanvasLayer
         panel.Scale = new Vector2(scale, scale);
     }
 
+    /// <summary>
+    /// List navigation, handled here rather than in <see cref="_UnhandledInput"/>
+    /// because Godot's GUI layer runs in between and binds Up / Down to focus
+    /// navigation: a focusable Control behind the modal consumes the key-down to
+    /// move focus, so only the release would ever reach unhandled input. Taking
+    /// the keys in <c>_Input</c> puts this ahead of that — the same reason
+    /// <see cref="EscMenu"/> offers a full key-swallow mode.
+    /// </summary>
+    public override void _Input(InputEvent @event)
+    {
+        if (!Visible) return;
+        if (@event is not InputEventKey key) return;
+        if (key.Keycode is not (Key.Up or Key.Down or Key.Enter or Key.KpEnter)) return;
+
+        Log.Trace(Log.LogCategory.Input,
+            $"SlotPicker: key {key.Keycode} pressed={key.Pressed} echo={key.Echo} " +
+            $"rows={_rowButtons.Count} sel='{_selectedSlot}'");
+
+        if (!key.Pressed)
+        {
+            // Only the arrow currently driving the repeat ends it — releasing
+            // the other one mid-hold must not strand a held key.
+            if (key.Keycode == _arrowKey) StopArrowRepeat();
+            return;
+        }
+        // We schedule our own repeats; the platform's echoes are noise, but
+        // still ours to swallow so they can't reach anything underneath.
+        if (key.Echo)
+        {
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+        // The error overlay is a layer above the list: Escape (handled in
+        // _UnhandledInput) dismisses it, and nothing here applies until it does.
+        if (_errorPanel.Visible) return;
+
+        switch (key.Keycode)
+        {
+            case Key.Up:
+            case Key.Down:
+                _arrowDelta = key.Keycode == Key.Up ? -1 : +1;
+                _arrowKey = key.Keycode;
+                _arrowRepeat.Press();
+                MoveSelection(_arrowDelta);
+                break;
+            default: // Enter / KpEnter
+                ActivateSelection();
+                break;
+        }
+        // Consumed either way: the map camera pans on Up / Down, and focus must
+        // not wander through the menu behind an open modal.
+        GetViewport().SetInputAsHandled();
+    }
+
+    /// <summary>Escape only. It is not a focus-navigation key, so it survives the
+    /// GUI layer and can stay on the shared unhandled-input ladder the rest of
+    /// the menu's back-out handling uses.</summary>
     public override void _UnhandledInput(InputEvent @event)
     {
         if (!Visible) return;
@@ -180,6 +264,109 @@ public sealed partial class SlotPickerDialog : CanvasLayer
         if (_errorPanel.Visible) HideError();
         else Hide();
         GetViewport().SetInputAsHandled();
+    }
+
+    public override void _Process(double delta)
+    {
+        // A key-up can be missed while the dialog closes (or the window loses
+        // focus), which would otherwise leave the list scrolling on its own.
+        if (!Visible) { StopArrowRepeat(); _previewSettleRemaining = -1f; return; }
+
+        int steps = _arrowRepeat.Advance((float)delta);
+        for (int i = 0; i < steps; i++) MoveSelection(_arrowDelta);
+
+        if (_previewSettleRemaining < 0f) return;
+        _previewSettleRemaining -= (float)delta;
+        if (_previewSettleRemaining > 0f) return;
+        _previewSettleRemaining = -1f;
+        if (_previewPendingSlot == null) return;
+        Log.Debug(Log.LogCategory.Input, $"SlotPicker: preview settles on '{_previewPendingSlot}'");
+        RequestPreview(_previewPendingSlot);
+    }
+
+    private void StopArrowRepeat()
+    {
+        _arrowRepeat.Release();
+        _arrowKey = Key.None;
+    }
+
+    /// <summary>Move the selection <paramref name="delta"/> rows and keep it on
+    /// screen. Shared by both body layouts — in preview mode this also swaps
+    /// the board thumbnail (via <see cref="OnSlotSelected"/>) and enables
+    /// Load.</summary>
+    private void MoveSelection(int delta)
+    {
+        if (_rowButtons.Count == 0)
+        {
+            Log.Debug(Log.LogCategory.Input, "SlotPicker: move ignored — no rows");
+            return;
+        }
+
+        int from = IndexOfSelected();
+        int to = ListNavMath.Step(from, _rowButtons.Count, delta);
+        if (to < 0 || to == from)
+        {
+            Log.Debug(Log.LogCategory.Input,
+                $"SlotPicker: move ignored — {from} -> {to} of {_rowButtons.Count} (at the end)");
+            return;
+        }
+
+        for (int i = 0; i < _rowButtons.Count; i++)
+            _rowButtons[i].SetPressedNoSignal(i == to);
+        OnSlotSelected(_slots[to].SlotName);
+        RevealRow(to);
+
+        Log.Debug(Log.LogCategory.Input,
+            $"SlotPicker: {(delta < 0 ? "Up" : "Down")} {from} -> {to} '{_slots[to].SlotName}'");
+        // Read the highlight back off the buttons rather than trusting the
+        // write: a grouped toggle button can refuse a pressed state, which
+        // looks exactly like "the selection never moved" even though the
+        // index above changed. Expect a single 'X' at position `to`.
+        Log.Debug(Log.LogCategory.Input, $"SlotPicker: highlight {PressedMask()}");
+    }
+
+    /// <summary>The row buttons' actual pressed state as a readable mask —
+    /// <c>.X...</c> means only row 1 is highlighted.</summary>
+    private string PressedMask()
+    {
+        var mask = new System.Text.StringBuilder(_rowButtons.Count);
+        foreach (Button row in _rowButtons) mask.Append(row.ButtonPressed ? 'X' : '.');
+        return mask.ToString();
+    }
+
+    /// <summary>Load the selected slot, mirroring the Load button (preview
+    /// mode) and a row click (text-only mode).</summary>
+    private void ActivateSelection()
+    {
+        if (_selectedSlot == null) return;
+        Log.Debug(Log.LogCategory.Input, $"SlotPicker: Enter loads '{_selectedSlot}'");
+        _onPicked(_selectedSlot);
+    }
+
+    private int IndexOfSelected()
+    {
+        if (_selectedSlot == null) return -1;
+        for (int i = 0; i < _slots.Count; i++)
+            if (_slots[i].SlotName == _selectedSlot) return i;
+        return -1;
+    }
+
+    /// <summary>Scroll the row at <paramref name="index"/> into view. The row's
+    /// position is relative to the list box, which is exactly the scroller's
+    /// content space.</summary>
+    private void RevealRow(int index)
+    {
+        if (_rowScroll == null || index < 0 || index >= _rowButtons.Count) return;
+        Button row = _rowButtons[index];
+        int before = _rowScroll.ScrollVertical;
+        float offset = ListNavMath.ScrollToReveal(
+            row.Position.Y, row.Size.Y, _rowScroll.ScrollVertical, _rowScroll.Size.Y);
+        _rowScroll.ScrollVertical = Mathf.RoundToInt(offset);
+        // Row geometry of zero means the list hasn't been laid out, which would
+        // make every reveal a no-op — worth seeing rather than inferring.
+        Log.Debug(Log.LogCategory.Input,
+            $"SlotPicker: reveal row {index} y={row.Position.Y:0} h={row.Size.Y:0} " +
+            $"viewH={_rowScroll.Size.Y:0} scroll {before} -> {_rowScroll.ScrollVertical}");
     }
 
     /// <summary>Add the picker under <paramref name="parent"/>. Call once during
@@ -239,6 +426,12 @@ public sealed partial class SlotPickerDialog : CanvasLayer
         if (_panel != null) { _panel.QueueFree(); _panel = null; }
         _preview = null;
         _loadButton = null;
+        // The rows belong to the panel being freed; both builders re-register.
+        _rowButtons.Clear();
+        _rowScroll = null;
+        StopArrowRepeat();
+        _previewSettleRemaining = -1f;
+        _previewPendingSlot = null;
         _previewToken++; // abandon any pending initial-preview schedule
 
         bool preview = IsPreviewMode;
@@ -296,11 +489,17 @@ public sealed partial class SlotPickerDialog : CanvasLayer
         list.AddThemeConstantOverride("separation", 6);
         scroll.AddChild(list);
 
+        _rowScroll = scroll;
+
         if (_slots.Count == 0)
         {
             list.AddChild(MakeMessageLabel(_emptyMessage));
             return;
         }
+        // ToggleMode + a shared group purely for the highlight: a click still
+        // loads immediately (Pressed fires for toggle buttons too), so the
+        // pressed look only ever shows where the keyboard put the selection.
+        var group = new ButtonGroup();
         foreach (SaveSlotInfo info in _slots)
         {
             string capturedName = info.SlotName;
@@ -309,11 +508,18 @@ public sealed partial class SlotPickerDialog : CanvasLayer
                 Text = _labelFor(info),
                 SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
                 Alignment = HorizontalAlignment.Left,
+                ToggleMode = true,
+                ButtonGroup = group,
+                // Godot's focus navigation binds ui_up / ui_down and would
+                // consume the arrows before _UnhandledInput sees them; the
+                // pressed highlight is the selection cue, not a focus ring.
+                FocusMode = Control.FocusModeEnum.None,
             };
             btn.AddThemeFontSizeOverride("font_size", 18);
             btn.Pressed += () => _onPicked(capturedName);
             AudioBus.AttachClick(btn);
             list.AddChild(btn);
+            _rowButtons.Add(btn);
         }
     }
 
@@ -386,13 +592,16 @@ public sealed partial class SlotPickerDialog : CanvasLayer
                 Alignment = HorizontalAlignment.Left,
                 ToggleMode = true,
                 ButtonGroup = group,
+                FocusMode = Control.FocusModeEnum.None,  // see BuildTextOnlyBody
             };
             btn.AddThemeFontSizeOverride("font_size", 17);
             btn.Toggled += on => { if (on) OnSlotSelected(capturedName); };
             AudioBus.AttachClick(btn);
             if (capturedName == _selectedSlot) btn.SetPressedNoSignal(true);
             list.AddChild(btn);
+            _rowButtons.Add(btn);
         }
+        _rowScroll = scroll;
         return scroll;
     }
 
@@ -413,7 +622,12 @@ public sealed partial class SlotPickerDialog : CanvasLayer
         var actions = new HBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         actions.AddThemeConstantOverride("separation", 12);
 
-        var cancel = new Button { Text = Strings.Get(StringKeys.ButtonCancel), SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        var cancel = new Button
+        {
+            Text = Strings.Get(StringKeys.ButtonCancel),
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            FocusMode = Control.FocusModeEnum.None,
+        };
         cancel.AddThemeFontSizeOverride("font_size", 18);
         cancel.Pressed += Hide;
         AudioBus.AttachClick(cancel);
@@ -423,6 +637,7 @@ public sealed partial class SlotPickerDialog : CanvasLayer
         {
             Text = Strings.Get(StringKeys.ButtonLoad),
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            FocusMode = Control.FocusModeEnum.None,
             Disabled = _selectedSlot == null,
         };
         _loadButton.AddThemeFontSizeOverride("font_size", 18);
@@ -436,9 +651,12 @@ public sealed partial class SlotPickerDialog : CanvasLayer
     {
         _selectedSlot = slotName;
         if (_loadButton != null) _loadButton.Disabled = false;
-        // The preview request coalesces via its own token, so rapid taps only
-        // snapshot the latest. Layout is stable after the first frame, so now.
-        RequestPreview(slotName);
+        // Deferred, not immediate: rendering the board is far too heavy to run
+        // once per row while an arrow is held. _Process fires it once the
+        // selection settles; MapThumbnailView's own token drops any render
+        // this supersedes.
+        _previewPendingSlot = slotName;
+        _previewSettleRemaining = PreviewSettleSec;
     }
 
     private void OnLoadPressed()

@@ -233,13 +233,23 @@ public partial class MapThumbnailView : Control
         // settle, then frame the full grid rectangle (NOT the per-seed land box)
         // so the board stays at a fixed scale/position across re-rolls.
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
-        if (token != _renderToken) return; // superseded by a newer request
+        if (token != _renderToken)
+        {
+            Log.Debug(Log.LogCategory.Display,
+                $"MapThumbnail: abandoned {label} at layout (token={token}, now={_renderToken})");
+            return; // superseded by a newer request
+        }
         _map.FrameWholeGrid();
 
         // Render exactly one frame, wait for the GPU to finish, then snapshot.
         _viewport.RenderTargetUpdateMode = SubViewport.UpdateMode.Once;
         await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
-        if (token != _renderToken) return;
+        if (token != _renderToken)
+        {
+            Log.Debug(Log.LogCategory.Display,
+                $"MapThumbnail: abandoned {label} at draw (token={token}, now={_renderToken})");
+            return;
+        }
 
         // Crop the jagged hex-tessellation border off all four edges: cutting
         // the bitmap with a straight line gives clean straight edges (the board
