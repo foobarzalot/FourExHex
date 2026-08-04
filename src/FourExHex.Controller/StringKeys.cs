@@ -303,10 +303,18 @@ public static class StringKeys
     public const string SettingsHumanSpeed = "settings.human_speed";
     public const string SettingsReplaySpeed = "settings.replay_speed";
     public const string SettingsCredits = "settings.credits";
+    public const string SettingsReportBug = "settings.report_bug";
     public const string SpeedSlow = "speed.slow";
     public const string SpeedNormal = "speed.normal";
     public const string SpeedFast = "speed.fast";
     public const string SpeedInstant = "speed.instant";
+
+    // Bug-report modal.
+    public const string ReportBlurb = "report.blurb";
+    public const string ReportSend = "report.send";
+    public const string ReportPasteHint = "report.paste_hint";
+    public const string ReportAttachHint = "report.attach_hint";
+    public const string ReportFailed = "report.failed";
 
     // Shared dialog buttons.
     public const string ButtonCancel = "button.cancel";

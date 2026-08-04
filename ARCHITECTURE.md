@@ -1681,6 +1681,68 @@ Instrumented under `Log.LogCategory.Share`: `[share] exported …`,
 paths, consumed sources), dialog open/result/cancel, share-sheet
 completion/failure.
 
+## Bug reporting
+
+A **Report a Bug** button in `SettingsPanel` (both orientations) opens
+`BugReportPanel`, a `Layer = 101` sibling modal in the `CreditsPanel` mould.
+Send stages a diagnostic bundle and hands it to the player's mail client.
+
+- **What ships.** `BugReportBundle.Stage` packs a zip into `user://export/`
+  via `ZipPacker`: `report.txt` (the `BugReport.BuildHeader` block — version,
+  platform, device, locale, UTC timestamp, mode/seed/turn, map, roster,
+  per-entry attachment sizes), `save.json` (the autosave slot), and
+  `godot.log` (newest rotation in `user://logs/`). A missing save or log
+  degrades the bundle and is named `(absent)` in the header rather than
+  dropped — a silently missing log reads as "nothing was logged". Hosts with
+  a live game supply `BugReportGameFacts` through
+  `SettingsPanel.BugReportGameFacts`; `Main` writes a fresh autosave inside
+  that delegate so the attachment is the moment Send was pressed. The main
+  menu leaves it null and the last autosave travels instead.
+- **Why an attachment forces native code.** A save is 150–500 KB, and both
+  `mailto:` and a GitHub `issues/new?body=` prefill are URL hand-offs that
+  cannot carry a file. The vendored `SharePlugin` carries any file but wraps
+  `UIActivityViewController` / plain `ACTION_SEND`, which have no recipient
+  field. Recipient *and* attachment together needs a platform mail composer.
+- **`MailBridge` rung chain**, each losing what the one above it kept:
+  1. **Native.** Android only: `android_plugin/mailcompose` is a `GodotPlugin`
+     exposing an Engine singleton, called with
+     `Engine.GetSingleton("MailCompose").Call("compose", …)`. It fires
+     `ACTION_SEND` with `EXTRA_EMAIL`, targeted explicitly at each installed
+     mail app, attachment as a `content://` URI from its own FileProvider.
+  2. **Share sheet.** `ShareBridge` carries the bundle but has no recipient,
+     so the address goes on the clipboard and the modal says to paste it. The
+     iOS rung.
+  3. **`mailto:`.** Recipient and body survive, the attachment cannot; the
+     staged file is revealed with `OS.ShellShowInFileManager` so it is one
+     drag away. The desktop rung.
+- **The native rung is Android-only.** Android's plugin API is a *runtime*
+  contract: a `compileOnly` Maven interface plus a manifest `meta-data` entry
+  naming the class, bridged to C# over JNI, with nothing statically linked.
+  An iOS Engine-singleton plugin is statically linked C++ built against the
+  engine's generated headers, so iOS takes the share sheet.
+- **Two Android constraints.** The plugin must declare its own
+  `MailComposeFileProvider` subclass — the manifest merger keys `<provider>`
+  elements by `android:name`, and Godot's template already registers the
+  androidx class, so sharing that name fails the APK build. And the send
+  intent must name each target mail app with `setPackage`: a resolved activity
+  has to match the intent's own action and type, which package-targeting
+  guarantees and a `mailto:` selector does not.
+- **No consent gate.** The player drives an OS compose UI and sees the
+  attachment before sending, so this is not the opt-in/disclosure situation a
+  silent upload would be.
+- **Mobile file logging.** `project.godot` sets
+  `debug/file_logging/enable_file_logging=true`; the engine default is
+  desktop-only, so without it iOS and Android write nothing to `user://logs`
+  and there is no log to attach. `max_log_files` is deliberately left at the
+  engine default of 5 — Godot strips default-valued entries when it rewrites
+  the file, so a written-out line would rot. In a Release build the log holds
+  engine output plus `Log.Warn`/`Error` only.
+
+Instrumented under `Log.LogCategory.Report`: `[report] bundle staged -> … `
+(with per-entry sizes), `[report] compose -> android-native |
+share-sheet-fallback | mailto-fallback`, panel open/close and Send, and a
+`Warn` for every fallback with the reason.
+
 ## Campaign mode
 
 256 levels (`00`–`FF`) from the menu's **Campaign** button, persistent per-level win/loss tracking. Four tiers of 64 map to the high hex digit and `Difficulty`: Recruit `00–3F`, Soldier `40–7F`, Captain `80–BF`, Commander `C0–FF`. Each level: one Human + 1–5 Computer on a procedural map with a deterministic per-level roster. Human's handicap = tier (AIs stay Soldier); level→seed identity (`MasterSeed = level`).
@@ -1720,7 +1782,7 @@ A single **Options** button on each scene's HUD (and Escape when no Buy/Build/Mo
 
 `SettingsPanel` (CanvasLayer modal — backdrop + centered panel + SFX/VFX `CheckBox` rows + AI Turn Speed and Replay Speed radio rows + Back) is the single Settings UI for menu and in-game pause. SFX/VFX toggles bind to `UserSettings.SfxEnabled` / `VfxEnabled` via `Toggled`. Both speed rows are four `Button`s over the shared `PlaybackSpeed` enum (`Slow`/`Normal`/`Fast`/`Instant`, one `SpeedOrder` + one `SpeedLabel`) in `ToggleMode` sharing a `ButtonGroup` (radio). AI Turn Speed's `Pressed` writes `UserSettings.AiSpeed`; Replay Speed's writes `ReplaySpeed`. `ApplySpeedButtonStyle` paints white/dark-text on the pressed button, dim/light-text on others; `Toggled` fires on both just-pressed and just-unpressed siblings, so one handler keeps them synced. `Open()` re-syncs controls from `UserSettings`. Back/Escape calls `Close`, firing `Closed`.
 
-A **Credits** button above Back opens `CreditsPanel` (`scripts/CreditsPanel.cs`) — sibling CanvasLayer modal at `Layer = 101`, above `SettingsPanel`'s `100`, drawing on top. `SettingsPanel` owns the instance (`_Ready`), reachable from both hosts with no per-scene wiring. Mirrors the modal shell (backdrop + `PanelContainer` + serif title + gold rule + `ScrollContainer` body + Back); vbox uses the same `(420, 570)` min size, scroll area `ExpandFill`s. Body is a BBCode `RichTextLabel` so "FooBarzalot" is a gold `[url]` link; `MetaClicked` → `OS.ShellOpen`. `SettingsPanel.Close` also calls `_creditsPanel.Close()`, and `SettingsPanel._UnhandledInput` early-returns while `_creditsPanel.IsOpen` so Escape closes only Credits.
+A **Credits** button above Back opens `CreditsPanel` (`scripts/CreditsPanel.cs`) — sibling CanvasLayer modal at `Layer = 101`, above `SettingsPanel`'s `100`, drawing on top. `SettingsPanel` owns the instance (`_Ready`), reachable from both hosts with no per-scene wiring. Mirrors the modal shell (backdrop + `PanelContainer` + serif title + gold rule + `ScrollContainer` body + Back); vbox uses the same `(420, 570)` min size, scroll area `ExpandFill`s. Body is a BBCode `RichTextLabel` so "FooBarzalot" is a gold `[url]` link; `MetaClicked` → `OS.ShellOpen`. `SettingsPanel.Close` also closes its child modals (`_creditsPanel`, `_bugReportPanel`), and `SettingsPanel._UnhandledInput` early-returns while either is open so Escape closes only the child. A **Report a Bug** button sits above Credits in both layouts — see Bug reporting above.
 
 ### Quitting from the main menu (`ConfirmModal`)
 
@@ -2117,7 +2179,7 @@ Every player-visible English string lives in **`assets/strings/en.json`** — a 
 
 `src/FourExHex.Model/Log.cs` is the master logging system — one Godot-free static class shared by Model, Controller, and `scripts/` (no namespace, so call sites need no `using`).
 
-- **Two gates.** (1) Compile-time: `Log.Trace` / `Debug` / `Info` are `[Conditional("DEBUG")]`, so the compiler removes the call and its argument evaluation from Release builds; `Log.Warn` / `Error` always compile. (2) Runtime: each `Log.LogCategory` (`Ai`, `Turn`, `Capture`, `Tutorial`, `Render`, `Anim`, `Input`, `Display`, `Hud`, `Undo`, `Cheat`, `Campaign`, `MapGen`, `Replay`, `Tide`, `Fog`, `Tree`, `Automate`, `Viking`, `Determinism`, `LevelDesign`, `Share`) has an independent minimum `Log.LogLevel`; a message emits only if its level ≥ the category threshold.
+- **Two gates.** (1) Compile-time: `Log.Trace` / `Debug` / `Info` are `[Conditional("DEBUG")]`, so the compiler removes the call and its argument evaluation from Release builds; `Log.Warn` / `Error` always compile. (2) Runtime: each `Log.LogCategory` (`Ai`, `Turn`, `Capture`, `Tutorial`, `Render`, `Anim`, `Input`, `Display`, `Hud`, `Undo`, `Cheat`, `Campaign`, `MapGen`, `Replay`, `Tide`, `Fog`, `Tree`, `Automate`, `Viking`, `Determinism`, `LevelDesign`, `Share`, `Report`) has an independent minimum `Log.LogLevel`; a message emits only if its level ≥ the category threshold.
 - **Default is silent** — every category defaults to `Off`.
 - **View-side categories split by question asked**, so one concern can be read without the others drowning it: `Render` = what got built/drawn (tile+territory render, board geometry — content box, `PixelSize`, insets, `RecenterMap` — occupant-visual refresh, HUD/menu/editor panel layout and fit); `Anim` = per-frame and tween churn (unit/capital `[pulse]`, `[move-anim]` beat holds and travel/arrival, `[terrain-fx]`, `[doomed-pulse]`, demo-follow camera pans); `Input` = what a gesture resolved to (`[hit-test]`, `[highlight]`, `[targets]`, selection cues, pinch begin/update/end, BuildTower click-rejection). `Anim` is the high-volume one — leave it `Off` unless animation timing is the subject.
 - **Configuration.** `LogBootstrap` (autoload) calls `Log.Configure(OS.GetEnvironment("FOUREXHEX_LOG"))`, parsing a spec like `"Ai:Debug,Turn:Info,*:Warn"` (comma-separated `category:level`, `*` = all; case-insensitive; unknown tokens ignored; never throws).
@@ -2198,11 +2260,20 @@ scripts/  (split: see the three source trees listed just above)
 │                           backquote / 3-finger tap toggles over any screen;
 │                           scene roots opt in via CheatMenu.Attach(this)
 ├─ SettingsPanel.cs       ─ shared Settings modal (SFX/VFX checkboxes + speed
-│                           rows + Credits + Back); Open/Close/Closed; owns
-│                           CreditsPanel. Used by MainMenuScene + Main pause
+│                           rows + Report a Bug + Credits + Back);
+│                           Open/Close/Closed; owns CreditsPanel and
+│                           BugReportPanel. Used by MainMenuScene + Main pause
 ├─ CreditsPanel.cs        ─ Credits modal (CanvasLayer Layer 101; scrollable
-│                           BBCode credits, author name → repo via MetaClicked
-│                           → OS.ShellOpen). Owned by SettingsPanel
+│                           BBCode credits, title → website and author name →
+│                           mailto: via MetaClicked → OS.ShellOpen). Owned by
+│                           SettingsPanel
+├─ BugReportPanel.cs      ─ Report a Bug modal (CanvasLayer Layer 101); Send
+│                           stages the bundle and composes. Owned by
+│                           SettingsPanel
+├─ BugReportBundle.cs     ─ stages the report zip (report.txt + save.json +
+│                           godot.log) into user://export/ via ZipPacker
+├─ MailBridge.cs          ─ three-rung compose chain: native composer →
+│                           share sheet → mailto:
 ├─ ConfirmModal.cs        ─ reusable yes/no confirm modal (ModalChrome family);
 │                           ctor takes title/message/confirm-label;
 │                           Confirmed/Canceled; Escape cancels, Enter confirms.

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Android 11+ package visibility: without this the mailto: selector
+         resolves to nothing and startActivity throws, because our process
+         cannot see mail apps it has not been told about. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="mailto" />
+        </intent>
+    </queries>
+
+    <application>
+        <!-- Godot v2 Android plugin discovery: the engine scans merged manifest
+             meta-data named org.godotengine.plugin.v2.<PluginName> and
+             instantiates the named class. Without this, the plugin never loads. -->
+        <meta-data
+            android:name="org.godotengine.plugin.v2.MailCompose"
+            android:value="net.sitkoff.fourexhex.MailComposePlugin" />
+
+        <!-- Our own provider, with its own authority AND its own class name.
+             The manifest merger keys providers by android:name, so naming the
+             androidx class directly collides with the one Godot's template
+             already declares — hence the MailComposeFileProvider subclass.
+             EXTRA_STREAM must be a content:// URI on API 24+; a file:// URI
+             throws FileUriExposedException. -->
+        <provider
+            android:name="net.sitkoff.fourexhex.MailComposeFileProvider"
+            android:authorities="${applicationId}.mailcompose.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/mailcompose_paths" />
+        </provider>
+    </application>
+</manifest>

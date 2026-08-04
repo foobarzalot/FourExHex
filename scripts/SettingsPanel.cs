@@ -42,6 +42,12 @@ public sealed partial class SettingsPanel : CanvasLayer
     private Button _sfxCheckBox = null!;
     private Button _vfxCheckBox = null!;
     private CreditsPanel _creditsPanel = null!;
+    private BugReportPanel _bugReportPanel = null!;
+
+    /// <summary>Passed straight to <see cref="BugReportPanel.GameFacts"/>.
+    /// Hosts with a live game (<c>Main</c>) set it; the main menu leaves it
+    /// null and the report goes out with the last autosave instead.</summary>
+    public Func<BugReportGameFacts?>? BugReportGameFacts { get; set; }
 
     // Item order for both speed dropdowns (AI Turn Speed and Replay Speed
     // are independent settings but share the preset list). Open() re-syncs
@@ -84,6 +90,13 @@ public sealed partial class SettingsPanel : CanvasLayer
         // It persists across body rebuilds (RebuildBody frees only _panelRoot).
         _creditsPanel = new CreditsPanel();
         AddChild(_creditsPanel);
+
+        // Same arrangement as Credits: its own modal one layer above this
+        // one, persisting across body rebuilds. The facts delegate is read
+        // per-send, so a host may set it after _Ready.
+        _bugReportPanel = new BugReportPanel();
+        _bugReportPanel.GameFacts = () => BugReportGameFacts?.Invoke();
+        AddChild(_bugReportPanel);
 
         // React now and on every later change. A resize that flips orientation
         // rebuilds the body; a same-orientation resize re-fits (portrait) or
@@ -146,6 +159,7 @@ public sealed partial class SettingsPanel : CanvasLayer
         vbox.AddChild(BuildSpeedRow(
             Strings.Get(StringKeys.SettingsReplaySpeed), UserSettings.ReplaySpeed, OnReplaySpeedPressed, out _replaySpeedDropdown));
 
+        vbox.AddChild(MakeNavButton(Strings.Get(StringKeys.SettingsReportBug), OnReportBugPressed));
         vbox.AddChild(MakeNavButton(Strings.Get(StringKeys.SettingsCredits), OnCreditsPressed));
         vbox.AddChild(MakeNavButton(Strings.Get(StringKeys.MenuBack), Close));
 
@@ -232,6 +246,7 @@ public sealed partial class SettingsPanel : CanvasLayer
         // Footer: Credits | Back (equal width) + version pinned far right.
         var footer = new HBoxContainer();
         footer.AddThemeConstantOverride("separation", 14);
+        footer.AddChild(MakeNavButton(Strings.Get(StringKeys.SettingsReportBug), OnReportBugPressed));
         footer.AddChild(MakeNavButton(Strings.Get(StringKeys.SettingsCredits), OnCreditsPressed));
         footer.AddChild(MakeNavButton(Strings.Get(StringKeys.MenuBack), Close));
         Label version = MakeVersionLabel();
@@ -367,6 +382,11 @@ public sealed partial class SettingsPanel : CanvasLayer
         _creditsPanel.Open();
     }
 
+    private void OnReportBugPressed()
+    {
+        _bugReportPanel.Open();
+    }
+
     /// <summary>Show the panel. Re-syncs toggles from
     /// <see cref="UserSettings"/> so external changes are reflected.</summary>
     public void Open()
@@ -395,9 +415,10 @@ public sealed partial class SettingsPanel : CanvasLayer
     public void Close()
     {
         if (!IsOpen) return;
-        // Tear down the credits modal too — it's a separate CanvasLayer,
-        // so hiding this panel wouldn't hide it on its own.
+        // Tear down the child modals too — they're separate CanvasLayers,
+        // so hiding this panel wouldn't hide them on its own.
         _creditsPanel.Close();
+        _bugReportPanel.Close();
         IsOpen = false;
         Visible = false;
         Closed?.Invoke();
@@ -406,9 +427,9 @@ public sealed partial class SettingsPanel : CanvasLayer
     public override void _UnhandledInput(InputEvent @event)
     {
         if (!IsOpen) return;
-        // While Credits is open it owns Escape (closes credits only, not
+        // While a child modal is open it owns Escape (closes itself only, not
         // settings); don't double-handle the key here.
-        if (_creditsPanel.IsOpen) return;
+        if (_creditsPanel.IsOpen || _bugReportPanel.IsOpen) return;
         if (@event is not InputEventKey keyEvent || !keyEvent.Pressed || keyEvent.Echo) return;
         if (keyEvent.Keycode != Key.Escape) return;
         Close();

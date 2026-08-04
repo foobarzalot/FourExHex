@@ -419,6 +419,7 @@ public partial class Main : Node2D
             _escMenu.EscapeClosed += ExitPause;
 
             _settingsPanel = new SettingsPanel();
+            _settingsPanel.BugReportGameFacts = BuildBugReportFacts;
             AddChild(_settingsPanel);
 
             visibleHud.EscRequested += EnterPause;
@@ -820,6 +821,31 @@ public partial class Main : Node2D
         {
             GD.PushError($"Autosave failed: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Describe the live game for a bug report, and refresh the autosave
+    /// first so the bundle carries the moment the player pressed Send rather
+    /// than the start of their turn. A failed write is not fatal — the report
+    /// still goes out, carrying the older autosave.
+    /// </summary>
+    private BugReportGameFacts BuildBugReportFacts()
+    {
+        OnHumanTurnStartedAutosave();
+        int humans = 0;
+        int computers = 0;
+        foreach (Player player in _players)
+        {
+            if (player.Kind == PlayerKind.Human) humans++;
+            else computers++;
+        }
+        return new BugReportGameFacts(
+            _state.Mode.ToString(),
+            _controller.MasterSeed,
+            _state.Turns.TurnNumber,
+            _originMapName,
+            humans,
+            computers);
     }
 
     /// <summary>

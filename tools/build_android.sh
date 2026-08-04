@@ -111,16 +111,24 @@ echo "==> SDK:  $ANDROID_SDK"
 echo "==> JDK:  $JAVA_HOME"
 echo "==> NDK:  $NDK_VERSION   build-tools: $(basename "$BTDIR")   platform: $COMPILE_SDK"
 
-# The Android export links the RotationFix plugin AAR (via the addons/rotationfix
-# EditorExportPlugin); without it the gradle build fails to resolve the
-# dependency. The AAR is a build artifact (gitignored under bin/), so build it on
-# first run. When the plugin SOURCE changes, rerun tools/build_android_plugin.sh
-# by hand to regenerate it.
-PLUGIN_AAR="$PROJECT_DIR/addons/rotationfix/bin/release/RotationFix.aar"
-if [[ ! -f "$PLUGIN_AAR" ]]; then
-  echo "==> RotationFix plugin AAR missing; building it first"
-  "$PROJECT_DIR/tools/build_android_plugin.sh"
-fi
+# The Android export links each plugin AAR (via the matching addons/<name>
+# EditorExportPlugin); without one the gradle build fails to resolve the
+# dependency. The AARs are build artifacts (gitignored under bin/), so build
+# them on first run. When plugin SOURCE changes, rerun
+# tools/build_android_plugin.sh by hand to regenerate them.
+#
+# Every expected AAR is checked, not just the first: a tree that predates a
+# newly added plugin has the older AARs already present, so a single-file
+# sentinel would skip the build and fail later inside gradle instead.
+for plugin_aar in "addons/rotationfix/bin/release/RotationFix.aar" \
+                  "addons/fileopen/bin/release/FileOpen.aar" \
+                  "addons/mailcompose/bin/release/MailCompose.aar"; do
+  if [[ ! -f "$PROJECT_DIR/$plugin_aar" ]]; then
+    echo "==> Plugin AAR missing ($plugin_aar); building plugins first"
+    "$PROJECT_DIR/tools/build_android_plugin.sh"
+    break
+  fi
+done
 
 echo "==> Syncing export_presets.cfg version from scripts/AppVersion.cs"
 "$PROJECT_DIR/tools/sync_version.sh"

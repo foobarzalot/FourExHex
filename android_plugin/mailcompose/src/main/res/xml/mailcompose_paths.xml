@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Godot's user:// on Android is the app's internal files dir, and the bug
+    report is staged under user://export/. Sharing the whole files root (rather
+    than just export/) keeps this working if the staging dir ever moves; nothing
+    outside the app's own private storage is reachable through it either way.
+-->
+<paths>
+    <files-path name="userRoot" path="." />
+</paths>

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #
-# Build the RotationFix Android plugin AAR and stage it for the app export.
+# Build the RotationFix / FileOpen / MailCompose Android plugin AARs and stage
+# them for the app export.
 #
 # Why this exists: Android's window rotationAnimation can only be set
 # programmatically (it has no theme/manifest attribute — aapt rejects
@@ -31,12 +32,13 @@ fail() { echo "ERROR: $1" >&2; exit 1; }
 [[ -d "$ANDROID_SDK" ]] || fail "Android SDK not found at $ANDROID_SDK"
 [[ -x "$JAVA_HOME/bin/java" ]] || fail "JDK not found at JAVA_HOME=$JAVA_HOME"
 
-echo "==> Building RotationFix + FileOpen AARs (gradle assembleRelease)"
-( cd "$PLUGIN_DIR" && ./gradlew :rotationfix:assembleRelease :fileopen:assembleRelease )
+echo "==> Building RotationFix + FileOpen + MailCompose AARs (gradle assembleRelease)"
+( cd "$PLUGIN_DIR" && ./gradlew :rotationfix:assembleRelease :fileopen:assembleRelease :mailcompose:assembleRelease )
 
 # module-dir:addon-dir:AAR-name — plugin code is build-type independent, so
 # one release AAR fills both the debug and release slots.
-for spec in "rotationfix:rotationfix:RotationFix" "fileopen:fileopen:FileOpen"; do
+for spec in "rotationfix:rotationfix:RotationFix" "fileopen:fileopen:FileOpen" \
+            "mailcompose:mailcompose:MailCompose"; do
   MODULE="${spec%%:*}"; rest="${spec#*:}"; ADDON="${rest%%:*}"; NAME="${rest#*:}"
   AAR="$PLUGIN_DIR/$MODULE/build/outputs/aar/$MODULE-release.aar"
   [[ -f "$AAR" ]] || fail "gradle did not produce $AAR"

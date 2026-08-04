@@ -446,7 +446,12 @@ public sealed class SaveStore
         }
     }
 
-    private static void EnsureDirectory(string directory)
+    /// <summary>Create-if-missing, throwing on failure. Public so callers
+    /// that write into one of the <c>user://</c> dirs above without going
+    /// through a Write* helper (<see cref="BugReportBundle"/> packs a zip
+    /// straight into <see cref="ExportDirectory"/>) share this one
+    /// implementation.</summary>
+    public static void EnsureDirectory(string directory)
     {
         if (DirAccess.DirExistsAbsolute(directory)) return;
         Error err = DirAccess.MakeDirRecursiveAbsolute(directory);

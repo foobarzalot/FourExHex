@@ -1,0 +1,33 @@
+plugins {
+    id 'com.android.library'
+    id 'org.jetbrains.kotlin.android'
+}
+
+android {
+    namespace 'net.sitkoff.fourexhex.mailcompose'
+    compileSdk 36
+
+    defaultConfig {
+        minSdk 24
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+}
+
+dependencies {
+    // Provided at runtime by the engine; compile against the exact version this
+    // project exports with (matches android/build/config.gradle's godot lib).
+    compileOnly 'org.godotengine:godot:4.7.1.stable'
+    // FileProvider, and MailComposeFileProvider's base class. compileOnly
+    // because the app build already resolves androidx.core transitively
+    // through androidx.fragment (see android/build/build.gradle) — shipping
+    // our own copy would duplicate it.
+    compileOnly 'androidx.core:core:1.13.1'
+}
