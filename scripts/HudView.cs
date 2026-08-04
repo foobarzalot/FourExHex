@@ -1842,7 +1842,10 @@ public partial class HudView : OrientationHud, IHudView
             eyebrowText: Strings.Get(StringKeys.HudOverlayCampaignEyebrow),
             titleText: "",  // always set to the level-won line by Refresh
             titleFontSize: 52,
-            designWidth: 660f,
+            // Wide enough to keep "Next unbeaten level / Watch Replay /
+            // Back to campaign" on one row — the widest button set of the
+            // endgame family. See the row-fit log in BuildEndgameOverlay.
+            designWidth: 740f,
             buttonMinWidth: 150f,
             buttonSpecs: new (string, Action)[]
             {
@@ -2104,7 +2107,36 @@ public partial class HudView : OrientationHud, IHudView
             buttons[i] = button;
         }
 
+        // A Button's minimum size grows to fit its text, so a long label can
+        // never clip — but it can push the row past the panel's content width
+        // and silently wrap onto a second line. Report the fit once the theme
+        // has been applied so a copy change or a wordy localization shows up
+        // in the log instead of only in a screenshot.
+        Callable.From(() => LogEndgameRowFit(eyebrowText, designWidth, row)).CallDeferred();
+
         return (overlay, title, buttons);
+    }
+
+    /// <summary>Horizontal padding an endgame panel spends before its button
+    /// row: the <c>MarginContainer</c> left+right constants set in
+    /// <see cref="BuildEndgameOverlay"/>.</summary>
+    private const float EndgamePanelHPadding = 56f;
+
+    /// <summary>Log an endgame button row's natural (unwrapped) width against
+    /// the content width its panel's design width leaves — see the call site
+    /// in <see cref="BuildEndgameOverlay"/>.</summary>
+    private static void LogEndgameRowFit(string tag, float designWidth, HFlowContainer row)
+    {
+        float needed = 0f;
+        int count = row.GetChildCount();
+        for (int i = 0; i < count; i++)
+            if (row.GetChild(i) is Control child) needed += child.GetCombinedMinimumSize().X;
+        needed += row.GetThemeConstant("h_separation") * Math.Max(0, count - 1);
+
+        float available = designWidth - EndgamePanelHPadding;
+        Log.Debug(Log.LogCategory.Render,
+            $"HudView: endgame row '{tag}' natural={needed:0} available={available:0} " +
+            $"(design {designWidth:0}) -> {(needed <= available ? "single row" : "WRAPS")}");
     }
 
     /// <summary>Clamp each endgame overlay panel (victory / defeat / claim)
