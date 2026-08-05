@@ -33,7 +33,8 @@ public partial class LogBootstrap : Node
         // Runtime config, e.g. FOUREXHEX_LOG="Ai:Debug,Turn:Info,*:Warn".
         // Best-effort parse; unknown tokens ignored; empty = silent
         // (every category defaults to Off).
-        Log.Configure(OS.GetEnvironment("FOUREXHEX_LOG"));
+        string spec = OS.GetEnvironment("FOUREXHEX_LOG");
+        Log.Configure(spec);
 
         bool isMobile = OS.HasFeature("mobile");
 
@@ -68,12 +69,16 @@ public partial class LogBootstrap : Node
             }
         }
 
-        // Mobile (Android/iOS) can't set the FOUREXHEX_LOG env var, so turn
-        // every category fully verbose for logcat. Desktop keeps env-var-driven
-        // gating (above). Trace/Debug/Info are compiled out of release builds
-        // regardless of level, so in a release build this only surfaces
-        // Warn/Error in the field — intentional for device diagnostics.
-        if (isMobile)
+        // An exported build — any platform, mobile or desktop — has no way to
+        // set FOUREXHEX_LOG, and the log it writes is the only diagnostic a
+        // player's bug report can carry, so start every category verbose.
+        // "template" is Godot's exported-build feature: false when running
+        // from the editor binary, which is how every dev launch and every
+        // FOUREXHEX_6AI* run starts, so those stay env-var-gated and quiet.
+        // The levels are only half of it — Trace/Debug/Info must also be
+        // compiled in, which the FOUREXHEX_LOGGING constant guarantees
+        // (see Log.cs).
+        if (LogDefaults.ShouldDefaultVerbose(spec, OS.HasFeature("template")))
         {
             foreach (Log.LogCategory cat in System.Enum.GetValues<Log.LogCategory>())
             {

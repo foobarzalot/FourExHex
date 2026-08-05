@@ -11,19 +11,27 @@ using System.Diagnostics;
 /// assembly while still reaching stdout in headless 6-AI runs.
 ///
 /// Two independent gates decide whether a message emits:
-///   1. Compile-time strip — <see cref="Trace"/>, <see cref="Debug"/>
-///      and <see cref="Info"/> are <c>[Conditional("DEBUG")]</c>, so
-///      the C# compiler removes the call AND its argument evaluation
-///      (interpolated strings included) from Release/exported builds.
-///      <see cref="Warn"/> and <see cref="Error"/> always compile and
-///      so survive into shipping builds.
+///   1. Compile-time strip — <see cref="Trace"/>, <see cref="Debug"/>,
+///      <see cref="Info"/> and <see cref="Since"/> are
+///      <c>[Conditional("FOUREXHEX_LOGGING")]</c>: when that constant is
+///      absent the C# compiler removes the call AND its argument
+///      evaluation (interpolated strings included). Every project holding
+///      call sites defines it in every configuration, so in practice they
+///      always compile — a shipping build's log is the only diagnostic a
+///      player's bug report can carry. Dropping the define is the kill
+///      switch. It is deliberately NOT <c>DEBUG</c>: that constant also
+///      gates the <c>#if DEBUG</c> CheatMenu hooks, so tying the two
+///      together would mean shipping a log or a cheat menu, never one
+///      without the other. <see cref="Warn"/> and <see cref="Error"/>
+///      carry no attribute and always compile.
 ///   2. Runtime level gate — each <see cref="LogCategory"/> has an
 ///      independent minimum <see cref="LogLevel"/>; a message emits
 ///      only if its level is at least the category's threshold.
 ///
 /// Defaults: every category starts at <see cref="LogLevel.Off"/>, so
 /// normal dev play is silent until <see cref="Configure"/> or
-/// <see cref="SetLevel"/> raises a category.
+/// <see cref="SetLevel"/> raises a category. Exported builds start every
+/// category verbose instead — see <see cref="LogDefaults"/>.
 /// </summary>
 public static class Log
 {
@@ -163,21 +171,21 @@ public static class Log
         }
     }
 
-    [Conditional("DEBUG")]
+    [Conditional("FOUREXHEX_LOGGING")]
     public static void Trace(LogCategory category, string message)
         => Emit(category, LogLevel.Trace, message);
 
-    [Conditional("DEBUG")]
+    [Conditional("FOUREXHEX_LOGGING")]
     public static void Debug(LogCategory category, string message)
         => Emit(category, LogLevel.Debug, message);
 
-    [Conditional("DEBUG")]
+    [Conditional("FOUREXHEX_LOGGING")]
     public static void Info(LogCategory category, string message)
         => Emit(category, LogLevel.Info, message);
 
-    // Warn/Error are NOT [Conditional] — they compile into shipping
-    // builds so genuine anomalies and the headless-run terminators
-    // still print.
+    // Warn/Error are NOT [Conditional] at all — they survive even if the
+    // logging constant is dropped, so genuine anomalies and the
+    // headless-run terminators always print.
     public static void Warn(LogCategory category, string message)
         => Emit(category, LogLevel.Warn, message);
 
@@ -186,12 +194,11 @@ public static class Log
 
     // Timing helpers. Stamp() always compiles (a cheap timestamp read,
     // portable across the Godot-free libraries that can't use Godot's
-    // Time). Since() is [Conditional("DEBUG")] like Debug — the whole
-    // call (subtraction, formatting, log) is stripped from Release, so
-    // it's free to leave in permanently and live in the debug APK.
+    // Time). Since() carries the same logging constant as Debug — the
+    // whole call (subtraction, formatting, log) strips together with it.
     public static long Stamp() => Stopwatch.GetTimestamp();
 
-    [Conditional("DEBUG")]
+    [Conditional("FOUREXHEX_LOGGING")]
     public static void Since(LogCategory category, string label, long stamp)
         => Debug(category, $"{label} {(Stamp() - stamp) * 1000.0 / Stopwatch.Frequency:F1}ms");
 

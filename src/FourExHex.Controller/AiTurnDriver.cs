@@ -568,7 +568,7 @@ public class AiTurnDriver
         _pendingAiAction = null;
     }
 
-    [Conditional("DEBUG")]
+    [Conditional("FOUREXHEX_LOGGING")]
     private void LogAction(AiAction action)
     {
         string actor = _state.Turns.CurrentPlayer.Name;

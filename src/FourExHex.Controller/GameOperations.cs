@@ -381,11 +381,11 @@ public class GameOperations
     /// <summary>
     /// One-line dump of per-player tile count and capital-bearing
     /// territory count, plus context — for debugging stuck game-end
-    /// conditions. The whole method is <c>[Conditional("DEBUG")]</c>
+    /// conditions. The whole method is <c>[Conditional("FOUREXHEX_LOGGING")]</c>
     /// so the body is stripped from Release; in dev it's runtime-
     /// gated via <see cref="Log.LogCategory.Turn"/> at Info.
     /// </summary>
-    [Conditional("DEBUG")]
+    [Conditional("FOUREXHEX_LOGGING")]
     private void LogGameEndDiagnostics(string context)
     {
         var tiles = new Dictionary<PlayerId, int>();
@@ -419,11 +419,11 @@ public class GameOperations
     /// One-line whole-map tree/grave census — the treepocalypse-incidence
     /// telemetry (issue #100). Emitted once per player-turn at turn end so a
     /// sweep can chart total trees vs. turn and correlate the terminal figure
-    /// against map settings. <c>[Conditional("DEBUG")]</c> so the grid walk is
+    /// against map settings. <c>[Conditional("FOUREXHEX_LOGGING")]</c> so the grid walk is
     /// stripped from Release; in dev it's runtime-gated on
     /// <see cref="Log.LogCategory.Tree"/> at Debug.
     /// </summary>
-    [Conditional("DEBUG")]
+    [Conditional("FOUREXHEX_LOGGING")]
     private void LogTreeCensus()
     {
         TreeCensus census = TreeCensus.Of(_state.Grid);
@@ -433,7 +433,7 @@ public class GameOperations
             $"owned={census.OwnedTrees} neutral={census.NeutralTrees}");
     }
 
-    [Conditional("DEBUG")]
+    [Conditional("FOUREXHEX_LOGGING")]
     private void LogTurnStart()
     {
         Player p = _state.Turns.CurrentPlayer;
@@ -1894,7 +1894,7 @@ public class GameOperations
     /// reconcile. Untouched capitals are omitted so the log stays
     /// readable even on large multi-player maps.
     /// </summary>
-    [Conditional("DEBUG")]
+    [Conditional("FOUREXHEX_LOGGING")]
     private void LogCaptureDiff(
         string actionDesc,
         Dictionary<HexCoord, (PlayerId Owner, int Gold)> oldCaps,

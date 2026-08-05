@@ -15,6 +15,20 @@
     <DefaultItemExcludes>$(DefaultItemExcludes);tests/**/*;src/**/*;tools/**/*</DefaultItemExcludes>
   </PropertyGroup>
 
+  <!--
+    Logging is compiled in for EVERY configuration, shipping included: a
+    release build's log is the only diagnostic a player's bug report can
+    carry. This assembly compiles all of scripts/, which holds the bulk of
+    the call sites, so omitting the define here would leave the largest
+    slice of the log stripped from exported builds. Deliberately its own
+    constant rather than DEBUG, which also gates the #if DEBUG CheatMenu
+    hooks in these same scene scripts — tying them together would mean
+    shipping a cheat menu to get a log. See Log.cs.
+  -->
+  <PropertyGroup>
+    <DefineConstants>$(DefineConstants);FOUREXHEX_LOGGING</DefineConstants>
+  </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="src\FourExHex.Model\FourExHex.Model.csproj" />
     <ProjectReference Include="src\FourExHex.Controller\FourExHex.Controller.csproj" />

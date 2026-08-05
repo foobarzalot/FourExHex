@@ -6,6 +6,11 @@
     <LangVersion>12</LangVersion>
     <IsPackable>false</IsPackable>
     <RootNamespace>FourExHex.Tests</RootNamespace>
+    <!--
+      Match the libraries under test so a Log call written in a test
+      compiles exactly as one written in src/ does. See Log.cs.
+    -->
+    <DefineConstants>$(DefineConstants);FOUREXHEX_LOGGING</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>

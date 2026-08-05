@@ -2,6 +2,8 @@
 // Copyright (c) 2026 FooBarzalot
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Reflection;
 using Xunit;
 
 namespace FourExHex.Tests;
@@ -222,5 +224,69 @@ public class LogTests
                 Assert.False(Log.IsEnabled(c, Log.LogLevel.Error));
             }
         });
+    }
+
+    // --- Compile-time strip contract ------------------------------------
+    //
+    // Which constant gates Trace/Debug/Info decides whether a shipping
+    // build logs anything at all: keyed to DEBUG they vanish from every
+    // ExportRelease build (the bug-report log arrives empty), and DEBUG
+    // cannot simply be defined there because it also gates the CheatMenu
+    // via #if DEBUG. These pin the constant by reflection — the property
+    // is otherwise invisible to a test suite that always builds with
+    // logging compiled in.
+
+    private static string? ConditionOf(string methodName)
+    {
+        MethodInfo method = typeof(Log).GetMethod(
+            methodName, BindingFlags.Public | BindingFlags.Static)
+            ?? throw new InvalidOperationException($"Log.{methodName} not found");
+        ConditionalAttribute? conditional =
+            method.GetCustomAttribute<ConditionalAttribute>();
+        return conditional?.ConditionString;
+    }
+
+    [Theory]
+    [InlineData("Trace")]
+    [InlineData("Debug")]
+    [InlineData("Info")]
+    [InlineData("Since")]
+    public void StrippableLevels_GateOnTheLoggingConstant_NotDebug(string methodName)
+    {
+        Assert.Equal("FOUREXHEX_LOGGING", ConditionOf(methodName));
+    }
+
+    [Theory]
+    [InlineData("Warn")]
+    [InlineData("Error")]
+    public void WarnAndError_AreNeverConditional(string methodName)
+    {
+        Assert.Null(ConditionOf(methodName));
+    }
+
+    // --- Shipping-build verbosity default -------------------------------
+
+    [Fact]
+    public void ExportedBuild_WithNoSpec_DefaultsVerbose()
+    {
+        Assert.True(LogDefaults.ShouldDefaultVerbose(null, isExportedBuild: true));
+        Assert.True(LogDefaults.ShouldDefaultVerbose("", isExportedBuild: true));
+        Assert.True(LogDefaults.ShouldDefaultVerbose("   ", isExportedBuild: true));
+    }
+
+    [Fact]
+    public void ExportedBuild_WithAnExplicitSpec_LeavesItAlone()
+    {
+        Assert.False(LogDefaults.ShouldDefaultVerbose("Ai:Debug", isExportedBuild: true));
+    }
+
+    [Fact]
+    public void EditorRun_NeverDefaultsVerbose()
+    {
+        // Dev launches and every FOUREXHEX_6AI* run start from the editor
+        // binary; going verbose there would make normal play noisy and
+        // perturb the seeded determinism diff.
+        Assert.False(LogDefaults.ShouldDefaultVerbose(null, isExportedBuild: false));
+        Assert.False(LogDefaults.ShouldDefaultVerbose("Ai:Debug", isExportedBuild: false));
     }
 }

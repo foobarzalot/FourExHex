@@ -24,6 +24,18 @@
     Log.Trace/Debug/Info call and Debug.Assert from on-device debug
     builds) and ExportRelease would compile with optimizations OFF.
   -->
+  <!--
+    Logging is compiled in for EVERY configuration, shipping included: a
+    release build's log is the only diagnostic a player's bug report can
+    carry. Deliberately its own constant rather than DEBUG, which also
+    gates the #if DEBUG CheatMenu hooks — tying them together would mean
+    shipping a cheat menu to get a log. Dropping this define is the kill
+    switch; see Log.cs.
+  -->
+  <PropertyGroup>
+    <DefineConstants>$(DefineConstants);FOUREXHEX_LOGGING</DefineConstants>
+  </PropertyGroup>
+
   <PropertyGroup Condition="'$(Configuration)' == 'ExportDebug'">
     <DefineConstants>$(DefineConstants);DEBUG</DefineConstants>
     <Optimize>false</Optimize>

@@ -14,6 +14,7 @@ config/name="FourExHex"
 config/description="Hexagon Strategy Game"
 config/quit_on_go_back=false
 run/main_scene="res://scenes/main_menu.tscn"
+run/flush_stdout_on_print=true
 config/features=PackedStringArray("4.7", "C#", "GL Compatibility")
 config/icon="res://icon.svg"
 boot_splash/show_image=true

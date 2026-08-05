@@ -90,8 +90,8 @@ public static class StepPacing
     /// instant/paced continuations, the track store, the silent-mode
     /// sync (<c>RefreshSilentMode</c> for live AI, <c>SetSilentMode</c>
     /// for replay), and the two <c>[speed]</c> transition log lines
-    /// (kept as callbacks so their <c>[Conditional("DEBUG")]</c>
-    /// stripping and lazy interpolation are preserved).
+    /// (kept as callbacks so their conditional stripping and lazy
+    /// interpolation are preserved).
     /// Ordering is load-bearing: <paramref name="setTrack"/> MUST run
     /// before the pacer dispatch — under <c>SynchronousAiPacer</c> the
     /// dispatch runs the entire continuation chain inline, and nested
