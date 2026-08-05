@@ -502,15 +502,22 @@ public class GameOperations
         }
 
         // The neutral seat closes its round: stamp the viking bookkeeping
-        // and check for a total wipeout (the raiders destroyed every
-        // capital → the Vikings win outright). Declared HERE, before the
-        // advance seam, so the eliminated-skip loop never spins on an
-        // all-dead roster.
+        // (Viking Raiders only — the neutral seat runs in every mode, and a
+        // stamp in a non-viking game would leak the viking block into that
+        // game's save and canonical string) and check for a total wipeout
+        // (the raiders destroyed every capital → the Vikings win outright).
+        // Declared HERE, before the advance seam, so the eliminated-skip
+        // loop never spins on an all-dead roster.
         if (_state.Turns.IsNeutralSeat && !_session.IsGameOver)
         {
-            _state.Vikings.LastCompletedRound = _state.Turns.TurnNumber;
-            if (_state.Mode == GameMode.VikingRaiders
-                || VikingRaidersRules.LandedRaidersExist(_state))
+            bool vikingMode = _state.Mode == GameMode.VikingRaiders;
+            if (vikingMode)
+            {
+                _state.Vikings.LastCompletedRound = _state.Turns.TurnNumber;
+                Log.Debug(Log.LogCategory.Viking,
+                    $"[viking] T{_state.Turns.TurnNumber} round bookkeeping stamped");
+            }
+            if (vikingMode || VikingRaidersRules.LandedRaidersExist(_state))
             {
                 Log.Info(Log.LogCategory.Viking,
                     $"[viking] T{_state.Turns.TurnNumber} turn complete: " +

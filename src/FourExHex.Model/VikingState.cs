@@ -39,8 +39,11 @@ public class VikingState
 
     /// <summary>
     /// The round (turn number) whose viking pseudo-turn has completed; 0
-    /// initially. The controller runs the viking turn once per round by
-    /// comparing this against the current turn number.
+    /// initially. Diagnostic bookkeeping — stamped by the controller when the
+    /// neutral seat closes a round in Viking Raiders, and read only by the
+    /// save round-trip and the canonical checksum. Stays 0 in every other
+    /// mode, which is what keeps their saves and canonical strings free of
+    /// the viking block.
     /// </summary>
     public int LastCompletedRound { get; set; }
 

@@ -1288,7 +1288,7 @@ public sealed class SaveData
     /// <summary>
     /// The selectable game mode. Null for
     /// <see cref="GameMode.Freeform"/> games (which load as Freeform);
-    /// present only for Rising Tides. The grown water set
+    /// present for every other mode. Rising Tides' grown water set
     /// rides in <see cref="Water"/>, so no separate flood-progress field is
     /// needed. <see cref="WaterCoords"/> is recomputed on replay anyway.
     /// </summary>

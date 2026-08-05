@@ -652,4 +652,33 @@ public partial class GameControllerTests
                 t != null && t.Owner.IsNone,
                 $"neutral territory (size={t?.Size}) was highlighted during replay"));
     }
+
+    /// <summary>
+    /// The neutral seat closes a round in every mode, but the viking round
+    /// stamp belongs to Viking Raiders alone: a Freeform game must leave
+    /// <see cref="VikingState.LastCompletedRound"/> at 0 so its save omits the
+    /// viking fields and its canonical string carries no VK block — the
+    /// invariants asserted by SaveSerializer's and GameStateChecksum's own
+    /// comments (#222). SaveSerializerTests.NonVikingSave_OmitsVikingFields
+    /// pins the same contract at the serializer level, but builds its state
+    /// directly and never plays a round, so only this one sees the leak.
+    /// </summary>
+    [Fact]
+    public void Freeform_NeutralSeat_DoesNotStampVikingBookkeeping()
+    {
+        ControllerHarness h = TestHelpers.BuildControllerGame();
+        Assert.Equal(GameMode.Freeform, h.State.Mode);
+
+        h.Hud.ClickEndTurn(); // Red
+        h.Hud.ClickEndTurn(); // Blue — the neutral seat closes round 1
+        h.Hud.ClickEndTurn(); // Red
+        h.Hud.ClickEndTurn(); // Blue — and round 2
+        Assert.Equal(3, h.State.Turns.TurnNumber);
+
+        Assert.Equal(0, h.State.Vikings.LastCompletedRound);
+        Assert.DoesNotContain(
+            "Viking",
+            SaveSerializer.Serialize(h.State, 42, h.Players, "freeform", 100));
+        Assert.DoesNotContain("VK|", GameStateChecksum.Stringify(h.State));
+    }
 }
