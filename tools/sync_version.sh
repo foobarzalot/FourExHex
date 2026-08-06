@@ -51,7 +51,9 @@ WINVER="${WIN_MAJOR:-0}.${WIN_MINOR:-0}.${WIN_PATCH:-0}.${BUILD}"
 # product_version, which are distinct keys). macOS and iOS both carry
 # application/short_version + /version and both want the same value, so the
 # global substitution is correct for both.
-sed -i '' -E \
+# -i.bak (suffix attached) is the in-place form both BSD and GNU sed accept,
+# so this runs on macOS and Linux CI runners alike.
+sed -i.bak -E \
   -e "s|^application/short_version=\".*\"|application/short_version=\"${MARKETING}\"|" \
   -e "s|^application/version=\".*\"|application/version=\"${BUILD}\"|" \
   -e "s|^version/name=\".*\"|version/name=\"${MARKETING}\"|" \
@@ -59,5 +61,6 @@ sed -i '' -E \
   -e "s|^application/file_version=\".*\"|application/file_version=\"${WINVER}\"|" \
   -e "s|^application/product_version=\".*\"|application/product_version=\"${WINVER}\"|" \
   "$PRESETS"
+rm -f "$PRESETS.bak"
 
 echo "==> Synced export_presets.cfg to AppVersion: marketing=${MARKETING} build=${BUILD} (windows=${WINVER})"

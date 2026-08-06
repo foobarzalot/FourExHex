@@ -29,12 +29,16 @@ case "$MODE" in
 esac
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-GODOT="/Applications/Godot_mono.app/Contents/MacOS/Godot"
+GODOT="${GODOT:-/Applications/Godot_mono.app/Contents/MacOS/Godot}"
 PRESET="macOS"
 OUT="$PROJECT_DIR/build/macos/FourExHex.app"
 
-export DOTNET_ROOT="$HOME/.dotnet"
-export PATH="$HOME/.dotnet:$PATH"
+# CI runners point GODOT / DOTNET_ROOT elsewhere via env; the defaults match
+# this Mac's local install. Skip the user-local .NET entirely when absent.
+if [[ -n "${DOTNET_ROOT:-}" || -d "$HOME/.dotnet" ]]; then
+  export DOTNET_ROOT="${DOTNET_ROOT:-$HOME/.dotnet}"
+  export PATH="$DOTNET_ROOT:$PATH"
+fi
 
 echo "==> Syncing export_presets.cfg version from scripts/AppVersion.cs"
 "$PROJECT_DIR/tools/sync_version.sh"

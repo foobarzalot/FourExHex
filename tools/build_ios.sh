@@ -103,7 +103,7 @@ else
 fi
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-GODOT="/Applications/Godot_mono.app/Contents/MacOS/Godot"
+GODOT="${GODOT:-/Applications/Godot_mono.app/Contents/MacOS/Godot}"
 PRESET="iOS"
 BUILD_DIR="$PROJECT_DIR/build/ios"
 XCODEPROJ="$BUILD_DIR/FourExHex.xcodeproj"
@@ -116,8 +116,12 @@ EXPORT_OPTIONS_LIVE="$BUILD_DIR/ExportOptions.plist"
 
 CREDS="$HOME/Library/Application Support/Godot/keystores/fourexhex-ios-creds.sh"
 
-export DOTNET_ROOT="$HOME/.dotnet"
-export PATH="$HOME/.dotnet:$PATH"
+# CI runners point GODOT / DOTNET_ROOT elsewhere via env; the defaults match
+# this Mac's local install. Skip the user-local .NET entirely when absent.
+if [[ -n "${DOTNET_ROOT:-}" || -d "$HOME/.dotnet" ]]; then
+  export DOTNET_ROOT="${DOTNET_ROOT:-$HOME/.dotnet}"
+  export PATH="$DOTNET_ROOT:$PATH"
+fi
 
 # ---- Fail-fast prerequisite checks ----
 fail() { echo "ERROR: $1" >&2; exit 1; }
@@ -147,6 +151,20 @@ if (( UPLOAD )) && [[ ! -f "$ASC_KEY_FILE" ]]; then
   fail "App Store Connect API key file missing at $ASC_KEY_FILE — move the .p8 there or run with --no-upload"
 fi
 
+# On this Mac, xcodebuild's -allowProvisioningUpdates authenticates through the
+# logged-in Xcode account. CI has no logged-in Xcode, so when ASC_API_KEY_PATH
+# is set (pointing at the .p8) the xcodebuild calls authenticate with the App
+# Store Connect API key instead. Unset locally -> no args added.
+XCODEBUILD_AUTH=()
+if [[ -n "${ASC_API_KEY_PATH:-}" ]]; then
+  [[ -f "$ASC_API_KEY_PATH" ]] || fail "ASC_API_KEY_PATH is set but no file exists at $ASC_API_KEY_PATH"
+  XCODEBUILD_AUTH=(
+    -authenticationKeyPath "$ASC_API_KEY_PATH"
+    -authenticationKeyID "$ASC_API_KEY_ID"
+    -authenticationKeyIssuerID "$ASC_API_ISSUER_ID"
+  )
+fi
+
 # ---- Team ID injection / restore trap ----
 restore_presets() {
   if [[ -f "$PRESETS_BAK" ]]; then
@@ -163,9 +181,10 @@ echo "==> Syncing export_presets.cfg version from scripts/AppVersion.cs"
 "$PROJECT_DIR/tools/sync_version.sh"
 
 cp "$PRESETS_CFG" "$PRESETS_BAK"
-# In-place edit: empty app_store_team_id → real Team ID. Bracket regex
-# protects against macOS sed eating the trailing newline.
-sed -i '' "s|^application/app_store_team_id=\"\"\$|application/app_store_team_id=\"${IOS_TEAM_ID}\"|" "$PRESETS_CFG"
+# In-place edit: empty app_store_team_id → real Team ID. -i.sedbak is the
+# in-place form both BSD and GNU sed accept (CI runners include Linux).
+sed -i.sedbak "s|^application/app_store_team_id=\"\"\$|application/app_store_team_id=\"${IOS_TEAM_ID}\"|" "$PRESETS_CFG"
+rm -f "$PRESETS_CFG.sedbak"
 grep -q "^application/app_store_team_id=\"${IOS_TEAM_ID}\"\$" "$PRESETS_CFG" \
   || fail "Team ID substitution into $PRESETS_CFG failed — preset may have moved"
 
@@ -202,8 +221,9 @@ run_step "$GODOT" --headless --path "$PROJECT_DIR" "$GODOT_FLAG" "$PRESET" "$XCO
 # signs with Apple Distribution as part of producing the .ipa, which is
 # the canonical Apple distribution workflow. No-op for Debug (which has
 # "Apple Development" — matches auto-signing's archive pick).
-sed -i '' 's|CODE_SIGN_IDENTITY = "Apple Distribution";|CODE_SIGN_IDENTITY = "";|g' \
+sed -i.sedbak 's|CODE_SIGN_IDENTITY = "Apple Distribution";|CODE_SIGN_IDENTITY = "";|g' \
   "$XCODEPROJ/project.pbxproj"
+rm -f "$XCODEPROJ/project.pbxproj.sedbak"
 grep -q 'CODE_SIGN_IDENTITY = "";' "$XCODEPROJ/project.pbxproj" \
   || fail "CODE_SIGN_IDENTITY blanking in project.pbxproj failed — the exporter may no longer hardcode 'Apple Distribution'; re-check whether this sed is still needed"
 
@@ -218,6 +238,7 @@ xcodebuild \
   -destination "generic/platform=iOS" \
   -archivePath "$XCARCHIVE" \
   -allowProvisioningUpdates \
+  ${XCODEBUILD_AUTH[@]+"${XCODEBUILD_AUTH[@]}"} \
   DEVELOPMENT_TEAM="$IOS_TEAM_ID" \
   archive \
   | sed -E 's/^/    /' &
@@ -235,6 +256,7 @@ xcodebuild \
   -exportPath "$BUILD_DIR" \
   -exportOptionsPlist "$EXPORT_OPTIONS_LIVE" \
   -allowProvisioningUpdates \
+  ${XCODEBUILD_AUTH[@]+"${XCODEBUILD_AUTH[@]}"} \
   | sed -E 's/^/    /' &
 wait $! || fail "xcodebuild -exportArchive failed"
 [[ -f "$IPA" ]] || fail "xcodebuild -exportArchive did not produce $IPA"

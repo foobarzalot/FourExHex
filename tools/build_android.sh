@@ -57,7 +57,7 @@ case "$MODE" in
 esac
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-GODOT="/Applications/Godot_mono.app/Contents/MacOS/Godot"
+GODOT="${GODOT:-/Applications/Godot_mono.app/Contents/MacOS/Godot}"
 PRESET="Android"
 if [[ "$MODE" == "aab" ]]; then
   OUT="$PROJECT_DIR/build/android/FourExHex-release.aab"
@@ -76,8 +76,12 @@ KSDIR="$HOME/Library/Application Support/Godot/keystores"
 CREDS="$KSDIR/fourexhex-android-creds.sh"
 JAVA_HOME_DEFAULT="/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"
 
-export DOTNET_ROOT="$HOME/.dotnet"
-export PATH="$HOME/.dotnet:$PATH"
+# CI runners point GODOT / DOTNET_ROOT elsewhere via env; the defaults match
+# this Mac's local install. Skip the user-local .NET entirely when absent.
+if [[ -n "${DOTNET_ROOT:-}" || -d "$HOME/.dotnet" ]]; then
+  export DOTNET_ROOT="${DOTNET_ROOT:-$HOME/.dotnet}"
+  export PATH="$DOTNET_ROOT:$PATH"
+fi
 export JAVA_HOME="${JAVA_HOME:-$JAVA_HOME_DEFAULT}"
 
 # ---- Fail-fast prerequisite checks (this script does NOT install anything) ----
@@ -145,7 +149,8 @@ if [[ "$MODE" == "aab" ]]; then
   }
   trap restore_presets EXIT
   cp "$PRESETS_CFG" "$PRESETS_BAK"
-  sed -i '' "s|^gradle_build/export_format=0\$|gradle_build/export_format=1|" "$PRESETS_CFG"
+  sed -i.sedbak "s|^gradle_build/export_format=0\$|gradle_build/export_format=1|" "$PRESETS_CFG"
+  rm -f "$PRESETS_CFG.sedbak"
   grep -q "^gradle_build/export_format=1\$" "$PRESETS_CFG" \
     || fail "export_format substitution into $PRESETS_CFG failed — preset may have moved"
 fi
