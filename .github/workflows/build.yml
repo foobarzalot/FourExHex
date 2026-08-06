@@ -1,0 +1,236 @@
+# Godot export builds for the four shipping platforms, reusing the same
+# tools/build_*.sh scripts used locally (CI overrides GODOT / DOTNET_ROOT via
+# env; see the header comments in those scripts).
+#
+# Triggers:
+#   - workflow_dispatch: pick a branch + platform set in the Actions UI.
+#   - pull_request with the `build-artifacts` label: builds attach to the PR's
+#     checks as downloadable artifacts. Label-gated so ordinary PRs stay fast.
+#
+# CI never bumps the build number — it builds whatever scripts/AppVersion.cs
+# says. Bumps stay with the local /release, /testflight, /play, /android skills.
+#
+# Secrets used by the android job (see RELEASE.md "CI secrets"):
+#   ANDROID_DEBUG_KEYSTORE / ANDROID_RELEASE_KEYSTORE            base64 .keystore
+#   ANDROID_DEBUG_KEYSTORE_USER / ANDROID_RELEASE_KEYSTORE_USER  key alias
+#   ANDROID_DEBUG_KEYSTORE_PASSWORD / ANDROID_RELEASE_KEYSTORE_PASSWORD
+name: Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: Which platforms to build
+        type: choice
+        default: all
+        options: [all, macos, windows, android]
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  GODOT_VERSION: 4.7.1
+
+jobs:
+  macos:
+    if: >-
+      (github.event_name == 'workflow_dispatch' &&
+       (inputs.platforms == 'all' || inputs.platforms == 'macos')) ||
+      (github.event_name == 'pull_request' &&
+       contains(github.event.pull_request.labels.*.name, 'build-artifacts'))
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - uses: chickensoft-games/setup-godot@v2
+        with:
+          version: ${{ env.GODOT_VERSION }}
+          use-dotnet: true
+          include-templates: true
+
+      - name: Resolve Godot binary path
+        run: echo "GODOT=$(command -v godot)" >> "$GITHUB_ENV"
+
+      - name: Import assets (fresh checkout has no .godot cache)
+        run: '"$GODOT" --headless --path . --import'
+
+      - name: Build macOS app
+        run: tools/build_macos.sh release
+
+      # upload-artifact strips symlinks and exec bits from a bare .app tree;
+      # ditto-zip first so the bundle survives the round trip.
+      - name: Zip app bundle
+        run: ditto -c -k --sequesterRsrc build/macos/FourExHex.app FourExHex-macos.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FourExHex-macos
+          path: FourExHex-macos.zip
+          retention-days: 14
+
+  windows:
+    if: >-
+      (github.event_name == 'workflow_dispatch' &&
+       (inputs.platforms == 'all' || inputs.platforms == 'windows')) ||
+      (github.event_name == 'pull_request' &&
+       contains(github.event.pull_request.labels.*.name, 'build-artifacts'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - uses: chickensoft-games/setup-godot@v2
+        with:
+          version: ${{ env.GODOT_VERSION }}
+          use-dotnet: true
+          include-templates: true
+
+      - name: Resolve Godot binary path
+        run: echo "GODOT=$(command -v godot)" >> "$GITHUB_ENV"
+
+      - name: Import assets (fresh checkout has no .godot cache)
+        run: '"$GODOT" --headless --path . --import'
+
+      - name: Build Windows exe
+        run: tools/build_windows.sh release
+
+      # The whole directory ships (sidecar .NET DLLs next to the exe).
+      - name: Zip build directory
+        run: cd build && zip -qr ../FourExHex-windows.zip windows
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FourExHex-windows
+          path: FourExHex-windows.zip
+          retention-days: 14
+
+  android:
+    # Fork PRs get no secrets, so the PR-triggered path additionally requires
+    # the head branch to live in this repo.
+    if: >-
+      (github.event_name == 'workflow_dispatch' &&
+       (inputs.platforms == 'all' || inputs.platforms == 'android')) ||
+      (github.event_name == 'pull_request' &&
+       contains(github.event.pull_request.labels.*.name, 'build-artifacts') &&
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - uses: chickensoft-games/setup-godot@v2
+        with:
+          version: ${{ env.GODOT_VERSION }}
+          use-dotnet: true
+          include-templates: true
+
+      - name: Resolve Godot binary path
+        run: echo "GODOT=$(command -v godot)" >> "$GITHUB_ENV"
+
+      # build_android.sh checks these exact SDK components (compileSdk 36,
+      # pinned NDK) but installs nothing itself.
+      - name: Install Android SDK components
+        run: |
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" "platforms;android-36" "ndk;29.0.14206865" "build-tools;36.0.0" > /dev/null
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+
+      # Godot's Android exporter reads the SDK/JDK locations from the editor
+      # settings file, not from env.
+      - name: Write Godot editor settings
+        run: |
+          mkdir -p ~/.config/godot
+          cat > ~/.config/godot/editor_settings-4.7.tres <<EOF
+          [gd_resource type="EditorSettings" format=3]
+
+          [resource]
+          export/android/android_sdk_path = "$ANDROID_HOME"
+          export/android/java_sdk_path = "$JAVA_HOME"
+          EOF
+
+      # build_android.sh sources this exact path; Godot reads the keystore
+      # location + passwords from the GODOT_ANDROID_KEYSTORE_* env vars it sets.
+      - name: Materialize keystores and creds file
+        env:
+          DEBUG_KEYSTORE_B64: ${{ secrets.ANDROID_DEBUG_KEYSTORE }}
+          RELEASE_KEYSTORE_B64: ${{ secrets.ANDROID_RELEASE_KEYSTORE }}
+          DEBUG_USER: ${{ secrets.ANDROID_DEBUG_KEYSTORE_USER }}
+          DEBUG_PASSWORD: ${{ secrets.ANDROID_DEBUG_KEYSTORE_PASSWORD }}
+          RELEASE_USER: ${{ secrets.ANDROID_RELEASE_KEYSTORE_USER }}
+          RELEASE_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEYSTORE_PASSWORD }}
+        run: |
+          KSDIR="$HOME/Library/Application Support/Godot/keystores"
+          mkdir -p "$KSDIR"
+          printf '%s' "$DEBUG_KEYSTORE_B64"   | base64 -d > "$KSDIR/debug.keystore"
+          printf '%s' "$RELEASE_KEYSTORE_B64" | base64 -d > "$KSDIR/release.keystore"
+          cat > "$KSDIR/fourexhex-android-creds.sh" <<EOF
+          export GODOT_ANDROID_KEYSTORE_DEBUG_PATH="$KSDIR/debug.keystore"
+          export GODOT_ANDROID_KEYSTORE_DEBUG_USER="$DEBUG_USER"
+          export GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD="$DEBUG_PASSWORD"
+          export GODOT_ANDROID_KEYSTORE_RELEASE_PATH="$KSDIR/release.keystore"
+          export GODOT_ANDROID_KEYSTORE_RELEASE_USER="$RELEASE_USER"
+          export GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD="$RELEASE_PASSWORD"
+          EOF
+
+      - name: Import assets (fresh checkout has no .godot cache)
+        run: '"$GODOT" --headless --path . --import'
+
+      - name: Build Android APK
+        run: tools/build_android.sh release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FourExHex-android-apk
+          path: build/android/FourExHex-release.apk
+          retention-days: 14
