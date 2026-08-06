@@ -1,0 +1,39 @@
+# Runs the full xUnit suite on every push to main and every PR.
+#
+# The test project (tests/FourExHex.Tests.csproj) is deliberately Godot-free —
+# it references only the Model/Controller/ViewMath class libraries — so this
+# job needs no Godot install. The explicit csproj path matters: a bare
+# `dotnet test` at the repo root resolves FourExHex.sln, which drags in the
+# Godot.NET.Sdk game project for no benefit here.
+#
+# Env-gated suites (FOUREXHEX_CAMPAIGN_SWEEP, FOUREXHEX_AI_MEASURE, ...)
+# self-skip when their vars are unset, so a plain run is safe and fast.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Run unit tests
+        run: dotnet test tests/FourExHex.Tests.csproj -c Release
