@@ -23,7 +23,11 @@ on:
         description: Which platforms to build
         type: choice
         default: all
-        options: [all, macos, windows, android]
+        options: [all, macos, windows, android, ios]
+      upload_testflight:
+        description: Upload the iOS build to TestFlight (uses the committed build number; fails if that number is already on ASC)
+        type: boolean
+        default: false
   pull_request:
     types: [opened, synchronize, reopened, labeled]
 
@@ -233,4 +237,90 @@ jobs:
         with:
           name: FourExHex-android-apk
           path: build/android/FourExHex-release.apk
+          retention-days: 14
+
+  ios:
+    # Fork PRs get no secrets, so the PR-triggered path additionally requires
+    # the head branch to live in this repo.
+    #
+    # Signing model (mirrors the local pipeline): the archive step signs with
+    # the imported Apple Development identity; the exportArchive step uses
+    # Apple's cloud-managed distribution certificate via the ASC API key
+    # (ASC_API_KEY_PATH activates build_ios.sh's -authenticationKey* args).
+    # PR builds export a development-method .ipa (installable tethered via
+    # `xcrun devicectl device install app`); dispatch builds export for
+    # app-store-connect, optionally uploading to TestFlight.
+    if: >-
+      (github.event_name == 'workflow_dispatch' &&
+       (inputs.platforms == 'all' || inputs.platforms == 'ios')) ||
+      (github.event_name == 'pull_request' &&
+       contains(github.event.pull_request.labels.*.name, 'build-artifacts') &&
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - uses: chickensoft-games/setup-godot@v2
+        with:
+          version: ${{ env.GODOT_VERSION }}
+          use-dotnet: true
+          include-templates: true
+
+      - name: Resolve Godot binary path
+        run: echo "GODOT=$(command -v godot)" >> "$GITHUB_ENV"
+
+      - name: Import Apple Development signing identity
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.IOS_CERTS_P12 }}
+          p12-password: ${{ secrets.IOS_CERTS_P12_PASSWORD }}
+
+      # build_ios.sh sources the creds file from this exact path; altool and
+      # xcodebuild both find the .p8 via its standard search path + env.
+      - name: Materialize ASC API key and creds file
+        env:
+          ASC_KEY_B64: ${{ secrets.ASC_API_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_ISSUER: ${{ secrets.ASC_API_ISSUER_ID }}
+          TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+        run: |
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          printf '%s' "$ASC_KEY_B64" | base64 -d > "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          KSDIR="$HOME/Library/Application Support/Godot/keystores"
+          mkdir -p "$KSDIR"
+          cat > "$KSDIR/fourexhex-ios-creds.sh" <<EOF
+          export ASC_API_KEY_ID="$ASC_KEY_ID"
+          export ASC_API_ISSUER_ID="$ASC_ISSUER"
+          export IOS_TEAM_ID="$TEAM_ID"
+          EOF
+          echo "ASC_API_KEY_PATH=$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8" >> "$GITHUB_ENV"
+
+      - name: Import assets (fresh checkout has no .godot cache)
+        run: '"$GODOT" --headless --path . --import'
+
+      - name: Build iOS ipa
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            tools/build_ios.sh release --dev-ipa
+          elif [[ "${{ inputs.upload_testflight }}" == "true" ]]; then
+            tools/build_ios.sh release
+          else
+            tools/build_ios.sh release --no-upload
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FourExHex-ios-ipa
+          path: build/ios/FourExHex.ipa
           retention-days: 14

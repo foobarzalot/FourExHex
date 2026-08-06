@@ -51,6 +51,10 @@
 #                `app-store-connect`), skip the App Store Connect upload, and
 #                install onto the connected USB device via `xcrun devicectl`.
 #                Device must be in Developer Mode and trusted on this Mac.
+#   --dev-ipa    Sign for `development` distribution like --tethered but stop
+#                after producing the .ipa (no device install, no upload). Used
+#                by CI PR builds: the artifact installs tethered later via
+#                `xcrun devicectl device install app`.
 set -euo pipefail
 
 # ---- Own process group, so a kill takes the whole build tree down ----
@@ -84,10 +88,12 @@ run_step() {
 MODE="${1:-release}"
 UPLOAD=1
 TETHERED=0
+DEV_IPA=0
 for arg in "$@"; do
   case "$arg" in
     --no-upload) UPLOAD=0 ;;
     --tethered)  TETHERED=1; UPLOAD=0 ;;
+    --dev-ipa)   DEV_IPA=1;  UPLOAD=0 ;;
   esac
 done
 case "$MODE" in
@@ -96,7 +102,7 @@ case "$MODE" in
   *) echo "ERROR: unknown mode '$MODE' (use 'debug' or 'release')" >&2; exit 2 ;;
 esac
 
-if (( TETHERED )); then
+if (( TETHERED || DEV_IPA )); then
   EXPORT_METHOD="development"
 else
   EXPORT_METHOD="app-store-connect"
@@ -311,6 +317,13 @@ for d in data.get("result", {}).get("devices", []):
   echo "    Read live device logs with:"
   echo "      xcrun devicectl device process launch --console --device $DEVICE_UDID com.foobarzalot.fourexhex"
   echo "    Or open Console.app → filter by process 'FourExHex' for the SafeArea/DisplayScale lines."
+  exit 0
+fi
+
+if (( DEV_IPA )); then
+  echo "==> --dev-ipa set; development-signed .ipa ready (no install, no upload)."
+  echo "    Install onto a tethered device with:"
+  echo "      xcrun devicectl device install app --device <udid> \"$IPA\""
   exit 0
 fi
 
