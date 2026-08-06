@@ -218,7 +218,10 @@ Two workflows in `.github/workflows/`:
   (`ubuntu-latest`, release APK signed with the real release keystore), `ios`
   (`macos-latest`, `.ipa`). Two triggers:
   - **Manual**: Actions → Build → Run workflow; pick a branch, a platform set,
-    and (iOS only) whether to upload to TestFlight.
+    and optionally the store uploads: `upload_testflight` (iOS) and
+    `upload_play` (Android — switches that job from a release APK to an AAB,
+    which is uploaded to the Play internal-testing track via
+    `tools/upload_play.sh` and also kept as a workflow artifact).
   - **PR label**: adding the `build-artifacts` label to a PR builds all
     platforms and attaches downloadable artifacts to the PR's checks. PR iOS
     builds are `development`-method (`build_ios.sh --dev-ipa`) so the `.ipa`
@@ -228,9 +231,11 @@ Two workflows in `.github/workflows/`:
 
 **CI never bumps the build number.** Every CI build stamps whatever
 `scripts/AppVersion.cs` says; bumps remain the job of the local `/release`,
-`/testflight`, `/play`, and `/android` skills. A TestFlight upload of a build
-number already on App Store Connect fails at the altool step — that is the
-guard, not a bug.
+`/testflight`, `/play`, and `/android` skills. A store upload of a build
+number the store has already seen fails loudly — TestFlight at the altool
+step, Play at the bundle-upload step — that is the guard, not a bug. The
+intended flow for either checkbox is: bump + commit + push locally first,
+then dispatch.
 
 **iOS signing model**: the archive step signs with the imported Apple
 Development identity; distribution signing happens at `exportArchive` via
@@ -250,6 +255,7 @@ Set on the repo via `gh secret set <NAME>` (all present as of 2026-08-05):
 | `IOS_CERTS_P12_PASSWORD` | the `-P` password used for that export | chosen at export time |
 | `ASC_API_KEY_P8` | base64 of `~/.appstoreconnect/private_keys/AuthKey_<keyid>.p8` | base64 the file |
 | `ASC_API_KEY_ID` / `ASC_API_ISSUER_ID` / `IOS_TEAM_ID` | the values exported by `~/Library/Application Support/Godot/keystores/fourexhex-ios-creds.sh` | copy from the creds file |
+| `PLAY_SERVICE_ACCOUNT_JSON` | base64 of `~/Library/Application Support/Godot/keystores/fourexhex-play-service-account.json` | `base64 -i <json> \| gh secret set PLAY_SERVICE_ACCOUNT_JSON` |
 
 ## 2. Installing to a device
 

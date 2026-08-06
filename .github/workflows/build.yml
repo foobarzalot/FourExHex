@@ -14,6 +14,7 @@
 #   ANDROID_DEBUG_KEYSTORE / ANDROID_RELEASE_KEYSTORE            base64 .keystore
 #   ANDROID_DEBUG_KEYSTORE_USER / ANDROID_RELEASE_KEYSTORE_USER  key alias
 #   ANDROID_DEBUG_KEYSTORE_PASSWORD / ANDROID_RELEASE_KEYSTORE_PASSWORD
+#   PLAY_SERVICE_ACCOUNT_JSON  base64 service-account JSON (upload_play only)
 name: Build
 
 on:
@@ -26,6 +27,10 @@ on:
         options: [all, macos, windows, android, ios]
       upload_testflight:
         description: Upload the iOS build to TestFlight (uses the committed build number; fails if that number is already on ASC)
+        type: boolean
+        default: false
+      upload_play:
+        description: Build an AAB and upload it to Play internal testing (uses the committed build number; fails if that versionCode is already on Play)
         type: boolean
         default: false
   pull_request:
@@ -230,14 +235,45 @@ jobs:
       - name: Import assets (fresh checkout has no .godot cache)
         run: '"$GODOT" --headless --path . --import'
 
+      # --- APK path (PR label + plain dispatch): unchanged default behavior ---
       - name: Build Android APK
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.upload_play) }}
         run: tools/build_android.sh release
 
       - uses: actions/upload-artifact@v4
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.upload_play) }}
         with:
           name: FourExHex-android-apk
           path: build/android/FourExHex-release.apk
           retention-days: 14
+
+      # --- AAB path (dispatch with upload_play): build, keep the artifact,
+      # then upload to the Play internal track. The artifact uploads BEFORE
+      # the Play call so a rejected upload (e.g. duplicate versionCode — the
+      # build-number guard) still leaves the AAB downloadable for inspection.
+      # play_api.sh reads the service-account path from PLAY_SERVICE_ACCOUNT_JSON.
+      - name: Materialize Play service account
+        if: github.event_name == 'workflow_dispatch' && inputs.upload_play
+        env:
+          PLAY_SA_B64: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          printf '%s' "$PLAY_SA_B64" | base64 -d > "$HOME/play-service-account.json"
+          echo "PLAY_SERVICE_ACCOUNT_JSON=$HOME/play-service-account.json" >> "$GITHUB_ENV"
+
+      - name: Build Android AAB
+        if: github.event_name == 'workflow_dispatch' && inputs.upload_play
+        run: tools/build_android.sh aab
+
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'workflow_dispatch' && inputs.upload_play
+        with:
+          name: FourExHex-android-aab
+          path: build/android/FourExHex-release.aab
+          retention-days: 14
+
+      - name: Upload to Google Play internal testing
+        if: github.event_name == 'workflow_dispatch' && inputs.upload_play
+        run: tools/upload_play.sh
 
   ios:
     # Fork PRs get no secrets, so the PR-triggered path additionally requires
