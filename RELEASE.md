@@ -179,6 +179,21 @@ of FourExHex.app's targeted device families". The right values are
 **0=iPhone, 1=iPad, 2=Universal** (writes `"1,2"`). Anything else writes "".
 Our preset is `application/targeted_device_family=2`.
 
+### iOS minimum version
+
+`application/min_ios_version` in `export_presets.cfg` is the single source of
+the iOS deployment target: Godot propagates it into
+`IPHONEOS_DEPLOYMENT_TARGET` in all four build configs of the generated
+`build/ios/FourExHex.xcodeproj/project.pbxproj` and into `MinimumOSVersion` in
+the archived `.app`'s `Info.plist`. `tools/sync_version.sh` doesn't touch the
+field, and `build_ios.sh` never overrides the target.
+
+It is **15.0**, matching the embedded `FourExHex.framework` that Godot's
+`dotnet publish` step builds with `MinimumOSVersion 15.0`. A lower value makes
+the app declare a minimum below a framework it loads, and App Store Connect
+answers every upload with warning 90068 (uploads below 15.0 are rejected
+outright starting Spring 2027).
+
 ### iOS net8 (no net9 issue)
 
 Unlike the Android prebuilt template (which forces net9.0), Godot 4.7.1's iOS
