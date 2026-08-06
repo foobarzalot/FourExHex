@@ -204,6 +204,53 @@ the system .NET (10.x at `/usr/local/share/dotnet`) for the publish step, and
 the project's own `$HOME/.dotnet` (8.x) for the editor / desktop builds. Both
 pipelines coexist.
 
+## 1.7. CI (GitHub Actions)
+
+Two workflows in `.github/workflows/`:
+
+- **`ci.yml`** — runs `dotnet test tests/FourExHex.Tests.csproj -c Release` on
+  every push to main and every PR (`ubuntu-latest`, no Godot needed — the test
+  project is Godot-free).
+- **`build.yml`** — Godot export builds reusing the same `tools/build_*.sh`
+  scripts as local builds (CI points `GODOT` / `DOTNET_ROOT` at the runner's
+  installs via env). Jobs: `macos` (`macos-latest`, ad-hoc-signed `.app` zip),
+  `windows` (`ubuntu-latest`, cross-export, whole-directory zip), `android`
+  (`ubuntu-latest`, release APK signed with the real release keystore), `ios`
+  (`macos-latest`, `.ipa`). Two triggers:
+  - **Manual**: Actions → Build → Run workflow; pick a branch, a platform set,
+    and (iOS only) whether to upload to TestFlight.
+  - **PR label**: adding the `build-artifacts` label to a PR builds all
+    platforms and attaches downloadable artifacts to the PR's checks. PR iOS
+    builds are `development`-method (`build_ios.sh --dev-ipa`) so the `.ipa`
+    installs onto a registered device via
+    `xcrun devicectl device install app --device <udid> <ipa>`; the macOS zip
+    and Android APK install like any local build.
+
+**CI never bumps the build number.** Every CI build stamps whatever
+`scripts/AppVersion.cs` says; bumps remain the job of the local `/release`,
+`/testflight`, `/play`, and `/android` skills. A TestFlight upload of a build
+number already on App Store Connect fails at the altool step — that is the
+guard, not a bug.
+
+**iOS signing model**: the archive step signs with the imported Apple
+Development identity; distribution signing happens at `exportArchive` via
+Apple's cloud-managed distribution certificate, authenticated by the ASC API
+key (`build_ios.sh` adds `-authenticationKey*` args when `ASC_API_KEY_PATH` is
+set). There is no local/CI Apple Distribution `.p12` anywhere.
+
+### CI secrets
+
+Set on the repo via `gh secret set <NAME>` (all present as of 2026-08-05):
+
+| Secret | Contents | Regenerate |
+|---|---|---|
+| `ANDROID_DEBUG_KEYSTORE` / `ANDROID_RELEASE_KEYSTORE` | base64 of the keystore files named in `~/Library/Application Support/Godot/keystores/fourexhex-android-creds.sh` | `base64 -i <keystore> \| gh secret set <NAME>` |
+| `ANDROID_{DEBUG,RELEASE}_KEYSTORE_USER` / `_PASSWORD` | the matching alias + password values from that same creds file | copy from the creds file |
+| `IOS_CERTS_P12` | base64 of the "Apple Development: Nathan Sitkoff" identity exported as `.p12` | `security export -k ~/Library/Keychains/login.keychain-db -t identities -f pkcs12 -P <pass> -o dev.p12` (approve the keychain dialog), then base64 |
+| `IOS_CERTS_P12_PASSWORD` | the `-P` password used for that export | chosen at export time |
+| `ASC_API_KEY_P8` | base64 of `~/.appstoreconnect/private_keys/AuthKey_<keyid>.p8` | base64 the file |
+| `ASC_API_KEY_ID` / `ASC_API_ISSUER_ID` / `IOS_TEAM_ID` | the values exported by `~/Library/Application Support/Godot/keystores/fourexhex-ios-creds.sh` | copy from the creds file |
+
 ## 2. Installing to a device
 
 `adb` is at `~/Library/Android/sdk/platform-tools/adb` (not on `PATH` — use the
