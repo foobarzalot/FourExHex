@@ -77,7 +77,7 @@ jobs:
       # upload-artifact strips symlinks and exec bits from a bare .app tree;
       # ditto-zip first so the bundle survives the round trip.
       - name: Zip app bundle
-        run: ditto -c -k --sequesterRsrc build/macos/FourExHex.app FourExHex-macos.zip
+        run: ditto -c -k --sequesterRsrc --keepParent build/macos/FourExHex.app FourExHex-macos.zip
 
       - uses: actions/upload-artifact@v4
         with:
