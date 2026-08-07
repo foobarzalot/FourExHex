@@ -9,12 +9,14 @@
 #   tools/asc_api.sh -X POST -H 'Content-Type: application/json' \
 #     -d '{...}' /betaGroups                              # POST
 #
-# The JWT is materialized into the env var ASC_JWT_TOKEN so callers can
-# pass extra headers without re-minting. Never prints credentials.
+# Mints a fresh JWT on every invocation (they are valid 20 min; minting is
+# cheap). Never prints credentials.
 
 set -euo pipefail
 
-CREDS="$HOME/Library/Application Support/Godot/keystores/fourexhex-ios-creds.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/_build_common.sh"
+
+CREDS="$IOS_CREDS_FILE"
 [[ -f "$CREDS" ]] || { echo "ERROR: creds missing at $CREDS" >&2; exit 1; }
 # shellcheck source=/dev/null
 source "$CREDS"
@@ -25,7 +27,6 @@ done
 KEY_FILE="$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_API_KEY_ID}.p8"
 [[ -f "$KEY_FILE" ]] || { echo "ERROR: private key missing" >&2; exit 1; }
 
-b64url() { openssl base64 -e -A | tr '+/' '-_' | tr -d '='; }
 NOW=$(date +%s)
 EXP=$((NOW + 1200))
 HEADER_JSON='{"alg":"ES256","kid":"'"$ASC_API_KEY_ID"'","typ":"JWT"}'

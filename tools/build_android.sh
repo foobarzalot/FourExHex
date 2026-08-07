@@ -48,16 +48,9 @@
 #              build_ios.sh team-ID injection).
 set -euo pipefail
 
-MODE="${1:-debug}"
-case "$MODE" in
-  debug)   CSHARP_CONFIG="ExportDebug";   GODOT_FLAG="--export-debug" ;;
-  release) CSHARP_CONFIG="ExportRelease"; GODOT_FLAG="--export-release" ;;
-  aab)     CSHARP_CONFIG="ExportRelease"; GODOT_FLAG="--export-release" ;;
-  *) echo "ERROR: unknown mode '$MODE' (use 'debug', 'release', or 'aab')" >&2; exit 2 ;;
-esac
+source "$(dirname "${BASH_SOURCE[0]}")/_build_common.sh"
+parse_mode "${1:-debug}" debug release aab
 
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-GODOT="${GODOT:-/Applications/Godot_mono.app/Contents/MacOS/Godot}"
 PRESET="Android"
 if [[ "$MODE" == "aab" ]]; then
   OUT="$PROJECT_DIR/build/android/FourExHex-release.aab"
@@ -69,23 +62,10 @@ PRESETS_BAK="$PROJECT_DIR/export_presets.cfg.bak.$$"
 NDK_VERSION="29.0.14206865"
 COMPILE_SDK="android-36"
 
-# Default SDK location matches the editor-settings android_sdk_path; override
-# with ANDROID_SDK_ROOT / ANDROID_HOME if you installed it elsewhere.
-ANDROID_SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Library/Android/sdk}}"
-KSDIR="$HOME/Library/Application Support/Godot/keystores"
-CREDS="$KSDIR/fourexhex-android-creds.sh"
-JAVA_HOME_DEFAULT="/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"
-
-# CI runners point GODOT / DOTNET_ROOT elsewhere via env; the defaults match
-# this Mac's local install. Skip the user-local .NET entirely when absent.
-if [[ -n "${DOTNET_ROOT:-}" || -d "$HOME/.dotnet" ]]; then
-  export DOTNET_ROOT="${DOTNET_ROOT:-$HOME/.dotnet}"
-  export PATH="$DOTNET_ROOT:$PATH"
-fi
+CREDS="$ANDROID_CREDS_FILE"
 export JAVA_HOME="${JAVA_HOME:-$JAVA_HOME_DEFAULT}"
 
 # ---- Fail-fast prerequisite checks (this script does NOT install anything) ----
-fail() { echo "ERROR: $1" >&2; exit 1; }
 
 [[ -x "$GODOT" ]] || fail "Godot not found at $GODOT"
 [[ -d "$ANDROID_SDK" ]] || fail "Android SDK not found at $ANDROID_SDK (set ANDROID_SDK_ROOT or install it there)"
@@ -134,8 +114,7 @@ for plugin_aar in "addons/rotationfix/bin/release/RotationFix.aar" \
   fi
 done
 
-echo "==> Syncing export_presets.cfg version from scripts/AppVersion.cs"
-"$PROJECT_DIR/tools/sync_version.sh"
+sync_presets_version
 
 # ---- AAB: flip the preset's export format for the duration of the export ----
 # gradle_build/export_format is 0 (APK) in the committed preset; Play needs an
@@ -155,9 +134,7 @@ if [[ "$MODE" == "aab" ]]; then
     || fail "export_format substitution into $PRESETS_CFG failed — preset may have moved"
 fi
 
-echo "==> Building C# assemblies (Debug for editor load + $CSHARP_CONFIG for the export)"
-dotnet build "$PROJECT_DIR/FourExHex.csproj" -c Debug            >/dev/null
-dotnet build "$PROJECT_DIR/FourExHex.csproj" -c "$CSHARP_CONFIG" >/dev/null
+build_assemblies
 
 if [[ "$MODE" == "aab" ]]; then
   echo "==> Exporting Android App Bundle (release, headless, gradle build)"

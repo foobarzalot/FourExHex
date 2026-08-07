@@ -17,13 +17,11 @@
 
 set -euo pipefail
 
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PACKAGE="com.foobarzalot.fourexhex"
-BASE="https://androidpublisher.googleapis.com/androidpublisher/v3/applications/$PACKAGE"
-UPLOAD_BASE="https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/$PACKAGE"
+source "$(dirname "${BASH_SOURCE[0]}")/_build_common.sh"
+BASE="https://androidpublisher.googleapis.com/androidpublisher/v3/applications/$BUNDLE_ID"
+UPLOAD_BASE="https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/$BUNDLE_ID"
 AAB="${1:-$PROJECT_DIR/build/android/FourExHex-release.aab}"
 
-fail() { echo "ERROR: $1" >&2; exit 1; }
 [[ -f "$AAB" ]] || fail "AAB not found at $AAB (build one with: tools/build_android.sh aab)"
 
 # One token for the whole flow (valid 1 h; the upload of a ~40 MB bundle is

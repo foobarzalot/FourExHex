@@ -24,31 +24,15 @@
 #   release -> ExportRelease config, --export-release
 set -euo pipefail
 
-MODE="${1:-debug}"
-case "$MODE" in
-  debug)   CSHARP_CONFIG="ExportDebug";   GODOT_FLAG="--export-debug" ;;
-  release) CSHARP_CONFIG="ExportRelease"; GODOT_FLAG="--export-release" ;;
-  *) echo "ERROR: unknown mode '$MODE' (use 'debug' or 'release')" >&2; exit 2 ;;
-esac
+source "$(dirname "${BASH_SOURCE[0]}")/_build_common.sh"
+parse_mode "${1:-debug}" debug release
 
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-GODOT="${GODOT:-/Applications/Godot_mono.app/Contents/MacOS/Godot}"
 PRESET="Windows Desktop"
 OUT="$PROJECT_DIR/build/windows/FourExHex.exe"
 
-# CI runners point GODOT / DOTNET_ROOT elsewhere via env; the defaults match
-# this Mac's local install. Skip the user-local .NET entirely when absent.
-if [[ -n "${DOTNET_ROOT:-}" || -d "$HOME/.dotnet" ]]; then
-  export DOTNET_ROOT="${DOTNET_ROOT:-$HOME/.dotnet}"
-  export PATH="$DOTNET_ROOT:$PATH"
-fi
+sync_presets_version
 
-echo "==> Syncing export_presets.cfg version from scripts/AppVersion.cs"
-"$PROJECT_DIR/tools/sync_version.sh"
-
-echo "==> Building C# assemblies (Debug for editor load + $CSHARP_CONFIG for the export)"
-dotnet build "$PROJECT_DIR/FourExHex.csproj" -c Debug            >/dev/null
-dotnet build "$PROJECT_DIR/FourExHex.csproj" -c "$CSHARP_CONFIG" >/dev/null
+build_assemblies
 
 echo "==> Exporting Windows bundle ($MODE, headless)"
 rm -rf "$PROJECT_DIR/build/windows"

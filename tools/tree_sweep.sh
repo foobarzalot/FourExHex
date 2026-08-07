@@ -38,8 +38,7 @@
 #
 set -euo pipefail
 
-GODOT="${GODOT:-/Applications/Godot_mono.app/Contents/MacOS/Godot}"
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$(dirname "${BASH_SOURCE[0]}")/_build_common.sh"
 SWEEP_MODE="${TREE_SWEEP_MODE:-full}"
 
 IFS=' ' read -r -a DENSITIES <<< "${TREE_SWEEP_DENSITIES:-5 15}"

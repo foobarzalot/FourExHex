@@ -28,7 +28,7 @@
 #                marketing string the other platforms carry.
 set -euo pipefail
 
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$(dirname "${BASH_SOURCE[0]}")/_build_common.sh"
 APPVER="$PROJECT_DIR/scripts/AppVersion.cs"
 PRESETS="$PROJECT_DIR/export_presets.cfg"
 

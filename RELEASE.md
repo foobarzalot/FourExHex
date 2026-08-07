@@ -24,6 +24,25 @@ the platform-specific gotchas it papers over. iOS additionally runs `xcodebuild
 archive` → `xcodebuild -exportArchive` → either `xcrun devicectl device install`
 (tethered) or `xcrun altool --upload-app` (TestFlight); see §1.5 below.
 
+Definitions shared across the tools/ scripts live in one sourced library,
+**`tools/_build_common.sh`**: the `GODOT` binary default (env-overridable),
+the conditional `DOTNET_ROOT` setup, mode parsing (`parse_mode`), the
+assembly-build and version-sync helpers, app identity (`BUNDLE_ID`, the ASC
+`ASC_APP_ID`), Android SDK/JDK defaults, creds-file paths, and small helpers
+(`fail`, `b64url`). Change a shared value there, nowhere else. Auth for the
+store APIs is likewise single-homed: `tools/asc_api.sh` owns the ES256 JWT
+(App Store Connect), `tools/play_api.sh` the RS256 JWT (Google Play); the
+status/upload scripts call them rather than minting their own.
+
+### Debug symbols ship on purpose
+
+All four presets set `dotnet/include_debug_symbols=true`, so exported builds
+(including store-bound ones) bundle the .NET .pdb files. This is deliberate:
+exception stack traces from devices keep file:line detail, which pairs with
+the always-on `Log` system (bug reports carry a real log — see CLAUDE.md's
+Instrumentation rule). The cost is a few MB inside 40–90 MB packages. Flip a
+preset's flag only if package size ever becomes the binding constraint.
+
 ### Versioning
 
 The canonical version lives in **`scripts/AppVersion.cs`** — `Marketing` (a

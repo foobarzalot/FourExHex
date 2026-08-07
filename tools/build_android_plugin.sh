@@ -19,16 +19,13 @@
 # wrapper copied alongside this project.
 set -euo pipefail
 
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$(dirname "${BASH_SOURCE[0]}")/_build_common.sh"
 PLUGIN_DIR="$PROJECT_DIR/android_plugin"
-ANDROID_SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Library/Android/sdk}}"
-JAVA_HOME_DEFAULT="/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"
 
 export ANDROID_SDK_ROOT="$ANDROID_SDK"
 export ANDROID_HOME="$ANDROID_SDK"
 export JAVA_HOME="${JAVA_HOME:-$JAVA_HOME_DEFAULT}"
 
-fail() { echo "ERROR: $1" >&2; exit 1; }
 [[ -d "$ANDROID_SDK" ]] || fail "Android SDK not found at $ANDROID_SDK"
 [[ -x "$JAVA_HOME/bin/java" ]] || fail "JDK not found at JAVA_HOME=$JAVA_HOME"
 

@@ -21,11 +21,9 @@
 
 set -euo pipefail
 
-PACKAGE="com.foobarzalot.fourexhex"
-SA_JSON="${PLAY_SERVICE_ACCOUNT_JSON:-$HOME/Library/Application Support/Godot/keystores/fourexhex-play-service-account.json}"
+source "$(dirname "${BASH_SOURCE[0]}")/_build_common.sh"
+SA_JSON="${PLAY_SERVICE_ACCOUNT_JSON:-$KEYSTORES_DIR/fourexhex-play-service-account.json}"
 [[ -f "$SA_JSON" ]] || { echo "ERROR: service-account JSON missing at $SA_JSON (see docs/android-play-console-setup.md, step 6)" >&2; exit 1; }
-
-b64url() { openssl base64 -e -A | tr '+/' '-_' | tr -d '='; }
 
 CLIENT_EMAIL=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["client_email"])' "$SA_JSON")
 # The PEM private key never touches the command line — extracted to a 0600 temp file.
@@ -70,4 +68,4 @@ while (( i < N )); do
 done
 curl -sS -H "Authorization: Bearer $TOKEN" \
   ${EXTRA[@]+"${EXTRA[@]}"} \
-  "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${PACKAGE}${PATH_ARG}"
+  "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${BUNDLE_ID}${PATH_ARG}"

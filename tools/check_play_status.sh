@@ -14,9 +14,8 @@
 
 set -euo pipefail
 
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PACKAGE="com.foobarzalot.fourexhex"
-BASE="https://androidpublisher.googleapis.com/androidpublisher/v3/applications/$PACKAGE"
+source "$(dirname "${BASH_SOURCE[0]}")/_build_common.sh"
+BASE="https://androidpublisher.googleapis.com/androidpublisher/v3/applications/$BUNDLE_ID"
 
 TOKEN="$("$PROJECT_DIR/tools/play_api.sh" --token)"
 auth_curl() { curl -sS -H "Authorization: Bearer $TOKEN" "$@"; }

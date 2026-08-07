@@ -85,7 +85,8 @@ run_step() {
   wait $!
 }
 
-MODE="${1:-release}"
+source "$(dirname "${BASH_SOURCE[0]}")/_build_common.sh"
+
 UPLOAD=1
 TETHERED=0
 DEV_IPA=0
@@ -96,11 +97,7 @@ for arg in "$@"; do
     --dev-ipa)   DEV_IPA=1;  UPLOAD=0 ;;
   esac
 done
-case "$MODE" in
-  debug)   CSHARP_CONFIG="ExportDebug";   GODOT_FLAG="--export-debug";   XCODE_CONFIG="Debug" ;;
-  release) CSHARP_CONFIG="ExportRelease"; GODOT_FLAG="--export-release"; XCODE_CONFIG="Release" ;;
-  *) echo "ERROR: unknown mode '$MODE' (use 'debug' or 'release')" >&2; exit 2 ;;
-esac
+parse_mode "${1:-release}" debug release
 
 if (( TETHERED || DEV_IPA )); then
   EXPORT_METHOD="development"
@@ -108,8 +105,6 @@ else
   EXPORT_METHOD="app-store-connect"
 fi
 
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-GODOT="${GODOT:-/Applications/Godot_mono.app/Contents/MacOS/Godot}"
 PRESET="iOS"
 BUILD_DIR="$PROJECT_DIR/build/ios"
 XCODEPROJ="$BUILD_DIR/FourExHex.xcodeproj"
@@ -120,17 +115,9 @@ PRESETS_BAK="$PRESETS_CFG.bak.$$"
 EXPORT_OPTIONS_TEMPLATE="$PROJECT_DIR/tools/ios_export_options.plist"
 EXPORT_OPTIONS_LIVE="$BUILD_DIR/ExportOptions.plist"
 
-CREDS="$HOME/Library/Application Support/Godot/keystores/fourexhex-ios-creds.sh"
-
-# CI runners point GODOT / DOTNET_ROOT elsewhere via env; the defaults match
-# this Mac's local install. Skip the user-local .NET entirely when absent.
-if [[ -n "${DOTNET_ROOT:-}" || -d "$HOME/.dotnet" ]]; then
-  export DOTNET_ROOT="${DOTNET_ROOT:-$HOME/.dotnet}"
-  export PATH="$DOTNET_ROOT:$PATH"
-fi
+CREDS="$IOS_CREDS_FILE"
 
 # ---- Fail-fast prerequisite checks ----
-fail() { echo "ERROR: $1" >&2; exit 1; }
 
 [[ -x "$GODOT" ]] || fail "Godot not found at $GODOT"
 xcodebuild -version >/dev/null 2>&1 \
@@ -183,8 +170,7 @@ trap restore_presets EXIT
 # synced values are captured in PRESETS_BAK and persist through the trap restore
 # (the restore only exists to scrub the transient team-ID edit below, which must
 # NOT be committed — the version sync is meant to stick).
-echo "==> Syncing export_presets.cfg version from scripts/AppVersion.cs"
-"$PROJECT_DIR/tools/sync_version.sh"
+sync_presets_version
 
 cp "$PRESETS_CFG" "$PRESETS_BAK"
 # In-place edit: empty app_store_team_id → real Team ID. -i.sedbak is the
@@ -204,11 +190,8 @@ fi
 echo "==> Team ID:  $IOS_TEAM_ID"
 echo "==> Output:   $IPA"
 
-echo "==> Building C# assemblies (Debug for editor load + $CSHARP_CONFIG for the export)"
-run_step dotnet build "$PROJECT_DIR/FourExHex.csproj" -c Debug            >/dev/null \
-  || fail "dotnet build -c Debug failed"
-run_step dotnet build "$PROJECT_DIR/FourExHex.csproj" -c "$CSHARP_CONFIG" >/dev/null \
-  || fail "dotnet build -c $CSHARP_CONFIG failed"
+run_step build_assemblies \
+  || fail "dotnet build failed"
 
 echo "==> Exporting iOS Xcode project ($MODE, headless)"
 rm -rf "$BUILD_DIR/FourExHex.xcodeproj" "$BUILD_DIR/FourExHex" "$BUILD_DIR/FourExHex.pck" \
@@ -315,7 +298,7 @@ for d in data.get("result", {}).get("devices", []):
   wait $! || fail "devicectl install failed"
   echo "==> Done. App is installed; launch it from the home screen."
   echo "    Read live device logs with:"
-  echo "      xcrun devicectl device process launch --console --device $DEVICE_UDID com.foobarzalot.fourexhex"
+  echo "      xcrun devicectl device process launch --console --device $DEVICE_UDID $BUNDLE_ID"
   echo "    Or open Console.app → filter by process 'FourExHex' for the SafeArea/DisplayScale lines."
   exit 0
 fi
