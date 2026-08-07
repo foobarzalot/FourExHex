@@ -6,6 +6,14 @@ using System.Collections.Generic;
 public static class ZoomMath
 {
     /// <summary>
+    /// Hard ceiling on zoom: 1.0 is the authored design scale — the camera
+    /// never magnifies past it (<see cref="BuildLevels"/>' top level) and
+    /// never zooms out below fit when the grid already fits at 1× (the
+    /// <see cref="ComputeZoomMin"/> cap).
+    /// </summary>
+    public const float MaxZoom = 1f;
+
+    /// <summary>
     /// Index of the discrete zoom level nearest <paramref name="zoom"/> (a
     /// min-abs-delta scan over <paramref name="levels"/>). Ties keep the lower
     /// index. Used to re-sync the discrete level index after a continuous
@@ -57,14 +65,14 @@ public static class ZoomMath
         float availY = viewportY - hudHeight;
         float fitX = viewportX / mapPixelX;
         float fitY = availY / mapPixelY;
-        return Math.Min(1f, Math.Min(fitX, fitY) / zoomOutGrace);
+        return Math.Min(MaxZoom, Math.Min(fitX, fitY) / zoomOutGrace);
     }
 
     /// <summary>
     /// <paramref name="count"/> evenly-spaced zoom levels from
-    /// <paramref name="zoomMin"/> (index 0, fit-all) to 1.0 (last index,
-    /// max zoom in). Indexed stepping avoids float drift across many
-    /// wheel ticks.
+    /// <paramref name="zoomMin"/> (index 0, fit-all) to <see cref="MaxZoom"/>
+    /// (last index, max zoom in). Indexed stepping avoids float drift across
+    /// many wheel ticks.
     /// </summary>
     public static float[] BuildLevels(float zoomMin, int count)
     {
@@ -72,7 +80,7 @@ public static class ZoomMath
         for (int i = 0; i < count; i++)
         {
             float t = (float)i / (count - 1);
-            levels[i] = zoomMin + (1f - zoomMin) * t;
+            levels[i] = zoomMin + (MaxZoom - zoomMin) * t;
         }
         return levels;
     }

@@ -14,11 +14,12 @@
 /// </summary>
 public static class EditorPaletteLayout
 {
-    /// <summary>Square palette-button edge, logical px (HexPaletteButton).</summary>
-    public const float ButtonSize = 68f;
+    /// <summary>Square palette-button edge, logical px (HexPaletteButton) —
+    /// the shared <see cref="UiMetrics.TouchButtonSizePx"/> touch target.</summary>
+    public const float ButtonSize = UiMetrics.TouchButtonSizePx;
 
     /// <summary>Gap between adjacent buttons in the grid, logical px.</summary>
-    public const float ButtonGap = 8f;
+    public const float ButtonGap = UiMetrics.GutterPx;
 
     /// <summary>
     /// Columns for the paint-tool grid. Landscape lays the tools out

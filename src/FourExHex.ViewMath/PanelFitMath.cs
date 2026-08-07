@@ -14,6 +14,23 @@ using System;
 /// </summary>
 public static class PanelFitMath
 {
+    /// <summary>Floor for <see cref="CardInteriorWidth"/>: a degenerate
+    /// viewport can't shrink a card's interior below this, logical px.</summary>
+    public const float MinCardInteriorWidthPx = 200f;
+
+    /// <summary>Quantum <see cref="ContentShrinkScale"/> floors its result to,
+    /// for stability across re-measurement and drag-resize.</summary>
+    public const float ShrinkScaleStep = 0.05f;
+
+    /// <summary>Legibility floor for <see cref="ContentShrinkScale"/> —
+    /// content never rebuilds smaller than this scale.</summary>
+    public const float MinShrinkScale = 0.65f;
+
+    /// <summary>Headroom factor a shrunk panel needs before growing back
+    /// toward scale 1 (see <see cref="ContentShrinkScale"/> — prevents
+    /// grow→doesn't-fit→shrink oscillation on the boundary).</summary>
+    public const float GrowMarginFactor = 1.02f;
+
     /// <summary>
     /// The content box available to a centered panel: the viewport minus the
     /// safe-area insets minus a symmetric <paramref name="marginPerSide"/>
@@ -79,7 +96,8 @@ public static class PanelFitMath
     /// viewport can't produce a zero/negative width.
     /// </summary>
     public static float CardInteriorWidth(
-        float designInteriorW, float availW, float chromeW, float minInteriorW = 200f)
+        float designInteriorW, float availW, float chromeW,
+        float minInteriorW = MinCardInteriorWidthPx)
     {
         return MathF.Max(minInteriorW, MathF.Min(designInteriorW, availW - chromeW));
     }
@@ -103,7 +121,8 @@ public static class PanelFitMath
     /// </summary>
     public static float ContentShrinkScale(
         float measuredH, float measuredAtScale, float availH,
-        float step = 0.05f, float minScale = 0.65f, float growMargin = 1.02f)
+        float step = ShrinkScaleStep, float minScale = MinShrinkScale,
+        float growMargin = GrowMarginFactor)
     {
         if (measuredH <= 0f) return 1f;
         float designH = measuredAtScale > 0f ? measuredH / measuredAtScale : measuredH;

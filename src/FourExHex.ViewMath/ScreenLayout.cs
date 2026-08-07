@@ -42,6 +42,14 @@ public static class ScreenLayout
     public const float CompactBreakpointPx = 700f;
 
     /// <summary>
+    /// Default ± hysteresis band around <see cref="CompactBreakpointPx"/>:
+    /// flips happen only outside breakpoint ∓ dead-band (lower=668 /
+    /// upper=732), so a resize hovering near the breakpoint can't thrash
+    /// the layout.
+    /// </summary>
+    public const float CompactDeadBandPx = 32f;
+
+    /// <summary>
     /// True when the HUD should render in its compact (phone) form: the
     /// shorter viewport edge is below <see cref="CompactBreakpointPx"/>
     /// (with hysteresis). The ±dead-band is symmetric: an expanded window
@@ -54,7 +62,7 @@ public static class ScreenLayout
     /// compact bit so the function stays pure (no internal state).
     /// </summary>
     public static bool IsCompact(
-        float width, float height, bool prevWasCompact, float deadBand = 32f)
+        float width, float height, bool prevWasCompact, float deadBand = CompactDeadBandPx)
     {
         float minSide = System.Math.Min(width, height);
         float threshold = prevWasCompact
