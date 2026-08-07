@@ -72,6 +72,14 @@ public static class LayoutAssert
          System.MathF.Max(0f, inner.Right - outer.Right),
          System.MathF.Max(0f, inner.Bottom - outer.Bottom));
 
+    /// <summary>True when <paramref name="outer"/> is wholly inside
+    /// <paramref name="inner"/> — i.e. inner covers the whole of outer.</summary>
+    private static bool Contains(in LayoutRect inner, in LayoutRect outer, float tolerance) =>
+        inner.X <= outer.X + tolerance
+        && inner.Y <= outer.Y + tolerance
+        && inner.Right >= outer.Right - tolerance
+        && inner.Bottom >= outer.Bottom - tolerance;
+
     /// <summary>True when <paramref name="inner"/> sits inside
     /// <paramref name="outer"/> to within <paramref name="tolerance"/>.</summary>
     public static bool FitsWithin(
@@ -112,8 +120,13 @@ public static class LayoutAssert
             return true;
         }
 
+        // Modal scrims and full-bleed backgrounds are deliberately sized to
+        // cover everything, often with slack. A control that fully contains the
+        // viewport is a backdrop, not content that escaped its container.
+        bool isBackdrop = Contains(rect, viewport, tolerance);
+
         (float l, float t, float r, float b) = Overflow(rect, viewport);
-        if (l > tolerance || t > tolerance || r > tolerance || b > tolerance)
+        if (!isBackdrop && (l > tolerance || t > tolerance || r > tolerance || b > tolerance))
         {
             violation = new LayoutViolation(LayoutViolationKind.OverflowsViewport, l, t, r, b);
             return true;
@@ -122,7 +135,7 @@ public static class LayoutAssert
         // Full-rect scrims and panel chrome legitimately extend under the notch;
         // the rule is "nothing tappable or readable there", which the caller
         // decides per node.
-        if (enforceSafeArea)
+        if (enforceSafeArea && !isBackdrop)
         {
             (float sl, float st, float sr, float sb) = Overflow(rect, SafeBox(viewport, safe));
             if (sl > tolerance || st > tolerance || sr > tolerance || sb > tolerance)

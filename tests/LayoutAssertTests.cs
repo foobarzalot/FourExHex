@@ -140,6 +140,35 @@ public class LayoutAssertTests
             Check(new LayoutRect(-9999f, 0f, 200f, 44f), visible: false).Kind);
     }
 
+    // Modal scrims and full-bleed backgrounds are deliberately sized to cover
+    // everything, often with slack. A control that fully contains the viewport
+    // is a backdrop, not content that escaped its container — flagging it would
+    // fire on every modal in every cell and bury the real findings.
+    [Fact]
+    public void ControlThatFullyCoversTheViewport_IsABackdropNotAnOverflow()
+    {
+        Assert.Equal(
+            LayoutViolationKind.None,
+            Check(new LayoutRect(0f, 0f, 2400f, 1880f)).Kind);
+    }
+
+    [Fact]
+    public void BackdropExemption_DoesNotExcuseAControlCoveringOnlyOneAxis()
+    {
+        // Spans the full width and beyond, but sits inside vertically: real content.
+        Assert.Equal(
+            LayoutViolationKind.OverflowsViewport,
+            Check(new LayoutRect(-10f, 100f, 1400f, 200f)).Kind);
+    }
+
+    [Fact]
+    public void BackdropExemption_StillReportsADegenerateRect()
+    {
+        Assert.Equal(
+            LayoutViolationKind.NegativeSize,
+            Check(new LayoutRect(0f, 0f, -2400f, 1880f)).Kind);
+    }
+
     [Fact]
     public void SafeBox_DeflatesTheViewportByTheInsets()
     {

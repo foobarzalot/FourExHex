@@ -466,7 +466,7 @@ public partial class MainMenuScene : Control
         // panel reclaims its slot — height is computed from the actual count
         // rather than the fixed 8-button design, otherwise ScaleToFit centers
         // against a phantom Exit slot, leaving dead space at the bottom.
-        bool exitSuppressed = OS.HasFeature("mobile");
+        bool exitSuppressed = PlatformFlags.IsMobile;
         int landingButtonCount = exitSuppressed ? 7 : 8;
         const float bottomMargin = 56f; // matches the desktop 8-button design (820 - 764)
         float panelH = firstButtonY + (buttonH + buttonGap) * (landingButtonCount - 1)
@@ -699,7 +699,7 @@ public partial class MainMenuScene : Control
 
         // Exit is suppressed on mobile (Apple HIG / Google Play); desktop gets
         // a full-width Exit below the grid.
-        bool exitSuppressed = OS.HasFeature("mobile");
+        bool exitSuppressed = PlatformFlags.IsMobile;
         if (!exitSuppressed)
         {
             Button exitButton = MakeLandingButton(Strings.Get(StringKeys.MenuExit), OnExitPressed, 26);

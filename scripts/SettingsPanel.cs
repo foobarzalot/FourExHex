@@ -412,6 +412,19 @@ public sealed partial class SettingsPanel : CanvasLayer
         UiDropdown.SelectItemById(_replaySpeedDropdown, (int)UserSettings.ReplaySpeed);
     }
 
+    /// <summary>View-matrix harness seam (issue #63): the credits and
+    /// bug-report panels are children of this one, so their geometry is only
+    /// reachable through here.</summary>
+    internal void OpenCreditsForHarness() => _creditsPanel.Open();
+
+    internal void OpenBugReportForHarness() => _bugReportPanel.Open();
+
+    internal void CloseChildPanelsForHarness()
+    {
+        _creditsPanel.Close();
+        _bugReportPanel.Close();
+    }
+
     public void Close()
     {
         if (!IsOpen) return;

@@ -36,7 +36,7 @@ public partial class LogBootstrap : Node
         string spec = OS.GetEnvironment("FOUREXHEX_LOG");
         Log.Configure(spec);
 
-        bool isMobile = OS.HasFeature("mobile");
+        bool isMobile = PlatformFlags.IsMobile;
 
         // User-facing string table: the Godot-free Strings store can't read
         // res:// itself, so load assets/strings/en.json here and push the

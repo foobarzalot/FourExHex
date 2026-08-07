@@ -43,7 +43,7 @@ public partial class DisplayScale : Node
     private void Apply()
     {
         Window window = GetWindow();
-        bool isMobile = OS.HasFeature("mobile");
+        bool isMobile = PlatformFlags.IsMobile;
         int screen = DisplayServer.WindowGetCurrentScreen();
         float dpi = DisplayServer.ScreenGetDpi(screen);
         // ScreenGetDpi reports physical density, but platforms like macOS already
@@ -81,7 +81,7 @@ public partial class DisplayScale : Node
             // density bucket (xhdpi / xxhdpi / etc.) so logicalDpi / 160 is
             // the right input there; this preserves the S9-portrait 2.22
             // calibration that's been shipping. Desktop unchanged.
-            bool isIos = OS.HasFeature("ios");
+            bool isIos = PlatformFlags.IsIos;
             factor = isIos
                 ? DisplayScaleMath.FactorForRawMobileDpi(dpi, minFactor)
                 : DisplayScaleMath.FactorForDpi(logicalDpi, minFactor);

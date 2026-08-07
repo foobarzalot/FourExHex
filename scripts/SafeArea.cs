@@ -34,8 +34,29 @@ public partial class SafeArea : Node
     /// its bars so they sit inside the safe zone.</summary>
     public static event Action<LogicalSafeInsets>? Changed;
 
+    /// <summary>Forced insets, or null for the OS-derived path. Seeded from
+    /// <c>FOUREXHEX_FAKE_SAFE_AREA="t,b,l,r"</c> (logical px) and settable at
+    /// runtime by the view-matrix harness so one process can sweep several
+    /// device shapes — the same "fake a mobile-only input" shape as
+    /// <c>FOUREXHEX_FAKE_KB</c> in KeyboardLiftController.</summary>
+    private static LogicalSafeInsets? _override;
+
+    /// <summary>Force (or, with null, release) the insets and re-run the
+    /// layout. Consulted inside <see cref="Apply"/> rather than assigned into
+    /// <see cref="Current"/>: Apply re-runs on every viewport resize, so a
+    /// one-shot assignment would be wiped by the first window change.</summary>
+    internal static void SetOverrideForHarness(LogicalSafeInsets? insets)
+    {
+        _override = insets;
+        Instance?.Apply();
+    }
+
+    private static SafeArea? Instance;
+
     public override void _Ready()
     {
+        Instance = this;
+        _override = ParseOverride(OS.GetEnvironment("FOUREXHEX_FAKE_SAFE_AREA"));
         Apply();
         // Rotation / monitor move / OS chrome show-hide all fire SizeChanged.
         GetViewport().SizeChanged += Apply;
@@ -53,21 +74,22 @@ public partial class SafeArea : Node
         // — coordinates. That's not a useful inset for a sub-screen window, and
         // desktops have no notch / home indicator to compensate for. Keep this
         // gated to mobile to mirror the LogBootstrap mobile flag.
-        bool isMobile = OS.HasFeature("mobile");
+        bool isMobile = PlatformFlags.IsMobile;
 
-        LogicalSafeInsets next = isMobile
+        LogicalSafeInsets next = _override ?? (isMobile
             ? SafeAreaMath.InsetsFor(
                 physicalWindowWidth: windowSize.X, physicalWindowHeight: windowSize.Y,
                 physicalSafeX: safeRect.Position.X, physicalSafeY: safeRect.Position.Y,
                 physicalSafeWidth: safeRect.Size.X, physicalSafeHeight: safeRect.Size.Y,
                 contentScaleFactor: factor)
-            : LogicalSafeInsets.Zero;
+            : LogicalSafeInsets.Zero);
 
         bool changed = next != Current;
         Current = next;
 
         string msg = $"SafeArea: window={windowSize.X}x{windowSize.Y} safe={safeRect} " +
-            $"factor={factor} insets=(t={next.Top:0.##} b={next.Bottom:0.##} " +
+            $"factor={factor} fake={(_override.HasValue ? "yes" : "none")} " +
+            $"insets=(t={next.Top:0.##} b={next.Bottom:0.##} " +
             $"l={next.Left:0.##} r={next.Right:0.##}) changed={changed}";
         // An inset change is the noteworthy event (first launch on a notched
         // device, rotation crossing portrait/landscape on the notch axis); the
@@ -76,5 +98,32 @@ public partial class SafeArea : Node
         else Log.Debug(Log.LogCategory.Display, msg);
 
         if (changed) Changed?.Invoke(next);
+    }
+
+    /// <summary>Parse "t,b,l,r" logical px. Anything malformed yields null (the
+    /// OS-derived path) rather than throwing — a bad env var should not stop the
+    /// game booting.</summary>
+    private static LogicalSafeInsets? ParseOverride(string raw)
+    {
+        if (raw.Length == 0) return null;
+
+        string[] parts = raw.Split(',');
+        if (parts.Length != 4) return null;
+
+        var values = new float[4];
+        for (int i = 0; i < 4; i++)
+        {
+            if (!float.TryParse(parts[i].Trim(),
+                    System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out values[i])
+                || values[i] < 0f)
+            {
+                Log.Warn(Log.LogCategory.Display,
+                    $"SafeArea: ignoring malformed FOUREXHEX_FAKE_SAFE_AREA='{raw}'");
+                return null;
+            }
+        }
+        return new LogicalSafeInsets(values[0], values[1], values[2], values[3]);
     }
 }
