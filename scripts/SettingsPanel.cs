@@ -65,7 +65,7 @@ public sealed partial class SettingsPanel : CanvasLayer
     // a short phone — FitPanel scales the whole panel down uniformly to fit,
     // the same shrink-to-fit the main menu uses for its panels.
     private const float ContentWidth = 420f;   // inner VBox min width
-    private const float ViewportMargin = 24f;
+    private const float ViewportMargin = UiMetrics.ViewportMarginPx;
 
     public override void _Ready()
     {

@@ -138,10 +138,11 @@ public partial class MainMenuScene : Control
     // Swipe paging between the two config pages (page-turning: left =
     // forward to map setup, right = back to player setup), with the same
     // finger-tracking + slide animation as the Instructions panel.
-    // Durations mirrored in InstructionsPanel/HudTour — keep in step.
+    // Durations shared with PageCarousel (the Instructions panel's pager)
+    // so every page-turn in the app moves at the same speed.
     private readonly SwipeDetector _configSwipe = new SwipeDetector();
-    private const float ConfigSlideSec = 0.18f;
-    private const float ConfigSpringBackSec = 0.15f;
+    private const float ConfigSlideSec = PageCarousel.SlideSec;
+    private const float ConfigSpringBackSec = PageCarousel.SpringBackSec;
     private Tween? _configSlideTween;
     private bool _configTransitioning;
     // Orientation the play-config panel was last built for; a viewport
@@ -432,7 +433,7 @@ public partial class MainMenuScene : Control
 
     private static void ScaleToFit(Control panel, Vector2 designSize, Vector2 viewport)
     {
-        const float margin = 24f;
+        const float margin = UiMetrics.ViewportMarginPx;
         float scale = PanelFitMath.ScaleToFit(designSize.X, designSize.Y,
             viewport.X - margin, viewport.Y - margin);
         panel.PivotOffset = designSize * 0.5f;

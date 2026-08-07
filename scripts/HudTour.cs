@@ -43,7 +43,7 @@ public sealed partial class HudTour : CanvasLayer
     private const float DesignCardWidth = 440f;
     // Breathing room between the card and the safe-area edge — the same margin
     // the rest of the centered-modal family fits against.
-    private const float ViewportMargin = 24f;
+    private const float ViewportMargin = UiMetrics.ViewportMarginPx;
 
     private readonly List<Entry> _entries;
     private readonly HudTourSteps _cursor;
@@ -111,8 +111,10 @@ public sealed partial class HudTour : CanvasLayer
         _ring.AddThemeStyleboxOverride("panel", ringStyle);
         AddChild(_ring);
         var pulse = CreateTween().SetLoops();
-        pulse.TweenProperty(_ring, "modulate:a", 0.72f, 0.55).SetTrans(Tween.TransitionType.Sine);
-        pulse.TweenProperty(_ring, "modulate:a", 1.0f, 0.55).SetTrans(Tween.TransitionType.Sine);
+        pulse.TweenProperty(_ring, "modulate:a", 0.72f, UiMetrics.CtaPulseHalfPeriodSec)
+            .SetTrans(Tween.TransitionType.Sine);
+        pulse.TweenProperty(_ring, "modulate:a", 1.0f, UiMetrics.CtaPulseHalfPeriodSec)
+            .SetTrans(Tween.TransitionType.Sine);
 
         // 3) Centered dialogs (top of this layer so their buttons beat the
         //    catcher). No dim backdrop — keep the HUD bright so highlighted

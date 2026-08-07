@@ -49,7 +49,7 @@ public sealed partial class EscMenu : CanvasLayer
 
     /// <summary>Breathing room between the panel and the safe-area edge —
     /// the margin the rest of the centered-modal family fits against.</summary>
-    private const float ViewportMargin = 24f;
+    private const float ViewportMargin = UiMetrics.ViewportMarginPx;
 
     private ColorRect _backdrop = null!;
     private PanelContainer _panel = null!;

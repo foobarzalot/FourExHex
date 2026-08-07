@@ -44,9 +44,9 @@ public partial class HudIconButton : Button
 
     // Long-press (hold) support. Armed only when a LongPressed handler is
     // attached, so buttons without one keep their plain click behaviour
-    // and never spin up a timer. Threshold mirrors HexMapView.LongPressMs
-    // (400ms) so the hold gesture feels consistent with the map's rally.
-    private const double LongPressSeconds = 0.4;
+    // and never spin up a timer. UiMetrics.LongPressMs is the shared
+    // threshold, so the hold gesture feels consistent with the map's rally.
+    private const double LongPressSeconds = UiMetrics.LongPressMs / 1000.0;
     private ulong _pressGen;
     private bool _longFired;
 
@@ -142,7 +142,7 @@ public partial class HudIconButton : Button
         // on phones. Every HUD icon button uses this size, so the corner
         // chips (undo/redo/options) and the bottom-bar action buttons stay
         // uniformly sized whatever zone they land in.
-        CustomMinimumSize = new Vector2(68, 68);
+        CustomMinimumSize = new Vector2(UiMetrics.TouchButtonSizePx, UiMetrics.TouchButtonSizePx);
         FocusMode = Control.FocusModeEnum.None;
         TooltipText = DefaultTooltip(icon);
         ButtonDown += OnButtonDown;
@@ -161,7 +161,7 @@ public partial class HudIconButton : Button
         Text = text;
         AddThemeFontOverride("font", font);
         AddThemeFontSizeOverride("font_size", fontSize);
-        CustomMinimumSize = new Vector2(68, 68);
+        CustomMinimumSize = new Vector2(UiMetrics.TouchButtonSizePx, UiMetrics.TouchButtonSizePx);
         FocusMode = Control.FocusModeEnum.None;
         ButtonDown += OnButtonDown;
         ButtonUp += OnButtonUp;

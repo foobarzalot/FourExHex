@@ -18,6 +18,66 @@ public partial class AudioBus : Node
 {
     public static AudioBus Instance { get; private set; } = null!;
 
+    // Mix levels, dB. The full SFX mix in one place so relative loudness is
+    // tuned here, not hunted across the player initializers below.
+    private const float ClickDb = -6f;
+    private const float UnitPlacedDb = -4f;
+    // Heavier sibling of the unit-place mallet — deeper pitch and low rumble
+    // carry the weight, so it sits a touch under the unit-place gain.
+    private const float TowerPlacedDb = -8f;
+    // Combine fires on a routine action, so the chime sits below the
+    // place/tower hits — it should feel like a small reward, not an event.
+    private const float UnitCombinedDb = -8f;
+    private const float UnitDestroyedDb = -6f;
+    // Stone sources tend to be hot — keep parity with the tower-place gain so
+    // the destroy/place pair sit at a matched perceived loudness.
+    private const float TowerDestroyedDb = -8f;
+    // The woodblock crack's transient is hot by design — sit well under the
+    // unit-place thud so it doesn't dominate.
+    private const float TreeClearedDb = -18f;
+    // Capital "destruction" is really a relocation — the territory shrinks
+    // and CapitalReconciler picks a new capital tile. Sound sits at
+    // routine-event level, not milestone level.
+    private const float CapitalDestroyedDb = -10f;
+    // Somber, not loud — the player should hear it but it shouldn't startle.
+    // The descending womp lands on a sustained low tone, so a moderate gain
+    // reads as substantial without dominating.
+    private const float BankruptcyDb = -10f;
+    // Terminal moment — the player just won, the screen is showing the
+    // game-over panel and they're absorbing the result. Sits a touch above
+    // bankruptcy so the win lands bigger than the loss bell, but not so hot
+    // that it startles.
+    private const float GameWonDb = -6f;
+    // The swell is naturally airy and a bit broad — sit it well under the
+    // unit-place thud so a rally doesn't dominate the mix when it bundles
+    // several units' worth of motion.
+    private const float RallyDb = -14f;
+    // Heavy gong bloom with long sustain. Sits at game-won level so the
+    // elimination of an enemy reads as a major moment, but not louder than
+    // the win fanfare.
+    private const float PlayerDefeatedDb = -10f;
+    // Soft watery glug for a Rising Tides tile sinking. Quiet — it can fire
+    // every turn, so it must not dominate.
+    private const float TileSubmergedDb = -8f;
+    // Creaking longship for a viking wave spawning offshore. It's a
+    // once-per-wave "threat incoming" moment — present but not a fanfare.
+    private const float VikingArrivalDb = -6f;
+    // A misclick can fire rapidly and carries little information — sit it
+    // well down so it reads as a gentle "no" under the more informative
+    // defended clang.
+    private const float RejectGenericDb = -17f;
+    // Distinct from generic — the metallic clang carries more information
+    // ("a defender blocked you"), so it's a touch hotter so the difference
+    // is audible without being loud.
+    private const float RejectDefendedDb = -8f;
+    // Small-reward chime that LAYERS on top of the action's occupant cue
+    // (place thud / chop) — sit at combine-chime level so the stack doesn't
+    // spike.
+    private const float GoldCapturedDb = -8f;
+    // Low rocky thud; layers like the gold chime, and the low end reads
+    // through the mix without much gain.
+    private const float MountainCapturedDb = -8f;
+
     private AudioStreamPlayer _clickPlayer = null!;
     private AudioStreamPlayer _unitPlacedPlayer = null!;
     private AudioStreamPlayer _towerPlacedPlayer = null!;
@@ -47,172 +107,126 @@ public partial class AudioBus : Node
         _clickPlayer = new AudioStreamPlayer
         {
             Stream = GD.Load<AudioStream>("res://assets/audio/click.wav"),
-            VolumeDb = -6f,
+            VolumeDb = ClickDb,
         };
         AddChild(_clickPlayer);
 
         _unitPlacedPlayer = new AudioStreamPlayer
         {
             Stream = GD.Load<AudioStream>("res://assets/audio/place.wav"),
-            VolumeDb = -4f,
+            VolumeDb = UnitPlacedDb,
         };
         AddChild(_unitPlacedPlayer);
 
         _towerPlacedPlayer = new AudioStreamPlayer
         {
             Stream = GD.Load<AudioStream>("res://assets/audio/tower_place.wav"),
-            // Heavier sibling of the unit-place mallet — deeper pitch
-            // and low rumble carry the weight, so it sits a touch under
-            // the unit-place gain.
-            VolumeDb = -8f,
+            VolumeDb = TowerPlacedDb,
         };
         AddChild(_towerPlacedPlayer);
 
         _unitCombinedPlayer = new AudioStreamPlayer
         {
             Stream = GD.Load<AudioStream>("res://assets/audio/unit_combine.wav"),
-            // Combine fires on a routine action, so the chime sits
-            // below the place/tower hits — it should feel like a small
-            // reward, not an event.
-            VolumeDb = -8f,
+            VolumeDb = UnitCombinedDb,
         };
         AddChild(_unitCombinedPlayer);
 
         _unitDestroyedPlayer = new AudioStreamPlayer
         {
             Stream = GD.Load<AudioStream>("res://assets/audio/unit_destroyed.wav"),
-            VolumeDb = -6f,
+            VolumeDb = UnitDestroyedDb,
         };
         AddChild(_unitDestroyedPlayer);
 
         _towerDestroyedPlayer = new AudioStreamPlayer
         {
             Stream = GD.Load<AudioStream>("res://assets/audio/tower_destroyed.wav"),
-            // Stone sources tend to be hot — keep parity with the
-            // tower-place gain so the destroy/place pair sit at a
-            // matched perceived loudness.
-            VolumeDb = -8f,
+            VolumeDb = TowerDestroyedDb,
         };
         AddChild(_towerDestroyedPlayer);
 
         _treeClearedPlayer = new AudioStreamPlayer
         {
             Stream = GD.Load<AudioStream>("res://assets/audio/tree_cleared.wav"),
-            // The woodblock crack's transient is hot by design — sit
-            // well under the unit-place thud so it doesn't dominate.
-            VolumeDb = -18f,
+            VolumeDb = TreeClearedDb,
         };
         AddChild(_treeClearedPlayer);
 
         _capitalDestroyedPlayer = new AudioStreamPlayer
         {
             Stream = GD.Load<AudioStream>("res://assets/audio/capital_destroyed.wav"),
-            // Capital "destruction" is really a relocation — the
-            // territory shrinks and CapitalReconciler picks a new
-            // capital tile. Sound sits at routine-event level, not
-            // milestone level.
-            VolumeDb = -10f,
+            VolumeDb = CapitalDestroyedDb,
         };
         AddChild(_capitalDestroyedPlayer);
 
         _bankruptcyPlayer = new AudioStreamPlayer
         {
             Stream = GD.Load<AudioStream>("res://assets/audio/bankruptcy.wav"),
-            // Somber, not loud — the player should hear it but it
-            // shouldn't startle. The descending womp lands on a
-            // sustained low tone, so a moderate gain reads as
-            // substantial without dominating.
-            VolumeDb = -10f,
+            VolumeDb = BankruptcyDb,
         };
         AddChild(_bankruptcyPlayer);
 
         _gameWonPlayer = new AudioStreamPlayer
         {
             Stream = GD.Load<AudioStream>("res://assets/audio/game_won.wav"),
-            // Terminal moment — the player just won, the screen is
-            // showing the game-over panel and they're absorbing the
-            // result. Sits a touch above bankruptcy so the win lands
-            // bigger than the loss bell, but not so hot that it startles.
-            VolumeDb = -6f,
+            VolumeDb = GameWonDb,
         };
         AddChild(_gameWonPlayer);
 
         _rallyPlayer = new AudioStreamPlayer
         {
             Stream = GD.Load<AudioStream>("res://assets/audio/rally.wav"),
-            // The swell is naturally airy and a bit broad — sit it well
-            // under the unit-place thud so a rally doesn't dominate the
-            // mix when it bundles several units' worth of motion.
-            VolumeDb = -14f,
+            VolumeDb = RallyDb,
         };
         AddChild(_rallyPlayer);
 
         _playerDefeatedPlayer = new AudioStreamPlayer
         {
             Stream = GD.Load<AudioStream>("res://assets/audio/player_defeated.wav"),
-            // Heavy gong bloom with long sustain.
-            // Sits at game-won level so the elimination of an enemy
-            // reads as a major moment, but not louder than the win
-            // fanfare.
-            VolumeDb = -10f,
+            VolumeDb = PlayerDefeatedDb,
         };
         AddChild(_playerDefeatedPlayer);
 
         _tileSubmergedPlayer = new AudioStreamPlayer
         {
             Stream = GD.Load<AudioStream>("res://assets/audio/tile_submerged.wav"),
-            // Soft watery glug for a Rising Tides tile sinking.
-            // Quiet — it can fire every turn, so it must not dominate.
-            VolumeDb = -8f,
+            VolumeDb = TileSubmergedDb,
         };
         AddChild(_tileSubmergedPlayer);
 
         _vikingArrivalPlayer = new AudioStreamPlayer
         {
             Stream = GD.Load<AudioStream>("res://assets/audio/viking_arrival.wav"),
-            // Creaking longship for a viking wave spawning offshore. It's a
-            // once-per-wave "threat incoming" moment — present but not a
-            // fanfare.
-            VolumeDb = -6f,
+            VolumeDb = VikingArrivalDb,
         };
         AddChild(_vikingArrivalPlayer);
 
         _rejectGenericPlayer = new AudioStreamPlayer
         {
             Stream = GD.Load<AudioStream>("res://assets/audio/reject_generic.wav"),
-            // A misclick can fire rapidly and carries little
-            // information — sit it well down so it reads as a gentle
-            // "no" under the more informative defended clang.
-            VolumeDb = -17f,
+            VolumeDb = RejectGenericDb,
         };
         AddChild(_rejectGenericPlayer);
 
         _rejectDefendedPlayer = new AudioStreamPlayer
         {
             Stream = GD.Load<AudioStream>("res://assets/audio/reject_defended.wav"),
-            // Distinct from generic — the metallic clang carries more
-            // information ("a defender blocked you"), so it's a touch
-            // hotter so the difference is audible without being loud.
-            VolumeDb = -8f,
+            VolumeDb = RejectDefendedDb,
         };
         AddChild(_rejectDefendedPlayer);
 
         _goldCapturedPlayer = new AudioStreamPlayer
         {
             Stream = GD.Load<AudioStream>("res://assets/audio/gold_captured.wav"),
-            // Small-reward chime that LAYERS on top of the action's
-            // occupant cue (place thud / chop) — sit at combine-chime
-            // level so the stack doesn't spike.
-            VolumeDb = -8f,
+            VolumeDb = GoldCapturedDb,
         };
         AddChild(_goldCapturedPlayer);
 
         _mountainCapturedPlayer = new AudioStreamPlayer
         {
             Stream = GD.Load<AudioStream>("res://assets/audio/mountain_captured.wav"),
-            // Low rocky thud; layers like the gold chime, and the low end
-            // reads through the mix without much gain.
-            VolumeDb = -8f,
+            VolumeDb = MountainCapturedDb,
         };
         AddChild(_mountainCapturedPlayer);
     }

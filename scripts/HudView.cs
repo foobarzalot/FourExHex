@@ -804,7 +804,8 @@ public partial class HudView : OrientationHud, IHudView
         // centers the group vertically and doesn't need this clearance.
         if (!Compact && RightRailGroup != null)
         {
-            const float endTurnClearance = 68f + 20f;   // button + spacing
+            const float endTurnClearance =
+                UiMetrics.TouchButtonSizePx + 20f;   // button + spacing
             RightRailGroup.OffsetBottom -= endTurnClearance;
         }
 
@@ -1337,7 +1338,7 @@ public partial class HudView : OrientationHud, IHudView
     // Minimum gap kept on each side when the viewport is too narrow for a
     // centered fixed-width HUD panel (tutorial box, bankruptcy toast), so the
     // panel shrinks to fit instead of clipping off both edges.
-    private const float HudPanelSideMargin = 24f;
+    private const float HudPanelSideMargin = UiMetrics.ViewportMarginPx;
     private bool _tutorialOverlayBuilt;
 
     private void BuildTutorialOverlay()
@@ -1576,6 +1577,17 @@ public partial class HudView : OrientationHud, IHudView
         PositionBankruptToast();
     }
 
+    /// <summary>Horizontal viewport width a centered HUD panel must leave
+    /// clear in landscape so it never reaches into the side rails — both
+    /// rails together claim up to 2 × (notch + rail + gutter). Portrait has
+    /// no rails, so nothing to clear.</summary>
+    private float LandscapeRailClearance()
+    {
+        if (Orientation != ScreenOrientation.Landscape) return 0f;
+        float notch = Mathf.Max(SafeArea.Current.Left, SafeArea.Current.Right);
+        return (notch + HudBars.RailWidth + UiMetrics.GutterPx) * 2f;
+    }
+
     /// <summary>Cap the bankruptcy toast width to the viewport (same rationale
     /// as <see cref="PositionTutorialOverlay"/>) so its fixed design width can't
     /// clip off both sides on a narrow or scaled-up viewport. Re-run on resize
@@ -1585,16 +1597,7 @@ public partial class HudView : OrientationHud, IHudView
         if (!_bankruptToastBuilt) return;
         float viewportW = GetViewport().GetVisibleRect().Size.X;
 
-        // Landscape: shrink the toast so it never reaches into the side
-        // rails — both rails together claim up to ~2 × (notch + railWidth
-        // + edgePad). Portrait has no rails, so the standard side-margin
-        // cap applies.
-        float railClearance = 0f;
-        if (Orientation == ScreenOrientation.Landscape)
-        {
-            float notch = Mathf.Max(SafeArea.Current.Left, SafeArea.Current.Right);
-            railClearance = (notch + HudBars.RailWidth + 8f) * 2f;
-        }
+        float railClearance = LandscapeRailClearance();
         float width = HudPanelMath.ClampWidth(
             BankruptToastW, viewportW - railClearance, HudPanelSideMargin);
         _bankruptToast.OffsetLeft = -width * 0.5f;
@@ -1679,12 +1682,7 @@ public partial class HudView : OrientationHud, IHudView
     {
         if (!_transientBannerBuilt) return;
         float viewportW = GetViewport().GetVisibleRect().Size.X;
-        float railClearance = 0f;
-        if (Orientation == ScreenOrientation.Landscape)
-        {
-            float notch = Mathf.Max(SafeArea.Current.Left, SafeArea.Current.Right);
-            railClearance = (notch + HudBars.RailWidth + 8f) * 2f;
-        }
+        float railClearance = LandscapeRailClearance();
         float width = HudPanelMath.ClampWidth(
             TransientBannerW, viewportW - railClearance, HudPanelSideMargin);
         _transientBanner.OffsetLeft = -width * 0.5f;
@@ -2974,8 +2972,10 @@ public partial class HudView : OrientationHud, IHudView
         }
         Tween tween = button.CreateTween();
         tween.SetLoops();
-        tween.TweenProperty(button, "modulate:a", 0.55f, 0.55).SetTrans(Tween.TransitionType.Sine);
-        tween.TweenProperty(button, "modulate:a", 1.0f, 0.55).SetTrans(Tween.TransitionType.Sine);
+        tween.TweenProperty(button, "modulate:a", 0.55f, UiMetrics.CtaPulseHalfPeriodSec)
+            .SetTrans(Tween.TransitionType.Sine);
+        tween.TweenProperty(button, "modulate:a", 1.0f, UiMetrics.CtaPulseHalfPeriodSec)
+            .SetTrans(Tween.TransitionType.Sine);
         _ctaPulseTweens[button] = tween;
     }
 

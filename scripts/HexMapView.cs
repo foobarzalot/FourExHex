@@ -106,9 +106,16 @@ public partial class HexMapView : Node2D, IHexMapView
     /// </summary>
     public bool EditorMode { get; set; }
 
-    [Export] public int Cols { get; set; } = 30;
-    [Export] public int Rows { get; set; } = 20;
-    [Export] public float HexSize { get; set; } = 48f;
+    // Board defaults for a procedural game. Public consts so previews that
+    // render a board without instantiating the scene (MapThumbnailView) use
+    // the same numbers as Start Game.
+    public const int DefaultCols = 30;
+    public const int DefaultRows = 20;
+    public const float DefaultHexSize = 48f;
+
+    [Export] public int Cols { get; set; } = DefaultCols;
+    [Export] public int Rows { get; set; } = DefaultRows;
+    [Export] public float HexSize { get; set; } = DefaultHexSize;
 
     // Unit ring fill colors. White = "current player's unit that
     // still has its move this turn" (actionable); black = everything
@@ -329,11 +336,11 @@ public partial class HexMapView : Node2D, IHexMapView
     // CTA-style flash, but only the white FILL pulses (the black border stays
     // steady so the tile frame always reads). The fill peaks translucent —
     // never opaque — so the actionable unit's white rings stay visible at the
-    // top of the pulse instead of washing out. Sine, 0.55 s/leg
-    // to match HudView's CTA cadence.
+    // top of the pulse instead of washing out. Sine, at the shared CTA
+    // cadence (UiMetrics) so it breathes with HudView's button pulse.
     private const float SelectCueFillMinAlpha = 0.18f;
     private const float SelectCueFillMaxAlpha = 0.55f;
-    private const float SelectCuePulseHalfPeriod = 0.55f;
+    private const float SelectCuePulseHalfPeriod = UiMetrics.CtaPulseHalfPeriodSec;
 
     // Terrain-intro focus pulse (issue #53): a standalone pulsing hex overlay
     // that draws the eye to the gold/mountain tile the camera pans to during
@@ -424,8 +431,9 @@ public partial class HexMapView : Node2D, IHexMapView
     private double _panElapsed;
 
     // Long-press = press held at least this long without dragging. Picks
-    // the rally action instead of the normal click on release.
-    private const ulong LongPressMs = 400UL;
+    // the rally action instead of the normal click on release. Shared
+    // threshold with HudIconButton's hold gesture via UiMetrics.
+    private const ulong LongPressMs = UiMetrics.LongPressMs;
     private ulong _pressStartMsec;
 
     // Paint-gesture state, used only when DragMode == Paint. _paintActive

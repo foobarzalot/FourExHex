@@ -43,7 +43,7 @@ public sealed partial class BugReportPanel : CanvasLayer
     // jump the box.
     private const float DesignWidth = 456f;
     private const float DesignHeight = 540f;
-    private const float ViewportMargin = 24f;
+    private const float ViewportMargin = UiMetrics.ViewportMarginPx;
 
     public override void _Ready()
     {

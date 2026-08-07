@@ -289,10 +289,10 @@ public static partial class UserSettings
     /// </summary>
     public static int SpeedMultiplierPercent(PlaybackSpeed speed) => speed switch
     {
-        PlaybackSpeed.Slow => 200,
-        PlaybackSpeed.Normal => 100,
-        PlaybackSpeed.Fast => 50,
-        _ => 100,
+        PlaybackSpeed.Slow => StepPacing.SlowSpeedPercent,
+        PlaybackSpeed.Normal => StepPacing.NormalSpeedPercent,
+        PlaybackSpeed.Fast => StepPacing.FastSpeedPercent,
+        _ => StepPacing.NormalSpeedPercent,
     };
 
     private sealed class SettingsDto

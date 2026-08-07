@@ -95,7 +95,7 @@ public sealed partial class SlotPickerDialog : CanvasLayer
     // Game map-setup page's footprint.
     private const float TextPanelW = 560f, TextPanelH = 480f;
     private const float ErrorPanelW = 420f, ErrorPanelH = 200f;
-    private const float ViewportMargin = 24f;
+    private const float ViewportMargin = UiMetrics.ViewportMarginPx;
 
     // Preview-panel fill caps — the same comfortable sizes the New Game page
     // uses (LandscapeMenuChrome 920×520 landscape; its 90° transpose portrait).

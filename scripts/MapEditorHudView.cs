@@ -58,7 +58,8 @@ public partial class MapEditorHudView : OrientationHud
         index >= UnitPaletteIndex
         && index < UnitPaletteIndex + UnitLevelCount;
 
-    private const int UnitLevelCount = 4;
+    // Levels run 1..Commander, so the top level's value IS the count.
+    private const int UnitLevelCount = (int)UnitLevel.Commander;
 
     /// <summary>
     /// True where the four unit swatches fit: the portrait bottom bar at a

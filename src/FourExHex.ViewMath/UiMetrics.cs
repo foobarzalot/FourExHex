@@ -35,4 +35,12 @@ public static class UiMetrics
     /// identical. Integer ms; consumers needing seconds divide by 1000.
     /// </summary>
     public const int LongPressMs = 400;
+
+    /// <summary>
+    /// Half-period of the call-to-action pulse, in seconds per leg (sine,
+    /// dim→bright). The HUD's CTA button pulse, the board's select cue, and
+    /// the HUD-tour ring all breathe at this cadence so simultaneous cues
+    /// read as one system.
+    /// </summary>
+    public const float CtaPulseHalfPeriodSec = 0.55f;
 }

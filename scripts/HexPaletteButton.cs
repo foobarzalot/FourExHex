@@ -108,7 +108,7 @@ public partial class HexPaletteButton : Control
         // (68×68) so the hex inside (squared = inscribed in the slate
         // backdrop; non-squared = bare hex polygon) lands at the same
         // visual size whether the button is a tool (water) or a land swatch.
-        CustomMinimumSize = new Vector2(68, 68);
+        CustomMinimumSize = new Vector2(UiMetrics.TouchButtonSizePx, UiMetrics.TouchButtonSizePx);
         MouseFilter = MouseFilterEnum.Stop;
     }
 

@@ -46,7 +46,7 @@ public sealed partial class CreditsPanel : CanvasLayer
     // menu uses; the long credits text scrolls within the design-size panel.
     private const float DesignWidth = 456f;
     private const float DesignHeight = 540f;
-    private const float ViewportMargin = 24f;
+    private const float ViewportMargin = UiMetrics.ViewportMarginPx;
 
     public override void _Ready()
     {

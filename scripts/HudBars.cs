@@ -17,7 +17,8 @@ using Godot;
 public static class HudBars
 {
     /// <summary>Side-rail width in logical px (spec §6). Holds one column of
-    /// 54-px buttons with 8-px gutter on each side.</summary>
+    /// 68-px HudIconButtons (<see cref="UiMetrics.TouchButtonSizePx"/>) with
+    /// a small side inset.</summary>
     public const float RailWidth = 78f;
 
     /// <summary>Bottom-bar height in portrait. Sized for two rows of 68-px
@@ -118,7 +119,7 @@ public static class HudBars
         // BOTH sides so the inset is symmetric and orientation-safe; the
         // corner zones (display chips, options) skip the safe inset and
         // get the unused corner real estate instead.
-        const float edgePad = 8f;
+        const float edgePad = UiMetrics.GutterPx;
         float notchSafe = Mathf.Max(safe.Left, safe.Right);
         float sideOffset = notchSafe + edgePad;
 

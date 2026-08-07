@@ -29,11 +29,11 @@ using Godot;
 public partial class MapThumbnailView : Control
 {
     // Board dimensions the play scene uses for a procedural game (HexMapView's
-    // exported defaults; see Main._Ready). Kept in sync so the preview matches
-    // Start Game exactly.
-    private const int BoardCols = 30;
-    private const int BoardRows = 20;
-    private const float PreviewHexSize = 48f;
+    // exported defaults; see Main._Ready), so the preview matches Start Game
+    // exactly.
+    private const int BoardCols = HexMapView.DefaultCols;
+    private const int BoardRows = HexMapView.DefaultRows;
+    private const float PreviewHexSize = HexMapView.DefaultHexSize;
 
     // Sharpness: render the offscreen board at the thumbnail's true on-screen
     // pixel size (logical size × the window ContentScaleFactor that DisplayScale
