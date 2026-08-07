@@ -737,7 +737,8 @@ public class GameOperations
         // ReseedRngForCurrentTurn, before any capture or AI draw), so the draw
         // lands at a fixed stream offset and reproduces on resume/replay.
         _state.PendingTide = RisingTidesRules.ForecastSubmerge(
-            _state, _state.Turns.CurrentPlayer.Id, budget: 1, rng: TideTieBreakRng());
+            _state, _state.Turns.CurrentPlayer.Id,
+            budget: RisingTidesRules.SubmergeBudgetPerTurn, rng: TideTieBreakRng());
     }
 
     /// <summary>The RNG for the Rising Tides equal-exposure tie-break:
@@ -790,13 +791,15 @@ public class GameOperations
     /// turn (forecast at start, apply at end) the two halves run together here.
     /// No-op outside Rising Tides and on round 1 (matching the <c>TurnNumber &gt; 1</c>
     /// gate that defers tree growth), so a freeform game's RNG stream and
-    /// behaviour are byte-for-byte unchanged. Budget is fixed at 1 for now.
+    /// behaviour are byte-for-byte unchanged.
     /// </summary>
     private void MaybeRiseTidesFor(PlayerId owner)
     {
         if (_state.Mode != GameMode.RisingTides || _state.Turns.TurnNumber <= 1) return;
         HashSet<PlayerId> colorsWithCapitalBefore = ColorsWithCapital(_state.Territories);
-        bool changed = RisingTidesRules.SubmergeStep(_state, owner, budget: 1, rng: TideTieBreakRng());
+        bool changed = RisingTidesRules.SubmergeStep(
+            _state, owner, budget: RisingTidesRules.SubmergeBudgetPerTurn,
+            rng: TideTieBreakRng());
         // A submerge removes tiles (or demotes a mountain) — the land/water
         // tessellation is structural, so it needs the coalesced repaint path,
         // not just the per-turn RefreshOccupantVisuals. Mirror HandleCapture's
@@ -1171,15 +1174,6 @@ public class GameOperations
         RefreshViews();
     }
 
-    // Max wall-clock a single instant tick may spend draining steps
-    // before it yields a frame. Small so the main thread stays
-    // responsive mid-fast-forward — input, camera pan/zoom and
-    // rendering all run between ticks. A mid-turn budget break yields
-    // WITHOUT a redraw (nothing visual changed the user needs yet);
-    // the screen is repainted only at turn boundaries. Shared by
-    // instant replay and live-AI instant.
-    private const int InstantBudgetMs = 8;
-
     /// <summary>
     /// Shared chunked, frame-yielded fast-forward loop behind both
     /// instant replay (<see cref="ReplayRecorder"/>) and live-AI
@@ -1187,7 +1181,7 @@ public class GameOperations
     /// with no per-step visual work (captures skip their rebuild via
     /// <see cref="SuppressMapRebuild"/>; sound/VFX/tweens off via
     /// silent mode), repaints the whole board exactly once per turn,
-    /// and caps each tick at <see cref="InstantBudgetMs"/> so a huge
+    /// and caps each tick at <see cref="StepPacing.InstantBudgetMs"/> so a huge
     /// turn still yields frames (pan/zoom/input stay alive) without
     /// redrawing until that turn ends. Reschedules itself via
     /// <c>ScheduleUnscaled</c> — the driver owns its cadence; the speed
@@ -1212,7 +1206,7 @@ public class GameOperations
                 return;
             }
             if (s == InstantStep.TurnBoundary) { turnBoundary = true; break; }
-            if (sw.ElapsedMilliseconds >= InstantBudgetMs) break;
+            if (sw.ElapsedMilliseconds >= StepPacing.InstantBudgetMs) break;
         }
         SuppressMapRebuild = false;
 

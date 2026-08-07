@@ -24,8 +24,10 @@ using System;
 /// parameter (consulted on every <see cref="Schedule"/> call so
 /// mid-game speed changes take effect immediately) scales the
 /// requested delay before it's handed to the timer factory —
-/// Slow=200, Normal=100, Fast=50 (integer percent so the controller
-/// layer stays float-free; see "No floating-point in Model or
+/// <see cref="StepPacing.SlowSpeedPercent"/> /
+/// <see cref="StepPacing.NormalSpeedPercent"/> /
+/// <see cref="StepPacing.FastSpeedPercent"/> (integer percent so the
+/// controller layer stays float-free; see "No floating-point in Model or
 /// Controller" in ARCHITECTURE.md). "Instant" is NOT a multiplier:
 /// the controller routes it to a chunked frame-yielded driver that
 /// schedules via <see cref="ScheduleUnscaled"/>, whose delays bypass
@@ -43,7 +45,8 @@ public sealed class GodotAiPacer : IAiPacer
     public GodotAiPacer(ITimerFactory timers, Func<int>? delayMultiplierPercent = null)
     {
         _timers = timers;
-        _delayMultiplierPercent = delayMultiplierPercent ?? (() => 100);
+        _delayMultiplierPercent =
+            delayMultiplierPercent ?? (() => StepPacing.NormalSpeedPercent);
     }
 
     public void Schedule(Action callback, int delayMs) =>

@@ -511,7 +511,7 @@ public class ReplayRecorder
         // turns flick past and contentful turns run back-to-back.
         if (_fastForwardIdleTurns && beat is ReplayEndTurnBeat)
         {
-            _aiPacer.Schedule(StepReplayExecute, 0);
+            _aiPacer.Schedule(StepReplayExecute, StepPacing.ReplayFastForwardExecuteDelayMs);
             return;
         }
         ReplayBeatPreviewing?.Invoke(beat);

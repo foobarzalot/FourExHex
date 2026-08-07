@@ -26,6 +26,17 @@ public static class StepPacing
     // don't visually blur, nothing more. Turn-end beats themselves execute
     // with no preview and zero delay in that mode.
     public const int ReplayIdleTurnSkipMs = 50;
+    // The immediate-execute delay for those turn-end beats themselves —
+    // no preview, no pause, straight to the execute.
+    public const int ReplayFastForwardExecuteDelayMs = 0;
+
+    // Paced-speed multipliers (integer percent — no floats in Controller).
+    // Consulted by GodotAiPacer on every Schedule call; the view's speed
+    // setting maps its Slow/Normal/Fast choice to these. "Instant" is not
+    // a multiplier — it routes to the chunked instant track below.
+    public const int SlowSpeedPercent = 200;
+    public const int NormalSpeedPercent = 100;
+    public const int FastSpeedPercent = 50;
 
     // Viking Raiders: how long the viking pseudo-turn stays open after the
     // wave-spawn beat, so the arrival presentation (the "ripple rise"
@@ -44,12 +55,12 @@ public static class StepPacing
     // per-hex term is what makes long moves read as travel instead of a
     // teleport — a fixed duration crams any distance into the same slice
     // and the eye loses it.
-    private const int MoveTravelFloorMs = 120;
-    private const int MoveTravelPerHexMs = 80;
-    private const int MoveTravelCapMs = 680;
+    public const int MoveTravelFloorMs = 120;
+    public const int MoveTravelPerHexMs = 80;
+    public const int MoveTravelCapMs = 680;
     // Headroom between the tween landing and the next beat's refresh
     // (which rebuilds the unit layer and would kill an in-flight tween).
-    private const int MoveSettleMarginMs = 60;
+    public const int MoveSettleMarginMs = 60;
 
     /// <summary>
     /// Base (Normal-speed) duration of the unit move-travel tween for a
@@ -80,6 +91,15 @@ public static class StepPacing
     // Fast (~325ms/beat). Mid-turn budget yields (no repaint) use 0 —
     // an in-progress turn shouldn't be paced, only completed ones.
     public const int InstantTurnDelayMs = 200;
+    // Mid-turn budget yields reschedule immediately — an in-progress turn
+    // shouldn't be paced, only completed ones.
+    public const int InstantMidTurnDelayMs = 0;
+
+    // Max wall-clock a single instant tick may spend draining steps before
+    // it yields a frame (see GameOperations.RunInstantTick). Small so the
+    // main thread stays responsive mid-fast-forward — input, camera
+    // pan/zoom and rendering all run between ticks.
+    public const int InstantBudgetMs = 8;
 
     /// <summary>
     /// Shared instant↔paced re-dispatch skeleton behind both step
@@ -124,13 +144,15 @@ public static class StepPacing
         setTrack(nowInstant);
         syncSilentMode();
         // Delay belongs to whichever track we land on: instant runs at
-        // its own cadence (0 mid-turn, InstantTurnDelayMs at a boundary,
-        // unscaled); paced uses the multiplier-scaled step delays. The
+        // its own cadence (InstantMidTurnDelayMs mid-turn, InstantTurnDelayMs
+        // at a boundary, unscaled); paced uses the multiplier-scaled step
+        // delays. The
         // non-boundary delay is per-action: a just-executed move passes
         // MoveSettleDelayMs so its travel tween finishes before the next
         // beat's refresh; everything else keeps AiActionDelayMs.
         if (nowInstant)
-            pacer.ScheduleUnscaled(instantTick, turnBoundary ? InstantTurnDelayMs : 0);
+            pacer.ScheduleUnscaled(
+                instantTick, turnBoundary ? InstantTurnDelayMs : InstantMidTurnDelayMs);
         else
             pacer.Schedule(pacedStep, turnBoundary ? pacedBoundaryDelayMs : pacedActionDelayMs);
     }

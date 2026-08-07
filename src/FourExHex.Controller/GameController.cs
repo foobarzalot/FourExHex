@@ -459,22 +459,24 @@ public class GameController
     }
 
     /// <summary>
-    /// Seed every territory's treasury to 5 × its gold-earning-cell
-    /// count, capped at 50 so a big starting region doesn't buy an
-    /// outsized bankroll. Tree-occupied cells don't earn gold, so they
-    /// don't contribute to the seed.
+    /// Seed every territory's treasury to
+    /// <see cref="IncomeRules.StartingGoldPerEarningCell"/> × its
+    /// gold-earning-cell count, capped at
+    /// <see cref="IncomeRules.StartingGoldCap"/> so a big starting region
+    /// doesn't buy an outsized bankroll. Tree-occupied cells don't earn
+    /// gold, so they don't contribute to the seed.
     /// </summary>
     private void SeedStartingGold()
     {
-        const int startingGoldPerEarningCell = 5;
-        const int startingGoldCap = 50;
         foreach (Territory territory in _state.Territories)
         {
             if (!territory.HasCapital) continue;
             int earningCells = TreeRules.CountIncomeProducingTiles(territory, _state.Grid);
             _state.Treasury.SetGold(
                 territory.Capital!.Value,
-                Math.Min(earningCells * startingGoldPerEarningCell, startingGoldCap));
+                Math.Min(
+                    earningCells * IncomeRules.StartingGoldPerEarningCell,
+                    IncomeRules.StartingGoldCap));
         }
     }
 
@@ -1625,9 +1627,9 @@ public class GameController
     // is a flag checked at every beat entry: stopping between beats abandons
     // at most an un-applied pending action, never a half-applied mutation.
 
-    // Mirrors AiTurnDriver.MaxAiStepsPerPlayer: a runaway-chooser backstop,
-    // far above any real turn's action count.
-    private const int MaxAutomateStepsPerTurn = 64;
+    // Runaway-chooser backstop, far above any real turn's action count —
+    // the same cap the live-AI driver uses.
+    private const int MaxAutomateStepsPerTurn = AiTurnDriver.MaxAiStepsPerPlayer;
     private AiAction? _pendingAutomateAction;
     private readonly HashSet<HexCoord> _automateVisited = new();
     private int _automateSteps;

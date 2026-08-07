@@ -59,8 +59,9 @@ public class AiTurnDriver
 
     // Safety cap on AI actions per player turn — the visited set
     // guarantees termination in practice, but this keeps a buggy
-    // chooser from pacing forever.
-    private const int MaxAiStepsPerPlayer = 64;
+    // chooser from pacing forever. Public because GameController's
+    // automate loop shares the same backstop.
+    public const int MaxAiStepsPerPlayer = 64;
 
     public AiTurnDriver(
         GameState state,

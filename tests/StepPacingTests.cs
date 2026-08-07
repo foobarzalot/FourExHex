@@ -59,4 +59,14 @@ public class StepPacingTests
         Assert.True(StepPacing.MoveSettleDelayMs(distance)
             > StepPacing.MoveTravelBaseMs(distance));
     }
+
+    [Fact]
+    public void SpeedPercents_PinThePacedSpeedContract()
+    {
+        // The view's Slow/Normal/Fast setting maps to these; AiPacerContractTests
+        // exercise the scaling arithmetic against the same values.
+        Assert.Equal(200, StepPacing.SlowSpeedPercent);
+        Assert.Equal(100, StepPacing.NormalSpeedPercent);
+        Assert.Equal(50, StepPacing.FastSpeedPercent);
+    }
 }
