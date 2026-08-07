@@ -57,8 +57,12 @@ public static class ViewMatrix
             "min side 700 inside the 668..732 band, arriving expanded — must hold expanded"),
         Cell("compact-flip", 1280, 660,
             "min side 660 < 668 — flips to compact"),
-        Cell("deadband-hold-compact", 1280, 701,
-            "same band as deadband-hold-expanded but arriving compact — must hold compact"),
+        // Deliberately the same geometry as deadband-hold-expanded: identical
+        // size, opposite prior state, opposite outcome. Odd heights are avoided
+        // because a window manager may round them (1280x701 comes back as 700
+        // and the cell reports UNACHIEVABLE).
+        Cell("deadband-hold-compact", 1280, 700,
+            "same size as deadband-hold-expanded but arriving compact — must hold compact"),
         Cell("expanded-flip-back", 1280, 760,
             "min side 760 > 732 — flips back to expanded"),
 

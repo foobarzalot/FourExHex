@@ -545,6 +545,13 @@ public partial class HexMapView : Node2D, IHexMapView
 
     public override void _Ready()
     {
+        // The board is world space — panned, zoomed, and far larger than the
+        // window by design — so its geometry has no viewport contract and the
+        // layout audit must not judge it. Skipping the subtree also keeps the
+        // audit cheap: this is hundreds of tile nodes that hold no Controls the
+        // HUD layout cares about.
+        SetMeta(LayoutAudit.SkipMeta, true);
+
         // Recording mode (issue #156): repaint the capital warning badges
         // immediately when the cheat-menu toggle flips, so the in-map
         // chrome hides/restores without waiting for the next state change.

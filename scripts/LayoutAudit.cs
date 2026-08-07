@@ -61,6 +61,11 @@ public static class LayoutAudit
         if (!Log.IsEnabled(Log.LogCategory.Layout, Log.LogLevel.Warn)) return;
         if (!GodotObject.IsInstanceValid(root)) return;
 
+        // Panels lay themselves out before being added to the tree; asking such
+        // a node for its SceneTree logs a Godot error, so check first rather
+        // than relying on the null return.
+        if (!root.IsInsideTree()) return;
+
         SceneTree? tree = root.GetTree();
         if (tree == null) return;
 

@@ -57,6 +57,7 @@ public partial class ViewHarness : Node
     private readonly List<string> _scenes = new()
     {
         "res://scenes/main_menu.tscn",
+        "res://scenes/main.tscn",
         "res://scenes/map_editor.tscn",
         "res://scenes/tutorial_builder.tscn",
     };
@@ -71,6 +72,7 @@ public partial class ViewHarness : Node
     private int _screenIndex;
     private double _sinceTransition;
 
+    private bool _awaitingSwap;
     private int _visits;
     private int _skippedScreens;
     private int _skippedCells;
@@ -86,6 +88,11 @@ public partial class ViewHarness : Node
             SetProcess(false);
             return;
         }
+
+        // The pause menu sets GetTree().Paused, which would stop this node's
+        // _Process — the sweep would hang on the first paused screen and the
+        // watchdog, being itself in _Process, could never fire to report it.
+        ProcessMode = ProcessModeEnum.Always;
 
         // The 6AI diagnostic path returns from MainMenuScene._Ready before any
         // panel is built and swaps HeadlessHexMapView/HeadlessHudView in for the
@@ -166,6 +173,24 @@ public partial class ViewHarness : Node
 
     private void AwaitScene()
     {
+        Node? current = GetTree()?.CurrentScene;
+        if (current == null) return;
+
+        // Godot always boots into project.godot's main scene, which is not
+        // necessarily the first scene in the sweep — with a scene filter it
+        // usually isn't. Navigating here rather than assuming keeps the audit
+        // tags honest; without it the harness audits the menu while labelling
+        // the findings as another scene's.
+        if (current.SceneFilePath != _scenes[_sceneIndex])
+        {
+            if (_awaitingSwap) return;      // swap already requested; wait for it
+            _awaitingSwap = true;
+            PrepareSceneEntry(_scenes[_sceneIndex]);
+            GetTree().ChangeSceneToFile(_scenes[_sceneIndex]);
+            return;
+        }
+        _awaitingSwap = false;
+
         if (Scene is not IHarnessNavigable navigable) return;   // scene still building
 
         _screenIds = navigable.HarnessScreenIds;
@@ -287,11 +312,30 @@ public partial class ViewHarness : Node
             return;
         }
 
-        // Release the forced insets before the swap so the next scene builds
-        // against its own cell's geometry, not the previous cell's.
+        // Release the forced insets so the next scene builds against its own
+        // cell's geometry, not the previous cell's. AwaitScene owns the actual
+        // navigation, so there is one code path that decides what to load.
         SafeArea.SetOverrideForHarness(null);
-        GetTree().ChangeSceneToFile(_scenes[_sceneIndex]);
+        _awaitingSwap = false;
         Transition(Step.AwaitScene);
+    }
+
+    /// <summary>Set whatever a scene needs before it builds. The cross-scene
+    /// handoff statics are the sanctioned mechanism, so the harness uses them
+    /// rather than reaching into the scene after the fact.</summary>
+    private static void PrepareSceneEntry(string scenePath)
+    {
+        if (!scenePath.EndsWith("main.tscn")) return;
+
+        // A small, seeded, all-Computer-but-one game: fast to build, identical
+        // run to run, and it leaves a real HudView over a real board. NOT the
+        // FOUREXHEX_6AI path — that one swaps in headless views.
+        GameSettings.CampaignLevel = null;
+        GameSettings.MasterSeed = 42;
+        for (int i = 0; i < GameSettings.PlayerKinds.Length; i++)
+        {
+            GameSettings.PlayerKinds[i] = i == 0 ? PlayerKind.Human : PlayerKind.Computer;
+        }
     }
 
     private void Summarize()
