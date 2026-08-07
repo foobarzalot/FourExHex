@@ -525,7 +525,7 @@ Mutation/orchestration core (what both live AI and replay need) lives in `src/Fo
   - Turn transitions — `ReseedRngForCurrentTurn` (+ static `MixSeed`), `EndOfTurnProcessing` (+ private `LogGameEndDiagnostics`), `AdvanceToNextActivePlayer`, `StartPlayerTurn` (+ static `ResetMovementFor`, private `LogTurnStart`)
   - Game-end — `CheckGameEndConditions` (fires `GameEnded` via the `onGameEnded` ctor callback; controller owns the public event)
   - View sync — `RefreshViews` (also pushes the Automate button state via `IHudView.SetAutomateState`, reading the `isAutomating` / `isAutomateExhausted` ctor callbacks), `ShowHighlightAndRefresh`, `InvokeAfterRefresh`, private `HasAnyActionableForCurrentPlayer`
-  - Shared instant loop — `RunInstantTick(active, step, onExhausted, reschedule)`, the chunked frame-yielded fast-forward behind both live-AI instant (`AiTurnDriver`) and instant replay (`ReplayRecorder`); owns `InstantBudgetMs`
+  - Shared instant loop — `RunInstantTick(active, step, onExhausted, reschedule)`, the chunked frame-yielded fast-forward behind both live-AI instant (`AiTurnDriver`) and instant replay (`ReplayRecorder`); tick budget `StepPacing.InstantBudgetMs`
   - Silent-mode — `IsSilent` (per-action cue gate) + `EmitSound` / `EmitDestruction` / `EmitTerrainCaptureFx` / `EmitMountainTowerFx` (silent-gated wrappers over `_map.PlaySound` / `PlayDestructionEffect` / `PlayTerrainCaptureEffect`, the only path controllers use); `RefreshSilentMode` (drives the view's `_silentMode` flag for view-internal tween/tide suppression), `InSilentAiBatch` (input gate)
   - Helpers — `WasFriendlyUnitAt`
   - Mutable shared state (public properties; written by the instant loop / replay reset paths) — `Rng` (read-only getter), `GameEndedFired`, `HumanTurnFiredForCurrentTurn`, `SuppressMapRebuild`
@@ -782,6 +782,40 @@ public interface ITimerFactory { void After(int delayMs, Action callback); }
 - **AI actions are not undoable**; AI execute methods validate preconditions before mutating — an illegal action throws and halts rather than corrupting state.
 - **Replay log is honest.** Recording appends a `ReplayBeat` at execute time; undo/redo handlers pop matching beats (or push back on redo) so an undone move never appears in the saved replay. Grows monotonically across `EndTurn`.
 - **Players with no capital-bearing territory are skipped.** `AdvanceToNextActivePlayer` calls `TurnState.EndTurn` until it lands on a player whose territory list contains a capital. The neutral seat is exempt: it never owns a capital, but its trailing seat is a real turn.
+
+## Where constants live
+
+Tunable numbers are named constants on the class that owns the behavior; a few
+shared-token classes hold values that must agree across otherwise-unrelated
+consumers. When a value is needed by two layers it lives in the lower one.
+
+- **Model — on the owning rules class.** `DifficultyRules` (unit/tower base
+  costs per difficulty), `PurchaseRules` (tier ladder), `UpkeepRules` (upkeep
+  table + `UpkeepHorizon`), `IncomeRules` (`GoldTileBonus`, starting-gold
+  seed), `DefenseRules` (`TowerDefense`, `CapitalDefense`, `MountainBonus`),
+  `TreeRules` (spread thresholds), `WinConditionRules` (claim-victory tiers),
+  `VikingRaidersRules` (wave schedule), `RisingTidesRules`
+  (`SubmergeBudgetPerTurn`), `CapitalPlacer.MinTerritorySizeForCapital`,
+  `MapRosterRules.MinPlayersForValidMap`, `MapGenerator` (CA/scatter knobs),
+  `MapGenOptions` (density defaults + limits — `GameSettings`' density fields
+  initialize from them), `CampaignProgress` (ladder shape, per-level draws).
+  AI weights are the documented `const` block at the top of `AiStateScorer`;
+  the tower-kill credit default stays in `GameSettings` beside the per-slot
+  override array it seeds.
+- **Controller — `StepPacing`.** Every step-beat delay, the instant-track
+  cadence and frame budget, and the Slow/Normal/Fast speed percents (the view's
+  speed setting maps to these; `StepPacingTests` pins them).
+  `AiTurnDriver.MaxAiStepsPerPlayer` is the shared per-turn step backstop.
+- **ViewMath — `UiMetrics`** (cross-cutting feel tokens: touch-button size,
+  gutter, viewport margin, long-press threshold, CTA pulse cadence) plus
+  per-class constants in `DisplayScaleMath`, `ScreenLayout`, `ZoomMath`,
+  `PanelFitMath`, `SwipeDetector`, `EditorPaletteLayout`. `HexProjection`
+  deliberately keeps the pointy-top hex geometry factors inline — they are
+  mathematical identities, not tunables.
+- **View (`scripts/`)** — colors in `UiPalette` / `BoardPalette` /
+  `PlayerPalette`; the SFX mix in `AudioBus`'s dB block; shared HUD chrome
+  metrics in `HudBars`; everything else (animation durations, ring widths,
+  per-panel design sizes) as named `const`s on the class that draws it.
 
 ## Turn structure
 
