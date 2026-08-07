@@ -94,12 +94,12 @@ public static class AiStateScorer
     private const int BuildTowerCoverageBonus = 10;
 
     // Committed defense at or above this makes a covered border tile
-    // not worth a tower: 2 is a tower's own contribution, so anything
+    // not worth a tower: a tower's own contribution, so anything
     // durably defended at tower grade (an existing tower's radius, a
     // locked soldier+, a locked recruit on a mountain) gains nothing
     // from another tower. Below it (capital's 1, a locked recruit's 1,
     // any free-move unit's 0) the tile still counts as coverable.
-    private const int TowerGradeDefense = 2;
+    private const int TowerGradeDefense = DefenseRules.TowerDefense;
 
     // Extra per-tile credit when a qualifying covered tile currently
     // reads as defended in Score() (DefenseRules.Defense > 0 — e.g. a
@@ -127,6 +127,23 @@ public static class AiStateScorer
     // clamps captain/commander to the same ceiling so stacking strength past
     // it stops paying. Must stay ≥ 3 or the mountain +1 goes invisible.
     private const int ContestedDefenseCap = 3;
+
+    // Strategic value of a unit by level, used by UnitValue(). Roughly
+    // tracks upkeep cost but discounts higher levels so the AI doesn't
+    // over-combine when lower-level units would suffice. Not strictly
+    // proportional to upkeep (2/6/18/54) because the upkeep/value ratio
+    // should reward leveling up.
+    private const int RecruitStrategicValue = 4;
+    private const int SoldierStrategicValue = 12;
+    private const int CaptainStrategicValue = 30;
+    private const int CommanderStrategicValue = 70;
+
+    // Multiplier on the woken units' value in BarbarianProvokePenalty().
+    // At 2x, waking even a single Recruit (RecruitStrategicValue 4) costs
+    // most of a captured tile's worth (TileWeight 10), so a comparable
+    // non-provoking capture always wins, while a genuinely better
+    // provoking one still can.
+    private const int BarbarianProvokeWeight = 2;
 
     /// <summary>
     /// One-shot scoring delta awarded for the act of placing a
@@ -452,15 +469,6 @@ public static class AiStateScorer
         return penalty;
     }
 
-    /// <summary>
-    /// Multiplier on the woken units' value in
-    /// <see cref="BarbarianProvokePenalty"/>. At 2x, waking even a single
-    /// Recruit (value 4) costs most of a captured tile's worth
-    /// (<see cref="TileWeight"/> 10), so a comparable non-provoking capture
-    /// always wins, while a genuinely better provoking one still can.
-    /// </summary>
-    private const int BarbarianProvokeWeight = 2;
-
     public static int EvacuationBonus(AiMoveAction mv, GameState state, PlayerId owner)
     {
         if (state.PendingTide.Count == 0) return 0;
@@ -532,19 +540,15 @@ public static class AiStateScorer
     }
 
     /// <summary>
-    /// Strategic value of a unit by level. Roughly tracks upkeep
-    /// cost but discounts higher levels so the AI doesn't
-    /// over-combine when lower-level units would suffice. Recruit
-    /// = 4 (attack level 1, cheap), Soldier = 12, Captain = 30,
-    /// Commander = 70. Not strictly proportional to upkeep (2/6/18/54)
-    /// because the upkeep/value ratio should reward leveling up.
+    /// Strategic value of a unit by level — the *StrategicValue
+    /// constants in the weights block at the top of the class.
     /// </summary>
     private static int UnitValue(UnitLevel level) => level switch
     {
-        UnitLevel.Recruit => 4,
-        UnitLevel.Soldier => 12,
-        UnitLevel.Captain => 30,
-        UnitLevel.Commander => 70,
+        UnitLevel.Recruit => RecruitStrategicValue,
+        UnitLevel.Soldier => SoldierStrategicValue,
+        UnitLevel.Captain => CaptainStrategicValue,
+        UnitLevel.Commander => CommanderStrategicValue,
         _ => throw new System.InvalidOperationException(
             $"Unmapped UnitLevel for scoring: {level}"),
     };

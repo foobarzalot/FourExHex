@@ -30,6 +30,16 @@ using System.Linq;
 public static class RisingTidesRules
 {
     /// <summary>
+    /// Shore tiles the rising tide submerges per player-turn — the erosion
+    /// rate of the mode. The Controller passes this as the
+    /// <c>budget</c> of <see cref="ForecastSubmerge"/> /
+    /// <see cref="SubmergeStep"/> for both real player turns and the
+    /// phantom turns of eliminated/neutral seats, so the two paths cannot
+    /// drift apart.
+    /// </summary>
+    public const int SubmergeBudgetPerTurn = 1;
+
+    /// <summary>
     /// The land tiles owned by <paramref name="owner"/> that are shores — i.e.
     /// have fewer than six in-grid neighbours. Returned in deterministic
     /// ascending <see cref="HexCoord"/> order so a seeded draw over the list is

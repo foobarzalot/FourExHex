@@ -18,6 +18,19 @@ public static class IncomeRules
     public const int GoldTileBonus = 4;
 
     /// <summary>
+    /// Gold each income-producing cell contributes to a player's starting
+    /// treasury when a new game is seeded (units-per-cell excluded — the
+    /// count comes from <see cref="TreeRules.CountIncomeProducingTiles"/>).
+    /// </summary>
+    public const int StartingGoldPerEarningCell = 5;
+
+    /// <summary>
+    /// Ceiling on the seeded starting treasury, so a player who begins with
+    /// a large territory doesn't also begin rich.
+    /// </summary>
+    public const int StartingGoldCap = 50;
+
+    /// <summary>
     /// Gold a territory yields in one turn: the count of income-producing
     /// tiles (<see cref="TreeRules.CountIncomeProducingTiles"/> — trees and
     /// graves don't pay) plus <see cref="GoldTileBonus"/> for each gold

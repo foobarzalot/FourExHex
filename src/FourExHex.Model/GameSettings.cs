@@ -91,20 +91,20 @@ public static class GameSettings
     /// into the <c>MapGenOptions</c> passed to <c>MapGenerator</c>. Defaults to 5
     /// (5% of land).
     /// </summary>
-    public static int TreeDensity = 5;
+    public static int TreeDensity = MapGenOptions.DefaultTreeDensity;
 
     /// <summary>
     /// Mountain-range density (percent of land) for a freshly-generated map.
     /// Defaults to 0 (off). See <see cref="TreeDensity"/> for the write/read path.
     /// </summary>
-    public static int MountainDensity = 0;
+    public static int MountainDensity = MapGenOptions.DefaultMountainDensity;
 
     /// <summary>
     /// Gold-cluster density (percent of land) for a freshly-generated map.
     /// Defaults to 0 (off). See <see cref="TreeDensity"/> for
     /// the write/read path.
     /// </summary>
-    public static int GoldDensity = 0;
+    public static int GoldDensity = MapGenOptions.DefaultGoldDensity;
 
     /// <summary>
     /// Total neutral coverage target (percent of land, 0..75) for a
@@ -115,7 +115,7 @@ public static class GameSettings
     /// <see cref="TreeDensity"/> for the write/read path; threaded into
     /// <c>MapGenOptions.NeutralDensity</c>.
     /// </summary>
-    public static int NeutralDensity = 0;
+    public static int NeutralDensity = MapGenOptions.DefaultNeutralDensity;
 
     /// <summary>
     /// Passive-barbarian density (percent of neutral land) for a
@@ -124,7 +124,7 @@ public static class GameSettings
     /// Defaults to 0 (off). See <see cref="TreeDensity"/> for the write/read
     /// path; threaded into <c>MapGenOptions.BarbarianDensity</c>.
     /// </summary>
-    public static int BarbarianDensity = 0;
+    public static int BarbarianDensity = MapGenOptions.DefaultBarbarianDensity;
 
     /// <summary>
     /// Player-territory clumping factor (0..100) for a freshly-generated map.
@@ -134,7 +134,7 @@ public static class GameSettings
     /// launch / skipped menu reproduces the baseline. See <see cref="TreeDensity"/>
     /// for the write/read path; threaded into <c>MapGenOptions.ClumpingFactor</c>.
     /// </summary>
-    public static int ClumpingFactor = 0;
+    public static int ClumpingFactor = MapGenOptions.DefaultClumpingFactor;
 
     /// <summary>
     /// Campaign level index (0..255) when the next game is a campaign

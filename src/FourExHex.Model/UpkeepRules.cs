@@ -34,7 +34,9 @@ public enum EconomyOutlook
 public static class UpkeepRules
 {
     /// <summary>
-    /// The upkeep cost a single unit of the given level demands per turn.
+    /// The upkeep cost in gold a single unit of the given level demands per
+    /// turn — the 2/6/18/54 ladder (roughly tripling per level, so an army's
+    /// upkeep is dominated by its strongest units).
     /// Explicit hand-picked integers (no percent formula, no truncation
     /// arithmetic); this is per-unit (not per-territory-total) so AiCommon's
     /// combine/buy upkeep-delta arithmetic stays exactly consistent with

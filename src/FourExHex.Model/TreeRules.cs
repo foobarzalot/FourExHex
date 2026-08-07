@@ -23,6 +23,20 @@ using System.Collections.Generic;
 public static class TreeRules
 {
     /// <summary>
+    /// Tree neighbors an empty tile needs for inland spread: with this many
+    /// (or more) neighboring trees, the tile grows a tree at the start of
+    /// its owner's turn.
+    /// </summary>
+    public const int InlandSpreadTreeNeighbors = 2;
+
+    /// <summary>
+    /// Tree neighbors an empty tile needs for coastal spread — a lower bar
+    /// than <see cref="InlandSpreadTreeNeighbors"/>, but only when the tile
+    /// also has at least one neighboring water tile.
+    /// </summary>
+    public const int CoastalSpreadTreeNeighbors = 1;
+
+    /// <summary>
     /// Replace each <see cref="Grave"/> on a tile owned by
     /// <paramref name="owner"/> (i.e. <c>tile.Owner == owner</c>) with a
     /// <see cref="Tree"/>. Graves on other players' tiles are left in
@@ -98,7 +112,8 @@ public static class TreeRules
                 if (treeSnapshot.Contains(nbr)) treeNeighbors++;
                 if (waterCoords.Contains(nbr)) hasWaterNeighbor = true;
             }
-            bool spreads = treeNeighbors >= 2 || (treeNeighbors >= 1 && hasWaterNeighbor);
+            bool spreads = treeNeighbors >= InlandSpreadTreeNeighbors
+                || (treeNeighbors >= CoastalSpreadTreeNeighbors && hasWaterNeighbor);
             if (spreads) newTrees.Add(tile.Coord);
         }
 

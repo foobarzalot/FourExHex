@@ -28,9 +28,20 @@ using System.Collections.Generic;
 public static class CapitalPlacer
 {
     /// <summary>
+    /// Smallest territory (tile count) that carries a capital — and with it
+    /// a treasury. Singletons below this have no capital, earn nothing, and
+    /// cannot sustain units. Shared by every consumer of the rule:
+    /// <see cref="Choose"/>, <see cref="CapitalReconciler"/>,
+    /// <see cref="MapEditPaint"/>, and <see cref="MapGenerator"/>'s
+    /// per-player land floor.
+    /// </summary>
+    public const int MinTerritorySizeForCapital = 2;
+
+    /// <summary>
     /// Returns the coord where a new capital should be placed, or null if
-    /// the territory is too small (&lt; 2) to deserve one. A non-null return
-    /// is guaranteed whenever <paramref name="coords"/> has &gt;= 2 entries
+    /// the territory is too small (&lt;
+    /// <see cref="MinTerritorySizeForCapital"/>) to deserve one. A non-null
+    /// return is guaranteed whenever <paramref name="coords"/> has enough entries
     /// that are Empty/Unit/Grave/Tree/Tower (mountains included — capitals may
     /// sit on them) — only an all-Capital territory (impossible in
     /// normal play) returns null. When <paramref name="rng"/> is non-null the
@@ -40,7 +51,7 @@ public static class CapitalPlacer
     public static HexCoord? Choose(
         IReadOnlyCollection<HexCoord> coords, HexGrid grid, DeterministicRng? rng = null)
     {
-        if (coords.Count < 2) return null;
+        if (coords.Count < MinTerritorySizeForCapital) return null;
 
         var empty = new List<HexCoord>();
         var units = new List<HexCoord>();

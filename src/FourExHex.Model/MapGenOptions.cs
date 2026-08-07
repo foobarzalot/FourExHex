@@ -39,9 +39,23 @@
 /// to the baseline; likewise when the board has no neutral land to seed.
 /// Runs after the tree scatter, on occupant-free non-gold neutral tiles.</param>
 public sealed record MapGenOptions(
-    int TreeDensity = 5, int MountainDensity = 0, int GoldDensity = 0, int ClumpingFactor = 0,
-    int NeutralDensity = 0, int BarbarianDensity = 0)
+    int TreeDensity = MapGenOptions.DefaultTreeDensity,
+    int MountainDensity = MapGenOptions.DefaultMountainDensity,
+    int GoldDensity = MapGenOptions.DefaultGoldDensity,
+    int ClumpingFactor = MapGenOptions.DefaultClumpingFactor,
+    int NeutralDensity = MapGenOptions.DefaultNeutralDensity,
+    int BarbarianDensity = MapGenOptions.DefaultBarbarianDensity)
 {
+    // Fresh-map defaults — the single source for both this record's parameter
+    // defaults and the GameSettings field initializers the setup panel edits.
+    // Trees at 5% of land; every other feature off.
+    public const int DefaultTreeDensity = 5;
+    public const int DefaultMountainDensity = 0;
+    public const int DefaultGoldDensity = 0;
+    public const int DefaultClumpingFactor = 0;
+    public const int DefaultNeutralDensity = 0;
+    public const int DefaultBarbarianDensity = 0;
+
     /// <summary>Default densities — trees at the historical 5%, no mountains or
     /// gold. The backward-compatible baseline.</summary>
     public static readonly MapGenOptions None = new();

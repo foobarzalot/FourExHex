@@ -12,6 +12,13 @@ using System.Collections.Generic;
 public static class MapRosterRules
 {
     /// <summary>
+    /// Minimum number of active players (owning land with a capital) for an
+    /// authored map to be playable. Shared by roster validation here and
+    /// import validation in <see cref="MapImport"/>.
+    /// </summary>
+    public const int MinPlayersForValidMap = 2;
+
+    /// <summary>
     /// Returns a human-readable problem for each inconsistency between the
     /// painted <paramref name="territories"/> and the chosen per-slot
     /// <paramref name="kinds"/>; an empty list means the map is valid to save.
@@ -58,9 +65,10 @@ public static class MapRosterRules
             }
         }
 
-        if (active < 2)
+        if (active < MinPlayersForValidMap)
         {
-            problems.Add($"A map needs at least 2 players; {active} selected.");
+            problems.Add(
+                $"A map needs at least {MinPlayersForValidMap} players; {active} selected.");
         }
 
         return problems;

@@ -75,7 +75,7 @@ public static class CapitalReconciler
             // shrank to one tile (e.g. a split stranded the old capital
             // alone), strip any lingering Capital occupant so the grid
             // state matches the Territory record.
-            if (newT.Coords.Count < 2)
+            if (newT.Coords.Count < CapitalPlacer.MinTerritorySizeForCapital)
             {
                 foreach (HexCoord c in newT.Coords)
                 {

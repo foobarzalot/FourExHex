@@ -92,7 +92,7 @@ public static class MapEditPaint
         if (territoryIdx < 0) return previousTerritories;
 
         Territory t = previousTerritories[territoryIdx];
-        if (t.Coords.Count < 2) return previousTerritories;
+        if (t.Coords.Count < CapitalPlacer.MinTerritorySizeForCapital) return previousTerritories;
 
         if (t.HasCapital)
         {
@@ -421,7 +421,8 @@ public static class MapEditPaint
         IReadOnlyList<Territory> territories, HexCoord coord)
     {
         Territory? t = TerritoryLookup.FindContaining(territories, coord);
-        return t != null && !t.Owner.IsNone && t.Coords.Count < 2;
+        return t != null && !t.Owner.IsNone
+            && t.Coords.Count < CapitalPlacer.MinTerritorySizeForCapital;
     }
 
     /// <summary>
@@ -441,7 +442,8 @@ public static class MapEditPaint
     {
         foreach (Territory t in territories)
         {
-            bool unsustainable = !t.Owner.IsNone && t.Coords.Count < 2;
+            bool unsustainable = !t.Owner.IsNone
+                && t.Coords.Count < CapitalPlacer.MinTerritorySizeForCapital;
             foreach (HexCoord coord in t.Coords)
             {
                 HexTile? tile = grid.Get(coord);

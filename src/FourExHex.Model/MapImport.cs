@@ -189,11 +189,11 @@ public static class MapImport
             {
                 if (!t.Owner.IsNone && t.HasCapital) ownersWithCapital.Add(t.Owner.Index);
             }
-            if (ownersWithCapital.Count < 2)
+            if (ownersWithCapital.Count < MapRosterRules.MinPlayersForValidMap)
             {
                 return MapImportResult.Fail(MapImportError.Invalid,
-                    $"a map needs at least 2 players with capitals; " +
-                    $"{ownersWithCapital.Count} found");
+                    $"a map needs at least {MapRosterRules.MinPlayersForValidMap} " +
+                    $"players with capitals; {ownersWithCapital.Count} found");
             }
         }
 

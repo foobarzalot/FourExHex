@@ -48,6 +48,20 @@ public static class MapGenerator
     private const int MinLandCount = 30;
     private const int MaxRetries = 8;
 
+    // CA smoothing thresholds (land-neighbor counts, 0..6): a water cell with
+    // at least CaBirthNeighbors land neighbors becomes land; a land cell with
+    // at most CaSurvivalNeighbors dies back to water. After the largest-
+    // component cut, cells with fewer than ErosionMinNeighbors land neighbors
+    // erode until stable (the final survival pass).
+    private const int CaBirthNeighbors = 5;
+    private const int CaSurvivalNeighbors = 2;
+    private const int ErosionMinNeighbors = 3;
+
+    // Scatter attempt budgets, as multiples of the tile target: how many
+    // placement attempts a feature pass may burn before giving up short.
+    private const int MountainAttemptsPerTarget = 4;
+    private const int GoldAttemptsPerTarget = 5;
+
     // Clumped owner assignment. Lloyd relaxation passes that re-center seeds
     // on their region centroids to even out Voronoi areas, and the gate that runs
     // them only in the few-seeds regime — when the average region is at least this
@@ -248,9 +262,10 @@ public static class MapGenerator
         int density = Math.Clamp(options.NeutralDensity, 0, MapGenOptions.NeutralDensityMax);
         int neutralTarget = land.Count * density / 100;
         int playerTotal = land.Count - neutralTarget;
-        // Degenerate-map guard: aim for at least a pair per player when the
-        // land allows it.
-        playerTotal = Math.Max(playerTotal, Math.Min(openCoords.Count, playerCount * 2));
+        // Degenerate-map guard: aim for at least a capital-capable territory
+        // per player when the land allows it.
+        playerTotal = Math.Max(playerTotal, Math.Min(
+            openCoords.Count, playerCount * CapitalPlacer.MinTerritorySizeForCapital));
         playerTotal = Math.Min(playerTotal, openCoords.Count);
 
         // Equal quotas, ±1: the first (playerTotal % playerCount) players take
@@ -817,7 +832,7 @@ public static class MapGenerator
 
         int placed = 0;
         int attempts = 0;
-        int maxAttempts = target * 4;
+        int maxAttempts = target * MountainAttemptsPerTarget;
         while (placed < target && attempts < maxAttempts)
         {
             attempts++;
@@ -885,7 +900,7 @@ public static class MapGenerator
 
         int placed = 0;
         int attempts = 0;
-        int maxAttempts = target * 5;
+        int maxAttempts = target * GoldAttemptsPerTarget;
         while (placed < target && attempts < maxAttempts)
         {
             attempts++;
@@ -973,8 +988,8 @@ public static class MapGenerator
                     HexCoord coord = HexCoord.FromOffset(col, row);
                     int n = CountLandNeighbors(coord, land);
                     bool wasLand = land.Contains(coord);
-                    if (!wasLand && n >= 5) next.Add(coord);
-                    else if (wasLand && n <= 2) next.Remove(coord);
+                    if (!wasLand && n >= CaBirthNeighbors) next.Add(coord);
+                    else if (wasLand && n <= CaSurvivalNeighbors) next.Remove(coord);
                 }
             }
             land = next;
@@ -996,7 +1011,7 @@ public static class MapGenerator
             var toRemove = new List<HexCoord>();
             foreach (HexCoord c in land)
             {
-                if (CountLandNeighbors(c, land) < 3) toRemove.Add(c);
+                if (CountLandNeighbors(c, land) < ErosionMinNeighbors) toRemove.Add(c);
             }
             if (toRemove.Count > 0)
             {

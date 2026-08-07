@@ -8,8 +8,8 @@ using System.Linq;
 /// max contribution over the tile's own occupant and the occupants of
 /// every adjacent tile in the same territory. Occupant contributions:
 ///   - <see cref="Unit"/>          -> (int)unit.Level
-///   - <see cref="Tower"/>         -> 2  (soldier-equivalent)
-///   - <see cref="Capital"/>       -> 1
+///   - <see cref="Tower"/>         -> <see cref="TowerDefense"/>
+///   - <see cref="Capital"/>       -> <see cref="CapitalDefense"/>
 ///   - <see cref="Tree"/> / <see cref="Grave"/> / null -> 0
 ///   - any unknown subtype        -> throws
 /// Any defender — a <see cref="Unit"/>, <see cref="Tower"/>, or
@@ -30,6 +30,20 @@ public static class DefenseRules
     /// like any other defender. Contributions still don't stack — the max wins.
     /// </summary>
     public const int MountainBonus = 1;
+
+    /// <summary>
+    /// Defense a tower contributes to its own tile and same-territory
+    /// neighbors (soldier-equivalent): a Captain or better is needed to
+    /// capture a tower-covered tile.
+    /// </summary>
+    public const int TowerDefense = 2;
+
+    /// <summary>
+    /// Defense a capital contributes to its own tile and same-territory
+    /// neighbors (recruit-equivalent): a Soldier or better is needed to
+    /// capture a capital-covered tile.
+    /// </summary>
+    public const int CapitalDefense = 1;
 
     /// <summary>
     /// Defense value covering the tile at <paramref name="coord"/>. To
@@ -102,8 +116,8 @@ public static class DefenseRules
     {
         null => 0,
         Unit u => (int)u.Level,
-        Tower => 2,
-        Capital => 1,
+        Tower => TowerDefense,
+        Capital => CapitalDefense,
         Tree => 0,
         Grave => 0,
         _ => throw new System.InvalidOperationException(
