@@ -161,6 +161,17 @@ public static class LayoutAudit
             tolerance: LayoutAssert.TolerancePx,
             out LayoutViolation violation);
 
+        // Geometry is clean — but text can still be clipped inside a control
+        // that fits perfectly, and Godot changes no rect when it ellipsizes.
+        // Checked only on text-bearing leaves, where GetCombinedMinimumSize
+        // reflects what the text actually wants.
+        if (!found && control is Label or Button)
+        {
+            found = LayoutAssert.TryFindTextTruncation(
+                r.Size.X, r.Size.Y, min.X, min.Y,
+                LayoutAssert.TolerancePx, out violation);
+        }
+
         if (!found) return false;
 
         Log.Warn(Log.LogCategory.Layout,

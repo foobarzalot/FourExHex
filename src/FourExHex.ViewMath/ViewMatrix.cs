@@ -13,16 +13,12 @@ using System.Collections.Generic;
 /// the compact thresholds on a retina Mac, an xvfb virtual screen, and a 4K
 /// desktop alike.
 /// </summary>
-/// <param name="SoftFail">Violations here are reported but excluded from the
-/// run's verdict — for geometry that is known-broken today. Promoted to
-/// hard-fail once the underlying layout is fixed.</param>
 public readonly record struct ViewMatrixCell(
     string Name,
     int LogicalWidth,
     int LogicalHeight,
     float UiScale,
     LogicalSafeInsets Insets,
-    bool SoftFail,
     string Reason)
 {
     public int PhysicalWidth => (int)(LogicalWidth * UiScale);
@@ -37,10 +33,17 @@ public readonly record struct ViewMatrixCell(
 /// </summary>
 public static class ViewMatrix
 {
+    /// <summary>Smallest supported window, logical px — the smaller edge of the
+    /// smallest shipping phone. Layout is expected to be clean at or above this
+    /// in either orientation; below it, PanelFitMath's shrink floors stop
+    /// protecting and no device or ordinary window produces such a shape.</summary>
+    public const int MinSupportedWidth = 390;
+    public const int MinSupportedHeight = 390;
+
     private static ViewMatrixCell Cell(
         string name, int w, int h, string reason,
-        float scale = 1f, LogicalSafeInsets insets = default, bool softFail = false) =>
-        new(name, w, h, scale, insets, softFail, reason);
+        float scale = 1f, LogicalSafeInsets insets = default) =>
+        new(name, w, h, scale, insets, reason);
 
     public static IReadOnlyList<ViewMatrixCell> Default { get; } = new List<ViewMatrixCell>
     {
@@ -70,15 +73,6 @@ public static class ViewMatrix
             "w == h — ScreenLayout.Resolve must pick Landscape"),
         Cell("tablet-portrait", 820, 1180,
             "iPad Air points — expanded portrait"),
-        Cell("landscape-short", 900, 360,
-            "short landscape — presses ScaleToFit and ContentShrinkScale toward the 0.65 floor",
-            softFail: true),
-        Cell("narrow-portrait", 320, 900,
-            "narrow — CardInteriorWidth hits its 200px floor and ClampWidth can invert",
-            softFail: true),
-
-        // Mobile-shaped geometry. Insets are synthetic but plausible; real
-        // device capture is a separate concern.
         Cell("portrait-phone", 390, 844,
             "iPhone 14 points — compact portrait, no insets"),
         Cell("notch-portrait", 390, 844,

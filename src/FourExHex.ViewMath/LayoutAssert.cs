@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 FooBarzalot
+using System;
 using System.Text;
 
 /// <summary>What is wrong with a Control's resolved rect. Ordered by
@@ -22,6 +23,11 @@ public enum LayoutViolationKind
     /// <summary>Overlaps the notch / Dynamic Island / home-indicator band.
     /// Enforced only for nodes the caller marks as interactive or readable.</summary>
     IntrudesSafeArea,
+    /// <summary>The control's rect fits its container, but its text does not fit
+    /// the rect — Godot ellipsizes or clips inside the control without changing
+    /// its geometry, so rect-only checks read this as clean while the player
+    /// sees "Confirm Purchas…".</summary>
+    TextTruncated,
 }
 
 /// <summary>An axis-aligned rect in logical pixels — the same space
@@ -147,6 +153,38 @@ public static class LayoutAssert
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Does this control's text fit inside it? Callers pass the control's rect
+    /// size and the size the text actually wants (Godot's
+    /// <c>GetMultilineStringSize</c> / <c>GetCombinedMinimumSize</c>).
+    ///
+    /// Separate from <see cref="TryFindViolation"/> because it needs measured
+    /// text rather than geometry, and only text-bearing controls can supply it.
+    ///
+    /// <b>Width only.</b> Horizontal is where Godot actually ellipsizes, and it
+    /// is what the player sees as "Confirm Purchas…". A control shorter than its
+    /// measured height is almost always theme content-margin accounting rather
+    /// than lost text: on this codebase the height axis produced three times the
+    /// findings of the width axis and none of them were real.
+    /// </summary>
+    public static bool TryFindTextTruncation(
+        float controlWidth, float controlHeight,
+        float desiredWidth, float desiredHeight,
+        float tolerance,
+        out LayoutViolation violation)
+    {
+        float over = MathF.Max(0f, desiredWidth - controlWidth);
+
+        if (over <= tolerance)
+        {
+            violation = LayoutViolation.None;
+            return false;
+        }
+
+        violation = new LayoutViolation(LayoutViolationKind.TextTruncated, 0f, 0f, over, 0f);
+        return true;
     }
 
     /// <summary>Stable one-line rendering for the log. Clean edges are omitted

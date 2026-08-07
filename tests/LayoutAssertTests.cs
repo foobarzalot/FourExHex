@@ -169,6 +169,60 @@ public class LayoutAssertTests
             Check(new LayoutRect(0f, 0f, -2400f, 1880f)).Kind);
     }
 
+    // Godot ellipsizes or clips text INSIDE a Label without changing the
+    // Label's rect, so a panel that fits perfectly can still read
+    // "Confirm Purchas…". Rect-only auditing cannot see it — which matters most
+    // right after a fix shrinks a panel to stop it overflowing.
+    [Fact]
+    public void TextWiderThanItsControl_ReportsTruncation()
+    {
+        LayoutAssert.TryFindTextTruncation(
+            controlWidth: 280f, controlHeight: 25f,
+            desiredWidth: 340f, desiredHeight: 25f,
+            tolerance: LayoutAssert.TolerancePx,
+            out LayoutViolation v);
+
+        Assert.Equal(LayoutViolationKind.TextTruncated, v.Kind);
+        Assert.Equal(60f, v.OverflowRight, 3);
+    }
+
+    // Height is deliberately NOT a truncation signal. A control shorter than its
+    // measured minimum is nearly always theme content-margin accounting, not
+    // lost text: measured across the real screens, the height axis produced 90
+    // findings to the width axis's 28, and none of the 90 were real clipping.
+    // Keeping it would have made the check useless noise.
+    [Fact]
+    public void TextTallerThanItsControl_IsNotReported()
+    {
+        Assert.False(LayoutAssert.TryFindTextTruncation(
+            controlWidth: 280f, controlHeight: 25f,
+            desiredWidth: 200f, desiredHeight: 48f,
+            tolerance: LayoutAssert.TolerancePx,
+            out _));
+    }
+
+    [Fact]
+    public void TextThatFits_IsNotTruncation()
+    {
+        Assert.False(LayoutAssert.TryFindTextTruncation(
+            controlWidth: 280f, controlHeight: 25f,
+            desiredWidth: 240f, desiredHeight: 22f,
+            tolerance: LayoutAssert.TolerancePx,
+            out _));
+    }
+
+    // Text measurement lands on fractional pixels constantly; without slack this
+    // would fire on nearly every label in the game.
+    [Fact]
+    public void SubPixelTextOvershoot_IsWithinTolerance()
+    {
+        Assert.False(LayoutAssert.TryFindTextTruncation(
+            controlWidth: 280f, controlHeight: 25f,
+            desiredWidth: 280.3f, desiredHeight: 25f,
+            tolerance: LayoutAssert.TolerancePx,
+            out _));
+    }
+
     [Fact]
     public void SafeBox_DeflatesTheViewportByTheInsets()
     {

@@ -77,7 +77,6 @@ public partial class ViewHarness : Node
     private int _skippedScreens;
     private int _skippedCells;
     private int _hardViolations;
-    private int _softViolations;
 
     private IReadOnlyList<string> _screenIds = new List<string>();
 
@@ -281,11 +280,7 @@ public partial class ViewHarness : Node
         int violations = LayoutAudit.Sweep(GetTree().Root, tag);
         _visits++;
 
-        if (violations > 0)
-        {
-            if (cell.SoftFail) _softViolations += violations;
-            else _hardViolations += violations;
-        }
+        _hardViolations += violations;
 
         Scene?.ResetHarnessScreen();
         Transition(Step.NextScreen);
@@ -343,7 +338,7 @@ public partial class ViewHarness : Node
         var sb = new StringBuilder();
         sb.AppendLine($"[view-matrix] SUMMARY scenes={_scenes.Count} cells={_cells.Count} "
             + $"visits={_visits} skipped-screens={_skippedScreens} skipped-cells={_skippedCells} "
-            + $"violations={_hardViolations} soft-violations={_softViolations}");
+            + $"violations={_hardViolations}");
         foreach (string note in _skipNotes) sb.AppendLine($"[view-matrix]   skip: {note}");
         sb.Append("[view-matrix] DONE");
         Log.Info(Log.LogCategory.Layout, sb.ToString());

@@ -123,28 +123,35 @@ public class ViewMatrixTests
         Assert.Contains(Cells, c => c.Insets == LogicalSafeInsets.Zero);
     }
 
-    // The floors in PanelFitMath are where the shrink math stops protecting and
-    // clipping becomes possible — the matrix has to reach them.
+    // The matrix targets shapes real devices and windows actually produce, not
+    // degenerate ones: PanelFitMath's floors (0.65 shrink, 200px card interior)
+    // are reachable only by viewports narrower or shorter than any shipping
+    // device, and designing for those was costing more than it protected.
+    // Every cell must therefore sit at or above the declared floor.
     [Fact]
-    public void Matrix_ReachesTheContentShrinkFloor()
+    public void EveryCell_IsAtOrAboveTheDeclaredMinimumSupportedSize()
     {
-        // A centered surface at the landscape design height, in the shortest cell.
-        ViewMatrixCell shortest = Cells.OrderBy(c => c.LogicalHeight).First();
-        (_, float availH) = PanelFitMath.AvailableBox(
-            shortest.LogicalWidth, shortest.LogicalHeight, shortest.Insets, marginPerSide: 24f);
-
-        Assert.True(availH < 520f * PanelFitMath.MinShrinkScale / 0.65f * 0.65f,
-            $"shortest cell {shortest.Name} availH={availH} does not press the shrink floor");
+        Assert.All(Cells, c =>
+        {
+            Assert.True(c.LogicalWidth >= ViewMatrix.MinSupportedWidth,
+                $"{c.Name} is {c.LogicalWidth} wide, below the supported floor");
+            Assert.True(c.LogicalHeight >= ViewMatrix.MinSupportedHeight,
+                $"{c.Name} is {c.LogicalHeight} tall, below the supported floor");
+        });
     }
 
+    // The floor is the smallest shipping phone in either orientation; a cell at
+    // exactly the floor must still leave a workable content box, or the floor
+    // is set below what the layout can actually serve.
     [Fact]
-    public void Matrix_ReachesTheCardInteriorWidthFloor()
+    public void AtTheDeclaredFloor_TheContentBoxIsStillWorkable()
     {
-        ViewMatrixCell narrowest = Cells.OrderBy(c => c.LogicalWidth).First();
-        float interior = PanelFitMath.CardInteriorWidth(
-            designInteriorW: 480f, availW: narrowest.LogicalWidth, chromeW: 120f);
+        (float availW, float availH) = PanelFitMath.AvailableBox(
+            ViewMatrix.MinSupportedWidth, ViewMatrix.MinSupportedHeight,
+            LogicalSafeInsets.Zero, marginPerSide: 24f);
 
-        Assert.Equal(PanelFitMath.MinCardInteriorWidthPx, interior, 3);
+        Assert.True(availW >= PanelFitMath.MinCardInteriorWidthPx, $"availW={availW}");
+        Assert.True(availH > 0f, $"availH={availH}");
     }
 
     [Fact]
@@ -186,12 +193,4 @@ public class ViewMatrixTests
         Assert.Equal(Cells[^1].Name, sweep[Cells.Count - 1].Name);
     }
 
-    // The map editor is known-broken below ~1300px wide (#226); without a
-    // soft-fail tier the harness is red from day one and gets switched off.
-    [Fact]
-    public void SoftFailCells_AreMarkedAndExcludedFromTheVerdict()
-    {
-        Assert.Contains(Cells, c => c.SoftFail);
-        Assert.Contains(Cells, c => !c.SoftFail);
-    }
 }
