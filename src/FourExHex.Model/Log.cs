@@ -62,6 +62,7 @@ public static class Log
         Anim = 20,    // per-frame / tween churn, split from Render so it can be silenced: unit+capital pulse, move-anim beat holds and travel/arrival, terrain capture fx, camera pan and demo-follow
         Share = 21,   // map sharing: export/import validate/write results, file-dialog outcomes, share-sheet hand-off
         Report = 22,  // player-initiated bug report: bundle staging, which compose rung was taken, send outcome
+        Layout = 23,  // layout audit: Control rects that overflow the viewport, intrude the safe-area insets, or resolve to a degenerate size
     }
 
     /// <summary>Severity, ascending. <see cref="Off"/> disables a
@@ -202,12 +203,25 @@ public static class Log
     public static void Since(LogCategory category, string label, long stamp)
         => Debug(category, $"{label} {(Stamp() - stamp) * 1000.0 / Stopwatch.Frequency:F1}ms");
 
+    // Warn/Error carry a fixed-width severity + category tag; everything below
+    // routes verbatim. The tag is what makes "fail the run on any Warn/Error"
+    // greppable from stdout (^WARN |^ERROR ) — the view-matrix harness and any
+    // stdout scraper rely on it, and a player's bug-report log gains severity
+    // for free. Trace/Debug/Info stay byte-identical on purpose: the
+    // FOUREXHEX_6AI determinism diff, tools/tree_sweep.sh's greps, and
+    // AiBaselineMeasurementTests' StartsWith("[chose] ") all parse those levels
+    // positionally, and tagging them would break them silently.
     private static void Emit(LogCategory category, LogLevel level, string message)
     {
         if (level < _minLevel[(int)category])
         {
             return;
         }
-        Sink?.Invoke(message);
+        Sink?.Invoke(level switch
+        {
+            LogLevel.Warn => $"WARN  [{category}] {message}",
+            LogLevel.Error => $"ERROR [{category}] {message}",
+            _ => message,
+        });
     }
 }

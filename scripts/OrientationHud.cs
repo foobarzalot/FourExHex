@@ -167,6 +167,11 @@ public abstract partial class OrientationHud : CanvasLayer
             $"zones=TL+TR+{(Orientation == ScreenOrientation.Landscape ? "LR+RR" : "BB")}.");
 
         OnLayoutApplied();
+
+        // Single audit point for both HUDs (HudView + MapEditorHudView) — every
+        // orientation flip, compact swap, resize and safe-area change funnels
+        // through here. Deferred, so the subclass's own deferred fits land first.
+        LayoutAudit.SweepDeferred(this, GetType().Name);
     }
 
     private void OnViewportResized()

@@ -66,7 +66,7 @@ public class LogTests
             Log.Info(Log.LogCategory.Ai, "i");
             Log.Warn(Log.LogCategory.Ai, "w");
 
-            Assert.Equal(new[] { "i", "w" }, seen);
+            Assert.Equal(new[] { "i", "WARN  [Ai] w" }, seen);
         });
     }
 
@@ -84,7 +84,7 @@ public class LogTests
             Log.Debug(Log.LogCategory.Turn, "b"); // 1 <  Error(4) -> drop
             Log.Error(Log.LogCategory.Turn, "c"); // 4 >= Error(4) -> emit
 
-            Assert.Equal(new[] { "a", "c" }, seen);
+            Assert.Equal(new[] { "a", "ERROR [Turn] c" }, seen);
         });
     }
 
@@ -192,8 +192,32 @@ public class LogTests
         });
     }
 
+    // Trace/Debug/Info stay byte-identical on the wire: the FOUREXHEX_6AI
+    // determinism diff, tools/tree_sweep.sh's greps, and
+    // AiBaselineMeasurementTests' `StartsWith("[chose] ")` all parse those
+    // levels. Only Warn/Error — which nothing parses positionally — carry a tag.
     [Fact]
-    public void EmittedMessages_RouteVerbatimInOrder()
+    public void InfoAndBelow_RouteVerbatimInOrder()
+    {
+        RunIsolated(() =>
+        {
+            var seen = new List<string>();
+            Log.Sink = seen.Add;
+            Log.SetLevel(Log.LogCategory.Ai, Log.LogLevel.Trace);
+
+            Log.Trace(Log.LogCategory.Ai, "alpha");
+            Log.Debug(Log.LogCategory.Ai, "beta");
+            Log.Info(Log.LogCategory.Ai, "gamma");
+
+            Assert.Equal(new[] { "alpha", "beta", "gamma" }, seen);
+        });
+    }
+
+    // The severity tag is what makes "fail the run on any Warn/Error" greppable
+    // from stdout — without it a Warn and a Debug are indistinguishable, since
+    // Emit passes the caller's message through untouched.
+    [Fact]
+    public void WarnAndError_CarrySeverityAndCategoryTag()
     {
         RunIsolated(() =>
         {
@@ -204,7 +228,41 @@ public class LogTests
             Log.Warn(Log.LogCategory.Ai, "alpha");
             Log.Error(Log.LogCategory.Ai, "beta");
 
-            Assert.Equal(new[] { "alpha", "beta" }, seen);
+            Assert.Equal(new[] { "WARN  [Ai] alpha", "ERROR [Ai] beta" }, seen);
+        });
+    }
+
+    // The tag is fixed-width so a log column-aligns, and the harness grep
+    // (^WARN |^ERROR ) anchors on it.
+    [Fact]
+    public void SeverityTags_AreFixedWidthAndAnchorable()
+    {
+        RunIsolated(() =>
+        {
+            var seen = new List<string>();
+            Log.Sink = seen.Add;
+            Log.SetLevel(Log.LogCategory.Layout, Log.LogLevel.Warn);
+
+            Log.Warn(Log.LogCategory.Layout, "x");
+            Log.Error(Log.LogCategory.Layout, "y");
+
+            Assert.All(seen, line => Assert.Equal(' ', line[5]));
+            Assert.StartsWith("WARN  [Layout] ", seen[0]);
+            Assert.StartsWith("ERROR [Layout] ", seen[1]);
+        });
+    }
+
+    // The audit walker's category has to be addressable by name from
+    // FOUREXHEX_LOG like every other one.
+    [Fact]
+    public void Configure_RecognizesLayoutCategory()
+    {
+        RunIsolated(() =>
+        {
+            Log.Configure("Layout:Warn");
+
+            Assert.True(Log.IsEnabled(Log.LogCategory.Layout, Log.LogLevel.Warn));
+            Assert.False(Log.IsEnabled(Log.LogCategory.Layout, Log.LogLevel.Info));
         });
     }
 

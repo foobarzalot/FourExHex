@@ -793,6 +793,10 @@ public partial class MainMenuScene : Control
         {
             LayoutDump.Dump(_playConfigSurface, "play-config");
             CheckPlayConfigContentFit(surfaceH);
+            // After the fit re-check, not before: LandscapeMenuChrome's own
+            // sweep was queued earlier in this frame and sees pre-shrink
+            // geometry, so this is the one that audits what actually renders.
+            LayoutAudit.SweepDeferred(_playConfigSurface, "play-config");
         }).CallDeferred();
     }
 

@@ -72,6 +72,11 @@ public static class LandscapeMenuChrome
         Log.Debug(Log.LogCategory.Render,
             $"LandscapeMenuChrome: laid out {w:0}x{h:0} shift={verticalShift:0} "
             + $"(viewport {viewport.X:0}x{viewport.Y:0}, safe t{s.Top:0} b{s.Bottom:0} l{s.Left:0} r{s.Right:0})");
+
+        // The choke point every landscape surface passes through (settings,
+        // credits, slot picker, map-info sheet, the menu's landing and
+        // play-config surfaces) — one hook, no per-panel edits.
+        LayoutAudit.SweepDeferred(surface, "LandscapeMenuChrome");
         return (w, h);
     }
 
