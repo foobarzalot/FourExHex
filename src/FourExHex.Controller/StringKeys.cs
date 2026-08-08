@@ -221,6 +221,7 @@ public static class StringKeys
     public const string MenuResume = "menu.resume";
     public const string MenuPlayGame = "menu.play_game";
     public const string MenuCampaign = "menu.campaign";
+    public const string MenuAchievements = "menu.achievements";
     public const string MenuPlayTutorial = "menu.play_tutorial";
     public const string MenuLoadGame = "menu.load_game";
     public const string MenuMapEditor = "menu.map_editor";
@@ -351,6 +352,19 @@ public static class StringKeys
     public const string CampaignBlurbRisingTides = "campaign.blurb.rising_tides";
     public const string CampaignBlurbFogOfWar = "campaign.blurb.fog_of_war";
     public const string CampaignBlurbVikingRaiders = "campaign.blurb.viking_raiders";
+
+    // Achievements panel + unlock banner.
+    public const string AchieveTitle = "achieve.title";
+    public const string AchieveHeaderCount = "achieve.header_count";
+    public const string AchieveBackButton = "achieve.back_button";
+    public const string AchieveLocked = "achieve.locked";
+    public const string AchieveEarned = "achieve.earned";
+    public const string AchieveProgress = "achieve.progress";
+    public const string AchieveUnlockedBanner = "achieve.unlocked_banner";
+    public const string AchieveHiddenTitle = "achieve.hidden.title";
+    public const string AchieveHiddenDesc = "achieve.hidden.desc";
+    public const string AchieveVeteranTitle = "achieve.veteran.title";
+    public const string AchieveVeteranDesc = "achieve.veteran.desc";
 
     // First-encounter intros (game modes + terrain features).
     public const string IntroRisingTides = "intro.rising_tides";
