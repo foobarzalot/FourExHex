@@ -37,7 +37,6 @@ public sealed class SaveStore
     public const string MapFileExtension =
         FourExHex.Controller.ShareReceiveRules.MapFileExtension;
     private const string SaveExtension = ".json";
-    private const string TempExtension = ".json.tmp";
 
     /// <summary>
     /// Write the autosave slot. Called from <see cref="Main"/> on every
@@ -226,38 +225,8 @@ public sealed class SaveStore
         AtomicWrite(directory, sanitized, json);
     }
 
-    private static void AtomicWrite(string directory, string sanitized, string json)
-    {
-        // Atomic write: produce <name>.json.tmp first, then rename to
-        // <name>.json. A crash mid-write leaves the prior save intact.
-        string tempPath = directory + sanitized + TempExtension;
-        string finalPath = directory + sanitized + SaveExtension;
-
-        using (FileAccess f = FileAccess.Open(tempPath, FileAccess.ModeFlags.Write))
-        {
-            if (f == null)
-            {
-                throw new System.IO.IOException(
-                    $"Could not open {tempPath} for writing: {FileAccess.GetOpenError()}");
-            }
-            f.StoreString(json);
-        }
-        // Remove any old final file then rename. Godot's DirAccess
-        // doesn't offer atomic rename across an existing destination,
-        // so the two-step is the best we can do without P/Invoke.
-        if (FileAccess.FileExists(finalPath))
-        {
-            DirAccess.RemoveAbsolute(ProjectSettings.GlobalizePath(finalPath));
-        }
-        Error err = DirAccess.RenameAbsolute(
-            ProjectSettings.GlobalizePath(tempPath),
-            ProjectSettings.GlobalizePath(finalPath));
-        if (err != Error.Ok)
-        {
-            throw new System.IO.IOException(
-                $"Could not rename {tempPath} to {finalPath}: {err}");
-        }
-    }
+    private static void AtomicWrite(string directory, string sanitized, string json) =>
+        AtomicUserFile.Write(directory + sanitized + SaveExtension, json);
 
     /// <summary>
     /// List every slot in the save directory. Sorted by save time

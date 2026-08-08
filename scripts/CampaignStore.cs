@@ -22,7 +22,6 @@ using Godot;
 public static class CampaignStore
 {
     private const string CampaignPath = "user://campaign.json";
-    private const string TempPath = "user://campaign.json.tmp";
 
     private static CampaignProgress? _progress;
 
@@ -124,31 +123,7 @@ public static class CampaignStore
     {
         try
         {
-            string json = CampaignSerializer.Serialize(_progress!);
-
-            // Atomic write: write to <name>.tmp then rename over the final
-            // path so a crash mid-write leaves the prior file intact.
-            using (FileAccess f = FileAccess.Open(TempPath, FileAccess.ModeFlags.Write))
-            {
-                if (f == null)
-                {
-                    throw new System.IO.IOException(
-                        $"Could not open {TempPath} for writing: {FileAccess.GetOpenError()}");
-                }
-                f.StoreString(json);
-            }
-            if (FileAccess.FileExists(CampaignPath))
-            {
-                DirAccess.RemoveAbsolute(ProjectSettings.GlobalizePath(CampaignPath));
-            }
-            Error err = DirAccess.RenameAbsolute(
-                ProjectSettings.GlobalizePath(TempPath),
-                ProjectSettings.GlobalizePath(CampaignPath));
-            if (err != Error.Ok)
-            {
-                throw new System.IO.IOException(
-                    $"Could not rename {TempPath} to {CampaignPath}: {err}");
-            }
+            AtomicUserFile.Write(CampaignPath, CampaignSerializer.Serialize(_progress!));
             Log.Debug(Log.LogCategory.Campaign, "CampaignStore: saved campaign.json");
         }
         catch (System.Exception ex)

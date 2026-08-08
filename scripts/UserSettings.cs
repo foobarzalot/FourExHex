@@ -48,7 +48,6 @@ public enum PlaybackSpeed
 public static partial class UserSettings
 {
     private const string SettingsPath = "user://settings.json";
-    private const string TempPath = "user://settings.json.tmp";
 
     private static bool _loaded;
     // True while Load() is populating the backing fields so the public
@@ -395,29 +394,7 @@ public static partial class UserSettings
                 },
                 JsonContext.Default.SettingsDto);
 
-            // Atomic write: write to <name>.tmp then rename over the final
-            // path so a crash mid-write leaves the prior file intact.
-            using (FileAccess f = FileAccess.Open(TempPath, FileAccess.ModeFlags.Write))
-            {
-                if (f == null)
-                {
-                    throw new System.IO.IOException(
-                        $"Could not open {TempPath} for writing: {FileAccess.GetOpenError()}");
-                }
-                f.StoreString(json);
-            }
-            if (FileAccess.FileExists(SettingsPath))
-            {
-                DirAccess.RemoveAbsolute(ProjectSettings.GlobalizePath(SettingsPath));
-            }
-            Error err = DirAccess.RenameAbsolute(
-                ProjectSettings.GlobalizePath(TempPath),
-                ProjectSettings.GlobalizePath(SettingsPath));
-            if (err != Error.Ok)
-            {
-                throw new System.IO.IOException(
-                    $"Could not rename {TempPath} to {SettingsPath}: {err}");
-            }
+            AtomicUserFile.Write(SettingsPath, json);
         }
         catch (System.Exception ex)
         {
