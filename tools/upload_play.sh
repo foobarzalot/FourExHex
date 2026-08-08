@@ -49,7 +49,7 @@ cleanup_edit() {
 }
 trap cleanup_edit EXIT
 
-echo "==> Opening edit for $PACKAGE"
+echo "==> Opening edit for $BUNDLE_ID"
 EDIT_ID=$(auth_curl -X POST "$BASE/edits" | json_field id)
 
 echo "==> Uploading $(basename "$AAB") ($(du -h "$AAB" | cut -f1 | tr -d ' '))"
