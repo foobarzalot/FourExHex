@@ -36,10 +36,10 @@ public class ReplayPlaybackTests
         // redDifficulty exists so a scripted human buy can be charged a
         // NON-baseline price and still round-trip through replay, which
         // re-executes the recorded beat via ExecuteAi* / AiActionCore. Use
-        // Difficulty.Recruit (unit base 8) rather than an above-baseline
+        // Difficulty.Recruit (unit base 9) rather than an above-baseline
         // tier: this fixture seeds 5 × 2 tree-free cells = 10 gold and
-        // SeedStartingGold overwrites anything staged beforehand, so a
-        // 13-gold Captain recruit is simply unaffordable here.
+        // SeedStartingGold overwrites anything staged beforehand, so an
+        // 11-gold Captain-difficulty recruit is simply unaffordable here.
         // Scope note: Red is both the current player and the territory owner
         // in this fixture, so this does NOT discriminate between the
         // current-player and owner-derived difficulty expressions — see
@@ -120,7 +120,7 @@ public class ReplayPlaybackTests
 
     // --- Round-trip determinism -------------------------------------------
 
-    // Difficulty.Recruit charges a non-baseline price (8 vs Soldier's 10):
+    // Difficulty.Recruit charges a non-baseline price (9 vs Soldier's 10):
     // the live beat comes from ExecuteBuyAndPlace and playback re-executes it
     // through ExecuteAiBuyUnit, so any cost divergence between the two shows
     // up as a gold mismatch here.

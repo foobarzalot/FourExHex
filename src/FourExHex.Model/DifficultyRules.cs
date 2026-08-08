@@ -16,24 +16,29 @@ public static class DifficultyRules
     /// (Recruit 1 … Commander 4) costs base × N — see
     /// <see cref="PurchaseRules.CostFor"/> — so the Soldier base of 10
     /// reproduces the classic 10/20/30/40 ladder the AIs always pay.
+    /// The bases step by exactly one gold per difficulty (9/10/11/12) so
+    /// stepping up a level is a nudge, not a swing; the tier ladder still
+    /// amplifies the step (a Commander-difficulty Commander pays 48 vs the
+    /// baseline 40).
     /// </summary>
     public static int UnitBaseCost(Difficulty difficulty) => difficulty switch
     {
-        Difficulty.Recruit => 8,
-        Difficulty.Captain => 13,
-        Difficulty.Commander => 15,
+        Difficulty.Recruit => 9,
+        Difficulty.Captain => 11,
+        Difficulty.Commander => 12,
         _ => 10, // Soldier baseline
     };
 
     /// <summary>
-    /// Tower cost at each difficulty (single value, no tier ladder).
-    /// Soldier = 15, the baseline the AIs always pay.
+    /// Tower cost at each difficulty (single value, no tier ladder) —
+    /// one-gold steps (14/15/16/17). Soldier = 15, the baseline the AIs
+    /// always pay.
     /// </summary>
     public static int TowerCost(Difficulty difficulty) => difficulty switch
     {
-        Difficulty.Recruit => 12,
-        Difficulty.Captain => 18,
-        Difficulty.Commander => 20,
+        Difficulty.Recruit => 14,
+        Difficulty.Captain => 16,
+        Difficulty.Commander => 17,
         _ => 15, // Soldier baseline
     };
 }

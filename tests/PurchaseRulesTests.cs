@@ -41,30 +41,30 @@ public class PurchaseRulesTests
 
     // Unit cost = DifficultyRules.UnitBaseCost × tier (1/2/3/4). Soldier
     // base 10 reproduces the classic 10/20/30/40 ladder the AIs always pay;
-    // Recruit (easy) base 8, Captain 13, Commander 15.
+    // the bases step by one gold: Recruit (easy) 9, Captain 11, Commander 12.
     [Theory]
-    [InlineData(Difficulty.Recruit, UnitLevel.Recruit, 8)]
-    [InlineData(Difficulty.Recruit, UnitLevel.Commander, 32)]
+    [InlineData(Difficulty.Recruit, UnitLevel.Recruit, 9)]
+    [InlineData(Difficulty.Recruit, UnitLevel.Commander, 36)]
     [InlineData(Difficulty.Soldier, UnitLevel.Recruit, 10)]
     [InlineData(Difficulty.Soldier, UnitLevel.Soldier, 20)]
     [InlineData(Difficulty.Soldier, UnitLevel.Captain, 30)]
     [InlineData(Difficulty.Soldier, UnitLevel.Commander, 40)]
-    [InlineData(Difficulty.Captain, UnitLevel.Recruit, 13)]
-    [InlineData(Difficulty.Captain, UnitLevel.Commander, 52)]
-    [InlineData(Difficulty.Commander, UnitLevel.Recruit, 15)]
-    [InlineData(Difficulty.Commander, UnitLevel.Soldier, 30)]
-    [InlineData(Difficulty.Commander, UnitLevel.Captain, 45)]
-    [InlineData(Difficulty.Commander, UnitLevel.Commander, 60)]
+    [InlineData(Difficulty.Captain, UnitLevel.Recruit, 11)]
+    [InlineData(Difficulty.Captain, UnitLevel.Commander, 44)]
+    [InlineData(Difficulty.Commander, UnitLevel.Recruit, 12)]
+    [InlineData(Difficulty.Commander, UnitLevel.Soldier, 24)]
+    [InlineData(Difficulty.Commander, UnitLevel.Captain, 36)]
+    [InlineData(Difficulty.Commander, UnitLevel.Commander, 48)]
     public void CostFor_BaseTimesTierPerDifficulty(Difficulty d, UnitLevel level, int expected)
     {
         Assert.Equal(expected, PurchaseRules.CostFor(level, d));
     }
 
     [Theory]
-    [InlineData(Difficulty.Recruit, 12)]
+    [InlineData(Difficulty.Recruit, 14)]
     [InlineData(Difficulty.Soldier, 15)]
-    [InlineData(Difficulty.Captain, 18)]
-    [InlineData(Difficulty.Commander, 20)]
+    [InlineData(Difficulty.Captain, 16)]
+    [InlineData(Difficulty.Commander, 17)]
     public void TowerCostFor_PerDifficulty(Difficulty d, int expected)
     {
         Assert.Equal(expected, PurchaseRules.TowerCostFor(d));
@@ -73,12 +73,12 @@ public class PurchaseRulesTests
     [Fact]
     public void CanAfford_SameGold_FlipsBetweenSoldierAndCommander()
     {
-        // 44 gold buys a Captain unit at Soldier difficulty (30) but not at
-        // Commander (45) — affordability sees the buyer's difficulty.
+        // 32 gold buys a Captain unit at Soldier difficulty (30) but not at
+        // Commander (36) — affordability sees the buyer's difficulty.
         Territory territory = MakeTerritory(Red, new HexCoord(0, 0),
             new HexCoord(0, 0), new HexCoord(1, 0));
         var treasury = new Treasury();
-        treasury.SetGold(territory.Capital!.Value, 44);
+        treasury.SetGold(territory.Capital!.Value, 32);
 
         Assert.True(PurchaseRules.CanAfford(territory, treasury, UnitLevel.Captain, Difficulty.Soldier));
         Assert.False(PurchaseRules.CanAfford(territory, treasury, UnitLevel.Captain, Difficulty.Commander));
@@ -87,11 +87,11 @@ public class PurchaseRulesTests
     [Fact]
     public void CanAffordTower_SameGold_FlipsBetweenSoldierAndCommander()
     {
-        // 19 gold builds a tower at Soldier (15) but not at Commander (20).
+        // 16 gold builds a tower at Soldier (15) but not at Commander (17).
         Territory territory = MakeTerritory(Red, new HexCoord(0, 0),
             new HexCoord(0, 0), new HexCoord(1, 0));
         var treasury = new Treasury();
-        treasury.SetGold(territory.Capital!.Value, 19);
+        treasury.SetGold(territory.Capital!.Value, 16);
 
         Assert.True(PurchaseRules.CanAffordTower(territory, treasury, Difficulty.Soldier));
         Assert.False(PurchaseRules.CanAffordTower(territory, treasury, Difficulty.Commander));

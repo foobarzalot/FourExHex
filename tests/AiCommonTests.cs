@@ -23,12 +23,14 @@ public class AiCommonTests
     {
         // 20-tile Red territory, gold 210, one adjacent Blue tile so buy
         // targets exist. A Commander unit's upkeep is a flat 54, but its
-        // cost is 40 at Soldier difficulty vs 60 at Commander (cost base
-        // 15 × tier 4; the handicap table). Capture solvency gate:
+        // cost is 40 at Soldier difficulty vs 48 at Commander (cost base
+        // 12 × tier 4; the handicap table). Capture solvency gate:
         // gold-cost + 5×(net+1) ≥ 0:
-        //   Soldier:   170 + 5×(21-54) =  +5 → enumerated
-        //   Commander: 150 + 5×(21-54) = -15 → gated out
+        //   Soldier:   170 + 5×(21-54) = +5 → enumerated
+        //   Commander: 162 + 5×(21-54) = -3 → gated out
         // Same board, only the owner's difficulty (and thus cost) differs.
+        // The Commander margin is thin (-3) — a future gold/upkeep retune
+        // nudging it past 0 flips this test's premise, not a bug.
         List<AiCandidate> CandidatesFor(Difficulty d)
         {
             HexGrid grid = TestHelpers.BuildRectGrid(5, 4, Red);

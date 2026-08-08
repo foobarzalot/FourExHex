@@ -128,11 +128,11 @@ public static class SaveSerializer
     /// <summary>
     /// Version of the RNG + rules generation that recorded replays
     /// depend on. Bump whenever a change would derail recorded beats
-    /// (PRNG swap, capital/tide selection rules, movement legality).
-    /// <see cref="Deserialize"/> drops a Replay block whose stamp
-    /// doesn't match instead of replaying it divergently.
+    /// (PRNG swap, capital/tide selection rules, movement legality,
+    /// purchase-price retunes). <see cref="Deserialize"/> drops a Replay
+    /// block whose stamp doesn't match instead of replaying it divergently.
     /// </summary>
-    public const int CurrentReplayVersion = 2;
+    public const int CurrentReplayVersion = 3;
 
     public static string Serialize(
         GameState state,

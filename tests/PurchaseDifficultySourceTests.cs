@@ -23,9 +23,10 @@ namespace FourExHex.Tests;
 /// </summary>
 public class PurchaseDifficultySourceTests
 {
-    // Captain pays 13 per unit tier, Soldier 10, tower 18 vs 15
-    // (DifficultyRules) — far enough apart that a wrong-difficulty charge
-    // can't hide behind an off-by-one.
+    // Captain pays 11 per unit tier, Soldier 10, tower 16 vs 15
+    // (DifficultyRules). The gaps are exactly one gold, so the seeded
+    // treasuries below sit precisely between the two prices — a
+    // wrong-difficulty read flips the affordability gate outright.
     private static ControllerHarness BuildMixedDifficultyGame(int blueGold)
     {
         var red = new Player("Red", PlayerId.FromIndex(0), PlayerKind.Human, Difficulty.Captain);
@@ -74,8 +75,8 @@ public class PurchaseDifficultySourceTests
     [Fact]
     public void BuildTower_GoldBetweenTheTwoPrices_IsOfferedAndChargedAtTheOwnersPrice()
     {
-        // 16 gold: affordable at the owner's Soldier price (15), not at the
-        // current player's Captain price (18). The charge is already
+        // 15 gold: affordable at the owner's Soldier price (15), not at the
+        // current player's Captain price (16). The charge is already
         // owner-derived (AiActionCore.BuildTower), so an affordability gate
         // reading the current player refuses a tower the territory can pay for.
         ControllerHarness h = BuildMixedDifficultyGame(blueGold: 0);
@@ -83,10 +84,10 @@ public class PurchaseDifficultySourceTests
         HexCoord blueCapital = blue.Capital!.Value;
 
         h.Controller.SelectTerritoryForTutorial(blue);
-        // Set after StartGame's first upkeep so the gate sees exactly 16.
-        h.State.Treasury.SetGold(blueCapital, 16);
+        // Set after StartGame's first upkeep so the gate sees exactly 15.
+        h.State.Treasury.SetGold(blueCapital, 15);
         int goldBefore = h.State.Treasury.GetGold(blueCapital);
-        Assert.Equal(16, goldBefore);
+        Assert.Equal(15, goldBefore);
 
         h.Hud.ClickBuildTower();
         Assert.Equal(SessionState.ActionMode.BuildingTower, h.Session.Mode);
