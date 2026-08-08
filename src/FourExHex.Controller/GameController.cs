@@ -111,8 +111,10 @@ public class GameController
         bool replayFastForwardsIdleTurns = false,
         bool autoSelectFirstTerritory = true,
         Func<GameState, PlayerId, HashSet<HexCoord>, HashSet<HexCoord>, DeterministicRng, AiAction?>? automateChooser = null,
-        Func<bool>? automateIsInstantMode = null)
+        Func<bool>? automateIsInstantMode = null,
+        IAchievementStore? achievementStore = null)
     {
+        _achievements = new AchievementTracker(achievementStore ?? NullAchievementStore.Instance);
         _autoSelectFirstTerritory = autoSelectFirstTerritory;
         // Both chooser tracks run through AiActionLowering: it owns the
         // AI's per-turn decision state (make-way tower lowering + the
@@ -146,7 +148,7 @@ public class GameController
             aiSilentMode: aiSilent,
             isReplayInstantActive: () => _recorder?.IsInstantModeActive ?? false,
             clearUndoAndReplayBookkeeping: ClearUndoAndReplayBookkeeping,
-            onGameEnded: () => GameEnded?.Invoke(),
+            onGameEnded: HandleGameEnded,
             onHumanTurnStarted: RaiseHumanTurnStarted,
             maxTurnNumber: maxTurnNumber,
             masterSeed: _masterSeed,
@@ -574,6 +576,74 @@ public class GameController
     /// Input handlers early-return when this is set; autosave is
     /// suppressed.</summary>
     public bool IsReplayMode => _recorder.IsReplaying;
+    // --- Achievements ---
+
+    private readonly AchievementTracker _achievements;
+
+    /// <summary>One-shot per game. The latch, not just
+    /// <see cref="IsReplayMode"/>, is what makes re-awarding impossible:
+    /// <c>BeginReplay</c> clears <c>GameEndedFired</c> and
+    /// <c>SessionState.Winner</c> and drives the game to its end again, so
+    /// the game-end funnel fires once per playback. An append-only unlock
+    /// would survive that; a counter would not.</summary>
+    private bool _awardedAchievementsThisGame;
+
+    /// <summary>
+    /// Whether an achievement event may be raised right now. Each clause is
+    /// load-bearing:
+    /// <list type="bullet">
+    /// <item><c>IsReplayMode</c> — playback re-executes real beats.</item>
+    /// <item><c>_previewMode</c> — Tutorial Preview replays authored beats.</item>
+    /// <item><c>_recordingMode</c> — Tutorial Builder forces an all-human
+    /// roster, so the winner-is-human test alone would not exclude it.</item>
+    /// </list>
+    /// Diagnostic runs need no clause here: <c>Main</c> only constructs the
+    /// real store outside diagnostic mode, so those sessions hold a
+    /// <see cref="NullAchievementStore"/> and cannot write at all.
+    /// </summary>
+    private bool AwardsEnabled => !IsReplayMode && !_previewMode && !_recordingMode;
+
+    /// <summary>
+    /// Game-end funnel. Awards before raising <see cref="GameEnded"/> so
+    /// subscribers (the campaign result recorder, the HUD's trailing
+    /// refresh) already see the updated record in the same frame.
+    /// </summary>
+    private void HandleGameEnded()
+    {
+        AwardEndOfGameAchievements();
+        GameEnded?.Invoke();
+    }
+
+    /// <summary>
+    /// Raise <see cref="AchievementEvent.GameWonByHuman"/> if this game
+    /// ended in a human victory on the live path. A stasis end (turn cap)
+    /// and a <see cref="PlayerId.None"/> winner (Viking total wipeout) are
+    /// both "nobody won" and award nothing. Any human seat's win counts —
+    /// the record belongs to the device, not to a seat.
+    /// </summary>
+    private void AwardEndOfGameAchievements()
+    {
+        if (_awardedAchievementsThisGame) return;
+        if (!AwardsEnabled || !_session.Winner.HasValue)
+        {
+            Log.Debug(Log.LogCategory.Achieve,
+                $"[award] skipped (replay={IsReplayMode} preview={_previewMode} " +
+                $"recording={_recordingMode} winner={_session.Winner?.ToString() ?? "none"})");
+            return;
+        }
+
+        Player? winner = _state.Turns.Players.FirstOrDefault(p => p.Id == _session.Winner.Value);
+        if (winner == null || winner.IsAi)
+        {
+            Log.Debug(Log.LogCategory.Achieve,
+                $"[award] skipped (winner {_session.Winner.Value} is not a human seat)");
+            return;
+        }
+
+        _awardedAchievementsThisGame = true;
+        _achievements.OnEvent(AchievementEvent.GameWonByHuman);
+    }
+
     /// <summary>Set when the most recent completed replay landed on a board
     /// that differs from the recorded final board — e.g. a
     /// gameplay rule changed since the replay was recorded; null after a

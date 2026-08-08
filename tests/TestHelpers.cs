@@ -136,7 +136,8 @@ public static class TestHelpers
         Func<bool>? isReplayPaused = null,
         IReadOnlySet<HexCoord>? waterCoords = null,
         Action<HexGrid>? beforeTerritories = null,
-        Action<GameState>? beforeStart = null)
+        Action<GameState>? beforeStart = null,
+        IAchievementStore? achievementStore = null)
     {
         players ??= new List<Player>
         {
@@ -196,7 +197,8 @@ public static class TestHelpers
             aiSilentMode: aiSilentMode,
             replayIsInstantMode: replayIsInstantMode,
             isReplayPaused: isReplayPaused,
-            autoSelectFirstTerritory: autoSelect);
+            autoSelectFirstTerritory: autoSelect,
+            achievementStore: achievementStore);
         // startGame:false is for the construct-only tests that assert what the
         // constructor told the views, isolating it from StartGame's effects.
         if (startGame) controller.StartGame();
