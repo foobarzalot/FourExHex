@@ -62,6 +62,7 @@ public static class Log
         Anim = 20,    // per-frame / tween churn, split from Render so it can be silenced: unit+capital pulse, move-anim beat holds and travel/arrival, terrain capture fx, camera pan and demo-follow
         Share = 21,   // map sharing: export/import validate/write results, file-dialog outcomes, share-sheet hand-off
         Report = 22,  // player-initiated bug report: bundle staging, which compose rung was taken, send outcome
+        Achieve = 23, // achievements: award evaluation at game end, guard skips, store load/save/unlock, unlock banner
     }
 
     /// <summary>Severity, ascending. <see cref="Off"/> disables a

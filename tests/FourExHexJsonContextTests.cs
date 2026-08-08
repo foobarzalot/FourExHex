@@ -58,6 +58,30 @@ public class FourExHexJsonContextTests
     }
 
     [Fact]
+    public void Context_RoundTripsAchievementData_ViaSourceGenJsonTypeInfo()
+    {
+        var data = new AchievementData
+        {
+            FormatVersion = AchievementSerializer.CurrentFormatVersion,
+            Entries = new[]
+            {
+                new AchievementEntryData { Id = "a.one", Order = 1, Progress = 3 },
+            },
+        };
+
+        string json = JsonSerializer.Serialize(data, FourExHexJsonContext.Default.AchievementData);
+        AchievementData? roundtrip =
+            JsonSerializer.Deserialize(json, FourExHexJsonContext.Default.AchievementData);
+
+        Assert.NotNull(roundtrip);
+        Assert.Equal(AchievementSerializer.CurrentFormatVersion, roundtrip!.FormatVersion);
+        AchievementEntryData entry = Assert.Single(roundtrip.Entries!);
+        Assert.Equal("a.one", entry.Id);
+        Assert.Equal(1, entry.Order);
+        Assert.Equal(3, entry.Progress);
+    }
+
+    [Fact]
     public void Context_AppliesWriteIndentedAndIgnoreNullsFromAttribute()
     {
         // The [JsonSourceGenerationOptions] attribute on the context sets

@@ -31,6 +31,7 @@ namespace FourExHex.Model;
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 [JsonSerializable(typeof(SaveData))]
 [JsonSerializable(typeof(CampaignData))]
+[JsonSerializable(typeof(AchievementData))]
 [JsonSerializable(typeof(System.Collections.Generic.Dictionary<string, string>))]
 public partial class FourExHexJsonContext : JsonSerializerContext
 {
