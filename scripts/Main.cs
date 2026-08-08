@@ -486,10 +486,16 @@ public partial class Main : Node2D
         Replay? loadedReplay = (pendingLoad != null && !isStartingMap)
             ? pendingLoad.Replay
             : null;
+        // Achievements are recorded for real play only. A diagnostic run
+        // gets no store at all, so it cannot write achievement state even
+        // by accident — the controller falls back to NullAchievementStore.
+        IAchievementStore? achievementStore =
+            diagnosticMode ? null : new GodotAchievementStore();
         _controller = new GameController(
             _state, _session, map, hud,
             seed: seed,
             aiPacer: pacer,
+            achievementStore: achievementStore,
             aiChooser: AiDispatcher.ChooseForCurrentPlayer,
             maxTurnNumber: _maxTurnNumber,
             loadedReplay: loadedReplay,
