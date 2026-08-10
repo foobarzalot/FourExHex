@@ -74,6 +74,31 @@ public class AchievementAwardTests
         Assert.Single(store.ProgressReports);
     }
 
+    [Fact]
+    public void UnlockingWin_ShowsTheAchievementBanner()
+    {
+        // Two wins already banked, so this one crosses the target.
+        var store = new FakeAchievementStore();
+        store.ReportProgress(Veteran, 2, 3);
+        ControllerHarness h = OneMoveFromWinning(store);
+
+        PlayWinningMove(h);
+
+        Assert.Equal(new[] { Veteran }, store.Unlocks);
+        Assert.Equal(AchievementBannerContent.For(Veteran), Assert.Single(h.Hud.AchievementBanners));
+    }
+
+    [Fact]
+    public void NonUnlockingWin_ShowsNoBanner()
+    {
+        var store = new FakeAchievementStore();
+        ControllerHarness h = OneMoveFromWinning(store);
+
+        PlayWinningMove(h);
+
+        Assert.Empty(h.Hud.AchievementBanners);
+    }
+
     // --- The award is suppressed ---
 
     [Fact]
@@ -89,14 +114,17 @@ public class AchievementAwardTests
     }
 
     [Fact]
-    public void PreviewMode_AwardsNothing()
+    public void PreviewMode_AwardsNothingAndShowsNoBanner()
     {
         var store = new FakeAchievementStore();
+        store.ReportProgress(Veteran, 2, 3);
         ControllerHarness h = OneMoveFromWinning(store, previewMode: true);
+        store.ClearCallLog();
 
         PlayWinningMove(h);
 
         Assert.Equal(0, store.TotalCalls);
+        Assert.Empty(h.Hud.AchievementBanners);
     }
 
     [Fact]

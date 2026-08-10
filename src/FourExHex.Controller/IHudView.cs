@@ -107,6 +107,16 @@ public interface IHudView
     void ShowTransientBanner(string text);
 
     /// <summary>
+    /// Show the achievement-unlock banner: the same self-dismissing,
+    /// click-through toast shape as <see cref="ShowTransientBanner"/> but
+    /// with celebratory chrome (gold border, trophy glyph) and its own
+    /// slot, so an unlock at game end cannot be mistaken for — or
+    /// overwritten by — a routine announcement. Re-showing restarts the
+    /// fade.
+    /// </summary>
+    void ShowAchievementBanner(string text);
+
+    /// <summary>
     /// Show a non-interactive informational popup at the bottom of the
     /// screen with the given text. Used by tutorial scripting to display
     /// instructions / narration. The HUD does not auto-dismiss; the

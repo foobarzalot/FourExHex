@@ -641,7 +641,16 @@ public class GameController
         }
 
         _awardedAchievementsThisGame = true;
-        _achievements.OnEvent(AchievementEvent.GameWonByHuman);
+        foreach (string id in _achievements.OnEvent(AchievementEvent.GameWonByHuman))
+        {
+            // A definition this build doesn't recognize can only come from
+            // a record written by a newer one; award it silently rather
+            // than showing a banner we have no copy for.
+            if (AchievementBannerContent.For(id) is string text)
+            {
+                _hud.ShowAchievementBanner(text);
+            }
+        }
     }
 
     /// <summary>Set when the most recent completed replay landed on a board

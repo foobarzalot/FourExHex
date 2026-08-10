@@ -77,6 +77,10 @@ public class MockHudView : IHudView
     public List<string> TransientBanners { get; } = new();
     public void ShowTransientBanner(string text) => TransientBanners.Add(text);
 
+    /// <summary>Every achievement-unlock banner the controller showed, in order.</summary>
+    public List<string> AchievementBanners { get; } = new();
+    public void ShowAchievementBanner(string text) => AchievementBanners.Add(text);
+
     public string? CurrentTutorialMessage { get; private set; }
     public bool TutorialMessageTappable { get; private set; }
     public int ShowTappableTutorialMessageCount { get; private set; }
