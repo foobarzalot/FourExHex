@@ -88,6 +88,7 @@ public partial class MainMenuScene : Control
     // flips it rebuilds the panel 8 columns ↔ 16 columns (see FitPanels).
     private ScreenOrientation _campaignOrientation = ScreenOrientation.Landscape;
     private SettingsPanel? _settingsPanel;
+    private AchievementsPanel? _achievementsPanel;
     private Button? _landingResumeButton;
     private Button? _landingPlayButton;
     private Button? _landingLoadButton;
@@ -222,6 +223,9 @@ public partial class MainMenuScene : Control
 
         _settingsPanel = new SettingsPanel();
         AddChild(_settingsPanel);
+
+        _achievementsPanel = new AchievementsPanel();
+        AddChild(_achievementsPanel);
 
         // Map-generation options, summoned by the "?" button on the
         // map-setup page. Toggling here does NOT re-render the thumbnail; the
@@ -459,16 +463,17 @@ public partial class MainMenuScene : Control
         const float buttonGap = 16f;
         const float firstButtonY = 140f;
 
-        // The full stack is Resume, Play, Campaign, Play Tutorial, Load, Map
-        // Editor, Settings, and Exit (8 buttons; the Tutorial Builder entry
-        // lives in the debug-only cheat menu). On mobile the Exit
-        // button is suppressed (Apple HIG / Google Play guidance), so the
-        // panel reclaims its slot — height is computed from the actual count
-        // rather than the fixed 8-button design, otherwise ScaleToFit centers
-        // against a phantom Exit slot, leaving dead space at the bottom.
+        // The full stack is Resume, Play, Campaign, Achievements, Play
+        // Tutorial, Load, Map Editor, Settings, and Exit (9 buttons; the
+        // Tutorial Builder entry lives in the debug-only cheat menu). On
+        // mobile the Exit button is suppressed (Apple HIG / Google Play
+        // guidance), so the panel reclaims its slot — height is computed from
+        // the actual count rather than the fixed design, otherwise ScaleToFit
+        // centers against a phantom Exit slot, leaving dead space at the
+        // bottom.
         bool exitSuppressed = OS.HasFeature("mobile");
-        int landingButtonCount = exitSuppressed ? 7 : 8;
-        const float bottomMargin = 56f; // matches the desktop 8-button design (820 - 764)
+        int landingButtonCount = exitSuppressed ? 8 : 9;
+        const float bottomMargin = 56f; // matches the desktop design (820 - 764)
         float panelH = firstButtonY + (buttonH + buttonGap) * (landingButtonCount - 1)
                        + buttonH + bottomMargin;
         Log.Info(Log.LogCategory.Render,
@@ -550,11 +555,21 @@ public partial class MainMenuScene : Control
         AudioBus.AttachClick(campaignButton);
         panel.AddChild(campaignButton);
 
+        // Achievements: the earned/unearned record, sitting with Campaign as
+        // the other cross-session progression surface.
+        var achievementsButton = new Button { Text = Strings.Get(StringKeys.MenuAchievements) };
+        achievementsButton.AddThemeFontSizeOverride("font_size", 26);
+        achievementsButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 3);
+        achievementsButton.Size = new Vector2(buttonW, buttonH);
+        achievementsButton.Pressed += OnAchievementsPressed;
+        AudioBus.AttachClick(achievementsButton);
+        panel.AddChild(achievementsButton);
+
         // The end-user-facing tutorial entry point (the authoring tool
         // lives in the debug-only cheat menu).
         var playTutorialButton = new Button { Text = Strings.Get(StringKeys.MenuPlayTutorial) };
         playTutorialButton.AddThemeFontSizeOverride("font_size", 26);
-        playTutorialButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 3);
+        playTutorialButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 4);
         playTutorialButton.Size = new Vector2(buttonW, buttonH);
         playTutorialButton.Pressed += OnPlayTutorialPressed;
         AudioBus.AttachClick(playTutorialButton);
@@ -562,7 +577,7 @@ public partial class MainMenuScene : Control
 
         _landingLoadButton = new Button { Text = Strings.Get(StringKeys.MenuLoadGame) };
         _landingLoadButton.AddThemeFontSizeOverride("font_size", 26);
-        _landingLoadButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 4);
+        _landingLoadButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 5);
         _landingLoadButton.Size = new Vector2(buttonW, buttonH);
         _landingLoadButton.Pressed += OnLoadPressed;
         AudioBus.AttachClick(_landingLoadButton);
@@ -573,7 +588,7 @@ public partial class MainMenuScene : Control
 
         var mapEditorButton = new Button { Text = Strings.Get(StringKeys.MenuMapEditor) };
         mapEditorButton.AddThemeFontSizeOverride("font_size", 26);
-        mapEditorButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 5);
+        mapEditorButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 6);
         mapEditorButton.Size = new Vector2(buttonW, buttonH);
         mapEditorButton.Pressed += OnMapEditorPressed;
         AudioBus.AttachClick(mapEditorButton);
@@ -581,7 +596,7 @@ public partial class MainMenuScene : Control
 
         var settingsButton = new Button { Text = Strings.Get(StringKeys.MenuSettings) };
         settingsButton.AddThemeFontSizeOverride("font_size", 26);
-        settingsButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 6);
+        settingsButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 7);
         settingsButton.Size = new Vector2(buttonW, buttonH);
         settingsButton.Pressed += OnSettingsPressed;
         AudioBus.AttachClick(settingsButton);
@@ -592,7 +607,7 @@ public partial class MainMenuScene : Control
         {
             var exitButton = new Button { Text = Strings.Get(StringKeys.MenuExit) };
             exitButton.AddThemeFontSizeOverride("font_size", 26);
-            exitButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 7);
+            exitButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 8);
             exitButton.Size = new Vector2(buttonW, buttonH);
             exitButton.Pressed += OnExitPressed;
             AudioBus.AttachClick(exitButton);
@@ -665,11 +680,10 @@ public partial class MainMenuScene : Control
         rightCol.AddThemeConstantOverride("separation", 11);
         hbox.AddChild(rightCol);
 
-        // Play Game sits on top, full width; the grid fills the rest.
-        _landingPlayButton = MakeLandingButton(Strings.Get(StringKeys.MenuPlayGame), OnPlayPressed, 26);
-        _landingPlayButton.CustomMinimumSize = new Vector2(0, 62);
-        rightCol.AddChild(_landingPlayButton);
-
+        // Every entry is a grid cell — Play Game included, rather than a
+        // full-width button above the grid. Eight entries fill four even
+        // rows of two, which is what lets Achievements land without leaving
+        // a ragged half-row.
         var grid = new GridContainer
         {
             Columns = 2,
@@ -684,12 +698,20 @@ public partial class MainMenuScene : Control
         // and Load Game (needs any slot), matching the portrait build.
         System.Collections.Generic.IReadOnlyList<SaveSlotInfo> slots = _saveStore.ListSlots();
 
+        // Reading order matches the portrait stack, row by row:
+        //   Resume  | Play Game
+        //   Campaign| Achievements
+        //   Tutorial| Load Game
+        //   Editor  | Settings
         // Resume / Load render disabled but keep their grid slots so the grid
         // never reflows when a save exists (design handoff).
         _landingResumeButton = MakeGridButton(Strings.Get(StringKeys.MenuResume), OnResumePressed);
         _landingResumeButton.Disabled = !slots.Any(s => s.IsAutosave);
         grid.AddChild(_landingResumeButton);
+        _landingPlayButton = MakeGridButton(Strings.Get(StringKeys.MenuPlayGame), OnPlayPressed);
+        grid.AddChild(_landingPlayButton);
         grid.AddChild(MakeGridButton(Strings.Get(StringKeys.MenuCampaign), OnCampaignPressed));
+        grid.AddChild(MakeGridButton(Strings.Get(StringKeys.MenuAchievements), OnAchievementsPressed));
         grid.AddChild(MakeGridButton(Strings.Get(StringKeys.MenuPlayTutorial), OnPlayTutorialPressed));
         _landingLoadButton = MakeGridButton(Strings.Get(StringKeys.MenuLoadGame), OnLoadPressed);
         _landingLoadButton.Disabled = slots.Count == 0;
@@ -1752,6 +1774,7 @@ public partial class MainMenuScene : Control
         _playConfigPanel is { Visible: true }
         && _pageClip != null
         && !(_settingsPanel?.IsOpen ?? false)
+        && !(_achievementsPanel?.IsOpen ?? false)
         && !(_quitConfirmModal?.IsOpen ?? false)
         && !(_campaignSheet?.IsOpen ?? false)
         && !(_sourceChooser?.IsOpen ?? false)
@@ -2095,6 +2118,13 @@ public partial class MainMenuScene : Control
         _settingsPanel?.Open();
     }
 
+    private void OnAchievementsPressed()
+    {
+        // Same modal treatment as Settings: layered over the landing page,
+        // buttons still visible under the backdrop.
+        _achievementsPanel?.Open();
+    }
+
     private void OnPlayTutorialPressed()
     {
         GetTree().ChangeSceneToFile("res://scenes/play_tutorial.tscn");
@@ -2218,6 +2248,12 @@ public partial class MainMenuScene : Control
             _settingsPanel.Close();
             return;
         }
+        if (_achievementsPanel is { IsOpen: true })
+        {
+            Log.Debug(Log.LogCategory.Input, "[back] close achievements");
+            _achievementsPanel.Close();
+            return;
+        }
         if (_quitConfirmModal is { IsOpen: true })
         {
             Log.Debug(Log.LogCategory.Input, "[back] cancel quit confirm");
@@ -2284,6 +2320,10 @@ public partial class MainMenuScene : Control
         // (the player shouldn't trigger landing shortcuts under the
         // backdrop).
         if (_settingsPanel != null && _settingsPanel.IsOpen) return;
+
+        // Achievements is the same shape of modal — it consumes its own
+        // Escape, so nothing else here should act while it's open.
+        if (_achievementsPanel != null && _achievementsPanel.IsOpen) return;
 
         // Quit-confirm modal owns its own Escape (cancel) while open; let
         // it consume the key instead of the landing handler re-opening it.
