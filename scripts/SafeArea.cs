@@ -55,19 +55,28 @@ public partial class SafeArea : Node
         // gated to mobile to mirror the LogBootstrap mobile flag.
         bool isMobile = OS.HasFeature("mobile");
 
-        LogicalSafeInsets next = isMobile
+        // FOUREXHEX_SAFE_INSETS forces logical insets, bypassing the OS
+        // report — the safe-area counterpart to FOUREXHEX_UI_SCALE. Desktop
+        // has no notch or home indicator, so a phone's layout reviewed on the
+        // dev Mac is otherwise handed vertical space the device doesn't have.
+        // Honored on all platforms and takes precedence over the mobile gate.
+        LogicalSafeInsets? forced = SafeAreaMath.ParseOverride(
+            OS.GetEnvironment("FOUREXHEX_SAFE_INSETS"));
+
+        LogicalSafeInsets next = forced ?? (isMobile
             ? SafeAreaMath.InsetsFor(
                 physicalWindowWidth: windowSize.X, physicalWindowHeight: windowSize.Y,
                 physicalSafeX: safeRect.Position.X, physicalSafeY: safeRect.Position.Y,
                 physicalSafeWidth: safeRect.Size.X, physicalSafeHeight: safeRect.Size.Y,
                 contentScaleFactor: factor)
-            : LogicalSafeInsets.Zero;
+            : LogicalSafeInsets.Zero);
 
         bool changed = next != Current;
         Current = next;
 
         string msg = $"SafeArea: window={windowSize.X}x{windowSize.Y} safe={safeRect} " +
-            $"factor={factor} insets=(t={next.Top:0.##} b={next.Bottom:0.##} " +
+            $"factor={factor} override={(forced.HasValue ? "yes" : "none")} " +
+            $"insets=(t={next.Top:0.##} b={next.Bottom:0.##} " +
             $"l={next.Left:0.##} r={next.Right:0.##}) changed={changed}";
         // An inset change is the noteworthy event (first launch on a notched
         // device, rotation crossing portrait/landscape on the notch axis); the

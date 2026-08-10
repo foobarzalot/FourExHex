@@ -604,3 +604,30 @@ Prefix `FOUREXHEX_LOG="Display:Debug"` to see the `DisplayScale:` line confirm
 the override fired (`override=<value>` is set instead of `<none>`). The
 override takes precedence over both the DPI path and the mobile floor, on any
 platform.
+
+**Option C — when the phone is taller than the Mac.** macOS clamps a window to
+the display, so the tall portrait resolutions above silently come up short: ask
+for `1125x2436` and the `DisplayScale:` line reports
+`window=(1126, 1676) logicalViewport=(425.9, 633.9)` — correct width, two-thirds
+of the height. Every vertical judgement made in that window is wrong, and
+nothing warns you.
+
+What matters for layout is the **logical viewport** (`physical ÷ factor`), not
+the physical size, so pick any window height the display can fit and solve for
+the factor:
+
+```
+factor = window_height / target_logical_height
+window_width = target_logical_width × factor
+```
+
+```
+# iPhone 13 mini PORTRAIT — logical 425×921 in a window that actually fits
+FOUREXHEX_UI_SCALE=1.75 "$GODOT" --path . --resolution 745x1612
+```
+
+Positions and proportions are then faithful; only pixel density is lower
+(~66% here), so this reproduces layout, not crispness. **Always read back the
+`logicalViewport=` value and check it against the target before trusting what
+you see** — that one line is the difference between a valid layout review and a
+misleading one.

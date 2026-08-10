@@ -50,4 +50,46 @@ public static class SafeAreaMath
             Left: leftPhys / contentScaleFactor,
             Right: rightPhys / contentScaleFactor);
     }
+
+    /// <summary>
+    /// Parse a forced-insets string in already-logical pixels, as supplied by
+    /// the <c>FOUREXHEX_SAFE_INSETS</c> env var. Desktop has no notch or home
+    /// indicator and so reports no unsafe zones, which makes reviewing a
+    /// phone's layout on the dev Mac misleading; this lets the reviewer
+    /// supply the device's real insets (see RELEASE.md §6).
+    ///
+    /// Accepts <c>"top,bottom"</c> — the common phone case, matching the
+    /// <c>insets=(t= b= l= r=)</c> log order — or the full
+    /// <c>"top,bottom,left,right"</c>. Returns null for anything malformed or
+    /// negative so the caller falls through to the real OS value rather than
+    /// laying out against garbage. <c>"0,0"</c> is a deliberate zero, not a
+    /// parse failure.
+    /// </summary>
+    public static LogicalSafeInsets? ParseOverride(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+
+        string[] parts = raw.Split(',');
+        if (parts.Length != 2 && parts.Length != 4) return null;
+
+        var values = new float[parts.Length];
+        for (int i = 0; i < parts.Length; i++)
+        {
+            if (!float.TryParse(
+                    parts[i].Trim(),
+                    System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out float value))
+            {
+                return null;
+            }
+            if (value < 0f || float.IsNaN(value) || float.IsInfinity(value)) return null;
+            values[i] = value;
+        }
+
+        return parts.Length == 2
+            ? new LogicalSafeInsets(Top: values[0], Bottom: values[1], Left: 0f, Right: 0f)
+            : new LogicalSafeInsets(
+                Top: values[0], Bottom: values[1], Left: values[2], Right: values[3]);
+    }
 }

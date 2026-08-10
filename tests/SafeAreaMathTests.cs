@@ -137,4 +137,72 @@ public class SafeAreaMathTests
         Assert.Equal(0f, insets.Left, Tol);
         Assert.Equal(0f, insets.Right, Tol);
     }
+
+    // --- FOUREXHEX_SAFE_INSETS override parsing ---
+    // Desktop reports no unsafe zones, so reviewing a notched phone's layout
+    // on the dev Mac needs the insets forced. Same shape and precedence as
+    // FOUREXHEX_UI_SCALE (see RELEASE.md §6).
+
+    [Fact]
+    public void ParseOverride_FourValues_MapsToTopBottomLeftRight()
+    {
+        LogicalSafeInsets? insets = SafeAreaMath.ParseOverride("56,39,0,12");
+
+        Assert.NotNull(insets);
+        Assert.Equal(56f, insets!.Value.Top, Tol);
+        Assert.Equal(39f, insets.Value.Bottom, Tol);
+        Assert.Equal(0f, insets.Value.Left, Tol);
+        Assert.Equal(12f, insets.Value.Right, Tol);
+    }
+
+    [Fact]
+    public void ParseOverride_TwoValues_IsTopAndBottom()
+    {
+        // The common phone case — a notch and a home indicator, no side insets.
+        LogicalSafeInsets? insets = SafeAreaMath.ParseOverride("56,39");
+
+        Assert.NotNull(insets);
+        Assert.Equal(56f, insets!.Value.Top, Tol);
+        Assert.Equal(39f, insets.Value.Bottom, Tol);
+        Assert.Equal(0f, insets.Value.Left, Tol);
+        Assert.Equal(0f, insets.Value.Right, Tol);
+    }
+
+    [Fact]
+    public void ParseOverride_AcceptsFractionalAndSurroundingSpace()
+    {
+        LogicalSafeInsets? insets = SafeAreaMath.ParseOverride(" 56.7 , 38.6 ");
+
+        Assert.NotNull(insets);
+        Assert.Equal(56.7f, insets!.Value.Top, Tol);
+        Assert.Equal(38.6f, insets.Value.Bottom, Tol);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("nonsense")]
+    [InlineData("56")]              // one value is ambiguous, not a shorthand
+    [InlineData("1,2,3")]           // three is ambiguous too
+    [InlineData("1,2,3,4,5")]
+    [InlineData("56,notanumber")]
+    [InlineData("-5,10")]           // a negative inset is meaningless
+    public void ParseOverride_Malformed_IsNull(string? raw)
+    {
+        // A bad override must fall through to the real OS value rather than
+        // silently laying out against garbage.
+        Assert.Null(SafeAreaMath.ParseOverride(raw));
+    }
+
+    [Fact]
+    public void ParseOverride_AllZeroes_IsAnExplicitZero()
+    {
+        // Distinct from null: "0,0" is a deliberate "pretend there are no
+        // insets", which is exactly what a desktop reviewer may want to force
+        // while a real device is reporting some.
+        LogicalSafeInsets? insets = SafeAreaMath.ParseOverride("0,0");
+
+        Assert.Equal(LogicalSafeInsets.Zero, insets);
+    }
 }
