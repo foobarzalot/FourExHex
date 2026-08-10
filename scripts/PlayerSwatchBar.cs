@@ -20,8 +20,10 @@ using Godot;
 public partial class PlayerSwatchBar : Control
 {
     private const float NormalSize = 26f;
-    private const float CurrentSize = 38f;
-    private const float Gap = 8f;
+    // Shared so HudCornerLayout's width budget and this bar agree on how wide
+    // the compact (active-swatch-only) bar is.
+    private const float CurrentSize = UiMetrics.CurrentSwatchSizePx;
+    private const float Gap = UiMetrics.GutterPx;
     private const float DimmedAlpha = 0.30f;
 
     private Color[] _colors = System.Array.Empty<Color>();

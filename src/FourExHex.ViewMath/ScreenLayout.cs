@@ -29,7 +29,7 @@ public static class ScreenLayout
     /// shorter viewport edge. Picked to put every phone we test on the
     /// compact side and every tablet on the expanded side:
     ///
-    ///   iPhone 13 mini (on-device, min=507)        ✓ compact
+    ///   iPhone 13 mini (on-device, min=425)        ✓ compact
     ///   iPhone 13 mini Option-B repro (min=625)    ✓ compact
     ///   Galaxy S9 portrait/landscape (min=486)     ✓ compact
     ///   iPad mini (min=768)                        ✓ expanded

@@ -34,9 +34,9 @@ public class ScreenLayoutTests
     public void IsCompact_RealPhones_AlwaysCompact()
     {
         // Real on-device logical viewports for the two reference phones,
-        // per ARCHITECTURE.md (post-mobile-DPI-floor).
-        Assert.True(ScreenLayout.IsCompact(507f, 1097f, prevWasCompact: false), "iPhone 13 mini portrait");
-        Assert.True(ScreenLayout.IsCompact(1097f, 507f, prevWasCompact: false), "iPhone 13 mini landscape");
+        // per RELEASE.md section 5 (post-mobile-DPI-floor).
+        Assert.True(ScreenLayout.IsCompact(425f, 921f, prevWasCompact: false), "iPhone 13 mini portrait");
+        Assert.True(ScreenLayout.IsCompact(921f, 425f, prevWasCompact: false), "iPhone 13 mini landscape");
         Assert.True(ScreenLayout.IsCompact(486f, 999f, prevWasCompact: false),  "S9 portrait");
         Assert.True(ScreenLayout.IsCompact(999f, 486f, prevWasCompact: false),  "S9 landscape");
     }

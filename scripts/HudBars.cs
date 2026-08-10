@@ -50,8 +50,8 @@ public static class HudBars
         // undo/redo/options buttons may sit IN the safe-area corners
         // (acceptable on iPhone landscape: the notch occupies one
         // top-corner; the others are safe). Rails take the inset instead.
-        float topOffset = safe.Top + 10f;
-        float sideOffset = 10f;
+        float topOffset = safe.Top + UiMetrics.CornerZoneEdgePadPx;
+        float sideOffset = UiMetrics.CornerZoneEdgePadPx;
 
         var zone = new HBoxContainer
         {
@@ -67,7 +67,7 @@ public static class HudBars
             OffsetBottom = topOffset,
             MouseFilter = Control.MouseFilterEnum.Pass,
         };
-        zone.AddThemeConstantOverride("separation", 10);
+        zone.AddThemeConstantOverride("separation", (int)UiMetrics.CornerZoneSeparationPx);
         return zone;
     }
 

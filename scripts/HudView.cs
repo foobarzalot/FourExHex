@@ -213,14 +213,17 @@ public partial class HudView : OrientationHud, IHudView
         SetClickThrough(turnBlock);
         _statusCluster.AddChild(turnBlock);
         _turnLabel.Text = "1";
-        _turnLabel.CustomMinimumSize = new Vector2(70, 0);
+        _turnLabel.CustomMinimumSize = new Vector2(UiMetrics.TurnLabelMinWidthPx, 0);
         _turnLabel.AddThemeFontSizeOverride("font_size", 36);
 
         // Wrap the status cluster in a black-pill chip matching the gold
         // chip's style. MouseFilter = Ignore so the chip is click-
         // through (taps in its footprint reach the map below).
+        // Named so the [corner-fit] overlap guard reports a readable culprit
+        // rather than Godot's auto-generated @PanelContainer@NNN.
         _statusChip = new PanelContainer
         {
+            Name = "StatusChip",
             SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
             MouseFilter = Control.MouseFilterEnum.Ignore,
         };
@@ -233,6 +236,7 @@ public partial class HudView : OrientationHud, IHudView
         // to the larger label.
         var goldChip = new PanelContainer
         {
+            Name = "GoldChip",
             SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
             // Click-through — gold chip is a read-only readout, not a
             // button; taps fall through to the map.
@@ -242,7 +246,7 @@ public partial class HudView : OrientationHud, IHudView
         _goldLabel = new Label
         {
             Text = "",
-            CustomMinimumSize = new Vector2(220, 0),
+            CustomMinimumSize = new Vector2(UiMetrics.GoldLabelMinWidthPx, 0),
             MouseFilter = Control.MouseFilterEnum.Ignore,
         };
         _goldLabel.AddThemeFontOverride("font", MonoFont);
@@ -349,6 +353,7 @@ public partial class HudView : OrientationHud, IHudView
             "Undo button long-press -> Undo All",
             () => UndoLastClicked?.Invoke(), () => UndoTurnClicked?.Invoke(),
             startDisabled: true);
+        _undoLastButton.Name = "UndoButton";
         _undoCluster.AddChild(_undoLastButton);
 
         _redoLastButton = MakeLongPressButton(
@@ -356,6 +361,7 @@ public partial class HudView : OrientationHud, IHudView
             "Redo button long-press -> Redo All",
             () => RedoLastClicked?.Invoke(), () => RedoAllClicked?.Invoke(),
             startDisabled: true);
+        _redoLastButton.Name = "RedoButton";
         _undoCluster.AddChild(_redoLastButton);
 
         // Next unit power tier in the selected territory — same action as
@@ -407,7 +413,7 @@ public partial class HudView : OrientationHud, IHudView
         // Options is reparented per orientation (end of the controls cluster in
         // landscape; the top display bar's right side in portrait), so it isn't
         // added to a cluster here — the Build*Bars methods place it.
-        _optionsButton = new HudIconButton(HudIcon.Options);
+        _optionsButton = new HudIconButton(HudIcon.Options) { Name = "OptionsButton" };
         _optionsButton.Pressed += () => EscRequested?.Invoke();
         AudioBus.AttachClick(_optionsButton);
 
@@ -418,6 +424,7 @@ public partial class HudView : OrientationHud, IHudView
         // cluster here.
         _helpButton = new HudIconButton("?", SerifFont, 34)
         {
+            Name = "HelpButton",
             TooltipText = Strings.Get(StringKeys.HudTooltipHelp),
         };
         _helpButton.Pressed += OpenHelpMenu;
@@ -765,11 +772,11 @@ public partial class HudView : OrientationHud, IHudView
     }
 
     /// <summary>Landscape — D1 zones: TopLeftZone holds status + gold;
-    /// TopRightZone holds undo + options (always); LeftRail holds the
-    /// create/paint cluster (buy palette + Build Tower); RightRail holds
-    /// the command cluster (nav) + End Turn (hero) stacked vertically.
-    /// Rails align Center (compact) or End (expanded) — set by
-    /// HudBars.MakeRail.</summary>
+    /// TopRightZone holds help + options; LeftRail holds the create/paint
+    /// cluster (buy palette + Build Tower); RightRail holds the command
+    /// cluster (nav). End Turn, Automate and undo/redo form a bottom-right
+    /// corner strip pinned outside the rails. Rails align Center (compact) or
+    /// End (expanded) — set by HudBars.MakeRail.</summary>
     protected override void BuildLandscapeBars()
     {
         // Flip the action + controls clusters to vertical for the rails.
@@ -781,8 +788,8 @@ public partial class HudView : OrientationHud, IHudView
         TopLeftZone.AddChild(_statusChip);
         TopLeftZone.AddChild(_goldChip);
 
-        // Top-right: undo cluster + help + options gear.
-        TopRightZone.AddChild(_undoCluster);
+        // Top-right: help + options gear. Undo/redo ride the bottom-right
+        // corner strip with the other action buttons, same as portrait.
         TopRightZone.AddChild(_helpButton);
         TopRightZone.AddChild(_optionsButton);
 
@@ -793,9 +800,9 @@ public partial class HudView : OrientationHud, IHudView
         // — mirrors the left rail's pair. End Turn is NOT in the rail.
         RightRailGroup!.AddChild(_controlsCluster);
 
-        // End Turn floats anchored to the bottom-right corner of the
-        // viewport, inside the safe-area inset.
-        PinEndTurnBottomRight();
+        // End Turn / Automate / undo+redo float as one strip anchored to the
+        // bottom-right corner of the viewport.
+        PinBottomRightStrip();
 
         // In expanded landscape the right rail bottom-anchors its content
         // (alignBottom = true). End Turn pinned to the bottom-right corner
@@ -812,85 +819,95 @@ public partial class HudView : OrientationHud, IHudView
 
         Log.Debug(Log.LogCategory.Render,
             "HudView: landscape cluster placement — statusChip+goldChip → TopLeft, " +
-            "undoCluster+optionsButton → TopRight, actionCluster → LeftRail, " +
-            "controlsCluster → RightRail (centered), endTurnButton → bottom-right corner.");
+            "helpButton+optionsButton → TopRight, actionCluster → LeftRail, " +
+            "controlsCluster → RightRail (centered), " +
+            "endTurnButton+automateButton+undoCluster → bottom-right strip.");
     }
 
-    /// <summary>Place End Turn at the bottom-right corner of the viewport,
-    /// inside the safe-area inset, as a direct child of this CanvasLayer
-    /// (anchored — no container layout interference).</summary>
-    private void PinEndTurnBottomRight()
+    /// <summary>Lay the landscape bottom-right corner strip out right-to-left:
+    /// End Turn at the corner, then Automate, then undo/redo. Each block is a
+    /// direct child of this CanvasLayer, anchored rather than in a container,
+    /// so the rails can't push it around.</summary>
+    private void PinBottomRightStrip()
     {
-        // End Turn sits at the literal bottom-right corner — does NOT
+        // The strip sits at the literal bottom-right corner — it does NOT
         // respect safe-area insets (it claims the corner real estate the
         // rails leave behind). On iPhone landscape it'll overlap the
         // home-indicator strip; iOS still routes taps through.
-        float pad = 10f;
-        PinBottomRight(_endTurnButton, rightOffset: pad);
-        // Automate sits immediately left of End Turn — same corner strip.
+        const float gap = 10f;
+        float rightOffset = CornerStripPad;
+
+        rightOffset = PinBottomRight(_endTurnButton, rightOffset) + gap;
         if (_automateButton != null)
         {
-            PinBottomRight(_automateButton, rightOffset: pad + 68f + 10f);
+            rightOffset = PinBottomRight(_automateButton, rightOffset) + gap;
         }
+        PinBottomRight(_undoCluster, rightOffset);
     }
 
-    /// <summary>Corner-anchor a 68×68 chip to the viewport's bottom edge,
-    /// its right edge <paramref name="rightOffset"/> px in from the right,
-    /// as a direct child of this CanvasLayer (no container interference).</summary>
-    private void PinBottomRight(HudIconButton button, float rightOffset)
+    /// <summary>Distance the bottom-right corner strip keeps from the
+    /// viewport's right and bottom edges.</summary>
+    private const float CornerStripPad = 10f;
+
+    /// <summary>Corner-anchor a block to the viewport's bottom edge, its right
+    /// edge <paramref name="rightOffset"/> px in from the right, as a direct
+    /// child of this CanvasLayer (no container interference). Returns the
+    /// offset of the block's LEFT edge, so the caller can chain the next
+    /// block leftward without knowing this one's width.</summary>
+    private float PinBottomRight(Control block, float rightOffset)
     {
-        float pad = 10f;
-        button.AnchorLeft = 1f;
-        button.AnchorRight = 1f;
-        button.AnchorTop = 1f;
-        button.AnchorBottom = 1f;
-        button.GrowHorizontal = Control.GrowDirection.Begin;
-        button.GrowVertical = Control.GrowDirection.Begin;
-        button.OffsetLeft = -rightOffset;
-        button.OffsetRight = -rightOffset;
-        button.OffsetTop = -pad;
-        button.OffsetBottom = -pad;
-        AddChild(button);
+        block.AnchorLeft = 1f;
+        block.AnchorRight = 1f;
+        block.AnchorTop = 1f;
+        block.AnchorBottom = 1f;
+        block.GrowHorizontal = Control.GrowDirection.Begin;
+        block.GrowVertical = Control.GrowDirection.Begin;
+        block.OffsetLeft = -rightOffset;
+        block.OffsetRight = -rightOffset;
+        block.OffsetTop = -CornerStripPad;
+        block.OffsetBottom = -CornerStripPad;
+        AddChild(block);
+        return rightOffset + block.GetCombinedMinimumSize().X;
     }
 
-    /// <summary>Undo the corner-anchoring landscape applied, so the next
-    /// portrait Build*Bars can drop End Turn into a Container without the
-    /// anchors fighting the container's layout.</summary>
-    private void ResetEndTurnAnchors()
+    /// <summary>Undo the corner-anchoring landscape applied to every block in
+    /// the bottom-right strip, so the next portrait Build*Bars can drop them
+    /// into a Container without the anchors fighting its layout.</summary>
+    private void ResetCornerStripAnchors()
     {
         ResetCornerAnchors(_endTurnButton);
         if (_automateButton != null) ResetCornerAnchors(_automateButton);
+        ResetCornerAnchors(_undoCluster);
     }
 
-    private static void ResetCornerAnchors(HudIconButton button)
+    private static void ResetCornerAnchors(Control block)
     {
-        button.AnchorLeft = 0f;
-        button.AnchorRight = 0f;
-        button.AnchorTop = 0f;
-        button.AnchorBottom = 0f;
-        button.OffsetLeft = 0f;
-        button.OffsetRight = 0f;
-        button.OffsetTop = 0f;
-        button.OffsetBottom = 0f;
-        button.GrowHorizontal = Control.GrowDirection.End;
-        button.GrowVertical = Control.GrowDirection.End;
+        block.AnchorLeft = 0f;
+        block.AnchorRight = 0f;
+        block.AnchorTop = 0f;
+        block.AnchorBottom = 0f;
+        block.OffsetLeft = 0f;
+        block.OffsetRight = 0f;
+        block.OffsetTop = 0f;
+        block.OffsetBottom = 0f;
+        block.GrowHorizontal = Control.GrowDirection.End;
+        block.GrowVertical = Control.GrowDirection.End;
     }
 
-    /// <summary>Portrait — D1 zones (wireframe variant A): TopLeftZone holds
-    /// status above gold; TopRightZone holds undo + options; BottomBar
-    /// holds a VBox of two full-width rows:
-    ///  - row1 = `[nextUnit · nextTerritory] ←→ [End Turn (hero)]` (space-between)
-    ///  - row2 = `[Buy (hero) · Build Tower]` (left-aligned)
-    /// Mirrors `hud-d1.jsx` variant A precisely — hero buttons sit at
-    /// opposite corners (End Turn top-right of the bar, Buy at the bottom-
-    /// left thumb spot).</summary>
+    /// <summary>Portrait — D1 zones: TopLeftZone holds status above gold;
+    /// TopRightZone holds help + options; BottomBar holds a VBox of two
+    /// full-width rows, each space-between:
+    ///  - row1 = `[nextUnit · nextTerritory] ←→ [undo · redo]`
+    ///  - row2 = `[Buy (hero) · Build Tower] ←→ [Automate · End Turn (hero)]`
+    /// Hero buttons sit at the bottom-right, Buy at the bottom-left thumb
+    /// spot.</summary>
     protected override void BuildPortraitBars()
     {
         // Action + controls clusters render horizontally in the bottom-bar rows.
         SetClusterVertical(false);
-        // Wipe any anchor state landscape applied to End Turn (corner pin)
-        // so the bottom-bar Container can size/place it cleanly.
-        ResetEndTurnAnchors();
+        // Wipe any anchor state landscape applied to the bottom-right strip
+        // so the bottom-bar Containers can size/place those blocks cleanly.
+        ResetCornerStripAnchors();
 
         // Top-left: status chip above gold chip. Status sticks to its
         // natural width via ShrinkBegin — without it, the VBox stretches
@@ -906,8 +923,10 @@ public partial class HudView : OrientationHud, IHudView
         tlStack.AddChild(_goldChip);
         TopLeftZone.AddChild(tlStack);
 
-        // Top-right: undo + help + options.
-        TopRightZone.AddChild(_undoCluster);
+        // Top-right: help + options only. Undo/redo ride the bottom bar in
+        // portrait — a phone is too narrow for four chrome buttons plus the
+        // status/gold chips, and the two corner zones grow into each other
+        // with nothing to stop them (see HudCornerLayout).
         TopRightZone.AddChild(_helpButton);
         TopRightZone.AddChild(_optionsButton);
 
@@ -924,13 +943,23 @@ public partial class HudView : OrientationHud, IHudView
         inner.AddThemeConstantOverride("separation", 8);
         BottomBar!.AddChild(inner);
 
-        // Row 1 — left-aligned nav: [next unit · next territory].
+        // Row 1 — space-between: nav [next unit · next territory] at left,
+        // undo/redo at right. Mirrors row 2's shape, and puts undo within
+        // thumb reach instead of in the top-right corner.
         var row1 = new HBoxContainer
         {
             SizeFlagsHorizontal = Control.SizeFlags.Fill,
             MouseFilter = Control.MouseFilterEnum.Pass,
         };
+        row1.AddThemeConstantOverride("separation", 8);
         row1.AddChild(_controlsCluster);
+        var row1Spacer = new Control
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            MouseFilter = Control.MouseFilterEnum.Pass,
+        };
+        row1.AddChild(row1Spacer);
+        row1.AddChild(_undoCluster);
         inner.AddChild(row1);
 
         // Row 2 — space-between: [Buy · Build Tower] at left, End Turn at right.
@@ -955,8 +984,9 @@ public partial class HudView : OrientationHud, IHudView
 
         Log.Debug(Log.LogCategory.Render,
             "HudView: portrait cluster placement — statusCluster+goldChip → TopLeft, " +
-            "undoCluster+optionsButton → TopRight, controlsCluster → BottomBar.row1 (nav, left), " +
-            "actionCluster + endTurnButton → BottomBar.row2 (space-between).");
+            "helpButton+optionsButton → TopRight, controlsCluster + undoCluster → " +
+            "BottomBar.row1 (space-between), actionCluster + endTurnButton → " +
+            "BottomBar.row2 (space-between).");
     }
 
     /// <summary>Post-layout (orientation / compact flip): reposition the seed
@@ -1064,7 +1094,8 @@ public partial class HudView : OrientationHud, IHudView
             BorderWidthTop = 1, BorderWidthBottom = 1,
             CornerRadiusTopLeft = 8, CornerRadiusTopRight = 8,
             CornerRadiusBottomLeft = 8, CornerRadiusBottomRight = 8,
-            ContentMarginLeft = 12, ContentMarginRight = 12,
+            ContentMarginLeft = UiMetrics.ChipPaddingPx,
+            ContentMarginRight = UiMetrics.ChipPaddingPx,
             ContentMarginTop = 10, ContentMarginBottom = 10,
         };
     }

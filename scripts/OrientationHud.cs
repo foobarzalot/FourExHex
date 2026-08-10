@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 FooBarzalot
 using System;
+using System.Collections.Generic;
 using Godot;
 
 /// <summary>
 /// Shared lifecycle for the floating, orientation- and breakpoint-aware HUDs
 /// (<see cref="HudView"/>, <see cref="MapEditorHudView"/>). Both are CanvasLayers
 /// that reflow between:
-///  - landscape (status top-left + undo/options top-right, action clusters in
+///  - landscape (status top-left + chrome top-right, action clusters in
 ///    two side rails) and
 ///  - portrait  (same corner zones, action clusters in a full-width bottom bar)
 /// and between compact (phone) and expanded (tablet / desktop) variants.
@@ -167,6 +168,100 @@ public abstract partial class OrientationHud : CanvasLayer
             $"zones=TL+TR+{(Orientation == ScreenOrientation.Landscape ? "LR+RR" : "BB")}.");
 
         OnLayoutApplied();
+
+        // Deferred so the layout pass has resolved the zones' minimum sizes.
+        CallDeferred(nameof(LogCornerFit));
+    }
+
+    /// <summary>
+    /// Permanent overlap guard for the two top corner zones. Each is a
+    /// content-sized anchor point growing toward the other with no width
+    /// budget and no clipping (see <see cref="HudCornerLayout"/>), so nothing
+    /// in the Godot layout pass notices when they collide — it only shows up
+    /// as chrome painted over a readout on a narrow device. Measuring them
+    /// here means an overflow lands in the log instead.
+    /// </summary>
+    private void LogCornerFit()
+    {
+        if (TopLeftZone == null || TopRightZone == null) return;
+        if (!IsInstanceValid(TopLeftZone) || !IsInstanceValid(TopRightZone)) return;
+
+        var leftBlocks = new List<Control>();
+        var rightBlocks = new List<Control>();
+        CollectBlocks(TopLeftZone, leftBlocks);
+        CollectBlocks(TopRightZone, rightBlocks);
+
+        // A zone is a vertical stack in portrait, so summed widths overstate
+        // the collision: the wide gold chip sits BELOW the chrome buttons and
+        // clears them. Only a block-vs-block rect intersection is a real
+        // visual overlap.
+        float worst = 0f;
+        string culprit = "";
+        foreach (Control lb in leftBlocks)
+        {
+            Rect2 lr = lb.GetGlobalRect();
+            foreach (Control rb in rightBlocks)
+            {
+                Rect2 rr = rb.GetGlobalRect();
+                if (!lr.Intersects(rr)) continue;
+                float bite = lr.End.X - rr.Position.X;
+                if (bite <= worst) continue;
+                worst = bite;
+                culprit = $"{lb.Name}×{rb.Name}";
+            }
+        }
+
+        float vpWidth = GetViewport().GetVisibleRect().Size.X;
+        // Design budget: the widest block on each side against the viewport.
+        // Independent of the visual test above — it goes negative before
+        // anything collides, which is the early warning.
+        float leftW = WidestBlock(leftBlocks);
+        float rightW = WidestBlock(rightBlocks);
+        float gap = HudCornerLayout.CornerGap(
+            vpWidth, leftW, rightW, UiMetrics.CornerZoneEdgePadPx);
+
+        if (worst > 0f)
+        {
+            Log.Warn(Log.LogCategory.Render,
+                $"{GetType().Name}: [corner-fit] OVERLAP {culprit} by {worst:0.#}px — " +
+                $"vp={vpWidth:0.#} orient={Orientation} compact={Compact}.");
+            return;
+        }
+        Log.Debug(Log.LogCategory.Render,
+            $"{GetType().Name}: [corner-fit] clear — vp={vpWidth:0.#} " +
+            $"widestLeft={leftW:0.#} widestRight={rightW:0.#} budgetGap={gap:0.#} " +
+            $"orient={Orientation} compact={Compact}.");
+    }
+
+    private static float WidestBlock(List<Control> blocks)
+    {
+        float widest = 0f;
+        foreach (Control b in blocks)
+        {
+            float w = b.GetGlobalRect().Size.X;
+            if (w > widest) widest = w;
+        }
+        return widest;
+    }
+
+    /// <summary>Flatten a zone to its visible layout blocks — the chips and
+    /// buttons a player sees. Bare box containers are pure grouping, so we
+    /// descend through them; anything else (a styled chip, a button) is a
+    /// block and its own rect is what can collide.</summary>
+    private static void CollectBlocks(Control node, List<Control> into)
+    {
+        foreach (Node child in node.GetChildren())
+        {
+            if (child is not Control c || !c.Visible) continue;
+            if (c.GetType() == typeof(BoxContainer)
+                || c.GetType() == typeof(HBoxContainer)
+                || c.GetType() == typeof(VBoxContainer))
+            {
+                CollectBlocks(c, into);
+                continue;
+            }
+            into.Add(c);
+        }
     }
 
     private void OnViewportResized()
