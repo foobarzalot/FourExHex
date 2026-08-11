@@ -24,6 +24,14 @@ public class SessionState
     public bool IsGameOver => Winner.HasValue;
 
     /// <summary>
+    /// True when <see cref="Winner"/> was declared via the claim-victory
+    /// prompt rather than outright elimination (domination, sole capital,
+    /// last player standing — one family, no meaningful distinction).
+    /// Meaningless while <see cref="Winner"/> is null.
+    /// </summary>
+    public bool WonByClaim { get; set; }
+
+    /// <summary>
     /// The human player whose last capital was just captured —
     /// the HUD shows the defeat overlay while this is non-null. Set
     /// inside <see cref="GameController.HandleCapture"/> when the

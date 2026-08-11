@@ -375,6 +375,7 @@ public class ReplayRecorder
             nextWaveIndex: 0, lastCompletedRound: 0, lastSpawnRound: 0);
         _state.Turns.Reset(_initialCurrentPlayerIndex, _initialTurnNumber);
         _session.Winner = null;
+        _session.WonByClaim = false;
         _session.PendingDefeatScreen = null;
         _session.PendingClaimVictory = null;
         _session.ClaimVictoryPromptedHighestThreshold.Clear();
@@ -600,7 +601,7 @@ public class ReplayRecorder
             case ReplayClaimVictoryBeat cv:
                 PlayerId cvColor = _state.Turns.CurrentPlayer.Id;
                 _session.ClaimVictoryPromptedHighestThreshold[cvColor] = cv.ThresholdPercent;
-                _ops.DeclareWinner(cvColor);
+                _ops.DeclareWinner(cvColor, byClaim: true);
                 break;
             case ReplayDismissClaimBeat dcv:
                 PlayerId dcColor = _state.Turns.CurrentPlayer.Id;

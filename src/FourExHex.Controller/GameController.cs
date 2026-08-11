@@ -643,6 +643,7 @@ public class GameController
             HumanWon = humanWon,
             Mode = _state.Mode,
             WinnerDifficulty = humanWon ? _state.DifficultyOf(winner!.Id) : null,
+            WonByClaim = humanWon && _session.WonByClaim,
             TurnNumber = _state.Turns.TurnNumber,
             LandTilesRemaining = _state.Grid.Count,
         };
@@ -2930,7 +2931,7 @@ public class GameController
         _recorder.RecordBeat(new ReplayClaimVictoryBeat { ThresholdPercent = threshold });
         _session.PendingClaimVictory = null;
         _session.ClaimVictoryPromptedHighestThreshold[color] = threshold;
-        _ops.DeclareWinner(color);
+        _ops.DeclareWinner(color, byClaim: true);
         ClearUndoAndReplayBookkeeping();
         _ops.CheckGameEndConditions();
         _ops.RefreshViews();

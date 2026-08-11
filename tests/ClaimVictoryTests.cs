@@ -329,6 +329,44 @@ public class ClaimVictoryTests
     }
 
     [Fact]
+    public void ClaimVictoryWinNow_MarksTheWinAsClaimed()
+    {
+        var g = BuildGame(redCount: 8);
+
+        g.Hud.ClickEndTurn();
+        g.Hud.ClickClaimVictoryWinNow();
+
+        Assert.Equal(Red, g.Session.Winner);
+        Assert.True(g.Session.WonByClaim);
+    }
+
+    [Fact]
+    public void OutrightWin_IsNotMarkedAsClaimed()
+    {
+        // Same sole-capital-bearer ending as
+        // EndTurn_WhenAlreadySoleCapitalBearer_WinsImmediately_NoClaimPrompt:
+        // an elimination-family win, so WonByClaim stays false.
+        var redP = new Player("Red", PlayerId.FromIndex(0), PlayerKind.Human);
+        var blueP = new Player("Blue", PlayerId.FromIndex(1), PlayerKind.Human);
+        var players = new List<Player> { redP, blueP };
+        var grid = TestHelpers.BuildRectGrid(4, 1, Blue);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = Red;
+        grid.Get(HexCoord.FromOffset(1, 0))!.Owner = Red;
+        grid.Get(HexCoord.FromOffset(2, 0))!.Owner = Red;
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        var hud = new MockHudView();
+        var controller = new GameController(state, session, new MockHexMapView(), hud);
+        controller.StartGame();
+
+        hud.ClickEndTurn();
+
+        Assert.True(session.IsGameOver);
+        Assert.False(session.WonByClaim);
+    }
+
+    [Fact]
     public void ClaimVictoryWinNow_AtNinetyTier_RecordsCorrectThreshold()
     {
         // Dismissing the 90% prompt (not 75%) should record 90.

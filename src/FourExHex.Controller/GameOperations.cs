@@ -1348,9 +1348,10 @@ public class GameOperations
     /// the sound has to fire at the Winner-set point or it'd miss the
     /// mid-turn human win.
     /// </summary>
-    public void DeclareWinner(PlayerId winnerColor)
+    public void DeclareWinner(PlayerId winnerColor, bool byClaim = false)
     {
         _session.Winner = winnerColor;
+        _session.WonByClaim = byClaim;
         // Any pending UI intent (buy/build/move + RepeatedMovement chain
         // bit) is meaningless once the game is over — the action panel's
         // "Click to place a ..." hint must not bleed through the win
