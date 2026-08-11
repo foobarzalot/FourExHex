@@ -41,9 +41,9 @@ public class SaveMigrationTests
     // must consciously touch exactly this one assertion (every other test
     // derives its version values from the constant).
     [Fact]
-    public void CurrentFormatVersion_IsTwenty()
+    public void CurrentFormatVersion_IsTwentyOne()
     {
-        Assert.Equal(20, SaveSerializer.CurrentFormatVersion);
+        Assert.Equal(21, SaveSerializer.CurrentFormatVersion);
     }
 
     [Fact]

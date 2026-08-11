@@ -3,7 +3,10 @@
 /// <summary>
 /// One slot in the undo/redo stack. Bundles a <see cref="GameStateSnapshot"/>
 /// (board, treasury, territories) with a <see cref="SessionStateSnapshot"/>
-/// (selection, action mode, move source) so undo restores both the world
-/// and the player's intent at the moment the snapshot was captured.
+/// (selection, action mode, move source) and a <see cref="RunStats"/> copy
+/// (a tower built then undone must not count toward achievements) so undo
+/// restores the world, the player's intent, and the observation counters
+/// at the moment the snapshot was captured.
 /// </summary>
-public sealed record UndoEntry(GameStateSnapshot Game, SessionStateSnapshot Session);
+public sealed record UndoEntry(
+    GameStateSnapshot Game, SessionStateSnapshot Session, RunStats Stats);

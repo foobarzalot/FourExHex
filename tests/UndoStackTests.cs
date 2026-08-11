@@ -19,7 +19,7 @@ public class UndoStackTests
         var session = new SessionStateSnapshot(
             null, SessionState.ActionMode.None, null, false,
             System.Array.Empty<HexCoord>(), false, false);
-        return new UndoEntry(game, session);
+        return new UndoEntry(game, session, new RunStats());
     }
 
     [Fact]

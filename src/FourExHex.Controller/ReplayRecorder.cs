@@ -374,6 +374,9 @@ public class ReplayRecorder
             System.Array.Empty<SeaViking>(),
             nextWaveIndex: 0, lastCompletedRound: 0, lastSpawnRound: 0);
         _state.Turns.Reset(_initialCurrentPlayerIndex, _initialTurnNumber);
+        // Playback re-executes real beats, so the observation counters
+        // would double-accumulate; zero them (playback never awards).
+        _state.Stats.Clear();
         _session.Winner = null;
         _session.WonByClaim = false;
         _session.PendingDefeatScreen = null;

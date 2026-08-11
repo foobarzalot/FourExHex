@@ -671,7 +671,8 @@ public class GameOperations
         // before its owner has collected a single coin.
         bool anyBankrupt = !firstRoundFreePass
             && UpkeepRules.ApplyUpkeepFor(
-                _state.Turns.CurrentPlayer, _state.Territories, _state.Grid, _state.Treasury);
+                _state.Turns.CurrentPlayer, _state.Territories, _state.Grid, _state.Treasury,
+                _state.Stats);
         if (anyBankrupt)
         {
             // One toll per turn-start regardless of how many of the
@@ -715,7 +716,7 @@ public class GameOperations
         {
             TreeRules.RunStartOfTurnGrowth(_state.Grid, ownerId, _state.WaterCoords);
             UpkeepRules.ApplyUpkeepFor(
-                ownerId, _state.Territories, _state.Grid, _state.Treasury);
+                ownerId, _state.Territories, _state.Grid, _state.Treasury, _state.Stats);
         }
         Log.Info(Log.LogCategory.Turn,
             $"[T{_state.Turns.TurnNumber}] phantom turn for {name} (tree growth + upkeep)");
@@ -1585,6 +1586,7 @@ public class GameOperations
         }
 
         AiActionCore.BuildTower(capital, destination, _state, territory);
+        _state.Stats.For(territory.Owner).TowersBuilt++;
         EmitSound(SoundEffect.TowerPlaced, destination);
         EmitMountainTowerFx(destination);
     }
@@ -1675,7 +1677,47 @@ public class GameOperations
             EmitDestruction(destination, result.Destroyed);
         }
 
+        RecordAftermathStats(destination, result);
         DispatchActionSound(destination, result, wasCombine);
+    }
+
+    /// <summary>
+    /// Observation-only run-stat increments for one executed action. Lives
+    /// here (not <c>AiActionCore</c>) so <c>AiSimulator</c> lookahead never
+    /// touches the live counters. The neutral seat (vikings, barbarians)
+    /// earns no credit; its victims still count their losses.
+    /// </summary>
+    private void RecordAftermathStats(HexCoord destination, MoveResult result)
+    {
+        if (result.Destroyed is Unit dead)
+        {
+            if (!dead.Owner.IsNone)
+            {
+                int lost = ++_state.Stats.For(dead.Owner).UnitsLost;
+                Log.Trace(Log.LogCategory.Achieve,
+                    $"[stats] {dead.Owner} units_lost={lost}");
+            }
+            else if (_state.Mode == GameMode.VikingRaiders && !_state.Turns.IsNeutralSeat)
+            {
+                PlayerId killer = _state.Turns.CurrentPlayer.Id;
+                int kills = ++_state.Stats.For(killer).VikingKills;
+                Log.Trace(Log.LogCategory.Achieve,
+                    $"[stats] {killer} viking_kills={kills}");
+            }
+        }
+
+        if (!_state.Turns.IsNeutralSeat
+            && _state.Grid.Get(destination)?.Unit is Unit fielded
+            && fielded.Owner == _state.Turns.CurrentPlayer.Id)
+        {
+            PlayerRunStats stats = _state.Stats.For(fielded.Owner);
+            if ((int)fielded.Level > stats.MaxUnitLevelFielded)
+            {
+                stats.MaxUnitLevelFielded = (int)fielded.Level;
+                Log.Trace(Log.LogCategory.Achieve,
+                    $"[stats] {fielded.Owner} max_level_fielded={(int)fielded.Level}");
+            }
+        }
     }
 
     public void DispatchActionSound(HexCoord destination, MoveResult result, bool wasCombine)

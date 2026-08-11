@@ -123,7 +123,7 @@ public static class SaveSerializer
     /// Bump on any breaking schema change. <see cref="Deserialize"/>
     /// rejects mismatched values rather than attempting migration.
     /// </summary>
-    public const int CurrentFormatVersion = 20;
+    public const int CurrentFormatVersion = 21;
 
     /// <summary>
     /// Version of the RNG + rules generation that recorded replays
@@ -244,12 +244,56 @@ public static class SaveSerializer
             // Attribution for shared maps. Null (omitted) when unset, so
             // author-less files' wire format is unchanged.
             Author = string.IsNullOrEmpty(author) ? null : author,
+            // Achievement run stats. Null (omitted) when all-zero, so fresh
+            // games' wire format is unchanged.
+            RunStats = SerializeRunStats(state.Stats),
         };
         // Source-gen path (FourExHexJsonContext) so this works under iOS AOT,
         // where reflection-based serialization is disabled. The context's
         // [JsonSourceGenerationOptions] attribute carries WriteIndented +
         // IgnoreNulls so the JSON wire format matches.
         return JsonSerializer.Serialize(data, FourExHexJsonContext.Default.SaveData);
+    }
+
+    /// <summary>
+    /// Encode the non-zero run-stat entries, slot-keyed and slot-ordered
+    /// (deterministic output). Null when every entry is zero.
+    /// </summary>
+    private static List<RunStatsEntryDto>? SerializeRunStats(RunStats stats)
+    {
+        List<RunStatsEntryDto>? entries = null;
+        foreach (KeyValuePair<PlayerId, PlayerRunStats> kvp in stats.Entries)
+        {
+            if (kvp.Key.IsNone || kvp.Value.IsZero) continue;
+            (entries ??= new List<RunStatsEntryDto>()).Add(new RunStatsEntryDto
+            {
+                Slot = kvp.Key.Index,
+                UnitsLost = kvp.Value.UnitsLost,
+                TowersBuilt = kvp.Value.TowersBuilt,
+                VikingKills = kvp.Value.VikingKills,
+                MaxUnitLevelFielded = kvp.Value.MaxUnitLevelFielded,
+            });
+        }
+        entries?.Sort((a, b) => a.Slot.CompareTo(b.Slot));
+        return entries;
+    }
+
+    /// <summary>Rebuild <see cref="RunStats"/> from the save block; empty
+    /// (all-zero) for pre-21 saves and omitted blocks.</summary>
+    private static RunStats DeserializeRunStats(List<RunStatsEntryDto>? entries)
+    {
+        var stats = new RunStats();
+        if (entries == null) return stats;
+        foreach (RunStatsEntryDto e in entries)
+        {
+            if (e.Slot < 0) continue;
+            PlayerRunStats p = stats.For(PlayerId.FromIndex(e.Slot));
+            p.UnitsLost = Math.Max(0, e.UnitsLost);
+            p.TowersBuilt = Math.Max(0, e.TowersBuilt);
+            p.VikingKills = Math.Max(0, e.VikingKills);
+            p.MaxUnitLevelFielded = Math.Max(0, e.MaxUnitLevelFielded);
+        }
+        return stats;
     }
 
     /// <summary>
@@ -346,7 +390,9 @@ public static class SaveSerializer
             seen: DeserializeSeen(data.Seen),
             // Restore raiders at sea + wave cursors; all-default for
             // non-viking / pre-17 saves.
-            vikings: DeserializeVikings(data))
+            vikings: DeserializeVikings(data),
+            // Restore achievement run stats; zeroed for pre-21 saves.
+            stats: DeserializeRunStats(data.RunStats))
         {
             // Restore the locked tide forecast; empty for freeform saves so
             // the reloaded game telegraphs/applies nothing.
@@ -1327,6 +1373,22 @@ public sealed class SaveData
     /// at export. Null/omitted for in-progress saves, legacy files, and
     /// maps whose author was never set.</summary>
     public string? Author { get; set; }
+
+    /// <summary>Per-player observation counters (achievement run stats).
+    /// Null/omitted when every player's counters are zero, so fresh games
+    /// and pre-21 saves have an unchanged wire format and load zeroed.</summary>
+    public List<RunStatsEntryDto>? RunStats { get; set; }
+}
+
+/// <summary>One player's run-stat counters, keyed by slot index. Used by
+/// <see cref="SaveData.RunStats"/>; all-zero entries are not written.</summary>
+public sealed class RunStatsEntryDto
+{
+    public int Slot { get; set; }
+    public int UnitsLost { get; set; }
+    public int TowersBuilt { get; set; }
+    public int VikingKills { get; set; }
+    public int MaxUnitLevelFielded { get; set; }
 }
 
 /// <summary>A raider at sea: coord + unit level. Used by

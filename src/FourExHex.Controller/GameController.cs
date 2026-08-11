@@ -484,7 +484,8 @@ public class GameController
 
     private UndoEntry CaptureCurrentSnapshot() => new UndoEntry(
         GameStateSnapshot.Capture(_state.Grid, _state.Treasury, _state.Territories),
-        SessionStateSnapshot.Capture(_session));
+        SessionStateSnapshot.Capture(_session),
+        _state.Stats.Copy());
 
     // Set inside Execute* helpers right before the first game-state
     // mutation. Read by TrackHandler at handler exit to decide whether
@@ -1597,6 +1598,7 @@ public class GameController
         // Shared bare mutation (gold deduct + tower drop); the strict
         // IsValidTowerTarget gate upstream guaranteed an empty tile.
         AiActionCore.BuildTower(capital, destination, _state, _session.SelectedTerritory);
+        _state.Stats.For(_session.SelectedTerritory.Owner).TowersBuilt++;
 
         HexTile dst = _state.Grid.Get(destination)!;
         if (dst.IsMountain)
@@ -2272,6 +2274,7 @@ public class GameController
         // out, so the Automate button un-latches.
         _automateExhausted = false;
         _state.Territories = entry.Game.ApplyTo(_state.Grid, _state.Treasury);
+        _state.Stats.RestoreFrom(entry.Stats);
         _map.RebuildAfterTerritoryChange();
         entry.Session.ApplyTo(_session, _state.Territories);
         RestoreOverlaysForCurrentMode();

@@ -119,6 +119,14 @@ public class GameState
     public VikingState Vikings { get; }
 
     /// <summary>
+    /// Per-player observation-only counters for this game (units lost,
+    /// towers built, viking kills, max level fielded). Incremented from
+    /// live execution paths only; captured by undo entries; persisted in
+    /// saves; excluded from <see cref="GameStateChecksum"/>.
+    /// </summary>
+    public RunStats Stats { get; }
+
+    /// <summary>
     /// Difficulty of the player owning <paramref name="id"/>, resolved by SLOT
     /// (<see cref="PlayerId.Index"/>) rather than by indexing <see cref="Players"/>
     /// at that slot. With a 2–6 player game the roster is compacted (e.g. slots
@@ -147,7 +155,8 @@ public class GameState
         IReadOnlySet<HexCoord>? waterCoords = null,
         GameMode mode = GameMode.Freeform,
         IReadOnlySet<HexCoord>? seen = null,
-        VikingState? vikings = null)
+        VikingState? vikings = null,
+        RunStats? stats = null)
     {
         Grid = grid;
         Territories = territories;
@@ -158,5 +167,6 @@ public class GameState
         Mode = mode;
         _seen = seen is null ? new HashSet<HexCoord>() : new HashSet<HexCoord>(seen);
         Vikings = vikings ?? new VikingState();
+        Stats = stats ?? new RunStats();
     }
 }

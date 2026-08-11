@@ -133,7 +133,8 @@ public static class UpkeepRules
     /// no treasury), every unit in the territory is destroyed (set to
     /// null) and returns false. The remaining gold is left untouched.
     /// </summary>
-    public static bool ApplyUpkeep(Territory territory, HexGrid grid, Treasury treasury)
+    public static bool ApplyUpkeep(
+        Territory territory, HexGrid grid, Treasury treasury, RunStats? stats = null)
     {
         int owed = TotalUpkeepFor(territory, grid);
         if (owed == 0) return true; // nothing to pay
@@ -162,6 +163,10 @@ public static class UpkeepRules
                 killed++;
             }
         }
+        if (stats != null && killed > 0)
+        {
+            stats.For(territory.Owner).UnitsLost += killed;
+        }
         Log.Info(Log.LogCategory.Turn,
             $"[upkeep] BANKRUPT owner={territory.Owner.Index} " +
             $"cap={(territory.HasCapital ? territory.Capital!.Value.ToString() : "none")} " +
@@ -178,8 +183,10 @@ public static class UpkeepRules
     /// The controller uses the return value to fire a single-shot
     /// audio cue at turn-start.
     /// </summary>
-    public static bool ApplyUpkeepFor(Player player, IEnumerable<Territory> territories, HexGrid grid, Treasury treasury)
-        => ApplyUpkeepFor(player.Id, territories, grid, treasury);
+    public static bool ApplyUpkeepFor(
+        Player player, IEnumerable<Territory> territories, HexGrid grid, Treasury treasury,
+        RunStats? stats = null)
+        => ApplyUpkeepFor(player.Id, territories, grid, treasury, stats);
 
     /// <summary>
     /// Owner-id overload of <see cref="ApplyUpkeepFor(Player, IEnumerable{Territory}, HexGrid, Treasury)"/>,
@@ -190,13 +197,14 @@ public static class UpkeepRules
     /// exact same phantom-turn path as an eliminated player.
     /// </summary>
     public static bool ApplyUpkeepFor(
-        PlayerId ownerId, IEnumerable<Territory> territories, HexGrid grid, Treasury treasury)
+        PlayerId ownerId, IEnumerable<Territory> territories, HexGrid grid, Treasury treasury,
+        RunStats? stats = null)
     {
         bool anyBankrupt = false;
         foreach (Territory territory in territories)
         {
             if (territory.Owner != ownerId) continue;
-            if (!ApplyUpkeep(territory, grid, treasury))
+            if (!ApplyUpkeep(territory, grid, treasury, stats))
             {
                 anyBankrupt = true;
             }
