@@ -1764,10 +1764,15 @@ public partial class HudView : OrientationHud, IHudView
     private const float AchievementBannerH = 64f;
     private const float AchievementBannerMarginTop = 16f;
     private const double AchievementBannerHoldSeconds = 5.0;
+    // A toast with more waiting behind it holds for less — a burst of
+    // simultaneous unlocks reads brisk, first-party style; the last one
+    // gets the full hold.
+    private const double AchievementBannerQueuedHoldSeconds = 2.5;
     private Panel _achievementBanner = null!;
     private Label _achievementBannerLabel = null!;
     private Tween? _achievementBannerTween;
     private bool _achievementBannerBuilt;
+    private readonly AchievementToastQueue _achievementToasts = new();
 
     private void BuildAchievementBanner()
     {
@@ -1856,7 +1861,13 @@ public partial class HudView : OrientationHud, IHudView
         _achievementBanner.OffsetBottom = top + AchievementBannerH;
     }
 
-    /// <summary>Fade in, hold, fade out. Re-showing restarts the cycle.</summary>
+    /// <summary>
+    /// Queue a toast (issue #235): one on screen at a time, the rest
+    /// delivered FIFO from the tween's completion callback — simultaneous
+    /// unlocks each get their own banner instead of clobbering the slot.
+    /// The queue policy is <see cref="AchievementToastQueue"/> (Controller,
+    /// unit-tested); this shell owns only the tween.
+    /// </summary>
     public void ShowAchievementBanner(string text)
     {
         if (!_achievementBannerBuilt) return;
@@ -1866,21 +1877,44 @@ public partial class HudView : OrientationHud, IHudView
                 $"[banner] recording mode — suppressed: {text}");
             return;
         }
+        if (_achievementToasts.Enqueue(text) is string showNow)
+        {
+            PlayAchievementToast(showNow);
+        }
+        else
+        {
+            Log.Debug(Log.LogCategory.Achieve,
+                $"[banner] queued ({_achievementToasts.PendingCount} pending): {text}");
+        }
+    }
+
+    /// <summary>Fade in, hold, fade out, then drain the next queued toast.</summary>
+    private void PlayAchievementToast(string text)
+    {
         _achievementBannerLabel.Text = text;
         PositionAchievementBanner();
         _achievementBannerTween?.Kill();
         _achievementBanner.Modulate = new Color(1f, 1f, 1f, 0f);
         _achievementBanner.Visible = true;
+        double hold = _achievementToasts.PendingCount > 0
+            ? AchievementBannerQueuedHoldSeconds
+            : AchievementBannerHoldSeconds;
         _achievementBannerTween = _achievementBanner.CreateTween();
         _achievementBannerTween.TweenProperty(
                 _achievementBanner, "modulate:a", 1f, TransientBannerFadeInSeconds)
             .SetTrans(Tween.TransitionType.Sine);
-        _achievementBannerTween.TweenInterval(AchievementBannerHoldSeconds);
+        _achievementBannerTween.TweenInterval(hold);
         _achievementBannerTween.TweenProperty(
                 _achievementBanner, "modulate:a", 0f, TransientBannerFadeOutSeconds)
             .SetTrans(Tween.TransitionType.Sine);
-        _achievementBannerTween.TweenCallback(
-            Callable.From(() => _achievementBanner.Visible = false));
+        _achievementBannerTween.TweenCallback(Callable.From(() =>
+        {
+            _achievementBanner.Visible = false;
+            if (_achievementToasts.OnToastFinished() is string next)
+            {
+                PlayAchievementToast(next);
+            }
+        }));
         Log.Debug(Log.LogCategory.Achieve, $"[banner] shown: {text}");
     }
 
@@ -2471,6 +2505,12 @@ public partial class HudView : OrientationHud, IHudView
             {
                 _transientBannerTween?.Kill();
                 _transientBanner.Visible = false;
+            }
+            if (_achievementBannerBuilt)
+            {
+                _achievementBannerTween?.Kill();
+                _achievementBanner.Visible = false;
+                _achievementToasts.Clear();
             }
         }
         else if (_externalMessageActive)
