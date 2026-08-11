@@ -88,7 +88,15 @@ public class AchievementCatalogTests
     {
         AchievementDefinition def = AchievementCatalog.ById(AchievementCatalog.Veteran)!;
 
-        Assert.Equal(1, def.Advance(AchievementEvent.GameWonByHuman));
+        Assert.Equal(1, def.Advance(AchievementTestEvents.HumanWin()));
+    }
+
+    [Fact]
+    public void Veteran_DoesNotAdvance_WhenTheGameEndedWithoutAHumanWin()
+    {
+        AchievementDefinition def = AchievementCatalog.ById(AchievementCatalog.Veteran)!;
+
+        Assert.Equal(0, def.Advance(AchievementTestEvents.HumanLoss()));
     }
 
     [Fact]

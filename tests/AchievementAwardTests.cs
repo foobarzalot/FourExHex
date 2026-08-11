@@ -7,7 +7,7 @@ namespace FourExHex.Tests;
 
 /// <summary>
 /// The controller-side guard around achievement awards: which game
-/// endings raise <see cref="AchievementEvent.GameWonByHuman"/> and which
+/// endings raise the <see cref="GameEndEvent"/> facts record and which
 /// must stay silent. The award arithmetic itself lives in
 /// <see cref="AchievementTrackerTests"/>.
 /// </summary>

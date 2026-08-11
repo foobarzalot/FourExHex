@@ -615,33 +615,48 @@ public class GameController
     }
 
     /// <summary>
-    /// Raise <see cref="AchievementEvent.GameWonByHuman"/> if this game
-    /// ended in a human victory on the live path. A stasis end (turn cap)
-    /// and a <see cref="PlayerId.None"/> winner (Viking total wipeout) are
-    /// both "nobody won" and award nothing. Any human seat's win counts —
+    /// Raise the single <see cref="GameEndEvent"/> for this game — on every
+    /// untainted ending, not just human wins, so mechanic-milestone
+    /// achievements can advance from a loss. A stasis end (turn cap) and a
+    /// <see cref="PlayerId.None"/> winner (Viking total wipeout) are both
+    /// "nobody won" (<c>HumanWon</c> false). Any human seat's win counts —
     /// the record belongs to the device, not to a seat.
     /// </summary>
     private void AwardEndOfGameAchievements()
     {
         if (_awardedAchievementsThisGame) return;
-        if (!AwardsEnabled || !_session.Winner.HasValue)
+        if (!AwardsEnabled)
         {
             Log.Debug(Log.LogCategory.Achieve,
                 $"[award] skipped (replay={IsReplayMode} preview={_previewMode} " +
-                $"recording={_recordingMode} winner={_session.Winner?.ToString() ?? "none"})");
+                $"recording={_recordingMode})");
             return;
         }
 
-        Player? winner = _state.Turns.Players.FirstOrDefault(p => p.Id == _session.Winner.Value);
-        if (winner == null || winner.IsAi)
+        Player? winner = _session.Winner.HasValue
+            ? _state.Turns.Players.FirstOrDefault(p => p.Id == _session.Winner.Value)
+            : null;
+        bool humanWon = winner != null && !winner.IsAi;
+
+        var facts = new GameEndEvent
         {
-            Log.Debug(Log.LogCategory.Achieve,
-                $"[award] skipped (winner {_session.Winner.Value} is not a human seat)");
-            return;
-        }
+            HumanWon = humanWon,
+            Mode = _state.Mode,
+            WinnerDifficulty = humanWon ? _state.DifficultyOf(winner!.Id) : null,
+            TurnNumber = _state.Turns.TurnNumber,
+            LandTilesRemaining = _state.Grid.Count,
+        };
 
         _awardedAchievementsThisGame = true;
-        foreach (string id in _achievements.OnEvent(AchievementEvent.GameWonByHuman))
+        Log.Debug(Log.LogCategory.Achieve, $"[award] facts {facts}");
+        RaiseAchievementEvent(facts);
+    }
+
+    /// <summary>Shared unlock→banner loop for every achievement raise site.
+    /// Callers must already have passed the <see cref="AwardsEnabled"/> gate.</summary>
+    private void RaiseAchievementEvent(AchievementEvent evt)
+    {
+        foreach (string id in _achievements.OnEvent(evt))
         {
             // A definition this build doesn't recognize can only come from
             // a record written by a newer one; award it silently rather

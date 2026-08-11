@@ -21,7 +21,7 @@ public class AchievementTrackerTests
         var store = new FakeAchievementStore();
         var tracker = new AchievementTracker(store);
 
-        IReadOnlyList<string> unlocked = tracker.OnEvent(AchievementEvent.GameWonByHuman);
+        IReadOnlyList<string> unlocked = tracker.OnEvent(AchievementTestEvents.HumanWin());
 
         Assert.Equal((Veteran, 1, 3), Assert.Single(store.ProgressReports));
         Assert.Empty(store.Unlocks);
@@ -33,10 +33,10 @@ public class AchievementTrackerTests
     {
         var store = new FakeAchievementStore();
         var tracker = new AchievementTracker(store);
-        tracker.OnEvent(AchievementEvent.GameWonByHuman);
-        tracker.OnEvent(AchievementEvent.GameWonByHuman);
+        tracker.OnEvent(AchievementTestEvents.HumanWin());
+        tracker.OnEvent(AchievementTestEvents.HumanWin());
 
-        IReadOnlyList<string> unlocked = tracker.OnEvent(AchievementEvent.GameWonByHuman);
+        IReadOnlyList<string> unlocked = tracker.OnEvent(AchievementTestEvents.HumanWin());
 
         Assert.Equal(new[] { Veteran }, unlocked);
         Assert.Equal(new[] { Veteran }, store.Unlocks);
@@ -49,10 +49,10 @@ public class AchievementTrackerTests
     {
         var store = new FakeAchievementStore();
         var tracker = new AchievementTracker(store);
-        for (int i = 0; i < 3; i++) tracker.OnEvent(AchievementEvent.GameWonByHuman);
+        for (int i = 0; i < 3; i++) tracker.OnEvent(AchievementTestEvents.HumanWin());
         store.ClearCallLog();
 
-        IReadOnlyList<string> unlocked = tracker.OnEvent(AchievementEvent.GameWonByHuman);
+        IReadOnlyList<string> unlocked = tracker.OnEvent(AchievementTestEvents.HumanWin());
 
         Assert.Empty(unlocked);
         Assert.Equal(0, store.TotalCalls);
@@ -64,7 +64,7 @@ public class AchievementTrackerTests
         var store = new FakeAchievementStore();
         var tracker = new AchievementTracker(store);
 
-        for (int i = 0; i < 5; i++) tracker.OnEvent(AchievementEvent.GameWonByHuman);
+        for (int i = 0; i < 5; i++) tracker.OnEvent(AchievementTestEvents.HumanWin());
 
         foreach ((string _, int current, int target) in store.ProgressReports)
         {
@@ -82,7 +82,7 @@ public class AchievementTrackerTests
         store.ClearCallLog();
         var tracker = new AchievementTracker(store);
 
-        Assert.Empty(tracker.OnEvent(AchievementEvent.GameWonByHuman));
+        Assert.Empty(tracker.OnEvent(AchievementTestEvents.HumanWin()));
         Assert.Equal(0, store.TotalCalls);
     }
 }
