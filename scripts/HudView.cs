@@ -471,7 +471,6 @@ public partial class HudView : OrientationHud, IHudView
         BuildTutorialOverlay();
         BuildBankruptToast();
         BuildTransientBanner();
-        BuildAchievementBanner();
 
         // Map dim for the guided UI tour — a translucent scrim moved to the
         // first child slot, so it draws behind every HUD widget but in front
@@ -1037,7 +1036,6 @@ public partial class HudView : OrientationHud, IHudView
         PositionTutorialOverlay();
         PositionBankruptToast();
         PositionTransientBanner();
-        PositionAchievementBanner();
         PositionEndgameOverlays();
     }
 
@@ -1755,168 +1753,15 @@ public partial class HudView : OrientationHud, IHudView
     }
 
     // --- Achievement unlock banner -------------------------------------------
-    // Same self-dismissing, click-through toast shape as the transient
-    // announcement banner, with celebratory chrome: gold border, gold
-    // trophy glyph, gold title text. Occupies the topmost toast slot (see
-    // PositionAchievementBanner for why it shares rather than stacks).
-    // Held a beat longer than the transient banner — it competes with the
-    // victory overlay for attention.
-    private const float AchievementBannerH = 64f;
-    private const float AchievementBannerMarginTop = 16f;
-    private const double AchievementBannerHoldSeconds = 5.0;
-    // A toast with more waiting behind it holds for less — a burst of
-    // simultaneous unlocks reads brisk, first-party style; the last one
-    // gets the full hold.
-    private const double AchievementBannerQueuedHoldSeconds = 2.5;
-    private Panel _achievementBanner = null!;
-    private Label _achievementBannerLabel = null!;
-    private Tween? _achievementBannerTween;
-    private bool _achievementBannerBuilt;
-    private readonly AchievementToastQueue _achievementToasts = new();
+    // Lives OUTSIDE this scene-scoped view: the AchievementToastLayer
+    // autoload owns the chrome, FIFO queue, and tween, so a queue still
+    // draining when this HudView is freed (exit-to-menu, next campaign
+    // level) keeps delivering over the next scene. This is only the
+    // IHudView forwarding stub.
 
-    private void BuildAchievementBanner()
-    {
-        _achievementBanner = new Panel
-        {
-            AnchorLeft = 0.5f,
-            AnchorRight = 0.5f,
-            AnchorTop = 0f,
-            AnchorBottom = 0f,
-            Visible = false,
-            MouseFilter = Control.MouseFilterEnum.Ignore,
-        };
-        _achievementBanner.AddThemeStyleboxOverride("panel", new StyleBoxFlat
-        {
-            BgColor = new Color(UiPalette.BgPanel, 0.94f),
-            BorderColor = UiPalette.Gold,
-            BorderWidthLeft = 2,
-            BorderWidthRight = 2,
-            BorderWidthTop = 2,
-            BorderWidthBottom = 2,
-            CornerRadiusTopLeft = 8,
-            CornerRadiusTopRight = 8,
-            CornerRadiusBottomLeft = 8,
-            CornerRadiusBottomRight = 8,
-        });
-        AddChild(_achievementBanner);
-
-        // Trophy glyph pinned left, text centered in the remaining box —
-        // the label spans the full width so the copy stays optically
-        // centered in the banner rather than shunted by the glyph.
-        var trophy = new Label
-        {
-            Text = "🏆",
-            AnchorLeft = 0f, AnchorRight = 0f,
-            AnchorTop = 0f, AnchorBottom = 1f,
-            OffsetLeft = 14f, OffsetRight = 54f,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-            MouseFilter = Control.MouseFilterEnum.Ignore,
-        };
-        trophy.AddThemeFontSizeOverride("font_size", 28);
-        trophy.AddThemeColorOverride("font_color", UiPalette.Gold);
-        _achievementBanner.AddChild(trophy);
-
-        _achievementBannerLabel = new Label
-        {
-            AnchorLeft = 0f, AnchorRight = 1f,
-            AnchorTop = 0f, AnchorBottom = 1f,
-            OffsetLeft = 58f, OffsetRight = -16f,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-            AutowrapMode = TextServer.AutowrapMode.WordSmart,
-            MouseFilter = Control.MouseFilterEnum.Ignore,
-        };
-        _achievementBannerLabel.AddThemeFontOverride("font", GeistFont);
-        _achievementBannerLabel.AddThemeFontSizeOverride("font_size", 24);
-        _achievementBannerLabel.AddThemeColorOverride("font_color", UiPalette.Gold);
-        _achievementBanner.AddChild(_achievementBannerLabel);
-
-        _achievementBannerBuilt = true;
-        PositionAchievementBanner();
-    }
-
-    /// <summary>
-    /// Width-cap + place in the topmost toast slot, sharing it with the
-    /// bankruptcy toast rather than stacking below it. The two cannot
-    /// co-occur: bankruptcy fires from upkeep at turn start, an unlock
-    /// fires at game end. Stacking would cost ~200 px of unconditional
-    /// offset to avoid a collision that cannot happen, pushing the banner
-    /// down into the victory overlay it actually has to share the screen
-    /// with. Re-run on resize.
-    /// </summary>
-    private void PositionAchievementBanner()
-    {
-        if (!_achievementBannerBuilt) return;
-        float viewportW = GetViewport().GetVisibleRect().Size.X;
-        float railClearance = LandscapeRailClearance();
-        float width = HudPanelMath.ClampWidth(
-            TransientBannerW, viewportW - railClearance, HudPanelSideMargin);
-        _achievementBanner.OffsetLeft = -width * 0.5f;
-        _achievementBanner.OffsetRight = width * 0.5f;
-
-        float topClearance = Orientation == ScreenOrientation.Portrait ? 150f : 80f;
-        float top = SafeArea.Current.Top + topClearance + AchievementBannerMarginTop;
-        _achievementBanner.OffsetTop = top;
-        _achievementBanner.OffsetBottom = top + AchievementBannerH;
-    }
-
-    /// <summary>
-    /// Queue a toast (issue #235): one on screen at a time, the rest
-    /// delivered FIFO from the tween's completion callback — simultaneous
-    /// unlocks each get their own banner instead of clobbering the slot.
-    /// The queue policy is <see cref="AchievementToastQueue"/> (Controller,
-    /// unit-tested); this shell owns only the tween.
-    /// </summary>
-    public void ShowAchievementBanner(string text)
-    {
-        if (!_achievementBannerBuilt) return;
-        if (RecordingMode.Active)
-        {
-            Log.Debug(Log.LogCategory.Achieve,
-                $"[banner] recording mode — suppressed: {text}");
-            return;
-        }
-        if (_achievementToasts.Enqueue(text) is string showNow)
-        {
-            PlayAchievementToast(showNow);
-        }
-        else
-        {
-            Log.Debug(Log.LogCategory.Achieve,
-                $"[banner] queued ({_achievementToasts.PendingCount} pending): {text}");
-        }
-    }
-
-    /// <summary>Fade in, hold, fade out, then drain the next queued toast.</summary>
-    private void PlayAchievementToast(string text)
-    {
-        _achievementBannerLabel.Text = text;
-        PositionAchievementBanner();
-        _achievementBannerTween?.Kill();
-        _achievementBanner.Modulate = new Color(1f, 1f, 1f, 0f);
-        _achievementBanner.Visible = true;
-        double hold = _achievementToasts.PendingCount > 0
-            ? AchievementBannerQueuedHoldSeconds
-            : AchievementBannerHoldSeconds;
-        _achievementBannerTween = _achievementBanner.CreateTween();
-        _achievementBannerTween.TweenProperty(
-                _achievementBanner, "modulate:a", 1f, TransientBannerFadeInSeconds)
-            .SetTrans(Tween.TransitionType.Sine);
-        _achievementBannerTween.TweenInterval(hold);
-        _achievementBannerTween.TweenProperty(
-                _achievementBanner, "modulate:a", 0f, TransientBannerFadeOutSeconds)
-            .SetTrans(Tween.TransitionType.Sine);
-        _achievementBannerTween.TweenCallback(Callable.From(() =>
-        {
-            _achievementBanner.Visible = false;
-            if (_achievementToasts.OnToastFinished() is string next)
-            {
-                PlayAchievementToast(next);
-            }
-        }));
-        Log.Debug(Log.LogCategory.Achieve, $"[banner] shown: {text}");
-    }
+    /// <summary>Forward to the scene-independent toast layer, which
+    /// queues FIFO and keeps draining across scene changes (#235).</summary>
+    public void ShowAchievementBanner(string text) => AchievementToastLayer.Show(text);
 
     // Tiny self-drawing Control that paints the same upward-pointing
     // equilateral triangle as HexMapView.DrawWarningBadgeAt — red
@@ -2506,12 +2351,8 @@ public partial class HudView : OrientationHud, IHudView
                 _transientBannerTween?.Kill();
                 _transientBanner.Visible = false;
             }
-            if (_achievementBannerBuilt)
-            {
-                _achievementBannerTween?.Kill();
-                _achievementBanner.Visible = false;
-                _achievementToasts.Clear();
-            }
+            // Achievement toasts: the AchievementToastLayer autoload flushes
+            // itself on RecordingMode.Changed.
         }
         else if (_externalMessageActive)
         {

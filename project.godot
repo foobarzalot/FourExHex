@@ -30,6 +30,7 @@ DisplayScale="*res://scripts/DisplayScale.cs"
 SafeArea="*res://scripts/SafeArea.cs"
 AudioBus="*res://scripts/AudioBus.cs"
 ShareInbox="*res://scripts/ShareInbox.cs"
+AchievementToasts="*res://scripts/AchievementToastLayer.cs"
 
 [debug]
 
