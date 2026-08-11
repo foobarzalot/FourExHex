@@ -196,6 +196,37 @@ public class AchievementAwardTests
         Assert.Equal(0, store.TotalCalls);
     }
 
+    // --- The campaign seam ---
+
+    [Fact]
+    public void RaiseCampaignLevelWon_AwardsAndShowsTheBanner()
+    {
+        var store = new FakeAchievementStore();
+        ControllerHarness h = OneMoveFromWinning(store);
+
+        h.Controller.RaiseCampaignLevelWon(
+            new CampaignLevelWonEvent(Level: 0, WonCount: 1, TierIndex: 0, TierWonCount: 1));
+
+        Assert.Contains(AchievementCatalog.CampaignFirst, store.Unlocks);
+        Assert.Contains(
+            AchievementBannerContent.For(AchievementCatalog.CampaignFirst),
+            h.Hud.AchievementBanners);
+    }
+
+    [Fact]
+    public void RaiseCampaignLevelWon_IsSuppressedWithTheSameGuardsAsGameEnd()
+    {
+        var store = new FakeAchievementStore();
+        ControllerHarness h = OneMoveFromWinning(store, previewMode: true);
+        store.ClearCallLog();
+
+        h.Controller.RaiseCampaignLevelWon(
+            new CampaignLevelWonEvent(Level: 0, WonCount: 1, TierIndex: 0, TierWonCount: 1));
+
+        Assert.Equal(0, store.TotalCalls);
+        Assert.Empty(h.Hud.AchievementBanners);
+    }
+
     // --- The default wiring is inert ---
 
     [Fact]

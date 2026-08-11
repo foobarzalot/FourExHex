@@ -770,7 +770,19 @@ public partial class Main : Node2D
             : null;
         if (winner?.Kind == PlayerKind.Human)
         {
-            CampaignStore.MarkWon(level);
+            if (CampaignStore.MarkWon(level))
+            {
+                // Newly won — raise the campaign achievement facts through
+                // the controller's gated seam (it owns the taint guards and
+                // the unlock banner).
+                CampaignProgress progress = CampaignStore.Progress;
+                int tier = level / CampaignProgress.TierSize;
+                _controller.RaiseCampaignLevelWon(new CampaignLevelWonEvent(
+                    Level: level,
+                    WonCount: progress.WonCount,
+                    TierIndex: tier,
+                    TierWonCount: progress.TierWonCount(tier)));
+            }
         }
         else
         {

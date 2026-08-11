@@ -115,6 +115,12 @@ public static class AchievementCatalog
     public const string CaptainCommission = "victory.captain";
     public const string CommanderCommission = "victory.commander";
     public const string TotalDomination = "victory.domination";
+    public const string CampaignFirst = "campaign.first";
+    public const string TierRecruit = "campaign.tier_recruit";
+    public const string TierSoldier = "campaign.tier_soldier";
+    public const string TierCaptain = "campaign.tier_captain";
+    public const string TierCommander = "campaign.tier_commander";
+    public const string CampaignComplete = "campaign.complete";
     public const string DryFeet = "mode.rising_tides";
     public const string ThroughTheMist = "mode.fog_of_war";
     public const string RaidersRepelled = "mode.vikings";
@@ -176,6 +182,51 @@ public static class AchievementCatalog
             Target: 1,
             Hidden: false,
             Advance: e => e is GameEndEvent { HumanWon: true, WonByClaim: false } ? 1 : 0),
+
+        // --- Campaign (raised via GameController.RaiseCampaignLevelWon on a
+        // newly-won level; the event carries the ladder counts) ---
+        new(CampaignFirst,
+            StringKeys.AchieveCampaignFirstTitle,
+            StringKeys.AchieveCampaignFirstDesc,
+            AchievementCategory.Campaign,
+            Target: 1,
+            Hidden: false,
+            Advance: e => e is CampaignLevelWonEvent ? 1 : 0),
+        new(TierRecruit,
+            StringKeys.AchieveTierRecruitTitle,
+            StringKeys.AchieveTierRecruitDesc,
+            AchievementCategory.Campaign,
+            Target: 1,
+            Hidden: false,
+            Advance: e => e is CampaignLevelWonEvent { TierIndex: 0, TierWonCount: CampaignProgress.TierSize } ? 1 : 0),
+        new(TierSoldier,
+            StringKeys.AchieveTierSoldierTitle,
+            StringKeys.AchieveTierSoldierDesc,
+            AchievementCategory.Campaign,
+            Target: 1,
+            Hidden: false,
+            Advance: e => e is CampaignLevelWonEvent { TierIndex: 1, TierWonCount: CampaignProgress.TierSize } ? 1 : 0),
+        new(TierCaptain,
+            StringKeys.AchieveTierCaptainTitle,
+            StringKeys.AchieveTierCaptainDesc,
+            AchievementCategory.Campaign,
+            Target: 1,
+            Hidden: false,
+            Advance: e => e is CampaignLevelWonEvent { TierIndex: 2, TierWonCount: CampaignProgress.TierSize } ? 1 : 0),
+        new(TierCommander,
+            StringKeys.AchieveTierCommanderTitle,
+            StringKeys.AchieveTierCommanderDesc,
+            AchievementCategory.Campaign,
+            Target: 1,
+            Hidden: false,
+            Advance: e => e is CampaignLevelWonEvent { TierIndex: 3, TierWonCount: CampaignProgress.TierSize } ? 1 : 0),
+        new(CampaignComplete,
+            StringKeys.AchieveCampaignCompleteTitle,
+            StringKeys.AchieveCampaignCompleteDesc,
+            AchievementCategory.Campaign,
+            Target: 1,
+            Hidden: false,
+            Advance: e => e is CampaignLevelWonEvent { WonCount: CampaignProgress.LevelCount } ? 1 : 0),
 
         // --- Modes ---
         new(DryFeet,

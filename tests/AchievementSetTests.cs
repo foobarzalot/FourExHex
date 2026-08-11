@@ -152,13 +152,58 @@ public class AchievementSetTests
             Win() with { MaxHumanUnitLevel = (int)UnitLevel.Captain }));
     }
 
+    // --- Campaign -----------------------------------------------------------
+
+    private static CampaignLevelWonEvent LevelWon(
+        int level = 0, int wonCount = 1, int tierIndex = 0, int tierWonCount = 1)
+        => new(level, wonCount, tierIndex, tierWonCount);
+
+    [Fact]
+    public void CampaignFirst_AdvancesOnAnyNewlyWonLevel()
+    {
+        Assert.Equal(1, Advance(AchievementCatalog.CampaignFirst, LevelWon()));
+        Assert.Equal(0, Advance(AchievementCatalog.CampaignFirst, Win()));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public void TierCleared_RequiresAllSixtyFourLevelsOfItsTier(int tier)
+    {
+        string id = tier switch
+        {
+            0 => AchievementCatalog.TierRecruit,
+            1 => AchievementCatalog.TierSoldier,
+            2 => AchievementCatalog.TierCaptain,
+            _ => AchievementCatalog.TierCommander,
+        };
+        Assert.Equal(1, Advance(id,
+            LevelWon(tierIndex: tier, tierWonCount: CampaignProgress.TierSize)));
+        Assert.Equal(0, Advance(id,
+            LevelWon(tierIndex: tier, tierWonCount: CampaignProgress.TierSize - 1)));
+        Assert.Equal(0, Advance(id,
+            LevelWon(tierIndex: (tier + 1) % 4, tierWonCount: CampaignProgress.TierSize)));
+    }
+
+    [Fact]
+    public void CampaignComplete_RequiresAllTwoHundredFiftySixLevels()
+    {
+        Assert.Equal(1, Advance(AchievementCatalog.CampaignComplete,
+            LevelWon(wonCount: CampaignProgress.LevelCount)));
+        Assert.Equal(0, Advance(AchievementCatalog.CampaignComplete,
+            LevelWon(wonCount: CampaignProgress.LevelCount - 1)));
+    }
+
     // --- Set shape ----------------------------------------------------------
 
     [Fact]
-    public void TheGameEndSet_IsFifteenRowsAcrossThreeCategories()
+    public void TheInitialSet_IsTwentyOneRowsAcrossFourCategories()
     {
-        Assert.Equal(15, AchievementCatalog.All.Count);
+        Assert.Equal(21, AchievementCatalog.All.Count);
         Assert.Equal(6, AchievementCatalog.All.Count(d => d.Category == AchievementCategory.Victory));
+        Assert.Equal(6, AchievementCatalog.All.Count(d => d.Category == AchievementCategory.Campaign));
         Assert.Equal(5, AchievementCatalog.All.Count(d => d.Category == AchievementCategory.Modes));
         Assert.Equal(4, AchievementCatalog.All.Count(d => d.Category == AchievementCategory.Skill));
     }

@@ -80,15 +80,18 @@ public static class CampaignStore
     }
 
     /// <summary>Mark a level won (terminal) and persist if anything
-    /// changed. Called when the human wins a campaign game.</summary>
-    public static void MarkWon(int level)
+    /// changed. Called when the human wins a campaign game. Returns true
+    /// iff the level was NEWLY won (the campaign-achievement trigger —
+    /// re-winning an already-won level returns false).</summary>
+    public static bool MarkWon(int level)
     {
         EnsureLoaded();
-        if (!_progress!.MarkWon(level)) return;
+        if (!_progress!.MarkWon(level)) return false;
         Log.Info(Log.LogCategory.Campaign,
             $"CampaignStore: level {CampaignProgress.LabelFor(level)} marked WON " +
             $"({_progress.WonCount}/{CampaignProgress.LevelCount})");
         Save();
+        return true;
     }
 
     private static void EnsureLoaded()

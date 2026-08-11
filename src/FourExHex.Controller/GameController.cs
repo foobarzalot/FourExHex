@@ -673,6 +673,27 @@ public class GameController
         RaiseAchievementEvent(facts);
     }
 
+    /// <summary>
+    /// Campaign seam: a level flipped to Won for the first time. Called by
+    /// the Godot-side campaign result recorder (which owns campaign
+    /// persistence and so is the only place that knows "newly won") from
+    /// its <see cref="GameEnded"/> handler — after the game-end award, so
+    /// the win banner leads. Same taint gate as every raise site; no
+    /// per-game latch (the newly-won signal is idempotent by construction).
+    /// </summary>
+    public void RaiseCampaignLevelWon(CampaignLevelWonEvent evt)
+    {
+        if (!AwardsEnabled)
+        {
+            Log.Debug(Log.LogCategory.Achieve,
+                $"[award] campaign raise skipped (replay={IsReplayMode} " +
+                $"preview={_previewMode} recording={_recordingMode})");
+            return;
+        }
+        Log.Debug(Log.LogCategory.Achieve, $"[award] facts {evt}");
+        RaiseAchievementEvent(evt);
+    }
+
     /// <summary>Shared unlock→banner loop for every achievement raise site.
     /// Callers must already have passed the <see cref="AwardsEnabled"/> gate.</summary>
     private void RaiseAchievementEvent(AchievementEvent evt)

@@ -393,6 +393,18 @@ public static class StringKeys
     public const string AchieveBlitzDesc = "achieve.blitz.desc";
     public const string AchieveChainOfCommandTitle = "achieve.chain_of_command.title";
     public const string AchieveChainOfCommandDesc = "achieve.chain_of_command.desc";
+    public const string AchieveCampaignFirstTitle = "achieve.campaign_first.title";
+    public const string AchieveCampaignFirstDesc = "achieve.campaign_first.desc";
+    public const string AchieveTierRecruitTitle = "achieve.tier_recruit.title";
+    public const string AchieveTierRecruitDesc = "achieve.tier_recruit.desc";
+    public const string AchieveTierSoldierTitle = "achieve.tier_soldier.title";
+    public const string AchieveTierSoldierDesc = "achieve.tier_soldier.desc";
+    public const string AchieveTierCaptainTitle = "achieve.tier_captain.title";
+    public const string AchieveTierCaptainDesc = "achieve.tier_captain.desc";
+    public const string AchieveTierCommanderTitle = "achieve.tier_commander.title";
+    public const string AchieveTierCommanderDesc = "achieve.tier_commander.desc";
+    public const string AchieveCampaignCompleteTitle = "achieve.campaign_complete.title";
+    public const string AchieveCampaignCompleteDesc = "achieve.campaign_complete.desc";
 
     // First-encounter intros (game modes + terrain features).
     public const string IntroRisingTides = "intro.rising_tides";
