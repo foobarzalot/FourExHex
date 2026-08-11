@@ -62,10 +62,13 @@ public sealed record CampaignLevelWonEvent(
     int TierIndex,
     int TierWonCount) : AchievementEvent;
 
-/// <summary>Grouping for the achievements panel.</summary>
+/// <summary>Grouping for the achievements panel, in display order.</summary>
 public enum AchievementCategory
 {
     Victory = 0,
+    Campaign = 1,
+    Modes = 2,
+    Skill = 3,
 }
 
 /// <summary>
@@ -106,10 +109,38 @@ public sealed record AchievementDefinition(
 /// </summary>
 public static class AchievementCatalog
 {
+    public const string FirstWin = "victory.first_win";
     public const string Veteran = "victory.veteran";
+    public const string WarHero = "victory.war_hero";
+    public const string CaptainCommission = "victory.captain";
+    public const string CommanderCommission = "victory.commander";
+    public const string TotalDomination = "victory.domination";
+    public const string DryFeet = "mode.rising_tides";
+    public const string ThroughTheMist = "mode.fog_of_war";
+    public const string RaidersRepelled = "mode.vikings";
+    public const string LastHill = "mode.last_hill";
+    public const string VikingSlayer = "mode.viking_slayer";
+    public const string Untouchable = "skill.untouchable";
+    public const string OpenField = "skill.open_field";
+    public const string Blitz = "skill.blitz";
+    public const string ChainOfCommand = "skill.chain_of_command";
+
+    /// <summary>The Last Hill's land-tile ceiling at game end.</summary>
+    public const int LastHillLandTiles = 20;
+
+    /// <summary>Blitz's winning-turn ceiling (round counter).</summary>
+    public const int BlitzTurnLimit = 20;
 
     public static readonly IReadOnlyList<AchievementDefinition> All = new AchievementDefinition[]
     {
+        // --- Victory ---
+        new(FirstWin,
+            StringKeys.AchieveFirstWinTitle,
+            StringKeys.AchieveFirstWinDesc,
+            AchievementCategory.Victory,
+            Target: 1,
+            Hidden: false,
+            Advance: e => e is GameEndEvent g && g.HumanWon ? 1 : 0),
         new(Veteran,
             StringKeys.AchieveVeteranTitle,
             StringKeys.AchieveVeteranDesc,
@@ -117,6 +148,109 @@ public static class AchievementCatalog
             Target: 3,
             Hidden: false,
             Advance: e => e is GameEndEvent g && g.HumanWon ? 1 : 0),
+        new(WarHero,
+            StringKeys.AchieveWarHeroTitle,
+            StringKeys.AchieveWarHeroDesc,
+            AchievementCategory.Victory,
+            Target: 25,
+            Hidden: false,
+            Advance: e => e is GameEndEvent g && g.HumanWon ? 1 : 0),
+        new(CaptainCommission,
+            StringKeys.AchieveCaptainTitle,
+            StringKeys.AchieveCaptainDesc,
+            AchievementCategory.Victory,
+            Target: 1,
+            Hidden: false,
+            Advance: e => e is GameEndEvent { HumanWon: true, WinnerDifficulty: >= Difficulty.Captain } ? 1 : 0),
+        new(CommanderCommission,
+            StringKeys.AchieveCommanderTitle,
+            StringKeys.AchieveCommanderDesc,
+            AchievementCategory.Victory,
+            Target: 1,
+            Hidden: false,
+            Advance: e => e is GameEndEvent { HumanWon: true, WinnerDifficulty: Difficulty.Commander } ? 1 : 0),
+        new(TotalDomination,
+            StringKeys.AchieveDominationTitle,
+            StringKeys.AchieveDominationDesc,
+            AchievementCategory.Victory,
+            Target: 1,
+            Hidden: false,
+            Advance: e => e is GameEndEvent { HumanWon: true, WonByClaim: false } ? 1 : 0),
+
+        // --- Modes ---
+        new(DryFeet,
+            StringKeys.AchieveDryFeetTitle,
+            StringKeys.AchieveDryFeetDesc,
+            AchievementCategory.Modes,
+            Target: 1,
+            Hidden: false,
+            Advance: e => e is GameEndEvent { HumanWon: true, Mode: GameMode.RisingTides } ? 1 : 0),
+        new(ThroughTheMist,
+            StringKeys.AchieveThroughMistTitle,
+            StringKeys.AchieveThroughMistDesc,
+            AchievementCategory.Modes,
+            Target: 1,
+            Hidden: false,
+            Advance: e => e is GameEndEvent { HumanWon: true, Mode: GameMode.FogOfWar } ? 1 : 0),
+        new(RaidersRepelled,
+            StringKeys.AchieveRaidersRepelledTitle,
+            StringKeys.AchieveRaidersRepelledDesc,
+            AchievementCategory.Modes,
+            Target: 1,
+            Hidden: false,
+            Advance: e => e is GameEndEvent { HumanWon: true, Mode: GameMode.VikingRaiders } ? 1 : 0),
+        new(LastHill,
+            StringKeys.AchieveLastHillTitle,
+            StringKeys.AchieveLastHillDesc,
+            AchievementCategory.Modes,
+            Target: 1,
+            Hidden: false,
+            Advance: e => e is GameEndEvent
+            {
+                HumanWon: true,
+                Mode: GameMode.RisingTides,
+                LandTilesRemaining: <= LastHillLandTiles,
+            } ? 1 : 0),
+        new(VikingSlayer,
+            StringKeys.AchieveVikingSlayerTitle,
+            StringKeys.AchieveVikingSlayerDesc,
+            AchievementCategory.Modes,
+            Target: 50,
+            Hidden: false,
+            // Per-game delta, win or lose — kills earned in a losing defense
+            // still count toward the career total.
+            Advance: e => e is GameEndEvent g ? g.VikingKills : 0),
+
+        // --- Skill ---
+        new(Untouchable,
+            StringKeys.AchieveUntouchableTitle,
+            StringKeys.AchieveUntouchableDesc,
+            AchievementCategory.Skill,
+            Target: 1,
+            Hidden: false,
+            Advance: e => e is GameEndEvent { HumanWon: true, WinnerUnitsLost: 0 } ? 1 : 0),
+        new(OpenField,
+            StringKeys.AchieveOpenFieldTitle,
+            StringKeys.AchieveOpenFieldDesc,
+            AchievementCategory.Skill,
+            Target: 1,
+            Hidden: false,
+            Advance: e => e is GameEndEvent { HumanWon: true, WinnerTowersBuilt: 0 } ? 1 : 0),
+        new(Blitz,
+            StringKeys.AchieveBlitzTitle,
+            StringKeys.AchieveBlitzDesc,
+            AchievementCategory.Skill,
+            Target: 1,
+            Hidden: false,
+            Advance: e => e is GameEndEvent { HumanWon: true, TurnNumber: <= BlitzTurnLimit } ? 1 : 0),
+        new(ChainOfCommand,
+            StringKeys.AchieveChainOfCommandTitle,
+            StringKeys.AchieveChainOfCommandDesc,
+            AchievementCategory.Skill,
+            Target: 1,
+            Hidden: false,
+            // Win or lose — a mechanic milestone, not a victory.
+            Advance: e => e is GameEndEvent { MaxHumanUnitLevel: >= (int)UnitLevel.Commander } ? 1 : 0),
     };
 
     /// <summary>The definition for <paramref name="id"/>, or null when this

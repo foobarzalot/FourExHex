@@ -365,6 +365,34 @@ public static class StringKeys
     public const string AchieveHiddenDesc = "achieve.hidden.desc";
     public const string AchieveVeteranTitle = "achieve.veteran.title";
     public const string AchieveVeteranDesc = "achieve.veteran.desc";
+    public const string AchieveFirstWinTitle = "achieve.first_win.title";
+    public const string AchieveFirstWinDesc = "achieve.first_win.desc";
+    public const string AchieveWarHeroTitle = "achieve.war_hero.title";
+    public const string AchieveWarHeroDesc = "achieve.war_hero.desc";
+    public const string AchieveCaptainTitle = "achieve.captain.title";
+    public const string AchieveCaptainDesc = "achieve.captain.desc";
+    public const string AchieveCommanderTitle = "achieve.commander.title";
+    public const string AchieveCommanderDesc = "achieve.commander.desc";
+    public const string AchieveDominationTitle = "achieve.domination.title";
+    public const string AchieveDominationDesc = "achieve.domination.desc";
+    public const string AchieveDryFeetTitle = "achieve.dry_feet.title";
+    public const string AchieveDryFeetDesc = "achieve.dry_feet.desc";
+    public const string AchieveThroughMistTitle = "achieve.through_mist.title";
+    public const string AchieveThroughMistDesc = "achieve.through_mist.desc";
+    public const string AchieveRaidersRepelledTitle = "achieve.raiders_repelled.title";
+    public const string AchieveRaidersRepelledDesc = "achieve.raiders_repelled.desc";
+    public const string AchieveLastHillTitle = "achieve.last_hill.title";
+    public const string AchieveLastHillDesc = "achieve.last_hill.desc";
+    public const string AchieveVikingSlayerTitle = "achieve.viking_slayer.title";
+    public const string AchieveVikingSlayerDesc = "achieve.viking_slayer.desc";
+    public const string AchieveUntouchableTitle = "achieve.untouchable.title";
+    public const string AchieveUntouchableDesc = "achieve.untouchable.desc";
+    public const string AchieveOpenFieldTitle = "achieve.open_field.title";
+    public const string AchieveOpenFieldDesc = "achieve.open_field.desc";
+    public const string AchieveBlitzTitle = "achieve.blitz.title";
+    public const string AchieveBlitzDesc = "achieve.blitz.desc";
+    public const string AchieveChainOfCommandTitle = "achieve.chain_of_command.title";
+    public const string AchieveChainOfCommandDesc = "achieve.chain_of_command.desc";
 
     // First-encounter intros (game modes + terrain features).
     public const string IntroRisingTides = "intro.rising_tides";

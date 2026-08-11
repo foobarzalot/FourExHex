@@ -639,6 +639,21 @@ public class GameController
             : null;
         bool humanWon = winner != null && !winner.IsAi;
 
+        // Device-wide facts aggregate over every human seat; winner-scoped
+        // facts read the winning seat's own counters.
+        int vikingKills = 0;
+        int maxHumanLevel = 0;
+        foreach (Player p in _state.Turns.Players)
+        {
+            if (p.IsAi) continue;
+            PlayerRunStats s = _state.Stats.For(p.Id);
+            vikingKills += s.VikingKills;
+            if (s.MaxUnitLevelFielded > maxHumanLevel)
+            {
+                maxHumanLevel = s.MaxUnitLevelFielded;
+            }
+        }
+
         var facts = new GameEndEvent
         {
             HumanWon = humanWon,
@@ -647,6 +662,10 @@ public class GameController
             WonByClaim = humanWon && _session.WonByClaim,
             TurnNumber = _state.Turns.TurnNumber,
             LandTilesRemaining = _state.Grid.Count,
+            WinnerUnitsLost = humanWon ? _state.Stats.For(winner!.Id).UnitsLost : 0,
+            WinnerTowersBuilt = humanWon ? _state.Stats.For(winner!.Id).TowersBuilt : 0,
+            VikingKills = vikingKills,
+            MaxHumanUnitLevel = maxHumanLevel,
         };
 
         _awardedAchievementsThisGame = true;

@@ -58,7 +58,7 @@ public class AchievementAwardTests
         PlayWinningMove(h);
 
         Assert.Equal(h.Players[0].Id, h.Session.Winner);
-        Assert.Equal((Veteran, 1, 3), Assert.Single(store.ProgressReports));
+        Assert.Contains((Veteran, 1, 3), store.ProgressReports);
     }
 
     [Fact]
@@ -71,7 +71,7 @@ public class AchievementAwardTests
         // A trailing end-turn press after game over must not re-award.
         h.Hud.ClickEndTurn();
 
-        Assert.Single(store.ProgressReports);
+        Assert.Single(store.ProgressReports, r => r.Id == Veteran);
     }
 
     [Fact]
@@ -84,19 +84,59 @@ public class AchievementAwardTests
 
         PlayWinningMove(h);
 
-        Assert.Equal(new[] { Veteran }, store.Unlocks);
-        Assert.Equal(AchievementBannerContent.For(Veteran), Assert.Single(h.Hud.AchievementBanners));
+        Assert.Contains(Veteran, store.Unlocks);
+        Assert.Contains(AchievementBannerContent.For(Veteran), h.Hud.AchievementBanners);
     }
 
     [Fact]
     public void NonUnlockingWin_ShowsNoBanner()
     {
+        // Pre-unlock every row except the Veteran counter so this win can
+        // only produce progress — a progress-only report must stay silent.
         var store = new FakeAchievementStore();
+        foreach (AchievementDefinition def in AchievementCatalog.All)
+        {
+            if (def.Id != Veteran) store.Unlock(def.Id);
+        }
+        store.ClearCallLog();
         ControllerHarness h = OneMoveFromWinning(store);
 
         PlayWinningMove(h);
 
+        Assert.Equal((Veteran, 1, 3), Assert.Single(store.ProgressReports));
         Assert.Empty(h.Hud.AchievementBanners);
+    }
+
+    [Fact]
+    public void StasisEnd_StillRaisesFacts_SoChainOfCommandAdvancesOnALoss()
+    {
+        // Nobody wins (turn cap), but the human fielded a Commander via a
+        // combine — the mechanic milestone must still unlock.
+        var store = new FakeAchievementStore();
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1), PlayerKind.Human);
+        ControllerHarness h = TestHelpers.BuildControllerGame(
+            players: new List<Player> { red, blue },
+            cols: 5, rows: 1,
+            defaultOwner: blue.Id,
+            ownerOverrides: new[] { (0, 0, red.Id), (1, 0, red.Id), (2, 0, red.Id) },
+            maxTurnNumber: 1,
+            beforeTerritories: grid =>
+            {
+                grid.Get(HexCoord.FromOffset(1, 0))!.Occupant =
+                    new Unit(red.Id, UnitLevel.Captain);
+                grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(red.Id);
+            },
+            achievementStore: store);
+
+        h.Map.SimulateClick(h.State.Grid.Get(HexCoord.FromOffset(2, 0)));
+        h.Map.SimulateClick(h.State.Grid.Get(HexCoord.FromOffset(1, 0))); // Commander
+        h.Hud.ClickEndTurn();  // Red
+        h.Hud.ClickEndTurn();  // Blue — rotation completes, turn cap ends the game
+
+        Assert.Null(h.Session.Winner);
+        Assert.Contains(AchievementCatalog.ChainOfCommand, store.Unlocks);
+        Assert.DoesNotContain(AchievementCatalog.FirstWin, store.Unlocks);
     }
 
     // --- The award is suppressed ---
@@ -148,7 +188,7 @@ public class AchievementAwardTests
         var store = new FakeAchievementStore();
         ControllerHarness h = OneMoveFromWinning(store);
         PlayWinningMove(h);
-        Assert.Single(store.ProgressReports);
+        Assert.NotEmpty(store.ProgressReports);
         store.ClearCallLog();
 
         h.Controller.BeginReplay();
