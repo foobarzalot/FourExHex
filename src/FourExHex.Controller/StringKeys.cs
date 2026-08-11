@@ -405,6 +405,10 @@ public static class StringKeys
     public const string AchieveTierCommanderDesc = "achieve.tier_commander.desc";
     public const string AchieveCampaignCompleteTitle = "achieve.campaign_complete.title";
     public const string AchieveCampaignCompleteDesc = "achieve.campaign_complete.desc";
+    public const string AchieveCategoryVictory = "achieve.category.victory";
+    public const string AchieveCategoryCampaign = "achieve.category.campaign";
+    public const string AchieveCategoryModes = "achieve.category.modes";
+    public const string AchieveCategorySkill = "achieve.category.skill";
 
     // First-encounter intros (game modes + terrain features).
     public const string IntroRisingTides = "intro.rising_tides";

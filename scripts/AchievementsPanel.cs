@@ -116,24 +116,48 @@ public sealed partial class AchievementsPanel : CanvasLayer
 
     private void OnSafeAreaChanged(LogicalSafeInsets _) => FitPanel();
 
-    /// <summary>Rebuild every row from the current record.</summary>
+    /// <summary>Rebuild the category sections + rows from the current
+    /// record. Grouping comes from <see cref="AchievementPanelLayout"/>
+    /// (Controller, unit-tested); this only renders it.</summary>
     private void Rebuild()
     {
         foreach (Node child in _rows.GetChildren()) child.QueueFree();
 
         AchievementRecord record = AchievementStore.Record;
         int unlocked = 0;
-        foreach (AchievementDefinition def in AchievementCatalog.All)
+        foreach (AchievementPanelLayout.Group group in AchievementPanelLayout.Groups())
         {
-            bool earned = record.IsUnlocked(def.Id);
-            if (earned) unlocked++;
-            _rows.AddChild(BuildRow(def, earned, record.ProgressFor(def.Id)));
+            _rows.AddChild(BuildCategoryHeader(Strings.Get(group.TitleKey)));
+            foreach (AchievementDefinition def in group.Rows)
+            {
+                bool earned = record.IsUnlocked(def.Id);
+                if (earned) unlocked++;
+                _rows.AddChild(BuildRow(def, earned, record.ProgressFor(def.Id)));
+            }
         }
 
         _headerCount.Text = Strings.Get(
             StringKeys.AchieveHeaderCount,
             ("unlocked", unlocked.ToString()),
             ("total", AchievementCatalog.All.Count.ToString()));
+    }
+
+    /// <summary>Section header: category name over a gold rule.</summary>
+    private static Control BuildCategoryHeader(string title)
+    {
+        var header = new VBoxContainer
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        header.AddThemeConstantOverride("separation", 2);
+        var label = new Label { Text = title };
+        label.AddThemeFontSizeOverride("font_size", 22);
+        label.AddThemeColorOverride("font_color", UiPalette.InkSoft);
+        label.MouseFilter = Control.MouseFilterEnum.Ignore;
+        header.AddChild(label);
+        header.AddChild(ModalChrome.GoldRule());
+        return header;
     }
 
     /// <summary>
