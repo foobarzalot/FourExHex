@@ -56,6 +56,18 @@ public static class AchievementStore
         Save();
     }
 
+    /// <summary>Clear every unlock and all progress, then persist the empty
+    /// record. Debug tooling (the cheat menu) so achievement-award and toast
+    /// behaviour can be re-tested without a fresh install; writing an empty
+    /// record rather than deleting the file keeps the in-memory and on-disk
+    /// state in step.</summary>
+    public static void Reset()
+    {
+        _record = new AchievementRecord();
+        Log.Info(Log.LogCategory.Achieve, "[store] reset — record cleared");
+        Save();
+    }
+
     private static void EnsureLoaded()
     {
         if (_record != null) return;

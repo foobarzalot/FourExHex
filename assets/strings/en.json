@@ -366,5 +366,9 @@
   "cheat.demo_back": "Back",
   "cheat.determinism": "Determinism Check",
   "cheat.determinism_title": "Determinism Check",
+  "cheat.reset_achievements": "Reset Achievements",
+  "cheat.reset_achievements_title": "Reset Achievements",
+  "cheat.reset_achievements_body": "Erase every unlocked achievement and all progress toward the rest? This cannot be undone.",
+  "cheat.reset_achievements_confirm": "Reset",
   "cheat.close": "Close"
 }

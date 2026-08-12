@@ -17,7 +17,6 @@ public partial class AchievementToastLayer : CanvasLayer
 {
     private const float BannerW = 560f;
     private const float BannerH = 64f;
-    private const float BannerMarginTop = 16f;
     private const float SideMargin = UiMetrics.ViewportMarginPx;
     private const double FadeInSeconds = 0.2;
     private const double FadeOutSeconds = 0.4;
@@ -179,9 +178,10 @@ public partial class AchievementToastLayer : CanvasLayer
     }
 
     /// <summary>
-    /// Width-cap + place in the topmost toast slot: below the game HUD's
-    /// top chrome (portrait top bar / landscape rails — the clearances
-    /// also read fine over the menu, where there is no chrome to clear).
+    /// Width-cap + pin top-center, as high as the OS allows: the top edge
+    /// sits one corner-zone pad below <see cref="SafeArea"/>'s top inset,
+    /// level with the HUD's corner chips. At layer 120 the toast draws over
+    /// whatever chrome is beneath it, so no HUD clearance is reserved.
     /// Re-run on resize, safe-area change, and per toast (orientation may
     /// change mid-drain).
     /// </summary>
@@ -200,9 +200,13 @@ public partial class AchievementToastLayer : CanvasLayer
         _banner.OffsetLeft = -width * 0.5f;
         _banner.OffsetRight = width * 0.5f;
 
-        float topClearance = orientation == ScreenOrientation.Portrait ? 150f : 80f;
-        float top = SafeArea.Current.Top + topClearance + BannerMarginTop;
+        float top = SafeArea.Current.Top + UiMetrics.CornerZoneEdgePadPx;
         _banner.OffsetTop = top;
         _banner.OffsetBottom = top + BannerH;
+
+        Log.Debug(Log.LogCategory.Achieve,
+            $"[banner] placed: safeTop={SafeArea.Current.Top} top={top} " +
+            $"width={width} orientation={orientation} " +
+            $"viewport={viewport.X}x{viewport.Y}");
     }
 }

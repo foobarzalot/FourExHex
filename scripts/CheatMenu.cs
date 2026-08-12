@@ -32,6 +32,7 @@ public sealed partial class CheatMenu : Node
 
     private readonly MultiTouchTapDetector _tapDetector = new();
     private EscMenu _menu = null!;
+    private ConfirmModal _resetAchievementsConfirm = null!;
 
     public override void _Ready()
     {
@@ -41,6 +42,15 @@ public sealed partial class CheatMenu : Node
         ProcessMode = ProcessModeEnum.Always;
         _menu = new EscMenu();
         AddChild(_menu);
+
+        // The achievement record is the one bit of player state with no
+        // other copy, so the wipe is gated behind a confirm.
+        _resetAchievementsConfirm = new ConfirmModal(
+            Strings.Get(StringKeys.CheatResetAchievementsTitle),
+            Strings.Get(StringKeys.CheatResetAchievementsBody),
+            Strings.Get(StringKeys.CheatResetAchievementsConfirm));
+        _resetAchievementsConfirm.Confirmed += OnResetAchievementsConfirmed;
+        AddChild(_resetAchievementsConfirm);
     }
 
     public override void _Input(InputEvent @event)
@@ -81,10 +91,27 @@ public sealed partial class CheatMenu : Node
                 RecordingMode.Toggle),
             new(Strings.Get(StringKeys.CheatDemoReplays), OpenDemoPicker),
             new(Strings.Get(StringKeys.CheatDeterminism), RunDeterminismCheck),
+            new(Strings.Get(StringKeys.CheatResetAchievements), OpenResetAchievementsConfirm),
             // EscMenu hides itself before invoking the callback, so
             // Close is just a logged no-op.
             new(Strings.Get(StringKeys.CheatClose), () => Log.Debug(Log.LogCategory.Cheat, "CheatMenu: closed (Close button).")),
         });
+    }
+
+    /// <summary>Wipe the local achievement record so awards and their toasts
+    /// can be exercised again. <see cref="EscMenu"/> has already hidden the
+    /// cheat menu by the time this runs, so the confirm opens over the bare
+    /// scene rather than stacking on another modal.</summary>
+    private void OpenResetAchievementsConfirm()
+    {
+        Log.Debug(Log.LogCategory.Cheat, "CheatMenu: Reset Achievements pressed.");
+        _resetAchievementsConfirm.Open();
+    }
+
+    private static void OnResetAchievementsConfirmed()
+    {
+        Log.Debug(Log.LogCategory.Cheat, "CheatMenu: Reset Achievements confirmed.");
+        AchievementStore.Reset();
     }
 
     /// <summary>

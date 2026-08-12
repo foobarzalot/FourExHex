@@ -489,5 +489,9 @@ public static class StringKeys
     public const string CheatDemoBack = "cheat.demo_back";
     public const string CheatDeterminism = "cheat.determinism";
     public const string CheatDeterminismTitle = "cheat.determinism_title";
+    public const string CheatResetAchievements = "cheat.reset_achievements";
+    public const string CheatResetAchievementsTitle = "cheat.reset_achievements_title";
+    public const string CheatResetAchievementsBody = "cheat.reset_achievements_body";
+    public const string CheatResetAchievementsConfirm = "cheat.reset_achievements_confirm";
     public const string CheatClose = "cheat.close";
 }
