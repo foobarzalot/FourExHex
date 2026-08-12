@@ -19,12 +19,12 @@ public partial class AchievementToastLayer : CanvasLayer
     private const float BannerH = 64f;
     private const float BannerMarginTop = 16f;
     private const float SideMargin = UiMetrics.ViewportMarginPx;
-    private const double FadeInSeconds = 0.4;
-    private const double FadeOutSeconds = 0.8;
-    private const double HoldSeconds = 5.0;
+    private const double FadeInSeconds = 0.2;
+    private const double FadeOutSeconds = 0.4;
+    private const double HoldSeconds = 2.5;
     // A toast with more waiting behind it holds for less — a burst of
     // simultaneous unlocks reads brisk; the last one gets the full hold.
-    private const double QueuedHoldSeconds = 2.5;
+    private const double QueuedHoldSeconds = 1.25;
 
     private static readonly Font GeistFont =
         GD.Load<FontFile>("res://fonts/Geist-VariableFont.ttf");
