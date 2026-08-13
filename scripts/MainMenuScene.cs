@@ -463,22 +463,16 @@ public partial class MainMenuScene : Control
         const float buttonGap = 16f;
         const float firstButtonY = 140f;
 
-        // The full stack is Resume, Play, Campaign, Achievements, Play
-        // Tutorial, Load, Map Editor, Settings, and Exit (9 buttons; the
-        // Tutorial Builder entry lives in the debug-only cheat menu). On
-        // mobile the Exit button is suppressed (Apple HIG / Google Play
-        // guidance), so the panel reclaims its slot — height is computed from
-        // the actual count rather than the fixed design, otherwise ScaleToFit
-        // centers against a phantom Exit slot, leaving dead space at the
-        // bottom.
+        // The stack is Start Game, Resume, Achievements, Play Tutorial, Load,
+        // Map Editor, Settings, and Exit (the Campaign ladder is reached
+        // through the Start Game chooser; the Tutorial Builder entry lives in
+        // the debug-only cheat menu). On mobile the Exit button is suppressed
+        // (Apple HIG / Google Play guidance), so the panel reclaims its slot —
+        // height is derived below from the buttons actually placed rather than
+        // a hardcoded count, otherwise ScaleToFit centers against a phantom
+        // slot and leaves dead space at the bottom.
         bool exitSuppressed = OS.HasFeature("mobile");
-        int landingButtonCount = exitSuppressed ? 8 : 9;
         const float bottomMargin = 56f; // matches the desktop design (820 - 764)
-        float panelH = firstButtonY + (buttonH + buttonGap) * (landingButtonCount - 1)
-                       + buttonH + bottomMargin;
-        Log.Info(Log.LogCategory.Render,
-            $"MainMenu: landing panel sized for {landingButtonCount} buttons "
-            + $"(panelH={panelH}, exitSuppressed={exitSuppressed}).");
         // Center-anchored so Godot re-solves the position on every window
         // resize (matches ModalChrome.BuildCenteredPanel). Children below
         // are laid out in the panel's local space against the fixed
@@ -487,7 +481,8 @@ public partial class MainMenuScene : Control
         {
             AnchorLeft = 0.5f, AnchorRight = 0.5f, AnchorTop = 0.5f, AnchorBottom = 0.5f,
             OffsetLeft = -panelW * 0.5f, OffsetRight = panelW * 0.5f,
-            OffsetTop = -panelH * 0.5f, OffsetBottom = panelH * 0.5f,
+            // Vertical offsets are set once the button run below has settled
+            // the height.
             GrowHorizontal = GrowDirection.Both,
             GrowVertical = GrowDirection.Both,
         };
@@ -522,102 +517,70 @@ public partial class MainMenuScene : Control
         // walk the saves directory twice on every panel build.
         System.Collections.Generic.IReadOnlyList<SaveSlotInfo> slots = _saveStore.ListSlots();
 
-        // Resume sits above Play Game so a returning player hits the
-        // one-click path first; new players see it disabled and fall to
-        // Play Game directly below.
-        _landingResumeButton = new Button { Text = Strings.Get(StringKeys.MenuResume) };
-        _landingResumeButton.AddThemeFontSizeOverride("font_size", 26);
-        _landingResumeButton.Position = new Vector2(buttonInset, firstButtonY);
-        _landingResumeButton.Size = new Vector2(buttonW, buttonH);
-        _landingResumeButton.Pressed += OnResumePressed;
-        AudioBus.AttachClick(_landingResumeButton);
+        // Every entry is the same button in the next slot down, so placement
+        // runs off a counter rather than a literal multiplier per button —
+        // the count the panel height is derived from can't drift from the
+        // buttons actually added. Plain Buttons, not brass: brass marks
+        // terminal commit actions (Start Game in setup, Resume in Pause),
+        // not menu navigation.
+        int slot = 0;
+        Button Place(string label, System.Action onPressed)
+        {
+            var button = new Button { Text = label };
+            button.AddThemeFontSizeOverride("font_size", 26);
+            button.Position = new Vector2(
+                buttonInset, firstButtonY + (buttonH + buttonGap) * slot);
+            button.Size = new Vector2(buttonW, buttonH);
+            button.Pressed += onPressed;
+            AudioBus.AttachClick(button);
+            panel.AddChild(button);
+            slot++;
+            return button;
+        }
+
+        // Start Game leads — the primary action, and the chooser behind it
+        // holds every way into a game (Campaign included). Resume follows so
+        // a returning player still meets the one-click path early; new
+        // players see it disabled and fall to Start Game above.
+        _landingPlayButton = Place(Strings.Get(StringKeys.MenuPlayGame), OnPlayPressed);
+
+        _landingResumeButton = Place(Strings.Get(StringKeys.MenuResume), OnResumePressed);
         _landingResumeButton.Disabled = !slots.Any(s => s.IsAutosave);
-        panel.AddChild(_landingResumeButton);
 
-        _landingPlayButton = new Button { Text = Strings.Get(StringKeys.MenuPlayGame) };
-        // Plain Button, not brass — brass marks terminal commit actions
-        // (Start Game, Resume in Pause), not menu navigation.
-        _landingPlayButton.AddThemeFontSizeOverride("font_size", 26);
-        _landingPlayButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap));
-        _landingPlayButton.Size = new Vector2(buttonW, buttonH);
-        _landingPlayButton.Pressed += OnPlayPressed;
-        AudioBus.AttachClick(_landingPlayButton);
-        panel.AddChild(_landingPlayButton);
-
-        // Campaign ladder: 256 fixed-seed levels with
-        // persistent progress. Sits right under Play Game — it's the
-        // long-horizon progression mode.
-        var campaignButton = new Button { Text = Strings.Get(StringKeys.MenuCampaign) };
-        campaignButton.AddThemeFontSizeOverride("font_size", 26);
-        campaignButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 2);
-        campaignButton.Size = new Vector2(buttonW, buttonH);
-        campaignButton.Pressed += OnCampaignPressed;
-        AudioBus.AttachClick(campaignButton);
-        panel.AddChild(campaignButton);
-
-        // Achievements: the earned/unearned record, sitting with Campaign as
-        // the other cross-session progression surface.
-        var achievementsButton = new Button { Text = Strings.Get(StringKeys.MenuAchievements) };
-        achievementsButton.AddThemeFontSizeOverride("font_size", 26);
-        achievementsButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 3);
-        achievementsButton.Size = new Vector2(buttonW, buttonH);
-        achievementsButton.Pressed += OnAchievementsPressed;
-        AudioBus.AttachClick(achievementsButton);
-        panel.AddChild(achievementsButton);
+        // Achievements: the earned/unearned record, the cross-session
+        // progression surface that stays on the landing page.
+        Place(Strings.Get(StringKeys.MenuAchievements), OnAchievementsPressed);
 
         // The end-user-facing tutorial entry point (the authoring tool
         // lives in the debug-only cheat menu).
-        var playTutorialButton = new Button { Text = Strings.Get(StringKeys.MenuPlayTutorial) };
-        playTutorialButton.AddThemeFontSizeOverride("font_size", 26);
-        playTutorialButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 4);
-        playTutorialButton.Size = new Vector2(buttonW, buttonH);
-        playTutorialButton.Pressed += OnPlayTutorialPressed;
-        AudioBus.AttachClick(playTutorialButton);
-        panel.AddChild(playTutorialButton);
+        Place(Strings.Get(StringKeys.MenuPlayTutorial), OnPlayTutorialPressed);
 
-        _landingLoadButton = new Button { Text = Strings.Get(StringKeys.MenuLoadGame) };
-        _landingLoadButton.AddThemeFontSizeOverride("font_size", 26);
-        _landingLoadButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 5);
-        _landingLoadButton.Size = new Vector2(buttonW, buttonH);
-        _landingLoadButton.Pressed += OnLoadPressed;
-        AudioBus.AttachClick(_landingLoadButton);
+        _landingLoadButton = Place(Strings.Get(StringKeys.MenuLoadGame), OnLoadPressed);
         // Disable when no saves exist so the user gets immediate visual
         // feedback rather than an empty popup.
         _landingLoadButton.Disabled = slots.Count == 0;
-        panel.AddChild(_landingLoadButton);
 
-        var mapEditorButton = new Button { Text = Strings.Get(StringKeys.MenuMapEditor) };
-        mapEditorButton.AddThemeFontSizeOverride("font_size", 26);
-        mapEditorButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 6);
-        mapEditorButton.Size = new Vector2(buttonW, buttonH);
-        mapEditorButton.Pressed += OnMapEditorPressed;
-        AudioBus.AttachClick(mapEditorButton);
-        panel.AddChild(mapEditorButton);
-
-        var settingsButton = new Button { Text = Strings.Get(StringKeys.MenuSettings) };
-        settingsButton.AddThemeFontSizeOverride("font_size", 26);
-        settingsButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 7);
-        settingsButton.Size = new Vector2(buttonW, buttonH);
-        settingsButton.Pressed += OnSettingsPressed;
-        AudioBus.AttachClick(settingsButton);
-        panel.AddChild(settingsButton);
+        Place(Strings.Get(StringKeys.MenuMapEditor), OnMapEditorPressed);
+        Place(Strings.Get(StringKeys.MenuSettings), OnSettingsPressed);
 
         // Exit suppressed on mobile (Apple HIG / Google Play); desktop only.
         if (!exitSuppressed)
         {
-            var exitButton = new Button { Text = Strings.Get(StringKeys.MenuExit) };
-            exitButton.AddThemeFontSizeOverride("font_size", 26);
-            exitButton.Position = new Vector2(buttonInset, firstButtonY + (buttonH + buttonGap) * 8);
-            exitButton.Size = new Vector2(buttonW, buttonH);
-            exitButton.Pressed += OnExitPressed;
-            AudioBus.AttachClick(exitButton);
-            panel.AddChild(exitButton);
+            Place(Strings.Get(StringKeys.MenuExit), OnExitPressed);
             Log.Info(Log.LogCategory.Render, "MainMenu: Exit button rendered (desktop build).");
         }
         else
         {
             Log.Info(Log.LogCategory.Render, "MainMenu: Exit button suppressed (mobile build).");
         }
+
+        float panelH = firstButtonY + (buttonH + buttonGap) * (slot - 1)
+                       + buttonH + bottomMargin;
+        panel.OffsetTop = -panelH * 0.5f;
+        panel.OffsetBottom = panelH * 0.5f;
+        Log.Info(Log.LogCategory.Render,
+            $"MainMenu: landing panel sized for {slot} buttons "
+            + $"(panelH={panelH}, exitSuppressed={exitSuppressed}).");
 
         _landingDesignSize = new Vector2(panelW, panelH);
         return panel;
@@ -680,10 +643,15 @@ public partial class MainMenuScene : Control
         rightCol.AddThemeConstantOverride("separation", 11);
         hbox.AddChild(rightCol);
 
-        // Every entry is a grid cell — Play Game included, rather than a
-        // full-width button above the grid. Eight entries fill four even
-        // rows of two, which is what lets Achievements land without leaving
-        // a ragged half-row.
+        // Start Game is a full-width button above the grid — the primary
+        // action, and the chooser behind it holds every way into a game
+        // (Campaign included). The six remaining entries fill three even
+        // rows of two, so no cell is left ragged.
+        _landingPlayButton = MakeLandingButton(
+            Strings.Get(StringKeys.MenuPlayGame), OnPlayPressed, 26);
+        _landingPlayButton.CustomMinimumSize = new Vector2(0, 52);
+        rightCol.AddChild(_landingPlayButton);
+
         var grid = new GridContainer
         {
             Columns = 2,
@@ -699,8 +667,7 @@ public partial class MainMenuScene : Control
         System.Collections.Generic.IReadOnlyList<SaveSlotInfo> slots = _saveStore.ListSlots();
 
         // Reading order matches the portrait stack, row by row:
-        //   Resume  | Play Game
-        //   Campaign| Achievements
+        //   Resume  | Achievements
         //   Tutorial| Load Game
         //   Editor  | Settings
         // Resume / Load render disabled but keep their grid slots so the grid
@@ -708,9 +675,6 @@ public partial class MainMenuScene : Control
         _landingResumeButton = MakeGridButton(Strings.Get(StringKeys.MenuResume), OnResumePressed);
         _landingResumeButton.Disabled = !slots.Any(s => s.IsAutosave);
         grid.AddChild(_landingResumeButton);
-        _landingPlayButton = MakeGridButton(Strings.Get(StringKeys.MenuPlayGame), OnPlayPressed);
-        grid.AddChild(_landingPlayButton);
-        grid.AddChild(MakeGridButton(Strings.Get(StringKeys.MenuCampaign), OnCampaignPressed));
         grid.AddChild(MakeGridButton(Strings.Get(StringKeys.MenuAchievements), OnAchievementsPressed));
         grid.AddChild(MakeGridButton(Strings.Get(StringKeys.MenuPlayTutorial), OnPlayTutorialPressed));
         _landingLoadButton = MakeGridButton(Strings.Get(StringKeys.MenuLoadGame), OnLoadPressed);
@@ -731,7 +695,8 @@ public partial class MainMenuScene : Control
 
         LandscapeMenuChrome.ApplyLayout(surface, GetViewportRect().Size, SafeArea.Current);
         Log.Info(Log.LogCategory.Render,
-            $"MainMenu: landing built (Landscape split-hero, exitSuppressed={exitSuppressed})");
+            $"MainMenu: landing built (Landscape split-hero, cells={grid.GetChildCount()}, "
+            + $"exitSuppressed={exitSuppressed})");
         return surface;
     }
 
@@ -1896,18 +1861,22 @@ public partial class MainMenuScene : Control
 
     private void OnPlayPressed()
     {
-        // Play Game source chooser: configure a fresh game,
-        // load a saved starting map, or jump straight into a default game.
-        Log.Info(Log.LogCategory.Input, "MainMenu: Play Game → source chooser");
+        // Start Game source chooser, ordered fewest-decisions-first: the
+        // campaign ladder, straight into a default game, a configured fresh
+        // game, then a saved starting map.
+        Log.Info(Log.LogCategory.Input, "MainMenu: Start Game → source chooser (5 options)");
         _sourceChooser?.Show(Strings.Get(StringKeys.MenuPlayGame), new[]
         {
+            // Campaign leads: 256 fixed-seed levels with persistent progress,
+            // the long-horizon way into a game.
+            new EscMenu.Option(Strings.Get(StringKeys.MenuCampaign), OnCampaignPressed),
+            new EscMenu.Option(Strings.Get(StringKeys.MenuQuickPlay), OnQuickPlay),
             // Game mode (Freeform / Rising Tides) is chosen on the
             // Configure Game player-setup page, not here — it's part of game
             // setup and is shared with the map editor's new-map flow.
             new EscMenu.Option(Strings.Get(StringKeys.MenuConfigureGame), ShowPlayConfig),
             new EscMenu.Option(Strings.Get(StringKeys.MenuLoadStartingMap), OpenLoadStartingMapToPlay),
-            new EscMenu.Option(Strings.Get(StringKeys.MenuQuickPlay), OnQuickPlay),
-            BackOption("Play Game"),
+            BackOption("Start Game"),
         });
     }
 

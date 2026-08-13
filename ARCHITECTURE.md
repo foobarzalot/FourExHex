@@ -908,7 +908,7 @@ the step for higher units.
 
 ## New Game setup & map thumbnail
 
-**Play Game** opens a **source chooser** (reused `EscMenu` modal, `_sourceChooser`): **Configure Game** (fresh procedural), **Load Starting Map** (saved map, baked roster), **Quick Play** (`OnQuickPlay` skips both setup pages: Red human + 5 Computer / all Soldier, default densities, clears `CampaignLevel`, fresh `MasterSeed`, `LaunchGameScene`). Map Editor opens the same idiom (**New Map** / **Load Map**), sharing chooser and player-setup screen.
+**Start Game** opens a **source chooser** (reused `EscMenu` modal, `_sourceChooser`) holding every way into a game, ordered fewest-decisions-first: **Campaign** (`OnCampaignPressed` → the ladder — see *Campaign ladder*), **Quick Play** (`OnQuickPlay` skips both setup pages: Red human + 5 Computer / all Soldier, default densities, clears `CampaignLevel`, fresh `MasterSeed`, `LaunchGameScene`), **Configure Game** (fresh procedural), **Load Starting Map** (saved map, baked roster). Map Editor opens the same idiom (**New Map** / **Load Map**), sharing chooser and player-setup screen.
 
 **Configure Game** runs **two paged screens** in `MainMenuScene` toggled by `_playConfigPage` (`PlayerSetup` / `MapSetup`); both built up front, visibility flipped (selections survive paging), `Enter`/`Esc` + Back/forward per page. Player-setup holds six role + difficulty rows; map-setup is **procedural-only** — a **re-roll die** button (`HudIconButton(HudIcon.Die)`) + live thumbnail. The map seed is not user-editable: `_previewSeed` (an `int` field seeded once in `_Ready`, persisting across orientation-flip rebuilds) drives the thumbnail and is handed to `GameSettings.MasterSeed` on Start; the die re-rolls it.
 
@@ -2290,8 +2290,9 @@ The tree below keeps the `scripts/` prefix only as a grouping label; per-file pr
 ```
 scripts/  (split: see the three source trees listed just above)
 ├─ Main.cs                ─ play scene root; wires model + views + controller
-├─ MainMenuScene.cs       ─ landing (Resume / Play / Play Tutorial / Load /
-│                           Map Editor / Settings + desktop Exit) + paged New
+├─ MainMenuScene.cs       ─ landing (Start Game / Resume / Achievements /
+│                           Play Tutorial / Load / Map Editor / Settings +
+│                           desktop Exit) + paged New
 │                           Game flow; Load Game modal; SettingsPanel overlay;
 │                           Exit/Escape→ConfirmModal; writes GameSettings +
 │                           LoadRequest
